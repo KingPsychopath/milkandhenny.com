@@ -9,7 +9,7 @@ import { GuestList } from '@/components/guestlist/GuestList';
 import { GuestStats } from '@/components/guestlist/GuestStats';
 import { GuestManagement } from '@/components/guestlist/GuestManagement';
 
-const STAFF_PIN = '2026';
+const STAFF_PIN = '2020';
 const AUTH_KEY = 'mah-staff-auth';
 
 export default function GuestListPage() {

@@ -13,7 +13,7 @@ type GuestManagementProps = {
 };
 
 /** Global password for management access */
-const MANAGEMENT_PASSWORD = 'party2026';
+const MANAGEMENT_PASSWORD = 'party2020';
 
 /** Typeahead input component */
 function TypeaheadInput({

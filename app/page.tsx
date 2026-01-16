@@ -67,7 +67,7 @@ export default function Home() {
           </div>
           
           <p className="text-zinc-500 text-sm">
-            MCs: <span className="text-white/70">D_CHIEFEXECUTIVE</span> & <span className="text-white/70">FADZ</span>
+            MCs: <span className="text-white/70">D CHIEF EXECUTIVE</span> & <span className="text-white/70">FADZ</span>
           </p>
         </div>
 
