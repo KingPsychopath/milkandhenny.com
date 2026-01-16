@@ -1,5 +1,6 @@
 'use client';
 
+import Image from 'next/image';
 import { useGuests } from '@/hooks/useGuests';
 import { useGuestSearch } from '@/hooks/useGuestSearch';
 import { SearchBar } from '@/components/guestlist/SearchBar';
@@ -37,9 +38,20 @@ export default function GuestListPage() {
       <div className="max-w-lg mx-auto bg-white min-h-screen shadow-xl shadow-stone-300/50">
         {/* Header */}
         <header className="bg-gradient-to-br from-amber-600 via-amber-500 to-yellow-500 pt-safe">
-          <div className="px-5 py-4">
-            <h1 className="text-2xl font-bold text-white">Guest List</h1>
-            <p className="text-amber-100 text-sm mt-0.5">Tap to check in guests</p>
+          <div className="px-5 py-4 flex items-center gap-4">
+            <div className="w-12 h-12 rounded-full bg-white/20 p-1 flex-shrink-0">
+              <Image
+                src="/Mahlogo.svg"
+                alt="Logo"
+                width={44}
+                height={44}
+                className="w-full h-full object-contain"
+              />
+            </div>
+            <div>
+              <h1 className="text-2xl font-bold text-white">Guest List</h1>
+              <p className="text-amber-100 text-sm mt-0.5">Tap to check in guests</p>
+            </div>
           </div>
         </header>
 

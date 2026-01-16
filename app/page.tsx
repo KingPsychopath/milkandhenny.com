@@ -1,17 +1,32 @@
 import Link from 'next/link';
+import Image from 'next/image';
 
 export default function Home() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-zinc-950 via-zinc-900 to-stone-900 flex items-center justify-center p-6">
       <div className="text-center space-y-8 max-w-lg">
         {/* Logo/Brand */}
-        <div className="space-y-4">
-          <div className="inline-flex items-center justify-center w-20 h-20 rounded-full bg-gradient-to-br from-amber-400 to-amber-600 shadow-lg shadow-amber-500/20">
-            <span className="text-3xl font-bold text-zinc-950">M&H</span>
+        <div className="space-y-6">
+          <div className="inline-flex items-center justify-center w-28 h-28 rounded-full bg-gradient-to-br from-amber-400/20 to-amber-600/20 shadow-2xl shadow-amber-500/10 p-1">
+            <Image
+              src="/Mahlogo.svg"
+              alt="Milk & Henny Logo"
+              width={100}
+              height={100}
+              className="w-full h-full object-contain"
+              priority
+            />
           </div>
-          <h1 className="text-4xl md:text-5xl font-bold text-white tracking-tight">
-            Milk & Henny
-          </h1>
+          <div className="max-w-xs mx-auto">
+            <Image
+              src="/Mahtext.svg"
+              alt="Milk & Henny"
+              width={280}
+              height={60}
+              className="w-full h-auto"
+              priority
+            />
+          </div>
           <p className="text-amber-400/80 text-lg font-medium tracking-wide uppercase">
             First Ever Birthday
           </p>
