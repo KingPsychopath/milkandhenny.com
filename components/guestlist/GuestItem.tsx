@@ -9,6 +9,24 @@ type GuestItemProps = {
   searchQuery: string;
 };
 
+/** Trigger haptic feedback on supported devices */
+function hapticFeedback(type: 'light' | 'medium' | 'success') {
+  if (typeof window === 'undefined' || !navigator.vibrate) return;
+  
+  switch (type) {
+    case 'light':
+      navigator.vibrate(10);
+      break;
+    case 'medium':
+      navigator.vibrate(25);
+      break;
+    case 'success':
+      // Double tap pattern for success
+      navigator.vibrate([15, 50, 15]);
+      break;
+  }
+}
+
 function highlightText(text: string, query: string) {
   if (!query.trim()) return text;
   
@@ -60,7 +78,10 @@ export function GuestItem({ guest, onCheckIn, searchQuery }: GuestItemProps) {
       >
         {/* Check-in button */}
         <button
-          onClick={() => onCheckIn(guest.id, !guest.checkedIn)}
+          onClick={() => {
+            hapticFeedback(guest.checkedIn ? 'light' : 'success');
+            onCheckIn(guest.id, !guest.checkedIn);
+          }}
           className={`flex-shrink-0 w-7 h-7 rounded-lg border-2 flex items-center justify-center transition-all active:scale-95 ${
             guest.checkedIn
               ? 'bg-amber-500 border-amber-500 shadow-sm shadow-amber-200'
@@ -140,7 +161,10 @@ export function GuestItem({ guest, onCheckIn, searchQuery }: GuestItemProps) {
               }`}
             >
               <button
-                onClick={() => onCheckIn(plusOne.id, !plusOne.checkedIn)}
+                onClick={() => {
+                  hapticFeedback(plusOne.checkedIn ? 'light' : 'success');
+                  onCheckIn(plusOne.id, !plusOne.checkedIn);
+                }}
                 className={`flex-shrink-0 w-6 h-6 rounded-md border-2 flex items-center justify-center transition-all active:scale-95 ${
                   plusOne.checkedIn
                     ? 'bg-amber-500 border-amber-500'

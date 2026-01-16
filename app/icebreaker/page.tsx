@@ -3,6 +3,21 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 
+/** Trigger haptic feedback on supported devices */
+function hapticFeedback(type: 'light' | 'reveal') {
+  if (typeof window === 'undefined' || !navigator.vibrate) return;
+  
+  switch (type) {
+    case 'light':
+      navigator.vibrate(15);
+      break;
+    case 'reveal':
+      // Dramatic reveal pattern
+      navigator.vibrate([50, 100, 100]);
+      break;
+  }
+}
+
 // Vibrant, distinct colors for the game (10 colors = ~20 people per color with 200 guests)
 const COLORS = [
   { name: 'Ruby', bg: 'bg-red-500', hex: '#ef4444', text: 'text-white' },
@@ -67,7 +82,10 @@ export default function IcebreakerPage() {
                 Tap to reveal your colour for tonight
               </p>
               <button
-                onClick={() => setRevealed(true)}
+                onClick={() => {
+                  hapticFeedback('reveal');
+                  setRevealed(true);
+                }}
                 className="px-8 py-4 bg-gradient-to-r from-amber-500 to-amber-600 text-zinc-950 font-bold text-lg rounded-full shadow-lg shadow-amber-500/30 hover:scale-105 transition-transform"
               >
                 Reveal My Colour
