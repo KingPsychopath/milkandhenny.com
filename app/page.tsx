@@ -9,7 +9,7 @@ export default function Home() {
         <div className="space-y-6">
           <div className="inline-flex items-center justify-center w-28 h-28 rounded-full bg-gradient-to-br from-amber-400/20 to-amber-600/20 shadow-2xl shadow-amber-500/10 p-1">
             <Image
-              src="/Mahlogo.svg"
+              src="/MAHLogo.svg"
               alt="Milk & Henny Logo"
               width={100}
               height={100}
@@ -19,7 +19,7 @@ export default function Home() {
           </div>
           <div className="max-w-xs mx-auto">
             <Image
-              src="/Mahtext.svg"
+              src="/MAHtext.svg"
               alt="Milk & Henny"
               width={280}
               height={60}

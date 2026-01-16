@@ -41,7 +41,7 @@ export default function GuestListPage() {
           <div className="px-5 py-4 flex items-center gap-4">
             <div className="w-12 h-12 rounded-full bg-white/20 p-1 flex-shrink-0">
               <Image
-                src="/Mahlogo.svg"
+                src="/MAHLogo.svg"
                 alt="Logo"
                 width={44}
                 height={44}
