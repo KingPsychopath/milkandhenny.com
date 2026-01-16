@@ -6,8 +6,13 @@ import { getGuests } from '@/lib/kv-client';
  * Visit /api/debug to verify everything is working
  */
 export async function GET() {
-  const hasRedisUrl = !!process.env.UPSTASH_REDIS_REST_URL;
-  const hasRedisToken = !!process.env.UPSTASH_REDIS_REST_TOKEN;
+  // Check both naming conventions (Vercel KV vs direct Upstash)
+  const hasKvUrl = !!process.env.KV_REST_API_URL;
+  const hasKvToken = !!process.env.KV_REST_API_TOKEN;
+  const hasUpstashUrl = !!process.env.UPSTASH_REDIS_REST_URL;
+  const hasUpstashToken = !!process.env.UPSTASH_REDIS_REST_TOKEN;
+  const hasRedisUrl = hasKvUrl || hasUpstashUrl;
+  const hasRedisToken = hasKvToken || hasUpstashToken;
   
   let guestCount = 0;
   let redisError: string | null = null;
@@ -29,6 +34,7 @@ export async function GET() {
       hasRedisUrl,
       hasRedisToken,
       redisConfigured: hasRedisUrl && hasRedisToken,
+      source: hasKvUrl ? 'KV_REST_API_*' : hasUpstashUrl ? 'UPSTASH_REDIS_*' : 'none',
     },
     data: {
       guestCount,
