@@ -127,4 +127,3 @@ export function playFeedback(type: 'check-in' | 'check-out' | 'vote' | 'reveal')
       break;
   }
 }
-

@@ -19,6 +19,17 @@ export const metadata: Metadata = {
     icon: "/icon.svg",
     apple: "/MAHLogo.svg",
   },
+  openGraph: {
+    title: "Milk & Henny",
+    description: "First Ever Birthday",
+    siteName: "Milk & Henny",
+    type: "website",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Milk & Henny",
+    description: "First Ever Birthday",
+  },
 };
 
 export const viewport = {
