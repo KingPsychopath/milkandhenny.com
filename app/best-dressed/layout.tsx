@@ -1,14 +1,15 @@
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "Milk & Henny | Ice Breaker",
-  description: "Find your colour match",
+  title: "Milk & Henny | Best Dressed",
+  description: "Vote for the best dressed guest",
 };
 
-export default function IcebreakerLayout({
+export default function BestDressedLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
   return children;
 }
+
