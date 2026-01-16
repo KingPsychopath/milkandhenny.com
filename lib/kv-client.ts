@@ -1,49 +1,50 @@
+import { Redis } from '@upstash/redis';
 import { Guest } from './types';
 
 const GUEST_LIST_KEY = 'guest:list';
 
-/** In-memory fallback storage for local development without KV */
+/** In-memory fallback storage for local development without Redis */
 const memoryStore = new Map<string, Guest[]>();
 
-/** Check if Vercel KV is configured */
-function isKVConfigured(): boolean {
-  return !!(process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN);
+/** Check if Upstash Redis is configured */
+function isRedisConfigured(): boolean {
+  return !!(process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN);
 }
 
-/** Dynamically import KV only when configured */
-async function getKV() {
-  if (!isKVConfigured()) return null;
-  const { kv } = await import('@vercel/kv');
-  return kv;
+/** Get Redis client (lazy initialization) */
+function getRedis(): Redis | null {
+  if (!isRedisConfigured()) return null;
+  return new Redis({
+    url: process.env.UPSTASH_REDIS_REST_URL!,
+    token: process.env.UPSTASH_REDIS_REST_TOKEN!,
+  });
 }
 
 export async function getGuests(): Promise<Guest[]> {
   try {
-    const kv = await getKV();
-    if (kv) {
-      const guests = await kv.get<Guest[]>(GUEST_LIST_KEY);
+    const redis = getRedis();
+    if (redis) {
+      const guests = await redis.get<Guest[]>(GUEST_LIST_KEY);
       return guests ? (Array.isArray(guests) ? guests : []) : [];
     }
     // Fallback to in-memory storage
     return memoryStore.get(GUEST_LIST_KEY) || [];
   } catch (error) {
     console.error('Error fetching guests:', error);
-    // Fallback to memory on error
     return memoryStore.get(GUEST_LIST_KEY) || [];
   }
 }
 
 export async function setGuests(guests: Guest[]): Promise<void> {
   try {
-    const kv = await getKV();
-    if (kv) {
-      await kv.set(GUEST_LIST_KEY, guests);
+    const redis = getRedis();
+    if (redis) {
+      await redis.set(GUEST_LIST_KEY, guests);
     }
     // Always update memory store (serves as cache and fallback)
     memoryStore.set(GUEST_LIST_KEY, guests);
   } catch (error) {
     console.error('Error saving guests:', error);
-    // Save to memory as fallback
     memoryStore.set(GUEST_LIST_KEY, guests);
   }
 }
