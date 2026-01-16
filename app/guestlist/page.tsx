@@ -38,14 +38,14 @@ export default function GuestListPage() {
       <div className="max-w-lg mx-auto bg-white min-h-screen shadow-xl shadow-stone-300/50">
         {/* Header */}
         <header className="bg-gradient-to-br from-amber-600 via-amber-500 to-yellow-500 pt-safe">
-          <div className="px-5 py-4 flex items-center gap-4">
-            <div className="w-12 h-12 rounded-full bg-white/20 p-1 flex-shrink-0">
+          <div className="px-5 py-4 flex items-center gap-3">
+            <div className="w-14 h-14 rounded-full overflow-hidden bg-white/10 flex-shrink-0">
               <Image
                 src="/MAHLogo.svg"
                 alt="Logo"
-                width={44}
-                height={44}
-                className="w-full h-full object-contain"
+                width={56}
+                height={56}
+                className="w-full h-full object-cover scale-150"
               />
             </div>
             <div>

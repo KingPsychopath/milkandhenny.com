@@ -4,43 +4,26 @@ import Image from 'next/image';
 export default function Home() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-zinc-950 via-zinc-900 to-stone-900 flex items-center justify-center p-6">
-      <div className="text-center space-y-8 max-w-lg">
-        {/* Logo/Brand */}
-        <div className="space-y-6">
-          <div className="inline-flex items-center justify-center w-28 h-28 rounded-full bg-gradient-to-br from-amber-400/20 to-amber-600/20 shadow-2xl shadow-amber-500/10 p-1">
-            <Image
-              src="/MAHLogo.svg"
-              alt="Milk & Henny Logo"
-              width={100}
-              height={100}
-              className="w-full h-full object-contain"
-              priority
-            />
-          </div>
-          <div className="max-w-xs mx-auto">
-            <Image
-              src="/MAHtext.svg"
-              alt="Milk & Henny"
-              width={280}
-              height={60}
-              className="w-full h-auto"
-              priority
-            />
-          </div>
-          <p className="text-amber-400/80 text-lg font-medium tracking-wide uppercase">
-            First Ever Birthday
-          </p>
+      <div className="text-center space-y-6 max-w-md">
+        {/* Text Logo */}
+        <div className="px-4">
+          <Image
+            src="/MAHtext.svg"
+            alt="Milk & Henny"
+            width={320}
+            height={70}
+            className="w-full h-auto"
+            priority
+          />
         </div>
 
-        {/* Decorative line */}
-        <div className="flex items-center justify-center gap-4">
-          <div className="h-px w-16 bg-gradient-to-r from-transparent to-amber-500/50" />
-          <div className="w-2 h-2 rounded-full bg-amber-500" />
-          <div className="h-px w-16 bg-gradient-to-l from-transparent to-amber-500/50" />
-        </div>
+        {/* Tagline */}
+        <p className="text-amber-400/90 text-lg font-medium tracking-widest uppercase">
+          First Ever Birthday
+        </p>
 
         {/* CTA */}
-        <div className="space-y-4">
+        <div className="space-y-3 pt-4">
           <Link
             href="/guestlist"
             className="inline-flex items-center justify-center gap-3 px-8 py-4 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-zinc-950 font-bold text-lg rounded-full transition-all duration-200 shadow-lg shadow-amber-500/30 hover:shadow-amber-500/50 hover:scale-105"
