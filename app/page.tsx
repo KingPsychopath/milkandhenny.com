@@ -50,6 +50,27 @@ export default function Home() {
           </div>
         </div>
 
+        {/* Lineup */}
+        <div className="pt-6 space-y-3">
+          <p className="text-amber-500/60 text-xs font-medium tracking-widest uppercase">
+            Tonight&apos;s Lineup
+          </p>
+          
+          <div className="flex flex-wrap justify-center gap-x-4 gap-y-1 text-white/80 font-medium">
+            <span>ELLADHC</span>
+            <span className="text-amber-500/40">•</span>
+            <span>SATRA-SIA</span>
+            <span className="text-amber-500/40">•</span>
+            <span>AYCHIBS</span>
+            <span className="text-amber-500/40">•</span>
+            <span>DJNAIRAA</span>
+          </div>
+          
+          <p className="text-zinc-500 text-sm">
+            MCs: <span className="text-white/70">D_CHIEFEXECUTIVE</span> & <span className="text-white/70">FADZ</span>
+          </p>
+        </div>
+
         {/* Footnote */}
         <div className="pt-6 text-zinc-500 text-xs max-w-xs mx-auto leading-relaxed">
           Remember: if someone says no, it means no. Be kind, and have fun. 💛
