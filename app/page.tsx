@@ -4,7 +4,21 @@ import Image from 'next/image';
 export default function Home() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-zinc-950 via-zinc-900 to-stone-900 flex items-center justify-center p-6">
-      <div className="text-center space-y-4 max-w-md">
+      <div className="text-center space-y-5 max-w-md">
+        {/* Circular Logo */}
+        <div className="flex justify-center">
+          <div className="w-24 h-24 rounded-full bg-gradient-to-br from-amber-400/20 to-amber-600/10 p-2 shadow-2xl shadow-amber-500/10">
+            <Image
+              src="/MAHLogo.svg"
+              alt="Milk & Henny Logo"
+              width={80}
+              height={80}
+              className="w-full h-full object-contain"
+              priority
+            />
+          </div>
+        </div>
+
         {/* Text Logo */}
         <div className="px-4">
           <Image
@@ -22,20 +36,26 @@ export default function Home() {
           First Ever Birthday
         </p>
 
-        {/* CTA */}
-        <div className="space-y-3 pt-4">
+        {/* CTAs */}
+        <div className="space-y-4 pt-4">
           <Link
-            href="/guestlist"
+            href="/icebreaker"
             className="inline-flex items-center justify-center gap-3 px-8 py-4 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-zinc-950 font-bold text-lg rounded-full transition-all duration-200 shadow-lg shadow-amber-500/30 hover:shadow-amber-500/50 hover:scale-105"
           >
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
             </svg>
-            Door Staff Check-In
+            Ice Breaker Game
           </Link>
-          <p className="text-zinc-500 text-sm">
-            Staff access only
-          </p>
+          
+          <div className="pt-2">
+            <Link
+              href="/guestlist"
+              className="text-zinc-500 hover:text-amber-400 text-sm transition-colors"
+            >
+              Staff Check-In →
+            </Link>
+          </div>
         </div>
 
         {/* Footer */}

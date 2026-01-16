@@ -1,6 +1,5 @@
 'use client';
 
-import Image from 'next/image';
 import { useGuests } from '@/hooks/useGuests';
 import { useGuestSearch } from '@/hooks/useGuestSearch';
 import { SearchBar } from '@/components/guestlist/SearchBar';
@@ -38,15 +37,12 @@ export default function GuestListPage() {
       <div className="max-w-lg mx-auto bg-white min-h-screen shadow-xl shadow-stone-300/50">
         {/* Header */}
         <header className="bg-gradient-to-br from-amber-600 via-amber-500 to-yellow-500 pt-safe">
-          <div className="px-5 py-4 flex items-center gap-3">
-            <div className="w-28 h-28 rounded-full bg-white/10 flex-shrink-0 flex items-center justify-center p-2">
-              <Image
-                src="/MAHLogo.svg"
-                alt="Logo"
-                width={96}
-                height={96}
-                className="w-full h-full object-contain"
-              />
+          <div className="px-5 py-4 flex items-center gap-4">
+            {/* M&H Badge */}
+            <div className="w-14 h-14 rounded-2xl bg-zinc-900 flex items-center justify-center flex-shrink-0 shadow-lg">
+              <div className="w-10 h-10 rounded-full bg-gradient-to-br from-amber-400 to-amber-600 flex items-center justify-center">
+                <span className="text-zinc-900 font-bold text-lg font-serif">M</span>
+              </div>
             </div>
             <div>
               <h1 className="text-2xl font-bold text-white">Guest List</h1>
