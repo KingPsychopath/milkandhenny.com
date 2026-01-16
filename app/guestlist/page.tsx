@@ -1,5 +1,7 @@
 'use client';
 
+import { useState, useEffect } from 'react';
+import Link from 'next/link';
 import { useGuests } from '@/hooks/useGuests';
 import { useGuestSearch } from '@/hooks/useGuestSearch';
 import { SearchBar } from '@/components/guestlist/SearchBar';
@@ -7,9 +9,102 @@ import { GuestList } from '@/components/guestlist/GuestList';
 import { GuestStats } from '@/components/guestlist/GuestStats';
 import { GuestManagement } from '@/components/guestlist/GuestManagement';
 
+const STAFF_PIN = '2026';
+const AUTH_KEY = 'mah-staff-auth';
+
 export default function GuestListPage() {
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [pin, setPin] = useState('');
+  const [pinError, setPinError] = useState(false);
+  const [checkingAuth, setCheckingAuth] = useState(true);
+  
   const { guests, loading, error, updateCheckIn, refetch } = useGuests();
   const { searchQuery, setSearchQuery, filter, setFilter, filteredGuests, searchStats } = useGuestSearch(guests);
+
+  // Check for existing auth on mount
+  useEffect(() => {
+    const auth = sessionStorage.getItem(AUTH_KEY);
+    if (auth === 'true') {
+      setIsAuthenticated(true);
+    }
+    setCheckingAuth(false);
+  }, []);
+
+  const handlePinSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (pin === STAFF_PIN) {
+      sessionStorage.setItem(AUTH_KEY, 'true');
+      setIsAuthenticated(true);
+      setPinError(false);
+    } else {
+      setPinError(true);
+      setPin('');
+    }
+  };
+
+  // Show PIN gate if not authenticated
+  if (checkingAuth) {
+    return (
+      <div className="min-h-screen bg-stone-50 flex items-center justify-center">
+        <div className="w-8 h-8 border-2 border-amber-500 border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
+
+  if (!isAuthenticated) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-zinc-950 via-zinc-900 to-stone-900 flex items-center justify-center p-6">
+        <div className="w-full max-w-sm">
+          <div className="text-center mb-8">
+            <div className="w-16 h-16 rounded-2xl bg-amber-600 flex items-center justify-center mx-auto mb-4 shadow-lg">
+              <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+              </svg>
+            </div>
+            <h1 className="text-2xl font-bold text-white mb-2">Staff Access</h1>
+            <p className="text-zinc-400">Enter PIN to access guest list</p>
+          </div>
+
+          <form onSubmit={handlePinSubmit} className="space-y-4">
+            <input
+              type="password"
+              inputMode="numeric"
+              pattern="[0-9]*"
+              maxLength={4}
+              value={pin}
+              onChange={(e) => {
+                setPin(e.target.value.replace(/\D/g, ''));
+                setPinError(false);
+              }}
+              placeholder="••••"
+              className={`w-full px-6 py-4 text-center text-3xl font-mono tracking-[0.5em] bg-white/10 border rounded-2xl text-white placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-amber-500 transition-all ${
+                pinError ? 'border-red-500 bg-red-500/10' : 'border-white/20'
+              }`}
+              autoFocus
+            />
+            
+            {pinError && (
+              <p className="text-red-400 text-center text-sm">Incorrect PIN</p>
+            )}
+
+            <button
+              type="submit"
+              disabled={pin.length < 4}
+              className="w-full py-4 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 disabled:opacity-50 text-zinc-950 font-bold text-lg rounded-2xl transition-all"
+            >
+              Enter
+            </button>
+          </form>
+
+          <div className="mt-8 text-center">
+            <Link href="/" className="text-zinc-500 hover:text-amber-400 text-sm transition-colors">
+              ← Back to home
+            </Link>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (loading && guests.length === 0) {
     return (

@@ -3,12 +3,14 @@
 import { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
 
-const STORAGE_KEY = 'mah-best-dressed-voted';
+const STORAGE_KEY = 'mah-best-dressed-vote';
 
 type LeaderboardEntry = { name: string; count: number };
+type StoredVote = { session: string; name: string };
 
 export default function BestDressedPage() {
   const [hasVoted, setHasVoted] = useState<string | null>(null);
+  const [currentSession, setCurrentSession] = useState<string>('');
   const [guestNames, setGuestNames] = useState<string[]>([]);
   const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
   const [totalVotes, setTotalVotes] = useState(0);
@@ -18,18 +20,33 @@ export default function BestDressedPage() {
   const [submitting, setSubmitting] = useState(false);
   const [showDropdown, setShowDropdown] = useState(false);
 
-  // Check if already voted
+  // Check if already voted (session-aware)
   useEffect(() => {
-    const voted = localStorage.getItem(STORAGE_KEY);
-    if (voted) setHasVoted(voted);
-    
-    // Fetch data
+    // Fetch data and session
     fetch('/api/best-dressed')
       .then(res => res.json())
       .then(data => {
         setGuestNames(data.guestNames || []);
         setLeaderboard(data.leaderboard || []);
         setTotalVotes(data.totalVotes || 0);
+        setCurrentSession(data.session || 'initial');
+        
+        // Check if user voted in THIS session
+        const storedVote = localStorage.getItem(STORAGE_KEY);
+        if (storedVote) {
+          try {
+            const parsed: StoredVote = JSON.parse(storedVote);
+            // Only count as voted if session matches
+            if (parsed.session === data.session) {
+              setHasVoted(parsed.name);
+            } else {
+              // Session changed (votes were wiped), user can vote again
+              localStorage.removeItem(STORAGE_KEY);
+            }
+          } catch {
+            localStorage.removeItem(STORAGE_KEY);
+          }
+        }
       })
       .finally(() => setLoading(false));
   }, []);
@@ -70,7 +87,9 @@ export default function BestDressedPage() {
       
       if (res.ok) {
         const data = await res.json();
-        localStorage.setItem(STORAGE_KEY, selectedName);
+        // Store vote with session ID
+        const vote: StoredVote = { session: data.session || currentSession, name: selectedName };
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(vote));
         setHasVoted(selectedName);
         setLeaderboard(data.leaderboard || []);
         setTotalVotes(data.totalVotes || 0);

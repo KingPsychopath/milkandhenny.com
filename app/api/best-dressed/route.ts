@@ -3,6 +3,7 @@ import { Redis } from '@upstash/redis';
 import { getGuests } from '@/lib/kv-client';
 
 const VOTES_KEY = 'best-dressed:votes';
+const SESSION_KEY = 'best-dressed:session';
 
 function getRedis(): Redis | null {
   const url = process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL;
@@ -13,8 +14,29 @@ function getRedis(): Redis | null {
 
 // In-memory fallback for local dev
 const memoryVotes = new Map<string, number>();
+let memorySession = 'initial';
 
 type VotesRecord = Record<string, number>;
+
+async function getSession(): Promise<string> {
+  const redis = getRedis();
+  if (redis) {
+    const session = await redis.get<string>(SESSION_KEY);
+    return session || 'initial';
+  }
+  return memorySession;
+}
+
+async function resetSession(): Promise<string> {
+  const newSession = Date.now().toString(36);
+  const redis = getRedis();
+  if (redis) {
+    await redis.set(SESSION_KEY, newSession);
+  } else {
+    memorySession = newSession;
+  }
+  return newSession;
+}
 
 async function getVotes(): Promise<VotesRecord> {
   const redis = getRedis();
@@ -39,12 +61,13 @@ async function addVote(name: string): Promise<VotesRecord> {
   return votes;
 }
 
-// GET - get current leaderboard and guest names
+// GET - get current leaderboard, guest names, and session
 export async function GET() {
   try {
-    const [votes, guests] = await Promise.all([
+    const [votes, guests, session] = await Promise.all([
       getVotes(),
       getGuests(),
+      getSession(),
     ]);
     
     // Get all guest names (primary + plus ones)
@@ -66,6 +89,7 @@ export async function GET() {
       leaderboard,
       guestNames: guestNames.sort(),
       totalVotes: Object.values(votes).reduce((a, b) => a + b, 0),
+      session, // Clients use this to know if they can vote again
     });
   } catch (error) {
     console.error('Error getting votes:', error);
@@ -82,7 +106,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Name is required' }, { status: 400 });
     }
     
-    const votes = await addVote(name.trim());
+    const [votes, session] = await Promise.all([
+      addVote(name.trim()),
+      getSession(),
+    ]);
     
     // Return updated leaderboard
     const leaderboard = Object.entries(votes)
@@ -94,6 +121,7 @@ export async function POST(request: NextRequest) {
       success: true,
       leaderboard,
       totalVotes: Object.values(votes).reduce((a, b) => a + b, 0),
+      session, // Client stores this to track their vote
     });
   } catch (error) {
     console.error('Error submitting vote:', error);
@@ -101,7 +129,7 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// DELETE - wipe all votes (admin only)
+// DELETE - wipe all votes and reset session (admin only)
 export async function DELETE() {
   try {
     const redis = getRedis();
@@ -110,9 +138,13 @@ export async function DELETE() {
     }
     memoryVotes.clear();
     
+    // Reset session so everyone can vote again
+    const newSession = await resetSession();
+    
     return NextResponse.json({
       success: true,
-      message: 'All votes cleared',
+      message: 'All votes cleared, new voting session started',
+      session: newSession,
     });
   } catch (error) {
     console.error('Error clearing votes:', error);
