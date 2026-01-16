@@ -39,13 +39,13 @@ export default function GuestListPage() {
         {/* Header */}
         <header className="bg-gradient-to-br from-amber-600 via-amber-500 to-yellow-500 pt-safe">
           <div className="px-5 py-4 flex items-center gap-3">
-            <div className="w-14 h-14 rounded-full overflow-hidden bg-white/10 flex-shrink-0">
+            <div className="w-14 h-14 rounded-full bg-white/10 flex-shrink-0 flex items-center justify-center p-2">
               <Image
                 src="/MAHLogo.svg"
                 alt="Logo"
-                width={56}
-                height={56}
-                className="w-full h-full object-cover scale-150"
+                width={40}
+                height={40}
+                className="w-full h-full object-contain"
               />
             </div>
             <div>
