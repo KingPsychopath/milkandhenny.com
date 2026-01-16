@@ -50,8 +50,13 @@ export default function Home() {
           </div>
         </div>
 
+        {/* Footnote */}
+        <div className="pt-6 text-zinc-500 text-xs max-w-xs mx-auto leading-relaxed">
+          Remember: if someone says no, it means no. Be kind, and have fun. 💛
+        </div>
+
         {/* Footer */}
-        <div className="pt-8 text-zinc-600 text-xs">
+        <div className="pt-4 text-zinc-600 text-xs">
           © {new Date().getFullYear()} Milk & Henny
         </div>
       </div>

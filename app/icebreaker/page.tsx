@@ -108,8 +108,15 @@ export default function IcebreakerPage() {
         </div>
       </div>
 
-      {/* Back link */}
-      <div className="p-6 text-center">
+      {/* Footer */}
+      <div className="p-6 text-center space-y-3">
+        {/* Footnote */}
+        <p className={`text-xs max-w-xs mx-auto leading-relaxed opacity-70 ${
+          revealed ? color.text : 'text-zinc-500'
+        }`}>
+          Remember: if someone says no, it means no. Be kind, and have fun. 💛
+        </p>
+        
         <Link 
           href="/" 
           className={`text-sm opacity-60 hover:opacity-100 transition-opacity ${

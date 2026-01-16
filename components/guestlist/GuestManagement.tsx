@@ -197,6 +197,32 @@ export function GuestManagement({ guests, onGuestAdded, onGuestRemoved, onCSVImp
     }
   };
 
+  const handlePartyReset = async () => {
+    if (!confirm('🎉 PARTY RESET\n\nThis will:\n• Reset guest list from CSV (clears all check-ins)\n• Clear all Best Dressed votes\n\nThis prepares a fresh state for the party. Continue?')) return;
+    
+    setDataLoading(true);
+    setError(null);
+    
+    try {
+      // Reset guests from CSV
+      const guestRes = await fetch('/api/guests/bootstrap', { method: 'DELETE' });
+      const guestData = await guestRes.json();
+      
+      // Clear best dressed votes
+      await fetch('/api/best-dressed', { method: 'DELETE' });
+      setBestDressedLeaderboard([]);
+      setBestDressedTotalVotes(0);
+      
+      setSuccess(`🎉 Party ready! Loaded ${guestData.count} guests, all votes cleared.`);
+      setTimeout(() => setSuccess(null), 5000);
+      onCSVImported();
+    } catch {
+      setError('Party reset failed');
+    } finally {
+      setDataLoading(false);
+    }
+  };
+
   const handlePasswordSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (password === MANAGEMENT_PASSWORD) {
@@ -605,8 +631,27 @@ export function GuestManagement({ guests, onGuestAdded, onGuestRemoved, onCSVImp
               {/* Data Management Tab */}
               {activeTab === 'data' && (
                 <div className="space-y-4">
+                  {/* Party Reset - Big CTA */}
+                  <button
+                    onClick={handlePartyReset}
+                    disabled={dataLoading}
+                    className="w-full py-4 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-zinc-950 font-bold text-lg rounded-2xl shadow-lg shadow-amber-500/30 hover:shadow-amber-500/50 disabled:opacity-50 transition-all flex items-center justify-center gap-3"
+                  >
+                    {dataLoading ? (
+                      <div className="w-6 h-6 border-2 border-zinc-950/30 border-t-zinc-950 rounded-full animate-spin" />
+                    ) : (
+                      <>
+                        <span className="text-2xl">🎉</span>
+                        Party Reset
+                      </>
+                    )}
+                  </button>
+                  <p className="text-center text-stone-500 text-xs">
+                    Resets check-ins + clears votes in one click
+                  </p>
+
                   {/* Current Stats */}
-                  <div className="bg-stone-50 rounded-xl p-4">
+                  <div className="bg-stone-50 rounded-xl p-4 mt-4">
                     <h3 className="font-medium text-stone-700 mb-2">Current Data</h3>
                     <div className="grid grid-cols-2 gap-3 text-sm">
                       <div className="bg-white rounded-lg p-3 border border-stone-200">
