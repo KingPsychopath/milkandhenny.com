@@ -13,8 +13,12 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Party Guest List",
-  description: "Check-in system for party guests",
+  title: "Milk & Henny | Guest List",
+  description: "Door staff check-in system",
+  icons: {
+    icon: "/icon.svg",
+    apple: "/MAHLogo.svg",
+  },
 };
 
 export const viewport = {
