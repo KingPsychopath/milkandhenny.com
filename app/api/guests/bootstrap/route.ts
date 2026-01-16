@@ -1,12 +1,11 @@
 import { NextResponse } from 'next/server';
+import { headers } from 'next/headers';
 import { parseCSV } from '@/lib/csv-parser';
 import { getGuests, setGuests } from '@/lib/kv-client';
-import { readFile } from 'fs/promises';
-import { join } from 'path';
 
 /**
  * Bootstrap endpoint - loads guests from public/guests.csv if no guests exist
- * This runs on first load to populate the list automatically
+ * Uses HTTP fetch (works on Vercel) instead of filesystem read
  */
 export async function POST() {
   try {
@@ -20,11 +19,24 @@ export async function POST() {
       });
     }
 
-    // Try to load from public/guests.csv
-    const csvPath = join(process.cwd(), 'public', 'guests.csv');
+    // Get the base URL from the request headers
+    const headersList = await headers();
+    const host = headersList.get('host') || 'localhost:3000';
+    const protocol = headersList.get('x-forwarded-proto') || 'http';
+    const baseUrl = `${protocol}://${host}`;
     
     try {
-      const csvContent = await readFile(csvPath, 'utf-8');
+      // Fetch CSV from public URL (works on Vercel serverless)
+      const csvResponse = await fetch(`${baseUrl}/guests.csv`);
+      if (!csvResponse.ok) {
+        return NextResponse.json({ 
+          bootstrapped: false, 
+          message: 'No guests.csv found in public folder',
+          count: 0 
+        });
+      }
+      
+      const csvContent = await csvResponse.text();
       const guests = parseCSV(csvContent);
       await setGuests(guests);
       
@@ -33,16 +45,57 @@ export async function POST() {
         message: 'Loaded guests from CSV',
         count: guests.length 
       });
-    } catch (fileError) {
-      // File doesn't exist, that's okay
+    } catch (fetchError) {
+      console.error('CSV fetch error:', fetchError);
       return NextResponse.json({ 
         bootstrapped: false, 
-        message: 'No guests.csv found in public folder',
+        message: 'Failed to fetch guests.csv',
+        error: String(fetchError),
         count: 0 
       });
     }
   } catch (error) {
     console.error('Bootstrap error:', error);
-    return NextResponse.json({ error: 'Bootstrap failed' }, { status: 500 });
+    return NextResponse.json({ error: 'Bootstrap failed', details: String(error) }, { status: 500 });
+  }
+}
+
+/**
+ * Force re-bootstrap - clears existing data and reloads from CSV
+ */
+export async function DELETE() {
+  try {
+    // Clear existing guests
+    await setGuests([]);
+    
+    // Re-run bootstrap
+    const headersList = await headers();
+    const host = headersList.get('host') || 'localhost:3000';
+    const protocol = headersList.get('x-forwarded-proto') || 'http';
+    const baseUrl = `${protocol}://${host}`;
+    
+    const csvResponse = await fetch(`${baseUrl}/guests.csv`);
+    if (!csvResponse.ok) {
+      return NextResponse.json({ 
+        reset: true,
+        bootstrapped: false, 
+        message: 'Cleared data but no guests.csv found',
+        count: 0 
+      });
+    }
+    
+    const csvContent = await csvResponse.text();
+    const guests = parseCSV(csvContent);
+    await setGuests(guests);
+    
+    return NextResponse.json({ 
+      reset: true,
+      bootstrapped: true, 
+      message: 'Cleared and reloaded from CSV',
+      count: guests.length 
+    });
+  } catch (error) {
+    console.error('Reset error:', error);
+    return NextResponse.json({ error: 'Reset failed', details: String(error) }, { status: 500 });
   }
 }
