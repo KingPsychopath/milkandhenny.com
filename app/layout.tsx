@@ -13,8 +13,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Milk & Henny | Guest List",
-  description: "Door staff check-in system",
+  title: "Milk & Henny",
+  description: "First Ever Birthday",
   icons: {
     icon: "/icon.svg",
     apple: "/MAHLogo.svg",
