@@ -109,7 +109,8 @@ export function GuestManagement({ guests, onGuestAdded, onGuestRemoved, onCSVImp
   const [password, setPassword] = useState('');
   const [passwordError, setPasswordError] = useState(false);
   
-  const [activeTab, setActiveTab] = useState<'add' | 'remove' | 'import'>('add');
+  const [activeTab, setActiveTab] = useState<'add' | 'remove' | 'import' | 'data'>('add');
+  const [dataLoading, setDataLoading] = useState(false);
   const [name, setName] = useState('');
   const [fullName, setFullName] = useState('');
   const [plusOneOf, setPlusOneOf] = useState('');
@@ -202,6 +203,45 @@ export function GuestManagement({ guests, onGuestAdded, onGuestRemoved, onCSVImp
       }
     } catch {
       setError('Failed to remove guest');
+    }
+  };
+
+  const handleBootstrap = async () => {
+    setDataLoading(true);
+    setError(null);
+    try {
+      const res = await fetch('/api/guests/bootstrap', { method: 'POST' });
+      const data = await res.json();
+      if (data.bootstrapped) {
+        setSuccess(`Loaded ${data.count} guests from CSV`);
+      } else {
+        setSuccess(data.message || 'Guests already exist');
+      }
+      setTimeout(() => setSuccess(null), 3000);
+      onCSVImported();
+    } catch {
+      setError('Failed to bootstrap');
+    } finally {
+      setDataLoading(false);
+    }
+  };
+
+  const handleForceReload = async () => {
+    if (!confirm('⚠️ WARNING: This will DELETE all check-ins and reload from CSV. Are you sure?')) {
+      return;
+    }
+    setDataLoading(true);
+    setError(null);
+    try {
+      const res = await fetch('/api/guests/bootstrap', { method: 'DELETE' });
+      const data = await res.json();
+      setSuccess(`Reset complete! Loaded ${data.count} guests from CSV`);
+      setTimeout(() => setSuccess(null), 3000);
+      onCSVImported();
+    } catch {
+      setError('Failed to reload data');
+    } finally {
+      setDataLoading(false);
     }
   };
 
@@ -328,20 +368,21 @@ export function GuestManagement({ guests, onGuestAdded, onGuestRemoved, onCSVImp
           ) : (
             <div className="p-6 space-y-5">
               {/* Tabs */}
-              <div className="flex gap-2 bg-stone-100 p-1 rounded-xl">
-                {(['add', 'remove', 'import'] as const).map((tab) => (
+              <div className="flex gap-1 bg-stone-100 p-1 rounded-xl">
+                {(['add', 'remove', 'import', 'data'] as const).map((tab) => (
                   <button
                     key={tab}
                     onClick={() => setActiveTab(tab)}
-                    className={`flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-all ${
+                    className={`flex-1 py-2 px-2 rounded-lg text-xs sm:text-sm font-medium transition-all ${
                       activeTab === tab
                         ? 'bg-white text-amber-700 shadow-sm'
                         : 'text-stone-600 hover:text-stone-900'
                     }`}
                   >
-                    {tab === 'add' && 'Add Guest'}
+                    {tab === 'add' && 'Add'}
                     {tab === 'remove' && 'Remove'}
-                    {tab === 'import' && 'Import CSV'}
+                    {tab === 'import' && 'Import'}
+                    {tab === 'data' && 'Data'}
                   </button>
                 ))}
               </div>
@@ -507,7 +548,85 @@ export function GuestManagement({ guests, onGuestAdded, onGuestRemoved, onCSVImp
 
                   <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
                     <p className="text-sm text-amber-800">
-                      <strong>Tip:</strong> Place your CSV at <code className="bg-amber-100 px-1 rounded">public/guests.csv</code> to auto-load on first visit.
+                      <strong>Note:</strong> Uploading a new CSV will <strong>replace all data</strong> including check-ins.
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {/* Data Management Tab */}
+              {activeTab === 'data' && (
+                <div className="space-y-4">
+                  {/* Current Stats */}
+                  <div className="bg-stone-50 rounded-xl p-4">
+                    <h3 className="font-medium text-stone-700 mb-2">Current Data</h3>
+                    <div className="grid grid-cols-2 gap-3 text-sm">
+                      <div className="bg-white rounded-lg p-3 border border-stone-200">
+                        <div className="text-2xl font-bold text-amber-600">{guests.length}</div>
+                        <div className="text-stone-500">Primary Guests</div>
+                      </div>
+                      <div className="bg-white rounded-lg p-3 border border-stone-200">
+                        <div className="text-2xl font-bold text-amber-600">
+                          {guests.reduce((acc, g) => acc + (g.plusOnes?.length || 0), 0)}
+                        </div>
+                        <div className="text-stone-500">Plus Ones</div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Bootstrap Button - Safe */}
+                  <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 space-y-3">
+                    <div>
+                      <h4 className="font-medium text-emerald-800">Load from CSV (Safe)</h4>
+                      <p className="text-sm text-emerald-700 mt-1">
+                        Only loads if database is empty. <strong>Preserves existing check-ins.</strong>
+                      </p>
+                    </div>
+                    <button
+                      onClick={handleBootstrap}
+                      disabled={dataLoading}
+                      className="w-full bg-emerald-600 text-white py-2.5 rounded-xl font-medium hover:bg-emerald-700 disabled:opacity-50 transition-colors flex items-center justify-center gap-2"
+                    >
+                      {dataLoading ? (
+                        <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                      ) : (
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                        </svg>
+                      )}
+                      Bootstrap from CSV
+                    </button>
+                  </div>
+
+                  {/* Force Reload Button - Dangerous */}
+                  <div className="bg-red-50 border border-red-200 rounded-xl p-4 space-y-3">
+                    <div>
+                      <h4 className="font-medium text-red-800">⚠️ Force Reload (Destructive)</h4>
+                      <p className="text-sm text-red-700 mt-1">
+                        Clears ALL data including check-ins and reloads fresh from CSV.
+                      </p>
+                    </div>
+                    <button
+                      onClick={handleForceReload}
+                      disabled={dataLoading}
+                      className="w-full bg-red-600 text-white py-2.5 rounded-xl font-medium hover:bg-red-700 disabled:opacity-50 transition-colors flex items-center justify-center gap-2"
+                    >
+                      {dataLoading ? (
+                        <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                      ) : (
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                        </svg>
+                      )}
+                      Reset &amp; Reload from CSV
+                    </button>
+                  </div>
+
+                  {/* Info */}
+                  <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
+                    <p className="text-sm text-blue-800">
+                      <strong>How check-ins persist:</strong> All check-ins are saved to Redis immediately. 
+                      They persist across page refreshes and device switches. Only a Force Reload or new CSV import will clear them.
                     </p>
                   </div>
                 </div>
