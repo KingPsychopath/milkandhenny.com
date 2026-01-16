@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState, useSyncExternalStore, useCallback } from 'react';
 import Link from 'next/link';
 import { playFeedback } from '@/lib/feedback';
 
@@ -16,18 +16,51 @@ const COLORS = [
   { name: 'Teal', bg: 'bg-teal-500', hex: '#14b8a6', text: 'text-white' },
   { name: 'Indigo', bg: 'bg-indigo-500', hex: '#6366f1', text: 'text-white' },
   { name: 'Crimson', bg: 'bg-rose-600', hex: '#e11d48', text: 'text-white' },
-];
+] as const;
+
+type Color = typeof COLORS[number];
 
 const STORAGE_KEY = 'mah-icebreaker-color';
 
-function getOrAssignColor(): typeof COLORS[0] {
-  if (typeof window === 'undefined') return COLORS[0];
-  
+// Conversation starters - mix of fun, spicy, and thoughtful
+const QUESTIONS = [
+  "What's a hill you're willing to die on?",
+  "What's your most unpopular opinion?",
+  "What's the best meal you've ever had?",
+  "What's something you're irrationally afraid of?",
+  "What's your go-to karaoke song?",
+  "What's the worst date you've ever been on?",
+  "What's a skill you wish you had?",
+  "What's the most spontaneous thing you've ever done?",
+  "What's your guilty pleasure TV show?",
+  "If you could live anywhere for a year, where?",
+  "What's the best advice you've ever received?",
+  "What's a trend you don't understand?",
+  "What would your last meal be?",
+  "What's something on your bucket list?",
+  "What's your toxic trait you're aware of?",
+  "What's the best concert you've been to?",
+  "What's a movie you can quote from start to finish?",
+  "What's the most overrated thing?",
+  "If you had to sing one song for the rest of your life?",
+  "What's something that instantly puts you in a good mood?",
+];
+
+function getRandomQuestion(exclude?: string): string {
+  const available = exclude ? QUESTIONS.filter(q => q !== exclude) : QUESTIONS;
+  return available[Math.floor(Math.random() * available.length)];
+}
+
+function getOrAssignColor(): Color {
   const stored = localStorage.getItem(STORAGE_KEY);
   if (stored) {
-    const parsed = JSON.parse(stored);
-    const found = COLORS.find(c => c.name === parsed.name);
-    if (found) return found;
+    try {
+      const parsed = JSON.parse(stored);
+      const found = COLORS.find(c => c.name === parsed.name);
+      if (found) return found;
+    } catch {
+      // Invalid JSON, assign new color
+    }
   }
   
   // Assign random color
@@ -36,21 +69,33 @@ function getOrAssignColor(): typeof COLORS[0] {
   return randomColor;
 }
 
-export default function IcebreakerPage() {
-  const [color, setColor] = useState<typeof COLORS[0] | null>(null);
-  const [revealed, setRevealed] = useState(false);
-
-  useEffect(() => {
-    setColor(getOrAssignColor());
+// Use useSyncExternalStore for localStorage (React 18 recommended pattern)
+function useColor() {
+  const subscribe = useCallback((callback: () => void) => {
+    window.addEventListener('storage', callback);
+    return () => window.removeEventListener('storage', callback);
   }, []);
+  
+  const getSnapshot = useCallback(() => {
+    return getOrAssignColor();
+  }, []);
+  
+  const getServerSnapshot = useCallback((): Color => {
+    return COLORS[0]; // Default for SSR
+  }, []);
+  
+  return useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
+}
 
-  if (!color) {
-    return (
-      <div className="min-h-screen bg-zinc-950 flex items-center justify-center">
-        <div className="w-8 h-8 border-2 border-amber-500 border-t-transparent rounded-full animate-spin" />
-      </div>
-    );
-  }
+export default function IcebreakerPage() {
+  const color = useColor();
+  const [revealed, setRevealed] = useState(false);
+  const [question, setQuestion] = useState(() => getRandomQuestion());
+
+  const shuffleQuestion = () => {
+    playFeedback('check-out'); // Light feedback
+    setQuestion(getRandomQuestion(question));
+  };
 
   return (
     <div 
@@ -94,10 +139,29 @@ export default function IcebreakerPage() {
               </div>
 
               {/* Mission */}
-              <div className={`rounded-2xl p-6 mb-6 ${color.text} bg-black/20 backdrop-blur-sm`}>
+              <div className={`rounded-2xl p-6 mb-4 ${color.text} bg-black/20 backdrop-blur-sm`}>
                 <h2 className="font-bold text-xl mb-3">Your Mission</h2>
                 <p className="text-lg leading-relaxed opacity-90">
                   Find and introduce yourself to <strong>one person of each gender</strong> who shares your colour.
+                </p>
+              </div>
+
+              {/* Conversation starter */}
+              <div className={`rounded-2xl p-5 mb-4 ${color.text} bg-black/20 backdrop-blur-sm`}>
+                <div className="flex items-center justify-between mb-3">
+                  <span className="text-sm font-medium opacity-70">Ask them...</span>
+                  <button
+                    onClick={shuffleQuestion}
+                    className="p-2 rounded-lg bg-white/10 hover:bg-white/20 transition-colors"
+                    aria-label="Get new question"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                    </svg>
+                  </button>
+                </div>
+                <p className="text-lg font-medium leading-relaxed">
+                  &ldquo;{question}&rdquo;
                 </p>
               </div>
 
