@@ -101,3 +101,21 @@ export async function POST(request: NextRequest) {
   }
 }
 
+// DELETE - wipe all votes (admin only)
+export async function DELETE() {
+  try {
+    const redis = getRedis();
+    if (redis) {
+      await redis.del(VOTES_KEY);
+    }
+    memoryVotes.clear();
+    
+    return NextResponse.json({
+      success: true,
+      message: 'All votes cleared',
+    });
+  } catch (error) {
+    console.error('Error clearing votes:', error);
+    return NextResponse.json({ error: 'Failed to clear votes' }, { status: 500 });
+  }
+}

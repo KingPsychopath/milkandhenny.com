@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 
-// Vibrant, distinct colors for the game
+// Vibrant, distinct colors for the game (10 colors = ~20 people per color with 200 guests)
 const COLORS = [
   { name: 'Ruby', bg: 'bg-red-500', hex: '#ef4444', text: 'text-white' },
   { name: 'Sapphire', bg: 'bg-blue-500', hex: '#3b82f6', text: 'text-white' },
@@ -11,6 +11,10 @@ const COLORS = [
   { name: 'Amethyst', bg: 'bg-purple-500', hex: '#a855f7', text: 'text-white' },
   { name: 'Topaz', bg: 'bg-amber-500', hex: '#f59e0b', text: 'text-black' },
   { name: 'Rose', bg: 'bg-pink-500', hex: '#ec4899', text: 'text-white' },
+  { name: 'Coral', bg: 'bg-orange-500', hex: '#f97316', text: 'text-white' },
+  { name: 'Teal', bg: 'bg-teal-500', hex: '#14b8a6', text: 'text-white' },
+  { name: 'Indigo', bg: 'bg-indigo-500', hex: '#6366f1', text: 'text-white' },
+  { name: 'Crimson', bg: 'bg-rose-600', hex: '#e11d48', text: 'text-white' },
 ];
 
 const STORAGE_KEY = 'mah-icebreaker-color';

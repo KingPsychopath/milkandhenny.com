@@ -1,7 +1,9 @@
 'use client';
 
-import { useState, useRef, useMemo } from 'react';
+import { useState, useRef, useMemo, useEffect } from 'react';
 import { Guest } from '@/lib/types';
+
+type LeaderboardEntry = { name: string; count: number };
 
 type GuestManagementProps = {
   guests: Guest[];
@@ -109,8 +111,13 @@ export function GuestManagement({ guests, onGuestAdded, onGuestRemoved, onCSVImp
   const [password, setPassword] = useState('');
   const [passwordError, setPasswordError] = useState(false);
   
-  const [activeTab, setActiveTab] = useState<'add' | 'remove' | 'import' | 'data'>('add');
+  const [activeTab, setActiveTab] = useState<'add' | 'remove' | 'import' | 'data' | 'games'>('add');
   const [dataLoading, setDataLoading] = useState(false);
+  
+  // Games/Best Dressed state
+  const [bestDressedLeaderboard, setBestDressedLeaderboard] = useState<LeaderboardEntry[]>([]);
+  const [bestDressedTotalVotes, setBestDressedTotalVotes] = useState(0);
+  const [gamesLoading, setGamesLoading] = useState(false);
   const [name, setName] = useState('');
   const [fullName, setFullName] = useState('');
   const [plusOneOf, setPlusOneOf] = useState('');
@@ -149,6 +156,46 @@ export function GuestManagement({ guests, onGuestAdded, onGuestRemoved, onCSVImp
     const query = removeSearch.toLowerCase();
     return allGuestsFlat.filter(g => g.name.toLowerCase().includes(query));
   }, [allGuestsFlat, removeSearch]);
+
+  // Fetch best dressed data when games tab is active
+  useEffect(() => {
+    if (activeTab === 'games' && isAuthenticated) {
+      fetchBestDressedData();
+    }
+  }, [activeTab, isAuthenticated]);
+
+  const fetchBestDressedData = async () => {
+    try {
+      const res = await fetch('/api/best-dressed');
+      const data = await res.json();
+      setBestDressedLeaderboard(data.leaderboard || []);
+      setBestDressedTotalVotes(data.totalVotes || 0);
+    } catch (err) {
+      console.error('Failed to fetch best dressed data:', err);
+    }
+  };
+
+  const handleWipeBestDressed = async () => {
+    if (!confirm('⚠️ This will delete ALL best dressed votes. Are you sure?')) return;
+    
+    setGamesLoading(true);
+    setError(null);
+    try {
+      const res = await fetch('/api/best-dressed', { method: 'DELETE' });
+      if (res.ok) {
+        setBestDressedLeaderboard([]);
+        setBestDressedTotalVotes(0);
+        setSuccess('Best dressed votes cleared');
+        setTimeout(() => setSuccess(null), 3000);
+      } else {
+        setError('Failed to clear votes');
+      }
+    } catch {
+      setError('Failed to clear votes');
+    } finally {
+      setGamesLoading(false);
+    }
+  };
 
   const handlePasswordSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -369,11 +416,11 @@ export function GuestManagement({ guests, onGuestAdded, onGuestRemoved, onCSVImp
             <div className="p-6 space-y-5">
               {/* Tabs */}
               <div className="flex gap-1 bg-stone-100 p-1 rounded-xl">
-                {(['add', 'remove', 'import', 'data'] as const).map((tab) => (
+                {(['add', 'remove', 'import', 'data', 'games'] as const).map((tab) => (
                   <button
                     key={tab}
                     onClick={() => setActiveTab(tab)}
-                    className={`flex-1 py-2 px-2 rounded-lg text-xs sm:text-sm font-medium transition-all ${
+                    className={`flex-1 py-2 px-1 rounded-lg text-xs font-medium transition-all ${
                       activeTab === tab
                         ? 'bg-white text-amber-700 shadow-sm'
                         : 'text-stone-600 hover:text-stone-900'
@@ -383,6 +430,7 @@ export function GuestManagement({ guests, onGuestAdded, onGuestRemoved, onCSVImp
                     {tab === 'remove' && 'Remove'}
                     {tab === 'import' && 'Import'}
                     {tab === 'data' && 'Data'}
+                    {tab === 'games' && '🎮'}
                   </button>
                 ))}
               </div>
@@ -627,6 +675,86 @@ export function GuestManagement({ guests, onGuestAdded, onGuestRemoved, onCSVImp
                     <p className="text-sm text-blue-800">
                       <strong>How check-ins persist:</strong> All check-ins are saved to Redis immediately. 
                       They persist across page refreshes and device switches. Only a Force Reload or new CSV import will clear them.
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {/* Games Tab */}
+              {activeTab === 'games' && (
+                <div className="space-y-4">
+                  {/* Best Dressed Stats */}
+                  <div className="bg-gradient-to-r from-pink-50 to-purple-50 border border-purple-200 rounded-xl p-4">
+                    <h3 className="font-medium text-purple-800 mb-3 flex items-center gap-2">
+                      <span>👑</span> Best Dressed
+                    </h3>
+                    
+                    <div className="grid grid-cols-2 gap-3 mb-4">
+                      <div className="bg-white rounded-lg p-3 border border-purple-100">
+                        <div className="text-2xl font-bold text-purple-600">{bestDressedTotalVotes}</div>
+                        <div className="text-purple-500 text-sm">Total Votes</div>
+                      </div>
+                      <div className="bg-white rounded-lg p-3 border border-purple-100">
+                        <div className="text-2xl font-bold text-purple-600">{bestDressedLeaderboard.length}</div>
+                        <div className="text-purple-500 text-sm">Nominees</div>
+                      </div>
+                    </div>
+
+                    {/* Mini Leaderboard */}
+                    {bestDressedLeaderboard.length > 0 && (
+                      <div className="bg-white rounded-lg border border-purple-100 overflow-hidden mb-4">
+                        <div className="px-3 py-2 bg-purple-50 text-xs font-medium text-purple-600">
+                          Top 5
+                        </div>
+                        {bestDressedLeaderboard.slice(0, 5).map((entry, i) => (
+                          <div key={entry.name} className="px-3 py-2 flex justify-between items-center border-t border-purple-50">
+                            <span className="text-sm">
+                              {i === 0 ? '👑' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i + 1}.`} {entry.name}
+                            </span>
+                            <span className="text-sm font-medium text-purple-600">{entry.count}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Refresh button */}
+                    <button
+                      onClick={fetchBestDressedData}
+                      className="w-full py-2 text-sm text-purple-600 hover:text-purple-800 transition-colors"
+                    >
+                      ↻ Refresh
+                    </button>
+                  </div>
+
+                  {/* Wipe Best Dressed */}
+                  <div className="bg-red-50 border border-red-200 rounded-xl p-4 space-y-3">
+                    <div>
+                      <h4 className="font-medium text-red-800">⚠️ Clear Best Dressed Votes</h4>
+                      <p className="text-sm text-red-700 mt-1">
+                        Permanently deletes all votes. Cannot be undone.
+                      </p>
+                    </div>
+                    <button
+                      onClick={handleWipeBestDressed}
+                      disabled={gamesLoading}
+                      className="w-full bg-red-600 text-white py-2.5 rounded-xl font-medium hover:bg-red-700 disabled:opacity-50 transition-colors flex items-center justify-center gap-2"
+                    >
+                      {gamesLoading ? (
+                        <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                      ) : (
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        </svg>
+                      )}
+                      Clear All Votes
+                    </button>
+                  </div>
+
+                  {/* Info */}
+                  <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
+                    <p className="text-sm text-blue-800">
+                      <strong>Testing tip:</strong> To re-test voting from your own device, clear your browser&apos;s localStorage 
+                      (Developer Tools → Application → Local Storage → Clear).
                     </p>
                   </div>
                 </div>
