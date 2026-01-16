@@ -2,26 +2,9 @@
 
 import { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
+import { playFeedback } from '@/lib/feedback';
 
 const STORAGE_KEY = 'mah-best-dressed-vote';
-
-/** Trigger haptic feedback on supported devices */
-function hapticFeedback(type: 'light' | 'success' | 'celebration') {
-  if (typeof window === 'undefined' || !navigator.vibrate) return;
-  
-  switch (type) {
-    case 'light':
-      navigator.vibrate(10);
-      break;
-    case 'success':
-      navigator.vibrate([15, 50, 15]);
-      break;
-    case 'celebration':
-      // Celebratory pattern for voting
-      navigator.vibrate([30, 80, 30, 80, 50]);
-      break;
-  }
-}
 
 type LeaderboardEntry = { name: string; count: number };
 type StoredVote = { session: string; name: string };
@@ -105,7 +88,7 @@ export default function BestDressedPage() {
       
       if (res.ok) {
         const data = await res.json();
-        hapticFeedback('celebration');
+        playFeedback('vote');
         // Store vote with session ID
         const vote: StoredVote = { session: data.session || currentSession, name: selectedName };
         localStorage.setItem(STORAGE_KEY, JSON.stringify(vote));

@@ -2,21 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-
-/** Trigger haptic feedback on supported devices */
-function hapticFeedback(type: 'light' | 'reveal') {
-  if (typeof window === 'undefined' || !navigator.vibrate) return;
-  
-  switch (type) {
-    case 'light':
-      navigator.vibrate(15);
-      break;
-    case 'reveal':
-      // Dramatic reveal pattern
-      navigator.vibrate([50, 100, 100]);
-      break;
-  }
-}
+import { playFeedback } from '@/lib/feedback';
 
 // Vibrant, distinct colors for the game (10 colors = ~20 people per color with 200 guests)
 const COLORS = [
@@ -83,7 +69,7 @@ export default function IcebreakerPage() {
               </p>
               <button
                 onClick={() => {
-                  hapticFeedback('reveal');
+                  playFeedback('reveal');
                   setRevealed(true);
                 }}
                 className="px-8 py-4 bg-gradient-to-r from-amber-500 to-amber-600 text-zinc-950 font-bold text-lg rounded-full shadow-lg shadow-amber-500/30 hover:scale-105 transition-transform"

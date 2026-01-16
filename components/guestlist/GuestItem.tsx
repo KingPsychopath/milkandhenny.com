@@ -2,30 +2,13 @@
 
 import { useState } from 'react';
 import { Guest } from '@/lib/types';
+import { playFeedback } from '@/lib/feedback';
 
 type GuestItemProps = {
   guest: Guest;
   onCheckIn: (id: string, checkedIn: boolean) => void;
   searchQuery: string;
 };
-
-/** Trigger haptic feedback on supported devices */
-function hapticFeedback(type: 'light' | 'medium' | 'success') {
-  if (typeof window === 'undefined' || !navigator.vibrate) return;
-  
-  switch (type) {
-    case 'light':
-      navigator.vibrate(10);
-      break;
-    case 'medium':
-      navigator.vibrate(25);
-      break;
-    case 'success':
-      // Double tap pattern for success
-      navigator.vibrate([15, 50, 15]);
-      break;
-  }
-}
 
 function highlightText(text: string, query: string) {
   if (!query.trim()) return text;
@@ -79,7 +62,7 @@ export function GuestItem({ guest, onCheckIn, searchQuery }: GuestItemProps) {
         {/* Check-in button */}
         <button
           onClick={() => {
-            hapticFeedback(guest.checkedIn ? 'light' : 'success');
+            playFeedback(guest.checkedIn ? 'check-out' : 'check-in');
             onCheckIn(guest.id, !guest.checkedIn);
           }}
           className={`flex-shrink-0 w-7 h-7 rounded-lg border-2 flex items-center justify-center transition-all active:scale-95 ${
@@ -162,7 +145,7 @@ export function GuestItem({ guest, onCheckIn, searchQuery }: GuestItemProps) {
             >
               <button
                 onClick={() => {
-                  hapticFeedback(plusOne.checkedIn ? 'light' : 'success');
+                  playFeedback(plusOne.checkedIn ? 'check-out' : 'check-in');
                   onCheckIn(plusOne.id, !plusOne.checkedIn);
                 }}
                 className={`flex-shrink-0 w-6 h-6 rounded-md border-2 flex items-center justify-center transition-all active:scale-95 ${
