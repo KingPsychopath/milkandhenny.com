@@ -4,6 +4,8 @@ import { getGuests } from '@/lib/kv-client';
 
 const VOTES_KEY = 'best-dressed:votes';
 const SESSION_KEY = 'best-dressed:session';
+const TOKENS_KEY = 'best-dressed:tokens'; // Valid vote tokens (Redis set)
+const USED_TOKENS_KEY = 'best-dressed:used-tokens'; // Used vote tokens (Redis set)
 
 function getRedis(): Redis | null {
   const url = process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL;
@@ -12,8 +14,20 @@ function getRedis(): Redis | null {
   return new Redis({ url, token });
 }
 
+// Generate a cryptographically random token
+function generateToken(): string {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
+  let token = '';
+  for (let i = 0; i < 16; i++) {
+    token += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return `vt_${Date.now().toString(36)}_${token}`;
+}
+
 // In-memory fallback for local dev
 const memoryVotes = new Map<string, number>();
+const memoryTokens = new Set<string>();
+const memoryUsedTokens = new Set<string>();
 let memorySession = 'initial';
 
 type VotesRecord = Record<string, number>;
@@ -32,8 +46,13 @@ async function resetSession(): Promise<string> {
   const redis = getRedis();
   if (redis) {
     await redis.set(SESSION_KEY, newSession);
+    // Clear tokens when session resets
+    await redis.del(TOKENS_KEY);
+    await redis.del(USED_TOKENS_KEY);
   } else {
     memorySession = newSession;
+    memoryTokens.clear();
+    memoryUsedTokens.clear();
   }
   return newSession;
 }
@@ -61,13 +80,62 @@ async function addVote(name: string): Promise<VotesRecord> {
   return votes;
 }
 
-// GET - get current leaderboard, guest names, and session
+// Issue a new vote token
+async function issueToken(): Promise<string> {
+  const token = generateToken();
+  const redis = getRedis();
+  if (redis) {
+    // Token valid for 10 minutes
+    await redis.sadd(TOKENS_KEY, token);
+  } else {
+    memoryTokens.add(token);
+  }
+  return token;
+}
+
+// Validate and consume a vote token (returns true if valid)
+async function consumeToken(token: string): Promise<boolean> {
+  if (!token || typeof token !== 'string' || !token.startsWith('vt_')) {
+    return false;
+  }
+  
+  const redis = getRedis();
+  if (redis) {
+    // Check if token exists and hasn't been used
+    const [isValid, isUsed] = await Promise.all([
+      redis.sismember(TOKENS_KEY, token),
+      redis.sismember(USED_TOKENS_KEY, token),
+    ]);
+    
+    if (isValid !== 1 || isUsed === 1) {
+      return false;
+    }
+    
+    // Mark token as used (move from valid to used)
+    await Promise.all([
+      redis.srem(TOKENS_KEY, token),
+      redis.sadd(USED_TOKENS_KEY, token),
+    ]);
+    return true;
+  } else {
+    // Memory fallback
+    if (!memoryTokens.has(token) || memoryUsedTokens.has(token)) {
+      return false;
+    }
+    memoryTokens.delete(token);
+    memoryUsedTokens.add(token);
+    return true;
+  }
+}
+
+// GET - get current leaderboard, guest names, session, and a fresh vote token
 export async function GET() {
   try {
-    const [votes, guests, session] = await Promise.all([
+    const [votes, guests, session, voteToken] = await Promise.all([
       getVotes(),
       getGuests(),
       getSession(),
+      issueToken(),
     ]);
     
     // Get all guest names (primary + plus ones)
@@ -89,7 +157,8 @@ export async function GET() {
       leaderboard,
       guestNames: guestNames.sort(),
       totalVotes: Object.values(votes).reduce((a, b) => a + b, 0),
-      session, // Clients use this to know if they can vote again
+      session,
+      voteToken, // One-time use token for voting
     });
   } catch (error) {
     console.error('Error getting votes:', error);
@@ -97,15 +166,35 @@ export async function GET() {
   }
 }
 
-// POST - submit a vote
+// POST - submit a vote (requires valid token)
 export async function POST(request: NextRequest) {
   try {
-    const { name } = await request.json();
+    const { name, voteToken } = await request.json();
     
     if (!name || typeof name !== 'string') {
       return NextResponse.json({ error: 'Name is required' }, { status: 400 });
     }
     
+    // Validate the vote token
+    const tokenValid = await consumeToken(voteToken);
+    if (!tokenValid) {
+      // Invalid or already used token
+      const [votes, session] = await Promise.all([getVotes(), getSession()]);
+      const leaderboard = Object.entries(votes)
+        .map(([n, count]) => ({ name: n, count }))
+        .sort((a, b) => b.count - a.count)
+        .slice(0, 10);
+      
+      return NextResponse.json({
+        success: false,
+        error: 'Invalid or expired vote token. Please refresh and try again.',
+        leaderboard,
+        totalVotes: Object.values(votes).reduce((a, b) => a + b, 0),
+        session,
+      }, { status: 403 });
+    }
+    
+    // Token valid - record the vote
     const [votes, session] = await Promise.all([
       addVote(name.trim()),
       getSession(),
@@ -121,7 +210,7 @@ export async function POST(request: NextRequest) {
       success: true,
       leaderboard,
       totalVotes: Object.values(votes).reduce((a, b) => a + b, 0),
-      session, // Client stores this to track their vote
+      session,
     });
   } catch (error) {
     console.error('Error submitting vote:', error);
@@ -138,7 +227,7 @@ export async function DELETE() {
     }
     memoryVotes.clear();
     
-    // Reset session so everyone can vote again
+    // Reset session and clear all tokens
     const newSession = await resetSession();
     
     return NextResponse.json({

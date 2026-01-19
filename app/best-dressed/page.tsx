@@ -12,6 +12,7 @@ type StoredVote = { session: string; name: string };
 export default function BestDressedPage() {
   const [hasVoted, setHasVoted] = useState<string | null>(null);
   const [currentSession, setCurrentSession] = useState<string>('');
+  const [voteToken, setVoteToken] = useState<string>('');
   const [guestNames, setGuestNames] = useState<string[]>([]);
   const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
   const [totalVotes, setTotalVotes] = useState(0);
@@ -20,10 +21,10 @@ export default function BestDressedPage() {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [showDropdown, setShowDropdown] = useState(false);
+  const [voteError, setVoteError] = useState<string | null>(null);
 
-  // Check if already voted (session-aware)
+  // Fetch data and vote token on load
   useEffect(() => {
-    // Fetch data and session
     fetch('/api/best-dressed')
       .then(res => res.json())
       .then(data => {
@@ -31,8 +32,9 @@ export default function BestDressedPage() {
         setLeaderboard(data.leaderboard || []);
         setTotalVotes(data.totalVotes || 0);
         setCurrentSession(data.session || 'initial');
+        setVoteToken(data.voteToken || '');
         
-        // Check if user voted in THIS session
+        // Check if user voted in THIS session (client-side tracking)
         const storedVote = localStorage.getItem(STORAGE_KEY);
         if (storedVote) {
           try {
@@ -76,18 +78,21 @@ export default function BestDressedPage() {
   }, [searchQuery, guestNames]);
 
   const handleVote = async () => {
-    if (!selectedName) return;
+    if (!selectedName || !voteToken) return;
     
     setSubmitting(true);
+    setVoteError(null);
+    
     try {
       const res = await fetch('/api/best-dressed', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: selectedName }),
+        body: JSON.stringify({ name: selectedName, voteToken }),
       });
       
-      if (res.ok) {
-        const data = await res.json();
+      const data = await res.json();
+      
+      if (res.ok && data.success) {
         playFeedback('vote');
         // Store vote with session ID
         const vote: StoredVote = { session: data.session || currentSession, name: selectedName };
@@ -95,7 +100,15 @@ export default function BestDressedPage() {
         setHasVoted(selectedName);
         setLeaderboard(data.leaderboard || []);
         setTotalVotes(data.totalVotes || 0);
+        setVoteToken(''); // Token is consumed
+      } else {
+        // Vote failed - show error and update leaderboard
+        setVoteError(data.error || 'Vote failed. Please refresh and try again.');
+        setLeaderboard(data.leaderboard || leaderboard);
+        setTotalVotes(data.totalVotes || totalVotes);
       }
+    } catch {
+      setVoteError('Network error. Please try again.');
     } finally {
       setSubmitting(false);
     }
@@ -172,10 +185,23 @@ export default function BestDressedPage() {
               </div>
             )}
 
+            {/* Error message */}
+            {voteError && (
+              <div className="bg-red-500/20 border border-red-500/30 rounded-2xl p-4 text-center">
+                <p className="text-red-300 text-sm">{voteError}</p>
+                <button
+                  onClick={() => window.location.reload()}
+                  className="mt-2 text-red-400 hover:text-red-300 text-sm underline"
+                >
+                  Refresh page to try again
+                </button>
+              </div>
+            )}
+
             {/* Vote Button */}
             <button
               onClick={handleVote}
-              disabled={!selectedName || submitting}
+              disabled={!selectedName || !voteToken || submitting}
               className="w-full py-5 bg-gradient-to-r from-pink-500 to-purple-600 hover:from-pink-400 hover:to-purple-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold text-xl rounded-2xl transition-all shadow-lg shadow-purple-500/30 hover:shadow-purple-500/50 hover:scale-[1.02] disabled:hover:scale-100"
             >
               {submitting ? (
