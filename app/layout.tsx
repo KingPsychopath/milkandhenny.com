@@ -21,6 +21,7 @@ const lora = Lora({
 });
 
 export const metadata: Metadata = {
+  metadataBase: new URL("https://milkandhenny.com"),
   title: "Milk & Henny",
   description: "Thoughts, stories, and things worth sharing.",
   icons: {
@@ -37,6 +38,11 @@ export const metadata: Metadata = {
     card: "summary_large_image",
     title: "Milk & Henny",
     description: "Thoughts, stories, and things worth sharing.",
+  },
+  alternates: {
+    types: {
+      "application/rss+xml": "/feed.xml",
+    },
   },
 };
 

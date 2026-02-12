@@ -4,6 +4,9 @@ import matter from "gray-matter";
 
 const POSTS_DIR = path.join(process.cwd(), "content/posts");
 
+/** Average reading speed in words per minute */
+const WPM = 230;
+
 /** Frontmatter shape for blog posts */
 type PostFrontmatter = {
   title: string;
@@ -16,7 +19,15 @@ type PostFrontmatter = {
 type Post = PostFrontmatter & {
   slug: string;
   content: string;
+  /** Estimated reading time in minutes */
+  readingTime: number;
 };
+
+/** Calculate estimated reading time from raw markdown content */
+function estimateReadingTime(content: string): number {
+  const words = content.trim().split(/\s+/).length;
+  return Math.max(1, Math.round(words / WPM));
+}
 
 /** Read and parse a single markdown file by slug */
 function getPostBySlug(slug: string): Post | null {
@@ -35,6 +46,7 @@ function getPostBySlug(slug: string): Post | null {
     date: frontmatter.date,
     subtitle: frontmatter.subtitle,
     image: frontmatter.image,
+    readingTime: estimateReadingTime(content),
   };
 }
 

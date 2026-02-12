@@ -3,6 +3,7 @@ import Link from "next/link";
 import type { Metadata } from "next";
 import { getPostBySlug, getAllSlugs } from "@/lib/blog";
 import { PostBody } from "./PostBody";
+import { ReadingProgress } from "@/components/ReadingProgress";
 
 type Props = {
   params: Promise<{ slug: string }>;
@@ -56,6 +57,8 @@ export default async function BlogPostPage({ params }: Props) {
 
   return (
     <div className="min-h-screen bg-background">
+      <ReadingProgress />
+
       {/* Nav */}
       <header className="max-w-2xl mx-auto px-6 pt-10 pb-6">
         <div className="flex items-center justify-between font-mono text-sm">
@@ -81,9 +84,11 @@ export default async function BlogPostPage({ params }: Props) {
       {/* Post */}
       <article className="max-w-2xl mx-auto px-6 pt-14 pb-24">
         <header className="mb-12">
-          <time className="font-mono text-xs theme-muted tracking-wide">
-            {formatDate(post.date)}
-          </time>
+          <div className="flex items-center gap-3 font-mono text-xs theme-muted tracking-wide">
+            <time>{formatDate(post.date)}</time>
+            <span>·</span>
+            <span>{post.readingTime} min read</span>
+          </div>
           <h1 className="font-serif text-3xl sm:text-4xl text-foreground leading-tight tracking-tight mt-4">
             {post.title}
           </h1>

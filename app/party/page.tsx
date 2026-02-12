@@ -77,8 +77,16 @@ export default function PartyHome() {
         </div>
 
         {/* Footer */}
-        <div className="pt-4 text-zinc-600 text-xs">
-          © {new Date().getFullYear()} Milk & Henny
+        <div className="pt-4 space-y-2">
+          <Link
+            href="/"
+            className="text-zinc-500 hover:text-amber-400 text-xs transition-colors"
+          >
+            ← back to blog
+          </Link>
+          <div className="text-zinc-600 text-xs">
+            © {new Date().getFullYear()} Milk & Henny
+          </div>
         </div>
       </div>
     </div>

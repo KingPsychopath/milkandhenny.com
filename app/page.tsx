@@ -66,9 +66,9 @@ export default function Home() {
                     <h2 className="font-serif text-xl sm:text-2xl text-foreground group-hover:opacity-70 transition-opacity leading-snug">
                       {post.title}
                     </h2>
-                    <time className="font-mono text-xs theme-muted shrink-0 tabular-nums">
-                      {formatDate(post.date)}
-                    </time>
+                    <span className="font-mono text-xs theme-muted shrink-0 tabular-nums whitespace-nowrap">
+                      {post.readingTime} min · {formatDate(post.date)}
+                    </span>
                   </div>
                   {post.subtitle && (
                     <p className="mt-2 theme-subtle text-[0.95rem] leading-relaxed">
@@ -86,12 +86,20 @@ export default function Home() {
       <footer className="border-t theme-border">
         <div className="max-w-2xl mx-auto px-6 py-8 flex items-center justify-between font-mono text-[11px] theme-muted tracking-wide">
           <span>© {new Date().getFullYear()} milk & henny</span>
-          <Link
-            href="/party"
-            className="hover:text-foreground transition-colors"
-          >
-            the party ↗
-          </Link>
+          <div className="flex items-center gap-4">
+            <Link
+              href="/feed.xml"
+              className="hover:text-foreground transition-colors"
+            >
+              rss
+            </Link>
+            <Link
+              href="/party"
+              className="hover:text-foreground transition-colors"
+            >
+              the party ↗
+            </Link>
+          </div>
         </div>
       </footer>
     </div>

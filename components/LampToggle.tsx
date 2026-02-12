@@ -1,14 +1,23 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
+import { usePathname } from "next/navigation";
+
+/** Routes where the lamp should be hidden (they have their own dark styling) */
+const HIDDEN_ROUTES = ["/party", "/icebreaker", "/best-dressed", "/guestlist"] as const;
 
 /**
  * A pull-cord lamp toggle in the corner of the screen.
  * Click to pull the cord and shift between sunlight and moonlight.
+ * Hidden on party/game pages which have their own dark theme.
  */
 export function LampToggle() {
+  const pathname = usePathname();
   const [dark, setDark] = useState(false);
   const [pulled, setPulled] = useState(false);
+  const [mounted, setMounted] = useState(false);
+
+  const hidden = HIDDEN_ROUTES.some((r) => pathname.startsWith(r));
 
   /** Hydrate from localStorage */
   useEffect(() => {
@@ -17,6 +26,7 @@ export function LampToggle() {
       setDark(true);
       document.documentElement.setAttribute("data-theme", "dark");
     }
+    setMounted(true);
   }, []);
 
   const toggle = useCallback(() => {
@@ -31,6 +41,8 @@ export function LampToggle() {
     );
     localStorage.setItem("theme", next ? "dark" : "light");
   }, [dark]);
+
+  if (!mounted || hidden) return null;
 
   return (
     <button
