@@ -3,25 +3,13 @@
  * milk & henny — Album & R2 management CLI.
  *
  * Usage:
- *   pnpm cli <command> [subcommand] [options]
- *
- * Commands:
- *   albums list                              List all albums
- *   albums show <slug>                       Show album details
- *   albums upload [opts]                     Upload new album
- *   albums update <slug> [opts]              Update album metadata
- *   albums delete <slug>                     Delete entire album
- *
- *   photos list <album>                      List photos in album
- *   photos add <album> --dir <path>          Add photos to existing album
- *   photos delete <album> <photoId>          Delete a photo
- *   photos set-cover <album> <photoId>       Set album cover
- *
- *   bucket ls [prefix]                       Browse bucket contents
- *   bucket rm <key>                          Delete a file from bucket
- *   bucket info                              Show bucket usage stats
+ *   pnpm cli                                  Interactive mode
+ *   pnpm cli help                             Show all commands
+ *   pnpm cli <command> [subcommand] [options]  Direct mode
  */
 
+import fs from "fs";
+import path from "path";
 import readline from "readline";
 import {
   listAlbums,
@@ -40,7 +28,7 @@ import {
   getBucketInfo,
 } from "./r2-client";
 
-/* ─── Formatting helpers ─── */
+/* ─── Formatting ─── */
 
 const dim = (s: string) => `\x1b[2m${s}\x1b[0m`;
 const bold = (s: string) => `\x1b[1m${s}\x1b[0m`;
@@ -78,7 +66,42 @@ function progress(msg: string) {
   log(`${dim("›")} ${msg}`);
 }
 
-/* ─── Arg helpers ─── */
+/* ─── Validation ─── */
+
+/** Validate slug format: lowercase letters, numbers, hyphens only */
+function isValidSlug(slug: string): boolean {
+  return /^[a-z0-9]+(-[a-z0-9]+)*$/.test(slug);
+}
+
+/** Validate date format: YYYY-MM-DD */
+function isValidDate(date: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return false;
+  const parsed = new Date(date + "T00:00:00");
+  return !isNaN(parsed.getTime());
+}
+
+/** Validate directory exists and contains images */
+function validateDir(dir: string): { valid: boolean; error?: string; count?: number } {
+  const absDir = path.resolve(dir.replace(/^~/, process.env.HOME ?? "~"));
+  if (!fs.existsSync(absDir)) {
+    return { valid: false, error: `Directory not found: ${absDir}` };
+  }
+  if (!fs.statSync(absDir).isDirectory()) {
+    return { valid: false, error: `Not a directory: ${absDir}` };
+  }
+  const images = fs
+    .readdirSync(absDir)
+    .filter((f) => /\.(jpe?g|png|webp|heic)$/i.test(f));
+  if (images.length === 0) {
+    return {
+      valid: false,
+      error: `No images found in ${absDir}. Supported: .jpg, .jpeg, .png, .webp, .heic`,
+    };
+  }
+  return { valid: true, count: images.length };
+}
+
+/* ─── Interactive prompts ─── */
 
 const args = process.argv.slice(2);
 
@@ -91,22 +114,30 @@ function hasFlag(name: string): boolean {
   return args.includes(`--${name}`);
 }
 
-/* ─── Interactive prompts ─── */
-
-async function ask(question: string, defaultVal?: string): Promise<string> {
+/** Ask for text input with optional hint and default value */
+async function ask(
+  question: string,
+  opts?: { hint?: string; defaultVal?: string; required?: boolean }
+): Promise<string> {
   const rl = readline.createInterface({
     input: process.stdin,
     output: process.stdout,
   });
-  const suffix = defaultVal ? ` ${dim(`(${defaultVal})`)}` : "";
+
+  const parts: string[] = [question];
+  if (opts?.hint) parts.push(dim(opts.hint));
+  if (opts?.defaultVal) parts.push(dim(`[${opts.defaultVal}]`));
+
   return new Promise((resolve) => {
-    rl.question(`  ${cyan("›")} ${question}${suffix} `, (answer) => {
+    rl.question(`  ${cyan("›")} ${parts.join(" ")} `, (answer) => {
       rl.close();
-      resolve(answer.trim() || defaultVal || "");
+      const val = answer.trim() || opts?.defaultVal || "";
+      resolve(val);
     });
   });
 }
 
+/** Ask for confirmation before destructive actions */
 async function confirm(message: string): Promise<boolean> {
   const rl = readline.createInterface({
     input: process.stdin,
@@ -121,7 +152,7 @@ async function confirm(message: string): Promise<boolean> {
   });
 }
 
-/** Show numbered options, return selected index. 0 = back, -1 = invalid. */
+/** Show numbered options. Returns: selected index (1-based), 0 = back, -1 = invalid */
 async function choose(
   title: string,
   options: { label: string; detail?: string }[]
@@ -136,9 +167,14 @@ async function choose(
   log(`  ${dim("[0]")} ${dim("← Back")}`);
   console.log();
 
-  const answer = await ask("");
+  const answer = await ask("", { hint: "pick a number" });
   const num = parseInt(answer, 10);
-  if (isNaN(num) || num < 0 || num > options.length) return -1;
+
+  if (isNaN(num) || num < 0 || num > options.length) {
+    log(yellow(`Invalid choice. Enter 0–${options.length}.`));
+    return -1;
+  }
+
   return num;
 }
 
@@ -146,7 +182,8 @@ async function choose(
 async function selectAlbum(): Promise<string | null> {
   const albums = listAlbums();
   if (albums.length === 0) {
-    log(dim("No albums found."));
+    console.log();
+    log(dim("No albums found. Upload one first with Albums → Upload."));
     return null;
   }
 
@@ -165,12 +202,15 @@ async function selectAlbum(): Promise<string | null> {
 /** Select a photo from an album. Returns photo ID or null. */
 async function selectPhoto(slug: string): Promise<string | null> {
   const album = getAlbum(slug);
-  if (!album) return null;
+  if (!album || album.photos.length === 0) {
+    log(dim("No photos in this album."));
+    return null;
+  }
 
   const choice = await choose(
-    `Select photo from: ${album.title}`,
+    `Photos in: ${album.title}`,
     album.photos.map((p) => ({
-      label: `${p.id}${p.id === album.cover ? yellow(" ★") : ""}`,
+      label: `${p.id}${p.id === album.cover ? yellow(" ★ cover") : ""}`,
       detail: `${p.width} × ${p.height}`,
     }))
   );
@@ -181,23 +221,24 @@ async function selectPhoto(slug: string): Promise<string | null> {
 
 /** Pause until enter is pressed */
 async function pause() {
-  await ask(dim("Press enter to continue..."));
+  await ask("", { hint: "press enter to continue" });
 }
 
-/* ─── Commands: albums ─── */
+/* ─── Command handlers ─── */
+/* These return void and never call process.exit — safe for interactive mode.
+ * Errors are thrown, caught by the caller. */
 
 async function cmdAlbumsList() {
   const albums = listAlbums();
 
   if (albums.length === 0) {
     heading("Albums");
-    log(dim("No albums found."));
+    log(dim("No albums yet."));
     console.log();
     return;
   }
 
   heading(`Albums (${albums.length})`);
-
   const maxSlug = Math.max(...albums.map((a) => a.slug.length));
 
   for (const a of albums) {
@@ -205,22 +246,12 @@ async function cmdAlbumsList() {
       `${cyan(a.slug.padEnd(maxSlug + 2))} ${a.title.padEnd(35)} ${dim(formatDate(a.date))}  ${dim(`${a.photoCount} photos`)}`
     );
   }
-
   console.log();
 }
 
-async function cmdAlbumsShow() {
-  const slug = args[2];
-  if (!slug) {
-    log(red("Usage: pnpm cli albums show <slug>"));
-    process.exit(1);
-  }
-
+async function cmdAlbumsShow(slug: string) {
   const album = getAlbum(slug);
-  if (!album) {
-    log(red(`Album "${slug}" not found.`));
-    process.exit(1);
-  }
+  if (!album) throw new Error(`Album "${slug}" not found.`);
 
   heading(album.title);
   log(`${dim("Slug:")}         ${album.slug}`);
@@ -240,31 +271,20 @@ async function cmdAlbumsShow() {
       `  ${p.id.padEnd(maxId + 2)} ${dim(`${p.width} × ${p.height}`)}${coverTag}`
     );
   }
-
   console.log();
 }
 
-async function cmdAlbumsUpload() {
-  const dir = getArg("dir");
-  const slug = getArg("slug");
-  const title = getArg("title");
-  const date = getArg("date");
-  const description = getArg("description");
+async function cmdAlbumsUpload(opts: {
+  dir: string;
+  slug: string;
+  title: string;
+  date: string;
+  description?: string;
+}) {
+  heading(`Uploading: ${opts.title}`);
 
-  if (!dir || !slug || !title || !date) {
-    log(
-      red(
-        "Usage: pnpm cli albums upload --dir <path> --slug <slug> --title <title> --date <YYYY-MM-DD> [--description <desc>]"
-      )
-    );
-    process.exit(1);
-  }
-
-  heading(`Uploading: ${title}`);
-
-  const { album, jsonPath, results } = await createAlbum(
-    { dir, slug, title, date, description },
-    (msg) => progress(msg)
+  const { jsonPath, results } = await createAlbum(opts, (msg) =>
+    progress(msg)
   );
 
   console.log();
@@ -280,69 +300,37 @@ async function cmdAlbumsUpload() {
   log(`  Thumbnails:  ${formatBytes(totalThumb)}`);
   log(`  Full-size:   ${formatBytes(totalFull)}`);
   log(`  Originals:   ${formatBytes(totalOrig)}`);
-  log(`  ${bold("Total:")}       ${formatBytes(totalThumb + totalFull + totalOrig)}`);
+  log(
+    `  ${bold("Total:")}       ${formatBytes(totalThumb + totalFull + totalOrig)}`
+  );
   console.log();
   log(dim("Next: commit the JSON and deploy."));
   console.log();
 }
 
-async function cmdAlbumsUpdate() {
-  const slug = args[2];
-  if (!slug) {
-    log(
-      red(
-        "Usage: pnpm cli albums update <slug> [--title ...] [--date ...] [--description ...] [--cover ...]"
-      )
-    );
-    process.exit(1);
+async function cmdAlbumsUpdate(
+  slug: string,
+  updates: { title?: string; date?: string; description?: string; cover?: string }
+) {
+  const updated = updateAlbumMeta(slug, updates);
+  if (!updated) throw new Error(`Album "${slug}" not found.`);
+
+  heading("Updated");
+  log(`${dim("Title:")}       ${updated.title}`);
+  log(`${dim("Date:")}        ${formatDate(updated.date)}`);
+  if (updated.description) {
+    log(`${dim("Description:")} ${updated.description}`);
   }
-
-  const title = getArg("title");
-  const date = getArg("date");
-  const description = getArg("description");
-  const cover = getArg("cover");
-
-  if (!title && !date && !description && !cover) {
-    log(yellow("Nothing to update. Pass --title, --date, --description, or --cover."));
-    process.exit(0);
-  }
-
-  try {
-    const updated = updateAlbumMeta(slug, { title, date, description, cover });
-    if (!updated) {
-      log(red(`Album "${slug}" not found.`));
-      process.exit(1);
-    }
-
-    heading("Updated");
-    log(`${dim("Title:")}       ${updated.title}`);
-    log(`${dim("Date:")}        ${formatDate(updated.date)}`);
-    if (updated.description) {
-      log(`${dim("Description:")} ${updated.description}`);
-    }
-    log(`${dim("Cover:")}       ${updated.cover}`);
-    console.log();
-    log(green("✓ Album metadata updated."));
-    log(dim("Next: commit the JSON and deploy."));
-    console.log();
-  } catch (err) {
-    log(red(`Error: ${(err as Error).message}`));
-    process.exit(1);
-  }
+  log(`${dim("Cover:")}       ${updated.cover}`);
+  console.log();
+  log(green("✓ Album metadata updated."));
+  log(dim("Next: commit the JSON and deploy."));
+  console.log();
 }
 
-async function cmdAlbumsDelete() {
-  const slug = args[2];
-  if (!slug) {
-    log(red("Usage: pnpm cli albums delete <slug>"));
-    process.exit(1);
-  }
-
+async function cmdAlbumsDelete(slug: string) {
   const album = getAlbum(slug);
-  if (!album) {
-    log(red(`Album "${slug}" not found.`));
-    process.exit(1);
-  }
+  if (!album) throw new Error(`Album "${slug}" not found.`);
 
   heading(`Delete: ${album.title}`);
   log(`${dim("Photos:")} ${album.photos.length}`);
@@ -369,22 +357,17 @@ async function cmdAlbumsDelete() {
   console.log();
 }
 
-/* ─── Commands: photos ─── */
-
-async function cmdPhotosList() {
-  const slug = args[2];
-  if (!slug) {
-    log(red("Usage: pnpm cli photos list <album-slug>"));
-    process.exit(1);
-  }
-
+async function cmdPhotosList(slug: string) {
   const album = getAlbum(slug);
-  if (!album) {
-    log(red(`Album "${slug}" not found.`));
-    process.exit(1);
-  }
+  if (!album) throw new Error(`Album "${slug}" not found.`);
 
   heading(`${album.title} — Photos (${album.photos.length})`);
+
+  if (album.photos.length === 0) {
+    log(dim("No photos in this album."));
+    console.log();
+    return;
+  }
 
   const maxId = Math.max(...album.photos.map((p) => p.id.length));
 
@@ -398,70 +381,47 @@ async function cmdPhotosList() {
       log(`  ${dim(k)}`);
     }
   }
-
   console.log();
 }
 
-async function cmdPhotosAdd() {
-  const slug = args[2];
-  const dir = getArg("dir");
-
-  if (!slug || !dir) {
-    log(red("Usage: pnpm cli photos add <album-slug> --dir <path>"));
-    process.exit(1);
-  }
-
+async function cmdPhotosAdd(slug: string, dir: string) {
   heading(`Adding photos to: ${slug}`);
 
-  try {
-    const { added, album } = await addPhotos(slug, dir, (msg) =>
-      progress(msg)
-    );
+  const { added, album } = await addPhotos(slug, dir, (msg) =>
+    progress(msg)
+  );
 
-    console.log();
-    if (added.length === 0) {
-      log(yellow("No new photos to add (all duplicates)."));
-    } else {
-      log(green(`✓ ${added.length} photos added. Album now has ${album.photos.length} photos.`));
-      log(dim("Next: commit the JSON and deploy."));
-    }
-    console.log();
-  } catch (err) {
-    log(red(`Error: ${(err as Error).message}`));
-    process.exit(1);
+  console.log();
+  if (added.length === 0) {
+    log(yellow("No new photos to add (all already in album)."));
+  } else {
+    log(
+      green(
+        `✓ ${added.length} photos added. Album now has ${album.photos.length} photos.`
+      )
+    );
+    log(dim("Next: commit the JSON and deploy."));
   }
+  console.log();
 }
 
-async function cmdPhotosDelete() {
-  const slug = args[2];
-  const photoId = args[3];
-
-  if (!slug || !photoId) {
-    log(red("Usage: pnpm cli photos delete <album-slug> <photo-id>"));
-    process.exit(1);
-  }
-
+async function cmdPhotosDelete(slug: string, photoId: string) {
   const album = getAlbum(slug);
-  if (!album) {
-    log(red(`Album "${slug}" not found.`));
-    process.exit(1);
-  }
+  if (!album) throw new Error(`Album "${slug}" not found.`);
 
   const photo = album.photos.find((p) => p.id === photoId);
   if (!photo) {
-    log(red(`Photo "${photoId}" not found in album "${slug}".`));
-    log(dim("Available photos:"));
-    for (const p of album.photos) {
-      log(`  ${p.id}`);
-    }
-    process.exit(1);
+    const available = album.photos.map((p) => p.id).join(", ");
+    throw new Error(
+      `Photo "${photoId}" not found in album "${slug}". Available: ${available}`
+    );
   }
 
   heading(`Delete photo: ${photoId}`);
   log(`${dim("Album:")} ${album.title}`);
   log(`${dim("Size:")}  ${photo.width} × ${photo.height}`);
   if (album.cover === photoId) {
-    log(yellow("This photo is the current cover. A new cover will be set."));
+    log(yellow("⚠ This photo is the current cover. A new cover will be set automatically."));
   }
   console.log();
 
@@ -472,57 +432,39 @@ async function cmdPhotosDelete() {
     return;
   }
 
-  try {
-    const result = await deletePhoto(slug, photoId, (msg) => progress(msg));
+  const result = await deletePhoto(slug, photoId, (msg) => progress(msg));
 
-    console.log();
-    log(green(`✓ Deleted ${photoId} (${result.deletedKeys.length} files from R2)`));
-    log(green(`✓ Album now has ${result.album.photos.length} photos`));
-    log(dim("Next: commit the JSON and deploy."));
-    console.log();
-  } catch (err) {
-    log(red(`Error: ${(err as Error).message}`));
-    process.exit(1);
-  }
+  console.log();
+  log(
+    green(
+      `✓ Deleted ${photoId} (${result.deletedKeys.length} files from R2)`
+    )
+  );
+  log(green(`✓ Album now has ${result.album.photos.length} photos`));
+  log(dim("Next: commit the JSON and deploy."));
+  console.log();
 }
 
-async function cmdPhotosSetCover() {
-  const slug = args[2];
-  const photoId = args[3];
-
-  if (!slug || !photoId) {
-    log(red("Usage: pnpm cli photos set-cover <album-slug> <photo-id>"));
-    process.exit(1);
-  }
-
-  try {
-    const album = setCover(slug, photoId);
-    log(green(`✓ Cover set to "${photoId}" for album "${slug}".`));
-    log(dim(`Album: ${album.title}`));
-    log(dim("Next: commit the JSON and deploy."));
-    console.log();
-  } catch (err) {
-    log(red(`Error: ${(err as Error).message}`));
-    process.exit(1);
-  }
+async function cmdPhotosSetCover(slug: string, photoId: string) {
+  const album = setCover(slug, photoId);
+  log(green(`✓ Cover set to "${photoId}" for album "${slug}".`));
+  log(dim(`Album: ${album.title}`));
+  log(dim("Next: commit the JSON and deploy."));
+  console.log();
 }
 
-/* ─── Commands: bucket ─── */
-
-async function cmdBucketLs() {
-  const prefix = args[2] ?? "";
-
+async function cmdBucketLs(prefix = "") {
   heading(prefix ? `Bucket: ${prefix}` : "Bucket (root)");
 
   const objects = await listObjects(prefix);
 
   if (objects.length === 0) {
-    log(dim("No objects found."));
+    log(dim("Empty — no objects found."));
     console.log();
     return;
   }
 
-  /* Group by "folder" (first path segment after prefix) */
+  /* Group by "folder" */
   const folders = new Map<string, { count: number; size: number }>();
   const files: typeof objects = [];
 
@@ -536,42 +478,37 @@ async function cmdBucketLs() {
       existing.count++;
       existing.size += obj.size;
       folders.set(folder, existing);
-    } else {
+    } else if (relative) {
       files.push(obj);
     }
   }
 
-  /* Show folders first */
   for (const [folder, info] of [...folders.entries()].sort()) {
     log(
       `${cyan(folder.padEnd(45))} ${dim(`${info.count} files`).padEnd(20)} ${dim(formatBytes(info.size))}`
     );
   }
 
-  /* Then files */
   for (const f of files.sort((a, b) => a.key.localeCompare(b.key))) {
     const name = prefix ? f.key.slice(prefix.length) : f.key;
     log(`${name.padEnd(45)} ${dim(formatBytes(f.size))}`);
   }
 
   console.log();
-  log(dim(`Total: ${objects.length} objects, ${formatBytes(objects.reduce((s, o) => s + o.size, 0))}`));
+  log(
+    dim(
+      `Total: ${objects.length} objects, ${formatBytes(objects.reduce((s, o) => s + o.size, 0))}`
+    )
+  );
   console.log();
 }
 
-async function cmdBucketRm() {
-  const key = args[2];
-  if (!key) {
-    log(red("Usage: pnpm cli bucket rm <key>"));
-    log(dim("Use 'pnpm cli bucket ls' to find keys."));
-    process.exit(1);
-  }
-
+async function cmdBucketRm(key: string) {
   log(`${dim("Key:")} ${key}`);
   console.log();
 
   const ok = await confirm(
-    `Delete "${key}" from R2? ${dim("(This does NOT update album JSON)")}`
+    `Delete "${key}" from R2? ${dim("(⚠ This does NOT update album JSON — use 'photos delete' for that)")}`
   );
   if (!ok) {
     log(dim("Cancelled."));
@@ -591,10 +528,14 @@ async function cmdBucketInfo() {
   const info = await getBucketInfo();
 
   log(`${dim("Objects:")}    ${info.totalObjects.toLocaleString()}`);
-  log(`${dim("Total size:")} ${info.totalSizeMB} MB (${formatBytes(info.totalSizeBytes)})`);
+  log(
+    `${dim("Total size:")} ${info.totalSizeMB} MB (${formatBytes(info.totalSizeBytes)})`
+  );
 
-  /* R2 free tier context */
-  const pctUsed = ((info.totalSizeBytes / (10 * 1024 * 1024 * 1024)) * 100).toFixed(2);
+  const pctUsed = (
+    (info.totalSizeBytes / (10 * 1024 * 1024 * 1024)) *
+    100
+  ).toFixed(2);
   log(`${dim("Free tier:")}  ${pctUsed}% of 10 GB used`);
   console.log();
 }
@@ -605,33 +546,37 @@ function showHelp() {
   console.log(`
   ${bold("milk & henny")} — Album & R2 management CLI
 
-  ${bold("Usage:")} pnpm cli <command> [subcommand] [options]
+  ${bold("Usage")}
+    pnpm cli                                  ${dim("Interactive mode (recommended)")}
+    pnpm cli help                             ${dim("Show this help")}
+    pnpm cli <command> [subcommand] [options] ${dim("Direct command")}
 
   ${bold("Albums")}
     albums list                              List all albums
     albums show ${dim("<slug>")}                       Show album details
-    albums upload ${dim("[options]")}                   Upload new album
-      --dir ${dim("<path>")}      Source directory
-      --slug ${dim("<slug>")}     Album slug
-      --title ${dim("<title>")}   Album title
-      --date ${dim("<date>")}     Album date (YYYY-MM-DD)
-      --description ${dim("<desc>")}  Optional description
-    albums update ${dim("<slug> [options]")}            Update album metadata
+    albums upload                            Upload new album
+      --dir ${dim("<path>")}      ${dim("Folder with photos (e.g. ~/Desktop/party-photos)")}
+      --slug ${dim("<slug>")}     ${dim("URL-safe name (e.g. jan-2026, summer-vibes)")}
+      --title ${dim("<title>")}   ${dim("Display title (e.g. \"Milk & Henny — January 2026\")")}
+      --date ${dim("<date>")}     ${dim("Date as YYYY-MM-DD (e.g. 2026-01-16)")}
+      --description ${dim("<desc>")}  ${dim("Optional description")}
+    albums update ${dim("<slug>")} [options]            Update album metadata
       --title, --date, --description, --cover
-    albums delete ${dim("<slug>")}                     Delete entire album
+    albums delete ${dim("<slug>")}                     Delete entire album + R2 files
 
   ${bold("Photos")}
-    photos list ${dim("<album>")}                      List photos in album
-    photos add ${dim("<album>")} --dir ${dim("<path>")}          Add photos to existing album
-    photos delete ${dim("<album> <photoId>")}          Remove photo from album
+    photos list ${dim("<album>")}                      List photos with R2 keys
+    photos add ${dim("<album>")} --dir ${dim("<path>")}          Add new photos to existing album
+    photos delete ${dim("<album> <photoId>")}          Remove a photo from album + R2
     photos set-cover ${dim("<album> <photoId>")}       Set album cover photo
 
-  ${bold("Bucket")}
+  ${bold("Bucket")} ${dim("(raw R2 access)")}
     bucket ls ${dim("[prefix]")}                       Browse bucket contents
     bucket rm ${dim("<key>")}                          Delete a file from bucket
-    bucket info                              Show bucket usage stats
+    bucket info                              Show bucket usage & free tier %
 
   ${bold("Examples")}
+    ${dim("$")} pnpm cli
     ${dim("$")} pnpm cli albums upload --dir ~/Desktop/party --slug jan-2026 --title "January 2026" --date 2026-01-16
     ${dim("$")} pnpm cli photos delete jan-2026 DSC00003
     ${dim("$")} pnpm cli bucket ls albums/jan-2026/thumb/
@@ -640,106 +585,223 @@ function showHelp() {
 
 /* ─── Interactive mode ─── */
 
+/** Safely run an async operation, catch and display errors without exiting */
+async function safely(fn: () => Promise<void>): Promise<void> {
+  try {
+    await fn();
+  } catch (err) {
+    console.log();
+    log(red(`Error: ${(err as Error).message}`));
+    console.log();
+  }
+}
+
+/** Interactive prompt for uploading a new album with full validation */
+async function promptUpload(): Promise<void> {
+  console.log();
+  log(bold("Upload new album"));
+  log(
+    dim(
+      "This will process images from a folder on your Mac, upload them to R2,"
+    )
+  );
+  log(dim("and create the album JSON in content/albums/."));
+  console.log();
+
+  /* Source directory */
+  let dir = "";
+  while (true) {
+    dir = await ask("Source directory", {
+      hint: "e.g. ~/Desktop/party-photos",
+    });
+    if (!dir) return;
+
+    const check = validateDir(dir);
+    if (check.valid) {
+      log(green(`  Found ${check.count} images`));
+      break;
+    }
+    log(red(`  ${check.error}`));
+  }
+
+  /* Slug */
+  let slug = "";
+  while (true) {
+    slug = await ask("Album slug", {
+      hint: "URL-safe name, e.g. jan-2026 or summer-vibes",
+    });
+    if (!slug) return;
+
+    if (!isValidSlug(slug)) {
+      log(red("  Slug must be lowercase letters, numbers, and hyphens only."));
+      log(dim("  Examples: jan-2026, summer-vibes, milk-and-henny-feb"));
+      continue;
+    }
+
+    /* Check if album already exists */
+    if (getAlbum(slug)) {
+      log(
+        yellow(
+          `  Album "${slug}" already exists. Use a different slug, or add photos with Photos → Add.`
+        )
+      );
+      continue;
+    }
+
+    break;
+  }
+
+  /* Title */
+  const title = await ask("Album title", {
+    hint: 'e.g. "Milk & Henny — January 2026"',
+  });
+  if (!title) return;
+
+  /* Date */
+  let date = "";
+  while (true) {
+    date = await ask("Date", { hint: "YYYY-MM-DD, e.g. 2026-01-16" });
+    if (!date) return;
+
+    if (!isValidDate(date)) {
+      log(red("  Invalid date. Use YYYY-MM-DD format."));
+      continue;
+    }
+    break;
+  }
+
+  /* Description (optional) */
+  const description = await ask("Description", { hint: "optional, press enter to skip" });
+
+  /* Confirm */
+  console.log();
+  log(dim("─── Summary ───"));
+  log(`${dim("Directory:")}   ${dir}`);
+  log(`${dim("Slug:")}        ${slug}`);
+  log(`${dim("Title:")}       ${title}`);
+  log(`${dim("Date:")}        ${date}`);
+  if (description) log(`${dim("Description:")} ${description}`);
+  console.log();
+
+  const ok = await confirm("Upload this album?");
+  if (!ok) {
+    log(dim("Cancelled."));
+    return;
+  }
+
+  await cmdAlbumsUpload({
+    dir: dir.replace(/^~/, process.env.HOME ?? "~"),
+    slug,
+    title,
+    date,
+    description: description || undefined,
+  });
+}
+
+/** Interactive prompt for updating album metadata */
+async function promptUpdate(): Promise<void> {
+  const slug = await selectAlbum();
+  if (!slug) return;
+
+  const album = getAlbum(slug);
+  if (!album) return;
+
+  console.log();
+  log(dim("Leave blank to keep current value."));
+  console.log();
+
+  const title = await ask("Title", { defaultVal: album.title });
+  const date = await ask("Date", {
+    defaultVal: album.date,
+    hint: "YYYY-MM-DD",
+  });
+  const description = await ask("Description", {
+    defaultVal: album.description ?? "",
+    hint: "leave empty to clear",
+  });
+
+  /* Only send changes */
+  const updates: Record<string, string | undefined> = {};
+  if (title !== album.title) updates.title = title;
+  if (date !== album.date) {
+    if (!isValidDate(date)) {
+      log(red("Invalid date format. No changes made."));
+      return;
+    }
+    updates.date = date;
+  }
+  if (description !== (album.description ?? ""))
+    updates.description = description;
+
+  if (Object.keys(updates).length === 0) {
+    log(dim("No changes."));
+    return;
+  }
+
+  await cmdAlbumsUpdate(slug, updates);
+}
+
+/** Interactive prompt for adding photos to an existing album */
+async function promptAddPhotos(): Promise<void> {
+  const slug = await selectAlbum();
+  if (!slug) return;
+
+  console.log();
+  let dir = "";
+  while (true) {
+    dir = await ask("Directory with new photos", {
+      hint: "e.g. ~/Desktop/more-photos",
+    });
+    if (!dir) return;
+
+    const check = validateDir(dir);
+    if (check.valid) {
+      log(green(`  Found ${check.count} images`));
+      break;
+    }
+    log(red(`  ${check.error}`));
+  }
+
+  await cmdPhotosAdd(slug, dir.replace(/^~/, process.env.HOME ?? "~"));
+}
+
 async function interactiveAlbums() {
   while (true) {
     const choice = await choose("Albums", [
-      { label: "List albums" },
-      { label: "Show album details" },
-      { label: "Upload new album" },
-      { label: "Update album metadata" },
-      { label: "Delete album" },
+      { label: "List albums", detail: "see all albums at a glance" },
+      { label: "Show album details", detail: "photos, metadata, cover" },
+      { label: "Upload new album", detail: "process images and upload to R2" },
+      { label: "Update album metadata", detail: "change title, date, description" },
+      { label: "Delete album", detail: "remove from R2 and JSON" },
     ]);
 
     switch (choice) {
       case 0:
         return;
-
       case 1:
-        await cmdAlbumsList();
+        await safely(cmdAlbumsList);
         await pause();
         break;
-
       case 2: {
         const slug = await selectAlbum();
         if (slug) {
-          args[2] = slug;
-          await cmdAlbumsShow();
+          await safely(() => cmdAlbumsShow(slug));
           await pause();
         }
         break;
       }
-
-      case 3: {
-        console.log();
-        const dir = await ask("Source directory:");
-        const slug = await ask("Album slug:");
-        const title = await ask("Album title:");
-        const date = await ask("Date (YYYY-MM-DD):");
-        const description = await ask("Description (optional):");
-
-        if (!dir || !slug || !title || !date) {
-          log(yellow("Missing required fields. Need: dir, slug, title, date."));
-          break;
-        }
-
-        /* Set args for the upload handler */
-        args.length = 0;
-        args.push(
-          "albums",
-          "upload",
-          "--dir", dir,
-          "--slug", slug,
-          "--title", title,
-          "--date", date
-        );
-        if (description) args.push("--description", description);
-
-        await cmdAlbumsUpload();
+      case 3:
+        await safely(promptUpload);
         await pause();
         break;
-      }
-
-      case 4: {
-        const slug = await selectAlbum();
-        if (!slug) break;
-
-        const album = getAlbum(slug);
-        if (!album) break;
-
-        console.log();
-        log(dim("Leave blank to keep current value."));
-        const title = await ask(`Title:`, album.title);
-        const date = await ask(`Date:`, album.date);
-        const description = await ask(`Description:`, album.description ?? "");
-
-        const updates: Record<string, string | undefined> = {};
-        if (title !== album.title) updates.title = title;
-        if (date !== album.date) updates.date = date;
-        if (description !== (album.description ?? ""))
-          updates.description = description;
-
-        if (Object.keys(updates).length === 0) {
-          log(dim("No changes."));
-          break;
-        }
-
-        args[2] = slug;
-        args.length = 3;
-        if (updates.title) args.push("--title", updates.title);
-        if (updates.date) args.push("--date", updates.date);
-        if (updates.description !== undefined)
-          args.push("--description", updates.description);
-
-        await cmdAlbumsUpdate();
+      case 4:
+        await safely(promptUpdate);
         await pause();
         break;
-      }
-
       case 5: {
         const slug = await selectAlbum();
         if (slug) {
-          args[2] = slug;
-          await cmdAlbumsDelete();
+          await safely(() => cmdAlbumsDelete(slug));
           await pause();
         }
         break;
@@ -751,85 +813,42 @@ async function interactiveAlbums() {
 async function interactivePhotos() {
   while (true) {
     const choice = await choose("Photos", [
-      { label: "List photos in album" },
-      { label: "Add photos to album" },
-      { label: "Delete a photo" },
-      { label: "Set cover photo" },
+      { label: "List photos in album", detail: "IDs, dimensions, R2 keys" },
+      { label: "Add photos to album", detail: "upload from a folder" },
+      { label: "Delete a photo", detail: "remove from R2 and JSON" },
+      { label: "Set cover photo", detail: "change album thumbnail" },
     ]);
 
     switch (choice) {
       case 0:
         return;
-
       case 1: {
         const slug = await selectAlbum();
         if (slug) {
-          args[2] = slug;
-          await cmdPhotosList();
+          await safely(() => cmdPhotosList(slug));
           await pause();
         }
         break;
       }
-
-      case 2: {
-        const slug = await selectAlbum();
-        if (!slug) break;
-
-        const dir = await ask("Directory with new photos:");
-        if (!dir) break;
-
-        args[2] = slug;
-        args.length = 3;
-        args.push("--dir", dir);
-
-        /* Manually call the add handler */
-        heading(`Adding photos to: ${slug}`);
-        try {
-          const { addPhotos: addPhotosFn } = await import("./album-ops");
-          const { added, album } = await addPhotosFn(slug, dir, (msg) =>
-            progress(msg)
-          );
-          console.log();
-          if (added.length === 0) {
-            log(yellow("No new photos to add (all duplicates)."));
-          } else {
-            log(
-              green(
-                `✓ ${added.length} photos added. Album now has ${album.photos.length} photos.`
-              )
-            );
-          }
-        } catch (err) {
-          log(red(`Error: ${(err as Error).message}`));
-        }
+      case 2:
+        await safely(promptAddPhotos);
         await pause();
         break;
-      }
-
       case 3: {
         const slug = await selectAlbum();
         if (!slug) break;
-
         const photoId = await selectPhoto(slug);
         if (!photoId) break;
-
-        args[2] = slug;
-        args[3] = photoId;
-        await cmdPhotosDelete();
+        await safely(() => cmdPhotosDelete(slug, photoId));
         await pause();
         break;
       }
-
       case 4: {
         const slug = await selectAlbum();
         if (!slug) break;
-
         const photoId = await selectPhoto(slug);
         if (!photoId) break;
-
-        args[2] = slug;
-        args[3] = photoId;
-        await cmdPhotosSetCover();
+        await safely(() => cmdPhotosSetCover(slug, photoId));
         await pause();
         break;
       }
@@ -840,49 +859,52 @@ async function interactivePhotos() {
 async function interactiveBucket() {
   while (true) {
     const choice = await choose("Bucket", [
-      { label: "Browse bucket" },
-      { label: "Delete a file" },
-      { label: "Bucket info / usage" },
+      { label: "Browse bucket", detail: "navigate folders in R2" },
+      { label: "Delete a file", detail: "raw R2 delete (use photos delete for albums)" },
+      { label: "Bucket info", detail: "storage usage and free tier %" },
     ]);
 
     switch (choice) {
       case 0:
         return;
-
       case 1: {
         let prefix = "";
         while (true) {
-          args[2] = prefix;
-          await cmdBucketLs();
+          await safely(() => cmdBucketLs(prefix));
 
-          const next = await ask(
-            `Enter a folder to drill into, or ${dim("'back'")} to go up, or ${dim("'done'")} to stop:`
-          );
+          const next = await ask("Navigate", {
+            hint: `type a folder name to enter, ${dim("'back'")} to go up, ${dim("'done'")} to stop`,
+          });
 
           if (next === "done" || next === "") break;
           if (next === "back") {
-            /* Go up one level */
             const parts = prefix.replace(/\/$/, "").split("/");
             parts.pop();
             prefix = parts.length > 0 ? parts.join("/") + "/" : "";
           } else {
-            prefix = next.endsWith("/") ? next : next + "/";
+            /* Allow entering relative or absolute paths */
+            if (next.startsWith("albums/")) {
+              prefix = next.endsWith("/") ? next : next + "/";
+            } else {
+              prefix = prefix + (next.endsWith("/") ? next : next + "/");
+            }
           }
         }
         break;
       }
-
       case 2: {
-        const key = await ask("Key to delete (use 'bucket ls' to find keys):");
+        console.log();
+        log(dim("Tip: Use 'Browse bucket' first to find the key you want to delete."));
+        const key = await ask("Full key to delete", {
+          hint: "e.g. albums/jan-2026/thumb/DSC00003.webp",
+        });
         if (!key) break;
-        args[2] = key;
-        await cmdBucketRm();
+        await safely(() => cmdBucketRm(key));
         await pause();
         break;
       }
-
       case 3:
-        await cmdBucketInfo();
+        await safely(cmdBucketInfo);
         await pause();
         break;
     }
@@ -892,11 +914,12 @@ async function interactiveBucket() {
 async function interactive() {
   console.log();
   log(bold("milk & henny") + dim(" — interactive CLI"));
+  log(dim("Navigate with numbers. Press 0 to go back. Ctrl+C to quit."));
 
   while (true) {
     const choice = await choose("What would you like to do?", [
-      { label: "Albums", detail: "list, upload, update, delete" },
-      { label: "Photos", detail: "list, add, delete, set cover" },
+      { label: "Albums", detail: "list, upload, update, delete albums" },
+      { label: "Photos", detail: "list, add, delete, set cover photo" },
       { label: "Bucket", detail: "browse R2, delete files, usage stats" },
     ]);
 
@@ -906,39 +929,24 @@ async function interactive() {
         log(dim("Goodbye."));
         console.log();
         return;
-
       case 1:
         await interactiveAlbums();
         break;
-
       case 2:
         await interactivePhotos();
         break;
-
       case 3:
         await interactiveBucket();
         break;
-
-      default:
-        log(dim("Invalid choice. Pick a number."));
     }
   }
 }
 
-/* ─── Router ─── */
+/* ─── Direct mode router ─── */
 
-async function main() {
+async function direct() {
   const command = args[0];
   const subcommand = args[1];
-
-  if (hasFlag("help") || command === "help") {
-    showHelp();
-    return;
-  }
-
-  if (!command) {
-    return interactive();
-  }
 
   try {
     switch (command) {
@@ -946,52 +954,91 @@ async function main() {
         switch (subcommand) {
           case "list":
             return cmdAlbumsList();
-          case "show":
-            return cmdAlbumsShow();
-          case "upload":
-            return cmdAlbumsUpload();
-          case "update":
-            return cmdAlbumsUpdate();
-          case "delete":
-            return cmdAlbumsDelete();
+          case "show": {
+            const slug = args[2];
+            if (!slug) throw new Error("Usage: pnpm cli albums show <slug>");
+            return cmdAlbumsShow(slug);
+          }
+          case "upload": {
+            const dir = getArg("dir");
+            const slug = getArg("slug");
+            const title = getArg("title");
+            const date = getArg("date");
+            const description = getArg("description");
+            if (!dir || !slug || !title || !date) {
+              throw new Error(
+                "Usage: pnpm cli albums upload --dir <path> --slug <slug> --title <title> --date <YYYY-MM-DD> [--description <desc>]"
+              );
+            }
+            if (!isValidSlug(slug)) throw new Error("Slug must be lowercase letters, numbers, hyphens only.");
+            if (!isValidDate(date)) throw new Error("Date must be YYYY-MM-DD format.");
+            return cmdAlbumsUpload({ dir, slug, title, date, description });
+          }
+          case "update": {
+            const slug = args[2];
+            if (!slug) throw new Error("Usage: pnpm cli albums update <slug> [--title ...] [--date ...] ...");
+            const title = getArg("title");
+            const date = getArg("date");
+            const description = getArg("description");
+            const cover = getArg("cover");
+            if (!title && !date && !description && !cover) {
+              throw new Error("Nothing to update. Pass --title, --date, --description, or --cover.");
+            }
+            if (date && !isValidDate(date)) throw new Error("Date must be YYYY-MM-DD format.");
+            return cmdAlbumsUpdate(slug, { title, date, description, cover });
+          }
+          case "delete": {
+            const slug = args[2];
+            if (!slug) throw new Error("Usage: pnpm cli albums delete <slug>");
+            return cmdAlbumsDelete(slug);
+          }
           default:
-            log(red(`Unknown albums command: ${subcommand ?? "(none)"}`));
-            log(dim("Run 'pnpm cli albums help' or 'pnpm cli help'"));
-            process.exit(1);
+            throw new Error(`Unknown: albums ${subcommand ?? ""}. Run 'pnpm cli help'.`);
         }
-        break;
 
       case "photos":
         switch (subcommand) {
-          case "list":
-            return cmdPhotosList();
-          case "add":
-            return cmdPhotosAdd();
-          case "delete":
-            return cmdPhotosDelete();
-          case "set-cover":
-            return cmdPhotosSetCover();
+          case "list": {
+            const slug = args[2];
+            if (!slug) throw new Error("Usage: pnpm cli photos list <album-slug>");
+            return cmdPhotosList(slug);
+          }
+          case "add": {
+            const slug = args[2];
+            const dir = getArg("dir");
+            if (!slug || !dir) throw new Error("Usage: pnpm cli photos add <album-slug> --dir <path>");
+            return cmdPhotosAdd(slug, dir);
+          }
+          case "delete": {
+            const slug = args[2];
+            const photoId = args[3];
+            if (!slug || !photoId) throw new Error("Usage: pnpm cli photos delete <album-slug> <photo-id>");
+            return cmdPhotosDelete(slug, photoId);
+          }
+          case "set-cover": {
+            const slug = args[2];
+            const photoId = args[3];
+            if (!slug || !photoId) throw new Error("Usage: pnpm cli photos set-cover <album-slug> <photo-id>");
+            return cmdPhotosSetCover(slug, photoId);
+          }
           default:
-            log(red(`Unknown photos command: ${subcommand ?? "(none)"}`));
-            log(dim("Run 'pnpm cli photos help' or 'pnpm cli help'"));
-            process.exit(1);
+            throw new Error(`Unknown: photos ${subcommand ?? ""}. Run 'pnpm cli help'.`);
         }
-        break;
 
       case "bucket":
         switch (subcommand) {
           case "ls":
-            return cmdBucketLs();
-          case "rm":
-            return cmdBucketRm();
+            return cmdBucketLs(args[2] ?? "");
+          case "rm": {
+            const key = args[2];
+            if (!key) throw new Error("Usage: pnpm cli bucket rm <key>");
+            return cmdBucketRm(key);
+          }
           case "info":
             return cmdBucketInfo();
           default:
-            log(red(`Unknown bucket command: ${subcommand ?? "(none)"}`));
-            log(dim("Run 'pnpm cli bucket help' or 'pnpm cli help'"));
-            process.exit(1);
+            throw new Error(`Unknown: bucket ${subcommand ?? ""}. Run 'pnpm cli help'.`);
         }
-        break;
 
       default:
         log(red(`Unknown command: ${command}`));
@@ -1003,6 +1050,23 @@ async function main() {
     log(red(`Error: ${(err as Error).message}`));
     process.exit(1);
   }
+}
+
+/* ─── Entry point ─── */
+
+async function main() {
+  const command = args[0];
+
+  if (hasFlag("help") || command === "help") {
+    showHelp();
+    return;
+  }
+
+  if (!command) {
+    return interactive();
+  }
+
+  return direct();
 }
 
 main();
