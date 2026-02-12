@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { Lora } from "next/font/google";
 import { LampToggle } from "@/components/LampToggle";
+import { BASE_URL } from "@/lib/config";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -21,7 +22,7 @@ const lora = Lora({
 });
 
 export const metadata: Metadata = {
-  metadataBase: new URL("https://milkandhenny.com"),
+  metadataBase: new URL(BASE_URL),
   title: "Milk & Henny",
   description: "Thoughts, stories, and things worth sharing.",
   icons: {

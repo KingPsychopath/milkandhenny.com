@@ -6,7 +6,7 @@ export default function PartyHome() {
     <div className="min-h-screen bg-gradient-to-br from-zinc-950 via-zinc-900 to-stone-900 flex items-center justify-center p-6">
       <div className="text-center space-y-5 max-w-md">
         {/* Text Logo */}
-        <div className="px-4">
+        <Link href="/" className="block px-4">
           <Image
             src="/MAHtext.svg"
             alt="Milk & Henny"
@@ -15,7 +15,7 @@ export default function PartyHome() {
             className="w-full h-auto"
             priority
           />
-        </div>
+        </Link>
 
         {/* Tagline */}
         <p className="text-amber-400/90 text-lg font-medium tracking-widest uppercase">

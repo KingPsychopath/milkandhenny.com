@@ -84,21 +84,30 @@ export default function Home() {
 
       {/* Footer */}
       <footer className="border-t theme-border">
-        <div className="max-w-2xl mx-auto px-6 py-8 flex items-center justify-between font-mono text-[11px] theme-muted tracking-wide">
-          <span>© {new Date().getFullYear()} milk & henny</span>
-          <div className="flex items-center gap-4">
-            <Link
-              href="/feed.xml"
-              className="hover:text-foreground transition-colors"
-            >
-              rss
-            </Link>
-            <Link
-              href="/party"
-              className="hover:text-foreground transition-colors"
-            >
-              the party ↗
-            </Link>
+        <div className="max-w-2xl mx-auto px-6 py-8 space-y-4">
+          <div className="flex items-center justify-between font-mono text-[11px] theme-muted tracking-wide">
+            <span>© {new Date().getFullYear()} milk & henny</span>
+            <div className="flex items-center gap-4">
+              <Link
+                href="/feed.xml"
+                className="hover:text-foreground transition-colors"
+              >
+                rss
+              </Link>
+              <Link
+                href="/party"
+                className="hover:text-foreground transition-colors"
+              >
+                the party ↗
+              </Link>
+            </div>
+          </div>
+          <div className="flex items-center justify-center gap-5 font-mono text-[11px] theme-faint tracking-wide">
+            <a href="https://twitter.com/milkandh3nny" target="_blank" rel="noopener noreferrer" className="hover:text-foreground transition-colors">twitter</a>
+            <span>·</span>
+            <a href="https://instagram.com/milkandhenny" target="_blank" rel="noopener noreferrer" className="hover:text-foreground transition-colors">instagram</a>
+            <span>·</span>
+            <a href="https://tiktok.com/@milkandhenny" target="_blank" rel="noopener noreferrer" className="hover:text-foreground transition-colors">tiktok</a>
           </div>
         </div>
       </footer>

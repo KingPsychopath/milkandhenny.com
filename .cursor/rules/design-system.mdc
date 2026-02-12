@@ -1,0 +1,59 @@
+---
+description: Milk & Henny blog design system — editorial typewriter aesthetic
+alwaysApply: true
+---
+
+# Milk & Henny Design System
+
+The design language is **"editorial typewriter"** — a blend of Substack's writing-first simplicity, The Browser Company's monospace confidence, and a warm Milk & Henny identity.
+
+## Core Principles
+
+- **Writing-first**: Content breathes. No clutter, no sidebars, no widgets. Single column, max-w-2xl.
+- **Typewriter chrome, serif prose**: UI elements (nav, dates, labels, footer) use Geist Mono — lowercase, tight tracking. Post titles and body use Lora serif.
+- **Warm, not cold**: Stone palette (#fafaf9 light, #1c1917 dark). Never blue-grey. Amber (#fbbf24 / #b45309) is the accent.
+- **Sunlight to moonlight**: Light mode is cream/warm stone. Dark mode is deep warm brown, not blue-black. Transitions are 0.4s ease.
+- **Subtle interactions**: Opacity shifts on hover, not colour changes. The lamp pull-cord for theme toggle. The 2px reading progress bar. Nothing flashy.
+
+## Typography
+
+| Use | Font | Style |
+|---|---|---|
+| UI / nav / dates / footer | Geist Mono | lowercase, tracking-tighter to tracking-wide |
+| Post titles | Lora | serif, 700 weight |
+| Post body / prose | Lora | serif, 400 weight, 1.8 line-height |
+| Brand "milk & henny" | Geist Mono | bold, tracking-tighter |
+
+## Colour (CSS variables)
+
+All colours use CSS custom properties on `:root` and `[data-theme="dark"]`. Never hardcode hex in components — use `var(--foreground)`, `var(--stone-400)`, `var(--prose-body)`, etc., or the utility classes `.theme-muted`, `.theme-subtle`, `.theme-faint`, `.theme-border`, `.highlight-selection`.
+
+## Layout
+
+- Max width: `max-w-2xl` (672px)
+- Horizontal padding: `px-6`
+- Generous vertical spacing: pt-20 for masthead, pt-14 for post content
+- Hairline dividers using `border-t theme-border`
+
+## Components
+
+- **LampToggle**: Pull-cord in top-right corner. Hidden on party/game pages.
+- **ReadingProgress**: 2px bar at viewport top on blog posts. Uses ref + rAF, no re-renders.
+- **PostBody**: Client component for react-markdown. Rehype plugin handles #hashtags.
+- **Hashtags**: Inline warm colour shift (no background, no chip). Flows naturally in text.
+
+## Blog posts
+
+- Markdown files in `content/posts/`. Filename = slug.
+- Frontmatter: title, date, subtitle (optional), image (optional).
+- Reading time calculated at 230 WPM, shown on homepage and post page.
+- Images with alt text render as figure + caption.
+- Social cards (OG/Twitter) are per-post, statically generated.
+
+## What NOT to do
+
+- No sidebars, TOCs, or floating elements on posts
+- No bright/saturated colours — everything is muted, warm
+- No client components unless they genuinely need the browser
+- No barrel files or index.ts exports
+- No `!important` in CSS — use specificity

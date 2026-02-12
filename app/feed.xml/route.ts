@@ -1,6 +1,5 @@
 import { getAllPosts } from "@/lib/blog";
-
-const BASE_URL = "https://milkandhenny.com";
+import { BASE_URL } from "@/lib/config";
 
 /** Generate an RSS 2.0 feed from all blog posts */
 export function GET() {
