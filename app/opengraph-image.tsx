@@ -2,7 +2,7 @@ import { ImageResponse } from 'next/og';
 
 export const runtime = 'edge';
 
-export const alt = 'Milk & Henny - First Ever Birthday';
+export const alt = 'milk & henny — thoughts, stories, and things worth sharing';
 export const size = {
   width: 1200,
   height: 630,
@@ -20,66 +20,58 @@ export default async function Image() {
           flexDirection: 'column',
           alignItems: 'center',
           justifyContent: 'center',
-          backgroundColor: '#0a0a0a',
-          backgroundImage: 'radial-gradient(circle at 50% 50%, #1c1917 0%, #0a0a0a 70%)',
+          backgroundColor: '#fafaf9',
+          padding: 80,
         }}
       >
-        {/* Logo circle with M */}
-        <div
+        {/* Brand */}
+        <span
           style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            width: 200,
-            height: 200,
-            borderRadius: '50%',
-            background: 'linear-gradient(135deg, #fbbf24 0%, #d97706 100%)',
-            marginBottom: 40,
-            boxShadow: '0 25px 50px -12px rgba(251, 191, 36, 0.4)',
+            fontSize: 72,
+            fontWeight: 700,
+            color: '#1c1917',
+            fontFamily: 'monospace',
+            letterSpacing: '-0.04em',
           }}
         >
-          <span
-            style={{
-              fontSize: 120,
-              fontWeight: 700,
-              color: '#18181b',
-              fontFamily: 'Georgia, serif',
-            }}
-          >
-            M
-          </span>
-        </div>
+          milk & henny
+        </span>
 
-        {/* Title */}
+        {/* Divider */}
         <div
           style={{
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
+            width: 60,
+            height: 2,
+            backgroundColor: '#d6d3d1',
+            marginTop: 32,
+            marginBottom: 32,
+          }}
+        />
+
+        {/* Tagline */}
+        <span
+          style={{
+            fontSize: 24,
+            color: '#a8a29e',
+            fontFamily: 'monospace',
+            letterSpacing: '0.02em',
           }}
         >
-          <span
-            style={{
-              fontSize: 72,
-              fontWeight: 700,
-              color: 'white',
-              letterSpacing: '-0.02em',
-            }}
-          >
-            Milk & Henny
-          </span>
-          <span
-            style={{
-              fontSize: 32,
-              color: '#fbbf24',
-              letterSpacing: '0.2em',
-              textTransform: 'uppercase',
-              marginTop: 16,
-            }}
-          >
-            First Ever Birthday
-          </span>
-        </div>
+          thoughts, stories, and things worth sharing
+        </span>
+
+        {/* Slogan */}
+        <span
+          style={{
+            fontSize: 18,
+            color: '#d6d3d1',
+            fontFamily: 'Georgia, serif',
+            fontStyle: 'italic',
+            marginTop: 20,
+          }}
+        >
+          a social commentary on social commentary
+        </span>
       </div>
     ),
     {

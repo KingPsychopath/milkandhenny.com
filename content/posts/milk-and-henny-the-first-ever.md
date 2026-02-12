@@ -1,14 +1,16 @@
 ---
-title: "Milk & Henny: The First Ever"
+title: "My First Birthday: Planning a 400-person party from South Africa in 2 weeks"
 date: "2026-02-07"
 subtitle: "How a birthday party became something bigger"
 ---
 
 Some things you plan. Other things just happen to you.
 
-Milk & Henny was supposed to be a birthday party. A night out with friends, good music, a dress code nobody would follow. The kind of thing you throw together in a group chat and hope for the best.
+I'm a Winter Baby who loves the summer. I'm a night owl who loves the morning. I'm a social butterfly who loves the quiet. I'm a dreamer who loves the reality. 
 
-But somewhere between booking the venue and arguing about the playlist, it became something else. It became a *thing*. A real thing with a name and a logo and people asking "when's the next one?"
+My entire life has been a series of contradictions. This past month has been no different. A night out with friends, good music, a dress code that was more of a threat than a guideline, all planned from the discomfort of the many great and bad decisions I made while in South Africa. The kind of thing you throw together in a group chat and hope for the best.
+
+But somewhere between booking the venue and arguing fighting for my life with the DJ's, it became something else. It became a *thing*. A real thing with a name and stickers and people asking "when's the next one?"
 
 ## The night itself
 
@@ -30,4 +32,4 @@ I don't know yet. But I kept the domain.
 
 If you were there — thank you. If you weren't — next time.
 
-*— O*
+*— OA*

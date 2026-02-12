@@ -17,9 +17,24 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const post = getPostBySlug(slug);
   if (!post) return {};
 
+  const description =
+    post.subtitle ?? `Read "${post.title}" on Milk & Henny`;
+
   return {
     title: `${post.title} — Milk & Henny`,
-    description: post.subtitle ?? `Read "${post.title}" on Milk & Henny`,
+    description,
+    openGraph: {
+      title: post.title,
+      description,
+      siteName: "Milk & Henny",
+      type: "article",
+      publishedTime: post.date,
+    },
+    twitter: {
+      card: "summary_large_image",
+      title: post.title,
+      description,
+    },
   };
 }
 

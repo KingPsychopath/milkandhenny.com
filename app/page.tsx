@@ -26,6 +26,9 @@ export default function Home() {
         <p className="mt-5 text-stone-400 font-mono text-sm tracking-wide">
           thoughts, stories, and things worth sharing
         </p>
+        <p className="mt-2 text-stone-300 font-serif italic text-sm">
+          a social commentary on social commentary
+        </p>
         <nav className="mt-6 flex items-center justify-center gap-6 font-mono text-xs tracking-wide">
           <Link
             href="/party"
