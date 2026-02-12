@@ -362,12 +362,11 @@ button:active:not(:disabled):not(.lamp-toggle) {
 }
 
 /* ─── Lamp toggle ─── */
-/* Original position: right: 24px (mobile: right: 16px). Now centred. */
+/* Desktop: top-right corner. Mobile: centred. Photo page: offset left of counter. */
 .lamp-toggle {
   position: fixed;
   top: 0;
-  left: 50%;
-  translate: -50% 0;
+  right: 24px;
   z-index: 50;
   display: flex;
   flex-direction: column;
@@ -397,36 +396,37 @@ button:active:not(:disabled):not(.lamp-toggle) {
   align-items: center;
   justify-content: center;
   color: var(--stone-400);
+  opacity: 0.45;
   transition: border-color 0.3s, color 0.3s, transform 0.15s, opacity 0.4s ease;
 }
 
 .lamp-toggle:hover .lamp-bulb {
   border-color: var(--foreground);
   color: var(--foreground);
+  opacity: 1;
 }
 
 .lamp-toggle:active .lamp-bulb {
   transform: scale(0.92);
 }
 
-/* On single photo pages, move lamp to top-right corner */
+/* Photo page: always left of the counter at all widths */
 .lamp-toggle--photo {
-  left: auto;
-  right: 24px;
-  translate: none;
+  right: 64px;
 }
 
 @media (max-width: 640px) {
+  /* Mobile: centre the lamp */
   .lamp-toggle {
+    right: auto;
     left: 50%;
+    translate: -50% 0;
   }
-  .lamp-bulb {
-    opacity: 0.4;
-  }
+  /* Photo page on mobile: keep right-anchored left of counter */
   .lamp-toggle--photo {
     left: auto;
-    right: 16px;
     translate: none;
+    right: 64px;
   }
 }
 
