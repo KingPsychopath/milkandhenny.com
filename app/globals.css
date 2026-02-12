@@ -363,6 +363,8 @@ button:active:not(:disabled):not(.lamp-toggle) {
   border: none;
   padding: 0;
   user-select: none;
+  transition: transform 0.3s ease, opacity 0.3s ease;
+  will-change: transform, opacity;
 }
 
 .lamp-cord {
@@ -396,5 +398,51 @@ button:active:not(:disabled):not(.lamp-toggle) {
 @media (max-width: 640px) {
   .lamp-toggle {
     right: 16px;
+  }
+  .lamp-bulb {
+    opacity: 0.45;
+  }
+  .lamp-toggle:hover .lamp-bulb,
+  .lamp-toggle:active .lamp-bulb {
+    opacity: 1;
+  }
+}
+
+/* ─── Back to top ─── */
+.back-to-top {
+  position: fixed;
+  bottom: 28px;
+  right: 24px;
+  z-index: 50;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: 1.5px solid var(--stone-300);
+  background: var(--background);
+  color: var(--stone-400);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 0;
+  transition: transform 0.3s ease, opacity 0.3s ease, border-color 0.3s, color 0.3s;
+  will-change: transform, opacity;
+}
+
+.back-to-top:hover {
+  border-color: var(--foreground);
+  color: var(--foreground);
+}
+
+.back-to-top:active {
+  transform: scale(0.92);
+}
+
+@media (max-width: 640px) {
+  .back-to-top {
+    right: 16px;
+    bottom: 20px;
+    width: 32px;
+    height: 32px;
   }
 }

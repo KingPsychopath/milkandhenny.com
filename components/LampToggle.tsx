@@ -1,14 +1,18 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { usePathname } from "next/navigation";
 
 /** Routes where the lamp should be hidden (they have their own dark styling) */
 const HIDDEN_ROUTES = ["/party", "/icebreaker", "/best-dressed", "/guestlist"] as const;
 
+/** How far (px) the user must scroll before the lamp hides */
+const SCROLL_THRESHOLD = 80;
+
 /**
  * A pull-cord lamp toggle in the corner of the screen.
  * Click to pull the cord and shift between sunlight and moonlight.
+ * Slides up and hides when you scroll past the top of the page.
  * Hidden on party/game pages which have their own dark theme.
  */
 export function LampToggle() {
@@ -16,6 +20,9 @@ export function LampToggle() {
   const [dark, setDark] = useState(false);
   const [pulled, setPulled] = useState(false);
   const [mounted, setMounted] = useState(false);
+  const [visible, setVisible] = useState(true);
+  const lastScrollY = useRef(0);
+  const ticking = useRef(false);
 
   const hidden = HIDDEN_ROUTES.some((r) => pathname.startsWith(r));
 
@@ -27,6 +34,34 @@ export function LampToggle() {
       document.documentElement.setAttribute("data-theme", "dark");
     }
     setMounted(true);
+  }, []);
+
+  /** Hide lamp when scrolling down past threshold, show when near top */
+  useEffect(() => {
+    function onScroll() {
+      if (ticking.current) return;
+      ticking.current = true;
+
+      requestAnimationFrame(() => {
+        const y = window.scrollY;
+
+        if (y < SCROLL_THRESHOLD) {
+          setVisible(true);
+        } else if (y > lastScrollY.current) {
+          /* Scrolling down — hide */
+          setVisible(false);
+        } else {
+          /* Scrolling up — show */
+          setVisible(true);
+        }
+
+        lastScrollY.current = y;
+        ticking.current = false;
+      });
+    }
+
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
   }, []);
 
   const toggle = useCallback(() => {
@@ -49,6 +84,11 @@ export function LampToggle() {
       onClick={toggle}
       aria-label={dark ? "Switch to light mode" : "Switch to dark mode"}
       className="lamp-toggle group"
+      style={{
+        transform: visible ? "translateY(0)" : "translateY(-100%)",
+        opacity: visible ? 1 : 0,
+        pointerEvents: visible ? "auto" : "none",
+      }}
     >
       {/* Cord */}
       <div

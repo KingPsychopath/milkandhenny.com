@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { Lora } from "next/font/google";
 import { LampToggle } from "@/components/LampToggle";
+import { BackToTop } from "@/components/BackToTop";
 import { BASE_URL } from "@/lib/config";
 import "./globals.css";
 
@@ -64,6 +65,7 @@ export default function RootLayout({
         className={`${geistSans.variable} ${geistMono.variable} ${lora.variable} antialiased`}
       >
         <LampToggle />
+        <BackToTop />
         {children}
       </body>
     </html>
