@@ -720,6 +720,21 @@ async function promptUpdate(): Promise<void> {
     hint: "leave empty to clear",
   });
 
+  /* Cover — show current and offer to change via photo picker */
+  let newCover: string | undefined;
+  const changeCover = await confirm(
+    `Current cover: ${bold(album.cover)}. Change it?`
+  );
+  if (changeCover) {
+    console.log();
+    const picked = await selectPhoto(slug);
+    if (picked && picked !== album.cover) {
+      newCover = picked;
+    } else if (picked === album.cover) {
+      log(dim("Same as current cover — no change."));
+    }
+  }
+
   /* Only send changes */
   const updates: Record<string, string | undefined> = {};
   if (title !== album.title) updates.title = title;
@@ -732,6 +747,7 @@ async function promptUpdate(): Promise<void> {
   }
   if (description !== (album.description ?? ""))
     updates.description = description;
+  if (newCover) updates.cover = newCover;
 
   if (Object.keys(updates).length === 0) {
     log(dim("No changes."));
