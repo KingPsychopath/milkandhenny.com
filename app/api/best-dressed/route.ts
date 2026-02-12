@@ -251,13 +251,13 @@ const RESET_SECRET = process.env.MANAGEMENT_PASSWORD ?? 'party2020';
 // DELETE - wipe all votes and reset session (admin only; requires management password)
 export async function DELETE(request: NextRequest) {
   try {
-    let password = request.headers.get('X-Management-Password');
+    let password: string | null = request.headers.get('X-Management-Password');
     if (password == null) {
       try {
         const body = await request.json();
-        password = (body && typeof body === 'object' && 'password' in body) ? String(body.password) : undefined;
+        password = (body && typeof body === 'object' && 'password' in body) ? String(body.password) : null;
       } catch {
-        password = undefined;
+        password = null;
       }
     }
     if (password !== RESET_SECRET) {

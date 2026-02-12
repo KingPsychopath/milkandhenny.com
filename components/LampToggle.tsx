@@ -113,15 +113,7 @@ export function LampToggle() {
 
       requestAnimationFrame(() => {
         const y = window.scrollY;
-
-        if (y < SCROLL_THRESHOLD) {
-          setVisible(true);
-        } else if (y > lastScrollY.current) {
-          setVisible(false);
-        } else {
-          setVisible(true);
-        }
-
+        setVisible(y < SCROLL_THRESHOLD);
         lastScrollY.current = y;
         ticking.current = false;
       });
