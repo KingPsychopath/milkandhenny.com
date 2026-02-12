@@ -23,16 +23,16 @@ export default function Home() {
             milk & henny
           </h1>
         </Link>
-        <p className="mt-5 text-stone-400 font-mono text-sm tracking-wide">
+        <p className="mt-5 theme-muted font-mono text-sm tracking-wide">
           thoughts, stories, and things worth sharing
         </p>
-        <p className="mt-2 text-stone-300 font-serif italic text-sm">
-          a social commentary on social commentary
+        <p className="mt-2 theme-faint font-serif italic text-sm">
+          a <span className="highlight-selection">social commentary</span> on social commentary
         </p>
         <nav className="mt-6 flex items-center justify-center gap-6 font-mono text-xs tracking-wide">
           <Link
             href="/party"
-            className="text-stone-400 hover:text-foreground transition-colors"
+            className="theme-muted hover:text-foreground transition-colors"
           >
             [the party]
           </Link>
@@ -41,17 +41,17 @@ export default function Home() {
 
       {/* Divider */}
       <div className="max-w-2xl mx-auto px-6">
-        <div className="border-t border-stone-300" />
+        <div className="border-t theme-border-strong" />
       </div>
 
       {/* Recent */}
       <section className="max-w-2xl mx-auto px-6 pt-4 pb-24">
-        <p className="font-mono text-[11px] text-stone-400 tracking-widest uppercase py-4">
+        <p className="font-mono text-[11px] theme-muted tracking-widest uppercase py-4">
           Recent
         </p>
 
         {posts.length === 0 ? (
-          <p className="py-12 text-stone-400 font-mono text-sm text-center">
+          <p className="py-12 theme-muted font-mono text-sm text-center">
             nothing here yet. check back soon.
           </p>
         ) : (
@@ -60,18 +60,18 @@ export default function Home() {
               <article key={post.slug} className="group">
                 <Link
                   href={`/blog/${post.slug}`}
-                  className="block py-6 border-b border-stone-100 hover:border-stone-300 transition-colors"
+                  className="block py-6 border-b theme-border-faint hover:theme-border-strong transition-colors"
                 >
                   <div className="flex items-baseline justify-between gap-4">
-                    <h2 className="font-serif text-xl sm:text-2xl text-foreground group-hover:text-stone-500 transition-colors leading-snug">
+                    <h2 className="font-serif text-xl sm:text-2xl text-foreground group-hover:opacity-70 transition-opacity leading-snug">
                       {post.title}
                     </h2>
-                    <time className="font-mono text-xs text-stone-400 shrink-0 tabular-nums">
+                    <time className="font-mono text-xs theme-muted shrink-0 tabular-nums">
                       {formatDate(post.date)}
                     </time>
                   </div>
                   {post.subtitle && (
-                    <p className="mt-2 text-stone-500 text-[0.95rem] leading-relaxed">
+                    <p className="mt-2 theme-subtle text-[0.95rem] leading-relaxed">
                       {post.subtitle}
                     </p>
                   )}
@@ -83,8 +83,8 @@ export default function Home() {
       </section>
 
       {/* Footer */}
-      <footer className="border-t border-stone-200">
-        <div className="max-w-2xl mx-auto px-6 py-8 flex items-center justify-between font-mono text-[11px] text-stone-400 tracking-wide">
+      <footer className="border-t theme-border">
+        <div className="max-w-2xl mx-auto px-6 py-8 flex items-center justify-between font-mono text-[11px] theme-muted tracking-wide">
           <span>© {new Date().getFullYear()} milk & henny</span>
           <Link
             href="/party"

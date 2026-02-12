@@ -6,7 +6,7 @@ subtitle: "How a birthday party became something bigger"
 
 Some things you plan. Other things just happen to you.
 
-I planned a birthday party for myself and invited 400 people to it - in two weeks for January 16th, 2026 from South Africa (The Party was in London). Oh and my actual birthday is December 25th.
+I planned a birthday party for myself in January and invited 400 people to it - in two weeks and from South Africa (The Party was in London). Oh and my actual birthday is December 25th.
 
 I'm a Winter Baby who loves the summer. I'm a night owl who loves the morning. I'm a social butterfly who loves the quiet. I'm a dreamer who loves the reality. 
 
@@ -39,6 +39,8 @@ My love for _outside_, do not quote me, is something I've always struggled to ex
 I wanted everyone to yell #involveme, I wanted the fomo to suffocate you if you missed it.
 
 I wanted everyone to feel like I **saved their life** by inviting them to my party.
+
+I learned how to speak that language. I learned how to be that person. I learned now more than ever how to be myself to others.
 
 ## What's next
 

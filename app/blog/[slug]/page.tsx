@@ -61,13 +61,13 @@ export default async function BlogPostPage({ params }: Props) {
         <div className="flex items-center justify-between font-mono text-sm">
           <Link
             href="/"
-            className="text-stone-400 hover:text-foreground transition-colors tracking-tight"
+            className="theme-muted hover:text-foreground transition-colors tracking-tight"
           >
             ← back
           </Link>
           <Link
             href="/"
-            className="font-bold text-foreground tracking-tighter hover:text-stone-500 transition-colors"
+            className="font-bold text-foreground tracking-tighter hover:opacity-70 transition-opacity"
           >
             milk & henny
           </Link>
@@ -75,20 +75,20 @@ export default async function BlogPostPage({ params }: Props) {
       </header>
 
       <div className="max-w-2xl mx-auto px-6">
-        <div className="border-t border-stone-200" />
+        <div className="border-t theme-border" />
       </div>
 
       {/* Post */}
       <article className="max-w-2xl mx-auto px-6 pt-14 pb-24">
         <header className="mb-12">
-          <time className="font-mono text-xs text-stone-400 tracking-wide">
+          <time className="font-mono text-xs theme-muted tracking-wide">
             {formatDate(post.date)}
           </time>
           <h1 className="font-serif text-3xl sm:text-4xl text-foreground leading-tight tracking-tight mt-4">
             {post.title}
           </h1>
           {post.subtitle && (
-            <p className="mt-4 text-stone-500 text-lg leading-relaxed">
+            <p className="mt-4 theme-subtle text-lg leading-relaxed">
               {post.subtitle}
             </p>
           )}
@@ -98,8 +98,8 @@ export default async function BlogPostPage({ params }: Props) {
       </article>
 
       {/* Footer */}
-      <footer className="border-t border-stone-200">
-        <div className="max-w-2xl mx-auto px-6 py-8 flex items-center justify-between font-mono text-[11px] text-stone-400 tracking-wide">
+      <footer className="border-t theme-border">
+        <div className="max-w-2xl mx-auto px-6 py-8 flex items-center justify-between font-mono text-[11px] theme-muted tracking-wide">
           <Link
             href="/"
             className="hover:text-foreground transition-colors"
