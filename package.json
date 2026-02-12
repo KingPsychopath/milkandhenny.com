@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "upload": "tsx scripts/upload-album.ts"
+    "cli": "tsx scripts/cli.ts",
+    "upload": "tsx scripts/cli.ts albums upload"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.988.0",
