@@ -1,0 +1,115 @@
+"use client";
+
+import { useRef, useEffect, useState } from "react";
+import Link from "next/link";
+
+type PhotoCardProps = {
+  albumSlug: string;
+  photoId: string;
+  thumbUrl: string;
+  width: number;
+  height: number;
+  blur?: string;
+  /** Whether multi-select mode is active */
+  selectable?: boolean;
+  selected?: boolean;
+  onSelect?: (photoId: string) => void;
+};
+
+/**
+ * A single photo in the gallery grid.
+ * Lazy-loads with intersection observer and shows a placeholder until ready.
+ */
+export function PhotoCard({
+  albumSlug,
+  photoId,
+  thumbUrl,
+  width,
+  height,
+  blur,
+  selectable,
+  selected,
+  onSelect,
+}: PhotoCardProps) {
+  const imgRef = useRef<HTMLImageElement>(null);
+  const [loaded, setLoaded] = useState(false);
+
+  useEffect(() => {
+    const img = imgRef.current;
+    if (!img) return;
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          img.src = thumbUrl;
+          observer.disconnect();
+        }
+      },
+      { rootMargin: "200px" }
+    );
+
+    observer.observe(img);
+    return () => observer.disconnect();
+  }, [thumbUrl]);
+
+  const aspectRatio = height / width;
+
+  return (
+    <div className="gallery-card group">
+      <Link
+        href={`/pics/${albumSlug}/${photoId}`}
+        className="block relative overflow-hidden rounded-sm"
+        style={{ paddingBottom: `${aspectRatio * 100}%` }}
+        onClick={(e) => {
+          if (selectable) {
+            e.preventDefault();
+            onSelect?.(photoId);
+          }
+        }}
+      >
+        {/* Placeholder */}
+        <div
+          className="absolute inset-0 gallery-placeholder"
+          style={
+            blur
+              ? { backgroundImage: `url(${blur})`, backgroundSize: "cover" }
+              : undefined
+          }
+        />
+
+        {/* Image */}
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          ref={imgRef}
+          alt=""
+          width={width}
+          height={height}
+          onLoad={() => setLoaded(true)}
+          className={`absolute inset-0 w-full h-full object-cover transition-opacity duration-300 ${
+            loaded ? "opacity-100" : "opacity-0"
+          }`}
+        />
+
+        {/* Hover overlay */}
+        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors duration-200" />
+
+        {/* Selection checkbox */}
+        {selectable && (
+          <div
+            className={`absolute top-2 right-2 w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors ${
+              selected
+                ? "bg-amber-500 border-amber-500"
+                : "border-white/70 bg-black/20"
+            }`}
+          >
+            {selected && (
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="20 6 9 17 4 12" />
+              </svg>
+            )}
+          </div>
+        )}
+      </Link>
+    </div>
+  );
+}

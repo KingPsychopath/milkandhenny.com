@@ -1,0 +1,96 @@
+import { notFound } from "next/navigation";
+import Link from "next/link";
+import type { Metadata } from "next";
+import { getAlbumBySlug, getAllAlbumSlugs } from "@/lib/albums";
+import { AlbumGallery } from "@/components/gallery/AlbumGallery";
+
+type Props = {
+  params: Promise<{ album: string }>;
+};
+
+export async function generateStaticParams() {
+  return getAllAlbumSlugs().map((album) => ({ album }));
+}
+
+export async function generateMetadata({ params }: Props): Promise<Metadata> {
+  const { album: slug } = await params;
+  const album = getAlbumBySlug(slug);
+  if (!album) return {};
+
+  return {
+    title: `${album.title} — Pics — Milk & Henny`,
+    description: album.description ?? `${album.photos.length} photos from ${album.title}`,
+  };
+}
+
+function formatDate(dateStr: string) {
+  const d = new Date(dateStr + "T00:00:00");
+  return d.toLocaleDateString("en-GB", {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  });
+}
+
+export default async function AlbumPage({ params }: Props) {
+  const { album: slug } = await params;
+  const album = getAlbumBySlug(slug);
+
+  if (!album) notFound();
+
+  return (
+    <div className="min-h-screen bg-background">
+      {/* Nav */}
+      <header className="max-w-4xl mx-auto px-6 pt-10 pb-6">
+        <div className="flex items-center justify-between font-mono text-sm">
+          <Link
+            href="/pics"
+            className="theme-muted hover:text-foreground transition-colors tracking-tight"
+          >
+            ← albums
+          </Link>
+          <Link
+            href="/"
+            className="font-bold text-foreground tracking-tighter hover:opacity-70 transition-opacity"
+          >
+            milk & henny
+          </Link>
+        </div>
+      </header>
+
+      <div className="max-w-4xl mx-auto px-6">
+        <div className="border-t theme-border" />
+      </div>
+
+      {/* Album header */}
+      <section className="max-w-4xl mx-auto px-6 pt-12 pb-8">
+        <div className="flex items-center gap-3 font-mono text-xs theme-muted tracking-wide">
+          <time>{formatDate(album.date)}</time>
+        </div>
+        <h1 className="font-serif text-3xl sm:text-4xl text-foreground leading-tight tracking-tight mt-3">
+          {album.title}
+        </h1>
+        {album.description && (
+          <p className="mt-3 theme-subtle text-lg leading-relaxed">
+            {album.description}
+          </p>
+        )}
+      </section>
+
+      {/* Gallery */}
+      <section className="max-w-4xl mx-auto px-6 pb-24">
+        <AlbumGallery albumSlug={album.slug} photos={album.photos} />
+      </section>
+
+      {/* Footer */}
+      <footer className="border-t theme-border">
+        <div className="max-w-4xl mx-auto px-6 py-8 flex items-center justify-between font-mono text-[11px] theme-muted tracking-wide">
+          <Link href="/pics" className="hover:text-foreground transition-colors">
+            ← all albums
+          </Link>
+          <span>© {new Date().getFullYear()} milk & henny</span>
+        </div>
+      </footer>
+    </div>
+  );
+}

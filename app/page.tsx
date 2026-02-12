@@ -31,6 +31,12 @@ export default function Home() {
         </p>
         <nav className="mt-6 flex items-center justify-center gap-6 font-mono text-xs tracking-wide">
           <Link
+            href="/pics"
+            className="theme-muted hover:text-foreground transition-colors"
+          >
+            [pics]
+          </Link>
+          <Link
             href="/party"
             className="theme-muted hover:text-foreground transition-colors"
           >

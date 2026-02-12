@@ -295,6 +295,42 @@ button:active:not(:disabled):not(.lamp-toggle) {
   transform: scale(0.98);
 }
 
+/* ─── Gallery ─── */
+.gallery-masonry {
+  columns: 2;
+  column-gap: 8px;
+}
+
+.gallery-masonry .gallery-card {
+  break-inside: avoid;
+  margin-bottom: 8px;
+}
+
+.gallery-single {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: 600px;
+  margin: 0 auto;
+}
+
+.gallery-placeholder {
+  background: var(--stone-100);
+}
+
+@media (min-width: 768px) {
+  .gallery-masonry {
+    columns: 3;
+    column-gap: 10px;
+  }
+  .gallery-masonry .gallery-card {
+    margin-bottom: 10px;
+  }
+  .gallery-single {
+    gap: 10px;
+  }
+}
+
 /* ─── Reading progress ─── */
 .reading-progress-track {
   position: fixed;
