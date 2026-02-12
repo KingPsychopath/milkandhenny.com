@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import { Lora } from "next/font/google";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -12,23 +13,29 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
+const lora = Lora({
+  variable: "--font-lora",
+  subsets: ["latin"],
+  style: ["normal", "italic"],
+});
+
 export const metadata: Metadata = {
   title: "Milk & Henny",
-  description: "First Ever Birthday",
+  description: "Thoughts, stories, and things worth sharing.",
   icons: {
     icon: "/icon.svg",
     apple: "/MAHLogo.svg",
   },
   openGraph: {
     title: "Milk & Henny",
-    description: "First Ever Birthday",
+    description: "Thoughts, stories, and things worth sharing.",
     siteName: "Milk & Henny",
     type: "website",
   },
   twitter: {
     card: "summary_large_image",
     title: "Milk & Henny",
-    description: "First Ever Birthday",
+    description: "Thoughts, stories, and things worth sharing.",
   },
 };
 
@@ -46,7 +53,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
+        className={`${geistSans.variable} ${geistMono.variable} ${lora.variable} antialiased`}
       >
         {children}
       </body>

@@ -10,10 +10,13 @@
   },
   "dependencies": {
     "@upstash/redis": "^1.36.1",
+    "gray-matter": "^4.0.3",
     "next": "16.1.1",
     "papaparse": "^5.5.3",
     "react": "19.2.3",
-    "react-dom": "19.2.3"
+    "react-dom": "19.2.3",
+    "react-markdown": "^10.1.0",
+    "remark-gfm": "^4.0.1"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",

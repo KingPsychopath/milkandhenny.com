@@ -1,86 +1,96 @@
-import Link from 'next/link';
-import Image from 'next/image';
+import Link from "next/link";
+import { getAllPosts } from "@/lib/blog";
+
+/** Format a date string into a readable form like "7 Feb 2026" */
+function formatDate(dateStr: string) {
+  const d = new Date(dateStr + "T00:00:00");
+  return d.toLocaleDateString("en-GB", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
+}
 
 export default function Home() {
-  return (
-    <div className="min-h-screen bg-gradient-to-br from-zinc-950 via-zinc-900 to-stone-900 flex items-center justify-center p-6">
-      <div className="text-center space-y-5 max-w-md">
-        {/* Text Logo */}
-        <div className="px-4">
-          <Image
-            src="/MAHtext.svg"
-            alt="Milk & Henny"
-            width={320}
-            height={70}
-            className="w-full h-auto"
-            priority
-          />
-        </div>
+  const posts = getAllPosts();
 
-        {/* Tagline */}
-        <p className="text-amber-400/90 text-lg font-medium tracking-widest uppercase">
-          First Ever Birthday
+  return (
+    <div className="min-h-screen bg-background">
+      {/* Masthead */}
+      <header className="max-w-2xl mx-auto px-6 pt-20 pb-16 text-center">
+        <Link href="/" className="inline-block">
+          <h1 className="font-mono text-[2.5rem] sm:text-6xl font-bold text-foreground tracking-tighter leading-none">
+            milk & henny
+          </h1>
+        </Link>
+        <p className="mt-5 text-stone-400 font-mono text-sm tracking-wide">
+          thoughts, stories, and things worth sharing
+        </p>
+        <nav className="mt-6 flex items-center justify-center gap-6 font-mono text-xs tracking-wide">
+          <Link
+            href="/party"
+            className="text-stone-400 hover:text-foreground transition-colors"
+          >
+            [the party]
+          </Link>
+        </nav>
+      </header>
+
+      {/* Divider */}
+      <div className="max-w-2xl mx-auto px-6">
+        <div className="border-t border-stone-300" />
+      </div>
+
+      {/* Recent */}
+      <section className="max-w-2xl mx-auto px-6 pt-4 pb-24">
+        <p className="font-mono text-[11px] text-stone-400 tracking-widest uppercase py-4">
+          Recent
         </p>
 
-        {/* Game CTAs */}
-        <div className="space-y-3 pt-4">
-          <Link
-            href="/icebreaker"
-            className="w-full inline-flex items-center justify-center gap-3 px-8 py-4 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-zinc-950 font-bold text-lg rounded-2xl transition-all duration-200 shadow-lg shadow-amber-500/30 hover:shadow-amber-500/50 hover:scale-[1.02]"
-          >
-            <span className="text-2xl">🎨</span>
-            Ice Breaker
-          </Link>
-          
-          <Link
-            href="/best-dressed"
-            className="w-full inline-flex items-center justify-center gap-3 px-8 py-4 bg-gradient-to-r from-pink-500 to-purple-600 hover:from-pink-400 hover:to-purple-500 text-white font-bold text-lg rounded-2xl transition-all duration-200 shadow-lg shadow-purple-500/30 hover:shadow-purple-500/50 hover:scale-[1.02]"
-          >
-            <span className="text-2xl">👑</span>
-            Best Dressed
-          </Link>
-          
-          <div className="pt-4">
-            <Link
-              href="/guestlist"
-              className="text-zinc-500 hover:text-amber-400 text-sm transition-colors"
-            >
-              Staff Check-In →
-            </Link>
-          </div>
-        </div>
-
-        {/* Lineup */}
-        <div className="pt-6 space-y-3">
-          <p className="text-amber-500/60 text-xs font-medium tracking-widest uppercase">
-            Tonight&apos;s Lineup
+        {posts.length === 0 ? (
+          <p className="py-12 text-stone-400 font-mono text-sm text-center">
+            nothing here yet. check back soon.
           </p>
-          
-          <div className="flex flex-wrap justify-center gap-x-4 gap-y-1 text-white/80 font-medium">
-            <span>ELLADHC</span>
-            <span className="text-amber-500/40">•</span>
-            <span>SATRA-SIA</span>
-            <span className="text-amber-500/40">•</span>
-            <span>AYCHIBS</span>
-            <span className="text-amber-500/40">•</span>
-            <span>DJNAIRAA</span>
+        ) : (
+          <div className="space-y-0">
+            {posts.map((post) => (
+              <article key={post.slug} className="group">
+                <Link
+                  href={`/blog/${post.slug}`}
+                  className="block py-6 border-b border-stone-100 hover:border-stone-300 transition-colors"
+                >
+                  <div className="flex items-baseline justify-between gap-4">
+                    <h2 className="font-serif text-xl sm:text-2xl text-foreground group-hover:text-stone-500 transition-colors leading-snug">
+                      {post.title}
+                    </h2>
+                    <time className="font-mono text-xs text-stone-400 shrink-0 tabular-nums">
+                      {formatDate(post.date)}
+                    </time>
+                  </div>
+                  {post.subtitle && (
+                    <p className="mt-2 text-stone-500 text-[0.95rem] leading-relaxed">
+                      {post.subtitle}
+                    </p>
+                  )}
+                </Link>
+              </article>
+            ))}
           </div>
-          
-          <p className="text-zinc-500 text-sm">
-            MCs: <span className="text-white/70">D CHIEF EXECUTIVE</span> & <span className="text-white/70">FADZ</span>
-          </p>
-        </div>
+        )}
+      </section>
 
-        {/* Footnote */}
-        <div className="pt-6 text-zinc-500 text-xs max-w-xs mx-auto leading-relaxed">
-          Remember: if someone says no, it means no. Be kind, and have fun. 💛
+      {/* Footer */}
+      <footer className="border-t border-stone-200">
+        <div className="max-w-2xl mx-auto px-6 py-8 flex items-center justify-between font-mono text-[11px] text-stone-400 tracking-wide">
+          <span>© {new Date().getFullYear()} milk & henny</span>
+          <Link
+            href="/party"
+            className="hover:text-foreground transition-colors"
+          >
+            the party ↗
+          </Link>
         </div>
-
-        {/* Footer */}
-        <div className="pt-4 text-zinc-600 text-xs">
-          © {new Date().getFullYear()} Milk & Henny
-        </div>
-      </div>
+      </footer>
     </div>
   );
 }
