@@ -113,6 +113,79 @@ The app expects Partiful's export format:
 - **Password Protected**: Management features behind `party2026`
 - **Auto-Bootstrap**: Loads `public/guests.csv` on first visit
 
+## Scalability & cost
+
+### Hosting and routing
+
+| What | Where | Why |
+|------|--------|-----|
+| **App (HTML/API)** | Vercel | Next.js app, serverless functions, edge. Domain: `milkandhenny.com` (and `www`). |
+| **Images (blog, gallery)** | Cloudflare R2 | Stored in R2; served via **custom domain** `pics.milkandhenny.com` through Cloudflare (proxied). |
+| **Guest list state** | Vercel KV | Shared check-in state; only needed for `/guestlist` and party flows. |
+
+**Cost-saving routing:** Image requests never hit Vercel. The browser loads thumbnails and full-size images directly from `pics.milkandhenny.com` (R2 + Cloudflare). That keeps bandwidth and function invocations off Vercel and avoids R2 egress fees (Cloudflare custom domain = zero egress). Zip downloads and single-photo downloads also fetch directly from R2 (CORS enabled on the bucket).
+
+**Caching:** `pics.milkandhenny.com` is behind Cloudflare’s CDN (R2 custom domain with proxy on). Images are cached at the edge. The main site is cached by Vercel (static/SSG where used). RSS feed uses `Cache-Control: s-maxage=3600, stale-while-revalidate`.
+
+---
+
+### When does KV run? (limiting usage)
+
+KV is **only** used when these API routes are called. Nothing in the root layout or blog/pics pages touches KV.
+
+| Route | When it runs |
+|-------|----------------|
+| `/api/guests` | Only when someone is on **`/guestlist`** — the page polls every 2.5s while open. |
+| `/api/guests/bootstrap` | Once when `/guestlist` loads (if empty), or when Manage → Import/Clear is used. |
+| `/api/guests/add`, `remove`, `import` | Only when someone uses **Manage** on `/guestlist` (password-protected). |
+| `/api/best-dressed` | Only when someone visits **`/best-dressed`** or uses best-dressed actions in Manage. |
+| `/api/stats` | Not used by the app; only if someone calls it directly (e.g. script or bookmark). |
+| `/api/debug` | Only if someone visits the URL directly (for diagnostics). |
+
+**So:** Homepage, blog, `/pics`, `/party` (without opening guestlist or best-dressed) = **no KV calls**. KV runs only on guest list and best-dressed flows.
+
+**How to limit issues:**
+
+- Don’t link to `/api/debug` or `/api/stats` from the site; use them only when debugging.
+- If KV usage grows (many devices on guestlist), increase the poll interval in `hooks/useGuests.ts` (e.g. 2.5s → 5s) or only poll when the tab is focused.
+- Keep the guest list and best-dressed links only where intended (e.g. party hub); no need to put them on the blog or gallery.
+
+---
+
+### Scalability plan (brief)
+
+1. **Blog / gallery (read-heavy)**  
+   - Content is static or SSG; images from R2 + CDN. Scale is largely limited by Cloudflare/Vercel free tiers.
+2. **Guest list / party (write + real-time)**  
+   - Single Vercel KV store; polling every 2.5s. For many concurrent door devices or very large lists, watch KV read/write usage and consider moving to a dedicated Redis or real-time backend if you outgrow KV.
+3. **Images**  
+   - Add albums via CLI; metadata in repo (JSON). If the number of albums or JSON size becomes unwieldy, consider moving album index to a small DB or R2-backed manifest; the current design is fine for many albums at personal scale.
+
+---
+
+### Cost appraisal — when to look at what
+
+| Area | Free tier / behaviour | ⚠️ When to worry | What to do |
+|------|------------------------|-------------------|------------|
+| **Vercel (app)** | Hobby: 100 GB bandwidth, limited serverless invocations & duration. | Bandwidth or invocation limits hit; build minutes exceeded. | Check Vercel dashboard Usage. Upgrade to Pro if I need more bandwidth or higher limits. |
+| **Vercel KV** | Free tier has read/write caps. | Many devices polling or lots of guest list updates; KV limits in dashboard. | Reduce poll interval for read-heavy cases, or move to paid KV / external Redis. |
+| **Cloudflare R2** | 10 GB storage, 1M Class B (e.g. list) ops/month free. Egress **$0** when using custom domain (Cloudflare proxy). | Storage or Class B ops exceed free tier. | Dashboard: R2 usage. Add more storage/ops or move rarely used albums to cold storage. |
+| **Cloudflare (CDN)** | Caching and proxy on `pics.*` are part of normal CF usage. | Only if you get rate limits or abuse alerts (unlikely at personal traffic). | Review CF analytics; adjust cache or security rules if needed. |
+
+**Summary:** For typical personal/blog + occasional party usage, stay on free tiers. Revisit when Vercel or KV usage spikes (e.g. many concurrent users on guest list) or when R2 storage/ops grow past the free bucket limits.
+
+---
+
+### Best-dressed abuse & protections
+
+| Risk | Mitigation |
+|------|------------|
+| **Vote stuffing** | Each vote consumes a one-time token (GET issues one, POST consumes it). Someone can still refresh the page and get a new token, so **one device can vote many times**. Acceptable for a low-stakes party; if you need strict one-vote-per-person, you’d add e.g. magic links or a cap per IP/session. |
+| **Fake names on leaderboard** | Server now validates that the voted name is in the guest list; arbitrary names are rejected. |
+| **Anyone wiping votes** | `DELETE /api/best-dressed` now requires the management password (header `X-Management-Password` or body `{ "password": "..." }`). Only the Manage UI (after unlock) can clear votes. Set `MANAGEMENT_PASSWORD` on Vercel if you use a different server-side secret. |
+
+---
+
 ## Customization
 
 ### Change the Management Password

@@ -174,6 +174,33 @@ export async function POST(request: NextRequest) {
     if (!name || typeof name !== 'string') {
       return NextResponse.json({ error: 'Name is required' }, { status: 400 });
     }
+
+    const trimmedName = name.trim();
+    if (!trimmedName) {
+      return NextResponse.json({ error: 'Name is required' }, { status: 400 });
+    }
+
+    // Only allow voting for real guests (prevents fake names on leaderboard)
+    const guests = await getGuests();
+    const guestNamesSet = new Set<string>();
+    guests.forEach(g => {
+      guestNamesSet.add(g.name);
+      g.plusOnes?.forEach(p => guestNamesSet.add(p.name));
+    });
+    if (!guestNamesSet.has(trimmedName)) {
+      const [votes, session] = await Promise.all([getVotes(), getSession()]);
+      const leaderboard = Object.entries(votes)
+        .map(([n, count]) => ({ name: n, count }))
+        .sort((a, b) => b.count - a.count)
+        .slice(0, 10);
+      return NextResponse.json({
+        success: false,
+        error: 'You can only vote for someone on the guest list.',
+        leaderboard,
+        totalVotes: Object.values(votes).reduce((a, b) => a + b, 0),
+        session,
+      }, { status: 400 });
+    }
     
     // Validate the vote token
     const tokenValid = await consumeToken(voteToken);
@@ -196,7 +223,7 @@ export async function POST(request: NextRequest) {
     
     // Token valid - record the vote
     const [votes, session] = await Promise.all([
-      addVote(name.trim()),
+      addVote(trimmedName),
       getSession(),
     ]);
     
@@ -218,9 +245,25 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// DELETE - wipe all votes and reset session (admin only)
-export async function DELETE() {
+// Server-side admin secret (optional override; default matches client MANAGEMENT_PASSWORD)
+const RESET_SECRET = process.env.MANAGEMENT_PASSWORD ?? 'party2020';
+
+// DELETE - wipe all votes and reset session (admin only; requires management password)
+export async function DELETE(request: NextRequest) {
   try {
+    let password = request.headers.get('X-Management-Password');
+    if (password == null) {
+      try {
+        const body = await request.json();
+        password = (body && typeof body === 'object' && 'password' in body) ? String(body.password) : undefined;
+      } catch {
+        password = undefined;
+      }
+    }
+    if (password !== RESET_SECRET) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
     const redis = getRedis();
     if (redis) {
       await redis.del(VOTES_KEY);

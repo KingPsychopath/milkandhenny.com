@@ -52,7 +52,7 @@ export default async function PhotoPage({ params }: Props) {
     photoIndex < album.photos.length - 1 ? album.photos[photoIndex + 1] : null;
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="photo-page-fade-in min-h-screen bg-background">
       {/* Nav */}
       <header className="max-w-4xl mx-auto px-6 pt-6 pb-4">
         <div className="flex items-center justify-between font-mono text-sm">

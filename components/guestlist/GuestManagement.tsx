@@ -181,7 +181,10 @@ export function GuestManagement({ guests, onGuestAdded, onGuestRemoved, onCSVImp
     setGamesLoading(true);
     setError(null);
     try {
-      const res = await fetch('/api/best-dressed', { method: 'DELETE' });
+      const res = await fetch('/api/best-dressed', {
+        method: 'DELETE',
+        headers: { 'X-Management-Password': MANAGEMENT_PASSWORD },
+      });
       if (res.ok) {
         setBestDressedLeaderboard([]);
         setBestDressedTotalVotes(0);
@@ -209,7 +212,10 @@ export function GuestManagement({ guests, onGuestAdded, onGuestRemoved, onCSVImp
       const guestData = await guestRes.json();
       
       // Clear best dressed votes
-      await fetch('/api/best-dressed', { method: 'DELETE' });
+      await fetch('/api/best-dressed', {
+        method: 'DELETE',
+        headers: { 'X-Management-Password': MANAGEMENT_PASSWORD },
+      });
       setBestDressedLeaderboard([]);
       setBestDressedTotalVotes(0);
       
