@@ -11,12 +11,30 @@ type AlbumGalleryProps = {
   photos: Photo[];
 };
 
+/** Fetch a blob directly from R2 (requires CORS configured on bucket) */
+async function fetchBlob(url: string): Promise<Blob> {
+  const res = await fetch(url, { mode: "cors" });
+  if (!res.ok) throw new Error(`Failed to fetch ${url}`);
+  return res.blob();
+}
+
+/** Trigger a browser download from a blob */
+function downloadBlob(blob: Blob, filename: string) {
+  const href = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = href;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(href);
+}
+
 /**
  * Full album gallery with masonry/single toggle, multi-select, and batch download.
  */
 export function AlbumGallery({ albumSlug, photos }: AlbumGalleryProps) {
   const [selectable, setSelectable] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [downloading, setDownloading] = useState(false);
 
   const toggleSelect = useCallback((photoId: string) => {
     setSelected((prev) => {
@@ -35,36 +53,36 @@ export function AlbumGallery({ albumSlug, photos }: AlbumGalleryProps) {
   }, []);
 
   const downloadSelected = useCallback(async () => {
-    if (selected.size === 0) return;
+    if (selected.size === 0 || downloading) return;
+    setDownloading(true);
 
-    if (selected.size === 1) {
-      const id = Array.from(selected)[0];
-      const url = getOriginalUrl(albumSlug, id);
-      const a = document.createElement("a");
-      a.href = `/api/download?url=${encodeURIComponent(url)}`;
-      a.download = `${id}.jpg`;
-      a.click();
-      return;
+    try {
+      if (selected.size === 1) {
+        const id = Array.from(selected)[0];
+        const blob = await fetchBlob(getOriginalUrl(albumSlug, id));
+        downloadBlob(blob, `${id}.jpg`);
+        return;
+      }
+
+      const JSZip = (await import("jszip")).default;
+      const zip = new JSZip();
+
+      /* Fetch all images in parallel — direct from R2, no proxy */
+      await Promise.all(
+        Array.from(selected).map(async (id) => {
+          const blob = await fetchBlob(getOriginalUrl(albumSlug, id));
+          zip.file(`${id}.jpg`, blob);
+        })
+      );
+
+      const content = await zip.generateAsync({ type: "blob" });
+      downloadBlob(content, `${albumSlug}-photos.zip`);
+    } catch (err) {
+      console.error("Download failed:", err);
+    } finally {
+      setDownloading(false);
     }
-
-    const JSZip = (await import("jszip")).default;
-    const zip = new JSZip();
-
-    const downloads = Array.from(selected).map(async (id) => {
-      const url = getOriginalUrl(albumSlug, id);
-      const res = await fetch(`/api/download?url=${encodeURIComponent(url)}`);
-      const blob = await res.blob();
-      zip.file(`${id}.jpg`, blob);
-    });
-
-    await Promise.all(downloads);
-    const content = await zip.generateAsync({ type: "blob" });
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(content);
-    a.download = `${albumSlug}-photos.zip`;
-    a.click();
-    URL.revokeObjectURL(a.href);
-  }, [selected, albumSlug]);
+  }, [selected, albumSlug, downloading]);
 
   return (
     <div>
@@ -80,9 +98,10 @@ export function AlbumGallery({ albumSlug, photos }: AlbumGalleryProps) {
           {selectable && selected.size > 0 && (
             <button
               onClick={downloadSelected}
-              className="font-mono text-[11px] text-amber-600 hover:text-amber-500 transition-colors tracking-wide"
+              disabled={downloading}
+              className="font-mono text-[11px] text-amber-600 hover:text-amber-500 transition-colors tracking-wide disabled:opacity-50"
             >
-              [ download {selected.size} ]
+              {downloading ? "[ zipping... ]" : `[ download ${selected.size} ]`}
             </button>
           )}
         </div>

@@ -73,6 +73,7 @@ export default async function PhotoPage({ params }: Props) {
         <PhotoViewer
           src={getFullUrl(albumSlug, photoId)}
           downloadUrl={getOriginalUrl(albumSlug, photoId)}
+          filename={`${photoId}.jpg`}
           width={photo.width}
           height={photo.height}
           prevHref={prevPhoto ? `/pics/${albumSlug}/${prevPhoto.id}` : undefined}
@@ -86,13 +87,9 @@ export default async function PhotoPage({ params }: Props) {
           <Link href={`/pics/${albumSlug}`} className="hover:text-foreground transition-colors">
             ← back to album
           </Link>
-          <a
-            href={getOriginalUrl(albumSlug, photoId)}
-            download
-            className="hover:text-foreground transition-colors"
-          >
-            download original ↓
-          </a>
+          <Link href={`/pics/${albumSlug}`} className="hover:text-foreground transition-colors">
+            view album →
+          </Link>
         </div>
       </footer>
     </div>

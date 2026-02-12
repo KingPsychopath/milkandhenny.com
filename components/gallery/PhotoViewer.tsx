@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useCallback } from "react";
+import { useEffect, useCallback, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 
 type PhotoViewerProps = {
   src: string;
   downloadUrl: string;
+  filename: string;
   width: number;
   height: number;
   prevHref?: string;
@@ -20,12 +21,14 @@ type PhotoViewerProps = {
 export function PhotoViewer({
   src,
   downloadUrl,
+  filename,
   width,
   height,
   prevHref,
   nextHref,
 }: PhotoViewerProps) {
   const router = useRouter();
+  const [saving, setSaving] = useState(false);
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
@@ -40,6 +43,26 @@ export function PhotoViewer({
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [handleKeyDown]);
+
+  /** Fetch blob directly from R2 and trigger download */
+  const handleDownload = useCallback(async () => {
+    if (saving) return;
+    setSaving(true);
+    try {
+      const res = await fetch(downloadUrl, { mode: "cors" });
+      const blob = await res.blob();
+      const href = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = href;
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(href);
+    } catch (err) {
+      console.error("Download failed:", err);
+    } finally {
+      setSaving(false);
+    }
+  }, [downloadUrl, filename, saving]);
 
   const isPortrait = height > width;
 
@@ -80,13 +103,13 @@ export function PhotoViewer({
             <span className="theme-faint">next →</span>
           )}
         </div>
-        <a
-          href={`/api/download?url=${encodeURIComponent(downloadUrl)}`}
-          download
-          className="hover:text-foreground transition-colors"
+        <button
+          onClick={handleDownload}
+          disabled={saving}
+          className="hover:text-foreground transition-colors disabled:opacity-50"
         >
-          download ↓
-        </a>
+          {saving ? "saving..." : "download ↓"}
+        </button>
       </div>
     </div>
   );

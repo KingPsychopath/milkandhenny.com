@@ -13,14 +13,14 @@ function getImageUrl(path: string): string {
   return `${publicUrl}/${path}`;
 }
 
-/** Get the thumbnail URL for a photo */
+/** Get the thumbnail URL for a photo (WebP for fast loading) */
 function getThumbUrl(album: string, photoId: string): string {
-  return getImageUrl(`albums/${album}/thumb/${photoId}.jpg`);
+  return getImageUrl(`albums/${album}/thumb/${photoId}.webp`);
 }
 
-/** Get the full-size viewing URL for a photo */
+/** Get the full-size viewing URL for a photo (WebP for fast loading) */
 function getFullUrl(album: string, photoId: string): string {
-  return getImageUrl(`albums/${album}/full/${photoId}.jpg`);
+  return getImageUrl(`albums/${album}/full/${photoId}.webp`);
 }
 
 /** Get the original (download) URL for a photo */

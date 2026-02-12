@@ -112,9 +112,9 @@ async function processPhoto(filePath: string): Promise<PhotoMeta> {
 
   console.log(`  Processing ${id} (${origWidth}x${origHeight})...`);
 
-  /* Generate sizes */
-  const thumb = await sharp(raw).resize(THUMB_WIDTH).jpeg({ quality: 80 }).toBuffer();
-  const full = await sharp(raw).resize(FULL_WIDTH).jpeg({ quality: 85 }).toBuffer();
+  /* Generate sizes — WebP for viewing (smaller), JPEG for downloads (universal) */
+  const thumb = await sharp(raw).resize(THUMB_WIDTH).webp({ quality: 80 }).toBuffer();
+  const full = await sharp(raw).resize(FULL_WIDTH).webp({ quality: 85 }).toBuffer();
   const original = ext === ".jpg" || ext === ".jpeg"
     ? raw
     : await sharp(raw).jpeg({ quality: 95 }).toBuffer();
@@ -122,8 +122,8 @@ async function processPhoto(filePath: string): Promise<PhotoMeta> {
   /* Upload */
   const prefix = `albums/${slug}`;
   await Promise.all([
-    uploadBuffer(`${prefix}/thumb/${id}.jpg`, thumb, "image/jpeg"),
-    uploadBuffer(`${prefix}/full/${id}.jpg`, full, "image/jpeg"),
+    uploadBuffer(`${prefix}/thumb/${id}.webp`, thumb, "image/webp"),
+    uploadBuffer(`${prefix}/full/${id}.webp`, full, "image/webp"),
     uploadBuffer(`${prefix}/original/${id}.jpg`, original, "image/jpeg"),
   ]);
 
