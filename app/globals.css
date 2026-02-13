@@ -494,6 +494,11 @@ button:active:not(:disabled):not(.lamp-toggle) {
   transition: width 0.1s linear;
 }
 
+[data-theme="dark"] .reading-progress-bar {
+  background: var(--prose-hashtag);
+  opacity: 0.85;
+}
+
 /* ─── Lamp toggle ─── */
 /* Desktop: top-right corner. Mobile: centred. Photo page: offset left of counter. */
 .lamp-toggle {
