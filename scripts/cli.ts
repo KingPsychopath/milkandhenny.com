@@ -89,6 +89,19 @@ function progress(msg: string) {
   log(`${dim("›")} ${msg}`);
 }
 
+/**
+ * Focal display for photo lists. Returns "" if no focal or center (default).
+ * tag: " focal: top" (dimmed) for log output; detail: " · focal: top" for choose().
+ */
+function formatFocalDisplay(
+  photo: { focalPoint?: string },
+  style: "tag" | "detail"
+): string {
+  const fp = photo.focalPoint;
+  if (!fp || fp === "center") return "";
+  return style === "tag" ? dim(` focal: ${fp}`) : ` · focal: ${fp}`;
+}
+
 /* ─── Validation ─── */
 
 /** Validate slug format: lowercase letters, numbers, hyphens only */
@@ -264,15 +277,10 @@ async function selectPhoto(slug: string): Promise<string | null> {
 
   const choice = await choose(
     `Photos in: ${album.title}`,
-    album.photos.map((p) => {
-      const fp = (p as { focalPoint?: string }).focalPoint;
-      const focalDetail =
-        fp && fp !== "center" ? ` · focal: ${fp}` : "";
-      return {
-        label: `${p.id}${p.id === album.cover ? yellow(" ★ cover") : ""}`,
-        detail: `${p.width} × ${p.height}${focalDetail}`,
-      };
-    })
+    album.photos.map((p) => ({
+      label: `${p.id}${p.id === album.cover ? yellow(" ★ cover") : ""}`,
+      detail: `${p.width} × ${p.height}${formatFocalDisplay(p, "detail")}`,
+    }))
   );
 
   if (choice <= 0) return null;
@@ -327,11 +335,8 @@ async function cmdAlbumsShow(slug: string) {
 
   for (const p of album.photos) {
     const coverTag = p.id === album.cover ? yellow(" ★") : "";
-    const fp = (p as { focalPoint?: string }).focalPoint;
-    const focalTag =
-      fp && fp !== "center" ? dim(` focal: ${fp}`) : "";
     log(
-      `  ${p.id.padEnd(maxId + 2)} ${dim(`${p.width} × ${p.height}`)}${coverTag}${focalTag}`
+      `  ${p.id.padEnd(maxId + 2)} ${dim(`${p.width} × ${p.height}`)}${coverTag}${formatFocalDisplay(p, "tag")}`
     );
   }
   console.log();
@@ -474,12 +479,9 @@ async function cmdPhotosList(slug: string) {
 
   for (const p of album.photos) {
     const coverTag = p.id === album.cover ? yellow(" ★ cover") : "";
-    const fp = (p as { focalPoint?: string }).focalPoint;
-    const focalTag =
-      fp && fp !== "center" ? dim(` focal: ${fp}`) : "";
     const keys = getPhotoKeys(slug, p.id);
     log(
-      `${cyan(p.id.padEnd(maxId + 2))} ${dim(`${p.width} × ${p.height}`)}${coverTag}${focalTag}`
+      `${cyan(p.id.padEnd(maxId + 2))} ${dim(`${p.width} × ${p.height}`)}${coverTag}${formatFocalDisplay(p, "tag")}`
     );
     for (const k of keys) {
       log(`  ${dim(k)}`);
