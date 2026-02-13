@@ -99,6 +99,7 @@ export type BlogPostSummary = {
   date: string;
   subtitle?: string;
   readingTime: number;
+  featured: boolean;
   searchText: string;
 };
 
@@ -109,6 +110,7 @@ function getBlogPostSummaries(): BlogPostSummary[] {
     date: post.date,
     subtitle: post.subtitle,
     readingTime: post.readingTime,
+    featured: post.featured ?? false,
     searchText: [
       post.title,
       post.subtitle ?? "",

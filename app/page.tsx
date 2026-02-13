@@ -78,7 +78,15 @@ export default function Home() {
                   className="block py-6 border-b theme-border-faint hover:theme-border-strong transition-colors"
                 >
                   <div className="flex items-baseline justify-between gap-4">
-                    <h2 className="font-serif text-xl sm:text-2xl text-foreground group-hover:opacity-70 transition-opacity leading-snug">
+                    <h2 className="font-serif text-xl sm:text-2xl text-foreground group-hover:opacity-70 transition-opacity leading-snug flex items-center gap-2">
+                      {post.featured && (
+                        <span
+                          className="text-[0.6em] text-[var(--prose-hashtag)] opacity-80"
+                          aria-label="Featured"
+                        >
+                          ●
+                        </span>
+                      )}
                       {post.title}
                     </h2>
                     <span className="font-mono text-xs theme-muted shrink-0 tabular-nums whitespace-nowrap">

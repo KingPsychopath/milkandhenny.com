@@ -76,6 +76,6 @@ I don't know yet. (Stop asking.)
 If you were there — thank you. If you weren't — wagwarn fi next time?.
 
 *— OA*
-*— _Father Stretch My Bandz_*
+*, _Father Stretch My Bandz_*
 
 [Milk & Henny — January 2026](/pics/milk-and-henny-jan-2026#masonry)

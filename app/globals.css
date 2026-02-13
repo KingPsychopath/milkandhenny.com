@@ -476,6 +476,16 @@ button:active:not(:disabled):not(.lamp-toggle) {
   100% { opacity: 0; }
 }
 
+/* ─── Search input ─── */
+/* Outline for focus (no layout shift). Border stays fixed so box doesn't shrink. */
+.search-input {
+  outline: none;
+}
+.search-input:focus {
+  outline: 1px solid var(--foreground);
+  outline-offset: 2px;
+}
+
 /* ─── Reading progress ─── */
 .reading-progress-track {
   position: fixed;
