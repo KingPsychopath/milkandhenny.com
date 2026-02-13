@@ -2,8 +2,10 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import type { Metadata } from "next";
 import { getPostBySlug, getAllSlugs } from "@/lib/blog";
+import { getAlbumBySlug } from "@/lib/albums";
 import { PostBody } from "./PostBody";
 import { ReadingProgress } from "@/components/ReadingProgress";
+import type { EmbeddedAlbum } from "@/components/blog/AlbumEmbed";
 
 type Props = {
   params: Promise<{ slug: string }>;
@@ -50,11 +52,62 @@ function formatDate(dateStr: string) {
   });
 }
 
+/**
+ * Extract album slugs from markdown links like [text](/pics/slug).
+ * Resolves each to an EmbeddedAlbum with preview data.
+ *
+ * Fully defensive — returns {} on any error so blog pages never break.
+ * To remove album embeds entirely: delete this function, the import,
+ * and the `albums` prop on PostBody.
+ */
+function resolveAlbumsFromContent(
+  content: string
+): Record<string, EmbeddedAlbum> {
+  try {
+    const albumLinkPattern = /\[.*?\]\(\/pics\/([a-z0-9-]+)\)/g;
+    const albums: Record<string, EmbeddedAlbum> = {};
+    let match: RegExpExecArray | null;
+
+    while ((match = albumLinkPattern.exec(content)) !== null) {
+      const albumSlug = match[1];
+      const href = `/pics/${albumSlug}`;
+
+      if (albums[href]) continue;
+
+      const album = getAlbumBySlug(albumSlug);
+      if (!album?.photos?.length) continue;
+
+      // Build preview: cover first, then up to 3 more unique photos
+      const previewIds = [album.cover];
+      for (const photo of album.photos) {
+        if (previewIds.length >= 4) break;
+        if (photo.id !== album.cover) previewIds.push(photo.id);
+      }
+
+      albums[href] = {
+        slug: album.slug,
+        title: album.title,
+        date: album.date,
+        cover: album.cover,
+        photoCount: album.photos.length,
+        previewIds,
+      };
+    }
+
+    return albums;
+  } catch {
+    // If anything goes wrong, blog still works — links render as normal <a> tags
+    return {};
+  }
+}
+
 export default async function BlogPostPage({ params }: Props) {
   const { slug } = await params;
   const post = getPostBySlug(slug);
 
   if (!post) notFound();
+
+  const albums = resolveAlbumsFromContent(post.content);
 
   return (
     <div className="min-h-screen bg-background">
@@ -100,7 +153,7 @@ export default async function BlogPostPage({ params }: Props) {
           )}
         </header>
 
-        <PostBody content={post.content} />
+        <PostBody content={post.content} albums={albums} />
       </article>
 
       {/* Footer */}

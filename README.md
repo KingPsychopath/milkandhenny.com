@@ -98,7 +98,10 @@ Album-based photo galleries served from Cloudflare R2.
 - Masonry grid with lazy-loaded thumbnails
 - Lightbox with keyboard/swipe navigation
 - Individual + batch ZIP download (direct from R2, no Vercel bandwidth)
+- **Blog embed cards**: standalone album links in blog posts (`[Title](/pics/slug)` on its own line) render as preview cards with thumbnails, title, date, and photo count — inline mentions stay as normal links
 - Managed via CLI: `pnpm cli albums upload`, `pnpm cli photos add`, etc.
+
+> **Staleness note**: Album embed cards in blog posts are resolved at build time (SSG). If you update an album (change cover, add photos) after the blog was deployed, the embed card shows stale data until the next `git commit` + Vercel rebuild. This is consistent with how all album data works — JSON manifests live in git, so any album change already requires a redeploy.
 
 ### How album data works (vs transfers)
 

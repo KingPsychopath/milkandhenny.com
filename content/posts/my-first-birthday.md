@@ -76,3 +76,15 @@ If you were there — thank you. If you weren't — wagwarn fi next time?.
 
 *— OA*
 *— _Father Stretch My Bandz_*
+
+[Milk & Henny — January 2026](/pics/milk-and-henny-jan-2026)
+
+![How I be looking when I hear some of these revelations because what were you actually thinking????](https://images.unsplash.com/photo-1533174072545-7a4b6ad7a6c3?w=800&q=80)
+
+> Some things you plan. Other things just happen to you — and those are the ones that matter most.
+
+---
+
+test
+
+---
