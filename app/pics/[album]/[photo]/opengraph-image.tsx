@@ -1,6 +1,6 @@
 import { ImageResponse } from "next/og";
 import { getAlbumBySlug, getAllAlbumSlugs } from "@/lib/albums";
-import { getOriginalUrl } from "@/lib/storage";
+import { getOgUrl } from "@/lib/storage";
 
 export const alt = "milk & henny";
 export const size = { width: 1200, height: 630 };
@@ -30,7 +30,7 @@ export default async function Image({ params }: Props) {
     return new ImageResponse(<div>Photo not found</div>, { ...size });
   }
 
-  const photoUrl = getOriginalUrl(albumSlug, photoId);
+  const photoUrl = getOgUrl(albumSlug, photoId);
 
   return new ImageResponse(
     (

@@ -20,6 +20,9 @@ import exifReader from "exif-reader";
 
 const THUMB_WIDTH = 600;
 const FULL_WIDTH = 1600;
+/** OG image dimensions — 1200×630 fills standard social cards */
+const OG_WIDTH = 1200;
+const OG_HEIGHT = 630;
 
 /** Image extensions Sharp can process */
 const PROCESSABLE_EXTENSIONS = /\.(jpe?g|png|webp|heic|tiff?)$/i;
@@ -109,6 +112,8 @@ type ProcessedImage = {
   full: ImageVariant;
   /** JPEG original (source converted to JPEG for consistent downloads) */
   original: ImageVariant;
+  /** JPEG at OG_WIDTH×OG_HEIGHT for Open Graph / social sharing */
+  og: ImageVariant;
   /** Original dimensions from Sharp metadata */
   width: number;
   height: number;
@@ -182,6 +187,11 @@ async function processImageVariants(
     ? raw
     : await sharp(raw).jpeg({ quality: 95 }).toBuffer();
 
+  const og = await sharp(raw)
+    .resize(OG_WIDTH, OG_HEIGHT, { fit: "cover" })
+    .jpeg({ quality: 80 })
+    .toBuffer();
+
   return {
     thumb: { buffer: thumb, contentType: "image/webp", ext: ".webp" },
     full: { buffer: full, contentType: "image/webp", ext: ".webp" },
@@ -190,10 +200,23 @@ async function processImageVariants(
       contentType: "image/jpeg",
       ext: isJpeg ? ext : ".jpg",
     },
+    og: { buffer: og, contentType: "image/jpeg", ext: ".jpg" },
     width,
     height,
     takenAt,
   };
+}
+
+/**
+ * Create OG-sized JPEG from a raw image buffer.
+ * Used by backfill when re-processing from original.
+ */
+async function processToOg(raw: Buffer): Promise<ImageVariant> {
+  const buffer = await sharp(raw)
+    .resize(OG_WIDTH, OG_HEIGHT, { fit: "cover" })
+    .jpeg({ quality: 80 })
+    .toBuffer();
+  return { buffer, contentType: "image/jpeg", ext: ".jpg" };
 }
 
 /**
@@ -276,6 +299,8 @@ async function mapConcurrent<T, R>(
 export {
   THUMB_WIDTH,
   FULL_WIDTH,
+  OG_WIDTH,
+  OG_HEIGHT,
   PROCESSABLE_EXTENSIONS,
   ANIMATED_EXTENSIONS,
   VIDEO_EXTENSIONS,
@@ -288,6 +313,7 @@ export {
   formatBytes,
   extractExifDate,
   processImageVariants,
+  processToOg,
   processGifThumb,
   processToWebP,
   mapConcurrent,

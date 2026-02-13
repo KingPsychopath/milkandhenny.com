@@ -9,12 +9,15 @@ import fs from "fs";
 import path from "path";
 import {
   uploadBuffer,
+  downloadBuffer,
   deleteObjects,
   listObjects,
+  headObject,
 } from "./r2-client";
 import {
   PROCESSABLE_EXTENSIONS,
   processImageVariants,
+  processToOg,
   mapConcurrent,
 } from "./media-processing";
 
@@ -69,6 +72,7 @@ type ProcessResult = {
   thumbSize: number;
   fullSize: number;
   originalSize: number;
+  ogSize: number;
 };
 
 /* ─── Sort helpers ─── */
@@ -171,12 +175,13 @@ async function processAndUploadPhoto(
     }...`
   );
 
-  /* Upload all 3 versions */
+  /* Upload all 4 versions */
   const prefix = `albums/${albumSlug}`;
   await Promise.all([
     uploadBuffer(`${prefix}/thumb/${id}.webp`, processed.thumb.buffer, processed.thumb.contentType),
     uploadBuffer(`${prefix}/full/${id}.webp`, processed.full.buffer, processed.full.contentType),
     uploadBuffer(`${prefix}/original/${id}.jpg`, processed.original.buffer, processed.original.contentType),
+    uploadBuffer(`${prefix}/og/${id}.jpg`, processed.og.buffer, processed.og.contentType),
   ]);
 
   onProgress?.(`Uploaded ${id}`);
@@ -191,6 +196,7 @@ async function processAndUploadPhoto(
     thumbSize: processed.thumb.buffer.byteLength,
     fullSize: processed.full.buffer.byteLength,
     originalSize: processed.original.buffer.byteLength,
+    ogSize: processed.og.buffer.byteLength,
   };
 }
 
@@ -359,6 +365,7 @@ async function deletePhoto(
     `${prefix}/thumb/${photoId}.webp`,
     `${prefix}/full/${photoId}.webp`,
     `${prefix}/original/${photoId}.jpg`,
+    `${prefix}/og/${photoId}.jpg`,
   ];
 
   onProgress?.(`Deleting ${photoId} from R2...`);
@@ -397,7 +404,50 @@ function getPhotoKeys(albumSlug: string, photoId: string): string[] {
     `${prefix}/thumb/${photoId}.webp`,
     `${prefix}/full/${photoId}.webp`,
     `${prefix}/original/${photoId}.jpg`,
+    `${prefix}/og/${photoId}.jpg`,
   ];
+}
+
+/** Backfill OG variants for existing albums. Downloads original from R2, processes to og, uploads. */
+async function backfillOgVariants(
+  onProgress?: (msg: string) => void
+): Promise<{ processed: number; skipped: number; failed: number }> {
+  const albums = listAlbums();
+  let processed = 0;
+  let skipped = 0;
+  let failed = 0;
+
+  for (const album of albums) {
+    const data = getAlbum(album.slug);
+    if (!data) continue;
+
+    onProgress?.(`Album: ${data.title} (${data.photos.length} photos)`);
+
+    for (const photo of data.photos) {
+      const ogKey = `albums/${data.slug}/og/${photo.id}.jpg`;
+      const originalKey = `albums/${data.slug}/original/${photo.id}.jpg`;
+
+      const { exists } = await headObject(ogKey);
+      if (exists) {
+        skipped++;
+        onProgress?.(`  Skip ${photo.id} (og exists)`);
+        continue;
+      }
+
+      try {
+        const raw = await downloadBuffer(originalKey);
+        const og = await processToOg(raw);
+        await uploadBuffer(ogKey, og.buffer, og.contentType);
+        processed++;
+        onProgress?.(`  ✓ ${photo.id} (${(og.buffer.byteLength / 1024).toFixed(1)} KB)`);
+      } catch (err) {
+        failed++;
+        onProgress?.(`  ✗ ${photo.id}: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    }
+  }
+
+  return { processed, skipped, failed };
 }
 
 export {
@@ -410,6 +460,7 @@ export {
   deletePhoto,
   setCover,
   getPhotoKeys,
+  backfillOgVariants,
 };
 
 export type {

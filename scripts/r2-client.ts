@@ -9,6 +9,7 @@ import fs from "fs";
 import path from "path";
 import {
   S3Client,
+  GetObjectCommand,
   ListObjectsV2Command,
   DeleteObjectCommand,
   DeleteObjectsCommand,
@@ -133,6 +134,25 @@ async function headObject(
   }
 }
 
+/** Download an object as a Buffer. Throws if not found. */
+async function downloadBuffer(key: string): Promise<Buffer> {
+  const { client, bucket } = getClient();
+
+  const res = await client.send(
+    new GetObjectCommand({ Bucket: bucket, Key: key })
+  );
+
+  if (!res.Body) {
+    throw new Error(`Object ${key} has no body`);
+  }
+
+  const chunks: Uint8Array[] = [];
+  for await (const chunk of res.Body as AsyncIterable<Uint8Array>) {
+    chunks.push(chunk);
+  }
+  return Buffer.concat(chunks);
+}
+
 /** Upload a buffer to the bucket. */
 async function uploadBuffer(
   key: string,
@@ -202,6 +222,7 @@ async function getBucketInfo(): Promise<BucketInfo> {
 export {
   listObjects,
   headObject,
+  downloadBuffer,
   uploadBuffer,
   deleteObject,
   deleteObjects,

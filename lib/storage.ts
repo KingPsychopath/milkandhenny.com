@@ -30,6 +30,11 @@ function getOriginalUrl(album: string, photoId: string): string {
   return getImageUrl(`albums/${album}/original/${photoId}.jpg`);
 }
 
+/** Get the OG-sized JPEG URL for Open Graph / social sharing */
+function getOgUrl(album: string, photoId: string): string {
+  return getImageUrl(`albums/${album}/og/${photoId}.jpg`);
+}
+
 /* ─── Blog image URLs ─── */
 
 /** Get the URL for a blog image (WebP, stored at blog/{slug}/{filename}) */
@@ -69,6 +74,7 @@ export {
   getThumbUrl,
   getFullUrl,
   getOriginalUrl,
+  getOgUrl,
   getBlogImageUrl,
   resolveImageSrc,
   getTransferThumbUrl,

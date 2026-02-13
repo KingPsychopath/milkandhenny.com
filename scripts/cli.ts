@@ -21,6 +21,7 @@ import {
   deletePhoto,
   setCover,
   getPhotoKeys,
+  backfillOgVariants,
 } from "./album-ops";
 import {
   listObjects,
@@ -376,6 +377,43 @@ async function cmdAlbumsUpdate(
   console.log();
 }
 
+async function cmdAlbumsBackfillOg(skipConfirm = false) {
+  heading("Backfill OG images");
+  log(dim("Downloads originals from R2, generates 1200×630 JPGs for social sharing."));
+  log(dim("Skips photos that already have og/ variant. Run after deploying OG support."));
+  console.log();
+
+  const albums = listAlbums();
+  if (albums.length === 0) {
+    log(dim("No albums found."));
+    console.log();
+    return;
+  }
+
+  const totalPhotos = albums.reduce((sum, a) => sum + a.photoCount, 0);
+  log(`${dim("Albums:")} ${albums.length}`);
+  log(`${dim("Photos:")} ${totalPhotos}`);
+  console.log();
+
+  if (!skipConfirm) {
+    const ok = await confirm("Proceed with backfill?");
+    if (!ok) {
+      log(dim("Cancelled."));
+      console.log();
+      return;
+    }
+  }
+
+  const result = await backfillOgVariants((msg) => progress(msg));
+
+  console.log();
+  log(green(`✓ Processed: ${result.processed}`));
+  if (result.skipped > 0) log(dim(`  Skipped (already exists): ${result.skipped}`));
+  if (result.failed > 0) log(red(`  Failed: ${result.failed}`));
+  log(dim("Next: run `pnpm build` — OG image generation will be faster."));
+  console.log();
+}
+
 async function cmdAlbumsDelete(slug: string) {
   const album = getAlbum(slug);
   if (!album) throw new Error(`Album "${slug}" not found.`);
@@ -383,7 +421,7 @@ async function cmdAlbumsDelete(slug: string) {
   heading(`Delete: ${album.title}`);
   log(`${dim("Photos:")} ${album.photos.length}`);
   log(
-    `${dim("R2 files:")} ~${album.photos.length * 3} (thumb + full + original per photo)`
+    `${dim("R2 files:")} ~${album.photos.length * 4} (thumb + full + original + og per photo)`
   );
   console.log();
 
@@ -900,6 +938,9 @@ function showHelp() {
     albums update ${dim("<slug>")} [options]            Update album metadata
       --title, --date, --description, --cover
     albums delete ${dim("<slug>")}                     Delete entire album + R2 files
+    albums backfill-og ${dim("[--yes]")}               Backfill OG images for existing albums
+      --yes            ${dim("Skip confirmation prompt")}
+      ${dim("Downloads originals from R2, generates 1200×630 JPGs, uploads to og/)")}
 
   ${bold("Photos")}
     photos list ${dim("<album>")}                      List photos with R2 keys
@@ -1148,6 +1189,7 @@ async function interactiveAlbums() {
       { label: "Upload new album", detail: "process images and upload to R2" },
       { label: "Update album metadata", detail: "change title, date, description" },
       { label: "Delete album", detail: "remove from R2 and JSON" },
+      { label: "Backfill OG images", detail: "generate og/ variants for existing albums" },
     ]);
 
     switch (choice) {
@@ -1181,6 +1223,10 @@ async function interactiveAlbums() {
         }
         break;
       }
+      case 6:
+        await safely(cmdAlbumsBackfillOg);
+        await pause();
+        break;
     }
   }
 }
@@ -1682,6 +1728,10 @@ async function direct() {
             const slug = args[2];
             if (!slug) throw new Error("Usage: pnpm cli albums delete <slug>");
             return cmdAlbumsDelete(slug);
+          }
+          case "backfill-og": {
+            const hasYes = args.includes("--yes");
+            return cmdAlbumsBackfillOg(hasYes);
           }
           default:
             throw new Error(`Unknown: albums ${subcommand ?? ""}. Run 'pnpm cli help'.`);
