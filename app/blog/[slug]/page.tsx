@@ -161,7 +161,7 @@ export default async function BlogPostPage({ params }: Props) {
       <footer className="border-t theme-border">
         <div className="max-w-2xl mx-auto px-6 py-8 flex items-center justify-between font-mono text-[11px] theme-muted tracking-wide">
           <Link
-            href="/"
+            href="/blog"
             className="hover:text-foreground transition-colors"
           >
             ← all posts

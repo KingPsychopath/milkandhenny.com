@@ -13,6 +13,8 @@ type PostFrontmatter = {
   date: string;
   subtitle?: string;
   image?: string;
+  /** Pin to top of homepage when true */
+  featured?: boolean;
 };
 
 /** A parsed blog post */
@@ -22,6 +24,18 @@ type Post = PostFrontmatter & {
   /** Estimated reading time in minutes */
   readingTime: number;
 };
+
+/** Plain-text excerpt for search (markdown stripped, ~500 chars) */
+function toSearchText(content: string, maxLen = 500): string {
+  return content
+    .replace(/^---[\s\S]*?---/, "")
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
+    .replace(/#[^\s]+/g, "")
+    .replace(/[*_`#\[\]()]/g, "")
+    .replace(/\n+/g, " ")
+    .trim()
+    .slice(0, maxLen);
+}
 
 /** Calculate estimated reading time from raw markdown content */
 function estimateReadingTime(content: string): number {
@@ -46,6 +60,7 @@ function getPostBySlug(slug: string): Post | null {
     date: frontmatter.date,
     subtitle: frontmatter.subtitle,
     image: frontmatter.image,
+    featured: frontmatter.featured ?? false,
     readingTime: estimateReadingTime(content),
   };
 }
@@ -68,6 +83,40 @@ function getAllPosts(): Post[] {
   );
 }
 
+/** Get up to N most recent posts. Featured first, then by date. */
+function getRecentPosts(limit: number): Post[] {
+  const all = getAllPosts();
+  const featured = all.filter((p) => p.featured);
+  const rest = all.filter((p) => !p.featured);
+  const merged = [...featured, ...rest];
+  return merged.slice(0, limit);
+}
+
+/** Minimal post data for blog index + search. Includes searchable text. */
+export type BlogPostSummary = {
+  slug: string;
+  title: string;
+  date: string;
+  subtitle?: string;
+  readingTime: number;
+  searchText: string;
+};
+
+function getBlogPostSummaries(): BlogPostSummary[] {
+  return getAllPosts().map((post) => ({
+    slug: post.slug,
+    title: post.title,
+    date: post.date,
+    subtitle: post.subtitle,
+    readingTime: post.readingTime,
+    searchText: [
+      post.title,
+      post.subtitle ?? "",
+      toSearchText(post.content),
+    ].join(" "),
+  }));
+}
+
 /** Get all slugs for static generation */
 function getAllSlugs(): string[] {
   if (!fs.existsSync(POSTS_DIR)) return [];
@@ -78,5 +127,5 @@ function getAllSlugs(): string[] {
     .map((f) => f.replace(/\.md$/, ""));
 }
 
-export { getPostBySlug, getAllPosts, getAllSlugs };
+export { getPostBySlug, getAllPosts, getAllSlugs, getRecentPosts, getBlogPostSummaries };
 export type { Post, PostFrontmatter };

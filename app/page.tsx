@@ -1,5 +1,7 @@
 import Link from "next/link";
-import { getAllPosts } from "@/lib/blog";
+import { getRecentPosts, getAllPosts } from "@/lib/blog";
+
+const RECENT_LIMIT = 5;
 
 /** Format a date string into a readable form like "7 Feb 2026" */
 function formatDate(dateStr: string) {
@@ -12,7 +14,8 @@ function formatDate(dateStr: string) {
 }
 
 export default function Home() {
-  const posts = getAllPosts();
+  const posts = getRecentPosts(RECENT_LIMIT);
+  const hasMore = getAllPosts().length > RECENT_LIMIT;
 
   return (
     <div className="min-h-screen bg-background">
@@ -35,6 +38,12 @@ export default function Home() {
             className="theme-muted hover:text-foreground transition-colors"
           >
             [pics]
+          </Link>
+          <Link
+            href="/blog"
+            className="theme-muted hover:text-foreground transition-colors"
+          >
+            [words]
           </Link>
           <Link
             href="/party"
@@ -83,8 +92,18 @@ export default function Home() {
                   )}
                 </Link>
               </article>
-            ))}
+            )            )}
           </div>
+        )}
+        {hasMore && (
+          <p className="pt-6">
+            <Link
+              href="/blog"
+              className="font-mono text-xs theme-muted hover:text-foreground transition-colors"
+            >
+              all posts →
+            </Link>
+          </p>
         )}
       </section>
 
@@ -99,6 +118,12 @@ export default function Home() {
                 className="hover:text-foreground transition-colors"
               >
                 rss
+              </Link>
+              <Link
+                href="/blog"
+                className="hover:text-foreground transition-colors"
+              >
+                words
               </Link>
               <Link
                 href="/party"
