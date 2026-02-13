@@ -278,7 +278,7 @@ export function TransferGallery({ transferId, files }: TransferGalleryProps) {
       {currentVisual && lightboxIndex !== null && (
         <div
           ref={lightboxRef}
-          className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center touch-pan-y"
+          className="fixed inset-0 z-50 bg-black/90 flex flex-col items-center justify-center touch-pan-y"
           onClick={closeLightbox}
         >
           <button
@@ -289,10 +289,10 @@ export function TransferGallery({ transferId, files }: TransferGalleryProps) {
             ✕
           </button>
 
-          <div className="max-w-5xl max-h-[85vh] w-full px-4" onClick={(e) => e.stopPropagation()}>
-            {/* Render based on kind */}
+          {/* Media — only the media itself stops propagation, not the surrounding area */}
+          <div className="flex items-center justify-center px-4" style={{ maxWidth: "80vw", maxHeight: "80vh" }}>
             {lightboxError ? (
-              <div className="flex flex-col items-center justify-center gap-4 py-20">
+              <div className="flex flex-col items-center justify-center gap-4 py-20" onClick={(e) => e.stopPropagation()}>
                 <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1" className="text-white/20" strokeLinecap="round" strokeLinejoin="round">
                   <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
                   <circle cx="8.5" cy="8.5" r="1.5" />
@@ -314,60 +314,64 @@ export function TransferGallery({ transferId, files }: TransferGalleryProps) {
                 src={getTransferFileUrl(transferId, currentVisual.filename)}
                 controls
                 autoPlay
-                className="w-full max-h-[80vh] mx-auto photo-page-fade-in"
+                className="max-w-full max-h-[80vh] photo-page-fade-in"
                 style={{ objectFit: "contain" }}
+                onClick={(e) => e.stopPropagation()}
                 onError={() => setLightboxError(true)}
               />
             ) : currentVisual.kind === "gif" ? (
-              // GIF: show full animated original
               // eslint-disable-next-line @next/next/no-img-element
               <img
                 src={getTransferFileUrl(transferId, currentVisual.filename)}
                 alt={currentVisual.filename}
-                className="w-full h-auto max-h-[80vh] object-contain mx-auto photo-page-fade-in"
+                className="max-w-full max-h-[80vh] object-contain photo-page-fade-in"
+                onClick={(e) => e.stopPropagation()}
                 onError={() => setLightboxError(true)}
               />
             ) : (
-              // Image: show full-size processed version
               // eslint-disable-next-line @next/next/no-img-element
               <img
                 src={getTransferFullUrl(transferId, currentVisual.id)}
                 alt={currentVisual.filename}
-                className="w-full h-auto max-h-[80vh] object-contain mx-auto photo-page-fade-in"
+                className="max-w-full max-h-[80vh] object-contain photo-page-fade-in"
+                onClick={(e) => e.stopPropagation()}
                 onError={() => setLightboxError(true)}
               />
             )}
+          </div>
 
-            {/* Controls */}
-            <div className="flex items-center justify-between mt-4 max-w-md mx-auto">
-              <div className="flex items-center gap-4 font-mono text-xs text-white/50">
-                {lightboxIndex > 0 ? (
-                  <button onClick={goPrev} className="hover:text-white transition-colors">
-                    ← prev
-                  </button>
-                ) : (
-                  <span className="text-white/20">← prev</span>
-                )}
-                {lightboxIndex < visualFiles.length - 1 ? (
-                  <button onClick={goNext} className="hover:text-white transition-colors">
-                    next →
-                  </button>
-                ) : (
-                  <span className="text-white/20">next →</span>
-                )}
-              </div>
-              <div className="flex items-center gap-4">
-                <span className="font-mono text-[11px] text-white/30">
-                  {lightboxIndex + 1} / {visualFiles.length}
-                </span>
-                <button
-                  onClick={() => downloadSingle(currentVisual)}
-                  disabled={savingSingle}
-                  className="font-mono text-xs text-white/50 hover:text-white transition-colors disabled:opacity-50"
-                >
-                  {savingSingle ? "saving..." : "download ↓"}
+          {/* Controls — stop propagation so clicking nav/download doesn't close */}
+          <div
+            className="flex items-center justify-between mt-4 max-w-md w-full px-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center gap-4 font-mono text-xs text-white/50">
+              {lightboxIndex > 0 ? (
+                <button onClick={goPrev} className="hover:text-white transition-colors">
+                  ← prev
                 </button>
-              </div>
+              ) : (
+                <span className="text-white/20">← prev</span>
+              )}
+              {lightboxIndex < visualFiles.length - 1 ? (
+                <button onClick={goNext} className="hover:text-white transition-colors">
+                  next →
+                </button>
+              ) : (
+                <span className="text-white/20">next →</span>
+              )}
+            </div>
+            <div className="flex items-center gap-4">
+              <span className="font-mono text-[11px] text-white/30">
+                {lightboxIndex + 1} / {visualFiles.length}
+              </span>
+              <button
+                onClick={() => downloadSingle(currentVisual)}
+                disabled={savingSingle}
+                className="font-mono text-xs text-white/50 hover:text-white transition-colors disabled:opacity-50"
+              >
+                {savingSingle ? "saving..." : "download ↓"}
+              </button>
             </div>
           </div>
         </div>
