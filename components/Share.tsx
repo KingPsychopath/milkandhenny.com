@@ -139,60 +139,26 @@ export function Share({ url, title = "", label = "Share", className = "" }: Shar
             className="absolute right-0 top-full mt-1 py-1.5 min-w-[10rem] bg-background border theme-border rounded-sm shadow-lg z-10"
             role="menu"
           >
-            <button
-              type="button"
-              role="menuitem"
-              onClick={() => {
-                handleCopy();
-                setDropdownOpen(false);
-              }}
-              className="block w-full text-left px-3 py-1.5 hover:bg-stone-100 dark:hover:bg-stone-800 transition-colors"
-            >
-              copy link
-            </button>
-            <a
-              href={shareUrls.twitter}
-              target="_blank"
-              rel="noopener noreferrer"
-              role="menuitem"
-              className="block w-full text-left px-3 py-1.5 hover:bg-stone-100 dark:hover:bg-stone-800 transition-colors"
-            >
-              X (Twitter)
-            </a>
-            <a
-              href={shareUrls.facebook}
-              target="_blank"
-              rel="noopener noreferrer"
-              role="menuitem"
-              className="block w-full text-left px-3 py-1.5 hover:bg-stone-100 dark:hover:bg-stone-800 transition-colors"
-            >
-              Facebook
-            </a>
-            <a
-              href={shareUrls.linkedin}
-              target="_blank"
-              rel="noopener noreferrer"
-              role="menuitem"
-              className="block w-full text-left px-3 py-1.5 hover:bg-stone-100 dark:hover:bg-stone-800 transition-colors"
-            >
-              LinkedIn
-            </a>
-            <a
-              href={shareUrls.whatsapp}
-              target="_blank"
-              rel="noopener noreferrer"
-              role="menuitem"
-              className="block w-full text-left px-3 py-1.5 hover:bg-stone-100 dark:hover:bg-stone-800 transition-colors"
-            >
-              WhatsApp
-            </a>
-            <a
-              href={shareUrls.email}
-              role="menuitem"
-              className="block w-full text-left px-3 py-1.5 hover:bg-stone-100 dark:hover:bg-stone-800 transition-colors"
-            >
-              Email
-            </a>
+            {[
+              { label: "X (Twitter)", action: () => window.open(shareUrls.twitter, "_blank", "noopener") },
+              { label: "Facebook", action: () => window.open(shareUrls.facebook, "_blank", "noopener") },
+              { label: "LinkedIn", action: () => window.open(shareUrls.linkedin, "_blank", "noopener") },
+              { label: "WhatsApp", action: () => window.open(shareUrls.whatsapp, "_blank", "noopener") },
+              { label: "Email", action: () => { window.location.href = shareUrls.email; } },
+            ].map((item) => (
+              <button
+                key={item.label}
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  item.action();
+                  setDropdownOpen(false);
+                }}
+                className="block w-full text-left px-3 py-1.5 hover:bg-stone-100 dark:hover:bg-stone-800 transition-colors"
+              >
+                {item.label}
+              </button>
+            ))}
           </div>
         )}
       </div>
