@@ -3,6 +3,7 @@ import Link from "next/link";
 import type { Metadata } from "next";
 import { getPostBySlug, getAllSlugs } from "@/lib/blog";
 import { getAlbumBySlug } from "@/lib/albums";
+import { focalPresetToObjectPosition } from "@/lib/focal";
 import { BASE_URL } from "@/lib/config";
 import { PostBody } from "./PostBody";
 import { ReadingProgress } from "@/components/ReadingProgress";
@@ -87,9 +88,13 @@ function resolveAlbumsFromContent(
         if (photo.id !== album.cover) previewIds.push(photo.id);
       }
 
-      const focalPoints: Record<string, import("@/lib/focal").FocalPreset> = {};
+      const focalPoints: Record<string, string> = {};
       for (const p of album.photos) {
-        if (p.focalPoint) focalPoints[p.id] = p.focalPoint;
+        if (p.focalPoint) {
+          focalPoints[p.id] = focalPresetToObjectPosition(p.focalPoint);
+        } else if (p.autoFocal) {
+          focalPoints[p.id] = `${p.autoFocal.x}% ${p.autoFocal.y}%`;
+        }
       }
 
       albums[href] = {

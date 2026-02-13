@@ -21,6 +21,7 @@ import {
   deletePhoto,
   setCover,
   setPhotoFocal,
+  resetPhotoFocal,
   getPhotoKeys,
   backfillOgVariants,
 } from "./album-ops";
@@ -29,6 +30,11 @@ import {
   resolveFocalPreset,
   FOCAL_SHORTHAND,
 } from "@/lib/focal";
+import {
+  compareStrategies,
+  DETECTION_STRATEGIES,
+  type DetectionStrategy,
+} from "./face-detect";
 import {
   listObjects,
   deleteObject,
@@ -90,16 +96,22 @@ function progress(msg: string) {
 }
 
 /**
- * Focal display for photo lists. Returns "" if no focal or center (default).
- * tag: " focal: top" (dimmed) for log output; detail: " · focal: top" for choose().
+ * Focal display for photo lists. Shows manual override or auto-detected face.
+ * Returns "" if no focal info at all (center default).
  */
 function formatFocalDisplay(
-  photo: { focalPoint?: string },
+  photo: { focalPoint?: string; autoFocal?: { x: number; y: number } },
   style: "tag" | "detail"
 ): string {
-  const fp = photo.focalPoint;
-  if (!fp || fp === "center") return "";
-  return style === "tag" ? dim(` focal: ${fp}`) : ` · focal: ${fp}`;
+  if (photo.focalPoint && photo.focalPoint !== "center") {
+    const label = `focal: ${photo.focalPoint}`;
+    return style === "tag" ? dim(` ${label}`) : ` · ${label}`;
+  }
+  if (photo.autoFocal) {
+    const label = `face: ${photo.autoFocal.x}%,${photo.autoFocal.y}%`;
+    return style === "tag" ? dim(` ${label}`) : ` · ${label}`;
+  }
+  return "";
 }
 
 /* ─── Validation ─── */
@@ -396,11 +408,11 @@ async function cmdAlbumsUpdate(
   console.log();
 }
 
-async function cmdAlbumsBackfillOg(skipConfirm = false, force = false) {
+async function cmdAlbumsBackfillOg(skipConfirm = false, force = false, strategy?: DetectionStrategy) {
   heading("Backfill OG images");
   log(dim("Downloads originals from R2, generates 1200×630 JPGs for social sharing."));
   log(dim(force ? "Regenerating all (--force)." : "Skips photos that already have og/ variant."));
-  log(dim("Respects focal points set via photos set-focal."));
+  log(dim(`Detection: ${strategy ?? "onnx (default)"}. Auto-detects faces for focal crop.`));
   console.log();
 
   const albums = listAlbums();
@@ -424,7 +436,7 @@ async function cmdAlbumsBackfillOg(skipConfirm = false, force = false) {
     }
   }
 
-  const result = await backfillOgVariants((msg) => progress(msg), { force });
+  const result = await backfillOgVariants((msg) => progress(msg), { force, strategy });
 
   console.log();
   log(green(`✓ Processed: ${result.processed}`));
@@ -572,6 +584,51 @@ async function cmdPhotosSetFocal(
   log(green(`✓ Focal set to "${preset}" — OG image regenerated.`));
   log(dim(`Album: ${album.title}`));
   log(dim("Applies to: OG images, album embed thumbnails."));
+  log(dim("Next: commit the JSON and deploy."));
+  console.log();
+}
+
+async function cmdPhotosCompareFocal(slug: string, photoId: string) {
+  heading(`Compare detection strategies: ${photoId}`);
+  const album = getAlbum(slug);
+  if (!album) throw new Error(`Album "${slug}" not found`);
+  if (!album.photos.some((p) => p.id === photoId)) {
+    throw new Error(`Photo "${photoId}" not found in album "${slug}"`);
+  }
+
+  progress("Downloading original from R2...");
+  const { downloadBuffer } = await import("./r2-client");
+  const raw = await downloadBuffer(`albums/${slug}/original/${photoId}.jpg`);
+
+  progress("Running all strategies...");
+  const results = await compareStrategies(raw);
+
+  console.log();
+  for (const [name, result] of Object.entries(results)) {
+    if (result) {
+      log(`  ${cyan(name.padEnd(8))} → focal (${result.x}%, ${result.y}%)`);
+    } else {
+      log(`  ${cyan(name.padEnd(8))} → ${dim("no detection")}`);
+    }
+  }
+  console.log();
+  log(dim("Use --strategy <name> with reset-focal to apply a specific one."));
+  console.log();
+}
+
+async function cmdPhotosResetFocal(slug: string, photoId?: string, strategy?: DetectionStrategy) {
+  heading(
+    photoId ? `Reset focal: ${photoId}` : `Reset focal: all photos in ${slug}`
+  );
+  if (strategy) progress(`Using ${strategy} detection strategy`);
+  const album = await resetPhotoFocal(slug, photoId, (msg) => progress(msg), strategy);
+  console.log();
+  log(
+    green(
+      `✓ Focal reset — ${photoId ? "1 photo" : `${album.photos.length} photos`} re-detected and OG images regenerated.`
+    )
+  );
+  log(dim("Manual overrides cleared. Auto-detected face positions applied."));
   log(dim("Next: commit the JSON and deploy."));
   console.log();
 }
@@ -985,9 +1042,15 @@ function showHelp() {
     photos add ${dim("<album>")} --dir ${dim("<path>")}          Add new photos to existing album
     photos delete ${dim("<album> <photoId>")}          Remove a photo from album + R2
     photos set-cover ${dim("<album> <photoId>")}       Set album cover photo
-    photos set-focal ${dim("<album> <photoId>")} --preset ${dim("<name>")}  Set crop focal point
-      ${dim("Presets: center(c), top(t), bottom(b), tl, tr, bl, br")}
-      ${dim("Regenerates OG image. Use for vertical portraits (face at top).")}
+    photos set-focal ${dim("<album> <photoId>")} --preset ${dim("<name>")}  Set crop focal point (manual)
+      ${dim("Presets: c, t, b, l, r, tl, tr, bl, br, mt, mb, ml, mr")}
+      ${dim("mt/mb/ml/mr = mid top/bottom/left/right (between edge and center)")}
+      ${dim("Overrides auto-detected face position. Regenerates OG image.")}
+    photos reset-focal ${dim("<album>")} ${dim("[photoId]")} ${dim("[--strategy onnx|sharp]")}
+      ${dim("Clears manual override, re-detects faces, regenerates OG images.")}
+      ${dim("Omit photoId to reset all photos in the album.")}
+    photos compare-focal ${dim("<album> <photoId>")}    Compare detection strategies
+      ${dim("Runs all strategies on a photo and shows the results side by side.")}
 
   ${bold("Transfers")} ${dim("(private, self-destructing file shares)")}
     transfers list                           List active transfers + time left
@@ -1264,12 +1327,23 @@ async function interactiveAlbums() {
         }
         break;
       }
-      case 6:
-        await safely(cmdAlbumsBackfillOg);
+      case 6: {
+        const strategy = await selectStrategy();
+        await safely(() => cmdAlbumsBackfillOg(false, true, strategy));
         await pause();
         break;
+      }
     }
   }
+}
+
+/** Prompt for detection strategy (onnx or sharp) */
+async function selectStrategy(): Promise<DetectionStrategy> {
+  const choice = await choose("Detection strategy", [
+    { label: "onnx", detail: "UltraFace neural network — true face detection (default)" },
+    { label: "sharp", detail: "Sharp attention saliency — skin tones + luminance, no model" },
+  ]);
+  return choice <= 0 ? "onnx" : (["onnx", "sharp"] as const)[choice - 1];
 }
 
 async function interactivePhotos() {
@@ -1279,7 +1353,9 @@ async function interactivePhotos() {
       { label: "Add photos to album", detail: "upload from a folder" },
       { label: "Delete a photo", detail: "remove from R2 and JSON" },
       { label: "Set cover photo", detail: "change album thumbnail" },
-      { label: "Set focal point", detail: "crop position for OG + embeds (e.g. top for portraits)" },
+      { label: "Set focal point", detail: "manual crop position for OG + embeds" },
+      { label: "Reset focal point", detail: "clear manual, re-detect faces, regen OG" },
+      { label: "Compare strategies", detail: "run onnx + sharp on a photo side by side" },
     ]);
 
     switch (choice) {
@@ -1325,18 +1401,50 @@ async function interactivePhotos() {
           "Focal point (where to center the crop)",
           [
             { label: "Center", detail: "default, good for most landscape shots" },
-            { label: "Top", detail: "vertical portraits — face at top" },
-            { label: "Bottom", detail: "subject at bottom" },
-            { label: "Top left", detail: "subject in top-left" },
-            { label: "Top right", detail: "subject in top-right" },
-            { label: "Bottom left", detail: "subject in bottom-left" },
-            { label: "Bottom right", detail: "subject in bottom-right" },
+            { label: "Top", detail: "face at top edge" },
+            { label: "Bottom", detail: "subject at bottom edge" },
+            { label: "Left", detail: "subject at left edge" },
+            { label: "Right", detail: "subject at right edge" },
+            { label: "Top left", detail: "subject in top-left corner" },
+            { label: "Top right", detail: "subject in top-right corner" },
+            { label: "Bottom left", detail: "subject in bottom-left corner" },
+            { label: "Bottom right", detail: "subject in bottom-right corner" },
+            { label: "Mid top", detail: "between top and center — upper third" },
+            { label: "Mid bottom", detail: "between bottom and center — lower third" },
+            { label: "Mid left", detail: "between left and center — left third" },
+            { label: "Mid right", detail: "between right and center — right third" },
           ]
         );
         if (presetChoice <= 0) break;
 
         const preset = FOCAL_PRESETS[presetChoice - 1];
         await safely(() => cmdPhotosSetFocal(slug, photoId, preset));
+        await pause();
+        break;
+      }
+      case 6: {
+        const slug = await selectAlbum();
+        if (!slug) break;
+        const resetScope = await choose("Reset scope", [
+          { label: "All photos in album", detail: "re-detect + regen OG for every photo" },
+          { label: "Single photo", detail: "pick one photo to reset" },
+        ]);
+        if (resetScope <= 0) break;
+
+        const photoId = resetScope === 2 ? (await selectPhoto(slug)) ?? undefined : undefined;
+        if (resetScope === 2 && !photoId) break;
+
+        const strategy = await selectStrategy();
+        await safely(() => cmdPhotosResetFocal(slug, photoId, strategy));
+        await pause();
+        break;
+      }
+      case 7: {
+        const slug = await selectAlbum();
+        if (!slug) break;
+        const photoId = await selectPhoto(slug);
+        if (!photoId) break;
+        await safely(() => cmdPhotosCompareFocal(slug, photoId));
         await pause();
         break;
       }
@@ -1799,7 +1907,11 @@ async function direct() {
           case "backfill-og": {
             const hasYes = args.includes("--yes");
             const hasForce = args.includes("--force");
-            return cmdAlbumsBackfillOg(hasYes, hasForce);
+            const strategyArg = getArg("strategy") as DetectionStrategy | undefined;
+            if (strategyArg && !DETECTION_STRATEGIES.includes(strategyArg)) {
+              throw new Error(`Invalid strategy. Use: ${DETECTION_STRATEGIES.join(", ")}`);
+            }
+            return cmdAlbumsBackfillOg(hasYes, hasForce, strategyArg);
           }
           default:
             throw new Error(`Unknown: albums ${subcommand ?? ""}. Run 'pnpm cli help'.`);
@@ -1836,7 +1948,7 @@ async function direct() {
             const presetArg = getArg("preset");
             if (!slug || !photoId || !presetArg) {
               throw new Error(
-                "Usage: pnpm cli photos set-focal <album-slug> <photo-id> --preset <c|t|b|tl|tr|bl|br|center|top|...>"
+                "Usage: pnpm cli photos set-focal <album-slug> <photo-id> --preset <c|t|b|l|r|tl|tr|bl|br|mt|mb|ml|mr>"
               );
             }
             const preset = resolveFocalPreset(presetArg);
@@ -1846,6 +1958,22 @@ async function direct() {
               );
             }
             return cmdPhotosSetFocal(slug, photoId, preset);
+          }
+          case "reset-focal": {
+            const slug = args[2];
+            if (!slug) throw new Error("Usage: pnpm cli photos reset-focal <album-slug> [photo-id] [--strategy onnx|sharp]");
+            const photoId = args[3]; // optional
+            const strategyArg = getArg("strategy") as DetectionStrategy | undefined;
+            if (strategyArg && !DETECTION_STRATEGIES.includes(strategyArg)) {
+              throw new Error(`Invalid strategy. Use: ${DETECTION_STRATEGIES.join(", ")}`);
+            }
+            return cmdPhotosResetFocal(slug, photoId, strategyArg);
+          }
+          case "compare-focal": {
+            const slug = args[2];
+            const photoId = args[3];
+            if (!slug || !photoId) throw new Error("Usage: pnpm cli photos compare-focal <album-slug> <photo-id>");
+            return cmdPhotosCompareFocal(slug, photoId);
           }
           default:
             throw new Error(`Unknown: photos ${subcommand ?? ""}. Run 'pnpm cli help'.`);

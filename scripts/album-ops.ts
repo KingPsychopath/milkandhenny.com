@@ -21,7 +21,12 @@ import {
   mapConcurrent,
   type OgOverlay,
 } from "./media-processing";
-import { type FocalPreset, isValidFocalPreset } from "../lib/focal";
+import {
+  type FocalPreset,
+  isValidFocalPreset,
+  focalPresetToPercent,
+} from "../lib/focal";
+import { detectFocal, type DetectionStrategy } from "./face-detect";
 
 /* ─── Constants ─── */
 
@@ -35,8 +40,10 @@ type PhotoMeta = {
   width: number;
   height: number;
   takenAt?: string; // ISO date from EXIF DateTimeOriginal
-  /** Crop focal point for og/cover: center, top, bottom, top left, etc. */
+  /** Manual crop focal point override (preset name). Takes priority over autoFocal. */
   focalPoint?: FocalPreset;
+  /** Auto-detected face center as { x, y } percentages. Used when no manual focalPoint. */
+  autoFocal?: { x: number; y: number };
 };
 
 type AlbumData = {
@@ -94,6 +101,24 @@ function sortByDate(photos: { photo: PhotoMeta; [k: string]: unknown }[]) {
     // Neither has a date → sort by filename (id)
     return a.photo.id.localeCompare(b.photo.id);
   });
+}
+
+/* ─── Focal resolution ─── */
+
+/**
+ * Resolve the effective focal point for a photo.
+ * Priority: manual focalPoint preset → auto-detected face → center (50, 50).
+ */
+function resolveEffectiveFocal(
+  photo: PhotoMeta
+): { x: number; y: number } {
+  if (photo.focalPoint && isValidFocalPreset(photo.focalPoint)) {
+    return focalPresetToPercent(photo.focalPoint);
+  }
+  if (photo.autoFocal) {
+    return photo.autoFocal;
+  }
+  return { x: 50, y: 50 };
 }
 
 /* ─── JSON helpers ─── */
@@ -170,14 +195,18 @@ async function processAndUploadPhoto(
   const id = path.basename(filePath, ext);
   const raw = fs.readFileSync(filePath);
 
-  const processed = await processImageVariants(raw, ext, undefined, ogOverlay);
+  // Auto-detect focal point (face or saliency)
+  const autoFocal = await detectFocal(raw).catch(() => null);
 
+  const processed = await processImageVariants(raw, ext, autoFocal ?? undefined, ogOverlay);
+
+  const faceTag = autoFocal ? ` 🎯 face(${autoFocal.x}%,${autoFocal.y}%)` : "";
   onProgress?.(
     `Processing ${id} (${processed.width}×${processed.height})${
       processed.takenAt
         ? ` taken ${new Date(processed.takenAt).toLocaleDateString()}`
         : ""
-    }...`
+    }${faceTag}...`
   );
 
   /* Upload all 4 versions */
@@ -197,6 +226,7 @@ async function processAndUploadPhoto(
       width: processed.width,
       height: processed.height,
       ...(processed.takenAt ? { takenAt: processed.takenAt } : {}),
+      ...(autoFocal ? { autoFocal } : {}),
     },
     thumbSize: processed.thumb.buffer.byteLength,
     fullSize: processed.full.buffer.byteLength,
@@ -420,7 +450,7 @@ function getPhotoKeys(albumSlug: string, photoId: string): string[] {
 /** Backfill OG variants for existing albums. Downloads original from R2, processes to og, uploads. */
 async function backfillOgVariants(
   onProgress?: (msg: string) => void,
-  options?: { force?: boolean }
+  options?: { force?: boolean; strategy?: DetectionStrategy }
 ): Promise<{ processed: number; skipped: number; failed: number }> {
   const albums = listAlbums();
   let processed = 0;
@@ -433,6 +463,7 @@ async function backfillOgVariants(
     if (!data) continue;
 
     onProgress?.(`Album: ${data.title} (${data.photos.length} photos)`);
+    let needsJsonWrite = false;
 
     for (const photo of data.photos) {
       const ogKey = `albums/${data.slug}/og/${photo.id}.jpg`;
@@ -445,15 +476,22 @@ async function backfillOgVariants(
         continue;
       }
 
-      const focalPosition =
-        photo.focalPoint && isValidFocalPreset(photo.focalPoint)
-          ? photo.focalPoint
-          : undefined;
-
       try {
         const raw = await downloadBuffer(originalKey);
+
+        // Re-detect face if no autoFocal yet (or force)
+        if (!photo.autoFocal || force) {
+          const detected = await detectFocal(raw, options?.strategy).catch(() => null);
+          if (detected) {
+            photo.autoFocal = detected;
+            needsJsonWrite = true;
+            onProgress?.(`  🎯 face detected at (${detected.x}%, ${detected.y}%)`);
+          }
+        }
+
+        const focal = resolveEffectiveFocal(photo);
         const overlay: OgOverlay = { title: data.title, photoId: photo.id };
-        const og = await processToOg(raw, focalPosition, overlay);
+        const og = await processToOg(raw, focal, overlay);
         await uploadBuffer(ogKey, og.buffer, og.contentType);
         processed++;
         onProgress?.(`  ✓ ${photo.id} (${(og.buffer.byteLength / 1024).toFixed(1)} KB)`);
@@ -461,6 +499,11 @@ async function backfillOgVariants(
         failed++;
         onProgress?.(`  ✗ ${photo.id}: ${err instanceof Error ? err.message : String(err)}`);
       }
+    }
+
+    if (needsJsonWrite) {
+      writeAlbum(data.slug, data);
+      onProgress?.(`  📝 saved auto-focal data`);
     }
   }
 
@@ -494,11 +537,65 @@ async function setPhotoFocal(
   const ogKey = `albums/${slug}/og/${photoId}.jpg`;
 
   const raw = await downloadBuffer(originalKey);
+  const focal = resolveEffectiveFocal(photo);
   const overlay: OgOverlay = { title: data.title, photoId };
-  const og = await processToOg(raw, preset, overlay);
+  const og = await processToOg(raw, focal, overlay);
   await uploadBuffer(ogKey, og.buffer, og.contentType);
   onProgress?.(`✓ OG updated (${(og.buffer.byteLength / 1024).toFixed(1)} KB)`);
 
+  return data;
+}
+
+/**
+ * Reset focal point for a photo (or all photos in an album).
+ * Clears manual focalPoint, re-detects faces, regenerates OG images.
+ */
+async function resetPhotoFocal(
+  slug: string,
+  photoId?: string,
+  onProgress?: (msg: string) => void,
+  strategy?: DetectionStrategy
+): Promise<AlbumData> {
+  const data = readAlbum(slug);
+  if (!data) throw new Error(`Album "${slug}" not found`);
+
+  const photos = photoId
+    ? data.photos.filter((p) => p.id === photoId)
+    : data.photos;
+
+  if (photoId && photos.length === 0) {
+    throw new Error(`Photo "${photoId}" not found in album "${slug}"`);
+  }
+
+  onProgress?.(`Resetting ${photos.length} photo(s) in ${data.title}...`);
+
+  for (const photo of photos) {
+    // Clear manual override
+    delete photo.focalPoint;
+
+    const originalKey = `albums/${slug}/original/${photo.id}.jpg`;
+    const ogKey = `albums/${slug}/og/${photo.id}.jpg`;
+
+    const raw = await downloadBuffer(originalKey);
+
+    // Re-detect face
+    const detected = await detectFocal(raw, strategy).catch(() => null);
+    photo.autoFocal = detected ?? undefined;
+    onProgress?.(
+      detected
+        ? `  🎯 ${photo.id}: face at (${detected.x}%, ${detected.y}%)`
+        : `  ${photo.id}: no face detected, using center`
+    );
+
+    // Regenerate OG
+    const focal = resolveEffectiveFocal(photo);
+    const overlay: OgOverlay = { title: data.title, photoId: photo.id };
+    const og = await processToOg(raw, focal, overlay);
+    await uploadBuffer(ogKey, og.buffer, og.contentType);
+    onProgress?.(`  ✓ ${photo.id} OG updated (${(og.buffer.byteLength / 1024).toFixed(1)} KB)`);
+  }
+
+  writeAlbum(slug, data);
   return data;
 }
 
@@ -512,6 +609,7 @@ export {
   deletePhoto,
   setCover,
   setPhotoFocal,
+  resetPhotoFocal,
   getPhotoKeys,
   backfillOgVariants,
 };

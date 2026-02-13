@@ -56,7 +56,7 @@ Run `pnpm cli transfers info <id>` — it shows the full admin URL including the
 
 | Type | In the gallery | Processing |
 |------|---------------|------------|
-| Images (JPEG, PNG, WebP, HEIC, TIFF) | Masonry grid + lightbox | Thumb (600px) + full (1600px) + original + og (1200×630) |
+| Images (JPEG, PNG, WebP, HEIC, TIFF) | Masonry grid + lightbox | Thumb (600px) + full (1600px) + original + og (1200×630 with face detection + text overlay) |
 | GIFs | Grid card + animated lightbox | Static first-frame thumb + original |
 | Videos (MP4, MOV, WebM, AVI, MKV) | Play icon card + video player lightbox | Uploaded as-is |
 | Audio (MP3, WAV, FLAC, etc.) | Inline audio player card | Uploaded as-is |
@@ -106,52 +106,88 @@ Album-based photo galleries served from Cloudflare R2.
 
 ### OG images at scale
 
-Album and photo pages have Open Graph images for social sharing. Source images are pre-processed to **1200×630 JPG** (og variant) and stored in R2 at `albums/{slug}/og/{photoId}.jpg`. At build time, Next.js fetches these og URLs (smaller than originals) and composites the OG PNG — no heavy originals.
+Album and photo pages have Open Graph images for social sharing. Source images are pre-processed to **1200×630 JPG** (og variant) with a **text overlay** (album title, photo ID, brand) burned in via SVG compositing, then stored in R2 at `albums/{slug}/og/{photoId}.jpg`. The `opengraph-image.tsx` routes fetch and serve these pre-built JPGs directly — no `ImageResponse`, no runtime PNG generation.
+
+**Pipeline (upload → OG):**
+
+1. **Face detection** — ONNX UltraFace (or Sharp saliency) finds faces, computes area-weighted centroid
+2. **Crop** — Sharp crops the original to 1200×630, anchored on the detected focal point
+3. **Text overlay** — SVG with gradient + brand text composited onto the cropped image
+4. **Compress** — JPEG quality 70 with mozjpeg (~80–150 KB per image)
+5. **Upload** — Stored in R2 at `albums/{slug}/og/{photoId}.jpg`
 
 **Flow:**
 
-- **New uploads:** `pnpm cli albums upload` and `photos add` automatically create thumb, full, original, and og variants.
+- **New uploads:** `pnpm cli albums upload` and `photos add` automatically run face detection and create thumb, full, original, and og variants.
 - **Existing albums:** Run backfill once: `pnpm cli albums backfill-og` (or `--yes` to skip confirmation).
 
 ```bash
 pnpm cli albums backfill-og --yes   # Run before first deploy after adding OG support
 ```
 
-Backfill skips photos that already have og variants. Re-run safely after adding new albums.
+Backfill skips photos that already have og variants. Use `--force` to regenerate all.
 
-**Vercel hobby limits:** OG images are generated at **build time** and served as static assets. Zero runtime serverless invocations — no impact on your hobby function/bandwidth limits. Build time increases slightly (one R2 fetch per album/photo), but that's a one-time cost per deploy.
+**Vercel hobby limits:** OG images are pre-built JPGs served from R2 — zero runtime serverless invocations, no `ImageResponse` overhead. Build time fetches the og URL per album/photo page (one R2 GET each), but that's a one-time cost per deploy.
 
-**Focal points:** OG images crop to 1200×630. The default crop centers on the image, which works for most landscape shots. For vertical portraits where the subject's face is near the top, center cropping can cut them off. Set a focal point to control where the crop anchors:
+**Focal points & face detection:** OG images crop to 1200×630. By default, every photo is run through **automatic face detection** during upload — the detected focal point is stored as `autoFocal` in the album JSON and used for cropping. For group photos, the focal point is the **area-weighted centroid** of all detected faces, so the crop naturally centers on the group while biasing toward whoever is closest to the camera.
+
+Two detection strategies are available (swappable via CLI):
+
+| Strategy | How it works | Best for |
+|----------|-------------|----------|
+| `onnx` (default) | UltraFace 320 neural network via ONNX Runtime (~1.2 MB model). True face detection with bounding boxes. | Portraits, group photos — any image with faces |
+| `sharp` | Sharp's attention-based saliency (libvips). Detects skin tones, luminance, saturation. No ML model. | Scenes without faces, food, architecture |
+
+You can also **manually override** with a preset — manual always takes priority over auto-detected:
 
 ```bash
-pnpm cli photos set-focal <album> <photoId> --preset t   # "top" — keeps the top of the image
-pnpm cli photos set-focal <album> <photoId> --preset c   # "center" — default, reset to normal
+pnpm cli photos set-focal <album> <photoId> --preset t    # manual override: "top"
+pnpm cli photos set-focal <album> <photoId> --preset c    # reset to "center"
 ```
 
 **Presets** (full name or shorthand):
 
-| Shorthand | Full name | When to use |
-|-----------|-----------|-------------|
-| `c` | `center` | Default — most landscape shots |
-| `t` | `top` | Vertical portraits — face at top |
-| `b` | `bottom` | Subject at bottom of frame |
-| `tl` | `top left` | Subject in top-left corner |
-| `tr` | `top right` | Subject in top-right corner |
-| `bl` | `bottom left` | Subject in bottom-left corner |
-| `br` | `bottom right` | Subject in bottom-right corner |
+| Shorthand | Full name | Position (x%, y%) | When to use |
+|-----------|-----------|-------------------|-------------|
+| `c` | `center` | 50, 50 | Default — most landscape shots |
+| `t` | `top` | 50, 0 | Face at top edge |
+| `b` | `bottom` | 50, 100 | Subject at bottom of frame |
+| `l` | `left` | 0, 50 | Subject at left edge |
+| `r` | `right` | 100, 50 | Subject at right edge |
+| `tl` | `top left` | 0, 0 | Subject in top-left corner |
+| `tr` | `top right` | 100, 0 | Subject in top-right corner |
+| `bl` | `bottom left` | 0, 100 | Subject in bottom-left corner |
+| `br` | `bottom right` | 100, 100 | Subject in bottom-right corner |
+| `mt` | `mid top` | 50, 25 | Between top and center — upper third |
+| `mb` | `mid bottom` | 50, 75 | Between bottom and center — lower third |
+| `ml` | `mid left` | 25, 50 | Between left and center — left third |
+| `mr` | `mid right` | 75, 50 | Between right and center — right third |
 
-**What happens when you set a focal point:**
-1. Updates `focalPoint` in the album JSON (`content/albums/{slug}.json`)
-2. Downloads the original from R2, re-crops to 1200×630 using the new position, uploads the new og variant
-3. Album embed thumbnails in blog posts use the focal point as CSS `object-position`
+**Focal point priority:** manual preset (`focalPoint`) > auto-detected (`autoFocal`) > center (50%, 50%).
 
-**When to change it:** Only when the default center crop hides the subject. Most photos don't need it. Use `photos list <album>` to see which photos have focal points set.
-
-**Batch regen after editing JSON manually:** If you edit `focalPoint` values in the JSON by hand, regen all OG images with:
+**Reset & re-detect faces:**
 
 ```bash
-pnpm cli albums backfill-og --yes --force   # Regenerates all, respects focal points
+pnpm cli photos reset-focal <album> [photoId]              # Clear manual, re-detect, regen OG
+pnpm cli photos reset-focal <album> --strategy sharp        # Use sharp saliency instead of onnx
+pnpm cli photos compare-focal <album> <photoId>             # Run both strategies, compare results
 ```
+
+**Batch regen all OG images:**
+
+```bash
+pnpm cli albums backfill-og --yes --force                   # Regen all with default (onnx) strategy
+pnpm cli albums backfill-og --yes --force --strategy sharp  # Regen all with sharp strategy
+```
+
+All of the above are also available in the **interactive CLI** (`pnpm cli` → Photos / Albums).
+
+**What happens when you set a focal point:**
+1. Updates `focalPoint` (manual) or `autoFocal` (detected) in the album JSON (`content/albums/{slug}.json`)
+2. Downloads the original from R2, re-crops to 1200×630 using the resolved position, uploads the new og variant
+3. Album embed thumbnails in blog posts use the focal point as CSS `object-position`
+
+**When to manually override:** Only when auto-detection gets it wrong. Most photos with faces won't need it. Use `photos list <album>` to see focal points (manual and auto) for each photo.
 
 ### How album data works (vs transfers)
 
@@ -246,6 +282,7 @@ Vercel auto-injects `KV_URL`, `REDIS_URL`, `KV_REST_API_READ_ONLY_TOKEN` from it
 | File storage | Cloudflare R2 |
 | CDN (images) | Cloudflare (custom domain, zero egress) |
 | CDN (pages) | Vercel Edge Network |
+| Face detection | ONNX Runtime + UltraFace 320 (~1.2 MB model) |
 | CLI | `tsx` scripts with interactive prompts |
 
 ### Hosting & routing

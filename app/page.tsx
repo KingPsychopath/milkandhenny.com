@@ -77,7 +77,7 @@ export default function Home() {
                   href={`/blog/${post.slug}`}
                   className="block py-6 border-b theme-border-faint hover:theme-border-strong transition-colors"
                 >
-                  <div className="flex items-baseline justify-between gap-4">
+                  <div className="flex flex-col sm:flex-row sm:items-baseline sm:justify-between gap-1 sm:gap-4">
                     <h2 className="font-serif text-xl sm:text-2xl text-foreground group-hover:opacity-70 transition-opacity leading-snug flex items-center gap-2">
                       {post.featured && (
                         <span

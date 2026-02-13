@@ -24,11 +24,8 @@ const FULL_WIDTH = 1600;
 const OG_WIDTH = 1200;
 const OG_HEIGHT = 630;
 
-import {
-  type FocalPreset,
-  isValidFocalPreset,
-  focalPresetToSharpPosition,
-} from "../lib/focal";
+/** Percentage-based focal point for OG crop. Passed in by callers (album-ops resolves presets + auto-detect). */
+type FocalPercent = { x: number; y: number };
 
 /** Image extensions Sharp can process */
 const PROCESSABLE_EXTENSIONS = /\.(jpe?g|png|webp|heic|tiff?)$/i;
@@ -102,6 +99,35 @@ function formatBytes(bytes: number): string {
   return `${(bytes / 1024 / 1024).toFixed(2)} MB`;
 }
 
+/* ─── OG crop helper ─── */
+
+/**
+ * Resize + crop to OG dimensions using percentage-based focal point.
+ * Scales the image to fill 1200×630, then extracts the crop region
+ * at the position determined by (x%, y%).
+ */
+async function cropToOg(
+  raw: Buffer,
+  focal: { x: number; y: number } = { x: 50, y: 50 }
+): Promise<sharp.Sharp> {
+  const meta = await sharp(raw).metadata();
+  const srcW = meta.width ?? 4032;
+  const srcH = meta.height ?? 3024;
+
+  const scale = Math.max(OG_WIDTH / srcW, OG_HEIGHT / srcH);
+  const scaledW = Math.round(srcW * scale);
+  const scaledH = Math.round(srcH * scale);
+
+  const maxLeft = scaledW - OG_WIDTH;
+  const maxTop = scaledH - OG_HEIGHT;
+  const left = Math.min(maxLeft, Math.max(0, Math.round(maxLeft * (focal.x / 100))));
+  const top = Math.min(maxTop, Math.max(0, Math.round(maxTop * (focal.y / 100))));
+
+  return sharp(raw)
+    .resize(scaledW, scaledH)
+    .extract({ left, top, width: OG_WIDTH, height: OG_HEIGHT });
+}
+
 /* ─── OG text overlay ─── */
 
 /** Text to burn into the OG image via SVG composite */
@@ -132,6 +158,7 @@ function buildOgOverlaySvg(overlay: OgOverlay): Buffer {
   const title = escapeXml(overlay.title);
   const photoId = overlay.photoId ? escapeXml(overlay.photoId) : "";
 
+  const textY = OG_HEIGHT - 44;
   const svg = `<svg width="${OG_WIDTH}" height="${OG_HEIGHT}" xmlns="http://www.w3.org/2000/svg">
   <defs>
     <linearGradient id="g" x1="0" y1="0" x2="0" y2="1">
@@ -140,9 +167,9 @@ function buildOgOverlaySvg(overlay: OgOverlay): Buffer {
     </linearGradient>
   </defs>
   <rect x="0" y="${Math.round(OG_HEIGHT * 0.58)}" width="${OG_WIDTH}" height="${Math.round(OG_HEIGHT * 0.42)}" fill="url(#g)"/>
-  <text x="48" y="${OG_HEIGHT - 40}" font-size="21" fill="rgba(255,255,255,0.92)" font-family="'Courier New', Courier, monospace" letter-spacing="-0.4">${brand} · ${title}</text>${
+  <text x="48" y="${textY}" font-size="28" font-weight="600" fill="rgba(255,255,255,0.96)" stroke="rgba(0,0,0,0.35)" stroke-width="1" paint-order="stroke fill" font-family="'Courier New', Courier, monospace" letter-spacing="-0.4">${brand} · ${title}</text>${
     photoId
-      ? `\n  <text x="${OG_WIDTH - 48}" y="${OG_HEIGHT - 40}" font-size="16" fill="rgba(255,255,255,0.50)" font-family="'Courier New', Courier, monospace" text-anchor="end">${photoId}</text>`
+      ? `\n  <text x="${OG_WIDTH - 48}" y="${textY}" font-size="20" font-weight="500" fill="rgba(255,255,255,0.85)" stroke="rgba(0,0,0,0.25)" stroke-width="0.8" paint-order="stroke fill" font-family="'Courier New', Courier, monospace" text-anchor="end">${photoId}</text>`
       : ""
   }
 </svg>`;
@@ -219,7 +246,7 @@ function extractExifDate(exifBuffer: Buffer | undefined): string | null {
 async function processImageVariants(
   raw: Buffer,
   sourceExt: string,
-  focalPosition?: FocalPreset,
+  focalPercent?: FocalPercent,
   ogOverlay?: OgOverlay
 ): Promise<ProcessedImage> {
   const metadata = await sharp(raw).metadata();
@@ -243,13 +270,7 @@ async function processImageVariants(
     ? raw
     : await sharp(raw).jpeg({ quality: 95 }).toBuffer();
 
-  const position =
-    focalPosition && isValidFocalPreset(focalPosition)
-      ? focalPresetToSharpPosition(focalPosition)
-      : "centre";
-
-  let ogPipeline = sharp(raw)
-    .resize(OG_WIDTH, OG_HEIGHT, { fit: "cover", position });
+  let ogPipeline = await cropToOg(raw, focalPercent);
   if (ogOverlay) {
     ogPipeline = ogPipeline.composite([{ input: buildOgOverlaySvg(ogOverlay) }]);
   }
@@ -273,20 +294,14 @@ async function processImageVariants(
 /**
  * Create OG-sized JPEG from a raw image buffer.
  * Used by backfill and regen when re-processing from original.
- * @param focalPosition - Preset for crop position (center, top, bottom, etc.). Default: center.
+ * @param focalPercent - Focal point as { x, y } percentages. Default: center (50, 50).
  */
 async function processToOg(
   raw: Buffer,
-  focalPosition?: FocalPreset,
+  focalPercent?: FocalPercent,
   overlay?: OgOverlay
 ): Promise<ImageVariant> {
-  const position =
-    focalPosition && isValidFocalPreset(focalPosition)
-      ? focalPresetToSharpPosition(focalPosition)
-      : "centre";
-
-  let pipeline = sharp(raw)
-    .resize(OG_WIDTH, OG_HEIGHT, { fit: "cover", position });
+  let pipeline = await cropToOg(raw, focalPercent);
   if (overlay) {
     pipeline = pipeline.composite([{ input: buildOgOverlaySvg(overlay) }]);
   }

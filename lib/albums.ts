@@ -16,8 +16,10 @@ type Photo = {
   blur?: string;
   /** ISO date from EXIF DateTimeOriginal (when the photo was taken) */
   takenAt?: string;
-  /** Crop focal point for og/embeds: center, top, bottom, etc. */
+  /** Manual crop focal point override (preset name). Takes priority over autoFocal. */
   focalPoint?: FocalPreset;
+  /** Auto-detected face center as { x, y } percentages. Used when no manual focalPoint. */
+  autoFocal?: { x: number; y: number };
 };
 
 /** Album metadata from JSON */

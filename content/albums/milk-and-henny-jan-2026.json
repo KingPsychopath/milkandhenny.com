@@ -7,32 +7,44 @@
     {
       "id": "DSC00003",
       "width": 4608,
-      "height": 3072,
-      "focalPoint": "center"
+      "height": 3072
     },
     {
       "id": "DSC07124",
       "width": 4672,
       "height": 7008,
-      "focalPoint": "center"
+      "autoFocal": {
+        "x": 49,
+        "y": 35
+      }
     },
     {
       "id": "DSC07270",
       "width": 4672,
       "height": 7008,
-      "focalPoint": "center"
+      "autoFocal": {
+        "x": 48,
+        "y": 31
+      }
     },
     {
       "id": "anic",
       "width": 4672,
       "height": 7008,
-      "focalPoint": "top"
+      "autoFocal": {
+        "x": 39,
+        "y": 20
+      }
     },
     {
       "id": "anic2",
       "width": 4672,
       "height": 7008,
-      "focalPoint": "bottom left"
+      "autoFocal": {
+        "x": 39,
+        "y": 21
+      }
     }
-  ]
+  ],
+  "slug": "milk-and-henny-jan-2026"
 }

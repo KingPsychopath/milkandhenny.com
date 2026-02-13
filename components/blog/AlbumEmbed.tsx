@@ -3,8 +3,6 @@
 import Link from "next/link";
 import { useRef, useState, useEffect, memo } from "react";
 import { getThumbUrl } from "@/lib/storage";
-import { focalPresetToObjectPosition, type FocalPreset } from "@/lib/focal";
-
 /** Serializable album data passed from the server page */
 type EmbeddedAlbum = {
   slug: string;
@@ -14,8 +12,8 @@ type EmbeddedAlbum = {
   photoCount: number;
   /** First 6 photo IDs (cover first, then others) — compact uses 4, masonry uses 6 */
   previewIds: string[];
-  /** Focal point per photo ID for object-position when thumb is cover-cropped */
-  focalPoints?: Record<string, FocalPreset>;
+  /** Pre-resolved CSS object-position per photo ID (from manual preset or auto-detected face) */
+  focalPoints?: Record<string, string>;
 };
 
 /** Which visual variant to render */
@@ -110,11 +108,7 @@ function AlbumEmbedCompact({ album }: { album: EmbeddedAlbum }) {
             <FillThumb
               slug={album.slug}
               photoId={id}
-              objectPosition={
-                album.focalPoints?.[id]
-                  ? focalPresetToObjectPosition(album.focalPoints[id])
-                  : undefined
-              }
+              objectPosition={album.focalPoints?.[id]}
             />
             {showOverlay && i === ids.length - 1 && (
               <div className="album-embed-thumb-overlay">
@@ -154,9 +148,7 @@ function AlbumEmbedMasonry({ album }: { album: EmbeddedAlbum }) {
       <Link href={`/pics/${album.slug}`} className="album-embed-masonry-grid">
         {ids.map((id, i) => {
           const isLast = i === ids.length - 1;
-          const objectPosition = album.focalPoints?.[id]
-            ? focalPresetToObjectPosition(album.focalPoints[id])
-            : undefined;
+          const objectPosition = album.focalPoints?.[id];
           return (
             <div key={id} className="album-embed-masonry-tile">
               {/* eslint-disable-next-line @next/next/no-img-element */}
