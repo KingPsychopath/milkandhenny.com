@@ -56,7 +56,7 @@ Run `pnpm cli transfers info <id>` — it shows the full admin URL including the
 
 | Type | In the gallery | Processing |
 |------|---------------|------------|
-| Images (JPEG, PNG, WebP, HEIC, TIFF) | Masonry grid + lightbox | Thumb (600px) + full (1600px) + original |
+| Images (JPEG, PNG, WebP, HEIC, TIFF) | Masonry grid + lightbox | Thumb (600px) + full (1600px) + original + og (1200×630) |
 | GIFs | Grid card + animated lightbox | Static first-frame thumb + original |
 | Videos (MP4, MOV, WebM, AVI, MKV) | Play icon card + video player lightbox | Uploaded as-is |
 | Audio (MP3, WAV, FLAC, etc.) | Inline audio player card | Uploaded as-is |
@@ -100,19 +100,26 @@ Album-based photo galleries served from Cloudflare R2.
 - Lightbox with keyboard/swipe navigation
 - Individual + batch ZIP download (direct from R2, no Vercel bandwidth)
 - **Blog embed cards**: standalone album links in blog posts (`[Title](/pics/slug)` on its own line) render as preview cards. Two variants: **compact** (4-thumb strip, default) and **masonry** (Pinterest-style flowing tiles, up to 6 photos). Use `[Title](/pics/slug#masonry)` for masonry. Inline mentions stay as normal links.
-- Managed via CLI: `pnpm cli albums upload`, `pnpm cli photos add`, etc.
+- Managed via CLI: `pnpm cli albums upload`, `pnpm cli photos add`, `pnpm cli albums backfill-og`, etc.
 
 > **Staleness note**: Album embed cards in blog posts are resolved at build time (SSG). If you update an album (change cover, add photos) after the blog was deployed, the embed card shows stale data until the next `git commit` + Vercel rebuild. This is consistent with how all album data works — JSON manifests live in git, so any album change already requires a redeploy.
 
 ### OG images at scale
 
-Album and photo pages have Open Graph images for social sharing. They're generated at build time — one PNG per album and per photo. With many photos (e.g. 500 across 20 albums), builds will:
+Album and photo pages have Open Graph images for social sharing. Source images are pre-processed to **1200×630 JPG** (og variant) and stored in R2 at `albums/{slug}/og/{photoId}.jpg`. At build time, Next.js fetches these og URLs (smaller than originals) and composites the OG PNG — no heavy originals.
 
-- Fetch each source image from R2 during the build
-- Output more static assets
-- Take longer
+**Flow:**
 
-If this becomes an issue, consider deleting `app/pics/[album]/[photo]/opengraph-image.tsx` and keeping only album-level OG images. Photo links will fall back to the album OG when shared.
+- **New uploads:** `pnpm cli albums upload` and `photos add` automatically create thumb, full, original, and og variants.
+- **Existing albums:** Run backfill once: `pnpm cli albums backfill-og` (or `--yes` to skip confirmation).
+
+```bash
+pnpm cli albums backfill-og --yes   # Run before first deploy after adding OG support
+```
+
+Backfill skips photos that already have og variants. Re-run safely after adding new albums.
+
+**Vercel hobby limits:** OG images are generated at **build time** and served as static assets. Zero runtime serverless invocations — no impact on your hobby function/bandwidth limits. Build time increases slightly (one R2 fetch per album/photo), but that's a one-time cost per deploy.
 
 ### How album data works (vs transfers)
 
@@ -159,7 +166,7 @@ pnpm cli blog delete <post-slug> --file <filename>      # Delete a single file
 |---|--------|-----------|-------------|
 | **R2 prefix** | `albums/{slug}/` | `transfers/{id}/` | `blog/{slug}/` |
 | **Metadata** | JSON manifest in git | Redis with TTL | None (markdown is the manifest) |
-| **Variants** | thumb + full + original | thumb + full + original | Images: WebP; others: raw |
+| **Variants** | thumb + full + original + og | thumb + full + original | Images: WebP; others: raw |
 | **Lifecycle** | Permanent | Auto-expires | Permanent (delete via CLI) |
 | **Cost per view** | $0 (static/CDN) | ~$0 (1 KV GET, CDN-cached) | $0 (static/CDN) |
 
