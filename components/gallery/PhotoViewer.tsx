@@ -77,7 +77,7 @@ export function PhotoViewer({
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           src={src}
-          alt=""
+          alt={`Full size photo — ${filename}`}
           width={width}
           height={height}
           className="w-full h-auto rounded-sm"

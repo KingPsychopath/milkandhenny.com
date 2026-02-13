@@ -81,7 +81,7 @@ export function PhotoCard({
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           ref={imgRef}
-          alt=""
+          alt={`Photo ${photoId} from album`}
           width={width}
           height={height}
           onLoad={() => setLoaded(true)}

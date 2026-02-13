@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import { Lora } from "next/font/google";
 import { LampToggle } from "@/components/LampToggle";
 import { BackToTop } from "@/components/BackToTop";
+import { Analytics } from "@vercel/analytics/react";
 import { BASE_URL } from "@/lib/config";
 import "./globals.css";
 
@@ -51,7 +52,6 @@ export const metadata: Metadata = {
 export const viewport = {
   width: "device-width",
   initialScale: 1,
-  maximumScale: 1,
 };
 
 export default function RootLayout({
@@ -67,6 +67,7 @@ export default function RootLayout({
         <LampToggle />
         <BackToTop />
         {children}
+        <Analytics />
       </body>
     </html>
   );

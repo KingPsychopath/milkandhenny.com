@@ -97,8 +97,8 @@ export default function GuestListPage() {
           </form>
 
           <div className="mt-8 text-center">
-            <Link href="/" className="text-zinc-500 hover:text-amber-400 text-sm transition-colors">
-              ← Back to home
+            <Link href="/party" className="text-zinc-500 hover:text-amber-400 text-sm transition-colors">
+              ← Back to party
             </Link>
           </div>
         </div>

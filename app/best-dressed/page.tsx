@@ -280,8 +280,8 @@ export default function BestDressedPage() {
 
         {/* Back link */}
         <div className="mt-10 text-center">
-          <Link href="/" className="text-zinc-500 hover:text-purple-400 text-sm transition-colors">
-            ← Back to home
+          <Link href="/party" className="text-zinc-500 hover:text-purple-400 text-sm transition-colors">
+            ← Back to party
           </Link>
         </div>
       </div>

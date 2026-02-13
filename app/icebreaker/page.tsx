@@ -186,12 +186,12 @@ export default function IcebreakerPage() {
         </p>
         
         <Link 
-          href="/" 
+          href="/party" 
           className={`text-sm opacity-60 hover:opacity-100 transition-opacity ${
             revealed ? color.text : 'text-zinc-500'
           }`}
         >
-          ← Back to home
+          ← Back to party
         </Link>
       </div>
     </div>
