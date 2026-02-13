@@ -19,8 +19,8 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Masthead */}
-      <header className="max-w-2xl mx-auto px-6 pt-20 pb-16 text-center">
+      {/* Masthead — site banner */}
+      <header role="banner" className="max-w-2xl mx-auto px-6 pt-20 pb-16 text-center">
         <Link href="/" className="inline-block">
           <h1 className="font-mono text-[2.5rem] sm:text-6xl font-bold text-foreground tracking-tighter leading-none">
             milk & henny
@@ -59,8 +59,8 @@ export default function Home() {
         <div className="border-t theme-border-strong" />
       </div>
 
-      {/* Recent */}
-      <section className="max-w-2xl mx-auto px-6 pt-4 pb-24">
+      {/* Recent — primary content */}
+      <main id="main" className="max-w-2xl mx-auto px-6 pt-4 pb-24">
         <p className="font-mono text-[11px] theme-muted tracking-widest uppercase py-4">
           Recent
         </p>
@@ -113,10 +113,9 @@ export default function Home() {
             </Link>
           </p>
         )}
-      </section>
+      </main>
 
-      {/* Footer */}
-      <footer className="border-t theme-border">
+      <footer role="contentinfo" className="border-t theme-border">
         <div className="max-w-2xl mx-auto px-6 py-8 space-y-4">
           <div className="flex items-center justify-between font-mono text-[11px] theme-muted tracking-wide">
             <span>© {new Date().getFullYear()} milk & henny</span>

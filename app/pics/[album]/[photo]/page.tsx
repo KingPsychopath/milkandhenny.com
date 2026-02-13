@@ -4,6 +4,7 @@ import type { Metadata } from "next";
 import { getAlbumBySlug, getAllAlbumSlugs } from "@/lib/albums";
 import { getFullUrl, getOriginalUrl } from "@/lib/storage";
 import { PhotoViewer } from "@/components/gallery/PhotoViewer";
+import { Breadcrumbs } from "@/components/Breadcrumbs";
 
 type Props = {
   params: Promise<{ album: string; photo: string }>;
@@ -53,9 +54,16 @@ export default async function PhotoPage({ params }: Props) {
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Nav */}
-      <header className="max-w-4xl mx-auto px-6 pt-6 pb-4">
-        <div className="flex items-center justify-between font-mono text-sm">
+      <header role="banner" className="max-w-4xl mx-auto px-6 pt-6 pb-4">
+        <Breadcrumbs
+          items={[
+            { label: "home", href: "/" },
+            { label: "pics", href: "/pics" },
+            { label: album.title, href: `/pics/${albumSlug}` },
+            { label: photoId },
+          ]}
+        />
+        <div className="flex items-center justify-between font-mono text-sm mt-2">
           <Link
             href={`/pics/${albumSlug}`}
             className="theme-muted hover:text-foreground transition-colors tracking-tight"
@@ -68,8 +76,8 @@ export default async function PhotoPage({ params }: Props) {
         </div>
       </header>
 
-      {/* Photo */}
-      <section className="max-w-5xl mx-auto px-4 pb-8">
+      <main id="main">
+        <section className="max-w-5xl mx-auto px-4 pb-8" aria-label="Photo">
         <PhotoViewer
           src={getFullUrl(albumSlug, photoId)}
           downloadUrl={getOriginalUrl(albumSlug, photoId)}
@@ -79,10 +87,10 @@ export default async function PhotoPage({ params }: Props) {
           prevHref={prevPhoto ? `/pics/${albumSlug}/${prevPhoto.id}` : undefined}
           nextHref={nextPhoto ? `/pics/${albumSlug}/${nextPhoto.id}` : undefined}
         />
-      </section>
+        </section>
+      </main>
 
-      {/* Footer */}
-      <footer className="theme-border border-t">
+      <footer role="contentinfo" className="theme-border border-t">
         <div className="max-w-4xl mx-auto px-6 py-6 flex items-center justify-between font-mono text-[11px] theme-muted tracking-wide">
           <Link href={`/pics/${albumSlug}`} className="hover:text-foreground transition-colors">
             ← back to album

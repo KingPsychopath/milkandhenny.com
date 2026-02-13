@@ -39,6 +39,8 @@ export async function GET() {
     redisError = String(error);
   }
   
+  const hasCronSecret = !!process.env.CRON_SECRET;
+
   return NextResponse.json({
     status: 'ok',
     timestamp: new Date().toISOString(),
@@ -47,6 +49,8 @@ export async function GET() {
       hasRedisToken,
       redisConfigured: hasRedisUrl && hasRedisToken,
       source: hasKvUrl ? 'KV_REST_API_*' : hasUpstashUrl ? 'UPSTASH_REDIS_*' : 'none',
+      cronSecretConfigured: hasCronSecret,
+      cronWarning: !hasCronSecret ? 'CRON_SECRET not set — cron jobs will return 503. Add it in Vercel env vars.' : null,
     },
     data: {
       primaryGuests: guestCount,

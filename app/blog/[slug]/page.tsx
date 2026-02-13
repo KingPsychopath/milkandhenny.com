@@ -3,8 +3,10 @@ import Link from "next/link";
 import type { Metadata } from "next";
 import { getPostBySlug, getAllSlugs } from "@/lib/blog";
 import { getAlbumBySlug } from "@/lib/albums";
+import { BASE_URL } from "@/lib/config";
 import { PostBody } from "./PostBody";
 import { ReadingProgress } from "@/components/ReadingProgress";
+import { Breadcrumbs } from "@/components/Breadcrumbs";
 import type { EmbeddedAlbum } from "@/components/blog/AlbumEmbed";
 
 type Props = {
@@ -110,13 +112,35 @@ export default async function BlogPostPage({ params }: Props) {
 
   const albums = resolveAlbumsFromContent(post.content);
 
+  const jsonLd = {
+    "@context": "https://schema.org",
+    "@type": "Article",
+    headline: post.title,
+    description: post.subtitle ?? post.title,
+    datePublished: post.date,
+    author: { "@type": "Organization", name: "Milk & Henny" },
+    publisher: { "@type": "Organization", name: "Milk & Henny" },
+    url: `${BASE_URL}/blog/${slug}`,
+  };
+
   return (
     <div className="min-h-screen bg-background">
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+      />
       <ReadingProgress />
 
-      {/* Nav */}
-      <header className="max-w-2xl mx-auto px-6 pt-10 pb-6">
-        <div className="flex items-center justify-between font-mono text-sm">
+      {/* Nav — page banner */}
+      <header role="banner" className="max-w-2xl mx-auto px-6 pt-10 pb-6">
+        <Breadcrumbs
+          items={[
+            { label: "home", href: "/" },
+            { label: "words", href: "/blog" },
+            { label: post.title },
+          ]}
+        />
+        <div className="flex items-center justify-between font-mono text-sm mt-2">
           <Link
             href="/"
             className="theme-muted hover:text-foreground transition-colors tracking-tight"
@@ -136,8 +160,9 @@ export default async function BlogPostPage({ params }: Props) {
         <div className="border-t theme-border" />
       </div>
 
-      {/* Post */}
-      <article className="max-w-2xl mx-auto px-6 pt-14 pb-24">
+      {/* Post — primary content */}
+      <main id="main">
+        <article className="max-w-2xl mx-auto px-6 pt-14 pb-24">
         <header className="mb-12">
           <div className="flex items-center gap-3 font-mono text-xs theme-muted tracking-wide">
             <time>{formatDate(post.date)}</time>
@@ -155,10 +180,10 @@ export default async function BlogPostPage({ params }: Props) {
         </header>
 
         <PostBody content={post.content} albums={albums} />
-      </article>
+        </article>
+      </main>
 
-      {/* Footer */}
-      <footer className="border-t theme-border">
+      <footer role="contentinfo" className="border-t theme-border">
         <div className="max-w-2xl mx-auto px-6 py-8 flex items-center justify-between font-mono text-[11px] theme-muted tracking-wide">
           <Link
             href="/blog"

@@ -63,7 +63,7 @@ export default function GuestListPage() {
   if (!isAuthenticated) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-zinc-950 via-zinc-900 to-stone-900 flex items-center justify-center p-6">
-        <div className="w-full max-w-sm">
+        <main id="main" className="w-full max-w-sm">
           <div className="text-center mb-8">
             <div className="w-16 h-16 rounded-2xl bg-amber-600 flex items-center justify-center mx-auto mb-4 shadow-lg">
               <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -110,7 +110,7 @@ export default function GuestListPage() {
               ← Back to party
             </Link>
           </div>
-        </div>
+        </main>
       </div>
     );
   }
@@ -118,13 +118,13 @@ export default function GuestListPage() {
   if (loading && guests.length === 0) {
     return (
       <div className="min-h-screen bg-stone-50 flex items-center justify-center">
-        <div className="text-center">
+        <main id="main" className="text-center">
           <div className="w-16 h-16 mx-auto mb-4 relative">
             <div className="absolute inset-0 rounded-full border-4 border-amber-200"></div>
             <div className="absolute inset-0 rounded-full border-4 border-amber-600 border-t-transparent animate-spin"></div>
           </div>
           <p className="text-stone-600 font-medium">Loading guest list...</p>
-        </div>
+        </main>
       </div>
     );
   }
@@ -138,7 +138,7 @@ export default function GuestListPage() {
         onCSVImported={refetch}
       />
       
-      <div className="max-w-lg mx-auto bg-white min-h-screen shadow-xl shadow-stone-300/50">
+      <main id="main" className="max-w-lg mx-auto bg-white min-h-screen shadow-xl shadow-stone-300/50">
         {/* Header */}
         <header className="bg-gradient-to-br from-amber-600 via-amber-500 to-yellow-500 pt-safe">
           <div className="px-5 py-4 flex items-center gap-4">
@@ -205,7 +205,7 @@ export default function GuestListPage() {
             searchQuery={searchQuery}
           />
         </div>
-      </div>
+      </main>
     </div>
   );
 }

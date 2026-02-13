@@ -3,6 +3,7 @@ import Link from "next/link";
 import type { Metadata } from "next";
 import { getAlbumBySlug, getAllAlbumSlugs } from "@/lib/albums";
 import { AlbumGallery } from "@/components/gallery/AlbumGallery";
+import { Breadcrumbs } from "@/components/Breadcrumbs";
 
 type Props = {
   params: Promise<{ album: string }>;
@@ -40,8 +41,7 @@ export default async function AlbumPage({ params }: Props) {
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Nav */}
-      <header className="max-w-4xl mx-auto px-6 pt-10 pb-6">
+      <header role="banner" className="max-w-4xl mx-auto px-6 pt-10 pb-6">
         <div className="flex items-center justify-between font-mono text-sm">
           <Link
             href="/pics"
@@ -62,9 +62,16 @@ export default async function AlbumPage({ params }: Props) {
         <div className="border-t theme-border" />
       </div>
 
-      {/* Album header */}
-      <section className="max-w-4xl mx-auto px-6 pt-12 pb-8">
-        <div className="flex items-center gap-3 font-mono text-xs theme-muted tracking-wide">
+      <main id="main">
+        <section className="max-w-4xl mx-auto px-6 pt-12 pb-8" aria-label="Album info">
+        <Breadcrumbs
+          items={[
+            { label: "home", href: "/" },
+            { label: "pics", href: "/pics" },
+            { label: album.title },
+          ]}
+        />
+        <div className="flex items-center gap-3 font-mono text-xs theme-muted tracking-wide mt-2">
           <time>{formatDate(album.date)}</time>
         </div>
         <h1 className="font-serif text-3xl sm:text-4xl text-foreground leading-tight tracking-tight mt-3">
@@ -77,13 +84,12 @@ export default async function AlbumPage({ params }: Props) {
         )}
       </section>
 
-      {/* Gallery */}
-      <section className="max-w-4xl mx-auto px-6 pb-24">
-        <AlbumGallery albumSlug={album.slug} photos={album.photos} />
-      </section>
+        <section className="max-w-4xl mx-auto px-6 pb-24" aria-label="Gallery">
+          <AlbumGallery albumSlug={album.slug} photos={album.photos} />
+        </section>
+      </main>
 
-      {/* Footer */}
-      <footer className="border-t theme-border">
+      <footer role="contentinfo" className="border-t theme-border">
         <div className="max-w-4xl mx-auto px-6 py-8 flex items-center justify-between font-mono text-[11px] theme-muted tracking-wide">
           <Link href="/pics" className="hover:text-foreground transition-colors">
             ← all albums

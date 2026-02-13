@@ -139,7 +139,7 @@ export default function BestDressedPage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-zinc-950 via-purple-950/30 to-zinc-950">
-      <div className="max-w-lg mx-auto px-5 py-8">
+      <main id="main" className="max-w-lg mx-auto px-5 py-8">
         {/* Header */}
         <div className="text-center mb-8">
           <div className="text-5xl mb-3">👑</div>
@@ -297,7 +297,7 @@ export default function BestDressedPage() {
             ← Back to party
           </Link>
         </div>
-      </div>
+      </main>
     </div>
   );
 }

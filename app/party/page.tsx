@@ -4,7 +4,7 @@ import Image from 'next/image';
 export default function PartyHome() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-zinc-950 via-zinc-900 to-stone-900 flex items-center justify-center p-6">
-      <div className="text-center space-y-5 max-w-md">
+      <main id="main" className="text-center space-y-5 max-w-md">
         {/* Text Logo */}
         <Link href="/" className="block px-4">
           <Image
@@ -88,7 +88,7 @@ export default function PartyHome() {
             © {new Date().getFullYear()} Milk & Henny
           </div>
         </div>
-      </div>
+      </main>
     </div>
   );
 }

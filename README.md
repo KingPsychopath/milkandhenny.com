@@ -104,6 +104,16 @@ Album-based photo galleries served from Cloudflare R2.
 
 > **Staleness note**: Album embed cards in blog posts are resolved at build time (SSG). If you update an album (change cover, add photos) after the blog was deployed, the embed card shows stale data until the next `git commit` + Vercel rebuild. This is consistent with how all album data works — JSON manifests live in git, so any album change already requires a redeploy.
 
+### OG images at scale
+
+Album and photo pages have Open Graph images for social sharing. They're generated at build time — one PNG per album and per photo. With many photos (e.g. 500 across 20 albums), builds will:
+
+- Fetch each source image from R2 during the build
+- Output more static assets
+- Take longer
+
+If this becomes an issue, consider deleting `app/pics/[album]/[photo]/opengraph-image.tsx` and keeping only album-level OG images. Photo links will fall back to the album OG when shared.
+
 ### How album data works (vs transfers)
 
 Albums and transfers store metadata differently — each approach fits its use case:

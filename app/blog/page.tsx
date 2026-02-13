@@ -2,6 +2,7 @@ import Link from "next/link";
 import type { Metadata } from "next";
 import { getBlogPostSummaries } from "@/lib/blog";
 import { SearchablePostList } from "@/components/blog/SearchablePostList";
+import { Breadcrumbs } from "@/components/Breadcrumbs";
 
 export const metadata: Metadata = {
   title: "Words — Milk & Henny",
@@ -13,8 +14,7 @@ export default function BlogPage() {
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Nav */}
-      <header className="max-w-2xl mx-auto px-6 pt-10 pb-6">
+      <header role="banner" className="max-w-2xl mx-auto px-6 pt-10 pb-6">
         <div className="flex items-center justify-between font-mono text-sm">
           <Link
             href="/"
@@ -35,9 +35,10 @@ export default function BlogPage() {
         <div className="border-t theme-border" />
       </div>
 
-      {/* Header */}
-      <section className="max-w-2xl mx-auto px-6 pt-12 pb-8">
-        <h1 className="font-serif text-3xl sm:text-4xl text-foreground tracking-tight">
+      <main id="main">
+        <section className="max-w-2xl mx-auto px-6 pt-12 pb-8" aria-label="Page header">
+        <Breadcrumbs items={[{ label: "home", href: "/" }, { label: "words" }]} />
+        <h1 className="font-serif text-3xl sm:text-4xl text-foreground tracking-tight mt-2">
           words
         </h1>
         <p className="mt-2 theme-muted font-mono text-sm">
@@ -45,13 +46,12 @@ export default function BlogPage() {
         </p>
       </section>
 
-      {/* Posts with search */}
-      <section className="max-w-2xl mx-auto px-6 pb-24">
-        <SearchablePostList posts={posts} />
-      </section>
+        <section className="max-w-2xl mx-auto px-6 pb-24" aria-label="Posts">
+          <SearchablePostList posts={posts} />
+        </section>
+      </main>
 
-      {/* Footer */}
-      <footer className="border-t theme-border">
+      <footer role="contentinfo" className="border-t theme-border">
         <div className="max-w-2xl mx-auto px-6 py-8 flex items-center justify-between font-mono text-[11px] theme-muted tracking-wide">
           <Link href="/" className="hover:text-foreground transition-colors">
             ← home

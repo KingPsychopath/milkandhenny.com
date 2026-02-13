@@ -61,7 +61,7 @@ export default async function TransferPage({ params, searchParams }: Props) {
   if (!transfer) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center p-6">
-        <div className="text-center max-w-md space-y-6">
+        <main id="main" className="text-center max-w-md space-y-6">
           <p className="font-mono text-7xl font-bold text-foreground opacity-10 leading-none">
             gone
           </p>
@@ -80,7 +80,7 @@ export default async function TransferPage({ params, searchParams }: Props) {
               ← milkandhenny.com
             </Link>
           </div>
-        </div>
+        </main>
       </div>
     );
   }
@@ -92,7 +92,7 @@ export default async function TransferPage({ params, searchParams }: Props) {
   if (remainingSeconds <= 0) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center p-6">
-        <div className="text-center max-w-md space-y-6">
+        <main id="main" className="text-center max-w-md space-y-6">
           <p className="font-mono text-7xl font-bold text-foreground opacity-10 leading-none">
             gone
           </p>
@@ -112,7 +112,7 @@ export default async function TransferPage({ params, searchParams }: Props) {
               ← milkandhenny.com
             </Link>
           </div>
-        </div>
+        </main>
       </div>
     );
   }
@@ -121,8 +121,7 @@ export default async function TransferPage({ params, searchParams }: Props) {
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Header */}
-      <header className="max-w-4xl mx-auto px-6 pt-10 pb-6">
+      <header role="banner" className="max-w-4xl mx-auto px-6 pt-10 pb-6">
         <div className="flex items-center justify-between font-mono text-sm">
           <span className="theme-muted tracking-tight">shared via</span>
           <Link
@@ -138,8 +137,8 @@ export default async function TransferPage({ params, searchParams }: Props) {
         <div className="border-t theme-border" />
       </div>
 
-      {/* Transfer header */}
-      <section className="max-w-4xl mx-auto px-6 pt-12 pb-8">
+      <main id="main">
+        <section className="max-w-4xl mx-auto px-6 pt-12 pb-8" aria-label="Transfer info">
         <div className="flex items-center gap-3 font-mono text-xs theme-muted tracking-wide">
           <time>{formatDate(transfer.createdAt)}</time>
           <span className="theme-faint">·</span>
@@ -153,25 +152,24 @@ export default async function TransferPage({ params, searchParams }: Props) {
         </p>
       </section>
 
-      {/* Gallery */}
-      <section className="max-w-4xl mx-auto px-6 pb-12">
-        <TransferGallery transferId={transfer.id} files={transfer.files} />
-      </section>
-
-      {/* Admin takedown */}
-      {isAdmin && (
-        <section className="max-w-4xl mx-auto px-6 pb-12">
-          <div className="border-t theme-border pt-6">
-            <p className="font-mono text-[11px] theme-muted tracking-wide mb-3">
-              admin controls
-            </p>
-            <TakedownButton transferId={transfer.id} deleteToken={token} />
-          </div>
+        <section className="max-w-4xl mx-auto px-6 pb-12" aria-label="Gallery">
+          <TransferGallery transferId={transfer.id} files={transfer.files} />
         </section>
-      )}
 
-      {/* Footer */}
-      <footer className="border-t theme-border">
+        {/* Admin takedown */}
+        {isAdmin && (
+          <section className="max-w-4xl mx-auto px-6 pb-12" aria-label="Admin">
+            <div className="border-t theme-border pt-6">
+              <p className="font-mono text-[11px] theme-muted tracking-wide mb-3">
+                admin controls
+              </p>
+              <TakedownButton transferId={transfer.id} deleteToken={token} />
+            </div>
+          </section>
+        )}
+      </main>
+
+      <footer role="contentinfo" className="border-t theme-border">
         <div className="max-w-4xl mx-auto px-6 py-8 flex items-center justify-between font-mono text-[11px] theme-muted tracking-wide">
           <span>
             temporary transfer · self-destructs{" "}

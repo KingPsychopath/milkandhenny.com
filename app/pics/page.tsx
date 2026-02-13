@@ -2,6 +2,7 @@ import Link from "next/link";
 import type { Metadata } from "next";
 import { getAllAlbums } from "@/lib/albums";
 import { getThumbUrl } from "@/lib/storage";
+import { Breadcrumbs } from "@/components/Breadcrumbs";
 
 export const metadata: Metadata = {
   title: "Pics — Milk & Henny",
@@ -22,8 +23,7 @@ export default function PicsPage() {
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Nav */}
-      <header className="max-w-4xl mx-auto px-6 pt-10 pb-6">
+      <header role="banner" className="max-w-4xl mx-auto px-6 pt-10 pb-6">
         <div className="flex items-center justify-between font-mono text-sm">
           <Link
             href="/"
@@ -44,9 +44,10 @@ export default function PicsPage() {
         <div className="border-t theme-border" />
       </div>
 
-      {/* Header */}
-      <section className="max-w-4xl mx-auto px-6 pt-12 pb-8">
-        <h1 className="font-serif text-3xl sm:text-4xl text-foreground tracking-tight">
+      <main id="main">
+        <section className="max-w-4xl mx-auto px-6 pt-12 pb-8" aria-label="Page header">
+        <Breadcrumbs items={[{ label: "home", href: "/" }, { label: "pics" }]} />
+        <h1 className="font-serif text-3xl sm:text-4xl text-foreground tracking-tight mt-2">
           pics
         </h1>
         <p className="mt-2 theme-muted font-mono text-sm">
@@ -54,8 +55,7 @@ export default function PicsPage() {
         </p>
       </section>
 
-      {/* Albums */}
-      <section className="max-w-4xl mx-auto px-6 pb-24">
+        <section className="max-w-4xl mx-auto px-6 pb-24" aria-label="Albums">
         {albums.length === 0 ? (
           <p className="py-12 theme-muted font-mono text-sm text-center">
             no albums yet. check back soon.
@@ -97,10 +97,10 @@ export default function PicsPage() {
             ))}
           </div>
         )}
-      </section>
+        </section>
+      </main>
 
-      {/* Footer */}
-      <footer className="border-t theme-border">
+      <footer role="contentinfo" className="border-t theme-border">
         <div className="max-w-4xl mx-auto px-6 py-8 flex items-center justify-between font-mono text-[11px] theme-muted tracking-wide">
           <Link href="/" className="hover:text-foreground transition-colors">
             ← home

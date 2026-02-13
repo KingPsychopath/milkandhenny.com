@@ -19,6 +19,7 @@ import { getRedis } from "@/lib/redis";
  */
 export const dynamic = "force-dynamic";
 
+/** Vercel sends CRON_SECRET in Authorization: Bearer header. Set in Vercel env vars. */
 const CRON_SECRET = process.env.CRON_SECRET;
 
 function getR2Client() {
@@ -38,9 +39,18 @@ function getR2Client() {
 }
 
 export async function GET(request: NextRequest) {
-  // Verify cron secret (Vercel injects this header for cron jobs)
+  if (!CRON_SECRET) {
+    return NextResponse.json(
+      {
+        error: "CRON_SECRET not configured",
+        help: "Set CRON_SECRET in Vercel Environment Variables. Generate with: openssl rand -hex 32. Without it, cron jobs are unauthenticated.",
+      },
+      { status: 503 }
+    );
+  }
+
   const authHeader = request.headers.get("authorization");
-  if (CRON_SECRET && authHeader !== `Bearer ${CRON_SECRET}`) {
+  if (authHeader !== `Bearer ${CRON_SECRET}`) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 

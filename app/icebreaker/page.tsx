@@ -103,8 +103,7 @@ export default function IcebreakerPage() {
         revealed ? color.bg : 'bg-zinc-950'
       }`}
     >
-      {/* Main content */}
-      <div className="flex-1 flex items-center justify-center p-6">
+      <main id="main" className="flex-1 flex items-center justify-center p-6">
         <div className="text-center max-w-sm">
           {!revealed ? (
             <>
@@ -174,7 +173,7 @@ export default function IcebreakerPage() {
             </>
           )}
         </div>
-      </div>
+      </main>
 
       {/* Footer */}
       <div className="p-6 text-center space-y-3">

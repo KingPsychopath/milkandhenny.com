@@ -3,7 +3,7 @@ import Link from "next/link";
 export default function NotFound() {
   return (
     <div className="min-h-screen bg-background flex items-center justify-center p-6">
-      <div className="text-center max-w-md space-y-8">
+      <main id="main" className="text-center max-w-md space-y-8">
         {/* Brand */}
         <Link
           href="/"
@@ -41,7 +41,7 @@ export default function NotFound() {
             the party ↗
           </Link>
         </div>
-      </div>
+      </main>
     </div>
   );
 }

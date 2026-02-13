@@ -48,6 +48,7 @@ export const metadata: Metadata = {
       "application/rss+xml": "/feed.xml",
     },
   },
+  manifest: "/manifest.json",
 };
 
 export const viewport = {
@@ -61,10 +62,23 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
+      <head>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `(function(){var t=localStorage.getItem("theme");if(t==="dark")document.documentElement.setAttribute("data-theme","dark");})();`,
+          }}
+        />
+      </head>
       <body
         className={`${geistSans.variable} ${geistMono.variable} ${lora.variable} antialiased`}
       >
+        <a
+          href="#main"
+          className="skip-link"
+        >
+          Skip to main content
+        </a>
         <LampToggle />
         <BackToTop />
         {children}
