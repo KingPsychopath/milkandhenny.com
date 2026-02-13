@@ -29,6 +29,7 @@ export function PhotoViewer({
 }: PhotoViewerProps) {
   const router = useRouter();
   const [saving, setSaving] = useState(false);
+  const [showHint, setShowHint] = useState(false);
   const savingRef = useRef(false);
   const touchRef = useRef<{ x: number; y: number; time: number } | null>(null);
   const imageContainerRef = useRef<HTMLDivElement>(null);
@@ -46,6 +47,23 @@ export function PhotoViewer({
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [handleKeyDown]);
+
+  /* ── Show swipe hint on touch devices (first 3 visits) ── */
+  useEffect(() => {
+    const isTouchDevice = "ontouchstart" in window || navigator.maxTouchPoints > 0;
+    if (!isTouchDevice) return;
+
+    const HINT_KEY = "mah:swipe-hint-count";
+    const MAX_SHOWS = 3;
+    const count = parseInt(localStorage.getItem(HINT_KEY) || "0", 10);
+    if (count >= MAX_SHOWS) return;
+
+    setShowHint(true);
+    localStorage.setItem(HINT_KEY, String(count + 1));
+
+    const timer = setTimeout(() => setShowHint(false), 2500);
+    return () => clearTimeout(timer);
+  }, []);
 
   /* ── Swipe detection on image area ── */
   useEffect(() => {
@@ -126,6 +144,15 @@ export function PhotoViewer({
           className="w-full h-auto rounded-sm photo-page-fade-in"
           style={{ maxHeight: "80vh", objectFit: "contain" }}
         />
+
+        {/* Swipe hint — shown once on first visit, touch devices only */}
+        {showHint && (
+          <div className="absolute inset-0 flex items-center justify-center pointer-events-none animate-swipe-hint">
+            <span className="font-mono text-[11px] text-white/70 bg-black/40 backdrop-blur-sm px-4 py-2 rounded-full tracking-wide">
+              ← swipe to browse →
+            </span>
+          </div>
+        )}
       </div>
 
       {/* Navigation + download */}

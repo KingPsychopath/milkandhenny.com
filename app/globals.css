@@ -343,6 +343,18 @@ button:active:not(:disabled):not(.lamp-toggle) {
   to   { opacity: 1; }
 }
 
+/* Swipe hint — fade in, hold, fade out */
+.animate-swipe-hint {
+  animation: swipe-hint 2.5s ease both;
+}
+
+@keyframes swipe-hint {
+  0%   { opacity: 0; }
+  15%  { opacity: 1; }
+  70%  { opacity: 1; }
+  100% { opacity: 0; }
+}
+
 /* ─── Reading progress ─── */
 .reading-progress-track {
   position: fixed;
