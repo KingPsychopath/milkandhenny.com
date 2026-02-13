@@ -10,9 +10,18 @@ I feel like my birthday just happened to me. I planned a party in London for mys
 
 I'm a Winter Baby who loves the summer. I'm a night owl who loves the morning. I'm a social butterfly who loves the quiet. I'm a dreamer who loves the reality. 
 
-My entire life has been a series of contradictions and this past month has been no different. A night out with friends, good music, digi-cams, stickers, foam-boards, jenga & streetfighter, overindulging on food(_Oxtail Pizza_) & drinks and lastly a dress code that was more of a threat than a guideline, all planned from the discomfort of the many great and bad decisions I made while in South Africa. The kind of thing you throw together in a group chat and hope for the best.
+My entire life has been a series of contradictions and this past month 
+has been no different. A night out with friends, good music, digi-cams, 
+stickers, foam-boards, a fog machine & lights to blind you, jenga & streetfighter, overindulging on food 
+(_Oxtail Pizza_) & drinks. Oh and a dress code that was more of a threat 
+than a guideline — all planned from the discomfort of the many great 
+and bad decisions I made while in South Africa. The kind of thing you 
+throw together in a group chat and hope for the best.
 
-Mind you, I was enjoying my first actual "summer" during my birthday as it approached a month between Cape Town and Joburg. I was not coming back to London, if not for a call from Olay saying - _"So what are you doing this party den?"_.
+Mind you, I was enjoying my first actual "summer" during my birthday, 
+spending a month between Cape Town and Joburg. I was not coming back 
+to London, if not for a call from Olay saying - "*So what are you 
+doing this party den?*".
 
  Stressed was not even the word, but somewhere between confirming the venue and fighting for my life with the DJ's, it became something else. It became a *thing*. A real thing with a name and stickers and people asking "_when's the next one?_"
 
