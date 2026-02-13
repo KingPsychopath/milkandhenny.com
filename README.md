@@ -176,6 +176,51 @@ KV is **only** used when these API routes are called. Nothing in the root layout
 
 ---
 
+### Image CDN security (Cloudflare WAF)
+
+Images are served from `pics.milkandhenny.com` (Cloudflare R2, custom domain, proxied). Every request to this domain counts as an R2 read. To prevent abuse:
+
+**Rate limiting rule (Cloudflare WAF → Rate limiting rules):**
+
+| Setting | Value |
+|---------|-------|
+| **Match** | URI Path wildcard `/albums/*` |
+| **Counting** | Per source IP |
+| **Threshold** | 100 requests per 10 seconds |
+| **Action** | Block |
+| **Block duration** | 10 seconds |
+
+> Free plan limits: 10-second period and 10-second block duration only.
+
+**Why `/albums/*`?**  
+All image URLs follow the pattern `pics.milkandhenny.com/albums/{album}/{thumb\|full\|original}/{id}.{ext}`. This single rule covers thumbnails, full-size, and original downloads. Requests to `milkandhenny.com` (Vercel) don't touch R2, so they don't need this protection.
+
+**Worst-case cost with this rate limit in place:**
+
+| Attack scenario | Requests/day (sustained) | R2 cost/month |
+|-----------------|--------------------------|---------------|
+| 1 IP (script kiddie) | ~432,000 | **~$1** |
+| 10 IPs (VPN/proxies) | ~4.3M | **~$43** |
+| 50 IPs (dedicated proxies) | ~21.6M | **~$230** |
+
+> Math: 100 req per 10s → blocked 10s → repeat = 100 requests per 20 seconds sustained per IP. R2 Class B reads: 10M free/month, then $0.36/million.
+
+A casual single-IP attacker costs ~$1/month. A serious multi-IP attack is extremely unlikely for a personal site.
+
+**Incident response plan:**
+
+1. **Billing alert triggers** (set Cloudflare billing notification at $5).
+2. **Check Security → Events** in Cloudflare dashboard. Filter by "Rate limit" / "Blocked". Identify the offending IPs.
+3. **Block specific IPs:** Security → WAF → Custom rules or Tools → IP Access Rules → Block those IPs permanently.
+4. **Block a country:** If many IPs come from one country you don't expect traffic from, block the country in WAF.
+5. **Enable Under Attack Mode:** Security → Settings → toggle on. Adds a browser challenge (5-second interstitial) that stops bots. Turn off when the attack stops.
+6. **Tighten the rate limit:** Lower threshold to 50 requests per 10 seconds temporarily.
+7. **Contact Cloudflare support** if the attack persists or is large-scale (DDoS).
+
+> Cloudflare's automatic DDoS protection (included on Free) also helps with volumetric attacks — the rate limit is an additional layer for per-IP abuse.
+
+---
+
 ### Best-dressed abuse & protections
 
 | Risk | Mitigation |
