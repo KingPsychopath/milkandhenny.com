@@ -88,14 +88,14 @@ export default async function PhotoPage({ params }: Props) {
             { label: photoId },
           ]}
         />
-        <div className="flex items-center justify-between font-mono text-sm mt-2 gap-4">
+        <div className="flex flex-col gap-3 mt-2 sm:flex-row sm:items-center sm:justify-between sm:gap-4 font-mono text-sm">
           <Link
             href={`/pics/${albumSlug}`}
-            className="theme-muted hover:text-foreground transition-colors tracking-tight shrink-0"
+            className="theme-muted hover:text-foreground transition-colors tracking-tight"
           >
             ← {album.title}
           </Link>
-          <div className="flex items-center gap-3 shrink-0">
+          <div className="flex items-center gap-3">
             <span className="font-mono text-xs theme-muted tabular-nums">
               {photoIndex + 1} / {album.photos.length}
             </span>

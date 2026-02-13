@@ -1,20 +1,10 @@
 "use client";
 
 import { useMemo, useState, useCallback } from "react";
-import Link from "next/link";
 import type { BlogPostSummary } from "@/lib/blog";
+import { PostListItem } from "@/components/blog/PostListItem";
 
 const DEFAULT_PAGE_SIZE = 10;
-
-/** Format a date string into "7 Feb 2026" */
-function formatDate(dateStr: string) {
-  const d = new Date(dateStr + "T00:00:00");
-  return d.toLocaleDateString("en-GB", {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-  });
-}
 
 /** Case-insensitive match: query tokens must all appear in searchText */
 function matchesSearch(searchText: string, query: string): boolean {
@@ -130,34 +120,7 @@ export function SearchablePostList({ posts }: Props) {
         <>
           <div className="space-y-0">
             {visible.map((post) => (
-              <article key={post.slug} className="group">
-                <Link
-                  href={`/blog/${post.slug}`}
-                  className="block py-6 border-b theme-border-faint hover:theme-border-strong transition-colors"
-                >
-                  <div className="flex items-baseline justify-between gap-4">
-                    <h2 className="font-serif text-xl sm:text-2xl text-foreground group-hover:opacity-70 transition-opacity leading-snug flex items-center gap-2">
-                      {post.featured && (
-                        <span
-                          className="text-[0.6em] text-[var(--prose-hashtag)] opacity-80"
-                          aria-label="Featured"
-                        >
-                          ●
-                        </span>
-                      )}
-                      {post.title}
-                    </h2>
-                    <span className="font-mono text-xs theme-muted shrink-0 tabular-nums whitespace-nowrap">
-                      {post.readingTime} min · {formatDate(post.date)}
-                    </span>
-                  </div>
-                  {post.subtitle && (
-                    <p className="mt-2 theme-subtle text-[0.95rem] leading-relaxed">
-                      {post.subtitle}
-                    </p>
-                  )}
-                </Link>
-              </article>
+              <PostListItem key={post.slug} {...post} />
             ))}
           </div>
           {hasMore && (
