@@ -8,6 +8,7 @@ import { BASE_URL } from "@/lib/config";
 import { PostBody } from "./PostBody";
 import { ReadingProgress } from "@/components/ReadingProgress";
 import { Breadcrumbs } from "@/components/Breadcrumbs";
+import { Share } from "@/components/Share";
 import type { EmbeddedAlbum } from "@/components/blog/AlbumEmbed";
 
 type Props = {
@@ -175,10 +176,17 @@ export default async function BlogPostPage({ params }: Props) {
       <main id="main">
         <article className="max-w-2xl mx-auto px-6 pt-14 pb-24">
         <header className="mb-12">
-          <div className="flex items-center gap-3 font-mono text-xs theme-muted tracking-wide">
-            <time>{formatDate(post.date)}</time>
-            <span>·</span>
-            <span>{post.readingTime} min read</span>
+          <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 font-mono text-xs theme-muted tracking-wide">
+            <div className="flex items-center gap-3">
+              <time>{formatDate(post.date)}</time>
+              <span>·</span>
+              <span>{post.readingTime} min read</span>
+            </div>
+            <Share
+              url={`${BASE_URL}/blog/${slug}`}
+              title={post.title}
+              label="Share this post"
+            />
           </div>
           <h1 className="font-serif text-3xl sm:text-4xl text-foreground leading-tight tracking-tight mt-4">
             {post.title}

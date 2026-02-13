@@ -3,8 +3,10 @@ import Link from "next/link";
 import type { Metadata } from "next";
 import { getAlbumBySlug, getAllAlbumSlugs } from "@/lib/albums";
 import { getFullUrl, getOriginalUrl } from "@/lib/storage";
+import { BASE_URL } from "@/lib/config";
 import { PhotoViewer } from "@/components/gallery/PhotoViewer";
 import { Breadcrumbs } from "@/components/Breadcrumbs";
+import { Share } from "@/components/Share";
 
 type Props = {
   params: Promise<{ album: string; photo: string }>;
@@ -86,16 +88,23 @@ export default async function PhotoPage({ params }: Props) {
             { label: photoId },
           ]}
         />
-        <div className="flex items-center justify-between font-mono text-sm mt-2">
+        <div className="flex items-center justify-between font-mono text-sm mt-2 gap-4">
           <Link
             href={`/pics/${albumSlug}`}
-            className="theme-muted hover:text-foreground transition-colors tracking-tight"
+            className="theme-muted hover:text-foreground transition-colors tracking-tight shrink-0"
           >
             ← {album.title}
           </Link>
-          <span className="font-mono text-xs theme-muted">
-            {photoIndex + 1} / {album.photos.length}
-          </span>
+          <div className="flex items-center gap-3 shrink-0">
+            <span className="font-mono text-xs theme-muted tabular-nums">
+              {photoIndex + 1} / {album.photos.length}
+            </span>
+            <Share
+              url={`${BASE_URL}/pics/${albumSlug}/${photoId}`}
+              title={`${album.title} — ${photoId}`}
+              label="Share this photo"
+            />
+          </div>
         </div>
       </header>
 
