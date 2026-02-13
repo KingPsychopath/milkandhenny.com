@@ -1,7 +1,8 @@
 import Link from "next/link";
 import type { Metadata } from "next";
-import { getAllAlbums } from "@/lib/albums";
+import { getAllAlbums, type Album } from "@/lib/albums";
 import { getThumbUrl } from "@/lib/storage";
+import { focalPresetToObjectPosition } from "@/lib/focal";
 import { Breadcrumbs } from "@/components/Breadcrumbs";
 
 export const metadata: Metadata = {
@@ -20,6 +21,15 @@ export const metadata: Metadata = {
     description: "Photos from the motives.",
   },
 };
+
+/** Resolve cover photo's focal point to CSS object-position */
+function getCoverPosition(album: Album): string | undefined {
+  const cover = album.photos.find((p) => p.id === album.cover);
+  if (!cover) return undefined;
+  if (cover.focalPoint) return focalPresetToObjectPosition(cover.focalPoint);
+  if (cover.autoFocal) return `${cover.autoFocal.x}% ${cover.autoFocal.y}%`;
+  return undefined;
+}
 
 function formatDate(dateStr: string) {
   const d = new Date(dateStr + "T00:00:00");
@@ -74,7 +84,9 @@ export default function PicsPage() {
           </p>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {albums.map((album) => (
+            {albums.map((album) => {
+              const coverPos = getCoverPosition(album);
+              return (
               <Link
                 key={album.slug}
                 href={`/pics/${album.slug}`}
@@ -87,6 +99,7 @@ export default function PicsPage() {
                     src={getThumbUrl(album.slug, album.cover)}
                     alt={album.title}
                     className="w-full h-full object-cover photo-page-fade-in transition-transform duration-500 group-hover:scale-[1.02]"
+                    style={coverPos ? { objectPosition: coverPos } : undefined}
                     loading="lazy"
                   />
                 </div>
@@ -106,7 +119,8 @@ export default function PicsPage() {
                   </div>
                 </div>
               </Link>
-            ))}
+              );
+            })}
           </div>
         )}
         </section>
