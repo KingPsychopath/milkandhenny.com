@@ -31,10 +31,23 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   if (!album) return {};
 
   const photoIndex = album.photos.findIndex((p) => p.id === photoId);
+  const description = `Photo ${photoIndex + 1} of ${album.photos.length} from ${album.title}`;
 
   return {
     title: `${photoId} — ${album.title} — Milk & Henny`,
-    description: `Photo ${photoIndex + 1} of ${album.photos.length} from ${album.title}`,
+    description,
+    openGraph: {
+      title: `${album.title} — ${photoId}`,
+      description,
+      url: `/pics/${albumSlug}/${photoId}`,
+      siteName: "Milk & Henny",
+      type: "website",
+    },
+    twitter: {
+      card: "summary_large_image",
+      title: `${album.title} — ${photoId}`,
+      description,
+    },
   };
 }
 

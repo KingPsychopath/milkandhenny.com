@@ -1,11 +1,10 @@
 {
   "crons": [{"path": "/api/cron/cleanup-transfers", "schedule": "0 3 * * *"}],
-  "redirects": [
+  "rewrites": [
     {
       "source": "/:path*",
       "has": [{"type": "host", "value": "pics.milkandhenny.com"}],
-      "destination": "https://pub-e25e925b029940d99b0df0d54515d82b.r2.dev/:path*",
-      "statusCode": 307
+      "destination": "https://pub-e25e925b029940d99b0df0d54515d82b.r2.dev/:path*"
     }
   ]
 }

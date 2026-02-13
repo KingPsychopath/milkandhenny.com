@@ -7,6 +7,18 @@ import { Breadcrumbs } from "@/components/Breadcrumbs";
 export const metadata: Metadata = {
   title: "Pics — Milk & Henny",
   description: "Photos from the motives.",
+  openGraph: {
+    title: "Pics",
+    description: "Photos from the motives.",
+    url: "/pics",
+    siteName: "Milk & Henny",
+    type: "website",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Pics — Milk & Henny",
+    description: "Photos from the motives.",
+  },
 };
 
 function formatDate(dateStr: string) {

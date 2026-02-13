@@ -20,6 +20,7 @@ import {
   processToOg,
   mapConcurrent,
 } from "./media-processing";
+import { type FocalPreset, isValidFocalPreset } from "../lib/focal";
 
 /* ─── Constants ─── */
 
@@ -33,6 +34,8 @@ type PhotoMeta = {
   width: number;
   height: number;
   takenAt?: string; // ISO date from EXIF DateTimeOriginal
+  /** Crop focal point for og/cover: center, top, bottom, top left, etc. */
+  focalPoint?: FocalPreset;
 };
 
 type AlbumData = {
@@ -410,12 +413,14 @@ function getPhotoKeys(albumSlug: string, photoId: string): string[] {
 
 /** Backfill OG variants for existing albums. Downloads original from R2, processes to og, uploads. */
 async function backfillOgVariants(
-  onProgress?: (msg: string) => void
+  onProgress?: (msg: string) => void,
+  options?: { force?: boolean }
 ): Promise<{ processed: number; skipped: number; failed: number }> {
   const albums = listAlbums();
   let processed = 0;
   let skipped = 0;
   let failed = 0;
+  const force = options?.force ?? false;
 
   for (const album of albums) {
     const data = getAlbum(album.slug);
@@ -428,15 +433,20 @@ async function backfillOgVariants(
       const originalKey = `albums/${data.slug}/original/${photo.id}.jpg`;
 
       const { exists } = await headObject(ogKey);
-      if (exists) {
+      if (exists && !force) {
         skipped++;
         onProgress?.(`  Skip ${photo.id} (og exists)`);
         continue;
       }
 
+      const focalPosition =
+        photo.focalPoint && isValidFocalPreset(photo.focalPoint)
+          ? photo.focalPoint
+          : undefined;
+
       try {
         const raw = await downloadBuffer(originalKey);
-        const og = await processToOg(raw);
+        const og = await processToOg(raw, focalPosition);
         await uploadBuffer(ogKey, og.buffer, og.contentType);
         processed++;
         onProgress?.(`  ✓ ${photo.id} (${(og.buffer.byteLength / 1024).toFixed(1)} KB)`);
@@ -450,6 +460,40 @@ async function backfillOgVariants(
   return { processed, skipped, failed };
 }
 
+/** Set focal point for a photo and regenerate its OG image. */
+async function setPhotoFocal(
+  slug: string,
+  photoId: string,
+  preset: FocalPreset,
+  onProgress?: (msg: string) => void
+): Promise<AlbumData> {
+  const data = readAlbum(slug);
+  if (!data) throw new Error(`Album "${slug}" not found`);
+
+  const photo = data.photos.find((p) => p.id === photoId);
+  if (!photo) throw new Error(`Photo "${photoId}" not found in album "${slug}"`);
+
+  if (!isValidFocalPreset(preset)) {
+    throw new Error(
+      `Invalid preset. Use: center, top, bottom, top left, top right, bottom left, bottom right`
+    );
+  }
+
+  photo.focalPoint = preset;
+  writeAlbum(slug, data);
+
+  onProgress?.(`Regenerating OG image for ${photoId}...`);
+  const originalKey = `albums/${slug}/original/${photoId}.jpg`;
+  const ogKey = `albums/${slug}/og/${photoId}.jpg`;
+
+  const raw = await downloadBuffer(originalKey);
+  const og = await processToOg(raw, preset);
+  await uploadBuffer(ogKey, og.buffer, og.contentType);
+  onProgress?.(`✓ OG updated (${(og.buffer.byteLength / 1024).toFixed(1)} KB)`);
+
+  return data;
+}
+
 export {
   listAlbums,
   getAlbum,
@@ -459,6 +503,7 @@ export {
   addPhotos,
   deletePhoto,
   setCover,
+  setPhotoFocal,
   getPhotoKeys,
   backfillOgVariants,
 };

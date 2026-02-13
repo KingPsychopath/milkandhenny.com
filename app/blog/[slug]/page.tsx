@@ -87,6 +87,11 @@ function resolveAlbumsFromContent(
         if (photo.id !== album.cover) previewIds.push(photo.id);
       }
 
+      const focalPoints: Record<string, import("@/lib/focal").FocalPreset> = {};
+      for (const p of album.photos) {
+        if (p.focalPoint) focalPoints[p.id] = p.focalPoint;
+      }
+
       albums[href] = {
         slug: album.slug,
         title: album.title,
@@ -94,6 +99,7 @@ function resolveAlbumsFromContent(
         cover: album.cover,
         photoCount: album.photos.length,
         previewIds,
+        focalPoints: Object.keys(focalPoints).length > 0 ? focalPoints : undefined,
       };
     }
 

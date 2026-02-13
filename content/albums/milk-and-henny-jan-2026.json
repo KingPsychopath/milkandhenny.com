@@ -7,27 +7,32 @@
     {
       "id": "DSC00003",
       "width": 4608,
-      "height": 3072
+      "height": 3072,
+      "focalPoint": "center"
     },
     {
       "id": "DSC07124",
       "width": 4672,
-      "height": 7008
+      "height": 7008,
+      "focalPoint": "top"
     },
     {
       "id": "DSC07270",
       "width": 4672,
-      "height": 7008
+      "height": 7008,
+      "focalPoint": "top"
     },
     {
       "id": "anic",
       "width": 4672,
-      "height": 7008
+      "height": 7008,
+      "focalPoint": "top"
     },
     {
       "id": "anic2",
       "width": 4672,
-      "height": 7008
+      "height": 7008,
+      "focalPoint": "top"
     }
   ]
 }

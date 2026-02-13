@@ -24,6 +24,12 @@ const FULL_WIDTH = 1600;
 const OG_WIDTH = 1200;
 const OG_HEIGHT = 630;
 
+import {
+  type FocalPreset,
+  isValidFocalPreset,
+  focalPresetToSharpPosition,
+} from "../lib/focal";
+
 /** Image extensions Sharp can process */
 const PROCESSABLE_EXTENSIONS = /\.(jpe?g|png|webp|heic|tiff?)$/i;
 
@@ -164,7 +170,8 @@ function extractExifDate(exifBuffer: Buffer | undefined): string | null {
  */
 async function processImageVariants(
   raw: Buffer,
-  sourceExt: string
+  sourceExt: string,
+  focalPosition?: FocalPreset
 ): Promise<ProcessedImage> {
   const metadata = await sharp(raw).metadata();
   const width = metadata.width ?? 4032;
@@ -187,8 +194,12 @@ async function processImageVariants(
     ? raw
     : await sharp(raw).jpeg({ quality: 95 }).toBuffer();
 
+  const position =
+    focalPosition && isValidFocalPreset(focalPosition)
+      ? focalPresetToSharpPosition(focalPosition)
+      : "centre";
   const og = await sharp(raw)
-    .resize(OG_WIDTH, OG_HEIGHT, { fit: "cover" })
+    .resize(OG_WIDTH, OG_HEIGHT, { fit: "cover", position })
     .jpeg({ quality: 80 })
     .toBuffer();
 
@@ -209,11 +220,19 @@ async function processImageVariants(
 
 /**
  * Create OG-sized JPEG from a raw image buffer.
- * Used by backfill when re-processing from original.
+ * Used by backfill and regen when re-processing from original.
+ * @param focalPosition - Preset for crop position (center, top, bottom, etc.). Default: center.
  */
-async function processToOg(raw: Buffer): Promise<ImageVariant> {
+async function processToOg(
+  raw: Buffer,
+  focalPosition?: FocalPreset
+): Promise<ImageVariant> {
+  const position =
+    focalPosition && isValidFocalPreset(focalPosition)
+      ? focalPresetToSharpPosition(focalPosition)
+      : "centre";
   const buffer = await sharp(raw)
-    .resize(OG_WIDTH, OG_HEIGHT, { fit: "cover" })
+    .resize(OG_WIDTH, OG_HEIGHT, { fit: "cover", position })
     .jpeg({ quality: 80 })
     .toBuffer();
   return { buffer, contentType: "image/jpeg", ext: ".jpg" };

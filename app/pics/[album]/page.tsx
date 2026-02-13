@@ -18,9 +18,23 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const album = getAlbumBySlug(slug);
   if (!album) return {};
 
+  const description = album.description ?? `${album.photos.length} photos from ${album.title}`;
+
   return {
     title: `${album.title} — Pics — Milk & Henny`,
-    description: album.description ?? `${album.photos.length} photos from ${album.title}`,
+    description,
+    openGraph: {
+      title: album.title,
+      description,
+      url: `/pics/${slug}`,
+      siteName: "Milk & Henny",
+      type: "website",
+    },
+    twitter: {
+      card: "summary_large_image",
+      title: album.title,
+      description,
+    },
   };
 }
 

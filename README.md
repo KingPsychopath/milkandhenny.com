@@ -100,7 +100,7 @@ Album-based photo galleries served from Cloudflare R2.
 - Lightbox with keyboard/swipe navigation
 - Individual + batch ZIP download (direct from R2, no Vercel bandwidth)
 - **Blog embed cards**: standalone album links in blog posts (`[Title](/pics/slug)` on its own line) render as preview cards. Two variants: **compact** (4-thumb strip, default) and **masonry** (Pinterest-style flowing tiles, up to 6 photos). Use `[Title](/pics/slug#masonry)` for masonry. Inline mentions stay as normal links.
-- Managed via CLI: `pnpm cli albums upload`, `pnpm cli photos add`, `pnpm cli albums backfill-og`, etc.
+- Managed via CLI: `pnpm cli albums upload`, `pnpm cli photos add`, `pnpm cli albums backfill-og`, `pnpm cli photos set-focal`, etc.
 
 > **Staleness note**: Album embed cards in blog posts are resolved at build time (SSG). If you update an album (change cover, add photos) after the blog was deployed, the embed card shows stale data until the next `git commit` + Vercel rebuild. This is consistent with how all album data works — JSON manifests live in git, so any album change already requires a redeploy.
 
@@ -120,6 +120,38 @@ pnpm cli albums backfill-og --yes   # Run before first deploy after adding OG su
 Backfill skips photos that already have og variants. Re-run safely after adding new albums.
 
 **Vercel hobby limits:** OG images are generated at **build time** and served as static assets. Zero runtime serverless invocations — no impact on your hobby function/bandwidth limits. Build time increases slightly (one R2 fetch per album/photo), but that's a one-time cost per deploy.
+
+**Focal points:** OG images crop to 1200×630. The default crop centers on the image, which works for most landscape shots. For vertical portraits where the subject's face is near the top, center cropping can cut them off. Set a focal point to control where the crop anchors:
+
+```bash
+pnpm cli photos set-focal <album> <photoId> --preset t   # "top" — keeps the top of the image
+pnpm cli photos set-focal <album> <photoId> --preset c   # "center" — default, reset to normal
+```
+
+**Presets** (full name or shorthand):
+
+| Shorthand | Full name | When to use |
+|-----------|-----------|-------------|
+| `c` | `center` | Default — most landscape shots |
+| `t` | `top` | Vertical portraits — face at top |
+| `b` | `bottom` | Subject at bottom of frame |
+| `tl` | `top left` | Subject in top-left corner |
+| `tr` | `top right` | Subject in top-right corner |
+| `bl` | `bottom left` | Subject in bottom-left corner |
+| `br` | `bottom right` | Subject in bottom-right corner |
+
+**What happens when you set a focal point:**
+1. Updates `focalPoint` in the album JSON (`content/albums/{slug}.json`)
+2. Downloads the original from R2, re-crops to 1200×630 using the new position, uploads the new og variant
+3. Album embed thumbnails in blog posts use the focal point as CSS `object-position`
+
+**When to change it:** Only when the default center crop hides the subject. Most photos don't need it. Use `photos list <album>` to see which photos have focal points set.
+
+**Batch regen after editing JSON manually:** If you edit `focalPoint` values in the JSON by hand, regen all OG images with:
+
+```bash
+pnpm cli albums backfill-og --yes --force   # Regenerates all, respects focal points
+```
 
 ### How album data works (vs transfers)
 

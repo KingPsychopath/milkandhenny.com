@@ -3,6 +3,10 @@ import path from "path";
 
 const ALBUMS_DIR = path.join(process.cwd(), "content/albums");
 
+import type { FocalPreset } from "./focal";
+
+export type { FocalPreset } from "./focal";
+
 /** A single photo in an album */
 type Photo = {
   id: string;
@@ -12,6 +16,8 @@ type Photo = {
   blur?: string;
   /** ISO date from EXIF DateTimeOriginal (when the photo was taken) */
   takenAt?: string;
+  /** Crop focal point for og/embeds: center, top, bottom, etc. */
+  focalPoint?: FocalPreset;
 };
 
 /** Album metadata from JSON */

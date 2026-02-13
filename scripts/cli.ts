@@ -20,9 +20,15 @@ import {
   addPhotos,
   deletePhoto,
   setCover,
+  setPhotoFocal,
   getPhotoKeys,
   backfillOgVariants,
 } from "./album-ops";
+import {
+  FOCAL_PRESETS,
+  resolveFocalPreset,
+  FOCAL_SHORTHAND,
+} from "@/lib/focal";
 import {
   listObjects,
   deleteObject,
@@ -377,10 +383,11 @@ async function cmdAlbumsUpdate(
   console.log();
 }
 
-async function cmdAlbumsBackfillOg(skipConfirm = false) {
+async function cmdAlbumsBackfillOg(skipConfirm = false, force = false) {
   heading("Backfill OG images");
   log(dim("Downloads originals from R2, generates 1200×630 JPGs for social sharing."));
-  log(dim("Skips photos that already have og/ variant. Run after deploying OG support."));
+  log(dim(force ? "Regenerating all (--force)." : "Skips photos that already have og/ variant."));
+  log(dim("Respects focal points set via photos set-focal."));
   console.log();
 
   const albums = listAlbums();
@@ -396,7 +403,7 @@ async function cmdAlbumsBackfillOg(skipConfirm = false) {
   console.log();
 
   if (!skipConfirm) {
-    const ok = await confirm("Proceed with backfill?");
+    const ok = await confirm(force ? "Regenerate all OG images?" : "Proceed with backfill?");
     if (!ok) {
       log(dim("Cancelled."));
       console.log();
@@ -404,7 +411,7 @@ async function cmdAlbumsBackfillOg(skipConfirm = false) {
     }
   }
 
-  const result = await backfillOgVariants((msg) => progress(msg));
+  const result = await backfillOgVariants((msg) => progress(msg), { force });
 
   console.log();
   log(green(`✓ Processed: ${result.processed}`));
@@ -459,9 +466,12 @@ async function cmdPhotosList(slug: string) {
 
   for (const p of album.photos) {
     const coverTag = p.id === album.cover ? yellow(" ★ cover") : "";
+    const focalTag = (p as { focalPoint?: string }).focalPoint
+      ? dim(` focal: ${(p as { focalPoint?: string }).focalPoint}`)
+      : "";
     const keys = getPhotoKeys(slug, p.id);
     log(
-      `${cyan(p.id.padEnd(maxId + 2))} ${dim(`${p.width} × ${p.height}`)}${coverTag}`
+      `${cyan(p.id.padEnd(maxId + 2))} ${dim(`${p.width} × ${p.height}`)}${coverTag}${focalTag}`
     );
     for (const k of keys) {
       log(`  ${dim(k)}`);
@@ -535,6 +545,23 @@ async function cmdPhotosSetCover(slug: string, photoId: string) {
   const album = setCover(slug, photoId);
   log(green(`✓ Cover set to "${photoId}" for album "${slug}".`));
   log(dim(`Album: ${album.title}`));
+  log(dim("Next: commit the JSON and deploy."));
+  console.log();
+}
+
+async function cmdPhotosSetFocal(
+  slug: string,
+  photoId: string,
+  preset: import("@/lib/focal").FocalPreset
+) {
+  heading(`Set focal point: ${photoId}`);
+  const album = await setPhotoFocal(slug, photoId, preset, (msg) =>
+    progress(msg)
+  );
+  console.log();
+  log(green(`✓ Focal set to "${preset}" — OG image regenerated.`));
+  log(dim(`Album: ${album.title}`));
+  log(dim("Applies to: OG images, album embed thumbnails."));
   log(dim("Next: commit the JSON and deploy."));
   console.log();
 }
@@ -938,8 +965,9 @@ function showHelp() {
     albums update ${dim("<slug>")} [options]            Update album metadata
       --title, --date, --description, --cover
     albums delete ${dim("<slug>")}                     Delete entire album + R2 files
-    albums backfill-og ${dim("[--yes]")}               Backfill OG images for existing albums
+    albums backfill-og ${dim("[--yes] [--force]")}     Backfill OG images for existing albums
       --yes            ${dim("Skip confirmation prompt")}
+      --force          ${dim("Regenerate all (even existing og/) — use after changing focal points")}
       ${dim("Downloads originals from R2, generates 1200×630 JPGs, uploads to og/)")}
 
   ${bold("Photos")}
@@ -947,6 +975,9 @@ function showHelp() {
     photos add ${dim("<album>")} --dir ${dim("<path>")}          Add new photos to existing album
     photos delete ${dim("<album> <photoId>")}          Remove a photo from album + R2
     photos set-cover ${dim("<album> <photoId>")}       Set album cover photo
+    photos set-focal ${dim("<album> <photoId>")} --preset ${dim("<name>")}  Set crop focal point
+      ${dim("Presets: center(c), top(t), bottom(b), tl, tr, bl, br")}
+      ${dim("Regenerates OG image. Use for vertical portraits (face at top).")}
 
   ${bold("Transfers")} ${dim("(private, self-destructing file shares)")}
     transfers list                           List active transfers + time left
@@ -1238,6 +1269,7 @@ async function interactivePhotos() {
       { label: "Add photos to album", detail: "upload from a folder" },
       { label: "Delete a photo", detail: "remove from R2 and JSON" },
       { label: "Set cover photo", detail: "change album thumbnail" },
+      { label: "Set focal point", detail: "crop position for OG + embeds (e.g. top for portraits)" },
     ]);
 
     switch (choice) {
@@ -1270,6 +1302,31 @@ async function interactivePhotos() {
         const photoId = await selectPhoto(slug);
         if (!photoId) break;
         await safely(() => cmdPhotosSetCover(slug, photoId));
+        await pause();
+        break;
+      }
+      case 5: {
+        const slug = await selectAlbum();
+        if (!slug) break;
+        const photoId = await selectPhoto(slug);
+        if (!photoId) break;
+
+        const presetChoice = await choose(
+          "Focal point (where to center the crop)",
+          [
+            { label: "Center", detail: "default, good for most landscape shots" },
+            { label: "Top", detail: "vertical portraits — face at top" },
+            { label: "Bottom", detail: "subject at bottom" },
+            { label: "Top left", detail: "subject in top-left" },
+            { label: "Top right", detail: "subject in top-right" },
+            { label: "Bottom left", detail: "subject in bottom-left" },
+            { label: "Bottom right", detail: "subject in bottom-right" },
+          ]
+        );
+        if (presetChoice <= 0) break;
+
+        const preset = FOCAL_PRESETS[presetChoice - 1];
+        await safely(() => cmdPhotosSetFocal(slug, photoId, preset));
         await pause();
         break;
       }
@@ -1731,7 +1788,8 @@ async function direct() {
           }
           case "backfill-og": {
             const hasYes = args.includes("--yes");
-            return cmdAlbumsBackfillOg(hasYes);
+            const hasForce = args.includes("--force");
+            return cmdAlbumsBackfillOg(hasYes, hasForce);
           }
           default:
             throw new Error(`Unknown: albums ${subcommand ?? ""}. Run 'pnpm cli help'.`);
@@ -1761,6 +1819,23 @@ async function direct() {
             const photoId = args[3];
             if (!slug || !photoId) throw new Error("Usage: pnpm cli photos set-cover <album-slug> <photo-id>");
             return cmdPhotosSetCover(slug, photoId);
+          }
+          case "set-focal": {
+            const slug = args[2];
+            const photoId = args[3];
+            const presetArg = getArg("preset");
+            if (!slug || !photoId || !presetArg) {
+              throw new Error(
+                "Usage: pnpm cli photos set-focal <album-slug> <photo-id> --preset <c|t|b|tl|tr|bl|br|center|top|...>"
+              );
+            }
+            const preset = resolveFocalPreset(presetArg);
+            if (!preset) {
+              throw new Error(
+                `Invalid preset. Use: ${Object.keys(FOCAL_SHORTHAND).join(", ")} or full names`
+              );
+            }
+            return cmdPhotosSetFocal(slug, photoId, preset);
           }
           default:
             throw new Error(`Unknown: photos ${subcommand ?? ""}. Run 'pnpm cli help'.`);
