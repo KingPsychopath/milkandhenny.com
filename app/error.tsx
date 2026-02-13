@@ -15,33 +15,49 @@ export default function Error({
   }, [error]);
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background">
-      <div className="text-center px-6 max-w-md">
-        <h1 className="font-mono text-4xl font-bold text-foreground mb-3">
-          something broke
-        </h1>
-        <p className="font-mono text-sm theme-muted mb-8">
-          An unexpected error occurred. You can try again, or head back home.
-        </p>
+    <div className="min-h-screen bg-background flex items-center justify-center p-6">
+      <div className="text-center max-w-md space-y-8">
+        {/* Brand */}
+        <Link
+          href="/"
+          className="font-mono text-sm font-bold text-foreground tracking-tighter hover:opacity-70 transition-opacity"
+        >
+          milk & henny
+        </Link>
 
-        <div className="flex items-center justify-center gap-4 font-mono text-sm">
+        {/* Error */}
+        <div className="space-y-3">
+          <h1 className="font-mono text-7xl font-bold text-foreground opacity-10 leading-none">
+            oops
+          </h1>
+          <p className="font-serif text-xl text-foreground">
+            something broke
+          </p>
+          <p className="theme-muted text-sm">
+            it happens to the best of us. try again, or head home.
+          </p>
+        </div>
+
+        {/* Actions */}
+        <div className="flex flex-col sm:flex-row gap-3 justify-center pt-2">
           <button
             onClick={reset}
-            className="px-4 py-2 rounded-md bg-foreground text-background hover:opacity-90 transition-opacity"
+            className="font-mono text-sm theme-muted hover:text-foreground transition-colors"
           >
-            try again
+            ↻ try again
           </button>
+          <span className="hidden sm:inline theme-faint">·</span>
           <Link
             href="/"
-            className="px-4 py-2 rounded-md theme-border border hover:text-foreground theme-muted transition-colors"
+            className="font-mono text-sm theme-muted hover:text-foreground transition-colors"
           >
-            go home
+            ← go home
           </Link>
         </div>
 
         {error.digest && (
-          <p className="mt-8 font-mono text-[10px] theme-faint">
-            error id: {error.digest}
+          <p className="font-mono text-[10px] theme-faint">
+            ref: {error.digest}
           </p>
         )}
       </div>
