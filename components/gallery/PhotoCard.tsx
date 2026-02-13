@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useEffect, useState } from "react";
+import { useRef, useEffect, useState, memo, useCallback } from "react";
 import Link from "next/link";
 
 type PhotoCardProps = {
@@ -19,8 +19,9 @@ type PhotoCardProps = {
 /**
  * A single photo in the gallery grid.
  * Lazy-loads with intersection observer and shows a placeholder until ready.
+ * Memoized to prevent re-renders when sibling cards change selection state.
  */
-export function PhotoCard({
+export const PhotoCard = memo(function PhotoCard({
   albumSlug,
   photoId,
   thumbUrl,
@@ -33,6 +34,17 @@ export function PhotoCard({
 }: PhotoCardProps) {
   const imgRef = useRef<HTMLImageElement>(null);
   const [loaded, setLoaded] = useState(false);
+
+  const handleLoad = useCallback(() => setLoaded(true), []);
+  const handleSelect = useCallback(
+    (e: React.MouseEvent) => {
+      if (selectable) {
+        e.preventDefault();
+        onSelect?.(photoId);
+      }
+    },
+    [selectable, onSelect, photoId]
+  );
 
   useEffect(() => {
     const img = imgRef.current;
@@ -60,12 +72,7 @@ export function PhotoCard({
         href={`/pics/${albumSlug}/${photoId}`}
         className="block relative overflow-hidden rounded-sm"
         style={{ paddingBottom: `${aspectRatio * 100}%` }}
-        onClick={(e) => {
-          if (selectable) {
-            e.preventDefault();
-            onSelect?.(photoId);
-          }
-        }}
+        onClick={handleSelect}
       >
         {/* Placeholder */}
         <div
@@ -84,7 +91,7 @@ export function PhotoCard({
           alt={`Photo ${photoId} from album`}
           width={width}
           height={height}
-          onLoad={() => setLoaded(true)}
+          onLoad={handleLoad}
           className={`absolute inset-0 w-full h-full object-cover transition-opacity duration-300 ${
             loaded ? "opacity-100" : "opacity-0"
           }`}
@@ -112,4 +119,4 @@ export function PhotoCard({
       </Link>
     </div>
   );
-}
+});

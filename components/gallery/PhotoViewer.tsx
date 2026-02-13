@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useCallback, useState } from "react";
+import { useEffect, useCallback, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 
@@ -29,6 +29,7 @@ export function PhotoViewer({
 }: PhotoViewerProps) {
   const router = useRouter();
   const [saving, setSaving] = useState(false);
+  const savingRef = useRef(false);
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
@@ -46,7 +47,8 @@ export function PhotoViewer({
 
   /** Fetch blob directly from R2 and trigger download */
   const handleDownload = useCallback(async () => {
-    if (saving) return;
+    if (savingRef.current) return;
+    savingRef.current = true;
     setSaving(true);
     try {
       const res = await fetch(downloadUrl, { mode: "cors" });
@@ -60,9 +62,10 @@ export function PhotoViewer({
     } catch (err) {
       console.error("Download failed:", err);
     } finally {
+      savingRef.current = false;
       setSaving(false);
     }
-  }, [downloadUrl, filename, saving]);
+  }, [downloadUrl, filename]);
 
   const isPortrait = height > width;
 
@@ -80,7 +83,7 @@ export function PhotoViewer({
           alt={`Full size photo — ${filename}`}
           width={width}
           height={height}
-          className="w-full h-auto rounded-sm"
+          className="w-full h-auto rounded-sm photo-page-fade-in"
           style={{ maxHeight: "80vh", objectFit: "contain" }}
         />
       </div>
