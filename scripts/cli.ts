@@ -322,8 +322,11 @@ async function cmdAlbumsShow(slug: string) {
 
   for (const p of album.photos) {
     const coverTag = p.id === album.cover ? yellow(" ★") : "";
+    const focalTag = (p as { focalPoint?: string }).focalPoint
+      ? dim(` focal: ${(p as { focalPoint?: string }).focalPoint}`)
+      : "";
     log(
-      `  ${p.id.padEnd(maxId + 2)} ${dim(`${p.width} × ${p.height}`)}${coverTag}`
+      `  ${p.id.padEnd(maxId + 2)} ${dim(`${p.width} × ${p.height}`)}${coverTag}${focalTag}`
     );
   }
   console.log();
