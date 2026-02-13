@@ -27,6 +27,15 @@ import {
   deleteObject,
   getBucketInfo,
 } from "./r2-client";
+import {
+  createTransfer,
+  getTransferInfo,
+  listActiveTransfers,
+  deleteTransfer,
+  formatDuration,
+  parseExpiry,
+  formatBytes as formatTransferBytes,
+} from "./transfer-ops";
 
 /* ─── Formatting ─── */
 
@@ -99,6 +108,24 @@ function validateDir(dir: string): { valid: boolean; error?: string; count?: num
     };
   }
   return { valid: true, count: images.length };
+}
+
+/** Validate directory for transfers — accepts ALL non-hidden files */
+function validateTransferDir(dir: string): { valid: boolean; error?: string; count?: number } {
+  const absDir = path.resolve(dir.replace(/^~/, process.env.HOME ?? "~"));
+  if (!fs.existsSync(absDir)) {
+    return { valid: false, error: `Directory not found: ${absDir}` };
+  }
+  if (!fs.statSync(absDir).isDirectory()) {
+    return { valid: false, error: `Not a directory: ${absDir}` };
+  }
+  const files = fs
+    .readdirSync(absDir)
+    .filter((f) => !f.startsWith(".") && fs.statSync(path.join(absDir, f)).isFile());
+  if (files.length === 0) {
+    return { valid: false, error: `No files found in ${absDir}` };
+  }
+  return { valid: true, count: files.length };
 }
 
 /* ─── Interactive prompts ─── */
@@ -540,11 +567,139 @@ async function cmdBucketInfo() {
   console.log();
 }
 
+/* ─── Transfer command handlers ─── */
+
+async function cmdTransfersList() {
+  const transfers = await listActiveTransfers();
+
+  if (transfers.length === 0) {
+    heading("Transfers");
+    log(dim("No active transfers."));
+    console.log();
+    return;
+  }
+
+  heading(`Transfers (${transfers.length} active)`);
+
+  for (const t of transfers) {
+    const remaining = formatDuration(t.remainingSeconds);
+    const created = new Date(t.createdAt).toLocaleDateString("en-GB", {
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+    });
+    log(
+      `${cyan(t.id.padEnd(14))} ${t.title.padEnd(30)} ${dim(`${t.fileCount} files`).padEnd(22)} ${dim(created).padEnd(18)} ${yellow(remaining + " left")}`
+    );
+  }
+  console.log();
+}
+
+async function cmdTransfersInfo(id: string) {
+  const info = await getTransferInfo(id);
+  if (!info) throw new Error(`Transfer "${id}" not found or expired.`);
+
+  const remaining = formatDuration(info.remainingSeconds);
+  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || "https://milkandhenny.com";
+
+  heading(info.title);
+  log(`${dim("ID:")}           ${info.id}`);
+  log(`${dim("Files:")}        ${info.files.length}`);
+  log(
+    `${dim("Created:")}      ${new Date(info.createdAt).toLocaleString("en-GB")}`
+  );
+  log(
+    `${dim("Expires:")}      ${new Date(info.expiresAt).toLocaleString("en-GB")} ${yellow(`(${remaining} left)`)}`
+  );
+  log(`${dim("Share URL:")}    ${green(`${baseUrl}/t/${info.id}`)}`);
+  log(
+    `${dim("Admin URL:")}    ${green(`${baseUrl}/t/${info.id}?token=${info.deleteToken}`)}`
+  );
+  console.log();
+
+  if (info.files.length <= 30) {
+    log(dim("Files:"));
+    for (const f of info.files) {
+      const dims = f.width && f.height ? dim(` ${f.width}×${f.height}`) : "";
+      const size = formatTransferBytes(f.size);
+      log(`  ${f.filename.padEnd(35)} ${dim(f.kind.padEnd(8))} ${dim(size)}${dims}`);
+    }
+    console.log();
+  }
+}
+
+async function cmdTransfersUpload(opts: {
+  dir: string;
+  title: string;
+  expires?: string;
+}) {
+  heading(`Creating transfer: ${opts.title}`);
+
+  const result = await createTransfer(opts, (msg) => progress(msg));
+
+  console.log();
+  log(green(`✓ ${result.transfer.files.length} files uploaded`));
+  log(green(`✓ Transfer ${result.transfer.id} created`));
+
+  const { fileCounts } = result;
+  const countParts: string[] = [];
+  if (fileCounts.images > 0) countParts.push(`${fileCounts.images} images`);
+  if (fileCounts.gifs > 0) countParts.push(`${fileCounts.gifs} GIFs`);
+  if (fileCounts.videos > 0) countParts.push(`${fileCounts.videos} videos`);
+  if (fileCounts.audio > 0) countParts.push(`${fileCounts.audio} audio`);
+  if (fileCounts.other > 0) countParts.push(`${fileCounts.other} other`);
+  if (countParts.length > 0) log(dim(`  ${countParts.join(", ")}`));
+
+  const expires = new Date(result.transfer.expiresAt);
+  log(
+    `${dim("Expires:")} ${expires.toLocaleString("en-GB")} ${yellow(`(${formatDuration(Math.floor((expires.getTime() - Date.now()) / 1000))} from now)`)}`
+  );
+
+  console.log();
+  log(`${bold("Total uploaded:")} ${formatBytes(result.totalSize)}`);
+
+  console.log();
+  log(bold("Share this link:"));
+  log(`  ${green(result.shareUrl)}`);
+  console.log();
+  log(bold("Admin link (takedown):"));
+  log(`  ${yellow(result.adminUrl)}`);
+  console.log();
+}
+
+async function cmdTransfersDelete(id: string) {
+  const info = await getTransferInfo(id);
+  if (!info) throw new Error(`Transfer "${id}" not found or already expired.`);
+
+  heading(`Delete transfer: ${info.title}`);
+  log(`${dim("Files:")} ${info.files.length}`);
+  log(
+    `${dim("Remaining:")} ${yellow(formatDuration(info.remainingSeconds))}`
+  );
+  console.log();
+
+  const ok = await confirm(
+    `${red("Permanently")} delete transfer "${id}" and all its R2 files?`
+  );
+  if (!ok) {
+    log(dim("Cancelled."));
+    console.log();
+    return;
+  }
+
+  const result = await deleteTransfer(id, (msg) => progress(msg));
+
+  console.log();
+  log(green(`✓ Deleted ${result.deletedFiles} files from R2`));
+  log(green(`✓ Transfer metadata ${result.dataDeleted ? "removed" : "already expired"}`));
+  console.log();
+}
+
 /* ─── Help ─── */
 
 function showHelp() {
   console.log(`
-  ${bold("milk & henny")} — Album & R2 management CLI
+  ${bold("milk & henny")} — Album, R2 & transfer management CLI
 
   ${bold("Usage")}
     pnpm cli                                  ${dim("Interactive mode (recommended)")}
@@ -570,6 +725,15 @@ function showHelp() {
     photos delete ${dim("<album> <photoId>")}          Remove a photo from album + R2
     photos set-cover ${dim("<album> <photoId>")}       Set album cover photo
 
+  ${bold("Transfers")} ${dim("(private, self-destructing file shares)")}
+    transfers list                           List active transfers + time left
+    transfers info ${dim("<id>")}                      Show transfer details + URLs
+    transfers upload                         Upload new transfer
+      --dir ${dim("<path>")}      ${dim("Folder with files (images, videos, PDFs, zips — anything)")}
+      --title ${dim("<title>")}   ${dim('Title for the transfer (e.g. "Photos for John")')}
+      --expires ${dim("<time>")}  ${dim("Expiry: 30m, 1h, 12h, 1d, 7d, 14d, 30d (default: 7d)")}
+    transfers delete ${dim("<id>")}                    Take down a transfer + delete R2 files
+
   ${bold("Bucket")} ${dim("(raw R2 access)")}
     bucket ls ${dim("[prefix]")}                       Browse bucket contents
     bucket rm ${dim("<key>")}                          Delete a file from bucket
@@ -578,6 +742,9 @@ function showHelp() {
   ${bold("Examples")}
     ${dim("$")} pnpm cli
     ${dim("$")} pnpm cli albums upload --dir ~/Desktop/party --slug jan-2026 --title "January 2026" --date 2026-01-16
+    ${dim("$")} pnpm cli transfers upload --dir ~/Desktop/send-photos --title "Photos for John" --expires 7d
+    ${dim("$")} pnpm cli transfers list
+    ${dim("$")} pnpm cli transfers delete abc12345
     ${dim("$")} pnpm cli photos delete jan-2026 DSC00003
     ${dim("$")} pnpm cli bucket ls albums/jan-2026/thumb/
 `);
@@ -927,6 +1094,136 @@ async function interactiveBucket() {
   }
 }
 
+/* ─── Interactive: Transfers ─── */
+
+/** Interactive prompt for creating a new transfer */
+async function promptTransferUpload(): Promise<void> {
+  console.log();
+  log(bold("Create private transfer"));
+  log(
+    dim("Upload any files to a self-destructing shareable link.")
+  );
+  log(dim("Images, videos, GIFs, PDFs, zips — anything goes."));
+  console.log();
+
+  /* Source directory */
+  let dir = "";
+  while (true) {
+    dir = await ask("Source directory", {
+      hint: "e.g. ~/Desktop/files-for-john",
+    });
+    if (!dir) return;
+
+    const check = validateTransferDir(dir);
+    if (check.valid) {
+      log(green(`  Found ${check.count} files`));
+      break;
+    }
+    log(red(`  ${check.error}`));
+  }
+
+  /* Title */
+  const title = await ask("Transfer title", {
+    hint: 'e.g. "Photos for John" or "Event recap"',
+  });
+  if (!title) return;
+
+  /* Expiry */
+  const expiresInput = await ask("Expires in", {
+    hint: "30m, 1h, 12h, 1d, 7d, 14d, 30d",
+    defaultVal: "7d",
+  });
+
+  // Validate expiry before confirming
+  try {
+    parseExpiry(expiresInput);
+  } catch (err) {
+    log(red(`  ${(err as Error).message}`));
+    return;
+  }
+
+  /* Confirm */
+  console.log();
+  log(dim("─── Summary ───"));
+  log(`${dim("Directory:")} ${dir}`);
+  log(`${dim("Title:")}     ${title}`);
+  log(`${dim("Expires:")}   ${expiresInput}`);
+  console.log();
+
+  const ok = await confirm("Create this transfer?");
+  if (!ok) {
+    log(dim("Cancelled."));
+    return;
+  }
+
+  await cmdTransfersUpload({
+    dir: dir.replace(/^~/, process.env.HOME ?? "~"),
+    title,
+    expires: expiresInput,
+  });
+}
+
+/** Select a transfer from the active list. Returns transfer ID or null. */
+async function selectTransfer(): Promise<string | null> {
+  const transfers = await listActiveTransfers();
+  if (transfers.length === 0) {
+    console.log();
+    log(dim("No active transfers."));
+    return null;
+  }
+
+  const choice = await choose(
+    "Select transfer",
+    transfers.map((t) => ({
+      label: t.title,
+      detail: `${t.id} · ${t.fileCount} files · ${yellow(formatDuration(t.remainingSeconds) + " left")}`,
+    }))
+  );
+
+  if (choice <= 0) return null;
+  return transfers[choice - 1].id;
+}
+
+async function interactiveTransfers() {
+  while (true) {
+    const choice = await choose("Transfers", [
+      { label: "List active transfers", detail: "see all + time remaining" },
+      { label: "Transfer details", detail: "URLs, photos, expiry" },
+      { label: "Create new transfer", detail: "upload photos to shareable link" },
+      { label: "Delete a transfer", detail: "take down and remove from R2" },
+    ]);
+
+    switch (choice) {
+      case 0:
+        return;
+      case 1:
+        await safely(cmdTransfersList);
+        await pause();
+        break;
+      case 2: {
+        const id = await selectTransfer();
+        if (id) {
+          await safely(() => cmdTransfersInfo(id));
+          await pause();
+        }
+        break;
+      }
+      case 3:
+        await safely(promptTransferUpload);
+        await pause();
+        break;
+      case 4: {
+        const id = await selectTransfer();
+        if (id) {
+          await safely(() => cmdTransfersDelete(id));
+          await pause();
+        }
+        break;
+      }
+    }
+  }
+}
+
 async function interactive() {
   console.log();
   log(bold("milk & henny") + dim(" — interactive CLI"));
@@ -936,6 +1233,7 @@ async function interactive() {
     const choice = await choose("What would you like to do?", [
       { label: "Albums", detail: "list, upload, update, delete albums" },
       { label: "Photos", detail: "list, add, delete, set cover photo" },
+      { label: "Transfers", detail: "private, self-destructing file shares" },
       { label: "Bucket", detail: "browse R2, delete files, usage stats" },
     ]);
 
@@ -952,6 +1250,9 @@ async function interactive() {
         await interactivePhotos();
         break;
       case 3:
+        await interactiveTransfers();
+        break;
+      case 4:
         await interactiveBucket();
         break;
     }
@@ -1039,6 +1340,35 @@ async function direct() {
           }
           default:
             throw new Error(`Unknown: photos ${subcommand ?? ""}. Run 'pnpm cli help'.`);
+        }
+
+      case "transfers":
+        switch (subcommand) {
+          case "list":
+            return cmdTransfersList();
+          case "info": {
+            const id = args[2];
+            if (!id) throw new Error("Usage: pnpm cli transfers info <id>");
+            return cmdTransfersInfo(id);
+          }
+          case "upload": {
+            const dir = getArg("dir");
+            const title = getArg("title");
+            const expires = getArg("expires");
+            if (!dir || !title) {
+              throw new Error(
+                'Usage: pnpm cli transfers upload --dir <path> --title <title> [--expires 7d]'
+              );
+            }
+            return cmdTransfersUpload({ dir, title, expires: expires ?? undefined });
+          }
+          case "delete": {
+            const id = args[2];
+            if (!id) throw new Error("Usage: pnpm cli transfers delete <id>");
+            return cmdTransfersDelete(id);
+          }
+          default:
+            throw new Error(`Unknown: transfers ${subcommand ?? ""}. Run 'pnpm cli help'.`);
         }
 
       case "bucket":

@@ -1,18 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { Redis } from '@upstash/redis';
 import { getGuests } from '@/lib/kv-client';
+import { getRedis } from '@/lib/redis';
 
 const VOTES_KEY = 'best-dressed:votes';
 const SESSION_KEY = 'best-dressed:session';
 const TOKENS_KEY = 'best-dressed:tokens'; // Valid vote tokens (Redis set)
 const USED_TOKENS_KEY = 'best-dressed:used-tokens'; // Used vote tokens (Redis set)
-
-function getRedis(): Redis | null {
-  const url = process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL;
-  const token = process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN;
-  if (!url || !token) return null;
-  return new Redis({ url, token });
-}
 
 // Generate a cryptographically random token
 function generateToken(): string {

@@ -1,18 +1,10 @@
-import { Redis } from '@upstash/redis';
+import { getRedis } from './redis';
 import { Guest } from './types';
 
 const GUEST_LIST_KEY = 'guest:list';
 
 /** In-memory fallback storage for local development without Redis */
 const memoryStore = new Map<string, Guest[]>();
-
-/** Get Redis client (lazy initialization, supports both KV_* and UPSTASH_* env vars) */
-function getRedis(): Redis | null {
-  const url = process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL;
-  const token = process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN;
-  if (!url || !token) return null;
-  return new Redis({ url, token });
-}
 
 export async function getGuests(): Promise<Guest[]> {
   try {

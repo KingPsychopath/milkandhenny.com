@@ -4,7 +4,7 @@ import { useEffect, useState, useRef } from "react";
 import { usePathname } from "next/navigation";
 
 /** Routes where the button should be hidden */
-const HIDDEN_ROUTES = ["/party", "/icebreaker", "/best-dressed", "/guestlist"] as const;
+const HIDDEN_ROUTES = ["/party", "/icebreaker", "/best-dressed", "/guestlist", "/t"] as const;
 
 /** Scroll distance (px) before the button appears */
 const SHOW_THRESHOLD = 400;

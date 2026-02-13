@@ -3,8 +3,8 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import { usePathname } from "next/navigation";
 
-/** Routes where the lamp should be fully hidden (own dark styling) */
-const HIDDEN_ROUTES = ["/party", "/icebreaker", "/best-dressed", "/guestlist"] as const;
+/** Routes where the lamp should be fully hidden (own dark styling or standalone pages) */
+const HIDDEN_ROUTES = ["/party", "/icebreaker", "/best-dressed", "/guestlist", "/t"] as const;
 
 /** Check if we're on a single photo page: /pics/{album}/{photo} */
 function isSinglePhotoPage(path: string): boolean {
