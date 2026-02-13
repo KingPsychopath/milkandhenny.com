@@ -37,6 +37,10 @@ import {
   type DetectionStrategy,
 } from "./face-detect";
 import {
+  ROTATION_OVERRIDES,
+  type RotationOverride,
+} from "./media-processing";
+import {
   listObjects,
   deleteObject,
   getBucketInfo,
@@ -361,6 +365,7 @@ async function cmdAlbumsUpload(opts: {
   title: string;
   date: string;
   description?: string;
+  rotation?: RotationOverride;
 }) {
   heading(`Uploading: ${opts.title}`);
 
@@ -524,11 +529,13 @@ async function cmdPhotosList(slug: string) {
   console.log();
 }
 
-async function cmdPhotosAdd(slug: string, dir: string) {
+async function cmdPhotosAdd(slug: string, dir: string, rotation?: RotationOverride) {
   heading(`Adding photos to: ${slug}`);
+  if (rotation) progress(`Rotation override: ${rotation}`);
 
   const { added, album } = await addPhotos(slug, dir, (msg) =>
-    progress(msg)
+    progress(msg),
+    rotation,
   );
 
   console.log();
@@ -1051,6 +1058,7 @@ function showHelp() {
       --title ${dim("<title>")}   ${dim("Display title (e.g. \"Milk & Henny — January 2026\")")}
       --date ${dim("<date>")}     ${dim("Date as YYYY-MM-DD (e.g. 2026-01-16)")}
       --description ${dim("<desc>")}  ${dim("Optional description")}
+      --rotation ${dim("<portrait|landscape>")}  ${dim("Force orientation (default: trust EXIF)")}
     albums update ${dim("<slug>")} [options]            Update album metadata
       --title, --date, --description, --cover
     albums delete ${dim("<slug>")}                     Delete entire album + R2 files
@@ -1063,7 +1071,8 @@ function showHelp() {
 
   ${bold("Photos")}
     photos list ${dim("<album>")}                      List photos with R2 keys
-    photos add ${dim("<album>")} --dir ${dim("<path>")}          Add new photos to existing album
+    photos add ${dim("<album>")} --dir ${dim("<path>")} ${dim("[--rotation portrait|landscape]")}
+      ${dim("Add new photos. --rotation forces orientation for all photos.")}
     photos delete ${dim("<album> <photoId>")}          Remove a photo from album + R2
     photos set-cover ${dim("<album> <photoId>")}       Set album cover photo
     photos set-focal ${dim("<album> <photoId>")} --preset ${dim("<name>")}  Set crop focal point (manual)
@@ -1201,6 +1210,15 @@ async function promptUpload(): Promise<void> {
   /* Description (optional) */
   const description = await ask("Description", { hint: "optional, press enter to skip" });
 
+  /* Optional rotation override */
+  const rotChoice = await choose("Rotation override (optional)", [
+    { label: "None", detail: "trust EXIF orientation (default)" },
+    { label: "Portrait", detail: "force all photos to portrait" },
+    { label: "Landscape", detail: "force all photos to landscape" },
+  ]);
+  const rotation: RotationOverride | undefined =
+    rotChoice === 2 ? "portrait" : rotChoice === 3 ? "landscape" : undefined;
+
   /* Confirm */
   console.log();
   log(dim("─── Summary ───"));
@@ -1209,6 +1227,7 @@ async function promptUpload(): Promise<void> {
   log(`${dim("Title:")}       ${title}`);
   log(`${dim("Date:")}        ${date}`);
   if (description) log(`${dim("Description:")} ${description}`);
+  if (rotation) log(`${dim("Rotation:")}    ${rotation}`);
   console.log();
 
   const ok = await confirm("Upload this album?");
@@ -1223,6 +1242,7 @@ async function promptUpload(): Promise<void> {
     title,
     date,
     description: description || undefined,
+    rotation,
   });
 }
 
@@ -1306,7 +1326,15 @@ async function promptAddPhotos(): Promise<void> {
     log(red(`  ${check.error}`));
   }
 
-  await cmdPhotosAdd(slug, dir.replace(/^~/, process.env.HOME ?? "~"));
+  const rotChoice = await choose("Rotation override (optional)", [
+    { label: "None", detail: "trust EXIF orientation (default)" },
+    { label: "Portrait", detail: "force all photos to portrait" },
+    { label: "Landscape", detail: "force all photos to landscape" },
+  ]);
+  const rotation: RotationOverride | undefined =
+    rotChoice === 2 ? "portrait" : rotChoice === 3 ? "landscape" : undefined;
+
+  await cmdPhotosAdd(slug, dir.replace(/^~/, process.env.HOME ?? "~"), rotation);
 }
 
 async function interactiveAlbums() {
@@ -1906,14 +1934,18 @@ async function direct() {
             const title = getArg("title");
             const date = getArg("date");
             const description = getArg("description");
+            const rotationArg = getArg("rotation") as RotationOverride | undefined;
             if (!dir || !slug || !title || !date) {
               throw new Error(
-                "Usage: pnpm cli albums upload --dir <path> --slug <slug> --title <title> --date <YYYY-MM-DD> [--description <desc>]"
+                "Usage: pnpm cli albums upload --dir <path> --slug <slug> --title <title> --date <YYYY-MM-DD> [--description <desc>] [--rotation portrait|landscape]"
               );
+            }
+            if (rotationArg && !ROTATION_OVERRIDES.includes(rotationArg)) {
+              throw new Error(`Invalid rotation. Use: ${ROTATION_OVERRIDES.join(", ")}`);
             }
             if (!isValidSlug(slug)) throw new Error("Slug must be lowercase letters, numbers, hyphens only.");
             if (!isValidDate(date)) throw new Error("Date must be YYYY-MM-DD format.");
-            return cmdAlbumsUpload({ dir, slug, title, date, description });
+            return cmdAlbumsUpload({ dir, slug, title, date, description, rotation: rotationArg });
           }
           case "update": {
             const slug = args[2];
@@ -1958,8 +1990,12 @@ async function direct() {
           case "add": {
             const slug = args[2];
             const dir = getArg("dir");
-            if (!slug || !dir) throw new Error("Usage: pnpm cli photos add <album-slug> --dir <path>");
-            return cmdPhotosAdd(slug, dir);
+            const rotationArg = getArg("rotation") as RotationOverride | undefined;
+            if (!slug || !dir) throw new Error("Usage: pnpm cli photos add <album-slug> --dir <path> [--rotation portrait|landscape]");
+            if (rotationArg && !ROTATION_OVERRIDES.includes(rotationArg)) {
+              throw new Error(`Invalid rotation. Use: ${ROTATION_OVERRIDES.join(", ")}`);
+            }
+            return cmdPhotosAdd(slug, dir, rotationArg);
           }
           case "delete": {
             const slug = args[2];

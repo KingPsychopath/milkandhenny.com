@@ -56,7 +56,7 @@ Run `pnpm cli transfers info <id>` — it shows the full admin URL including the
 
 | Type | In the gallery | Processing |
 |------|---------------|------------|
-| Images (JPEG, PNG, WebP, HEIC, HIF, TIFF) | Masonry grid + lightbox | Thumb (600px) + full (1600px) + original + og (1200×630 with face detection + text overlay). HEIC/HIF decode via Sharp (libheif) or, on macOS, fallback to system `sips` so uploads never fail. |
+| Images (JPEG, PNG, WebP, HEIC, HIF, TIFF) | Masonry grid + lightbox | Thumb (600px) + full (1600px) + original + og (1200×630 with face detection + text overlay) |
 | GIFs | Grid card + animated lightbox | Static first-frame thumb + original |
 | Videos (MP4, MOV, WebM, AVI, MKV) | Play icon card + video player lightbox | Uploaded as-is |
 | Audio (MP3, WAV, FLAC, etc.) | Inline audio player card | Uploaded as-is |
@@ -128,6 +128,28 @@ pnpm cli albums backfill-og --yes   # Run before first deploy after adding OG su
 Backfill skips photos that already have og variants. Use `--force` to regenerate all.
 
 **Vercel hobby limits:** OG images are pre-built JPGs served from R2 — zero runtime serverless invocations, no `ImageResponse` overhead. Build time fetches the og URL per album/photo page (one R2 GET each), but that's a one-time cost per deploy.
+
+### Image rotation & HEIC/HIF handling
+
+Portrait photos from cameras and phones often store pixel data in landscape orientation with a rotation instruction telling viewers how to display them. Where that rotation lives depends on the format:
+
+| Format | Rotation storage | How we handle it |
+|--------|-----------------|-----------------|
+| JPEG, PNG, TIFF, WebP | **EXIF** orientation tag | Sharp `.rotate()` reads EXIF and applies the transform |
+| HEIC, HIF | **HEIF container** `irot` box (also EXIF in most Canon HIF) | libvips/libheif applies rotation at decode |
+
+Both are handled automatically during upload. Sharp 0.33+ ships with libheif on all platforms (macOS, Linux, Windows) — no OS-specific tools, no fallbacks, fully cross-platform.
+
+**Manual rotation override:** If EXIF data is missing or wrong (e.g. dragged from macOS Photos without metadata), you can force orientation during upload:
+
+```bash
+pnpm cli albums upload --dir ~/photos --slug my-album --title "My Album" --date 2026-02-13 --rotation portrait
+pnpm cli photos add my-album --dir ~/more-photos --rotation landscape
+```
+
+The `--rotation` flag is optional and available in the interactive CLI too. If omitted, EXIF orientation is used as-is (the default).
+
+**Tip:** On macOS, **export** from the Photos app (File → Export) rather than dragging. Export applies all edits and orientation, producing a finished JPEG. Dragging gives you the raw camera file, which still works but relies on the metadata being intact.
 
 **Focal points & face detection:** OG images crop to 1200×630. By default, every photo is run through **automatic face detection** during upload — the detected focal point is stored as `autoFocal` in the album JSON and used for cropping. For group photos, the focal point is the **area-weighted centroid** of all detected faces, so the crop naturally centers on the group while biasing toward whoever is closest to the camera.
 

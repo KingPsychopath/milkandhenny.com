@@ -12,10 +12,7 @@
  * Used by album-ops, transfer-ops, and blog-ops.
  */
 
-import fs from "fs";
-import os from "os";
 import path from "path";
-import { spawnSync } from "child_process";
 import sharp from "sharp";
 import exifReader from "exif-reader";
 
@@ -235,57 +232,44 @@ function extractExifDate(exifBuffer: Buffer | undefined): string | null {
   }
 }
 
-/* ─── HEIC/HIF fallback (when Sharp has no libheif) ─── */
-
-const HEIF_EXTENSIONS = [".heic", ".hif"];
-
-function isHeifExtension(ext: string): boolean {
-  return HEIF_EXTENSIONS.includes(ext.toLowerCase());
-}
+/* ─── Rotation ─── */
 
 /**
- * Convert HEIC/HIF buffer to JPEG using macOS sips (no extra deps).
- * Uses the given extension for the temp file so sips recognizes .heic vs .hif.
- * Returns null if not macOS, sips fails, or conversion fails.
+ * Optional manual rotation override. Applied before any processing.
+ * - "portrait":  rotate 90° CW if the image is currently landscape
+ * - "landscape": rotate 90° CW if the image is currently portrait
+ * - undefined:   trust EXIF / HEIF orientation as-is (default)
  */
-function convertHeifToJpegWithSips(raw: Buffer, ext: string): Buffer | null {
-  if (process.platform !== "darwin") return null;
+const ROTATION_OVERRIDES = ["portrait", "landscape"] as const;
+type RotationOverride = (typeof ROTATION_OVERRIDES)[number];
 
-  const tmpDir = os.tmpdir();
-  const suffix = ext.toLowerCase() === ".hif" ? ".hif" : ".heic";
-  const inPath = path.join(tmpDir, `heif-${Date.now()}-${Math.random().toString(36).slice(2)}${suffix}`);
-  const outPath = path.join(tmpDir, `heif-out-${Date.now()}.jpg`);
+/**
+ * Auto-rotate from EXIF/HEIF orientation, then optionally force portrait/landscape.
+ *
+ * Rotation is handled entirely by Sharp (cross-platform):
+ *   JPEG/PNG/TIFF/WebP → EXIF orientation tag  → `.rotate()` reads and applies
+ *   HEIC/HIF           → HEIF container `irot`  → libvips/libheif applies at decode
+ *
+ * Sharp 0.33+ ships with libheif on all platforms via npm. No OS-specific tools needed.
+ */
+async function autoRotate(
+  raw: Buffer,
+  override?: RotationOverride,
+): Promise<{ buffer: Buffer; width: number; height: number }> {
+  let rotated = await sharp(raw).rotate().toBuffer();
+  const meta = await sharp(rotated).metadata();
+  let width = meta.width ?? 4032;
+  let height = meta.height ?? 3024;
 
-  try {
-    fs.writeFileSync(inPath, raw);
-    const result = spawnSync("sips", ["-s", "format", "jpeg", inPath, "--out", outPath], {
-      encoding: "utf8",
-      stdio: ["ignore", "pipe", "pipe"],
-    });
-    if (result.status !== 0) return null;
-    if (!fs.existsSync(outPath)) return null;
-    const jpeg = fs.readFileSync(outPath);
-    return jpeg;
-  } catch {
-    return null;
-  } finally {
-    try {
-      if (fs.existsSync(inPath)) fs.unlinkSync(inPath);
-      if (fs.existsSync(outPath)) fs.unlinkSync(outPath);
-    } catch {
-      // ignore cleanup errors
-    }
+  if (override === "portrait" && width > height) {
+    rotated = await sharp(rotated).rotate(90).toBuffer();
+    [width, height] = [height, width];
+  } else if (override === "landscape" && height > width) {
+    rotated = await sharp(rotated).rotate(90).toBuffer();
+    [width, height] = [height, width];
   }
-}
 
-/** User-facing error when HEIC/HIF can't be decoded */
-function heifDecodeError(ext: string): Error {
-  return new Error(
-    `Could not decode ${ext.toUpperCase()} image. ` +
-      (process.platform === "darwin"
-        ? "Sharp has no HEIF support and sips conversion failed. Try opening and re-exporting as JPEG in Preview."
-        : "Install Sharp with libheif support, or convert to JPEG/PNG before upload.")
-  );
+  return { buffer: rotated, width, height };
 }
 
 /* ─── Processing ─── */
@@ -295,9 +279,11 @@ function heifDecodeError(ext: string): Error {
  *
  * - thumb: 600px WebP (gallery grids)
  * - full: 1600px WebP (lightbox viewing)
- * - original: source converted to JPEG 95 for downloads (passthrough if already JPEG)
+ * - original: JPEG 95 for downloads (passthrough if already JPEG)
  *
- * HEIC/HIF: If Sharp fails to decode (no libheif), we try macOS sips to convert to JPEG first.
+ * All formats are handled cross-platform by Sharp (EXIF for JPEG/PNG/TIFF/WebP,
+ * libheif for HEIC/HIF container rotation). Optional `rotationOverride` forces
+ * portrait or landscape when EXIF data is missing or wrong.
  *
  * Used by album-ops and transfer-ops.
  */
@@ -305,68 +291,50 @@ async function processImageVariants(
   raw: Buffer,
   sourceExt: string,
   focalPercent?: FocalPercent,
-  ogOverlay?: OgOverlay
+  ogOverlay?: OgOverlay,
+  rotationOverride?: RotationOverride,
 ): Promise<ProcessedImage> {
   const ext = sourceExt.toLowerCase();
 
-  const run = async (buffer: Buffer, isJpegSource: boolean) => {
-    // Auto-rotate from EXIF orientation first, then read true dimensions
-    const rotated = await sharp(buffer).rotate().toBuffer();
-    const metadata = await sharp(rotated).metadata();
-    const width = metadata.width ?? 4032;
-    const height = metadata.height ?? 3024;
-    const takenAt = extractExifDate(
-      // EXIF lives in the original buffer; rotated buffer may strip it
-      (await sharp(buffer).metadata()).exif
-    );
+  const { buffer: rotated, width, height } = await autoRotate(raw, rotationOverride);
 
-    const thumb = await sharp(rotated)
-      .resize(THUMB_WIDTH)
-      .webp({ quality: 80 })
-      .toBuffer();
+  // Read EXIF date from original buffer (rotation may strip metadata)
+  const takenAt = extractExifDate((await sharp(raw).metadata()).exif);
 
-    const full = await sharp(rotated)
-      .resize(FULL_WIDTH)
-      .webp({ quality: 85 })
-      .toBuffer();
+  const thumb = await sharp(rotated)
+    .resize(THUMB_WIDTH)
+    .webp({ quality: 80 })
+    .toBuffer();
 
-    const originalBuffer = isJpegSource
-      ? rotated
-      : await sharp(rotated).jpeg({ quality: 95 }).toBuffer();
+  const full = await sharp(rotated)
+    .resize(FULL_WIDTH)
+    .webp({ quality: 85 })
+    .toBuffer();
 
-    let ogPipeline = await cropToOg(rotated, focalPercent);
-    if (ogOverlay) {
-      ogPipeline = ogPipeline.composite([{ input: buildOgOverlaySvg(ogOverlay) }]);
-    }
-    const og = await ogPipeline.jpeg({ quality: 70, mozjpeg: true }).toBuffer();
+  const isJpeg = ext === ".jpg" || ext === ".jpeg";
+  const originalBuffer = isJpeg
+    ? rotated
+    : await sharp(rotated).jpeg({ quality: 95 }).toBuffer();
 
-    return {
-      thumb: { buffer: thumb, contentType: "image/webp", ext: ".webp" },
-      full: { buffer: full, contentType: "image/webp", ext: ".webp" },
-      original: {
-        buffer: originalBuffer,
-        contentType: "image/jpeg",
-        ext: isJpegSource ? ext : ".jpg",
-      },
-      og: { buffer: og, contentType: "image/jpeg", ext: ".jpg" },
-      width,
-      height,
-      takenAt,
-    };
-  };
-
-  try {
-    return await run(raw, ext === ".jpg" || ext === ".jpeg");
-  } catch (err) {
-    if (isHeifExtension(ext)) {
-      const jpeg = convertHeifToJpegWithSips(raw, ext);
-      if (jpeg && jpeg.length > 0) {
-        return run(jpeg, false);
-      }
-      throw heifDecodeError(ext);
-    }
-    throw err;
+  let ogPipeline = await cropToOg(rotated, focalPercent);
+  if (ogOverlay) {
+    ogPipeline = ogPipeline.composite([{ input: buildOgOverlaySvg(ogOverlay) }]);
   }
+  const og = await ogPipeline.jpeg({ quality: 70, mozjpeg: true }).toBuffer();
+
+  return {
+    thumb: { buffer: thumb, contentType: "image/webp", ext: ".webp" },
+    full: { buffer: full, contentType: "image/webp", ext: ".webp" },
+    original: {
+      buffer: originalBuffer,
+      contentType: "image/jpeg",
+      ext: isJpeg ? ext : ".jpg",
+    },
+    og: { buffer: og, contentType: "image/jpeg", ext: ".jpg" },
+    width,
+    height,
+    takenAt,
+  };
 }
 
 /**
@@ -379,8 +347,7 @@ async function processToOg(
   focalPercent?: FocalPercent,
   overlay?: OgOverlay
 ): Promise<ImageVariant> {
-  // Auto-rotate from EXIF before cropping (originals from R2 may still have EXIF orientation)
-  const rotated = await sharp(raw).rotate().toBuffer();
+  const { buffer: rotated } = await autoRotate(raw);
   let pipeline = await cropToOg(rotated, focalPercent);
   if (overlay) {
     pipeline = pipeline.composite([{ input: buildOgOverlaySvg(overlay) }]);
@@ -422,15 +389,10 @@ async function processGifThumb(raw: Buffer): Promise<ProcessedGif> {
 async function processToWebP(
   raw: Buffer,
   maxWidth = FULL_WIDTH,
-  quality = 85
+  quality = 85,
 ): Promise<{ buffer: Buffer; width: number; height: number; takenAt: string | null }> {
   const takenAt = extractExifDate((await sharp(raw).metadata()).exif);
-
-  // Auto-rotate from EXIF orientation, then measure true dimensions
-  const rotated = await sharp(raw).rotate().toBuffer();
-  const metadata = await sharp(rotated).metadata();
-  const width = metadata.width ?? 4032;
-  const height = metadata.height ?? 3024;
+  const { buffer: rotated, width, height } = await autoRotate(raw);
 
   // Only resize if wider than maxWidth
   const pipeline = width > maxWidth ? sharp(rotated).resize(maxWidth) : sharp(rotated);
@@ -480,6 +442,7 @@ export {
   AUDIO_EXTENSIONS,
   MIME_TYPES,
   FILE_KINDS,
+  ROTATION_OVERRIDES,
   getMimeType,
   getFileKind,
   isProcessableImage,
@@ -492,4 +455,4 @@ export {
   mapConcurrent,
 };
 
-export type { FileKind, ImageVariant, ProcessedImage, ProcessedGif, OgOverlay };
+export type { FileKind, ImageVariant, ProcessedImage, ProcessedGif, OgOverlay, RotationOverride };

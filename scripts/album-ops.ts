@@ -20,6 +20,7 @@ import {
   processToOg,
   mapConcurrent,
   type OgOverlay,
+  type RotationOverride,
 } from "./media-processing";
 import {
   type FocalPreset,
@@ -69,6 +70,8 @@ type CreateAlbumOpts = {
   title: string;
   date: string;
   description?: string;
+  /** Force all photos to portrait or landscape. Leave blank to trust EXIF. */
+  rotation?: RotationOverride;
 };
 
 type UpdateAlbumOpts = {
@@ -189,7 +192,8 @@ async function processAndUploadPhoto(
   filePath: string,
   albumSlug: string,
   onProgress?: (msg: string) => void,
-  ogOverlay?: OgOverlay
+  ogOverlay?: OgOverlay,
+  rotationOverride?: RotationOverride,
 ): Promise<ProcessResult> {
   const rawExt = path.extname(filePath);           // original case: ".HIF"
   const ext = rawExt.toLowerCase();                  // normalised: ".hif"
@@ -199,7 +203,7 @@ async function processAndUploadPhoto(
   // Auto-detect focal point (face or saliency)
   const autoFocal = await detectFocal(raw).catch(() => null);
 
-  const processed = await processImageVariants(raw, ext, autoFocal ?? undefined, ogOverlay);
+  const processed = await processImageVariants(raw, ext, autoFocal ?? undefined, ogOverlay, rotationOverride);
 
   const faceTag = autoFocal ? ` 🎯 face(${autoFocal.x}%,${autoFocal.y}%)` : "";
   onProgress?.(
@@ -260,7 +264,7 @@ async function createAlbum(
   const results = await mapConcurrent(files, 3, (file) => {
     const id = path.basename(file, path.extname(file));
     const overlay: OgOverlay = { title: opts.title, photoId: id };
-    return processAndUploadPhoto(path.join(absDir, file), opts.slug, onProgress, overlay);
+    return processAndUploadPhoto(path.join(absDir, file), opts.slug, onProgress, overlay, opts.rotation);
   });
 
   // Sort by EXIF date (earliest first), falling back to filename
@@ -332,7 +336,8 @@ async function deleteAlbum(
 async function addPhotos(
   slug: string,
   dir: string,
-  onProgress?: (msg: string) => void
+  onProgress?: (msg: string) => void,
+  rotation?: RotationOverride,
 ): Promise<{ added: ProcessResult[]; album: AlbumData }> {
   const data = readAlbum(slug);
   if (!data) throw new Error(`Album "${slug}" not found`);
@@ -365,7 +370,7 @@ async function addPhotos(
   const added = await mapConcurrent(newFiles, 3, (file) => {
     const id = path.basename(file, path.extname(file));
     const overlay: OgOverlay = { title: data.title, photoId: id };
-    return processAndUploadPhoto(path.join(absDir, file), slug, onProgress, overlay);
+    return processAndUploadPhoto(path.join(absDir, file), slug, onProgress, overlay, rotation);
   });
 
   for (const result of added) {
