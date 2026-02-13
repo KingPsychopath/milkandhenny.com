@@ -10,6 +10,8 @@ type Photo = {
   height: number;
   /** Optional tiny base64 blur placeholder */
   blur?: string;
+  /** ISO date from EXIF DateTimeOriginal (when the photo was taken) */
+  takenAt?: string;
 };
 
 /** Album metadata from JSON */

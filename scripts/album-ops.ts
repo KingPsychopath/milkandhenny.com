@@ -8,6 +8,7 @@
 import fs from "fs";
 import path from "path";
 import sharp from "sharp";
+import exifReader from "exif-reader";
 import {
   uploadBuffer,
   deleteObjects,
@@ -27,6 +28,7 @@ type PhotoMeta = {
   id: string;
   width: number;
   height: number;
+  takenAt?: string; // ISO date from EXIF DateTimeOriginal
 };
 
 type AlbumData = {
@@ -67,6 +69,43 @@ type ProcessResult = {
   fullSize: number;
   originalSize: number;
 };
+
+/* ─── EXIF helpers ─── */
+
+/** Extract the date a photo was taken from EXIF data, or null if unavailable */
+function extractExifDate(exifBuffer: Buffer | undefined): string | null {
+  if (!exifBuffer) return null;
+  try {
+    const exif = exifReader(exifBuffer);
+    // Prefer DateTimeOriginal (when shutter fired), fall back to others
+    const date =
+      exif?.Photo?.DateTimeOriginal ??
+      exif?.Photo?.DateTimeDigitized ??
+      exif?.Image?.DateTime ??
+      null;
+    if (date instanceof Date && !isNaN(date.getTime())) {
+      return date.toISOString();
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+/** Sort photos by EXIF date (earliest first), falling back to filename */
+function sortByDate(photos: { photo: PhotoMeta; [k: string]: unknown }[]) {
+  return photos.sort((a, b) => {
+    const dateA = a.photo.takenAt;
+    const dateB = b.photo.takenAt;
+    // Both have dates → sort chronologically
+    if (dateA && dateB) return new Date(dateA).getTime() - new Date(dateB).getTime();
+    // Only one has a date → dated photos come first
+    if (dateA) return -1;
+    if (dateB) return 1;
+    // Neither has a date → sort by filename (id)
+    return a.photo.id.localeCompare(b.photo.id);
+  });
+}
 
 /* ─── JSON helpers ─── */
 
@@ -144,8 +183,9 @@ async function processAndUploadPhoto(
   const metadata = await sharp(raw).metadata();
   const origWidth = metadata.width ?? 4032;
   const origHeight = metadata.height ?? 3024;
+  const takenAt = extractExifDate(metadata.exif);
 
-  onProgress?.(`Processing ${id} (${origWidth}×${origHeight})...`);
+  onProgress?.(`Processing ${id} (${origWidth}×${origHeight})${takenAt ? ` taken ${new Date(takenAt).toLocaleDateString()}` : ''}...`);
 
   /* Generate sizes — WebP for viewing, JPEG for downloads */
   const thumb = await sharp(raw)
@@ -172,7 +212,7 @@ async function processAndUploadPhoto(
   onProgress?.(`Uploaded ${id}`);
 
   return {
-    photo: { id, width: origWidth, height: origHeight },
+    photo: { id, width: origWidth, height: origHeight, ...(takenAt ? { takenAt } : {}) },
     thumbSize: thumb.byteLength,
     fullSize: full.byteLength,
     originalSize: original.byteLength,
@@ -209,6 +249,11 @@ async function createAlbum(
     );
     results.push(result);
   }
+
+  // Sort by EXIF date (earliest first), falling back to filename
+  sortByDate(results);
+  const datedCount = results.filter((r) => r.photo.takenAt).length;
+  onProgress?.(`Sorted ${results.length} photos (${datedCount} with EXIF dates, ${results.length - datedCount} by filename)`);
 
   const album: AlbumData = {
     title: opts.title,
@@ -312,6 +357,14 @@ async function addPhotos(
     added.push(result);
     data.photos.push(result.photo);
   }
+
+  // Re-sort the entire album by EXIF date so new photos slot in chronologically
+  const allWrapped = data.photos.map((photo) => ({ photo }));
+  sortByDate(allWrapped);
+  data.photos = allWrapped.map((w) => w.photo);
+
+  const datedCount = data.photos.filter((p) => p.takenAt).length;
+  onProgress?.(`Re-sorted album (${datedCount}/${data.photos.length} with EXIF dates)`);
 
   writeAlbum(slug, data);
   return { added, album: data };
