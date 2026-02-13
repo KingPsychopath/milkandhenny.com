@@ -102,6 +102,54 @@ function formatBytes(bytes: number): string {
   return `${(bytes / 1024 / 1024).toFixed(2)} MB`;
 }
 
+/* ─── OG text overlay ─── */
+
+/** Text to burn into the OG image via SVG composite */
+type OgOverlay = {
+  /** Album title */
+  title: string;
+  /** Individual photo ID — shown bottom-right (omit for album cover OG) */
+  photoId?: string;
+};
+
+/** Escape special XML characters for safe SVG text content */
+function escapeXml(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&apos;");
+}
+
+/**
+ * Build an SVG overlay for the OG image.
+ * Bottom gradient + "milk & henny · {title}" left, optional photoId right.
+ * Matches the editorial typewriter design language.
+ */
+function buildOgOverlaySvg(overlay: OgOverlay): Buffer {
+  const brand = "milk &amp; henny";
+  const title = escapeXml(overlay.title);
+  const photoId = overlay.photoId ? escapeXml(overlay.photoId) : "";
+
+  const svg = `<svg width="${OG_WIDTH}" height="${OG_HEIGHT}" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#000" stop-opacity="0"/>
+      <stop offset="100%" stop-color="#000" stop-opacity="0.72"/>
+    </linearGradient>
+  </defs>
+  <rect x="0" y="${Math.round(OG_HEIGHT * 0.58)}" width="${OG_WIDTH}" height="${Math.round(OG_HEIGHT * 0.42)}" fill="url(#g)"/>
+  <text x="48" y="${OG_HEIGHT - 40}" font-size="21" fill="rgba(255,255,255,0.92)" font-family="'Courier New', Courier, monospace" letter-spacing="-0.4">${brand} · ${title}</text>${
+    photoId
+      ? `\n  <text x="${OG_WIDTH - 48}" y="${OG_HEIGHT - 40}" font-size="16" fill="rgba(255,255,255,0.50)" font-family="'Courier New', Courier, monospace" text-anchor="end">${photoId}</text>`
+      : ""
+  }
+</svg>`;
+
+  return Buffer.from(svg);
+}
+
 /* ─── Types ─── */
 
 type ImageVariant = {
@@ -171,7 +219,8 @@ function extractExifDate(exifBuffer: Buffer | undefined): string | null {
 async function processImageVariants(
   raw: Buffer,
   sourceExt: string,
-  focalPosition?: FocalPreset
+  focalPosition?: FocalPreset,
+  ogOverlay?: OgOverlay
 ): Promise<ProcessedImage> {
   const metadata = await sharp(raw).metadata();
   const width = metadata.width ?? 4032;
@@ -198,10 +247,13 @@ async function processImageVariants(
     focalPosition && isValidFocalPreset(focalPosition)
       ? focalPresetToSharpPosition(focalPosition)
       : "centre";
-  const og = await sharp(raw)
-    .resize(OG_WIDTH, OG_HEIGHT, { fit: "cover", position })
-    .jpeg({ quality: 70, mozjpeg: true })
-    .toBuffer();
+
+  let ogPipeline = sharp(raw)
+    .resize(OG_WIDTH, OG_HEIGHT, { fit: "cover", position });
+  if (ogOverlay) {
+    ogPipeline = ogPipeline.composite([{ input: buildOgOverlaySvg(ogOverlay) }]);
+  }
+  const og = await ogPipeline.jpeg({ quality: 70, mozjpeg: true }).toBuffer();
 
   return {
     thumb: { buffer: thumb, contentType: "image/webp", ext: ".webp" },
@@ -225,16 +277,20 @@ async function processImageVariants(
  */
 async function processToOg(
   raw: Buffer,
-  focalPosition?: FocalPreset
+  focalPosition?: FocalPreset,
+  overlay?: OgOverlay
 ): Promise<ImageVariant> {
   const position =
     focalPosition && isValidFocalPreset(focalPosition)
       ? focalPresetToSharpPosition(focalPosition)
       : "centre";
-  const buffer = await sharp(raw)
-    .resize(OG_WIDTH, OG_HEIGHT, { fit: "cover", position })
-    .jpeg({ quality: 70, mozjpeg: true })
-    .toBuffer();
+
+  let pipeline = sharp(raw)
+    .resize(OG_WIDTH, OG_HEIGHT, { fit: "cover", position });
+  if (overlay) {
+    pipeline = pipeline.composite([{ input: buildOgOverlaySvg(overlay) }]);
+  }
+  const buffer = await pipeline.jpeg({ quality: 70, mozjpeg: true }).toBuffer();
   return { buffer, contentType: "image/jpeg", ext: ".jpg" };
 }
 
@@ -338,4 +394,4 @@ export {
   mapConcurrent,
 };
 
-export type { FileKind, ImageVariant, ProcessedImage, ProcessedGif };
+export type { FileKind, ImageVariant, ProcessedImage, ProcessedGif, OgOverlay };

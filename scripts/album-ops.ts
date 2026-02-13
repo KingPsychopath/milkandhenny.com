@@ -19,6 +19,7 @@ import {
   processImageVariants,
   processToOg,
   mapConcurrent,
+  type OgOverlay,
 } from "./media-processing";
 import { type FocalPreset, isValidFocalPreset } from "../lib/focal";
 
@@ -162,13 +163,14 @@ function getAlbum(slug: string): (AlbumData & { slug: string }) | null {
 async function processAndUploadPhoto(
   filePath: string,
   albumSlug: string,
-  onProgress?: (msg: string) => void
+  onProgress?: (msg: string) => void,
+  ogOverlay?: OgOverlay
 ): Promise<ProcessResult> {
   const ext = path.extname(filePath).toLowerCase();
   const id = path.basename(filePath, ext);
   const raw = fs.readFileSync(filePath);
 
-  const processed = await processImageVariants(raw, ext);
+  const processed = await processImageVariants(raw, ext, undefined, ogOverlay);
 
   onProgress?.(
     `Processing ${id} (${processed.width}×${processed.height})${
@@ -224,9 +226,11 @@ async function createAlbum(
 
   onProgress?.(`Found ${files.length} photos. Uploading...`);
 
-  const results = await mapConcurrent(files, 3, (file) =>
-    processAndUploadPhoto(path.join(absDir, file), opts.slug, onProgress)
-  );
+  const results = await mapConcurrent(files, 3, (file) => {
+    const id = path.basename(file, path.extname(file));
+    const overlay: OgOverlay = { title: opts.title, photoId: id };
+    return processAndUploadPhoto(path.join(absDir, file), opts.slug, onProgress, overlay);
+  });
 
   // Sort by EXIF date (earliest first), falling back to filename
   sortByDate(results);
@@ -328,9 +332,11 @@ async function addPhotos(
     return true;
   });
 
-  const added = await mapConcurrent(newFiles, 3, (file) =>
-    processAndUploadPhoto(path.join(absDir, file), slug, onProgress)
-  );
+  const added = await mapConcurrent(newFiles, 3, (file) => {
+    const id = path.basename(file, path.extname(file));
+    const overlay: OgOverlay = { title: data.title, photoId: id };
+    return processAndUploadPhoto(path.join(absDir, file), slug, onProgress, overlay);
+  });
 
   for (const result of added) {
     data.photos.push(result.photo);
@@ -446,7 +452,8 @@ async function backfillOgVariants(
 
       try {
         const raw = await downloadBuffer(originalKey);
-        const og = await processToOg(raw, focalPosition);
+        const overlay: OgOverlay = { title: data.title, photoId: photo.id };
+        const og = await processToOg(raw, focalPosition, overlay);
         await uploadBuffer(ogKey, og.buffer, og.contentType);
         processed++;
         onProgress?.(`  ✓ ${photo.id} (${(og.buffer.byteLength / 1024).toFixed(1)} KB)`);
@@ -487,7 +494,8 @@ async function setPhotoFocal(
   const ogKey = `albums/${slug}/og/${photoId}.jpg`;
 
   const raw = await downloadBuffer(originalKey);
-  const og = await processToOg(raw, preset);
+  const overlay: OgOverlay = { title: data.title, photoId };
+  const og = await processToOg(raw, preset, overlay);
   await uploadBuffer(ogKey, og.buffer, og.contentType);
   onProgress?.(`✓ OG updated (${(og.buffer.byteLength / 1024).toFixed(1)} KB)`);
 

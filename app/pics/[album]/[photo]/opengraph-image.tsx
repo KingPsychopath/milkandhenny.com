@@ -24,8 +24,9 @@ type Props = {
 };
 
 /**
- * Redirects to the photo's og JPG in R2 (~80–150 KB).
- * ImageResponse outputs PNG (~1 MB); redirect keeps WhatsApp/social limits (< 600 KB).
+ * Fetches the photo's og JPG from R2 and returns it directly.
+ * The og variant is pre-processed at upload time: 1200×630 JPEG with
+ * text overlay and mozjpeg compression (~100–200 KB).
  */
 export default async function Image({ params }: Props) {
   const { album: albumSlug, photo: photoId } = await params;
@@ -34,5 +35,16 @@ export default async function Image({ params }: Props) {
     return new NextResponse("Photo not found", { status: 404 });
   }
 
-  return NextResponse.redirect(getOgUrl(albumSlug, photoId));
+  const res = await fetch(getOgUrl(albumSlug, photoId));
+  if (!res.ok) {
+    return new NextResponse("OG image not found", { status: 404 });
+  }
+
+  const buffer = await res.arrayBuffer();
+  return new NextResponse(buffer, {
+    headers: {
+      "Content-Type": "image/jpeg",
+      "Cache-Control": "public, max-age=31536000, immutable",
+    },
+  });
 }
