@@ -145,14 +145,7 @@ export default async function BlogPostPage({ params }: Props) {
 
       {/* Nav — page banner */}
       <header role="banner" className="max-w-2xl mx-auto px-6 pt-10 pb-6">
-        <Breadcrumbs
-          items={[
-            { label: "home", href: "/" },
-            { label: "words", href: "/blog" },
-            { label: post.title },
-          ]}
-        />
-        <div className="flex items-center justify-between font-mono text-sm mt-2">
+        <div className="flex items-center justify-between font-mono text-sm">
           <Link
             href="/"
             className="theme-muted hover:text-foreground transition-colors tracking-tight"
@@ -174,8 +167,15 @@ export default async function BlogPostPage({ params }: Props) {
 
       {/* Post — primary content */}
       <main id="main">
-        <article className="max-w-2xl mx-auto px-6 pt-14 pb-24">
-        <header className="mb-12">
+        <article className="max-w-2xl mx-auto px-6 pt-12 pb-24">
+        <Breadcrumbs
+          items={[
+            { label: "home", href: "/" },
+            { label: "words", href: "/blog" },
+            { label: post.title },
+          ]}
+        />
+        <header className="mb-12 mt-2">
           <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 font-mono text-xs theme-muted tracking-wide">
             <div className="flex items-center gap-3">
               <time>{formatDate(post.date)}</time>

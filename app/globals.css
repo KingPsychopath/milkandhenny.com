@@ -498,6 +498,11 @@ button:active:not(:disabled):not(.lamp-toggle) {
   to   { opacity: 1; }
 }
 
+/* Album cover hover zoom — strong ease-out so zoom settles smoothly */
+.album-cover-zoom {
+  transition: transform 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
 /* Swipe hint — fade in, hold, fade out */
 .animate-swipe-hint {
   animation: swipe-hint 2.5s ease both;
