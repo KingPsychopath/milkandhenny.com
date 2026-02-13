@@ -34,8 +34,10 @@ export const PhotoCard = memo(function PhotoCard({
 }: PhotoCardProps) {
   const imgRef = useRef<HTMLImageElement>(null);
   const [loaded, setLoaded] = useState(false);
+  const [errored, setErrored] = useState(false);
 
   const handleLoad = useCallback(() => setLoaded(true), []);
+  const handleError = useCallback(() => setErrored(true), []);
   const handleSelect = useCallback(
     (e: React.MouseEvent) => {
       if (selectable) {
@@ -84,18 +86,21 @@ export const PhotoCard = memo(function PhotoCard({
           }
         />
 
-        {/* Image */}
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          ref={imgRef}
-          alt={`Photo ${photoId} from album`}
-          width={width}
-          height={height}
-          onLoad={handleLoad}
-          className={`absolute inset-0 w-full h-full object-cover transition-opacity duration-300 ${
-            loaded ? "opacity-100" : "opacity-0"
-          }`}
-        />
+        {/* Image — hidden if it fails to load, leaving the placeholder visible */}
+        {!errored && (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            ref={imgRef}
+            alt={`Photo ${photoId} from album`}
+            width={width}
+            height={height}
+            onLoad={handleLoad}
+            onError={handleError}
+            className={`absolute inset-0 w-full h-full object-cover transition-opacity duration-300 ${
+              loaded ? "opacity-100" : "opacity-0"
+            }`}
+          />
+        )}
 
         {/* Hover overlay */}
         <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors duration-200" />

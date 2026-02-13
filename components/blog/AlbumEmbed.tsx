@@ -36,6 +36,7 @@ const PreviewThumb = memo(function PreviewThumb({
 }) {
   const imgRef = useRef<HTMLImageElement>(null);
   const [loaded, setLoaded] = useState(false);
+  const [errored, setErrored] = useState(false);
   const thumbUrl = getThumbUrl(slug, photoId);
 
   useEffect(() => {
@@ -58,12 +59,15 @@ const PreviewThumb = memo(function PreviewThumb({
     <div className="album-embed-thumb">
       <div className="album-embed-thumb-placeholder" />
       {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img
-        ref={imgRef}
-        alt=""
-        onLoad={() => setLoaded(true)}
-        className={`album-embed-thumb-img ${loaded ? "loaded" : ""}`}
-      />
+      {!errored && (
+        <img
+          ref={imgRef}
+          alt=""
+          onLoad={() => setLoaded(true)}
+          onError={() => setErrored(true)}
+          className={`album-embed-thumb-img ${loaded ? "loaded" : ""}`}
+        />
+      )}
       {overlay && (
         <div className="album-embed-thumb-overlay">
           <span className="font-mono text-xs text-white/90 tracking-wide">

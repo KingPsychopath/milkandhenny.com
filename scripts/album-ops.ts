@@ -7,20 +7,21 @@
 
 import fs from "fs";
 import path from "path";
-import sharp from "sharp";
-import exifReader from "exif-reader";
 import {
   uploadBuffer,
   deleteObjects,
   listObjects,
 } from "./r2-client";
+import {
+  PROCESSABLE_EXTENSIONS,
+  processImageVariants,
+  mapConcurrent,
+} from "./media-processing";
 
 /* ─── Constants ─── */
 
-const THUMB_WIDTH = 600;
-const FULL_WIDTH = 1600;
 const ALBUMS_DIR = path.join(process.cwd(), "content", "albums");
-const IMAGE_EXTENSIONS = /\.(jpe?g|png|webp|heic)$/i;
+const IMAGE_EXTENSIONS = PROCESSABLE_EXTENSIONS;
 
 /* ─── Types ─── */
 
@@ -70,27 +71,7 @@ type ProcessResult = {
   originalSize: number;
 };
 
-/* ─── EXIF helpers ─── */
-
-/** Extract the date a photo was taken from EXIF data, or null if unavailable */
-function extractExifDate(exifBuffer: Buffer | undefined): string | null {
-  if (!exifBuffer) return null;
-  try {
-    const exif = exifReader(exifBuffer);
-    // Prefer DateTimeOriginal (when shutter fired), fall back to others
-    const date =
-      exif?.Photo?.DateTimeOriginal ??
-      exif?.Photo?.DateTimeDigitized ??
-      exif?.Image?.DateTime ??
-      null;
-    if (date instanceof Date && !isNaN(date.getTime())) {
-      return date.toISOString();
-    }
-    return null;
-  } catch {
-    return null;
-  }
-}
+/* ─── Sort helpers ─── */
 
 /** Sort photos by EXIF date (earliest first), falling back to filename */
 function sortByDate(photos: { photo: PhotoMeta; [k: string]: unknown }[]) {
@@ -180,42 +161,36 @@ async function processAndUploadPhoto(
   const id = path.basename(filePath, ext);
   const raw = fs.readFileSync(filePath);
 
-  const metadata = await sharp(raw).metadata();
-  const origWidth = metadata.width ?? 4032;
-  const origHeight = metadata.height ?? 3024;
-  const takenAt = extractExifDate(metadata.exif);
+  const processed = await processImageVariants(raw, ext);
 
-  onProgress?.(`Processing ${id} (${origWidth}×${origHeight})${takenAt ? ` taken ${new Date(takenAt).toLocaleDateString()}` : ''}...`);
-
-  /* Generate sizes — WebP for viewing, JPEG for downloads */
-  const thumb = await sharp(raw)
-    .resize(THUMB_WIDTH)
-    .webp({ quality: 80 })
-    .toBuffer();
-  const full = await sharp(raw)
-    .resize(FULL_WIDTH)
-    .webp({ quality: 85 })
-    .toBuffer();
-  const original =
-    ext === ".jpg" || ext === ".jpeg"
-      ? raw
-      : await sharp(raw).jpeg({ quality: 95 }).toBuffer();
+  onProgress?.(
+    `Processing ${id} (${processed.width}×${processed.height})${
+      processed.takenAt
+        ? ` taken ${new Date(processed.takenAt).toLocaleDateString()}`
+        : ""
+    }...`
+  );
 
   /* Upload all 3 versions */
   const prefix = `albums/${albumSlug}`;
   await Promise.all([
-    uploadBuffer(`${prefix}/thumb/${id}.webp`, thumb, "image/webp"),
-    uploadBuffer(`${prefix}/full/${id}.webp`, full, "image/webp"),
-    uploadBuffer(`${prefix}/original/${id}.jpg`, original, "image/jpeg"),
+    uploadBuffer(`${prefix}/thumb/${id}.webp`, processed.thumb.buffer, processed.thumb.contentType),
+    uploadBuffer(`${prefix}/full/${id}.webp`, processed.full.buffer, processed.full.contentType),
+    uploadBuffer(`${prefix}/original/${id}.jpg`, processed.original.buffer, processed.original.contentType),
   ]);
 
   onProgress?.(`Uploaded ${id}`);
 
   return {
-    photo: { id, width: origWidth, height: origHeight, ...(takenAt ? { takenAt } : {}) },
-    thumbSize: thumb.byteLength,
-    fullSize: full.byteLength,
-    originalSize: original.byteLength,
+    photo: {
+      id,
+      width: processed.width,
+      height: processed.height,
+      ...(processed.takenAt ? { takenAt: processed.takenAt } : {}),
+    },
+    thumbSize: processed.thumb.buffer.byteLength,
+    fullSize: processed.full.buffer.byteLength,
+    originalSize: processed.original.buffer.byteLength,
   };
 }
 
@@ -240,15 +215,9 @@ async function createAlbum(
 
   onProgress?.(`Found ${files.length} photos. Uploading...`);
 
-  const results: ProcessResult[] = [];
-  for (const file of files) {
-    const result = await processAndUploadPhoto(
-      path.join(absDir, file),
-      opts.slug,
-      onProgress
-    );
-    results.push(result);
-  }
+  const results = await mapConcurrent(files, 3, (file) =>
+    processAndUploadPhoto(path.join(absDir, file), opts.slug, onProgress)
+  );
 
   // Sort by EXIF date (earliest first), falling back to filename
   sortByDate(results);
@@ -339,22 +308,22 @@ async function addPhotos(
     throw new Error(`No image files found in ${absDir}`);
   }
 
-  const added: ProcessResult[] = [];
-  for (const file of files) {
+  // Filter out duplicates before processing
+  const newFiles = files.filter((file) => {
     const ext = path.extname(file).toLowerCase();
     const id = path.basename(file, ext);
-
     if (existingIds.has(id)) {
       onProgress?.(`Skipping ${id} (already in album)`);
-      continue;
+      return false;
     }
+    return true;
+  });
 
-    const result = await processAndUploadPhoto(
-      path.join(absDir, file),
-      slug,
-      onProgress
-    );
-    added.push(result);
+  const added = await mapConcurrent(newFiles, 3, (file) =>
+    processAndUploadPhoto(path.join(absDir, file), slug, onProgress)
+  );
+
+  for (const result of added) {
     data.photos.push(result.photo);
   }
 

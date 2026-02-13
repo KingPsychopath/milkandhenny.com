@@ -68,13 +68,13 @@ export default function PicsPage() {
                 href={`/pics/${album.slug}`}
                 className="group block relative overflow-hidden rounded-sm aspect-[4/3]"
               >
-                {/* Cover image */}
+                {/* Cover image — placeholder shows until image paints */}
                 <div className="absolute inset-0 gallery-placeholder">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
                     src={getThumbUrl(album.slug, album.cover)}
                     alt={album.title}
-                    className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-[1.02]"
+                    className="w-full h-full object-cover photo-page-fade-in transition-transform duration-500 group-hover:scale-[1.02]"
                     loading="lazy"
                   />
                 </div>

@@ -8,6 +8,7 @@ import {
   AlbumEmbed,
   type EmbeddedAlbum,
 } from "@/components/blog/AlbumEmbed";
+import { resolveImageSrc } from "@/lib/storage";
 
 type PostBodyProps = {
   content: string;
@@ -44,26 +45,55 @@ class EmbedErrorBoundary extends Component<BoundaryProps, BoundaryState> {
 
 /* ─── Helpers ─── */
 
-/** Check if a paragraph's only child is an image (to unwrap <figure> from <p>) */
-function isImageOnlyParagraph(children: ReactNode): boolean {
-  const childArray = React.Children.toArray(children);
-  if (childArray.length !== 1) return false;
-  const child = childArray[0];
-  return React.isValidElement(child) && child.type === "img";
+/**
+ * Check the hast AST node to see if this paragraph contains only an image.
+ * We inspect the node rather than React children because react-markdown
+ * replaces `img` with our custom component function, so `child.type === "img"`
+ * no longer matches. The hast node always has `tagName: "img"`.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function isImageOnlyParagraph(node: any): boolean {
+  if (!node?.children) return false;
+  // Filter out whitespace-only text nodes
+  const meaningful = node.children.filter(
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (c: any) => !(c.type === "text" && /^\s*$/.test(c.value ?? ""))
+  );
+  return (
+    meaningful.length === 1 &&
+    meaningful[0].type === "element" &&
+    meaningful[0].tagName === "img"
+  );
 }
 
 /* ─── Base components (always active) ─── */
 
 const baseComponents: Components = {
-  /** Images with alt text get wrapped in a figure with a caption */
+  /**
+   * Images: resolves relative paths (e.g. "blog/slug/image.webp") against
+   * the R2 public URL. Absolute URLs pass through unchanged.
+   * Alt text → figure with caption.
+   */
   img: ({ src, alt }) => {
-    if (!src) return null;
+    if (!src || typeof src !== "string") return null;
+    const resolved = resolveImageSrc(src);
+
+    /** Hide the image (or figure) if it fails to load */
+    const handleError = (e: React.SyntheticEvent<HTMLImageElement>) => {
+      const img = e.currentTarget;
+      const wrapper = img.closest(".image-figure");
+      if (wrapper) {
+        (wrapper as HTMLElement).style.display = "none";
+      } else {
+        img.style.display = "none";
+      }
+    };
 
     if (alt) {
       return (
         <figure className="image-figure">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={src} alt={alt} loading="lazy" />
+          <img src={resolved} alt={alt} loading="lazy" onError={handleError} />
           <figcaption className="image-caption">{alt}</figcaption>
         </figure>
       );
@@ -71,7 +101,7 @@ const baseComponents: Components = {
 
     return (
       // eslint-disable-next-line @next/next/no-img-element
-      <img src={src} alt="" loading="lazy" />
+      <img src={resolved} alt="" loading="lazy" onError={handleError} />
     );
   },
 
@@ -80,8 +110,8 @@ const baseComponents: Components = {
    * Markdown wraps ![alt](src) in <p>, but our img override returns
    * <figure> + <figcaption> which can't be nested inside <p>.
    */
-  p: ({ children, ...props }) => {
-    if (isImageOnlyParagraph(children)) {
+  p: ({ children, node, ...props }) => {
+    if (isImageOnlyParagraph(node)) {
       return <>{children}</>;
     }
     return <p {...props}>{children}</p>;
@@ -99,9 +129,9 @@ function withAlbumEmbeds(
   return {
     ...baseComponents,
 
-    p: ({ children, ...props }) => {
+    p: ({ children, node, ...props }) => {
       // Unwrap image-only paragraphs (same as base)
-      if (isImageOnlyParagraph(children)) {
+      if (isImageOnlyParagraph(node)) {
         return <>{children}</>;
       }
 

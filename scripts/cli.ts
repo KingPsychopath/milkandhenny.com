@@ -37,6 +37,12 @@ import {
   parseExpiry,
   formatBytes as formatTransferBytes,
 } from "./transfer-ops";
+import {
+  uploadBlogFiles,
+  listBlogFiles,
+  deleteBlogFile,
+  deleteAllBlogFiles,
+} from "./blog-ops";
 
 /* ─── Formatting ─── */
 
@@ -111,8 +117,8 @@ function validateDir(dir: string): { valid: boolean; error?: string; count?: num
   return { valid: true, count: images.length };
 }
 
-/** Validate directory for transfers — accepts ALL non-hidden files */
-function validateTransferDir(dir: string): { valid: boolean; error?: string; count?: number } {
+/** Validate directory for transfers and blog — accepts ALL non-hidden files */
+function validateAnyDir(dir: string): { valid: boolean; error?: string; count?: number } {
   const absDir = path.resolve(dir.replace(/^~/, process.env.HOME ?? "~"));
   if (!fs.existsSync(absDir)) {
     return { valid: false, error: `Directory not found: ${absDir}` };
@@ -127,6 +133,20 @@ function validateTransferDir(dir: string): { valid: boolean; error?: string; cou
     return { valid: false, error: `No files found in ${absDir}` };
   }
   return { valid: true, count: files.length };
+}
+
+/** Keep the old name as an alias so transfer prompts still work */
+const validateTransferDir = validateAnyDir;
+
+/** List all blog post slugs from content/posts/ */
+function getPostSlugs(): string[] {
+  const postsDir = path.join(process.cwd(), "content", "posts");
+  if (!fs.existsSync(postsDir)) return [];
+  return fs
+    .readdirSync(postsDir)
+    .filter((f) => f.endsWith(".md"))
+    .map((f) => f.replace(/\.md$/, ""))
+    .sort();
 }
 
 /* ─── Interactive prompts ─── */
@@ -723,6 +743,140 @@ async function cmdTransfersNuke() {
   console.log();
 }
 
+/* ─── Blog image command handlers ─── */
+
+async function cmdBlogUpload(opts: { slug: string; dir: string; force?: boolean }) {
+  heading(`Uploading blog images for "${opts.slug}"`);
+
+  const result = await uploadBlogFiles(opts.slug, opts.dir, {
+    force: opts.force,
+    onProgress: (msg) => progress(msg),
+  });
+
+  console.log();
+
+  // Summary
+  if (result.uploaded.length > 0) {
+    log(
+      green(
+        `✓ Uploaded ${result.uploaded.length} new image${result.uploaded.length > 1 ? "s" : ""}`
+      )
+    );
+    const totalNew = result.uploaded.reduce((sum, r) => sum + r.size, 0);
+    log(dim(`  New: ${formatBytes(totalNew)}`));
+  }
+
+  if (result.skipped.length > 0) {
+    log(
+      dim(
+        `  Skipped ${result.skipped.length} (already in R2 — use --force to overwrite)`
+      )
+    );
+  }
+
+  if (result.uploaded.length === 0 && result.skipped.length > 0) {
+    log(dim("Nothing new to upload."));
+  }
+
+  // Print NEW markdown snippets
+  if (result.uploaded.length > 0) {
+    console.log();
+    log(bold("New markdown snippets:"));
+    console.log();
+    for (const r of result.uploaded) {
+      const tag = r.overwrote ? dim(" (overwritten)") : "";
+      log(`  ${r.markdown}${tag}`);
+    }
+  }
+
+  // Print ALL images now in R2 (existing + new) so you have a full reference
+  const allInR2 = await listBlogFiles(opts.slug);
+
+  if (allInR2.length > 0) {
+    console.log();
+    log(bold(`All images for "${opts.slug}" (${allInR2.length} total):`));
+    console.log();
+    for (const img of allInR2) {
+      const sanitised = img.filename.replace(/\.webp$/, "");
+      log(`  ![${sanitised}](blog/${opts.slug}/${img.filename})  ${dim(formatBytes(img.size))}`);
+    }
+  }
+
+  console.log();
+  log(dim("Tip: change alt text for captions, e.g. ![the crowd goes wild](blog/...)"));
+  console.log();
+}
+
+async function cmdBlogList(slug: string) {
+  heading(`Blog images: ${slug}`);
+
+  const files = await listBlogFiles(slug);
+  if (files.length === 0) {
+    log(dim("No files found for this post."));
+    console.log();
+    return;
+  }
+
+  for (const f of files) {
+    const date = f.lastModified
+      ? f.lastModified.toLocaleDateString()
+      : "—";
+    const label = f.filename.replace(/\.[^.]+$/, "");
+    log(`  ${f.filename}  ${dim(formatBytes(f.size))}  ${dim(date)}`);
+    // Show appropriate markdown snippet based on extension
+    if (/\.webp$/i.test(f.filename)) {
+      log(`  ${dim(`![${label}](blog/${slug}/${f.filename})`)}`);
+    } else {
+      log(`  ${dim(`[${label}](blog/${slug}/${f.filename})`)}`);
+    }
+    console.log();
+  }
+  log(
+    dim(
+      `${files.length} files · ${formatBytes(files.reduce((s, f) => s + f.size, 0))} total`
+    )
+  );
+  console.log();
+}
+
+async function cmdBlogDelete(slug: string, filename?: string) {
+  if (filename) {
+    // Delete a single image
+    heading(`Delete blog image: ${filename}`);
+    const ok = await confirm(`Delete ${slug}/${filename} from R2?`);
+    if (!ok) {
+      log(dim("Cancelled."));
+      console.log();
+      return;
+    }
+    await deleteBlogFile(slug, filename, (msg) => progress(msg));
+    log(green(`✓ Deleted ${filename}`));
+    log(dim("Remember to remove the markdown reference from your post."));
+    console.log();
+  } else {
+    // Delete ALL files for the post
+    heading(`Delete all blog files for "${slug}"`);
+    const files = await listBlogFiles(slug);
+    log(`${dim("Files:")} ${files.length}`);
+    log(red("This will delete ALL files for this post from R2."));
+    console.log();
+
+    const ok = await confirm(
+      `Delete all ${files.length} files for "${slug}"?`
+    );
+    if (!ok) {
+      log(dim("Cancelled."));
+      console.log();
+      return;
+    }
+
+    const deleted = await deleteAllBlogFiles(slug, (msg) => progress(msg));
+    log(green(`✓ Deleted ${deleted} files`));
+    log(dim("Remember to remove image references from your post."));
+    console.log();
+  }
+}
+
 /* ─── Help ─── */
 
 function showHelp() {
@@ -763,6 +917,13 @@ function showHelp() {
     transfers delete ${dim("<id>")}                    Take down a transfer + delete R2 files
     transfers nuke                           Wipe ALL transfers (R2 + Redis) — nuclear option
 
+  ${bold("Blog Images")} ${dim("(images for blog posts, stored in R2)")}
+    blog upload --slug ${dim("<post-slug>")} --dir ${dim("<path>")}  Upload images (skips duplicates)
+      --force            ${dim("Re-upload and overwrite existing images")}
+    blog list ${dim("<post-slug>")}                    List uploaded images + markdown snippets
+    blog delete ${dim("<post-slug>")}                  Delete ALL images for a post
+    blog delete ${dim("<post-slug>")} --file ${dim("<name>")}  Delete a single image
+
   ${bold("Bucket")} ${dim("(raw R2 access)")}
     bucket ls ${dim("[prefix]")}                       Browse bucket contents
     bucket rm ${dim("<key>")}                          Delete a file from bucket
@@ -774,8 +935,10 @@ function showHelp() {
     ${dim("$")} pnpm cli transfers upload --dir ~/Desktop/send-photos --title "Photos for John" --expires 7d
     ${dim("$")} pnpm cli transfers list
     ${dim("$")} pnpm cli transfers delete abc12345
+    ${dim("$")} pnpm cli blog upload --slug my-first-birthday --dir ~/Desktop/blog-photos
+    ${dim("$")} pnpm cli blog list my-first-birthday
     ${dim("$")} pnpm cli photos delete jan-2026 DSC00003
-    ${dim("$")} pnpm cli bucket ls albums/jan-2026/thumb/
+    ${dim("$")} pnpm cli bucket ls blog/my-first-birthday/
 `);
 }
 
@@ -1258,6 +1421,179 @@ async function interactiveTransfers() {
   }
 }
 
+/* ─── Interactive blog images ─── */
+
+/** Interactive prompt for selecting a post slug — shows existing posts */
+async function selectPostSlug(prompt = "Post slug"): Promise<string | null> {
+  const slugs = getPostSlugs();
+
+  if (slugs.length > 0) {
+    console.log();
+    log(dim("Existing posts:"));
+    for (const s of slugs) {
+      log(`  ${dim("·")} ${s}`);
+    }
+    console.log();
+  }
+
+  while (true) {
+    const slug = await ask(prompt, {
+      hint: slugs.length > 0
+        ? "pick from above or type a new slug"
+        : "e.g. my-first-birthday (must match your .md filename)",
+    });
+    if (!slug) return null;
+    if (!isValidSlug(slug)) {
+      log(red("  Slug must be lowercase letters, numbers, hyphens only."));
+      continue;
+    }
+
+    // Warn if slug doesn't match any existing post
+    if (!slugs.includes(slug)) {
+      log(
+        yellow(
+          `  No .md file found for "${slug}" in content/posts/ — files will upload but won't render until you create the post.`
+        )
+      );
+    }
+    return slug;
+  }
+}
+
+/** Interactive prompt for uploading blog files */
+async function promptBlogUpload(): Promise<void> {
+  console.log();
+  log(bold("Upload blog files"));
+  log(dim("Process and upload files from a folder to R2, get markdown snippets."));
+  log(dim("Images → WebP. Videos, PDFs, etc. → uploaded as-is."));
+  log(dim("Duplicates are skipped automatically — safe to re-run with new files."));
+  console.log();
+
+  /* Post slug */
+  const slug = await selectPostSlug();
+  if (!slug) return;
+
+  /* Source directory */
+  let dir = "";
+  while (true) {
+    dir = await ask("Source directory", {
+      hint: "e.g. ~/Desktop/blog-photos",
+    });
+    if (!dir) return;
+
+    const check = validateAnyDir(dir);
+    if (check.valid) {
+      log(green(`  Found ${check.count} files`));
+      break;
+    }
+    log(red(`  ${check.error}`));
+  }
+
+  /* Confirm */
+  console.log();
+  log(dim("─── Summary ───"));
+  log(`${dim("Post slug:")}  ${slug}`);
+  log(`${dim("Directory:")}  ${dir}`);
+  console.log();
+
+  const ok = await confirm("Upload these images?");
+  if (!ok) {
+    log(dim("Cancelled."));
+    return;
+  }
+
+  await cmdBlogUpload({ slug, dir: dir.replace(/^~/, process.env.HOME ?? "~") });
+}
+
+/** Select a blog post slug from those that have files uploaded in R2 */
+async function selectBlogSlug(): Promise<string | null> {
+  const objects = await listObjects("blog/");
+  const slugs = new Set<string>();
+  for (const obj of objects) {
+    const parts = obj.key.split("/");
+    if (parts.length >= 3 && parts[1]) {
+      slugs.add(parts[1]);
+    }
+  }
+
+  if (slugs.size === 0) {
+    console.log();
+    log(dim("No blog files found in R2. Upload some first."));
+    return null;
+  }
+
+  const slugList = [...slugs].sort();
+  const choice = await choose(
+    "Select post",
+    slugList.map((s) => ({ label: s }))
+  );
+
+  if (choice <= 0) return null;
+  return slugList[choice - 1];
+}
+
+async function interactiveBlogImages() {
+  while (true) {
+    const choice = await choose("Blog Images", [
+      { label: "Upload images", detail: "process + upload for a blog post" },
+      { label: "List images", detail: "see what's uploaded for a post" },
+      { label: "Delete image(s)", detail: "remove one or all images for a post" },
+    ]);
+
+    switch (choice) {
+      case 0:
+        return;
+      case 1:
+        await safely(promptBlogUpload);
+        await pause();
+        break;
+      case 2: {
+        const slug = await selectBlogSlug();
+        if (slug) {
+          await safely(() => cmdBlogList(slug));
+          await pause();
+        }
+        break;
+      }
+      case 3: {
+        const slug = await selectBlogSlug();
+        if (slug) {
+          // Ask: delete one or all?
+          const files = await listBlogFiles(slug);
+          if (files.length === 0) {
+            log(dim("No files found."));
+            break;
+          }
+
+          const what = await choose(`Delete from "${slug}"`, [
+            { label: "Delete a specific file" },
+            { label: "Delete ALL files for this post", detail: red("destructive") },
+          ]);
+
+          if (what === 1) {
+            const fileChoice = await choose(
+              "Select file",
+              files.map((f) => ({
+                label: f.filename,
+                detail: formatBytes(f.size),
+              }))
+            );
+            if (fileChoice > 0) {
+              await safely(() =>
+                cmdBlogDelete(slug, files[fileChoice - 1].filename)
+              );
+            }
+          } else if (what === 2) {
+            await safely(() => cmdBlogDelete(slug));
+          }
+          await pause();
+        }
+        break;
+      }
+    }
+  }
+}
+
 async function interactive() {
   console.log();
   log(bold("milk & henny") + dim(" — interactive CLI"));
@@ -1268,6 +1604,7 @@ async function interactive() {
       { label: "Albums", detail: "list, upload, update, delete albums" },
       { label: "Photos", detail: "list, add, delete, set cover photo" },
       { label: "Transfers", detail: "private, self-destructing file shares" },
+      { label: "Blog Images", detail: "upload, list, delete images for blog posts" },
       { label: "Bucket", detail: "browse R2, delete files, usage stats" },
     ]);
 
@@ -1287,6 +1624,9 @@ async function interactive() {
         await interactiveTransfers();
         break;
       case 4:
+        await interactiveBlogImages();
+        break;
+      case 5:
         await interactiveBucket();
         break;
     }
@@ -1405,6 +1745,34 @@ async function direct() {
             return cmdTransfersNuke();
           default:
             throw new Error(`Unknown: transfers ${subcommand ?? ""}. Run 'pnpm cli help'.`);
+        }
+
+      case "blog":
+        switch (subcommand) {
+          case "upload": {
+            const slug = getArg("slug");
+            const dir = getArg("dir");
+            if (!slug || !dir) {
+              throw new Error(
+                "Usage: pnpm cli blog upload --slug <post-slug> --dir <path> [--force]"
+              );
+            }
+            if (!isValidSlug(slug)) throw new Error("Slug must be lowercase letters, numbers, hyphens only.");
+            return cmdBlogUpload({ slug, dir, force: hasFlag("force") });
+          }
+          case "list": {
+            const slug = args[2];
+            if (!slug) throw new Error("Usage: pnpm cli blog list <post-slug>");
+            return cmdBlogList(slug);
+          }
+          case "delete": {
+            const slug = args[2];
+            if (!slug) throw new Error("Usage: pnpm cli blog delete <post-slug> [--file <filename>]");
+            const file = getArg("file");
+            return cmdBlogDelete(slug, file);
+          }
+          default:
+            throw new Error(`Unknown: blog ${subcommand ?? ""}. Run 'pnpm cli help'.`);
         }
 
       case "bucket":

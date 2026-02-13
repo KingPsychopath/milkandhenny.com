@@ -8,13 +8,21 @@
 
 import fs from "fs";
 import path from "path";
-import sharp from "sharp";
-import exifReader from "exif-reader";
 import {
   uploadBuffer,
   deleteObjects,
   listObjects,
 } from "./r2-client";
+import {
+  PROCESSABLE_EXTENSIONS,
+  ANIMATED_EXTENSIONS,
+  getMimeType,
+  getFileKind,
+  formatBytes,
+  processImageVariants,
+  processGifThumb,
+  mapConcurrent,
+} from "./media-processing";
 import { getRedis } from "../lib/redis";
 import {
   saveTransfer,
@@ -59,50 +67,6 @@ function requireR2(): void {
   }
 }
 
-/* ─── Constants ─── */
-
-const THUMB_WIDTH = 600;
-const FULL_WIDTH = 1600;
-
-/** Images that Sharp can process into thumb/full/original */
-const PROCESSABLE_IMAGES = /\.(jpe?g|png|webp|heic|tiff?)$/i;
-
-/** Animated images — get a static thumbnail but original stays as-is */
-const ANIMATED_IMAGES = /\.gif$/i;
-
-/** Video file extensions */
-const VIDEO_EXTENSIONS = /\.(mp4|mov|webm|avi|mkv|m4v|wmv|flv)$/i;
-
-/** Audio file extensions */
-const AUDIO_EXTENSIONS = /\.(mp3|wav|ogg|flac|aac|m4a|wma)$/i;
-
-/** MIME type lookup by extension */
-const MIME_TYPES: Record<string, string> = {
-  ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
-  ".png": "image/png", ".webp": "image/webp",
-  ".heic": "image/heic", ".tif": "image/tiff", ".tiff": "image/tiff",
-  ".gif": "image/gif", ".svg": "image/svg+xml",
-  ".mp4": "video/mp4", ".mov": "video/quicktime",
-  ".webm": "video/webm", ".avi": "video/x-msvideo",
-  ".mkv": "video/x-matroska", ".m4v": "video/mp4",
-  ".wmv": "video/x-ms-wmv", ".flv": "video/x-flv",
-  ".mp3": "audio/mpeg", ".wav": "audio/wav",
-  ".ogg": "audio/ogg", ".flac": "audio/flac",
-  ".aac": "audio/aac", ".m4a": "audio/mp4", ".wma": "audio/x-ms-wma",
-  ".pdf": "application/pdf",
-  ".zip": "application/zip", ".rar": "application/x-rar-compressed",
-  ".7z": "application/x-7z-compressed", ".tar": "application/x-tar",
-  ".gz": "application/gzip",
-  ".doc": "application/msword",
-  ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-  ".xls": "application/vnd.ms-excel",
-  ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-  ".ppt": "application/vnd.ms-powerpoint",
-  ".pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-  ".txt": "text/plain", ".csv": "text/csv",
-  ".json": "application/json", ".xml": "application/xml",
-};
-
 /* ─── Types ─── */
 
 type CreateTransferOpts = {
@@ -121,52 +85,11 @@ type CreateTransferResult = {
   fileCounts: { images: number; videos: number; gifs: number; audio: number; other: number };
 };
 
-/* ─── Helpers ─── */
-
-function getMimeType(filename: string): string {
-  return MIME_TYPES[path.extname(filename).toLowerCase()] ?? "application/octet-stream";
-}
-
-function getFileKind(filename: string): FileKind {
-  const ext = path.extname(filename).toLowerCase();
-  if (ANIMATED_IMAGES.test(ext)) return "gif";
-  if (PROCESSABLE_IMAGES.test(ext)) return "image";
-  if (VIDEO_EXTENSIONS.test(ext)) return "video";
-  if (AUDIO_EXTENSIONS.test(ext)) return "audio";
-  return "file";
-}
-
-function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / 1024 / 1024).toFixed(2)} MB`;
-}
-
-/* ─── EXIF helpers ─── */
-
-function extractExifDate(exifBuffer: Buffer | undefined): string | null {
-  if (!exifBuffer) return null;
-  try {
-    const exif = exifReader(exifBuffer);
-    const date =
-      exif?.Photo?.DateTimeOriginal ??
-      exif?.Photo?.DateTimeDigitized ??
-      exif?.Image?.DateTime ??
-      null;
-    if (date instanceof Date && !isNaN(date.getTime())) {
-      return date.toISOString();
-    }
-    return null;
-  } catch {
-    return null;
-  }
-}
-
 /* ─── File processing ─── */
 
 /**
  * Process and upload a processable image (JPEG, PNG, WebP, HEIC, TIFF).
- * Creates: thumb (600px WebP) + full (1600px WebP) + original.
+ * Creates: thumb (600px WebP) + full (1600px WebP) + original (JPEG).
  */
 async function processImage(
   filePath: string,
@@ -178,32 +101,25 @@ async function processImage(
   const stem = path.basename(filePath, ext);
   const raw = fs.readFileSync(filePath);
 
-  const metadata = await sharp(raw).metadata();
-  const w = metadata.width ?? 4032;
-  const h = metadata.height ?? 3024;
-  const takenAt = extractExifDate(metadata.exif);
+  const processed = await processImageVariants(raw, ext);
 
   onProgress?.(
-    `Processing ${filename} (${w}×${h})${
-      takenAt ? ` taken ${new Date(takenAt).toLocaleDateString()}` : ""
+    `Processing ${filename} (${processed.width}×${processed.height})${
+      processed.takenAt
+        ? ` taken ${new Date(processed.takenAt).toLocaleDateString()}`
+        : ""
     }...`
   );
 
-  const thumb = await sharp(raw).resize(THUMB_WIDTH).webp({ quality: 80 }).toBuffer();
-  const full = await sharp(raw).resize(FULL_WIDTH).webp({ quality: 85 }).toBuffer();
-  const original = (ext === ".jpg" || ext === ".jpeg")
-    ? raw
-    : await sharp(raw).jpeg({ quality: 95 }).toBuffer();
-
-  const originalFilename = (ext === ".jpg" || ext === ".jpeg")
+  const originalFilename = processed.original.ext === ext
     ? filename
-    : `${stem}.jpg`;
+    : `${stem}${processed.original.ext}`;
 
   const prefix = `transfers/${transferId}`;
   await Promise.all([
-    uploadBuffer(`${prefix}/thumb/${stem}.webp`, thumb, "image/webp"),
-    uploadBuffer(`${prefix}/full/${stem}.webp`, full, "image/webp"),
-    uploadBuffer(`${prefix}/original/${originalFilename}`, original, "image/jpeg"),
+    uploadBuffer(`${prefix}/thumb/${stem}.webp`, processed.thumb.buffer, processed.thumb.contentType),
+    uploadBuffer(`${prefix}/full/${stem}.webp`, processed.full.buffer, processed.full.contentType),
+    uploadBuffer(`${prefix}/original/${originalFilename}`, processed.original.buffer, processed.original.contentType),
   ]);
 
   onProgress?.(`Uploaded ${filename}`);
@@ -214,12 +130,15 @@ async function processImage(
       filename: originalFilename,
       kind: "image",
       size: raw.byteLength,
-      mimeType: "image/jpeg",
-      width: w,
-      height: h,
-      ...(takenAt ? { takenAt } : {}),
+      mimeType: processed.original.contentType,
+      width: processed.width,
+      height: processed.height,
+      ...(processed.takenAt ? { takenAt: processed.takenAt } : {}),
     },
-    uploadedBytes: thumb.byteLength + full.byteLength + original.byteLength,
+    uploadedBytes:
+      processed.thumb.buffer.byteLength +
+      processed.full.buffer.byteLength +
+      processed.original.buffer.byteLength,
   };
 }
 
@@ -236,21 +155,13 @@ async function processGif(
   const stem = path.basename(filePath, path.extname(filePath));
   const raw = fs.readFileSync(filePath);
 
-  // Extract first frame for thumbnail
-  const metadata = await sharp(raw, { animated: false }).metadata();
-  const w = metadata.width ?? 600;
-  const h = metadata.height ?? 400;
+  const gif = await processGifThumb(raw);
 
-  onProgress?.(`Processing ${filename} (GIF, ${w}×${h})...`);
-
-  const thumb = await sharp(raw, { animated: false })
-    .resize(THUMB_WIDTH)
-    .webp({ quality: 80 })
-    .toBuffer();
+  onProgress?.(`Processing ${filename} (GIF, ${gif.width}×${gif.height})...`);
 
   const prefix = `transfers/${transferId}`;
   await Promise.all([
-    uploadBuffer(`${prefix}/thumb/${stem}.webp`, thumb, "image/webp"),
+    uploadBuffer(`${prefix}/thumb/${stem}.webp`, gif.thumb.buffer, gif.thumb.contentType),
     uploadBuffer(`${prefix}/original/${filename}`, raw, "image/gif"),
   ]);
 
@@ -263,10 +174,10 @@ async function processGif(
       kind: "gif",
       size: raw.byteLength,
       mimeType: "image/gif",
-      width: w,
-      height: h,
+      width: gif.width,
+      height: gif.height,
     },
-    uploadedBytes: thumb.byteLength + raw.byteLength,
+    uploadedBytes: gif.thumb.buffer.byteLength + raw.byteLength,
   };
 }
 
@@ -303,32 +214,6 @@ async function uploadRawFile(
     },
     uploadedBytes: raw.byteLength,
   };
-}
-
-/* ─── Concurrency helper ─── */
-
-/**
- * Run async tasks with a concurrency limit.
- * Like Promise.all but caps simultaneous execution to avoid
- * overwhelming the network or Sharp's thread pool.
- */
-async function mapConcurrent<T, R>(
-  items: T[],
-  limit: number,
-  fn: (item: T) => Promise<R>
-): Promise<R[]> {
-  const results: R[] = new Array(items.length);
-  let idx = 0;
-
-  async function worker() {
-    while (idx < items.length) {
-      const i = idx++;
-      results[i] = await fn(items[i]);
-    }
-  }
-
-  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, () => worker()));
-  return results;
 }
 
 /* ─── Transfer operations ─── */
@@ -373,10 +258,10 @@ async function createTransfer(
     : DEFAULT_EXPIRY_SECONDS;
 
   // Classify files
-  const images = entries.filter((f) => PROCESSABLE_IMAGES.test(f));
-  const gifs = entries.filter((f) => ANIMATED_IMAGES.test(f));
+  const images = entries.filter((f) => PROCESSABLE_EXTENSIONS.test(f));
+  const gifs = entries.filter((f) => ANIMATED_EXTENSIONS.test(f));
   const others = entries.filter(
-    (f) => !PROCESSABLE_IMAGES.test(f) && !ANIMATED_IMAGES.test(f)
+    (f) => !PROCESSABLE_EXTENSIONS.test(f) && !ANIMATED_EXTENSIONS.test(f)
   );
 
   onProgress?.(

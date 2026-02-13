@@ -30,6 +30,23 @@ function getOriginalUrl(album: string, photoId: string): string {
   return getImageUrl(`albums/${album}/original/${photoId}.jpg`);
 }
 
+/* ─── Blog image URLs ─── */
+
+/** Get the URL for a blog image (WebP, stored at blog/{slug}/{filename}) */
+function getBlogImageUrl(slug: string, filename: string): string {
+  return getImageUrl(`blog/${slug}/${filename}`);
+}
+
+/**
+ * Resolve an image src from markdown.
+ * - Absolute URLs (http/https) pass through unchanged.
+ * - Relative paths (e.g. "blog/slug/image.webp") get prepended with the R2 public URL.
+ */
+function resolveImageSrc(src: string): string {
+  if (src.startsWith("http://") || src.startsWith("https://")) return src;
+  return getImageUrl(src);
+}
+
 /* ─── Transfer URLs ─── */
 
 /** Get the thumbnail URL for a transfer image (WebP, images and GIF first-frame only) */
@@ -52,6 +69,8 @@ export {
   getThumbUrl,
   getFullUrl,
   getOriginalUrl,
+  getBlogImageUrl,
+  resolveImageSrc,
   getTransferThumbUrl,
   getTransferFullUrl,
   getTransferFileUrl,
