@@ -64,7 +64,8 @@ function resolveAlbumsFromContent(
   content: string
 ): Record<string, EmbeddedAlbum> {
   try {
-    const albumLinkPattern = /\[.*?\]\(\/pics\/([a-z0-9-]+)\)/g;
+    // Match album links — optional #hash at end (e.g. /pics/slug#masonry)
+    const albumLinkPattern = /\[.*?\]\(\/pics\/([a-z0-9-]+)(?:#[a-z]+)?\)/g;
     const albums: Record<string, EmbeddedAlbum> = {};
     let match: RegExpExecArray | null;
 

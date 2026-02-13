@@ -7,6 +7,7 @@ import { rehypeHashtags } from "@/lib/rehype-hashtags";
 import {
   AlbumEmbed,
   type EmbeddedAlbum,
+  type EmbedVariant,
 } from "@/components/blog/AlbumEmbed";
 import { resolveImageSrc } from "@/lib/storage";
 
@@ -142,13 +143,17 @@ function withAlbumEmbeds(
           const child = childArray[0];
 
           if (React.isValidElement(child) && child.type === "a") {
-            const href = (child.props as { href?: string }).href;
+            const rawHref = (child.props as { href?: string }).href ?? "";
+            // Strip hash to look up album data (keyed without #fragment)
+            const cleanHref = rawHref.replace(/#.*$/, "");
+            // Detect variant from hash: /pics/slug#masonry → masonry
+            const variant: EmbedVariant =
+              rawHref.includes("#masonry") ? "masonry" : "compact";
 
-            if (href && albums[href]) {
-              // Wrap in error boundary — if AlbumEmbed crashes, render the plain link
+            if (cleanHref && albums[cleanHref]) {
               return (
                 <EmbedErrorBoundary fallback={<p {...props}>{children}</p>}>
-                  <AlbumEmbed album={albums[href]} />
+                  <AlbumEmbed album={albums[cleanHref]} variant={variant} />
                 </EmbedErrorBoundary>
               );
             }

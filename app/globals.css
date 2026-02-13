@@ -203,166 +203,125 @@ body {
   margin-top: 0.75em;
 }
 
-/* ─── Album embed showcase (temporary — pick one, delete the other) ─── */
-.album-embed-showcase {
-  margin: 2em 0;
-}
-.album-embed-showcase-label {
-  font-family: var(--font-mono), ui-monospace, monospace;
-  font-size: 0.65rem;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--stone-400);
-  margin: 2.5em 0 0.5em 0;
-  padding-bottom: 0.25em;
-  border-bottom: 1px dashed var(--stone-200);
-}
-.album-embed-showcase-label:first-child {
-  margin-top: 0;
-}
+/* ─── Album embed cards in blog prose ─── */
 
-/* ════════════════════════════════════════════════
-   OPTION C — "Compact Strip"
-   ════════════════════════════════════════════════ */
-.album-embed-c {
-  display: block;
-  border: 1px solid var(--stone-200);
-  border-radius: 6px;
-  overflow: hidden;
-  margin: 1.5em 0;
-  text-decoration: none !important;
-  transition: border-color 0.2s ease;
-}
-.album-embed-c:hover {
-  border-color: var(--stone-400);
-}
-.album-embed-c-strip {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 1px;
-}
-.album-embed-c-cell {
-  position: relative;
-  aspect-ratio: 4 / 3;
-  overflow: hidden;
-  background: var(--stone-100);
-}
-.album-embed-c-img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-.album-embed-c:hover .album-embed-c-img {
-  opacity: 0.85 !important;
-}
-.album-embed-c-overlay {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: rgba(0, 0, 0, 0.45);
-}
-.album-embed-c-meta {
-  padding: 0.5em 0.75em;
-  display: flex;
-  align-items: baseline;
-  gap: 0.4em;
-  flex-wrap: wrap;
-}
-.album-embed-c-title {
-  font-family: var(--font-serif), Georgia, 'Times New Roman', serif;
-  font-size: 0.85rem;
-  font-weight: 600;
-  color: var(--prose-heading);
-  line-height: 1.3;
-}
-.album-embed-c-sep {
-  color: var(--stone-300);
-  font-size: 0.75rem;
-}
-.album-embed-c-detail {
-  font-family: var(--font-mono), ui-monospace, monospace;
-  font-size: 0.65rem;
-  color: var(--stone-400);
-  letter-spacing: 0.02em;
-}
-@media (max-width: 480px) {
-  .album-embed-c-strip {
-    grid-template-columns: repeat(3, 1fr);
-  }
-  .album-embed-c-cell:nth-child(4) {
-    display: none;
-  }
-}
-
-/* ════════════════════════════════════════════════
-   OPTION F — "Pinterest Masonry"
-   ════════════════════════════════════════════════ */
-.album-embed-f {
-  display: block;
-  border: 1px solid var(--stone-200);
-  border-radius: 6px;
-  overflow: hidden;
-  margin: 2em 0;
-  text-decoration: none !important;
-  transition: border-color 0.2s ease;
-}
-.album-embed-f:hover {
-  border-color: var(--stone-400);
-}
-/* 2-column masonry-like grid using CSS columns */
-.album-embed-f-grid {
-  columns: 2;
-  column-gap: 2px;
-  padding: 2px;
-  background: var(--stone-100);
-}
-.album-embed-f-cell {
-  position: relative;
-  overflow: hidden;
-  break-inside: avoid;
-  margin-bottom: 2px;
-  background: var(--stone-100);
-}
-.album-embed-f-cell:last-child {
-  margin-bottom: 0;
-}
-.album-embed-f-img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  display: block;
-}
-.album-embed-f:hover .album-embed-f-img {
-  opacity: 0.85 !important;
-}
-.album-embed-f-overlay {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: rgba(0, 0, 0, 0.45);
-}
-.album-embed-f-meta {
+/* Shared meta bar (used by both variants) */
+.album-embed-meta {
   padding: 0.75em 1em;
-  background: var(--background);
 }
-.album-embed-f-title {
+.album-embed-title {
   font-family: var(--font-serif), Georgia, 'Times New Roman', serif;
   font-size: 0.95rem;
   font-weight: 600;
   color: var(--prose-heading);
-  line-height: 1.3;
+  line-height: 1.4;
   margin: 0;
 }
-.album-embed-f-detail {
+.album-embed-detail {
   font-family: var(--font-mono), ui-monospace, monospace;
   font-size: 0.7rem;
   color: var(--stone-400);
   letter-spacing: 0.02em;
   margin: 0.25em 0 0 0;
+}
+
+/* ── Compact strip (default) ── */
+.album-embed {
+  display: block;
+  border: 1px solid var(--stone-200);
+  border-radius: 6px;
+  overflow: hidden;
+  margin: 2em 0;
+  text-decoration: none !important;
+  transition: border-color 0.2s ease;
+}
+.album-embed:hover {
+  border-color: var(--stone-400);
+}
+.album-embed-strip {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  line-height: 0;
+  font-size: 0;
+}
+.album-embed-thumb {
+  position: relative;
+  aspect-ratio: 4 / 3;
+  overflow: hidden;
+  background: var(--stone-100);
+}
+/* Override prose-blog img styles inside album embeds */
+.album-embed img {
+  margin: 0 !important;
+  border-radius: 0 !important;
+  max-width: none !important;
+}
+.album-embed:hover .album-embed-thumb img {
+  opacity: 0.85 !important;
+}
+.album-embed-thumb-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.45);
+  z-index: 1;
+}
+@media (max-width: 480px) {
+  .album-embed-strip {
+    grid-template-columns: repeat(3, 1fr);
+  }
+  .album-embed-thumb:nth-child(4) {
+    display: none;
+  }
+}
+
+/* ── Masonry variant — free-flowing Pinterest columns ── */
+.album-embed-masonry {
+  margin: 2em 0;
+}
+.album-embed-masonry-grid {
+  display: block;
+  columns: 2;
+  column-gap: 6px;
+  text-decoration: none !important;
+}
+.album-embed-masonry-tile {
+  position: relative;
+  break-inside: avoid;
+  margin-bottom: 6px;
+  border-radius: 6px;
+  overflow: hidden;
+  background: var(--stone-100);
+}
+/* Override prose-blog img styles inside masonry tiles */
+.album-embed-masonry-tile img {
+  display: block !important;
+  width: 100% !important;
+  height: auto !important;
+  margin: 0 !important;
+  border-radius: 0 !important;
+  max-width: none !important;
+  position: static !important;
+}
+.album-embed-masonry-grid:hover .album-embed-masonry-tile img {
+  opacity: 0.85;
+  transition: opacity 0.2s ease;
+}
+.album-embed-masonry-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.45);
+  z-index: 1;
+}
+.album-embed-masonry-meta {
+  display: block;
+  text-decoration: none !important;
+  margin-top: 0.5em;
 }
 
 /* Mobile-friendly touch targets */

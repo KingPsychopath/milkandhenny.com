@@ -27,16 +27,14 @@ function formatDate(dateStr: string) {
   });
 }
 
-/* ─── Shared lazy-loaded thumbnail ─── */
+/* ─── Fill thumbnail (absolute-positioned, fills parent cell) ─── */
 
-const LazyThumb = memo(function LazyThumb({
+const FillThumb = memo(function FillThumb({
   slug,
   photoId,
-  className,
 }: {
   slug: string;
   photoId: string;
-  className?: string;
 }) {
   const imgRef = useRef<HTMLImageElement>(null);
   const [loaded, setLoaded] = useState(false);
@@ -59,9 +57,7 @@ const LazyThumb = memo(function LazyThumb({
     return () => observer.disconnect();
   }, [thumbUrl]);
 
-  if (errored) {
-    return <div className="absolute inset-0" style={{ background: "var(--stone-100)" }} />;
-  }
+  if (errored) return null;
 
   return (
     // eslint-disable-next-line @next/next/no-img-element
@@ -70,15 +66,24 @@ const LazyThumb = memo(function LazyThumb({
       alt=""
       onLoad={() => setLoaded(true)}
       onError={() => setErrored(true)}
-      className={`absolute inset-0 w-full h-full object-cover transition-opacity duration-300 ${
-        loaded ? "opacity-100" : "opacity-0"
-      } ${className ?? ""}`}
+      style={{
+        position: "absolute",
+        top: 0,
+        left: 0,
+        width: "100%",
+        height: "100%",
+        objectFit: "cover",
+        margin: 0,
+        borderRadius: 0,
+        transition: "opacity 0.3s ease",
+        opacity: loaded ? 1 : 0,
+      }}
     />
   );
 });
 
 /* ════════════════════════════════════════════════════════════════════
- *  COMPACT — Original thumbnail strip (4 thumbs at 4:3 + meta below)
+ *  COMPACT — Thumbnail strip (4 thumbs at 4:3 + meta below)
  * ════════════════════════════════════════════════════════════════════ */
 
 function AlbumEmbedCompact({ album }: { album: EmbeddedAlbum }) {
@@ -92,8 +97,7 @@ function AlbumEmbedCompact({ album }: { album: EmbeddedAlbum }) {
       <div className="album-embed-strip">
         {album.previewIds.map((id, i) => (
           <div key={id} className="album-embed-thumb">
-            <div className="album-embed-thumb-placeholder" />
-            <LazyThumb slug={album.slug} photoId={id} />
+            <FillThumb slug={album.slug} photoId={id} />
             {showOverlay && i === album.previewIds.length - 1 && (
               <div className="album-embed-thumb-overlay">
                 <span className="font-mono text-xs text-white/90 tracking-wide">
@@ -116,7 +120,8 @@ function AlbumEmbedCompact({ album }: { album: EmbeddedAlbum }) {
 }
 
 /* ════════════════════════════════════════════════════════════════════
- *  MASONRY — Small balanced grid (2x2 with staggered heights)
+ *  MASONRY — Free-flowing Pinterest-style column tiles
+ *  Not contained in a card box — each thumbnail is its own tile.
  * ════════════════════════════════════════════════════════════════════ */
 
 function AlbumEmbedMasonry({ album }: { album: EmbeddedAlbum }) {
@@ -127,49 +132,46 @@ function AlbumEmbedMasonry({ album }: { album: EmbeddedAlbum }) {
   const ids = album.previewIds;
 
   return (
-    <Link href={`/pics/${album.slug}`} className="album-embed-masonry">
-      <div className="album-embed-masonry-grid">
-        {/* Left column: tall cover */}
-        <div className="album-embed-masonry-col">
-          <div className="album-embed-masonry-cell album-embed-masonry-tall">
-            <div className="album-embed-masonry-placeholder" />
-            <LazyThumb slug={album.slug} photoId={ids[0]} />
-          </div>
-        </div>
-        {/* Right column: 2-3 stacked cells */}
-        <div className="album-embed-masonry-col">
-          {ids.slice(1).map((id, i) => {
-            const isLast = i === ids.length - 2;
-            return (
-              <div key={id} className="album-embed-masonry-cell album-embed-masonry-short">
-                <div className="album-embed-masonry-placeholder" />
-                <LazyThumb slug={album.slug} photoId={id} />
-                {showOverlay && isLast && (
-                  <div className="album-embed-masonry-overlay">
-                    <span className="font-mono text-xs text-white/90 tracking-wide">
-                      +{remaining}
-                    </span>
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      </div>
-      <div className="album-embed-meta">
+    <div className="album-embed-masonry">
+      <Link href={`/pics/${album.slug}`} className="album-embed-masonry-grid">
+        {ids.map((id, i) => {
+          const isLast = i === ids.length - 1;
+          return (
+            <div key={id} className="album-embed-masonry-tile">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={getThumbUrl(album.slug, id)}
+                alt=""
+                loading="lazy"
+                onError={(e) => {
+                  (e.currentTarget.parentElement as HTMLElement).style.display = "none";
+                }}
+              />
+              {showOverlay && isLast && (
+                <div className="album-embed-masonry-overlay">
+                  <span className="font-mono text-xs text-white/90 tracking-wide">
+                    +{remaining}
+                  </span>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </Link>
+      <Link href={`/pics/${album.slug}`} className="album-embed-masonry-meta">
         <p className="album-embed-title">{album.title}</p>
         <p className="album-embed-detail">
           {formatDate(album.date)} · {album.photoCount}{" "}
           {album.photoCount === 1 ? "photo" : "photos"}
         </p>
-      </div>
-    </Link>
+      </Link>
+    </div>
   );
 }
 
 /* ════════════════════════════════════════════════════════════════════
  *  Router — picks variant based on the `variant` prop.
- *  Default: "compact". Use #masonry in the markdown link text to
+ *  Default: "compact". Use #masonry in the markdown URL hash to
  *  trigger the masonry layout.
  * ════════════════════════════════════════════════════════════════════ */
 
