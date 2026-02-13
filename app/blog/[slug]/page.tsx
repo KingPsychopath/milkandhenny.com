@@ -78,10 +78,10 @@ function resolveAlbumsFromContent(
       const album = getAlbumBySlug(albumSlug);
       if (!album?.photos?.length) continue;
 
-      // Build preview: cover first, then up to 3 more unique photos
+      // Build preview: cover first, then up to 5 more (compact uses 4, masonry uses 6)
       const previewIds = [album.cover];
       for (const photo of album.photos) {
-        if (previewIds.length >= 4) break;
+        if (previewIds.length >= 6) break;
         if (photo.id !== album.cover) previewIds.push(photo.id);
       }
 

@@ -23,7 +23,7 @@ The blog, guest list, and best-dressed work with zero config (in-memory fallback
 | **Guest list** | `/guestlist` | Vercel KV (Redis) | Real-time check-in for door staff, multi-device sync |
 | **Best dressed** | `/best-dressed` | Vercel KV (Redis) | Live voting leaderboard for party guests |
 | **Transfers** | `/t/{id}` | Vercel KV (Redis) + R2 | Self-destructing file sharing (your own WeTransfer) |
-| **CLI** | `pnpm cli` | R2 + KV | Manage albums, photos, transfers, blog images from the terminal |
+| **CLI** | `pnpm cli` | R2 + KV | Manage albums, photos, transfers, blog files from the terminal |
 
 ---
 
@@ -45,6 +45,7 @@ pnpm cli transfers upload      # Interactive: pick folder, set title, set expiry
 pnpm cli transfers list        # See all active transfers + time remaining
 pnpm cli transfers info <id>   # Full details + share URL + admin URL (token recovery)
 pnpm cli transfers delete <id> # Take down a transfer + delete R2 files
+pnpm cli transfers nuke        # Wipe ALL transfers (R2 + Redis) — nuclear option
 ```
 
 ### Recovering the admin URL
@@ -98,7 +99,7 @@ Album-based photo galleries served from Cloudflare R2.
 - Masonry grid with lazy-loaded thumbnails
 - Lightbox with keyboard/swipe navigation
 - Individual + batch ZIP download (direct from R2, no Vercel bandwidth)
-- **Blog embed cards**: standalone album links in blog posts (`[Title](/pics/slug)` on its own line) render as preview cards with thumbnails, title, date, and photo count — inline mentions stay as normal links
+- **Blog embed cards**: standalone album links in blog posts (`[Title](/pics/slug)` on its own line) render as preview cards. Two variants: **compact** (4-thumb strip, default) and **masonry** (Pinterest-style flowing tiles, up to 6 photos). Use `[Title](/pics/slug#masonry)` for masonry. Inline mentions stay as normal links.
 - Managed via CLI: `pnpm cli albums upload`, `pnpm cli photos add`, etc.
 
 > **Staleness note**: Album embed cards in blog posts are resolved at build time (SSG). If you update an album (change cover, add photos) after the blog was deployed, the embed card shows stale data until the next `git commit` + Vercel rebuild. This is consistent with how all album data works — JSON manifests live in git, so any album change already requires a redeploy.
@@ -119,33 +120,36 @@ Albums and transfers store metadata differently — each approach fits its use c
 
 Albums are the strongest pattern for permanent content — zero runtime cost, fully CDN-cached, no KV dependency. Transfers use KV because they need to self-destruct, and a git-based approach would require a redeploy to expire content.
 
-### Blog images
+### Blog files
 
-Images for blog posts are stored in R2 under `blog/{post-slug}/` and referenced directly in markdown. No manifest, no metadata store — the markdown file **is** the source of truth.
+Media for blog posts is stored in R2 under `blog/{post-slug}/` and referenced directly in markdown. No manifest, no metadata store — the markdown file **is** the source of truth.
+
+- **Images**: processed to WebP (max 1600px), rendered inline with captions
+- **Videos, GIFs, audio, PDFs, zips, etc.**: uploaded as-is, rendered as download links
 
 **Workflow:**
 
 1. `pnpm cli blog upload --slug my-first-birthday --dir ~/Desktop/blog-photos`
-2. CLI processes images (max 1600px, WebP 85) and uploads to R2
-3. Prints ready-to-paste markdown snippets: `![caption](blog/slug/image.webp)`
-4. Paste into your `.md` file — the `img` component resolves relative paths against R2 automatically
+2. CLI processes images (WebP) and uploads other files raw
+3. Prints ready-to-paste markdown snippets: `![caption](blog/slug/image.webp)` for images, `[label](blog/slug/file.pdf)` for downloads
+4. Paste into your `.md` file — the `img` component resolves R2 paths automatically
 
 **CLI commands:**
 
 ```bash
-pnpm cli blog upload --slug <post-slug> --dir <path>   # Upload images
-pnpm cli blog list <post-slug>                          # List uploaded images
-pnpm cli blog delete <post-slug>                        # Delete ALL images for a post
-pnpm cli blog delete <post-slug> --file <filename>      # Delete a single image
+pnpm cli blog upload --slug <post-slug> --dir <path>   # Upload files (images → WebP, others raw)
+pnpm cli blog list <post-slug>                          # List uploaded files + markdown snippets
+pnpm cli blog delete <post-slug>                        # Delete ALL files for a post
+pnpm cli blog delete <post-slug> --file <filename>      # Delete a single file
 ```
 
 **How it differs from albums and transfers:**
 
-| | Albums | Transfers | Blog images |
+| | Albums | Transfers | Blog files |
 |---|--------|-----------|-------------|
 | **R2 prefix** | `albums/{slug}/` | `transfers/{id}/` | `blog/{slug}/` |
 | **Metadata** | JSON manifest in git | Redis with TTL | None (markdown is the manifest) |
-| **Variants** | thumb + full + original | thumb + full + original | Single optimised WebP |
+| **Variants** | thumb + full + original | thumb + full + original | Images: WebP; others: raw |
 | **Lifecycle** | Permanent | Auto-expires | Permanent (delete via CLI) |
 | **Cost per view** | $0 (static/CDN) | ~$0 (1 KV GET, CDN-cached) | $0 (static/CDN) |
 
@@ -218,7 +222,7 @@ Every feature degrades gracefully — nothing crashes. The fallback strategy mat
 | **Transfer page** (`/t/{id}`) | `getTransfer()` returns null → shows "expired" page. No crash. | No impact (files served via CDN) | File URLs break — same as pics |
 | **Transfer CLI** (`pnpm cli transfers *`) | `requireRedis()` throws with a clear error. **No silent fallback.** | `requireR2()` throws with a clear error | Share URL defaults to `https://milkandhenny.com` — no crash |
 | **Album CLI** (`pnpm cli albums *`) | No impact (albums use JSON manifests) | Throws — can't upload without R2 | No impact on CLI |
-| **Blog CLI** (`pnpm cli blog *`) | No impact (blog images don't use KV) | `requireR2()` throws with a clear error | Images in posts break — URLs resolve to `/{path}` |
+| **Blog CLI** (`pnpm cli blog *`) | No impact (blog files don't use KV) | `requireR2()` throws with a clear error | Images/files in posts break — URLs resolve to `/{path}` |
 | **Cron cleanup** | Returns `{ skipped: true }` — no crash | Returns `{ skipped: true }` | No impact |
 | **`STAFF_PIN`** missing | — | — | Guest list page is accessible without a PIN (open gate) |
 | **`MANAGEMENT_PASSWORD`** missing | — | — | Management UI rejects all passwords (locked out) |

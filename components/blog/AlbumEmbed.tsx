@@ -11,7 +11,7 @@ type EmbeddedAlbum = {
   date: string;
   cover: string;
   photoCount: number;
-  /** First 4 photo IDs (cover first, then others) for the preview strip */
+  /** First 6 photo IDs (cover first, then others) — compact uses 4, masonry uses 6 */
   previewIds: string[];
 };
 
@@ -82,6 +82,9 @@ const FillThumb = memo(function FillThumb({
   );
 });
 
+const COMPACT_PREVIEW_LIMIT = 4;
+const MASONRY_PREVIEW_LIMIT = 6;
+
 /* ════════════════════════════════════════════════════════════════════
  *  COMPACT — Thumbnail strip (4 thumbs at 4:3 + meta below)
  * ════════════════════════════════════════════════════════════════════ */
@@ -89,16 +92,17 @@ const FillThumb = memo(function FillThumb({
 function AlbumEmbedCompact({ album }: { album: EmbeddedAlbum }) {
   if (!album?.slug || !album?.title || !album?.previewIds?.length) return null;
 
-  const remaining = album.photoCount - album.previewIds.length;
+  const ids = album.previewIds.slice(0, COMPACT_PREVIEW_LIMIT);
+  const remaining = album.photoCount - ids.length;
   const showOverlay = remaining > 0;
 
   return (
     <Link href={`/pics/${album.slug}`} className="album-embed">
       <div className="album-embed-strip">
-        {album.previewIds.map((id, i) => (
+        {ids.map((id, i) => (
           <div key={id} className="album-embed-thumb">
             <FillThumb slug={album.slug} photoId={id} />
-            {showOverlay && i === album.previewIds.length - 1 && (
+            {showOverlay && i === ids.length - 1 && (
               <div className="album-embed-thumb-overlay">
                 <span className="font-mono text-xs text-white/90 tracking-wide">
                   +{remaining}
@@ -127,9 +131,9 @@ function AlbumEmbedCompact({ album }: { album: EmbeddedAlbum }) {
 function AlbumEmbedMasonry({ album }: { album: EmbeddedAlbum }) {
   if (!album?.slug || !album?.title || !album?.previewIds?.length) return null;
 
-  const remaining = album.photoCount - album.previewIds.length;
+  const ids = album.previewIds.slice(0, MASONRY_PREVIEW_LIMIT);
+  const remaining = album.photoCount - ids.length;
   const showOverlay = remaining > 0;
-  const ids = album.previewIds;
 
   return (
     <div className="album-embed-masonry">

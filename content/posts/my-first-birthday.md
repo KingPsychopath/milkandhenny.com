@@ -20,8 +20,9 @@ throw together in a group chat and hope for the best.
 
 Mind you, I was enjoying my first actual "summer" during my birthday, 
 spending a month between Cape Town and Joburg. I was not coming back 
-to London, if not for a call from Olay saying - "*So what are you 
-doing this party den?*".
+to London, if not for a call from Olay:
+
+> So what are you doing this party den?
 
  Stressed was not even the word, but somewhere between confirming the venue and fighting for my life with the DJ's, it became something else. It became a *thing*. A real thing with a name and stickers and people asking "_when's the next one?_"
 
@@ -77,10 +78,4 @@ If you were there — thank you. If you weren't — wagwarn fi next time?.
 *— OA*
 *— _Father Stretch My Bandz_*
 
-[Milk & Henny — January 2026](/pics/milk-and-henny-jan-2026)
-
 [Milk & Henny — January 2026](/pics/milk-and-henny-jan-2026#masonry)
-
-![How I be looking when I hear some of these revelations because what were you actually thinking????](https://images.unsplash.com/photo-1533174072545-7a4b6ad7a6c3?w=800&q=80)
-
-
