@@ -181,6 +181,12 @@ export default async function BlogPostPage({ params }: Props) {
               <time>{formatDate(post.date)}</time>
               <span>·</span>
               <span>{post.readingTime} min read</span>
+              {post.featured && (
+                <>
+                  <span>·</span>
+                  <span className="text-amber-600 dark:text-amber-500/80">featured</span>
+                </>
+              )}
             </div>
             <Share
               url={`${BASE_URL}/blog/${slug}`}

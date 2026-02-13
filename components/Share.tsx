@@ -1,9 +1,9 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 
 type ShareProps = {
-  /** Full URL to share (e.g. https://milkandhenny.com/blog/my-post) */
+  /** Full URL to share */
   url: string;
   /** Optional title for social prefill and native share */
   title?: string;
@@ -48,13 +48,17 @@ function buildShareUrls(url: string, title: string) {
   };
 }
 
+/**
+ * Single "share" trigger.
+ * - Mobile: opens native share sheet (copy, socials, AirDrop etc all included)
+ * - Desktop: opens a dropdown with copy link + social options
+ */
 export function Share({ url, title = "", label = "Share", className = "" }: ShareProps) {
   const [copied, setCopied] = useState(false);
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
-  // Detect mobile after mount to avoid hydration mismatch
   useEffect(() => {
     const mobile =
       typeof navigator.share === "function" &&
@@ -79,12 +83,12 @@ export function Share({ url, title = "", label = "Share", className = "" }: Shar
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [dropdownOpen]);
 
-  async function handleCopy() {
+  const handleCopy = useCallback(async () => {
     const ok = await copyToClipboard(url);
     if (ok) setCopied(true);
-  }
+  }, [url]);
 
-  async function handleShareClick() {
+  const handleClick = useCallback(async () => {
     if (!isMobile) {
       setDropdownOpen((open) => !open);
       return;
@@ -94,76 +98,64 @@ export function Share({ url, title = "", label = "Share", className = "" }: Shar
     } catch {
       // User cancelled — do nothing
     }
-  }
+  }, [isMobile, url, title]);
 
   const shareUrls = buildShareUrls(url, title);
 
   return (
     <div
       ref={dropdownRef}
-      className={`inline-flex items-center gap-1 font-mono text-[11px] theme-muted tracking-wide ${className}`}
+      className={`relative inline-block font-mono text-[11px] theme-muted tracking-wide ${className}`}
       aria-label={label}
     >
-      {/* Copy link: hidden on mobile (native share handles it), hidden via CSS to avoid layout shift */}
       <button
         type="button"
-        onClick={handleCopy}
-        className={`hover:text-foreground transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-500/50 rounded px-1 -mx-1 ${isMobile ? "hidden" : ""}`}
+        onClick={handleClick}
+        aria-expanded={dropdownOpen}
+        aria-haspopup="true"
+        className="inline-flex items-center gap-0.5 hover:text-foreground transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-500/50 rounded px-1 -mx-1"
       >
-        {copied ? "copied" : "copy link"}
-      </button>
-      <span className={`theme-faint ${isMobile ? "hidden" : ""}`} aria-hidden>
-        ·
-      </span>
-      <div className="relative inline-block">
-        <button
-          type="button"
-          onClick={handleShareClick}
-          aria-expanded={dropdownOpen}
-          aria-haspopup="true"
-          className="inline-flex items-center gap-0.5 hover:text-foreground transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-500/50 rounded px-1 -mx-1"
-        >
-          share
-          {!isMobile && (
-            <svg
-              className={`w-3 h-3 ml-0.5 transition-transform ${dropdownOpen ? "rotate-180" : ""}`}
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-              aria-hidden
-            >
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-            </svg>
-          )}
-        </button>
-        {dropdownOpen && !isMobile && (
-          <div
-            className="absolute right-0 top-full mt-1 py-1.5 min-w-[10rem] bg-background border theme-border rounded-sm shadow-lg z-10"
-            role="menu"
+        {copied ? "copied" : "share"}
+        {!isMobile && (
+          <svg
+            className={`w-3 h-3 ml-0.5 transition-transform ${dropdownOpen ? "rotate-180" : ""}`}
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+            aria-hidden
           >
-            {[
-              { label: "X (Twitter)", action: () => window.open(shareUrls.twitter, "_blank", "noopener") },
-              { label: "Facebook", action: () => window.open(shareUrls.facebook, "_blank", "noopener") },
-              { label: "LinkedIn", action: () => window.open(shareUrls.linkedin, "_blank", "noopener") },
-              { label: "WhatsApp", action: () => window.open(shareUrls.whatsapp, "_blank", "noopener") },
-              { label: "Email", action: () => { window.location.href = shareUrls.email; } },
-            ].map((item) => (
-              <button
-                key={item.label}
-                type="button"
-                role="menuitem"
-                onClick={() => {
-                  item.action();
-                  setDropdownOpen(false);
-                }}
-                className="block w-full text-left px-3 py-1.5 hover:bg-stone-100 dark:hover:bg-stone-800 transition-colors"
-              >
-                {item.label}
-              </button>
-            ))}
-          </div>
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+          </svg>
         )}
-      </div>
+      </button>
+      {dropdownOpen && !isMobile && (
+        <div
+          className="absolute right-0 top-full mt-1 py-1.5 min-w-[10rem] bg-background border theme-border rounded-sm shadow-lg z-10"
+          role="menu"
+        >
+          {[
+            { label: "Copy link", action: () => { handleCopy(); setDropdownOpen(false); } },
+            { label: "X (Twitter)", action: () => window.open(shareUrls.twitter, "_blank", "noopener") },
+            { label: "Facebook", action: () => window.open(shareUrls.facebook, "_blank", "noopener") },
+            { label: "LinkedIn", action: () => window.open(shareUrls.linkedin, "_blank", "noopener") },
+            { label: "WhatsApp", action: () => window.open(shareUrls.whatsapp, "_blank", "noopener") },
+            { label: "Email", action: () => { window.location.href = shareUrls.email; } },
+          ].map((item) => (
+            <button
+              key={item.label}
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                item.action();
+                if (item.label !== "Copy link") setDropdownOpen(false);
+              }}
+              className="block w-full text-left px-3 py-1.5 hover:bg-stone-100 dark:hover:bg-stone-800 transition-colors"
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
