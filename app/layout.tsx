@@ -34,6 +34,7 @@ export const metadata: Metadata = {
   openGraph: {
     title: "Milk & Henny",
     description: "Thoughts, stories, and things worth sharing.",
+    url: "/",
     siteName: "Milk & Henny",
     type: "website",
   },

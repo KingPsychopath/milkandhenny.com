@@ -27,6 +27,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     openGraph: {
       title: post.title,
       description,
+      url: `/blog/${slug}`,
       siteName: "Milk & Henny",
       type: "article",
       publishedTime: post.date,
