@@ -200,7 +200,7 @@ async function processImageVariants(
       : "centre";
   const og = await sharp(raw)
     .resize(OG_WIDTH, OG_HEIGHT, { fit: "cover", position })
-    .jpeg({ quality: 80 })
+    .jpeg({ quality: 70, mozjpeg: true })
     .toBuffer();
 
   return {
@@ -233,7 +233,7 @@ async function processToOg(
       : "centre";
   const buffer = await sharp(raw)
     .resize(OG_WIDTH, OG_HEIGHT, { fit: "cover", position })
-    .jpeg({ quality: 80 })
+    .jpeg({ quality: 70, mozjpeg: true })
     .toBuffer();
   return { buffer, contentType: "image/jpeg", ext: ".jpg" };
 }
