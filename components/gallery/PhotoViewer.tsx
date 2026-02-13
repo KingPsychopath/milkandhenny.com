@@ -30,6 +30,8 @@ export function PhotoViewer({
   const router = useRouter();
   const [saving, setSaving] = useState(false);
   const savingRef = useRef(false);
+  const touchRef = useRef<{ x: number; y: number; time: number } | null>(null);
+  const imageContainerRef = useRef<HTMLDivElement>(null);
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
@@ -44,6 +46,43 @@ export function PhotoViewer({
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [handleKeyDown]);
+
+  /* ── Swipe detection on image area ── */
+  useEffect(() => {
+    const el = imageContainerRef.current;
+    if (!el) return;
+
+    const SWIPE_MIN_DISTANCE = 50; // px
+    const SWIPE_MAX_TIME = 300; // ms
+    const SWIPE_MAX_VERTICAL = 80; // px — ignore diagonal/vertical swipes
+
+    const onTouchStart = (e: TouchEvent) => {
+      const touch = e.touches[0];
+      touchRef.current = { x: touch.clientX, y: touch.clientY, time: Date.now() };
+    };
+
+    const onTouchEnd = (e: TouchEvent) => {
+      if (!touchRef.current) return;
+      const touch = e.changedTouches[0];
+      const dx = touch.clientX - touchRef.current.x;
+      const dy = touch.clientY - touchRef.current.y;
+      const dt = Date.now() - touchRef.current.time;
+      touchRef.current = null;
+
+      // Must be fast, horizontal, and long enough
+      if (dt > SWIPE_MAX_TIME || Math.abs(dy) > SWIPE_MAX_VERTICAL || Math.abs(dx) < SWIPE_MIN_DISTANCE) return;
+
+      if (dx < 0 && nextHref) router.push(nextHref); // swipe left → next
+      if (dx > 0 && prevHref) router.push(prevHref); // swipe right → prev
+    };
+
+    el.addEventListener("touchstart", onTouchStart, { passive: true });
+    el.addEventListener("touchend", onTouchEnd, { passive: true });
+    return () => {
+      el.removeEventListener("touchstart", onTouchStart);
+      el.removeEventListener("touchend", onTouchEnd);
+    };
+  }, [router, prevHref, nextHref]);
 
   /** Fetch blob directly from R2 and trigger download */
   const handleDownload = useCallback(async () => {
@@ -71,9 +110,10 @@ export function PhotoViewer({
 
   return (
     <div className="flex flex-col items-center gap-4">
-      {/* Image container */}
+      {/* Image container — swipe left/right to navigate */}
       <div
-        className={`relative w-full flex items-center justify-center ${
+        ref={imageContainerRef}
+        className={`relative w-full flex items-center justify-center touch-pan-y ${
           isPortrait ? "max-w-md" : "max-w-full"
         }`}
       >
