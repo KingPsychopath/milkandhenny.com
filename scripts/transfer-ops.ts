@@ -15,6 +15,7 @@ import {
   deleteObjects,
   listObjects,
 } from "./r2-client";
+import { getRedis } from "../lib/redis";
 import {
   saveTransfer,
   getTransfer,
@@ -27,6 +28,36 @@ import {
   DEFAULT_EXPIRY_SECONDS,
 } from "../lib/transfers";
 import type { TransferData, TransferFile, TransferSummary, FileKind } from "../lib/transfers";
+
+/* ─── Preflight checks ─── */
+
+/**
+ * Ensure Redis is reachable before performing transfer operations.
+ * Without this, transfers silently save to in-memory (which dies with
+ * the CLI process) and the web app can't find them.
+ */
+function requireRedis(): void {
+  const redis = getRedis();
+  if (!redis) {
+    throw new Error(
+      "Redis/KV not configured. Transfer metadata requires Redis to persist.\n" +
+      "Add KV_REST_API_URL and KV_REST_API_TOKEN to .env.local.\n" +
+      "Copy them from your Vercel dashboard → Storage → KV."
+    );
+  }
+}
+
+/**
+ * Ensure R2 env vars are set before uploading files.
+ */
+function requireR2(): void {
+  const { R2_ACCOUNT_ID, R2_ACCESS_KEY, R2_SECRET_KEY, R2_BUCKET } = process.env;
+  if (!R2_ACCOUNT_ID || !R2_ACCESS_KEY || !R2_SECRET_KEY || !R2_BUCKET) {
+    throw new Error(
+      "R2 not configured. Set R2_ACCOUNT_ID, R2_ACCESS_KEY, R2_SECRET_KEY, R2_BUCKET in .env.local."
+    );
+  }
+}
 
 /* ─── Constants ─── */
 
@@ -274,13 +305,50 @@ async function uploadRawFile(
   };
 }
 
+/* ─── Concurrency helper ─── */
+
+/**
+ * Run async tasks with a concurrency limit.
+ * Like Promise.all but caps simultaneous execution to avoid
+ * overwhelming the network or Sharp's thread pool.
+ */
+async function mapConcurrent<T, R>(
+  items: T[],
+  limit: number,
+  fn: (item: T) => Promise<R>
+): Promise<R[]> {
+  const results: R[] = new Array(items.length);
+  let idx = 0;
+
+  async function worker() {
+    while (idx < items.length) {
+      const i = idx++;
+      results[i] = await fn(items[i]);
+    }
+  }
+
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, () => worker()));
+  return results;
+}
+
 /* ─── Transfer operations ─── */
+
+/**
+ * Concurrency settings for uploads.
+ * - Images/GIFs: 3 concurrent (Sharp is CPU-heavy, each already does 2-3 parallel R2 puts)
+ * - Raw files: 6 concurrent (no processing, purely network-bound)
+ */
+const IMAGE_CONCURRENCY = 3;
+const RAW_CONCURRENCY = 6;
 
 /** Create a new transfer: process files, upload to R2, save metadata to Redis */
 async function createTransfer(
   opts: CreateTransferOpts,
   onProgress?: (msg: string) => void
 ): Promise<CreateTransferResult> {
+  requireRedis();
+  requireR2();
+
   const absDir = path.resolve(
     opts.dir.replace(/^~/, process.env.HOME ?? "~")
   );
@@ -315,29 +383,26 @@ async function createTransfer(
     `Found ${entries.length} files (${images.length} images, ${gifs.length} GIFs, ${others.length} other). Creating transfer ${transferId}...`
   );
 
-  const files: TransferFile[] = [];
   let totalSize = 0;
 
-  // Process images (thumb + full + original)
-  for (const file of images) {
-    const result = await processImage(path.join(absDir, file), transferId, onProgress);
-    files.push(result.file);
-    totalSize += result.uploadedBytes;
-  }
+  // Process images concurrently (Sharp is CPU-heavy, so cap at 3)
+  const imageResults = await mapConcurrent(images, IMAGE_CONCURRENCY, (file) =>
+    processImage(path.join(absDir, file), transferId, onProgress)
+  );
 
-  // Process GIFs (static thumb + original)
-  for (const file of gifs) {
-    const result = await processGif(path.join(absDir, file), transferId, onProgress);
-    files.push(result.file);
-    totalSize += result.uploadedBytes;
-  }
+  // Process GIFs concurrently
+  const gifResults = await mapConcurrent(gifs, IMAGE_CONCURRENCY, (file) =>
+    processGif(path.join(absDir, file), transferId, onProgress)
+  );
 
-  // Upload everything else as-is
-  for (const file of others) {
-    const result = await uploadRawFile(path.join(absDir, file), transferId, onProgress);
-    files.push(result.file);
-    totalSize += result.uploadedBytes;
-  }
+  // Upload raw files concurrently (no processing, pure network — cap at 6)
+  const rawResults = await mapConcurrent(others, RAW_CONCURRENCY, (file) =>
+    uploadRawFile(path.join(absDir, file), transferId, onProgress)
+  );
+
+  const allResults = [...imageResults, ...gifResults, ...rawResults];
+  const files: TransferFile[] = allResults.map((r) => r.file);
+  totalSize = allResults.reduce((sum, r) => sum + r.uploadedBytes, 0);
 
   // Sort: images/gifs by EXIF date then name, then non-visual files by name
   const visual = files.filter((f) => f.kind === "image" || f.kind === "gif");
@@ -384,6 +449,7 @@ async function createTransfer(
 async function getTransferInfo(
   id: string
 ): Promise<(TransferData & { remainingSeconds: number }) | null> {
+  requireRedis();
   const transfer = await getTransfer(id);
   if (!transfer) return null;
 
@@ -396,6 +462,7 @@ async function getTransferInfo(
 
 /** List all active transfers with time remaining */
 async function listActiveTransfers(): Promise<TransferSummary[]> {
+  requireRedis();
   return listTransfers();
 }
 
@@ -404,6 +471,8 @@ async function deleteTransfer(
   id: string,
   onProgress?: (msg: string) => void
 ): Promise<{ deletedFiles: number; dataDeleted: boolean }> {
+  requireRedis();
+  requireR2();
   const prefix = `transfers/${id}/`;
   onProgress?.(`Listing files under ${prefix}...`);
 
@@ -422,11 +491,59 @@ async function deleteTransfer(
   return { deletedFiles, dataDeleted };
 }
 
+/**
+ * Nuke all transfers: wipe every R2 object under transfers/ and
+ * clear the Redis index + all transfer:* keys. Full reset.
+ */
+async function nukeAllTransfers(
+  onProgress?: (msg: string) => void
+): Promise<{ deletedFiles: number; deletedKeys: number }> {
+  requireRedis();
+  requireR2();
+
+  const redis = getRedis()!;
+
+  /* ─── R2 cleanup ─── */
+  onProgress?.("Listing all R2 objects under transfers/...");
+  const objects = await listObjects("transfers/");
+  const keys = objects.map((o) => o.key);
+
+  let deletedFiles = 0;
+  if (keys.length > 0) {
+    onProgress?.(`Deleting ${keys.length} files from R2...`);
+    deletedFiles = await deleteObjects(keys);
+  } else {
+    onProgress?.("No R2 objects found under transfers/.");
+  }
+
+  /* ─── Redis cleanup ─── */
+  onProgress?.("Clearing Redis transfer metadata...");
+  const indexedIds: string[] = await redis.smembers("transfer:index");
+  let deletedKeys = 0;
+
+  if (indexedIds.length > 0) {
+    const pipeline = redis.pipeline();
+    for (const id of indexedIds) {
+      pipeline.del(`transfer:${id}`);
+    }
+    pipeline.del("transfer:index");
+    await pipeline.exec();
+    deletedKeys = indexedIds.length;
+  } else {
+    // Index may be empty but stale keys might exist — just delete the index
+    await redis.del("transfer:index");
+  }
+
+  onProgress?.("Done.");
+  return { deletedFiles, deletedKeys };
+}
+
 export {
   createTransfer,
   getTransferInfo,
   listActiveTransfers,
   deleteTransfer,
+  nukeAllTransfers,
   formatDuration,
   parseExpiry,
   formatBytes,

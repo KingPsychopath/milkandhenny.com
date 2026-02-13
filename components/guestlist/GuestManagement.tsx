@@ -12,9 +12,6 @@ type GuestManagementProps = {
   onCSVImported: () => void;
 };
 
-/** Global password for management access */
-const MANAGEMENT_PASSWORD = 'party2020';
-
 /** Typeahead input component */
 function TypeaheadInput({
   value,
@@ -110,10 +107,12 @@ export function GuestManagement({ guests, onGuestAdded, onGuestRemoved, onCSVImp
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [password, setPassword] = useState('');
   const [passwordError, setPasswordError] = useState(false);
-  
+  /** User-typed password after successful verify (for API headers). Not the env value. */
+  const managementPasswordRef = useRef<string | null>(null);
+
   const [activeTab, setActiveTab] = useState<'add' | 'remove' | 'import' | 'data' | 'games'>('add');
   const [dataLoading, setDataLoading] = useState(false);
-  
+
   // Games/Best Dressed state
   const [bestDressedLeaderboard, setBestDressedLeaderboard] = useState<LeaderboardEntry[]>([]);
   const [bestDressedTotalVotes, setBestDressedTotalVotes] = useState(0);
@@ -183,7 +182,7 @@ export function GuestManagement({ guests, onGuestAdded, onGuestRemoved, onCSVImp
     try {
       const res = await fetch('/api/best-dressed', {
         method: 'DELETE',
-        headers: { 'X-Management-Password': MANAGEMENT_PASSWORD },
+        headers: { 'X-Management-Password': managementPasswordRef.current ?? '' },
       });
       if (res.ok) {
         setBestDressedLeaderboard([]);
@@ -208,13 +207,16 @@ export function GuestManagement({ guests, onGuestAdded, onGuestRemoved, onCSVImp
     
     try {
       // Reset guests from CSV
-      const guestRes = await fetch('/api/guests/bootstrap', { method: 'DELETE' });
+      const guestRes = await fetch('/api/guests/bootstrap', {
+        method: 'DELETE',
+        headers: { 'X-Management-Password': managementPasswordRef.current ?? '' },
+      });
       const guestData = await guestRes.json();
       
       // Clear best dressed votes
       await fetch('/api/best-dressed', {
         method: 'DELETE',
-        headers: { 'X-Management-Password': MANAGEMENT_PASSWORD },
+        headers: { 'X-Management-Password': managementPasswordRef.current ?? '' },
       });
       setBestDressedLeaderboard([]);
       setBestDressedTotalVotes(0);
@@ -229,12 +231,22 @@ export function GuestManagement({ guests, onGuestAdded, onGuestRemoved, onCSVImp
     }
   };
 
-  const handlePasswordSubmit = (e: React.FormEvent) => {
+  const handlePasswordSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (password === MANAGEMENT_PASSWORD) {
-      setIsAuthenticated(true);
-      setPasswordError(false);
-    } else {
+    setPasswordError(false);
+    try {
+      const res = await fetch('/api/guests/verify-management', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password }),
+      });
+      if (res.ok) {
+        managementPasswordRef.current = password;
+        setIsAuthenticated(true);
+      } else {
+        setPasswordError(true);
+      }
+    } catch {
       setPasswordError(true);
     }
   };
@@ -245,7 +257,10 @@ export function GuestManagement({ guests, onGuestAdded, onGuestRemoved, onCSVImp
     try {
       const res = await fetch('/api/guests/add', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Management-Password': managementPasswordRef.current ?? '',
+        },
         body: JSON.stringify({ name, fullName, plusOneOf: plusOneOf || undefined }),
       });
       if (res.ok) {
@@ -270,6 +285,7 @@ export function GuestManagement({ guests, onGuestAdded, onGuestRemoved, onCSVImp
     try {
       const res = await fetch(`/api/guests/remove?id=${encodeURIComponent(removeId)}`, {
         method: 'DELETE',
+        headers: { 'X-Management-Password': managementPasswordRef.current ?? '' },
       });
       if (res.ok) {
         setRemoveId('');
@@ -312,7 +328,10 @@ export function GuestManagement({ guests, onGuestAdded, onGuestRemoved, onCSVImp
     setDataLoading(true);
     setError(null);
     try {
-      const res = await fetch('/api/guests/bootstrap', { method: 'DELETE' });
+      const res = await fetch('/api/guests/bootstrap', {
+        method: 'DELETE',
+        headers: { 'X-Management-Password': managementPasswordRef.current ?? '' },
+      });
       const data = await res.json();
       setSuccess(`Reset complete! Loaded ${data.count} guests from CSV`);
       setTimeout(() => setSuccess(null), 3000);
@@ -342,6 +361,7 @@ export function GuestManagement({ guests, onGuestAdded, onGuestRemoved, onCSVImp
 
       const res = await fetch('/api/guests/import', {
         method: 'POST',
+        headers: { 'X-Management-Password': managementPasswordRef.current ?? '' },
         body: formData,
       });
 

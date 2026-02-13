@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import Link from 'next/link';
 import { useGuests } from '@/hooks/useGuests';
 import { useGuestSearch } from '@/hooks/useGuestSearch';
@@ -9,34 +9,43 @@ import { GuestList } from '@/components/guestlist/GuestList';
 import { GuestStats } from '@/components/guestlist/GuestStats';
 import { GuestManagement } from '@/components/guestlist/GuestManagement';
 
-const STAFF_PIN = '2020';
 const AUTH_KEY = 'mah-staff-auth';
 
+function getInitialAuth() {
+  if (typeof window === 'undefined') return false;
+  return sessionStorage.getItem(AUTH_KEY) === 'true';
+}
+
+function getInitialCheckingAuth() {
+  return typeof window === 'undefined';
+}
+
 export default function GuestListPage() {
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [isAuthenticated, setIsAuthenticated] = useState(getInitialAuth);
   const [pin, setPin] = useState('');
   const [pinError, setPinError] = useState(false);
-  const [checkingAuth, setCheckingAuth] = useState(true);
-  
+  const [checkingAuth] = useState(getInitialCheckingAuth);
+
   const { guests, loading, error, updateCheckIn, refetch } = useGuests();
   const { searchQuery, setSearchQuery, filter, setFilter, filteredGuests, searchStats } = useGuestSearch(guests);
 
-  // Check for existing auth on mount
-  useEffect(() => {
-    const auth = sessionStorage.getItem(AUTH_KEY);
-    if (auth === 'true') {
-      setIsAuthenticated(true);
-    }
-    setCheckingAuth(false);
-  }, []);
-
-  const handlePinSubmit = (e: React.FormEvent) => {
+  const handlePinSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (pin === STAFF_PIN) {
-      sessionStorage.setItem(AUTH_KEY, 'true');
-      setIsAuthenticated(true);
-      setPinError(false);
-    } else {
+    setPinError(false);
+    try {
+      const res = await fetch('/api/guests/verify-staff-pin', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pin }),
+      });
+      if (res.ok) {
+        sessionStorage.setItem(AUTH_KEY, 'true');
+        setIsAuthenticated(true);
+      } else {
+        setPinError(true);
+        setPin('');
+      }
+    } catch {
       setPinError(true);
       setPin('');
     }

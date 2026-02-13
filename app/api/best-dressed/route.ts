@@ -238,8 +238,8 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// Server-side admin secret (optional override; default matches client MANAGEMENT_PASSWORD)
-const RESET_SECRET = process.env.MANAGEMENT_PASSWORD ?? 'party2020';
+// Server-side admin secret (same as MANAGEMENT_PASSWORD for guest list)
+const RESET_SECRET = process.env.MANAGEMENT_PASSWORD;
 
 // DELETE - wipe all votes and reset session (admin only; requires management password)
 export async function DELETE(request: NextRequest) {
@@ -253,7 +253,7 @@ export async function DELETE(request: NextRequest) {
         password = null;
       }
     }
-    if (password !== RESET_SECRET) {
+    if (!RESET_SECRET || password !== RESET_SECRET) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 

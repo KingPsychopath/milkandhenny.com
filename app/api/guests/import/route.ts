@@ -1,8 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { parseCSV } from '@/lib/csv-parser';
 import { setGuests } from '@/lib/kv-client';
+import { requireManagementAuth } from '@/lib/management-auth';
 
 export async function POST(request: NextRequest) {
+  const authError = requireManagementAuth(request);
+  if (authError) return authError;
+
   try {
     const formData = await request.formData();
     const file = formData.get('file') as File;

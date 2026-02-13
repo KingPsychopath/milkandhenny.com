@@ -10,9 +10,7 @@ pnpm dev
 # → http://localhost:3000
 ```
 
-No environment variables needed for local dev. Everything falls back to in-memory storage.
-
-For production, set up [environment variables](#environment-variables) and deploy to Vercel.
+The blog, guest list, and best-dressed work with zero config (in-memory fallback). Photo galleries and transfers need env vars — see [environment variables](#environment-variables).
 
 ---
 
@@ -82,7 +80,9 @@ Real-time check-in system for door staff at events.
 - Multi-device sync via polling (5s active, 30s when tab is backgrounded)
 - CSV import from Partiful exports
 - Search, filter, +1 relationships
-- Password-protected management (`party2026`)
+- **Two gates (both in env, never in client bundle):**
+  - **Staff PIN** (`STAFF_PIN`) — who can open the guestlist page. Verified by `POST /api/guests/verify-staff-pin`.
+  - **Management password** (`MANAGEMENT_PASSWORD`) — who can use Manage (add/remove/import, wipe best-dressed). Verified by `POST /api/guests/verify-management`.
 
 ### Usage
 
@@ -130,7 +130,9 @@ Albums are the strongest pattern for permanent content — zero runtime cost, fu
 | `R2_SECRET_KEY` | Local only | CLI + cron | R2 API token secret key |
 | `R2_BUCKET` | Local only | CLI + cron | R2 bucket name |
 | `NEXT_PUBLIC_BASE_URL` | Local only | CLI only | For generating share URLs. **Not needed on Vercel.** |
-| `CRON_SECRET` | Vercel only | Optional | Secures the daily cleanup cron endpoint |
+| `STAFF_PIN` | Vercel + local | Yes (for guestlist) | PIN to open the guestlist page (door staff). Not in client bundle. |
+| `MANAGEMENT_PASSWORD` | Vercel + local | Yes (for Manage UI) | Unlocks Manage (add/remove/import, best-dressed wipe). Not in client bundle. |
+| `CRON_SECRET` | Vercel only | Optional | Secures the daily cleanup cron. Generate with `openssl rand -hex 32` or Bitwarden; store in Bitwarden, paste into Vercel. |
 
 Vercel auto-injects `KV_URL`, `REDIS_URL`, `KV_REST_API_READ_ONLY_TOKEN` from its KV integration — our code doesn't use these. Safe to leave.
 
@@ -170,6 +172,25 @@ Vercel auto-injects `KV_URL`, `REDIS_URL`, `KV_REST_API_READ_ONLY_TOKEN` from it
 
 **Cost-saving routing:** All image/file requests go directly to `pics.milkandhenny.com` (R2 + Cloudflare CDN). They never touch Vercel — no bandwidth cost, no function invocations. ZIP downloads and individual file downloads also fetch directly from R2 via CORS.
 
+### Resilience: what happens when env vars are missing
+
+Every feature degrades gracefully — nothing crashes. The fallback strategy matches the context: local dev features get in-memory fallback, production-only features fail explicitly.
+
+| Feature | Missing KV vars | Missing R2 API vars | Missing `NEXT_PUBLIC_R2_PUBLIC_URL` |
+|---------|----------------|---------------------|--------------------------------------|
+| **Blog** (`/`) | No impact (reads markdown from git) | No impact | No impact |
+| **Photo gallery** (`/pics`) | No impact (reads JSON manifests from git) | No impact (images served via CDN, not API) | Images break — URLs resolve to `/{path}` instead of the CDN domain |
+| **Guest list** (`/guestlist`) | In-memory fallback — works per process. Data doesn't persist across serverless cold starts. Fine for local dev. | No impact | No impact |
+| **Best dressed** (`/best-dressed`) | In-memory fallback — same as guest list | No impact | No impact |
+| **Transfer page** (`/t/{id}`) | `getTransfer()` returns null → shows "expired" page. No crash. | No impact (files served via CDN) | File URLs break — same as pics |
+| **Transfer CLI** (`pnpm cli transfers *`) | `requireRedis()` throws with a clear error. **No silent fallback.** | `requireR2()` throws with a clear error | Share URL defaults to `https://milkandhenny.com` — no crash |
+| **Album CLI** (`pnpm cli albums *`) | No impact (albums use JSON manifests) | Throws — can't upload without R2 | No impact on CLI |
+| **Cron cleanup** | Returns `{ skipped: true }` — no crash | Returns `{ skipped: true }` | No impact |
+| **`STAFF_PIN`** missing | — | — | Guest list page is accessible without a PIN (open gate) |
+| **`MANAGEMENT_PASSWORD`** missing | — | — | Management UI rejects all passwords (locked out) |
+
+**Design rationale:** Guest list and best-dressed use in-memory fallback because they're the most common local dev surfaces — you should be able to `pnpm dev` and test the UI immediately. Transfer CLI refuses to run without Redis because silent fallback caused real data loss (uploads to R2 with no metadata). The separation is intentional.
+
 ---
 
 ## KV Command Budget
@@ -200,9 +221,10 @@ Vercel auto-injects `KV_URL`, `REDIS_URL`, `KV_REST_API_READ_ONLY_TOKEN` from it
 |--------|-------------|-----------|
 | Page load / refresh | 4 (GET votes, GET guests, GET session, SADD token) | Per view |
 | Submit vote (happy path) | 6 (GET guests, SISMEMBER ×2, SREM + SADD, GET+SET votes, GET session) | Per vote |
+| Leaderboard poll (after voting) | 4 (same as page load) | Every 30s, only when tab visible |
 | Admin wipe | 4 (DEL votes, SET session, DEL tokens, DEL used-tokens) | Very rare |
 
-**No polling.** Only fires on explicit page loads and votes. 20 voters = ~240 commands.
+**Light polling.** After voting, leaderboard updates every 30s and only when the tab is focused (visibility API). 20 voters with one tab open ≈ 1 load + 1 vote + ~8 polls in 4 min ≈ 40 commands per voter; no polling when tab is backgrounded.
 
 #### Transfers (`/t/{id}`)
 
@@ -239,75 +261,7 @@ Vercel auto-injects `KV_URL`, `REDIS_URL`, `KV_REST_API_READ_ONLY_TOKEN` from it
 
 ---
 
-## Cloudflare WAF (Rate Limiting)
-
-Images and transfer files are served from `pics.milkandhenny.com` (R2, custom domain, proxied). Every request counts as an R2 read. Rate limiting prevents abuse.
-
-### Rules to configure
-
-In **Cloudflare Dashboard → Security → WAF → Rate limiting rules**, create two rules:
-
-| Rule | Match | Per IP | Threshold | Action | Duration |
-|------|-------|--------|-----------|--------|----------|
-| Album images | URI path `/albums/*` | Yes | 100 req / 10s | Block | 10s |
-| Transfer files | URI path `/transfers/*` | Yes | 100 req / 10s | Block | 10s |
-
-> Free plan limits: 10-second period and 10-second block duration only.
-
-### Worst-case cost with rate limiting
-
-| Attack scenario | Requests/day (sustained) | R2 cost/month |
-|-----------------|--------------------------|---------------|
-| 1 IP (script kiddie) | ~432,000 | ~$1 |
-| 10 IPs (VPN/proxies) | ~4.3M | ~$43 |
-| 50 IPs (dedicated) | ~21.6M | ~$230 |
-
-A casual single-IP attacker costs ~$1/month. A serious multi-IP attack is extremely unlikely for a personal site.
-
-### If something goes wrong
-
-1. Set a **Cloudflare billing alert** at $5
-2. Check **Security → Events** — filter by "Rate limit" / "Blocked"
-3. **Block IPs**: WAF → Custom rules or IP Access Rules
-4. **Block a country** if many IPs originate from one unexpected region
-5. **Under Attack Mode**: adds a 5-second browser challenge to stop bots
-6. **Tighten rate limit** temporarily (e.g. 50 req / 10s)
-7. **Contact Cloudflare** if the attack persists or is DDoS-scale
-
-Cloudflare's automatic DDoS protection (included free) is always active as an additional layer.
-
----
-
-## R2 Lifecycle Rule (Recommended)
-
-Set up an R2 lifecycle rule to auto-delete transfer objects after 31 days. This is a safety net that catches any files surviving Redis TTL + cron cleanup:
-
-1. **Cloudflare Dashboard → R2 → your bucket → Settings → Object lifecycle rules**
-2. Create rule:
-   - **Name:** `cleanup-expired-transfers`
-   - **Prefix filter:** `transfers/`
-   - **Action:** Delete objects after **31 days**
-3. Save
-
-The cron job handles 99% of cleanup. This catches edge cases (cron failure, Redis outage).
-
----
-
-## Transfer Page Caching
-
-Transfer content never changes after upload, so the page is CDN-cached at Vercel's edge via middleware:
-
-- `CDN-Cache-Control: s-maxage=60, stale-while-revalidate=300`
-- First visitor → SSR (1 KV GET)
-- Next 60s → served from edge cache ($0, 0 KV commands)
-- 60s–5min → served stale while revalidating in background
-- After takedown → stale page may serve for up to 60s, but R2 files are already deleted
-
-**Cost:** $0. CDN caching is included in Vercel Hobby. This is not browser caching — hard refresh always gets a fresh page.
-
----
-
-## Cost Summary
+## Cost & Limits
 
 | Area | Free tier | When to worry |
 |------|-----------|---------------|
@@ -319,9 +273,42 @@ Transfer content never changes after upload, so the page is CDN-cached at Vercel
 
 **For typical personal use:** everything stays within free tiers. The only real pressure point is guest list polling during long events with multiple devices.
 
+### Transfer page caching
+
+Transfer content never changes after upload, so the page is CDN-cached at Vercel's edge via middleware:
+
+- `CDN-Cache-Control: s-maxage=60, stale-while-revalidate=300`
+- First visitor → SSR (1 KV GET)
+- Next 60s → served from edge cache ($0, 0 KV commands)
+- 60s–5min → served stale while revalidating in background
+- After takedown → stale page may serve for up to 60s, but R2 files are already deleted
+
+Cost: $0 — CDN caching is included in Vercel Hobby.
+
+### R2 lifecycle rule (recommended)
+
+A safety net that catches any transfer files surviving Redis TTL + cron cleanup:
+
+1. **Cloudflare Dashboard → R2 → your bucket → Settings → Object lifecycle rules**
+2. Create rule: name `cleanup-expired-transfers`, prefix `transfers/`, delete after **31 days**
+3. Save
+
+The cron job handles 99% of cleanup. This catches edge cases (cron failure, Redis outage).
+
 ---
 
-## Best-Dressed Protections
+## Security
+
+### Authentication
+
+| Gate | Env var | Protects | Verified by |
+|------|---------|----------|-------------|
+| Staff PIN | `STAFF_PIN` | Guest list page access (door staff) | `POST /api/guests/verify-staff-pin` |
+| Management password | `MANAGEMENT_PASSWORD` | Manage (add/remove/import, wipe best-dressed) | `POST /api/guests/verify-management` |
+
+Both are env vars, never in the client bundle. Set in Vercel and `.env.local`.
+
+### Best-dressed protections
 
 | Risk | Mitigation |
 |------|------------|
@@ -329,20 +316,113 @@ Transfer content never changes after upload, so the page is CDN-cached at Vercel
 | Fake names | Server validates the voted name is in the guest list. Arbitrary names rejected. |
 | Anyone wiping votes | `DELETE /api/best-dressed` requires management password. |
 
----
+### Cloudflare WAF (rate limiting)
 
-## Customization
+Images and transfer files are served from `pics.milkandhenny.com` (R2 custom domain). Every request counts as an R2 read. Rate limiting prevents abuse.
 
-### Management password
+In **Cloudflare Dashboard → Security → WAF → Rate limiting rules**, create two rules:
 
-Edit `components/guestlist/GuestManagement.tsx`:
+| Rule | Match | Per IP | Threshold | Action | Duration |
+|------|-------|--------|-----------|--------|----------|
+| Album images | URI path `/albums/*` | Yes | 100 req / 10s | Block | 10s |
+| Transfer files | URI path `/transfers/*` | Yes | 100 req / 10s | Block | 10s |
 
-```typescript
-const MANAGEMENT_PASSWORD = 'your-password-here';
-```
+> Free plan limits: 10-second period and 10-second block duration only.
 
-Or set `MANAGEMENT_PASSWORD` as a Vercel environment variable.
+**Worst-case cost with rate limiting:**
+
+| Attack scenario | Requests/day (sustained) | R2 cost/month |
+|-----------------|--------------------------|---------------|
+| 1 IP (script kiddie) | ~432,000 | ~$1 |
+| 10 IPs (VPN/proxies) | ~4.3M | ~$43 |
+
+A casual single-IP attacker costs ~$1/month. A serious multi-IP attack is extremely unlikely for a personal site. Cloudflare's automatic DDoS protection (included free) is always active.
+
+**If under attack:** set a Cloudflare billing alert at $5, check Security → Events, block IPs via WAF Custom Rules, enable Under Attack Mode if needed, tighten rate limits temporarily.
 
 ### Pre-load guest list
 
 Place your Partiful CSV export at `public/guests.csv` before deploying.
+
+---
+
+## Incident Response & Key Rotation
+
+The app is designed for easy key rotation — every secret is an environment variable, nothing is hardcoded, and no secret is baked into the client bundle. Rotation never requires a code change.
+
+### Rotation procedures
+
+#### R2 credentials leaked (`R2_ACCESS_KEY` / `R2_SECRET_KEY`)
+
+These are the highest-impact credentials — they grant read/write/delete access to your entire R2 bucket.
+
+1. **Cloudflare Dashboard → R2 → Manage R2 API Tokens**
+2. **Revoke** the compromised token immediately
+3. **Create a new token** with the same permissions (Object Read & Write on your bucket)
+4. Copy the new Access Key ID and Secret Access Key
+5. **Update `.env.local`** with the new values
+6. **Update Vercel env vars** (Settings → Environment Variables) — only needed if the cron job uses R2 (it does)
+7. **Redeploy** on Vercel (Settings → Deployments → Redeploy) so the cron picks up the new token
+8. Test: `pnpm cli bucket ls` — should return bucket contents
+
+**Downtime:** Zero for the public site (images are served via Cloudflare CDN, not through Vercel). CLI operations will fail between steps 2 and 5. The cron cleanup will fail until Vercel redeploys with new vars.
+
+#### KV / Redis credentials leaked (`KV_REST_API_URL` / `KV_REST_API_TOKEN`)
+
+1. **Upstash Console → your database → REST API section → Reset token** (or rotate via Vercel Dashboard → Storage → KV → Settings)
+2. Copy the new URL and token
+3. **Update `.env.local`**
+4. **Update Vercel env vars** (if you set them manually; Vercel KV auto-updates if you rotate from Vercel Dashboard)
+5. **Redeploy** on Vercel
+6. Test: `pnpm cli transfers list` — should connect successfully
+
+**Downtime:** Guest list polling and transfer page views will return errors between rotation and redeploy (~30 seconds if you're quick). Existing CDN-cached transfer pages will keep serving for up to 60 seconds.
+
+**Data at risk:** Someone with your KV token can read/write guest names, votes, and transfer metadata (not the files themselves — those are in R2). They cannot access R2 files via KV.
+
+#### Management password or Staff PIN leaked
+
+1. **Update Vercel env vars** → `MANAGEMENT_PASSWORD` and/or `STAFF_PIN`
+2. **Redeploy** on Vercel
+3. Update `.env.local` for local dev
+4. Existing authenticated sessions (in `sessionStorage`) remain valid until the browser tab closes — this is acceptable since the new password takes effect immediately for new logins
+
+**Downtime:** None. Instant rotation on redeploy.
+
+#### CRON_SECRET leaked
+
+1. Generate a new one: `openssl rand -hex 32`
+2. **Update Vercel env var** → `CRON_SECRET`
+3. **Redeploy**
+
+**Downtime:** None. The cron job runs once daily; the next invocation will use the new secret.
+
+### Quick-reference: where each secret lives
+
+| Secret | `.env.local` | Vercel env vars | Cloudflare | Upstash |
+|--------|:---:|:---:|:---:|:---:|
+| `R2_ACCESS_KEY` / `R2_SECRET_KEY` | Yes | Only if cron needs R2 | Source of truth | — |
+| `KV_REST_API_URL` / `KV_REST_API_TOKEN` | Yes | Auto-injected by Vercel KV | — | Source of truth |
+| `STAFF_PIN` | Yes | Yes | — | — |
+| `MANAGEMENT_PASSWORD` | Yes | Yes | — | — |
+| `CRON_SECRET` | No | Yes | — | — |
+| `NEXT_PUBLIC_R2_PUBLIC_URL` | Yes | Yes | — | — |
+| `NEXT_PUBLIC_BASE_URL` | Yes (CLI only) | No | — | — |
+
+### General incident checklist
+
+1. **Identify** which credential was exposed and where (chat log, commit history, screenshot, etc.)
+2. **Revoke/rotate** at the source immediately (Cloudflare, Upstash, or Vercel)
+3. **Update** `.env.local` + Vercel env vars with the new values
+4. **Redeploy** on Vercel to pick up the new vars
+5. **Verify** with a quick CLI or browser test
+6. **Audit** Cloudflare Analytics and Upstash Monitor for suspicious activity during the exposure window
+7. **Document** what happened for future reference
+
+### What makes this app rotation-friendly
+
+- **No secrets in code.** Every credential is an env var — rotation is config-only, never a code change.
+- **No secrets in the client bundle.** `STAFF_PIN`, `MANAGEMENT_PASSWORD`, and all API keys are server-side only. `NEXT_PUBLIC_*` vars contain only public URLs (the R2 CDN domain and the base URL), not secrets.
+- **No long-lived sessions.** Guest list auth uses `sessionStorage` (dies with the tab). No JWTs or cookies that would need invalidation.
+- **Layered storage.** R2 credentials and KV credentials are independent — leaking one doesn't compromise the other.
+- **CDN buffer.** Transfer pages and images are cached at Cloudflare/Vercel edge. Even during a brief rotation window, cached content continues serving.

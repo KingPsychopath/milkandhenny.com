@@ -1,7 +1,8 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { headers } from 'next/headers';
 import { parseCSV } from '@/lib/csv-parser';
 import { getGuests, setGuests } from '@/lib/kv-client';
+import { requireManagementAuth } from '@/lib/management-auth';
 
 /**
  * Bootstrap endpoint - loads guests from public/guests.csv if no guests exist
@@ -61,9 +62,13 @@ export async function POST() {
 }
 
 /**
- * Force re-bootstrap - clears existing data and reloads from CSV
+ * Force re-bootstrap - clears existing data and reloads from CSV.
+ * Requires management password.
  */
-export async function DELETE() {
+export async function DELETE(request: NextRequest) {
+  const authError = requireManagementAuth(request);
+  if (authError) return authError;
+
   try {
     // Clear existing guests
     await setGuests([]);

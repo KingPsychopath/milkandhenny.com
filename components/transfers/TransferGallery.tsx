@@ -103,6 +103,7 @@ export function TransferGallery({ transferId, files }: TransferGalleryProps) {
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const [downloading, setDownloading] = useState(false);
   const [savingSingle, setSavingSingle] = useState(false);
+  const [lightboxError, setLightboxError] = useState(false);
   const lightboxRef = useRef<HTMLDivElement>(null);
   const touchRef = useRef<{ x: number; y: number; time: number } | null>(null);
 
@@ -110,16 +111,21 @@ export function TransferGallery({ transferId, files }: TransferGalleryProps) {
   const visualFiles = files.filter((f) => f.kind === "image" || f.kind === "gif" || f.kind === "video");
   const nonVisualFiles = files.filter((f) => f.kind === "audio" || f.kind === "file");
 
-  const openLightbox = useCallback((index: number) => setLightboxIndex(index), []);
+  const openLightbox = useCallback((index: number) => {
+    setLightboxError(false);
+    setLightboxIndex(index);
+  }, []);
   const closeLightbox = useCallback(() => setLightboxIndex(null), []);
 
   const goNext = useCallback(() => {
+    setLightboxError(false);
     setLightboxIndex((prev) =>
       prev !== null && prev < visualFiles.length - 1 ? prev + 1 : prev
     );
   }, [visualFiles.length]);
 
   const goPrev = useCallback(() => {
+    setLightboxError(false);
     setLightboxIndex((prev) =>
       prev !== null && prev > 0 ? prev - 1 : prev
     );
@@ -273,7 +279,7 @@ export function TransferGallery({ transferId, files }: TransferGalleryProps) {
         <div
           ref={lightboxRef}
           className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center touch-pan-y"
-          onClick={(e) => { if (e.target === e.currentTarget) closeLightbox(); }}
+          onClick={closeLightbox}
         >
           <button
             onClick={closeLightbox}
@@ -283,15 +289,34 @@ export function TransferGallery({ transferId, files }: TransferGalleryProps) {
             ✕
           </button>
 
-          <div className="max-w-5xl max-h-[85vh] w-full px-4">
+          <div className="max-w-5xl max-h-[85vh] w-full px-4" onClick={(e) => e.stopPropagation()}>
             {/* Render based on kind */}
-            {currentVisual.kind === "video" ? (
+            {lightboxError ? (
+              <div className="flex flex-col items-center justify-center gap-4 py-20">
+                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1" className="text-white/20" strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+                  <circle cx="8.5" cy="8.5" r="1.5" />
+                  <polyline points="21 15 16 10 5 21" />
+                </svg>
+                <p className="font-mono text-sm text-white/40 tracking-wide">
+                  failed to load {currentVisual.filename}
+                </p>
+                <button
+                  onClick={() => downloadSingle(currentVisual)}
+                  disabled={savingSingle}
+                  className="font-mono text-xs text-amber-500 hover:text-amber-400 transition-colors"
+                >
+                  [ try downloading instead ]
+                </button>
+              </div>
+            ) : currentVisual.kind === "video" ? (
               <video
                 src={getTransferFileUrl(transferId, currentVisual.filename)}
                 controls
                 autoPlay
                 className="w-full max-h-[80vh] mx-auto photo-page-fade-in"
                 style={{ objectFit: "contain" }}
+                onError={() => setLightboxError(true)}
               />
             ) : currentVisual.kind === "gif" ? (
               // GIF: show full animated original
@@ -300,6 +325,7 @@ export function TransferGallery({ transferId, files }: TransferGalleryProps) {
                 src={getTransferFileUrl(transferId, currentVisual.filename)}
                 alt={currentVisual.filename}
                 className="w-full h-auto max-h-[80vh] object-contain mx-auto photo-page-fade-in"
+                onError={() => setLightboxError(true)}
               />
             ) : (
               // Image: show full-size processed version
@@ -308,6 +334,7 @@ export function TransferGallery({ transferId, files }: TransferGalleryProps) {
                 src={getTransferFullUrl(transferId, currentVisual.id)}
                 alt={currentVisual.filename}
                 className="w-full h-auto max-h-[80vh] object-contain mx-auto photo-page-fade-in"
+                onError={() => setLightboxError(true)}
               />
             )}
 
@@ -315,14 +342,14 @@ export function TransferGallery({ transferId, files }: TransferGalleryProps) {
             <div className="flex items-center justify-between mt-4 max-w-md mx-auto">
               <div className="flex items-center gap-4 font-mono text-xs text-white/50">
                 {lightboxIndex > 0 ? (
-                  <button onClick={(e) => { e.stopPropagation(); goPrev(); }} className="hover:text-white transition-colors">
+                  <button onClick={goPrev} className="hover:text-white transition-colors">
                     ← prev
                   </button>
                 ) : (
                   <span className="text-white/20">← prev</span>
                 )}
                 {lightboxIndex < visualFiles.length - 1 ? (
-                  <button onClick={(e) => { e.stopPropagation(); goNext(); }} className="hover:text-white transition-colors">
+                  <button onClick={goNext} className="hover:text-white transition-colors">
                     next →
                   </button>
                 ) : (
@@ -334,7 +361,7 @@ export function TransferGallery({ transferId, files }: TransferGalleryProps) {
                   {lightboxIndex + 1} / {visualFiles.length}
                 </span>
                 <button
-                  onClick={(e) => { e.stopPropagation(); downloadSingle(currentVisual); }}
+                  onClick={() => downloadSingle(currentVisual)}
                   disabled={savingSingle}
                   className="font-mono text-xs text-white/50 hover:text-white transition-colors disabled:opacity-50"
                 >
@@ -351,6 +378,22 @@ export function TransferGallery({ transferId, files }: TransferGalleryProps) {
 
 /* ─── Visual Card (images, GIFs, videos in masonry grid) ─── */
 
+/** Warm broken-image placeholder that matches the design system */
+function BrokenImageFallback({ filename }: { filename: string }) {
+  return (
+    <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-stone-100 dark:bg-stone-800">
+      <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="theme-muted opacity-40" strokeLinecap="round" strokeLinejoin="round">
+        <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+        <circle cx="8.5" cy="8.5" r="1.5" />
+        <polyline points="21 15 16 10 5 21" />
+      </svg>
+      <span className="font-mono text-[10px] theme-muted opacity-60 tracking-wide truncate max-w-[80%] px-2 text-center">
+        {filename}
+      </span>
+    </div>
+  );
+}
+
 const VisualCard = memo(function VisualCard({
   transferId,
   file,
@@ -362,6 +405,7 @@ const VisualCard = memo(function VisualCard({
 }) {
   const imgRef = useRef<HTMLImageElement>(null);
   const [loaded, setLoaded] = useState(false);
+  const [errored, setErrored] = useState(false);
 
   // Images and GIFs have thumbnails; videos get a placeholder
   const hasThumbnail = file.kind === "image" || file.kind === "gif";
@@ -393,7 +437,7 @@ const VisualCard = memo(function VisualCard({
       >
         <div className="absolute inset-0 gallery-placeholder" />
 
-        {hasThumbnail ? (
+        {hasThumbnail && !errored ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
             ref={imgRef}
@@ -401,10 +445,13 @@ const VisualCard = memo(function VisualCard({
             width={file.width}
             height={file.height}
             onLoad={() => setLoaded(true)}
+            onError={() => setErrored(true)}
             className={`absolute inset-0 w-full h-full object-cover transition-opacity duration-300 ${
               loaded ? "opacity-100" : "opacity-0"
             }`}
           />
+        ) : errored ? (
+          <BrokenImageFallback filename={file.filename} />
         ) : (
           /* Video placeholder */
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-2">

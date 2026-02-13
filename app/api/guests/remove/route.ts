@@ -1,8 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getGuests, setGuests } from '@/lib/kv-client';
+import { requireManagementAuth } from '@/lib/management-auth';
 import { Guest } from '@/lib/types';
 
 export async function DELETE(request: NextRequest) {
+  const authError = requireManagementAuth(request);
+  if (authError) return authError;
+
   try {
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');

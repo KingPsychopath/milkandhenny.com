@@ -54,20 +54,33 @@ export default function BestDressedPage() {
       .finally(() => setLoading(false));
   }, []);
 
-  // Poll for leaderboard updates
+  // Poll for leaderboard updates only when user has voted and tab is visible (saves KV)
   useEffect(() => {
     if (!hasVoted) return;
-    
-    const interval = setInterval(() => {
+
+    const POLL_MS = 30_000; // 30s — leaderboard rarely changes mid-party
+
+    const fetchLeaderboard = () => {
+      if (typeof document !== 'undefined' && document.hidden) return;
       fetch('/api/best-dressed')
         .then(res => res.json())
         .then(data => {
           setLeaderboard(data.leaderboard || []);
           setTotalVotes(data.totalVotes || 0);
         });
-    }, 5000);
-    
-    return () => clearInterval(interval);
+    };
+
+    const interval = setInterval(fetchLeaderboard, POLL_MS);
+    // Sync when tab becomes visible
+    const onVisibilityChange = () => {
+      if (!document.hidden) fetchLeaderboard();
+    };
+    document.addEventListener('visibilitychange', onVisibilityChange);
+
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+    };
   }, [hasVoted]);
 
   // Filter guests by search

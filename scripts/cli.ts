@@ -32,6 +32,7 @@ import {
   getTransferInfo,
   listActiveTransfers,
   deleteTransfer,
+  nukeAllTransfers,
   formatDuration,
   parseExpiry,
   formatBytes as formatTransferBytes,
@@ -695,6 +696,33 @@ async function cmdTransfersDelete(id: string) {
   console.log();
 }
 
+async function cmdTransfersNuke() {
+  const transfers = await listActiveTransfers();
+
+  heading("Nuke all transfers");
+  log(`${dim("Active transfers:")} ${transfers.length}`);
+  log(red("This will permanently delete ALL transfer files from R2"));
+  log(red("and wipe ALL transfer metadata from Redis."));
+  console.log();
+
+  const ok = await confirm(
+    `${red("PERMANENTLY")} wipe every transfer? This cannot be undone.`
+  );
+  if (!ok) {
+    log(dim("Cancelled."));
+    console.log();
+    return;
+  }
+
+  const result = await nukeAllTransfers((msg) => progress(msg));
+
+  console.log();
+  log(green(`✓ Deleted ${result.deletedFiles} files from R2`));
+  log(green(`✓ Cleared ${result.deletedKeys} transfer keys from Redis`));
+  log(dim("Clean slate."));
+  console.log();
+}
+
 /* ─── Help ─── */
 
 function showHelp() {
@@ -733,6 +761,7 @@ function showHelp() {
       --title ${dim("<title>")}   ${dim('Title for the transfer (e.g. "Photos for John")')}
       --expires ${dim("<time>")}  ${dim("Expiry: 30m, 1h, 12h, 1d, 7d, 14d, 30d (default: 7d)")}
     transfers delete ${dim("<id>")}                    Take down a transfer + delete R2 files
+    transfers nuke                           Wipe ALL transfers (R2 + Redis) — nuclear option
 
   ${bold("Bucket")} ${dim("(raw R2 access)")}
     bucket ls ${dim("[prefix]")}                       Browse bucket contents
@@ -1189,8 +1218,9 @@ async function interactiveTransfers() {
     const choice = await choose("Transfers", [
       { label: "List active transfers", detail: "see all + time remaining" },
       { label: "Transfer details", detail: "URLs, photos, expiry" },
-      { label: "Create new transfer", detail: "upload photos to shareable link" },
+      { label: "Create new transfer", detail: "upload files to shareable link" },
       { label: "Delete a transfer", detail: "take down and remove from R2" },
+      { label: "Nuke all transfers", detail: "wipe everything — nuclear option" },
     ]);
 
     switch (choice) {
@@ -1220,6 +1250,10 @@ async function interactiveTransfers() {
         }
         break;
       }
+      case 5:
+        await safely(cmdTransfersNuke);
+        await pause();
+        break;
     }
   }
 }
@@ -1367,6 +1401,8 @@ async function direct() {
             if (!id) throw new Error("Usage: pnpm cli transfers delete <id>");
             return cmdTransfersDelete(id);
           }
+          case "nuke":
+            return cmdTransfersNuke();
           default:
             throw new Error(`Unknown: transfers ${subcommand ?? ""}. Run 'pnpm cli help'.`);
         }
