@@ -191,8 +191,9 @@ async function processAndUploadPhoto(
   onProgress?: (msg: string) => void,
   ogOverlay?: OgOverlay
 ): Promise<ProcessResult> {
-  const ext = path.extname(filePath).toLowerCase();
-  const id = path.basename(filePath, ext);
+  const rawExt = path.extname(filePath);           // original case: ".HIF"
+  const ext = rawExt.toLowerCase();                  // normalised: ".hif"
+  const id = path.basename(filePath, rawExt);        // strip with original case → "DSC08382"
   const raw = fs.readFileSync(filePath);
 
   // Auto-detect focal point (face or saliency)
@@ -353,8 +354,7 @@ async function addPhotos(
 
   // Filter out duplicates before processing
   const newFiles = files.filter((file) => {
-    const ext = path.extname(file).toLowerCase();
-    const id = path.basename(file, ext);
+    const id = path.basename(file, path.extname(file));
     if (existingIds.has(id)) {
       onProgress?.(`Skipping ${id} (already in album)`);
       return false;

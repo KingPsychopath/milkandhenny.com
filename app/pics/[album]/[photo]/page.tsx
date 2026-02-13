@@ -33,6 +33,8 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const photoIndex = album.photos.findIndex((p) => p.id === photoId);
   const description = `Photo ${photoIndex + 1} of ${album.photos.length} from ${album.title}`;
 
+  const ogImageAlt = `Photo ${photoId} from album ${album.title}. Milk & Henny.`;
+
   return {
     title: `${photoId} — ${album.title} — Milk & Henny`,
     description,
@@ -42,6 +44,14 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
       url: `/pics/${albumSlug}/${photoId}`,
       siteName: "Milk & Henny",
       type: "website",
+      images: [
+        {
+          url: `/pics/${albumSlug}/${photoId}/opengraph-image`,
+          width: 1200,
+          height: 630,
+          alt: ogImageAlt,
+        },
+      ],
     },
     twitter: {
       card: "summary_large_image",

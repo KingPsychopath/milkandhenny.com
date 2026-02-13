@@ -61,6 +61,7 @@ async function preprocessOnnx(raw: Buffer) {
   const { ort: ortMod } = await getOrtSession();
 
   const { data } = await sharp(raw)
+    .rotate()  // auto-orient from EXIF so faces are upright
     .resize(INPUT_WIDTH, INPUT_HEIGHT, { fit: "fill" })
     .removeAlpha()
     .raw()
@@ -177,7 +178,9 @@ const ANALYSIS_HEIGHT = 630;
 
 /** Sharp strategy: attention-based saliency crop position */
 const detectWithSharp: FocalDetector = async (raw) => {
-  const meta = await sharp(raw).metadata();
+  // Auto-rotate so dimensions and saliency are orientation-correct
+  const rotated = await sharp(raw).rotate().toBuffer();
+  const meta = await sharp(rotated).metadata();
   const srcW = meta.width ?? 4032;
   const srcH = meta.height ?? 3024;
 
@@ -187,7 +190,7 @@ const detectWithSharp: FocalDetector = async (raw) => {
   const scaledH = Math.round(srcH * scale);
 
   // Let Sharp's attention strategy decide where to crop
-  const { info } = await sharp(raw)
+  const { info } = await sharp(rotated)
     .resize(ANALYSIS_WIDTH, ANALYSIS_HEIGHT, {
       fit: "cover",
       position: sharp.strategy.attention,

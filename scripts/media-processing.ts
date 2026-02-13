@@ -12,7 +12,10 @@
  * Used by album-ops, transfer-ops, and blog-ops.
  */
 
+import fs from "fs";
+import os from "os";
 import path from "path";
+import { spawnSync } from "child_process";
 import sharp from "sharp";
 import exifReader from "exif-reader";
 
@@ -27,8 +30,8 @@ const OG_HEIGHT = 630;
 /** Percentage-based focal point for OG crop. Passed in by callers (album-ops resolves presets + auto-detect). */
 type FocalPercent = { x: number; y: number };
 
-/** Image extensions Sharp can process */
-const PROCESSABLE_EXTENSIONS = /\.(jpe?g|png|webp|heic|tiff?)$/i;
+/** Image extensions Sharp can process (HEIC/HIF need libheif in Sharp build) */
+const PROCESSABLE_EXTENSIONS = /\.(jpe?g|png|webp|heic|hif|tiff?)$/i;
 
 /** Animated images — get a static thumbnail but original stays as-is */
 const ANIMATED_EXTENSIONS = /\.gif$/i;
@@ -43,7 +46,7 @@ const AUDIO_EXTENSIONS = /\.(mp3|wav|ogg|flac|aac|m4a|wma)$/i;
 const MIME_TYPES: Record<string, string> = {
   ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
   ".png": "image/png", ".webp": "image/webp",
-  ".heic": "image/heic", ".tif": "image/tiff", ".tiff": "image/tiff",
+  ".heic": "image/heic", ".hif": "image/heif", ".tif": "image/tiff", ".tiff": "image/tiff",
   ".gif": "image/gif", ".svg": "image/svg+xml",
   ".mp4": "video/mp4", ".mov": "video/quicktime",
   ".webm": "video/webm", ".avi": "video/x-msvideo",
@@ -169,7 +172,7 @@ function buildOgOverlaySvg(overlay: OgOverlay): Buffer {
   <rect x="0" y="${Math.round(OG_HEIGHT * 0.58)}" width="${OG_WIDTH}" height="${Math.round(OG_HEIGHT * 0.42)}" fill="url(#g)"/>
   <text x="48" y="${textY}" font-size="28" font-weight="600" fill="rgba(255,255,255,0.96)" stroke="rgba(0,0,0,0.35)" stroke-width="1" paint-order="stroke fill" font-family="'Courier New', Courier, monospace" letter-spacing="-0.4">${brand} · ${title}</text>${
     photoId
-      ? `\n  <text x="${OG_WIDTH - 48}" y="${textY}" font-size="20" font-weight="500" fill="rgba(255,255,255,0.85)" stroke="rgba(0,0,0,0.25)" stroke-width="0.8" paint-order="stroke fill" font-family="'Courier New', Courier, monospace" text-anchor="end">${photoId}</text>`
+      ? `\n  <text x="${OG_WIDTH - 48}" y="${textY}" font-size="22" font-weight="600" fill="rgba(255,255,255,0.92)" stroke="rgba(0,0,0,0.35)" stroke-width="1" paint-order="stroke fill" font-family="'Courier New', Courier, monospace" text-anchor="end">${photoId}</text>`
       : ""
   }
 </svg>`;
@@ -232,6 +235,59 @@ function extractExifDate(exifBuffer: Buffer | undefined): string | null {
   }
 }
 
+/* ─── HEIC/HIF fallback (when Sharp has no libheif) ─── */
+
+const HEIF_EXTENSIONS = [".heic", ".hif"];
+
+function isHeifExtension(ext: string): boolean {
+  return HEIF_EXTENSIONS.includes(ext.toLowerCase());
+}
+
+/**
+ * Convert HEIC/HIF buffer to JPEG using macOS sips (no extra deps).
+ * Uses the given extension for the temp file so sips recognizes .heic vs .hif.
+ * Returns null if not macOS, sips fails, or conversion fails.
+ */
+function convertHeifToJpegWithSips(raw: Buffer, ext: string): Buffer | null {
+  if (process.platform !== "darwin") return null;
+
+  const tmpDir = os.tmpdir();
+  const suffix = ext.toLowerCase() === ".hif" ? ".hif" : ".heic";
+  const inPath = path.join(tmpDir, `heif-${Date.now()}-${Math.random().toString(36).slice(2)}${suffix}`);
+  const outPath = path.join(tmpDir, `heif-out-${Date.now()}.jpg`);
+
+  try {
+    fs.writeFileSync(inPath, raw);
+    const result = spawnSync("sips", ["-s", "format", "jpeg", inPath, "--out", outPath], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    if (result.status !== 0) return null;
+    if (!fs.existsSync(outPath)) return null;
+    const jpeg = fs.readFileSync(outPath);
+    return jpeg;
+  } catch {
+    return null;
+  } finally {
+    try {
+      if (fs.existsSync(inPath)) fs.unlinkSync(inPath);
+      if (fs.existsSync(outPath)) fs.unlinkSync(outPath);
+    } catch {
+      // ignore cleanup errors
+    }
+  }
+}
+
+/** User-facing error when HEIC/HIF can't be decoded */
+function heifDecodeError(ext: string): Error {
+  return new Error(
+    `Could not decode ${ext.toUpperCase()} image. ` +
+      (process.platform === "darwin"
+        ? "Sharp has no HEIF support and sips conversion failed. Try opening and re-exporting as JPEG in Preview."
+        : "Install Sharp with libheif support, or convert to JPEG/PNG before upload.")
+  );
+}
+
 /* ─── Processing ─── */
 
 /**
@@ -241,6 +297,8 @@ function extractExifDate(exifBuffer: Buffer | undefined): string | null {
  * - full: 1600px WebP (lightbox viewing)
  * - original: source converted to JPEG 95 for downloads (passthrough if already JPEG)
  *
+ * HEIC/HIF: If Sharp fails to decode (no libheif), we try macOS sips to convert to JPEG first.
+ *
  * Used by album-ops and transfer-ops.
  */
 async function processImageVariants(
@@ -249,46 +307,66 @@ async function processImageVariants(
   focalPercent?: FocalPercent,
   ogOverlay?: OgOverlay
 ): Promise<ProcessedImage> {
-  const metadata = await sharp(raw).metadata();
-  const width = metadata.width ?? 4032;
-  const height = metadata.height ?? 3024;
-  const takenAt = extractExifDate(metadata.exif);
-
-  const thumb = await sharp(raw)
-    .resize(THUMB_WIDTH)
-    .webp({ quality: 80 })
-    .toBuffer();
-
-  const full = await sharp(raw)
-    .resize(FULL_WIDTH)
-    .webp({ quality: 85 })
-    .toBuffer();
-
   const ext = sourceExt.toLowerCase();
-  const isJpeg = ext === ".jpg" || ext === ".jpeg";
-  const originalBuffer = isJpeg
-    ? raw
-    : await sharp(raw).jpeg({ quality: 95 }).toBuffer();
 
-  let ogPipeline = await cropToOg(raw, focalPercent);
-  if (ogOverlay) {
-    ogPipeline = ogPipeline.composite([{ input: buildOgOverlaySvg(ogOverlay) }]);
-  }
-  const og = await ogPipeline.jpeg({ quality: 70, mozjpeg: true }).toBuffer();
+  const run = async (buffer: Buffer, isJpegSource: boolean) => {
+    // Auto-rotate from EXIF orientation first, then read true dimensions
+    const rotated = await sharp(buffer).rotate().toBuffer();
+    const metadata = await sharp(rotated).metadata();
+    const width = metadata.width ?? 4032;
+    const height = metadata.height ?? 3024;
+    const takenAt = extractExifDate(
+      // EXIF lives in the original buffer; rotated buffer may strip it
+      (await sharp(buffer).metadata()).exif
+    );
 
-  return {
-    thumb: { buffer: thumb, contentType: "image/webp", ext: ".webp" },
-    full: { buffer: full, contentType: "image/webp", ext: ".webp" },
-    original: {
-      buffer: originalBuffer,
-      contentType: "image/jpeg",
-      ext: isJpeg ? ext : ".jpg",
-    },
-    og: { buffer: og, contentType: "image/jpeg", ext: ".jpg" },
-    width,
-    height,
-    takenAt,
+    const thumb = await sharp(rotated)
+      .resize(THUMB_WIDTH)
+      .webp({ quality: 80 })
+      .toBuffer();
+
+    const full = await sharp(rotated)
+      .resize(FULL_WIDTH)
+      .webp({ quality: 85 })
+      .toBuffer();
+
+    const originalBuffer = isJpegSource
+      ? rotated
+      : await sharp(rotated).jpeg({ quality: 95 }).toBuffer();
+
+    let ogPipeline = await cropToOg(rotated, focalPercent);
+    if (ogOverlay) {
+      ogPipeline = ogPipeline.composite([{ input: buildOgOverlaySvg(ogOverlay) }]);
+    }
+    const og = await ogPipeline.jpeg({ quality: 70, mozjpeg: true }).toBuffer();
+
+    return {
+      thumb: { buffer: thumb, contentType: "image/webp", ext: ".webp" },
+      full: { buffer: full, contentType: "image/webp", ext: ".webp" },
+      original: {
+        buffer: originalBuffer,
+        contentType: "image/jpeg",
+        ext: isJpegSource ? ext : ".jpg",
+      },
+      og: { buffer: og, contentType: "image/jpeg", ext: ".jpg" },
+      width,
+      height,
+      takenAt,
+    };
   };
+
+  try {
+    return await run(raw, ext === ".jpg" || ext === ".jpeg");
+  } catch (err) {
+    if (isHeifExtension(ext)) {
+      const jpeg = convertHeifToJpegWithSips(raw, ext);
+      if (jpeg && jpeg.length > 0) {
+        return run(jpeg, false);
+      }
+      throw heifDecodeError(ext);
+    }
+    throw err;
+  }
 }
 
 /**
@@ -301,7 +379,9 @@ async function processToOg(
   focalPercent?: FocalPercent,
   overlay?: OgOverlay
 ): Promise<ImageVariant> {
-  let pipeline = await cropToOg(raw, focalPercent);
+  // Auto-rotate from EXIF before cropping (originals from R2 may still have EXIF orientation)
+  const rotated = await sharp(raw).rotate().toBuffer();
+  let pipeline = await cropToOg(rotated, focalPercent);
   if (overlay) {
     pipeline = pipeline.composite([{ input: buildOgOverlaySvg(overlay) }]);
   }
@@ -344,13 +424,16 @@ async function processToWebP(
   maxWidth = FULL_WIDTH,
   quality = 85
 ): Promise<{ buffer: Buffer; width: number; height: number; takenAt: string | null }> {
-  const metadata = await sharp(raw).metadata();
+  const takenAt = extractExifDate((await sharp(raw).metadata()).exif);
+
+  // Auto-rotate from EXIF orientation, then measure true dimensions
+  const rotated = await sharp(raw).rotate().toBuffer();
+  const metadata = await sharp(rotated).metadata();
   const width = metadata.width ?? 4032;
   const height = metadata.height ?? 3024;
-  const takenAt = extractExifDate(metadata.exif);
 
   // Only resize if wider than maxWidth
-  const pipeline = width > maxWidth ? sharp(raw).resize(maxWidth) : sharp(raw);
+  const pipeline = width > maxWidth ? sharp(rotated).resize(maxWidth) : sharp(rotated);
   const buffer = await pipeline.webp({ quality }).toBuffer();
 
   // Calculate output dimensions

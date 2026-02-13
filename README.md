@@ -56,7 +56,7 @@ Run `pnpm cli transfers info <id>` — it shows the full admin URL including the
 
 | Type | In the gallery | Processing |
 |------|---------------|------------|
-| Images (JPEG, PNG, WebP, HEIC, TIFF) | Masonry grid + lightbox | Thumb (600px) + full (1600px) + original + og (1200×630 with face detection + text overlay) |
+| Images (JPEG, PNG, WebP, HEIC, HIF, TIFF) | Masonry grid + lightbox | Thumb (600px) + full (1600px) + original + og (1200×630 with face detection + text overlay). HEIC/HIF decode via Sharp (libheif) or, on macOS, fallback to system `sips` so uploads never fail. |
 | GIFs | Grid card + animated lightbox | Static first-frame thumb + original |
 | Videos (MP4, MOV, WebM, AVI, MKV) | Play icon card + video player lightbox | Uploaded as-is |
 | Audio (MP3, WAV, FLAC, etc.) | Inline audio player card | Uploaded as-is |
@@ -188,6 +188,12 @@ All of the above are also available in the **interactive CLI** (`pnpm cli` → P
 3. Album embed thumbnails in blog posts use the focal point as CSS `object-position`
 
 **When to manually override:** Only when auto-detection gets it wrong. Most photos with faces won't need it. Use `photos list <album>` to see focal points (manual and auto) for each photo.
+
+**Validate album JSON (CI / hand-edits):** Run `pnpm cli albums validate` to check that every album has valid `focalPoint` presets and `autoFocal` values (x, y in 0–100). Exits with code 1 if any errors are found. Add to CI to catch invalid hand-edits:
+
+```bash
+pnpm cli albums validate   # Use in CI: fails the build if album JSON is invalid
+```
 
 ### How album data works (vs transfers)
 

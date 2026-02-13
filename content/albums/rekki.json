@@ -1,0 +1,79 @@
+{
+  "title": "Rekki Jazz Night",
+  "date": "2026-01-01",
+  "description": "This is a test upload for Rekki Jazz Night .hif",
+  "cover": "DSC08357.HIF",
+  "photos": [
+    {
+      "id": "DSC08357.HIF",
+      "width": 7008,
+      "height": 4672,
+      "takenAt": "2026-02-07T21:41:50.000Z",
+      "autoFocal": {
+        "x": 43,
+        "y": 61
+      }
+    },
+    {
+      "id": "DSC08371.HIF",
+      "width": 7008,
+      "height": 4672,
+      "takenAt": "2026-02-07T21:42:05.000Z",
+      "autoFocal": {
+        "x": 39,
+        "y": 44
+      }
+    },
+    {
+      "id": "DSC08379.HIF",
+      "width": 7008,
+      "height": 4672,
+      "takenAt": "2026-02-07T21:42:27.000Z",
+      "autoFocal": {
+        "x": 56,
+        "y": 21
+      }
+    },
+    {
+      "id": "DSC08382.HIF",
+      "width": 7008,
+      "height": 4672,
+      "takenAt": "2026-02-07T21:42:29.000Z"
+    },
+    {
+      "id": "DSC08417.HIF",
+      "width": 7008,
+      "height": 4672,
+      "takenAt": "2026-02-07T21:43:51.000Z",
+      "autoFocal": {
+        "x": 49,
+        "y": 25
+      }
+    },
+    {
+      "id": "DSC08418.HIF",
+      "width": 7008,
+      "height": 4672,
+      "takenAt": "2026-02-07T21:43:52.000Z",
+      "autoFocal": {
+        "x": 54,
+        "y": 42
+      }
+    },
+    {
+      "id": "DSC08438",
+      "width": 4672,
+      "height": 7008,
+      "takenAt": "2026-02-07T21:49:15.000Z",
+      "autoFocal": {
+        "x": 30,
+        "y": 39
+      }
+    },
+    {
+      "id": "DSC00003",
+      "width": 4608,
+      "height": 3072
+    }
+  ]
+}

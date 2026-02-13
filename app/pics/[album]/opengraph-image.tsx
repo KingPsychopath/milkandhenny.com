@@ -35,7 +35,7 @@ export default async function Image({ params }: Props) {
   return new NextResponse(buffer, {
     headers: {
       "Content-Type": "image/jpeg",
-      "Cache-Control": "public, max-age=31536000, immutable",
+      "Cache-Control": "public, s-maxage=86400, max-age=86400",
     },
   });
 }

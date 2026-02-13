@@ -25,6 +25,7 @@ import {
   getPhotoKeys,
   backfillOgVariants,
 } from "./album-ops";
+import { validateAllAlbums } from "@/lib/albums";
 import {
   FOCAL_PRESETS,
   resolveFocalPreset,
@@ -139,11 +140,11 @@ function validateDir(dir: string): { valid: boolean; error?: string; count?: num
   }
   const images = fs
     .readdirSync(absDir)
-    .filter((f) => /\.(jpe?g|png|webp|heic)$/i.test(f));
+    .filter((f) => /\.(jpe?g|png|webp|heic|hif)$/i.test(f));
   if (images.length === 0) {
     return {
       valid: false,
-      error: `No images found in ${absDir}. Supported: .jpg, .jpeg, .png, .webp, .heic`,
+      error: `No images found in ${absDir}. Supported: .jpg, .jpeg, .png, .webp, .heic, .hif`,
     };
   }
   return { valid: true, count: images.length };
@@ -473,6 +474,27 @@ async function cmdAlbumsDelete(slug: string) {
   log(green(`✓ JSON file ${result.jsonDeleted ? "deleted" : "not found"}`));
   log(dim("Next: commit the change and deploy."));
   console.log();
+}
+
+async function cmdAlbumsValidate() {
+  heading("Validate album JSON");
+  const results = validateAllAlbums();
+  if (results.length === 0) {
+    log(green("✓ All albums valid."));
+    console.log();
+    return;
+  }
+  for (const { slug, errors } of results) {
+    log(red(`${slug}:`));
+    for (const err of errors) {
+      log(`  ${dim("—")} ${err}`);
+    }
+    console.log();
+  }
+  log(red(`✗ ${results.length} album(s) have validation errors.`));
+  log(dim("Fix focalPoint (use a valid preset) or autoFocal (x, y in 0–100) in content/albums/*.json"));
+  console.log();
+  process.exit(1);
 }
 
 async function cmdPhotosList(slug: string) {
@@ -1036,6 +1058,8 @@ function showHelp() {
       --yes            ${dim("Skip confirmation prompt")}
       --force          ${dim("Regenerate all (even existing og/) — use after changing focal points")}
       ${dim("Downloads originals from R2, generates 1200×630 JPGs, uploads to og/)")}
+    albums validate                           Validate album JSON (focal presets, autoFocal 0–100)
+      ${dim("Exits 1 if any album has invalid data. Use in CI.)")}
 
   ${bold("Photos")}
     photos list ${dim("<album>")}                      List photos with R2 keys
@@ -1294,6 +1318,7 @@ async function interactiveAlbums() {
       { label: "Update album metadata", detail: "change title, date, description" },
       { label: "Delete album", detail: "remove from R2 and JSON" },
       { label: "Backfill OG images", detail: "generate og/ variants for existing albums" },
+      { label: "Validate album JSON", detail: "check focal presets and autoFocal ranges" },
     ]);
 
     switch (choice) {
@@ -1333,6 +1358,10 @@ async function interactiveAlbums() {
         await pause();
         break;
       }
+      case 7:
+        await safely(cmdAlbumsValidate);
+        await pause();
+        break;
     }
   }
 }
@@ -1913,6 +1942,8 @@ async function direct() {
             }
             return cmdAlbumsBackfillOg(hasYes, hasForce, strategyArg);
           }
+          case "validate":
+            return cmdAlbumsValidate();
           default:
             throw new Error(`Unknown: albums ${subcommand ?? ""}. Run 'pnpm cli help'.`);
         }

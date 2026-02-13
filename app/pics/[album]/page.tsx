@@ -20,6 +20,8 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 
   const description = album.description ?? `${album.photos.length} photos from ${album.title}`;
 
+  const ogImageAlt = `Album: ${album.title}. Cover photo. Milk & Henny.`;
+
   return {
     title: `${album.title} — Pics — Milk & Henny`,
     description,
@@ -29,6 +31,9 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
       url: `/pics/${slug}`,
       siteName: "Milk & Henny",
       type: "website",
+      images: [
+        { url: `/pics/${slug}/opengraph-image`, width: 1200, height: 630, alt: ogImageAlt },
+      ],
     },
     twitter: {
       card: "summary_large_image",

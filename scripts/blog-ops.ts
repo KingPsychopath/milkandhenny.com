@@ -6,7 +6,7 @@
  * blog media has no metadata store — the markdown file IS the manifest.
  *
  * Accepts any file type:
- * - Images (JPEG, PNG, WebP, HEIC, TIFF) → processed to WebP (max 1600px, quality 85)
+ * - Images (JPEG, PNG, WebP, HEIC, HIF, TIFF) → processed to WebP (max 1600px, quality 85)
  * - Everything else (video, audio, PDF, GIF, etc.) → uploaded raw, original format preserved
  *
  * R2 layout:

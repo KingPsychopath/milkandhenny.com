@@ -88,7 +88,7 @@ type CreateTransferResult = {
 /* ─── File processing ─── */
 
 /**
- * Process and upload a processable image (JPEG, PNG, WebP, HEIC, TIFF).
+ * Process and upload a processable image (JPEG, PNG, WebP, HEIC, HIF, TIFF).
  * Creates: thumb (600px WebP) + full (1600px WebP) + original (JPEG).
  */
 async function processImage(
