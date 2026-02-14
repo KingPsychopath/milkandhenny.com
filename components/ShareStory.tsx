@@ -1,10 +1,10 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
-import { useStoryImage } from "@/hooks/useStoryImage";
+import { useState, useEffect, useCallback, useRef } from "react";
+import { useBrandedImage, type BrandedFormat } from "@/hooks/useStoryImage";
 import type { FocalPreset } from "@/lib/focal";
 
-type ShareStoryProps = {
+type BrandedImageProps = {
   /** Full-size image URL (WebP from R2) */
   imageUrl: string;
   /** Album title for overlay text */
@@ -15,68 +15,86 @@ type ShareStoryProps = {
   focalPoint?: FocalPreset;
   /** Auto-detected focal point as percentages */
   autoFocal?: { x: number; y: number };
-  /** Extra class for the wrapper */
-  className?: string;
 };
 
 const COPIED_DURATION_MS = 2000;
 
-/** Copy a blob as an image to the clipboard */
+/** Copy a blob as an image to the clipboard (re-encodes as PNG for compat) */
 async function copyImageToClipboard(blob: Blob): Promise<boolean> {
   try {
-    // ClipboardItem requires image/png for clipboard write
-    if (blob.type !== "image/png") {
-      // Re-encode as PNG via canvas for clipboard compat
-      const bmp = await createImageBitmap(blob);
-      const canvas = document.createElement("canvas");
-      canvas.width = bmp.width;
-      canvas.height = bmp.height;
-      const ctx = canvas.getContext("2d");
-      if (!ctx) return false;
-      ctx.drawImage(bmp, 0, 0);
-      const pngBlob = await new Promise<Blob | null>((resolve) =>
-        canvas.toBlob(resolve, "image/png")
-      );
-      if (!pngBlob) return false;
-      await navigator.clipboard.write([
-        new ClipboardItem({ "image/png": pngBlob }),
-      ]);
-    } else {
-      await navigator.clipboard.write([
-        new ClipboardItem({ "image/png": blob }),
-      ]);
-    }
+    const bmp = await createImageBitmap(blob);
+    const canvas = document.createElement("canvas");
+    canvas.width = bmp.width;
+    canvas.height = bmp.height;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return false;
+    ctx.drawImage(bmp, 0, 0);
+    const pngBlob = await new Promise<Blob | null>((resolve) =>
+      canvas.toBlob(resolve, "image/png")
+    );
+    if (!pngBlob) return false;
+    await navigator.clipboard.write([
+      new ClipboardItem({ "image/png": pngBlob }),
+    ]);
     return true;
   } catch {
     return false;
   }
 }
 
+/** Try native share with an image file. Returns true if shared successfully. */
+async function tryNativeShare(
+  blob: Blob,
+  filename: string,
+  title: string
+): Promise<boolean> {
+  if (typeof navigator.share !== "function") return false;
+  try {
+    const file = new File([blob], filename, { type: "image/jpeg" });
+    if (!navigator.canShare?.({ files: [file] })) return false;
+    await navigator.share({ files: [file], title });
+    return true;
+  } catch {
+    // User cancelled — not an error
+    return false;
+  }
+}
+
+const FORMAT_OPTIONS = [
+  { key: "portrait" as BrandedFormat, label: "story · portrait", desc: "9:16" },
+  {
+    key: "landscape" as BrandedFormat,
+    label: "post · landscape",
+    desc: "16:9",
+  },
+] as const;
+
 /**
- * "Share Story" button.
- * - Mobile: generates a branded 1080x1920 story image, opens native share sheet
- *   so users can pick Instagram / WhatsApp / Save to Photos / etc.
- * - Desktop: generates the image and shows a preview overlay with download + copy.
+ * "Frame" button — sits next to download in the photo viewer.
+ * Lets user pick portrait (story) or landscape (post), generates a
+ * branded image with the overlay client-side, then shows a preview.
+ *
+ * - Mobile preview: "share" (native share sheet) + "download" + "close"
+ * - Desktop preview: "copy image" + "download" + "close"
  */
-export function ShareStory({
+export function BrandedImage({
   imageUrl,
   albumTitle,
   photoId,
   focalPoint,
   autoFocal,
-  className = "",
-}: ShareStoryProps) {
+}: BrandedImageProps) {
   const { generating, error, blob, previewUrl, generate, cleanup } =
-    useStoryImage();
+    useBrandedImage();
+  const [dropdownOpen, setDropdownOpen] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
-  const [isMobile, setIsMobile] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [canNativeShare, setCanNativeShare] = useState(false);
+  const [activeFormat, setActiveFormat] = useState<BrandedFormat>("portrait");
+  const dropdownRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    setIsMobile(
-      typeof navigator.share === "function" &&
-        /Android|iPhone|iPad|iPod/i.test(navigator.userAgent)
-    );
+    setCanNativeShare(typeof navigator.share === "function");
   }, []);
 
   useEffect(() => {
@@ -85,63 +103,63 @@ export function ShareStory({
     return () => clearTimeout(t);
   }, [copied]);
 
-  const handleClick = useCallback(async () => {
-    const result = await generate({
-      imageUrl,
-      albumTitle,
-      photoId,
-      focalPoint,
-      autoFocal,
-    });
-
-    if (!result) {
-      // Generation failed — show preview anyway so the error is visible
-      setShowPreview(true);
-      return;
-    }
-
-    // Mobile: try native share with the image file
-    if (isMobile && typeof navigator.share === "function") {
-      try {
-        const file = new File([result], `${photoId}-story.jpg`, {
-          type: "image/jpeg",
-        });
-
-        if (navigator.canShare?.({ files: [file] })) {
-          await navigator.share({
-            files: [file],
-            title: `${albumTitle} — ${photoId}`,
-          });
-          cleanup();
-          return;
-        }
-      } catch {
-        // User cancelled or share failed — fall through to preview
+  // Close dropdown on outside click
+  useEffect(() => {
+    if (!dropdownOpen) return;
+    function handleClickOutside(e: MouseEvent) {
+      if (
+        dropdownRef.current &&
+        !dropdownRef.current.contains(e.target as Node)
+      ) {
+        setDropdownOpen(false);
       }
     }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [dropdownOpen]);
 
-    // Desktop or share not supported — show preview with download
-    setShowPreview(true);
-  }, [
-    generate,
-    isMobile,
-    imageUrl,
-    albumTitle,
-    photoId,
-    focalPoint,
-    autoFocal,
-    cleanup,
-  ]);
+  const handleFormatPick = useCallback(
+    async (format: BrandedFormat) => {
+      setDropdownOpen(false);
+      setActiveFormat(format);
+
+      await generate({
+        imageUrl,
+        albumTitle,
+        photoId,
+        format,
+        focalPoint,
+        autoFocal,
+      });
+
+      // Always show preview so user sees the result before sharing
+      setShowPreview(true);
+    },
+    [generate, imageUrl, albumTitle, photoId, focalPoint, autoFocal]
+  );
+
+  const handleShare = useCallback(async () => {
+    if (!blob) return;
+    const shared = await tryNativeShare(
+      blob,
+      `${photoId}-${activeFormat}.jpg`,
+      `${albumTitle} — ${photoId}`
+    );
+    if (shared) {
+      setShowPreview(false);
+      cleanup();
+    }
+  }, [blob, photoId, activeFormat, albumTitle, cleanup]);
 
   const handleDownload = useCallback(() => {
     if (!blob) return;
     const href = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = href;
-    a.download = `${photoId}-story.jpg`;
+    a.download = `${photoId}-${activeFormat}.jpg`;
     a.click();
     URL.revokeObjectURL(href);
-  }, [blob, photoId]);
+  }, [blob, photoId, activeFormat]);
 
   const handleCopy = useCallback(async () => {
     if (!blob) return;
@@ -167,23 +185,62 @@ export function ShareStory({
 
   return (
     <>
-      <button
-        type="button"
-        onClick={handleClick}
-        disabled={generating}
-        className={`inline-flex items-center gap-0.5 font-mono text-[11px] theme-muted tracking-wide hover:text-foreground transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-500/50 rounded px-1 -mx-1 disabled:opacity-50 ${className}`}
-      >
-        {generating ? "creating..." : "story"}
-      </button>
+      {/* Trigger — dropdown for format selection */}
+      <div ref={dropdownRef} className="relative inline-block">
+        <button
+          type="button"
+          onClick={() => setDropdownOpen((o) => !o)}
+          disabled={generating}
+          aria-expanded={dropdownOpen}
+          aria-haspopup="true"
+          className="inline-flex items-center gap-0.5 hover:text-foreground transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-500/50 rounded disabled:opacity-50"
+        >
+          {generating ? "framing..." : "frame"}
+          <svg
+            className={`w-3 h-3 ml-0.5 transition-transform ${dropdownOpen ? "rotate-180" : ""}`}
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+            aria-hidden
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M19 9l-7 7-7-7"
+            />
+          </svg>
+        </button>
 
-      {/* Preview overlay — desktop or when native share isn't available */}
+        {dropdownOpen && (
+          <div
+            className="absolute right-0 bottom-full mb-1 py-1.5 min-w-[11rem] bg-background border theme-border rounded-sm shadow-lg z-10"
+            role="menu"
+          >
+            {FORMAT_OPTIONS.map((opt) => (
+              <button
+                key={opt.key}
+                type="button"
+                role="menuitem"
+                onClick={() => handleFormatPick(opt.key)}
+                className="block w-full text-left px-3 py-1.5 hover:bg-stone-100 dark:hover:bg-stone-800 transition-colors font-mono text-[11px] tracking-wide"
+              >
+                <span className="theme-muted">{opt.label}</span>
+                <span className="ml-2 theme-faint">{opt.desc}</span>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Preview overlay — always shown after generation */}
       {showPreview && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm"
           onClick={handleClose}
           role="dialog"
           aria-modal="true"
-          aria-label="Story image preview"
+          aria-label="Framed image preview"
         >
           <div
             className="relative flex flex-col items-center gap-4 p-4"
@@ -204,20 +261,34 @@ export function ShareStory({
               </div>
             )}
 
-            {/* Story preview */}
+            {/* Preview image */}
             {previewUrl && (
               <>
-                <div className="relative max-h-[75vh] aspect-[9/16] rounded-sm overflow-hidden shadow-2xl">
+                <div
+                  className={`relative rounded-sm overflow-hidden shadow-2xl ${
+                    activeFormat === "portrait"
+                      ? "max-h-[75vh] aspect-[9/16]"
+                      : "max-w-[90vw] sm:max-w-2xl aspect-[1.91/1]"
+                  }`}
+                >
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
                     src={previewUrl}
-                    alt="Story preview with milk & henny branding"
+                    alt="Framed image with milk & henny overlay"
                     className="h-full w-full object-contain"
                   />
                 </div>
 
-                {/* Actions */}
+                {/* Frame preview actions */}
                 <div className="flex items-center gap-6 font-mono text-[11px] tracking-wide">
+                  {canNativeShare && (
+                    <button
+                      onClick={handleShare}
+                      className="text-white hover:text-amber-400 transition-colors"
+                    >
+                      share
+                    </button>
+                  )}
                   <button
                     onClick={handleCopy}
                     className="text-white hover:text-amber-400 transition-colors"

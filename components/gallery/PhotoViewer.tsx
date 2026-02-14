@@ -12,6 +12,8 @@ type PhotoViewerProps = {
   height: number;
   prevHref?: string;
   nextHref?: string;
+  /** Extra actions rendered next to the download button */
+  actions?: React.ReactNode;
 };
 
 /**
@@ -26,6 +28,7 @@ export function PhotoViewer({
   height,
   prevHref,
   nextHref,
+  actions,
 }: PhotoViewerProps) {
   const router = useRouter();
   const [saving, setSaving] = useState(false);
@@ -173,13 +176,16 @@ export function PhotoViewer({
             <span className="theme-faint">next →</span>
           )}
         </div>
-        <button
-          onClick={handleDownload}
-          disabled={saving}
-          className="hover:text-foreground transition-colors disabled:opacity-50"
-        >
-          {saving ? "saving..." : "download ↓"}
-        </button>
+        <div className="flex items-center gap-4">
+          {actions}
+          <button
+            onClick={handleDownload}
+            disabled={saving}
+            className="hover:text-foreground transition-colors disabled:opacity-50"
+          >
+            {saving ? "saving..." : "download ↓"}
+          </button>
+        </div>
       </div>
     </div>
   );
