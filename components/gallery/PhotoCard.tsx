@@ -37,7 +37,7 @@ export const PhotoCard = memo(function PhotoCard({
   selected,
   onSelect,
 }: PhotoCardProps) {
-  const { loaded, errored, handleLoad, handleError } = useLazyImage();
+  const { loaded, errored, handleLoad, handleError, imgRef } = useLazyImage();
 
   const handleSelect = useCallback(
     (e: React.MouseEvent) => {
@@ -73,6 +73,7 @@ export const PhotoCard = memo(function PhotoCard({
         {!errored && (
           // eslint-disable-next-line @next/next/no-img-element
           <img
+            ref={imgRef}
             src={thumbUrl}
             alt={`Photo ${photoId} from album`}
             width={width}

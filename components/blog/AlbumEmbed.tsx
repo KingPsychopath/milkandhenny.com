@@ -42,13 +42,14 @@ const FillThumb = memo(function FillThumb({
   objectPosition?: string;
 }) {
   const thumbUrl = getThumbUrl(slug, photoId);
-  const { loaded, errored, handleLoad, handleError } = useLazyImage();
+  const { loaded, errored, handleLoad, handleError, imgRef } = useLazyImage();
 
   if (errored) return null;
 
   return (
     // eslint-disable-next-line @next/next/no-img-element
     <img
+      ref={imgRef}
       src={thumbUrl}
       alt=""
       loading="lazy"

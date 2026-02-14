@@ -29,26 +29,35 @@ function formatCountdown(totalSeconds: number): string {
 
 /**
  * Live countdown timer that ticks every second.
- * Shows days/hours/minutes when far out, adds seconds when close.
+ * Renders a static placeholder on the server to avoid hydration mismatch
+ * (Date.now() differs between SSR and client), then starts ticking after mount.
  */
 export function CountdownTimer({ expiresAt }: CountdownTimerProps) {
-  const [remaining, setRemaining] = useState(() =>
-    Math.max(0, Math.floor((new Date(expiresAt).getTime() - Date.now()) / 1000))
-  );
+  const [remaining, setRemaining] = useState<number | null>(null);
 
   useEffect(() => {
-    const interval = setInterval(() => {
-      const next = Math.max(
-        0,
-        Math.floor((new Date(expiresAt).getTime() - Date.now()) / 1000)
-      );
-      setRemaining(next);
+    const calc = () =>
+      Math.max(0, Math.floor((new Date(expiresAt).getTime() - Date.now()) / 1000));
 
+    setRemaining(calc());
+
+    const interval = setInterval(() => {
+      const next = calc();
+      setRemaining(next);
       if (next <= 0) clearInterval(interval);
     }, 1000);
 
     return () => clearInterval(interval);
   }, [expiresAt]);
+
+  // Before hydration, render a non-time-dependent placeholder
+  if (remaining === null) {
+    return (
+      <span className="font-mono text-xs tracking-wide theme-muted">
+        expires soon
+      </span>
+    );
+  }
 
   const isUrgent = remaining > 0 && remaining < 3600; // < 1 hour
   const isExpired = remaining <= 0;

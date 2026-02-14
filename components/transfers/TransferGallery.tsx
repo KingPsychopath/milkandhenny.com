@@ -413,6 +413,7 @@ export function TransferGallery({ transferId, files }: TransferGalleryProps) {
               </div>
             ) : (
               <LightboxContent
+                key={currentVisual.id}
                 file={currentVisual}
                 transferId={transferId}
                 onError={() => setLightboxError(true)}
@@ -496,7 +497,7 @@ const VisualCard = memo(function VisualCard({
   const thumbUrl = hasThumbnail ? getTransferThumbUrl(transferId, file.id) : "";
   const aspectRatio = (file.width && file.height) ? file.height / file.width : 9 / 16;
 
-  const { loaded, errored, handleLoad, handleError } = useLazyImage();
+  const { loaded, errored, handleLoad, handleError, imgRef } = useLazyImage();
 
   return (
     <div className="gallery-card group">
@@ -531,6 +532,7 @@ const VisualCard = memo(function VisualCard({
         {hasThumbnail && !errored ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
+            ref={imgRef}
             src={thumbUrl}
             alt={file.filename}
             width={file.width}
