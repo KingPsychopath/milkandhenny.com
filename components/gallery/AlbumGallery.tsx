@@ -28,6 +28,9 @@ function downloadBlob(blob: Blob, filename: string) {
   URL.revokeObjectURL(href);
 }
 
+/** Max photos in a single batch download before showing a warning */
+const BATCH_DOWNLOAD_WARN = 20;
+
 /**
  * Full album gallery with masonry/single toggle, multi-select, and batch download.
  */
@@ -54,6 +57,16 @@ export function AlbumGallery({ albumSlug, photos }: AlbumGalleryProps) {
 
   const downloadSelected = useCallback(async () => {
     if (selected.size === 0 || downloading) return;
+
+    if (
+      selected.size > BATCH_DOWNLOAD_WARN &&
+      !window.confirm(
+        `You're about to download ${selected.size} full-resolution photos. This may use a lot of memory on your device. Continue?`
+      )
+    ) {
+      return;
+    }
+
     setDownloading(true);
 
     try {

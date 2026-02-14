@@ -176,7 +176,7 @@ export default function IcebreakerPage() {
       </main>
 
       {/* Footer */}
-      <div className="p-6 text-center space-y-3">
+      <footer role="contentinfo" className="p-6 text-center space-y-3">
         {/* Footnote */}
         <p className={`text-xs max-w-xs mx-auto leading-relaxed opacity-70 ${
           revealed ? color.text : 'text-zinc-500'
@@ -195,7 +195,7 @@ export default function IcebreakerPage() {
         <p className={`text-xs opacity-40 ${revealed ? color.text : 'text-zinc-600'}`}>
           © {new Date().getFullYear()} Milk & Henny
         </p>
-      </div>
+      </footer>
     </div>
   );
 }

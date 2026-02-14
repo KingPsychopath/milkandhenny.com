@@ -209,7 +209,10 @@ export default function ExamPage() {
               >
                 {/* Envelope header */}
                 <button
+                  id={`exam-q-${q.id}-btn`}
                   onClick={() => toggle(q.id)}
+                  aria-expanded={isOpen}
+                  aria-controls={`exam-q-${q.id}-body`}
                   className="w-full flex items-center justify-between px-5 py-4 text-left cursor-pointer transition-opacity duration-300 hover:opacity-80"
                   style={{ background: "var(--stone-100)" }}
                 >
@@ -249,6 +252,9 @@ export default function ExamPage() {
 
                 {/* Question body */}
                 <div
+                  id={`exam-q-${q.id}-body`}
+                  role="region"
+                  aria-labelledby={`exam-q-${q.id}-btn`}
                   className="transition-all duration-400 ease-in-out overflow-hidden"
                   style={{
                     maxHeight: isOpen ? 2000 : 0,

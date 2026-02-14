@@ -139,15 +139,17 @@ export default function BestDressedPage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-zinc-950 via-purple-950/30 to-zinc-950">
-      <main id="main" className="max-w-lg mx-auto px-5 py-8">
+      <div className="max-w-lg mx-auto px-5 py-8">
         {/* Header */}
-        <div className="text-center mb-8">
+        <header role="banner" className="text-center mb-8">
           <div className="text-5xl mb-3">👑</div>
           <h1 className="text-3xl font-bold text-white mb-2">Best Dressed</h1>
           <p className="text-purple-300/80">
             {hasVoted ? 'Thanks for voting!' : 'Who\'s serving looks tonight?'}
           </p>
-        </div>
+        </header>
+
+        <main id="main">
 
         {!hasVoted ? (
           /* Voting UI */
@@ -163,15 +165,28 @@ export default function BestDressedPage() {
                 }}
                 onFocus={() => setShowDropdown(true)}
                 placeholder="Search for a guest..."
+                role="combobox"
+                aria-expanded={showDropdown && filteredGuests.length > 0}
+                aria-controls="best-dressed-listbox"
+                aria-autocomplete="list"
+                aria-activedescendant={selectedName ? `bd-option-${selectedName.replace(/\s+/g, '-')}` : undefined}
                 className="w-full px-5 py-4 bg-white/10 border border-white/20 rounded-2xl text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent text-lg"
               />
               
               {/* Dropdown */}
               {showDropdown && filteredGuests.length > 0 && (
-                <div className="absolute z-10 w-full mt-2 bg-zinc-900 border border-white/10 rounded-2xl shadow-2xl overflow-hidden">
+                <div
+                  id="best-dressed-listbox"
+                  role="listbox"
+                  aria-label="Guest suggestions"
+                  className="absolute z-10 w-full mt-2 bg-zinc-900 border border-white/10 rounded-2xl shadow-2xl overflow-hidden"
+                >
                   {filteredGuests.map((name) => (
                     <button
                       key={name}
+                      id={`bd-option-${name.replace(/\s+/g, '-')}`}
+                      role="option"
+                      aria-selected={selectedName === name}
                       onClick={() => {
                         setSelectedName(name);
                         setSearchQuery(name);
@@ -291,16 +306,18 @@ export default function BestDressedPage() {
           </div>
         )}
 
+        </main>
+
         {/* Back link */}
-        <div className="mt-10 text-center space-y-2">
+        <footer role="contentinfo" className="mt-10 text-center space-y-2">
           <Link href="/party" className="text-zinc-500 hover:text-purple-400 text-sm transition-colors block">
             ← Back to party
           </Link>
           <p className="text-zinc-600 text-xs">
             © {new Date().getFullYear()} Milk & Henny
           </p>
-        </div>
-      </main>
+        </footer>
+      </div>
     </div>
   );
 }

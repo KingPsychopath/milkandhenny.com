@@ -345,6 +345,58 @@ Every feature degrades gracefully — nothing crashes. The fallback strategy mat
 
 ---
 
+## Navigation & Footer Design
+
+The site has **two distinct navigation worlds** that coexist through shared tone (lowercase, warm, honest) while differing in visual language.
+
+### Two-world model
+
+| World | Pages | Navigation style | Audience |
+|-------|-------|-----------------|----------|
+| **Editorial** | `/`, `/blog`, `/blog/[slug]`, `/pics`, `/pics/[album]`, `/pics/[album]/[photo]` | Header with `← contextual back` (left) + `milk & henny` brand link (right) + Breadcrumbs | Blog readers, photo viewers |
+| **Party** | `/party`, `/icebreaker`, `/best-dressed`, `/guestlist` | Minimal, kiosk-style — funnels back to `/party`, then `/` | Event-night guests, door staff |
+
+**Standalone pages** (`/exam`, `/t/[id]`) have their own navigation appropriate to context — minimal brand link + home link, no full nav.
+
+### Footer tiers
+
+Every page has a footer with a way out and a copyright line. Two consistent patterns:
+
+| Tier | Left side | Right side | Used on |
+|------|-----------|------------|---------|
+| **Editorial** | `← contextual back` (e.g. "← home", "← all albums", "← back to album") | `© year milk & henny` | Blog, pics, albums, photos |
+| **Party** | `← back to party` (or `← back to home` from party hub) | `© year Milk & Henny` | Party hub, icebreaker, best dressed, guest list |
+
+Page-specific personality lives **above** the footer line, not instead of it:
+- **Icebreaker**: consent note ("if someone says no, it means no") above the back link
+- **Transfer**: "temporary transfer · self-destructs {date}" as left footer content, brand link on right
+- **Exam**: "end of questions" (exam paper feel) with "← home" and copyright below
+
+### Accessibility landmarks
+
+All pages follow a consistent landmark pattern for screen readers:
+
+- `role="banner"` on the page header (editorial pages and party sub-pages)
+- `role="contentinfo"` on the footer
+- `id="main"` on the primary content area (targeted by the global skip link)
+- `aria-label="Breadcrumb"` on breadcrumb `<nav>` elements
+
+### Shared global elements (root layout)
+
+- **Skip link**: `<a href="#main">Skip to main content</a>` — focusable, present on every page
+- **LampToggle**: Theme toggle, hidden on party/game pages (`/party`, `/icebreaker`, `/best-dressed`, `/guestlist`, `/t`)
+- **BackToTop**: Scroll-to-top button, hidden on the same routes as LampToggle
+
+### Design decisions
+
+- **No global nav bar.** The site is intentionally single-column with minimal chrome. The masthead on `/` serves as the primary navigation hub; inner pages use contextual back links + breadcrumbs.
+- **Party pages have no cross-links to editorial.** A party guest doesn't need to find the blog. The two worlds connect only through the home page.
+- **Every page has a way home.** Even standalone pages like `/exam` and expired transfer pages include a brand link or "← home" so nobody is stranded.
+- **Photo pages auto-enable dark mode** for optimal viewing. This is intentional and not overrideable per-page.
+- **Batch download cap.** The album gallery warns before downloading more than 20 full-resolution photos to prevent memory issues on low-end devices.
+
+---
+
 ## KV Command Budget
 
 **Vercel KV free tier: 3,000 commands/day.**

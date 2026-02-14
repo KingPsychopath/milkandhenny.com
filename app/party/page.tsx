@@ -4,24 +4,27 @@ import Image from 'next/image';
 export default function PartyHome() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-zinc-950 via-zinc-900 to-stone-900 flex items-center justify-center p-6">
-      <main id="main" className="text-center space-y-5 max-w-md">
+      <div className="text-center space-y-5 max-w-md">
         {/* Text Logo */}
-        <Link href="/" className="block px-4">
-          <Image
-            src="/MAHtext.svg"
-            alt="Milk & Henny"
-            width={320}
-            height={70}
-            className="w-full h-auto"
-            priority
-          />
-        </Link>
+        <header role="banner">
+          <Link href="/" className="block px-4">
+            <Image
+              src="/MAHtext.svg"
+              alt="Milk & Henny"
+              width={320}
+              height={70}
+              className="w-full h-auto"
+              priority
+            />
+          </Link>
 
-        {/* Tagline */}
-        <p className="text-amber-400/90 text-lg font-medium tracking-widest uppercase">
-          First Ever Birthday
-        </p>
+          {/* Tagline */}
+          <p className="text-amber-400/90 text-lg font-medium tracking-widest uppercase mt-5">
+            First Ever Birthday
+          </p>
+        </header>
 
+        <main id="main" className="space-y-5">
         {/* Game CTAs */}
         <div className="space-y-3 pt-4">
           <Link
@@ -75,9 +78,10 @@ export default function PartyHome() {
         <div className="pt-6 text-zinc-500 text-xs max-w-xs mx-auto leading-relaxed">
           Remember: if someone says no, it means no. Be kind, and have fun. 💛
         </div>
+        </main>
 
         {/* Footer */}
-        <div className="pt-4 space-y-2">
+        <footer role="contentinfo" className="pt-4 space-y-2">
           <Link
             href="/"
             className="text-zinc-500 hover:text-amber-400 text-xs transition-colors"
@@ -87,8 +91,8 @@ export default function PartyHome() {
           <div className="text-zinc-600 text-xs">
             © {new Date().getFullYear()} Milk & Henny
           </div>
-        </div>
-      </main>
+        </footer>
+      </div>
     </div>
   );
 }
