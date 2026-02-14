@@ -84,7 +84,7 @@ function LightboxContent({
   transferId: string;
   onError: () => void;
 }) {
-  const [loading, setLoading] = useState(true);
+  const { loaded, handleLoad, imgRef } = useLazyImage();
 
   if (file.kind === "video") {
     return (
@@ -95,7 +95,6 @@ function LightboxContent({
         className="max-w-full max-h-[80vh] photo-page-fade-in"
         style={{ objectFit: "contain" }}
         onClick={(e) => e.stopPropagation()}
-        onLoadedData={() => setLoading(false)}
         onError={onError}
       />
     );
@@ -108,7 +107,7 @@ function LightboxContent({
 
   return (
     <div className="relative" onClick={(e) => e.stopPropagation()}>
-      {loading && (
+      {!loaded && (
         <div className="absolute inset-0 flex items-center justify-center">
           <span className="font-mono text-[11px] text-white/50 tracking-wide animate-pulse">
             loading...
@@ -117,12 +116,13 @@ function LightboxContent({
       )}
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
+        ref={imgRef}
         src={imgSrc}
         alt={file.filename}
         className={`max-w-full max-h-[80vh] object-contain transition-opacity duration-300 ${
-          loading ? "opacity-0" : "opacity-100"
+          loaded ? "opacity-100" : "opacity-0"
         }`}
-        onLoad={() => setLoading(false)}
+        onLoad={handleLoad}
         onError={onError}
       />
     </div>
