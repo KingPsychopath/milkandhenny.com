@@ -10,6 +10,7 @@ import { fetchBlob, downloadBlob } from "@/lib/media/download";
 import { formatBytes } from "@/lib/format";
 import { useLazyImage } from "@/hooks/useLazyImage";
 import { useSwipe } from "@/hooks/useSwipe";
+import { SelectionToggle } from "@/components/SelectionToggle";
 import type { FileKind } from "@/lib/transfers";
 
 /* ─── Types ─── */
@@ -512,34 +513,17 @@ const VisualCard = memo(function VisualCard({
         className="block relative overflow-hidden rounded-sm w-full text-left cursor-pointer"
         style={{ paddingBottom: `${aspectRatio * 100}%` }}
       >
-        {/* Selection checkbox — stop propagation so card click opens lightbox */}
+        {/* Selection toggle — stop propagation so card click opens lightbox */}
         <div
           className="absolute top-2 left-2 z-10"
           onClick={(e) => e.stopPropagation()}
           role="none"
         >
-          <button
-            type="button"
-            onClick={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              onToggleSelect();
-            }}
-            aria-label={isSelected ? "Deselect" : "Select for download"}
-            className={`flex items-center justify-center w-6 h-6 rounded border transition-colors ${
-              isSelected
-                ? "bg-amber-500 border-amber-500 text-white"
-                : "bg-black/30 border-white/40 text-transparent hover:border-white/70 hover:text-white/70"
-            }`}
-          >
-            {isSelected ? (
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-                <polyline points="20 6 9 17 4 12" />
-              </svg>
-            ) : (
-              <span className="text-xs">✓</span>
-            )}
-          </button>
+          <SelectionToggle
+            selected={isSelected}
+            onToggle={onToggleSelect}
+            variant="overlay"
+          />
         </div>
 
         <div className="absolute inset-0 gallery-placeholder" />
@@ -615,24 +599,11 @@ function FileCard({
   onDownload: () => void;
 }) {
   const checkbox = (
-    <button
-      type="button"
-      onClick={onToggleSelect}
-      aria-label={isSelected ? "Deselect" : "Select for download"}
-      className={`flex items-center justify-center w-5 h-5 rounded border shrink-0 transition-colors ${
-        isSelected
-          ? "bg-amber-500 border-amber-500 text-white"
-          : "theme-border theme-muted hover:text-foreground"
-      }`}
-    >
-      {isSelected ? (
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-          <polyline points="20 6 9 17 4 12" />
-        </svg>
-      ) : (
-        <span className="text-[10px]">✓</span>
-      )}
-    </button>
+    <SelectionToggle
+      selected={isSelected}
+      onToggle={onToggleSelect}
+      variant="surface"
+    />
   );
 
   // Inline audio player

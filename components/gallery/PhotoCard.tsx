@@ -3,6 +3,7 @@
 import { memo, useCallback } from "react";
 import Link from "next/link";
 import { useLazyImage } from "@/hooks/useLazyImage";
+import { SelectionToggle } from "@/components/SelectionToggle";
 
 type PhotoCardProps = {
   albumSlug: string;
@@ -90,20 +91,14 @@ export const PhotoCard = memo(function PhotoCard({
         {/* Hover overlay */}
         <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors duration-200" />
 
-        {/* Selection checkbox */}
+        {/* Selection toggle */}
         {selectable && (
-          <div
-            className={`absolute top-2 right-2 w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors ${
-              selected
-                ? "bg-amber-500 border-amber-500"
-                : "border-white/70 bg-black/20"
-            }`}
-          >
-            {selected && (
-              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-                <polyline points="20 6 9 17 4 12" />
-              </svg>
-            )}
+          <div className="absolute top-2 right-2 z-10">
+            <SelectionToggle
+              selected={!!selected}
+              onToggle={() => onSelect?.(photoId)}
+              variant="overlay"
+            />
           </div>
         )}
       </Link>
