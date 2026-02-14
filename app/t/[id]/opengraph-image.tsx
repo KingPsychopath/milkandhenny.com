@@ -5,8 +5,9 @@
  * - Generated on demand when a crawler or share dialog requests this image URL.
  * - One serverless run per first request per transfer ID; response is cached
  *   (Cache-Control: 24h). Repeat requests for the same transfer reuse the cache.
- * - Not built at deploy time (transfers live in Redis). Remove this file if you
- *   prefer the default site OG image and want to avoid any runtime cost.
+ * - Not built at deploy time (transfers live in Redis). To avoid runtime cost,
+ *   delete this file; Next.js will use the default site OG image
+ *   (app/opengraph-image.tsx) for /t/[id] with the page's title and description.
  */
 import { ImageResponse } from "next/og";
 import { NextResponse } from "next/server";

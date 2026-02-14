@@ -24,6 +24,9 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 
   const description = `${transfer.files.length} files shared via ${SITE_NAME}`;
 
+  // OG image: from app/t/[id]/opengraph-image.tsx (runtime-generated). To save on
+  // runtime cost, delete that file; the card will use the default site image
+  // (app/opengraph-image.tsx) with this page's title and description.
   return {
     title: `${transfer.title} — ${SITE_NAME}`,
     description,
