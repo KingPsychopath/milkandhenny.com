@@ -40,6 +40,8 @@ type PhotoMeta = {
   id: string;
   width: number;
   height: number;
+  /** Tiny base64 data URI for blur-up placeholder */
+  blur?: string;
   takenAt?: string; // ISO date from EXIF DateTimeOriginal
   /** Manual crop focal point override (preset name). Takes priority over autoFocal. */
   focalPoint?: FocalPreset;
@@ -230,6 +232,7 @@ async function processAndUploadPhoto(
       id,
       width: processed.width,
       height: processed.height,
+      blur: processed.blur,
       ...(processed.takenAt ? { takenAt: processed.takenAt } : {}),
       ...(autoFocal ? { autoFocal } : {}),
     },

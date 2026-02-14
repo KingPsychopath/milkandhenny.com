@@ -53,7 +53,6 @@ import {
   nukeAllTransfers,
   formatDuration,
   parseExpiry,
-  formatBytes as formatTransferBytes,
 } from "./transfer-ops";
 import {
   uploadBlogFiles,
@@ -71,11 +70,7 @@ const red = (s: string) => `\x1b[31m${s}\x1b[0m`;
 const yellow = (s: string) => `\x1b[33m${s}\x1b[0m`;
 const cyan = (s: string) => `\x1b[36m${s}\x1b[0m`;
 
-function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / 1024 / 1024).toFixed(2)} MB`;
-}
+import { formatBytes } from "../lib/format";
 
 function formatDate(dateStr: string): string {
   const d = new Date(dateStr + "T00:00:00");
@@ -803,7 +798,7 @@ async function cmdTransfersInfo(id: string) {
     log(dim("Files:"));
     for (const f of info.files) {
       const dims = f.width && f.height ? dim(` ${f.width}×${f.height}`) : "";
-      const size = formatTransferBytes(f.size);
+      const size = formatBytes(f.size);
       log(`  ${f.filename.padEnd(35)} ${dim(f.kind.padEnd(8))} ${dim(size)}${dims}`);
     }
     console.log();

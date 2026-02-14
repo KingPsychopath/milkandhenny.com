@@ -3,6 +3,8 @@
 import { useEffect, useCallback, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { useSwipe } from "@/hooks/useSwipe";
+import { fetchBlob, downloadBlob } from "@/lib/download";
 
 type PhotoViewerProps = {
   src: string;
@@ -12,13 +14,19 @@ type PhotoViewerProps = {
   height: number;
   prevHref?: string;
   nextHref?: string;
+  /** URL of the next photo to preload (WebP full-size) */
+  preloadNext?: string;
+  /** URL of the previous photo to preload (WebP full-size) */
+  preloadPrev?: string;
+  /** Optional blur data URI for instant placeholder while full image loads */
+  blur?: string;
   /** Extra actions rendered next to the download button */
   actions?: React.ReactNode;
 };
 
 /**
- * Full photo viewer with keyboard navigation and download.
- * Arrow keys navigate between photos. Escape goes back to album.
+ * Full photo viewer with keyboard navigation, swipe support, loading state,
+ * blur placeholder, and adjacent image preloading.
  */
 export function PhotoViewer({
   src,
@@ -28,15 +36,18 @@ export function PhotoViewer({
   height,
   prevHref,
   nextHref,
+  preloadNext,
+  preloadPrev,
+  blur,
   actions,
 }: PhotoViewerProps) {
   const router = useRouter();
   const [saving, setSaving] = useState(false);
   const [showHint, setShowHint] = useState(false);
+  const [imageLoaded, setImageLoaded] = useState(false);
   const savingRef = useRef(false);
-  const touchRef = useRef<{ x: number; y: number; time: number } | null>(null);
-  const imageContainerRef = useRef<HTMLDivElement>(null);
 
+  /* ── Keyboard navigation ── */
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
       if (e.key === "ArrowLeft" && prevHref) router.push(prevHref);
@@ -68,42 +79,39 @@ export function PhotoViewer({
     return () => clearTimeout(timer);
   }, []);
 
-  /* ── Swipe detection on image area ── */
+  /* ── Swipe detection via shared hook ── */
+  const swipeRef = useSwipe<HTMLDivElement>({
+    onSwipeLeft: nextHref ? () => router.push(nextHref) : undefined,
+    onSwipeRight: prevHref ? () => router.push(prevHref) : undefined,
+  });
+
+  /* ── Preload adjacent images ── */
   useEffect(() => {
-    const el = imageContainerRef.current;
-    if (!el) return;
+    if (preloadNext) {
+      const link = document.createElement("link");
+      link.rel = "prefetch";
+      link.as = "image";
+      link.href = preloadNext;
+      document.head.appendChild(link);
+      return () => { document.head.removeChild(link); };
+    }
+  }, [preloadNext]);
 
-    const SWIPE_MIN_DISTANCE = 50; // px
-    const SWIPE_MAX_TIME = 300; // ms
-    const SWIPE_MAX_VERTICAL = 80; // px — ignore diagonal/vertical swipes
+  useEffect(() => {
+    if (preloadPrev) {
+      const link = document.createElement("link");
+      link.rel = "prefetch";
+      link.as = "image";
+      link.href = preloadPrev;
+      document.head.appendChild(link);
+      return () => { document.head.removeChild(link); };
+    }
+  }, [preloadPrev]);
 
-    const onTouchStart = (e: TouchEvent) => {
-      const touch = e.touches[0];
-      touchRef.current = { x: touch.clientX, y: touch.clientY, time: Date.now() };
-    };
-
-    const onTouchEnd = (e: TouchEvent) => {
-      if (!touchRef.current) return;
-      const touch = e.changedTouches[0];
-      const dx = touch.clientX - touchRef.current.x;
-      const dy = touch.clientY - touchRef.current.y;
-      const dt = Date.now() - touchRef.current.time;
-      touchRef.current = null;
-
-      // Must be fast, horizontal, and long enough
-      if (dt > SWIPE_MAX_TIME || Math.abs(dy) > SWIPE_MAX_VERTICAL || Math.abs(dx) < SWIPE_MIN_DISTANCE) return;
-
-      if (dx < 0 && nextHref) router.push(nextHref); // swipe left → next
-      if (dx > 0 && prevHref) router.push(prevHref); // swipe right → prev
-    };
-
-    el.addEventListener("touchstart", onTouchStart, { passive: true });
-    el.addEventListener("touchend", onTouchEnd, { passive: true });
-    return () => {
-      el.removeEventListener("touchstart", onTouchStart);
-      el.removeEventListener("touchend", onTouchEnd);
-    };
-  }, [router, prevHref, nextHref]);
+  /* ── Reset loaded state when src changes ── */
+  useEffect(() => {
+    setImageLoaded(false);
+  }, [src]);
 
   /** Fetch blob directly from R2 and trigger download */
   const handleDownload = useCallback(async () => {
@@ -111,14 +119,8 @@ export function PhotoViewer({
     savingRef.current = true;
     setSaving(true);
     try {
-      const res = await fetch(downloadUrl, { mode: "cors" });
-      const blob = await res.blob();
-      const href = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = href;
-      a.download = filename;
-      a.click();
-      URL.revokeObjectURL(href);
+      const blob = await fetchBlob(downloadUrl);
+      downloadBlob(blob, filename);
     } catch (err) {
       console.error("Download failed:", err);
     } finally {
@@ -133,18 +135,44 @@ export function PhotoViewer({
     <div className="flex flex-col items-center gap-4">
       {/* Image container — swipe left/right to navigate */}
       <div
-        ref={imageContainerRef}
+        ref={swipeRef}
         className={`relative w-full flex items-center justify-center touch-pan-y ${
           isPortrait ? "max-w-md" : "max-w-full"
         }`}
       >
+        {/* Blur placeholder — shown behind image until it loads */}
+        {blur && !imageLoaded && (
+          <div
+            className="absolute inset-0 rounded-sm"
+            style={{
+              backgroundImage: `url(${blur})`,
+              backgroundSize: "cover",
+              backgroundPosition: "center",
+              filter: "blur(20px)",
+              transform: "scale(1.1)",
+            }}
+          />
+        )}
+
+        {/* Loading indicator — shown when no blur and image hasn't loaded */}
+        {!blur && !imageLoaded && (
+          <div className="absolute inset-0 flex items-center justify-center">
+            <span className="font-mono text-[11px] theme-muted tracking-wide animate-pulse">
+              loading...
+            </span>
+          </div>
+        )}
+
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           src={src}
           alt={`Full size photo — ${filename}`}
           width={width}
           height={height}
-          className="w-full h-auto rounded-sm photo-page-fade-in"
+          onLoad={() => setImageLoaded(true)}
+          className={`w-full h-auto rounded-sm transition-opacity duration-500 ${
+            imageLoaded ? "opacity-100" : "opacity-0"
+          }`}
           style={{ maxHeight: "80vh", objectFit: "contain" }}
         />
 

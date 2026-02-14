@@ -92,12 +92,8 @@ function isProcessableImage(filename: string): boolean {
   return PROCESSABLE_EXTENSIONS.test(filename);
 }
 
-/** Human-readable byte formatting */
-function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / 1024 / 1024).toFixed(2)} MB`;
-}
+/** @deprecated Use `formatBytes` from `@/lib/format` instead — kept for back-compat */
+export { formatBytes } from "../lib/format";
 
 /* ─── OG crop helper ─── */
 
@@ -200,6 +196,8 @@ type ProcessedImage = {
   height: number;
   /** ISO date from EXIF DateTimeOriginal, if available */
   takenAt: string | null;
+  /** Tiny base64 data URI for blur-up placeholder (~300 bytes) */
+  blur: string;
 };
 
 type ProcessedGif = {
@@ -272,14 +270,35 @@ async function autoRotate(
   return { buffer: rotated, width, height };
 }
 
+/* ─── Blur placeholder ─── */
+
+/** Tiny blur-up width — produces ~300 byte base64 data URIs */
+const BLUR_WIDTH = 16;
+
+/**
+ * Generate a tiny base64 data URI for blur-up placeholders.
+ * Produces a ~16px wide JPEG, blurred and converted to a data URI.
+ * Typical output is 200–400 bytes — negligible in JSON/HTML.
+ */
+async function generateBlurDataUri(imageBuffer: Buffer): Promise<string> {
+  const blurBuffer = await sharp(imageBuffer)
+    .resize(BLUR_WIDTH)
+    .blur(2)
+    .jpeg({ quality: 40 })
+    .toBuffer();
+  return `data:image/jpeg;base64,${blurBuffer.toString("base64")}`;
+}
+
 /* ─── Processing ─── */
 
 /**
- * Process a raw image buffer into thumb + full + original variants.
+ * Process a raw image buffer into thumb + full + original + og variants + blur placeholder.
  *
  * - thumb: 600px WebP (gallery grids)
  * - full: 1600px WebP (lightbox viewing)
  * - original: JPEG 95 for downloads (passthrough if already JPEG)
+ * - og: 1200×630 JPEG for social sharing
+ * - blur: tiny base64 data URI for instant placeholder (~300 bytes)
  *
  * All formats are handled cross-platform by Sharp (EXIF for JPEG/PNG/TIFF/WebP,
  * libheif for HEIC/HIF container rotation). Optional `rotationOverride` forces
@@ -301,26 +320,24 @@ async function processImageVariants(
   // Read EXIF date from original buffer (rotation may strip metadata)
   const takenAt = extractExifDate((await sharp(raw).metadata()).exif);
 
-  const thumb = await sharp(rotated)
-    .resize(THUMB_WIDTH)
-    .webp({ quality: 80 })
-    .toBuffer();
-
-  const full = await sharp(rotated)
-    .resize(FULL_WIDTH)
-    .webp({ quality: 85 })
-    .toBuffer();
+  // Generate all variants in parallel where possible
+  const [thumb, full, blur, originalBuffer, og] = await Promise.all([
+    sharp(rotated).resize(THUMB_WIDTH).webp({ quality: 80 }).toBuffer(),
+    sharp(rotated).resize(FULL_WIDTH).webp({ quality: 85 }).toBuffer(),
+    generateBlurDataUri(rotated),
+    ext === ".jpg" || ext === ".jpeg"
+      ? Promise.resolve(rotated)
+      : sharp(rotated).jpeg({ quality: 95 }).toBuffer(),
+    (async () => {
+      let ogPipeline = await cropToOg(rotated, focalPercent);
+      if (ogOverlay) {
+        ogPipeline = ogPipeline.composite([{ input: buildOgOverlaySvg(ogOverlay) }]);
+      }
+      return ogPipeline.jpeg({ quality: 70, mozjpeg: true }).toBuffer();
+    })(),
+  ]);
 
   const isJpeg = ext === ".jpg" || ext === ".jpeg";
-  const originalBuffer = isJpeg
-    ? rotated
-    : await sharp(rotated).jpeg({ quality: 95 }).toBuffer();
-
-  let ogPipeline = await cropToOg(rotated, focalPercent);
-  if (ogOverlay) {
-    ogPipeline = ogPipeline.composite([{ input: buildOgOverlaySvg(ogOverlay) }]);
-  }
-  const og = await ogPipeline.jpeg({ quality: 70, mozjpeg: true }).toBuffer();
 
   return {
     thumb: { buffer: thumb, contentType: "image/webp", ext: ".webp" },
@@ -334,6 +351,7 @@ async function processImageVariants(
     width,
     height,
     takenAt,
+    blur,
   };
 }
 
@@ -446,8 +464,8 @@ export {
   getMimeType,
   getFileKind,
   isProcessableImage,
-  formatBytes,
   extractExifDate,
+  generateBlurDataUri,
   processImageVariants,
   processToOg,
   processGifThumb,

@@ -1,8 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { useRef, useState, useEffect, memo } from "react";
+import { memo } from "react";
 import { getThumbUrl } from "@/lib/storage";
+import { useLazyImage } from "@/hooks/useLazyImage";
+
 /** Serializable album data passed from the server page */
 type EmbeddedAlbum = {
   slug: string;
@@ -39,26 +41,9 @@ const FillThumb = memo(function FillThumb({
   photoId: string;
   objectPosition?: string;
 }) {
-  const imgRef = useRef<HTMLImageElement>(null);
-  const [loaded, setLoaded] = useState(false);
-  const [errored, setErrored] = useState(false);
   const thumbUrl = getThumbUrl(slug, photoId);
-
-  useEffect(() => {
-    const img = imgRef.current;
-    if (!img) return;
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        if (entry.isIntersecting) {
-          img.src = thumbUrl;
-          observer.disconnect();
-        }
-      },
-      { rootMargin: "200px" }
-    );
-    observer.observe(img);
-    return () => observer.disconnect();
-  }, [thumbUrl]);
+  const { imgRef, loaded, errored, handleLoad, handleError } =
+    useLazyImage(thumbUrl);
 
   if (errored) return null;
 
@@ -67,8 +52,8 @@ const FillThumb = memo(function FillThumb({
     <img
       ref={imgRef}
       alt=""
-      onLoad={() => setLoaded(true)}
-      onError={() => setErrored(true)}
+      onLoad={handleLoad}
+      onError={handleError}
       style={{
         position: "absolute",
         top: 0,

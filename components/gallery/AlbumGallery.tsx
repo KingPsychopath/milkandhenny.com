@@ -1,43 +1,30 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef } from "react";
 import { MasonryGrid } from "./MasonryGrid";
 import { PhotoCard } from "./PhotoCard";
 import type { Photo } from "@/lib/albums";
 import { getThumbUrl, getOriginalUrl } from "@/lib/storage";
+import { fetchBlob, downloadBlob } from "@/lib/download";
 
 type AlbumGalleryProps = {
   albumSlug: string;
   photos: Photo[];
 };
 
-/** Fetch a blob directly from R2 (requires CORS configured on bucket) */
-async function fetchBlob(url: string): Promise<Blob> {
-  const res = await fetch(url, { mode: "cors" });
-  if (!res.ok) throw new Error(`Failed to fetch ${url}`);
-  return res.blob();
-}
-
-/** Trigger a browser download from a blob */
-function downloadBlob(blob: Blob, filename: string) {
-  const href = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = href;
-  a.download = filename;
-  a.click();
-  URL.revokeObjectURL(href);
-}
-
 /** Max photos in a single batch download before showing a warning */
 const BATCH_DOWNLOAD_WARN = 20;
 
 /**
  * Full album gallery with masonry/single toggle, multi-select, and batch download.
+ * Uses shared download utilities with retry support and progress feedback.
  */
 export function AlbumGallery({ albumSlug, photos }: AlbumGalleryProps) {
   const [selectable, setSelectable] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [downloading, setDownloading] = useState(false);
+  const [downloadProgress, setDownloadProgress] = useState<{ done: number; total: number } | null>(null);
+  const abortRef = useRef(false);
 
   const toggleSelect = useCallback((photoId: string) => {
     setSelected((prev) => {
@@ -68,6 +55,7 @@ export function AlbumGallery({ albumSlug, photos }: AlbumGalleryProps) {
     }
 
     setDownloading(true);
+    abortRef.current = false;
 
     try {
       if (selected.size === 1) {
@@ -79,23 +67,37 @@ export function AlbumGallery({ albumSlug, photos }: AlbumGalleryProps) {
 
       const JSZip = (await import("jszip")).default;
       const zip = new JSZip();
+      const ids = Array.from(selected);
+
+      setDownloadProgress({ done: 0, total: ids.length });
 
       /* Fetch all images in parallel — direct from R2, no proxy */
       await Promise.all(
-        Array.from(selected).map(async (id) => {
+        ids.map(async (id) => {
+          if (abortRef.current) return;
           const blob = await fetchBlob(getOriginalUrl(albumSlug, id));
           zip.file(`${id}.jpg`, blob);
+          setDownloadProgress((prev) =>
+            prev ? { ...prev, done: prev.done + 1 } : null
+          );
         })
       );
 
-      const content = await zip.generateAsync({ type: "blob" });
-      downloadBlob(content, `${albumSlug}-photos.zip`);
+      if (!abortRef.current) {
+        const content = await zip.generateAsync({ type: "blob" });
+        downloadBlob(content, `${albumSlug}-photos.zip`);
+      }
     } catch (err) {
       console.error("Download failed:", err);
     } finally {
       setDownloading(false);
+      setDownloadProgress(null);
     }
   }, [selected, albumSlug, downloading]);
+
+  const progressLabel = downloadProgress
+    ? `[ ${downloadProgress.done}/${downloadProgress.total} fetched... ]`
+    : "[ zipping... ]";
 
   return (
     <div>
@@ -114,7 +116,7 @@ export function AlbumGallery({ albumSlug, photos }: AlbumGalleryProps) {
               disabled={downloading}
               className="font-mono text-[11px] text-amber-600 hover:text-amber-500 transition-colors tracking-wide disabled:opacity-50"
             >
-              {downloading ? "[ zipping... ]" : `[ download ${selected.size} ]`}
+              {downloading ? progressLabel : `[ download ${selected.size} ]`}
             </button>
           )}
         </div>

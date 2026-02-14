@@ -119,6 +119,9 @@ export default async function PhotoPage({ params }: Props) {
           height={photo.height}
           prevHref={prevPhoto ? `/pics/${albumSlug}/${prevPhoto.id}` : undefined}
           nextHref={nextPhoto ? `/pics/${albumSlug}/${nextPhoto.id}` : undefined}
+          preloadNext={nextPhoto ? getFullUrl(albumSlug, nextPhoto.id) : undefined}
+          preloadPrev={prevPhoto ? getFullUrl(albumSlug, prevPhoto.id) : undefined}
+          blur={photo.blur}
           actions={
             <BrandedImage
               imageUrl={getFullUrl(albumSlug, photoId)}

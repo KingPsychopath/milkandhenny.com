@@ -3,6 +3,7 @@
 import { useState, useCallback, useRef } from "react";
 import type { FocalPreset } from "@/lib/focal";
 import { focalPresetToPercent } from "@/lib/focal";
+import { fetchImageForCanvas } from "@/lib/download";
 
 /** Supported branded image formats */
 const FORMATS = {
@@ -35,31 +36,6 @@ type BrandedImageState = {
   previewUrl: string | null;
   error: string | null;
 };
-
-/**
- * Load an image for canvas drawing via direct CORS fetch from R2.
- * Uses cache: "no-store" to bypass browser cache that may hold a
- * non-CORS response from the <img> tag on the page.
- */
-async function loadImage(url: string): Promise<HTMLImageElement> {
-  const res = await fetch(url, { mode: "cors", cache: "no-store" });
-  if (!res.ok) throw new Error(`Failed to fetch image: ${res.status}`);
-  const blob = await res.blob();
-  const objectUrl = URL.createObjectURL(blob);
-
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    img.onload = () => {
-      URL.revokeObjectURL(objectUrl);
-      resolve(img);
-    };
-    img.onerror = () => {
-      URL.revokeObjectURL(objectUrl);
-      reject(new Error("Failed to load image"));
-    };
-    img.src = objectUrl;
-  });
-}
 
 /** Resolve focal point to percentages, defaulting to center */
 function getFocalPercent(
@@ -144,7 +120,7 @@ function drawOverlay(
 /** Generate a branded image blob at the specified format */
 async function generateBrandedBlob(config: BrandedImageConfig): Promise<Blob> {
   const { width, height } = FORMATS[config.format];
-  const img = await loadImage(config.imageUrl);
+  const img = await fetchImageForCanvas(config.imageUrl);
   const focal = getFocalPercent(config.focalPoint, config.autoFocal);
 
   const canvas = document.createElement("canvas");

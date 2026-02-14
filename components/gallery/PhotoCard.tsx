@@ -1,7 +1,8 @@
 "use client";
 
-import { useRef, useEffect, useState, memo, useCallback } from "react";
+import { memo, useCallback } from "react";
 import Link from "next/link";
+import { useLazyImage } from "@/hooks/useLazyImage";
 
 type PhotoCardProps = {
   albumSlug: string;
@@ -32,12 +33,9 @@ export const PhotoCard = memo(function PhotoCard({
   selected,
   onSelect,
 }: PhotoCardProps) {
-  const imgRef = useRef<HTMLImageElement>(null);
-  const [loaded, setLoaded] = useState(false);
-  const [errored, setErrored] = useState(false);
+  const { imgRef, loaded, errored, handleLoad, handleError } =
+    useLazyImage(thumbUrl);
 
-  const handleLoad = useCallback(() => setLoaded(true), []);
-  const handleError = useCallback(() => setErrored(true), []);
   const handleSelect = useCallback(
     (e: React.MouseEvent) => {
       if (selectable) {
@@ -47,24 +45,6 @@ export const PhotoCard = memo(function PhotoCard({
     },
     [selectable, onSelect, photoId]
   );
-
-  useEffect(() => {
-    const img = imgRef.current;
-    if (!img) return;
-
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        if (entry.isIntersecting) {
-          img.src = thumbUrl;
-          observer.disconnect();
-        }
-      },
-      { rootMargin: "200px" }
-    );
-
-    observer.observe(img);
-    return () => observer.disconnect();
-  }, [thumbUrl]);
 
   const aspectRatio = height / width;
 
@@ -76,7 +56,7 @@ export const PhotoCard = memo(function PhotoCard({
         style={{ paddingBottom: `${aspectRatio * 100}%` }}
         onClick={handleSelect}
       >
-        {/* Placeholder */}
+        {/* Placeholder — uses blur data URI when available */}
         <div
           className="absolute inset-0 gallery-placeholder"
           style={

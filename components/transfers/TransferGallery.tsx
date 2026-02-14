@@ -6,6 +6,10 @@ import {
   getTransferFullUrl,
   getTransferFileUrl,
 } from "@/lib/storage";
+import { fetchBlob, downloadBlob } from "@/lib/download";
+import { formatBytes } from "@/lib/format";
+import { useLazyImage } from "@/hooks/useLazyImage";
+import { useSwipe } from "@/hooks/useSwipe";
 import type { FileKind } from "@/lib/transfers";
 
 /* ─── Types ─── */
@@ -25,31 +29,8 @@ type TransferGalleryProps = {
   files: TransferFileData[];
 };
 
-/* ─── Utilities ─── */
+/* ─── Icon SVGs for non-visual file types ─── */
 
-async function fetchBlob(url: string): Promise<Blob> {
-  const res = await fetch(url, { mode: "cors" });
-  if (!res.ok) throw new Error(`Failed to fetch ${url}`);
-  return res.blob();
-}
-
-function downloadBlob(blob: Blob, filename: string) {
-  const href = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = href;
-  a.download = filename;
-  a.click();
-  URL.revokeObjectURL(href);
-}
-
-function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-  return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
-}
-
-/** Icon SVGs for non-visual file types */
 function FileIcon({ kind, mimeType }: { kind: FileKind; mimeType: string }) {
   if (kind === "video") {
     return (
@@ -91,6 +72,62 @@ function FileIcon({ kind, mimeType }: { kind: FileKind; mimeType: string }) {
   );
 }
 
+/* ─── Lightbox Content ─── */
+
+function LightboxContent({
+  file,
+  transferId,
+  onError,
+}: {
+  file: TransferFileData;
+  transferId: string;
+  onError: () => void;
+}) {
+  const [loading, setLoading] = useState(true);
+
+  if (file.kind === "video") {
+    return (
+      <video
+        src={getTransferFileUrl(transferId, file.filename)}
+        controls
+        autoPlay
+        className="max-w-full max-h-[80vh] photo-page-fade-in"
+        style={{ objectFit: "contain" }}
+        onClick={(e) => e.stopPropagation()}
+        onLoadedData={() => setLoading(false)}
+        onError={onError}
+      />
+    );
+  }
+
+  const imgSrc =
+    file.kind === "gif"
+      ? getTransferFileUrl(transferId, file.filename)
+      : getTransferFullUrl(transferId, file.id);
+
+  return (
+    <div className="relative" onClick={(e) => e.stopPropagation()}>
+      {loading && (
+        <div className="absolute inset-0 flex items-center justify-center">
+          <span className="font-mono text-[11px] text-white/50 tracking-wide animate-pulse">
+            loading...
+          </span>
+        </div>
+      )}
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={imgSrc}
+        alt={file.filename}
+        className={`max-w-full max-h-[80vh] object-contain transition-opacity duration-300 ${
+          loading ? "opacity-0" : "opacity-100"
+        }`}
+        onLoad={() => setLoading(false)}
+        onError={onError}
+      />
+    </div>
+  );
+}
+
 /* ─── Main Gallery ─── */
 
 /**
@@ -102,10 +139,9 @@ function FileIcon({ kind, mimeType }: { kind: FileKind; mimeType: string }) {
 export function TransferGallery({ transferId, files }: TransferGalleryProps) {
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const [downloading, setDownloading] = useState(false);
+  const [downloadProgress, setDownloadProgress] = useState<{ done: number; total: number } | null>(null);
   const [savingSingle, setSavingSingle] = useState(false);
   const [lightboxError, setLightboxError] = useState(false);
-  const lightboxRef = useRef<HTMLDivElement>(null);
-  const touchRef = useRef<{ x: number; y: number; time: number } | null>(null);
 
   // Split files into visual (gallery) and non-visual (list)
   const visualFiles = files.filter((f) => f.kind === "image" || f.kind === "gif" || f.kind === "video");
@@ -143,33 +179,12 @@ export function TransferGallery({ transferId, files }: TransferGalleryProps) {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [lightboxIndex, closeLightbox, goNext, goPrev]);
 
-  /* Swipe detection */
-  useEffect(() => {
-    const el = lightboxRef.current;
-    if (!el || lightboxIndex === null) return;
-    const SWIPE_MIN = 50, SWIPE_MAX_TIME = 300, SWIPE_MAX_V = 80;
-    const onTouchStart = (e: TouchEvent) => {
-      const t = e.touches[0];
-      touchRef.current = { x: t.clientX, y: t.clientY, time: Date.now() };
-    };
-    const onTouchEnd = (e: TouchEvent) => {
-      if (!touchRef.current) return;
-      const t = e.changedTouches[0];
-      const dx = t.clientX - touchRef.current.x;
-      const dy = t.clientY - touchRef.current.y;
-      const dt = Date.now() - touchRef.current.time;
-      touchRef.current = null;
-      if (dt > SWIPE_MAX_TIME || Math.abs(dy) > SWIPE_MAX_V || Math.abs(dx) < SWIPE_MIN) return;
-      if (dx < 0) goNext();
-      if (dx > 0) goPrev();
-    };
-    el.addEventListener("touchstart", onTouchStart, { passive: true });
-    el.addEventListener("touchend", onTouchEnd, { passive: true });
-    return () => {
-      el.removeEventListener("touchstart", onTouchStart);
-      el.removeEventListener("touchend", onTouchEnd);
-    };
-  }, [lightboxIndex, goNext, goPrev]);
+  /* Swipe detection via shared hook */
+  const swipeRef = useSwipe<HTMLDivElement>({
+    onSwipeLeft: goNext,
+    onSwipeRight: goPrev,
+    enabled: lightboxIndex !== null,
+  });
 
   /* Lock body scroll when lightbox open */
   useEffect(() => {
@@ -194,7 +209,7 @@ export function TransferGallery({ transferId, files }: TransferGalleryProps) {
     [transferId, savingSingle]
   );
 
-  /** Download all files as a zip */
+  /** Download all files as a zip with progress */
   const downloadAll = useCallback(async () => {
     if (downloading || files.length === 0) return;
     setDownloading(true);
@@ -204,24 +219,36 @@ export function TransferGallery({ transferId, files }: TransferGalleryProps) {
         downloadBlob(blob, files[0].filename);
         return;
       }
+
       const JSZip = (await import("jszip")).default;
       const zip = new JSZip();
+      setDownloadProgress({ done: 0, total: files.length });
+
       await Promise.all(
         files.map(async (f) => {
           const blob = await fetchBlob(getTransferFileUrl(transferId, f.filename));
           zip.file(f.filename, blob);
+          setDownloadProgress((prev) =>
+            prev ? { ...prev, done: prev.done + 1 } : null
+          );
         })
       );
+
       const content = await zip.generateAsync({ type: "blob" });
       downloadBlob(content, `transfer-${transferId}.zip`);
     } catch (err) {
       console.error("Download all failed:", err);
     } finally {
       setDownloading(false);
+      setDownloadProgress(null);
     }
   }, [transferId, files, downloading]);
 
   const currentVisual = lightboxIndex !== null ? visualFiles[lightboxIndex] : null;
+
+  const downloadLabel = downloadProgress
+    ? `[ ${downloadProgress.done}/${downloadProgress.total} fetched... ]`
+    : "[ zipping... ]";
 
   return (
     <div>
@@ -235,7 +262,7 @@ export function TransferGallery({ transferId, files }: TransferGalleryProps) {
           disabled={downloading}
           className="font-mono text-[11px] text-amber-600 hover:text-amber-500 transition-colors tracking-wide disabled:opacity-50"
         >
-          {downloading ? "[ zipping... ]" : "[ download all ]"}
+          {downloading ? downloadLabel : "[ download all ]"}
         </button>
       </div>
 
@@ -277,7 +304,7 @@ export function TransferGallery({ transferId, files }: TransferGalleryProps) {
       {/* Lightbox (images, GIFs, videos) */}
       {currentVisual && lightboxIndex !== null && (
         <div
-          ref={lightboxRef}
+          ref={swipeRef}
           className="fixed inset-0 z-50 bg-black/90 flex flex-col items-center justify-center touch-pan-y"
           onClick={closeLightbox}
         >
@@ -289,7 +316,7 @@ export function TransferGallery({ transferId, files }: TransferGalleryProps) {
             ✕
           </button>
 
-          {/* Media — only the media itself stops propagation, not the surrounding area */}
+          {/* Media content with loading state */}
           <div className="flex items-center justify-center px-4" style={{ maxWidth: "80vw", maxHeight: "80vh" }}>
             {lightboxError ? (
               <div className="flex flex-col items-center justify-center gap-4 py-20" onClick={(e) => e.stopPropagation()}>
@@ -309,32 +336,10 @@ export function TransferGallery({ transferId, files }: TransferGalleryProps) {
                   [ try downloading instead ]
                 </button>
               </div>
-            ) : currentVisual.kind === "video" ? (
-              <video
-                src={getTransferFileUrl(transferId, currentVisual.filename)}
-                controls
-                autoPlay
-                className="max-w-full max-h-[80vh] photo-page-fade-in"
-                style={{ objectFit: "contain" }}
-                onClick={(e) => e.stopPropagation()}
-                onError={() => setLightboxError(true)}
-              />
-            ) : currentVisual.kind === "gif" ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={getTransferFileUrl(transferId, currentVisual.filename)}
-                alt={currentVisual.filename}
-                className="max-w-full max-h-[80vh] object-contain photo-page-fade-in"
-                onClick={(e) => e.stopPropagation()}
-                onError={() => setLightboxError(true)}
-              />
             ) : (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={getTransferFullUrl(transferId, currentVisual.id)}
-                alt={currentVisual.filename}
-                className="max-w-full max-h-[80vh] object-contain photo-page-fade-in"
-                onClick={(e) => e.stopPropagation()}
+              <LightboxContent
+                file={currentVisual}
+                transferId={transferId}
                 onError={() => setLightboxError(true)}
               />
             )}
@@ -407,30 +412,13 @@ const VisualCard = memo(function VisualCard({
   file: TransferFileData;
   onClick: () => void;
 }) {
-  const imgRef = useRef<HTMLImageElement>(null);
-  const [loaded, setLoaded] = useState(false);
-  const [errored, setErrored] = useState(false);
-
   // Images and GIFs have thumbnails; videos get a placeholder
   const hasThumbnail = file.kind === "image" || file.kind === "gif";
   const thumbUrl = hasThumbnail ? getTransferThumbUrl(transferId, file.id) : "";
   const aspectRatio = (file.width && file.height) ? file.height / file.width : 9 / 16;
 
-  useEffect(() => {
-    const img = imgRef.current;
-    if (!img || !hasThumbnail) return;
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        if (entry.isIntersecting) {
-          img.src = thumbUrl;
-          observer.disconnect();
-        }
-      },
-      { rootMargin: "200px" }
-    );
-    observer.observe(img);
-    return () => observer.disconnect();
-  }, [thumbUrl, hasThumbnail]);
+  const { imgRef, loaded, errored, handleLoad, handleError } =
+    useLazyImage(thumbUrl);
 
   return (
     <div className="gallery-card group">
@@ -448,8 +436,8 @@ const VisualCard = memo(function VisualCard({
             alt={file.filename}
             width={file.width}
             height={file.height}
-            onLoad={() => setLoaded(true)}
-            onError={() => setErrored(true)}
+            onLoad={handleLoad}
+            onError={handleError}
             className={`absolute inset-0 w-full h-full object-cover transition-opacity duration-300 ${
               loaded ? "opacity-100" : "opacity-0"
             }`}
