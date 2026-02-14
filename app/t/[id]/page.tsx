@@ -22,10 +22,24 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     return { title: `Transfer Not Found — ${SITE_NAME}` };
   }
 
+  const description = `${transfer.files.length} files shared via ${SITE_NAME}`;
+
   return {
     title: `${transfer.title} — ${SITE_NAME}`,
-    description: `${transfer.files.length} files shared via ${SITE_NAME}`,
+    description,
     robots: { index: false, follow: false },
+    openGraph: {
+      title: `${transfer.title} — ${SITE_NAME}`,
+      description,
+      url: `/t/${id}`,
+      siteName: SITE_NAME,
+      type: "website",
+    },
+    twitter: {
+      card: "summary_large_image",
+      title: `${transfer.title} — ${SITE_NAME}`,
+      description,
+    },
   };
 }
 

@@ -129,6 +129,8 @@ Backfill skips photos that already have og variants. Use `--force` to regenerate
 
 **Vercel hobby limits:** OG images are pre-built JPGs served from R2 — zero runtime serverless invocations, no `ImageResponse` overhead. Build time fetches the og URL per album/photo page (one R2 GET each), but that's a one-time cost per deploy.
 
+**Transfer OG image** (`/t/[id]/opengraph-image`): Unlike albums, transfer metadata lives in Redis so there’s no build-time manifest. The transfer OG image is **generated at request time** when a crawler or share dialog first hits the image URL: one serverless run per transfer ID, then cached for 24h (`Cache-Control: public, s-maxage=86400`). Cost is low unless you have very high share volume. To use the default site OG image instead and avoid any runtime cost, remove `app/t/[id]/opengraph-image.tsx`.
+
 ### Image rotation & HEIC/HIF handling
 
 Portrait photos from cameras and phones often store pixel data in landscape orientation with a rotation instruction telling viewers how to display them. Where that rotation lives depends on the format:
@@ -365,6 +367,7 @@ All editorial content is statically generated at deploy — no server hit per re
 | Page | Rendering | Cache headers | Rationale |
 |------|-----------|---------------|-----------|
 | `/t/[id]` (transfers) | `force-dynamic` (reads Redis) | `CDN-Cache-Control: s-maxage=60, stale-while-revalidate=300` + `Cache-Control: no-cache` | CDN edge caches for 60s (saves KV reads), browser always revalidates (countdown timer needs fresh data). After admin takedown, stale may serve up to 60s but R2 files are already deleted. |
+| `/t/[id]/opengraph-image` | `force-dynamic` (reads Redis for transfer title/count) | `Cache-Control: public, s-maxage=86400, max-age=86400` | Generated on first request per transfer ID, then cached 24h. One serverless run per new shared link; remove the file to fall back to default site OG and avoid runtime cost. |
 | `/api/cron/cleanup-transfers` | `force-dynamic` | None (cron-only) | Runs daily via Vercel cron, no caching needed |
 
 ### API routes (no caching)
