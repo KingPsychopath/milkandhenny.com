@@ -7,6 +7,7 @@ import { BASE_URL } from "@/lib/config";
 import { PhotoViewer } from "@/components/gallery/PhotoViewer";
 import { Breadcrumbs } from "@/components/Breadcrumbs";
 import { Share } from "@/components/Share";
+import { ShareStory } from "@/components/ShareStory";
 
 type Props = {
   params: Promise<{ album: string; photo: string }>;
@@ -99,6 +100,15 @@ export default async function PhotoPage({ params }: Props) {
             <span className="font-mono text-xs theme-muted tabular-nums">
               {photoIndex + 1} / {album.photos.length}
             </span>
+            <span className="font-mono text-[11px] theme-faint">·</span>
+            <ShareStory
+              imageUrl={getFullUrl(albumSlug, photoId)}
+              albumTitle={album.title}
+              photoId={photoId}
+              focalPoint={photo.focalPoint}
+              autoFocal={photo.autoFocal}
+            />
+            <span className="font-mono text-[11px] theme-faint">·</span>
             <Share
               url={`${BASE_URL}/pics/${albumSlug}/${photoId}`}
               title={`${album.title} — ${photoId}`}
