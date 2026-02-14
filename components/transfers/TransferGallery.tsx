@@ -142,6 +142,7 @@ export function TransferGallery({ transferId, files }: TransferGalleryProps) {
   const [downloadProgress, setDownloadProgress] = useState<{ done: number; total: number } | null>(null);
   const [savingSingle, setSavingSingle] = useState(false);
   const [lightboxError, setLightboxError] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
 
   // Split files into visual (gallery) and non-visual (list)
   const visualFiles = files.filter((f) => f.kind === "image" || f.kind === "gif" || f.kind === "video");
@@ -209,40 +210,76 @@ export function TransferGallery({ transferId, files }: TransferGalleryProps) {
     [transferId, savingSingle]
   );
 
-  /** Download all files as a zip with progress */
-  const downloadAll = useCallback(async () => {
-    if (downloading || files.length === 0) return;
-    setDownloading(true);
-    try {
-      if (files.length === 1) {
-        const blob = await fetchBlob(getTransferFileUrl(transferId, files[0].filename));
-        downloadBlob(blob, files[0].filename);
-        return;
+  /** Download a subset of files (zip or single) */
+  const downloadFiles = useCallback(
+    async (filesToDownload: TransferFileData[]) => {
+      if (downloading || filesToDownload.length === 0) return;
+      setDownloading(true);
+      try {
+        if (filesToDownload.length === 1) {
+          const blob = await fetchBlob(getTransferFileUrl(transferId, filesToDownload[0].filename));
+          downloadBlob(blob, filesToDownload[0].filename);
+          return;
+        }
+
+        const JSZip = (await import("jszip")).default;
+        const zip = new JSZip();
+        setDownloadProgress({ done: 0, total: filesToDownload.length });
+
+        await Promise.all(
+          filesToDownload.map(async (f) => {
+            const blob = await fetchBlob(getTransferFileUrl(transferId, f.filename));
+            zip.file(f.filename, blob);
+            setDownloadProgress((prev) =>
+              prev ? { ...prev, done: prev.done + 1 } : null
+            );
+          })
+        );
+
+        const content = await zip.generateAsync({ type: "blob" });
+        downloadBlob(content, `transfer-${transferId}-selected.zip`);
+      } catch (err) {
+        console.error("Download failed:", err);
+      } finally {
+        setDownloading(false);
+        setDownloadProgress(null);
       }
+    },
+    [transferId, downloading]
+  );
 
-      const JSZip = (await import("jszip")).default;
-      const zip = new JSZip();
-      setDownloadProgress({ done: 0, total: files.length });
+  /** Download all files as a zip with progress */
+  const downloadAll = useCallback(() => {
+    if (files.length === 0) return;
+    downloadFiles(files);
+  }, [files, downloadFiles]);
 
-      await Promise.all(
-        files.map(async (f) => {
-          const blob = await fetchBlob(getTransferFileUrl(transferId, f.filename));
-          zip.file(f.filename, blob);
-          setDownloadProgress((prev) =>
-            prev ? { ...prev, done: prev.done + 1 } : null
-          );
-        })
-      );
+  /** Download only selected files */
+  const downloadSelected = useCallback(() => {
+    const selected = files.filter((f) => selectedIds.has(f.id));
+    if (selected.length === 0) return;
+    downloadFiles(selected);
+  }, [files, selectedIds, downloadFiles]);
 
-      const content = await zip.generateAsync({ type: "blob" });
-      downloadBlob(content, `transfer-${transferId}.zip`);
-    } catch (err) {
-      console.error("Download all failed:", err);
-    } finally {
-      setDownloading(false);
-      setDownloadProgress(null);
-    }
-  }, [transferId, files, downloading]);
+  const toggleSelection = useCallback((id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
+
+  const selectAll = useCallback(() => {
+    setSelectedIds(new Set(files.map((f) => f.id)));
+  }, [files]);
+
+  const clearSelection = useCallback(() => {
+    setSelectedIds(new Set());
+  }, []);
+
+  const selectedCount = selectedIds.size;
+  const allSelected = files.length > 0 && selectedCount === files.length;
 
   const currentVisual = lightboxIndex !== null ? visualFiles[lightboxIndex] : null;
 
@@ -253,17 +290,50 @@ export function TransferGallery({ transferId, files }: TransferGalleryProps) {
   return (
     <div>
       {/* Toolbar */}
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex flex-wrap items-center justify-between gap-2 mb-6">
         <span className="font-mono text-[11px] theme-muted tracking-wide">
-          {files.length} {files.length === 1 ? "file" : "files"}
+          {selectedCount > 0
+            ? `${selectedCount} of ${files.length} selected`
+            : `${files.length} ${files.length === 1 ? "file" : "files"}`}
         </span>
-        <button
-          onClick={downloadAll}
-          disabled={downloading}
-          className="font-mono text-[11px] text-amber-600 hover:text-amber-500 transition-colors tracking-wide disabled:opacity-50"
-        >
-          {downloading ? downloadLabel : "[ download all ]"}
-        </button>
+        <div className="flex items-center gap-3 font-mono text-[11px] tracking-wide">
+          {selectedCount > 0 && (
+            <>
+              <button
+                onClick={clearSelection}
+                className="theme-muted hover:text-foreground transition-colors"
+              >
+                [ clear ]
+              </button>
+              <button
+                onClick={downloadSelected}
+                disabled={downloading}
+                className="text-amber-600 hover:text-amber-500 transition-colors disabled:opacity-50"
+              >
+                {downloading && downloadProgress && downloadProgress.total === selectedCount
+                  ? downloadLabel
+                  : "[ download selected ]"}
+              </button>
+            </>
+          )}
+          {!allSelected && files.length > 1 && (
+            <button
+              onClick={selectAll}
+              className="theme-muted hover:text-foreground transition-colors"
+            >
+              [ select all ]
+            </button>
+          )}
+          <button
+            onClick={downloadAll}
+            disabled={downloading}
+            className="text-amber-600 hover:text-amber-500 transition-colors disabled:opacity-50"
+          >
+            {downloading && (!downloadProgress || downloadProgress.total === files.length)
+              ? downloadLabel
+              : "[ download all ]"}
+          </button>
+        </div>
       </div>
 
       {/* Visual media grid (images, GIFs, videos) */}
@@ -274,6 +344,8 @@ export function TransferGallery({ transferId, files }: TransferGalleryProps) {
               key={file.id}
               transferId={transferId}
               file={file}
+              isSelected={selectedIds.has(file.id)}
+              onToggleSelect={() => toggleSelection(file.id)}
               onClick={() => openLightbox(index)}
             />
           ))}
@@ -294,6 +366,8 @@ export function TransferGallery({ transferId, files }: TransferGalleryProps) {
                 key={file.id}
                 transferId={transferId}
                 file={file}
+                isSelected={selectedIds.has(file.id)}
+                onToggleSelect={() => toggleSelection(file.id)}
                 onDownload={() => downloadSingle(file)}
               />
             ))}
@@ -406,10 +480,14 @@ function BrokenImageFallback({ filename }: { filename: string }) {
 const VisualCard = memo(function VisualCard({
   transferId,
   file,
+  isSelected,
+  onToggleSelect,
   onClick,
 }: {
   transferId: string;
   file: TransferFileData;
+  isSelected: boolean;
+  onToggleSelect: () => void;
   onClick: () => void;
 }) {
   // Images and GIFs have thumbnails; videos get a placeholder
@@ -421,11 +499,49 @@ const VisualCard = memo(function VisualCard({
 
   return (
     <div className="gallery-card group">
-      <button
+      <div
+        role="button"
+        tabIndex={0}
         onClick={onClick}
-        className="block relative overflow-hidden rounded-sm w-full text-left"
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            onClick();
+          }
+        }}
+        className="block relative overflow-hidden rounded-sm w-full text-left cursor-pointer"
         style={{ paddingBottom: `${aspectRatio * 100}%` }}
       >
+        {/* Selection checkbox — stop propagation so card click opens lightbox */}
+        <div
+          className="absolute top-2 left-2 z-10"
+          onClick={(e) => e.stopPropagation()}
+          role="none"
+        >
+          <button
+            type="button"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              onToggleSelect();
+            }}
+            aria-label={isSelected ? "Deselect" : "Select for download"}
+            className={`flex items-center justify-center w-6 h-6 rounded border transition-colors ${
+              isSelected
+                ? "bg-amber-500 border-amber-500 text-white"
+                : "bg-black/30 border-white/40 text-transparent hover:border-white/70 hover:text-white/70"
+            }`}
+          >
+            {isSelected ? (
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="20 6 9 17 4 12" />
+              </svg>
+            ) : (
+              <span className="text-xs">✓</span>
+            )}
+          </button>
+        </div>
+
         <div className="absolute inset-0 gallery-placeholder" />
 
         {hasThumbnail && !errored ? (
@@ -478,7 +594,7 @@ const VisualCard = memo(function VisualCard({
         )}
 
         <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors duration-200" />
-      </button>
+      </div>
     </div>
   );
 });
@@ -488,16 +604,42 @@ const VisualCard = memo(function VisualCard({
 function FileCard({
   transferId,
   file,
+  isSelected,
+  onToggleSelect,
   onDownload,
 }: {
   transferId: string;
   file: TransferFileData;
+  isSelected: boolean;
+  onToggleSelect: () => void;
   onDownload: () => void;
 }) {
+  const checkbox = (
+    <button
+      type="button"
+      onClick={onToggleSelect}
+      aria-label={isSelected ? "Deselect" : "Select for download"}
+      className={`flex items-center justify-center w-5 h-5 rounded border shrink-0 transition-colors ${
+        isSelected
+          ? "bg-amber-500 border-amber-500 text-white"
+          : "theme-border theme-muted hover:text-foreground"
+      }`}
+    >
+      {isSelected ? (
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+          <polyline points="20 6 9 17 4 12" />
+        </svg>
+      ) : (
+        <span className="text-[10px]">✓</span>
+      )}
+    </button>
+  );
+
   // Inline audio player
   if (file.kind === "audio") {
     return (
       <div className="flex items-center gap-4 p-3 rounded-sm border theme-border group">
+        {checkbox}
         <div className="theme-muted">
           <FileIcon kind={file.kind} mimeType={file.mimeType} />
         </div>
@@ -526,6 +668,7 @@ function FileCard({
   // Generic file card
   return (
     <div className="flex items-center gap-4 p-3 rounded-sm border theme-border group">
+      {checkbox}
       <div className="theme-muted">
         <FileIcon kind={file.kind} mimeType={file.mimeType} />
       </div>

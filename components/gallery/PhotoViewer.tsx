@@ -90,27 +90,37 @@ export function PhotoViewer({
     onSwipeRight: prevHref ? () => router.push(prevHref) : undefined,
   });
 
-  /* ── Preload adjacent images ── */
+  /* ── Preload adjacent images (foolproof: prefetch link + Image() so cache is warm) ── */
   useEffect(() => {
-    if (preloadNext) {
-      const link = document.createElement("link");
-      link.rel = "prefetch";
-      link.as = "image";
-      link.href = preloadNext;
-      document.head.appendChild(link);
-      return () => { document.head.removeChild(link); };
-    }
+    if (!preloadNext) return;
+
+    const link = document.createElement("link");
+    link.rel = "prefetch";
+    link.as = "image";
+    link.href = preloadNext;
+    document.head.appendChild(link);
+
+    (new Image()).src = preloadNext;
+
+    return () => {
+      if (link.parentNode) link.parentNode.removeChild(link);
+    };
   }, [preloadNext]);
 
   useEffect(() => {
-    if (preloadPrev) {
-      const link = document.createElement("link");
-      link.rel = "prefetch";
-      link.as = "image";
-      link.href = preloadPrev;
-      document.head.appendChild(link);
-      return () => { document.head.removeChild(link); };
-    }
+    if (!preloadPrev) return;
+
+    const link = document.createElement("link");
+    link.rel = "prefetch";
+    link.as = "image";
+    link.href = preloadPrev;
+    document.head.appendChild(link);
+
+    (new Image()).src = preloadPrev;
+
+    return () => {
+      if (link.parentNode) link.parentNode.removeChild(link);
+    };
   }, [preloadPrev]);
 
   /** Mark the image as loaded and kill pending skeleton timers */
