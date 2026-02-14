@@ -37,39 +37,14 @@ type BrandedImageState = {
 };
 
 /**
- * Convert an R2 URL to a same-origin proxy path.
- * Fallback for when R2 doesn't return CORS headers (e.g. localhost).
+ * Load an image for canvas drawing via direct CORS fetch from R2.
+ * Uses cache: "no-store" to bypass browser cache that may hold a
+ * non-CORS response from the <img> tag on the page.
  */
-function toProxyUrl(url: string): string {
-  const r2Base = process.env.NEXT_PUBLIC_R2_PUBLIC_URL ?? "";
-  if (r2Base && url.startsWith(r2Base)) {
-    return "/_img" + url.slice(r2Base.length);
-  }
-  return url;
-}
-
-/** Fetch image as blob, trying direct first then falling back to proxy */
-async function fetchImageBlob(url: string): Promise<Blob> {
-  // Try direct fetch first — works when R2 has CORS configured (production).
-  // Goes straight R2 → browser, no Vercel bandwidth used.
-  try {
-    const res = await fetch(url, { mode: "cors" });
-    if (res.ok) return res.blob();
-  } catch {
-    // CORS blocked — fall through to proxy
-  }
-
-  // Fallback: same-origin proxy via Next.js rewrite (/_img/...).
-  // Routes through Vercel edge, uses bandwidth, but always works.
-  const proxyUrl = toProxyUrl(url);
-  const res = await fetch(proxyUrl);
-  if (!res.ok) throw new Error(`Failed to fetch image: ${res.status}`);
-  return res.blob();
-}
-
-/** Load an image for canvas drawing, with direct → proxy fallback */
 async function loadImage(url: string): Promise<HTMLImageElement> {
-  const blob = await fetchImageBlob(url);
+  const res = await fetch(url, { mode: "cors", cache: "no-store" });
+  if (!res.ok) throw new Error(`Failed to fetch image: ${res.status}`);
+  const blob = await res.blob();
   const objectUrl = URL.createObjectURL(blob);
 
   return new Promise((resolve, reject) => {

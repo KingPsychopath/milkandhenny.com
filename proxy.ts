@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 
 /**
- * Middleware for transfer page caching.
+ * Proxy for transfer page caching.
  *
  * Transfer content never changes after upload, so we cache the
  * server-rendered page at Vercel's CDN edge for 60s with a 5-min
@@ -19,7 +19,7 @@ import type { NextRequest } from 'next/server';
  *
  * Cost: $0 — CDN caching is included in Vercel Hobby.
  */
-export function middleware(request: NextRequest) {
+export function proxy(request: NextRequest) {
   const response = NextResponse.next();
 
   if (request.nextUrl.pathname.startsWith('/t/')) {

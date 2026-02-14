@@ -75,7 +75,7 @@ const FORMAT_OPTIONS = [
  * branded image with the overlay client-side, then shows a frame preview.
  *
  * Frame preview actions:
- * - Mobile: "share" (native share sheet) + "copy image" + "download" + "close"
+ * - Mobile: "share" (native share sheet) + "download" + "close"
  * - Desktop: "copy image" + "download" + "close"
  */
 export function BrandedImage({
@@ -285,22 +285,25 @@ export function BrandedImage({
                   />
                 </div>
 
-                {/* Frame preview actions */}
+                {/* Frame preview actions
+                    Mobile: share (native sheet) + download + close
+                    Desktop: copy image + download + close */}
                 <div className="flex items-center gap-6 font-mono text-[11px] tracking-wide">
-                  {isMobile && (
+                  {isMobile ? (
                     <button
                       onClick={handleShare}
                       className="text-white hover:text-amber-400 transition-colors"
                     >
                       share
                     </button>
+                  ) : (
+                    <button
+                      onClick={handleCopy}
+                      className="text-white hover:text-amber-400 transition-colors"
+                    >
+                      {copied ? "copied" : "copy image"}
+                    </button>
                   )}
-                  <button
-                    onClick={handleCopy}
-                    className="text-white hover:text-amber-400 transition-colors"
-                  >
-                    {copied ? "copied" : "copy image"}
-                  </button>
                   <button
                     onClick={handleDownload}
                     className="text-white hover:text-amber-400 transition-colors"
