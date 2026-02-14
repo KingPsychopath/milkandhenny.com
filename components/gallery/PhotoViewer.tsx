@@ -45,7 +45,12 @@ export function PhotoViewer({
   const [saving, setSaving] = useState(false);
   const [showHint, setShowHint] = useState(false);
   const [imageLoaded, setImageLoaded] = useState(false);
+  const [showSkeleton, setShowSkeleton] = useState(false);
+  const [showLoadingText, setShowLoadingText] = useState(false);
   const savingRef = useRef(false);
+  const imgRef = useRef<HTMLImageElement>(null);
+  const skeletonTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const loadingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   /* ── Keyboard navigation ── */
   const handleKeyDown = useCallback(
@@ -108,10 +113,40 @@ export function PhotoViewer({
     }
   }, [preloadPrev]);
 
+  /** Mark the image as loaded and kill pending skeleton timers */
+  const markLoaded = useCallback(() => {
+    setImageLoaded(true);
+    setShowSkeleton(false);
+    setShowLoadingText(false);
+    if (skeletonTimerRef.current) clearTimeout(skeletonTimerRef.current);
+    if (loadingTimerRef.current) clearTimeout(loadingTimerRef.current);
+  }, []);
+
   /* ── Reset loaded state when src changes ── */
   useEffect(() => {
+    // If the image is already complete (cached / fast hydration), skip skeleton entirely
+    const img = imgRef.current;
+    if (img?.complete && img.naturalWidth > 0) {
+      markLoaded();
+      return;
+    }
+
     setImageLoaded(false);
-  }, [src]);
+    setShowSkeleton(false);
+    setShowLoadingText(false);
+
+    // Staggered reveal: skeleton after 150ms, loading text after 400ms.
+    // Cached/prefetched images load in <100ms so neither ever appears.
+    if (skeletonTimerRef.current) clearTimeout(skeletonTimerRef.current);
+    if (loadingTimerRef.current) clearTimeout(loadingTimerRef.current);
+    skeletonTimerRef.current = setTimeout(() => setShowSkeleton(true), 150);
+    loadingTimerRef.current = setTimeout(() => setShowLoadingText(true), 400);
+
+    return () => {
+      if (skeletonTimerRef.current) clearTimeout(skeletonTimerRef.current);
+      if (loadingTimerRef.current) clearTimeout(loadingTimerRef.current);
+    };
+  }, [src, markLoaded]);
 
   /** Fetch blob directly from R2 and trigger download */
   const handleDownload = useCallback(async () => {
@@ -140,41 +175,61 @@ export function PhotoViewer({
           isPortrait ? "max-w-md" : "max-w-full"
         }`}
       >
-        {/* Blur placeholder — shown behind image until it loads */}
-        {blur && !imageLoaded && (
-          <div
-            className="absolute inset-0 rounded-sm"
-            style={{
-              backgroundImage: `url(${blur})`,
-              backgroundSize: "cover",
-              backgroundPosition: "center",
-              filter: "blur(20px)",
-              transform: "scale(1.1)",
-            }}
+        {/* Shared sizing wrapper — width uses min() to pick the smaller of
+            full-width or the width derived from 80vh at the image's ratio.
+            This keeps the border pixel-aligned with the image under both
+            the width constraint and the height constraint. */}
+        <div
+          className="relative mx-auto rounded-sm overflow-hidden"
+          style={{
+            aspectRatio: `${width} / ${height}`,
+            maxHeight: "80vh",
+            width: `min(100%, calc(80vh * ${width} / ${height}))`,
+          }}
+        >
+          {/* Skeleton frame — delayed 150ms so cached images never flash it */}
+          {!imageLoaded && showSkeleton && (
+            <div
+              className={`absolute inset-0 flex items-center justify-center ${
+                showLoadingText ? "animate-pulse" : ""
+              }`}
+            >
+              {blur ? (
+                <div
+                  className="absolute inset-0"
+                  style={{
+                    backgroundImage: `url(${blur})`,
+                    backgroundSize: "cover",
+                    backgroundPosition: "center",
+                    filter: "blur(20px)",
+                    transform: "scale(1.1)",
+                  }}
+                />
+              ) : (
+                <div className="absolute inset-0 border theme-border rounded-sm" />
+              )}
+
+              {showLoadingText && (
+                <span className="relative z-10 font-mono text-[11px] theme-muted tracking-wide">
+                  loading...
+                </span>
+              )}
+            </div>
+          )}
+
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            ref={imgRef}
+            src={src}
+            alt={`Full size photo — ${filename}`}
+            width={width}
+            height={height}
+            onLoad={markLoaded}
+            className={`w-full h-full object-contain rounded-sm ${
+              imageLoaded ? "photo-page-fade-in" : "opacity-0"
+            }`}
           />
-        )}
-
-        {/* Loading indicator — shown when no blur and image hasn't loaded */}
-        {!blur && !imageLoaded && (
-          <div className="absolute inset-0 flex items-center justify-center">
-            <span className="font-mono text-[11px] theme-muted tracking-wide animate-pulse">
-              loading...
-            </span>
-          </div>
-        )}
-
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src={src}
-          alt={`Full size photo — ${filename}`}
-          width={width}
-          height={height}
-          onLoad={() => setImageLoaded(true)}
-          className={`w-full h-auto rounded-sm transition-opacity duration-500 ${
-            imageLoaded ? "opacity-100" : "opacity-0"
-          }`}
-          style={{ maxHeight: "80vh", objectFit: "contain" }}
-        />
+        </div>
 
         {/* Swipe hint — shown once on first visit, touch devices only */}
         {showHint && (

@@ -1,7 +1,5 @@
 import { ImageResponse } from 'next/og';
 
-export const runtime = 'edge';
-
 export const alt = 'milk & henny — thoughts, stories, and things worth sharing';
 export const size = {
   width: 1200,
