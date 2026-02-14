@@ -7,7 +7,7 @@ import { BASE_URL } from "@/lib/config";
 import { PhotoViewer } from "@/components/gallery/PhotoViewer";
 import { Breadcrumbs } from "@/components/Breadcrumbs";
 import { Share } from "@/components/Share";
-import { BrandedImage } from "@/components/ShareStory";
+import { BrandedImage } from "@/components/BrandedImage";
 
 type Props = {
   params: Promise<{ album: string; photo: string }>;

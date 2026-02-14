@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
-import { useBrandedImage, type BrandedFormat } from "@/hooks/useStoryImage";
+import { useBrandedImage, type BrandedFormat } from "@/hooks/useBrandedImage";
 import type { FocalPreset } from "@/lib/focal";
 
 type BrandedImageProps = {
@@ -72,10 +72,11 @@ const FORMAT_OPTIONS = [
 /**
  * "Frame" button — sits next to download in the photo viewer.
  * Lets user pick portrait (story) or landscape (post), generates a
- * branded image with the overlay client-side, then shows a preview.
+ * branded image with the overlay client-side, then shows a frame preview.
  *
- * - Mobile preview: "share" (native share sheet) + "download" + "close"
- * - Desktop preview: "copy image" + "download" + "close"
+ * Frame preview actions:
+ * - Mobile: "share" (native share sheet) + "copy image" + "download" + "close"
+ * - Desktop: "copy image" + "download" + "close"
  */
 export function BrandedImage({
   imageUrl,
@@ -89,12 +90,17 @@ export function BrandedImage({
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
   const [copied, setCopied] = useState(false);
-  const [canNativeShare, setCanNativeShare] = useState(false);
+  const [isMobile, setIsMobile] = useState(false);
   const [activeFormat, setActiveFormat] = useState<BrandedFormat>("portrait");
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    setCanNativeShare(typeof navigator.share === "function");
+    // Only treat as mobile when on an actual mobile device with share support.
+    // Desktop Safari exposes navigator.share but it's not useful here.
+    setIsMobile(
+      typeof navigator.share === "function" &&
+        /Android|iPhone|iPad|iPod/i.test(navigator.userAgent)
+    );
   }, []);
 
   useEffect(() => {
@@ -132,7 +138,7 @@ export function BrandedImage({
         autoFocal,
       });
 
-      // Always show preview so user sees the result before sharing
+      // Always show frame preview so user sees the result before acting
       setShowPreview(true);
     },
     [generate, imageUrl, albumTitle, photoId, focalPoint, autoFocal]
@@ -173,7 +179,7 @@ export function BrandedImage({
     cleanup();
   }, [cleanup]);
 
-  // Close preview on Escape
+  // Close frame preview on Escape
   useEffect(() => {
     if (!showPreview) return;
     const onKey = (e: KeyboardEvent) => {
@@ -233,14 +239,14 @@ export function BrandedImage({
         )}
       </div>
 
-      {/* Preview overlay — always shown after generation */}
+      {/* Frame preview — always shown after generation */}
       {showPreview && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm"
           onClick={handleClose}
           role="dialog"
           aria-modal="true"
-          aria-label="Framed image preview"
+          aria-label="Frame preview"
         >
           <div
             className="relative flex flex-col items-center gap-4 p-4"
@@ -281,7 +287,7 @@ export function BrandedImage({
 
                 {/* Frame preview actions */}
                 <div className="flex items-center gap-6 font-mono text-[11px] tracking-wide">
-                  {canNativeShare && (
+                  {isMobile && (
                     <button
                       onClick={handleShare}
                       className="text-white hover:text-amber-400 transition-colors"
