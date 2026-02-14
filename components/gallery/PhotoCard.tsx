@@ -19,7 +19,10 @@ type PhotoCardProps = {
 
 /**
  * A single photo in the gallery grid.
- * Lazy-loads with intersection observer and shows a placeholder until ready.
+ * Uses native `loading="lazy"` + `decoding="async"` — the browser handles
+ * viewport-based loading with smart heuristics (connection speed, data saver,
+ * distance from viewport) which outperforms a manual IntersectionObserver
+ * at scale (100+ photos per album).
  * Memoized to prevent re-renders when sibling cards change selection state.
  */
 export const PhotoCard = memo(function PhotoCard({
@@ -33,8 +36,7 @@ export const PhotoCard = memo(function PhotoCard({
   selected,
   onSelect,
 }: PhotoCardProps) {
-  const { imgRef, loaded, errored, handleLoad, handleError } =
-    useLazyImage(thumbUrl);
+  const { loaded, errored, handleLoad, handleError } = useLazyImage();
 
   const handleSelect = useCallback(
     (e: React.MouseEvent) => {
@@ -70,10 +72,13 @@ export const PhotoCard = memo(function PhotoCard({
         {!errored && (
           // eslint-disable-next-line @next/next/no-img-element
           <img
-            ref={imgRef}
+            src={thumbUrl}
             alt={`Photo ${photoId} from album`}
             width={width}
             height={height}
+            loading="lazy"
+            decoding="async"
+            sizes="(min-width: 768px) 33vw, 50vw"
             onLoad={handleLoad}
             onError={handleError}
             className={`absolute inset-0 w-full h-full object-cover transition-opacity duration-300 ${

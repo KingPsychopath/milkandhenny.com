@@ -1,4 +1,4 @@
-import { getRedis } from './redis';
+import { getRedis } from '../redis';
 import { Guest } from './types';
 
 const GUEST_LIST_KEY = 'guest:list';

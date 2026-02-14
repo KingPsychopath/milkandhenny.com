@@ -1,8 +1,9 @@
 import type { Metadata } from "next";
+import { SITE_NAME } from "@/lib/config";
 
 export const metadata: Metadata = {
-  title: "Milk & Henny — First Ever Birthday",
-  description: "The party hub for Milk & Henny's first ever birthday",
+  title: `${SITE_NAME} — First Ever Birthday`,
+  description: `The party hub for ${SITE_NAME}'s first ever birthday`,
 };
 
 export default function PartyLayout({

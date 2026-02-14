@@ -26,7 +26,7 @@ import {
   type FocalPreset,
   isValidFocalPreset,
   focalPresetToPercent,
-} from "../lib/focal";
+} from "../lib/media/focal";
 import { detectFocal, type DetectionStrategy } from "./face-detect";
 
 /* ─── Constants ─── */

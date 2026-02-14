@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { SITE_BRAND } from "@/lib/config";
 
 export default function NotFound() {
   return (
@@ -9,7 +10,7 @@ export default function NotFound() {
           href="/"
           className="font-mono text-sm font-bold text-foreground tracking-tighter hover:opacity-70 transition-opacity"
         >
-          milk & henny
+          {SITE_BRAND}
         </Link>
 
         {/* 404 */}

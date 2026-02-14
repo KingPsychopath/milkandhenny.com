@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { headers } from 'next/headers';
-import { parseCSV } from '@/lib/csv-parser';
-import { getGuests, setGuests } from '@/lib/kv-client';
-import { requireManagementAuth } from '@/lib/management-auth';
+import { parseCSV } from '@/lib/guests/csv-parser';
+import { getGuests, setGuests } from '@/lib/guests/kv-client';
+import { requireManagementAuth } from '@/lib/guests/auth';
 
 /**
  * Bootstrap endpoint - loads guests from public/guests.csv if no guests exist

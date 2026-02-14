@@ -15,6 +15,8 @@
 import path from "path";
 import sharp from "sharp";
 import exifReader from "exif-reader";
+import type { FileKind } from "../lib/media/file-kinds";
+import { SITE_BRAND } from "../lib/config";
 
 /* ─── Constants ─── */
 
@@ -68,10 +70,6 @@ const MIME_TYPES: Record<string, string> = {
 
 /* ─── File type classification ─── */
 
-/** All the kinds a file can be — shared across transfers, blog, etc. */
-const FILE_KINDS = ["image", "video", "gif", "audio", "file"] as const;
-type FileKind = (typeof FILE_KINDS)[number];
-
 /** Get MIME type from a filename, falling back to octet-stream */
 function getMimeType(filename: string): string {
   return MIME_TYPES[path.extname(filename).toLowerCase()] ?? "application/octet-stream";
@@ -91,9 +89,6 @@ function getFileKind(filename: string): FileKind {
 function isProcessableImage(filename: string): boolean {
   return PROCESSABLE_EXTENSIONS.test(filename);
 }
-
-/** @deprecated Use `formatBytes` from `@/lib/format` instead — kept for back-compat */
-export { formatBytes } from "../lib/format";
 
 /* ─── OG crop helper ─── */
 
@@ -150,7 +145,7 @@ function escapeXml(s: string): string {
  * Matches the editorial typewriter design language.
  */
 function buildOgOverlaySvg(overlay: OgOverlay): Buffer {
-  const brand = "milk &amp; henny";
+  const brand = escapeXml(SITE_BRAND);
   const title = escapeXml(overlay.title);
   const photoId = overlay.photoId ? escapeXml(overlay.photoId) : "";
 
@@ -459,7 +454,6 @@ export {
   VIDEO_EXTENSIONS,
   AUDIO_EXTENSIONS,
   MIME_TYPES,
-  FILE_KINDS,
   ROTATION_OVERRIDES,
   getMimeType,
   getFileKind,
@@ -473,4 +467,4 @@ export {
   mapConcurrent,
 };
 
-export type { FileKind, ImageVariant, ProcessedImage, ProcessedGif, OgOverlay, RotationOverride };
+export type { ImageVariant, ProcessedImage, ProcessedGif, OgOverlay, RotationOverride };

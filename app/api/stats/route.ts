@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
-import { getGuests } from '@/lib/kv-client';
-import { GuestStats, Guest } from '@/lib/types';
+import { getGuests } from '@/lib/guests/kv-client';
+import { GuestStats, Guest } from '@/lib/guests/types';
 
 function countCheckedIn(guests: Guest[]): { invites: number; plusOnes: number } {
   let invites = 0;

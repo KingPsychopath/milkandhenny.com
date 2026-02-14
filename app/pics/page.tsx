@@ -1,23 +1,24 @@
 import Link from "next/link";
 import type { Metadata } from "next";
-import { getAllAlbums, type Album } from "@/lib/albums";
-import { getThumbUrl } from "@/lib/storage";
-import { focalPresetToObjectPosition } from "@/lib/focal";
+import { getAllAlbums, type Album } from "@/lib/media/albums";
+import { getThumbUrl } from "@/lib/media/storage";
+import { focalPresetToObjectPosition } from "@/lib/media/focal";
+import { SITE_NAME, SITE_BRAND } from "@/lib/config";
 import { Breadcrumbs } from "@/components/Breadcrumbs";
 
 export const metadata: Metadata = {
-  title: "Pics — Milk & Henny",
+  title: `Pics — ${SITE_NAME}`,
   description: "Photos from the motives.",
   openGraph: {
     title: "Pics",
     description: "Photos from the motives.",
     url: "/pics",
-    siteName: "Milk & Henny",
+    siteName: SITE_NAME,
     type: "website",
   },
   twitter: {
     card: "summary_large_image",
-    title: "Pics — Milk & Henny",
+    title: `Pics — ${SITE_NAME}`,
     description: "Photos from the motives.",
   },
 };
@@ -57,7 +58,7 @@ export default function PicsPage() {
             href="/"
             className="font-bold text-foreground tracking-tighter hover:opacity-70 transition-opacity"
           >
-            milk & henny
+            {SITE_BRAND}
           </Link>
         </div>
       </header>
@@ -131,7 +132,7 @@ export default function PicsPage() {
           <Link href="/" className="hover:text-foreground transition-colors">
             ← home
           </Link>
-          <span>© {new Date().getFullYear()} milk & henny</span>
+          <span>© {new Date().getFullYear()} {SITE_BRAND}</span>
         </div>
       </footer>
     </div>

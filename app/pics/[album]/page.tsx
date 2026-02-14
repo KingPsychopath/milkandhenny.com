@@ -1,7 +1,8 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import type { Metadata } from "next";
-import { getAlbumBySlug, getAllAlbumSlugs } from "@/lib/albums";
+import { getAlbumBySlug, getAllAlbumSlugs } from "@/lib/media/albums";
+import { SITE_NAME, SITE_BRAND } from "@/lib/config";
 import { AlbumGallery } from "@/components/gallery/AlbumGallery";
 import { Breadcrumbs } from "@/components/Breadcrumbs";
 
@@ -20,16 +21,16 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 
   const description = album.description ?? `${album.photos.length} photos from ${album.title}`;
 
-  const ogImageAlt = `Album: ${album.title}. Cover photo. Milk & Henny.`;
+  const ogImageAlt = `Album: ${album.title}. Cover photo. ${SITE_NAME}.`;
 
   return {
-    title: `${album.title} — Pics — Milk & Henny`,
+    title: `${album.title} — Pics — ${SITE_NAME}`,
     description,
     openGraph: {
       title: album.title,
       description,
       url: `/pics/${slug}`,
-      siteName: "Milk & Henny",
+      siteName: SITE_NAME,
       type: "website",
       images: [
         { url: `/pics/${slug}/opengraph-image`, width: 1200, height: 630, alt: ogImageAlt },
@@ -72,7 +73,7 @@ export default async function AlbumPage({ params }: Props) {
             href="/"
             className="font-bold text-foreground tracking-tighter hover:opacity-70 transition-opacity"
           >
-            milk & henny
+            {SITE_BRAND}
           </Link>
         </div>
       </header>
@@ -113,7 +114,7 @@ export default async function AlbumPage({ params }: Props) {
           <Link href="/pics" className="hover:text-foreground transition-colors">
             ← all albums
           </Link>
-          <span>© {new Date().getFullYear()} milk & henny</span>
+          <span>© {new Date().getFullYear()} {SITE_BRAND}</span>
         </div>
       </footer>
     </div>

@@ -1,8 +1,10 @@
 import { NextResponse } from "next/server";
-import { getAlbumBySlug, getAllAlbumSlugs } from "@/lib/albums";
-import { getOgUrl } from "@/lib/storage";
+import { getAlbumBySlug, getAllAlbumSlugs } from "@/lib/media/albums";
+import { getOgUrl } from "@/lib/media/storage";
 
-export const alt = "milk & henny";
+import { SITE_BRAND } from "@/lib/config";
+
+export const alt = SITE_BRAND;
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/jpeg";
 

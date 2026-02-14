@@ -9,7 +9,7 @@ import {
   type EmbeddedAlbum,
   type EmbedVariant,
 } from "@/components/blog/AlbumEmbed";
-import { resolveImageSrc } from "@/lib/storage";
+import { resolveImageSrc } from "@/lib/media/storage";
 
 type PostBodyProps = {
   content: string;

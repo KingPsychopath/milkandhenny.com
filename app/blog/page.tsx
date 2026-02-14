@@ -1,11 +1,12 @@
 import Link from "next/link";
 import type { Metadata } from "next";
 import { getBlogPostSummaries } from "@/lib/blog";
+import { SITE_NAME, SITE_BRAND } from "@/lib/config";
 import { SearchablePostList } from "@/components/blog/SearchablePostList";
 import { Breadcrumbs } from "@/components/Breadcrumbs";
 
 export const metadata: Metadata = {
-  title: "Words — Milk & Henny",
+  title: `Words — ${SITE_NAME}`,
   description: "Thoughts, stories, and things worth sharing. Browse and search all posts.",
 };
 
@@ -26,7 +27,7 @@ export default function BlogPage() {
             href="/"
             className="font-bold text-foreground tracking-tighter hover:opacity-70 transition-opacity"
           >
-            milk & henny
+            {SITE_BRAND}
           </Link>
         </div>
       </header>
@@ -56,7 +57,7 @@ export default function BlogPage() {
           <Link href="/" className="hover:text-foreground transition-colors">
             ← home
           </Link>
-          <span>© {new Date().getFullYear()} milk & henny</span>
+          <span>© {new Date().getFullYear()} {SITE_BRAND}</span>
         </div>
       </footer>
     </div>

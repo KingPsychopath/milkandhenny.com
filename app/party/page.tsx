@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import Image from 'next/image';
+import { SITE_NAME } from '@/lib/config';
 
 export default function PartyHome() {
   return (
@@ -10,7 +11,7 @@ export default function PartyHome() {
           <Link href="/" className="block px-4">
             <Image
               src="/MAHtext.svg"
-              alt="Milk & Henny"
+              alt={SITE_NAME}
               width={320}
               height={70}
               className="w-full h-auto"
@@ -89,7 +90,7 @@ export default function PartyHome() {
             ← back to home
           </Link>
           <div className="text-zinc-600 text-xs">
-            © {new Date().getFullYear()} Milk & Henny
+            © {new Date().getFullYear()} {SITE_NAME}
           </div>
         </footer>
       </div>

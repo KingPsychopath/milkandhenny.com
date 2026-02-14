@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { parseCSV } from '@/lib/csv-parser';
-import { setGuests } from '@/lib/kv-client';
-import { requireManagementAuth } from '@/lib/management-auth';
+import { parseCSV } from '@/lib/guests/csv-parser';
+import { setGuests } from '@/lib/guests/kv-client';
+import { requireManagementAuth } from '@/lib/guests/auth';
 
 export async function POST(request: NextRequest) {
   const authError = requireManagementAuth(request);

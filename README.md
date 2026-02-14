@@ -345,6 +345,54 @@ Every feature degrades gracefully — nothing crashes. The fallback strategy mat
 
 ---
 
+## Caching Strategy
+
+Three layers of caching keep the site fast and cheap: static generation at build, CDN edge caching at runtime, and Cloudflare CDN for media.
+
+### Static pages (built once, served from CDN)
+
+All editorial content is statically generated at deploy — no server hit per request:
+
+| Page | How | Why static works |
+|------|-----|-----------------|
+| `/`, `/blog`, `/pics` | Rendered at build from local markdown/JSON | Content only changes on deploy |
+| `/blog/[slug]` | `generateStaticParams` from all slugs | Posts are markdown files in git |
+| `/pics/[album]`, `/pics/[album]/[photo]` | `generateStaticParams` from album JSON | Albums are JSON manifests in git |
+| All OG images for above | `generateStaticParams` + `Cache-Control: public, s-maxage=86400` | Images don't change post-deploy |
+
+### Dynamic pages (server-rendered with CDN edge cache)
+
+| Page | Rendering | Cache headers | Rationale |
+|------|-----------|---------------|-----------|
+| `/t/[id]` (transfers) | `force-dynamic` (reads Redis) | `CDN-Cache-Control: s-maxage=60, stale-while-revalidate=300` + `Cache-Control: no-cache` | CDN edge caches for 60s (saves KV reads), browser always revalidates (countdown timer needs fresh data). After admin takedown, stale may serve up to 60s but R2 files are already deleted. |
+| `/api/cron/cleanup-transfers` | `force-dynamic` | None (cron-only) | Runs daily via Vercel cron, no caching needed |
+
+### API routes (no caching)
+
+All API routes (`/api/guests`, `/api/best-dressed`, `/api/stats`, `/api/transfers/[id]`) return real-time data (guest check-ins, votes, transfer lookups). They use Next.js default `no-store` — correct, because stale data here would cause UX bugs.
+
+### RSS feed
+
+`Cache-Control: s-maxage=3600, stale-while-revalidate=3600` — CDN caches for 1 hour, serves stale for another hour while revalidating. Blog only changes on deploy, so even aggressive caching is safe.
+
+### Media (Cloudflare R2 + CDN)
+
+Images and transfer files are served directly from `pics.milkandhenny.com` (R2 custom domain). Cloudflare's CDN caches static assets by default. Rate limiting is configured at the Cloudflare level (see `docs/cloudflare-rate-limit-images.md`). **These requests never touch Vercel** — zero bandwidth cost.
+
+### Transfer page CDN caching (proxy.ts)
+
+The `proxy.ts` (Next.js proxy convention) adds CDN edge headers to `/t/*` routes:
+
+- **CDN edge**: Caches SSR result for 60s, serves stale up to 5min while revalidating in background
+- **Browser**: `no-cache` — always asks the CDN (countdown timer and expiry need fresh data on hard refresh)
+- **Trade-off**: After admin takedown, the CDN may serve a stale page for up to 60s. R2 files are deleted immediately, so downloads 404. Acceptable for a private sharing tool.
+
+### Client-side fetch caching
+
+`fetchImageForCanvas` in `lib/media/download.ts` uses `cache: "no-store"` to bypass the browser cache. This prevents the tainted canvas problem where a non-CORS cached response would block Canvas pixel access.
+
+---
+
 ## Navigation & Footer Design
 
 The site has **two distinct navigation worlds** that coexist through shared tone (lowercase, warm, honest) while differing in visual language.

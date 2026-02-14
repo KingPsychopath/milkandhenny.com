@@ -1,6 +1,7 @@
 import { ImageResponse } from 'next/og';
+import { SITE_BRAND } from '@/lib/config';
 
-export const alt = 'milk & henny — thoughts, stories, and things worth sharing';
+export const alt = `${SITE_BRAND} — thoughts, stories, and things worth sharing`;
 export const size = {
   width: 1200,
   height: 630,
@@ -32,7 +33,7 @@ export default async function Image() {
             letterSpacing: '-0.04em',
           }}
         >
-          milk & henny
+          {SITE_BRAND}
         </span>
 
         {/* Divider */}
@@ -74,6 +75,9 @@ export default async function Image() {
     ),
     {
       ...size,
+      headers: {
+        "Cache-Control": "public, s-maxage=86400, max-age=86400",
+      },
     }
   );
 }

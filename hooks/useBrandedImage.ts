@@ -1,9 +1,10 @@
 "use client";
 
 import { useState, useCallback, useRef } from "react";
-import type { FocalPreset } from "@/lib/focal";
-import { focalPresetToPercent } from "@/lib/focal";
-import { fetchImageForCanvas } from "@/lib/download";
+import type { FocalPreset } from "@/lib/media/focal";
+import { focalPresetToPercent } from "@/lib/media/focal";
+import { fetchImageForCanvas } from "@/lib/media/download";
+import { SITE_BRAND } from "@/lib/config";
 
 /** Supported branded image formats */
 const FORMATS = {
@@ -105,7 +106,7 @@ function drawOverlay(
   ctx.textBaseline = "bottom";
   ctx.textAlign = "start";
 
-  const brandText = `milk & henny · ${albumTitle}`;
+  const brandText = `${SITE_BRAND} · ${albumTitle}`;
   ctx.strokeText(brandText, padding, textY);
   ctx.fillText(brandText, padding, textY);
 

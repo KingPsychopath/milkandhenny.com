@@ -1,11 +1,8 @@
 import { randomBytes } from 'crypto';
 import { getRedis } from './redis';
+import { FILE_KINDS, type FileKind } from './media/file-kinds';
 
 /* ─── Types ─── */
-
-/** File kinds determine how the transfer page renders each file */
-const FILE_KINDS = ['image', 'video', 'gif', 'audio', 'file'] as const;
-type FileKind = (typeof FILE_KINDS)[number];
 
 type TransferFile = {
   /** Unique identifier — filename stem for images, full filename for others */

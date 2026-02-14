@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getGuests, updateGuestCheckIn } from '@/lib/kv-client';
+import { getGuests, updateGuestCheckIn } from '@/lib/guests/kv-client';
 
 export async function GET() {
   try {

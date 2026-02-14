@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, useMemo, useEffect } from 'react';
-import { Guest } from '@/lib/types';
+import { Guest } from '@/lib/guests/types';
 import { useFocusTrap } from '@/hooks/useFocusTrap';
 
 type LeaderboardEntry = { name: string; count: number };

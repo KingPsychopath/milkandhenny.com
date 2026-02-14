@@ -3,6 +3,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
 import { playFeedback } from '@/lib/feedback';
+import { SITE_NAME } from '@/lib/config';
 
 const STORAGE_KEY = 'mah-best-dressed-vote';
 
@@ -314,7 +315,7 @@ export default function BestDressedPage() {
             ← Back to party
           </Link>
           <p className="text-zinc-600 text-xs">
-            © {new Date().getFullYear()} Milk & Henny
+            © {new Date().getFullYear()} {SITE_NAME}
           </p>
         </footer>
       </div>

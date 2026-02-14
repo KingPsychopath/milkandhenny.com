@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getGuests } from '@/lib/kv-client';
+import { getGuests } from '@/lib/guests/kv-client';
 
 /**
  * Debug endpoint - check Redis connection and data status

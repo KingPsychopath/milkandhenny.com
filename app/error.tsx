@@ -2,6 +2,7 @@
 
 import { useEffect } from "react";
 import Link from "next/link";
+import { SITE_BRAND } from "@/lib/config";
 
 export default function Error({
   error,
@@ -22,7 +23,7 @@ export default function Error({
           href="/"
           className="font-mono text-sm font-bold text-foreground tracking-tighter hover:opacity-70 transition-opacity"
         >
-          milk & henny
+          {SITE_BRAND}
         </Link>
 
         {/* Error */}

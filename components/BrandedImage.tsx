@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useBrandedImage, type BrandedFormat } from "@/hooks/useBrandedImage";
-import type { FocalPreset } from "@/lib/focal";
+import type { FocalPreset } from "@/lib/media/focal";
 
 type BrandedImageProps = {
   /** Full-size image URL (WebP from R2) */

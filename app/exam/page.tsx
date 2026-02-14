@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useCallback } from "react";
+import { SITE_BRAND } from "@/lib/config";
 
 /* ------------------------------------------------------------------ */
 /*  Data                                                               */
@@ -149,7 +150,7 @@ export default function ExamPage() {
             className="inline-block font-mono text-xs tracking-tighter font-bold mb-6 transition-opacity duration-300 hover:opacity-60"
             style={{ color: "var(--stone-400)" }}
           >
-            milk & henny
+            {SITE_BRAND}
           </a>
           <p
             className="font-mono text-xs tracking-widest uppercase mb-4"
@@ -397,7 +398,7 @@ export default function ExamPage() {
               ← home
             </a>
             <p className="mt-2" style={{ color: "var(--stone-300)" }}>
-              © {new Date().getFullYear()} milk & henny
+              © {new Date().getFullYear()} {SITE_BRAND}
             </p>
           </div>
         </footer>

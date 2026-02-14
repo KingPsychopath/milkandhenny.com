@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { getRecentPosts, getAllPosts } from "@/lib/blog";
+import { SITE_BRAND } from "@/lib/config";
 import { PostListItem } from "@/components/blog/PostListItem";
 
 const RECENT_LIMIT = 5;
@@ -14,7 +15,7 @@ export default function Home() {
       <header role="banner" className="max-w-2xl mx-auto px-6 pt-20 pb-16 text-center">
         <Link href="/" className="inline-block">
           <h1 className="font-mono text-[2.5rem] sm:text-6xl font-bold text-foreground tracking-tighter leading-none">
-            milk & henny
+            {SITE_BRAND}
           </h1>
         </Link>
         <p className="mt-5 theme-muted font-mono text-sm tracking-wide">
@@ -82,7 +83,7 @@ export default function Home() {
       <footer role="contentinfo" className="border-t theme-border">
         <div className="max-w-2xl mx-auto px-6 py-8 space-y-4">
           <div className="flex items-center justify-between font-mono text-[11px] theme-muted tracking-wide">
-            <span>© {new Date().getFullYear()} milk & henny</span>
+            <span>© {new Date().getFullYear()} {SITE_BRAND}</span>
             <div className="flex items-center gap-4">
               <Link
                 href="/feed.xml"

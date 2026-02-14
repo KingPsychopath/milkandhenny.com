@@ -1,7 +1,8 @@
 import { ImageResponse } from 'next/og';
 import { getPostBySlug, getAllSlugs } from '@/lib/blog';
+import { SITE_BRAND } from '@/lib/config';
 
-export const alt = 'milk & henny';
+export const alt = SITE_BRAND;
 export const size = {
   width: 1200,
   height: 630,
@@ -20,7 +21,7 @@ export default async function Image({ params }: Props) {
   const { slug } = await params;
   const post = getPostBySlug(slug);
 
-  const title = post?.title ?? 'milk & henny';
+  const title = post?.title ?? SITE_BRAND;
   const subtitle = post?.subtitle;
   const date = post
     ? new Date(post.date + 'T00:00:00').toLocaleDateString('en-GB', {
@@ -63,7 +64,7 @@ export default async function Image({ params }: Props) {
               letterSpacing: '-0.03em',
             }}
           >
-            milk & henny
+            {SITE_BRAND}
           </span>
           <span
             style={{
@@ -128,7 +129,7 @@ export default async function Image({ params }: Props) {
               letterSpacing: '0.05em',
             }}
           >
-            read on milk & henny →
+            read on {SITE_BRAND} →
           </span>
           <div
             style={{
@@ -142,6 +143,9 @@ export default async function Image({ params }: Props) {
     ),
     {
       ...size,
+      headers: {
+        "Cache-Control": "public, s-maxage=86400, max-age=86400",
+      },
     }
   );
 }

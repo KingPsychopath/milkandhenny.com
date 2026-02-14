@@ -4,7 +4,7 @@ import { useEffect, useCallback, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useSwipe } from "@/hooks/useSwipe";
-import { fetchBlob, downloadBlob } from "@/lib/download";
+import { fetchBlob, downloadBlob } from "@/lib/media/download";
 
 type PhotoViewerProps = {
   src: string;

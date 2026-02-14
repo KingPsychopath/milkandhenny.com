@@ -5,8 +5,8 @@ import {
   getTransferThumbUrl,
   getTransferFullUrl,
   getTransferFileUrl,
-} from "@/lib/storage";
-import { fetchBlob, downloadBlob } from "@/lib/download";
+} from "@/lib/media/storage";
+import { fetchBlob, downloadBlob } from "@/lib/media/download";
 import { formatBytes } from "@/lib/format";
 import { useLazyImage } from "@/hooks/useLazyImage";
 import { useSwipe } from "@/hooks/useSwipe";
@@ -417,8 +417,7 @@ const VisualCard = memo(function VisualCard({
   const thumbUrl = hasThumbnail ? getTransferThumbUrl(transferId, file.id) : "";
   const aspectRatio = (file.width && file.height) ? file.height / file.width : 9 / 16;
 
-  const { imgRef, loaded, errored, handleLoad, handleError } =
-    useLazyImage(thumbUrl);
+  const { loaded, errored, handleLoad, handleError } = useLazyImage();
 
   return (
     <div className="gallery-card group">
@@ -432,10 +431,12 @@ const VisualCard = memo(function VisualCard({
         {hasThumbnail && !errored ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
-            ref={imgRef}
+            src={thumbUrl}
             alt={file.filename}
             width={file.width}
             height={file.height}
+            loading="lazy"
+            decoding="async"
             onLoad={handleLoad}
             onError={handleError}
             className={`absolute inset-0 w-full h-full object-cover transition-opacity duration-300 ${

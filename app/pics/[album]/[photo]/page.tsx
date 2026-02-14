@@ -1,9 +1,9 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import type { Metadata } from "next";
-import { getAlbumBySlug, getAllAlbumSlugs } from "@/lib/albums";
-import { getFullUrl, getOriginalUrl } from "@/lib/storage";
-import { BASE_URL } from "@/lib/config";
+import { getAlbumBySlug, getAllAlbumSlugs } from "@/lib/media/albums";
+import { getFullUrl, getOriginalUrl } from "@/lib/media/storage";
+import { BASE_URL, SITE_NAME, SITE_BRAND } from "@/lib/config";
 import { PhotoViewer } from "@/components/gallery/PhotoViewer";
 import { Breadcrumbs } from "@/components/Breadcrumbs";
 import { Share } from "@/components/Share";
@@ -36,16 +36,16 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const photoIndex = album.photos.findIndex((p) => p.id === photoId);
   const description = `Photo ${photoIndex + 1} of ${album.photos.length} from ${album.title}`;
 
-  const ogImageAlt = `Photo ${photoId} from album ${album.title}. Milk & Henny.`;
+  const ogImageAlt = `Photo ${photoId} from album ${album.title}. ${SITE_NAME}.`;
 
   return {
-    title: `${photoId} — ${album.title} — Milk & Henny`,
+    title: `${photoId} — ${album.title} — ${SITE_NAME}`,
     description,
     openGraph: {
       title: `${album.title} — ${photoId}`,
       description,
       url: `/pics/${albumSlug}/${photoId}`,
-      siteName: "Milk & Henny",
+      siteName: SITE_NAME,
       type: "website",
       images: [
         {
@@ -140,7 +140,7 @@ export default async function PhotoPage({ params }: Props) {
           <Link href={`/pics/${albumSlug}`} className="hover:text-foreground transition-colors">
             ← back to album
           </Link>
-          <span>© {new Date().getFullYear()} milk & henny</span>
+          <span>© {new Date().getFullYear()} {SITE_BRAND}</span>
         </div>
       </footer>
     </div>

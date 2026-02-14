@@ -3,6 +3,7 @@
 import { useState, useSyncExternalStore, useCallback } from 'react';
 import Link from 'next/link';
 import { playFeedback } from '@/lib/feedback';
+import { SITE_NAME } from '@/lib/config';
 
 // Vibrant, distinct colors for the game (10 colors = ~20 people per color with 200 guests)
 const COLORS = [
@@ -193,7 +194,7 @@ export default function IcebreakerPage() {
           ← Back to party
         </Link>
         <p className={`text-xs opacity-40 ${revealed ? color.text : 'text-zinc-600'}`}>
-          © {new Date().getFullYear()} Milk & Henny
+          © {new Date().getFullYear()} {SITE_NAME}
         </p>
       </footer>
     </div>

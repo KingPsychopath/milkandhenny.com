@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getGuests } from '@/lib/kv-client';
+import { getGuests } from '@/lib/guests/kv-client';
 import { getRedis } from '@/lib/redis';
 
 const VOTES_KEY = 'best-dressed:votes';

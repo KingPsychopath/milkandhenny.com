@@ -1,5 +1,5 @@
 import { getAllPosts } from "@/lib/blog";
-import { BASE_URL } from "@/lib/config";
+import { BASE_URL, SITE_BRAND } from "@/lib/config";
 
 /** Generate an RSS 2.0 feed from all blog posts */
 export function GET() {
@@ -21,7 +21,7 @@ export function GET() {
   const feed = `<?xml version="1.0" encoding="UTF-8"?>
 <rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
   <channel>
-    <title>milk &amp; henny</title>
+    <title>${SITE_BRAND.replace(/&/g, "&amp;")}</title>
     <link>${BASE_URL}</link>
     <description>thoughts, stories, and things worth sharing</description>
     <language>en</language>
@@ -33,7 +33,7 @@ export function GET() {
   return new Response(feed.trim(), {
     headers: {
       "Content-Type": "application/xml; charset=utf-8",
-      "Cache-Control": "s-maxage=3600, stale-while-revalidate",
+      "Cache-Control": "s-maxage=3600, stale-while-revalidate=3600",
     },
   });
 }

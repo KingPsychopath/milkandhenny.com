@@ -2,9 +2,9 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import type { Metadata } from "next";
 import { getPostBySlug, getAllSlugs } from "@/lib/blog";
-import { getAlbumBySlug } from "@/lib/albums";
-import { focalPresetToObjectPosition } from "@/lib/focal";
-import { BASE_URL } from "@/lib/config";
+import { getAlbumBySlug } from "@/lib/media/albums";
+import { focalPresetToObjectPosition } from "@/lib/media/focal";
+import { BASE_URL, SITE_NAME, SITE_BRAND } from "@/lib/config";
 import { PostBody } from "./PostBody";
 import { ReadingProgress } from "@/components/ReadingProgress";
 import { Breadcrumbs } from "@/components/Breadcrumbs";
@@ -25,16 +25,16 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   if (!post) return {};
 
   const description =
-    post.subtitle ?? `Read "${post.title}" on Milk & Henny`;
+    post.subtitle ?? `Read "${post.title}" on ${SITE_NAME}`;
 
   return {
-    title: `${post.title} — Milk & Henny`,
+    title: `${post.title} — ${SITE_NAME}`,
     description,
     openGraph: {
       title: post.title,
       description,
       url: `/blog/${slug}`,
-      siteName: "Milk & Henny",
+      siteName: SITE_NAME,
       type: "article",
       publishedTime: post.date,
     },
@@ -130,8 +130,8 @@ export default async function BlogPostPage({ params }: Props) {
     headline: post.title,
     description: post.subtitle ?? post.title,
     datePublished: post.date,
-    author: { "@type": "Organization", name: "Milk & Henny" },
-    publisher: { "@type": "Organization", name: "Milk & Henny" },
+    author: { "@type": "Organization", name: SITE_NAME },
+    publisher: { "@type": "Organization", name: SITE_NAME },
     url: `${BASE_URL}/blog/${slug}`,
   };
 
@@ -156,7 +156,7 @@ export default async function BlogPostPage({ params }: Props) {
             href="/"
             className="font-bold text-foreground tracking-tighter hover:opacity-70 transition-opacity"
           >
-            milk & henny
+            {SITE_BRAND}
           </Link>
         </div>
       </header>
@@ -216,7 +216,7 @@ export default async function BlogPostPage({ params }: Props) {
           >
             ← all posts
           </Link>
-          <span>© {new Date().getFullYear()} milk & henny</span>
+          <span>© {new Date().getFullYear()} {SITE_BRAND}</span>
         </div>
       </footer>
     </div>

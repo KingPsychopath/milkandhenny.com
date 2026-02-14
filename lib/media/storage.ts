@@ -2,15 +2,13 @@
  * S3-compatible storage abstraction.
  * Works with Cloudflare R2, AWS S3, Backblaze B2, MinIO, etc.
  * To switch providers, change the env vars — zero code changes.
- *
- * NOTE: These functions use NEXT_PUBLIC_ env vars so they work
- * in both server and client contexts.
  */
+
+import { R2_PUBLIC_URL } from "../config";
 
 /** Build the public URL for a file in the bucket */
 function getImageUrl(path: string): string {
-  const publicUrl = process.env.NEXT_PUBLIC_R2_PUBLIC_URL ?? "";
-  return `${publicUrl}/${path}`;
+  return `${R2_PUBLIC_URL}/${path}`;
 }
 
 /* ─── Album URLs ─── */

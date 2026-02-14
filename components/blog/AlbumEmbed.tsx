@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { memo } from "react";
-import { getThumbUrl } from "@/lib/storage";
+import { getThumbUrl } from "@/lib/media/storage";
 import { useLazyImage } from "@/hooks/useLazyImage";
 
 /** Serializable album data passed from the server page */
@@ -42,16 +42,17 @@ const FillThumb = memo(function FillThumb({
   objectPosition?: string;
 }) {
   const thumbUrl = getThumbUrl(slug, photoId);
-  const { imgRef, loaded, errored, handleLoad, handleError } =
-    useLazyImage(thumbUrl);
+  const { loaded, errored, handleLoad, handleError } = useLazyImage();
 
   if (errored) return null;
 
   return (
     // eslint-disable-next-line @next/next/no-img-element
     <img
-      ref={imgRef}
+      src={thumbUrl}
       alt=""
+      loading="lazy"
+      decoding="async"
       onLoad={handleLoad}
       onError={handleError}
       style={{

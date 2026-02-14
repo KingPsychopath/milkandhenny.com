@@ -18,11 +18,12 @@ import {
   ANIMATED_EXTENSIONS,
   getMimeType,
   getFileKind,
-  formatBytes,
   processImageVariants,
   processGifThumb,
   mapConcurrent,
 } from "./media-processing";
+import { BASE_URL } from "../lib/config";
+import { formatBytes } from "../lib/format";
 import { getRedis } from "../lib/redis";
 import {
   saveTransfer,
@@ -315,9 +316,8 @@ async function createTransfer(
 
   await saveTransfer(transfer, ttlSeconds);
 
-  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || "https://milkandhenny.com";
-  const shareUrl = `${baseUrl}/t/${transferId}`;
-  const adminUrl = `${baseUrl}/t/${transferId}?token=${deleteToken}`;
+  const shareUrl = `${BASE_URL}/t/${transferId}`;
+  const adminUrl = `${BASE_URL}/t/${transferId}?token=${deleteToken}`;
 
   const fileCounts = {
     images: files.filter((f) => f.kind === "image").length,
@@ -431,7 +431,6 @@ export {
   nukeAllTransfers,
   formatDuration,
   parseExpiry,
-  formatBytes,
 };
 
 export type { CreateTransferOpts, CreateTransferResult };

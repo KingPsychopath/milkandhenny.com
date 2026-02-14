@@ -1,51 +1,26 @@
 "use client";
 
-import { useRef, useState, useEffect, useCallback } from "react";
-
-type UseLazyImageOptions = {
-  /** Pixel margin around the viewport to start loading early */
-  rootMargin?: string;
-};
+import { useState, useCallback } from "react";
 
 /**
- * Lazy-loads an image via IntersectionObserver and tracks load/error state.
- * Provides a consistent fade-in pattern across all gallery-style components.
+ * Tracks image load/error state for fade-in patterns.
  *
- * @param src - The image URL to lazy-load
- * @param options - IntersectionObserver options
- * @returns ref to attach to the `<img>`, plus loaded/errored booleans
+ * Pair with native `loading="lazy"` and `decoding="async"` on the `<img>`
+ * element — the browser handles viewport-based loading with smart heuristics
+ * (connection speed, data saver mode, distance from viewport) which
+ * outperform a manual IntersectionObserver at scale (100+ images).
+ *
+ * @param _src - Image URL (reserved for future srcset support; currently unused)
+ * @returns loaded/errored booleans + stable onLoad/onError handlers
  */
-function useLazyImage(src: string, options?: UseLazyImageOptions) {
-  const imgRef = useRef<HTMLImageElement>(null);
+function useLazyImage(_src?: string) {
   const [loaded, setLoaded] = useState(false);
   const [errored, setErrored] = useState(false);
 
   const handleLoad = useCallback(() => setLoaded(true), []);
   const handleError = useCallback(() => setErrored(true), []);
 
-  useEffect(() => {
-    const img = imgRef.current;
-    if (!img) return;
-
-    // Reset state when src changes
-    setLoaded(false);
-    setErrored(false);
-
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        if (entry.isIntersecting) {
-          img.src = src;
-          observer.disconnect();
-        }
-      },
-      { rootMargin: options?.rootMargin ?? "200px" }
-    );
-
-    observer.observe(img);
-    return () => observer.disconnect();
-  }, [src, options?.rootMargin]);
-
-  return { imgRef, loaded, errored, handleLoad, handleError } as const;
+  return { loaded, errored, handleLoad, handleError } as const;
 }
 
 export { useLazyImage };

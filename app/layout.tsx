@@ -4,7 +4,7 @@ import { Lora } from "next/font/google";
 import { LampToggle } from "@/components/LampToggle";
 import { BackToTop } from "@/components/BackToTop";
 import { Analytics } from "@vercel/analytics/react";
-import { BASE_URL } from "@/lib/config";
+import { BASE_URL, SITE_NAME } from "@/lib/config";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -25,22 +25,22 @@ const lora = Lora({
 
 export const metadata: Metadata = {
   metadataBase: new URL(BASE_URL),
-  title: "Milk & Henny",
+  title: SITE_NAME,
   description: "Thoughts, stories, and things worth sharing.",
   icons: {
     icon: "/icon.svg",
     apple: "/MAHLogo.svg",
   },
   openGraph: {
-    title: "Milk & Henny",
+    title: SITE_NAME,
     description: "Thoughts, stories, and things worth sharing.",
     url: "/",
-    siteName: "Milk & Henny",
+    siteName: SITE_NAME,
     type: "website",
   },
   twitter: {
     card: "summary_large_image",
-    title: "Milk & Henny",
+    title: SITE_NAME,
     description: "Thoughts, stories, and things worth sharing.",
   },
   alternates: {

@@ -1,6 +1,6 @@
 'use client';
 
-import { Guest } from '@/lib/types';
+import { Guest } from '@/lib/guests/types';
 import { GuestItem } from './GuestItem';
 
 type GuestListProps = {

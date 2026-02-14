@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
+import { SITE_NAME } from '@/lib/config';
 import { useGuests } from '@/hooks/useGuests';
 import { useGuestSearch } from '@/hooks/useGuestSearch';
 import { SearchBar } from '@/components/guestlist/SearchBar';
@@ -212,7 +213,7 @@ export default function GuestListPage() {
             ← Back to party
           </Link>
           <p className="text-stone-300 text-xs">
-            © {new Date().getFullYear()} Milk & Henny
+            © {new Date().getFullYear()} {SITE_NAME}
           </p>
         </footer>
       </main>

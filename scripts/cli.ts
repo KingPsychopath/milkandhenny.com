@@ -25,12 +25,13 @@ import {
   getPhotoKeys,
   backfillOgVariants,
 } from "./album-ops";
-import { validateAllAlbums } from "@/lib/albums";
+import { validateAllAlbums } from "@/lib/media/albums";
+import { BASE_URL } from "@/lib/config";
 import {
   FOCAL_PRESETS,
   resolveFocalPreset,
   FOCAL_SHORTHAND,
-} from "@/lib/focal";
+} from "@/lib/media/focal";
 import {
   compareStrategies,
   DETECTION_STRATEGIES,
@@ -598,7 +599,7 @@ async function cmdPhotosSetCover(slug: string, photoId: string) {
 async function cmdPhotosSetFocal(
   slug: string,
   photoId: string,
-  preset: import("@/lib/focal").FocalPreset
+  preset: import("@/lib/media/focal").FocalPreset
 ) {
   heading(`Set focal point: ${photoId}`);
   const album = await setPhotoFocal(slug, photoId, preset, (msg) =>
@@ -777,7 +778,6 @@ async function cmdTransfersInfo(id: string) {
   if (!info) throw new Error(`Transfer "${id}" not found or expired.`);
 
   const remaining = formatDuration(info.remainingSeconds);
-  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || "https://milkandhenny.com";
 
   heading(info.title);
   log(`${dim("ID:")}           ${info.id}`);
@@ -788,9 +788,9 @@ async function cmdTransfersInfo(id: string) {
   log(
     `${dim("Expires:")}      ${new Date(info.expiresAt).toLocaleString("en-GB")} ${yellow(`(${remaining} left)`)}`
   );
-  log(`${dim("Share URL:")}    ${green(`${baseUrl}/t/${info.id}`)}`);
+  log(`${dim("Share URL:")}    ${green(`${BASE_URL}/t/${info.id}`)}`);
   log(
-    `${dim("Admin URL:")}    ${green(`${baseUrl}/t/${info.id}?token=${info.deleteToken}`)}`
+    `${dim("Admin URL:")}    ${green(`${BASE_URL}/t/${info.id}?token=${info.deleteToken}`)}`
   );
   console.log();
 

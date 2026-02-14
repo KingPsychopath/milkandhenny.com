@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getGuests, setGuests } from '@/lib/kv-client';
-import { requireManagementAuth } from '@/lib/management-auth';
-import { Guest, GuestStatus } from '@/lib/types';
+import { getGuests, setGuests } from '@/lib/guests/kv-client';
+import { requireManagementAuth } from '@/lib/guests/auth';
+import { Guest, GuestStatus } from '@/lib/guests/types';
 
 function generateId(name: string): string {
   return `${name.toLowerCase().replace(/\s+/g, '-')}-${Date.now()}`;

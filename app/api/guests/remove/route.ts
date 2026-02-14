@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getGuests, setGuests } from '@/lib/kv-client';
-import { requireManagementAuth } from '@/lib/management-auth';
-import { Guest } from '@/lib/types';
+import { getGuests, setGuests } from '@/lib/guests/kv-client';
+import { requireManagementAuth } from '@/lib/guests/auth';
+import { Guest } from '@/lib/guests/types';
 
 export async function DELETE(request: NextRequest) {
   const authError = requireManagementAuth(request);

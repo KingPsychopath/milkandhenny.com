@@ -3,9 +3,9 @@
 import { useState, useCallback, useRef } from "react";
 import { MasonryGrid } from "./MasonryGrid";
 import { PhotoCard } from "./PhotoCard";
-import type { Photo } from "@/lib/albums";
-import { getThumbUrl, getOriginalUrl } from "@/lib/storage";
-import { fetchBlob, downloadBlob } from "@/lib/download";
+import type { Photo } from "@/lib/media/albums";
+import { getThumbUrl, getOriginalUrl } from "@/lib/media/storage";
+import { fetchBlob, downloadBlob } from "@/lib/media/download";
 
 type AlbumGalleryProps = {
   albumSlug: string;
@@ -15,9 +15,13 @@ type AlbumGalleryProps = {
 /** Max photos in a single batch download before showing a warning */
 const BATCH_DOWNLOAD_WARN = 20;
 
+/** Concurrent fetches per batch — bounds peak memory to ~5 full-res images */
+const BATCH_CONCURRENCY = 5;
+
 /**
  * Full album gallery with masonry/single toggle, multi-select, and batch download.
  * Uses shared download utilities with retry support and progress feedback.
+ * Batch downloads are chunked to avoid memory pressure on large selections.
  */
 export function AlbumGallery({ albumSlug, photos }: AlbumGalleryProps) {
   const [selectable, setSelectable] = useState(false);
@@ -71,17 +75,31 @@ export function AlbumGallery({ albumSlug, photos }: AlbumGalleryProps) {
 
       setDownloadProgress({ done: 0, total: ids.length });
 
-      /* Fetch all images in parallel — direct from R2, no proxy */
-      await Promise.all(
-        ids.map(async (id) => {
-          if (abortRef.current) return;
-          const blob = await fetchBlob(getOriginalUrl(albumSlug, id));
-          zip.file(`${id}.jpg`, blob);
-          setDownloadProgress((prev) =>
-            prev ? { ...prev, done: prev.done + 1 } : null
-          );
-        })
-      );
+      /*
+       * Fetch in chunks of BATCH_CONCURRENCY — each chunk runs in parallel,
+       * then blobs are added to the ZIP and can be GC'd before the next chunk
+       * starts. This bounds peak memory to ~5 full-res images instead of all N.
+       */
+      for (let i = 0; i < ids.length; i += BATCH_CONCURRENCY) {
+        if (abortRef.current) break;
+
+        const chunk = ids.slice(i, i + BATCH_CONCURRENCY);
+        const blobs = await Promise.all(
+          chunk.map(async (id) => {
+            if (abortRef.current) return null;
+            return { id, blob: await fetchBlob(getOriginalUrl(albumSlug, id)) };
+          })
+        );
+
+        for (const result of blobs) {
+          if (!result || abortRef.current) continue;
+          zip.file(`${result.id}.jpg`, result.blob);
+        }
+
+        setDownloadProgress((prev) =>
+          prev ? { ...prev, done: Math.min(i + chunk.length, ids.length) } : null
+        );
+      }
 
       if (!abortRef.current) {
         const content = await zip.generateAsync({ type: "blob" });

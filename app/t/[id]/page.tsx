@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { getTransfer } from "@/lib/transfers";
+import { SITE_NAME, SITE_BRAND } from "@/lib/config";
 import { TransferGallery } from "@/components/transfers/TransferGallery";
 import { CountdownTimer } from "@/components/transfers/CountdownTimer";
 import { TakedownButton } from "@/components/transfers/TakedownButton";
@@ -18,12 +19,12 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const transfer = await getTransfer(id);
 
   if (!transfer) {
-    return { title: "Transfer Not Found — Milk & Henny" };
+    return { title: `Transfer Not Found — ${SITE_NAME}` };
   }
 
   return {
-    title: `${transfer.title} — Milk & Henny`,
-    description: `${transfer.files.length} files shared via Milk & Henny`,
+    title: `${transfer.title} — ${SITE_NAME}`,
+    description: `${transfer.files.length} files shared via ${SITE_NAME}`,
     robots: { index: false, follow: false },
   };
 }
@@ -128,7 +129,7 @@ export default async function TransferPage({ params, searchParams }: Props) {
             href="/"
             className="font-bold text-foreground tracking-tighter hover:opacity-70 transition-opacity"
           >
-            milk & henny
+            {SITE_BRAND}
           </Link>
         </div>
       </header>
@@ -175,7 +176,7 @@ export default async function TransferPage({ params, searchParams }: Props) {
             temporary transfer · self-destructs{" "}
             {formatDate(transfer.expiresAt)}
           </span>
-          <Link href="/" className="hover:text-foreground transition-colors">milk & henny</Link>
+          <Link href="/" className="hover:text-foreground transition-colors">{SITE_BRAND}</Link>
         </div>
       </footer>
     </div>

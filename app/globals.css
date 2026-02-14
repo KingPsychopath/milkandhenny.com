@@ -498,9 +498,17 @@ button:active:not(:disabled):not(.lamp-toggle) {
   to   { opacity: 1; }
 }
 
-/* Album cover hover zoom — strong ease-out so zoom settles smoothly */
+/* Album cover — fade-in on load + hover zoom.
+   The animation gives a soft reveal matching the gallery's opacity transitions.
+   Hover zoom uses a strong ease-out so it settles smoothly. */
 .album-cover-zoom {
+  animation: album-cover-fade-in 0.5s ease both;
   transition: transform 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes album-cover-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
 }
 
 /* Swipe hint — fade in, hold, fade out */

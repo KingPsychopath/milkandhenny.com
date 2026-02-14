@@ -25,11 +25,11 @@ import {
   isProcessableImage,
   getFileKind,
   getMimeType,
-  formatBytes,
   processToWebP,
   mapConcurrent,
-  type FileKind,
 } from "./media-processing";
+import { formatBytes } from "../lib/format";
+import type { FileKind } from "../lib/media/file-kinds";
 
 /* ─── Constants ─── */
 

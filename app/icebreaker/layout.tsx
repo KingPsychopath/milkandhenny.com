@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
+import { SITE_NAME } from "@/lib/config";
 
 export const metadata: Metadata = {
-  title: "Milk & Henny | Ice Breaker",
+  title: `${SITE_NAME} | Ice Breaker`,
   description: "Find your colour match",
 };
 

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { Guest } from '@/lib/types';
+import { Guest } from '@/lib/guests/types';
 
 /** Poll interval when the tab is focused (ms) */
 const POLL_ACTIVE_MS = 5_000;
