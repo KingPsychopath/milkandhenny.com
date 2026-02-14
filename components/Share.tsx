@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback } from "react";
+import { useFocusTrap } from "@/hooks/useFocusTrap";
 
 type ShareProps = {
   /** Full URL to share */
@@ -58,6 +59,17 @@ export function Share({ url, title = "", label = "Share", className = "" }: Shar
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const dropdownMenuRef = useFocusTrap<HTMLDivElement>(dropdownOpen);
+
+  // Close on Escape
+  useEffect(() => {
+    if (!dropdownOpen) return;
+    function handleEscape(e: KeyboardEvent) {
+      if (e.key === 'Escape') setDropdownOpen(false);
+    }
+    document.addEventListener('keydown', handleEscape);
+    return () => document.removeEventListener('keydown', handleEscape);
+  }, [dropdownOpen]);
 
   useEffect(() => {
     const mobile =
@@ -130,6 +142,7 @@ export function Share({ url, title = "", label = "Share", className = "" }: Shar
       </button>
       {dropdownOpen && !isMobile && (
         <div
+          ref={dropdownMenuRef}
           className="absolute right-0 top-full mt-1 py-1.5 min-w-[10rem] bg-background border theme-border rounded-sm shadow-lg z-10"
           role="menu"
         >

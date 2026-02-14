@@ -198,12 +198,22 @@ export default function GuestListPage() {
         )}
 
         {/* Guest list */}
-        <div className="pb-24" role="list" aria-label="Guest list">
+        <div className="pb-32" role="list" aria-label="Guest list">
           <GuestList
             guests={filteredGuests}
             onCheckIn={updateCheckIn}
             searchQuery={searchQuery}
           />
+        </div>
+
+        {/* Footer */}
+        <div className="px-5 py-6 border-t border-stone-200 text-center space-y-1">
+          <Link href="/party" className="text-stone-400 hover:text-amber-600 text-sm transition-colors">
+            ← Back to party
+          </Link>
+          <p className="text-stone-300 text-xs">
+            © {new Date().getFullYear()} Milk & Henny
+          </p>
         </div>
       </main>
     </div>

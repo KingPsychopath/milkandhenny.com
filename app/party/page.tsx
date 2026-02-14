@@ -82,7 +82,7 @@ export default function PartyHome() {
             href="/"
             className="text-zinc-500 hover:text-amber-400 text-xs transition-colors"
           >
-            ← back to blog
+            ← back to home
           </Link>
           <div className="text-zinc-600 text-xs">
             © {new Date().getFullYear()} Milk & Henny

@@ -137,9 +137,7 @@ export default async function PhotoPage({ params }: Props) {
           <Link href={`/pics/${albumSlug}`} className="hover:text-foreground transition-colors">
             ← back to album
           </Link>
-          <Link href={`/pics/${albumSlug}`} className="hover:text-foreground transition-colors">
-            view album →
-          </Link>
+          <span>© {new Date().getFullYear()} milk & henny</span>
         </div>
       </footer>
     </div>

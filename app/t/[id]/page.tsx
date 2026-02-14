@@ -175,7 +175,7 @@ export default async function TransferPage({ params, searchParams }: Props) {
             temporary transfer · self-destructs{" "}
             {formatDate(transfer.expiresAt)}
           </span>
-          <span>milk & henny</span>
+          <Link href="/" className="hover:text-foreground transition-colors">milk & henny</Link>
         </div>
       </footer>
     </div>

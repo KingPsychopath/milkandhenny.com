@@ -192,6 +192,9 @@ export default function IcebreakerPage() {
         >
           ← Back to party
         </Link>
+        <p className={`text-xs opacity-40 ${revealed ? color.text : 'text-zinc-600'}`}>
+          © {new Date().getFullYear()} Milk & Henny
+        </p>
       </div>
     </div>
   );

@@ -144,6 +144,13 @@ export default function ExamPage() {
       <div className="mx-auto" style={{ maxWidth: 720 }}>
         {/* ── Header ── */}
         <header className="text-center mb-12">
+          <a
+            href="/"
+            className="inline-block font-mono text-xs tracking-tighter font-bold mb-6 transition-opacity duration-300 hover:opacity-60"
+            style={{ color: "var(--stone-400)" }}
+          >
+            milk & henny
+          </a>
           <p
             className="font-mono text-xs tracking-widest uppercase mb-4"
             style={{ color: "var(--stone-400)" }}
@@ -371,10 +378,22 @@ export default function ExamPage() {
 
         {/* ── Footer ── */}
         <footer
-          className="mt-12 text-center font-mono text-xs"
+          className="mt-12 text-center font-mono text-xs space-y-3"
           style={{ color: "var(--stone-400)" }}
         >
           <p>end of questions</p>
+          <div className="border-t pt-4" style={{ borderColor: "var(--stone-200)" }}>
+            <a
+              href="/"
+              className="hover:opacity-60 transition-opacity duration-300"
+              style={{ color: "var(--stone-400)" }}
+            >
+              ← home
+            </a>
+            <p className="mt-2" style={{ color: "var(--stone-300)" }}>
+              © {new Date().getFullYear()} milk & henny
+            </p>
+          </div>
         </footer>
       </div>
     </main>

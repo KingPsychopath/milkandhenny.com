@@ -292,10 +292,13 @@ export default function BestDressedPage() {
         )}
 
         {/* Back link */}
-        <div className="mt-10 text-center">
-          <Link href="/party" className="text-zinc-500 hover:text-purple-400 text-sm transition-colors">
+        <div className="mt-10 text-center space-y-2">
+          <Link href="/party" className="text-zinc-500 hover:text-purple-400 text-sm transition-colors block">
             ← Back to party
           </Link>
+          <p className="text-zinc-600 text-xs">
+            © {new Date().getFullYear()} Milk & Henny
+          </p>
         </div>
       </main>
     </div>

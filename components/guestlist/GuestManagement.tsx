@@ -2,6 +2,7 @@
 
 import { useState, useRef, useMemo, useEffect } from 'react';
 import { Guest } from '@/lib/types';
+import { useFocusTrap } from '@/hooks/useFocusTrap';
 
 type LeaderboardEntry = { name: string; count: number };
 
@@ -128,6 +129,17 @@ export function GuestManagement({ guests, onGuestAdded, onGuestRemoved, onCSVImp
   const [error, setError] = useState<string | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const modalRef = useFocusTrap<HTMLDivElement>(isOpen);
+
+  // Close modal on Escape
+  useEffect(() => {
+    if (!isOpen) return;
+    function handleEscape(e: KeyboardEvent) {
+      if (e.key === 'Escape') closeModal();
+    }
+    document.addEventListener('keydown', handleEscape);
+    return () => document.removeEventListener('keydown', handleEscape);
+  }, [isOpen]);
 
   // Get all main guest names for typeahead
   const mainGuestNames = useMemo(() => 
@@ -411,7 +423,15 @@ export function GuestManagement({ guests, onGuestAdded, onGuestRemoved, onCSVImp
   }
 
   return (
-    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-20 flex items-end sm:items-center justify-center">
+    <div
+      ref={modalRef}
+      role="dialog"
+      aria-modal="true"
+      aria-label="Manage Guests"
+      className="fixed inset-0 bg-black/60 backdrop-blur-sm z-20 flex items-end sm:items-center justify-center"
+      onClick={(e) => { if (e.target === e.currentTarget) closeModal(); }}
+      onKeyDown={undefined}
+    >
       <div className="bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl w-full sm:max-w-md max-h-[90vh] overflow-hidden animate-in slide-in-from-bottom duration-300">
         {/* Header */}
         <div className="px-6 py-4 border-b border-stone-100 flex justify-between items-center bg-gradient-to-r from-amber-600 to-yellow-500">
