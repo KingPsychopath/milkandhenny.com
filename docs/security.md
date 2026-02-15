@@ -1,0 +1,147 @@
+# Security
+
+Authentication, protections, rate limiting, and what to do when credentials leak.
+
+---
+
+## Authentication
+
+| Gate | Env var | Protects | Verified by |
+|------|---------|----------|-------------|
+| Staff PIN | `STAFF_PIN` | Guest list page access (door staff) | `POST /api/guests/verify-staff-pin` |
+| Management password | `MANAGEMENT_PASSWORD` | Manage (add/remove/import, wipe best-dressed) | `POST /api/guests/verify-management` |
+| Upload PIN | `UPLOAD_PIN` | Web upload page (`/upload`) | `POST /api/upload/verify-pin` |
+
+Both are env vars, never in the client bundle. Set in Vercel and `.env.local`.
+
+Verify endpoints issue short-lived JWTs (24h). Clients store tokens in `sessionStorage` (not raw credentials). Tokens are revoked on tab close.
+
+---
+
+## Transfer Security
+
+- **Memorable word URLs**: 3-word hyphenated IDs (e.g. `velvet-moon-candle`), ~2.2M combos
+- **Delete tokens**: 22-char base64url (16 bytes), never exposed to recipients
+- **Presigned URLs**: time-limited (15 min), scoped to a single R2 key, generated server-side only for authenticated uploaders
+- **Admin-only takedown**: only the uploader can delete (CLI or admin URL)
+- **No indexing**: `robots: noindex, nofollow` on all transfer pages
+- **Auto-expiry**: Redis TTL + server-side check + daily cron R2 cleanup
+- **CDN caching**: Vercel edge caches transfer pages for 60s (zero KV cost on repeat visits)
+
+---
+
+## Best-Dressed Protections
+
+| Risk | Mitigation |
+|------|------------|
+| Vote stuffing | One-time token per vote (GET issues, POST consumes). A device can refresh for a new token — acceptable for low-stakes party voting. |
+| Fake names | Server validates the voted name is in the guest list. Arbitrary names rejected. |
+| Anyone wiping votes | `DELETE /api/best-dressed` requires management password. |
+
+---
+
+## Cloudflare WAF (Rate Limiting)
+
+Images and transfer files are served from `pics.milkandhenny.com` (R2 custom domain). Every request counts as an R2 read. Rate limiting prevents abuse.
+
+In **Cloudflare Dashboard → Security → WAF → Rate limiting rules**, create two rules:
+
+| Rule | Match | Per IP | Threshold | Action | Duration |
+|------|-------|--------|-----------|--------|----------|
+| Album images | URI path `/albums/*` | Yes | 100 req / 10s | Block | 10s |
+| Transfer files | URI path `/transfers/*` | Yes | 100 req / 10s | Block | 10s |
+
+> Free plan limits: 10-second period and 10-second block duration only.
+
+For the step-by-step Cloudflare walkthrough, see [cloudflare-rate-limit-images.md](./cloudflare-rate-limit-images.md).
+
+### Worst-case cost with rate limiting
+
+| Attack scenario | Requests/day (sustained) | R2 cost/month |
+|-----------------|--------------------------|---------------|
+| 1 IP (script kiddie) | ~432,000 | ~$1 |
+| 10 IPs (VPN/proxies) | ~4.3M | ~$43 |
+
+A casual single-IP attacker costs ~$1/month. A serious multi-IP attack is extremely unlikely for a personal site. Cloudflare's automatic DDoS protection (included free) is always active.
+
+**If under attack:** set a Cloudflare billing alert at $5, check Security → Events, block IPs via WAF Custom Rules, enable Under Attack Mode if needed, tighten rate limits temporarily.
+
+---
+
+## Incident Response & Key Rotation
+
+The app is designed for easy key rotation — every secret is an environment variable, nothing is hardcoded, and no secret is baked into the client bundle. Rotation never requires a code change.
+
+### R2 credentials leaked (`R2_ACCESS_KEY` / `R2_SECRET_KEY`)
+
+These are the highest-impact credentials — they grant read/write/delete access to your entire R2 bucket.
+
+1. **Cloudflare Dashboard → R2 → Manage R2 API Tokens**
+2. **Revoke** the compromised token immediately
+3. **Create a new token** with the same permissions (Object Read & Write on your bucket)
+4. Copy the new Access Key ID and Secret Access Key
+5. **Update `.env.local`** with the new values
+6. **Update Vercel env vars** (Settings → Environment Variables)
+7. **Redeploy** on Vercel so the cron picks up the new token
+8. Test: `pnpm cli bucket ls` — should return bucket contents
+
+**Downtime:** Zero for the public site (images served via Cloudflare CDN). CLI operations fail between steps 2–5. Cron fails until redeploy.
+
+### KV / Redis credentials leaked (`KV_REST_API_URL` / `KV_REST_API_TOKEN`)
+
+1. **Upstash Console → your database → REST API section → Reset token** (or rotate via Vercel Dashboard → Storage → KV → Settings)
+2. Copy the new URL and token
+3. **Update `.env.local`**
+4. **Update Vercel env vars** (if set manually; Vercel KV auto-updates if rotated from Vercel Dashboard)
+5. **Redeploy** on Vercel
+6. Test: `pnpm cli transfers list`
+
+**Downtime:** Guest list polling and transfer pages return errors during rotation (~30s). CDN-cached transfer pages keep serving for up to 60s.
+
+**Data at risk:** KV token grants read/write to guest names, votes, and transfer metadata (not files — those are in R2).
+
+### Management password or Staff PIN leaked
+
+1. **Update Vercel env vars** → `MANAGEMENT_PASSWORD` and/or `STAFF_PIN`
+2. **Redeploy** on Vercel
+3. Update `.env.local` for local dev
+
+**Downtime:** None. Existing tokens in sessionStorage remain valid until the tab closes.
+
+### CRON_SECRET leaked
+
+1. Generate: `openssl rand -hex 32`
+2. **Update Vercel env var** → `CRON_SECRET`
+3. **Redeploy**
+
+**Downtime:** None. The cron runs daily; next invocation uses the new secret.
+
+### Quick-reference: where each secret lives
+
+| Secret | `.env.local` | Vercel env vars | Cloudflare | Upstash |
+|--------|:---:|:---:|:---:|:---:|
+| `R2_ACCESS_KEY` / `R2_SECRET_KEY` | Yes | Yes | Source of truth | — |
+| `KV_REST_API_URL` / `KV_REST_API_TOKEN` | Yes | Auto-injected | — | Source of truth |
+| `STAFF_PIN` | Yes | Yes | — | — |
+| `MANAGEMENT_PASSWORD` | Yes | Yes | — | — |
+| `CRON_SECRET` | No | Yes | — | — |
+| `NEXT_PUBLIC_R2_PUBLIC_URL` | Yes | Yes | — | — |
+| `NEXT_PUBLIC_BASE_URL` | Yes (CLI) | No | — | — |
+
+### General incident checklist
+
+1. **Identify** which credential was exposed and where
+2. **Revoke/rotate** at the source immediately (Cloudflare, Upstash, or Vercel)
+3. **Update** `.env.local` + Vercel env vars
+4. **Redeploy** on Vercel
+5. **Verify** with a CLI or browser test
+6. **Audit** Cloudflare Analytics and Upstash Monitor for suspicious activity
+7. **Document** what happened
+
+### What makes this app rotation-friendly
+
+- **No secrets in code.** Every credential is an env var — rotation is config-only.
+- **No secrets in the client bundle.** `NEXT_PUBLIC_*` vars contain only public URLs, not secrets.
+- **Token-based auth.** Short-lived JWTs (24h), stored in `sessionStorage`, never raw credentials.
+- **Layered storage.** R2 and KV credentials are independent — leaking one doesn't compromise the other.
+- **CDN buffer.** Cached content continues serving even during a rotation window.
