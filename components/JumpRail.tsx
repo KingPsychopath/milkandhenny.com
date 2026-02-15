@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useRef, useState } from "react";
+import { useOutsideClick } from "@/hooks/useOutsideClick";
 
 export type JumpRailItem = { id: string; label: string };
 
@@ -14,23 +15,25 @@ type JumpRailProps = {
 /** Max visible label chars before truncating with "…" */
 const LABEL_CAP = 18;
 
-/**
- * Floating vertical bookmark rail: collapsed tab on the right edge,
- * expands on hover/tap (or swipe on touch) to show section labels.
- * Touch target is ≥44px so taps don’t miss; visual strip stays slim.
- */
 const SWIPE_THRESHOLD = 40;
 
+/**
+ * Floating vertical bookmark rail: collapsed tab on the right edge,
+ * expands on hover/tap or swipe. Tap outside (or mouse leave) closes when open.
+ */
 export function JumpRail({ items, ariaLabel }: JumpRailProps) {
   const [open, setOpen] = useState(false);
   const touchStartX = useRef(0);
   const didSwipe = useRef(false);
+  const navRef = useRef<HTMLElement>(null);
 
   const jump = useCallback((id: string) => {
     const el = document.getElementById(id);
     el?.scrollIntoView({ behavior: "smooth", block: "start" });
     setOpen(false);
   }, []);
+
+  useOutsideClick(navRef, () => setOpen(false), open);
 
   const handleTouchStart = useCallback((e: React.TouchEvent) => {
     didSwipe.current = false;
@@ -66,6 +69,7 @@ export function JumpRail({ items, ariaLabel }: JumpRailProps) {
 
   return (
     <nav
+      ref={navRef}
       className="fixed right-0 top-1/2 -translate-y-1/2 z-10 flex flex-row-reverse items-stretch"
       style={{ maxHeight: "min(80vh, 480px)" }}
       onMouseEnter={() => setOpen(true)}
@@ -102,13 +106,13 @@ export function JumpRail({ items, ariaLabel }: JumpRailProps) {
         </div>
       </div>
 
-      {/* Bookmark tab: ≥44px touch target on mobile, strip stays visually slim */}
+      {/* Bookmark tab: 56px touch target on mobile for corner taps, strip stays slim */}
       <button
         type="button"
         onClick={handleTabClick}
         onTouchStart={handleTouchStart}
         onTouchEnd={(e) => handleTouchEnd(e, false)}
-        className="flex items-center justify-end min-h-[44px] min-w-[44px] md:min-w-0 md:min-h-0 md:justify-center shrink-0 py-0 pr-0 md:pr-0 transition-[width] duration-300 md:hover:w-6 focus:outline-none focus:ring-2 focus:ring-amber-500/50 focus:ring-inset focus:ring-offset-0 md:w-5 md:h-14"
+        className="flex items-center justify-end min-w-[56px] min-h-[56px] md:min-w-0 md:min-h-0 shrink-0 py-0 pr-0 md:pr-0 transition-[width] duration-300 md:hover:w-6 focus:outline-none focus:ring-2 focus:ring-amber-500/50 focus:ring-inset focus:ring-offset-0 md:w-5 md:h-14"
         aria-label={ariaLabel ?? "Jump to section"}
         aria-expanded={open}
       >
