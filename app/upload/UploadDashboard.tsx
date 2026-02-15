@@ -75,6 +75,7 @@ export function UploadDashboard() {
   const [uploadToken, setUploadToken] = useState("");
   const [isAuthed, setIsAuthed] = useState(false);
 
+  /** Read token after mount only — avoids hydration mismatch (no sessionStorage on server). */
   useEffect(() => {
     const stored = getStored("uploadToken") ?? "";
     setUploadToken(stored);
@@ -420,7 +421,7 @@ export function UploadDashboard() {
   /* ─── Render: wait for mount (avoids hydration mismatch) ─── */
   if (!mounted) {
     return (
-      <div className="min-h-dvh flex items-center justify-center">
+      <div className="min-h-dvh flex items-center justify-center px-6" aria-busy="true" aria-label="Loading">
         <div className="w-8 h-8 border-2 border-[var(--foreground)] border-t-transparent rounded-full animate-spin" />
       </div>
     );
