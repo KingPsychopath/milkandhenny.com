@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 
 export type JumpRailItem = { id: string; label: string };
 
@@ -16,16 +16,50 @@ const LABEL_CAP = 18;
 
 /**
  * Floating vertical bookmark rail: collapsed tab on the right edge,
- * expands on hover/tap to show section labels you can click to jump to.
- * Thin strip on mobile, wider tab on desktop. Hides when empty.
+ * expands on hover/tap (or swipe on touch) to show section labels.
+ * Touch target is ≥44px so taps don’t miss; visual strip stays slim.
  */
+const SWIPE_THRESHOLD = 40;
+
 export function JumpRail({ items, ariaLabel }: JumpRailProps) {
   const [open, setOpen] = useState(false);
+  const touchStartX = useRef(0);
+  const didSwipe = useRef(false);
 
   const jump = useCallback((id: string) => {
     const el = document.getElementById(id);
     el?.scrollIntoView({ behavior: "smooth", block: "start" });
     setOpen(false);
+  }, []);
+
+  const handleTouchStart = useCallback((e: React.TouchEvent) => {
+    didSwipe.current = false;
+    touchStartX.current = e.targetTouches[0].clientX;
+  }, []);
+
+  /** Swipe left on tab → open. Swipe right on panel → close. */
+  const handleTouchEnd = useCallback(
+    (e: React.TouchEvent, onPanel: boolean) => {
+      const endX = e.changedTouches[0].clientX;
+      const delta = touchStartX.current - endX;
+      if (onPanel) {
+        if (delta < -SWIPE_THRESHOLD) {
+          didSwipe.current = true;
+          setOpen(false);
+        }
+      } else {
+        if (delta > SWIPE_THRESHOLD) {
+          didSwipe.current = true;
+          setOpen(true);
+        }
+      }
+    },
+    []
+  );
+
+  const handleTabClick = useCallback(() => {
+    if (didSwipe.current) return;
+    setOpen((o) => !o);
   }, []);
 
   if (items.length === 0) return null;
@@ -38,9 +72,9 @@ export function JumpRail({ items, ariaLabel }: JumpRailProps) {
       onMouseLeave={() => setOpen(false)}
       aria-label={ariaLabel ?? "Jump to section"}
     >
-      {/* Expandable panel */}
+      {/* Expandable panel — swipe left on panel to close */}
       <div
-        className={`flex flex-col overflow-hidden transition-[max-width,opacity] duration-300 ease-out border-l rounded-l-md ${open ? "pointer-events-auto" : "pointer-events-none"}`}
+        className={`flex flex-col overflow-hidden transition-[max-width,opacity] duration-300 ease-out border-l rounded-l-md touch-pan-y ${open ? "pointer-events-auto" : "pointer-events-none"}`}
         style={{
           maxWidth: open ? 180 : 0,
           opacity: open ? 1 : 0,
@@ -49,6 +83,8 @@ export function JumpRail({ items, ariaLabel }: JumpRailProps) {
           boxShadow: open ? "-4px 0 12px rgba(0,0,0,0.06)" : "none",
         }}
         aria-hidden={!open}
+        onTouchStart={open ? handleTouchStart : undefined}
+        onTouchEnd={open ? (e) => handleTouchEnd(e, true) : undefined}
       >
         <div className="flex flex-col py-2 gap-px overflow-y-auto" style={{ minWidth: 140 }}>
           {items.map(({ id, label }) => (
@@ -56,7 +92,7 @@ export function JumpRail({ items, ariaLabel }: JumpRailProps) {
               key={id}
               type="button"
               onClick={() => jump(id)}
-              className="font-mono text-[11px] leading-tight h-auto py-1.5 px-3 text-left rounded-md transition-colors hover:bg-stone-200/80 focus:outline-none focus:ring-2 focus:ring-amber-500/50 focus:ring-inset whitespace-nowrap overflow-hidden text-ellipsis"
+              className="font-mono text-[11px] leading-tight h-auto py-1.5 px-3 text-left rounded-md transition-colors hover:bg-stone-200/80 focus:outline-none focus:ring-2 focus:ring-amber-500/50 focus:ring-inset whitespace-nowrap overflow-hidden text-ellipsis min-h-[44px] flex items-center"
               style={{ color: "var(--foreground)" }}
               title={label}
             >
@@ -66,23 +102,28 @@ export function JumpRail({ items, ariaLabel }: JumpRailProps) {
         </div>
       </div>
 
-      {/* Bookmark tab */}
+      {/* Bookmark tab: ≥44px touch target on mobile, strip stays visually slim */}
       <button
         type="button"
-        onClick={() => setOpen((o) => !o)}
-        className="flex items-center justify-center w-3 h-12 md:w-5 md:h-14 rounded-l-md transition-all duration-300 md:hover:w-6 focus:outline-none focus:ring-2 focus:ring-amber-500/50 focus:ring-inset focus:ring-offset-0 shrink-0"
-        style={{
-          background: "var(--stone-100)",
-          borderWidth: "1px 0 1px 1px",
-          borderColor: "var(--stone-300)",
-          color: "var(--stone-600)",
-          boxShadow: "-2px 0 8px rgba(0,0,0,0.04)",
-        }}
+        onClick={handleTabClick}
+        onTouchStart={handleTouchStart}
+        onTouchEnd={(e) => handleTouchEnd(e, false)}
+        className="flex items-center justify-end min-h-[44px] min-w-[44px] md:min-w-0 md:min-h-0 md:justify-center shrink-0 py-0 pr-0 md:pr-0 transition-[width] duration-300 md:hover:w-6 focus:outline-none focus:ring-2 focus:ring-amber-500/50 focus:ring-inset focus:ring-offset-0 md:w-5 md:h-14"
         aria-label={ariaLabel ?? "Jump to section"}
         aria-expanded={open}
       >
-        <span className="font-mono text-[10px] opacity-70" aria-hidden>
-          &#8250;
+        <span
+          className="flex items-center justify-center w-3 h-12 md:w-5 md:h-14 rounded-l-md flex-shrink-0"
+          style={{
+            background: "var(--stone-100)",
+            borderWidth: "1px 0 1px 1px",
+            borderColor: "var(--stone-300)",
+            color: "var(--stone-600)",
+            boxShadow: "-2px 0 8px rgba(0,0,0,0.04)",
+          }}
+          aria-hidden
+        >
+          <span className="font-mono text-[10px] opacity-70">&#8250;</span>
         </span>
       </button>
     </nav>
