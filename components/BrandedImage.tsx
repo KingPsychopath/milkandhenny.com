@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useBrandedImage, type BrandedFormat } from "@/hooks/useBrandedImage";
 import { useOutsideClick } from "@/hooks/useOutsideClick";
+import { useEscapeKey } from "@/hooks/useEscapeKey";
 import type { FocalPreset } from "@/lib/media/focal";
 
 type BrandedImageProps = {
@@ -167,15 +168,7 @@ export function BrandedImage({
     cleanup();
   }, [cleanup]);
 
-  // Close frame preview on Escape
-  useEffect(() => {
-    if (!showPreview) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") handleClose();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [showPreview, handleClose]);
+  useEscapeKey(handleClose, showPreview);
 
   return (
     <>

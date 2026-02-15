@@ -3,6 +3,7 @@
 import { useState, useRef, useMemo, useEffect, useCallback } from 'react';
 import type { Guest } from '@/lib/guests/types';
 import { useFocusTrap } from '@/hooks/useFocusTrap';
+import { useEscapeKey } from '@/hooks/useEscapeKey';
 
 type LeaderboardEntry = { name: string; count: number };
 
@@ -114,15 +115,7 @@ export function useGuestManagement({
 
   /* ─── Effects ─── */
 
-  useEffect(() => {
-    if (!isOpen) return;
-    function handleEscape(e: KeyboardEvent) {
-      if (e.key === 'Escape') closeModal();
-    }
-    document.addEventListener('keydown', handleEscape);
-    return () => document.removeEventListener('keydown', handleEscape);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOpen]);
+  useEscapeKey(closeModal, isOpen);
 
   useEffect(() => {
     if (activeTab === 'games' && isAuthenticated) {

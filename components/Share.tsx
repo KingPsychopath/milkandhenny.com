@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { useFocusTrap } from "@/hooks/useFocusTrap";
 import { useOutsideClick } from "@/hooks/useOutsideClick";
+import { useEscapeKey } from "@/hooks/useEscapeKey";
 
 type ShareProps = {
   /** Full URL to share */
@@ -62,15 +63,7 @@ export function Share({ url, title = "", label = "Share", className = "" }: Shar
   const dropdownRef = useRef<HTMLDivElement>(null);
   const dropdownMenuRef = useFocusTrap<HTMLDivElement>(dropdownOpen);
 
-  // Close on Escape
-  useEffect(() => {
-    if (!dropdownOpen) return;
-    function handleEscape(e: KeyboardEvent) {
-      if (e.key === 'Escape') setDropdownOpen(false);
-    }
-    document.addEventListener('keydown', handleEscape);
-    return () => document.removeEventListener('keydown', handleEscape);
-  }, [dropdownOpen]);
+  useEscapeKey(() => setDropdownOpen(false), dropdownOpen);
 
   useEffect(() => {
     const mobile =
