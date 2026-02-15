@@ -141,6 +141,43 @@ Write an integration test when:
 
 ---
 
+## What we don't test (and why)
+
+Not everything in the codebase needs a test. The mental model for deciding is: **what kind of code is this?**
+
+### The three kinds of code
+
+Every module in this project falls into one of three buckets. Only the first one is worth testing.
+
+| Kind | What it does | Example | Test? | Why |
+|------|-------------|---------|-------|-----|
+| **Logic** | Transforms data — input in, output out. Decisions, parsing, formatting, validation. | `slug()`, `parseExpiry()`, `parseCSV()`, `updateGuestCheckIn()` | **Yes** | A bug here silently corrupts data or breaks features. The function's contract matters and has edge cases. Tests are fast, stable, and high-value. |
+| **Glue** | Wires things together — passes props, calls APIs, orchestrates steps. No interesting decisions of its own. | React components, API route handlers, upload orchestration | **No** | Testing glue means testing that you called the right function with the right args. That's verifying wiring, not behaviour. These tests are brittle (break when you refactor) and low-signal (pass even when the underlying logic is wrong). |
+| **Delegation** | Thin wrapper around an external library or service. Configures and calls someone else's code. | `lib/redis.ts` (Upstash client), `lib/r2.ts` (S3 client), Sharp image processing | **No** | You'd be testing the library, not your code. If Sharp's `resize()` breaks, that's Sharp's problem. If the S3 SDK's `putObject` breaks, that's AWS's problem. Your wrapper has no logic to verify. |
+
+### Applying this to specific features
+
+**Albums, PhotoViewer, Lightbox, MasonryGrid** — these are **glue**. They take props (photo URLs, dimensions, album metadata) and render JSX. The "logic" is CSS grid layout and event handlers (keyboard nav, swipe). The bugs you'd actually hit are visual — wrong crop, broken grid on mobile, lightbox not closing on Escape. Those are caught by the design system rules and manual testing, not by asserting that a component renders a `<div>`. If we ever needed to test these, it would be E2E (real browser, real viewport), not unit tests.
+
+**Transfer upload flow** (`transfer-upload.ts`, presign/finalize routes) — this is **glue + delegation**. The flow is: call R2 for a presigned URL → return it to the client → client PUTs to R2 → call finalize → server runs Sharp. Testing it means mocking S3 presign, mocking Sharp, mocking the request/response cycle, and asserting that your orchestration called them in order. That's a test of your mock setup, not your logic. The actual data integrity (does a saved transfer come back correctly?) is already tested in `transfers-memory.test.ts`.
+
+**Media processing** (`lib/media/processing.ts`, `storage.ts`, `download.ts`) — this is **delegation**. These files call Sharp to resize, call S3 to upload, call fetch to download. There's no decision logic — just "take this image, resize to 600px, upload to this key." Testing it means testing Sharp and S3, which is their job.
+
+**`lib/media/file-kinds.ts`** — this is a const array and a type export. There is literally no logic to test.
+
+**`lib/media/albums.ts`** — this is similar to `blog.ts` (reads JSON manifests from disk), but the data shape is simpler (no frontmatter parsing, no heading extraction, no reading time calculation). The JSON → object path is trivial. If it were doing transformations or validations on the album data, it would be worth testing.
+
+### The mental model, summarised
+
+> **Would a bug in this code silently produce wrong data, or would it visibly crash / look wrong?**
+>
+> - **Silently wrong** → test it. (`slug()` producing `"hello--world"` instead of `"hello-world"` won't crash, but every TOC link breaks.)
+> - **Visibly broken** → skip it. (A broken lightbox component won't render at all — you'll see it immediately in dev.)
+>
+> Tests exist to catch the bugs you _wouldn't notice_. If you'd notice the bug the first time you open the page, a test adds no value.
+
+---
+
 ## Why we don't have E2E tests (and when we would)
 
 E2E (end-to-end) tests run in a real browser against the full running app. They're the ultimate confidence check — _does the user see what they expect?_ — but they come with real costs:
