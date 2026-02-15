@@ -1,7 +1,9 @@
 "use client";
 
 import { useState, useRef, useCallback, useEffect } from "react";
+import Link from "next/link";
 import { getStored, setStored, removeStored } from "@/lib/storage-keys";
+import { SITE_BRAND } from "@/lib/config";
 
 /* ─── Types ─── */
 
@@ -456,6 +458,12 @@ export function UploadDashboard() {
           >
             {authLoading ? "checking..." : "unlock"}
           </button>
+
+          <p className="mt-8 font-mono text-xs theme-muted">
+            <Link href="/" className="hover:text-[var(--foreground)] transition-colors">
+              ← home
+            </Link>
+          </p>
         </form>
       </div>
     );
@@ -468,9 +476,19 @@ export function UploadDashboard() {
       {/* Header */}
       <header className="mb-10">
         <h1 className="font-mono font-bold tracking-tighter text-lg">
-          milk & henny{" "}
+          <Link href="/" className="hover:opacity-80 transition-opacity">
+            {SITE_BRAND}
+          </Link>{" "}
           <span className="theme-muted font-normal">· upload</span>
         </h1>
+        <nav className="mt-3 flex items-center gap-6 font-mono text-xs tracking-wide" aria-label="Site">
+          <Link href="/" className="theme-muted hover:text-[var(--foreground)] transition-colors">
+            home
+          </Link>
+          <Link href="/blog" className="theme-muted hover:text-[var(--foreground)] transition-colors">
+            words
+          </Link>
+        </nav>
       </header>
 
       {/* Mode toggle */}
@@ -832,6 +850,15 @@ export function UploadDashboard() {
           </button>
         </div>
       )}
+
+      <footer role="contentinfo" className="border-t theme-border mt-16 pt-8">
+        <div className="flex items-center justify-between font-mono text-[11px] theme-muted tracking-wide">
+          <Link href="/" className="hover:text-[var(--foreground)] transition-colors">
+            ← home
+          </Link>
+          <span>© {new Date().getFullYear()} {SITE_BRAND}</span>
+        </div>
+      </footer>
     </div>
   );
 }
