@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getGuests } from '@/lib/guests/kv-client';
 import { getRedis } from '@/lib/redis';
 import { requireAuth } from '@/lib/auth';
+import { apiError } from '@/lib/api-error';
 
 const VOTES_KEY = 'best-dressed:votes';
 const SESSION_KEY = 'best-dressed:session';
@@ -154,8 +155,7 @@ export async function GET() {
       voteToken, // One-time use token for voting
     });
   } catch (error) {
-    console.error('Error getting votes:', error);
-    return NextResponse.json({ error: 'Failed to get votes' }, { status: 500 });
+    return apiError('best-dressed.list', 'Failed to load voting data', error);
   }
 }
 
@@ -233,8 +233,7 @@ export async function POST(request: NextRequest) {
       session,
     });
   } catch (error) {
-    console.error('Error submitting vote:', error);
-    return NextResponse.json({ error: 'Failed to submit vote' }, { status: 500 });
+    return apiError('best-dressed.vote', 'Failed to submit vote. Please try again.', error);
   }
 }
 
@@ -259,7 +258,6 @@ export async function DELETE(request: NextRequest) {
       session: newSession,
     });
   } catch (error) {
-    console.error('Error clearing votes:', error);
-    return NextResponse.json({ error: 'Failed to clear votes' }, { status: 500 });
+    return apiError('best-dressed.clear', 'Failed to clear votes', error);
   }
 }

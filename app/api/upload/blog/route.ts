@@ -9,6 +9,7 @@ import {
 } from "@/lib/media/processing";
 import { toR2Filename, toMarkdownSnippet } from "@/lib/blog-upload";
 import type { FileKind } from "@/lib/media/file-kinds";
+import { apiError } from "@/lib/api-error";
 
 /** Allow longer execution for image processing */
 export const maxDuration = 60;
@@ -122,10 +123,6 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ uploaded, skipped });
   } catch (e) {
-    console.error("Blog upload failed:", e);
-    return NextResponse.json(
-      { error: `Upload failed: ${(e as Error).message}` },
-      { status: 500 }
-    );
+    return apiError('upload.blog', 'Upload failed. Please try again.', e, { slug });
   }
 }

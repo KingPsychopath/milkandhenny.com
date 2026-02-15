@@ -9,6 +9,7 @@ import {
 } from "@/lib/transfers";
 import { processTransferFile, sortTransferFiles } from "@/lib/transfer-upload";
 import { BASE_URL } from "@/lib/config";
+import { apiError } from "@/lib/api-error";
 
 /** Allow longer execution for image processing */
 export const maxDuration = 60;
@@ -105,10 +106,6 @@ export async function POST(request: NextRequest) {
       fileCounts: counts,
     });
   } catch (e) {
-    console.error("Transfer upload failed:", e);
-    return NextResponse.json(
-      { error: `Upload failed: ${(e as Error).message}` },
-      { status: 500 }
-    );
+    return apiError('upload.transfer', 'Upload failed. Please try again or use the CLI for large transfers.', e, { transferId });
   }
 }

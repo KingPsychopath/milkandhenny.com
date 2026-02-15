@@ -1,6 +1,7 @@
 import { randomBytes } from 'crypto';
 import { getRedis } from './redis';
 import { FILE_KINDS, type FileKind } from './media/file-kinds';
+import { generateWordId } from './transfer-words';
 
 /* ─── Types ─── */
 
@@ -55,9 +56,20 @@ const DEFAULT_EXPIRY_SECONDS = 7 * 24 * 60 * 60;
 
 /* ─── ID Generation ─── */
 
-/** Generate a short, URL-safe, unguessable transfer ID (11 chars) */
+const TRANSFER_ID_STYLE = (process.env.TRANSFER_ID_STYLE ?? 'words') as 'words' | 'random';
+
+/**
+ * Generate a URL-safe transfer ID.
+ *
+ * - `"words"` (default): 3-word hyphenated combo, e.g. "velvet-moon-candle"
+ * - `"random"`: 11-char base64url string, e.g. "xK9mP2nQ7vL"
+ *
+ * Toggle via `TRANSFER_ID_STYLE` env var.
+ */
 function generateTransferId(): string {
-  return randomBytes(8).toString('base64url');
+  return TRANSFER_ID_STYLE === 'words'
+    ? generateWordId()
+    : randomBytes(8).toString('base64url');
 }
 
 /** Generate a delete token (22 chars, URL-safe) */

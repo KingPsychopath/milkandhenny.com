@@ -192,7 +192,7 @@ export function useGuestManagement({
         setError(data.error || 'Failed to add guest');
       }
     } catch {
-      setError('Failed to add guest');
+      setError('Connection error. Could not add guest.');
     }
   }
 
@@ -209,10 +209,11 @@ export function useGuestManagement({
         flashSuccess('Guest removed successfully!', 2000);
         onGuestRemoved();
       } else {
-        setError('Failed to remove guest');
+        const data = await res.json().catch(() => ({}));
+        setError((data.error as string) || 'Failed to remove guest');
       }
     } catch {
-      setError('Failed to remove guest');
+      setError('Connection error. Could not remove guest.');
     }
   }
 
@@ -221,11 +222,15 @@ export function useGuestManagement({
     setError(null);
     try {
       const res = await authFetch('/api/guests/bootstrap', { method: 'POST' });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setError((data.error as string) || 'Bootstrap failed');
+        return;
+      }
       flashSuccess(data.bootstrapped ? `Loaded ${data.count} guests from CSV` : (data.message || 'Guests already exist'));
       onCSVImported();
     } catch {
-      setError('Failed to bootstrap');
+      setError('Connection error. Could not bootstrap.');
     } finally {
       setDataLoading(false);
     }
@@ -237,11 +242,15 @@ export function useGuestManagement({
     setError(null);
     try {
       const res = await authFetch('/api/guests/bootstrap', { method: 'DELETE' });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setError((data.error as string) || 'Force reload failed');
+        return;
+      }
       flashSuccess(`Reset complete! Loaded ${data.count} guests from CSV`);
       onCSVImported();
     } catch {
-      setError('Failed to reload data');
+      setError('Connection error. Could not reload data.');
     } finally {
       setDataLoading(false);
     }
@@ -253,16 +262,25 @@ export function useGuestManagement({
     setError(null);
     try {
       const guestRes = await authFetch('/api/guests/bootstrap', { method: 'DELETE' });
-      const guestData = await guestRes.json();
+      const guestData = await guestRes.json().catch(() => ({}));
+      if (!guestRes.ok) {
+        setError((guestData.error as string) || 'Guest reset failed');
+        return;
+      }
 
-      await authFetch('/api/best-dressed', { method: 'DELETE' });
+      const voteRes = await authFetch('/api/best-dressed', { method: 'DELETE' });
+      if (!voteRes.ok) {
+        setError('Guests reset but failed to clear votes');
+        onCSVImported();
+        return;
+      }
+
       setBestDressedLeaderboard([]);
       setBestDressedTotalVotes(0);
-
       flashSuccess(`Party ready! Loaded ${guestData.count} guests, all votes cleared.`, 5000);
       onCSVImported();
     } catch {
-      setError('Party reset failed');
+      setError('Connection error. Party reset incomplete.');
     } finally {
       setDataLoading(false);
     }
@@ -319,10 +337,11 @@ export function useGuestManagement({
         setBestDressedTotalVotes(0);
         flashSuccess('Best dressed votes cleared');
       } else {
-        setError('Failed to clear votes');
+        const data = await res.json().catch(() => ({}));
+        setError((data.error as string) || 'Failed to clear votes');
       }
     } catch {
-      setError('Failed to clear votes');
+      setError('Connection error. Could not clear votes.');
     } finally {
       setGamesLoading(false);
     }

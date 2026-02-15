@@ -52,6 +52,9 @@ function formatBytes(bytes: number): string {
   return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`;
 }
 
+/** Vercel serverless request body limit is 4.5 MB; use 4 MB to leave headroom for multipart overhead */
+const MAX_TRANSFER_UPLOAD_BYTES = 4 * 1024 * 1024;
+
 const EXPIRY_OPTIONS = [
   { value: "30m", label: "30 minutes" },
   { value: "1h", label: "1 hour" },
@@ -247,6 +250,14 @@ export function UploadDashboard() {
     const formData = new FormData();
 
     if (mode === "transfer") {
+      const total = files.reduce((sum, f) => sum + f.size, 0);
+      if (total > MAX_TRANSFER_UPLOAD_BYTES) {
+        setUploadError(
+          `Total size over ${formatBytes(MAX_TRANSFER_UPLOAD_BYTES)}. Use the CLI for larger transfers or upload fewer files.`
+        );
+        setUploading(false);
+        return;
+      }
       formData.append("title", title || "untitled");
       formData.append("expires", expiry);
     } else {
@@ -272,17 +283,26 @@ export function UploadDashboard() {
         body: formData,
       });
 
-      const data = await res.json();
+      let data: Record<string, unknown> = {};
+      try {
+        data = await res.json();
+      } catch {
+        /* 413 etc. may return non-JSON body */
+      }
 
       if (!res.ok) {
-        setUploadError(data.error || `upload failed (${res.status})`);
+        const message =
+          res.status === 413
+            ? `Total size over ${formatBytes(MAX_TRANSFER_UPLOAD_BYTES)}. Use the CLI for larger transfers or upload fewer files.`
+            : (data.error as string) || `upload failed (${res.status})`;
+        setUploadError(message);
         return;
       }
 
       if (mode === "transfer") {
-        setTransferResult(data);
+        setTransferResult(data as TransferResult);
       } else {
-        setBlogResult(data);
+        setBlogResult(data as BlogResult);
       }
 
       setFiles([]);
@@ -527,6 +547,12 @@ export function UploadDashboard() {
             <span className="font-mono text-xs theme-muted">
               {files.length} file{files.length !== 1 ? "s" : ""} ·{" "}
               {formatBytes(totalFileSize)}
+              {mode === "transfer" && (
+                <span className="theme-faint">
+                  {" "}
+                  (max {formatBytes(MAX_TRANSFER_UPLOAD_BYTES)})
+                </span>
+              )}
             </span>
             <button
               onClick={clearAll}

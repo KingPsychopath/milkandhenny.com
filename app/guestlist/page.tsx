@@ -24,7 +24,7 @@ export default function GuestListPage() {
   const [mounted, setMounted] = useState(false);
   const [staffToken, setStaffToken] = useState('');
   const [pinInput, setPinInput] = useState('');
-  const [pinError, setPinError] = useState(false);
+  const [pinError, setPinError] = useState<string | false>(false);
 
   useEffect(() => {
     setStaffToken(getStored("staffToken") ?? '');
@@ -50,11 +50,15 @@ export default function GuestListPage() {
         setStored("staffToken", data.token);
         setStaffToken(data.token);
       } else {
-        setPinError(true);
+        setPinError(
+          res.status === 429
+            ? 'Too many attempts. Try again in 15 minutes.'
+            : 'Incorrect PIN'
+        );
         setPinInput('');
       }
     } catch {
-      setPinError(true);
+      setPinError('Connection error. Check your network and try again.');
       setPinInput('');
     }
   };
@@ -88,13 +92,13 @@ export default function GuestListPage() {
               }}
               placeholder="••••"
               className={`w-full px-6 py-4 text-center text-3xl font-mono tracking-[0.5em] bg-white/10 border rounded-2xl text-white placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-amber-500 transition-all ${
-                pinError ? 'border-red-500 bg-red-500/10' : 'border-white/20'
+                pinError !== false ? 'border-red-500 bg-red-500/10' : 'border-white/20'
               }`}
               autoFocus
             />
             
             {pinError && (
-              <p className="text-red-400 text-center text-sm">Incorrect PIN</p>
+              <p className="text-red-400 text-center text-sm">{pinError}</p>
             )}
 
             <button

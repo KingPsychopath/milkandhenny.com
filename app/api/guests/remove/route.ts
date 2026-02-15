@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getGuests, setGuests } from '@/lib/guests/kv-client';
 import { requireAuth } from '@/lib/auth';
 import { Guest } from '@/lib/guests/types';
+import { apiError } from '@/lib/api-error';
 
 export async function DELETE(request: NextRequest) {
   const authErr = requireAuth(request, "admin");
@@ -36,7 +37,6 @@ export async function DELETE(request: NextRequest) {
 
     return NextResponse.json({ success: true });
   } catch (error) {
-    console.error('Error removing guest:', error);
-    return NextResponse.json({ error: 'Failed to remove guest' }, { status: 500 });
+    return apiError('guests.remove', 'Failed to remove guest', error);
   }
 }

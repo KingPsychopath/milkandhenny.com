@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getGuests, setGuests } from '@/lib/guests/kv-client';
 import { requireAuth } from '@/lib/auth';
 import { Guest, GuestStatus, generateGuestId } from '@/lib/guests/types';
+import { apiError } from '@/lib/api-error';
 
 export async function POST(request: NextRequest) {
   const authErr = requireAuth(request, "admin");
@@ -44,7 +45,6 @@ export async function POST(request: NextRequest) {
     await setGuests(guests);
     return NextResponse.json({ success: true, guest: newGuest });
   } catch (error) {
-    console.error('Error adding guest:', error);
-    return NextResponse.json({ error: 'Failed to add guest' }, { status: 500 });
+    return apiError('guests.add', 'Failed to add guest', error);
   }
 }

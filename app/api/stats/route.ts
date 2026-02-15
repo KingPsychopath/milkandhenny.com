@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getGuests } from '@/lib/guests/kv-client';
 import { GuestStats, Guest } from '@/lib/guests/types';
+import { apiError } from '@/lib/api-error';
 
 function countCheckedIn(guests: Guest[]): { invites: number; plusOnes: number } {
   let invites = 0;
@@ -43,7 +44,6 @@ export async function GET() {
 
     return NextResponse.json(stats);
   } catch (error) {
-    console.error('Error fetching stats:', error);
-    return NextResponse.json({ error: 'Failed to fetch stats' }, { status: 500 });
+    return apiError('stats', 'Failed to fetch stats', error);
   }
 }

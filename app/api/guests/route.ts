@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getGuests, updateGuestCheckIn } from '@/lib/guests/kv-client';
 import { requireAuth } from '@/lib/auth';
+import { apiError } from '@/lib/api-error';
 
 export async function GET(request: NextRequest) {
   const authErr = requireAuth(request, "staff");
@@ -10,8 +11,7 @@ export async function GET(request: NextRequest) {
     const guests = await getGuests();
     return NextResponse.json(guests);
   } catch (error) {
-    console.error('Error fetching guests:', error);
-    return NextResponse.json({ error: 'Failed to fetch guests' }, { status: 500 });
+    return apiError('guests.list', 'Failed to fetch guests', error);
   }
 }
 
@@ -31,7 +31,6 @@ export async function POST(request: NextRequest) {
     const guests = await getGuests();
     return NextResponse.json(guests);
   } catch (error) {
-    console.error('Error updating guest:', error);
-    return NextResponse.json({ error: 'Failed to update guest' }, { status: 500 });
+    return apiError('guests.checkin', 'Failed to update check-in', error, { id: 'unknown' });
   }
 }

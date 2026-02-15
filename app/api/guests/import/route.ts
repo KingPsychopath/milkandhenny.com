@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { parseCSV } from '@/lib/guests/csv-parser';
 import { setGuests } from '@/lib/guests/kv-client';
 import { requireAuth } from '@/lib/auth';
+import { apiError } from '@/lib/api-error';
 
 export async function POST(request: NextRequest) {
   const authErr = requireAuth(request, "admin");
@@ -21,7 +22,6 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ success: true, count: guests.length });
   } catch (error) {
-    console.error('Error importing CSV:', error);
-    return NextResponse.json({ error: 'Failed to import CSV' }, { status: 500 });
+    return apiError('guests.import', 'Failed to import CSV', error);
   }
 }

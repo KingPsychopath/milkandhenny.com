@@ -300,6 +300,65 @@ Vercel auto-injects `KV_URL`, `REDIS_URL`, `KV_REST_API_READ_ONLY_TOKEN` from it
 
 ---
 
+## Error handling & logging
+
+Server-side errors and logs use two shared utilities so messages are safe for users and easy to debug.
+
+**Mental model:** In a route handler catch block and need to return a 500? → **apiError**. Server-side but only need to record something (cron, lib)? → **log**. On the client? → Don’t use either; show `data.error` from the API. Two server choices, no new client abstraction.
+
+### When to use what
+
+| Situation | Use | Where |
+|-----------|-----|--------|
+| API route catches an error and must return a response | **`apiError()`** | `app/api/**/*.ts` |
+| Server code needs to log something (no response) | **`log.info` / `log.warn` / `log.error`** | API routes, `lib/`, scripts |
+| Client shows a message to the user | Existing UI state (e.g. `setError(data.error)`) | Components, hooks |
+
+### API routes — safe 500s
+
+In route handlers, catch unexpected errors and return a user-safe message. The real error is logged server-side only (never sent to the client).
+
+```ts
+import { apiError } from '@/lib/api-error';
+
+export async function POST(request: NextRequest) {
+  try {
+    // ... do work ...
+    return NextResponse.json({ success: true });
+  } catch (e) {
+    return apiError('myroute.action', 'Short user-facing message.', e, { id: someId });
+  }
+}
+```
+
+- **Scope** (first arg): dot-separated, e.g. `upload.transfer`, `guests.bootstrap`. Use it consistently so you can filter logs (e.g. `scope:upload.transfer` in Vercel).
+- **Message** (second arg): what the client sees in `response.json().error`. No internal details.
+- **Context** (fourth arg, optional): ids, slugs, etc. — included in the log entry only.
+
+Use `NextResponse.json({ error: '...' }, { status: 400 })` for validation failures (bad input, wrong PIN). Use `apiError` for unexpected failures (R2, Redis, etc.).
+
+### Logging without a response
+
+When you're not building an API response but want something in the logs (cron, lib, background step):
+
+```ts
+import { log } from '@/lib/logger';
+
+log.info('cron.cleanup', 'Cleanup finished', { deletedCount: 5 });
+log.warn('cron.cleanup', 'R2 not configured — skipping file deletion');
+log.error('lib.r2', 'ListObjects failed', { prefix: 'transfers/' }, err);
+```
+
+### Scopes
+
+Keep scopes short and consistent: `upload.transfer`, `guests.add`, `best-dressed.vote`, `cron.cleanup`, `lib.r2`. Production logs are JSON lines with `level`, `scope`, `message`, `context`, `error`, `ts` — filter by `scope` or `level` in your log drain.
+
+### Client-side
+
+Don’t use `log` or `apiError` in React components (they’re server-only). On the client, show `data.error` from the API and use your existing state (e.g. `setError`). The API now returns safe, consistent messages from `apiError`.
+
+---
+
 ## Architecture
 
 ### Tech stack

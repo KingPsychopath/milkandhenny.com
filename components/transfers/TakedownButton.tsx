@@ -27,14 +27,23 @@ export function TakedownButton({ transferId, deleteToken }: TakedownButtonProps)
         body: JSON.stringify({ token: deleteToken }),
       });
 
+      const data = await res.json().catch(() => ({}));
+
       if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error(data.error || `Failed (${res.status})`);
+        const message =
+          res.status === 403
+            ? "Invalid or expired delete token. Refresh and try again."
+            : res.status === 404
+              ? "Transfer not found or already expired."
+              : (data.error as string) || "Takedown failed. Please try again.";
+        setErrorMsg(message);
+        setState("error");
+        return;
       }
 
       setState("done");
-    } catch (err) {
-      setErrorMsg((err as Error).message);
+    } catch {
+      setErrorMsg("Connection error. Check your network and try again.");
       setState("error");
     }
   }, [transferId, deleteToken]);

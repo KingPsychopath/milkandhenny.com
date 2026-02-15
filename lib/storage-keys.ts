@@ -25,6 +25,14 @@ export const LOCAL_KEYS = {
 
 export type StorageKeyName = keyof typeof SESSION_KEYS | keyof typeof LOCAL_KEYS;
 
+const _sessionNames = new Set(Object.keys(SESSION_KEYS));
+const _localNames = new Set(Object.keys(LOCAL_KEYS));
+for (const name of _sessionNames) {
+  if (_localNames.has(name)) {
+    throw new Error(`Storage key "${name}" must exist in only one of SESSION_KEYS or LOCAL_KEYS.`);
+  }
+}
+
 function getStore(name: StorageKeyName): Storage {
   return name in SESSION_KEYS ? sessionStorage : localStorage;
 }
