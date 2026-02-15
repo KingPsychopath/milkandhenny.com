@@ -138,56 +138,34 @@ export default function ExamPage() {
   const totalMarks = QUESTIONS.reduce((s, q) => s + q.marks, 0);
 
   return (
-    <main
-      className="min-h-screen py-12 px-6"
-      style={{ background: "var(--background)", color: "var(--foreground)" }}
-    >
-      <div className="mx-auto" style={{ maxWidth: 720 }}>
+    <main className="min-h-screen py-12 px-6 bg-background text-foreground">
+      <div className="mx-auto max-w-[720px]">
         {/* ── Header ── */}
         <header className="text-center mb-12">
           <a
             href="/"
-            className="inline-block font-mono text-xs tracking-tighter font-bold mb-6 transition-opacity duration-300 hover:opacity-60"
-            style={{ color: "var(--stone-400)" }}
+            className="inline-block font-mono text-xs tracking-tighter font-bold mb-6 transition-opacity duration-300 hover:opacity-60 theme-muted"
           >
             {SITE_BRAND}
           </a>
-          <p
-            className="font-mono text-xs tracking-widest uppercase mb-4"
-            style={{ color: "var(--stone-400)" }}
-          >
+          <p className="font-mono text-xs tracking-widest uppercase mb-4 theme-muted">
             Advanced Level Examination
           </p>
-          <h1
-            className="font-serif text-3xl font-bold mb-2"
-            style={{ color: "var(--prose-heading)" }}
-          >
+          <h1 className="font-serif text-3xl font-bold mb-2 text-[var(--prose-heading)]">
             Mathematics
           </h1>
-          <p
-            className="font-mono text-sm"
-            style={{ color: "var(--stone-500)" }}
-          >
+          <p className="font-mono text-sm theme-subtle">
             Paper 1 — Pure, Statistics &amp; Mechanics
           </p>
 
-          <div
-            className="mt-6 mx-auto border-t border-b py-4"
-            style={{
-              borderColor: "var(--stone-200)",
-              maxWidth: 400,
-            }}
-          >
-            <div className="flex justify-between font-mono text-xs" style={{ color: "var(--stone-500)" }}>
+          <div className="mt-6 mx-auto border-t border-b py-4 theme-border max-w-[400px]">
+            <div className="flex justify-between font-mono text-xs theme-subtle">
               <span>Time allowed: 45 minutes</span>
               <span>Total: {totalMarks} marks</span>
             </div>
           </div>
 
-          <div
-            className="mt-6 text-left font-mono text-xs leading-relaxed"
-            style={{ color: "var(--stone-400)" }}
-          >
+          <div className="mt-6 text-left font-mono text-xs leading-relaxed theme-muted">
             <p className="mb-1">Instructions to candidates:</p>
             <ul className="list-disc pl-5 space-y-0.5">
               <li>Answer ALL questions.</li>
@@ -205,8 +183,7 @@ export default function ExamPage() {
             return (
               <section
                 key={q.id}
-                className="border rounded-md overflow-hidden transition-colors duration-300"
-                style={{ borderColor: "var(--stone-200)" }}
+                className="border rounded-md overflow-hidden transition-colors duration-300 theme-border"
               >
                 {/* Envelope header */}
                 <button
@@ -214,37 +191,23 @@ export default function ExamPage() {
                   onClick={() => toggle(q.id)}
                   aria-expanded={isOpen}
                   aria-controls={`exam-q-${q.id}-body`}
-                  className="w-full flex items-center justify-between px-5 py-4 text-left cursor-pointer transition-opacity duration-300 hover:opacity-80"
-                  style={{ background: "var(--stone-100)" }}
+                  className="w-full flex items-center justify-between px-5 py-4 text-left cursor-pointer transition-opacity duration-300 hover:opacity-80 bg-[var(--stone-100)]"
                 >
                   <div className="flex items-baseline gap-3">
-                    <span
-                      className="font-mono text-lg font-bold"
-                      style={{ color: "var(--prose-heading)" }}
-                    >
+                    <span className="font-mono text-lg font-bold text-[var(--prose-heading)]">
                       {q.id}.
                     </span>
-                    <span
-                      className="font-mono text-sm"
-                      style={{ color: "var(--stone-500)" }}
-                    >
+                    <span className="font-mono text-sm theme-subtle">
                       {q.section}
                     </span>
                   </div>
                   <div className="flex items-center gap-3">
-                    <span
-                      className="font-mono text-xs"
-                      style={{ color: "var(--stone-400)" }}
-                    >
+                    <span className="font-mono text-xs theme-muted">
                       [{q.marks} marks]
                     </span>
                     <span
-                      className="font-mono text-sm transition-transform duration-300"
-                      style={{
-                        color: "var(--stone-400)",
-                        transform: isOpen ? "rotate(180deg)" : "rotate(0deg)",
-                        display: "inline-block",
-                      }}
+                      className="font-mono text-sm transition-transform duration-300 inline-block theme-muted"
+                      style={{ transform: isOpen ? "rotate(180deg)" : "rotate(0deg)" }}
                     >
                       ▼
                     </span>
@@ -262,15 +225,9 @@ export default function ExamPage() {
                     opacity: isOpen ? 1 : 0,
                   }}
                 >
-                  <div
-                    className="px-5 py-5 border-t"
-                    style={{ borderColor: "var(--stone-200)" }}
-                  >
+                  <div className="px-5 py-5 border-t theme-border">
                     {/* Preamble */}
-                    <p
-                      className="font-serif text-base leading-relaxed mb-5 whitespace-pre-line"
-                      style={{ color: "var(--prose-body)" }}
-                    >
+                    <p className="font-serif text-base leading-relaxed mb-5 whitespace-pre-line text-[var(--prose-body)]">
                       {q.preamble}
                     </p>
 
@@ -278,35 +235,21 @@ export default function ExamPage() {
                     <div className="space-y-4">
                       {q.parts.map((part, i) => (
                         <div key={part.label} className="flex gap-3">
-                          <span
-                            className="font-mono text-sm font-bold shrink-0 pt-0.5"
-                            style={{ color: "var(--prose-heading)" }}
-                          >
+                          <span className="font-mono text-sm font-bold shrink-0 pt-0.5 text-[var(--prose-heading)]">
                             {part.label}
                           </span>
                           <div className="flex-1">
-                            <p
-                              className="font-serif text-base leading-relaxed"
-                              style={{ color: "var(--prose-body)" }}
-                            >
+                            <p className="font-serif text-base leading-relaxed text-[var(--prose-body)]">
                               {part.text}
                             </p>
-                            <p
-                              className="font-mono text-xs mt-1 text-right"
-                              style={{ color: "var(--stone-400)" }}
-                            >
+                            <p className="font-mono text-xs mt-1 text-right theme-muted">
                               [{part.marks} mark{part.marks > 1 ? "s" : ""}]
                             </p>
 
                             {/* Answer (if unlocked) */}
                             {showAnswers && q.answers[i] && (
                               <div
-                                className="mt-3 p-3 rounded border-l-2 font-mono text-xs leading-relaxed whitespace-pre-line"
-                                style={{
-                                  borderColor: "var(--prose-hashtag)",
-                                  background: "var(--stone-100)",
-                                  color: "var(--prose-hashtag)",
-                                }}
+                                className="mt-3 p-3 rounded border-l-2 font-mono text-xs leading-relaxed whitespace-pre-line bg-[var(--stone-100)] border-[var(--prose-hashtag)] text-[var(--prose-hashtag)]"
                               >
                                 {q.answers[i]}
                               </div>
@@ -323,23 +266,14 @@ export default function ExamPage() {
         </div>
 
         {/* ── Answer unlock ── */}
-        <div
-          className="mt-10 border-t pt-8 text-center"
-          style={{ borderColor: "var(--stone-200)" }}
-        >
+        <div className="mt-10 border-t pt-8 text-center theme-border">
           {showAnswers ? (
-            <p
-              className="font-mono text-xs"
-              style={{ color: "var(--prose-hashtag)" }}
-            >
+            <p className="font-mono text-xs text-[var(--prose-hashtag)]">
               mark scheme unlocked
             </p>
           ) : (
             <div className="inline-flex flex-col items-center gap-3">
-              <p
-                className="font-mono text-xs"
-                style={{ color: "var(--stone-400)" }}
-              >
+              <p className="font-mono text-xs theme-muted">
                 enter pin to reveal mark scheme
               </p>
               <div className="flex gap-2">
@@ -353,29 +287,19 @@ export default function ExamPage() {
                   }}
                   onKeyDown={(e) => e.key === "Enter" && handlePinSubmit()}
                   placeholder="••••"
-                  className="font-mono text-center text-sm w-24 px-3 py-2 rounded border outline-none transition-colors duration-300"
-                  style={{
-                    borderColor: pinError
-                      ? "#ef4444"
-                      : "var(--stone-300)",
-                    background: "var(--stone-100)",
-                    color: "var(--foreground)",
-                  }}
+                  className={`font-mono text-center text-sm w-24 px-3 py-2 rounded border outline-none transition-colors duration-300 bg-[var(--stone-100)] text-foreground ${
+                    pinError ? "border-red-500" : "theme-border-strong"
+                  }`}
                 />
                 <button
                   onClick={handlePinSubmit}
-                  className="font-mono text-xs px-4 py-2 rounded border cursor-pointer transition-opacity duration-300 hover:opacity-70"
-                  style={{
-                    borderColor: "var(--stone-300)",
-                    background: "var(--stone-100)",
-                    color: "var(--foreground)",
-                  }}
+                  className="font-mono text-xs px-4 py-2 rounded border cursor-pointer transition-opacity duration-300 hover:opacity-70 theme-border-strong bg-[var(--stone-100)] text-foreground"
                 >
                   unlock
                 </button>
               </div>
               {pinError && (
-                <p className="font-mono text-xs" style={{ color: "#ef4444" }}>
+                <p className="font-mono text-xs text-red-500">
                   incorrect pin
                 </p>
               )}
@@ -384,20 +308,13 @@ export default function ExamPage() {
         </div>
 
         {/* ── Footer ── */}
-        <footer
-          className="mt-12 text-center font-mono text-xs space-y-3"
-          style={{ color: "var(--stone-400)" }}
-        >
+        <footer role="contentinfo" className="mt-12 text-center font-mono text-xs space-y-3 theme-muted">
           <p>end of questions</p>
-          <div className="border-t pt-4" style={{ borderColor: "var(--stone-200)" }}>
-            <a
-              href="/"
-              className="hover:opacity-60 transition-opacity duration-300"
-              style={{ color: "var(--stone-400)" }}
-            >
+          <div className="border-t theme-border pt-4">
+            <a href="/" className="hover:opacity-60 transition-opacity duration-300">
               ← home
             </a>
-            <p className="mt-2" style={{ color: "var(--stone-300)" }}>
+            <p className="mt-2 theme-faint">
               © {new Date().getFullYear()} {SITE_BRAND}
             </p>
           </div>

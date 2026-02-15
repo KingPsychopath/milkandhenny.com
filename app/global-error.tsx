@@ -7,6 +7,9 @@
  * `error.tsx` can't handle. Because the root layout is gone, this
  * component must render its own <html> and <body> with inline styles
  * (no CSS variables, no Tailwind, no fonts from layout).
+ *
+ * Hex colours below mirror :root in app/globals.css (light theme). When
+ * updating the design system, keep these in sync so this fallback stays on-brand.
  */
 export default function GlobalError({
   error,

@@ -1,4 +1,5 @@
 import Papa from 'papaparse';
+import { log } from '../logger';
 import { Guest, GuestStatus, generateGuestId } from './types';
 
 type CSVRow = {
@@ -25,7 +26,7 @@ export function parseCSV(csvContent: string): Guest[] {
   });
 
   if (result.errors.length > 0) {
-    console.warn('CSV parsing errors:', result.errors);
+    log.warn('guests.csv', 'CSV parsing errors', { errors: result.errors });
   }
 
   const rows = result.data;
