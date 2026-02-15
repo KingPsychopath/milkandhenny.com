@@ -52,8 +52,8 @@ function formatBytes(bytes: number): string {
   return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`;
 }
 
-/** Vercel serverless request body limit is 4.5 MB; use 4 MB to leave headroom for multipart overhead */
-const MAX_TRANSFER_UPLOAD_BYTES = 4 * 1024 * 1024;
+/** Fallback limit for the legacy direct-upload path (Vercel body limit is 4.5 MB) */
+const MAX_DIRECT_UPLOAD_BYTES = 4 * 1024 * 1024;
 
 const EXPIRY_OPTIONS = [
   { value: "30m", label: "30 minutes" },
@@ -99,6 +99,14 @@ export function UploadDashboard() {
   const [slug, setSlug] = useState("");
   const [force, setForce] = useState(false);
   const [blogResult, setBlogResult] = useState<BlogResult | null>(null);
+
+  /* Upload progress (presigned flow) */
+  const [uploadProgress, setUploadProgress] = useState<{
+    phase: "uploading" | "processing";
+    current: number;
+    total: number;
+    filename?: string;
+  } | null>(null);
 
   /* Drag state */
   const [isDragging, setIsDragging] = useState(false);
@@ -239,77 +247,148 @@ export function UploadDashboard() {
 
   /* ─── Upload ─── */
 
+  /** Presigned flow: browser uploads directly to R2, then tells the API to finalize. */
+  const handleTransferUpload = async () => {
+    const authHeaders = {
+      Authorization: `Bearer ${uploadToken}`,
+      "Content-Type": "application/json",
+    };
+
+    // 1. Get presigned PUT URLs
+    setUploadProgress({ phase: "uploading", current: 0, total: files.length });
+    const presignRes = await fetch("/api/upload/transfer/presign", {
+      method: "POST",
+      headers: authHeaders,
+      body: JSON.stringify({
+        title: title || "untitled",
+        expires: expiry,
+        files: files.map((f) => ({ name: f.name, size: f.size, type: f.type })),
+      }),
+    });
+
+    const presignData = await presignRes.json();
+    if (!presignRes.ok) {
+      throw new Error(presignData.error || "Failed to prepare upload");
+    }
+
+    const { transferId, deleteToken, expiresSeconds, urls } = presignData as {
+      transferId: string;
+      deleteToken: string;
+      expiresSeconds: number;
+      urls: Array<{ name: string; url: string }>;
+    };
+
+    // 2. Upload each file directly to R2 (bypasses Vercel entirely)
+    for (let i = 0; i < files.length; i++) {
+      setUploadProgress({
+        phase: "uploading",
+        current: i + 1,
+        total: files.length,
+        filename: files[i].name,
+      });
+
+      const putRes = await fetch(urls[i].url, {
+        method: "PUT",
+        headers: { "Content-Type": files[i].type || "application/octet-stream" },
+        body: files[i],
+      });
+
+      if (!putRes.ok) {
+        throw new Error(`Failed to upload ${files[i].name} (${putRes.status})`);
+      }
+    }
+
+    // 3. Finalize — server processes thumbnails and saves metadata
+    setUploadProgress({
+      phase: "processing",
+      current: files.length,
+      total: files.length,
+    });
+
+    const finalizeRes = await fetch("/api/upload/transfer/finalize", {
+      method: "POST",
+      headers: authHeaders,
+      body: JSON.stringify({
+        transferId,
+        deleteToken,
+        title: title || "untitled",
+        expiresSeconds,
+        files: files.map((f) => ({ name: f.name, size: f.size, type: f.type })),
+      }),
+    });
+
+    const finalizeData = await finalizeRes.json();
+    if (!finalizeRes.ok) {
+      throw new Error(
+        finalizeData.error || "Upload succeeded but finalization failed"
+      );
+    }
+
+    return finalizeData as TransferResult;
+  };
+
+  /** Legacy direct upload for blog mode (still uses FormData through Vercel). */
+  const handleBlogUpload = async () => {
+    const total = files.reduce((sum, f) => sum + f.size, 0);
+    if (total > MAX_DIRECT_UPLOAD_BYTES) {
+      throw new Error(
+        `Total size over ${formatBytes(MAX_DIRECT_UPLOAD_BYTES)}. Use the CLI for larger uploads.`
+      );
+    }
+
+    const formData = new FormData();
+    if (!slug.trim()) throw new Error("slug is required");
+    formData.append("slug", slug.trim());
+    if (force) formData.append("force", "true");
+    for (const file of files) formData.append("files", file);
+
+    const res = await fetch("/api/upload/blog", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${uploadToken}` },
+      body: formData,
+    });
+
+    let data: Record<string, unknown> = {};
+    try {
+      data = await res.json();
+    } catch {
+      /* 413 etc. may return non-JSON body */
+    }
+
+    if (!res.ok) {
+      const message =
+        res.status === 413
+          ? `Total size over ${formatBytes(MAX_DIRECT_UPLOAD_BYTES)}. Use the CLI for larger uploads.`
+          : (data.error as string) || `upload failed (${res.status})`;
+      throw new Error(message);
+    }
+
+    return data as BlogResult;
+  };
+
   const handleUpload = async () => {
     if (files.length === 0) return;
 
     setUploading(true);
     setUploadError("");
+    setUploadProgress(null);
     setTransferResult(null);
     setBlogResult(null);
 
-    const formData = new FormData();
-
-    if (mode === "transfer") {
-      const total = files.reduce((sum, f) => sum + f.size, 0);
-      if (total > MAX_TRANSFER_UPLOAD_BYTES) {
-        setUploadError(
-          `Total size over ${formatBytes(MAX_TRANSFER_UPLOAD_BYTES)}. Use the CLI for larger transfers or upload fewer files.`
-        );
-        setUploading(false);
-        return;
-      }
-      formData.append("title", title || "untitled");
-      formData.append("expires", expiry);
-    } else {
-      if (!slug.trim()) {
-        setUploadError("slug is required");
-        setUploading(false);
-        return;
-      }
-      formData.append("slug", slug.trim());
-      if (force) formData.append("force", "true");
-    }
-
-    for (const file of files) {
-      formData.append("files", file);
-    }
-
     try {
-      const endpoint =
-        mode === "transfer" ? "/api/upload/transfer" : "/api/upload/blog";
-      const res = await fetch(endpoint, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${uploadToken}` },
-        body: formData,
-      });
-
-      let data: Record<string, unknown> = {};
-      try {
-        data = await res.json();
-      } catch {
-        /* 413 etc. may return non-JSON body */
-      }
-
-      if (!res.ok) {
-        const message =
-          res.status === 413
-            ? `Total size over ${formatBytes(MAX_TRANSFER_UPLOAD_BYTES)}. Use the CLI for larger transfers or upload fewer files.`
-            : (data.error as string) || `upload failed (${res.status})`;
-        setUploadError(message);
-        return;
-      }
-
       if (mode === "transfer") {
-        setTransferResult(data as TransferResult);
+        const result = await handleTransferUpload();
+        setTransferResult(result);
       } else {
-        setBlogResult(data as BlogResult);
+        const result = await handleBlogUpload();
+        setBlogResult(result);
       }
-
       setFiles([]);
-    } catch {
-      setUploadError("connection error");
+    } catch (e) {
+      setUploadError((e as Error).message || "Upload failed");
     } finally {
       setUploading(false);
+      setUploadProgress(null);
     }
   };
 
@@ -548,9 +627,12 @@ export function UploadDashboard() {
               {files.length} file{files.length !== 1 ? "s" : ""} ·{" "}
               {formatBytes(totalFileSize)}
               {mode === "transfer" && (
+                <span className="theme-faint"> (direct to R2)</span>
+              )}
+              {mode === "blog" && (
                 <span className="theme-faint">
                   {" "}
-                  (max {formatBytes(MAX_TRANSFER_UPLOAD_BYTES)})
+                  (max {formatBytes(MAX_DIRECT_UPLOAD_BYTES)})
                 </span>
               )}
             </span>
@@ -593,9 +675,13 @@ export function UploadDashboard() {
             disabled={uploading || files.length === 0}
             className="mt-6 w-full bg-[var(--foreground)] text-[var(--background)] font-mono text-sm lowercase tracking-wide py-2.5 rounded-md hover:opacity-90 transition-opacity disabled:opacity-30"
           >
-            {uploading
-              ? "uploading..."
-              : `upload ${files.length} file${files.length !== 1 ? "s" : ""}`}
+            {uploading && uploadProgress
+              ? uploadProgress.phase === "processing"
+                ? "processing thumbnails..."
+                : `uploading ${uploadProgress.current}/${uploadProgress.total}...`
+              : uploading
+                ? "uploading..."
+                : `upload ${files.length} file${files.length !== 1 ? "s" : ""}`}
           </button>
         </div>
       )}

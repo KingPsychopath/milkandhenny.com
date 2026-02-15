@@ -7,7 +7,7 @@
  */
 
 import path from "path";
-import { uploadBuffer } from "./r2";
+import { uploadBuffer, downloadBuffer } from "./r2";
 import {
   PROCESSABLE_EXTENSIONS,
   ANIMATED_EXTENSIONS,
@@ -157,5 +157,102 @@ function sortTransferFiles(files: TransferFile[]): TransferFile[] {
   return [...visual, ...nonVisual];
 }
 
-export { processTransferFile, sortTransferFiles };
+/**
+ * Process a file that was already uploaded to R2 via presigned URL.
+ *
+ * - Downloads the original from R2
+ * - Processable images → generates thumb + full, uploads variants
+ * - GIFs → generates static thumb, uploads variant
+ * - Everything else → no processing, just returns metadata
+ *
+ * The original is untouched in R2 (already uploaded by the client).
+ */
+async function processUploadedFile(
+  filename: string,
+  fileSize: number,
+  transferId: string
+): Promise<ProcessFileResult> {
+  const ext = path.extname(filename).toLowerCase();
+  const stem = path.basename(filename, ext);
+  const prefix = `transfers/${transferId}`;
+  const originalKey = `${prefix}/original/${filename}`;
+
+  if (PROCESSABLE_EXTENSIONS.test(filename)) {
+    const buffer = await downloadBuffer(originalKey);
+    const processed = await processImageVariants(buffer, ext);
+
+    await Promise.all([
+      uploadBuffer(
+        `${prefix}/thumb/${stem}.webp`,
+        processed.thumb.buffer,
+        processed.thumb.contentType
+      ),
+      uploadBuffer(
+        `${prefix}/full/${stem}.webp`,
+        processed.full.buffer,
+        processed.full.contentType
+      ),
+    ]);
+
+    const originalFilename =
+      processed.original.ext === ext
+        ? filename
+        : `${stem}${processed.original.ext}`;
+
+    return {
+      file: {
+        id: stem,
+        filename: originalFilename,
+        kind: "image",
+        size: fileSize,
+        mimeType: processed.original.contentType,
+        width: processed.width,
+        height: processed.height,
+        ...(processed.takenAt ? { takenAt: processed.takenAt } : {}),
+      },
+      uploadedBytes: fileSize,
+    };
+  }
+
+  if (ANIMATED_EXTENSIONS.test(filename)) {
+    const buffer = await downloadBuffer(originalKey);
+    const gif = await processGifThumb(buffer);
+
+    await uploadBuffer(
+      `${prefix}/thumb/${stem}.webp`,
+      gif.thumb.buffer,
+      gif.thumb.contentType
+    );
+
+    return {
+      file: {
+        id: stem,
+        filename,
+        kind: "gif",
+        size: fileSize,
+        mimeType: "image/gif",
+        width: gif.width,
+        height: gif.height,
+      },
+      uploadedBytes: fileSize,
+    };
+  }
+
+  // Non-visual file — already in R2, just build metadata
+  const mimeType = getMimeType(filename);
+  const kind = getFileKind(filename);
+
+  return {
+    file: {
+      id: filename,
+      filename,
+      kind,
+      size: fileSize,
+      mimeType,
+    },
+    uploadedBytes: fileSize,
+  };
+}
+
+export { processTransferFile, processUploadedFile, sortTransferFiles };
 export type { ProcessFileResult };

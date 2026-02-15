@@ -62,10 +62,30 @@ Run `pnpm cli transfers info <id>` — it shows the full admin URL including the
 | Audio (MP3, WAV, FLAC, etc.) | Inline audio player card | Uploaded as-is |
 | Documents / archives / everything else | File card + download button | Uploaded as-is |
 
+### Web upload (presigned URLs)
+
+The upload page uses **presigned PUT URLs** so file bytes go directly from the browser to R2 — they never pass through Vercel. This removes the 4.5 MB serverless body limit and reduces Vercel bandwidth usage.
+
+**Flow:** presign (tiny JSON request) → browser PUTs each file to R2 → finalize (tiny JSON request, server generates thumbnails).
+
+**R2 CORS requirement:** Your R2 bucket needs a CORS rule allowing PUT from your app origin. In the Cloudflare dashboard → R2 → your bucket → Settings → CORS policy, add:
+
+```json
+[
+  {
+    "AllowedOrigins": ["https://milkandhenny.com", "http://localhost:3000"],
+    "AllowedMethods": ["PUT"],
+    "AllowedHeaders": ["Content-Type"],
+    "MaxAgeSeconds": 3600
+  }
+]
+```
+
 ### Security
 
-- **Unguessable URLs**: 11-char base64url IDs (8 bytes entropy)
+- **Memorable word URLs**: 3-word hyphenated IDs (e.g. `velvet-moon-candle`), ~2.2M combos
 - **Delete tokens**: 22-char base64url (16 bytes), never exposed to recipients
+- **Presigned URLs**: time-limited (15 min), scoped to a single R2 key, generated server-side only for authenticated uploaders
 - **Admin-only takedown**: only the uploader can delete (CLI or admin URL)
 - **No indexing**: `robots: noindex, nofollow` on all transfer pages
 - **Auto-expiry**: Redis TTL + server-side check + daily cron R2 cleanup
@@ -277,10 +297,10 @@ pnpm cli blog delete <post-slug> --file <filename>      # Delete a single file
 | `KV_REST_API_URL` | Vercel + local | Yes (for persistence) | Vercel KV / Upstash Redis REST URL |
 | `KV_REST_API_TOKEN` | Vercel + local | Yes (for persistence) | Vercel KV / Upstash Redis REST token |
 | `NEXT_PUBLIC_R2_PUBLIC_URL` | Vercel + local | Yes (images/files) | e.g. `https://pics.milkandhenny.com` |
-| `R2_ACCOUNT_ID` | Local only | CLI + cron | Cloudflare account ID |
-| `R2_ACCESS_KEY` | Local only | CLI + cron | R2 API token access key |
-| `R2_SECRET_KEY` | Local only | CLI + cron | R2 API token secret key |
-| `R2_BUCKET` | Local only | CLI + cron | R2 bucket name |
+| `R2_ACCOUNT_ID` | Vercel + local | Yes (uploads, cron, takedowns) | Cloudflare account ID |
+| `R2_ACCESS_KEY` | Vercel + local | Yes (uploads, cron, takedowns) | R2 API token access key |
+| `R2_SECRET_KEY` | Vercel + local | Yes (uploads, cron, takedowns) | R2 API token secret key |
+| `R2_BUCKET` | Vercel + local | Yes (uploads, cron, takedowns) | R2 bucket name |
 | `NEXT_PUBLIC_BASE_URL` | Local only | CLI only | For generating share URLs. **Not needed on Vercel.** |
 | `AUTH_SECRET` | Vercel + local | Yes (for staff/management/upload) | JWT signing key. Generate: `openssl rand -hex 32`. Required for token-based auth. |
 | `STAFF_PIN` | Vercel + local | Yes (for guestlist) | PIN to open the guestlist page (door staff). Not in client bundle. |
@@ -295,7 +315,7 @@ Vercel auto-injects `KV_URL`, `REDIS_URL`, `KV_REST_API_READ_ONLY_TOKEN` from it
 
 1. Push to GitHub
 2. Connect to Vercel
-3. Add env vars: `KV_REST_API_URL`, `KV_REST_API_TOKEN`, `NEXT_PUBLIC_R2_PUBLIC_URL`
+3. Add env vars: `KV_REST_API_URL`, `KV_REST_API_TOKEN`, `NEXT_PUBLIC_R2_PUBLIC_URL`, `R2_ACCOUNT_ID`, `R2_ACCESS_KEY`, `R2_SECRET_KEY`, `R2_BUCKET`
 4. Deploy — the cron job (`vercel.json`) activates automatically
 
 ---

@@ -19,6 +19,7 @@ import {
   PutObjectCommand,
   HeadObjectCommand,
 } from "@aws-sdk/client-s3";
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 
 /* ─── Types ─── */
 
@@ -247,6 +248,30 @@ async function getBucketInfo(): Promise<BucketInfo> {
   };
 }
 
+/**
+ * Generate a presigned PUT URL for direct browser-to-R2 upload.
+ * Bypasses Vercel's 4.5 MB request body limit entirely.
+ *
+ * @param key         - R2 object key (e.g. "transfers/abc/original/photo.jpg")
+ * @param contentType - MIME type the client will send
+ * @param expiresIn   - URL validity in seconds (default 900 = 15 min)
+ */
+async function presignPutUrl(
+  key: string,
+  contentType: string,
+  expiresIn = 900
+): Promise<string> {
+  const { client, bucket } = getClient();
+
+  const command = new PutObjectCommand({
+    Bucket: bucket,
+    Key: key,
+    ContentType: contentType,
+  });
+
+  return getSignedUrl(client, command, { expiresIn });
+}
+
 export {
   isConfigured,
   listObjects,
@@ -257,6 +282,7 @@ export {
   deleteObject,
   deleteObjects,
   getBucketInfo,
+  presignPutUrl,
 };
 
 export type { R2Object, BucketInfo };
