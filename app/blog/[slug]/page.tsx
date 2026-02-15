@@ -172,7 +172,9 @@ export default async function BlogPostPage({ params }: Props) {
 
       {/* Post — primary content */}
       <main id="main">
-        <article className="max-w-2xl mx-auto px-6 pt-12 pb-24">
+        <article
+          className={`max-w-2xl mx-auto pt-12 pb-24 ${headings.length > 0 ? "pl-6 pr-14 md:px-6" : "px-6"}`}
+        >
         <Breadcrumbs
           items={[
             { label: "home", href: "/" },

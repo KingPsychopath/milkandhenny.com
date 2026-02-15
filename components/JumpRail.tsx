@@ -18,11 +18,10 @@ const LABEL_CAP = 18;
 const SWIPE_THRESHOLD = 40;
 
 /**
- * Edge placement (avoid system gestures):
- * - Inset 8–16px from screen edge; gesture nav often uses bottom 34px, left/right 20px.
- * - Jump rail: 20–24px visible strip, minimum 48px wide touch region.
+ * Edge placement: use safe-area only so rail is flush to edge by default;
+ * inset only appears on notched devices where the gap is expected.
+ * Jump rail: 20–24px visible strip, minimum 48px wide touch region.
  */
-const EDGE_INSET_PX = 16;
 const VISIBLE_STRIP_WIDTH_PX = 20;
 const MIN_TOUCH_SIZE_PX = 48;
 
@@ -81,7 +80,7 @@ export function JumpRail({ items, ariaLabel }: JumpRailProps) {
       ref={navRef}
       className="fixed top-1/2 -translate-y-1/2 z-10 flex flex-row-reverse items-stretch"
       style={{
-        right: `max(${EDGE_INSET_PX}px, env(safe-area-inset-right, 0px))`,
+        right: "env(safe-area-inset-right, 0)",
         maxHeight: "min(80vh, 480px)",
       }}
       onMouseEnter={() => setOpen(true)}

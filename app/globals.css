@@ -584,18 +584,18 @@ button:active:not(:disabled):not(.lamp-toggle) {
 /* Keyframe bounce when cord length changes on route (home ↔ inner) */
 .lamp-cord--bounce {
   height: var(--cord-from);
-  animation: lamp-cord-bounce 0.55s ease-out forwards;
+  animation: lamp-cord-bounce 0.8s cubic-bezier(0.33, 1, 0.68, 1) forwards;
 }
 
 @keyframes lamp-cord-bounce {
   0% {
     height: var(--cord-from);
   }
-  55% {
+  70% {
     height: var(--cord-to);
   }
-  75% {
-    height: calc(var(--cord-to) + 8px);
+  85% {
+    height: calc(var(--cord-to) + 4px);
   }
   100% {
     height: var(--cord-to);
