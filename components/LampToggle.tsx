@@ -55,6 +55,25 @@ export function LampToggle() {
   const isHome = pathname === "/";
   const cordRest = isHome ? CORD_REST.home : CORD_REST.inner;
 
+  /** Displayed cord length; keyframe bounce runs when pathname changes */
+  const [displayedCordRest, setDisplayedCordRest] = useState<number>(cordRest);
+  const [bounce, setBounce] = useState<{ from: number; to: number } | null>(null);
+  const prevCordRest = useRef(cordRest);
+
+  useEffect(() => {
+    if (cordRest === prevCordRest.current) return;
+    const from = prevCordRest.current;
+    prevCordRest.current = cordRest;
+    setBounce({ from, to: cordRest });
+  }, [cordRest]);
+
+  const handleCordAnimationEnd = useCallback(() => {
+    if (bounce) {
+      setDisplayedCordRest(bounce.to);
+      setBounce(null);
+    }
+  }, [bounce]);
+
   /** Hydrate from localStorage */
   useEffect(() => {
     const stored = getStored("theme");
@@ -160,10 +179,21 @@ export function LampToggle() {
         pointerEvents: visible ? "auto" : "none",
       }}
     >
-      {/* Cord */}
+      {/* Cord — keyframe bounce on route change, otherwise transition for pull */}
       <div
-        className="lamp-cord"
-        style={{ height: pulled ? cordRest + CORD_PULL_EXTRA : cordRest }}
+        key={bounce ? `bounce-${bounce.from}-${bounce.to}` : `rest-${displayedCordRest}`}
+        className={`lamp-cord ${bounce ? "lamp-cord--bounce" : ""}`}
+        style={
+          bounce
+            ? {
+                ["--cord-from" as string]: `${bounce.from}px`,
+                ["--cord-to" as string]: `${bounce.to}px`,
+              }
+            : {
+                height: pulled ? displayedCordRest + CORD_PULL_EXTRA : displayedCordRest,
+              }
+        }
+        onAnimationEnd={handleCordAnimationEnd}
       />
 
       {/* Bulb / pull handle */}

@@ -18,11 +18,13 @@ const LABEL_CAP = 18;
 const SWIPE_THRESHOLD = 40;
 
 /**
- * Min touch target (px) for the bookmark tab on mobile.
- * 44 = Apple HIG minimum. 56–64 = comfortable for corner taps. 72+ = overlaps
- * content more and can cause mistaps when tapping links near the right edge.
+ * Edge placement (avoid system gestures):
+ * - Inset 8–16px from screen edge; gesture nav often uses bottom 34px, left/right 20px.
+ * - Jump rail: 20–24px visible strip, minimum 48px wide touch region.
  */
-const MOBILE_TAB_TOUCH_SIZE = 64;
+const EDGE_INSET_PX = 16;
+const VISIBLE_STRIP_WIDTH_PX = 20;
+const MIN_TOUCH_SIZE_PX = 48;
 
 /**
  * Floating vertical bookmark rail: collapsed tab on the right edge,
@@ -77,8 +79,11 @@ export function JumpRail({ items, ariaLabel }: JumpRailProps) {
   return (
     <nav
       ref={navRef}
-      className="fixed right-0 top-1/2 -translate-y-1/2 z-10 flex flex-row-reverse items-stretch"
-      style={{ maxHeight: "min(80vh, 480px)" }}
+      className="fixed top-1/2 -translate-y-1/2 z-10 flex flex-row-reverse items-stretch"
+      style={{
+        right: `max(${EDGE_INSET_PX}px, env(safe-area-inset-right, 0px))`,
+        maxHeight: "min(80vh, 480px)",
+      }}
       onMouseEnter={() => setOpen(true)}
       onMouseLeave={() => setOpen(false)}
       aria-label={ariaLabel ?? "Jump to section"}
@@ -113,23 +118,24 @@ export function JumpRail({ items, ariaLabel }: JumpRailProps) {
         </div>
       </div>
 
-      {/* Bookmark tab: MOBILE_TAB_TOUCH_SIZE hit area on mobile, strip stays slim */}
+      {/* Bookmark tab: min 48px touch region, 20px visible strip (padding extends hit area) */}
       <button
         type="button"
         onClick={handleTabClick}
         onTouchStart={handleTouchStart}
         onTouchEnd={(e) => handleTouchEnd(e, false)}
-        className="flex items-center justify-end shrink-0 py-0 pr-0 md:pr-0 transition-[width] duration-300 md:hover:w-6 focus:outline-none focus:ring-2 focus:ring-amber-500/50 focus:ring-inset focus:ring-offset-0 md:w-5 md:h-14 md:!min-w-0 md:!min-h-0"
+        className="flex items-center justify-end shrink-0 py-0 pr-0 md:pr-0 transition-[width] duration-300 md:hover:w-6 focus:outline-none focus:ring-2 focus:ring-amber-500/50 focus:ring-inset focus:ring-offset-0 md:!min-w-0 md:!min-h-0"
         style={{
-          minWidth: MOBILE_TAB_TOUCH_SIZE,
-          minHeight: MOBILE_TAB_TOUCH_SIZE,
+          minWidth: MIN_TOUCH_SIZE_PX,
+          minHeight: MIN_TOUCH_SIZE_PX,
         }}
         aria-label={ariaLabel ?? "Jump to section"}
         aria-expanded={open}
       >
         <span
-          className="flex items-center justify-center w-3 h-12 md:w-5 md:h-14 rounded-l-md flex-shrink-0"
+          className="flex items-center justify-center h-12 md:h-14 rounded-l-md flex-shrink-0"
           style={{
+            width: VISIBLE_STRIP_WIDTH_PX,
             background: "var(--stone-100)",
             borderWidth: "1px 0 1px 1px",
             borderColor: "var(--stone-300)",
