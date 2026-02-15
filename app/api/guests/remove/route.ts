@@ -4,8 +4,8 @@ import { requireAuth } from '@/lib/auth';
 import { Guest } from '@/lib/guests/types';
 
 export async function DELETE(request: NextRequest) {
-  const authError = requireAuth(request, "management");
-  if (authError) return authError;
+  const authErr = requireAuth(request, "admin");
+  if (authErr) return authErr;
 
   try {
     const { searchParams } = new URL(request.url);

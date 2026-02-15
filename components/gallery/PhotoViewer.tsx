@@ -2,6 +2,7 @@
 
 import { useEffect, useCallback, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
+import { getStored, setStored } from "@/lib/storage-keys";
 import Link from "next/link";
 import { useSwipe } from "@/hooks/useSwipe";
 import { fetchBlob, downloadBlob } from "@/lib/media/download";
@@ -72,13 +73,12 @@ export function PhotoViewer({
     const isTouchDevice = "ontouchstart" in window || navigator.maxTouchPoints > 0;
     if (!isTouchDevice) return;
 
-    const HINT_KEY = "mah:swipe-hint-count";
     const MAX_SHOWS = 3;
-    const count = parseInt(localStorage.getItem(HINT_KEY) || "0", 10);
+    const count = parseInt(getStored("swipeHintCount") || "0", 10);
     if (count >= MAX_SHOWS) return;
 
     setShowHint(true);
-    localStorage.setItem(HINT_KEY, String(count + 1));
+    setStored("swipeHintCount", String(count + 1));
 
     const timer = setTimeout(() => setShowHint(false), 2500);
     return () => clearTimeout(timer);

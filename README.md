@@ -282,6 +282,7 @@ pnpm cli blog delete <post-slug> --file <filename>      # Delete a single file
 | `R2_SECRET_KEY` | Local only | CLI + cron | R2 API token secret key |
 | `R2_BUCKET` | Local only | CLI + cron | R2 bucket name |
 | `NEXT_PUBLIC_BASE_URL` | Local only | CLI only | For generating share URLs. **Not needed on Vercel.** |
+| `AUTH_SECRET` | Vercel + local | Yes (for staff/management/upload) | JWT signing key. Generate: `openssl rand -hex 32`. Required for token-based auth. |
 | `STAFF_PIN` | Vercel + local | Yes (for guestlist) | PIN to open the guestlist page (door staff). Not in client bundle. |
 | `MANAGEMENT_PASSWORD` | Vercel + local | Yes (for Manage UI) | Unlocks Manage (add/remove/import, best-dressed wipe). Not in client bundle. |
 | `CRON_SECRET` | Vercel only | Optional | Secures the daily cleanup cron. Generate with `openssl rand -hex 32` or Bitwarden; store in Bitwarden, paste into Vercel. |
@@ -640,7 +641,7 @@ These are the highest-impact credentials — they grant read/write/delete access
 1. **Update Vercel env vars** → `MANAGEMENT_PASSWORD` and/or `STAFF_PIN`
 2. **Redeploy** on Vercel
 3. Update `.env.local` for local dev
-4. Existing authenticated sessions (in `sessionStorage`) remain valid until the browser tab closes — this is acceptable since the new password takes effect immediately for new logins
+4. Existing tokens in sessionStorage remain valid until the tab closes — new credentials take effect on next login
 
 **Downtime:** None. Instant rotation on redeploy.
 
@@ -678,6 +679,6 @@ These are the highest-impact credentials — they grant read/write/delete access
 
 - **No secrets in code.** Every credential is an env var — rotation is config-only, never a code change.
 - **No secrets in the client bundle.** `STAFF_PIN`, `MANAGEMENT_PASSWORD`, and all API keys are server-side only. `NEXT_PUBLIC_*` vars contain only public URLs (the R2 CDN domain and the base URL), not secrets.
-- **No long-lived sessions.** Guest list auth uses `sessionStorage` (dies with the tab). No JWTs or cookies that would need invalidation.
+- **Token-based auth.** Verify endpoints issue short-lived JWTs (24h). Clients store tokens in `sessionStorage`, never raw credentials. Tokens are revoked on tab close.
 - **Layered storage.** R2 credentials and KV credentials are independent — leaking one doesn't compromise the other.
 - **CDN buffer.** Transfer pages and images are cached at Cloudflare/Vercel edge. Even during a brief rotation window, cached content continues serving.

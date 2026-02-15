@@ -1,5 +1,5 @@
 import Papa from 'papaparse';
-import { Guest, GuestStatus } from './types';
+import { Guest, GuestStatus, generateGuestId } from './types';
 
 type CSVRow = {
   Name: string;
@@ -8,10 +8,6 @@ type CSVRow = {
   'Did you enter your full name? (Enter your full name)': string;
   'Is Plus One Of': string;
 };
-
-function generateId(name: string, index: number): string {
-  return `${name.toLowerCase().replace(/\s+/g, '-')}-${index}`;
-}
 
 function normalizeStatus(status: string): GuestStatus {
   const normalized = status.trim();
@@ -47,7 +43,7 @@ export function parseCSV(csvContent: string): Guest[] {
     const rsvpDate = row['RSVP date']?.trim() || undefined;
 
     const guest: Guest = {
-      id: generateId(name, index),
+      id: generateGuestId(name, index),
       name,
       fullName: fullName && fullName !== name ? fullName : undefined,
       status,

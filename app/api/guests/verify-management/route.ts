@@ -3,5 +3,5 @@ import { handleVerifyRequest } from "@/lib/auth";
 
 /** POST /api/guests/verify-management — rate-limited, timing-safe. */
 export async function POST(request: NextRequest) {
-  return handleVerifyRequest(request, "management");
+  return handleVerifyRequest(request, "admin");
 }

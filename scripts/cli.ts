@@ -40,7 +40,7 @@ import {
 import {
   ROTATION_OVERRIDES,
   type RotationOverride,
-} from "./media-processing";
+} from "../lib/media/processing";
 import {
   listObjects,
   deleteObject,

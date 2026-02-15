@@ -9,21 +9,17 @@
 import fs from "fs";
 import path from "path";
 import {
-  uploadBuffer,
   deleteObjects,
   listObjects,
+  isConfigured,
 } from "./r2-client";
 import {
   PROCESSABLE_EXTENSIONS,
   ANIMATED_EXTENSIONS,
-  getMimeType,
-  getFileKind,
-  processImageVariants,
-  processGifThumb,
   mapConcurrent,
-} from "./media-processing";
+} from "../lib/media/processing";
+import { processTransferFile, sortTransferFiles } from "../lib/transfer-upload";
 import { BASE_URL } from "../lib/config";
-import { formatBytes } from "../lib/format";
 import { getRedis } from "../lib/redis";
 import {
   saveTransfer,
@@ -36,7 +32,7 @@ import {
   formatDuration,
   DEFAULT_EXPIRY_SECONDS,
 } from "../lib/transfers";
-import type { TransferData, TransferFile, TransferSummary, FileKind } from "../lib/transfers";
+import type { TransferData, TransferSummary } from "../lib/transfers";
 
 /* ─── Preflight checks ─── */
 
@@ -56,12 +52,8 @@ function requireRedis(): void {
   }
 }
 
-/**
- * Ensure R2 env vars are set before uploading files.
- */
 function requireR2(): void {
-  const { R2_ACCOUNT_ID, R2_ACCESS_KEY, R2_SECRET_KEY, R2_BUCKET } = process.env;
-  if (!R2_ACCOUNT_ID || !R2_ACCESS_KEY || !R2_SECRET_KEY || !R2_BUCKET) {
+  if (!isConfigured()) {
     throw new Error(
       "R2 not configured. Set R2_ACCOUNT_ID, R2_ACCESS_KEY, R2_SECRET_KEY, R2_BUCKET in .env.local."
     );
@@ -86,144 +78,9 @@ type CreateTransferResult = {
   fileCounts: { images: number; videos: number; gifs: number; audio: number; other: number };
 };
 
-/* ─── File processing ─── */
-
-/**
- * Process and upload a processable image (JPEG, PNG, WebP, HEIC, HIF, TIFF).
- * Creates: thumb (600px WebP) + full (1600px WebP) + original (JPEG).
- */
-async function processImage(
-  filePath: string,
-  transferId: string,
-  onProgress?: (msg: string) => void
-): Promise<{ file: TransferFile; uploadedBytes: number }> {
-  const ext = path.extname(filePath).toLowerCase();
-  const filename = path.basename(filePath);
-  const stem = path.basename(filePath, ext);
-  const raw = fs.readFileSync(filePath);
-
-  const processed = await processImageVariants(raw, ext);
-
-  onProgress?.(
-    `Processing ${filename} (${processed.width}×${processed.height})${
-      processed.takenAt
-        ? ` taken ${new Date(processed.takenAt).toLocaleDateString()}`
-        : ""
-    }...`
-  );
-
-  const originalFilename = processed.original.ext === ext
-    ? filename
-    : `${stem}${processed.original.ext}`;
-
-  const prefix = `transfers/${transferId}`;
-  await Promise.all([
-    uploadBuffer(`${prefix}/thumb/${stem}.webp`, processed.thumb.buffer, processed.thumb.contentType),
-    uploadBuffer(`${prefix}/full/${stem}.webp`, processed.full.buffer, processed.full.contentType),
-    uploadBuffer(`${prefix}/original/${originalFilename}`, processed.original.buffer, processed.original.contentType),
-  ]);
-
-  onProgress?.(`Uploaded ${filename}`);
-
-  return {
-    file: {
-      id: stem,
-      filename: originalFilename,
-      kind: "image",
-      size: raw.byteLength,
-      mimeType: processed.original.contentType,
-      width: processed.width,
-      height: processed.height,
-      ...(processed.takenAt ? { takenAt: processed.takenAt } : {}),
-    },
-    uploadedBytes:
-      processed.thumb.buffer.byteLength +
-      processed.full.buffer.byteLength +
-      processed.original.buffer.byteLength,
-  };
-}
-
-/**
- * Process and upload a GIF.
- * Creates: static thumb (first frame, WebP) + original GIF (preserves animation).
- */
-async function processGif(
-  filePath: string,
-  transferId: string,
-  onProgress?: (msg: string) => void
-): Promise<{ file: TransferFile; uploadedBytes: number }> {
-  const filename = path.basename(filePath);
-  const stem = path.basename(filePath, path.extname(filePath));
-  const raw = fs.readFileSync(filePath);
-
-  const gif = await processGifThumb(raw);
-
-  onProgress?.(`Processing ${filename} (GIF, ${gif.width}×${gif.height})...`);
-
-  const prefix = `transfers/${transferId}`;
-  await Promise.all([
-    uploadBuffer(`${prefix}/thumb/${stem}.webp`, gif.thumb.buffer, gif.thumb.contentType),
-    uploadBuffer(`${prefix}/original/${filename}`, raw, "image/gif"),
-  ]);
-
-  onProgress?.(`Uploaded ${filename}`);
-
-  return {
-    file: {
-      id: stem,
-      filename,
-      kind: "gif",
-      size: raw.byteLength,
-      mimeType: "image/gif",
-      width: gif.width,
-      height: gif.height,
-    },
-    uploadedBytes: gif.thumb.buffer.byteLength + raw.byteLength,
-  };
-}
-
-/**
- * Upload a raw file (video, audio, document, archive, etc.) without processing.
- */
-async function uploadRawFile(
-  filePath: string,
-  transferId: string,
-  onProgress?: (msg: string) => void
-): Promise<{ file: TransferFile; uploadedBytes: number }> {
-  const filename = path.basename(filePath);
-  const raw = fs.readFileSync(filePath);
-  const mimeType = getMimeType(filename);
-  const kind = getFileKind(filename);
-
-  onProgress?.(`Uploading ${filename} (${formatBytes(raw.byteLength)}, ${kind})...`);
-
-  await uploadBuffer(
-    `transfers/${transferId}/original/${filename}`,
-    raw,
-    mimeType
-  );
-
-  onProgress?.(`Uploaded ${filename}`);
-
-  return {
-    file: {
-      id: filename,
-      filename,
-      kind,
-      size: raw.byteLength,
-      mimeType,
-    },
-    uploadedBytes: raw.byteLength,
-  };
-}
-
 /* ─── Transfer operations ─── */
 
-/**
- * Concurrency settings for uploads.
- * - Images/GIFs: 3 concurrent (Sharp is CPU-heavy, each already does 2-3 parallel R2 puts)
- * - Raw files: 6 concurrent (no processing, purely network-bound)
- */
+/** Images/GIFs: 3 concurrent (Sharp is CPU-heavy). Raw: 6 (network-bound). */
 const IMAGE_CONCURRENCY = 3;
 const RAW_CONCURRENCY = 6;
 
@@ -242,7 +99,6 @@ async function createTransfer(
     throw new Error(`Directory not found: ${absDir}`);
   }
 
-  // List ALL non-hidden files
   const entries = fs
     .readdirSync(absDir)
     .filter((f) => !f.startsWith(".") && fs.statSync(path.join(absDir, f)).isFile())
@@ -258,49 +114,32 @@ async function createTransfer(
     ? parseExpiry(opts.expires)
     : DEFAULT_EXPIRY_SECONDS;
 
-  // Classify files
-  const images = entries.filter((f) => PROCESSABLE_EXTENSIONS.test(f));
-  const gifs = entries.filter((f) => ANIMATED_EXTENSIONS.test(f));
-  const others = entries.filter(
+  // Classify for concurrency control (Sharp is CPU-heavy)
+  const heavy = entries.filter(
+    (f) => PROCESSABLE_EXTENSIONS.test(f) || ANIMATED_EXTENSIONS.test(f)
+  );
+  const light = entries.filter(
     (f) => !PROCESSABLE_EXTENSIONS.test(f) && !ANIMATED_EXTENSIONS.test(f)
   );
 
   onProgress?.(
-    `Found ${entries.length} files (${images.length} images, ${gifs.length} GIFs, ${others.length} other). Creating transfer ${transferId}...`
+    `Found ${entries.length} files. Creating transfer ${transferId}...`
   );
 
-  let totalSize = 0;
+  const processFile = async (file: string) => {
+    const raw = fs.readFileSync(path.join(absDir, file));
+    onProgress?.(`Processing ${file}...`);
+    const result = await processTransferFile(raw, file, transferId);
+    onProgress?.(`Uploaded ${file}`);
+    return result;
+  };
 
-  // Process images concurrently (Sharp is CPU-heavy, so cap at 3)
-  const imageResults = await mapConcurrent(images, IMAGE_CONCURRENCY, (file) =>
-    processImage(path.join(absDir, file), transferId, onProgress)
-  );
+  const heavyResults = await mapConcurrent(heavy, IMAGE_CONCURRENCY, processFile);
+  const lightResults = await mapConcurrent(light, RAW_CONCURRENCY, processFile);
+  const allResults = [...heavyResults, ...lightResults];
 
-  // Process GIFs concurrently
-  const gifResults = await mapConcurrent(gifs, IMAGE_CONCURRENCY, (file) =>
-    processGif(path.join(absDir, file), transferId, onProgress)
-  );
-
-  // Upload raw files concurrently (no processing, pure network — cap at 6)
-  const rawResults = await mapConcurrent(others, RAW_CONCURRENCY, (file) =>
-    uploadRawFile(path.join(absDir, file), transferId, onProgress)
-  );
-
-  const allResults = [...imageResults, ...gifResults, ...rawResults];
-  const files: TransferFile[] = allResults.map((r) => r.file);
-  totalSize = allResults.reduce((sum, r) => sum + r.uploadedBytes, 0);
-
-  // Sort: images/gifs by EXIF date then name, then non-visual files by name
-  const visual = files.filter((f) => f.kind === "image" || f.kind === "gif");
-  const nonVisual = files.filter((f) => f.kind !== "image" && f.kind !== "gif");
-  visual.sort((a, b) => {
-    if (a.takenAt && b.takenAt) return new Date(a.takenAt).getTime() - new Date(b.takenAt).getTime();
-    if (a.takenAt) return -1;
-    if (b.takenAt) return 1;
-    return a.filename.localeCompare(b.filename);
-  });
-  nonVisual.sort((a, b) => a.filename.localeCompare(b.filename));
-  const sortedFiles = [...visual, ...nonVisual];
+  const sortedFiles = sortTransferFiles(allResults.map((r) => r.file));
+  const totalSize = allResults.reduce((sum, r) => sum + r.uploadedBytes, 0);
 
   const now = new Date();
   const expiresAt = new Date(now.getTime() + ttlSeconds * 1000);
@@ -320,11 +159,11 @@ async function createTransfer(
   const adminUrl = `${BASE_URL}/t/${transferId}?token=${deleteToken}`;
 
   const fileCounts = {
-    images: files.filter((f) => f.kind === "image").length,
-    gifs: files.filter((f) => f.kind === "gif").length,
-    videos: files.filter((f) => f.kind === "video").length,
-    audio: files.filter((f) => f.kind === "audio").length,
-    other: files.filter((f) => f.kind === "file").length,
+    images: sortedFiles.filter((f) => f.kind === "image").length,
+    gifs: sortedFiles.filter((f) => f.kind === "gif").length,
+    videos: sortedFiles.filter((f) => f.kind === "video").length,
+    audio: sortedFiles.filter((f) => f.kind === "audio").length,
+    other: sortedFiles.filter((f) => f.kind === "file").length,
   };
 
   return { transfer, shareUrl, adminUrl, totalSize, fileCounts };

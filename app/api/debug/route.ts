@@ -7,7 +7,7 @@ import { requireAuth } from '@/lib/auth';
  * Protected behind management auth.
  */
 export async function GET(request: NextRequest) {
-  const authErr = requireAuth(request, "management");
+  const authErr = requireAuth(request, "admin");
   if (authErr) return authErr;
   // Check both naming conventions (Vercel KV vs direct Upstash)
   const hasKvUrl = !!process.env.KV_REST_API_URL;

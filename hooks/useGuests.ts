@@ -27,22 +27,34 @@ async function fetchWithRetry(url: string, options?: RequestInit, retries = 2): 
 /**
  * Hook for guest list state with real-time polling.
  *
+ * Requires a staff token (JWT) — all API calls include `Authorization: Bearer {token}`.
+ * Skips fetching when no token is provided (pre-auth state).
+ *
  * KV-efficient: polls at 5s when focused, 30s when backgrounded.
- * At 5s active: ~720 commands/hr. At 30s background: ~120 commands/hr.
- * Previous 2.5s interval burned ~1,440/hr — this halves active cost
- * and drops background cost by 12x.
  */
-export function useGuests() {
+export function useGuests(authToken: string) {
   const [guests, setGuests] = useState<Guest[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const hasBootstrapped = useRef(false);
   const consecutiveErrors = useRef(0);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
+  /** Build auth headers from the stored token. */
+  const authHeaders = useCallback(
+    (extra?: Record<string, string>): Record<string, string> => ({
+      ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+      ...extra,
+    }),
+    [authToken]
+  );
+
   const fetchGuests = useCallback(async () => {
+    if (!authToken) return; // Skip when not yet authenticated
+
     try {
-      const res = await fetchWithRetry('/api/guests');
+      const res = await fetchWithRetry('/api/guests', {
+        headers: authHeaders(),
+      });
       if (!res.ok) throw new Error('Failed to fetch guests');
       const data = await res.json();
       if (Array.isArray(data)) {
@@ -60,21 +72,7 @@ export function useGuests() {
     } finally {
       setLoading(false);
     }
-  }, []);
-
-  const bootstrap = useCallback(async () => {
-    if (hasBootstrapped.current) return;
-    hasBootstrapped.current = true;
-    try {
-      const res = await fetchWithRetry('/api/guests/bootstrap', { method: 'POST' });
-      const data = await res.json();
-      if (data.bootstrapped) {
-        console.log(`Bootstrapped ${data.count} guests from CSV`);
-      }
-    } catch (err) {
-      console.warn('Bootstrap skipped:', err);
-    }
-  }, []);
+  }, [authToken, authHeaders]);
 
   /** Restart the polling interval with the given delay */
   const startPolling = useCallback(
@@ -86,17 +84,18 @@ export function useGuests() {
   );
 
   useEffect(() => {
-    bootstrap().then(() => fetchGuests());
+    if (!authToken) {
+      setLoading(false);
+      return;
+    }
 
-    // Start polling at active rate
+    fetchGuests();
     startPolling(POLL_ACTIVE_MS);
 
-    // Switch rate based on tab visibility
     const onVisibilityChange = () => {
       if (document.hidden) {
         startPolling(POLL_BACKGROUND_MS);
       } else {
-        // Fetch immediately when tab regains focus, then resume active rate
         fetchGuests();
         startPolling(POLL_ACTIVE_MS);
       }
@@ -108,11 +107,11 @@ export function useGuests() {
       if (intervalRef.current) clearInterval(intervalRef.current);
       document.removeEventListener('visibilitychange', onVisibilityChange);
     };
-  }, [fetchGuests, bootstrap, startPolling]);
+  }, [authToken, fetchGuests, startPolling]);
 
   const updateCheckIn = useCallback(async (id: string, checkedIn: boolean) => {
     const previousGuests = guests;
-    
+
     // Optimistic update for instant feedback
     setGuests((prev) =>
       prev.map((g) => {
@@ -136,10 +135,10 @@ export function useGuests() {
     try {
       const res = await fetchWithRetry('/api/guests', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({ id, checkedIn }),
       }, 3);
-      
+
       if (!res.ok) {
         setGuests(previousGuests);
         setError('Check-in failed - please try again');
@@ -150,7 +149,7 @@ export function useGuests() {
       setError('Check-in failed - please try again');
       setTimeout(() => setError(null), 3000);
     }
-  }, [guests]);
+  }, [guests, authHeaders]);
 
   return { guests, loading, error, updateCheckIn, refetch: fetchGuests };
 }

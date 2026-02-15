@@ -132,14 +132,13 @@ export async function GET() {
       issueToken(),
     ]);
     
-    // Get all guest names (primary + plus ones)
-    const guestNames: string[] = [];
+    // Get all unique guest names (primary + plus ones)
+    const guestNameSet = new Set<string>();
     guests.forEach(g => {
-      guestNames.push(g.name);
-      if (g.plusOnes) {
-        g.plusOnes.forEach(p => guestNames.push(p.name));
-      }
+      guestNameSet.add(g.name);
+      g.plusOnes?.forEach(p => guestNameSet.add(p.name));
     });
+    const guestNames = [...guestNameSet];
     
     // Sort votes by count descending
     const leaderboard = Object.entries(votes)
@@ -241,7 +240,7 @@ export async function POST(request: NextRequest) {
 
 // DELETE - wipe all votes and reset session (admin only)
 export async function DELETE(request: NextRequest) {
-  const authErr = requireAuth(request, "management");
+  const authErr = requireAuth(request, "admin");
   if (authErr) return authErr;
 
   try {

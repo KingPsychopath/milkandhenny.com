@@ -4,8 +4,8 @@ import { setGuests } from '@/lib/guests/kv-client';
 import { requireAuth } from '@/lib/auth';
 
 export async function POST(request: NextRequest) {
-  const authError = requireAuth(request, "management");
-  if (authError) return authError;
+  const authErr = requireAuth(request, "admin");
+  if (authErr) return authErr;
 
   try {
     const formData = await request.formData();

@@ -1,58 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
-import path from "path";
 import { requireAuth } from "@/lib/auth";
-import { uploadBuffer, listObjects } from "@/scripts/r2-client";
+import { uploadBuffer, listObjects } from "@/lib/r2";
 import {
   isProcessableImage,
   getFileKind,
   getMimeType,
   processToWebP,
-} from "@/scripts/media-processing";
+} from "@/lib/media/processing";
+import { toR2Filename, toMarkdownSnippet } from "@/lib/blog-upload";
 import type { FileKind } from "@/lib/media/file-kinds";
 
 /** Allow longer execution for image processing */
 export const maxDuration = 60;
-
-/* ─── Helpers ─── */
-
-/** Sanitise a filename stem: lowercase, replace non-alphanumeric with hyphens */
-function sanitiseStem(filename: string): string {
-  const ext = path.extname(filename);
-  const stem = path.basename(filename, ext);
-  return stem
-    .toLowerCase()
-    .replace(/[^a-z0-9-]/g, "-")
-    .replace(/-+/g, "-")
-    .replace(/^-|-$/g, "");
-}
-
-/** Build the R2 filename — images become .webp, everything else keeps its extension */
-function toR2Filename(localFilename: string): string {
-  const sanitised = sanitiseStem(localFilename);
-  if (isProcessableImage(localFilename)) {
-    return `${sanitised}.webp`;
-  }
-  return `${sanitised}${path.extname(localFilename).toLowerCase()}`;
-}
-
-/** Generate a markdown snippet based on file kind */
-function toMarkdownSnippet(
-  slug: string,
-  filename: string,
-  kind: FileKind
-): string {
-  const r2Path = `blog/${slug}/${filename}`;
-  const label = filename.replace(/\.[^.]+$/, "");
-
-  switch (kind) {
-    case "image":
-    case "video":
-    case "gif":
-      return `![${label}](${r2Path})`;
-    default:
-      return `[${label}](${r2Path})`;
-  }
-}
 
 /* ─── Types ─── */
 
@@ -106,16 +65,17 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    // Check what already exists in R2 for this slug
     const existingObjects = await listObjects(`blog/${slug}/`);
     const existingNames = new Set(
-      existingObjects.map((o) => path.basename(o.key))
+      existingObjects.map((o) => {
+        const parts = o.key.split("/");
+        return parts[parts.length - 1];
+      })
     );
 
     const uploaded: UploadedBlogFile[] = [];
     const skipped: string[] = [];
 
-    // Process files sequentially to manage memory in serverless
     for (const file of rawFiles) {
       const r2Filename = toR2Filename(file.name);
       const alreadyExists = existingNames.has(r2Filename);

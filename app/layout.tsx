@@ -5,6 +5,7 @@ import { LampToggle } from "@/components/LampToggle";
 import { BackToTop } from "@/components/BackToTop";
 import { Analytics } from "@vercel/analytics/react";
 import { BASE_URL, SITE_NAME } from "@/lib/config";
+import { LOCAL_KEYS } from "@/lib/storage-keys";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -66,7 +67,7 @@ export default function RootLayout({
       <head>
         <script
           dangerouslySetInnerHTML={{
-            __html: `(function(){var t=localStorage.getItem("theme");if(t==="dark")document.documentElement.setAttribute("data-theme","dark");})();`,
+            __html: `(function(){var t=localStorage.getItem("${LOCAL_KEYS.theme}");if(t==="dark")document.documentElement.setAttribute("data-theme","dark");})();`,
           }}
         />
       </head>

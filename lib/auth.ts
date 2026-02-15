@@ -1,89 +1,136 @@
 /**
  * Server-side authentication.
  *
- * Config-driven auth for any number of roles. Every comparison is
- * timing-safe, every verify endpoint is rate-limited.
+ * Token-based flow: verify endpoint validates PIN/password, issues short-lived JWT.
+ * Client stores token (not credentials), sends Authorization: Bearer <token>.
  *
- * To add a new role:
- *   1. Add an env var
- *   2. Add an entry to ROLES
- *   3. Use requireAuth() in your route, or handleVerifyRequest() for a gate
+ * Config-driven. Every comparison is timing-safe, every verify endpoint is rate-limited.
+ * Cron uses Bearer secret directly (no verify flow).
  *
- * @example Route protection
- * ```ts
- * const err = requireAuth(request, "upload");
- * if (err) return err;
- * ```
- *
- * @example Verify endpoint
- * ```ts
- * export async function POST(request: NextRequest) {
- *   return handleVerifyRequest(request, "staff");
- * }
- * ```
+ * Env: AUTH_SECRET (JWT signing), STAFF_PIN, MANAGEMENT_PASSWORD, UPLOAD_PIN, CRON_SECRET
  */
 
-import { timingSafeEqual } from "crypto";
+import { createHmac, timingSafeEqual } from "crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { getRedis } from "./redis";
 
 /* ─── Types ─── */
 
-type HeaderScheme = {
-  /** Header name to read (case-insensitive). */
-  name: string;
-  /** Prefix to strip (e.g. "Bearer ", "PIN "). Raw value used if omitted. */
-  prefix?: string;
-};
-
 type VerifyConfig = {
-  /** JSON body field containing the candidate secret (e.g. "pin", "password"). */
   bodyField: string;
-  /** Sanitize input before comparison (e.g. strip non-digits for numeric PINs). */
   sanitize?: (value: string) => string;
 };
 
 type RoleConfig = {
-  /** Environment variable holding the secret. */
   envVar: string;
-  /** How the secret travels in request headers for requireAuth(). */
-  header: HeaderScheme;
-  /** Client-facing verify endpoint config. Omit for server-only roles like cron. */
   verify?: VerifyConfig;
 };
 
-/* ─── Role definitions ─── */
-
-type AuthRole = "staff" | "management" | "upload" | "cron";
+type AuthRole = "staff" | "admin" | "upload" | "cron";
 
 const ROLES: Record<AuthRole, RoleConfig> = {
   staff: {
     envVar: "STAFF_PIN",
-    header: { name: "authorization", prefix: "PIN " },
-    verify: {
-      bodyField: "pin",
-      sanitize: (v: string) => v.replace(/\D/g, ""),
-    },
+    verify: { bodyField: "pin", sanitize: (v: string) => v.replace(/\D/g, "") },
   },
-  management: {
+  admin: {
     envVar: "MANAGEMENT_PASSWORD",
-    header: { name: "x-management-password" },
-    verify: { bodyField: "password" },
+    verify: { bodyField: "password", sanitize: (v) => v.trim() },
   },
   upload: {
     envVar: "UPLOAD_PIN",
-    header: { name: "authorization", prefix: "PIN " },
     verify: { bodyField: "pin" },
   },
-  cron: {
-    envVar: "CRON_SECRET",
-    header: { name: "authorization", prefix: "Bearer " },
-  },
+  cron: { envVar: "CRON_SECRET" },
 };
+
+const TOKEN_ROLES: AuthRole[] = ["staff", "admin", "upload"];
+const TOKEN_EXPIRY_SECONDS = 24 * 60 * 60; // 24 hours
+
+/* ─── JWT (HS256, no deps) ─── */
+
+function base64UrlEncode(buf: Buffer): string {
+  return buf
+    .toString("base64")
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=/g, "");
+}
+
+function base64UrlDecode(str: string): Buffer {
+  const base64 = str.replace(/-/g, "+").replace(/_/g, "/");
+  const pad = base64.length % 4;
+  const padded = pad ? base64 + "=".repeat(4 - pad) : base64;
+  return Buffer.from(padded, "base64");
+}
+
+function getAuthSecret(): string | null {
+  const raw = process.env.AUTH_SECRET;
+  if (!raw) return null;
+  return raw.trim() || null;
+}
+
+/** Sign a JWT for the given role. Payload: { role, exp, iat }. */
+function signToken(role: AuthRole): string | null {
+  const secret = getAuthSecret();
+  if (!secret) return null;
+
+  const header = { alg: "HS256", typ: "JWT" };
+  const now = Math.floor(Date.now() / 1000);
+  const payload = {
+    role,
+    iat: now,
+    exp: now + TOKEN_EXPIRY_SECONDS,
+  };
+
+  const headerB64 = base64UrlEncode(Buffer.from(JSON.stringify(header)));
+  const payloadB64 = base64UrlEncode(Buffer.from(JSON.stringify(payload)));
+  const message = `${headerB64}.${payloadB64}`;
+
+  const sig = createHmac("sha256", secret)
+    .update(message)
+    .digest();
+  const sigB64 = base64UrlEncode(sig);
+
+  return `${message}.${sigB64}`;
+}
+
+type TokenPayload = { role: string; exp: number; iat: number };
+
+/** Verify JWT and return payload if valid for the expected role. */
+function verifyToken(token: string, expectedRole: AuthRole): TokenPayload | null {
+  const secret = getAuthSecret();
+  if (!secret) return null;
+
+  const parts = token.split(".");
+  if (parts.length !== 3) return null;
+
+  const [headerB64, payloadB64, sigB64] = parts;
+  const message = `${headerB64}.${payloadB64}`;
+
+  let payload: TokenPayload;
+  try {
+    payload = JSON.parse(base64UrlDecode(payloadB64).toString()) as TokenPayload;
+  } catch {
+    return null;
+  }
+
+  if (payload.role !== expectedRole) return null;
+  if (typeof payload.exp !== "number" || payload.exp < Math.floor(Date.now() / 1000)) {
+    return null;
+  }
+
+  const expectedSig = createHmac("sha256", secret).update(message).digest();
+  const actualSig = base64UrlDecode(sigB64);
+  if (actualSig.length !== expectedSig.length || !timingSafeEqual(actualSig, expectedSig)) {
+    return null;
+  }
+
+  return payload;
+}
 
 /* ─── Primitives ─── */
 
-/** Constant-time string comparison. Prevents timing side-channel attacks. */
 function safeCompare(a: string, b: string): boolean {
   const bufA = Buffer.from(a);
   const bufB = Buffer.from(b);
@@ -91,7 +138,6 @@ function safeCompare(a: string, b: string): boolean {
   return timingSafeEqual(bufA, bufB);
 }
 
-/** Extract client IP from proxy headers (Vercel, Cloudflare, nginx). */
 function getClientIp(request: NextRequest): string {
   return (
     request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
@@ -100,29 +146,18 @@ function getClientIp(request: NextRequest): string {
   );
 }
 
-/* ─── Secret access ─── */
-
-/** Read the secret from the role's env var. Null if not configured. */
 function getSecret(role: AuthRole): string | null {
-  return process.env[ROLES[role].envVar] ?? null;
+  const raw = process.env[ROLES[role].envVar];
+  if (!raw) return null;
+  return raw.trim() || null;
 }
 
-/** Extract the secret from request headers using the role's header scheme. */
-function extractFromHeader(request: NextRequest, role: AuthRole): string {
-  const { name, prefix } = ROLES[role].header;
-  const raw = request.headers.get(name) ?? "";
-  if (!prefix) return raw;
-  return raw.startsWith(prefix) ? raw.slice(prefix.length) : "";
+function extractBearer(request: NextRequest): string {
+  const raw = request.headers.get("authorization") ?? "";
+  return raw.startsWith("Bearer ") ? raw.slice(7).trim() : "";
 }
 
-/** Timing-safe comparison of a candidate against a role's configured secret. */
-function verifySecret(role: AuthRole, candidate: string): boolean {
-  const secret = getSecret(role);
-  if (!secret || !candidate) return false;
-  return safeCompare(candidate, secret);
-}
-
-/* ─── Rate limiting (internal) ─── */
+/* ─── Rate limiting ─── */
 
 const MAX_ATTEMPTS = 5;
 const LOCKOUT_SECONDS = 900;
@@ -144,7 +179,6 @@ async function checkRateLimit(
 async function recordFailure(role: AuthRole, ip: string): Promise<void> {
   const redis = getRedis();
   if (!redis) return;
-
   const key = `auth:ratelimit:${role}:${ip}`;
   await redis.incr(key);
   await redis.expire(key, LOCKOUT_SECONDS);
@@ -153,33 +187,40 @@ async function recordFailure(role: AuthRole, ip: string): Promise<void> {
 async function clearRateLimit(role: AuthRole, ip: string): Promise<void> {
   const redis = getRedis();
   if (!redis) return;
-
   await redis.del(`auth:ratelimit:${role}:${ip}`);
 }
 
 /* ─── Route guard ─── */
 
 /**
- * Protect an API route. Returns null when authorized, or an error response
- * to return immediately (401 / 503).
+ * Protect an API route. Returns null when authorized, or an error response.
  *
- * Reads the secret from the request header defined in the role's config,
- * then does a timing-safe comparison against the env var.
+ * For staff/management/upload: Validates JWT (Authorization: Bearer <token>).
+ * For cron: Validates Bearer secret directly.
  */
 function requireAuth(
   request: NextRequest,
   role: AuthRole
 ): NextResponse | null {
-  const secret = getSecret(role);
-  if (!secret) {
-    return NextResponse.json(
-      { error: `${ROLES[role].envVar} not configured` },
-      { status: 503 }
-    );
+  if (role === "cron") {
+    const secret = getSecret("cron");
+    if (!secret) {
+      return NextResponse.json({ error: "CRON_SECRET not configured" }, { status: 503 });
+    }
+    const candidate = extractBearer(request);
+    if (!candidate || !safeCompare(candidate, secret)) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    return null;
   }
 
-  const candidate = extractFromHeader(request, role);
-  if (!candidate || !safeCompare(candidate, secret)) {
+  const token = extractBearer(request);
+  if (!token) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const payload = verifyToken(token, role);
+  if (!payload) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -189,9 +230,8 @@ function requireAuth(
 /* ─── Verify handler ─── */
 
 /**
- * Handle a POST verify endpoint with rate limiting and timing-safe comparison.
- * Body field, sanitization, and env var are all read from the role's config
- * in ROLES — no options needed at the call site.
+ * Handle a POST verify endpoint. On success, issues a JWT token.
+ * Client stores token, sends it as Authorization: Bearer <token>.
  */
 async function handleVerifyRequest(
   request: NextRequest,
@@ -210,6 +250,14 @@ async function handleVerifyRequest(
   if (!secret) {
     return NextResponse.json(
       { error: `${config.envVar} not configured` },
+      { status: 503 }
+    );
+  }
+
+  const authSecret = getAuthSecret();
+  if (!authSecret && TOKEN_ROLES.includes(role)) {
+    return NextResponse.json(
+      { error: "AUTH_SECRET not configured" },
       { status: 503 }
     );
   }
@@ -240,7 +288,14 @@ async function handleVerifyRequest(
 
   if (safeCompare(candidate, secret)) {
     await clearRateLimit(role, ip);
-    return NextResponse.json({ ok: true });
+    const token = signToken(role);
+    if (!token) {
+      return NextResponse.json(
+        { error: "Token generation failed" },
+        { status: 503 }
+      );
+    }
+    return NextResponse.json({ ok: true, token });
   }
 
   await recordFailure(role, ip);
@@ -255,5 +310,5 @@ async function handleVerifyRequest(
 
 /* ─── Exports ─── */
 
-export { requireAuth, handleVerifyRequest, verifySecret, safeCompare, getClientIp };
+export { requireAuth, handleVerifyRequest, safeCompare, getClientIp };
 export type { AuthRole };

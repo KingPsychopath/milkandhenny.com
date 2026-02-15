@@ -4,106 +4,95 @@ import { parseCSV } from '@/lib/guests/csv-parser';
 import { getGuests, setGuests } from '@/lib/guests/kv-client';
 import { requireAuth } from '@/lib/auth';
 
+/** Resolve the origin from request headers (works on Vercel). */
+async function getBaseUrl(): Promise<string> {
+  const h = await headers();
+  const host = h.get('host') || 'localhost:3000';
+  const proto = h.get('x-forwarded-proto') || 'http';
+  return `${proto}://${host}`;
+}
+
+/** Fetch and parse guests.csv from the public folder. Returns null if not found. */
+async function fetchCsvGuests() {
+  const base = await getBaseUrl();
+  const res = await fetch(`${base}/guests.csv`);
+  if (!res.ok) return null;
+  return parseCSV(await res.text());
+}
+
 /**
- * Bootstrap endpoint - loads guests from public/guests.csv if no guests exist
- * Uses HTTP fetch (works on Vercel) instead of filesystem read
+ * Bootstrap — loads guests from public/guests.csv if no guests exist.
  */
 export async function POST(request: NextRequest) {
-  const authError = requireAuth(request, "management");
-  if (authError) return authError;
+  const authErr = requireAuth(request, "admin");
+  if (authErr) return authErr;
 
   try {
-    // Check if guests already exist
-    const existingGuests = await getGuests();
-    if (existingGuests.length > 0) {
-      return NextResponse.json({ 
-        bootstrapped: false, 
+    const existing = await getGuests();
+    if (existing.length > 0) {
+      return NextResponse.json({
+        bootstrapped: false,
         message: 'Guests already exist',
-        count: existingGuests.length 
+        count: existing.length,
       });
     }
 
-    // Get the base URL from the request headers
-    const headersList = await headers();
-    const host = headersList.get('host') || 'localhost:3000';
-    const protocol = headersList.get('x-forwarded-proto') || 'http';
-    const baseUrl = `${protocol}://${host}`;
-    
-    try {
-      // Fetch CSV from public URL (works on Vercel serverless)
-      const csvResponse = await fetch(`${baseUrl}/guests.csv`);
-      if (!csvResponse.ok) {
-        return NextResponse.json({ 
-          bootstrapped: false, 
-          message: 'No guests.csv found in public folder',
-          count: 0 
-        });
-      }
-      
-      const csvContent = await csvResponse.text();
-      const guests = parseCSV(csvContent);
-      await setGuests(guests);
-      
-      return NextResponse.json({ 
-        bootstrapped: true, 
-        message: 'Loaded guests from CSV',
-        count: guests.length 
-      });
-    } catch (fetchError) {
-      console.error('CSV fetch error:', fetchError);
-      return NextResponse.json({ 
-        bootstrapped: false, 
-        message: 'Failed to fetch guests.csv',
-        error: String(fetchError),
-        count: 0 
+    const guests = await fetchCsvGuests();
+    if (!guests) {
+      return NextResponse.json({
+        bootstrapped: false,
+        message: 'No guests.csv found in public folder',
+        count: 0,
       });
     }
+
+    await setGuests(guests);
+    return NextResponse.json({
+      bootstrapped: true,
+      message: 'Loaded guests from CSV',
+      count: guests.length,
+    });
   } catch (error) {
     console.error('Bootstrap error:', error);
-    return NextResponse.json({ error: 'Bootstrap failed', details: String(error) }, { status: 500 });
+    return NextResponse.json(
+      { error: 'Bootstrap failed', details: String(error) },
+      { status: 500 }
+    );
   }
 }
 
 /**
- * Force re-bootstrap - clears existing data and reloads from CSV.
- * Requires management password.
+ * Force re-bootstrap — clears existing data and reloads from CSV.
  */
 export async function DELETE(request: NextRequest) {
-  const deleteAuthError = requireAuth(request, "management");
-  if (deleteAuthError) return deleteAuthError;
+  const authErr = requireAuth(request, "admin");
+  if (authErr) return authErr;
 
   try {
-    // Clear existing guests
     await setGuests([]);
-    
-    // Re-run bootstrap
-    const headersList = await headers();
-    const host = headersList.get('host') || 'localhost:3000';
-    const protocol = headersList.get('x-forwarded-proto') || 'http';
-    const baseUrl = `${protocol}://${host}`;
-    
-    const csvResponse = await fetch(`${baseUrl}/guests.csv`);
-    if (!csvResponse.ok) {
-      return NextResponse.json({ 
+
+    const guests = await fetchCsvGuests();
+    if (!guests) {
+      return NextResponse.json({
         reset: true,
-        bootstrapped: false, 
+        bootstrapped: false,
         message: 'Cleared data but no guests.csv found',
-        count: 0 
+        count: 0,
       });
     }
-    
-    const csvContent = await csvResponse.text();
-    const guests = parseCSV(csvContent);
+
     await setGuests(guests);
-    
-    return NextResponse.json({ 
+    return NextResponse.json({
       reset: true,
-      bootstrapped: true, 
+      bootstrapped: true,
       message: 'Cleared and reloaded from CSV',
-      count: guests.length 
+      count: guests.length,
     });
   } catch (error) {
     console.error('Reset error:', error);
-    return NextResponse.json({ error: 'Reset failed', details: String(error) }, { status: 500 });
+    return NextResponse.json(
+      { error: 'Reset failed', details: String(error) },
+      { status: 500 }
+    );
   }
 }

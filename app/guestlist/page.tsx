@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { SITE_NAME } from '@/lib/config';
 import { useGuests } from '@/hooks/useGuests';
@@ -9,25 +9,31 @@ import { SearchBar } from '@/components/guestlist/SearchBar';
 import { GuestList } from '@/components/guestlist/GuestList';
 import { GuestStats } from '@/components/guestlist/GuestStats';
 import { GuestManagement } from '@/components/guestlist/GuestManagement';
+import { getStored, setStored } from '@/lib/storage-keys';
 
-const AUTH_KEY = 'mah-staff-auth';
-
-function getInitialAuth() {
-  if (typeof window === 'undefined') return false;
-  return sessionStorage.getItem(AUTH_KEY) === 'true';
-}
-
-function getInitialCheckingAuth() {
-  return typeof window === 'undefined';
+/** Loading placeholder — same on server and initial client to avoid hydration mismatch. */
+function AuthLoadingPlaceholder() {
+  return (
+    <div className="min-h-screen bg-stone-50 flex items-center justify-center">
+      <div className="w-8 h-8 border-2 border-amber-500 border-t-transparent rounded-full animate-spin" />
+    </div>
+  );
 }
 
 export default function GuestListPage() {
-  const [isAuthenticated, setIsAuthenticated] = useState(getInitialAuth);
-  const [pin, setPin] = useState('');
+  const [mounted, setMounted] = useState(false);
+  const [staffToken, setStaffToken] = useState('');
+  const [pinInput, setPinInput] = useState('');
   const [pinError, setPinError] = useState(false);
-  const [checkingAuth] = useState(getInitialCheckingAuth);
 
-  const { guests, loading, error, updateCheckIn, refetch } = useGuests();
+  useEffect(() => {
+    setStaffToken(getStored("staffToken") ?? '');
+    setMounted(true);
+  }, []);
+
+  const isAuthenticated = !!staffToken;
+
+  const { guests, loading, error, updateCheckIn, refetch } = useGuests(staffToken);
   const { searchQuery, setSearchQuery, filter, setFilter, filteredGuests, searchStats } = useGuestSearch(guests);
 
   const handlePinSubmit = async (e: React.FormEvent) => {
@@ -37,29 +43,23 @@ export default function GuestListPage() {
       const res = await fetch('/api/guests/verify-staff-pin', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ pin }),
+        body: JSON.stringify({ pin: pinInput }),
       });
-      if (res.ok) {
-        sessionStorage.setItem(AUTH_KEY, 'true');
-        setIsAuthenticated(true);
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.token) {
+        setStored("staffToken", data.token);
+        setStaffToken(data.token);
       } else {
         setPinError(true);
-        setPin('');
+        setPinInput('');
       }
     } catch {
       setPinError(true);
-      setPin('');
+      setPinInput('');
     }
   };
 
-  // Show PIN gate if not authenticated
-  if (checkingAuth) {
-    return (
-      <div className="min-h-screen bg-stone-50 flex items-center justify-center">
-        <div className="w-8 h-8 border-2 border-amber-500 border-t-transparent rounded-full animate-spin" />
-      </div>
-    );
-  }
+  if (!mounted) return <AuthLoadingPlaceholder />;
 
   if (!isAuthenticated) {
     return (
@@ -81,9 +81,9 @@ export default function GuestListPage() {
               inputMode="numeric"
               pattern="[0-9]*"
               maxLength={4}
-              value={pin}
+              value={pinInput}
               onChange={(e) => {
-                setPin(e.target.value.replace(/\D/g, ''));
+                setPinInput(e.target.value.replace(/\D/g, ''));
                 setPinError(false);
               }}
               placeholder="••••"
@@ -99,7 +99,7 @@ export default function GuestListPage() {
 
             <button
               type="submit"
-              disabled={pin.length < 4}
+              disabled={pinInput.length < 4}
               className="w-full py-4 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 disabled:opacity-50 text-zinc-950 font-bold text-lg rounded-2xl transition-all"
             >
               Enter
@@ -119,13 +119,13 @@ export default function GuestListPage() {
   if (loading && guests.length === 0) {
     return (
       <div className="min-h-screen bg-stone-50 flex items-center justify-center">
-        <main id="main" className="text-center">
+        <div className="text-center">
           <div className="w-16 h-16 mx-auto mb-4 relative">
             <div className="absolute inset-0 rounded-full border-4 border-amber-200"></div>
             <div className="absolute inset-0 rounded-full border-4 border-amber-600 border-t-transparent animate-spin"></div>
           </div>
           <p className="text-stone-600 font-medium">Loading guest list...</p>
-        </main>
+        </div>
       </div>
     );
   }

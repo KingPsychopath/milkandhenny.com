@@ -1,15 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getGuests, setGuests } from '@/lib/guests/kv-client';
 import { requireAuth } from '@/lib/auth';
-import { Guest, GuestStatus } from '@/lib/guests/types';
-
-function generateId(name: string): string {
-  return `${name.toLowerCase().replace(/\s+/g, '-')}-${Date.now()}`;
-}
+import { Guest, GuestStatus, generateGuestId } from '@/lib/guests/types';
 
 export async function POST(request: NextRequest) {
-  const authError = requireAuth(request, "management");
-  if (authError) return authError;
+  const authErr = requireAuth(request, "admin");
+  if (authErr) return authErr;
 
   try {
     const body = await request.json();
@@ -23,7 +19,7 @@ export async function POST(request: NextRequest) {
     const isPlusOne = !!plusOneOf;
 
     const newGuest: Guest = {
-      id: generateId(name),
+      id: generateGuestId(name),
       name: name.trim(),
       fullName: fullName?.trim() || undefined,
       status: (status as GuestStatus) || 'Pending',

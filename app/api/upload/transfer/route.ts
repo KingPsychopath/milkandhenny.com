@@ -1,7 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import path from "path";
 import { requireAuth } from "@/lib/auth";
-import { uploadBuffer } from "@/scripts/r2-client";
 import {
   saveTransfer,
   generateTransferId,
@@ -9,16 +7,8 @@ import {
   parseExpiry,
   DEFAULT_EXPIRY_SECONDS,
 } from "@/lib/transfers";
-import type { TransferFile } from "@/lib/transfers";
+import { processTransferFile, sortTransferFiles } from "@/lib/transfer-upload";
 import { BASE_URL } from "@/lib/config";
-import {
-  PROCESSABLE_EXTENSIONS,
-  ANIMATED_EXTENSIONS,
-  getMimeType,
-  getFileKind,
-  processImageVariants,
-  processGifThumb,
-} from "@/scripts/media-processing";
 
 /** Allow longer execution for image processing */
 export const maxDuration = 60;
@@ -52,7 +42,6 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "No files provided" }, { status: 400 });
   }
 
-  // Parse expiry
   let ttlSeconds = DEFAULT_EXPIRY_SECONDS;
   if (expiresRaw) {
     try {
@@ -67,132 +56,27 @@ export async function POST(request: NextRequest) {
 
   const transferId = generateTransferId();
   const deleteToken = generateDeleteToken();
-  const prefix = `transfers/${transferId}`;
 
   try {
-    const transferFiles: TransferFile[] = [];
-    let totalSize = 0;
+    const results = [];
     const counts = { images: 0, videos: 0, gifs: 0, audio: 0, other: 0 };
 
     // Process files sequentially to avoid memory pressure in serverless
     for (const file of rawFiles) {
-      const filename = file.name;
-      const ext = path.extname(filename).toLowerCase();
-      const stem = path.basename(filename, ext);
       const buffer = Buffer.from(await file.arrayBuffer());
+      const result = await processTransferFile(buffer, file.name, transferId);
+      results.push(result);
 
-      if (PROCESSABLE_EXTENSIONS.test(filename)) {
-        // Process image → thumb + full + original
-        const processed = await processImageVariants(buffer, ext);
-        const originalFilename =
-          processed.original.ext === ext
-            ? filename
-            : `${stem}${processed.original.ext}`;
-
-        await Promise.all([
-          uploadBuffer(
-            `${prefix}/thumb/${stem}.webp`,
-            processed.thumb.buffer,
-            processed.thumb.contentType
-          ),
-          uploadBuffer(
-            `${prefix}/full/${stem}.webp`,
-            processed.full.buffer,
-            processed.full.contentType
-          ),
-          uploadBuffer(
-            `${prefix}/original/${originalFilename}`,
-            processed.original.buffer,
-            processed.original.contentType
-          ),
-        ]);
-
-        transferFiles.push({
-          id: stem,
-          filename: originalFilename,
-          kind: "image",
-          size: buffer.byteLength,
-          mimeType: processed.original.contentType,
-          width: processed.width,
-          height: processed.height,
-          ...(processed.takenAt ? { takenAt: processed.takenAt } : {}),
-        });
-
-        totalSize +=
-          processed.thumb.buffer.byteLength +
-          processed.full.buffer.byteLength +
-          processed.original.buffer.byteLength;
-
-        counts.images++;
-      } else if (ANIMATED_EXTENSIONS.test(filename)) {
-        // Process GIF → static thumb + original
-        const gif = await processGifThumb(buffer);
-
-        await Promise.all([
-          uploadBuffer(
-            `${prefix}/thumb/${stem}.webp`,
-            gif.thumb.buffer,
-            gif.thumb.contentType
-          ),
-          uploadBuffer(`${prefix}/original/${filename}`, buffer, "image/gif"),
-        ]);
-
-        transferFiles.push({
-          id: stem,
-          filename,
-          kind: "gif",
-          size: buffer.byteLength,
-          mimeType: "image/gif",
-          width: gif.width,
-          height: gif.height,
-        });
-
-        totalSize += gif.thumb.buffer.byteLength + buffer.byteLength;
-        counts.gifs++;
-      } else {
-        // Raw file — upload as-is
-        const mimeType = getMimeType(filename);
-        const kind = getFileKind(filename);
-
-        await uploadBuffer(
-          `${prefix}/original/${filename}`,
-          buffer,
-          mimeType
-        );
-
-        transferFiles.push({
-          id: filename,
-          filename,
-          kind,
-          size: buffer.byteLength,
-          mimeType,
-        });
-
-        totalSize += buffer.byteLength;
-        if (kind === "video") counts.videos++;
-        else if (kind === "audio") counts.audio++;
-        else counts.other++;
-      }
+      const k = result.file.kind;
+      if (k === "image") counts.images++;
+      else if (k === "gif") counts.gifs++;
+      else if (k === "video") counts.videos++;
+      else if (k === "audio") counts.audio++;
+      else counts.other++;
     }
 
-    // Sort: visual (images/gifs by EXIF date then name) then non-visual by name
-    const visual = transferFiles.filter(
-      (f) => f.kind === "image" || f.kind === "gif"
-    );
-    const nonVisual = transferFiles.filter(
-      (f) => f.kind !== "image" && f.kind !== "gif"
-    );
-    visual.sort((a, b) => {
-      if (a.takenAt && b.takenAt)
-        return (
-          new Date(a.takenAt).getTime() - new Date(b.takenAt).getTime()
-        );
-      if (a.takenAt) return -1;
-      if (b.takenAt) return 1;
-      return a.filename.localeCompare(b.filename);
-    });
-    nonVisual.sort((a, b) => a.filename.localeCompare(b.filename));
-    const sortedFiles = [...visual, ...nonVisual];
+    const sortedFiles = sortTransferFiles(results.map((r) => r.file));
+    const totalSize = results.reduce((sum, r) => sum + r.uploadedBytes, 0);
 
     const now = new Date();
     const expiresAt = new Date(now.getTime() + ttlSeconds * 1000);

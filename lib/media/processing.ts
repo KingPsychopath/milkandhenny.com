@@ -9,14 +9,14 @@
  * - Extension patterns for all supported media
  * - Concurrency helper
  *
- * Used by album-ops, transfer-ops, and blog-ops.
+ * Used by album-ops, transfer-ops, blog-ops, and API upload routes.
  */
 
 import path from "path";
 import sharp from "sharp";
 import exifReader from "exif-reader";
-import type { FileKind } from "../lib/media/file-kinds";
-import { SITE_BRAND } from "../lib/config";
+import type { FileKind } from "./file-kinds";
+import { SITE_BRAND } from "../config";
 
 /* ─── Constants ─── */
 
@@ -298,8 +298,6 @@ async function generateBlurDataUri(imageBuffer: Buffer): Promise<string> {
  * All formats are handled cross-platform by Sharp (EXIF for JPEG/PNG/TIFF/WebP,
  * libheif for HEIC/HIF container rotation). Optional `rotationOverride` forces
  * portrait or landscape when EXIF data is missing or wrong.
- *
- * Used by album-ops and transfer-ops.
  */
 async function processImageVariants(
   raw: Buffer,
@@ -374,8 +372,6 @@ async function processToOg(
  *
  * Returns the thumb buffer + GIF dimensions. The original GIF
  * should be uploaded as-is (animation preserved).
- *
- * Used by transfer-ops.
  */
 async function processGifThumb(raw: Buffer): Promise<ProcessedGif> {
   const metadata = await sharp(raw, { animated: false }).metadata();

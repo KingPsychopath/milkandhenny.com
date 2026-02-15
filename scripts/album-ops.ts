@@ -21,7 +21,7 @@ import {
   mapConcurrent,
   type OgOverlay,
   type RotationOverride,
-} from "./media-processing";
+} from "../lib/media/processing";
 import {
   type FocalPreset,
   isValidFocalPreset,

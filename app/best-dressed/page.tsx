@@ -4,8 +4,7 @@ import { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
 import { playFeedback } from '@/lib/feedback';
 import { SITE_NAME } from '@/lib/config';
-
-const STORAGE_KEY = 'mah-best-dressed-vote';
+import { getStored, setStored, removeStored } from '@/lib/storage-keys';
 
 type LeaderboardEntry = { name: string; count: number };
 type StoredVote = { session: string; name: string };
@@ -36,7 +35,7 @@ export default function BestDressedPage() {
         setVoteToken(data.voteToken || '');
         
         // Check if user voted in THIS session (client-side tracking)
-        const storedVote = localStorage.getItem(STORAGE_KEY);
+        const storedVote = getStored("bestDressedVote");
         if (storedVote) {
           try {
             const parsed: StoredVote = JSON.parse(storedVote);
@@ -45,10 +44,10 @@ export default function BestDressedPage() {
               setHasVoted(parsed.name);
             } else {
               // Session changed (votes were wiped), user can vote again
-              localStorage.removeItem(STORAGE_KEY);
+              removeStored("bestDressedVote");
             }
           } catch {
-            localStorage.removeItem(STORAGE_KEY);
+            removeStored("bestDressedVote");
           }
         }
       })
@@ -110,7 +109,7 @@ export default function BestDressedPage() {
         playFeedback('vote');
         // Store vote with session ID
         const vote: StoredVote = { session: data.session || currentSession, name: selectedName };
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(vote));
+        setStored("bestDressedVote", JSON.stringify(vote));
         setHasVoted(selectedName);
         setLeaderboard(data.leaderboard || []);
         setTotalVotes(data.totalVotes || 0);
@@ -273,7 +272,7 @@ export default function BestDressedPage() {
                 <div className="space-y-2">
                   {leaderboard.map((entry, index) => (
                     <div
-                      key={entry.name}
+                      key={`${entry.name}-${index}`}
                       className="relative bg-white/5 rounded-xl overflow-hidden"
                     >
                       {/* Progress bar */}

@@ -20,6 +20,7 @@ import {
   uploadBuffer,
   deleteObjects,
   listObjects,
+  isConfigured,
 } from "./r2-client";
 import {
   isProcessableImage,
@@ -27,7 +28,8 @@ import {
   getMimeType,
   processToWebP,
   mapConcurrent,
-} from "./media-processing";
+} from "../lib/media/processing";
+import { sanitiseStem, toR2Filename, toMarkdownSnippet } from "../lib/blog-upload";
 import { formatBytes } from "../lib/format";
 import type { FileKind } from "../lib/media/file-kinds";
 
@@ -78,54 +80,10 @@ type BlogFileInfo = {
 /* ─── Preflight ─── */
 
 function requireR2(): void {
-  const { R2_ACCOUNT_ID, R2_ACCESS_KEY, R2_SECRET_KEY, R2_BUCKET } =
-    process.env;
-  if (!R2_ACCOUNT_ID || !R2_ACCESS_KEY || !R2_SECRET_KEY || !R2_BUCKET) {
+  if (!isConfigured()) {
     throw new Error(
       "R2 not configured. Set R2_ACCOUNT_ID, R2_ACCESS_KEY, R2_SECRET_KEY, R2_BUCKET in .env.local."
     );
-  }
-}
-
-/* ─── Helpers ─── */
-
-/** Sanitise a filename stem: lowercase, replace non-alphanumeric with hyphens */
-function sanitiseStem(filename: string): string {
-  const ext = path.extname(filename);
-  const stem = path.basename(filename, ext);
-  return stem
-    .toLowerCase()
-    .replace(/[^a-z0-9-]/g, "-")
-    .replace(/-+/g, "-")
-    .replace(/^-|-$/g, "");
-}
-
-/** Build the R2 filename for a local file — images become .webp, everything else keeps its extension */
-function toR2Filename(localFilename: string): string {
-  const sanitised = sanitiseStem(localFilename);
-  if (isProcessableImage(localFilename)) {
-    return `${sanitised}.webp`;
-  }
-  const ext = path.extname(localFilename).toLowerCase();
-  return `${sanitised}${ext}`;
-}
-
-/** Generate a markdown snippet for a file based on its kind */
-function toMarkdownSnippet(slug: string, filename: string, kind: FileKind): string {
-  const r2Path = `blog/${slug}/${filename}`;
-  const label = filename.replace(/\.[^.]+$/, "");
-
-  switch (kind) {
-    case "image":
-      return `![${label}](${r2Path})`;
-    case "video":
-      // Markdown doesn't support video natively; use an img-style link the renderer can handle
-      return `![${label}](${r2Path})`;
-    case "gif":
-      return `![${label}](${r2Path})`;
-    default:
-      // Audio, PDF, documents, archives — link for download
-      return `[${label}](${r2Path})`;
   }
 }
 

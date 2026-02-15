@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback, useRef } from "react";
 import { usePathname } from "next/navigation";
+import { LOCAL_KEYS, getStored, setStored } from "@/lib/storage-keys";
 
 /** Routes where the lamp should be fully hidden (own dark styling or standalone pages) */
 const HIDDEN_ROUTES = ["/party", "/icebreaker", "/best-dressed", "/guestlist", "/t"] as const;
@@ -56,7 +57,7 @@ export function LampToggle() {
 
   /** Hydrate from localStorage */
   useEffect(() => {
-    const stored = localStorage.getItem("theme");
+    const stored = getStored("theme");
     if (stored === "dark") {
       setDark(true);
       document.documentElement.setAttribute("data-theme", "dark");
@@ -74,7 +75,7 @@ export function LampToggle() {
 
     if (isPhotoPage && !dark) {
       /* Save their current preference so we can restore it */
-      savedPref.current = localStorage.getItem("theme") ?? "light";
+      savedPref.current = getStored("theme") ?? "light";
       autoForced.current = true;
 
       /* Animate the pull after a beat so the page settles first */
@@ -143,7 +144,7 @@ export function LampToggle() {
       autoForced.current = false;
     }
 
-    localStorage.setItem("theme", next ? "dark" : "light");
+    setStored("theme", next ? "dark" : "light");
   }, [dark, isPhotoPage]);
 
   if (!mounted || hidden) return null;

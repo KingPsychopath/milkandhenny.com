@@ -1,9 +1,10 @@
 'use client';
 
-import { useState, useSyncExternalStore, useCallback } from 'react';
+import { useState, useEffect, useSyncExternalStore, useCallback } from 'react';
 import Link from 'next/link';
 import { playFeedback } from '@/lib/feedback';
 import { SITE_NAME } from '@/lib/config';
+import { getStored, setStored } from '@/lib/storage-keys';
 
 // Vibrant, distinct colors for the game (10 colors = ~20 people per color with 200 guests)
 const COLORS = [
@@ -20,8 +21,6 @@ const COLORS = [
 ] as const;
 
 type Color = typeof COLORS[number];
-
-const STORAGE_KEY = 'mah-icebreaker-color';
 
 // Conversation starters - mix of fun, spicy, and thoughtful
 const QUESTIONS = [
@@ -53,7 +52,7 @@ function getRandomQuestion(exclude?: string): string {
 }
 
 function getOrAssignColor(): Color {
-  const stored = localStorage.getItem(STORAGE_KEY);
+  const stored = getStored("icebreakerColor");
   if (stored) {
     try {
       const parsed = JSON.parse(stored);
@@ -66,7 +65,7 @@ function getOrAssignColor(): Color {
   
   // Assign random color
   const randomColor = COLORS[Math.floor(Math.random() * COLORS.length)];
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(randomColor));
+  setStored("icebreakerColor", JSON.stringify(randomColor));
   return randomColor;
 }
 
@@ -91,7 +90,11 @@ function useColor() {
 export default function IcebreakerPage() {
   const color = useColor();
   const [revealed, setRevealed] = useState(false);
-  const [question, setQuestion] = useState(() => getRandomQuestion());
+  const [question, setQuestion] = useState(() => QUESTIONS[0]);
+
+  useEffect(() => {
+    setQuestion(getRandomQuestion());
+  }, []);
 
   const shuffleQuestion = () => {
     playFeedback('check-out'); // Light feedback

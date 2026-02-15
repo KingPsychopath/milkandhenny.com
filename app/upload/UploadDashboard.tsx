@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef, useCallback, useEffect } from "react";
+import { getStored, setStored, removeStored } from "@/lib/storage-keys";
 
 /* ─── Types ─── */
 
@@ -63,18 +64,18 @@ const EXPIRY_OPTIONS = [
 
 /* ─── Component ─── */
 
-const SESSION_KEY = "upload-pin";
-
 export function UploadDashboard() {
-  /* Auth state — restore from sessionStorage on mount */
-  const [pin, setPin] = useState(() => {
-    if (typeof window === "undefined") return "";
-    return sessionStorage.getItem(SESSION_KEY) ?? "";
-  });
-  const [isAuthed, setIsAuthed] = useState(() => {
-    if (typeof window === "undefined") return false;
-    return !!sessionStorage.getItem(SESSION_KEY);
-  });
+  const [mounted, setMounted] = useState(false);
+  const [pin, setPin] = useState("");
+  const [uploadToken, setUploadToken] = useState("");
+  const [isAuthed, setIsAuthed] = useState(false);
+
+  useEffect(() => {
+    const stored = getStored("uploadToken") ?? "";
+    setUploadToken(stored);
+    setIsAuthed(!!stored);
+    setMounted(true);
+  }, []);
   const [authError, setAuthError] = useState("");
   const [authLoading, setAuthLoading] = useState(false);
 
@@ -119,11 +120,13 @@ export function UploadDashboard() {
         body: JSON.stringify({ pin }),
       });
 
-      if (res.ok) {
-        sessionStorage.setItem(SESSION_KEY, pin);
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.token) {
+        setStored("uploadToken", data.token);
+        setUploadToken(data.token);
         setIsAuthed(true);
       } else {
-        sessionStorage.removeItem(SESSION_KEY);
+        removeStored("uploadToken");
         setAuthError("invalid pin");
       }
     } catch {
@@ -265,7 +268,7 @@ export function UploadDashboard() {
         mode === "transfer" ? "/api/upload/transfer" : "/api/upload/blog";
       const res = await fetch(endpoint, {
         method: "POST",
-        headers: { Authorization: `PIN ${pin}` },
+        headers: { Authorization: `Bearer ${uploadToken}` },
         body: formData,
       });
 
@@ -313,8 +316,16 @@ export function UploadDashboard() {
 
   const totalFileSize = files.reduce((sum, f) => sum + f.size, 0);
 
-  /* ─── Render: PIN gate ─── */
+  /* ─── Render: wait for mount (avoids hydration mismatch) ─── */
+  if (!mounted) {
+    return (
+      <div className="min-h-dvh flex items-center justify-center">
+        <div className="w-8 h-8 border-2 border-[var(--foreground)] border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
 
+  /* ─── Render: PIN gate ─── */
   if (!isAuthed) {
     return (
       <div className="min-h-dvh flex items-center justify-center px-6">
