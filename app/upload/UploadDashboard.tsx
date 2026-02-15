@@ -1,0 +1,714 @@
+"use client";
+
+import { useState, useRef, useCallback, useEffect } from "react";
+
+/* ─── Types ─── */
+
+type UploadMode = "transfer" | "blog";
+
+type TransferResult = {
+  shareUrl: string;
+  adminUrl: string;
+  transfer: {
+    id: string;
+    title: string;
+    fileCount: number;
+    expiresAt: string;
+  };
+  totalSize: number;
+  fileCounts: {
+    images: number;
+    videos: number;
+    gifs: number;
+    audio: number;
+    other: number;
+  };
+};
+
+type BlogUploadedFile = {
+  original: string;
+  filename: string;
+  kind: string;
+  width?: number;
+  height?: number;
+  size: number;
+  markdown: string;
+  overwrote: boolean;
+};
+
+type BlogResult = {
+  uploaded: BlogUploadedFile[];
+  skipped: string[];
+};
+
+/* ─── Helpers ─── */
+
+function formatBytes(bytes: number): string {
+  if (bytes === 0) return "0 b";
+  const k = 1024;
+  const sizes = ["b", "kb", "mb", "gb"];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`;
+}
+
+const EXPIRY_OPTIONS = [
+  { value: "30m", label: "30 minutes" },
+  { value: "1h", label: "1 hour" },
+  { value: "12h", label: "12 hours" },
+  { value: "1d", label: "1 day" },
+  { value: "7d", label: "7 days" },
+  { value: "14d", label: "14 days" },
+  { value: "30d", label: "30 days" },
+] as const;
+
+/* ─── Component ─── */
+
+const SESSION_KEY = "upload-pin";
+
+export function UploadDashboard() {
+  /* Auth state — restore from sessionStorage on mount */
+  const [pin, setPin] = useState(() => {
+    if (typeof window === "undefined") return "";
+    return sessionStorage.getItem(SESSION_KEY) ?? "";
+  });
+  const [isAuthed, setIsAuthed] = useState(() => {
+    if (typeof window === "undefined") return false;
+    return !!sessionStorage.getItem(SESSION_KEY);
+  });
+  const [authError, setAuthError] = useState("");
+  const [authLoading, setAuthLoading] = useState(false);
+
+  /* Upload state */
+  const [mode, setMode] = useState<UploadMode>("transfer");
+  const [files, setFiles] = useState<File[]>([]);
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState("");
+
+  /* Transfer fields */
+  const [title, setTitle] = useState("");
+  const [expiry, setExpiry] = useState("7d");
+  const [transferResult, setTransferResult] = useState<TransferResult | null>(
+    null
+  );
+
+  /* Blog fields */
+  const [slug, setSlug] = useState("");
+  const [force, setForce] = useState(false);
+  const [blogResult, setBlogResult] = useState<BlogResult | null>(null);
+
+  /* Drag state */
+  const [isDragging, setIsDragging] = useState(false);
+
+  /* Copy feedback */
+  const [copied, setCopied] = useState<string | null>(null);
+
+  /* Refs */
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  /* ─── Auth ─── */
+
+  const handleAuth = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setAuthError("");
+    setAuthLoading(true);
+
+    try {
+      const res = await fetch("/api/upload/verify-pin", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pin }),
+      });
+
+      if (res.ok) {
+        sessionStorage.setItem(SESSION_KEY, pin);
+        setIsAuthed(true);
+      } else {
+        sessionStorage.removeItem(SESSION_KEY);
+        setAuthError("invalid pin");
+      }
+    } catch {
+      setAuthError("connection error");
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
+  /* ─── File management ─── */
+
+  const addFiles = useCallback((newFiles: FileList | File[]) => {
+    const arr = Array.from(newFiles);
+    setFiles((prev) => [
+      ...prev,
+      ...arr.filter(
+        (f) => !prev.some((p) => p.name === f.name && p.size === f.size)
+      ),
+    ]);
+    setUploadError("");
+  }, []);
+
+  const removeFile = useCallback((index: number) => {
+    setFiles((prev) => prev.filter((_, i) => i !== index));
+  }, []);
+
+  const clearAll = useCallback(() => {
+    setFiles([]);
+    setTransferResult(null);
+    setBlogResult(null);
+    setUploadError("");
+  }, []);
+
+  /* ─── Drag & drop ─── */
+
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(true);
+  }, []);
+
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+  }, []);
+
+  const handleDrop = useCallback(
+    (e: React.DragEvent) => {
+      e.preventDefault();
+      setIsDragging(false);
+      if (e.dataTransfer.files.length > 0) {
+        addFiles(e.dataTransfer.files);
+      }
+    },
+    [addFiles]
+  );
+
+  /* ─── Paste (Ctrl+V / Cmd+V) ─── */
+
+  useEffect(() => {
+    if (!isAuthed) return;
+
+    const handlePaste = (e: ClipboardEvent) => {
+      // Try clipboardData.files first (direct file paste)
+      const directFiles = e.clipboardData?.files;
+      if (directFiles && directFiles.length > 0) {
+        e.preventDefault();
+        addFiles(directFiles);
+        return;
+      }
+
+      // Fall back to items (screenshots, copied images)
+      const items = e.clipboardData?.items;
+      if (!items || items.length === 0) return;
+
+      const pastedFiles: File[] = [];
+      let counter = Date.now();
+
+      for (let i = 0; i < items.length; i++) {
+        const item = items[i];
+        if (item.kind !== "file") continue;
+
+        const file = item.getAsFile();
+        if (!file) continue;
+
+        // Pasted screenshots arrive as unnamed blobs — give them a name
+        if (!file.name || file.name === "image.png") {
+          const ext =
+            file.type.split("/")[1]?.replace("jpeg", "jpg") || "png";
+          const named = new File([file], `pasted-${counter++}.${ext}`, {
+            type: file.type,
+          });
+          pastedFiles.push(named);
+        } else {
+          pastedFiles.push(file);
+        }
+      }
+
+      if (pastedFiles.length > 0) {
+        e.preventDefault();
+        addFiles(pastedFiles);
+      }
+    };
+
+    document.addEventListener("paste", handlePaste);
+    return () => document.removeEventListener("paste", handlePaste);
+  }, [isAuthed, addFiles]);
+
+  /* ─── Upload ─── */
+
+  const handleUpload = async () => {
+    if (files.length === 0) return;
+
+    setUploading(true);
+    setUploadError("");
+    setTransferResult(null);
+    setBlogResult(null);
+
+    const formData = new FormData();
+
+    if (mode === "transfer") {
+      formData.append("title", title || "untitled");
+      formData.append("expires", expiry);
+    } else {
+      if (!slug.trim()) {
+        setUploadError("slug is required");
+        setUploading(false);
+        return;
+      }
+      formData.append("slug", slug.trim());
+      if (force) formData.append("force", "true");
+    }
+
+    for (const file of files) {
+      formData.append("files", file);
+    }
+
+    try {
+      const endpoint =
+        mode === "transfer" ? "/api/upload/transfer" : "/api/upload/blog";
+      const res = await fetch(endpoint, {
+        method: "POST",
+        headers: { Authorization: `PIN ${pin}` },
+        body: formData,
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        setUploadError(data.error || `upload failed (${res.status})`);
+        return;
+      }
+
+      if (mode === "transfer") {
+        setTransferResult(data);
+      } else {
+        setBlogResult(data);
+      }
+
+      setFiles([]);
+    } catch {
+      setUploadError("connection error");
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  /* ─── Copy helper ─── */
+
+  const copyToClipboard = async (text: string, label: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(label);
+      setTimeout(() => setCopied(null), 2000);
+    } catch {
+      /* ignore */
+    }
+  };
+
+  /* ─── Switch mode ─── */
+
+  const switchMode = (newMode: UploadMode) => {
+    setMode(newMode);
+    setUploadError("");
+    setTransferResult(null);
+    setBlogResult(null);
+  };
+
+  const totalFileSize = files.reduce((sum, f) => sum + f.size, 0);
+
+  /* ─── Render: PIN gate ─── */
+
+  if (!isAuthed) {
+    return (
+      <div className="min-h-dvh flex items-center justify-center px-6">
+        <form onSubmit={handleAuth} className="w-full max-w-xs text-center">
+          <h1 className="font-mono font-bold tracking-tighter text-lg">
+            milk & henny
+          </h1>
+          <p className="font-mono text-sm theme-muted mt-1 mb-8">upload</p>
+
+          <input
+            type="password"
+            value={pin}
+            onChange={(e) => setPin(e.target.value)}
+            placeholder="enter pin"
+            autoFocus
+            className="w-full bg-transparent border-b border-[var(--stone-200)] focus:border-[var(--foreground)] outline-none font-mono text-sm text-center py-2 tracking-wider transition-colors placeholder:text-[var(--stone-400)]"
+          />
+
+          {authError && (
+            <p className="font-mono text-xs mt-3 text-[var(--prose-hashtag)]">
+              {authError}
+            </p>
+          )}
+
+          <button
+            type="submit"
+            disabled={!pin || authLoading}
+            className="mt-6 w-full bg-[var(--foreground)] text-[var(--background)] font-mono text-sm lowercase tracking-wide py-2.5 rounded-md hover:opacity-90 transition-opacity disabled:opacity-30"
+          >
+            {authLoading ? "checking..." : "unlock"}
+          </button>
+        </form>
+      </div>
+    );
+  }
+
+  /* ─── Render: Upload dashboard ─── */
+
+  return (
+    <div className="max-w-2xl mx-auto px-6 pt-16 pb-24">
+      {/* Header */}
+      <header className="mb-10">
+        <h1 className="font-mono font-bold tracking-tighter text-lg">
+          milk & henny{" "}
+          <span className="theme-muted font-normal">· upload</span>
+        </h1>
+      </header>
+
+      {/* Mode toggle */}
+      <div className="flex gap-6 mb-8">
+        <button
+          onClick={() => switchMode("transfer")}
+          className={`font-mono text-sm lowercase tracking-wide pb-1 border-b-2 transition-colors ${
+            mode === "transfer"
+              ? "border-[var(--foreground)]"
+              : "border-transparent theme-muted hover:text-[var(--foreground)]"
+          }`}
+        >
+          transfer
+        </button>
+        <button
+          onClick={() => switchMode("blog")}
+          className={`font-mono text-sm lowercase tracking-wide pb-1 border-b-2 transition-colors ${
+            mode === "blog"
+              ? "border-[var(--foreground)]"
+              : "border-transparent theme-muted hover:text-[var(--foreground)]"
+          }`}
+        >
+          blog
+        </button>
+      </div>
+
+      {/* Mode description */}
+      <p className="font-mono text-xs theme-muted mb-6">
+        {mode === "transfer"
+          ? "ephemeral file sharing — auto-expires after the set duration"
+          : "permanent blog media — uploaded to the post's slug folder"}
+      </p>
+
+      {/* Form fields */}
+      {mode === "transfer" ? (
+        <div className="space-y-4 mb-6">
+          <div>
+            <label className="font-mono text-xs theme-muted block mb-1.5">
+              title
+            </label>
+            <input
+              type="text"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              placeholder="valentine's day photos"
+              className="w-full bg-transparent border-b border-[var(--stone-200)] focus:border-[var(--foreground)] outline-none font-mono text-sm py-2 transition-colors placeholder:text-[var(--stone-400)]"
+            />
+          </div>
+          <div>
+            <label className="font-mono text-xs theme-muted block mb-1.5">
+              expires
+            </label>
+            <select
+              value={expiry}
+              onChange={(e) => setExpiry(e.target.value)}
+              className="w-full bg-[var(--background)] border-b border-[var(--stone-200)] focus:border-[var(--foreground)] outline-none font-mono text-sm py-2 transition-colors cursor-pointer"
+            >
+              {EXPIRY_OPTIONS.map((opt) => (
+                <option
+                  key={opt.value}
+                  value={opt.value}
+                  className="bg-[var(--background)] text-[var(--foreground)]"
+                >
+                  {opt.label}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+      ) : (
+        <div className="space-y-4 mb-6">
+          <div>
+            <label className="font-mono text-xs theme-muted block mb-1.5">
+              slug
+            </label>
+            <input
+              type="text"
+              value={slug}
+              onChange={(e) => setSlug(e.target.value)}
+              placeholder="valentine-photoshoot"
+              className="w-full bg-transparent border-b border-[var(--stone-200)] focus:border-[var(--foreground)] outline-none font-mono text-sm py-2 transition-colors placeholder:text-[var(--stone-400)]"
+            />
+          </div>
+          <button
+            type="button"
+            onClick={() => setForce(!force)}
+            className="flex items-center gap-2.5 cursor-pointer group"
+          >
+            <span
+              className={`w-4 h-4 rounded border flex items-center justify-center transition-colors ${
+                force
+                  ? "bg-[var(--foreground)] border-[var(--foreground)]"
+                  : "border-[var(--stone-300)] group-hover:border-[var(--stone-400)]"
+              }`}
+            >
+              {force && (
+                <svg
+                  width="10"
+                  height="10"
+                  viewBox="0 0 10 10"
+                  fill="none"
+                  stroke="var(--background)"
+                  strokeWidth="1.5"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <path d="M1.5 5.5L4 8L8.5 2" />
+                </svg>
+              )}
+            </span>
+            <span className="font-mono text-xs theme-muted">
+              overwrite existing files
+            </span>
+          </button>
+        </div>
+      )}
+
+      {/* Divider */}
+      <div className="border-t theme-border my-6" />
+
+      {/* Drop zone */}
+      <div
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDrop}
+        onClick={() => fileInputRef.current?.click()}
+        className={`border rounded-lg p-10 text-center cursor-pointer transition-colors ${
+          isDragging
+            ? "border-[var(--prose-hashtag)] border-solid bg-[var(--selection-bg)]/20"
+            : "border-dashed border-[var(--stone-300)] hover:border-[var(--stone-400)]"
+        }`}
+      >
+        <p className="font-mono text-sm theme-muted">drop files here</p>
+        <p className="font-mono text-xs theme-faint mt-1">
+          click to browse · paste to add
+        </p>
+        <input
+          ref={fileInputRef}
+          type="file"
+          multiple
+          onChange={(e) => {
+            if (e.target.files) addFiles(e.target.files);
+            e.target.value = "";
+          }}
+          className="hidden"
+        />
+      </div>
+
+      {/* File list */}
+      {files.length > 0 && (
+        <div className="mt-4">
+          <div className="flex items-center justify-between mb-2">
+            <span className="font-mono text-xs theme-muted">
+              {files.length} file{files.length !== 1 ? "s" : ""} ·{" "}
+              {formatBytes(totalFileSize)}
+            </span>
+            <button
+              onClick={clearAll}
+              className="font-mono text-xs theme-muted hover:text-[var(--foreground)] transition-colors"
+            >
+              clear all
+            </button>
+          </div>
+
+          <div className="space-y-0">
+            {files.map((file, i) => (
+              <div
+                key={`${file.name}-${file.size}`}
+                className="flex items-center justify-between py-2 border-b border-[var(--stone-100)]"
+              >
+                <span className="font-mono text-sm truncate pr-4 flex-1">
+                  {file.name}
+                </span>
+                <div className="flex items-center gap-3 shrink-0">
+                  <span className="font-mono text-xs theme-muted">
+                    {formatBytes(file.size)}
+                  </span>
+                  <button
+                    onClick={() => removeFile(i)}
+                    className="theme-muted hover:text-[var(--foreground)] transition-colors text-sm leading-none"
+                    aria-label={`Remove ${file.name}`}
+                  >
+                    ×
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Upload button */}
+          <button
+            onClick={handleUpload}
+            disabled={uploading || files.length === 0}
+            className="mt-6 w-full bg-[var(--foreground)] text-[var(--background)] font-mono text-sm lowercase tracking-wide py-2.5 rounded-md hover:opacity-90 transition-opacity disabled:opacity-30"
+          >
+            {uploading
+              ? "uploading..."
+              : `upload ${files.length} file${files.length !== 1 ? "s" : ""}`}
+          </button>
+        </div>
+      )}
+
+      {/* Error */}
+      {uploadError && (
+        <p className="font-mono text-xs mt-4 text-[var(--prose-hashtag)]">
+          {uploadError}
+        </p>
+      )}
+
+      {/* Transfer result */}
+      {transferResult && (
+        <div className="mt-8">
+          <div className="border-t theme-border pt-6">
+            <p className="font-mono text-xs theme-muted mb-4">result</p>
+
+            <div className="space-y-4">
+              <div>
+                <p className="font-mono text-xs theme-muted mb-1">share</p>
+                <div className="flex items-center gap-2">
+                  <code className="font-mono text-sm flex-1 truncate">
+                    {transferResult.shareUrl}
+                  </code>
+                  <button
+                    onClick={() =>
+                      copyToClipboard(transferResult.shareUrl, "share")
+                    }
+                    className="font-mono text-xs theme-muted hover:text-[var(--foreground)] transition-colors shrink-0"
+                  >
+                    {copied === "share" ? "copied" : "copy"}
+                  </button>
+                </div>
+              </div>
+
+              <div>
+                <p className="font-mono text-xs theme-muted mb-1">admin</p>
+                <div className="flex items-center gap-2">
+                  <code className="font-mono text-sm flex-1 truncate">
+                    {transferResult.adminUrl}
+                  </code>
+                  <button
+                    onClick={() =>
+                      copyToClipboard(transferResult.adminUrl, "admin")
+                    }
+                    className="font-mono text-xs theme-muted hover:text-[var(--foreground)] transition-colors shrink-0"
+                  >
+                    {copied === "admin" ? "copied" : "copy"}
+                  </button>
+                </div>
+              </div>
+
+              <p className="font-mono text-xs theme-muted pt-2">
+                {transferResult.transfer.fileCount} file
+                {transferResult.transfer.fileCount !== 1 ? "s" : ""} ·{" "}
+                {formatBytes(transferResult.totalSize)} · expires{" "}
+                {new Date(
+                  transferResult.transfer.expiresAt
+                ).toLocaleDateString()}
+              </p>
+            </div>
+          </div>
+
+          <button
+            onClick={clearAll}
+            className="mt-6 w-full border border-[var(--stone-200)] text-[var(--foreground)] font-mono text-sm lowercase tracking-wide py-2.5 rounded-md hover:border-[var(--stone-400)] transition-colors"
+          >
+            upload more
+          </button>
+        </div>
+      )}
+
+      {/* Blog result */}
+      {blogResult && (
+        <div className="mt-8">
+          <div className="border-t theme-border pt-6">
+            <p className="font-mono text-xs theme-muted mb-4">result</p>
+
+            {blogResult.uploaded.length > 0 && (
+              <div className="space-y-3">
+                {blogResult.uploaded.map((file) => (
+                  <div
+                    key={file.filename}
+                    className="border-b border-[var(--stone-100)] pb-3"
+                  >
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono text-sm">{file.filename}</span>
+                      {file.width && file.height && (
+                        <span className="font-mono text-xs theme-muted">
+                          {file.width}×{file.height}
+                        </span>
+                      )}
+                      {file.overwrote && (
+                        <span className="font-mono text-xs text-[var(--prose-hashtag)]">
+                          overwrote
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2 mt-1">
+                      <code className="font-mono text-xs theme-muted flex-1 truncate">
+                        {file.markdown}
+                      </code>
+                      <button
+                        onClick={() =>
+                          copyToClipboard(file.markdown, file.filename)
+                        }
+                        className="font-mono text-xs theme-muted hover:text-[var(--foreground)] transition-colors shrink-0"
+                      >
+                        {copied === file.filename ? "copied" : "copy"}
+                      </button>
+                    </div>
+                  </div>
+                ))}
+
+                <button
+                  onClick={() =>
+                    copyToClipboard(
+                      blogResult.uploaded.map((f) => f.markdown).join("\n"),
+                      "all-markdown"
+                    )
+                  }
+                  className="font-mono text-xs theme-muted hover:text-[var(--foreground)] transition-colors"
+                >
+                  {copied === "all-markdown"
+                    ? "copied all"
+                    : "copy all markdown"}
+                </button>
+              </div>
+            )}
+
+            {blogResult.skipped.length > 0 && (
+              <div className="mt-4">
+                <p className="font-mono text-xs theme-muted mb-1">
+                  skipped ({blogResult.skipped.length})
+                </p>
+                <p className="font-mono text-xs theme-faint">
+                  {blogResult.skipped.join(", ")}
+                </p>
+              </div>
+            )}
+          </div>
+
+          <button
+            onClick={clearAll}
+            className="mt-6 w-full border border-[var(--stone-200)] text-[var(--foreground)] font-mono text-sm lowercase tracking-wide py-2.5 rounded-md hover:border-[var(--stone-400)] transition-colors"
+          >
+            upload more
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}

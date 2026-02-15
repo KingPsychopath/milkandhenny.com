@@ -1,11 +1,14 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { getGuests } from '@/lib/guests/kv-client';
+import { requireAuth } from '@/lib/auth';
 
 /**
- * Debug endpoint - check Redis connection and data status
- * Visit /api/debug to verify everything is working
+ * Debug endpoint — check Redis connection and data status.
+ * Protected behind management auth.
  */
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const authErr = requireAuth(request, "management");
+  if (authErr) return authErr;
   // Check both naming conventions (Vercel KV vs direct Upstash)
   const hasKvUrl = !!process.env.KV_REST_API_URL;
   const hasKvToken = !!process.env.KV_REST_API_TOKEN;

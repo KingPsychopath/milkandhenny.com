@@ -317,7 +317,10 @@ export function GuestManagement({ guests, onGuestAdded, onGuestRemoved, onCSVImp
     setDataLoading(true);
     setError(null);
     try {
-      const res = await fetch('/api/guests/bootstrap', { method: 'POST' });
+      const res = await fetch('/api/guests/bootstrap', {
+        method: 'POST',
+        headers: { 'X-Management-Password': managementPasswordRef.current ?? '' },
+      });
       const data = await res.json();
       if (data.bootstrapped) {
         setSuccess(`Loaded ${data.count} guests from CSV`);

@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { handleVerifyRequest } from "@/lib/auth";
 
-/** POST /api/guests/verify-management — rate-limited, timing-safe. */
+/** POST /api/upload/verify-pin — rate-limited, timing-safe. */
 export async function POST(request: NextRequest) {
-  return handleVerifyRequest(request, "management");
+  return handleVerifyRequest(request, "upload");
 }

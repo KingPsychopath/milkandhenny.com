@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getGuests, setGuests } from '@/lib/guests/kv-client';
-import { requireManagementAuth } from '@/lib/guests/auth';
+import { requireAuth } from '@/lib/auth';
 import { Guest, GuestStatus } from '@/lib/guests/types';
 
 function generateId(name: string): string {
@@ -8,7 +8,7 @@ function generateId(name: string): string {
 }
 
 export async function POST(request: NextRequest) {
-  const authError = requireManagementAuth(request);
+  const authError = requireAuth(request, "management");
   if (authError) return authError;
 
   try {

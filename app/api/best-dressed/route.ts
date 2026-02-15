@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getGuests } from '@/lib/guests/kv-client';
 import { getRedis } from '@/lib/redis';
+import { requireAuth } from '@/lib/auth';
 
 const VOTES_KEY = 'best-dressed:votes';
 const SESSION_KEY = 'best-dressed:session';
@@ -238,25 +239,12 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// Server-side admin secret (same as MANAGEMENT_PASSWORD for guest list)
-const RESET_SECRET = process.env.MANAGEMENT_PASSWORD;
-
-// DELETE - wipe all votes and reset session (admin only; requires management password)
+// DELETE - wipe all votes and reset session (admin only)
 export async function DELETE(request: NextRequest) {
-  try {
-    let password: string | null = request.headers.get('X-Management-Password');
-    if (password == null) {
-      try {
-        const body = await request.json();
-        password = (body && typeof body === 'object' && 'password' in body) ? String(body.password) : null;
-      } catch {
-        password = null;
-      }
-    }
-    if (!RESET_SECRET || password !== RESET_SECRET) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+  const authErr = requireAuth(request, "management");
+  if (authErr) return authErr;
 
+  try {
     const redis = getRedis();
     if (redis) {
       await redis.del(VOTES_KEY);

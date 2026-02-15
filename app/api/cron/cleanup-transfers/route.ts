@@ -5,6 +5,7 @@ import {
   DeleteObjectsCommand,
 } from "@aws-sdk/client-s3";
 import { getRedis } from "@/lib/redis";
+import { requireAuth } from "@/lib/auth";
 
 /**
  * Daily cron job: deletes orphaned R2 objects for expired transfers.
@@ -18,9 +19,6 @@ import { getRedis } from "@/lib/redis";
  * Vercel Hobby plan: 2 cron jobs allowed, daily minimum frequency.
  */
 export const dynamic = "force-dynamic";
-
-/** Vercel sends CRON_SECRET in Authorization: Bearer header. Set in Vercel env vars. */
-const CRON_SECRET = process.env.CRON_SECRET;
 
 function getR2Client() {
   const accountId = process.env.R2_ACCOUNT_ID;
@@ -39,20 +37,8 @@ function getR2Client() {
 }
 
 export async function GET(request: NextRequest) {
-  if (!CRON_SECRET) {
-    return NextResponse.json(
-      {
-        error: "CRON_SECRET not configured",
-        help: "Set CRON_SECRET in Vercel Environment Variables. Generate with: openssl rand -hex 32. Without it, cron jobs are unauthenticated.",
-      },
-      { status: 503 }
-    );
-  }
-
-  const authHeader = request.headers.get("authorization");
-  if (authHeader !== `Bearer ${CRON_SECRET}`) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const authErr = requireAuth(request, "cron");
+  if (authErr) return authErr;
 
   const redis = getRedis();
   const r2 = getR2Client();

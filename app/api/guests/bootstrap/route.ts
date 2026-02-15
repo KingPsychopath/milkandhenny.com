@@ -2,13 +2,16 @@ import { NextRequest, NextResponse } from 'next/server';
 import { headers } from 'next/headers';
 import { parseCSV } from '@/lib/guests/csv-parser';
 import { getGuests, setGuests } from '@/lib/guests/kv-client';
-import { requireManagementAuth } from '@/lib/guests/auth';
+import { requireAuth } from '@/lib/auth';
 
 /**
  * Bootstrap endpoint - loads guests from public/guests.csv if no guests exist
  * Uses HTTP fetch (works on Vercel) instead of filesystem read
  */
-export async function POST() {
+export async function POST(request: NextRequest) {
+  const authError = requireAuth(request, "management");
+  if (authError) return authError;
+
   try {
     // Check if guests already exist
     const existingGuests = await getGuests();
@@ -66,8 +69,8 @@ export async function POST() {
  * Requires management password.
  */
 export async function DELETE(request: NextRequest) {
-  const authError = requireManagementAuth(request);
-  if (authError) return authError;
+  const deleteAuthError = requireAuth(request, "management");
+  if (deleteAuthError) return deleteAuthError;
 
   try {
     // Clear existing guests
