@@ -1,12 +1,13 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import type { Metadata } from "next";
-import { getPostBySlug, getAllSlugs } from "@/lib/blog";
+import { getPostBySlug, getAllSlugs, extractHeadings } from "@/lib/blog";
 import { getAlbumBySlug } from "@/lib/media/albums";
 import { focalPresetToObjectPosition } from "@/lib/media/focal";
 import { BASE_URL, SITE_NAME, SITE_BRAND } from "@/lib/config";
 import { PostBody } from "./PostBody";
 import { ReadingProgress } from "@/components/ReadingProgress";
+import { JumpRail } from "@/components/JumpRail";
 import { Breadcrumbs } from "@/components/Breadcrumbs";
 import { Share } from "@/components/Share";
 import type { EmbeddedAlbum } from "@/components/blog/AlbumEmbed";
@@ -123,6 +124,7 @@ export default async function BlogPostPage({ params }: Props) {
   if (!post) notFound();
 
   const albums = resolveAlbumsFromContent(post.content);
+  const headings = extractHeadings(post.content);
 
   const jsonLd = {
     "@context": "https://schema.org",
@@ -142,6 +144,9 @@ export default async function BlogPostPage({ params }: Props) {
         dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
       />
       <ReadingProgress />
+      {headings.length > 0 && (
+        <JumpRail items={headings} ariaLabel="Jump to heading" />
+      )}
 
       {/* Nav — page banner */}
       <header role="banner" className="max-w-2xl mx-auto px-6 pt-10 pb-6">

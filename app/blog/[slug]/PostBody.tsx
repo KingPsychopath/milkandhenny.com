@@ -4,6 +4,7 @@ import React, { Component, type ReactNode, type ErrorInfo } from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { rehypeHashtags } from "@/lib/rehype-hashtags";
+import { rehypeSlug } from "@/lib/rehype-slug";
 import {
   AlbumEmbed,
   type EmbeddedAlbum,
@@ -181,7 +182,7 @@ export function PostBody({ content, albums = {} }: PostBodyProps) {
     <div className="prose-blog">
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
-        rehypePlugins={[rehypeHashtags]}
+        rehypePlugins={[rehypeSlug, rehypeHashtags]}
         components={components}
       >
         {content}

@@ -12,6 +12,8 @@ import {
   Bitter,
 } from "next/font/google";
 import Link from "next/link";
+import { ReadingProgress } from "@/components/ReadingProgress";
+import { JumpRail } from "@/components/JumpRail";
 
 const lora = Lora({ subsets: ["latin"], style: ["normal", "italic"] });
 const newsreader = Newsreader({ subsets: ["latin"], style: ["normal", "italic"] });
@@ -105,6 +107,7 @@ const fonts = [
 export default function FontTestPage() {
   return (
     <main className="min-h-screen py-16 px-6">
+      <ReadingProgress />
       <div className="max-w-2xl mx-auto">
         {/* Header */}
         <header className="mb-16">
@@ -119,14 +122,20 @@ export default function FontTestPage() {
           </h1>
           <p className="font-mono text-sm tracking-tight opacity-60 leading-relaxed max-w-lg">
             same prose, eleven fonts. scroll through and pick the one that feels
-            like home. the first one is your current font for reference.
+            like home. the first one is your current font for reference. Use the
+            vertical dash on the right to jump to a font by number.
           </p>
         </header>
+
+        <JumpRail
+          items={fonts.map(({ name }, i) => ({ id: `font-${i + 1}`, label: `${i + 1}. ${name}` }))}
+          ariaLabel="Jump to font"
+        />
 
         {/* Font samples */}
         <div className="space-y-20">
           {fonts.map(({ name, tag, description, font }, i) => (
-            <section key={name}>
+            <section key={name} id={`font-${i + 1}`}>
               {/* Label */}
               <div className="mb-6 pb-4 border-b" style={{ borderColor: "var(--stone-200)" }}>
                 <div className="flex items-baseline gap-3 flex-wrap">

@@ -1,6 +1,7 @@
 import fs from "fs";
 import path from "path";
 import matter from "gray-matter";
+import { uniqueHeadingIds } from "@/lib/slug";
 
 const POSTS_DIR = path.join(process.cwd(), "content/posts");
 
@@ -129,5 +130,19 @@ function getAllSlugs(): string[] {
     .map((f) => f.replace(/\.md$/, ""));
 }
 
-export { getPostBySlug, getAllPosts, getAllSlugs, getRecentPosts, getBlogPostSummaries };
+/** TOC item for jump rail: id matches rehype-slug on h1/h2/h3 */
+export type HeadingItem = { id: string; label: string };
+
+/** Extract h1/h2/h3 labels from markdown in order; ids match rehype-slug. */
+function extractHeadings(content: string): HeadingItem[] {
+  const labels: string[] = [];
+  const lineRe = /^(#{1,3})\s+(.+)$/gm;
+  let m: RegExpExecArray | null;
+  while ((m = lineRe.exec(content)) !== null) {
+    labels.push(m[2].trim());
+  }
+  return uniqueHeadingIds(labels);
+}
+
+export { getPostBySlug, getAllPosts, getAllSlugs, getRecentPosts, getBlogPostSummaries, extractHeadings };
 export type { Post, PostFrontmatter };
