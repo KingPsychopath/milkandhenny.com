@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useBrandedImage, type BrandedFormat } from "@/hooks/useBrandedImage";
+import { useOutsideClick } from "@/hooks/useOutsideClick";
 import type { FocalPreset } from "@/lib/media/focal";
 
 type BrandedImageProps = {
@@ -109,20 +110,7 @@ export function BrandedImage({
     return () => clearTimeout(t);
   }, [copied]);
 
-  // Close dropdown on outside click
-  useEffect(() => {
-    if (!dropdownOpen) return;
-    function handleClickOutside(e: MouseEvent) {
-      if (
-        dropdownRef.current &&
-        !dropdownRef.current.contains(e.target as Node)
-      ) {
-        setDropdownOpen(false);
-      }
-    }
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, [dropdownOpen]);
+  useOutsideClick(dropdownRef, () => setDropdownOpen(false), dropdownOpen);
 
   const handleFormatPick = useCallback(
     async (format: BrandedFormat) => {

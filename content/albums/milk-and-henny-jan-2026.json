@@ -5,6 +5,31 @@
   "cover": "DSC07270",
   "photos": [
     {
+      "id": "DSC07322",
+      "width": 4672,
+      "height": 7008,
+      "blur": "data:image/jpeg;base64,/9j/2wBDABQODxIPDRQSEBIXFRQYHjIhHhwcHj0sLiQySUBMS0dARkVQWnNiUFVtVkVGZIhlbXd7gYKBTmCNl4x9lnN+gXz/2wBDARUXFx4aHjshITt8U0ZTfHx8fHx8fHx8fHx8fHx8fHx8fHx8fHx8fHx8fHx8fHx8fHx8fHx8fHx8fHx8fHx8fHz/wAARCAAYABADASIAAhEBAxEB/8QAGAAAAgMAAAAAAAAAAAAAAAAAAAMCBAX/xAAfEAEAAgIBBQEAAAAAAAAAAAABAAIDBBEFEhMhMUH/xAAVAQEBAAAAAAAAAAAAAAAAAAABBP/EABgRAQADAQAAAAAAAAAAAAAAAAABETFB/9oADAMBAAIRAxEAPwB2LetY5Y127WPTMtLOF7fsTpOXyIqkl4oXun0c+u24/JPBrtS6EIQsxj//2Q==",
+      "takenAt": "2025-11-08T00:02:03.000Z"
+    },
+    {
+      "id": "anic",
+      "width": 4672,
+      "height": 7008,
+      "autoFocal": {
+        "x": 39,
+        "y": 20
+      }
+    },
+    {
+      "id": "anic2",
+      "width": 4672,
+      "height": 7008,
+      "autoFocal": {
+        "x": 39,
+        "y": 21
+      }
+    },
+    {
       "id": "DSC00003",
       "width": 4608,
       "height": 3072
@@ -25,24 +50,6 @@
       "autoFocal": {
         "x": 48,
         "y": 31
-      }
-    },
-    {
-      "id": "anic",
-      "width": 4672,
-      "height": 7008,
-      "autoFocal": {
-        "x": 39,
-        "y": 20
-      }
-    },
-    {
-      "id": "anic2",
-      "width": 4672,
-      "height": 7008,
-      "autoFocal": {
-        "x": 39,
-        "y": 21
       }
     }
   ],

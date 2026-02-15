@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useCallback } from "react";
 import { useFocusTrap } from "@/hooks/useFocusTrap";
+import { useOutsideClick } from "@/hooks/useOutsideClick";
 
 type ShareProps = {
   /** Full URL to share */
@@ -84,16 +85,7 @@ export function Share({ url, title = "", label = "Share", className = "" }: Shar
     return () => clearTimeout(t);
   }, [copied]);
 
-  useEffect(() => {
-    if (!dropdownOpen) return;
-    function handleClickOutside(e: MouseEvent) {
-      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
-        setDropdownOpen(false);
-      }
-    }
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, [dropdownOpen]);
+  useOutsideClick(dropdownRef, () => setDropdownOpen(false), dropdownOpen);
 
   const handleCopy = useCallback(async () => {
     const ok = await copyToClipboard(url);

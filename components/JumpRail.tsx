@@ -18,6 +18,13 @@ const LABEL_CAP = 18;
 const SWIPE_THRESHOLD = 40;
 
 /**
+ * Min touch target (px) for the bookmark tab on mobile.
+ * 44 = Apple HIG minimum. 56–64 = comfortable for corner taps. 72+ = overlaps
+ * content more and can cause mistaps when tapping links near the right edge.
+ */
+const MOBILE_TAB_TOUCH_SIZE = 64;
+
+/**
  * Floating vertical bookmark rail: collapsed tab on the right edge,
  * expands on hover/tap or swipe. Tap outside (or mouse leave) closes when open.
  */
@@ -106,13 +113,17 @@ export function JumpRail({ items, ariaLabel }: JumpRailProps) {
         </div>
       </div>
 
-      {/* Bookmark tab: 56px touch target on mobile for corner taps, strip stays slim */}
+      {/* Bookmark tab: MOBILE_TAB_TOUCH_SIZE hit area on mobile, strip stays slim */}
       <button
         type="button"
         onClick={handleTabClick}
         onTouchStart={handleTouchStart}
         onTouchEnd={(e) => handleTouchEnd(e, false)}
-        className="flex items-center justify-end min-w-[56px] min-h-[56px] md:min-w-0 md:min-h-0 shrink-0 py-0 pr-0 md:pr-0 transition-[width] duration-300 md:hover:w-6 focus:outline-none focus:ring-2 focus:ring-amber-500/50 focus:ring-inset focus:ring-offset-0 md:w-5 md:h-14"
+        className="flex items-center justify-end shrink-0 py-0 pr-0 md:pr-0 transition-[width] duration-300 md:hover:w-6 focus:outline-none focus:ring-2 focus:ring-amber-500/50 focus:ring-inset focus:ring-offset-0 md:w-5 md:h-14 md:!min-w-0 md:!min-h-0"
+        style={{
+          minWidth: MOBILE_TAB_TOUCH_SIZE,
+          minHeight: MOBILE_TAB_TOUCH_SIZE,
+        }}
         aria-label={ariaLabel ?? "Jump to section"}
         aria-expanded={open}
       >
