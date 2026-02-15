@@ -12,6 +12,13 @@ pnpm dev
 
 The blog, guest list, and best-dressed work with zero config (in-memory fallback). Photo galleries and transfers need env vars — see [environment variables](#environment-variables).
 
+```bash
+pnpm test          # run all tests
+pnpm test:watch    # re-run on file changes
+```
+
+For the full testing strategy (unit vs integration vs E2E, what we test and why), see **[TESTING.md](./TESTING.md)**.
+
 ---
 
 ## What's in Here
