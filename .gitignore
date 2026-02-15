@@ -12,6 +12,9 @@ out/
 build/
 dist/
 
+# TypeScript incremental build cache
+*.tsbuildinfo
+
 # Misc
 .DS_Store
 *.pem
