@@ -3,7 +3,7 @@
  *
  * Keys are grouped in SESSION_KEYS and LOCAL_KEYS. Use getStored / setStored / removeStored
  * with the key name so storage type is decided in one place — swap session ↔ local by moving
- * the name between the two objects.
+ * the name between the two objects. Each name must exist in exactly one object.
  *
  * Layout's inline script cannot call helpers; it uses LOCAL_KEYS.theme for the key string.
  */
