@@ -261,6 +261,7 @@ async function verifyTokenForRoles(
 
 /* ─── Primitives ─── */
 
+/** Timing-safe equality. Returns false if lengths differ. */
 function safeCompare(a: string, b: string): boolean {
   const bufA = Buffer.from(a);
   const bufB = Buffer.from(b);
@@ -268,6 +269,10 @@ function safeCompare(a: string, b: string): boolean {
   return timingSafeEqual(bufA, bufB);
 }
 
+/**
+ * Best-effort client IP extraction.
+ * Uses common proxy headers and falls back to "unknown".
+ */
 function getClientIp(request: NextRequest): string {
   return (
     request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
@@ -399,6 +404,10 @@ async function requireAuth(
   return null;
 }
 
+/**
+ * Like `requireAuth`, but returns the decoded token payload (when applicable).
+ * Useful when follow-up auth steps need the token's `jti` (e.g. admin step-up).
+ */
 async function requireAuthWithPayload(
   request: NextRequest,
   role: AuthRole
@@ -477,6 +486,11 @@ function verifyStepUpToken(token: string, parentJti: string): boolean {
   return actualSig.length === expectedSig.length && timingSafeEqual(actualSig, expectedSig);
 }
 
+/**
+ * Enforces "step-up" for destructive admin actions.
+ * Requires `x-admin-step-up` header containing a short-lived token bound to the
+ * caller's admin session `jti`.
+ */
 async function requireAdminStepUp(request: NextRequest): Promise<NextResponse | null> {
   const { error, payload } = await requireAuthWithPayload(request, "admin");
   if (error || !payload) return error;
@@ -497,6 +511,10 @@ async function requireAdminStepUp(request: NextRequest): Promise<NextResponse | 
   return null;
 }
 
+/**
+ * Issues an admin step-up token after re-checking the admin password.
+ * Designed for `/api/admin/step-up` and consumed via `x-admin-step-up`.
+ */
 async function createAdminStepUpToken(
   request: NextRequest,
   password: string
@@ -528,6 +546,10 @@ async function createAdminStepUpToken(
   });
 }
 
+/**
+ * Revokes all existing tokens for a role by bumping its token version.
+ * Requires Redis (fails closed if not configured).
+ */
 async function revokeRoleTokens(
   role: RevocableRole
 ): Promise<{ role: RevocableRole; tokenVersion: number }> {
@@ -545,6 +567,7 @@ async function revokeRoleTokens(
   return { role, tokenVersion };
 }
 
+/** Convenience helper to revoke tokens for all revocable roles. */
 async function revokeAllRoleTokens(): Promise<
   Array<{ role: RevocableRole; tokenVersion: number }>
 > {
@@ -555,6 +578,7 @@ async function revokeAllRoleTokens(): Promise<
   return results;
 }
 
+/** Human-readable environment warnings for admin/debug surfaces. */
 function getSecurityWarnings(): string[] {
   const warnings: string[] = [];
   const authSecret = getRawEnv("AUTH_SECRET");

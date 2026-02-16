@@ -225,4 +225,71 @@ describe("auth security flows", () => {
     expect(missing).not.toBeNull();
     expect(missing?.status).toBe(428);
   });
+
+  it("step-up token is bound to the admin session (jti)", async () => {
+    const redis = createRedisMock();
+    vi.doMock("@/lib/redis", () => ({ getRedis: () => redis }));
+    const { handleVerifyRequest, createAdminStepUpToken, requireAdminStepUp } =
+      await import("@/lib/auth");
+
+    // Admin token A
+    const verifyA = await handleVerifyRequest(
+      mockRequest({ jsonBody: { password: process.env.ADMIN_PASSWORD } }) as unknown as NextRequest,
+      "admin"
+    );
+    const { token: tokenA } = (await verifyA.json()) as { token: string };
+
+    // Admin token B
+    const verifyB = await handleVerifyRequest(
+      mockRequest({ jsonBody: { password: process.env.ADMIN_PASSWORD } }) as unknown as NextRequest,
+      "admin"
+    );
+    const { token: tokenB } = (await verifyB.json()) as { token: string };
+
+    // Step-up token minted for session A
+    const stepRes = await createAdminStepUpToken(
+      mockRequest({
+        headers: { authorization: `Bearer ${tokenA}` },
+      }) as unknown as NextRequest,
+      process.env.ADMIN_PASSWORD ?? ""
+    );
+    const stepJson = (await stepRes.json()) as { token?: string };
+    expect(typeof stepJson.token).toBe("string");
+
+    // Using tokenA's step-up while authed as tokenB must fail.
+    const mismatch = await requireAdminStepUp(
+      mockRequest({
+        headers: {
+          authorization: `Bearer ${tokenB}`,
+          "x-admin-step-up": stepJson.token as string,
+        },
+      }) as unknown as NextRequest
+    );
+    expect(mismatch).not.toBeNull();
+    expect(mismatch?.status).toBe(401);
+  });
+
+  it("token-version bump invalidates previously issued tokens", async () => {
+    const redis = createRedisMock();
+    vi.doMock("@/lib/redis", () => ({ getRedis: () => redis }));
+    const { handleVerifyRequest, requireAuth, revokeRoleTokens } = await import(
+      "@/lib/auth"
+    );
+
+    const verify = await handleVerifyRequest(
+      mockRequest({ jsonBody: { password: process.env.ADMIN_PASSWORD } }) as unknown as NextRequest,
+      "admin"
+    );
+    const { token } = (await verify.json()) as { token: string };
+
+    // Revoke admin role sessions by bumping token version.
+    await revokeRoleTokens("admin");
+
+    const err = await requireAuth(
+      mockRequest({ headers: { authorization: `Bearer ${token}` } }) as unknown as NextRequest,
+      "admin"
+    );
+    expect(err).not.toBeNull();
+    expect(err?.status).toBe(401);
+  });
 });

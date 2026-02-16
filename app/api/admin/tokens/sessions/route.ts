@@ -9,8 +9,8 @@ type SessionRecord = {
   iat: number;
   exp: number;
   tv: number;
-  ip?: string;
-  ua?: string;
+  ip: string | undefined;
+  ua: string | undefined;
   status: "active" | "expired" | "revoked" | "invalidated";
 };
 

@@ -14,9 +14,35 @@ Authentication, protections, rate limiting, and what to do when credentials leak
 
 All gates are env vars, never in the client bundle. Set in Vercel and `.env.local`.
 
-Verify endpoints issue short-lived JWTs (role-based TTLs). Clients store tokens in `sessionStorage` (not raw credentials). Tokens are revoked on tab close.
+Verify endpoints issue short-lived JWTs (role-based TTLs). Clients store tokens in `sessionStorage` (not raw credentials), so the browser clears them when the tab closes.
 
 Destructive admin actions require **step-up** re-auth (`POST /api/admin/step-up`) and include `x-admin-step-up` on the request.
+
+You can revoke:
+
+- **One session** (single token) by `jti` (admin dashboard token sessions list)
+- **All sessions for a role** by bumping the role token version (admin dashboard "revoke admin sessions" / "revoke all role sessions", or CLI)
+
+### Auth operations (admin-only)
+
+These endpoints are intended for operational control and incident response.
+
+| Operation | Endpoint | Notes |
+|----------|----------|-------|
+| Admin login (issue JWT) | `POST /api/admin/verify` | Returns `{ token }` on success |
+| Step-up token | `POST /api/admin/step-up` | Requires `Authorization: Bearer <adminJWT>` + body `{ password }`. Returns short-lived step-up token |
+| List token sessions | `GET /api/admin/tokens/sessions` | Redis-backed list of issued sessions by `jti` with status + expiry |
+| Revoke one session | `DELETE /api/admin/tokens/sessions/{jti}` | Requires `x-admin-step-up` header |
+| Revoke many sessions | `POST /api/admin/tokens/revoke` | Body `{ role: "admin" \| "staff" \| "upload" \| "all" }` + requires `x-admin-step-up` |
+
+### Why revoked tokens still show up
+
+Revoking a session does not delete the session record immediately. We keep a small Redis-backed record (`auth:session:{jti}`) until the token’s natural expiry so:
+
+- the admin dashboard can show *what happened* (`revoked` / `signed out` / `expired`) instead of the row disappearing instantly
+- you can confirm you revoked the correct session during an incident
+
+The actual “revoked” enforcement is separate (`auth:revoked-jti:{jti}`) and is checked on every authenticated request. Both keys age out automatically around the token expiry.
 
 Admin tokens act as the master token for normal app gates: an `admin` JWT is accepted anywhere `staff` or `upload` access is required. Dedicated `STAFF_PIN` / `UPLOAD_PIN` flows still exist for role-specific sharing and least-privilege usage.
 
