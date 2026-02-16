@@ -22,7 +22,12 @@ export function Breadcrumbs({ items }: Props) {
             <li key={i} className="flex items-center gap-x-1.5">
               {i > 0 && <span className="theme-faint">/</span>}
               {isLast || !item.href ? (
-                <span className={isLast ? "text-foreground" : ""}>{item.label}</span>
+                <span
+                  className={`${isLast ? "text-foreground max-w-[10rem] sm:max-w-[20rem] md:max-w-xs truncate inline-block align-bottom" : ""}`}
+                  title={isLast ? item.label : undefined}
+                >
+                  {item.label}
+                </span>
               ) : (
                 <Link href={item.href} className="hover:text-foreground transition-colors">
                   {item.label}
