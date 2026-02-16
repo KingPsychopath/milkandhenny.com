@@ -85,13 +85,13 @@ Admin tokens act as the master token for normal app gates: an `admin` JWT is acc
 
 | Risk | Mitigation |
 |------|------------|
-| Vote stuffing | One-time token per vote (GET issues, POST consumes) + server-enforced one-vote-per-device via httpOnly cookie (per voting session). Includes a coarse per-IP rate limit as a backstop. |
+| Vote stuffing | Default: staff-minted one-time vote codes (single-use). Also uses a one-time vote token (GET issues, POST consumes) + a coarse per-IP rate limit as a backstop. Optional: door staff can temporarily open voting without codes for a fixed window. |
 | Fake names | Server validates the voted name is in the guest list. Arbitrary names rejected. |
 | Anyone wiping votes | `DELETE /api/best-dressed` requires admin token. |
 
 Notes:
 
-- "One vote" is enforced per device/browser cookie. A user can vote again by clearing cookies or using a private window.
+- Codes are the primary "one vote per person" mechanism. If voting is temporarily opened without codes, one-vote becomes "per device/browser cookie".
 - If Redis is unavailable, best-dressed falls back to in-memory storage (local dev only). In production, configure Redis to keep votes stable.
 
 ---

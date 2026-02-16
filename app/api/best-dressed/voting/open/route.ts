@@ -1,0 +1,60 @@
+import { NextRequest, NextResponse } from "next/server";
+import { requireAuth } from "@/lib/auth";
+import { getRedis } from "@/lib/redis";
+import { apiError } from "@/lib/api-error";
+
+const OPEN_UNTIL_KEY = "best-dressed:open-until";
+const MAX_MINUTES = 120;
+
+/**
+ * POST /api/best-dressed/voting/open
+ *
+ * Temporarily open voting without codes for N minutes (door staff convenience).
+ * Requires staff auth (admin JWT also works as staff).
+ *
+ * Body: { minutes: number }  (0 closes immediately)
+ * Returns: { success: true, openUntil, minutes }
+ */
+export async function POST(request: NextRequest) {
+  const authErr = await requireAuth(request, "staff");
+  if (authErr) return authErr;
+
+  const redis = getRedis();
+  if (!redis) {
+    return NextResponse.json(
+      { error: "Redis not configured (voting window unavailable)" },
+      { status: 503 }
+    );
+  }
+
+  let body: { minutes?: number } = {};
+  try {
+    body = (await request.json()) as { minutes?: number };
+  } catch {
+    body = {};
+  }
+
+  const minutesRaw = body.minutes;
+  const minutes =
+    typeof minutesRaw === "number" && Number.isFinite(minutesRaw)
+      ? Math.max(0, Math.min(MAX_MINUTES, Math.floor(minutesRaw)))
+      : 0;
+
+  const now = Math.floor(Date.now() / 1000);
+  const openUntil = minutes > 0 ? now + minutes * 60 : 0;
+
+  try {
+    await redis.set(OPEN_UNTIL_KEY, openUntil);
+    if (openUntil > 0) {
+      // Expire shortly after the window ends, so the key doesn't hang around forever.
+      await redis.expire(OPEN_UNTIL_KEY, minutes * 60 + 60);
+    } else {
+      await redis.del(OPEN_UNTIL_KEY);
+    }
+
+    return NextResponse.json({ success: true, openUntil: openUntil || null, minutes });
+  } catch (error) {
+    return apiError("best-dressed.voting.open", "Failed to set voting window", error);
+  }
+}
+

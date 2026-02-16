@@ -15,6 +15,8 @@ type BestDressedApi = {
   session?: string;
   voteToken?: string;
   votedFor?: string | null;
+  codeRequired?: boolean;
+  openUntil?: number | null;
   success?: boolean;
   error?: string;
 };
@@ -23,6 +25,8 @@ export default function BestDressedPage() {
   const [hasVoted, setHasVoted] = useState<string | null>(null);
   const [currentSession, setCurrentSession] = useState<string>('');
   const [voteToken, setVoteToken] = useState<string>('');
+  const [voteCode, setVoteCode] = useState<string>('');
+  const [codeRequired, setCodeRequired] = useState(true);
   const [guestNames, setGuestNames] = useState<string[]>([]);
   const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
   const [totalVotes, setTotalVotes] = useState(0);
@@ -44,6 +48,7 @@ export default function BestDressedPage() {
         setTotalVotes(json.totalVotes || 0);
         setCurrentSession(json.session || 'initial');
         setVoteToken(json.voteToken || '');
+        setCodeRequired(json.codeRequired !== false);
 
         // Check if user voted in THIS session (client-side tracking)
         const storedVote = getStored("bestDressedVote");
@@ -112,6 +117,7 @@ export default function BestDressedPage() {
 
   const handleVote = async () => {
     if (!selectedName || !voteToken) return;
+    if (codeRequired && !voteCode.trim()) return;
 
     setSubmitting(true);
     setVoteError(null);
@@ -120,7 +126,11 @@ export default function BestDressedPage() {
       const res = await fetch('/api/best-dressed', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: selectedName, voteToken }),
+        body: JSON.stringify({
+          name: selectedName,
+          voteToken,
+          ...(codeRequired ? { code: voteCode.trim().toUpperCase() } : {}),
+        }),
       });
 
       const data = await res.json();
@@ -134,6 +144,7 @@ export default function BestDressedPage() {
         setLeaderboard(data.leaderboard || []);
         setTotalVotes(data.totalVotes || 0);
         setVoteToken(''); // Token is consumed
+        setVoteCode('');
       } else {
         // Vote failed - show error and update leaderboard
         const votedFor = typeof data.votedFor === 'string' ? data.votedFor : null;
@@ -255,10 +266,32 @@ export default function BestDressedPage() {
                 </div>
               )}
 
+              {codeRequired ? (
+                <div className="space-y-2">
+                  <p className="text-center text-zinc-500 text-sm">
+                    Ask door staff for a vote code
+                  </p>
+                  <input
+                    type="text"
+                    value={voteCode}
+                    onChange={(e) => setVoteCode(e.target.value.toUpperCase())}
+                    placeholder="BD-XXXXXXX"
+                    className="w-full px-5 py-4 bg-white/10 border border-white/20 rounded-2xl text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent text-lg font-mono tracking-wider text-center"
+                    inputMode="text"
+                    autoCapitalize="characters"
+                    autoCorrect="off"
+                  />
+                </div>
+              ) : (
+                <p className="text-center text-zinc-500 text-sm">
+                  Voting is open right now — no code needed
+                </p>
+              )}
+
               {/* Vote Button */}
               <button
                 onClick={handleVote}
-                disabled={!selectedName || !voteToken || submitting}
+                disabled={!selectedName || !voteToken || submitting || (codeRequired && !voteCode.trim())}
                 className="w-full py-5 bg-gradient-to-r from-pink-500 to-purple-600 hover:from-pink-400 hover:to-purple-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold text-xl rounded-2xl transition-all shadow-lg shadow-purple-500/30 hover:shadow-purple-500/50 hover:scale-[1.02] disabled:hover:scale-100"
               >
                 {submitting ? (

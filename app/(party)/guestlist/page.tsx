@@ -26,6 +26,12 @@ export default function GuestListPage() {
   const [authTokenSource, setAuthTokenSource] = useState<'staff' | 'admin' | ''>('');
   const [pinInput, setPinInput] = useState('');
   const [pinError, setPinError] = useState<string | false>(false);
+  const [voteCode, setVoteCode] = useState<string | null>(null);
+  const [voteCodeExpiry, setVoteCodeExpiry] = useState<string | null>(null);
+  const [voteCodeLoading, setVoteCodeLoading] = useState(false);
+  const [voteWindowMinutes, setVoteWindowMinutes] = useState(10);
+  const [voteWindowLoading, setVoteWindowLoading] = useState(false);
+  const [voteWindowStatus, setVoteWindowStatus] = useState<string | null>(null);
 
   useEffect(() => {
     const initTimer = window.setTimeout(() => {
@@ -59,6 +65,55 @@ export default function GuestListPage() {
     setPinError(false);
   });
   const { searchQuery, setSearchQuery, filter, setFilter, filteredGuests, searchStats } = useGuestSearch(guests);
+
+  const staffFetch = async (url: string, options: RequestInit = {}) => {
+    return fetch(url, {
+      ...options,
+      headers: {
+        ...(options.headers as Record<string, string>),
+        Authorization: `Bearer ${authToken}`,
+      },
+    });
+  };
+
+  const handleMintVoteCode = async () => {
+    setVoteCodeLoading(true);
+    setVoteWindowStatus(null);
+    try {
+      const res = await staffFetch('/api/best-dressed/codes/mint', { method: 'POST' });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error((data.error as string) || 'Failed to mint vote code');
+      }
+      setVoteCode((data.code as string) || null);
+      setVoteCodeExpiry((data.expiresAt as string) || null);
+    } catch (e) {
+      setVoteWindowStatus(e instanceof Error ? e.message : 'Failed to mint vote code');
+    } finally {
+      setVoteCodeLoading(false);
+    }
+  };
+
+  const handleOpenVoting = async (minutes: number) => {
+    setVoteWindowLoading(true);
+    setVoteWindowStatus(null);
+    try {
+      const res = await staffFetch('/api/best-dressed/voting/open', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ minutes }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error((data.error as string) || 'Failed to open voting');
+      }
+      setVoteWindowStatus(minutes > 0 ? `Voting open for ${minutes} minutes.` : 'Voting closed.');
+    } catch (e) {
+      setVoteWindowStatus(e instanceof Error ? e.message : 'Failed to open voting');
+    } finally {
+      setVoteWindowLoading(false);
+    }
+  };
 
   const handlePinSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -181,6 +236,74 @@ export default function GuestListPage() {
 
         {/* Stats */}
         <GuestStats guests={guests} loading={loading} />
+
+        {/* Best dressed controls (door staff) */}
+        <section className="mx-4 mt-4 p-4 bg-stone-50 border border-stone-200 rounded-xl">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <p className="font-mono text-xs text-stone-500">best dressed</p>
+              <p className="text-stone-800 font-medium text-sm">vote codes + voting window</p>
+            </div>
+            <Link href="/best-dressed" className="text-stone-500 hover:text-amber-700 text-sm transition-colors">
+              open →
+            </Link>
+          </div>
+
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              disabled={voteCodeLoading}
+              onClick={() => void handleMintVoteCode()}
+              className="px-3 py-2 rounded-lg bg-amber-600 text-white text-sm font-medium disabled:opacity-50"
+            >
+              {voteCodeLoading ? 'minting…' : 'mint vote code'}
+            </button>
+
+            <select
+              value={voteWindowMinutes}
+              onChange={(e) => setVoteWindowMinutes(Number(e.target.value))}
+              className="px-3 py-2 rounded-lg bg-white border border-stone-200 text-sm"
+              aria-label="Voting window minutes"
+            >
+              <option value={5}>open 5m</option>
+              <option value={10}>open 10m</option>
+              <option value={15}>open 15m</option>
+              <option value={30}>open 30m</option>
+            </select>
+
+            <button
+              type="button"
+              disabled={voteWindowLoading}
+              onClick={() => void handleOpenVoting(voteWindowMinutes)}
+              className="px-3 py-2 rounded-lg bg-stone-900 text-white text-sm font-medium disabled:opacity-50"
+            >
+              {voteWindowLoading ? 'opening…' : 'open voting'}
+            </button>
+
+            <button
+              type="button"
+              disabled={voteWindowLoading}
+              onClick={() => void handleOpenVoting(0)}
+              className="px-3 py-2 rounded-lg bg-white border border-stone-200 text-stone-700 text-sm font-medium disabled:opacity-50"
+            >
+              close
+            </button>
+          </div>
+
+          {voteCode ? (
+            <div className="mt-3 p-3 rounded-lg bg-white border border-stone-200">
+              <p className="text-stone-500 text-xs">latest code</p>
+              <p className="font-mono text-lg tracking-wider text-stone-900">{voteCode}</p>
+              {voteCodeExpiry ? (
+                <p className="text-stone-400 text-xs mt-1">expires {new Date(voteCodeExpiry).toLocaleTimeString()}</p>
+              ) : null}
+            </div>
+          ) : null}
+
+          {voteWindowStatus ? (
+            <p className="mt-2 text-stone-500 text-xs">{voteWindowStatus}</p>
+          ) : null}
+        </section>
 
         {/* Search */}
         <SearchBar

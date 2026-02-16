@@ -7,11 +7,13 @@ import { apiError } from '@/lib/api-error';
 
 const VOTES_KEY = 'best-dressed:votes';
 const SESSION_KEY = 'best-dressed:session';
+const OPEN_UNTIL_KEY = 'best-dressed:open-until'; // unix seconds; when voting can proceed without a code
 const TOKEN_KEY_PREFIX = 'best-dressed:token:'; // One-time vote token keys (Redis string with TTL)
 const VOTED_KEY_PREFIX = 'best-dressed:voted:'; // Per-session "already voted" record (Redis hash)
 const VOTE_COOKIE = 'mah-bd-voter';
 const VOTE_TOKEN_TTL_SECONDS = 10 * 60;
 const VOTED_TTL_SECONDS = 60 * 60 * 24 * 14; // 14 days (safety net if session never resets)
+const CODE_KEY_PREFIX = 'best-dressed:code:'; // one-time vote codes minted by staff
 
 const VOTE_RATELIMIT_WINDOW_SECONDS = 10 * 60;
 const VOTE_RATELIMIT_MAX_PER_IP = 200;
@@ -74,6 +76,10 @@ function tokenKey(token: string): string {
   return `${TOKEN_KEY_PREFIX}${token}`;
 }
 
+function codeKey(code: string): string {
+  return `${CODE_KEY_PREFIX}${code}`;
+}
+
 function getOrCreateVoterId(request: NextRequest): { voterId: string; isNew: boolean } {
   const existing = request.cookies.get(VOTE_COOKIE)?.value ?? '';
   if (existing && typeof existing === 'string' && existing.length >= 16 && existing.length <= 80) {
@@ -103,6 +109,21 @@ async function getSession(): Promise<string> {
     return session || 'initial';
   }
   return memorySession;
+}
+
+async function getOpenUntilSeconds(): Promise<number> {
+  const redis = getRedis();
+  if (redis) {
+    const value = await redis.get<number | string>(OPEN_UNTIL_KEY);
+    const num =
+      typeof value === 'number'
+        ? value
+        : typeof value === 'string'
+          ? Number.parseInt(value, 10)
+          : NaN;
+    return Number.isFinite(num) ? Math.max(0, Math.floor(num)) : 0;
+  }
+  return 0;
 }
 
 async function resetSession(): Promise<string> {
@@ -203,15 +224,18 @@ async function setVotedFor(session: string, voterId: string, name: string): Prom
 export async function GET(request: NextRequest) {
   try {
     const { voterId, isNew } = getOrCreateVoterId(request);
-    const [votes, guests, session, voteToken] = await Promise.all([
+    const [votes, guests, session, voteToken, openUntil] = await Promise.all([
       getVotes(),
       getGuests(),
       getSession(),
       issueToken(),
+      getOpenUntilSeconds(),
     ]);
     
     const guestNames = getAllGuestNames(guests);
     const votedFor = await getVotedFor(session, voterId);
+    const now = Math.floor(Date.now() / 1000);
+    const codeRequired = !(openUntil > now);
     
     // Sort votes by count descending
     const leaderboard = Object.entries(votes)
@@ -226,6 +250,8 @@ export async function GET(request: NextRequest) {
       session,
       voteToken, // One-time use token for voting
       votedFor, // Server-enforced "already voted" state (cookie-bound)
+      codeRequired,
+      openUntil: openUntil || null,
     });
     if (isNew) attachVoterCookie(res, voterId);
     return res;
@@ -247,7 +273,7 @@ export async function POST(request: NextRequest) {
     }
 
     const { voterId, isNew } = getOrCreateVoterId(request);
-    const session = await getSession();
+    const [session, openUntil] = await Promise.all([getSession(), getOpenUntilSeconds()]);
     const alreadyVotedFor = await getVotedFor(session, voterId);
     if (alreadyVotedFor) {
       const votes = await getVotes();
@@ -271,7 +297,7 @@ export async function POST(request: NextRequest) {
       return res;
     }
 
-    const { name, voteToken } = await request.json();
+    const { name, voteToken, code } = await request.json();
     
     if (!name || typeof name !== 'string') {
       return NextResponse.json({ error: 'Name is required' }, { status: 400 });
@@ -317,6 +343,40 @@ export async function POST(request: NextRequest) {
         totalVotes: Object.values(votes).reduce((a, b) => a + b, 0),
         session,
       }, { status: 403 });
+    }
+
+    // If the voting window is not open, require a staff-minted one-time code.
+    // Consume voteToken first so a bad request can't burn a real code.
+    const now = Math.floor(Date.now() / 1000);
+    const codeRequired = !(openUntil > now);
+    const providedCode = typeof code === 'string' ? code.trim() : '';
+    if (codeRequired) {
+      if (!providedCode) {
+        return NextResponse.json(
+          { success: false, error: 'A vote code is required. Ask door staff for a code.', session },
+          { status: 400 }
+        );
+      }
+      const redis = getRedis();
+      if (!redis) {
+        return NextResponse.json(
+          { success: false, error: 'Voting codes require Redis to be configured.', session },
+          { status: 503 }
+        );
+      }
+      const consumed = await redis.del(codeKey(providedCode));
+      if (consumed !== 1) {
+        return NextResponse.json(
+          { success: false, error: 'Invalid or already-used vote code.', session },
+          { status: 403 }
+        );
+      }
+    } else if (providedCode) {
+      // Window is open: code is optional, but if provided, validate/consume it to prevent reuse.
+      const redis = getRedis();
+      if (redis) {
+        await redis.del(codeKey(providedCode));
+      }
     }
     
     // Token valid - record the vote
