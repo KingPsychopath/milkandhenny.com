@@ -6,7 +6,7 @@ import remarkGfm from "remark-gfm";
 import { rehypeHashtags } from "@/lib/markdown/rehype-hashtags";
 import { rehypeSlug } from "@/lib/markdown/rehype-slug";
 import { AlbumEmbed, type EmbeddedAlbum, type EmbedVariant } from "../_components/AlbumEmbed";
-import { resolveImageSrc } from "@/lib/media/storage";
+import { resolveImageSrc } from "@/features/media/storage";
 
 type PostBodyProps = {
   content: string;

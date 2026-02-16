@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireAuth } from "@/lib/auth/auth";
+import { requireAuth } from "@/features/auth/server";
 import { presignPutUrl, isConfigured } from "@/lib/platform/r2";
 import {
   generateTransferId,
@@ -9,10 +9,10 @@ import {
   MAX_EXPIRY_SECONDS,
   MAX_TRANSFER_FILE_BYTES,
   MAX_TRANSFER_TOTAL_BYTES,
-} from "@/lib/transfers/store";
-import { getMimeType } from "@/lib/media/processing";
+} from "@/features/transfers/store";
+import { getMimeType } from "@/features/media/processing";
 import { apiErrorFromRequest } from "@/lib/platform/api-error";
-import { isSafeTransferFilename } from "@/lib/transfers/upload";
+import { isSafeTransferFilename } from "@/features/transfers/upload";
 
 type FileEntry = { name: string; size: number; type?: string };
 

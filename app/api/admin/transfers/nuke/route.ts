@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireAdminStepUp, requireAuth } from "@/lib/auth/auth";
+import { requireAdminStepUp, requireAuth } from "@/features/auth/server";
 import { getRedis } from "@/lib/platform/redis";
 import { isConfigured, listObjects, deleteObjects } from "@/lib/platform/r2";
 import { apiErrorFromRequest } from "@/lib/platform/api-error";

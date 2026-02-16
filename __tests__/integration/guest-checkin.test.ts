@@ -17,8 +17,8 @@ import {
   getGuests,
   setGuests,
   updateGuestCheckIn,
-} from "@/lib/guests/kv-client";
-import type { Guest } from "@/lib/guests/types";
+} from "@/features/guests/store";
+import type { Guest } from "@/features/guests/types";
 
 function makeGuest(overrides: Partial<Guest> & { id: string; name: string }): Guest {
   return {

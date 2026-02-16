@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireAdminStepUp, requireAuth } from "@/lib/auth/auth";
-import { deleteAlbum, isSafeAlbumSlug } from "@/lib/media/admin-albums";
+import { requireAdminStepUp, requireAuth } from "@/features/auth/server";
+import { deleteAlbum, isSafeAlbumSlug } from "@/features/media/admin-albums";
 import { apiErrorFromRequest } from "@/lib/platform/api-error";
 
 type RouteContext = {

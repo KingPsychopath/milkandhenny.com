@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getGuests } from '@/lib/guests/kv-client';
-import { getAllGuestNames } from '@/lib/guests/utils';
+import { getGuests } from '@/features/guests/store';
+import { getAllGuestNames } from '@/features/guests/utils';
 import { getRedis } from '@/lib/platform/redis';
-import { getClientIp, requireAdminStepUp, requireAuth } from '@/lib/auth/auth';
+import { getClientIp, requireAdminStepUp, requireAuth } from '@/features/auth/server';
 import { apiErrorFromRequest } from '@/lib/platform/api-error';
 
 const VOTES_KEY = 'best-dressed:votes';

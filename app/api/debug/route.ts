@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getSecurityWarnings, requireAuth } from '@/lib/auth/auth';
+import { getSecurityWarnings, requireAuth } from '@/features/auth/server';
 import { getRedis } from '@/lib/platform/redis';
 
 /**

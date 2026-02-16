@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireAuth } from "@/lib/auth/auth";
-import { isSafeAlbumSlug, setAlbumCover } from "@/lib/media/admin-albums";
+import { requireAuth } from "@/features/auth/server";
+import { isSafeAlbumSlug, setAlbumCover } from "@/features/media/admin-albums";
 import { apiErrorFromRequest } from "@/lib/platform/api-error";
 
 type RouteContext = {

@@ -5,7 +5,7 @@ import {
   revokeAllRoleTokens,
   revokeRoleTokens,
   type RevocableRole,
-} from "@/lib/auth/auth";
+} from "@/features/auth/server";
 import { apiErrorFromRequest } from "@/lib/platform/api-error";
 
 type RevokeBody = {

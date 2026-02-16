@@ -11,7 +11,7 @@
  */
 import { ImageResponse } from "next/og";
 import { NextResponse } from "next/server";
-import { getTransfer } from "@/lib/transfers/store";
+import { getTransfer } from "@/features/transfers/store";
 import { SITE_BRAND } from "@/lib/shared/config";
 
 export const alt = "Transfer shared via milk & henny";

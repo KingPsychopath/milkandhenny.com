@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireAuth } from "@/lib/auth/auth";
-import { listAdminTransfers } from "@/lib/transfers/admin";
+import { requireAuth } from "@/features/auth/server";
+import { listAdminTransfers } from "@/features/transfers/admin";
 import { apiErrorFromRequest } from "@/lib/platform/api-error";
 
 export async function GET(request: NextRequest) {

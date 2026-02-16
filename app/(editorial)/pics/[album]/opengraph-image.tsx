@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
-import { getAlbumBySlug, getAllAlbumSlugs } from "@/lib/media/albums";
-import { getOgUrl } from "@/lib/media/storage";
+import { getAlbumBySlug, getAllAlbumSlugs } from "@/features/media/albums";
+import { getOgUrl } from "@/features/media/storage";
 
 import { SITE_BRAND } from "@/lib/shared/config";
 

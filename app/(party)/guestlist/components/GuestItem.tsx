@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Guest } from '@/lib/guests/types';
+import { Guest } from '@/features/guests/types';
 import { playFeedback } from '@/lib/client/feedback';
 
 type GuestItemProps = {

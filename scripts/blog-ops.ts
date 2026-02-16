@@ -28,10 +28,10 @@ import {
   getMimeType,
   processToWebP,
   mapConcurrent,
-} from "../lib/media/processing";
-import { toR2Filename, toMarkdownSnippet } from "../lib/blog/upload";
+} from "../features/media/processing";
+import { toR2Filename, toMarkdownSnippet } from "../features/blog/upload";
 import { formatBytes } from "../lib/shared/format";
-import type { FileKind } from "../lib/media/file-kinds";
+import type { FileKind } from "../features/media/file-kinds";
 
 /* ─── Constants ─── */
 

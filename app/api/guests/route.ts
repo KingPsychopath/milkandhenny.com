@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getGuests, updateGuestCheckIn } from '@/lib/guests/kv-client';
-import { requireAuth } from '@/lib/auth/auth';
+import { getGuests, updateGuestCheckIn } from '@/features/guests/store';
+import { requireAuth } from '@/features/auth/server';
 import { apiErrorFromRequest } from '@/lib/platform/api-error';
 
 export async function GET(request: NextRequest) {

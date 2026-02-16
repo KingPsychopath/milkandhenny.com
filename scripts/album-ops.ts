@@ -21,12 +21,12 @@ import {
   mapConcurrent,
   type OgOverlay,
   type RotationOverride,
-} from "../lib/media/processing";
+} from "../features/media/processing";
 import {
   type FocalPreset,
   isValidFocalPreset,
   focalPresetToPercent,
-} from "../lib/media/focal";
+} from "../features/media/focal";
 import { detectFocal, type DetectionStrategy } from "./face-detect";
 
 /* ─── Constants ─── */

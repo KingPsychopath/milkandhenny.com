@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { addGuest } from '@/lib/guests/kv-client';
-import { requireAdminStepUp, requireAuth } from '@/lib/auth/auth';
-import { GuestStatus } from '@/lib/guests/types';
+import { addGuest } from '@/features/guests/store';
+import { requireAdminStepUp, requireAuth } from '@/features/auth/server';
+import { GuestStatus } from '@/features/guests/types';
 import { apiErrorFromRequest } from '@/lib/platform/api-error';
 
 export async function POST(request: NextRequest) {

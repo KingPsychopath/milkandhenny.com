@@ -1,4 +1,4 @@
-import { getRedis } from '../platform/redis';
+import { getRedis } from '@/lib/platform/redis';
 import { Guest, GuestStatus, generateGuestId } from './types';
 
 const GUEST_LIST_KEY = 'guest:list';

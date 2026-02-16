@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { getRecentPosts, getAllPosts } from "@/lib/blog/reader";
+import { getRecentPosts, getAllPosts } from "@/features/blog/reader";
 import { SITE_BRAND } from "@/lib/shared/config";
 import { PostListItem } from "./_components/PostListItem";
 

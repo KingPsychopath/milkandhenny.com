@@ -1,10 +1,10 @@
 import fs from "fs";
 import path from "path";
 import { NextRequest, NextResponse } from "next/server";
-import { requireAuth } from "@/lib/auth/auth";
-import { getAllSlugs } from "@/lib/blog/reader";
+import { requireAuth } from "@/features/auth/server";
+import { getAllSlugs } from "@/features/blog/reader";
 import { isConfigured, listObjects } from "@/lib/platform/r2";
-import { validateAllAlbums } from "@/lib/media/albums";
+import { validateAllAlbums } from "@/features/media/albums";
 import { apiErrorFromRequest } from "@/lib/platform/api-error";
 
 const POSTS_DIR = path.join(process.cwd(), "content/posts");

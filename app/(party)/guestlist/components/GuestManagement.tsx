@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo } from 'react';
-import { Guest } from '@/lib/guests/types';
+import { Guest } from '@/features/guests/types';
 import { useGuestManagement } from '../hooks/useGuestManagement';
 import { TypeaheadInput } from './TypeaheadInput';
 

@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { headers } from 'next/headers';
-import { parseCSV } from '@/lib/guests/csv-parser';
-import { bootstrapGuestsFromCsv } from '@/lib/guests/kv-client';
-import { requireAdminStepUp, requireAuth } from '@/lib/auth/auth';
+import { parseCSV } from '@/features/guests/csv-parser';
+import { bootstrapGuestsFromCsv } from '@/features/guests/store';
+import { requireAdminStepUp, requireAuth } from '@/features/auth/server';
 import { apiErrorFromRequest } from '@/lib/platform/api-error';
 
 /** Resolve the origin from request headers (works on Vercel). */

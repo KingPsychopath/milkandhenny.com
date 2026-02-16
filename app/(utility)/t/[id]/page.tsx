@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { getTransfer } from "@/lib/transfers/store";
+import { getTransfer } from "@/features/transfers/store";
 import { SITE_NAME, SITE_BRAND } from "@/lib/shared/config";
 import { TransferGallery } from "./components/TransferGallery";
 import { CountdownTimer } from "./components/CountdownTimer";

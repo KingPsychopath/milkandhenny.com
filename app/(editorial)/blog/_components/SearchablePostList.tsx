@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState, useCallback } from "react";
-import type { BlogPostSummary } from "@/lib/blog/reader";
+import type { BlogPostSummary } from "@/features/blog/reader";
 import { PostListItem } from "../../_components/PostListItem";
 
 const DEFAULT_PAGE_SIZE = 10;

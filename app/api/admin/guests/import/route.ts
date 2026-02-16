@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { parseCSV } from '@/lib/guests/csv-parser';
-import { setGuests } from '@/lib/guests/kv-client';
-import { requireAdminStepUp, requireAuth } from '@/lib/auth/auth';
+import { parseCSV } from '@/features/guests/csv-parser';
+import { setGuests } from '@/features/guests/store';
+import { requireAdminStepUp, requireAuth } from '@/features/auth/server';
 import { apiErrorFromRequest } from '@/lib/platform/api-error';
 
 export async function POST(request: NextRequest) {

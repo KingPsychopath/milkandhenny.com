@@ -1,6 +1,6 @@
 import type { MetadataRoute } from "next";
-import { getAllPosts } from "@/lib/blog/reader";
-import { getAllAlbums } from "@/lib/media/albums";
+import { getAllPosts } from "@/features/blog/reader";
+import { getAllAlbums } from "@/features/media/albums";
 import { BASE_URL } from "@/lib/shared/config";
 
 export default function sitemap(): MetadataRoute.Sitemap {

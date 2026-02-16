@@ -1,6 +1,6 @@
 'use client';
 
-import { SearchFilter } from '@/lib/guests/types';
+import { SearchFilter } from '@/features/guests/types';
 
 type SearchBarProps = {
   searchQuery: string;

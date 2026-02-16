@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getTransfer, deleteTransferData, validateDeleteToken } from '@/lib/transfers/store';
+import { getTransfer, deleteTransferData, validateDeleteToken } from '@/features/transfers/store';
 import { deleteObjects, isConfigured, listObjects } from '@/lib/platform/r2';
 
 type RouteContext = {

@@ -9,7 +9,7 @@
 import "server-only";
 
 import path from "path";
-import { uploadBuffer, downloadBuffer } from "../platform/r2";
+import { uploadBuffer, downloadBuffer } from "@/lib/platform/r2";
 import {
   PROCESSABLE_EXTENSIONS,
   ANIMATED_EXTENSIONS,
@@ -17,7 +17,7 @@ import {
   getFileKind,
   processImageVariants,
   processGifThumb,
-} from "../media/processing";
+} from "@/features/media/processing";
 import type { TransferFile } from "./store";
 
 /* ─── Types ─── */

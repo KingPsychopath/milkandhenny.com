@@ -3,8 +3,8 @@
 import { useState, useCallback, useRef } from "react";
 import { MasonryGrid } from "./MasonryGrid";
 import { PhotoCard } from "./PhotoCard";
-import type { Photo } from "@/lib/media/albums";
-import { getThumbUrl, getOriginalUrl } from "@/lib/media/storage";
+import type { Photo } from "@/features/media/albums";
+import { getThumbUrl, getOriginalUrl } from "@/features/media/storage";
 import { fetchBlob, downloadBlob } from "@/lib/client/media-download";
 
 type AlbumGalleryProps = {

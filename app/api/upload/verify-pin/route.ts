@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { handleVerifyRequest } from "@/lib/auth/auth";
+import { handleVerifyRequest } from "@/features/auth/server";
 
 /** POST /api/upload/verify-pin — rate-limited, timing-safe upload gate. */
 export async function POST(request: NextRequest) {

@@ -1,5 +1,5 @@
 import { ImageResponse } from 'next/og';
-import { getPostBySlug, getAllSlugs } from '@/lib/blog/reader';
+import { getPostBySlug, getAllSlugs } from '@/features/blog/reader';
 import { SITE_BRAND } from '@/lib/shared/config';
 
 export const alt = SITE_BRAND;

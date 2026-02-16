@@ -1,16 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireAuth } from "@/lib/auth/auth";
+import { requireAuth } from "@/features/auth/server";
 import {
   saveTransfer,
   MAX_EXPIRY_SECONDS,
   MAX_TRANSFER_FILE_BYTES,
   MAX_TRANSFER_TOTAL_BYTES,
-} from "@/lib/transfers/store";
+} from "@/features/transfers/store";
 import {
   processUploadedFile,
   sortTransferFiles,
   isSafeTransferFilename,
-} from "@/lib/transfers/upload";
+} from "@/features/transfers/upload";
 import { BASE_URL } from "@/lib/shared/config";
 import { apiErrorFromRequest } from "@/lib/platform/api-error";
 

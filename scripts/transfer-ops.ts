@@ -17,8 +17,8 @@ import {
   PROCESSABLE_EXTENSIONS,
   ANIMATED_EXTENSIONS,
   mapConcurrent,
-} from "../lib/media/processing";
-import { processTransferFile, sortTransferFiles } from "../lib/transfers/upload";
+} from "../features/media/processing";
+import { processTransferFile, sortTransferFiles } from "../features/transfers/upload";
 import { BASE_URL } from "../lib/shared/config";
 import { getRedis } from "../lib/platform/redis";
 import {
@@ -31,8 +31,8 @@ import {
   parseExpiry,
   formatDuration,
   DEFAULT_EXPIRY_SECONDS,
-} from "../lib/transfers/store";
-import type { TransferData, TransferSummary } from "../lib/transfers/store";
+} from "../features/transfers/store";
+import type { TransferData, TransferSummary } from "../features/transfers/store";
 
 /* ─── Preflight checks ─── */
 

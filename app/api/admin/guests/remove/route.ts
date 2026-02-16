@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { removeGuest } from '@/lib/guests/kv-client';
-import { requireAdminStepUp, requireAuth } from '@/lib/auth/auth';
+import { removeGuest } from '@/features/guests/store';
+import { requireAdminStepUp, requireAuth } from '@/features/auth/server';
 import { apiErrorFromRequest } from '@/lib/platform/api-error';
 
 export async function DELETE(request: NextRequest) {

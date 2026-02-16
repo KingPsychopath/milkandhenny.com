@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireAuth } from "@/lib/auth/auth";
+import { requireAuth } from "@/features/auth/server";
 import { getRedis } from "@/lib/platform/redis";
 import { apiErrorFromRequest } from "@/lib/platform/api-error";
-import { generateWordsCode } from "@/lib/transfers/words";
+import { generateWordsCode } from "@/features/transfers/words";
 
 const CODE_TTL_SECONDS = 6 * 60 * 60; // 6 hours
 const CODE_KEY_PREFIX = "best-dressed:code:";

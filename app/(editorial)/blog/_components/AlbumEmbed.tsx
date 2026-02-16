@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { memo } from "react";
-import { getThumbUrl } from "@/lib/media/storage";
+import { getThumbUrl } from "@/features/media/storage";
 import { useLazyImage } from "@/hooks/useLazyImage";
 
 /** Serializable album data passed from the server page */

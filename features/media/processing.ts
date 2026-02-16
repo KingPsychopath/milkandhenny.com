@@ -18,7 +18,7 @@ import path from "path";
 import sharp from "sharp";
 import exifReader from "exif-reader";
 import type { FileKind } from "./file-kinds";
-import { SITE_BRAND } from "../shared/config";
+import { SITE_BRAND } from "@/lib/shared/config";
 
 /* ─── Constants ─── */
 

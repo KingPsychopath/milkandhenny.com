@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { useBrandedImage, type BrandedFormat } from "../_hooks/useBrandedImage";
 import { useOutsideClick } from "@/hooks/useOutsideClick";
 import { useEscapeKey } from "@/hooks/useEscapeKey";
-import type { FocalPreset } from "@/lib/media/focal";
+import type { FocalPreset } from "@/features/media/focal";
 
 type BrandedImageProps = {
   /** Full-size image URL (WebP from R2) */

@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo } from 'react';
-import { Guest, GuestStats as GuestStatsType } from '@/lib/guests/types';
+import { Guest, GuestStats as GuestStatsType } from '@/features/guests/types';
 
 type GuestStatsProps = {
   guests: Guest[];

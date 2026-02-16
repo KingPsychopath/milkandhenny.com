@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, useMemo, useEffect, useCallback } from 'react';
-import type { Guest } from '@/lib/guests/types';
+import type { Guest } from '@/features/guests/types';
 import { useFocusTrap } from '@/hooks/useFocusTrap';
 import { useEscapeKey } from '@/hooks/useEscapeKey';
 import { useAdminAuth } from '@/app/admin/hooks/useAdminAuth';

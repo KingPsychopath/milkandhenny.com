@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useState, useEffect } from 'react';
-import { Guest, SearchFilter } from '@/lib/guests/types';
+import { Guest, SearchFilter } from '@/features/guests/types';
 
 /** Debounce hook for search input */
 function useDebouncedValue<T>(value: T, delay: number): T {

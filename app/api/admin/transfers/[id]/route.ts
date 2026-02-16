@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireAdminStepUp, requireAuth } from "@/lib/auth/auth";
-import { adminDeleteTransfer, isSafeTransferId } from "@/lib/transfers/admin";
+import { requireAdminStepUp, requireAuth } from "@/features/auth/server";
+import { adminDeleteTransfer, isSafeTransferId } from "@/features/transfers/admin";
 import { apiErrorFromRequest } from "@/lib/platform/api-error";
 
 type RouteContext = {

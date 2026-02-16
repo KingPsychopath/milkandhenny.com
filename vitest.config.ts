@@ -16,7 +16,7 @@ export default defineConfig({
       "__tests__/integration/**/*.test.ts",
     ],
     coverage: {
-      include: ["lib/**/*.ts"],
+      include: ["lib/**/*.ts", "features/**/*.ts"],
       exclude: ["lib/platform/redis.ts", "lib/platform/r2.ts", "lib/platform/logger.ts"],
     },
   },

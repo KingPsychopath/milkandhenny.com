@@ -1,8 +1,8 @@
 "use client";
 
 import { useState, useCallback, useRef } from "react";
-import type { FocalPreset } from "@/lib/media/focal";
-import { focalPresetToPercent } from "@/lib/media/focal";
+import type { FocalPreset } from "@/features/media/focal";
+import { focalPresetToPercent } from "@/features/media/focal";
 import { fetchImageForCanvas } from "@/lib/client/media-download";
 import { SITE_BRAND } from "@/lib/shared/config";
 

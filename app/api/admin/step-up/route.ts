@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createAdminStepUpToken } from "@/lib/auth/auth";
+import { createAdminStepUpToken } from "@/features/auth/server";
 
 /**
  * POST /api/admin/step-up

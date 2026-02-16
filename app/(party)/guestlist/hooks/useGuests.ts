@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { Guest } from '@/lib/guests/types';
+import { Guest } from '@/features/guests/types';
 import { fetchWithRetry } from '@/lib/http/fetch-with-retry';
 
 /** Poll interval when the tab is focused (ms) */

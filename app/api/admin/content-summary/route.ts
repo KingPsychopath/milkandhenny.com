@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireAuth } from "@/lib/auth/auth";
-import { getAllPosts } from "@/lib/blog/reader";
-import { getAllAlbums, validateAllAlbums } from "@/lib/media/albums";
+import { requireAuth } from "@/features/auth/server";
+import { getAllPosts } from "@/features/blog/reader";
+import { getAllAlbums, validateAllAlbums } from "@/features/media/albums";
 import { apiErrorFromRequest } from "@/lib/platform/api-error";
 
 export async function GET(request: NextRequest) {

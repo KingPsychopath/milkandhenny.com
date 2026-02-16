@@ -1,8 +1,8 @@
 import "server-only";
 
 import { randomBytes, timingSafeEqual } from 'crypto';
-import { getRedis } from '../platform/redis';
-import { FILE_KINDS, type FileKind } from '../media/file-kinds';
+import { getRedis } from '@/lib/platform/redis';
+import { FILE_KINDS, type FileKind } from '@/features/media/file-kinds';
 import { generateWordId } from './words';
 
 /* ─── Types ─── */

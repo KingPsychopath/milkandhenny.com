@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getRedis } from "@/lib/platform/redis";
-import { requireAuth } from "@/lib/auth/auth";
+import { requireAuth } from "@/features/auth/server";
 import { isConfigured, listPrefixes, listObjects, deleteObjects } from "@/lib/platform/r2";
 import { apiErrorFromRequest } from "@/lib/platform/api-error";
 import { log } from "@/lib/platform/logger";

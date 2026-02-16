@@ -25,13 +25,13 @@ import {
   getPhotoKeys,
   backfillOgVariants,
 } from "./album-ops";
-import { validateAllAlbums } from "@/lib/media/albums";
+import { validateAllAlbums } from "@/features/media/albums";
 import { BASE_URL } from "@/lib/shared/config";
 import {
   FOCAL_PRESETS,
   resolveFocalPreset,
   FOCAL_SHORTHAND,
-} from "@/lib/media/focal";
+} from "@/features/media/focal";
 import {
   compareStrategies,
   DETECTION_STRATEGIES,
@@ -40,7 +40,7 @@ import {
 import {
   ROTATION_OVERRIDES,
   type RotationOverride,
-} from "../lib/media/processing";
+} from "../features/media/processing";
 import {
   listObjects,
   deleteObject,
@@ -607,7 +607,7 @@ async function cmdPhotosSetCover(slug: string, photoId: string) {
 async function cmdPhotosSetFocal(
   slug: string,
   photoId: string,
-  preset: import("@/lib/media/focal").FocalPreset
+  preset: import("@/features/media/focal").FocalPreset
 ) {
   heading(`Set focal point: ${photoId}`);
   const album = await setPhotoFocal(slug, photoId, preset, (msg) =>

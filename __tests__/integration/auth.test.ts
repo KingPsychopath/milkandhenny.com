@@ -135,7 +135,7 @@ describe("auth security flows", () => {
 
   it("safeCompare behaves correctly", async () => {
     vi.doMock("@/lib/platform/redis", () => ({ getRedis: () => null }));
-    const { safeCompare } = await import("@/lib/auth/auth");
+    const { safeCompare } = await import("@/features/auth/server");
     expect(safeCompare("secret", "secret")).toBe(true);
     expect(safeCompare("secret", "wrong")).toBe(false);
     expect(safeCompare("short", "much-longer-string")).toBe(false);
@@ -143,7 +143,7 @@ describe("auth security flows", () => {
 
   it("issues role-based TTL tokens (admin shorter than staff)", async () => {
     vi.doMock("@/lib/platform/redis", () => ({ getRedis: () => null }));
-    const { handleVerifyRequest } = await import("@/lib/auth/auth");
+    const { handleVerifyRequest } = await import("@/features/auth/server");
 
     const adminRes = await handleVerifyRequest(
       mockRequest({ jsonBody: { password: process.env.ADMIN_PASSWORD } }) as unknown as NextRequest,
@@ -181,7 +181,7 @@ describe("auth security flows", () => {
   it("revoking a specific jti makes that token unauthorized", async () => {
     const redis = createRedisMock();
     vi.doMock("@/lib/platform/redis", () => ({ getRedis: () => redis }));
-    const { handleVerifyRequest, requireAuth } = await import("@/lib/auth/auth");
+    const { handleVerifyRequest, requireAuth } = await import("@/features/auth/server");
 
     const verifyRes = await handleVerifyRequest(
       mockRequest({ jsonBody: { password: process.env.ADMIN_PASSWORD } }) as unknown as NextRequest,
@@ -211,7 +211,7 @@ describe("auth security flows", () => {
   it("step-up gate blocks destructive actions without x-admin-step-up", async () => {
     const redis = createRedisMock();
     vi.doMock("@/lib/platform/redis", () => ({ getRedis: () => redis }));
-    const { handleVerifyRequest, requireAdminStepUp } = await import("@/lib/auth/auth");
+    const { handleVerifyRequest, requireAdminStepUp } = await import("@/features/auth/server");
 
     const verifyRes = await handleVerifyRequest(
       mockRequest({ jsonBody: { password: process.env.ADMIN_PASSWORD } }) as unknown as NextRequest,
@@ -230,7 +230,7 @@ describe("auth security flows", () => {
     const redis = createRedisMock();
     vi.doMock("@/lib/platform/redis", () => ({ getRedis: () => redis }));
     const { handleVerifyRequest, createAdminStepUpToken, requireAdminStepUp } =
-      await import("@/lib/auth/auth");
+      await import("@/features/auth/server");
 
     // Admin token A
     const verifyA = await handleVerifyRequest(
@@ -273,7 +273,7 @@ describe("auth security flows", () => {
     const redis = createRedisMock();
     vi.doMock("@/lib/platform/redis", () => ({ getRedis: () => redis }));
     const { handleVerifyRequest, requireAuth, revokeRoleTokens } = await import(
-      "@/lib/auth/auth"
+      "@/features/auth/server"
     );
 
     const verify = await handleVerifyRequest(

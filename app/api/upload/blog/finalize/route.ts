@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireAuth } from "@/lib/auth/auth";
+import { requireAuth } from "@/features/auth/server";
 import { apiErrorFromRequest } from "@/lib/platform/api-error";
 import { deleteObject, downloadBuffer, isConfigured, uploadBuffer } from "@/lib/platform/r2";
-import { isProcessableImage, processToWebP } from "@/lib/media/processing";
-import { toMarkdownSnippet } from "@/lib/blog/upload";
-import { getFileKind } from "@/lib/media/processing";
-import type { FileKind } from "@/lib/media/file-kinds";
+import { isProcessableImage, processToWebP } from "@/features/media/processing";
+import { toMarkdownSnippet } from "@/features/blog/upload";
+import { getFileKind } from "@/features/media/processing";
+import type { FileKind } from "@/features/media/file-kinds";
 
 /** Allow longer execution for image processing */
 export const maxDuration = 60;

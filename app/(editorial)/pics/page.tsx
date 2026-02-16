@@ -1,8 +1,8 @@
 import Link from "next/link";
 import type { Metadata } from "next";
-import { getAllAlbums, type Album } from "@/lib/media/albums";
-import { getThumbUrl } from "@/lib/media/storage";
-import { focalPresetToObjectPosition } from "@/lib/media/focal";
+import { getAllAlbums, type Album } from "@/features/media/albums";
+import { getThumbUrl } from "@/features/media/storage";
+import { focalPresetToObjectPosition } from "@/features/media/focal";
 import { SITE_NAME, SITE_BRAND } from "@/lib/shared/config";
 import { Breadcrumbs } from "@/components/Breadcrumbs";
 

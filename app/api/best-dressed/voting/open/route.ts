@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireAuth } from "@/lib/auth/auth";
+import { requireAuth } from "@/features/auth/server";
 import { getRedis } from "@/lib/platform/redis";
 import { apiErrorFromRequest } from "@/lib/platform/api-error";
 

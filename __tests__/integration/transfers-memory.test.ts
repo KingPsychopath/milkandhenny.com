@@ -21,7 +21,7 @@ import {
   generateTransferId,
   generateDeleteToken,
   type TransferData,
-} from "@/lib/transfers/store";
+} from "@/features/transfers/store";
 
 function makeTransfer(overrides?: Partial<TransferData>): TransferData {
   return {

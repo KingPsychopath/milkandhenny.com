@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { generateGuestId } from "@/lib/guests/types";
+import { generateGuestId } from "@/features/guests/types";
 
 describe("generateGuestId", () => {
   it("lowercases and hyphenates spaces", () => {

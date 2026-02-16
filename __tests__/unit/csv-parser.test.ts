@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { parseCSV } from "@/lib/guests/csv-parser";
+import { parseCSV } from "@/features/guests/csv-parser";
 
 const CSV_HEADER =
   "Name,Status,RSVP date,Did you enter your full name? (Enter your full name),Is Plus One Of";

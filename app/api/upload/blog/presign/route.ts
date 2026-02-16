@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireAuth } from "@/lib/auth/auth";
+import { requireAuth } from "@/features/auth/server";
 import { presignPutUrl, isConfigured, listObjects } from "@/lib/platform/r2";
 import { apiErrorFromRequest } from "@/lib/platform/api-error";
-import { getMimeType, isProcessableImage } from "@/lib/media/processing";
-import { sanitiseStem, toR2Filename } from "@/lib/blog/upload";
-import { getFileKind } from "@/lib/media/processing";
-import type { FileKind } from "@/lib/media/file-kinds";
+import { getMimeType, isProcessableImage } from "@/features/media/processing";
+import { sanitiseStem, toR2Filename } from "@/features/blog/upload";
+import { getFileKind } from "@/features/media/processing";
+import type { FileKind } from "@/features/media/file-kinds";
 import { randomUUID } from "crypto";
 import path from "path";
 

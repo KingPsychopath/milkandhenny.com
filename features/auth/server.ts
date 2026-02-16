@@ -14,7 +14,7 @@ import "server-only";
 
 import { createHmac, randomUUID, timingSafeEqual } from "crypto";
 import { NextRequest, NextResponse } from "next/server";
-import { getRedis } from "../platform/redis";
+import { getRedis } from "@/lib/platform/redis";
 
 /* ─── Types ─── */
 
