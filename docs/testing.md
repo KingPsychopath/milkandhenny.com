@@ -77,7 +77,9 @@ The rule: **test pure logic, skip glue code.**
 | Test file | Flow | What it validates |
 |-----------|------|-------------------|
 | `transfers-memory.test.ts` | Full transfer lifecycle | Save → get → validate delete token → delete → confirm gone. Uses the in-memory fallback (same code path as local dev). Also validates ID format (3-word) and token length (22 chars). |
+| `transfers-admin.test.ts` | Transfers admin validation | `isSafeTransferId` (valid vs invalid patterns). `adminDeleteTransfer` rejects invalid ids with a throw, so bad input never touches R2/Redis. |
 | `guest-checkin.test.ts` | Guest list check-in flow | Set guests → check in main guest → check in plus-one → check out → verify isolation between guests. The most-used feature at events — if this breaks, door staff can't check anyone in. |
+| `guests-add-remove.test.ts` | Guest add/remove | Add main guest, add plus-one (and 404 when main missing), validation (empty name). Remove main guest, remove plus-one, empty id 400, non-existent id leaves list unchanged. |
 | `heading-ids.test.ts` | TOC ↔ rehype-slug contract | Verifies that `extractHeadings()` (blog.ts) and `rehypeSlug()` (rehype-slug.ts) produce identical IDs for the same headings. If they drift, JumpRail links scroll to nowhere. Tests unique headings, duplicates, special characters, and mixed cases. |
 | `auth.test.ts` | Authentication primitives | Timing-safe string comparison (matching, different, different-length). Tests the `safeCompare` function that guards every PIN/password check. |
 
@@ -107,7 +109,9 @@ __tests__/
 └── integration/                 # Multi-module tests — mock only external services
     ├── auth.test.ts
     ├── guest-checkin.test.ts
+    ├── guests-add-remove.test.ts
     ├── heading-ids.test.ts
+    ├── transfers-admin.test.ts
     └── transfers-memory.test.ts
 ```
 

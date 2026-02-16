@@ -1,0 +1,27 @@
+---
+description: Plan-first workflow; execute against a spec and batch tool use
+alwaysApply: true
+---
+
+# Plan-first, execute in Cursor
+
+## When a markdown plan or spec is attached
+
+- Treat it as the **contract**: execute steps in order; do not silently change scope or invent new steps.
+- Report progress briefly (e.g. "Step 2 done, moving to Step 3") so the user can see alignment with the plan.
+- If the plan is wrong or blocked, say so and suggest an update to the plan rather than drifting.
+
+## Batch work, fewer turns
+
+- **Gather context first**: use read, grep, and codebase search to understand the task before editing.
+- **Then act**: apply changes in one or a few batches (e.g. read 3 files → make edits → run tests in a single turn).
+- Prefer "run out of tool calls, not requests": many tool calls per turn, fewer long exploratory chat replies.
+
+## Scope
+
+- **Large or multi-step work**: require or prefer an attached markdown plan; execute against it.
+- **Small/single-step fixes**: no plan needed; proceed as usual with batched tool use.
+
+## User reminder (for you)
+
+For big features or refactors, consider drafting the plan elsewhere (another LLM, MCP, or by hand), save as a `.md` file, then attach it to the chat so the agent executes instead of re-planning from scratch.
