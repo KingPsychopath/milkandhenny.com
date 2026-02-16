@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { SITE_BRAND } from "@/lib/config";
 import { getStored, removeStored, setStored } from "@/lib/storage-keys";
+import { TokenSessionsPanel } from "./components/TokenSessionsPanel";
 
 type BlogSummary = {
   totalPosts: number;
@@ -105,25 +106,6 @@ type DebugResponse = {
 
 type AuditView = "all" | "broken-refs" | "invalid-albums";
 
-type TokenSession = {
-  jti: string;
-  role: "admin" | "staff" | "upload";
-  iat: number;
-  exp: number;
-  tv: number;
-  ip?: string;
-  ua?: string;
-  status: "active" | "expired" | "revoked" | "invalidated";
-};
-
-type TokenSessionsResponse = {
-  success: true;
-  count: number;
-  sessions: TokenSession[];
-  now: number;
-  currentTv: { admin: number; staff: number; upload: number };
-};
-
 function formatDate(date: string | null): string {
   if (!date) return "—";
   const parsed = new Date(date);
@@ -140,13 +122,6 @@ function formatRemaining(seconds: number): string {
   if (hours > 0) return `${hours}h ${minutes}m`;
   return `${minutes}m`;
 }
-
-const TOKEN_SESSION_STATUS = {
-  active: { label: "usable", dotClass: "bg-[var(--foreground)]" },
-  revoked: { label: "revoked", dotClass: "bg-[var(--prose-hashtag)]" },
-  invalidated: { label: "signed out", dotClass: "bg-[var(--stone-400)]" },
-  expired: { label: "expired", dotClass: "bg-[var(--stone-400)]" },
-} as const;
 
 export function AdminDashboard() {
   const [mounted, setMounted] = useState(false);
@@ -181,12 +156,6 @@ export function AdminDashboard() {
   const [revokeLoading, setRevokeLoading] = useState<"admin" | "all" | null>(null);
   const [stepUpToken, setStepUpToken] = useState("");
   const [stepUpExpiryMs, setStepUpExpiryMs] = useState(0);
-  const [tokenSessions, setTokenSessions] = useState<TokenSession[]>([]);
-  const [tokenSessionsLoading, setTokenSessionsLoading] = useState(false);
-  const [tokenSessionsQuery, setTokenSessionsQuery] = useState("");
-  const [showInactiveTokenSessions, setShowInactiveTokenSessions] = useState(false);
-  const [showAllTokenSessions, setShowAllTokenSessions] = useState(false);
-  const [sessionRevokeLoading, setSessionRevokeLoading] = useState<string | null>(null);
   const [debugData, setDebugData] = useState<DebugResponse | null>(null);
 
   useEffect(() => {
@@ -255,35 +224,9 @@ export function AdminDashboard() {
     }
   }, [authFetch, isAuthed]);
 
-  const loadTokenSessions = useCallback(async () => {
-    if (!isAuthed) return;
-    setTokenSessionsLoading(true);
-    setErrorMessage("");
-    try {
-      const res = await authFetch("/api/admin/tokens/sessions");
-      const data = (await res.json().catch(() => ({}))) as Partial<TokenSessionsResponse> & {
-        error?: string;
-      };
-      if (!res.ok) {
-        throw new Error(data.error || "Failed to load token sessions");
-      }
-      const sessions = Array.isArray(data.sessions) ? (data.sessions as TokenSession[]) : [];
-      setTokenSessions(sessions);
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : "Failed to load token sessions";
-      setErrorMessage(msg);
-    } finally {
-      setTokenSessionsLoading(false);
-    }
-  }, [authFetch, isAuthed]);
-
   useEffect(() => {
     void refreshDashboard();
   }, [refreshDashboard]);
-
-  useEffect(() => {
-    void loadTokenSessions();
-  }, [loadTokenSessions]);
 
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -419,34 +362,6 @@ export function AdminDashboard() {
     ...(extra ?? {}),
     "x-admin-step-up": token,
   });
-
-  const handleRevokeSingleSession = async (jti: string) => {
-    if (!confirm(`Revoke this session?\n\n${jti}\n\nThis immediately invalidates that token.`)) {
-      return;
-    }
-    setSessionRevokeLoading(jti);
-    setErrorMessage("");
-    setStatusMessage("");
-    try {
-      const stepToken = await ensureStepUpToken();
-      if (!stepToken) return;
-      const res = await authFetch(`/api/admin/tokens/sessions/${encodeURIComponent(jti)}`, {
-        method: "DELETE",
-        headers: withStepUpHeaders(stepToken),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        throw new Error((data.error as string) || "Failed to revoke session");
-      }
-      setStatusMessage("Session revoked.");
-      await loadTokenSessions();
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : "Failed to revoke session";
-      setErrorMessage(msg);
-    } finally {
-      setSessionRevokeLoading(null);
-    }
-  };
 
   const commandHelpers = [
     {
@@ -752,32 +667,6 @@ export function AdminDashboard() {
     ? filteredTransfers
     : filteredTransfers.slice(0, 15);
 
-  const filteredTokenSessions = useMemo(() => {
-    const base = showInactiveTokenSessions
-      ? tokenSessions
-      : tokenSessions.filter((s) => s.status === "active");
-    const q = tokenSessionsQuery.trim().toLowerCase();
-    if (!q) return base;
-    return base.filter((s) => {
-      return (
-        s.jti.toLowerCase().includes(q) ||
-        s.role.toLowerCase().includes(q) ||
-        (s.ip ?? "").toLowerCase().includes(q) ||
-        (s.ua ?? "").toLowerCase().includes(q) ||
-        s.status.toLowerCase().includes(q)
-      );
-    });
-  }, [showInactiveTokenSessions, tokenSessions, tokenSessionsQuery]);
-  const visibleTokenSessions = showAllTokenSessions
-    ? filteredTokenSessions
-    : filteredTokenSessions.slice(0, 12);
-
-  const tokenSessionCounts = useMemo(() => {
-    const usable = tokenSessions.filter((s) => s.status === "active").length;
-    const total = tokenSessions.length;
-    return { usable, inactive: Math.max(0, total - usable), total };
-  }, [tokenSessions]);
-
   if (!mounted) {
     return (
       <div className="min-h-dvh flex items-center justify-center px-6" aria-busy="true">
@@ -945,147 +834,14 @@ export function AdminDashboard() {
               </button>
             </div>
           </div>
-          <div className="flex items-center justify-between gap-3">
-            <p className="font-mono text-xs theme-muted">
-              token sessions{" "}
-              {tokenSessionCounts.total > 0
-                ? `(${tokenSessionCounts.usable} usable${showInactiveTokenSessions ? ` / ${tokenSessionCounts.total} total` : ""})`
-                : ""}
-            </p>
-            <div className="flex items-center gap-3">
-              {tokenSessionCounts.inactive > 0 ? (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowInactiveTokenSessions((v) => !v);
-                    setShowAllTokenSessions(false);
-                  }}
-                  className="font-mono text-xs theme-muted hover:text-[var(--foreground)] transition-colors"
-                  title="Toggle showing revoked/expired/signed-out sessions."
-                >
-                  {showInactiveTokenSessions
-                    ? "hide inactive"
-                    : `show inactive (${tokenSessionCounts.inactive})`}
-                </button>
-              ) : null}
-              <button
-                type="button"
-                disabled={tokenSessionsLoading}
-                onClick={() => void loadTokenSessions()}
-                className="font-mono text-xs theme-muted hover:text-[var(--foreground)] transition-colors disabled:opacity-50"
-                title="Refreshes the list of issued JWT sessions (by jti)."
-              >
-                {tokenSessionsLoading ? "refreshing..." : "refresh"}
-              </button>
-            </div>
-          </div>
-          <input
-            type="text"
-            value={tokenSessionsQuery}
-            onChange={(e) => {
-              setTokenSessionsQuery(e.target.value);
-              setShowAllTokenSessions(false);
-            }}
-            placeholder={`filter ${showInactiveTokenSessions ? "sessions" : "usable sessions"} by role, ip, status, jti, user-agent`}
-            className="w-full bg-transparent border-b border-[var(--stone-200)] focus:border-[var(--foreground)] outline-none font-mono text-xs py-2 transition-colors placeholder:text-[var(--stone-400)]"
+          <TokenSessionsPanel
+            isAuthed={isAuthed}
+            authFetch={authFetch}
+            formatRemaining={formatRemaining}
+            ensureStepUpToken={ensureStepUpToken}
+            onError={(msg) => setErrorMessage(msg)}
+            onStatus={(msg) => setStatusMessage(msg)}
           />
-          {filteredTokenSessions.length === 0 ? (
-            <p className="font-mono text-xs theme-muted">
-              No sessions found (or Redis not configured).
-            </p>
-          ) : (
-            <div className="space-y-2">
-              {visibleTokenSessions.map((s) => {
-                const expiresIn = s.exp - Math.floor(Date.now() / 1000);
-                const issuedAgo = Math.max(
-                  0,
-                  Math.floor(Date.now() / 1000) - s.iat
-                );
-                return (
-                  <details
-                    key={s.jti}
-                    className="border theme-border rounded-md p-3"
-                  >
-                    <summary
-                      className="cursor-pointer select-none list-none"
-                      title="Tap to expand for full details (jti, full user-agent)."
-                    >
-                      <div className="flex items-center justify-between gap-3">
-                        <div className="min-w-0">
-                          <p className="font-mono text-sm truncate">
-                            <span className="inline-flex items-center gap-2">
-                              <span
-                                aria-hidden="true"
-                                className={`w-1.5 h-1.5 rounded-full ${TOKEN_SESSION_STATUS[s.status].dotClass}`}
-                              />
-                              <span>
-                                {s.role} · {TOKEN_SESSION_STATUS[s.status].label}
-                              </span>
-                            </span>
-                          </p>
-                          <p className="font-mono text-xs theme-muted truncate">
-                            issued {formatRemaining(issuedAgo)} ago · expires in{" "}
-                            {formatRemaining(expiresIn)}
-                          </p>
-                        </div>
-                        <span className="font-mono text-xs theme-muted shrink-0">
-                          details
-                        </span>
-                      </div>
-                    </summary>
-
-                    <div className="mt-3 pt-3 border-t theme-border space-y-2">
-                      <p className="font-mono text-xs theme-muted">
-                        jti: <span className="text-[var(--foreground)]">{s.jti}</span>
-                      </p>
-                      <p className="font-mono text-xs theme-muted">
-                        token version: <span className="text-[var(--foreground)]">{s.tv}</span>
-                      </p>
-                      <p className="font-mono text-xs theme-muted">
-                        ip: <span className="text-[var(--foreground)]">{s.ip || "—"}</span>
-                      </p>
-                      <p className="font-mono text-xs theme-muted break-words">
-                        user-agent:{" "}
-                        <span className="text-[var(--foreground)]">{s.ua || "—"}</span>
-                      </p>
-
-                      <div className="flex items-center justify-between gap-3 pt-1">
-                        <p className="font-mono text-xs theme-muted">
-                          status:{" "}
-                          <span className="text-[var(--foreground)]">{s.status}</span>
-                        </p>
-                        <button
-                          type="button"
-                          disabled={
-                            s.status !== "active" ||
-                            sessionRevokeLoading === s.jti
-                          }
-                          onClick={() => void handleRevokeSingleSession(s.jti)}
-                          className="font-mono text-xs text-[var(--prose-hashtag)] hover:opacity-80 transition-opacity disabled:opacity-50"
-                          title="Revokes only this one token session (by jti)."
-                        >
-                          {sessionRevokeLoading === s.jti
-                            ? "revoking..."
-                            : "revoke"}
-                        </button>
-                      </div>
-                    </div>
-                  </details>
-                );
-              })}
-              {filteredTokenSessions.length > 12 ? (
-                <button
-                  type="button"
-                  onClick={() => setShowAllTokenSessions((v) => !v)}
-                  className="font-mono text-xs theme-muted hover:text-[var(--foreground)] transition-colors"
-                >
-                  {showAllTokenSessions
-                    ? "show fewer sessions"
-                    : `show all sessions (${filteredTokenSessions.length})`}
-                </button>
-              ) : null}
-            </div>
-          )}
           {debugData?.environment.securityWarnings?.length ? (
             <ul className="space-y-1">
               {debugData.environment.securityWarnings.map((warning) => (
@@ -1138,6 +894,21 @@ export function AdminDashboard() {
               {albumsLoading ? "refreshing..." : "refresh albums"}
             </button>
           </div>
+          <details className="border theme-border rounded-md p-3">
+            <summary className="cursor-pointer select-none list-none font-mono text-xs theme-muted">
+              about album edits (persistence)
+            </summary>
+            <div className="mt-2 space-y-2">
+              <p className="font-mono text-xs theme-muted">
+                These actions edit `content/albums/*.json` on the server runtime.
+                On Vercel, the filesystem is typically read-only (so edits may be blocked).
+                When edits are allowed (local/dev), they still won&apos;t persist to the next deploy unless you commit the JSON changes to git and redeploy.
+              </p>
+              <p className="font-mono text-xs theme-muted">
+                For durable changes, prefer the CLI (`pnpm cli`) + a git commit.
+              </p>
+            </div>
+          </details>
           <input
             type="text"
             value={albumQuery}

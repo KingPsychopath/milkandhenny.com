@@ -73,13 +73,14 @@ export function UploadDashboard() {
   const [mounted, setMounted] = useState(false);
   const [pin, setPin] = useState("");
   const [uploadToken, setUploadToken] = useState("");
-  const [isAuthed, setIsAuthed] = useState(false);
+  const [adminToken, setAdminToken] = useState("");
 
   /** Read token after mount only — avoids hydration mismatch (no sessionStorage on server). */
   useEffect(() => {
-    const stored = getStored("uploadToken") ?? "";
-    setUploadToken(stored);
-    setIsAuthed(!!stored);
+    const storedUpload = getStored("uploadToken") ?? "";
+    const storedAdmin = getStored("adminToken") ?? "";
+    setUploadToken(storedUpload);
+    setAdminToken(storedAdmin);
     setMounted(true);
   }, []);
   const [authError, setAuthError] = useState("");
@@ -138,9 +139,9 @@ export function UploadDashboard() {
       if (res.ok && data.token) {
         setStored("uploadToken", data.token);
         setUploadToken(data.token);
-        setIsAuthed(true);
       } else {
         removeStored("uploadToken");
+        setUploadToken("");
         setAuthError("invalid pin");
       }
     } catch {
@@ -149,6 +150,33 @@ export function UploadDashboard() {
       setAuthLoading(false);
     }
   };
+
+  const effectiveToken = uploadToken || adminToken;
+  const isAuthed = !!effectiveToken;
+
+  const authFetch = useCallback(
+    async (url: string, options: RequestInit = {}) => {
+      const res = await fetch(url, {
+        ...options,
+        headers: {
+          ...(options.headers as Record<string, string>),
+          Authorization: `Bearer ${effectiveToken}`,
+        },
+      });
+      if (res.status === 401) {
+        // Clear the token that was actually being used so the user can re-auth.
+        if (uploadToken) {
+          removeStored("uploadToken");
+          setUploadToken("");
+        } else if (adminToken) {
+          removeStored("adminToken");
+          setAdminToken("");
+        }
+      }
+      return res;
+    },
+    [adminToken, effectiveToken, uploadToken]
+  );
 
   /* ─── File management ─── */
 
@@ -252,16 +280,11 @@ export function UploadDashboard() {
 
   /** Presigned flow: browser uploads directly to R2, then tells the API to finalize. */
   const handleTransferUpload = async () => {
-    const authHeaders = {
-      Authorization: `Bearer ${uploadToken}`,
-      "Content-Type": "application/json",
-    };
-
     // 1. Get presigned PUT URLs
     setUploadProgress({ phase: "uploading", current: 0, total: files.length });
-    const presignRes = await fetch("/api/upload/transfer/presign", {
+    const presignRes = await authFetch("/api/upload/transfer/presign", {
       method: "POST",
-      headers: authHeaders,
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         title: title || "untitled",
         expires: expiry,
@@ -308,9 +331,9 @@ export function UploadDashboard() {
       total: files.length,
     });
 
-    const finalizeRes = await fetch("/api/upload/transfer/finalize", {
+    const finalizeRes = await authFetch("/api/upload/transfer/finalize", {
       method: "POST",
-      headers: authHeaders,
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         transferId,
         deleteToken,
@@ -345,9 +368,8 @@ export function UploadDashboard() {
     if (force) formData.append("force", "true");
     for (const file of files) formData.append("files", file);
 
-    const res = await fetch("/api/upload/blog", {
+    const res = await authFetch("/api/upload/blog", {
       method: "POST",
-      headers: { Authorization: `Bearer ${uploadToken}` },
       body: formData,
     });
 

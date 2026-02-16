@@ -61,6 +61,14 @@ import {
   deleteBlogFile,
   deleteAllBlogFiles,
 } from "./blog-ops";
+import {
+  REVOKE_ROLES,
+  type RevokeRole,
+  createStepUpToken,
+  listTokenSessions,
+  normalizeBaseUrl,
+  revokeRoleSessions,
+} from "./auth-ops";
 
 /* ─── Formatting ─── */
 
@@ -901,24 +909,6 @@ async function cmdTransfersNuke() {
 
 /* ─── Auth command handlers ─── */
 
-type RevokeRole = "admin" | "staff" | "upload" | "all";
-const REVOKE_ROLES: readonly RevokeRole[] = ["admin", "staff", "upload", "all"];
-
-function normalizeBaseUrl(url: string): string {
-  return url.replace(/\/+$/, "");
-}
-
-type TokenSession = {
-  jti: string;
-  role: "admin" | "staff" | "upload";
-  iat: number;
-  exp: number;
-  tv: number;
-  ip?: string;
-  ua?: string;
-  status: "active" | "expired" | "revoked" | "invalidated";
-};
-
 async function cmdAuthListSessions(opts: { baseUrl?: string; adminToken: string }) {
   const baseUrl = normalizeBaseUrl(opts.baseUrl || BASE_URL || "http://localhost:3000");
 
@@ -926,24 +916,7 @@ async function cmdAuthListSessions(opts: { baseUrl?: string; adminToken: string 
   log(`${dim("Base URL:")} ${baseUrl}`);
   console.log();
 
-  const res = await fetch(`${baseUrl}/api/admin/tokens/sessions`, {
-    method: "GET",
-    headers: { Authorization: `Bearer ${opts.adminToken}` },
-  });
-  const data = (await res.json().catch(() => ({}))) as
-    | {
-        success: true;
-        count: number;
-        sessions: TokenSession[];
-        now: number;
-        currentTv: { admin: number; staff: number; upload: number };
-      }
-    | { error?: string };
-
-  if (!res.ok || !("success" in data)) {
-    throw new Error((data as { error?: string }).error || `List failed (${res.status})`);
-  }
-
+  const data = await listTokenSessions({ baseUrl, adminToken: opts.adminToken });
   const sessions = Array.isArray(data.sessions) ? data.sessions : [];
   if (sessions.length === 0) {
     log(dim("No sessions found."));
@@ -998,37 +971,19 @@ async function cmdAuthRevoke(opts: {
   console.log();
 
   progress("Requesting step-up token...");
-  const stepUpRes = await fetch(`${baseUrl}/api/admin/step-up`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${opts.adminToken}`,
-    },
-    body: JSON.stringify({ password: opts.adminPassword }),
+  const stepUpData = await createStepUpToken({
+    baseUrl,
+    adminToken: opts.adminToken,
+    adminPassword: opts.adminPassword,
   });
-  const stepUpData = await stepUpRes.json().catch(() => ({} as Record<string, unknown>));
-  if (!stepUpRes.ok || typeof stepUpData.token !== "string") {
-    throw new Error(
-      (stepUpData.error as string) || `Step-up failed (${stepUpRes.status})`
-    );
-  }
 
   progress("Revoking sessions...");
-  const revokeRes = await fetch(`${baseUrl}/api/admin/tokens/revoke`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${opts.adminToken}`,
-      "x-admin-step-up": stepUpData.token,
-    },
-    body: JSON.stringify({ role }),
+  const revokeData = await revokeRoleSessions({
+    baseUrl,
+    adminToken: opts.adminToken,
+    stepUpToken: stepUpData.token,
+    role,
   });
-  const revokeData = await revokeRes.json().catch(() => ({} as Record<string, unknown>));
-  if (!revokeRes.ok) {
-    throw new Error(
-      (revokeData.error as string) || `Revoke failed (${revokeRes.status})`
-    );
-  }
 
   const revoked = Array.isArray(revokeData.revoked)
     ? (revokeData.revoked as Array<{ role: string; tokenVersion: number }>)
