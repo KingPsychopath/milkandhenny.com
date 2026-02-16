@@ -76,7 +76,7 @@ Images and transfer files are served from `pics.milkandhenny.com` (R2 custom dom
 
 ### Client-side fetch caching
 
-`fetchImageForCanvas` in `lib/media/download.ts` uses `cache: "no-store"` to bypass the browser cache. This prevents the tainted canvas problem where a non-CORS cached response would block Canvas pixel access.
+`fetchImageForCanvas` in `lib/client/media-download.ts` uses `cache: "no-store"` to bypass the browser cache. This prevents the tainted canvas problem where a non-CORS cached response would block Canvas pixel access.
 
 ---
 

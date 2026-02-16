@@ -40,12 +40,12 @@ pnpm test:coverage # run with coverage report
 
 | Test file | Module | What it validates |
 |-----------|--------|-------------------|
-| `slug.test.ts` | `lib/slug.ts` | Heading slugification, duplicate id generation, edge cases (emoji, symbols, empty input) |
-| `format.test.ts` | `lib/format.ts` | Byte formatting (B → KB → MB → GB), boundary values |
-| `transfers.test.ts` | `lib/transfers.ts` | Expiry parsing (30m, 1h, 7d), duration formatting, error cases (invalid format, exceeds max) |
-| `guest-types.test.ts` | `lib/guests/types.ts` | Guest ID generation (lowercase, hyphenation, suffix handling) |
-| `csv-parser.test.ts` | `lib/guests/csv-parser.ts` | Partiful CSV import — status normalization, plus-one linking, alphabetical sort, empty rows, fullName logic |
-| `blog.test.ts` | `lib/blog.ts` | Heading extraction from markdown, reading time calculation, frontmatter parsing, date sorting |
+| `slug.test.ts` | `lib/markdown/slug.ts` | Heading slugification, duplicate id generation, edge cases (emoji, symbols, empty input) |
+| `format.test.ts` | `lib/shared/format.ts` | Byte formatting (B → KB → MB → GB), boundary values |
+| `transfers.test.ts` | `features/transfers/store.ts` | Expiry parsing (30m, 1h, 7d), duration formatting, error cases (invalid format, exceeds max) |
+| `guest-types.test.ts` | `features/guests/types.ts` | Guest ID generation (lowercase, hyphenation, suffix handling) |
+| `csv-parser.test.ts` | `features/guests/csv-parser.ts` | Partiful CSV import — status normalization, plus-one linking, alphabetical sort, empty rows, fullName logic |
+| `blog.test.ts` | `features/blog/reader.ts` | Heading extraction from markdown, reading time calculation, frontmatter parsing, date sorting |
 
 ### Why these modules and not others
 
@@ -57,9 +57,9 @@ The rule: **test pure logic, skip glue code.**
 - `guests/types.ts` — guest ID generation feeds into every KV operation. A broken ID means orphaned data.
 
 **What we intentionally skip:**
-- `lib/redis.ts`, `lib/r2.ts` — thin wrappers around SDK clients. Testing them means testing the SDK, not our code.
-- `lib/logger.ts` — side-effect-only (console output). Not worth mocking.
-- `lib/config.ts` — reads env vars. Tested implicitly by integration tests.
+- `lib/platform/redis.ts`, `lib/platform/r2.ts` — thin wrappers around SDK clients. Testing them means testing the SDK, not our code.
+- `lib/platform/logger.ts` — side-effect-only (console output). Not worth mocking.
+- `lib/shared/config.ts` — reads env vars. Tested implicitly by integration tests.
 - React components — these are rendering glue. The design system rules handle visual correctness. If we add component tests later, they'd use React Testing Library.
 
 ---
@@ -136,7 +136,7 @@ Write an integration test when:
 ### When NOT to write a test
 
 - **Rendering glue** — components that just arrange props into JSX. The design system handles visual correctness.
-- **SDK wrappers** — `lib/redis.ts`, `lib/r2.ts`. You'd be testing the SDK, not your code.
+- **SDK wrappers** — `lib/platform/redis.ts`, `lib/platform/r2.ts`. You'd be testing the SDK, not your code.
 - **One-off scripts** — CLI commands that are run manually and verified by their output.
 
 ---
@@ -153,19 +153,19 @@ Every module in this project falls into one of three buckets. Only the first one
 |------|-------------|---------|-------|-----|
 | **Logic** | Transforms data — input in, output out. Decisions, parsing, formatting, validation. | `slug()`, `parseExpiry()`, `parseCSV()`, `updateGuestCheckIn()` | **Yes** | A bug here silently corrupts data or breaks features. The function's contract matters and has edge cases. Tests are fast, stable, and high-value. |
 | **Glue** | Wires things together — passes props, calls APIs, orchestrates steps. No interesting decisions of its own. | React components, API route handlers, upload orchestration | **No** | Testing glue means testing that you called the right function with the right args. That's verifying wiring, not behaviour. These tests are brittle (break when you refactor) and low-signal (pass even when the underlying logic is wrong). |
-| **Delegation** | Thin wrapper around an external library or service. Configures and calls someone else's code. | `lib/redis.ts` (Upstash client), `lib/r2.ts` (S3 client), Sharp image processing | **No** | You'd be testing the library, not your code. If Sharp's `resize()` breaks, that's Sharp's problem. If the S3 SDK's `putObject` breaks, that's AWS's problem. Your wrapper has no logic to verify. |
+| **Delegation** | Thin wrapper around an external library or service. Configures and calls someone else's code. | `lib/platform/redis.ts` (Upstash client), `lib/platform/r2.ts` (S3 client), Sharp image processing | **No** | You'd be testing the library, not your code. If Sharp's `resize()` breaks, that's Sharp's problem. If the S3 SDK's `putObject` breaks, that's AWS's problem. Your wrapper has no logic to verify. |
 
 ### Applying this to specific features
 
 **Albums, PhotoViewer, Lightbox, MasonryGrid** — these are **glue**. They take props (photo URLs, dimensions, album metadata) and render JSX. The "logic" is CSS grid layout and event handlers (keyboard nav, swipe). The bugs you'd actually hit are visual — wrong crop, broken grid on mobile, lightbox not closing on Escape. Those are caught by the design system rules and manual testing, not by asserting that a component renders a `<div>`. If we ever needed to test these, it would be E2E (real browser, real viewport), not unit tests.
 
-**Transfer upload flow** (`transfer-upload.ts`, presign/finalize routes) — this is **glue + delegation**. The flow is: call R2 for a presigned URL → return it to the client → client PUTs to R2 → call finalize → server runs Sharp. Testing it means mocking S3 presign, mocking Sharp, mocking the request/response cycle, and asserting that your orchestration called them in order. That's a test of your mock setup, not your logic. The actual data integrity (does a saved transfer come back correctly?) is already tested in `transfers-memory.test.ts`.
+**Transfer upload flow** (`features/transfers/upload.ts`, presign/finalize routes) — this is **glue + delegation**. The flow is: call R2 for a presigned URL → return it to the client → client PUTs to R2 → call finalize → server runs Sharp. Testing it means mocking S3 presign, mocking Sharp, mocking the request/response cycle, and asserting that your orchestration called them in order. That's a test of your mock setup, not your logic. The actual data integrity (does a saved transfer come back correctly?) is already tested in `transfers-memory.test.ts`.
 
-**Media processing** (`lib/media/processing.ts`, `storage.ts`, `download.ts`) — this is **delegation**. These files call Sharp to resize, call S3 to upload, call fetch to download. There's no decision logic — just "take this image, resize to 600px, upload to this key." Testing it means testing Sharp and S3, which is their job.
+**Media processing** (`features/media/processing.ts`, `storage.ts`, `download.ts`) — this is **delegation**. These files call Sharp to resize, call S3 to upload, call fetch to download. There's no decision logic — just "take this image, resize to 600px, upload to this key." Testing it means testing Sharp and S3, which is their job.
 
-**`lib/media/file-kinds.ts`** — this is a const array and a type export. There is literally no logic to test.
+**`features/media/file-kinds.ts`** — this is a const array and a type export. There is literally no logic to test.
 
-**`lib/media/albums.ts`** — this is similar to `blog.ts` (reads JSON manifests from disk), but the data shape is simpler (no frontmatter parsing, no heading extraction, no reading time calculation). The JSON → object path is trivial. If it were doing transformations or validations on the album data, it would be worth testing.
+**`features/media/albums.ts`** — this is similar to `blog` (reads JSON manifests from disk), but the data shape is simpler (no frontmatter parsing, no heading extraction, no reading time calculation). The JSON → object path is trivial. If it were doing transformations or validations on the album data, it would be worth testing.
 
 ### The mental model, summarised
 

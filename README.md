@@ -36,6 +36,24 @@ pnpm test:watch    # re-run on file changes
 
 ---
 
+## Code Organization
+
+This repo uses two top-level buckets for server code and shared logic:
+
+- `features/` — product domains (the stuff you build)
+  - `features/guests/*` guest model + persistence + CSV import
+  - `features/transfers/*` transfer model + persistence + upload pipeline
+  - `features/media/*` albums + storage URLs + image processing
+  - `features/blog/*` blog reader + blog upload helpers
+  - `features/auth/*` server-side auth primitives
+- `lib/` — cross-cutting primitives (the toolbox)
+  - `lib/platform/*` server-only infrastructure (R2, Redis/KV, logging, safe API errors)
+  - `lib/shared/*` safe in both server + client (config, formatting, storage keys)
+  - `lib/client/*` browser-only utilities
+  - `lib/http/*`, `lib/markdown/*` general helpers
+
+Rule of thumb: if a module describes a domain concept (guest, transfer, album), it belongs in `features/`. If it’s a primitive used across domains (logging, config, fetch retry), it belongs in `lib/`.
+
 ## Features
 
 ### Guest List
