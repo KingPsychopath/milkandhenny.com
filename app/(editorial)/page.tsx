@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { getRecentPosts, getAllPosts } from "@/lib/blog";
 import { SITE_BRAND } from "@/lib/config";
-import { PostListItem } from "@/components/blog/PostListItem";
+import { PostListItem } from "./_components/PostListItem";
 
 const RECENT_LIMIT = 5;
 

@@ -8,7 +8,7 @@
     "start": "next start",
     "lint": "eslint",
     "cli": "tsx scripts/cli.ts",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "node -e \"require('fs').rmSync('.next',{recursive:true,force:true})\" && tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage"

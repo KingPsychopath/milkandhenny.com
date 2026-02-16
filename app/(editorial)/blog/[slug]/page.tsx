@@ -11,7 +11,7 @@ import { ReadingProgress } from "@/components/ReadingProgress";
 import { JumpRail } from "@/components/JumpRail";
 import { Breadcrumbs } from "@/components/Breadcrumbs";
 import { Share } from "@/components/Share";
-import type { EmbeddedAlbum } from "@/components/blog/AlbumEmbed";
+import type { EmbeddedAlbum } from "../_components/AlbumEmbed";
 
 type Props = {
   params: Promise<{ slug: string }>;

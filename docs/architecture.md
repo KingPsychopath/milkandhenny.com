@@ -56,7 +56,7 @@ Three layers of caching keep the site fast and cheap: static generation at build
 
 ### API routes
 
-All API routes (`/api/guests`, `/api/best-dressed`, `/api/stats`, `/api/transfers/[id]`) return real-time data. No caching — stale data here would cause UX bugs (wrong check-in state, stale votes).
+All API routes (`/api/guests`, `/api/best-dressed`, `/api/transfers/[id]`) return real-time data. No caching — stale data here would cause UX bugs (wrong check-in state, stale votes).
 
 ### RSS feed
 

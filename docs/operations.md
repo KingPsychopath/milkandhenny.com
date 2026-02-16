@@ -52,7 +52,6 @@ CDN caching means repeat visits cost zero KV commands.
 
 | Endpoint | KV commands | Trigger |
 |----------|-------------|---------|
-| `GET /api/stats` | 1 GET | Manual only |
 | `GET /api/debug` | ~1 GET | Manual only (health-only: checks config + lightweight Redis reachability) |
 
 ### Typical daily budget

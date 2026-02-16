@@ -64,6 +64,8 @@ pnpm cli blog delete <post-slug>                        # Delete ALL files for a
 pnpm cli blog delete <post-slug> --file <filename>      # Delete a single file
 ```
 
+Web upload: `/upload` supports blog uploads for small files, but it uses `multipart/form-data` through Vercel (subject to serverless request size limits). For large batches, prefer the CLI.
+
 ---
 
 ## Web Upload (Presigned URLs)

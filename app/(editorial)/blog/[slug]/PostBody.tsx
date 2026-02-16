@@ -5,7 +5,7 @@ import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { rehypeHashtags } from "@/lib/rehype-hashtags";
 import { rehypeSlug } from "@/lib/rehype-slug";
-import { AlbumEmbed, type EmbeddedAlbum, type EmbedVariant } from "@/components/blog/AlbumEmbed";
+import { AlbumEmbed, type EmbeddedAlbum, type EmbedVariant } from "../_components/AlbumEmbed";
 import { resolveImageSrc } from "@/lib/media/storage";
 
 type PostBodyProps = {

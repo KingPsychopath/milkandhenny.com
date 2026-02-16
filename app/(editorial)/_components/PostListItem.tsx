@@ -19,7 +19,7 @@ function formatDate(dateStr: string) {
   });
 }
 
-/** Shared post list item used on the homepage and blog page */
+/** Shared post list item used across editorial surfaces (home + blog index). */
 export function PostListItem({ slug, title, date, subtitle, readingTime, featured }: PostListItemProps) {
   return (
     <article
@@ -55,3 +55,4 @@ export function PostListItem({ slug, title, date, subtitle, readingTime, feature
 }
 
 export type { PostListItemProps };
+

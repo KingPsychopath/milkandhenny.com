@@ -236,3 +236,4 @@ function AlbumEmbed({
 
 export { AlbumEmbed, AlbumEmbedCompact, AlbumEmbedMasonry };
 export type { EmbeddedAlbum, EmbedVariant };
+

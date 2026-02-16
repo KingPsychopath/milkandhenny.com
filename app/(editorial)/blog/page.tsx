@@ -2,7 +2,7 @@ import Link from "next/link";
 import type { Metadata } from "next";
 import { getBlogPostSummaries } from "@/lib/blog";
 import { SITE_NAME, SITE_BRAND } from "@/lib/config";
-import { SearchablePostList } from "@/components/blog/SearchablePostList";
+import { SearchablePostList } from "./_components/SearchablePostList";
 import { Breadcrumbs } from "@/components/Breadcrumbs";
 
 export const metadata: Metadata = {

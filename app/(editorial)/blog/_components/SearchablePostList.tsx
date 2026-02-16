@@ -2,7 +2,7 @@
 
 import { useMemo, useState, useCallback } from "react";
 import type { BlogPostSummary } from "@/lib/blog";
-import { PostListItem } from "@/components/blog/PostListItem";
+import { PostListItem } from "../../_components/PostListItem";
 
 const DEFAULT_PAGE_SIZE = 10;
 
@@ -139,3 +139,4 @@ export function SearchablePostList({ posts }: Props) {
     </section>
   );
 }
+
