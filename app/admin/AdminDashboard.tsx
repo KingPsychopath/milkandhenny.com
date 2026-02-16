@@ -153,10 +153,6 @@ function formatRemaining(seconds: number): string {
 }
 
 export function AdminDashboard() {
-  const [password, setPassword] = useState("");
-  const [authLoading, setAuthLoading] = useState(false);
-  const [authError, setAuthError] = useState("");
-
   const [loading, setLoading] = useState(false);
   const [statusMessage, setStatusMessage] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
@@ -202,18 +198,9 @@ export function AdminDashboard() {
     };
   }, []);
 
-  const {
-    mounted,
-    isAuthed,
-    authFetch,
-    signIn,
-    signOut,
-    ensureStepUpToken: ensureStepUpTokenResult,
-    withStepUpHeaders,
-  } = useAdminAuth();
+  const { authFetch, ensureStepUpToken: ensureStepUpTokenResult, withStepUpHeaders } = useAdminAuth();
 
   const refreshDashboard = useCallback(async () => {
-    if (!isAuthed) return;
     setLoading(true);
     setErrorMessage("");
     try {
@@ -243,34 +230,13 @@ export function AdminDashboard() {
     } finally {
       setLoading(false);
     }
-  }, [authFetch, isAuthed]);
+  }, [authFetch]);
 
   useEffect(() => {
     void refreshDashboard();
   }, [refreshDashboard]);
 
-  const handleAuth = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setAuthError("");
-    setAuthLoading(true);
-    try {
-      const result = await signIn(password);
-      if (result.ok) {
-        setPassword("");
-        setStatusMessage("Admin access unlocked.");
-        setTimeout(() => setStatusMessage(""), 2500);
-      } else {
-        setAuthError(result.error);
-      }
-    } catch {
-      setAuthError("Connection error");
-    } finally {
-      setAuthLoading(false);
-    }
-  };
-
   const loadAlbums = useCallback(async () => {
-    if (!isAuthed) return;
     setAlbumsLoading(true);
     setErrorMessage("");
     try {
@@ -286,14 +252,13 @@ export function AdminDashboard() {
     } finally {
       setAlbumsLoading(false);
     }
-  }, [authFetch, isAuthed]);
+  }, [authFetch]);
 
   useEffect(() => {
     void loadAlbums();
   }, [loadAlbums]);
 
   const loadTransfers = useCallback(async () => {
-    if (!isAuthed) return;
     setTransfersLoading(true);
     setErrorMessage("");
     try {
@@ -309,7 +274,7 @@ export function AdminDashboard() {
     } finally {
       setTransfersLoading(false);
     }
-  }, [authFetch, isAuthed]);
+  }, [authFetch]);
 
   const loadTransfersAndScroll = useCallback(async () => {
     // Jump immediately so the user sees progress/spinners in the section.
@@ -632,8 +597,8 @@ export function AdminDashboard() {
         .join(", ");
 
       if (role === "admin" || role === "all") {
-        signOut();
-        setAuthError("Sessions revoked. Sign in again.");
+        // Admin session was revoked; reload to force the server auth gate.
+        window.location.assign("/admin");
       } else {
         setStatusMessage(`Revoked sessions: ${summary || role}`);
       }
@@ -671,55 +636,7 @@ export function AdminDashboard() {
     ? filteredTransfers
     : filteredTransfers.slice(0, 15);
 
-  if (!mounted) {
-    return (
-      <div className="min-h-dvh flex items-center justify-center px-6" aria-busy="true">
-        <div className="w-8 h-8 border-2 border-[var(--foreground)] border-t-transparent rounded-full animate-spin" />
-      </div>
-    );
-  }
-
-  if (!isAuthed) {
-    return (
-      <div className="min-h-dvh flex items-center justify-center px-6">
-        <form onSubmit={handleAuth} className="w-full max-w-xs text-center">
-          <h1 className="font-mono font-bold tracking-tighter text-lg">
-            {SITE_BRAND}
-          </h1>
-          <p className="font-mono text-sm theme-muted mt-1 mb-8">admin</p>
-
-          <input
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            placeholder="admin password"
-            autoFocus
-            className="w-full bg-transparent border-b border-[var(--stone-200)] focus:border-[var(--foreground)] outline-none font-mono text-sm text-center py-2 tracking-wider transition-colors placeholder:text-[var(--stone-400)]"
-          />
-
-          {authError && (
-            <p className="font-mono text-xs mt-3 text-[var(--prose-hashtag)]">
-              {authError}
-            </p>
-          )}
-
-          <button
-            type="submit"
-            disabled={!password || authLoading}
-            className="mt-6 w-full bg-[var(--foreground)] text-[var(--background)] font-mono text-sm lowercase tracking-wide py-2.5 rounded-md hover:opacity-90 transition-opacity disabled:opacity-30"
-          >
-            {authLoading ? "checking..." : "unlock"}
-          </button>
-
-          <p className="mt-8 font-mono text-xs theme-muted">
-            <Link href="/" className="hover:text-[var(--foreground)] transition-colors">
-              ← home
-            </Link>
-          </p>
-        </form>
-      </div>
-    );
-  }
+  // Auth gate lives in `app/admin/page.tsx` (Server Component).
 
   return (
     <div className="max-w-2xl mx-auto px-6 pt-16 pb-24">
@@ -877,7 +794,7 @@ export function AdminDashboard() {
             </div>
           </div>
           <TokenSessionsPanel
-            isAuthed={isAuthed}
+            isAuthed={true}
             authFetch={authFetch}
             formatRemaining={formatRemaining}
             ensureStepUpToken={ensureStepUpToken}

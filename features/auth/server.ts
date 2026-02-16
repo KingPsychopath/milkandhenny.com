@@ -2,7 +2,8 @@
  * Server-side authentication.
  *
  * Token-based flow: verify endpoint validates PIN/password, issues short-lived JWT.
- * Client stores token (not credentials), sends Authorization: Bearer <token>.
+ * App stores JWT in an httpOnly cookie by default; API routes also accept
+ * Authorization: Bearer <token> for explicit callers (CLI/tools).
  *
  * Config-driven. Every comparison is timing-safe, every verify endpoint is rate-limited.
  * Cron uses Bearer secret directly (no verify flow).
@@ -14,7 +15,9 @@ import "server-only";
 
 import { createHmac, randomUUID, timingSafeEqual } from "crypto";
 import { NextRequest, NextResponse } from "next/server";
+import { cookies, headers } from "next/headers";
 import { getRedis } from "@/lib/platform/redis";
+import { getAuthCookieMaxAgeSeconds, getAuthCookieName } from "./cookies";
 
 /* ─── Types ─── */
 
@@ -288,6 +291,24 @@ function extractBearer(request: NextRequest): string {
   return raw.startsWith("Bearer ") ? raw.slice(7).trim() : "";
 }
 
+function extractTokenFromCookies(request: NextRequest, role: TokenRole): string {
+  const cookie = request.cookies.get(getAuthCookieName(role))?.value ?? "";
+  return typeof cookie === "string" ? cookie : "";
+}
+
+function extractAuthTokenForAcceptedRoles(
+  request: NextRequest,
+  acceptedRoles: readonly TokenRole[]
+): string {
+  const bearer = extractBearer(request);
+  if (bearer) return bearer;
+  for (const role of acceptedRoles) {
+    const cookieToken = extractTokenFromCookies(request, role);
+    if (cookieToken) return cookieToken;
+  }
+  return "";
+}
+
 /* ─── Rate limiting ─── */
 
 const MAX_ATTEMPTS = 5;
@@ -387,17 +408,18 @@ async function requireAuth(
     return null;
   }
 
-  const token = extractBearer(request);
-  if (!token) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
   const acceptedRoles =
     role === "staff"
       ? (["staff", "admin"] as const)
       : role === "upload"
         ? (["upload", "admin"] as const)
         : ([role] as const);
+
+  const token = extractAuthTokenForAcceptedRoles(request, acceptedRoles);
+  if (!token) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   const payload = await verifyTokenForRoles(token, acceptedRoles);
   if (!payload) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -419,7 +441,14 @@ async function requireAuthWithPayload(
     return { error, payload: null };
   }
 
-  const token = extractBearer(request);
+  const acceptedRoles =
+    role === "staff"
+      ? (["staff", "admin"] as const)
+      : role === "upload"
+        ? (["upload", "admin"] as const)
+        : ([role] as const);
+
+  const token = extractAuthTokenForAcceptedRoles(request, acceptedRoles);
   if (!token) {
     return {
       error: NextResponse.json({ error: "Unauthorized" }, { status: 401 }),
@@ -427,12 +456,6 @@ async function requireAuthWithPayload(
     };
   }
 
-  const acceptedRoles =
-    role === "staff"
-      ? (["staff", "admin"] as const)
-      : role === "upload"
-        ? (["upload", "admin"] as const)
-        : ([role] as const);
   const payload = await verifyTokenForRoles(token, acceptedRoles);
   if (!payload) {
     return {
@@ -610,7 +633,8 @@ function getSecurityWarnings(): string[] {
 
 /**
  * Handle a POST verify endpoint. On success, issues a JWT token.
- * Client stores token, sends it as Authorization: Bearer <token>.
+ * App stores JWT in an httpOnly cookie by default; API routes also accept
+ * Authorization: Bearer <token>.
  */
 async function handleVerifyRequest(
   request: NextRequest,
@@ -736,5 +760,59 @@ export {
   getSecurityWarnings,
   safeCompare,
   getClientIp,
+  requireAuthFromServerContext,
 };
 export type { AuthRole, RevocableRole };
+
+type ServerContextAuthResult =
+  | { ok: true; role: TokenRole; token: string; payload: TokenPayload }
+  | { ok: false; status: 401 | 503; error: string };
+
+/**
+ * Authenticate using the current Next.js server context (Server Components / Server Actions).
+ * Checks `Authorization: Bearer` first, then falls back to httpOnly cookies.
+ */
+async function requireAuthFromServerContext(role: AuthRole): Promise<ServerContextAuthResult> {
+  if (role === "cron") {
+    const { secret, error } = getRoleSecretStatus("cron");
+    if (!secret) return { ok: false, status: 503, error: error ?? "CRON_SECRET not configured" };
+    const h = await headers();
+    const candidate = h.get("authorization")?.replace(/^Bearer /, "").trim() ?? "";
+    if (!candidate || !safeCompare(candidate, secret)) {
+      return { ok: false, status: 401, error: "Unauthorized" };
+    }
+    return { ok: false, status: 401, error: "Unauthorized" };
+  }
+
+  const acceptedRoles =
+    role === "staff"
+      ? (["staff", "admin"] as const)
+      : role === "upload"
+        ? (["upload", "admin"] as const)
+        : ([role] as const);
+
+  const h = await headers();
+  const rawAuth = h.get("authorization") ?? "";
+  const bearer = rawAuth.startsWith("Bearer ") ? rawAuth.slice(7).trim() : "";
+
+  let token = bearer;
+  let tokenRole: TokenRole | null = null;
+  if (!token) {
+    const jar = await cookies();
+    for (const r of acceptedRoles) {
+      const v = jar.get(getAuthCookieName(r))?.value ?? "";
+      if (v) {
+        token = v;
+        tokenRole = r;
+        break;
+      }
+    }
+  }
+
+  if (!token) return { ok: false, status: 401, error: "Unauthorized" };
+
+  const payload = await verifyTokenForRoles(token, acceptedRoles);
+  if (!payload) return { ok: false, status: 401, error: "Unauthorized" };
+
+  return { ok: true, role: tokenRole ?? payload.role, token, payload };
+}

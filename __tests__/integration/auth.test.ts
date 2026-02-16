@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import type { NextRequest } from "next/server";
+import { NextRequest as RealNextRequest } from "next/server";
 
 /**
  * Auth integration tests.
@@ -206,6 +207,27 @@ describe("auth security flows", () => {
     );
     expect(err).not.toBeNull();
     expect(err?.status).toBe(401);
+  });
+
+  it("accepts staff auth via httpOnly cookie (no Authorization header)", async () => {
+    const redis = createRedisMock();
+    vi.doMock("@/lib/platform/redis", () => ({ getRedis: () => redis }));
+    const { handleVerifyRequest, requireAuth } = await import("@/features/auth/server");
+
+    const staffRes = await handleVerifyRequest(
+      mockRequest({ jsonBody: { pin: process.env.STAFF_PIN } }) as unknown as NextRequest,
+      "staff"
+    );
+    const { token } = (await staffRes.json()) as { token: string };
+
+    const req = new RealNextRequest(
+      new Request("http://localhost/api/guests", {
+        headers: { cookie: `mah-auth-staff=${encodeURIComponent(token)}` },
+      })
+    );
+
+    const err = await requireAuth(req, "staff");
+    expect(err).toBeNull();
   });
 
   it("step-up gate blocks destructive actions without x-admin-step-up", async () => {

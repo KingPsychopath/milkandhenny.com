@@ -417,13 +417,6 @@ export function GuestManagement({ guests, onGuestAdded, onGuestRemoved, onCSVImp
     openModal,
     closeModal,
     modalRef,
-    // auth
-    isAuthenticated,
-    password,
-    passwordError,
-    setPassword,
-    setPasswordError,
-    handlePasswordSubmit,
     // tabs + feedback
     activeTab,
     setActiveTab,
@@ -515,67 +508,33 @@ export function GuestManagement({ guests, onGuestAdded, onGuestRemoved, onCSVImp
         </div>
 
         <div className="overflow-y-auto max-h-[calc(90vh-80px)]">
-          {/* Password gate */}
-          {!isAuthenticated ? (
-            <form onSubmit={handlePasswordSubmit} className="p-6 space-y-4">
-              <div className="text-center mb-6">
-                <div className="w-16 h-16 bg-amber-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
-                  <svg className="w-8 h-8 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"
-                    />
-                  </svg>
-                </div>
-                <p className="text-stone-600">Enter password to manage guests</p>
-              </div>
-              <input
-                type="password"
-                value={password}
-                onChange={(e) => {
-                  setPassword(e.target.value);
-                  setPasswordError(false);
-                }}
-                placeholder="Password"
-                className={`w-full px-4 py-3 bg-stone-50 border rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500 transition-all ${
-                  passwordError ? 'border-red-300 bg-red-50' : 'border-stone-200'
-                }`}
-                autoFocus
-              />
-              {passwordError && <p className="text-red-600 text-sm text-center">{passwordError}</p>}
-              <button
-                type="submit"
-                className="w-full bg-amber-600 text-white py-3 rounded-xl font-medium hover:bg-amber-700 transition-colors"
-              >
-                Unlock
-              </button>
-            </form>
-          ) : (
-            <div className="p-6 space-y-5">
-              {/* Tabs */}
-              <div className="flex gap-1 bg-stone-100 p-1 rounded-xl">
-                {TABS.map((tab) => (
-                  <button
-                    key={tab}
-                    onClick={() => setActiveTab(tab)}
-                    className={`flex-1 py-2 px-1 rounded-lg text-xs font-medium transition-all ${
-                      activeTab === tab ? 'bg-white text-amber-700 shadow-sm' : 'text-stone-600 hover:text-stone-900'
-                    }`}
-                  >
-                    {tab === 'add'
-                      ? 'Add'
-                      : tab === 'remove'
-                        ? 'Remove'
-                        : tab === 'import'
-                          ? 'Import'
-                          : tab === 'data'
-                            ? 'Data'
-                            : 'Games'}
-                  </button>
-                ))}
-              </div>
+          <div className="p-6 space-y-5">
+            <p className="text-xs theme-muted">
+              Admin-only actions may prompt for step-up verification and will redirect to <span className="font-mono">/admin</span> if your admin session is missing.
+            </p>
+
+            {/* Tabs */}
+            <div className="flex gap-1 bg-stone-100 p-1 rounded-xl">
+              {TABS.map((tab) => (
+                <button
+                  key={tab}
+                  onClick={() => setActiveTab(tab)}
+                  className={`flex-1 py-2 px-1 rounded-lg text-xs font-medium transition-all ${
+                    activeTab === tab ? 'bg-white text-amber-700 shadow-sm' : 'text-stone-600 hover:text-stone-900'
+                  }`}
+                >
+                  {tab === 'add'
+                    ? 'Add'
+                    : tab === 'remove'
+                      ? 'Remove'
+                      : tab === 'import'
+                        ? 'Import'
+                        : tab === 'data'
+                          ? 'Data'
+                          : 'Games'}
+                </button>
+              ))}
+            </div>
 
               {/* Feedback */}
               {success && (
@@ -656,8 +615,7 @@ export function GuestManagement({ guests, onGuestAdded, onGuestRemoved, onCSVImp
                   handleWipeBestDressed={handleWipeBestDressed}
                 />
               )}
-            </div>
-          )}
+          </div>
         </div>
       </div>
     </div>

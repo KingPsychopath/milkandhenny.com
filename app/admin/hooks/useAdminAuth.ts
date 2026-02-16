@@ -1,11 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useRef, useSyncExternalStore } from "react";
-import { getStored, removeStored, setStored, type StorageKeyName } from "@/lib/client/storage";
-
-type SignInResult =
-  | { ok: true; token: string }
-  | { ok: false; error: string; status?: number };
+import { useCallback, useRef } from "react";
 
 type EnsureStepUpResult =
   | { ok: true; token: string }
@@ -13,63 +8,17 @@ type EnsureStepUpResult =
   | { ok: false; error: string };
 
 /**
- * Shared client-side admin session + step-up helpers.
+ * Shared client-side admin step-up helpers.
  *
  * Used by:
  * - `app/admin/AdminDashboard.tsx`
  * - guest management (admin-only actions from `/guestlist`)
  */
 
-const STORAGE_CHANGE_EVENT = "mah:storage-change";
-
-function emitStorageChange() {
-  if (typeof window === "undefined") return;
-  window.dispatchEvent(new Event(STORAGE_CHANGE_EVENT));
-}
-
-function useHydrated(): boolean {
-  // Server snapshot: false (matches SSR HTML).
-  // Client snapshot: true (flips immediately after hydration without effects).
-  return useSyncExternalStore(
-    () => () => {},
-    () => true,
-    () => false
-  );
-}
-
-function useStoredString(name: StorageKeyName): string {
-  return useSyncExternalStore(
-    (onStoreChange) => {
-      if (typeof window === "undefined") return () => {};
-      const handler = () => onStoreChange();
-      window.addEventListener("storage", handler);
-      window.addEventListener(STORAGE_CHANGE_EVENT, handler);
-      return () => {
-        window.removeEventListener("storage", handler);
-        window.removeEventListener(STORAGE_CHANGE_EVENT, handler);
-      };
-    },
-    () => getStored(name) ?? "",
-    () => ""
-  );
-}
-
 export function useAdminAuth() {
-  const mounted = useHydrated();
-  const adminToken = useStoredString("adminToken");
-
   // Step-up is operational state; keep it in refs to avoid re-render churn.
   const stepUpTokenRef = useRef<string>("");
   const stepUpExpiryMsRef = useRef<number>(0);
-
-  const isAuthed = useMemo(() => !!adminToken, [adminToken]);
-
-  const signOut = useCallback(() => {
-    removeStored("adminToken");
-    emitStorageChange();
-    stepUpTokenRef.current = "";
-    stepUpExpiryMsRef.current = 0;
-  }, []);
 
   const authFetch = useCallback(
     async (url: string, options: RequestInit = {}) => {
@@ -77,45 +26,17 @@ export function useAdminAuth() {
         ...options,
         headers: {
           ...(options.headers as Record<string, string>),
-          Authorization: `Bearer ${adminToken}`,
         },
       });
       if (res.status === 401) {
-        signOut();
+        // Auth is cookie-based (httpOnly). If the cookie is missing/expired,
+        // bounce back to the server auth gate.
+        window.location.assign("/admin");
       }
       return res;
     },
-    [adminToken, signOut]
+    []
   );
-
-  const signIn = useCallback(async (password: string): Promise<SignInResult> => {
-    const trimmed = password.trim();
-    if (!trimmed) return { ok: false, error: "Password required" };
-
-    try {
-      const res = await fetch("/api/admin/verify", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ password: trimmed }),
-      });
-
-      const data = await res.json().catch(() => ({}));
-      const token = typeof data.token === "string" ? (data.token as string) : "";
-      if (!res.ok || !token) {
-        return {
-          ok: false,
-          status: res.status,
-          error: res.status === 429 ? "Too many attempts. Please try again in 15 minutes." : "Incorrect password",
-        };
-      }
-
-      setStored("adminToken", token);
-      emitStorageChange();
-      return { ok: true, token };
-    } catch {
-      return { ok: false, error: "Connection error" };
-    }
-  }, []);
 
   const ensureStepUpToken = useCallback(async (): Promise<EnsureStepUpResult> => {
     if (stepUpTokenRef.current && Date.now() < stepUpExpiryMsRef.current - 5_000) {
@@ -154,12 +75,7 @@ export function useAdminAuth() {
   );
 
   return {
-    mounted,
-    adminToken,
-    isAuthed,
     authFetch,
-    signIn,
-    signOut,
     ensureStepUpToken,
     withStepUpHeaders,
   };

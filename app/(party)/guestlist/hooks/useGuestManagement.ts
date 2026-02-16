@@ -25,9 +25,7 @@ export function useGuestManagement({ guests, onGuestAdded, onGuestRemoved, onCSV
   const modalRef = useFocusTrap<HTMLDivElement>(isOpen);
 
   /* ─── Auth ─── */
-  const [password, setPassword] = useState('');
-  const [passwordError, setPasswordError] = useState<string | false>(false);
-  const { isAuthed, authFetch, signIn, ensureStepUpToken: ensureStepUpTokenResult, withStepUpHeaders } = useAdminAuth();
+  const { authFetch, ensureStepUpToken: ensureStepUpTokenResult, withStepUpHeaders } = useAdminAuth();
 
   const ensureStepUpToken = useCallback(async (): Promise<string | null> => {
     const result = await ensureStepUpTokenResult();
@@ -103,10 +101,10 @@ export function useGuestManagement({ guests, onGuestAdded, onGuestRemoved, onCSV
   useEscapeKey(closeModal, isOpen);
 
   useEffect(() => {
-    if (activeTab === 'games' && isAuthed) {
+    if (activeTab === 'games') {
       fetchBestDressedData();
     }
-  }, [activeTab, isAuthed]);
+  }, [activeTab]);
 
   /* ─── Handlers ─── */
 
@@ -116,23 +114,8 @@ export function useGuestManagement({ guests, onGuestAdded, onGuestRemoved, onCSV
 
   function closeModal() {
     setIsOpen(false);
-    setPassword('');
-    setPasswordError(false);
     setError(null);
     setSuccess(null);
-  }
-
-  async function handlePasswordSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    setPasswordError(false);
-    const trimmedPassword = password.trim();
-    try {
-      const result = await signIn(trimmedPassword);
-      if (result.ok) return;
-      setPasswordError(result.error);
-    } catch {
-      setPasswordError('Connection error. Please try again.');
-    }
   }
 
   async function handleAdd(e: React.FormEvent) {
@@ -344,12 +327,8 @@ export function useGuestManagement({ guests, onGuestAdded, onGuestRemoved, onCSV
     closeModal,
     modalRef,
     // Auth
-    isAuthenticated: isAuthed,
-    password,
-    passwordError,
-    setPassword,
-    setPasswordError,
-    handlePasswordSubmit,
+    // Admin-only actions will redirect to `/admin` if the cookie session is missing.
+    isAuthenticated: true,
     // Tabs
     activeTab,
     setActiveTab,

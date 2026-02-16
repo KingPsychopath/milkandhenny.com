@@ -14,7 +14,17 @@ Authentication, protections, rate limiting, and what to do when credentials leak
 
 All gates are env vars, never in the client bundle. Set in Vercel and `.env.local`.
 
-Verify endpoints issue short-lived JWTs (role-based TTLs). Clients store tokens in `sessionStorage` (not raw credentials), so the browser clears them when the tab closes.
+Verify endpoints issue short-lived JWTs (role-based TTLs). The app stores role JWTs in **httpOnly cookies** by default (not raw credentials), so:
+
+- Server Components / Server Actions can authenticate
+- client code cannot read the JWT (XSS hardening)
+
+Notes:
+
+- API routes still accept `Authorization: Bearer <token>` for CLI/tools and explicit callers.
+- The upload dashboard still uses a client-stored token for presign/finalize calls (client-driven flow).
+
+See also: [storage-and-auth.md](./storage-and-auth.md) for the "cookies vs localStorage" mental model and feature-by-feature mapping.
 
 Destructive admin actions require **step-up** re-auth (`POST /api/admin/step-up`) and include `x-admin-step-up` on the request.
 
@@ -41,7 +51,7 @@ What does *not* revoke existing tokens:
 
 Notes:
 
-- The admin dashboard label `signed out` corresponds to **token-version invalidation** (not "we observed the user clicked logout"). A normal sign-out is usually just clearing `sessionStorage` client-side.
+- The admin dashboard label `signed out` corresponds to **token-version invalidation** (not "we observed the user clicked logout"). A normal sign-out is usually clearing the auth cookie client-side (or it expiring).
 - Token versions are for **session invalidation**, not API versioning. They do not create `/v1` vs `/v2` endpoints.
 
 ### Auth operations (admin-only)
@@ -51,7 +61,7 @@ These endpoints are intended for operational control and incident response.
 | Operation | Endpoint | Notes |
 |----------|----------|-------|
 | Admin login (issue JWT) | `POST /api/admin/verify` | Returns `{ token }` on success |
-| Step-up token | `POST /api/admin/step-up` | Requires `Authorization: Bearer <adminJWT>` + body `{ password }`. Returns short-lived step-up token |
+| Step-up token | `POST /api/admin/step-up` | Requires an admin session (cookie or `Authorization: Bearer <adminJWT>`) + body `{ password }`. Returns short-lived step-up token |
 | List token sessions | `GET /api/admin/tokens/sessions` | Redis-backed list of issued sessions by `jti` with status + expiry |
 | Revoke one session | `DELETE /api/admin/tokens/sessions/{jti}` | Requires `x-admin-step-up` header |
 | Revoke many sessions | `POST /api/admin/tokens/revoke` | Body `{ role: "admin" \| "staff" \| "upload" \| "all" }` + requires `x-admin-step-up` |
@@ -208,6 +218,6 @@ These are the highest-impact credentials — they grant read/write/delete access
 
 - **No secrets in code.** Every credential is an env var — rotation is config-only.
 - **No secrets in the client bundle.** `NEXT_PUBLIC_*` vars contain only public URLs, not secrets.
-- **Token-based auth.** Short-lived JWTs (role-based TTLs), stored in `sessionStorage`, never raw credentials.
+- **Token-based auth.** Short-lived JWTs (role-based TTLs), stored in httpOnly cookies by default, never raw credentials.
 - **Layered storage.** R2 and KV credentials are independent — leaking one doesn't compromise the other.
 - **CDN buffer.** Cached content continues serving even during a rotation window.

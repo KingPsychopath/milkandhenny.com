@@ -18,15 +18,18 @@ const MIN_GUEST_FETCH_GAP_MS = 2_000;
 /**
  * Hook for guest list state with real-time polling.
  *
- * Requires an auth token (JWT) — staff or admin. API routes accept admin as a superset.
- * All calls include `Authorization: Bearer {token}`.
- * Skips fetching when no token is provided (pre-auth state).
- *
  * KV-efficient: polls at 10s when focused, 60s when backgrounded.
  */
-export function useGuests(authToken: string, onUnauthorized?: () => void) {
-  const [guests, setGuests] = useState<Guest[]>([]);
-  const [loading, setLoading] = useState(true);
+type UseGuestsOptions = {
+  initialGuests?: Guest[];
+  onUnauthorized?: () => void;
+};
+
+export function useGuests(opts: UseGuestsOptions = {}) {
+  const { initialGuests, onUnauthorized } = opts;
+
+  const [guests, setGuests] = useState<Guest[]>(() => initialGuests ?? []);
+  const [loading, setLoading] = useState(() => initialGuests == null);
   const [error, setError] = useState<string | null>(null);
   const consecutiveErrors = useRef(0);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -37,18 +40,14 @@ export function useGuests(authToken: string, onUnauthorized?: () => void) {
     onUnauthorizedRef.current = onUnauthorized;
   }, [onUnauthorized]);
 
-  /** Build auth headers from the stored token. */
-  const authHeaders = useCallback(
-    (extra?: Record<string, string>): Record<string, string> => ({
-      ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
-      ...extra,
-    }),
-    [authToken]
-  );
+  useEffect(() => {
+    if (initialGuests) {
+      setGuests(initialGuests);
+      setLoading(false);
+    }
+  }, [initialGuests]);
 
   const fetchGuests = useCallback(async () => {
-    if (!authToken) return; // Skip when not yet authenticated
-
     const now = Date.now();
     if (now - lastGuestFetchAtMs.current < MIN_GUEST_FETCH_GAP_MS) return;
     lastGuestFetchAtMs.current = now;
@@ -56,7 +55,7 @@ export function useGuests(authToken: string, onUnauthorized?: () => void) {
     try {
       const res = await fetchWithRetry(
         '/api/guests',
-        { headers: authHeaders() },
+        {},
         { retries: 2, baseDelayMs: 500 }
       );
       if (res.status === 401) {
@@ -80,7 +79,7 @@ export function useGuests(authToken: string, onUnauthorized?: () => void) {
     } finally {
       setLoading(false);
     }
-  }, [authToken, authHeaders]);
+  }, []);
 
   /** Restart the polling interval with the given delay */
   const startPolling = useCallback(
@@ -92,11 +91,6 @@ export function useGuests(authToken: string, onUnauthorized?: () => void) {
   );
 
   useEffect(() => {
-    if (!authToken) {
-      setLoading(false);
-      return;
-    }
-
     fetchGuests();
     startPolling(POLL_ACTIVE_MS);
 
@@ -115,7 +109,7 @@ export function useGuests(authToken: string, onUnauthorized?: () => void) {
       if (intervalRef.current) clearInterval(intervalRef.current);
       document.removeEventListener('visibilitychange', onVisibilityChange);
     };
-  }, [authToken, fetchGuests, startPolling]);
+  }, [fetchGuests, startPolling]);
 
   const updateCheckIn = useCallback(
     async (id: string, checkedIn: boolean) => {
@@ -144,7 +138,7 @@ export function useGuests(authToken: string, onUnauthorized?: () => void) {
           '/api/guests',
           {
             method: 'POST',
-            headers: authHeaders({ 'Content-Type': 'application/json' }),
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ id, checkedIn }),
           },
           { retries: 3, baseDelayMs: 500 }
@@ -165,7 +159,7 @@ export function useGuests(authToken: string, onUnauthorized?: () => void) {
         setTimeout(() => setError(null), 3000);
       }
     },
-    [guests, authHeaders]
+    [guests]
   );
 
   return { guests, loading, error, updateCheckIn, refetch: fetchGuests };
