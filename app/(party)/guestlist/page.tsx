@@ -9,7 +9,7 @@ import { SearchBar } from './components/SearchBar';
 import { GuestList } from './components/GuestList';
 import { GuestStats } from './components/GuestStats';
 import { GuestManagement } from './components/GuestManagement';
-import { getStored, setStored } from '@/lib/client/storage';
+import { getStored, removeStored, setStored } from '@/lib/client/storage';
 
 /** Loading placeholder — same on server and initial client to avoid hydration mismatch. */
 function AuthLoadingPlaceholder() {
@@ -22,21 +22,42 @@ function AuthLoadingPlaceholder() {
 
 export default function GuestListPage() {
   const [mounted, setMounted] = useState(false);
-  const [staffToken, setStaffToken] = useState('');
+  const [authToken, setAuthToken] = useState('');
+  const [authTokenSource, setAuthTokenSource] = useState<'staff' | 'admin' | ''>('');
   const [pinInput, setPinInput] = useState('');
   const [pinError, setPinError] = useState<string | false>(false);
 
   useEffect(() => {
     const initTimer = window.setTimeout(() => {
-      setStaffToken(getStored("staffToken") ?? '');
+      const staff = getStored("staffToken") ?? '';
+      const admin = getStored("adminToken") ?? '';
+      if (staff) {
+        setAuthToken(staff);
+        setAuthTokenSource('staff');
+      } else if (admin) {
+        // Admin tokens are a superset of staff permissions for `/api/guests/*`.
+        setAuthToken(admin);
+        setAuthTokenSource('admin');
+      } else {
+        setAuthToken('');
+        setAuthTokenSource('');
+      }
       setMounted(true);
     }, 0);
     return () => window.clearTimeout(initTimer);
   }, []);
 
-  const isAuthenticated = !!staffToken;
+  const isAuthenticated = !!authToken;
 
-  const { guests, loading, error, updateCheckIn, refetch } = useGuests(staffToken);
+  const { guests, loading, error, updateCheckIn, refetch } = useGuests(authToken, () => {
+    // Expired/revoked tokens should drop back to the auth gate.
+    if (authTokenSource === 'staff') removeStored('staffToken');
+    if (authTokenSource === 'admin') removeStored('adminToken');
+    setAuthToken('');
+    setAuthTokenSource('');
+    setPinInput('');
+    setPinError(false);
+  });
   const { searchQuery, setSearchQuery, filter, setFilter, filteredGuests, searchStats } = useGuestSearch(guests);
 
   const handlePinSubmit = async (e: React.FormEvent) => {
@@ -51,7 +72,8 @@ export default function GuestListPage() {
       const data = await res.json().catch(() => ({}));
       if (res.ok && data.token) {
         setStored("staffToken", data.token);
-        setStaffToken(data.token);
+        setAuthToken(data.token);
+        setAuthTokenSource('staff');
       } else {
         setPinError(res.status === 429 ? 'Too many attempts. Try again in 15 minutes.' : 'Incorrect PIN');
         setPinInput('');

@@ -94,13 +94,42 @@ type ContentAuditResponse = {
 };
 
 type DebugResponse = {
+  status?: string;
+  timestamp?: string;
   environment: {
+    // Redis env wiring
+    hasRedisUrl: boolean;
+    hasRedisToken: boolean;
     redisConfigured: boolean;
+    redisReachable: boolean | null;
+    redisLatencyMs: number | null;
+    redisError: string | null;
+    source: "KV_REST_API_*" | "UPSTASH_REDIS_*" | "none";
+
     cronSecretConfigured: boolean;
+    cronWarning: string | null;
+
+    // R2/media wiring
+    r2PublicUrlConfigured: boolean;
+    r2WriteConfigured: boolean;
+
+    // Auth wiring (presence only; no secrets)
+    authSecretConfigured: boolean;
+    staffPinConfigured: boolean;
+    adminPasswordConfigured: boolean;
+    uploadPinConfigured: boolean;
+
+    // Runtime meta (safe)
+    nodeEnv: string;
+    vercelEnv: string | null;
+    vercelRegion: string | null;
+    vercelCommitSha: string | null;
+
     securityWarnings?: string[];
   };
-  data: {
-    error: string | null;
+  help?: {
+    forceReload?: string;
+    bootstrap?: string;
   };
 };
 
@@ -730,13 +759,41 @@ export function AdminDashboard() {
           <div className="border theme-border rounded-md p-3">
             <p className="theme-muted text-xs">redis status</p>
             <p className="text-lg">
-              {debugData?.environment.redisConfigured ? "ok" : "missing"}
+              {!debugData
+                ? "—"
+                : debugData.environment.redisConfigured
+                  ? (debugData.environment.redisReachable === false ? "error" : "ok")
+                  : "missing"}
+            </p>
+          </div>
+          <div className="border theme-border rounded-md p-3">
+            <p className="theme-muted text-xs">redis reachability</p>
+            <p className="text-sm">
+              {!debugData
+                ? "—"
+                : debugData.environment.redisReachable === null
+                  ? "unknown"
+                  : debugData.environment.redisReachable
+                    ? `ok${typeof debugData.environment.redisLatencyMs === "number" ? ` (${debugData.environment.redisLatencyMs}ms)` : ""}`
+                    : "failed"}
             </p>
           </div>
           <div className="border theme-border rounded-md p-3">
             <p className="theme-muted text-xs">cron secret</p>
             <p className="text-lg">
               {debugData?.environment.cronSecretConfigured ? "ok" : "missing"}
+            </p>
+          </div>
+          <div className="border theme-border rounded-md p-3">
+            <p className="theme-muted text-xs">r2 public url</p>
+            <p className="text-lg">
+              {debugData?.environment.r2PublicUrlConfigured ? "ok" : "missing"}
+            </p>
+          </div>
+          <div className="border theme-border rounded-md p-3">
+            <p className="theme-muted text-xs">r2 write creds</p>
+            <p className="text-lg">
+              {debugData?.environment.r2WriteConfigured ? "ok" : "missing"}
             </p>
           </div>
         </div>
@@ -1251,9 +1308,9 @@ export function AdminDashboard() {
           </div>
         </div>
 
-        {debugData?.data.error ? (
+        {debugData?.environment.redisError ? (
           <p className="font-mono text-xs text-[var(--prose-hashtag)]">
-            debug warning: {debugData.data.error}
+            debug warning: {debugData.environment.redisError}
           </p>
         ) : null}
         {statusMessage ? (

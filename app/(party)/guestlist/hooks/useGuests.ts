@@ -27,12 +27,13 @@ async function fetchWithRetry(url: string, options?: RequestInit, retries = 2): 
 /**
  * Hook for guest list state with real-time polling.
  *
- * Requires a staff token (JWT) — all API calls include `Authorization: Bearer {token}`.
+ * Requires an auth token (JWT) — staff or admin. API routes accept admin as a superset.
+ * All calls include `Authorization: Bearer {token}`.
  * Skips fetching when no token is provided (pre-auth state).
  *
  * KV-efficient: polls at 5s when focused, 30s when backgrounded.
  */
-export function useGuests(authToken: string) {
+export function useGuests(authToken: string, onUnauthorized?: () => void) {
   const [guests, setGuests] = useState<Guest[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -55,6 +56,10 @@ export function useGuests(authToken: string) {
       const res = await fetchWithRetry('/api/guests', {
         headers: authHeaders(),
       });
+      if (res.status === 401) {
+        onUnauthorized?.();
+        return;
+      }
       if (!res.ok) throw new Error('Failed to fetch guests');
       const data = await res.json();
       if (Array.isArray(data)) {
@@ -72,7 +77,7 @@ export function useGuests(authToken: string) {
     } finally {
       setLoading(false);
     }
-  }, [authToken, authHeaders]);
+  }, [authToken, authHeaders, onUnauthorized]);
 
   /** Restart the polling interval with the given delay */
   const startPolling = useCallback(
@@ -142,6 +147,10 @@ export function useGuests(authToken: string) {
           3
         );
 
+        if (res.status === 401) {
+          onUnauthorized?.();
+          return;
+        }
         if (!res.ok) {
           setGuests(previousGuests);
           setError('Check-in failed - please try again');
@@ -153,7 +162,7 @@ export function useGuests(authToken: string) {
         setTimeout(() => setError(null), 3000);
       }
     },
-    [guests, authHeaders]
+    [guests, authHeaders, onUnauthorized]
   );
 
   return { guests, loading, error, updateCheckIn, refetch: fetchGuests };

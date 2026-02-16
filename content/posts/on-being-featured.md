@@ -1,7 +1,7 @@
 ---
 title: "Featured thoughts are worth a second look"
 date: "2026-02-13"
-subtitle: "A small test of what it means to be chosen"
+subtitle: "A small look at what it means to be chosen"
 "image": "blog/on-being-featured/dsc00003.webp"
 featured: true
 ---
