@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/auth";
 import { getRedis } from "@/lib/redis";
-import { apiError } from "@/lib/api-error";
+import { apiErrorFromRequest } from "@/lib/api-error";
 
 type SessionRecord = {
   jti: string;
@@ -87,7 +87,7 @@ export async function GET(request: NextRequest) {
       currentTv,
     });
   } catch (error) {
-    return apiError("admin.tokens.sessions", "Failed to list token sessions", error);
+    return apiErrorFromRequest(request, "admin.tokens.sessions", "Failed to list token sessions", error);
   }
 }
 

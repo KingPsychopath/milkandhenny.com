@@ -20,9 +20,33 @@ import type { NextRequest } from 'next/server';
  * Cost: $0 — CDN caching is included in Vercel Hobby.
  */
 export function proxy(request: NextRequest) {
-  const response = NextResponse.next();
+  const pathname = request.nextUrl.pathname;
 
-  if (request.nextUrl.pathname.startsWith('/t/')) {
+  // Request correlation id for observability. Next doesn't allow both `middleware.ts`
+  // and `proxy.ts`, so we keep this logic here.
+  let response: NextResponse;
+  if (pathname.startsWith('/api/')) {
+    const fromClient = request.headers.get('x-request-id');
+    const fromVercel = request.headers.get('x-vercel-id');
+    const requestId =
+      (fromClient && fromClient.trim()) ||
+      (fromVercel && fromVercel.trim()) ||
+      crypto.randomUUID();
+
+    const requestHeaders = new Headers(request.headers);
+    requestHeaders.set('x-request-id', requestId);
+
+    response = NextResponse.next({
+      request: { headers: requestHeaders },
+    });
+
+    // Echo back so clients can report it.
+    response.headers.set('x-request-id', requestId);
+  } else {
+    response = NextResponse.next();
+  }
+
+  if (pathname.startsWith('/t/')) {
     // Cache at Vercel CDN edge (not in browser — browser always gets fresh on hard refresh)
     response.headers.set(
       'CDN-Cache-Control',
@@ -36,5 +60,5 @@ export function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/t/:path*'],
+  matcher: ['/t/:path*', '/api/:path*'],
 };

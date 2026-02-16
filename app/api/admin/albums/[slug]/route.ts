@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdminStepUp, requireAuth } from "@/lib/auth";
 import { deleteAlbum, isSafeAlbumSlug } from "@/lib/media/admin-albums";
-import { apiError } from "@/lib/api-error";
+import { apiErrorFromRequest } from "@/lib/api-error";
 
 type RouteContext = {
   params: Promise<{ slug: string }>;
@@ -25,6 +25,8 @@ export async function DELETE(request: NextRequest, context: RouteContext) {
     }
     return NextResponse.json({ success: true, ...result });
   } catch (error) {
-    return apiError("admin.albums.delete", "Failed to delete album", error, { slug });
+    return apiErrorFromRequest(request, "admin.albums.delete", "Failed to delete album", error, {
+      slug,
+    });
   }
 }

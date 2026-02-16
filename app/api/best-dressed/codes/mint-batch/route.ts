@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/auth";
 import { getRedis } from "@/lib/redis";
-import { apiError } from "@/lib/api-error";
+import { apiErrorFromRequest } from "@/lib/api-error";
 import { randomBytes } from "crypto";
 
 const CODE_TTL_SECONDS = 6 * 60 * 60; // 6 hours
@@ -100,7 +100,12 @@ export async function POST(request: NextRequest) {
       expiresAt,
     });
   } catch (error) {
-    return apiError("best-dressed.codes.mint-batch", "Failed to mint vote codes", error);
+    return apiErrorFromRequest(
+      request,
+      "best-dressed.codes.mint-batch",
+      "Failed to mint vote codes",
+      error
+    );
   }
 }
 

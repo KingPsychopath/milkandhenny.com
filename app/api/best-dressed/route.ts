@@ -3,7 +3,7 @@ import { getGuests } from '@/lib/guests/kv-client';
 import { getAllGuestNames } from '@/lib/guests/utils';
 import { getRedis } from '@/lib/redis';
 import { getClientIp, requireAdminStepUp, requireAuth } from '@/lib/auth';
-import { apiError } from '@/lib/api-error';
+import { apiErrorFromRequest } from '@/lib/api-error';
 
 const VOTES_KEY = 'best-dressed:votes';
 const SESSION_KEY = 'best-dressed:session';
@@ -257,10 +257,7 @@ export async function GET(request: NextRequest) {
     if (isNew) attachVoterCookie(res, voterId);
     return res;
   } catch (error) {
-    return apiError('best-dressed.list', 'Failed to load voting data', error, {
-      requestId: request.headers.get("x-request-id") ?? null,
-      path: request.nextUrl.pathname,
-    });
+    return apiErrorFromRequest(request, 'best-dressed.list', 'Failed to load voting data', error);
   }
 }
 
@@ -406,10 +403,12 @@ export async function POST(request: NextRequest) {
     if (isNew) attachVoterCookie(res, voterId);
     return res;
   } catch (error) {
-    return apiError('best-dressed.vote', 'Failed to submit vote. Please try again.', error, {
-      requestId: request.headers.get("x-request-id") ?? null,
-      path: request.nextUrl.pathname,
-    });
+    return apiErrorFromRequest(
+      request,
+      'best-dressed.vote',
+      'Failed to submit vote. Please try again.',
+      error
+    );
   }
 }
 
@@ -436,9 +435,6 @@ export async function DELETE(request: NextRequest) {
       session: newSession,
     });
   } catch (error) {
-    return apiError('best-dressed.clear', 'Failed to clear votes', error, {
-      requestId: request.headers.get("x-request-id") ?? null,
-      path: request.nextUrl.pathname,
-    });
+    return apiErrorFromRequest(request, 'best-dressed.clear', 'Failed to clear votes', error);
   }
 }

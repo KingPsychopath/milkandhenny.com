@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/auth";
 import { getRedis } from "@/lib/redis";
-import { apiError } from "@/lib/api-error";
+import { apiErrorFromRequest } from "@/lib/api-error";
 
 const CODE_KEY_PREFIX = "best-dressed:code:";
 const CODE_INDEX_KEY = "best-dressed:code-index";
@@ -96,7 +96,8 @@ export async function POST(request: NextRequest) {
       scanned,
     });
   } catch (error) {
-    return apiError(
+    return apiErrorFromRequest(
+      request,
       "best-dressed.codes.revoke-all",
       "Failed to revoke vote codes",
       error

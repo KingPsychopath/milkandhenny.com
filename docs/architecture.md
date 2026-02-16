@@ -152,27 +152,27 @@ Page-specific personality lives **above** the footer line: icebreaker's consent 
 
 Two shared utilities for server-side errors and logs.
 
-**Mental model:** In a route handler catch block and need to return a 500? → **`apiError()`**. Server-side but only need to record something? → **`log`**. On the client? → Show `data.error` from the API.
+**Mental model:** In a route handler catch block and need to return a 500? → **`apiErrorFromRequest()`**. Server-side but only need to record something? → **`log`**. On the client? → Show `data.error` from the API.
 
 ### When to use what
 
 | Situation | Use | Where |
 |-----------|-----|--------|
-| API route catches an error, must return a response | `apiError()` | `app/api/**/*.ts` |
+| API route catches an error, must return a response | `apiErrorFromRequest()` | `app/api/**/*.ts` |
 | Server code needs to log something (no response) | `log.info` / `log.warn` / `log.error` | API routes, `lib/`, scripts |
 | Client shows a message to the user | Existing UI state (e.g. `setError(data.error)`) | Components, hooks |
 
 ### API routes — safe 500s
 
 ```ts
-import { apiError } from '@/lib/api-error';
+import { apiErrorFromRequest } from '@/lib/api-error';
 
 export async function POST(request: NextRequest) {
   try {
     // ... do work ...
     return NextResponse.json({ success: true });
   } catch (e) {
-    return apiError('myroute.action', 'Short user-facing message.', e, { id: someId });
+    return apiErrorFromRequest(request, 'myroute.action', 'Short user-facing message.', e, { id: someId });
   }
 }
 ```
@@ -180,8 +180,9 @@ export async function POST(request: NextRequest) {
 - **Scope** (first arg): dot-separated, e.g. `upload.transfer`, `guests.bootstrap`. Filter logs by scope in Vercel.
 - **Message** (second arg): what the client sees. No internal details.
 - **Context** (fourth arg, optional): ids, slugs, etc. — log entry only.
+- `apiErrorFromRequest()` automatically includes `requestId` (from `x-request-id`) and `path` in the log context.
 
-Use `NextResponse.json({ error: '...' }, { status: 400 })` for validation failures. Use `apiError` for unexpected failures (R2, Redis, etc.).
+Use `NextResponse.json({ error: '...' }, { status: 400 })` for validation failures. Use `apiErrorFromRequest` for unexpected failures (R2, Redis, etc.).
 
 ### Logging without a response
 

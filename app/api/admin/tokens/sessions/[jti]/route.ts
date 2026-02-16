@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdminStepUp, requireAuth } from "@/lib/auth";
 import { getRedis } from "@/lib/redis";
-import { apiError } from "@/lib/api-error";
+import { apiErrorFromRequest } from "@/lib/api-error";
 
 type RouteContext = {
   params: Promise<{ jti: string }>;
@@ -41,9 +41,13 @@ export async function DELETE(request: NextRequest, context: RouteContext) {
 
     return NextResponse.json({ success: true, jti: clean, ttlSeconds: ttl });
   } catch (error) {
-    return apiError("admin.tokens.sessions.revoke", "Failed to revoke session", error, {
-      jti: clean,
-    });
+    return apiErrorFromRequest(
+      request,
+      "admin.tokens.sessions.revoke",
+      "Failed to revoke session",
+      error,
+      { jti: clean }
+    );
   }
 }
 

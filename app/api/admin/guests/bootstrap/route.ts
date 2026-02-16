@@ -3,7 +3,7 @@ import { headers } from 'next/headers';
 import { parseCSV } from '@/lib/guests/csv-parser';
 import { bootstrapGuestsFromCsv } from '@/lib/guests/kv-client';
 import { requireAdminStepUp, requireAuth } from '@/lib/auth';
-import { apiError } from '@/lib/api-error';
+import { apiErrorFromRequest } from '@/lib/api-error';
 
 /** Resolve the origin from request headers (works on Vercel). */
 async function getBaseUrl(): Promise<string> {
@@ -38,7 +38,8 @@ export async function POST(request: NextRequest) {
     }
     return NextResponse.json(result.value);
   } catch (error) {
-    return apiError(
+    return apiErrorFromRequest(
+      request,
       'guests.bootstrap',
       'Bootstrap failed. Check that Redis is reachable and guests.csv is valid.',
       error
@@ -63,7 +64,12 @@ export async function DELETE(request: NextRequest) {
     }
     return NextResponse.json(result.value);
   } catch (error) {
-    return apiError('guests.reset', 'Reset failed. Check that Redis is reachable and guests.csv is valid.', error);
+    return apiErrorFromRequest(
+      request,
+      'guests.reset',
+      'Reset failed. Check that Redis is reachable and guests.csv is valid.',
+      error
+    );
   }
 }
 

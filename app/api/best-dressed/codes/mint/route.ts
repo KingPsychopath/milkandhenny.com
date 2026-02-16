@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/auth";
 import { getRedis } from "@/lib/redis";
-import { apiError } from "@/lib/api-error";
+import { apiErrorFromRequest } from "@/lib/api-error";
 import { randomBytes } from "crypto";
 
 const CODE_TTL_SECONDS = 6 * 60 * 60; // 6 hours
@@ -80,7 +80,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ error: "Failed to mint code (try again)" }, { status: 503 });
   } catch (error) {
-    return apiError("best-dressed.codes.mint", "Failed to mint vote code", error);
+    return apiErrorFromRequest(request, "best-dressed.codes.mint", "Failed to mint vote code", error);
   }
 }
 

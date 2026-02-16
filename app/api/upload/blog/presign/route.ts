@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/auth";
 import { presignPutUrl, isConfigured, listObjects } from "@/lib/r2";
-import { apiError } from "@/lib/api-error";
+import { apiErrorFromRequest } from "@/lib/api-error";
 import { getMimeType, isProcessableImage } from "@/lib/media/processing";
 import { sanitiseStem, toR2Filename } from "@/lib/blog-upload";
 import { getFileKind } from "@/lib/media/processing";
@@ -154,7 +154,8 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ success: true, urls, skipped });
   } catch (e) {
-    return apiError(
+    return apiErrorFromRequest(
+      request,
       "upload.blog.presign",
       "Failed to generate upload URLs. Please try again.",
       e,

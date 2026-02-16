@@ -19,7 +19,8 @@ What to monitor, where to monitor it (given our infra), and which alerts are wor
 ## What we already have (good baseline)
 
 - **Structured server logs** via `lib/logger.ts` (JSON lines in prod; easy filtering by `scope`).
-- **Safe 500s** via `lib/api-error.ts` (logs real error server-side, returns user-safe message).
+- **Safe 500s** via `lib/api-error.ts` (`apiErrorFromRequest()` logs the real error server-side, returns a user-safe message).
+- **Request correlation**: every `/api/*` response includes `x-request-id` (added in `proxy.ts`).
 - **Debug/health snapshot** at `GET /api/debug` (admin-only; includes Redis reachability + latency).
 - **Known cost pressure point**: guestlist polling / KV commands (see `docs/operations.md` + postmortem).
 
@@ -70,11 +71,12 @@ This means the *minimum viable observability* is mostly “wire alerts to the lo
 Provider dashboards are great, but they don’t replace “someone hit the site from the outside”.
 
 - **Public page check**: monitor `/party` (or `/`) for a 200.
-- **API check**: monitor `GET /api/health` every 1–5 minutes.
+- **API check**: monitor `GET /api/health` every 5 minutes.
 
 Notes:
 - `GET /api/debug` is **admin-only** and returns environment detail. It’s not suitable for a third-party uptime probe.
 - `GET /api/health` intentionally avoids Redis/R2 checks so frequent monitoring doesn’t create KV commands (and it doesn’t leak infra details).
+- Health checks still create Vercel **function invocations**. On Hobby, prefer a 5-minute interval unless you have a reason to be more aggressive.
 
 ---
 
@@ -86,7 +88,7 @@ Recommended alert queries (conceptual):
 
 - **Any server error**: `level=error` grouped by `scope`
 - **Spike in guestlist failures**: `scope="guests.*"` + error count threshold
-- **Cron failures**: `scope="cron.cleanup"` + error OR missing-success window
+- **Cron failures**: `scope="cron.cleanup-transfers"` + error OR missing-success window
 - **Auth anomalies**: repeated failures on `admin.verify`, `guests.verify-staff-pin`, `upload.verify-pin`
 
 Because logs are structured, you can alert on *exact scopes* instead of brittle string matches.
@@ -104,7 +106,6 @@ Because logs are structured, you can alert on *exact scopes* instead of brittle 
 
 ## Gaps / follow-ups (small, high leverage)
 
-- Add a **public** `GET /api/health` endpoint for uptime checks (no secrets, no env dump).
-- Ensure cron logs a **single success line** with counts (deleted objects, expired ids) so “missing cron” can be detected reliably from logs.
-- Consider adding a tiny “request duration” measurement for the most important routes (`/api/guests`, `/api/best-dressed`) if you want latency alerts without full tracing.
+- Add a log drain + alerts (Axiom/Datadog/Better Stack) so you can alert on `scope` + `level=error`.
+- Consider adding lightweight route timing for the busiest endpoints (`/api/guests`, `/api/best-dressed`) if you want latency alerts without full tracing.
 

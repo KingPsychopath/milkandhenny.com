@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getRedis } from "@/lib/redis";
 import { requireAuth } from "@/lib/auth";
 import { isConfigured, listPrefixes, listObjects, deleteObjects } from "@/lib/r2";
-import { apiError } from "@/lib/api-error";
+import { apiErrorFromRequest } from "@/lib/api-error";
 import { log } from "@/lib/logger";
 
 /**
@@ -103,8 +103,7 @@ export async function GET(request: NextRequest) {
       timestamp: new Date().toISOString(),
     });
   } catch (error) {
-    return apiError("cron.cleanup-transfers", "Cron cleanup failed", error, {
-      requestId,
+    return apiErrorFromRequest(request, "cron.cleanup-transfers", "Cron cleanup failed", error, {
       durationMs: Date.now() - startedAtMs,
     });
   }

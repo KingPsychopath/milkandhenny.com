@@ -6,7 +6,7 @@ import {
   revokeRoleTokens,
   type RevocableRole,
 } from "@/lib/auth";
-import { apiError } from "@/lib/api-error";
+import { apiErrorFromRequest } from "@/lib/api-error";
 
 type RevokeBody = {
   role?: RevocableRole | "all";
@@ -55,6 +55,6 @@ export async function POST(request: NextRequest) {
       timestamp: new Date().toISOString(),
     });
   } catch (error) {
-    return apiError("admin.tokens.revoke", "Failed to revoke tokens", error);
+    return apiErrorFromRequest(request, "admin.tokens.revoke", "Failed to revoke tokens", error);
   }
 }

@@ -5,7 +5,7 @@ import { requireAuth } from "@/lib/auth";
 import { getAllSlugs } from "@/lib/blog";
 import { isConfigured, listObjects } from "@/lib/r2";
 import { validateAllAlbums } from "@/lib/media/albums";
-import { apiError } from "@/lib/api-error";
+import { apiErrorFromRequest } from "@/lib/api-error";
 
 const POSTS_DIR = path.join(process.cwd(), "content/posts");
 const R2_PREFIX = "blog/";
@@ -137,6 +137,6 @@ export async function GET(request: NextRequest) {
       auditedAt: new Date().toISOString(),
     });
   } catch (error) {
-    return apiError("admin.content-audit", "Failed to run content audit", error);
+    return apiErrorFromRequest(request, "admin.content-audit", "Failed to run content audit", error);
   }
 }

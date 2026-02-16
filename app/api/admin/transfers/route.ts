@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/auth";
 import { listAdminTransfers } from "@/lib/admin-transfers";
-import { apiError } from "@/lib/api-error";
+import { apiErrorFromRequest } from "@/lib/api-error";
 
 export async function GET(request: NextRequest) {
   const authErr = await requireAuth(request, "admin");
@@ -11,6 +11,6 @@ export async function GET(request: NextRequest) {
     const transfers = await listAdminTransfers();
     return NextResponse.json({ transfers });
   } catch (error) {
-    return apiError("admin.transfers.list", "Failed to load transfers", error);
+    return apiErrorFromRequest(request, "admin.transfers.list", "Failed to load transfers", error);
   }
 }

@@ -12,6 +12,7 @@
 
 import { NextResponse } from 'next/server';
 import { log } from './logger';
+import type { NextRequest } from 'next/server';
 
 /**
  * Build a safe 500 JSON response. Logs the real error, returns a clean message.
@@ -31,4 +32,21 @@ export function apiError(
 ): NextResponse {
   log.error(scope, message, context, err);
   return NextResponse.json({ error: message }, { status });
+}
+
+/**
+ * Same as `apiError`, but automatically attaches correlation context from the request.
+ * Use this in API route catch blocks.
+ */
+export function apiErrorFromRequest(
+  request: NextRequest,
+  scope: string,
+  message: string,
+  err?: unknown,
+  context?: Record<string, unknown>,
+  status = 500
+): NextResponse {
+  const requestId = request.headers.get('x-request-id') ?? null;
+  const path = request.nextUrl?.pathname ?? null;
+  return apiError(scope, message, err, { requestId, path, ...(context ?? {}) }, status);
 }

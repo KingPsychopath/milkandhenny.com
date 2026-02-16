@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireAdminStepUp, requireAuth } from "@/lib/auth";
 import { getRedis } from "@/lib/redis";
 import { isConfigured, listObjects, deleteObjects } from "@/lib/r2";
-import { apiError } from "@/lib/api-error";
+import { apiErrorFromRequest } from "@/lib/api-error";
 
 /**
  * Hard reset for transfers: deletes all transfer files + transfer metadata.
@@ -44,6 +44,6 @@ export async function POST(request: NextRequest) {
       timestamp: new Date().toISOString(),
     });
   } catch (error) {
-    return apiError("admin.transfers.nuke", "Failed to nuke transfers", error);
+    return apiErrorFromRequest(request, "admin.transfers.nuke", "Failed to nuke transfers", error);
   }
 }

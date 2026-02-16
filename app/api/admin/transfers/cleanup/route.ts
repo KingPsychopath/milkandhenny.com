@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireAdminStepUp, requireAuth } from "@/lib/auth";
 import { getRedis } from "@/lib/redis";
 import { isConfigured, listPrefixes, listObjects, deleteObjects } from "@/lib/r2";
-import { apiError } from "@/lib/api-error";
+import { apiErrorFromRequest } from "@/lib/api-error";
 
 /**
  * On-demand admin cleanup for expired/orphaned transfers.
@@ -69,6 +69,11 @@ export async function POST(request: NextRequest) {
       timestamp: new Date().toISOString(),
     });
   } catch (error) {
-    return apiError("admin.transfers.cleanup", "Failed to run transfer cleanup", error);
+    return apiErrorFromRequest(
+      request,
+      "admin.transfers.cleanup",
+      "Failed to run transfer cleanup",
+      error
+    );
   }
 }

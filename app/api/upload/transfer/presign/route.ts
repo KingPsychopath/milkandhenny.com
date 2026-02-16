@@ -11,7 +11,7 @@ import {
   MAX_TRANSFER_TOTAL_BYTES,
 } from "@/lib/transfers";
 import { getMimeType } from "@/lib/media/processing";
-import { apiError } from "@/lib/api-error";
+import { apiErrorFromRequest } from "@/lib/api-error";
 import { isSafeTransferFilename } from "@/lib/transfer-upload";
 
 type FileEntry = { name: string; size: number; type?: string };
@@ -109,7 +109,8 @@ export async function POST(request: NextRequest) {
       urls,
     });
   } catch (e) {
-    return apiError(
+    return apiErrorFromRequest(
+      request,
       "upload.presign",
       "Failed to generate upload URLs. Please try again.",
       e,

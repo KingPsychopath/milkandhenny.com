@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdminStepUp, requireAuth } from "@/lib/auth";
 import { adminDeleteTransfer, isSafeTransferId } from "@/lib/admin-transfers";
-import { apiError } from "@/lib/api-error";
+import { apiErrorFromRequest } from "@/lib/api-error";
 
 type RouteContext = {
   params: Promise<{ id: string }>;
@@ -25,6 +25,8 @@ export async function DELETE(request: NextRequest, context: RouteContext) {
     }
     return NextResponse.json({ success: true, ...result });
   } catch (error) {
-    return apiError("admin.transfers.delete", "Failed to delete transfer", error, { id });
+    return apiErrorFromRequest(request, "admin.transfers.delete", "Failed to delete transfer", error, {
+      id,
+    });
   }
 }

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/auth";
 import { getRedis } from "@/lib/redis";
-import { apiError } from "@/lib/api-error";
+import { apiErrorFromRequest } from "@/lib/api-error";
 
 const OPEN_UNTIL_KEY = "best-dressed:open-until";
 const MAX_MINUTES = 120;
@@ -48,7 +48,12 @@ export async function GET(request: NextRequest) {
       secondsRemaining,
     });
   } catch (error) {
-    return apiError("best-dressed.voting.open.get", "Failed to read voting window", error);
+    return apiErrorFromRequest(
+      request,
+      "best-dressed.voting.open.get",
+      "Failed to read voting window",
+      error
+    );
   }
 }
 
@@ -107,7 +112,12 @@ export async function POST(request: NextRequest) {
       secondsRemaining,
     });
   } catch (error) {
-    return apiError("best-dressed.voting.open", "Failed to set voting window", error);
+    return apiErrorFromRequest(
+      request,
+      "best-dressed.voting.open",
+      "Failed to set voting window",
+      error
+    );
   }
 }
 

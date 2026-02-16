@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/auth";
 import { isSafeAlbumSlug, setAlbumCover } from "@/lib/media/admin-albums";
-import { apiError } from "@/lib/api-error";
+import { apiErrorFromRequest } from "@/lib/api-error";
 
 type RouteContext = {
   params: Promise<{ slug: string }>;
@@ -43,6 +43,12 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     if (msg === "Album not found") {
       return NextResponse.json({ error: msg }, { status: 404 });
     }
-    return apiError("admin.albums.cover", "Failed to set album cover", error, { slug });
+    return apiErrorFromRequest(
+      request,
+      "admin.albums.cover",
+      "Failed to set album cover",
+      error,
+      { slug }
+    );
   }
 }

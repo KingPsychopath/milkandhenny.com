@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/auth";
-import { apiError } from "@/lib/api-error";
+import { apiErrorFromRequest } from "@/lib/api-error";
 import { deleteObject, downloadBuffer, isConfigured, uploadBuffer } from "@/lib/r2";
 import { isProcessableImage, processToWebP } from "@/lib/media/processing";
 import { toMarkdownSnippet } from "@/lib/blog-upload";
@@ -143,7 +143,8 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ uploaded, skipped });
   } catch (e) {
-    return apiError(
+    return apiErrorFromRequest(
+      request,
       "upload.blog.finalize",
       "Failed to finalize blog upload. Files may have uploaded but could not be processed.",
       e,
