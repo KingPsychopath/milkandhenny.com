@@ -2,28 +2,18 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Guest } from '@/lib/guests/types';
+import { fetchWithRetry } from '@/lib/http/fetch-with-retry';
 
 /** Poll interval when the tab is focused (ms) */
-// In dev, Next logs every request which gets noisy; keep prod snappy.
-const POLL_ACTIVE_MS = process.env.NODE_ENV === 'development' ? 10_000 : 5_000;
+// This hits KV on every poll. 10s still feels "live" but halves read volume vs 5s.
+const POLL_ACTIVE_MS = 10_000;
 
 /** Poll interval when the tab is in the background (ms) — saves KV commands */
-const POLL_BACKGROUND_MS = process.env.NODE_ENV === 'development' ? 60_000 : 30_000;
+const POLL_BACKGROUND_MS = 60_000;
 
-/** Fetch with automatic retry for resilience */
-async function fetchWithRetry(url: string, options?: RequestInit, retries = 2): Promise<Response> {
-  for (let i = 0; i <= retries; i++) {
-    try {
-      const res = await fetch(url, options);
-      if (res.ok || i === retries) return res;
-      await new Promise((r) => setTimeout(r, Math.pow(2, i) * 500));
-    } catch (err) {
-      if (i === retries) throw err;
-      await new Promise((r) => setTimeout(r, Math.pow(2, i) * 500));
-    }
-  }
-  throw new Error('Fetch failed after retries');
-}
+// Absolute safety net: even if someone reintroduces a render-loop regression,
+// never allow guest polling to hammer KV at ~1req/sec.
+const MIN_GUEST_FETCH_GAP_MS = 2_000;
 
 /**
  * Hook for guest list state with real-time polling.
@@ -32,7 +22,7 @@ async function fetchWithRetry(url: string, options?: RequestInit, retries = 2): 
  * All calls include `Authorization: Bearer {token}`.
  * Skips fetching when no token is provided (pre-auth state).
  *
- * KV-efficient: polls at 5s when focused, 30s when backgrounded.
+ * KV-efficient: polls at 10s when focused, 60s when backgrounded.
  */
 export function useGuests(authToken: string, onUnauthorized?: () => void) {
   const [guests, setGuests] = useState<Guest[]>([]);
@@ -40,6 +30,12 @@ export function useGuests(authToken: string, onUnauthorized?: () => void) {
   const [error, setError] = useState<string | null>(null);
   const consecutiveErrors = useRef(0);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const onUnauthorizedRef = useRef<(() => void) | undefined>(onUnauthorized);
+  const lastGuestFetchAtMs = useRef(0);
+
+  useEffect(() => {
+    onUnauthorizedRef.current = onUnauthorized;
+  }, [onUnauthorized]);
 
   /** Build auth headers from the stored token. */
   const authHeaders = useCallback(
@@ -53,12 +49,18 @@ export function useGuests(authToken: string, onUnauthorized?: () => void) {
   const fetchGuests = useCallback(async () => {
     if (!authToken) return; // Skip when not yet authenticated
 
+    const now = Date.now();
+    if (now - lastGuestFetchAtMs.current < MIN_GUEST_FETCH_GAP_MS) return;
+    lastGuestFetchAtMs.current = now;
+
     try {
-      const res = await fetchWithRetry('/api/guests', {
-        headers: authHeaders(),
-      });
+      const res = await fetchWithRetry(
+        '/api/guests',
+        { headers: authHeaders() },
+        { retries: 2, baseDelayMs: 500 }
+      );
       if (res.status === 401) {
-        onUnauthorized?.();
+        onUnauthorizedRef.current?.();
         return;
       }
       if (!res.ok) throw new Error('Failed to fetch guests');
@@ -78,7 +80,7 @@ export function useGuests(authToken: string, onUnauthorized?: () => void) {
     } finally {
       setLoading(false);
     }
-  }, [authToken, authHeaders, onUnauthorized]);
+  }, [authToken, authHeaders]);
 
   /** Restart the polling interval with the given delay */
   const startPolling = useCallback(
@@ -145,11 +147,11 @@ export function useGuests(authToken: string, onUnauthorized?: () => void) {
             headers: authHeaders({ 'Content-Type': 'application/json' }),
             body: JSON.stringify({ id, checkedIn }),
           },
-          3
+          { retries: 3, baseDelayMs: 500 }
         );
 
         if (res.status === 401) {
-          onUnauthorized?.();
+          onUnauthorizedRef.current?.();
           return;
         }
         if (!res.ok) {
@@ -163,7 +165,7 @@ export function useGuests(authToken: string, onUnauthorized?: () => void) {
         setTimeout(() => setError(null), 3000);
       }
     },
-    [guests, authHeaders, onUnauthorized]
+    [guests, authHeaders]
   );
 
   return { guests, loading, error, updateCheckIn, refetch: fetchGuests };
