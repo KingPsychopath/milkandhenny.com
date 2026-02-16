@@ -39,6 +39,14 @@ export default function BestDressedPage() {
 
   // Fetch data and vote token on load
   useEffect(() => {
+    // Deep link: /best-dressed?code=BD-XXXX... auto-fills the code field.
+    // Handy for QR codes printed by door staff.
+    const params = new URLSearchParams(window.location.search);
+    const code = params.get('code');
+    if (code && typeof code === 'string') {
+      setVoteCode(code.trim().toUpperCase());
+    }
+
     fetch('/api/best-dressed')
       .then((res) => res.json())
       .then((data) => {

@@ -10,6 +10,7 @@ import { GuestList } from './components/GuestList';
 import { GuestStats } from './components/GuestStats';
 import { GuestManagement } from './components/GuestManagement';
 import { getStored, removeStored, setStored } from '@/lib/client/storage';
+import QRCode from 'qrcode';
 
 /** Loading placeholder — same on server and initial client to avoid hydration mismatch. */
 function AuthLoadingPlaceholder() {
@@ -29,9 +30,15 @@ export default function GuestListPage() {
   const [voteCode, setVoteCode] = useState<string | null>(null);
   const [voteCodeExpiry, setVoteCodeExpiry] = useState<string | null>(null);
   const [voteCodeLoading, setVoteCodeLoading] = useState(false);
+  const [voteCodeQr, setVoteCodeQr] = useState<string | null>(null);
+  const [djQr, setDjQr] = useState<string | null>(null);
+  const [showDjQr, setShowDjQr] = useState(false);
   const [voteWindowMinutes, setVoteWindowMinutes] = useState(10);
   const [voteWindowLoading, setVoteWindowLoading] = useState(false);
   const [voteWindowStatus, setVoteWindowStatus] = useState<string | null>(null);
+  const [sheetCount, setSheetCount] = useState(20);
+  const [sheetLoading, setSheetLoading] = useState(false);
+  const [codeTtlMinutes, setCodeTtlMinutes] = useState(360);
 
   useEffect(() => {
     const initTimer = window.setTimeout(() => {
@@ -76,21 +83,110 @@ export default function GuestListPage() {
     });
   };
 
+  const formatMinutesShort = (minutes: number) => {
+    if (!Number.isFinite(minutes) || minutes <= 0) return "";
+    if (minutes % 60 === 0) return `${minutes / 60}h`;
+    return `${minutes}m`;
+  };
+
   const handleMintVoteCode = async () => {
     setVoteCodeLoading(true);
     setVoteWindowStatus(null);
     try {
-      const res = await staffFetch('/api/best-dressed/codes/mint', { method: 'POST' });
+      const res = await staffFetch('/api/best-dressed/codes/mint', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ttlMinutes: codeTtlMinutes }),
+      });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         throw new Error((data.error as string) || 'Failed to mint vote code');
       }
       setVoteCode((data.code as string) || null);
       setVoteCodeExpiry((data.expiresAt as string) || null);
+
+      const code = (data.code as string) || '';
+      if (code) {
+        const link = `${window.location.origin}/best-dressed?code=${encodeURIComponent(code)}`;
+        const qr = await QRCode.toDataURL(link, { margin: 1, width: 220 });
+        setVoteCodeQr(qr);
+      } else {
+        setVoteCodeQr(null);
+      }
     } catch (e) {
       setVoteWindowStatus(e instanceof Error ? e.message : 'Failed to mint vote code');
     } finally {
       setVoteCodeLoading(false);
+    }
+  };
+
+  const handlePrintVoteSheet = async () => {
+    setSheetLoading(true);
+    setVoteWindowStatus(null);
+    try {
+      const res = await staffFetch('/api/best-dressed/codes/mint-batch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ count: sheetCount, ttlMinutes: codeTtlMinutes }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error((data.error as string) || 'Failed to mint vote codes');
+      }
+      const codes = Array.isArray(data.codes) ? (data.codes as string[]) : [];
+      if (codes.length === 0) {
+        throw new Error('No codes minted');
+      }
+
+      // Generate QR images client-side, then open a print window.
+      const rows = await Promise.all(
+        codes.map(async (code) => {
+          const link = `${window.location.origin}/best-dressed?code=${encodeURIComponent(code)}`;
+          const qr = await QRCode.toDataURL(link, { margin: 1, width: 160 });
+          return { code, qr };
+        })
+      );
+
+      const w = window.open('', '_blank', 'noopener,noreferrer');
+      if (!w) throw new Error('Popup blocked (allow popups to print sheet)');
+      w.document.write(`<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>best dressed vote codes</title>
+  <style>
+    body { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; padding: 24px; }
+    h1 { font-size: 14px; font-weight: 700; margin: 0 0 16px; }
+    .grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+    .card { border: 1px solid #e7e5e4; border-radius: 10px; padding: 12px; text-align: center; }
+    .code { margin-top: 8px; font-size: 14px; letter-spacing: 0.08em; }
+    .hint { margin-top: 4px; font-size: 11px; color: #78716c; }
+    img { width: 160px; height: 160px; image-rendering: pixelated; }
+    @media print { body { padding: 0; } }
+  </style>
+</head>
+<body>
+  <h1>best dressed vote codes</h1>
+  <div class="grid">
+    ${rows
+      .map(
+        (r) => `
+      <div class="card">
+        <img src="${r.qr}" alt="QR ${r.code}" />
+        <div class="code">${r.code}</div>
+        <div class="hint">scan to vote</div>
+      </div>`
+      )
+      .join('')}
+  </div>
+  <script>window.onload = () => { window.print(); };</script>
+</body>
+</html>`);
+      w.document.close();
+    } catch (e) {
+      setVoteWindowStatus(e instanceof Error ? e.message : 'Failed to print vote sheet');
+    } finally {
+      setSheetLoading(false);
     }
   };
 
@@ -114,6 +210,18 @@ export default function GuestListPage() {
       setVoteWindowLoading(false);
     }
   };
+
+  useEffect(() => {
+    // Pre-generate the DJ QR once after mount. It's just a deep link to the voting page.
+    if (!mounted) return;
+    if (djQr) return;
+    const link = `${window.location.origin}/best-dressed`;
+    QRCode.toDataURL(link, { margin: 1, width: 260 })
+      .then((qr) => setDjQr(qr))
+      .catch(() => {
+        /* ignore */
+      });
+  }, [djQr, mounted]);
 
   const handlePinSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -249,6 +357,10 @@ export default function GuestListPage() {
             </Link>
           </div>
 
+          <p className="mt-2 font-mono text-[11px] text-stone-400">
+            defaults are on the buttons (dropdowns optional)
+          </p>
+
           <div className="mt-3 flex flex-wrap items-center gap-2">
             <button
               type="button"
@@ -256,7 +368,50 @@ export default function GuestListPage() {
               onClick={() => void handleMintVoteCode()}
               className="px-3 py-2 rounded-lg bg-amber-600 text-white text-sm font-medium disabled:opacity-50"
             >
-              {voteCodeLoading ? 'minting…' : 'mint vote code'}
+              {voteCodeLoading ? 'minting…' : `mint code (${formatMinutesShort(codeTtlMinutes)})`}
+            </button>
+
+            <select
+              value={codeTtlMinutes}
+              onChange={(e) => setCodeTtlMinutes(Number(e.target.value))}
+              className="px-3 py-2 rounded-lg bg-white border border-stone-200 text-sm"
+              aria-label="Vote code TTL"
+              title="How long minted codes remain valid."
+            >
+              <option value={60}>ttl 1h</option>
+              <option value={180}>ttl 3h</option>
+              <option value={360}>ttl 6h</option>
+              <option value={720}>ttl 12h</option>
+            </select>
+
+            <select
+              value={sheetCount}
+              onChange={(e) => setSheetCount(Number(e.target.value))}
+              className="px-3 py-2 rounded-lg bg-white border border-stone-200 text-sm"
+              aria-label="Vote sheet count"
+            >
+              <option value={10}>print 10</option>
+              <option value={20}>print 20</option>
+              <option value={30}>print 30</option>
+              <option value={50}>print 50</option>
+            </select>
+            <button
+              type="button"
+              disabled={sheetLoading}
+              onClick={() => void handlePrintVoteSheet()}
+              className="px-3 py-2 rounded-lg bg-white border border-stone-200 text-stone-700 text-sm font-medium disabled:opacity-50"
+              title="Mints codes and opens a printable QR sheet."
+            >
+              {sheetLoading ? 'prepping…' : `print sheet (${sheetCount})`}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setShowDjQr((v) => !v)}
+              className="px-3 py-2 rounded-lg bg-white border border-stone-200 text-stone-700 text-sm font-medium"
+              title="Show a QR for the voting page (best used while voting is open)."
+            >
+              {showDjQr ? 'hide dj qr' : 'dj qr'}
             </button>
 
             <select
@@ -277,7 +432,7 @@ export default function GuestListPage() {
               onClick={() => void handleOpenVoting(voteWindowMinutes)}
               className="px-3 py-2 rounded-lg bg-stone-900 text-white text-sm font-medium disabled:opacity-50"
             >
-              {voteWindowLoading ? 'opening…' : 'open voting'}
+              {voteWindowLoading ? 'opening…' : `open voting (${voteWindowMinutes}m)`}
             </button>
 
             <button
@@ -297,6 +452,31 @@ export default function GuestListPage() {
               {voteCodeExpiry ? (
                 <p className="text-stone-400 text-xs mt-1">expires {new Date(voteCodeExpiry).toLocaleTimeString()}</p>
               ) : null}
+              {voteCodeQr ? (
+                <div className="mt-3 flex items-center justify-center">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={voteCodeQr}
+                    alt="Best dressed vote QR"
+                    className="w-36 h-36 rounded-lg border border-stone-200"
+                  />
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+
+          {showDjQr && djQr ? (
+            <div className="mt-3 p-3 rounded-lg bg-white border border-stone-200">
+              <p className="text-stone-500 text-xs">dj qr</p>
+              <p className="text-stone-400 text-xs mt-1">scan to open voting page</p>
+              <div className="mt-3 flex items-center justify-center">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={djQr}
+                  alt="Best dressed DJ QR"
+                  className="w-44 h-44 rounded-lg border border-stone-200"
+                />
+              </div>
             </div>
           ) : null}
 

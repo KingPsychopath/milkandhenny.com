@@ -6,6 +6,7 @@ import { randomBytes } from "crypto";
 
 const CODE_TTL_SECONDS = 6 * 60 * 60; // 6 hours
 const CODE_KEY_PREFIX = "best-dressed:code:";
+const MAX_BATCH = 200;
 const MIN_TTL_MINUTES = 15;
 const MAX_TTL_MINUTES = 12 * 60; // 12 hours
 
@@ -14,24 +15,21 @@ function codeKey(code: string): string {
 }
 
 function generateCode(): string {
-  // 8 chars base32-ish, uppercase, no ambiguous chars.
   const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
   const bytes = randomBytes(8);
   let out = "";
-  for (let i = 0; i < 8; i++) {
-    out += alphabet[bytes[i] % alphabet.length];
-  }
+  for (let i = 0; i < 8; i++) out += alphabet[bytes[i] % alphabet.length];
   return `BD-${out}`;
 }
 
 /**
- * POST /api/best-dressed/codes/mint
+ * POST /api/best-dressed/codes/mint-batch
  *
- * Mint a single one-time best-dressed vote code (door staff).
+ * Mint many one-time vote codes for printing (door staff).
  * Requires staff auth (admin JWT also works as staff).
  *
- * Body (optional): { ttlMinutes?: number }
- * Returns: { success: true, code, ttlSeconds, expiresAt }
+ * Body: { count: number, ttlMinutes?: number }
+ * Returns: { success: true, codes: string[], ttlSeconds, expiresAt }
  */
 export async function POST(request: NextRequest) {
   const authErr = await requireAuth(request, "staff");
@@ -45,12 +43,18 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  let body: { ttlMinutes?: number } = {};
+  let body: { count?: number; ttlMinutes?: number } = {};
   try {
-    body = (await request.json()) as { ttlMinutes?: number };
+    body = (await request.json()) as { count?: number; ttlMinutes?: number };
   } catch {
     body = {};
   }
+
+  const raw = body.count;
+  const count =
+    typeof raw === "number" && Number.isFinite(raw)
+      ? Math.max(1, Math.min(MAX_BATCH, Math.floor(raw)))
+      : 20;
 
   const ttlMinutesRaw = body.ttlMinutes;
   const ttlMinutes =
@@ -60,23 +64,36 @@ export async function POST(request: NextRequest) {
   const ttlSeconds = ttlMinutes * 60;
 
   try {
-    // Avoid collisions; try a few times.
-    for (let i = 0; i < 5; i++) {
+    const codes: string[] = [];
+    const expiresAt = new Date(Date.now() + ttlSeconds * 1000).toISOString();
+
+    // Try more than we need to avoid collisions without looping forever.
+    let attempts = 0;
+    while (codes.length < count && attempts < count * 10) {
+      attempts++;
       const code = generateCode();
       const key = codeKey(code);
-
-      // NX so we never overwrite an existing code.
       const ok = await redis.set(key, 1, { nx: true });
       if (ok !== "OK") continue;
       await redis.expire(key, ttlSeconds);
-
-      const expiresAt = new Date(Date.now() + ttlSeconds * 1000).toISOString();
-      return NextResponse.json({ success: true, code, ttlSeconds, expiresAt });
+      codes.push(code);
     }
 
-    return NextResponse.json({ error: "Failed to mint code (try again)" }, { status: 503 });
+    if (codes.length < count) {
+      return NextResponse.json(
+        { error: "Failed to mint enough codes (try again)", minted: codes.length },
+        { status: 503 }
+      );
+    }
+
+    return NextResponse.json({
+      success: true,
+      codes,
+      ttlSeconds,
+      expiresAt,
+    });
   } catch (error) {
-    return apiError("best-dressed.codes.mint", "Failed to mint vote code", error);
+    return apiError("best-dressed.codes.mint-batch", "Failed to mint vote codes", error);
   }
 }
 

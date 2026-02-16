@@ -91,7 +91,9 @@ Admin tokens act as the master token for normal app gates: an `admin` JWT is acc
 
 Notes:
 
-- Codes are the primary "one vote per person" mechanism. If voting is temporarily opened without codes, one-vote becomes "per device/browser cookie".
+- Codes are the primary "one vote per person" mechanism. Door staff can choose how long codes last (TTL) when minting single codes or printing a batch sheet.
+- QR codes are just deep links to `/best-dressed?code=BD-XXXXXXXX` to avoid typing (drunk-friendly).
+- If voting is temporarily opened without codes, one-vote becomes "per device/browser cookie" and staff can use a big-screen "DJ QR" that links to `/best-dressed`.
 - If Redis is unavailable, best-dressed falls back to in-memory storage (local dev only). In production, configure Redis to keep votes stable.
 
 ---
