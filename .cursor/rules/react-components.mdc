@@ -1,0 +1,17 @@
+---
+description: React component guidelines for TSX/JSX
+globs: "**/*.{tsx,jsx}"
+alwaysApply: false
+---
+
+# React components
+
+- Use functional components only.
+- Keep components small and focused; extract custom hooks to encapsulate related state/behavior.
+- Use early returns to reduce nesting.
+- Avoid `useMemo`/`useCallback`/`React.memo` unless there's a measured need.
+
+## Naming
+
+- Components: PascalCase; hooks: `useX`; event handlers: `onVerb` (props) / `handleVerb` (internal)
+- Booleans: `is*` / `has*` / `should*`

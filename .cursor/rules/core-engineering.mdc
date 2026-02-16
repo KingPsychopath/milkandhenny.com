@@ -1,0 +1,36 @@
+---
+description: Core engineering rules (minimal, safe, consistent)
+alwaysApply: true
+---
+
+# Core engineering
+
+## Code style
+
+- Write concise, minimal code; prefer simple over clever.
+- Change only what's needed; avoid refactoring unrelated code.
+- Follow existing patterns/conventions in this repo.
+- Avoid comments unless logic is truly non-obvious.
+
+## Safety + behavior
+
+- Handle edge cases: undefined inputs/events, failures, and error paths.
+- Do not remove/rename existing functionality unless explicitly asked.
+- Do not add dependencies without asking first.
+- If unsure about an API/symbol, search/confirm instead of guessing.
+
+## TypeScript
+
+- Avoid `any`; prefer `unknown` when the type is genuinely unknown.
+- Avoid `as` casts unless necessary; prefer narrowing/validation.
+- Prefer `as const` over enums.
+- Prefer `interface` for object shapes; `type` for unions/intersections.
+
+## Module boundaries
+
+- Do not use or introduce barrel files (`index.ts`).
+- When fixing circular deps, move responsibilities (don't add more abstraction layers).
+
+## Git
+
+- When suggesting commit messages, use Conventional Commits (`feat:`, `fix:`, `chore:`, etc.).

@@ -1,0 +1,17 @@
+---
+description: Tailwind CSS v4 usage rules
+globs: "**/*.{tsx,jsx,css}"
+alwaysApply: false
+---
+
+# Tailwind v4
+
+- Prefer Tailwind utilities; avoid custom CSS unless necessary.
+- Use theme tokens defined via `@theme` in CSS; avoid hardcoded arbitrary values when a token exists.
+- For conditional classes, use the repo's existing helper (e.g. `cn()` / `clsx()`), don't invent a new one.
+
+## v4 specifics
+
+- Do not add or reference `tailwind.config.*` (v4 config lives in CSS via `@theme`).
+- Do not add `content` config; content detection is automatic.
+- Use `@import "tailwindcss"` instead of `@tailwind base/components/utilities`.

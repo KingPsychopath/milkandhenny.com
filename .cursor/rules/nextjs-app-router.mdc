@@ -1,0 +1,19 @@
+---
+description: Next.js App Router conventions for this repo
+globs: app/**/*
+alwaysApply: false
+---
+
+# Next.js (App Router)
+
+- Use the App Router; avoid Pages Router patterns.
+- Default to Server Components; add `"use client"` only when needed (hooks, interactivity, browser APIs).
+- Prefer Server Actions for mutations; use API routes only when an HTTP endpoint is actually needed (uploads/webhooks/external clients).
+- Use `layout.tsx`/`loading.tsx`/`error.tsx`/`not-found.tsx` conventions.
+- Use route groups `(group)` for organization without URL changes.
+- Use `metadata` / `generateMetadata` for SEO (avoid manual `<head>` code).
+
+## Performance
+
+- Minimize `"use client"` surface area; extract small client islands.
+- Avoid `useEffect` for data fetching; fetch in Server Components or actions.
