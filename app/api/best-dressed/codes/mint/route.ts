@@ -2,27 +2,31 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/auth";
 import { getRedis } from "@/lib/redis";
 import { apiErrorFromRequest } from "@/lib/api-error";
-import { randomBytes } from "crypto";
+import { generateWordsCode } from "@/lib/transfer-words";
 
 const CODE_TTL_SECONDS = 6 * 60 * 60; // 6 hours
 const CODE_KEY_PREFIX = "best-dressed:code:";
 const CODE_INDEX_KEY = "best-dressed:code-index";
 const MIN_TTL_MINUTES = 15;
 const MAX_TTL_MINUTES = 12 * 60; // 12 hours
+const DEFAULT_CODE_WORDS = 2 as const;
 
 function codeKey(code: string): string {
   return `${CODE_KEY_PREFIX}${code}`;
 }
 
-function generateCode(): string {
-  // 8 chars base32-ish, uppercase, no ambiguous chars.
-  const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-  const bytes = randomBytes(8);
-  let out = "";
-  for (let i = 0; i < 8; i++) {
-    out += alphabet[bytes[i] % alphabet.length];
+function normalizeVoteCode(code: string): string {
+  // Vote codes should be easy to type and case-insensitive.
+  return code.trim().toLowerCase();
+}
+
+function parseWordCount(raw: unknown): 1 | 2 {
+  if (raw === 1 || raw === 2) return raw;
+  if (typeof raw === "string") {
+    const n = Number.parseInt(raw, 10);
+    if (n === 1 || n === 2) return n;
   }
-  return `BD-${out}`;
+  return DEFAULT_CODE_WORDS;
 }
 
 /**
@@ -31,7 +35,7 @@ function generateCode(): string {
  * Mint a single one-time best-dressed vote code (door staff).
  * Requires staff auth (admin JWT also works as staff).
  *
- * Body (optional): { ttlMinutes?: number }
+ * Body (optional): { ttlMinutes?: number, words?: 1 | 2 }
  * Returns: { success: true, code, ttlSeconds, expiresAt }
  */
 export async function POST(request: NextRequest) {
@@ -46,9 +50,9 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  let body: { ttlMinutes?: number } = {};
+  let body: { ttlMinutes?: number; words?: number | string } = {};
   try {
-    body = (await request.json()) as { ttlMinutes?: number };
+    body = (await request.json()) as { ttlMinutes?: number; words?: number | string };
   } catch {
     body = {};
   }
@@ -59,11 +63,13 @@ export async function POST(request: NextRequest) {
       ? Math.max(MIN_TTL_MINUTES, Math.min(MAX_TTL_MINUTES, Math.floor(ttlMinutesRaw)))
       : Math.floor(CODE_TTL_SECONDS / 60);
   const ttlSeconds = ttlMinutes * 60;
+  const words = parseWordCount(body.words);
 
   try {
     // Avoid collisions; try a few times.
-    for (let i = 0; i < 5; i++) {
-      const code = generateCode();
+    const maxAttempts = words === 1 ? 25 : 5;
+    for (let i = 0; i < maxAttempts; i++) {
+      const code = normalizeVoteCode(generateWordsCode(words));
       const key = codeKey(code);
 
       // NX so we never overwrite an existing code.

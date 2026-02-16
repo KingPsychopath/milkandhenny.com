@@ -81,6 +81,9 @@ const NOUNS_B = [
   "wisp", "wool", "yard", "yew",
 ] as const;
 
+const NOUNS_ALL: readonly string[] = [...NOUNS_A, ...NOUNS_B];
+const WORDS_ALL: readonly string[] = [...DESCRIPTORS, ...NOUNS_A, ...NOUNS_B];
+
 /**
  * Pick a cryptographically random element from a readonly array.
  * Uses `crypto.getRandomValues` for uniform distribution without modulo bias.
@@ -91,9 +94,24 @@ function pick<T>(list: readonly T[]): T {
   return list[arr[0] % list.length];
 }
 
-/** Generate a 3-word hyphenated transfer ID, e.g. "velvet-moon-candle" */
-function generateWordId(): string {
+type WordCodeLength = 1 | 2 | 3;
+
+/**
+ * Generate a short human-readable hyphenated code.
+ *
+ * - 1 word: "amber"
+ * - 2 words: "amber-crown"
+ * - 3 words: "velvet-moon-candle" (default transfer style)
+ */
+function generateWordsCode(words: WordCodeLength): string {
+  if (words === 1) return `${pick(WORDS_ALL)}`;
+  if (words === 2) return `${pick(DESCRIPTORS)}-${pick(NOUNS_ALL)}`;
   return `${pick(DESCRIPTORS)}-${pick(NOUNS_A)}-${pick(NOUNS_B)}`;
 }
 
-export { generateWordId };
+/** Generate a 3-word hyphenated transfer ID, e.g. "velvet-moon-candle" */
+function generateWordId(): string {
+  return generateWordsCode(3);
+}
+
+export { generateWordId, generateWordsCode };

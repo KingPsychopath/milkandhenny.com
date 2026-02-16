@@ -71,12 +71,13 @@ This means the *minimum viable observability* is mostly “wire alerts to the lo
 Provider dashboards are great, but they don’t replace “someone hit the site from the outside”.
 
 - **Public page check**: monitor `/party` (or `/`) for a 200.
-- **API check**: monitor `GET /api/health` every 5 minutes.
+- **API check**: monitor `GET /api/health` every 5 minutes (requires header auth).
 
 Notes:
 - `GET /api/debug` is **admin-only** and returns environment detail. It’s not suitable for a third-party uptime probe.
 - `GET /api/health` intentionally avoids Redis/R2 checks so frequent monitoring doesn’t create KV commands (and it doesn’t leak infra details).
 - Health checks still create Vercel **function invocations**. On Hobby, prefer a 5-minute interval unless you have a reason to be more aggressive.
+- `GET /api/health` is protected by `HEALTHCHECK_TOKEN` and requires the header `x-health-token: <token>`. If `HEALTHCHECK_TOKEN` is missing, the endpoint fails closed (503).
 
 ---
 

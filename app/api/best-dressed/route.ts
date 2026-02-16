@@ -81,6 +81,22 @@ function codeKey(code: string): string {
   return `${CODE_KEY_PREFIX}${code}`;
 }
 
+function voteCodeVariants(code: string): string[] {
+  const raw = code.trim();
+  if (!raw) return [];
+  // Support legacy "BD-XXXX" codes (uppercase) and new word codes (lowercase) seamlessly.
+  return Array.from(new Set([raw, raw.toUpperCase(), raw.toLowerCase()]));
+}
+
+function sumPipelineDeletes(results: unknown): number {
+  if (!Array.isArray(results)) return 0;
+  let sum = 0;
+  for (const r of results) {
+    if (typeof r === 'number') sum += r;
+  }
+  return sum;
+}
+
 function getOrCreateVoterId(request: NextRequest): { voterId: string; isNew: boolean } {
   const existing = request.cookies.get(VOTE_COOKIE)?.value ?? '';
   if (existing && typeof existing === 'string' && existing.length >= 16 && existing.length <= 80) {
@@ -350,11 +366,12 @@ export async function POST(request: NextRequest) {
     // Consume voteToken first so a bad request can't burn a real code.
     const now = Math.floor(Date.now() / 1000);
     const codeRequired = !(openUntil > now);
-    const providedCode = typeof code === 'string' ? code.trim() : '';
+    const providedCode = typeof code === 'string' ? code : '';
+    const variants = voteCodeVariants(providedCode);
     if (codeRequired) {
-      if (!providedCode) {
+      if (variants.length === 0) {
         return NextResponse.json(
-          { success: false, error: 'A vote code is required. Ask door staff for a code.', session },
+          { success: false, error: 'A vote code is required. Ask staff for a code.', session },
           { status: 400 }
         );
       }
@@ -365,21 +382,27 @@ export async function POST(request: NextRequest) {
           { status: 503 }
         );
       }
-      const consumed = await redis.del(codeKey(providedCode));
-      if (consumed !== 1) {
+      const pipe = redis.pipeline();
+      for (const v of variants) pipe.del(codeKey(v));
+      const consumed = sumPipelineDeletes(await pipe.exec());
+      if (consumed < 1) {
         return NextResponse.json(
           { success: false, error: 'Invalid or already-used vote code.', session },
           { status: 403 }
         );
       }
       // Best-effort cleanup of the index.
-      await redis.srem(CODE_INDEX_KEY, providedCode);
-    } else if (providedCode) {
+      await redis.srem(CODE_INDEX_KEY, ...variants);
+    } else if (variants.length > 0) {
       // Window is open: code is optional, but if provided, validate/consume it to prevent reuse.
       const redis = getRedis();
       if (redis) {
-        await redis.del(codeKey(providedCode));
-        await redis.srem(CODE_INDEX_KEY, providedCode);
+        const pipe = redis.pipeline();
+        for (const v of variants) {
+          pipe.del(codeKey(v));
+          pipe.srem(CODE_INDEX_KEY, v);
+        }
+        await pipe.exec();
       }
     }
     

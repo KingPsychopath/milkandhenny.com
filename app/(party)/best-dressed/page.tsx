@@ -40,7 +40,7 @@ export default function BestDressedPage() {
 
   // Fetch data and vote token on load
   useEffect(() => {
-    // Deep link: /best-dressed?code=BD-XXXX... auto-fills the code field.
+    // Deep link: /best-dressed?code=amber-crown auto-fills the code field.
     // Handy for QR codes printed by door staff.
     const params = new URLSearchParams(window.location.search);
     const code = params.get('code');
@@ -286,13 +286,13 @@ export default function BestDressedPage() {
               {showCodeInput ? (
                 <div className="space-y-2">
                   <p className="text-center text-zinc-500 text-sm">
-                    {codeRequired ? 'Ask door staff for a vote code' : 'Vote code (optional)'}
+                    {codeRequired ? 'Ask staff for a vote code' : 'Vote code (optional)'}
                   </p>
                   <input
                     type="text"
                     value={voteCode}
                     onChange={(e) => setVoteCode(e.target.value.toUpperCase())}
-                    placeholder="BD-XXXXXXX"
+                    placeholder="AMBER-CROWN"
                     className="w-full px-5 py-4 bg-white/10 border border-white/20 rounded-2xl text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent text-lg font-mono tracking-wider text-center"
                     inputMode="text"
                     autoCapitalize="characters"

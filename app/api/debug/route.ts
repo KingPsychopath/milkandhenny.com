@@ -44,6 +44,7 @@ export async function GET(request: NextRequest) {
   }
   
   const hasCronSecret = !!process.env.CRON_SECRET;
+  const healthcheckTokenConfigured = !!process.env.HEALTHCHECK_TOKEN;
   const securityWarnings = getSecurityWarnings();
 
   const r2PublicUrlConfigured = !!process.env.NEXT_PUBLIC_R2_PUBLIC_URL;
@@ -76,6 +77,10 @@ export async function GET(request: NextRequest) {
       source: redisSource,
       cronSecretConfigured: hasCronSecret,
       cronWarning: !hasCronSecret ? 'CRON_SECRET not set — cron jobs will return 503. Add it in Vercel env vars.' : null,
+      healthcheckTokenConfigured,
+      healthcheckWarning: !healthcheckTokenConfigured
+        ? 'HEALTHCHECK_TOKEN not set — GET /api/health will fail closed with 503.'
+        : null,
       r2PublicUrlConfigured,
       r2WriteConfigured,
       authSecretConfigured,

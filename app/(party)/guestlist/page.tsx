@@ -40,6 +40,7 @@ export default function GuestListPage() {
   const [sheetCount, setSheetCount] = useState(20);
   const [sheetLoading, setSheetLoading] = useState(false);
   const [codeTtlMinutes, setCodeTtlMinutes] = useState(360);
+  const [voteCodeWords, setVoteCodeWords] = useState<1 | 2>(2);
   const [printingSheet, setPrintingSheet] = useState(false);
   const [sheetRows, setSheetRows] = useState<Array<{ code: string; qr: string }>>([]);
   const [sheetExpiresAt, setSheetExpiresAt] = useState<string | null>(null);
@@ -139,7 +140,7 @@ export default function GuestListPage() {
       const res = await staffFetch('/api/best-dressed/codes/mint', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ttlMinutes: codeTtlMinutes }),
+        body: JSON.stringify({ ttlMinutes: codeTtlMinutes, words: voteCodeWords }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -164,13 +165,17 @@ export default function GuestListPage() {
   };
 
   const handlePrintVoteSheet = async () => {
+    if (voteCodeWords === 1 && sheetCount > 50) {
+      setVoteWindowStatus('1-word codes collide quickly in large sheets. Switch to 2 words or print 50 or less.');
+      return;
+    }
     setSheetLoading(true);
     setVoteWindowStatus(null);
     try {
       const res = await staffFetch('/api/best-dressed/codes/mint-batch', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ count: sheetCount, ttlMinutes: codeTtlMinutes }),
+        body: JSON.stringify({ count: sheetCount, ttlMinutes: codeTtlMinutes, words: voteCodeWords }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -493,6 +498,23 @@ export default function GuestListPage() {
               options / extras
             </summary>
             <div className="mt-3 flex flex-wrap items-center gap-2">
+              <select
+                value={voteCodeWords}
+                onChange={(e) => setVoteCodeWords(Number(e.target.value) === 1 ? 1 : 2)}
+                className="px-3 py-2 rounded-lg bg-white border border-stone-200 text-sm"
+                aria-label="Vote code word count"
+                title="How many words a minted vote code has."
+              >
+                <option value={2}>code 2 words</option>
+                <option value={1}>code 1 word</option>
+              </select>
+
+              {voteCodeWords === 1 ? (
+                <p className="font-mono text-[11px] text-stone-400">
+                  1-word sheets are capped at 50 to avoid collisions
+                </p>
+              ) : null}
+
               <select
                 value={codeTtlMinutes}
                 onChange={(e) => setCodeTtlMinutes(Number(e.target.value))}
