@@ -27,6 +27,7 @@ export default function BestDressedPage() {
   const [voteToken, setVoteToken] = useState<string>('');
   const [voteCode, setVoteCode] = useState<string>('');
   const [codeRequired, setCodeRequired] = useState(true);
+  const [openUntil, setOpenUntil] = useState<number | null>(null);
   const [guestNames, setGuestNames] = useState<string[]>([]);
   const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
   const [totalVotes, setTotalVotes] = useState(0);
@@ -57,6 +58,7 @@ export default function BestDressedPage() {
         setCurrentSession(json.session || 'initial');
         setVoteToken(json.voteToken || '');
         setCodeRequired(json.codeRequired !== false);
+        setOpenUntil(typeof json.openUntil === 'number' ? json.openUntil : null);
 
         // Check if user voted in THIS session (client-side tracking)
         const storedVote = getStored("bestDressedVote");
@@ -125,19 +127,19 @@ export default function BestDressedPage() {
 
   const handleVote = async () => {
     if (!selectedName || !voteToken) return;
-    if (codeRequired && !voteCode.trim()) return;
 
     setSubmitting(true);
     setVoteError(null);
 
     try {
+      const codeToSend = voteCode.trim().toUpperCase();
       const res = await fetch('/api/best-dressed', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           name: selectedName,
           voteToken,
-          ...(codeRequired ? { code: voteCode.trim().toUpperCase() } : {}),
+          ...(codeToSend ? { code: codeToSend } : {}),
         }),
       });
 
@@ -166,6 +168,12 @@ export default function BestDressedPage() {
         } else {
           setVoteError(data.error || 'Vote failed. Please refresh and try again.');
         }
+
+        // If the server says a code is required, make sure the UI shows it.
+        const errText = typeof data.error === 'string' ? data.error.toLowerCase() : '';
+        if (errText.includes('vote code') && errText.includes('required')) {
+          setCodeRequired(true);
+        }
         setLeaderboard(data.leaderboard || leaderboard);
         setTotalVotes(data.totalVotes || totalVotes);
       }
@@ -185,6 +193,7 @@ export default function BestDressedPage() {
   }
 
   const maxVotes = leaderboard[0]?.count || 1;
+  const showCodeInput = codeRequired || !!voteCode.trim();
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-zinc-950 via-purple-950/30 to-zinc-950">
@@ -274,10 +283,10 @@ export default function BestDressedPage() {
                 </div>
               )}
 
-              {codeRequired ? (
+              {showCodeInput ? (
                 <div className="space-y-2">
                   <p className="text-center text-zinc-500 text-sm">
-                    Ask door staff for a vote code
+                    {codeRequired ? 'Ask door staff for a vote code' : 'Vote code (optional)'}
                   </p>
                   <input
                     type="text"
@@ -293,13 +302,14 @@ export default function BestDressedPage() {
               ) : (
                 <p className="text-center text-zinc-500 text-sm">
                   Voting is open right now — no code needed
+                  {openUntil ? ` (until ${new Date(openUntil * 1000).toLocaleTimeString()})` : ''}
                 </p>
               )}
 
               {/* Vote Button */}
               <button
                 onClick={handleVote}
-                disabled={!selectedName || !voteToken || submitting || (codeRequired && !voteCode.trim())}
+                disabled={!selectedName || !voteToken || submitting}
                 className="w-full py-5 bg-gradient-to-r from-pink-500 to-purple-600 hover:from-pink-400 hover:to-purple-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold text-xl rounded-2xl transition-all shadow-lg shadow-purple-500/30 hover:shadow-purple-500/50 hover:scale-[1.02] disabled:hover:scale-100"
               >
                 {submitting ? (

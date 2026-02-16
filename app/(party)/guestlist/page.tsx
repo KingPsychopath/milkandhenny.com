@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { SITE_NAME } from '@/lib/config';
 import { useGuests } from './hooks/useGuests';
@@ -36,9 +36,14 @@ export default function GuestListPage() {
   const [voteWindowMinutes, setVoteWindowMinutes] = useState(10);
   const [voteWindowLoading, setVoteWindowLoading] = useState(false);
   const [voteWindowStatus, setVoteWindowStatus] = useState<string | null>(null);
+  const [voteWindowOpenUntil, setVoteWindowOpenUntil] = useState<number | null>(null);
   const [sheetCount, setSheetCount] = useState(20);
   const [sheetLoading, setSheetLoading] = useState(false);
   const [codeTtlMinutes, setCodeTtlMinutes] = useState(360);
+  const [printingSheet, setPrintingSheet] = useState(false);
+  const [sheetRows, setSheetRows] = useState<Array<{ code: string; qr: string }>>([]);
+  const [sheetExpiresAt, setSheetExpiresAt] = useState<string | null>(null);
+  const [nowTick, setNowTick] = useState(() => Date.now());
 
   useEffect(() => {
     const initTimer = window.setTimeout(() => {
@@ -62,7 +67,7 @@ export default function GuestListPage() {
 
   const isAuthenticated = !!authToken;
 
-  const { guests, loading, error, updateCheckIn, refetch } = useGuests(authToken, () => {
+  const handleUnauthorized = useCallback(() => {
     // Expired/revoked tokens should drop back to the auth gate.
     if (authTokenSource === 'staff') removeStored('staffToken');
     if (authTokenSource === 'admin') removeStored('adminToken');
@@ -70,7 +75,9 @@ export default function GuestListPage() {
     setAuthTokenSource('');
     setPinInput('');
     setPinError(false);
-  });
+  }, [authTokenSource]);
+
+  const { guests, loading, error, updateCheckIn, refetch } = useGuests(authToken, handleUnauthorized);
   const { searchQuery, setSearchQuery, filter, setFilter, filteredGuests, searchStats } = useGuestSearch(guests);
 
   const staffFetch = async (url: string, options: RequestInit = {}) => {
@@ -87,6 +94,41 @@ export default function GuestListPage() {
     if (!Number.isFinite(minutes) || minutes <= 0) return "";
     if (minutes % 60 === 0) return `${minutes / 60}h`;
     return `${minutes}m`;
+  };
+
+  useEffect(() => {
+    if (!mounted) return;
+    const onAfterPrint = () => {
+      setPrintingSheet(false);
+    };
+    window.addEventListener('afterprint', onAfterPrint);
+    return () => window.removeEventListener('afterprint', onAfterPrint);
+  }, [mounted]);
+
+  // Update "remaining time" label without refetching (only while open).
+  useEffect(() => {
+    if (!mounted) return;
+    if (!voteWindowOpenUntil) return;
+    if (voteWindowOpenUntil * 1000 <= Date.now()) return;
+    const t = window.setInterval(() => setNowTick(Date.now()), 1000);
+    return () => window.clearInterval(t);
+  }, [mounted, voteWindowOpenUntil]);
+
+  const isVotingOpen = voteWindowOpenUntil ? voteWindowOpenUntil * 1000 > nowTick : false;
+  const votingSecondsRemaining = isVotingOpen && voteWindowOpenUntil
+    ? Math.max(0, voteWindowOpenUntil - Math.floor(nowTick / 1000))
+    : 0;
+
+  const refreshVotingWindow = async () => {
+    if (!authToken) return;
+    try {
+      const res = await staffFetch('/api/best-dressed/voting/open', { method: 'GET' });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) return;
+      setVoteWindowOpenUntil(typeof data.openUntil === 'number' ? data.openUntil : null);
+    } catch {
+      // ignore
+    }
   };
 
   const handleMintVoteCode = async () => {
@@ -138,7 +180,7 @@ export default function GuestListPage() {
         throw new Error('No codes minted');
       }
 
-      // Generate QR images client-side, then open a print window.
+      // Generate QR images client-side, then print in-page (avoids popup blockers).
       const rows = await Promise.all(
         codes.map(async (code) => {
           const link = `${window.location.origin}/best-dressed?code=${encodeURIComponent(code)}`;
@@ -146,43 +188,10 @@ export default function GuestListPage() {
           return { code, qr };
         })
       );
-
-      const w = window.open('', '_blank', 'noopener,noreferrer');
-      if (!w) throw new Error('Popup blocked (allow popups to print sheet)');
-      w.document.write(`<!doctype html>
-<html>
-<head>
-  <meta charset="utf-8" />
-  <title>best dressed vote codes</title>
-  <style>
-    body { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; padding: 24px; }
-    h1 { font-size: 14px; font-weight: 700; margin: 0 0 16px; }
-    .grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
-    .card { border: 1px solid #e7e5e4; border-radius: 10px; padding: 12px; text-align: center; }
-    .code { margin-top: 8px; font-size: 14px; letter-spacing: 0.08em; }
-    .hint { margin-top: 4px; font-size: 11px; color: #78716c; }
-    img { width: 160px; height: 160px; image-rendering: pixelated; }
-    @media print { body { padding: 0; } }
-  </style>
-</head>
-<body>
-  <h1>best dressed vote codes</h1>
-  <div class="grid">
-    ${rows
-      .map(
-        (r) => `
-      <div class="card">
-        <img src="${r.qr}" alt="QR ${r.code}" />
-        <div class="code">${r.code}</div>
-        <div class="hint">scan to vote</div>
-      </div>`
-      )
-      .join('')}
-  </div>
-  <script>window.onload = () => { window.print(); };</script>
-</body>
-</html>`);
-      w.document.close();
+      setSheetRows(rows);
+      setSheetExpiresAt(typeof data.expiresAt === 'string' ? data.expiresAt : null);
+      setPrintingSheet(true);
+      requestAnimationFrame(() => window.print());
     } catch (e) {
       setVoteWindowStatus(e instanceof Error ? e.message : 'Failed to print vote sheet');
     } finally {
@@ -203,7 +212,10 @@ export default function GuestListPage() {
       if (!res.ok) {
         throw new Error((data.error as string) || 'Failed to open voting');
       }
-      setVoteWindowStatus(minutes > 0 ? `Voting open for ${minutes} minutes.` : 'Voting closed.');
+      setVoteWindowOpenUntil(typeof data.openUntil === 'number' ? data.openUntil : null);
+      setVoteWindowStatus(
+        minutes > 0 ? `Voting open for ${minutes} minutes.` : 'Voting closed.'
+      );
     } catch (e) {
       setVoteWindowStatus(e instanceof Error ? e.message : 'Failed to open voting');
     } finally {
@@ -212,7 +224,7 @@ export default function GuestListPage() {
   };
 
   useEffect(() => {
-    // Pre-generate the DJ QR once after mount. It's just a deep link to the voting page.
+    // Pre-generate an "event QR" once after mount. It's just a deep link to the voting page.
     if (!mounted) return;
     if (djQr) return;
     const link = `${window.location.origin}/best-dressed`;
@@ -222,6 +234,13 @@ export default function GuestListPage() {
         /* ignore */
       });
   }, [djQr, mounted]);
+
+  useEffect(() => {
+    if (!mounted) return;
+    if (!authToken) return;
+    void refreshVotingWindow();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mounted, authToken]);
 
   const handlePinSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -323,6 +342,54 @@ export default function GuestListPage() {
 
   return (
     <div className="min-h-screen bg-stone-100">
+      <style jsx global>{`
+        @media print {
+          body * {
+            visibility: hidden;
+          }
+          #vote-sheet-print,
+          #vote-sheet-print * {
+            visibility: visible;
+          }
+          #vote-sheet-print {
+            position: absolute;
+            left: 0;
+            top: 0;
+            width: 100%;
+          }
+        }
+      `}</style>
+
+      <div
+        id="vote-sheet-print"
+        className={printingSheet ? 'p-6 bg-white' : 'hidden'}
+        aria-hidden={!printingSheet}
+      >
+        <div className="font-mono">
+          <p className="text-xs text-stone-500">best dressed</p>
+          <p className="text-sm font-semibold text-stone-900">vote codes</p>
+          <p className="text-[11px] text-stone-500 mt-1">
+            ttl {formatMinutesShort(codeTtlMinutes)} {sheetExpiresAt ? `• expires ${new Date(sheetExpiresAt).toLocaleTimeString()}` : ''}
+          </p>
+        </div>
+
+        <div className="mt-4 grid grid-cols-3 gap-4">
+          {sheetRows.map((r) => (
+            <div key={r.code} className="border border-stone-200 rounded-lg p-3 text-center">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={r.qr}
+                alt={`QR ${r.code}`}
+                className="w-40 h-40 mx-auto"
+                style={{ imageRendering: 'pixelated' }}
+              />
+              <p className="mt-2 font-mono text-sm tracking-wider text-stone-900">{r.code}</p>
+              <p className="mt-1 text-[11px] text-stone-500">scan to vote</p>
+            </div>
+          ))}
+        </div>
+      </div>
+
       <GuestManagement guests={guests} onGuestAdded={refetch} onGuestRemoved={refetch} onCSVImported={refetch} />
 
       <main id="main" className="max-w-lg mx-auto bg-white min-h-screen shadow-xl shadow-stone-300/50">
@@ -357,9 +424,7 @@ export default function GuestListPage() {
             </Link>
           </div>
 
-          <p className="mt-2 font-mono text-[11px] text-stone-400">
-            defaults are on the buttons (dropdowns optional)
-          </p>
+          <p className="mt-2 font-mono text-[11px] text-stone-400">tap the buttons; options are optional</p>
 
           <div className="mt-3 flex flex-wrap items-center gap-2">
             <button
@@ -371,79 +436,84 @@ export default function GuestListPage() {
               {voteCodeLoading ? 'minting…' : `mint code (${formatMinutesShort(codeTtlMinutes)})`}
             </button>
 
-            <select
-              value={codeTtlMinutes}
-              onChange={(e) => setCodeTtlMinutes(Number(e.target.value))}
-              className="px-3 py-2 rounded-lg bg-white border border-stone-200 text-sm"
-              aria-label="Vote code TTL"
-              title="How long minted codes remain valid."
-            >
-              <option value={60}>ttl 1h</option>
-              <option value={180}>ttl 3h</option>
-              <option value={360}>ttl 6h</option>
-              <option value={720}>ttl 12h</option>
-            </select>
-
-            <select
-              value={sheetCount}
-              onChange={(e) => setSheetCount(Number(e.target.value))}
-              className="px-3 py-2 rounded-lg bg-white border border-stone-200 text-sm"
-              aria-label="Vote sheet count"
-            >
-              <option value={10}>print 10</option>
-              <option value={20}>print 20</option>
-              <option value={30}>print 30</option>
-              <option value={50}>print 50</option>
-            </select>
             <button
               type="button"
               disabled={sheetLoading}
               onClick={() => void handlePrintVoteSheet()}
               className="px-3 py-2 rounded-lg bg-white border border-stone-200 text-stone-700 text-sm font-medium disabled:opacity-50"
-              title="Mints codes and opens a printable QR sheet."
+              title="Mints codes and opens the print dialog."
             >
               {sheetLoading ? 'prepping…' : `print sheet (${sheetCount})`}
             </button>
 
             <button
               type="button"
-              onClick={() => setShowDjQr((v) => !v)}
-              className="px-3 py-2 rounded-lg bg-white border border-stone-200 text-stone-700 text-sm font-medium"
-              title="Show a QR for the voting page (best used while voting is open)."
-            >
-              {showDjQr ? 'hide dj qr' : 'dj qr'}
-            </button>
-
-            <select
-              value={voteWindowMinutes}
-              onChange={(e) => setVoteWindowMinutes(Number(e.target.value))}
-              className="px-3 py-2 rounded-lg bg-white border border-stone-200 text-sm"
-              aria-label="Voting window minutes"
-            >
-              <option value={5}>open 5m</option>
-              <option value={10}>open 10m</option>
-              <option value={15}>open 15m</option>
-              <option value={30}>open 30m</option>
-            </select>
-
-            <button
-              type="button"
               disabled={voteWindowLoading}
-              onClick={() => void handleOpenVoting(voteWindowMinutes)}
-              className="px-3 py-2 rounded-lg bg-stone-900 text-white text-sm font-medium disabled:opacity-50"
+              onClick={() => void handleOpenVoting(isVotingOpen ? 0 : voteWindowMinutes)}
+              className={`px-3 py-2 rounded-lg text-sm font-medium disabled:opacity-50 ${
+                isVotingOpen ? 'bg-white border border-stone-200 text-stone-800' : 'bg-stone-900 text-white'
+              }`}
             >
-              {voteWindowLoading ? 'opening…' : `open voting (${voteWindowMinutes}m)`}
-            </button>
-
-            <button
-              type="button"
-              disabled={voteWindowLoading}
-              onClick={() => void handleOpenVoting(0)}
-              className="px-3 py-2 rounded-lg bg-white border border-stone-200 text-stone-700 text-sm font-medium disabled:opacity-50"
-            >
-              close
+              {voteWindowLoading
+                ? 'updating…'
+                : isVotingOpen
+                  ? `voting open (${Math.ceil(votingSecondsRemaining / 60)}m left) • tap to close`
+                  : `open voting (${voteWindowMinutes}m)`}
             </button>
           </div>
+
+          <details className="mt-3">
+            <summary className="cursor-pointer select-none font-mono text-xs text-stone-500">
+              options / extras
+            </summary>
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <select
+                value={codeTtlMinutes}
+                onChange={(e) => setCodeTtlMinutes(Number(e.target.value))}
+                className="px-3 py-2 rounded-lg bg-white border border-stone-200 text-sm"
+                aria-label="Vote code TTL"
+                title="How long minted codes remain valid."
+              >
+                <option value={60}>ttl 1h</option>
+                <option value={180}>ttl 3h</option>
+                <option value={360}>ttl 6h</option>
+                <option value={720}>ttl 12h</option>
+              </select>
+
+              <select
+                value={sheetCount}
+                onChange={(e) => setSheetCount(Number(e.target.value))}
+                className="px-3 py-2 rounded-lg bg-white border border-stone-200 text-sm"
+                aria-label="Vote sheet count"
+              >
+                <option value={10}>sheet 10</option>
+                <option value={20}>sheet 20</option>
+                <option value={30}>sheet 30</option>
+                <option value={50}>sheet 50</option>
+              </select>
+
+              <select
+                value={voteWindowMinutes}
+                onChange={(e) => setVoteWindowMinutes(Number(e.target.value))}
+                className="px-3 py-2 rounded-lg bg-white border border-stone-200 text-sm"
+                aria-label="Voting window minutes"
+              >
+                <option value={5}>window 5m</option>
+                <option value={10}>window 10m</option>
+                <option value={15}>window 15m</option>
+                <option value={30}>window 30m</option>
+              </select>
+
+              <button
+                type="button"
+                onClick={() => setShowDjQr((v) => !v)}
+                className="px-3 py-2 rounded-lg bg-white border border-stone-200 text-stone-700 text-sm font-medium"
+                title="For posters / powerpoint: QR that opens the voting page (no code). Best paired with open voting window."
+              >
+                {showDjQr ? 'hide event qr' : 'show event qr'}
+              </button>
+            </div>
+          </details>
 
           {voteCode ? (
             <div className="mt-3 p-3 rounded-lg bg-white border border-stone-200">
@@ -467,13 +537,13 @@ export default function GuestListPage() {
 
           {showDjQr && djQr ? (
             <div className="mt-3 p-3 rounded-lg bg-white border border-stone-200">
-              <p className="text-stone-500 text-xs">dj qr</p>
-              <p className="text-stone-400 text-xs mt-1">scan to open voting page</p>
+              <p className="text-stone-500 text-xs">event qr</p>
+              <p className="text-stone-400 text-xs mt-1">scan to open voting page (no code)</p>
               <div className="mt-3 flex items-center justify-center">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
                   src={djQr}
-                  alt="Best dressed DJ QR"
+                  alt="Best dressed event QR"
                   className="w-44 h-44 rounded-lg border border-stone-200"
                 />
               </div>

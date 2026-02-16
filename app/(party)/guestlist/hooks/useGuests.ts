@@ -4,10 +4,11 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { Guest } from '@/lib/guests/types';
 
 /** Poll interval when the tab is focused (ms) */
-const POLL_ACTIVE_MS = 5_000;
+// In dev, Next logs every request which gets noisy; keep prod snappy.
+const POLL_ACTIVE_MS = process.env.NODE_ENV === 'development' ? 10_000 : 5_000;
 
 /** Poll interval when the tab is in the background (ms) — saves KV commands */
-const POLL_BACKGROUND_MS = 30_000;
+const POLL_BACKGROUND_MS = process.env.NODE_ENV === 'development' ? 60_000 : 30_000;
 
 /** Fetch with automatic retry for resilience */
 async function fetchWithRetry(url: string, options?: RequestInit, retries = 2): Promise<Response> {
