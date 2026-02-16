@@ -169,7 +169,7 @@ export function PostBody({ content, albums = {} }: PostBodyProps) {
   const components = React.useMemo(() => (hasAlbums ? withAlbumEmbeds(albums) : baseComponents), [albums, hasAlbums]);
 
   return (
-    <div className="prose-blog">
+    <div className="prose-blog font-serif">
       <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeSlug, rehypeHashtags]} components={components}>
         {content}
       </ReactMarkdown>

@@ -154,8 +154,8 @@ function AlbumEmbedCompact({ album }: { album: EmbeddedAlbum }) {
         ))}
       </div>
       <div className="album-embed-meta">
-        <p className="album-embed-title">{album.title}</p>
-        <p className="album-embed-detail">
+        <p className="album-embed-title font-serif">{album.title}</p>
+        <p className="album-embed-detail font-mono">
           {formatDate(album.date)} · {album.photoCount}{" "}
           {album.photoCount === 1 ? "photo" : "photos"}
         </p>
@@ -205,8 +205,8 @@ function AlbumEmbedMasonry({ album }: { album: EmbeddedAlbum }) {
         })}
       </Link>
       <Link href={`/pics/${album.slug}`} className="album-embed-masonry-meta">
-        <p className="album-embed-title">{album.title}</p>
-        <p className="album-embed-detail">
+        <p className="album-embed-title font-serif">{album.title}</p>
+        <p className="album-embed-detail font-mono">
           {formatDate(album.date)} · {album.photoCount}{" "}
           {album.photoCount === 1 ? "photo" : "photos"}
         </p>
