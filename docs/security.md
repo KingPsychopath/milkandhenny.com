@@ -14,7 +14,9 @@ Authentication, protections, rate limiting, and what to do when credentials leak
 
 All gates are env vars, never in the client bundle. Set in Vercel and `.env.local`.
 
-Verify endpoints issue short-lived JWTs (24h). Clients store tokens in `sessionStorage` (not raw credentials). Tokens are revoked on tab close.
+Verify endpoints issue short-lived JWTs (role-based TTLs). Clients store tokens in `sessionStorage` (not raw credentials). Tokens are revoked on tab close.
+
+Destructive admin actions require **step-up** re-auth (`POST /api/admin/step-up`) and include `x-admin-step-up` on the request.
 
 Admin tokens act as the master token for normal app gates: an `admin` JWT is accepted anywhere `staff` or `upload` access is required. Dedicated `STAFF_PIN` / `UPLOAD_PIN` flows still exist for role-specific sharing and least-privilege usage.
 
@@ -108,7 +110,7 @@ These are the highest-impact credentials — they grant read/write/delete access
 2. **Redeploy** on Vercel
 3. Update `.env.local` for local dev
 
-**Downtime:** None. Existing tokens in sessionStorage remain valid until the tab closes.
+**Downtime:** None. Existing tokens remain valid until expiry, but you can also revoke sessions immediately (Admin dashboard → session security, or `pnpm cli auth revoke ...`).
 
 ### CRON_SECRET leaked
 
@@ -145,6 +147,6 @@ These are the highest-impact credentials — they grant read/write/delete access
 
 - **No secrets in code.** Every credential is an env var — rotation is config-only.
 - **No secrets in the client bundle.** `NEXT_PUBLIC_*` vars contain only public URLs, not secrets.
-- **Token-based auth.** Short-lived JWTs (24h), stored in `sessionStorage`, never raw credentials.
+- **Token-based auth.** Short-lived JWTs (role-based TTLs), stored in `sessionStorage`, never raw credentials.
 - **Layered storage.** R2 and KV credentials are independent — leaking one doesn't compromise the other.
 - **CDN buffer.** Cached content continues serving even during a rotation window.

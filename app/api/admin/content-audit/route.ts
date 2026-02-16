@@ -55,7 +55,7 @@ function collectBlogRefsWithLines(content: string): Array<{ ref: string; line: n
 }
 
 export async function GET(request: NextRequest) {
-  const authErr = requireAuth(request, "admin");
+  const authErr = await requireAuth(request, "admin");
   if (authErr) return authErr;
 
   try {

@@ -4,7 +4,7 @@ import { requireAuth } from '@/lib/auth';
 import { apiError } from '@/lib/api-error';
 
 export async function GET(request: NextRequest) {
-  const authErr = requireAuth(request, "staff");
+  const authErr = await requireAuth(request, "staff");
   if (authErr) return authErr;
 
   try {
@@ -16,7 +16,7 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const authErr = requireAuth(request, "staff");
+  const authErr = await requireAuth(request, "staff");
   if (authErr) return authErr;
 
   try {

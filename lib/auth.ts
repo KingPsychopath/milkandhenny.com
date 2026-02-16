@@ -10,7 +10,7 @@
  * Env: AUTH_SECRET (JWT signing), STAFF_PIN, ADMIN_PASSWORD, UPLOAD_PIN, CRON_SECRET
  */
 
-import { createHmac, timingSafeEqual } from "crypto";
+import { createHmac, randomUUID, timingSafeEqual } from "crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { getRedis } from "./redis";
 
@@ -27,6 +27,8 @@ type RoleConfig = {
 };
 
 type AuthRole = "staff" | "admin" | "upload" | "cron";
+type TokenRole = Exclude<AuthRole, "cron">;
+type RevocableRole = Exclude<AuthRole, "cron">;
 
 const ROLES: Record<AuthRole, RoleConfig> = {
   staff: {
@@ -44,8 +46,30 @@ const ROLES: Record<AuthRole, RoleConfig> = {
   cron: { envVar: "CRON_SECRET" },
 };
 
-const TOKEN_ROLES: AuthRole[] = ["staff", "admin", "upload"];
-const TOKEN_EXPIRY_SECONDS = 24 * 60 * 60; // 24 hours
+const TOKEN_ROLES: TokenRole[] = ["staff", "admin", "upload"];
+const REVOCABLE_ROLES: readonly RevocableRole[] = ["staff", "admin", "upload"];
+const TOKEN_EXPIRY_SECONDS_BY_ROLE: Record<TokenRole, number> = {
+  staff: 24 * 60 * 60, // 24h
+  admin: 60 * 60, // 1h
+  upload: 12 * 60 * 60, // 12h
+};
+const ADMIN_STEP_UP_TTL_SECONDS = 5 * 60;
+const MIN_AUTH_SECRET_LENGTH = 32;
+const MIN_ADMIN_PASSWORD_LENGTH = 12;
+const WEAK_SECRET_VALUES = new Set([
+  "password",
+  "password123",
+  "admin",
+  "admin123",
+  "changeme",
+  "letmein",
+  "123456",
+  "qwerty",
+]);
+
+function tokenVersionKey(role: RevocableRole): string {
+  return `auth:token-version:${role}`;
+}
 
 /* ─── JWT (HS256, no deps) ─── */
 
@@ -64,23 +88,90 @@ function base64UrlDecode(str: string): Buffer {
   return Buffer.from(padded, "base64");
 }
 
-function getAuthSecret(): string | null {
-  const raw = process.env.AUTH_SECRET;
+function getRawEnv(name: string): string | null {
+  const raw = process.env[name];
   if (!raw) return null;
   return raw.trim() || null;
 }
 
-/** Sign a JWT for the given role. Payload: { role, exp, iat }. */
-function signToken(role: AuthRole): string | null {
-  const secret = getAuthSecret();
+function validateSecretStrength(
+  label: string,
+  value: string,
+  minLength: number
+): string | null {
+  if (value.length < minLength) {
+    return `${label} is too weak (minimum ${minLength} characters required)`;
+  }
+  if (WEAK_SECRET_VALUES.has(value.toLowerCase())) {
+    return `${label} is too weak (common secret value)`;
+  }
+  return null;
+}
+
+function getAuthSecretStatus(): { secret: string | null; error: string | null } {
+  const secret = getRawEnv("AUTH_SECRET");
+  if (!secret) {
+    return { secret: null, error: "AUTH_SECRET not configured" };
+  }
+  const weakness = validateSecretStrength(
+    "AUTH_SECRET",
+    secret,
+    MIN_AUTH_SECRET_LENGTH
+  );
+  if (weakness) {
+    return { secret: null, error: weakness };
+  }
+  return { secret, error: null };
+}
+
+function getRoleSecretStatus(
+  role: AuthRole
+): { secret: string | null; error: string | null } {
+  const envVar = ROLES[role].envVar;
+  const secret = getRawEnv(envVar);
+  if (!secret) {
+    return { secret: null, error: `${envVar} not configured` };
+  }
+  return { secret, error: null };
+}
+
+async function getCurrentTokenVersion(role: RevocableRole): Promise<number | null> {
+  const redis = getRedis();
+  if (!redis) {
+    // Production fails closed for admin without Redis; local dev gets a safe fallback.
+    const isProd = process.env.NODE_ENV === "production";
+    return role === "admin" && isProd ? null : 1;
+  }
+
+  const key = tokenVersionKey(role);
+  try {
+    const current = await redis.get<number>(key);
+    if (typeof current === "number" && Number.isFinite(current) && current >= 1) {
+      return Math.floor(current);
+    }
+    await redis.set(key, 1);
+    return 1;
+  } catch {
+    const isProd = process.env.NODE_ENV === "production";
+    return role === "admin" && isProd ? null : 1;
+  }
+}
+
+/** Sign a JWT for the given role. Payload: { role, exp, iat, jti, tv }. */
+async function signToken(role: TokenRole): Promise<string | null> {
+  const { secret } = getAuthSecretStatus();
   if (!secret) return null;
+  const tokenVersion = await getCurrentTokenVersion(role);
+  if (!tokenVersion) return null;
 
   const header = { alg: "HS256", typ: "JWT" };
   const now = Math.floor(Date.now() / 1000);
   const payload = {
     role,
     iat: now,
-    exp: now + TOKEN_EXPIRY_SECONDS,
+    exp: now + TOKEN_EXPIRY_SECONDS_BY_ROLE[role],
+    jti: randomUUID(),
+    tv: tokenVersion,
   };
 
   const headerB64 = base64UrlEncode(Buffer.from(JSON.stringify(header)));
@@ -95,11 +186,21 @@ function signToken(role: AuthRole): string | null {
   return `${message}.${sigB64}`;
 }
 
-type TokenPayload = { role: string; exp: number; iat: number };
+type TokenPayload = { role: TokenRole; exp: number; iat: number; jti: string; tv: number };
+type StepUpPayload = {
+  kind: "admin-step-up";
+  parentJti: string;
+  iat: number;
+  exp: number;
+  nonce: string;
+};
 
 /** Verify JWT and return payload if valid for the expected role. */
-function verifyToken(token: string, expectedRole: AuthRole): TokenPayload | null {
-  const secret = getAuthSecret();
+async function verifyToken(
+  token: string,
+  expectedRole: TokenRole
+): Promise<TokenPayload | null> {
+  const { secret } = getAuthSecretStatus();
   if (!secret) return null;
 
   const parts = token.split(".");
@@ -116,6 +217,8 @@ function verifyToken(token: string, expectedRole: AuthRole): TokenPayload | null
   }
 
   if (payload.role !== expectedRole) return null;
+  if (!payload.jti || typeof payload.jti !== "string") return null;
+  if (!Number.isInteger(payload.tv) || payload.tv < 1) return null;
   if (typeof payload.exp !== "number" || payload.exp < Math.floor(Date.now() / 1000)) {
     return null;
   }
@@ -126,15 +229,31 @@ function verifyToken(token: string, expectedRole: AuthRole): TokenPayload | null
     return null;
   }
 
+  const redis = getRedis();
+  if (redis) {
+    try {
+      const revoked = await redis.exists(`auth:revoked-jti:${payload.jti}`);
+      if (revoked) return null;
+    } catch {
+      // If Redis is flaky, do not fail open for admin tokens in production.
+      if (expectedRole === "admin" && process.env.NODE_ENV === "production") {
+        return null;
+      }
+    }
+  }
+
+  const currentVersion = await getCurrentTokenVersion(expectedRole);
+  if (!currentVersion || payload.tv !== currentVersion) return null;
+
   return payload;
 }
 
-function verifyTokenForRoles(
+async function verifyTokenForRoles(
   token: string,
-  acceptedRoles: readonly AuthRole[]
-): TokenPayload | null {
+  acceptedRoles: readonly TokenRole[]
+): Promise<TokenPayload | null> {
   for (const role of acceptedRoles) {
-    const payload = verifyToken(token, role);
+    const payload = await verifyToken(token, role);
     if (payload) return payload;
   }
   return null;
@@ -157,12 +276,6 @@ function getClientIp(request: NextRequest): string {
   );
 }
 
-function getSecret(role: AuthRole): string | null {
-  const raw = process.env[ROLES[role].envVar];
-  if (!raw) return null;
-  return raw.trim() || null;
-}
-
 function extractBearer(request: NextRequest): string {
   const raw = request.headers.get("authorization") ?? "";
   return raw.startsWith("Bearer ") ? raw.slice(7).trim() : "";
@@ -172,24 +285,63 @@ function extractBearer(request: NextRequest): string {
 
 const MAX_ATTEMPTS = 5;
 const LOCKOUT_SECONDS = 900;
+const memoryRateLimit = new Map<string, { attempts: number; resetAtMs: number }>();
+
+function memoryKey(role: AuthRole, ip: string): string {
+  return `mem:${role}:${ip}`;
+}
 
 async function checkRateLimit(
   role: AuthRole,
   ip: string
-): Promise<{ allowed: boolean; remaining: number }> {
+): Promise<{ allowed: boolean; remaining: number; backendAvailable: boolean }> {
   const redis = getRedis();
-  if (!redis) return { allowed: true, remaining: MAX_ATTEMPTS };
+  if (!redis) {
+    // In-memory fallback: good enough for local dev and prevents accidental brute force.
+    const key = memoryKey(role, ip);
+    const now = Date.now();
+    const entry = memoryRateLimit.get(key);
+    const fresh =
+      !entry || entry.resetAtMs <= now
+        ? { attempts: 0, resetAtMs: now + LOCKOUT_SECONDS * 1000 }
+        : entry;
+    memoryRateLimit.set(key, fresh);
+
+    if (fresh.attempts >= MAX_ATTEMPTS) {
+      return { allowed: false, remaining: 0, backendAvailable: false };
+    }
+    return {
+      allowed: true,
+      remaining: MAX_ATTEMPTS - fresh.attempts,
+      backendAvailable: false,
+    };
+  }
 
   const key = `auth:ratelimit:${role}:${ip}`;
-  const attempts = (await redis.get<number>(key)) ?? 0;
-
-  if (attempts >= MAX_ATTEMPTS) return { allowed: false, remaining: 0 };
-  return { allowed: true, remaining: MAX_ATTEMPTS - attempts };
+  try {
+    const attempts = (await redis.get<number>(key)) ?? 0;
+    if (attempts >= MAX_ATTEMPTS) return { allowed: false, remaining: 0, backendAvailable: true };
+    return { allowed: true, remaining: MAX_ATTEMPTS - attempts, backendAvailable: true };
+  } catch {
+    return role === "admin"
+      ? { allowed: false, remaining: 0, backendAvailable: false }
+      : { allowed: true, remaining: MAX_ATTEMPTS, backendAvailable: false };
+  }
 }
 
 async function recordFailure(role: AuthRole, ip: string): Promise<void> {
   const redis = getRedis();
-  if (!redis) return;
+  if (!redis) {
+    const key = memoryKey(role, ip);
+    const now = Date.now();
+    const entry = memoryRateLimit.get(key);
+    if (!entry || entry.resetAtMs <= now) {
+      memoryRateLimit.set(key, { attempts: 1, resetAtMs: now + LOCKOUT_SECONDS * 1000 });
+    } else {
+      memoryRateLimit.set(key, { ...entry, attempts: entry.attempts + 1 });
+    }
+    return;
+  }
   const key = `auth:ratelimit:${role}:${ip}`;
   await redis.incr(key);
   await redis.expire(key, LOCKOUT_SECONDS);
@@ -197,7 +349,10 @@ async function recordFailure(role: AuthRole, ip: string): Promise<void> {
 
 async function clearRateLimit(role: AuthRole, ip: string): Promise<void> {
   const redis = getRedis();
-  if (!redis) return;
+  if (!redis) {
+    memoryRateLimit.delete(memoryKey(role, ip));
+    return;
+  }
   await redis.del(`auth:ratelimit:${role}:${ip}`);
 }
 
@@ -209,14 +364,14 @@ async function clearRateLimit(role: AuthRole, ip: string): Promise<void> {
  * For staff/admin/upload: Validates JWT (Authorization: Bearer <token>).
  * For cron: Validates Bearer secret directly.
  */
-function requireAuth(
+async function requireAuth(
   request: NextRequest,
   role: AuthRole
-): NextResponse | null {
+): Promise<NextResponse | null> {
   if (role === "cron") {
-    const secret = getSecret("cron");
+    const { secret, error } = getRoleSecretStatus("cron");
     if (!secret) {
-      return NextResponse.json({ error: "CRON_SECRET not configured" }, { status: 503 });
+      return NextResponse.json({ error: error ?? "CRON_SECRET not configured" }, { status: 503 });
     }
     const candidate = extractBearer(request);
     if (!candidate || !safeCompare(candidate, secret)) {
@@ -236,12 +391,193 @@ function requireAuth(
       : role === "upload"
         ? (["upload", "admin"] as const)
         : ([role] as const);
-  const payload = verifyTokenForRoles(token, acceptedRoles);
+  const payload = await verifyTokenForRoles(token, acceptedRoles);
   if (!payload) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   return null;
+}
+
+async function requireAuthWithPayload(
+  request: NextRequest,
+  role: AuthRole
+): Promise<{ error: NextResponse | null; payload: TokenPayload | null }> {
+  if (role === "cron") {
+    const error = await requireAuth(request, "cron");
+    return { error, payload: null };
+  }
+
+  const token = extractBearer(request);
+  if (!token) {
+    return {
+      error: NextResponse.json({ error: "Unauthorized" }, { status: 401 }),
+      payload: null,
+    };
+  }
+
+  const acceptedRoles =
+    role === "staff"
+      ? (["staff", "admin"] as const)
+      : role === "upload"
+        ? (["upload", "admin"] as const)
+        : ([role] as const);
+  const payload = await verifyTokenForRoles(token, acceptedRoles);
+  if (!payload) {
+    return {
+      error: NextResponse.json({ error: "Unauthorized" }, { status: 401 }),
+      payload: null,
+    };
+  }
+  return { error: null, payload };
+}
+
+function signStepUpToken(parentJti: string): string | null {
+  const { secret } = getAuthSecretStatus();
+  if (!secret) return null;
+  const header = { alg: "HS256", typ: "JWT" };
+  const now = Math.floor(Date.now() / 1000);
+  const payload: StepUpPayload = {
+    kind: "admin-step-up",
+    parentJti,
+    iat: now,
+    exp: now + ADMIN_STEP_UP_TTL_SECONDS,
+    nonce: randomUUID(),
+  };
+
+  const headerB64 = base64UrlEncode(Buffer.from(JSON.stringify(header)));
+  const payloadB64 = base64UrlEncode(Buffer.from(JSON.stringify(payload)));
+  const message = `${headerB64}.${payloadB64}`;
+  const sig = createHmac("sha256", secret).update(message).digest();
+  return `${message}.${base64UrlEncode(sig)}`;
+}
+
+function verifyStepUpToken(token: string, parentJti: string): boolean {
+  const { secret } = getAuthSecretStatus();
+  if (!secret) return false;
+  const parts = token.split(".");
+  if (parts.length !== 3) return false;
+  const [headerB64, payloadB64, sigB64] = parts;
+  const message = `${headerB64}.${payloadB64}`;
+
+  let payload: StepUpPayload;
+  try {
+    payload = JSON.parse(base64UrlDecode(payloadB64).toString()) as StepUpPayload;
+  } catch {
+    return false;
+  }
+
+  if (payload.kind !== "admin-step-up") return false;
+  if (payload.parentJti !== parentJti) return false;
+  if (typeof payload.exp !== "number" || payload.exp < Math.floor(Date.now() / 1000)) {
+    return false;
+  }
+  const expectedSig = createHmac("sha256", secret).update(message).digest();
+  const actualSig = base64UrlDecode(sigB64);
+  return actualSig.length === expectedSig.length && timingSafeEqual(actualSig, expectedSig);
+}
+
+async function requireAdminStepUp(request: NextRequest): Promise<NextResponse | null> {
+  const { error, payload } = await requireAuthWithPayload(request, "admin");
+  if (error || !payload) return error;
+
+  const stepUpToken = request.headers.get("x-admin-step-up")?.trim() ?? "";
+  if (!stepUpToken) {
+    return NextResponse.json(
+      { error: "Step-up verification required", code: "STEP_UP_REQUIRED" },
+      { status: 428 }
+    );
+  }
+  if (!verifyStepUpToken(stepUpToken, payload.jti)) {
+    return NextResponse.json(
+      { error: "Invalid or expired step-up token", code: "STEP_UP_INVALID" },
+      { status: 401 }
+    );
+  }
+  return null;
+}
+
+async function createAdminStepUpToken(
+  request: NextRequest,
+  password: string
+): Promise<NextResponse> {
+  const { error, payload } = await requireAuthWithPayload(request, "admin");
+  if (error || !payload) {
+    return error ?? NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const adminSecretStatus = getRoleSecretStatus("admin");
+  if (!adminSecretStatus.secret) {
+    return NextResponse.json(
+      { error: adminSecretStatus.error ?? "ADMIN_PASSWORD not configured" },
+      { status: 503 }
+    );
+  }
+  if (!safeCompare(password.trim(), adminSecretStatus.secret)) {
+    return NextResponse.json({ error: "Invalid password" }, { status: 401 });
+  }
+
+  const token = signStepUpToken(payload.jti);
+  if (!token) {
+    return NextResponse.json({ error: "Failed to create step-up token" }, { status: 503 });
+  }
+  return NextResponse.json({
+    ok: true,
+    token,
+    expiresInSeconds: ADMIN_STEP_UP_TTL_SECONDS,
+  });
+}
+
+async function revokeRoleTokens(
+  role: RevocableRole
+): Promise<{ role: RevocableRole; tokenVersion: number }> {
+  const redis = getRedis();
+  if (!redis) {
+    throw new Error("Redis not configured");
+  }
+
+  const key = tokenVersionKey(role);
+  const next = await redis.incr(key);
+  const tokenVersion = next > 0 ? next : 1;
+  if (next <= 0) {
+    await redis.set(key, tokenVersion);
+  }
+  return { role, tokenVersion };
+}
+
+async function revokeAllRoleTokens(): Promise<
+  Array<{ role: RevocableRole; tokenVersion: number }>
+> {
+  const results: Array<{ role: RevocableRole; tokenVersion: number }> = [];
+  for (const role of REVOCABLE_ROLES) {
+    results.push(await revokeRoleTokens(role));
+  }
+  return results;
+}
+
+function getSecurityWarnings(): string[] {
+  const warnings: string[] = [];
+  const authSecret = getRawEnv("AUTH_SECRET");
+  if (!authSecret) {
+    warnings.push("AUTH_SECRET missing");
+  } else {
+    const issue = validateSecretStrength("AUTH_SECRET", authSecret, MIN_AUTH_SECRET_LENGTH);
+    if (issue) warnings.push(issue);
+  }
+
+  const adminPassword = getRawEnv("ADMIN_PASSWORD");
+  if (!adminPassword) {
+    warnings.push("ADMIN_PASSWORD missing");
+  } else {
+    const issue = validateSecretStrength(
+      "ADMIN_PASSWORD",
+      adminPassword,
+      MIN_ADMIN_PASSWORD_LENGTH
+    );
+    if (issue) warnings.push(issue);
+  }
+
+  return warnings;
 }
 
 /* ─── Verify handler ─── */
@@ -263,24 +599,31 @@ async function handleVerifyRequest(
     );
   }
 
-  const secret = getSecret(role);
-  if (!secret) {
+  const roleSecretStatus = getRoleSecretStatus(role);
+  if (!roleSecretStatus.secret) {
     return NextResponse.json(
-      { error: `${config.envVar} not configured` },
+      { error: roleSecretStatus.error ?? `${config.envVar} not configured` },
       { status: 503 }
     );
   }
 
-  const authSecret = getAuthSecret();
-  if (!authSecret && TOKEN_ROLES.includes(role)) {
+  const authSecretStatus = getAuthSecretStatus();
+  if (!authSecretStatus.secret && TOKEN_ROLES.includes(role as TokenRole)) {
     return NextResponse.json(
-      { error: "AUTH_SECRET not configured" },
+      { error: authSecretStatus.error ?? "AUTH_SECRET not configured" },
       { status: 503 }
     );
   }
 
   const ip = getClientIp(request);
-  const { allowed, remaining } = await checkRateLimit(role, ip);
+  const { allowed, remaining, backendAvailable } = await checkRateLimit(role, ip);
+
+  if (role === "admin" && !backendAvailable && process.env.NODE_ENV === "production") {
+    return NextResponse.json(
+      { error: "Rate limit backend unavailable for admin auth" },
+      { status: 503 }
+    );
+  }
 
   if (!allowed) {
     return NextResponse.json(
@@ -303,14 +646,43 @@ async function handleVerifyRequest(
       : "";
   const candidate = sanitize ? sanitize(raw) : raw.trim();
 
-  if (safeCompare(candidate, secret)) {
+  if (safeCompare(candidate, roleSecretStatus.secret)) {
     await clearRateLimit(role, ip);
-    const token = signToken(role);
+    if (!TOKEN_ROLES.includes(role as TokenRole)) {
+      return NextResponse.json({ ok: true });
+    }
+    const token = await signToken(role as TokenRole);
     if (!token) {
       return NextResponse.json(
         { error: "Token generation failed" },
         { status: 503 }
       );
+    }
+    // Best-effort session registration (Redis-backed).
+    const redis = getRedis();
+    if (redis) {
+      try {
+        const issuedAt = Math.floor(Date.now() / 1000);
+        const parts = token.split(".");
+        if (parts.length === 3) {
+          const payloadJson = JSON.parse(base64UrlDecode(parts[1]).toString()) as TokenPayload;
+          const ttlSeconds = Math.max(1, payloadJson.exp - issuedAt);
+          const ua = request.headers.get("user-agent") ?? "";
+          await redis.set(`auth:session:${payloadJson.jti}`, {
+            role: payloadJson.role,
+            iat: payloadJson.iat,
+            exp: payloadJson.exp,
+            tv: payloadJson.tv,
+            ip,
+            ua,
+          });
+          await redis.expire(`auth:session:${payloadJson.jti}`, ttlSeconds + 60);
+          await redis.sadd("auth:sessions:index", payloadJson.jti);
+          await redis.expire("auth:sessions:index", 60 * 60 * 24 * 60); // keep index around for 60 days
+        }
+      } catch {
+        // ignore session tracking failures
+      }
     }
     return NextResponse.json({ ok: true, token });
   }
@@ -327,5 +699,16 @@ async function handleVerifyRequest(
 
 /* ─── Exports ─── */
 
-export { requireAuth, handleVerifyRequest, safeCompare, getClientIp };
-export type { AuthRole };
+export {
+  requireAuth,
+  requireAuthWithPayload,
+  requireAdminStepUp,
+  createAdminStepUpToken,
+  handleVerifyRequest,
+  revokeRoleTokens,
+  revokeAllRoleTokens,
+  getSecurityWarnings,
+  safeCompare,
+  getClientIp,
+};
+export type { AuthRole, RevocableRole };

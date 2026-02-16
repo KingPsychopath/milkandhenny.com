@@ -68,6 +68,7 @@ Self-destructing file sharing — upload any files via CLI or web, get a link at
 pnpm cli transfers upload      # Interactive: pick folder, set title, set expiry
 pnpm cli transfers list        # See all active transfers + time remaining
 pnpm cli transfers delete <id> # Take down a transfer + delete R2 files
+pnpm cli auth revoke --admin-token <jwt> --admin-password <password> --role admin
 ```
 
 ### Photo Gallery
@@ -130,9 +131,9 @@ pnpm cli blog list <post-slug>                          # List uploaded files
 | `R2_ACCESS_KEY` | Yes (uploads, cron) | R2 API token access key |
 | `R2_SECRET_KEY` | Yes (uploads, cron) | R2 API token secret key |
 | `R2_BUCKET` | Yes (uploads, cron) | R2 bucket name |
-| `AUTH_SECRET` | Yes (auth) | JWT signing key. Generate: `openssl rand -hex 32` |
+| `AUTH_SECRET` | Yes (auth) | JWT signing key. Generate: `openssl rand -hex 32` (minimum 32 chars). |
 | `STAFF_PIN` | Yes (guestlist) | PIN for door staff. Not in client bundle. |
-| `ADMIN_PASSWORD` | Yes (admin) | Gate for management UI and admin dashboard. Not in client bundle. |
+| `ADMIN_PASSWORD` | Yes (admin) | Gate for management UI and admin dashboard. Weak values show up as warnings. Not in client bundle. |
 | `UPLOAD_PIN` | Yes (upload) | Dedicated PIN for `/upload` (shareable with non-admin uploaders). |
 | `NEXT_PUBLIC_BASE_URL` | CLI only | For generating share URLs. Not needed on Vercel. |
 | `CRON_SECRET` | Optional | Secures daily cleanup cron. |

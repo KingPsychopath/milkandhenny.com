@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { headers } from 'next/headers';
 import { parseCSV } from '@/lib/guests/csv-parser';
 import { getGuests, setGuests } from '@/lib/guests/kv-client';
-import { requireAuth } from '@/lib/auth';
+import { requireAdminStepUp, requireAuth } from '@/lib/auth';
 import { apiError } from '@/lib/api-error';
 
 /** Resolve the origin from request headers (works on Vercel). */
@@ -25,8 +25,10 @@ async function fetchCsvGuests() {
  * Bootstrap — loads guests from public/guests.csv if no guests exist.
  */
 export async function POST(request: NextRequest) {
-  const authErr = requireAuth(request, "admin");
+  const authErr = await requireAuth(request, "admin");
   if (authErr) return authErr;
+  const stepUpErr = await requireAdminStepUp(request);
+  if (stepUpErr) return stepUpErr;
 
   try {
     const existing = await getGuests();
@@ -62,8 +64,10 @@ export async function POST(request: NextRequest) {
  * Force re-bootstrap — clears existing data and reloads from CSV.
  */
 export async function DELETE(request: NextRequest) {
-  const authErr = requireAuth(request, "admin");
+  const authErr = await requireAuth(request, "admin");
   if (authErr) return authErr;
+  const stepUpErr = await requireAdminStepUp(request);
+  if (stepUpErr) return stepUpErr;
 
   try {
     await setGuests([]);

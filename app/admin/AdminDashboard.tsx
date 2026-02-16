@@ -96,6 +96,7 @@ type DebugResponse = {
   environment: {
     redisConfigured: boolean;
     cronSecretConfigured: boolean;
+    securityWarnings?: string[];
   };
   data: {
     error: string | null;
@@ -103,6 +104,25 @@ type DebugResponse = {
 };
 
 type AuditView = "all" | "broken-refs" | "invalid-albums";
+
+type TokenSession = {
+  jti: string;
+  role: "admin" | "staff" | "upload";
+  iat: number;
+  exp: number;
+  tv: number;
+  ip?: string;
+  ua?: string;
+  status: "active" | "expired" | "revoked" | "invalidated";
+};
+
+type TokenSessionsResponse = {
+  success: true;
+  count: number;
+  sessions: TokenSession[];
+  now: number;
+  currentTv: { admin: number; staff: number; upload: number };
+};
 
 function formatDate(date: string | null): string {
   if (!date) return "—";
@@ -120,6 +140,13 @@ function formatRemaining(seconds: number): string {
   if (hours > 0) return `${hours}h ${minutes}m`;
   return `${minutes}m`;
 }
+
+const TOKEN_SESSION_STATUS = {
+  active: { label: "usable", dotClass: "bg-[var(--foreground)]" },
+  revoked: { label: "revoked", dotClass: "bg-[var(--prose-hashtag)]" },
+  invalidated: { label: "signed out", dotClass: "bg-[var(--stone-400)]" },
+  expired: { label: "expired", dotClass: "bg-[var(--stone-400)]" },
+} as const;
 
 export function AdminDashboard() {
   const [mounted, setMounted] = useState(false);
@@ -151,6 +178,15 @@ export function AdminDashboard() {
   const [transferActionLoading, setTransferActionLoading] = useState<string | null>(null);
   const [transferCleanupLoading, setTransferCleanupLoading] = useState(false);
   const [transferNukeLoading, setTransferNukeLoading] = useState(false);
+  const [revokeLoading, setRevokeLoading] = useState<"admin" | "all" | null>(null);
+  const [stepUpToken, setStepUpToken] = useState("");
+  const [stepUpExpiryMs, setStepUpExpiryMs] = useState(0);
+  const [tokenSessions, setTokenSessions] = useState<TokenSession[]>([]);
+  const [tokenSessionsLoading, setTokenSessionsLoading] = useState(false);
+  const [tokenSessionsQuery, setTokenSessionsQuery] = useState("");
+  const [showInactiveTokenSessions, setShowInactiveTokenSessions] = useState(false);
+  const [showAllTokenSessions, setShowAllTokenSessions] = useState(false);
+  const [sessionRevokeLoading, setSessionRevokeLoading] = useState<string | null>(null);
   const [debugData, setDebugData] = useState<DebugResponse | null>(null);
 
   useEffect(() => {
@@ -160,6 +196,13 @@ export function AdminDashboard() {
   }, []);
 
   const isAuthed = !!adminToken;
+
+  useEffect(() => {
+    if (!adminToken) {
+      setStepUpToken("");
+      setStepUpExpiryMs(0);
+    }
+  }, [adminToken]);
 
   const authFetch = useCallback(
     async (url: string, options: RequestInit = {}) => {
@@ -212,9 +255,35 @@ export function AdminDashboard() {
     }
   }, [authFetch, isAuthed]);
 
+  const loadTokenSessions = useCallback(async () => {
+    if (!isAuthed) return;
+    setTokenSessionsLoading(true);
+    setErrorMessage("");
+    try {
+      const res = await authFetch("/api/admin/tokens/sessions");
+      const data = (await res.json().catch(() => ({}))) as Partial<TokenSessionsResponse> & {
+        error?: string;
+      };
+      if (!res.ok) {
+        throw new Error(data.error || "Failed to load token sessions");
+      }
+      const sessions = Array.isArray(data.sessions) ? (data.sessions as TokenSession[]) : [];
+      setTokenSessions(sessions);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Failed to load token sessions";
+      setErrorMessage(msg);
+    } finally {
+      setTokenSessionsLoading(false);
+    }
+  }, [authFetch, isAuthed]);
+
   useEffect(() => {
     void refreshDashboard();
   }, [refreshDashboard]);
+
+  useEffect(() => {
+    void loadTokenSessions();
+  }, [loadTokenSessions]);
 
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -315,7 +384,77 @@ export function AdminDashboard() {
     }
   };
 
+  const ensureStepUpToken = async (): Promise<string | null> => {
+    if (stepUpToken && Date.now() < stepUpExpiryMs - 5_000) {
+      return stepUpToken;
+    }
+
+    const password = window.prompt("Re-enter your admin password to confirm this action.");
+    if (!password) {
+      return null;
+    }
+
+    const res = await authFetch("/api/admin/step-up", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ password }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || typeof data.token !== "string") {
+      throw new Error((data.error as string) || "Step-up verification failed");
+    }
+    const expiresInSeconds =
+      typeof data.expiresInSeconds === "number" && data.expiresInSeconds > 0
+        ? data.expiresInSeconds
+        : 300;
+    setStepUpToken(data.token);
+    setStepUpExpiryMs(Date.now() + expiresInSeconds * 1000);
+    return data.token;
+  };
+
+  const withStepUpHeaders = (
+    token: string,
+    extra?: Record<string, string>
+  ): Record<string, string> => ({
+    ...(extra ?? {}),
+    "x-admin-step-up": token,
+  });
+
+  const handleRevokeSingleSession = async (jti: string) => {
+    if (!confirm(`Revoke this session?\n\n${jti}\n\nThis immediately invalidates that token.`)) {
+      return;
+    }
+    setSessionRevokeLoading(jti);
+    setErrorMessage("");
+    setStatusMessage("");
+    try {
+      const stepToken = await ensureStepUpToken();
+      if (!stepToken) return;
+      const res = await authFetch(`/api/admin/tokens/sessions/${encodeURIComponent(jti)}`, {
+        method: "DELETE",
+        headers: withStepUpHeaders(stepToken),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error((data.error as string) || "Failed to revoke session");
+      }
+      setStatusMessage("Session revoked.");
+      await loadTokenSessions();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Failed to revoke session";
+      setErrorMessage(msg);
+    } finally {
+      setSessionRevokeLoading(null);
+    }
+  };
+
   const commandHelpers = [
+    {
+      key: "auth-revoke-admin",
+      label: "revoke admin sessions",
+      cmd: "pnpm cli auth revoke --admin-token <jwt> --admin-password <password> --role admin --base-url http://localhost:3000",
+      tip: "CLI-first kill switch for admin sessions. Requires JWT + step-up password.",
+    },
     {
       key: "albums-upload",
       label: "upload new album",
@@ -364,8 +503,11 @@ export function AdminDashboard() {
     setErrorMessage("");
     setStatusMessage("");
     try {
+      const stepToken = await ensureStepUpToken();
+      if (!stepToken) return;
       const res = await authFetch(`/api/admin/albums/${encodeURIComponent(slug)}`, {
         method: "DELETE",
+        headers: withStepUpHeaders(stepToken),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -394,9 +536,11 @@ export function AdminDashboard() {
     setErrorMessage("");
     setStatusMessage("");
     try {
+      const stepToken = await ensureStepUpToken();
+      if (!stepToken) return;
       const res = await authFetch(
         `/api/admin/albums/${encodeURIComponent(slug)}/photos/${encodeURIComponent(photoId)}`,
-        { method: "DELETE" }
+        { method: "DELETE", headers: withStepUpHeaders(stepToken) }
       );
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -448,8 +592,11 @@ export function AdminDashboard() {
     setErrorMessage("");
     setStatusMessage("");
     try {
+      const stepToken = await ensureStepUpToken();
+      if (!stepToken) return;
       const res = await authFetch(`/api/admin/transfers/${encodeURIComponent(id)}`, {
         method: "DELETE",
+        headers: withStepUpHeaders(stepToken),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -477,7 +624,12 @@ export function AdminDashboard() {
     setErrorMessage("");
     setStatusMessage("");
     try {
-      const res = await authFetch("/api/admin/transfers/cleanup", { method: "POST" });
+      const stepToken = await ensureStepUpToken();
+      if (!stepToken) return;
+      const res = await authFetch("/api/admin/transfers/cleanup", {
+        method: "POST",
+        headers: withStepUpHeaders(stepToken),
+      });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         throw new Error((data.error as string) || "Failed to run cleanup");
@@ -506,7 +658,12 @@ export function AdminDashboard() {
     setErrorMessage("");
     setStatusMessage("");
     try {
-      const res = await authFetch("/api/admin/transfers/nuke", { method: "POST" });
+      const stepToken = await ensureStepUpToken();
+      if (!stepToken) return;
+      const res = await authFetch("/api/admin/transfers/nuke", {
+        method: "POST",
+        headers: withStepUpHeaders(stepToken),
+      });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         throw new Error((data.error as string) || "Failed to nuke transfers");
@@ -520,6 +677,52 @@ export function AdminDashboard() {
       setErrorMessage(msg);
     } finally {
       setTransferNukeLoading(false);
+    }
+  };
+
+  const handleRevokeSessions = async (role: "admin" | "all") => {
+    const label = role === "admin" ? "admin sessions" : "all role sessions";
+    if (!confirm(`Revoke ${label} now?\n\nThis immediately invalidates active tokens.`)) {
+      return;
+    }
+    setRevokeLoading(role);
+    setErrorMessage("");
+    setStatusMessage("");
+    try {
+      const stepToken = await ensureStepUpToken();
+      if (!stepToken) return;
+      const res = await authFetch("/api/admin/tokens/revoke", {
+        method: "POST",
+        headers: withStepUpHeaders(stepToken, { "Content-Type": "application/json" }),
+        body: JSON.stringify({ role }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error((data.error as string) || "Failed to revoke sessions");
+      }
+
+      const revoked = Array.isArray(data.revoked)
+        ? (data.revoked as Array<{ role?: string; tokenVersion?: number }>)
+        : [];
+      const summary = revoked
+        .map((item) =>
+          typeof item?.role === "string" ? `${item.role}@v${item.tokenVersion ?? "?"}` : null
+        )
+        .filter(Boolean)
+        .join(", ");
+
+      if (role === "admin" || role === "all") {
+        removeStored("adminToken");
+        setAdminToken("");
+        setAuthError("Sessions revoked. Sign in again.");
+      } else {
+        setStatusMessage(`Revoked sessions: ${summary || role}`);
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Failed to revoke sessions";
+      setErrorMessage(msg);
+    } finally {
+      setRevokeLoading(null);
     }
   };
 
@@ -548,6 +751,32 @@ export function AdminDashboard() {
   const visibleTransfers = showAllTransfers
     ? filteredTransfers
     : filteredTransfers.slice(0, 15);
+
+  const filteredTokenSessions = useMemo(() => {
+    const base = showInactiveTokenSessions
+      ? tokenSessions
+      : tokenSessions.filter((s) => s.status === "active");
+    const q = tokenSessionsQuery.trim().toLowerCase();
+    if (!q) return base;
+    return base.filter((s) => {
+      return (
+        s.jti.toLowerCase().includes(q) ||
+        s.role.toLowerCase().includes(q) ||
+        (s.ip ?? "").toLowerCase().includes(q) ||
+        (s.ua ?? "").toLowerCase().includes(q) ||
+        s.status.toLowerCase().includes(q)
+      );
+    });
+  }, [showInactiveTokenSessions, tokenSessions, tokenSessionsQuery]);
+  const visibleTokenSessions = showAllTokenSessions
+    ? filteredTokenSessions
+    : filteredTokenSessions.slice(0, 12);
+
+  const tokenSessionCounts = useMemo(() => {
+    const usable = tokenSessions.filter((s) => s.status === "active").length;
+    const total = tokenSessions.length;
+    return { usable, inactive: Math.max(0, total - usable), total };
+  }, [tokenSessions]);
 
   if (!mounted) {
     return (
@@ -690,6 +919,189 @@ export function AdminDashboard() {
               {debugData?.environment.cronSecretConfigured ? "ok" : "missing"}
             </p>
           </div>
+        </div>
+
+        <div className="border-t theme-border pt-6 space-y-3">
+          <div className="flex items-center justify-between">
+            <p className="font-mono text-xs theme-muted">session security</p>
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                disabled={revokeLoading !== null}
+                onClick={() => void handleRevokeSessions("admin")}
+                className="font-mono text-xs text-[var(--prose-hashtag)] hover:opacity-80 transition-opacity disabled:opacity-50"
+                title="Invalidates every active admin token immediately."
+              >
+                {revokeLoading === "admin" ? "revoking..." : "revoke admin sessions"}
+              </button>
+              <button
+                type="button"
+                disabled={revokeLoading !== null}
+                onClick={() => void handleRevokeSessions("all")}
+                className="font-mono text-xs text-[var(--prose-hashtag)] hover:opacity-80 transition-opacity disabled:opacity-50"
+                title="Invalidates staff, upload, and admin tokens globally."
+              >
+                {revokeLoading === "all" ? "revoking..." : "revoke all role sessions"}
+              </button>
+            </div>
+          </div>
+          <div className="flex items-center justify-between gap-3">
+            <p className="font-mono text-xs theme-muted">
+              token sessions{" "}
+              {tokenSessionCounts.total > 0
+                ? `(${tokenSessionCounts.usable} usable${showInactiveTokenSessions ? ` / ${tokenSessionCounts.total} total` : ""})`
+                : ""}
+            </p>
+            <div className="flex items-center gap-3">
+              {tokenSessionCounts.inactive > 0 ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowInactiveTokenSessions((v) => !v);
+                    setShowAllTokenSessions(false);
+                  }}
+                  className="font-mono text-xs theme-muted hover:text-[var(--foreground)] transition-colors"
+                  title="Toggle showing revoked/expired/signed-out sessions."
+                >
+                  {showInactiveTokenSessions
+                    ? "hide inactive"
+                    : `show inactive (${tokenSessionCounts.inactive})`}
+                </button>
+              ) : null}
+              <button
+                type="button"
+                disabled={tokenSessionsLoading}
+                onClick={() => void loadTokenSessions()}
+                className="font-mono text-xs theme-muted hover:text-[var(--foreground)] transition-colors disabled:opacity-50"
+                title="Refreshes the list of issued JWT sessions (by jti)."
+              >
+                {tokenSessionsLoading ? "refreshing..." : "refresh"}
+              </button>
+            </div>
+          </div>
+          <input
+            type="text"
+            value={tokenSessionsQuery}
+            onChange={(e) => {
+              setTokenSessionsQuery(e.target.value);
+              setShowAllTokenSessions(false);
+            }}
+            placeholder={`filter ${showInactiveTokenSessions ? "sessions" : "usable sessions"} by role, ip, status, jti, user-agent`}
+            className="w-full bg-transparent border-b border-[var(--stone-200)] focus:border-[var(--foreground)] outline-none font-mono text-xs py-2 transition-colors placeholder:text-[var(--stone-400)]"
+          />
+          {filteredTokenSessions.length === 0 ? (
+            <p className="font-mono text-xs theme-muted">
+              No sessions found (or Redis not configured).
+            </p>
+          ) : (
+            <div className="space-y-2">
+              {visibleTokenSessions.map((s) => {
+                const expiresIn = s.exp - Math.floor(Date.now() / 1000);
+                const issuedAgo = Math.max(
+                  0,
+                  Math.floor(Date.now() / 1000) - s.iat
+                );
+                return (
+                  <details
+                    key={s.jti}
+                    className="border theme-border rounded-md p-3"
+                  >
+                    <summary
+                      className="cursor-pointer select-none list-none"
+                      title="Tap to expand for full details (jti, full user-agent)."
+                    >
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="font-mono text-sm truncate">
+                            <span className="inline-flex items-center gap-2">
+                              <span
+                                aria-hidden="true"
+                                className={`w-1.5 h-1.5 rounded-full ${TOKEN_SESSION_STATUS[s.status].dotClass}`}
+                              />
+                              <span>
+                                {s.role} · {TOKEN_SESSION_STATUS[s.status].label}
+                              </span>
+                            </span>
+                          </p>
+                          <p className="font-mono text-xs theme-muted truncate">
+                            issued {formatRemaining(issuedAgo)} ago · expires in{" "}
+                            {formatRemaining(expiresIn)}
+                          </p>
+                        </div>
+                        <span className="font-mono text-xs theme-muted shrink-0">
+                          details
+                        </span>
+                      </div>
+                    </summary>
+
+                    <div className="mt-3 pt-3 border-t theme-border space-y-2">
+                      <p className="font-mono text-xs theme-muted">
+                        jti: <span className="text-[var(--foreground)]">{s.jti}</span>
+                      </p>
+                      <p className="font-mono text-xs theme-muted">
+                        token version: <span className="text-[var(--foreground)]">{s.tv}</span>
+                      </p>
+                      <p className="font-mono text-xs theme-muted">
+                        ip: <span className="text-[var(--foreground)]">{s.ip || "—"}</span>
+                      </p>
+                      <p className="font-mono text-xs theme-muted break-words">
+                        user-agent:{" "}
+                        <span className="text-[var(--foreground)]">{s.ua || "—"}</span>
+                      </p>
+
+                      <div className="flex items-center justify-between gap-3 pt-1">
+                        <p className="font-mono text-xs theme-muted">
+                          status:{" "}
+                          <span className="text-[var(--foreground)]">{s.status}</span>
+                        </p>
+                        <button
+                          type="button"
+                          disabled={
+                            s.status !== "active" ||
+                            sessionRevokeLoading === s.jti
+                          }
+                          onClick={() => void handleRevokeSingleSession(s.jti)}
+                          className="font-mono text-xs text-[var(--prose-hashtag)] hover:opacity-80 transition-opacity disabled:opacity-50"
+                          title="Revokes only this one token session (by jti)."
+                        >
+                          {sessionRevokeLoading === s.jti
+                            ? "revoking..."
+                            : "revoke"}
+                        </button>
+                      </div>
+                    </div>
+                  </details>
+                );
+              })}
+              {filteredTokenSessions.length > 12 ? (
+                <button
+                  type="button"
+                  onClick={() => setShowAllTokenSessions((v) => !v)}
+                  className="font-mono text-xs theme-muted hover:text-[var(--foreground)] transition-colors"
+                >
+                  {showAllTokenSessions
+                    ? "show fewer sessions"
+                    : `show all sessions (${filteredTokenSessions.length})`}
+                </button>
+              ) : null}
+            </div>
+          )}
+          {debugData?.environment.securityWarnings?.length ? (
+            <ul className="space-y-1">
+              {debugData.environment.securityWarnings.map((warning) => (
+                <li
+                  key={warning}
+                  className="font-mono text-xs text-[var(--prose-hashtag)]"
+                >
+                  {warning}
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="font-mono text-xs theme-muted">
+              No critical auth-secret warnings detected.
+            </p>
+          )}
         </div>
 
         <div className="border-t theme-border pt-6">

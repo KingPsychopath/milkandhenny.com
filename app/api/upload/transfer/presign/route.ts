@@ -27,7 +27,7 @@ const MAX_TRANSFER_TOTAL_BYTES = 1024 * 1024 * 1024; // 1GB
  * Returns: { transferId, deleteToken, expiresSeconds, urls: [{ name, url }] }
  */
 export async function POST(request: NextRequest) {
-  const authErr = requireAuth(request, "upload");
+  const authErr = await requireAuth(request, "upload");
   if (authErr) return authErr;
 
   if (!isConfigured()) {

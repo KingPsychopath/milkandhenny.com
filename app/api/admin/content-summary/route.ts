@@ -5,7 +5,7 @@ import { getAllAlbums, validateAllAlbums } from "@/lib/media/albums";
 import { apiError } from "@/lib/api-error";
 
 export async function GET(request: NextRequest) {
-  const authErr = requireAuth(request, "admin");
+  const authErr = await requireAuth(request, "admin");
   if (authErr) return authErr;
 
   try {

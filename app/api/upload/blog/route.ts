@@ -41,7 +41,7 @@ const MAX_BLOG_TOTAL_BYTES = 500 * 1024 * 1024; // 500MB
  * Body: multipart/form-data with fields: slug, force?, files[]
  */
 export async function POST(request: NextRequest) {
-  const authErr = requireAuth(request, "upload");
+  const authErr = await requireAuth(request, "upload");
   if (authErr) return authErr;
 
   let formData: FormData;

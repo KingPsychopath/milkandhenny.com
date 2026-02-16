@@ -1,12 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getGuests, setGuests } from '@/lib/guests/kv-client';
-import { requireAuth } from '@/lib/auth';
+import { requireAdminStepUp, requireAuth } from '@/lib/auth';
 import { Guest, GuestStatus, generateGuestId } from '@/lib/guests/types';
 import { apiError } from '@/lib/api-error';
 
 export async function POST(request: NextRequest) {
-  const authErr = requireAuth(request, "admin");
+  const authErr = await requireAuth(request, "admin");
   if (authErr) return authErr;
+  const stepUpErr = await requireAdminStepUp(request);
+  if (stepUpErr) return stepUpErr;
 
   try {
     const body = await request.json();

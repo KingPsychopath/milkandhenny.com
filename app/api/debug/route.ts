@@ -1,13 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getGuests } from '@/lib/guests/kv-client';
-import { requireAuth } from '@/lib/auth';
+import { getSecurityWarnings, requireAuth } from '@/lib/auth';
 
 /**
  * Debug endpoint — check Redis connection and data status.
  * Protected behind admin auth.
  */
 export async function GET(request: NextRequest) {
-  const authErr = requireAuth(request, "admin");
+  const authErr = await requireAuth(request, "admin");
   if (authErr) return authErr;
   // Check both naming conventions (Vercel KV vs direct Upstash)
   const hasKvUrl = !!process.env.KV_REST_API_URL;
@@ -43,6 +43,7 @@ export async function GET(request: NextRequest) {
   }
   
   const hasCronSecret = !!process.env.CRON_SECRET;
+  const securityWarnings = getSecurityWarnings();
 
   return NextResponse.json({
     status: 'ok',
@@ -54,6 +55,7 @@ export async function GET(request: NextRequest) {
       source: hasKvUrl ? 'KV_REST_API_*' : hasUpstashUrl ? 'UPSTASH_REDIS_*' : 'none',
       cronSecretConfigured: hasCronSecret,
       cronWarning: !hasCronSecret ? 'CRON_SECRET not set — cron jobs will return 503. Add it in Vercel env vars.' : null,
+      securityWarnings,
     },
     data: {
       primaryGuests: guestCount,

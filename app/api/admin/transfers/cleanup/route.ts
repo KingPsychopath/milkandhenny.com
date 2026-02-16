@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireAuth } from "@/lib/auth";
+import { requireAdminStepUp, requireAuth } from "@/lib/auth";
 import { getRedis } from "@/lib/redis";
 import { isConfigured, listPrefixes, listObjects, deleteObjects } from "@/lib/r2";
 import { apiError } from "@/lib/api-error";
@@ -9,8 +9,10 @@ import { apiError } from "@/lib/api-error";
  * Mirrors cron behavior but is manually triggered from dashboard.
  */
 export async function POST(request: NextRequest) {
-  const authErr = requireAuth(request, "admin");
+  const authErr = await requireAuth(request, "admin");
   if (authErr) return authErr;
+  const stepUpErr = await requireAdminStepUp(request);
+  if (stepUpErr) return stepUpErr;
 
   const redis = getRedis();
   if (!redis || !isConfigured()) {

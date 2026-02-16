@@ -15,7 +15,7 @@ import { isConfigured, listPrefixes, listObjects, deleteObjects } from "@/lib/r2
 export const dynamic = "force-dynamic";
 
 export async function GET(request: NextRequest) {
-  const authErr = requireAuth(request, "cron");
+  const authErr = await requireAuth(request, "cron");
   if (authErr) return authErr;
 
   const redis = getRedis();

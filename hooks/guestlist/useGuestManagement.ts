@@ -34,6 +34,8 @@ export function useGuestManagement({
   const [password, setPassword] = useState('');
   const [passwordError, setPasswordError] = useState<string | false>(false);
   const adminTokenRef = useRef<string | null>(null);
+  const stepUpTokenRef = useRef<string>('');
+  const stepUpExpiryMsRef = useRef<number>(0);
 
   /* ─── Tabs ─── */
   const [activeTab, setActiveTab] = useState<'add' | 'remove' | 'import' | 'data' | 'games'>('add');
@@ -116,6 +118,42 @@ export function useGuestManagement({
     []
   );
 
+  const ensureStepUpToken = useCallback(async (): Promise<string | null> => {
+    if (stepUpTokenRef.current && Date.now() < stepUpExpiryMsRef.current - 5_000) {
+      return stepUpTokenRef.current;
+    }
+
+    const pw = window.prompt('Re-enter your admin password to confirm this action.');
+    if (!pw) return null;
+
+    const res = await authFetch('/api/admin/step-up', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password: pw }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || typeof (data as { token?: unknown }).token !== 'string') {
+      throw new Error((data as { error?: string }).error || 'Step-up verification failed');
+    }
+
+    const token = (data as { token: string }).token;
+    const expiresInSeconds =
+      typeof (data as { expiresInSeconds?: unknown }).expiresInSeconds === 'number'
+        ? ((data as { expiresInSeconds: number }).expiresInSeconds || 300)
+        : 300;
+
+    stepUpTokenRef.current = token;
+    stepUpExpiryMsRef.current = Date.now() + expiresInSeconds * 1000;
+    return token;
+  }, [authFetch]);
+
+  function withStepUpHeaders(
+    token: string,
+    extra?: Record<string, string>
+  ): Record<string, string> {
+    return { ...(extra ?? {}), 'x-admin-step-up': token };
+  }
+
   function flashSuccess(msg: string, ms = 3000) {
     setSuccess(msg);
     setTimeout(() => setSuccess(null), ms);
@@ -182,9 +220,11 @@ export function useGuestManagement({
     e.preventDefault();
     setError(null);
     try {
+      const step = await ensureStepUpToken();
+      if (!step) return;
       const res = await authFetch('/api/guests/add', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: withStepUpHeaders(step, { 'Content-Type': 'application/json' }),
         body: JSON.stringify({ name, fullName, plusOneOf: plusOneOf || undefined }),
       });
       if (res.ok) {
@@ -206,8 +246,11 @@ export function useGuestManagement({
     if (!removeId) return;
     setError(null);
     try {
+      const step = await ensureStepUpToken();
+      if (!step) return;
       const res = await authFetch(`/api/guests/remove?id=${encodeURIComponent(removeId)}`, {
         method: 'DELETE',
+        headers: withStepUpHeaders(step),
       });
       if (res.ok) {
         setRemoveId('');
@@ -227,7 +270,9 @@ export function useGuestManagement({
     setDataLoading(true);
     setError(null);
     try {
-      const res = await authFetch('/api/guests/bootstrap', { method: 'POST' });
+      const step = await ensureStepUpToken();
+      if (!step) return;
+      const res = await authFetch('/api/guests/bootstrap', { method: 'POST', headers: withStepUpHeaders(step) });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         setError((data.error as string) || 'Bootstrap failed');
@@ -247,7 +292,9 @@ export function useGuestManagement({
     setDataLoading(true);
     setError(null);
     try {
-      const res = await authFetch('/api/guests/bootstrap', { method: 'DELETE' });
+      const step = await ensureStepUpToken();
+      if (!step) return;
+      const res = await authFetch('/api/guests/bootstrap', { method: 'DELETE', headers: withStepUpHeaders(step) });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         setError((data.error as string) || 'Force reload failed');
@@ -267,14 +314,16 @@ export function useGuestManagement({
     setDataLoading(true);
     setError(null);
     try {
-      const guestRes = await authFetch('/api/guests/bootstrap', { method: 'DELETE' });
+      const step = await ensureStepUpToken();
+      if (!step) return;
+      const guestRes = await authFetch('/api/guests/bootstrap', { method: 'DELETE', headers: withStepUpHeaders(step) });
       const guestData = await guestRes.json().catch(() => ({}));
       if (!guestRes.ok) {
         setError((guestData.error as string) || 'Guest reset failed');
         return;
       }
 
-      const voteRes = await authFetch('/api/best-dressed', { method: 'DELETE' });
+      const voteRes = await authFetch('/api/best-dressed', { method: 'DELETE', headers: withStepUpHeaders(step) });
       if (!voteRes.ok) {
         setError('Guests reset but failed to clear votes');
         onCSVImported();
@@ -305,7 +354,9 @@ export function useGuestManagement({
     try {
       const formData = new FormData();
       formData.append('file', file);
-      const res = await authFetch('/api/guests/import', { method: 'POST', body: formData });
+      const step = await ensureStepUpToken();
+      if (!step) return;
+      const res = await authFetch('/api/guests/import', { method: 'POST', body: formData, headers: withStepUpHeaders(step) });
       if (!res.ok) {
         const data = await res.json();
         throw new Error(data.error || 'Failed to import CSV');
@@ -337,7 +388,9 @@ export function useGuestManagement({
     setGamesLoading(true);
     setError(null);
     try {
-      const res = await authFetch('/api/best-dressed', { method: 'DELETE' });
+      const step = await ensureStepUpToken();
+      if (!step) return;
+      const res = await authFetch('/api/best-dressed', { method: 'DELETE', headers: withStepUpHeaders(step) });
       if (res.ok) {
         setBestDressedLeaderboard([]);
         setBestDressedTotalVotes(0);

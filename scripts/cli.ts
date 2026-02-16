@@ -899,6 +899,151 @@ async function cmdTransfersNuke() {
   console.log();
 }
 
+/* ─── Auth command handlers ─── */
+
+type RevokeRole = "admin" | "staff" | "upload" | "all";
+const REVOKE_ROLES: readonly RevokeRole[] = ["admin", "staff", "upload", "all"];
+
+function normalizeBaseUrl(url: string): string {
+  return url.replace(/\/+$/, "");
+}
+
+type TokenSession = {
+  jti: string;
+  role: "admin" | "staff" | "upload";
+  iat: number;
+  exp: number;
+  tv: number;
+  ip?: string;
+  ua?: string;
+  status: "active" | "expired" | "revoked" | "invalidated";
+};
+
+async function cmdAuthListSessions(opts: { baseUrl?: string; adminToken: string }) {
+  const baseUrl = normalizeBaseUrl(opts.baseUrl || BASE_URL || "http://localhost:3000");
+
+  heading("Token sessions");
+  log(`${dim("Base URL:")} ${baseUrl}`);
+  console.log();
+
+  const res = await fetch(`${baseUrl}/api/admin/tokens/sessions`, {
+    method: "GET",
+    headers: { Authorization: `Bearer ${opts.adminToken}` },
+  });
+  const data = (await res.json().catch(() => ({}))) as
+    | {
+        success: true;
+        count: number;
+        sessions: TokenSession[];
+        now: number;
+        currentTv: { admin: number; staff: number; upload: number };
+      }
+    | { error?: string };
+
+  if (!res.ok || !("success" in data)) {
+    throw new Error((data as { error?: string }).error || `List failed (${res.status})`);
+  }
+
+  const sessions = Array.isArray(data.sessions) ? data.sessions : [];
+  if (sessions.length === 0) {
+    log(dim("No sessions found."));
+    console.log();
+    return;
+  }
+
+  log(dim(`Current token versions: admin=${data.currentTv.admin}, staff=${data.currentTv.staff}, upload=${data.currentTv.upload}`));
+  console.log();
+
+  const now = typeof data.now === "number" ? data.now : Math.floor(Date.now() / 1000);
+  for (const s of sessions.slice(0, 60)) {
+    const expiresIn = s.exp - now;
+    const issuedAgo = now - s.iat;
+    const jtiShort = s.jti.length > 18 ? `${s.jti.slice(0, 8)}…${s.jti.slice(-6)}` : s.jti;
+    const ua = (s.ua ?? "").trim();
+    const uaShort = ua ? (ua.length > 60 ? `${ua.slice(0, 60)}…` : ua) : "—";
+    const ip = s.ip ?? "—";
+
+    const status =
+      s.status === "active"
+        ? green("active")
+        : s.status === "revoked"
+          ? red("revoked")
+          : s.status === "invalidated"
+            ? yellow("invalidated")
+            : dim("expired");
+
+    log(
+      `${cyan(s.role.padEnd(7))} ${status.padEnd(14)} ${dim(jtiShort.padEnd(20))} ${dim(`tv ${s.tv}`.padEnd(6))} ${dim(ip.padEnd(16))} ${dim(`exp ${formatDuration(expiresIn)}`.padEnd(18))} ${dim(`iat ${formatDuration(issuedAgo)} ago`.padEnd(22))} ${dim(uaShort)}`
+    );
+  }
+  if (sessions.length > 60) {
+    console.log();
+    log(dim(`Showing first 60 of ${sessions.length}. Use filter/search in the admin dashboard for longer lists.`));
+  }
+  console.log();
+}
+
+async function cmdAuthRevoke(opts: {
+  baseUrl?: string;
+  role: RevokeRole;
+  adminToken: string;
+  adminPassword: string;
+}) {
+  const baseUrl = normalizeBaseUrl(opts.baseUrl || BASE_URL || "http://localhost:3000");
+  const role = opts.role;
+
+  heading("Revoke token sessions");
+  log(`${dim("Base URL:")} ${baseUrl}`);
+  log(`${dim("Scope:")}    ${role}`);
+  console.log();
+
+  progress("Requesting step-up token...");
+  const stepUpRes = await fetch(`${baseUrl}/api/admin/step-up`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${opts.adminToken}`,
+    },
+    body: JSON.stringify({ password: opts.adminPassword }),
+  });
+  const stepUpData = await stepUpRes.json().catch(() => ({} as Record<string, unknown>));
+  if (!stepUpRes.ok || typeof stepUpData.token !== "string") {
+    throw new Error(
+      (stepUpData.error as string) || `Step-up failed (${stepUpRes.status})`
+    );
+  }
+
+  progress("Revoking sessions...");
+  const revokeRes = await fetch(`${baseUrl}/api/admin/tokens/revoke`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${opts.adminToken}`,
+      "x-admin-step-up": stepUpData.token,
+    },
+    body: JSON.stringify({ role }),
+  });
+  const revokeData = await revokeRes.json().catch(() => ({} as Record<string, unknown>));
+  if (!revokeRes.ok) {
+    throw new Error(
+      (revokeData.error as string) || `Revoke failed (${revokeRes.status})`
+    );
+  }
+
+  const revoked = Array.isArray(revokeData.revoked)
+    ? (revokeData.revoked as Array<{ role: string; tokenVersion: number }>)
+    : [];
+  console.log();
+  if (revoked.length === 0) {
+    log(green("✓ Sessions revoked."));
+  } else {
+    for (const item of revoked) {
+      log(green(`✓ Revoked ${item.role} sessions (token version ${item.tokenVersion})`));
+    }
+  }
+  console.log();
+}
+
 /* ─── Blog image command handlers ─── */
 
 async function cmdBlogUpload(opts: { slug: string; dir: string; force?: boolean }) {
@@ -1101,6 +1246,12 @@ function showHelp() {
     bucket ls ${dim("[prefix]")}                       Browse bucket contents
     bucket rm ${dim("<key>")}                          Delete a file from bucket
     bucket info                              Show bucket usage & free tier %
+
+  ${bold("Auth")} ${dim("(session security)")}
+    auth revoke --admin-token ${dim("<jwt>")} --admin-password ${dim("<password>")} ${dim("[--role admin|staff|upload|all] [--base-url http://localhost:3000]")}
+      ${dim("Revokes token sessions by role. Requires admin JWT + step-up password.")}
+    auth sessions --admin-token ${dim("<jwt>")} ${dim("[--base-url http://localhost:3000]")}
+      ${dim("Lists active token sessions (Redis-backed) with status + expiry.")}
 
   ${bold("Examples")}
     ${dim("$")} pnpm cli
@@ -1879,6 +2030,7 @@ async function interactive() {
       { label: "Transfers", detail: "private, self-destructing file shares" },
       { label: "Blog Images", detail: "upload, list, delete images for blog posts" },
       { label: "Bucket", detail: "browse R2, delete files, usage stats" },
+      { label: "Auth", detail: "list/revoke token sessions (admin)" },
     ]);
 
     switch (choice) {
@@ -1902,6 +2054,84 @@ async function interactive() {
       case 5:
         await interactiveBucket();
         break;
+      case 6:
+        await interactiveAuth();
+        break;
+    }
+  }
+}
+
+/* ─── Interactive: Auth ─── */
+
+async function promptAdminToken(): Promise<string | null> {
+  console.log();
+  log(dim("Tip: get your admin JWT from the Admin dashboard (sessionStorage) or your own notes."));
+  const token = await ask("Admin JWT", { hint: "paste the Bearer token (no 'Bearer ' prefix)" });
+  return token ? token.trim() : null;
+}
+
+async function promptBaseUrl(): Promise<string> {
+  const defaultVal = BASE_URL || "http://localhost:3000";
+  const baseUrl = await ask("Base URL", {
+    hint: "where the app is running",
+    defaultVal,
+  });
+  return normalizeBaseUrl(baseUrl || defaultVal);
+}
+
+async function interactiveAuth() {
+  while (true) {
+    const choice = await choose("Auth", [
+      { label: "List token sessions", detail: "see active/revoked/expired tokens (Redis-backed)" },
+      { label: "Revoke admin sessions", detail: red("destructive (logs out all admins)") },
+      { label: "Revoke all role sessions", detail: red("destructive (staff + upload + admin)") },
+    ]);
+
+    switch (choice) {
+      case 0:
+        return;
+      case 1: {
+        const baseUrl = await promptBaseUrl();
+        const token = await promptAdminToken();
+        if (!token) break;
+        await safely(() => cmdAuthListSessions({ baseUrl, adminToken: token }));
+        await pause();
+        break;
+      }
+      case 2: {
+        const baseUrl = await promptBaseUrl();
+        const token = await promptAdminToken();
+        if (!token) break;
+        const password = await ask("Admin password", { hint: "step-up confirmation (input visible)" });
+        if (!password) break;
+        await safely(() =>
+          cmdAuthRevoke({
+            baseUrl,
+            adminToken: token,
+            adminPassword: password,
+            role: "admin",
+          })
+        );
+        await pause();
+        break;
+      }
+      case 3: {
+        const baseUrl = await promptBaseUrl();
+        const token = await promptAdminToken();
+        if (!token) break;
+        const password = await ask("Admin password", { hint: "step-up confirmation (input visible)" });
+        if (!password) break;
+        await safely(() =>
+          cmdAuthRevoke({
+            baseUrl,
+            adminToken: token,
+            adminPassword: password,
+            role: "all",
+          })
+        );
+        await pause();
+        break;
+      }
     }
   }
 }
@@ -2113,6 +2343,45 @@ async function direct() {
             return cmdBucketInfo();
           default:
             throw new Error(`Unknown: bucket ${subcommand ?? ""}. Run 'pnpm cli help'.`);
+        }
+
+      case "auth":
+        switch (subcommand) {
+          case "revoke": {
+            const adminToken = getArg("admin-token");
+            const adminPassword = getArg("admin-password");
+            const roleArg = (getArg("role") ?? "admin") as RevokeRole;
+            const baseUrl = getArg("base-url");
+            if (!adminToken || !adminPassword) {
+              throw new Error(
+                "Usage: pnpm cli auth revoke --admin-token <jwt> --admin-password <password> [--role admin|staff|upload|all] [--base-url http://localhost:3000]"
+              );
+            }
+            if (!REVOKE_ROLES.includes(roleArg)) {
+              throw new Error(`Invalid role. Use: ${REVOKE_ROLES.join(", ")}`);
+            }
+            return cmdAuthRevoke({
+              adminToken,
+              adminPassword,
+              role: roleArg,
+              baseUrl: baseUrl ?? undefined,
+            });
+          }
+          case "sessions": {
+            const adminToken = getArg("admin-token");
+            const baseUrl = getArg("base-url");
+            if (!adminToken) {
+              throw new Error(
+                "Usage: pnpm cli auth sessions --admin-token <jwt> [--base-url http://localhost:3000]"
+              );
+            }
+            return cmdAuthListSessions({
+              adminToken,
+              baseUrl: baseUrl ?? undefined,
+            });
+          }
+          default:
+            throw new Error(`Unknown: auth ${subcommand ?? ""}. Run 'pnpm cli help'.`);
         }
 
       default:

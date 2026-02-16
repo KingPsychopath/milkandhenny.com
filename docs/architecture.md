@@ -90,6 +90,7 @@ Every feature degrades gracefully — nothing crashes. The fallback strategy mat
 | **Photo gallery** (`/pics`) | No impact | No impact | Images break — URLs resolve to `/{path}` |
 | **Guest list** (`/guestlist`) | In-memory fallback — works per process, doesn't persist across cold starts | No impact | No impact |
 | **Best dressed** (`/best-dressed`) | In-memory fallback — same as guest list | No impact | No impact |
+| **Admin dashboard** (`/admin`) | Rejects auth (fails closed; requires KV for rate limiting + revocation) | No impact | No impact |
 | **Transfer page** (`/t/{id}`) | Shows "expired" page (no crash) | No impact (files via CDN) | File URLs break |
 | **Transfer CLI** | `requireRedis()` throws — no silent fallback | `requireR2()` throws | Share URL defaults to `https://milkandhenny.com` |
 | **Album CLI** | No impact | Throws — can't upload without R2 | No impact |

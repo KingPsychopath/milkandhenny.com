@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getGuests } from '@/lib/guests/kv-client';
 import { getRedis } from '@/lib/redis';
-import { requireAuth } from '@/lib/auth';
+import { requireAdminStepUp, requireAuth } from '@/lib/auth';
 import { apiError } from '@/lib/api-error';
 
 const VOTES_KEY = 'best-dressed:votes';
@@ -239,8 +239,10 @@ export async function POST(request: NextRequest) {
 
 // DELETE - wipe all votes and reset session (admin only)
 export async function DELETE(request: NextRequest) {
-  const authErr = requireAuth(request, "admin");
+  const authErr = await requireAuth(request, "admin");
   if (authErr) return authErr;
+  const stepUpErr = await requireAdminStepUp(request);
+  if (stepUpErr) return stepUpErr;
 
   try {
     const redis = getRedis();

@@ -8,7 +8,7 @@ type RouteContext = {
 };
 
 export async function PATCH(request: NextRequest, context: RouteContext) {
-  const authErr = requireAuth(request, "admin");
+  const authErr = await requireAuth(request, "admin");
   if (authErr) return authErr;
 
   const { slug } = await context.params;

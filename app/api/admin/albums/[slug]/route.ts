@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireAuth } from "@/lib/auth";
+import { requireAdminStepUp, requireAuth } from "@/lib/auth";
 import { deleteAlbum, isSafeAlbumSlug } from "@/lib/media/admin-albums";
 import { apiError } from "@/lib/api-error";
 
@@ -8,8 +8,10 @@ type RouteContext = {
 };
 
 export async function DELETE(request: NextRequest, context: RouteContext) {
-  const authErr = requireAuth(request, "admin");
+  const authErr = await requireAuth(request, "admin");
   if (authErr) return authErr;
+  const stepUpErr = await requireAdminStepUp(request);
+  if (stepUpErr) return stepUpErr;
 
   const { slug } = await context.params;
   if (!isSafeAlbumSlug(slug)) {
