@@ -1,0 +1,26 @@
+---
+description: pnpm installs: handle sandbox/global store correctly
+alwaysApply: true
+---
+
+# pnpm installs + sandbox
+
+This repo uses `pnpm`. This project preference is to use the global pnpm store (e.g. `~/Library/pnpm/store/...`) even if that requires running installs outside the sandbox.
+
+## Preferred options (in order)
+
+1) Use the global pnpm store (preferred):
+
+- Run `pnpm install` outside the sandbox / with unrestricted permissions so pnpm can write to `~/Library/pnpm/...`.
+- `pnpm test`
+
+2) If you explicitly want installs to work inside the sandbox, use a project-local store directory inside the repo:
+
+- `pnpm install --store-dir .pnpm-store`
+- `pnpm test`
+
+## Guardrails
+
+- Do not modify the user's global pnpm config.
+- Do not change pnpm's store-dir unless explicitly requested.
+- Only add a repo `.npmrc` if the user asks to persist a local store-dir.

@@ -1,11 +1,11 @@
 import fs from "fs";
 import path from "path";
 import { NextRequest, NextResponse } from "next/server";
-import { requireAuth } from "@/lib/auth";
-import { getAllSlugs } from "@/lib/blog";
-import { isConfigured, listObjects } from "@/lib/r2";
+import { requireAuth } from "@/lib/auth/auth";
+import { getAllSlugs } from "@/lib/blog/reader";
+import { isConfigured, listObjects } from "@/lib/platform/r2";
 import { validateAllAlbums } from "@/lib/media/albums";
-import { apiErrorFromRequest } from "@/lib/api-error";
+import { apiErrorFromRequest } from "@/lib/platform/api-error";
 
 const POSTS_DIR = path.join(process.cwd(), "content/posts");
 const R2_PREFIX = "blog/";

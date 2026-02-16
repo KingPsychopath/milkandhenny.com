@@ -12,11 +12,13 @@
  * Used by album-ops, transfer-ops, blog-ops, and API upload routes.
  */
 
+import "server-only";
+
 import path from "path";
 import sharp from "sharp";
 import exifReader from "exif-reader";
 import type { FileKind } from "./file-kinds";
-import { SITE_BRAND } from "../config";
+import { SITE_BRAND } from "../shared/config";
 
 /* ─── Constants ─── */
 

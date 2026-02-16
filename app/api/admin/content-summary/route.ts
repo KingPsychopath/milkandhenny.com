@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireAuth } from "@/lib/auth";
-import { getAllPosts } from "@/lib/blog";
+import { requireAuth } from "@/lib/auth/auth";
+import { getAllPosts } from "@/lib/blog/reader";
 import { getAllAlbums, validateAllAlbums } from "@/lib/media/albums";
-import { apiErrorFromRequest } from "@/lib/api-error";
+import { apiErrorFromRequest } from "@/lib/platform/api-error";
 
 export async function GET(request: NextRequest) {
   const authErr = await requireAuth(request, "admin");

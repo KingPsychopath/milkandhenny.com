@@ -29,8 +29,8 @@ import {
   processToWebP,
   mapConcurrent,
 } from "../lib/media/processing";
-import { toR2Filename, toMarkdownSnippet } from "../lib/blog-upload";
-import { formatBytes } from "../lib/format";
+import { toR2Filename, toMarkdownSnippet } from "../lib/blog/upload";
+import { formatBytes } from "../lib/shared/format";
 import type { FileKind } from "../lib/media/file-kinds";
 
 /* ─── Constants ─── */

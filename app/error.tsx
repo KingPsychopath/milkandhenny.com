@@ -2,7 +2,7 @@
 
 import { useEffect } from "react";
 import Link from "next/link";
-import { SITE_BRAND } from "@/lib/config";
+import { SITE_BRAND } from "@/lib/shared/config";
 
 export default function Error({
   error,

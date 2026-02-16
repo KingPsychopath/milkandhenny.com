@@ -4,7 +4,7 @@ import { useState, useCallback, useRef } from "react";
 import type { FocalPreset } from "@/lib/media/focal";
 import { focalPresetToPercent } from "@/lib/media/focal";
 import { fetchImageForCanvas } from "@/lib/client/media-download";
-import { SITE_BRAND } from "@/lib/config";
+import { SITE_BRAND } from "@/lib/shared/config";
 
 /** Supported branded image formats */
 const FORMATS = {

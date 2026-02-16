@@ -3,8 +3,8 @@
 import React, { Component, type ReactNode, type ErrorInfo } from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { rehypeHashtags } from "@/lib/rehype-hashtags";
-import { rehypeSlug } from "@/lib/rehype-slug";
+import { rehypeHashtags } from "@/lib/markdown/rehype-hashtags";
+import { rehypeSlug } from "@/lib/markdown/rehype-slug";
 import { AlbumEmbed, type EmbeddedAlbum, type EmbedVariant } from "../_components/AlbumEmbed";
 import { resolveImageSrc } from "@/lib/media/storage";
 

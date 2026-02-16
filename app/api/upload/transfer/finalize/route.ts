@@ -1,18 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireAuth } from "@/lib/auth";
+import { requireAuth } from "@/lib/auth/auth";
 import {
   saveTransfer,
   MAX_EXPIRY_SECONDS,
   MAX_TRANSFER_FILE_BYTES,
   MAX_TRANSFER_TOTAL_BYTES,
-} from "@/lib/transfers";
+} from "@/lib/transfers/store";
 import {
   processUploadedFile,
   sortTransferFiles,
   isSafeTransferFilename,
-} from "@/lib/transfer-upload";
-import { BASE_URL } from "@/lib/config";
-import { apiErrorFromRequest } from "@/lib/api-error";
+} from "@/lib/transfers/upload";
+import { BASE_URL } from "@/lib/shared/config";
+import { apiErrorFromRequest } from "@/lib/platform/api-error";
 
 /** Allow longer execution for image processing (downloads from R2 + Sharp) */
 export const maxDuration = 60;

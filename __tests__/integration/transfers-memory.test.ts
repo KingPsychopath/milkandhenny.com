@@ -9,7 +9,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
  */
 
 // Force in-memory fallback by mocking redis to return null
-vi.mock("@/lib/redis", () => ({
+vi.mock("@/lib/platform/redis", () => ({
   getRedis: () => null,
 }));
 
@@ -21,7 +21,7 @@ import {
   generateTransferId,
   generateDeleteToken,
   type TransferData,
-} from "@/lib/transfers";
+} from "@/lib/transfers/store";
 
 function makeTransfer(overrides?: Partial<TransferData>): TransferData {
   return {

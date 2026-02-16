@@ -11,8 +11,8 @@
  */
 import { ImageResponse } from "next/og";
 import { NextResponse } from "next/server";
-import { getTransfer } from "@/lib/transfers";
-import { SITE_BRAND } from "@/lib/config";
+import { getTransfer } from "@/lib/transfers/store";
+import { SITE_BRAND } from "@/lib/shared/config";
 
 export const alt = "Transfer shared via milk & henny";
 export const size = { width: 1200, height: 630 };

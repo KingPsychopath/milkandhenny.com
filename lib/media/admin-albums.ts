@@ -1,6 +1,6 @@
 import fs from "fs";
 import path from "path";
-import { deleteObjects, listObjects } from "@/lib/r2";
+import { deleteObjects, listObjects } from "@/lib/platform/r2";
 
 const ALBUMS_DIR = path.join(process.cwd(), "content/albums");
 const SAFE_ALBUM_SLUG = /^[a-z0-9-]+$/;

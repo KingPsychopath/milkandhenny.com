@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getGuests } from '@/lib/guests/kv-client';
 import { getAllGuestNames } from '@/lib/guests/utils';
-import { getRedis } from '@/lib/redis';
-import { getClientIp, requireAdminStepUp, requireAuth } from '@/lib/auth';
-import { apiErrorFromRequest } from '@/lib/api-error';
+import { getRedis } from '@/lib/platform/redis';
+import { getClientIp, requireAdminStepUp, requireAuth } from '@/lib/auth/auth';
+import { apiErrorFromRequest } from '@/lib/platform/api-error';
 
 const VOTES_KEY = 'best-dressed:votes';
 const SESSION_KEY = 'best-dressed:session';

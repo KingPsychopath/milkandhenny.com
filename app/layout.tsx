@@ -4,8 +4,8 @@ import { Lora } from "next/font/google";
 import { LampToggle } from "@/components/LampToggle";
 import { BackToTop } from "@/components/BackToTop";
 import { Analytics } from "@vercel/analytics/react";
-import { BASE_URL, SITE_NAME } from "@/lib/config";
-import { LOCAL_KEYS } from "@/lib/storage-keys";
+import { BASE_URL, SITE_NAME } from "@/lib/shared/config";
+import { LOCAL_KEYS } from "@/lib/shared/storage-keys";
 import "./globals.css";
 
 const geistSans = Geist({

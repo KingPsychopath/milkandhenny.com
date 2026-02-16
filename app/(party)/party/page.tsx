@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import Image from 'next/image';
-import { SITE_NAME } from '@/lib/config';
+import { SITE_NAME } from '@/lib/shared/config';
 
 export default function PartyHome() {
   return (

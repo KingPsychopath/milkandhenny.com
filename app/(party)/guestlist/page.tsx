@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
-import { SITE_NAME } from '@/lib/config';
+import { SITE_NAME } from '@/lib/shared/config';
 import { useGuests } from './hooks/useGuests';
 import { useGuestSearch } from './hooks/useGuestSearch';
 import { SearchBar } from './components/SearchBar';

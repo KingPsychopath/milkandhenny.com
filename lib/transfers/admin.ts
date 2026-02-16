@@ -1,5 +1,7 @@
-import { deleteObjects, listObjects } from "@/lib/r2";
-import { deleteTransferData, listTransfers } from "@/lib/transfers";
+import "server-only";
+
+import { deleteObjects, listObjects } from "@/lib/platform/r2";
+import { deleteTransferData, listTransfers } from "./store";
 
 const SAFE_TRANSFER_ID = /^[A-Za-z0-9-]+$/;
 

@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getRedis } from "@/lib/redis";
-import { requireAuth } from "@/lib/auth";
-import { isConfigured, listPrefixes, listObjects, deleteObjects } from "@/lib/r2";
-import { apiErrorFromRequest } from "@/lib/api-error";
-import { log } from "@/lib/logger";
+import { getRedis } from "@/lib/platform/redis";
+import { requireAuth } from "@/lib/auth/auth";
+import { isConfigured, listPrefixes, listObjects, deleteObjects } from "@/lib/platform/r2";
+import { apiErrorFromRequest } from "@/lib/platform/api-error";
+import { log } from "@/lib/platform/logger";
 
 /**
  * Daily cron job: deletes orphaned R2 objects for expired transfers.

@@ -5,6 +5,7 @@ export default defineConfig({
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "."),
+      "server-only": path.resolve(__dirname, "__tests__/vitest/server-only.ts"),
     },
   },
   test: {
@@ -16,7 +17,7 @@ export default defineConfig({
     ],
     coverage: {
       include: ["lib/**/*.ts"],
-      exclude: ["lib/redis.ts", "lib/r2.ts", "lib/logger.ts"],
+      exclude: ["lib/platform/redis.ts", "lib/platform/r2.ts", "lib/platform/logger.ts"],
     },
   },
 });

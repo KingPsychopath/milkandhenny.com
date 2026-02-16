@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { parseCSV } from '@/lib/guests/csv-parser';
 import { setGuests } from '@/lib/guests/kv-client';
-import { requireAdminStepUp, requireAuth } from '@/lib/auth';
-import { apiErrorFromRequest } from '@/lib/api-error';
+import { requireAdminStepUp, requireAuth } from '@/lib/auth/auth';
+import { apiErrorFromRequest } from '@/lib/platform/api-error';
 
 export async function POST(request: NextRequest) {
   const authErr = await requireAuth(request, "admin");

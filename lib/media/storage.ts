@@ -4,7 +4,7 @@
  * To switch providers, change the env vars — zero code changes.
  */
 
-import { R2_PUBLIC_URL } from "../config";
+import { R2_PUBLIC_URL } from "../shared/config";
 
 /** Build the public URL for a file in the bucket */
 function getImageUrl(path: string): string {

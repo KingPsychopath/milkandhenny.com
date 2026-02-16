@@ -1,5 +1,5 @@
-import { getAllPosts } from "@/lib/blog";
-import { BASE_URL, SITE_BRAND } from "@/lib/config";
+import { getAllPosts } from "@/lib/blog/reader";
+import { BASE_URL, SITE_BRAND } from "@/lib/shared/config";
 
 /** Generate an RSS 2.0 feed from all blog posts */
 export function GET() {

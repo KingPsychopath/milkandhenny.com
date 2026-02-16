@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireAdminStepUp, requireAuth } from "@/lib/auth";
-import { getRedis } from "@/lib/redis";
-import { apiErrorFromRequest } from "@/lib/api-error";
+import { requireAdminStepUp, requireAuth } from "@/lib/auth/auth";
+import { getRedis } from "@/lib/platform/redis";
+import { apiErrorFromRequest } from "@/lib/platform/api-error";
 
 type RouteContext = {
   params: Promise<{ jti: string }>;

@@ -26,7 +26,7 @@ import {
   backfillOgVariants,
 } from "./album-ops";
 import { validateAllAlbums } from "@/lib/media/albums";
-import { BASE_URL } from "@/lib/config";
+import { BASE_URL } from "@/lib/shared/config";
 import {
   FOCAL_PRESETS,
   resolveFocalPreset,
@@ -79,7 +79,7 @@ const red = (s: string) => `\x1b[31m${s}\x1b[0m`;
 const yellow = (s: string) => `\x1b[33m${s}\x1b[0m`;
 const cyan = (s: string) => `\x1b[36m${s}\x1b[0m`;
 
-import { formatBytes } from "../lib/format";
+import { formatBytes } from "../lib/shared/format";
 
 function formatDate(dateStr: string): string {
   const d = new Date(dateStr + "T00:00:00");

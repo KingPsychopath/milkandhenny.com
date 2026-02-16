@@ -10,6 +10,8 @@
  *   return apiError('guests.add', 'Failed to add guest', error);
  */
 
+import "server-only";
+
 import { NextResponse } from 'next/server';
 import { log } from './logger';
 import type { NextRequest } from 'next/server';

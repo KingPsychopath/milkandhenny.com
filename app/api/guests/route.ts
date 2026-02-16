@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getGuests, updateGuestCheckIn } from '@/lib/guests/kv-client';
-import { requireAuth } from '@/lib/auth';
-import { apiErrorFromRequest } from '@/lib/api-error';
+import { requireAuth } from '@/lib/auth/auth';
+import { apiErrorFromRequest } from '@/lib/platform/api-error';
 
 export async function GET(request: NextRequest) {
   const authErr = await requireAuth(request, "staff");

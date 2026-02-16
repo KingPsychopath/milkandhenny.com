@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getSecurityWarnings, requireAuth } from '@/lib/auth';
-import { getRedis } from '@/lib/redis';
+import { getSecurityWarnings, requireAuth } from '@/lib/auth/auth';
+import { getRedis } from '@/lib/platform/redis';
 
 /**
  * Debug endpoint — system health/status snapshot.

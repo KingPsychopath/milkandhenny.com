@@ -1,5 +1,5 @@
 import { ImageResponse } from 'next/og';
-import { SITE_BRAND } from '@/lib/config';
+import { SITE_BRAND } from '@/lib/shared/config';
 
 export const alt = `${SITE_BRAND} — thoughts, stories, and things worth sharing`;
 export const size = {

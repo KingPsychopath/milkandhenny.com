@@ -1,5 +1,5 @@
 import Papa from 'papaparse';
-import { log } from '../logger';
+import { log } from '../platform/logger';
 import { Guest, GuestStatus, generateGuestId } from './types';
 
 type CSVRow = {

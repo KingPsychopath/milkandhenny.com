@@ -6,8 +6,8 @@
  */
 
 import path from "path";
-import { isProcessableImage } from "./media/processing";
-import type { FileKind } from "./media/file-kinds";
+import { isProcessableImage } from "../media/processing";
+import type { FileKind } from "../media/file-kinds";
 
 /** Sanitise a filename stem: lowercase, replace non-alphanumeric with hyphens. */
 function sanitiseStem(filename: string): string {

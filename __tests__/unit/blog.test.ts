@@ -20,7 +20,7 @@ vi.mock("fs", () => ({
 }));
 
 import fs from "fs";
-import { extractHeadings, getPostBySlug, getAllPosts } from "@/lib/blog";
+import { extractHeadings, getPostBySlug, getAllPosts } from "@/lib/blog/reader";
 
 const mockedFs = vi.mocked(fs);
 

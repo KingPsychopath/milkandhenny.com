@@ -1,6 +1,6 @@
 import { ImageResponse } from 'next/og';
-import { getPostBySlug, getAllSlugs } from '@/lib/blog';
-import { SITE_BRAND } from '@/lib/config';
+import { getPostBySlug, getAllSlugs } from '@/lib/blog/reader';
+import { SITE_BRAND } from '@/lib/shared/config';
 
 export const alt = SITE_BRAND;
 export const size = {

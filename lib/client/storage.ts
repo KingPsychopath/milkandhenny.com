@@ -1,6 +1,11 @@
 "use client";
 
-import { getStorageKey, SESSION_KEYS, LOCAL_KEYS, type StorageKeyName } from "@/lib/storage-keys";
+import {
+  getStorageKey,
+  SESSION_KEYS,
+  LOCAL_KEYS,
+  type StorageKeyName,
+} from "@/lib/shared/storage-keys";
 
 function getStore(name: StorageKeyName): Storage {
   return name in SESSION_KEYS ? sessionStorage : localStorage;

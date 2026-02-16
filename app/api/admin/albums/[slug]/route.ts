@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireAdminStepUp, requireAuth } from "@/lib/auth";
+import { requireAdminStepUp, requireAuth } from "@/lib/auth/auth";
 import { deleteAlbum, isSafeAlbumSlug } from "@/lib/media/admin-albums";
-import { apiErrorFromRequest } from "@/lib/api-error";
+import { apiErrorFromRequest } from "@/lib/platform/api-error";
 
 type RouteContext = {
   params: Promise<{ slug: string }>;

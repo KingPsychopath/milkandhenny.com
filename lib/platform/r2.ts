@@ -10,6 +10,8 @@
  * API routes import directly — Next.js provides env vars.
  */
 
+import "server-only";
+
 import {
   S3Client,
   GetObjectCommand,

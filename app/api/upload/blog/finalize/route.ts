@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireAuth } from "@/lib/auth";
-import { apiErrorFromRequest } from "@/lib/api-error";
-import { deleteObject, downloadBuffer, isConfigured, uploadBuffer } from "@/lib/r2";
+import { requireAuth } from "@/lib/auth/auth";
+import { apiErrorFromRequest } from "@/lib/platform/api-error";
+import { deleteObject, downloadBuffer, isConfigured, uploadBuffer } from "@/lib/platform/r2";
 import { isProcessableImage, processToWebP } from "@/lib/media/processing";
-import { toMarkdownSnippet } from "@/lib/blog-upload";
+import { toMarkdownSnippet } from "@/lib/blog/upload";
 import { getFileKind } from "@/lib/media/processing";
 import type { FileKind } from "@/lib/media/file-kinds";
 

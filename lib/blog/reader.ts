@@ -1,7 +1,9 @@
+import "server-only";
+
 import fs from "fs";
 import path from "path";
 import matter from "gray-matter";
-import { uniqueHeadingIds } from "@/lib/slug";
+import { uniqueHeadingIds } from "../markdown/slug";
 
 const POSTS_DIR = path.join(process.cwd(), "content/posts");
 const SAFE_POST_SLUG = /^[a-z0-9-]+$/;

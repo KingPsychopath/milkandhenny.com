@@ -2,7 +2,7 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import type { Metadata } from "next";
 import { getAlbumBySlug, getAllAlbumSlugs } from "@/lib/media/albums";
-import { SITE_NAME, SITE_BRAND } from "@/lib/config";
+import { SITE_NAME, SITE_BRAND } from "@/lib/shared/config";
 import { AlbumGallery } from "../_components/AlbumGallery";
 import { Breadcrumbs } from "@/components/Breadcrumbs";
 

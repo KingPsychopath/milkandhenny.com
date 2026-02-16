@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { parseExpiry, formatDuration } from "@/lib/transfers";
+import { parseExpiry, formatDuration } from "@/lib/transfers/store";
 
 describe("parseExpiry", () => {
   it("parses minutes", () => {

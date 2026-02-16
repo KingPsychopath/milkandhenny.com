@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { addGuest } from '@/lib/guests/kv-client';
-import { requireAdminStepUp, requireAuth } from '@/lib/auth';
+import { requireAdminStepUp, requireAuth } from '@/lib/auth/auth';
 import { GuestStatus } from '@/lib/guests/types';
-import { apiErrorFromRequest } from '@/lib/api-error';
+import { apiErrorFromRequest } from '@/lib/platform/api-error';
 
 export async function POST(request: NextRequest) {
   const authErr = await requireAuth(request, "admin");

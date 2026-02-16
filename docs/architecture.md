@@ -165,7 +165,7 @@ Two shared utilities for server-side errors and logs.
 ### API routes — safe 500s
 
 ```ts
-import { apiErrorFromRequest } from '@/lib/api-error';
+import { apiErrorFromRequest } from '@/lib/platform/api-error';
 
 export async function POST(request: NextRequest) {
   try {
@@ -187,7 +187,7 @@ Use `NextResponse.json({ error: '...' }, { status: 400 })` for validation failur
 ### Logging without a response
 
 ```ts
-import { log } from '@/lib/logger';
+import { log } from '@/lib/platform/logger';
 
 log.info('cron.cleanup', 'Cleanup finished', { deletedCount: 5 });
 log.warn('cron.cleanup', 'R2 not configured — skipping file deletion');

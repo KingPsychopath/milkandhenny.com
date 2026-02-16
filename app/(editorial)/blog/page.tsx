@@ -1,7 +1,7 @@
 import Link from "next/link";
 import type { Metadata } from "next";
-import { getBlogPostSummaries } from "@/lib/blog";
-import { SITE_NAME, SITE_BRAND } from "@/lib/config";
+import { getBlogPostSummaries } from "@/lib/blog/reader";
+import { SITE_NAME, SITE_BRAND } from "@/lib/shared/config";
 import { SearchablePostList } from "./_components/SearchablePostList";
 import { Breadcrumbs } from "@/components/Breadcrumbs";
 

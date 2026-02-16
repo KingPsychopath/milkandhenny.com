@@ -10,9 +10,11 @@
  * Env: AUTH_SECRET (JWT signing), STAFF_PIN, ADMIN_PASSWORD, UPLOAD_PIN, CRON_SECRET
  */
 
+import "server-only";
+
 import { createHmac, randomUUID, timingSafeEqual } from "crypto";
 import { NextRequest, NextResponse } from "next/server";
-import { getRedis } from "./redis";
+import { getRedis } from "../platform/redis";
 
 /* ─── Types ─── */
 

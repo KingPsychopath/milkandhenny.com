@@ -1,0 +1,27 @@
+---
+description: Prefer workspace-local codemods for sweeping multi-file edits
+alwaysApply: true
+---
+
+# Sweeping edits: prefer codemods
+
+When a change touches many files (import path migrations, alias rewrites like `@/lib/*` -> new paths, large renames), prefer a workspace-local codemod over manual line-by-line edits.
+
+## Default workflow
+
+- Start with an inventory: `rg` for the old specifiers/patterns to estimate scope.
+- Use a deterministic mapping for known rewrites; support a dry-run mode.
+- After the codemod, re-run `rg` to confirm no remaining old specifiers.
+- Mop up remaining edge cases by hand only after the bulk pass.
+
+## Implementation preference
+
+- For TS/JS import rewrites, prefer AST-aware transforms (e.g. ts-morph / jscodeshift).
+- Python codemods are also acceptable when the edit is purely mechanical:
+  - Only rewrite module specifiers in `import ... from "..."` / `export ... from "..."`.
+  - Avoid rewriting arbitrary string literals, comments, markdown, URLs, or JSON.
+
+## Safety constraints
+
+- Do not apply broad global search/replace across arbitrary file contents.
+- If a rule might cause ambiguous rewrites, stop and ask for confirmation.

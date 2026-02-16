@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
 import { playFeedback } from '@/lib/client/feedback';
-import { SITE_NAME } from '@/lib/config';
+import { SITE_NAME } from '@/lib/shared/config';
 import { getStored, setStored, removeStored } from '@/lib/client/storage';
 
 type LeaderboardEntry = { name: string; count: number };

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getTransfer, deleteTransferData, validateDeleteToken } from '@/lib/transfers';
-import { deleteObjects, isConfigured, listObjects } from '@/lib/r2';
+import { getTransfer, deleteTransferData, validateDeleteToken } from '@/lib/transfers/store';
+import { deleteObjects, isConfigured, listObjects } from '@/lib/platform/r2';
 
 type RouteContext = {
   params: Promise<{ id: string }>;

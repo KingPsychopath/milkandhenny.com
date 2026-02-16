@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireAuth } from "@/lib/auth";
-import { getRedis } from "@/lib/redis";
-import { apiErrorFromRequest } from "@/lib/api-error";
+import { requireAuth } from "@/lib/auth/auth";
+import { getRedis } from "@/lib/platform/redis";
+import { apiErrorFromRequest } from "@/lib/platform/api-error";
 
 const CODE_KEY_PREFIX = "best-dressed:code:";
 const CODE_INDEX_KEY = "best-dressed:code-index";

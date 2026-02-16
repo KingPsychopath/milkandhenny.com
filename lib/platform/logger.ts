@@ -5,11 +5,13 @@
  * and human-readable lines in development.
  *
  * Usage:
- *   import { log } from '@/lib/logger';
+ *   import { log } from '@/lib/platform/logger';
  *   log.error('upload.transfer', 'Processing failed', { transferId, filename }, error);
  *   log.warn('cron.cleanup', 'R2 not configured — skipping file deletion');
  *   log.info('auth', 'Staff PIN verified', { ip });
  */
+
+import "server-only";
 
 type LogLevel = 'info' | 'warn' | 'error';
 

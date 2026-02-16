@@ -2,8 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { headers } from 'next/headers';
 import { parseCSV } from '@/lib/guests/csv-parser';
 import { bootstrapGuestsFromCsv } from '@/lib/guests/kv-client';
-import { requireAdminStepUp, requireAuth } from '@/lib/auth';
-import { apiErrorFromRequest } from '@/lib/api-error';
+import { requireAdminStepUp, requireAuth } from '@/lib/auth/auth';
+import { apiErrorFromRequest } from '@/lib/platform/api-error';
 
 /** Resolve the origin from request headers (works on Vercel). */
 async function getBaseUrl(): Promise<string> {

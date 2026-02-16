@@ -8,6 +8,8 @@
  * with the milk & henny editorial tone.
  */
 
+import "server-only";
+
 const DESCRIPTORS = [
   "amber", "autumn", "bare", "bitter", "blush", "bold", "brass",
   "bright", "bronze", "burnt", "calm", "cedar", "clear", "cool",

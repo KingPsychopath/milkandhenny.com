@@ -1,0 +1,20 @@
+---
+description: Prefer git mv/mv for file moves/renames; update consumers; cleanup empties
+alwaysApply: true
+---
+
+# File moves + renames
+
+When moving or renaming files, do not copy/paste code into a new file. Move/rename the file on disk using terminal commands so history stays intact and the change is less error-prone.
+
+## Default workflow
+
+- Prefer `git mv old/path.ts new/path.ts` (repo is git); use `mv` if appropriate.
+- After the move, immediately fix all imports/usages (components, routes, tests, scripts).
+- Verify there are no remaining references to the old path (use `rg` on the old path / old symbol).
+- Clean up empty folders left behind (delete only directories that are truly empty).
+
+## Guardrails
+
+- Avoid destructive deletes; only remove directories after confirming they contain no files.
+- If a move affects public APIs/routes, double-check path-based behavior and tests.

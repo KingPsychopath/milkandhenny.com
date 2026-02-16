@@ -1,11 +1,11 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import type { Metadata } from "next";
-import { getPostBySlug, getAllSlugs, extractHeadings } from "@/lib/blog";
+import { getPostBySlug, getAllSlugs, extractHeadings } from "@/lib/blog/reader";
 import { getAlbumBySlug } from "@/lib/media/albums";
 import { resolveImageSrc } from "@/lib/media/storage";
 import { focalPresetToObjectPosition } from "@/lib/media/focal";
-import { BASE_URL, SITE_NAME, SITE_BRAND } from "@/lib/config";
+import { BASE_URL, SITE_NAME, SITE_BRAND } from "@/lib/shared/config";
 import { PostBody } from "./PostBody";
 import { ReadingProgress } from "@/components/ReadingProgress";
 import { JumpRail } from "@/components/JumpRail";

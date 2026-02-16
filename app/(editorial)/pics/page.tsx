@@ -3,7 +3,7 @@ import type { Metadata } from "next";
 import { getAllAlbums, type Album } from "@/lib/media/albums";
 import { getThumbUrl } from "@/lib/media/storage";
 import { focalPresetToObjectPosition } from "@/lib/media/focal";
-import { SITE_NAME, SITE_BRAND } from "@/lib/config";
+import { SITE_NAME, SITE_BRAND } from "@/lib/shared/config";
 import { Breadcrumbs } from "@/components/Breadcrumbs";
 
 export const metadata: Metadata = {

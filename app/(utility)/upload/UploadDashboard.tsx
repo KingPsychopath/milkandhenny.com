@@ -3,7 +3,7 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import Link from "next/link";
 import { getStored, setStored, removeStored } from "@/lib/client/storage";
-import { SITE_BRAND } from "@/lib/config";
+import { SITE_BRAND } from "@/lib/shared/config";
 
 /* ─── Types ─── */
 

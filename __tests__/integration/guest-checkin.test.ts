@@ -9,7 +9,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
  */
 
 // Force in-memory fallback
-vi.mock("@/lib/redis", () => ({
+vi.mock("@/lib/platform/redis", () => ({
   getRedis: () => null,
 }));
 

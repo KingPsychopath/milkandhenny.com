@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { SITE_NAME } from "@/lib/config";
+import { SITE_NAME } from "@/lib/shared/config";
 import { UploadDashboard } from "./UploadDashboard";
 
 export const metadata: Metadata = {

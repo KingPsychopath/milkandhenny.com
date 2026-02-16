@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireAuth } from "@/lib/auth";
-import { listAdminTransfers } from "@/lib/admin-transfers";
-import { apiErrorFromRequest } from "@/lib/api-error";
+import { requireAuth } from "@/lib/auth/auth";
+import { listAdminTransfers } from "@/lib/transfers/admin";
+import { apiErrorFromRequest } from "@/lib/platform/api-error";
 
 export async function GET(request: NextRequest) {
   const authErr = await requireAuth(request, "admin");

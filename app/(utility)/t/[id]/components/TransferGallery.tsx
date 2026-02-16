@@ -3,11 +3,11 @@
 import { useState, useCallback, useEffect, memo } from "react";
 import { getTransferThumbUrl, getTransferFullUrl, getTransferFileUrl } from "@/lib/media/storage";
 import { fetchBlob, downloadBlob } from "@/lib/client/media-download";
-import { formatBytes } from "@/lib/format";
+import { formatBytes } from "@/lib/shared/format";
 import { useLazyImage } from "@/hooks/useLazyImage";
 import { useSwipe } from "@/hooks/useSwipe";
 import { SelectionToggle } from "@/components/SelectionToggle";
-import type { FileKind } from "@/lib/transfers";
+import type { FileKind } from "@/lib/transfers/store";
 
 /* ─── Types ─── */
 

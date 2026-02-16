@@ -3,7 +3,7 @@ import Link from "next/link";
 import type { Metadata } from "next";
 import { getAlbumBySlug, getAllAlbumSlugs } from "@/lib/media/albums";
 import { getFullUrl, getOriginalUrl } from "@/lib/media/storage";
-import { BASE_URL, SITE_NAME, SITE_BRAND } from "@/lib/config";
+import { BASE_URL, SITE_NAME, SITE_BRAND } from "@/lib/shared/config";
 import { PhotoViewer } from "../../_components/PhotoViewer";
 import { Breadcrumbs } from "@/components/Breadcrumbs";
 import { Share } from "@/components/Share";

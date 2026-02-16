@@ -3,7 +3,7 @@
 import { useState, useSyncExternalStore, useCallback } from 'react';
 import Link from 'next/link';
 import { playFeedback } from '@/lib/client/feedback';
-import { SITE_NAME } from '@/lib/config';
+import { SITE_NAME } from '@/lib/shared/config';
 import { getStored, setStored } from '@/lib/client/storage';
 
 // Vibrant, distinct colors for the game (10 colors = ~20 people per color with 200 guests)

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { slug, uniqueHeadingIds } from "@/lib/slug";
+import { slug, uniqueHeadingIds } from "@/lib/markdown/slug";
 
 describe("slug", () => {
   it("lowercases and hyphenates spaces", () => {

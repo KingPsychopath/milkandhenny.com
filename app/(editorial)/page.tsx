@@ -1,6 +1,6 @@
 import Link from "next/link";
-import { getRecentPosts, getAllPosts } from "@/lib/blog";
-import { SITE_BRAND } from "@/lib/config";
+import { getRecentPosts, getAllPosts } from "@/lib/blog/reader";
+import { SITE_BRAND } from "@/lib/shared/config";
 import { PostListItem } from "./_components/PostListItem";
 
 const RECENT_LIMIT = 5;

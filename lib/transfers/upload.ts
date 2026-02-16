@@ -6,8 +6,10 @@
  * and returns structured metadata.
  */
 
+import "server-only";
+
 import path from "path";
-import { uploadBuffer, downloadBuffer } from "./r2";
+import { uploadBuffer, downloadBuffer } from "../platform/r2";
 import {
   PROCESSABLE_EXTENSIONS,
   ANIMATED_EXTENSIONS,
@@ -15,8 +17,8 @@ import {
   getFileKind,
   processImageVariants,
   processGifThumb,
-} from "./media/processing";
-import type { TransferFile } from "./transfers";
+} from "../media/processing";
+import type { TransferFile } from "./store";
 
 /* ─── Types ─── */
 

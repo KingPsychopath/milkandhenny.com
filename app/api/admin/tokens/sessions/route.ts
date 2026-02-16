@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireAuth } from "@/lib/auth";
-import { getRedis } from "@/lib/redis";
-import { apiErrorFromRequest } from "@/lib/api-error";
+import { requireAuth } from "@/lib/auth/auth";
+import { getRedis } from "@/lib/platform/redis";
+import { apiErrorFromRequest } from "@/lib/platform/api-error";
 
 type SessionRecord = {
   jti: string;

@@ -46,7 +46,7 @@ function visit(
   }
 }
 
-import { slug as slugify } from "@/lib/slug";
+import { slug as slugify } from "./slug";
 
 /**
  * Rehype plugin: add id to h1, h2, h3 from heading text (slug).

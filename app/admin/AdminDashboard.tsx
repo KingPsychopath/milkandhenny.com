@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { SITE_BRAND } from "@/lib/config";
+import { SITE_BRAND } from "@/lib/shared/config";
 import { TokenSessionsPanel } from "./components/TokenSessionsPanel";
 import { useAdminAuth } from "./hooks/useAdminAuth";
 

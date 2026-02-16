@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireAdminStepUp, requireAuth } from "@/lib/auth";
-import { adminDeleteTransfer, isSafeTransferId } from "@/lib/admin-transfers";
-import { apiErrorFromRequest } from "@/lib/api-error";
+import { requireAdminStepUp, requireAuth } from "@/lib/auth/auth";
+import { adminDeleteTransfer, isSafeTransferId } from "@/lib/transfers/admin";
+import { apiErrorFromRequest } from "@/lib/platform/api-error";
 
 type RouteContext = {
   params: Promise<{ id: string }>;
