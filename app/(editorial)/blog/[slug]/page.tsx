@@ -238,7 +238,11 @@ export default async function BlogPostPage({ params }: Props) {
             <h1 className="font-serif text-3xl sm:text-4xl text-foreground leading-tight tracking-tight mt-4">
               {highlightTitle(post.title)}
             </h1>
-            {post.subtitle && <p className="mt-4 theme-subtle text-lg leading-relaxed">{post.subtitle}</p>}
+            {post.subtitle && (
+              <p className="mt-4 font-serif theme-subtle text-lg leading-relaxed">
+                {post.subtitle}
+              </p>
+            )}
           </header>
 
           {heroImage ? (

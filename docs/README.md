@@ -6,6 +6,7 @@ This folder holds deeper reference docs. Pick by topic:
 
 | Doc | Contents |
 |-----|----------|
+| [design-language.md](./design-language.md) | Design language — palette, typography, motion, interaction rules, and why the UI looks the way it does |
 | [architecture.md](./architecture.md) | Hosting & routing, data storage patterns, caching, resilience, navigation design, error handling & logging |
 | [security.md](./security.md) | Authentication, rate limiting, incident response & key rotation |
 | [media-pipeline.md](./media-pipeline.md) | OG images, face detection, focal points, image rotation & HEIC, blog file uploads |

@@ -663,4 +663,3 @@ export function GuestManagement({ guests, onGuestAdded, onGuestRemoved, onCSVImp
     </div>
   );
 }
-

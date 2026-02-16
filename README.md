@@ -155,6 +155,7 @@ Everything degrades gracefully when env vars are missing — see [resilience tab
 
 | Document | What's in it |
 |----------|-------------|
+| [docs/design-language.md](./docs/design-language.md) | Design language — palette, typography, motion, interaction rules, and why the UI looks the way it does |
 | [docs/architecture.md](./docs/architecture.md) | Hosting & routing, data storage patterns, caching strategy, resilience/fallbacks, navigation design, error handling & logging |
 | [docs/security.md](./docs/security.md) | Authentication model, rate limiting, incident response & key rotation |
 | [docs/media-pipeline.md](./docs/media-pipeline.md) | OG image generation, face detection, focal points, image rotation & HEIC handling |

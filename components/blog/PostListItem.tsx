@@ -45,7 +45,7 @@ export function PostListItem({ slug, title, date, subtitle, readingTime, feature
           </span>
         </div>
         {subtitle && (
-          <p className="mt-2 theme-subtle text-[0.95rem] leading-relaxed">
+          <p className="mt-2 font-serif theme-subtle text-[0.95rem] leading-relaxed">
             {subtitle}
           </p>
         )}
