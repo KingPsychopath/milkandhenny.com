@@ -11,7 +11,10 @@ export async function GET(request: NextRequest) {
     const guests = await getGuests();
     return NextResponse.json(guests);
   } catch (error) {
-    return apiError('guests.list', 'Failed to fetch guests', error);
+    return apiError('guests.list', 'Failed to fetch guests', error, {
+      requestId: request.headers.get("x-request-id") ?? null,
+      path: request.nextUrl.pathname,
+    });
   }
 }
 
@@ -31,6 +34,9 @@ export async function POST(request: NextRequest) {
     const guests = await getGuests();
     return NextResponse.json(guests);
   } catch (error) {
-    return apiError('guests.checkin', 'Failed to update check-in', error, { id: 'unknown' });
+    return apiError('guests.checkin', 'Failed to update check-in', error, {
+      requestId: request.headers.get("x-request-id") ?? null,
+      path: request.nextUrl.pathname,
+    });
   }
 }

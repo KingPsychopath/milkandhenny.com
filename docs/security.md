@@ -93,7 +93,10 @@ Notes:
 
 - Codes are the primary "one vote per person" mechanism. Door staff can choose how long codes last (TTL) when minting single codes or printing a batch sheet.
 - QR codes are just deep links to `/best-dressed?code=BD-XXXXXXXX` to avoid typing (drunk-friendly).
-- If voting is temporarily opened without codes, one-vote becomes "per device/browser cookie" and staff can use an "event QR" (poster/powerpoint) that links to `/best-dressed`.
+- There are two distinct "gates" depending on whether voting is open:
+  - Voting closed (default): requires a staff-minted one-time code (`best-dressed:code:*`). This is the "one vote per person" mechanism.
+  - Voting open (time window): codes are not required; voting is limited to "one vote per device" using a browser cookie (`mah-bd-voter`) and a per-session marker (`best-dressed:voted:<session>`).
+- Staff can use an "event QR" (poster/powerpoint) that links to `/best-dressed` when voting is open.
 - If Redis is unavailable, best-dressed falls back to in-memory storage (local dev only). In production, configure Redis to keep votes stable.
 
 ---
@@ -129,6 +132,10 @@ A casual single-IP attacker costs ~$1/month. A serious multi-IP attack is extrem
 ## Incident Response & Key Rotation
 
 The app is designed for easy key rotation — every secret is an environment variable, nothing is hardcoded, and no secret is baked into the client bundle. Rotation never requires a code change.
+
+Postmortems:
+
+- Guestlist KV read spike (local dev): `docs/postmortem-guestlist-kv-read-spike.md`
 
 ### R2 credentials leaked (`R2_ACCESS_KEY` / `R2_SECRET_KEY`)
 

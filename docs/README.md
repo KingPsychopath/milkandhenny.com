@@ -8,6 +8,7 @@ This folder holds deeper reference docs. Pick by topic:
 |-----|----------|
 | [design-language.md](./design-language.md) | Design language — palette, typography, motion, interaction rules, and why the UI looks the way it does |
 | [architecture.md](./architecture.md) | Hosting & routing, data storage patterns, caching, resilience, navigation design, error handling & logging |
+| [observability.md](./observability.md) | What to monitor and alert on (Vercel, Vercel KV/Upstash, Cloudflare R2/WAF) |
 | [security.md](./security.md) | Authentication, rate limiting, incident response & key rotation |
 | [media-pipeline.md](./media-pipeline.md) | OG images, face detection, focal points, image rotation & HEIC, blog file uploads |
 | [operations.md](./operations.md) | KV command budget, cost & limits, R2 lifecycle rules |

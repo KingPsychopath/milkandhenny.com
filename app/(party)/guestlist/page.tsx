@@ -44,6 +44,7 @@ export default function GuestListPage() {
   const [sheetRows, setSheetRows] = useState<Array<{ code: string; qr: string }>>([]);
   const [sheetExpiresAt, setSheetExpiresAt] = useState<string | null>(null);
   const [nowTick, setNowTick] = useState(() => Date.now());
+  const [revokeCodesLoading, setRevokeCodesLoading] = useState(false);
 
   useEffect(() => {
     const initTimer = window.setTimeout(() => {
@@ -196,6 +197,31 @@ export default function GuestListPage() {
       setVoteWindowStatus(e instanceof Error ? e.message : 'Failed to print vote sheet');
     } finally {
       setSheetLoading(false);
+    }
+  };
+
+  const handleRevokeAllVoteCodes = async () => {
+    const ok = window.confirm(
+      'Revoke ALL minted best dressed codes?\n\nThis will invalidate any printed codes that have not been used yet.'
+    );
+    if (!ok) return;
+
+    setRevokeCodesLoading(true);
+    setVoteWindowStatus(null);
+    try {
+      const res = await staffFetch('/api/best-dressed/codes/revoke-all', { method: 'POST' });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error((data.error as string) || 'Failed to revoke codes');
+
+      const deleted = typeof data.deleted === 'number' ? data.deleted : 0;
+      setVoteWindowStatus(`Revoked ${deleted} codes.`);
+      setVoteCode(null);
+      setVoteCodeQr(null);
+      setVoteCodeExpiry(null);
+    } catch (e) {
+      setVoteWindowStatus(e instanceof Error ? e.message : 'Failed to revoke codes');
+    } finally {
+      setRevokeCodesLoading(false);
     }
   };
 
@@ -511,6 +537,16 @@ export default function GuestListPage() {
                 title="For posters / powerpoint: QR that opens the voting page (no code). Best paired with open voting window."
               >
                 {showDjQr ? 'hide event qr' : 'show event qr'}
+              </button>
+
+              <button
+                type="button"
+                disabled={revokeCodesLoading}
+                onClick={() => void handleRevokeAllVoteCodes()}
+                className="px-3 py-2 rounded-lg bg-white border border-red-200 text-red-700 text-sm font-medium disabled:opacity-50"
+                title="Deletes all currently minted vote codes from Redis."
+              >
+                {revokeCodesLoading ? 'revoking…' : 'revoke all codes'}
               </button>
             </div>
           </details>

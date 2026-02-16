@@ -6,6 +6,7 @@ import { randomBytes } from "crypto";
 
 const CODE_TTL_SECONDS = 6 * 60 * 60; // 6 hours
 const CODE_KEY_PREFIX = "best-dressed:code:";
+const CODE_INDEX_KEY = "best-dressed:code-index";
 const MIN_TTL_MINUTES = 15;
 const MAX_TTL_MINUTES = 12 * 60; // 12 hours
 
@@ -69,6 +70,9 @@ export async function POST(request: NextRequest) {
       const ok = await redis.set(key, 1, { nx: true });
       if (ok !== "OK") continue;
       await redis.expire(key, ttlSeconds);
+      await redis.sadd(CODE_INDEX_KEY, code);
+      // Keep the index around slightly longer than codes.
+      await redis.expire(CODE_INDEX_KEY, ttlSeconds + 60 * 60);
 
       const expiresAt = new Date(Date.now() + ttlSeconds * 1000).toISOString();
       return NextResponse.json({ success: true, code, ttlSeconds, expiresAt });

@@ -6,6 +6,7 @@ import { randomBytes } from "crypto";
 
 const CODE_TTL_SECONDS = 6 * 60 * 60; // 6 hours
 const CODE_KEY_PREFIX = "best-dressed:code:";
+const CODE_INDEX_KEY = "best-dressed:code-index";
 const MAX_BATCH = 200;
 const MIN_TTL_MINUTES = 15;
 const MAX_TTL_MINUTES = 12 * 60; // 12 hours
@@ -85,6 +86,12 @@ export async function POST(request: NextRequest) {
         { status: 503 }
       );
     }
+
+    // Track minted codes so staff can revoke all without scanning keys.
+    const pipeline = redis.pipeline();
+    for (const code of codes) pipeline.sadd(CODE_INDEX_KEY, code);
+    pipeline.expire(CODE_INDEX_KEY, ttlSeconds + 60 * 60);
+    await pipeline.exec();
 
     return NextResponse.json({
       success: true,

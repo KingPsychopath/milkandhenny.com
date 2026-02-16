@@ -14,6 +14,7 @@ const VOTE_COOKIE = 'mah-bd-voter';
 const VOTE_TOKEN_TTL_SECONDS = 10 * 60;
 const VOTED_TTL_SECONDS = 60 * 60 * 24 * 14; // 14 days (safety net if session never resets)
 const CODE_KEY_PREFIX = 'best-dressed:code:'; // one-time vote codes minted by staff
+const CODE_INDEX_KEY = 'best-dressed:code-index';
 
 const VOTE_RATELIMIT_WINDOW_SECONDS = 10 * 60;
 const VOTE_RATELIMIT_MAX_PER_IP = 200;
@@ -256,7 +257,10 @@ export async function GET(request: NextRequest) {
     if (isNew) attachVoterCookie(res, voterId);
     return res;
   } catch (error) {
-    return apiError('best-dressed.list', 'Failed to load voting data', error);
+    return apiError('best-dressed.list', 'Failed to load voting data', error, {
+      requestId: request.headers.get("x-request-id") ?? null,
+      path: request.nextUrl.pathname,
+    });
   }
 }
 
@@ -371,11 +375,14 @@ export async function POST(request: NextRequest) {
           { status: 403 }
         );
       }
+      // Best-effort cleanup of the index.
+      await redis.srem(CODE_INDEX_KEY, providedCode);
     } else if (providedCode) {
       // Window is open: code is optional, but if provided, validate/consume it to prevent reuse.
       const redis = getRedis();
       if (redis) {
         await redis.del(codeKey(providedCode));
+        await redis.srem(CODE_INDEX_KEY, providedCode);
       }
     }
     
@@ -399,7 +406,10 @@ export async function POST(request: NextRequest) {
     if (isNew) attachVoterCookie(res, voterId);
     return res;
   } catch (error) {
-    return apiError('best-dressed.vote', 'Failed to submit vote. Please try again.', error);
+    return apiError('best-dressed.vote', 'Failed to submit vote. Please try again.', error, {
+      requestId: request.headers.get("x-request-id") ?? null,
+      path: request.nextUrl.pathname,
+    });
   }
 }
 
@@ -426,6 +436,9 @@ export async function DELETE(request: NextRequest) {
       session: newSession,
     });
   } catch (error) {
-    return apiError('best-dressed.clear', 'Failed to clear votes', error);
+    return apiError('best-dressed.clear', 'Failed to clear votes', error, {
+      requestId: request.headers.get("x-request-id") ?? null,
+      path: request.nextUrl.pathname,
+    });
   }
 }
