@@ -113,9 +113,6 @@ async function resetSession(): Promise<string> {
     await redis.set(SESSION_KEY, newSession);
     // Clear "already voted" markers for the previous session.
     await redis.del(votedKey(oldSession));
-    // Legacy cleanup (previous implementation used Redis sets with no TTL).
-    await redis.del('best-dressed:tokens');
-    await redis.del('best-dressed:used-tokens');
   } else {
     memorySession = newSession;
     memoryTokens.clear();
