@@ -2,7 +2,7 @@
   "title": "Milk & Henny — January 2026",
   "date": "2026-01-16",
   "description": "These are test photo's testing changing text",
-  "cover": "DSC07270",
+  "cover": "DSC07124",
   "photos": [
     {
       "id": "DSC07322",
@@ -52,6 +52,5 @@
         "y": 31
       }
     }
-  ],
-  "slug": "milk-and-henny-jan-2026"
+  ]
 }

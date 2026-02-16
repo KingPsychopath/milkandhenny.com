@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { SITE_BRAND } from "@/lib/config";
 import { getStored, removeStored, setStored } from "@/lib/storage-keys";
@@ -37,6 +37,25 @@ type GallerySummary = {
 type ContentSummaryResponse = {
   blog: BlogSummary;
   gallery: GallerySummary;
+};
+
+type TransferSummary = {
+  id: string;
+  title: string;
+  fileCount: number;
+  createdAt: string;
+  expiresAt: string;
+  remainingSeconds: number;
+};
+
+type AdminAlbum = {
+  slug: string;
+  title: string;
+  date: string;
+  description?: string;
+  cover: string;
+  photoCount: number;
+  photos: string[];
 };
 
 type AlbumValidationIssue = {
@@ -92,6 +111,16 @@ function formatDate(date: string | null): string {
   return parsed.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
 }
 
+function formatRemaining(seconds: number): string {
+  if (!Number.isFinite(seconds) || seconds <= 0) return "expired";
+  const days = Math.floor(seconds / 86400);
+  const hours = Math.floor((seconds % 86400) / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  if (days > 0) return `${days}d ${hours}h`;
+  if (hours > 0) return `${hours}h ${minutes}m`;
+  return `${minutes}m`;
+}
+
 export function AdminDashboard() {
   const [mounted, setMounted] = useState(false);
   const [password, setPassword] = useState("");
@@ -108,6 +137,20 @@ export function AdminDashboard() {
   const [auditView, setAuditView] = useState<AuditView>("all");
   const [showAllBrokenRefs, setShowAllBrokenRefs] = useState(false);
   const [copiedCommand, setCopiedCommand] = useState<string | null>(null);
+  const [albums, setAlbums] = useState<AdminAlbum[]>([]);
+  const [albumsLoading, setAlbumsLoading] = useState(false);
+  const [albumQuery, setAlbumQuery] = useState("");
+  const [showAllAlbums, setShowAllAlbums] = useState(false);
+  const [expandedAlbumSlug, setExpandedAlbumSlug] = useState<string | null>(null);
+  const [showAllPhotosByAlbum, setShowAllPhotosByAlbum] = useState<Record<string, boolean>>({});
+  const [albumActionLoading, setAlbumActionLoading] = useState<string | null>(null);
+  const [transfers, setTransfers] = useState<TransferSummary[]>([]);
+  const [transfersLoading, setTransfersLoading] = useState(false);
+  const [transferQuery, setTransferQuery] = useState("");
+  const [showAllTransfers, setShowAllTransfers] = useState(false);
+  const [transferActionLoading, setTransferActionLoading] = useState<string | null>(null);
+  const [transferCleanupLoading, setTransferCleanupLoading] = useState(false);
+  const [transferNukeLoading, setTransferNukeLoading] = useState(false);
   const [debugData, setDebugData] = useState<DebugResponse | null>(null);
 
   useEffect(() => {
@@ -204,6 +247,52 @@ export function AdminDashboard() {
     }
   };
 
+  const loadAlbums = useCallback(async () => {
+    if (!isAuthed) return;
+    setAlbumsLoading(true);
+    setErrorMessage("");
+    try {
+      const res = await authFetch("/api/admin/albums");
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error((data.error as string) || "Failed to load albums");
+      }
+      setAlbums((data.albums as AdminAlbum[]) ?? []);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Failed to load albums";
+      setErrorMessage(msg);
+    } finally {
+      setAlbumsLoading(false);
+    }
+  }, [authFetch, isAuthed]);
+
+  useEffect(() => {
+    void loadAlbums();
+  }, [loadAlbums]);
+
+  const loadTransfers = useCallback(async () => {
+    if (!isAuthed) return;
+    setTransfersLoading(true);
+    setErrorMessage("");
+    try {
+      const res = await authFetch("/api/admin/transfers");
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error((data.error as string) || "Failed to load transfers");
+      }
+      setTransfers((data.transfers as TransferSummary[]) ?? []);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Failed to load transfers";
+      setErrorMessage(msg);
+    } finally {
+      setTransfersLoading(false);
+    }
+  }, [authFetch, isAuthed]);
+
+  useEffect(() => {
+    void loadTransfers();
+  }, [loadTransfers]);
+
   const runContentAudit = async () => {
     setAuditLoading(true);
     setErrorMessage("");
@@ -262,6 +351,203 @@ export function AdminDashboard() {
       setErrorMessage("Clipboard write failed");
     }
   };
+
+  const handleDeleteAlbum = async (slug: string, title: string) => {
+    if (
+      !confirm(
+        `Delete album "${title}"?\n\nThis removes its JSON manifest and all album files from R2.`
+      )
+    ) {
+      return;
+    }
+    setAlbumActionLoading(`album:${slug}`);
+    setErrorMessage("");
+    setStatusMessage("");
+    try {
+      const res = await authFetch(`/api/admin/albums/${encodeURIComponent(slug)}`, {
+        method: "DELETE",
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error((data.error as string) || "Failed to delete album");
+      }
+      setStatusMessage(`Deleted album "${title}".`);
+      if (expandedAlbumSlug === slug) setExpandedAlbumSlug(null);
+      await Promise.all([loadAlbums(), refreshDashboard()]);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Failed to delete album";
+      setErrorMessage(msg);
+    } finally {
+      setAlbumActionLoading(null);
+    }
+  };
+
+  const handleDeletePhoto = async (slug: string, photoId: string) => {
+    if (
+      !confirm(
+        `Delete photo "${photoId}" from "${slug}"?\n\nThis removes thumb/full/original/og files from R2 and updates the album manifest.`
+      )
+    ) {
+      return;
+    }
+    setAlbumActionLoading(`photo:${slug}:${photoId}`);
+    setErrorMessage("");
+    setStatusMessage("");
+    try {
+      const res = await authFetch(
+        `/api/admin/albums/${encodeURIComponent(slug)}/photos/${encodeURIComponent(photoId)}`,
+        { method: "DELETE" }
+      );
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error((data.error as string) || "Failed to delete photo");
+      }
+      setStatusMessage(`Deleted photo "${photoId}" from "${slug}".`);
+      await Promise.all([loadAlbums(), refreshDashboard()]);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Failed to delete photo";
+      setErrorMessage(msg);
+    } finally {
+      setAlbumActionLoading(null);
+    }
+  };
+
+  const handleSetCover = async (slug: string, photoId: string) => {
+    setAlbumActionLoading(`cover:${slug}:${photoId}`);
+    setErrorMessage("");
+    setStatusMessage("");
+    try {
+      const res = await authFetch(`/api/admin/albums/${encodeURIComponent(slug)}/cover`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ photoId }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error((data.error as string) || "Failed to set cover");
+      }
+      setStatusMessage(`Set "${photoId}" as cover for "${slug}".`);
+      await Promise.all([loadAlbums(), refreshDashboard()]);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Failed to set cover";
+      setErrorMessage(msg);
+    } finally {
+      setAlbumActionLoading(null);
+    }
+  };
+
+  const handleDeleteTransfer = async (id: string, title: string) => {
+    if (
+      !confirm(
+        `Delete transfer "${title}" (${id})?\n\nThis removes transfer metadata and all transfer files from R2.`
+      )
+    ) {
+      return;
+    }
+    setTransferActionLoading(id);
+    setErrorMessage("");
+    setStatusMessage("");
+    try {
+      const res = await authFetch(`/api/admin/transfers/${encodeURIComponent(id)}`, {
+        method: "DELETE",
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error((data.error as string) || "Failed to delete transfer");
+      }
+      setStatusMessage(`Deleted transfer "${title}" (${id}).`);
+      await loadTransfers();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Failed to delete transfer";
+      setErrorMessage(msg);
+    } finally {
+      setTransferActionLoading(null);
+    }
+  };
+
+  const handleCleanupExpiredTransfers = async () => {
+    if (
+      !confirm(
+        "Run cleanup for expired/orphaned transfers now?\n\nThis is not a full nuke. Active transfers are kept."
+      )
+    ) {
+      return;
+    }
+    setTransferCleanupLoading(true);
+    setErrorMessage("");
+    setStatusMessage("");
+    try {
+      const res = await authFetch("/api/admin/transfers/cleanup", { method: "POST" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error((data.error as string) || "Failed to run cleanup");
+      }
+      setStatusMessage(
+        `Cleanup complete: removed ${data.deletedObjects ?? 0} orphaned files.`
+      );
+      await loadTransfers();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Failed to run cleanup";
+      setErrorMessage(msg);
+    } finally {
+      setTransferCleanupLoading(false);
+    }
+  };
+
+  const handleNukeTransfers = async () => {
+    if (
+      !confirm(
+        "NUKE ALL TRANSFERS?\n\nThis deletes ALL active transfers, their metadata, and all transfer files in R2. This cannot be undone."
+      )
+    ) {
+      return;
+    }
+    setTransferNukeLoading(true);
+    setErrorMessage("");
+    setStatusMessage("");
+    try {
+      const res = await authFetch("/api/admin/transfers/nuke", { method: "POST" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error((data.error as string) || "Failed to nuke transfers");
+      }
+      setStatusMessage(
+        `Nuke complete: deleted ${data.deletedTransfers ?? 0} transfers and ${data.deletedFiles ?? 0} files.`
+      );
+      await loadTransfers();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Failed to nuke transfers";
+      setErrorMessage(msg);
+    } finally {
+      setTransferNukeLoading(false);
+    }
+  };
+
+  const filteredAlbums = useMemo(() => {
+    const q = albumQuery.trim().toLowerCase();
+    if (!q) return albums;
+    return albums.filter(
+      (album) =>
+        album.slug.toLowerCase().includes(q) ||
+        album.title.toLowerCase().includes(q)
+    );
+  }, [albums, albumQuery]);
+  const visibleAlbums = showAllAlbums
+    ? filteredAlbums
+    : filteredAlbums.slice(0, 12);
+
+  const filteredTransfers = useMemo(() => {
+    const q = transferQuery.trim().toLowerCase();
+    if (!q) return transfers;
+    return transfers.filter(
+      (transfer) =>
+        transfer.id.toLowerCase().includes(q) ||
+        transfer.title.toLowerCase().includes(q)
+    );
+  }, [transfers, transferQuery]);
+  const visibleTransfers = showAllTransfers
+    ? filteredTransfers
+    : filteredTransfers.slice(0, 15);
 
   if (!mounted) {
     return (
@@ -339,6 +625,18 @@ export function AdminDashboard() {
       </header>
 
       <section className="space-y-4">
+        <div className="flex items-center justify-between">
+          <p className="font-mono text-xs theme-muted">content summary</p>
+          <button
+            type="button"
+            disabled={loading}
+            onClick={() => void refreshDashboard()}
+            title="Re-fetches blog/gallery counts and system status cards. It does not run the deep content audit."
+            className="font-mono text-xs theme-muted hover:text-[var(--foreground)] transition-colors disabled:opacity-50"
+          >
+            {loading ? "refreshing..." : "refresh"}
+          </button>
+        </div>
         <div className="grid grid-cols-2 gap-3 font-mono text-sm">
           <div className="border theme-border rounded-md p-3">
             <p className="theme-muted text-xs">blog posts</p>
@@ -403,27 +701,6 @@ export function AdminDashboard() {
             >
               open upload dashboard
             </Link>
-            <Link
-              href="/blog"
-              className="border theme-border rounded-md px-3 py-2 font-mono text-sm hover:border-[var(--stone-400)] transition-colors"
-            >
-              browse words
-            </Link>
-            <Link
-              href="/pics"
-              className="border theme-border rounded-md px-3 py-2 font-mono text-sm hover:border-[var(--stone-400)] transition-colors"
-            >
-              browse pics
-            </Link>
-            <button
-              type="button"
-              disabled={loading}
-              onClick={() => void refreshDashboard()}
-              title="Re-fetches blog/gallery counts and system status cards. It does not run the deep content audit."
-              className="border theme-border rounded-md px-3 py-2 font-mono text-sm text-left hover:border-[var(--stone-400)] transition-colors disabled:opacity-50"
-            >
-              {loading ? "refreshing..." : "refresh content summary"}
-            </button>
             <button
               type="button"
               disabled={auditLoading}
@@ -434,6 +711,253 @@ export function AdminDashboard() {
               {auditLoading ? "auditing..." : "run content audit"}
             </button>
           </div>
+        </div>
+
+        <div className="border-t theme-border pt-6 space-y-3">
+          <div className="flex items-center justify-between">
+            <p className="font-mono text-xs theme-muted">album manager</p>
+            <button
+              type="button"
+              disabled={albumsLoading}
+              onClick={() => void loadAlbums()}
+              className="font-mono text-xs theme-muted hover:text-[var(--foreground)] transition-colors disabled:opacity-50"
+              title="Refreshes the album list used for delete/drill-down actions."
+            >
+              {albumsLoading ? "refreshing..." : "refresh albums"}
+            </button>
+          </div>
+          <input
+            type="text"
+            value={albumQuery}
+            onChange={(e) => {
+              setAlbumQuery(e.target.value);
+              setShowAllAlbums(false);
+            }}
+            placeholder="filter albums by title or slug"
+            className="w-full bg-transparent border-b border-[var(--stone-200)] focus:border-[var(--foreground)] outline-none font-mono text-xs py-2 transition-colors placeholder:text-[var(--stone-400)]"
+          />
+          {filteredAlbums.length === 0 && !albumsLoading ? (
+            <p className="font-mono text-xs theme-muted">No albums found.</p>
+          ) : null}
+          <div className="space-y-2">
+            {visibleAlbums.map((album) => (
+              <div key={album.slug} className="border theme-border rounded-md p-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="font-mono text-sm truncate">{album.title}</p>
+                    <p className="font-mono text-xs theme-muted truncate">
+                      {album.slug} · {album.photoCount} photos · cover: {album.cover}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setExpandedAlbumSlug((curr) =>
+                          curr === album.slug ? null : album.slug
+                        )
+                      }
+                      className="font-mono text-xs theme-muted hover:text-[var(--foreground)] transition-colors"
+                    >
+                      {expandedAlbumSlug === album.slug ? "hide photos" : "manage photos"}
+                    </button>
+                    <button
+                      type="button"
+                      disabled={albumActionLoading === `album:${album.slug}`}
+                      onClick={() => void handleDeleteAlbum(album.slug, album.title)}
+                      className="font-mono text-xs text-[var(--prose-hashtag)] hover:opacity-80 transition-opacity disabled:opacity-50"
+                      title="Deletes this entire album and all associated files."
+                    >
+                      {albumActionLoading === `album:${album.slug}`
+                        ? "deleting..."
+                        : "delete album"}
+                    </button>
+                  </div>
+                </div>
+                {expandedAlbumSlug === album.slug ? (
+                  <div className="mt-3 pt-3 border-t theme-border max-h-56 overflow-auto">
+                    <ul className="space-y-2">
+                      {(showAllPhotosByAlbum[album.slug]
+                        ? album.photos
+                        : album.photos.slice(0, 40)
+                      ).map((photoId) => (
+                        <li key={`${album.slug}-${photoId}`} className="flex items-center justify-between gap-3">
+                          <span className="font-mono text-xs truncate">
+                            {photoId}
+                            {album.cover === photoId ? " · cover" : ""}
+                          </span>
+                          <div className="flex items-center gap-2 shrink-0">
+                            <button
+                              type="button"
+                              disabled={
+                                album.cover === photoId ||
+                                albumActionLoading === `cover:${album.slug}:${photoId}`
+                              }
+                              onClick={() => void handleSetCover(album.slug, photoId)}
+                              className="font-mono text-xs theme-muted hover:text-[var(--foreground)] transition-colors disabled:opacity-50"
+                              title="Set this photo as the album cover in the manifest."
+                            >
+                              {albumActionLoading === `cover:${album.slug}:${photoId}`
+                                ? "setting..."
+                                : "set cover"}
+                            </button>
+                            <button
+                              type="button"
+                              disabled={albumActionLoading === `photo:${album.slug}:${photoId}`}
+                              onClick={() => void handleDeletePhoto(album.slug, photoId)}
+                              className="font-mono text-xs text-[var(--prose-hashtag)] hover:opacity-80 transition-opacity disabled:opacity-50"
+                              title="Deletes this photo's thumb/full/original/og files and updates the album manifest."
+                            >
+                              {albumActionLoading === `photo:${album.slug}:${photoId}`
+                                ? "deleting..."
+                                : "delete photo"}
+                            </button>
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                    {album.photos.length > 40 ? (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setShowAllPhotosByAlbum((prev) => ({
+                            ...prev,
+                            [album.slug]: !prev[album.slug],
+                          }))
+                        }
+                        className="mt-2 font-mono text-xs theme-muted hover:text-[var(--foreground)] transition-colors"
+                      >
+                        {showAllPhotosByAlbum[album.slug]
+                          ? "show fewer photos"
+                          : `show all photos (${album.photos.length})`}
+                      </button>
+                    ) : null}
+                  </div>
+                ) : null}
+              </div>
+            ))}
+          </div>
+          {filteredAlbums.length > 12 ? (
+            <button
+              type="button"
+              onClick={() => setShowAllAlbums((v) => !v)}
+              className="font-mono text-xs theme-muted hover:text-[var(--foreground)] transition-colors"
+            >
+              {showAllAlbums
+                ? "show fewer albums"
+                : `show all albums (${filteredAlbums.length})`}
+            </button>
+          ) : null}
+        </div>
+
+        <div className="border-t theme-border pt-6 space-y-3">
+          <div className="flex items-center justify-between">
+            <p className="font-mono text-xs theme-muted">transfer manager</p>
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                disabled={transferNukeLoading}
+                onClick={() => void handleNukeTransfers()}
+                className="font-mono text-xs text-[var(--prose-hashtag)] hover:opacity-80 transition-opacity disabled:opacity-50"
+                title="Deletes all transfers and transfer files. Use with care."
+              >
+                {transferNukeLoading ? "nuking..." : "nuke all"}
+              </button>
+              <button
+                type="button"
+                disabled={transferCleanupLoading}
+                onClick={() => void handleCleanupExpiredTransfers()}
+                className="font-mono text-xs theme-muted hover:text-[var(--foreground)] transition-colors disabled:opacity-50"
+                title="Deletes expired/orphaned transfer files now. Active transfers are not removed."
+              >
+                {transferCleanupLoading ? "cleaning..." : "cleanup expired"}
+              </button>
+              <button
+                type="button"
+                disabled={transfersLoading}
+                onClick={() => void loadTransfers()}
+                className="font-mono text-xs theme-muted hover:text-[var(--foreground)] transition-colors disabled:opacity-50"
+                title="Refreshes active transfer rows and expiry timings."
+              >
+                {transfersLoading ? "refreshing..." : "refresh"}
+              </button>
+            </div>
+          </div>
+          <input
+            type="text"
+            value={transferQuery}
+            onChange={(e) => {
+              setTransferQuery(e.target.value);
+              setShowAllTransfers(false);
+            }}
+            placeholder="filter transfers by title or id"
+            className="w-full bg-transparent border-b border-[var(--stone-200)] focus:border-[var(--foreground)] outline-none font-mono text-xs py-2 transition-colors placeholder:text-[var(--stone-400)]"
+          />
+
+          <div className="grid grid-cols-3 gap-3 font-mono text-sm">
+            <div className="border theme-border rounded-md p-3">
+              <p className="theme-muted text-xs">active transfers</p>
+              <p className="text-lg">{transfers.length}</p>
+            </div>
+            <div className="border theme-border rounded-md p-3">
+              <p className="theme-muted text-xs">files in transfers</p>
+              <p className="text-lg">{transfers.reduce((sum, t) => sum + t.fileCount, 0)}</p>
+            </div>
+            <div className="border theme-border rounded-md p-3">
+              <p className="theme-muted text-xs">expiring in 24h</p>
+              <p className="text-lg">
+                {transfers.filter((t) => t.remainingSeconds > 0 && t.remainingSeconds <= 86400).length}
+              </p>
+            </div>
+          </div>
+
+          {filteredTransfers.length === 0 && !transfersLoading ? (
+            <p className="font-mono text-xs theme-muted">No active transfers.</p>
+          ) : null}
+
+          <div className="space-y-2">
+            {visibleTransfers.map((transfer) => (
+              <div key={transfer.id} className="border theme-border rounded-md p-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="font-mono text-sm truncate">{transfer.title || "untitled"}</p>
+                    <p className="font-mono text-xs theme-muted truncate">
+                      {transfer.id} · {transfer.fileCount} files · expires in {formatRemaining(transfer.remainingSeconds)}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <Link
+                      href={`/t/${transfer.id}`}
+                      className="font-mono text-xs theme-muted hover:text-[var(--foreground)] transition-colors"
+                      title="Open the public transfer page."
+                    >
+                      open
+                    </Link>
+                    <button
+                      type="button"
+                      disabled={transferActionLoading === transfer.id}
+                      onClick={() => void handleDeleteTransfer(transfer.id, transfer.title || "untitled")}
+                      className="font-mono text-xs text-[var(--prose-hashtag)] hover:opacity-80 transition-opacity disabled:opacity-50"
+                      title="Delete this transfer now (metadata + R2 files)."
+                    >
+                      {transferActionLoading === transfer.id ? "deleting..." : "delete"}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+          {filteredTransfers.length > 15 ? (
+            <button
+              type="button"
+              onClick={() => setShowAllTransfers((v) => !v)}
+              className="font-mono text-xs theme-muted hover:text-[var(--foreground)] transition-colors"
+            >
+              {showAllTransfers
+                ? "show fewer transfers"
+                : `show all transfers (${filteredTransfers.length})`}
+            </button>
+          ) : null}
         </div>
 
         <div className="border-t theme-border pt-6">
