@@ -54,6 +54,15 @@ This repo uses two top-level buckets for server code and shared logic:
 
 Rule of thumb: if a module describes a domain concept (guest, transfer, album), it belongs in `features/`. If it’s a primitive used across domains (logging, config, fetch retry), it belongs in `lib/`.
 
+### Why no global utils/ folder
+
+This repo intentionally avoids a top-level `utils/` directory. In practice, global utils folders tend to become a junk drawer: unrelated helpers pile up, naming gets vague, and the dependency graph becomes hard to reason about.
+
+Instead:
+- Feature-specific helpers live next to the feature (`features/*/utils.ts`).
+- Cross-feature primitives live in `lib/shared/*` (or `lib/http/*`, `lib/markdown/*`).
+- UI-only helpers live colocated under the route when they only matter for that UI.
+
 ## Features
 
 ### Guest List
