@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { SITE_BRAND } from "@/lib/config";
 import { TokenSessionsPanel } from "./components/TokenSessionsPanel";
@@ -180,8 +180,27 @@ export function AdminDashboard() {
   const [transferActionLoading, setTransferActionLoading] = useState<string | null>(null);
   const [transferCleanupLoading, setTransferCleanupLoading] = useState(false);
   const [transferNukeLoading, setTransferNukeLoading] = useState(false);
+  const [transferStatusMessage, setTransferStatusMessage] = useState("");
   const [revokeLoading, setRevokeLoading] = useState<"admin" | "all" | null>(null);
   const [debugData, setDebugData] = useState<DebugResponse | null>(null);
+
+  const transfersSectionRef = useRef<HTMLDivElement | null>(null);
+  const auditResultsRef = useRef<HTMLDivElement | null>(null);
+  const transferStatusTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const setTransferStatus = useCallback((msg: string) => {
+    setTransferStatusMessage(msg);
+    if (transferStatusTimeoutRef.current) {
+      clearTimeout(transferStatusTimeoutRef.current);
+    }
+    transferStatusTimeoutRef.current = setTimeout(() => setTransferStatusMessage(""), 5000);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (transferStatusTimeoutRef.current) clearTimeout(transferStatusTimeoutRef.current);
+    };
+  }, []);
 
   const {
     mounted,
@@ -292,6 +311,12 @@ export function AdminDashboard() {
     }
   }, [authFetch, isAuthed]);
 
+  const loadTransfersAndScroll = useCallback(async () => {
+    // Jump immediately so the user sees progress/spinners in the section.
+    transfersSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    await loadTransfers();
+  }, [loadTransfers]);
+
   useEffect(() => {
     void loadTransfers();
   }, [loadTransfers]);
@@ -310,6 +335,10 @@ export function AdminDashboard() {
       setAuditView("all");
       setShowAllBrokenRefs(false);
       setStatusMessage("Content audit completed.");
+      // Defer so the results section exists in the DOM.
+      setTimeout(() => {
+        auditResultsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      }, 0);
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Content audit failed";
       setErrorMessage(msg);
@@ -467,6 +496,7 @@ export function AdminDashboard() {
     setTransferActionLoading(id);
     setErrorMessage("");
     setStatusMessage("");
+    setTransferStatusMessage("");
     try {
       const stepToken = await ensureStepUpToken();
       if (!stepToken) return;
@@ -478,7 +508,9 @@ export function AdminDashboard() {
       if (!res.ok) {
         throw new Error((data.error as string) || "Failed to delete transfer");
       }
-      setStatusMessage(`Deleted transfer "${title}" (${id}).`);
+      const msg = `Deleted transfer "${title}" (${id}).`;
+      setStatusMessage(msg);
+      setTransferStatus(msg);
       await loadTransfers();
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Failed to delete transfer";
@@ -499,6 +531,7 @@ export function AdminDashboard() {
     setTransferCleanupLoading(true);
     setErrorMessage("");
     setStatusMessage("");
+    setTransferStatusMessage("");
     try {
       const stepToken = await ensureStepUpToken();
       if (!stepToken) return;
@@ -510,9 +543,9 @@ export function AdminDashboard() {
       if (!res.ok) {
         throw new Error((data.error as string) || "Failed to run cleanup");
       }
-      setStatusMessage(
-        `Cleanup complete: removed ${data.deletedObjects ?? 0} orphaned files.`
-      );
+      const msg = `Cleanup complete: removed ${data.deletedObjects ?? 0} orphaned files.`;
+      setStatusMessage(msg);
+      setTransferStatus(msg);
       await loadTransfers();
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Failed to run cleanup";
@@ -533,6 +566,7 @@ export function AdminDashboard() {
     setTransferNukeLoading(true);
     setErrorMessage("");
     setStatusMessage("");
+    setTransferStatusMessage("");
     try {
       const stepToken = await ensureStepUpToken();
       if (!stepToken) return;
@@ -544,9 +578,9 @@ export function AdminDashboard() {
       if (!res.ok) {
         throw new Error((data.error as string) || "Failed to nuke transfers");
       }
-      setStatusMessage(
-        `Nuke complete: deleted ${data.deletedTransfers ?? 0} transfers and ${data.deletedFiles ?? 0} files.`
-      );
+      const msg = `Nuke complete: deleted ${data.deletedTransfers ?? 0} transfers and ${data.deletedFiles ?? 0} files.`;
+      setStatusMessage(msg);
+      setTransferStatus(msg);
       await loadTransfers();
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Failed to nuke transfers";
@@ -554,6 +588,16 @@ export function AdminDashboard() {
     } finally {
       setTransferNukeLoading(false);
     }
+  };
+
+  const cleanupTransfersAndScroll = async () => {
+    transfersSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    await handleCleanupExpiredTransfers();
+  };
+
+  const nukeTransfersAndScroll = async () => {
+    transfersSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    await handleNukeTransfers();
   };
 
   const handleRevokeSessions = async (role: "admin" | "all") => {
@@ -686,6 +730,13 @@ export function AdminDashboard() {
           </Link>{" "}
           <span className="theme-muted font-normal">· admin</span>
         </h1>
+        <nav className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-2 font-mono text-[11px] theme-muted tracking-wide">
+          <a href="#content-summary" className="hover:text-[var(--foreground)] transition-colors">content</a>
+          <a href="#system-health" className="hover:text-[var(--foreground)] transition-colors">health</a>
+          <a href="#transfer-manager" className="hover:text-[var(--foreground)] transition-colors">transfers</a>
+          <a href="#editorial-tools" className="hover:text-[var(--foreground)] transition-colors">audit</a>
+          <a href="#album-manager" className="hover:text-[var(--foreground)] transition-colors">albums</a>
+        </nav>
         <nav
           className="mt-3 flex items-center gap-6 font-mono text-xs tracking-wide"
           aria-label="Admin navigation"
@@ -702,14 +753,14 @@ export function AdminDashboard() {
         </nav>
       </header>
 
-      <section className="space-y-4">
+      <section id="content-summary" className="space-y-4 scroll-mt-6">
         <div className="flex items-center justify-between">
           <p className="font-mono text-xs theme-muted">content summary</p>
           <button
             type="button"
             disabled={loading}
             onClick={() => void refreshDashboard()}
-            title="Re-fetches blog/gallery counts and system status cards. It does not run the deep content audit."
+            title="Re-fetches blog/gallery counts and system health cards. It does not run the deep content audit."
             className="font-mono text-xs theme-muted hover:text-[var(--foreground)] transition-colors disabled:opacity-50"
           >
             {loading ? "refreshing..." : "refresh"}
@@ -756,45 +807,48 @@ export function AdminDashboard() {
             <p className="theme-muted text-xs">albums missing description</p>
             <p className="text-lg">{content?.gallery.albumsWithoutDescription ?? "—"}</p>
           </div>
-          <div className="border theme-border rounded-md p-3">
-            <p className="theme-muted text-xs">redis status</p>
-            <p className="text-lg">
-              {!debugData
-                ? "—"
-                : debugData.environment.redisConfigured
-                  ? (debugData.environment.redisReachable === false ? "error" : "ok")
-                  : "missing"}
+        </div>
+
+        <div id="system-health" className="border-t theme-border pt-6 space-y-3 scroll-mt-6">
+          <div className="flex items-center justify-between">
+            <p className="font-mono text-xs theme-muted">system health</p>
+            <p className="font-mono text-[11px] theme-faint">
+              config + reachability
             </p>
           </div>
-          <div className="border theme-border rounded-md p-3">
-            <p className="theme-muted text-xs">redis reachability</p>
-            <p className="text-sm">
-              {!debugData
-                ? "—"
-                : debugData.environment.redisReachable === null
-                  ? "unknown"
-                  : debugData.environment.redisReachable
-                    ? `ok${typeof debugData.environment.redisLatencyMs === "number" ? ` (${debugData.environment.redisLatencyMs}ms)` : ""}`
-                    : "failed"}
-            </p>
-          </div>
-          <div className="border theme-border rounded-md p-3">
-            <p className="theme-muted text-xs">cron secret</p>
-            <p className="text-lg">
-              {debugData?.environment.cronSecretConfigured ? "ok" : "missing"}
-            </p>
-          </div>
-          <div className="border theme-border rounded-md p-3">
-            <p className="theme-muted text-xs">r2 public url</p>
-            <p className="text-lg">
-              {debugData?.environment.r2PublicUrlConfigured ? "ok" : "missing"}
-            </p>
-          </div>
-          <div className="border theme-border rounded-md p-3">
-            <p className="theme-muted text-xs">r2 write creds</p>
-            <p className="text-lg">
-              {debugData?.environment.r2WriteConfigured ? "ok" : "missing"}
-            </p>
+          <div className="grid grid-cols-2 gap-3 font-mono text-sm">
+            <div className="border theme-border rounded-md p-3">
+              <p className="theme-muted text-xs">redis configured</p>
+              <p className="text-lg">{debugData?.environment.redisConfigured ? "ok" : "missing"}</p>
+            </div>
+            <div className="border theme-border rounded-md p-3">
+              <p className="theme-muted text-xs">redis reachable</p>
+              <p className="text-sm">
+                {!debugData
+                  ? "—"
+                  : debugData.environment.redisReachable === null
+                    ? "unknown"
+                    : debugData.environment.redisReachable
+                      ? `ok${typeof debugData.environment.redisLatencyMs === "number" ? ` (${debugData.environment.redisLatencyMs}ms)` : ""}`
+                      : "failed"}
+              </p>
+            </div>
+            <div className="border theme-border rounded-md p-3">
+              <p className="theme-muted text-xs">cron secret</p>
+              <p className="text-lg">{debugData?.environment.cronSecretConfigured ? "ok" : "missing"}</p>
+            </div>
+            <div className="border theme-border rounded-md p-3">
+              <p className="theme-muted text-xs">r2 public url</p>
+              <p className="text-lg">{debugData?.environment.r2PublicUrlConfigured ? "ok" : "missing"}</p>
+            </div>
+            <div className="border theme-border rounded-md p-3">
+              <p className="theme-muted text-xs">r2 write creds</p>
+              <p className="text-lg">{debugData?.environment.r2WriteConfigured ? "ok" : "missing"}</p>
+            </div>
+            <div className="border theme-border rounded-md p-3">
+              <p className="theme-muted text-xs">auth secret</p>
+              <p className="text-lg">{debugData?.environment.authSecretConfigured ? "ok" : "missing"}</p>
+            </div>
           </div>
         </div>
 
@@ -848,7 +902,7 @@ export function AdminDashboard() {
           )}
         </div>
 
-        <div className="border-t theme-border pt-6">
+        <div id="editorial-tools" className="border-t theme-border pt-6 scroll-mt-6">
           <p className="font-mono text-xs theme-muted mb-2">editorial tools</p>
           <div className="grid sm:grid-cols-2 gap-3">
             <Link
@@ -867,9 +921,28 @@ export function AdminDashboard() {
               {auditLoading ? "auditing..." : "run content audit"}
             </button>
           </div>
+          {audit ? (
+            <div className="mt-3 border theme-border rounded-md p-3">
+              <div className="flex items-center justify-between gap-3">
+                <p className="font-mono text-xs theme-muted">
+                  last audit: {formatDate(audit.auditedAt)}
+                </p>
+                <a
+                  href="#audit-results"
+                  className="font-mono text-xs text-[var(--prose-hashtag)] hover:opacity-80 transition-opacity"
+                >
+                  view results
+                </a>
+              </div>
+              <p className="font-mono text-xs theme-faint mt-2">
+                invalid albums: {audit.albumValidation.invalidCount} · broken refs:{" "}
+                {audit.blogAudit.brokenRefs.length}
+              </p>
+            </div>
+          ) : null}
         </div>
 
-        <div className="border-t theme-border pt-6 space-y-3">
+        <div id="album-manager" className="border-t theme-border pt-6 space-y-3 scroll-mt-6">
           <div className="flex items-center justify-between">
             <p className="font-mono text-xs theme-muted">album manager</p>
             <button
@@ -1021,14 +1094,18 @@ export function AdminDashboard() {
           ) : null}
         </div>
 
-        <div className="border-t theme-border pt-6 space-y-3">
+        <div
+          id="transfer-manager"
+          ref={transfersSectionRef}
+          className="border-t theme-border pt-6 space-y-3 scroll-mt-6"
+        >
           <div className="flex items-center justify-between">
             <p className="font-mono text-xs theme-muted">transfer manager</p>
             <div className="flex items-center gap-3">
               <button
                 type="button"
                 disabled={transferNukeLoading}
-                onClick={() => void handleNukeTransfers()}
+                onClick={() => void nukeTransfersAndScroll()}
                 className="font-mono text-xs text-[var(--prose-hashtag)] hover:opacity-80 transition-opacity disabled:opacity-50"
                 title="Deletes all transfers and transfer files. Use with care."
               >
@@ -1037,7 +1114,7 @@ export function AdminDashboard() {
               <button
                 type="button"
                 disabled={transferCleanupLoading}
-                onClick={() => void handleCleanupExpiredTransfers()}
+                onClick={() => void cleanupTransfersAndScroll()}
                 className="font-mono text-xs theme-muted hover:text-[var(--foreground)] transition-colors disabled:opacity-50"
                 title="Deletes expired/orphaned transfer files now. Active transfers are not removed."
               >
@@ -1046,7 +1123,7 @@ export function AdminDashboard() {
               <button
                 type="button"
                 disabled={transfersLoading}
-                onClick={() => void loadTransfers()}
+                onClick={() => void loadTransfersAndScroll()}
                 className="font-mono text-xs theme-muted hover:text-[var(--foreground)] transition-colors disabled:opacity-50"
                 title="Refreshes active transfer rows and expiry timings."
               >
@@ -1064,6 +1141,12 @@ export function AdminDashboard() {
             placeholder="filter transfers by title or id"
             className="w-full bg-transparent border-b border-[var(--stone-200)] focus:border-[var(--foreground)] outline-none font-mono text-xs py-2 transition-colors placeholder:text-[var(--stone-400)]"
           />
+
+          {transferStatusMessage ? (
+            <p className="font-mono text-xs text-[var(--prose-hashtag)]">
+              {transferStatusMessage}
+            </p>
+          ) : null}
 
           <div className="grid grid-cols-3 gap-3 font-mono text-sm">
             <div className="border theme-border rounded-md p-3">
@@ -1186,7 +1269,11 @@ export function AdminDashboard() {
         ) : null}
 
         {audit ? (
-          <div className="border-t theme-border pt-6 space-y-3">
+          <div
+            id="audit-results"
+            ref={auditResultsRef}
+            className="border-t theme-border pt-6 space-y-3 scroll-mt-6"
+          >
             <div className="flex flex-wrap items-center justify-between gap-2">
               <p className="font-mono text-xs theme-muted">content audit results</p>
               <div className="flex items-center gap-2 font-mono text-xs">
