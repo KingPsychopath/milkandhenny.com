@@ -75,14 +75,14 @@ export function SearchablePostList({ posts }: Props) {
               type="button"
               onClick={() => setQuery("")}
               aria-label="Clear search"
-              className="absolute right-0 top-0 bottom-0 flex items-center justify-center min-w-11 w-11 text-[15px] leading-none theme-faint hover:text-foreground active:text-foreground transition-colors font-mono touch-manipulation"
+              className="absolute right-0 top-0 bottom-0 flex items-center justify-center min-w-11 w-11 text-icon leading-none theme-faint hover:text-foreground active:text-foreground transition-colors font-mono touch-manipulation"
             >
               ×
             </button>
           ) : (
             <span
               aria-hidden
-              className="absolute right-0 top-0 bottom-0 flex items-center justify-center w-11 pointer-events-none text-[11px] theme-faint font-mono"
+              className="absolute right-0 top-0 bottom-0 flex items-center justify-center w-11 pointer-events-none text-micro theme-faint font-mono"
             >
               ⌘
             </span>
@@ -91,7 +91,7 @@ export function SearchablePostList({ posts }: Props) {
         {query && (
           <p
             id="search-results-count"
-            className="mt-1.5 font-mono text-[11px] theme-faint"
+            className="mt-1.5 font-mono text-micro theme-faint"
             aria-live="polite"
           >
             {resultsLabel}

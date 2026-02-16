@@ -182,7 +182,7 @@ export function BrandedImage({ imageUrl, albumTitle, photoId, focalPoint, autoFo
                 type="button"
                 role="menuitem"
                 onClick={() => handleFormatPick(opt.key)}
-                className="block w-full text-left px-3 py-1.5 hover:bg-stone-100 dark:hover:bg-stone-800 transition-colors font-mono text-[11px] tracking-wide"
+                className="block w-full text-left px-3 py-1.5 hover:bg-stone-100 dark:hover:bg-stone-800 transition-colors font-mono text-micro tracking-wide"
               >
                 <span className="theme-muted">{opt.label}</span>
                 <span className="ml-2 theme-faint">{opt.desc}</span>
@@ -205,10 +205,10 @@ export function BrandedImage({ imageUrl, albumTitle, photoId, focalPoint, autoFo
             {/* Error state */}
             {error && (
               <div className="max-w-xs text-center">
-                <p className="font-mono text-[11px] text-red-400 tracking-wide">{error}</p>
+                <p className="font-mono text-micro text-red-400 tracking-wide">{error}</p>
                 <button
                   onClick={handleClose}
-                  className="mt-4 font-mono text-[11px] text-white/50 hover:text-white transition-colors tracking-wide"
+                  className="mt-4 font-mono text-micro text-white/50 hover:text-white transition-colors tracking-wide"
                 >
                   close
                 </button>
@@ -230,7 +230,7 @@ export function BrandedImage({ imageUrl, albumTitle, photoId, focalPoint, autoFo
                 {/* Frame preview actions
                     Mobile: share (native sheet) + download + close
                     Desktop: copy image + download + close */}
-                <div className="flex items-center gap-6 font-mono text-[11px] tracking-wide">
+                <div className="flex items-center gap-6 font-mono text-micro tracking-wide">
                   {isMobile ? (
                     <button onClick={handleShare} className="text-white hover:text-amber-400 transition-colors">
                       share

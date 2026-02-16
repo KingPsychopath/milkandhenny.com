@@ -57,7 +57,7 @@ export default function Error({
         </div>
 
         {error.digest && (
-          <p className="font-mono text-[10px] theme-faint">
+          <p className="font-mono text-nano theme-faint">
             ref: {error.digest}
           </p>
         )}

@@ -98,7 +98,7 @@ export default async function AlbumPage({ params }: Props) {
       </main>
 
       <footer role="contentinfo" className="border-t theme-border">
-        <div className="max-w-4xl mx-auto px-6 py-8 flex items-center justify-between font-mono text-[11px] theme-muted tracking-wide">
+        <div className="max-w-4xl mx-auto px-6 py-8 flex items-center justify-between font-mono text-micro theme-muted tracking-wide">
           <Link href="/pics" className="hover:text-foreground transition-colors">
             ← all albums
           </Link>

@@ -708,6 +708,28 @@
   .theme-border-strong { border-color: var(--stone-300); }
   .theme-border-faint { border-color: var(--stone-100); }
 
+  /*
+    Micro typography
+    These are intentionally smaller than Tailwind's `text-xs` (12px) and appear
+    across the UI for subtle mono labels.
+  */
+  .text-micro { font-size: 11px; line-height: 1rem; }
+  .text-nano { font-size: 10px; line-height: 0.875rem; }
+  .text-pico { font-size: 9px; line-height: 0.75rem; }
+  .text-icon { font-size: 15px; line-height: 1rem; }
+
+  /* Intentional, repeated "arbitrary" values turned into named utilities */
+  .tracking-pin { letter-spacing: 0.5em; }
+  .max-h-modal { max-height: 90vh; }
+  .max-h-modal-body { max-height: calc(90vh - 80px); }
+  .max-h-media { max-height: 80vh; }
+
+  /* Subtle scale used across party/editorial cards */
+  .hover-scale-slight { will-change: transform; }
+  .hover-scale-slight:not(:disabled):hover { transform: scale(1.02); }
+  .group-hover-scale-slight { will-change: transform; }
+  .group:hover .group-hover-scale-slight { transform: scale(1.02); }
+
   span.highlight-selection {
     background-color: var(--selection-bg);
     color: var(--selection-fg);

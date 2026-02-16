@@ -58,10 +58,14 @@ Cookies are sent automatically by the browser on same-site requests, which makes
 
 ### Upload (`/upload`)
 
-- **Auth**: currently still supports a client-stored token (upload is a client-driven presign/upload/finalize flow)
-- **Client storage**: `uploadToken` / `adminToken` in `localStorage` for the upload dashboard
-- **Why**: the browser needs the token to call presign/finalize endpoints and perform multi-request uploads
-- **Future option**: migrate upload to cookie-backed auth too, but keep in mind CSRF + multi-part upload ergonomics
+- **Auth**: JWT in **httpOnly cookie** (`mah-auth-upload` or `mah-auth-admin`)
+- **Why**: admin sessions should satisfy upload access (least privilege + fewer logins). Upload API routes accept cookie auth.
+- **Client storage**: optional legacy tokens may still exist in `localStorage`, but cookie auth is the default path now.
+
+Notes:
+
+- Transfer uploads are available to `upload` role (UPLOAD_PIN) and `admin`.
+- Blog media uploads are admin-only.
 
 ### Theme + reading preferences (site-wide)
 

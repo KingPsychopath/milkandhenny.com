@@ -120,7 +120,7 @@ export function AlbumGallery({ albumSlug, photos }: AlbumGalleryProps) {
         <div className="flex items-center gap-4">
           <button
             onClick={toggleSelectMode}
-            className="font-mono text-[11px] theme-muted hover:text-foreground transition-colors tracking-wide"
+            className="font-mono text-micro theme-muted hover:text-foreground transition-colors tracking-wide"
           >
             {selectable ? "[ cancel ]" : "[ select ]"}
           </button>
@@ -128,13 +128,13 @@ export function AlbumGallery({ albumSlug, photos }: AlbumGalleryProps) {
             <button
               onClick={downloadSelected}
               disabled={downloading}
-              className="font-mono text-[11px] text-amber-600 hover:text-amber-500 transition-colors tracking-wide disabled:opacity-50"
+              className="font-mono text-micro text-amber-600 hover:text-amber-500 transition-colors tracking-wide disabled:opacity-50"
             >
               {downloading ? progressLabel : `[ download ${selected.size} ]`}
             </button>
           )}
         </div>
-        <span className="font-mono text-[11px] theme-muted tracking-wide">{photos.length} photos</span>
+        <span className="font-mono text-micro theme-muted tracking-wide">{photos.length} photos</span>
       </div>
 
       <MasonryGrid>

@@ -647,7 +647,7 @@ export function AdminDashboard() {
           </Link>{" "}
           <span className="theme-muted font-normal">· admin</span>
         </h1>
-        <nav className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-2 font-mono text-[11px] theme-muted tracking-wide">
+        <nav className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-2 font-mono text-micro theme-muted tracking-wide">
           <a href="#content-summary" className="hover:text-[var(--foreground)] transition-colors">content</a>
           <a href="#system-health" className="hover:text-[var(--foreground)] transition-colors">health</a>
           <a href="#transfer-manager" className="hover:text-[var(--foreground)] transition-colors">transfers</a>
@@ -729,7 +729,7 @@ export function AdminDashboard() {
         <div id="system-health" className="border-t theme-border pt-6 space-y-3 scroll-mt-6">
           <div className="flex items-center justify-between">
             <p className="font-mono text-xs theme-muted">system health</p>
-            <p className="font-mono text-[11px] theme-faint">
+            <p className="font-mono text-micro theme-faint">
               config + reachability
             </p>
           </div>

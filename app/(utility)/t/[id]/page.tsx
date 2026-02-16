@@ -178,7 +178,7 @@ export default async function TransferPage({ params, searchParams }: Props) {
         {isAdmin && (
           <section className="max-w-4xl mx-auto px-6 pb-12" aria-label="Admin">
             <div className="border-t theme-border pt-6">
-              <p className="font-mono text-[11px] theme-muted tracking-wide mb-3">
+              <p className="font-mono text-micro theme-muted tracking-wide mb-3">
                 admin controls
               </p>
               <TakedownButton transferId={transfer.id} deleteToken={token} />
@@ -188,7 +188,7 @@ export default async function TransferPage({ params, searchParams }: Props) {
       </main>
 
       <footer role="contentinfo" className="border-t theme-border">
-        <div className="max-w-4xl mx-auto px-6 py-8 flex items-center justify-between font-mono text-[11px] theme-muted tracking-wide">
+        <div className="max-w-4xl mx-auto px-6 py-8 flex items-center justify-between font-mono text-micro theme-muted tracking-wide">
           <span>
             temporary transfer · self-destructs{" "}
             {formatDate(transfer.expiresAt)}

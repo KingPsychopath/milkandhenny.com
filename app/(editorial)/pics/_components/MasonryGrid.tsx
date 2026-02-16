@@ -30,7 +30,7 @@ export function MasonryGrid({ children, onViewChange }: MasonryGridProps) {
       <div className="flex justify-end mb-4">
         <button
           onClick={toggle}
-          className="font-mono text-[11px] theme-muted hover:text-foreground transition-colors tracking-wide"
+          className="font-mono text-micro theme-muted hover:text-foreground transition-colors tracking-wide"
           aria-label={`Switch to ${view === "masonry" ? "single column" : "grid"} view`}
         >
           {view === "masonry" ? "[ single ]" : "[ grid ]"}

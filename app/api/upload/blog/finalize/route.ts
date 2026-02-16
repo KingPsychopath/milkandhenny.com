@@ -50,7 +50,7 @@ function isSafeUploadKey(slug: string, uploadKey: string): boolean {
  * Returns: { uploaded: UploadedBlogFile[], skipped: string[] }
  */
 export async function POST(request: NextRequest) {
-  const authErr = await requireAuth(request, "upload");
+  const authErr = await requireAuth(request, "admin");
   if (authErr) return authErr;
 
   if (!isConfigured()) {

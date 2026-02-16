@@ -309,7 +309,7 @@ export function BestDressedClient({ initialSnapshot }: BestDressedClientProps) {
               <button
                 onClick={handleVote}
                 disabled={!selectedName || !voteToken || submitting}
-                className="w-full py-5 bg-gradient-to-r from-pink-500 to-purple-600 hover:from-pink-400 hover:to-purple-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold text-xl rounded-2xl transition-all shadow-lg shadow-purple-500/30 hover:shadow-purple-500/50 hover:scale-[1.02] disabled:hover:scale-100"
+                className="w-full py-5 bg-gradient-to-r from-pink-500 to-purple-600 hover:from-pink-400 hover:to-purple-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold text-xl rounded-2xl transition-all shadow-lg shadow-purple-500/30 hover:shadow-purple-500/50 hover-scale-slight"
               >
                 {submitting ? (
                   <span className="inline-flex items-center gap-2">

@@ -68,6 +68,15 @@ export async function signInAdminAction(formData: FormData) {
   redirect("/admin");
 }
 
+export async function signInUploadAction(formData: FormData) {
+  const pin = typeof formData.get("pin") === "string" ? (formData.get("pin") as string) : "";
+  const result = await verifyAndSetCookie("upload", { pin });
+  if (!result.ok) {
+    redirect(`/upload?auth=failed`);
+  }
+  redirect("/upload");
+}
+
 export async function signOutAction(role: VerifyRole, nextPath = "/") {
   const jar = await cookies();
   jar.set({

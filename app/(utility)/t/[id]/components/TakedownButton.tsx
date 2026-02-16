@@ -54,7 +54,7 @@ export function TakedownButton({ transferId, deleteToken }: TakedownButtonProps)
         <p className="font-mono text-sm text-red-500 tracking-tight">
           transfer taken down
         </p>
-        <p className="font-mono text-[11px] theme-muted mt-1">
+        <p className="font-mono text-micro theme-muted mt-1">
           all files have been permanently deleted.
         </p>
       </div>
@@ -64,18 +64,18 @@ export function TakedownButton({ transferId, deleteToken }: TakedownButtonProps)
   if (state === "confirm") {
     return (
       <div className="flex items-center gap-3">
-        <span className="font-mono text-[11px] text-red-500">
+        <span className="font-mono text-micro text-red-500">
           permanently delete this transfer?
         </span>
         <button
           onClick={handleTakedown}
-          className="font-mono text-[11px] text-red-500 hover:text-red-400 transition-colors tracking-wide"
+          className="font-mono text-micro text-red-500 hover:text-red-400 transition-colors tracking-wide"
         >
           [ yes, take down ]
         </button>
         <button
           onClick={() => setState("idle")}
-          className="font-mono text-[11px] theme-muted hover:text-foreground transition-colors tracking-wide"
+          className="font-mono text-micro theme-muted hover:text-foreground transition-colors tracking-wide"
         >
           [ cancel ]
         </button>
@@ -86,12 +86,12 @@ export function TakedownButton({ transferId, deleteToken }: TakedownButtonProps)
   if (state === "error") {
     return (
       <div className="flex items-center gap-3">
-        <span className="font-mono text-[11px] text-red-500">
+        <span className="font-mono text-micro text-red-500">
           error: {errorMsg}
         </span>
         <button
           onClick={() => setState("idle")}
-          className="font-mono text-[11px] theme-muted hover:text-foreground transition-colors tracking-wide"
+          className="font-mono text-micro theme-muted hover:text-foreground transition-colors tracking-wide"
         >
           [ dismiss ]
         </button>
@@ -103,7 +103,7 @@ export function TakedownButton({ transferId, deleteToken }: TakedownButtonProps)
     <button
       onClick={() => setState("confirm")}
       disabled={state === "deleting"}
-      className="font-mono text-[11px] text-red-500/70 hover:text-red-500 transition-colors tracking-wide disabled:opacity-50"
+      className="font-mono text-micro text-red-500/70 hover:text-red-500 transition-colors tracking-wide disabled:opacity-50"
     >
       {state === "deleting" ? "[ taking down... ]" : "[ take down transfer ]"}
     </button>

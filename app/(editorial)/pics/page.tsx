@@ -87,7 +87,7 @@ export default function PicsPage() {
                       <img
                         src={getThumbUrl(album.slug, album.cover)}
                         alt={album.title}
-                        className="w-full h-full object-cover album-cover-zoom group-hover:scale-[1.02]"
+                        className="w-full h-full object-cover album-cover-zoom group-hover-scale-slight"
                         style={coverPos ? { objectPosition: coverPos } : undefined}
                         loading="lazy"
                       />
@@ -99,7 +99,7 @@ export default function PicsPage() {
                     {/* Info */}
                     <div className="absolute bottom-0 left-0 right-0 p-5">
                       <h2 className="font-serif text-lg text-white leading-snug">{album.title}</h2>
-                      <div className="flex items-center gap-3 mt-1 font-mono text-[11px] text-white/60 tracking-wide">
+                      <div className="flex items-center gap-3 mt-1 font-mono text-micro text-white/60 tracking-wide">
                         <span>{formatDate(album.date)}</span>
                         <span>·</span>
                         <span>{album.photos.length} photos</span>
@@ -114,7 +114,7 @@ export default function PicsPage() {
       </main>
 
       <footer role="contentinfo" className="border-t theme-border">
-        <div className="max-w-4xl mx-auto px-6 py-8 flex items-center justify-between font-mono text-[11px] theme-muted tracking-wide">
+        <div className="max-w-4xl mx-auto px-6 py-8 flex items-center justify-between font-mono text-micro theme-muted tracking-wide">
           <Link href="/" className="hover:text-foreground transition-colors">
             ← home
           </Link>

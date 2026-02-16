@@ -52,7 +52,7 @@ export default async function GuestListPage({ searchParams }: PageProps) {
               pattern="[0-9]*"
               maxLength={4}
               placeholder="••••"
-              className={`w-full px-6 py-4 text-center text-3xl font-mono tracking-[0.5em] bg-white/10 border rounded-2xl text-white placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-amber-500 transition-all ${
+              className={`w-full px-6 py-4 text-center text-3xl font-mono tracking-pin bg-white/10 border rounded-2xl text-white placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-amber-500 transition-all ${
                 authFailed ? "border-red-500 bg-red-500/10" : "border-white/20"
               }`}
               autoFocus

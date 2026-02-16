@@ -23,6 +23,7 @@ Notes:
 
 - API routes still accept `Authorization: Bearer <token>` for CLI/tools and explicit callers.
 - The upload dashboard still uses a client-stored token for presign/finalize calls (client-driven flow).
+- Blog media upload endpoints (`/api/upload/blog/*`) are admin-only; the `UPLOAD_PIN` gate is for transfers.
 
 See also: [storage-and-auth.md](./storage-and-auth.md) for the "cookies vs localStorage" mental model and feature-by-feature mapping.
 

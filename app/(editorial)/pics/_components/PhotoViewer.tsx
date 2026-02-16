@@ -214,7 +214,7 @@ export function PhotoViewer({
               )}
 
               {showLoadingText && (
-                <span className="relative z-10 font-mono text-[11px] theme-muted tracking-wide">loading...</span>
+                <span className="relative z-10 font-mono text-micro theme-muted tracking-wide">loading...</span>
               )}
             </div>
           )}
@@ -234,7 +234,7 @@ export function PhotoViewer({
         {/* Swipe hint — shown once on first visit, touch devices only */}
         {showHint && (
           <div className="absolute inset-0 flex items-center justify-center pointer-events-none animate-swipe-hint">
-            <span className="font-mono text-[11px] text-white/70 bg-black/40 backdrop-blur-sm px-4 py-2 rounded-full tracking-wide">
+            <span className="font-mono text-micro text-white/70 bg-black/40 backdrop-blur-sm px-4 py-2 rounded-full tracking-wide">
               ← swipe to browse →
             </span>
           </div>

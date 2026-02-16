@@ -32,6 +32,9 @@ export default function Home() {
           <Link href="/party" className="theme-muted hover:text-foreground transition-colors">
             [the party]
           </Link>
+          <Link href="/upload" className="theme-muted hover:text-foreground transition-colors">
+            [upload]
+          </Link>
         </nav>
       </header>
 
@@ -42,7 +45,7 @@ export default function Home() {
 
       {/* Recent — primary content */}
       <main id="main" className="max-w-2xl mx-auto px-6 pt-4 pb-24">
-        <p className="font-mono text-[11px] theme-muted tracking-widest uppercase py-4">Recent</p>
+        <p className="font-mono text-micro theme-muted tracking-widest uppercase py-4">Recent</p>
 
         {posts.length === 0 ? (
           <p className="py-12 theme-muted font-mono text-sm text-center">nothing here yet. check back soon.</p>
@@ -64,7 +67,7 @@ export default function Home() {
 
       <footer role="contentinfo" className="border-t theme-border">
         <div className="max-w-2xl mx-auto px-6 py-8 space-y-4">
-          <div className="flex items-center justify-between font-mono text-[11px] theme-muted tracking-wide">
+          <div className="flex items-center justify-between font-mono text-micro theme-muted tracking-wide">
             <span>© {new Date().getFullYear()} {SITE_BRAND}</span>
             <div className="flex items-center gap-4">
               <Link href="/feed.xml" className="hover:text-foreground transition-colors">
@@ -78,7 +81,7 @@ export default function Home() {
               </Link>
             </div>
           </div>
-          <div className="flex items-center justify-center gap-5 font-mono text-[11px] theme-faint tracking-wide">
+          <div className="flex items-center justify-center gap-5 font-mono text-micro theme-faint tracking-wide">
             <a href="https://twitter.com/milkandh3nny" target="_blank" rel="noopener noreferrer" className="hover:text-foreground transition-colors">twitter</a>
             <span>·</span>
             <a href="https://instagram.com/milkandhenny" target="_blank" rel="noopener noreferrer" className="hover:text-foreground transition-colors">instagram</a>

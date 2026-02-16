@@ -66,9 +66,12 @@ const EXPIRY_OPTIONS = [
 
 /* ─── Component ─── */
 
-export function UploadDashboard() {
+type UploadDashboardProps = {
+  isAdmin: boolean;
+};
+
+export function UploadDashboard({ isAdmin }: UploadDashboardProps) {
   const [mounted, setMounted] = useState(false);
-  const [pin, setPin] = useState("");
   const [uploadToken, setUploadToken] = useState("");
   const [adminToken, setAdminToken] = useState("");
 
@@ -80,8 +83,6 @@ export function UploadDashboard() {
     setAdminToken(storedAdmin);
     setMounted(true);
   }, []);
-  const [authError, setAuthError] = useState("");
-  const [authLoading, setAuthLoading] = useState(false);
 
   /* Upload state */
   const [mode, setMode] = useState<UploadMode>("transfer");
@@ -118,38 +119,10 @@ export function UploadDashboard() {
   /* Refs */
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  /* ─── Auth ─── */
-
-  const handleAuth = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setAuthError("");
-    setAuthLoading(true);
-
-    try {
-      const res = await fetch("/api/upload/verify-pin", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ pin }),
-      });
-
-      const data = await res.json().catch(() => ({}));
-      if (res.ok && data.token) {
-        setStored("uploadToken", data.token);
-        setUploadToken(data.token);
-      } else {
-        removeStored("uploadToken");
-        setUploadToken("");
-        setAuthError("invalid pin");
-      }
-    } catch {
-      setAuthError("connection error");
-    } finally {
-      setAuthLoading(false);
-    }
-  };
-
   const effectiveToken = uploadToken || adminToken;
-  const isAuthed = !!effectiveToken;
+  // Auth gate is enforced server-side in `app/(utility)/upload/page.tsx`.
+  // This component should work with cookie auth even when no local token exists.
+  const isAuthed = true;
 
   const authFetch = useCallback(
     async (url: string, options: RequestInit = {}) => {
@@ -157,7 +130,7 @@ export function UploadDashboard() {
         ...options,
         headers: {
           ...(options.headers as Record<string, string>),
-          Authorization: `Bearer ${effectiveToken}`,
+          ...(effectiveToken ? { Authorization: `Bearer ${effectiveToken}` } : {}),
         },
       });
       if (res.status === 401) {
@@ -168,6 +141,9 @@ export function UploadDashboard() {
         } else if (adminToken) {
           removeStored("adminToken");
           setAdminToken("");
+        } else {
+          // Cookie session is missing/expired. Force the server auth gate.
+          window.location.assign("/upload");
         }
       }
       return res;
@@ -225,8 +201,6 @@ export function UploadDashboard() {
   /* ─── Paste (Ctrl+V / Cmd+V) ─── */
 
   useEffect(() => {
-    if (!isAuthed) return;
-
     const handlePaste = (e: ClipboardEvent) => {
       // Try clipboardData.files first (direct file paste)
       const directFiles = e.clipboardData?.files;
@@ -271,7 +245,7 @@ export function UploadDashboard() {
 
     document.addEventListener("paste", handlePaste);
     return () => document.removeEventListener("paste", handlePaste);
-  }, [isAuthed, addFiles]);
+  }, [addFiles]);
 
   /* ─── Upload ─── */
 
@@ -472,7 +446,14 @@ export function UploadDashboard() {
 
   /* ─── Switch mode ─── */
 
+  useEffect(() => {
+    if (!isAdmin && mode === "blog") {
+      setMode("transfer");
+    }
+  }, [isAdmin, mode]);
+
   const switchMode = (newMode: UploadMode) => {
+    if (newMode === "blog" && !isAdmin) return;
     setMode(newMode);
     setUploadError("");
     setTransferResult(null);
@@ -490,48 +471,7 @@ export function UploadDashboard() {
     );
   }
 
-  /* ─── Render: PIN gate ─── */
-  if (!isAuthed) {
-    return (
-      <div className="min-h-dvh flex items-center justify-center px-6">
-        <form onSubmit={handleAuth} className="w-full max-w-xs text-center">
-          <h1 className="font-mono font-bold tracking-tighter text-lg">
-            milk & henny
-          </h1>
-          <p className="font-mono text-sm theme-muted mt-1 mb-8">upload</p>
-
-          <input
-            type="password"
-            value={pin}
-            onChange={(e) => setPin(e.target.value)}
-            placeholder="enter pin"
-            autoFocus
-            className="w-full bg-transparent border-b border-[var(--stone-200)] focus:border-[var(--foreground)] outline-none font-mono text-sm text-center py-2 tracking-wider transition-colors placeholder:text-[var(--stone-400)]"
-          />
-
-          {authError && (
-            <p className="font-mono text-xs mt-3 text-[var(--prose-hashtag)]">
-              {authError}
-            </p>
-          )}
-
-          <button
-            type="submit"
-            disabled={!pin || authLoading}
-            className="mt-6 w-full bg-[var(--foreground)] text-[var(--background)] font-mono text-sm lowercase tracking-wide py-2.5 rounded-md hover:opacity-90 transition-opacity disabled:opacity-30"
-          >
-            {authLoading ? "checking..." : "unlock"}
-          </button>
-
-          <p className="mt-8 font-mono text-xs theme-muted">
-            <Link href="/" className="hover:text-[var(--foreground)] transition-colors">
-              ← home
-            </Link>
-          </p>
-        </form>
-      </div>
-    );
-  }
+  // Auth gate lives in `app/(utility)/upload/page.tsx` (Server Component).
 
   /* ─── Render: Upload dashboard ─── */
 
@@ -567,16 +507,18 @@ export function UploadDashboard() {
         >
           transfer
         </button>
-        <button
-          onClick={() => switchMode("blog")}
-          className={`font-mono text-sm lowercase tracking-wide pb-1 border-b-2 transition-colors ${
-            mode === "blog"
-              ? "border-[var(--foreground)]"
-              : "border-transparent theme-muted hover:text-[var(--foreground)]"
-          }`}
-        >
-          blog
-        </button>
+        {isAdmin ? (
+          <button
+            onClick={() => switchMode("blog")}
+            className={`font-mono text-sm lowercase tracking-wide pb-1 border-b-2 transition-colors ${
+              mode === "blog"
+                ? "border-[var(--foreground)]"
+                : "border-transparent theme-muted hover:text-[var(--foreground)]"
+            }`}
+          >
+            blog
+          </button>
+        ) : null}
       </div>
 
       {/* Mode description */}
@@ -913,7 +855,7 @@ export function UploadDashboard() {
       )}
 
       <footer role="contentinfo" className="border-t theme-border mt-16 pt-8">
-        <div className="flex items-center justify-between font-mono text-[11px] theme-muted tracking-wide">
+        <div className="flex items-center justify-between font-mono text-micro theme-muted tracking-wide">
           <Link href="/" className="hover:text-[var(--foreground)] transition-colors">
             ← home
           </Link>

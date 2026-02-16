@@ -493,7 +493,7 @@ export function GuestManagement({ guests, onGuestAdded, onGuestRemoved, onCSVImp
       onClick={handleBackdropClick}
       onKeyDown={undefined}
     >
-      <div className="bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl w-full sm:max-w-md max-h-[90vh] overflow-hidden animate-in slide-in-from-bottom anim-duration-300">
+      <div className="bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl w-full sm:max-w-md max-h-modal overflow-hidden animate-in slide-in-from-bottom anim-duration-300">
         {/* Header */}
         <div className="px-6 py-4 border-b border-stone-100 flex justify-between items-center bg-gradient-to-r from-amber-600 to-yellow-500">
           <h2 className="text-lg font-semibold text-white">Manage Guests</h2>
@@ -507,7 +507,7 @@ export function GuestManagement({ guests, onGuestAdded, onGuestRemoved, onCSVImp
           </button>
         </div>
 
-        <div className="overflow-y-auto max-h-[calc(90vh-80px)]">
+        <div className="overflow-y-auto max-h-modal-body">
           <div className="p-6 space-y-5">
             <p className="text-xs theme-muted">
               Admin-only actions may prompt for step-up verification and will redirect to <span className="font-mono">/admin</span> if your admin session is missing.

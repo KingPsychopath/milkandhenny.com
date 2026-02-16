@@ -282,7 +282,7 @@ export function GuestListClient({ initialGuests }: GuestListClientProps) {
         <div className="font-mono">
           <p className="text-xs text-stone-500">best dressed</p>
           <p className="text-sm font-semibold text-stone-900">vote codes</p>
-          <p className="text-[11px] text-stone-500 mt-1">
+          <p className="text-micro text-stone-500 mt-1">
             ttl {formatMinutesShort(codeTtlMinutes)} {sheetExpiresAt ? `• expires ${new Date(sheetExpiresAt).toLocaleTimeString()}` : ''}
           </p>
         </div>
@@ -298,7 +298,7 @@ export function GuestListClient({ initialGuests }: GuestListClientProps) {
                 style={{ imageRendering: 'pixelated' }}
               />
               <p className="bd-print-code mt-2 font-mono text-sm tracking-wider text-stone-900">{r.code}</p>
-              <p className="mt-1 text-[11px] text-stone-500">scan to vote</p>
+              <p className="mt-1 text-micro text-stone-500">scan to vote</p>
             </div>
           ))}
         </div>
@@ -338,7 +338,7 @@ export function GuestListClient({ initialGuests }: GuestListClientProps) {
             </Link>
           </div>
 
-          <p className="mt-2 font-mono text-[11px] text-stone-400">tap the buttons; options are optional</p>
+          <p className="mt-2 font-mono text-micro text-stone-400">tap the buttons; options are optional</p>
 
           <div className="mt-3 flex flex-wrap items-center gap-2">
             <button
@@ -451,7 +451,7 @@ export function GuestListClient({ initialGuests }: GuestListClientProps) {
               </div>
 
               {voteCodeWords === 1 ? (
-                <p className="font-mono text-[11px] text-stone-400">
+                <p className="font-mono text-micro text-stone-400">
                   1-word sheets are capped at 50 to avoid collisions
                 </p>
               ) : null}

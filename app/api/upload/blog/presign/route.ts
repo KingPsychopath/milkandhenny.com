@@ -45,7 +45,7 @@ function safeIncomingExt(original: string): string {
  * Returns: { success: true, urls: PresignEntry[], skipped: string[] }
  */
 export async function POST(request: NextRequest) {
-  const authErr = await requireAuth(request, "upload");
+  const authErr = await requireAuth(request, "admin");
   if (authErr) return authErr;
 
   if (!isConfigured()) {

@@ -43,7 +43,7 @@ export default function BlogPage() {
       </main>
 
       <footer role="contentinfo" className="border-t theme-border">
-        <div className="max-w-2xl mx-auto px-6 py-8 flex items-center justify-between font-mono text-[11px] theme-muted tracking-wide">
+        <div className="max-w-2xl mx-auto px-6 py-8 flex items-center justify-between font-mono text-micro theme-muted tracking-wide">
           <Link href="/" className="hover:text-foreground transition-colors">
             ← home
           </Link>

@@ -142,7 +142,7 @@ function LightboxContent({
         src={getTransferFileUrl(transferId, file.filename)}
         controls
         autoPlay
-        className="max-w-full max-h-[80vh] photo-page-fade-in"
+        className="max-w-full max-h-media photo-page-fade-in"
         style={{ objectFit: "contain" }}
         onClick={(e) => e.stopPropagation()}
         onError={onError}
@@ -157,7 +157,7 @@ function LightboxContent({
     <div className="relative" onClick={(e) => e.stopPropagation()}>
       {!loaded && (
         <div className="absolute inset-0 flex items-center justify-center">
-          <span className="font-mono text-[11px] text-white/50 tracking-wide animate-pulse">loading...</span>
+          <span className="font-mono text-micro text-white/50 tracking-wide animate-pulse">loading...</span>
         </div>
       )}
       {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -165,7 +165,7 @@ function LightboxContent({
         ref={imgRef}
         src={imgSrc}
         alt={file.filename}
-        className={`max-w-full max-h-[80vh] object-contain transition-opacity duration-300 ${loaded ? "opacity-100" : "opacity-0"}`}
+        className={`max-w-full max-h-media object-contain transition-opacity duration-300 ${loaded ? "opacity-100" : "opacity-0"}`}
         onLoad={handleLoad}
         onError={onError}
       />
@@ -330,10 +330,10 @@ export function TransferGallery({ transferId, files }: TransferGalleryProps) {
     <div>
       {/* Toolbar */}
       <div className="flex flex-wrap items-center justify-between gap-2 mb-6">
-        <span className="font-mono text-[11px] theme-muted tracking-wide">
+        <span className="font-mono text-micro theme-muted tracking-wide">
           {selectedCount > 0 ? `${selectedCount} of ${files.length} selected` : `${files.length} ${files.length === 1 ? "file" : "files"}`}
         </span>
-        <div className="flex items-center gap-3 font-mono text-[11px] tracking-wide">
+        <div className="flex items-center gap-3 font-mono text-micro tracking-wide">
           {selectedCount > 0 && (
             <>
               <button onClick={clearSelection} className="theme-muted hover:text-foreground transition-colors">
@@ -383,7 +383,7 @@ export function TransferGallery({ transferId, files }: TransferGalleryProps) {
       {nonVisualFiles.length > 0 && (
         <div className={visualFiles.length > 0 ? "mt-8" : ""}>
           {visualFiles.length > 0 && (
-            <p className="font-mono text-[11px] theme-muted tracking-wide mb-3">files</p>
+            <p className="font-mono text-micro theme-muted tracking-wide mb-3">files</p>
           )}
           <div className="space-y-2">
             {nonVisualFiles.map((file) => (
@@ -472,7 +472,7 @@ export function TransferGallery({ transferId, files }: TransferGalleryProps) {
               )}
             </div>
             <div className="flex items-center gap-4">
-              <span className="font-mono text-[11px] text-white/30">
+              <span className="font-mono text-micro text-white/30">
                 {lightboxIndex + 1} / {visualFiles.length}
               </span>
               <button
@@ -511,7 +511,7 @@ function BrokenImageFallback({ filename }: { filename: string }) {
         <circle cx="8.5" cy="8.5" r="1.5" />
         <polyline points="21 15 16 10 5 21" />
       </svg>
-      <span className="font-mono text-[10px] theme-muted opacity-60 tracking-wide truncate max-w-[80%] px-2 text-center">
+      <span className="font-mono text-nano theme-muted opacity-60 tracking-wide truncate max-w-[80%] px-2 text-center">
         {filename}
       </span>
     </div>
@@ -593,7 +593,7 @@ const VisualCard = memo(function VisualCard({
             >
               <polygon points="5 3 19 12 5 21 5 3" />
             </svg>
-            <span className="font-mono text-[10px] theme-muted tracking-wide truncate max-w-[90%] px-2">
+            <span className="font-mono text-nano theme-muted tracking-wide truncate max-w-[90%] px-2">
               {file.filename}
             </span>
           </div>
@@ -613,7 +613,7 @@ const VisualCard = memo(function VisualCard({
         {/* GIF badge */}
         {file.kind === "gif" && (
           <div className="absolute bottom-2 left-2">
-            <span className="font-mono text-[9px] bg-black/50 text-white/80 px-1.5 py-0.5 rounded tracking-wider uppercase">
+            <span className="font-mono text-pico bg-black/50 text-white/80 px-1.5 py-0.5 rounded tracking-wider uppercase">
               gif
             </span>
           </div>
@@ -655,8 +655,8 @@ function FileCard({
           <audio src={getTransferFileUrl(transferId, file.filename)} controls preload="none" className="w-full mt-2 h-8" />
         </div>
         <div className="flex flex-col items-end gap-1 shrink-0">
-          <span className="font-mono text-[10px] theme-muted">{formatBytes(file.size)}</span>
-          <button onClick={onDownload} className="font-mono text-[11px] text-amber-600 hover:text-amber-500 transition-colors">
+          <span className="font-mono text-nano theme-muted">{formatBytes(file.size)}</span>
+          <button onClick={onDownload} className="font-mono text-micro text-amber-600 hover:text-amber-500 transition-colors">
             ↓
           </button>
         </div>
@@ -673,13 +673,13 @@ function FileCard({
       </div>
       <div className="flex-1 min-w-0">
         <p className="font-mono text-sm text-foreground truncate">{file.filename}</p>
-        <p className="font-mono text-[10px] theme-muted mt-0.5">
+        <p className="font-mono text-nano theme-muted mt-0.5">
           {file.mimeType.split("/").pop()} · {formatBytes(file.size)}
         </p>
       </div>
       <button
         onClick={onDownload}
-        className="font-mono text-[11px] text-amber-600 hover:text-amber-500 transition-colors shrink-0"
+        className="font-mono text-micro text-amber-600 hover:text-amber-500 transition-colors shrink-0"
       >
         [ download ]
       </button>

@@ -128,7 +128,7 @@ export default async function PhotoPage({ params }: Props) {
       </main>
 
       <footer role="contentinfo" className="theme-border border-t">
-        <div className="max-w-4xl mx-auto px-6 py-6 flex items-center justify-between font-mono text-[11px] theme-muted tracking-wide">
+        <div className="max-w-4xl mx-auto px-6 py-6 flex items-center justify-between font-mono text-micro theme-muted tracking-wide">
           <Link href={`/pics/${albumSlug}`} className="hover:text-foreground transition-colors">
             ← back to album
           </Link>
