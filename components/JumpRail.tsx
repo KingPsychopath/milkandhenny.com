@@ -23,7 +23,7 @@ const SWIPE_THRESHOLD = 40;
  * Jump rail: 20–24px visible strip, minimum 48px wide touch region.
  */
 const VISIBLE_STRIP_WIDTH_PX = 20;
-const MIN_TOUCH_SIZE_PX = 72;
+const MIN_TOUCH_SIZE_PX = 56;
 
 /**
  * Floating vertical bookmark rail: collapsed tab on the right edge,
