@@ -47,6 +47,46 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   };
 }
 
+const STOP_WORDS = new Set([
+  "a","an","the","in","on","at","to","for","of","and","or","but",
+  "is","it","its","my","i","we","so","no","do","if","by","as","up",
+  "be","am","are","was","were","not","this","that","with","from",
+]);
+
+/**
+ * Highlights ~35% of a title's words, favouring longer non-stop words.
+ * Deterministic — same title always produces the same highlights.
+ */
+function highlightTitle(title: string) {
+  const words = title.split(/\s+/);
+  if (words.length <= 2) return title;
+
+  const count = Math.max(1, Math.round(words.length * 0.35));
+
+  const scored = words.map((word, i) => {
+    const clean = word.toLowerCase().replace(/[^a-z]/g, "");
+    return { i, score: STOP_WORDS.has(clean) ? 0 : word.length };
+  });
+
+  const highlighted = new Set(
+    [...scored]
+      .sort((a, b) => b.score - a.score || a.i - b.i)
+      .slice(0, count)
+      .map((s) => s.i),
+  );
+
+  return words.map((word, i) => (
+    <span key={i}>
+      {i > 0 && " "}
+      {highlighted.has(i) ? (
+        <span className="highlight-selection">{word}</span>
+      ) : (
+        word
+      )}
+    </span>
+  ));
+}
+
 /** Format a date string into a readable form */
 function formatDate(dateStr: string) {
   const d = new Date(dateStr + "T00:00:00");
@@ -200,7 +240,7 @@ export default async function BlogPostPage({ params }: Props) {
             />
           </div>
           <h1 className="font-serif text-3xl sm:text-4xl text-foreground leading-tight tracking-tight mt-4">
-            {post.title}
+            {highlightTitle(post.title)}
           </h1>
           {post.subtitle && (
             <p className="mt-4 theme-subtle text-lg leading-relaxed">
