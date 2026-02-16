@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useCallback } from "react";
+import Link from "next/link";
 import { SITE_BRAND } from "@/lib/config";
 
 /* ------------------------------------------------------------------ */
@@ -142,12 +143,12 @@ export default function ExamPage() {
       <div className="mx-auto max-w-[720px]">
         {/* ── Header ── */}
         <header className="text-center mb-12">
-          <a
+          <Link
             href="/"
             className="inline-block font-mono text-xs tracking-tighter font-bold mb-6 transition-opacity duration-300 hover:opacity-60 theme-muted"
           >
             {SITE_BRAND}
-          </a>
+          </Link>
           <p className="font-mono text-xs tracking-widest uppercase mb-4 theme-muted">
             Advanced Level Examination
           </p>
@@ -311,9 +312,9 @@ export default function ExamPage() {
         <footer role="contentinfo" className="mt-12 text-center font-mono text-xs space-y-3 theme-muted">
           <p>end of questions</p>
           <div className="border-t theme-border pt-4">
-            <a href="/" className="hover:opacity-60 transition-opacity duration-300">
+            <Link href="/" className="hover:opacity-60 transition-opacity duration-300">
               ← home
-            </a>
+            </Link>
             <p className="mt-2 theme-faint">
               © {new Date().getFullYear()} {SITE_BRAND}
             </p>

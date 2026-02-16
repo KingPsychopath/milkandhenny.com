@@ -27,6 +27,16 @@ type ProcessFileResult = {
   uploadedBytes: number;
 };
 
+/** Defensive filename validation for user-uploaded transfer files. */
+function isSafeTransferFilename(filename: string): boolean {
+  const name = filename.trim();
+  if (!name || name.length > 180) return false;
+  if (name === "." || name === "..") return false;
+  if (name.includes("\0")) return false;
+  if (name.includes("/") || name.includes("\\") || name.includes("..")) return false;
+  return path.basename(name) === name;
+}
+
 /* ─── Processing ─── */
 
 /**
@@ -210,7 +220,10 @@ async function processUploadedFile(
         height: processed.height,
         ...(processed.takenAt ? { takenAt: processed.takenAt } : {}),
       },
-      uploadedBytes: fileSize,
+      uploadedBytes:
+        processed.thumb.buffer.byteLength +
+        processed.full.buffer.byteLength +
+        fileSize,
     };
   }
 
@@ -234,7 +247,7 @@ async function processUploadedFile(
         width: gif.width,
         height: gif.height,
       },
-      uploadedBytes: fileSize,
+      uploadedBytes: gif.thumb.buffer.byteLength + fileSize,
     };
   }
 
@@ -255,4 +268,5 @@ async function processUploadedFile(
 }
 
 export { processTransferFile, processUploadedFile, sortTransferFiles };
+export { isSafeTransferFilename };
 export type { ProcessFileResult };

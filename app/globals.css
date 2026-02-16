@@ -227,16 +227,16 @@ body {
 }
 
 /* ── Compact strip (default) ── */
-.album-embed {
+.prose-blog a.album-embed {
   display: block;
   border: 1px solid var(--stone-200);
   border-radius: 6px;
   overflow: hidden;
   margin: 2em 0;
-  text-decoration: none !important;
+  text-decoration: none;
   transition: border-color 0.2s ease;
 }
-.album-embed:hover {
+.prose-blog a.album-embed:hover {
   border-color: var(--stone-400);
 }
 .album-embed-strip {
@@ -252,13 +252,13 @@ body {
   background: var(--stone-100);
 }
 /* Override prose-blog img styles inside album embeds */
-.album-embed img {
-  margin: 0 !important;
-  border-radius: 0 !important;
-  max-width: none !important;
+.prose-blog .album-embed img {
+  margin: 0;
+  border-radius: 0;
+  max-width: none;
 }
 .album-embed:hover .album-embed-thumb img {
-  opacity: 0.85 !important;
+  opacity: 0.85;
 }
 .album-embed-thumb-overlay {
   position: absolute;
@@ -282,11 +282,11 @@ body {
 .album-embed-masonry {
   margin: 2em 0;
 }
-.album-embed-masonry-grid {
+.prose-blog a.album-embed-masonry-grid {
   display: block;
   columns: 2;
   column-gap: 6px;
-  text-decoration: none !important;
+  text-decoration: none;
 }
 .album-embed-masonry-tile {
   position: relative;
@@ -297,14 +297,14 @@ body {
   background: var(--stone-100);
 }
 /* Override prose-blog img styles inside masonry tiles */
-.album-embed-masonry-tile img {
-  display: block !important;
-  width: 100% !important;
-  height: auto !important;
-  margin: 0 !important;
-  border-radius: 0 !important;
-  max-width: none !important;
-  position: static !important;
+.prose-blog .album-embed-masonry-tile img {
+  display: block;
+  width: 100%;
+  height: auto;
+  margin: 0;
+  border-radius: 0;
+  max-width: none;
+  position: static;
 }
 .album-embed-masonry-grid:hover .album-embed-masonry-tile img {
   opacity: 0.85;
@@ -319,9 +319,9 @@ body {
   background: rgba(0, 0, 0, 0.45);
   z-index: 1;
 }
-.album-embed-masonry-meta {
+.prose-blog a.album-embed-masonry-meta {
   display: block;
-  text-decoration: none !important;
+  text-decoration: none;
   margin-top: 0.5em;
 }
 
@@ -373,12 +373,6 @@ button {
 
 .duration-300 {
   animation-duration: 300ms;
-}
-
-/* Focus styles for accessibility */
-:focus-visible {
-  outline: 2px solid #d97706;
-  outline-offset: 2px;
 }
 
 /* Selection color */
@@ -658,7 +652,7 @@ button:active:not(:disabled):not(.lamp-toggle) {
   .lamp-toggle,
   .back-to-top,
   .reading-progress-track {
-    display: none !important;
+    display: none;
   }
   body {
     print-color-adjust: exact;

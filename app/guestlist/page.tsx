@@ -1,10 +1,10 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { SITE_NAME } from '@/lib/config';
-import { useGuests } from '@/hooks/useGuests';
-import { useGuestSearch } from '@/hooks/useGuestSearch';
+import { useGuests } from '@/hooks/guestlist/useGuests';
+import { useGuestSearch } from '@/hooks/guestlist/useGuestSearch';
 import { SearchBar } from '@/components/guestlist/SearchBar';
 import { GuestList } from '@/components/guestlist/GuestList';
 import { GuestStats } from '@/components/guestlist/GuestStats';
@@ -27,8 +27,11 @@ export default function GuestListPage() {
   const [pinError, setPinError] = useState<string | false>(false);
 
   useEffect(() => {
-    setStaffToken(getStored("staffToken") ?? '');
-    setMounted(true);
+    const initTimer = window.setTimeout(() => {
+      setStaffToken(getStored("staffToken") ?? '');
+      setMounted(true);
+    }, 0);
+    return () => window.clearTimeout(initTimer);
   }, []);
 
   const isAuthenticated = !!staffToken;

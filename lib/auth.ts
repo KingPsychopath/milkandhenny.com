@@ -7,7 +7,7 @@
  * Config-driven. Every comparison is timing-safe, every verify endpoint is rate-limited.
  * Cron uses Bearer secret directly (no verify flow).
  *
- * Env: AUTH_SECRET (JWT signing), STAFF_PIN, MANAGEMENT_PASSWORD, UPLOAD_PIN, CRON_SECRET
+ * Env: AUTH_SECRET (JWT signing), STAFF_PIN, ADMIN_PASSWORD, UPLOAD_PIN, CRON_SECRET
  */
 
 import { createHmac, timingSafeEqual } from "crypto";
@@ -34,7 +34,7 @@ const ROLES: Record<AuthRole, RoleConfig> = {
     verify: { bodyField: "pin", sanitize: (v: string) => v.replace(/\D/g, "") },
   },
   admin: {
-    envVar: "MANAGEMENT_PASSWORD",
+    envVar: "ADMIN_PASSWORD",
     verify: { bodyField: "password", sanitize: (v) => v.trim() },
   },
   upload: {
@@ -129,6 +129,17 @@ function verifyToken(token: string, expectedRole: AuthRole): TokenPayload | null
   return payload;
 }
 
+function verifyTokenForRoles(
+  token: string,
+  acceptedRoles: readonly AuthRole[]
+): TokenPayload | null {
+  for (const role of acceptedRoles) {
+    const payload = verifyToken(token, role);
+    if (payload) return payload;
+  }
+  return null;
+}
+
 /* ─── Primitives ─── */
 
 function safeCompare(a: string, b: string): boolean {
@@ -195,7 +206,7 @@ async function clearRateLimit(role: AuthRole, ip: string): Promise<void> {
 /**
  * Protect an API route. Returns null when authorized, or an error response.
  *
- * For staff/management/upload: Validates JWT (Authorization: Bearer <token>).
+ * For staff/admin/upload: Validates JWT (Authorization: Bearer <token>).
  * For cron: Validates Bearer secret directly.
  */
 function requireAuth(
@@ -219,7 +230,13 @@ function requireAuth(
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const payload = verifyToken(token, role);
+  const acceptedRoles =
+    role === "staff"
+      ? (["staff", "admin"] as const)
+      : role === "upload"
+        ? (["upload", "admin"] as const)
+        : ([role] as const);
+  const payload = verifyTokenForRoles(token, acceptedRoles);
   if (!payload) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }

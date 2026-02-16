@@ -4,6 +4,7 @@ import { useState, useRef, useMemo, useEffect, useCallback } from 'react';
 import type { Guest } from '@/lib/guests/types';
 import { useFocusTrap } from '@/hooks/useFocusTrap';
 import { useEscapeKey } from '@/hooks/useEscapeKey';
+import { getStored, removeStored, setStored } from '@/lib/storage-keys';
 
 type LeaderboardEntry = { name: string; count: number };
 
@@ -95,16 +96,23 @@ export function useGuestManagement({
 
   /* ─── Helpers ─── */
 
-  /** Fetch with the management Bearer token pre-attached. */
+  /** Fetch with the admin Bearer token pre-attached. */
   const authFetch = useCallback(
-    (url: string, opts: RequestInit = {}) =>
-      fetch(url, {
+    async (url: string, opts: RequestInit = {}) => {
+      const res = await fetch(url, {
         ...opts,
         headers: {
           ...(opts.headers as Record<string, string>),
           Authorization: `Bearer ${adminTokenRef.current ?? ''}`,
         },
-      }),
+      });
+      if (res.status === 401) {
+        adminTokenRef.current = null;
+        removeStored('adminToken');
+        setIsAuthenticated(false);
+      }
+      return res;
+    },
     []
   );
 
@@ -118,10 +126,15 @@ export function useGuestManagement({
   useEscapeKey(closeModal, isOpen);
 
   useEffect(() => {
+    const token = getStored('adminToken');
+    adminTokenRef.current = token;
+    setIsAuthenticated(!!token);
+  }, []);
+
+  useEffect(() => {
     if (activeTab === 'games' && isAuthenticated) {
       fetchBestDressedData();
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab, isAuthenticated]);
 
   /* ─── Handlers ─── */
@@ -132,7 +145,6 @@ export function useGuestManagement({
 
   function closeModal() {
     setIsOpen(false);
-    setIsAuthenticated(false);
     setPassword('');
     setPasswordError(false);
     setError(null);
@@ -144,7 +156,7 @@ export function useGuestManagement({
     setPasswordError(false);
     const trimmedPassword = password.trim();
     try {
-      const res = await fetch('/api/guests/verify-management', {
+      const res = await fetch('/api/admin/verify', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ password: trimmedPassword }),
@@ -152,6 +164,7 @@ export function useGuestManagement({
       const data = await res.json().catch(() => ({}));
       if (res.ok && data.token) {
         adminTokenRef.current = data.token;
+        setStored('adminToken', data.token);
         setIsAuthenticated(true);
       } else {
         setPasswordError(

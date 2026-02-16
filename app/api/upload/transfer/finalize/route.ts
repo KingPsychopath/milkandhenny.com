@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/auth";
-import { saveTransfer } from "@/lib/transfers";
-import { processUploadedFile, sortTransferFiles } from "@/lib/transfer-upload";
+import { saveTransfer, MAX_EXPIRY_SECONDS } from "@/lib/transfers";
+import {
+  processUploadedFile,
+  sortTransferFiles,
+  isSafeTransferFilename,
+} from "@/lib/transfer-upload";
 import { BASE_URL } from "@/lib/config";
 import { apiError } from "@/lib/api-error";
 
@@ -9,6 +13,8 @@ import { apiError } from "@/lib/api-error";
 export const maxDuration = 60;
 
 type FileEntry = { name: string; size: number; type?: string };
+const MAX_TRANSFER_FILE_BYTES = 250 * 1024 * 1024; // 250MB
+const MAX_TRANSFER_TOTAL_BYTES = 1024 * 1024 * 1024; // 1GB
 
 /**
  * POST /api/upload/transfer/finalize
@@ -48,7 +54,39 @@ export async function POST(request: NextRequest) {
   if (!Array.isArray(files) || files.length === 0) {
     return NextResponse.json({ error: "No files provided" }, { status: 400 });
   }
-  if (typeof expiresSeconds !== "number" || expiresSeconds <= 0) {
+  let totalBytes = 0;
+  for (const file of files) {
+    if (!file || typeof file.name !== "string" || !isSafeTransferFilename(file.name)) {
+      return NextResponse.json(
+        { error: "Each file must have a safe filename" },
+        { status: 400 }
+      );
+    }
+    if (!Number.isFinite(file.size) || file.size < 0) {
+      return NextResponse.json(
+        { error: "Each file must include a valid non-negative size" },
+        { status: 400 }
+      );
+    }
+    if (file.size > MAX_TRANSFER_FILE_BYTES) {
+      return NextResponse.json(
+        { error: "File too large. Max 250MB per file." },
+        { status: 400 }
+      );
+    }
+    totalBytes += file.size;
+    if (totalBytes > MAX_TRANSFER_TOTAL_BYTES) {
+      return NextResponse.json(
+        { error: "Transfer too large. Max 1GB total." },
+        { status: 400 }
+      );
+    }
+  }
+  if (
+    typeof expiresSeconds !== "number" ||
+    expiresSeconds <= 0 ||
+    expiresSeconds > MAX_EXPIRY_SECONDS
+  ) {
     return NextResponse.json(
       { error: "Invalid expiresSeconds" },
       { status: 400 }

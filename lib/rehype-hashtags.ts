@@ -9,8 +9,6 @@ type ElementNode = {
 type RootNode = { type: "root"; children: UnistNode[] };
 type UnistNode = TextNode | ElementNode | RootNode;
 
-const HASHTAG = /#\w+/g;
-
 /** Walk tree and replace text nodes that contain #hashtags with mixed content */
 function visit(
   node: UnistNode,

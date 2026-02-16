@@ -3,6 +3,7 @@ import Link from "next/link";
 import type { Metadata } from "next";
 import { getPostBySlug, getAllSlugs, extractHeadings } from "@/lib/blog";
 import { getAlbumBySlug } from "@/lib/media/albums";
+import { resolveImageSrc } from "@/lib/media/storage";
 import { focalPresetToObjectPosition } from "@/lib/media/focal";
 import { BASE_URL, SITE_NAME, SITE_BRAND } from "@/lib/config";
 import { PostBody } from "./PostBody";
@@ -27,6 +28,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 
   const description =
     post.subtitle ?? `Read "${post.title}" on ${SITE_NAME}`;
+  const heroImage = post.image ? resolveImageSrc(post.image) : "";
 
   return {
     title: `${post.title} — ${SITE_NAME}`,
@@ -38,11 +40,13 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
       siteName: SITE_NAME,
       type: "article",
       publishedTime: post.date,
+      ...(heroImage ? { images: [{ url: heroImage, alt: post.title }] } : {}),
     },
     twitter: {
       card: "summary_large_image",
       title: post.title,
       description,
+      ...(heroImage ? { images: [heroImage] } : {}),
     },
   };
 }
@@ -88,7 +92,7 @@ function highlightTitle(title: string) {
   }
 
   return runs.map((run, i) => (
-    <span key={i}>
+    <span key={`${run.text}-${i}`}>
       {i > 0 && " "}
       {run.lit ? (
         <span className="highlight-selection">{run.text}</span>
@@ -101,7 +105,8 @@ function highlightTitle(title: string) {
 
 /** Format a date string into a readable form */
 function formatDate(dateStr: string) {
-  const d = new Date(dateStr + "T00:00:00");
+  const d = new Date(`${dateStr}T00:00:00`);
+  if (Number.isNaN(d.getTime())) return dateStr;
   return d.toLocaleDateString("en-GB", {
     day: "numeric",
     month: "long",
@@ -174,6 +179,7 @@ export default async function BlogPostPage({ params }: Props) {
   const post = getPostBySlug(slug);
 
   if (!post) notFound();
+  const heroImage = post.image ? resolveImageSrc(post.image) : "";
 
   const albums = resolveAlbumsFromContent(post.content);
   const headings = extractHeadings(post.content);
@@ -235,7 +241,7 @@ export default async function BlogPostPage({ params }: Props) {
         <header className="mb-12 mt-2">
           <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 font-mono text-xs theme-muted tracking-wide">
             <div className="flex items-center gap-3">
-              <time>{formatDate(post.date)}</time>
+              <time dateTime={post.date}>{formatDate(post.date)}</time>
               <span>·</span>
               <span>{post.readingTime} min read</span>
               {post.featured && (
@@ -260,6 +266,18 @@ export default async function BlogPostPage({ params }: Props) {
             </p>
           )}
         </header>
+
+        {heroImage ? (
+          <figure className="mb-10">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={heroImage}
+              alt={post.title}
+              className="w-full rounded-md border theme-border"
+              loading="eager"
+            />
+          </figure>
+        ) : null}
 
         <PostBody content={post.content} albums={albums} />
         </article>

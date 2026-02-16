@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useEffect, useRef, memo } from "react";
+import { useState, useCallback, useEffect, memo } from "react";
 import {
   getTransferThumbUrl,
   getTransferFullUrl,
@@ -428,14 +428,14 @@ export function TransferGallery({ transferId, files }: TransferGalleryProps) {
           >
             <div className="flex items-center gap-4 font-mono text-xs text-white/50">
               {lightboxIndex > 0 ? (
-                <button onClick={goPrev} className="hover:text-white transition-colors">
+                <button onClick={goPrev} className="hover:text-white transition-colors" aria-label="Previous file">
                   ← prev
                 </button>
               ) : (
                 <span className="text-white/20">← prev</span>
               )}
               {lightboxIndex < visualFiles.length - 1 ? (
-                <button onClick={goNext} className="hover:text-white transition-colors">
+                <button onClick={goNext} className="hover:text-white transition-colors" aria-label="Next file">
                   next →
                 </button>
               ) : (
@@ -513,6 +513,7 @@ const VisualCard = memo(function VisualCard({
         }}
         className="block relative overflow-hidden rounded-sm w-full text-left cursor-pointer"
         style={{ paddingBottom: `${aspectRatio * 100}%` }}
+        aria-label={`Open ${file.filename}`}
       >
         {/* Selection toggle — stop propagation so card click opens lightbox */}
         <div

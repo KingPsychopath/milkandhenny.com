@@ -41,7 +41,9 @@ function useSwipe<T extends HTMLElement = HTMLDivElement>(
 
   // Store callbacks in refs so the effect doesn't re-attach listeners on every render
   const callbacksRef = useRef(options);
-  callbacksRef.current = options;
+  useEffect(() => {
+    callbacksRef.current = options;
+  }, [options]);
 
   const enabled = options.enabled ?? true;
 

@@ -17,7 +17,7 @@ export function slug(text: string): string {
 export function uniqueHeadingIds(labels: string[]): { id: string; label: string }[] {
   const used = new Set<string>();
   return labels.map((label) => {
-    let base = slug(label) || "section";
+    const base = slug(label) || "section";
     let id = base;
     let n = 1;
     while (used.has(id)) {

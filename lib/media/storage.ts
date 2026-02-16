@@ -46,8 +46,19 @@ function getBlogImageUrl(slug: string, filename: string): string {
  * - Relative paths (e.g. "blog/slug/image.webp") get prepended with the R2 public URL.
  */
 function resolveImageSrc(src: string): string {
-  if (src.startsWith("http://") || src.startsWith("https://")) return src;
-  return getImageUrl(src);
+  const trimmed = src.trim();
+  if (!trimmed || trimmed.includes("\0")) return "";
+  if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) return trimmed;
+  const lower = trimmed.toLowerCase();
+  if (
+    lower.startsWith("javascript:") ||
+    lower.startsWith("vbscript:") ||
+    lower.startsWith("data:")
+  ) {
+    return "";
+  }
+  if (trimmed.includes("..")) return "";
+  return getImageUrl(trimmed.replace(/^\/+/, ""));
 }
 
 /* ─── Transfer URLs ─── */

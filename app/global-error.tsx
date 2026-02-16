@@ -35,18 +35,26 @@ export default function GlobalError({
         }}
       >
         <div style={{ textAlign: "center", maxWidth: 420 }}>
-          <a
-            href="/"
+          <button
+            type="button"
+            onClick={() => {
+              window.location.href = "/";
+            }}
             style={{
               fontSize: 14,
               fontWeight: 700,
               color: "#1c1917",
               textDecoration: "none",
               letterSpacing: "-0.04em",
+              background: "none",
+              border: "none",
+              cursor: "pointer",
+              fontFamily: "inherit",
+              padding: 0,
             }}
           >
             milk &amp; henny
-          </a>
+          </button>
 
           <p
             style={{
@@ -97,16 +105,24 @@ export default function GlobalError({
               ↻ try again
             </button>
             <span style={{ color: "#d6d3d1" }}>·</span>
-            <a
-              href="/"
+            <button
+              type="button"
+              onClick={() => {
+                window.location.href = "/";
+              }}
               style={{
                 fontSize: 14,
                 color: "#78716c",
                 textDecoration: "none",
+                background: "none",
+                border: "none",
+                cursor: "pointer",
+                fontFamily: "inherit",
+                padding: 0,
               }}
             >
               ← go home
-            </a>
+            </button>
           </div>
 
           {error.digest && (

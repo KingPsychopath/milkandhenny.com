@@ -29,7 +29,7 @@ import {
   processToWebP,
   mapConcurrent,
 } from "../lib/media/processing";
-import { sanitiseStem, toR2Filename, toMarkdownSnippet } from "../lib/blog-upload";
+import { toR2Filename, toMarkdownSnippet } from "../lib/blog-upload";
 import { formatBytes } from "../lib/format";
 import type { FileKind } from "../lib/media/file-kinds";
 

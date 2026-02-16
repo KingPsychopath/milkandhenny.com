@@ -1,4 +1,4 @@
-import { randomBytes } from 'crypto';
+import { randomBytes, timingSafeEqual } from 'crypto';
 import { getRedis } from './redis';
 import { FILE_KINDS, type FileKind } from './media/file-kinds';
 import { generateWordId } from './transfer-words';
@@ -284,7 +284,10 @@ async function validateDeleteToken(id: string, token: string): Promise<boolean> 
   if (!token || typeof token !== 'string') return false;
   const transfer = await getTransfer(id);
   if (!transfer) return false;
-  return transfer.deleteToken === token;
+  const expected = Buffer.from(transfer.deleteToken);
+  const received = Buffer.from(token);
+  if (expected.length !== received.length) return false;
+  return timingSafeEqual(expected, received);
 }
 
 export {

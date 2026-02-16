@@ -9,12 +9,14 @@ Authentication, protections, rate limiting, and what to do when credentials leak
 | Gate | Env var | Protects | Verified by |
 |------|---------|----------|-------------|
 | Staff PIN | `STAFF_PIN` | Guest list page access (door staff) | `POST /api/guests/verify-staff-pin` |
-| Management password | `MANAGEMENT_PASSWORD` | Manage (add/remove/import, wipe best-dressed) | `POST /api/guests/verify-management` |
+| Admin password | `ADMIN_PASSWORD` | Manage (add/remove/import, wipe best-dressed), admin tools | `POST /api/admin/verify` |
 | Upload PIN | `UPLOAD_PIN` | Web upload page (`/upload`) | `POST /api/upload/verify-pin` |
 
-Both are env vars, never in the client bundle. Set in Vercel and `.env.local`.
+All gates are env vars, never in the client bundle. Set in Vercel and `.env.local`.
 
 Verify endpoints issue short-lived JWTs (24h). Clients store tokens in `sessionStorage` (not raw credentials). Tokens are revoked on tab close.
+
+Admin tokens act as the master token for normal app gates: an `admin` JWT is accepted anywhere `staff` or `upload` access is required. Dedicated `STAFF_PIN` / `UPLOAD_PIN` flows still exist for role-specific sharing and least-privilege usage.
 
 ---
 
@@ -36,7 +38,7 @@ Verify endpoints issue short-lived JWTs (24h). Clients store tokens in `sessionS
 |------|------------|
 | Vote stuffing | One-time token per vote (GET issues, POST consumes). A device can refresh for a new token — acceptable for low-stakes party voting. |
 | Fake names | Server validates the voted name is in the guest list. Arbitrary names rejected. |
-| Anyone wiping votes | `DELETE /api/best-dressed` requires management password. |
+| Anyone wiping votes | `DELETE /api/best-dressed` requires admin token. |
 
 ---
 
@@ -100,9 +102,9 @@ These are the highest-impact credentials — they grant read/write/delete access
 
 **Data at risk:** KV token grants read/write to guest names, votes, and transfer metadata (not files — those are in R2).
 
-### Management password or Staff PIN leaked
+### Admin password, Upload PIN, or Staff PIN leaked
 
-1. **Update Vercel env vars** → `MANAGEMENT_PASSWORD` and/or `STAFF_PIN`
+1. **Update Vercel env vars** → `ADMIN_PASSWORD`, `UPLOAD_PIN`, and/or `STAFF_PIN`
 2. **Redeploy** on Vercel
 3. Update `.env.local` for local dev
 
@@ -123,7 +125,8 @@ These are the highest-impact credentials — they grant read/write/delete access
 | `R2_ACCESS_KEY` / `R2_SECRET_KEY` | Yes | Yes | Source of truth | — |
 | `KV_REST_API_URL` / `KV_REST_API_TOKEN` | Yes | Auto-injected | — | Source of truth |
 | `STAFF_PIN` | Yes | Yes | — | — |
-| `MANAGEMENT_PASSWORD` | Yes | Yes | — | — |
+| `ADMIN_PASSWORD` | Yes | Yes | — | — |
+| `UPLOAD_PIN` | Yes | Yes | — | — |
 | `CRON_SECRET` | No | Yes | — | — |
 | `NEXT_PUBLIC_R2_PUBLIC_URL` | Yes | Yes | — | — |
 | `NEXT_PUBLIC_BASE_URL` | Yes (CLI) | No | — | — |

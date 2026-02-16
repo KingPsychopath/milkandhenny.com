@@ -18,6 +18,14 @@ type ShareProps = {
 
 const COPIED_DURATION_MS = 2000;
 
+function canUseNativeShareOnMobile(): boolean {
+  if (typeof window === "undefined") return false;
+  return (
+    typeof navigator.share === "function" &&
+    /Android|iPhone|iPad|iPod/i.test(navigator.userAgent)
+  );
+}
+
 /** Clipboard write with fallback for non-secure contexts (localhost / HTTP) */
 async function copyToClipboard(text: string): Promise<boolean> {
   try {
@@ -59,18 +67,11 @@ function buildShareUrls(url: string, title: string) {
 export function Share({ url, title = "", label = "Share", className = "" }: ShareProps) {
   const [copied, setCopied] = useState(false);
   const [dropdownOpen, setDropdownOpen] = useState(false);
-  const [isMobile, setIsMobile] = useState(false);
+  const [isMobile] = useState<boolean>(() => canUseNativeShareOnMobile());
   const dropdownRef = useRef<HTMLDivElement>(null);
   const dropdownMenuRef = useFocusTrap<HTMLDivElement>(dropdownOpen);
 
   useEscapeKey(() => setDropdownOpen(false), dropdownOpen);
-
-  useEffect(() => {
-    const mobile =
-      typeof navigator.share === "function" &&
-      /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
-    setIsMobile(mobile);
-  }, []);
 
   useEffect(() => {
     if (!copied) return;
@@ -103,11 +104,13 @@ export function Share({ url, title = "", label = "Share", className = "" }: Shar
     <div
       ref={dropdownRef}
       className={`relative inline-block font-mono text-[11px] theme-muted tracking-wide ${className}`}
+      role="group"
       aria-label={label}
     >
       <button
         type="button"
         onClick={handleClick}
+        aria-label={label}
         aria-expanded={dropdownOpen}
         aria-haspopup="true"
         className="inline-flex items-center gap-0.5 hover:text-foreground transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-500/50 rounded px-1 -mx-1"

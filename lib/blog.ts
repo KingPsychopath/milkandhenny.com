@@ -4,6 +4,7 @@ import matter from "gray-matter";
 import { uniqueHeadingIds } from "@/lib/slug";
 
 const POSTS_DIR = path.join(process.cwd(), "content/posts");
+const SAFE_POST_SLUG = /^[a-z0-9-]+$/;
 
 /** Average reading speed in words per minute */
 const WPM = 230;
@@ -46,6 +47,7 @@ function estimateReadingTime(content: string): number {
 
 /** Read and parse a single markdown file by slug */
 function getPostBySlug(slug: string): Post | null {
+  if (!SAFE_POST_SLUG.test(slug)) return null;
   const filePath = path.join(POSTS_DIR, `${slug}.md`);
 
   if (!fs.existsSync(filePath)) return null;

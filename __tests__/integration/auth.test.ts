@@ -22,7 +22,7 @@ describe("auth module", () => {
       ...ORIGINAL_ENV,
       AUTH_SECRET: "test-secret-key-for-jwt-signing-1234567890",
       STAFF_PIN: "1234",
-      MANAGEMENT_PASSWORD: "admin-pass",
+      ADMIN_PASSWORD: "admin-pass",
     };
   });
 

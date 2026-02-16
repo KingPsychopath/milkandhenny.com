@@ -27,13 +27,17 @@ type UploadedBlogFile = {
   overwrote: boolean;
 };
 
+const SAFE_SLUG_PATTERN = /^[a-z0-9-]+$/;
+const MAX_BLOG_FILE_BYTES = 50 * 1024 * 1024; // 50MB
+const MAX_BLOG_TOTAL_BYTES = 500 * 1024 * 1024; // 500MB
+
 /**
  * POST /api/upload/blog
  *
  * Upload files to blog/{slug}/ in R2.
  * Images are processed to WebP; everything else uploads raw.
  *
- * Authorization: PIN {pin}
+ * Authorization: Bearer {uploadJWT}
  * Body: multipart/form-data with fields: slug, force?, files[]
  */
 export async function POST(request: NextRequest) {
@@ -60,9 +64,37 @@ export async function POST(request: NextRequest) {
       { status: 400 }
     );
   }
+  if (!SAFE_SLUG_PATTERN.test(slug)) {
+    return NextResponse.json(
+      { error: "Slug must use lowercase letters, numbers, and hyphens only" },
+      { status: 400 }
+    );
+  }
 
   if (rawFiles.length === 0) {
     return NextResponse.json({ error: "No files provided" }, { status: 400 });
+  }
+  if (rawFiles.some((f) => !(f instanceof File))) {
+    return NextResponse.json(
+      { error: "Invalid files payload" },
+      { status: 400 }
+    );
+  }
+  let totalBytes = 0;
+  for (const file of rawFiles) {
+    if (file.size > MAX_BLOG_FILE_BYTES) {
+      return NextResponse.json(
+        { error: "File too large. Max 50MB per file." },
+        { status: 400 }
+      );
+    }
+    totalBytes += file.size;
+    if (totalBytes > MAX_BLOG_TOTAL_BYTES) {
+      return NextResponse.json(
+        { error: "Upload too large. Max 500MB total." },
+        { status: 400 }
+      );
+    }
   }
 
   try {

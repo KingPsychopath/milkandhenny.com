@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useMemo } from 'react';
+import { useState, useRef, useMemo, useId, useEffect } from 'react';
 
 type TypeaheadInputProps = {
   value: string;
@@ -18,10 +18,20 @@ export function TypeaheadInput({
   placeholder,
   label,
 }: TypeaheadInputProps) {
+  const listboxId = useId();
   const [isOpen, setIsOpen] = useState(false);
   const [highlightedIndex, setHighlightedIndex] = useState(-1);
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLUListElement>(null);
+  const blurTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (blurTimeoutRef.current) {
+        clearTimeout(blurTimeoutRef.current);
+      }
+    };
+  }, []);
 
   const filteredSuggestions = useMemo(() => {
     if (!value.trim()) return suggestions.slice(0, 10);
@@ -58,22 +68,30 @@ export function TypeaheadInput({
           setHighlightedIndex(-1);
         }}
         onFocus={() => setIsOpen(true)}
-        onBlur={() => setTimeout(() => setIsOpen(false), 150)}
+        onBlur={() => {
+          blurTimeoutRef.current = setTimeout(() => setIsOpen(false), 150);
+        }}
         onKeyDown={handleKeyDown}
         placeholder={placeholder}
         className="w-full px-4 py-3 bg-stone-50 border border-stone-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent transition-all"
         role="combobox"
         aria-expanded={isOpen}
+        aria-controls={isOpen ? listboxId : undefined}
+        aria-activedescendant={
+          highlightedIndex >= 0 ? `${listboxId}-option-${highlightedIndex}` : undefined
+        }
         aria-autocomplete="list"
       />
       {isOpen && filteredSuggestions.length > 0 && (
         <ul
           ref={listRef}
+          id={listboxId}
           className="absolute z-20 w-full mt-1 bg-white border border-stone-200 rounded-xl shadow-lg max-h-48 overflow-y-auto"
           role="listbox"
         >
           {filteredSuggestions.map((suggestion, index) => (
             <li
+              id={`${listboxId}-option-${index}`}
               key={`${suggestion}-${index}`}
               className={`px-4 py-2.5 cursor-pointer transition-colors ${
                 index === highlightedIndex ? 'bg-amber-50 text-amber-900' : 'hover:bg-stone-50'

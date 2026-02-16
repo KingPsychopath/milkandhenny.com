@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useSyncExternalStore, useCallback } from 'react';
+import { useState, useSyncExternalStore, useCallback } from 'react';
 import Link from 'next/link';
 import { playFeedback } from '@/lib/feedback';
 import { SITE_NAME } from '@/lib/config';
@@ -90,11 +90,9 @@ function useColor() {
 export default function IcebreakerPage() {
   const color = useColor();
   const [revealed, setRevealed] = useState(false);
-  const [question, setQuestion] = useState(() => QUESTIONS[0]);
-
-  useEffect(() => {
-    setQuestion(getRandomQuestion());
-  }, []);
+  const [question, setQuestion] = useState(() =>
+    typeof window === "undefined" ? QUESTIONS[0] : getRandomQuestion()
+  );
 
   const shuffleQuestion = () => {
     playFeedback('check-out'); // Light feedback

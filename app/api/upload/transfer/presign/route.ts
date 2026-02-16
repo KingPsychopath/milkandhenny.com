@@ -6,11 +6,15 @@ import {
   generateDeleteToken,
   parseExpiry,
   DEFAULT_EXPIRY_SECONDS,
+  MAX_EXPIRY_SECONDS,
 } from "@/lib/transfers";
 import { getMimeType } from "@/lib/media/processing";
 import { apiError } from "@/lib/api-error";
+import { isSafeTransferFilename } from "@/lib/transfer-upload";
 
 type FileEntry = { name: string; size: number; type?: string };
+const MAX_TRANSFER_FILE_BYTES = 250 * 1024 * 1024; // 250MB
+const MAX_TRANSFER_TOTAL_BYTES = 1024 * 1024 * 1024; // 1GB
 
 /**
  * POST /api/upload/transfer/presign
@@ -44,6 +48,34 @@ export async function POST(request: NextRequest) {
   if (!Array.isArray(files) || files.length === 0) {
     return NextResponse.json({ error: "No files provided" }, { status: 400 });
   }
+  let totalBytes = 0;
+  for (const file of files) {
+    if (!file || typeof file.name !== "string" || !isSafeTransferFilename(file.name)) {
+      return NextResponse.json(
+        { error: "Each file must have a safe filename" },
+        { status: 400 }
+      );
+    }
+    if (!Number.isFinite(file.size) || file.size < 0) {
+      return NextResponse.json(
+        { error: "Each file must include a valid non-negative size" },
+        { status: 400 }
+      );
+    }
+    if (file.size > MAX_TRANSFER_FILE_BYTES) {
+      return NextResponse.json(
+        { error: "File too large. Max 250MB per file." },
+        { status: 400 }
+      );
+    }
+    totalBytes += file.size;
+    if (totalBytes > MAX_TRANSFER_TOTAL_BYTES) {
+      return NextResponse.json(
+        { error: "Transfer too large. Max 1GB total." },
+        { status: 400 }
+      );
+    }
+  }
 
   let expiresSeconds = DEFAULT_EXPIRY_SECONDS;
   if (body.expires) {
@@ -63,7 +95,7 @@ export async function POST(request: NextRequest) {
   try {
     const urls = await Promise.all(
       files.map(async (file) => {
-        const contentType = file.type || getMimeType(file.name);
+        const contentType = getMimeType(file.name);
         const key = `transfers/${transferId}/original/${file.name}`;
         const url = await presignPutUrl(key, contentType);
         return { name: file.name, url };
@@ -73,7 +105,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       transferId,
       deleteToken,
-      expiresSeconds,
+      expiresSeconds: Math.min(expiresSeconds, MAX_EXPIRY_SECONDS),
       urls,
     });
   } catch (e) {

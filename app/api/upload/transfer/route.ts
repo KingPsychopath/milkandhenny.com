@@ -7,18 +7,24 @@ import {
   parseExpiry,
   DEFAULT_EXPIRY_SECONDS,
 } from "@/lib/transfers";
-import { processTransferFile, sortTransferFiles } from "@/lib/transfer-upload";
+import {
+  processTransferFile,
+  sortTransferFiles,
+  isSafeTransferFilename,
+} from "@/lib/transfer-upload";
 import { BASE_URL } from "@/lib/config";
 import { apiError } from "@/lib/api-error";
 
 /** Allow longer execution for image processing */
 export const maxDuration = 60;
+const MAX_TRANSFER_FILE_BYTES = 250 * 1024 * 1024; // 250MB
+const MAX_TRANSFER_TOTAL_BYTES = 1024 * 1024 * 1024; // 1GB
 
 /**
  * POST /api/upload/transfer
  *
  * Create a new ephemeral transfer from uploaded files.
- * Authorization: PIN {pin}
+ * Authorization: Bearer {uploadJWT}
  * Body: multipart/form-data with fields: title, expires, files[]
  */
 export async function POST(request: NextRequest) {
@@ -41,6 +47,34 @@ export async function POST(request: NextRequest) {
 
   if (rawFiles.length === 0) {
     return NextResponse.json({ error: "No files provided" }, { status: 400 });
+  }
+  if (rawFiles.some((f) => !(f instanceof File))) {
+    return NextResponse.json(
+      { error: "Invalid files payload" },
+      { status: 400 }
+    );
+  }
+  let totalBytes = 0;
+  for (const file of rawFiles) {
+    if (!file || typeof file.name !== "string" || !isSafeTransferFilename(file.name)) {
+      return NextResponse.json(
+        { error: "Each file must have a safe filename" },
+        { status: 400 }
+      );
+    }
+    if (file.size > MAX_TRANSFER_FILE_BYTES) {
+      return NextResponse.json(
+        { error: "File too large. Max 250MB per file." },
+        { status: 400 }
+      );
+    }
+    totalBytes += file.size;
+    if (totalBytes > MAX_TRANSFER_TOTAL_BYTES) {
+      return NextResponse.json(
+        { error: "Transfer too large. Max 1GB total." },
+        { status: 400 }
+      );
+    }
   }
 
   let ttlSeconds = DEFAULT_EXPIRY_SECONDS;

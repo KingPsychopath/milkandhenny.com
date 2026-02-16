@@ -2,6 +2,7 @@ import fs from "fs";
 import path from "path";
 
 const ALBUMS_DIR = path.join(process.cwd(), "content/albums");
+const SAFE_ALBUM_SLUG = /^[a-z0-9-]+$/;
 
 import type { FocalPreset } from "./focal";
 import { isValidFocalPreset } from "./focal";
@@ -36,11 +37,17 @@ type Album = {
 
 /** Read a single album by slug */
 function getAlbumBySlug(slug: string): Album | null {
+  if (!SAFE_ALBUM_SLUG.test(slug)) return null;
   const filePath = path.join(ALBUMS_DIR, `${slug}.json`);
   if (!fs.existsSync(filePath)) return null;
 
-  const raw = fs.readFileSync(filePath, "utf-8");
-  const data = JSON.parse(raw);
+  let data: Omit<Album, "slug">;
+  try {
+    const raw = fs.readFileSync(filePath, "utf-8");
+    data = JSON.parse(raw) as Omit<Album, "slug">;
+  } catch {
+    return null;
+  }
 
   return { slug, ...data };
 }

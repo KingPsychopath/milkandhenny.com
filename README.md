@@ -29,6 +29,7 @@ pnpm test:watch    # re-run on file changes
 | **Photo gallery** | `/pics` | JSON manifests (`content/albums/`) + R2 | Album galleries with masonry grid, lightbox, download |
 | **Party hub** | `/party` | — | Entry point for event-night features: icebreaker game, best-dressed voting, guest list (staff) |
 | **Guest list** | `/guestlist` | Vercel KV (Redis) | Real-time check-in for door staff, multi-device sync |
+| **Admin dashboard** | `/admin` | Vercel KV (Redis) + admin auth | Unified admin controls for guest reset, vote reset, upload/admin tools |
 | **Best dressed** | `/best-dressed` | Vercel KV (Redis) | Live voting leaderboard for party guests |
 | **Transfers** | `/t/{id}` | Vercel KV (Redis) + R2 | Self-destructing file sharing (your own WeTransfer) |
 | **CLI** | `pnpm cli` | R2 + KV | Manage albums, photos, transfers, blog files from the terminal |
@@ -45,9 +46,9 @@ Real-time check-in system for door staff at events.
 - Multi-device sync via polling (5s active, 30s when tab is backgrounded)
 - CSV import from Partiful exports
 - Search, filter, +1 relationships
-- Two auth gates: **Staff PIN** (door access) and **Management password** (add/remove/import)
+- Two auth gates: **Staff PIN** (door access) and **Admin password** (management + admin actions)
 
-**Usage:** Place your CSV at `public/guests.csv` (auto-loads on first visit), or click **Manage** → enter password → **Import CSV**.
+**Usage:** Place your CSV at `public/guests.csv` (auto-loads on first visit), or click **Manage** → enter admin password → **Import CSV**.
 
 ### Party Hub
 
@@ -131,8 +132,8 @@ pnpm cli blog list <post-slug>                          # List uploaded files
 | `R2_BUCKET` | Yes (uploads, cron) | R2 bucket name |
 | `AUTH_SECRET` | Yes (auth) | JWT signing key. Generate: `openssl rand -hex 32` |
 | `STAFF_PIN` | Yes (guestlist) | PIN for door staff. Not in client bundle. |
-| `MANAGEMENT_PASSWORD` | Yes (manage UI) | Unlocks add/remove/import. Not in client bundle. |
-| `UPLOAD_PIN` | Yes (web upload) | PIN for `/upload` page. Not in client bundle. |
+| `ADMIN_PASSWORD` | Yes (admin) | Gate for management UI and admin dashboard. Not in client bundle. |
+| `UPLOAD_PIN` | Yes (upload) | Dedicated PIN for `/upload` (shareable with non-admin uploaders). |
 | `NEXT_PUBLIC_BASE_URL` | CLI only | For generating share URLs. Not needed on Vercel. |
 | `CRON_SECRET` | Optional | Secures daily cleanup cron. |
 

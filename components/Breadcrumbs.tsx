@@ -18,12 +18,13 @@ export function Breadcrumbs({ items }: Props) {
       <ol className="flex flex-wrap items-center gap-x-1.5">
         {items.map((item, i) => {
           const isLast = i === items.length - 1;
+          const itemKey = item.href ?? `${item.label}-${i}`;
           return (
-            <li key={i} className="flex items-center gap-x-1.5">
+            <li key={itemKey} className="flex items-center gap-x-1.5">
               {i > 0 && <span className="theme-faint">/</span>}
               {isLast || !item.href ? (
                 <span
-                  className={`${isLast ? "text-foreground max-w-[10rem] sm:max-w-[20rem] md:max-w-xs truncate inline-block align-bottom" : ""}`}
+                  className={isLast ? "text-foreground max-w-[10rem] sm:max-w-[20rem] md:max-w-xs truncate inline-block align-bottom" : undefined}
                   title={isLast ? item.label : undefined}
                 >
                   {item.label}

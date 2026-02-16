@@ -15,7 +15,9 @@ export function useOutsideClick<T extends HTMLElement>(
   enabled: boolean
 ): void {
   const onOutsideRef = useRef(onOutside);
-  onOutsideRef.current = onOutside;
+  useEffect(() => {
+    onOutsideRef.current = onOutside;
+  }, [onOutside]);
 
   useEffect(() => {
     if (!enabled) return;

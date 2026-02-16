@@ -39,7 +39,9 @@ export function CountdownTimer({ expiresAt }: CountdownTimerProps) {
     const calc = () =>
       Math.max(0, Math.floor((new Date(expiresAt).getTime() - Date.now()) / 1000));
 
-    setRemaining(calc());
+    const initialTick = window.setTimeout(() => {
+      setRemaining(calc());
+    }, 0);
 
     const interval = setInterval(() => {
       const next = calc();
@@ -47,7 +49,10 @@ export function CountdownTimer({ expiresAt }: CountdownTimerProps) {
       if (next <= 0) clearInterval(interval);
     }, 1000);
 
-    return () => clearInterval(interval);
+    return () => {
+      window.clearTimeout(initialTick);
+      clearInterval(interval);
+    };
   }, [expiresAt]);
 
   // Before hydration, render a non-time-dependent placeholder

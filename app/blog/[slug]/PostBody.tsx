@@ -22,6 +22,13 @@ type PostBodyProps = {
   albums?: Record<string, EmbeddedAlbum>;
 };
 
+type MarkdownNode = {
+  type?: string;
+  value?: string;
+  tagName?: string;
+  children?: MarkdownNode[];
+};
+
 /* ─── Error boundary: catches render errors in album embeds ─── */
 
 type BoundaryProps = { fallback: ReactNode; children: ReactNode };
@@ -35,8 +42,9 @@ class EmbedErrorBoundary extends Component<BoundaryProps, BoundaryState> {
     return { hasError: true };
   }
 
-  componentDidCatch(_error: Error, _info: ErrorInfo) {
-    // Swallow — embed is cosmetic, the fallback link still works
+  componentDidCatch(error: Error, info: ErrorInfo) {
+    // Embed failures should not break reading; log for debugging.
+    console.error("album.embed.render_failed", { error, info });
   }
 
   render() {
@@ -53,13 +61,11 @@ class EmbedErrorBoundary extends Component<BoundaryProps, BoundaryState> {
  * replaces `img` with our custom component function, so `child.type === "img"`
  * no longer matches. The hast node always has `tagName: "img"`.
  */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function isImageOnlyParagraph(node: any): boolean {
+function isImageOnlyParagraph(node: MarkdownNode | undefined): boolean {
   if (!node?.children) return false;
   // Filter out whitespace-only text nodes
   const meaningful = node.children.filter(
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (c: any) => !(c.type === "text" && /^\s*$/.test(c.value ?? ""))
+    (c) => !(c.type === "text" && /^\s*$/.test(c.value ?? ""))
   );
   return (
     meaningful.length === 1 &&

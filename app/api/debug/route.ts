@@ -4,7 +4,7 @@ import { requireAuth } from '@/lib/auth';
 
 /**
  * Debug endpoint — check Redis connection and data status.
- * Protected behind management auth.
+ * Protected behind admin auth.
  */
 export async function GET(request: NextRequest) {
   const authErr = requireAuth(request, "admin");

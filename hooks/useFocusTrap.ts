@@ -69,7 +69,11 @@ export function useFocusTrap<T extends HTMLElement = HTMLElement>(
     return () => {
       document.removeEventListener('keydown', handleKeyDown);
       // Restore focus on cleanup
-      previouslyFocusedRef.current?.focus();
+      try {
+        previouslyFocusedRef.current?.focus();
+      } catch {
+        // Element may have unmounted during route change; safe to ignore.
+      }
     };
   }, [active]);
 

@@ -96,7 +96,8 @@ Every feature degrades gracefully — nothing crashes. The fallback strategy mat
 | **Blog CLI** | No impact | `requireR2()` throws | Images in posts break |
 | **Cron cleanup** | Returns `{ skipped: true }` | Returns `{ skipped: true }` | No impact |
 | **`STAFF_PIN`** missing | — | — | Guest list accessible without PIN (open gate) |
-| **`MANAGEMENT_PASSWORD`** missing | — | — | Management UI rejects all passwords (locked out) |
+| **`ADMIN_PASSWORD`** missing | — | — | Admin-only surfaces reject auth (locked out) |
+| **`UPLOAD_PIN`** missing | — | — | Upload page rejects all PINs (locked out) |
 
 **Design rationale:** Guest list and best-dressed use in-memory fallback because they're the most common local dev surfaces — `pnpm dev` should work immediately. Transfer CLI refuses to run without Redis because silent fallback caused real data loss (uploads to R2 with no metadata). The separation is intentional.
 

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
-import { useBrandedImage, type BrandedFormat } from "@/hooks/useBrandedImage";
+import { useBrandedImage, type BrandedFormat } from "@/hooks/gallery/useBrandedImage";
 import { useOutsideClick } from "@/hooks/useOutsideClick";
 import { useEscapeKey } from "@/hooks/useEscapeKey";
 import type { FocalPreset } from "@/lib/media/focal";
@@ -20,6 +20,14 @@ type BrandedImageProps = {
 };
 
 const COPIED_DURATION_MS = 2000;
+
+function canUseNativeShareOnMobile(): boolean {
+  if (typeof window === "undefined") return false;
+  return (
+    typeof navigator.share === "function" &&
+    /Android|iPhone|iPad|iPod/i.test(navigator.userAgent)
+  );
+}
 
 /** Copy a blob as an image to the clipboard (re-encodes as PNG for compat) */
 async function copyImageToClipboard(blob: Blob): Promise<boolean> {
@@ -92,18 +100,9 @@ export function BrandedImage({
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
   const [copied, setCopied] = useState(false);
-  const [isMobile, setIsMobile] = useState(false);
+  const [isMobile] = useState<boolean>(() => canUseNativeShareOnMobile());
   const [activeFormat, setActiveFormat] = useState<BrandedFormat>("portrait");
   const dropdownRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    // Only treat as mobile when on an actual mobile device with share support.
-    // Desktop Safari exposes navigator.share but it's not useful here.
-    setIsMobile(
-      typeof navigator.share === "function" &&
-        /Android|iPhone|iPad|iPod/i.test(navigator.userAgent)
-    );
-  }, []);
 
   useEffect(() => {
     if (!copied) return;

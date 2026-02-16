@@ -73,6 +73,40 @@ const FillThumb = memo(function FillThumb({
   );
 });
 
+const MasonryThumb = memo(function MasonryThumb({
+  slug,
+  photoId,
+  objectPosition,
+}: {
+  slug: string;
+  photoId: string;
+  objectPosition?: string;
+}) {
+  const thumbUrl = getThumbUrl(slug, photoId);
+  const { loaded, errored, handleLoad, handleError, imgRef } = useLazyImage();
+
+  if (errored) return null;
+
+  return (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      ref={imgRef}
+      src={thumbUrl}
+      alt=""
+      loading="lazy"
+      decoding="async"
+      onLoad={handleLoad}
+      onError={handleError}
+      style={{
+        objectFit: "cover",
+        objectPosition: objectPosition ?? "center",
+        opacity: loaded ? 1 : 0,
+        transition: "opacity 0.3s ease",
+      }}
+    />
+  );
+});
+
 const COMPACT_PREVIEW_LIMIT = 4;
 const MASONRY_PREVIEW_LIMIT = 6;
 
@@ -88,7 +122,11 @@ function AlbumEmbedCompact({ album }: { album: EmbeddedAlbum }) {
   const showOverlay = remaining > 0;
 
   return (
-    <Link href={`/pics/${album.slug}`} className="album-embed">
+    <Link
+      href={`/pics/${album.slug}`}
+      className="album-embed"
+      aria-label={`View album: ${album.title}`}
+    >
       <div className="album-embed-strip">
         {ids.map((id, i) => (
           <div key={id} className="album-embed-thumb">
@@ -132,25 +170,20 @@ function AlbumEmbedMasonry({ album }: { album: EmbeddedAlbum }) {
 
   return (
     <div className="album-embed-masonry">
-      <Link href={`/pics/${album.slug}`} className="album-embed-masonry-grid">
+      <Link
+        href={`/pics/${album.slug}`}
+        className="album-embed-masonry-grid"
+        aria-label={`View album: ${album.title}`}
+      >
         {ids.map((id, i) => {
           const isLast = i === ids.length - 1;
           const objectPosition = album.focalPoints?.[id];
           return (
             <div key={id} className="album-embed-masonry-tile">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={getThumbUrl(album.slug, id)}
-                alt=""
-                loading="lazy"
-                style={
-                  objectPosition
-                    ? { objectFit: "cover", objectPosition }
-                    : undefined
-                }
-                onError={(e) => {
-                  (e.currentTarget.parentElement as HTMLElement).style.display = "none";
-                }}
+              <MasonryThumb
+                slug={album.slug}
+                photoId={id}
+                objectPosition={objectPosition}
               />
               {showOverlay && isLast && (
                 <div className="album-embed-masonry-overlay">
