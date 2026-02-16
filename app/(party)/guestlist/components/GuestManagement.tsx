@@ -500,7 +500,7 @@ export function GuestManagement({ guests, onGuestAdded, onGuestRemoved, onCSVImp
       onClick={handleBackdropClick}
       onKeyDown={undefined}
     >
-      <div className="bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl w-full sm:max-w-md max-h-[90vh] overflow-hidden animate-in slide-in-from-bottom duration-300">
+      <div className="bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl w-full sm:max-w-md max-h-[90vh] overflow-hidden animate-in slide-in-from-bottom anim-duration-300">
         {/* Header */}
         <div className="px-6 py-4 border-b border-stone-100 flex justify-between items-center bg-gradient-to-r from-amber-600 to-yellow-500">
           <h2 className="text-lg font-semibold text-white">Manage Guests</h2>

@@ -1,5 +1,16 @@
 @import "tailwindcss";
 
+/*
+  Tailwind v4 layering strategy
+
+  - Tokens stay global (CSS vars + @theme inline).
+  - `@layer base` for element defaults / a11y / global behaviors.
+  - `@layer components` for site-wide primitives + prose + embeds.
+  - `@layer utilities` for small helper classes (prefixed / non-colliding).
+
+  Goal: predictable ordering + avoid utility-name collisions (e.g. `duration-300`).
+*/
+
 :root {
   color-scheme: light dark;
   --background: #fafaf9;
@@ -49,323 +60,82 @@
   --font-serif: var(--font-lora);
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: var(--font-sans), system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-  touch-action: manipulation;
-  transition: background-color 0.4s ease, color 0.4s ease;
-}
-
-/* Serif utility */
-.font-serif {
-  font-family: var(--font-serif), Georgia, 'Times New Roman', serif;
-}
-
-/* ─── Blog prose ─── */
-.prose-blog {
-  font-family: var(--font-serif), Georgia, 'Times New Roman', serif;
-  font-size: 1.125rem;
-  line-height: 1.8;
-  color: var(--prose-body);
-  transition: color 0.4s ease;
-}
-
-.prose-blog p {
-  margin-bottom: 1.5em;
-}
-
-.prose-blog h2 {
-  font-family: var(--font-serif), Georgia, 'Times New Roman', serif;
-  font-size: 1.5rem;
-  font-weight: 700;
-  margin-top: 2.5em;
-  margin-bottom: 0.75em;
-  color: var(--prose-heading);
-  line-height: 1.3;
-}
-
-.prose-blog h3 {
-  font-family: var(--font-serif), Georgia, 'Times New Roman', serif;
-  font-size: 1.25rem;
-  font-weight: 600;
-  margin-top: 2em;
-  margin-bottom: 0.5em;
-  color: var(--prose-heading);
-}
-
-.prose-blog em {
-  font-style: italic;
-}
-
-.prose-blog strong {
-  font-weight: 700;
-  color: var(--prose-heading);
-  letter-spacing: -0.01em;
-}
-
-/* Hashtags in prose — inline, natural, just a warm color shift */
-.prose-blog .prose-hashtag {
-  color: var(--prose-hashtag);
-  font-style: normal;
-}
-
-.prose-blog a {
-  color: var(--prose-heading);
-  text-decoration: underline;
-  text-underline-offset: 3px;
-  text-decoration-color: var(--stone-300);
-  transition: text-decoration-color 0.2s;
-}
-
-.prose-blog a:hover {
-  text-decoration-color: var(--prose-heading);
-}
-
-.prose-blog blockquote {
-  border-left: 2px solid var(--stone-300);
-  padding-left: 1.25em;
-  margin: 2em 0;
-  color: var(--stone-500);
-  font-style: italic;
-}
-
-.prose-blog ul {
-  list-style: disc;
-  padding-left: 1.5em;
-  margin-bottom: 1.5em;
-}
-
-.prose-blog ol {
-  list-style: decimal;
-  padding-left: 1.5em;
-  margin-bottom: 1.5em;
-}
-
-.prose-blog li {
-  margin-bottom: 0.5em;
-}
-
-.prose-blog code {
-  font-family: var(--font-mono), ui-monospace, monospace;
-  font-size: 0.875em;
-  background: var(--prose-code-bg);
-  padding: 0.15em 0.4em;
-  border-radius: 4px;
-}
-
-.prose-blog pre {
-  background: var(--prose-pre-bg);
-  color: var(--prose-pre-fg);
-  padding: 1.25em;
-  border-radius: 8px;
-  overflow-x: auto;
-  margin: 2em 0;
-  font-size: 0.875rem;
-  line-height: 1.6;
-}
-
-.prose-blog pre code {
-  background: none;
-  padding: 0;
-  font-size: inherit;
-}
-
-.prose-blog hr {
-  border: none;
-  border-top: 1px solid var(--stone-200);
-  margin: 2.5em 0;
-}
-
-.prose-blog img {
-  border-radius: 6px;
-  margin: 2.5em 0;
-  max-width: 100%;
-  height: auto;
-  display: block;
-}
-
-/* Image with caption: use ![alt](src) — alt becomes the caption */
-.prose-blog .image-figure {
-  margin: 2.5em 0;
-}
-
-.prose-blog .image-figure img {
-  margin: 0;
-}
-
-.prose-blog .image-caption {
-  font-family: var(--font-mono), ui-monospace, monospace;
-  font-size: 0.8rem;
-  color: var(--stone-400);
-  text-align: center;
-  margin-top: 0.75em;
-}
-
-/* ─── Album embed cards in blog prose ─── */
-
-/* Shared meta bar (used by both variants) */
-.album-embed-meta {
-  padding: 0.75em 1em;
-}
-.album-embed-title {
-  font-family: var(--font-serif), Georgia, 'Times New Roman', serif;
-  font-size: 0.95rem;
-  font-weight: 600;
-  color: var(--prose-heading);
-  line-height: 1.4;
-  margin: 0;
-}
-.album-embed-detail {
-  font-family: var(--font-mono), ui-monospace, monospace;
-  font-size: 0.7rem;
-  color: var(--stone-400);
-  letter-spacing: 0.02em;
-  margin: 0.25em 0 0 0;
-}
-
-/* ── Compact strip (default) ── */
-a.album-embed {
-  display: block;
-  border: 1px solid var(--stone-200);
-  border-radius: 6px;
-  overflow: hidden;
-  margin: 2em 0;
-  text-decoration: none;
-  transition: border-color 0.2s ease;
-}
-a.album-embed:hover {
-  border-color: var(--stone-400);
-}
-.album-embed-strip {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  line-height: 0;
-  font-size: 0;
-}
-.album-embed-thumb {
-  position: relative;
-  aspect-ratio: 4 / 3;
-  overflow: hidden;
-  background: var(--stone-100);
-}
-/* Ensure embeds aren't affected by generic img/prose styles */
-.album-embed img {
-  margin: 0;
-  border-radius: 0;
-  max-width: none;
-}
-.album-embed-thumb-img {
-  opacity: 0;
-  transition: opacity 0.3s ease, filter 0.25s ease;
-}
-.album-embed-thumb-img--loaded {
-  opacity: 1;
-}
-.album-embed:hover .album-embed-thumb img {
-  /* Hover "tint": use filter so it overrides inline styles */
-  filter: brightness(0.92) saturate(0.95);
-}
-.album-embed-thumb-overlay {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: rgba(0, 0, 0, 0.45);
-  z-index: 1;
-}
-@media (max-width: 480px) {
-  .album-embed-strip {
-    grid-template-columns: repeat(3, 1fr);
+@layer base {
+  body {
+    background: var(--background);
+    color: var(--foreground);
+    font-family: var(--font-sans), system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    touch-action: manipulation;
+    transition: background-color 0.4s ease, color 0.4s ease;
   }
-  .album-embed-thumb:nth-child(4) {
-    display: none;
+
+  /* Mobile-friendly touch targets */
+  button, a, input, select {
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+  }
+
+  /* Prevent text selection on buttons */
+  button {
+    user-select: none;
+    -webkit-user-select: none;
+  }
+
+  /* Selection color */
+  ::selection {
+    background-color: var(--selection-bg);
+    color: var(--selection-fg);
+  }
+
+  /* ─── Theme transition ─── */
+  *, *::before, *::after {
+    transition: background-color 0.4s ease, border-color 0.4s ease, color 0.4s ease;
+  }
+
+  /* ─── Focus styles ─── */
+  a:focus-visible,
+  button:focus-visible,
+  [tabindex]:focus-visible {
+    outline: 2px solid var(--foreground);
+    outline-offset: 2px;
+  }
+  /* Inputs use their own focus (e.g. search-input) — avoid double outline */
+  input:focus-visible {
+    outline: 2px solid var(--foreground);
+    outline-offset: 2px;
+  }
+
+  /* Smooth scroll */
+  html {
+    scroll-behavior: smooth;
+  }
+
+  /* Active states for mobile */
+  button:active:not(:disabled):not(.lamp-toggle) {
+    transform: scale(0.98);
+  }
+
+  /* ─── Print ─── */
+  @media print {
+    .skip-link,
+    .lamp-toggle,
+    .back-to-top,
+    .reading-progress-track {
+      display: none;
+    }
+    body {
+      print-color-adjust: exact;
+      -webkit-print-color-adjust: exact;
+    }
+    a[href]::after {
+      content: none;
+    }
   }
 }
 
-/* ── Masonry variant — free-flowing Pinterest columns ── */
-.album-embed-masonry {
-  margin: 2em 0;
-}
-a.album-embed-masonry-grid {
-  display: block;
-  columns: 2;
-  column-gap: 6px;
-  text-decoration: none;
-}
-.album-embed-masonry-tile {
-  position: relative;
-  break-inside: avoid;
-  margin-bottom: 6px;
-  border-radius: 6px;
-  overflow: hidden;
-  background: var(--stone-100);
-}
-/* Ensure tiles aren't affected by generic img/prose styles */
-.album-embed-masonry-tile img {
-  display: block;
-  width: 100%;
-  height: auto;
-  margin: 0;
-  border-radius: 0;
-  max-width: none;
-  position: static;
-}
-.album-embed-masonry-img {
-  opacity: 0;
-  transition: opacity 0.3s ease, filter 0.25s ease;
-}
-.album-embed-masonry-img--loaded {
-  opacity: 1;
-}
-.album-embed-masonry-grid:hover .album-embed-masonry-tile img {
-  filter: brightness(0.92) saturate(0.95);
-}
-.album-embed-masonry-overlay {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: rgba(0, 0, 0, 0.45);
-  z-index: 1;
-}
-a.album-embed-masonry-meta {
-  display: block;
-  text-decoration: none;
-  margin-top: 0.5em;
-}
-
-/* Mobile-friendly touch targets */
-button, a, input, select {
-  -webkit-tap-highlight-color: transparent;
-  touch-action: manipulation;
-}
-
-/* Prevent text selection on buttons */
-button {
-  user-select: none;
-  -webkit-user-select: none;
-}
-
-/* Hide scrollbar but keep functionality */
-.scrollbar-hide {
-  -ms-overflow-style: none;
-  scrollbar-width: none;
-}
-.scrollbar-hide::-webkit-scrollbar {
-  display: none;
-}
-
-/* Safe area padding for notched phones */
-.pt-safe {
-  padding-top: env(safe-area-inset-top, 0);
-}
-
-/* Smooth animations */
+/* Smooth animations (keyframes are global; classes are layered below). */
 @keyframes slide-in-from-bottom {
   from {
     transform: translateY(100%);
@@ -377,151 +147,14 @@ button {
   }
 }
 
-.animate-in {
-  animation-fill-mode: both;
-}
-
-.slide-in-from-bottom {
-  animation-name: slide-in-from-bottom;
-}
-
-.duration-300 {
-  animation-duration: 300ms;
-}
-
-/* Selection color */
-::selection {
-  background-color: var(--selection-bg);
-  color: var(--selection-fg);
-}
-
-/* ─── Theme transition ─── */
-*, *::before, *::after {
-  transition: background-color 0.4s ease, border-color 0.4s ease, color 0.4s ease;
-}
-
-/* ─── Skip link ─── */
-.skip-link {
-  position: absolute;
-  top: 0;
-  left: 0;
-  padding: 0.75rem 1rem;
-  font-family: var(--font-geist-mono), monospace;
-  font-size: 0.875rem;
-  color: var(--foreground);
-  background: var(--background);
-  z-index: 100;
-  transform: translateY(-100%);
-  transition: transform 0.2s ease;
-}
-.skip-link:focus {
-  transform: translateY(0);
-  outline: 2px solid var(--foreground);
-  outline-offset: 2px;
-}
-
-/* ─── Focus styles ─── */
-a:focus-visible,
-button:focus-visible,
-[tabindex]:focus-visible {
-  outline: 2px solid var(--foreground);
-  outline-offset: 2px;
-}
-/* Inputs use their own focus (e.g. search-input) — avoid double outline */
-input:focus-visible {
-  outline: 2px solid var(--foreground);
-  outline-offset: 2px;
-}
-
-/* ─── Theme-aware utilities ─── */
-.theme-muted { color: var(--stone-400); }
-.theme-subtle { color: var(--stone-500); }
-.theme-faint { color: var(--stone-300); }
-.theme-border { border-color: var(--stone-200); }
-.theme-border-strong { border-color: var(--stone-300); }
-.theme-border-faint { border-color: var(--stone-100); }
-
-span.highlight-selection {
-  background-color: var(--selection-bg);
-  color: var(--selection-fg);
-  padding: 0.05em 0.25em;
-  border-radius: 2px;
-}
-
-/* Smooth scroll */
-html {
-  scroll-behavior: smooth;
-}
-
-/* Active states for mobile */
-button:active:not(:disabled):not(.lamp-toggle) {
-  transform: scale(0.98);
-}
-
-/* ─── Gallery ─── */
-.gallery-masonry {
-  columns: 2;
-  column-gap: 8px;
-}
-
-.gallery-masonry .gallery-card {
-  break-inside: avoid;
-  margin-bottom: 8px;
-}
-
-.gallery-single {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  max-width: 600px;
-  margin: 0 auto;
-}
-
-.gallery-placeholder {
-  background: var(--stone-100);
-}
-
-@media (min-width: 768px) {
-  .gallery-masonry {
-    columns: 3;
-    column-gap: 10px;
-  }
-  .gallery-masonry .gallery-card {
-    margin-bottom: 10px;
-  }
-  .gallery-single {
-    gap: 10px;
-  }
-}
-
-/* ─── Photo page fade-in ─── */
-/* The brief slate-grey tone as the page fades in is intentional:
-   it comes from the 0.4 → 1 opacity transition and gives a soft reveal. */
-.photo-page-fade-in {
-  animation: photo-page-fade-in 0.6s ease both;
-}
-
 @keyframes photo-page-fade-in {
   from { opacity: 0.4; }
   to   { opacity: 1; }
 }
 
-/* Album cover — fade-in on load + hover zoom.
-   The animation gives a soft reveal matching the gallery's opacity transitions.
-   Hover zoom uses a strong ease-out so it settles smoothly. */
-.album-cover-zoom {
-  animation: album-cover-fade-in 0.5s ease both;
-  transition: transform 0.5s cubic-bezier(0.16, 1, 0.3, 1);
-}
-
 @keyframes album-cover-fade-in {
   from { opacity: 0; }
   to   { opacity: 1; }
-}
-
-/* Swipe hint — fade in, hold, fade out */
-.animate-swipe-hint {
-  animation: swipe-hint 2.5s ease both;
 }
 
 @keyframes swipe-hint {
@@ -531,161 +164,553 @@ button:active:not(:disabled):not(.lamp-toggle) {
   100% { opacity: 0; }
 }
 
-/* ─── Search input ─── */
-/* Outline for focus (no layout shift). Border stays fixed so box doesn't shrink. */
-.search-input {
-  outline: none;
-}
-.search-input:focus {
-  outline: 1px solid var(--foreground);
-  outline-offset: 2px;
-}
-
-/* ─── Reading progress ─── */
-.reading-progress-track {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 2px;
-  z-index: 40;
-  background: transparent;
-}
-
-.reading-progress-bar {
-  height: 100%;
-  background: var(--foreground);
-  opacity: 0.3;
-  transition: width 0.1s linear;
-}
-
-[data-theme="dark"] .reading-progress-bar {
-  background: var(--prose-hashtag);
-  opacity: 0.85;
-}
-
-/* ─── Lamp toggle ─── */
-/* Desktop: top-right corner. Mobile: centred. Photo page: offset left of counter. */
-.lamp-toggle {
-  position: fixed;
-  top: 0;
-  right: 24px;
-  z-index: 50;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  cursor: pointer;
-  background: none;
-  border: none;
-  padding: 0;
-  user-select: none;
-  transition: transform 0.3s ease, opacity 0.3s ease;
-  will-change: transform, opacity;
-}
-
-.lamp-cord {
-  width: 1.5px;
-  background: var(--stone-300);
-  /* Gentle spring: overshoots just past the target then eases back */
-  transition: height 0.6s cubic-bezier(0.22, 1.15, 0.36, 1);
-}
-
-.lamp-bulb {
-  width: 32px;
-  height: 32px;
-  border-radius: 50%;
-  border: 1.5px solid var(--stone-300);
-  background: var(--background);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--stone-400);
-  opacity: 0.45;
-  transition: border-color 0.3s, color 0.3s, transform 0.15s, opacity 0.4s ease;
-}
-
-.lamp-toggle:hover .lamp-bulb {
-  border-color: var(--foreground);
-  color: var(--foreground);
-  opacity: 1;
-}
-
-.lamp-toggle:active .lamp-bulb {
-  transform: scale(0.92);
-}
-
-/* Photo page: always left of the counter at all widths */
-.lamp-toggle--photo {
-  right: 64px;
-}
-
-@media (max-width: 640px) {
-  /* Mobile: centre the lamp */
-  .lamp-toggle {
-    right: auto;
-    left: 50%;
-    translate: -50% 0;
+@layer components {
+  /* ─── Blog prose ─── */
+  .prose-blog {
+    font-family: var(--font-serif), Georgia, 'Times New Roman', serif;
+    font-size: 1.125rem;
+    line-height: 1.8;
+    color: var(--prose-body);
+    transition: color 0.4s ease;
   }
-  /* Photo page on mobile: keep right-anchored left of counter */
-  .lamp-toggle--photo {
-    left: auto;
-    translate: none;
-    right: 64px;
+
+  .prose-blog p {
+    margin-bottom: 1.5em;
   }
-}
 
-/* ─── Back to top ─── */
-.back-to-top {
-  position: fixed;
-  bottom: 28px;
-  right: 24px;
-  z-index: 50;
-  width: 36px;
-  height: 36px;
-  border-radius: 50%;
-  border: 1.5px solid var(--stone-300);
-  background: var(--background);
-  color: var(--stone-400);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  padding: 0;
-  transition: transform 0.3s ease, opacity 0.3s ease, border-color 0.3s, color 0.3s;
-  will-change: transform, opacity;
-}
+  .prose-blog h2 {
+    font-family: var(--font-serif), Georgia, 'Times New Roman', serif;
+    font-size: 1.5rem;
+    font-weight: 700;
+    margin-top: 2.5em;
+    margin-bottom: 0.75em;
+    color: var(--prose-heading);
+    line-height: 1.3;
+  }
 
-.back-to-top:hover {
-  border-color: var(--foreground);
-  color: var(--foreground);
-}
+  .prose-blog h3 {
+    font-family: var(--font-serif), Georgia, 'Times New Roman', serif;
+    font-size: 1.25rem;
+    font-weight: 600;
+    margin-top: 2em;
+    margin-bottom: 0.5em;
+    color: var(--prose-heading);
+  }
 
-/* ─── Print ─── */
-@media print {
-  .skip-link,
-  .lamp-toggle,
-  .back-to-top,
+  .prose-blog em {
+    font-style: italic;
+  }
+
+  .prose-blog strong {
+    font-weight: 700;
+    color: var(--prose-heading);
+    letter-spacing: -0.01em;
+  }
+
+  /* Hashtags in prose — inline, natural, just a warm color shift */
+  .prose-blog .prose-hashtag {
+    color: var(--prose-hashtag);
+    font-style: normal;
+  }
+
+  .prose-blog a {
+    color: var(--prose-heading);
+    text-decoration: underline;
+    text-underline-offset: 3px;
+    text-decoration-color: var(--stone-300);
+    transition: text-decoration-color 0.2s;
+  }
+
+  .prose-blog a:hover {
+    text-decoration-color: var(--prose-heading);
+  }
+
+  .prose-blog blockquote {
+    border-left: 2px solid var(--stone-300);
+    padding-left: 1.25em;
+    margin: 2em 0;
+    color: var(--stone-500);
+    font-style: italic;
+  }
+
+  .prose-blog ul {
+    list-style: disc;
+    padding-left: 1.5em;
+    margin-bottom: 1.5em;
+  }
+
+  .prose-blog ol {
+    list-style: decimal;
+    padding-left: 1.5em;
+    margin-bottom: 1.5em;
+  }
+
+  .prose-blog li {
+    margin-bottom: 0.5em;
+  }
+
+  .prose-blog code {
+    font-family: var(--font-mono), ui-monospace, monospace;
+    font-size: 0.875em;
+    background: var(--prose-code-bg);
+    padding: 0.15em 0.4em;
+    border-radius: 4px;
+  }
+
+  .prose-blog pre {
+    background: var(--prose-pre-bg);
+    color: var(--prose-pre-fg);
+    padding: 1.25em;
+    border-radius: 8px;
+    overflow-x: auto;
+    margin: 2em 0;
+    font-size: 0.875rem;
+    line-height: 1.6;
+  }
+
+  .prose-blog pre code {
+    background: none;
+    padding: 0;
+    font-size: inherit;
+  }
+
+  .prose-blog hr {
+    border: none;
+    border-top: 1px solid var(--stone-200);
+    margin: 2.5em 0;
+  }
+
+  .prose-blog img {
+    border-radius: 6px;
+    margin: 2.5em 0;
+    max-width: 100%;
+    height: auto;
+    display: block;
+  }
+
+  /* Image with caption: use ![alt](src) — alt becomes the caption */
+  .prose-blog .image-figure {
+    margin: 2.5em 0;
+  }
+
+  .prose-blog .image-figure img {
+    margin: 0;
+  }
+
+  .prose-blog .image-caption {
+    font-family: var(--font-mono), ui-monospace, monospace;
+    font-size: 0.8rem;
+    color: var(--stone-400);
+    text-align: center;
+    margin-top: 0.75em;
+  }
+
+  /* ─── Album embed cards ─── */
+
+  /* Shared meta bar (used by both variants) */
+  .album-embed-meta {
+    padding: 0.75em 1em;
+  }
+  .album-embed-title {
+    font-family: var(--font-serif), Georgia, 'Times New Roman', serif;
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: var(--prose-heading);
+    line-height: 1.4;
+    margin: 0;
+  }
+  .album-embed-detail {
+    font-family: var(--font-mono), ui-monospace, monospace;
+    font-size: 0.7rem;
+    color: var(--stone-400);
+    letter-spacing: 0.02em;
+    margin: 0.25em 0 0 0;
+  }
+
+  /* ── Compact strip (default) ── */
+  a.album-embed {
+    display: block;
+    border: 1px solid var(--stone-200);
+    border-radius: 6px;
+    overflow: hidden;
+    margin: 2em 0;
+    text-decoration: none;
+    transition: border-color 0.2s ease;
+  }
+  a.album-embed:hover {
+    border-color: var(--stone-400);
+  }
+  .album-embed-strip {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    line-height: 0;
+    font-size: 0;
+  }
+  .album-embed-thumb {
+    position: relative;
+    aspect-ratio: 4 / 3;
+    overflow: hidden;
+    background: var(--stone-100);
+  }
+  /* Ensure embeds aren't affected by generic img/prose styles */
+  .album-embed img {
+    margin: 0;
+    border-radius: 0;
+    max-width: none;
+  }
+  .album-embed-thumb-img {
+    opacity: 0;
+    transition: opacity 0.3s ease, filter 0.25s ease;
+  }
+  .album-embed-thumb-img--loaded {
+    opacity: 1;
+  }
+  .album-embed:hover .album-embed-thumb img {
+    /* Hover "tint": use filter so it overrides inline styles */
+    filter: brightness(0.92) saturate(0.95);
+  }
+  .album-embed-thumb-overlay {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0, 0, 0, 0.45);
+    z-index: 1;
+  }
+  @media (max-width: 480px) {
+    .album-embed-strip {
+      grid-template-columns: repeat(3, 1fr);
+    }
+    .album-embed-thumb:nth-child(4) {
+      display: none;
+    }
+  }
+
+  /* ── Masonry variant — free-flowing Pinterest columns ── */
+  .album-embed-masonry {
+    margin: 2em 0;
+  }
+  a.album-embed-masonry-grid {
+    display: block;
+    columns: 2;
+    column-gap: 6px;
+    text-decoration: none;
+  }
+  .album-embed-masonry-tile {
+    position: relative;
+    break-inside: avoid;
+    margin-bottom: 6px;
+    border-radius: 6px;
+    overflow: hidden;
+    background: var(--stone-100);
+  }
+  /* Ensure tiles aren't affected by generic img/prose styles */
+  .album-embed-masonry-tile img {
+    display: block;
+    width: 100%;
+    height: auto;
+    margin: 0;
+    border-radius: 0;
+    max-width: none;
+    position: static;
+  }
+  .album-embed-masonry-img {
+    opacity: 0;
+    transition: opacity 0.3s ease, filter 0.25s ease;
+  }
+  .album-embed-masonry-img--loaded {
+    opacity: 1;
+  }
+  .album-embed-masonry-grid:hover .album-embed-masonry-tile img {
+    filter: brightness(0.92) saturate(0.95);
+  }
+  .album-embed-masonry-overlay {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0, 0, 0, 0.45);
+    z-index: 1;
+  }
+  a.album-embed-masonry-meta {
+    display: block;
+    text-decoration: none;
+    margin-top: 0.5em;
+  }
+
+  /* ─── Gallery ─── */
+  .gallery-masonry {
+    columns: 2;
+    column-gap: 8px;
+  }
+
+  .gallery-masonry .gallery-card {
+    break-inside: avoid;
+    margin-bottom: 8px;
+  }
+
+  .gallery-single {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    max-width: 600px;
+    margin: 0 auto;
+  }
+
+  .gallery-placeholder {
+    background: var(--stone-100);
+  }
+
+  @media (min-width: 768px) {
+    .gallery-masonry {
+      columns: 3;
+      column-gap: 10px;
+    }
+    .gallery-masonry .gallery-card {
+      margin-bottom: 10px;
+    }
+    .gallery-single {
+      gap: 10px;
+    }
+  }
+
+  /* ─── Photo page fade-in ─── */
+  /* The brief slate-grey tone as the page fades in is intentional:
+     it comes from the 0.4 → 1 opacity transition and gives a soft reveal. */
+  .photo-page-fade-in {
+    animation: photo-page-fade-in 0.6s ease both;
+  }
+
+  /* Album cover — fade-in on load + hover zoom.
+     The animation gives a soft reveal matching the gallery's opacity transitions.
+     Hover zoom uses a strong ease-out so it settles smoothly. */
+  .album-cover-zoom {
+    animation: album-cover-fade-in 0.5s ease both;
+    transition: transform 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  /* Swipe hint — fade in, hold, fade out */
+  .animate-swipe-hint {
+    animation: swipe-hint 2.5s ease both;
+  }
+
+  /* ─── Search input ─── */
+  /* Outline for focus (no layout shift). Border stays fixed so box doesn't shrink. */
+  .search-input {
+    outline: none;
+  }
+  .search-input:focus {
+    outline: 1px solid var(--foreground);
+    outline-offset: 2px;
+  }
+
+  /* ─── Reading progress ─── */
   .reading-progress-track {
-    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 2px;
+    z-index: 40;
+    background: transparent;
   }
-  body {
-    print-color-adjust: exact;
-    -webkit-print-color-adjust: exact;
-  }
-  a[href]::after {
-    content: none;
-  }
-}
 
-.back-to-top:active {
-  transform: scale(0.92);
-}
+  .reading-progress-bar {
+    height: 100%;
+    background: var(--foreground);
+    opacity: 0.3;
+    transition: width 0.1s linear;
+  }
 
-@media (max-width: 640px) {
-  .back-to-top {
-    right: 16px;
-    bottom: 20px;
+  [data-theme="dark"] .reading-progress-bar {
+    background: var(--prose-hashtag);
+    opacity: 0.85;
+  }
+
+  /* ─── Skip link ─── */
+  .skip-link {
+    position: absolute;
+    top: 0;
+    left: 0;
+    padding: 0.75rem 1rem;
+    font-family: var(--font-geist-mono), monospace;
+    font-size: 0.875rem;
+    color: var(--foreground);
+    background: var(--background);
+    z-index: 100;
+    transform: translateY(-100%);
+    transition: transform 0.2s ease;
+  }
+  .skip-link:focus {
+    transform: translateY(0);
+    outline: 2px solid var(--foreground);
+    outline-offset: 2px;
+  }
+
+  /* ─── Lamp toggle ─── */
+  /* Desktop: top-right corner. Mobile: centred. Photo page: offset left of counter. */
+  .lamp-toggle {
+    position: fixed;
+    top: 0;
+    right: 24px;
+    z-index: 50;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    cursor: pointer;
+    background: none;
+    border: none;
+    padding: 0;
+    user-select: none;
+    transition: transform 0.3s ease, opacity 0.3s ease;
+    will-change: transform, opacity;
+  }
+
+  .lamp-cord {
+    width: 1.5px;
+    background: var(--stone-300);
+    /* Gentle spring: overshoots just past the target then eases back */
+    transition: height 0.6s cubic-bezier(0.22, 1.15, 0.36, 1);
+  }
+
+  .lamp-bulb {
     width: 32px;
     height: 32px;
+    border-radius: 50%;
+    border: 1.5px solid var(--stone-300);
+    background: var(--background);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--stone-400);
+    opacity: 0.45;
+    transition: border-color 0.3s, color 0.3s, transform 0.15s, opacity 0.4s ease;
+  }
+
+  .lamp-toggle:hover .lamp-bulb {
+    border-color: var(--foreground);
+    color: var(--foreground);
+    opacity: 1;
+  }
+
+  .lamp-toggle:active .lamp-bulb {
+    transform: scale(0.92);
+  }
+
+  /* Photo page: always left of the counter at all widths */
+  .lamp-toggle--photo {
+    right: 64px;
+  }
+
+  @media (max-width: 640px) {
+    /* Mobile: centre the lamp */
+    .lamp-toggle {
+      right: auto;
+      left: 50%;
+      translate: -50% 0;
+    }
+    /* Photo page on mobile: keep right-anchored left of counter */
+    .lamp-toggle--photo {
+      left: auto;
+      translate: none;
+      right: 64px;
+    }
+  }
+
+  /* ─── Back to top ─── */
+  .back-to-top {
+    position: fixed;
+    bottom: 28px;
+    right: 24px;
+    z-index: 50;
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    border: 1.5px solid var(--stone-300);
+    background: var(--background);
+    color: var(--stone-400);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    padding: 0;
+    transition: transform 0.3s ease, opacity 0.3s ease, border-color 0.3s, color 0.3s;
+    will-change: transform, opacity;
+  }
+
+  .back-to-top:hover {
+    border-color: var(--foreground);
+    color: var(--foreground);
+  }
+
+  .back-to-top:active {
+    transform: scale(0.92);
+  }
+
+  @media (max-width: 640px) {
+    .back-to-top {
+      right: 16px;
+      bottom: 20px;
+      width: 32px;
+      height: 32px;
+    }
+  }
+}
+
+@layer utilities {
+  /* Hide scrollbar but keep functionality */
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* Safe area padding for notched phones */
+  .pt-safe {
+    padding-top: env(safe-area-inset-top, 0);
+  }
+
+  /* Animation helpers */
+  .animate-in {
+    animation-fill-mode: both;
+  }
+
+  .slide-in-from-bottom {
+    animation-name: slide-in-from-bottom;
+  }
+
+  /* Avoid colliding with Tailwind's `duration-300` utility. */
+  .anim-duration-300 {
+    animation-duration: 300ms;
+  }
+
+  /* Theme-aware utilities */
+  .theme-muted { color: var(--stone-400); }
+  .theme-subtle { color: var(--stone-500); }
+  .theme-faint { color: var(--stone-300); }
+  .theme-border { border-color: var(--stone-200); }
+  .theme-border-strong { border-color: var(--stone-300); }
+  .theme-border-faint { border-color: var(--stone-100); }
+
+  span.highlight-selection {
+    background-color: var(--selection-bg);
+    color: var(--selection-fg);
+    border-radius: 2px;
+    /* Allow wrapping highlights to keep the background per line */
+    box-decoration-break: clone;
+    -webkit-box-decoration-break: clone;
+    /*
+      Don't use horizontal padding here: it shifts the first highlighted word,
+      making multi-line titles look "off center". Use box-shadow to create the
+      same visual bleed without affecting layout.
+    */
+    padding: 0.05em 0;
+    box-shadow:
+      0.22em 0 0 var(--selection-bg),
+      -0.22em 0 0 var(--selection-bg);
   }
 }
