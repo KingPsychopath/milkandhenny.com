@@ -75,13 +75,25 @@ function highlightTitle(title: string) {
       .map((s) => s.i),
   );
 
-  return words.map((word, i) => (
+  // Group words into runs of highlighted / plain so consecutive highlights merge
+  const runs: { text: string; lit: boolean }[] = [];
+  for (let i = 0; i < words.length; i++) {
+    const lit = highlighted.has(i);
+    const prev = runs[runs.length - 1];
+    if (prev && prev.lit === lit) {
+      prev.text += ` ${words[i]}`;
+    } else {
+      runs.push({ text: words[i], lit });
+    }
+  }
+
+  return runs.map((run, i) => (
     <span key={i}>
       {i > 0 && " "}
-      {highlighted.has(i) ? (
-        <span className="highlight-selection">{word}</span>
+      {run.lit ? (
+        <span className="highlight-selection">{run.text}</span>
       ) : (
-        word
+        run.text
       )}
     </span>
   ));
