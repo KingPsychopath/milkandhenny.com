@@ -8,6 +8,16 @@ import { getStored, setStored, removeStored } from '@/lib/client/storage';
 
 type LeaderboardEntry = { name: string; count: number };
 type StoredVote = { session: string; name: string };
+type BestDressedApi = {
+  leaderboard?: LeaderboardEntry[];
+  guestNames?: string[];
+  totalVotes?: number;
+  session?: string;
+  voteToken?: string;
+  votedFor?: string | null;
+  success?: boolean;
+  error?: string;
+};
 
 export default function BestDressedPage() {
   const [hasVoted, setHasVoted] = useState<string | null>(null);
@@ -28,11 +38,12 @@ export default function BestDressedPage() {
     fetch('/api/best-dressed')
       .then((res) => res.json())
       .then((data) => {
-        setGuestNames(data.guestNames || []);
-        setLeaderboard(data.leaderboard || []);
-        setTotalVotes(data.totalVotes || 0);
-        setCurrentSession(data.session || 'initial');
-        setVoteToken(data.voteToken || '');
+        const json = data as BestDressedApi;
+        setGuestNames(json.guestNames || []);
+        setLeaderboard(json.leaderboard || []);
+        setTotalVotes(json.totalVotes || 0);
+        setCurrentSession(json.session || 'initial');
+        setVoteToken(json.voteToken || '');
 
         // Check if user voted in THIS session (client-side tracking)
         const storedVote = getStored("bestDressedVote");
@@ -50,9 +61,18 @@ export default function BestDressedPage() {
             removeStored("bestDressedVote");
           }
         }
+
+        // Server-enforced "already voted" (cookie-bound).
+        // This covers cases where localStorage was cleared or the user switched devices.
+        if (!hasVoted && typeof json.votedFor === 'string' && json.votedFor.trim()) {
+          setHasVoted(json.votedFor);
+          setVoteToken('');
+          const vote: StoredVote = { session: json.session || 'initial', name: json.votedFor };
+          setStored("bestDressedVote", JSON.stringify(vote));
+        }
       })
       .finally(() => setLoading(false));
-  }, []);
+  }, [hasVoted]);
 
   // Poll for leaderboard updates only when user has voted and tab is visible (saves KV)
   useEffect(() => {
@@ -116,7 +136,17 @@ export default function BestDressedPage() {
         setVoteToken(''); // Token is consumed
       } else {
         // Vote failed - show error and update leaderboard
-        setVoteError(data.error || 'Vote failed. Please refresh and try again.');
+        const votedFor = typeof data.votedFor === 'string' ? data.votedFor : null;
+        if (votedFor) {
+          // Server says we already voted. Sync local UI.
+          const vote: StoredVote = { session: data.session || currentSession, name: votedFor };
+          setStored("bestDressedVote", JSON.stringify(vote));
+          setHasVoted(votedFor);
+          setVoteToken('');
+          setVoteError(null);
+        } else {
+          setVoteError(data.error || 'Vote failed. Please refresh and try again.');
+        }
         setLeaderboard(data.leaderboard || leaderboard);
         setTotalVotes(data.totalVotes || totalVotes);
       }

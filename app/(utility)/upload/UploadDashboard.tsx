@@ -54,9 +54,6 @@ function formatBytes(bytes: number): string {
   return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`;
 }
 
-/** Fallback limit for the legacy direct-upload path (Vercel body limit is 4.5 MB) */
-const MAX_DIRECT_UPLOAD_BYTES = 4 * 1024 * 1024;
-
 const EXPIRY_OPTIONS = [
   { value: "30m", label: "30 minutes" },
   { value: "1h", label: "1 hour" },
@@ -353,42 +350,86 @@ export function UploadDashboard() {
     return finalizeData as TransferResult;
   };
 
-  /** Legacy direct upload for blog mode (still uses FormData through Vercel). */
+  /** Blog upload uses presigned PUT URLs (same as transfers). */
   const handleBlogUpload = async () => {
-    const total = files.reduce((sum, f) => sum + f.size, 0);
-    if (total > MAX_DIRECT_UPLOAD_BYTES) {
-      throw new Error(
-        `Total size over ${formatBytes(MAX_DIRECT_UPLOAD_BYTES)}. Use the CLI for larger uploads.`
-      );
-    }
-
-    const formData = new FormData();
     if (!slug.trim()) throw new Error("slug is required");
-    formData.append("slug", slug.trim());
-    if (force) formData.append("force", "true");
-    for (const file of files) formData.append("files", file);
+    const cleanSlug = slug.trim();
 
-    const res = await authFetch("/api/upload/blog", {
+    // 1. Presign PUT URLs
+    setUploadProgress({ phase: "uploading", current: 0, total: files.length });
+    const presignRes = await authFetch("/api/upload/blog/presign", {
       method: "POST",
-      body: formData,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        slug: cleanSlug,
+        force,
+        files: files.map((f) => ({ name: f.name, size: f.size, type: f.type })),
+      }),
     });
-
-    let data: Record<string, unknown> = {};
-    try {
-      data = await res.json();
-    } catch {
-      /* 413 etc. may return non-JSON body */
+    const presignData = await presignRes.json().catch(() => ({}));
+    if (!presignRes.ok || !presignData || presignData.success !== true) {
+      throw new Error(presignData.error || "Failed to prepare blog upload");
     }
 
-    if (!res.ok) {
-      const message =
-        res.status === 413
-          ? `Total size over ${formatBytes(MAX_DIRECT_UPLOAD_BYTES)}. Use the CLI for larger uploads.`
-          : (data.error as string) || `upload failed (${res.status})`;
-      throw new Error(message);
+    const { urls, skipped } = presignData as {
+      urls: Array<{
+        original: string;
+        filename: string;
+        uploadKey: string;
+        url: string;
+        kind: string;
+        overwrote: boolean;
+      }>;
+      skipped: string[];
+    };
+
+    // 2. Upload bytes direct to R2
+    for (let i = 0; i < urls.length; i++) {
+      const entry = urls[i];
+      const file = files.find((f) => f.name === entry.original);
+      if (!file) continue;
+
+      setUploadProgress({
+        phase: "uploading",
+        current: i + 1,
+        total: urls.length,
+        filename: file.name,
+      });
+
+      const putRes = await fetch(entry.url, {
+        method: "PUT",
+        headers: { "Content-Type": file.type || "application/octet-stream" },
+        body: file,
+      });
+      if (!putRes.ok) {
+        throw new Error(`Failed to upload ${file.name} (${putRes.status})`);
+      }
     }
 
-    return data as BlogResult;
+    // 3. Finalize (process images to WebP, return markdown snippets)
+    setUploadProgress({ phase: "processing", current: urls.length, total: urls.length });
+    const finalizeRes = await authFetch("/api/upload/blog/finalize", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        slug: cleanSlug,
+        skipped,
+        files: urls.map((u) => ({
+          original: u.original,
+          filename: u.filename,
+          uploadKey: u.uploadKey,
+          kind: u.kind,
+          size: files.find((f) => f.name === u.original)?.size ?? 0,
+          overwrote: u.overwrote,
+        })),
+      }),
+    });
+    const finalizeData = await finalizeRes.json().catch(() => ({}));
+    if (!finalizeRes.ok) {
+      throw new Error(finalizeData.error || "Blog upload succeeded but finalization failed");
+    }
+
+    return finalizeData as BlogResult;
   };
 
   const handleUpload = async () => {
@@ -671,10 +712,7 @@ export function UploadDashboard() {
                 <span className="theme-faint"> (direct to R2)</span>
               )}
               {mode === "blog" && (
-                <span className="theme-faint">
-                  {" "}
-                  (max {formatBytes(MAX_DIRECT_UPLOAD_BYTES)})
-                </span>
+                <span className="theme-faint"> (direct to R2)</span>
               )}
             </span>
             <button
