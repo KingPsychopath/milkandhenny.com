@@ -66,8 +66,8 @@ export async function GET(request: NextRequest) {
       error: redisError,
     },
     help: {
-      forceReload: 'DELETE /api/guests/bootstrap to clear and reload from CSV',
-      bootstrap: 'POST /api/guests/bootstrap to load from CSV if empty',
+      forceReload: 'DELETE /api/admin/guests/bootstrap to clear and reload from CSV',
+      bootstrap: 'POST /api/admin/guests/bootstrap to load from CSV if empty',
     }
   });
 }

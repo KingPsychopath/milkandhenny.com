@@ -56,6 +56,12 @@ const FillThumb = memo(function FillThumb({
       decoding="async"
       onLoad={handleLoad}
       onError={handleError}
+      className={[
+        "album-embed-thumb-img",
+        loaded ? "album-embed-thumb-img--loaded" : "",
+      ]
+        .filter(Boolean)
+        .join(" ")}
       style={{
         position: "absolute",
         top: 0,
@@ -66,8 +72,6 @@ const FillThumb = memo(function FillThumb({
         objectPosition: objectPosition ?? "center",
         margin: 0,
         borderRadius: 0,
-        transition: "opacity 0.3s ease",
-        opacity: loaded ? 1 : 0,
       }}
     />
   );
@@ -97,11 +101,15 @@ const MasonryThumb = memo(function MasonryThumb({
       decoding="async"
       onLoad={handleLoad}
       onError={handleError}
+      className={[
+        "album-embed-masonry-img",
+        loaded ? "album-embed-masonry-img--loaded" : "",
+      ]
+        .filter(Boolean)
+        .join(" ")}
       style={{
         objectFit: "cover",
         objectPosition: objectPosition ?? "center",
-        opacity: loaded ? 1 : 0,
-        transition: "opacity 0.3s ease",
       }}
     />
   );

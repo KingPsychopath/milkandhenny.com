@@ -45,9 +45,15 @@ export function useTokenSessions(params: { isAuthed: boolean; authFetch: AuthFet
         error?: string;
       };
       if (!res.ok) {
-        throw new Error(data.error || "Failed to load token sessions");
+        // Don't throw in a client hook — it becomes a runtime error overlay.
+        // If the token is missing/expired, `authFetch` will already handle sign-out upstream.
+        setSessions([]);
+        return;
       }
       setSessions(Array.isArray(data.sessions) ? (data.sessions as TokenSession[]) : []);
+    } catch {
+      // Network failure or invalid JSON; keep UI stable.
+      setSessions([]);
     } finally {
       setLoading(false);
     }

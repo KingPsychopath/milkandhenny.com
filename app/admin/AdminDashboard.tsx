@@ -3,8 +3,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { SITE_BRAND } from "@/lib/config";
-import { getStored, removeStored, setStored } from "@/lib/storage-keys";
 import { TokenSessionsPanel } from "./components/TokenSessionsPanel";
+import { useAdminAuth } from "./hooks/useAdminAuth";
 
 type BlogSummary = {
   totalPosts: number;
@@ -124,9 +124,7 @@ function formatRemaining(seconds: number): string {
 }
 
 export function AdminDashboard() {
-  const [mounted, setMounted] = useState(false);
   const [password, setPassword] = useState("");
-  const [adminToken, setAdminToken] = useState("");
   const [authLoading, setAuthLoading] = useState(false);
   const [authError, setAuthError] = useState("");
 
@@ -154,42 +152,17 @@ export function AdminDashboard() {
   const [transferCleanupLoading, setTransferCleanupLoading] = useState(false);
   const [transferNukeLoading, setTransferNukeLoading] = useState(false);
   const [revokeLoading, setRevokeLoading] = useState<"admin" | "all" | null>(null);
-  const [stepUpToken, setStepUpToken] = useState("");
-  const [stepUpExpiryMs, setStepUpExpiryMs] = useState(0);
   const [debugData, setDebugData] = useState<DebugResponse | null>(null);
 
-  useEffect(() => {
-    const token = getStored("adminToken") ?? "";
-    setAdminToken(token);
-    setMounted(true);
-  }, []);
-
-  const isAuthed = !!adminToken;
-
-  useEffect(() => {
-    if (!adminToken) {
-      setStepUpToken("");
-      setStepUpExpiryMs(0);
-    }
-  }, [adminToken]);
-
-  const authFetch = useCallback(
-    async (url: string, options: RequestInit = {}) => {
-      const res = await fetch(url, {
-        ...options,
-        headers: {
-          ...(options.headers as Record<string, string>),
-          Authorization: `Bearer ${adminToken}`,
-        },
-      });
-      if (res.status === 401) {
-        removeStored("adminToken");
-        setAdminToken("");
-      }
-      return res;
-    },
-    [adminToken]
-  );
+  const {
+    mounted,
+    isAuthed,
+    authFetch,
+    signIn,
+    signOut,
+    ensureStepUpToken: ensureStepUpTokenResult,
+    withStepUpHeaders,
+  } = useAdminAuth();
 
   const refreshDashboard = useCallback(async () => {
     if (!isAuthed) return;
@@ -233,24 +206,13 @@ export function AdminDashboard() {
     setAuthError("");
     setAuthLoading(true);
     try {
-      const res = await fetch("/api/admin/verify", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ password }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (res.ok && data.token) {
-        setStored("adminToken", data.token);
-        setAdminToken(data.token);
+      const result = await signIn(password);
+      if (result.ok) {
         setPassword("");
         setStatusMessage("Admin access unlocked.");
         setTimeout(() => setStatusMessage(""), 2500);
       } else {
-        setAuthError(
-          res.status === 429
-            ? "Too many attempts. Please try again in 15 minutes."
-            : "Incorrect password"
-        );
+        setAuthError(result.error);
       }
     } catch {
       setAuthError("Connection error");
@@ -328,40 +290,10 @@ export function AdminDashboard() {
   };
 
   const ensureStepUpToken = async (): Promise<string | null> => {
-    if (stepUpToken && Date.now() < stepUpExpiryMs - 5_000) {
-      return stepUpToken;
-    }
-
-    const password = window.prompt("Re-enter your admin password to confirm this action.");
-    if (!password) {
-      return null;
-    }
-
-    const res = await authFetch("/api/admin/step-up", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ password }),
-    });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok || typeof data.token !== "string") {
-      throw new Error((data.error as string) || "Step-up verification failed");
-    }
-    const expiresInSeconds =
-      typeof data.expiresInSeconds === "number" && data.expiresInSeconds > 0
-        ? data.expiresInSeconds
-        : 300;
-    setStepUpToken(data.token);
-    setStepUpExpiryMs(Date.now() + expiresInSeconds * 1000);
-    return data.token;
+    const result = await ensureStepUpTokenResult();
+    if (!result.ok) return null;
+    return result.token;
   };
-
-  const withStepUpHeaders = (
-    token: string,
-    extra?: Record<string, string>
-  ): Record<string, string> => ({
-    ...(extra ?? {}),
-    "x-admin-step-up": token,
-  });
 
   const commandHelpers = [
     {
@@ -627,8 +559,7 @@ export function AdminDashboard() {
         .join(", ");
 
       if (role === "admin" || role === "all") {
-        removeStored("adminToken");
-        setAdminToken("");
+        signOut();
         setAuthError("Sessions revoked. Sign in again.");
       } else {
         setStatusMessage(`Revoked sessions: ${summary || role}`);

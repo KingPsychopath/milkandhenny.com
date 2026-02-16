@@ -7,14 +7,14 @@ import {
   parseExpiry,
   DEFAULT_EXPIRY_SECONDS,
   MAX_EXPIRY_SECONDS,
+  MAX_TRANSFER_FILE_BYTES,
+  MAX_TRANSFER_TOTAL_BYTES,
 } from "@/lib/transfers";
 import { getMimeType } from "@/lib/media/processing";
 import { apiError } from "@/lib/api-error";
 import { isSafeTransferFilename } from "@/lib/transfer-upload";
 
 type FileEntry = { name: string; size: number; type?: string };
-const MAX_TRANSFER_FILE_BYTES = 250 * 1024 * 1024; // 250MB
-const MAX_TRANSFER_TOTAL_BYTES = 1024 * 1024 * 1024; // 1GB
 
 /**
  * POST /api/upload/transfer/presign

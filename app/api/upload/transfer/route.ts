@@ -6,6 +6,8 @@ import {
   generateDeleteToken,
   parseExpiry,
   DEFAULT_EXPIRY_SECONDS,
+  MAX_TRANSFER_FILE_BYTES,
+  MAX_TRANSFER_TOTAL_BYTES,
 } from "@/lib/transfers";
 import {
   processTransferFile,
@@ -17,8 +19,6 @@ import { apiError } from "@/lib/api-error";
 
 /** Allow longer execution for image processing */
 export const maxDuration = 60;
-const MAX_TRANSFER_FILE_BYTES = 250 * 1024 * 1024; // 250MB
-const MAX_TRANSFER_TOTAL_BYTES = 1024 * 1024 * 1024; // 1GB
 
 /**
  * POST /api/upload/transfer

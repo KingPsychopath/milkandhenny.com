@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getGuests } from '@/lib/guests/kv-client';
+import { getAllGuestNames } from '@/lib/guests/utils';
 import { getRedis } from '@/lib/redis';
 import { requireAdminStepUp, requireAuth } from '@/lib/auth';
 import { apiError } from '@/lib/api-error';
@@ -133,13 +134,7 @@ export async function GET() {
       issueToken(),
     ]);
     
-    // Get all unique guest names (primary + plus ones)
-    const guestNameSet = new Set<string>();
-    guests.forEach(g => {
-      guestNameSet.add(g.name);
-      g.plusOnes?.forEach(p => guestNameSet.add(p.name));
-    });
-    const guestNames = [...guestNameSet];
+    const guestNames = getAllGuestNames(guests);
     
     // Sort votes by count descending
     const leaderboard = Object.entries(votes)
@@ -149,7 +144,7 @@ export async function GET() {
     
     return NextResponse.json({
       leaderboard,
-      guestNames: guestNames.sort(),
+      guestNames,
       totalVotes: Object.values(votes).reduce((a, b) => a + b, 0),
       session,
       voteToken, // One-time use token for voting
@@ -175,11 +170,7 @@ export async function POST(request: NextRequest) {
 
     // Only allow voting for real guests (prevents fake names on leaderboard)
     const guests = await getGuests();
-    const guestNamesSet = new Set<string>();
-    guests.forEach(g => {
-      guestNamesSet.add(g.name);
-      g.plusOnes?.forEach(p => guestNamesSet.add(p.name));
-    });
+    const guestNamesSet = new Set(getAllGuestNames(guests));
     if (!guestNamesSet.has(trimmedName)) {
       const [votes, session] = await Promise.all([getVotes(), getSession()]);
       const leaderboard = Object.entries(votes)

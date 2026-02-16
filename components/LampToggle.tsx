@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback, useRef } from "react";
 import { usePathname } from "next/navigation";
-import { getStored, setStored } from "@/lib/storage-keys";
+import { getStored, setStored } from "@/lib/client/storage";
 
 /** Routes where the lamp should be fully hidden (own dark styling or standalone pages) */
 const HIDDEN_ROUTES = ["/party", "/icebreaker", "/best-dressed", "/guestlist", "/t"] as const;

@@ -33,30 +33,8 @@ for (const name of _sessionNames) {
   }
 }
 
-function getStore(name: StorageKeyName): Storage {
-  return name in SESSION_KEYS ? sessionStorage : localStorage;
-}
-
-function getKey(name: StorageKeyName): string {
+export function getStorageKey(name: StorageKeyName): string {
   return name in SESSION_KEYS
     ? SESSION_KEYS[name as keyof typeof SESSION_KEYS]
     : LOCAL_KEYS[name as keyof typeof LOCAL_KEYS];
-}
-
-/** Read a value. Returns null on server or if missing. */
-export function getStored(name: StorageKeyName): string | null {
-  if (typeof window === "undefined") return null;
-  return getStore(name).getItem(getKey(name));
-}
-
-/** Write a value. No-op on server. */
-export function setStored(name: StorageKeyName, value: string): void {
-  if (typeof window === "undefined") return;
-  getStore(name).setItem(getKey(name), value);
-}
-
-/** Remove a value. No-op on server. */
-export function removeStored(name: StorageKeyName): void {
-  if (typeof window === "undefined") return;
-  getStore(name).removeItem(getKey(name));
 }

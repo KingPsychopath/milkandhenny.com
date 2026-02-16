@@ -227,7 +227,7 @@ body {
 }
 
 /* ── Compact strip (default) ── */
-.prose-blog a.album-embed {
+a.album-embed {
   display: block;
   border: 1px solid var(--stone-200);
   border-radius: 6px;
@@ -236,7 +236,7 @@ body {
   text-decoration: none;
   transition: border-color 0.2s ease;
 }
-.prose-blog a.album-embed:hover {
+a.album-embed:hover {
   border-color: var(--stone-400);
 }
 .album-embed-strip {
@@ -251,14 +251,22 @@ body {
   overflow: hidden;
   background: var(--stone-100);
 }
-/* Override prose-blog img styles inside album embeds */
-.prose-blog .album-embed img {
+/* Ensure embeds aren't affected by generic img/prose styles */
+.album-embed img {
   margin: 0;
   border-radius: 0;
   max-width: none;
 }
+.album-embed-thumb-img {
+  opacity: 0;
+  transition: opacity 0.3s ease, filter 0.25s ease;
+}
+.album-embed-thumb-img--loaded {
+  opacity: 1;
+}
 .album-embed:hover .album-embed-thumb img {
-  opacity: 0.85;
+  /* Hover "tint": use filter so it overrides inline styles */
+  filter: brightness(0.92) saturate(0.95);
 }
 .album-embed-thumb-overlay {
   position: absolute;
@@ -282,7 +290,7 @@ body {
 .album-embed-masonry {
   margin: 2em 0;
 }
-.prose-blog a.album-embed-masonry-grid {
+a.album-embed-masonry-grid {
   display: block;
   columns: 2;
   column-gap: 6px;
@@ -296,8 +304,8 @@ body {
   overflow: hidden;
   background: var(--stone-100);
 }
-/* Override prose-blog img styles inside masonry tiles */
-.prose-blog .album-embed-masonry-tile img {
+/* Ensure tiles aren't affected by generic img/prose styles */
+.album-embed-masonry-tile img {
   display: block;
   width: 100%;
   height: auto;
@@ -306,9 +314,15 @@ body {
   max-width: none;
   position: static;
 }
+.album-embed-masonry-img {
+  opacity: 0;
+  transition: opacity 0.3s ease, filter 0.25s ease;
+}
+.album-embed-masonry-img--loaded {
+  opacity: 1;
+}
 .album-embed-masonry-grid:hover .album-embed-masonry-tile img {
-  opacity: 0.85;
-  transition: opacity 0.2s ease;
+  filter: brightness(0.92) saturate(0.95);
 }
 .album-embed-masonry-overlay {
   position: absolute;
@@ -319,7 +333,7 @@ body {
   background: rgba(0, 0, 0, 0.45);
   z-index: 1;
 }
-.prose-blog a.album-embed-masonry-meta {
+a.album-embed-masonry-meta {
   display: block;
   text-decoration: none;
   margin-top: 0.5em;

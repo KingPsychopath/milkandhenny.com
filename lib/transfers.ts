@@ -54,6 +54,10 @@ const MAX_EXPIRY_SECONDS = 30 * 24 * 60 * 60;
 /** Default expiry: 7 days */
 const DEFAULT_EXPIRY_SECONDS = 7 * 24 * 60 * 60;
 
+/** Upload constraints (enforced in upload API routes) */
+const MAX_TRANSFER_FILE_BYTES = 250 * 1024 * 1024; // 250MB
+const MAX_TRANSFER_TOTAL_BYTES = 1024 * 1024 * 1024; // 1GB
+
 /* ─── ID Generation ─── */
 
 const TRANSFER_ID_STYLE = (process.env.TRANSFER_ID_STYLE ?? 'words') as 'words' | 'random';
@@ -302,6 +306,8 @@ export {
   formatDuration,
   DEFAULT_EXPIRY_SECONDS,
   MAX_EXPIRY_SECONDS,
+  MAX_TRANSFER_FILE_BYTES,
+  MAX_TRANSFER_TOTAL_BYTES,
   FILE_KINDS,
 };
 

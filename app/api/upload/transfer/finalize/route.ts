@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/auth";
-import { saveTransfer, MAX_EXPIRY_SECONDS } from "@/lib/transfers";
+import {
+  saveTransfer,
+  MAX_EXPIRY_SECONDS,
+  MAX_TRANSFER_FILE_BYTES,
+  MAX_TRANSFER_TOTAL_BYTES,
+} from "@/lib/transfers";
 import {
   processUploadedFile,
   sortTransferFiles,
@@ -13,8 +18,6 @@ import { apiError } from "@/lib/api-error";
 export const maxDuration = 60;
 
 type FileEntry = { name: string; size: number; type?: string };
-const MAX_TRANSFER_FILE_BYTES = 250 * 1024 * 1024; // 250MB
-const MAX_TRANSFER_TOTAL_BYTES = 1024 * 1024 * 1024; // 1GB
 
 /**
  * POST /api/upload/transfer/finalize

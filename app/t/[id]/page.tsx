@@ -2,9 +2,9 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { getTransfer } from "@/lib/transfers";
 import { SITE_NAME, SITE_BRAND } from "@/lib/config";
-import { TransferGallery } from "@/components/transfers/TransferGallery";
-import { CountdownTimer } from "@/components/transfers/CountdownTimer";
-import { TakedownButton } from "@/components/transfers/TakedownButton";
+import { TransferGallery } from "./components/TransferGallery";
+import { CountdownTimer } from "./components/CountdownTimer";
+import { TakedownButton } from "./components/TakedownButton";
 
 type Props = {
   params: Promise<{ id: string }>;

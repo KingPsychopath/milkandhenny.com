@@ -1,71 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getTransfer, deleteTransferData, validateDeleteToken } from '@/lib/transfers';
-import {
-  S3Client,
-  ListObjectsV2Command,
-  DeleteObjectsCommand,
-} from '@aws-sdk/client-s3';
+import { deleteObjects, isConfigured, listObjects } from '@/lib/r2';
 
 type RouteContext = {
   params: Promise<{ id: string }>;
 };
-
-/** Get R2 client for server-side cleanup */
-function getR2Client() {
-  const accountId = process.env.R2_ACCOUNT_ID;
-  const accessKey = process.env.R2_ACCESS_KEY;
-  const secretKey = process.env.R2_SECRET_KEY;
-  const bucket = process.env.R2_BUCKET;
-
-  if (!accountId || !accessKey || !secretKey || !bucket) {
-    return null;
-  }
-
-  const client = new S3Client({
-    region: 'auto',
-    endpoint: `https://${accountId}.r2.cloudflarestorage.com`,
-    credentials: {
-      accessKeyId: accessKey,
-      secretAccessKey: secretKey,
-    },
-  });
-
-  return { client, bucket };
-}
-
-/** Delete all R2 objects under a prefix */
-async function deleteR2Prefix(prefix: string) {
-  const r2 = getR2Client();
-  if (!r2) return 0;
-
-  const { client, bucket } = r2;
-
-  // List all objects under the prefix
-  const listed = await client.send(
-    new ListObjectsV2Command({ Bucket: bucket, Prefix: prefix })
-  );
-
-  const keys = (listed.Contents ?? [])
-    .map((o) => o.Key)
-    .filter((k): k is string => !!k);
-
-  if (keys.length === 0) return 0;
-
-  // Delete in batches of 1000
-  let deleted = 0;
-  for (let i = 0; i < keys.length; i += 1000) {
-    const batch = keys.slice(i, i + 1000);
-    await client.send(
-      new DeleteObjectsCommand({
-        Bucket: bucket,
-        Delete: { Objects: batch.map((Key) => ({ Key })), Quiet: true },
-      })
-    );
-    deleted += batch.length;
-  }
-
-  return deleted;
-}
 
 /**
  * GET /api/transfers/[id]
@@ -144,7 +83,12 @@ export async function DELETE(request: NextRequest, context: RouteContext) {
 
   // Delete R2 objects
   const prefix = `transfers/${id}/`;
-  const deletedFiles = await deleteR2Prefix(prefix);
+  let deletedFiles = 0;
+  if (isConfigured()) {
+    const objects = await listObjects(prefix);
+    const keys = objects.map((o) => o.key).filter((k) => k && k.startsWith(prefix));
+    deletedFiles = await deleteObjects(keys);
+  }
 
   // Delete Redis metadata
   const dataDeleted = await deleteTransferData(id);
