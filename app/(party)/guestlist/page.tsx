@@ -40,7 +40,7 @@ export default function GuestListPage() {
   const [sheetCount, setSheetCount] = useState(20);
   const [sheetLoading, setSheetLoading] = useState(false);
   const [codeTtlMinutes, setCodeTtlMinutes] = useState(360);
-  const [voteCodeWords, setVoteCodeWords] = useState<1 | 2>(2);
+  const [voteCodeWords, setVoteCodeWords] = useState<1 | 2>(1);
   const [printingSheet, setPrintingSheet] = useState(false);
   const [sheetRows, setSheetRows] = useState<Array<{ code: string; qr: string }>>([]);
   const [sheetExpiresAt, setSheetExpiresAt] = useState<string | null>(null);
@@ -190,7 +190,7 @@ export default function GuestListPage() {
       const rows = await Promise.all(
         codes.map(async (code) => {
           const link = `${window.location.origin}/best-dressed?code=${encodeURIComponent(code)}`;
-          const qr = await QRCode.toDataURL(link, { margin: 1, width: 160 });
+          const qr = await QRCode.toDataURL(link, { margin: 1, width: 140 });
           return { code, qr };
         })
       );
@@ -375,6 +375,10 @@ export default function GuestListPage() {
     <div className="min-h-screen bg-stone-100">
       <style jsx global>{`
         @media print {
+          @page {
+            size: A4;
+            margin: 12mm;
+          }
           body * {
             visibility: hidden;
           }
@@ -388,12 +392,28 @@ export default function GuestListPage() {
             top: 0;
             width: 100%;
           }
+          .bd-print-grid {
+            gap: 10px !important;
+          }
+          .bd-print-card {
+            break-inside: avoid;
+            page-break-inside: avoid;
+            padding: 10px !important;
+          }
+          .bd-print-qr {
+            width: 140px !important;
+            height: 140px !important;
+          }
+          .bd-print-code {
+            margin-top: 6px !important;
+            font-size: 13px !important;
+          }
         }
       `}</style>
 
       <div
         id="vote-sheet-print"
-        className={printingSheet ? 'p-6 bg-white' : 'hidden'}
+        className={printingSheet ? 'p-4 bg-white' : 'hidden'}
         aria-hidden={!printingSheet}
       >
         <div className="font-mono">
@@ -404,17 +424,17 @@ export default function GuestListPage() {
           </p>
         </div>
 
-        <div className="mt-4 grid grid-cols-3 gap-4">
+        <div className="bd-print-grid mt-3 grid grid-cols-3 gap-3">
           {sheetRows.map((r) => (
-            <div key={r.code} className="border border-stone-200 rounded-lg p-3 text-center">
+            <div key={r.code} className="bd-print-card border border-stone-200 rounded-lg p-3 text-center">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={r.qr}
                 alt={`QR ${r.code}`}
-                className="w-40 h-40 mx-auto"
+                className="bd-print-qr w-36 h-36 mx-auto"
                 style={{ imageRendering: 'pixelated' }}
               />
-              <p className="mt-2 font-mono text-sm tracking-wider text-stone-900">{r.code}</p>
+              <p className="bd-print-code mt-2 font-mono text-sm tracking-wider text-stone-900">{r.code}</p>
               <p className="mt-1 text-[11px] text-stone-500">scan to vote</p>
             </div>
           ))}
@@ -497,79 +517,81 @@ export default function GuestListPage() {
             <summary className="cursor-pointer select-none font-mono text-xs text-stone-500">
               options / extras
             </summary>
-            <div className="mt-3 flex flex-wrap items-center gap-2">
-              <select
-                value={voteCodeWords}
-                onChange={(e) => setVoteCodeWords(Number(e.target.value) === 1 ? 1 : 2)}
-                className="px-3 py-2 rounded-lg bg-white border border-stone-200 text-sm"
-                aria-label="Vote code word count"
-                title="How many words a minted vote code has."
-              >
-                <option value={2}>code 2 words</option>
-                <option value={1}>code 1 word</option>
-              </select>
+            <div className="mt-3 space-y-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <select
+                  value={voteCodeWords}
+                  onChange={(e) => setVoteCodeWords(Number(e.target.value) === 1 ? 1 : 2)}
+                  className="px-3 py-2 rounded-lg bg-white border border-stone-200 text-sm"
+                  aria-label="Vote code word count"
+                  title="How many words a minted vote code has."
+                >
+                  <option value={2}>code 2 words</option>
+                  <option value={1}>code 1 word</option>
+                </select>
+
+                <select
+                  value={codeTtlMinutes}
+                  onChange={(e) => setCodeTtlMinutes(Number(e.target.value))}
+                  className="px-3 py-2 rounded-lg bg-white border border-stone-200 text-sm"
+                  aria-label="Vote code TTL"
+                  title="How long minted codes remain valid."
+                >
+                  <option value={60}>ttl 1h</option>
+                  <option value={180}>ttl 3h</option>
+                  <option value={360}>ttl 6h</option>
+                  <option value={720}>ttl 12h</option>
+                </select>
+
+                <select
+                  value={sheetCount}
+                  onChange={(e) => setSheetCount(Number(e.target.value))}
+                  className="px-3 py-2 rounded-lg bg-white border border-stone-200 text-sm"
+                  aria-label="Vote sheet count"
+                >
+                  <option value={10}>sheet 10</option>
+                  <option value={20}>sheet 20</option>
+                  <option value={30}>sheet 30</option>
+                  <option value={50}>sheet 50</option>
+                </select>
+
+                <select
+                  value={voteWindowMinutes}
+                  onChange={(e) => setVoteWindowMinutes(Number(e.target.value))}
+                  className="px-3 py-2 rounded-lg bg-white border border-stone-200 text-sm"
+                  aria-label="Voting window minutes"
+                >
+                  <option value={5}>window 5m</option>
+                  <option value={10}>window 10m</option>
+                  <option value={15}>window 15m</option>
+                  <option value={30}>window 30m</option>
+                </select>
+
+                <button
+                  type="button"
+                  onClick={() => setShowDjQr((v) => !v)}
+                  className="px-3 py-2 rounded-lg bg-white border border-stone-200 text-stone-700 text-sm font-medium"
+                  title="For posters / powerpoint: QR that opens the voting page (no code). Best paired with open voting window."
+                >
+                  {showDjQr ? 'hide event qr' : 'show event qr'}
+                </button>
+
+                <button
+                  type="button"
+                  disabled={revokeCodesLoading}
+                  onClick={() => void handleRevokeAllVoteCodes()}
+                  className="px-3 py-2 rounded-lg bg-white border border-red-200 text-red-700 text-sm font-medium disabled:opacity-50"
+                  title="Deletes all currently minted vote codes from Redis."
+                >
+                  {revokeCodesLoading ? 'revoking…' : 'revoke all codes'}
+                </button>
+              </div>
 
               {voteCodeWords === 1 ? (
                 <p className="font-mono text-[11px] text-stone-400">
                   1-word sheets are capped at 50 to avoid collisions
                 </p>
               ) : null}
-
-              <select
-                value={codeTtlMinutes}
-                onChange={(e) => setCodeTtlMinutes(Number(e.target.value))}
-                className="px-3 py-2 rounded-lg bg-white border border-stone-200 text-sm"
-                aria-label="Vote code TTL"
-                title="How long minted codes remain valid."
-              >
-                <option value={60}>ttl 1h</option>
-                <option value={180}>ttl 3h</option>
-                <option value={360}>ttl 6h</option>
-                <option value={720}>ttl 12h</option>
-              </select>
-
-              <select
-                value={sheetCount}
-                onChange={(e) => setSheetCount(Number(e.target.value))}
-                className="px-3 py-2 rounded-lg bg-white border border-stone-200 text-sm"
-                aria-label="Vote sheet count"
-              >
-                <option value={10}>sheet 10</option>
-                <option value={20}>sheet 20</option>
-                <option value={30}>sheet 30</option>
-                <option value={50}>sheet 50</option>
-              </select>
-
-              <select
-                value={voteWindowMinutes}
-                onChange={(e) => setVoteWindowMinutes(Number(e.target.value))}
-                className="px-3 py-2 rounded-lg bg-white border border-stone-200 text-sm"
-                aria-label="Voting window minutes"
-              >
-                <option value={5}>window 5m</option>
-                <option value={10}>window 10m</option>
-                <option value={15}>window 15m</option>
-                <option value={30}>window 30m</option>
-              </select>
-
-              <button
-                type="button"
-                onClick={() => setShowDjQr((v) => !v)}
-                className="px-3 py-2 rounded-lg bg-white border border-stone-200 text-stone-700 text-sm font-medium"
-                title="For posters / powerpoint: QR that opens the voting page (no code). Best paired with open voting window."
-              >
-                {showDjQr ? 'hide event qr' : 'show event qr'}
-              </button>
-
-              <button
-                type="button"
-                disabled={revokeCodesLoading}
-                onClick={() => void handleRevokeAllVoteCodes()}
-                className="px-3 py-2 rounded-lg bg-white border border-red-200 text-red-700 text-sm font-medium disabled:opacity-50"
-                title="Deletes all currently minted vote codes from Redis."
-              >
-                {revokeCodesLoading ? 'revoking…' : 'revoke all codes'}
-              </button>
             </div>
           </details>
 
