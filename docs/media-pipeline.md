@@ -72,6 +72,8 @@ The upload page uses **presigned PUT URLs** so file bytes go directly from the b
 
 **Flow:** presign (tiny JSON request) → browser PUTs each file to R2 → finalize (tiny JSON request, server generates thumbnails).
 
+Transfers use `POST /api/upload/transfer/presign` + `POST /api/upload/transfer/finalize`.
+
 **R2 CORS requirement:** Your R2 bucket needs a CORS rule allowing PUT from your app origin:
 
 ```json

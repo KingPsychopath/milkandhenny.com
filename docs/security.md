@@ -23,6 +23,27 @@ You can revoke:
 - **One session** (single token) by `jti` (admin dashboard token sessions list)
 - **All sessions for a role** by bumping the role token version (admin dashboard "revoke admin sessions" / "revoke all role sessions", or CLI)
 
+### Token lifecycle (mental model)
+
+Tokens are **stateless** JWTs. A deploy/rebuild does not revoke them.
+
+What makes an existing token stop working:
+
+- **Expiry**: once `exp` passes, the token is rejected.
+- **Single-session revoke**: admin revokes a specific `jti` (writes `auth:revoked-jti:{jti}` in Redis).
+- **Role-wide invalidate**: bump the role **token version** (the JWT `tv` must match `auth:token-version:{role}`).
+- **Secret rotation**: change `AUTH_SECRET` (signature check fails for every previously issued token).
+
+What does *not* revoke existing tokens:
+
+- **Vercel deploys / rebuilds** (code changes alone).
+- **Changing `ADMIN_PASSWORD`, `STAFF_PIN`, or `UPLOAD_PIN`**: this only affects *future* logins. Existing JWTs remain valid until they expire or are revoked/invalidated.
+
+Notes:
+
+- The admin dashboard label `signed out` corresponds to **token-version invalidation** (not "we observed the user clicked logout"). A normal sign-out is usually just clearing `sessionStorage` client-side.
+- Token versions are for **session invalidation**, not API versioning. They do not create `/v1` vs `/v2` endpoints.
+
 ### Auth operations (admin-only)
 
 These endpoints are intended for operational control and incident response.
