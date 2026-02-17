@@ -146,6 +146,15 @@ async function getOrCreateVoterId(): Promise<{ voterId: string; isNew: boolean }
   return { voterId, isNew: true };
 }
 
+async function getExistingVoterId(): Promise<string | null> {
+  const jar = await cookies();
+  const existing = jar.get(VOTE_COOKIE)?.value ?? "";
+  if (existing && typeof existing === "string" && existing.length >= 16 && existing.length <= 80) {
+    return existing;
+  }
+  return null;
+}
+
 async function getSession(): Promise<string> {
   const redis = getRedis();
   if (redis) {
@@ -268,7 +277,7 @@ async function setVotedFor(session: string, voterId: string, name: string): Prom
 }
 
 export async function getBestDressedSnapshot(): Promise<BestDressedSnapshot> {
-  const { voterId } = await getOrCreateVoterId();
+  const voterId = await getExistingVoterId();
   const [votes, guests, session, voteToken, openUntil] = await Promise.all([
     getVotes(),
     getGuests(),
@@ -278,7 +287,7 @@ export async function getBestDressedSnapshot(): Promise<BestDressedSnapshot> {
   ]);
 
   const guestNames = getAllGuestNames(guests);
-  const votedFor = await getVotedFor(session, voterId);
+  const votedFor = voterId ? await getVotedFor(session, voterId) : null;
   const now = Math.floor(Date.now() / 1000);
   const codeRequired = !(openUntil > now);
 
@@ -457,4 +466,3 @@ export async function clearBestDressedVotes(): Promise<{ ok: true; session: stri
   const session = await resetSession();
   return { ok: true, session };
 }
-

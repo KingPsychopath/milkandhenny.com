@@ -13,7 +13,7 @@
 
 import "server-only";
 
-import { createHmac, randomUUID, timingSafeEqual } from "crypto";
+import { createHash, createHmac, randomUUID, timingSafeEqual } from "crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { cookies, headers } from "next/headers";
 import { getRedis } from "@/lib/platform/redis";
@@ -59,6 +59,7 @@ const TOKEN_EXPIRY_SECONDS_BY_ROLE: Record<TokenRole, number> = {
   upload: 12 * 60 * 60, // 12h
 };
 const ADMIN_STEP_UP_TTL_SECONDS = 5 * 60;
+const LOGIN_DEDUPE_WINDOW_SECONDS = 15;
 const MIN_AUTH_SECRET_LENGTH = 32;
 const MIN_ADMIN_PASSWORD_LENGTH = 12;
 const WEAK_SECRET_VALUES = new Set([
@@ -74,6 +75,14 @@ const WEAK_SECRET_VALUES = new Set([
 
 function tokenVersionKey(role: RevocableRole): string {
   return `auth:token-version:${role}`;
+}
+
+function loginDedupeKey(role: TokenRole, ip: string, ua: string): string {
+  const fingerprint = createHash("sha256")
+    .update(`${role}|${ip || "unknown"}|${ua || "unknown"}`)
+    .digest("hex")
+    .slice(0, 24);
+  return `auth:recent-login:${role}:${fingerprint}`;
 }
 
 /* ─── JWT (HS256, no deps) ─── */
@@ -701,15 +710,32 @@ async function handleVerifyRequest(
     if (!TOKEN_ROLES.includes(role as TokenRole)) {
       return NextResponse.json({ ok: true });
     }
-    const token = await signToken(role as TokenRole);
+    const tokenRole = role as TokenRole;
+    const ua = request.headers.get("user-agent") ?? "";
+    const redis = getRedis();
+    const dedupeKey = loginDedupeKey(tokenRole, ip, ua);
+    if (redis) {
+      try {
+        const recent = await redis.get<string>(dedupeKey);
+        if (typeof recent === "string" && recent) {
+          const payload = await verifyToken(recent, tokenRole);
+          if (payload) {
+            return NextResponse.json({ ok: true, token: recent });
+          }
+        }
+      } catch {
+        // Ignore dedupe read failures; normal login flow still works.
+      }
+    }
+
+    const token = await signToken(tokenRole);
     if (!token) {
       return NextResponse.json(
         { error: "Token generation failed" },
         { status: 503 }
       );
     }
-    // Best-effort session registration (Redis-backed).
-    const redis = getRedis();
+    // Best-effort session registration and dedupe tracking (Redis-backed).
     if (redis) {
       try {
         const issuedAt = Math.floor(Date.now() / 1000);
@@ -717,7 +743,6 @@ async function handleVerifyRequest(
         if (parts.length === 3) {
           const payloadJson = JSON.parse(base64UrlDecode(parts[1]).toString()) as TokenPayload;
           const ttlSeconds = Math.max(1, payloadJson.exp - issuedAt);
-          const ua = request.headers.get("user-agent") ?? "";
           await redis.set(`auth:session:${payloadJson.jti}`, {
             role: payloadJson.role,
             iat: payloadJson.iat,
@@ -729,6 +754,8 @@ async function handleVerifyRequest(
           await redis.expire(`auth:session:${payloadJson.jti}`, ttlSeconds + 60);
           await redis.sadd("auth:sessions:index", payloadJson.jti);
           await redis.expire("auth:sessions:index", 60 * 60 * 24 * 60); // keep index around for 60 days
+          await redis.set(dedupeKey, token);
+          await redis.expire(dedupeKey, LOGIN_DEDUPE_WINDOW_SECONDS);
         }
       } catch {
         // ignore session tracking failures
