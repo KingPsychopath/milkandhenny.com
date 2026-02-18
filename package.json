@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "cli": "tsx scripts/cli.ts",
+    "cli": "tsx --tsconfig tsconfig.cli.json scripts/cli.ts",
     "typecheck": "tsc --noEmit",
     "typecheck:ci": "node -e \"require('fs').rmSync('.next',{recursive:true,force:true})\" && tsc --noEmit",
     "test": "vitest run",
