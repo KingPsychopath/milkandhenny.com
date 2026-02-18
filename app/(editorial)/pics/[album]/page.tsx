@@ -21,8 +21,6 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 
   const description = album.description ?? `${album.photos.length} photos from ${album.title}`;
 
-  const ogImageAlt = `Album: ${album.title}. Cover photo. ${SITE_NAME}.`;
-
   return {
     title: `${album.title} — Pics — ${SITE_NAME}`,
     description,
@@ -32,7 +30,6 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
       url: `/pics/${slug}`,
       siteName: SITE_NAME,
       type: "website",
-      images: [{ url: `/pics/${slug}/opengraph-image`, width: 1200, height: 630, alt: ogImageAlt }],
     },
     twitter: {
       card: "summary_large_image",
@@ -108,4 +105,3 @@ export default async function AlbumPage({ params }: Props) {
     </div>
   );
 }
-
