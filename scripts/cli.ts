@@ -69,6 +69,17 @@ import {
   normalizeBaseUrl,
   revokeRoleSessions,
 } from "./auth-ops";
+import {
+  createNoteRecord,
+  createNoteShare,
+  deleteNoteRecord,
+  getNoteRecord,
+  listNoteRecords,
+  listNoteShares,
+  revokeNoteShare,
+  updateNoteRecord,
+  updateNoteShare,
+} from "./notes-ops";
 
 /* ─── Formatting ─── */
 
@@ -1133,6 +1144,207 @@ async function cmdBlogDelete(slug: string, filename?: string) {
   }
 }
 
+/* ─── Notes command handlers ─── */
+
+const NOTE_VISIBILITIES = ["public", "unlisted", "private"] as const;
+type NoteVisibility = (typeof NOTE_VISIBILITIES)[number];
+
+function parseNoteVisibility(value?: string): NoteVisibility | undefined {
+  if (!value) return undefined;
+  return NOTE_VISIBILITIES.includes(value as NoteVisibility)
+    ? (value as NoteVisibility)
+    : undefined;
+}
+
+async function cmdNotesCreate(opts: {
+  slug: string;
+  title: string;
+  markdown: string;
+  subtitle?: string;
+  visibility?: NoteVisibility;
+}) {
+  heading(`Create note: ${opts.slug}`);
+  const created = await createNoteRecord({
+    slug: opts.slug,
+    title: opts.title,
+    subtitle: opts.subtitle,
+    visibility: opts.visibility ?? "private",
+    markdown: opts.markdown,
+  });
+  log(green(`✓ Created ${created.meta.slug}`));
+  log(dim(`visibility: ${created.meta.visibility}`));
+  console.log();
+}
+
+async function cmdNotesUpload(opts: {
+  slug: string;
+  file: string;
+  title?: string;
+  subtitle?: string;
+  visibility?: NoteVisibility;
+}) {
+  const abs = path.resolve(opts.file.replace(/^~/, process.env.HOME ?? "~"));
+  if (!fs.existsSync(abs)) throw new Error(`File not found: ${abs}`);
+  const markdown = fs.readFileSync(abs, "utf-8");
+
+  const existing = await getNoteRecord(opts.slug);
+  if (existing) {
+    heading(`Update note from markdown file: ${opts.slug}`);
+    const updated = await updateNoteRecord(opts.slug, {
+      title: opts.title,
+      subtitle: opts.subtitle,
+      visibility: opts.visibility,
+      markdown,
+    });
+    if (!updated) throw new Error("Failed to update note");
+    log(green(`✓ Updated ${opts.slug} from ${abs}`));
+    console.log();
+    return;
+  }
+
+  heading(`Create note from markdown file: ${opts.slug}`);
+  await createNoteRecord({
+    slug: opts.slug,
+    title: opts.title ?? opts.slug,
+    subtitle: opts.subtitle,
+    visibility: opts.visibility ?? "private",
+    markdown,
+  });
+  log(green(`✓ Created ${opts.slug} from ${abs}`));
+  console.log();
+}
+
+async function cmdNotesList(opts?: {
+  visibility?: NoteVisibility;
+  q?: string;
+}) {
+  heading("Notes");
+  const { notes } = await listNoteRecords({
+    includeNonPublic: true,
+    visibility: opts?.visibility,
+    q: opts?.q,
+  });
+  if (notes.length === 0) {
+    log(dim("No notes found."));
+    console.log();
+    return;
+  }
+
+  for (const note of notes) {
+    log(`${bold(note.slug)} ${dim(`(${note.visibility})`)}`);
+    log(`  ${note.title}`);
+    if (note.subtitle) log(`  ${dim(note.subtitle)}`);
+    log(`  ${dim(new Date(note.updatedAt).toLocaleString())}`);
+    console.log();
+  }
+}
+
+async function cmdNotesUpdate(
+  slug: string,
+  opts: {
+    title?: string;
+    subtitle?: string | null;
+    visibility?: NoteVisibility;
+    markdownFile?: string;
+  }
+) {
+  let markdown: string | undefined;
+  if (opts.markdownFile) {
+    const abs = path.resolve(opts.markdownFile.replace(/^~/, process.env.HOME ?? "~"));
+    if (!fs.existsSync(abs)) throw new Error(`File not found: ${abs}`);
+    markdown = fs.readFileSync(abs, "utf-8");
+  }
+
+  heading(`Update note: ${slug}`);
+  const updated = await updateNoteRecord(slug, {
+    title: opts.title,
+    subtitle: opts.subtitle,
+    visibility: opts.visibility,
+    markdown,
+  });
+  if (!updated) throw new Error(`Note "${slug}" not found`);
+  log(green("✓ Note updated"));
+  console.log();
+}
+
+async function cmdNotesDelete(slug: string) {
+  heading(`Delete note: ${slug}`);
+  const ok = await confirm(`Delete note "${slug}"?`);
+  if (!ok) {
+    log(dim("Cancelled."));
+    console.log();
+    return;
+  }
+  const deleted = await deleteNoteRecord(slug);
+  if (!deleted) throw new Error(`Note "${slug}" not found`);
+  log(green("✓ Note deleted"));
+  console.log();
+}
+
+async function cmdNotesShareCreate(opts: {
+  slug: string;
+  expiresInDays?: number;
+  pinRequired?: boolean;
+  pin?: string;
+}) {
+  heading(`Create note share: ${opts.slug}`);
+  const created = await createNoteShare(opts.slug, {
+    expiresInDays: opts.expiresInDays,
+    pinRequired: opts.pinRequired,
+    pin: opts.pin,
+  });
+  log(green("✓ Share link created"));
+  log(`  ${created.url}`);
+  console.log();
+}
+
+async function cmdNotesShareList(slug: string) {
+  heading(`Note shares: ${slug}`);
+  const links = await listNoteShares(slug);
+  if (links.length === 0) {
+    log(dim("No share links."));
+    console.log();
+    return;
+  }
+  for (const link of links) {
+    const state = link.revokedAt ? "revoked" : "active";
+    log(`${bold(link.id)} ${dim(`(${state})`)}`);
+    log(`  expires: ${new Date(link.expiresAt).toLocaleString()}`);
+    log(`  pin: ${link.pinRequired ? "required" : "off"}`);
+    console.log();
+  }
+}
+
+async function cmdNotesShareUpdate(
+  slug: string,
+  id: string,
+  opts: { pinRequired?: boolean; pin?: string | null; expiresInDays?: number; rotateToken?: boolean }
+) {
+  heading(`Update share: ${id}`);
+  const updated = await updateNoteShare(slug, id, opts);
+  if (!updated) throw new Error("Share link not found.");
+  log(green("✓ Share updated"));
+  if (updated.url) {
+    log("  New URL:");
+    log(`  ${updated.url}`);
+  }
+  console.log();
+}
+
+async function cmdNotesShareRevoke(slug: string, id: string) {
+  heading(`Revoke share: ${id}`);
+  const ok = await confirm("Revoke this share link?");
+  if (!ok) {
+    log(dim("Cancelled."));
+    console.log();
+    return;
+  }
+  const revoked = await revokeNoteShare(slug, id);
+  if (!revoked) throw new Error("Share link not found.");
+  log(green("✓ Share revoked"));
+  console.log();
+}
+
 /* ─── Help ─── */
 
 function showHelp() {
@@ -1196,6 +1408,17 @@ function showHelp() {
     blog list ${dim("<post-slug>")}                    List uploaded images + markdown snippets
     blog delete ${dim("<post-slug>")}                  Delete ALL images for a post
     blog delete ${dim("<post-slug>")} --file ${dim("<name>")}  Delete a single image
+
+  ${bold("Notes")} ${dim("(private markdown + signed shares)")}
+    notes create --slug ${dim("<slug>")} --title ${dim("<title>")} --markdown-file ${dim("<path>")} [--visibility public|unlisted|private] [--subtitle <text>]
+    notes upload --slug ${dim("<slug>")} --file ${dim("<path>")} [--title <title>] [--subtitle <text>] [--visibility ...]
+    notes list ${dim("[--visibility public|unlisted|private] [--q <query>]")}
+    notes update ${dim("<slug>")} [--title <title>] [--subtitle <text>] [--visibility ...] [--markdown-file <path>]
+    notes delete ${dim("<slug>")}
+    notes share create ${dim("<slug>")} ${dim("[--expires-days 7] [--pin-required] [--pin 1234]")}
+    notes share list ${dim("<slug>")}
+    notes share update ${dim("<slug> <share-id>")} ${dim("[--pin-required true|false] [--pin <newPin>|--clear-pin] [--expires-days <n>] [--rotate-token]")}
+    notes share revoke ${dim("<slug> <share-id>")}
 
   ${bold("Bucket")} ${dim("(raw R2 access)")}
     bucket ls ${dim("[prefix]")}                       Browse bucket contents
@@ -1973,6 +2196,234 @@ async function interactiveBlogImages() {
   }
 }
 
+/* ─── Interactive: Notes ─── */
+
+async function selectNoteSlug(promptText = "Note slug"): Promise<string | null> {
+  const { notes } = await listNoteRecords({ includeNonPublic: true });
+  if (notes.length > 0) {
+    console.log();
+    log(dim("Existing notes:"));
+    for (const note of notes.slice(0, 30)) {
+      log(`  ${dim("·")} ${note.slug} ${dim(`(${note.visibility})`)}`);
+    }
+    console.log();
+  }
+
+  while (true) {
+    const slug = await ask(promptText, { hint: "lowercase letters, numbers, hyphens" });
+    if (!slug) return null;
+    if (!isValidSlug(slug)) {
+      log(red("  Invalid slug format."));
+      continue;
+    }
+    return slug;
+  }
+}
+
+async function interactiveNotes() {
+  while (true) {
+    const choice = await choose("Notes", [
+      { label: "Create note", detail: "new markdown note" },
+      { label: "Upload markdown file", detail: "create or replace note body from a local file" },
+      { label: "List notes", detail: "show notes and visibility" },
+      { label: "Update note", detail: "title/subtitle/visibility/markdown file" },
+      { label: "Delete note", detail: "remove a note permanently" },
+      { label: "Create share link", detail: "signed URL, optional PIN" },
+      { label: "List share links", detail: "show active/revoked shares for a note" },
+      { label: "Update share link", detail: "toggle PIN, rotate token, extend expiry" },
+      { label: "Revoke share link", detail: "disable a share URL" },
+    ]);
+
+    switch (choice) {
+      case 0:
+        return;
+      case 1: {
+        const slug = await selectNoteSlug("New note slug");
+        if (!slug) break;
+        const title = await ask("Title");
+        if (!title) break;
+        const markdownFile = await ask("Markdown file", { hint: "e.g. ~/Desktop/note.md" });
+        if (!markdownFile) break;
+        const subtitle = await ask("Subtitle (optional)");
+        const visChoice = await choose("Visibility", [
+          { label: "private" },
+          { label: "unlisted" },
+          { label: "public" },
+        ]);
+        if (visChoice <= 0) break;
+        const visibility = (["private", "unlisted", "public"] as const)[visChoice - 1];
+        await safely(() =>
+          cmdNotesUpload({
+            slug,
+            file: markdownFile,
+            title,
+            subtitle: subtitle || undefined,
+            visibility,
+          })
+        );
+        await pause();
+        break;
+      }
+      case 2: {
+        const slug = await selectNoteSlug();
+        if (!slug) break;
+        const file = await ask("Markdown file path");
+        if (!file) break;
+        const title = await ask("Title override (optional)");
+        const subtitle = await ask("Subtitle override (optional)");
+        const visChoice = await choose("Visibility override", [
+          { label: "keep existing" },
+          { label: "private" },
+          { label: "unlisted" },
+          { label: "public" },
+        ]);
+        const visibility =
+          visChoice <= 1 ? undefined : (["private", "unlisted", "public"] as const)[visChoice - 2];
+        await safely(() =>
+          cmdNotesUpload({
+            slug,
+            file,
+            title: title || undefined,
+            subtitle: subtitle || undefined,
+            visibility,
+          })
+        );
+        await pause();
+        break;
+      }
+      case 3:
+        await safely(() => cmdNotesList());
+        await pause();
+        break;
+      case 4: {
+        const slug = await selectNoteSlug();
+        if (!slug) break;
+        const title = await ask("New title (blank = keep)");
+        const subtitle = await ask("New subtitle (blank = keep, --clear not supported here)");
+        const markdownFile = await ask("New markdown file (blank = keep)");
+        const visChoice = await choose("Visibility", [
+          { label: "keep existing" },
+          { label: "private" },
+          { label: "unlisted" },
+          { label: "public" },
+        ]);
+        const visibility =
+          visChoice <= 1 ? undefined : (["private", "unlisted", "public"] as const)[visChoice - 2];
+        await safely(() =>
+          cmdNotesUpdate(slug, {
+            title: title || undefined,
+            subtitle: subtitle || undefined,
+            markdownFile: markdownFile || undefined,
+            visibility,
+          })
+        );
+        await pause();
+        break;
+      }
+      case 5: {
+        const slug = await selectNoteSlug();
+        if (slug) {
+          await safely(() => cmdNotesDelete(slug));
+          await pause();
+        }
+        break;
+      }
+      case 6: {
+        const slug = await selectNoteSlug();
+        if (!slug) break;
+        const withPin = await confirm("Require PIN on this share link?");
+        const pin = withPin ? await ask("PIN") : "";
+        await safely(() =>
+          cmdNotesShareCreate({
+            slug,
+            pinRequired: withPin,
+            pin: withPin ? pin : undefined,
+            expiresInDays: 7,
+          })
+        );
+        await pause();
+        break;
+      }
+      case 7: {
+        const slug = await selectNoteSlug();
+        if (slug) {
+          await safely(() => cmdNotesShareList(slug));
+          await pause();
+        }
+        break;
+      }
+      case 8: {
+        const slug = await selectNoteSlug();
+        if (!slug) break;
+        const links = await listNoteShares(slug);
+        if (links.length === 0) {
+          log(dim("No share links."));
+          await pause();
+          break;
+        }
+        const pick = await choose(
+          "Select share",
+          links.map((l) => ({
+            label: l.id,
+            detail: `${l.pinRequired ? "pin on" : "pin off"} · expires ${new Date(l.expiresAt).toLocaleDateString()}`,
+          }))
+        );
+        if (pick <= 0) break;
+        const link = links[pick - 1];
+        const action = await choose("Update action", [
+          { label: "Toggle PIN requirement" },
+          { label: "Set/Change PIN" },
+          { label: "Clear PIN" },
+          { label: "Rotate token" },
+          { label: "Extend expiry (days)" },
+        ]);
+        if (action <= 0) break;
+
+        if (action === 1) {
+          const nextPin = link.pinRequired ? undefined : await ask("PIN");
+          await safely(() =>
+            cmdNotesShareUpdate(slug, link.id, {
+              pinRequired: !link.pinRequired,
+              ...(link.pinRequired ? {} : { pin: nextPin || undefined }),
+            })
+          );
+        } else if (action === 2) {
+          const pin = await ask("New PIN");
+          if (pin) await safely(() => cmdNotesShareUpdate(slug, link.id, { pinRequired: true, pin }));
+        } else if (action === 3) {
+          await safely(() => cmdNotesShareUpdate(slug, link.id, { pin: null }));
+        } else if (action === 4) {
+          await safely(() => cmdNotesShareUpdate(slug, link.id, { rotateToken: true }));
+        } else if (action === 5) {
+          const daysRaw = await ask("Days", { defaultVal: "7" });
+          const days = parseInt(daysRaw, 10);
+          if (Number.isFinite(days) && days > 0) {
+            await safely(() => cmdNotesShareUpdate(slug, link.id, { expiresInDays: days }));
+          }
+        }
+        await pause();
+        break;
+      }
+      case 9: {
+        const slug = await selectNoteSlug();
+        if (!slug) break;
+        const links = await listNoteShares(slug);
+        if (links.length === 0) {
+          log(dim("No share links."));
+          await pause();
+          break;
+        }
+        const pick = await choose("Revoke which share?", links.map((l) => ({ label: l.id })));
+        if (pick > 0) {
+          await safely(() => cmdNotesShareRevoke(slug, links[pick - 1].id));
+          await pause();
+        }
+        break;
+      }
+    }
+  }
+}
+
 async function interactive() {
   console.log();
   log(bold("milk & henny") + dim(" — interactive CLI"));
@@ -1984,6 +2435,7 @@ async function interactive() {
       { label: "Photos", detail: "list, add, delete, set cover photo" },
       { label: "Transfers", detail: "private, self-destructing file shares" },
       { label: "Blog Images", detail: "upload, list, delete images for blog posts" },
+      { label: "Notes", detail: "private markdown and signed links" },
       { label: "Bucket", detail: "browse R2, delete files, usage stats" },
       { label: "Auth", detail: "list/revoke token sessions (admin)" },
     ]);
@@ -2007,9 +2459,12 @@ async function interactive() {
         await interactiveBlogImages();
         break;
       case 5:
-        await interactiveBucket();
+        await interactiveNotes();
         break;
       case 6:
+        await interactiveBucket();
+        break;
+      case 7:
         await interactiveAuth();
         break;
     }
@@ -2283,6 +2738,115 @@ async function direct() {
           }
           default:
             throw new Error(`Unknown: blog ${subcommand ?? ""}. Run 'pnpm cli help'.`);
+        }
+
+      case "notes":
+        switch (subcommand) {
+          case "create": {
+            const slug = getArg("slug");
+            const title = getArg("title");
+            const markdownFile = getArg("markdown-file");
+            const subtitle = getArg("subtitle");
+            const visibility = parseNoteVisibility(getArg("visibility"));
+            if (!slug || !title || !markdownFile) {
+              throw new Error(
+                "Usage: pnpm cli notes create --slug <slug> --title <title> --markdown-file <path> [--subtitle <text>] [--visibility public|unlisted|private]"
+              );
+            }
+            const abs = path.resolve(markdownFile.replace(/^~/, process.env.HOME ?? "~"));
+            if (!fs.existsSync(abs)) throw new Error(`File not found: ${abs}`);
+            const markdown = fs.readFileSync(abs, "utf-8");
+            return cmdNotesCreate({ slug, title, subtitle, visibility, markdown });
+          }
+          case "upload": {
+            const slug = getArg("slug");
+            const file = getArg("file");
+            const title = getArg("title");
+            const subtitle = getArg("subtitle");
+            const visibility = parseNoteVisibility(getArg("visibility"));
+            if (!slug || !file) {
+              throw new Error(
+                "Usage: pnpm cli notes upload --slug <slug> --file <path> [--title <title>] [--subtitle <text>] [--visibility public|unlisted|private]"
+              );
+            }
+            return cmdNotesUpload({ slug, file, title: title ?? undefined, subtitle: subtitle ?? undefined, visibility });
+          }
+          case "list": {
+            const visibility = parseNoteVisibility(getArg("visibility"));
+            const q = getArg("q");
+            return cmdNotesList({ visibility, q });
+          }
+          case "update": {
+            const slug = args[2];
+            if (!slug) {
+              throw new Error(
+                "Usage: pnpm cli notes update <slug> [--title <title>] [--subtitle <text>] [--clear-subtitle] [--visibility public|unlisted|private] [--markdown-file <path>]"
+              );
+            }
+            const title = getArg("title");
+            const subtitle = hasFlag("clear-subtitle") ? null : (getArg("subtitle") ?? undefined);
+            const visibility = parseNoteVisibility(getArg("visibility"));
+            const markdownFile = getArg("markdown-file");
+            if (!title && subtitle === undefined && !visibility && !markdownFile && !hasFlag("clear-subtitle")) {
+              throw new Error("Nothing to update.");
+            }
+            return cmdNotesUpdate(slug, { title: title ?? undefined, subtitle, visibility, markdownFile: markdownFile ?? undefined });
+          }
+          case "delete": {
+            const slug = args[2];
+            if (!slug) throw new Error("Usage: pnpm cli notes delete <slug>");
+            return cmdNotesDelete(slug);
+          }
+          case "share": {
+            const action = args[2];
+            if (action === "create") {
+              const slug = args[3];
+              if (!slug) throw new Error("Usage: pnpm cli notes share create <slug> [--expires-days 7] [--pin-required] [--pin 1234]");
+              const expiresDaysRaw = getArg("expires-days");
+              const expiresInDays = expiresDaysRaw ? parseInt(expiresDaysRaw, 10) : undefined;
+              return cmdNotesShareCreate({
+                slug,
+                expiresInDays: Number.isFinite(expiresInDays) ? expiresInDays : undefined,
+                pinRequired: hasFlag("pin-required"),
+                pin: getArg("pin"),
+              });
+            }
+            if (action === "list") {
+              const slug = args[3];
+              if (!slug) throw new Error("Usage: pnpm cli notes share list <slug>");
+              return cmdNotesShareList(slug);
+            }
+            if (action === "update") {
+              const slug = args[3];
+              const id = args[4];
+              if (!slug || !id) {
+                throw new Error(
+                  "Usage: pnpm cli notes share update <slug> <share-id> [--pin-required true|false] [--pin <newPin>|--clear-pin] [--expires-days <n>] [--rotate-token]"
+                );
+              }
+              const pinRequiredArg = getArg("pin-required");
+              const pinRequired =
+                pinRequiredArg === undefined ? undefined : pinRequiredArg.toLowerCase() === "true";
+              const expiresDaysRaw = getArg("expires-days");
+              const expiresInDays = expiresDaysRaw ? parseInt(expiresDaysRaw, 10) : undefined;
+              const pin = hasFlag("clear-pin") ? null : (getArg("pin") ?? undefined);
+              return cmdNotesShareUpdate(slug, id, {
+                pinRequired,
+                pin,
+                expiresInDays: Number.isFinite(expiresInDays) ? expiresInDays : undefined,
+                rotateToken: hasFlag("rotate-token"),
+              });
+            }
+            if (action === "revoke") {
+              const slug = args[3];
+              const id = args[4];
+              if (!slug || !id) throw new Error("Usage: pnpm cli notes share revoke <slug> <share-id>");
+              return cmdNotesShareRevoke(slug, id);
+            }
+            throw new Error(`Unknown notes share action: ${action ?? ""}`);
+          }
+          default:
+            throw new Error(`Unknown: notes ${subcommand ?? ""}. Run 'pnpm cli help'.`);
         }
 
       case "bucket":

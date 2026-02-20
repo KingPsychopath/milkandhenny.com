@@ -658,6 +658,9 @@ export function AdminDashboard() {
           className="mt-3 flex items-center gap-6 font-mono text-xs tracking-wide"
           aria-label="Admin navigation"
         >
+          <Link href="/admin/notes" className="theme-muted hover:text-[var(--foreground)] transition-colors">
+            notes
+          </Link>
           <Link href="/upload" className="theme-muted hover:text-[var(--foreground)] transition-colors">
             upload
           </Link>

@@ -6,7 +6,7 @@ import { signInAdminAction } from "@/features/auth/actions";
 
 export const metadata: Metadata = {
   title: `admin · ${SITE_NAME}`,
-  description: "Admin dashboard for guestlist, votes, and upload tooling.",
+  description: "Admin dashboard for guestlist, votes, uploads, and notes tooling.",
   robots: { index: false, follow: false },
 };
 

@@ -1,6 +1,6 @@
 # Milk & Henny
 
-A personal platform for party check-ins, photo galleries, a blog, and private file sharing — built with Next.js, Cloudflare R2, and Vercel KV.
+A personal platform for party check-ins, photo galleries, a blog, private markdown notes, and private file sharing — built with Next.js, Cloudflare R2, and Vercel KV.
 
 ## Quick Start
 
@@ -17,7 +17,7 @@ pnpm test          # run all tests
 pnpm test:watch    # re-run on file changes
 ```
 
-**CLI:** Run `pnpm cli` with no arguments for an **interactive menu** — pick Albums, Photos, Transfers, or Blog and follow the prompts. All the commands below are also available as direct subcommands (e.g. `pnpm cli transfers upload`).
+**CLI:** Run `pnpm cli` with no arguments for an **interactive menu** — pick Albums, Photos, Transfers, Blog, or Notes and follow the prompts. All the commands below are also available as direct subcommands (e.g. `pnpm cli transfers upload`).
 
 ---
 
@@ -31,6 +31,7 @@ pnpm test:watch    # re-run on file changes
 | **Guest list** | `/guestlist` | Vercel KV (Redis) | Real-time check-in for door staff, multi-device sync |
 | **Admin dashboard** | `/admin` | Vercel KV (Redis) + admin auth | Unified admin controls for guest reset, vote reset, upload/admin tools |
 | **Best dressed** | `/best-dressed` | Vercel KV (Redis) | Live voting leaderboard for party guests |
+| **Private notes** | `/notes`, `/notes/{slug}` | Vercel KV (metadata) + R2 | Private markdown notes with signed links and optional per-link PIN |
 | **Transfers** | `/t/{id}` | Vercel KV (Redis) + R2 | Self-destructing file sharing (your own WeTransfer) |
 | **CLI** | `pnpm cli` | R2 + KV | Manage albums, photos, transfers, blog files from the terminal |
 
@@ -45,6 +46,7 @@ This repo uses two top-level buckets for server code and shared logic:
   - `features/transfers/*` transfer model + persistence + upload pipeline
   - `features/media/*` albums + storage URLs + image processing
   - `features/blog/*` blog reader + blog upload helpers
+  - `features/notes/*` private notes + share-link access
   - `features/auth/*` server-side auth primitives
 - `lib/` — cross-cutting primitives (the toolbox)
   - `lib/platform/*` server-only infrastructure (R2, Redis/KV, logging, safe API errors)
@@ -129,6 +131,29 @@ pnpm cli blog upload --slug <post-slug> --dir <path>   # Upload media for a post
 pnpm cli blog list <post-slug>                          # List uploaded files
 ```
 
+### Private Notes
+
+Notes are stored outside git:
+
+- Metadata in KV (`notes:meta:{slug}`)
+- Markdown body in R2 (`notes/{slug}/content.md`)
+- Visibility: `public`, `unlisted`, `private`
+- Signed share links with optional **per-link PIN** (no global reader PIN)
+
+Enable notes:
+
+```bash
+NOTES_ENABLED=true
+```
+
+CLI:
+
+```bash
+pnpm cli notes create --slug <slug> --title <title> --markdown-file <path>
+pnpm cli notes share create <slug> --pin-required --pin <pin>
+pnpm cli notes share update <slug> <share-id> --pin-required true --pin <new-pin>
+```
+
 ---
 
 ## Tech Stack
@@ -162,6 +187,7 @@ pnpm cli blog list <post-slug>                          # List uploaded files
 | `STAFF_PIN` | Yes (guestlist) | PIN for door staff. Not in client bundle. |
 | `ADMIN_PASSWORD` | Yes (admin) | Gate for management UI and admin dashboard. Weak values show up as warnings. Not in client bundle. |
 | `UPLOAD_PIN` | Yes (upload) | Dedicated PIN for `/upload` (shareable with non-admin uploaders). |
+| `NOTES_ENABLED` | Optional | Set `true` to enable `/notes`, notes APIs, and `/admin/notes`. |
 | `NEXT_PUBLIC_BASE_URL` | CLI only | For generating share URLs. Not needed on Vercel. |
 | `CRON_SECRET` | Optional | Secures daily cleanup cron. |
 
@@ -195,4 +221,3 @@ Everything degrades gracefully when env vars are missing — see [resilience tab
 ## License
 
 **Proprietary. All rights reserved.** See [LICENSE](./LICENSE). No use, copy, or distribution without permission. The repo is public for reference and discussion (e.g. portfolio, interviews). If you want to use or adapt the code, contact me first.
-

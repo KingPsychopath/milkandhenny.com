@@ -2,12 +2,14 @@ import Link from "next/link";
 import { getRecentPosts, getAllPosts } from "@/features/blog/reader";
 import { SITE_BRAND } from "@/lib/shared/config";
 import { PostListItem } from "./_components/PostListItem";
+import { isNotesEnabled } from "@/features/notes/reader";
 
 const RECENT_LIMIT = 5;
 
 export default function Home() {
   const posts = getRecentPosts(RECENT_LIMIT);
   const hasMore = getAllPosts().length > RECENT_LIMIT;
+  const notesEnabled = isNotesEnabled();
 
   return (
     <div className="min-h-screen bg-background">
@@ -29,6 +31,11 @@ export default function Home() {
           <Link href="/blog" className="theme-muted hover:text-foreground transition-colors">
             [words]
           </Link>
+          {notesEnabled && (
+            <Link href="/notes" className="theme-muted hover:text-foreground transition-colors">
+              [notes]
+            </Link>
+          )}
           <Link href="/party" className="theme-muted hover:text-foreground transition-colors">
             [the party]
           </Link>
@@ -76,6 +83,11 @@ export default function Home() {
               <Link href="/blog" className="hover:text-foreground transition-colors">
                 words
               </Link>
+              {notesEnabled && (
+                <Link href="/notes" className="hover:text-foreground transition-colors">
+                  notes
+                </Link>
+              )}
               <Link href="/party" className="hover:text-foreground transition-colors">
                 the party ↗
               </Link>
@@ -93,4 +105,3 @@ export default function Home() {
     </div>
   );
 }
-
