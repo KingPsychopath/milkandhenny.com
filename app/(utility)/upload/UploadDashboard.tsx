@@ -60,28 +60,6 @@ function formatBytes(bytes: number): string {
   return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`;
 }
 
-function markdownLabelFromFilename(filename: string): string {
-  return filename.replace(/\.[^.]+$/, "");
-}
-
-function shortWordSnippet(filename: string, kind: string): string {
-  const label = markdownLabelFromFilename(filename);
-  const path = filename;
-  if (kind === "image" || kind === "video" || kind === "gif") {
-    return `![${label}](${path})`;
-  }
-  return `[${label}](${path})`;
-}
-
-function shortAssetSnippet(assetId: string, filename: string, kind: string): string {
-  const label = markdownLabelFromFilename(filename);
-  const path = `assets/${assetId}/${filename}`;
-  if (kind === "image" || kind === "video" || kind === "gif") {
-    return `![${label}](${path})`;
-  }
-  return `[${label}](${path})`;
-}
-
 const EXPIRY_OPTIONS = [
   { value: "30m", label: "30 minutes" },
   { value: "1h", label: "1 hour" },
@@ -1036,26 +1014,12 @@ export function UploadDashboard({ isAdmin }: UploadDashboardProps) {
                         {copied === file.filename ? "copied" : "copy"}
                       </button>
                     </div>
-                    <div className="flex items-center gap-2 mt-1">
-                      <code className="font-mono text-xs theme-faint flex-1 truncate">
-                        {wordsScope === "word"
-                          ? shortWordSnippet(file.filename, file.kind)
-                          : shortAssetSnippet(assetId.trim().toLowerCase(), file.filename, file.kind)}
-                      </code>
-                      <button
-                        onClick={() =>
-                          copyToClipboard(
-                            wordsScope === "word"
-                              ? shortWordSnippet(file.filename, file.kind)
-                              : shortAssetSnippet(assetId.trim().toLowerCase(), file.filename, file.kind),
-                            `short-${file.filename}`
-                          )
-                        }
-                        className="font-mono text-xs theme-muted hover:text-[var(--foreground)] transition-colors shrink-0"
-                      >
-                        {copied === `short-${file.filename}` ? "copied" : "copy short"}
-                      </button>
-                    </div>
+                    <p
+                      className="font-mono text-[10px] theme-faint mt-1"
+                      title="Use canonical snippet output. Legacy short refs in markdown are interpreted and normalized when words are saved."
+                    >
+                      use canonical snippet for best compatibility
+                    </p>
                   </div>
                 ))}
 

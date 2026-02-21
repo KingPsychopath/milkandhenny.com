@@ -139,11 +139,14 @@ Markdown references:
 
 - Word-specific image/file:
   - `![hero](words/media/my-word-slug/hero.webp)`
-  - Short form (when rendering that word): `![hero](hero.webp)`
 - Shared reusable image/file:
   - `![logo](words/assets/brand-kit/logo.webp)`
-  - Short form: `![logo](assets/brand-kit/logo.webp)`
   - `[press-kit](words/assets/brand-kit/press-kit.pdf)`
+
+Compatibility note:
+
+- Canonical `words/...` paths are the recommended output from upload/editor tooling.
+- Existing short refs like `![hero](hero.webp)` and `![logo](assets/brand-kit/logo.webp)` are still accepted and normalized when note markdown is saved.
 
 Why this layout:
 

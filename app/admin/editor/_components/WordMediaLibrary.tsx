@@ -64,6 +64,12 @@ export function WordMediaLibrary({
               <p className="font-mono text-xs truncate">{item.filename}</p>
               <p className="font-mono text-micro theme-faint">{formatBytes(item.size)}</p>
               <code className="font-mono text-micro theme-muted block truncate">{item.markdown}</code>
+              <p
+                className="font-mono text-[10px] theme-faint"
+                title="Canonical paths are recommended. Legacy short refs are still interpreted and normalized when note markdown is saved."
+              >
+                use canonical snippet
+              </p>
               <div className="flex items-center gap-3 font-mono text-micro">
                 <button
                   type="button"
@@ -92,24 +98,6 @@ export function WordMediaLibrary({
                 <button type="button" className="underline" onClick={() => onAppendSnippet(item.markdown)}>
                   append
                 </button>
-                {item.shortMarkdown ? (
-                  <button
-                    type="button"
-                    className="underline"
-                    onClick={() => onCopySnippet(item.shortMarkdown ?? "", `media-short-${item.key}`)}
-                  >
-                    {mediaCopied === `media-short-${item.key}` ? "copied short" : "copy short"}
-                  </button>
-                ) : null}
-                {item.shortMarkdown ? (
-                  <button
-                    type="button"
-                    className="underline"
-                    onClick={() => onAppendSnippet(item.shortMarkdown ?? "")}
-                  >
-                    append short
-                  </button>
-                ) : null}
               </div>
             </div>
           ))
@@ -129,6 +117,12 @@ export function WordMediaLibrary({
               </p>
               <p className="font-mono text-micro theme-faint">{formatBytes(item.size)}</p>
               <code className="font-mono text-micro theme-muted block truncate">{item.markdown}</code>
+              <p
+                className="font-mono text-[10px] theme-faint"
+                title="Canonical paths are recommended. Legacy short refs are still interpreted and normalized when note markdown is saved."
+              >
+                use canonical snippet
+              </p>
               <div className="flex items-center gap-3 font-mono text-micro">
                 <button
                   type="button"
@@ -151,24 +145,6 @@ export function WordMediaLibrary({
                 <button type="button" className="underline" onClick={() => onAppendSnippet(item.markdown)}>
                   append
                 </button>
-                {item.shortMarkdown ? (
-                  <button
-                    type="button"
-                    className="underline"
-                    onClick={() => onCopySnippet(item.shortMarkdown ?? "", `asset-short-${item.key}`)}
-                  >
-                    {mediaCopied === `asset-short-${item.key}` ? "copied short" : "copy short"}
-                  </button>
-                ) : null}
-                {item.shortMarkdown ? (
-                  <button
-                    type="button"
-                    className="underline"
-                    onClick={() => onAppendSnippet(item.shortMarkdown ?? "")}
-                  >
-                    append short
-                  </button>
-                ) : null}
               </div>
             </div>
           ))
@@ -177,4 +153,3 @@ export function WordMediaLibrary({
     </aside>
   );
 }
-

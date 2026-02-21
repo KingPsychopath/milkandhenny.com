@@ -27,6 +27,8 @@ const SINGLE_SEGMENT_IMAGE_REF = /^\/[^/]+\.[a-z0-9]{1,8}$/i;
 const LEADING_WORDS_REF = /^\/words\/(?:media|assets)\//i;
 const LEADING_ASSETS_REF = /^\/assets\//i;
 const TYPED_SLUG_IMAGE_REF = /^\/?(?:blog|note|recipe|review)\/([a-z0-9]+(?:-[a-z0-9]+)*)\/(.+)$/i;
+const LIKELY_FILE_PATH = /(?:^|\/)[^/]+\.[a-z0-9]{1,8}$/i;
+const INTERNAL_ROUTE_PREFIXES = ["/pics/", "/words/", "/t/", "/party", "/upload", "/admin", "/api/", "/feed.xml"] as const;
 
 function normaliseTags(tags?: string[]): string[] {
   if (!Array.isArray(tags)) return [];
@@ -55,6 +57,52 @@ function normaliseImageRef(value?: string): string | undefined {
     return `words/media/${slug}/${rest}`;
   }
   return ref;
+}
+
+function isLikelyFilePath(value: string): boolean {
+  return LIKELY_FILE_PATH.test(value);
+}
+
+function normaliseMarkdownRefPath(ref: string, slug: string): string {
+  const trimmed = ref.trim();
+  if (!trimmed) return ref;
+  if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) return ref;
+  if (trimmed.startsWith("#") || trimmed.startsWith("?")) return ref;
+  if (/^(javascript|vbscript|data):/i.test(trimmed)) return ref;
+  if (trimmed.includes("..")) return ref;
+
+  const normalized = trimmed.replace(/^\/+/, "");
+  const normalizedLower = normalized.toLowerCase();
+
+  if (normalizedLower.startsWith("words/media/") || normalizedLower.startsWith("words/assets/")) {
+    return normalized;
+  }
+  if (normalizedLower.startsWith("assets/")) {
+    return `words/assets/${normalized.slice("assets/".length)}`;
+  }
+
+  const typedMatch = normalized.match(TYPED_SLUG_IMAGE_REF);
+  if (typedMatch) {
+    const [, typedSlug, rest] = typedMatch;
+    return `words/media/${typedSlug}/${rest}`;
+  }
+
+  if (trimmed.startsWith("/") && INTERNAL_ROUTE_PREFIXES.some((prefix) => trimmed.startsWith(prefix))) {
+    return trimmed;
+  }
+
+  if (!isLikelyFilePath(normalized)) {
+    return ref;
+  }
+
+  return `words/media/${slug}/${normalized}`;
+}
+
+function normaliseMarkdownBody(markdown: string, slug: string): string {
+  return markdown.replace(/(!?\[[^\]]*\]\()(\S+)(\s+["'][^"']*["'])?(\))/g, (_, open, ref, title = "", close) => {
+    const nextRef = normaliseMarkdownRefPath(ref, slug);
+    return `${open}${nextRef}${title}${close}`;
+  });
 }
 
 function normaliseNoteMeta(meta: NoteMeta): NoteMeta {
@@ -223,6 +271,7 @@ async function createNote(input: {
     featured: !!input.featured,
     authorRole: "admin",
   };
+  const normalisedMarkdown = normaliseMarkdownBody(input.markdown, slug);
 
   const redis = getRedis();
   if (redis) {
@@ -232,8 +281,8 @@ async function createNote(input: {
     memoryMeta.set(slug, meta);
   }
 
-  await writeNoteContent(meta.bodyKey, input.markdown);
-  return { meta, markdown: input.markdown };
+  await writeNoteContent(meta.bodyKey, normalisedMarkdown);
+  return { meta, markdown: normalisedMarkdown };
 }
 
 async function updateNote(
@@ -292,7 +341,8 @@ async function updateNote(
     memoryMeta.set(slug, meta);
   }
 
-  let markdown = typeof input.markdown === "string" ? input.markdown : null;
+  let markdown =
+    typeof input.markdown === "string" ? normaliseMarkdownBody(input.markdown, slug) : null;
   let sourceKey: string | null = null;
   if (markdown === null && (nextType !== existing.type || nextBodyKey !== existing.bodyKey)) {
     const current = await readNoteContent(existing);
@@ -314,7 +364,7 @@ async function updateNote(
   }
 
   if (typeof input.markdown === "string") {
-    return { meta, markdown: input.markdown };
+    return { meta, markdown: markdown ?? "" };
   }
 
   if (markdown !== null) {

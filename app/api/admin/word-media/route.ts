@@ -14,7 +14,6 @@ type MediaItem = {
   lastModified?: string;
   url: string;
   markdown: string;
-  shortMarkdown?: string;
   assetId?: string;
 };
 
@@ -59,7 +58,6 @@ function parsePageMediaKey(key: string, slug: string): MediaItem | null {
     size: 0,
     url: getImageUrl(key),
     markdown: toMarkdown(key, filename),
-    shortMarkdown: toMarkdown(filename, filename),
   };
 }
 
@@ -81,7 +79,6 @@ function parseAssetKey(key: string): MediaItem | null {
     size: 0,
     url: getImageUrl(key),
     markdown: toMarkdown(key, filename),
-    shortMarkdown: toMarkdown(`assets/${assetId}/${filename}`, filename),
   };
 }
 

@@ -52,7 +52,6 @@ export interface WordMediaItem extends MediaPreviewItem {
   size: number;
   lastModified?: string;
   markdown: string;
-  shortMarkdown?: string;
   assetId?: string;
 }
 

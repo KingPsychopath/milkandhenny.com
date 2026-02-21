@@ -8,17 +8,18 @@ import { EditorResultsList } from "./_components/EditorResultsList";
 import { WordCreateForm } from "./_components/WordCreateForm";
 import { WordEditSection } from "./_components/WordEditSection";
 import { WordShareSection } from "./_components/WordShareSection";
+import { useEditorFilters } from "./_hooks/useEditorFilters";
+import { useWordFormState } from "./_hooks/useWordFormState";
+import { useMediaPreviewState } from "./_hooks/useMediaPreviewState";
 import type {
   NoteMeta,
   NoteRecord,
-  NoteVisibility,
   ShareLink,
   SharePatchResponse,
   ShareStateFilter,
   SharedWordSummary,
   WordMediaItem,
   WordMediaResponse,
-  WordType,
 } from "./types";
 
 function buildShareUrl(slug: string, token: string): string {
@@ -46,47 +47,80 @@ export function EditorAdminClient() {
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState("");
   const [error, setError] = useState("");
-  const [showPreview, setShowPreview] = useState(false);
   const [activeShareCountBySlug, setActiveShareCountBySlug] = useState<Record<string, number>>({});
-  const [newShareExpiryDays, setNewShareExpiryDays] = useState<number>(7);
-  const [shareStateFilter, setShareStateFilter] = useState<ShareStateFilter>("all");
-
-  const [createSlug, setCreateSlug] = useState("");
-  const [createTitle, setCreateTitle] = useState("");
-  const [createSubtitle, setCreateSubtitle] = useState("");
-  const [createImage, setCreateImage] = useState("");
-  const [createType, setCreateType] = useState<WordType>("note");
-  const [createVisibility, setCreateVisibility] = useState<NoteVisibility>("private");
-  const [createTags, setCreateTags] = useState("");
-  const [createFeatured, setCreateFeatured] = useState(false);
-  const [createMarkdown, setCreateMarkdown] = useState("");
-
-  const [editTitle, setEditTitle] = useState("");
-  const [editSubtitle, setEditSubtitle] = useState("");
-  const [editImage, setEditImage] = useState("");
-  const [editType, setEditType] = useState<WordType>("note");
-  const [editVisibility, setEditVisibility] = useState<NoteVisibility>("private");
-  const [editTags, setEditTags] = useState("");
-  const [editFeatured, setEditFeatured] = useState(false);
-  const [editMarkdown, setEditMarkdown] = useState("");
-
-  const [searchQuery, setSearchQuery] = useState("");
-  const [filterType, setFilterType] = useState<WordType | "all">("all");
-  const [filterVisibility, setFilterVisibility] = useState<NoteVisibility | "all">("all");
-  const [filterTag, setFilterTag] = useState("");
-  const [mediaSearchQuery, setMediaSearchQuery] = useState("");
   const [pageMedia, setPageMedia] = useState<WordMediaItem[]>([]);
   const [sharedAssets, setSharedAssets] = useState<WordMediaItem[]>([]);
   const [mediaLoading, setMediaLoading] = useState(false);
   const [mediaError, setMediaError] = useState("");
   const [mediaCopied, setMediaCopied] = useState<string | null>(null);
   const [assetsHydrated, setAssetsHydrated] = useState(false);
-  const [previewItems, setPreviewItems] = useState<WordMediaItem[]>([]);
-  const [previewIndex, setPreviewIndex] = useState<number | null>(null);
-
-  const parseTags = useCallback((raw: string): string[] => {
-    return [...new Set(raw.split(",").map((t) => t.trim().toLowerCase()).filter(Boolean))];
-  }, []);
+  const {
+    showPreview,
+    setShowPreview,
+    newShareExpiryDays,
+    setNewShareExpiryDays,
+    shareStateFilter,
+    setShareStateFilter,
+    searchQuery,
+    setSearchQuery,
+    filterType,
+    setFilterType,
+    filterVisibility,
+    setFilterVisibility,
+    filterTag,
+    setFilterTag,
+    mediaSearchQuery,
+    setMediaSearchQuery,
+    clearFilters,
+  } = useEditorFilters();
+  const {
+    createSlug,
+    setCreateSlug,
+    createTitle,
+    setCreateTitle,
+    createSubtitle,
+    setCreateSubtitle,
+    createImage,
+    setCreateImage,
+    createType,
+    setCreateType,
+    createVisibility,
+    setCreateVisibility,
+    createTags,
+    setCreateTags,
+    createFeatured,
+    setCreateFeatured,
+    createMarkdown,
+    setCreateMarkdown,
+    editTitle,
+    setEditTitle,
+    editSubtitle,
+    setEditSubtitle,
+    editImage,
+    setEditImage,
+    editType,
+    setEditType,
+    editVisibility,
+    setEditVisibility,
+    editTags,
+    setEditTags,
+    editFeatured,
+    setEditFeatured,
+    editMarkdown,
+    setEditMarkdown,
+    parseTags,
+    resetCreateForm,
+    setEditFromRecord,
+    appendSnippet,
+  } = useWordFormState();
+  const {
+    previewItems,
+    previewIndex,
+    setPreviewIndex,
+    closePreview,
+    openPreview,
+    hasPreview,
+  } = useMediaPreviewState();
 
   const storeShareToken = useCallback((shareId: string, token: string) => {
     setShareTokensById((prev) => ({ ...prev, [shareId]: token }));
@@ -171,13 +205,10 @@ export function EditorAdminClient() {
     }
   }, []);
 
-  const appendSnippet = useCallback((snippet: string) => {
-    setEditMarkdown((prev) => {
-      const base = prev.trimEnd();
-      return base ? `${base}\n\n${snippet}` : snippet;
-    });
+  const handleAppendSnippet = useCallback((snippet: string) => {
+    appendSnippet(snippet);
     setStatus("snippet appended");
-  }, []);
+  }, [appendSnippet]);
 
   const loadWord = useCallback(async (slug: string) => {
     if (!slug) return;
@@ -195,21 +226,14 @@ export function EditorAdminClient() {
       if (!sharesRes.ok) throw new Error(shareData.error ?? "Failed to load share links");
 
       setCurrent(noteData);
-      setEditTitle(noteData.meta.title);
-      setEditSubtitle(noteData.meta.subtitle ?? "");
-      setEditImage(noteData.meta.image ?? "");
-      setEditType(noteData.meta.type);
-      setEditVisibility(noteData.meta.visibility);
-      setEditTags(noteData.meta.tags.join(", "));
-      setEditFeatured(!!noteData.meta.featured);
-      setEditMarkdown(noteData.markdown);
+      setEditFromRecord(noteData);
       setShares(shareData.links ?? []);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load word");
     } finally {
       setBusy(false);
     }
-  }, []);
+  }, [setEditFromRecord]);
 
   useEffect(() => {
     void loadNotes();
@@ -274,19 +298,6 @@ export function EditorAdminClient() {
     return shares.filter((link) => getShareState(link) === shareStateFilter);
   }, [shareStateFilter, shares]);
 
-  const closePreview = useCallback(() => {
-    setPreviewIndex(null);
-    setPreviewItems([]);
-  }, []);
-
-  const openPreview = useCallback((items: WordMediaItem[], key: string) => {
-    const index = items.findIndex((item) => item.key === key);
-    if (index < 0) return;
-    setPreviewItems(items);
-    setPreviewIndex(index);
-  }, []);
-  const hasPreview = previewIndex !== null && !!previewItems[previewIndex];
-
   async function createWord() {
     setBusy(true);
     setError("");
@@ -311,15 +322,7 @@ export function EditorAdminClient() {
       if (!res.ok) throw new Error(data.error ?? "Failed to create word");
 
       setStatus("word created");
-      setCreateSlug("");
-      setCreateTitle("");
-      setCreateSubtitle("");
-      setCreateImage("");
-      setCreateType("note");
-      setCreateVisibility("private");
-      setCreateTags("");
-      setCreateFeatured(false);
-      setCreateMarkdown("");
+      resetCreateForm();
 
       await Promise.all([loadNotes(), loadSharedStatus()]);
       if (data.meta?.slug) setSelectedSlug(data.meta.slug);
@@ -629,12 +632,7 @@ export function EditorAdminClient() {
         onFilterVisibilityChange={setFilterVisibility}
         onFilterTagChange={setFilterTag}
         onApply={() => void loadNotes()}
-        onClear={() => {
-          setSearchQuery("");
-          setFilterType("all");
-          setFilterVisibility("all");
-          setFilterTag("");
-        }}
+        onClear={clearFilters}
       />
 
       <div className="grid gap-6 lg:grid-cols-[280px_1fr]">
@@ -705,7 +703,7 @@ export function EditorAdminClient() {
               onRefreshMedia={(slug) => void loadWordMedia(slug, true)}
               onPreviewMedia={openPreview}
               onCopySnippet={(snippet, copyId) => void copySnippet(snippet, copyId)}
-              onAppendSnippet={appendSnippet}
+              onAppendSnippet={handleAppendSnippet}
             />
           ) : null}
 
