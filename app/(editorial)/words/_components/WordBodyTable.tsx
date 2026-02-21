@@ -4,8 +4,8 @@ import React, { type ReactNode } from "react";
 
 type TableContextValue = {
   isGlobalExpanded: boolean;
-  isExpanded: (cellId: string) => boolean;
-  toggleCell: (cellId: string) => void;
+  isRowExpanded: (rowId: string) => boolean;
+  toggleRow: (rowId: string) => void;
 };
 
 type TableData = {
@@ -16,9 +16,10 @@ type TableData = {
 const TABLE_TEXT_LIMIT = 36;
 const TABLE_LINE_LIMIT = 2;
 const TableRenderContext = React.createContext<TableContextValue | null>(null);
+const TableRowContext = React.createContext<string | null>(null);
 
-function getNodePositionId(node: unknown): string {
-  if (!node || typeof node !== "object") return "unknown";
+function getNodePositionId(node: unknown): string | null {
+  if (!node || typeof node !== "object") return null;
   const maybePosition = node as {
     position?: {
       start?: {
@@ -29,8 +30,21 @@ function getNodePositionId(node: unknown): string {
     };
   };
   const start = maybePosition.position?.start;
-  if (!start) return "unknown";
+  if (!start) return null;
   return `${start.line ?? "?"}:${start.column ?? "?"}:${start.offset ?? "?"}`;
+}
+
+function getNodeLineId(node: unknown): string | null {
+  if (!node || typeof node !== "object") return null;
+  const maybePosition = node as {
+    position?: {
+      start?: {
+        line?: number;
+      };
+    };
+  };
+  const line = maybePosition.position?.start?.line;
+  return typeof line === "number" ? `line:${line}` : null;
 }
 
 function textFromChildren(children: ReactNode): string {
@@ -182,26 +196,26 @@ export function WordBodyTable({
   ...props
 }: React.DetailedHTMLProps<React.TableHTMLAttributes<HTMLTableElement>, HTMLTableElement>) {
   const [isGlobalExpanded, setIsGlobalExpanded] = React.useState(false);
-  const [expandedCells, setExpandedCells] = React.useState<Record<string, boolean>>({});
+  const [expandedRows, setExpandedRows] = React.useState<Record<string, boolean>>({});
   const [copied, setCopied] = React.useState(false);
   const tableData = React.useMemo(() => extractTableData(children), [children]);
 
-  React.useEffect(() => {
+  React.useLayoutEffect(() => {
     setIsGlobalExpanded(false);
-    setExpandedCells({});
+    setExpandedRows({});
   }, [children]);
 
-  const toggleCell = React.useCallback((cellId: string) => {
-    setExpandedCells((prev) => ({ ...prev, [cellId]: !prev[cellId] }));
+  const toggleRow = React.useCallback((rowId: string) => {
+    setExpandedRows((prev) => ({ ...prev, [rowId]: !prev[rowId] }));
   }, []);
 
   const contextValue = React.useMemo<TableContextValue>(
     () => ({
       isGlobalExpanded,
-      toggleCell,
-      isExpanded: (cellId: string) => Boolean(expandedCells[cellId]),
+      toggleRow,
+      isRowExpanded: (rowId: string) => Boolean(expandedRows[rowId]),
     }),
-    [expandedCells, isGlobalExpanded, toggleCell]
+    [expandedRows, isGlobalExpanded, toggleRow]
   );
 
   React.useEffect(() => {
@@ -288,26 +302,60 @@ export function WordBodyTableCell({
   const tableContext = React.useContext(TableRenderContext);
   if (!tableContext) return <td {...props}>{children}</td>;
 
-  const cellId = getNodePositionId(node);
+  const rowContextId = React.useContext(TableRowContext);
+  const fallbackCellId = React.useId();
+  const fallbackRowId = React.useId();
+  const cellId = getNodePositionId(node) ?? fallbackCellId;
+  const rowId = rowContextId ?? getNodeLineId(node) ?? `row:${fallbackRowId}`;
   const text = textFromChildren(children);
   const canClamp = shouldClampCell(text);
-  const isExpanded = tableContext.isGlobalExpanded || tableContext.isExpanded(cellId);
+  const isExpanded = tableContext.isGlobalExpanded || tableContext.isRowExpanded(rowId);
   const shouldClamp = !tableContext.isGlobalExpanded && canClamp && !isExpanded;
+  const isToggleable = canClamp && !tableContext.isGlobalExpanded;
+
+  const toggle = () => tableContext.toggleRow(rowId);
+  const isInteractiveTarget = (target: EventTarget | null) =>
+    target instanceof HTMLElement && Boolean(target.closest("a, button, input, select, textarea, summary"));
 
   return (
-    <td {...props}>
-      <div className={`prose-table-cell ${shouldClamp ? "prose-table-cell--clamped" : ""}`}>{children}</div>
-      {canClamp && !tableContext.isGlobalExpanded ? (
-        <button
-          type="button"
-          className="prose-table-cell-toggle"
-          onClick={() => tableContext.toggleCell(cellId)}
-          aria-expanded={isExpanded}
-          aria-label={isExpanded ? "Collapse this cell content" : "Expand this cell content"}
-        >
-          {isExpanded ? "collapse cell" : "expand cell"}
-        </button>
-      ) : null}
+    <td
+      {...props}
+      role={isToggleable ? "button" : undefined}
+      tabIndex={isToggleable ? 0 : undefined}
+      aria-expanded={isToggleable ? isExpanded : undefined}
+      onClick={(event) => {
+        props.onClick?.(event);
+        if (!isToggleable || isInteractiveTarget(event.target)) return;
+        toggle();
+      }}
+      onKeyDown={(event) => {
+        props.onKeyDown?.(event);
+        if (!isToggleable || isInteractiveTarget(event.target)) return;
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          toggle();
+        }
+      }}
+    >
+      <div className={`prose-table-cell ${shouldClamp ? "prose-table-cell--clamped" : ""} ${isToggleable ? "prose-table-cell--toggleable" : ""}`}>
+        {children}
+      </div>
     </td>
+  );
+}
+
+export function WordBodyTableRow({
+  children,
+  node,
+  ...props
+}: React.DetailedHTMLProps<React.HTMLAttributes<HTMLTableRowElement>, HTMLTableRowElement> & {
+  node?: unknown;
+}) {
+  const fallbackRowId = React.useId();
+  const rowId = getNodePositionId(node) ?? getNodeLineId(node) ?? `row:${fallbackRowId}`;
+  return (
+    <TableRowContext.Provider value={rowId}>
+      <tr {...props}>{children}</tr>
+    </TableRowContext.Provider>
   );
 }

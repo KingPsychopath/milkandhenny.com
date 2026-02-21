@@ -393,6 +393,14 @@
     hyphens: auto;
   }
 
+  .prose-blog .prose-table-cell--toggleable {
+    cursor: pointer;
+  }
+
+  .prose-blog .prose-table-cell--toggleable:hover {
+    background: color-mix(in srgb, var(--stone-100) 50%, transparent);
+  }
+
   .prose-blog .prose-table-cell--clamped {
     display: -webkit-box;
     -webkit-line-clamp: 2;
@@ -401,25 +409,6 @@
     overflow: hidden;
     mask-image: linear-gradient(to bottom, #000 72%, transparent 100%);
     -webkit-mask-image: linear-gradient(to bottom, #000 72%, transparent 100%);
-  }
-
-  .prose-blog .prose-table-cell-toggle {
-    font-family: var(--font-mono), ui-monospace, monospace;
-    font-size: 0.67rem;
-    letter-spacing: 0.02em;
-    color: var(--stone-500);
-    margin-top: 0.4rem;
-    padding: 0;
-    background: transparent;
-    border: none;
-    text-decoration: underline;
-    text-underline-offset: 2px;
-    min-height: 44px;
-    text-align: left;
-  }
-
-  .prose-blog .prose-table-cell-toggle:hover {
-    color: var(--prose-heading);
   }
 
   .prose-blog .prose-table--expanded td,

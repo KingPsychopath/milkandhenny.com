@@ -6,7 +6,7 @@ import remarkGfm from "remark-gfm";
 import { rehypeHashtags } from "@/lib/markdown/rehype-hashtags";
 import { rehypeSlug } from "@/lib/markdown/rehype-slug";
 import { AlbumEmbed, type EmbeddedAlbum, type EmbedVariant } from "./AlbumEmbed";
-import { WordBodyTable, WordBodyTableCell } from "./WordBodyTable";
+import { WordBodyTable, WordBodyTableCell, WordBodyTableRow } from "./WordBodyTable";
 import { resolveWordContentRef } from "@/features/media/storage";
 
 type WordBodyProps = {
@@ -71,6 +71,12 @@ function isImageOnlyParagraph(node: MarkdownNode | undefined): boolean {
 function getBaseComponents(wordSlug?: string): Components {
   return {
   table: ({ children, ...props }) => <WordBodyTable {...props}>{children}</WordBodyTable>,
+
+  tr: ({ children, node, ...props }) => (
+    <WordBodyTableRow {...props} node={node}>
+      {children}
+    </WordBodyTableRow>
+  ),
 
   td: ({ children, node, ...props }) => (
     <WordBodyTableCell {...props} node={node as MarkdownNode | undefined}>
