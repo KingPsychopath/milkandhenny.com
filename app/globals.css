@@ -376,7 +376,10 @@
   .prose-blog th {
     font-weight: 700;
     color: var(--prose-heading);
-    white-space: nowrap;
+    white-space: normal;
+    line-height: 1.35;
+    overflow-wrap: break-word;
+    word-break: normal;
   }
 
   .prose-blog td {

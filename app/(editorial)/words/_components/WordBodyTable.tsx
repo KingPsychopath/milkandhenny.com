@@ -66,46 +66,35 @@ function shouldClampCell(text: string): boolean {
   return lineCount > TABLE_LINE_LIMIT;
 }
 
-function isTagElement(node: ReactNode, tag: string): node is React.ReactElement<{ children?: ReactNode }> {
-  return React.isValidElement(node) && typeof node.type === "string" && node.type === tag;
-}
-
 function normalizeCellText(value: string): string {
   return value.replace(/\s+/g, " ").trim();
 }
 
-function readRowCells(rowNode: ReactNode): string[] {
-  if (!isTagElement(rowNode, "tr")) return [];
-  return React.Children.toArray(rowNode.props.children)
-    .filter((child): child is React.ReactElement<{ children?: ReactNode }> => isTagElement(child, "th") || isTagElement(child, "td"))
-    .map((cell) => normalizeCellText(textFromChildren(cell.props.children)));
+function rowCellsFromDom(row: HTMLTableRowElement): string[] {
+  return Array.from(row.querySelectorAll("th, td"))
+    .map((cell) => normalizeCellText(cell.textContent ?? ""))
+    .filter((value) => value.length > 0);
 }
 
-function readSectionRows(sectionNode: ReactNode): string[][] {
-  if (!React.isValidElement(sectionNode)) return [];
-  return React.Children.toArray((sectionNode.props as { children?: ReactNode }).children)
-    .filter((child) => isTagElement(child, "tr"))
-    .map(readRowCells)
-    .filter((row) => row.length > 0);
-}
+function extractTableDataFromDom(tableEl: HTMLTableElement | null): TableData {
+  if (!tableEl) return { headers: [], rows: [] };
 
-function extractTableData(children: ReactNode): TableData {
-  const nodes = React.Children.toArray(children);
-  const thead = nodes.find((node) => isTagElement(node, "thead"));
-  const tbody = nodes.find((node) => isTagElement(node, "tbody"));
+  const theadRows = tableEl.tHead ? Array.from(tableEl.tHead.rows) : [];
+  const tbodyRows = tableEl.tBodies.length > 0 ? Array.from(tableEl.tBodies[0].rows) : [];
 
-  const headerRows = thead ? readSectionRows(thead) : [];
-  const bodyRows = tbody ? readSectionRows(tbody) : nodes.filter((node) => isTagElement(node, "tr")).map(readRowCells);
-
-  if (headerRows.length > 0) {
-    return { headers: headerRows[0], rows: bodyRows };
-  }
-  if (bodyRows.length === 0) {
-    return { headers: [], rows: [] };
+  if (theadRows.length > 0) {
+    const headers = rowCellsFromDom(theadRows[0]);
+    const rows = tbodyRows.map(rowCellsFromDom).filter((row) => row.length > 0);
+    return { headers, rows };
   }
 
-  const [first, ...rest] = bodyRows;
-  return { headers: first, rows: rest };
+  const allRows = Array.from(tableEl.rows);
+  if (allRows.length === 0) return { headers: [], rows: [] };
+  const [first, ...rest] = allRows;
+  return {
+    headers: rowCellsFromDom(first),
+    rows: rest.map(rowCellsFromDom).filter((row) => row.length > 0),
+  };
 }
 
 function toCsv(data: TableData): string {
@@ -138,6 +127,35 @@ function downloadTextFile(filename: string, contents: string, contentType: strin
   anchor.click();
   anchor.remove();
   URL.revokeObjectURL(url);
+}
+
+async function copyText(text: string): Promise<boolean> {
+  try {
+    if (typeof navigator !== "undefined" && navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(text);
+      return true;
+    }
+  } catch {
+    // Fall through to legacy copy path.
+  }
+
+  try {
+    if (typeof document === "undefined") return false;
+    const textarea = document.createElement("textarea");
+    textarea.value = text;
+    textarea.setAttribute("readonly", "");
+    textarea.style.position = "fixed";
+    textarea.style.top = "-9999px";
+    textarea.style.left = "-9999px";
+    document.body.append(textarea);
+    textarea.focus();
+    textarea.select();
+    const ok = document.execCommand("copy");
+    textarea.remove();
+    return ok;
+  } catch {
+    return false;
+  }
 }
 
 function ExpandIcon() {
@@ -195,13 +213,13 @@ export function WordBodyTable({
   children,
   ...props
 }: React.DetailedHTMLProps<React.TableHTMLAttributes<HTMLTableElement>, HTMLTableElement>) {
-  const [isGlobalExpanded, setIsGlobalExpanded] = React.useState(false);
+  const [isGlobalExpanded, setIsGlobalExpanded] = React.useState(true);
   const [expandedRows, setExpandedRows] = React.useState<Record<string, boolean>>({});
   const [copied, setCopied] = React.useState(false);
-  const tableData = React.useMemo(() => extractTableData(children), [children]);
+  const tableRef = React.useRef<HTMLTableElement | null>(null);
 
   React.useLayoutEffect(() => {
-    setIsGlobalExpanded(false);
+    setIsGlobalExpanded(true);
     setExpandedRows({});
   }, [children]);
 
@@ -225,26 +243,28 @@ export function WordBodyTable({
   }, [copied]);
 
   const handleCopy = React.useCallback(async () => {
-    if (typeof navigator === "undefined" || !navigator.clipboard) return;
+    const tableData = extractTableDataFromDom(tableRef.current);
     const markdown = toMarkdownTable(tableData);
     const fallback = toCsv(tableData).replace(/,/g, "\t");
-    await navigator.clipboard.writeText(markdown || fallback);
-    setCopied(true);
-  }, [tableData]);
+    const ok = await copyText(markdown || fallback);
+    if (ok) setCopied(true);
+  }, []);
 
   const handleDownloadCsv = React.useCallback(() => {
+    const tableData = extractTableDataFromDom(tableRef.current);
     downloadTextFile("table.csv", toCsv(tableData), "text/csv;charset=utf-8");
-  }, [tableData]);
+  }, []);
 
   const handleDownloadMarkdown = React.useCallback(() => {
+    const tableData = extractTableDataFromDom(tableRef.current);
     downloadTextFile("table.md", toMarkdownTable(tableData), "text/markdown;charset=utf-8");
-  }, [tableData]);
+  }, []);
 
   return (
     <div className={`prose-table ${isGlobalExpanded ? "prose-table--expanded" : "prose-table--compact"}`}>
       <div className="prose-table-scroll">
         <TableRenderContext.Provider value={contextValue}>
-          <table {...props}>{children}</table>
+          <table ref={tableRef} {...props}>{children}</table>
         </TableRenderContext.Provider>
       </div>
       <div className="prose-table-footer">
@@ -266,7 +286,7 @@ export function WordBodyTable({
             aria-label="download csv"
             title="download csv"
           >
-            <MarkdownIcon />
+            <DownloadIcon />
           </button>
           <button
             type="button"
@@ -275,7 +295,7 @@ export function WordBodyTable({
             aria-label="download markdown"
             title="download markdown"
           >
-            <DownloadIcon />
+            <MarkdownIcon />
           </button>
           <button
             type="button"
