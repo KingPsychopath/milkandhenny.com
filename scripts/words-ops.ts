@@ -198,10 +198,6 @@ function legacyWordMetaKey(slug: string): string {
   return `${LEGACY_WORD_META_PREFIX}${slug}`;
 }
 
-function legacyWordShareIndexKey(slug: string): string {
-  return `${LEGACY_WORD_SHARE_INDEX_PREFIX}${slug}`;
-}
-
 function parseLegacyShareId(key: string): string | null {
   if (!key.startsWith(LEGACY_WORD_SHARE_PREFIX)) return null;
   const id = key.slice(LEGACY_WORD_SHARE_PREFIX.length);

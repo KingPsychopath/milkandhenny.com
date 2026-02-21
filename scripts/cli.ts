@@ -193,8 +193,17 @@ function getMediaTargetFromArgs(opts: {
 /** Validate date format: YYYY-MM-DD */
 function isValidDate(date: string): boolean {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return false;
-  const parsed = new Date(date + "T00:00:00");
-  return !isNaN(parsed.getTime());
+  const [yearRaw, monthRaw, dayRaw] = date.split("-");
+  const year = Number(yearRaw);
+  const month = Number(monthRaw);
+  const day = Number(dayRaw);
+  const parsed = new Date(Date.UTC(year, month - 1, day));
+  return (
+    !Number.isNaN(parsed.getTime()) &&
+    parsed.getUTCFullYear() === year &&
+    parsed.getUTCMonth() === month - 1 &&
+    parsed.getUTCDate() === day
+  );
 }
 
 /** Validate directory exists and contains images */
@@ -260,6 +269,35 @@ function listMarkdownFiles(dir: string): string[] {
     }
   }
   return out.sort((a, b) => a.localeCompare(b));
+}
+
+function getCliIoConcurrency(): number {
+  const raw = process.env.MH_CLI_IO_CONCURRENCY;
+  const parsed = raw ? Number.parseInt(raw, 10) : 6;
+  if (!Number.isFinite(parsed)) return 6;
+  return Math.max(1, Math.min(16, parsed));
+}
+
+async function mapWithConcurrency<T, R>(
+  items: T[],
+  concurrency: number,
+  worker: (item: T, index: number) => Promise<R>
+): Promise<R[]> {
+  if (items.length === 0) return [];
+  const results = new Array<R>(items.length);
+  let nextIndex = 0;
+  const workerCount = Math.max(1, Math.min(concurrency, items.length));
+
+  async function runWorker() {
+    while (true) {
+      const index = nextIndex++;
+      if (index >= items.length) return;
+      results[index] = await worker(items[index], index);
+    }
+  }
+
+  await Promise.all(Array.from({ length: workerCount }, () => runWorker()));
+  return results;
 }
 
 /* ─── Interactive prompts ─── */
@@ -1535,10 +1573,131 @@ function parseBooleanInput(value?: string): boolean | undefined {
   return undefined;
 }
 
+function toAbsolutePath(userPath: string): string {
+  return path.resolve(userPath.replace(/^~/, process.env.HOME ?? "~"));
+}
+
+function resolvePathCaseInsensitive(absPath: string): string | null {
+  if (fs.existsSync(absPath)) return absPath;
+  if (!path.isAbsolute(absPath)) return null;
+
+  const parts = absPath.split(path.sep).filter(Boolean);
+  let current: string = path.sep;
+
+  for (const part of parts) {
+    if (!fs.existsSync(current) || !fs.statSync(current).isDirectory()) return null;
+    const entries = fs.readdirSync(current);
+    const exact = entries.find((entry) => entry === part);
+    if (exact) {
+      current = path.join(current, exact);
+      continue;
+    }
+    const ciMatches = entries.filter((entry) => entry.toLowerCase() === part.toLowerCase());
+    if (ciMatches.length !== 1) return null;
+    current = path.join(current, ciMatches[0]);
+  }
+
+  return fs.existsSync(current) ? current : null;
+}
+
+function resolveMarkdownFilePath(filePath: string): { requestedAbs: string; resolvedAbs: string } {
+  const requestedAbs = toAbsolutePath(filePath);
+  const resolvedAbs = resolvePathCaseInsensitive(requestedAbs) ?? requestedAbs;
+  return { requestedAbs, resolvedAbs };
+}
+
+function assertReadableMarkdownFile(filePath: string): { requestedAbs: string; resolvedAbs: string } {
+  const paths = resolveMarkdownFilePath(filePath);
+  if (!fs.existsSync(paths.resolvedAbs)) {
+    throw new Error(`File not found: ${paths.requestedAbs}`);
+  }
+  const stats = fs.statSync(paths.resolvedAbs);
+  if (!stats.isFile()) throw new Error(`Expected a file path, but received a directory: ${paths.resolvedAbs}`);
+  return paths;
+}
+
 function readMarkdownFile(filePath: string): string {
-  const abs = path.resolve(filePath.replace(/^~/, process.env.HOME ?? "~"));
-  if (!fs.existsSync(abs)) throw new Error(`File not found: ${abs}`);
-  return fs.readFileSync(abs, "utf-8");
+  const { resolvedAbs } = assertReadableMarkdownFile(filePath);
+  return fs.readFileSync(resolvedAbs, "utf-8");
+}
+
+function slugifyLoose(raw: string): string {
+  const normalized = raw
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  return normalized || "new-note";
+}
+
+function escapeYamlString(value: string): string {
+  return value.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+}
+
+function buildWordTemplateMarkdown(opts: {
+  slug: string;
+  title: string;
+  subtitle?: string;
+  type: WordType;
+  visibility: NoteVisibility;
+  tags?: string[];
+}): string {
+  const tags = opts.tags && opts.tags.length > 0 ? `[${opts.tags.map((t) => `"${escapeYamlString(t)}"`).join(", ")}]` : "[]";
+  const subtitleLine = opts.subtitle ? `subtitle: "${escapeYamlString(opts.subtitle)}"` : "subtitle: \"\"";
+  return [
+    "---",
+    `slug: "${escapeYamlString(opts.slug)}"`,
+    `title: "${escapeYamlString(opts.title)}"`,
+    subtitleLine,
+    `type: "${opts.type}"`,
+    `visibility: "${opts.visibility}"`,
+    `tags: ${tags}`,
+    "---",
+    "",
+    `# ${opts.title}`,
+    "",
+    "Start writing here.",
+    "",
+  ].join("\n");
+}
+
+async function cmdWordsTemplate(opts: {
+  out: string;
+  title?: string;
+  slug?: string;
+  subtitle?: string;
+  type?: WordType;
+  visibility?: NoteVisibility;
+  tags?: string[];
+  overwrite?: boolean;
+  quiet?: boolean;
+}): Promise<string> {
+  const requestedAbs = toAbsolutePath(opts.out);
+  const exists = fs.existsSync(requestedAbs);
+  if (exists && !opts.overwrite) {
+    throw new Error(`File already exists: ${requestedAbs}. Re-run with --overwrite to replace it.`);
+  }
+  const derivedTitle = (opts.title?.trim() || path.basename(requestedAbs, path.extname(requestedAbs))).trim();
+  const title = derivedTitle || "New Note";
+  const slug = opts.slug?.trim() || slugifyLoose(path.basename(requestedAbs, path.extname(requestedAbs)));
+  const markdown = buildWordTemplateMarkdown({
+    slug,
+    title,
+    subtitle: opts.subtitle,
+    type: opts.type ?? "note",
+    visibility: opts.visibility ?? "private",
+    tags: opts.tags,
+  });
+  fs.mkdirSync(path.dirname(requestedAbs), { recursive: true });
+  fs.writeFileSync(requestedAbs, markdown, "utf-8");
+
+  if (!opts.quiet) {
+    heading("Create markdown template");
+    log(green(`✓ Wrote template: ${requestedAbs}`));
+    log(dim("Tip: edit it, then use Words → Content → Create word or 'pnpm cli words create'."));
+    console.log();
+  }
+  return requestedAbs;
 }
 
 function toIsoDate(value: unknown): string | undefined {
@@ -1963,7 +2122,7 @@ async function syncSingleNoteFile(absFile: string, rootDir: string): Promise<"cr
 
   const existing = await getWordRecord(input.slug);
   const nextType = input.type ?? existing?.meta.type ?? "note";
-  const createVisibility = input.visibility ?? (nextType === "blog" ? "public" : "private");
+  const createVisibility = input.visibility ?? "private";
 
   if (existing) {
     const updated = await updateWordRecord(input.slug, {
@@ -2007,6 +2166,7 @@ async function cmdWordsSync(opts: { dir: string }) {
 
   heading("Sync words from folder");
   log(dim(rootDir));
+  log(dim(`concurrency ${getCliIoConcurrency()}`));
   console.log();
 
   const files = listMarkdownFiles(rootDir);
@@ -2016,15 +2176,12 @@ async function cmdWordsSync(opts: { dir: string }) {
     return;
   }
 
-  let created = 0;
-  let updated = 0;
-  let skipped = 0;
-  for (const file of files) {
-    const result = await syncSingleNoteFile(file, rootDir);
-    if (result === "created") created++;
-    else if (result === "updated") updated++;
-    else skipped++;
-  }
+  const results = await mapWithConcurrency(files, getCliIoConcurrency(), async (file) =>
+    syncSingleNoteFile(file, rootDir)
+  );
+  const created = results.filter((result) => result === "created").length;
+  const updated = results.filter((result) => result === "updated").length;
+  const skipped = results.filter((result) => result === "skipped").length;
 
   console.log();
   log(green(`✓ synced ${files.length} files`));
@@ -2046,9 +2203,8 @@ async function cmdWordsWatch(opts: { dir: string }) {
   console.log();
 
   const timers = new Map<string, NodeJS.Timeout>();
-  const watcher = fs.watch(rootDir, { recursive: true }, (_eventType, filename) => {
-    if (!filename || !filename.endsWith(".md")) return;
-    const abs = path.join(rootDir, filename);
+  const queueSync = (abs: string, debounceMs = 180) => {
+    if (!abs.endsWith(".md")) return;
     const prior = timers.get(abs);
     if (prior) clearTimeout(prior);
     timers.set(
@@ -2058,13 +2214,58 @@ async function cmdWordsWatch(opts: { dir: string }) {
         void safely(async () => {
           await syncSingleNoteFile(abs, rootDir);
         });
-      }, 180),
+      }, debounceMs),
     );
-  });
+  };
+
+  let stopWatching: (() => void) | undefined;
+
+  try {
+    const watcher = fs.watch(rootDir, { recursive: true }, (_eventType, filename) => {
+      if (!filename || !filename.endsWith(".md")) return;
+      const abs = path.join(rootDir, filename);
+      queueSync(abs);
+    });
+    watcher.on("error", (err) => {
+      log(yellow(`watch error: ${(err as Error).message}`));
+    });
+    stopWatching = () => watcher.close();
+  } catch {
+    log(yellow("Recursive watch unavailable in this environment. Falling back to polling every 2s."));
+    const knownMtime = new Map<string, number>();
+    for (const file of listMarkdownFiles(rootDir)) {
+      const stat = fs.statSync(file);
+      knownMtime.set(file, stat.mtimeMs);
+    }
+
+    const interval = setInterval(() => {
+      const files = listMarkdownFiles(rootDir);
+      const seen = new Set(files);
+
+      for (const file of files) {
+        let nextMtime: number;
+        try {
+          nextMtime = fs.statSync(file).mtimeMs;
+        } catch {
+          continue;
+        }
+        const prevMtime = knownMtime.get(file);
+        knownMtime.set(file, nextMtime);
+        if (prevMtime === undefined || prevMtime !== nextMtime) {
+          queueSync(file, 0);
+        }
+      }
+
+      for (const tracked of knownMtime.keys()) {
+        if (!seen.has(tracked)) knownMtime.delete(tracked);
+      }
+    }, 2000);
+    stopWatching = () => clearInterval(interval);
+  }
 
   await new Promise<void>((resolve) => {
     process.once("SIGINT", () => {
-      watcher.close();
+      stopWatching?.();
       for (const t of timers.values()) clearTimeout(t);
       console.log();
       log(dim("watch stopped"));
@@ -2080,6 +2281,7 @@ async function cmdWordsPull(opts: { dir: string; type?: WordType; visibility?: N
 
   heading("Pull words to folder");
   log(dim(rootDir));
+  log(dim(`concurrency ${getCliIoConcurrency()}`));
   console.log();
 
   const { words } = await listWordRecords({
@@ -2094,10 +2296,9 @@ async function cmdWordsPull(opts: { dir: string; type?: WordType; visibility?: N
     return;
   }
 
-  let written = 0;
-  for (const word of words) {
+  const writtenResults = await mapWithConcurrency(words, getCliIoConcurrency(), async (word) => {
     const record = await getWordRecord(word.slug);
-    if (!record) continue;
+    if (!record) return false;
 
     const typeDir = path.join(rootDir, word.type);
     fs.mkdirSync(typeDir, { recursive: true });
@@ -2105,9 +2306,10 @@ async function cmdWordsPull(opts: { dir: string; type?: WordType; visibility?: N
     const frontmatter = noteFrontmatter(record.meta);
     const withFrontmatter = matter.stringify(record.markdown, frontmatter);
     fs.writeFileSync(outPath, withFrontmatter, "utf-8");
-    written++;
     log(green(`wrote ${word.type}/${word.slug}.md`));
-  }
+    return true;
+  });
+  const written = writtenResults.filter(Boolean).length;
 
   console.log();
   log(green(`✓ exported ${written} words`));
@@ -2185,13 +2387,14 @@ function showHelp() {
 
   ${bold("Words")} ${dim("(private markdown + signed shares)")}
     words create --slug ${dim("<slug>")} --title ${dim("<title>")} --markdown-file ${dim("<path>")} ${dim("[--subtitle <text>] [--image <path>] [--type blog|note|recipe|review] [--visibility ...] [--tags a,b] [--featured true|false]")}
+    words template --out ${dim("<path>")} ${dim("[--title <title>] [--slug <slug>] [--subtitle <text>] [--type ...] [--visibility ...] [--tags a,b] [--overwrite]")}
     words upload --slug ${dim("<slug>")} --file ${dim("<path>")} ${dim("[--title <title>] [--subtitle <text>] [--image <path>] [--type ...] [--visibility ...] [--tags a,b] [--featured true|false]")}
     words list ${dim("[--type blog|note|recipe|review] [--visibility public|unlisted|private] [--tag <tag>] [--q <query>]")}
     words update ${dim("<slug>")} ${dim("[--title <title>] [--subtitle <text>] [--clear-subtitle] [--image <path>|--clear-image] [--type ...] [--visibility ...] [--tags a,b] [--featured true|false] [--markdown-file <path>]")}
     words delete ${dim("<slug>")}
-    words pull --dir ${dim("<path>")} ${dim("[--type ...] [--visibility ...]")}
-    words sync --dir ${dim("<path>")} ${dim("(one-off upload from local folder)")}
-    words watch --dir ${dim("<path>")} ${dim("(sync once, then watch for local markdown changes)")}
+    words pull --dir ${dim("<path>")} ${dim("[--type ...] [--visibility ...]")} ${dim("(remote -> local)")}
+    words sync --dir ${dim("<path>")} ${dim("(local -> remote, one-off upload/update from folder)")}
+    words watch --dir ${dim("<path>")} ${dim("(local -> remote, sync once then watch local markdown changes)")}
     words share create ${dim("<slug>")} ${dim("[--expires-days 7] [--pin-required] [--pin 1234]")}
     words share list ${dim("<slug>")}
     words share update ${dim("<slug> <share-id>")} ${dim("[--pin-required true|false] [--pin <newPin>|--clear-pin] [--expires-days <n>] [--rotate-token]")}
@@ -3058,8 +3261,12 @@ async function interactiveWordsMedia() {
 
 /* ─── Interactive: Words ─── */
 
-async function selectWordSlug(promptText = "Word slug"): Promise<string | null> {
+async function selectWordSlug(
+  promptText = "Word slug",
+  opts?: { requireNew?: boolean }
+): Promise<string | null> {
   const { words } = await listWordRecords({ includeNonPublic: true });
+  const existingSlugs = new Set(words.map((w) => w.slug));
   if (words.length > 0) {
     console.log();
     log(dim("Existing words:"));
@@ -3076,29 +3283,148 @@ async function selectWordSlug(promptText = "Word slug"): Promise<string | null> 
       log(red("  Invalid slug format."));
       continue;
     }
+    if (opts?.requireNew && existingSlugs.has(slug)) {
+      log(yellow("  That slug already exists. Pick a new slug or use Upload/Update."));
+      continue;
+    }
     return slug;
   }
+}
+
+async function promptCreateWordMarkdown(opts: {
+  slug: string;
+  title: string;
+  subtitle?: string;
+  type: WordType;
+  visibility: NoteVisibility;
+  tags?: string[];
+}): Promise<string | null> {
+  const sourceChoice = await choose("Markdown source", [
+    { label: "Use existing markdown file", detail: "recommended if you've already written your note" },
+    { label: "Create instant template file", detail: "generate a starter .md and use it immediately" },
+    { label: "Use quick starter content", detail: "skip files for now and publish a basic draft" },
+  ]);
+  if (sourceChoice <= 0) return null;
+
+  if (sourceChoice === 1) {
+    while (true) {
+      const markdownFile = await ask("Markdown file", { hint: "e.g. ~/Desktop/word.md" });
+      if (!markdownFile) return null;
+      try {
+        return readMarkdownFile(markdownFile);
+      } catch (error) {
+        log(yellow(`  ${(error as Error).message}`));
+        const next = await choose("Markdown file issue", [
+          { label: "Try another path" },
+          { label: "Create instant template instead" },
+          { label: "Use quick starter content instead" },
+        ]);
+        if (next <= 0) return null;
+        if (next === 2) {
+          const out = await ask("Template output path", {
+            defaultVal: `~/Documents/mh-words/notes/${opts.slug}.md`,
+          });
+          if (!out) return null;
+          try {
+            const outPath = await cmdWordsTemplate({
+              out,
+              title: opts.title,
+              slug: opts.slug,
+              subtitle: opts.subtitle,
+              type: opts.type,
+              visibility: opts.visibility,
+              tags: opts.tags,
+              quiet: true,
+            });
+            return readMarkdownFile(outPath);
+          } catch (templateError) {
+            log(red(`  ${(templateError as Error).message}`));
+            continue;
+          }
+        }
+        if (next === 3) {
+          return `# ${opts.title}\n\nStart writing here.\n`;
+        }
+      }
+    }
+  }
+
+  if (sourceChoice === 2) {
+    while (true) {
+      const out = await ask("Template output path", {
+        defaultVal: `~/Documents/mh-words/notes/${opts.slug}.md`,
+      });
+      if (!out) return null;
+      try {
+        const outPath = await cmdWordsTemplate({
+          out,
+          title: opts.title,
+          slug: opts.slug,
+          subtitle: opts.subtitle,
+          type: opts.type,
+          visibility: opts.visibility,
+          tags: opts.tags,
+          quiet: true,
+        });
+        log(green(`  Template created: ${outPath}`));
+        return readMarkdownFile(outPath);
+      } catch (error) {
+        const message = (error as Error).message;
+        log(yellow(`  ${message}`));
+        if (!message.startsWith("File already exists:")) continue;
+        const next = await choose("Template file exists", [
+          { label: "Use existing file as-is" },
+          { label: "Overwrite existing file" },
+          { label: "Choose another path" },
+        ]);
+        if (next <= 0) return null;
+        if (next === 1) {
+          return readMarkdownFile(out);
+        }
+        if (next === 2) {
+          try {
+            const outPath = await cmdWordsTemplate({
+              out,
+              title: opts.title,
+              slug: opts.slug,
+              subtitle: opts.subtitle,
+              type: opts.type,
+              visibility: opts.visibility,
+              tags: opts.tags,
+              overwrite: true,
+              quiet: true,
+            });
+            log(green(`  Template overwritten: ${outPath}`));
+            return readMarkdownFile(outPath);
+          } catch (overwriteError) {
+            log(red(`  ${(overwriteError as Error).message}`));
+          }
+        }
+      }
+    }
+  }
+
+  return `# ${opts.title}\n\nStart writing here.\n`;
 }
 
 async function interactiveWordsContent() {
   while (true) {
     const choice = await choose("Words · Content", [
-      { label: "Create word", detail: "new markdown entry" },
+      { label: "Create word", detail: "guided new entry flow (new slug only)" },
       { label: "Upload markdown file", detail: "create or replace word body from a local file" },
       { label: "List words", detail: "show words and visibility" },
       { label: "Update word", detail: "title/subtitle/visibility/markdown file" },
       { label: "Delete word", detail: "remove a word permanently" },
+      { label: "Create markdown template", detail: "generate a starter .md anywhere" },
     ]);
     switch (choice) {
       case 0:
         return;
       case 1: {
-        const slug = await selectWordSlug("New word slug");
+        const slug = await selectWordSlug("New word slug", { requireNew: true });
         if (!slug) break;
         const title = await ask("Title");
         if (!title) break;
-        const markdownFile = await ask("Markdown file", { hint: "e.g. ~/Desktop/word.md" });
-        if (!markdownFile) break;
         const subtitle = await ask("Subtitle (optional)");
         const image = await ask("Hero image path (optional, e.g. words/media/slug/hero.webp or words/assets/kit/hero.webp)");
         const typeChoice = await choose("Type", WORD_TYPES.map((type) => ({ label: type })));
@@ -3112,16 +3438,26 @@ async function interactiveWordsContent() {
         ]);
         if (visChoice <= 0) break;
         const visibility = (["private", "unlisted", "public"] as const)[visChoice - 1];
+        const tags = parseTags(tagsRaw);
+        const markdown = await promptCreateWordMarkdown({
+          slug,
+          title,
+          subtitle: subtitle || undefined,
+          type,
+          visibility,
+          tags,
+        });
+        if (!markdown) break;
         await safely(() =>
-          cmdWordsUpload({
+          cmdWordsCreate({
             slug,
-            file: markdownFile,
             title,
+            markdown,
             subtitle: subtitle || undefined,
             image: image || undefined,
             type,
             visibility,
-            tags: parseTags(tagsRaw),
+            tags,
           })
         );
         await pause();
@@ -3211,6 +3547,39 @@ async function interactiveWordsContent() {
         }
         break;
       }
+      case 6: {
+        const out = await ask("Template output path", {
+          defaultVal: "~/Desktop/new-note.md",
+          hint: "works with absolute or ~/ paths",
+        });
+        if (!out) break;
+        const title = await ask("Template title (optional)");
+        const slug = await ask("Template slug (optional)");
+        const subtitle = await ask("Template subtitle (optional)");
+        const typeChoice = await choose("Template type", WORD_TYPES.map((type) => ({ label: type })));
+        if (typeChoice <= 0) break;
+        const visChoice = await choose("Template visibility", [
+          { label: "private" },
+          { label: "unlisted" },
+          { label: "public" },
+        ]);
+        if (visChoice <= 0) break;
+        const visibility = (["private", "unlisted", "public"] as const)[visChoice - 1];
+        const tagsRaw = await ask("Template tags (optional, comma-separated)");
+        await safely(async () => {
+          await cmdWordsTemplate({
+            out,
+            title: title || undefined,
+            slug: slug || undefined,
+            subtitle: subtitle || undefined,
+            type: WORD_TYPES[typeChoice - 1],
+            visibility,
+            tags: parseTags(tagsRaw),
+          });
+        });
+        await pause();
+        break;
+      }
     }
   }
 }
@@ -3218,9 +3587,9 @@ async function interactiveWordsContent() {
 async function interactiveWordsLocal() {
   while (true) {
     const choice = await choose("Words · Local Sync", [
-      { label: "Pull words to folder", detail: "download words as markdown with frontmatter" },
-      { label: "Sync folder once", detail: "upload/update words from a local markdown folder" },
-      { label: "Watch folder", detail: "live-sync markdown file changes until Ctrl+C" },
+      { label: "Pull words to folder", detail: "remote -> local (download latest words as markdown)" },
+      { label: "Sync folder once", detail: "local -> remote (upload/update from local markdown)" },
+      { label: "Watch folder", detail: "local -> remote (live-sync local markdown changes)" },
     ]);
     switch (choice) {
       case 0:
@@ -3936,6 +4305,31 @@ async function direct() {
             if (!dir) throw new Error("Usage: pnpm cli words watch --dir <path>");
             return cmdWordsWatch({ dir });
           }
+          case "template": {
+            const out = getArg("out") ?? getArg("file");
+            const title = getArg("title");
+            const slug = getArg("slug");
+            const subtitle = getArg("subtitle");
+            const type = parseWordType(getArg("type"));
+            const visibility = parseNoteVisibility(getArg("visibility"));
+            const tags = parseTags(getArg("tags"));
+            if (!out) {
+              throw new Error(
+                "Usage: pnpm cli words template --out <path> [--title <title>] [--slug <slug>] [--subtitle <text>] [--type blog|note|recipe|review] [--visibility public|unlisted|private] [--tags a,b] [--overwrite]"
+              );
+            }
+            if (getArg("type") && !type) throw new Error("Invalid --type value.");
+            return cmdWordsTemplate({
+              out,
+              title: title ?? undefined,
+              slug: slug ?? undefined,
+              subtitle: subtitle ?? undefined,
+              type,
+              visibility,
+              tags,
+              overwrite: hasFlag("overwrite"),
+            });
+          }
           case "migrate-legacy": {
             return cmdWordsMigrateLegacy(hasFlag("purge-legacy"));
           }
@@ -3968,7 +4362,10 @@ async function direct() {
               }
               const pinRequiredArg = getArg("pin-required");
               const pinRequired =
-                pinRequiredArg === undefined ? undefined : pinRequiredArg.toLowerCase() === "true";
+                pinRequiredArg === undefined ? undefined : parseBooleanInput(pinRequiredArg);
+              if (pinRequiredArg !== undefined && pinRequired === undefined) {
+                throw new Error("Invalid --pin-required value. Use true/false.");
+              }
               const expiresDaysRaw = getArg("expires-days");
               const expiresInDays = expiresDaysRaw ? parseInt(expiresDaysRaw, 10) : undefined;
               const pin = hasFlag("clear-pin") ? null : (getArg("pin") ?? undefined);
