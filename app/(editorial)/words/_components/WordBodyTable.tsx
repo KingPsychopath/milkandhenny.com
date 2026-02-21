@@ -209,11 +209,21 @@ function CheckIcon() {
   );
 }
 
+function PinIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false" className="prose-table-icon">
+      <path d="M8 4h8l-1.5 5 3.5 3v1H6v-1l3.5-3L8 4Z" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
+      <path d="M12 13v7" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 export function WordBodyTable({
   children,
   ...props
 }: React.DetailedHTMLProps<React.TableHTMLAttributes<HTMLTableElement>, HTMLTableElement>) {
-  const [isCollapsed, setIsCollapsed] = React.useState(false);
+  const [isCollapsed, setIsCollapsed] = React.useState(true);
+  const [isFirstColumnPinned, setIsFirstColumnPinned] = React.useState(true);
   const [expandedRows, setExpandedRows] = React.useState<Record<string, boolean>>({});
   const [copied, setCopied] = React.useState(false);
   const tableRef = React.useRef<HTMLTableElement | null>(null);
@@ -256,23 +266,35 @@ export function WordBodyTable({
   }, []);
 
   return (
-    <div className={`prose-table ${isCollapsed ? "prose-table--compact" : "prose-table--expanded"}`}>
+    <div className={`prose-table ${isCollapsed ? "prose-table--compact" : "prose-table--expanded"} ${isFirstColumnPinned ? "prose-table--pinned" : ""}`}>
       <div className="prose-table-scroll">
         <TableRenderContext.Provider value={contextValue}>
           <table ref={tableRef} {...props}>{children}</table>
         </TableRenderContext.Provider>
       </div>
       <div className="prose-table-footer">
-        <button
-          type="button"
-          className="prose-table-button prose-table-icon-button"
-          onClick={() => setIsCollapsed((prev) => !prev)}
-          aria-expanded={!isCollapsed}
-          aria-label={isCollapsed ? "expand table" : "collapse table"}
-          title={isCollapsed ? "expand table" : "collapse table"}
-        >
-          {isCollapsed ? <ExpandIcon /> : <CollapseIcon />}
-        </button>
+        <div className="prose-table-footer-start">
+          <button
+            type="button"
+            className="prose-table-button prose-table-icon-button"
+            onClick={() => setIsCollapsed((prev) => !prev)}
+            aria-expanded={!isCollapsed}
+            aria-label={isCollapsed ? "expand table" : "collapse table"}
+            title={isCollapsed ? "expand table" : "collapse table"}
+          >
+            {isCollapsed ? <ExpandIcon /> : <CollapseIcon />}
+          </button>
+          <button
+            type="button"
+            className="prose-table-button prose-table-icon-button"
+            onClick={() => setIsFirstColumnPinned((prev) => !prev)}
+            aria-pressed={isFirstColumnPinned}
+            aria-label={isFirstColumnPinned ? "unpin first column" : "pin first column"}
+            title={isFirstColumnPinned ? "unpin first column" : "pin first column"}
+          >
+            <PinIcon />
+          </button>
+        </div>
         <div className="prose-table-footer-actions">
           <button
             type="button"
