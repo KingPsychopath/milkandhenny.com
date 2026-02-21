@@ -213,15 +213,10 @@ export function WordBodyTable({
   children,
   ...props
 }: React.DetailedHTMLProps<React.TableHTMLAttributes<HTMLTableElement>, HTMLTableElement>) {
-  const [isCollapsed, setIsCollapsed] = React.useState(true);
+  const [isCollapsed, setIsCollapsed] = React.useState(false);
   const [expandedRows, setExpandedRows] = React.useState<Record<string, boolean>>({});
   const [copied, setCopied] = React.useState(false);
   const tableRef = React.useRef<HTMLTableElement | null>(null);
-
-  React.useLayoutEffect(() => {
-    setIsCollapsed(false);
-    setExpandedRows({});
-  }, [children]);
 
   const toggleRow = React.useCallback((rowId: string) => {
     setExpandedRows((prev) => ({ ...prev, [rowId]: !prev[rowId] }));
