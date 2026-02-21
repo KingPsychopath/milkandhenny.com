@@ -14,7 +14,7 @@ export const WORD_TYPE_META: Record<WordType, WordTypeMeta> = {
   review: { label: "review", pluralLabel: "reviews" },
 };
 
-export const WORD_TYPE_TABS: Array<WordType | "all"> = ["blog", "all", "recipe", "note", "review"];
+export const WORD_TYPE_TABS: Array<WordType | "all"> = ["all", "blog", "recipe", "note", "review"];
 
 export function isWordType(value: string): value is WordType {
   return WORD_TYPES.includes(value as WordType);
