@@ -416,8 +416,13 @@
 
   .prose-blog .prose-table--expanded td,
   .prose-blog .prose-table--expanded th {
+    min-width: 11rem;
     max-width: none;
     white-space: normal;
+  }
+
+  .prose-blog .prose-table--expanded th {
+    white-space: nowrap;
   }
 
   .prose-blog .prose-table-footer {

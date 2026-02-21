@@ -213,13 +213,13 @@ export function WordBodyTable({
   children,
   ...props
 }: React.DetailedHTMLProps<React.TableHTMLAttributes<HTMLTableElement>, HTMLTableElement>) {
-  const [isGlobalExpanded, setIsGlobalExpanded] = React.useState(true);
+  const [isGlobalExpanded, setIsGlobalExpanded] = React.useState(false);
   const [expandedRows, setExpandedRows] = React.useState<Record<string, boolean>>({});
   const [copied, setCopied] = React.useState(false);
   const tableRef = React.useRef<HTMLTableElement | null>(null);
 
   React.useLayoutEffect(() => {
-    setIsGlobalExpanded(true);
+    setIsGlobalExpanded(false);
     setExpandedRows({});
   }, [children]);
 
