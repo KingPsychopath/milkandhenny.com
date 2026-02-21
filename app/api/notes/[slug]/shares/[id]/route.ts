@@ -33,7 +33,9 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     return NextResponse.json(updated);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Failed to update share link";
-    if (/pin/i.test(message)) return NextResponse.json({ error: message }, { status: 400 });
+    if (/pin|expired|revoked/i.test(message)) {
+      return NextResponse.json({ error: message }, { status: 400 });
+    }
     return apiErrorFromRequest(request, "notes.share.update", "Failed to update share link", error, { slug, id });
   }
 }

@@ -1,4 +1,4 @@
-import { afterAll, describe, expect, it } from "vitest";
+import { afterAll, describe, expect, it, vi } from "vitest";
 import {
   createShareLink,
   signNoteAccessToken,
@@ -104,6 +104,23 @@ describe("notes share access", () => {
     expect(rotated?.token).toBeTruthy();
 
     expect(await verifyNoteAccessToken(slug, accessToken ?? "")).toBe(false);
+  });
+
+  it("rejects PIN changes for expired links", async () => {
+    const slug = uniqueSlug("expired-pin");
+    const created = await createShareLink({ slug, pinRequired: false, expiresInDays: 1 });
+    const realNow = Date.now();
+    const nowSpy = vi.spyOn(Date, "now").mockReturnValue(realNow + 2 * 86400 * 1000);
+    try {
+      await expect(
+        updateShareLink(slug, created.link.id, {
+          pinRequired: true,
+          pin: "4321",
+        })
+      ).rejects.toThrow(/expired|revoked/i);
+    } finally {
+      nowSpy.mockRestore();
+    }
   });
 
   afterAll(() => {

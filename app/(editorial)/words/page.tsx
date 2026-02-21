@@ -40,7 +40,7 @@ export default async function WordsPage(_props: Props) {
     tags: note.tags,
     dateLabel: formatDate(note.publishedAt ?? note.updatedAt),
     date: note.publishedAt ?? note.updatedAt,
-    readingTime: note.type === "blog" ? 1 : undefined,
+    readingTime: 1,
     featured: note.featured,
     searchText: `${note.slug} ${note.title} ${note.subtitle ?? ""} ${note.type} ${note.tags.join(" ")} ${note.featured ? "featured" : ""}`,
   }));

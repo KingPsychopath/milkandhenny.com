@@ -154,6 +154,10 @@ async function updateShareLink(
 ): Promise<{ link: ShareLink; token?: string } | null> {
   const current = await getShareById(id);
   if (!current || current.slug !== slug) return null;
+  const hasPinMutation = typeof updates.pinRequired === "boolean" || updates.pin !== undefined;
+  if (hasPinMutation && !isShareUsable(current)) {
+    throw new Error("Cannot update PIN on an expired or revoked share link.");
+  }
 
   let next = { ...current };
   const nowIso = new Date().toISOString();

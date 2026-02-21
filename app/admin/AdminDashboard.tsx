@@ -192,6 +192,7 @@ export function AdminDashboard() {
   const [transferCleanupLoading, setTransferCleanupLoading] = useState(false);
   const [transferNukeLoading, setTransferNukeLoading] = useState(false);
   const [transferStatusMessage, setTransferStatusMessage] = useState("");
+  const [copiedTransferId, setCopiedTransferId] = useState<string | null>(null);
   const [revokeLoading, setRevokeLoading] = useState<"admin" | "all" | null>(null);
   const [debugData, setDebugData] = useState<DebugResponse | null>(null);
 
@@ -399,6 +400,20 @@ export function AdminDashboard() {
       await navigator.clipboard.writeText(command);
       setCopiedCommand(key);
       setTimeout(() => setCopiedCommand(null), 1800);
+    } catch {
+      setErrorMessage("Clipboard write failed");
+    }
+  };
+
+  const copyTransferUrl = async (transferId: string) => {
+    try {
+      const url = `${window.location.origin}/t/${transferId}`;
+      await navigator.clipboard.writeText(url);
+      setCopiedTransferId(transferId);
+      setTransferStatus("Transfer URL copied.");
+      setTimeout(() => {
+        setCopiedTransferId((current) => (current === transferId ? null : current));
+      }, 1800);
     } catch {
       setErrorMessage("Clipboard write failed");
     }
@@ -1193,7 +1208,9 @@ export function AdminDashboard() {
                   <div className="min-w-0">
                     <p className="font-mono text-sm truncate">{transfer.title || "untitled"}</p>
                     <p className="font-mono text-xs theme-muted truncate">
-                      {transfer.id} · {transfer.fileCount} files · expires in {formatRemaining(transfer.remainingSeconds)}
+                      {transfer.id} · {transfer.fileCount} files · expires in{" "}
+                      {formatRemaining(transfer.remainingSeconds)} · until{" "}
+                      {new Date(transfer.expiresAt).toLocaleString()}
                     </p>
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
@@ -1204,6 +1221,14 @@ export function AdminDashboard() {
                     >
                       open
                     </Link>
+                    <button
+                      type="button"
+                      onClick={() => void copyTransferUrl(transfer.id)}
+                      className="font-mono text-xs theme-muted hover:text-[var(--foreground)] transition-colors"
+                      title="Copy the public transfer URL."
+                    >
+                      {copiedTransferId === transfer.id ? "copied" : "copy"}
+                    </button>
                     <button
                       type="button"
                       disabled={transferActionLoading === transfer.id}

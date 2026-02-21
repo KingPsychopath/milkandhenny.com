@@ -195,7 +195,7 @@ export function SearchableWordList({ items }: Props) {
                   >
                     <div className="flex flex-wrap items-center justify-between gap-2 font-mono text-xs theme-muted">
                       <span className="uppercase">{typeChip(item.type)}</span>
-                      <span>{item.dateLabel}</span>
+                      <span>{item.readingTime ?? 1} min · {item.dateLabel}</span>
                     </div>
                     <h2 className="mt-2 font-serif text-xl sm:text-2xl text-foreground group-hover:opacity-70 transition-opacity leading-snug">
                       {item.title}

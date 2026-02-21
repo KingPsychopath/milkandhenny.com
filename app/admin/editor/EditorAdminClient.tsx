@@ -85,6 +85,10 @@ function formatBytes(bytes: number): string {
   return `${size.toFixed(size >= 10 || index === 0 ? 0 : 1)} ${units[index]}`;
 }
 
+function isExpiredShare(link: ShareLink): boolean {
+  return new Date(link.expiresAt).getTime() <= Date.now();
+}
+
 export function EditorAdminClient() {
   const [notes, setNotes] = useState<NoteMeta[]>([]);
   const [selectedSlug, setSelectedSlug] = useState("");
@@ -456,6 +460,10 @@ export function EditorAdminClient() {
   }
 
   async function toggleSharePin(link: ShareLink) {
+    if (link.revokedAt || isExpiredShare(link)) {
+      setError("Cannot update PIN on an expired or revoked share link.");
+      return;
+    }
     const enable = !link.pinRequired;
     const pin = enable ? window.prompt("Set PIN for this link") ?? "" : null;
     if (enable && !pin) return;
@@ -1021,39 +1029,53 @@ export function EditorAdminClient() {
                 {shares.length === 0 ? (
                   <p className="font-mono text-xs theme-muted">no share links</p>
                 ) : (
-                  shares.map((link) => (
-                    <div key={link.id} className="border theme-border rounded p-3">
-                      <p className="font-mono text-xs">{link.id}</p>
-                      <p className="font-mono text-micro theme-muted mt-1">
-                        expires {new Date(link.expiresAt).toLocaleString()} · {link.revokedAt ? "revoked" : "active"} ·{" "}
-                        {link.pinRequired ? "pin on" : "pin off"}
-                      </p>
-                      <div className="mt-2 flex flex-wrap gap-3 font-mono text-xs">
-                        {!link.revokedAt && (
-                          <button type="button" onClick={() => void copyShareLink(link)} className="underline">
-                            copy link
-                          </button>
-                        )}
-                        {!link.revokedAt && (
-                          <button type="button" onClick={() => void rotateShare(link, "rotate")} className="underline">
-                            reissue url
-                          </button>
-                        )}
-                        <button type="button" onClick={() => void toggleSharePin(link)} className="underline">
-                          {link.pinRequired ? "remove pin" : "require pin"}
-                        </button>
-                        {!link.revokedAt && (
+                  shares.map((link) => {
+                    const isExpired = isExpiredShare(link);
+                    const isRevoked = !!link.revokedAt;
+                    const canManagePin = !isExpired && !isRevoked;
+                    const statusLabel = isRevoked ? "revoked" : isExpired ? "expired" : "active";
+                    return (
+                      <div key={link.id} className="border theme-border rounded p-3">
+                        <p className="font-mono text-xs">{link.id}</p>
+                        <p className="font-mono text-micro theme-muted mt-1">
+                          expires {new Date(link.expiresAt).toLocaleString()} · {statusLabel} ·{" "}
+                          {link.pinRequired ? "pin on" : "pin off"}
+                        </p>
+                        <div className="mt-2 flex flex-wrap gap-3 font-mono text-xs">
+                          {!isRevoked && (
+                            <button type="button" onClick={() => void copyShareLink(link)} className="underline">
+                              copy link
+                            </button>
+                          )}
+                          {!isRevoked && (
+                            <button type="button" onClick={() => void rotateShare(link, "rotate")} className="underline">
+                              reissue url
+                            </button>
+                          )}
                           <button
                             type="button"
-                            onClick={() => void revokeShare(link)}
-                            className="text-[var(--prose-hashtag)]"
+                            onClick={() => void toggleSharePin(link)}
+                            disabled={!canManagePin}
+                            className="underline disabled:no-underline disabled:opacity-50"
+                            title={
+                              canManagePin ? undefined : "PIN can only be changed while the link is active."
+                            }
                           >
-                            revoke
+                            {link.pinRequired ? "remove pin" : "require pin"}
                           </button>
-                        )}
+                          {!isRevoked && (
+                            <button
+                              type="button"
+                              onClick={() => void revokeShare(link)}
+                              className="text-[var(--prose-hashtag)]"
+                            >
+                              revoke
+                            </button>
+                          )}
+                        </div>
                       </div>
-                    </div>
-                  ))
+                    );
+                  })
                 )}
               </div>
             </div>
