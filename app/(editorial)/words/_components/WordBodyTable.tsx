@@ -126,6 +126,57 @@ function downloadTextFile(filename: string, contents: string, contentType: strin
   URL.revokeObjectURL(url);
 }
 
+function ExpandIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false" className="prose-table-icon">
+      <path d="M8 3H3v5M16 3h5v5M8 21H3v-5M16 21h5v-5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M9 4H4v5M15 4h5v5M9 20H4v-5M15 20h5v-5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" opacity="0.65" />
+    </svg>
+  );
+}
+
+function CollapseIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false" className="prose-table-icon">
+      <path d="M4 9h5V4M20 9h-5V4M4 15h5v5M20 15h-5v5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function DownloadIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false" className="prose-table-icon">
+      <path d="M12 4v10m0 0 4-4m-4 4-4-4M4 20h16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function MarkdownIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false" className="prose-table-icon">
+      <path d="M6 4h9l5 5v11a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Z" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
+      <path d="M15 4v5h5M8 16h8M8 12h5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function CopyIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false" className="prose-table-icon">
+      <rect x="9" y="9" width="11" height="11" rx="2" fill="none" stroke="currentColor" strokeWidth="1.8" />
+      <rect x="4" y="4" width="11" height="11" rx="2" fill="none" stroke="currentColor" strokeWidth="1.8" opacity="0.65" />
+    </svg>
+  );
+}
+
+function CheckIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false" className="prose-table-icon">
+      <path d="m5 12 4 4 10-10" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
 export function WordBodyTable({
   children,
   ...props
@@ -185,21 +236,41 @@ export function WordBodyTable({
       <div className="prose-table-footer">
         <button
           type="button"
-          className="prose-table-button"
+          className="prose-table-button prose-table-icon-button"
           onClick={() => setIsGlobalExpanded((prev) => !prev)}
           aria-expanded={isGlobalExpanded}
+          aria-label={isGlobalExpanded ? "collapse table" : "expand table"}
+          title={isGlobalExpanded ? "collapse table" : "expand table"}
         >
-          {isGlobalExpanded ? "collapse table" : "expand table"}
+          {isGlobalExpanded ? <CollapseIcon /> : <ExpandIcon />}
         </button>
         <div className="prose-table-footer-actions">
-          <button type="button" className="prose-table-button" onClick={handleDownloadCsv}>
-            download csv
+          <button
+            type="button"
+            className="prose-table-button prose-table-icon-button"
+            onClick={handleDownloadCsv}
+            aria-label="download csv"
+            title="download csv"
+          >
+            <MarkdownIcon />
           </button>
-          <button type="button" className="prose-table-button" onClick={handleDownloadMarkdown}>
-            download markdown
+          <button
+            type="button"
+            className="prose-table-button prose-table-icon-button"
+            onClick={handleDownloadMarkdown}
+            aria-label="download markdown"
+            title="download markdown"
+          >
+            <DownloadIcon />
           </button>
-          <button type="button" className="prose-table-button" onClick={handleCopy}>
-            {copied ? "copied" : "copy"}
+          <button
+            type="button"
+            className="prose-table-button prose-table-icon-button"
+            onClick={handleCopy}
+            aria-label={copied ? "copied" : "copy"}
+            title={copied ? "copied" : "copy"}
+          >
+            {copied ? <CheckIcon /> : <CopyIcon />}
           </button>
         </div>
       </div>

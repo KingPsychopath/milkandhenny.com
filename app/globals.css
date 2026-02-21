@@ -312,6 +312,20 @@
     min-height: 44px;
   }
 
+  .prose-blog .prose-table-icon-button {
+    width: 44px;
+    min-width: 44px;
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .prose-blog .prose-table-icon {
+    width: 18px;
+    height: 18px;
+  }
+
   .prose-blog .prose-table-button:hover {
     color: var(--prose-heading);
     border-color: var(--stone-400);
