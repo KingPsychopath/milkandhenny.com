@@ -139,7 +139,7 @@ Markdown references:
 
 - Word-specific image/file:
   - `![hero](words/media/my-word-slug/hero.webp)`
-  - Short form (when rendering that word): `![hero](/hero.webp)`
+  - Short form (when rendering that word): `![hero](hero.webp)`
 - Shared reusable image/file:
   - `![logo](words/assets/brand-kit/logo.webp)`
   - Short form: `![logo](assets/brand-kit/logo.webp)`

@@ -66,7 +66,7 @@ function markdownLabelFromFilename(filename: string): string {
 
 function shortWordSnippet(filename: string, kind: string): string {
   const label = markdownLabelFromFilename(filename);
-  const path = `/${filename}`;
+  const path = filename;
   if (kind === "image" || kind === "video" || kind === "gif") {
     return `![${label}](${path})`;
   }

@@ -1,7 +1,7 @@
 import Link from "next/link";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { PostBody } from "@/app/(editorial)/blog/[slug]/PostBody";
+import { WordBody } from "@/app/(editorial)/words/_components/WordBody";
 import { UnlockNoteClient } from "@/app/(editorial)/notes/[slug]/UnlockNoteClient";
 import { Breadcrumbs } from "@/components/Breadcrumbs";
 import { JumpRail } from "@/components/JumpRail";
@@ -197,9 +197,8 @@ export default async function WordSlugPage({ params, searchParams }: Props) {
   const canRead = await canReadNoteInServerContext(note.meta);
   const isPrivateLocked = note.meta.visibility === "private" && !canRead;
   const readingTime = canRead ? estimateReadingTime(note.markdown) : 0;
-  const isBlog = note.meta.type === "blog";
   const published = note.meta.publishedAt ?? note.meta.updatedAt;
-  const headings = canRead && isBlog ? extractHeadings(note.markdown) : [];
+  const headings = canRead ? extractHeadings(note.markdown) : [];
   const albums = canRead ? resolveAlbumsFromContent(note.markdown) : {};
   const heroImage = canRead && note.meta.image ? resolveWordContentRef(note.meta.image, slug) : "";
   const pageTitle = isPrivateLocked ? "private page" : note.meta.title;
@@ -255,7 +254,9 @@ export default async function WordSlugPage({ params, searchParams }: Props) {
                   <>
                     <time dateTime={published}>{formatDate(published)}</time>
                     <span>·</span>
-                    {isBlog ? <span>{readingTime} min read</span> : <span>{note.meta.type}</span>}
+                    <span>{note.meta.type}</span>
+                    <span>·</span>
+                    <span>{readingTime} min read</span>
                     {note.meta.featured && (
                       <>
                         <span>·</span>
@@ -278,7 +279,7 @@ export default async function WordSlugPage({ params, searchParams }: Props) {
               ) : null}
             </div>
             <h1 className="font-serif text-3xl sm:text-4xl text-foreground leading-tight tracking-tight mt-4">
-              {!isPrivateLocked && isBlog ? highlightTitle(note.meta.title) : pageTitle}
+              {!isPrivateLocked ? highlightTitle(pageTitle) : pageTitle}
             </h1>
             {pageSubtitle && (
               <p className="mt-4 font-serif theme-subtle text-lg leading-relaxed">
@@ -295,7 +296,7 @@ export default async function WordSlugPage({ params, searchParams }: Props) {
           ) : null}
 
           {canRead ? (
-            <PostBody content={note.markdown} wordSlug={slug} albums={albums} />
+            <WordBody content={note.markdown} wordSlug={slug} albums={albums} />
           ) : (
             <UnlockNoteClient slug={slug} shareToken={share ?? ""} />
           )}

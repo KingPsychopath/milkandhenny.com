@@ -5,10 +5,10 @@ import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { rehypeHashtags } from "@/lib/markdown/rehype-hashtags";
 import { rehypeSlug } from "@/lib/markdown/rehype-slug";
-import { AlbumEmbed, type EmbeddedAlbum, type EmbedVariant } from "../_components/AlbumEmbed";
+import { AlbumEmbed, type EmbeddedAlbum, type EmbedVariant } from "./AlbumEmbed";
 import { resolveWordContentRef } from "@/features/media/storage";
 
-type PostBodyProps = {
+type WordBodyProps = {
   content: string;
   wordSlug?: string;
   /**
@@ -182,8 +182,8 @@ function withAlbumEmbeds(albums: Record<string, EmbeddedAlbum>, wordSlug?: strin
   };
 }
 
-/** Renders markdown content as styled prose. Hashtags (#word) are styled via rehype-hashtags. */
-export function PostBody({ content, wordSlug, albums = {} }: PostBodyProps) {
+/** Renders words markdown content as styled prose. Hashtags (#word) are styled via rehype-hashtags. */
+export function WordBody({ content, wordSlug, albums = {} }: WordBodyProps) {
   const hasAlbums = Object.keys(albums).length > 0;
 
   const components = React.useMemo(

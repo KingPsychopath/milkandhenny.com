@@ -45,6 +45,26 @@ type SharedWordSummary = {
   activeShareCount: number;
 };
 
+type WordMediaItem = {
+  key: string;
+  filename: string;
+  kind: "image" | "video" | "gif" | "audio" | "file";
+  size: number;
+  lastModified?: string;
+  url: string;
+  markdown: string;
+  shortMarkdown?: string;
+  assetId?: string;
+};
+
+type WordMediaResponse = {
+  slug: string;
+  assetsIncluded?: boolean;
+  pageMedia?: WordMediaItem[];
+  assets?: WordMediaItem[];
+  error?: string;
+};
+
 function buildShareUrl(slug: string, token: string): string {
   return `${window.location.origin}/words/${slug}?share=${encodeURIComponent(token)}`;
 }
@@ -55,6 +75,14 @@ function featuredButtonClass(isFeatured: boolean): string {
       ? "border-[var(--foreground)] text-[var(--foreground)]"
       : "theme-border theme-muted hover:text-[var(--foreground)]"
   }`;
+}
+
+function formatBytes(bytes: number): string {
+  if (!Number.isFinite(bytes) || bytes <= 0) return "0 b";
+  const units = ["b", "kb", "mb", "gb"];
+  const index = Math.min(units.length - 1, Math.floor(Math.log(bytes) / Math.log(1024)));
+  const size = bytes / 1024 ** index;
+  return `${size.toFixed(size >= 10 || index === 0 ? 0 : 1)} ${units[index]}`;
 }
 
 export function EditorAdminClient() {
@@ -92,6 +120,13 @@ export function EditorAdminClient() {
   const [filterType, setFilterType] = useState<WordType | "all">("all");
   const [filterVisibility, setFilterVisibility] = useState<NoteVisibility | "all">("all");
   const [filterTag, setFilterTag] = useState("");
+  const [mediaSearchQuery, setMediaSearchQuery] = useState("");
+  const [pageMedia, setPageMedia] = useState<WordMediaItem[]>([]);
+  const [sharedAssets, setSharedAssets] = useState<WordMediaItem[]>([]);
+  const [mediaLoading, setMediaLoading] = useState(false);
+  const [mediaError, setMediaError] = useState("");
+  const [mediaCopied, setMediaCopied] = useState<string | null>(null);
+  const [assetsHydrated, setAssetsHydrated] = useState(false);
 
   const parseTags = useCallback((raw: string): string[] => {
     return [...new Set(raw.split(",").map((t) => t.trim().toLowerCase()).filter(Boolean))];
@@ -136,6 +171,56 @@ export function EditorAdminClient() {
     } catch {
       // Non-fatal for editor UX.
     }
+  }, []);
+
+  const loadWordMedia = useCallback(
+    async (slug: string, forceAssets = false) => {
+      if (!slug) return;
+
+      setMediaLoading(true);
+      setMediaError("");
+      try {
+        const params = new URLSearchParams();
+        params.set("slug", slug);
+        if (!forceAssets && assetsHydrated) {
+          params.set("includeAssets", "false");
+        }
+
+        const res = await fetch(`/api/admin/word-media?${params.toString()}`);
+        const data = (await res.json().catch(() => ({}))) as WordMediaResponse;
+        if (!res.ok) throw new Error(data.error ?? "Failed to load media library");
+
+        setPageMedia(data.pageMedia ?? []);
+        if (data.assetsIncluded) {
+          setSharedAssets(data.assets ?? []);
+          setAssetsHydrated(true);
+        }
+      } catch (err) {
+        setMediaError(err instanceof Error ? err.message : "Failed to load media library");
+      } finally {
+        setMediaLoading(false);
+      }
+    },
+    [assetsHydrated]
+  );
+
+  const copySnippet = useCallback(async (snippet: string, copyId: string) => {
+    try {
+      await navigator.clipboard.writeText(snippet);
+      setMediaCopied(copyId);
+      setStatus("snippet copied");
+      setTimeout(() => setMediaCopied((current) => (current === copyId ? null : current)), 1200);
+    } catch {
+      setError("Unable to copy snippet");
+    }
+  }, []);
+
+  const appendSnippet = useCallback((snippet: string) => {
+    setEditMarkdown((prev) => {
+      const base = prev.trimEnd();
+      return base ? `${base}\n\n${snippet}` : snippet;
+    });
+    setStatus("snippet appended");
   }, []);
 
   const loadWord = useCallback(async (slug: string) => {
@@ -193,9 +278,40 @@ export function EditorAdminClient() {
     if (selectedSlug) void loadWord(selectedSlug);
   }, [selectedSlug, loadWord]);
 
+  useEffect(() => {
+    if (selectedSlug) void loadWordMedia(selectedSlug);
+  }, [selectedSlug, loadWordMedia]);
+
+  useEffect(() => {
+    if (!selectedSlug) {
+      setPageMedia([]);
+      setMediaSearchQuery("");
+    }
+  }, [selectedSlug]);
+
   const selected = useMemo(
     () => notes.find((n) => n.slug === selectedSlug) ?? null,
     [notes, selectedSlug]
+  );
+
+  const mediaQuery = mediaSearchQuery.trim().toLowerCase();
+  const filteredPageMedia = useMemo(
+    () =>
+      pageMedia.filter((item) => {
+        if (!mediaQuery) return true;
+        const haystack = `${item.filename} ${item.key}`.toLowerCase();
+        return haystack.includes(mediaQuery);
+      }),
+    [mediaQuery, pageMedia]
+  );
+  const filteredSharedAssets = useMemo(
+    () =>
+      sharedAssets.filter((item) => {
+        if (!mediaQuery) return true;
+        const haystack = `${item.assetId ?? ""} ${item.filename} ${item.key}`.toLowerCase();
+        return haystack.includes(mediaQuery);
+      }),
+    [mediaQuery, sharedAssets]
   );
 
   async function createWord() {
@@ -734,27 +850,162 @@ export function EditorAdminClient() {
                 </button>
               </div>
 
-              {showPreview ? (
-                <div className="border theme-border rounded p-3 prose-blog font-serif">
-                  <ReactMarkdown remarkPlugins={[remarkGfm]}>{editMarkdown}</ReactMarkdown>
-                </div>
-              ) : (
-                <textarea
-                  value={editMarkdown}
-                  onChange={(e) => setEditMarkdown(e.target.value)}
-                  rows={14}
-                  className="w-full bg-transparent border theme-border rounded px-3 py-2 font-mono text-xs"
-                />
-              )}
+              <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
+                <div className="space-y-3">
+                  {showPreview ? (
+                    <div className="border theme-border rounded p-3 prose-blog font-serif">
+                      <ReactMarkdown remarkPlugins={[remarkGfm]}>{editMarkdown}</ReactMarkdown>
+                    </div>
+                  ) : (
+                    <textarea
+                      value={editMarkdown}
+                      onChange={(e) => setEditMarkdown(e.target.value)}
+                      rows={14}
+                      className="w-full bg-transparent border theme-border rounded px-3 py-2 font-mono text-xs"
+                    />
+                  )}
 
-              <button
-                type="button"
-                onClick={() => void saveWord()}
-                disabled={busy}
-                className="font-mono text-xs px-3 py-2 rounded border theme-border"
-              >
-                {busy ? "saving..." : "save word"}
-              </button>
+                  <button
+                    type="button"
+                    onClick={() => void saveWord()}
+                    disabled={busy}
+                    className="font-mono text-xs px-3 py-2 rounded border theme-border"
+                  >
+                    {busy ? "saving..." : "save word"}
+                  </button>
+                </div>
+
+                <aside className="border theme-border rounded-md p-3 space-y-3 h-fit max-h-[720px] overflow-auto">
+                  <div className="flex items-center justify-between">
+                    <h3 className="font-mono text-xs theme-muted">media library</h3>
+                    <button
+                      type="button"
+                      className="font-mono text-xs underline"
+                      onClick={() => {
+                        if (selectedSlug) void loadWordMedia(selectedSlug, true);
+                      }}
+                    >
+                      refresh
+                    </button>
+                  </div>
+                  <input
+                    value={mediaSearchQuery}
+                    onChange={(e) => setMediaSearchQuery(e.target.value)}
+                    placeholder="search files or asset id"
+                    className="w-full bg-transparent border-b theme-border outline-none font-mono text-xs py-2"
+                  />
+                  {mediaLoading ? <p className="font-mono text-xs theme-muted">loading media...</p> : null}
+                  {mediaError ? <p className="font-mono text-xs text-[var(--prose-hashtag)]">{mediaError}</p> : null}
+
+                  <div className="space-y-2">
+                    <p className="font-mono text-xs theme-muted">
+                      this page ({filteredPageMedia.length})
+                    </p>
+                    {filteredPageMedia.length === 0 ? (
+                      <p className="font-mono text-micro theme-faint">no media files for this slug</p>
+                    ) : (
+                      filteredPageMedia.map((item) => (
+                        <div key={item.key} className="border theme-border rounded p-2 space-y-1">
+                          <p className="font-mono text-xs truncate">{item.filename}</p>
+                          <p className="font-mono text-micro theme-faint">{formatBytes(item.size)}</p>
+                          <code className="font-mono text-micro theme-muted block truncate">{item.markdown}</code>
+                          <div className="flex items-center gap-3 font-mono text-micro">
+                            <button
+                              type="button"
+                              className="underline"
+                              onClick={() => void copySnippet(item.markdown, `media-${item.key}`)}
+                            >
+                              {mediaCopied === `media-${item.key}` ? "copied" : "copy"}
+                            </button>
+                            <button
+                              type="button"
+                              className="underline"
+                              onClick={() => appendSnippet(item.markdown)}
+                            >
+                              append
+                            </button>
+                            {item.shortMarkdown ? (
+                              <button
+                                type="button"
+                                className="underline"
+                                onClick={() =>
+                                  void copySnippet(item.shortMarkdown ?? "", `media-short-${item.key}`)
+                                }
+                              >
+                                {mediaCopied === `media-short-${item.key}` ? "copied short" : "copy short"}
+                              </button>
+                            ) : null}
+                            {item.shortMarkdown ? (
+                              <button
+                                type="button"
+                                className="underline"
+                                onClick={() => appendSnippet(item.shortMarkdown ?? "")}
+                              >
+                                append short
+                              </button>
+                            ) : null}
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+
+                  <div className="space-y-2">
+                    <p className="font-mono text-xs theme-muted">
+                      shared assets ({filteredSharedAssets.length})
+                    </p>
+                    {filteredSharedAssets.length === 0 ? (
+                      <p className="font-mono text-micro theme-faint">no shared assets yet</p>
+                    ) : (
+                      filteredSharedAssets.map((item) => (
+                        <div key={item.key} className="border theme-border rounded p-2 space-y-1">
+                          <p className="font-mono text-xs truncate">
+                            {item.assetId ? `${item.assetId}/` : ""}{item.filename}
+                          </p>
+                          <p className="font-mono text-micro theme-faint">{formatBytes(item.size)}</p>
+                          <code className="font-mono text-micro theme-muted block truncate">{item.markdown}</code>
+                          <div className="flex items-center gap-3 font-mono text-micro">
+                            <button
+                              type="button"
+                              className="underline"
+                              onClick={() => void copySnippet(item.markdown, `asset-${item.key}`)}
+                            >
+                              {mediaCopied === `asset-${item.key}` ? "copied" : "copy"}
+                            </button>
+                            <button
+                              type="button"
+                              className="underline"
+                              onClick={() => appendSnippet(item.markdown)}
+                            >
+                              append
+                            </button>
+                            {item.shortMarkdown ? (
+                              <button
+                                type="button"
+                                className="underline"
+                                onClick={() =>
+                                  void copySnippet(item.shortMarkdown ?? "", `asset-short-${item.key}`)
+                                }
+                              >
+                                {mediaCopied === `asset-short-${item.key}` ? "copied short" : "copy short"}
+                              </button>
+                            ) : null}
+                            {item.shortMarkdown ? (
+                              <button
+                                type="button"
+                                className="underline"
+                                onClick={() => appendSnippet(item.shortMarkdown ?? "")}
+                              >
+                                append short
+                              </button>
+                            ) : null}
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </aside>
+              </div>
             </div>
           ) : null}
 

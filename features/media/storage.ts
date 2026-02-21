@@ -22,6 +22,7 @@ const INTERNAL_ROUTE_PREFIXES = [
   "/api/",
   "/feed.xml",
 ] as const;
+const TYPED_SLUG_MEDIA_REF = /^(blog|note|recipe|review)\/([a-z0-9]+(?:-[a-z0-9]+)*)\/(.+)$/i;
 
 /* ─── Album URLs ─── */
 
@@ -94,7 +95,10 @@ function resolveImageSrc(src: string): string {
  *   - hero.webp
  */
 function resolveWordContentRef(ref: string, wordSlug?: string): string {
-  const trimmed = ref.trim();
+  const extractedRef = ref.trim();
+  if (!extractedRef || extractedRef.includes("\0")) return "";
+  const markdownRefMatch = extractedRef.match(/^!?\[[^\]]*]\((\S+)(?:\s+["'][^"']*["'])?\)$/);
+  const trimmed = markdownRefMatch ? markdownRefMatch[1].trim() : extractedRef;
   if (!trimmed || trimmed.includes("\0")) return "";
   if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) return trimmed;
   if (trimmed.startsWith("#") || trimmed.startsWith("?")) return trimmed;
@@ -116,7 +120,20 @@ function resolveWordContentRef(ref: string, wordSlug?: string): string {
     return getImageUrl(`words/assets/${normalized.slice("assets/".length)}`);
   }
 
+  const typedMatch = normalized.match(TYPED_SLUG_MEDIA_REF);
+  if (typedMatch) {
+    const [, , slug, rest] = typedMatch;
+    if (!wordSlug || slug === wordSlug) {
+      return getImageUrl(`words/media/${slug}/${rest}`);
+    }
+  }
+
   if (trimmed.startsWith("/") && INTERNAL_ROUTE_PREFIXES.some((prefix) => trimmed.startsWith(prefix))) {
+    return trimmed;
+  }
+
+  if (trimmed.startsWith("/")) {
+    // Default web semantics: a leading slash is a site-root path.
     return trimmed;
   }
 

@@ -22,12 +22,38 @@ type ListNoteOptions = {
   includeNonPublic?: boolean;
 };
 
+const SINGLE_SEGMENT_IMAGE_REF = /^\/[^/]+\.[a-z0-9]{1,8}$/i;
+const LEADING_WORDS_REF = /^\/words\/(?:media|assets)\//i;
+const LEADING_ASSETS_REF = /^\/assets\//i;
+const TYPED_SLUG_IMAGE_REF = /^\/?(?:blog|note|recipe|review)\/([a-z0-9]+(?:-[a-z0-9]+)*)\/(.+)$/i;
+
 function normaliseTags(tags?: string[]): string[] {
   if (!Array.isArray(tags)) return [];
   const cleaned = tags
     .map((t) => t.trim().toLowerCase())
     .filter(Boolean);
   return [...new Set(cleaned)];
+}
+
+function normaliseImageRef(value?: string): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  if (!trimmed) return undefined;
+
+  // Support pasting markdown snippets in the image field:
+  // ![alt](hero.webp) or ![alt](hero.webp "caption")
+  const markdownMatch = trimmed.match(/^!?\[[^\]]*]\((\S+)(?:\s+["'][^"']*["'])?\)$/);
+  const ref = markdownMatch ? markdownMatch[1] : trimmed;
+
+  if (SINGLE_SEGMENT_IMAGE_REF.test(ref)) return ref.slice(1);
+  if (LEADING_WORDS_REF.test(ref)) return ref.slice(1);
+  if (LEADING_ASSETS_REF.test(ref)) return ref.slice(1);
+  const typedMatch = ref.match(TYPED_SLUG_IMAGE_REF);
+  if (typedMatch) {
+    const [, slug, rest] = typedMatch;
+    return `words/media/${slug}/${rest}`;
+  }
+  return ref;
 }
 
 function normaliseNoteMeta(meta: NoteMeta): NoteMeta {
@@ -39,7 +65,7 @@ function normaliseNoteMeta(meta: NoteMeta): NoteMeta {
 
   return {
     ...meta,
-    image: meta.image?.trim() || undefined,
+    image: normaliseImageRef(meta.image),
     type,
     bodyKey,
     tags: normaliseTags(meta.tags),
@@ -182,7 +208,7 @@ async function createNote(input: {
     slug,
     title: input.title.trim(),
     subtitle: input.subtitle?.trim() || undefined,
-    image: input.image?.trim() || undefined,
+    image: normaliseImageRef(input.image),
     type,
     bodyKey,
     visibility,
@@ -245,7 +271,7 @@ async function updateNote(
         ? undefined
         : input.image === undefined
           ? existing.image
-          : input.image.trim() || undefined,
+          : normaliseImageRef(input.image),
     type: nextType,
     bodyKey: nextBodyKey,
     visibility: nextVisibility,
