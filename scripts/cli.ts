@@ -73,6 +73,8 @@ import {
   issueAdminToken,
   listTokenSessions,
   normalizeBaseUrl,
+  resolveCanonicalBaseUrl,
+  runAdminAuthDiagnostics,
   revokeRoleSessions,
 } from "./auth-ops";
 import {
@@ -1114,10 +1116,15 @@ async function cmdAuthListSessions(opts: {
   adminToken?: string;
   adminPassword?: string;
 }) {
-  const baseUrl = normalizeBaseUrl(opts.baseUrl || BASE_URL || "http://localhost:3000");
+  const requestedBaseUrl = normalizeBaseUrl(opts.baseUrl || BASE_URL || "http://localhost:3000");
+  const baseUrl = await resolveCanonicalBaseUrl(requestedBaseUrl);
 
   heading("Token sessions");
   log(`${dim("Base URL:")} ${baseUrl}`);
+  if (baseUrl !== requestedBaseUrl) {
+    log(`${dim("Input URL:")} ${requestedBaseUrl}`);
+    log(dim("Using canonical host to avoid auth-header loss on redirects."));
+  }
   console.log();
 
   const data = await withResolvedAdminToken(
@@ -1163,17 +1170,118 @@ async function cmdAuthListSessions(opts: {
   console.log();
 }
 
+function formatUnixSecondsForCli(epochSeconds?: number): string {
+  if (!epochSeconds || !Number.isFinite(epochSeconds)) return "—";
+  return new Date(epochSeconds * 1000).toLocaleString();
+}
+
+async function cmdAuthDiagnose(opts: {
+  baseUrl?: string;
+  adminToken?: string;
+  adminPassword?: string;
+}) {
+  const requestedBaseUrl = normalizeBaseUrl(opts.baseUrl || BASE_URL || "http://localhost:3000");
+  const baseUrl = await resolveCanonicalBaseUrl(requestedBaseUrl);
+  if (!opts.adminPassword && !opts.adminToken) {
+    throw new Error("Provide --admin-password (recommended) or --admin-token.");
+  }
+
+  heading("Auth diagnostics");
+  log(`${dim("Base URL:")} ${baseUrl}`);
+  if (baseUrl !== requestedBaseUrl) {
+    log(`${dim("Input URL:")} ${requestedBaseUrl}`);
+    log(dim("Using canonical host to avoid auth-header loss on redirects."));
+  }
+  console.log();
+
+  progress("Running auth probes...");
+  const report = await runAdminAuthDiagnostics({
+    baseUrl,
+    adminPassword: opts.adminPassword,
+    adminToken: opts.adminToken,
+  });
+  console.log();
+
+  if (report.verify) {
+    const verifyState = report.verify.ok
+      ? green(`ok (${report.verify.status ?? "n/a"})`)
+      : red(`failed (${report.verify.status ?? "n/a"})`);
+    log(`${dim("Verify:")} ${verifyState}${report.verify.error ? ` ${dim(report.verify.error)}` : ""}`);
+  } else {
+    log(`${dim("Verify:")} ${dim("skipped (token mode)")}`);
+  }
+
+  if (report.tokenClaims) {
+    const claims = report.tokenClaims;
+    const jtiShort =
+      typeof claims.jti === "string" && claims.jti.length > 22
+        ? `${claims.jti.slice(0, 10)}…${claims.jti.slice(-8)}`
+        : (claims.jti ?? "—");
+    log(
+      `${dim("Token:")} role=${claims.role ?? "?"} tv=${claims.tv ?? "?"} exp=${formatUnixSecondsForCli(claims.exp)} iat=${formatUnixSecondsForCli(claims.iat)} jti=${jtiShort}`
+    );
+  } else {
+    log(`${dim("Token:")} ${dim("not decoded")}`);
+  }
+  console.log();
+
+  if (report.probes.length === 0) {
+    log(yellow("No protected-route probes were run because no usable admin token was obtained."));
+    console.log();
+    return;
+  }
+
+  let failedCount = 0;
+  for (const probe of report.probes) {
+    const state = probe.ok
+      ? green(`ok (${probe.status ?? "n/a"})`)
+      : red(`failed (${probe.status ?? "n/a"})`);
+    if (!probe.ok) failedCount += 1;
+    log(`${dim(`${probe.method} ${probe.path}`.padEnd(34))} ${state} ${dim(`· ${probe.name}`)}`);
+    if (probe.error) {
+      log(dim(`  -> ${probe.error}`));
+    }
+  }
+  console.log();
+
+  if (failedCount === 0) {
+    log(green("✓ Auth flow healthy for this base URL."));
+    console.log();
+    return;
+  }
+
+  const hasVerifySuccess = report.verify?.ok ?? Boolean(opts.adminToken);
+  const hasUnauthorizedProtected = report.probes.some(
+    (probe) => probe.ok === false && probe.status === 401
+  );
+  if (hasVerifySuccess && hasUnauthorizedProtected) {
+    log(
+      yellow(
+        "Verify succeeded but protected routes returned 401. Check for AUTH_SECRET mismatch across deployments or a proxy stripping Authorization headers."
+      )
+    );
+  } else {
+    log(yellow("Auth diagnostics found failures. See probe errors above."));
+  }
+  console.log();
+}
+
 async function cmdAuthRevoke(opts: {
   baseUrl?: string;
   role: RevokeRole;
   adminToken?: string;
   adminPassword: string;
 }) {
-  const baseUrl = normalizeBaseUrl(opts.baseUrl || BASE_URL || "http://localhost:3000");
+  const requestedBaseUrl = normalizeBaseUrl(opts.baseUrl || BASE_URL || "http://localhost:3000");
+  const baseUrl = await resolveCanonicalBaseUrl(requestedBaseUrl);
   const role = opts.role;
 
   heading("Revoke token sessions");
   log(`${dim("Base URL:")} ${baseUrl}`);
+  if (baseUrl !== requestedBaseUrl) {
+    log(`${dim("Input URL:")} ${requestedBaseUrl}`);
+    log(dim("Using canonical host to avoid auth-header loss on redirects."));
+  }
   log(`${dim("Scope:")}    ${role}`);
   console.log();
 
@@ -2092,6 +2200,8 @@ function showHelp() {
     bucket info                              Show bucket usage & free tier %
 
   ${bold("Auth")} ${dim("(session security)")}
+    auth diagnose ${dim("[--admin-password <password> | --admin-token <jwt>] [--base-url http://localhost:3000]")}
+      ${dim("Runs verify + protected-route probes and prints precise auth failure points.")}
     auth revoke --admin-password ${dim("<password>")} ${dim("[--admin-token <jwt>] [--role admin|staff|upload|all] [--base-url http://localhost:3000]")}
       ${dim("Revokes token sessions by role. If token is omitted, CLI signs in with password first.")}
     auth sessions ${dim("[--admin-password <password> | --admin-token <jwt>] [--base-url http://localhost:3000]")}
@@ -3407,6 +3517,7 @@ async function interactiveAuth() {
   while (true) {
     const choice = await choose("Auth", [
       { label: "List token sessions", detail: "see active/revoked/expired tokens (Redis-backed)" },
+      { label: "Diagnose admin auth", detail: "verify + protected probes with exact failure points" },
       { label: "Revoke admin sessions", detail: red("destructive (logs out all admins)") },
       { label: "Revoke all role sessions", detail: red("destructive (staff + upload + admin)") },
     ]);
@@ -3424,6 +3535,14 @@ async function interactiveAuth() {
       }
       case 2: {
         const baseUrl = await promptBaseUrl();
+        const identity = await promptAdminIdentityForSessions();
+        if (!identity) break;
+        await safely(() => cmdAuthDiagnose({ baseUrl, ...identity }));
+        await pause();
+        break;
+      }
+      case 3: {
+        const baseUrl = await promptBaseUrl();
         const password = await ask("Admin password", { hint: "step-up confirmation (input visible)" });
         if (!password) break;
         await safely(() =>
@@ -3436,7 +3555,7 @@ async function interactiveAuth() {
         await pause();
         break;
       }
-      case 3: {
+      case 4: {
         const baseUrl = await promptBaseUrl();
         const password = await ask("Admin password", { hint: "step-up confirmation (input visible)" });
         if (!password) break;
@@ -3856,6 +3975,21 @@ async function direct() {
 
       case "auth":
         switch (subcommand) {
+          case "diagnose": {
+            const adminToken = getArg("admin-token");
+            const adminPassword = getArg("admin-password");
+            const baseUrl = getArg("base-url");
+            if (!adminToken && !adminPassword) {
+              throw new Error(
+                "Usage: pnpm cli auth diagnose [--admin-password <password> | --admin-token <jwt>] [--base-url http://localhost:3000]"
+              );
+            }
+            return cmdAuthDiagnose({
+              adminToken: adminToken ?? undefined,
+              adminPassword: adminPassword ?? undefined,
+              baseUrl: baseUrl ?? undefined,
+            });
+          }
           case "revoke": {
             const adminToken = getArg("admin-token");
             const adminPassword = getArg("admin-password");
