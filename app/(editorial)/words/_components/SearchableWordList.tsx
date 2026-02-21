@@ -3,10 +3,10 @@
 import Link from "next/link";
 import { useCallback, useMemo, useState } from "react";
 import { PostListItem } from "@/app/(editorial)/_components/PostListItem";
+import { WORD_TYPE_TABS, getWordTypeLabel } from "@/features/words/types";
 import type { WordType } from "@/features/words/types";
 
 const DEFAULT_PAGE_SIZE = 10;
-const TAB_ORDER: Array<WordType | "all"> = ["blog", "all", "recipe", "note", "review"];
 
 type WordListSummary = {
   slug: string;
@@ -36,11 +36,7 @@ function matchesSearch(searchText: string, query: string): boolean {
 }
 
 function formatTypeLabel(type: WordType | "all"): string {
-  if (type === "all") return "all";
-  if (type === "blog") return "blog";
-  if (type === "note") return "notes";
-  if (type === "recipe") return "recipes";
-  return "reviews";
+  return getWordTypeLabel(type, { plural: type !== "blog" });
 }
 
 function typeChip(type: WordType): string {
@@ -89,7 +85,7 @@ export function SearchableWordList({ items }: Props) {
   return (
     <section className="space-y-8">
       <div className="flex flex-wrap gap-2 font-mono text-xs">
-        {TAB_ORDER.map((type) => {
+        {WORD_TYPE_TABS.map((type) => {
           const isActive = type === activeType;
           return (
             <button

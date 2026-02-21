@@ -2,7 +2,6 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { SITE_NAME } from "@/lib/shared/config";
 import { requireAuthFromServerContext } from "@/features/auth/server";
-import { isNotesEnabled } from "@/features/notes/reader";
 import { EditorAdminClient } from "./EditorAdminClient";
 
 export const metadata: Metadata = {
@@ -12,14 +11,6 @@ export const metadata: Metadata = {
 };
 
 export default async function AdminEditorPage() {
-  if (!isNotesEnabled()) {
-    return (
-      <main id="main" className="min-h-dvh flex items-center justify-center px-6">
-        <p className="font-mono text-sm theme-muted">words feature is disabled (`NOTES_ENABLED=false`).</p>
-      </main>
-    );
-  }
-
   const auth = await requireAuthFromServerContext("admin");
   if (!auth.ok) {
     return (

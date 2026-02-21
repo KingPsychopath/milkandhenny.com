@@ -13,7 +13,7 @@
 
 import "server-only";
 
-import { createHash, createHmac, randomUUID, timingSafeEqual } from "crypto";
+import { createHash, createHmac, randomBytes, randomUUID, timingSafeEqual } from "crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { cookies, headers } from "next/headers";
 import { getRedis } from "@/lib/platform/redis";
@@ -172,6 +172,12 @@ async function getCurrentTokenVersion(role: RevocableRole): Promise<number | nul
 }
 
 /** Sign a JWT for the given role. Payload: { role, exp, iat, jti, tv }. */
+function generateTokenJti(): string {
+  // Include UUID + random bytes + timestamp so test/runtime entropy differences
+  // cannot accidentally produce the same session id.
+  return `${Date.now().toString(36)}-${randomUUID()}-${randomBytes(6).toString("hex")}`;
+}
+
 async function signToken(role: TokenRole): Promise<string | null> {
   const { secret } = getAuthSecretStatus();
   if (!secret) return null;
@@ -184,7 +190,7 @@ async function signToken(role: TokenRole): Promise<string | null> {
     role,
     iat: now,
     exp: now + TOKEN_EXPIRY_SECONDS_BY_ROLE[role],
-    jti: randomUUID(),
+    jti: generateTokenJti(),
     tv: tokenVersion,
   };
 

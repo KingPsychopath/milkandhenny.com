@@ -1,5 +1,5 @@
 import { deleteObjects, isConfigured, listObjects } from "@/lib/platform/r2";
-import { listNotes } from "@/features/notes/store";
+import { listWords } from "@/features/words/store";
 
 type FolderAggregate = {
   slug: string;
@@ -35,8 +35,13 @@ type WordMediaOrphanCleanupResult = {
   deletedFolders: number;
   deletedObjects: number;
   deletedBytes: number;
+  staleIncomingCandidates: number;
+  deletedIncomingObjects: number;
+  deletedIncomingBytes: number;
   cleanedAt: string;
 };
+
+const STALE_INCOMING_MIN_AGE_MS = 24 * 60 * 60 * 1000;
 
 function toIsoOrNull(value: Date | undefined): string | null {
   if (!value) return null;
@@ -57,12 +62,12 @@ async function listAllWordSlugs(): Promise<Set<string>> {
   let loops = 0;
 
   while (loops < 5000) {
-    const page = await listNotes({
+    const page = await listWords({
       includeNonPublic: true,
       limit: 100,
       cursor,
     });
-    for (const note of page.notes) {
+    for (const note of page.words) {
       slugs.add(note.slug);
     }
     if (!page.nextCursor || page.nextCursor === cursor) {
@@ -165,6 +170,9 @@ async function cleanupOrphanWordMediaFolders(): Promise<WordMediaOrphanCleanupRe
       deletedFolders: 0,
       deletedObjects: 0,
       deletedBytes: 0,
+      staleIncomingCandidates: 0,
+      deletedIncomingObjects: 0,
+      deletedIncomingBytes: 0,
       cleanedAt: new Date().toISOString(),
     };
   }
@@ -178,6 +186,9 @@ async function cleanupOrphanWordMediaFolders(): Promise<WordMediaOrphanCleanupRe
   let deletedFolders = 0;
   let deletedObjects = 0;
   let deletedBytes = 0;
+  let staleIncomingCandidates = 0;
+  let deletedIncomingObjects = 0;
+  let deletedIncomingBytes = 0;
 
   for (const folder of orphanFolders) {
     const keys = folder.keys ?? [];
@@ -185,6 +196,25 @@ async function cleanupOrphanWordMediaFolders(): Promise<WordMediaOrphanCleanupRe
     deletedObjects += await deleteObjects(keys);
     deletedBytes += folder.totalBytes;
     deletedFolders += 1;
+  }
+
+  const nowMs = Date.now();
+  const staleIncomingObjects = (
+    await Promise.all([listObjects("words/media/"), listObjects("words/assets/")])
+  )
+    .flat()
+    .filter(
+      (obj) =>
+        obj.key.includes("/incoming/") &&
+        !!obj.lastModified &&
+        nowMs - obj.lastModified.getTime() >= STALE_INCOMING_MIN_AGE_MS
+    );
+
+  staleIncomingCandidates = staleIncomingObjects.length;
+  if (staleIncomingCandidates > 0) {
+    const incomingKeys = staleIncomingObjects.map((obj) => obj.key);
+    deletedIncomingObjects = await deleteObjects(incomingKeys);
+    deletedIncomingBytes = staleIncomingObjects.reduce((sum, obj) => sum + obj.size, 0);
   }
 
   return {
@@ -196,6 +226,9 @@ async function cleanupOrphanWordMediaFolders(): Promise<WordMediaOrphanCleanupRe
     deletedFolders,
     deletedObjects,
     deletedBytes,
+    staleIncomingCandidates,
+    deletedIncomingObjects,
+    deletedIncomingBytes,
     cleanedAt: new Date().toISOString(),
   };
 }
@@ -210,4 +243,3 @@ export type {
   WordMediaOrphanSummary,
   WordMediaOrphanCleanupResult,
 };
-

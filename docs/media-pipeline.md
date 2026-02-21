@@ -50,21 +50,22 @@ OG images are pre-built JPGs served from R2 — zero runtime serverless invocati
 
 ---
 
-## Blog File Uploads
+## Words Media Uploads
 
-Media for blog posts is stored in R2 under `blog/{post-slug}/` and referenced directly in markdown. No manifest, no metadata store — the markdown file **is** the source of truth.
+Media for words content is stored in R2 under `words/media/{slug}/` and referenced directly in markdown. Shared reusable assets live under `words/assets/{assetId}/`.
 
 - **Images**: processed to WebP (max 1600px), rendered inline with captions
 - **Videos, GIFs, audio, PDFs, zips, etc.**: uploaded as-is, rendered as download links
 
 ```bash
-pnpm cli blog upload --slug <post-slug> --dir <path>   # Upload files (images → WebP, others raw)
-pnpm cli blog list <post-slug>                          # List uploaded files + markdown snippets
-pnpm cli blog delete <post-slug>                        # Delete ALL files for a post
-pnpm cli blog delete <post-slug> --file <filename>      # Delete a single file
+pnpm cli media upload --slug <word-slug> --dir <path>   # Upload files (images → WebP, others raw)
+pnpm cli media list --slug <word-slug>                   # List uploaded files + markdown snippets
+pnpm cli media delete --slug <word-slug>                 # Delete ALL files for a word
+pnpm cli media delete --slug <word-slug> --file <name>   # Delete a single file
+pnpm cli media upload --asset <asset-id> --dir <path>    # Upload shared reusable assets
 ```
 
-Web upload: `/upload` supports blog uploads via presigned PUT URLs (no file bytes pass through Vercel). For large batches, the CLI is still faster and easier to retry.
+Web upload: `/upload` supports words uploads via presigned PUT URLs (no file bytes pass through Vercel). For large batches, the CLI is still faster and easier to retry.
 
 ---
 
@@ -172,7 +173,7 @@ pnpm cli albums backfill-og --yes --force --strategy sharp  # All with sharp
 
 1. Updates `focalPoint` (manual) or `autoFocal` (detected) in `content/albums/{slug}.json`
 2. Downloads original from R2, re-crops to 1200×630, uploads new og variant
-3. Album embed thumbnails in blog posts use the focal point as CSS `object-position`
+3. Album embed thumbnails in words pages use the focal point as CSS `object-position`
 
 **When to manually override:** Only when auto-detection gets it wrong. Use `photos list <album>` to see focal points for each photo.
 
@@ -186,9 +187,9 @@ Checks `focalPoint` presets and `autoFocal` values (x, y in 0–100).
 
 ---
 
-## Blog Embed Cards
+## Words Embed Cards
 
-Standalone album links in blog posts (`[Title](/pics/slug)` on its own line) render as preview cards. Two variants:
+Standalone album links in words pages (`[Title](/pics/slug)` on its own line) render as preview cards. Two variants:
 
 - **Compact** (default): 4-thumb strip
 - **Masonry**: Pinterest-style flowing tiles (up to 6 photos). Use `[Title](/pics/slug#masonry)`.

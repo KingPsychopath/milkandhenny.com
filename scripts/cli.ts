@@ -1,6 +1,6 @@
 #!/usr/bin/env tsx
 /**
- * milk & henny — Album & R2 management CLI.
+ * milk & henny — Albums, words, transfers, and R2 management CLI.
  *
  * Usage:
  *   pnpm cli                                  Interactive mode
@@ -65,29 +65,31 @@ import {
   scanOrphanWordMediaFolders,
   cleanupOrphanWordMediaFolders,
   type WordMediaTarget,
-} from "./blog-ops";
+} from "./words-media-ops";
 import {
   REVOKE_ROLES,
   type RevokeRole,
   createStepUpToken,
+  issueAdminToken,
   listTokenSessions,
   normalizeBaseUrl,
   revokeRoleSessions,
 } from "./auth-ops";
 import {
-  cleanupNoteShares,
-  createNoteRecord,
-  createNoteShare,
-  deleteNoteRecord,
-  getNoteRecord,
-  listNoteRecords,
-  listNoteShares,
-  purgeNoteShares,
-  resetNoteShares,
-  revokeNoteShare,
-  updateNoteRecord,
-  updateNoteShare,
-} from "./notes-ops";
+  cleanupWordShares,
+  createWordRecord,
+  createWordShare,
+  deleteWordRecord,
+  getWordRecord,
+  listWordRecords,
+  listWordShares,
+  purgeWordShares,
+  resetWordShares,
+  revokeWordShare,
+  migrateLegacyWordsNamespace,
+  updateWordRecord,
+  updateWordShare,
+} from "./words-ops";
 import { isWordType, WORD_TYPES } from "@/features/words/types";
 import type { WordType } from "@/features/words/types";
 
@@ -997,14 +999,131 @@ async function cmdTransfersNuke() {
 
 /* ─── Auth command handlers ─── */
 
-async function cmdAuthListSessions(opts: { baseUrl?: string; adminToken: string }) {
+type CliAdminTokenCacheEntry = {
+  token: string;
+  expSec: number;
+};
+
+const cliAdminTokenCache = new Map<string, CliAdminTokenCacheEntry>();
+const CLI_ADMIN_TOKEN_REFRESH_SKEW_SECONDS = 60;
+
+function decodeJwtExp(token: string): number | null {
+  const parts = token.split(".");
+  if (parts.length !== 3) return null;
+  try {
+    const payload = JSON.parse(Buffer.from(parts[1], "base64url").toString("utf-8")) as {
+      exp?: number;
+    };
+    if (!Number.isFinite(payload.exp)) return null;
+    return Math.floor(payload.exp as number);
+  } catch {
+    return null;
+  }
+}
+
+function getCachedAdminToken(baseUrl: string): string | null {
+  const cached = cliAdminTokenCache.get(baseUrl);
+  if (!cached) return null;
+  const now = Math.floor(Date.now() / 1000);
+  if (cached.expSec - now <= CLI_ADMIN_TOKEN_REFRESH_SKEW_SECONDS) {
+    cliAdminTokenCache.delete(baseUrl);
+    return null;
+  }
+  return cached.token;
+}
+
+function cacheAdminToken(baseUrl: string, token: string): void {
+  const expSec = decodeJwtExp(token);
+  if (!expSec) return;
+  cliAdminTokenCache.set(baseUrl, { token, expSec });
+}
+
+function clearCachedAdminToken(baseUrl: string): void {
+  cliAdminTokenCache.delete(baseUrl);
+}
+
+function shouldRetryWithFreshAdminToken(error: unknown): boolean {
+  const message = error instanceof Error ? error.message.toLowerCase() : "";
+  if (!message) return false;
+  if (message.includes("invalid password")) return false;
+  return (
+    message.includes("unauthorized") ||
+    message.includes("(401)") ||
+    message.includes("step_up_invalid") ||
+    message.includes("invalid or expired")
+  );
+}
+
+async function resolveAdminTokenForCli(opts: {
+  baseUrl: string;
+  adminToken?: string;
+  adminPassword?: string;
+  forceRefresh?: boolean;
+}): Promise<string> {
+  const fromArg = opts.adminToken?.trim();
+  if (fromArg) return fromArg;
+  const password = opts.adminPassword?.trim();
+  if (!password) {
+    throw new Error("Provide --admin-password (recommended) or --admin-token.");
+  }
+
+  if (!opts.forceRefresh) {
+    const cached = getCachedAdminToken(opts.baseUrl);
+    if (cached) return cached;
+  } else {
+    clearCachedAdminToken(opts.baseUrl);
+  }
+
+  progress("Signing in as admin...");
+  const token = await issueAdminToken({
+    baseUrl: opts.baseUrl,
+    adminPassword: password,
+  });
+  cacheAdminToken(opts.baseUrl, token);
+  return token;
+}
+
+async function withResolvedAdminToken<T>(
+  opts: {
+    baseUrl: string;
+    adminToken?: string;
+    adminPassword?: string;
+  },
+  task: (adminToken: string) => Promise<T>
+): Promise<T> {
+  const initialToken = await resolveAdminTokenForCli(opts);
+
+  try {
+    return await task(initialToken);
+  } catch (error) {
+    if (opts.adminToken || !opts.adminPassword || !shouldRetryWithFreshAdminToken(error)) {
+      throw error;
+    }
+
+    progress("Refreshing admin session...");
+    const refreshedToken = await resolveAdminTokenForCli({
+      ...opts,
+      forceRefresh: true,
+    });
+    return task(refreshedToken);
+  }
+}
+
+async function cmdAuthListSessions(opts: {
+  baseUrl?: string;
+  adminToken?: string;
+  adminPassword?: string;
+}) {
   const baseUrl = normalizeBaseUrl(opts.baseUrl || BASE_URL || "http://localhost:3000");
 
   heading("Token sessions");
   log(`${dim("Base URL:")} ${baseUrl}`);
   console.log();
 
-  const data = await listTokenSessions({ baseUrl, adminToken: opts.adminToken });
+  const data = await withResolvedAdminToken(
+    { baseUrl, adminToken: opts.adminToken, adminPassword: opts.adminPassword },
+    (adminToken) => listTokenSessions({ baseUrl, adminToken })
+  );
   const sessions = Array.isArray(data.sessions) ? data.sessions : [];
   if (sessions.length === 0) {
     log(dim("No sessions found."));
@@ -1047,7 +1166,7 @@ async function cmdAuthListSessions(opts: { baseUrl?: string; adminToken: string 
 async function cmdAuthRevoke(opts: {
   baseUrl?: string;
   role: RevokeRole;
-  adminToken: string;
+  adminToken?: string;
   adminPassword: string;
 }) {
   const baseUrl = normalizeBaseUrl(opts.baseUrl || BASE_URL || "http://localhost:3000");
@@ -1058,20 +1177,25 @@ async function cmdAuthRevoke(opts: {
   log(`${dim("Scope:")}    ${role}`);
   console.log();
 
-  progress("Requesting step-up token...");
-  const stepUpData = await createStepUpToken({
-    baseUrl,
-    adminToken: opts.adminToken,
-    adminPassword: opts.adminPassword,
-  });
+  const revokeData = await withResolvedAdminToken(
+    { baseUrl, adminToken: opts.adminToken, adminPassword: opts.adminPassword },
+    async (adminToken) => {
+      progress("Requesting step-up token...");
+      const stepUpData = await createStepUpToken({
+        baseUrl,
+        adminToken,
+        adminPassword: opts.adminPassword,
+      });
 
-  progress("Revoking sessions...");
-  const revokeData = await revokeRoleSessions({
-    baseUrl,
-    adminToken: opts.adminToken,
-    stepUpToken: stepUpData.token,
-    role,
-  });
+      progress("Revoking sessions...");
+      return revokeRoleSessions({
+        baseUrl,
+        adminToken,
+        stepUpToken: stepUpData.token,
+        role,
+      });
+    }
+  );
 
   const revoked = Array.isArray(revokeData.revoked)
     ? (revokeData.revoked as Array<{ role: string; tokenVersion: number }>)
@@ -1264,7 +1388,7 @@ async function cmdWordsMediaPurgeStale(skipConfirm = false) {
   console.log();
 }
 
-/* ─── Notes command handlers ─── */
+/* ─── Words command handlers ─── */
 
 const NOTE_VISIBILITIES = ["public", "unlisted", "private"] as const;
 type NoteVisibility = (typeof NOTE_VISIBILITIES)[number];
@@ -1403,7 +1527,7 @@ function noteFrontmatter(note: {
   };
 }
 
-async function cmdNotesCreate(opts: {
+async function cmdWordsCreate(opts: {
   slug: string;
   title: string;
   markdown: string;
@@ -1417,8 +1541,8 @@ async function cmdNotesCreate(opts: {
   updatedAt?: string;
   publishedAt?: string;
 }) {
-  heading(`Create note: ${opts.slug}`);
-  const created = await createNoteRecord({
+  heading(`Create word: ${opts.slug}`);
+  const created = await createWordRecord({
     slug: opts.slug,
     title: opts.title,
     subtitle: opts.subtitle,
@@ -1437,7 +1561,7 @@ async function cmdNotesCreate(opts: {
   console.log();
 }
 
-async function cmdNotesUpload(opts: {
+async function cmdWordsUpload(opts: {
   slug: string;
   file: string;
   title?: string;
@@ -1451,10 +1575,10 @@ async function cmdNotesUpload(opts: {
   const abs = path.resolve(opts.file.replace(/^~/, process.env.HOME ?? "~"));
   const markdown = readMarkdownFile(abs);
 
-  const existing = await getNoteRecord(opts.slug);
+  const existing = await getWordRecord(opts.slug);
   if (existing) {
-    heading(`Update note from markdown file: ${opts.slug}`);
-    const updated = await updateNoteRecord(opts.slug, {
+    heading(`Update word from markdown file: ${opts.slug}`);
+    const updated = await updateWordRecord(opts.slug, {
       title: opts.title,
       subtitle: opts.subtitle,
       image: opts.image,
@@ -1464,14 +1588,14 @@ async function cmdNotesUpload(opts: {
       featured: opts.featured,
       markdown,
     });
-    if (!updated) throw new Error("Failed to update note");
+    if (!updated) throw new Error("Failed to update word");
     log(green(`✓ Updated ${opts.slug} from ${abs}`));
     console.log();
     return;
   }
 
-  heading(`Create note from markdown file: ${opts.slug}`);
-  await createNoteRecord({
+  heading(`Create word from markdown file: ${opts.slug}`);
+  await createWordRecord({
     slug: opts.slug,
     title: opts.title ?? opts.slug,
     subtitle: opts.subtitle,
@@ -1486,37 +1610,37 @@ async function cmdNotesUpload(opts: {
   console.log();
 }
 
-async function cmdNotesList(opts?: {
+async function cmdWordsList(opts?: {
   visibility?: NoteVisibility;
   type?: WordType;
   tag?: string;
   q?: string;
 }) {
-  heading("Notes");
-  const { notes } = await listNoteRecords({
+  heading("Words");
+  const { words } = await listWordRecords({
     includeNonPublic: true,
     visibility: opts?.visibility,
     type: opts?.type,
     tag: opts?.tag,
     q: opts?.q,
   });
-  if (notes.length === 0) {
-    log(dim("No notes found."));
+  if (words.length === 0) {
+    log(dim("No words found."));
     console.log();
     return;
   }
 
-  for (const note of notes) {
-    log(`${bold(note.slug)} ${dim(`(${note.type} · ${note.visibility}${note.featured ? " · featured" : ""})`)}`);
-    log(`  ${note.title}`);
-    if (note.subtitle) log(`  ${dim(note.subtitle)}`);
-    if (note.tags.length > 0) log(`  ${dim("#" + note.tags.join(" #"))}`);
-    log(`  ${dim(new Date(note.updatedAt).toLocaleString())}`);
+  for (const word of words) {
+    log(`${bold(word.slug)} ${dim(`(${word.type} · ${word.visibility}${word.featured ? " · featured" : ""})`)}`);
+    log(`  ${word.title}`);
+    if (word.subtitle) log(`  ${dim(word.subtitle)}`);
+    if (word.tags.length > 0) log(`  ${dim("#" + word.tags.join(" #"))}`);
+    log(`  ${dim(new Date(word.updatedAt).toLocaleString())}`);
     console.log();
   }
 }
 
-async function cmdNotesUpdate(
+async function cmdWordsUpdate(
   slug: string,
   opts: {
     title?: string;
@@ -1534,8 +1658,8 @@ async function cmdNotesUpdate(
     markdown = readMarkdownFile(opts.markdownFile);
   }
 
-  heading(`Update note: ${slug}`);
-  const updated = await updateNoteRecord(slug, {
+  heading(`Update word: ${slug}`);
+  const updated = await updateWordRecord(slug, {
     title: opts.title,
     subtitle: opts.subtitle,
     image: opts.image,
@@ -1545,33 +1669,33 @@ async function cmdNotesUpdate(
     featured: opts.featured,
     markdown,
   });
-  if (!updated) throw new Error(`Note "${slug}" not found`);
-  log(green("✓ Note updated"));
+  if (!updated) throw new Error(`Word "${slug}" not found`);
+  log(green("✓ Word updated"));
   console.log();
 }
 
-async function cmdNotesDelete(slug: string) {
-  heading(`Delete note: ${slug}`);
-  const ok = await confirm(`Delete note "${slug}"?`);
+async function cmdWordsDelete(slug: string) {
+  heading(`Delete word: ${slug}`);
+  const ok = await confirm(`Delete word "${slug}"?`);
   if (!ok) {
     log(dim("Cancelled."));
     console.log();
     return;
   }
-  const deleted = await deleteNoteRecord(slug);
-  if (!deleted) throw new Error(`Note "${slug}" not found`);
-  log(green("✓ Note deleted"));
+  const deleted = await deleteWordRecord(slug);
+  if (!deleted) throw new Error(`Word "${slug}" not found`);
+  log(green("✓ Word deleted"));
   console.log();
 }
 
-async function cmdNotesShareCreate(opts: {
+async function cmdWordsShareCreate(opts: {
   slug: string;
   expiresInDays?: number;
   pinRequired?: boolean;
   pin?: string;
 }) {
-  heading(`Create note share: ${opts.slug}`);
-  const created = await createNoteShare(opts.slug, {
+  heading(`Create share link: ${opts.slug}`);
+  const created = await createWordShare(opts.slug, {
     expiresInDays: opts.expiresInDays,
     pinRequired: opts.pinRequired,
     pin: opts.pin,
@@ -1581,9 +1705,9 @@ async function cmdNotesShareCreate(opts: {
   console.log();
 }
 
-async function cmdNotesShareList(slug: string) {
-  heading(`Note shares: ${slug}`);
-  const links = await listNoteShares(slug);
+async function cmdWordsShareList(slug: string) {
+  heading(`Share links: ${slug}`);
+  const links = await listWordShares(slug);
   if (links.length === 0) {
     log(dim("No share links."));
     console.log();
@@ -1602,13 +1726,13 @@ async function cmdNotesShareList(slug: string) {
   }
 }
 
-async function cmdNotesShareUpdate(
+async function cmdWordsShareUpdate(
   slug: string,
   id: string,
   opts: { pinRequired?: boolean; pin?: string | null; expiresInDays?: number; rotateToken?: boolean }
 ) {
-  heading(`Update share: ${id}`);
-  const updated = await updateNoteShare(slug, id, opts);
+  heading(`Update share link: ${id}`);
+  const updated = await updateWordShare(slug, id, opts);
   if (!updated) throw new Error("Share link not found.");
   log(green("✓ Share updated"));
   if (updated.url) {
@@ -1618,23 +1742,23 @@ async function cmdNotesShareUpdate(
   console.log();
 }
 
-async function cmdNotesShareRevoke(slug: string, id: string) {
-  heading(`Revoke share: ${id}`);
+async function cmdWordsShareRevoke(slug: string, id: string) {
+  heading(`Revoke share link: ${id}`);
   const ok = await confirm("Revoke this share link?");
   if (!ok) {
     log(dim("Cancelled."));
     console.log();
     return;
   }
-  const revoked = await revokeNoteShare(slug, id);
+  const revoked = await revokeWordShare(slug, id);
   if (!revoked) throw new Error("Share link not found.");
   log(green("✓ Share revoked"));
   console.log();
 }
 
-async function cmdNotesShareCleanup(opts: { slug?: string }) {
+async function cmdWordsShareCleanup(opts: { slug?: string }) {
   heading(opts.slug ? `Cleanup share links: ${opts.slug}` : "Cleanup share links");
-  const result = await cleanupNoteShares(opts.slug);
+  const result = await cleanupWordShares(opts.slug);
   log(green(`✓ Scanned ${result.scannedLinks} links across ${result.scannedSlugs} slug(s)`));
   log(green(`✓ Removed ${result.removedExpired} expired + ${result.removedRevoked} revoked links`));
   log(green(`✓ Removed ${result.staleIndexRemoved} stale index entries`));
@@ -1642,9 +1766,9 @@ async function cmdNotesShareCleanup(opts: { slug?: string }) {
   console.log();
 }
 
-async function cmdNotesSharePurge(opts: { slug?: string; all?: boolean }) {
+async function cmdWordsSharePurge(opts: { slug?: string; all?: boolean }) {
   if (!opts.slug && !opts.all) {
-    throw new Error("Usage: pnpm cli notes share purge --slug <slug> | --all");
+    throw new Error("Usage: pnpm cli words share purge --slug <slug> | --all");
   }
 
   heading(opts.slug ? `Purge share links: ${opts.slug}` : "Purge ALL share links");
@@ -1657,14 +1781,14 @@ async function cmdNotesSharePurge(opts: { slug?: string; all?: boolean }) {
     return;
   }
 
-  const result = await purgeNoteShares(opts.slug);
+  const result = await purgeWordShares(opts.slug);
   log(green(`✓ Purged ${result.deletedLinks} share link(s) across ${result.scannedSlugs} slug(s)`));
   console.log();
 }
 
-async function cmdNotesShareReset(all: boolean) {
+async function cmdWordsShareReset(all: boolean) {
   if (!all) {
-    throw new Error("Usage: pnpm cli notes share reset --all");
+    throw new Error("Usage: pnpm cli words share reset --all");
   }
 
   heading("Reset share link state");
@@ -1677,8 +1801,37 @@ async function cmdNotesShareReset(all: boolean) {
     return;
   }
 
-  const result = await resetNoteShares();
+  const result = await resetWordShares();
   log(green(`✓ Reset complete. Removed ${result.deletedLinks} links across ${result.scannedSlugs} slug(s).`));
+  console.log();
+}
+
+async function cmdWordsMigrateLegacy(purgeLegacy: boolean) {
+  heading("Migrate legacy words namespace");
+  if (purgeLegacy) {
+    log(red("This will purge legacy notes:* keys after migration."));
+    console.log();
+    const ok = await confirm("Continue?");
+    if (!ok) {
+      log(dim("Cancelled."));
+      console.log();
+      return;
+    }
+  }
+
+  const result = await migrateLegacyWordsNamespace({ purgeLegacy });
+  log(green(`✓ Found ${result.indexSlugsFound} legacy slug(s)`));
+  log(green(`✓ Migrated ${result.metaRecordsMigrated} metadata record(s)`));
+  log(green(`✓ Migrated ${result.shareRecordsMigrated} share record(s)`));
+  log(green(`✓ Migrated ${result.shareIndexMembersMigrated} share index member(s) across ${result.shareIndexSetsMigrated} set(s)`));
+  if (result.shareSlugsMigrated > 0) {
+    log(green(`✓ Migrated ${result.shareSlugsMigrated} tracked share slug(s)`));
+  }
+  if (purgeLegacy) {
+    log(green(`✓ Purged ${result.legacyKeysPurged} legacy key(s)`));
+  } else {
+    log(dim("Legacy keys kept. Re-run with --purge-legacy to remove old keys."));
+  }
   console.log();
 }
 
@@ -1693,12 +1846,12 @@ async function syncSingleNoteFile(absFile: string, rootDir: string): Promise<"cr
     return "skipped";
   }
 
-  const existing = await getNoteRecord(input.slug);
+  const existing = await getWordRecord(input.slug);
   const nextType = input.type ?? existing?.meta.type ?? "note";
   const createVisibility = input.visibility ?? (nextType === "blog" ? "public" : "private");
 
   if (existing) {
-    const updated = await updateNoteRecord(input.slug, {
+    const updated = await updateWordRecord(input.slug, {
       title: input.title,
       subtitle: input.subtitle ?? null,
       image: input.image ?? null,
@@ -1713,7 +1866,7 @@ async function syncSingleNoteFile(absFile: string, rootDir: string): Promise<"cr
     return "updated";
   }
 
-  await createNoteRecord({
+  await createWordRecord({
     slug: input.slug,
     title: input.title,
     subtitle: input.subtitle,
@@ -1731,13 +1884,13 @@ async function syncSingleNoteFile(absFile: string, rootDir: string): Promise<"cr
   return "created";
 }
 
-async function cmdNotesSync(opts: { dir: string }) {
+async function cmdWordsSync(opts: { dir: string }) {
   const rootDir = path.resolve(opts.dir.replace(/^~/, process.env.HOME ?? "~"));
   if (!fs.existsSync(rootDir) || !fs.statSync(rootDir).isDirectory()) {
     throw new Error(`Directory not found: ${rootDir}`);
   }
 
-  heading(`Sync notes from folder`);
+  heading("Sync words from folder");
   log(dim(rootDir));
   console.log();
 
@@ -1764,13 +1917,13 @@ async function cmdNotesSync(opts: { dir: string }) {
   console.log();
 }
 
-async function cmdNotesWatch(opts: { dir: string }) {
+async function cmdWordsWatch(opts: { dir: string }) {
   const rootDir = path.resolve(opts.dir.replace(/^~/, process.env.HOME ?? "~"));
   if (!fs.existsSync(rootDir) || !fs.statSync(rootDir).isDirectory()) {
     throw new Error(`Directory not found: ${rootDir}`);
   }
 
-  await cmdNotesSync({ dir: rootDir });
+  await cmdWordsSync({ dir: rootDir });
 
   heading("Watch mode");
   log(dim(`watching ${rootDir}`));
@@ -1806,43 +1959,43 @@ async function cmdNotesWatch(opts: { dir: string }) {
   });
 }
 
-async function cmdNotesPull(opts: { dir: string; type?: WordType; visibility?: NoteVisibility }) {
+async function cmdWordsPull(opts: { dir: string; type?: WordType; visibility?: NoteVisibility }) {
   const rootDir = path.resolve(opts.dir.replace(/^~/, process.env.HOME ?? "~"));
   fs.mkdirSync(rootDir, { recursive: true });
 
-  heading(`Pull notes to folder`);
+  heading("Pull words to folder");
   log(dim(rootDir));
   console.log();
 
-  const { notes } = await listNoteRecords({
+  const { words } = await listWordRecords({
     includeNonPublic: true,
     type: opts.type,
     visibility: opts.visibility,
     limit: 1000,
   });
-  if (notes.length === 0) {
-    log(dim("No notes found."));
+  if (words.length === 0) {
+    log(dim("No words found."));
     console.log();
     return;
   }
 
   let written = 0;
-  for (const note of notes) {
-    const record = await getNoteRecord(note.slug);
+  for (const word of words) {
+    const record = await getWordRecord(word.slug);
     if (!record) continue;
 
-    const typeDir = path.join(rootDir, note.type);
+    const typeDir = path.join(rootDir, word.type);
     fs.mkdirSync(typeDir, { recursive: true });
-    const outPath = path.join(typeDir, `${note.slug}.md`);
+    const outPath = path.join(typeDir, `${word.slug}.md`);
     const frontmatter = noteFrontmatter(record.meta);
     const withFrontmatter = matter.stringify(record.markdown, frontmatter);
     fs.writeFileSync(outPath, withFrontmatter, "utf-8");
     written++;
-    log(green(`wrote ${note.type}/${note.slug}.md`));
+    log(green(`wrote ${word.type}/${word.slug}.md`));
   }
 
   console.log();
-  log(green(`✓ exported ${written} notes`));
+  log(green(`✓ exported ${written} words`));
   console.log();
 }
 
@@ -1850,7 +2003,7 @@ async function cmdNotesPull(opts: { dir: string; type?: WordType; visibility?: N
 
 function showHelp() {
   console.log(`
-  ${bold("milk & henny")} — Album, R2 & transfer management CLI
+  ${bold("milk & henny")} — Albums, words, transfers, and R2 management CLI
 
   ${bold("Usage")}
     pnpm cli                                  ${dim("Interactive mode (recommended)")}
@@ -1915,22 +2068,23 @@ function showHelp() {
     media orphans ${dim("[--limit <n>]")}                      Scan orphan words/media folders
     media purge-stale ${dim("[--yes]")}                        Delete orphan words/media folders
 
-  ${bold("Notes")} ${dim("(private markdown + signed shares)")}
-    notes create --slug ${dim("<slug>")} --title ${dim("<title>")} --markdown-file ${dim("<path>")} ${dim("[--subtitle <text>] [--image <path>] [--type blog|note|recipe|review] [--visibility ...] [--tags a,b] [--featured true|false]")}
-    notes upload --slug ${dim("<slug>")} --file ${dim("<path>")} ${dim("[--title <title>] [--subtitle <text>] [--image <path>] [--type ...] [--visibility ...] [--tags a,b] [--featured true|false]")}
-    notes list ${dim("[--type blog|note|recipe|review] [--visibility public|unlisted|private] [--tag <tag>] [--q <query>]")}
-    notes update ${dim("<slug>")} ${dim("[--title <title>] [--subtitle <text>] [--clear-subtitle] [--image <path>|--clear-image] [--type ...] [--visibility ...] [--tags a,b] [--featured true|false] [--markdown-file <path>]")}
-    notes delete ${dim("<slug>")}
-    notes pull --dir ${dim("<path>")} ${dim("[--type ...] [--visibility ...]")}
-    notes sync --dir ${dim("<path>")} ${dim("(one-off upload from local folder)")}
-    notes watch --dir ${dim("<path>")} ${dim("(sync once, then watch for local markdown changes)")}
-    notes share create ${dim("<slug>")} ${dim("[--expires-days 7] [--pin-required] [--pin 1234]")}
-    notes share list ${dim("<slug>")}
-    notes share update ${dim("<slug> <share-id>")} ${dim("[--pin-required true|false] [--pin <newPin>|--clear-pin] [--expires-days <n>] [--rotate-token]")}
-    notes share revoke ${dim("<slug> <share-id>")}
-    notes share cleanup ${dim("[--slug <slug>]")}
-    notes share purge ${dim("--slug <slug> | --all")}
-    notes share reset ${dim("--all")}
+  ${bold("Words")} ${dim("(private markdown + signed shares)")}
+    words create --slug ${dim("<slug>")} --title ${dim("<title>")} --markdown-file ${dim("<path>")} ${dim("[--subtitle <text>] [--image <path>] [--type blog|note|recipe|review] [--visibility ...] [--tags a,b] [--featured true|false]")}
+    words upload --slug ${dim("<slug>")} --file ${dim("<path>")} ${dim("[--title <title>] [--subtitle <text>] [--image <path>] [--type ...] [--visibility ...] [--tags a,b] [--featured true|false]")}
+    words list ${dim("[--type blog|note|recipe|review] [--visibility public|unlisted|private] [--tag <tag>] [--q <query>]")}
+    words update ${dim("<slug>")} ${dim("[--title <title>] [--subtitle <text>] [--clear-subtitle] [--image <path>|--clear-image] [--type ...] [--visibility ...] [--tags a,b] [--featured true|false] [--markdown-file <path>]")}
+    words delete ${dim("<slug>")}
+    words pull --dir ${dim("<path>")} ${dim("[--type ...] [--visibility ...]")}
+    words sync --dir ${dim("<path>")} ${dim("(one-off upload from local folder)")}
+    words watch --dir ${dim("<path>")} ${dim("(sync once, then watch for local markdown changes)")}
+    words share create ${dim("<slug>")} ${dim("[--expires-days 7] [--pin-required] [--pin 1234]")}
+    words share list ${dim("<slug>")}
+    words share update ${dim("<slug> <share-id>")} ${dim("[--pin-required true|false] [--pin <newPin>|--clear-pin] [--expires-days <n>] [--rotate-token]")}
+    words share revoke ${dim("<slug> <share-id>")}
+    words share cleanup ${dim("[--slug <slug>]")}
+    words share purge ${dim("--slug <slug> | --all")}
+    words share reset ${dim("--all")}
+    words migrate-legacy ${dim("[--purge-legacy]")}
 
   ${bold("Bucket")} ${dim("(raw R2 access)")}
     bucket ls ${dim("[prefix]")}                       Browse bucket contents
@@ -1938,9 +2092,9 @@ function showHelp() {
     bucket info                              Show bucket usage & free tier %
 
   ${bold("Auth")} ${dim("(session security)")}
-    auth revoke --admin-token ${dim("<jwt>")} --admin-password ${dim("<password>")} ${dim("[--role admin|staff|upload|all] [--base-url http://localhost:3000]")}
-      ${dim("Revokes token sessions by role. Requires admin JWT + step-up password.")}
-    auth sessions --admin-token ${dim("<jwt>")} ${dim("[--base-url http://localhost:3000]")}
+    auth revoke --admin-password ${dim("<password>")} ${dim("[--admin-token <jwt>] [--role admin|staff|upload|all] [--base-url http://localhost:3000]")}
+      ${dim("Revokes token sessions by role. If token is omitted, CLI signs in with password first.")}
+    auth sessions ${dim("[--admin-password <password> | --admin-token <jwt>] [--base-url http://localhost:3000]")}
       ${dim("Lists active token sessions (Redis-backed) with status + expiry.")}
 
   ${bold("Examples")}
@@ -1949,7 +2103,7 @@ function showHelp() {
     ${dim("$")} pnpm cli transfers upload --dir ~/Desktop/send-photos --title "Photos for John" --expires 7d
     ${dim("$")} pnpm cli transfers list
     ${dim("$")} pnpm cli transfers delete abc12345
-    ${dim("$")} pnpm cli media upload --slug my-first-birthday --dir ~/Desktop/blog-photos
+    ${dim("$")} pnpm cli media upload --slug my-first-birthday --dir ~/Desktop/word-photos
     ${dim("$")} pnpm cli media upload --asset brand-kit --dir ~/Desktop/brand-assets
     ${dim("$")} pnpm cli media list --slug my-first-birthday
     ${dim("$")} pnpm cli media orphans --limit 200
@@ -2545,12 +2699,12 @@ async function interactiveTransfers() {
 /* ─── Interactive words media ─── */
 
 /** Interactive prompt for selecting a word slug — shows existing words */
-async function selectWordSlug(prompt = "Word slug"): Promise<string | null> {
-  const { notes } = await listNoteRecords({
+async function selectWordSlugForMedia(prompt = "Word slug"): Promise<string | null> {
+  const { words } = await listWordRecords({
     includeNonPublic: true,
     limit: 500,
   });
-  const slugs = notes.map((note) => note.slug).sort();
+  const slugs = words.map((word) => word.slug).sort();
 
   if (slugs.length > 0) {
     console.log();
@@ -2602,7 +2756,7 @@ async function promptWordsMediaUpload(): Promise<void> {
 
   let target: WordMediaTarget;
   if (scopePick === 1) {
-    const slug = await selectWordSlug();
+    const slug = await selectWordSlugForMedia();
     if (!slug) return;
     target = { scope: "word", slug };
   } else {
@@ -2785,15 +2939,15 @@ async function interactiveWordsMedia() {
   }
 }
 
-/* ─── Interactive: Notes ─── */
+/* ─── Interactive: Words ─── */
 
-async function selectNoteSlug(promptText = "Note slug"): Promise<string | null> {
-  const { notes } = await listNoteRecords({ includeNonPublic: true });
-  if (notes.length > 0) {
+async function selectWordSlug(promptText = "Word slug"): Promise<string | null> {
+  const { words } = await listWordRecords({ includeNonPublic: true });
+  if (words.length > 0) {
     console.log();
-    log(dim("Existing notes:"));
-    for (const note of notes.slice(0, 30)) {
-      log(`  ${dim("·")} ${note.slug} ${dim(`(${note.visibility})`)}`);
+    log(dim("Existing words:"));
+    for (const word of words.slice(0, 30)) {
+      log(`  ${dim("·")} ${word.slug} ${dim(`(${word.visibility})`)}`);
     }
     console.log();
   }
@@ -2809,35 +2963,24 @@ async function selectNoteSlug(promptText = "Note slug"): Promise<string | null> 
   }
 }
 
-async function interactiveNotes() {
+async function interactiveWordsContent() {
   while (true) {
-    const choice = await choose("Notes", [
-      { label: "Create note", detail: "new markdown note" },
-      { label: "Upload markdown file", detail: "create or replace note body from a local file" },
-      { label: "List notes", detail: "show notes and visibility" },
-      { label: "Update note", detail: "title/subtitle/visibility/markdown file" },
-      { label: "Delete note", detail: "remove a note permanently" },
-      { label: "Pull notes to folder", detail: "download notes as markdown with frontmatter" },
-      { label: "Sync folder once", detail: "upload/update notes from a local markdown folder" },
-      { label: "Watch folder", detail: "live-sync markdown file changes until Ctrl+C" },
-      { label: "Create share link", detail: "signed URL, optional PIN" },
-      { label: "List share links", detail: "show active/revoked shares for a note" },
-      { label: "Update share link", detail: "toggle PIN, rotate token, extend expiry" },
-      { label: "Revoke share link", detail: "disable a share URL" },
-      { label: "Cleanup stale share links", detail: "remove expired/revoked and stale indices" },
-      { label: "Purge share links", detail: "delete share records for one/all slugs" },
-      { label: "Reset share link state", detail: "hard reset all share links" },
+    const choice = await choose("Words · Content", [
+      { label: "Create word", detail: "new markdown entry" },
+      { label: "Upload markdown file", detail: "create or replace word body from a local file" },
+      { label: "List words", detail: "show words and visibility" },
+      { label: "Update word", detail: "title/subtitle/visibility/markdown file" },
+      { label: "Delete word", detail: "remove a word permanently" },
     ]);
-
     switch (choice) {
       case 0:
         return;
       case 1: {
-        const slug = await selectNoteSlug("New note slug");
+        const slug = await selectWordSlug("New word slug");
         if (!slug) break;
         const title = await ask("Title");
         if (!title) break;
-        const markdownFile = await ask("Markdown file", { hint: "e.g. ~/Desktop/note.md" });
+        const markdownFile = await ask("Markdown file", { hint: "e.g. ~/Desktop/word.md" });
         if (!markdownFile) break;
         const subtitle = await ask("Subtitle (optional)");
         const image = await ask("Hero image path (optional, e.g. words/media/slug/hero.webp or words/assets/kit/hero.webp)");
@@ -2853,7 +2996,7 @@ async function interactiveNotes() {
         if (visChoice <= 0) break;
         const visibility = (["private", "unlisted", "public"] as const)[visChoice - 1];
         await safely(() =>
-          cmdNotesUpload({
+          cmdWordsUpload({
             slug,
             file: markdownFile,
             title,
@@ -2868,7 +3011,7 @@ async function interactiveNotes() {
         break;
       }
       case 2: {
-        const slug = await selectNoteSlug();
+        const slug = await selectWordSlug();
         if (!slug) break;
         const file = await ask("Markdown file path");
         if (!file) break;
@@ -2890,7 +3033,7 @@ async function interactiveNotes() {
         const visibility =
           visChoice <= 1 ? undefined : (["private", "unlisted", "public"] as const)[visChoice - 2];
         await safely(() =>
-          cmdNotesUpload({
+          cmdWordsUpload({
             slug,
             file,
             title: title || undefined,
@@ -2905,11 +3048,11 @@ async function interactiveNotes() {
         break;
       }
       case 3:
-        await safely(() => cmdNotesList());
+        await safely(() => cmdWordsList());
         await pause();
         break;
       case 4: {
-        const slug = await selectNoteSlug();
+        const slug = await selectWordSlug();
         if (!slug) break;
         const title = await ask("New title (blank = keep)");
         const subtitle = await ask("New subtitle (blank = keep, --clear not supported here)");
@@ -2930,7 +3073,7 @@ async function interactiveNotes() {
         const visibility =
           visChoice <= 1 ? undefined : (["private", "unlisted", "public"] as const)[visChoice - 2];
         await safely(() =>
-          cmdNotesUpdate(slug, {
+          cmdWordsUpdate(slug, {
             title: title || undefined,
             subtitle: subtitle || undefined,
             image: image || undefined,
@@ -2944,14 +3087,28 @@ async function interactiveNotes() {
         break;
       }
       case 5: {
-        const slug = await selectNoteSlug();
+        const slug = await selectWordSlug();
         if (slug) {
-          await safely(() => cmdNotesDelete(slug));
+          await safely(() => cmdWordsDelete(slug));
           await pause();
         }
         break;
       }
-      case 6: {
+    }
+  }
+}
+
+async function interactiveWordsLocal() {
+  while (true) {
+    const choice = await choose("Words · Local Sync", [
+      { label: "Pull words to folder", detail: "download words as markdown with frontmatter" },
+      { label: "Sync folder once", detail: "upload/update words from a local markdown folder" },
+      { label: "Watch folder", detail: "live-sync markdown file changes until Ctrl+C" },
+    ]);
+    switch (choice) {
+      case 0:
+        return;
+      case 1: {
         const dir = await ask("Export folder", { defaultVal: "~/Documents/mh-words" });
         const typePick = await choose("Filter type", [
           { label: "all" },
@@ -2968,29 +3125,44 @@ async function interactiveNotes() {
           visibilityPick <= 1
             ? undefined
             : (["public", "unlisted", "private"] as const)[visibilityPick - 2];
-        await safely(() => cmdNotesPull({ dir, type, visibility }));
+        await safely(() => cmdWordsPull({ dir, type, visibility }));
         await pause();
         break;
       }
-      case 7: {
+      case 2: {
         const dir = await ask("Folder to sync", { defaultVal: "~/Documents/mh-words" });
-        await safely(() => cmdNotesSync({ dir }));
+        await safely(() => cmdWordsSync({ dir }));
         await pause();
         break;
       }
-      case 8: {
+      case 3: {
         const dir = await ask("Folder to watch", { defaultVal: "~/Documents/mh-words" });
-        await safely(() => cmdNotesWatch({ dir }));
+        await safely(() => cmdWordsWatch({ dir }));
         await pause();
         break;
       }
-      case 9: {
-        const slug = await selectNoteSlug();
+    }
+  }
+}
+
+async function interactiveWordsShares() {
+  while (true) {
+    const choice = await choose("Words · Share Links", [
+      { label: "Create share link", detail: "signed URL, optional PIN" },
+      { label: "List share links", detail: "show active/revoked shares for a word" },
+      { label: "Update share link", detail: "toggle PIN, rotate token, extend expiry" },
+      { label: "Revoke share link", detail: "disable a share URL" },
+    ]);
+    switch (choice) {
+      case 0:
+        return;
+      case 1: {
+        const slug = await selectWordSlug();
         if (!slug) break;
         const withPin = await confirm("Require PIN on this share link?");
         const pin = withPin ? await ask("PIN") : "";
         await safely(() =>
-          cmdNotesShareCreate({
+          cmdWordsShareCreate({
             slug,
             pinRequired: withPin,
             pin: withPin ? pin : undefined,
@@ -3000,18 +3172,18 @@ async function interactiveNotes() {
         await pause();
         break;
       }
-      case 10: {
-        const slug = await selectNoteSlug();
+      case 2: {
+        const slug = await selectWordSlug();
         if (slug) {
-          await safely(() => cmdNotesShareList(slug));
+          await safely(() => cmdWordsShareList(slug));
           await pause();
         }
         break;
       }
-      case 11: {
-        const slug = await selectNoteSlug();
+      case 3: {
+        const slug = await selectWordSlug();
         if (!slug) break;
-        const links = await listNoteShares(slug);
+        const links = await listWordShares(slug);
         if (links.length === 0) {
           log(dim("No share links."));
           await pause();
@@ -3038,32 +3210,32 @@ async function interactiveNotes() {
         if (action === 1) {
           const nextPin = link.pinRequired ? undefined : await ask("PIN");
           await safely(() =>
-            cmdNotesShareUpdate(slug, link.id, {
+            cmdWordsShareUpdate(slug, link.id, {
               pinRequired: !link.pinRequired,
               ...(link.pinRequired ? {} : { pin: nextPin || undefined }),
             })
           );
         } else if (action === 2) {
           const pin = await ask("New PIN");
-          if (pin) await safely(() => cmdNotesShareUpdate(slug, link.id, { pinRequired: true, pin }));
+          if (pin) await safely(() => cmdWordsShareUpdate(slug, link.id, { pinRequired: true, pin }));
         } else if (action === 3) {
-          await safely(() => cmdNotesShareUpdate(slug, link.id, { pin: null }));
+          await safely(() => cmdWordsShareUpdate(slug, link.id, { pin: null }));
         } else if (action === 4) {
-          await safely(() => cmdNotesShareUpdate(slug, link.id, { rotateToken: true }));
+          await safely(() => cmdWordsShareUpdate(slug, link.id, { rotateToken: true }));
         } else if (action === 5) {
           const daysRaw = await ask("Days", { defaultVal: "7" });
           const days = parseInt(daysRaw, 10);
           if (Number.isFinite(days) && days > 0) {
-            await safely(() => cmdNotesShareUpdate(slug, link.id, { expiresInDays: days }));
+            await safely(() => cmdWordsShareUpdate(slug, link.id, { expiresInDays: days }));
           }
         }
         await pause();
         break;
       }
-      case 12: {
-        const slug = await selectNoteSlug();
+      case 4: {
+        const slug = await selectWordSlug();
         if (!slug) break;
-        const links = await listNoteShares(slug);
+        const links = await listWordShares(slug);
         if (links.length === 0) {
           log(dim("No share links."));
           await pause();
@@ -3071,41 +3243,82 @@ async function interactiveNotes() {
         }
         const pick = await choose("Revoke which share?", links.map((l) => ({ label: l.id })));
         if (pick > 0) {
-          await safely(() => cmdNotesShareRevoke(slug, links[pick - 1].id));
+          await safely(() => cmdWordsShareRevoke(slug, links[pick - 1].id));
           await pause();
         }
         break;
       }
-      case 13: {
+    }
+  }
+}
+
+async function interactiveWordsMaintenance() {
+  while (true) {
+    const choice = await choose("Words · Maintenance", [
+      { label: "Cleanup stale share links", detail: "remove expired/revoked and stale indices" },
+      { label: "Purge share links", detail: "delete share records for one/all slugs" },
+      { label: "Reset share link state", detail: "hard reset all share links" },
+    ]);
+    switch (choice) {
+      case 0:
+        return;
+      case 1: {
         const pick = await choose("Cleanup scope", [
           { label: "All slugs" },
           { label: "Single slug" },
         ]);
         if (pick <= 0) break;
-        const slug = pick === 2 ? await selectNoteSlug() : null;
-        await safely(() => cmdNotesShareCleanup({ slug: slug ?? undefined }));
+        const slug = pick === 2 ? await selectWordSlug() : null;
+        await safely(() => cmdWordsShareCleanup({ slug: slug ?? undefined }));
         await pause();
         break;
       }
-      case 14: {
+      case 2: {
         const pick = await choose("Purge scope", [
           { label: "Single slug", detail: "delete links for one slug" },
           { label: "All slugs", detail: red("destructive") },
         ]);
         if (pick <= 0) break;
         if (pick === 1) {
-          const slug = await selectNoteSlug();
+          const slug = await selectWordSlug();
           if (!slug) break;
-          await safely(() => cmdNotesSharePurge({ slug }));
+          await safely(() => cmdWordsSharePurge({ slug }));
         } else {
-          await safely(() => cmdNotesSharePurge({ all: true }));
+          await safely(() => cmdWordsSharePurge({ all: true }));
         }
         await pause();
         break;
       }
-      case 15:
-        await safely(() => cmdNotesShareReset(true));
+      case 3:
+        await safely(() => cmdWordsShareReset(true));
         await pause();
+        break;
+    }
+  }
+}
+
+async function interactiveWords() {
+  while (true) {
+    const choice = await choose("Words", [
+      { label: "Content", detail: "create, upload, list, update, delete" },
+      { label: "Local Sync", detail: "pull, sync once, watch folder" },
+      { label: "Share Links", detail: "create/list/update/revoke link access" },
+      { label: "Maintenance", detail: "cleanup, purge, reset share state" },
+    ]);
+    switch (choice) {
+      case 0:
+        return;
+      case 1:
+        await interactiveWordsContent();
+        break;
+      case 2:
+        await interactiveWordsLocal();
+        break;
+      case 3:
+        await interactiveWordsShares();
+        break;
+      case 4:
+        await interactiveWordsMaintenance();
         break;
     }
   }
@@ -3122,7 +3335,7 @@ async function interactive() {
       { label: "Photos", detail: "list, add, delete, set cover photo" },
       { label: "Transfers", detail: "private, self-destructing file shares" },
       { label: "Words Media", detail: "upload/list/delete per-word media + shared assets" },
-      { label: "Notes", detail: "private markdown and signed links" },
+      { label: "Words", detail: "content, visibility, and signed links" },
       { label: "Bucket", detail: "browse R2, delete files, usage stats" },
       { label: "Auth", detail: "list/revoke token sessions (admin)" },
     ]);
@@ -3146,7 +3359,7 @@ async function interactive() {
         await interactiveWordsMedia();
         break;
       case 5:
-        await interactiveNotes();
+        await interactiveWords();
         break;
       case 6:
         await interactiveBucket();
@@ -3162,9 +3375,23 @@ async function interactive() {
 
 async function promptAdminToken(): Promise<string | null> {
   console.log();
-  log(dim("Tip: get your admin JWT from the Admin dashboard (sessionStorage) or your own notes."));
+  log(dim("Tip: use this only if you already have a valid admin JWT."));
   const token = await ask("Admin JWT", { hint: "paste the Bearer token (no 'Bearer ' prefix)" });
   return token ? token.trim() : null;
+}
+
+async function promptAdminIdentityForSessions(): Promise<
+  { adminPassword: string; adminToken?: undefined } | { adminToken: string; adminPassword?: undefined } | null
+> {
+  const password = await ask("Admin password", {
+    hint: "recommended. leave blank to use a JWT instead",
+  });
+  if (password.trim()) {
+    return { adminPassword: password.trim() };
+  }
+  const token = await promptAdminToken();
+  if (!token) return null;
+  return { adminToken: token };
 }
 
 async function promptBaseUrl(): Promise<string> {
@@ -3189,22 +3416,19 @@ async function interactiveAuth() {
         return;
       case 1: {
         const baseUrl = await promptBaseUrl();
-        const token = await promptAdminToken();
-        if (!token) break;
-        await safely(() => cmdAuthListSessions({ baseUrl, adminToken: token }));
+        const identity = await promptAdminIdentityForSessions();
+        if (!identity) break;
+        await safely(() => cmdAuthListSessions({ baseUrl, ...identity }));
         await pause();
         break;
       }
       case 2: {
         const baseUrl = await promptBaseUrl();
-        const token = await promptAdminToken();
-        if (!token) break;
         const password = await ask("Admin password", { hint: "step-up confirmation (input visible)" });
         if (!password) break;
         await safely(() =>
           cmdAuthRevoke({
             baseUrl,
-            adminToken: token,
             adminPassword: password,
             role: "admin",
           })
@@ -3214,14 +3438,11 @@ async function interactiveAuth() {
       }
       case 3: {
         const baseUrl = await promptBaseUrl();
-        const token = await promptAdminToken();
-        if (!token) break;
         const password = await ask("Admin password", { hint: "step-up confirmation (input visible)" });
         if (!password) break;
         await safely(() =>
           cmdAuthRevoke({
             baseUrl,
-            adminToken: token,
             adminPassword: password,
             role: "all",
           })
@@ -3240,7 +3461,8 @@ async function direct() {
   const subcommand = args[1];
 
   try {
-    switch (command) {
+    await (async () => {
+      switch (command) {
       case "albums":
         switch (subcommand) {
           case "list":
@@ -3436,12 +3658,7 @@ async function direct() {
             throw new Error(`Unknown: media ${subcommand ?? ""}. Run 'pnpm cli help'.`);
         }
 
-      case "blog":
-        throw new Error(
-          "The 'blog' command is deprecated. Use 'media' instead. Example: pnpm cli media upload --slug <word-slug> --dir <path>"
-        );
-
-      case "notes":
+      case "words":
         switch (subcommand) {
           case "create": {
             const slug = getArg("slug");
@@ -3455,13 +3672,13 @@ async function direct() {
             const featured = parseBooleanInput(getArg("featured"));
             if (!slug || !title || !markdownFile) {
               throw new Error(
-                "Usage: pnpm cli notes create --slug <slug> --title <title> --markdown-file <path> [--subtitle <text>] [--image <path>] [--type blog|note|recipe|review] [--visibility public|unlisted|private] [--tags a,b] [--featured true|false]"
+                "Usage: pnpm cli words create --slug <slug> --title <title> --markdown-file <path> [--subtitle <text>] [--image <path>] [--type blog|note|recipe|review] [--visibility public|unlisted|private] [--tags a,b] [--featured true|false]"
               );
             }
             if (getArg("type") && !type) throw new Error("Invalid --type value.");
             if (getArg("featured") && featured === undefined) throw new Error("Invalid --featured value. Use true/false.");
             const markdown = readMarkdownFile(markdownFile);
-            return cmdNotesCreate({ slug, title, subtitle, image, type, visibility, tags, featured, markdown });
+            return cmdWordsCreate({ slug, title, subtitle, image, type, visibility, tags, featured, markdown });
           }
           case "upload": {
             const slug = getArg("slug");
@@ -3475,12 +3692,12 @@ async function direct() {
             const featured = parseBooleanInput(getArg("featured"));
             if (!slug || !file) {
               throw new Error(
-                "Usage: pnpm cli notes upload --slug <slug> --file <path> [--title <title>] [--subtitle <text>] [--image <path>] [--type blog|note|recipe|review] [--visibility public|unlisted|private] [--tags a,b] [--featured true|false]"
+                "Usage: pnpm cli words upload --slug <slug> --file <path> [--title <title>] [--subtitle <text>] [--image <path>] [--type blog|note|recipe|review] [--visibility public|unlisted|private] [--tags a,b] [--featured true|false]"
               );
             }
             if (getArg("type") && !type) throw new Error("Invalid --type value.");
             if (getArg("featured") && featured === undefined) throw new Error("Invalid --featured value. Use true/false.");
-            return cmdNotesUpload({
+            return cmdWordsUpload({
               slug,
               file,
               title: title ?? undefined,
@@ -3498,13 +3715,13 @@ async function direct() {
             const tag = getArg("tag");
             const q = getArg("q");
             if (getArg("type") && !type) throw new Error("Invalid --type value.");
-            return cmdNotesList({ visibility, type, tag: tag ?? undefined, q });
+            return cmdWordsList({ visibility, type, tag: tag ?? undefined, q });
           }
           case "update": {
             const slug = args[2];
             if (!slug) {
               throw new Error(
-                "Usage: pnpm cli notes update <slug> [--title <title>] [--subtitle <text>] [--clear-subtitle] [--image <path>|--clear-image] [--type blog|note|recipe|review] [--visibility public|unlisted|private] [--tags a,b] [--featured true|false] [--markdown-file <path>]"
+                "Usage: pnpm cli words update <slug> [--title <title>] [--subtitle <text>] [--clear-subtitle] [--image <path>|--clear-image] [--type blog|note|recipe|review] [--visibility public|unlisted|private] [--tags a,b] [--featured true|false] [--markdown-file <path>]"
               );
             }
             const title = getArg("title");
@@ -3520,7 +3737,7 @@ async function direct() {
             if (!title && subtitle === undefined && image === undefined && !type && !visibility && !tags && featured === undefined && !markdownFile && !hasFlag("clear-subtitle") && !hasFlag("clear-image")) {
               throw new Error("Nothing to update.");
             }
-            return cmdNotesUpdate(slug, {
+            return cmdWordsUpdate(slug, {
               title: title ?? undefined,
               subtitle,
               image,
@@ -3533,37 +3750,40 @@ async function direct() {
           }
           case "delete": {
             const slug = args[2];
-            if (!slug) throw new Error("Usage: pnpm cli notes delete <slug>");
-            return cmdNotesDelete(slug);
+            if (!slug) throw new Error("Usage: pnpm cli words delete <slug>");
+            return cmdWordsDelete(slug);
           }
           case "pull": {
             const dir = getArg("dir");
             const type = parseWordType(getArg("type"));
             const visibility = parseNoteVisibility(getArg("visibility"));
             if (!dir) {
-              throw new Error("Usage: pnpm cli notes pull --dir <path> [--type blog|note|recipe|review] [--visibility public|unlisted|private]");
+              throw new Error("Usage: pnpm cli words pull --dir <path> [--type blog|note|recipe|review] [--visibility public|unlisted|private]");
             }
             if (getArg("type") && !type) throw new Error("Invalid --type value.");
-            return cmdNotesPull({ dir, type, visibility });
+            return cmdWordsPull({ dir, type, visibility });
           }
           case "sync": {
             const dir = getArg("dir");
-            if (!dir) throw new Error("Usage: pnpm cli notes sync --dir <path>");
-            return cmdNotesSync({ dir });
+            if (!dir) throw new Error("Usage: pnpm cli words sync --dir <path>");
+            return cmdWordsSync({ dir });
           }
           case "watch": {
             const dir = getArg("dir");
-            if (!dir) throw new Error("Usage: pnpm cli notes watch --dir <path>");
-            return cmdNotesWatch({ dir });
+            if (!dir) throw new Error("Usage: pnpm cli words watch --dir <path>");
+            return cmdWordsWatch({ dir });
+          }
+          case "migrate-legacy": {
+            return cmdWordsMigrateLegacy(hasFlag("purge-legacy"));
           }
           case "share": {
             const action = args[2];
             if (action === "create") {
               const slug = args[3];
-              if (!slug) throw new Error("Usage: pnpm cli notes share create <slug> [--expires-days 7] [--pin-required] [--pin 1234]");
+              if (!slug) throw new Error("Usage: pnpm cli words share create <slug> [--expires-days 7] [--pin-required] [--pin 1234]");
               const expiresDaysRaw = getArg("expires-days");
               const expiresInDays = expiresDaysRaw ? parseInt(expiresDaysRaw, 10) : undefined;
-              return cmdNotesShareCreate({
+              return cmdWordsShareCreate({
                 slug,
                 expiresInDays: Number.isFinite(expiresInDays) ? expiresInDays : undefined,
                 pinRequired: hasFlag("pin-required"),
@@ -3572,15 +3792,15 @@ async function direct() {
             }
             if (action === "list") {
               const slug = args[3];
-              if (!slug) throw new Error("Usage: pnpm cli notes share list <slug>");
-              return cmdNotesShareList(slug);
+              if (!slug) throw new Error("Usage: pnpm cli words share list <slug>");
+              return cmdWordsShareList(slug);
             }
             if (action === "update") {
               const slug = args[3];
               const id = args[4];
               if (!slug || !id) {
                 throw new Error(
-                  "Usage: pnpm cli notes share update <slug> <share-id> [--pin-required true|false] [--pin <newPin>|--clear-pin] [--expires-days <n>] [--rotate-token]"
+                  "Usage: pnpm cli words share update <slug> <share-id> [--pin-required true|false] [--pin <newPin>|--clear-pin] [--expires-days <n>] [--rotate-token]"
                 );
               }
               const pinRequiredArg = getArg("pin-required");
@@ -3589,7 +3809,7 @@ async function direct() {
               const expiresDaysRaw = getArg("expires-days");
               const expiresInDays = expiresDaysRaw ? parseInt(expiresDaysRaw, 10) : undefined;
               const pin = hasFlag("clear-pin") ? null : (getArg("pin") ?? undefined);
-              return cmdNotesShareUpdate(slug, id, {
+              return cmdWordsShareUpdate(slug, id, {
                 pinRequired,
                 pin,
                 expiresInDays: Number.isFinite(expiresInDays) ? expiresInDays : undefined,
@@ -3599,24 +3819,24 @@ async function direct() {
             if (action === "revoke") {
               const slug = args[3];
               const id = args[4];
-              if (!slug || !id) throw new Error("Usage: pnpm cli notes share revoke <slug> <share-id>");
-              return cmdNotesShareRevoke(slug, id);
+              if (!slug || !id) throw new Error("Usage: pnpm cli words share revoke <slug> <share-id>");
+              return cmdWordsShareRevoke(slug, id);
             }
             if (action === "cleanup") {
               const slug = getArg("slug") ?? args[3];
-              return cmdNotesShareCleanup({ slug: slug ?? undefined });
+              return cmdWordsShareCleanup({ slug: slug ?? undefined });
             }
             if (action === "purge") {
               const slug = getArg("slug") ?? args[3];
-              return cmdNotesSharePurge({ slug: slug ?? undefined, all: hasFlag("all") });
+              return cmdWordsSharePurge({ slug: slug ?? undefined, all: hasFlag("all") });
             }
             if (action === "reset") {
-              return cmdNotesShareReset(hasFlag("all"));
+              return cmdWordsShareReset(hasFlag("all"));
             }
-            throw new Error(`Unknown notes share action: ${action ?? ""}`);
+            throw new Error(`Unknown words share action: ${action ?? ""}`);
           }
           default:
-            throw new Error(`Unknown: notes ${subcommand ?? ""}. Run 'pnpm cli help'.`);
+            throw new Error(`Unknown: words ${subcommand ?? ""}. Run 'pnpm cli help'.`);
         }
 
       case "bucket":
@@ -3641,9 +3861,9 @@ async function direct() {
             const adminPassword = getArg("admin-password");
             const roleArg = (getArg("role") ?? "admin") as RevokeRole;
             const baseUrl = getArg("base-url");
-            if (!adminToken || !adminPassword) {
+            if (!adminPassword) {
               throw new Error(
-                "Usage: pnpm cli auth revoke --admin-token <jwt> --admin-password <password> [--role admin|staff|upload|all] [--base-url http://localhost:3000]"
+                "Usage: pnpm cli auth revoke --admin-password <password> [--admin-token <jwt>] [--role admin|staff|upload|all] [--base-url http://localhost:3000]"
               );
             }
             if (!REVOKE_ROLES.includes(roleArg)) {
@@ -3658,14 +3878,16 @@ async function direct() {
           }
           case "sessions": {
             const adminToken = getArg("admin-token");
+            const adminPassword = getArg("admin-password");
             const baseUrl = getArg("base-url");
-            if (!adminToken) {
+            if (!adminToken && !adminPassword) {
               throw new Error(
-                "Usage: pnpm cli auth sessions --admin-token <jwt> [--base-url http://localhost:3000]"
+                "Usage: pnpm cli auth sessions [--admin-password <password> | --admin-token <jwt>] [--base-url http://localhost:3000]"
               );
             }
             return cmdAuthListSessions({
-              adminToken,
+              adminToken: adminToken ?? undefined,
+              adminPassword: adminPassword ?? undefined,
               baseUrl: baseUrl ?? undefined,
             });
           }
@@ -3678,6 +3900,7 @@ async function direct() {
         showHelp();
         process.exit(1);
     }
+    })();
   } catch (err) {
     console.log();
     log(red(`Error: ${(err as Error).message}`));

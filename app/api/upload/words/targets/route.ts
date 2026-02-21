@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/features/auth/server";
-import { isNotesEnabled } from "@/features/notes/reader";
-import { listNotes } from "@/features/notes/store";
+import { isWordsEnabled } from "@/features/words/reader";
+import { listWords } from "@/features/words/store";
 import { isConfigured, listPrefixes } from "@/lib/platform/r2";
 import { apiErrorFromRequest } from "@/lib/platform/api-error";
 
@@ -45,13 +45,13 @@ export async function GET(request: NextRequest) {
     const slugSet = new Set<string>();
     const assetSet = new Set<string>();
 
-    if (isNotesEnabled()) {
+    if (isWordsEnabled()) {
       const noteResult = await withTimeout(
-        listNotes({ includeNonPublic: true, limit: 500 }),
+        listWords({ includeNonPublic: true, limit: 500 }),
         NOTES_TARGETS_TIMEOUT_MS
       );
       if (noteResult) {
-        for (const note of noteResult.notes) {
+        for (const note of noteResult.words) {
           slugSet.add(note.slug);
         }
       }

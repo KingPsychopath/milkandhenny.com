@@ -1,5 +1,8 @@
-export type NoteVisibility = "public" | "unlisted" | "private";
-export type WordType = "blog" | "note" | "recipe" | "review";
+export type { WordType } from "@/features/words/types";
+import type { WordType } from "@/features/words/types";
+import type { WordVisibility } from "@/features/words/content-types";
+
+export type NoteVisibility = WordVisibility;
 export type MediaKind = "image" | "video" | "gif" | "audio" | "file";
 
 export interface MediaPreviewItem {
@@ -17,6 +20,7 @@ export interface NoteMeta {
   type: WordType;
   visibility: NoteVisibility;
   tags: string[];
+  readingTime?: number;
   featured?: boolean;
   updatedAt: string;
 }

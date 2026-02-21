@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createNote, getNote, updateNote } from "@/features/notes/store";
+import { createWord, getWord, updateWord } from "@/features/words/store";
 
 function uniqueSlug(prefix: string): string {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -8,7 +8,7 @@ function uniqueSlug(prefix: string): string {
 describe("note image normalization", () => {
   it("normalizes /hero.webp to hero.webp", async () => {
     const slug = uniqueSlug("img-normalize");
-    await createNote({
+    await createWord({
       slug,
       title: "Image normalize",
       markdown: "body",
@@ -17,13 +17,13 @@ describe("note image normalization", () => {
       visibility: "public",
     });
 
-    const note = await getNote(slug);
+    const note = await getWord(slug);
     expect(note?.meta.image).toBe("hero.webp");
   });
 
   it("accepts markdown snippet in image field", async () => {
     const slug = uniqueSlug("img-markdown");
-    await createNote({
+    await createWord({
       slug,
       title: "Image snippet",
       markdown: "body",
@@ -32,13 +32,13 @@ describe("note image normalization", () => {
       visibility: "public",
     });
 
-    const note = await getNote(slug);
+    const note = await getWord(slug);
     expect(note?.meta.image).toBe("hero.webp");
   });
 
   it("normalizes leading /words/media path on update", async () => {
     const slug = uniqueSlug("img-words-path");
-    await createNote({
+    await createWord({
       slug,
       title: "Image words path",
       markdown: "body",
@@ -47,17 +47,17 @@ describe("note image normalization", () => {
       visibility: "public",
     });
 
-    await updateNote(slug, {
+    await updateWord(slug, {
       image: "/words/media/my-post/hero.webp",
     });
 
-    const note = await getNote(slug);
+    const note = await getWord(slug);
     expect(note?.meta.image).toBe("words/media/my-post/hero.webp");
   });
 
   it("normalizes typed frontmatter image path to words/media", async () => {
     const slug = uniqueSlug("img-typed-path");
-    await createNote({
+    await createWord({
       slug,
       title: "Typed image path",
       markdown: "body",
@@ -66,7 +66,7 @@ describe("note image normalization", () => {
       visibility: "public",
     });
 
-    const note = await getNote(slug);
+    const note = await getWord(slug);
     expect(note?.meta.image).toBe("words/media/on-being-featured/dsc00003.webp");
   });
 });

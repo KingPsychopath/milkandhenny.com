@@ -20,16 +20,16 @@ How the app is built, where things run, how data flows, and the conventions that
 
 Three features store media in R2, but their metadata lives in different places — each approach fits its use case.
 
-| | Albums | Transfers | Blog files |
+| | Albums | Transfers | Words content |
 |---|--------|-----------|-------------|
-| **R2 prefix** | `albums/{slug}/` | `transfers/{id}/` | `blog/{slug}/` |
-| **Metadata** | JSON manifest in git (`content/albums/`) | Redis key with TTL | None (markdown is the manifest) |
+| **R2 prefix** | `albums/{slug}/` | `transfers/{id}/` | `words/{type}/{slug}/content.md` + `words/media/{slug}/` |
+| **Metadata** | JSON manifest in git (`content/albums/`) | Redis key with TTL | KV (`words:meta:{slug}` + `words:index`) |
 | **Variants** | thumb + full + original + og | thumb + full + original | Images: WebP; others: raw |
-| **Lifecycle** | Permanent (lives in git) | Auto-expires via Redis TTL | Permanent (delete via CLI) |
+| **Lifecycle** | Permanent (lives in git) | Auto-expires via Redis TTL | Permanent unless deleted; visibility controls + share links |
 | **Cost per view** | $0 (fully static/CDN) | ~$0 (1 KV GET, CDN-cached 60s) | $0 (fully static/CDN) |
-| **Update flow** | CLI writes JSON → git commit → Vercel rebuild | CLI writes to Redis → instant | CLI uploads to R2, paste markdown |
+| **Update flow** | CLI writes JSON → git commit → Vercel rebuild | CLI writes to Redis → instant | CLI/admin writes KV metadata + R2 markdown/media |
 
-Albums are the strongest pattern for permanent content — zero runtime cost, fully CDN-cached, no KV dependency. Transfers use KV because they need to self-destruct (a git-based approach would require a redeploy to expire content). Blog files have no metadata store at all — the markdown file is the source of truth.
+Albums are the strongest pattern for permanent content — zero runtime cost, fully CDN-cached, no KV dependency. Transfers use KV because they need to self-destruct (a git-based approach would require a redeploy to expire content). Words content uses KV + R2 so public/unlisted/private behavior and share-link access all use one consistent model.
 
 ---
 
@@ -41,8 +41,8 @@ Three layers of caching keep the site fast and cheap: static generation at build
 
 | Page | How | Why static works |
 |------|-----|-----------------|
-| `/`, `/blog`, `/pics` | Rendered at build from local markdown/JSON | Content only changes on deploy |
-| `/blog/[slug]` | `generateStaticParams` from all slugs | Posts are markdown files in git |
+| `/`, `/words`, `/pics` | ISR/static pages with revalidation | Content is cache-friendly, updates are revalidated on write |
+| `/words/[slug]` | `generateStaticParams` for public words + runtime checks for non-public | Supports mixed visibility + signed access |
 | `/pics/[album]`, `/pics/[album]/[photo]` | `generateStaticParams` from album JSON | Albums are JSON manifests in git |
 | All OG images for above | `generateStaticParams` + `s-maxage=86400` | Images don't change post-deploy |
 
@@ -60,7 +60,7 @@ All API routes (`/api/guests`, `/api/best-dressed`, `/api/transfers/[id]`) retur
 
 ### RSS feed
 
-`s-maxage=3600, stale-while-revalidate=3600` — CDN caches 1 hour. Blog only changes on deploy, so aggressive caching is safe.
+`s-maxage=3600, stale-while-revalidate=3600` — CDN caches 1 hour. Feed includes public `blog`-type words only.
 
 ### Media (Cloudflare R2 + CDN)
 
@@ -86,7 +86,7 @@ Every feature degrades gracefully — nothing crashes. The fallback strategy mat
 
 | Feature | Missing KV vars | Missing R2 API vars | Missing `NEXT_PUBLIC_R2_PUBLIC_URL` |
 |---------|----------------|---------------------|--------------------------------------|
-| **Blog** (`/`) | No impact | No impact | No impact |
+| **Words** (`/`, `/words`) | No impact | No impact | No impact |
 | **Photo gallery** (`/pics`) | No impact | No impact | Images break — URLs resolve to `/{path}` |
 | **Guest list** (`/guestlist`) | In-memory fallback — works per process, doesn't persist across cold starts | No impact | No impact |
 | **Best dressed** (`/best-dressed`) | In-memory fallback — same as guest list | No impact | No impact |
@@ -94,7 +94,7 @@ Every feature degrades gracefully — nothing crashes. The fallback strategy mat
 | **Transfer page** (`/t/{id}`) | Shows "expired" page (no crash) | No impact (files via CDN) | File URLs break |
 | **Transfer CLI** | `requireRedis()` throws — no silent fallback | `requireR2()` throws | Share URL defaults to `https://milkandhenny.com` |
 | **Album CLI** | No impact | Throws — can't upload without R2 | No impact |
-| **Blog CLI** | No impact | `requireR2()` throws | Images in posts break |
+| **Words CLI** | No impact | `requireR2()` throws | Media URLs in markdown break |
 | **Cron cleanup** | Returns `{ skipped: true }` | Returns `{ skipped: true }` | No impact |
 | **`STAFF_PIN`** missing | — | — | Guest list accessible without PIN (open gate) |
 | **`ADMIN_PASSWORD`** missing | — | — | Admin-only surfaces reject auth (locked out) |
@@ -112,7 +112,7 @@ The site has **two distinct navigation worlds** that coexist through shared tone
 
 | World | Pages | Navigation style | Audience |
 |-------|-------|-----------------|----------|
-| **Editorial** | `/`, `/blog`, `/blog/[slug]`, `/pics`, `/pics/[album]`, `/pics/[album]/[photo]` | Header with `← contextual back` + `milk & henny` brand link + Breadcrumbs | Blog readers, photo viewers |
+| **Editorial** | `/`, `/words`, `/words/[slug]`, `/pics`, `/pics/[album]`, `/pics/[album]/[photo]` | Header with `← contextual back` + `milk & henny` brand link + Breadcrumbs | Word readers, photo viewers |
 | **Party** | `/party`, `/icebreaker`, `/best-dressed`, `/guestlist` | Minimal, kiosk-style — funnels back to `/party`, then `/` | Event-night guests, door staff |
 
 **Standalone pages** (`/exam`, `/t/[id]`) have their own minimal navigation.
@@ -121,7 +121,7 @@ The site has **two distinct navigation worlds** that coexist through shared tone
 
 | Tier | Left side | Right side | Used on |
 |------|-----------|------------|---------|
-| **Editorial** | `← contextual back` (e.g. "← home", "← all albums") | `© year milk & henny` | Blog, pics, albums, photos |
+| **Editorial** | `← contextual back` (e.g. "← home", "← all albums") | `© year milk & henny` | Words, pics, albums, photos |
 | **Party** | `← back to party` (or `← back to home` from hub) | `© year Milk & Henny` | Party hub, icebreaker, best dressed, guest list |
 
 Page-specific personality lives **above** the footer line: icebreaker's consent note, transfer's self-destruct date, exam's "end of questions."

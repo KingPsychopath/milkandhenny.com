@@ -67,7 +67,7 @@ Typography expresses which "world" you're in while keeping a single brand voice.
 
 ### 1) Editorial surfaces
 
-Routes: `/`, `/blog`, `/blog/[slug]`, `/pics`
+Routes: `/`, `/words`, `/words/[slug]`, `/pics`
 
 - **Titles + body**: `font-serif` (Lora) for reading comfort.
 - **Labels + metadata** (date, reading time, crumbs, share): `font-mono` (Geist Mono).
@@ -179,4 +179,3 @@ Tailwind v4 layering is used to keep ordering deterministic:
 - `@layer utilities`: small helper classes (prefixed / non-colliding)
 
 If a new style is feature-local, prefer co-locating it with the component (utilities first).
-

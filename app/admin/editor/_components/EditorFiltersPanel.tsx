@@ -1,5 +1,6 @@
 "use client";
 
+import { WORD_TYPE_TABS, getWordTypeLabel } from "@/features/words/types";
 import type { NoteVisibility, WordType } from "../types";
 
 type EditorFiltersPanelProps = {
@@ -43,10 +44,13 @@ export function EditorFiltersPanel({
           className="bg-transparent border theme-border rounded px-2 py-2 font-mono text-xs"
         >
           <option value="all">all types</option>
-          <option value="blog">blog</option>
-          <option value="note">note</option>
-          <option value="recipe">recipe</option>
-          <option value="review">review</option>
+          {WORD_TYPE_TABS
+            .filter((type): type is WordType => type !== "all")
+            .map((type) => (
+              <option key={type} value={type}>
+                {getWordTypeLabel(type)}
+              </option>
+            ))}
         </select>
         <select
           value={filterVisibility}
@@ -76,4 +80,3 @@ export function EditorFiltersPanel({
     </section>
   );
 }
-

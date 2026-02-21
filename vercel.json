@@ -1,6 +1,7 @@
 {
   "crons": [
     { "path": "/api/cron/cleanup-transfers", "schedule": "0 3 * * *" },
+    { "path": "/api/cron/cleanup-word-shares", "schedule": "10 3 * * *" },
     { "path": "/api/cron/cleanup-word-media-orphans", "schedule": "20 3 * * *" }
   ],
   "rewrites": [

@@ -256,14 +256,20 @@ describe("auth security flows", () => {
 
     // Admin token A
     const verifyA = await handleVerifyRequest(
-      mockRequest({ jsonBody: { password: process.env.ADMIN_PASSWORD } }) as unknown as NextRequest,
+      mockRequest({
+        headers: { "x-forwarded-for": "203.0.113.10" },
+        jsonBody: { password: process.env.ADMIN_PASSWORD },
+      }) as unknown as NextRequest,
       "admin"
     );
     const { token: tokenA } = (await verifyA.json()) as { token: string };
 
     // Admin token B
     const verifyB = await handleVerifyRequest(
-      mockRequest({ jsonBody: { password: process.env.ADMIN_PASSWORD } }) as unknown as NextRequest,
+      mockRequest({
+        headers: { "x-forwarded-for": "203.0.113.11" },
+        jsonBody: { password: process.env.ADMIN_PASSWORD },
+      }) as unknown as NextRequest,
       "admin"
     );
     const { token: tokenB } = (await verifyB.json()) as { token: string };

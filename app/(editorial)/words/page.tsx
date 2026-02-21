@@ -2,8 +2,8 @@ import Link from "next/link";
 import type { Metadata } from "next";
 import { Breadcrumbs } from "@/components/Breadcrumbs";
 import { SITE_BRAND, SITE_NAME } from "@/lib/shared/config";
-import { isNotesEnabled } from "@/features/notes/reader";
-import { listNotes } from "@/features/notes/store";
+import { isWordsEnabled } from "@/features/words/reader";
+import { listWords } from "@/features/words/store";
 import type { WordType } from "@/features/words/types";
 import { SearchableWordList, type WordListSummary } from "./_components/SearchableWordList";
 
@@ -11,6 +11,8 @@ export const metadata: Metadata = {
   title: `Words — ${SITE_NAME}`,
   description: "Posts, recipes, and notes in one searchable place.",
 };
+export const dynamic = "force-static";
+export const revalidate = 300;
 
 type Props = Record<string, never>;
 
@@ -28,8 +30,8 @@ function formatDate(isoOrDate: string): string {
 }
 
 export default async function WordsPage(_props: Props) {
-  const noteItems = isNotesEnabled()
-    ? (await listNotes({ includeNonPublic: false, limit: 1000 })).notes
+  const noteItems = isWordsEnabled()
+    ? (await listWords({ includeNonPublic: false, limit: 1000 })).words
     : [];
 
   const allItems: WordListSummary[] = noteItems.map((note) => ({
@@ -40,7 +42,7 @@ export default async function WordsPage(_props: Props) {
     tags: note.tags,
     dateLabel: formatDate(note.publishedAt ?? note.updatedAt),
     date: note.publishedAt ?? note.updatedAt,
-    readingTime: 1,
+    readingTime: note.readingTime,
     featured: note.featured,
     searchText: `${note.slug} ${note.title} ${note.subtitle ?? ""} ${note.type} ${note.tags.join(" ")} ${note.featured ? "featured" : ""}`,
   }));

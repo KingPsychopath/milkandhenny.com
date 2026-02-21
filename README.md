@@ -1,6 +1,6 @@
 # Milk & Henny
 
-A personal platform for party check-ins, photo galleries, a blog, private markdown notes, and private file sharing — built with Next.js, Cloudflare R2, and Vercel KV.
+A personal platform for party check-ins, photo galleries, unified long-form words, and private file sharing — built with Next.js, Cloudflare R2, and Vercel KV.
 
 ## Quick Start
 
@@ -10,14 +10,14 @@ pnpm dev
 # → http://localhost:3000
 ```
 
-The blog, guest list, and best-dressed work with zero config (in-memory fallback). Photo galleries and transfers need env vars — copy `.env.local.example` to `.env.local` and fill in values; see [environment variables](#environment-variables).
+Words, guest list, and best-dressed work with zero config (in-memory fallback). Photo galleries and transfers need env vars — copy `.env.local.example` to `.env.local` and fill in values; see [environment variables](#environment-variables).
 
 ```bash
 pnpm test          # run all tests
 pnpm test:watch    # re-run on file changes
 ```
 
-**CLI:** Run `pnpm cli` with no arguments for an **interactive menu** — pick Albums, Photos, Transfers, Words Media, or Notes and follow the prompts. All commands are also available as direct subcommands.
+**CLI:** Run `pnpm cli` with no arguments for an **interactive menu** — pick Albums, Photos, Transfers, Words Media, or Words and follow the prompts. All commands are also available as direct subcommands.
 
 ---
 
@@ -45,8 +45,7 @@ This repo uses two top-level buckets for server code and shared logic:
   - `features/guests/*` guest model + persistence + CSV import
   - `features/transfers/*` transfer model + persistence + upload pipeline
   - `features/media/*` albums + storage URLs + image processing
-  - `features/blog/*` blog reader + shared words media path helpers
-  - `features/notes/*` private notes + share-link access
+  - `features/words/*` words storage + share-link access
   - `features/auth/*` server-side auth primitives
 - `lib/` — cross-cutting primitives (the toolbox)
   - `lib/platform/*` server-only infrastructure (R2, Redis/KV, logging, safe API errors)
@@ -124,7 +123,7 @@ For the full media pipeline (OG images, face detection, focal points, image rota
 
 All long-form content lives in the unified **words** model (`blog`, `note`, `recipe`, `review`).
 
-- Metadata in KV (`notes:meta:{slug}` + index keys)
+- Metadata in KV (`words:meta:{slug}` + `words:index`)
 - Markdown body in R2 (`words/{type}/{slug}/content.md`)
 - Visibility: `public`, `unlisted`, `private`
 - Tags and featured flags are shared across all types
@@ -146,7 +145,7 @@ Markdown references:
 Compatibility note:
 
 - Canonical `words/...` paths are the recommended output from upload/editor tooling.
-- Existing short refs like `![hero](hero.webp)` and `![logo](assets/brand-kit/logo.webp)` are still accepted and normalized when note markdown is saved.
+- Existing short refs like `![hero](hero.webp)` and `![logo](assets/brand-kit/logo.webp)` are still accepted and normalized when word markdown is saved.
 
 Why this layout:
 
@@ -161,25 +160,24 @@ pnpm cli media list --slug <word-slug>
 pnpm cli media list --asset <asset-id>
 pnpm cli media orphans --limit 200
 pnpm cli media purge-stale
+pnpm cli words migrate-legacy --purge-legacy
 ```
 
-### Private Notes
+### Private + Unlisted Words
 
-Notes are part of the words system and are stored outside git:
+Private and unlisted words are part of the unified words system and are stored outside git:
 
-- Metadata in KV (`notes:meta:{slug}`)
+- Metadata in KV (`words:meta:{slug}`)
 - Markdown body in R2 (`words/{type}/{slug}/content.md`)
 - Visibility: `public`, `unlisted`, `private`
 - Signed share links with optional **per-link PIN** (no global reader PIN)
 
-`NOTES_ENABLED` defaults to enabled unless explicitly set to `false`.
-
 CLI:
 
 ```bash
-pnpm cli notes create --slug <slug> --title <title> --markdown-file <path>
-pnpm cli notes share create <slug> --pin-required --pin <pin>
-pnpm cli notes share update <slug> <share-id> --pin-required true --pin <new-pin>
+pnpm cli words create --slug <slug> --title <title> --markdown-file <path>
+pnpm cli words share create <slug> --pin-required --pin <pin>
+pnpm cli words share update <slug> <share-id> --pin-required true --pin <new-pin>
 ```
 
 ---
@@ -215,7 +213,6 @@ pnpm cli notes share update <slug> <share-id> --pin-required true --pin <new-pin
 | `STAFF_PIN` | Yes (guestlist) | PIN for door staff. Not in client bundle. |
 | `ADMIN_PASSWORD` | Yes (admin) | Gate for management UI and admin dashboard. Weak values show up as warnings. Not in client bundle. |
 | `UPLOAD_PIN` | Yes (upload) | Dedicated PIN for `/upload` (shareable with non-admin uploaders). |
-| `NOTES_ENABLED` | Optional | Defaults to enabled. Set `false` to disable `/words`, notes APIs, and `/admin/editor`. |
 | `NEXT_PUBLIC_BASE_URL` | CLI only | For generating share URLs. Not needed on Vercel. |
 | `CRON_SECRET` | Optional | Secures cleanup cron endpoints. |
 
@@ -228,7 +225,7 @@ Everything degrades gracefully when env vars are missing — see [resilience tab
 1. Push to GitHub
 2. Connect to Vercel
 3. Add env vars (KV, R2, auth — see table above)
-4. Deploy — cron jobs in `vercel.json` activate automatically
+4. Deploy — cron jobs in `vercel.json` activate automatically (transfer cleanup, word-share cleanup, and stale word-media orphan cleanup)
 
 ---
 

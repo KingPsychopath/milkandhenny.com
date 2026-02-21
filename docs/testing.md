@@ -22,7 +22,7 @@ pnpm test:coverage # run with coverage report
 
 | Type | What it tests | Speed | Mocks? | Where it lives |
 |------|---------------|-------|--------|----------------|
-| **Unit** | Pure functions in isolation | ~1ms each | Rarely (fs for blog) | `__tests__/unit/` |
+| **Unit** | Pure functions in isolation | ~1ms each | Rarely (storage/network wrappers) | `__tests__/unit/` |
 | **Integration** | Multiple modules working together | ~5-70ms each | External services only (Redis) | `__tests__/integration/` |
 | **E2E** | Full user flows in a real browser | Seconds | None | Skipped — see [why](#why-we-dont-have-e2e-tests-and-when-we-would) |
 
@@ -32,7 +32,7 @@ pnpm test:coverage # run with coverage report
 
 **What they are:** Tests for pure functions — give input, assert output. No network, no database, no browser. They run in milliseconds and catch logic bugs instantly.
 
-**Why they exist:** These are the highest-value tests in the project. The utility functions in `lib/` are used everywhere — blog rendering, guest check-in, transfer sharing. A broken `slug()` means broken heading anchors across every blog post. A broken `parseExpiry()` means transfers expire at the wrong time. Unit tests catch these regressions before they ship.
+**Why they exist:** These are the highest-value tests in the project. The utility functions in `lib/` are used everywhere — words rendering, guest check-in, transfer sharing. A broken `slug()` means broken heading anchors across every words page. A broken `parseExpiry()` means transfers expire at the wrong time. Unit tests catch these regressions before they ship.
 
 **Where they live:** `__tests__/unit/`
 
@@ -45,7 +45,9 @@ pnpm test:coverage # run with coverage report
 | `transfers.test.ts` | `features/transfers/store.ts` | Expiry parsing (30m, 1h, 7d), duration formatting, error cases (invalid format, exceeds max) |
 | `guest-types.test.ts` | `features/guests/types.ts` | Guest ID generation (lowercase, hyphenation, suffix handling) |
 | `csv-parser.test.ts` | `features/guests/csv-parser.ts` | Partiful CSV import — status normalization, plus-one linking, alphabetical sort, empty rows, fullName logic |
-| `blog.test.ts` | `features/blog/reader.ts` | Heading extraction from markdown, reading time calculation, frontmatter parsing, date sorting |
+| `notes-reading-time.test.ts` | `features/words/store.ts` | Reading-time calculation on create/update and metadata persistence |
+| `note-markdown-normalization.test.ts` | `features/words/store.ts` | Markdown path normalization to canonical `words/media` + `words/assets` refs |
+| `notes-share-access.test.ts` | `features/words/share.ts` | Share token, PIN, cookie/session invalidation behavior |
 
 ### Why these modules and not others
 
@@ -53,7 +55,7 @@ The rule: **test pure logic, skip glue code.**
 
 - `slug.ts`, `format.ts`, `transfers.ts` (parseExpiry/formatDuration) — pure in, pure out. Zero dependencies. Maximum value per line of test.
 - `csv-parser.ts` — parses external data (Partiful exports). CSV formats are fragile; these tests catch regressions when the CSV shape changes.
-- `blog.ts` — the blog is the most-used feature. Reading time, heading extraction, and date sorting are used on every page load.
+- `features/words/*` — words content is the most-used long-form feature. Reading time, heading extraction, and share access are exercised on every page load.
 - `guests/types.ts` — guest ID generation feeds into every KV operation. A broken ID means orphaned data.
 
 **What we intentionally skip:**
@@ -80,7 +82,7 @@ The rule: **test pure logic, skip glue code.**
 | `transfers-admin.test.ts` | Transfers admin validation | `isSafeTransferId` (valid vs invalid patterns). `adminDeleteTransfer` rejects invalid ids with a throw, so bad input never touches R2/Redis. |
 | `guest-checkin.test.ts` | Guest list check-in flow | Set guests → check in main guest → check in plus-one → check out → verify isolation between guests. The most-used feature at events — if this breaks, door staff can't check anyone in. |
 | `guests-add-remove.test.ts` | Guest add/remove | Add main guest, add plus-one (and 404 when main missing), validation (empty name). Remove main guest, remove plus-one, empty id 400, non-existent id leaves list unchanged. |
-| `heading-ids.test.ts` | TOC ↔ rehype-slug contract | Verifies that `extractHeadings()` (blog.ts) and `rehypeSlug()` (rehype-slug.ts) produce identical IDs for the same headings. If they drift, JumpRail links scroll to nowhere. Tests unique headings, duplicates, special characters, and mixed cases. |
+| `heading-ids.test.ts` | TOC ↔ rehype-slug contract | Verifies that `extractHeadings()` (`features/words/headings.ts`) and `rehypeSlug()` (`lib/markdown/rehype-slug.ts`) produce identical IDs for the same headings. If they drift, JumpRail links scroll to nowhere. Tests unique headings, duplicates, special characters, and mixed cases. |
 | `auth.test.ts` | Authentication primitives | Timing-safe string comparison (matching, different, different-length). Tests the `safeCompare` function that guards every PIN/password check. |
 
 ### Why in-memory fallback, not mocked Redis
@@ -105,7 +107,7 @@ __tests__/
 │   ├── transfers.test.ts
 │   ├── guest-types.test.ts
 │   ├── csv-parser.test.ts
-│   └── blog.test.ts
+│   └── notes-reading-time.test.ts
 └── integration/                 # Multi-module tests — mock only external services
     ├── auth.test.ts
     ├── guest-checkin.test.ts
@@ -214,7 +216,7 @@ Add E2E tests (with [Playwright](https://playwright.dev/)) if any of these becom
 **What they'd cover (when the time comes):**
 - Guest list: PIN entry → search → check in → verify checked-in state persists on refresh
 - Transfer: share link → preview gallery → download → countdown timer accuracy
-- Blog: navigate to post → click TOC heading → verify scroll position
+- Words: navigate to a page → click TOC heading → verify scroll position
 
 ---
 

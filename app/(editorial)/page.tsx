@@ -1,19 +1,21 @@
 import Link from "next/link";
 import { SITE_BRAND } from "@/lib/shared/config";
 import { PostListItem } from "./_components/PostListItem";
-import { isNotesEnabled } from "@/features/notes/reader";
-import { listNotes } from "@/features/notes/store";
+import { isWordsEnabled } from "@/features/words/reader";
+import { listWords } from "@/features/words/store";
 
 const RECENT_LIMIT = 5;
+export const dynamic = "force-static";
+export const revalidate = 300;
 
 export default async function Home() {
-  const noteBlogs = isNotesEnabled()
-    ? (await listNotes({
+  const noteBlogs = isWordsEnabled()
+    ? (await listWords({
         includeNonPublic: false,
         visibility: "public",
         type: "blog",
         limit: 1000,
-      })).notes
+      })).words
     : [];
 
   const allPosts = noteBlogs
@@ -22,7 +24,7 @@ export default async function Home() {
       title: note.title,
       subtitle: note.subtitle,
       date: note.publishedAt ?? note.updatedAt,
-      readingTime: 1,
+      readingTime: note.readingTime,
       featured: note.featured ?? false,
     }))
     .sort((a, b) => {
@@ -68,7 +70,9 @@ export default async function Home() {
         <p className="font-mono text-micro theme-muted tracking-widest uppercase py-4">Recent</p>
 
         {posts.length === 0 ? (
-          <p className="py-12 theme-muted font-mono text-sm text-center">nothing here yet. check back soon.</p>
+          <p className="py-12 theme-muted font-mono text-sm text-center">
+            quiet for now. new words are on the way.
+          </p>
         ) : (
           <div className="space-y-0">
             {posts.map((post) => (

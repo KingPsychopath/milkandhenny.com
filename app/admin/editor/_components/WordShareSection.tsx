@@ -104,7 +104,7 @@ export function WordShareSection({
                   ) : null}
                   {!isRevoked ? (
                     <button type="button" onClick={() => onRotateShare(link)} className="underline">
-                      reissue url
+                      {isExpired ? "reissue + extend" : "reissue url"}
                     </button>
                   ) : null}
                   {!isRevoked ? (
@@ -139,4 +139,3 @@ export function WordShareSection({
     </div>
   );
 }
-

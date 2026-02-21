@@ -11,10 +11,10 @@ Authentication, protections, rate limiting, and what to do when credentials leak
 | Staff PIN | `STAFF_PIN` | Guest list page access (door staff) | `POST /api/guests/verify-staff-pin` |
 | Admin password | `ADMIN_PASSWORD` | Manage (add/remove/import, wipe best-dressed), admin tools | `POST /api/admin/verify` |
 | Upload PIN | `UPLOAD_PIN` | Web upload page (`/upload`) | `POST /api/upload/verify-pin` |
-| Notes share PIN | Per-share link (stored hashed) | Optional second factor for signed note links | `POST /api/notes/share/verify` |
+| Word share PIN | Per-share link (stored hashed) | Optional second factor for signed word links | `POST /api/words/share/verify` |
 
 All role gates are env vars, never in the client bundle. Set in Vercel and `.env.local`.  
-Notes do **not** use a global reader env PIN: PIN is configured per share link and stored as a hash.
+Words do **not** use a global reader env PIN: PIN is configured per share link and stored as a hash.
 
 Verify endpoints issue short-lived JWTs (role-based TTLs). The app stores role JWTs in **httpOnly cookies** by default (not raw credentials), so:
 
@@ -25,7 +25,7 @@ Notes:
 
 - API routes still accept `Authorization: Bearer <token>` for CLI/tools and explicit callers.
 - The upload dashboard still uses a client-stored token for presign/finalize calls (client-driven flow).
-- Blog media upload endpoints (`/api/upload/blog/*`) are admin-only; the `UPLOAD_PIN` gate is for transfers.
+- Words media upload endpoints (`/api/upload/words/*`) are admin-only; the `UPLOAD_PIN` gate is for transfers.
 
 See also: [storage-and-auth.md](./storage-and-auth.md) for the "cookies vs localStorage" mental model and feature-by-feature mapping.
 
@@ -203,7 +203,6 @@ These are the highest-impact credentials — they grant read/write/delete access
 | `STAFF_PIN` | Yes | Yes | — | — |
 | `ADMIN_PASSWORD` | Yes | Yes | — | — |
 | `UPLOAD_PIN` | Yes | Yes | — | — |
-| `NOTES_ENABLED` | Yes (optional flag) | Yes | — | — |
 | `CRON_SECRET` | No | Yes | — | — |
 | `NEXT_PUBLIC_R2_PUBLIC_URL` | Yes | Yes | — | — |
 | `NEXT_PUBLIC_BASE_URL` | Yes (CLI) | No | — | — |

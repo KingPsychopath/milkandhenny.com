@@ -1,21 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdminStepUp, requireAuth } from "@/features/auth/server";
-import { isNotesEnabled } from "@/features/notes/reader";
+import { isWordsEnabled } from "@/features/words/reader";
 import {
   cleanupShareLinksForSlug,
   deleteAllShareLinksForSlug,
   listTrackedShareSlugs,
-} from "@/features/notes/share";
-import { listNotes } from "@/features/notes/store";
+} from "@/features/words/share";
+import { listWords } from "@/features/words/store";
 import { apiErrorFromRequest } from "@/lib/platform/api-error";
 
 async function collectCleanupSlugs(): Promise<string[]> {
   const [trackedSlugs, notesResult] = await Promise.all([
     listTrackedShareSlugs(),
-    listNotes({ includeNonPublic: true, limit: 2000 }),
+    listWords({ includeNonPublic: true, limit: 2000 }),
   ]);
   const slugs = new Set<string>(trackedSlugs);
-  for (const note of notesResult.notes) {
+  for (const note of notesResult.words) {
     slugs.add(note.slug);
   }
   return [...slugs].sort();
@@ -27,8 +27,8 @@ export async function POST(request: NextRequest) {
   const stepUpErr = await requireAdminStepUp(request);
   if (stepUpErr) return stepUpErr;
 
-  if (!isNotesEnabled()) {
-    return NextResponse.json({ error: "Notes feature is disabled." }, { status: 404 });
+  if (!isWordsEnabled()) {
+    return NextResponse.json({ error: "Words feature is disabled." }, { status: 404 });
   }
 
   let body: { mode?: "cleanup" | "purge" | "reset" };

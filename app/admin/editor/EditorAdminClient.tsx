@@ -137,10 +137,10 @@ export function EditorAdminClient() {
       if (filterVisibility !== "all") params.set("visibility", filterVisibility);
       if (filterTag.trim()) params.set("tag", filterTag.trim().toLowerCase());
 
-      const res = await fetch(`/api/notes?${params.toString()}`);
-      const data = (await res.json().catch(() => ({}))) as { notes?: NoteMeta[]; error?: string };
+      const res = await fetch(`/api/words?${params.toString()}`);
+      const data = (await res.json().catch(() => ({}))) as { words?: NoteMeta[]; error?: string };
       if (!res.ok) throw new Error(data.error ?? "Failed to load words");
-      setNotes(data.notes ?? []);
+      setNotes(data.words ?? []);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load words");
     } finally {
@@ -216,8 +216,8 @@ export function EditorAdminClient() {
     setError("");
     try {
       const [noteRes, sharesRes] = await Promise.all([
-        fetch(`/api/notes/${encodeURIComponent(slug)}`),
-        fetch(`/api/notes/${encodeURIComponent(slug)}/shares`),
+        fetch(`/api/words/${encodeURIComponent(slug)}`),
+        fetch(`/api/words/${encodeURIComponent(slug)}/shares`),
       ]);
       const noteData = (await noteRes.json().catch(() => ({}))) as NoteRecord & { error?: string };
       const shareData = (await sharesRes.json().catch(() => ({}))) as { links?: ShareLink[]; error?: string };
@@ -303,7 +303,7 @@ export function EditorAdminClient() {
     setError("");
     setStatus("");
     try {
-      const res = await fetch("/api/notes", {
+      const res = await fetch("/api/words", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -340,7 +340,7 @@ export function EditorAdminClient() {
     setError("");
     setStatus("");
     try {
-      const res = await fetch(`/api/notes/${encodeURIComponent(selectedSlug)}`, {
+      const res = await fetch(`/api/words/${encodeURIComponent(selectedSlug)}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -375,7 +375,7 @@ export function EditorAdminClient() {
     setError("");
     setStatus("");
     try {
-      const res = await fetch(`/api/notes/${encodeURIComponent(selectedSlug)}`, {
+      const res = await fetch(`/api/words/${encodeURIComponent(selectedSlug)}`, {
         method: "DELETE",
       });
       const data = (await res.json().catch(() => ({}))) as { error?: string };
@@ -402,7 +402,7 @@ export function EditorAdminClient() {
     setError("");
     setStatus("");
     try {
-      const res = await fetch(`/api/notes/${encodeURIComponent(selectedSlug)}/shares`, {
+      const res = await fetch(`/api/words/${encodeURIComponent(selectedSlug)}/shares`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -445,7 +445,7 @@ export function EditorAdminClient() {
     setStatus("");
     try {
       const res = await fetch(
-        `/api/notes/${encodeURIComponent(link.slug)}/shares/${encodeURIComponent(link.id)}`,
+        `/api/words/${encodeURIComponent(link.slug)}/shares/${encodeURIComponent(link.id)}`,
         {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
@@ -472,7 +472,7 @@ export function EditorAdminClient() {
     try {
       const isExpired = isExpiredShare(link);
       const res = await fetch(
-        `/api/notes/${encodeURIComponent(link.slug)}/shares/${encodeURIComponent(link.id)}`,
+        `/api/words/${encodeURIComponent(link.slug)}/shares/${encodeURIComponent(link.id)}`,
         {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
@@ -521,7 +521,7 @@ export function EditorAdminClient() {
     setStatus("");
     try {
       const res = await fetch(
-        `/api/notes/${encodeURIComponent(link.slug)}/shares/${encodeURIComponent(link.id)}`,
+        `/api/words/${encodeURIComponent(link.slug)}/shares/${encodeURIComponent(link.id)}`,
         {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
@@ -575,7 +575,7 @@ export function EditorAdminClient() {
     setStatus("");
     try {
       const res = await fetch(
-        `/api/notes/${encodeURIComponent(link.slug)}/shares/${encodeURIComponent(link.id)}`,
+        `/api/words/${encodeURIComponent(link.slug)}/shares/${encodeURIComponent(link.id)}`,
         { method: "DELETE" }
       );
       const data = (await res.json().catch(() => ({}))) as { error?: string };

@@ -26,6 +26,9 @@ export async function GET(request: NextRequest) {
       deletedFolders: result.deletedFolders,
       deletedObjects: result.deletedObjects,
       deletedBytes: result.deletedBytes,
+      staleIncomingCandidates: result.staleIncomingCandidates,
+      deletedIncomingObjects: result.deletedIncomingObjects,
+      deletedIncomingBytes: result.deletedIncomingBytes,
       r2Configured: result.r2Configured,
     });
 
@@ -41,4 +44,3 @@ export async function GET(request: NextRequest) {
     });
   }
 }
-

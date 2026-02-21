@@ -1,13 +1,13 @@
 import type { MetadataRoute } from "next";
 import { getAllAlbums } from "@/features/media/albums";
 import { BASE_URL } from "@/lib/shared/config";
-import { isNotesEnabled } from "@/features/notes/reader";
-import { listNotes } from "@/features/notes/store";
+import { isWordsEnabled } from "@/features/words/reader";
+import { listWords } from "@/features/words/store";
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const albums = getAllAlbums();
-  const publicNotes = isNotesEnabled()
-    ? (await listNotes({ includeNonPublic: false, visibility: "public", limit: 500 })).notes
+  const publicNotes = isWordsEnabled()
+    ? (await listWords({ includeNonPublic: false, visibility: "public", limit: 500 })).words
     : [];
 
   const wordBySlug = new Map<string, MetadataRoute.Sitemap[number]>();

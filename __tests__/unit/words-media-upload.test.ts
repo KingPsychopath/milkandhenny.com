@@ -4,7 +4,7 @@ import {
   parseWordMediaTarget,
   toMarkdownSnippetForTarget,
   toR2Filename,
-} from "@/features/blog/upload";
+} from "@/features/words/upload";
 
 describe("words media upload helpers", () => {
   it("defaults to word scope and normalizes slug", () => {

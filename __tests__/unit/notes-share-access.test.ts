@@ -1,11 +1,11 @@
 import { afterAll, describe, expect, it, vi } from "vitest";
 import {
   createShareLink,
-  signNoteAccessToken,
+  signWordAccessToken,
   updateShareLink,
-  verifyNoteAccessToken,
+  verifyWordAccessToken,
   verifyShareLinkAccess,
-} from "@/features/notes/share";
+} from "@/features/words/share";
 
 function uniqueSlug(prefix: string): string {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -60,9 +60,9 @@ describe("notes share access", () => {
     expect(verified.ok).toBe(true);
     if (!verified.ok) return;
 
-    const accessToken = signNoteAccessToken(verified.link);
+    const accessToken = signWordAccessToken(verified.link);
     expect(accessToken).toBeTruthy();
-    expect(await verifyNoteAccessToken(slug, accessToken ?? "")).toBe(true);
+    expect(await verifyWordAccessToken(slug, accessToken ?? "")).toBe(true);
 
     const updated = await updateShareLink(slug, verified.link.id, {
       pinRequired: true,
@@ -70,7 +70,7 @@ describe("notes share access", () => {
     });
     expect(updated).toBeTruthy();
 
-    expect(await verifyNoteAccessToken(slug, accessToken ?? "")).toBe(false);
+    expect(await verifyWordAccessToken(slug, accessToken ?? "")).toBe(false);
 
     const verifiedWithPin = await verifyShareLinkAccess({
       slug,
@@ -94,16 +94,16 @@ describe("notes share access", () => {
     expect(verified.ok).toBe(true);
     if (!verified.ok) return;
 
-    const accessToken = signNoteAccessToken(verified.link);
+    const accessToken = signWordAccessToken(verified.link);
     expect(accessToken).toBeTruthy();
-    expect(await verifyNoteAccessToken(slug, accessToken ?? "")).toBe(true);
+    expect(await verifyWordAccessToken(slug, accessToken ?? "")).toBe(true);
 
     const rotated = await updateShareLink(slug, verified.link.id, {
       rotateToken: true,
     });
     expect(rotated?.token).toBeTruthy();
 
-    expect(await verifyNoteAccessToken(slug, accessToken ?? "")).toBe(false);
+    expect(await verifyWordAccessToken(slug, accessToken ?? "")).toBe(false);
   });
 
   it("rejects PIN changes for expired links", async () => {

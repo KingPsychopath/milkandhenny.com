@@ -32,8 +32,23 @@ export type RevokeResponse =
     }
   | { error?: string };
 
+export type AdminVerifyResponse = { ok: true; token: string } | { error?: string };
+
 export function normalizeBaseUrl(url: string): string {
   return url.replace(/\/+$/, "");
+}
+
+export async function issueAdminToken(params: { baseUrl: string; adminPassword: string }): Promise<string> {
+  const res = await fetch(`${params.baseUrl}/api/admin/verify`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ password: params.adminPassword }),
+  });
+  const data = (await res.json().catch(() => ({}))) as AdminVerifyResponse;
+  if (!res.ok || !("ok" in data) || data.ok !== true || typeof data.token !== "string") {
+    throw new Error((data as { error?: string }).error || `Admin verify failed (${res.status})`);
+  }
+  return data.token;
 }
 
 export async function listTokenSessions(params: { baseUrl: string; adminToken: string }) {
@@ -89,4 +104,3 @@ export async function revokeRoleSessions(params: {
   }
   return data;
 }
-

@@ -8,7 +8,7 @@ import {
   parseWordMediaTarget,
   sanitiseStem,
   toR2Filename,
-} from "@/features/blog/upload";
+} from "@/features/words/upload";
 import { getFileKind } from "@/features/media/processing";
 import type { FileKind } from "@/features/media/file-kinds";
 import { randomUUID } from "crypto";

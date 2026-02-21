@@ -1,17 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdminStepUp, requireAuth } from "@/features/auth/server";
-import { isNotesEnabled } from "@/features/notes/reader";
-import { listShareLinks, revokeShareLink } from "@/features/notes/share";
-import { listNotes } from "@/features/notes/store";
+import { isWordsEnabled } from "@/features/words/reader";
+import { listShareLinks, revokeShareLink } from "@/features/words/share";
+import { listWords } from "@/features/words/store";
 import { apiErrorFromRequest } from "@/lib/platform/api-error";
 import type { WordType } from "@/features/words/types";
-import type { NoteVisibility } from "@/features/notes/types";
+import type { WordVisibility } from "@/features/words/content-types";
 
 type SharedWordSummary = {
   slug: string;
   title: string;
   type: WordType;
-  visibility: NoteVisibility;
+  visibility: WordVisibility;
   activeShareCount: number;
   pinProtectedCount: number;
   nextExpiryAt: string;
@@ -23,13 +23,13 @@ function isLinkActive(link: { revokedAt?: string; expiresAt: string }): boolean 
 }
 
 async function buildSharedWordSummaries(): Promise<SharedWordSummary[]> {
-  const { notes } = await listNotes({
+  const { words } = await listWords({
     includeNonPublic: true,
     limit: 2000,
   });
 
   const summaries = await Promise.all(
-    notes.map(async (note) => {
+    words.map(async (note) => {
       const links = await listShareLinks(note.slug);
       const active = links.filter(isLinkActive);
       if (active.length === 0) return null;
@@ -62,7 +62,7 @@ export async function GET(request: NextRequest) {
   const authErr = await requireAuth(request, "admin");
   if (authErr) return authErr;
 
-  if (!isNotesEnabled()) {
+  if (!isWordsEnabled()) {
     return NextResponse.json({ items: [] });
   }
 
@@ -78,8 +78,8 @@ export async function POST(request: NextRequest) {
   const authErr = await requireAuth(request, "admin");
   if (authErr) return authErr;
 
-  if (!isNotesEnabled()) {
-    return NextResponse.json({ error: "Notes feature is disabled." }, { status: 404 });
+  if (!isWordsEnabled()) {
+    return NextResponse.json({ error: "Words feature is disabled." }, { status: 404 });
   }
 
   const stepUpErr = await requireAdminStepUp(request);

@@ -9,7 +9,7 @@ import { describe, it, expect } from "vitest";
  *   "Must match the logic used in rehype-slug so TOC links line up."
  */
 
-import { extractHeadings } from "@/features/blog/reader";
+import { extractHeadings } from "@/features/words/headings";
 import { rehypeSlug } from "@/lib/markdown/rehype-slug";
 
 type TextNode = { type: "text"; value: string };

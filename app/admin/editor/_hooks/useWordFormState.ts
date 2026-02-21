@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useState } from "react";
+import { DEFAULT_WORD_TYPE } from "@/features/words/types";
 import type { NoteRecord, NoteVisibility, WordType } from "../types";
 
 export function useWordFormState() {
@@ -8,7 +9,7 @@ export function useWordFormState() {
   const [createTitle, setCreateTitle] = useState("");
   const [createSubtitle, setCreateSubtitle] = useState("");
   const [createImage, setCreateImage] = useState("");
-  const [createType, setCreateType] = useState<WordType>("note");
+  const [createType, setCreateType] = useState<WordType>(DEFAULT_WORD_TYPE);
   const [createVisibility, setCreateVisibility] = useState<NoteVisibility>("private");
   const [createTags, setCreateTags] = useState("");
   const [createFeatured, setCreateFeatured] = useState(false);
@@ -17,7 +18,7 @@ export function useWordFormState() {
   const [editTitle, setEditTitle] = useState("");
   const [editSubtitle, setEditSubtitle] = useState("");
   const [editImage, setEditImage] = useState("");
-  const [editType, setEditType] = useState<WordType>("note");
+  const [editType, setEditType] = useState<WordType>(DEFAULT_WORD_TYPE);
   const [editVisibility, setEditVisibility] = useState<NoteVisibility>("private");
   const [editTags, setEditTags] = useState("");
   const [editFeatured, setEditFeatured] = useState(false);
@@ -32,7 +33,7 @@ export function useWordFormState() {
     setCreateTitle("");
     setCreateSubtitle("");
     setCreateImage("");
-    setCreateType("note");
+    setCreateType(DEFAULT_WORD_TYPE);
     setCreateVisibility("private");
     setCreateTags("");
     setCreateFeatured(false);
@@ -98,4 +99,3 @@ export function useWordFormState() {
     appendSnippet,
   };
 }
-

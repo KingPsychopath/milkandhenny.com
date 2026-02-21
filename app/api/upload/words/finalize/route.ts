@@ -8,7 +8,7 @@ import {
   mediaPrefixForTarget,
   parseWordMediaTarget,
   toMarkdownSnippetForTarget,
-} from "@/features/blog/upload";
+} from "@/features/words/upload";
 import { getFileKind } from "@/features/media/processing";
 import type { FileKind } from "@/features/media/file-kinds";
 
@@ -162,6 +162,24 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ uploaded, skipped });
   } catch (e) {
+    const incomingKeys = files
+      .map((file) => file.uploadKey)
+      .filter(
+        (key): key is string =>
+          typeof key === "string" &&
+          key.includes("/incoming/") &&
+          isSafeUploadKey(targetPrefix, key)
+      );
+    await Promise.all(
+      incomingKeys.map(async (key) => {
+        try {
+          await deleteObject(key);
+        } catch {
+          // Best-effort temp cleanup after finalize failure.
+        }
+      })
+    );
+
     return apiErrorFromRequest(
       request,
       "upload.words.finalize",

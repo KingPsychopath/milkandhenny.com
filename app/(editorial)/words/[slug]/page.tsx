@@ -2,7 +2,7 @@ import Link from "next/link";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { WordBody } from "@/app/(editorial)/words/_components/WordBody";
-import { UnlockNoteClient } from "@/app/(editorial)/notes/[slug]/UnlockNoteClient";
+import { UnlockWordClient } from "@/app/(editorial)/words/_components/UnlockWordClient";
 import { Breadcrumbs } from "@/components/Breadcrumbs";
 import { JumpRail } from "@/components/JumpRail";
 import { ReadingProgress } from "@/components/ReadingProgress";
@@ -10,18 +10,17 @@ import { Share } from "@/components/Share";
 import { getAlbumBySlug } from "@/features/media/albums";
 import { focalPresetToObjectPosition } from "@/features/media/focal";
 import { resolveWordContentRef } from "@/features/media/storage";
-import { canReadNoteInServerContext, isNotesEnabled } from "@/features/notes/reader";
-import { getNote } from "@/features/notes/store";
+import { extractHeadings } from "@/features/words/headings";
+import { canReadWordInServerContext, isWordsEnabled } from "@/features/words/reader";
+import { getWord, listWords } from "@/features/words/store";
+import { estimateReadingTime } from "@/features/words/reading-time";
 import { BASE_URL, SITE_BRAND, SITE_NAME } from "@/lib/shared/config";
-import { uniqueHeadingIds } from "@/lib/markdown/slug";
 
 const STOP_WORDS = new Set([
   "a","an","the","in","on","at","to","for","of","and","or","but",
   "is","it","its","my","i","we","so","no","do","if","by","as","up",
   "be","am","are","was","were","not","this","that","with","from",
 ]);
-
-const WPM = 230;
 
 type Props = {
   params: Promise<{ slug: string }>;
@@ -37,11 +36,6 @@ type EmbeddedAlbum = {
   previewIds: string[];
   focalPoints?: Record<string, string>;
 };
-
-function estimateReadingTime(content: string): number {
-  const words = content.trim().split(/\s+/).filter(Boolean).length;
-  return Math.max(1, Math.round(words / WPM));
-}
 
 function highlightTitle(title: string) {
   const words = title.split(/\s+/);
@@ -136,22 +130,23 @@ function resolveAlbumsFromContent(content: string): Record<string, EmbeddedAlbum
   }
 }
 
-function extractHeadings(content: string): Array<{ id: string; label: string }> {
-  const labels: string[] = [];
-  const lineRe = /^(#{1,3})\s+(.+)$/gm;
-  let m: RegExpExecArray | null;
-  while ((m = lineRe.exec(content)) !== null) {
-    labels.push(m[2].trim());
-  }
-  return uniqueHeadingIds(labels);
-}
+export const revalidate = 300;
+export const dynamicParams = true;
 
-export const dynamic = "force-dynamic";
+export async function generateStaticParams() {
+  if (!isWordsEnabled()) return [];
+  const { words } = await listWords({
+    includeNonPublic: false,
+    visibility: "public",
+    limit: 1000,
+  });
+  return words.map((word) => ({ slug: word.slug }));
+}
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { slug } = await params;
-  if (!isNotesEnabled()) return {};
-  const note = await getNote(slug);
+  if (!isWordsEnabled()) return {};
+  const note = await getWord(slug);
   if (!note) return {};
   const isPublic = note.meta.visibility === "public";
   if (note.meta.visibility === "private") {
@@ -191,10 +186,13 @@ export default async function WordSlugPage({ params, searchParams }: Props) {
   const { slug } = await params;
   const { share } = await searchParams;
 
-  if (!isNotesEnabled()) notFound();
-  const note = await getNote(slug);
+  if (!isWordsEnabled()) notFound();
+  const note = await getWord(slug);
   if (!note) notFound();
-  const canRead = await canReadNoteInServerContext(note.meta);
+  const canRead =
+    note.meta.visibility === "private"
+      ? await canReadWordInServerContext(note.meta)
+      : true;
   const isPrivateLocked = note.meta.visibility === "private" && !canRead;
   const readingTime = canRead ? estimateReadingTime(note.markdown) : 0;
   const published = note.meta.publishedAt ?? note.meta.updatedAt;
@@ -298,7 +296,7 @@ export default async function WordSlugPage({ params, searchParams }: Props) {
           {canRead ? (
             <WordBody content={note.markdown} wordSlug={slug} albums={albums} />
           ) : (
-            <UnlockNoteClient slug={slug} shareToken={share ?? ""} />
+            <UnlockWordClient slug={slug} shareToken={share ?? ""} />
           )}
         </article>
       </main>

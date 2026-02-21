@@ -3,6 +3,7 @@
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { WordMediaLibrary } from "./WordMediaLibrary";
+import { WORD_TYPES, getWordTypeLabel } from "@/features/words/types";
 import type { NoteMeta, NoteVisibility, WordMediaItem, WordType } from "../types";
 
 function featuredButtonClass(isFeatured: boolean): string {
@@ -132,10 +133,9 @@ export function WordEditSection({
           onChange={(event) => onEditTypeChange(event.target.value as WordType)}
           className="bg-transparent border theme-border rounded px-2 py-2 font-mono text-xs"
         >
-          <option value="note">note</option>
-          <option value="blog">blog</option>
-          <option value="recipe">recipe</option>
-          <option value="review">review</option>
+          {WORD_TYPES.map((type) => (
+            <option key={type} value={type}>{getWordTypeLabel(type)}</option>
+          ))}
         </select>
         <select
           value={editVisibility}

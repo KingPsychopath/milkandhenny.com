@@ -9,7 +9,7 @@
  * - Extension patterns for all supported media
  * - Concurrency helper
  *
- * Used by album-ops, transfer-ops, blog-ops, and API upload routes.
+ * Used by album-ops, transfer-ops, words-media-ops, and API upload routes.
  */
 
 import "server-only";

@@ -473,13 +473,13 @@ export function AdminDashboard() {
     {
       key: "shares-cleanup",
       label: "purge stale shares",
-      cmd: "pnpm cli notes share cleanup",
+      cmd: "pnpm cli words share cleanup",
       tip: "Deletes expired/revoked share records and stale indices.",
     },
     {
       key: "shares-purge",
       label: "nuke all shares",
-      cmd: "pnpm cli notes share purge --all",
+      cmd: "pnpm cli words share purge --all",
       tip: "Deletes all share links globally (destructive).",
     },
   ] as const;
@@ -752,7 +752,7 @@ export function AdminDashboard() {
         throw new Error((data.error as string) || "Failed to purge stale media");
       }
       setStatusMessage(
-        `Purge stale media complete: deleted ${data.deletedFolders ?? 0} folder(s), ${data.deletedObjects ?? 0} object(s), ${formatBytes(data.deletedBytes ?? 0)}.`
+        `Purge stale media complete: deleted ${data.deletedFolders ?? 0} orphan folder(s), ${data.deletedObjects ?? 0} orphan object(s), ${formatBytes(data.deletedBytes ?? 0)}. Incoming cleanup: ${data.deletedIncomingObjects ?? 0} temp object(s), ${formatBytes(data.deletedIncomingBytes ?? 0)}.`
       );
       await loadWordMediaOrphans();
     } catch (err) {

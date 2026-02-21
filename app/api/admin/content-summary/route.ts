@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/features/auth/server";
 import { getAllAlbums, validateAllAlbums } from "@/features/media/albums";
-import { isNotesEnabled } from "@/features/notes/reader";
-import { listNotes } from "@/features/notes/store";
+import { isWordsEnabled } from "@/features/words/reader";
+import { listWords } from "@/features/words/store";
 import { apiErrorFromRequest } from "@/lib/platform/api-error";
 
 export async function GET(request: NextRequest) {
@@ -10,12 +10,12 @@ export async function GET(request: NextRequest) {
   if (authErr) return authErr;
 
   try {
-    const noteBlogs = isNotesEnabled()
-      ? (await listNotes({
+    const noteBlogs = isWordsEnabled()
+      ? (await listWords({
           includeNonPublic: true,
           type: "blog",
           limit: 1000,
-        })).notes
+        })).words
       : [];
 
     const posts = noteBlogs
@@ -23,7 +23,7 @@ export async function GET(request: NextRequest) {
         slug: note.slug,
         title: note.title,
         date: note.publishedAt ?? note.updatedAt,
-        readingTime: 1,
+        readingTime: note.readingTime,
         featured: note.featured ?? false,
         hasImage: !!note.image,
       }))

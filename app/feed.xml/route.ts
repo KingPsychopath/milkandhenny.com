@@ -1,16 +1,16 @@
-import { isNotesEnabled } from "@/features/notes/reader";
-import { listNotes } from "@/features/notes/store";
+import { isWordsEnabled } from "@/features/words/reader";
+import { listWords } from "@/features/words/store";
 import { BASE_URL, SITE_BRAND } from "@/lib/shared/config";
 
 /** Generate an RSS 2.0 feed from all blog posts */
 export async function GET() {
-  const noteBlogs = isNotesEnabled()
-    ? (await listNotes({
+  const noteBlogs = isWordsEnabled()
+    ? (await listWords({
         includeNonPublic: false,
         visibility: "public",
         type: "blog",
         limit: 500,
-      })).notes
+      })).words
     : [];
 
   const bySlug = new Map<

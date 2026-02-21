@@ -3,8 +3,8 @@ import { requireAuth } from "@/features/auth/server";
 import { isConfigured, listObjects } from "@/lib/platform/r2";
 import { validateAllAlbums } from "@/features/media/albums";
 import { apiErrorFromRequest } from "@/lib/platform/api-error";
-import { isNotesEnabled } from "@/features/notes/reader";
-import { getNote, listNotes } from "@/features/notes/store";
+import { isWordsEnabled } from "@/features/words/reader";
+import { getWord, listWords } from "@/features/words/store";
 
 const WORDS_MEDIA_PREFIX = "words/media/";
 const WORDS_ASSETS_PREFIX = "words/assets/";
@@ -62,8 +62,8 @@ export async function GET(request: NextRequest) {
 
   try {
     const albumValidation = validateAllAlbums();
-    const wordSlugs = isNotesEnabled()
-      ? (await listNotes({ includeNonPublic: true, type: "blog", limit: 2000 })).notes.map((n) => n.slug)
+    const wordSlugs = isWordsEnabled()
+      ? (await listWords({ includeNonPublic: true, type: "blog", limit: 2000 })).words.map((n) => n.slug)
       : [];
 
     let blogAudit:
@@ -84,7 +84,7 @@ export async function GET(request: NextRequest) {
     if (!isConfigured()) {
       let checkedRefs = 0;
       for (const slug of wordSlugs) {
-        const note = await getNote(slug);
+        const note = await getWord(slug);
         if (!note) continue;
         const raw = note.markdown;
         checkedRefs += collectBlogRefsWithLines(raw).length;
@@ -107,7 +107,7 @@ export async function GET(request: NextRequest) {
       let checkedRefs = 0;
 
       for (const slug of wordSlugs) {
-        const note = await getNote(slug);
+        const note = await getWord(slug);
         if (!note) continue;
         const raw = note.markdown;
         const refs = collectBlogRefsWithLines(raw);
