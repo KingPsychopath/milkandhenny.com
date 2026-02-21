@@ -3,12 +3,5 @@
     { "path": "/api/cron/cleanup-transfers", "schedule": "0 3 * * *" },
     { "path": "/api/cron/cleanup-word-shares", "schedule": "10 3 * * *" },
     { "path": "/api/cron/cleanup-word-media-orphans", "schedule": "20 3 * * *" }
-  ],
-  "rewrites": [
-    {
-      "source": "/:path*",
-      "has": [{"type": "host", "value": "pics.milkandhenny.com"}],
-      "destination": "https://pub-e25e925b029940d99b0df0d54515d82b.r2.dev/:path*"
-    }
   ]
 }
