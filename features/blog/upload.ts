@@ -1,13 +1,19 @@
 /**
- * Blog upload helpers.
+ * Words media upload helpers.
  *
- * Shared between the upload API route and the CLI's blog-ops.
+ * Shared between upload API routes and CLI media operations.
  * Handles filename sanitisation, R2 key generation, and markdown snippets.
  */
 
 import path from "path";
 import { isProcessableImage } from "@/features/media/processing";
 import type { FileKind } from "@/features/media/file-kinds";
+
+const SAFE_MEDIA_TARGET_ID = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+
+type WordMediaTarget =
+  | { scope: "word"; slug: string }
+  | { scope: "asset"; assetId: string };
 
 /** Sanitise a filename stem: lowercase, replace non-alphanumeric with hyphens. */
 function sanitiseStem(filename: string): string {
@@ -29,13 +35,59 @@ function toR2Filename(localFilename: string): string {
   return `${sanitised}${path.extname(localFilename).toLowerCase()}`;
 }
 
-/** Generate a ready-to-paste markdown snippet for a blog file. */
-function toMarkdownSnippet(
-  slug: string,
+function isValidWordMediaTargetId(value: string): boolean {
+  return SAFE_MEDIA_TARGET_ID.test(value);
+}
+
+function normaliseWordMediaTargetId(value: string): string {
+  return value.trim().toLowerCase();
+}
+
+function parseWordMediaTarget(input: {
+  scope?: string;
+  slug?: string;
+  assetId?: string;
+}): { ok: true; target: WordMediaTarget } | { ok: false; error: string } {
+  const rawScope = input.scope?.trim().toLowerCase();
+  const scope = rawScope === "asset" ? "asset" : "word";
+  const slug = normaliseWordMediaTargetId(input.slug ?? "");
+  const assetId = normaliseWordMediaTargetId(input.assetId ?? "");
+
+  if (scope === "asset" || (!rawScope && !slug && assetId)) {
+    if (!assetId) {
+      return { ok: false, error: "Asset ID is required for shared assets." };
+    }
+    if (!isValidWordMediaTargetId(assetId)) {
+      return { ok: false, error: "Asset ID must use lowercase letters, numbers, and hyphens only." };
+    }
+    return { ok: true, target: { scope: "asset", assetId } };
+  }
+
+  if (!slug) {
+    return { ok: false, error: "Slug is required for word media." };
+  }
+  if (!isValidWordMediaTargetId(slug)) {
+    return { ok: false, error: "Slug must use lowercase letters, numbers, and hyphens only." };
+  }
+  return { ok: true, target: { scope: "word", slug } };
+}
+
+function mediaPrefixForTarget(target: WordMediaTarget): string {
+  if (target.scope === "asset") return `words/assets/${target.assetId}/`;
+  return `words/media/${target.slug}/`;
+}
+
+function mediaPathForTarget(target: WordMediaTarget, filename: string): string {
+  return `${mediaPrefixForTarget(target)}${filename}`;
+}
+
+/** Generate a ready-to-paste markdown snippet for a media file. */
+function toMarkdownSnippetForTarget(
+  target: WordMediaTarget,
   filename: string,
   kind: FileKind
 ): string {
-  const r2Path = `blog/${slug}/${filename}`;
+  const r2Path = mediaPathForTarget(target, filename);
   const label = filename.replace(/\.[^.]+$/, "");
 
   switch (kind) {
@@ -48,4 +100,20 @@ function toMarkdownSnippet(
   }
 }
 
-export { sanitiseStem, toR2Filename, toMarkdownSnippet };
+/** Backward-compatible helper for word-scoped media snippets. */
+function toMarkdownSnippet(slug: string, filename: string, kind: FileKind): string {
+  return toMarkdownSnippetForTarget({ scope: "word", slug }, filename, kind);
+}
+
+export {
+  sanitiseStem,
+  toR2Filename,
+  toMarkdownSnippet,
+  isValidWordMediaTargetId,
+  parseWordMediaTarget,
+  mediaPrefixForTarget,
+  mediaPathForTarget,
+  toMarkdownSnippetForTarget,
+};
+
+export type { WordMediaTarget };

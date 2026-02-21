@@ -1,0 +1,775 @@
+"use client";
+
+import { useCallback, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+
+type NoteVisibility = "public" | "unlisted" | "private";
+type WordType = "blog" | "note" | "recipe" | "review";
+
+type NoteMeta = {
+  slug: string;
+  title: string;
+  subtitle?: string;
+  image?: string;
+  type: WordType;
+  visibility: NoteVisibility;
+  tags: string[];
+  featured?: boolean;
+  updatedAt: string;
+};
+
+type NoteRecord = {
+  meta: NoteMeta;
+  markdown: string;
+};
+
+type ShareLink = {
+  id: string;
+  slug: string;
+  expiresAt: string;
+  pinRequired: boolean;
+  revokedAt?: string;
+  updatedAt: string;
+};
+
+type SharePatchResponse = {
+  link?: ShareLink;
+  token?: string;
+  error?: string;
+};
+
+function buildShareUrl(slug: string, token: string): string {
+  return `${window.location.origin}/words/${slug}?share=${encodeURIComponent(token)}`;
+}
+
+function featuredButtonClass(isFeatured: boolean): string {
+  return `h-full min-h-10 px-3 rounded border font-mono text-xs transition-colors ${
+    isFeatured
+      ? "border-[var(--foreground)] text-[var(--foreground)]"
+      : "theme-border theme-muted hover:text-[var(--foreground)]"
+  }`;
+}
+
+export function EditorAdminClient() {
+  const [notes, setNotes] = useState<NoteMeta[]>([]);
+  const [selectedSlug, setSelectedSlug] = useState("");
+  const [current, setCurrent] = useState<NoteRecord | null>(null);
+  const [shares, setShares] = useState<ShareLink[]>([]);
+  const [shareTokensById, setShareTokensById] = useState<Record<string, string>>({});
+  const [busy, setBusy] = useState(false);
+  const [status, setStatus] = useState("");
+  const [error, setError] = useState("");
+  const [showPreview, setShowPreview] = useState(false);
+
+  const [createSlug, setCreateSlug] = useState("");
+  const [createTitle, setCreateTitle] = useState("");
+  const [createSubtitle, setCreateSubtitle] = useState("");
+  const [createImage, setCreateImage] = useState("");
+  const [createType, setCreateType] = useState<WordType>("note");
+  const [createVisibility, setCreateVisibility] = useState<NoteVisibility>("private");
+  const [createTags, setCreateTags] = useState("");
+  const [createFeatured, setCreateFeatured] = useState(false);
+  const [createMarkdown, setCreateMarkdown] = useState("");
+
+  const [editTitle, setEditTitle] = useState("");
+  const [editSubtitle, setEditSubtitle] = useState("");
+  const [editImage, setEditImage] = useState("");
+  const [editType, setEditType] = useState<WordType>("note");
+  const [editVisibility, setEditVisibility] = useState<NoteVisibility>("private");
+  const [editTags, setEditTags] = useState("");
+  const [editFeatured, setEditFeatured] = useState(false);
+  const [editMarkdown, setEditMarkdown] = useState("");
+
+  const [searchQuery, setSearchQuery] = useState("");
+  const [filterType, setFilterType] = useState<WordType | "all">("all");
+  const [filterVisibility, setFilterVisibility] = useState<NoteVisibility | "all">("all");
+  const [filterTag, setFilterTag] = useState("");
+
+  const parseTags = useCallback((raw: string): string[] => {
+    return [...new Set(raw.split(",").map((t) => t.trim().toLowerCase()).filter(Boolean))];
+  }, []);
+
+  const storeShareToken = useCallback((shareId: string, token: string) => {
+    setShareTokensById((prev) => ({ ...prev, [shareId]: token }));
+  }, []);
+
+  const loadNotes = useCallback(async () => {
+    setBusy(true);
+    setError("");
+    try {
+      const params = new URLSearchParams();
+      params.set("limit", "200");
+      if (searchQuery.trim()) params.set("q", searchQuery.trim());
+      if (filterType !== "all") params.set("type", filterType);
+      if (filterVisibility !== "all") params.set("visibility", filterVisibility);
+      if (filterTag.trim()) params.set("tag", filterTag.trim().toLowerCase());
+
+      const res = await fetch(`/api/notes?${params.toString()}`);
+      const data = (await res.json().catch(() => ({}))) as { notes?: NoteMeta[]; error?: string };
+      if (!res.ok) throw new Error(data.error ?? "Failed to load words");
+      setNotes(data.notes ?? []);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load words");
+    } finally {
+      setBusy(false);
+    }
+  }, [filterTag, filterType, filterVisibility, searchQuery]);
+
+  const loadWord = useCallback(async (slug: string) => {
+    if (!slug) return;
+    setBusy(true);
+    setError("");
+    try {
+      const [noteRes, sharesRes] = await Promise.all([
+        fetch(`/api/notes/${encodeURIComponent(slug)}`),
+        fetch(`/api/notes/${encodeURIComponent(slug)}/shares`),
+      ]);
+      const noteData = (await noteRes.json().catch(() => ({}))) as NoteRecord & { error?: string };
+      const shareData = (await sharesRes.json().catch(() => ({}))) as { links?: ShareLink[]; error?: string };
+
+      if (!noteRes.ok) throw new Error(noteData.error ?? "Failed to load word");
+      if (!sharesRes.ok) throw new Error(shareData.error ?? "Failed to load share links");
+
+      setCurrent(noteData);
+      setEditTitle(noteData.meta.title);
+      setEditSubtitle(noteData.meta.subtitle ?? "");
+      setEditImage(noteData.meta.image ?? "");
+      setEditType(noteData.meta.type);
+      setEditVisibility(noteData.meta.visibility);
+      setEditTags(noteData.meta.tags.join(", "));
+      setEditFeatured(!!noteData.meta.featured);
+      setEditMarkdown(noteData.markdown);
+      setShares(shareData.links ?? []);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load word");
+    } finally {
+      setBusy(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadNotes();
+  }, [loadNotes]);
+
+  useEffect(() => {
+    if (!selectedSlug && notes[0]) setSelectedSlug(notes[0].slug);
+  }, [notes, selectedSlug]);
+
+  useEffect(() => {
+    if (selectedSlug) void loadWord(selectedSlug);
+  }, [selectedSlug, loadWord]);
+
+  const selected = useMemo(
+    () => notes.find((n) => n.slug === selectedSlug) ?? null,
+    [notes, selectedSlug]
+  );
+
+  async function createWord() {
+    setBusy(true);
+    setError("");
+    setStatus("");
+    try {
+      const res = await fetch("/api/notes", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          slug: createSlug,
+          title: createTitle,
+          subtitle: createSubtitle || undefined,
+          image: createImage || undefined,
+          type: createType,
+          visibility: createVisibility,
+          tags: parseTags(createTags),
+          featured: createFeatured,
+          markdown: createMarkdown,
+        }),
+      });
+      const data = (await res.json().catch(() => ({}))) as { meta?: NoteMeta; error?: string };
+      if (!res.ok) throw new Error(data.error ?? "Failed to create word");
+
+      setStatus("word created");
+      setCreateSlug("");
+      setCreateTitle("");
+      setCreateSubtitle("");
+      setCreateImage("");
+      setCreateType("note");
+      setCreateVisibility("private");
+      setCreateTags("");
+      setCreateFeatured(false);
+      setCreateMarkdown("");
+
+      await loadNotes();
+      if (data.meta?.slug) setSelectedSlug(data.meta.slug);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to create word");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function saveWord() {
+    if (!selectedSlug) return;
+
+    setBusy(true);
+    setError("");
+    setStatus("");
+    try {
+      const res = await fetch(`/api/notes/${encodeURIComponent(selectedSlug)}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: editTitle,
+          subtitle: editSubtitle,
+          image: editImage,
+          type: editType,
+          visibility: editVisibility,
+          tags: parseTags(editTags),
+          featured: editFeatured,
+          markdown: editMarkdown,
+        }),
+      });
+      const data = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok) throw new Error(data.error ?? "Failed to save word");
+
+      setStatus("word saved");
+      await loadNotes();
+      await loadWord(selectedSlug);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to save word");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function deleteCurrentWord() {
+    if (!selectedSlug) return;
+    if (!window.confirm(`Delete word \"${selectedSlug}\"?`)) return;
+
+    setBusy(true);
+    setError("");
+    setStatus("");
+    try {
+      const res = await fetch(`/api/notes/${encodeURIComponent(selectedSlug)}`, {
+        method: "DELETE",
+      });
+      const data = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok) throw new Error(data.error ?? "Failed to delete word");
+
+      setStatus("word deleted");
+      setCurrent(null);
+      setShares([]);
+      setSelectedSlug("");
+      await loadNotes();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to delete word");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function createShare() {
+    if (!selectedSlug) return;
+    const withPin = window.confirm("Protect this new share link with a PIN?");
+    const pin = withPin ? window.prompt("Enter share PIN") ?? "" : "";
+
+    setBusy(true);
+    setError("");
+    setStatus("");
+    try {
+      const res = await fetch(`/api/notes/${encodeURIComponent(selectedSlug)}/shares`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          expiresInDays: 7,
+          pinRequired: withPin,
+          pin: withPin ? pin : undefined,
+        }),
+      });
+      const data = (await res.json().catch(() => ({}))) as {
+        link?: ShareLink;
+        token?: string;
+        error?: string;
+      };
+      if (!res.ok) throw new Error(data.error ?? "Failed to create share link");
+      if (!data.token || !data.link) throw new Error("Share link created but token missing.");
+
+      storeShareToken(data.link.id, data.token);
+      await navigator.clipboard.writeText(buildShareUrl(selectedSlug, data.token));
+      setStatus("share link created and copied");
+      await loadWord(selectedSlug);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to create share link");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function toggleSharePin(link: ShareLink) {
+    const enable = !link.pinRequired;
+    const pin = enable ? window.prompt("Set PIN for this link") ?? "" : null;
+    if (enable && !pin) return;
+
+    setBusy(true);
+    setError("");
+    setStatus("");
+    try {
+      const res = await fetch(
+        `/api/notes/${encodeURIComponent(link.slug)}/shares/${encodeURIComponent(link.id)}`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(enable ? { pinRequired: true, pin } : { pinRequired: false }),
+        }
+      );
+      const data = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok) throw new Error(data.error ?? "Failed to update share link");
+
+      setStatus(enable ? "PIN enabled" : "PIN removed");
+      await loadWord(link.slug);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to update share link");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function rotateShare(link: ShareLink, reason: "rotate" | "reissue" = "rotate") {
+    setBusy(true);
+    setError("");
+    setStatus("");
+    try {
+      const res = await fetch(
+        `/api/notes/${encodeURIComponent(link.slug)}/shares/${encodeURIComponent(link.id)}`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ rotateToken: true }),
+        }
+      );
+      const data = (await res.json().catch(() => ({}))) as SharePatchResponse;
+      if (!res.ok) throw new Error(data.error ?? "Failed to rotate link");
+      if (!data.token) throw new Error("Token rotation succeeded but no token was returned.");
+
+      storeShareToken(link.id, data.token);
+      await navigator.clipboard.writeText(buildShareUrl(link.slug, data.token));
+      setStatus(reason === "reissue" ? "share link reissued and copied" : "share link rotated and copied");
+      await loadWord(link.slug);
+      return data.token;
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to rotate share link");
+      return null;
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function copyShareLink(link: ShareLink) {
+    setError("");
+    setStatus("");
+    try {
+      if (link.revokedAt) {
+        setError("Cannot copy a revoked link. Reissue from an active link instead.");
+        return;
+      }
+
+      const knownToken = shareTokensById[link.id];
+      if (knownToken) {
+        await navigator.clipboard.writeText(buildShareUrl(link.slug, knownToken));
+        setStatus("share link copied");
+        return;
+      }
+
+      const shouldReissue = window.confirm(
+        "For security, existing tokens are stored as hashes and cannot be read back. Reissue this link now? (This invalidates the previous URL.)"
+      );
+      if (!shouldReissue) return;
+
+      await rotateShare(link, "reissue");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to copy share link");
+    }
+  }
+
+  async function revokeShare(link: ShareLink) {
+    if (!window.confirm("Revoke this share link?")) return;
+
+    setBusy(true);
+    setError("");
+    setStatus("");
+    try {
+      const res = await fetch(
+        `/api/notes/${encodeURIComponent(link.slug)}/shares/${encodeURIComponent(link.id)}`,
+        { method: "DELETE" }
+      );
+      const data = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok) throw new Error(data.error ?? "Failed to revoke link");
+
+      setStatus("share link revoked");
+      setShareTokensById((prev) => {
+        const next = { ...prev };
+        delete next[link.id];
+        return next;
+      });
+      await loadWord(link.slug);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to revoke share link");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="max-w-5xl mx-auto px-6 pt-12 pb-24">
+      <header className="flex flex-wrap items-center justify-between gap-3 mb-8">
+        <div>
+          <h1 className="font-mono text-lg font-bold tracking-tighter">admin · editor</h1>
+          <p className="font-mono text-xs theme-muted mt-1">
+            write, filter, and share blogs, notes, recipes, and reviews
+          </p>
+        </div>
+        <div className="flex items-center gap-4 font-mono text-xs">
+          <Link href="/admin" className="theme-muted hover:text-foreground transition-colors">
+            admin home
+          </Link>
+          <Link href="/words" className="theme-muted hover:text-foreground transition-colors">
+            open words
+          </Link>
+        </div>
+      </header>
+
+      {(status || error) && (
+        <div className="mb-4 font-mono text-xs space-y-1">
+          {status ? <p className="text-[var(--prose-hashtag)]">{status}</p> : null}
+          {error ? <p className="text-[var(--prose-hashtag)]">{error}</p> : null}
+        </div>
+      )}
+
+      <section className="mb-6 border theme-border rounded-md p-4 space-y-3">
+        <p className="font-mono text-xs theme-muted">search + filters</p>
+        <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
+          <input
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="search title, slug, tags"
+            className="bg-transparent border-b theme-border outline-none font-mono text-sm py-2"
+          />
+          <select
+            value={filterType}
+            onChange={(e) => setFilterType(e.target.value as WordType | "all")}
+            className="bg-transparent border theme-border rounded px-2 py-2 font-mono text-xs"
+          >
+            <option value="all">all types</option>
+            <option value="blog">blog</option>
+            <option value="note">note</option>
+            <option value="recipe">recipe</option>
+            <option value="review">review</option>
+          </select>
+          <select
+            value={filterVisibility}
+            onChange={(e) => setFilterVisibility(e.target.value as NoteVisibility | "all")}
+            className="bg-transparent border theme-border rounded px-2 py-2 font-mono text-xs"
+          >
+            <option value="all">all visibility</option>
+            <option value="public">public</option>
+            <option value="unlisted">unlisted</option>
+            <option value="private">private</option>
+          </select>
+          <input
+            value={filterTag}
+            onChange={(e) => setFilterTag(e.target.value)}
+            placeholder="filter by tag"
+            className="bg-transparent border-b theme-border outline-none font-mono text-sm py-2"
+          />
+        </div>
+        <div className="flex items-center gap-3 font-mono text-xs">
+          <button type="button" onClick={() => void loadNotes()} className="underline">
+            apply filters
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setSearchQuery("");
+              setFilterType("all");
+              setFilterVisibility("all");
+              setFilterTag("");
+            }}
+            className="underline"
+          >
+            clear
+          </button>
+        </div>
+      </section>
+
+      <div className="grid gap-6 lg:grid-cols-[280px_1fr]">
+        <aside className="space-y-3 border theme-border rounded-md p-3 h-fit">
+          <div className="flex items-center justify-between">
+            <p className="font-mono text-xs theme-muted">results ({notes.length})</p>
+            <button type="button" onClick={() => void loadNotes()} className="font-mono text-xs underline">
+              refresh
+            </button>
+          </div>
+          <div className="space-y-1 max-h-[420px] overflow-auto">
+            {notes.map((note) => (
+              <button
+                type="button"
+                key={note.slug}
+                onClick={() => setSelectedSlug(note.slug)}
+                className={`w-full text-left rounded px-2 py-2 border transition-colors ${
+                  selectedSlug === note.slug ? "border-[var(--foreground)]" : "theme-border"
+                }`}
+              >
+                <p className="font-mono text-xs">{note.slug}</p>
+                <p className="font-serif text-sm leading-tight mt-1">{note.title}</p>
+                <p className="font-mono text-micro theme-muted mt-1">
+                  {note.type} · {note.visibility}
+                  {note.featured ? " · featured" : ""}
+                </p>
+                {note.tags.length > 0 && (
+                  <p className="font-mono text-micro theme-faint mt-1">#{note.tags.join(" #")}</p>
+                )}
+              </button>
+            ))}
+          </div>
+        </aside>
+
+        <section className="space-y-6">
+          <div className="border theme-border rounded-md p-4 space-y-3">
+            <h2 className="font-mono text-xs theme-muted">create word</h2>
+            <div className="grid sm:grid-cols-2 gap-3">
+              <input
+                value={createSlug}
+                onChange={(e) => setCreateSlug(e.target.value)}
+                placeholder="slug"
+                className="bg-transparent border-b theme-border outline-none font-mono text-sm py-2"
+              />
+              <input
+                value={createTitle}
+                onChange={(e) => setCreateTitle(e.target.value)}
+                placeholder="title"
+                className="bg-transparent border-b theme-border outline-none font-mono text-sm py-2"
+              />
+            </div>
+            <input
+              value={createSubtitle}
+              onChange={(e) => setCreateSubtitle(e.target.value)}
+              placeholder="subtitle (optional)"
+              className="w-full bg-transparent border-b theme-border outline-none font-mono text-sm py-2"
+            />
+            <input
+              value={createImage}
+              onChange={(e) => setCreateImage(e.target.value)}
+              placeholder="hero image path (optional: words/media/... or words/assets/...)"
+              className="w-full bg-transparent border-b theme-border outline-none font-mono text-sm py-2"
+            />
+            <div className="grid sm:grid-cols-2 gap-3">
+              <input
+                value={createTags}
+                onChange={(e) => setCreateTags(e.target.value)}
+                placeholder="tags (comma-separated)"
+                className="bg-transparent border-b theme-border outline-none font-mono text-sm py-2"
+              />
+              <div className="grid grid-cols-1 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] gap-2">
+                <select
+                  value={createType}
+                  onChange={(e) => setCreateType(e.target.value as WordType)}
+                  className="bg-transparent border theme-border rounded px-2 py-2 font-mono text-xs"
+                >
+                  <option value="note">note</option>
+                  <option value="blog">blog</option>
+                  <option value="recipe">recipe</option>
+                  <option value="review">review</option>
+                </select>
+                <select
+                  value={createVisibility}
+                  onChange={(e) => setCreateVisibility(e.target.value as NoteVisibility)}
+                  className="bg-transparent border theme-border rounded px-2 py-2 font-mono text-xs"
+                >
+                  <option value="private">private</option>
+                  <option value="unlisted">unlisted</option>
+                  <option value="public">public</option>
+                </select>
+                <button
+                  type="button"
+                  onClick={() => setCreateFeatured((v) => !v)}
+                  className={featuredButtonClass(createFeatured)}
+                  aria-pressed={createFeatured}
+                >
+                  featured
+                </button>
+              </div>
+            </div>
+            <textarea
+              value={createMarkdown}
+              onChange={(e) => setCreateMarkdown(e.target.value)}
+              placeholder="markdown"
+              rows={8}
+              className="w-full bg-transparent border theme-border rounded px-3 py-2 font-mono text-xs"
+            />
+            <button
+              type="button"
+              onClick={() => void createWord()}
+              disabled={busy}
+              className="font-mono text-xs px-3 py-2 rounded border theme-border"
+            >
+              {busy ? "working..." : "create word"}
+            </button>
+          </div>
+
+          {selected ? (
+            <div className="border theme-border rounded-md p-4 space-y-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <h2 className="font-mono text-xs theme-muted">edit · {selected.slug}</h2>
+                <div className="flex items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setShowPreview((v) => !v)}
+                    className="font-mono text-xs underline"
+                  >
+                    {showPreview ? "edit mode" : "preview"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void deleteCurrentWord()}
+                    className="font-mono text-xs text-[var(--prose-hashtag)]"
+                  >
+                    delete
+                  </button>
+                </div>
+              </div>
+
+              <div className="grid sm:grid-cols-2 gap-3">
+                <input
+                  value={editTitle}
+                  onChange={(e) => setEditTitle(e.target.value)}
+                  className="bg-transparent border-b theme-border outline-none font-mono text-sm py-2"
+                />
+                <input
+                  value={editSubtitle}
+                  onChange={(e) => setEditSubtitle(e.target.value)}
+                  placeholder="subtitle"
+                  className="bg-transparent border-b theme-border outline-none font-mono text-sm py-2"
+                />
+                <input
+                  value={editImage}
+                  onChange={(e) => setEditImage(e.target.value)}
+                  placeholder="hero image path (optional: words/media/... or words/assets/...)"
+                  className="bg-transparent border-b theme-border outline-none font-mono text-sm py-2"
+                />
+                <input
+                  value={editTags}
+                  onChange={(e) => setEditTags(e.target.value)}
+                  placeholder="tags (comma-separated)"
+                  className="bg-transparent border-b theme-border outline-none font-mono text-sm py-2"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] gap-2">
+                <select
+                  value={editType}
+                  onChange={(e) => setEditType(e.target.value as WordType)}
+                  className="bg-transparent border theme-border rounded px-2 py-2 font-mono text-xs"
+                >
+                  <option value="note">note</option>
+                  <option value="blog">blog</option>
+                  <option value="recipe">recipe</option>
+                  <option value="review">review</option>
+                </select>
+                <select
+                  value={editVisibility}
+                  onChange={(e) => setEditVisibility(e.target.value as NoteVisibility)}
+                  className="bg-transparent border theme-border rounded px-2 py-2 font-mono text-xs"
+                >
+                  <option value="private">private</option>
+                  <option value="unlisted">unlisted</option>
+                  <option value="public">public</option>
+                </select>
+                <button
+                  type="button"
+                  onClick={() => setEditFeatured((v) => !v)}
+                  className={featuredButtonClass(editFeatured)}
+                  aria-pressed={editFeatured}
+                >
+                  featured
+                </button>
+              </div>
+
+              {showPreview ? (
+                <div className="border theme-border rounded p-3 prose-blog font-serif">
+                  <ReactMarkdown remarkPlugins={[remarkGfm]}>{editMarkdown}</ReactMarkdown>
+                </div>
+              ) : (
+                <textarea
+                  value={editMarkdown}
+                  onChange={(e) => setEditMarkdown(e.target.value)}
+                  rows={14}
+                  className="w-full bg-transparent border theme-border rounded px-3 py-2 font-mono text-xs"
+                />
+              )}
+
+              <button
+                type="button"
+                onClick={() => void saveWord()}
+                disabled={busy}
+                className="font-mono text-xs px-3 py-2 rounded border theme-border"
+              >
+                {busy ? "saving..." : "save word"}
+              </button>
+            </div>
+          ) : null}
+
+          {selected ? (
+            <div className="border theme-border rounded-md p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <h2 className="font-mono text-xs theme-muted">share links</h2>
+                <button type="button" onClick={() => void createShare()} className="font-mono text-xs underline">
+                  create share link
+                </button>
+              </div>
+              <div className="space-y-2">
+                {shares.length === 0 ? (
+                  <p className="font-mono text-xs theme-muted">no share links</p>
+                ) : (
+                  shares.map((link) => (
+                    <div key={link.id} className="border theme-border rounded p-3">
+                      <p className="font-mono text-xs">{link.id}</p>
+                      <p className="font-mono text-micro theme-muted mt-1">
+                        expires {new Date(link.expiresAt).toLocaleString()} · {link.revokedAt ? "revoked" : "active"} ·{" "}
+                        {link.pinRequired ? "pin on" : "pin off"}
+                      </p>
+                      <div className="mt-2 flex flex-wrap gap-3 font-mono text-xs">
+                        {!link.revokedAt && (
+                          <button type="button" onClick={() => void copyShareLink(link)} className="underline">
+                            copy link
+                          </button>
+                        )}
+                        {!link.revokedAt && (
+                          <button type="button" onClick={() => void rotateShare(link, "rotate")} className="underline">
+                            reissue url
+                          </button>
+                        )}
+                        <button type="button" onClick={() => void toggleSharePin(link)} className="underline">
+                          {link.pinRequired ? "remove pin" : "require pin"}
+                        </button>
+                        {!link.revokedAt && (
+                          <button
+                            type="button"
+                            onClick={() => void revokeShare(link)}
+                            className="text-[var(--prose-hashtag)]"
+                          >
+                            revoke
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          ) : null}
+        </section>
+      </div>
+    </div>
+  );
+}

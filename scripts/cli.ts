@@ -11,6 +11,7 @@
 import fs from "fs";
 import path from "path";
 import readline from "readline";
+import matter from "gray-matter";
 import {
   listAlbums,
   getAlbum,
@@ -56,10 +57,11 @@ import {
   parseExpiry,
 } from "./transfer-ops";
 import {
-  uploadBlogFiles,
-  listBlogFiles,
-  deleteBlogFile,
-  deleteAllBlogFiles,
+  uploadWordMediaFiles,
+  listWordMediaFiles,
+  deleteWordMediaFile,
+  deleteAllWordMediaFiles,
+  type WordMediaTarget,
 } from "./blog-ops";
 import {
   REVOKE_ROLES,
@@ -80,6 +82,8 @@ import {
   updateNoteRecord,
   updateNoteShare,
 } from "./notes-ops";
+import { isWordType } from "@/features/words/types";
+import type { WordType } from "@/features/words/types";
 
 /* ─── Formatting ─── */
 
@@ -141,6 +145,41 @@ function isValidSlug(slug: string): boolean {
   return /^[a-z0-9]+(-[a-z0-9]+)*$/.test(slug);
 }
 
+function mediaTargetLabel(target: WordMediaTarget): string {
+  return target.scope === "asset" ? `shared asset "${target.assetId}"` : `word "${target.slug}"`;
+}
+
+function mediaTargetPathHint(target: WordMediaTarget): string {
+  return target.scope === "asset"
+    ? `words/assets/${target.assetId}/`
+    : `words/media/${target.slug}/`;
+}
+
+function getMediaTargetFromArgs(opts: {
+  slug?: string;
+  assetId?: string;
+}): WordMediaTarget {
+  const slug = opts.slug?.trim().toLowerCase();
+  const assetId = opts.assetId?.trim().toLowerCase();
+
+  const count = Number(!!slug) + Number(!!assetId);
+  if (count !== 1) {
+    throw new Error("Provide exactly one target: --slug <word-slug> OR --asset <asset-id>.");
+  }
+
+  if (slug) {
+    if (!isValidSlug(slug)) {
+      throw new Error("Slug must be lowercase letters, numbers, hyphens only.");
+    }
+    return { scope: "word", slug };
+  }
+
+  if (!assetId || !isValidSlug(assetId)) {
+    throw new Error("Asset ID must be lowercase letters, numbers, hyphens only.");
+  }
+  return { scope: "asset", assetId };
+}
+
 /** Validate date format: YYYY-MM-DD */
 function isValidDate(date: string): boolean {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return false;
@@ -169,7 +208,7 @@ function validateDir(dir: string): { valid: boolean; error?: string; count?: num
   return { valid: true, count: images.length };
 }
 
-/** Validate directory for transfers and blog — accepts ALL non-hidden files */
+/** Validate directory for transfers and words media — accepts ALL non-hidden files */
 function validateAnyDir(dir: string): { valid: boolean; error?: string; count?: number } {
   const absDir = path.resolve(dir.replace(/^~/, process.env.HOME ?? "~"));
   if (!fs.existsSync(absDir)) {
@@ -190,15 +229,27 @@ function validateAnyDir(dir: string): { valid: boolean; error?: string; count?: 
 /** Keep the old name as an alias so transfer prompts still work */
 const validateTransferDir = validateAnyDir;
 
-/** List all blog post slugs from content/posts/ */
-function getPostSlugs(): string[] {
-  const postsDir = path.join(process.cwd(), "content", "posts");
-  if (!fs.existsSync(postsDir)) return [];
-  return fs
-    .readdirSync(postsDir)
-    .filter((f) => f.endsWith(".md"))
-    .map((f) => f.replace(/\.md$/, ""))
-    .sort();
+function listMarkdownFiles(dir: string): string[] {
+  if (!fs.existsSync(dir) || !fs.statSync(dir).isDirectory()) return [];
+  const out: string[] = [];
+  const stack = [dir];
+  while (stack.length > 0) {
+    const current = stack.pop();
+    if (!current) continue;
+    const entries = fs.readdirSync(current, { withFileTypes: true });
+    for (const entry of entries) {
+      if (entry.name.startsWith(".")) continue;
+      const full = path.join(current, entry.name);
+      if (entry.isDirectory()) {
+        stack.push(full);
+        continue;
+      }
+      if (entry.isFile() && entry.name.endsWith(".md")) {
+        out.push(full);
+      }
+    }
+  }
+  return out.sort((a, b) => a.localeCompare(b));
 }
 
 /* ─── Interactive prompts ─── */
@@ -1010,42 +1061,37 @@ async function cmdAuthRevoke(opts: {
   console.log();
 }
 
-/* ─── Blog image command handlers ─── */
+/* ─── Words media command handlers ─── */
 
-async function cmdBlogUpload(opts: { slug: string; dir: string; force?: boolean }) {
-  heading(`Uploading blog images for "${opts.slug}"`);
+async function cmdWordsMediaUpload(opts: {
+  target: WordMediaTarget;
+  dir: string;
+  force?: boolean;
+}) {
+  heading(`Uploading media for ${mediaTargetLabel(opts.target)}`);
+  log(dim(`target path: ${mediaTargetPathHint(opts.target)}`));
 
-  const result = await uploadBlogFiles(opts.slug, opts.dir, {
+  const result = await uploadWordMediaFiles(opts.target, opts.dir, {
     force: opts.force,
     onProgress: (msg) => progress(msg),
   });
 
   console.log();
 
-  // Summary
   if (result.uploaded.length > 0) {
-    log(
-      green(
-        `✓ Uploaded ${result.uploaded.length} new image${result.uploaded.length > 1 ? "s" : ""}`
-      )
-    );
+    log(green(`✓ Uploaded ${result.uploaded.length} new file${result.uploaded.length > 1 ? "s" : ""}`));
     const totalNew = result.uploaded.reduce((sum, r) => sum + r.size, 0);
     log(dim(`  New: ${formatBytes(totalNew)}`));
   }
 
   if (result.skipped.length > 0) {
-    log(
-      dim(
-        `  Skipped ${result.skipped.length} (already in R2 — use --force to overwrite)`
-      )
-    );
+    log(dim(`  Skipped ${result.skipped.length} (already in R2 — use --force to overwrite)`));
   }
 
   if (result.uploaded.length === 0 && result.skipped.length > 0) {
     log(dim("Nothing new to upload."));
   }
 
-  // Print NEW markdown snippets
   if (result.uploaded.length > 0) {
     console.log();
     log(bold("New markdown snippets:"));
@@ -1056,98 +1102,79 @@ async function cmdBlogUpload(opts: { slug: string; dir: string; force?: boolean 
     }
   }
 
-  // Print ALL images now in R2 (existing + new) so you have a full reference
-  const allInR2 = await listBlogFiles(opts.slug);
-
+  const allInR2 = await listWordMediaFiles(opts.target);
   if (allInR2.length > 0) {
     console.log();
-    log(bold(`All images for "${opts.slug}" (${allInR2.length} total):`));
+    log(bold(`All files in ${mediaTargetPathHint(opts.target)} (${allInR2.length} total):`));
     console.log();
-    for (const img of allInR2) {
-      const sanitised = img.filename.replace(/\.webp$/, "");
-      log(`  ![${sanitised}](blog/${opts.slug}/${img.filename})  ${dim(formatBytes(img.size))}`);
+    for (const media of allInR2) {
+      log(`  ${media.filename}  ${dim(formatBytes(media.size))}`);
     }
   }
 
   console.log();
-  log(dim("Tip: change alt text for captions, e.g. ![the crowd goes wild](blog/...)"));
+  log(dim(`Tip: use generated paths directly in markdown, e.g. ${mediaTargetPathHint(opts.target)}...`));
   console.log();
 }
 
-async function cmdBlogList(slug: string) {
-  heading(`Blog images: ${slug}`);
+async function cmdWordsMediaList(target: WordMediaTarget) {
+  heading(`Words media: ${mediaTargetLabel(target)}`);
+  log(dim(`path: ${mediaTargetPathHint(target)}`));
 
-  const files = await listBlogFiles(slug);
+  const files = await listWordMediaFiles(target);
   if (files.length === 0) {
-    log(dim("No files found for this post."));
+    log(dim("No files found for this target."));
     console.log();
     return;
   }
 
   for (const f of files) {
-    const date = f.lastModified
-      ? f.lastModified.toLocaleDateString()
-      : "—";
-    const label = f.filename.replace(/\.[^.]+$/, "");
+    const date = f.lastModified ? f.lastModified.toLocaleDateString() : "—";
     log(`  ${f.filename}  ${dim(formatBytes(f.size))}  ${dim(date)}`);
-    // Show appropriate markdown snippet based on extension
-    if (/\.webp$/i.test(f.filename)) {
-      log(`  ${dim(`![${label}](blog/${slug}/${f.filename})`)}`);
-    } else {
-      log(`  ${dim(`[${label}](blog/${slug}/${f.filename})`)}`);
-    }
     console.log();
   }
-  log(
-    dim(
-      `${files.length} files · ${formatBytes(files.reduce((s, f) => s + f.size, 0))} total`
-    )
-  );
+  log(dim(`${files.length} files · ${formatBytes(files.reduce((s, f) => s + f.size, 0))} total`));
   console.log();
 }
 
-async function cmdBlogDelete(slug: string, filename?: string) {
+async function cmdWordsMediaDelete(target: WordMediaTarget, filename?: string) {
   if (filename) {
-    // Delete a single image
-    heading(`Delete blog image: ${filename}`);
-    const ok = await confirm(`Delete ${slug}/${filename} from R2?`);
+    heading(`Delete media file: ${filename}`);
+    const ok = await confirm(`Delete ${mediaTargetPathHint(target)}${filename} from R2?`);
     if (!ok) {
       log(dim("Cancelled."));
       console.log();
       return;
     }
-    await deleteBlogFile(slug, filename, (msg) => progress(msg));
+    await deleteWordMediaFile(target, filename, (msg) => progress(msg));
     log(green(`✓ Deleted ${filename}`));
-    log(dim("Remember to remove the markdown reference from your post."));
     console.log();
-  } else {
-    // Delete ALL files for the post
-    heading(`Delete all blog files for "${slug}"`);
-    const files = await listBlogFiles(slug);
-    log(`${dim("Files:")} ${files.length}`);
-    log(red("This will delete ALL files for this post from R2."));
-    console.log();
-
-    const ok = await confirm(
-      `Delete all ${files.length} files for "${slug}"?`
-    );
-    if (!ok) {
-      log(dim("Cancelled."));
-      console.log();
-      return;
-    }
-
-    const deleted = await deleteAllBlogFiles(slug, (msg) => progress(msg));
-    log(green(`✓ Deleted ${deleted} files`));
-    log(dim("Remember to remove image references from your post."));
-    console.log();
+    return;
   }
+
+  heading(`Delete all media for ${mediaTargetLabel(target)}`);
+  const files = await listWordMediaFiles(target);
+  log(`${dim("Files:")} ${files.length}`);
+  log(red("This will delete ALL files for this target from R2."));
+  console.log();
+
+  const ok = await confirm(`Delete all ${files.length} files in ${mediaTargetPathHint(target)}?`);
+  if (!ok) {
+    log(dim("Cancelled."));
+    console.log();
+    return;
+  }
+
+  const deleted = await deleteAllWordMediaFiles(target, (msg) => progress(msg));
+  log(green(`✓ Deleted ${deleted} files`));
+  console.log();
 }
 
 /* ─── Notes command handlers ─── */
 
 const NOTE_VISIBILITIES = ["public", "unlisted", "private"] as const;
 type NoteVisibility = (typeof NOTE_VISIBILITIES)[number];
+const WORD_TYPES = ["blog", "note", "recipe", "review"] as const;
 
 function parseNoteVisibility(value?: string): NoteVisibility | undefined {
   if (!value) return undefined;
@@ -1156,23 +1183,164 @@ function parseNoteVisibility(value?: string): NoteVisibility | undefined {
     : undefined;
 }
 
+function parseWordType(value?: string): WordType | undefined {
+  if (!value) return undefined;
+  if (value === "post") return "blog";
+  return isWordType(value) ? value : undefined;
+}
+
+function parseTags(raw?: string): string[] | undefined {
+  if (!raw) return undefined;
+  const tags = [...new Set(raw.split(",").map((t) => t.trim().toLowerCase()).filter(Boolean))];
+  return tags.length > 0 ? tags : undefined;
+}
+
+function parseBooleanInput(value?: string): boolean | undefined {
+  if (value === undefined) return undefined;
+  const normalized = value.trim().toLowerCase();
+  if (normalized === "true" || normalized === "1" || normalized === "yes") return true;
+  if (normalized === "false" || normalized === "0" || normalized === "no") return false;
+  return undefined;
+}
+
+function readMarkdownFile(filePath: string): string {
+  const abs = path.resolve(filePath.replace(/^~/, process.env.HOME ?? "~"));
+  if (!fs.existsSync(abs)) throw new Error(`File not found: ${abs}`);
+  return fs.readFileSync(abs, "utf-8");
+}
+
+function toIsoDate(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  if (!trimmed) return undefined;
+  const normalized = /^\d{4}-\d{2}-\d{2}$/.test(trimmed) ? `${trimmed}T00:00:00.000Z` : trimmed;
+  const parsed = new Date(normalized);
+  if (Number.isNaN(parsed.getTime())) return undefined;
+  return parsed.toISOString();
+}
+
+function noteSyncInputFromFile(absFile: string, rootDir: string): {
+  slug: string;
+  title: string;
+  subtitle?: string;
+  image?: string;
+  type?: WordType;
+  visibility?: NoteVisibility;
+  tags?: string[];
+  featured?: boolean;
+  markdown: string;
+  createdAt?: string;
+  updatedAt?: string;
+  publishedAt?: string;
+  relPath: string;
+} {
+  const raw = fs.readFileSync(absFile, "utf-8");
+  const parsed = matter(raw);
+  const relPath = path.relative(rootDir, absFile).replace(/\\/g, "/");
+  const filenameSlug = path.basename(absFile, ".md").toLowerCase();
+  const folderTypeGuess = relPath.split("/")[0];
+  const slug =
+    (typeof parsed.data.slug === "string" && parsed.data.slug.trim().toLowerCase()) ||
+    filenameSlug;
+  const title =
+    (typeof parsed.data.title === "string" && parsed.data.title.trim()) ||
+    slug.replace(/-/g, " ");
+  const subtitle =
+    typeof parsed.data.subtitle === "string" && parsed.data.subtitle.trim()
+      ? parsed.data.subtitle.trim()
+      : undefined;
+  const image =
+    typeof parsed.data.image === "string" && parsed.data.image.trim()
+      ? parsed.data.image.trim()
+      : undefined;
+  const type = parseWordType(
+    typeof parsed.data.type === "string" ? parsed.data.type : folderTypeGuess
+  );
+  const visibility = parseNoteVisibility(
+    typeof parsed.data.visibility === "string" ? parsed.data.visibility : undefined
+  );
+  const tagsRaw = parsed.data.tags;
+  const tags =
+    Array.isArray(tagsRaw)
+      ? [...new Set(tagsRaw.map((t) => String(t).trim().toLowerCase()).filter(Boolean))]
+      : parseTags(typeof tagsRaw === "string" ? tagsRaw : undefined);
+
+  return {
+    slug,
+    title,
+    subtitle,
+    image,
+    type,
+    visibility,
+    tags,
+    featured: parsed.data.featured === true,
+    markdown: parsed.content,
+    createdAt: toIsoDate(parsed.data.createdAt),
+    updatedAt: toIsoDate(parsed.data.updatedAt),
+    publishedAt: toIsoDate(parsed.data.publishedAt),
+    relPath,
+  };
+}
+
+function noteFrontmatter(note: {
+  slug: string;
+  title: string;
+  subtitle?: string;
+  image?: string;
+  type: WordType;
+  visibility: NoteVisibility;
+  tags: string[];
+  featured?: boolean;
+  createdAt: string;
+  updatedAt: string;
+  publishedAt?: string;
+}): Record<string, unknown> {
+  return {
+    slug: note.slug,
+    title: note.title,
+    ...(note.subtitle ? { subtitle: note.subtitle } : {}),
+    ...(note.image ? { image: note.image } : {}),
+    type: note.type,
+    visibility: note.visibility,
+    ...(note.tags.length > 0 ? { tags: note.tags } : {}),
+    ...(note.featured ? { featured: true } : {}),
+    createdAt: note.createdAt,
+    updatedAt: note.updatedAt,
+    ...(note.publishedAt ? { publishedAt: note.publishedAt } : {}),
+  };
+}
+
 async function cmdNotesCreate(opts: {
   slug: string;
   title: string;
   markdown: string;
   subtitle?: string;
+  image?: string;
+  type?: WordType;
   visibility?: NoteVisibility;
+  tags?: string[];
+  featured?: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+  publishedAt?: string;
 }) {
   heading(`Create note: ${opts.slug}`);
   const created = await createNoteRecord({
     slug: opts.slug,
     title: opts.title,
     subtitle: opts.subtitle,
+    image: opts.image,
+    type: opts.type,
     visibility: opts.visibility ?? "private",
+    tags: opts.tags,
+    featured: opts.featured,
+    createdAt: opts.createdAt,
+    updatedAt: opts.updatedAt,
+    publishedAt: opts.publishedAt,
     markdown: opts.markdown,
   });
   log(green(`✓ Created ${created.meta.slug}`));
-  log(dim(`visibility: ${created.meta.visibility}`));
+  log(dim(`${created.meta.type} · ${created.meta.visibility}`));
   console.log();
 }
 
@@ -1181,11 +1349,14 @@ async function cmdNotesUpload(opts: {
   file: string;
   title?: string;
   subtitle?: string;
+  image?: string;
+  type?: WordType;
   visibility?: NoteVisibility;
+  tags?: string[];
+  featured?: boolean;
 }) {
   const abs = path.resolve(opts.file.replace(/^~/, process.env.HOME ?? "~"));
-  if (!fs.existsSync(abs)) throw new Error(`File not found: ${abs}`);
-  const markdown = fs.readFileSync(abs, "utf-8");
+  const markdown = readMarkdownFile(abs);
 
   const existing = await getNoteRecord(opts.slug);
   if (existing) {
@@ -1193,7 +1364,11 @@ async function cmdNotesUpload(opts: {
     const updated = await updateNoteRecord(opts.slug, {
       title: opts.title,
       subtitle: opts.subtitle,
+      image: opts.image,
+      type: opts.type,
       visibility: opts.visibility,
+      tags: opts.tags,
+      featured: opts.featured,
       markdown,
     });
     if (!updated) throw new Error("Failed to update note");
@@ -1207,7 +1382,11 @@ async function cmdNotesUpload(opts: {
     slug: opts.slug,
     title: opts.title ?? opts.slug,
     subtitle: opts.subtitle,
+    image: opts.image,
+    type: opts.type,
     visibility: opts.visibility ?? "private",
+    tags: opts.tags,
+    featured: opts.featured,
     markdown,
   });
   log(green(`✓ Created ${opts.slug} from ${abs}`));
@@ -1216,12 +1395,16 @@ async function cmdNotesUpload(opts: {
 
 async function cmdNotesList(opts?: {
   visibility?: NoteVisibility;
+  type?: WordType;
+  tag?: string;
   q?: string;
 }) {
   heading("Notes");
   const { notes } = await listNoteRecords({
     includeNonPublic: true,
     visibility: opts?.visibility,
+    type: opts?.type,
+    tag: opts?.tag,
     q: opts?.q,
   });
   if (notes.length === 0) {
@@ -1231,9 +1414,10 @@ async function cmdNotesList(opts?: {
   }
 
   for (const note of notes) {
-    log(`${bold(note.slug)} ${dim(`(${note.visibility})`)}`);
+    log(`${bold(note.slug)} ${dim(`(${note.type} · ${note.visibility}${note.featured ? " · featured" : ""})`)}`);
     log(`  ${note.title}`);
     if (note.subtitle) log(`  ${dim(note.subtitle)}`);
+    if (note.tags.length > 0) log(`  ${dim("#" + note.tags.join(" #"))}`);
     log(`  ${dim(new Date(note.updatedAt).toLocaleString())}`);
     console.log();
   }
@@ -1244,22 +1428,28 @@ async function cmdNotesUpdate(
   opts: {
     title?: string;
     subtitle?: string | null;
+    image?: string | null;
+    type?: WordType;
     visibility?: NoteVisibility;
+    tags?: string[];
+    featured?: boolean;
     markdownFile?: string;
   }
 ) {
   let markdown: string | undefined;
   if (opts.markdownFile) {
-    const abs = path.resolve(opts.markdownFile.replace(/^~/, process.env.HOME ?? "~"));
-    if (!fs.existsSync(abs)) throw new Error(`File not found: ${abs}`);
-    markdown = fs.readFileSync(abs, "utf-8");
+    markdown = readMarkdownFile(opts.markdownFile);
   }
 
   heading(`Update note: ${slug}`);
   const updated = await updateNoteRecord(slug, {
     title: opts.title,
     subtitle: opts.subtitle,
+    image: opts.image,
+    type: opts.type,
     visibility: opts.visibility,
+    tags: opts.tags,
+    featured: opts.featured,
     markdown,
   });
   if (!updated) throw new Error(`Note "${slug}" not found`);
@@ -1345,6 +1535,170 @@ async function cmdNotesShareRevoke(slug: string, id: string) {
   console.log();
 }
 
+
+async function syncSingleNoteFile(absFile: string, rootDir: string): Promise<"created" | "updated" | "skipped"> {
+  if (!absFile.endsWith(".md")) return "skipped";
+  if (!fs.existsSync(absFile) || !fs.statSync(absFile).isFile()) return "skipped";
+
+  const input = noteSyncInputFromFile(absFile, rootDir);
+  if (!isValidSlug(input.slug)) {
+    log(yellow(`skip ${input.relPath} (invalid slug)`));
+    return "skipped";
+  }
+
+  const existing = await getNoteRecord(input.slug);
+  const nextType = input.type ?? existing?.meta.type ?? "note";
+  const createVisibility = input.visibility ?? (nextType === "blog" ? "public" : "private");
+
+  if (existing) {
+    const updated = await updateNoteRecord(input.slug, {
+      title: input.title,
+      subtitle: input.subtitle ?? null,
+      image: input.image ?? null,
+      type: nextType,
+      visibility: input.visibility,
+      tags: input.tags,
+      featured: input.featured,
+      markdown: input.markdown,
+    });
+    if (!updated) return "skipped";
+    log(green(`updated ${input.slug}`) + dim(` ← ${input.relPath}`));
+    return "updated";
+  }
+
+  await createNoteRecord({
+    slug: input.slug,
+    title: input.title,
+    subtitle: input.subtitle,
+    image: input.image,
+    type: nextType,
+    visibility: createVisibility,
+    tags: input.tags,
+    featured: input.featured,
+    markdown: input.markdown,
+    createdAt: input.createdAt,
+    updatedAt: input.updatedAt,
+    publishedAt: input.publishedAt,
+  });
+  log(green(`created ${input.slug}`) + dim(` ← ${input.relPath}`));
+  return "created";
+}
+
+async function cmdNotesSync(opts: { dir: string }) {
+  const rootDir = path.resolve(opts.dir.replace(/^~/, process.env.HOME ?? "~"));
+  if (!fs.existsSync(rootDir) || !fs.statSync(rootDir).isDirectory()) {
+    throw new Error(`Directory not found: ${rootDir}`);
+  }
+
+  heading(`Sync notes from folder`);
+  log(dim(rootDir));
+  console.log();
+
+  const files = listMarkdownFiles(rootDir);
+  if (files.length === 0) {
+    log(dim("No markdown files found."));
+    console.log();
+    return;
+  }
+
+  let created = 0;
+  let updated = 0;
+  let skipped = 0;
+  for (const file of files) {
+    const result = await syncSingleNoteFile(file, rootDir);
+    if (result === "created") created++;
+    else if (result === "updated") updated++;
+    else skipped++;
+  }
+
+  console.log();
+  log(green(`✓ synced ${files.length} files`));
+  log(dim(`created ${created} · updated ${updated} · skipped ${skipped}`));
+  console.log();
+}
+
+async function cmdNotesWatch(opts: { dir: string }) {
+  const rootDir = path.resolve(opts.dir.replace(/^~/, process.env.HOME ?? "~"));
+  if (!fs.existsSync(rootDir) || !fs.statSync(rootDir).isDirectory()) {
+    throw new Error(`Directory not found: ${rootDir}`);
+  }
+
+  await cmdNotesSync({ dir: rootDir });
+
+  heading("Watch mode");
+  log(dim(`watching ${rootDir}`));
+  log(dim("changes to *.md are synced automatically. press Ctrl+C to stop."));
+  console.log();
+
+  const timers = new Map<string, NodeJS.Timeout>();
+  const watcher = fs.watch(rootDir, { recursive: true }, (_eventType, filename) => {
+    if (!filename || !filename.endsWith(".md")) return;
+    const abs = path.join(rootDir, filename);
+    const prior = timers.get(abs);
+    if (prior) clearTimeout(prior);
+    timers.set(
+      abs,
+      setTimeout(() => {
+        timers.delete(abs);
+        void safely(async () => {
+          await syncSingleNoteFile(abs, rootDir);
+        });
+      }, 180),
+    );
+  });
+
+  await new Promise<void>((resolve) => {
+    process.once("SIGINT", () => {
+      watcher.close();
+      for (const t of timers.values()) clearTimeout(t);
+      console.log();
+      log(dim("watch stopped"));
+      console.log();
+      resolve();
+    });
+  });
+}
+
+async function cmdNotesPull(opts: { dir: string; type?: WordType; visibility?: NoteVisibility }) {
+  const rootDir = path.resolve(opts.dir.replace(/^~/, process.env.HOME ?? "~"));
+  fs.mkdirSync(rootDir, { recursive: true });
+
+  heading(`Pull notes to folder`);
+  log(dim(rootDir));
+  console.log();
+
+  const { notes } = await listNoteRecords({
+    includeNonPublic: true,
+    type: opts.type,
+    visibility: opts.visibility,
+    limit: 1000,
+  });
+  if (notes.length === 0) {
+    log(dim("No notes found."));
+    console.log();
+    return;
+  }
+
+  let written = 0;
+  for (const note of notes) {
+    const record = await getNoteRecord(note.slug);
+    if (!record) continue;
+
+    const typeDir = path.join(rootDir, note.type);
+    fs.mkdirSync(typeDir, { recursive: true });
+    const outPath = path.join(typeDir, `${note.slug}.md`);
+    const frontmatter = noteFrontmatter(record.meta);
+    const withFrontmatter = matter.stringify(record.markdown, frontmatter);
+    fs.writeFileSync(outPath, withFrontmatter, "utf-8");
+    written++;
+    log(green(`wrote ${note.type}/${note.slug}.md`));
+  }
+
+  console.log();
+  log(green(`✓ exported ${written} notes`));
+  console.log();
+}
+
 /* ─── Help ─── */
 
 function showHelp() {
@@ -1402,19 +1756,24 @@ function showHelp() {
     transfers delete ${dim("<id>")}                    Take down a transfer + delete R2 files
     transfers nuke                           Wipe ALL transfers (R2 + Redis) — nuclear option
 
-  ${bold("Blog Images")} ${dim("(images for blog posts, stored in R2)")}
-    blog upload --slug ${dim("<post-slug>")} --dir ${dim("<path>")}  Upload images (skips duplicates)
+  ${bold("Words Media")} ${dim("(media for words + shared reusable assets)")}
+    media upload --slug ${dim("<word-slug>")} --dir ${dim("<path>")}   Upload to words/media/<slug>/
+    media upload --asset ${dim("<asset-id>")} --dir ${dim("<path>")}    Upload to words/assets/<asset-id>/
       --force            ${dim("Re-upload and overwrite existing images")}
-    blog list ${dim("<post-slug>")}                    List uploaded images + markdown snippets
-    blog delete ${dim("<post-slug>")}                  Delete ALL images for a post
-    blog delete ${dim("<post-slug>")} --file ${dim("<name>")}  Delete a single image
+    media list --slug ${dim("<word-slug>")}                     List files in words/media/<slug>/
+    media list --asset ${dim("<asset-id>")}                     List files in words/assets/<asset-id>/
+    media delete --slug ${dim("<word-slug>")} ${dim("[--file <name>]")}     Delete one/all files in words/media/<slug>/
+    media delete --asset ${dim("<asset-id>")} ${dim("[--file <name>]")}      Delete one/all files in words/assets/<asset-id>/
 
   ${bold("Notes")} ${dim("(private markdown + signed shares)")}
-    notes create --slug ${dim("<slug>")} --title ${dim("<title>")} --markdown-file ${dim("<path>")} [--visibility public|unlisted|private] [--subtitle <text>]
-    notes upload --slug ${dim("<slug>")} --file ${dim("<path>")} [--title <title>] [--subtitle <text>] [--visibility ...]
-    notes list ${dim("[--visibility public|unlisted|private] [--q <query>]")}
-    notes update ${dim("<slug>")} [--title <title>] [--subtitle <text>] [--visibility ...] [--markdown-file <path>]
+    notes create --slug ${dim("<slug>")} --title ${dim("<title>")} --markdown-file ${dim("<path>")} ${dim("[--subtitle <text>] [--image <path>] [--type blog|note|recipe|review] [--visibility ...] [--tags a,b] [--featured true|false]")}
+    notes upload --slug ${dim("<slug>")} --file ${dim("<path>")} ${dim("[--title <title>] [--subtitle <text>] [--image <path>] [--type ...] [--visibility ...] [--tags a,b] [--featured true|false]")}
+    notes list ${dim("[--type blog|note|recipe|review] [--visibility public|unlisted|private] [--tag <tag>] [--q <query>]")}
+    notes update ${dim("<slug>")} ${dim("[--title <title>] [--subtitle <text>] [--clear-subtitle] [--image <path>|--clear-image] [--type ...] [--visibility ...] [--tags a,b] [--featured true|false] [--markdown-file <path>]")}
     notes delete ${dim("<slug>")}
+    notes pull --dir ${dim("<path>")} ${dim("[--type ...] [--visibility ...]")}
+    notes sync --dir ${dim("<path>")} ${dim("(one-off upload from local folder)")}
+    notes watch --dir ${dim("<path>")} ${dim("(sync once, then watch for local markdown changes)")}
     notes share create ${dim("<slug>")} ${dim("[--expires-days 7] [--pin-required] [--pin 1234]")}
     notes share list ${dim("<slug>")}
     notes share update ${dim("<slug> <share-id>")} ${dim("[--pin-required true|false] [--pin <newPin>|--clear-pin] [--expires-days <n>] [--rotate-token]")}
@@ -1437,10 +1796,11 @@ function showHelp() {
     ${dim("$")} pnpm cli transfers upload --dir ~/Desktop/send-photos --title "Photos for John" --expires 7d
     ${dim("$")} pnpm cli transfers list
     ${dim("$")} pnpm cli transfers delete abc12345
-    ${dim("$")} pnpm cli blog upload --slug my-first-birthday --dir ~/Desktop/blog-photos
-    ${dim("$")} pnpm cli blog list my-first-birthday
+    ${dim("$")} pnpm cli media upload --slug my-first-birthday --dir ~/Desktop/blog-photos
+    ${dim("$")} pnpm cli media upload --asset brand-kit --dir ~/Desktop/brand-assets
+    ${dim("$")} pnpm cli media list --slug my-first-birthday
     ${dim("$")} pnpm cli photos delete jan-2026 DSC00003
-    ${dim("$")} pnpm cli bucket ls blog/my-first-birthday/
+    ${dim("$")} pnpm cli bucket ls words/media/my-first-birthday/
 `);
 }
 
@@ -2023,11 +2383,16 @@ async function interactiveTransfers() {
   }
 }
 
-/* ─── Interactive blog images ─── */
+/* ─── Interactive words media ─── */
 
 /** Interactive prompt for selecting a post slug — shows existing posts */
 async function selectPostSlug(prompt = "Post slug"): Promise<string | null> {
-  const slugs = getPostSlugs();
+  const { notes } = await listNoteRecords({
+    includeNonPublic: true,
+    type: "blog",
+    limit: 500,
+  });
+  const slugs = notes.map((note) => note.slug).sort();
 
   if (slugs.length > 0) {
     console.log();
@@ -2042,7 +2407,7 @@ async function selectPostSlug(prompt = "Post slug"): Promise<string | null> {
     const slug = await ask(prompt, {
       hint: slugs.length > 0
         ? "pick from above or type a new slug"
-        : "e.g. my-first-birthday (must match your .md filename)",
+        : "e.g. my-first-birthday",
     });
     if (!slug) return null;
     if (!isValidSlug(slug)) {
@@ -2050,11 +2415,11 @@ async function selectPostSlug(prompt = "Post slug"): Promise<string | null> {
       continue;
     }
 
-    // Warn if slug doesn't match any existing post
+    // Warn if slug doesn't match any existing blog entry
     if (!slugs.includes(slug)) {
       log(
         yellow(
-          `  No .md file found for "${slug}" in content/posts/ — files will upload but won't render until you create the post.`
+          `  No existing blog entry found for "${slug}" — media will upload and can be used after creating content with this slug.`
         )
       );
     }
@@ -2062,24 +2427,44 @@ async function selectPostSlug(prompt = "Post slug"): Promise<string | null> {
   }
 }
 
-/** Interactive prompt for uploading blog files */
-async function promptBlogUpload(): Promise<void> {
+/** Interactive prompt for uploading words media files */
+async function promptWordsMediaUpload(): Promise<void> {
   console.log();
-  log(bold("Upload blog files"));
+  log(bold("Upload words media"));
   log(dim("Process and upload files from a folder to R2, get markdown snippets."));
   log(dim("Images → WebP. Videos, PDFs, etc. → uploaded as-is."));
   log(dim("Duplicates are skipped automatically — safe to re-run with new files."));
   console.log();
 
-  /* Post slug */
-  const slug = await selectPostSlug();
-  if (!slug) return;
+  const scopePick = await choose("Upload target", [
+    { label: "Word media", detail: "words/media/<slug>/" },
+    { label: "Shared assets", detail: "words/assets/<asset-id>/" },
+  ]);
+  if (scopePick <= 0) return;
+
+  let target: WordMediaTarget;
+  if (scopePick === 1) {
+    const slug = await selectPostSlug();
+    if (!slug) return;
+    target = { scope: "word", slug };
+  } else {
+    while (true) {
+      const assetId = await ask("Asset ID", { hint: "lowercase letters, numbers, hyphens" });
+      if (!assetId) return;
+      if (!isValidSlug(assetId)) {
+        log(red("  Invalid asset id format."));
+        continue;
+      }
+      target = { scope: "asset", assetId };
+      break;
+    }
+  }
 
   /* Source directory */
   let dir = "";
   while (true) {
     dir = await ask("Source directory", {
-      hint: "e.g. ~/Desktop/blog-photos",
+      hint: "e.g. ~/Desktop/words-media",
     });
     if (!dir) return;
 
@@ -2094,82 +2479,123 @@ async function promptBlogUpload(): Promise<void> {
   /* Confirm */
   console.log();
   log(dim("─── Summary ───"));
-  log(`${dim("Post slug:")}  ${slug}`);
+  log(`${dim("Target:")}     ${mediaTargetLabel(target)}`);
+  log(`${dim("R2 path:")}    ${mediaTargetPathHint(target)}`);
   log(`${dim("Directory:")}  ${dir}`);
   console.log();
 
-  const ok = await confirm("Upload these images?");
+  const ok = await confirm("Upload these files?");
   if (!ok) {
     log(dim("Cancelled."));
     return;
   }
 
-  await cmdBlogUpload({ slug, dir: dir.replace(/^~/, process.env.HOME ?? "~") });
+  await cmdWordsMediaUpload({ target, dir: dir.replace(/^~/, process.env.HOME ?? "~") });
 }
 
-/** Select a blog post slug from those that have files uploaded in R2 */
-async function selectBlogSlug(): Promise<string | null> {
-  const objects = await listObjects("blog/");
-  const slugs = new Set<string>();
+async function selectWordsMediaTarget(scope: "word" | "asset"): Promise<WordMediaTarget | null> {
+  if (scope === "word") {
+    const [primary, legacy] = await Promise.all([listObjects("words/media/"), listObjects("blog/")]);
+    const objects = [...primary, ...legacy];
+    const slugs = new Set<string>();
+
+    for (const obj of objects) {
+      const parts = obj.key.split("/");
+      if (parts[0] === "words" && parts[1] === "media" && parts.length >= 4 && parts[2]) {
+        slugs.add(parts[2]);
+        continue;
+      }
+      if (parts[0] === "blog" && parts.length >= 3 && parts[1]) {
+        slugs.add(parts[1]);
+      }
+    }
+
+    if (slugs.size === 0) {
+      console.log();
+      log(dim("No word media found in R2 yet."));
+      return null;
+    }
+
+    const slugList = [...slugs].sort();
+    const choice = await choose(
+      "Select word slug",
+      slugList.map((s) => ({ label: s }))
+    );
+
+    if (choice <= 0) return null;
+    return { scope: "word", slug: slugList[choice - 1] };
+  }
+
+  const objects = await listObjects("words/assets/");
+  const assetIds = new Set<string>();
   for (const obj of objects) {
     const parts = obj.key.split("/");
-    if (parts.length >= 3 && parts[1]) {
-      slugs.add(parts[1]);
+    if (parts[0] === "words" && parts[1] === "assets" && parts.length >= 4 && parts[2]) {
+      assetIds.add(parts[2]);
     }
   }
 
-  if (slugs.size === 0) {
+  if (assetIds.size === 0) {
     console.log();
-    log(dim("No blog files found in R2. Upload some first."));
+    log(dim("No shared assets found in R2 yet."));
     return null;
   }
 
-  const slugList = [...slugs].sort();
+  const idList = [...assetIds].sort();
   const choice = await choose(
-    "Select post",
-    slugList.map((s) => ({ label: s }))
+    "Select asset id",
+    idList.map((id) => ({ label: id }))
   );
 
   if (choice <= 0) return null;
-  return slugList[choice - 1];
+  return { scope: "asset", assetId: idList[choice - 1] };
 }
 
-async function interactiveBlogImages() {
+async function interactiveWordsMedia() {
   while (true) {
-    const choice = await choose("Blog Images", [
-      { label: "Upload images", detail: "process + upload for a blog post" },
-      { label: "List images", detail: "see what's uploaded for a post" },
-      { label: "Delete image(s)", detail: "remove one or all images for a post" },
+    const choice = await choose("Words Media", [
+      { label: "Upload files", detail: "word media or shared assets" },
+      { label: "List files", detail: "view files for a target" },
+      { label: "Delete file(s)", detail: "remove one or all files for a target" },
     ]);
 
     switch (choice) {
       case 0:
         return;
       case 1:
-        await safely(promptBlogUpload);
+        await safely(promptWordsMediaUpload);
         await pause();
         break;
       case 2: {
-        const slug = await selectBlogSlug();
-        if (slug) {
-          await safely(() => cmdBlogList(slug));
+        const scopePick = await choose("List from", [
+          { label: "Word media (words/media/<slug>/)" },
+          { label: "Shared assets (words/assets/<asset-id>/)" },
+        ]);
+        if (scopePick <= 0) break;
+        const target = await selectWordsMediaTarget(scopePick === 1 ? "word" : "asset");
+        if (target) {
+          await safely(() => cmdWordsMediaList(target));
           await pause();
         }
         break;
       }
       case 3: {
-        const slug = await selectBlogSlug();
-        if (slug) {
-          // Ask: delete one or all?
-          const files = await listBlogFiles(slug);
+        const scopePick = await choose("Delete from", [
+          { label: "Word media (words/media/<slug>/)" },
+          { label: "Shared assets (words/assets/<asset-id>/)" },
+        ]);
+        if (scopePick <= 0) break;
+        const target = await selectWordsMediaTarget(scopePick === 1 ? "word" : "asset");
+        if (target) {
+          const files = await listWordMediaFiles(target);
           if (files.length === 0) {
             log(dim("No files found."));
             break;
           }
 
-          const what = await choose(`Delete from "${slug}"`, [
+          const what = await choose(`Delete from ${mediaTargetPathHint(target)}`, [
             { label: "Delete a specific file" },
-            { label: "Delete ALL files for this post", detail: red("destructive") },
+            { label: "Delete ALL files for this target", detail: red("destructive") },
           ]);
 
           if (what === 1) {
@@ -2181,12 +2607,10 @@ async function interactiveBlogImages() {
               }))
             );
             if (fileChoice > 0) {
-              await safely(() =>
-                cmdBlogDelete(slug, files[fileChoice - 1].filename)
-              );
+              await safely(() => cmdWordsMediaDelete(target, files[fileChoice - 1].filename));
             }
           } else if (what === 2) {
-            await safely(() => cmdBlogDelete(slug));
+            await safely(() => cmdWordsMediaDelete(target));
           }
           await pause();
         }
@@ -2228,6 +2652,9 @@ async function interactiveNotes() {
       { label: "List notes", detail: "show notes and visibility" },
       { label: "Update note", detail: "title/subtitle/visibility/markdown file" },
       { label: "Delete note", detail: "remove a note permanently" },
+      { label: "Pull notes to folder", detail: "download notes as markdown with frontmatter" },
+      { label: "Sync folder once", detail: "upload/update notes from a local markdown folder" },
+      { label: "Watch folder", detail: "live-sync markdown file changes until Ctrl+C" },
       { label: "Create share link", detail: "signed URL, optional PIN" },
       { label: "List share links", detail: "show active/revoked shares for a note" },
       { label: "Update share link", detail: "toggle PIN, rotate token, extend expiry" },
@@ -2245,6 +2672,11 @@ async function interactiveNotes() {
         const markdownFile = await ask("Markdown file", { hint: "e.g. ~/Desktop/note.md" });
         if (!markdownFile) break;
         const subtitle = await ask("Subtitle (optional)");
+        const image = await ask("Hero image path (optional, e.g. words/media/slug/hero.webp or words/assets/kit/hero.webp)");
+        const typeChoice = await choose("Type", WORD_TYPES.map((type) => ({ label: type })));
+        if (typeChoice <= 0) break;
+        const type = WORD_TYPES[typeChoice - 1];
+        const tagsRaw = await ask("Tags (optional, comma-separated)");
         const visChoice = await choose("Visibility", [
           { label: "private" },
           { label: "unlisted" },
@@ -2258,7 +2690,10 @@ async function interactiveNotes() {
             file: markdownFile,
             title,
             subtitle: subtitle || undefined,
+            image: image || undefined,
+            type,
             visibility,
+            tags: parseTags(tagsRaw),
           })
         );
         await pause();
@@ -2271,6 +2706,13 @@ async function interactiveNotes() {
         if (!file) break;
         const title = await ask("Title override (optional)");
         const subtitle = await ask("Subtitle override (optional)");
+        const image = await ask("Hero image path override (optional, supports words/media or words/assets)");
+        const typeChoice = await choose("Type override", [
+          { label: "keep existing" },
+          ...WORD_TYPES.map((type) => ({ label: type })),
+        ]);
+        const type = typeChoice <= 1 ? undefined : WORD_TYPES[typeChoice - 2];
+        const tagsRaw = await ask("Tags override (optional, comma-separated)");
         const visChoice = await choose("Visibility override", [
           { label: "keep existing" },
           { label: "private" },
@@ -2285,7 +2727,10 @@ async function interactiveNotes() {
             file,
             title: title || undefined,
             subtitle: subtitle || undefined,
+            image: image || undefined,
+            type,
             visibility,
+            tags: parseTags(tagsRaw),
           })
         );
         await pause();
@@ -2300,6 +2745,13 @@ async function interactiveNotes() {
         if (!slug) break;
         const title = await ask("New title (blank = keep)");
         const subtitle = await ask("New subtitle (blank = keep, --clear not supported here)");
+        const image = await ask("New hero image path (blank = keep)");
+        const typeChoice = await choose("Type", [
+          { label: "keep existing" },
+          ...WORD_TYPES.map((type) => ({ label: type })),
+        ]);
+        const type = typeChoice <= 1 ? undefined : WORD_TYPES[typeChoice - 2];
+        const tagsRaw = await ask("Tags (blank = keep, comma-separated)");
         const markdownFile = await ask("New markdown file (blank = keep)");
         const visChoice = await choose("Visibility", [
           { label: "keep existing" },
@@ -2313,6 +2765,9 @@ async function interactiveNotes() {
           cmdNotesUpdate(slug, {
             title: title || undefined,
             subtitle: subtitle || undefined,
+            image: image || undefined,
+            type,
+            tags: parseTags(tagsRaw),
             markdownFile: markdownFile || undefined,
             visibility,
           })
@@ -2329,6 +2784,39 @@ async function interactiveNotes() {
         break;
       }
       case 6: {
+        const dir = await ask("Export folder", { defaultVal: "~/Documents/mh-words" });
+        const typePick = await choose("Filter type", [
+          { label: "all" },
+          ...WORD_TYPES.map((type) => ({ label: type })),
+        ]);
+        const visibilityPick = await choose("Filter visibility", [
+          { label: "all" },
+          { label: "public" },
+          { label: "unlisted" },
+          { label: "private" },
+        ]);
+        const type = typePick <= 1 ? undefined : WORD_TYPES[typePick - 2];
+        const visibility =
+          visibilityPick <= 1
+            ? undefined
+            : (["public", "unlisted", "private"] as const)[visibilityPick - 2];
+        await safely(() => cmdNotesPull({ dir, type, visibility }));
+        await pause();
+        break;
+      }
+      case 7: {
+        const dir = await ask("Folder to sync", { defaultVal: "~/Documents/mh-words" });
+        await safely(() => cmdNotesSync({ dir }));
+        await pause();
+        break;
+      }
+      case 8: {
+        const dir = await ask("Folder to watch", { defaultVal: "~/Documents/mh-words" });
+        await safely(() => cmdNotesWatch({ dir }));
+        await pause();
+        break;
+      }
+      case 9: {
         const slug = await selectNoteSlug();
         if (!slug) break;
         const withPin = await confirm("Require PIN on this share link?");
@@ -2344,7 +2832,7 @@ async function interactiveNotes() {
         await pause();
         break;
       }
-      case 7: {
+      case 10: {
         const slug = await selectNoteSlug();
         if (slug) {
           await safely(() => cmdNotesShareList(slug));
@@ -2352,7 +2840,7 @@ async function interactiveNotes() {
         }
         break;
       }
-      case 8: {
+      case 11: {
         const slug = await selectNoteSlug();
         if (!slug) break;
         const links = await listNoteShares(slug);
@@ -2404,7 +2892,7 @@ async function interactiveNotes() {
         await pause();
         break;
       }
-      case 9: {
+      case 12: {
         const slug = await selectNoteSlug();
         if (!slug) break;
         const links = await listNoteShares(slug);
@@ -2434,7 +2922,7 @@ async function interactive() {
       { label: "Albums", detail: "list, upload, update, delete albums" },
       { label: "Photos", detail: "list, add, delete, set cover photo" },
       { label: "Transfers", detail: "private, self-destructing file shares" },
-      { label: "Blog Images", detail: "upload, list, delete images for blog posts" },
+      { label: "Words Media", detail: "upload/list/delete per-word media + shared assets" },
       { label: "Notes", detail: "private markdown and signed links" },
       { label: "Bucket", detail: "browse R2, delete files, usage stats" },
       { label: "Auth", detail: "list/revoke token sessions (admin)" },
@@ -2456,7 +2944,7 @@ async function interactive() {
         await interactiveTransfers();
         break;
       case 4:
-        await interactiveBlogImages();
+        await interactiveWordsMedia();
         break;
       case 5:
         await interactiveNotes();
@@ -2712,33 +3200,41 @@ async function direct() {
             throw new Error(`Unknown: transfers ${subcommand ?? ""}. Run 'pnpm cli help'.`);
         }
 
-      case "blog":
+      case "media":
         switch (subcommand) {
           case "upload": {
             const slug = getArg("slug");
+            const assetId = getArg("asset");
             const dir = getArg("dir");
-            if (!slug || !dir) {
+            if (!dir) {
               throw new Error(
-                "Usage: pnpm cli blog upload --slug <post-slug> --dir <path> [--force]"
+                "Usage: pnpm cli media upload (--slug <word-slug> | --asset <asset-id>) --dir <path> [--force]"
               );
             }
-            if (!isValidSlug(slug)) throw new Error("Slug must be lowercase letters, numbers, hyphens only.");
-            return cmdBlogUpload({ slug, dir, force: hasFlag("force") });
+            const target = getMediaTargetFromArgs({ slug: slug ?? undefined, assetId: assetId ?? undefined });
+            return cmdWordsMediaUpload({ target, dir, force: hasFlag("force") });
           }
           case "list": {
-            const slug = args[2];
-            if (!slug) throw new Error("Usage: pnpm cli blog list <post-slug>");
-            return cmdBlogList(slug);
+            const slug = getArg("slug");
+            const assetId = getArg("asset");
+            const target = getMediaTargetFromArgs({ slug: slug ?? undefined, assetId: assetId ?? undefined });
+            return cmdWordsMediaList(target);
           }
           case "delete": {
-            const slug = args[2];
-            if (!slug) throw new Error("Usage: pnpm cli blog delete <post-slug> [--file <filename>]");
+            const slug = getArg("slug");
+            const assetId = getArg("asset");
             const file = getArg("file");
-            return cmdBlogDelete(slug, file);
+            const target = getMediaTargetFromArgs({ slug: slug ?? undefined, assetId: assetId ?? undefined });
+            return cmdWordsMediaDelete(target, file);
           }
           default:
-            throw new Error(`Unknown: blog ${subcommand ?? ""}. Run 'pnpm cli help'.`);
+            throw new Error(`Unknown: media ${subcommand ?? ""}. Run 'pnpm cli help'.`);
         }
+
+      case "blog":
+        throw new Error(
+          "The 'blog' command is deprecated. Use 'media' instead. Example: pnpm cli media upload --slug <word-slug> --dir <path>"
+        );
 
       case "notes":
         switch (subcommand) {
@@ -2747,55 +3243,113 @@ async function direct() {
             const title = getArg("title");
             const markdownFile = getArg("markdown-file");
             const subtitle = getArg("subtitle");
+            const image = getArg("image");
+            const type = parseWordType(getArg("type"));
             const visibility = parseNoteVisibility(getArg("visibility"));
+            const tags = parseTags(getArg("tags"));
+            const featured = parseBooleanInput(getArg("featured"));
             if (!slug || !title || !markdownFile) {
               throw new Error(
-                "Usage: pnpm cli notes create --slug <slug> --title <title> --markdown-file <path> [--subtitle <text>] [--visibility public|unlisted|private]"
+                "Usage: pnpm cli notes create --slug <slug> --title <title> --markdown-file <path> [--subtitle <text>] [--image <path>] [--type blog|note|recipe|review] [--visibility public|unlisted|private] [--tags a,b] [--featured true|false]"
               );
             }
-            const abs = path.resolve(markdownFile.replace(/^~/, process.env.HOME ?? "~"));
-            if (!fs.existsSync(abs)) throw new Error(`File not found: ${abs}`);
-            const markdown = fs.readFileSync(abs, "utf-8");
-            return cmdNotesCreate({ slug, title, subtitle, visibility, markdown });
+            if (getArg("type") && !type) throw new Error("Invalid --type value.");
+            if (getArg("featured") && featured === undefined) throw new Error("Invalid --featured value. Use true/false.");
+            const markdown = readMarkdownFile(markdownFile);
+            return cmdNotesCreate({ slug, title, subtitle, image, type, visibility, tags, featured, markdown });
           }
           case "upload": {
             const slug = getArg("slug");
             const file = getArg("file");
             const title = getArg("title");
             const subtitle = getArg("subtitle");
+            const image = getArg("image");
+            const type = parseWordType(getArg("type"));
             const visibility = parseNoteVisibility(getArg("visibility"));
+            const tags = parseTags(getArg("tags"));
+            const featured = parseBooleanInput(getArg("featured"));
             if (!slug || !file) {
               throw new Error(
-                "Usage: pnpm cli notes upload --slug <slug> --file <path> [--title <title>] [--subtitle <text>] [--visibility public|unlisted|private]"
+                "Usage: pnpm cli notes upload --slug <slug> --file <path> [--title <title>] [--subtitle <text>] [--image <path>] [--type blog|note|recipe|review] [--visibility public|unlisted|private] [--tags a,b] [--featured true|false]"
               );
             }
-            return cmdNotesUpload({ slug, file, title: title ?? undefined, subtitle: subtitle ?? undefined, visibility });
+            if (getArg("type") && !type) throw new Error("Invalid --type value.");
+            if (getArg("featured") && featured === undefined) throw new Error("Invalid --featured value. Use true/false.");
+            return cmdNotesUpload({
+              slug,
+              file,
+              title: title ?? undefined,
+              subtitle: subtitle ?? undefined,
+              image: image ?? undefined,
+              type,
+              visibility,
+              tags,
+              featured,
+            });
           }
           case "list": {
             const visibility = parseNoteVisibility(getArg("visibility"));
+            const type = parseWordType(getArg("type"));
+            const tag = getArg("tag");
             const q = getArg("q");
-            return cmdNotesList({ visibility, q });
+            if (getArg("type") && !type) throw new Error("Invalid --type value.");
+            return cmdNotesList({ visibility, type, tag: tag ?? undefined, q });
           }
           case "update": {
             const slug = args[2];
             if (!slug) {
               throw new Error(
-                "Usage: pnpm cli notes update <slug> [--title <title>] [--subtitle <text>] [--clear-subtitle] [--visibility public|unlisted|private] [--markdown-file <path>]"
+                "Usage: pnpm cli notes update <slug> [--title <title>] [--subtitle <text>] [--clear-subtitle] [--image <path>|--clear-image] [--type blog|note|recipe|review] [--visibility public|unlisted|private] [--tags a,b] [--featured true|false] [--markdown-file <path>]"
               );
             }
             const title = getArg("title");
             const subtitle = hasFlag("clear-subtitle") ? null : (getArg("subtitle") ?? undefined);
+            const image = hasFlag("clear-image") ? null : (getArg("image") ?? undefined);
+            const type = parseWordType(getArg("type"));
             const visibility = parseNoteVisibility(getArg("visibility"));
+            const tags = parseTags(getArg("tags"));
+            const featured = parseBooleanInput(getArg("featured"));
             const markdownFile = getArg("markdown-file");
-            if (!title && subtitle === undefined && !visibility && !markdownFile && !hasFlag("clear-subtitle")) {
+            if (getArg("type") && !type) throw new Error("Invalid --type value.");
+            if (getArg("featured") && featured === undefined) throw new Error("Invalid --featured value. Use true/false.");
+            if (!title && subtitle === undefined && image === undefined && !type && !visibility && !tags && featured === undefined && !markdownFile && !hasFlag("clear-subtitle") && !hasFlag("clear-image")) {
               throw new Error("Nothing to update.");
             }
-            return cmdNotesUpdate(slug, { title: title ?? undefined, subtitle, visibility, markdownFile: markdownFile ?? undefined });
+            return cmdNotesUpdate(slug, {
+              title: title ?? undefined,
+              subtitle,
+              image,
+              type,
+              visibility,
+              tags,
+              featured,
+              markdownFile: markdownFile ?? undefined,
+            });
           }
           case "delete": {
             const slug = args[2];
             if (!slug) throw new Error("Usage: pnpm cli notes delete <slug>");
             return cmdNotesDelete(slug);
+          }
+          case "pull": {
+            const dir = getArg("dir");
+            const type = parseWordType(getArg("type"));
+            const visibility = parseNoteVisibility(getArg("visibility"));
+            if (!dir) {
+              throw new Error("Usage: pnpm cli notes pull --dir <path> [--type blog|note|recipe|review] [--visibility public|unlisted|private]");
+            }
+            if (getArg("type") && !type) throw new Error("Invalid --type value.");
+            return cmdNotesPull({ dir, type, visibility });
+          }
+          case "sync": {
+            const dir = getArg("dir");
+            if (!dir) throw new Error("Usage: pnpm cli notes sync --dir <path>");
+            return cmdNotesSync({ dir });
+          }
+          case "watch": {
+            const dir = getArg("dir");
+            if (!dir) throw new Error("Usage: pnpm cli notes watch --dir <path>");
+            return cmdNotesWatch({ dir });
           }
           case "share": {
             const action = args[2];

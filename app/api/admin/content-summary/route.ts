@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/features/auth/server";
-import { getAllPosts } from "@/features/blog/reader";
 import { getAllAlbums, validateAllAlbums } from "@/features/media/albums";
+import { isNotesEnabled } from "@/features/notes/reader";
+import { listNotes } from "@/features/notes/store";
 import { apiErrorFromRequest } from "@/lib/platform/api-error";
 
 export async function GET(request: NextRequest) {
@@ -9,12 +10,29 @@ export async function GET(request: NextRequest) {
   if (authErr) return authErr;
 
   try {
-    const posts = getAllPosts();
+    const noteBlogs = isNotesEnabled()
+      ? (await listNotes({
+          includeNonPublic: true,
+          type: "blog",
+          limit: 1000,
+        })).notes
+      : [];
+
+    const posts = noteBlogs
+      .map((note) => ({
+        slug: note.slug,
+        title: note.title,
+        date: note.publishedAt ?? note.updatedAt,
+        readingTime: 1,
+        featured: note.featured ?? false,
+        hasImage: !!note.image,
+      }))
+      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
     const albums = getAllAlbums();
     const invalidAlbums = validateAllAlbums();
 
     const featuredPosts = posts.filter((post) => post.featured).length;
-    const postsWithImages = posts.filter((post) => !!post.image).length;
+    const postsWithImages = posts.filter((post) => post.hasImage).length;
     const totalReadingMinutes = posts.reduce((sum, post) => sum + post.readingTime, 0);
     const latestPostDate = posts[0]?.date ?? null;
 
@@ -34,7 +52,7 @@ export async function GET(request: NextRequest) {
           title: post.title,
           date: post.date,
           readingTime: post.readingTime,
-          featured: post.featured ?? false,
+          featured: post.featured,
         })),
       },
       gallery: {

@@ -1,18 +1,42 @@
-import { getAllPosts } from "@/features/blog/reader";
+import { isNotesEnabled } from "@/features/notes/reader";
+import { listNotes } from "@/features/notes/store";
 import { BASE_URL, SITE_BRAND } from "@/lib/shared/config";
 
 /** Generate an RSS 2.0 feed from all blog posts */
-export function GET() {
-  const posts = getAllPosts();
+export async function GET() {
+  const noteBlogs = isNotesEnabled()
+    ? (await listNotes({
+        includeNonPublic: false,
+        visibility: "public",
+        type: "blog",
+        limit: 500,
+      })).notes
+    : [];
 
-  const items = posts
+  const bySlug = new Map<
+    string,
+    { slug: string; title: string; subtitle?: string; date: string }
+  >();
+  for (const note of noteBlogs) {
+    bySlug.set(note.slug, {
+      slug: note.slug,
+      title: note.title,
+      subtitle: note.subtitle,
+      date: note.publishedAt ?? note.updatedAt,
+    });
+  }
+  const all = [...bySlug.values()].sort(
+    (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
+  );
+
+  const items = all
     .map(
       (post) => `
     <item>
       <title><![CDATA[${post.title}]]></title>
-      <link>${BASE_URL}/blog/${post.slug}</link>
-      <guid isPermaLink="true">${BASE_URL}/blog/${post.slug}</guid>
-      <pubDate>${new Date(post.date + "T00:00:00").toUTCString()}</pubDate>
+      <link>${BASE_URL}/words/${post.slug}</link>
+      <guid isPermaLink="true">${BASE_URL}/words/${post.slug}</guid>
+      <pubDate>${new Date(post.date).toUTCString()}</pubDate>
       ${post.subtitle ? `<description><![CDATA[${post.subtitle}]]></description>` : ""}
     </item>`
     )

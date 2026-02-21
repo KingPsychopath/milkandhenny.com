@@ -1,10 +1,11 @@
 import "server-only";
 
-const NOTES_ENABLED = process.env.NOTES_ENABLED === "true";
+const NOTES_ENABLED = process.env.NOTES_ENABLED !== "false";
 const NOTE_META_PREFIX = "notes:meta:";
 const NOTE_INDEX_KEY = "notes:index";
-const NOTE_CONTENT_PREFIX = "notes/";
+const WORD_CONTENT_PREFIX = "words/";
 const NOTE_CONTENT_SUFFIX = "/content.md";
+const LEGACY_NOTE_CONTENT_PREFIX = "notes/";
 const NOTE_SHARE_PREFIX = "notes:share:";
 const NOTE_SHARE_INDEX_PREFIX = "notes:share-index:";
 
@@ -17,8 +18,12 @@ function noteMetaKey(slug: string): string {
   return `${NOTE_META_PREFIX}${slug}`;
 }
 
-function noteContentKey(slug: string): string {
-  return `${NOTE_CONTENT_PREFIX}${slug}${NOTE_CONTENT_SUFFIX}`;
+function noteContentKey(type: string, slug: string): string {
+  return `${WORD_CONTENT_PREFIX}${type}/${slug}${NOTE_CONTENT_SUFFIX}`;
+}
+
+function legacyNoteContentKey(slug: string): string {
+  return `${LEGACY_NOTE_CONTENT_PREFIX}${slug}${NOTE_CONTENT_SUFFIX}`;
 }
 
 function noteShareKey(id: string): string {
@@ -38,6 +43,7 @@ export {
   SHARE_PIN_LOCKOUT_SECONDS,
   noteMetaKey,
   noteContentKey,
+  legacyNoteContentKey,
   noteShareKey,
   noteShareIndexKey,
 };

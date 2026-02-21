@@ -1,17 +1,12 @@
 /**
- * Blog media operations.
+ * Words media operations.
  *
- * Upload, list, and delete files stored under blog/{slug}/ in R2.
- * Unlike albums (which use a JSON manifest) or transfers (which use Redis),
- * blog media has no metadata store — the markdown file IS the manifest.
+ * Upload, list, and delete files stored under:
+ * - words/media/{slug}/...   (word-scoped media)
+ * - words/assets/{assetId}/... (shared asset library)
  *
- * Accepts any file type:
- * - Images (JPEG, PNG, WebP, HEIC, HIF, TIFF) → processed to WebP (max 1600px, quality 85)
- * - Everything else (video, audio, PDF, GIF, etc.) → uploaded raw, original format preserved
- *
- * R2 layout:
- *   blog/{slug}/{sanitised-name}.webp   — processed images
- *   blog/{slug}/{sanitised-name}.mp4    — raw files (original extension kept)
+ * For word-scoped media we still read/delete legacy blog/{slug}/ keys so
+ * existing objects remain manageable.
  */
 
 import fs from "fs";
@@ -29,7 +24,12 @@ import {
   processToWebP,
   mapConcurrent,
 } from "../features/media/processing";
-import { toR2Filename, toMarkdownSnippet } from "../features/blog/upload";
+import {
+  mediaPrefixForTarget,
+  toMarkdownSnippetForTarget,
+  toR2Filename,
+  type WordMediaTarget,
+} from "../features/blog/upload";
 import { formatBytes } from "../lib/shared/format";
 import type { FileKind } from "../features/media/file-kinds";
 
@@ -39,38 +39,28 @@ import type { FileKind } from "../features/media/file-kinds";
 const IMAGE_CONCURRENCY = 3;
 /** Raw uploads are purely network-bound — higher concurrency is fine */
 const RAW_CONCURRENCY = 6;
+const LEGACY_BLOG_PREFIX = "blog/";
 
 /* ─── Types ─── */
 
-type UploadedBlogFile = {
-  /** Original filename (before processing) */
+type UploadedWordMediaFile = {
   original: string;
-  /** Filename in R2 */
   filename: string;
-  /** File kind (image, video, gif, audio, file) */
   kind: FileKind;
-  /** Width after processing (images only) */
   width?: number;
-  /** Height after processing (images only) */
   height?: number;
-  /** Bytes uploaded */
   size: number;
-  /** Ready-to-paste markdown snippet */
   markdown: string;
-  /** Whether this was an overwrite of an existing file */
   overwrote: boolean;
 };
 
-type UploadBlogResult = {
-  /** Newly uploaded files */
-  uploaded: UploadedBlogFile[];
-  /** Filenames that were skipped (already exist, no --force) */
+type UploadWordMediaResult = {
+  uploaded: UploadedWordMediaFile[];
   skipped: string[];
-  /** Files that already existed before this upload */
-  existing: BlogFileInfo[];
+  existing: WordMediaFileInfo[];
 };
 
-type BlogFileInfo = {
+type WordMediaFileInfo = {
   key: string;
   filename: string;
   size: number;
@@ -87,23 +77,33 @@ function requireR2(): void {
   }
 }
 
+function legacyBlogPrefix(slug: string): string {
+  return `${LEGACY_BLOG_PREFIX}${slug}/`;
+}
+
+function targetLabel(target: WordMediaTarget): string {
+  return target.scope === "asset"
+    ? `shared asset library (${target.assetId})`
+    : `word media (${target.slug})`;
+}
+
+async function listTargetObjects(target: WordMediaTarget) {
+  const primary = listObjects(mediaPrefixForTarget(target));
+  if (target.scope === "asset") {
+    return primary;
+  }
+  const legacy = listObjects(legacyBlogPrefix(target.slug));
+  const [primaryObjects, legacyObjects] = await Promise.all([primary, legacy]);
+  return [...primaryObjects, ...legacyObjects];
+}
+
 /* ─── Operations ─── */
 
-/**
- * Upload files from a local directory to blog/{slug}/ in R2.
- * Images are processed to WebP; everything else uploads raw.
- *
- * Supports incremental uploads: duplicates (by sanitised filename)
- * are skipped by default. Pass force=true to overwrite.
- *
- * Returns the full picture: what was uploaded, what was skipped,
- * and what was already in R2 before this run.
- */
-async function uploadBlogFiles(
-  slug: string,
+async function uploadWordMediaFiles(
+  target: WordMediaTarget,
   dir: string,
   opts?: { force?: boolean; onProgress?: (msg: string) => void }
-): Promise<UploadBlogResult> {
+): Promise<UploadWordMediaResult> {
   requireR2();
 
   const force = opts?.force ?? false;
@@ -114,21 +114,17 @@ async function uploadBlogFiles(
     throw new Error(`Directory not found: ${absDir}`);
   }
 
-  // Accept ALL non-hidden files (same as transfers)
   const files = fs
     .readdirSync(absDir)
-    .filter(
-      (f) => !f.startsWith(".") && fs.statSync(path.join(absDir, f)).isFile()
-    )
+    .filter((f) => !f.startsWith(".") && fs.statSync(path.join(absDir, f)).isFile())
     .sort();
 
   if (files.length === 0) {
     throw new Error(`No files found in ${absDir}`);
   }
 
-  // Check what's already in R2 for this post
-  const existingObjects = await listObjects(`blog/${slug}/`);
-  const existingInfo: BlogFileInfo[] = existingObjects.map((o) => ({
+  const existingObjects = await listTargetObjects(target);
+  const existingInfo: WordMediaFileInfo[] = existingObjects.map((o) => ({
     key: o.key,
     filename: path.basename(o.key),
     size: o.size,
@@ -137,16 +133,11 @@ async function uploadBlogFiles(
   const existingNames = new Set(existingInfo.map((i) => i.filename));
 
   if (existingInfo.length > 0) {
-    onProgress?.(
-      `${existingInfo.length} files already in R2 for "${slug}".`
-    );
+    onProgress?.(`${existingInfo.length} files already in R2 for ${targetLabel(target)}.`);
   }
 
-  // Classify and separate new vs duplicate
-  const images: { file: string; r2Filename: string; overwrites: boolean }[] =
-    [];
-  const rawFiles: { file: string; r2Filename: string; overwrites: boolean }[] =
-    [];
+  const images: { file: string; r2Filename: string; overwrites: boolean }[] = [];
+  const rawFiles: { file: string; r2Filename: string; overwrites: boolean }[] = [];
   const skipped: string[] = [];
 
   for (const file of files) {
@@ -173,29 +164,19 @@ async function uploadBlogFiles(
     return { uploaded: [], skipped, existing: existingInfo };
   }
 
-  // Summarise what's about to happen
   const parts: string[] = [];
-  if (images.length > 0)
-    parts.push(`${images.length} image${images.length > 1 ? "s" : ""}`);
-  if (rawFiles.length > 0)
-    parts.push(
-      `${rawFiles.length} other file${rawFiles.length > 1 ? "s" : ""}`
-    );
-  onProgress?.(`Uploading ${parts.join(" + ")}...`);
+  if (images.length > 0) parts.push(`${images.length} image${images.length > 1 ? "s" : ""}`);
+  if (rawFiles.length > 0) parts.push(`${rawFiles.length} other file${rawFiles.length > 1 ? "s" : ""}`);
+  onProgress?.(`Uploading to ${targetLabel(target)}: ${parts.join(" + ")}...`);
 
-  // Process images (Sharp → WebP)
   const imageResults = await mapConcurrent(
     images,
     IMAGE_CONCURRENCY,
-    async ({ file, r2Filename, overwrites }): Promise<UploadedBlogFile> => {
+    async ({ file, r2Filename, overwrites }): Promise<UploadedWordMediaFile> => {
       const raw = fs.readFileSync(path.join(absDir, file));
-      const r2Key = `blog/${slug}/${r2Filename}`;
+      const r2Key = `${mediaPrefixForTarget(target)}${r2Filename}`;
 
-      onProgress?.(
-        overwrites
-          ? `Re-uploading ${r2Filename} (overwrite)...`
-          : `Processing ${file}...`
-      );
+      onProgress?.(overwrites ? `Re-uploading ${r2Filename} (overwrite)...` : `Processing ${file}...`);
 
       const { buffer, width, height } = await processToWebP(raw);
       await uploadBuffer(r2Key, buffer, "image/webp");
@@ -208,21 +189,20 @@ async function uploadBlogFiles(
         width,
         height,
         size: buffer.byteLength,
-        markdown: toMarkdownSnippet(slug, r2Filename, "image"),
+        markdown: toMarkdownSnippetForTarget(target, r2Filename, "image"),
         overwrote: overwrites,
       };
     }
   );
 
-  // Upload raw files (video, audio, PDF, GIF, etc.) — no processing
   const rawResults = await mapConcurrent(
     rawFiles,
     RAW_CONCURRENCY,
-    async ({ file, r2Filename, overwrites }): Promise<UploadedBlogFile> => {
+    async ({ file, r2Filename, overwrites }): Promise<UploadedWordMediaFile> => {
       const raw = fs.readFileSync(path.join(absDir, file));
       const mimeType = getMimeType(file);
       const kind = getFileKind(file);
-      const r2Key = `blog/${slug}/${r2Filename}`;
+      const r2Key = `${mediaPrefixForTarget(target)}${r2Filename}`;
 
       onProgress?.(
         overwrites
@@ -238,76 +218,123 @@ async function uploadBlogFiles(
         filename: r2Filename,
         kind,
         size: raw.byteLength,
-        markdown: toMarkdownSnippet(slug, r2Filename, kind),
+        markdown: toMarkdownSnippetForTarget(target, r2Filename, kind),
         overwrote: overwrites,
       };
     }
   );
 
-  const uploaded = [...imageResults, ...rawResults];
-  return { uploaded, skipped, existing: existingInfo };
+  return {
+    uploaded: [...imageResults, ...rawResults],
+    skipped,
+    existing: existingInfo,
+  };
 }
 
-/**
- * List all blog files for a given post slug.
- */
-async function listBlogFiles(slug: string): Promise<BlogFileInfo[]> {
+async function listWordMediaFiles(target: WordMediaTarget): Promise<WordMediaFileInfo[]> {
   requireR2();
 
-  const objects = await listObjects(`blog/${slug}/`);
-  return objects.map((o) => ({
-    key: o.key,
-    filename: path.basename(o.key),
-    size: o.size,
-    lastModified: o.lastModified,
-  }));
+  const objects = await listTargetObjects(target);
+  const primaryPrefix = mediaPrefixForTarget(target);
+  const byFilename = new Map<string, WordMediaFileInfo>();
+
+  for (const obj of objects) {
+    const filename = path.basename(obj.key);
+    const existing = byFilename.get(filename);
+    const isPrimary = obj.key.startsWith(primaryPrefix);
+    if (!existing || isPrimary) {
+      byFilename.set(filename, {
+        key: obj.key,
+        filename,
+        size: obj.size,
+        lastModified: obj.lastModified,
+      });
+    }
+  }
+
+  return [...byFilename.values()].sort((a, b) => a.filename.localeCompare(b.filename));
 }
 
-/**
- * Delete a single blog file by filename.
- */
-async function deleteBlogFile(
-  slug: string,
+async function deleteWordMediaFile(
+  target: WordMediaTarget,
   filename: string,
   onProgress?: (msg: string) => void
 ): Promise<void> {
   requireR2();
 
-  const key = `blog/${slug}/${filename}`;
-  onProgress?.(`Deleting ${key}...`);
-  await deleteObjects([key]);
+  const keys = [`${mediaPrefixForTarget(target)}${filename}`];
+  if (target.scope === "word") {
+    keys.push(`${legacyBlogPrefix(target.slug)}${filename}`);
+  }
+
+  onProgress?.(`Deleting ${keys[0]}${target.scope === "word" ? " (and legacy if present)" : ""}...`);
+  await deleteObjects(keys);
   onProgress?.("Done.");
 }
 
-/**
- * Delete ALL blog files for a post slug.
- * Returns the number of files deleted.
- */
-async function deleteAllBlogFiles(
-  slug: string,
+async function deleteAllWordMediaFiles(
+  target: WordMediaTarget,
   onProgress?: (msg: string) => void
 ): Promise<number> {
   requireR2();
 
-  const objects = await listObjects(`blog/${slug}/`);
+  const objects = await listTargetObjects(target);
   const keys = objects.map((o) => o.key);
 
   if (keys.length === 0) {
-    onProgress?.("No blog files found for this post.");
+    onProgress?.(`No files found for ${targetLabel(target)}.`);
     return 0;
   }
 
-  onProgress?.(`Deleting ${keys.length} files from blog/${slug}/...`);
+  onProgress?.(`Deleting ${keys.length} files from ${targetLabel(target)}...`);
   const deleted = await deleteObjects(keys);
   onProgress?.("Done.");
   return deleted;
 }
 
+/* ─── Compatibility wrappers ─── */
+
+async function uploadBlogFiles(
+  slug: string,
+  dir: string,
+  opts?: { force?: boolean; onProgress?: (msg: string) => void }
+): Promise<UploadWordMediaResult> {
+  return uploadWordMediaFiles({ scope: "word", slug }, dir, opts);
+}
+
+async function listBlogFiles(slug: string): Promise<WordMediaFileInfo[]> {
+  return listWordMediaFiles({ scope: "word", slug });
+}
+
+async function deleteBlogFile(
+  slug: string,
+  filename: string,
+  onProgress?: (msg: string) => void
+): Promise<void> {
+  return deleteWordMediaFile({ scope: "word", slug }, filename, onProgress);
+}
+
+async function deleteAllBlogFiles(
+  slug: string,
+  onProgress?: (msg: string) => void
+): Promise<number> {
+  return deleteAllWordMediaFiles({ scope: "word", slug }, onProgress);
+}
+
 export {
+  uploadWordMediaFiles,
+  listWordMediaFiles,
+  deleteWordMediaFile,
+  deleteAllWordMediaFiles,
   uploadBlogFiles,
   listBlogFiles,
   deleteBlogFile,
   deleteAllBlogFiles,
 };
 
-export type { UploadedBlogFile, UploadBlogResult, BlogFileInfo };
+export type {
+  UploadedWordMediaFile,
+  UploadWordMediaResult,
+  WordMediaFileInfo,
+  WordMediaTarget,
+};

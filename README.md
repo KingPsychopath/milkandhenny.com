@@ -31,7 +31,7 @@ pnpm test:watch    # re-run on file changes
 | **Guest list** | `/guestlist` | Vercel KV (Redis) | Real-time check-in for door staff, multi-device sync |
 | **Admin dashboard** | `/admin` | Vercel KV (Redis) + admin auth | Unified admin controls for guest reset, vote reset, upload/admin tools |
 | **Best dressed** | `/best-dressed` | Vercel KV (Redis) | Live voting leaderboard for party guests |
-| **Private notes** | `/notes`, `/notes/{slug}` | Vercel KV (metadata) + R2 | Private markdown notes with signed links and optional per-link PIN |
+| **Words** | `/words`, `/words/{slug}` | Vercel KV (metadata) + R2 | Unified blog/notes/recipes/reviews with visibility controls and signed links |
 | **Transfers** | `/t/{id}` | Vercel KV (Redis) + R2 | Self-destructing file sharing (your own WeTransfer) |
 | **CLI** | `pnpm cli` | R2 + KV | Manage albums, photos, transfers, blog files from the terminal |
 
@@ -187,7 +187,7 @@ pnpm cli notes share update <slug> <share-id> --pin-required true --pin <new-pin
 | `STAFF_PIN` | Yes (guestlist) | PIN for door staff. Not in client bundle. |
 | `ADMIN_PASSWORD` | Yes (admin) | Gate for management UI and admin dashboard. Weak values show up as warnings. Not in client bundle. |
 | `UPLOAD_PIN` | Yes (upload) | Dedicated PIN for `/upload` (shareable with non-admin uploaders). |
-| `NOTES_ENABLED` | Optional | Set `true` to enable `/notes`, notes APIs, and `/admin/notes`. |
+| `NOTES_ENABLED` | Optional | Set `true` to enable `/words`, notes APIs, and `/admin/editor`. |
 | `NEXT_PUBLIC_BASE_URL` | CLI only | For generating share URLs. Not needed on Vercel. |
 | `CRON_SECRET` | Optional | Secures daily cleanup cron. |
 

@@ -2,12 +2,13 @@
 
 import { useState, useRef, useCallback, useEffect } from "react";
 import Link from "next/link";
-import { getStored, setStored, removeStored } from "@/lib/client/storage";
+import { getStored, removeStored } from "@/lib/client/storage";
 import { SITE_BRAND } from "@/lib/shared/config";
 
 /* ─── Types ─── */
 
-type UploadMode = "transfer" | "blog";
+type UploadMode = "transfer" | "words";
+type WordsScope = "word" | "asset";
 
 type TransferResult = {
   shareUrl: string;
@@ -28,7 +29,7 @@ type TransferResult = {
   };
 };
 
-type BlogUploadedFile = {
+type WordUploadedFile = {
   original: string;
   filename: string;
   kind: string;
@@ -39,8 +40,8 @@ type BlogUploadedFile = {
   overwrote: boolean;
 };
 
-type BlogResult = {
-  uploaded: BlogUploadedFile[];
+type WordResult = {
+  uploaded: WordUploadedFile[];
   skipped: string[];
 };
 
@@ -97,10 +98,12 @@ export function UploadDashboard({ isAdmin }: UploadDashboardProps) {
     null
   );
 
-  /* Blog fields */
+  /* Words fields */
+  const [wordsScope, setWordsScope] = useState<WordsScope>("word");
   const [slug, setSlug] = useState("");
+  const [assetId, setAssetId] = useState("");
   const [force, setForce] = useState(false);
-  const [blogResult, setBlogResult] = useState<BlogResult | null>(null);
+  const [wordsResult, setWordsResult] = useState<WordResult | null>(null);
 
   /* Upload progress (presigned flow) */
   const [uploadProgress, setUploadProgress] = useState<{
@@ -171,7 +174,7 @@ export function UploadDashboard({ isAdmin }: UploadDashboardProps) {
   const clearAll = useCallback(() => {
     setFiles([]);
     setTransferResult(null);
-    setBlogResult(null);
+    setWordsResult(null);
     setUploadError("");
   }, []);
 
@@ -324,25 +327,29 @@ export function UploadDashboard({ isAdmin }: UploadDashboardProps) {
     return finalizeData as TransferResult;
   };
 
-  /** Blog upload uses presigned PUT URLs (same as transfers). */
-  const handleBlogUpload = async () => {
-    if (!slug.trim()) throw new Error("slug is required");
-    const cleanSlug = slug.trim();
+  /** Words upload uses presigned PUT URLs (same as transfers). */
+  const handleWordsUpload = async () => {
+    const cleanSlug = slug.trim().toLowerCase();
+    const cleanAssetId = assetId.trim().toLowerCase();
+    if (wordsScope === "word" && !cleanSlug) throw new Error("word slug is required");
+    if (wordsScope === "asset" && !cleanAssetId) throw new Error("asset id is required");
 
     // 1. Presign PUT URLs
     setUploadProgress({ phase: "uploading", current: 0, total: files.length });
-    const presignRes = await authFetch("/api/upload/blog/presign", {
+    const presignRes = await authFetch("/api/upload/words/presign", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        slug: cleanSlug,
+        scope: wordsScope,
+        slug: wordsScope === "word" ? cleanSlug : undefined,
+        assetId: wordsScope === "asset" ? cleanAssetId : undefined,
         force,
         files: files.map((f) => ({ name: f.name, size: f.size, type: f.type })),
       }),
     });
     const presignData = await presignRes.json().catch(() => ({}));
     if (!presignRes.ok || !presignData || presignData.success !== true) {
-      throw new Error(presignData.error || "Failed to prepare blog upload");
+      throw new Error(presignData.error || "Failed to prepare words upload");
     }
 
     const { urls, skipped } = presignData as {
@@ -382,11 +389,13 @@ export function UploadDashboard({ isAdmin }: UploadDashboardProps) {
 
     // 3. Finalize (process images to WebP, return markdown snippets)
     setUploadProgress({ phase: "processing", current: urls.length, total: urls.length });
-    const finalizeRes = await authFetch("/api/upload/blog/finalize", {
+    const finalizeRes = await authFetch("/api/upload/words/finalize", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        slug: cleanSlug,
+        scope: wordsScope,
+        slug: wordsScope === "word" ? cleanSlug : undefined,
+        assetId: wordsScope === "asset" ? cleanAssetId : undefined,
         skipped,
         files: urls.map((u) => ({
           original: u.original,
@@ -400,10 +409,10 @@ export function UploadDashboard({ isAdmin }: UploadDashboardProps) {
     });
     const finalizeData = await finalizeRes.json().catch(() => ({}));
     if (!finalizeRes.ok) {
-      throw new Error(finalizeData.error || "Blog upload succeeded but finalization failed");
+      throw new Error(finalizeData.error || "Words upload succeeded but finalization failed");
     }
 
-    return finalizeData as BlogResult;
+    return finalizeData as WordResult;
   };
 
   const handleUpload = async () => {
@@ -413,15 +422,15 @@ export function UploadDashboard({ isAdmin }: UploadDashboardProps) {
     setUploadError("");
     setUploadProgress(null);
     setTransferResult(null);
-    setBlogResult(null);
+    setWordsResult(null);
 
     try {
       if (mode === "transfer") {
         const result = await handleTransferUpload();
         setTransferResult(result);
       } else {
-        const result = await handleBlogUpload();
-        setBlogResult(result);
+        const result = await handleWordsUpload();
+        setWordsResult(result);
       }
       setFiles([]);
     } catch (e) {
@@ -447,17 +456,17 @@ export function UploadDashboard({ isAdmin }: UploadDashboardProps) {
   /* ─── Switch mode ─── */
 
   useEffect(() => {
-    if (!isAdmin && mode === "blog") {
+    if (!isAdmin && mode === "words") {
       setMode("transfer");
     }
   }, [isAdmin, mode]);
 
   const switchMode = (newMode: UploadMode) => {
-    if (newMode === "blog" && !isAdmin) return;
+    if (newMode === "words" && !isAdmin) return;
     setMode(newMode);
     setUploadError("");
     setTransferResult(null);
-    setBlogResult(null);
+    setWordsResult(null);
   };
 
   const totalFileSize = files.reduce((sum, f) => sum + f.size, 0);
@@ -489,7 +498,7 @@ export function UploadDashboard({ isAdmin }: UploadDashboardProps) {
           <Link href="/" className="theme-muted hover:text-[var(--foreground)] transition-colors">
             home
           </Link>
-          <Link href="/blog" className="theme-muted hover:text-[var(--foreground)] transition-colors">
+          <Link href="/words" className="theme-muted hover:text-[var(--foreground)] transition-colors">
             words
           </Link>
         </nav>
@@ -509,14 +518,14 @@ export function UploadDashboard({ isAdmin }: UploadDashboardProps) {
         </button>
         {isAdmin ? (
           <button
-            onClick={() => switchMode("blog")}
+            onClick={() => switchMode("words")}
             className={`font-mono text-sm lowercase tracking-wide pb-1 border-b-2 transition-colors ${
-              mode === "blog"
+              mode === "words"
                 ? "border-[var(--foreground)]"
                 : "border-transparent theme-muted hover:text-[var(--foreground)]"
             }`}
           >
-            blog
+            words
           </button>
         ) : null}
       </div>
@@ -525,7 +534,9 @@ export function UploadDashboard({ isAdmin }: UploadDashboardProps) {
       <p className="font-mono text-xs theme-muted mb-6">
         {mode === "transfer"
           ? "ephemeral file sharing — auto-expires after the set duration"
-          : "permanent blog media — uploaded to the post's slug folder"}
+          : wordsScope === "word"
+            ? "per-word media — uploaded to words/media/{slug}/"
+            : "shared media library — uploaded to words/assets/{assetId}/"}
       </p>
 
       {/* Form fields */}
@@ -566,17 +577,48 @@ export function UploadDashboard({ isAdmin }: UploadDashboardProps) {
         </div>
       ) : (
         <div className="space-y-4 mb-6">
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => setWordsScope("word")}
+              className={`font-mono text-xs px-2 py-1 rounded border transition-colors ${
+                wordsScope === "word"
+                  ? "border-[var(--foreground)] text-[var(--foreground)]"
+                  : "theme-border theme-muted hover:text-[var(--foreground)]"
+              }`}
+            >
+              word media
+            </button>
+            <button
+              type="button"
+              onClick={() => setWordsScope("asset")}
+              className={`font-mono text-xs px-2 py-1 rounded border transition-colors ${
+                wordsScope === "asset"
+                  ? "border-[var(--foreground)] text-[var(--foreground)]"
+                  : "theme-border theme-muted hover:text-[var(--foreground)]"
+              }`}
+            >
+              shared assets
+            </button>
+          </div>
           <div>
             <label className="font-mono text-xs theme-muted block mb-1.5">
-              slug
+              {wordsScope === "word" ? "slug" : "asset id"}
             </label>
             <input
               type="text"
-              value={slug}
-              onChange={(e) => setSlug(e.target.value)}
-              placeholder="valentine-photoshoot"
+              value={wordsScope === "word" ? slug : assetId}
+              onChange={(e) =>
+                wordsScope === "word" ? setSlug(e.target.value) : setAssetId(e.target.value)
+              }
+              placeholder={wordsScope === "word" ? "my-post-slug" : "brand-kit"}
               className="w-full bg-transparent border-b border-[var(--stone-200)] focus:border-[var(--foreground)] outline-none font-mono text-sm py-2 transition-colors placeholder:text-[var(--stone-400)]"
             />
+            <p className="font-mono text-micro theme-faint mt-1">
+              {wordsScope === "word"
+                ? "stores at words/media/{slug}/..."
+                : "stores at words/assets/{assetId}/..."}
+            </p>
           </div>
           <button
             type="button"
@@ -606,7 +648,7 @@ export function UploadDashboard({ isAdmin }: UploadDashboardProps) {
               )}
             </span>
             <span className="font-mono text-xs theme-muted">
-              overwrite existing files
+              overwrite existing files in this target
             </span>
           </button>
         </div>
@@ -653,7 +695,7 @@ export function UploadDashboard({ isAdmin }: UploadDashboardProps) {
               {mode === "transfer" && (
                 <span className="theme-faint"> (direct to R2)</span>
               )}
-              {mode === "blog" && (
+              {mode === "words" && (
                 <span className="theme-faint"> (direct to R2)</span>
               )}
             </span>
@@ -775,15 +817,15 @@ export function UploadDashboard({ isAdmin }: UploadDashboardProps) {
         </div>
       )}
 
-      {/* Blog result */}
-      {blogResult && (
+      {/* Words result */}
+      {wordsResult && (
         <div className="mt-8">
           <div className="border-t theme-border pt-6">
             <p className="font-mono text-xs theme-muted mb-4">result</p>
 
-            {blogResult.uploaded.length > 0 && (
+            {wordsResult.uploaded.length > 0 && (
               <div className="space-y-3">
-                {blogResult.uploaded.map((file) => (
+                {wordsResult.uploaded.map((file) => (
                   <div
                     key={file.filename}
                     className="border-b border-[var(--stone-100)] pb-3"
@@ -820,26 +862,24 @@ export function UploadDashboard({ isAdmin }: UploadDashboardProps) {
                 <button
                   onClick={() =>
                     copyToClipboard(
-                      blogResult.uploaded.map((f) => f.markdown).join("\n"),
+                      wordsResult.uploaded.map((f) => f.markdown).join("\n"),
                       "all-markdown"
                     )
                   }
                   className="font-mono text-xs theme-muted hover:text-[var(--foreground)] transition-colors"
                 >
-                  {copied === "all-markdown"
-                    ? "copied all"
-                    : "copy all markdown"}
+                  {copied === "all-markdown" ? "copied all" : "copy all markdown"}
                 </button>
               </div>
             )}
 
-            {blogResult.skipped.length > 0 && (
+            {wordsResult.skipped.length > 0 && (
               <div className="mt-4">
                 <p className="font-mono text-xs theme-muted mb-1">
-                  skipped ({blogResult.skipped.length})
+                  skipped ({wordsResult.skipped.length})
                 </p>
                 <p className="font-mono text-xs theme-faint">
-                  {blogResult.skipped.join(", ")}
+                  {wordsResult.skipped.join(", ")}
                 </p>
               </div>
             )}

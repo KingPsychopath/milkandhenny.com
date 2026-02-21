@@ -2,8 +2,10 @@ import "server-only";
 
 import { deleteObject, downloadBuffer, isConfigured, uploadBuffer } from "@/lib/platform/r2";
 import { getRedis } from "@/lib/platform/redis";
-import { NOTE_INDEX_KEY, noteContentKey, noteMetaKey } from "./config";
+import { NOTE_INDEX_KEY, legacyNoteContentKey, noteContentKey, noteMetaKey } from "./config";
 import type { NoteMeta, NoteRecord, NoteVisibility } from "./types";
+import type { WordType } from "@/features/words/types";
+import { isWordType, normaliseWordType } from "@/features/words/types";
 
 const SAFE_NOTE_SLUG = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
@@ -12,18 +14,44 @@ const memoryContent = new Map<string, string>();
 
 type ListNoteOptions = {
   visibility?: NoteVisibility;
+  type?: WordType;
+  tag?: string;
   q?: string;
   limit?: number;
   cursor?: string;
   includeNonPublic?: boolean;
 };
 
+function normaliseTags(tags?: string[]): string[] {
+  if (!Array.isArray(tags)) return [];
+  const cleaned = tags
+    .map((t) => t.trim().toLowerCase())
+    .filter(Boolean);
+  return [...new Set(cleaned)];
+}
+
+function normaliseNoteMeta(meta: NoteMeta): NoteMeta {
+  const type = normaliseWordType(meta.type);
+  const bodyKey =
+    typeof meta.bodyKey === "string" && meta.bodyKey.trim()
+      ? meta.bodyKey
+      : noteContentKey(type, meta.slug);
+
+  return {
+    ...meta,
+    image: meta.image?.trim() || undefined,
+    type,
+    bodyKey,
+    tags: normaliseTags(meta.tags),
+    featured: !!meta.featured,
+  };
+}
+
 function isValidNoteSlug(slug: string): boolean {
   return SAFE_NOTE_SLUG.test(slug);
 }
 
-async function writeNoteContent(slug: string, markdown: string): Promise<void> {
-  const key = noteContentKey(slug);
+async function writeNoteContent(key: string, markdown: string): Promise<void> {
   if (isConfigured()) {
     await uploadBuffer(key, Buffer.from(markdown, "utf-8"), "text/markdown; charset=utf-8");
     return;
@@ -31,8 +59,7 @@ async function writeNoteContent(slug: string, markdown: string): Promise<void> {
   memoryContent.set(key, markdown);
 }
 
-async function readNoteContent(slug: string): Promise<string | null> {
-  const key = noteContentKey(slug);
+async function readContentByKey(key: string): Promise<string | null> {
   if (isConfigured()) {
     try {
       const buf = await downloadBuffer(key);
@@ -44,17 +71,34 @@ async function readNoteContent(slug: string): Promise<string | null> {
   return memoryContent.get(key) ?? null;
 }
 
-async function deleteNoteContent(slug: string): Promise<void> {
-  const key = noteContentKey(slug);
-  if (isConfigured()) {
-    try {
-      await deleteObject(key);
-    } catch {
-      // Best-effort cleanup; metadata deletion is source of truth.
-    }
-    return;
+function candidateContentKeys(meta: Pick<NoteMeta, "slug" | "type" | "bodyKey">): string[] {
+  const keys = new Set<string>();
+  if (meta.bodyKey?.trim()) keys.add(meta.bodyKey);
+  keys.add(noteContentKey(meta.type, meta.slug));
+  keys.add(legacyNoteContentKey(meta.slug));
+  return [...keys];
+}
+
+async function readNoteContent(meta: Pick<NoteMeta, "slug" | "type" | "bodyKey">): Promise<{ markdown: string; key: string } | null> {
+  for (const key of candidateContentKeys(meta)) {
+    const markdown = await readContentByKey(key);
+    if (markdown !== null) return { markdown, key };
   }
-  memoryContent.delete(key);
+  return null;
+}
+
+async function deleteNoteContent(keys: string[]): Promise<void> {
+  for (const key of keys) {
+    if (isConfigured()) {
+      try {
+        await deleteObject(key);
+      } catch {
+        // Best-effort cleanup; metadata deletion is source of truth.
+      }
+      continue;
+    }
+    memoryContent.delete(key);
+  }
 }
 
 async function getAllNoteMetas(): Promise<NoteMeta[]> {
@@ -67,7 +111,8 @@ async function getAllNoteMetas(): Promise<NoteMeta[]> {
       slugs.map(async (slug) => {
         const raw = await redis.get<NoteMeta | string>(noteMetaKey(slug));
         if (!raw) return null;
-        return typeof raw === "string" ? (JSON.parse(raw) as NoteMeta) : raw;
+        const parsed = typeof raw === "string" ? (JSON.parse(raw) as NoteMeta) : raw;
+        return normaliseNoteMeta(parsed);
       })
     );
     return metas
@@ -75,9 +120,9 @@ async function getAllNoteMetas(): Promise<NoteMeta[]> {
       .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
   }
 
-  return [...memoryMeta.values()].sort(
-    (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
-  );
+  return [...memoryMeta.values()]
+    .map((meta) => normaliseNoteMeta(meta))
+    .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
 }
 
 async function getNoteMeta(slug: string): Promise<NoteMeta | null> {
@@ -87,27 +132,36 @@ async function getNoteMeta(slug: string): Promise<NoteMeta | null> {
   if (redis) {
     const raw = await redis.get<NoteMeta | string>(noteMetaKey(slug));
     if (!raw) return null;
-    return typeof raw === "string" ? (JSON.parse(raw) as NoteMeta) : raw;
+    const parsed = typeof raw === "string" ? (JSON.parse(raw) as NoteMeta) : raw;
+    return normaliseNoteMeta(parsed);
   }
 
-  return memoryMeta.get(slug) ?? null;
+  const meta = memoryMeta.get(slug);
+  return meta ? normaliseNoteMeta(meta) : null;
 }
 
 async function getNote(slug: string): Promise<NoteRecord | null> {
   const meta = await getNoteMeta(slug);
   if (!meta) return null;
-  const markdown = await readNoteContent(slug);
-  if (markdown === null) return null;
-  return { meta, markdown };
+  const content = await readNoteContent(meta);
+  if (!content) return null;
+  return { meta, markdown: content.markdown };
 }
 
 async function createNote(input: {
   slug: string;
   title: string;
   subtitle?: string;
+  image?: string;
+  type?: WordType;
   visibility?: NoteVisibility;
   markdown: string;
   tags?: string[];
+  featured?: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+  publishedAt?: string;
+  bodyKey?: string;
 }): Promise<NoteRecord> {
   const slug = input.slug.trim().toLowerCase();
   if (!isValidNoteSlug(slug)) {
@@ -120,15 +174,26 @@ async function createNote(input: {
 
   const nowIso = new Date().toISOString();
   const visibility = input.visibility ?? "private";
+  const type = input.type && isWordType(input.type) ? input.type : "note";
+  const createdAt = input.createdAt?.trim() || nowIso;
+  const updatedAt = input.updatedAt?.trim() || createdAt;
+  const bodyKey = input.bodyKey?.trim() || noteContentKey(type, slug);
   const meta: NoteMeta = {
     slug,
     title: input.title.trim(),
     subtitle: input.subtitle?.trim() || undefined,
+    image: input.image?.trim() || undefined,
+    type,
+    bodyKey,
     visibility,
-    createdAt: nowIso,
-    updatedAt: nowIso,
-    publishedAt: visibility === "public" ? nowIso : undefined,
-    tags: input.tags?.filter(Boolean),
+    createdAt,
+    updatedAt,
+    publishedAt:
+      visibility === "public"
+        ? input.publishedAt?.trim() || updatedAt
+        : undefined,
+    tags: normaliseTags(input.tags),
+    featured: !!input.featured,
     authorRole: "admin",
   };
 
@@ -140,7 +205,7 @@ async function createNote(input: {
     memoryMeta.set(slug, meta);
   }
 
-  await writeNoteContent(slug, input.markdown);
+  await writeNoteContent(meta.bodyKey, input.markdown);
   return { meta, markdown: input.markdown };
 }
 
@@ -149,9 +214,12 @@ async function updateNote(
   input: {
     title?: string;
     subtitle?: string | null;
+    image?: string | null;
+    type?: WordType;
     visibility?: NoteVisibility;
     markdown?: string;
     tags?: string[];
+    featured?: boolean;
   }
 ): Promise<NoteRecord | null> {
   const existing = await getNoteMeta(slug);
@@ -159,6 +227,9 @@ async function updateNote(
 
   const nextVisibility = input.visibility ?? existing.visibility;
   const updatedAt = new Date().toISOString();
+  const nextType = input.type ? normaliseWordType(input.type) : existing.type;
+  const nextBodyKey =
+    nextType !== existing.type ? noteContentKey(nextType, slug) : existing.bodyKey;
 
   const meta: NoteMeta = {
     ...existing,
@@ -169,13 +240,22 @@ async function updateNote(
         : input.subtitle === undefined
           ? existing.subtitle
           : input.subtitle.trim() || undefined,
+    image:
+      input.image === null
+        ? undefined
+        : input.image === undefined
+          ? existing.image
+          : input.image.trim() || undefined,
+    type: nextType,
+    bodyKey: nextBodyKey,
     visibility: nextVisibility,
     updatedAt,
     publishedAt:
       nextVisibility === "public"
         ? existing.publishedAt ?? updatedAt
         : undefined,
-    tags: input.tags ?? existing.tags,
+    tags: input.tags ? normaliseTags(input.tags) : existing.tags,
+    featured: typeof input.featured === "boolean" ? input.featured : existing.featured,
   };
 
   const redis = getRedis();
@@ -185,12 +265,37 @@ async function updateNote(
     memoryMeta.set(slug, meta);
   }
 
-  if (typeof input.markdown === "string") {
-    await writeNoteContent(slug, input.markdown);
+  let markdown = typeof input.markdown === "string" ? input.markdown : null;
+  let sourceKey: string | null = null;
+  if (markdown === null && (nextType !== existing.type || nextBodyKey !== existing.bodyKey)) {
+    const current = await readNoteContent(existing);
+    markdown = current?.markdown ?? null;
+    sourceKey = current?.key ?? null;
   }
 
-  const markdown = typeof input.markdown === "string" ? input.markdown : await readNoteContent(slug);
-  return markdown === null ? null : { meta, markdown };
+  if (markdown !== null) {
+    await writeNoteContent(nextBodyKey, markdown);
+    const staleKeys = new Set<string>();
+    if (existing.bodyKey !== nextBodyKey) staleKeys.add(existing.bodyKey);
+    if (sourceKey && sourceKey !== nextBodyKey) staleKeys.add(sourceKey);
+    if (nextType !== existing.type) staleKeys.add(noteContentKey(existing.type, slug));
+    if (typeof input.markdown === "string") staleKeys.add(legacyNoteContentKey(slug));
+    staleKeys.delete(nextBodyKey);
+    if (staleKeys.size > 0) {
+      await deleteNoteContent([...staleKeys]);
+    }
+  }
+
+  if (typeof input.markdown === "string") {
+    return { meta, markdown: input.markdown };
+  }
+
+  if (markdown !== null) {
+    return { meta, markdown };
+  }
+
+  const current = await readNoteContent(meta);
+  return current ? { meta, markdown: current.markdown } : null;
 }
 
 async function deleteNote(slug: string): Promise<boolean> {
@@ -202,7 +307,7 @@ async function deleteNote(slug: string): Promise<boolean> {
   } else {
     memoryMeta.delete(slug);
   }
-  await deleteNoteContent(slug);
+  await deleteNoteContent(candidateContentKeys(existing));
   return true;
 }
 
@@ -210,14 +315,18 @@ async function listNotes(options: ListNoteOptions = {}): Promise<{ notes: NoteMe
   const all = await getAllNoteMetas();
   const q = options.q?.trim().toLowerCase() ?? "";
   const visibility = options.visibility;
+  const type = options.type;
+  const tag = options.tag?.trim().toLowerCase() ?? "";
   const includeNonPublic = options.includeNonPublic ?? false;
   const limit = Math.min(Math.max(options.limit ?? 20, 1), 100);
 
   const filtered = all.filter((note) => {
     if (!includeNonPublic && note.visibility !== "public") return false;
     if (visibility && note.visibility !== visibility) return false;
+    if (type && note.type !== type) return false;
+    if (tag && !note.tags.includes(tag)) return false;
     if (!q) return true;
-    const haystack = `${note.slug} ${note.title} ${note.subtitle ?? ""}`.toLowerCase();
+    const haystack = `${note.slug} ${note.title} ${note.subtitle ?? ""} ${note.type} ${note.tags.join(" ")} ${note.featured ? "featured" : ""}`.toLowerCase();
     return haystack.includes(q);
   });
 

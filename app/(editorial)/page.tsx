@@ -1,15 +1,36 @@
 import Link from "next/link";
-import { getRecentPosts, getAllPosts } from "@/features/blog/reader";
 import { SITE_BRAND } from "@/lib/shared/config";
 import { PostListItem } from "./_components/PostListItem";
 import { isNotesEnabled } from "@/features/notes/reader";
+import { listNotes } from "@/features/notes/store";
 
 const RECENT_LIMIT = 5;
 
-export default function Home() {
-  const posts = getRecentPosts(RECENT_LIMIT);
-  const hasMore = getAllPosts().length > RECENT_LIMIT;
-  const notesEnabled = isNotesEnabled();
+export default async function Home() {
+  const noteBlogs = isNotesEnabled()
+    ? (await listNotes({
+        includeNonPublic: false,
+        visibility: "public",
+        type: "blog",
+        limit: 1000,
+      })).notes
+    : [];
+
+  const allPosts = noteBlogs
+    .map((note) => ({
+      slug: note.slug,
+      title: note.title,
+      subtitle: note.subtitle,
+      date: note.publishedAt ?? note.updatedAt,
+      readingTime: 1,
+      featured: note.featured ?? false,
+    }))
+    .sort((a, b) => {
+    if (!!a.featured !== !!b.featured) return a.featured ? -1 : 1;
+    return new Date(b.date).getTime() - new Date(a.date).getTime();
+  });
+  const posts = allPosts.slice(0, RECENT_LIMIT);
+  const hasMore = allPosts.length > RECENT_LIMIT;
 
   return (
     <div className="min-h-screen bg-background">
@@ -28,16 +49,8 @@ export default function Home() {
           <Link href="/pics" className="theme-muted hover:text-foreground transition-colors">
             [pics]
           </Link>
-          <Link href="/blog" className="theme-muted hover:text-foreground transition-colors">
+          <Link href="/words" className="theme-muted hover:text-foreground transition-colors">
             [words]
-          </Link>
-          {notesEnabled && (
-            <Link href="/notes" className="theme-muted hover:text-foreground transition-colors">
-              [notes]
-            </Link>
-          )}
-          <Link href="/party" className="theme-muted hover:text-foreground transition-colors">
-            [the party]
           </Link>
           <Link href="/upload" className="theme-muted hover:text-foreground transition-colors">
             [upload]
@@ -65,7 +78,7 @@ export default function Home() {
         )}
         {hasMore && (
           <p className="pt-6">
-            <Link href="/blog" className="font-mono text-xs theme-muted hover:text-foreground transition-colors">
+            <Link href="/words" className="font-mono text-xs theme-muted hover:text-foreground transition-colors">
               all posts →
             </Link>
           </p>
@@ -80,14 +93,9 @@ export default function Home() {
               <Link href="/feed.xml" className="hover:text-foreground transition-colors">
                 rss
               </Link>
-              <Link href="/blog" className="hover:text-foreground transition-colors">
+              <Link href="/words" className="hover:text-foreground transition-colors">
                 words
               </Link>
-              {notesEnabled && (
-                <Link href="/notes" className="hover:text-foreground transition-colors">
-                  notes
-                </Link>
-              )}
               <Link href="/party" className="hover:text-foreground transition-colors">
                 the party ↗
               </Link>

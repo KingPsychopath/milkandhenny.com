@@ -68,8 +68,8 @@ function isImageOnlyParagraph(node: MarkdownNode | undefined): boolean {
 
 const baseComponents: Components = {
   /**
-   * Images: resolves relative paths (e.g. "blog/slug/image.webp") against
-   * the R2 public URL. Absolute URLs pass through unchanged.
+   * Images: resolves relative paths (e.g. "words/media/slug/image.webp" or "words/assets/kit/image.webp")
+   * against the R2 public URL. Absolute URLs pass through unchanged.
    * Alt text → figure with caption.
    */
   img: ({ src, alt }) => {
@@ -176,4 +176,3 @@ export function PostBody({ content, albums = {} }: PostBodyProps) {
     </div>
   );
 }
-

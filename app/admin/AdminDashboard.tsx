@@ -339,15 +339,21 @@ export function AdminDashboard() {
     },
     {
       key: "blog-upload",
-      label: "upload blog media",
-      cmd: "pnpm cli blog upload --slug <post-slug> --dir <path>",
-      tip: "Processes images to WebP and prints markdown snippets to paste in posts.",
+      label: "upload words media",
+      cmd: "pnpm cli media upload --slug <word-slug> --dir <path>",
+      tip: "Uploads word-scoped media to words/media/<slug>/ and prints markdown snippets.",
     },
     {
       key: "blog-list",
-      label: "list blog media",
-      cmd: "pnpm cli blog list <post-slug>",
-      tip: "Lists all uploaded files under blog/<post-slug>/ in R2.",
+      label: "list words media",
+      cmd: "pnpm cli media list --slug <word-slug>",
+      tip: "Lists files for words/media/<slug>/.",
+    },
+    {
+      key: "assets-upload",
+      label: "upload shared assets",
+      cmd: "pnpm cli media upload --asset <asset-id> --dir <path>",
+      tip: "Uploads reusable files to words/assets/<asset-id>/ for cross-post reuse.",
     },
   ] as const;
 
@@ -647,30 +653,34 @@ export function AdminDashboard() {
           </Link>{" "}
           <span className="theme-muted font-normal">· admin</span>
         </h1>
-        <nav className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-2 font-mono text-micro theme-muted tracking-wide">
-          <a href="#content-summary" className="hover:text-[var(--foreground)] transition-colors">content</a>
-          <a href="#system-health" className="hover:text-[var(--foreground)] transition-colors">health</a>
-          <a href="#transfer-manager" className="hover:text-[var(--foreground)] transition-colors">transfers</a>
-          <a href="#editorial-tools" className="hover:text-[var(--foreground)] transition-colors">audit</a>
-          <a href="#album-manager" className="hover:text-[var(--foreground)] transition-colors">albums</a>
-        </nav>
-        <nav
-          className="mt-3 flex items-center gap-6 font-mono text-xs tracking-wide"
-          aria-label="Admin navigation"
-        >
-          <Link href="/admin/notes" className="theme-muted hover:text-[var(--foreground)] transition-colors">
-            notes
-          </Link>
-          <Link href="/upload" className="theme-muted hover:text-[var(--foreground)] transition-colors">
-            upload
-          </Link>
-          <Link href="/blog" className="theme-muted hover:text-[var(--foreground)] transition-colors">
-            words
-          </Link>
-          <Link href="/pics" className="theme-muted hover:text-[var(--foreground)] transition-colors">
-            pics
-          </Link>
-        </nav>
+        <div className="mt-2 space-y-2">
+          <nav
+            className="flex flex-wrap items-center gap-x-4 gap-y-2 font-mono text-micro theme-muted tracking-wide"
+            aria-label="Jump to admin sections"
+          >
+            <span className="theme-faint">jump:</span>
+            <a href="#content-summary" className="hover:text-[var(--foreground)] transition-colors">content</a>
+            <a href="#system-health" className="hover:text-[var(--foreground)] transition-colors">health</a>
+            <a href="#transfer-manager" className="hover:text-[var(--foreground)] transition-colors">transfers</a>
+            <a href="#editorial-tools" className="hover:text-[var(--foreground)] transition-colors">audit</a>
+            <a href="#album-manager" className="hover:text-[var(--foreground)] transition-colors">albums</a>
+          </nav>
+          <nav
+            className="flex flex-wrap items-center gap-x-4 gap-y-2 font-mono text-micro theme-muted tracking-wide"
+            aria-label="Open admin tools"
+          >
+            <span className="theme-faint">tools:</span>
+            <Link href="/admin/editor" className="hover:text-[var(--foreground)] transition-colors">
+              editor
+            </Link>
+            <Link href="/upload" className="hover:text-[var(--foreground)] transition-colors">
+              upload
+            </Link>
+            <Link href="/pics" className="hover:text-[var(--foreground)] transition-colors">
+              pics
+            </Link>
+          </nav>
+        </div>
       </header>
 
       <section id="content-summary" className="space-y-4 scroll-mt-6">
@@ -826,16 +836,22 @@ export function AdminDashboard() {
           <p className="font-mono text-xs theme-muted mb-2">editorial tools</p>
           <div className="grid sm:grid-cols-2 gap-3">
             <Link
+              href="/admin/editor"
+              className="border theme-border rounded-md px-3 py-2 font-mono text-sm hover:border-[var(--stone-400)] transition-colors"
+            >
+              open editor
+            </Link>
+            <Link
               href="/upload"
               className="border theme-border rounded-md px-3 py-2 font-mono text-sm hover:border-[var(--stone-400)] transition-colors"
             >
-              open upload dashboard
+              open upload
             </Link>
             <button
               type="button"
               disabled={auditLoading}
               onClick={() => void runContentAudit()}
-              title="Runs deeper checks: album manifest validation + broken blog media references against R2."
+              title="Runs deeper checks: album manifest validation + broken words media references against R2."
               className="border theme-border rounded-md px-3 py-2 font-mono text-sm text-left hover:border-[var(--stone-400)] transition-colors disabled:opacity-50"
             >
               {auditLoading ? "auditing..." : "run content audit"}
@@ -1162,7 +1178,7 @@ export function AdminDashboard() {
             <ul className="space-y-1 font-mono text-sm">
               {content.blog.recent.map((post) => (
                 <li key={post.slug} className="flex items-center justify-between gap-3">
-                  <Link href={`/blog/${post.slug}`} className="truncate hover:opacity-80 transition-opacity">
+                  <Link href={`/words/${post.slug}`} className="truncate hover:opacity-80 transition-opacity">
                     {post.title}
                   </Link>
                   <span className="theme-muted shrink-0">{post.readingTime} min</span>
@@ -1257,7 +1273,7 @@ export function AdminDashboard() {
 
             {auditView !== "invalid-albums" ? (
             <div className="border theme-border rounded-md p-3">
-              <p className="font-mono text-xs theme-muted mb-1">blog media reference audit</p>
+              <p className="font-mono text-xs theme-muted mb-1">words media reference audit</p>
               <p className="font-mono text-sm">
                 refs checked: {audit.blogAudit.checkedRefs} · broken refs: {audit.blogAudit.brokenRefs.length}
               </p>

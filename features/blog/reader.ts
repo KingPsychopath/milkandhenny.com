@@ -17,6 +17,7 @@ type PostFrontmatter = {
   date: string;
   subtitle?: string;
   image?: string;
+  tags?: string[];
   /** Pin to top of homepage when true */
   featured?: boolean;
 };
@@ -24,10 +25,20 @@ type PostFrontmatter = {
 /** A parsed blog post */
 type Post = PostFrontmatter & {
   slug: string;
+  type: "blog";
+  tags: string[];
   content: string;
   /** Estimated reading time in minutes */
   readingTime: number;
 };
+
+function normaliseTags(tags?: string[]): string[] {
+  if (!Array.isArray(tags)) return [];
+  const cleaned = tags
+    .map((t) => t.trim().toLowerCase())
+    .filter(Boolean);
+  return [...new Set(cleaned)];
+}
 
 /** Plain-text excerpt for search (markdown stripped, ~500 chars) */
 function toSearchText(content: string, maxLen = 500): string {
@@ -60,11 +71,13 @@ function getPostBySlug(slug: string): Post | null {
 
   return {
     slug,
+    type: "blog",
     content,
     title: frontmatter.title,
     date: frontmatter.date,
     subtitle: frontmatter.subtitle,
     image: frontmatter.image,
+    tags: normaliseTags(frontmatter.tags),
     featured: frontmatter.featured ?? false,
     readingTime: estimateReadingTime(content),
   };
@@ -100,9 +113,11 @@ function getRecentPosts(limit: number): Post[] {
 /** Minimal post data for blog index + search. Includes searchable text. */
 export type BlogPostSummary = {
   slug: string;
+  type: "blog";
   title: string;
   date: string;
   subtitle?: string;
+  tags: string[];
   readingTime: number;
   featured: boolean;
   searchText: string;
@@ -111,14 +126,17 @@ export type BlogPostSummary = {
 function getBlogPostSummaries(): BlogPostSummary[] {
   return getAllPosts().map((post) => ({
     slug: post.slug,
+    type: "blog",
     title: post.title,
     date: post.date,
     subtitle: post.subtitle,
+    tags: post.tags,
     readingTime: post.readingTime,
     featured: post.featured ?? false,
     searchText: [
       post.title,
       post.subtitle ?? "",
+      post.tags.join(" "),
       toSearchText(post.content),
     ].join(" "),
   }));

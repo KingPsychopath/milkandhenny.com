@@ -3,19 +3,19 @@ import Link from "next/link";
 import { SITE_NAME } from "@/lib/shared/config";
 import { requireAuthFromServerContext } from "@/features/auth/server";
 import { isNotesEnabled } from "@/features/notes/reader";
-import { NotesAdminClient } from "./NotesAdminClient";
+import { EditorAdminClient } from "./EditorAdminClient";
 
 export const metadata: Metadata = {
-  title: `admin notes · ${SITE_NAME}`,
-  description: "Manage private markdown notes and share links.",
+  title: `admin editor · ${SITE_NAME}`,
+  description: "Manage blogs, notes, recipes, reviews, and share links.",
   robots: { index: false, follow: false },
 };
 
-export default async function AdminNotesPage() {
+export default async function AdminEditorPage() {
   if (!isNotesEnabled()) {
     return (
       <main id="main" className="min-h-dvh flex items-center justify-center px-6">
-        <p className="font-mono text-sm theme-muted">notes feature is disabled (`NOTES_ENABLED=true`).</p>
+        <p className="font-mono text-sm theme-muted">words feature is disabled (`NOTES_ENABLED=false`).</p>
       </main>
     );
   }
@@ -36,7 +36,7 @@ export default async function AdminNotesPage() {
 
   return (
     <main id="main" className="min-h-dvh">
-      <NotesAdminClient />
+      <EditorAdminClient />
     </main>
   );
 }

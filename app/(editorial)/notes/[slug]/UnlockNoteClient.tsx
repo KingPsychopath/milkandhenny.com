@@ -57,7 +57,7 @@ export function UnlockNoteClient({ slug, shareToken }: Props) {
   return (
     <div className="border theme-border rounded-md p-4 space-y-3">
       <p className="font-mono text-sm theme-muted">
-        Private note access required.
+        Private access required.
       </p>
       {pinRequired && (
         <input
@@ -75,7 +75,7 @@ export function UnlockNoteClient({ slug, shareToken }: Props) {
         disabled={loading}
         className="font-mono text-xs px-3 py-2 rounded border theme-border hover:bg-[var(--stone-100)] dark:hover:bg-[var(--stone-900)] transition-colors disabled:opacity-60"
       >
-        {loading ? "unlocking..." : "unlock note"}
+        {loading ? "unlocking..." : "unlock"}
       </button>
     </div>
   );

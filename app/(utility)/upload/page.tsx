@@ -7,7 +7,7 @@ import Link from "next/link";
 
 export const metadata: Metadata = {
   title: `upload · ${SITE_NAME}`,
-  description: "Upload files to transfers or blog.",
+  description: "Upload files to transfers or words media.",
   robots: { index: false, follow: false },
 };
 
@@ -21,7 +21,7 @@ export default async function UploadPage({ searchParams }: PageProps) {
 
   // Gate: upload or admin can access the page.
   const auth = await requireAuthFromServerContext("upload");
-  // Blog tab is admin-only; check admin separately so we don't use "upload" token when both cookies exist.
+  // Words tab is admin-only; check admin separately so we don't use "upload" token when both cookies exist.
   const adminAuth = await requireAuthFromServerContext("admin");
   const isAdmin = adminAuth.ok;
 

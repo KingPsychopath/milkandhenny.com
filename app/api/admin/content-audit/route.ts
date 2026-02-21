@@ -1,14 +1,14 @@
-import fs from "fs";
-import path from "path";
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/features/auth/server";
-import { getAllSlugs } from "@/features/blog/reader";
 import { isConfigured, listObjects } from "@/lib/platform/r2";
 import { validateAllAlbums } from "@/features/media/albums";
 import { apiErrorFromRequest } from "@/lib/platform/api-error";
+import { isNotesEnabled } from "@/features/notes/reader";
+import { getNote, listNotes } from "@/features/notes/store";
 
-const POSTS_DIR = path.join(process.cwd(), "content/posts");
-const R2_PREFIX = "blog/";
+const WORDS_MEDIA_PREFIX = "words/media/";
+const WORDS_ASSETS_PREFIX = "words/assets/";
+const LEGACY_BLOG_PREFIX = "blog/";
 const LINK_RE = /!?\[[^\]]*]\(([^)\s]+)(?:\s+"[^"]*")?\)/g;
 
 type BrokenRef = {
@@ -25,14 +25,19 @@ function normalizeBlogRefToKey(rawRef: string): string | null {
   const noFragment = ref.split("#")[0].split("?")[0];
   if (!noFragment) return null;
 
+  if (noFragment.startsWith("words/media/")) return noFragment;
+  if (noFragment.startsWith("/words/media/")) return noFragment.slice(1);
+  if (noFragment.startsWith("words/assets/")) return noFragment;
+  if (noFragment.startsWith("/words/assets/")) return noFragment.slice(1);
   if (noFragment.startsWith("blog/")) return noFragment;
   if (noFragment.startsWith("/blog/")) return noFragment.slice(1);
 
   if (noFragment.startsWith("http://") || noFragment.startsWith("https://")) {
-    const marker = "/blog/";
-    const idx = noFragment.indexOf(marker);
-    if (idx === -1) return null;
-    return noFragment.slice(idx + 1);
+    for (const marker of ["/words/media/", "/words/assets/", "/blog/"]) {
+      const idx = noFragment.indexOf(marker);
+      if (idx !== -1) return noFragment.slice(idx + 1);
+    }
+    return null;
   }
 
   return null;
@@ -60,7 +65,9 @@ export async function GET(request: NextRequest) {
 
   try {
     const albumValidation = validateAllAlbums();
-    const postSlugs = getAllSlugs();
+    const wordSlugs = isNotesEnabled()
+      ? (await listNotes({ includeNonPublic: true, type: "blog", limit: 2000 })).notes.map((n) => n.slug)
+      : [];
 
     let blogAudit:
       | {
@@ -79,30 +86,34 @@ export async function GET(request: NextRequest) {
 
     if (!isConfigured()) {
       let checkedRefs = 0;
-      for (const slug of postSlugs) {
-        const filePath = path.join(POSTS_DIR, `${slug}.md`);
-        if (!fs.existsSync(filePath)) continue;
-        const raw = fs.readFileSync(filePath, "utf-8");
+      for (const slug of wordSlugs) {
+        const note = await getNote(slug);
+        if (!note) continue;
+        const raw = note.markdown;
         checkedRefs += collectBlogRefsWithLines(raw).length;
       }
 
       blogAudit = {
         r2Configured: false,
-        checkedPosts: postSlugs.length,
+        checkedPosts: wordSlugs.length,
         checkedRefs,
         brokenRefs: [],
         reason: "R2 not configured in environment, so object existence cannot be verified.",
       };
     } else {
-      const r2Keys = await listObjects(R2_PREFIX);
-      const r2KeySet = new Set(r2Keys.map((o) => o.key));
+      const [newMediaKeys, newAssetKeys, legacyKeys] = await Promise.all([
+        listObjects(WORDS_MEDIA_PREFIX),
+        listObjects(WORDS_ASSETS_PREFIX),
+        listObjects(LEGACY_BLOG_PREFIX),
+      ]);
+      const r2KeySet = new Set([...newMediaKeys, ...newAssetKeys, ...legacyKeys].map((o) => o.key));
       const brokenRefs: BrokenRef[] = [];
       let checkedRefs = 0;
 
-      for (const slug of postSlugs) {
-        const filePath = path.join(POSTS_DIR, `${slug}.md`);
-        if (!fs.existsSync(filePath)) continue;
-        const raw = fs.readFileSync(filePath, "utf-8");
+      for (const slug of wordSlugs) {
+        const note = await getNote(slug);
+        if (!note) continue;
+        const raw = note.markdown;
         const refs = collectBlogRefsWithLines(raw);
 
         refs.forEach(({ ref, line }) => {
@@ -122,7 +133,7 @@ export async function GET(request: NextRequest) {
 
       blogAudit = {
         r2Configured: true,
-        checkedPosts: postSlugs.length,
+        checkedPosts: wordSlugs.length,
         checkedRefs,
         brokenRefs,
       };

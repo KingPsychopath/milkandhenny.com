@@ -3,7 +3,12 @@ import { requireAuth } from "@/features/auth/server";
 import { presignPutUrl, isConfigured, listObjects } from "@/lib/platform/r2";
 import { apiErrorFromRequest } from "@/lib/platform/api-error";
 import { getMimeType, isProcessableImage } from "@/features/media/processing";
-import { sanitiseStem, toR2Filename } from "@/features/blog/upload";
+import {
+  mediaPrefixForTarget,
+  parseWordMediaTarget,
+  sanitiseStem,
+  toR2Filename,
+} from "@/features/blog/upload";
 import { getFileKind } from "@/features/media/processing";
 import type { FileKind } from "@/features/media/file-kinds";
 import { randomUUID } from "crypto";
@@ -13,7 +18,7 @@ type FileEntry = { name: string; size: number; type?: string };
 
 type PresignEntry = {
   original: string;
-  /** Final filename in blog/{slug}/ */
+  /** Final filename in the selected media target path */
   filename: string;
   /** Where the browser PUTs the bytes */
   uploadKey: string;
@@ -25,10 +30,10 @@ type PresignEntry = {
   overwrote: boolean;
 };
 
-const SAFE_SLUG_PATTERN = /^[a-z0-9-]+$/;
 const SAFE_BLOG_FILENAME = /^[a-z0-9-]+\.[a-z0-9]{1,8}$/;
 const MAX_BLOG_FILE_BYTES = 50 * 1024 * 1024; // 50MB
 const MAX_BLOG_TOTAL_BYTES = 500 * 1024 * 1024; // 500MB
+const LEGACY_BLOG_PREFIX = "blog/";
 
 function safeIncomingExt(original: string): string {
   const ext = path.extname(original).toLowerCase();
@@ -38,10 +43,10 @@ function safeIncomingExt(original: string): string {
 /**
  * POST /api/upload/blog/presign
  *
- * Step 1 of the blog presigned upload flow.
+ * Step 1 of the words media presigned upload flow.
  * Returns presigned PUT URLs so the browser can upload direct to R2.
  *
- * Body: { slug, force?, files: [{ name, size, type? }] }
+ * Body: { scope?: "word"|"asset", slug?, assetId?, force?, files: [{ name, size, type? }] }
  * Returns: { success: true, urls: PresignEntry[], skipped: string[] }
  */
 export async function POST(request: NextRequest) {
@@ -55,24 +60,32 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  let body: { slug?: string; force?: boolean; files?: FileEntry[] };
+  let body: {
+    scope?: string;
+    slug?: string;
+    assetId?: string;
+    force?: boolean;
+    files?: FileEntry[];
+  };
   try {
     body = await request.json();
   } catch {
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
 
-  const slug = (body.slug ?? "").trim();
+  const targetResult = parseWordMediaTarget({
+    scope: body.scope,
+    slug: body.slug,
+    assetId: body.assetId,
+  });
+  if (!targetResult.ok) {
+    return NextResponse.json({ error: targetResult.error }, { status: 400 });
+  }
+
+  const target = targetResult.target;
+  const targetPrefix = mediaPrefixForTarget(target);
   const force = !!body.force;
   const files = body.files;
-
-  if (!slug) return NextResponse.json({ error: "Slug is required" }, { status: 400 });
-  if (!SAFE_SLUG_PATTERN.test(slug)) {
-    return NextResponse.json(
-      { error: "Slug must use lowercase letters, numbers, and hyphens only" },
-      { status: 400 }
-    );
-  }
 
   if (!Array.isArray(files) || files.length === 0) {
     return NextResponse.json({ error: "No files provided" }, { status: 400 });
@@ -102,7 +115,14 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const existingObjects = await listObjects(`blog/${slug}/`);
+    const existingObjects =
+      target.scope === "word"
+        ? await Promise.all([
+            listObjects(targetPrefix),
+            listObjects(`${LEGACY_BLOG_PREFIX}${target.slug}/`),
+          ]).then(([primary, legacy]) => [...primary, ...legacy])
+        : await listObjects(targetPrefix);
+
     const existingNames = new Set(
       existingObjects.map((o) => {
         const parts = o.key.split("/");
@@ -137,8 +157,8 @@ export async function POST(request: NextRequest) {
       // Images are uploaded to a temp key, then converted to WebP in finalize.
       // Raw files are uploaded directly to their final key (no finalize work needed).
       const uploadKey = isImage
-        ? `blog/${slug}/incoming/${randomUUID()}-${sanitiseStem(original)}${safeIncomingExt(original)}`
-        : `blog/${slug}/${filename}`;
+        ? `${targetPrefix}incoming/${randomUUID()}-${sanitiseStem(original)}${safeIncomingExt(original)}`
+        : `${targetPrefix}${filename}`;
 
       const url = await presignPutUrl(uploadKey, contentType);
 
@@ -152,15 +172,21 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    return NextResponse.json({ success: true, urls, skipped });
+    return NextResponse.json({
+      success: true,
+      target:
+        target.scope === "asset"
+          ? { scope: "asset", assetId: target.assetId }
+          : { scope: "word", slug: target.slug },
+      urls,
+      skipped,
+    });
   } catch (e) {
     return apiErrorFromRequest(
       request,
       "upload.blog.presign",
       "Failed to generate upload URLs. Please try again.",
-      e,
-      { slug }
+      e
     );
   }
 }
-

@@ -11,7 +11,8 @@ type PostListItemProps = {
 
 /** Format a date string into "7 Feb 2026" */
 function formatDate(dateStr: string) {
-  const d = new Date(dateStr + "T00:00:00");
+  const iso = /^\d{4}-\d{2}-\d{2}$/.test(dateStr) ? `${dateStr}T00:00:00` : dateStr;
+  const d = new Date(iso);
   return d.toLocaleDateString("en-GB", {
     day: "numeric",
     month: "short",
@@ -33,7 +34,7 @@ export function PostListItem({ slug, title, date, subtitle, readingTime, feature
         />
       )}
       <Link
-        href={`/blog/${slug}`}
+        href={`/words/${slug}`}
         className="block py-6 border-b theme-border-faint hover:theme-border-strong transition-colors"
       >
         <div className="flex flex-col sm:flex-row sm:items-baseline sm:justify-between gap-1 sm:gap-4">
@@ -55,4 +56,3 @@ export function PostListItem({ slug, title, date, subtitle, readingTime, feature
 }
 
 export type { PostListItemProps };
-

@@ -35,15 +35,20 @@ function getOgUrl(album: string, photoId: string): string {
 
 /* ─── Blog image URLs ─── */
 
-/** Get the URL for a blog image (WebP, stored at blog/{slug}/{filename}) */
+/** Get the URL for a blog/word image (stored at words/media/{slug}/{filename}) */
 function getBlogImageUrl(slug: string, filename: string): string {
-  return getImageUrl(`blog/${slug}/${filename}`);
+  return getImageUrl(`words/media/${slug}/${filename}`);
+}
+
+/** Get the URL for a shared reusable asset (stored at words/assets/{assetId}/{filename}) */
+function getSharedAssetUrl(assetId: string, filename: string): string {
+  return getImageUrl(`words/assets/${assetId}/${filename}`);
 }
 
 /**
  * Resolve an image src from markdown.
  * - Absolute URLs (http/https) pass through unchanged.
- * - Relative paths (e.g. "blog/slug/image.webp") get prepended with the R2 public URL.
+ * - Relative paths (e.g. "words/media/slug/image.webp") get prepended with the R2 public URL.
  */
 function resolveImageSrc(src: string): string {
   const trimmed = src.trim();
@@ -85,6 +90,7 @@ export {
   getOriginalUrl,
   getOgUrl,
   getBlogImageUrl,
+  getSharedAssetUrl,
   resolveImageSrc,
   getTransferThumbUrl,
   getTransferFullUrl,
