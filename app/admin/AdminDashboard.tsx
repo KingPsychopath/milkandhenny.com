@@ -668,7 +668,7 @@ export function AdminDashboard() {
   const handleCleanupExpiredTransfers = async () => {
     if (
       !confirm(
-        "Run cleanup expired for transfers now?\n\nThis is not a full nuke. Active transfers are kept."
+        "Run cleanup expired transfers now?\n\nThis is not a full nuke. Active transfers are kept."
       )
     ) {
       return;

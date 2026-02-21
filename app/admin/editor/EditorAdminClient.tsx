@@ -978,6 +978,15 @@ export function EditorAdminClient() {
                           <p className="font-mono text-micro theme-faint">{formatBytes(item.size)}</p>
                           <code className="font-mono text-micro theme-muted block truncate">{item.markdown}</code>
                           <div className="flex items-center gap-3 font-mono text-micro">
+                            <a
+                              href={item.url}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="underline"
+                              title="Open media file in a new tab"
+                            >
+                              open
+                            </a>
                             <button
                               type="button"
                               className="underline"
@@ -1033,6 +1042,15 @@ export function EditorAdminClient() {
                           <p className="font-mono text-micro theme-faint">{formatBytes(item.size)}</p>
                           <code className="font-mono text-micro theme-muted block truncate">{item.markdown}</code>
                           <div className="flex items-center gap-3 font-mono text-micro">
+                            <a
+                              href={item.url}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="underline"
+                              title="Open asset in a new tab"
+                            >
+                              open
+                            </a>
                             <button
                               type="button"
                               className="underline"
