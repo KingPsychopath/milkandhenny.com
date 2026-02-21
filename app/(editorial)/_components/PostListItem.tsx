@@ -35,6 +35,7 @@ export function PostListItem({ slug, title, date, subtitle, readingTime, feature
       )}
       <Link
         href={`/words/${slug}`}
+        prefetch
         className="block py-6 border-b theme-border-faint hover:theme-border-strong transition-colors"
       >
         <div className="flex flex-col sm:flex-row sm:items-baseline sm:justify-between gap-1 sm:gap-4">

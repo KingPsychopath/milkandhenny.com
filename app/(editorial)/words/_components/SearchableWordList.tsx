@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { PostListItem } from "@/app/(editorial)/_components/PostListItem";
 import { WORD_TYPE_TABS, getWordTypeLabel } from "@/features/words/types";
 import type { WordType } from "@/features/words/types";
@@ -47,6 +48,7 @@ function typeChip(type: WordType): string {
 }
 
 export function SearchableWordList({ items }: Props) {
+  const router = useRouter();
   const [query, setQuery] = useState("");
   const [activeType, setActiveType] = useState<WordType | "all">("blog");
   const [visibleCount, setVisibleCount] = useState(DEFAULT_PAGE_SIZE);
@@ -75,6 +77,19 @@ export function SearchableWordList({ items }: Props) {
   const showMore = useCallback(() => {
     setVisibleCount((n) => Math.min(n + DEFAULT_PAGE_SIZE, filtered.length));
   }, [filtered.length]);
+
+  useEffect(() => {
+    for (const item of visible.slice(0, 12)) {
+      router.prefetch(`/words/${item.slug}`);
+    }
+  }, [router, visible]);
+
+  const prefetchWord = useCallback(
+    (slug: string) => {
+      router.prefetch(`/words/${slug}`);
+    },
+    [router]
+  );
 
   const resultsLabel =
     query &&
@@ -187,6 +202,9 @@ export function SearchableWordList({ items }: Props) {
                 <article key={`${item.type}:${item.slug}`} className="group relative">
                   <Link
                     href={`/words/${item.slug}`}
+                    prefetch
+                    onMouseEnter={() => prefetchWord(item.slug)}
+                    onFocus={() => prefetchWord(item.slug)}
                     className="block py-6 border-b theme-border-faint hover:theme-border-strong transition-colors"
                   >
                     <div className="flex flex-wrap items-center justify-between gap-2 font-mono text-xs theme-muted">

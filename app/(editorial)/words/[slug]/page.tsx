@@ -11,8 +11,8 @@ import { getAlbumBySlug } from "@/features/media/albums";
 import { focalPresetToObjectPosition } from "@/features/media/focal";
 import { resolveWordContentRef } from "@/features/media/storage";
 import { extractHeadings } from "@/features/words/headings";
-import { canReadWordInServerContext, isWordsEnabled } from "@/features/words/reader";
-import { getWord, listWords } from "@/features/words/store";
+import { isWordsEnabled } from "@/features/words/reader";
+import { getWord, getWordMeta, listWords } from "@/features/words/store";
 import { estimateReadingTime } from "@/features/words/reading-time";
 import { BASE_URL, SITE_BRAND, SITE_NAME } from "@/lib/shared/config";
 
@@ -130,6 +130,7 @@ function resolveAlbumsFromContent(content: string): Record<string, EmbeddedAlbum
 }
 
 export const revalidate = 60;
+export const dynamic = "force-static";
 export const dynamicParams = true;
 
 export async function generateStaticParams() {
@@ -145,10 +146,10 @@ export async function generateStaticParams() {
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { slug } = await params;
   if (!isWordsEnabled()) return {};
-  const note = await getWord(slug);
-  if (!note) return {};
-  const isPublic = note.meta.visibility === "public";
-  if (note.meta.visibility === "private") {
+  const meta = await getWordMeta(slug);
+  if (!meta) return {};
+  const isPublic = meta.visibility === "public";
+  if (meta.visibility === "private") {
     return {
       title: `Private Page — ${SITE_NAME}`,
       description: "This page is private and requires authenticated access.",
@@ -156,25 +157,25 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     };
   }
 
-  const description = note.meta.subtitle ?? `Read "${note.meta.title}" on ${SITE_NAME}`;
-  const heroImage = note.meta.image ? resolveWordContentRef(note.meta.image, slug) : "";
-  const published = note.meta.publishedAt ?? note.meta.updatedAt;
+  const description = meta.subtitle ?? `Read "${meta.title}" on ${SITE_NAME}`;
+  const heroImage = meta.image ? resolveWordContentRef(meta.image, slug) : "";
+  const published = meta.publishedAt ?? meta.updatedAt;
   return {
-    title: `${note.meta.title} — ${SITE_NAME}`,
+    title: `${meta.title} — ${SITE_NAME}`,
     description,
     robots: isPublic ? { index: true, follow: true } : { index: false, follow: false },
     openGraph: {
-      title: note.meta.title,
+      title: meta.title,
       description,
       url: `/words/${slug}`,
       siteName: SITE_NAME,
       type: "article",
       publishedTime: published,
-      ...(heroImage ? { images: [{ url: heroImage, alt: note.meta.title }] } : {}),
+      ...(heroImage ? { images: [{ url: heroImage, alt: meta.title }] } : {}),
     },
     twitter: {
       card: "summary_large_image",
-      title: note.meta.title,
+      title: meta.title,
       description,
       ...(heroImage ? { images: [heroImage] } : {}),
     },
@@ -185,22 +186,24 @@ export default async function WordSlugPage({ params }: Props) {
   const { slug } = await params;
 
   if (!isWordsEnabled()) notFound();
-  const note = await getWord(slug);
-  if (!note) notFound();
-  const canRead =
-    note.meta.visibility === "private"
-      ? await canReadWordInServerContext(note.meta)
-      : true;
-  const isPrivateLocked = note.meta.visibility === "private" && !canRead;
-  const readingTime = canRead ? (note.meta.readingTime > 0 ? note.meta.readingTime : estimateReadingTime(note.markdown)) : 0;
-  const published = note.meta.publishedAt ?? note.meta.updatedAt;
-  const headings = canRead ? extractHeadings(note.markdown) : [];
-  const albums = canRead ? resolveAlbumsFromContent(note.markdown) : {};
-  const heroImage = canRead && note.meta.image ? resolveWordContentRef(note.meta.image, slug) : "";
-  const pageTitle = isPrivateLocked ? "private page" : note.meta.title;
+  const meta = await getWordMeta(slug);
+  if (!meta) notFound();
+  const isPrivateLocked = meta.visibility === "private";
+
+  const note = !isPrivateLocked ? await getWord(slug) : null;
+  if (!isPrivateLocked && !note) notFound();
+
+  const published = meta.publishedAt ?? meta.updatedAt;
+  const readingTime = note
+    ? (meta.readingTime > 0 ? meta.readingTime : estimateReadingTime(note.markdown))
+    : 0;
+  const headings = note ? extractHeadings(note.markdown) : [];
+  const albums = note ? resolveAlbumsFromContent(note.markdown) : {};
+  const heroImage = note && meta.image ? resolveWordContentRef(meta.image, slug) : "";
+  const pageTitle = isPrivateLocked ? "private page" : meta.title;
   const pageSubtitle = isPrivateLocked
     ? "this page is private. use an authenticated session or valid share link."
-    : note.meta.subtitle;
+    : meta.subtitle;
 
   const jsonLd = {
     "@context": "https://schema.org",
@@ -250,19 +253,19 @@ export default async function WordSlugPage({ params }: Props) {
                   <>
                     <time dateTime={published}>{formatDate(published)}</time>
                     <span>·</span>
-                    <span>{note.meta.type}</span>
+                    <span>{meta.type}</span>
                     <span>·</span>
                     <span>{readingTime} min read</span>
-                    {note.meta.featured && (
+                    {meta.featured && (
                       <>
                         <span>·</span>
                         <span className="text-amber-600 dark:text-amber-500/80">featured</span>
                       </>
                     )}
-                    {note.meta.visibility !== "public" && (
+                    {meta.visibility !== "public" && (
                       <>
                         <span>·</span>
-                        <span>{note.meta.visibility}</span>
+                        <span>{meta.visibility}</span>
                       </>
                     )}
                   </>
@@ -270,8 +273,8 @@ export default async function WordSlugPage({ params }: Props) {
                   <span>private</span>
                 )}
               </div>
-              {canRead ? (
-                <Share url={`${BASE_URL}/words/${slug}`} title={note.meta.title} label="Share this post" />
+              {!isPrivateLocked ? (
+                <Share url={`${BASE_URL}/words/${slug}`} title={meta.title} label="Share this post" />
               ) : null}
             </div>
             <h1 className="font-serif text-3xl sm:text-4xl text-foreground leading-tight tracking-tight mt-4">
@@ -287,11 +290,11 @@ export default async function WordSlugPage({ params }: Props) {
           {heroImage ? (
             <figure className="mb-10">
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={heroImage} alt={note.meta.title} className="w-full rounded-md border theme-border" loading="eager" />
+              <img src={heroImage} alt={meta.title} className="w-full rounded-md border theme-border" loading="eager" />
             </figure>
           ) : null}
 
-          {canRead ? (
+          {!isPrivateLocked && note ? (
             <WordBody content={note.markdown} wordSlug={slug} albums={albums} />
           ) : (
             <UnlockWordClient slug={slug} />
