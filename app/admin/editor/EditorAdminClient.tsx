@@ -2,89 +2,27 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
-
-type NoteVisibility = "public" | "unlisted" | "private";
-type WordType = "blog" | "note" | "recipe" | "review";
-
-type NoteMeta = {
-  slug: string;
-  title: string;
-  subtitle?: string;
-  image?: string;
-  type: WordType;
-  visibility: NoteVisibility;
-  tags: string[];
-  featured?: boolean;
-  updatedAt: string;
-};
-
-type NoteRecord = {
-  meta: NoteMeta;
-  markdown: string;
-};
-
-type ShareLink = {
-  id: string;
-  slug: string;
-  expiresAt: string;
-  pinRequired: boolean;
-  revokedAt?: string;
-  updatedAt: string;
-};
-
-type SharePatchResponse = {
-  link?: ShareLink;
-  token?: string;
-  error?: string;
-};
-
-type ShareStateFilter = "all" | "active" | "expired" | "revoked";
-
-type SharedWordSummary = {
-  slug: string;
-  activeShareCount: number;
-};
-
-type WordMediaItem = {
-  key: string;
-  filename: string;
-  kind: "image" | "video" | "gif" | "audio" | "file";
-  size: number;
-  lastModified?: string;
-  url: string;
-  markdown: string;
-  shortMarkdown?: string;
-  assetId?: string;
-};
-
-type WordMediaResponse = {
-  slug: string;
-  assetsIncluded?: boolean;
-  pageMedia?: WordMediaItem[];
-  assets?: WordMediaItem[];
-  error?: string;
-};
+import { MediaPreviewModal } from "./_components/MediaPreviewModal";
+import { EditorFiltersPanel } from "./_components/EditorFiltersPanel";
+import { EditorResultsList } from "./_components/EditorResultsList";
+import { WordCreateForm } from "./_components/WordCreateForm";
+import { WordEditSection } from "./_components/WordEditSection";
+import { WordShareSection } from "./_components/WordShareSection";
+import type {
+  NoteMeta,
+  NoteRecord,
+  NoteVisibility,
+  ShareLink,
+  SharePatchResponse,
+  ShareStateFilter,
+  SharedWordSummary,
+  WordMediaItem,
+  WordMediaResponse,
+  WordType,
+} from "./types";
 
 function buildShareUrl(slug: string, token: string): string {
   return `${window.location.origin}/words/${slug}?share=${encodeURIComponent(token)}`;
-}
-
-function featuredButtonClass(isFeatured: boolean): string {
-  return `h-full min-h-10 px-3 rounded border font-mono text-xs transition-colors ${
-    isFeatured
-      ? "border-[var(--foreground)] text-[var(--foreground)]"
-      : "theme-border theme-muted hover:text-[var(--foreground)]"
-  }`;
-}
-
-function formatBytes(bytes: number): string {
-  if (!Number.isFinite(bytes) || bytes <= 0) return "0 b";
-  const units = ["b", "kb", "mb", "gb"];
-  const index = Math.min(units.length - 1, Math.floor(Math.log(bytes) / Math.log(1024)));
-  const size = bytes / 1024 ** index;
-  return `${size.toFixed(size >= 10 || index === 0 ? 0 : 1)} ${units[index]}`;
 }
 
 function isExpiredShare(link: ShareLink): boolean {
@@ -143,6 +81,8 @@ export function EditorAdminClient() {
   const [mediaError, setMediaError] = useState("");
   const [mediaCopied, setMediaCopied] = useState<string | null>(null);
   const [assetsHydrated, setAssetsHydrated] = useState(false);
+  const [previewItems, setPreviewItems] = useState<WordMediaItem[]>([]);
+  const [previewIndex, setPreviewIndex] = useState<number | null>(null);
 
   const parseTags = useCallback((raw: string): string[] => {
     return [...new Set(raw.split(",").map((t) => t.trim().toLowerCase()).filter(Boolean))];
@@ -333,6 +273,19 @@ export function EditorAdminClient() {
     if (shareStateFilter === "all") return shares;
     return shares.filter((link) => getShareState(link) === shareStateFilter);
   }, [shareStateFilter, shares]);
+
+  const closePreview = useCallback(() => {
+    setPreviewIndex(null);
+    setPreviewItems([]);
+  }, []);
+
+  const openPreview = useCallback((items: WordMediaItem[], key: string) => {
+    const index = items.findIndex((item) => item.key === key);
+    if (index < 0) return;
+    setPreviewItems(items);
+    setPreviewIndex(index);
+  }, []);
+  const hasPreview = previewIndex !== null && !!previewItems[previewIndex];
 
   async function createWord() {
     setBusy(true);
@@ -666,540 +619,124 @@ export function EditorAdminClient() {
         </div>
       )}
 
-      <section className="mb-6 border theme-border rounded-md p-4 space-y-3">
-        <p className="font-mono text-xs theme-muted">search + filters</p>
-        <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
-          <input
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="search title, slug, tags"
-            className="bg-transparent border-b theme-border outline-none font-mono text-sm py-2"
-          />
-          <select
-            value={filterType}
-            onChange={(e) => setFilterType(e.target.value as WordType | "all")}
-            className="bg-transparent border theme-border rounded px-2 py-2 font-mono text-xs"
-          >
-            <option value="all">all types</option>
-            <option value="blog">blog</option>
-            <option value="note">note</option>
-            <option value="recipe">recipe</option>
-            <option value="review">review</option>
-          </select>
-          <select
-            value={filterVisibility}
-            onChange={(e) => setFilterVisibility(e.target.value as NoteVisibility | "all")}
-            className="bg-transparent border theme-border rounded px-2 py-2 font-mono text-xs"
-          >
-            <option value="all">all visibility</option>
-            <option value="public">public</option>
-            <option value="unlisted">unlisted</option>
-            <option value="private">private</option>
-          </select>
-          <input
-            value={filterTag}
-            onChange={(e) => setFilterTag(e.target.value)}
-            placeholder="filter by tag"
-            className="bg-transparent border-b theme-border outline-none font-mono text-sm py-2"
-          />
-        </div>
-        <div className="flex items-center gap-3 font-mono text-xs">
-          <button type="button" onClick={() => void loadNotes()} className="underline">
-            apply filters
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              setSearchQuery("");
-              setFilterType("all");
-              setFilterVisibility("all");
-              setFilterTag("");
-            }}
-            className="underline"
-          >
-            clear
-          </button>
-        </div>
-      </section>
+      <EditorFiltersPanel
+        searchQuery={searchQuery}
+        filterType={filterType}
+        filterVisibility={filterVisibility}
+        filterTag={filterTag}
+        onSearchQueryChange={setSearchQuery}
+        onFilterTypeChange={setFilterType}
+        onFilterVisibilityChange={setFilterVisibility}
+        onFilterTagChange={setFilterTag}
+        onApply={() => void loadNotes()}
+        onClear={() => {
+          setSearchQuery("");
+          setFilterType("all");
+          setFilterVisibility("all");
+          setFilterTag("");
+        }}
+      />
 
       <div className="grid gap-6 lg:grid-cols-[280px_1fr]">
-        <aside className="space-y-3 border theme-border rounded-md p-3 h-fit">
-          <div className="flex items-center justify-between">
-            <p className="font-mono text-xs theme-muted">results ({notes.length})</p>
-            <button type="button" onClick={() => void loadNotes()} className="font-mono text-xs underline">
-              refresh
-            </button>
-          </div>
-          <div className="space-y-1 max-h-[420px] overflow-auto">
-            {notes.map((note) => (
-              <button
-                type="button"
-                key={note.slug}
-                onClick={() => setSelectedSlug(note.slug)}
-                className={`w-full text-left rounded px-2 py-2 border transition-colors ${
-                  selectedSlug === note.slug ? "border-[var(--foreground)]" : "theme-border"
-                }`}
-              >
-                <p className="font-mono text-xs">{note.slug}</p>
-                <p className="font-serif text-sm leading-tight mt-1">{note.title}</p>
-                <p className="font-mono text-micro theme-muted mt-1">
-                  {note.type} · {note.visibility}
-                  {note.featured ? " · featured" : ""}
-                  {(activeShareCountBySlug[note.slug] ?? 0) > 0
-                    ? ` · shared (${activeShareCountBySlug[note.slug]})`
-                    : ""}
-                </p>
-                {note.tags.length > 0 && (
-                  <p className="font-mono text-micro theme-faint mt-1">#{note.tags.join(" #")}</p>
-                )}
-              </button>
-            ))}
-          </div>
-        </aside>
+        <EditorResultsList
+          notes={notes}
+          selectedSlug={selectedSlug}
+          activeShareCountBySlug={activeShareCountBySlug}
+          onSelectSlug={setSelectedSlug}
+          onRefresh={() => void loadNotes()}
+        />
 
         <section className="space-y-6">
-          <div className="border theme-border rounded-md p-4 space-y-3">
-            <h2 className="font-mono text-xs theme-muted">create word</h2>
-            <div className="grid sm:grid-cols-2 gap-3">
-              <input
-                value={createSlug}
-                onChange={(e) => setCreateSlug(e.target.value)}
-                placeholder="slug"
-                className="bg-transparent border-b theme-border outline-none font-mono text-sm py-2"
-              />
-              <input
-                value={createTitle}
-                onChange={(e) => setCreateTitle(e.target.value)}
-                placeholder="title"
-                className="bg-transparent border-b theme-border outline-none font-mono text-sm py-2"
-              />
-            </div>
-            <input
-              value={createSubtitle}
-              onChange={(e) => setCreateSubtitle(e.target.value)}
-              placeholder="subtitle (optional)"
-              className="w-full bg-transparent border-b theme-border outline-none font-mono text-sm py-2"
-            />
-            <input
-              value={createImage}
-              onChange={(e) => setCreateImage(e.target.value)}
-              placeholder="hero image path (optional: words/media/... or words/assets/...)"
-              className="w-full bg-transparent border-b theme-border outline-none font-mono text-sm py-2"
-            />
-            <div className="grid sm:grid-cols-2 gap-3">
-              <input
-                value={createTags}
-                onChange={(e) => setCreateTags(e.target.value)}
-                placeholder="tags (comma-separated)"
-                className="bg-transparent border-b theme-border outline-none font-mono text-sm py-2"
-              />
-              <div className="grid grid-cols-1 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] gap-2">
-                <select
-                  value={createType}
-                  onChange={(e) => setCreateType(e.target.value as WordType)}
-                  className="bg-transparent border theme-border rounded px-2 py-2 font-mono text-xs"
-                >
-                  <option value="note">note</option>
-                  <option value="blog">blog</option>
-                  <option value="recipe">recipe</option>
-                  <option value="review">review</option>
-                </select>
-                <select
-                  value={createVisibility}
-                  onChange={(e) => setCreateVisibility(e.target.value as NoteVisibility)}
-                  className="bg-transparent border theme-border rounded px-2 py-2 font-mono text-xs"
-                >
-                  <option value="private">private</option>
-                  <option value="unlisted">unlisted</option>
-                  <option value="public">public</option>
-                </select>
-                <button
-                  type="button"
-                  onClick={() => setCreateFeatured((v) => !v)}
-                  className={featuredButtonClass(createFeatured)}
-                  aria-pressed={createFeatured}
-                >
-                  featured
-                </button>
-              </div>
-            </div>
-            <textarea
-              value={createMarkdown}
-              onChange={(e) => setCreateMarkdown(e.target.value)}
-              placeholder="markdown"
-              rows={8}
-              className="w-full bg-transparent border theme-border rounded px-3 py-2 font-mono text-xs"
-            />
-            <button
-              type="button"
-              onClick={() => void createWord()}
-              disabled={busy}
-              className="font-mono text-xs px-3 py-2 rounded border theme-border"
-            >
-              {busy ? "working..." : "create word"}
-            </button>
-          </div>
+          <WordCreateForm
+            createSlug={createSlug}
+            createTitle={createTitle}
+            createSubtitle={createSubtitle}
+            createImage={createImage}
+            createType={createType}
+            createVisibility={createVisibility}
+            createTags={createTags}
+            createFeatured={createFeatured}
+            createMarkdown={createMarkdown}
+            busy={busy}
+            onCreateSlugChange={setCreateSlug}
+            onCreateTitleChange={setCreateTitle}
+            onCreateSubtitleChange={setCreateSubtitle}
+            onCreateImageChange={setCreateImage}
+            onCreateTypeChange={setCreateType}
+            onCreateVisibilityChange={setCreateVisibility}
+            onCreateTagsChange={setCreateTags}
+            onToggleCreateFeatured={() => setCreateFeatured((value) => !value)}
+            onCreateMarkdownChange={setCreateMarkdown}
+            onCreate={() => void createWord()}
+          />
 
           {selected ? (
-            <div className="border theme-border rounded-md p-4 space-y-4">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <h2 className="font-mono text-xs theme-muted">edit · {selected.slug}</h2>
-                <div className="flex items-center gap-3">
-                  <button
-                    type="button"
-                    onClick={() => setShowPreview((v) => !v)}
-                    className="font-mono text-xs underline"
-                  >
-                    {showPreview ? "edit mode" : "preview"}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => void deleteCurrentWord()}
-                    className="font-mono text-xs text-[var(--prose-hashtag)]"
-                  >
-                    delete
-                  </button>
-                </div>
-              </div>
-
-              <div className="grid sm:grid-cols-2 gap-3">
-                <input
-                  value={editTitle}
-                  onChange={(e) => setEditTitle(e.target.value)}
-                  className="bg-transparent border-b theme-border outline-none font-mono text-sm py-2"
-                />
-                <input
-                  value={editSubtitle}
-                  onChange={(e) => setEditSubtitle(e.target.value)}
-                  placeholder="subtitle"
-                  className="bg-transparent border-b theme-border outline-none font-mono text-sm py-2"
-                />
-                <input
-                  value={editImage}
-                  onChange={(e) => setEditImage(e.target.value)}
-                  placeholder="hero image path (optional: words/media/... or words/assets/...)"
-                  className="bg-transparent border-b theme-border outline-none font-mono text-sm py-2"
-                />
-                <input
-                  value={editTags}
-                  onChange={(e) => setEditTags(e.target.value)}
-                  placeholder="tags (comma-separated)"
-                  className="bg-transparent border-b theme-border outline-none font-mono text-sm py-2"
-                />
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] gap-2">
-                <select
-                  value={editType}
-                  onChange={(e) => setEditType(e.target.value as WordType)}
-                  className="bg-transparent border theme-border rounded px-2 py-2 font-mono text-xs"
-                >
-                  <option value="note">note</option>
-                  <option value="blog">blog</option>
-                  <option value="recipe">recipe</option>
-                  <option value="review">review</option>
-                </select>
-                <select
-                  value={editVisibility}
-                  onChange={(e) => setEditVisibility(e.target.value as NoteVisibility)}
-                  className="bg-transparent border theme-border rounded px-2 py-2 font-mono text-xs"
-                >
-                  <option value="private">private</option>
-                  <option value="unlisted">unlisted</option>
-                  <option value="public">public</option>
-                </select>
-                <button
-                  type="button"
-                  onClick={() => setEditFeatured((v) => !v)}
-                  className={featuredButtonClass(editFeatured)}
-                  aria-pressed={editFeatured}
-                >
-                  featured
-                </button>
-              </div>
-
-              <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
-                <div className="space-y-3">
-                  {showPreview ? (
-                    <div className="border theme-border rounded p-3 prose-blog font-serif">
-                      <ReactMarkdown remarkPlugins={[remarkGfm]}>{editMarkdown}</ReactMarkdown>
-                    </div>
-                  ) : (
-                    <textarea
-                      value={editMarkdown}
-                      onChange={(e) => setEditMarkdown(e.target.value)}
-                      rows={14}
-                      className="w-full bg-transparent border theme-border rounded px-3 py-2 font-mono text-xs"
-                    />
-                  )}
-
-                  <button
-                    type="button"
-                    onClick={() => void saveWord()}
-                    disabled={busy}
-                    className="font-mono text-xs px-3 py-2 rounded border theme-border"
-                  >
-                    {busy ? "saving..." : "save word"}
-                  </button>
-                </div>
-
-                <aside className="border theme-border rounded-md p-3 space-y-3 h-fit max-h-[720px] overflow-auto">
-                  <div className="flex items-center justify-between">
-                    <h3 className="font-mono text-xs theme-muted">media library</h3>
-                    <button
-                      type="button"
-                      className="font-mono text-xs underline"
-                      onClick={() => {
-                        if (selectedSlug) void loadWordMedia(selectedSlug, true);
-                      }}
-                    >
-                      refresh
-                    </button>
-                  </div>
-                  <input
-                    value={mediaSearchQuery}
-                    onChange={(e) => setMediaSearchQuery(e.target.value)}
-                    placeholder="search files or asset id"
-                    className="w-full bg-transparent border-b theme-border outline-none font-mono text-xs py-2"
-                  />
-                  {mediaLoading ? <p className="font-mono text-xs theme-muted">loading media...</p> : null}
-                  {mediaError ? <p className="font-mono text-xs text-[var(--prose-hashtag)]">{mediaError}</p> : null}
-
-                  <div className="space-y-2">
-                    <p className="font-mono text-xs theme-muted">
-                      this page ({filteredPageMedia.length})
-                    </p>
-                    {filteredPageMedia.length === 0 ? (
-                      <p className="font-mono text-micro theme-faint">no media files for this slug</p>
-                    ) : (
-                      filteredPageMedia.map((item) => (
-                        <div key={item.key} className="border theme-border rounded p-2 space-y-1">
-                          <p className="font-mono text-xs truncate">{item.filename}</p>
-                          <p className="font-mono text-micro theme-faint">{formatBytes(item.size)}</p>
-                          <code className="font-mono text-micro theme-muted block truncate">{item.markdown}</code>
-                          <div className="flex items-center gap-3 font-mono text-micro">
-                            <a
-                              href={item.url}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="underline"
-                              title="Open media file in a new tab"
-                            >
-                              open
-                            </a>
-                            <button
-                              type="button"
-                              className="underline"
-                              onClick={() => void copySnippet(item.markdown, `media-${item.key}`)}
-                            >
-                              {mediaCopied === `media-${item.key}` ? "copied" : "copy"}
-                            </button>
-                            <button
-                              type="button"
-                              className="underline"
-                              onClick={() => appendSnippet(item.markdown)}
-                            >
-                              append
-                            </button>
-                            {item.shortMarkdown ? (
-                              <button
-                                type="button"
-                                className="underline"
-                                onClick={() =>
-                                  void copySnippet(item.shortMarkdown ?? "", `media-short-${item.key}`)
-                                }
-                              >
-                                {mediaCopied === `media-short-${item.key}` ? "copied short" : "copy short"}
-                              </button>
-                            ) : null}
-                            {item.shortMarkdown ? (
-                              <button
-                                type="button"
-                                className="underline"
-                                onClick={() => appendSnippet(item.shortMarkdown ?? "")}
-                              >
-                                append short
-                              </button>
-                            ) : null}
-                          </div>
-                        </div>
-                      ))
-                    )}
-                  </div>
-
-                  <div className="space-y-2">
-                    <p className="font-mono text-xs theme-muted">
-                      shared assets ({filteredSharedAssets.length})
-                    </p>
-                    {filteredSharedAssets.length === 0 ? (
-                      <p className="font-mono text-micro theme-faint">no shared assets yet</p>
-                    ) : (
-                      filteredSharedAssets.map((item) => (
-                        <div key={item.key} className="border theme-border rounded p-2 space-y-1">
-                          <p className="font-mono text-xs truncate">
-                            {item.assetId ? `${item.assetId}/` : ""}{item.filename}
-                          </p>
-                          <p className="font-mono text-micro theme-faint">{formatBytes(item.size)}</p>
-                          <code className="font-mono text-micro theme-muted block truncate">{item.markdown}</code>
-                          <div className="flex items-center gap-3 font-mono text-micro">
-                            <a
-                              href={item.url}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="underline"
-                              title="Open asset in a new tab"
-                            >
-                              open
-                            </a>
-                            <button
-                              type="button"
-                              className="underline"
-                              onClick={() => void copySnippet(item.markdown, `asset-${item.key}`)}
-                            >
-                              {mediaCopied === `asset-${item.key}` ? "copied" : "copy"}
-                            </button>
-                            <button
-                              type="button"
-                              className="underline"
-                              onClick={() => appendSnippet(item.markdown)}
-                            >
-                              append
-                            </button>
-                            {item.shortMarkdown ? (
-                              <button
-                                type="button"
-                                className="underline"
-                                onClick={() =>
-                                  void copySnippet(item.shortMarkdown ?? "", `asset-short-${item.key}`)
-                                }
-                              >
-                                {mediaCopied === `asset-short-${item.key}` ? "copied short" : "copy short"}
-                              </button>
-                            ) : null}
-                            {item.shortMarkdown ? (
-                              <button
-                                type="button"
-                                className="underline"
-                                onClick={() => appendSnippet(item.shortMarkdown ?? "")}
-                              >
-                                append short
-                              </button>
-                            ) : null}
-                          </div>
-                        </div>
-                      ))
-                    )}
-                  </div>
-                </aside>
-              </div>
-            </div>
+            <WordEditSection
+              selected={selected}
+              selectedSlug={selectedSlug}
+              showPreview={showPreview}
+              editTitle={editTitle}
+              editSubtitle={editSubtitle}
+              editImage={editImage}
+              editType={editType}
+              editVisibility={editVisibility}
+              editTags={editTags}
+              editFeatured={editFeatured}
+              editMarkdown={editMarkdown}
+              busy={busy}
+              mediaSearchQuery={mediaSearchQuery}
+              mediaLoading={mediaLoading}
+              mediaError={mediaError}
+              mediaCopied={mediaCopied}
+              filteredPageMedia={filteredPageMedia}
+              filteredSharedAssets={filteredSharedAssets}
+              onTogglePreview={() => setShowPreview((value) => !value)}
+              onDelete={() => void deleteCurrentWord()}
+              onEditTitleChange={setEditTitle}
+              onEditSubtitleChange={setEditSubtitle}
+              onEditImageChange={setEditImage}
+              onEditTypeChange={setEditType}
+              onEditVisibilityChange={setEditVisibility}
+              onEditTagsChange={setEditTags}
+              onToggleEditFeatured={() => setEditFeatured((value) => !value)}
+              onEditMarkdownChange={setEditMarkdown}
+              onSave={() => void saveWord()}
+              onMediaSearchQueryChange={setMediaSearchQuery}
+              onRefreshMedia={(slug) => void loadWordMedia(slug, true)}
+              onPreviewMedia={openPreview}
+              onCopySnippet={(snippet, copyId) => void copySnippet(snippet, copyId)}
+              onAppendSnippet={appendSnippet}
+            />
           ) : null}
 
           {selected ? (
-            <div className="border theme-border rounded-md p-4 space-y-3">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <h2 className="font-mono text-xs theme-muted">share links</h2>
-                <div className="flex items-center gap-2">
-                  <label className="font-mono text-micro theme-muted" htmlFor="share-expiry-days">
-                    expires
-                  </label>
-                  <select
-                    id="share-expiry-days"
-                    value={newShareExpiryDays}
-                    onChange={(e) => setNewShareExpiryDays(Number(e.target.value))}
-                    className="font-mono text-xs bg-transparent border theme-border rounded px-2 py-1"
-                  >
-                    {SHARE_EXPIRY_OPTIONS.map((days) => (
-                      <option key={days} value={days}>
-                        {days}d
-                      </option>
-                    ))}
-                  </select>
-                  <button type="button" onClick={() => void createShare()} className="font-mono text-xs underline">
-                    create share link
-                  </button>
-                </div>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                {(["all", "active", "expired", "revoked"] as const).map((state) => (
-                  <button
-                    key={state}
-                    type="button"
-                    onClick={() => setShareStateFilter(state)}
-                    className={`font-mono text-xs px-2 py-1 rounded border transition-colors ${
-                      shareStateFilter === state
-                        ? "border-[var(--foreground)] text-[var(--foreground)]"
-                        : "theme-border theme-muted hover:text-[var(--foreground)]"
-                    }`}
-                  >
-                    {state}
-                  </button>
-                ))}
-              </div>
-              <div className="space-y-2">
-                {filteredShares.length === 0 ? (
-                  <p className="font-mono text-xs theme-muted">
-                    {shares.length === 0 ? "no share links" : "no links match this filter"}
-                  </p>
-                ) : (
-                  filteredShares.map((link) => {
-                    const isExpired = isExpiredShare(link);
-                    const isRevoked = !!link.revokedAt;
-                    const canManagePin = !isExpired && !isRevoked;
-                    const statusLabel = isRevoked ? "revoked" : isExpired ? "expired" : "active";
-                    return (
-                      <div key={link.id} className="border theme-border rounded p-3">
-                        <p className="font-mono text-xs">{link.id}</p>
-                        <p className="font-mono text-micro theme-muted mt-1">
-                          expires {new Date(link.expiresAt).toLocaleString()} · {statusLabel} ·{" "}
-                          {link.pinRequired ? "pin on" : "pin off"}
-                        </p>
-                        <div className="mt-2 flex flex-wrap gap-3 font-mono text-xs">
-                          {!isRevoked && (
-                            <button type="button" onClick={() => void copyShareLink(link)} className="underline">
-                              copy link
-                            </button>
-                          )}
-                          {!isRevoked && (
-                            <button type="button" onClick={() => void rotateShare(link, "rotate")} className="underline">
-                              reissue url
-                            </button>
-                          )}
-                          {!isRevoked && (
-                            <button type="button" onClick={() => void extendShare(link)} className="underline">
-                              extend
-                            </button>
-                          )}
-                          <button
-                            type="button"
-                            onClick={() => void toggleSharePin(link)}
-                            disabled={!canManagePin}
-                            className="underline disabled:no-underline disabled:opacity-50"
-                            title={
-                              canManagePin ? undefined : "PIN can only be changed while the link is active."
-                            }
-                          >
-                            {link.pinRequired ? "remove pin" : "require pin"}
-                          </button>
-                          {!isRevoked && (
-                            <button
-                              type="button"
-                              onClick={() => void revokeShare(link)}
-                              className="text-[var(--prose-hashtag)]"
-                            >
-                              revoke
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })
-                )}
-              </div>
-            </div>
+            <WordShareSection
+              shares={shares}
+              filteredShares={filteredShares}
+              shareStateFilter={shareStateFilter}
+              newShareExpiryDays={newShareExpiryDays}
+              shareExpiryOptions={SHARE_EXPIRY_OPTIONS}
+              onShareStateFilterChange={setShareStateFilter}
+              onNewShareExpiryDaysChange={setNewShareExpiryDays}
+              onCreateShare={() => void createShare()}
+              onCopyShareLink={(link) => void copyShareLink(link)}
+              onRotateShare={(link) => void rotateShare(link, "rotate")}
+              onExtendShare={(link) => void extendShare(link)}
+              onToggleSharePin={(link) => void toggleSharePin(link)}
+              onRevokeShare={(link) => void revokeShare(link)}
+            />
           ) : null}
         </section>
       </div>
+
+      {hasPreview && previewIndex !== null ? (
+        <MediaPreviewModal
+          items={previewItems}
+          index={previewIndex}
+          onClose={closePreview}
+          onIndexChange={setPreviewIndex}
+        />
+      ) : null}
     </div>
   );
 }

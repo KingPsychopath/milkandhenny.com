@@ -1,0 +1,41 @@
+---
+description: Enforce server-first composition and small client islands
+alwaysApply: true
+---
+
+# Component composition boundaries (React + Next.js, 2026 mindset)
+
+## Server/client boundary
+
+- Default to Server Components in `app/**`; add `"use client"` only for browser-only interactivity.
+- Keep client islands narrow and task-focused (forms, local controls, media widgets), not page-sized.
+- Do not put data orchestration for multiple domains inside one client component when a server wrapper or domain hook can own it.
+
+## Size and responsibility limits
+
+- A component should do one job; split when it starts owning unrelated concerns (listing + editing + sharing + media + auth).
+- If a client component grows beyond ~350 lines or ~10 handlers/effects, extract:
+  1. focused presentational sections (`_components/*`)
+  2. domain hooks for state/mutations (`useX`)
+  3. shared domain logic into `features/*`
+- Prefer composition over giant prop blocks by grouping related props into typed objects.
+
+## Data + mutations
+
+- Prefer server-side data loading for initial render; avoid `useEffect` fetches for first paint when server fetch can do it.
+- Use Server Actions for trusted first-party mutations; keep API routes for true HTTP integrations (CLI, webhooks, uploads, external clients).
+- Keep endpoint and CLI behavior aligned via shared domain functions; avoid duplicating business rules in UI components.
+
+## React quality bar
+
+- Keep render components mostly declarative; side-effect-heavy logic belongs in hooks/utilities.
+- Use explicit TypeScript interfaces for view models and section props.
+- Avoid unnecessary memoization and callbacks; use them when they protect behavior or measurable performance.
+- Co-locate small helper components by feature folder; avoid single giant files.
+
+## PR/readability checks
+
+- New UI work should preserve existing behavior while reducing cognitive load.
+- Prefer small extracted components over adding more branches to an already-large client file.
+- Keep server/client boundaries obvious from file structure (`page.tsx` server shell + client islands in `_components`).
+
