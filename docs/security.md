@@ -69,6 +69,41 @@ These endpoints are intended for operational control and incident response.
 | Revoke one session | `DELETE /api/admin/tokens/sessions/{jti}` | Requires `x-admin-step-up` header |
 | Revoke many sessions | `POST /api/admin/tokens/revoke` | Body `{ role: "admin" \| "staff" \| "upload" \| "all" }` + requires `x-admin-step-up` |
 
+### CLI auth reliability note (learning)
+
+If your production domain redirects between hostnames (example: `milkandhenny.com` -> `www.milkandhenny.com`), Bearer auth can fail after redirect because some clients/proxies drop the `Authorization` header on redirected requests.
+
+Current CLI behavior:
+
+- `pnpm cli auth sessions`
+- `pnpm cli auth revoke`
+- `pnpm cli auth diagnose`
+
+resolves the canonical host first, then performs auth requests on that origin.
+
+Session-cache behavior:
+
+- CLI caches admin JWTs in memory for the active CLI process (per base URL).
+- This reduces repeated password prompts during one interactive session.
+- The cache is not persisted to disk, so separate direct CLI runs usually require password re-entry (or `--admin-token`).
+
+Why auth commands are API-backed (not direct KV/R2 writes):
+
+- R2 is not the source of truth for auth sessions/revocation.
+- Direct KV writes from CLI would bypass app-level auth semantics (step-up requirement, token-version invalidation rules, and session policy checks).
+- Keeping auth commands on app endpoints preserves one source of truth for session behavior and avoids CLI/server drift.
+
+Operational check:
+
+```bash
+pnpm cli auth diagnose --admin-password <password> --base-url https://milkandhenny.com
+```
+
+If `verify` succeeds but protected probes return `401`, check:
+
+1. Cross-environment `AUTH_SECRET` mismatch.
+2. Proxy/CDN behavior that strips `Authorization`.
+
 ### Why revoked tokens still show up
 
 Revoking a session does not delete the session record immediately. We keep a small Redis-backed record (`auth:session:{jti}`) until the token’s natural expiry so:

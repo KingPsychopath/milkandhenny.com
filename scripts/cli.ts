@@ -1064,16 +1064,17 @@ async function resolveAdminTokenForCli(opts: {
 }): Promise<string> {
   const fromArg = opts.adminToken?.trim();
   if (fromArg) return fromArg;
-  const password = opts.adminPassword?.trim();
-  if (!password) {
-    throw new Error("Provide --admin-password (recommended) or --admin-token.");
-  }
 
   if (!opts.forceRefresh) {
     const cached = getCachedAdminToken(opts.baseUrl);
     if (cached) return cached;
   } else {
     clearCachedAdminToken(opts.baseUrl);
+  }
+
+  const password = opts.adminPassword?.trim();
+  if (!password) {
+    throw new Error("No cached admin session. Provide --admin-password (recommended) or --admin-token.");
   }
 
   progress("Signing in as admin...");
@@ -1182,8 +1183,10 @@ async function cmdAuthDiagnose(opts: {
 }) {
   const requestedBaseUrl = normalizeBaseUrl(opts.baseUrl || BASE_URL || "http://localhost:3000");
   const baseUrl = await resolveCanonicalBaseUrl(requestedBaseUrl);
-  if (!opts.adminPassword && !opts.adminToken) {
-    throw new Error("Provide --admin-password (recommended) or --admin-token.");
+  const cachedToken = getCachedAdminToken(baseUrl) ?? undefined;
+  const resolvedToken = opts.adminToken?.trim() || cachedToken;
+  if (!opts.adminPassword && !resolvedToken) {
+    throw new Error("No cached admin session. Provide --admin-password (recommended) or --admin-token.");
   }
 
   heading("Auth diagnostics");
@@ -1198,7 +1201,7 @@ async function cmdAuthDiagnose(opts: {
   const report = await runAdminAuthDiagnostics({
     baseUrl,
     adminPassword: opts.adminPassword,
-    adminToken: opts.adminToken,
+    adminToken: resolvedToken,
   });
   console.log();
 
@@ -1315,6 +1318,10 @@ async function cmdAuthRevoke(opts: {
     for (const item of revoked) {
       log(green(`✓ Revoked ${item.role} sessions (token version ${item.tokenVersion})`));
     }
+  }
+  if (role === "admin" || role === "all") {
+    clearCachedAdminToken(baseUrl);
+    log(dim("Cleared cached admin session for this base URL."));
   }
   console.log();
 }
@@ -3490,9 +3497,14 @@ async function promptAdminToken(): Promise<string | null> {
   return token ? token.trim() : null;
 }
 
-async function promptAdminIdentityForSessions(): Promise<
-  { adminPassword: string; adminToken?: undefined } | { adminToken: string; adminPassword?: undefined } | null
+async function promptAdminIdentityForSessions(baseUrl: string): Promise<
+  { adminPassword?: string; adminToken?: string } | null
 > {
+  const canonicalBaseUrl = await resolveCanonicalBaseUrl(baseUrl);
+  if (getCachedAdminToken(baseUrl) || getCachedAdminToken(canonicalBaseUrl)) {
+    log(dim("Using cached admin session for this base URL."));
+    return {};
+  }
   const password = await ask("Admin password", {
     hint: "recommended. leave blank to use a JWT instead",
   });
@@ -3527,17 +3539,49 @@ async function interactiveAuth() {
         return;
       case 1: {
         const baseUrl = await promptBaseUrl();
-        const identity = await promptAdminIdentityForSessions();
+        const identity = await promptAdminIdentityForSessions(baseUrl);
         if (!identity) break;
-        await safely(() => cmdAuthListSessions({ baseUrl, ...identity }));
+        await safely(async () => {
+          try {
+            await cmdAuthListSessions({ baseUrl, ...identity });
+          } catch (error) {
+            const hasPassword = typeof identity.adminPassword === "string" && identity.adminPassword.length > 0;
+            if (hasPassword || !shouldRetryWithFreshAdminToken(error)) {
+              throw error;
+            }
+            const retryPassword = await ask("Admin password", {
+              hint: "cached session expired/invalid. enter password to refresh",
+            });
+            if (!retryPassword.trim()) {
+              throw error;
+            }
+            await cmdAuthListSessions({ baseUrl, adminPassword: retryPassword.trim() });
+          }
+        });
         await pause();
         break;
       }
       case 2: {
         const baseUrl = await promptBaseUrl();
-        const identity = await promptAdminIdentityForSessions();
+        const identity = await promptAdminIdentityForSessions(baseUrl);
         if (!identity) break;
-        await safely(() => cmdAuthDiagnose({ baseUrl, ...identity }));
+        await safely(async () => {
+          try {
+            await cmdAuthDiagnose({ baseUrl, ...identity });
+          } catch (error) {
+            const hasPassword = typeof identity.adminPassword === "string" && identity.adminPassword.length > 0;
+            if (hasPassword || !shouldRetryWithFreshAdminToken(error)) {
+              throw error;
+            }
+            const retryPassword = await ask("Admin password", {
+              hint: "cached session expired/invalid. enter password to refresh",
+            });
+            if (!retryPassword.trim()) {
+              throw error;
+            }
+            await cmdAuthDiagnose({ baseUrl, adminPassword: retryPassword.trim() });
+          }
+        });
         await pause();
         break;
       }

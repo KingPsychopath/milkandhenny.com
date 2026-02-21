@@ -99,7 +99,8 @@ Self-destructing file sharing — upload any files via CLI or web, get a link at
 pnpm cli transfers upload      # Interactive: pick folder, set title, set expiry
 pnpm cli transfers list        # See all active transfers + time remaining
 pnpm cli transfers delete <id> # Take down a transfer + delete R2 files
-pnpm cli auth revoke --admin-token <jwt> --admin-password <password> --role admin
+pnpm cli auth diagnose --admin-password <password> --base-url https://milkandhenny.com
+pnpm cli auth revoke --admin-password <password> --role admin --base-url https://milkandhenny.com
 ```
 
 ### Photo Gallery
@@ -178,6 +179,19 @@ CLI:
 pnpm cli words create --slug <slug> --title <title> --markdown-file <path>
 pnpm cli words share create <slug> --pin-required --pin <pin>
 pnpm cli words share update <slug> <share-id> --pin-required true --pin <new-pin>
+```
+
+### CLI Auth Notes
+
+- `auth` commands (`sessions`, `revoke`, `diagnose`) call protected API routes with `Authorization: Bearer`.
+- The CLI now resolves your canonical origin first to avoid auth-header loss on host redirects (for example `milkandhenny.com` -> `www.milkandhenny.com`).
+- CLI admin-session caching is in-memory for the current CLI process only.
+- In one interactive `pnpm cli` session, you usually do not need to re-enter password for every auth action.
+- In separate direct invocations (`pnpm cli auth ...` run again later), expect to enter password again unless you pass `--admin-token`.
+- If auth feels inconsistent, run:
+
+```bash
+pnpm cli auth diagnose --admin-password <password> --base-url https://milkandhenny.com
 ```
 
 ---
