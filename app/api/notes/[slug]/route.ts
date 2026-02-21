@@ -37,7 +37,7 @@ export async function GET(request: NextRequest, { params }: Params) {
       return NextResponse.json(note);
     }
 
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
   } catch (error) {
     return apiErrorFromRequest(request, "notes.get", "Failed to load note", error, { slug });
   }

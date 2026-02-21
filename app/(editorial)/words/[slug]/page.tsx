@@ -154,6 +154,14 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const note = await getNote(slug);
   if (!note) return {};
   const isPublic = note.meta.visibility === "public";
+  if (note.meta.visibility === "private") {
+    return {
+      title: `Private Page — ${SITE_NAME}`,
+      description: "This page is private and requires authenticated access.",
+      robots: { index: false, follow: false },
+    };
+  }
+
   const description = note.meta.subtitle ?? `Read "${note.meta.title}" on ${SITE_NAME}`;
   const heroImage = note.meta.image ? resolveWordContentRef(note.meta.image, slug) : "";
   const published = note.meta.publishedAt ?? note.meta.updatedAt;
@@ -187,18 +195,23 @@ export default async function WordSlugPage({ params, searchParams }: Props) {
   const note = await getNote(slug);
   if (!note) notFound();
   const canRead = await canReadNoteInServerContext(note.meta);
+  const isPrivateLocked = note.meta.visibility === "private" && !canRead;
   const readingTime = canRead ? estimateReadingTime(note.markdown) : 0;
   const isBlog = note.meta.type === "blog";
   const published = note.meta.publishedAt ?? note.meta.updatedAt;
   const headings = canRead && isBlog ? extractHeadings(note.markdown) : [];
   const albums = canRead ? resolveAlbumsFromContent(note.markdown) : {};
-  const heroImage = note.meta.image ? resolveWordContentRef(note.meta.image, slug) : "";
+  const heroImage = canRead && note.meta.image ? resolveWordContentRef(note.meta.image, slug) : "";
+  const pageTitle = isPrivateLocked ? "private page" : note.meta.title;
+  const pageSubtitle = isPrivateLocked
+    ? "this page is private. use an authenticated session or valid share link."
+    : note.meta.subtitle;
 
   const jsonLd = {
     "@context": "https://schema.org",
     "@type": "Article",
-    headline: note.meta.title,
-    description: note.meta.subtitle ?? note.meta.title,
+    headline: pageTitle,
+    description: pageSubtitle ?? pageTitle,
     datePublished: published,
     author: { "@type": "Organization", name: SITE_NAME },
     publisher: { "@type": "Organization", name: SITE_NAME },
@@ -232,26 +245,32 @@ export default async function WordSlugPage({ params, searchParams }: Props) {
             items={[
               { label: "home", href: "/" },
               { label: "words", href: "/words" },
-              { label: note.meta.title },
+              { label: pageTitle },
             ]}
           />
           <header className="mb-10 mt-2">
             <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 font-mono text-xs theme-muted tracking-wide">
               <div className="flex items-center gap-3">
-                <time dateTime={published}>{formatDate(published)}</time>
-                <span>·</span>
-                {isBlog ? <span>{readingTime} min read</span> : <span>{note.meta.type}</span>}
-                {note.meta.featured && (
+                {!isPrivateLocked ? (
                   <>
+                    <time dateTime={published}>{formatDate(published)}</time>
                     <span>·</span>
-                    <span className="text-amber-600 dark:text-amber-500/80">featured</span>
+                    {isBlog ? <span>{readingTime} min read</span> : <span>{note.meta.type}</span>}
+                    {note.meta.featured && (
+                      <>
+                        <span>·</span>
+                        <span className="text-amber-600 dark:text-amber-500/80">featured</span>
+                      </>
+                    )}
+                    {note.meta.visibility !== "public" && (
+                      <>
+                        <span>·</span>
+                        <span>{note.meta.visibility}</span>
+                      </>
+                    )}
                   </>
-                )}
-                {note.meta.visibility !== "public" && (
-                  <>
-                    <span>·</span>
-                    <span>{note.meta.visibility}</span>
-                  </>
+                ) : (
+                  <span>private</span>
                 )}
               </div>
               {canRead ? (
@@ -259,11 +278,11 @@ export default async function WordSlugPage({ params, searchParams }: Props) {
               ) : null}
             </div>
             <h1 className="font-serif text-3xl sm:text-4xl text-foreground leading-tight tracking-tight mt-4">
-              {isBlog ? highlightTitle(note.meta.title) : note.meta.title}
+              {!isPrivateLocked && isBlog ? highlightTitle(note.meta.title) : pageTitle}
             </h1>
-            {note.meta.subtitle && (
+            {pageSubtitle && (
               <p className="mt-4 font-serif theme-subtle text-lg leading-relaxed">
-                {note.meta.subtitle}
+                {pageSubtitle}
               </p>
             )}
           </header>
