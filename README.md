@@ -127,6 +127,7 @@ All long-form content lives in the unified **words** model (`blog`, `note`, `rec
 - Metadata in KV (`words:meta:{slug}` + `words:index`)
 - Markdown body in R2 (`words/{type}/{slug}/content.md`)
 - Visibility: `public`, `unlisted`, `private`
+- Route model: public/unlisted render at `/words/[slug]`; private renders at `/vault/[slug]`
 - Tags and featured flags are shared across all types
 - Reading time + editorial rendering stays intact for blog-style pages
 
@@ -172,6 +173,7 @@ Private and unlisted words are part of the unified words system and are stored o
 - Markdown body in R2 (`words/{type}/{slug}/content.md`)
 - Visibility: `public`, `unlisted`, `private`
 - Signed share links with optional **per-link PIN** (no global reader PIN)
+- Private share links resolve to `/vault/[slug]?share=...`
 
 CLI:
 

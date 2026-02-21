@@ -1,0 +1,25 @@
+---
+description: Accessibility standards for UI semantics, focus, forms, and structure
+alwaysApply: false
+---
+
+# Accessibility Standards
+
+## Interaction and Navigation
+- Use `<button>` for actions and `<a>` for navigation.
+- Never use clickable `div`/`span` unless it includes `role="button"` and `tabIndex={0}`.
+- Never remove focus outlines without a strong `:focus-visible` style.
+- Interactive controls should have a minimum 44x44px target area.
+
+## Text and Content
+- Keep heading hierarchy logical; one `h1` per page.
+- Every `<img>` needs `alt`; decorative images use `alt=""`.
+- Icon-only buttons must include an `aria-label`.
+
+## Forms
+- Each field needs a `<label>` or `aria-labelledby`.
+- Invalid fields must use `aria-invalid="true"` and connect errors via `aria-describedby`.
+
+## Structure
+- Use landmarks: `<header>`, `<nav>`, `<main>`, `<footer>`, `<article>`, `<section>`.
+- Use proper lists (`<ul>`/`<ol>` with `<li>`).

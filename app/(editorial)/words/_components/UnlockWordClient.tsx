@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { WordBody } from "./WordBody";
-import type { WordMeta } from "@/features/words/content-types";
 
 type Props = {
   slug: string;
@@ -17,7 +16,7 @@ export function UnlockWordClient({ slug }: Props) {
   const [checking, setChecking] = useState(false);
   const [checked, setChecked] = useState(false);
   const [error, setError] = useState("");
-  const [unlocked, setUnlocked] = useState<{ meta: WordMeta; markdown: string } | null>(null);
+  const [unlockedMarkdown, setUnlockedMarkdown] = useState<string | null>(null);
 
   const hasShare = useMemo(() => shareToken.trim().length > 0, [shareToken]);
 
@@ -29,11 +28,11 @@ export function UnlockWordClient({ slug }: Props) {
       });
       if (!res.ok) return false;
       const data = (await res.json().catch(() => null)) as {
-        meta?: WordMeta;
+        meta?: object;
         markdown?: string;
       } | null;
       if (!data?.meta || typeof data.markdown !== "string") return false;
-      setUnlocked({ meta: data.meta, markdown: data.markdown });
+      setUnlockedMarkdown(data.markdown);
       return true;
     } catch {
       return false;
@@ -107,19 +106,8 @@ export function UnlockWordClient({ slug }: Props) {
     };
   }, [checked, hasShare, loadUnlockedWord, verifyShareAccess]);
 
-  if (unlocked) {
-    return (
-      <div className="space-y-8">
-        <header className="space-y-3">
-          <div className="font-mono text-xs uppercase tracking-wide theme-muted">private</div>
-          <h2 className="font-serif text-2xl text-foreground leading-tight">{unlocked.meta.title}</h2>
-          {unlocked.meta.subtitle ? (
-            <p className="font-serif theme-subtle text-base leading-relaxed">{unlocked.meta.subtitle}</p>
-          ) : null}
-        </header>
-        <WordBody content={unlocked.markdown} wordSlug={slug} />
-      </div>
-    );
+  if (unlockedMarkdown) {
+    return <WordBody content={unlockedMarkdown} wordSlug={slug} />;
   }
 
   if (!hasShare) {

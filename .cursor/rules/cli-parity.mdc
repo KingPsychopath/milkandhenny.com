@@ -1,0 +1,27 @@
+---
+description: App CLI commands — first-class parity with web admin
+globs: ["scripts/**/*", "features/**/*", "app/api/**/*"]
+alwaysApply: false
+---
+
+# CLI-First Parity (Application Architecture)
+
+This rule governs the APPLICATION's CLI surface, not the dev tooling.
+
+## Principle
+If a capability exists in an API route or admin page, provide a
+CLI-accessible equivalent via shared domain logic in `features/*`
+and `scripts/*`.
+
+## Rules
+- Prefer shared service functions over duplicating endpoint logic.
+- Admin maintenance actions (cleanup/purge/reset) must have CLI commands.
+- Include CLI commands in help text and admin copy-command lists.
+- If parity is ambiguous (security, destructive, unclear UX), ask user
+  before implementing.
+
+## Architecture
+- `features/*` owns business logic (shared by web + CLI + API).
+- `scripts/*` owns CLI entry points that call into `features/*`.
+- `app/api/*` owns HTTP routes that call into `features/*`.
+- No business logic duplicated across these three layers.

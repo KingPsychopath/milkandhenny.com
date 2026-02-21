@@ -26,6 +26,7 @@ async function revalidateWordSurfaces(slug: string): Promise<void> {
     revalidatePath("/", "page"),
     revalidatePath("/words", "page"),
     revalidatePath(`/words/${slug}`, "page"),
+    revalidatePath(`/vault/${slug}`, "page"),
     revalidatePath("/feed.xml"),
     revalidatePath("/sitemap.xml"),
   ]);

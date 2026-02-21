@@ -1,0 +1,25 @@
+---
+description: Vitest standards for unit and integration tests
+globs: ["**/__tests__/**/*", "**/__test__/**/*", "**/*.test.*", "**/*.spec.*"]
+alwaysApply: false
+---
+
+## Core Principles
+- **Behavior over Implementation:** Test what the code *does*, not internal details.
+- **Shared Logic First:** Prioritize testing `features/*` domain logic before UI.
+- **Naming:** Use `describe` block -> `it("should...")` in plain English.
+- **Mocks:** Mock external network/heavy APIs only. Do not mock internal helpers.
+
+## Test Tiers
+1. **Unit:**
+   - Scope: Pure functions, hooks, `features/*`.
+   - Rule: Fast execution. No browser/DB. 100% logic coverage.
+2. **Integration:**
+   - Scope: Component trees, Server Actions, API routes.
+   - Rule: Test the user contract (input/output). Do not mock sub-components.
+
+## Tooling & Execution
+- **Runner:** `pnpm test`. Match files: `auth.ts` -> `auth.test.ts`.
+- **Setup:** Use `beforeEach` to clear mocks/stores. Avoid state leaks.
+- **CLI Parity:** Ensure `scripts/*` can be invoked in tests without side effects.
+- **Technique:** Use `vi.mock()` for modules, `vi.fn()` for callbacks.

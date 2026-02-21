@@ -11,8 +11,10 @@ import { WordShareSection } from "./_components/WordShareSection";
 import { useEditorFilters } from "./_hooks/useEditorFilters";
 import { useWordFormState } from "./_hooks/useWordFormState";
 import { useMediaPreviewState } from "./_hooks/useMediaPreviewState";
+import { buildWordShareUrl } from "@/features/words/routes";
 import type {
   NoteMeta,
+  NoteVisibility,
   NoteRecord,
   ShareLink,
   SharePatchResponse,
@@ -21,10 +23,6 @@ import type {
   WordMediaItem,
   WordMediaResponse,
 } from "./types";
-
-function buildShareUrl(slug: string, token: string): string {
-  return `${window.location.origin}/words/${slug}?share=${encodeURIComponent(token)}`;
-}
 
 function isExpiredShare(link: ShareLink): boolean {
   return new Date(link.expiresAt).getTime() <= Date.now();
@@ -297,6 +295,24 @@ export function EditorAdminClient() {
     if (shareStateFilter === "all") return shares;
     return shares.filter((link) => getShareState(link) === shareStateFilter);
   }, [shareStateFilter, shares]);
+  const visibilityBySlug = useMemo(() => {
+    const next: Record<string, NoteVisibility> = {};
+    for (const note of notes) {
+      next[note.slug] = note.visibility;
+    }
+    if (current?.meta?.slug) {
+      next[current.meta.slug] = current.meta.visibility;
+    }
+    return next;
+  }, [current?.meta?.slug, current?.meta?.visibility, notes]);
+
+  const buildShareUrl = useCallback(
+    (slug: string, token: string) => {
+      const visibility = visibilityBySlug[slug] ?? "private";
+      return buildWordShareUrl(window.location.origin, slug, token, visibility);
+    },
+    [visibilityBySlug]
+  );
 
   async function createWord() {
     setBusy(true);

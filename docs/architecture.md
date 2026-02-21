@@ -26,7 +26,7 @@ Three features store media in R2, but their metadata lives in different places �
 | **Metadata** | JSON manifest in git (`content/albums/`) | Redis key with TTL | KV (`words:meta:{slug}` + `words:index`) |
 | **Variants** | thumb + full + original + og | thumb + full + original | Images: WebP; others: raw |
 | **Lifecycle** | Permanent (lives in git) | Auto-expires via Redis TTL | Permanent unless deleted; visibility controls + share links |
-| **Cost per view** | $0 (fully static/CDN) | ~$0 (1 KV GET, CDN-cached 60s) | $0 (fully static/CDN) |
+| **Cost per view** | $0 (fully static/CDN) | ~$0 (1 KV GET, CDN-cached 60s) | Public/unlisted: $0 static. Private: dynamic gate + API verify when unlocking. |
 | **Update flow** | CLI writes JSON → git commit → Vercel rebuild | CLI writes to Redis → instant | CLI/admin writes KV metadata + R2 markdown/media |
 
 Albums are the strongest pattern for permanent content — zero runtime cost, fully CDN-cached, no KV dependency. Transfers use KV because they need to self-destruct (a git-based approach would require a redeploy to expire content). Words content uses KV + R2 so public/unlisted/private behavior and share-link access all use one consistent model.
@@ -42,7 +42,7 @@ Three layers of caching keep the site fast and cheap: static generation at build
 | Page | How | Why static works |
 |------|-----|-----------------|
 | `/`, `/words`, `/pics` | ISR/static pages with revalidation | Content is cache-friendly, updates are revalidated on write |
-| `/words/[slug]` | `generateStaticParams` for public words + runtime checks for non-public | Supports mixed visibility + signed access |
+| `/words/[slug]` | `generateStaticParams` for public words + ISR fallback for unlisted | Public editorial surface only |
 | `/pics/[album]`, `/pics/[album]/[photo]` | `generateStaticParams` from album JSON | Albums are JSON manifests in git |
 | All OG images for above | `generateStaticParams` + `s-maxage=86400` | Images don't change post-deploy |
 
@@ -51,6 +51,7 @@ Three layers of caching keep the site fast and cheap: static generation at build
 | Page | Rendering | Cache | Rationale |
 |------|-----------|-------|-----------|
 | `/t/[id]` (transfers) | `force-dynamic` (reads Redis) | CDN: 60s, stale-while-revalidate: 5min. Browser: no-cache. | Saves KV reads. After takedown, stale may serve up to 60s but R2 files are already deleted. |
+| `/vault/[slug]` (private words) | `force-dynamic` (auth/share gate + cookie/session checks) | Browser: no-store semantics for gated content | Keeps private access flow isolated from static public words navigation. |
 | `/t/[id]/opengraph-image` | `force-dynamic` | 24h (`s-maxage=86400`) | One serverless run per new shared link, then cached. |
 | `/api/cron/cleanup-transfers` | `force-dynamic` | None | Daily cron, no caching needed. |
 
@@ -112,7 +113,7 @@ The site has **two distinct navigation worlds** that coexist through shared tone
 
 | World | Pages | Navigation style | Audience |
 |-------|-------|-----------------|----------|
-| **Editorial** | `/`, `/words`, `/words/[slug]`, `/pics`, `/pics/[album]`, `/pics/[album]/[photo]` | Header with `← contextual back` + `milk & henny` brand link + Breadcrumbs | Word readers, photo viewers |
+| **Editorial** | `/`, `/words`, `/words/[slug]`, `/vault/[slug]`, `/pics`, `/pics/[album]`, `/pics/[album]/[photo]` | Header with `← contextual back` + `milk & henny` brand link + Breadcrumbs | Word readers, private-share viewers, photo viewers |
 | **Party** | `/party`, `/icebreaker`, `/best-dressed`, `/guestlist` | Minimal, kiosk-style — funnels back to `/party`, then `/` | Event-night guests, door staff |
 
 **Standalone pages** (`/exam`, `/t/[id]`) have their own minimal navigation.

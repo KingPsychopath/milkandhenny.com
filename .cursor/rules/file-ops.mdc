@@ -1,0 +1,19 @@
+---
+description: File moves, renames, codemods
+globs: ["**/*"]
+alwaysApply: false
+---
+
+# File Operations
+
+## Moves & Renames
+- Use `git mv` (not copy/paste) to preserve history.
+- Fix all imports/usages immediately after move.
+- Verify with `rg` that no old-path references remain.
+- Clean up empty directories.
+
+## Sweeping Edits / Codemods
+- Inventory first (`rg` for old patterns).
+- Prefer AST-aware transforms (ts-morph/jscodeshift).
+- Support dry-run mode.
+- Do not apply broad global search/replace on arbitrary content.

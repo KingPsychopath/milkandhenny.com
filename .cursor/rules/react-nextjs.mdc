@@ -1,0 +1,34 @@
+---
+description: React components, Next.js App Router, hooks, server/client boundaries
+globs: ["app/**/*", "**/*.tsx", "**/*.jsx"]
+alwaysApply: false
+---
+
+# React + Next.js (App Router)
+
+## Server/Client Boundary
+- Default to Server Components. Add `"use client"` only for interactivity.
+- Keep client islands narrow and task-focused, not page-sized.
+- Use `layout.tsx`, `loading.tsx`, `error.tsx`, `not-found.tsx`.
+- Use `metadata`/`generateMetadata` for SEO.
+
+## Components
+- Functional components only. One job per component.
+- Split at ~350 lines or ~10 handlers/effects.
+- PascalCase components, `useX` hooks, `handleVerb` handlers.
+- Early returns to reduce nesting.
+
+## Data + Mutations
+- Server-side data loading for initial render. No `useEffect` fetches for first paint.
+- Server Actions for mutations. API routes for HTTP integrations only.
+- Shared domain functions in `features/*`; no business logic in components.
+
+## Hooks
+- Name by domain: `useEditorFilters`, `useWordFormState`.
+- Split at ~200 lines or ~8 handlers/effects.
+- Hooks orchestrate; they do not redefine business rules.
+
+## Tailwind v4
+- Prefer utilities. Use `@theme` tokens, not hardcoded values.
+- Use `cn()` for conditional classes.
+- No `tailwind.config.*`. Config lives in CSS via `@theme`.

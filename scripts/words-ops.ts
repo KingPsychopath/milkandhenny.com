@@ -3,6 +3,7 @@ import "server-only";
 import { BASE_URL } from "@/lib/shared/config";
 import { getRedis } from "@/lib/platform/redis";
 import { WORD_INDEX_KEY, wordMetaKey, wordShareIndexKey, wordShareKey, wordShareSlugsKey } from "@/features/words/config";
+import { buildWordShareUrl } from "@/features/words/routes";
 import {
   cleanupShareLinksForSlug,
   createShareLink,
@@ -12,7 +13,7 @@ import {
   revokeShareLink,
   updateShareLink,
 } from "@/features/words/share";
-import { createWord, deleteWord, getWord, listWords, updateWord } from "@/features/words/store";
+import { createWord, deleteWord, getWord, getWordMeta, listWords, updateWord } from "@/features/words/store";
 import type { NoteVisibility, ShareLink } from "@/features/words/content-types";
 import type { WordType } from "@/features/words/types";
 
@@ -88,6 +89,7 @@ async function createWordShare(
   slug: string,
   opts?: { expiresInDays?: number; pinRequired?: boolean; pin?: string }
 ) {
+  const meta = await getWordMeta(slug);
   const created = await createShareLink({
     slug,
     expiresInDays: opts?.expiresInDays,
@@ -97,7 +99,7 @@ async function createWordShare(
 
   return {
     ...created,
-    url: `${BASE_URL}/words/${slug}?share=${encodeURIComponent(created.token)}`,
+    url: buildWordShareUrl(BASE_URL, slug, created.token, meta?.visibility ?? "private"),
   };
 }
 
@@ -110,12 +112,13 @@ async function updateWordShare(
   id: string,
   opts: { pinRequired?: boolean; pin?: string | null; expiresInDays?: number; rotateToken?: boolean }
 ) {
+  const meta = await getWordMeta(slug);
   const updated = await updateShareLink(slug, id, opts);
   if (!updated) return null;
   return {
     ...updated,
     url: updated.token
-      ? `${BASE_URL}/words/${slug}?share=${encodeURIComponent(updated.token)}`
+      ? buildWordShareUrl(BASE_URL, slug, updated.token, meta?.visibility ?? "private")
       : undefined,
   };
 }

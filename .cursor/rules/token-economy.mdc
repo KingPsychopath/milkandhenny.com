@@ -1,0 +1,10 @@
+---
+description: Compatibility stub; token economy is defined in AGENTS.md
+alwaysApply: false
+---
+
+# Token Economy Compatibility
+
+- Source of truth: `AGENTS.md`.
+- This file is intentionally non-global to avoid duplicate instruction overhead.
+- Keep this file only for backward compatibility with older references.

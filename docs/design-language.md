@@ -67,7 +67,7 @@ Typography expresses which "world" you're in while keeping a single brand voice.
 
 ### 1) Editorial surfaces
 
-Routes: `/`, `/words`, `/words/[slug]`, `/pics`
+Routes: `/`, `/words`, `/words/[slug]`, `/vault/[slug]`, `/pics`
 
 - **Titles + body**: `font-serif` (Lora) for reading comfort.
 - **Labels + metadata** (date, reading time, crumbs, share): `font-mono` (Geist Mono).

@@ -1,0 +1,37 @@
+---
+description: TypeScript, safety, git, module boundaries
+globs: ["**/*.ts", "**/*.tsx", "**/*.js", "**/*.jsx"]
+alwaysApply: false
+---
+
+# Core Engineering
+
+## Code Style
+- Concise, minimal code. Prefer simple over clever.
+- Change only what is needed. Follow existing repo patterns.
+- If work touches UI semantics, forms, keyboard navigation, or screen-reader output, also load `.cursor/rules/accessibility.mdc`.
+
+## Safety
+- Handle edge cases: undefined inputs, failures, error paths.
+- Do not remove/rename existing functionality unless asked.
+- Do not add dependencies without asking.
+
+## TypeScript
+- No `any`. Prefer `unknown` when type is genuinely unknown.
+- Avoid `as` casts; prefer narrowing/validation.
+- Prefer `as const` over enums.
+- `interface` for object shapes; `type` for unions/intersections.
+
+## Modules
+- No barrel files (`index.ts`).
+- Fix circular deps by moving responsibilities, not adding layers.
+
+
+## Security
+- Never hardcode secrets, API keys, or tokens. Use `process.env`.
+- Prefix client-safe env vars with `NEXT_PUBLIC_` only when intentionally exposed.
+- Never log sensitive data (tokens, passwords, session IDs).
+- Destructive operations (delete user, purge data) require confirmation flags in CLI and explicit UI confirmation on web.
+
+## Workflow
+- Execution defaults (commit style, checkpoints) live in `AGENTS.md`.
