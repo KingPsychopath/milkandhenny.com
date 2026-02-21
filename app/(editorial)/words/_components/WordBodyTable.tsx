@@ -3,7 +3,7 @@
 import React, { type ReactNode } from "react";
 
 type TableContextValue = {
-  isGlobalExpanded: boolean;
+  isCollapsed: boolean;
   isRowExpanded: (rowId: string) => boolean;
   toggleRow: (rowId: string) => void;
 };
@@ -213,13 +213,13 @@ export function WordBodyTable({
   children,
   ...props
 }: React.DetailedHTMLProps<React.TableHTMLAttributes<HTMLTableElement>, HTMLTableElement>) {
-  const [isGlobalExpanded, setIsGlobalExpanded] = React.useState(false);
+  const [isCollapsed, setIsCollapsed] = React.useState(false);
   const [expandedRows, setExpandedRows] = React.useState<Record<string, boolean>>({});
   const [copied, setCopied] = React.useState(false);
   const tableRef = React.useRef<HTMLTableElement | null>(null);
 
   React.useLayoutEffect(() => {
-    setIsGlobalExpanded(false);
+    setIsCollapsed(false);
     setExpandedRows({});
   }, [children]);
 
@@ -229,11 +229,11 @@ export function WordBodyTable({
 
   const contextValue = React.useMemo<TableContextValue>(
     () => ({
-      isGlobalExpanded,
+      isCollapsed,
       toggleRow,
       isRowExpanded: (rowId: string) => Boolean(expandedRows[rowId]),
     }),
-    [expandedRows, isGlobalExpanded, toggleRow]
+    [expandedRows, isCollapsed, toggleRow]
   );
 
   React.useEffect(() => {
@@ -261,7 +261,7 @@ export function WordBodyTable({
   }, []);
 
   return (
-    <div className={`prose-table ${isGlobalExpanded ? "prose-table--expanded" : "prose-table--compact"}`}>
+    <div className={`prose-table ${isCollapsed ? "prose-table--compact" : "prose-table--expanded"}`}>
       <div className="prose-table-scroll">
         <TableRenderContext.Provider value={contextValue}>
           <table ref={tableRef} {...props}>{children}</table>
@@ -271,12 +271,12 @@ export function WordBodyTable({
         <button
           type="button"
           className="prose-table-button prose-table-icon-button"
-          onClick={() => setIsGlobalExpanded((prev) => !prev)}
-          aria-expanded={isGlobalExpanded}
-          aria-label={isGlobalExpanded ? "collapse table" : "expand table"}
-          title={isGlobalExpanded ? "collapse table" : "expand table"}
+          onClick={() => setIsCollapsed((prev) => !prev)}
+          aria-expanded={!isCollapsed}
+          aria-label={isCollapsed ? "expand table" : "collapse table"}
+          title={isCollapsed ? "expand table" : "collapse table"}
         >
-          {isGlobalExpanded ? <CollapseIcon /> : <ExpandIcon />}
+          {isCollapsed ? <ExpandIcon /> : <CollapseIcon />}
         </button>
         <div className="prose-table-footer-actions">
           <button
@@ -329,9 +329,9 @@ export function WordBodyTableCell({
   const rowId = rowContextId ?? getNodeLineId(node) ?? `row:${fallbackRowId}`;
   const text = textFromChildren(children);
   const canClamp = shouldClampCell(text);
-  const isExpanded = tableContext.isGlobalExpanded || tableContext.isRowExpanded(rowId);
-  const shouldClamp = !tableContext.isGlobalExpanded && canClamp && !isExpanded;
-  const isToggleable = canClamp && !tableContext.isGlobalExpanded;
+  const isExpanded = !tableContext.isCollapsed || tableContext.isRowExpanded(rowId);
+  const shouldClamp = tableContext.isCollapsed && canClamp && !isExpanded;
+  const isToggleable = tableContext.isCollapsed;
 
   const toggle = () => tableContext.toggleRow(rowId);
   const isInteractiveTarget = (target: EventTarget | null) =>
