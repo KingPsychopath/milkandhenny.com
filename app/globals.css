@@ -350,6 +350,13 @@
     table-layout: auto;
   }
 
+  .prose-blog .prose-table--compact table {
+    width: fit-content;
+    min-width: 100%;
+    max-width: 72rem;
+    table-layout: auto;
+  }
+
   .prose-blog thead tr {
     border-bottom: 1px solid var(--stone-200);
     background: color-mix(in srgb, var(--stone-100) 70%, transparent);
@@ -366,7 +373,17 @@
 
   .prose-blog .prose-table--compact th,
   .prose-blog .prose-table--compact td {
+    min-width: 7.5rem;
     max-width: 16rem;
+  }
+
+  .prose-blog .prose-table--compact td[aria-expanded="true"],
+  .prose-blog .prose-table--compact td[aria-expanded="true"] .prose-table-cell {
+    min-width: 10.5rem;
+    max-width: 24ch;
+    hyphens: manual;
+    overflow-wrap: normal;
+    word-break: normal;
   }
 
   .prose-blog tbody tr:last-child td {
