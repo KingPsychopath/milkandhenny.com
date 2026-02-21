@@ -357,10 +357,10 @@
   }
 
   .prose-blog .prose-table--compact table {
-    width: fit-content;
-    min-width: 100%;
-    max-width: 72rem;
-    table-layout: auto;
+    width: 100%;
+    min-width: 76rem;
+    max-width: none;
+    table-layout: fixed;
   }
 
   .prose-blog thead tr {
@@ -379,14 +379,11 @@
 
   .prose-blog .prose-table--compact th,
   .prose-blog .prose-table--compact td {
-    min-width: 7.5rem;
+    min-width: 9.5rem;
     max-width: 16rem;
   }
 
-  .prose-blog .prose-table--compact td[aria-expanded="true"],
-  .prose-blog .prose-table--compact td[aria-expanded="true"] .prose-table-cell {
-    min-width: 10.5rem;
-    max-width: 24ch;
+  .prose-blog .prose-table--compact .prose-table-cell {
     hyphens: manual;
     overflow-wrap: normal;
     word-break: normal;
@@ -425,6 +422,15 @@
 
   .prose-blog .prose-table-cell--toggleable:hover {
     background: color-mix(in srgb, var(--stone-100) 50%, transparent);
+  }
+
+  .prose-blog td[role="button"]:focus-visible {
+    outline: none;
+  }
+
+  .prose-blog td[role="button"]:focus-visible .prose-table-cell {
+    background: color-mix(in srgb, var(--stone-100) 62%, transparent);
+    box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--stone-400) 40%, transparent);
   }
 
   .prose-blog .prose-table-cell--clamped {
