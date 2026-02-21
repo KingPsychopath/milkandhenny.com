@@ -17,7 +17,7 @@ pnpm test          # run all tests
 pnpm test:watch    # re-run on file changes
 ```
 
-**CLI:** Run `pnpm cli` with no arguments for an **interactive menu** — pick Albums, Photos, Transfers, Blog, or Notes and follow the prompts. All the commands below are also available as direct subcommands (e.g. `pnpm cli transfers upload`).
+**CLI:** Run `pnpm cli` with no arguments for an **interactive menu** — pick Albums, Photos, Transfers, Words Media, or Notes and follow the prompts. All commands are also available as direct subcommands.
 
 ---
 
@@ -25,7 +25,7 @@ pnpm test:watch    # re-run on file changes
 
 | Feature | Route | Data source | What it does |
 |---------|-------|-------------|-------------|
-| **Blog** | `/` | Markdown files (`content/posts/`) | Writing-first blog with warm editorial design |
+| **Blog** | `/`, `/words` | Vercel KV (metadata) + R2 | Writing-first posts (type = `blog`) inside the unified words system |
 | **Photo gallery** | `/pics` | JSON manifests (`content/albums/`) + R2 | Album galleries with masonry grid, lightbox, download |
 | **Party hub** | `/party` | — | Entry point for event-night features: icebreaker game, best-dressed voting, guest list (staff) |
 | **Guest list** | `/guestlist` | Vercel KV (Redis) | Real-time check-in for door staff, multi-device sync |
@@ -33,7 +33,7 @@ pnpm test:watch    # re-run on file changes
 | **Best dressed** | `/best-dressed` | Vercel KV (Redis) | Live voting leaderboard for party guests |
 | **Words** | `/words`, `/words/{slug}` | Vercel KV (metadata) + R2 | Unified blog/notes/recipes/reviews with visibility controls and signed links |
 | **Transfers** | `/t/{id}` | Vercel KV (Redis) + R2 | Self-destructing file sharing (your own WeTransfer) |
-| **CLI** | `pnpm cli` | R2 + KV | Manage albums, photos, transfers, blog files from the terminal |
+| **CLI** | `pnpm cli` | R2 + KV | Manage albums, photos, transfers, words content, and media from the terminal |
 
 ---
 
@@ -45,7 +45,7 @@ This repo uses two top-level buckets for server code and shared logic:
   - `features/guests/*` guest model + persistence + CSV import
   - `features/transfers/*` transfer model + persistence + upload pipeline
   - `features/media/*` albums + storage URLs + image processing
-  - `features/blog/*` blog reader + blog upload helpers
+  - `features/blog/*` blog reader + shared words media path helpers
   - `features/notes/*` private notes + share-link access
   - `features/auth/*` server-side auth primitives
 - `lib/` — cross-cutting primitives (the toolbox)
@@ -92,6 +92,9 @@ Self-destructing file sharing — upload any files via CLI or web, get a link at
 - Memorable 3-word URLs (e.g. `velvet-moon-candle`)
 - Admin takedown via CLI or token URL
 - Web upload at `/upload` (gated by `UPLOAD_PIN`) uses presigned URLs — files go direct to R2, never through Vercel
+- Admin words uploads in `/upload`:
+  - `content media` writes to `words/media/{slug}/...`
+  - `shared assets` writes to `words/assets/{assetId}/...`
 
 ```bash
 pnpm cli transfers upload      # Interactive: pick folder, set title, set expiry
@@ -117,34 +120,54 @@ pnpm cli photos add <album>   # Add photos to existing album
 
 For the full media pipeline (OG images, face detection, focal points, image rotation), see [docs/media-pipeline.md](./docs/media-pipeline.md).
 
-### Blog
+### Words + Blog
 
-Markdown files in `content/posts/`. Filename = slug.
+All long-form content lives in the unified **words** model (`blog`, `note`, `recipe`, `review`).
 
-- Frontmatter: title, date, subtitle (optional), image (optional)
-- Reading time at 230 WPM
-- `#hashtag` styling inline (warm colour shift, no chip)
-- Blog file uploads via CLI: images processed to WebP, others uploaded raw
+- Metadata in KV (`notes:meta:{slug}` + index keys)
+- Markdown body in R2 (`words/{type}/{slug}/content.md`)
+- Visibility: `public`, `unlisted`, `private`
+- Tags and featured flags are shared across all types
+- Reading time + editorial rendering stays intact for blog-style pages
+
+Media paths:
+
+- Per-word media: `words/media/{slug}/...`
+- Shared reusable assets: `words/assets/{assetId}/...`
+
+Markdown references:
+
+- Word-specific image/file:
+  - `![hero](words/media/my-word-slug/hero.webp)`
+  - Short form (when rendering that word): `![hero](/hero.webp)`
+- Shared reusable image/file:
+  - `![logo](words/assets/brand-kit/logo.webp)`
+  - Short form: `![logo](assets/brand-kit/logo.webp)`
+  - `[press-kit](words/assets/brand-kit/press-kit.pdf)`
+
+Why this layout:
+
+- `words/{type}/{slug}/content.md` keeps body content canonical per word type.
+- `words/media/{slug}/...` stays slug-scoped so changing a word `type` does not force media moves.
+- `words/assets/{assetId}/...` avoids duplication for reusable files across multiple words.
 
 ```bash
-pnpm cli blog upload --slug <post-slug> --dir <path>   # Upload media for a post
-pnpm cli blog list <post-slug>                          # List uploaded files
+pnpm cli media upload --slug <word-slug> --dir <path>
+pnpm cli media upload --asset <asset-id> --dir <path>
+pnpm cli media list --slug <word-slug>
+pnpm cli media list --asset <asset-id>
 ```
 
 ### Private Notes
 
-Notes are stored outside git:
+Notes are part of the words system and are stored outside git:
 
 - Metadata in KV (`notes:meta:{slug}`)
-- Markdown body in R2 (`notes/{slug}/content.md`)
+- Markdown body in R2 (`words/{type}/{slug}/content.md`)
 - Visibility: `public`, `unlisted`, `private`
 - Signed share links with optional **per-link PIN** (no global reader PIN)
 
-Enable notes:
-
-```bash
-NOTES_ENABLED=true
-```
+`NOTES_ENABLED` defaults to enabled unless explicitly set to `false`.
 
 CLI:
 
@@ -187,7 +210,7 @@ pnpm cli notes share update <slug> <share-id> --pin-required true --pin <new-pin
 | `STAFF_PIN` | Yes (guestlist) | PIN for door staff. Not in client bundle. |
 | `ADMIN_PASSWORD` | Yes (admin) | Gate for management UI and admin dashboard. Weak values show up as warnings. Not in client bundle. |
 | `UPLOAD_PIN` | Yes (upload) | Dedicated PIN for `/upload` (shareable with non-admin uploaders). |
-| `NOTES_ENABLED` | Optional | Set `true` to enable `/words`, notes APIs, and `/admin/editor`. |
+| `NOTES_ENABLED` | Optional | Defaults to enabled. Set `false` to disable `/words`, notes APIs, and `/admin/editor`. |
 | `NEXT_PUBLIC_BASE_URL` | CLI only | For generating share URLs. Not needed on Vercel. |
 | `CRON_SECRET` | Optional | Secures daily cleanup cron. |
 

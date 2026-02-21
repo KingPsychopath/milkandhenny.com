@@ -49,6 +49,16 @@ type TransferSummary = {
   remainingSeconds: number;
 };
 
+type SharedWordSummary = {
+  slug: string;
+  title: string;
+  type: "blog" | "note" | "recipe" | "review";
+  visibility: "public" | "unlisted" | "private";
+  activeShareCount: number;
+  pinProtectedCount: number;
+  nextExpiryAt: string;
+};
+
 type AdminAlbum = {
   slug: string;
   title: string;
@@ -173,6 +183,11 @@ export function AdminDashboard() {
   const [transfersLoading, setTransfersLoading] = useState(false);
   const [transferQuery, setTransferQuery] = useState("");
   const [showAllTransfers, setShowAllTransfers] = useState(false);
+  const [sharedWords, setSharedWords] = useState<SharedWordSummary[]>([]);
+  const [sharedWordsLoading, setSharedWordsLoading] = useState(false);
+  const [sharedWordQuery, setSharedWordQuery] = useState("");
+  const [showAllSharedWords, setShowAllSharedWords] = useState(false);
+  const [sharedWordActionLoading, setSharedWordActionLoading] = useState<string | null>(null);
   const [transferActionLoading, setTransferActionLoading] = useState<string | null>(null);
   const [transferCleanupLoading, setTransferCleanupLoading] = useState(false);
   const [transferNukeLoading, setTransferNukeLoading] = useState(false);
@@ -276,6 +291,24 @@ export function AdminDashboard() {
     }
   }, [authFetch]);
 
+  const loadSharedWords = useCallback(async () => {
+    setSharedWordsLoading(true);
+    setErrorMessage("");
+    try {
+      const res = await authFetch("/api/admin/word-shares");
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error((data.error as string) || "Failed to load shared pages");
+      }
+      setSharedWords((data.items as SharedWordSummary[]) ?? []);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Failed to load shared pages";
+      setErrorMessage(msg);
+    } finally {
+      setSharedWordsLoading(false);
+    }
+  }, [authFetch]);
+
   const loadTransfersAndScroll = useCallback(async () => {
     // Jump immediately so the user sees progress/spinners in the section.
     transfersSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -285,6 +318,10 @@ export function AdminDashboard() {
   useEffect(() => {
     void loadTransfers();
   }, [loadTransfers]);
+
+  useEffect(() => {
+    void loadSharedWords();
+  }, [loadSharedWords]);
 
   const runContentAudit = async () => {
     setAuditLoading(true);
@@ -491,6 +528,35 @@ export function AdminDashboard() {
     }
   };
 
+  const handleRevokeSharedWord = async (slug: string) => {
+    if (!confirm(`Revoke all active share links for "${slug}"?`)) {
+      return;
+    }
+    setSharedWordActionLoading(slug);
+    setErrorMessage("");
+    setStatusMessage("");
+    try {
+      const stepToken = await ensureStepUpToken();
+      if (!stepToken) return;
+      const res = await authFetch("/api/admin/word-shares", {
+        method: "POST",
+        headers: withStepUpHeaders(stepToken, { "Content-Type": "application/json" }),
+        body: JSON.stringify({ slug }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error((data.error as string) || "Failed to revoke shared links");
+      }
+      setStatusMessage(`Revoked ${data.revoked ?? 0} active share link(s) for "${slug}".`);
+      await Promise.all([loadSharedWords(), refreshDashboard()]);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Failed to revoke shared links";
+      setErrorMessage(msg);
+    } finally {
+      setSharedWordActionLoading(null);
+    }
+  };
+
   const handleCleanupExpiredTransfers = async () => {
     if (
       !confirm(
@@ -642,6 +708,20 @@ export function AdminDashboard() {
     ? filteredTransfers
     : filteredTransfers.slice(0, 15);
 
+  const filteredSharedWords = useMemo(() => {
+    const q = sharedWordQuery.trim().toLowerCase();
+    if (!q) return sharedWords;
+    return sharedWords.filter(
+      (word) =>
+        word.slug.toLowerCase().includes(q) ||
+        word.title.toLowerCase().includes(q) ||
+        word.type.toLowerCase().includes(q)
+    );
+  }, [sharedWords, sharedWordQuery]);
+  const visibleSharedWords = showAllSharedWords
+    ? filteredSharedWords
+    : filteredSharedWords.slice(0, 12);
+
   // Auth gate lives in `app/admin/page.tsx` (Server Component).
 
   return (
@@ -662,6 +742,7 @@ export function AdminDashboard() {
             <a href="#content-summary" className="hover:text-[var(--foreground)] transition-colors">content</a>
             <a href="#system-health" className="hover:text-[var(--foreground)] transition-colors">health</a>
             <a href="#transfer-manager" className="hover:text-[var(--foreground)] transition-colors">transfers</a>
+            <a href="#shared-pages" className="hover:text-[var(--foreground)] transition-colors">shared pages</a>
             <a href="#editorial-tools" className="hover:text-[var(--foreground)] transition-colors">audit</a>
             <a href="#album-manager" className="hover:text-[var(--foreground)] transition-colors">albums</a>
           </nav>
@@ -1146,6 +1227,110 @@ export function AdminDashboard() {
               {showAllTransfers
                 ? "show fewer transfers"
                 : `show all transfers (${filteredTransfers.length})`}
+            </button>
+          ) : null}
+        </div>
+
+        <div id="shared-pages" className="border-t theme-border pt-6 space-y-3 scroll-mt-6">
+          <div className="flex items-center justify-between">
+            <p className="font-mono text-xs theme-muted">currently shared pages</p>
+            <button
+              type="button"
+              disabled={sharedWordsLoading}
+              onClick={() => void loadSharedWords()}
+              className="font-mono text-xs theme-muted hover:text-[var(--foreground)] transition-colors disabled:opacity-50"
+              title="Refreshes active page-level share status."
+            >
+              {sharedWordsLoading ? "refreshing..." : "refresh"}
+            </button>
+          </div>
+
+          <input
+            type="text"
+            value={sharedWordQuery}
+            onChange={(e) => {
+              setSharedWordQuery(e.target.value);
+              setShowAllSharedWords(false);
+            }}
+            placeholder="filter by slug, title, or type"
+            className="w-full bg-transparent border-b border-[var(--stone-200)] focus:border-[var(--foreground)] outline-none font-mono text-xs py-2 transition-colors placeholder:text-[var(--stone-400)]"
+          />
+
+          <div className="grid grid-cols-3 gap-3 font-mono text-sm">
+            <div className="border theme-border rounded-md p-3">
+              <p className="theme-muted text-xs">shared pages</p>
+              <p className="text-lg">{sharedWords.length}</p>
+            </div>
+            <div className="border theme-border rounded-md p-3">
+              <p className="theme-muted text-xs">active links</p>
+              <p className="text-lg">
+                {sharedWords.reduce((sum, word) => sum + word.activeShareCount, 0)}
+              </p>
+            </div>
+            <div className="border theme-border rounded-md p-3">
+              <p className="theme-muted text-xs">pin protected</p>
+              <p className="text-lg">
+                {sharedWords.reduce((sum, word) => sum + word.pinProtectedCount, 0)}
+              </p>
+            </div>
+          </div>
+
+          {filteredSharedWords.length === 0 && !sharedWordsLoading ? (
+            <p className="font-mono text-xs theme-muted">No currently shared pages.</p>
+          ) : null}
+
+          <div className="space-y-2">
+            {visibleSharedWords.map((word) => (
+              <div key={word.slug} className="border theme-border rounded-md p-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="font-mono text-sm truncate">{word.title}</p>
+                    <p className="font-mono text-xs theme-muted truncate">
+                      {word.slug} · {word.type} · {word.visibility}
+                    </p>
+                    <p className="font-mono text-micro theme-faint truncate">
+                      {word.activeShareCount} active · {word.pinProtectedCount} pin · next expires {formatDate(word.nextExpiryAt)}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <Link
+                      href={`/words/${word.slug}`}
+                      className="font-mono text-xs theme-muted hover:text-[var(--foreground)] transition-colors"
+                      title="Open public page view."
+                    >
+                      open
+                    </Link>
+                    <Link
+                      href={`/admin/editor?slug=${encodeURIComponent(word.slug)}`}
+                      className="font-mono text-xs theme-muted hover:text-[var(--foreground)] transition-colors"
+                      title="Open this word in editor share controls."
+                    >
+                      editor
+                    </Link>
+                    <button
+                      type="button"
+                      disabled={sharedWordActionLoading === word.slug}
+                      onClick={() => void handleRevokeSharedWord(word.slug)}
+                      className="font-mono text-xs text-[var(--prose-hashtag)] hover:opacity-80 transition-opacity disabled:opacity-50"
+                      title="Revoke all active share links for this page."
+                    >
+                      {sharedWordActionLoading === word.slug ? "revoking..." : "revoke all"}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {filteredSharedWords.length > 12 ? (
+            <button
+              type="button"
+              onClick={() => setShowAllSharedWords((v) => !v)}
+              className="font-mono text-xs theme-muted hover:text-[var(--foreground)] transition-colors"
+            >
+              {showAllSharedWords
+                ? "show fewer shared pages"
+                : `show all shared pages (${filteredSharedWords.length})`}
             </button>
           ) : null}
         </div>

@@ -11,6 +11,18 @@ function getImageUrl(path: string): string {
   return `${R2_PUBLIC_URL}/${path}`;
 }
 
+const DISALLOWED_SCHEMES = ["javascript:", "vbscript:", "data:"] as const;
+const INTERNAL_ROUTE_PREFIXES = [
+  "/pics/",
+  "/words/",
+  "/t/",
+  "/party",
+  "/upload",
+  "/admin",
+  "/api/",
+  "/feed.xml",
+] as const;
+
 /* ─── Album URLs ─── */
 
 /** Get the thumbnail URL for an album photo (WebP for fast loading) */
@@ -33,11 +45,16 @@ function getOgUrl(album: string, photoId: string): string {
   return getImageUrl(`albums/${album}/og/${photoId}.jpg`);
 }
 
-/* ─── Blog image URLs ─── */
+/* ─── Word media URLs ─── */
 
-/** Get the URL for a blog/word image (stored at words/media/{slug}/{filename}) */
-function getBlogImageUrl(slug: string, filename: string): string {
+/** Get the URL for per-word media (stored at words/media/{slug}/{filename}) */
+function getWordMediaUrl(slug: string, filename: string): string {
   return getImageUrl(`words/media/${slug}/${filename}`);
+}
+
+/** @deprecated Prefer getWordMediaUrl for type-agnostic naming. */
+function getBlogImageUrl(slug: string, filename: string): string {
+  return getWordMediaUrl(slug, filename);
 }
 
 /** Get the URL for a shared reusable asset (stored at words/assets/{assetId}/{filename}) */
@@ -66,6 +83,50 @@ function resolveImageSrc(src: string): string {
   return getImageUrl(trimmed.replace(/^\/+/, ""));
 }
 
+/**
+ * Resolve markdown refs for words content.
+ *
+ * Supports:
+ * - Canonical refs: words/media/... and words/assets/...
+ * - Asset shorthand: assets/<assetId>/<file>
+ * - Slug-local shorthand (when wordSlug is provided):
+ *   - /hero.webp
+ *   - hero.webp
+ */
+function resolveWordContentRef(ref: string, wordSlug?: string): string {
+  const trimmed = ref.trim();
+  if (!trimmed || trimmed.includes("\0")) return "";
+  if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) return trimmed;
+  if (trimmed.startsWith("#") || trimmed.startsWith("?")) return trimmed;
+
+  const lower = trimmed.toLowerCase();
+  if (DISALLOWED_SCHEMES.some((scheme) => lower.startsWith(scheme))) {
+    return "";
+  }
+  if (trimmed.includes("..")) return "";
+
+  const normalized = trimmed.replace(/^\/+/, "");
+  const normalizedLower = normalized.toLowerCase();
+
+  if (normalizedLower.startsWith("words/media/") || normalizedLower.startsWith("words/assets/")) {
+    return getImageUrl(normalized);
+  }
+
+  if (normalizedLower.startsWith("assets/")) {
+    return getImageUrl(`words/assets/${normalized.slice("assets/".length)}`);
+  }
+
+  if (trimmed.startsWith("/") && INTERNAL_ROUTE_PREFIXES.some((prefix) => trimmed.startsWith(prefix))) {
+    return trimmed;
+  }
+
+  if (wordSlug && /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(wordSlug)) {
+    return getImageUrl(`words/media/${wordSlug}/${normalized}`);
+  }
+
+  return getImageUrl(normalized);
+}
+
 /* ─── Transfer URLs ─── */
 
 /** Get the thumbnail URL for a transfer image (WebP, images and GIF first-frame only) */
@@ -89,9 +150,11 @@ export {
   getFullUrl,
   getOriginalUrl,
   getOgUrl,
+  getWordMediaUrl,
   getBlogImageUrl,
   getSharedAssetUrl,
   resolveImageSrc,
+  resolveWordContentRef,
   getTransferThumbUrl,
   getTransferFullUrl,
   getTransferFileUrl,

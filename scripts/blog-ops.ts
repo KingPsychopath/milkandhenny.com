@@ -4,9 +4,6 @@
  * Upload, list, and delete files stored under:
  * - words/media/{slug}/...   (word-scoped media)
  * - words/assets/{assetId}/... (shared asset library)
- *
- * For word-scoped media we still read/delete legacy blog/{slug}/ keys so
- * existing objects remain manageable.
  */
 
 import fs from "fs";
@@ -39,7 +36,6 @@ import type { FileKind } from "../features/media/file-kinds";
 const IMAGE_CONCURRENCY = 3;
 /** Raw uploads are purely network-bound — higher concurrency is fine */
 const RAW_CONCURRENCY = 6;
-const LEGACY_BLOG_PREFIX = "blog/";
 
 /* ─── Types ─── */
 
@@ -77,24 +73,10 @@ function requireR2(): void {
   }
 }
 
-function legacyBlogPrefix(slug: string): string {
-  return `${LEGACY_BLOG_PREFIX}${slug}/`;
-}
-
 function targetLabel(target: WordMediaTarget): string {
   return target.scope === "asset"
     ? `shared asset library (${target.assetId})`
     : `word media (${target.slug})`;
-}
-
-async function listTargetObjects(target: WordMediaTarget) {
-  const primary = listObjects(mediaPrefixForTarget(target));
-  if (target.scope === "asset") {
-    return primary;
-  }
-  const legacy = listObjects(legacyBlogPrefix(target.slug));
-  const [primaryObjects, legacyObjects] = await Promise.all([primary, legacy]);
-  return [...primaryObjects, ...legacyObjects];
 }
 
 /* ─── Operations ─── */
@@ -123,7 +105,7 @@ async function uploadWordMediaFiles(
     throw new Error(`No files found in ${absDir}`);
   }
 
-  const existingObjects = await listTargetObjects(target);
+  const existingObjects = await listObjects(mediaPrefixForTarget(target));
   const existingInfo: WordMediaFileInfo[] = existingObjects.map((o) => ({
     key: o.key,
     filename: path.basename(o.key),
@@ -234,25 +216,15 @@ async function uploadWordMediaFiles(
 async function listWordMediaFiles(target: WordMediaTarget): Promise<WordMediaFileInfo[]> {
   requireR2();
 
-  const objects = await listTargetObjects(target);
-  const primaryPrefix = mediaPrefixForTarget(target);
-  const byFilename = new Map<string, WordMediaFileInfo>();
-
-  for (const obj of objects) {
-    const filename = path.basename(obj.key);
-    const existing = byFilename.get(filename);
-    const isPrimary = obj.key.startsWith(primaryPrefix);
-    if (!existing || isPrimary) {
-      byFilename.set(filename, {
-        key: obj.key,
-        filename,
-        size: obj.size,
-        lastModified: obj.lastModified,
-      });
-    }
-  }
-
-  return [...byFilename.values()].sort((a, b) => a.filename.localeCompare(b.filename));
+  const objects = await listObjects(mediaPrefixForTarget(target));
+  return objects
+    .map((obj) => ({
+      key: obj.key,
+      filename: path.basename(obj.key),
+      size: obj.size,
+      lastModified: obj.lastModified,
+    }))
+    .sort((a, b) => a.filename.localeCompare(b.filename));
 }
 
 async function deleteWordMediaFile(
@@ -262,13 +234,9 @@ async function deleteWordMediaFile(
 ): Promise<void> {
   requireR2();
 
-  const keys = [`${mediaPrefixForTarget(target)}${filename}`];
-  if (target.scope === "word") {
-    keys.push(`${legacyBlogPrefix(target.slug)}${filename}`);
-  }
-
-  onProgress?.(`Deleting ${keys[0]}${target.scope === "word" ? " (and legacy if present)" : ""}...`);
-  await deleteObjects(keys);
+  const key = `${mediaPrefixForTarget(target)}${filename}`;
+  onProgress?.(`Deleting ${key}...`);
+  await deleteObjects([key]);
   onProgress?.("Done.");
 }
 
@@ -278,7 +246,7 @@ async function deleteAllWordMediaFiles(
 ): Promise<number> {
   requireR2();
 
-  const objects = await listTargetObjects(target);
+  const objects = await listObjects(mediaPrefixForTarget(target));
   const keys = objects.map((o) => o.key);
 
   if (keys.length === 0) {
@@ -292,44 +260,11 @@ async function deleteAllWordMediaFiles(
   return deleted;
 }
 
-/* ─── Compatibility wrappers ─── */
-
-async function uploadBlogFiles(
-  slug: string,
-  dir: string,
-  opts?: { force?: boolean; onProgress?: (msg: string) => void }
-): Promise<UploadWordMediaResult> {
-  return uploadWordMediaFiles({ scope: "word", slug }, dir, opts);
-}
-
-async function listBlogFiles(slug: string): Promise<WordMediaFileInfo[]> {
-  return listWordMediaFiles({ scope: "word", slug });
-}
-
-async function deleteBlogFile(
-  slug: string,
-  filename: string,
-  onProgress?: (msg: string) => void
-): Promise<void> {
-  return deleteWordMediaFile({ scope: "word", slug }, filename, onProgress);
-}
-
-async function deleteAllBlogFiles(
-  slug: string,
-  onProgress?: (msg: string) => void
-): Promise<number> {
-  return deleteAllWordMediaFiles({ scope: "word", slug }, onProgress);
-}
-
 export {
   uploadWordMediaFiles,
   listWordMediaFiles,
   deleteWordMediaFile,
   deleteAllWordMediaFiles,
-  uploadBlogFiles,
-  listBlogFiles,
-  deleteBlogFile,
-  deleteAllBlogFiles,
 };
 
 export type {

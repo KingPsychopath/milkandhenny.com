@@ -9,7 +9,7 @@ import { ReadingProgress } from "@/components/ReadingProgress";
 import { Share } from "@/components/Share";
 import { getAlbumBySlug } from "@/features/media/albums";
 import { focalPresetToObjectPosition } from "@/features/media/focal";
-import { resolveImageSrc } from "@/features/media/storage";
+import { resolveWordContentRef } from "@/features/media/storage";
 import { canReadNoteInServerContext, isNotesEnabled } from "@/features/notes/reader";
 import { getNote } from "@/features/notes/store";
 import { BASE_URL, SITE_BRAND, SITE_NAME } from "@/lib/shared/config";
@@ -155,7 +155,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   if (!note) return {};
   const isPublic = note.meta.visibility === "public";
   const description = note.meta.subtitle ?? `Read "${note.meta.title}" on ${SITE_NAME}`;
-  const heroImage = note.meta.image ? resolveImageSrc(note.meta.image) : "";
+  const heroImage = note.meta.image ? resolveWordContentRef(note.meta.image, slug) : "";
   const published = note.meta.publishedAt ?? note.meta.updatedAt;
   return {
     title: `${note.meta.title} — ${SITE_NAME}`,
@@ -192,7 +192,7 @@ export default async function WordSlugPage({ params, searchParams }: Props) {
   const published = note.meta.publishedAt ?? note.meta.updatedAt;
   const headings = canRead && isBlog ? extractHeadings(note.markdown) : [];
   const albums = canRead ? resolveAlbumsFromContent(note.markdown) : {};
-  const heroImage = note.meta.image ? resolveImageSrc(note.meta.image) : "";
+  const heroImage = note.meta.image ? resolveWordContentRef(note.meta.image, slug) : "";
 
   const jsonLd = {
     "@context": "https://schema.org",
@@ -276,7 +276,7 @@ export default async function WordSlugPage({ params, searchParams }: Props) {
           ) : null}
 
           {canRead ? (
-            <PostBody content={note.markdown} albums={albums} />
+            <PostBody content={note.markdown} wordSlug={slug} albums={albums} />
           ) : (
             <UnlockNoteClient slug={slug} shareToken={share ?? ""} />
           )}

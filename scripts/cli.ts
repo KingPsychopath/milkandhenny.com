@@ -82,7 +82,7 @@ import {
   updateNoteRecord,
   updateNoteShare,
 } from "./notes-ops";
-import { isWordType } from "@/features/words/types";
+import { isWordType, WORD_TYPES } from "@/features/words/types";
 import type { WordType } from "@/features/words/types";
 
 /* ─── Formatting ─── */
@@ -1174,7 +1174,6 @@ async function cmdWordsMediaDelete(target: WordMediaTarget, filename?: string) {
 
 const NOTE_VISIBILITIES = ["public", "unlisted", "private"] as const;
 type NoteVisibility = (typeof NOTE_VISIBILITIES)[number];
-const WORD_TYPES = ["blog", "note", "recipe", "review"] as const;
 
 function parseNoteVisibility(value?: string): NoteVisibility | undefined {
   if (!value) return undefined;
@@ -2385,18 +2384,17 @@ async function interactiveTransfers() {
 
 /* ─── Interactive words media ─── */
 
-/** Interactive prompt for selecting a post slug — shows existing posts */
-async function selectPostSlug(prompt = "Post slug"): Promise<string | null> {
+/** Interactive prompt for selecting a word slug — shows existing words */
+async function selectWordSlug(prompt = "Word slug"): Promise<string | null> {
   const { notes } = await listNoteRecords({
     includeNonPublic: true,
-    type: "blog",
     limit: 500,
   });
   const slugs = notes.map((note) => note.slug).sort();
 
   if (slugs.length > 0) {
     console.log();
-    log(dim("Existing posts:"));
+    log(dim("Existing words:"));
     for (const s of slugs) {
       log(`  ${dim("·")} ${s}`);
     }
@@ -2407,7 +2405,7 @@ async function selectPostSlug(prompt = "Post slug"): Promise<string | null> {
     const slug = await ask(prompt, {
       hint: slugs.length > 0
         ? "pick from above or type a new slug"
-        : "e.g. my-first-birthday",
+        : "e.g. my-first-word",
     });
     if (!slug) return null;
     if (!isValidSlug(slug)) {
@@ -2415,11 +2413,11 @@ async function selectPostSlug(prompt = "Post slug"): Promise<string | null> {
       continue;
     }
 
-    // Warn if slug doesn't match any existing blog entry
+    // Warn if slug doesn't match any existing word
     if (!slugs.includes(slug)) {
       log(
         yellow(
-          `  No existing blog entry found for "${slug}" — media will upload and can be used after creating content with this slug.`
+          `  No existing word found for "${slug}" — media will upload and can be used after creating content with this slug.`
         )
       );
     }
@@ -2444,7 +2442,7 @@ async function promptWordsMediaUpload(): Promise<void> {
 
   let target: WordMediaTarget;
   if (scopePick === 1) {
-    const slug = await selectPostSlug();
+    const slug = await selectWordSlug();
     if (!slug) return;
     target = { scope: "word", slug };
   } else {
@@ -2495,18 +2493,13 @@ async function promptWordsMediaUpload(): Promise<void> {
 
 async function selectWordsMediaTarget(scope: "word" | "asset"): Promise<WordMediaTarget | null> {
   if (scope === "word") {
-    const [primary, legacy] = await Promise.all([listObjects("words/media/"), listObjects("blog/")]);
-    const objects = [...primary, ...legacy];
+    const objects = await listObjects("words/media/");
     const slugs = new Set<string>();
 
     for (const obj of objects) {
       const parts = obj.key.split("/");
       if (parts[0] === "words" && parts[1] === "media" && parts.length >= 4 && parts[2]) {
         slugs.add(parts[2]);
-        continue;
-      }
-      if (parts[0] === "blog" && parts.length >= 3 && parts[1]) {
-        slugs.add(parts[1]);
       }
     }
 

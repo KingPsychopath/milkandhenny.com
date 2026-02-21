@@ -45,6 +45,11 @@ type WordResult = {
   skipped: string[];
 };
 
+type WordUploadTargetsResponse = {
+  slugs: string[];
+  assets: string[];
+};
+
 /* ─── Helpers ─── */
 
 function formatBytes(bytes: number): string {
@@ -53,6 +58,28 @@ function formatBytes(bytes: number): string {
   const sizes = ["b", "kb", "mb", "gb"];
   const i = Math.floor(Math.log(bytes) / Math.log(k));
   return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`;
+}
+
+function markdownLabelFromFilename(filename: string): string {
+  return filename.replace(/\.[^.]+$/, "");
+}
+
+function shortWordSnippet(filename: string, kind: string): string {
+  const label = markdownLabelFromFilename(filename);
+  const path = `/${filename}`;
+  if (kind === "image" || kind === "video" || kind === "gif") {
+    return `![${label}](${path})`;
+  }
+  return `[${label}](${path})`;
+}
+
+function shortAssetSnippet(assetId: string, filename: string, kind: string): string {
+  const label = markdownLabelFromFilename(filename);
+  const path = `assets/${assetId}/${filename}`;
+  if (kind === "image" || kind === "video" || kind === "gif") {
+    return `![${label}](${path})`;
+  }
+  return `[${label}](${path})`;
 }
 
 const EXPIRY_OPTIONS = [
@@ -70,6 +97,8 @@ const EXPIRY_OPTIONS = [
 type UploadDashboardProps = {
   isAdmin: boolean;
 };
+
+const DIRECT_UPLOAD_CONCURRENCY = 4;
 
 export function UploadDashboard({ isAdmin }: UploadDashboardProps) {
   const [mounted, setMounted] = useState(false);
@@ -104,6 +133,11 @@ export function UploadDashboard({ isAdmin }: UploadDashboardProps) {
   const [assetId, setAssetId] = useState("");
   const [force, setForce] = useState(false);
   const [wordsResult, setWordsResult] = useState<WordResult | null>(null);
+  const [wordSlugSuggestions, setWordSlugSuggestions] = useState<string[]>([]);
+  const [assetSuggestions, setAssetSuggestions] = useState<string[]>([]);
+  const [targetsLoading, setTargetsLoading] = useState(false);
+  const [targetsResolved, setTargetsResolved] = useState(false);
+  const [targetsError, setTargetsError] = useState("");
 
   /* Upload progress (presigned flow) */
   const [uploadProgress, setUploadProgress] = useState<{
@@ -122,7 +156,10 @@ export function UploadDashboard({ isAdmin }: UploadDashboardProps) {
   /* Refs */
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const effectiveToken = uploadToken || adminToken;
+  const effectiveToken =
+    mode === "words"
+      ? adminToken
+      : uploadToken || adminToken;
   // Auth gate is enforced server-side in `app/(utility)/upload/page.tsx`.
   // This component should work with cookie auth even when no local token exists.
   const isAuthed = true;
@@ -154,6 +191,52 @@ export function UploadDashboard({ isAdmin }: UploadDashboardProps) {
     [adminToken, effectiveToken, uploadToken]
   );
 
+  useEffect(() => {
+    if (!isAdmin || mode !== "words" || targetsResolved || targetsLoading) return;
+    let cancelled = false;
+    const controller = new AbortController();
+    const abortTimeout = setTimeout(() => controller.abort(), 4500);
+    const hardStop = setTimeout(() => {
+      if (cancelled) return;
+      setTargetsLoading(false);
+      setTargetsResolved(true);
+      setTargetsError("suggestions unavailable right now");
+    }, 5500);
+
+    const loadTargets = async () => {
+      setTargetsLoading(true);
+      setTargetsError("");
+      try {
+        const res = await authFetch("/api/upload/words/targets", { signal: controller.signal });
+        if (!res.ok) {
+          setTargetsError("couldn't load suggestions");
+          return;
+        }
+        const data = (await res.json().catch(() => ({}))) as Partial<WordUploadTargetsResponse>;
+        if (cancelled) return;
+        setWordSlugSuggestions(Array.isArray(data.slugs) ? data.slugs : []);
+        setAssetSuggestions(Array.isArray(data.assets) ? data.assets : []);
+      } catch {
+        if (!cancelled) setTargetsError("suggestions unavailable right now");
+      } finally {
+        clearTimeout(abortTimeout);
+        clearTimeout(hardStop);
+        if (!cancelled) {
+          setTargetsLoading(false);
+          setTargetsResolved(true);
+        }
+      }
+    };
+
+    void loadTargets();
+    return () => {
+      clearTimeout(abortTimeout);
+      clearTimeout(hardStop);
+      controller.abort();
+      cancelled = true;
+    };
+  }, [authFetch, isAdmin, mode, targetsResolved, targetsLoading]);
+
   /* ─── File management ─── */
 
   const addFiles = useCallback((newFiles: FileList | File[]) => {
@@ -177,6 +260,46 @@ export function UploadDashboard({ isAdmin }: UploadDashboardProps) {
     setWordsResult(null);
     setUploadError("");
   }, []);
+
+  const uploadPresignedFiles = useCallback(
+    async (entries: Array<{ file: File; url: string }>) => {
+      if (entries.length === 0) return;
+
+      let nextIndex = 0;
+      let completed = 0;
+
+      const worker = async () => {
+        while (true) {
+          const index = nextIndex;
+          nextIndex += 1;
+          if (index >= entries.length) return;
+
+          const entry = entries[index];
+          const putRes = await fetch(entry.url, {
+            method: "PUT",
+            headers: { "Content-Type": entry.file.type || "application/octet-stream" },
+            body: entry.file,
+          });
+
+          if (!putRes.ok) {
+            throw new Error(`Failed to upload ${entry.file.name} (${putRes.status})`);
+          }
+
+          completed += 1;
+          setUploadProgress({
+            phase: "uploading",
+            current: completed,
+            total: entries.length,
+            filename: entry.file.name,
+          });
+        }
+      };
+
+      const workerCount = Math.min(DIRECT_UPLOAD_CONCURRENCY, entries.length);
+      await Promise.all(Array.from({ length: workerCount }, worker));
+    },
+    []
+  );
 
   /* ─── Drag & drop ─── */
 
@@ -278,25 +401,25 @@ export function UploadDashboard({ isAdmin }: UploadDashboardProps) {
       urls: Array<{ name: string; url: string }>;
     };
 
-    // 2. Upload each file directly to R2 (bypasses Vercel entirely)
-    for (let i = 0; i < files.length; i++) {
-      setUploadProgress({
-        phase: "uploading",
-        current: i + 1,
-        total: files.length,
-        filename: files[i].name,
-      });
-
-      const putRes = await fetch(urls[i].url, {
-        method: "PUT",
-        headers: { "Content-Type": files[i].type || "application/octet-stream" },
-        body: files[i],
-      });
-
-      if (!putRes.ok) {
-        throw new Error(`Failed to upload ${files[i].name} (${putRes.status})`);
+    // 2. Upload files directly to R2 (bounded parallelism for faster uploads)
+    const filesByName = new Map<string, File[]>();
+    for (const file of files) {
+      const bucket = filesByName.get(file.name);
+      if (bucket) {
+        bucket.push(file);
+      } else {
+        filesByName.set(file.name, [file]);
       }
     }
+    const uploadEntries = urls.map((entry) => {
+      const bucket = filesByName.get(entry.name);
+      const file = bucket?.shift();
+      if (!file) {
+        throw new Error(`Could not resolve local file for ${entry.name}`);
+      }
+      return { file, url: entry.url };
+    });
+    await uploadPresignedFiles(uploadEntries);
 
     // 3. Finalize — server processes thumbnails and saves metadata
     setUploadProgress({
@@ -364,28 +487,29 @@ export function UploadDashboard({ isAdmin }: UploadDashboardProps) {
       skipped: string[];
     };
 
-    // 2. Upload bytes direct to R2
-    for (let i = 0; i < urls.length; i++) {
-      const entry = urls[i];
-      const file = files.find((f) => f.name === entry.original);
-      if (!file) continue;
+    if (urls.length === 0) {
+      return { uploaded: [], skipped };
+    }
 
-      setUploadProgress({
-        phase: "uploading",
-        current: i + 1,
-        total: urls.length,
-        filename: file.name,
-      });
-
-      const putRes = await fetch(entry.url, {
-        method: "PUT",
-        headers: { "Content-Type": file.type || "application/octet-stream" },
-        body: file,
-      });
-      if (!putRes.ok) {
-        throw new Error(`Failed to upload ${file.name} (${putRes.status})`);
+    // 2. Upload bytes direct to R2 (bounded parallelism)
+    const filesByName = new Map<string, File[]>();
+    for (const file of files) {
+      const bucket = filesByName.get(file.name);
+      if (bucket) {
+        bucket.push(file);
+      } else {
+        filesByName.set(file.name, [file]);
       }
     }
+    const uploadEntries = urls.map((entry) => {
+      const bucket = filesByName.get(entry.original);
+      const file = bucket?.shift();
+      if (!file) {
+        throw new Error(`Could not resolve local file for ${entry.original}`);
+      }
+      return { file, url: entry.url };
+    });
+    await uploadPresignedFiles(uploadEntries);
 
     // 3. Finalize (process images to WebP, return markdown snippets)
     setUploadProgress({ phase: "processing", current: urls.length, total: urls.length });
@@ -587,7 +711,7 @@ export function UploadDashboard({ isAdmin }: UploadDashboardProps) {
                   : "theme-border theme-muted hover:text-[var(--foreground)]"
               }`}
             >
-              word media
+              content media
             </button>
             <button
               type="button"
@@ -601,12 +725,29 @@ export function UploadDashboard({ isAdmin }: UploadDashboardProps) {
               shared assets
             </button>
           </div>
+          <div className="rounded-md border theme-border px-3 py-2.5">
+            <p className="font-mono text-xs theme-muted">
+              {wordsScope === "word"
+                ? "content media: files tied to one word (hero + inline visuals)"
+                : "shared assets: reusable files for multiple words (logos, recurring visuals)"}
+            </p>
+            <p className="font-mono text-micro theme-faint mt-1">
+              destination:
+              {" "}
+              <code className="text-[var(--foreground)]">
+                {wordsScope === "word"
+                  ? `words/media/${slug.trim().toLowerCase() || "{slug}"}/`
+                  : `words/assets/${assetId.trim().toLowerCase() || "{assetId}"}/`}
+              </code>
+            </p>
+          </div>
           <div>
             <label className="font-mono text-xs theme-muted block mb-1.5">
               {wordsScope === "word" ? "slug" : "asset id"}
             </label>
             <input
               type="text"
+              list={wordsScope === "word" ? "word-slug-options" : "asset-id-options"}
               value={wordsScope === "word" ? slug : assetId}
               onChange={(e) =>
                 wordsScope === "word" ? setSlug(e.target.value) : setAssetId(e.target.value)
@@ -614,11 +755,50 @@ export function UploadDashboard({ isAdmin }: UploadDashboardProps) {
               placeholder={wordsScope === "word" ? "my-post-slug" : "brand-kit"}
               className="w-full bg-transparent border-b border-[var(--stone-200)] focus:border-[var(--foreground)] outline-none font-mono text-sm py-2 transition-colors placeholder:text-[var(--stone-400)]"
             />
+            {wordsScope === "word" ? (
+              <datalist id="word-slug-options">
+                {wordSlugSuggestions.map((s) => (
+                  <option key={s} value={s} />
+                ))}
+              </datalist>
+            ) : (
+              <datalist id="asset-id-options">
+                {assetSuggestions.map((s) => (
+                  <option key={s} value={s} />
+                ))}
+              </datalist>
+            )}
             <p className="font-mono text-micro theme-faint mt-1">
               {wordsScope === "word"
                 ? "stores at words/media/{slug}/..."
                 : "stores at words/assets/{assetId}/..."}
             </p>
+            {targetsLoading ? (
+              <p className="font-mono text-micro theme-faint mt-1">loading suggestions...</p>
+            ) : (
+              <div className="mt-1 flex items-center gap-3">
+                <p className="font-mono text-micro theme-faint">
+                  {wordsScope === "word"
+                    ? `${wordSlugSuggestions.length} slug suggestion${wordSlugSuggestions.length === 1 ? "" : "s"}`
+                    : `${assetSuggestions.length} asset suggestion${assetSuggestions.length === 1 ? "" : "s"}`}
+                </p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setTargetsError("");
+                    setTargetsResolved(false);
+                  }}
+                  className="font-mono text-micro theme-muted hover:text-[var(--foreground)] transition-colors"
+                >
+                  reload suggestions
+                </button>
+              </div>
+            )}
+            {targetsError ? (
+              <p className="font-mono text-micro mt-1 text-amber-700 dark:text-amber-500/90">
+                {targetsError}
+              </p>
+            ) : null}
           </div>
           <button
             type="button"
@@ -854,6 +1034,26 @@ export function UploadDashboard({ isAdmin }: UploadDashboardProps) {
                         className="font-mono text-xs theme-muted hover:text-[var(--foreground)] transition-colors shrink-0"
                       >
                         {copied === file.filename ? "copied" : "copy"}
+                      </button>
+                    </div>
+                    <div className="flex items-center gap-2 mt-1">
+                      <code className="font-mono text-xs theme-faint flex-1 truncate">
+                        {wordsScope === "word"
+                          ? shortWordSnippet(file.filename, file.kind)
+                          : shortAssetSnippet(assetId.trim().toLowerCase(), file.filename, file.kind)}
+                      </code>
+                      <button
+                        onClick={() =>
+                          copyToClipboard(
+                            wordsScope === "word"
+                              ? shortWordSnippet(file.filename, file.kind)
+                              : shortAssetSnippet(assetId.trim().toLowerCase(), file.filename, file.kind),
+                            `short-${file.filename}`
+                          )
+                        }
+                        className="font-mono text-xs theme-muted hover:text-[var(--foreground)] transition-colors shrink-0"
+                      >
+                        {copied === `short-${file.filename}` ? "copied" : "copy short"}
                       </button>
                     </div>
                   </div>

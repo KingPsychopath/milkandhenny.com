@@ -6,10 +6,11 @@ import remarkGfm from "remark-gfm";
 import { rehypeHashtags } from "@/lib/markdown/rehype-hashtags";
 import { rehypeSlug } from "@/lib/markdown/rehype-slug";
 import { AlbumEmbed, type EmbeddedAlbum, type EmbedVariant } from "../_components/AlbumEmbed";
-import { resolveImageSrc } from "@/features/media/storage";
+import { resolveWordContentRef } from "@/features/media/storage";
 
 type PostBodyProps = {
   content: string;
+  wordSlug?: string;
   /**
    * Album data resolved server-side, keyed by href (e.g. "/pics/slug").
    * Entirely optional — omit or pass {} to disable album embeds.
@@ -66,7 +67,8 @@ function isImageOnlyParagraph(node: MarkdownNode | undefined): boolean {
 
 /* ─── Base components (always active) ─── */
 
-const baseComponents: Components = {
+function getBaseComponents(wordSlug?: string): Components {
+  return {
   /**
    * Images: resolves relative paths (e.g. "words/media/slug/image.webp" or "words/assets/kit/image.webp")
    * against the R2 public URL. Absolute URLs pass through unchanged.
@@ -74,7 +76,7 @@ const baseComponents: Components = {
    */
   img: ({ src, alt }) => {
     if (!src || typeof src !== "string") return null;
-    const resolved = resolveImageSrc(src);
+    const resolved = resolveWordContentRef(src, wordSlug);
 
     /** Hide the image (or figure) if it fails to load */
     const handleError = (e: React.SyntheticEvent<HTMLImageElement>) => {
@@ -104,6 +106,22 @@ const baseComponents: Components = {
   },
 
   /**
+   * Links: supports words shorthand paths while preserving internal app routes
+   * such as /pics/... and /words/...
+   */
+  a: ({ href, children, ...props }) => {
+    if (!href || typeof href !== "string") {
+      return <a {...props}>{children}</a>;
+    }
+    const resolved = resolveWordContentRef(href, wordSlug);
+    return (
+      <a href={resolved} {...props}>
+        {children}
+      </a>
+    );
+  },
+
+  /**
    * Unwrap paragraphs that contain only an image.
    * Markdown wraps ![alt](src) in <p>, but our img override returns
    * <figure> + <figcaption> which can't be nested inside <p>.
@@ -114,14 +132,16 @@ const baseComponents: Components = {
     }
     return <p {...props}>{children}</p>;
   },
-};
+  };
+}
 
 /**
  * Extend base components with the album-embed paragraph override.
  * Only called when there are actual albums to embed — otherwise
  * the default <p> renderer is used and AlbumEmbed is never invoked.
  */
-function withAlbumEmbeds(albums: Record<string, EmbeddedAlbum>): Components {
+function withAlbumEmbeds(albums: Record<string, EmbeddedAlbum>, wordSlug?: string): Components {
+  const baseComponents = getBaseComponents(wordSlug);
   return {
     ...baseComponents,
 
@@ -137,7 +157,7 @@ function withAlbumEmbeds(albums: Record<string, EmbeddedAlbum>): Components {
         if (childArray.length === 1) {
           const child = childArray[0];
 
-          if (React.isValidElement(child) && child.type === "a") {
+          if (React.isValidElement(child)) {
             const rawHref = (child.props as { href?: string }).href ?? "";
             // Strip hash to look up album data (keyed without #fragment)
             const cleanHref = rawHref.replace(/#.*$/, "");
@@ -163,10 +183,13 @@ function withAlbumEmbeds(albums: Record<string, EmbeddedAlbum>): Components {
 }
 
 /** Renders markdown content as styled prose. Hashtags (#word) are styled via rehype-hashtags. */
-export function PostBody({ content, albums = {} }: PostBodyProps) {
+export function PostBody({ content, wordSlug, albums = {} }: PostBodyProps) {
   const hasAlbums = Object.keys(albums).length > 0;
 
-  const components = React.useMemo(() => (hasAlbums ? withAlbumEmbeds(albums) : baseComponents), [albums, hasAlbums]);
+  const components = React.useMemo(
+    () => (hasAlbums ? withAlbumEmbeds(albums, wordSlug) : getBaseComponents(wordSlug)),
+    [albums, hasAlbums, wordSlug]
+  );
 
   return (
     <div className="prose-blog font-serif">

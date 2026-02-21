@@ -40,6 +40,11 @@ type SharePatchResponse = {
   error?: string;
 };
 
+type SharedWordSummary = {
+  slug: string;
+  activeShareCount: number;
+};
+
 function buildShareUrl(slug: string, token: string): string {
   return `${window.location.origin}/words/${slug}?share=${encodeURIComponent(token)}`;
 }
@@ -62,6 +67,7 @@ export function EditorAdminClient() {
   const [status, setStatus] = useState("");
   const [error, setError] = useState("");
   const [showPreview, setShowPreview] = useState(false);
+  const [activeShareCountBySlug, setActiveShareCountBySlug] = useState<Record<string, number>>({});
 
   const [createSlug, setCreateSlug] = useState("");
   const [createTitle, setCreateTitle] = useState("");
@@ -117,6 +123,21 @@ export function EditorAdminClient() {
     }
   }, [filterTag, filterType, filterVisibility, searchQuery]);
 
+  const loadSharedStatus = useCallback(async () => {
+    try {
+      const res = await fetch("/api/admin/word-shares");
+      const data = (await res.json().catch(() => ({}))) as { items?: SharedWordSummary[] };
+      if (!res.ok) return;
+      const next: Record<string, number> = {};
+      for (const item of data.items ?? []) {
+        next[item.slug] = item.activeShareCount;
+      }
+      setActiveShareCountBySlug(next);
+    } catch {
+      // Non-fatal for editor UX.
+    }
+  }, []);
+
   const loadWord = useCallback(async (slug: string) => {
     if (!slug) return;
     setBusy(true);
@@ -152,6 +173,17 @@ export function EditorAdminClient() {
   useEffect(() => {
     void loadNotes();
   }, [loadNotes]);
+
+  useEffect(() => {
+    void loadSharedStatus();
+  }, [loadSharedStatus]);
+
+  useEffect(() => {
+    const fromQuery = new URLSearchParams(window.location.search).get("slug");
+    if (fromQuery && /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(fromQuery)) {
+      setSelectedSlug(fromQuery);
+    }
+  }, []);
 
   useEffect(() => {
     if (!selectedSlug && notes[0]) setSelectedSlug(notes[0].slug);
@@ -200,7 +232,7 @@ export function EditorAdminClient() {
       setCreateFeatured(false);
       setCreateMarkdown("");
 
-      await loadNotes();
+      await Promise.all([loadNotes(), loadSharedStatus()]);
       if (data.meta?.slug) setSelectedSlug(data.meta.slug);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to create word");
@@ -261,7 +293,7 @@ export function EditorAdminClient() {
       setCurrent(null);
       setShares([]);
       setSelectedSlug("");
-      await loadNotes();
+      await Promise.all([loadNotes(), loadSharedStatus()]);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to delete word");
     } finally {
@@ -298,6 +330,7 @@ export function EditorAdminClient() {
       storeShareToken(data.link.id, data.token);
       await navigator.clipboard.writeText(buildShareUrl(selectedSlug, data.token));
       setStatus("share link created and copied");
+      await loadSharedStatus();
       await loadWord(selectedSlug);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to create share link");
@@ -327,6 +360,7 @@ export function EditorAdminClient() {
       if (!res.ok) throw new Error(data.error ?? "Failed to update share link");
 
       setStatus(enable ? "PIN enabled" : "PIN removed");
+      await loadSharedStatus();
       await loadWord(link.slug);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to update share link");
@@ -355,6 +389,7 @@ export function EditorAdminClient() {
       storeShareToken(link.id, data.token);
       await navigator.clipboard.writeText(buildShareUrl(link.slug, data.token));
       setStatus(reason === "reissue" ? "share link reissued and copied" : "share link rotated and copied");
+      await loadSharedStatus();
       await loadWord(link.slug);
       return data.token;
     } catch (err) {
@@ -412,6 +447,7 @@ export function EditorAdminClient() {
         delete next[link.id];
         return next;
       });
+      await loadSharedStatus();
       await loadWord(link.slug);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to revoke share link");
@@ -525,6 +561,9 @@ export function EditorAdminClient() {
                 <p className="font-mono text-micro theme-muted mt-1">
                   {note.type} · {note.visibility}
                   {note.featured ? " · featured" : ""}
+                  {(activeShareCountBySlug[note.slug] ?? 0) > 0
+                    ? ` · shared (${activeShareCountBySlug[note.slug]})`
+                    : ""}
                 </p>
                 {note.tags.length > 0 && (
                   <p className="font-mono text-micro theme-faint mt-1">#{note.tags.join(" #")}</p>

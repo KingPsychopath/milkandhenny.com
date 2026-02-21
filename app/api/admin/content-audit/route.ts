@@ -8,7 +8,6 @@ import { getNote, listNotes } from "@/features/notes/store";
 
 const WORDS_MEDIA_PREFIX = "words/media/";
 const WORDS_ASSETS_PREFIX = "words/assets/";
-const LEGACY_BLOG_PREFIX = "blog/";
 const LINK_RE = /!?\[[^\]]*]\(([^)\s]+)(?:\s+"[^"]*")?\)/g;
 
 type BrokenRef = {
@@ -29,11 +28,9 @@ function normalizeBlogRefToKey(rawRef: string): string | null {
   if (noFragment.startsWith("/words/media/")) return noFragment.slice(1);
   if (noFragment.startsWith("words/assets/")) return noFragment;
   if (noFragment.startsWith("/words/assets/")) return noFragment.slice(1);
-  if (noFragment.startsWith("blog/")) return noFragment;
-  if (noFragment.startsWith("/blog/")) return noFragment.slice(1);
 
   if (noFragment.startsWith("http://") || noFragment.startsWith("https://")) {
-    for (const marker of ["/words/media/", "/words/assets/", "/blog/"]) {
+    for (const marker of ["/words/media/", "/words/assets/"]) {
       const idx = noFragment.indexOf(marker);
       if (idx !== -1) return noFragment.slice(idx + 1);
     }
@@ -101,12 +98,11 @@ export async function GET(request: NextRequest) {
         reason: "R2 not configured in environment, so object existence cannot be verified.",
       };
     } else {
-      const [newMediaKeys, newAssetKeys, legacyKeys] = await Promise.all([
+      const [newMediaKeys, newAssetKeys] = await Promise.all([
         listObjects(WORDS_MEDIA_PREFIX),
         listObjects(WORDS_ASSETS_PREFIX),
-        listObjects(LEGACY_BLOG_PREFIX),
       ]);
-      const r2KeySet = new Set([...newMediaKeys, ...newAssetKeys, ...legacyKeys].map((o) => o.key));
+      const r2KeySet = new Set([...newMediaKeys, ...newAssetKeys].map((o) => o.key));
       const brokenRefs: BrokenRef[] = [];
       let checkedRefs = 0;
 
