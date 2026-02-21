@@ -11,6 +11,7 @@ import path from "path";
 import {
   deleteObjects,
   listObjects,
+  listPrefixes,
   isConfigured,
 } from "./r2-client";
 import {
@@ -216,6 +217,64 @@ async function deleteTransfer(
 }
 
 /**
+ * Cleanup expired/orphaned transfers without touching active ones.
+ */
+async function cleanupExpiredTransfers(
+  onProgress?: (msg: string) => void
+): Promise<{ expiredIndexEntries: number; scannedPrefixes: number; deletedObjects: number }> {
+  requireRedis();
+  requireR2();
+
+  const redis = getRedis()!;
+  const indexedIds: string[] = await redis.smembers("transfer:index");
+
+  let expiredIds: string[] = [];
+  if (indexedIds.length > 0) {
+    const pipeline = redis.pipeline();
+    for (const id of indexedIds) {
+      pipeline.exists(`transfer:${id}`);
+    }
+    const results = await pipeline.exec();
+    expiredIds = indexedIds.filter((_, i) => results[i] === 0);
+  }
+
+  if (expiredIds.length > 0) {
+    onProgress?.(`Removing ${expiredIds.length} expired transfer index entries...`);
+    const cleanupPipeline = redis.pipeline();
+    for (const id of expiredIds) {
+      cleanupPipeline.srem("transfer:index", id);
+    }
+    await cleanupPipeline.exec();
+  }
+
+  onProgress?.("Scanning R2 transfer prefixes...");
+  const transferPrefixes = await listPrefixes("transfers/");
+  const allR2Ids = transferPrefixes
+    .map((p) => p.replace("transfers/", "").replace(/\/$/, ""))
+    .filter(Boolean);
+
+  let deletedObjects = 0;
+  for (const id of allR2Ids) {
+    const exists = await redis.exists(`transfer:${id}`);
+    if (exists) continue;
+
+    const objects = await listObjects(`transfers/${id}/`);
+    const keys = objects.map((o) => o.key);
+    if (keys.length > 0) {
+      onProgress?.(`Deleting ${keys.length} orphaned files for transfer ${id}...`);
+      deletedObjects += await deleteObjects(keys);
+    }
+    await redis.srem("transfer:index", id);
+  }
+
+  return {
+    expiredIndexEntries: expiredIds.length,
+    scannedPrefixes: allR2Ids.length,
+    deletedObjects,
+  };
+}
+
+/**
  * Nuke all transfers: wipe every R2 object under transfers/ and
  * clear the Redis index + all transfer:* keys. Full reset.
  */
@@ -267,6 +326,7 @@ export {
   getTransferInfo,
   listActiveTransfers,
   deleteTransfer,
+  cleanupExpiredTransfers,
   nukeAllTransfers,
   formatDuration,
   parseExpiry,

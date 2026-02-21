@@ -3,6 +3,7 @@ import "server-only";
 import { deleteObject, downloadBuffer, isConfigured, uploadBuffer } from "@/lib/platform/r2";
 import { getRedis } from "@/lib/platform/redis";
 import { NOTE_INDEX_KEY, legacyNoteContentKey, noteContentKey, noteMetaKey } from "./config";
+import { deleteAllShareLinksForSlug } from "./share";
 import type { NoteMeta, NoteRecord, NoteVisibility } from "./types";
 import type { WordType } from "@/features/words/types";
 import { isWordType, normaliseWordType } from "@/features/words/types";
@@ -329,9 +330,14 @@ async function deleteNote(slug: string): Promise<boolean> {
   if (!existing) return false;
   const redis = getRedis();
   if (redis) {
-    await Promise.all([redis.del(noteMetaKey(slug)), redis.srem(NOTE_INDEX_KEY, slug)]);
+    await Promise.all([
+      redis.del(noteMetaKey(slug)),
+      redis.srem(NOTE_INDEX_KEY, slug),
+      deleteAllShareLinksForSlug(slug),
+    ]);
   } else {
     memoryMeta.delete(slug);
+    await deleteAllShareLinksForSlug(slug);
   }
   await deleteNoteContent(candidateContentKeys(existing));
   return true;

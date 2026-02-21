@@ -52,6 +52,7 @@ import {
   getTransferInfo,
   listActiveTransfers,
   deleteTransfer,
+  cleanupExpiredTransfers,
   nukeAllTransfers,
   formatDuration,
   parseExpiry,
@@ -72,12 +73,15 @@ import {
   revokeRoleSessions,
 } from "./auth-ops";
 import {
+  cleanupNoteShares,
   createNoteRecord,
   createNoteShare,
   deleteNoteRecord,
   getNoteRecord,
   listNoteRecords,
   listNoteShares,
+  purgeNoteShares,
+  resetNoteShares,
   revokeNoteShare,
   updateNoteRecord,
   updateNoteShare,
@@ -942,6 +946,26 @@ async function cmdTransfersDelete(id: string) {
   console.log();
 }
 
+async function cmdTransfersCleanup() {
+  heading("Cleanup expired transfers");
+  log(dim("This removes expired/orphaned transfer storage while keeping active transfers."));
+  console.log();
+
+  const ok = await confirm("Run transfer cleanup now?");
+  if (!ok) {
+    log(dim("Cancelled."));
+    console.log();
+    return;
+  }
+
+  const result = await cleanupExpiredTransfers((msg) => progress(msg));
+  console.log();
+  log(green(`✓ Removed ${result.expiredIndexEntries} expired index entries`));
+  log(green(`✓ Deleted ${result.deletedObjects} orphaned files`));
+  log(dim(`Scanned ${result.scannedPrefixes} transfer prefixes.`));
+  console.log();
+}
+
 async function cmdTransfersNuke() {
   const transfers = await listActiveTransfers();
 
@@ -1496,7 +1520,11 @@ async function cmdNotesShareList(slug: string) {
     return;
   }
   for (const link of links) {
-    const state = link.revokedAt ? "revoked" : "active";
+    const state = link.revokedAt
+      ? "revoked"
+      : new Date(link.expiresAt).getTime() <= Date.now()
+        ? "expired"
+        : "active";
     log(`${bold(link.id)} ${dim(`(${state})`)}`);
     log(`  expires: ${new Date(link.expiresAt).toLocaleString()}`);
     log(`  pin: ${link.pinRequired ? "required" : "off"}`);
@@ -1531,6 +1559,56 @@ async function cmdNotesShareRevoke(slug: string, id: string) {
   const revoked = await revokeNoteShare(slug, id);
   if (!revoked) throw new Error("Share link not found.");
   log(green("✓ Share revoked"));
+  console.log();
+}
+
+async function cmdNotesShareCleanup(opts: { slug?: string }) {
+  heading(opts.slug ? `Cleanup share links: ${opts.slug}` : "Cleanup share links");
+  const result = await cleanupNoteShares(opts.slug);
+  log(green(`✓ Scanned ${result.scannedLinks} links across ${result.scannedSlugs} slug(s)`));
+  log(green(`✓ Removed ${result.removedExpired} expired + ${result.removedRevoked} revoked links`));
+  log(green(`✓ Removed ${result.staleIndexRemoved} stale index entries`));
+  log(dim(`${result.remaining} active links remain.`));
+  console.log();
+}
+
+async function cmdNotesSharePurge(opts: { slug?: string; all?: boolean }) {
+  if (!opts.slug && !opts.all) {
+    throw new Error("Usage: pnpm cli notes share purge --slug <slug> | --all");
+  }
+
+  heading(opts.slug ? `Purge share links: ${opts.slug}` : "Purge ALL share links");
+  log(red("This permanently deletes share link records."));
+  console.log();
+  const ok = await confirm("Proceed?");
+  if (!ok) {
+    log(dim("Cancelled."));
+    console.log();
+    return;
+  }
+
+  const result = await purgeNoteShares(opts.slug);
+  log(green(`✓ Purged ${result.deletedLinks} share link(s) across ${result.scannedSlugs} slug(s)`));
+  console.log();
+}
+
+async function cmdNotesShareReset(all: boolean) {
+  if (!all) {
+    throw new Error("Usage: pnpm cli notes share reset --all");
+  }
+
+  heading("Reset share link state");
+  log(red("This is a hard reset and deletes all share links."));
+  console.log();
+  const ok = await confirm("Reset all share link state?");
+  if (!ok) {
+    log(dim("Cancelled."));
+    console.log();
+    return;
+  }
+
+  const result = await resetNoteShares();
+  log(green(`✓ Reset complete. Removed ${result.deletedLinks} links across ${result.scannedSlugs} slug(s).`));
   console.log();
 }
 
@@ -1753,6 +1831,7 @@ function showHelp() {
       --title ${dim("<title>")}   ${dim('Title for the transfer (e.g. "Photos for John")')}
       --expires ${dim("<time>")}  ${dim("Expiry: 30m, 1h, 12h, 1d, 7d, 14d, 30d (default: 7d)")}
     transfers delete ${dim("<id>")}                    Take down a transfer + delete R2 files
+    transfers cleanup                        Cleanup expired/orphaned transfer storage
     transfers nuke                           Wipe ALL transfers (R2 + Redis) — nuclear option
 
   ${bold("Words Media")} ${dim("(media for words + shared reusable assets)")}
@@ -1777,6 +1856,9 @@ function showHelp() {
     notes share list ${dim("<slug>")}
     notes share update ${dim("<slug> <share-id>")} ${dim("[--pin-required true|false] [--pin <newPin>|--clear-pin] [--expires-days <n>] [--rotate-token]")}
     notes share revoke ${dim("<slug> <share-id>")}
+    notes share cleanup ${dim("[--slug <slug>]")}
+    notes share purge ${dim("--slug <slug> | --all")}
+    notes share reset ${dim("--all")}
 
   ${bold("Bucket")} ${dim("(raw R2 access)")}
     bucket ls ${dim("[prefix]")}                       Browse bucket contents
@@ -2344,6 +2426,7 @@ async function interactiveTransfers() {
       { label: "Transfer details", detail: "URLs, photos, expiry" },
       { label: "Create new transfer", detail: "upload files to shareable link" },
       { label: "Delete a transfer", detail: "take down and remove from R2" },
+      { label: "Cleanup expired/orphaned", detail: "remove stale transfer storage only" },
       { label: "Nuke all transfers", detail: "wipe everything — nuclear option" },
     ]);
 
@@ -2375,6 +2458,10 @@ async function interactiveTransfers() {
         break;
       }
       case 5:
+        await safely(cmdTransfersCleanup);
+        await pause();
+        break;
+      case 6:
         await safely(cmdTransfersNuke);
         await pause();
         break;
@@ -2652,6 +2739,9 @@ async function interactiveNotes() {
       { label: "List share links", detail: "show active/revoked shares for a note" },
       { label: "Update share link", detail: "toggle PIN, rotate token, extend expiry" },
       { label: "Revoke share link", detail: "disable a share URL" },
+      { label: "Cleanup stale share links", detail: "remove expired/revoked and stale indices" },
+      { label: "Purge share links", detail: "delete share records for one/all slugs" },
+      { label: "Reset share link state", detail: "hard reset all share links" },
     ]);
 
     switch (choice) {
@@ -2901,6 +2991,37 @@ async function interactiveNotes() {
         }
         break;
       }
+      case 13: {
+        const pick = await choose("Cleanup scope", [
+          { label: "All slugs" },
+          { label: "Single slug" },
+        ]);
+        if (pick <= 0) break;
+        const slug = pick === 2 ? await selectNoteSlug() : null;
+        await safely(() => cmdNotesShareCleanup({ slug: slug ?? undefined }));
+        await pause();
+        break;
+      }
+      case 14: {
+        const pick = await choose("Purge scope", [
+          { label: "Single slug", detail: "delete links for one slug" },
+          { label: "All slugs", detail: red("destructive") },
+        ]);
+        if (pick <= 0) break;
+        if (pick === 1) {
+          const slug = await selectNoteSlug();
+          if (!slug) break;
+          await safely(() => cmdNotesSharePurge({ slug }));
+        } else {
+          await safely(() => cmdNotesSharePurge({ all: true }));
+        }
+        await pause();
+        break;
+      }
+      case 15:
+        await safely(() => cmdNotesShareReset(true));
+        await pause();
+        break;
     }
   }
 }
@@ -3187,6 +3308,8 @@ async function direct() {
             if (!id) throw new Error("Usage: pnpm cli transfers delete <id>");
             return cmdTransfersDelete(id);
           }
+          case "cleanup":
+            return cmdTransfersCleanup();
           case "nuke":
             return cmdTransfersNuke();
           default:
@@ -3389,6 +3512,17 @@ async function direct() {
               const id = args[4];
               if (!slug || !id) throw new Error("Usage: pnpm cli notes share revoke <slug> <share-id>");
               return cmdNotesShareRevoke(slug, id);
+            }
+            if (action === "cleanup") {
+              const slug = getArg("slug") ?? args[3];
+              return cmdNotesShareCleanup({ slug: slug ?? undefined });
+            }
+            if (action === "purge") {
+              const slug = getArg("slug") ?? args[3];
+              return cmdNotesSharePurge({ slug: slug ?? undefined, all: hasFlag("all") });
+            }
+            if (action === "reset") {
+              return cmdNotesShareReset(hasFlag("all"));
             }
             throw new Error(`Unknown notes share action: ${action ?? ""}`);
           }

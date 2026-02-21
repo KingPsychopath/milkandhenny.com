@@ -1,7 +1,15 @@
 import "server-only";
 
 import { BASE_URL } from "@/lib/shared/config";
-import { createShareLink, listShareLinks, revokeShareLink, updateShareLink } from "@/features/notes/share";
+import {
+  cleanupShareLinksForSlug,
+  createShareLink,
+  deleteAllShareLinksForSlug,
+  listShareLinks,
+  listTrackedShareSlugs,
+  revokeShareLink,
+  updateShareLink,
+} from "@/features/notes/share";
 import { createNote, deleteNote, getNote, listNotes, updateNote } from "@/features/notes/store";
 import type { NoteVisibility } from "@/features/notes/types";
 import type { WordType } from "@/features/words/types";
@@ -107,6 +115,63 @@ async function revokeNoteShare(slug: string, id: string) {
   return revokeShareLink(slug, id);
 }
 
+async function collectShareSlugs(slug?: string): Promise<string[]> {
+  if (slug) return [slug];
+  const [tracked, notesResult] = await Promise.all([
+    listTrackedShareSlugs(),
+    listNotes({ includeNonPublic: true, limit: 2000 }),
+  ]);
+  const slugs = new Set<string>(tracked);
+  for (const note of notesResult.notes) {
+    slugs.add(note.slug);
+  }
+  return [...slugs].sort();
+}
+
+async function cleanupNoteShares(slug?: string) {
+  const slugs = await collectShareSlugs(slug);
+  let scannedLinks = 0;
+  let removedExpired = 0;
+  let removedRevoked = 0;
+  let staleIndexRemoved = 0;
+  let remaining = 0;
+
+  for (const item of slugs) {
+    const result = await cleanupShareLinksForSlug(item);
+    scannedLinks += result.scanned;
+    removedExpired += result.removedExpired;
+    removedRevoked += result.removedRevoked;
+    staleIndexRemoved += result.staleIndexRemoved;
+    remaining += result.remaining;
+  }
+
+  return {
+    scannedSlugs: slugs.length,
+    scannedLinks,
+    removedExpired,
+    removedRevoked,
+    staleIndexRemoved,
+    remaining,
+  };
+}
+
+async function purgeNoteShares(slug?: string) {
+  const slugs = await collectShareSlugs(slug);
+  let deletedLinks = 0;
+  for (const item of slugs) {
+    deletedLinks += await deleteAllShareLinksForSlug(item);
+  }
+  return {
+    scannedSlugs: slugs.length,
+    deletedLinks,
+    remaining: 0,
+  };
+}
+
+async function resetNoteShares() {
+  return purgeNoteShares();
+}
+
 export {
   createNoteRecord,
   listNoteRecords,
@@ -117,4 +182,7 @@ export {
   listNoteShares,
   updateNoteShare,
   revokeNoteShare,
+  cleanupNoteShares,
+  purgeNoteShares,
+  resetNoteShares,
 };

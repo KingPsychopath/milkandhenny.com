@@ -9,6 +9,7 @@ import {
   SHARE_PIN_MAX_ATTEMPTS,
   noteShareIndexKey,
   noteShareKey,
+  noteShareSlugsKey,
 } from "./config";
 import type { ShareLink } from "./types";
 
@@ -22,6 +23,7 @@ type AccessTokenPayload = {
 
 const memoryShares = new Map<string, ShareLink>();
 const memoryShareIndex = new Map<string, Set<string>>();
+const memoryShareSlugs = new Set<string>();
 const memoryPinRateLimit = new Map<string, { attempts: number; resetAtMs: number }>();
 
 function sha256(input: string): string {
@@ -75,12 +77,14 @@ async function setShare(link: ShareLink): Promise<void> {
   if (redis) {
     await redis.set(noteShareKey(link.id), link);
     await redis.sadd(noteShareIndexKey(link.slug), link.id);
+    await redis.sadd(noteShareSlugsKey(), link.slug);
     return;
   }
   memoryShares.set(link.id, link);
   const set = memoryShareIndex.get(link.slug) ?? new Set<string>();
   set.add(link.id);
   memoryShareIndex.set(link.slug, set);
+  memoryShareSlugs.add(link.slug);
 }
 
 async function listShareLinks(slug: string): Promise<ShareLink[]> {
@@ -99,12 +103,177 @@ async function listShareLinks(slug: string): Promise<ShareLink[]> {
   return links.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 }
 
+type ShareCleanupResult = {
+  slug: string;
+  scanned: number;
+  removedExpired: number;
+  removedRevoked: number;
+  staleIndexRemoved: number;
+  remaining: number;
+};
+
+async function listTrackedShareSlugs(): Promise<string[]> {
+  const redis = getRedis();
+  if (redis) {
+    const slugs = (await redis.smembers(noteShareSlugsKey())) as string[];
+    return slugs.filter((slug) => typeof slug === "string" && !!slug);
+  }
+  return [...memoryShareSlugs];
+}
+
+async function cleanupShareLinksForSlug(
+  slug: string,
+  nowMs = Date.now()
+): Promise<ShareCleanupResult> {
+  const redis = getRedis();
+  const indexKey = noteShareIndexKey(slug);
+  let removedExpired = 0;
+  let removedRevoked = 0;
+  let staleIndexRemoved = 0;
+
+  if (redis) {
+    const ids = (await redis.smembers(indexKey)) as string[];
+    if (ids.length === 0) {
+      await redis.srem(noteShareSlugsKey(), slug);
+      return { slug, scanned: 0, removedExpired, removedRevoked, staleIndexRemoved, remaining: 0 };
+    }
+
+    const links = await Promise.all(ids.map((id) => getShareById(id)));
+    const staleIds: string[] = [];
+    const removeIds: string[] = [];
+
+    for (let i = 0; i < ids.length; i += 1) {
+      const id = ids[i];
+      const link = links[i];
+      if (!link || link.slug !== slug) {
+        staleIds.push(id);
+        continue;
+      }
+      const isExpired = new Date(link.expiresAt).getTime() <= nowMs;
+      if (link.revokedAt) {
+        removeIds.push(id);
+        removedRevoked += 1;
+        continue;
+      }
+      if (isExpired) {
+        removeIds.push(id);
+        removedExpired += 1;
+      }
+    }
+
+    if (staleIds.length > 0 || removeIds.length > 0) {
+      const pipeline = redis.pipeline();
+      for (const staleId of staleIds) {
+        pipeline.srem(indexKey, staleId);
+      }
+      for (const removeId of removeIds) {
+        pipeline.del(noteShareKey(removeId));
+        pipeline.srem(indexKey, removeId);
+      }
+      await pipeline.exec();
+      staleIndexRemoved = staleIds.length;
+    }
+
+    const remaining = await redis.scard(indexKey);
+    if (remaining === 0) {
+      await redis.srem(noteShareSlugsKey(), slug);
+    }
+    return {
+      slug,
+      scanned: ids.length,
+      removedExpired,
+      removedRevoked,
+      staleIndexRemoved,
+      remaining: Math.max(0, Number(remaining)),
+    };
+  }
+
+  const ids = memoryShareIndex.get(slug);
+  if (!ids || ids.size === 0) {
+    memoryShareSlugs.delete(slug);
+    return { slug, scanned: 0, removedExpired, removedRevoked, staleIndexRemoved, remaining: 0 };
+  }
+
+  const nextIds = new Set<string>(ids);
+  for (const id of ids) {
+    const link = memoryShares.get(id);
+    if (!link || link.slug !== slug) {
+      nextIds.delete(id);
+      staleIndexRemoved += 1;
+      continue;
+    }
+    const isExpired = new Date(link.expiresAt).getTime() <= nowMs;
+    if (link.revokedAt) {
+      memoryShares.delete(id);
+      nextIds.delete(id);
+      removedRevoked += 1;
+      continue;
+    }
+    if (isExpired) {
+      memoryShares.delete(id);
+      nextIds.delete(id);
+      removedExpired += 1;
+    }
+  }
+
+  if (nextIds.size === 0) {
+    memoryShareIndex.delete(slug);
+    memoryShareSlugs.delete(slug);
+  } else {
+    memoryShareIndex.set(slug, nextIds);
+    memoryShareSlugs.add(slug);
+  }
+
+  return {
+    slug,
+    scanned: ids.size,
+    removedExpired,
+    removedRevoked,
+    staleIndexRemoved,
+    remaining: nextIds.size,
+  };
+}
+
 async function revokeShareLink(slug: string, id: string): Promise<boolean> {
   const link = await getShareById(id);
   if (!link || link.slug !== slug) return false;
   const nowIso = new Date().toISOString();
   await setShare({ ...link, revokedAt: nowIso, updatedAt: nowIso });
   return true;
+}
+
+async function deleteAllShareLinksForSlug(slug: string): Promise<number> {
+  const redis = getRedis();
+  const indexKey = noteShareIndexKey(slug);
+
+  if (redis) {
+    const ids = (await redis.smembers(indexKey)) as string[];
+    if (ids.length === 0) {
+      await redis.srem(noteShareSlugsKey(), slug);
+      return 0;
+    }
+    const pipeline = redis.pipeline();
+    for (const id of ids) {
+      pipeline.del(noteShareKey(id));
+      pipeline.srem(indexKey, id);
+    }
+    pipeline.del(indexKey);
+    pipeline.srem(noteShareSlugsKey(), slug);
+    await pipeline.exec();
+    return ids.length;
+  }
+
+  const ids = memoryShareIndex.get(slug);
+  if (!ids || ids.size === 0) {
+    memoryShareSlugs.delete(slug);
+    return 0;
+  }
+  for (const id of ids) {
+    memoryShares.delete(id);
+  }
+  memoryShareIndex.delete(slug);
+  memoryShareSlugs.delete(slug);
+  return ids.size;
 }
 
 async function createShareLink(input: {
@@ -374,9 +543,12 @@ async function verifyNoteAccessToken(slug: string, token: string): Promise<boole
 export {
   noteAccessCookieName,
   listShareLinks,
+  listTrackedShareSlugs,
+  cleanupShareLinksForSlug,
   createShareLink,
   updateShareLink,
   revokeShareLink,
+  deleteAllShareLinksForSlug,
   verifyShareLinkAccess,
   signNoteAccessToken,
   verifyNoteAccessToken,

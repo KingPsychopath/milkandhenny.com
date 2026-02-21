@@ -188,6 +188,8 @@ export function AdminDashboard() {
   const [sharedWordQuery, setSharedWordQuery] = useState("");
   const [showAllSharedWords, setShowAllSharedWords] = useState(false);
   const [sharedWordActionLoading, setSharedWordActionLoading] = useState<string | null>(null);
+  const [sharedWordCleanupLoading, setSharedWordCleanupLoading] = useState(false);
+  const [sharedWordPurgeLoading, setSharedWordPurgeLoading] = useState(false);
   const [transferActionLoading, setTransferActionLoading] = useState<string | null>(null);
   const [transferCleanupLoading, setTransferCleanupLoading] = useState(false);
   const [transferNukeLoading, setTransferNukeLoading] = useState(false);
@@ -393,6 +395,30 @@ export function AdminDashboard() {
       cmd: "pnpm cli media upload --asset <asset-id> --dir <path>",
       tip: "Uploads reusable files to words/assets/<asset-id>/ for cross-post reuse.",
     },
+    {
+      key: "transfers-cleanup",
+      label: "cleanup expired transfers",
+      cmd: "pnpm cli transfers cleanup",
+      tip: "Removes orphaned/expired transfer storage without wiping active transfers.",
+    },
+    {
+      key: "transfers-nuke",
+      label: "nuke all transfers",
+      cmd: "pnpm cli transfers nuke",
+      tip: "Nuclear reset for transfer storage + metadata.",
+    },
+    {
+      key: "shares-cleanup",
+      label: "purge stale shares",
+      cmd: "pnpm cli notes share cleanup",
+      tip: "Deletes expired/revoked share records and stale indices.",
+    },
+    {
+      key: "shares-purge",
+      label: "nuke all shares",
+      cmd: "pnpm cli notes share purge --all",
+      tip: "Deletes all share links globally (destructive).",
+    },
   ] as const;
 
   const copyCommand = async (key: string, command: string) => {
@@ -572,10 +598,77 @@ export function AdminDashboard() {
     }
   };
 
+  const handlePurgeStaleSharedWords = async () => {
+    if (
+      !confirm(
+        "Purge stale share links now?\n\nThis removes expired/revoked records and stale index entries. Active links remain untouched."
+      )
+    ) {
+      return;
+    }
+    setSharedWordCleanupLoading(true);
+    setErrorMessage("");
+    setStatusMessage("");
+    try {
+      const stepToken = await ensureStepUpToken();
+      if (!stepToken) return;
+      const res = await authFetch("/api/admin/word-shares/cleanup", {
+        method: "POST",
+        headers: withStepUpHeaders(stepToken, { "Content-Type": "application/json" }),
+        body: JSON.stringify({ mode: "cleanup" }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error((data.error as string) || "Failed to purge stale share links");
+      }
+      const msg = `Purge stale complete: expired ${data.removedExpired ?? 0}, revoked ${data.removedRevoked ?? 0}, stale ${data.staleIndexRemoved ?? 0}.`;
+      setStatusMessage(msg);
+      await Promise.all([loadSharedWords(), refreshDashboard()]);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Failed to purge stale share links";
+      setErrorMessage(msg);
+    } finally {
+      setSharedWordCleanupLoading(false);
+    }
+  };
+
+  const handleNukeSharedWords = async () => {
+    if (
+      !confirm(
+        "NUKE ALL shared page links?\n\nThis deletes all active/expired/revoked share records globally and cannot be undone."
+      )
+    ) {
+      return;
+    }
+    setSharedWordPurgeLoading(true);
+    setErrorMessage("");
+    setStatusMessage("");
+    try {
+      const stepToken = await ensureStepUpToken();
+      if (!stepToken) return;
+      const res = await authFetch("/api/admin/word-shares/cleanup", {
+        method: "POST",
+        headers: withStepUpHeaders(stepToken, { "Content-Type": "application/json" }),
+        body: JSON.stringify({ mode: "reset" }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error((data.error as string) || "Failed to nuke share links");
+      }
+      setStatusMessage(`Nuke complete: removed ${data.deletedLinks ?? 0} share link(s) across ${data.scannedSlugs ?? 0} slug(s).`);
+      await Promise.all([loadSharedWords(), refreshDashboard()]);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Failed to nuke share links";
+      setErrorMessage(msg);
+    } finally {
+      setSharedWordPurgeLoading(false);
+    }
+  };
+
   const handleCleanupExpiredTransfers = async () => {
     if (
       !confirm(
-        "Run cleanup for expired/orphaned transfers now?\n\nThis is not a full nuke. Active transfers are kept."
+        "Run cleanup expired for transfers now?\n\nThis is not a full nuke. Active transfers are kept."
       )
     ) {
       return;
@@ -595,7 +688,7 @@ export function AdminDashboard() {
       if (!res.ok) {
         throw new Error((data.error as string) || "Failed to run cleanup");
       }
-      const msg = `Cleanup complete: removed ${data.deletedObjects ?? 0} orphaned files.`;
+      const msg = `Cleanup expired complete: removed ${data.deletedObjects ?? 0} orphaned files.`;
       setStatusMessage(msg);
       setTransferStatus(msg);
       await loadTransfers();
@@ -1259,15 +1352,35 @@ export function AdminDashboard() {
         <div id="shared-pages" className="border-t theme-border pt-6 space-y-3 scroll-mt-6">
           <div className="flex items-center justify-between">
             <p className="font-mono text-xs theme-muted">currently shared pages</p>
-            <button
-              type="button"
-              disabled={sharedWordsLoading}
-              onClick={() => void loadSharedWords()}
-              className="font-mono text-xs theme-muted hover:text-[var(--foreground)] transition-colors disabled:opacity-50"
-              title="Refreshes active page-level share status."
-            >
-              {sharedWordsLoading ? "refreshing..." : "refresh"}
-            </button>
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                disabled={sharedWordPurgeLoading}
+                onClick={() => void handleNukeSharedWords()}
+                className="font-mono text-xs text-[var(--prose-hashtag)] hover:opacity-80 transition-opacity disabled:opacity-50"
+                title="Deletes all share link records globally."
+              >
+                {sharedWordPurgeLoading ? "nuking..." : "nuke all"}
+              </button>
+              <button
+                type="button"
+                disabled={sharedWordCleanupLoading}
+                onClick={() => void handlePurgeStaleSharedWords()}
+                className="font-mono text-xs theme-muted hover:text-[var(--foreground)] transition-colors disabled:opacity-50"
+                title="Deletes expired/revoked page share records and stale index members."
+              >
+                {sharedWordCleanupLoading ? "purging..." : "purge stale"}
+              </button>
+              <button
+                type="button"
+                disabled={sharedWordsLoading}
+                onClick={() => void loadSharedWords()}
+                className="font-mono text-xs theme-muted hover:text-[var(--foreground)] transition-colors disabled:opacity-50"
+                title="Refreshes active page-level share status."
+              >
+                {sharedWordsLoading ? "refreshing..." : "refresh"}
+              </button>
+            </div>
           </div>
 
           <input

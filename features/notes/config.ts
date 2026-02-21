@@ -8,6 +8,7 @@ const NOTE_CONTENT_SUFFIX = "/content.md";
 const LEGACY_NOTE_CONTENT_PREFIX = "notes/";
 const NOTE_SHARE_PREFIX = "notes:share:";
 const NOTE_SHARE_INDEX_PREFIX = "notes:share-index:";
+const NOTE_SHARE_SLUGS_KEY = "notes:share-slugs";
 
 const SHARE_DEFAULT_EXPIRY_DAYS = 7;
 const SHARE_MAX_EXPIRY_DAYS = 30;
@@ -34,6 +35,10 @@ function noteShareIndexKey(slug: string): string {
   return `${NOTE_SHARE_INDEX_PREFIX}${slug}`;
 }
 
+function noteShareSlugsKey(): string {
+  return NOTE_SHARE_SLUGS_KEY;
+}
+
 export {
   NOTES_ENABLED,
   NOTE_INDEX_KEY,
@@ -46,4 +51,5 @@ export {
   legacyNoteContentKey,
   noteShareKey,
   noteShareIndexKey,
+  noteShareSlugsKey,
 };

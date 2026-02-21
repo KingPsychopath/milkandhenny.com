@@ -40,6 +40,8 @@ type SharePatchResponse = {
   error?: string;
 };
 
+type ShareStateFilter = "all" | "active" | "expired" | "revoked";
+
 type SharedWordSummary = {
   slug: string;
   activeShareCount: number;
@@ -89,6 +91,14 @@ function isExpiredShare(link: ShareLink): boolean {
   return new Date(link.expiresAt).getTime() <= Date.now();
 }
 
+function getShareState(link: ShareLink): Exclude<ShareStateFilter, "all"> {
+  if (link.revokedAt) return "revoked";
+  if (isExpiredShare(link)) return "expired";
+  return "active";
+}
+
+const SHARE_EXPIRY_OPTIONS = [1, 3, 7, 14, 30] as const;
+
 export function EditorAdminClient() {
   const [notes, setNotes] = useState<NoteMeta[]>([]);
   const [selectedSlug, setSelectedSlug] = useState("");
@@ -100,6 +110,8 @@ export function EditorAdminClient() {
   const [error, setError] = useState("");
   const [showPreview, setShowPreview] = useState(false);
   const [activeShareCountBySlug, setActiveShareCountBySlug] = useState<Record<string, number>>({});
+  const [newShareExpiryDays, setNewShareExpiryDays] = useState<number>(7);
+  const [shareStateFilter, setShareStateFilter] = useState<ShareStateFilter>("all");
 
   const [createSlug, setCreateSlug] = useState("");
   const [createTitle, setCreateTitle] = useState("");
@@ -317,6 +329,10 @@ export function EditorAdminClient() {
       }),
     [mediaQuery, sharedAssets]
   );
+  const filteredShares = useMemo(() => {
+    if (shareStateFilter === "all") return shares;
+    return shares.filter((link) => getShareState(link) === shareStateFilter);
+  }, [shareStateFilter, shares]);
 
   async function createWord() {
     setBusy(true);
@@ -434,7 +450,7 @@ export function EditorAdminClient() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          expiresInDays: 7,
+          expiresInDays: newShareExpiryDays,
           pinRequired: withPin,
           pin: withPin ? pin : undefined,
         }),
@@ -498,12 +514,15 @@ export function EditorAdminClient() {
     setError("");
     setStatus("");
     try {
+      const isExpired = isExpiredShare(link);
       const res = await fetch(
         `/api/notes/${encodeURIComponent(link.slug)}/shares/${encodeURIComponent(link.id)}`,
         {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ rotateToken: true }),
+          body: JSON.stringify(
+            isExpired ? { rotateToken: true, expiresInDays: newShareExpiryDays } : { rotateToken: true }
+          ),
         }
       );
       const data = (await res.json().catch(() => ({}))) as SharePatchResponse;
@@ -512,13 +531,54 @@ export function EditorAdminClient() {
 
       storeShareToken(link.id, data.token);
       await navigator.clipboard.writeText(buildShareUrl(link.slug, data.token));
-      setStatus(reason === "reissue" ? "share link reissued and copied" : "share link rotated and copied");
+      if (reason === "reissue" && isExpired) {
+        setStatus(`share link reissued for ${newShareExpiryDays} day(s) and copied`);
+      } else {
+        setStatus(reason === "reissue" ? "share link reissued and copied" : "share link rotated and copied");
+      }
       await loadSharedStatus();
       await loadWord(link.slug);
       return data.token;
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to rotate share link");
       return null;
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function extendShare(link: ShareLink) {
+    if (link.revokedAt) {
+      setError("Cannot extend a revoked share link.");
+      return;
+    }
+    const raw = window.prompt("Extend from now by how many days? (1-30)", String(newShareExpiryDays));
+    if (!raw) return;
+    const days = Number.parseInt(raw, 10);
+    if (!Number.isFinite(days) || days < 1 || days > 30) {
+      setError("Expiry must be between 1 and 30 days.");
+      return;
+    }
+
+    setBusy(true);
+    setError("");
+    setStatus("");
+    try {
+      const res = await fetch(
+        `/api/notes/${encodeURIComponent(link.slug)}/shares/${encodeURIComponent(link.id)}`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ expiresInDays: days }),
+        }
+      );
+      const data = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok) throw new Error(data.error ?? "Failed to extend share link");
+      setStatus(`share link extended by ${days} day(s)`);
+      await loadSharedStatus();
+      await loadWord(link.slug);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to extend share link");
     } finally {
       setBusy(false);
     }
@@ -586,7 +646,7 @@ export function EditorAdminClient() {
         <div>
           <h1 className="font-mono text-lg font-bold tracking-tighter">admin · editor</h1>
           <p className="font-mono text-xs theme-muted mt-1">
-            write, filter, and share blogs, notes, recipes, and reviews
+            write, filter, and share posts
           </p>
         </div>
         <div className="flex items-center gap-4 font-mono text-xs">
@@ -1019,17 +1079,52 @@ export function EditorAdminClient() {
 
           {selected ? (
             <div className="border theme-border rounded-md p-4 space-y-3">
-              <div className="flex items-center justify-between">
+              <div className="flex flex-wrap items-center justify-between gap-2">
                 <h2 className="font-mono text-xs theme-muted">share links</h2>
-                <button type="button" onClick={() => void createShare()} className="font-mono text-xs underline">
-                  create share link
-                </button>
+                <div className="flex items-center gap-2">
+                  <label className="font-mono text-micro theme-muted" htmlFor="share-expiry-days">
+                    expires
+                  </label>
+                  <select
+                    id="share-expiry-days"
+                    value={newShareExpiryDays}
+                    onChange={(e) => setNewShareExpiryDays(Number(e.target.value))}
+                    className="font-mono text-xs bg-transparent border theme-border rounded px-2 py-1"
+                  >
+                    {SHARE_EXPIRY_OPTIONS.map((days) => (
+                      <option key={days} value={days}>
+                        {days}d
+                      </option>
+                    ))}
+                  </select>
+                  <button type="button" onClick={() => void createShare()} className="font-mono text-xs underline">
+                    create share link
+                  </button>
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {(["all", "active", "expired", "revoked"] as const).map((state) => (
+                  <button
+                    key={state}
+                    type="button"
+                    onClick={() => setShareStateFilter(state)}
+                    className={`font-mono text-xs px-2 py-1 rounded border transition-colors ${
+                      shareStateFilter === state
+                        ? "border-[var(--foreground)] text-[var(--foreground)]"
+                        : "theme-border theme-muted hover:text-[var(--foreground)]"
+                    }`}
+                  >
+                    {state}
+                  </button>
+                ))}
               </div>
               <div className="space-y-2">
-                {shares.length === 0 ? (
-                  <p className="font-mono text-xs theme-muted">no share links</p>
+                {filteredShares.length === 0 ? (
+                  <p className="font-mono text-xs theme-muted">
+                    {shares.length === 0 ? "no share links" : "no links match this filter"}
+                  </p>
                 ) : (
-                  shares.map((link) => {
+                  filteredShares.map((link) => {
                     const isExpired = isExpiredShare(link);
                     const isRevoked = !!link.revokedAt;
                     const canManagePin = !isExpired && !isRevoked;
@@ -1050,6 +1145,11 @@ export function EditorAdminClient() {
                           {!isRevoked && (
                             <button type="button" onClick={() => void rotateShare(link, "rotate")} className="underline">
                               reissue url
+                            </button>
+                          )}
+                          {!isRevoked && (
+                            <button type="button" onClick={() => void extendShare(link)} className="underline">
+                              extend
                             </button>
                           )}
                           <button

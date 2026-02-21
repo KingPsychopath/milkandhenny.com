@@ -123,6 +123,36 @@ describe("notes share access", () => {
     }
   });
 
+  it("reissues expired links when expiry is extended and token is rotated", async () => {
+    const slug = uniqueSlug("expired-reissue");
+    const created = await createShareLink({ slug, pinRequired: false, expiresInDays: 1 });
+    const realNow = Date.now();
+    const nowSpy = vi.spyOn(Date, "now").mockReturnValue(realNow + 2 * 86400 * 1000);
+    try {
+      const updated = await updateShareLink(slug, created.link.id, {
+        rotateToken: true,
+        expiresInDays: 7,
+      });
+      expect(updated?.token).toBeTruthy();
+
+      const oldTokenAccess = await verifyShareLinkAccess({
+        slug,
+        token: created.token,
+        ip: "127.0.0.4",
+      });
+      expect(oldTokenAccess.ok).toBe(false);
+
+      const newTokenAccess = await verifyShareLinkAccess({
+        slug,
+        token: updated?.token ?? "",
+        ip: "127.0.0.4",
+      });
+      expect(newTokenAccess.ok).toBe(true);
+    } finally {
+      nowSpy.mockRestore();
+    }
+  });
+
   afterAll(() => {
     process.env.AUTH_SECRET = ORIGINAL_AUTH_SECRET;
   });
