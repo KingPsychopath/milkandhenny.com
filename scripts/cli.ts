@@ -62,6 +62,8 @@ import {
   listWordMediaFiles,
   deleteWordMediaFile,
   deleteAllWordMediaFiles,
+  scanOrphanWordMediaFolders,
+  cleanupOrphanWordMediaFolders,
   type WordMediaTarget,
 } from "./blog-ops";
 import {
@@ -1194,6 +1196,74 @@ async function cmdWordsMediaDelete(target: WordMediaTarget, filename?: string) {
   console.log();
 }
 
+async function cmdWordsMediaOrphans(limitRaw?: string) {
+  const parsed = Number(limitRaw ?? "50");
+  const limit = Number.isFinite(parsed) && parsed > 0 ? Math.min(Math.floor(parsed), 500) : 50;
+
+  heading("Word media orphan scan");
+  log(dim("Scans words/media/<slug>/ folders with no matching word slug in metadata."));
+  console.log();
+
+  const summary = await scanOrphanWordMediaFolders({ limit });
+  if (!summary.r2Configured) {
+    log(yellow("R2 is not configured. Cannot scan word media orphans."));
+    console.log();
+    return;
+  }
+
+  log(`${dim("Scanned folders:")} ${summary.scannedFolders}`);
+  log(`${dim("Linked words:")}    ${summary.linkedWords}`);
+  log(`${dim("Orphan folders:")}  ${summary.orphanFolders}`);
+  log(`${dim("Orphan objects:")}  ${summary.orphanObjects}`);
+  log(`${dim("Orphan bytes:")}    ${formatBytes(summary.orphanBytes)}`);
+  console.log();
+
+  if (summary.orphans.length === 0) {
+    log(green("✓ No orphan word-media folders found."));
+    console.log();
+    return;
+  }
+
+  log(bold(`Showing ${summary.orphans.length} orphan folder(s):`));
+  for (const folder of summary.orphans) {
+    const latest = folder.latestModifiedAt
+      ? new Date(folder.latestModifiedAt).toLocaleString()
+      : "—";
+    log(
+      `  ${folder.slug}  ${dim(`${folder.objectCount} objects`)}  ${dim(formatBytes(folder.totalBytes))}  ${dim(latest)}`
+    );
+  }
+  console.log();
+}
+
+async function cmdWordsMediaPurgeStale(skipConfirm = false) {
+  heading("Purge stale word media");
+  log(dim("Deletes orphan words/media/<slug>/ folders with no existing page slug."));
+  console.log();
+
+  if (!skipConfirm) {
+    const ok = await confirm("Purge stale word media folders now?");
+    if (!ok) {
+      log(dim("Cancelled."));
+      console.log();
+      return;
+    }
+  }
+
+  const result = await cleanupOrphanWordMediaFolders();
+  if (!result.r2Configured) {
+    log(yellow("R2 is not configured. Nothing to clean."));
+    console.log();
+    return;
+  }
+
+  log(green(`✓ Deleted folders: ${result.deletedFolders}`));
+  log(green(`✓ Deleted objects: ${result.deletedObjects}`));
+  log(green(`✓ Deleted bytes: ${formatBytes(result.deletedBytes)}`));
+  log(dim(`Scanned folders: ${result.scannedFolders} · linked words: ${result.linkedWords}`));
+  console.log();
+}
+
 /* ─── Notes command handlers ─── */
 
 const NOTE_VISIBILITIES = ["public", "unlisted", "private"] as const;
@@ -1842,6 +1912,8 @@ function showHelp() {
     media list --asset ${dim("<asset-id>")}                     List files in words/assets/<asset-id>/
     media delete --slug ${dim("<word-slug>")} ${dim("[--file <name>]")}     Delete one/all files in words/media/<slug>/
     media delete --asset ${dim("<asset-id>")} ${dim("[--file <name>]")}      Delete one/all files in words/assets/<asset-id>/
+    media orphans ${dim("[--limit <n>]")}                      Scan orphan words/media folders
+    media purge-stale ${dim("[--yes]")}                        Delete orphan words/media folders
 
   ${bold("Notes")} ${dim("(private markdown + signed shares)")}
     notes create --slug ${dim("<slug>")} --title ${dim("<title>")} --markdown-file ${dim("<path>")} ${dim("[--subtitle <text>] [--image <path>] [--type blog|note|recipe|review] [--visibility ...] [--tags a,b] [--featured true|false]")}
@@ -1880,6 +1952,7 @@ function showHelp() {
     ${dim("$")} pnpm cli media upload --slug my-first-birthday --dir ~/Desktop/blog-photos
     ${dim("$")} pnpm cli media upload --asset brand-kit --dir ~/Desktop/brand-assets
     ${dim("$")} pnpm cli media list --slug my-first-birthday
+    ${dim("$")} pnpm cli media orphans --limit 200
     ${dim("$")} pnpm cli photos delete jan-2026 DSC00003
     ${dim("$")} pnpm cli bucket ls words/media/my-first-birthday/
 `);
@@ -2637,6 +2710,8 @@ async function interactiveWordsMedia() {
       { label: "Upload files", detail: "word media or shared assets" },
       { label: "List files", detail: "view files for a target" },
       { label: "Delete file(s)", detail: "remove one or all files for a target" },
+      { label: "Scan orphan folders", detail: "find words/media/<slug>/ folders with no page" },
+      { label: "Purge stale folders", detail: "delete orphan words/media folders" },
     ]);
 
     switch (choice) {
@@ -2696,6 +2771,16 @@ async function interactiveWordsMedia() {
         }
         break;
       }
+      case 4: {
+        const limitRaw = await ask("Max orphan folders to show", { defaultVal: "50" });
+        await safely(() => cmdWordsMediaOrphans(limitRaw || "50"));
+        await pause();
+        break;
+      }
+      case 5:
+        await safely(() => cmdWordsMediaPurgeStale());
+        await pause();
+        break;
     }
   }
 }
@@ -3343,6 +3428,10 @@ async function direct() {
             const target = getMediaTargetFromArgs({ slug: slug ?? undefined, assetId: assetId ?? undefined });
             return cmdWordsMediaDelete(target, file);
           }
+          case "orphans":
+            return cmdWordsMediaOrphans(getArg("limit"));
+          case "purge-stale":
+            return cmdWordsMediaPurgeStale(hasFlag("yes"));
           default:
             throw new Error(`Unknown: media ${subcommand ?? ""}. Run 'pnpm cli help'.`);
         }

@@ -159,6 +159,8 @@ pnpm cli media upload --slug <word-slug> --dir <path>
 pnpm cli media upload --asset <asset-id> --dir <path>
 pnpm cli media list --slug <word-slug>
 pnpm cli media list --asset <asset-id>
+pnpm cli media orphans --limit 200
+pnpm cli media purge-stale
 ```
 
 ### Private Notes
@@ -215,7 +217,7 @@ pnpm cli notes share update <slug> <share-id> --pin-required true --pin <new-pin
 | `UPLOAD_PIN` | Yes (upload) | Dedicated PIN for `/upload` (shareable with non-admin uploaders). |
 | `NOTES_ENABLED` | Optional | Defaults to enabled. Set `false` to disable `/words`, notes APIs, and `/admin/editor`. |
 | `NEXT_PUBLIC_BASE_URL` | CLI only | For generating share URLs. Not needed on Vercel. |
-| `CRON_SECRET` | Optional | Secures daily cleanup cron. |
+| `CRON_SECRET` | Optional | Secures cleanup cron endpoints. |
 
 Everything degrades gracefully when env vars are missing — see [resilience table](./docs/architecture.md#resilience-what-happens-when-env-vars-are-missing).
 
@@ -226,7 +228,7 @@ Everything degrades gracefully when env vars are missing — see [resilience tab
 1. Push to GitHub
 2. Connect to Vercel
 3. Add env vars (KV, R2, auth — see table above)
-4. Deploy — the cron job (`vercel.json`) activates automatically
+4. Deploy — cron jobs in `vercel.json` activate automatically
 
 ---
 

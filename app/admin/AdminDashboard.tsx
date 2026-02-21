@@ -59,6 +59,23 @@ type SharedWordSummary = {
   nextExpiryAt: string;
 };
 
+type WordMediaOrphanFolder = {
+  slug: string;
+  objectCount: number;
+  totalBytes: number;
+  latestModifiedAt: string | null;
+};
+
+type WordMediaOrphanSummary = {
+  r2Configured: boolean;
+  scannedFolders: number;
+  linkedWords: number;
+  orphanFolders: number;
+  orphanObjects: number;
+  orphanBytes: number;
+  orphans: WordMediaOrphanFolder[];
+};
+
 type AdminAlbum = {
   slug: string;
   title: string;
@@ -162,6 +179,14 @@ function formatRemaining(seconds: number): string {
   return `${minutes}m`;
 }
 
+function formatBytes(bytes: number): string {
+  if (!Number.isFinite(bytes) || bytes <= 0) return "0 b";
+  const units = ["b", "kb", "mb", "gb", "tb"];
+  const index = Math.min(units.length - 1, Math.floor(Math.log(bytes) / Math.log(1024)));
+  const size = bytes / 1024 ** index;
+  return `${size.toFixed(size >= 10 || index === 0 ? 0 : 1)} ${units[index]}`;
+}
+
 export function AdminDashboard() {
   const [loading, setLoading] = useState(false);
   const [statusMessage, setStatusMessage] = useState("");
@@ -187,6 +212,10 @@ export function AdminDashboard() {
   const [sharedWordsLoading, setSharedWordsLoading] = useState(false);
   const [sharedWordQuery, setSharedWordQuery] = useState("");
   const [showAllSharedWords, setShowAllSharedWords] = useState(false);
+  const [wordMediaOrphans, setWordMediaOrphans] = useState<WordMediaOrphanSummary | null>(null);
+  const [wordMediaOrphansLoading, setWordMediaOrphansLoading] = useState(false);
+  const [wordMediaCleanupLoading, setWordMediaCleanupLoading] = useState(false);
+  const [showAllMediaOrphans, setShowAllMediaOrphans] = useState(false);
   const [sharedWordActionLoading, setSharedWordActionLoading] = useState<string | null>(null);
   const [sharedWordCleanupLoading, setSharedWordCleanupLoading] = useState(false);
   const [sharedWordPurgeLoading, setSharedWordPurgeLoading] = useState(false);
@@ -312,6 +341,24 @@ export function AdminDashboard() {
     }
   }, [authFetch]);
 
+  const loadWordMediaOrphans = useCallback(async () => {
+    setWordMediaOrphansLoading(true);
+    setErrorMessage("");
+    try {
+      const res = await authFetch("/api/admin/word-media/orphans?limit=100");
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error((data.error as string) || "Failed to load orphan media stats");
+      }
+      setWordMediaOrphans(data as WordMediaOrphanSummary);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Failed to load orphan media stats";
+      setErrorMessage(msg);
+    } finally {
+      setWordMediaOrphansLoading(false);
+    }
+  }, [authFetch]);
+
   const loadTransfersAndScroll = useCallback(async () => {
     // Jump immediately so the user sees progress/spinners in the section.
     transfersSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -325,6 +372,10 @@ export function AdminDashboard() {
   useEffect(() => {
     void loadSharedWords();
   }, [loadSharedWords]);
+
+  useEffect(() => {
+    void loadWordMediaOrphans();
+  }, [loadWordMediaOrphans]);
 
   const runContentAudit = async () => {
     setAuditLoading(true);
@@ -394,6 +445,18 @@ export function AdminDashboard() {
       label: "upload shared assets",
       cmd: "pnpm cli media upload --asset <asset-id> --dir <path>",
       tip: "Uploads reusable files to words/assets/<asset-id>/ for cross-post reuse.",
+    },
+    {
+      key: "media-orphans",
+      label: "scan orphan media",
+      cmd: "pnpm cli media orphans --limit 200",
+      tip: "Scans words/media/<slug>/ folders that no longer map to an existing word slug.",
+    },
+    {
+      key: "media-purge",
+      label: "purge stale media",
+      cmd: "pnpm cli media purge-stale",
+      tip: "Deletes orphan words/media/<slug>/ folders with no existing page slug.",
     },
     {
       key: "transfers-cleanup",
@@ -665,6 +728,41 @@ export function AdminDashboard() {
     }
   };
 
+  const handlePurgeStaleWordMedia = async () => {
+    if (
+      !confirm(
+        "Purge stale word media now?\n\nThis deletes media folders under words/media/{slug}/ when that slug has no existing word page."
+      )
+    ) {
+      return;
+    }
+
+    setWordMediaCleanupLoading(true);
+    setErrorMessage("");
+    setStatusMessage("");
+    try {
+      const stepToken = await ensureStepUpToken();
+      if (!stepToken) return;
+      const res = await authFetch("/api/admin/word-media/orphans", {
+        method: "POST",
+        headers: withStepUpHeaders(stepToken, { "Content-Type": "application/json" }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error((data.error as string) || "Failed to purge stale media");
+      }
+      setStatusMessage(
+        `Purge stale media complete: deleted ${data.deletedFolders ?? 0} folder(s), ${data.deletedObjects ?? 0} object(s), ${formatBytes(data.deletedBytes ?? 0)}.`
+      );
+      await loadWordMediaOrphans();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Failed to purge stale media";
+      setErrorMessage(msg);
+    } finally {
+      setWordMediaCleanupLoading(false);
+    }
+  };
+
   const handleCleanupExpiredTransfers = async () => {
     if (
       !confirm(
@@ -829,6 +927,9 @@ export function AdminDashboard() {
   const visibleSharedWords = showAllSharedWords
     ? filteredSharedWords
     : filteredSharedWords.slice(0, 12);
+  const visibleWordMediaOrphans = showAllMediaOrphans
+    ? wordMediaOrphans?.orphans ?? []
+    : (wordMediaOrphans?.orphans ?? []).slice(0, 12);
 
   // Auth gate lives in `app/admin/page.tsx` (Server Component).
 
@@ -851,6 +952,7 @@ export function AdminDashboard() {
             <a href="#system-health" className="hover:text-[var(--foreground)] transition-colors">health</a>
             <a href="#transfer-manager" className="hover:text-[var(--foreground)] transition-colors">transfers</a>
             <a href="#shared-pages" className="hover:text-[var(--foreground)] transition-colors">shared pages</a>
+            <a href="#word-media-orphans" className="hover:text-[var(--foreground)] transition-colors">media</a>
             <a href="#editorial-tools" className="hover:text-[var(--foreground)] transition-colors">audit</a>
             <a href="#album-manager" className="hover:text-[var(--foreground)] transition-colors">albums</a>
           </nav>
@@ -1469,6 +1571,93 @@ export function AdminDashboard() {
               {showAllSharedWords
                 ? "show fewer shared pages"
                 : `show all shared pages (${filteredSharedWords.length})`}
+            </button>
+          ) : null}
+        </div>
+
+        <div id="word-media-orphans" className="border-t theme-border pt-6 space-y-3 scroll-mt-6">
+          <div className="flex items-center justify-between">
+            <p className="font-mono text-xs theme-muted">word media orphans</p>
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                disabled={wordMediaCleanupLoading || wordMediaOrphansLoading}
+                onClick={() => void handlePurgeStaleWordMedia()}
+                className="font-mono text-xs theme-muted hover:text-[var(--foreground)] transition-colors disabled:opacity-50"
+                title="Deletes words/media/{slug}/ folders for slugs that no longer exist as pages."
+              >
+                {wordMediaCleanupLoading ? "purging..." : "purge stale"}
+              </button>
+              <button
+                type="button"
+                disabled={wordMediaOrphansLoading}
+                onClick={() => void loadWordMediaOrphans()}
+                className="font-mono text-xs theme-muted hover:text-[var(--foreground)] transition-colors disabled:opacity-50"
+                title="Scans words/media/ for orphaned slug folders."
+              >
+                {wordMediaOrphansLoading ? "refreshing..." : "refresh"}
+              </button>
+            </div>
+          </div>
+
+          {wordMediaOrphans && !wordMediaOrphans.r2Configured ? (
+            <p className="font-mono text-xs theme-muted">
+              R2 is not configured, so orphan media scanning is unavailable.
+            </p>
+          ) : null}
+
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 font-mono text-sm">
+            <div className="border theme-border rounded-md p-3">
+              <p className="theme-muted text-xs">scanned folders</p>
+              <p className="text-lg">{wordMediaOrphans?.scannedFolders ?? "—"}</p>
+            </div>
+            <div className="border theme-border rounded-md p-3">
+              <p className="theme-muted text-xs">orphan folders</p>
+              <p className="text-lg">{wordMediaOrphans?.orphanFolders ?? "—"}</p>
+            </div>
+            <div className="border theme-border rounded-md p-3">
+              <p className="theme-muted text-xs">orphan objects</p>
+              <p className="text-lg">{wordMediaOrphans?.orphanObjects ?? "—"}</p>
+            </div>
+            <div className="border theme-border rounded-md p-3">
+              <p className="theme-muted text-xs">orphan bytes</p>
+              <p className="text-sm">{formatBytes(wordMediaOrphans?.orphanBytes ?? 0)}</p>
+            </div>
+          </div>
+
+          {wordMediaOrphans && wordMediaOrphans.orphans.length === 0 && !wordMediaOrphansLoading ? (
+            <p className="font-mono text-xs theme-muted">No orphan word-media folders.</p>
+          ) : null}
+
+          {visibleWordMediaOrphans.length > 0 ? (
+            <div className="space-y-2">
+              {visibleWordMediaOrphans.map((folder) => (
+                <div key={folder.slug} className="border theme-border rounded-md p-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="font-mono text-sm truncate">{folder.slug}</p>
+                      <p className="font-mono text-xs theme-muted truncate">
+                        {folder.objectCount} object(s) · {formatBytes(folder.totalBytes)}
+                      </p>
+                    </div>
+                    <p className="font-mono text-micro theme-faint shrink-0">
+                      latest {formatDate(folder.latestModifiedAt)}
+                    </p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : null}
+
+          {(wordMediaOrphans?.orphans.length ?? 0) > 12 ? (
+            <button
+              type="button"
+              onClick={() => setShowAllMediaOrphans((value) => !value)}
+              className="font-mono text-xs theme-muted hover:text-[var(--foreground)] transition-colors"
+            >
+              {showAllMediaOrphans
+                ? "show fewer folders"
+                : `show all folders (${wordMediaOrphans?.orphans.length ?? 0})`}
             </button>
           ) : null}
         </div>

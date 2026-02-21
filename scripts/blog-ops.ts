@@ -27,6 +27,12 @@ import {
   toR2Filename,
   type WordMediaTarget,
 } from "../features/blog/upload";
+import {
+  cleanupOrphanWordMediaFolders,
+  scanOrphanWordMediaFolders,
+  type WordMediaOrphanCleanupResult,
+  type WordMediaOrphanSummary,
+} from "../features/words/media-maintenance";
 import { formatBytes } from "../lib/shared/format";
 import type { FileKind } from "../features/media/file-kinds";
 
@@ -265,6 +271,8 @@ export {
   listWordMediaFiles,
   deleteWordMediaFile,
   deleteAllWordMediaFiles,
+  scanOrphanWordMediaFolders,
+  cleanupOrphanWordMediaFolders,
 };
 
 export type {
@@ -272,4 +280,6 @@ export type {
   UploadWordMediaResult,
   WordMediaFileInfo,
   WordMediaTarget,
+  WordMediaOrphanSummary,
+  WordMediaOrphanCleanupResult,
 };
