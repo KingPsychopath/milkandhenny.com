@@ -12,7 +12,7 @@ export const metadata: Metadata = {
   description: "Posts, recipes, and notes in one searchable place.",
 };
 export const dynamic = "force-static";
-export const revalidate = 300;
+export const revalidate = 60;
 
 type Props = Record<string, never>;
 

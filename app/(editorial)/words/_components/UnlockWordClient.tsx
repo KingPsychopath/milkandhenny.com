@@ -1,13 +1,15 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 
 type Props = {
   slug: string;
-  shareToken: string;
 };
 
-export function UnlockWordClient({ slug, shareToken }: Props) {
+export function UnlockWordClient({ slug }: Props) {
+  const searchParams = useSearchParams();
+  const shareToken = searchParams.get("share") ?? "";
   const [pin, setPin] = useState("");
   const [pinRequired, setPinRequired] = useState(false);
   const [checking, setChecking] = useState(false);

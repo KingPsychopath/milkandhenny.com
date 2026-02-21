@@ -6,7 +6,7 @@ import { listWords } from "@/features/words/store";
 
 const RECENT_LIMIT = 5;
 export const dynamic = "force-static";
-export const revalidate = 300;
+export const revalidate = 60;
 
 export default async function Home() {
   const noteBlogs = isWordsEnabled()

@@ -122,7 +122,7 @@ function normaliseNoteMeta(meta: NoteMeta): NoteMeta {
     readingTime:
       Number.isFinite(meta.readingTime) && meta.readingTime > 0
         ? Math.max(1, Math.round(meta.readingTime))
-        : 0,
+        : 1,
     readingTimeVersion:
       Number.isFinite(meta.readingTimeVersion) && meta.readingTimeVersion > 0
         ? Math.floor(meta.readingTimeVersion)
@@ -171,28 +171,14 @@ async function readNoteContent(meta: Pick<NoteMeta, "slug" | "type" | "bodyKey">
   return null;
 }
 
-async function ensureMetaReadingTime(meta: NoteMeta): Promise<NoteMeta> {
-  if (
-    Number.isFinite(meta.readingTime) &&
-    meta.readingTime > 0 &&
-    Number.isFinite(meta.readingTimeVersion) &&
-    meta.readingTimeVersion >= READING_TIME_VERSION
-  ) {
-    return meta;
+function parseRawMeta(raw: unknown): NoteMeta | null {
+  if (!raw) return null;
+  try {
+    const parsed = typeof raw === "string" ? (JSON.parse(raw) as NoteMeta) : (raw as NoteMeta);
+    return normaliseNoteMeta(parsed);
+  } catch {
+    return null;
   }
-
-  const content = await readNoteContent(meta);
-  const readingTime = estimateReadingTime(content?.markdown ?? "");
-  const next: NoteMeta = { ...meta, readingTime, readingTimeVersion: READING_TIME_VERSION };
-  const redis = getRedis();
-
-  if (redis) {
-    await redis.set(wordMetaKey(next.slug), next);
-  } else {
-    memoryMeta.set(next.slug, next);
-  }
-
-  return next;
 }
 
 async function deleteNoteContent(keys: string[]): Promise<void> {
@@ -215,20 +201,19 @@ async function getAllNoteMetas(): Promise<NoteMeta[]> {
   if (redis) {
     const slugs = (await redis.smembers(WORD_INDEX_KEY)) as string[];
     if (slugs.length === 0) return [];
-    const metas = await Promise.all(
-      slugs.map(async (slug) => {
-        const raw = await redis.get<NoteMeta | string>(wordMetaKey(slug));
-        if (!raw) return null;
-        const parsed = typeof raw === "string" ? (JSON.parse(raw) as NoteMeta) : raw;
-        return ensureMetaReadingTime(normaliseNoteMeta(parsed));
-      })
-    );
+
+    const pipeline = redis.pipeline();
+    for (const slug of slugs) {
+      pipeline.get(wordMetaKey(slug));
+    }
+    const raws = await pipeline.exec();
+    const metas = raws.map((raw) => parseRawMeta(raw));
     return metas
       .filter((m): m is NoteMeta => m !== null)
       .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
   }
 
-  const metas = await Promise.all([...memoryMeta.values()].map((meta) => ensureMetaReadingTime(normaliseNoteMeta(meta))));
+  const metas = [...memoryMeta.values()].map((meta) => normaliseNoteMeta(meta));
   return metas
     .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
 }
@@ -239,13 +224,11 @@ async function getWordMeta(slug: string): Promise<NoteMeta | null> {
 
   if (redis) {
     const raw = await redis.get<NoteMeta | string>(wordMetaKey(slug));
-    if (!raw) return null;
-    const parsed = typeof raw === "string" ? (JSON.parse(raw) as NoteMeta) : raw;
-    return ensureMetaReadingTime(normaliseNoteMeta(parsed));
+    return parseRawMeta(raw);
   }
 
   const meta = memoryMeta.get(slug);
-  return meta ? ensureMetaReadingTime(normaliseNoteMeta(meta)) : null;
+  return meta ? normaliseNoteMeta(meta) : null;
 }
 
 async function getWord(slug: string): Promise<NoteRecord | null> {
@@ -253,7 +236,15 @@ async function getWord(slug: string): Promise<NoteRecord | null> {
   if (!meta) return null;
   const content = await readNoteContent(meta);
   if (!content) return null;
-  return { meta, markdown: content.markdown };
+  const withReadingTime =
+    Number.isFinite(meta.readingTime) && meta.readingTime > 0
+      ? meta
+      : {
+          ...meta,
+          readingTime: estimateReadingTime(content.markdown),
+          readingTimeVersion: READING_TIME_VERSION,
+        };
+  return { meta: withReadingTime, markdown: content.markdown };
 }
 
 async function createWord(input: {

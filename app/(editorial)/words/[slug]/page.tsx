@@ -24,7 +24,6 @@ const STOP_WORDS = new Set([
 
 type Props = {
   params: Promise<{ slug: string }>;
-  searchParams: Promise<{ share?: string }>;
 };
 
 type EmbeddedAlbum = {
@@ -130,7 +129,7 @@ function resolveAlbumsFromContent(content: string): Record<string, EmbeddedAlbum
   }
 }
 
-export const revalidate = 300;
+export const revalidate = 60;
 export const dynamicParams = true;
 
 export async function generateStaticParams() {
@@ -182,9 +181,8 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   };
 }
 
-export default async function WordSlugPage({ params, searchParams }: Props) {
+export default async function WordSlugPage({ params }: Props) {
   const { slug } = await params;
-  const { share } = await searchParams;
 
   if (!isWordsEnabled()) notFound();
   const note = await getWord(slug);
@@ -194,7 +192,7 @@ export default async function WordSlugPage({ params, searchParams }: Props) {
       ? await canReadWordInServerContext(note.meta)
       : true;
   const isPrivateLocked = note.meta.visibility === "private" && !canRead;
-  const readingTime = canRead ? estimateReadingTime(note.markdown) : 0;
+  const readingTime = canRead ? (note.meta.readingTime > 0 ? note.meta.readingTime : estimateReadingTime(note.markdown)) : 0;
   const published = note.meta.publishedAt ?? note.meta.updatedAt;
   const headings = canRead ? extractHeadings(note.markdown) : [];
   const albums = canRead ? resolveAlbumsFromContent(note.markdown) : {};
@@ -296,7 +294,7 @@ export default async function WordSlugPage({ params, searchParams }: Props) {
           {canRead ? (
             <WordBody content={note.markdown} wordSlug={slug} albums={albums} />
           ) : (
-            <UnlockWordClient slug={slug} shareToken={share ?? ""} />
+            <UnlockWordClient slug={slug} />
           )}
         </article>
       </main>
