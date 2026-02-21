@@ -40,6 +40,14 @@ function normaliseTags(tags?: string[]): string[] {
   return [...new Set(cleaned)];
 }
 
+function arraysEqual(a: string[], b: string[]): boolean {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    if (a[i] !== b[i]) return false;
+  }
+  return true;
+}
+
 function normaliseImageRef(value?: string): string | undefined {
   if (typeof value !== "string") return undefined;
   const trimmed = value.trim();
@@ -327,7 +335,6 @@ async function updateWord(
   if (!existing) return null;
 
   const nextVisibility = input.visibility ?? existing.visibility;
-  const updatedAt = new Date().toISOString();
   const nextType = input.type ? normaliseWordType(input.type) : existing.type;
   const nextBodyKey =
     nextType !== existing.type ? wordContentKey(nextType, slug) : existing.bodyKey;
@@ -335,40 +342,78 @@ async function updateWord(
     typeof input.markdown === "string"
       ? normaliseMarkdownBody(input.markdown, slug)
       : undefined;
+  const nextTitle = input.title?.trim() || existing.title;
+  const nextSubtitle =
+    input.subtitle === null
+      ? undefined
+      : input.subtitle === undefined
+        ? existing.subtitle
+        : input.subtitle.trim() || undefined;
+  const nextImage =
+    input.image === null
+      ? undefined
+      : input.image === undefined
+        ? existing.image
+        : normaliseImageRef(input.image);
+  const nextTags = input.tags ? normaliseTags(input.tags) : existing.tags;
+  const nextFeatured = typeof input.featured === "boolean" ? input.featured : existing.featured;
+
+  const typeChanged = nextType !== existing.type;
+  const bodyKeyChanged = nextBodyKey !== existing.bodyKey;
+  const titleChanged = nextTitle !== existing.title;
+  const subtitleChanged = nextSubtitle !== existing.subtitle;
+  const imageChanged = nextImage !== existing.image;
+  const visibilityChanged = nextVisibility !== existing.visibility;
+  const tagsChanged = !arraysEqual(nextTags, existing.tags);
+  const featuredChanged = nextFeatured !== existing.featured;
+
+  const needsContentRead =
+    typeof nextMarkdown === "string" || typeChanged || bodyKeyChanged;
+  const currentContent = needsContentRead ? await readNoteContent(existing) : null;
+  const markdownChanged =
+    typeof nextMarkdown === "string" && (currentContent?.markdown ?? null) !== nextMarkdown;
+
+  const hasMetadataChanges =
+    titleChanged ||
+    subtitleChanged ||
+    imageChanged ||
+    typeChanged ||
+    bodyKeyChanged ||
+    visibilityChanged ||
+    tagsChanged ||
+    featuredChanged;
+
+  if (!hasMetadataChanges && !markdownChanged) {
+    const existingCurrent = currentContent ?? (await readNoteContent(existing));
+    return existingCurrent ? { meta: existing, markdown: existingCurrent.markdown } : null;
+  }
+
+  const updatedAt = new Date().toISOString();
+  const publishedAt =
+    nextVisibility === "public"
+      ? existing.publishedAt ?? updatedAt
+      : undefined;
 
   const meta: NoteMeta = {
     ...existing,
-    title: input.title?.trim() || existing.title,
-    subtitle:
-      input.subtitle === null
-        ? undefined
-        : input.subtitle === undefined
-          ? existing.subtitle
-          : input.subtitle.trim() || undefined,
-    image:
-      input.image === null
-        ? undefined
-        : input.image === undefined
-          ? existing.image
-          : normaliseImageRef(input.image),
+    title: nextTitle,
+    subtitle: nextSubtitle,
+    image: nextImage,
     type: nextType,
     bodyKey: nextBodyKey,
     visibility: nextVisibility,
     updatedAt,
     readingTime:
-      typeof nextMarkdown === "string"
+      markdownChanged && typeof nextMarkdown === "string"
         ? estimateReadingTime(nextMarkdown)
         : existing.readingTime,
     readingTimeVersion:
-      typeof nextMarkdown === "string"
+      markdownChanged && typeof nextMarkdown === "string"
         ? READING_TIME_VERSION
         : existing.readingTimeVersion,
-    publishedAt:
-      nextVisibility === "public"
-        ? existing.publishedAt ?? updatedAt
-        : undefined,
-    tags: input.tags ? normaliseTags(input.tags) : existing.tags,
-    featured: typeof input.featured === "boolean" ? input.featured : existing.featured,
+    publishedAt,
+    tags: nextTags,
+    featured: nextFeatured,
   };
 
   const redis = getRedis();
@@ -378,12 +423,11 @@ async function updateWord(
     memoryMeta.set(slug, meta);
   }
 
-  let markdown = typeof nextMarkdown === "string" ? nextMarkdown : null;
+  let markdown = markdownChanged && typeof nextMarkdown === "string" ? nextMarkdown : null;
   let sourceKey: string | null = null;
   if (markdown === null && (nextType !== existing.type || nextBodyKey !== existing.bodyKey)) {
-    const current = await readNoteContent(existing);
-    markdown = current?.markdown ?? null;
-    sourceKey = current?.key ?? null;
+    markdown = currentContent?.markdown ?? null;
+    sourceKey = currentContent?.key ?? null;
   }
 
   if (markdown !== null) {

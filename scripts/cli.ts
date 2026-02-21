@@ -1863,7 +1863,12 @@ async function cmdWordsUpload(opts: {
       markdown,
     });
     if (!updated) throw new Error("Failed to update word");
-    log(green(`✓ Updated ${opts.slug} from ${abs}`));
+    const unchanged = updated.meta.updatedAt === existing.meta.updatedAt;
+    if (unchanged) {
+      log(dim(`No changes for ${opts.slug} (already up to date)`));
+    } else {
+      log(green(`✓ Updated ${opts.slug} from ${abs}`));
+    }
     console.log();
     return;
   }
@@ -1927,6 +1932,7 @@ async function cmdWordsUpdate(
     markdownFile?: string;
   }
 ) {
+  const before = await getWordRecord(slug);
   let markdown: string | undefined;
   if (opts.markdownFile) {
     markdown = readMarkdownFile(opts.markdownFile);
@@ -1944,7 +1950,12 @@ async function cmdWordsUpdate(
     markdown,
   });
   if (!updated) throw new Error(`Word "${slug}" not found`);
-  log(green("✓ Word updated"));
+  const unchanged = !!before && updated.meta.updatedAt === before.meta.updatedAt;
+  if (unchanged) {
+    log(dim("No changes (already up to date)"));
+  } else {
+    log(green("✓ Word updated"));
+  }
   console.log();
 }
 
@@ -2136,6 +2147,10 @@ async function syncSingleNoteFile(absFile: string, rootDir: string): Promise<"cr
       markdown: input.markdown,
     });
     if (!updated) return "skipped";
+    if (updated.meta.updatedAt === existing.meta.updatedAt) {
+      log(dim(`unchanged ${input.slug}`) + dim(` ← ${input.relPath}`));
+      return "skipped";
+    }
     log(green(`updated ${input.slug}`) + dim(` ← ${input.relPath}`));
     return "updated";
   }
@@ -2298,21 +2313,34 @@ async function cmdWordsPull(opts: { dir: string; type?: WordType; visibility?: N
 
   const writtenResults = await mapWithConcurrency(words, getCliIoConcurrency(), async (word) => {
     const record = await getWordRecord(word.slug);
-    if (!record) return false;
+    if (!record) return "skipped";
 
     const typeDir = path.join(rootDir, word.type);
     fs.mkdirSync(typeDir, { recursive: true });
     const outPath = path.join(typeDir, `${word.slug}.md`);
     const frontmatter = noteFrontmatter(record.meta);
     const withFrontmatter = matter.stringify(record.markdown, frontmatter);
+    if (fs.existsSync(outPath)) {
+      try {
+        const current = fs.readFileSync(outPath, "utf-8");
+        if (current === withFrontmatter) {
+          log(dim(`unchanged ${word.type}/${word.slug}.md`));
+          return "skipped";
+        }
+      } catch {
+        // Fall through to overwrite when current file is unreadable.
+      }
+    }
     fs.writeFileSync(outPath, withFrontmatter, "utf-8");
     log(green(`wrote ${word.type}/${word.slug}.md`));
-    return true;
+    return "written";
   });
-  const written = writtenResults.filter(Boolean).length;
+  const written = writtenResults.filter((result) => result === "written").length;
+  const skipped = writtenResults.filter((result) => result === "skipped").length;
 
   console.log();
   log(green(`✓ exported ${written} words`));
+  log(dim(`skipped ${skipped} unchanged`));
   console.log();
 }
 
