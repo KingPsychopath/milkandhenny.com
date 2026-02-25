@@ -80,6 +80,20 @@ type CreateTransferResult = {
   fileCounts: { images: number; videos: number; gifs: number; audio: number; other: number };
 };
 
+type AppendTransferOpts = {
+  id: string;
+  dir: string;
+};
+
+type AppendTransferResult = {
+  transfer: TransferData;
+  shareUrl: string;
+  adminUrl: string;
+  addedCount: number;
+  addedSize: number;
+  fileCounts: { images: number; videos: number; gifs: number; audio: number; other: number };
+};
+
 /* ─── Transfer operations ─── */
 
 /** Images/GIFs: 3 concurrent (Sharp is CPU-heavy). Raw: 6 (network-bound). */
@@ -156,17 +170,11 @@ function arraysEqual(a: string[], b: string[]): boolean {
   return a.length === b.length && a.every((value, i) => value === b[i]);
 }
 
-/** Create a new transfer: process files, upload to R2, save metadata to Redis */
-async function createTransfer(
-  opts: CreateTransferOpts,
-  onProgress?: (msg: string) => void
-): Promise<CreateTransferResult> {
-  requireRedis();
-  requireR2();
+function resolveTransferDir(dir: string): string {
+  return path.resolve(dir.replace(/^~/, process.env.HOME ?? "~"));
+}
 
-  const absDir = path.resolve(
-    opts.dir.replace(/^~/, process.env.HOME ?? "~")
-  );
+function listTransferEntries(absDir: string): string[] {
   if (!fs.existsSync(absDir)) {
     throw new Error(`Directory not found: ${absDir}`);
   }
@@ -179,6 +187,37 @@ async function createTransfer(
   if (entries.length === 0) {
     throw new Error(`No files found in ${absDir}`);
   }
+
+  return entries;
+}
+
+function transferFileCounts(files: TransferData["files"]) {
+  return {
+    images: files.filter((f) => f.kind === "image").length,
+    gifs: files.filter((f) => f.kind === "gif").length,
+    videos: files.filter((f) => f.kind === "video").length,
+    audio: files.filter((f) => f.kind === "audio").length,
+    other: files.filter((f) => f.kind === "file").length,
+  };
+}
+
+function predictedTransferFileId(filename: string): string {
+  if (PROCESSABLE_EXTENSIONS.test(filename) || ANIMATED_EXTENSIONS.test(filename)) {
+    return path.basename(filename, path.extname(filename));
+  }
+  return filename;
+}
+
+/** Create a new transfer: process files, upload to R2, save metadata to Redis */
+async function createTransfer(
+  opts: CreateTransferOpts,
+  onProgress?: (msg: string) => void
+): Promise<CreateTransferResult> {
+  requireRedis();
+  requireR2();
+
+  const absDir = resolveTransferDir(opts.dir);
+  const entries = listTransferEntries(absDir);
 
   const checkpoint = readTransferCheckpoint(absDir);
   if (checkpoint && checkpoint.dir !== absDir) {
@@ -318,15 +357,104 @@ async function createTransfer(
   const shareUrl = `${BASE_URL}/t/${transferId}`;
   const adminUrl = `${BASE_URL}/t/${transferId}?token=${deleteToken}`;
 
-  const fileCounts = {
-    images: sortedFiles.filter((f) => f.kind === "image").length,
-    gifs: sortedFiles.filter((f) => f.kind === "gif").length,
-    videos: sortedFiles.filter((f) => f.kind === "video").length,
-    audio: sortedFiles.filter((f) => f.kind === "audio").length,
-    other: sortedFiles.filter((f) => f.kind === "file").length,
-  };
+  const fileCounts = transferFileCounts(sortedFiles);
 
   return { transfer, shareUrl, adminUrl, totalSize, fileCounts };
+}
+
+/** Append files to an existing active transfer and preserve its expiry. */
+async function appendToTransfer(
+  opts: AppendTransferOpts,
+  onProgress?: (msg: string) => void
+): Promise<AppendTransferResult> {
+  requireRedis();
+  requireR2();
+
+  const transfer = await getTransfer(opts.id);
+  if (!transfer) {
+    throw new Error(`Transfer "${opts.id}" not found or already expired.`);
+  }
+
+  const remainingTtlSeconds = Math.floor(
+    (new Date(transfer.expiresAt).getTime() - Date.now()) / 1000
+  );
+  if (remainingTtlSeconds <= 0) {
+    throw new Error(`Transfer "${opts.id}" has already expired.`);
+  }
+
+  const absDir = resolveTransferDir(opts.dir);
+  const entries = listTransferEntries(absDir);
+
+  const existingIds = new Set(transfer.files.map((f) => f.id));
+  const existingNames = new Set(transfer.files.map((f) => f.filename));
+  const newPredictedIds = new Set<string>();
+  const duplicateNames: string[] = [];
+  const duplicateIds: string[] = [];
+  const duplicateIdsWithinSource: string[] = [];
+
+  for (const file of entries) {
+    const predictedId = predictedTransferFileId(file);
+    if (existingNames.has(file)) duplicateNames.push(file);
+    if (existingIds.has(predictedId)) duplicateIds.push(`${file} → ${predictedId}`);
+    if (newPredictedIds.has(predictedId)) duplicateIdsWithinSource.push(`${file} → ${predictedId}`);
+    newPredictedIds.add(predictedId);
+  }
+
+  if (duplicateNames.length > 0 || duplicateIds.length > 0 || duplicateIdsWithinSource.length > 0) {
+    const parts: string[] = [];
+    if (duplicateNames.length > 0) {
+      parts.push(`Existing filenames conflict: ${duplicateNames.slice(0, 5).join(", ")}${duplicateNames.length > 5 ? "…" : ""}`);
+    }
+    if (duplicateIds.length > 0) {
+      parts.push(`Existing media IDs conflict: ${duplicateIds.slice(0, 5).join(", ")}${duplicateIds.length > 5 ? "…" : ""}`);
+    }
+    if (duplicateIdsWithinSource.length > 0) {
+      parts.push(
+        `Source folder contains duplicate transfer IDs (same image/GIF stem): ${duplicateIdsWithinSource.slice(0, 5).join(", ")}${duplicateIdsWithinSource.length > 5 ? "…" : ""}`
+      );
+    }
+    throw new Error(
+      `Append aborted to avoid overwriting existing transfer files.\n${parts.join("\n")}`
+    );
+  }
+
+  onProgress?.(`Appending ${entries.length} files to transfer ${transfer.id}...`);
+
+  const heavy = entries.filter(
+    (f) => PROCESSABLE_EXTENSIONS.test(f) || ANIMATED_EXTENSIONS.test(f)
+  );
+  const light = entries.filter(
+    (f) => !PROCESSABLE_EXTENSIONS.test(f) && !ANIMATED_EXTENSIONS.test(f)
+  );
+
+  const processFile = async (file: string) => {
+    const raw = fs.readFileSync(path.join(absDir, file));
+    onProgress?.(`Processing ${file}...`);
+    const result = await processTransferFile(raw, file, transfer.id);
+    onProgress?.(`Uploaded ${file}`);
+    return result;
+  };
+
+  const heavyResults = await mapConcurrent(heavy, IMAGE_CONCURRENCY, processFile);
+  const lightResults = await mapConcurrent(light, RAW_CONCURRENCY, processFile);
+  const addedResults = [...heavyResults, ...lightResults];
+
+  const mergedFiles = sortTransferFiles([...transfer.files, ...addedResults.map((r) => r.file)]);
+  const updatedTransfer: TransferData = {
+    ...transfer,
+    files: mergedFiles,
+  };
+
+  await saveTransfer(updatedTransfer, remainingTtlSeconds);
+
+  return {
+    transfer: updatedTransfer,
+    shareUrl: `${BASE_URL}/t/${transfer.id}`,
+    adminUrl: `${BASE_URL}/t/${transfer.id}?token=${transfer.deleteToken}`,
+    addedCount: addedResults.length,
+    addedSize: addedResults.reduce((sum, r) => sum + r.uploadedBytes, 0),
+    fileCounts: transferFileCounts(addedResults.map((r) => r.file) as TransferData["files"]),
+  };
 }
 
 /** Get a transfer's full data and computed metadata */
@@ -482,6 +610,7 @@ async function nukeAllTransfers(
 
 export {
   createTransfer,
+  appendToTransfer,
   getTransferInfo,
   listActiveTransfers,
   deleteTransfer,
@@ -491,4 +620,4 @@ export {
   parseExpiry,
 };
 
-export type { CreateTransferOpts, CreateTransferResult };
+export type { CreateTransferOpts, CreateTransferResult, AppendTransferOpts, AppendTransferResult };

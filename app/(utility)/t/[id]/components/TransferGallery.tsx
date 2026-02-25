@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useCallback, useEffect, memo } from "react";
+import { useState, useCallback, useEffect, useMemo, memo } from "react";
+import { usePathname, useSearchParams } from "next/navigation";
 import { getTransferThumbUrl, getTransferFullUrl, getTransferFileUrl } from "@/features/media/storage";
 import { fetchBlob, downloadBlob } from "@/lib/client/media-download";
 import { formatBytes } from "@/lib/shared/format";
@@ -26,7 +27,7 @@ type TransferGalleryProps = {
   files: TransferFileData[];
 };
 
-type GalleryFilter = "all" | "photos" | "videos" | "files";
+type GalleryFilter = "all" | "photos" | "videos" | "audio" | "files";
 type BrowseMode = "scroll" | "pages";
 
 const INITIAL_VISUAL_RENDER_COUNT = 120;
@@ -35,11 +36,20 @@ const INITIAL_FILE_LIST_RENDER_COUNT = 80;
 const FILE_LIST_RENDER_INCREMENT = 120;
 const PAGE_SIZE = 120;
 
-function matchesFilter(file: TransferFileData, filter: GalleryFilter): boolean {
-  if (filter === "all") return true;
-  if (filter === "photos") return file.kind === "image" || file.kind === "gif";
-  if (filter === "videos") return file.kind === "video";
-  return file.kind === "audio" || file.kind === "file";
+function isGalleryFilter(value: string | null): value is GalleryFilter {
+  return value === "all" || value === "photos" || value === "videos" || value === "audio" || value === "files";
+}
+
+function isBrowseMode(value: string | null): value is BrowseMode {
+  return value === "scroll" || value === "pages";
+}
+
+function getScopeSelectLabel(filter: GalleryFilter): string {
+  if (filter === "all") return "[ select all ]";
+  if (filter === "photos") return "[ select all photos ]";
+  if (filter === "videos") return "[ select all videos ]";
+  if (filter === "audio") return "[ select all audio ]";
+  return "[ select all files ]";
 }
 
 function PageControls({
@@ -252,44 +262,130 @@ function LightboxContent({
  * - Files/Audio: list section below the gallery with download buttons
  */
 export function TransferGallery({ transferId, files }: TransferGalleryProps) {
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const [downloading, setDownloading] = useState(false);
   const [downloadProgress, setDownloadProgress] = useState<{ done: number; total: number } | null>(null);
   const [savingSingle, setSavingSingle] = useState(false);
   const [lightboxError, setLightboxError] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
-  const [activeFilter, setActiveFilter] = useState<GalleryFilter>("all");
-  const [browseMode, setBrowseMode] = useState<BrowseMode>("scroll");
-  const [page, setPage] = useState(1);
+  const [activeFilter, setActiveFilter] = useState<GalleryFilter>(() => {
+    const raw = searchParams.get("filter");
+    return isGalleryFilter(raw) ? raw : "all";
+  });
+  const [browseMode, setBrowseMode] = useState<BrowseMode>(() => {
+    const raw = searchParams.get("view");
+    return isBrowseMode(raw) ? raw : "scroll";
+  });
+  const [page, setPage] = useState(() => {
+    const raw = Number(searchParams.get("page"));
+    return Number.isFinite(raw) && raw > 0 ? Math.floor(raw) : 1;
+  });
 
-  const filterCounts = {
-    all: files.length,
-    photos: files.filter((f) => matchesFilter(f, "photos")).length,
-    videos: files.filter((f) => matchesFilter(f, "videos")).length,
-    files: files.filter((f) => matchesFilter(f, "files")).length,
-  };
+  const grouped = useMemo(() => {
+    const photos: TransferFileData[] = [];
+    const videos: TransferFileData[] = [];
+    const audio: TransferFileData[] = [];
+    const fileOnly: TransferFileData[] = [];
+    const visual: TransferFileData[] = [];
 
-  const filteredFiles = files.filter((f) => matchesFilter(f, activeFilter));
+    for (const file of files) {
+      if (file.kind === "image" || file.kind === "gif") {
+        photos.push(file);
+        visual.push(file);
+        continue;
+      }
+      if (file.kind === "video") {
+        videos.push(file);
+        visual.push(file);
+        continue;
+      }
+      if (file.kind === "audio") {
+        audio.push(file);
+        continue;
+      }
+      fileOnly.push(file);
+    }
+
+    return { photos, videos, audio, fileOnly, visual };
+  }, [files]);
+
+  const filterCounts = useMemo(
+    () => ({
+      all: files.length,
+      photos: grouped.photos.length,
+      videos: grouped.videos.length,
+      audio: grouped.audio.length,
+      files: grouped.fileOnly.length,
+    }),
+    [files.length, grouped]
+  );
+
+  useEffect(() => {
+    function syncFromLocation() {
+      const current = new URLSearchParams(window.location.search);
+      const nextFilterRaw = current.get("filter");
+      const nextFilter = isGalleryFilter(nextFilterRaw) ? nextFilterRaw : "all";
+      setActiveFilter((prev) => (prev === nextFilter ? prev : nextFilter));
+
+      const nextViewRaw = current.get("view");
+      const nextView = isBrowseMode(nextViewRaw) ? nextViewRaw : "scroll";
+      setBrowseMode((prev) => (prev === nextView ? prev : nextView));
+
+      const nextPageRaw = Number(current.get("page"));
+      const nextPage =
+        Number.isFinite(nextPageRaw) && nextPageRaw > 0 ? Math.floor(nextPageRaw) : 1;
+      setPage((prev) => (prev === nextPage ? prev : nextPage));
+    }
+
+    syncFromLocation();
+    window.addEventListener("popstate", syncFromLocation);
+    return () => window.removeEventListener("popstate", syncFromLocation);
+  }, []);
+
+  const filteredFiles = useMemo(() => {
+    if (activeFilter === "all") return files;
+    if (activeFilter === "photos") return grouped.photos;
+    if (activeFilter === "videos") return grouped.videos;
+    if (activeFilter === "audio") return grouped.audio;
+    return grouped.fileOnly;
+  }, [activeFilter, files, grouped]);
   const totalPages = Math.max(1, Math.ceil(filteredFiles.length / PAGE_SIZE));
   const canPaginate = filteredFiles.length > PAGE_SIZE;
 
   useEffect(() => {
-    setPage(1);
-  }, [activeFilter, browseMode]);
+    if (
+      activeFilter !== "all" &&
+      (filterCounts[activeFilter] === 0 || filterCounts[activeFilter] === filterCounts.all)
+    ) {
+      setActiveFilter("all");
+    }
+  }, [activeFilter, filterCounts]);
 
   useEffect(() => {
     setPage((prev) => Math.min(prev, totalPages));
   }, [totalPages]);
 
   const pageStartIndex = browseMode === "pages" ? (page - 1) * PAGE_SIZE : 0;
-  const pageFiles =
-    browseMode === "pages"
-      ? filteredFiles.slice(pageStartIndex, pageStartIndex + PAGE_SIZE)
-      : filteredFiles;
+  const pageFiles = useMemo(
+    () =>
+      browseMode === "pages"
+        ? filteredFiles.slice(pageStartIndex, pageStartIndex + PAGE_SIZE)
+        : filteredFiles,
+    [browseMode, filteredFiles, pageStartIndex]
+  );
 
   // Split files into visual (gallery) and non-visual (list)
-  const visualFiles = pageFiles.filter((f) => f.kind === "image" || f.kind === "gif" || f.kind === "video");
-  const nonVisualFiles = pageFiles.filter((f) => f.kind === "audio" || f.kind === "file");
+  const { visualFiles, nonVisualFiles } = useMemo(() => {
+    const visual: TransferFileData[] = [];
+    const nonVisual: TransferFileData[] = [];
+    for (const file of pageFiles) {
+      if (file.kind === "image" || file.kind === "gif" || file.kind === "video") visual.push(file);
+      else nonVisual.push(file);
+    }
+    return { visualFiles: visual, nonVisualFiles: nonVisual };
+  }, [pageFiles]);
   const [visibleVisualCount, setVisibleVisualCount] = useState(() =>
     Math.min(visualFiles.length, INITIAL_VISUAL_RENDER_COUNT)
   );
@@ -315,10 +411,74 @@ export function TransferGallery({ transferId, files }: TransferGalleryProps) {
     browseMode === "pages" ? 0 : Math.max(0, visualFiles.length - visibleVisualFiles.length);
   const hiddenNonVisualCount =
     browseMode === "pages" ? 0 : Math.max(0, nonVisualFiles.length - visibleNonVisualFiles.length);
-  const selectedInFilteredCount = filteredFiles.reduce((sum, file) => sum + Number(selectedIds.has(file.id)), 0);
-  const selectedInPageCount = pageFiles.reduce((sum, file) => sum + Number(selectedIds.has(file.id)), 0);
+  const selectedInFilteredCount = useMemo(
+    () => filteredFiles.reduce((sum, file) => sum + Number(selectedIds.has(file.id)), 0),
+    [filteredFiles, selectedIds]
+  );
+  const selectedInPageCount = useMemo(
+    () => pageFiles.reduce((sum, file) => sum + Number(selectedIds.has(file.id)), 0),
+    [pageFiles, selectedIds]
+  );
   const allFilteredSelected = filteredFiles.length > 0 && selectedInFilteredCount === filteredFiles.length;
   const allPageSelected = pageFiles.length > 0 && selectedInPageCount === pageFiles.length;
+  const lightboxVisualFiles = useMemo(() => {
+    if (activeFilter === "all") return grouped.visual;
+    if (activeFilter === "photos") return grouped.photos;
+    if (activeFilter === "videos") return grouped.videos;
+    return [] as TransferFileData[];
+  }, [activeFilter, grouped]);
+  const lightboxVisualIndexById = useMemo(
+    () => new Map(lightboxVisualFiles.map((file, index) => [file.id, index])),
+    [lightboxVisualFiles]
+  );
+
+  useEffect(() => {
+    const currentQuery = window.location.search.replace(/^\?/, "");
+    const next = new URLSearchParams(window.location.search);
+    if (activeFilter === "all") next.delete("filter");
+    else next.set("filter", activeFilter);
+
+    if (browseMode === "scroll") next.delete("view");
+    else next.set("view", browseMode);
+
+    if (browseMode === "pages" && page > 1) next.set("page", String(page));
+    else next.delete("page");
+
+    const nextQuery = next.toString();
+    if (nextQuery !== currentQuery) {
+      window.history.replaceState(
+        window.history.state,
+        "",
+        nextQuery ? `${pathname}?${nextQuery}` : pathname
+      );
+    }
+  }, [activeFilter, browseMode, page, pathname]);
+
+  const handleFilterChange = useCallback(
+    (nextFilter: GalleryFilter) => {
+      if (nextFilter === activeFilter) return;
+      setLightboxIndex(null);
+      setActiveFilter(nextFilter);
+      setPage(1);
+    },
+    [activeFilter]
+  );
+
+  const handleBrowseModeChange = useCallback(
+    (nextMode: BrowseMode) => {
+      if (nextMode === browseMode) return;
+      setBrowseMode(nextMode);
+      setPage(1);
+    },
+    [browseMode]
+  );
+
+  const handlePageChange = useCallback(
+    (nextPage: number) => {
+      setPage(Math.max(1, Math.min(nextPage, totalPages)));
+    },
+    [totalPages]
+  );
 
   const openLightbox = useCallback((index: number) => {
     setLightboxError(false);
@@ -328,13 +488,29 @@ export function TransferGallery({ transferId, files }: TransferGalleryProps) {
 
   const goNext = useCallback(() => {
     setLightboxError(false);
-    setLightboxIndex((prev) => (prev !== null && prev < visualFiles.length - 1 ? prev + 1 : prev));
-  }, [visualFiles.length]);
+    setLightboxIndex((prev) => (prev !== null && prev < lightboxVisualFiles.length - 1 ? prev + 1 : prev));
+  }, [lightboxVisualFiles.length]);
 
   const goPrev = useCallback(() => {
     setLightboxError(false);
     setLightboxIndex((prev) => (prev !== null && prev > 0 ? prev - 1 : prev));
   }, []);
+
+  // Preload adjacent full-size visuals for smoother lightbox navigation.
+  useEffect(() => {
+    if (lightboxIndex === null) return;
+
+    const candidates = [lightboxVisualFiles[lightboxIndex - 1], lightboxVisualFiles[lightboxIndex + 1]].filter(
+      (file): file is TransferFileData => !!file
+    );
+
+    for (const file of candidates) {
+      if (file.kind !== "image") continue;
+      const img = new Image();
+      img.decoding = "async";
+      img.src = getTransferFullUrl(transferId, file.id);
+    }
+  }, [lightboxIndex, lightboxVisualFiles, transferId]);
 
   /* Keyboard navigation */
   useEffect(() => {
@@ -438,10 +614,6 @@ export function TransferGallery({ transferId, files }: TransferGalleryProps) {
     });
   }, []);
 
-  const selectAll = useCallback(() => {
-    setSelectedIds(new Set(files.map((f) => f.id)));
-  }, [files]);
-
   const selectFiltered = useCallback(() => {
     setSelectedIds((prev) => {
       const next = new Set(prev);
@@ -463,9 +635,16 @@ export function TransferGallery({ transferId, files }: TransferGalleryProps) {
   }, []);
 
   const selectedCount = selectedIds.size;
-  const allSelected = files.length > 0 && selectedCount === files.length;
-
-  const currentVisual = lightboxIndex !== null ? visualFiles[lightboxIndex] : null;
+  const currentVisual = lightboxIndex !== null ? lightboxVisualFiles[lightboxIndex] : null;
+  const visibleFilterTabs = ([
+    { key: "all", label: "all", count: filterCounts.all },
+    { key: "photos", label: "photos", count: filterCounts.photos },
+    { key: "videos", label: "videos", count: filterCounts.videos },
+    { key: "audio", label: "audio", count: filterCounts.audio },
+    { key: "files", label: "files", count: filterCounts.files },
+  ] as const).filter(
+    (tab) => tab.key === "all" || (tab.count > 0 && tab.count < filterCounts.all)
+  );
 
   const downloadLabel = downloadProgress ? `[ ${downloadProgress.done}/${downloadProgress.total} fetched... ]` : "[ zipping... ]";
 
@@ -474,25 +653,20 @@ export function TransferGallery({ transferId, files }: TransferGalleryProps) {
       {/* Filters + browsing mode */}
       <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
         <div className="flex flex-wrap items-center gap-2 font-mono text-micro tracking-wide">
-          {([
-            ["all", "all"],
-            ["photos", "photos"],
-            ["videos", "videos"],
-            ["files", "files"],
-          ] as const).map(([key, label]) => {
+          {visibleFilterTabs.map(({ key, label, count }) => {
             const isActive = activeFilter === key;
             return (
               <button
                 key={key}
                 type="button"
-                onClick={() => setActiveFilter(key)}
+                onClick={() => handleFilterChange(key)}
                 className={
                   isActive
                     ? "px-2 py-1 rounded-sm border theme-border text-foreground"
                     : "px-2 py-1 rounded-sm border theme-border theme-muted hover:text-foreground transition-colors"
                 }
               >
-                [{label} {filterCounts[key]}]
+                [{label} {count}]
               </button>
             );
           })}
@@ -502,7 +676,7 @@ export function TransferGallery({ transferId, files }: TransferGalleryProps) {
           <span className="theme-muted">browse</span>
           <button
             type="button"
-            onClick={() => setBrowseMode("scroll")}
+            onClick={() => handleBrowseModeChange("scroll")}
             className={
               browseMode === "scroll"
                 ? "px-2 py-1 rounded-sm border theme-border text-foreground"
@@ -513,7 +687,7 @@ export function TransferGallery({ transferId, files }: TransferGalleryProps) {
           </button>
           <button
             type="button"
-            onClick={() => setBrowseMode("pages")}
+            onClick={() => handleBrowseModeChange("pages")}
             className={
               browseMode === "pages"
                 ? "px-2 py-1 rounded-sm border theme-border text-foreground"
@@ -530,7 +704,7 @@ export function TransferGallery({ transferId, files }: TransferGalleryProps) {
 
       {browseMode === "pages" && canPaginate && (
         <div className="mb-4">
-          <PageControls page={page} totalPages={totalPages} onPageChange={setPage} />
+          <PageControls page={page} totalPages={totalPages} onPageChange={handlePageChange} />
         </div>
       )}
 
@@ -565,12 +739,7 @@ export function TransferGallery({ transferId, files }: TransferGalleryProps) {
           )}
           {!allFilteredSelected && filteredFiles.length > 1 && (
             <button onClick={selectFiltered} className="theme-muted hover:text-foreground transition-colors">
-              [ select filtered ]
-            </button>
-          )}
-          {!allSelected && files.length > 1 && activeFilter !== "all" && (
-            <button onClick={selectAll} className="theme-muted hover:text-foreground transition-colors">
-              [ select all ]
+              {getScopeSelectLabel(activeFilter)}
             </button>
           )}
           <button
@@ -620,7 +789,7 @@ export function TransferGallery({ transferId, files }: TransferGalleryProps) {
                 file={file}
                 isSelected={selectedIds.has(file.id)}
                 onToggleSelect={() => toggleSelection(file.id)}
-                onClick={() => openLightbox(index)}
+                onClick={() => openLightbox(lightboxVisualIndexById.get(file.id) ?? index)}
               />
             ))}
           </div>
@@ -738,7 +907,7 @@ export function TransferGallery({ transferId, files }: TransferGalleryProps) {
               ) : (
                 <span className="text-white/20">← prev</span>
               )}
-              {lightboxIndex < visualFiles.length - 1 ? (
+              {lightboxIndex < lightboxVisualFiles.length - 1 ? (
                 <button onClick={goNext} className="hover:text-white transition-colors" aria-label="Next file">
                   next →
                 </button>
@@ -748,7 +917,7 @@ export function TransferGallery({ transferId, files }: TransferGalleryProps) {
             </div>
             <div className="flex items-center gap-4">
               <span className="font-mono text-micro text-white/30">
-                {lightboxIndex + 1} / {visualFiles.length}
+                {lightboxIndex + 1} / {lightboxVisualFiles.length}
               </span>
               <button
                 onClick={() => downloadSingle(currentVisual)}
@@ -764,7 +933,7 @@ export function TransferGallery({ transferId, files }: TransferGalleryProps) {
 
       {browseMode === "pages" && canPaginate && (
         <div className="mt-8">
-          <PageControls page={page} totalPages={totalPages} onPageChange={setPage} />
+          <PageControls page={page} totalPages={totalPages} onPageChange={handlePageChange} />
         </div>
       )}
     </div>

@@ -49,6 +49,7 @@ import {
 } from "./r2-client";
 import {
   createTransfer,
+  appendToTransfer,
   getTransferInfo,
   listActiveTransfers,
   deleteTransfer,
@@ -969,6 +970,36 @@ async function cmdTransfersUpload(opts: {
   console.log();
   log(bold("Admin link (takedown):"));
   log(`  ${yellow(result.adminUrl)}`);
+  console.log();
+}
+
+async function cmdTransfersAppend(opts: {
+  id: string;
+  dir: string;
+}) {
+  heading(`Append files to transfer: ${opts.id}`);
+  log(dim("Adds new files to an existing active transfer without changing its expiry."));
+  console.log();
+
+  const result = await appendToTransfer(opts, (msg) => progress(msg));
+
+  console.log();
+  log(green(`✓ Added ${result.addedCount} file${result.addedCount === 1 ? "" : "s"} to transfer ${result.transfer.id}`));
+
+  const { fileCounts } = result;
+  const countParts: string[] = [];
+  if (fileCounts.images > 0) countParts.push(`${fileCounts.images} images`);
+  if (fileCounts.gifs > 0) countParts.push(`${fileCounts.gifs} GIFs`);
+  if (fileCounts.videos > 0) countParts.push(`${fileCounts.videos} videos`);
+  if (fileCounts.audio > 0) countParts.push(`${fileCounts.audio} audio`);
+  if (fileCounts.other > 0) countParts.push(`${fileCounts.other} other`);
+  if (countParts.length > 0) log(dim(`  added: ${countParts.join(", ")}`));
+
+  log(dim(`  transfer now has ${result.transfer.files.length} files`));
+  log(`${bold("Added upload size:")} ${formatBytes(result.addedSize)}`);
+  console.log();
+  log(`${dim("Share URL:")} ${green(result.shareUrl)}`);
+  log(`${dim("Admin URL:")} ${yellow(result.adminUrl)}`);
   console.log();
 }
 
@@ -2409,6 +2440,7 @@ function showHelp() {
       --title ${dim("<title>")}   ${dim('Title for the transfer (e.g. "Photos for John")')}
       --expires ${dim("<time>")}  ${dim("Expiry: 30m, 1h, 12h, 1d, 7d, 14d, 30d (default: 7d)")}
       ${dim("If interrupted, rerun the same command in the same folder to auto-resume.")}
+    transfers append ${dim("<id>")} --dir ${dim("<path>")}          Add files to an active transfer
     transfers delete ${dim("<id>")}                    Take down a transfer + delete R2 files
     transfers cleanup                        Cleanup expired/orphaned transfer storage
     transfers nuke                           Wipe ALL transfers (R2 + Redis) — nuclear option
@@ -2461,6 +2493,7 @@ function showHelp() {
     ${dim("$")} pnpm cli albums upload --dir ~/Desktop/party --slug jan-2026 --title "January 2026" --date 2026-01-16
     ${dim("$")} pnpm cli transfers upload --dir ~/Desktop/send-photos --title "Photos for John" --expires 7d
     ${dim("   ")} ${dim("(Rerun the same transfers upload command to resume after a network interruption)")}
+    ${dim("$")} pnpm cli transfers append velvet-moon-candle --dir ~/Desktop/more-photos
     ${dim("$")} pnpm cli transfers list
     ${dim("$")} pnpm cli transfers delete abc12345
     ${dim("$")} pnpm cli media upload --slug my-first-birthday --dir ~/Desktop/word-photos
@@ -3006,12 +3039,61 @@ async function selectTransfer(): Promise<string | null> {
   return transfers[choice - 1].id;
 }
 
+async function promptTransferAppend(): Promise<void> {
+  const id = await selectTransfer();
+  if (!id) return;
+
+  const info = await getTransferInfo(id);
+  if (!info) {
+    log(red(`Transfer "${id}" not found or already expired.`));
+    return;
+  }
+
+  console.log();
+  log(bold(`Add files to: ${info.title}`));
+  log(dim(`${info.id} · ${info.files.length} files · ${formatDuration(info.remainingSeconds)} left`));
+  console.log();
+
+  let dir = "";
+  while (true) {
+    dir = await ask("Source directory", {
+      hint: "e.g. ~/Desktop/more-files-for-this-transfer",
+    });
+    if (!dir) return;
+
+    const check = validateTransferDir(dir);
+    if (check.valid) {
+      log(green(`  Found ${check.count} files`));
+      break;
+    }
+    log(red(`  ${check.error}`));
+  }
+
+  console.log();
+  log(dim("─── Summary ───"));
+  log(`${dim("Transfer:")}  ${info.title} (${info.id})`);
+  log(`${dim("Directory:")} ${dir}`);
+  console.log();
+
+  const ok = await confirm("Append these files to the transfer?");
+  if (!ok) {
+    log(dim("Cancelled."));
+    return;
+  }
+
+  await cmdTransfersAppend({
+    id,
+    dir: dir.replace(/^~/, process.env.HOME ?? "~"),
+  });
+}
+
 async function interactiveTransfers() {
   while (true) {
     const choice = await choose("Transfers", [
       { label: "List active transfers", detail: "see all + time remaining" },
       { label: "Transfer details", detail: "URLs, photos, expiry" },
       { label: "Create new transfer", detail: "upload files to shareable link" },
+      { label: "Add files to transfer", detail: "append files to an active transfer" },
       { label: "Delete a transfer", detail: "take down and remove from R2" },
       { label: "Cleanup expired/orphaned", detail: "remove stale transfer storage only" },
       { label: "Nuke all transfers", detail: "wipe everything — nuclear option" },
@@ -3037,6 +3119,11 @@ async function interactiveTransfers() {
         await pause();
         break;
       case 4: {
+        await safely(promptTransferAppend);
+        await pause();
+        break;
+      }
+      case 5: {
         const id = await selectTransfer();
         if (id) {
           await safely(() => cmdTransfersDelete(id));
@@ -3044,11 +3131,11 @@ async function interactiveTransfers() {
         }
         break;
       }
-      case 5:
+      case 6:
         await safely(cmdTransfersCleanup);
         await pause();
         break;
-      case 6:
+      case 7:
         await safely(cmdTransfersNuke);
         await pause();
         break;
@@ -4181,6 +4268,16 @@ async function direct() {
               );
             }
             return cmdTransfersUpload({ dir, title, expires: expires ?? undefined });
+          }
+          case "append": {
+            const id = args[2];
+            const dir = getArg("dir");
+            if (!id || !dir) {
+              throw new Error(
+                'Usage: pnpm cli transfers append <id> --dir <path>'
+              );
+            }
+            return cmdTransfersAppend({ id, dir });
           }
           case "delete": {
             const id = args[2];
