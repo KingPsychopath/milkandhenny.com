@@ -145,6 +145,10 @@ function escapeXml(s: string): string {
  * Build an SVG overlay for the OG image.
  * Bottom gradient + "milk & henny · {title}" left, optional photoId right.
  * Matches the editorial typewriter design language.
+ *
+ * Colour audit: hex/rgba kept intentionally. This SVG is rendered server-side
+ * (e.g. sharp) and consumed by OG crawlers; OKLCH in SVG is not universally
+ * supported by all rasterizers. Use OKLCH in client CSS/Canvas only.
  */
 function buildOgOverlaySvg(overlay: OgOverlay): Buffer {
   const brand = escapeXml(SITE_BRAND);

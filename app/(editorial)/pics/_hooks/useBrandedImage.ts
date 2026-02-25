@@ -80,8 +80,8 @@ function drawOverlay(ctx: CanvasRenderingContext2D, w: number, h: number, albumT
   // Bottom gradient — covers the lower ~40% of the image
   const gradientStart = Math.round(h * 0.58);
   const gradient = ctx.createLinearGradient(0, gradientStart, 0, h);
-  gradient.addColorStop(0, "rgba(0, 0, 0, 0)");
-  gradient.addColorStop(1, "rgba(0, 0, 0, 0.72)");
+  gradient.addColorStop(0, "oklch(0 0 0 / 0)");
+  gradient.addColorStop(1, "oklch(0 0 0 / 0.72)");
   ctx.fillStyle = gradient;
   ctx.fillRect(0, gradientStart, w, h - gradientStart);
 
@@ -94,8 +94,8 @@ function drawOverlay(ctx: CanvasRenderingContext2D, w: number, h: number, albumT
 
   // Brand + title (left)
   ctx.font = `600 ${brandSize}px 'Courier New', Courier, monospace`;
-  ctx.fillStyle = "rgba(255, 255, 255, 0.96)";
-  ctx.strokeStyle = "rgba(0, 0, 0, 0.35)";
+  ctx.fillStyle = "oklch(1 0 0 / 0.96)";
+  ctx.strokeStyle = "oklch(0 0 0 / 0.35)";
   ctx.lineWidth = 1;
   ctx.textBaseline = "bottom";
   ctx.textAlign = "start";
@@ -106,7 +106,7 @@ function drawOverlay(ctx: CanvasRenderingContext2D, w: number, h: number, albumT
 
   // Photo ID (right)
   ctx.font = `600 ${idSize}px 'Courier New', Courier, monospace`;
-  ctx.fillStyle = "rgba(255, 255, 255, 0.92)";
+  ctx.fillStyle = "oklch(1 0 0 / 0.92)";
   ctx.textAlign = "end";
   ctx.strokeText(photoId, w - padding, textY);
   ctx.fillText(photoId, w - padding, textY);

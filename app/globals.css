@@ -13,43 +13,44 @@
 
 :root {
   color-scheme: light dark;
-  --background: #fafaf9;
-  --foreground: #1c1917;
-  --stone-50: #fafaf9;
-  --stone-100: #f5f5f4;
-  --stone-200: #e7e5e4;
-  --stone-300: #d6d3d1;
-  --stone-400: #a8a29e;
-  --stone-500: #78716c;
-  --stone-600: #57534e;
-  --prose-body: #292524;
-  --prose-heading: #1c1917;
-  --prose-hashtag: #b45309;
-  --prose-code-bg: #f5f5f4;
-  --prose-pre-bg: #1c1917;
-  --prose-pre-fg: #e7e5e4;
-  --selection-bg: #fef3c7;
-  --selection-fg: #92400e;
+  --background: oklch(0.985 0.002 86.42);
+  --foreground: oklch(0.214 0.012 56.42);
+  --stone-50: oklch(0.985 0.002 86.42);
+  --stone-100: oklch(0.967 0.003 86.42);
+  --stone-200: oklch(0.918 0.006 70.7);
+  --stone-300: oklch(0.856 0.01 70.7);
+  --stone-400: oklch(0.696 0.019 70.7);
+  --stone-500: oklch(0.522 0.022 55.4);
+  --stone-600: oklch(0.396 0.019 55.4);
+  --prose-body: oklch(0.268 0.015 56.42);
+  --prose-heading: oklch(0.214 0.012 56.42);
+  --prose-hashtag: oklch(0.55 0.18 47.6);
+  --prose-code-bg: oklch(0.967 0.003 86.42);
+  --prose-pre-bg: oklch(0.214 0.012 56.42);
+  --prose-pre-fg: oklch(0.918 0.006 70.7);
+  --selection-bg: oklch(0.965 0.058 95.28);
+  --selection-fg: oklch(0.45 0.134 47.6);
 }
 
 [data-theme="dark"] {
-  --background: #1c1917;
-  --foreground: #e7e5e4;
-  --stone-50: #1c1917;
-  --stone-100: #292524;
-  --stone-200: #44403c;
-  --stone-300: #57534e;
-  --stone-400: #78716c;
-  --stone-500: #a8a29e;
-  --stone-600: #d6d3d1;
-  --prose-body: #d6d3d1;
-  --prose-heading: #e7e5e4;
-  --prose-hashtag: #fbbf24;
-  --prose-code-bg: #292524;
-  --prose-pre-bg: #0c0a09;
-  --prose-pre-fg: #d6d3d1;
-  --selection-bg: #422006;
-  --selection-fg: #fbbf24;
+  --background: oklch(0.214 0.012 56.42);
+  --foreground: oklch(0.918 0.006 70.7);
+  --stone-50: oklch(0.214 0.012 56.42);
+  --stone-100: oklch(0.268 0.015 56.42);
+  --stone-200: oklch(0.298 0.018 55.4);
+  /* stone-300/400 raised slightly so theme-faint / theme-muted meet WCAG AA on dark bg */
+  --stone-300: oklch(0.45 0.019 55.4);
+  --stone-400: oklch(0.58 0.022 55.4);
+  --stone-500: oklch(0.696 0.019 70.7);
+  --stone-600: oklch(0.856 0.01 70.7);
+  --prose-body: oklch(0.856 0.01 70.7);
+  --prose-heading: oklch(0.918 0.006 70.7);
+  --prose-hashtag: oklch(0.828 0.165 86.05);
+  --prose-code-bg: oklch(0.268 0.015 56.42);
+  --prose-pre-bg: oklch(0.118 0.008 56.42);
+  --prose-pre-fg: oklch(0.856 0.01 70.7);
+  --selection-bg: oklch(0.28 0.075 47.6);
+  --selection-fg: oklch(0.828 0.165 86.05);
 }
 
 @theme inline {
@@ -297,7 +298,7 @@
     border: 1px solid var(--stone-200);
     border-radius: 10px;
     overflow: hidden;
-    background: color-mix(in srgb, var(--stone-50) 80%, transparent);
+    background: color-mix(in oklch, var(--stone-50) 80%, transparent);
   }
 
   .prose-blog .prose-table-button {
@@ -334,7 +335,7 @@
   .prose-blog .prose-table-button[aria-pressed="true"] {
     color: var(--prose-heading);
     border-color: var(--stone-400);
-    background: color-mix(in srgb, var(--stone-100) 65%, transparent);
+    background: color-mix(in oklch, var(--stone-100) 65%, transparent);
   }
 
   .prose-blog .prose-table-scroll {
@@ -365,7 +366,7 @@
 
   .prose-blog thead tr {
     border-bottom: 1px solid var(--stone-200);
-    background: color-mix(in srgb, var(--stone-100) 70%, transparent);
+    background: color-mix(in oklch, var(--stone-100) 70%, transparent);
   }
 
   .prose-blog th,
@@ -421,7 +422,7 @@
   }
 
   .prose-blog .prose-table-cell--toggleable:hover {
-    background: color-mix(in srgb, var(--stone-100) 50%, transparent);
+    background: color-mix(in oklch, var(--stone-100) 50%, transparent);
   }
 
   .prose-blog td[role="button"]:focus-visible {
@@ -429,8 +430,8 @@
   }
 
   .prose-blog td[role="button"]:focus-visible .prose-table-cell {
-    background: color-mix(in srgb, var(--stone-100) 62%, transparent);
-    box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--stone-400) 40%, transparent);
+    background: color-mix(in oklch, var(--stone-100) 62%, transparent);
+    box-shadow: inset 0 0 0 2px color-mix(in oklch, var(--stone-400) 40%, transparent);
   }
 
   .prose-blog .prose-table-cell--clamped {
@@ -439,8 +440,8 @@
     -webkit-box-orient: vertical;
     max-height: 3.2em;
     overflow: hidden;
-    mask-image: linear-gradient(to bottom, #000 72%, transparent 100%);
-    -webkit-mask-image: linear-gradient(to bottom, #000 72%, transparent 100%);
+    mask-image: linear-gradient(to bottom, oklch(0 0 0) 72%, transparent 100%);
+    -webkit-mask-image: linear-gradient(to bottom, oklch(0 0 0) 72%, transparent 100%);
   }
 
   .prose-blog .prose-table--expanded td,
@@ -480,13 +481,13 @@
     position: sticky;
     left: 0;
     z-index: 1;
-    background: color-mix(in srgb, var(--stone-50) 95%, transparent);
+    background: color-mix(in oklch, var(--stone-50) 95%, transparent);
     box-shadow: 1px 0 0 var(--stone-200);
   }
 
   .prose-blog .prose-table--pinned thead th:first-child {
     z-index: 2;
-    background: color-mix(in srgb, var(--stone-100) 88%, transparent);
+    background: color-mix(in oklch, var(--stone-100) 88%, transparent);
   }
 
   .prose-blog img {
@@ -584,7 +585,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    background: rgba(0, 0, 0, 0.45);
+    background: oklch(0 0 0 / 0.45);
     z-index: 1;
   }
   @media (max-width: 480px) {
@@ -640,7 +641,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    background: rgba(0, 0, 0, 0.45);
+    background: oklch(0 0 0 / 0.45);
     z-index: 1;
   }
   a.album-embed-masonry-meta {

@@ -20,6 +20,7 @@ import {
   mapConcurrent,
 } from "../features/media/processing";
 import { processTransferFile, sortTransferFiles } from "../features/transfers/upload";
+import type { ProcessFileResult } from "../features/transfers/upload";
 import { BASE_URL } from "../lib/shared/config";
 import { getRedis } from "../lib/platform/redis";
 import {
@@ -84,6 +85,76 @@ type CreateTransferResult = {
 /** Images/GIFs: 3 concurrent (Sharp is CPU-heavy). Raw: 6 (network-bound). */
 const IMAGE_CONCURRENCY = 3;
 const RAW_CONCURRENCY = 6;
+const TRANSFER_CHECKPOINT_FILE = ".mah-transfer-upload.checkpoint.json";
+
+type TransferUploadCheckpoint = {
+  version: 1;
+  dir: string;
+  entries: string[];
+  transferId: string;
+  deleteToken: string;
+  title: string;
+  ttlSeconds: number;
+  startedAt: string;
+  completed: Record<string, ProcessFileResult>;
+};
+
+function getTransferCheckpointPath(absDir: string): string {
+  return path.join(absDir, TRANSFER_CHECKPOINT_FILE);
+}
+
+function writeTransferCheckpoint(absDir: string, checkpoint: TransferUploadCheckpoint): void {
+  const file = getTransferCheckpointPath(absDir);
+  const tmp = `${file}.tmp`;
+  fs.writeFileSync(tmp, JSON.stringify(checkpoint, null, 2), "utf-8");
+  fs.renameSync(tmp, file);
+}
+
+function deleteTransferCheckpoint(absDir: string): void {
+  const file = getTransferCheckpointPath(absDir);
+  if (fs.existsSync(file)) fs.unlinkSync(file);
+}
+
+function readTransferCheckpoint(absDir: string): TransferUploadCheckpoint | null {
+  const file = getTransferCheckpointPath(absDir);
+  if (!fs.existsSync(file)) return null;
+
+  const raw = fs.readFileSync(file, "utf-8");
+  const parsed = JSON.parse(raw) as Partial<TransferUploadCheckpoint>;
+
+  if (
+    parsed.version !== 1 ||
+    typeof parsed.dir !== "string" ||
+    !Array.isArray(parsed.entries) ||
+    typeof parsed.transferId !== "string" ||
+    typeof parsed.deleteToken !== "string" ||
+    typeof parsed.title !== "string" ||
+    typeof parsed.ttlSeconds !== "number" ||
+    typeof parsed.startedAt !== "string" ||
+    !parsed.completed ||
+    typeof parsed.completed !== "object"
+  ) {
+    throw new Error(
+      `Invalid transfer checkpoint file: ${file}. Delete it and retry to start fresh.`
+    );
+  }
+
+  return {
+    version: 1,
+    dir: parsed.dir,
+    entries: parsed.entries.filter((v): v is string => typeof v === "string"),
+    transferId: parsed.transferId,
+    deleteToken: parsed.deleteToken,
+    title: parsed.title,
+    ttlSeconds: Math.max(1, Math.floor(parsed.ttlSeconds)),
+    startedAt: parsed.startedAt,
+    completed: parsed.completed as Record<string, ProcessFileResult>,
+  };
+}
+
+function arraysEqual(a: string[], b: string[]): boolean {
+  return a.length === b.length && a.every((value, i) => value === b[i]);
+}
 
 /** Create a new transfer: process files, upload to R2, save metadata to Redis */
 async function createTransfer(
@@ -109,52 +180,140 @@ async function createTransfer(
     throw new Error(`No files found in ${absDir}`);
   }
 
-  const transferId = generateTransferId();
-  const deleteToken = generateDeleteToken();
-  const ttlSeconds = opts.expires
-    ? parseExpiry(opts.expires)
-    : DEFAULT_EXPIRY_SECONDS;
+  const checkpoint = readTransferCheckpoint(absDir);
+  if (checkpoint && checkpoint.dir !== absDir) {
+    throw new Error(
+      `Transfer checkpoint directory mismatch at ${getTransferCheckpointPath(absDir)}. Delete it and retry.`
+    );
+  }
+
+  if (checkpoint && !arraysEqual(checkpoint.entries, entries)) {
+    throw new Error(
+      `Transfer source files changed since checkpoint was created (${getTransferCheckpointPath(absDir)}).\n` +
+      "Restore the original files or delete the checkpoint file to start a new transfer."
+    );
+  }
+
+  const ttlSeconds = checkpoint
+    ? checkpoint.ttlSeconds
+    : opts.expires
+      ? parseExpiry(opts.expires)
+      : DEFAULT_EXPIRY_SECONDS;
+
+  const transferId = checkpoint?.transferId ?? generateTransferId();
+  const deleteToken = checkpoint?.deleteToken ?? generateDeleteToken();
+  const startedAt = checkpoint?.startedAt ?? new Date().toISOString();
+  const completed = checkpoint?.completed ?? {};
+
+  if (!checkpoint) {
+    writeTransferCheckpoint(absDir, {
+      version: 1,
+      dir: absDir,
+      entries,
+      transferId,
+      deleteToken,
+      title: opts.title,
+      ttlSeconds,
+      startedAt,
+      completed,
+    });
+  }
 
   // Classify for concurrency control (Sharp is CPU-heavy)
-  const heavy = entries.filter(
+  const pendingEntries = entries.filter((f) => !completed[f]);
+  const heavy = pendingEntries.filter(
     (f) => PROCESSABLE_EXTENSIONS.test(f) || ANIMATED_EXTENSIONS.test(f)
   );
-  const light = entries.filter(
+  const light = pendingEntries.filter(
     (f) => !PROCESSABLE_EXTENSIONS.test(f) && !ANIMATED_EXTENSIONS.test(f)
   );
 
-  onProgress?.(
-    `Found ${entries.length} files. Creating transfer ${transferId}...`
-  );
+  const resumedCount = entries.length - pendingEntries.length;
+  if (checkpoint) {
+    onProgress?.(
+      `Resuming transfer ${transferId}: ${resumedCount}/${entries.length} files already complete.`
+    );
+    if (checkpoint.title !== opts.title) {
+      onProgress?.(`Using checkpoint title "${checkpoint.title}" (ignoring current title for consistency).`);
+    }
+  } else {
+    onProgress?.(
+      `Found ${entries.length} files. Creating transfer ${transferId}...`
+    );
+  }
+
+  let checkpointWriteQueue = Promise.resolve();
+  const queueCheckpointWrite = () => {
+    checkpointWriteQueue = checkpointWriteQueue.then(() =>
+      Promise.resolve().then(() =>
+        writeTransferCheckpoint(absDir, {
+          version: 1,
+          dir: absDir,
+          entries,
+          transferId,
+          deleteToken,
+          title: checkpoint?.title ?? opts.title,
+          ttlSeconds,
+          startedAt,
+          completed,
+        })
+      )
+    );
+    return checkpointWriteQueue;
+  };
 
   const processFile = async (file: string) => {
     const raw = fs.readFileSync(path.join(absDir, file));
     onProgress?.(`Processing ${file}...`);
     const result = await processTransferFile(raw, file, transferId);
+    completed[file] = result;
+    await queueCheckpointWrite();
     onProgress?.(`Uploaded ${file}`);
     return result;
   };
 
-  const heavyResults = await mapConcurrent(heavy, IMAGE_CONCURRENCY, processFile);
-  const lightResults = await mapConcurrent(light, RAW_CONCURRENCY, processFile);
-  const allResults = [...heavyResults, ...lightResults];
+  try {
+    await mapConcurrent(heavy, IMAGE_CONCURRENCY, processFile);
+    await mapConcurrent(light, RAW_CONCURRENCY, processFile);
+  } finally {
+    await checkpointWriteQueue;
+  }
+
+  const allResults = entries.filter((file): file is string => !!completed[file]).map((file) => completed[file]);
+
+  if (allResults.length !== entries.length) {
+    throw new Error(
+      `Transfer checkpoint incomplete (${allResults.length}/${entries.length}). Rerun the same command to continue.`
+    );
+  }
 
   const sortedFiles = sortTransferFiles(allResults.map((r) => r.file));
   const totalSize = allResults.reduce((sum, r) => sum + r.uploadedBytes, 0);
 
-  const now = new Date();
-  const expiresAt = new Date(now.getTime() + ttlSeconds * 1000);
+  const createdAt = new Date(startedAt);
+  const expiresAt = new Date(createdAt.getTime() + ttlSeconds * 1000);
+  const remainingTtlSeconds = Math.floor((expiresAt.getTime() - Date.now()) / 1000);
+  if (remainingTtlSeconds <= 0) {
+    throw new Error(
+      `Transfer ${transferId} expired before finalizing. Delete ${getTransferCheckpointPath(absDir)} and retry with a longer --expires.`
+    );
+  }
 
   const transfer: TransferData = {
     id: transferId,
-    title: opts.title,
+    title: checkpoint?.title ?? opts.title,
     files: sortedFiles,
-    createdAt: now.toISOString(),
+    createdAt: createdAt.toISOString(),
     expiresAt: expiresAt.toISOString(),
     deleteToken,
   };
 
-  await saveTransfer(transfer, ttlSeconds);
+  await saveTransfer(transfer, remainingTtlSeconds);
+  try {
+    deleteTransferCheckpoint(absDir);
+  } catch {
+    // Non-fatal: the transfer is created, user can delete the stale checkpoint manually.
+  }
 
   const shareUrl = `${BASE_URL}/t/${transferId}`;
   const adminUrl = `${BASE_URL}/t/${transferId}?token=${deleteToken}`;

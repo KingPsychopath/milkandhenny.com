@@ -26,6 +26,76 @@ type TransferGalleryProps = {
   files: TransferFileData[];
 };
 
+type GalleryFilter = "all" | "photos" | "videos" | "files";
+type BrowseMode = "scroll" | "pages";
+
+const INITIAL_VISUAL_RENDER_COUNT = 120;
+const VISUAL_RENDER_INCREMENT = 120;
+const INITIAL_FILE_LIST_RENDER_COUNT = 80;
+const FILE_LIST_RENDER_INCREMENT = 120;
+const PAGE_SIZE = 120;
+
+function matchesFilter(file: TransferFileData, filter: GalleryFilter): boolean {
+  if (filter === "all") return true;
+  if (filter === "photos") return file.kind === "image" || file.kind === "gif";
+  if (filter === "videos") return file.kind === "video";
+  return file.kind === "audio" || file.kind === "file";
+}
+
+function PageControls({
+  page,
+  totalPages,
+  onPageChange,
+}: {
+  page: number;
+  totalPages: number;
+  onPageChange: (page: number) => void;
+}) {
+  if (totalPages <= 1) return null;
+
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-2 rounded-sm border theme-border px-3 py-2">
+      <p className="font-mono text-nano theme-muted tracking-wide">
+        page {page} of {totalPages}
+      </p>
+      <div className="flex items-center gap-3 font-mono text-micro tracking-wide">
+        <button
+          type="button"
+          onClick={() => onPageChange(1)}
+          disabled={page <= 1}
+          className="theme-muted hover:text-foreground transition-colors disabled:opacity-40"
+        >
+          [ first ]
+        </button>
+        <button
+          type="button"
+          onClick={() => onPageChange(page - 1)}
+          disabled={page <= 1}
+          className="theme-muted hover:text-foreground transition-colors disabled:opacity-40"
+        >
+          [ prev ]
+        </button>
+        <button
+          type="button"
+          onClick={() => onPageChange(page + 1)}
+          disabled={page >= totalPages}
+          className="theme-muted hover:text-foreground transition-colors disabled:opacity-40"
+        >
+          [ next ]
+        </button>
+        <button
+          type="button"
+          onClick={() => onPageChange(totalPages)}
+          disabled={page >= totalPages}
+          className="theme-muted hover:text-foreground transition-colors disabled:opacity-40"
+        >
+          [ last ]
+        </button>
+      </div>
+    </div>
+  );
+}
+
 /* ─── Icon SVGs for non-visual file types ─── */
 
 function FileIcon({ kind, mimeType }: { kind: FileKind; mimeType: string }) {
@@ -188,10 +258,67 @@ export function TransferGallery({ transferId, files }: TransferGalleryProps) {
   const [savingSingle, setSavingSingle] = useState(false);
   const [lightboxError, setLightboxError] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
+  const [activeFilter, setActiveFilter] = useState<GalleryFilter>("all");
+  const [browseMode, setBrowseMode] = useState<BrowseMode>("scroll");
+  const [page, setPage] = useState(1);
+
+  const filterCounts = {
+    all: files.length,
+    photos: files.filter((f) => matchesFilter(f, "photos")).length,
+    videos: files.filter((f) => matchesFilter(f, "videos")).length,
+    files: files.filter((f) => matchesFilter(f, "files")).length,
+  };
+
+  const filteredFiles = files.filter((f) => matchesFilter(f, activeFilter));
+  const totalPages = Math.max(1, Math.ceil(filteredFiles.length / PAGE_SIZE));
+  const canPaginate = filteredFiles.length > PAGE_SIZE;
+
+  useEffect(() => {
+    setPage(1);
+  }, [activeFilter, browseMode]);
+
+  useEffect(() => {
+    setPage((prev) => Math.min(prev, totalPages));
+  }, [totalPages]);
+
+  const pageStartIndex = browseMode === "pages" ? (page - 1) * PAGE_SIZE : 0;
+  const pageFiles =
+    browseMode === "pages"
+      ? filteredFiles.slice(pageStartIndex, pageStartIndex + PAGE_SIZE)
+      : filteredFiles;
 
   // Split files into visual (gallery) and non-visual (list)
-  const visualFiles = files.filter((f) => f.kind === "image" || f.kind === "gif" || f.kind === "video");
-  const nonVisualFiles = files.filter((f) => f.kind === "audio" || f.kind === "file");
+  const visualFiles = pageFiles.filter((f) => f.kind === "image" || f.kind === "gif" || f.kind === "video");
+  const nonVisualFiles = pageFiles.filter((f) => f.kind === "audio" || f.kind === "file");
+  const [visibleVisualCount, setVisibleVisualCount] = useState(() =>
+    Math.min(visualFiles.length, INITIAL_VISUAL_RENDER_COUNT)
+  );
+  const [visibleFileListCount, setVisibleFileListCount] = useState(() =>
+    Math.min(nonVisualFiles.length, INITIAL_FILE_LIST_RENDER_COUNT)
+  );
+
+  useEffect(() => {
+    setVisibleVisualCount((prev) => Math.min(visualFiles.length, Math.max(prev, INITIAL_VISUAL_RENDER_COUNT)));
+  }, [visualFiles.length]);
+
+  useEffect(() => {
+    setVisibleFileListCount((prev) =>
+      Math.min(nonVisualFiles.length, Math.max(prev, INITIAL_FILE_LIST_RENDER_COUNT))
+    );
+  }, [nonVisualFiles.length]);
+
+  const visibleVisualFiles =
+    browseMode === "pages" ? visualFiles : visualFiles.slice(0, visibleVisualCount);
+  const visibleNonVisualFiles =
+    browseMode === "pages" ? nonVisualFiles : nonVisualFiles.slice(0, visibleFileListCount);
+  const hiddenVisualCount =
+    browseMode === "pages" ? 0 : Math.max(0, visualFiles.length - visibleVisualFiles.length);
+  const hiddenNonVisualCount =
+    browseMode === "pages" ? 0 : Math.max(0, nonVisualFiles.length - visibleNonVisualFiles.length);
+  const selectedInFilteredCount = filteredFiles.reduce((sum, file) => sum + Number(selectedIds.has(file.id)), 0);
+  const selectedInPageCount = pageFiles.reduce((sum, file) => sum + Number(selectedIds.has(file.id)), 0);
+  const allFilteredSelected = filteredFiles.length > 0 && selectedInFilteredCount === filteredFiles.length;
+  const allPageSelected = pageFiles.length > 0 && selectedInPageCount === pageFiles.length;
 
   const openLightbox = useCallback((index: number) => {
     setLightboxError(false);
@@ -315,6 +442,22 @@ export function TransferGallery({ transferId, files }: TransferGalleryProps) {
     setSelectedIds(new Set(files.map((f) => f.id)));
   }, [files]);
 
+  const selectFiltered = useCallback(() => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      for (const f of filteredFiles) next.add(f.id);
+      return next;
+    });
+  }, [filteredFiles]);
+
+  const selectPage = useCallback(() => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      for (const f of pageFiles) next.add(f.id);
+      return next;
+    });
+  }, [pageFiles]);
+
   const clearSelection = useCallback(() => {
     setSelectedIds(new Set());
   }, []);
@@ -328,10 +471,77 @@ export function TransferGallery({ transferId, files }: TransferGalleryProps) {
 
   return (
     <div>
+      {/* Filters + browsing mode */}
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+        <div className="flex flex-wrap items-center gap-2 font-mono text-micro tracking-wide">
+          {([
+            ["all", "all"],
+            ["photos", "photos"],
+            ["videos", "videos"],
+            ["files", "files"],
+          ] as const).map(([key, label]) => {
+            const isActive = activeFilter === key;
+            return (
+              <button
+                key={key}
+                type="button"
+                onClick={() => setActiveFilter(key)}
+                className={
+                  isActive
+                    ? "px-2 py-1 rounded-sm border theme-border text-foreground"
+                    : "px-2 py-1 rounded-sm border theme-border theme-muted hover:text-foreground transition-colors"
+                }
+              >
+                [{label} {filterCounts[key]}]
+              </button>
+            );
+          })}
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2 font-mono text-micro tracking-wide">
+          <span className="theme-muted">browse</span>
+          <button
+            type="button"
+            onClick={() => setBrowseMode("scroll")}
+            className={
+              browseMode === "scroll"
+                ? "px-2 py-1 rounded-sm border theme-border text-foreground"
+                : "px-2 py-1 rounded-sm border theme-border theme-muted hover:text-foreground transition-colors"
+            }
+          >
+            [scroll]
+          </button>
+          <button
+            type="button"
+            onClick={() => setBrowseMode("pages")}
+            className={
+              browseMode === "pages"
+                ? "px-2 py-1 rounded-sm border theme-border text-foreground"
+                : "px-2 py-1 rounded-sm border theme-border theme-muted hover:text-foreground transition-colors"
+            }
+          >
+            [pages]
+          </button>
+          {browseMode === "pages" && !canPaginate && (
+            <span className="theme-muted text-nano">single page</span>
+          )}
+        </div>
+      </div>
+
+      {browseMode === "pages" && canPaginate && (
+        <div className="mb-4">
+          <PageControls page={page} totalPages={totalPages} onPageChange={setPage} />
+        </div>
+      )}
+
       {/* Toolbar */}
       <div className="flex flex-wrap items-center justify-between gap-2 mb-6">
         <span className="font-mono text-micro theme-muted tracking-wide">
-          {selectedCount > 0 ? `${selectedCount} of ${files.length} selected` : `${files.length} ${files.length === 1 ? "file" : "files"}`}
+          {selectedCount > 0
+            ? `${selectedCount} selected (${selectedInFilteredCount} in current filter)`
+            : browseMode === "pages" && canPaginate
+              ? `showing ${pageFiles.length} of ${filteredFiles.length} in filter (${files.length} total)`
+              : `${filteredFiles.length} ${filteredFiles.length === 1 ? "file" : "files"} in filter`}
         </span>
         <div className="flex items-center gap-3 font-mono text-micro tracking-wide">
           {selectedCount > 0 && (
@@ -348,7 +558,17 @@ export function TransferGallery({ transferId, files }: TransferGalleryProps) {
               </button>
             </>
           )}
-          {!allSelected && files.length > 1 && (
+          {!allPageSelected && browseMode === "pages" && pageFiles.length > 1 && (
+            <button onClick={selectPage} className="theme-muted hover:text-foreground transition-colors">
+              [ select page ]
+            </button>
+          )}
+          {!allFilteredSelected && filteredFiles.length > 1 && (
+            <button onClick={selectFiltered} className="theme-muted hover:text-foreground transition-colors">
+              [ select filtered ]
+            </button>
+          )}
+          {!allSelected && files.length > 1 && activeFilter !== "all" && (
             <button onClick={selectAll} className="theme-muted hover:text-foreground transition-colors">
               [ select all ]
             </button>
@@ -365,18 +585,46 @@ export function TransferGallery({ transferId, files }: TransferGalleryProps) {
 
       {/* Visual media grid (images, GIFs, videos) */}
       {visualFiles.length > 0 && (
-        <div className="gallery-masonry">
-          {visualFiles.map((file, index) => (
-            <VisualCard
-              key={file.id}
-              transferId={transferId}
-              file={file}
-              isSelected={selectedIds.has(file.id)}
-              onToggleSelect={() => toggleSelection(file.id)}
-              onClick={() => openLightbox(index)}
-            />
-          ))}
-        </div>
+        <>
+          {hiddenVisualCount > 0 && browseMode === "scroll" && (
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-sm border theme-border px-3 py-2">
+              <p className="font-mono text-nano theme-muted tracking-wide">
+                Showing {visibleVisualFiles.length} of {visualFiles.length} visual items to keep this page responsive.
+              </p>
+              <div className="flex items-center gap-3 font-mono text-micro tracking-wide">
+                <button
+                  type="button"
+                  onClick={() =>
+                    setVisibleVisualCount((prev) => Math.min(visualFiles.length, prev + VISUAL_RENDER_INCREMENT))
+                  }
+                  className="theme-muted hover:text-foreground transition-colors"
+                >
+                  [ show {Math.min(VISUAL_RENDER_INCREMENT, hiddenVisualCount)} more ]
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setVisibleVisualCount(visualFiles.length)}
+                  className="text-amber-600 hover:text-amber-500 transition-colors"
+                >
+                  [ show all ]
+                </button>
+              </div>
+            </div>
+          )}
+
+          <div className="gallery-masonry">
+            {visibleVisualFiles.map((file, index) => (
+              <VisualCard
+                key={file.id}
+                transferId={transferId}
+                file={file}
+                isSelected={selectedIds.has(file.id)}
+                onToggleSelect={() => toggleSelection(file.id)}
+                onClick={() => openLightbox(index)}
+              />
+            ))}
+          </div>
+        </>
       )}
 
       {/* Non-visual files list (audio, documents, archives) */}
@@ -385,8 +633,35 @@ export function TransferGallery({ transferId, files }: TransferGalleryProps) {
           {visualFiles.length > 0 && (
             <p className="font-mono text-micro theme-muted tracking-wide mb-3">files</p>
           )}
+          {hiddenNonVisualCount > 0 && browseMode === "scroll" && (
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-3 rounded-sm border theme-border px-3 py-2">
+              <p className="font-mono text-nano theme-muted tracking-wide">
+                Showing {visibleNonVisualFiles.length} of {nonVisualFiles.length} non-visual files.
+              </p>
+              <div className="flex items-center gap-3 font-mono text-micro tracking-wide">
+                <button
+                  type="button"
+                  onClick={() =>
+                    setVisibleFileListCount((prev) =>
+                      Math.min(nonVisualFiles.length, prev + FILE_LIST_RENDER_INCREMENT)
+                    )
+                  }
+                  className="theme-muted hover:text-foreground transition-colors"
+                >
+                  [ show {Math.min(FILE_LIST_RENDER_INCREMENT, hiddenNonVisualCount)} more ]
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setVisibleFileListCount(nonVisualFiles.length)}
+                  className="text-amber-600 hover:text-amber-500 transition-colors"
+                >
+                  [ show all ]
+                </button>
+              </div>
+            </div>
+          )}
           <div className="space-y-2">
-            {nonVisualFiles.map((file) => (
+            {visibleNonVisualFiles.map((file) => (
               <FileCard
                 key={file.id}
                 transferId={transferId}
@@ -484,6 +759,12 @@ export function TransferGallery({ transferId, files }: TransferGalleryProps) {
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {browseMode === "pages" && canPaginate && (
+        <div className="mt-8">
+          <PageControls page={page} totalPages={totalPages} onPageChange={setPage} />
         </div>
       )}
     </div>
@@ -686,4 +967,3 @@ function FileCard({
     </div>
   );
 }
-

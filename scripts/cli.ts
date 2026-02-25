@@ -929,8 +929,18 @@ async function cmdTransfersUpload(opts: {
   expires?: string;
 }) {
   heading(`Creating transfer: ${opts.title}`);
+  log(dim('Resume-safe: if interrupted, rerun the same command in the same folder to continue.'));
+  log(dim('Checkpoint file: .mah-transfer-upload.checkpoint.json (auto-created, auto-removed on success)'));
+  console.log();
 
-  const result = await createTransfer(opts, (msg) => progress(msg));
+  let result: Awaited<ReturnType<typeof createTransfer>>;
+  try {
+    result = await createTransfer(opts, (msg) => progress(msg));
+  } catch (error) {
+    console.log();
+    log(yellow("Upload interrupted. Rerun the same transfers upload command to auto-resume."));
+    throw error;
+  }
 
   console.log();
   log(green(`✓ ${result.transfer.files.length} files uploaded`));
@@ -2398,6 +2408,7 @@ function showHelp() {
       --dir ${dim("<path>")}      ${dim("Folder with files (images, videos, PDFs, zips — anything)")}
       --title ${dim("<title>")}   ${dim('Title for the transfer (e.g. "Photos for John")')}
       --expires ${dim("<time>")}  ${dim("Expiry: 30m, 1h, 12h, 1d, 7d, 14d, 30d (default: 7d)")}
+      ${dim("If interrupted, rerun the same command in the same folder to auto-resume.")}
     transfers delete ${dim("<id>")}                    Take down a transfer + delete R2 files
     transfers cleanup                        Cleanup expired/orphaned transfer storage
     transfers nuke                           Wipe ALL transfers (R2 + Redis) — nuclear option
@@ -2449,6 +2460,7 @@ function showHelp() {
     ${dim("$")} pnpm cli
     ${dim("$")} pnpm cli albums upload --dir ~/Desktop/party --slug jan-2026 --title "January 2026" --date 2026-01-16
     ${dim("$")} pnpm cli transfers upload --dir ~/Desktop/send-photos --title "Photos for John" --expires 7d
+    ${dim("   ")} ${dim("(Rerun the same transfers upload command to resume after a network interruption)")}
     ${dim("$")} pnpm cli transfers list
     ${dim("$")} pnpm cli transfers delete abc12345
     ${dim("$")} pnpm cli media upload --slug my-first-birthday --dir ~/Desktop/word-photos

@@ -95,7 +95,7 @@ export function JumpRail({ items, ariaLabel }: JumpRailProps) {
           opacity: open ? 1 : 0,
           borderColor: "var(--stone-200)",
           background: "var(--background)",
-          boxShadow: open ? "-4px 0 12px rgba(0,0,0,0.06)" : "none",
+          boxShadow: open ? "-4px 0 12px oklch(0 0 0 / 0.06)" : "none",
         }}
         aria-hidden={!open}
         onTouchStart={open ? handleTouchStart : undefined}
@@ -139,7 +139,7 @@ export function JumpRail({ items, ariaLabel }: JumpRailProps) {
             borderWidth: "1px 0 1px 1px",
             borderColor: "var(--stone-300)",
             color: "var(--stone-600)",
-            boxShadow: "-2px 0 8px rgba(0,0,0,0.04)",
+            boxShadow: "-2px 0 8px oklch(0 0 0 / 0.04)",
           }}
           aria-hidden
         >

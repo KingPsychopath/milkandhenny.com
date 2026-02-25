@@ -37,10 +37,25 @@ type BucketInfo = {
   totalSizeMB: string;
 };
 
+type RetryableR2Error = {
+  name?: string;
+  code?: string;
+  Code?: string;
+  message?: string;
+  $retryable?: unknown;
+  $metadata?: { httpStatusCode?: number };
+  cause?: unknown;
+};
+
 /* ─── Client singleton ─── */
 
 let _client: S3Client | null = null;
 let _bucket = "";
+const R2_RETRIES = Math.max(0, Math.floor(Number(process.env.R2_RETRIES ?? "4")));
+const R2_RETRY_BASE_DELAY_MS = Math.max(
+  0,
+  Math.floor(Number(process.env.R2_RETRY_BASE_DELAY_MS ?? "400"))
+);
 
 function getEnv() {
   const accountId = process.env.R2_ACCOUNT_ID;
@@ -74,6 +89,76 @@ function getClient(): { client: S3Client; bucket: string } {
   return { client: _client, bucket: _bucket };
 }
 
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function getErrorText(err: RetryableR2Error): string {
+  const causeMsg =
+    typeof err.cause === "object" && err.cause && "message" in (err.cause as Record<string, unknown>)
+      ? String((err.cause as { message?: unknown }).message ?? "")
+      : "";
+  return [err.name, err.code, err.Code, err.message, causeMsg]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+}
+
+function isNotFoundR2Error(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const err = error as RetryableR2Error;
+  if (err.$metadata?.httpStatusCode === 404) return true;
+  const text = getErrorText(err);
+  return text.includes("notfound") || text.includes("no such key");
+}
+
+function isTransientR2Error(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const err = error as RetryableR2Error;
+
+  if (err.$retryable) return true;
+
+  const status = err.$metadata?.httpStatusCode;
+  if (status === 408 || status === 425 || status === 429) return true;
+  if (typeof status === "number" && status >= 500) return true;
+
+  const text = getErrorText(err);
+  if (!text) return false;
+
+  return [
+    "ssl/tls alert bad record mac",
+    "bad record mac",
+    "econnreset",
+    "econnaborted",
+    "etimedout",
+    "timeout",
+    "socket hang up",
+    "ehostunreach",
+    "enetunreach",
+    "eai_again",
+    "network error",
+    "tls",
+  ].some((token) => text.includes(token));
+}
+
+async function sendWithRetry<T>(operation: string, send: () => Promise<T>): Promise<T> {
+  let lastError: unknown;
+
+  for (let attempt = 0; attempt <= R2_RETRIES; attempt++) {
+    try {
+      return await send();
+    } catch (error) {
+      lastError = error;
+      if (attempt === R2_RETRIES || !isTransientR2Error(error)) throw error;
+      const jitterMs = Math.floor(Math.random() * 120);
+      const delayMs = Math.pow(2, attempt) * R2_RETRY_BASE_DELAY_MS + jitterMs;
+      await sleep(delayMs);
+    }
+  }
+
+  throw lastError ?? new Error(`R2 ${operation} failed after retries`);
+}
+
 /* ─── Preflight ─── */
 
 /** Check whether all R2 env vars are present (does not create a client). */
@@ -95,12 +180,14 @@ async function listObjects(prefix = ""): Promise<R2Object[]> {
   let continuationToken: string | undefined;
 
   do {
-    const res = await client.send(
-      new ListObjectsV2Command({
-        Bucket: bucket,
-        Prefix: prefix || undefined,
-        ContinuationToken: continuationToken,
-      })
+    const res = await sendWithRetry("listObjects", () =>
+      client.send(
+        new ListObjectsV2Command({
+          Bucket: bucket,
+          Prefix: prefix || undefined,
+          ContinuationToken: continuationToken,
+        })
+      )
     );
 
     for (const obj of res.Contents ?? []) {
@@ -127,13 +214,15 @@ async function listPrefixes(prefix: string): Promise<string[]> {
   let continuationToken: string | undefined;
 
   do {
-    const res = await client.send(
-      new ListObjectsV2Command({
-        Bucket: bucket,
-        Prefix: prefix,
-        Delimiter: "/",
-        ContinuationToken: continuationToken,
-      })
+    const res = await sendWithRetry("listPrefixes", () =>
+      client.send(
+        new ListObjectsV2Command({
+          Bucket: bucket,
+          Prefix: prefix,
+          Delimiter: "/",
+          ContinuationToken: continuationToken,
+        })
+      )
     );
 
     for (const cp of res.CommonPrefixes ?? []) {
@@ -153,15 +242,18 @@ async function headObject(
   const { client, bucket } = getClient();
 
   try {
-    const res = await client.send(
-      new HeadObjectCommand({ Bucket: bucket, Key: key })
+    const res = await sendWithRetry("headObject", () =>
+      client.send(
+        new HeadObjectCommand({ Bucket: bucket, Key: key })
+      )
     );
     return {
       exists: true,
       size: res.ContentLength,
       contentType: res.ContentType,
     };
-  } catch {
+  } catch (error) {
+    if (!isNotFoundR2Error(error)) throw error;
     return { exists: false };
   }
 }
@@ -170,8 +262,10 @@ async function headObject(
 async function downloadBuffer(key: string): Promise<Buffer> {
   const { client, bucket } = getClient();
 
-  const res = await client.send(
-    new GetObjectCommand({ Bucket: bucket, Key: key })
+  const res = await sendWithRetry("downloadBuffer", () =>
+    client.send(
+      new GetObjectCommand({ Bucket: bucket, Key: key })
+    )
   );
 
   if (!res.Body) {
@@ -193,13 +287,15 @@ async function uploadBuffer(
 ): Promise<void> {
   const { client, bucket } = getClient();
 
-  await client.send(
-    new PutObjectCommand({
-      Bucket: bucket,
-      Key: key,
-      Body: buffer,
-      ContentType: contentType,
-    })
+  await sendWithRetry("uploadBuffer", () =>
+    client.send(
+      new PutObjectCommand({
+        Bucket: bucket,
+        Key: key,
+        Body: buffer,
+        ContentType: contentType,
+      })
+    )
   );
 }
 
@@ -207,8 +303,10 @@ async function uploadBuffer(
 async function deleteObject(key: string): Promise<void> {
   const { client, bucket } = getClient();
 
-  await client.send(
-    new DeleteObjectCommand({ Bucket: bucket, Key: key })
+  await sendWithRetry("deleteObject", () =>
+    client.send(
+      new DeleteObjectCommand({ Bucket: bucket, Key: key })
+    )
   );
 }
 
@@ -222,14 +320,16 @@ async function deleteObjects(keys: string[]): Promise<number> {
   for (let i = 0; i < keys.length; i += 1000) {
     const batch = keys.slice(i, i + 1000);
 
-    await client.send(
-      new DeleteObjectsCommand({
-        Bucket: bucket,
-        Delete: {
-          Objects: batch.map((Key) => ({ Key })),
-          Quiet: true,
-        },
-      })
+    await sendWithRetry("deleteObjects", () =>
+      client.send(
+        new DeleteObjectsCommand({
+          Bucket: bucket,
+          Delete: {
+            Objects: batch.map((Key) => ({ Key })),
+            Quiet: true,
+          },
+        })
+      )
     );
 
     deleted += batch.length;
