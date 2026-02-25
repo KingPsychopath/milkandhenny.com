@@ -9,6 +9,7 @@ import { SITE_BRAND } from "@/lib/shared/config";
 
 type UploadMode = "transfer" | "words";
 type WordsScope = "word" | "asset";
+type TransferAction = "create" | "append";
 
 type TransferResult = {
   shareUrl: string;
@@ -27,6 +28,7 @@ type TransferResult = {
     audio: number;
     other: number;
   };
+  addedCount?: number;
 };
 
 type WordUploadedFile = {
@@ -77,6 +79,22 @@ type UploadDashboardProps = {
 };
 
 const DIRECT_UPLOAD_CONCURRENCY = 4;
+const DIRECT_UPLOAD_RETRIES = 3;
+const API_REQUEST_RETRIES = 2;
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function isRetryableStatus(status: number): boolean {
+  return status === 408 || status === 425 || status === 429 || (status >= 500 && status <= 599);
+}
+
+function retryDelayMs(attempt: number): number {
+  const base = 350 * Math.pow(2, attempt - 1);
+  const jitter = Math.floor(Math.random() * 120);
+  return base + jitter;
+}
 
 export function UploadDashboard({ isAdmin }: UploadDashboardProps) {
   const [mounted, setMounted] = useState(false);
@@ -99,8 +117,10 @@ export function UploadDashboard({ isAdmin }: UploadDashboardProps) {
   const [uploadError, setUploadError] = useState("");
 
   /* Transfer fields */
+  const [transferAction, setTransferAction] = useState<TransferAction>("create");
   const [title, setTitle] = useState("");
   const [expiry, setExpiry] = useState("7d");
+  const [appendTransferId, setAppendTransferId] = useState("");
   const [transferResult, setTransferResult] = useState<TransferResult | null>(
     null
   );
@@ -167,6 +187,64 @@ export function UploadDashboard({ isAdmin }: UploadDashboardProps) {
       return res;
     },
     [adminToken, effectiveToken, uploadToken]
+  );
+
+  const adminAuthFetch = useCallback(
+    async (url: string, options: RequestInit = {}) => {
+      const res = await fetch(url, {
+        ...options,
+        headers: {
+          ...(options.headers as Record<string, string>),
+          ...(adminToken ? { Authorization: `Bearer ${adminToken}` } : {}),
+        },
+      });
+      if (res.status === 401) {
+        if (adminToken) {
+          removeStored("adminToken");
+          setAdminToken("");
+        } else {
+          window.location.assign("/upload");
+        }
+      }
+      return res;
+    },
+    [adminToken]
+  );
+
+  const authFetchWithRetry = useCallback(
+    async (url: string, options: RequestInit = {}, retries = API_REQUEST_RETRIES) => {
+      let lastError: unknown;
+      for (let attempt = 1; attempt <= retries + 1; attempt++) {
+        try {
+          const res = await authFetch(url, options);
+          if (res.ok || !isRetryableStatus(res.status) || attempt > retries) return res;
+        } catch (error) {
+          lastError = error;
+          if (attempt > retries) throw error;
+        }
+        await sleep(retryDelayMs(attempt));
+      }
+      throw (lastError instanceof Error ? lastError : new Error("Request failed"));
+    },
+    [authFetch]
+  );
+
+  const adminAuthFetchWithRetry = useCallback(
+    async (url: string, options: RequestInit = {}, retries = API_REQUEST_RETRIES) => {
+      let lastError: unknown;
+      for (let attempt = 1; attempt <= retries + 1; attempt++) {
+        try {
+          const res = await adminAuthFetch(url, options);
+          if (res.ok || !isRetryableStatus(res.status) || attempt > retries) return res;
+        } catch (error) {
+          lastError = error;
+          if (attempt > retries) throw error;
+        }
+        await sleep(retryDelayMs(attempt));
+      }
+      throw (lastError instanceof Error ? lastError : new Error("Request failed"));
+    },
+    [adminAuthFetch]
   );
 
   useEffect(() => {
@@ -253,14 +331,37 @@ export function UploadDashboard({ isAdmin }: UploadDashboardProps) {
           if (index >= entries.length) return;
 
           const entry = entries[index];
-          const putRes = await fetch(entry.url, {
-            method: "PUT",
-            headers: { "Content-Type": entry.file.type || "application/octet-stream" },
-            body: entry.file,
-          });
+          let putRes: Response | null = null;
+          let lastPutError: unknown;
 
-          if (!putRes.ok) {
-            throw new Error(`Failed to upload ${entry.file.name} (${putRes.status})`);
+          for (let attempt = 1; attempt <= DIRECT_UPLOAD_RETRIES + 1; attempt++) {
+            try {
+              putRes = await fetch(entry.url, {
+                method: "PUT",
+                headers: { "Content-Type": entry.file.type || "application/octet-stream" },
+                body: entry.file,
+              });
+
+              if (putRes.ok) break;
+              if (!isRetryableStatus(putRes.status) || attempt > DIRECT_UPLOAD_RETRIES) {
+                throw new Error(`Failed to upload ${entry.file.name} (${putRes.status})`);
+              }
+            } catch (error) {
+              lastPutError = error;
+              if (attempt > DIRECT_UPLOAD_RETRIES) {
+                throw (error instanceof Error ? error : new Error(`Failed to upload ${entry.file.name}`));
+              }
+            }
+
+            await sleep(retryDelayMs(attempt));
+          }
+
+          if (!putRes?.ok) {
+            throw (
+              lastPutError instanceof Error
+                ? lastPutError
+                : new Error(`Failed to upload ${entry.file.name}`)
+            );
           }
 
           completed += 1;
@@ -354,10 +455,10 @@ export function UploadDashboard({ isAdmin }: UploadDashboardProps) {
   /* ─── Upload ─── */
 
   /** Presigned flow: browser uploads directly to R2, then tells the API to finalize. */
-  const handleTransferUpload = async () => {
+  const handleTransferCreateUpload = async () => {
     // 1. Get presigned PUT URLs
     setUploadProgress({ phase: "uploading", current: 0, total: files.length });
-    const presignRes = await authFetch("/api/upload/transfer/presign", {
+    const presignRes = await authFetchWithRetry("/api/upload/transfer/presign", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -406,7 +507,7 @@ export function UploadDashboard({ isAdmin }: UploadDashboardProps) {
       total: files.length,
     });
 
-    const finalizeRes = await authFetch("/api/upload/transfer/finalize", {
+    const finalizeRes = await authFetchWithRetry("/api/upload/transfer/finalize", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -428,6 +529,60 @@ export function UploadDashboard({ isAdmin }: UploadDashboardProps) {
     return finalizeData as TransferResult;
   };
 
+  const handleTransferAppendUpload = async () => {
+    const transferId = appendTransferId.trim();
+    if (!transferId) throw new Error("transfer id is required for append");
+    if (!isAdmin) throw new Error("Only admins can append to an existing transfer");
+
+    setUploadProgress({ phase: "uploading", current: 0, total: files.length });
+    const presignRes = await adminAuthFetchWithRetry("/api/upload/transfer/append/presign", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        transferId,
+        files: files.map((f) => ({ name: f.name, size: f.size, type: f.type })),
+      }),
+    });
+
+    const presignData = await presignRes.json().catch(() => ({}));
+    if (!presignRes.ok) {
+      throw new Error((presignData as { error?: string }).error || "Failed to prepare append upload");
+    }
+
+    const { urls } = presignData as { urls: Array<{ name: string; url: string }> };
+
+    const filesByName = new Map<string, File[]>();
+    for (const file of files) {
+      const bucket = filesByName.get(file.name);
+      if (bucket) bucket.push(file);
+      else filesByName.set(file.name, [file]);
+    }
+    const uploadEntries = urls.map((entry) => {
+      const bucket = filesByName.get(entry.name);
+      const file = bucket?.shift();
+      if (!file) throw new Error(`Could not resolve local file for ${entry.name}`);
+      return { file, url: entry.url };
+    });
+    await uploadPresignedFiles(uploadEntries);
+
+    setUploadProgress({ phase: "processing", current: files.length, total: files.length });
+    const finalizeRes = await adminAuthFetchWithRetry("/api/upload/transfer/append/finalize", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        transferId,
+        files: files.map((f) => ({ name: f.name, size: f.size, type: f.type })),
+      }),
+    });
+
+    const finalizeData = await finalizeRes.json().catch(() => ({}));
+    if (!finalizeRes.ok) {
+      throw new Error((finalizeData as { error?: string }).error || "Append upload succeeded but finalization failed");
+    }
+
+    return finalizeData as TransferResult;
+  };
+
   /** Words upload uses presigned PUT URLs (same as transfers). */
   const handleWordsUpload = async () => {
     const cleanSlug = slug.trim().toLowerCase();
@@ -437,7 +592,7 @@ export function UploadDashboard({ isAdmin }: UploadDashboardProps) {
 
     // 1. Presign PUT URLs
     setUploadProgress({ phase: "uploading", current: 0, total: files.length });
-    const presignRes = await authFetch("/api/upload/words/presign", {
+    const presignRes = await authFetchWithRetry("/api/upload/words/presign", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -491,7 +646,7 @@ export function UploadDashboard({ isAdmin }: UploadDashboardProps) {
 
     // 3. Finalize (process images to WebP, return markdown snippets)
     setUploadProgress({ phase: "processing", current: urls.length, total: urls.length });
-    const finalizeRes = await authFetch("/api/upload/words/finalize", {
+    const finalizeRes = await authFetchWithRetry("/api/upload/words/finalize", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -528,7 +683,10 @@ export function UploadDashboard({ isAdmin }: UploadDashboardProps) {
 
     try {
       if (mode === "transfer") {
-        const result = await handleTransferUpload();
+        const result =
+          transferAction === "append"
+            ? await handleTransferAppendUpload()
+            : await handleTransferCreateUpload();
         setTransferResult(result);
       } else {
         const result = await handleWordsUpload();
@@ -635,7 +793,9 @@ export function UploadDashboard({ isAdmin }: UploadDashboardProps) {
       {/* Mode description */}
       <p className="font-mono text-xs theme-muted mb-6">
         {mode === "transfer"
-          ? "ephemeral file sharing — auto-expires after the set duration"
+          ? transferAction === "append"
+            ? "admin only — append files to an existing active transfer (expiry stays the same)"
+            : "ephemeral file sharing — auto-expires after the set duration"
           : wordsScope === "word"
             ? "per-word media — uploaded to words/media/{slug}/"
             : "shared media library — uploaded to words/assets/{assetId}/"}
@@ -644,38 +804,85 @@ export function UploadDashboard({ isAdmin }: UploadDashboardProps) {
       {/* Form fields */}
       {mode === "transfer" ? (
         <div className="space-y-4 mb-6">
-          <div>
-            <label className="font-mono text-xs theme-muted block mb-1.5">
-              title
-            </label>
-            <input
-              type="text"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              placeholder="valentine's day photos"
-              className="w-full bg-transparent border-b border-[var(--stone-200)] focus:border-[var(--foreground)] outline-none font-mono text-sm py-2 transition-colors placeholder:text-[var(--stone-400)]"
-            />
-          </div>
-          <div>
-            <label className="font-mono text-xs theme-muted block mb-1.5">
-              expires
-            </label>
-            <select
-              value={expiry}
-              onChange={(e) => setExpiry(e.target.value)}
-              className="w-full bg-[var(--background)] border-b border-[var(--stone-200)] focus:border-[var(--foreground)] outline-none font-mono text-sm py-2 transition-colors cursor-pointer"
-            >
-              {EXPIRY_OPTIONS.map((opt) => (
-                <option
-                  key={opt.value}
-                  value={opt.value}
-                  className="bg-[var(--background)] text-[var(--foreground)]"
+          {isAdmin ? (
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setTransferAction("create")}
+                className={`font-mono text-xs px-2 py-1 rounded border transition-colors ${
+                  transferAction === "create"
+                    ? "border-[var(--foreground)] text-[var(--foreground)]"
+                    : "theme-border theme-muted hover:text-[var(--foreground)]"
+                }`}
+              >
+                new transfer
+              </button>
+              <button
+                type="button"
+                onClick={() => setTransferAction("append")}
+                className={`font-mono text-xs px-2 py-1 rounded border transition-colors ${
+                  transferAction === "append"
+                    ? "border-[var(--foreground)] text-[var(--foreground)]"
+                    : "theme-border theme-muted hover:text-[var(--foreground)]"
+                }`}
+              >
+                append to existing
+              </button>
+            </div>
+          ) : null}
+
+          {transferAction === "append" ? (
+            <div>
+              <label className="font-mono text-xs theme-muted block mb-1.5">
+                transfer id
+              </label>
+              <input
+                type="text"
+                value={appendTransferId}
+                onChange={(e) => setAppendTransferId(e.target.value)}
+                placeholder="velvet-moon-candle"
+                className="w-full bg-transparent border-b border-[var(--stone-200)] focus:border-[var(--foreground)] outline-none font-mono text-sm py-2 transition-colors placeholder:text-[var(--stone-400)]"
+              />
+              <p className="font-mono text-micro theme-faint mt-1">
+                admin only · appends files without changing expiry
+              </p>
+            </div>
+          ) : (
+            <>
+              <div>
+                <label className="font-mono text-xs theme-muted block mb-1.5">
+                  title
+                </label>
+                <input
+                  type="text"
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                  placeholder="valentine's day photos"
+                  className="w-full bg-transparent border-b border-[var(--stone-200)] focus:border-[var(--foreground)] outline-none font-mono text-sm py-2 transition-colors placeholder:text-[var(--stone-400)]"
+                />
+              </div>
+              <div>
+                <label className="font-mono text-xs theme-muted block mb-1.5">
+                  expires
+                </label>
+                <select
+                  value={expiry}
+                  onChange={(e) => setExpiry(e.target.value)}
+                  className="w-full bg-[var(--background)] border-b border-[var(--stone-200)] focus:border-[var(--foreground)] outline-none font-mono text-sm py-2 transition-colors cursor-pointer"
                 >
-                  {opt.label}
-                </option>
-              ))}
-            </select>
-          </div>
+                  {EXPIRY_OPTIONS.map((opt) => (
+                    <option
+                      key={opt.value}
+                      value={opt.value}
+                      className="bg-[var(--background)] text-[var(--foreground)]"
+                    >
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </>
+          )}
         </div>
       ) : (
         <div className="space-y-4 mb-6">
@@ -902,7 +1109,9 @@ export function UploadDashboard({ isAdmin }: UploadDashboardProps) {
                 : `uploading ${uploadProgress.current}/${uploadProgress.total}...`
               : uploading
                 ? "uploading..."
-                : `upload ${files.length} file${files.length !== 1 ? "s" : ""}`}
+                : mode === "transfer" && transferAction === "append"
+                  ? `append ${files.length} file${files.length !== 1 ? "s" : ""}`
+                  : `upload ${files.length} file${files.length !== 1 ? "s" : ""}`}
           </button>
         </div>
       )}
@@ -963,6 +1172,11 @@ export function UploadDashboard({ isAdmin }: UploadDashboardProps) {
                   transferResult.transfer.expiresAt
                 ).toLocaleDateString()}
               </p>
+              {typeof transferResult.addedCount === "number" ? (
+                <p className="font-mono text-xs theme-muted">
+                  added {transferResult.addedCount} file{transferResult.addedCount === 1 ? "" : "s"} to existing transfer
+                </p>
+              ) : null}
             </div>
           </div>
 

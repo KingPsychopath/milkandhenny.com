@@ -16,6 +16,7 @@ import {
   listAlbums,
   getAlbum,
   createAlbum,
+  getAlbumUploadCheckpointFilename,
   updateAlbumMeta,
   deleteAlbum,
   addPhotos,
@@ -59,6 +60,7 @@ import {
   parseExpiry,
 } from "./transfer-ops";
 import {
+  getWordMediaUploadCheckpointFilename,
   uploadWordMediaFiles,
   listWordMediaFiles,
   deleteWordMediaFile,
@@ -483,10 +485,21 @@ async function cmdAlbumsUpload(opts: {
   rotation?: RotationOverride;
 }) {
   heading(`Uploading: ${opts.title}`);
+  log(dim("Resume-safe: if interrupted, rerun the same albums upload command in the same folder to continue."));
+  log(dim(`Checkpoint file: ${getAlbumUploadCheckpointFilename(opts.slug)} (auto-created, auto-removed on success)`));
+  console.log();
 
-  const { jsonPath, results } = await createAlbum(opts, (msg) =>
-    progress(msg)
-  );
+  let jsonPath: string;
+  let results: Awaited<ReturnType<typeof createAlbum>>["results"];
+  try {
+    const result = await createAlbum(opts, (msg) => progress(msg));
+    jsonPath = result.jsonPath;
+    results = result.results;
+  } catch (error) {
+    console.log();
+    log(yellow("Album upload interrupted. Rerun the same albums upload command to auto-resume."));
+    throw error;
+  }
 
   console.log();
   log(green(`✓ ${results.length} photos uploaded`));
@@ -979,9 +992,18 @@ async function cmdTransfersAppend(opts: {
 }) {
   heading(`Append files to transfer: ${opts.id}`);
   log(dim("Adds new files to an existing active transfer without changing its expiry."));
+  log(dim("Resume-safe: if interrupted, rerun the same append command in the same folder to continue."));
+  log(dim(`Checkpoint file: .mah-transfer-append.${opts.id}.checkpoint.json (auto-created, auto-removed on success)`));
   console.log();
 
-  const result = await appendToTransfer(opts, (msg) => progress(msg));
+  let result: Awaited<ReturnType<typeof appendToTransfer>>;
+  try {
+    result = await appendToTransfer(opts, (msg) => progress(msg));
+  } catch (error) {
+    console.log();
+    log(yellow("Append interrupted. Rerun the same transfers append command to auto-resume."));
+    throw error;
+  }
 
   console.log();
   log(green(`✓ Added ${result.addedCount} file${result.addedCount === 1 ? "" : "s"} to transfer ${result.transfer.id}`));
@@ -1414,11 +1436,21 @@ async function cmdWordsMediaUpload(opts: {
 }) {
   heading(`Uploading media for ${mediaTargetLabel(opts.target)}`);
   log(dim(`target path: ${mediaTargetPathHint(opts.target)}`));
+  log(dim("Resume-safe: if interrupted, rerun the same media upload command in the same folder to continue."));
+  log(dim(`Checkpoint file: ${getWordMediaUploadCheckpointFilename(opts.target)} (auto-created, auto-removed on success)`));
+  console.log();
 
-  const result = await uploadWordMediaFiles(opts.target, opts.dir, {
-    force: opts.force,
-    onProgress: (msg) => progress(msg),
-  });
+  let result: Awaited<ReturnType<typeof uploadWordMediaFiles>>;
+  try {
+    result = await uploadWordMediaFiles(opts.target, opts.dir, {
+      force: opts.force,
+      onProgress: (msg) => progress(msg),
+    });
+  } catch (error) {
+    console.log();
+    log(yellow("Media upload interrupted. Rerun the same media upload command to auto-resume."));
+    throw error;
+  }
 
   console.log();
 

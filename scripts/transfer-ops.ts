@@ -100,6 +100,8 @@ type AppendTransferResult = {
 const IMAGE_CONCURRENCY = 3;
 const RAW_CONCURRENCY = 6;
 const TRANSFER_CHECKPOINT_FILE = ".mah-transfer-upload.checkpoint.json";
+const TRANSFER_APPEND_CHECKPOINT_PREFIX = ".mah-transfer-append.";
+const TRANSFER_APPEND_CHECKPOINT_SUFFIX = ".checkpoint.json";
 
 type TransferUploadCheckpoint = {
   version: 1;
@@ -109,6 +111,15 @@ type TransferUploadCheckpoint = {
   deleteToken: string;
   title: string;
   ttlSeconds: number;
+  startedAt: string;
+  completed: Record<string, ProcessFileResult>;
+};
+
+type TransferAppendCheckpoint = {
+  version: 1;
+  dir: string;
+  entries: string[];
+  transferId: string;
   startedAt: string;
   completed: Record<string, ProcessFileResult>;
 };
@@ -161,6 +172,63 @@ function readTransferCheckpoint(absDir: string): TransferUploadCheckpoint | null
     deleteToken: parsed.deleteToken,
     title: parsed.title,
     ttlSeconds: Math.max(1, Math.floor(parsed.ttlSeconds)),
+    startedAt: parsed.startedAt,
+    completed: parsed.completed as Record<string, ProcessFileResult>,
+  };
+}
+
+function getTransferAppendCheckpointPath(absDir: string, transferId: string): string {
+  return path.join(
+    absDir,
+    `${TRANSFER_APPEND_CHECKPOINT_PREFIX}${transferId}${TRANSFER_APPEND_CHECKPOINT_SUFFIX}`
+  );
+}
+
+function writeTransferAppendCheckpoint(
+  absDir: string,
+  transferId: string,
+  checkpoint: TransferAppendCheckpoint
+): void {
+  const file = getTransferAppendCheckpointPath(absDir, transferId);
+  const tmp = `${file}.tmp`;
+  fs.writeFileSync(tmp, JSON.stringify(checkpoint, null, 2), "utf-8");
+  fs.renameSync(tmp, file);
+}
+
+function deleteTransferAppendCheckpoint(absDir: string, transferId: string): void {
+  const file = getTransferAppendCheckpointPath(absDir, transferId);
+  if (fs.existsSync(file)) fs.unlinkSync(file);
+}
+
+function readTransferAppendCheckpoint(
+  absDir: string,
+  transferId: string
+): TransferAppendCheckpoint | null {
+  const file = getTransferAppendCheckpointPath(absDir, transferId);
+  if (!fs.existsSync(file)) return null;
+
+  const raw = fs.readFileSync(file, "utf-8");
+  const parsed = JSON.parse(raw) as Partial<TransferAppendCheckpoint>;
+
+  if (
+    parsed.version !== 1 ||
+    typeof parsed.dir !== "string" ||
+    !Array.isArray(parsed.entries) ||
+    typeof parsed.transferId !== "string" ||
+    typeof parsed.startedAt !== "string" ||
+    !parsed.completed ||
+    typeof parsed.completed !== "object"
+  ) {
+    throw new Error(
+      `Invalid transfer append checkpoint file: ${file}. Delete it and retry to start fresh.`
+    );
+  }
+
+  return {
+    version: 1,
+    dir: parsed.dir,
+    entries: parsed.entries.filter((v): v is string => typeof v === "string"),
+    transferId: parsed.transferId,
     startedAt: parsed.startedAt,
     completed: parsed.completed as Record<string, ProcessFileResult>,
   };
@@ -384,9 +452,61 @@ async function appendToTransfer(
 
   const absDir = resolveTransferDir(opts.dir);
   const entries = listTransferEntries(absDir);
+  const checkpoint = readTransferAppendCheckpoint(absDir, transfer.id);
+
+  if (checkpoint && checkpoint.dir !== absDir) {
+    throw new Error(
+      `Transfer append checkpoint directory mismatch at ${getTransferAppendCheckpointPath(absDir, transfer.id)}. Delete it and retry.`
+    );
+  }
+
+  if (checkpoint && checkpoint.transferId !== transfer.id) {
+    throw new Error(
+      `Transfer append checkpoint target mismatch at ${getTransferAppendCheckpointPath(absDir, transfer.id)}. Delete it and retry.`
+    );
+  }
+
+  if (checkpoint && !arraysEqual(checkpoint.entries, entries)) {
+    throw new Error(
+      `Append source files changed since checkpoint was created (${getTransferAppendCheckpointPath(absDir, transfer.id)}).\n` +
+      "Restore the original files or delete the checkpoint file to start the append again."
+    );
+  }
 
   const existingIds = new Set(transfer.files.map((f) => f.id));
   const existingNames = new Set(transfer.files.map((f) => f.filename));
+
+  if (checkpoint) {
+    const completedResults = entries
+      .filter((file): file is string => !!checkpoint.completed[file])
+      .map((file) => checkpoint.completed[file]);
+
+    if (completedResults.length === entries.length && entries.length > 0) {
+      const alreadyFinalized = completedResults.every(
+        (r) => existingIds.has(r.file.id) && existingNames.has(r.file.filename)
+      );
+
+      if (alreadyFinalized) {
+        onProgress?.(
+          `Append checkpoint already finalized for ${transfer.id}; cleaning up stale checkpoint.`
+        );
+        try {
+          deleteTransferAppendCheckpoint(absDir, transfer.id);
+        } catch {
+          // Ignore cleanup errors; append is already reflected in the transfer metadata.
+        }
+        return {
+          transfer,
+          shareUrl: `${BASE_URL}/t/${transfer.id}`,
+          adminUrl: `${BASE_URL}/t/${transfer.id}?token=${transfer.deleteToken}`,
+          addedCount: 0,
+          addedSize: 0,
+          fileCounts: { images: 0, videos: 0, gifs: 0, audio: 0, other: 0 },
+        };
+      }
+    }
+  }
+
   const newPredictedIds = new Set<string>();
   const duplicateNames: string[] = [];
   const duplicateIds: string[] = [];
@@ -418,26 +538,81 @@ async function appendToTransfer(
     );
   }
 
-  onProgress?.(`Appending ${entries.length} files to transfer ${transfer.id}...`);
+  const startedAt = checkpoint?.startedAt ?? new Date().toISOString();
+  const completed = checkpoint?.completed ?? {};
 
-  const heavy = entries.filter(
+  if (!checkpoint) {
+    writeTransferAppendCheckpoint(absDir, transfer.id, {
+      version: 1,
+      dir: absDir,
+      entries,
+      transferId: transfer.id,
+      startedAt,
+      completed,
+    });
+  }
+
+  const pendingEntries = entries.filter((f) => !completed[f]);
+  const resumedCount = entries.length - pendingEntries.length;
+
+  if (checkpoint) {
+    onProgress?.(
+      `Resuming append to ${transfer.id}: ${resumedCount}/${entries.length} files already complete.`
+    );
+  } else {
+    onProgress?.(`Appending ${entries.length} files to transfer ${transfer.id}...`);
+  }
+
+  const heavy = pendingEntries.filter(
     (f) => PROCESSABLE_EXTENSIONS.test(f) || ANIMATED_EXTENSIONS.test(f)
   );
-  const light = entries.filter(
+  const light = pendingEntries.filter(
     (f) => !PROCESSABLE_EXTENSIONS.test(f) && !ANIMATED_EXTENSIONS.test(f)
   );
+
+  let checkpointWriteQueue = Promise.resolve();
+  const queueCheckpointWrite = () => {
+    checkpointWriteQueue = checkpointWriteQueue.then(() =>
+      Promise.resolve().then(() =>
+        writeTransferAppendCheckpoint(absDir, transfer.id, {
+          version: 1,
+          dir: absDir,
+          entries,
+          transferId: transfer.id,
+          startedAt,
+          completed,
+        })
+      )
+    );
+    return checkpointWriteQueue;
+  };
 
   const processFile = async (file: string) => {
     const raw = fs.readFileSync(path.join(absDir, file));
     onProgress?.(`Processing ${file}...`);
     const result = await processTransferFile(raw, file, transfer.id);
+    completed[file] = result;
+    await queueCheckpointWrite();
     onProgress?.(`Uploaded ${file}`);
     return result;
   };
 
-  const heavyResults = await mapConcurrent(heavy, IMAGE_CONCURRENCY, processFile);
-  const lightResults = await mapConcurrent(light, RAW_CONCURRENCY, processFile);
-  const addedResults = [...heavyResults, ...lightResults];
+  try {
+    await mapConcurrent(heavy, IMAGE_CONCURRENCY, processFile);
+    await mapConcurrent(light, RAW_CONCURRENCY, processFile);
+  } finally {
+    await checkpointWriteQueue;
+  }
+
+  const addedResults = entries
+    .filter((file): file is string => !!completed[file])
+    .map((file) => completed[file]);
+
+  if (addedResults.length !== entries.length) {
+    throw new Error(
+      `Append checkpoint incomplete (${addedResults.length}/${entries.length}). Rerun the same transfers append command to continue.`
+    );
+  }
 
   const mergedFiles = sortTransferFiles([...transfer.files, ...addedResults.map((r) => r.file)]);
   const updatedTransfer: TransferData = {
@@ -446,6 +621,11 @@ async function appendToTransfer(
   };
 
   await saveTransfer(updatedTransfer, remainingTtlSeconds);
+  try {
+    deleteTransferAppendCheckpoint(absDir, transfer.id);
+  } catch {
+    // Non-fatal: transfer is updated, user can delete the stale append checkpoint manually.
+  }
 
   return {
     transfer: updatedTransfer,

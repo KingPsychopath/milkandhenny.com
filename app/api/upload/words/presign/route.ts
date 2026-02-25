@@ -125,6 +125,7 @@ export async function POST(request: NextRequest) {
 
     const urls: PresignEntry[] = [];
     const skipped: string[] = [];
+    const reservedNames = new Set<string>();
 
     for (const file of files) {
       const original = file.name.trim();
@@ -136,6 +137,18 @@ export async function POST(request: NextRequest) {
           { status: 400 }
         );
       }
+
+      if (reservedNames.has(filename)) {
+        return NextResponse.json(
+          {
+            error:
+              `Two selected files resolve to the same destination filename: ${filename}. ` +
+              "Rename one file and try again.",
+          },
+          { status: 400 }
+        );
+      }
+      reservedNames.add(filename);
 
       const alreadyExists = existingNames.has(filename);
       if (alreadyExists && !force) {

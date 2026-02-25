@@ -33,6 +33,8 @@ import { detectFocal, type DetectionStrategy } from "./face-detect";
 
 const ALBUMS_DIR = path.join(process.cwd(), "content", "albums");
 const IMAGE_EXTENSIONS = PROCESSABLE_EXTENSIONS;
+const ALBUM_UPLOAD_CHECKPOINT_PREFIX = ".mah-album-upload.";
+const ALBUM_UPLOAD_CHECKPOINT_SUFFIX = ".checkpoint.json";
 
 /* ─── Types ─── */
 
@@ -91,6 +93,20 @@ type ProcessResult = {
   ogSize: number;
 };
 
+type AlbumUploadCheckpoint = {
+  version: 1;
+  dir: string;
+  files: string[];
+  opts: {
+    slug: string;
+    title: string;
+    date: string;
+    description?: string;
+    rotation?: RotationOverride;
+  };
+  completed: Record<string, ProcessResult>;
+};
+
 /* ─── Sort helpers ─── */
 
 /** Sort photos by EXIF date (earliest first), falling back to filename */
@@ -132,6 +148,70 @@ function ensureAlbumsDir() {
   if (!fs.existsSync(ALBUMS_DIR)) {
     fs.mkdirSync(ALBUMS_DIR, { recursive: true });
   }
+}
+
+function arraysEqual(a: string[], b: string[]): boolean {
+  return a.length === b.length && a.every((value, i) => value === b[i]);
+}
+
+function getAlbumUploadCheckpointFilename(slug: string): string {
+  return `${ALBUM_UPLOAD_CHECKPOINT_PREFIX}${slug}${ALBUM_UPLOAD_CHECKPOINT_SUFFIX}`;
+}
+
+function getAlbumUploadCheckpointPath(absDir: string, slug: string): string {
+  return path.join(absDir, getAlbumUploadCheckpointFilename(slug));
+}
+
+function writeAlbumUploadCheckpoint(absDir: string, slug: string, checkpoint: AlbumUploadCheckpoint): void {
+  const file = getAlbumUploadCheckpointPath(absDir, slug);
+  const tmp = `${file}.tmp`;
+  fs.writeFileSync(tmp, JSON.stringify(checkpoint, null, 2), "utf-8");
+  fs.renameSync(tmp, file);
+}
+
+function deleteAlbumUploadCheckpoint(absDir: string, slug: string): void {
+  const file = getAlbumUploadCheckpointPath(absDir, slug);
+  if (fs.existsSync(file)) fs.unlinkSync(file);
+}
+
+function readAlbumUploadCheckpoint(absDir: string, slug: string): AlbumUploadCheckpoint | null {
+  const file = getAlbumUploadCheckpointPath(absDir, slug);
+  if (!fs.existsSync(file)) return null;
+
+  const raw = fs.readFileSync(file, "utf-8");
+  const parsed = JSON.parse(raw) as Partial<AlbumUploadCheckpoint>;
+  if (
+    parsed.version !== 1 ||
+    typeof parsed.dir !== "string" ||
+    !Array.isArray(parsed.files) ||
+    !parsed.opts ||
+    typeof parsed.opts !== "object" ||
+    typeof parsed.opts.slug !== "string" ||
+    typeof parsed.opts.title !== "string" ||
+    typeof parsed.opts.date !== "string" ||
+    !parsed.completed ||
+    typeof parsed.completed !== "object"
+  ) {
+    throw new Error(
+      `Invalid album upload checkpoint file: ${file}. Delete it and retry to start fresh.`
+    );
+  }
+
+  return {
+    version: 1,
+    dir: parsed.dir,
+    files: parsed.files.filter((v): v is string => typeof v === "string"),
+    opts: {
+      slug: parsed.opts.slug,
+      title: parsed.opts.title,
+      date: parsed.opts.date,
+      ...(typeof parsed.opts.description === "string" ? { description: parsed.opts.description } : {}),
+      ...(parsed.opts.rotation === "portrait" || parsed.opts.rotation === "landscape"
+        ? { rotation: parsed.opts.rotation }
+        : {}),
+    },
+    completed: parsed.completed as Record<string, ProcessResult>,
+  };
 }
 
 /** Read album JSON from content/albums/ */
@@ -262,13 +342,103 @@ async function createAlbum(
     throw new Error(`No image files found in ${absDir}`);
   }
 
-  onProgress?.(`Found ${files.length} photos. Uploading...`);
+  const checkpoint = readAlbumUploadCheckpoint(absDir, opts.slug);
+  if (checkpoint && checkpoint.dir !== absDir) {
+    throw new Error(
+      `Album upload checkpoint directory mismatch at ${getAlbumUploadCheckpointPath(absDir, opts.slug)}. Delete it and retry.`
+    );
+  }
+  if (checkpoint && !arraysEqual(checkpoint.files, files)) {
+    throw new Error(
+      `Album source files changed since checkpoint was created (${getAlbumUploadCheckpointPath(absDir, opts.slug)}).\n` +
+      "Restore the original files or delete the checkpoint file to start a new album upload."
+    );
+  }
+  if (
+    checkpoint &&
+    (
+      checkpoint.opts.slug !== opts.slug ||
+      checkpoint.opts.title !== opts.title ||
+      checkpoint.opts.date !== opts.date ||
+      checkpoint.opts.description !== opts.description ||
+      checkpoint.opts.rotation !== opts.rotation
+    )
+  ) {
+    throw new Error(
+      `Album upload options changed since checkpoint was created (${getAlbumUploadCheckpointPath(absDir, opts.slug)}).\n` +
+      "Rerun with the same slug/title/date/description/rotation or delete the checkpoint file to start fresh."
+    );
+  }
 
-  const results = await mapConcurrent(files, 3, (file) => {
-    const id = path.basename(file, path.extname(file));
-    const overlay: OgOverlay = { title: opts.title, photoId: id };
-    return processAndUploadPhoto(path.join(absDir, file), opts.slug, onProgress, overlay, opts.rotation);
-  });
+  const completed = checkpoint?.completed ?? {};
+  if (!checkpoint) {
+    writeAlbumUploadCheckpoint(absDir, opts.slug, {
+      version: 1,
+      dir: absDir,
+      files,
+      opts: {
+        slug: opts.slug,
+        title: opts.title,
+        date: opts.date,
+        ...(opts.description ? { description: opts.description } : {}),
+        ...(opts.rotation ? { rotation: opts.rotation } : {}),
+      },
+      completed,
+    });
+  }
+
+  const pendingFiles = files.filter((file) => !completed[file]);
+  const resumedCount = files.length - pendingFiles.length;
+  if (checkpoint) {
+    onProgress?.(`Resuming album upload ${opts.slug}: ${resumedCount}/${files.length} photos already complete.`);
+  } else {
+    onProgress?.(`Found ${files.length} photos. Uploading...`);
+  }
+
+  let checkpointWriteQueue = Promise.resolve();
+  const queueCheckpointWrite = () => {
+    checkpointWriteQueue = checkpointWriteQueue.then(() =>
+      Promise.resolve().then(() =>
+        writeAlbumUploadCheckpoint(absDir, opts.slug, {
+          version: 1,
+          dir: absDir,
+          files,
+          opts: {
+            slug: opts.slug,
+            title: opts.title,
+            date: opts.date,
+            ...(opts.description ? { description: opts.description } : {}),
+            ...(opts.rotation ? { rotation: opts.rotation } : {}),
+          },
+          completed,
+        })
+      )
+    );
+    return checkpointWriteQueue;
+  };
+
+  try {
+    await mapConcurrent(pendingFiles, 3, async (file) => {
+      const id = path.basename(file, path.extname(file));
+      const overlay: OgOverlay = { title: opts.title, photoId: id };
+      const result = await processAndUploadPhoto(path.join(absDir, file), opts.slug, onProgress, overlay, opts.rotation);
+      completed[file] = result;
+      await queueCheckpointWrite();
+      return result;
+    });
+  } finally {
+    await checkpointWriteQueue;
+  }
+
+  const results = files
+    .filter((file): file is string => !!completed[file])
+    .map((file) => completed[file]);
+
+  if (results.length !== files.length) {
+    throw new Error(
+      `Album upload checkpoint incomplete (${results.length}/${files.length}). Rerun the same albums upload command to continue.`
+    );
+  }
 
   // Sort by EXIF date (earliest first), falling back to filename
   sortByDate(results);
@@ -284,6 +454,11 @@ async function createAlbum(
   };
 
   const jsonPath = writeAlbum(opts.slug, album);
+  try {
+    deleteAlbumUploadCheckpoint(absDir, opts.slug);
+  } catch {
+    // Non-fatal: album JSON is written and uploads completed.
+  }
   return { album, jsonPath, results };
 }
 
@@ -611,6 +786,7 @@ export {
   listAlbums,
   getAlbum,
   createAlbum,
+  getAlbumUploadCheckpointFilename,
   updateAlbumMeta,
   deleteAlbum,
   addPhotos,

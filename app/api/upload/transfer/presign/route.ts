@@ -10,11 +10,23 @@ import {
   MAX_TRANSFER_FILE_BYTES,
   MAX_TRANSFER_TOTAL_BYTES,
 } from "@/features/transfers/store";
-import { getMimeType } from "@/features/media/processing";
+import {
+  getMimeType,
+  PROCESSABLE_EXTENSIONS,
+  ANIMATED_EXTENSIONS,
+} from "@/features/media/processing";
 import { apiErrorFromRequest } from "@/lib/platform/api-error";
 import { isSafeTransferFilename } from "@/features/transfers/upload";
+import path from "path";
 
 type FileEntry = { name: string; size: number; type?: string };
+
+function predictedTransferFileId(filename: string): string {
+  if (PROCESSABLE_EXTENSIONS.test(filename) || ANIMATED_EXTENSIONS.test(filename)) {
+    return path.basename(filename, path.extname(filename));
+  }
+  return filename;
+}
 
 /**
  * POST /api/upload/transfer/presign
@@ -49,6 +61,8 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "No files provided" }, { status: 400 });
   }
   let totalBytes = 0;
+  const seenNames = new Set<string>();
+  const seenIds = new Set<string>();
   for (const file of files) {
     if (!file || typeof file.name !== "string" || !isSafeTransferFilename(file.name)) {
       return NextResponse.json(
@@ -68,6 +82,23 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
+    if (seenNames.has(file.name)) {
+      return NextResponse.json(
+        { error: `Duplicate filename in upload selection: ${file.name}` },
+        { status: 400 }
+      );
+    }
+    seenNames.add(file.name);
+
+    const predictedId = predictedTransferFileId(file.name);
+    if (seenIds.has(predictedId)) {
+      return NextResponse.json(
+        { error: `Conflicting media filenames share the same transfer ID/stem: ${predictedId}` },
+        { status: 400 }
+      );
+    }
+    seenIds.add(predictedId);
+
     totalBytes += file.size;
     if (totalBytes > MAX_TRANSFER_TOTAL_BYTES) {
       return NextResponse.json(
