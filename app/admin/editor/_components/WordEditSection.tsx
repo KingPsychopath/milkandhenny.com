@@ -108,10 +108,6 @@ export function WordEditSection({
     };
   }, [editorFocusMode]);
 
-  useEffect(() => {
-    if (showPreview) setEditorFocusMode(false);
-  }, [showPreview]);
-
   return (
     <div className="border theme-border rounded-md p-4 space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -221,23 +217,25 @@ export function WordEditSection({
                 : "space-y-3"
             }
           >
-          {!showPreview ? (
+          {!showPreview || editorFocusMode ? (
             <div
               className={`flex flex-wrap items-center justify-between gap-2 ${
                 editorFocusMode ? "sticky top-0 z-10 bg-[var(--background)]/95 backdrop-blur py-1" : ""
               }`}
             >
               <p className="font-mono text-micro theme-faint">
-                writing tools
+                {showPreview ? "preview tools" : "writing tools"}
               </p>
               <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => setEditorExpanded((value) => !value)}
-                  className="min-h-10 px-2.5 rounded border theme-border font-mono text-xs"
-                >
-                  {editorExpanded ? "shrink" : "expand"}
-                </button>
+                {!editorFocusMode ? (
+                  <button
+                    type="button"
+                    onClick={() => setEditorExpanded((value) => !value)}
+                    className="min-h-10 px-2.5 rounded border theme-border font-mono text-xs"
+                  >
+                    {editorExpanded ? "shrink" : "expand"}
+                  </button>
+                ) : null}
                 <button
                   type="button"
                   onClick={() => setEditorFocusMode((value) => !value)}
@@ -253,7 +251,7 @@ export function WordEditSection({
                       onClick={onTogglePreview}
                       className="min-h-10 px-2.5 rounded border theme-border font-mono text-xs"
                     >
-                      preview
+                      {showPreview ? "edit mode" : "preview"}
                     </button>
                     <button
                       type="button"

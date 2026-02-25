@@ -56,6 +56,8 @@ type LocalEditorDraft = {
   payload: WordSavePayload;
 };
 
+type MobileEditorPanel = "create" | "edit" | "share";
+
 function editorDraftKey(slug: string): string {
   return `${EDITOR_DRAFT_KEY_PREFIX}${slug}`;
 }
@@ -161,6 +163,7 @@ export function EditorAdminClient() {
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState("");
   const [error, setError] = useState("");
+  const [mobileEditorPanel, setMobileEditorPanel] = useState<MobileEditorPanel>("create");
   const [activeShareCountBySlug, setActiveShareCountBySlug] = useState<Record<string, number>>({});
   const [pageMedia, setPageMedia] = useState<WordMediaItem[]>([]);
   const [sharedAssets, setSharedAssets] = useState<WordMediaItem[]>([]);
@@ -725,10 +728,17 @@ export function EditorAdminClient() {
     (slug: string) => {
       if (slug === selectedSlug) return;
       if (isEditDirty) requestAutosave("immediate");
+      setMobileEditorPanel("edit");
       setSelectedSlug(slug);
     },
     [isEditDirty, requestAutosave, selectedSlug]
   );
+
+  useEffect(() => {
+    if (!selectedSlug) {
+      setMobileEditorPanel("create");
+    }
+  }, [selectedSlug]);
 
   async function deleteCurrentWord() {
     if (!selectedSlug) return;
@@ -1008,87 +1018,136 @@ export function EditorAdminClient() {
         />
 
         <section className="space-y-6">
-          <WordCreateForm
-            createSlug={createSlug}
-            createTitle={createTitle}
-            createSubtitle={createSubtitle}
-            createImage={createImage}
-            createType={createType}
-            createVisibility={createVisibility}
-            createTags={createTags}
-            createFeatured={createFeatured}
-            createMarkdown={createMarkdown}
-            busy={busy}
-            onCreateSlugChange={setCreateSlug}
-            onCreateTitleChange={setCreateTitle}
-            onCreateSubtitleChange={setCreateSubtitle}
-            onCreateImageChange={setCreateImage}
-            onCreateTypeChange={setCreateType}
-            onCreateVisibilityChange={setCreateVisibility}
-            onCreateTagsChange={setCreateTags}
-            onToggleCreateFeatured={() => setCreateFeatured((value) => !value)}
-            onCreateMarkdownChange={setCreateMarkdown}
-            onCreate={() => void createWord()}
-          />
+          <div className="sm:hidden">
+            <div className="rounded-md border theme-border p-1 flex gap-1">
+              <button
+                type="button"
+                onClick={() => setMobileEditorPanel("create")}
+                className={`flex-1 min-h-10 rounded font-mono text-xs transition-colors ${
+                  mobileEditorPanel === "create"
+                    ? "border border-[var(--foreground)] text-[var(--foreground)]"
+                    : "theme-muted hover:text-[var(--foreground)]"
+                }`}
+                aria-pressed={mobileEditorPanel === "create"}
+              >
+                create
+              </button>
+              <button
+                type="button"
+                onClick={() => selected && setMobileEditorPanel("edit")}
+                disabled={!selected}
+                className={`flex-1 min-h-10 rounded font-mono text-xs transition-colors disabled:opacity-40 ${
+                  mobileEditorPanel === "edit"
+                    ? "border border-[var(--foreground)] text-[var(--foreground)]"
+                    : "theme-muted hover:text-[var(--foreground)]"
+                }`}
+                aria-pressed={mobileEditorPanel === "edit"}
+              >
+                edit
+              </button>
+              <button
+                type="button"
+                onClick={() => selected && setMobileEditorPanel("share")}
+                disabled={!selected}
+                className={`flex-1 min-h-10 rounded font-mono text-xs transition-colors disabled:opacity-40 ${
+                  mobileEditorPanel === "share"
+                    ? "border border-[var(--foreground)] text-[var(--foreground)]"
+                    : "theme-muted hover:text-[var(--foreground)]"
+                }`}
+                aria-pressed={mobileEditorPanel === "share"}
+              >
+                share
+              </button>
+            </div>
+          </div>
+
+          <div className={mobileEditorPanel === "create" ? "block" : "hidden sm:block"}>
+            <WordCreateForm
+              createSlug={createSlug}
+              createTitle={createTitle}
+              createSubtitle={createSubtitle}
+              createImage={createImage}
+              createType={createType}
+              createVisibility={createVisibility}
+              createTags={createTags}
+              createFeatured={createFeatured}
+              createMarkdown={createMarkdown}
+              busy={busy}
+              onCreateSlugChange={setCreateSlug}
+              onCreateTitleChange={setCreateTitle}
+              onCreateSubtitleChange={setCreateSubtitle}
+              onCreateImageChange={setCreateImage}
+              onCreateTypeChange={setCreateType}
+              onCreateVisibilityChange={setCreateVisibility}
+              onCreateTagsChange={setCreateTags}
+              onToggleCreateFeatured={() => setCreateFeatured((value) => !value)}
+              onCreateMarkdownChange={setCreateMarkdown}
+              onCreate={() => void createWord()}
+            />
+          </div>
 
           {selected ? (
-            <WordEditSection
-              selected={selected}
-              selectedSlug={selectedSlug}
-              showPreview={showPreview}
-              editTitle={editTitle}
-              editSubtitle={editSubtitle}
-              editImage={editImage}
-              editType={editType}
-              editVisibility={editVisibility}
-              editTags={editTags}
-              editFeatured={editFeatured}
-              editMarkdown={editMarkdown}
-              busy={busy}
-              hasUnsavedChanges={isEditDirty}
-              autosaveStatusText={autosaveStatusText}
-              mediaSearchQuery={mediaSearchQuery}
-              mediaLoading={mediaLoading}
-              mediaError={mediaError}
-              mediaCopied={mediaCopied}
-              filteredPageMedia={filteredPageMedia}
-              filteredSharedAssets={filteredSharedAssets}
-              onTogglePreview={() => setShowPreview((value) => !value)}
-              onDelete={() => void deleteCurrentWord()}
-              onEditTitleChange={setEditTitle}
-              onEditSubtitleChange={setEditSubtitle}
-              onEditImageChange={setEditImage}
-              onEditTypeChange={setEditType}
-              onEditVisibilityChange={setEditVisibility}
-              onEditTagsChange={setEditTags}
-              onToggleEditFeatured={() => setEditFeatured((value) => !value)}
-              onEditMarkdownChange={setEditMarkdown}
-              onSave={() => void saveWord()}
-              onFieldBlur={() => requestAutosave("immediate")}
-              onMediaSearchQueryChange={setMediaSearchQuery}
-              onRefreshMedia={(slug) => void loadWordMedia(slug, true)}
-              onPreviewMedia={openPreview}
-              onCopySnippet={(snippet, copyId) => void copySnippet(snippet, copyId)}
-              onAppendSnippet={handleAppendSnippet}
-            />
+            <div className={mobileEditorPanel === "edit" ? "block" : "hidden sm:block"}>
+              <WordEditSection
+                selected={selected}
+                selectedSlug={selectedSlug}
+                showPreview={showPreview}
+                editTitle={editTitle}
+                editSubtitle={editSubtitle}
+                editImage={editImage}
+                editType={editType}
+                editVisibility={editVisibility}
+                editTags={editTags}
+                editFeatured={editFeatured}
+                editMarkdown={editMarkdown}
+                busy={busy}
+                hasUnsavedChanges={isEditDirty}
+                autosaveStatusText={autosaveStatusText}
+                mediaSearchQuery={mediaSearchQuery}
+                mediaLoading={mediaLoading}
+                mediaError={mediaError}
+                mediaCopied={mediaCopied}
+                filteredPageMedia={filteredPageMedia}
+                filteredSharedAssets={filteredSharedAssets}
+                onTogglePreview={() => setShowPreview((value) => !value)}
+                onDelete={() => void deleteCurrentWord()}
+                onEditTitleChange={setEditTitle}
+                onEditSubtitleChange={setEditSubtitle}
+                onEditImageChange={setEditImage}
+                onEditTypeChange={setEditType}
+                onEditVisibilityChange={setEditVisibility}
+                onEditTagsChange={setEditTags}
+                onToggleEditFeatured={() => setEditFeatured((value) => !value)}
+                onEditMarkdownChange={setEditMarkdown}
+                onSave={() => void saveWord()}
+                onFieldBlur={() => requestAutosave("immediate")}
+                onMediaSearchQueryChange={setMediaSearchQuery}
+                onRefreshMedia={(slug) => void loadWordMedia(slug, true)}
+                onPreviewMedia={openPreview}
+                onCopySnippet={(snippet, copyId) => void copySnippet(snippet, copyId)}
+                onAppendSnippet={handleAppendSnippet}
+              />
+            </div>
           ) : null}
 
           {selected ? (
-            <WordShareSection
-              shares={shares}
-              filteredShares={filteredShares}
-              shareStateFilter={shareStateFilter}
-              newShareExpiryDays={newShareExpiryDays}
-              shareExpiryOptions={SHARE_EXPIRY_OPTIONS}
-              onShareStateFilterChange={setShareStateFilter}
-              onNewShareExpiryDaysChange={setNewShareExpiryDays}
-              onCreateShare={() => void createShare()}
-              onCopyShareLink={(link) => void copyShareLink(link)}
-              onRotateShare={(link) => void rotateShare(link, "rotate")}
-              onExtendShare={(link) => void extendShare(link)}
-              onToggleSharePin={(link) => void toggleSharePin(link)}
-              onRevokeShare={(link) => void revokeShare(link)}
-            />
+            <div className={mobileEditorPanel === "share" ? "block" : "hidden sm:block"}>
+              <WordShareSection
+                shares={shares}
+                filteredShares={filteredShares}
+                shareStateFilter={shareStateFilter}
+                newShareExpiryDays={newShareExpiryDays}
+                shareExpiryOptions={SHARE_EXPIRY_OPTIONS}
+                onShareStateFilterChange={setShareStateFilter}
+                onNewShareExpiryDaysChange={setNewShareExpiryDays}
+                onCreateShare={() => void createShare()}
+                onCopyShareLink={(link) => void copyShareLink(link)}
+                onRotateShare={(link) => void rotateShare(link, "rotate")}
+                onExtendShare={(link) => void extendShare(link)}
+                onToggleSharePin={(link) => void toggleSharePin(link)}
+                onRevokeShare={(link) => void revokeShare(link)}
+              />
+            </div>
           ) : null}
         </section>
       </div>
