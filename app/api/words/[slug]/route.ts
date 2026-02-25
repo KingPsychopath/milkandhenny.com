@@ -73,6 +73,7 @@ export async function PUT(request: NextRequest, { params }: Params) {
     markdown?: string;
     tags?: string[];
     featured?: boolean;
+    expectedUpdatedAt?: string;
   };
 
   try {
@@ -98,8 +99,31 @@ export async function PUT(request: NextRequest, { params }: Params) {
   if (body.featured !== undefined && typeof body.featured !== "boolean") {
     return NextResponse.json({ error: "featured must be a boolean" }, { status: 400 });
   }
+  if (
+    body.expectedUpdatedAt !== undefined &&
+    body.expectedUpdatedAt !== null &&
+    typeof body.expectedUpdatedAt !== "string"
+  ) {
+    return NextResponse.json({ error: "expectedUpdatedAt must be a string" }, { status: 400 });
+  }
 
   try {
+    const expectedUpdatedAt = body.expectedUpdatedAt?.trim() || undefined;
+    if (expectedUpdatedAt) {
+      const current = await getWord(slug);
+      if (!current) return NextResponse.json({ error: "Not found" }, { status: 404 });
+      if (current.meta.updatedAt !== expectedUpdatedAt) {
+        return NextResponse.json(
+          {
+            error: "This word was updated elsewhere. Reload to review the latest version before saving.",
+            conflict: true,
+            currentUpdatedAt: current.meta.updatedAt,
+          },
+          { status: 409 }
+        );
+      }
+    }
+
     const updated = await updateWord(slug, {
       ...body,
       type: body.type ? normaliseWordType(body.type) : undefined,
