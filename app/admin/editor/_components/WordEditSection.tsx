@@ -3,10 +3,11 @@
 import Link from "next/link";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { WordMediaLibrary } from "./WordMediaLibrary";
 import { WORD_TYPES, getWordTypeLabel } from "@/features/words/types";
 import { wordPathForVisibility } from "@/features/words/routes";
+import { resolveWordContentRef } from "@/features/media/storage";
 import type { NoteMeta, NoteVisibility, WordMediaItem, WordType } from "../types";
 
 function featuredButtonClass(isFeatured: boolean): string {
@@ -15,6 +16,16 @@ function featuredButtonClass(isFeatured: boolean): string {
       ? "border-[var(--foreground)] text-[var(--foreground)]"
       : "theme-border theme-muted hover:text-[var(--foreground)]"
   }`;
+}
+
+function looksLikeUrlOrPath(value: string): boolean {
+  return /^(https?:\/\/|\/|words\/|assets\/)/i.test(value);
+}
+
+function basenameLabel(value: string): string {
+  const withoutQuery = value.split(/[?#]/, 1)[0];
+  const tail = withoutQuery.split("/").pop() || "media";
+  return tail.replace(/\.[^.]+$/, "") || "media";
 }
 
 type WordEditSectionProps = {
@@ -98,6 +109,7 @@ export function WordEditSection({
 }: WordEditSectionProps) {
   const [editorExpanded, setEditorExpanded] = useState(false);
   const [editorFocusMode, setEditorFocusMode] = useState(false);
+  const markdownTextareaRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
     if (!editorFocusMode) return;
@@ -107,6 +119,132 @@ export function WordEditSection({
       document.body.style.overflow = prev;
     };
   }, [editorFocusMode]);
+
+  const updateMarkdownWithSelection = (
+    transform: (value: string, start: number, end: number) => {
+      value: string;
+      selectionStart: number;
+      selectionEnd: number;
+    }
+  ) => {
+    const current = editMarkdown;
+    const el = markdownTextareaRef.current;
+    const start = el?.selectionStart ?? current.length;
+    const end = el?.selectionEnd ?? current.length;
+    const next = transform(current, start, end);
+    onEditMarkdownChange(next.value);
+    requestAnimationFrame(() => {
+      const target = markdownTextareaRef.current;
+      if (!target) return;
+      target.focus();
+      target.setSelectionRange(next.selectionStart, next.selectionEnd);
+    });
+  };
+
+  const wrapSelection = (prefix: string, suffix = prefix, placeholder = "text") => {
+    updateMarkdownWithSelection((value, start, end) => {
+      const selectedText = value.slice(start, end);
+      const inner = selectedText || placeholder;
+      const replacement = `${prefix}${inner}${suffix}`;
+      const nextValue = `${value.slice(0, start)}${replacement}${value.slice(end)}`;
+      const innerStart = start + prefix.length;
+      return {
+        value: nextValue,
+        selectionStart: innerStart,
+        selectionEnd: innerStart + inner.length,
+      };
+    });
+  };
+
+  const insertTemplate = (template: string, selectFromOffset?: [number, number]) => {
+    updateMarkdownWithSelection((value, start, end) => {
+      const nextValue = `${value.slice(0, start)}${template}${value.slice(end)}`;
+      if (!selectFromOffset) {
+        const cursor = start + template.length;
+        return { value: nextValue, selectionStart: cursor, selectionEnd: cursor };
+      }
+      return {
+        value: nextValue,
+        selectionStart: start + selectFromOffset[0],
+        selectionEnd: start + selectFromOffset[1],
+      };
+    });
+  };
+
+  const prefixSelectedLines = (
+    getPrefix: (index: number) => string
+  ) => {
+    updateMarkdownWithSelection((value, start, end) => {
+      const lineStart = value.lastIndexOf("\n", Math.max(0, start - 1)) + 1;
+      const nextBreak = value.indexOf("\n", end);
+      const lineEnd = nextBreak === -1 ? value.length : nextBreak;
+      const block = value.slice(lineStart, lineEnd);
+      const lines = block.split("\n");
+      const prefixed = lines.map((line, index) => `${getPrefix(index)}${line}`).join("\n");
+      const nextValue = `${value.slice(0, lineStart)}${prefixed}${value.slice(lineEnd)}`;
+      return {
+        value: nextValue,
+        selectionStart: lineStart,
+        selectionEnd: lineStart + prefixed.length,
+      };
+    });
+  };
+
+  const insertLinkFromSelection = () => {
+    updateMarkdownWithSelection((value, start, end) => {
+      const selectedText = value.slice(start, end).trim();
+      const selectionLooksLikePath = selectedText ? looksLikeUrlOrPath(selectedText) : false;
+      const label = selectedText
+        ? (selectionLooksLikePath ? basenameLabel(selectedText) : selectedText)
+        : "label";
+      const href = selectedText
+        ? (selectionLooksLikePath ? selectedText : "https://example.com")
+        : "https://example.com";
+      const replacement = `[${label}](${href})`;
+      const nextValue = `${value.slice(0, start)}${replacement}${value.slice(end)}`;
+
+      if (!selectedText) {
+        const labelStart = start + 1;
+        return { value: nextValue, selectionStart: labelStart, selectionEnd: labelStart + label.length };
+      }
+
+      if (selectionLooksLikePath) {
+        const labelStart = start + 1;
+        return { value: nextValue, selectionStart: labelStart, selectionEnd: labelStart + label.length };
+      }
+
+      const hrefStart = start + label.length + 3; // `[label](`
+      return { value: nextValue, selectionStart: hrefStart, selectionEnd: hrefStart + href.length };
+    });
+  };
+
+  const insertMediaFromSelection = () => {
+    updateMarkdownWithSelection((value, start, end) => {
+      const selectedText = value.slice(start, end).trim();
+      const selectionLooksLikePath = selectedText ? looksLikeUrlOrPath(selectedText) : false;
+      const alt = selectedText
+        ? (selectionLooksLikePath ? basenameLabel(selectedText) : selectedText)
+        : "alt";
+      const src = selectedText
+        ? (selectionLooksLikePath ? selectedText : `words/media/${selectedSlug || "slug"}/filename.webp`)
+        : `words/media/${selectedSlug || "slug"}/filename.webp`;
+      const replacement = `![${alt}](${src})`;
+      const nextValue = `${value.slice(0, start)}${replacement}${value.slice(end)}`;
+
+      if (!selectedText) {
+        const altStart = start + 2;
+        return { value: nextValue, selectionStart: altStart, selectionEnd: altStart + alt.length };
+      }
+
+      if (selectionLooksLikePath) {
+        const altStart = start + 2;
+        return { value: nextValue, selectionStart: altStart, selectionEnd: altStart + alt.length };
+      }
+
+      const srcStart = start + alt.length + 4; // `![alt](`
+      return { value: nextValue, selectionStart: srcStart, selectionEnd: srcStart + src.length };
+    });
+  };
 
   return (
     <div className="border theme-border rounded-md p-4 space-y-4">
@@ -226,6 +364,12 @@ export function WordEditSection({
               <p className="font-mono text-micro theme-faint">
                 {showPreview ? "preview tools" : "writing tools"}
               </p>
+              {editorFocusMode ? (
+                <p className="font-mono text-micro theme-faint">
+                  {autosaveStatusText}
+                  {hasUnsavedChanges ? " · unsaved" : ""}
+                </p>
+              ) : null}
               <div className="flex items-center gap-2">
                 {!editorFocusMode ? (
                   <button
@@ -266,13 +410,52 @@ export function WordEditSection({
               </div>
             </div>
           ) : null}
+          {!showPreview && editorFocusMode ? (
+            <div className="flex flex-wrap gap-2">
+              <button type="button" onClick={() => prefixSelectedLines(() => "## ")} className="min-h-9 px-2 rounded border theme-border font-mono text-xs">h2</button>
+              <button type="button" onClick={() => wrapSelection("**")} className="min-h-9 px-2 rounded border theme-border font-mono text-xs">bold</button>
+              <button type="button" onClick={() => wrapSelection("_")} className="min-h-9 px-2 rounded border theme-border font-mono text-xs">italic</button>
+              <button type="button" onClick={() => wrapSelection("`")} className="min-h-9 px-2 rounded border theme-border font-mono text-xs">icode</button>
+              <button
+                type="button"
+                onClick={insertLinkFromSelection}
+                className="min-h-9 px-2 rounded border theme-border font-mono text-xs"
+              >
+                link
+              </button>
+              <button
+                type="button"
+                onClick={insertMediaFromSelection}
+                className="min-h-9 px-2 rounded border theme-border font-mono text-xs"
+              >
+                image
+              </button>
+              <button type="button" onClick={() => prefixSelectedLines(() => "- ")} className="min-h-9 px-2 rounded border theme-border font-mono text-xs">list</button>
+              <button type="button" onClick={() => prefixSelectedLines((i) => `${i + 1}. `)} className="min-h-9 px-2 rounded border theme-border font-mono text-xs">numbered</button>
+              <button type="button" onClick={() => prefixSelectedLines(() => "> ")} className="min-h-9 px-2 rounded border theme-border font-mono text-xs">quote</button>
+              <button type="button" onClick={() => prefixSelectedLines(() => "- [ ] ")} className="min-h-9 px-2 rounded border theme-border font-mono text-xs">todo</button>
+              <button
+                type="button"
+                onClick={() => insertTemplate("```\ncode\n```", [4, 8])}
+                className="min-h-9 px-2 rounded border theme-border font-mono text-xs"
+              >
+                code
+              </button>
+            </div>
+          ) : null}
 
           {showPreview ? (
             <div className="border theme-border rounded p-3 prose-blog font-serif">
-              <ReactMarkdown remarkPlugins={[remarkGfm]}>{editMarkdown}</ReactMarkdown>
+              <ReactMarkdown
+                remarkPlugins={[remarkGfm]}
+                urlTransform={(url) => resolveWordContentRef(url, selectedSlug)}
+              >
+                {editMarkdown}
+              </ReactMarkdown>
             </div>
           ) : (
             <textarea
+              ref={markdownTextareaRef}
               value={editMarkdown}
               onChange={(event) => onEditMarkdownChange(event.target.value)}
               onBlur={onFieldBlur}
@@ -300,6 +483,7 @@ export function WordEditSection({
 
         {!editorFocusMode ? (
           <WordMediaLibrary
+            selectedSlug={selectedSlug}
             mediaSearchQuery={mediaSearchQuery}
             mediaLoading={mediaLoading}
             mediaError={mediaError}
