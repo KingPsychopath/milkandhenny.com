@@ -4,7 +4,8 @@ type PreparedTransferUpload = {
   uploadFile: File;
   uploadName: string;
   originalFile?: File;
-  convertedFrom?: "heic";
+  convertedFrom?: "heic" | "raw";
+  statusLabel?: string;
 };
 
 type HeifImageLike = {
@@ -25,7 +26,9 @@ type LibheifLike = {
 
 const HEIF_EXTENSIONS = [".heic", ".heif", ".hif"] as const;
 const HEIF_MIME_TYPES = ["image/heic", "image/heif", "image/hif"] as const;
+const RAW_EXTENSIONS = [".dng", ".arw", ".cr2", ".cr3", ".nef", ".orf", ".raf", ".rw2", ".raw"] as const;
 const JPEG_QUALITY = 0.9;
+const RAW_PREVIEW_MIN_LONGEST_EDGE = 1024;
 
 function hasHeifExtension(filename: string): boolean {
   const lower = filename.toLowerCase();
@@ -37,10 +40,48 @@ function isHeifLikeFile(file: Pick<File, "name" | "type">): boolean {
   return hasHeifExtension(file.name) || HEIF_MIME_TYPES.includes(type as (typeof HEIF_MIME_TYPES)[number]);
 }
 
+function hasRawExtension(filename: string): boolean {
+  const lower = filename.toLowerCase();
+  return RAW_EXTENSIONS.some((ext) => lower.endsWith(ext));
+}
+
+function isRawLikeFile(file: Pick<File, "name" | "type">): boolean {
+  const type = file.type.toLowerCase();
+  return hasRawExtension(file.name) || type.startsWith("image/x-");
+}
+
+function isDerivableTransferFile(file: Pick<File, "name" | "type">): boolean {
+  return isHeifLikeFile(file) || isRawLikeFile(file);
+}
+
 function replaceExtensionWithJpg(filename: string): string {
   const lastDot = filename.lastIndexOf(".");
   if (lastDot <= 0) return `${filename}.jpg`;
   return `${filename.slice(0, lastDot)}.jpg`;
+}
+
+async function getImageDimensions(blob: Blob): Promise<{ width: number; height: number }> {
+  if ("createImageBitmap" in window) {
+    const bitmap = await createImageBitmap(blob);
+    try {
+      return { width: bitmap.width, height: bitmap.height };
+    } finally {
+      bitmap.close();
+    }
+  }
+
+  const objectUrl = URL.createObjectURL(blob);
+  try {
+    const image = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => resolve(img);
+      img.onerror = () => reject(new Error("Failed to inspect derived preview dimensions"));
+      img.src = objectUrl;
+    });
+    return { width: image.naturalWidth, height: image.naturalHeight };
+  } finally {
+    URL.revokeObjectURL(objectUrl);
+  }
 }
 
 function inferHeifMimeType(file: Pick<File, "name" | "type">): string {
@@ -428,25 +469,69 @@ async function convertHeifFile(file: File): Promise<File> {
   }
 }
 
-async function prepareTransferUploadFile(file: File): Promise<PreparedTransferUpload> {
-  if (!isHeifLikeFile(file)) {
+async function extractRawPreviewFile(file: File): Promise<File> {
+  const preview = await exifr.thumbnail(file);
+  if (!preview) throw new Error("No embedded RAW preview found");
+
+  const previewBytes = preview instanceof Uint8Array ? preview : new Uint8Array(preview);
+  const previewCopy = new Uint8Array(previewBytes.byteLength);
+  previewCopy.set(previewBytes);
+  const previewBlob = new Blob([previewCopy], { type: "image/jpeg" });
+  const { width, height } = await getImageDimensions(previewBlob);
+  if (Math.max(width, height) < RAW_PREVIEW_MIN_LONGEST_EDGE) {
+    throw new Error("Embedded RAW preview is too small");
+  }
+
+  return new File([previewBlob], replaceExtensionWithJpg(file.name), {
+    type: "image/jpeg",
+    lastModified: file.lastModified,
+  });
+}
+
+async function prepareTransferUploadFile(
+  file: File,
+  options: { derivePreview?: boolean } = {}
+): Promise<PreparedTransferUpload> {
+  if (!options.derivePreview || !isDerivableTransferFile(file)) {
     return {
       uploadFile: file,
       uploadName: file.name,
     };
   }
 
-  const jpegFile = await convertHeifFile(file);
-  return {
-    uploadFile: jpegFile,
-    uploadName: jpegFile.name,
-    originalFile: file,
-    convertedFrom: "heic",
-  };
+  if (isHeifLikeFile(file)) {
+    const jpegFile = await convertHeifFile(file);
+    return {
+      uploadFile: jpegFile,
+      uploadName: jpegFile.name,
+      originalFile: file,
+      convertedFrom: "heic",
+      statusLabel: `prepared preview from ${file.name}`,
+    };
+  }
+
+  try {
+    const previewFile = await extractRawPreviewFile(file);
+    return {
+      uploadFile: previewFile,
+      uploadName: previewFile.name,
+      originalFile: file,
+      convertedFrom: "raw",
+      statusLabel: `extracted embedded preview from ${file.name}`,
+    };
+  } catch {
+    return {
+      uploadFile: file,
+      uploadName: file.name,
+      statusLabel: `no usable embedded preview in ${file.name} — uploading original only`,
+    };
+  }
 }
 
 export {
+  isDerivableTransferFile,
   isHeifLikeFile,
+  isRawLikeFile,
   prepareTransferUploadFile,
 };
 

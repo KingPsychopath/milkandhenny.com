@@ -2,6 +2,7 @@ import "server-only";
 
 import { downloadBuffer, headObject, uploadBuffer } from "@/lib/platform/r2";
 import {
+  RawPreviewUnavailableError,
   getFileKind,
   getMimeType,
   processGifThumb,
@@ -119,6 +120,10 @@ async function uploadOriginalBuffer(
   await uploadBuffer(storageKey, buffer, getMimeType(filename));
 }
 
+function isRawPreviewUnavailableError(error: unknown): error is RawPreviewUnavailableError {
+  return error instanceof RawPreviewUnavailableError;
+}
+
 async function materializeVisualFromBuffer(params: {
   buffer: Buffer;
   file: TransferUploadFileInput;
@@ -211,35 +216,62 @@ async function materializeVisualFromBuffer(params: {
     };
   }
 
-  const processed = await processImageVariants(buffer, filename);
-  await Promise.all([
-    uploadBuffer(`${prefix}/thumb/${derivedId}.webp`, processed.thumb.buffer, processed.thumb.contentType),
-    uploadBuffer(`${prefix}/full/${derivedId}.webp`, processed.full.buffer, processed.full.contentType),
-    originalAlreadyStored || archiveStorageKey ? Promise.resolve() : uploadOriginalBuffer(storageKey, filename, buffer),
-  ]);
+  try {
+    const processed = await processImageVariants(buffer, filename);
+    await Promise.all([
+      uploadBuffer(`${prefix}/thumb/${derivedId}.webp`, processed.thumb.buffer, processed.thumb.contentType),
+      uploadBuffer(`${prefix}/full/${derivedId}.webp`, processed.full.buffer, processed.full.contentType),
+      originalAlreadyStored || archiveStorageKey ? Promise.resolve() : uploadOriginalBuffer(storageKey, filename, buffer),
+    ]);
 
-  return {
-    file: buildReadyVisualFile(
-      filename,
-      storedSize,
-      "image",
-      getMimeType(filename),
-      storageKey,
-      archiveStorageKey,
-      processed.width,
-      processed.height,
-      route,
-      processingStatus,
-      processingBackend,
-      processed.takenAt,
-      file
-    ),
-    uploadedBytes:
-      processed.thumb.buffer.byteLength +
-      processed.full.buffer.byteLength +
-      storedSize +
-      originalUploadSize,
-  };
+    return {
+      file: buildReadyVisualFile(
+        filename,
+        storedSize,
+        "image",
+        getMimeType(filename),
+        storageKey,
+        archiveStorageKey,
+        processed.width,
+        processed.height,
+        route,
+        processingStatus,
+        processingBackend,
+        processed.takenAt,
+        file
+      ),
+      uploadedBytes:
+        processed.thumb.buffer.byteLength +
+        processed.full.buffer.byteLength +
+        storedSize +
+        originalUploadSize,
+    };
+  } catch (error) {
+    if (!isRawPreviewUnavailableError(error)) {
+      throw error;
+    }
+
+    if (!originalAlreadyStored && !archiveStorageKey) {
+      await uploadOriginalBuffer(storageKey, filename, buffer);
+    }
+
+    return {
+      file: {
+        ...buildOriginalOnlyFailureFile(
+          filename,
+          storedSize,
+          storageKey,
+          route,
+          "raw_preview_unavailable"
+        ),
+        ...(archiveStorageKey ? { originalStorageKey: archiveStorageKey } : {}),
+        ...(file.originalName ? { originalFilename: file.originalName } : {}),
+        ...(file.originalType ? { originalMimeType: file.originalType } : {}),
+        ...(file.convertedFrom ? { convertedFrom: file.convertedFrom } : {}),
+      },
+      uploadedBytes: storedSize + originalUploadSize,
+    };
+  }
 }
 
 async function processTransferBufferLocally(

@@ -4,6 +4,8 @@ import { presignPutUrl, isConfigured, listObjects } from "@/lib/platform/r2";
 import { apiErrorFromRequest } from "@/lib/platform/api-error";
 import { getMimeType, isProcessableImage } from "@/features/media/processing";
 import {
+  getWordUploadFilenameCandidates,
+  isRawWordUpload,
   mediaPrefixForTarget,
   parseWordMediaTarget,
   sanitiseStem,
@@ -112,7 +114,8 @@ export async function POST(request: NextRequest) {
 
     for (const file of files) {
       const original = file.name.trim();
-      const filename = toR2Filename(original);
+      const filename = toR2Filename(original, { preserveRawExtension: isRawWordUpload(original) });
+      const filenameCandidates = getWordUploadFilenameCandidates(original);
 
       if (!SAFE_WORD_FILENAME.test(filename)) {
         return NextResponse.json(
@@ -121,7 +124,7 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      if (reservedNames.has(filename)) {
+      if (filenameCandidates.some((candidate) => reservedNames.has(candidate))) {
         return NextResponse.json(
           {
             error:
@@ -131,9 +134,11 @@ export async function POST(request: NextRequest) {
           { status: 400 }
         );
       }
-      reservedNames.add(filename);
+      for (const candidate of filenameCandidates) {
+        reservedNames.add(candidate);
+      }
 
-      const alreadyExists = existingNames.has(filename);
+      const alreadyExists = filenameCandidates.some((candidate) => existingNames.has(candidate));
       if (alreadyExists && !force) {
         skipped.push(filename);
         continue;
@@ -143,8 +148,8 @@ export async function POST(request: NextRequest) {
       const kind: FileKind = isImage ? "image" : getFileKind(original);
       const contentType = getMimeType(original);
 
-      // Images are uploaded to a temp key, then converted to WebP in finalize.
-      // Raw files are uploaded directly to their final key (no finalize work needed).
+      // Processable images are uploaded to a temp key, then finalized into either
+      // WebP or original RAW storage depending on preview extraction success.
       const uploadKey = isImage
         ? `${targetPrefix}incoming/${randomUUID()}-${sanitiseStem(original)}${safeIncomingExt(original)}`
         : `${targetPrefix}${filename}`;

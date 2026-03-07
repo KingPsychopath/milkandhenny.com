@@ -3,6 +3,7 @@
 import { useState, useCallback, useEffect, useMemo, memo } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
 import { getTransferThumbUrl, getTransferFullUrl, getTransferStorageUrl } from "@/features/media/storage";
+import { buildLivePhotoVisualItems, type LivePhotoVisualItem } from "@/features/transfers/live-photo";
 import { fetchBlob, downloadBlob } from "@/lib/client/media-download";
 import { formatBytes } from "@/lib/shared/format";
 import { useLazyImage } from "@/hooks/useLazyImage";
@@ -21,6 +22,7 @@ type TransferFileData = {
   storageKey: string;
   originalStorageKey?: string;
   originalFilename?: string;
+  convertedFrom?: "heic" | "raw";
   width?: number;
   height?: number;
   previewStatus?: "ready" | "original_only";
@@ -34,6 +36,11 @@ type TransferGalleryProps = {
 
 type GalleryFilter = "all" | "photos" | "videos" | "audio" | "files";
 type BrowseMode = "scroll" | "pages";
+type LivePhotoMode = "paired" | "separate";
+type VisualGalleryItem = LivePhotoVisualItem<TransferFileData>;
+type GalleryEntry =
+  | { id: string; type: "visual"; item: VisualGalleryItem }
+  | { id: string; type: "file"; file: TransferFileData };
 
 const INITIAL_VISUAL_RENDER_COUNT = 120;
 const VISUAL_RENDER_INCREMENT = 120;
@@ -92,6 +99,22 @@ function getDownloadUrl(file: TransferFileData): string {
 
 function getDownloadFilename(file: TransferFileData): string {
   return file.originalFilename ?? file.filename;
+}
+
+function getVisualItemFiles(item: VisualGalleryItem): TransferFileData[] {
+  return item.type === "live" ? [item.photo, item.motion] : [item.file];
+}
+
+function getVisualItemPrimaryFile(item: VisualGalleryItem): TransferFileData {
+  return item.type === "live" ? item.photo : item.file;
+}
+
+function getVisualItemLabel(item: VisualGalleryItem): string {
+  return item.type === "live" ? item.photo.filename : item.file.filename;
+}
+
+function isVisualItemSelected(item: VisualGalleryItem, selectedIds: Set<string>): boolean {
+  return getVisualItemFiles(item).every((file) => selectedIds.has(file.id));
 }
 
 function isGalleryFilter(value: string | null): value is GalleryFilter {
@@ -263,7 +286,7 @@ function FileIcon({ kind, mimeType }: { kind: FileKind; mimeType: string }) {
 
 /* ─── Lightbox Content ─── */
 
-function LightboxContent({
+function SingleVisualContent({
   file,
   transferId,
   onError,
@@ -343,6 +366,62 @@ function LightboxContent({
   );
 }
 
+function LightboxContent({
+  item,
+  transferId,
+  onError,
+}: {
+  item: VisualGalleryItem;
+  transferId: string;
+  onError: () => void;
+}) {
+  const [activePanel, setActivePanel] = useState<"photo" | "motion">("photo");
+
+  useEffect(() => {
+    setActivePanel("photo");
+  }, [item.id]);
+
+  if (item.type === "single") {
+    return <SingleVisualContent file={item.file} transferId={transferId} onError={onError} />;
+  }
+
+  const showing = activePanel === "photo" ? item.photo : item.motion;
+
+  return (
+    <div className="flex flex-col items-center gap-4" onClick={(e) => e.stopPropagation()}>
+      <div className="flex items-center gap-2 font-mono text-micro tracking-wide">
+        <span className="text-white/35">live photo</span>
+        <button
+          type="button"
+          onClick={() => setActivePanel("photo")}
+          className={
+            activePanel === "photo"
+              ? "px-2 py-1 rounded-sm border border-white/30 text-white"
+              : "px-2 py-1 rounded-sm border border-white/15 text-white/50 hover:text-white transition-colors"
+          }
+        >
+          [photo]
+        </button>
+        <button
+          type="button"
+          onClick={() => setActivePanel("motion")}
+          className={
+            activePanel === "motion"
+              ? "px-2 py-1 rounded-sm border border-white/30 text-white"
+              : "px-2 py-1 rounded-sm border border-white/15 text-white/50 hover:text-white transition-colors"
+          }
+        >
+          [motion]
+        </button>
+      </div>
+      <SingleVisualContent file={showing} transferId={transferId} onError={onError} />
+      <p className="font-mono text-nano text-white/35 tracking-wide text-center">
+        {item.photo.filename} + {item.motion.filename}
+      </p>
+    </div>
+  );
+}
+
 /* ─── Main Gallery ─── */
 
 /**
@@ -367,6 +446,10 @@ export function TransferGallery({ transferId, files }: TransferGalleryProps) {
   const [browseMode, setBrowseMode] = useState<BrowseMode>(() => {
     const raw = searchParams.get("view");
     return isBrowseMode(raw) ? raw : "scroll";
+  });
+  const [livePhotoMode, setLivePhotoMode] = useState<LivePhotoMode>(() => {
+    const raw = searchParams.get("live");
+    return raw === "separate" ? "separate" : "paired";
   });
   const [page, setPage] = useState(() => {
     const raw = Number(searchParams.get("page"));
@@ -411,6 +494,14 @@ export function TransferGallery({ transferId, files }: TransferGalleryProps) {
     }),
     [files.length, grouped]
   );
+  const pairedVisualItems = useMemo(
+    () => buildLivePhotoVisualItems(grouped.visual),
+    [grouped.visual]
+  );
+  const hasLivePhotoPairs = useMemo(
+    () => pairedVisualItems.some((item) => item.type === "live"),
+    [pairedVisualItems]
+  );
 
   useEffect(() => {
     function syncFromLocation() {
@@ -423,6 +514,10 @@ export function TransferGallery({ transferId, files }: TransferGalleryProps) {
       const nextView = isBrowseMode(nextViewRaw) ? nextViewRaw : "scroll";
       setBrowseMode((prev) => (prev === nextView ? prev : nextView));
 
+      const nextLiveRaw = current.get("live");
+      const nextLive = nextLiveRaw === "separate" ? "separate" : "paired";
+      setLivePhotoMode((prev) => (prev === nextLive ? prev : nextLive));
+
       const nextPageRaw = Number(current.get("page"));
       const nextPage =
         Number.isFinite(nextPageRaw) && nextPageRaw > 0 ? Math.floor(nextPageRaw) : 1;
@@ -434,19 +529,49 @@ export function TransferGallery({ transferId, files }: TransferGalleryProps) {
     return () => window.removeEventListener("popstate", syncFromLocation);
   }, []);
 
-  const filteredFiles = useMemo(() => {
-    if (activeFilter === "all") return files;
-    if (activeFilter === "photos") return grouped.photos;
-    if (activeFilter === "videos") return grouped.videos;
-    if (activeFilter === "audio") return grouped.audio;
-    return grouped.fileOnly;
-  }, [activeFilter, files, grouped]);
-  const totalPages = Math.max(1, Math.ceil(filteredFiles.length / PAGE_SIZE));
-  const canPaginate = filteredFiles.length > PAGE_SIZE;
+  const filteredEntries = useMemo(() => {
+    const separateVisualItems = grouped.visual.map(
+      (file) => ({ id: `single:${file.id}`, type: "single", file } as const satisfies VisualGalleryItem)
+    );
+    const separatePhotoItems = grouped.photos.map(
+      (file) => ({ id: `single:${file.id}`, type: "single", file } as const satisfies VisualGalleryItem)
+    );
+    const separateVideoItems = grouped.videos.map(
+      (file) => ({ id: `single:${file.id}`, type: "single", file } as const satisfies VisualGalleryItem)
+    );
+
+    const visualItems =
+      activeFilter === "all"
+        ? livePhotoMode === "paired" ? pairedVisualItems : separateVisualItems
+        : activeFilter === "photos"
+          ? livePhotoMode === "paired"
+            ? pairedVisualItems.filter((item) => isPhotoLike(getVisualItemPrimaryFile(item)))
+            : separatePhotoItems
+          : activeFilter === "videos"
+            ? separateVideoItems
+            : [];
+
+    const fileEntries =
+      activeFilter === "all"
+        ? [...grouped.audio, ...grouped.fileOnly]
+        : activeFilter === "audio"
+          ? grouped.audio
+          : activeFilter === "files"
+            ? grouped.fileOnly
+            : [];
+
+    return [
+      ...visualItems.map((item) => ({ id: item.id, type: "visual", item } as const satisfies GalleryEntry)),
+      ...fileEntries.map((file) => ({ id: `file:${file.id}`, type: "file", file } as const satisfies GalleryEntry)),
+    ];
+  }, [activeFilter, grouped, livePhotoMode, pairedVisualItems]);
+  const totalPages = Math.max(1, Math.ceil(filteredEntries.length / PAGE_SIZE));
+  const canPaginate = filteredEntries.length > PAGE_SIZE;
 
   useEffect(() => {
     if (
       activeFilter !== "all" &&
+      activeFilter !== "videos" &&
       (filterCounts[activeFilter] === 0 || filterCounts[activeFilter] === filterCounts.all)
     ) {
       setActiveFilter("all");
@@ -458,34 +583,33 @@ export function TransferGallery({ transferId, files }: TransferGalleryProps) {
   }, [totalPages]);
 
   const pageStartIndex = browseMode === "pages" ? (page - 1) * PAGE_SIZE : 0;
-  const pageFiles = useMemo(
+  const pageEntries = useMemo(
     () =>
       browseMode === "pages"
-        ? filteredFiles.slice(pageStartIndex, pageStartIndex + PAGE_SIZE)
-        : filteredFiles,
-    [browseMode, filteredFiles, pageStartIndex]
+        ? filteredEntries.slice(pageStartIndex, pageStartIndex + PAGE_SIZE)
+        : filteredEntries,
+    [browseMode, filteredEntries, pageStartIndex]
   );
 
-  // Split files into visual (gallery) and non-visual (list)
-  const { visualFiles, nonVisualFiles } = useMemo(() => {
-    const visual: TransferFileData[] = [];
+  const { visualItems, nonVisualFiles } = useMemo(() => {
+    const visual: VisualGalleryItem[] = [];
     const nonVisual: TransferFileData[] = [];
-    for (const file of pageFiles) {
-      if (isVisualFile(file)) visual.push(file);
-      else nonVisual.push(file);
+    for (const entry of pageEntries) {
+      if (entry.type === "visual") visual.push(entry.item);
+      else nonVisual.push(entry.file);
     }
-    return { visualFiles: visual, nonVisualFiles: nonVisual };
-  }, [pageFiles]);
+    return { visualItems: visual, nonVisualFiles: nonVisual };
+  }, [pageEntries]);
   const [visibleVisualCount, setVisibleVisualCount] = useState(() =>
-    Math.min(visualFiles.length, INITIAL_VISUAL_RENDER_COUNT)
+    Math.min(visualItems.length, INITIAL_VISUAL_RENDER_COUNT)
   );
   const [visibleFileListCount, setVisibleFileListCount] = useState(() =>
     Math.min(nonVisualFiles.length, INITIAL_FILE_LIST_RENDER_COUNT)
   );
 
   useEffect(() => {
-    setVisibleVisualCount((prev) => Math.min(visualFiles.length, Math.max(prev, INITIAL_VISUAL_RENDER_COUNT)));
-  }, [visualFiles.length]);
+    setVisibleVisualCount((prev) => Math.min(visualItems.length, Math.max(prev, INITIAL_VISUAL_RENDER_COUNT)));
+  }, [visualItems.length]);
 
   useEffect(() => {
     setVisibleFileListCount((prev) =>
@@ -494,31 +618,49 @@ export function TransferGallery({ transferId, files }: TransferGalleryProps) {
   }, [nonVisualFiles.length]);
 
   const visibleVisualFiles =
-    browseMode === "pages" ? visualFiles : visualFiles.slice(0, visibleVisualCount);
+    browseMode === "pages" ? visualItems : visualItems.slice(0, visibleVisualCount);
   const visibleNonVisualFiles =
     browseMode === "pages" ? nonVisualFiles : nonVisualFiles.slice(0, visibleFileListCount);
   const hiddenVisualCount =
-    browseMode === "pages" ? 0 : Math.max(0, visualFiles.length - visibleVisualFiles.length);
+    browseMode === "pages" ? 0 : Math.max(0, visualItems.length - visibleVisualFiles.length);
   const hiddenNonVisualCount =
     browseMode === "pages" ? 0 : Math.max(0, nonVisualFiles.length - visibleNonVisualFiles.length);
   const selectedInFilteredCount = useMemo(
-    () => filteredFiles.reduce((sum, file) => sum + Number(selectedIds.has(file.id)), 0),
-    [filteredFiles, selectedIds]
+    () =>
+      filteredEntries.reduce((sum, entry) => {
+        if (entry.type === "visual") return sum + Number(isVisualItemSelected(entry.item, selectedIds));
+        return sum + Number(selectedIds.has(entry.file.id));
+      }, 0),
+    [filteredEntries, selectedIds]
   );
   const selectedInPageCount = useMemo(
-    () => pageFiles.reduce((sum, file) => sum + Number(selectedIds.has(file.id)), 0),
-    [pageFiles, selectedIds]
+    () =>
+      pageEntries.reduce((sum, entry) => {
+        if (entry.type === "visual") return sum + Number(isVisualItemSelected(entry.item, selectedIds));
+        return sum + Number(selectedIds.has(entry.file.id));
+      }, 0),
+    [pageEntries, selectedIds]
   );
-  const allFilteredSelected = filteredFiles.length > 0 && selectedInFilteredCount === filteredFiles.length;
-  const allPageSelected = pageFiles.length > 0 && selectedInPageCount === pageFiles.length;
+  const allFilteredSelected = filteredEntries.length > 0 && selectedInFilteredCount === filteredEntries.length;
+  const allPageSelected = pageEntries.length > 0 && selectedInPageCount === pageEntries.length;
   const lightboxVisualFiles = useMemo(() => {
-    if (activeFilter === "all") return grouped.visual;
-    if (activeFilter === "photos") return grouped.photos;
-    if (activeFilter === "videos") return grouped.videos;
-    return [] as TransferFileData[];
-  }, [activeFilter, grouped]);
+    if (activeFilter === "all") {
+      return livePhotoMode === "paired"
+        ? pairedVisualItems
+        : grouped.visual.map((file) => ({ id: `single:${file.id}`, type: "single", file } as const satisfies VisualGalleryItem));
+    }
+    if (activeFilter === "photos") {
+      return livePhotoMode === "paired"
+        ? pairedVisualItems.filter((item) => isPhotoLike(getVisualItemPrimaryFile(item)))
+        : grouped.photos.map((file) => ({ id: `single:${file.id}`, type: "single", file } as const satisfies VisualGalleryItem));
+    }
+    if (activeFilter === "videos") {
+      return grouped.videos.map((file) => ({ id: `single:${file.id}`, type: "single", file } as const satisfies VisualGalleryItem));
+    }
+    return [] as VisualGalleryItem[];
+  }, [activeFilter, grouped, livePhotoMode, pairedVisualItems]);
   const lightboxVisualIndexById = useMemo(
-    () => new Map(lightboxVisualFiles.map((file, index) => [file.id, index])),
+    () => new Map(lightboxVisualFiles.map((item, index) => [item.id, index])),
     [lightboxVisualFiles]
   );
 
@@ -531,6 +673,9 @@ export function TransferGallery({ transferId, files }: TransferGalleryProps) {
     if (browseMode === "scroll") next.delete("view");
     else next.set("view", browseMode);
 
+    if (livePhotoMode === "paired") next.delete("live");
+    else next.set("live", livePhotoMode);
+
     if (browseMode === "pages" && page > 1) next.set("page", String(page));
     else next.delete("page");
 
@@ -542,7 +687,7 @@ export function TransferGallery({ transferId, files }: TransferGalleryProps) {
         nextQuery ? `${pathname}?${nextQuery}` : pathname
       );
     }
-  }, [activeFilter, browseMode, page, pathname]);
+  }, [activeFilter, browseMode, livePhotoMode, page, pathname]);
 
   const handleFilterChange = useCallback(
     (nextFilter: GalleryFilter) => {
@@ -561,6 +706,16 @@ export function TransferGallery({ transferId, files }: TransferGalleryProps) {
       setPage(1);
     },
     [browseMode]
+  );
+
+  const handleLivePhotoModeChange = useCallback(
+    (nextMode: LivePhotoMode) => {
+      if (nextMode === livePhotoMode) return;
+      setLightboxIndex(null);
+      setLivePhotoMode(nextMode);
+      setPage(1);
+    },
+    [livePhotoMode]
   );
 
   const handlePageChange = useCallback(
@@ -591,10 +746,11 @@ export function TransferGallery({ transferId, files }: TransferGalleryProps) {
     if (lightboxIndex === null) return;
 
     const candidates = [lightboxVisualFiles[lightboxIndex - 1], lightboxVisualFiles[lightboxIndex + 1]].filter(
-      (file): file is TransferFileData => !!file
+      (item): item is VisualGalleryItem => !!item
     );
 
-    for (const file of candidates) {
+    for (const item of candidates) {
+      const file = getVisualItemPrimaryFile(item);
       if (file.kind === "gif") continue;
       if (file.kind !== "image" && file.kind !== "video") continue;
       const img = new Image();
@@ -689,6 +845,13 @@ export function TransferGallery({ transferId, files }: TransferGalleryProps) {
     downloadFiles(files);
   }, [files, downloadFiles]);
 
+  const downloadVisualItem = useCallback(
+    async (item: VisualGalleryItem) => {
+      await downloadFiles(getVisualItemFiles(item));
+    },
+    [downloadFiles]
+  );
+
   /** Download only selected files */
   const downloadSelected = useCallback(() => {
     const selected = files.filter((f) => selectedIds.has(f.id));
@@ -705,27 +868,53 @@ export function TransferGallery({ transferId, files }: TransferGalleryProps) {
     });
   }, []);
 
+  const toggleVisualItemSelection = useCallback((item: VisualGalleryItem) => {
+    const itemIds = getVisualItemFiles(item).map((file) => file.id);
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      const shouldSelect = itemIds.some((id) => !next.has(id));
+      for (const id of itemIds) {
+        if (shouldSelect) next.add(id);
+        else next.delete(id);
+      }
+      return next;
+    });
+  }, []);
+
   const selectFiltered = useCallback(() => {
     setSelectedIds((prev) => {
       const next = new Set(prev);
-      for (const f of filteredFiles) next.add(f.id);
+      for (const entry of filteredEntries) {
+        if (entry.type === "visual") {
+          for (const file of getVisualItemFiles(entry.item)) next.add(file.id);
+        } else {
+          next.add(entry.file.id);
+        }
+      }
       return next;
     });
-  }, [filteredFiles]);
+  }, [filteredEntries]);
 
   const selectPage = useCallback(() => {
     setSelectedIds((prev) => {
       const next = new Set(prev);
-      for (const f of pageFiles) next.add(f.id);
+      for (const entry of pageEntries) {
+        if (entry.type === "visual") {
+          for (const file of getVisualItemFiles(entry.item)) next.add(file.id);
+        } else {
+          next.add(entry.file.id);
+        }
+      }
       return next;
     });
-  }, [pageFiles]);
+  }, [pageEntries]);
 
   const clearSelection = useCallback(() => {
     setSelectedIds(new Set());
   }, []);
 
   const selectedCount = selectedIds.size;
+  const selectedDisplayCount = selectedInFilteredCount;
   const currentVisual = lightboxIndex !== null ? lightboxVisualFiles[lightboxIndex] : null;
   const visibleFilterTabs = ([
     { key: "all", label: "all", count: filterCounts.all },
@@ -764,6 +953,33 @@ export function TransferGallery({ transferId, files }: TransferGalleryProps) {
         </div>
 
         <div className="flex flex-wrap items-center gap-2 font-mono text-micro tracking-wide">
+          {hasLivePhotoPairs && (activeFilter === "all" || activeFilter === "photos") && (
+            <>
+              <span className="theme-muted">live photos</span>
+              <button
+                type="button"
+                onClick={() => handleLivePhotoModeChange("paired")}
+                className={
+                  livePhotoMode === "paired"
+                    ? "px-2 py-1 rounded-sm border theme-border text-foreground"
+                    : "px-2 py-1 rounded-sm border theme-border theme-muted hover:text-foreground transition-colors"
+                }
+              >
+                [paired]
+              </button>
+              <button
+                type="button"
+                onClick={() => handleLivePhotoModeChange("separate")}
+                className={
+                  livePhotoMode === "separate"
+                    ? "px-2 py-1 rounded-sm border theme-border text-foreground"
+                    : "px-2 py-1 rounded-sm border theme-border theme-muted hover:text-foreground transition-colors"
+                }
+              >
+                [separate]
+              </button>
+            </>
+          )}
           <span className="theme-muted">browse</span>
           <button
             type="button"
@@ -803,10 +1019,10 @@ export function TransferGallery({ transferId, files }: TransferGalleryProps) {
       <div className="flex flex-wrap items-center justify-between gap-2 mb-6">
         <span className="font-mono text-micro theme-muted tracking-wide">
           {selectedCount > 0
-            ? `${selectedCount} selected (${selectedInFilteredCount} in current filter)`
+            ? `${selectedDisplayCount} selected in current view`
             : browseMode === "pages" && canPaginate
-              ? `showing ${pageFiles.length} of ${filteredFiles.length} in filter (${files.length} total)`
-              : `${filteredFiles.length} ${filteredFiles.length === 1 ? "file" : "files"} in filter`}
+              ? `showing ${pageEntries.length} of ${filteredEntries.length} in filter (${files.length} files total)`
+              : `${filteredEntries.length} ${filteredEntries.length === 1 ? "item" : "items"} in filter`}
         </span>
         <div className="flex items-center gap-3 font-mono text-micro tracking-wide">
           {selectedCount > 0 && (
@@ -823,12 +1039,12 @@ export function TransferGallery({ transferId, files }: TransferGalleryProps) {
               </button>
             </>
           )}
-          {!allPageSelected && browseMode === "pages" && pageFiles.length > 1 && (
+          {!allPageSelected && browseMode === "pages" && pageEntries.length > 1 && (
             <button onClick={selectPage} className="theme-muted hover:text-foreground transition-colors">
               [ select page ]
             </button>
           )}
-          {!allFilteredSelected && filteredFiles.length > 1 && (
+          {!allFilteredSelected && filteredEntries.length > 1 && (
             <button onClick={selectFiltered} className="theme-muted hover:text-foreground transition-colors">
               {getScopeSelectLabel(activeFilter)}
             </button>
@@ -844,18 +1060,18 @@ export function TransferGallery({ transferId, files }: TransferGalleryProps) {
       </div>
 
       {/* Visual media grid (images, GIFs, videos) */}
-      {visualFiles.length > 0 && (
+      {visualItems.length > 0 && (
         <>
           {hiddenVisualCount > 0 && browseMode === "scroll" && (
             <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-sm border theme-border px-3 py-2">
               <p className="font-mono text-nano theme-muted tracking-wide">
-                Showing {visibleVisualFiles.length} of {visualFiles.length} visual items to keep this page responsive.
+                Showing {visibleVisualFiles.length} of {visualItems.length} visual items to keep this page responsive.
               </p>
               <div className="flex items-center gap-3 font-mono text-micro tracking-wide">
                 <button
                   type="button"
                   onClick={() =>
-                    setVisibleVisualCount((prev) => Math.min(visualFiles.length, prev + VISUAL_RENDER_INCREMENT))
+                    setVisibleVisualCount((prev) => Math.min(visualItems.length, prev + VISUAL_RENDER_INCREMENT))
                   }
                   className="theme-muted hover:text-foreground transition-colors"
                 >
@@ -863,7 +1079,7 @@ export function TransferGallery({ transferId, files }: TransferGalleryProps) {
                 </button>
                 <button
                   type="button"
-                  onClick={() => setVisibleVisualCount(visualFiles.length)}
+                  onClick={() => setVisibleVisualCount(visualItems.length)}
                   className="text-amber-600 hover:text-amber-500 transition-colors"
                 >
                   [ show all ]
@@ -873,14 +1089,14 @@ export function TransferGallery({ transferId, files }: TransferGalleryProps) {
           )}
 
           <div className="gallery-masonry">
-            {visibleVisualFiles.map((file, index) => (
+            {visibleVisualFiles.map((item, index) => (
               <VisualCard
-                key={file.id}
+                key={item.id}
                 transferId={transferId}
-                file={file}
-                isSelected={selectedIds.has(file.id)}
-                onToggleSelect={() => toggleSelection(file.id)}
-                onClick={() => openLightbox(lightboxVisualIndexById.get(file.id) ?? index)}
+                item={item}
+                isSelected={isVisualItemSelected(item, selectedIds)}
+                onToggleSelect={() => toggleVisualItemSelection(item)}
+                onClick={() => openLightbox(lightboxVisualIndexById.get(item.id) ?? index)}
               />
             ))}
           </div>
@@ -889,8 +1105,8 @@ export function TransferGallery({ transferId, files }: TransferGalleryProps) {
 
       {/* Non-visual files list (audio, documents, archives) */}
       {nonVisualFiles.length > 0 && (
-        <div className={visualFiles.length > 0 ? "mt-8" : ""}>
-          {visualFiles.length > 0 && (
+        <div className={visualItems.length > 0 ? "mt-8" : ""}>
+          {visualItems.length > 0 && (
             <p className="font-mono text-micro theme-muted tracking-wide mb-3">files</p>
           )}
           {hiddenNonVisualCount > 0 && browseMode === "scroll" && (
@@ -969,9 +1185,11 @@ export function TransferGallery({ transferId, files }: TransferGalleryProps) {
                   <circle cx="8.5" cy="8.5" r="1.5" />
                   <polyline points="21 15 16 10 5 21" />
                 </svg>
-                <p className="font-mono text-sm text-white/40 tracking-wide">failed to load {currentVisual.filename}</p>
+                <p className="font-mono text-sm text-white/40 tracking-wide">
+                  failed to load {getVisualItemLabel(currentVisual)}
+                </p>
                 <button
-                  onClick={() => downloadSingle(currentVisual)}
+                  onClick={() => downloadVisualItem(currentVisual)}
                   disabled={savingSingle}
                   className="font-mono text-xs text-amber-500 hover:text-amber-400 transition-colors"
                 >
@@ -981,7 +1199,7 @@ export function TransferGallery({ transferId, files }: TransferGalleryProps) {
             ) : (
               <LightboxContent
                 key={currentVisual.id}
-                file={currentVisual}
+                item={currentVisual}
                 transferId={transferId}
                 onError={() => setLightboxError(true)}
               />
@@ -1011,11 +1229,11 @@ export function TransferGallery({ transferId, files }: TransferGalleryProps) {
                 {lightboxIndex + 1} / {lightboxVisualFiles.length}
               </span>
               <button
-                onClick={() => downloadSingle(currentVisual)}
+                onClick={() => downloadVisualItem(currentVisual)}
                 disabled={savingSingle}
                 className="font-mono text-xs text-white/50 hover:text-white transition-colors disabled:opacity-50"
               >
-                {savingSingle ? "saving..." : "download ↓"}
+                {savingSingle ? "saving..." : currentVisual.type === "live" ? "download pair ↓" : "download ↓"}
               </button>
             </div>
           </div>
@@ -1061,17 +1279,18 @@ function BrokenImageFallback({ filename }: { filename: string }) {
 
 const VisualCard = memo(function VisualCard({
   transferId,
-  file,
+  item,
   isSelected,
   onToggleSelect,
   onClick,
 }: {
   transferId: string;
-  file: TransferFileData;
+  item: VisualGalleryItem;
   isSelected: boolean;
   onToggleSelect: () => void;
   onClick: () => void;
 }) {
+  const file = getVisualItemPrimaryFile(item);
   const hasThumbnail = hasVisualThumbnail(file);
   const primaryThumbUrl =
     file.kind === "video" || file.kind === "gif"
@@ -1118,7 +1337,7 @@ const VisualCard = memo(function VisualCard({
         }}
         className="block relative overflow-hidden rounded-sm w-full text-left cursor-pointer"
         style={{ paddingBottom: `${aspectRatio * 100}%` }}
-        aria-label={`Open ${file.filename}`}
+        aria-label={`Open ${item.type === "live" ? `${item.photo.filename} live photo` : file.filename}`}
       >
         {/* Selection toggle — stop propagation so card click opens lightbox */}
         <div className="absolute top-2 left-2 z-10" onClick={(e) => e.stopPropagation()} role="none">
@@ -1165,7 +1384,7 @@ const VisualCard = memo(function VisualCard({
         )}
 
         {/* Video play overlay */}
-        {file.kind === "video" && hasThumbnail && (
+        {(file.kind === "video" || item.type === "live") && hasThumbnail && (
           <div className="absolute inset-0 flex items-center justify-center">
             <div className="w-12 h-12 rounded-full bg-black/40 backdrop-blur-sm flex items-center justify-center">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="white" stroke="none">
@@ -1173,6 +1392,21 @@ const VisualCard = memo(function VisualCard({
               </svg>
             </div>
           </div>
+        )}
+
+        {item.type === "live" && (
+          <>
+            <div className="absolute top-2 right-2 z-10">
+              <span className="font-mono text-pico bg-black/50 text-white/80 px-1.5 py-0.5 rounded tracking-wider uppercase">
+                linked
+              </span>
+            </div>
+            <div className="absolute left-2 right-2 bottom-8 z-10">
+              <span className="inline-block font-mono text-pico bg-black/55 text-white/85 px-1.5 py-0.5 rounded tracking-wider uppercase">
+                photo + motion
+              </span>
+            </div>
+          </>
         )}
 
         {/* GIF badge */}
@@ -1188,6 +1422,22 @@ const VisualCard = memo(function VisualCard({
           <div className="absolute bottom-2 left-2">
             <span className="font-mono text-pico bg-black/50 text-white/80 px-1.5 py-0.5 rounded tracking-wider uppercase">
               raw
+            </span>
+          </div>
+        )}
+
+        {file.convertedFrom && !isRawImage(file) && (
+          <div className="absolute bottom-2 left-2">
+            <span className="font-mono text-pico bg-black/50 text-white/80 px-1.5 py-0.5 rounded tracking-wider uppercase">
+              {file.convertedFrom === "raw" ? "raw preview" : item.type === "live" ? "live" : "optimized"}
+            </span>
+          </div>
+        )}
+
+        {item.type === "live" && file.convertedFrom !== "heic" && (
+          <div className="absolute bottom-2 left-2">
+            <span className="font-mono text-pico bg-black/50 text-white/80 px-1.5 py-0.5 rounded tracking-wider uppercase">
+              live
             </span>
           </div>
         )}

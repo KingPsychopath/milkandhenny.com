@@ -1,6 +1,6 @@
 import type { TransferFile } from "./store";
 
-type ConvertedFrom = "heic";
+type ConvertedFrom = "heic" | "raw";
 
 type TransferUploadFileInput = {
   /** Filename stored in transfer metadata and shown in the gallery. */
@@ -8,7 +8,7 @@ type TransferUploadFileInput = {
   /** Size in bytes of the primary uploaded object. */
   size: number;
   type?: string;
-  /** Original HEIF filename archived separately when browser conversion runs. */
+  /** Original source filename archived separately when browser preview derivation runs. */
   originalName?: string;
   originalSize?: number;
   originalType?: string;

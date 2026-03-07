@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  getWordUploadFilenameCandidates,
   mediaPrefixForTarget,
   parseWordMediaTarget,
   toMarkdownSnippetForTarget,
@@ -39,8 +40,16 @@ describe("words media upload helpers", () => {
     expect(toR2Filename("Hero Image.JPG")).toBe("hero-image.webp");
   });
 
+  it("preserves the original extension for raw filenames when requested", () => {
+    expect(toR2Filename("Capture.CR3", { preserveRawExtension: true })).toBe("capture.cr3");
+  });
+
   it("preserves extension for non-image files", () => {
     expect(toR2Filename("Pricing.PDF")).toBe("pricing.pdf");
+  });
+
+  it("tracks both possible destination filenames for raw uploads", () => {
+    expect(getWordUploadFilenameCandidates("Capture.CR3")).toEqual(["capture.webp", "capture.cr3"]);
   });
 
   it("creates image markdown snippets for word-scoped media", () => {

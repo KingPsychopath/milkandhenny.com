@@ -2,11 +2,18 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireAuthWithPayload } from "@/features/auth/server";
 import { apiErrorFromRequest } from "@/lib/platform/api-error";
 import { deleteObject, downloadBuffer, isConfigured, uploadBuffer } from "@/lib/platform/r2";
-import { isProcessableImage, processToWebP } from "@/features/media/processing";
 import {
+  RawPreviewUnavailableError,
+  getMimeType,
+  isProcessableImage,
+  processToWebP,
+} from "@/features/media/processing";
+import {
+  isRawWordUpload,
   mediaPathForTarget,
   mediaPrefixForTarget,
   parseWordMediaTarget,
+  toR2Filename,
   toMarkdownSnippetForTarget,
 } from "@/features/words/upload";
 import { getFileKind } from "@/features/media/processing";
@@ -122,30 +129,58 @@ export async function POST(request: NextRequest) {
   try {
     const uploaded = await mapWithConcurrency(files, FINALIZE_CONCURRENCY, async (file) => {
       const original = file.original.trim();
-      const finalKey = mediaPathForTarget(target, file.filename);
 
       if (isProcessableImage(original)) {
         // Uploaded to a temp key → download → process → upload to final key → delete temp key.
         const raw = await downloadBuffer(file.uploadKey);
-        const { buffer: webpBuffer, width, height } = await processToWebP(raw, original);
-        await uploadBuffer(finalKey, webpBuffer, "image/webp");
+        const webpFilename = toR2Filename(original);
+        const webpKey = mediaPathForTarget(target, webpFilename);
 
         try {
-          await deleteObject(file.uploadKey);
-        } catch {
-          // Best-effort cleanup. The temp file is not referenced by markdown and can be cleaned manually.
-        }
+          const { buffer: webpBuffer, width, height } = await processToWebP(raw, original);
+          await uploadBuffer(webpKey, webpBuffer, "image/webp");
 
-        return {
-          original,
-          filename: file.filename,
-          kind: "image",
-          width,
-          height,
-          size: webpBuffer.byteLength,
-          markdown: toMarkdownSnippetForTarget(target, file.filename, "image"),
-          overwrote: !!file.overwrote,
-        };
+          try {
+            await deleteObject(file.uploadKey);
+          } catch {
+            // Best-effort cleanup. The temp file is not referenced by markdown and can be cleaned manually.
+          }
+
+          return {
+            original,
+            filename: webpFilename,
+            kind: "image" as const,
+            width,
+            height,
+            size: webpBuffer.byteLength,
+            markdown: toMarkdownSnippetForTarget(target, webpFilename, "image"),
+            overwrote: !!file.overwrote,
+          };
+        } catch (error) {
+          if (!(error instanceof RawPreviewUnavailableError) || !isRawWordUpload(original)) {
+            throw error;
+          }
+
+          const fallbackFilename = toR2Filename(original, { preserveRawExtension: true });
+          const fallbackKey = mediaPathForTarget(target, fallbackFilename);
+          const fallbackKind: FileKind = "file";
+          await uploadBuffer(fallbackKey, raw, getMimeType(original));
+
+          try {
+            await deleteObject(file.uploadKey);
+          } catch {
+            // Best-effort cleanup. The temp file is not referenced by markdown and can be cleaned manually.
+          }
+
+          return {
+            original,
+            filename: fallbackFilename,
+            kind: fallbackKind,
+            size: raw.byteLength,
+            markdown: toMarkdownSnippetForTarget(target, fallbackFilename, fallbackKind),
+            overwrote: !!file.overwrote,
+          };
+        }
       }
 
       // Already uploaded directly to finalKey.

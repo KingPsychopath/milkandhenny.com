@@ -5,7 +5,11 @@ import Link from "next/link";
 import { getStored, removeStored } from "@/lib/client/storage";
 import { mapWithConcurrency } from "@/lib/shared/map-with-concurrency";
 import { SITE_BRAND } from "@/lib/shared/config";
-import { isHeifLikeFile, prepareTransferUploadFile, type PreparedTransferUpload } from "@/features/transfers/browser-heif";
+import {
+  isDerivableTransferFile,
+  prepareTransferUploadFile,
+  type PreparedTransferUpload,
+} from "@/features/transfers/browser-heif";
 import type { TransferUploadFileInput } from "@/features/transfers/upload-types";
 
 /* ─── Types ─── */
@@ -89,7 +93,7 @@ type UploadDashboardProps = {
 };
 
 const DIRECT_UPLOAD_CONCURRENCY = 4;
-const HEIF_CONVERSION_CONCURRENCY = 2;
+const DERIVATION_CONCURRENCY = 2;
 const DIRECT_UPLOAD_RETRIES = 3;
 const API_REQUEST_RETRIES = 2;
 
@@ -135,6 +139,7 @@ export function UploadDashboard({ isAdmin }: UploadDashboardProps) {
   const [transferResult, setTransferResult] = useState<TransferResult | null>(
     null
   );
+  const [deriveTransferPreviews, setDeriveTransferPreviews] = useState(true);
 
   /* Words fields */
   const [wordsScope, setWordsScope] = useState<WordsScope>("word");
@@ -401,8 +406,8 @@ export function UploadDashboard({ isAdmin }: UploadDashboardProps) {
 
   const prepareTransferUploads = useCallback(
     async (selectedFiles: File[]) => {
-      const heifCount = selectedFiles.filter((file) => isHeifLikeFile(file)).length;
-      if (heifCount === 0) {
+      const derivableFiles = selectedFiles.filter((file) => isDerivableTransferFile(file));
+      if (!deriveTransferPreviews || derivableFiles.length === 0) {
         return selectedFiles.map<PreparedTransferUpload>((file) => ({
           uploadFile: file,
           uploadName: file.name,
@@ -413,18 +418,16 @@ export function UploadDashboard({ isAdmin }: UploadDashboardProps) {
       setUploadProgress({
         phase: "converting",
         current: 0,
-        total: heifCount,
+        total: derivableFiles.length,
       });
       setConversionStatuses(
         Object.fromEntries(
-          selectedFiles
-            .filter((file) => isHeifLikeFile(file))
-            .map((file) => [`${file.name}:${file.size}`, "queued for conversion"])
+          derivableFiles.map((file) => [`${file.name}:${file.size}`, "queued for preview derivation"])
         )
       );
 
-      const prepared = await mapWithConcurrency(selectedFiles, HEIF_CONVERSION_CONCURRENCY, async (file) => {
-        if (!isHeifLikeFile(file)) {
+      const prepared = await mapWithConcurrency(selectedFiles, DERIVATION_CONCURRENCY, async (file) => {
+        if (!isDerivableTransferFile(file)) {
           return {
             uploadFile: file,
             uploadName: file.name,
@@ -432,17 +435,17 @@ export function UploadDashboard({ isAdmin }: UploadDashboardProps) {
         }
 
         const key = `${file.name}:${file.size}`;
-        setConversionStatuses((current) => ({ ...current, [key]: `Converting ${file.name}...` }));
-        const result = await prepareTransferUploadFile(file);
+        setConversionStatuses((current) => ({ ...current, [key]: `Preparing preview for ${file.name}...` }));
+        const result = await prepareTransferUploadFile(file, { derivePreview: true });
         completed += 1;
         setConversionStatuses((current) => ({
           ...current,
-          [key]: `Converted to ${result.uploadName}`,
+          [key]: result.statusLabel ?? `Prepared ${result.uploadName}`,
         }));
         setUploadProgress({
           phase: "converting",
           current: completed,
-          total: heifCount,
+          total: derivableFiles.length,
           filename: file.name,
         });
         return result;
@@ -450,7 +453,7 @@ export function UploadDashboard({ isAdmin }: UploadDashboardProps) {
 
       return prepared;
     },
-    []
+    [deriveTransferPreviews]
   );
 
   /* ─── Drag & drop ─── */
@@ -830,6 +833,8 @@ export function UploadDashboard({ isAdmin }: UploadDashboardProps) {
   };
 
   const totalFileSize = files.reduce((sum, f) => sum + f.size, 0);
+  const derivableTransferFileCount =
+    mode === "transfer" ? files.filter((file) => isDerivableTransferFile(file)).length : 0;
 
   /* ─── Render: wait for mount (avoids hydration mismatch) ─── */
   if (!mounted) {
@@ -986,6 +991,45 @@ export function UploadDashboard({ isAdmin }: UploadDashboardProps) {
                   ))}
                 </select>
               </div>
+              {derivableTransferFileCount > 0 ? (
+                <button
+                  type="button"
+                  onClick={() => setDeriveTransferPreviews((current) => !current)}
+                  className="flex items-center gap-2.5 cursor-pointer group"
+                >
+                  <span
+                    className={`w-4 h-4 rounded border flex items-center justify-center transition-colors ${
+                      deriveTransferPreviews
+                        ? "bg-[var(--foreground)] border-[var(--foreground)]"
+                        : "border-[var(--stone-300)] group-hover:border-[var(--stone-400)]"
+                    }`}
+                  >
+                    {deriveTransferPreviews ? (
+                      <svg
+                        width="10"
+                        height="10"
+                        viewBox="0 0 10 10"
+                        fill="none"
+                        stroke="var(--background)"
+                        strokeWidth="1.5"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      >
+                        <path d="M1.5 5.5L4 8L8.5 2" />
+                      </svg>
+                    ) : null}
+                  </span>
+                  <span className="font-mono text-xs theme-muted text-left">
+                    derive previews before upload
+                    <span className="block text-micro theme-faint mt-1">
+                      {derivableTransferFileCount} HEIC/RAW file{derivableTransferFileCount === 1 ? "" : "s"} detected.
+                      {deriveTransferPreviews
+                        ? " Slower upload, but preview-ready galleries when derivation succeeds."
+                        : " Faster upload, but those files stay original-only with no preview."}
+                    </span>
+                  </span>
+                </button>
+              ) : null}
             </>
           )}
         </div>
@@ -1250,9 +1294,14 @@ export function UploadDashboard({ isAdmin }: UploadDashboardProps) {
               <div>
                 <p className="font-mono text-xs theme-muted mb-1">share</p>
                 <div className="flex items-center gap-2">
-                  <code className="font-mono text-sm flex-1 truncate">
+                  <a
+                    href={transferResult.shareUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="font-mono text-sm flex-1 truncate hover:underline"
+                  >
                     {transferResult.shareUrl}
-                  </code>
+                  </a>
                   <button
                     onClick={() =>
                       copyToClipboard(transferResult.shareUrl, "share")
@@ -1267,9 +1316,14 @@ export function UploadDashboard({ isAdmin }: UploadDashboardProps) {
               <div>
                 <p className="font-mono text-xs theme-muted mb-1">admin</p>
                 <div className="flex items-center gap-2">
-                  <code className="font-mono text-sm flex-1 truncate">
+                  <a
+                    href={transferResult.adminUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="font-mono text-sm flex-1 truncate hover:underline"
+                  >
                     {transferResult.adminUrl}
-                  </code>
+                  </a>
                   <button
                     onClick={() =>
                       copyToClipboard(transferResult.adminUrl, "admin")
