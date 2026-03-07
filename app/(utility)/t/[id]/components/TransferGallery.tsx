@@ -1421,7 +1421,7 @@ const VisualCard = memo(function VisualCard({
         {isRawImage(file) && (
           <div className="absolute bottom-2 left-2">
             <span className="font-mono text-pico bg-black/50 text-white/80 px-1.5 py-0.5 rounded tracking-wider uppercase">
-              raw
+              {file.previewStatus === "ready" ? "raw preview" : "raw"}
             </span>
           </div>
         )}

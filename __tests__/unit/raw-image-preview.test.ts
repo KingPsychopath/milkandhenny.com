@@ -58,7 +58,7 @@ describe("raw image preview processing", () => {
     expect(result.height).toBe(1200);
   });
 
-  it("throws when exifr only returns a low-resolution thumbnail", async () => {
+  it("accepts a low-resolution thumbnail when it is the only available preview", async () => {
     const preview = await makeJpegBuffer(160, 120);
     vi.doMock("exifr", () => ({
       default: {
@@ -66,11 +66,11 @@ describe("raw image preview processing", () => {
       },
     }));
 
-    const { RawPreviewUnavailableError, processToWebP } = await importProcessingModule();
+    const { processToWebP } = await importProcessingModule();
+    const result = await processToWebP(Buffer.from("raw"), "IMG_3001.dng");
 
-    await expect(processToWebP(Buffer.from("raw"), "IMG_3001.dng")).rejects.toBeInstanceOf(
-      RawPreviewUnavailableError
-    );
+    expect(result.width).toBe(160);
+    expect(result.height).toBe(120);
   });
 
   it("throws when exifr finds no embedded preview", async () => {

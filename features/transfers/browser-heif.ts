@@ -28,7 +28,7 @@ const HEIF_EXTENSIONS = [".heic", ".heif", ".hif"] as const;
 const HEIF_MIME_TYPES = ["image/heic", "image/heif", "image/hif"] as const;
 const RAW_EXTENSIONS = [".dng", ".arw", ".cr2", ".cr3", ".nef", ".orf", ".raf", ".rw2", ".raw"] as const;
 const JPEG_QUALITY = 0.9;
-const RAW_PREVIEW_MIN_LONGEST_EDGE = 1024;
+const RAW_PREVIEW_ACCEPTANCE_STEPS = [1600, 1024, 512, 1] as const;
 
 function hasHeifExtension(filename: string): boolean {
   const lower = filename.toLowerCase();
@@ -82,6 +82,13 @@ async function getImageDimensions(blob: Blob): Promise<{ width: number; height: 
   } finally {
     URL.revokeObjectURL(objectUrl);
   }
+}
+
+function resolveAcceptedRawPreviewThreshold(longestEdge: number): number | null {
+  for (const threshold of RAW_PREVIEW_ACCEPTANCE_STEPS) {
+    if (longestEdge >= threshold) return threshold;
+  }
+  return null;
 }
 
 function inferHeifMimeType(file: Pick<File, "name" | "type">): string {
@@ -469,7 +476,9 @@ async function convertHeifFile(file: File): Promise<File> {
   }
 }
 
-async function extractRawPreviewFile(file: File): Promise<File> {
+async function extractRawPreviewFile(
+  file: File
+): Promise<{ file: File; longestEdge: number; acceptedThreshold: number }> {
   const preview = await exifr.thumbnail(file);
   if (!preview) throw new Error("No embedded RAW preview found");
 
@@ -478,14 +487,20 @@ async function extractRawPreviewFile(file: File): Promise<File> {
   previewCopy.set(previewBytes);
   const previewBlob = new Blob([previewCopy], { type: "image/jpeg" });
   const { width, height } = await getImageDimensions(previewBlob);
-  if (Math.max(width, height) < RAW_PREVIEW_MIN_LONGEST_EDGE) {
+  const longestEdge = Math.max(width, height);
+  const acceptedThreshold = resolveAcceptedRawPreviewThreshold(longestEdge);
+  if (acceptedThreshold === null) {
     throw new Error("Embedded RAW preview is too small");
   }
 
-  return new File([previewBlob], replaceExtensionWithJpg(file.name), {
-    type: "image/jpeg",
-    lastModified: file.lastModified,
-  });
+  return {
+    file: new File([previewBlob], replaceExtensionWithJpg(file.name), {
+      type: "image/jpeg",
+      lastModified: file.lastModified,
+    }),
+    longestEdge,
+    acceptedThreshold,
+  };
 }
 
 async function prepareTransferUploadFile(
@@ -511,13 +526,16 @@ async function prepareTransferUploadFile(
   }
 
   try {
-    const previewFile = await extractRawPreviewFile(file);
+    const preview = await extractRawPreviewFile(file);
     return {
-      uploadFile: previewFile,
-      uploadName: previewFile.name,
+      uploadFile: preview.file,
+      uploadName: preview.file.name,
       originalFile: file,
       convertedFrom: "raw",
-      statusLabel: `extracted embedded preview from ${file.name}`,
+      statusLabel:
+        preview.acceptedThreshold >= 1024
+          ? `extracted embedded preview from ${file.name} (${preview.longestEdge}px)`
+          : `extracted low-res embedded preview from ${file.name} (${preview.longestEdge}px)`,
     };
   } catch {
     return {

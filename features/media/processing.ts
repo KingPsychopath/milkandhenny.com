@@ -108,7 +108,7 @@ function isProcessableImage(filename: string): boolean {
   return PROCESSABLE_EXTENSIONS.test(filename) || RAW_IMAGE_EXTENSIONS.test(filename);
 }
 
-const RAW_PREVIEW_MIN_LONGEST_EDGE = 1024;
+const RAW_PREVIEW_ACCEPTANCE_STEPS = [1600, 1024, 512, 1] as const;
 
 class RawPreviewUnavailableError extends Error {
   constructor(sourceExt: string, reason: "missing" | "too_small") {
@@ -127,6 +127,13 @@ function normalizePreviewBuffer(preview: Buffer | Uint8Array): Buffer {
     : Buffer.from(preview.buffer, preview.byteOffset, preview.byteLength);
 }
 
+function resolveAcceptedRawPreviewThreshold(longestEdge: number): number | null {
+  for (const threshold of RAW_PREVIEW_ACCEPTANCE_STEPS) {
+    if (longestEdge >= threshold) return threshold;
+  }
+  return null;
+}
+
 async function resolveRawPreview(raw: Buffer, sourceExt: string): Promise<Buffer> {
   const exifr = (await import("exifr")).default;
   const preview = await exifr.thumbnail(raw);
@@ -138,8 +145,9 @@ async function resolveRawPreview(raw: Buffer, sourceExt: string): Promise<Buffer
   const metadata = await sharp(buffer).metadata();
   const width = metadata.width ?? 0;
   const height = metadata.height ?? 0;
+  const acceptedThreshold = resolveAcceptedRawPreviewThreshold(Math.max(width, height));
 
-  if (Math.max(width, height) < RAW_PREVIEW_MIN_LONGEST_EDGE) {
+  if (acceptedThreshold === null) {
     throw new RawPreviewUnavailableError(sourceExt, "too_small");
   }
 
@@ -647,7 +655,7 @@ export {
   AUDIO_EXTENSIONS,
   MIME_TYPES,
   ROTATION_OVERRIDES,
-  RAW_PREVIEW_MIN_LONGEST_EDGE,
+  RAW_PREVIEW_ACCEPTANCE_STEPS,
   RawPreviewUnavailableError,
   getMimeType,
   getFileKind,
