@@ -356,7 +356,7 @@ async function decodeWithLibheif(file: File): Promise<{ source: CanvasImageSourc
   const libheif = (imported.default ?? imported) as unknown as LibheifLike;
   const decoder = new libheif.HeifDecoder();
   const images = decoder.decode(await file.arrayBuffer());
-  const image = images.find((candidate) => candidate.is_primary()) ?? images[0];
+  const image = images[0];
 
   if (!image) throw new Error("No HEIF image found");
 
