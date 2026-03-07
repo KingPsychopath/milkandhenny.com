@@ -34,6 +34,9 @@ type FocalPercent = { x: number; y: number };
 /** Image extensions Sharp can process (HEIC/HIF need libheif in Sharp build) */
 const PROCESSABLE_EXTENSIONS = /\.(jpe?g|png|webp|heic|hif|tiff?)$/i;
 
+/** Camera RAW stills we should treat as visual media even without generated variants */
+const RAW_IMAGE_EXTENSIONS = /\.(dng|arw|cr2|cr3|nef|orf|raf|rw2|raw)$/i;
+
 /** Animated images — get a static thumbnail but original stays as-is */
 const ANIMATED_EXTENSIONS = /\.gif$/i;
 
@@ -48,6 +51,11 @@ const MIME_TYPES: Record<string, string> = {
   ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
   ".png": "image/png", ".webp": "image/webp",
   ".heic": "image/heic", ".hif": "image/heif", ".tif": "image/tiff", ".tiff": "image/tiff",
+  ".dng": "image/x-adobe-dng", ".arw": "image/x-sony-arw",
+  ".cr2": "image/x-canon-cr2", ".cr3": "image/x-canon-cr3",
+  ".nef": "image/x-nikon-nef", ".orf": "image/x-olympus-orf",
+  ".raf": "image/x-fuji-raf", ".rw2": "image/x-panasonic-rw2",
+  ".raw": "image/x-raw",
   ".gif": "image/gif", ".svg": "image/svg+xml",
   ".mp4": "video/mp4", ".mov": "video/quicktime",
   ".webm": "video/webm", ".avi": "video/x-msvideo",
@@ -82,6 +90,7 @@ function getFileKind(filename: string): FileKind {
   const ext = path.extname(filename).toLowerCase();
   if (ANIMATED_EXTENSIONS.test(ext)) return "gif";
   if (PROCESSABLE_EXTENSIONS.test(ext)) return "image";
+  if (RAW_IMAGE_EXTENSIONS.test(ext)) return "image";
   if (VIDEO_EXTENSIONS.test(ext)) return "video";
   if (AUDIO_EXTENSIONS.test(ext)) return "audio";
   return "file";
@@ -452,6 +461,7 @@ export {
   OG_WIDTH,
   OG_HEIGHT,
   PROCESSABLE_EXTENSIONS,
+  RAW_IMAGE_EXTENSIONS,
   ANIMATED_EXTENSIONS,
   VIDEO_EXTENSIONS,
   AUDIO_EXTENSIONS,

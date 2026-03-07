@@ -35,6 +35,24 @@ const VISUAL_RENDER_INCREMENT = 120;
 const INITIAL_FILE_LIST_RENDER_COUNT = 80;
 const FILE_LIST_RENDER_INCREMENT = 120;
 const PAGE_SIZE = 120;
+const PROCESSED_IMAGE_EXTENSIONS = /\.(jpe?g|png|webp|heic|hif|tiff?)$/i;
+const RAW_IMAGE_EXTENSIONS = /\.(dng|arw|cr2|cr3|nef|orf|raf|rw2|raw)$/i;
+
+function hasProcessedImageVariants(file: TransferFileData): boolean {
+  return file.kind === "image" && PROCESSED_IMAGE_EXTENSIONS.test(file.filename);
+}
+
+function isRawImage(file: TransferFileData): boolean {
+  return RAW_IMAGE_EXTENSIONS.test(file.filename);
+}
+
+function isPhotoLike(file: TransferFileData): boolean {
+  return file.kind === "image" || file.kind === "gif" || isRawImage(file);
+}
+
+function isVisualFile(file: TransferFileData): boolean {
+  return isPhotoLike(file) || file.kind === "video";
+}
 
 function isGalleryFilter(value: string | null): value is GalleryFilter {
   return value === "all" || value === "photos" || value === "videos" || value === "audio" || value === "files";
@@ -231,7 +249,11 @@ function LightboxContent({
   }
 
   const imgSrc =
-    file.kind === "gif" ? getTransferFileUrl(transferId, file.filename) : getTransferFullUrl(transferId, file.id);
+    file.kind === "gif"
+      ? getTransferFileUrl(transferId, file.filename)
+      : hasProcessedImageVariants(file)
+        ? getTransferFullUrl(transferId, file.id)
+        : getTransferFileUrl(transferId, file.filename);
 
   return (
     <div className="relative" onClick={(e) => e.stopPropagation()}>
@@ -291,7 +313,7 @@ export function TransferGallery({ transferId, files }: TransferGalleryProps) {
     const visual: TransferFileData[] = [];
 
     for (const file of files) {
-      if (file.kind === "image" || file.kind === "gif") {
+      if (isPhotoLike(file)) {
         photos.push(file);
         visual.push(file);
         continue;
@@ -381,7 +403,7 @@ export function TransferGallery({ transferId, files }: TransferGalleryProps) {
     const visual: TransferFileData[] = [];
     const nonVisual: TransferFileData[] = [];
     for (const file of pageFiles) {
-      if (file.kind === "image" || file.kind === "gif" || file.kind === "video") visual.push(file);
+      if (isVisualFile(file)) visual.push(file);
       else nonVisual.push(file);
     }
     return { visualFiles: visual, nonVisualFiles: nonVisual };
@@ -982,8 +1004,16 @@ const VisualCard = memo(function VisualCard({
   onClick: () => void;
 }) {
   // Images and GIFs have thumbnails; videos get a placeholder
-  const hasThumbnail = file.kind === "image" || file.kind === "gif";
-  const thumbUrl = hasThumbnail ? getTransferThumbUrl(transferId, file.id) : "";
+  const hasThumbnail =
+    file.kind === "gif" || hasProcessedImageVariants(file) || isRawImage(file);
+  const thumbUrl =
+    file.kind === "gif"
+      ? getTransferThumbUrl(transferId, file.id)
+      : hasProcessedImageVariants(file)
+        ? getTransferThumbUrl(transferId, file.id)
+        : isRawImage(file)
+          ? getTransferFileUrl(transferId, file.filename)
+          : "";
   const aspectRatio = file.width && file.height ? file.height / file.width : 9 / 16;
 
   const { loaded, errored, handleLoad, handleError, imgRef } = useLazyImage();
@@ -1065,6 +1095,14 @@ const VisualCard = memo(function VisualCard({
           <div className="absolute bottom-2 left-2">
             <span className="font-mono text-pico bg-black/50 text-white/80 px-1.5 py-0.5 rounded tracking-wider uppercase">
               gif
+            </span>
+          </div>
+        )}
+
+        {isRawImage(file) && (
+          <div className="absolute bottom-2 left-2">
+            <span className="font-mono text-pico bg-black/50 text-white/80 px-1.5 py-0.5 rounded tracking-wider uppercase">
+              raw
             </span>
           </div>
         )}
