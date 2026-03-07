@@ -9,17 +9,20 @@
 import "server-only";
 
 import path from "path";
-import { uploadBuffer, downloadBuffer } from "@/lib/platform/r2";
+import { uploadBuffer, downloadBuffer, headObject } from "@/lib/platform/r2";
 import {
   PROCESSABLE_EXTENSIONS,
   RAW_IMAGE_EXTENSIONS,
   ANIMATED_EXTENSIONS,
+  VIDEO_EXTENSIONS,
+  mapConcurrent,
   getMimeType,
   getFileKind,
   processImageVariants,
   processGifThumb,
+  processVideoVariants,
 } from "@/features/media/processing";
-import type { TransferFile } from "./store";
+import { saveTransfer, type TransferData, type TransferFile } from "./store";
 
 /* ─── Types ─── */
 
@@ -29,6 +32,8 @@ type ProcessFileResult = {
   /** Total bytes uploaded to R2 (all variants combined). */
   uploadedBytes: number;
 };
+
+const TRANSFER_BACKFILL_CONCURRENCY = 2;
 
 /** Defensive filename validation for user-uploaded transfer files. */
 function isSafeTransferFilename(filename: string): boolean {
@@ -48,6 +53,7 @@ function isSafeTransferFilename(filename: string): boolean {
  * - Processable images → thumb (600px WebP) + full (1600px WebP) + original (JPEG)
  * - RAW images → thumb/full from embedded preview + original RAW preserved
  * - GIFs → static thumb (WebP) + original (animation preserved)
+ * - Videos → thumb/full posters from ffmpeg + original video preserved
  * - Everything else → uploaded raw
  */
 async function processTransferFile(
@@ -164,6 +170,41 @@ async function processTransferFile(
     };
   }
 
+  if (VIDEO_EXTENSIONS.test(filename)) {
+    const video = await processVideoVariants(buffer, ext);
+    const mimeType = getMimeType(filename);
+
+    await Promise.all([
+      uploadBuffer(
+        `${prefix}/thumb/${stem}.webp`,
+        video.thumb.buffer,
+        video.thumb.contentType
+      ),
+      uploadBuffer(
+        `${prefix}/full/${stem}.webp`,
+        video.full.buffer,
+        video.full.contentType
+      ),
+      uploadBuffer(`${prefix}/original/${filename}`, buffer, mimeType),
+    ]);
+
+    return {
+      file: {
+        id: stem,
+        filename,
+        kind: "video",
+        size: buffer.byteLength,
+        mimeType,
+        width: video.width,
+        height: video.height,
+      },
+      uploadedBytes:
+        video.thumb.buffer.byteLength +
+        video.full.buffer.byteLength +
+        buffer.byteLength,
+    };
+  }
+
   // Raw file — upload as-is
   const mimeType = getMimeType(filename);
   const kind = getFileKind(filename);
@@ -185,13 +226,13 @@ async function processTransferFile(
 /* ─── Sorting ─── */
 
 /**
- * Sort transfer files: visual (images/gifs) by EXIF date then name,
+ * Sort transfer files: visual (images/gifs/videos) by EXIF date then name,
  * non-visual by name. Visual files come first.
  */
 function sortTransferFiles(files: TransferFile[]): TransferFile[] {
-  const visual = files.filter((f) => f.kind === "image" || f.kind === "gif");
+  const visual = files.filter((f) => f.kind === "image" || f.kind === "gif" || f.kind === "video");
   const nonVisual = files.filter(
-    (f) => f.kind !== "image" && f.kind !== "gif"
+    (f) => f.kind !== "image" && f.kind !== "gif" && f.kind !== "video"
   );
 
   visual.sort((a, b) => {
@@ -214,6 +255,7 @@ function sortTransferFiles(files: TransferFile[]): TransferFile[] {
  * - Processable images → generates thumb + full, uploads variants
  * - RAW images → extracts embedded preview, generates thumb + full, keeps original RAW
  * - GIFs → generates static thumb, uploads variant
+ * - Videos → generates thumb + full posters, keeps original video
  * - Everything else → no processing, just returns metadata
  *
  * The original is untouched in R2 (already uploaded by the client).
@@ -328,6 +370,41 @@ async function processUploadedFile(
     };
   }
 
+  if (VIDEO_EXTENSIONS.test(filename)) {
+    const buffer = await downloadBuffer(originalKey);
+    const video = await processVideoVariants(buffer, ext);
+    const mimeType = getMimeType(filename);
+
+    await Promise.all([
+      uploadBuffer(
+        `${prefix}/thumb/${stem}.webp`,
+        video.thumb.buffer,
+        video.thumb.contentType
+      ),
+      uploadBuffer(
+        `${prefix}/full/${stem}.webp`,
+        video.full.buffer,
+        video.full.contentType
+      ),
+    ]);
+
+    return {
+      file: {
+        id: stem,
+        filename,
+        kind: "video",
+        size: fileSize,
+        mimeType,
+        width: video.width,
+        height: video.height,
+      },
+      uploadedBytes:
+        video.thumb.buffer.byteLength +
+        video.full.buffer.byteLength +
+        fileSize,
+    };
+  }
+
   // Non-visual file — already in R2, just build metadata
   const mimeType = getMimeType(filename);
   const kind = getFileKind(filename);
@@ -344,6 +421,96 @@ async function processUploadedFile(
   };
 }
 
+function requiresTransferBackfill(file: TransferFile, transferId: string): {
+  expectedThumbKey?: string;
+  expectedFullKey?: string;
+  shouldProcess: boolean;
+} {
+  const ext = path.extname(file.filename).toLowerCase();
+  const derivedId = path.basename(file.filename, ext);
+  const prefix = `transfers/${transferId}`;
+  const visualKind =
+    file.kind === "image" ||
+    file.kind === "gif" ||
+    file.kind === "video" ||
+    RAW_IMAGE_EXTENSIONS.test(file.filename) ||
+    ANIMATED_EXTENSIONS.test(file.filename) ||
+    VIDEO_EXTENSIONS.test(file.filename) ||
+    PROCESSABLE_EXTENSIONS.test(file.filename);
+
+  if (!visualKind) {
+    return { shouldProcess: false };
+  }
+
+  if (ANIMATED_EXTENSIONS.test(file.filename) || file.kind === "gif") {
+    return {
+      shouldProcess: true,
+      expectedThumbKey: `${prefix}/thumb/${derivedId}.webp`,
+    };
+  }
+
+  if (
+    VIDEO_EXTENSIONS.test(file.filename) ||
+    file.kind === "video" ||
+    RAW_IMAGE_EXTENSIONS.test(file.filename) ||
+    PROCESSABLE_EXTENSIONS.test(file.filename) ||
+    file.kind === "image"
+  ) {
+    return {
+      shouldProcess: true,
+      expectedThumbKey: `${prefix}/thumb/${derivedId}.webp`,
+      expectedFullKey: `${prefix}/full/${derivedId}.webp`,
+    };
+  }
+
+  return { shouldProcess: false };
+}
+
+async function backfillTransferMedia(transfer: TransferData): Promise<TransferData> {
+  const remainingSeconds = Math.ceil((new Date(transfer.expiresAt).getTime() - Date.now()) / 1000);
+  if (remainingSeconds <= 0) return transfer;
+
+  const candidates = await mapConcurrent(
+    transfer.files,
+    TRANSFER_BACKFILL_CONCURRENCY,
+    async (file) => {
+      const backfill = requiresTransferBackfill(file, transfer.id);
+      if (!backfill.shouldProcess) return null;
+
+      const [thumbMeta, fullMeta] = await Promise.all([
+        backfill.expectedThumbKey ? headObject(backfill.expectedThumbKey) : Promise.resolve({ exists: true }),
+        backfill.expectedFullKey ? headObject(backfill.expectedFullKey) : Promise.resolve({ exists: true }),
+      ]);
+
+      if (thumbMeta.exists && fullMeta.exists) return null;
+
+      try {
+        const processed = await processUploadedFile(file.filename, file.size, transfer.id);
+        return processed.file;
+      } catch {
+        return null;
+      }
+    }
+  );
+
+  const replacements = new Map(
+    candidates
+      .filter((file): file is TransferFile => !!file)
+      .map((file) => [file.filename, file])
+  );
+
+  if (replacements.size === 0) return transfer;
+
+  const updated: TransferData = {
+    ...transfer,
+    files: transfer.files.map((file) => replacements.get(file.filename) ?? file),
+  };
+
+  await saveTransfer(updated, remainingSeconds);
+  return updated;
+}
+
 export { processTransferFile, processUploadedFile, sortTransferFiles };
+export { backfillTransferMedia };
 export { isSafeTransferFilename };
 export type { ProcessFileResult };

@@ -62,6 +62,10 @@ function isVisualFile(file: TransferFileData): boolean {
   return isPhotoLike(file) || file.kind === "video";
 }
 
+function hasVisualThumbnail(file: TransferFileData): boolean {
+  return file.kind === "video" || file.kind === "gif" || hasProcessedImageVariants(file) || isRawImage(file);
+}
+
 function isGalleryFilter(value: string | null): value is GalleryFilter {
   return value === "all" || value === "photos" || value === "videos" || value === "audio" || value === "files";
 }
@@ -246,6 +250,7 @@ function LightboxContent({
     return (
       <video
         src={getTransferFileUrl(transferId, file.filename)}
+        poster={getTransferFullUrl(transferId, file.id)}
         controls
         autoPlay
         className="max-w-full max-h-media photo-page-fade-in"
@@ -535,7 +540,8 @@ export function TransferGallery({ transferId, files }: TransferGalleryProps) {
     );
 
     for (const file of candidates) {
-      if (file.kind !== "image") continue;
+      if (file.kind === "gif") continue;
+      if (file.kind !== "image" && file.kind !== "video") continue;
       const img = new Image();
       img.decoding = "async";
       img.src = getTransferFullUrl(transferId, file.id);
@@ -1011,11 +1017,9 @@ const VisualCard = memo(function VisualCard({
   onToggleSelect: () => void;
   onClick: () => void;
 }) {
-  // Images and GIFs have thumbnails; videos get a placeholder
-  const hasThumbnail =
-    file.kind === "gif" || hasProcessedImageVariants(file) || isRawImage(file);
+  const hasThumbnail = hasVisualThumbnail(file);
   const thumbUrl =
-    file.kind === "gif"
+    file.kind === "video" || file.kind === "gif"
       ? getTransferThumbUrl(transferId, file.id)
       : hasProcessedImageVariants(file)
         ? getTransferThumbUrl(transferId, file.id)
@@ -1066,7 +1070,6 @@ const VisualCard = memo(function VisualCard({
         ) : errored ? (
           <BrokenImageFallback filename={file.filename} />
         ) : (
-          /* Video placeholder */
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-2">
             <svg
               width="32"

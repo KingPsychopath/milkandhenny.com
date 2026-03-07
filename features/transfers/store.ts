@@ -18,7 +18,7 @@ type TransferFile = {
   size: number;
   /** MIME type */
   mimeType: string;
-  /** Image dimensions (images and gifs only) */
+  /** Visual media dimensions (images, gifs, videos) */
   width?: number;
   height?: number;
   /** EXIF date (processable images only) */

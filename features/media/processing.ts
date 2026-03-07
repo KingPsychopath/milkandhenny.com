@@ -14,11 +14,18 @@
 
 import "server-only";
 
+import { execFile } from "child_process";
+import { randomUUID } from "crypto";
+import { promises as fs } from "fs";
+import os from "os";
 import path from "path";
+import { promisify } from "util";
 import sharp from "sharp";
 import exifReader from "exif-reader";
 import type { FileKind } from "./file-kinds";
 import { SITE_BRAND } from "@/lib/shared/config";
+
+const execFileAsync = promisify(execFile);
 
 /* ─── Constants ─── */
 
@@ -146,12 +153,149 @@ async function extractEmbeddedJpegPreview(raw: Buffer): Promise<Buffer | null> {
   return null;
 }
 
+type TiffReadContext = {
+  littleEndian: boolean;
+  bigTiff: boolean;
+};
+
+function hasClassicTiffHeader(raw: Buffer): boolean {
+  return raw.length >= 8 && (
+    (raw[0] === 0x49 && raw[1] === 0x49 && raw[2] === 0x2a && raw[3] === 0x00) ||
+    (raw[0] === 0x4d && raw[1] === 0x4d && raw[2] === 0x00 && raw[3] === 0x2a)
+  );
+}
+
+function getTiffContext(raw: Buffer): TiffReadContext | null {
+  if (raw.length < 8) return null;
+  if (raw[0] === 0x49 && raw[1] === 0x49) {
+    if (raw[2] === 0x2a && raw[3] === 0x00) return { littleEndian: true, bigTiff: false };
+    if (raw[2] === 0x2b && raw[3] === 0x00) return { littleEndian: true, bigTiff: true };
+    return null;
+  }
+  if (raw[0] === 0x4d && raw[1] === 0x4d) {
+    if (raw[2] === 0x00 && raw[3] === 0x2a) return { littleEndian: false, bigTiff: false };
+    if (raw[2] === 0x00 && raw[3] === 0x2b) return { littleEndian: false, bigTiff: true };
+    return null;
+  }
+  return null;
+}
+
+function readUint16(raw: Buffer, offset: number, littleEndian: boolean): number {
+  return littleEndian ? raw.readUInt16LE(offset) : raw.readUInt16BE(offset);
+}
+
+function readUint32(raw: Buffer, offset: number, littleEndian: boolean): number {
+  return littleEndian ? raw.readUInt32LE(offset) : raw.readUInt32BE(offset);
+}
+
+function readInlineUint32(raw: Buffer, offset: number, littleEndian: boolean, type: number): number {
+  if (type === 3) return readUint16(raw, offset, littleEndian);
+  return readUint32(raw, offset, littleEndian);
+}
+
+function extractDngPreviewFromTiff(raw: Buffer): Buffer | null {
+  const ctx = getTiffContext(raw);
+  if (!ctx || ctx.bigTiff) return null;
+
+  const entryValueSizeByType: Record<number, number> = {
+    1: 1,
+    2: 1,
+    3: 2,
+    4: 4,
+    5: 8,
+    7: 1,
+    13: 4,
+  };
+  const visited = new Set<number>();
+  const queue: number[] = [readUint32(raw, 4, ctx.littleEndian)];
+  let bestCandidate: Buffer | null = null;
+
+  while (queue.length > 0) {
+    const ifdOffset = queue.shift() ?? 0;
+    if (ifdOffset <= 0 || visited.has(ifdOffset)) continue;
+    visited.add(ifdOffset);
+    if (ifdOffset + 2 > raw.length) continue;
+
+    const entryCount = readUint16(raw, ifdOffset, ctx.littleEndian);
+    const entriesOffset = ifdOffset + 2;
+    const nextIfdOffsetPos = entriesOffset + entryCount * 12;
+    if (nextIfdOffsetPos + 4 > raw.length) continue;
+
+    let jpegOffset: number | null = null;
+    let jpegLength: number | null = null;
+
+    for (let i = 0; i < entryCount; i++) {
+      const entryOffset = entriesOffset + i * 12;
+      if (entryOffset + 12 > raw.length) break;
+
+      const tag = readUint16(raw, entryOffset, ctx.littleEndian);
+      const type = readUint16(raw, entryOffset + 2, ctx.littleEndian);
+      const count = readUint32(raw, entryOffset + 4, ctx.littleEndian);
+      const valueOrOffset = entryOffset + 8;
+
+      if (tag === 0x0201) {
+        jpegOffset = readInlineUint32(raw, valueOrOffset, ctx.littleEndian, type);
+        continue;
+      }
+
+      if (tag === 0x0202) {
+        jpegLength = readInlineUint32(raw, valueOrOffset, ctx.littleEndian, type);
+        continue;
+      }
+
+      if (tag === 0x014a && count > 0) {
+        const valueSize = entryValueSizeByType[type] ?? 0;
+        if (valueSize === 0) continue;
+        const totalBytes = valueSize * count;
+        const baseOffset =
+          totalBytes <= 4
+            ? valueOrOffset
+            : readUint32(raw, valueOrOffset, ctx.littleEndian);
+
+        if (baseOffset <= 0 || baseOffset + totalBytes > raw.length) continue;
+
+        for (let j = 0; j < count; j++) {
+          const subIfdOffset =
+            type === 3
+              ? readUint16(raw, baseOffset + j * valueSize, ctx.littleEndian)
+              : readUint32(raw, baseOffset + j * valueSize, ctx.littleEndian);
+          if (subIfdOffset > 0 && !visited.has(subIfdOffset)) queue.push(subIfdOffset);
+        }
+      }
+    }
+
+    if (
+      jpegOffset !== null &&
+      jpegLength !== null &&
+      jpegOffset > 0 &&
+      jpegLength > 0 &&
+      jpegOffset + jpegLength <= raw.length
+    ) {
+      const candidate = raw.subarray(jpegOffset, jpegOffset + jpegLength);
+      if (!bestCandidate || candidate.length > bestCandidate.length) {
+        bestCandidate = Buffer.from(candidate);
+      }
+    }
+
+    const nextIfdOffset = readUint32(raw, nextIfdOffsetPos, ctx.littleEndian);
+    if (nextIfdOffset > 0 && !visited.has(nextIfdOffset)) queue.push(nextIfdOffset);
+  }
+
+  return bestCandidate;
+}
+
+async function resolveRawPreview(raw: Buffer): Promise<Buffer | null> {
+  const tiffPreview = hasClassicTiffHeader(raw) ? extractDngPreviewFromTiff(raw) : null;
+  if (tiffPreview && await isValidJpegBuffer(tiffPreview)) return tiffPreview;
+  return extractEmbeddedJpegPreview(raw);
+}
+
 async function resolveImageProcessingSource(
   raw: Buffer,
   sourceExt: string
 ): Promise<{ buffer: Buffer; takenAt: string | null }> {
   if (RAW_IMAGE_EXTENSIONS.test(sourceExt)) {
-    const preview = await extractEmbeddedJpegPreview(raw);
+    const preview = await resolveRawPreview(raw);
     if (!preview) {
       throw new Error(`No embedded JPEG preview found in ${sourceExt} image`);
     }
@@ -279,6 +423,18 @@ type ProcessedGif = {
   width: number;
   /** Height of the GIF */
   height: number;
+};
+
+type ProcessedVideo = {
+  /** WebP thumbnail at THUMB_WIDTH for gallery cards */
+  thumb: ImageVariant;
+  /** WebP poster at FULL_WIDTH for larger previews */
+  full: ImageVariant;
+  /** Source video dimensions */
+  width: number;
+  height: number;
+  /** Duration in seconds if probe metadata is available */
+  durationSeconds: number | null;
 };
 
 /* ─── EXIF ─── */
@@ -464,6 +620,116 @@ async function processGifThumb(raw: Buffer): Promise<ProcessedGif> {
   };
 }
 
+type VideoProbeResult = {
+  width: number;
+  height: number;
+  durationSeconds: number | null;
+};
+
+function getVideoCaptureTimestamp(durationSeconds: number | null): string {
+  if (!durationSeconds || !Number.isFinite(durationSeconds) || durationSeconds <= 0.25) {
+    return "0";
+  }
+  const seconds = Math.min(Math.max(durationSeconds * 0.1, 0.5), Math.max(0.5, durationSeconds / 2));
+  return seconds.toFixed(3);
+}
+
+async function withTempFile<T>(
+  prefix: string,
+  ext: string,
+  buffer: Buffer,
+  fn: (filename: string) => Promise<T>
+): Promise<T> {
+  const tempFile = path.join(os.tmpdir(), `${prefix}-${randomUUID()}${ext}`);
+  await fs.writeFile(tempFile, buffer);
+  try {
+    return await fn(tempFile);
+  } finally {
+    await fs.rm(tempFile, { force: true });
+  }
+}
+
+async function probeVideoFile(filename: string): Promise<VideoProbeResult> {
+  const { stdout } = await execFileAsync(
+    "ffprobe",
+    [
+      "-v", "error",
+      "-select_streams", "v:0",
+      "-show_entries", "stream=width,height:format=duration",
+      "-of", "json",
+      filename,
+    ],
+    { maxBuffer: 1024 * 1024 }
+  );
+
+  const parsed = JSON.parse(stdout) as {
+    streams?: Array<{ width?: number; height?: number }>;
+    format?: { duration?: string };
+  };
+  const stream = parsed.streams?.[0];
+  const width = stream?.width ?? 0;
+  const height = stream?.height ?? 0;
+  const durationValue = parsed.format?.duration ? Number(parsed.format.duration) : NaN;
+
+  if (width <= 0 || height <= 0) {
+    throw new Error("Unable to determine video dimensions");
+  }
+
+  return {
+    width,
+    height,
+    durationSeconds: Number.isFinite(durationValue) && durationValue > 0 ? durationValue : null,
+  };
+}
+
+async function extractVideoFrame(filename: string, timestamp: string): Promise<Buffer> {
+  const { stdout } = await execFileAsync(
+    "ffmpeg",
+    [
+      "-hide_banner",
+      "-loglevel", "error",
+      "-ss", timestamp,
+      "-i", filename,
+      "-frames:v", "1",
+      "-f", "image2pipe",
+      "-vcodec", "png",
+      "pipe:1",
+    ],
+    {
+      encoding: "buffer",
+      maxBuffer: 32 * 1024 * 1024,
+    }
+  );
+
+  const frame = Buffer.isBuffer(stdout) ? stdout : Buffer.from(stdout);
+  if (frame.length === 0) {
+    throw new Error("Failed to extract video preview frame");
+  }
+  return frame;
+}
+
+async function processVideoVariants(raw: Buffer, sourceExt = ".mp4"): Promise<ProcessedVideo> {
+  const ext = sourceExt.startsWith(".") ? sourceExt : `.${sourceExt}`;
+  return withTempFile("transfer-video", ext, raw, async (tempFile) => {
+    const probe = await probeVideoFile(tempFile);
+    const frame = await extractVideoFrame(tempFile, getVideoCaptureTimestamp(probe.durationSeconds));
+    const { buffer: poster, width, height } = await autoRotate(frame);
+
+    const [thumb, full] = await Promise.all([
+      sharp(poster).resize(THUMB_WIDTH).webp({ quality: 80 }).toBuffer(),
+      sharp(poster).resize(FULL_WIDTH).webp({ quality: 85 }).toBuffer(),
+    ]);
+
+    return {
+      thumb: { buffer: thumb, contentType: "image/webp", ext: ".webp" },
+      full: { buffer: full, contentType: "image/webp", ext: ".webp" },
+      width,
+      height,
+      durationSeconds: probe.durationSeconds,
+    };
+  });
+}
+
 /**
  * Process a single image to a web-optimised WebP.
  * Simpler than processImageVariants — one output, not three.
@@ -536,8 +802,9 @@ export {
   processImageVariants,
   processToOg,
   processGifThumb,
+  processVideoVariants,
   processToWebP,
   mapConcurrent,
 };
 
-export type { ImageVariant, ProcessedImage, ProcessedGif, OgOverlay, RotationOverride };
+export type { ImageVariant, ProcessedImage, ProcessedGif, ProcessedVideo, OgOverlay, RotationOverride };
