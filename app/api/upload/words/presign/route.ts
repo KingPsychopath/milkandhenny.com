@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireAuth } from "@/features/auth/server";
+import { requireAuthWithPayload } from "@/features/auth/server";
 import { presignPutUrl, isConfigured, listObjects } from "@/lib/platform/r2";
 import { apiErrorFromRequest } from "@/lib/platform/api-error";
 import { getMimeType, isProcessableImage } from "@/features/media/processing";
@@ -31,9 +31,6 @@ type PresignEntry = {
 };
 
 const SAFE_WORD_FILENAME = /^[a-z0-9-]+\.[a-z0-9]{1,8}$/;
-const MAX_WORD_FILE_BYTES = 50 * 1024 * 1024; // 50MB
-const MAX_WORD_TOTAL_BYTES = 500 * 1024 * 1024; // 500MB
-
 function safeIncomingExt(original: string): string {
   const ext = path.extname(original).toLowerCase();
   return /^\.[a-z0-9]{1,8}$/.test(ext) ? ext : ".bin";
@@ -49,7 +46,7 @@ function safeIncomingExt(original: string): string {
  * Returns: { success: true, urls: PresignEntry[], skipped: string[] }
  */
 export async function POST(request: NextRequest) {
-  const authErr = await requireAuth(request, "admin");
+  const { error: authErr } = await requireAuthWithPayload(request, "admin");
   if (authErr) return authErr;
 
   if (!isConfigured()) {
@@ -90,26 +87,12 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "No files provided" }, { status: 400 });
   }
 
-  let totalBytes = 0;
   for (const file of files) {
     if (!file || typeof file.name !== "string" || !file.name.trim()) {
       return NextResponse.json({ error: "Each file must include a name" }, { status: 400 });
     }
     if (!Number.isFinite(file.size) || file.size < 0) {
       return NextResponse.json({ error: "Each file must include a valid size" }, { status: 400 });
-    }
-    if (file.size > MAX_WORD_FILE_BYTES) {
-      return NextResponse.json(
-        { error: "File too large. Max 50MB per file." },
-        { status: 400 }
-      );
-    }
-    totalBytes += file.size;
-    if (totalBytes > MAX_WORD_TOTAL_BYTES) {
-      return NextResponse.json(
-        { error: "Upload too large. Max 500MB total." },
-        { status: 400 }
-      );
     }
   }
 

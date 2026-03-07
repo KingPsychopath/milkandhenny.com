@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireAuth } from "@/features/auth/server";
+import { requireAuthWithPayload } from "@/features/auth/server";
 import { apiErrorFromRequest } from "@/lib/platform/api-error";
 import { deleteObject, downloadBuffer, isConfigured, uploadBuffer } from "@/lib/platform/r2";
 import { isProcessableImage, processToWebP } from "@/features/media/processing";
@@ -11,9 +11,11 @@ import {
 } from "@/features/words/upload";
 import { getFileKind } from "@/features/media/processing";
 import type { FileKind } from "@/features/media/file-kinds";
+import { mapWithConcurrency } from "@/lib/shared/map-with-concurrency";
 
 /** Allow longer execution for image processing */
 export const maxDuration = 60;
+const FINALIZE_CONCURRENCY = 2;
 
 type FinalizeFile = {
   original: string;
@@ -55,7 +57,7 @@ function isSafeUploadKey(targetPrefix: string, uploadKey: string): boolean {
  * Returns: { uploaded: UploadedWordFile[], skipped: string[] }
  */
 export async function POST(request: NextRequest) {
-  const authErr = await requireAuth(request, "admin");
+  const { error: authErr } = await requireAuthWithPayload(request, "admin");
   if (authErr) return authErr;
 
   if (!isConfigured()) {
@@ -118,9 +120,7 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const uploaded: UploadedWordFile[] = [];
-
-    for (const file of files) {
+    const uploaded = await mapWithConcurrency(files, FINALIZE_CONCURRENCY, async (file) => {
       const original = file.original.trim();
       const finalKey = mediaPathForTarget(target, file.filename);
 
@@ -136,7 +136,7 @@ export async function POST(request: NextRequest) {
           // Best-effort cleanup. The temp file is not referenced by markdown and can be cleaned manually.
         }
 
-        uploaded.push({
+        return {
           original,
           filename: file.filename,
           kind: "image",
@@ -145,20 +145,20 @@ export async function POST(request: NextRequest) {
           size: webpBuffer.byteLength,
           markdown: toMarkdownSnippetForTarget(target, file.filename, "image"),
           overwrote: !!file.overwrote,
-        });
-      } else {
-        // Already uploaded directly to finalKey.
-        const kind = file.kind ?? getFileKind(original);
-        uploaded.push({
-          original,
-          filename: file.filename,
-          kind,
-          size: file.size,
-          markdown: toMarkdownSnippetForTarget(target, file.filename, kind),
-          overwrote: !!file.overwrote,
-        });
+        };
       }
-    }
+
+      // Already uploaded directly to finalKey.
+      const kind = file.kind ?? getFileKind(original);
+      return {
+        original,
+        filename: file.filename,
+        kind,
+        size: file.size,
+        markdown: toMarkdownSnippetForTarget(target, file.filename, kind),
+        overwrote: !!file.overwrote,
+      };
+    });
 
     return NextResponse.json({ uploaded, skipped });
   } catch (e) {

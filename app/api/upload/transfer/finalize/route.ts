@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireAuth } from "@/features/auth/server";
+import { requireAuthWithPayload } from "@/features/auth/server";
 import {
   saveTransfer,
   MAX_EXPIRY_SECONDS,
@@ -14,10 +14,12 @@ import {
 import { PROCESSABLE_EXTENSIONS, ANIMATED_EXTENSIONS } from "@/features/media/processing";
 import { BASE_URL } from "@/lib/shared/config";
 import { apiErrorFromRequest } from "@/lib/platform/api-error";
+import { mapWithConcurrency } from "@/lib/shared/map-with-concurrency";
 import path from "path";
 
 /** Allow longer execution for image processing (downloads from R2 + Sharp) */
 export const maxDuration = 60;
+const FINALIZE_CONCURRENCY = 2;
 
 type FileEntry = { name: string; size: number; type?: string };
 
@@ -39,8 +41,9 @@ function predictedTransferFileId(filename: string): string {
  * Returns: { shareUrl, adminUrl, transfer, totalSize, fileCounts }
  */
 export async function POST(request: NextRequest) {
-  const authErr = await requireAuth(request, "upload");
+  const { error: authErr, payload } = await requireAuthWithPayload(request, "upload");
   if (authErr) return authErr;
+  const isAdmin = payload?.role === "admin";
 
   let body: {
     transferId?: string;
@@ -82,7 +85,7 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
-    if (file.size > MAX_TRANSFER_FILE_BYTES) {
+    if (!isAdmin && file.size > MAX_TRANSFER_FILE_BYTES) {
       return NextResponse.json(
         { error: "File too large. Max 250MB per file." },
         { status: 400 }
@@ -106,7 +109,7 @@ export async function POST(request: NextRequest) {
     seenIds.add(predictedId);
 
     totalBytes += file.size;
-    if (totalBytes > MAX_TRANSFER_TOTAL_BYTES) {
+    if (!isAdmin && totalBytes > MAX_TRANSFER_TOTAL_BYTES) {
       return NextResponse.json(
         { error: "Transfer too large. Max 1GB total." },
         { status: 400 }
@@ -125,18 +128,14 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const results = [];
+    const results = await mapWithConcurrency(
+      files,
+      FINALIZE_CONCURRENCY,
+      async (file) => processUploadedFile(file.name, file.size, transferId)
+    );
     const counts = { images: 0, videos: 0, gifs: 0, audio: 0, other: 0 };
 
-    // Process files sequentially to avoid memory pressure in serverless
-    for (const file of files) {
-      const result = await processUploadedFile(
-        file.name,
-        file.size,
-        transferId
-      );
-      results.push(result);
-
+    for (const result of results) {
       const k = result.file.kind;
       if (k === "image") counts.images++;
       else if (k === "gif") counts.gifs++;

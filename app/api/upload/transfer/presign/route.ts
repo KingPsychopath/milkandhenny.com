@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireAuth } from "@/features/auth/server";
+import { requireAuthWithPayload } from "@/features/auth/server";
 import { presignPutUrl, isConfigured } from "@/lib/platform/r2";
 import {
   generateTransferId,
@@ -39,8 +39,9 @@ function predictedTransferFileId(filename: string): string {
  * Returns: { transferId, deleteToken, expiresSeconds, urls: [{ name, url }] }
  */
 export async function POST(request: NextRequest) {
-  const authErr = await requireAuth(request, "upload");
+  const { error: authErr, payload } = await requireAuthWithPayload(request, "upload");
   if (authErr) return authErr;
+  const isAdmin = payload?.role === "admin";
 
   if (!isConfigured()) {
     return NextResponse.json(
@@ -76,7 +77,7 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
-    if (file.size > MAX_TRANSFER_FILE_BYTES) {
+    if (!isAdmin && file.size > MAX_TRANSFER_FILE_BYTES) {
       return NextResponse.json(
         { error: "File too large. Max 250MB per file." },
         { status: 400 }
@@ -100,7 +101,7 @@ export async function POST(request: NextRequest) {
     seenIds.add(predictedId);
 
     totalBytes += file.size;
-    if (totalBytes > MAX_TRANSFER_TOTAL_BYTES) {
+    if (!isAdmin && totalBytes > MAX_TRANSFER_TOTAL_BYTES) {
       return NextResponse.json(
         { error: "Transfer too large. Max 1GB total." },
         { status: 400 }

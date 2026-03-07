@@ -1,13 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireAuth } from "@/features/auth/server";
-import { getTransfer, saveTransfer, MAX_TRANSFER_FILE_BYTES, MAX_TRANSFER_TOTAL_BYTES } from "@/features/transfers/store";
+import { requireAuthWithPayload } from "@/features/auth/server";
+import { getTransfer, saveTransfer } from "@/features/transfers/store";
 import { processUploadedFile, sortTransferFiles, isSafeTransferFilename } from "@/features/transfers/upload";
 import { PROCESSABLE_EXTENSIONS, ANIMATED_EXTENSIONS } from "@/features/media/processing";
 import { BASE_URL } from "@/lib/shared/config";
 import { apiErrorFromRequest } from "@/lib/platform/api-error";
+import { mapWithConcurrency } from "@/lib/shared/map-with-concurrency";
 import path from "path";
 
 export const maxDuration = 60;
+const FINALIZE_CONCURRENCY = 2;
 
 type FileEntry = { name: string; size: number; type?: string };
 
@@ -19,7 +21,7 @@ function predictedTransferFileId(filename: string): string {
 }
 
 export async function POST(request: NextRequest) {
-  const authErr = await requireAuth(request, "admin");
+  const { error: authErr } = await requireAuthWithPayload(request, "admin");
   if (authErr) return authErr;
 
   let body: { transferId?: string; files?: FileEntry[] };
@@ -54,7 +56,6 @@ export async function POST(request: NextRequest) {
   const existingIds = new Set(transfer.files.map((f) => f.id));
   const seenNames = new Set<string>();
   const seenIds = new Set<string>();
-  let totalBytes = 0;
 
   for (const file of files) {
     if (!file || typeof file.name !== "string" || !isSafeTransferFilename(file.name)) {
@@ -62,13 +63,6 @@ export async function POST(request: NextRequest) {
     }
     if (!Number.isFinite(file.size) || file.size < 0) {
       return NextResponse.json({ error: "Each file must include a valid non-negative size" }, { status: 400 });
-    }
-    if (file.size > MAX_TRANSFER_FILE_BYTES) {
-      return NextResponse.json({ error: "File too large. Max 250MB per file." }, { status: 400 });
-    }
-    totalBytes += file.size;
-    if (totalBytes > MAX_TRANSFER_TOTAL_BYTES) {
-      return NextResponse.json({ error: "Transfer append too large. Max 1GB total per append request." }, { status: 400 });
     }
     if (seenNames.has(file.name)) {
       return NextResponse.json({ error: `Duplicate filename in upload selection: ${file.name}` }, { status: 400 });
@@ -95,12 +89,14 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const results = [];
+    const results = await mapWithConcurrency(
+      files,
+      FINALIZE_CONCURRENCY,
+      async (file) => processUploadedFile(file.name, file.size, transferId)
+    );
     const counts = { images: 0, videos: 0, gifs: 0, audio: 0, other: 0 };
 
-    for (const file of files) {
-      const result = await processUploadedFile(file.name, file.size, transferId);
-      results.push(result);
+    for (const result of results) {
       const k = result.file.kind;
       if (k === "image") counts.images++;
       else if (k === "gif") counts.gifs++;

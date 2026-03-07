@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireAuth } from "@/features/auth/server";
-import { getTransfer, MAX_TRANSFER_FILE_BYTES, MAX_TRANSFER_TOTAL_BYTES } from "@/features/transfers/store";
+import { requireAuthWithPayload } from "@/features/auth/server";
+import { getTransfer } from "@/features/transfers/store";
 import { isSafeTransferFilename } from "@/features/transfers/upload";
 import { presignPutUrl, isConfigured } from "@/lib/platform/r2";
 import { getMimeType, PROCESSABLE_EXTENSIONS, ANIMATED_EXTENSIONS } from "@/features/media/processing";
@@ -17,7 +17,7 @@ function predictedTransferFileId(filename: string): string {
 }
 
 export async function POST(request: NextRequest) {
-  const authErr = await requireAuth(request, "admin");
+  const { error: authErr } = await requireAuthWithPayload(request, "admin");
   if (authErr) return authErr;
 
   if (!isConfigured()) {
@@ -59,7 +59,6 @@ export async function POST(request: NextRequest) {
   const existingIds = new Set(transfer.files.map((f) => f.id));
   const seenNames = new Set<string>();
   const seenIds = new Set<string>();
-  let totalBytes = 0;
 
   for (const file of files) {
     if (!file || typeof file.name !== "string" || !isSafeTransferFilename(file.name)) {
@@ -67,13 +66,6 @@ export async function POST(request: NextRequest) {
     }
     if (!Number.isFinite(file.size) || file.size < 0) {
       return NextResponse.json({ error: "Each file must include a valid non-negative size" }, { status: 400 });
-    }
-    if (file.size > MAX_TRANSFER_FILE_BYTES) {
-      return NextResponse.json({ error: "File too large. Max 250MB per file." }, { status: 400 });
-    }
-    totalBytes += file.size;
-    if (totalBytes > MAX_TRANSFER_TOTAL_BYTES) {
-      return NextResponse.json({ error: "Transfer append too large. Max 1GB total per append request." }, { status: 400 });
     }
     if (seenNames.has(file.name)) {
       return NextResponse.json({ error: `Duplicate filename in upload selection: ${file.name}` }, { status: 400 });

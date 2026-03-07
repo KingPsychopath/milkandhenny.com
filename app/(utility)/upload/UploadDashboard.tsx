@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useCallback, useEffect } from "react";
+import { useState, useRef, useCallback, useEffect, useDeferredValue } from "react";
 import Link from "next/link";
 import { getStored, removeStored } from "@/lib/client/storage";
 import { SITE_BRAND } from "@/lib/shared/config";
@@ -153,14 +153,12 @@ export function UploadDashboard({ isAdmin }: UploadDashboardProps) {
 
   /* Refs */
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const deferredFiles = useDeferredValue(files);
 
   const effectiveToken =
     mode === "words"
       ? adminToken
       : uploadToken || adminToken;
-  // Auth gate is enforced server-side in `app/(utility)/upload/page.tsx`.
-  // This component should work with cookie auth even when no local token exists.
-  const isAuthed = true;
 
   const authFetch = useCallback(
     async (url: string, options: RequestInit = {}) => {
@@ -297,17 +295,24 @@ export function UploadDashboard({ isAdmin }: UploadDashboardProps) {
 
   const addFiles = useCallback((newFiles: FileList | File[]) => {
     const arr = Array.from(newFiles);
-    setFiles((prev) => [
-      ...prev,
-      ...arr.filter(
-        (f) => !prev.some((p) => p.name === f.name && p.size === f.size)
-      ),
-    ]);
+    setFiles((prev) => {
+      const seen = new Set(prev.map((file) => `${file.name}:${file.size}`));
+      const next = [...prev];
+      for (const file of arr) {
+        const signature = `${file.name}:${file.size}`;
+        if (seen.has(signature)) continue;
+        seen.add(signature);
+        next.push(file);
+      }
+      return next;
+    });
     setUploadError("");
   }, []);
 
-  const removeFile = useCallback((index: number) => {
-    setFiles((prev) => prev.filter((_, i) => i !== index));
+  const removeFile = useCallback((target: File) => {
+    setFiles((prev) =>
+      prev.filter((file) => !(file.name === target.name && file.size === target.size))
+    );
   }, []);
 
   const clearAll = useCallback(() => {
@@ -646,6 +651,7 @@ export function UploadDashboard({ isAdmin }: UploadDashboardProps) {
 
     // 3. Finalize (process images to WebP, return markdown snippets)
     setUploadProgress({ phase: "processing", current: urls.length, total: urls.length });
+    const fileSizes = new Map(files.map((file) => [file.name, file.size]));
     const finalizeRes = await authFetchWithRetry("/api/upload/words/finalize", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -659,7 +665,7 @@ export function UploadDashboard({ isAdmin }: UploadDashboardProps) {
           filename: u.filename,
           uploadKey: u.uploadKey,
           kind: u.kind,
-          size: files.find((f) => f.name === u.original)?.size ?? 0,
+          size: fileSizes.get(u.original) ?? 0,
           overwrote: u.overwrote,
         })),
       }),
@@ -805,6 +811,11 @@ export function UploadDashboard({ isAdmin }: UploadDashboardProps) {
       {mode === "transfer" ? (
         <div className="space-y-4 mb-6">
           {isAdmin ? (
+            <p className="font-mono text-micro theme-faint">
+              admin uploads bypass request size caps
+            </p>
+          ) : null}
+          {isAdmin ? (
             <div className="flex gap-2">
               <button
                 type="button"
@@ -924,6 +935,9 @@ export function UploadDashboard({ isAdmin }: UploadDashboardProps) {
                   ? `words/media/${slug.trim().toLowerCase() || "{slug}"}/`
                   : `words/assets/${assetId.trim().toLowerCase() || "{assetId}"}/`}
               </code>
+            </p>
+            <p className="font-mono text-micro theme-faint mt-1">
+              admin uploads bypass request size caps
             </p>
           </div>
           <div>
@@ -1073,7 +1087,7 @@ export function UploadDashboard({ isAdmin }: UploadDashboardProps) {
           </div>
 
           <div className="space-y-0">
-            {files.map((file, i) => (
+            {deferredFiles.map((file) => (
               <div
                 key={`${file.name}-${file.size}`}
                 className="flex items-center justify-between py-2 border-b border-[var(--stone-100)]"
@@ -1086,7 +1100,7 @@ export function UploadDashboard({ isAdmin }: UploadDashboardProps) {
                     {formatBytes(file.size)}
                   </span>
                   <button
-                    onClick={() => removeFile(i)}
+                    onClick={() => removeFile(file)}
                     className="theme-muted hover:text-[var(--foreground)] transition-colors text-sm leading-none"
                     aria-label={`Remove ${file.name}`}
                   >
