@@ -48,6 +48,7 @@ function inferHeifMimeType(file: Pick<File, "name" | "type">): string {
     return file.type.toLowerCase();
   }
   if (file.name.toLowerCase().endsWith(".heic")) return "image/heic";
+  if (file.name.toLowerCase().endsWith(".hif")) return "image/hif";
   return "image/heif";
 }
 
@@ -342,6 +343,14 @@ async function decodeWithImageDecoder(file: File, type: string): Promise<{ sourc
   };
 }
 
+async function readHeifOrientation(file: File): Promise<number> {
+  try {
+    return (await exifr.orientation(file)) ?? 1;
+  } catch {
+    return 1;
+  }
+}
+
 async function decodeWithLibheif(file: File): Promise<{ source: CanvasImageSource; width: number; height: number; close: () => void }> {
   const imported = await import("libheif-js/wasm-bundle");
   const libheif = (imported.default ?? imported) as unknown as LibheifLike;
@@ -381,14 +390,26 @@ async function decodeWithLibheif(file: File): Promise<{ source: CanvasImageSourc
 }
 
 async function convertHeifFile(file: File): Promise<File> {
-  const orientation = (await exifr.orientation(file)) ?? 1;
+  const orientation = await readHeifOrientation(file);
   const bytes = new Uint8Array(await file.arrayBuffer());
-  const exifTiff = extractHeifExifTiffBytes(bytes);
+  let exifTiff: Uint8Array | null = null;
+  try {
+    exifTiff = extractHeifExifTiffBytes(bytes);
+  } catch {
+    exifTiff = null;
+  }
   const normalizedExif = exifTiff ? normalizeExifOrientation(exifTiff) : null;
   const type = inferHeifMimeType(file);
-  const decoded = (await canNativeDecodeHeif(type))
-    ? await decodeWithImageDecoder(file, type)
-    : await decodeWithLibheif(file);
+  let decoded: { source: CanvasImageSource; width: number; height: number; close: () => void };
+  if (await canNativeDecodeHeif(type)) {
+    try {
+      decoded = await decodeWithImageDecoder(file, type);
+    } catch {
+      decoded = await decodeWithLibheif(file);
+    }
+  } else {
+    decoded = await decodeWithLibheif(file);
+  }
 
   try {
     const canvas = getOrientedCanvas(decoded.source, decoded.width, decoded.height, orientation);
