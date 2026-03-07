@@ -98,7 +98,69 @@ function getFileKind(filename: string): FileKind {
 
 /** Check if a filename is a processable image (Sharp-compatible) */
 function isProcessableImage(filename: string): boolean {
-  return PROCESSABLE_EXTENSIONS.test(filename);
+  return PROCESSABLE_EXTENSIONS.test(filename) || RAW_IMAGE_EXTENSIONS.test(filename);
+}
+
+async function isValidJpegBuffer(candidate: Buffer): Promise<boolean> {
+  try {
+    const metadata = await sharp(candidate).metadata();
+    return typeof metadata.width === "number" && typeof metadata.height === "number";
+  } catch {
+    return false;
+  }
+}
+
+async function extractEmbeddedJpegPreview(raw: Buffer): Promise<Buffer | null> {
+  const candidates: Array<{ start: number; end: number; length: number }> = [];
+  const minimumCandidateLength = 64;
+  let jpegStart = -1;
+
+  for (let i = 0; i < raw.length - 1; i++) {
+    const a = raw[i];
+    const b = raw[i + 1];
+
+    if (jpegStart === -1 && a === 0xff && b === 0xd8) {
+      jpegStart = i;
+      i += 1;
+      continue;
+    }
+
+    if (jpegStart !== -1 && a === 0xff && b === 0xd9) {
+      const end = i + 2;
+      const length = end - jpegStart;
+      if (length >= minimumCandidateLength) {
+        candidates.push({ start: jpegStart, end, length });
+      }
+      jpegStart = -1;
+      i += 1;
+    }
+  }
+
+  candidates.sort((a, b) => b.length - a.length);
+
+  for (const candidate of candidates.slice(0, 6)) {
+    const preview = raw.subarray(candidate.start, candidate.end);
+    if (await isValidJpegBuffer(preview)) return Buffer.from(preview);
+  }
+
+  return null;
+}
+
+async function resolveImageProcessingSource(
+  raw: Buffer,
+  sourceExt: string
+): Promise<{ buffer: Buffer; takenAt: string | null }> {
+  if (RAW_IMAGE_EXTENSIONS.test(sourceExt)) {
+    const preview = await extractEmbeddedJpegPreview(raw);
+    if (!preview) {
+      throw new Error(`No embedded JPEG preview found in ${sourceExt} image`);
+    }
+    const takenAt = extractExifDate((await sharp(preview).metadata()).exif);
+    return { buffer: preview, takenAt };
+  }
+
+  const takenAt = extractExifDate((await sharp(raw).metadata()).exif);
+  return { buffer: raw, takenAt };
 }
 
 /* ─── OG crop helper ─── */
@@ -322,11 +384,8 @@ async function processImageVariants(
   rotationOverride?: RotationOverride,
 ): Promise<ProcessedImage> {
   const ext = sourceExt.toLowerCase();
-
-  const { buffer: rotated, width, height } = await autoRotate(raw, rotationOverride);
-
-  // Read EXIF date from original buffer (rotation may strip metadata)
-  const takenAt = extractExifDate((await sharp(raw).metadata()).exif);
+  const { buffer: processingSource, takenAt } = await resolveImageProcessingSource(raw, ext);
+  const { buffer: rotated, width, height } = await autoRotate(processingSource, rotationOverride);
 
   // Generate all variants in parallel where possible
   const [thumb, full, blur, originalBuffer, og] = await Promise.all([
@@ -412,11 +471,13 @@ async function processGifThumb(raw: Buffer): Promise<ProcessedGif> {
  */
 async function processToWebP(
   raw: Buffer,
+  sourceExtOrFilename = ".jpg",
   maxWidth = FULL_WIDTH,
   quality = 85,
 ): Promise<{ buffer: Buffer; width: number; height: number; takenAt: string | null }> {
-  const takenAt = extractExifDate((await sharp(raw).metadata()).exif);
-  const { buffer: rotated, width, height } = await autoRotate(raw);
+  const sourceExt = path.extname(sourceExtOrFilename).toLowerCase() || sourceExtOrFilename.toLowerCase();
+  const { buffer: processingSource, takenAt } = await resolveImageProcessingSource(raw, sourceExt);
+  const { buffer: rotated, width, height } = await autoRotate(processingSource);
 
   // Only resize if wider than maxWidth
   const pipeline = width > maxWidth ? sharp(rotated).resize(maxWidth) : sharp(rotated);

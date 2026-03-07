@@ -11,7 +11,7 @@ import {
   sortTransferFiles,
   isSafeTransferFilename,
 } from "@/features/transfers/upload";
-import { PROCESSABLE_EXTENSIONS, ANIMATED_EXTENSIONS } from "@/features/media/processing";
+import { PROCESSABLE_EXTENSIONS, RAW_IMAGE_EXTENSIONS, ANIMATED_EXTENSIONS } from "@/features/media/processing";
 import { BASE_URL } from "@/lib/shared/config";
 import { apiErrorFromRequest } from "@/lib/platform/api-error";
 import { mapWithConcurrency } from "@/lib/shared/map-with-concurrency";
@@ -24,7 +24,11 @@ const FINALIZE_CONCURRENCY = 2;
 type FileEntry = { name: string; size: number; type?: string };
 
 function predictedTransferFileId(filename: string): string {
-  if (PROCESSABLE_EXTENSIONS.test(filename) || ANIMATED_EXTENSIONS.test(filename)) {
+  if (
+    PROCESSABLE_EXTENSIONS.test(filename) ||
+    RAW_IMAGE_EXTENSIONS.test(filename) ||
+    ANIMATED_EXTENSIONS.test(filename)
+  ) {
     return path.basename(filename, path.extname(filename));
   }
   return filename;

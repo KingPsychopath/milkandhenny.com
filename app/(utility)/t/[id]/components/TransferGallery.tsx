@@ -39,7 +39,15 @@ const PROCESSED_IMAGE_EXTENSIONS = /\.(jpe?g|png|webp|heic|hif|tiff?)$/i;
 const RAW_IMAGE_EXTENSIONS = /\.(dng|arw|cr2|cr3|nef|orf|raf|rw2|raw)$/i;
 
 function hasProcessedImageVariants(file: TransferFileData): boolean {
-  return file.kind === "image" && PROCESSED_IMAGE_EXTENSIONS.test(file.filename);
+  return (
+    file.kind === "image" &&
+    (
+      PROCESSED_IMAGE_EXTENSIONS.test(file.filename) ||
+      (RAW_IMAGE_EXTENSIONS.test(file.filename) &&
+        typeof file.width === "number" &&
+        typeof file.height === "number")
+    )
+  );
 }
 
 function isRawImage(file: TransferFileData): boolean {

@@ -378,7 +378,7 @@ async function uploadWordMediaFiles(
 
         onProgress?.(overwrites ? `Re-uploading ${r2Filename} (overwrite)...` : `Processing ${file}...`);
 
-        const { buffer, width, height } = await processToWebP(raw);
+        const { buffer, width, height } = await processToWebP(raw, file);
         await uploadBuffer(r2Key, buffer, "image/webp");
         const uploaded: UploadedWordMediaFile = {
           original: file,

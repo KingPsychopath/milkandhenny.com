@@ -54,12 +54,14 @@ function formatDate(iso: string) {
   });
 }
 
+const RAW_IMAGE_EXTENSIONS = /\.(dng|arw|cr2|cr3|nef|orf|raf|rw2|raw)$/i;
+
 /** Summarise file counts: "12 photos, 3 videos, 2 files" */
-function describeFiles(files: { kind: string }[]): string {
+function describeFiles(files: { kind: string; filename?: string }[]): string {
   const counts: Record<string, number> = {};
   for (const f of files) {
     const label =
-      f.kind === "image" || f.kind === "gif" ? "photo" :
+      f.kind === "image" || f.kind === "gif" || RAW_IMAGE_EXTENSIONS.test(f.filename ?? "") ? "photo" :
       f.kind === "video" ? "video" :
       f.kind === "audio" ? "audio" :
       "file";

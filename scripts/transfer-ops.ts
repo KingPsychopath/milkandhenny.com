@@ -16,6 +16,7 @@ import {
 } from "./r2-client";
 import {
   PROCESSABLE_EXTENSIONS,
+  RAW_IMAGE_EXTENSIONS,
   ANIMATED_EXTENSIONS,
   mapConcurrent,
 } from "../features/media/processing";
@@ -270,7 +271,11 @@ function transferFileCounts(files: TransferData["files"]) {
 }
 
 function predictedTransferFileId(filename: string): string {
-  if (PROCESSABLE_EXTENSIONS.test(filename) || ANIMATED_EXTENSIONS.test(filename)) {
+  if (
+    PROCESSABLE_EXTENSIONS.test(filename) ||
+    RAW_IMAGE_EXTENSIONS.test(filename) ||
+    ANIMATED_EXTENSIONS.test(filename)
+  ) {
     return path.basename(filename, path.extname(filename));
   }
   return filename;

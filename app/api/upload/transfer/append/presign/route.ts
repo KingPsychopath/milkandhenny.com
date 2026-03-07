@@ -3,14 +3,18 @@ import { requireAuthWithPayload } from "@/features/auth/server";
 import { getTransfer } from "@/features/transfers/store";
 import { isSafeTransferFilename } from "@/features/transfers/upload";
 import { presignPutUrl, isConfigured } from "@/lib/platform/r2";
-import { getMimeType, PROCESSABLE_EXTENSIONS, ANIMATED_EXTENSIONS } from "@/features/media/processing";
+import { getMimeType, PROCESSABLE_EXTENSIONS, RAW_IMAGE_EXTENSIONS, ANIMATED_EXTENSIONS } from "@/features/media/processing";
 import { apiErrorFromRequest } from "@/lib/platform/api-error";
 import path from "path";
 
 type FileEntry = { name: string; size: number; type?: string };
 
 function predictedTransferFileId(filename: string): string {
-  if (PROCESSABLE_EXTENSIONS.test(filename) || ANIMATED_EXTENSIONS.test(filename)) {
+  if (
+    PROCESSABLE_EXTENSIONS.test(filename) ||
+    RAW_IMAGE_EXTENSIONS.test(filename) ||
+    ANIMATED_EXTENSIONS.test(filename)
+  ) {
     return path.basename(filename, path.extname(filename));
   }
   return filename;

@@ -127,7 +127,7 @@ export async function POST(request: NextRequest) {
       if (isProcessableImage(original)) {
         // Uploaded to a temp key → download → process → upload to final key → delete temp key.
         const raw = await downloadBuffer(file.uploadKey);
-        const { buffer: webpBuffer, width, height } = await processToWebP(raw);
+        const { buffer: webpBuffer, width, height } = await processToWebP(raw, original);
         await uploadBuffer(finalKey, webpBuffer, "image/webp");
 
         try {

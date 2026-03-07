@@ -12,6 +12,7 @@ import path from "path";
 import { uploadBuffer, downloadBuffer } from "@/lib/platform/r2";
 import {
   PROCESSABLE_EXTENSIONS,
+  RAW_IMAGE_EXTENSIONS,
   ANIMATED_EXTENSIONS,
   getMimeType,
   getFileKind,
@@ -45,6 +46,7 @@ function isSafeTransferFilename(filename: string): boolean {
  * Process a single file for a transfer: classify → process → upload to R2.
  *
  * - Processable images → thumb (600px WebP) + full (1600px WebP) + original (JPEG)
+ * - RAW images → thumb/full from embedded preview + original RAW preserved
  * - GIFs → static thumb (WebP) + original (animation preserved)
  * - Everything else → uploaded raw
  */
@@ -97,6 +99,42 @@ async function processTransferFile(
         processed.thumb.buffer.byteLength +
         processed.full.buffer.byteLength +
         processed.original.buffer.byteLength,
+    };
+  }
+
+  if (RAW_IMAGE_EXTENSIONS.test(filename)) {
+    const processed = await processImageVariants(buffer, ext);
+    const mimeType = getMimeType(filename);
+
+    await Promise.all([
+      uploadBuffer(
+        `${prefix}/thumb/${stem}.webp`,
+        processed.thumb.buffer,
+        processed.thumb.contentType
+      ),
+      uploadBuffer(
+        `${prefix}/full/${stem}.webp`,
+        processed.full.buffer,
+        processed.full.contentType
+      ),
+      uploadBuffer(`${prefix}/original/${filename}`, buffer, mimeType),
+    ]);
+
+    return {
+      file: {
+        id: stem,
+        filename,
+        kind: "image",
+        size: buffer.byteLength,
+        mimeType,
+        width: processed.width,
+        height: processed.height,
+        ...(processed.takenAt ? { takenAt: processed.takenAt } : {}),
+      },
+      uploadedBytes:
+        processed.thumb.buffer.byteLength +
+        processed.full.buffer.byteLength +
+        buffer.byteLength,
     };
   }
 
@@ -174,6 +212,7 @@ function sortTransferFiles(files: TransferFile[]): TransferFile[] {
  *
  * - Downloads the original from R2
  * - Processable images → generates thumb + full, uploads variants
+ * - RAW images → extracts embedded preview, generates thumb + full, keeps original RAW
  * - GIFs → generates static thumb, uploads variant
  * - Everything else → no processing, just returns metadata
  *
@@ -218,6 +257,42 @@ async function processUploadedFile(
         kind: "image",
         size: fileSize,
         mimeType: processed.original.contentType,
+        width: processed.width,
+        height: processed.height,
+        ...(processed.takenAt ? { takenAt: processed.takenAt } : {}),
+      },
+      uploadedBytes:
+        processed.thumb.buffer.byteLength +
+        processed.full.buffer.byteLength +
+        fileSize,
+    };
+  }
+
+  if (RAW_IMAGE_EXTENSIONS.test(filename)) {
+    const buffer = await downloadBuffer(originalKey);
+    const processed = await processImageVariants(buffer, ext);
+    const mimeType = getMimeType(filename);
+
+    await Promise.all([
+      uploadBuffer(
+        `${prefix}/thumb/${stem}.webp`,
+        processed.thumb.buffer,
+        processed.thumb.contentType
+      ),
+      uploadBuffer(
+        `${prefix}/full/${stem}.webp`,
+        processed.full.buffer,
+        processed.full.contentType
+      ),
+    ]);
+
+    return {
+      file: {
+        id: stem,
+        filename,
+        kind: "image",
+        size: fileSize,
+        mimeType,
         width: processed.width,
         height: processed.height,
         ...(processed.takenAt ? { takenAt: processed.takenAt } : {}),
