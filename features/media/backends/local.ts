@@ -8,6 +8,7 @@ import {
   processGifThumb,
   processImageVariants,
   processVideoVariants,
+  type ProcessedImage,
 } from "@/features/media/processing";
 import {
   classifyTransferProcessingRoute,
@@ -124,6 +125,10 @@ function isRawPreviewUnavailableError(error: unknown): error is RawPreviewUnavai
   return error instanceof RawPreviewUnavailableError;
 }
 
+function getProcessedImageLongestEdge(image: Pick<ProcessedImage, "width" | "height">): number {
+  return Math.max(image.width, image.height);
+}
+
 async function materializeVisualFromBuffer(params: {
   buffer: Buffer;
   file: TransferUploadFileInput;
@@ -217,7 +222,37 @@ async function materializeVisualFromBuffer(params: {
   }
 
   try {
-    const processed = await processImageVariants(buffer, filename);
+    let primaryProcessed: ProcessedImage | null = null;
+    let primaryError: unknown;
+    try {
+      primaryProcessed = await processImageVariants(buffer, filename);
+    } catch (error) {
+      primaryError = error;
+    }
+
+    let upgradedFromRaw: ProcessedImage | null = null;
+    if (
+      file.convertedFrom === "raw" &&
+      archiveStorageKey &&
+      originalAlreadyStored &&
+      file.originalName
+    ) {
+      try {
+        const archivedRaw = await downloadBuffer(archiveStorageKey);
+        const rawProcessed = await processImageVariants(archivedRaw, file.originalName);
+        if (!primaryProcessed || getProcessedImageLongestEdge(rawProcessed) > getProcessedImageLongestEdge(primaryProcessed)) {
+          upgradedFromRaw = rawProcessed;
+        }
+      } catch {
+        // Keep the client-derived preview if the archived RAW cannot produce a better one.
+      }
+    }
+
+    const processed = upgradedFromRaw ?? primaryProcessed;
+    if (!processed) {
+      throw primaryError;
+    }
+
     await Promise.all([
       uploadBuffer(`${prefix}/thumb/${derivedId}.webp`, processed.thumb.buffer, processed.thumb.contentType),
       uploadBuffer(`${prefix}/full/${derivedId}.webp`, processed.full.buffer, processed.full.contentType),
