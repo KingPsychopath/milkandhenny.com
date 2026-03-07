@@ -12,6 +12,7 @@ import {
   isSafeTransferFilename,
 } from "@/features/transfers/upload";
 import { buildTransferProcessingCounts, getTransferFileId } from "@/features/transfers/media-state";
+import type { TransferUploadFileInput } from "@/features/transfers/upload-types";
 import { BASE_URL } from "@/lib/shared/config";
 import { apiErrorFromRequest } from "@/lib/platform/api-error";
 import { mapWithConcurrency } from "@/lib/shared/map-with-concurrency";
@@ -20,7 +21,7 @@ import { mapWithConcurrency } from "@/lib/shared/map-with-concurrency";
 export const maxDuration = 60;
 const FINALIZE_CONCURRENCY = 2;
 
-type FileEntry = { name: string; size: number; type?: string };
+type FileEntry = TransferUploadFileInput;
 
 /**
  * POST /api/upload/transfer/finalize
@@ -63,6 +64,7 @@ export async function POST(request: NextRequest) {
   }
   let totalBytes = 0;
   const seenNames = new Set<string>();
+  const seenArchivedNames = new Set<string>();
   const seenIds = new Set<string>();
   for (const file of files) {
     if (!file || typeof file.name !== "string" || !isSafeTransferFilename(file.name)) {
@@ -77,6 +79,9 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
+    if (file.originalSize !== undefined && (!Number.isFinite(file.originalSize) || file.originalSize < 0)) {
+      return NextResponse.json({ error: "Each converted file must include a valid original size" }, { status: 400 });
+    }
     if (!isAdmin && file.size > MAX_TRANSFER_FILE_BYTES) {
       return NextResponse.json(
         { error: "File too large. Max 250MB per file." },
@@ -90,6 +95,15 @@ export async function POST(request: NextRequest) {
       );
     }
     seenNames.add(file.name);
+    if (file.originalName) {
+      if (!isSafeTransferFilename(file.originalName)) {
+        return NextResponse.json({ error: "Each converted file must include a safe original filename" }, { status: 400 });
+      }
+      if (seenArchivedNames.has(file.originalName)) {
+        return NextResponse.json({ error: `Duplicate archived filename in upload selection: ${file.originalName}` }, { status: 400 });
+      }
+      seenArchivedNames.add(file.originalName);
+    }
 
     const predictedId = getTransferFileId(file.name);
     if (seenIds.has(predictedId)) {
@@ -100,7 +114,7 @@ export async function POST(request: NextRequest) {
     }
     seenIds.add(predictedId);
 
-    totalBytes += file.size;
+    totalBytes += file.size + (file.originalSize ?? 0);
     if (!isAdmin && totalBytes > MAX_TRANSFER_TOTAL_BYTES) {
       return NextResponse.json(
         { error: "Transfer too large. Max 1GB total." },
@@ -123,7 +137,7 @@ export async function POST(request: NextRequest) {
     const results = await mapWithConcurrency(
       files,
       FINALIZE_CONCURRENCY,
-      async (file) => processUploadedFile(file.name, file.size, transferId)
+      async (file) => processUploadedFile(file, transferId)
     );
     const counts = { images: 0, videos: 0, gifs: 0, audio: 0, other: 0 };
 

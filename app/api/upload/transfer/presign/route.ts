@@ -12,10 +12,12 @@ import {
 } from "@/features/transfers/store";
 import { getMimeType } from "@/features/media/processing";
 import { getTransferFileId } from "@/features/transfers/media-state";
+import { buildTransferArchivedOriginalStorageKey, buildTransferPrimaryStorageKey } from "@/features/transfers/storage";
+import type { TransferUploadFileInput } from "@/features/transfers/upload-types";
 import { apiErrorFromRequest } from "@/lib/platform/api-error";
 import { isSafeTransferFilename } from "@/features/transfers/upload";
 
-type FileEntry = { name: string; size: number; type?: string };
+type FileEntry = TransferUploadFileInput;
 
 /**
  * POST /api/upload/transfer/presign
@@ -52,6 +54,7 @@ export async function POST(request: NextRequest) {
   }
   let totalBytes = 0;
   const seenNames = new Set<string>();
+  const seenArchivedNames = new Set<string>();
   const seenIds = new Set<string>();
   for (const file of files) {
     if (!file || typeof file.name !== "string" || !isSafeTransferFilename(file.name)) {
@@ -66,6 +69,9 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
+    if (file.originalSize !== undefined && (!Number.isFinite(file.originalSize) || file.originalSize < 0)) {
+      return NextResponse.json({ error: "Each converted file must include a valid original size" }, { status: 400 });
+    }
     if (!isAdmin && file.size > MAX_TRANSFER_FILE_BYTES) {
       return NextResponse.json(
         { error: "File too large. Max 250MB per file." },
@@ -79,6 +85,15 @@ export async function POST(request: NextRequest) {
       );
     }
     seenNames.add(file.name);
+    if (file.originalName) {
+      if (!isSafeTransferFilename(file.originalName)) {
+        return NextResponse.json({ error: "Each converted file must include a safe original filename" }, { status: 400 });
+      }
+      if (seenArchivedNames.has(file.originalName)) {
+        return NextResponse.json({ error: `Duplicate archived filename in upload selection: ${file.originalName}` }, { status: 400 });
+      }
+      seenArchivedNames.add(file.originalName);
+    }
 
     const predictedId = getTransferFileId(file.name);
     if (seenIds.has(predictedId)) {
@@ -89,7 +104,7 @@ export async function POST(request: NextRequest) {
     }
     seenIds.add(predictedId);
 
-    totalBytes += file.size;
+    totalBytes += file.size + (file.originalSize ?? 0);
     if (!isAdmin && totalBytes > MAX_TRANSFER_TOTAL_BYTES) {
       return NextResponse.json(
         { error: "Transfer too large. Max 1GB total." },
@@ -116,10 +131,18 @@ export async function POST(request: NextRequest) {
   try {
     const urls = await Promise.all(
       files.map(async (file) => {
-        const contentType = getMimeType(file.name);
-        const key = `transfers/${transferId}/original/${file.name}`;
-        const url = await presignPutUrl(key, contentType);
-        return { name: file.name, url };
+        const primaryKey = buildTransferPrimaryStorageKey(transferId, file);
+        const primaryUrl = await presignPutUrl(primaryKey, getMimeType(file.name));
+        const archivedOriginalKey = buildTransferArchivedOriginalStorageKey(transferId, file);
+        const archivedOriginalUrl = archivedOriginalKey && file.originalName
+          ? await presignPutUrl(archivedOriginalKey, getMimeType(file.originalName))
+          : undefined;
+
+        return {
+          name: file.name,
+          primaryUrl,
+          archivedOriginalUrl,
+        };
       })
     );
 

@@ -47,7 +47,7 @@ describe("upload transfer presign", () => {
     await expect(response.json()).resolves.toMatchObject({
       transferId: "transfer-id",
       deleteToken: "delete-token",
-      urls: [{ name: "huge.mov", url: "https://example.com/upload" }],
+      urls: [{ name: "huge.mov", primaryUrl: "https://example.com/upload" }],
     });
   });
 

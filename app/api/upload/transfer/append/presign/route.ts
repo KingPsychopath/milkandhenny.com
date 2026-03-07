@@ -5,9 +5,11 @@ import { isSafeTransferFilename } from "@/features/transfers/upload";
 import { getTransferFileId } from "@/features/transfers/media-state";
 import { presignPutUrl, isConfigured } from "@/lib/platform/r2";
 import { getMimeType } from "@/features/media/processing";
+import { buildTransferArchivedOriginalStorageKey, buildTransferPrimaryStorageKey } from "@/features/transfers/storage";
+import type { TransferUploadFileInput } from "@/features/transfers/upload-types";
 import { apiErrorFromRequest } from "@/lib/platform/api-error";
 
-type FileEntry = { name: string; size: number; type?: string };
+type FileEntry = TransferUploadFileInput;
 
 export async function POST(request: NextRequest) {
   const { error: authErr } = await requireAuthWithPayload(request, "admin");
@@ -49,8 +51,12 @@ export async function POST(request: NextRequest) {
   }
 
   const existingNames = new Set(transfer.files.map((f) => f.filename));
+  const existingArchivedNames = new Set(
+    transfer.files.flatMap((f) => [f.filename, f.originalFilename].filter((value): value is string => typeof value === "string"))
+  );
   const existingIds = new Set(transfer.files.map((f) => f.id));
   const seenNames = new Set<string>();
+  const seenArchivedNames = new Set<string>();
   const seenIds = new Set<string>();
 
   for (const file of files) {
@@ -60,6 +66,9 @@ export async function POST(request: NextRequest) {
     if (!Number.isFinite(file.size) || file.size < 0) {
       return NextResponse.json({ error: "Each file must include a valid non-negative size" }, { status: 400 });
     }
+    if (file.originalSize !== undefined && (!Number.isFinite(file.originalSize) || file.originalSize < 0)) {
+      return NextResponse.json({ error: "Each converted file must include a valid original size" }, { status: 400 });
+    }
     if (seenNames.has(file.name)) {
       return NextResponse.json({ error: `Duplicate filename in upload selection: ${file.name}` }, { status: 400 });
     }
@@ -67,6 +76,15 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: `Filename already exists in transfer: ${file.name}` }, { status: 400 });
     }
     seenNames.add(file.name);
+    if (file.originalName) {
+      if (!isSafeTransferFilename(file.originalName)) {
+        return NextResponse.json({ error: "Each converted file must include a safe original filename" }, { status: 400 });
+      }
+      if (seenArchivedNames.has(file.originalName) || existingArchivedNames.has(file.originalName)) {
+        return NextResponse.json({ error: `Archived filename already exists in transfer: ${file.originalName}` }, { status: 400 });
+      }
+      seenArchivedNames.add(file.originalName);
+    }
 
     const predictedId = getTransferFileId(file.name);
     if (seenIds.has(predictedId)) {
@@ -87,10 +105,13 @@ export async function POST(request: NextRequest) {
   try {
     const urls = await Promise.all(
       files.map(async (file) => {
-        const contentType = getMimeType(file.name);
-        const key = `transfers/${transferId}/original/${file.name}`;
-        const url = await presignPutUrl(key, contentType);
-        return { name: file.name, url };
+        const primaryKey = buildTransferPrimaryStorageKey(transferId, file);
+        const primaryUrl = await presignPutUrl(primaryKey, getMimeType(file.name));
+        const archivedOriginalKey = buildTransferArchivedOriginalStorageKey(transferId, file);
+        const archivedOriginalUrl = archivedOriginalKey && file.originalName
+          ? await presignPutUrl(archivedOriginalKey, getMimeType(file.originalName))
+          : undefined;
+        return { name: file.name, primaryUrl, archivedOriginalUrl };
       })
     );
 

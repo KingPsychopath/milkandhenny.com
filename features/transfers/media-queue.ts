@@ -2,13 +2,14 @@ import "server-only";
 
 import { getRedis } from "@/lib/platform/redis";
 import type { ProcessingRoute } from "./media-state";
+import type { TransferUploadFileInput } from "./upload-types";
 
 const TRANSFER_MEDIA_QUEUE_KEY = "transfer:media:queue";
 
 type TransferMediaJob = {
   transferId: string;
-  filename: string;
-  originalKey: string;
+  file: TransferUploadFileInput;
+  storageKey: string;
   expectedThumbKey?: string;
   expectedFullKey?: string;
   mimeType: string;
@@ -42,8 +43,10 @@ async function dequeueTransferMediaJobs(limit: number): Promise<TransferMediaJob
       if (
         parsed &&
         typeof parsed.transferId === "string" &&
-        typeof parsed.filename === "string" &&
-        typeof parsed.originalKey === "string" &&
+        parsed.file &&
+        typeof parsed.file === "object" &&
+        typeof parsed.file.name === "string" &&
+        typeof parsed.storageKey === "string" &&
         typeof parsed.mimeType === "string" &&
         typeof parsed.processingRoute === "string" &&
         typeof parsed.attempt === "number" &&

@@ -9,6 +9,7 @@ import type {
   ProcessingRoute,
   ProcessingStatus,
 } from './media-state';
+import type { ConvertedFrom } from "./upload-types";
 import { generateWordId } from './words';
 
 /* ─── Types ─── */
@@ -24,6 +25,13 @@ type TransferFile = {
   size: number;
   /** MIME type */
   mimeType: string;
+  /** R2 key for the primary stored object used for display/download fallback */
+  storageKey: string;
+  /** Archived source object when the primary file was converted before upload */
+  originalStorageKey?: string;
+  originalFilename?: string;
+  originalMimeType?: string;
+  convertedFrom?: ConvertedFrom;
   /** Visual media dimensions (images, gifs, videos) */
   width?: number;
   height?: number;

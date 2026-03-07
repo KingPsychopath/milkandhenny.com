@@ -29,6 +29,7 @@ describe("transfer compatibility inference", () => {
       kind: "image",
       size: 1234,
       mimeType: "image/jpeg",
+      storageKey: "transfers/abc123/originals/photo.jpg",
     };
 
     const inferred = await inferCompatibleTransferFileState("abc123", file);
@@ -49,6 +50,7 @@ describe("transfer compatibility inference", () => {
       kind: "image",
       size: 4567,
       mimeType: "image/x-adobe-dng",
+      storageKey: "transfers/abc123/originals/capture.dng",
     };
 
     const inferred = await inferCompatibleTransferFileState("abc123", file);
@@ -65,6 +67,7 @@ describe("transfer compatibility inference", () => {
       kind: "file",
       size: 987,
       mimeType: "application/pdf",
+      storageKey: "transfers/abc123/originals/notes.pdf",
     };
 
     const inferred = await inferCompatibleTransferFileState("abc123", file);

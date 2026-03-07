@@ -17,7 +17,8 @@ import {
   type TransferMediaJob,
 } from "@/features/transfers/media-queue";
 import { getTransfer, saveTransfer, type TransferData, type TransferFile } from "@/features/transfers/store";
-import type { ProcessFileResult } from "@/features/transfers/upload-types";
+import type { ProcessFileResult, TransferUploadFileInput } from "@/features/transfers/upload-types";
+import { buildTransferArchivedOriginalStorageKey, buildTransferPrimaryStorageKey } from "@/features/transfers/storage";
 import {
   buildOriginalOnlyFailureFile,
   getRouteKind,
@@ -35,6 +36,7 @@ type WorkerRunResult = {
 function buildQueuedTransferFile(
   filename: string,
   size: number,
+  storageKey: string,
   route: ProcessingRoute,
   attempt: number
 ): TransferFile {
@@ -44,6 +46,7 @@ function buildQueuedTransferFile(
     kind: getRouteKind(route),
     size,
     mimeType: getMimeType(filename),
+    storageKey,
     previewStatus: "original_only",
     processingStatus: "queued",
     processingBackend: "worker",
@@ -56,13 +59,21 @@ function buildQueuedTransferFile(
 function buildFailedQueueResult(
   filename: string,
   size: number,
+  storageKey: string,
   route: ProcessingRoute,
   code: string,
   attempt: number
 ): ProcessFileResult {
   return {
     file: {
-      ...buildOriginalOnlyFailureFile(filename, size, route, code, Math.max(0, attempt - 1)),
+      ...buildOriginalOnlyFailureFile(
+        filename,
+        size,
+        storageKey,
+        route,
+        code,
+        Math.max(0, attempt - 1)
+      ),
       processingBackend: "worker",
     },
     uploadedBytes: size,
@@ -71,32 +82,32 @@ function buildFailedQueueResult(
 
 async function enqueueWorkerJob(params: {
   transferId: string;
-  filename: string;
-  size: number;
+  file: TransferUploadFileInput;
   route: ProcessingRoute;
   attempt?: number;
   originalBuffer?: Buffer;
 }): Promise<ProcessFileResult> {
   const attempt = params.attempt ?? 1;
   const route = params.route === "raw_try_local" ? "worker_raw" : params.route;
-  const mimeType = getMimeType(params.filename);
+  const mimeType = getMimeType(params.file.name);
+  const storageKey = buildTransferPrimaryStorageKey(params.transferId, params.file);
 
   if (params.originalBuffer) {
     await uploadBuffer(
-      `transfers/${params.transferId}/original/${params.filename}`,
+      storageKey,
       params.originalBuffer,
       mimeType
     );
   }
 
-  const expected = getExpectedTransferAssetKeys(params.transferId, params.filename, route);
+  const expected = getExpectedTransferAssetKeys(params.transferId, params.file.name, route);
   const enqueuedAt = new Date().toISOString();
 
   try {
     await enqueueTransferMediaJob({
       transferId: params.transferId,
-      filename: params.filename,
-      originalKey: `transfers/${params.transferId}/original/${params.filename}`,
+      file: params.file,
+      storageKey,
       expectedThumbKey: expected.thumbKey,
       expectedFullKey: expected.fullKey,
       mimeType,
@@ -107,14 +118,20 @@ async function enqueueWorkerJob(params: {
 
     return {
       file: {
-        ...buildQueuedTransferFile(params.filename, params.size, route, attempt),
+        ...buildQueuedTransferFile(params.file.name, params.file.size, storageKey, route, attempt),
         mimeType,
+        ...(params.file.originalName ? { originalFilename: params.file.originalName } : {}),
+        ...(params.file.originalType ? { originalMimeType: params.file.originalType } : {}),
+        ...(params.file.convertedFrom ? { convertedFrom: params.file.convertedFrom } : {}),
+        ...(buildTransferArchivedOriginalStorageKey(params.transferId, params.file)
+          ? { originalStorageKey: buildTransferArchivedOriginalStorageKey(params.transferId, params.file) }
+          : {}),
         enqueuedAt,
       },
-      uploadedBytes: params.size,
+      uploadedBytes: params.file.size + (params.file.originalSize ?? 0),
     };
   } catch {
-    return buildFailedQueueResult(params.filename, params.size, route, "enqueue_failed", attempt);
+    return buildFailedQueueResult(params.file.name, params.file.size, storageKey, route, "enqueue_failed", attempt);
   }
 }
 
@@ -122,7 +139,7 @@ async function processWorkerJob(job: TransferMediaJob): Promise<"succeeded" | "f
   const transfer = await getTransfer(job.transferId);
   if (!transfer) return "skipped";
 
-  const fileIndex = transfer.files.findIndex((file) => file.filename === job.filename);
+  const fileIndex = transfer.files.findIndex((file) => file.filename === job.file.name);
   if (fileIndex === -1) return "skipped";
   const current = transfer.files[fileIndex];
   if (current.processingStatus === "local_done" || current.processingStatus === "worker_done") {
@@ -147,8 +164,10 @@ async function processWorkerJob(job: TransferMediaJob): Promise<"succeeded" | "f
 
   try {
     const result = await processTransferObjectLocally(
-      job.filename,
-      current.size,
+      {
+        ...job.file,
+        size: current.size,
+      },
       job.transferId,
       "worker_done",
       "worker",
@@ -168,8 +187,13 @@ async function processWorkerJob(job: TransferMediaJob): Promise<"succeeded" | "f
       files: processingTransfer.files.map((file, index) =>
         index === fileIndex
           ? {
-              ...buildOriginalOnlyFailureFile(job.filename, current.size, job.processingRoute, "worker_failed", job.attempt),
+              ...buildOriginalOnlyFailureFile(job.file.name, current.size, current.storageKey, job.processingRoute, "worker_failed", job.attempt),
               processingBackend: "worker",
+              storageKey: current.storageKey,
+              ...(current.originalStorageKey ? { originalStorageKey: current.originalStorageKey } : {}),
+              ...(current.originalFilename ? { originalFilename: current.originalFilename } : {}),
+              ...(current.originalMimeType ? { originalMimeType: current.originalMimeType } : {}),
+              ...(current.convertedFrom ? { convertedFrom: current.convertedFrom } : {}),
             }
           : file
       ),
@@ -224,8 +248,14 @@ async function requeueTransferFile(
   const attempt = (file.retryCount ?? 0) + 1;
   const result = await enqueueWorkerJob({
     transferId: transfer.id,
-    filename: file.filename,
-    size: file.size,
+    file: {
+      name: file.filename,
+      size: file.size,
+      type: file.mimeType,
+      originalName: file.originalFilename,
+      originalType: file.originalMimeType,
+      convertedFrom: file.convertedFrom,
+    },
     route,
     attempt,
   });

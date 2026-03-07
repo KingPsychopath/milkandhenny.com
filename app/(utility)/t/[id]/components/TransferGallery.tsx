@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useEffect, useMemo, memo } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
-import { getTransferThumbUrl, getTransferFullUrl, getTransferFileUrl } from "@/features/media/storage";
+import { getTransferThumbUrl, getTransferFullUrl, getTransferStorageUrl } from "@/features/media/storage";
 import { fetchBlob, downloadBlob } from "@/lib/client/media-download";
 import { formatBytes } from "@/lib/shared/format";
 import { useLazyImage } from "@/hooks/useLazyImage";
@@ -18,6 +18,9 @@ type TransferFileData = {
   kind: FileKind;
   size: number;
   mimeType: string;
+  storageKey: string;
+  originalStorageKey?: string;
+  originalFilename?: string;
   width?: number;
   height?: number;
   previewStatus?: "ready" | "original_only";
@@ -37,7 +40,7 @@ const VISUAL_RENDER_INCREMENT = 120;
 const INITIAL_FILE_LIST_RENDER_COUNT = 80;
 const FILE_LIST_RENDER_INCREMENT = 120;
 const PAGE_SIZE = 120;
-const PROCESSED_IMAGE_EXTENSIONS = /\.(jpe?g|png|webp|heic|hif|tiff?)$/i;
+const PROCESSED_IMAGE_EXTENSIONS = /\.(jpe?g|png|webp|tiff?)$/i;
 const RAW_IMAGE_EXTENSIONS = /\.(dng|arw|cr2|cr3|nef|orf|raf|rw2|raw)$/i;
 
 function hasProcessedImageVariants(file: TransferFileData): boolean {
@@ -80,7 +83,15 @@ function hasVisualThumbnail(file: TransferFileData): boolean {
 }
 
 function getOriginalVisualUrl(transferId: string, file: TransferFileData): string {
-  return getTransferFileUrl(transferId, file.filename);
+  return getTransferStorageUrl(file.storageKey);
+}
+
+function getDownloadUrl(file: TransferFileData): string {
+  return getTransferStorageUrl(file.originalStorageKey ?? file.storageKey);
+}
+
+function getDownloadFilename(file: TransferFileData): string {
+  return file.originalFilename ?? file.filename;
 }
 
 function isGalleryFilter(value: string | null): value is GalleryFilter {
@@ -266,7 +277,7 @@ function LightboxContent({
   if (file.kind === "video") {
     return (
       <video
-        src={getTransferFileUrl(transferId, file.filename)}
+        src={getTransferStorageUrl(file.storageKey)}
         poster={file.previewStatus === "ready" ? getTransferFullUrl(transferId, file.id) : undefined}
         controls
         autoPlay
@@ -307,10 +318,10 @@ function LightboxContent({
 
   const imgSrc =
     file.kind === "gif"
-      ? getTransferFileUrl(transferId, file.filename)
+      ? getTransferStorageUrl(file.storageKey)
       : hasProcessedImageVariants(file)
         ? getTransferFullUrl(transferId, file.id)
-        : getTransferFileUrl(transferId, file.filename);
+        : getTransferStorageUrl(file.storageKey);
 
   return (
     <div className="relative" onClick={(e) => e.stopPropagation()}>
@@ -625,8 +636,8 @@ export function TransferGallery({ transferId, files }: TransferGalleryProps) {
       if (savingSingle) return;
       setSavingSingle(true);
       try {
-        const blob = await fetchBlob(getTransferFileUrl(transferId, file.filename));
-        downloadBlob(blob, file.filename);
+        const blob = await fetchBlob(getDownloadUrl(file));
+        downloadBlob(blob, getDownloadFilename(file));
       } catch (err) {
         console.error("Download failed:", err);
       } finally {
@@ -643,8 +654,8 @@ export function TransferGallery({ transferId, files }: TransferGalleryProps) {
       setDownloading(true);
       try {
         if (filesToDownload.length === 1) {
-          const blob = await fetchBlob(getTransferFileUrl(transferId, filesToDownload[0].filename));
-          downloadBlob(blob, filesToDownload[0].filename);
+          const blob = await fetchBlob(getDownloadUrl(filesToDownload[0]));
+          downloadBlob(blob, getDownloadFilename(filesToDownload[0]));
           return;
         }
 
@@ -654,8 +665,8 @@ export function TransferGallery({ transferId, files }: TransferGalleryProps) {
 
         await Promise.all(
           filesToDownload.map(async (f) => {
-            const blob = await fetchBlob(getTransferFileUrl(transferId, f.filename));
-            zip.file(f.filename, blob);
+            const blob = await fetchBlob(getDownloadUrl(f));
+            zip.file(getDownloadFilename(f), blob);
             setDownloadProgress((prev) => (prev ? { ...prev, done: prev.done + 1 } : null));
           })
         );
@@ -1068,7 +1079,7 @@ const VisualCard = memo(function VisualCard({
       : hasProcessedImageVariants(file)
         ? getTransferThumbUrl(transferId, file.id)
         : canRenderOriginalVisual(file)
-          ? getTransferFileUrl(transferId, file.filename)
+          ? getTransferStorageUrl(file.storageKey)
           : "";
   const [thumbUrl, setThumbUrl] = useState(primaryThumbUrl);
   const aspectRatio = file.width && file.height ? file.height / file.width : 9 / 16;
@@ -1230,7 +1241,7 @@ function FileCard({
         </div>
         <div className="flex-1 min-w-0">
           <p className="font-mono text-sm text-foreground truncate">{file.filename}</p>
-          <audio src={getTransferFileUrl(transferId, file.filename)} controls preload="none" className="w-full mt-2 h-8" />
+          <audio src={getTransferStorageUrl(file.storageKey)} controls preload="none" className="w-full mt-2 h-8" />
         </div>
         <div className="flex flex-col items-end gap-1 shrink-0">
           <span className="font-mono text-nano theme-muted">{formatBytes(file.size)}</span>

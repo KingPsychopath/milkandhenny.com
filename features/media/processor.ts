@@ -3,7 +3,7 @@ import "server-only";
 import { createHybridMediaProcessor } from "@/features/media/backends/hybrid";
 import { createLocalMediaProcessor } from "@/features/media/backends/local";
 import type { TransferData } from "@/features/transfers/store";
-import type { ProcessFileResult } from "@/features/transfers/upload-types";
+import type { ProcessFileResult, TransferUploadFileInput } from "@/features/transfers/upload-types";
 
 interface MediaProcessor {
   processTransferBuffer(
@@ -12,8 +12,7 @@ interface MediaProcessor {
     transferId: string
   ): Promise<ProcessFileResult>;
   processTransferObject(
-    filename: string,
-    fileSize: number,
+    file: TransferUploadFileInput,
     transferId: string
   ): Promise<ProcessFileResult>;
   backfillTransferMedia(transfer: TransferData): Promise<TransferData>;

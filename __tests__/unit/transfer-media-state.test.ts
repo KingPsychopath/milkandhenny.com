@@ -20,7 +20,7 @@ describe("transfer media state helpers", () => {
     expect(classifyTransferProcessingRoute("loop.gif")).toBe("local_gif");
     expect(classifyTransferProcessingRoute("clip.mov")).toBe("local_video");
     expect(classifyTransferProcessingRoute("capture.dng")).toBe("raw_try_local");
-    expect(classifyTransferProcessingRoute("capture.hif")).toBe("worker_heif");
+    expect(classifyTransferProcessingRoute("capture.hif")).toBeNull();
     expect(classifyTransferProcessingRoute("notes.pdf")).toBeNull();
   });
 

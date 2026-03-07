@@ -17,13 +17,16 @@ import {
   type ProcessingStatus,
 } from "@/features/transfers/media-state";
 import { saveTransfer, type TransferData, type TransferFile } from "@/features/transfers/store";
-import type { ProcessFileResult } from "@/features/transfers/upload-types";
+import type { ProcessFileResult, TransferUploadFileInput } from "@/features/transfers/upload-types";
+import { buildTransferArchivedOriginalStorageKey, buildTransferPrimaryStorageKey } from "@/features/transfers/storage";
 
 type CompletedProcessingStatus = Extract<ProcessingStatus, "local_done" | "worker_done">;
 
 function buildSkippedFile(
   filename: string,
   size: number,
+  storageKey: string,
+  original?: Pick<TransferUploadFileInput, "originalName" | "originalType" | "convertedFrom">,
   mimeType = getMimeType(filename),
   kind: TransferFile["kind"] = getFileKind(filename)
 ): TransferFile {
@@ -33,6 +36,10 @@ function buildSkippedFile(
     kind,
     size,
     mimeType,
+    storageKey,
+    ...(original?.originalName ? { originalFilename: original.originalName } : {}),
+    ...(original?.originalType ? { originalMimeType: original.originalType } : {}),
+    ...(original?.convertedFrom ? { convertedFrom: original.convertedFrom } : {}),
     previewStatus: "original_only",
     processingStatus: "skipped",
   };
@@ -49,12 +56,15 @@ function buildReadyVisualFile(
   size: number,
   kind: TransferFile["kind"],
   mimeType: string,
+  storageKey: string,
+  originalStorageKey: string | undefined,
   width: number,
   height: number,
   route: ProcessingRoute,
   processingStatus: CompletedProcessingStatus,
   processingBackend: ProcessingBackend,
-  takenAt?: string | null
+  takenAt?: string | null,
+  original?: Pick<TransferUploadFileInput, "originalName" | "originalType" | "convertedFrom">
 ): TransferFile {
   return {
     id: getTransferFileId(filename),
@@ -62,6 +72,11 @@ function buildReadyVisualFile(
     kind,
     size,
     mimeType,
+    storageKey,
+    ...(originalStorageKey ? { originalStorageKey } : {}),
+    ...(original?.originalName ? { originalFilename: original.originalName } : {}),
+    ...(original?.originalType ? { originalMimeType: original.originalType } : {}),
+    ...(original?.convertedFrom ? { convertedFrom: original.convertedFrom } : {}),
     width,
     height,
     ...(takenAt ? { takenAt } : {}),
@@ -76,6 +91,7 @@ function buildReadyVisualFile(
 function buildOriginalOnlyFailureFile(
   filename: string,
   size: number,
+  storageKey: string,
   route: ProcessingRoute,
   code = "processing_failed",
   retryCount = 0
@@ -86,6 +102,7 @@ function buildOriginalOnlyFailureFile(
     kind: getRouteKind(route),
     size,
     mimeType: getMimeType(filename),
+    storageKey,
     previewStatus: "original_only",
     processingStatus: "failed",
     processingRoute: route,
@@ -95,17 +112,18 @@ function buildOriginalOnlyFailureFile(
 }
 
 async function uploadOriginalBuffer(
-  transferId: string,
+  storageKey: string,
   filename: string,
   buffer: Buffer
 ): Promise<void> {
-  await uploadBuffer(`transfers/${transferId}/original/${filename}`, buffer, getMimeType(filename));
+  await uploadBuffer(storageKey, buffer, getMimeType(filename));
 }
 
 async function materializeVisualFromBuffer(params: {
   buffer: Buffer;
-  filename: string;
+  file: TransferUploadFileInput;
   transferId: string;
+  storageKey: string;
   storedSize: number;
   originalAlreadyStored: boolean;
   route: ProcessingRoute;
@@ -114,22 +132,26 @@ async function materializeVisualFromBuffer(params: {
 }): Promise<ProcessFileResult> {
   const {
     buffer,
-    filename,
+    file,
     transferId,
+    storageKey,
     storedSize,
     originalAlreadyStored,
     route,
     processingStatus,
     processingBackend,
   } = params;
+  const filename = file.name;
   const prefix = `transfers/${transferId}`;
   const derivedId = getTransferFileId(filename);
+  const archiveStorageKey = buildTransferArchivedOriginalStorageKey(transferId, file);
+  const originalUploadSize = file.originalSize ?? 0;
 
   if (route === "local_gif") {
     const gif = await processGifThumb(buffer);
     await uploadBuffer(`${prefix}/thumb/${derivedId}.webp`, gif.thumb.buffer, gif.thumb.contentType);
-    if (!originalAlreadyStored) {
-      await uploadOriginalBuffer(transferId, filename, buffer);
+    if (!originalAlreadyStored && !archiveStorageKey) {
+      await uploadOriginalBuffer(storageKey, filename, buffer);
     }
 
     return {
@@ -139,6 +161,11 @@ async function materializeVisualFromBuffer(params: {
         kind: "gif",
         size: storedSize,
         mimeType: "image/gif",
+        storageKey,
+        ...(archiveStorageKey ? { originalStorageKey: archiveStorageKey } : {}),
+        ...(file.originalName ? { originalFilename: file.originalName } : {}),
+        ...(file.originalType ? { originalMimeType: file.originalType } : {}),
+        ...(file.convertedFrom ? { convertedFrom: file.convertedFrom } : {}),
         width: gif.width,
         height: gif.height,
         previewStatus: "ready",
@@ -147,7 +174,7 @@ async function materializeVisualFromBuffer(params: {
         processingRoute: route,
         processingCompletedAt: new Date().toISOString(),
       },
-      uploadedBytes: gif.thumb.buffer.byteLength + storedSize,
+      uploadedBytes: gif.thumb.buffer.byteLength + storedSize + originalUploadSize,
     };
   }
 
@@ -157,7 +184,7 @@ async function materializeVisualFromBuffer(params: {
     await Promise.all([
       uploadBuffer(`${prefix}/thumb/${derivedId}.webp`, video.thumb.buffer, video.thumb.contentType),
       uploadBuffer(`${prefix}/full/${derivedId}.webp`, video.full.buffer, video.full.contentType),
-      originalAlreadyStored ? Promise.resolve() : uploadOriginalBuffer(transferId, filename, buffer),
+      originalAlreadyStored || archiveStorageKey ? Promise.resolve() : uploadOriginalBuffer(storageKey, filename, buffer),
     ]);
 
     return {
@@ -166,16 +193,21 @@ async function materializeVisualFromBuffer(params: {
         storedSize,
         "video",
         getMimeType(filename),
+        storageKey,
+        archiveStorageKey,
         video.width,
         video.height,
         route,
         processingStatus,
-        processingBackend
+        processingBackend,
+        undefined,
+        file
       ),
       uploadedBytes:
         video.thumb.buffer.byteLength +
         video.full.buffer.byteLength +
-        storedSize,
+        storedSize +
+        originalUploadSize,
     };
   }
 
@@ -183,7 +215,7 @@ async function materializeVisualFromBuffer(params: {
   await Promise.all([
     uploadBuffer(`${prefix}/thumb/${derivedId}.webp`, processed.thumb.buffer, processed.thumb.contentType),
     uploadBuffer(`${prefix}/full/${derivedId}.webp`, processed.full.buffer, processed.full.contentType),
-    originalAlreadyStored ? Promise.resolve() : uploadOriginalBuffer(transferId, filename, buffer),
+    originalAlreadyStored || archiveStorageKey ? Promise.resolve() : uploadOriginalBuffer(storageKey, filename, buffer),
   ]);
 
   return {
@@ -192,17 +224,21 @@ async function materializeVisualFromBuffer(params: {
       storedSize,
       "image",
       getMimeType(filename),
+      storageKey,
+      archiveStorageKey,
       processed.width,
       processed.height,
       route,
       processingStatus,
       processingBackend,
-      processed.takenAt
+      processed.takenAt,
+      file
     ),
     uploadedBytes:
       processed.thumb.buffer.byteLength +
       processed.full.buffer.byteLength +
-      storedSize,
+      storedSize +
+      originalUploadSize,
   };
 }
 
@@ -215,18 +251,21 @@ async function processTransferBufferLocally(
   explicitRoute?: ProcessingRoute | null
 ): Promise<ProcessFileResult> {
   const route = explicitRoute ?? classifyTransferProcessingRoute(filename);
+  const file: TransferUploadFileInput = { name: filename, size: buffer.byteLength, type: getMimeType(filename) };
+  const storageKey = buildTransferPrimaryStorageKey(transferId, file);
   if (!route) {
-    await uploadOriginalBuffer(transferId, filename, buffer);
+    await uploadOriginalBuffer(storageKey, filename, buffer);
     return {
-      file: buildSkippedFile(filename, buffer.byteLength),
+      file: buildSkippedFile(filename, buffer.byteLength, storageKey),
       uploadedBytes: buffer.byteLength,
     };
   }
 
   return materializeVisualFromBuffer({
     buffer,
-    filename,
+    file,
     transferId,
+    storageKey,
     storedSize: buffer.byteLength,
     originalAlreadyStored: false,
     route,
@@ -236,27 +275,28 @@ async function processTransferBufferLocally(
 }
 
 async function processTransferObjectLocally(
-  filename: string,
-  fileSize: number,
+  file: TransferUploadFileInput,
   transferId: string,
   processingStatus: CompletedProcessingStatus = "local_done",
   processingBackend: ProcessingBackend = "local",
   explicitRoute?: ProcessingRoute | null
 ): Promise<ProcessFileResult> {
-  const route = explicitRoute ?? classifyTransferProcessingRoute(filename);
+  const route = explicitRoute ?? classifyTransferProcessingRoute(file.name);
+  const storageKey = buildTransferPrimaryStorageKey(transferId, file);
   if (!route) {
     return {
-      file: buildSkippedFile(filename, fileSize),
-      uploadedBytes: fileSize,
+      file: buildSkippedFile(file.name, file.size, storageKey, file),
+      uploadedBytes: file.size + (file.originalSize ?? 0),
     };
   }
 
-  const buffer = await downloadBuffer(`transfers/${transferId}/original/${filename}`);
+  const buffer = await downloadBuffer(storageKey);
   return materializeVisualFromBuffer({
     buffer,
-    filename,
+    file,
     transferId,
-    storedSize: fileSize,
+    storageKey,
+    storedSize: file.size,
     originalAlreadyStored: true,
     route,
     processingStatus,
@@ -276,6 +316,7 @@ async function inferCompatibleTransferFileState(
   if (!route) {
     return {
       ...file,
+      storageKey: file.storageKey ?? buildTransferPrimaryStorageKey(transferId, { name: file.filename }),
       previewStatus: "original_only",
       processingStatus: "skipped",
     };
@@ -290,6 +331,7 @@ async function inferCompatibleTransferFileState(
   if (thumbMeta.exists && fullMeta.exists) {
     return {
       ...file,
+      storageKey: file.storageKey ?? buildTransferPrimaryStorageKey(transferId, { name: file.filename }),
       previewStatus: "ready",
       processingStatus: "local_done",
       processingBackend: "local",
@@ -299,7 +341,13 @@ async function inferCompatibleTransferFileState(
 
   return {
     ...file,
-    ...buildOriginalOnlyFailureFile(file.filename, file.size, route, "legacy_missing_derivatives"),
+    ...buildOriginalOnlyFailureFile(
+      file.filename,
+      file.size,
+      file.storageKey ?? buildTransferPrimaryStorageKey(transferId, { name: file.filename }),
+      route,
+      "legacy_missing_derivatives"
+    ),
   };
 }
 
@@ -307,8 +355,8 @@ function createLocalMediaProcessor() {
   return {
     processTransferBuffer: (buffer: Buffer, filename: string, transferId: string) =>
       processTransferBufferLocally(buffer, filename, transferId),
-    processTransferObject: (filename: string, fileSize: number, transferId: string) =>
-      processTransferObjectLocally(filename, fileSize, transferId),
+    processTransferObject: (file: TransferUploadFileInput, transferId: string) =>
+      processTransferObjectLocally(file, transferId),
     backfillTransferMedia: async (transfer: TransferData) => {
       const remainingSeconds = Math.ceil((new Date(transfer.expiresAt).getTime() - Date.now()) / 1000);
       if (remainingSeconds <= 0) return transfer;

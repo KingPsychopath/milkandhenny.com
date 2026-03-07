@@ -8,11 +8,8 @@ import {
   type ProcessingRoute,
 } from "@/features/transfers/media-state";
 import { saveTransfer, type TransferData, type TransferFile } from "@/features/transfers/store";
-import {
-  inferCompatibleTransferFileState,
-  processTransferBufferLocally,
-  processTransferObjectLocally,
-} from "./local";
+import type { TransferUploadFileInput } from "@/features/transfers/upload-types";
+import { inferCompatibleTransferFileState, processTransferBufferLocally, processTransferObjectLocally } from "./local";
 import { enqueueWorkerJob, refreshQueuedTransferState, requeueTransferFile } from "./worker";
 
 const TRANSFER_BACKFILL_CONCURRENCY = 2;
@@ -26,44 +23,38 @@ async function processTransferBuffer(
   if (!route) {
     return processTransferBufferLocally(buffer, filename, transferId);
   }
-  if (route === "worker_heif") {
-    return enqueueWorkerJob({ transferId, filename, size: buffer.byteLength, route, originalBuffer: buffer });
-  }
 
   try {
     return await processTransferBufferLocally(buffer, filename, transferId, "local_done", "local", route);
   } catch {
     return enqueueWorkerJob({
       transferId,
-      filename,
-      size: buffer.byteLength,
-      route: route === "raw_try_local" ? "worker_raw" : route,
+      file: {
+        name: filename,
+        size: buffer.byteLength,
+      },
+      route,
       originalBuffer: buffer,
     });
   }
 }
 
 async function processTransferObject(
-  filename: string,
-  fileSize: number,
+  file: TransferUploadFileInput,
   transferId: string
 ) {
-  const route = classifyTransferProcessingRoute(filename);
+  const route = classifyTransferProcessingRoute(file.name);
   if (!route) {
-    return processTransferObjectLocally(filename, fileSize, transferId);
-  }
-  if (route === "worker_heif") {
-    return enqueueWorkerJob({ transferId, filename, size: fileSize, route });
+    return processTransferObjectLocally(file, transferId);
   }
 
   try {
-    return await processTransferObjectLocally(filename, fileSize, transferId, "local_done", "local", route);
+    return await processTransferObjectLocally(file, transferId, "local_done", "local", route);
   } catch {
     return enqueueWorkerJob({
       transferId,
-      filename,
-      size: fileSize,
-      route: route === "raw_try_local" ? "worker_raw" : route,
+      file,
+      route,
     });
   }
 }
@@ -72,21 +63,18 @@ async function repairOrQueueLegacyFile(transfer: TransferData, file: TransferFil
   const route = file.processingRoute ?? classifyTransferProcessingRoute(file.filename);
   if (!route) return file;
 
-  if (route === "worker_heif") {
-    return (await enqueueWorkerJob({
-      transferId: transfer.id,
-      filename: file.filename,
-      size: file.size,
-      route,
-      attempt: (file.retryCount ?? 0) + 1,
-    })).file;
-  }
-
   try {
     return (
       await processTransferObjectLocally(
-        file.filename,
-        file.size,
+        {
+          name: file.filename,
+          size: file.size,
+          type: file.mimeType,
+          originalName: file.originalFilename,
+          originalType: file.originalMimeType,
+          originalSize: file.originalStorageKey ? file.size : undefined,
+          convertedFrom: file.convertedFrom,
+        },
         transfer.id,
         "local_done",
         "local",
@@ -97,9 +85,16 @@ async function repairOrQueueLegacyFile(transfer: TransferData, file: TransferFil
     return (
       await enqueueWorkerJob({
         transferId: transfer.id,
-        filename: file.filename,
-        size: file.size,
-        route: route === "raw_try_local" ? "worker_raw" : route,
+        file: {
+          name: file.filename,
+          size: file.size,
+          type: file.mimeType,
+          originalName: file.originalFilename,
+          originalType: file.originalMimeType,
+          originalSize: file.originalStorageKey ? file.size : undefined,
+          convertedFrom: file.convertedFrom,
+        },
+        route,
         attempt: (file.retryCount ?? 0) + 1,
       })
     ).file;

@@ -976,6 +976,9 @@ async function cmdTransfersUpload(opts: {
     if (result.processingCounts.skippedCount > 0) processingParts.push(`${result.processingCounts.skippedCount} original-only`);
     log(dim(`  processing: ${processingParts.join(", ")}`));
   }
+  if (result.transfer.files.some((file) => /\.(heic|heif|hif)$/i.test(file.filename) && file.processingStatus === "skipped")) {
+    log(dim("  note: HEIC/HIF files are stored as originals only in the CLI path"));
+  }
 
   const expires = new Date(result.transfer.expiresAt);
   log(
@@ -1031,6 +1034,9 @@ async function cmdTransfersAppend(opts: {
     if (result.processingCounts.failedCount > 0) processingParts.push(`${result.processingCounts.failedCount} failed`);
     if (result.processingCounts.skippedCount > 0) processingParts.push(`${result.processingCounts.skippedCount} original-only`);
     log(dim(`  processing: ${processingParts.join(", ")}`));
+  }
+  if (result.transfer.files.some((file) => /\.(heic|heif|hif)$/i.test(file.filename) && file.processingStatus === "skipped")) {
+    log(dim("  note: HEIC/HIF files are stored as originals only in the CLI path"));
   }
 
   log(dim(`  transfer now has ${result.transfer.files.length} files`));

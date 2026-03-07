@@ -175,6 +175,10 @@ function getTransferFileUrl(transferId: string, filename: string): string {
   );
 }
 
+function getTransferStorageUrl(storageKey: string): string {
+  return getImageUrl(storageKey);
+}
+
 export {
   getImageUrl,
   getThumbUrl,
@@ -189,4 +193,5 @@ export {
   getTransferThumbUrl,
   getTransferFullUrl,
   getTransferFileUrl,
+  getTransferStorageUrl,
 };

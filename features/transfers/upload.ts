@@ -11,7 +11,7 @@ import "server-only";
 import path from "path";
 import { getMediaProcessor } from "@/features/media/processor";
 import type { TransferData, TransferFile } from "./store";
-import type { ProcessFileResult } from "./upload-types";
+import type { ProcessFileResult, TransferUploadFileInput } from "./upload-types";
 
 /** Defensive filename validation for user-uploaded transfer files. */
 function isSafeTransferFilename(filename: string): boolean {
@@ -32,11 +32,10 @@ async function processTransferFile(
 }
 
 async function processUploadedFile(
-  filename: string,
-  fileSize: number,
+  file: TransferUploadFileInput,
   transferId: string
 ): Promise<ProcessFileResult> {
-  return getMediaProcessor().processTransferObject(filename, fileSize, transferId);
+  return getMediaProcessor().processTransferObject(file, transferId);
 }
 
 async function backfillTransferMedia(transfer: TransferData): Promise<TransferData> {

@@ -1,8 +1,8 @@
-const PROCESSABLE_IMAGE_EXTENSIONS = /\.(jpe?g|png|webp|heic|hif|tiff?)$/i;
+const PROCESSABLE_IMAGE_EXTENSIONS = /\.(jpe?g|png|webp|tiff?)$/i;
 const RAW_IMAGE_EXTENSIONS = /\.(dng|arw|cr2|cr3|nef|orf|raf|rw2|raw)$/i;
 const ANIMATED_EXTENSIONS = /\.gif$/i;
 const VIDEO_EXTENSIONS = /\.(mp4|mov|webm|avi|mkv|m4v|wmv|flv)$/i;
-const HEIF_EXTENSIONS = /\.(heic|hif)$/i;
+const HEIF_EXTENSIONS = /\.(heic|heif|hif)$/i;
 
 const PREVIEW_STATUSES = ["ready", "original_only"] as const;
 const PROCESSING_STATUSES = [
@@ -20,7 +20,6 @@ const PROCESSING_ROUTES = [
   "local_gif",
   "local_video",
   "raw_try_local",
-  "worker_heif",
   "worker_raw",
 ] as const;
 
@@ -59,7 +58,6 @@ function getTransferFileId(filename: string): string {
 }
 
 function classifyTransferProcessingRoute(filename: string): ProcessingRoute | null {
-  if (HEIF_EXTENSIONS.test(filename)) return "worker_heif";
   if (RAW_IMAGE_EXTENSIONS.test(filename)) return "raw_try_local";
   if (ANIMATED_EXTENSIONS.test(filename)) return "local_gif";
   if (VIDEO_EXTENSIONS.test(filename)) return "local_video";

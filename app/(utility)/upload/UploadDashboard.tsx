@@ -3,7 +3,10 @@
 import { useState, useRef, useCallback, useEffect, useDeferredValue } from "react";
 import Link from "next/link";
 import { getStored, removeStored } from "@/lib/client/storage";
+import { mapWithConcurrency } from "@/lib/shared/map-with-concurrency";
 import { SITE_BRAND } from "@/lib/shared/config";
+import { isHeifLikeFile, prepareTransferUploadFile, type PreparedTransferUpload } from "@/features/transfers/browser-heif";
+import type { TransferUploadFileInput } from "@/features/transfers/upload-types";
 
 /* ─── Types ─── */
 
@@ -86,6 +89,7 @@ type UploadDashboardProps = {
 };
 
 const DIRECT_UPLOAD_CONCURRENCY = 4;
+const HEIF_CONVERSION_CONCURRENCY = 2;
 const DIRECT_UPLOAD_RETRIES = 3;
 const API_REQUEST_RETRIES = 2;
 
@@ -146,11 +150,12 @@ export function UploadDashboard({ isAdmin }: UploadDashboardProps) {
 
   /* Upload progress (presigned flow) */
   const [uploadProgress, setUploadProgress] = useState<{
-    phase: "uploading" | "processing";
+    phase: "converting" | "uploading" | "processing";
     current: number;
     total: number;
     filename?: string;
   } | null>(null);
+  const [conversionStatuses, setConversionStatuses] = useState<Record<string, string>>({});
 
   /* Drag state */
   const [isDragging, setIsDragging] = useState(false);
@@ -314,6 +319,7 @@ export function UploadDashboard({ isAdmin }: UploadDashboardProps) {
       return next;
     });
     setUploadError("");
+    setConversionStatuses({});
   }, []);
 
   const removeFile = useCallback((target: File) => {
@@ -327,10 +333,11 @@ export function UploadDashboard({ isAdmin }: UploadDashboardProps) {
     setTransferResult(null);
     setWordsResult(null);
     setUploadError("");
+    setConversionStatuses({});
   }, []);
 
   const uploadPresignedFiles = useCallback(
-    async (entries: Array<{ file: File; url: string }>) => {
+    async (entries: Array<{ file: File; url: string; label: string }>) => {
       if (entries.length === 0) return;
 
       let nextIndex = 0;
@@ -381,13 +388,67 @@ export function UploadDashboard({ isAdmin }: UploadDashboardProps) {
             phase: "uploading",
             current: completed,
             total: entries.length,
-            filename: entry.file.name,
+            filename: entry.label,
           });
         }
       };
 
       const workerCount = Math.min(DIRECT_UPLOAD_CONCURRENCY, entries.length);
       await Promise.all(Array.from({ length: workerCount }, worker));
+    },
+    []
+  );
+
+  const prepareTransferUploads = useCallback(
+    async (selectedFiles: File[]) => {
+      const heifCount = selectedFiles.filter((file) => isHeifLikeFile(file)).length;
+      if (heifCount === 0) {
+        return selectedFiles.map<PreparedTransferUpload>((file) => ({
+          uploadFile: file,
+          uploadName: file.name,
+        }));
+      }
+
+      let completed = 0;
+      setUploadProgress({
+        phase: "converting",
+        current: 0,
+        total: heifCount,
+      });
+      setConversionStatuses(
+        Object.fromEntries(
+          selectedFiles
+            .filter((file) => isHeifLikeFile(file))
+            .map((file) => [`${file.name}:${file.size}`, "queued for conversion"])
+        )
+      );
+
+      const prepared = await mapWithConcurrency(selectedFiles, HEIF_CONVERSION_CONCURRENCY, async (file) => {
+        if (!isHeifLikeFile(file)) {
+          return {
+            uploadFile: file,
+            uploadName: file.name,
+          } satisfies PreparedTransferUpload;
+        }
+
+        const key = `${file.name}:${file.size}`;
+        setConversionStatuses((current) => ({ ...current, [key]: `Converting ${file.name}...` }));
+        const result = await prepareTransferUploadFile(file);
+        completed += 1;
+        setConversionStatuses((current) => ({
+          ...current,
+          [key]: `Converted to ${result.uploadName}`,
+        }));
+        setUploadProgress({
+          phase: "converting",
+          current: completed,
+          total: heifCount,
+          filename: file.name,
+        });
+        return result;
+      });
+
+      return prepared;
     },
     []
   );
@@ -468,15 +529,30 @@ export function UploadDashboard({ isAdmin }: UploadDashboardProps) {
 
   /** Presigned flow: browser uploads directly to R2, then tells the API to finalize. */
   const handleTransferCreateUpload = async () => {
+    const preparedFiles = await prepareTransferUploads(files);
+    const presignFiles: TransferUploadFileInput[] = preparedFiles.map((file) => ({
+      name: file.uploadName,
+      size: file.uploadFile.size,
+      type: file.uploadFile.type,
+      ...(file.originalFile
+        ? {
+            originalName: file.originalFile.name,
+            originalSize: file.originalFile.size,
+            originalType: file.originalFile.type,
+            convertedFrom: file.convertedFrom,
+          }
+        : {}),
+    }));
+
     // 1. Get presigned PUT URLs
-    setUploadProgress({ phase: "uploading", current: 0, total: files.length });
+    setUploadProgress({ phase: "uploading", current: 0, total: presignFiles.length });
     const presignRes = await authFetchWithRetry("/api/upload/transfer/presign", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         title: title || "untitled",
         expires: expiry,
-        files: files.map((f) => ({ name: f.name, size: f.size, type: f.type })),
+        files: presignFiles,
       }),
     });
 
@@ -489,34 +565,31 @@ export function UploadDashboard({ isAdmin }: UploadDashboardProps) {
       transferId: string;
       deleteToken: string;
       expiresSeconds: number;
-      urls: Array<{ name: string; url: string }>;
+      urls: Array<{ name: string; primaryUrl: string; archivedOriginalUrl?: string }>;
     };
 
     // 2. Upload files directly to R2 (bounded parallelism for faster uploads)
-    const filesByName = new Map<string, File[]>();
-    for (const file of files) {
-      const bucket = filesByName.get(file.name);
-      if (bucket) {
-        bucket.push(file);
-      } else {
-        filesByName.set(file.name, [file]);
+    const preparedByName = new Map(preparedFiles.map((file) => [file.uploadName, file]));
+    const uploadEntries = urls.flatMap((entry) => {
+      const prepared = preparedByName.get(entry.name);
+      if (!prepared) {
+        throw new Error(`Could not resolve prepared upload for ${entry.name}`);
       }
-    }
-    const uploadEntries = urls.map((entry) => {
-      const bucket = filesByName.get(entry.name);
-      const file = bucket?.shift();
-      if (!file) {
-        throw new Error(`Could not resolve local file for ${entry.name}`);
-      }
-      return { file, url: entry.url };
+
+      return [
+        { file: prepared.uploadFile, url: entry.primaryUrl, label: prepared.uploadFile.name },
+        ...(prepared.originalFile && entry.archivedOriginalUrl
+          ? [{ file: prepared.originalFile, url: entry.archivedOriginalUrl, label: prepared.originalFile.name }]
+          : []),
+      ];
     });
     await uploadPresignedFiles(uploadEntries);
 
     // 3. Finalize — server processes thumbnails and saves metadata
     setUploadProgress({
       phase: "processing",
-      current: files.length,
-      total: files.length,
+      current: presignFiles.length,
+      total: presignFiles.length,
     });
 
     const finalizeRes = await authFetchWithRetry("/api/upload/transfer/finalize", {
@@ -527,7 +600,7 @@ export function UploadDashboard({ isAdmin }: UploadDashboardProps) {
         deleteToken,
         title: title || "untitled",
         expiresSeconds,
-        files: files.map((f) => ({ name: f.name, size: f.size, type: f.type })),
+        files: presignFiles,
       }),
     });
 
@@ -545,14 +618,28 @@ export function UploadDashboard({ isAdmin }: UploadDashboardProps) {
     const transferId = appendTransferId.trim();
     if (!transferId) throw new Error("transfer id is required for append");
     if (!isAdmin) throw new Error("Only admins can append to an existing transfer");
+    const preparedFiles = await prepareTransferUploads(files);
+    const presignFiles: TransferUploadFileInput[] = preparedFiles.map((file) => ({
+      name: file.uploadName,
+      size: file.uploadFile.size,
+      type: file.uploadFile.type,
+      ...(file.originalFile
+        ? {
+            originalName: file.originalFile.name,
+            originalSize: file.originalFile.size,
+            originalType: file.originalFile.type,
+            convertedFrom: file.convertedFrom,
+          }
+        : {}),
+    }));
 
-    setUploadProgress({ phase: "uploading", current: 0, total: files.length });
+    setUploadProgress({ phase: "uploading", current: 0, total: presignFiles.length });
     const presignRes = await adminAuthFetchWithRetry("/api/upload/transfer/append/presign", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         transferId,
-        files: files.map((f) => ({ name: f.name, size: f.size, type: f.type })),
+        files: presignFiles,
       }),
     });
 
@@ -561,29 +648,28 @@ export function UploadDashboard({ isAdmin }: UploadDashboardProps) {
       throw new Error((presignData as { error?: string }).error || "Failed to prepare append upload");
     }
 
-    const { urls } = presignData as { urls: Array<{ name: string; url: string }> };
+    const { urls } = presignData as { urls: Array<{ name: string; primaryUrl: string; archivedOriginalUrl?: string }> };
 
-    const filesByName = new Map<string, File[]>();
-    for (const file of files) {
-      const bucket = filesByName.get(file.name);
-      if (bucket) bucket.push(file);
-      else filesByName.set(file.name, [file]);
-    }
-    const uploadEntries = urls.map((entry) => {
-      const bucket = filesByName.get(entry.name);
-      const file = bucket?.shift();
-      if (!file) throw new Error(`Could not resolve local file for ${entry.name}`);
-      return { file, url: entry.url };
+    const preparedByName = new Map(preparedFiles.map((file) => [file.uploadName, file]));
+    const uploadEntries = urls.flatMap((entry) => {
+      const prepared = preparedByName.get(entry.name);
+      if (!prepared) throw new Error(`Could not resolve prepared upload for ${entry.name}`);
+      return [
+        { file: prepared.uploadFile, url: entry.primaryUrl, label: prepared.uploadFile.name },
+        ...(prepared.originalFile && entry.archivedOriginalUrl
+          ? [{ file: prepared.originalFile, url: entry.archivedOriginalUrl, label: prepared.originalFile.name }]
+          : []),
+      ];
     });
     await uploadPresignedFiles(uploadEntries);
 
-    setUploadProgress({ phase: "processing", current: files.length, total: files.length });
+    setUploadProgress({ phase: "processing", current: presignFiles.length, total: presignFiles.length });
     const finalizeRes = await adminAuthFetchWithRetry("/api/upload/transfer/append/finalize", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         transferId,
-        files: files.map((f) => ({ name: f.name, size: f.size, type: f.type })),
+        files: presignFiles,
       }),
     });
 
@@ -652,7 +738,7 @@ export function UploadDashboard({ isAdmin }: UploadDashboardProps) {
       if (!file) {
         throw new Error(`Could not resolve local file for ${entry.original}`);
       }
-      return { file, url: entry.url };
+      return { file, url: entry.url, label: entry.original };
     });
     await uploadPresignedFiles(uploadEntries);
 
@@ -706,6 +792,7 @@ export function UploadDashboard({ isAdmin }: UploadDashboardProps) {
         setWordsResult(result);
       }
       setFiles([]);
+      setConversionStatuses({});
     } catch (e) {
       setUploadError((e as Error).message || "Upload failed");
     } finally {
@@ -1099,9 +1186,16 @@ export function UploadDashboard({ isAdmin }: UploadDashboardProps) {
                 key={`${file.name}-${file.size}`}
                 className="flex items-center justify-between py-2 border-b border-[var(--stone-100)]"
               >
-                <span className="font-mono text-sm truncate pr-4 flex-1">
-                  {file.name}
-                </span>
+                <div className="min-w-0 flex-1 pr-4">
+                  <span className="font-mono text-sm truncate block">
+                    {file.name}
+                  </span>
+                  {conversionStatuses[`${file.name}:${file.size}`] ? (
+                    <span className="font-mono text-micro theme-faint block mt-0.5">
+                      {conversionStatuses[`${file.name}:${file.size}`]}
+                    </span>
+                  ) : null}
+                </div>
                 <div className="flex items-center gap-3 shrink-0">
                   <span className="font-mono text-xs theme-muted">
                     {formatBytes(file.size)}
@@ -1127,6 +1221,8 @@ export function UploadDashboard({ isAdmin }: UploadDashboardProps) {
             {uploading && uploadProgress
               ? uploadProgress.phase === "processing"
                 ? "processing thumbnails..."
+                : uploadProgress.phase === "converting"
+                  ? `converting ${uploadProgress.current}/${uploadProgress.total}...`
                 : `uploading ${uploadProgress.current}/${uploadProgress.total}...`
               : uploading
                 ? "uploading..."
@@ -1203,7 +1299,7 @@ export function UploadDashboard({ isAdmin }: UploadDashboardProps) {
                   {transferResult.processingCounts.readyCount} ready
                   {transferResult.processingCounts.queuedCount > 0 ? ` · ${transferResult.processingCounts.queuedCount} processing` : ""}
                   {transferResult.processingCounts.failedCount > 0 ? ` · ${transferResult.processingCounts.failedCount} failed` : ""}
-                  {transferResult.processingCounts.skippedCount > 0 ? ` · ${transferResult.processingCounts.skippedCount} original-only` : ""}
+                  {transferResult.processingCounts.originalOnlyCount > 0 ? ` · ${transferResult.processingCounts.originalOnlyCount} original-only` : ""}
                 </p>
               ) : null}
             </div>

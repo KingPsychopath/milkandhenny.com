@@ -34,6 +34,7 @@ function makeTransfer(overrides?: Partial<TransferData>): TransferData {
         kind: "image",
         size: 1024,
         mimeType: "image/jpeg",
+        storageKey: "transfers/test-transfer/originals/photo.jpg",
       },
     ],
     createdAt: new Date().toISOString(),
