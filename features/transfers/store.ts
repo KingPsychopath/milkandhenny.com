@@ -147,12 +147,25 @@ function formatDuration(seconds: number): string {
 const memoryTransfers = new Map<string, TransferData>();
 const memoryIndex = new Set<string>();
 
+function allowInMemoryTransferStore(): boolean {
+  return process.env.NODE_ENV === "test" || process.env.ALLOW_IN_MEMORY_TRANSFER_STORE === "1";
+}
+
+function requireTransferRedis() {
+  const redis = getRedis();
+  if (redis) return redis;
+  if (allowInMemoryTransferStore()) return null;
+  throw new Error(
+    "Transfer storage requires Redis/KV. Configure KV_REST_API_URL and KV_REST_API_TOKEN."
+  );
+}
+
 /** Save a new transfer to Redis with TTL */
 async function saveTransfer(
   data: TransferData,
   ttlSeconds: number
 ): Promise<void> {
-  const redis = getRedis();
+  const redis = requireTransferRedis();
   const key = `${TRANSFER_PREFIX}${data.id}`;
 
   if (redis) {
@@ -172,7 +185,7 @@ async function saveTransfer(
 
 /** Get a transfer by ID. Returns null if expired or not found. */
 async function getTransfer(id: string): Promise<TransferData | null> {
-  const redis = getRedis();
+  const redis = requireTransferRedis();
   const key = `${TRANSFER_PREFIX}${id}`;
 
   if (redis) {
@@ -189,7 +202,7 @@ async function getTransfer(id: string): Promise<TransferData | null> {
 
 /** List all active (non-expired) transfers */
 async function listTransfers(): Promise<TransferSummary[]> {
-  const redis = getRedis();
+  const redis = requireTransferRedis();
   const now = Date.now();
 
   if (redis) {
@@ -268,7 +281,7 @@ async function listTransfers(): Promise<TransferSummary[]> {
 
 /** Delete a transfer from Redis. Returns true if it existed. */
 async function deleteTransferData(id: string): Promise<boolean> {
-  const redis = getRedis();
+  const redis = requireTransferRedis();
   const key = `${TRANSFER_PREFIX}${id}`;
 
   if (redis) {

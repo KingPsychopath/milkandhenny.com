@@ -63,7 +63,16 @@ function isVisualFile(file: TransferFileData): boolean {
 }
 
 function hasVisualThumbnail(file: TransferFileData): boolean {
-  return file.kind === "video" || file.kind === "gif" || hasProcessedImageVariants(file) || isRawImage(file);
+  return (
+    (file.kind === "video" && typeof file.width === "number" && typeof file.height === "number") ||
+    file.kind === "gif" ||
+    hasProcessedImageVariants(file) ||
+    isRawImage(file)
+  );
+}
+
+function getOriginalVisualUrl(transferId: string, file: TransferFileData): string {
+  return getTransferFileUrl(transferId, file.filename);
 }
 
 function isGalleryFilter(value: string | null): value is GalleryFilter {
@@ -1018,7 +1027,7 @@ const VisualCard = memo(function VisualCard({
   onClick: () => void;
 }) {
   const hasThumbnail = hasVisualThumbnail(file);
-  const thumbUrl =
+  const primaryThumbUrl =
     file.kind === "video" || file.kind === "gif"
       ? getTransferThumbUrl(transferId, file.id)
       : hasProcessedImageVariants(file)
@@ -1026,9 +1035,27 @@ const VisualCard = memo(function VisualCard({
         : isRawImage(file)
           ? getTransferFileUrl(transferId, file.filename)
           : "";
+  const [thumbUrl, setThumbUrl] = useState(primaryThumbUrl);
   const aspectRatio = file.width && file.height ? file.height / file.width : 9 / 16;
 
   const { loaded, errored, handleLoad, handleError, imgRef } = useLazyImage();
+
+  useEffect(() => {
+    setThumbUrl(primaryThumbUrl);
+  }, [primaryThumbUrl]);
+
+  const handleVisualError = useCallback(() => {
+    const originalUrl = getOriginalVisualUrl(transferId, file);
+    if (
+      thumbUrl &&
+      thumbUrl !== originalUrl &&
+      file.kind !== "video"
+    ) {
+      setThumbUrl(originalUrl);
+      return;
+    }
+    handleError();
+  }, [file, handleError, thumbUrl, transferId]);
 
   return (
     <div className="gallery-card group">
@@ -1064,7 +1091,7 @@ const VisualCard = memo(function VisualCard({
             loading="lazy"
             decoding="async"
             onLoad={handleLoad}
-            onError={handleError}
+            onError={handleVisualError}
             className={`absolute inset-0 w-full h-full object-cover transition-opacity duration-300 ${loaded ? "opacity-100" : "opacity-0"}`}
           />
         ) : errored ? (

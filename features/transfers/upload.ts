@@ -22,7 +22,7 @@ import {
   processGifThumb,
   processVideoVariants,
 } from "@/features/media/processing";
-import { saveTransfer, type TransferData, type TransferFile } from "./store";
+import { saveTransfer, type FileKind, type TransferData, type TransferFile } from "./store";
 
 /* ─── Types ─── */
 
@@ -34,6 +34,23 @@ type ProcessFileResult = {
 };
 
 const TRANSFER_BACKFILL_CONCURRENCY = 2;
+
+function buildFallbackTransferFile(
+  filename: string,
+  size: number,
+  kind: FileKind = "file"
+): ProcessFileResult {
+  return {
+    file: {
+      id: filename,
+      filename,
+      kind,
+      size,
+      mimeType: getMimeType(filename),
+    },
+    uploadedBytes: size,
+  };
+}
 
 /** Defensive filename validation for user-uploaded transfer files. */
 function isSafeTransferFilename(filename: string): boolean {
@@ -66,7 +83,8 @@ async function processTransferFile(
   const prefix = `transfers/${transferId}`;
 
   if (PROCESSABLE_EXTENSIONS.test(filename)) {
-    const processed = await processImageVariants(buffer, ext);
+    try {
+      const processed = await processImageVariants(buffer, ext);
     const originalFilename =
       processed.original.ext === ext
         ? filename
@@ -106,103 +124,122 @@ async function processTransferFile(
         processed.full.buffer.byteLength +
         processed.original.buffer.byteLength,
     };
+    } catch {
+      await uploadBuffer(`${prefix}/original/${filename}`, buffer, getMimeType(filename));
+      return buildFallbackTransferFile(filename, buffer.byteLength);
+    }
   }
 
   if (RAW_IMAGE_EXTENSIONS.test(filename)) {
-    const processed = await processImageVariants(buffer, ext);
-    const mimeType = getMimeType(filename);
+    try {
+      const processed = await processImageVariants(buffer, ext);
+      const mimeType = getMimeType(filename);
 
-    await Promise.all([
-      uploadBuffer(
-        `${prefix}/thumb/${stem}.webp`,
-        processed.thumb.buffer,
-        processed.thumb.contentType
-      ),
-      uploadBuffer(
-        `${prefix}/full/${stem}.webp`,
-        processed.full.buffer,
-        processed.full.contentType
-      ),
-      uploadBuffer(`${prefix}/original/${filename}`, buffer, mimeType),
-    ]);
+      await Promise.all([
+        uploadBuffer(
+          `${prefix}/thumb/${stem}.webp`,
+          processed.thumb.buffer,
+          processed.thumb.contentType
+        ),
+        uploadBuffer(
+          `${prefix}/full/${stem}.webp`,
+          processed.full.buffer,
+          processed.full.contentType
+        ),
+        uploadBuffer(`${prefix}/original/${filename}`, buffer, mimeType),
+      ]);
 
-    return {
-      file: {
-        id: stem,
-        filename,
-        kind: "image",
-        size: buffer.byteLength,
-        mimeType,
-        width: processed.width,
-        height: processed.height,
-        ...(processed.takenAt ? { takenAt: processed.takenAt } : {}),
-      },
-      uploadedBytes:
-        processed.thumb.buffer.byteLength +
-        processed.full.buffer.byteLength +
-        buffer.byteLength,
-    };
+      return {
+        file: {
+          id: stem,
+          filename,
+          kind: "image",
+          size: buffer.byteLength,
+          mimeType,
+          width: processed.width,
+          height: processed.height,
+          ...(processed.takenAt ? { takenAt: processed.takenAt } : {}),
+        },
+        uploadedBytes:
+          processed.thumb.buffer.byteLength +
+          processed.full.buffer.byteLength +
+          buffer.byteLength,
+      };
+    } catch {
+      await uploadBuffer(`${prefix}/original/${filename}`, buffer, getMimeType(filename));
+      return buildFallbackTransferFile(filename, buffer.byteLength);
+    }
   }
 
   if (ANIMATED_EXTENSIONS.test(filename)) {
-    const gif = await processGifThumb(buffer);
+    try {
+      const gif = await processGifThumb(buffer);
 
-    await Promise.all([
-      uploadBuffer(
-        `${prefix}/thumb/${stem}.webp`,
-        gif.thumb.buffer,
-        gif.thumb.contentType
-      ),
-      uploadBuffer(`${prefix}/original/${filename}`, buffer, "image/gif"),
-    ]);
+      await Promise.all([
+        uploadBuffer(
+          `${prefix}/thumb/${stem}.webp`,
+          gif.thumb.buffer,
+          gif.thumb.contentType
+        ),
+        uploadBuffer(`${prefix}/original/${filename}`, buffer, "image/gif"),
+      ]);
 
-    return {
-      file: {
-        id: stem,
-        filename,
-        kind: "gif",
-        size: buffer.byteLength,
-        mimeType: "image/gif",
-        width: gif.width,
-        height: gif.height,
-      },
-      uploadedBytes: gif.thumb.buffer.byteLength + buffer.byteLength,
-    };
+      return {
+        file: {
+          id: stem,
+          filename,
+          kind: "gif",
+          size: buffer.byteLength,
+          mimeType: "image/gif",
+          width: gif.width,
+          height: gif.height,
+        },
+        uploadedBytes: gif.thumb.buffer.byteLength + buffer.byteLength,
+      };
+    } catch {
+      await uploadBuffer(`${prefix}/original/${filename}`, buffer, "image/gif");
+      return buildFallbackTransferFile(filename, buffer.byteLength);
+    }
   }
 
   if (VIDEO_EXTENSIONS.test(filename)) {
-    const video = await processVideoVariants(buffer, ext);
-    const mimeType = getMimeType(filename);
+    try {
+      const video = await processVideoVariants(buffer, ext);
+      const mimeType = getMimeType(filename);
 
-    await Promise.all([
-      uploadBuffer(
-        `${prefix}/thumb/${stem}.webp`,
-        video.thumb.buffer,
-        video.thumb.contentType
-      ),
-      uploadBuffer(
-        `${prefix}/full/${stem}.webp`,
-        video.full.buffer,
-        video.full.contentType
-      ),
-      uploadBuffer(`${prefix}/original/${filename}`, buffer, mimeType),
-    ]);
+      await Promise.all([
+        uploadBuffer(
+          `${prefix}/thumb/${stem}.webp`,
+          video.thumb.buffer,
+          video.thumb.contentType
+        ),
+        uploadBuffer(
+          `${prefix}/full/${stem}.webp`,
+          video.full.buffer,
+          video.full.contentType
+        ),
+        uploadBuffer(`${prefix}/original/${filename}`, buffer, mimeType),
+      ]);
 
-    return {
-      file: {
-        id: stem,
-        filename,
-        kind: "video",
-        size: buffer.byteLength,
-        mimeType,
-        width: video.width,
-        height: video.height,
-      },
-      uploadedBytes:
-        video.thumb.buffer.byteLength +
-        video.full.buffer.byteLength +
-        buffer.byteLength,
-    };
+      return {
+        file: {
+          id: stem,
+          filename,
+          kind: "video",
+          size: buffer.byteLength,
+          mimeType,
+          width: video.width,
+          height: video.height,
+        },
+        uploadedBytes:
+          video.thumb.buffer.byteLength +
+          video.full.buffer.byteLength +
+          buffer.byteLength,
+      };
+    } catch {
+      await uploadBuffer(`${prefix}/original/${filename}`, buffer, getMimeType(filename));
+      return buildFallbackTransferFile(filename, buffer.byteLength, "video");
+    }
   }
 
   // Raw file — upload as-is
@@ -271,138 +308,154 @@ async function processUploadedFile(
   const originalKey = `${prefix}/original/${filename}`;
 
   if (PROCESSABLE_EXTENSIONS.test(filename)) {
-    const buffer = await downloadBuffer(originalKey);
-    const processed = await processImageVariants(buffer, ext);
+    try {
+      const buffer = await downloadBuffer(originalKey);
+      const processed = await processImageVariants(buffer, ext);
 
-    await Promise.all([
-      uploadBuffer(
-        `${prefix}/thumb/${stem}.webp`,
-        processed.thumb.buffer,
-        processed.thumb.contentType
-      ),
-      uploadBuffer(
-        `${prefix}/full/${stem}.webp`,
-        processed.full.buffer,
-        processed.full.contentType
-      ),
-    ]);
+      await Promise.all([
+        uploadBuffer(
+          `${prefix}/thumb/${stem}.webp`,
+          processed.thumb.buffer,
+          processed.thumb.contentType
+        ),
+        uploadBuffer(
+          `${prefix}/full/${stem}.webp`,
+          processed.full.buffer,
+          processed.full.contentType
+        ),
+      ]);
 
-    const originalFilename =
-      processed.original.ext === ext
-        ? filename
-        : `${stem}${processed.original.ext}`;
+      const originalFilename =
+        processed.original.ext === ext
+          ? filename
+          : `${stem}${processed.original.ext}`;
 
-    return {
-      file: {
-        id: stem,
-        filename: originalFilename,
-        kind: "image",
-        size: fileSize,
-        mimeType: processed.original.contentType,
-        width: processed.width,
-        height: processed.height,
-        ...(processed.takenAt ? { takenAt: processed.takenAt } : {}),
-      },
-      uploadedBytes:
-        processed.thumb.buffer.byteLength +
-        processed.full.buffer.byteLength +
-        fileSize,
-    };
+      return {
+        file: {
+          id: stem,
+          filename: originalFilename,
+          kind: "image",
+          size: fileSize,
+          mimeType: processed.original.contentType,
+          width: processed.width,
+          height: processed.height,
+          ...(processed.takenAt ? { takenAt: processed.takenAt } : {}),
+        },
+        uploadedBytes:
+          processed.thumb.buffer.byteLength +
+          processed.full.buffer.byteLength +
+          fileSize,
+      };
+    } catch {
+      return buildFallbackTransferFile(filename, fileSize);
+    }
   }
 
   if (RAW_IMAGE_EXTENSIONS.test(filename)) {
-    const buffer = await downloadBuffer(originalKey);
-    const processed = await processImageVariants(buffer, ext);
-    const mimeType = getMimeType(filename);
+    try {
+      const buffer = await downloadBuffer(originalKey);
+      const processed = await processImageVariants(buffer, ext);
+      const mimeType = getMimeType(filename);
 
-    await Promise.all([
-      uploadBuffer(
-        `${prefix}/thumb/${stem}.webp`,
-        processed.thumb.buffer,
-        processed.thumb.contentType
-      ),
-      uploadBuffer(
-        `${prefix}/full/${stem}.webp`,
-        processed.full.buffer,
-        processed.full.contentType
-      ),
-    ]);
+      await Promise.all([
+        uploadBuffer(
+          `${prefix}/thumb/${stem}.webp`,
+          processed.thumb.buffer,
+          processed.thumb.contentType
+        ),
+        uploadBuffer(
+          `${prefix}/full/${stem}.webp`,
+          processed.full.buffer,
+          processed.full.contentType
+        ),
+      ]);
 
-    return {
-      file: {
-        id: stem,
-        filename,
-        kind: "image",
-        size: fileSize,
-        mimeType,
-        width: processed.width,
-        height: processed.height,
-        ...(processed.takenAt ? { takenAt: processed.takenAt } : {}),
-      },
-      uploadedBytes:
-        processed.thumb.buffer.byteLength +
-        processed.full.buffer.byteLength +
-        fileSize,
-    };
+      return {
+        file: {
+          id: stem,
+          filename,
+          kind: "image",
+          size: fileSize,
+          mimeType,
+          width: processed.width,
+          height: processed.height,
+          ...(processed.takenAt ? { takenAt: processed.takenAt } : {}),
+        },
+        uploadedBytes:
+          processed.thumb.buffer.byteLength +
+          processed.full.buffer.byteLength +
+          fileSize,
+      };
+    } catch {
+      return buildFallbackTransferFile(filename, fileSize);
+    }
   }
 
   if (ANIMATED_EXTENSIONS.test(filename)) {
-    const buffer = await downloadBuffer(originalKey);
-    const gif = await processGifThumb(buffer);
+    try {
+      const buffer = await downloadBuffer(originalKey);
+      const gif = await processGifThumb(buffer);
 
-    await uploadBuffer(
-      `${prefix}/thumb/${stem}.webp`,
-      gif.thumb.buffer,
-      gif.thumb.contentType
-    );
+      await uploadBuffer(
+        `${prefix}/thumb/${stem}.webp`,
+        gif.thumb.buffer,
+        gif.thumb.contentType
+      );
 
-    return {
-      file: {
-        id: stem,
-        filename,
-        kind: "gif",
-        size: fileSize,
-        mimeType: "image/gif",
-        width: gif.width,
-        height: gif.height,
-      },
-      uploadedBytes: gif.thumb.buffer.byteLength + fileSize,
-    };
+      return {
+        file: {
+          id: stem,
+          filename,
+          kind: "gif",
+          size: fileSize,
+          mimeType: "image/gif",
+          width: gif.width,
+          height: gif.height,
+        },
+        uploadedBytes: gif.thumb.buffer.byteLength + fileSize,
+      };
+    } catch {
+      return buildFallbackTransferFile(filename, fileSize);
+    }
   }
 
   if (VIDEO_EXTENSIONS.test(filename)) {
-    const buffer = await downloadBuffer(originalKey);
-    const video = await processVideoVariants(buffer, ext);
-    const mimeType = getMimeType(filename);
+    try {
+      const buffer = await downloadBuffer(originalKey);
+      const video = await processVideoVariants(buffer, ext);
+      const mimeType = getMimeType(filename);
 
-    await Promise.all([
-      uploadBuffer(
-        `${prefix}/thumb/${stem}.webp`,
-        video.thumb.buffer,
-        video.thumb.contentType
-      ),
-      uploadBuffer(
-        `${prefix}/full/${stem}.webp`,
-        video.full.buffer,
-        video.full.contentType
-      ),
-    ]);
+      await Promise.all([
+        uploadBuffer(
+          `${prefix}/thumb/${stem}.webp`,
+          video.thumb.buffer,
+          video.thumb.contentType
+        ),
+        uploadBuffer(
+          `${prefix}/full/${stem}.webp`,
+          video.full.buffer,
+          video.full.contentType
+        ),
+      ]);
 
-    return {
-      file: {
-        id: stem,
-        filename,
-        kind: "video",
-        size: fileSize,
-        mimeType,
-        width: video.width,
-        height: video.height,
-      },
-      uploadedBytes:
-        video.thumb.buffer.byteLength +
-        video.full.buffer.byteLength +
-        fileSize,
-    };
+      return {
+        file: {
+          id: stem,
+          filename,
+          kind: "video",
+          size: fileSize,
+          mimeType,
+          width: video.width,
+          height: video.height,
+        },
+        uploadedBytes:
+          video.thumb.buffer.byteLength +
+          video.full.buffer.byteLength +
+          fileSize,
+      };
+    } catch {
+      return buildFallbackTransferFile(filename, fileSize, "video");
+    }
   }
 
   // Non-visual file — already in R2, just build metadata
