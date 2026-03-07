@@ -20,6 +20,8 @@ type TransferFileData = {
   mimeType: string;
   width?: number;
   height?: number;
+  previewStatus?: "ready" | "original_only";
+  processingStatus?: "pending" | "skipped" | "local_done" | "queued" | "processing" | "worker_done" | "failed";
 };
 
 type TransferGalleryProps = {
@@ -39,15 +41,21 @@ const PROCESSED_IMAGE_EXTENSIONS = /\.(jpe?g|png|webp|heic|hif|tiff?)$/i;
 const RAW_IMAGE_EXTENSIONS = /\.(dng|arw|cr2|cr3|nef|orf|raf|rw2|raw)$/i;
 
 function hasProcessedImageVariants(file: TransferFileData): boolean {
+  if (file.kind !== "image") return false;
+  if (file.previewStatus === "ready") return true;
+  if (file.processingStatus === "queued" || file.processingStatus === "processing" || file.processingStatus === "failed") {
+    return false;
+  }
   return (
-    file.kind === "image" &&
-    (
-      PROCESSED_IMAGE_EXTENSIONS.test(file.filename) ||
-      (RAW_IMAGE_EXTENSIONS.test(file.filename) &&
-        typeof file.width === "number" &&
-        typeof file.height === "number")
-    )
+    PROCESSED_IMAGE_EXTENSIONS.test(file.filename) ||
+    (RAW_IMAGE_EXTENSIONS.test(file.filename) &&
+      typeof file.width === "number" &&
+      typeof file.height === "number")
   );
+}
+
+function canRenderOriginalVisual(file: TransferFileData): boolean {
+  return file.kind === "image" && PROCESSED_IMAGE_EXTENSIONS.test(file.filename) && !RAW_IMAGE_EXTENSIONS.test(file.filename);
 }
 
 function isRawImage(file: TransferFileData): boolean {
@@ -64,10 +72,10 @@ function isVisualFile(file: TransferFileData): boolean {
 
 function hasVisualThumbnail(file: TransferFileData): boolean {
   return (
-    (file.kind === "video" && typeof file.width === "number" && typeof file.height === "number") ||
-    file.kind === "gif" ||
+    (file.kind === "video" && file.previewStatus === "ready" && typeof file.width === "number" && typeof file.height === "number") ||
+    (file.kind === "gif" && file.previewStatus === "ready") ||
     hasProcessedImageVariants(file) ||
-    isRawImage(file)
+    canRenderOriginalVisual(file)
   );
 }
 
@@ -259,7 +267,7 @@ function LightboxContent({
     return (
       <video
         src={getTransferFileUrl(transferId, file.filename)}
-        poster={getTransferFullUrl(transferId, file.id)}
+        poster={file.previewStatus === "ready" ? getTransferFullUrl(transferId, file.id) : undefined}
         controls
         autoPlay
         className="max-w-full max-h-media photo-page-fade-in"
@@ -267,6 +275,33 @@ function LightboxContent({
         onClick={(e) => e.stopPropagation()}
         onError={onError}
       />
+    );
+  }
+
+  if (file.previewStatus !== "ready" && !canRenderOriginalVisual(file)) {
+    const label =
+      file.processingStatus === "queued" || file.processingStatus === "processing"
+        ? "processing preview..."
+        : "preview unavailable";
+    return (
+      <div className="flex flex-col items-center justify-center gap-3 py-20 px-8" onClick={(e) => e.stopPropagation()}>
+        <svg
+          width="40"
+          height="40"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.2"
+          className="text-white/20"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+          <circle cx="8.5" cy="8.5" r="1.5" />
+          <polyline points="21 15 16 10 5 21" />
+        </svg>
+        <p className="font-mono text-xs text-white/40 tracking-wide">{label}</p>
+      </div>
     );
   }
 
@@ -1032,7 +1067,7 @@ const VisualCard = memo(function VisualCard({
       ? getTransferThumbUrl(transferId, file.id)
       : hasProcessedImageVariants(file)
         ? getTransferThumbUrl(transferId, file.id)
-        : isRawImage(file)
+        : canRenderOriginalVisual(file)
           ? getTransferFileUrl(transferId, file.filename)
           : "";
   const [thumbUrl, setThumbUrl] = useState(primaryThumbUrl);
@@ -1049,7 +1084,8 @@ const VisualCard = memo(function VisualCard({
     if (
       thumbUrl &&
       thumbUrl !== originalUrl &&
-      file.kind !== "video"
+      file.kind !== "video" &&
+      canRenderOriginalVisual(file)
     ) {
       setThumbUrl(originalUrl);
       return;
@@ -1141,6 +1177,22 @@ const VisualCard = memo(function VisualCard({
           <div className="absolute bottom-2 left-2">
             <span className="font-mono text-pico bg-black/50 text-white/80 px-1.5 py-0.5 rounded tracking-wider uppercase">
               raw
+            </span>
+          </div>
+        )}
+
+        {(file.processingStatus === "queued" || file.processingStatus === "processing") && (
+          <div className="absolute bottom-2 right-2">
+            <span className="font-mono text-pico bg-black/50 text-white/80 px-1.5 py-0.5 rounded tracking-wider uppercase">
+              processing
+            </span>
+          </div>
+        )}
+
+        {file.processingStatus === "failed" && (
+          <div className="absolute bottom-2 right-2">
+            <span className="font-mono text-pico bg-black/50 text-white/80 px-1.5 py-0.5 rounded tracking-wider uppercase">
+              original only
             </span>
           </div>
         )}

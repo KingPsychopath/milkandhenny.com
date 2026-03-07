@@ -3,6 +3,12 @@ import "server-only";
 import { randomBytes, timingSafeEqual } from 'crypto';
 import { getRedis } from '@/lib/platform/redis';
 import { FILE_KINDS, type FileKind } from '@/features/media/file-kinds';
+import type {
+  PreviewStatus,
+  ProcessingBackend,
+  ProcessingRoute,
+  ProcessingStatus,
+} from './media-state';
 import { generateWordId } from './words';
 
 /* ─── Types ─── */
@@ -23,6 +29,17 @@ type TransferFile = {
   height?: number;
   /** EXIF date (processable images only) */
   takenAt?: string;
+  /** Whether preview/thumb/full assets exist or only the original is available */
+  previewStatus?: PreviewStatus;
+  /** Explicit processing state for local/worker media handling */
+  processingStatus?: ProcessingStatus;
+  processingBackend?: ProcessingBackend;
+  processingRoute?: ProcessingRoute;
+  enqueuedAt?: string;
+  processingStartedAt?: string;
+  processingCompletedAt?: string;
+  processingErrorCode?: string;
+  retryCount?: number;
 };
 
 type TransferData = {

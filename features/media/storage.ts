@@ -11,6 +11,10 @@ function getImageUrl(path: string): string {
   return `${R2_PUBLIC_URL}/${path}`;
 }
 
+function encodeStoragePathSegment(value: string): string {
+  return encodeURIComponent(value);
+}
+
 const DISALLOWED_SCHEMES = ["javascript:", "vbscript:", "data:"] as const;
 const INTERNAL_ROUTE_PREFIXES = [
   "/pics/",
@@ -50,7 +54,9 @@ function getOgUrl(album: string, photoId: string): string {
 
 /** Get the URL for per-word media (stored at words/media/{slug}/{filename}) */
 function getWordMediaUrl(slug: string, filename: string): string {
-  return getImageUrl(`words/media/${slug}/${filename}`);
+  return getImageUrl(
+    `words/media/${encodeStoragePathSegment(slug)}/${encodeStoragePathSegment(filename)}`
+  );
 }
 
 /** @deprecated Prefer getWordMediaUrl for type-agnostic naming. */
@@ -60,7 +66,9 @@ function getBlogImageUrl(slug: string, filename: string): string {
 
 /** Get the URL for a shared reusable asset (stored at words/assets/{assetId}/{filename}) */
 function getSharedAssetUrl(assetId: string, filename: string): string {
-  return getImageUrl(`words/assets/${assetId}/${filename}`);
+  return getImageUrl(
+    `words/assets/${encodeStoragePathSegment(assetId)}/${encodeStoragePathSegment(filename)}`
+  );
 }
 
 /**
@@ -148,17 +156,23 @@ function resolveWordContentRef(ref: string, wordSlug?: string): string {
 
 /** Get the thumbnail URL for a transfer image (WebP, images and GIF first-frame only) */
 function getTransferThumbUrl(transferId: string, fileId: string): string {
-  return getImageUrl(`transfers/${transferId}/thumb/${fileId}.webp`);
+  return getImageUrl(
+    `transfers/${encodeStoragePathSegment(transferId)}/thumb/${encodeStoragePathSegment(fileId)}.webp`
+  );
 }
 
 /** Get the full-size viewing URL for a transfer image (WebP, processed images only) */
 function getTransferFullUrl(transferId: string, fileId: string): string {
-  return getImageUrl(`transfers/${transferId}/full/${fileId}.webp`);
+  return getImageUrl(
+    `transfers/${encodeStoragePathSegment(transferId)}/full/${encodeStoragePathSegment(fileId)}.webp`
+  );
 }
 
 /** Get the original file URL for any transfer file (preserves real filename) */
 function getTransferFileUrl(transferId: string, filename: string): string {
-  return getImageUrl(`transfers/${transferId}/original/${filename}`);
+  return getImageUrl(
+    `transfers/${encodeStoragePathSegment(transferId)}/original/${encodeStoragePathSegment(filename)}`
+  );
 }
 
 export {

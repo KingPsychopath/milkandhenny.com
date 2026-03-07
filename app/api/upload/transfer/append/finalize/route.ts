@@ -2,27 +2,15 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireAuthWithPayload } from "@/features/auth/server";
 import { getTransfer, saveTransfer } from "@/features/transfers/store";
 import { processUploadedFile, sortTransferFiles, isSafeTransferFilename } from "@/features/transfers/upload";
-import { PROCESSABLE_EXTENSIONS, RAW_IMAGE_EXTENSIONS, ANIMATED_EXTENSIONS } from "@/features/media/processing";
+import { buildTransferProcessingCounts, getTransferFileId } from "@/features/transfers/media-state";
 import { BASE_URL } from "@/lib/shared/config";
 import { apiErrorFromRequest } from "@/lib/platform/api-error";
 import { mapWithConcurrency } from "@/lib/shared/map-with-concurrency";
-import path from "path";
 
 export const maxDuration = 60;
 const FINALIZE_CONCURRENCY = 2;
 
 type FileEntry = { name: string; size: number; type?: string };
-
-function predictedTransferFileId(filename: string): string {
-  if (
-    PROCESSABLE_EXTENSIONS.test(filename) ||
-    RAW_IMAGE_EXTENSIONS.test(filename) ||
-    ANIMATED_EXTENSIONS.test(filename)
-  ) {
-    return path.basename(filename, path.extname(filename));
-  }
-  return filename;
-}
 
 export async function POST(request: NextRequest) {
   const { error: authErr } = await requireAuthWithPayload(request, "admin");
@@ -76,7 +64,7 @@ export async function POST(request: NextRequest) {
     }
     seenNames.add(file.name);
 
-    const predictedId = predictedTransferFileId(file.name);
+    const predictedId = getTransferFileId(file.name);
     if (seenIds.has(predictedId)) {
       return NextResponse.json(
         { error: `Conflicting media filenames share the same transfer ID/stem: ${predictedId}` },
@@ -114,6 +102,7 @@ export async function POST(request: NextRequest) {
     await saveTransfer(updatedTransfer, remainingTtlSeconds);
 
     const totalSize = results.reduce((sum, r) => sum + r.uploadedBytes, 0);
+    const processingCounts = buildTransferProcessingCounts(results.map((r) => r.file));
 
     return NextResponse.json({
       shareUrl: `${BASE_URL}/t/${transferId}`,
@@ -127,6 +116,7 @@ export async function POST(request: NextRequest) {
       addedCount: results.length,
       totalSize,
       fileCounts: counts,
+      processingCounts,
     });
   } catch (error) {
     return apiErrorFromRequest(

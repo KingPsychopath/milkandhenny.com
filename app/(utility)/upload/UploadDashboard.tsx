@@ -28,6 +28,13 @@ type TransferResult = {
     audio: number;
     other: number;
   };
+  processingCounts?: {
+    readyCount: number;
+    queuedCount: number;
+    failedCount: number;
+    skippedCount: number;
+    originalOnlyCount: number;
+  };
   addedCount?: number;
 };
 
@@ -1189,6 +1196,14 @@ export function UploadDashboard({ isAdmin }: UploadDashboardProps) {
               {typeof transferResult.addedCount === "number" ? (
                 <p className="font-mono text-xs theme-muted">
                   added {transferResult.addedCount} file{transferResult.addedCount === 1 ? "" : "s"} to existing transfer
+                </p>
+              ) : null}
+              {transferResult.processingCounts ? (
+                <p className="font-mono text-xs theme-muted">
+                  {transferResult.processingCounts.readyCount} ready
+                  {transferResult.processingCounts.queuedCount > 0 ? ` · ${transferResult.processingCounts.queuedCount} processing` : ""}
+                  {transferResult.processingCounts.failedCount > 0 ? ` · ${transferResult.processingCounts.failedCount} failed` : ""}
+                  {transferResult.processingCounts.skippedCount > 0 ? ` · ${transferResult.processingCounts.skippedCount} original-only` : ""}
                 </p>
               ) : null}
             </div>

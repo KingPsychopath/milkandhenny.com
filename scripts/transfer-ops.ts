@@ -16,10 +16,14 @@ import {
 } from "./r2-client";
 import {
   PROCESSABLE_EXTENSIONS,
-  RAW_IMAGE_EXTENSIONS,
   ANIMATED_EXTENSIONS,
   mapConcurrent,
 } from "../features/media/processing";
+import {
+  buildTransferProcessingCounts,
+  getTransferFileId,
+  type TransferProcessingCounts,
+} from "../features/transfers/media-state";
 import { processTransferFile, sortTransferFiles } from "../features/transfers/upload";
 import type { ProcessFileResult } from "../features/transfers/upload";
 import { BASE_URL } from "../lib/shared/config";
@@ -79,6 +83,7 @@ type CreateTransferResult = {
   /** Bytes uploaded to R2 (all variants combined) */
   totalSize: number;
   fileCounts: { images: number; videos: number; gifs: number; audio: number; other: number };
+  processingCounts: TransferProcessingCounts;
 };
 
 type AppendTransferOpts = {
@@ -93,6 +98,7 @@ type AppendTransferResult = {
   addedCount: number;
   addedSize: number;
   fileCounts: { images: number; videos: number; gifs: number; audio: number; other: number };
+  processingCounts: TransferProcessingCounts;
 };
 
 /* ─── Transfer operations ─── */
@@ -271,14 +277,7 @@ function transferFileCounts(files: TransferData["files"]) {
 }
 
 function predictedTransferFileId(filename: string): string {
-  if (
-    PROCESSABLE_EXTENSIONS.test(filename) ||
-    RAW_IMAGE_EXTENSIONS.test(filename) ||
-    ANIMATED_EXTENSIONS.test(filename)
-  ) {
-    return path.basename(filename, path.extname(filename));
-  }
-  return filename;
+  return getTransferFileId(filename);
 }
 
 /** Create a new transfer: process files, upload to R2, save metadata to Redis */
@@ -431,8 +430,9 @@ async function createTransfer(
   const adminUrl = `${BASE_URL}/t/${transferId}?token=${deleteToken}`;
 
   const fileCounts = transferFileCounts(sortedFiles);
+  const processingCounts = buildTransferProcessingCounts(sortedFiles);
 
-  return { transfer, shareUrl, adminUrl, totalSize, fileCounts };
+  return { transfer, shareUrl, adminUrl, totalSize, fileCounts, processingCounts };
 }
 
 /** Append files to an existing active transfer and preserve its expiry. */
@@ -507,6 +507,7 @@ async function appendToTransfer(
           addedCount: 0,
           addedSize: 0,
           fileCounts: { images: 0, videos: 0, gifs: 0, audio: 0, other: 0 },
+          processingCounts: buildTransferProcessingCounts([]),
         };
       }
     }
@@ -639,6 +640,7 @@ async function appendToTransfer(
     addedCount: addedResults.length,
     addedSize: addedResults.reduce((sum, r) => sum + r.uploadedBytes, 0),
     fileCounts: transferFileCounts(addedResults.map((r) => r.file) as TransferData["files"]),
+    processingCounts: buildTransferProcessingCounts(addedResults.map((r) => r.file)),
   };
 }
 

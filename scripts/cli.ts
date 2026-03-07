@@ -968,6 +968,14 @@ async function cmdTransfersUpload(opts: {
   if (fileCounts.audio > 0) countParts.push(`${fileCounts.audio} audio`);
   if (fileCounts.other > 0) countParts.push(`${fileCounts.other} other`);
   if (countParts.length > 0) log(dim(`  ${countParts.join(", ")}`));
+  if (result.processingCounts.queuedCount > 0 || result.processingCounts.failedCount > 0) {
+    const processingParts: string[] = [];
+    if (result.processingCounts.readyCount > 0) processingParts.push(`${result.processingCounts.readyCount} ready`);
+    if (result.processingCounts.queuedCount > 0) processingParts.push(`${result.processingCounts.queuedCount} queued`);
+    if (result.processingCounts.failedCount > 0) processingParts.push(`${result.processingCounts.failedCount} failed`);
+    if (result.processingCounts.skippedCount > 0) processingParts.push(`${result.processingCounts.skippedCount} original-only`);
+    log(dim(`  processing: ${processingParts.join(", ")}`));
+  }
 
   const expires = new Date(result.transfer.expiresAt);
   log(
@@ -1016,6 +1024,14 @@ async function cmdTransfersAppend(opts: {
   if (fileCounts.audio > 0) countParts.push(`${fileCounts.audio} audio`);
   if (fileCounts.other > 0) countParts.push(`${fileCounts.other} other`);
   if (countParts.length > 0) log(dim(`  added: ${countParts.join(", ")}`));
+  if (result.processingCounts.queuedCount > 0 || result.processingCounts.failedCount > 0) {
+    const processingParts: string[] = [];
+    if (result.processingCounts.readyCount > 0) processingParts.push(`${result.processingCounts.readyCount} ready`);
+    if (result.processingCounts.queuedCount > 0) processingParts.push(`${result.processingCounts.queuedCount} queued`);
+    if (result.processingCounts.failedCount > 0) processingParts.push(`${result.processingCounts.failedCount} failed`);
+    if (result.processingCounts.skippedCount > 0) processingParts.push(`${result.processingCounts.skippedCount} original-only`);
+    log(dim(`  processing: ${processingParts.join(", ")}`));
+  }
 
   log(dim(`  transfer now has ${result.transfer.files.length} files`));
   log(`${bold("Added upload size:")} ${formatBytes(result.addedSize)}`);

@@ -10,28 +10,12 @@ import {
   MAX_TRANSFER_FILE_BYTES,
   MAX_TRANSFER_TOTAL_BYTES,
 } from "@/features/transfers/store";
-import {
-  getMimeType,
-  PROCESSABLE_EXTENSIONS,
-  RAW_IMAGE_EXTENSIONS,
-  ANIMATED_EXTENSIONS,
-} from "@/features/media/processing";
+import { getMimeType } from "@/features/media/processing";
+import { getTransferFileId } from "@/features/transfers/media-state";
 import { apiErrorFromRequest } from "@/lib/platform/api-error";
 import { isSafeTransferFilename } from "@/features/transfers/upload";
-import path from "path";
 
 type FileEntry = { name: string; size: number; type?: string };
-
-function predictedTransferFileId(filename: string): string {
-  if (
-    PROCESSABLE_EXTENSIONS.test(filename) ||
-    RAW_IMAGE_EXTENSIONS.test(filename) ||
-    ANIMATED_EXTENSIONS.test(filename)
-  ) {
-    return path.basename(filename, path.extname(filename));
-  }
-  return filename;
-}
 
 /**
  * POST /api/upload/transfer/presign
@@ -96,7 +80,7 @@ export async function POST(request: NextRequest) {
     }
     seenNames.add(file.name);
 
-    const predictedId = predictedTransferFileId(file.name);
+    const predictedId = getTransferFileId(file.name);
     if (seenIds.has(predictedId)) {
       return NextResponse.json(
         { error: `Conflicting media filenames share the same transfer ID/stem: ${predictedId}` },
