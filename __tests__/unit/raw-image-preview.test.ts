@@ -14,6 +14,20 @@ async function makeJpegBuffer(width: number, height: number): Promise<Buffer> {
     .toBuffer();
 }
 
+async function makeGrayscaleJpegBuffer(width: number, height: number): Promise<Buffer> {
+  return sharp({
+    create: {
+      width,
+      height,
+      channels: 3,
+      background: { r: 180, g: 180, b: 180 },
+    },
+  })
+    .grayscale()
+    .jpeg({ quality: 90 })
+    .toBuffer();
+}
+
 async function makeEmbeddedJpegRawLikeBuffer(width: number, height: number): Promise<Buffer> {
   const jpeg = await makeJpegBuffer(width, height);
   return Buffer.concat([
@@ -177,6 +191,21 @@ describe("raw image preview processing", () => {
     const { RawPreviewUnavailableError, processToWebP } = await importProcessingModule();
 
     await expect(processToWebP(Buffer.from("raw"), "IMG_3002.dng")).rejects.toBeInstanceOf(
+      RawPreviewUnavailableError
+    );
+  });
+
+  it("rejects monochrome embedded previews", async () => {
+    const preview = await makeGrayscaleJpegBuffer(2016, 1512);
+    vi.doMock("exifr", () => ({
+      default: {
+        thumbnail: vi.fn().mockResolvedValue(preview),
+      },
+    }));
+
+    const { RawPreviewUnavailableError, processToWebP } = await importProcessingModule();
+
+    await expect(processToWebP(Buffer.from("raw"), "IMG_3013.dng")).rejects.toBeInstanceOf(
       RawPreviewUnavailableError
     );
   });

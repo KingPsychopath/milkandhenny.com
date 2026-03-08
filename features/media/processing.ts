@@ -114,10 +114,12 @@ function isProcessableImage(filename: string): boolean {
 }
 
 class RawPreviewUnavailableError extends Error {
-  constructor(sourceExt: string, reason: "missing" | "too_small") {
+  constructor(sourceExt: string, reason: "missing" | "too_small" | "monochrome") {
     super(
       reason === "too_small"
         ? `Embedded preview below minimum resolution for ${sourceExt} image`
+        : reason === "monochrome"
+          ? `Embedded preview is monochrome for ${sourceExt} image`
         : `No usable embedded preview found in ${sourceExt} image`
     );
     this.name = "RawPreviewUnavailableError";
@@ -137,6 +139,24 @@ async function isValidJpegBuffer(candidate: Buffer): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+function channelsLookMonochrome(
+  channels: Array<{ mean: number; stdev: number; min: number; max: number }>
+): boolean {
+  if (channels.length < 3) return true;
+  const [r, g, b] = channels;
+  const epsilon = 0.01;
+  return (
+    Math.abs(r.mean - g.mean) < epsilon &&
+    Math.abs(r.mean - b.mean) < epsilon &&
+    Math.abs(r.stdev - g.stdev) < epsilon &&
+    Math.abs(r.stdev - b.stdev) < epsilon &&
+    Math.abs(r.min - g.min) < epsilon &&
+    Math.abs(r.min - b.min) < epsilon &&
+    Math.abs(r.max - g.max) < epsilon &&
+    Math.abs(r.max - b.max) < epsilon
+  );
 }
 
 function resolveAcceptedRawPreviewThreshold(longestEdge: number): number | null {
@@ -178,6 +198,14 @@ async function inspectRawPreviewBuffer(
 
   if (acceptedThreshold === null) {
     throw new RawPreviewUnavailableError(sourceExt, "too_small");
+  }
+  const stats = await sharp(buffer).stats();
+  if (
+    metadata.space === "b-w" ||
+    metadata.channels === 1 ||
+    channelsLookMonochrome(stats.channels)
+  ) {
+    throw new RawPreviewUnavailableError(sourceExt, "monochrome");
   }
 
   return {

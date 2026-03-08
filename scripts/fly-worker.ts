@@ -137,22 +137,27 @@ async function interactive() {
   }
 }
 
-const subcommand = process.argv[2] as CommandName | undefined;
+async function main() {
+  const raw = process.argv[2];
+  const subcommand = (raw === "--" ? process.argv[3] : raw) as CommandName | undefined;
 
-if (!subcommand) {
-  await interactive();
-} else if (subcommand === "deploy") {
-  runFly(["deploy", "-c", FLY_TOML]);
-} else if (subcommand === "logs") {
-  runFly(["logs", "-a", APP_NAME]);
-} else if (subcommand === "status") {
-  runFly(["status", "-a", APP_NAME]);
-} else if (subcommand === "machines") {
-  runFly(["machine", "list", "-a", APP_NAME]);
-} else if (subcommand === "restart-all") {
-  restartAllMachines();
-} else if (subcommand === "sync-secrets") {
-  syncSecrets();
-} else {
-  printHelp();
+  if (!subcommand) {
+    await interactive();
+  } else if (subcommand === "deploy") {
+    runFly(["deploy", "-c", FLY_TOML]);
+  } else if (subcommand === "logs") {
+    runFly(["logs", "-a", APP_NAME]);
+  } else if (subcommand === "status") {
+    runFly(["status", "-a", APP_NAME]);
+  } else if (subcommand === "machines") {
+    runFly(["machine", "list", "-a", APP_NAME]);
+  } else if (subcommand === "restart-all") {
+    restartAllMachines();
+  } else if (subcommand === "sync-secrets") {
+    syncSecrets();
+  } else {
+    printHelp();
+  }
 }
+
+void main();
