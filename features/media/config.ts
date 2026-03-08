@@ -10,6 +10,13 @@ function readBooleanEnv(name: string, fallback: boolean): boolean {
   return raw !== "0" && raw.toLowerCase() !== "false";
 }
 
+function readNumberEnv(name: string, fallback: number): number {
+  const raw = process.env[name];
+  if (!raw) return fallback;
+  const value = Number(raw);
+  return Number.isFinite(value) ? value : fallback;
+}
+
 function getMediaProcessorMode(): MediaProcessorMode {
   const raw = (process.env.MEDIA_PROCESSOR_MODE ?? process.env.MEDIA_PROCESSOR ?? "hybrid").toLowerCase();
   if (raw === "local" || raw === "hybrid" || raw === "worker") return raw;
@@ -39,8 +46,19 @@ function shouldRouteToWorkerFirst(route: ProcessingRoute): boolean {
   return false;
 }
 
+function getLocalProcessingTimeoutMs(route: ProcessingRoute): number {
+  if (route === "raw_try_local") {
+    return Math.max(0, readNumberEnv("TRANSFER_MEDIA_LOCAL_RAW_TIMEOUT_MS", 12000));
+  }
+  if (route === "local_video") {
+    return Math.max(0, readNumberEnv("TRANSFER_MEDIA_LOCAL_VIDEO_TIMEOUT_MS", 8000));
+  }
+  return 0;
+}
+
 export {
   getMediaProcessorMode,
+  getLocalProcessingTimeoutMs,
   isWorkerEnabled,
   isWorkerQueueEnabled,
   shouldRouteToWorkerFirst,

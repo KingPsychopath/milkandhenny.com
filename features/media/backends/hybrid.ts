@@ -1,6 +1,10 @@
 import "server-only";
 
-import { shouldRouteToWorkerFirst, type MediaProcessorMode } from "@/features/media/config";
+import {
+  getLocalProcessingTimeoutMs,
+  shouldRouteToWorkerFirst,
+  type MediaProcessorMode,
+} from "@/features/media/config";
 import { mapConcurrent } from "@/features/media/processing";
 import {
   canRetryTransferProcessing,
@@ -18,6 +22,31 @@ const TRANSFER_BACKFILL_CONCURRENCY = 2;
 
 function canUseWorkerForRoute(route: ProcessingRoute): boolean {
   return route === "worker_heif" || route === "raw_try_local" || route === "local_video";
+}
+
+class LocalProcessingTimeoutError extends Error {
+  constructor(route: ProcessingRoute, timeoutMs: number) {
+    super(`Local processing timed out for ${route} after ${timeoutMs}ms`);
+    this.name = "LocalProcessingTimeoutError";
+  }
+}
+
+async function withLocalProcessingTimeout<T>(
+  route: ProcessingRoute,
+  work: () => Promise<T>
+): Promise<T> {
+  const timeoutMs = getLocalProcessingTimeoutMs(route);
+  if (timeoutMs <= 0) return work();
+
+  return await Promise.race([
+    work(),
+    new Promise<T>((_, reject) => {
+      const timer = setTimeout(() => {
+        reject(new LocalProcessingTimeoutError(route, timeoutMs));
+      }, timeoutMs);
+      timer.unref?.();
+    }),
+  ]);
 }
 
 function shouldQueueBeforeLocal(mode: MediaProcessorMode, route: ProcessingRoute): boolean {
@@ -47,13 +76,16 @@ async function processTransferBuffer(
   }
 
   try {
-    const result = await processTransferBufferLocally(
-      buffer,
-      file,
-      transferId,
-      "local_done",
-      "local",
-      route
+    const result = await withLocalProcessingTimeout(
+      route,
+      () => processTransferBufferLocally(
+        buffer,
+        file,
+        transferId,
+        "local_done",
+        "local",
+        route
+      )
     );
     if (
       route === "raw_try_local" &&
@@ -96,12 +128,15 @@ async function processTransferObject(
   }
 
   try {
-    const result = await processTransferObjectLocally(
-      file,
-      transferId,
-      "local_done",
-      "local",
-      route
+    const result = await withLocalProcessingTimeout(
+      route,
+      () => processTransferObjectLocally(
+        file,
+        transferId,
+        "local_done",
+        "local",
+        route
+      )
     );
     if (
       route === "raw_try_local" &&
@@ -153,20 +188,23 @@ async function repairOrQueueLegacyFile(
 
   try {
     return (
-      await processTransferObjectLocally(
-        {
-          name: file.filename,
-          size: file.size,
-          type: file.mimeType,
-          originalName: file.originalFilename,
-          originalType: file.originalMimeType,
-          originalSize: file.originalStorageKey ? file.size : undefined,
-          convertedFrom: file.convertedFrom,
-        },
-        transfer.id,
-        "local_done",
-        "local",
-        route
+      await withLocalProcessingTimeout(
+        route,
+        () => processTransferObjectLocally(
+          {
+            name: file.filename,
+            size: file.size,
+            type: file.mimeType,
+            originalName: file.originalFilename,
+            originalType: file.originalMimeType,
+            originalSize: file.originalStorageKey ? file.size : undefined,
+            convertedFrom: file.convertedFrom,
+          },
+          transfer.id,
+          "local_done",
+          "local",
+          route
+        )
       )
     ).file;
   } catch {
