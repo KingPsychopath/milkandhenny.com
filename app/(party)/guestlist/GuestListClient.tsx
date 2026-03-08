@@ -10,7 +10,17 @@ import { SearchBar } from './components/SearchBar';
 import { GuestList } from './components/GuestList';
 import { GuestStats } from './components/GuestStats';
 import { GuestManagement } from './components/GuestManagement';
-import QRCode from 'qrcode';
+
+type QrCodeModule = {
+  toDataURL: (text: string, options?: { margin?: number; width?: number }) => Promise<string>;
+};
+
+let qrCodeModulePromise: Promise<QrCodeModule> | null = null;
+
+function loadQrCode(): Promise<QrCodeModule> {
+  qrCodeModulePromise ??= import('qrcode/lib/browser').then((mod) => mod as QrCodeModule);
+  return qrCodeModulePromise;
+}
 
 type GuestListClientProps = {
   initialGuests: Guest[];
@@ -102,6 +112,7 @@ export function GuestListClient({ initialGuests }: GuestListClientProps) {
       const code = (data.code as string) || '';
       if (code) {
         const link = `${window.location.origin}/best-dressed?code=${encodeURIComponent(code)}`;
+        const QRCode = await loadQrCode();
         const qr = await QRCode.toDataURL(link, { margin: 1, width: 220 });
         setVoteCodeQr(qr);
       } else {
@@ -140,6 +151,7 @@ export function GuestListClient({ initialGuests }: GuestListClientProps) {
       const rows = await Promise.all(
         codes.map(async (code) => {
           const link = `${window.location.origin}/best-dressed?code=${encodeURIComponent(code)}`;
+          const QRCode = await loadQrCode();
           const qr = await QRCode.toDataURL(link, { margin: 1, width: 140 });
           return { code, qr };
         })
@@ -208,7 +220,8 @@ export function GuestListClient({ initialGuests }: GuestListClientProps) {
     // Pre-generate an "event QR" once after mount. It's just a deep link to the voting page.
     if (djQr) return;
     const link = `${window.location.origin}/best-dressed`;
-    QRCode.toDataURL(link, { margin: 1, width: 260 })
+    loadQrCode()
+      .then((QRCode) => QRCode.toDataURL(link, { margin: 1, width: 260 }))
       .then((qr) => setDjQr(qr))
       .catch(() => {
         /* ignore */
@@ -562,4 +575,3 @@ export function GuestListClient({ initialGuests }: GuestListClientProps) {
     </div>
   );
 }
-
