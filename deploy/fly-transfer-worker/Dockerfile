@@ -4,6 +4,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
   ffmpeg \
   libvips-dev \
   libraw-dev \
+  libraw-bin \
   libheif-dev \
   && rm -rf /var/lib/apt/lists/*
 

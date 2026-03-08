@@ -883,6 +883,44 @@ async function withTempFile<T>(
   }
 }
 
+async function decodeRawFileWithLibraw(filename: string): Promise<Buffer> {
+  const candidates = ["dcraw_emu", "dcraw"];
+  let lastError: unknown = null;
+
+  for (const binary of candidates) {
+    try {
+      const { stdout } = await execFileAsync(
+        binary,
+        ["-T", "-c", "-w", "-H", "5", filename],
+        {
+          encoding: "buffer",
+          maxBuffer: 128 * 1024 * 1024,
+        }
+      );
+      const buffer = Buffer.isBuffer(stdout) ? stdout : Buffer.from(stdout);
+      if (buffer.length === 0) {
+        throw new Error(`${binary} produced no decoded output`);
+      }
+      return buffer;
+    } catch (error) {
+      if (
+        error &&
+        typeof error === "object" &&
+        "code" in error &&
+        ((error as { code?: string }).code === "ENOENT")
+      ) {
+        lastError = error;
+        continue;
+      }
+      throw error;
+    }
+  }
+
+  throw lastError instanceof Error
+    ? lastError
+    : new Error("RAW decoder not available: expected dcraw_emu or dcraw");
+}
+
 async function probeVideoFile(filename: string): Promise<VideoProbeResult> {
   const { stdout } = await execFileAsync(
     "ffprobe",
@@ -996,16 +1034,18 @@ async function processRawWithDcraw(raw: Buffer, sourceExtOrFilename = ".dng"): P
   const ext = path.extname(sourceExtOrFilename).toLowerCase() || sourceExtOrFilename.toLowerCase();
   return withTempFile("transfer-raw", ext, raw, async (tempFile) => {
     const isDng = ext === ".dng";
-    const input = sharp(tempFile, { failOn: "none", unlimited: true }).rotate();
-    const metadata = await input.metadata();
+    const decoded = await decodeRawFileWithLibraw(tempFile);
+    const metadata = await sharp(decoded, { failOn: "none", unlimited: true }).metadata();
     const isLinearScrgb = metadata.space === "scrgb";
-    let pipeline = input;
+    let pipeline = sharp(decoded, { failOn: "none", unlimited: true }).rotate();
 
     if (isLinearScrgb) {
       pipeline = pipeline.pipelineColourspace("scrgb");
-      if (isDng) {
-        pipeline = await applyBaselineExposure(pipeline, raw);
-      }
+    }
+    if (isDng) {
+      pipeline = await applyBaselineExposure(pipeline, raw);
+    }
+    if (isLinearScrgb) {
       pipeline = pipeline.toColourspace("srgb");
     }
 
