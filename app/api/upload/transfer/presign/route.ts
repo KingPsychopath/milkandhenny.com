@@ -135,6 +135,7 @@ export async function POST(request: NextRequest) {
         return {
           name: file.name,
           mediaId: file.mediaId,
+          contentType: getMimeType(file.name),
           primaryUrl,
           archivedOriginalUrl,
         };

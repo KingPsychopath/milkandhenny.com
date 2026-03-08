@@ -26,6 +26,8 @@ type PresignEntry = {
   uploadKey: string;
   /** One-time presigned PUT URL */
   url: string;
+  /** MIME type used to sign the upload request */
+  contentType: string;
   /** File kind based on the original extension */
   kind: FileKind;
   /** True if a file with this final name already existed */
@@ -161,6 +163,7 @@ export async function POST(request: NextRequest) {
         filename,
         uploadKey,
         url,
+        contentType,
         kind,
         overwrote: alreadyExists,
       });

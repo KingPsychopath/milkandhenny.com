@@ -98,7 +98,13 @@ export async function POST(request: NextRequest) {
           archivedOriginalKey && file.originalName
             ? await presignPutUrl(archivedOriginalKey, getMimeType(file.originalName))
             : undefined;
-        return { name: file.name, mediaId: file.mediaId, primaryUrl, archivedOriginalUrl };
+        return {
+          name: file.name,
+          mediaId: file.mediaId,
+          contentType: getMimeType(file.name),
+          primaryUrl,
+          archivedOriginalUrl,
+        };
       })
     );
 

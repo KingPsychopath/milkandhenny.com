@@ -384,7 +384,7 @@ export function UploadDashboard({ isAdmin }: UploadDashboardProps) {
   }, []);
 
   const uploadPresignedFiles = useCallback(
-    async (entries: Array<{ file: File; url: string; label: string }>) => {
+    async (entries: Array<{ file: File; url: string; label: string; contentType: string }>) => {
       if (entries.length === 0) return;
 
       let nextIndex = 0;
@@ -404,7 +404,7 @@ export function UploadDashboard({ isAdmin }: UploadDashboardProps) {
             try {
               putRes = await fetch(entry.url, {
                 method: "PUT",
-                headers: { "Content-Type": entry.file.type || "application/octet-stream" },
+                headers: { "Content-Type": entry.contentType },
                 body: entry.file,
               });
 
@@ -589,7 +589,13 @@ export function UploadDashboard({ isAdmin }: UploadDashboardProps) {
       transferId: string;
       deleteToken: string;
       expiresSeconds: number;
-      urls: Array<{ name: string; mediaId: string; primaryUrl: string; archivedOriginalUrl?: string }>;
+      urls: Array<{
+        name: string;
+        mediaId: string;
+        contentType: string;
+        primaryUrl: string;
+        archivedOriginalUrl?: string;
+      }>;
     };
     const mediaIdsByName = new Map(urls.map((entry) => [entry.name, entry.mediaId]));
     const finalizeFiles: TransferUploadFileInput[] = presignFiles.map((file) => ({
@@ -606,9 +612,19 @@ export function UploadDashboard({ isAdmin }: UploadDashboardProps) {
       }
 
       return [
-        { file: prepared.uploadFile, url: entry.primaryUrl, label: prepared.uploadFile.name },
+        {
+          file: prepared.uploadFile,
+          url: entry.primaryUrl,
+          label: prepared.uploadFile.name,
+          contentType: entry.contentType,
+        },
         ...(prepared.originalFile && entry.archivedOriginalUrl
-          ? [{ file: prepared.originalFile, url: entry.archivedOriginalUrl, label: prepared.originalFile.name }]
+          ? [{
+              file: prepared.originalFile,
+              url: entry.archivedOriginalUrl,
+              label: prepared.originalFile.name,
+              contentType: prepared.originalFile.type || "application/octet-stream",
+            }]
           : []),
       ];
     });
@@ -677,7 +693,15 @@ export function UploadDashboard({ isAdmin }: UploadDashboardProps) {
       throw new Error((presignData as { error?: string }).error || "Failed to prepare append upload");
     }
 
-    const { urls } = presignData as { urls: Array<{ name: string; mediaId: string; primaryUrl: string; archivedOriginalUrl?: string }> };
+    const { urls } = presignData as {
+      urls: Array<{
+        name: string;
+        mediaId: string;
+        contentType: string;
+        primaryUrl: string;
+        archivedOriginalUrl?: string;
+      }>;
+    };
     const mediaIdsByName = new Map(urls.map((entry) => [entry.name, entry.mediaId]));
     const finalizeFiles: TransferUploadFileInput[] = presignFiles.map((file) => ({
       ...file,
@@ -689,9 +713,19 @@ export function UploadDashboard({ isAdmin }: UploadDashboardProps) {
       const prepared = preparedByName.get(entry.name);
       if (!prepared) throw new Error(`Could not resolve prepared upload for ${entry.name}`);
       return [
-        { file: prepared.uploadFile, url: entry.primaryUrl, label: prepared.uploadFile.name },
+        {
+          file: prepared.uploadFile,
+          url: entry.primaryUrl,
+          label: prepared.uploadFile.name,
+          contentType: entry.contentType,
+        },
         ...(prepared.originalFile && entry.archivedOriginalUrl
-          ? [{ file: prepared.originalFile, url: entry.archivedOriginalUrl, label: prepared.originalFile.name }]
+          ? [{
+              file: prepared.originalFile,
+              url: entry.archivedOriginalUrl,
+              label: prepared.originalFile.name,
+              contentType: prepared.originalFile.type || "application/octet-stream",
+            }]
           : []),
       ];
     });
@@ -746,6 +780,7 @@ export function UploadDashboard({ isAdmin }: UploadDashboardProps) {
         filename: string;
         uploadKey: string;
         url: string;
+        contentType: string;
         kind: string;
         overwrote: boolean;
       }>;
@@ -772,7 +807,7 @@ export function UploadDashboard({ isAdmin }: UploadDashboardProps) {
       if (!file) {
         throw new Error(`Could not resolve local file for ${entry.original}`);
       }
-      return { file, url: entry.url, label: entry.original };
+      return { file, url: entry.url, label: entry.original, contentType: entry.contentType };
     });
     await uploadPresignedFiles(uploadEntries);
 
