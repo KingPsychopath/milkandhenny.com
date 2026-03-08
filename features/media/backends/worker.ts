@@ -381,6 +381,7 @@ export {
   buildQueuedTransferFile,
   enqueueWorkerJob,
   getTransferMediaQueueLength,
+  processWorkerJob,
   refreshQueuedTransferState,
   requeueTransferFile,
   runTransferMediaJobs,

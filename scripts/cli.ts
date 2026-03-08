@@ -2547,6 +2547,7 @@ function showHelp() {
     transfers media-status                  Show worker heartbeat + queue length
     transfers media-drain ${dim("[--limit 8]")}            Drain queued worker jobs now
     transfers media-reconcile               Reconcile stale queued/processing transfer states
+      ${dim("Blocking Fly worker requires direct Redis env (REDIS_URL or UPSTASH_REDIS_HOST/PORT/PASSWORD).")}
     transfers cleanup                        Cleanup expired/orphaned transfer storage
     transfers nuke                           Wipe ALL transfers (R2 + Redis) — nuclear option
 

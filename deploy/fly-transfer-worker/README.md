@@ -12,10 +12,27 @@ Required secrets:
 fly secrets set \
   KV_REST_API_URL=... \
   KV_REST_API_TOKEN=... \
+  REDIS_URL=... \
   R2_ACCOUNT_ID=... \
   R2_ACCESS_KEY=... \
   R2_SECRET_KEY=... \
   R2_BUCKET=...
+```
+
+`REDIS_URL` should be a direct Redis connection string such as:
+
+```bash
+rediss://default:<password>@<host>:6379
+```
+
+If you prefer discrete fields instead of `REDIS_URL`, set:
+
+```bash
+fly secrets set \
+  UPSTASH_REDIS_HOST=... \
+  UPSTASH_REDIS_PORT=6379 \
+  UPSTASH_REDIS_PASSWORD=... \
+  UPSTASH_REDIS_USERNAME=default
 ```
 
 Recommended runtime defaults:
@@ -29,7 +46,7 @@ Recommended runtime defaults:
 
 Operational notes:
 
-- The worker is a background poller, not a public HTTP service.
+- The worker uses a blocking direct Redis consumer (`BRPOPLPUSH` + processing list), not REST polling.
 - Browser uploads can still do local browser prep first.
 - In `hybrid` mode, the app still tries local processing for supported formats and only uses the worker for worker-first routes or local failures.
 - Flip `MEDIA_PROCESSOR_MODE=local` or `TRANSFER_MEDIA_WORKER_ENABLED=0` to degrade back to local-only behavior.

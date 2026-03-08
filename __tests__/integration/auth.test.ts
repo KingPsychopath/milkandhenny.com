@@ -230,6 +230,41 @@ describe("auth security flows", () => {
     expect(err).toBeNull();
   });
 
+  it("prefers admin auth when both upload and admin cookies are present", async () => {
+    const redis = createRedisMock();
+    vi.doMock("@/lib/platform/redis", () => ({ getRedis: () => redis }));
+    const { handleVerifyRequest, requireAuthWithPayload } = await import("@/features/auth/server");
+
+    const [uploadRes, adminRes] = await Promise.all([
+      handleVerifyRequest(
+        mockRequest({ jsonBody: { pin: process.env.UPLOAD_PIN } }) as unknown as NextRequest,
+        "upload"
+      ),
+      handleVerifyRequest(
+        mockRequest({ jsonBody: { password: process.env.ADMIN_PASSWORD } }) as unknown as NextRequest,
+        "admin"
+      ),
+    ]);
+
+    const { token: uploadToken } = (await uploadRes.json()) as { token: string };
+    const { token: adminToken } = (await adminRes.json()) as { token: string };
+
+    const req = new RealNextRequest(
+      new Request("http://localhost/api/upload/transfer/presign", {
+        headers: {
+          cookie: [
+            `mah-auth-upload=${encodeURIComponent(uploadToken)}`,
+            `mah-auth-admin=${encodeURIComponent(adminToken)}`,
+          ].join("; "),
+        },
+      })
+    );
+
+    const { error, payload } = await requireAuthWithPayload(req, "upload");
+    expect(error).toBeNull();
+    expect(payload?.role).toBe("admin");
+  });
+
   it("step-up gate blocks destructive actions without x-admin-step-up", async () => {
     const redis = createRedisMock();
     vi.doMock("@/lib/platform/redis", () => ({ getRedis: () => redis }));

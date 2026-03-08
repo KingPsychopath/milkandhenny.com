@@ -16,6 +16,14 @@ const REQUIRED_SECRET_KEYS = [
   "R2_SECRET_KEY",
   "R2_BUCKET",
 ] as const;
+const DIRECT_REDIS_SECRET_KEYS = [
+  "REDIS_URL",
+  "UPSTASH_REDIS_URL",
+  "UPSTASH_REDIS_HOST",
+  "UPSTASH_REDIS_PORT",
+  "UPSTASH_REDIS_PASSWORD",
+  "UPSTASH_REDIS_USERNAME",
+] as const;
 
 type CommandName =
   | "deploy"
@@ -59,10 +67,22 @@ function syncSecrets() {
     throw new Error(`Missing required keys in .env.local: ${missing.join(", ")}`);
   }
 
+  const hasDirectRedisUrl = !!env.REDIS_URL || !!env.UPSTASH_REDIS_URL;
+  const hasDirectRedisParts =
+    !!env.UPSTASH_REDIS_HOST &&
+    !!env.UPSTASH_REDIS_PORT &&
+    !!env.UPSTASH_REDIS_PASSWORD;
+  if (!hasDirectRedisUrl && !hasDirectRedisParts) {
+    throw new Error(
+      "Missing direct Redis settings in .env.local. Set REDIS_URL/UPSTASH_REDIS_URL or UPSTASH_REDIS_HOST, UPSTASH_REDIS_PORT, UPSTASH_REDIS_PASSWORD."
+    );
+  }
+
   const args = [
     "secrets",
     "set",
     ...REQUIRED_SECRET_KEYS.map((key) => `${key}=${env[key]}`),
+    ...DIRECT_REDIS_SECRET_KEYS.filter((key) => env[key]).map((key) => `${key}=${env[key]}`),
     "-a",
     APP_NAME,
   ];
@@ -109,7 +129,7 @@ pnpm fly:worker -- logs        Tail worker logs
 pnpm fly:worker -- status      Show app status
 pnpm fly:worker -- machines    List machines
 pnpm fly:worker -- restart-all Restart all machines
-pnpm fly:worker -- sync-secrets Sync required Redis/R2 secrets from .env.local
+pnpm fly:worker -- sync-secrets Sync required Redis/R2 + direct Redis secrets from .env.local
 `);
 }
 

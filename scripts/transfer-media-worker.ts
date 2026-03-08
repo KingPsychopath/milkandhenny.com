@@ -1,60 +1,41 @@
 import "./r2-client";
 
 import { createServer } from "node:http";
-import { runTransferMediaJobs } from "@/features/media/backends/worker";
+import { processWorkerJob } from "@/features/media/backends/worker";
+import { closeDirectRedisConnections } from "@/lib/platform/redis-direct";
+import {
+  ackTransferMediaJob,
+  claimTransferMediaJobBlocking,
+  recoverTransferMediaProcessingJobs,
+  requeueTransferMediaJob,
+} from "@/features/transfers/media-queue";
 import { updateTransferMediaWorkerStatus } from "@/features/transfers/media-worker-status";
 
 const WORKER_ENABLED = process.env.TRANSFER_MEDIA_WORKER_ENABLED !== "0";
+const WORKER_CONCURRENCY = Math.max(
+  1,
+  Number(process.env.TRANSFER_MEDIA_WORKER_CONCURRENCY ?? "1")
+);
 const PORT = Math.max(1, Number(process.env.PORT ?? "8080"));
-const POLL_MS = Math.max(500, Number(process.env.TRANSFER_MEDIA_WORKER_POLL_MS ?? "2000"));
-const BATCH_SIZE = Math.max(1, Number(process.env.TRANSFER_MEDIA_WORKER_BATCH_SIZE ?? "1"));
-const EMPTY_BACKOFF_MS = Math.max(POLL_MS, Number(process.env.TRANSFER_MEDIA_WORKER_EMPTY_BACKOFF_MS ?? "10000"));
-const ERROR_BACKOFF_MS = Math.max(POLL_MS, Number(process.env.TRANSFER_MEDIA_WORKER_ERROR_BACKOFF_MS ?? "30000"));
+const ERROR_BACKOFF_MS = Math.max(
+  500,
+  Number(process.env.TRANSFER_MEDIA_WORKER_ERROR_BACKOFF_MS ?? "15000")
+);
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 let running = true;
-let wakeResolver: (() => void) | null = null;
 
 function shutdown(signal: string) {
   console.log(`[transfer-media-worker] received ${signal}, shutting down...`);
   running = false;
-  if (wakeResolver) {
-    const resolve = wakeResolver;
-    wakeResolver = null;
-    resolve();
-  }
+  void closeDirectRedisConnections();
 }
 
 process.on("SIGINT", () => shutdown("SIGINT"));
 process.on("SIGTERM", () => shutdown("SIGTERM"));
-
-function triggerImmediatePoll() {
-  if (!wakeResolver) return;
-  const resolve = wakeResolver;
-  wakeResolver = null;
-  resolve();
-}
-
-function waitForNextPoll(ms: number): Promise<void> {
-  return new Promise((resolve) => {
-    const timeout = setTimeout(() => {
-      if (wakeResolver === resolveWake) {
-        wakeResolver = null;
-      }
-      resolve();
-    }, ms);
-
-    const resolveWake = () => {
-      clearTimeout(timeout);
-      resolve();
-    };
-
-    wakeResolver = resolveWake;
-  });
-}
 
 createServer((req, res) => {
   if (req.url === "/health") {
@@ -64,7 +45,6 @@ createServer((req, res) => {
   }
 
   if (req.method === "POST" && req.url === "/wake") {
-    triggerImmediatePoll();
     res.writeHead(200, { "content-type": "text/plain" });
     res.end("woken");
     return;
@@ -80,39 +60,50 @@ async function main() {
     return;
   }
 
-  console.log(`[transfer-media-worker] starting with batch size ${BATCH_SIZE}`);
+  const recovered = await recoverTransferMediaProcessingJobs();
+  console.log(
+    `[transfer-media-worker] starting with concurrency ${WORKER_CONCURRENCY}${
+      recovered > 0 ? ` (requeued ${recovered} in-flight jobs)` : ""
+    }`
+  );
 
-  while (running) {
-    try {
-      await updateTransferMediaWorkerStatus({
-        lastHeartbeatAt: new Date().toISOString(),
-      });
-      const result = await runTransferMediaJobs(BATCH_SIZE);
+  await updateTransferMediaWorkerStatus({
+    lastHeartbeatAt: new Date().toISOString(),
+  });
 
-      if (result.processedJobs > 0) {
+  async function consumeLoop(index: number) {
+    while (running) {
+      let claimed: Awaited<ReturnType<typeof claimTransferMediaJobBlocking>> | null = null;
+
+      try {
+        claimed = await claimTransferMediaJobBlocking();
+        if (!running) break;
+
+        const outcome = await processWorkerJob(claimed.job);
+        await ackTransferMediaJob(claimed.raw);
         await updateTransferMediaWorkerStatus({
           lastHeartbeatAt: new Date().toISOString(),
           lastProcessedAt: new Date().toISOString(),
         });
-        console.log(
-          `[transfer-media-worker] processed=${result.processedJobs} ok=${result.succeeded} failed=${result.failed} skipped=${result.skipped} queue=${result.queueLength}`
-        );
-        await waitForNextPoll(POLL_MS);
-        continue;
+        console.log(`[transfer-media-worker] worker=${index} outcome=${outcome}`);
+      } catch (error) {
+        if (!running) break;
+        if (claimed) {
+          await requeueTransferMediaJob(claimed.raw);
+        }
+        const message = error instanceof Error ? error.stack ?? error.message : String(error);
+        await updateTransferMediaWorkerStatus({
+          lastHeartbeatAt: new Date().toISOString(),
+          lastErrorAt: new Date().toISOString(),
+          lastErrorMessage: message.slice(0, 500),
+        });
+        console.error(`[transfer-media-worker] error\n${message}`);
+        await sleep(ERROR_BACKOFF_MS);
       }
-
-      await waitForNextPoll(EMPTY_BACKOFF_MS);
-    } catch (error) {
-      const message = error instanceof Error ? error.stack ?? error.message : String(error);
-      await updateTransferMediaWorkerStatus({
-        lastHeartbeatAt: new Date().toISOString(),
-        lastErrorAt: new Date().toISOString(),
-        lastErrorMessage: message.slice(0, 500),
-      });
-      console.error(`[transfer-media-worker] error\n${message}`);
-      await waitForNextPoll(ERROR_BACKOFF_MS);
     }
   }
+
+  await Promise.all(Array.from({ length: WORKER_CONCURRENCY }, (_, index) => consumeLoop(index + 1)));
 
   console.log("[transfer-media-worker] stopped");
 }

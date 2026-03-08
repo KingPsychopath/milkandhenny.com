@@ -425,9 +425,9 @@ async function requireAuth(
 
   const acceptedRoles =
     role === "staff"
-      ? (["staff", "admin"] as const)
+      ? (["admin", "staff"] as const)
       : role === "upload"
-        ? (["upload", "admin"] as const)
+        ? (["admin", "upload"] as const)
         : ([role] as const);
 
   const token = extractAuthTokenForAcceptedRoles(request, acceptedRoles);
@@ -458,9 +458,9 @@ async function requireAuthWithPayload(
 
   const acceptedRoles =
     role === "staff"
-      ? (["staff", "admin"] as const)
+      ? (["admin", "staff"] as const)
       : role === "upload"
-        ? (["upload", "admin"] as const)
+        ? (["admin", "upload"] as const)
         : ([role] as const);
 
   const token = extractAuthTokenForAcceptedRoles(request, acceptedRoles);
@@ -819,9 +819,9 @@ async function requireAuthFromServerContext(role: AuthRole): Promise<ServerConte
 
   const acceptedRoles =
     role === "staff"
-      ? (["staff", "admin"] as const)
+      ? (["admin", "staff"] as const)
       : role === "upload"
-        ? (["upload", "admin"] as const)
+        ? (["admin", "upload"] as const)
         : ([role] as const);
 
   const h = await headers();

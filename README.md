@@ -220,6 +220,12 @@ pnpm cli auth diagnose --admin-password <password> --base-url https://milkandhen
 |----------|----------|-------|
 | `KV_REST_API_URL` | Yes (for persistence) | Vercel KV / Upstash Redis REST URL |
 | `KV_REST_API_TOKEN` | Yes (for persistence) | Vercel KV / Upstash Redis REST token |
+| `REDIS_URL` | Worker only | Direct Redis connection string for the blocking transfer-media worker (`rediss://...`) |
+| `UPSTASH_REDIS_URL` | Worker only | Alternative direct Redis URL if you don't use `REDIS_URL` |
+| `UPSTASH_REDIS_HOST` | Worker only | Direct Redis host for the blocking transfer-media worker |
+| `UPSTASH_REDIS_PORT` | Worker only | Direct Redis port (usually `6379`) |
+| `UPSTASH_REDIS_PASSWORD` | Worker only | Direct Redis password for the blocking transfer-media worker |
+| `UPSTASH_REDIS_USERNAME` | Worker only | Direct Redis username, usually `default` |
 | `NEXT_PUBLIC_R2_PUBLIC_URL` | Yes (images/files) | e.g. `https://pics.milkandhenny.com` |
 | `R2_ACCOUNT_ID` | Yes (uploads, cron) | Cloudflare account ID |
 | `R2_ACCESS_KEY` | Yes (uploads, cron) | R2 API token access key |
@@ -231,6 +237,8 @@ pnpm cli auth diagnose --admin-password <password> --base-url https://milkandhen
 | `UPLOAD_PIN` | Yes (upload) | Dedicated PIN for `/upload` (shareable with non-admin uploaders). |
 | `NEXT_PUBLIC_BASE_URL` | CLI only | For generating share URLs. Not needed on Vercel. |
 | `CRON_SECRET` | Optional | Secures cleanup cron endpoints. |
+
+`KV_REST_API_*` is the REST client used by the app. The transfer-media worker now uses a direct Redis connection for blocking queue consumption, so it also needs either `REDIS_URL` or the `UPSTASH_REDIS_*` direct connection fields.
 
 Everything degrades gracefully when env vars are missing — see [resilience table](./docs/architecture.md#resilience-what-happens-when-env-vars-are-missing).
 
