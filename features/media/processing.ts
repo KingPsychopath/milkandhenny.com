@@ -23,6 +23,11 @@ import { promisify } from "util";
 import sharp from "sharp";
 import exifReader from "exif-reader";
 import type { FileKind } from "./file-kinds";
+import {
+  RAW_PREVIEW_ACCEPTANCE_STEPS,
+  RAW_PREVIEW_MAX_EMBEDDED_JPEG_CANDIDATES,
+  RAW_PREVIEW_TARGET_LONGEST_EDGE,
+} from "./raw-preview";
 import { SITE_BRAND } from "@/lib/shared/config";
 
 const execFileAsync = promisify(execFile);
@@ -108,8 +113,6 @@ function isProcessableImage(filename: string): boolean {
   return PROCESSABLE_EXTENSIONS.test(filename) || RAW_IMAGE_EXTENSIONS.test(filename);
 }
 
-const RAW_PREVIEW_ACCEPTANCE_STEPS = [1600, 1024, 512, 1] as const;
-
 class RawPreviewUnavailableError extends Error {
   constructor(sourceExt: string, reason: "missing" | "too_small") {
     super(
@@ -156,6 +159,10 @@ function compareRawPreviewCandidates(a: RawPreviewCandidate, b: RawPreviewCandid
   if (a.width !== b.width) return b.width - a.width;
   if (a.height !== b.height) return b.height - a.height;
   return b.byteLength - a.byteLength;
+}
+
+function isTargetQualityRawPreview(candidate: Pick<RawPreviewCandidate, "longestEdge">): boolean {
+  return candidate.longestEdge >= RAW_PREVIEW_TARGET_LONGEST_EDGE;
 }
 
 async function inspectRawPreviewBuffer(
@@ -217,14 +224,22 @@ async function extractEmbeddedJpegPreview(raw: Buffer, sourceExt: string): Promi
 
   candidates.sort((a, b) => b.length - a.length);
   let bestCandidate: RawPreviewCandidate | null = null;
+  let inspectedCandidates = 0;
 
   for (const candidate of candidates) {
     const preview = raw.subarray(candidate.start, candidate.end);
     if (!await isValidJpegBuffer(preview)) continue;
     try {
       const inspected = await inspectRawPreviewBuffer(Buffer.from(preview), sourceExt);
+      inspectedCandidates += 1;
       if (!bestCandidate || compareRawPreviewCandidates(inspected, bestCandidate) < 0) {
         bestCandidate = inspected;
+      }
+      if (
+        (bestCandidate && isTargetQualityRawPreview(bestCandidate)) ||
+        inspectedCandidates >= RAW_PREVIEW_MAX_EMBEDDED_JPEG_CANDIDATES
+      ) {
+        break;
       }
     } catch {
       continue;
@@ -237,6 +252,10 @@ async function extractEmbeddedJpegPreview(raw: Buffer, sourceExt: string): Promi
 type TiffReadContext = {
   littleEndian: boolean;
   bigTiff: boolean;
+  offsetSize: 4 | 8;
+  firstIfdOffset: number;
+  entryCountSize: 2 | 8;
+  entrySize: 12 | 20;
 };
 
 function hasClassicTiffHeader(raw: Buffer): boolean {
@@ -249,13 +268,55 @@ function hasClassicTiffHeader(raw: Buffer): boolean {
 function getTiffContext(raw: Buffer): TiffReadContext | null {
   if (raw.length < 8) return null;
   if (raw[0] === 0x49 && raw[1] === 0x49) {
-    if (raw[2] === 0x2a && raw[3] === 0x00) return { littleEndian: true, bigTiff: false };
-    if (raw[2] === 0x2b && raw[3] === 0x00) return { littleEndian: true, bigTiff: true };
+    if (raw[2] === 0x2a && raw[3] === 0x00) {
+      return {
+        littleEndian: true,
+        bigTiff: false,
+        offsetSize: 4,
+        firstIfdOffset: readUint32(raw, 4, true),
+        entryCountSize: 2,
+        entrySize: 12,
+      };
+    }
+    if (raw[2] === 0x2b && raw[3] === 0x00) {
+      if (raw.length < 16 || raw[4] !== 8 || raw[5] !== 0 || raw[6] !== 0 || raw[7] !== 0) return null;
+      const firstIfdOffset = readUint64(raw, 8, true);
+      if (firstIfdOffset === null) return null;
+      return {
+        littleEndian: true,
+        bigTiff: true,
+        offsetSize: 8,
+        firstIfdOffset,
+        entryCountSize: 8,
+        entrySize: 20,
+      };
+    }
     return null;
   }
   if (raw[0] === 0x4d && raw[1] === 0x4d) {
-    if (raw[2] === 0x00 && raw[3] === 0x2a) return { littleEndian: false, bigTiff: false };
-    if (raw[2] === 0x00 && raw[3] === 0x2b) return { littleEndian: false, bigTiff: true };
+    if (raw[2] === 0x00 && raw[3] === 0x2a) {
+      return {
+        littleEndian: false,
+        bigTiff: false,
+        offsetSize: 4,
+        firstIfdOffset: readUint32(raw, 4, false),
+        entryCountSize: 2,
+        entrySize: 12,
+      };
+    }
+    if (raw[2] === 0x00 && raw[3] === 0x2b) {
+      if (raw.length < 16 || raw[4] !== 0 || raw[5] !== 8 || raw[6] !== 0 || raw[7] !== 0) return null;
+      const firstIfdOffset = readUint64(raw, 8, false);
+      if (firstIfdOffset === null) return null;
+      return {
+        littleEndian: false,
+        bigTiff: true,
+        offsetSize: 8,
+        firstIfdOffset,
+        entryCountSize: 8,
+        entrySize: 20,
+      };
+    }
     return null;
   }
   return null;
@@ -269,14 +330,32 @@ function readUint32(raw: Buffer, offset: number, littleEndian: boolean): number 
   return littleEndian ? raw.readUInt32LE(offset) : raw.readUInt32BE(offset);
 }
 
-function readInlineUint32(raw: Buffer, offset: number, littleEndian: boolean, type: number): number {
-  if (type === 3) return readUint16(raw, offset, littleEndian);
-  return readUint32(raw, offset, littleEndian);
+function readUint64(raw: Buffer, offset: number, littleEndian: boolean): number | null {
+  const value = littleEndian ? raw.readBigUInt64LE(offset) : raw.readBigUInt64BE(offset);
+  return value <= BigInt(Number.MAX_SAFE_INTEGER) ? Number(value) : null;
+}
+
+function readTiffNumber(raw: Buffer, offset: number, byteSize: 2 | 4 | 8, littleEndian: boolean): number | null {
+  if (offset < 0 || offset + byteSize > raw.length) return null;
+  if (byteSize === 2) return readUint16(raw, offset, littleEndian);
+  if (byteSize === 4) return readUint32(raw, offset, littleEndian);
+  return readUint64(raw, offset, littleEndian);
+}
+
+function readInlineTiffValue(
+  raw: Buffer,
+  offset: number,
+  littleEndian: boolean,
+  type: number,
+  valueFieldSize: 4 | 8
+): number | null {
+  if (type === 3) return readTiffNumber(raw, offset, 2, littleEndian);
+  return readTiffNumber(raw, offset, valueFieldSize, littleEndian);
 }
 
 function extractDngPreviewFromTiff(raw: Buffer): Buffer | null {
   const ctx = getTiffContext(raw);
-  if (!ctx || ctx.bigTiff) return null;
+  if (!ctx) return null;
 
   const entryValueSizeByType: Record<number, number> = {
     1: 1,
@@ -286,41 +365,46 @@ function extractDngPreviewFromTiff(raw: Buffer): Buffer | null {
     5: 8,
     7: 1,
     13: 4,
+    16: 8,
+    17: 8,
+    18: 8,
   };
   const visited = new Set<number>();
-  const queue: number[] = [readUint32(raw, 4, ctx.littleEndian)];
+  const queue: number[] = [ctx.firstIfdOffset];
   let bestCandidate: Buffer | null = null;
 
   while (queue.length > 0) {
     const ifdOffset = queue.shift() ?? 0;
     if (ifdOffset <= 0 || visited.has(ifdOffset)) continue;
     visited.add(ifdOffset);
-    if (ifdOffset + 2 > raw.length) continue;
+    if (ifdOffset + ctx.entryCountSize > raw.length) continue;
 
-    const entryCount = readUint16(raw, ifdOffset, ctx.littleEndian);
-    const entriesOffset = ifdOffset + 2;
-    const nextIfdOffsetPos = entriesOffset + entryCount * 12;
-    if (nextIfdOffsetPos + 4 > raw.length) continue;
+    const entryCount = readTiffNumber(raw, ifdOffset, ctx.entryCountSize, ctx.littleEndian);
+    if (entryCount === null) continue;
+    const entriesOffset = ifdOffset + ctx.entryCountSize;
+    const nextIfdOffsetPos = entriesOffset + entryCount * ctx.entrySize;
+    if (nextIfdOffsetPos + ctx.offsetSize > raw.length) continue;
 
     let jpegOffset: number | null = null;
     let jpegLength: number | null = null;
 
     for (let i = 0; i < entryCount; i++) {
-      const entryOffset = entriesOffset + i * 12;
-      if (entryOffset + 12 > raw.length) break;
+      const entryOffset = entriesOffset + i * ctx.entrySize;
+      if (entryOffset + ctx.entrySize > raw.length) break;
 
       const tag = readUint16(raw, entryOffset, ctx.littleEndian);
       const type = readUint16(raw, entryOffset + 2, ctx.littleEndian);
-      const count = readUint32(raw, entryOffset + 4, ctx.littleEndian);
-      const valueOrOffset = entryOffset + 8;
+      const count = readTiffNumber(raw, entryOffset + 4, ctx.entryCountSize, ctx.littleEndian);
+      if (count === null) continue;
+      const valueOrOffset = entryOffset + 4 + ctx.entryCountSize;
 
       if (tag === 0x0201) {
-        jpegOffset = readInlineUint32(raw, valueOrOffset, ctx.littleEndian, type);
+        jpegOffset = readInlineTiffValue(raw, valueOrOffset, ctx.littleEndian, type, ctx.offsetSize);
         continue;
       }
 
       if (tag === 0x0202) {
-        jpegLength = readInlineUint32(raw, valueOrOffset, ctx.littleEndian, type);
+        jpegLength = readInlineTiffValue(raw, valueOrOffset, ctx.littleEndian, type, ctx.offsetSize);
         continue;
       }
 
@@ -329,18 +413,18 @@ function extractDngPreviewFromTiff(raw: Buffer): Buffer | null {
         if (valueSize === 0) continue;
         const totalBytes = valueSize * count;
         const baseOffset =
-          totalBytes <= 4
+          totalBytes <= ctx.offsetSize
             ? valueOrOffset
-            : readUint32(raw, valueOrOffset, ctx.littleEndian);
+            : readTiffNumber(raw, valueOrOffset, ctx.offsetSize, ctx.littleEndian);
 
-        if (baseOffset <= 0 || baseOffset + totalBytes > raw.length) continue;
+        if (baseOffset === null || baseOffset <= 0 || baseOffset + totalBytes > raw.length) continue;
 
         for (let j = 0; j < count; j++) {
           const subIfdOffset =
             type === 3
-              ? readUint16(raw, baseOffset + j * valueSize, ctx.littleEndian)
-              : readUint32(raw, baseOffset + j * valueSize, ctx.littleEndian);
-          if (subIfdOffset > 0 && !visited.has(subIfdOffset)) queue.push(subIfdOffset);
+              ? readTiffNumber(raw, baseOffset + j * valueSize, 2, ctx.littleEndian)
+              : readTiffNumber(raw, baseOffset + j * valueSize, ctx.offsetSize, ctx.littleEndian);
+          if (subIfdOffset && subIfdOffset > 0 && !visited.has(subIfdOffset)) queue.push(subIfdOffset);
         }
       }
     }
@@ -358,8 +442,8 @@ function extractDngPreviewFromTiff(raw: Buffer): Buffer | null {
       }
     }
 
-    const nextIfdOffset = readUint32(raw, nextIfdOffsetPos, ctx.littleEndian);
-    if (nextIfdOffset > 0 && !visited.has(nextIfdOffset)) queue.push(nextIfdOffset);
+    const nextIfdOffset = readTiffNumber(raw, nextIfdOffsetPos, ctx.offsetSize, ctx.littleEndian);
+    if (nextIfdOffset && nextIfdOffset > 0 && !visited.has(nextIfdOffset)) queue.push(nextIfdOffset);
   }
 
   return bestCandidate;
@@ -370,7 +454,9 @@ async function resolveLegacyRawPreview(raw: Buffer, sourceExt: string): Promise<
   const tiffPreview = hasClassicTiffHeader(raw) ? extractDngPreviewFromTiff(raw) : null;
   if (tiffPreview && await isValidJpegBuffer(tiffPreview)) {
     try {
-      candidates.push(await inspectRawPreviewBuffer(tiffPreview, sourceExt));
+      const inspected = await inspectRawPreviewBuffer(tiffPreview, sourceExt);
+      if (isTargetQualityRawPreview(inspected)) return inspected;
+      candidates.push(inspected);
     } catch {
       // Ignore invalid previews and keep checking other candidates.
     }
@@ -389,7 +475,10 @@ async function resolveRawPreview(raw: Buffer, sourceExt: string): Promise<Buffer
   const candidates: RawPreviewCandidate[] = [];
   try {
     const exifrPreview = await resolveExifrRawPreview(raw, sourceExt);
-    if (exifrPreview) candidates.push(exifrPreview);
+    if (exifrPreview) {
+      if (isTargetQualityRawPreview(exifrPreview)) return exifrPreview.buffer;
+      candidates.push(exifrPreview);
+    }
   } catch {
     // Try the legacy extractor before falling back to original-only.
   }

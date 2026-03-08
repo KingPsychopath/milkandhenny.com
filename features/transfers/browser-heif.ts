@@ -1,4 +1,9 @@
 import * as exifr from "exifr";
+import {
+  RAW_PREVIEW_ACCEPTANCE_STEPS,
+  RAW_PREVIEW_MAX_EMBEDDED_JPEG_CANDIDATES,
+  RAW_PREVIEW_TARGET_LONGEST_EDGE,
+} from "@/features/media/raw-preview";
 
 type PreparedTransferUpload = {
   uploadFile: File;
@@ -28,7 +33,6 @@ const HEIF_EXTENSIONS = [".heic", ".heif", ".hif"] as const;
 const HEIF_MIME_TYPES = ["image/heic", "image/heif", "image/hif"] as const;
 const RAW_EXTENSIONS = [".dng", ".arw", ".cr2", ".cr3", ".nef", ".orf", ".raf", ".rw2", ".raw"] as const;
 const JPEG_QUALITY = 0.9;
-const RAW_PREVIEW_ACCEPTANCE_STEPS = [1600, 1024, 512, 1] as const;
 
 function hasHeifExtension(filename: string): boolean {
   const lower = filename.toLowerCase();
@@ -532,13 +536,25 @@ async function extractRawPreviewFile(
     const preview = await exifr.thumbnail(file);
     if (preview) {
       const previewBlob = new Blob([toBlobPart(copyPreviewBytes(preview))], { type: "image/jpeg" });
-      candidates.push(await inspectRawPreviewBlob(previewBlob));
+      const exifrCandidate = await inspectRawPreviewBlob(previewBlob);
+      if (exifrCandidate.longestEdge >= RAW_PREVIEW_TARGET_LONGEST_EDGE) {
+        return {
+          file: new File([exifrCandidate.blob], replaceExtensionWithJpg(file.name), {
+            type: "image/jpeg",
+            lastModified: file.lastModified,
+          }),
+          longestEdge: exifrCandidate.longestEdge,
+          acceptedThreshold: exifrCandidate.acceptedThreshold,
+        };
+      }
+      candidates.push(exifrCandidate);
     }
   } catch {
     // Keep searching for other embedded JPEG previews.
   }
 
   const rawBytes = new Uint8Array(await file.arrayBuffer());
+  let inspectedCandidates = 0;
   let jpegStart = -1;
   for (let i = 0; i < rawBytes.length - 1; i++) {
     const a = rawBytes[i];
@@ -557,7 +573,15 @@ async function extractRawPreviewFile(
       i += 1;
 
       try {
-        candidates.push(await inspectRawPreviewBlob(new Blob([toBlobPart(candidateBytes)], { type: "image/jpeg" })));
+        const candidate = await inspectRawPreviewBlob(new Blob([toBlobPart(candidateBytes)], { type: "image/jpeg" }));
+        candidates.push(candidate);
+        inspectedCandidates += 1;
+        if (
+          candidate.longestEdge >= RAW_PREVIEW_TARGET_LONGEST_EDGE ||
+          inspectedCandidates >= RAW_PREVIEW_MAX_EMBEDDED_JPEG_CANDIDATES
+        ) {
+          break;
+        }
       } catch {
         continue;
       }

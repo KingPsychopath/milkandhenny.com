@@ -60,6 +60,38 @@ async function makeDngLikeTiffWithSubIfdPreview(width: number, height: number): 
   return Buffer.concat([buffer, jpeg]);
 }
 
+async function makeBigTiffLikePreview(width: number, height: number): Promise<Buffer> {
+  const jpeg = await makeJpegBuffer(width, height);
+  const ifdOffset = 16;
+  const entryCount = 2;
+  const entrySize = 20;
+  const nextIfdOffsetPos = ifdOffset + 8 + entryCount * entrySize;
+  const jpegOffset = nextIfdOffsetPos + 8;
+  const buffer = Buffer.alloc(jpegOffset);
+
+  buffer.write("II", 0, "ascii");
+  buffer.writeUInt16LE(43, 2);
+  buffer.writeUInt16LE(8, 4);
+  buffer.writeUInt16LE(0, 6);
+  buffer.writeBigUInt64LE(BigInt(ifdOffset), 8);
+
+  buffer.writeBigUInt64LE(BigInt(entryCount), ifdOffset);
+
+  buffer.writeUInt16LE(0x0201, ifdOffset + 8);
+  buffer.writeUInt16LE(16, ifdOffset + 10);
+  buffer.writeBigUInt64LE(BigInt(1), ifdOffset + 12);
+  buffer.writeBigUInt64LE(BigInt(jpegOffset), ifdOffset + 20);
+
+  buffer.writeUInt16LE(0x0202, ifdOffset + 28);
+  buffer.writeUInt16LE(16, ifdOffset + 30);
+  buffer.writeBigUInt64LE(BigInt(1), ifdOffset + 32);
+  buffer.writeBigUInt64LE(BigInt(jpeg.length), ifdOffset + 40);
+
+  buffer.writeBigUInt64LE(BigInt(0), nextIfdOffsetPos);
+
+  return Buffer.concat([buffer, jpeg]);
+}
+
 async function importProcessingModule() {
   return import("@/features/media/processing");
 }
@@ -177,6 +209,21 @@ describe("raw image preview processing", () => {
 
     expect(result.width).toBe(1400);
     expect(result.height).toBe(900);
+  });
+
+  it("falls back to the legacy BigTIFF preview parser when exifr finds nothing", async () => {
+    const bigTiffLike = await makeBigTiffLikePreview(1600, 1000);
+    vi.doMock("exifr", () => ({
+      default: {
+        thumbnail: vi.fn().mockResolvedValue(undefined),
+      },
+    }));
+
+    const { processToWebP } = await importProcessingModule();
+    const result = await processToWebP(bigTiffLike, "IMG_3005.dng");
+
+    expect(result.width).toBe(1600);
+    expect(result.height).toBe(1000);
   });
 
   it("keeps non-raw images unaffected", async () => {
