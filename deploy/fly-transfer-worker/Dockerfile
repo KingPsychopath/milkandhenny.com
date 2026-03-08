@@ -2,10 +2,8 @@ FROM node:20-bookworm-slim
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
   ffmpeg \
-  libvips-dev \
   libraw-dev \
   libraw-bin \
-  libheif-dev \
   && ln -sf "$(command -v dcraw_emu)" /usr/local/bin/dcraw \
   && command -v dcraw_emu \
   && command -v dcraw \

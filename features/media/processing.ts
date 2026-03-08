@@ -64,8 +64,11 @@ const OG_HEIGHT = 630;
 /** Percentage-based focal point for OG crop. Passed in by callers (album-ops resolves presets + auto-detect). */
 type FocalPercent = { x: number; y: number };
 
-/** Image extensions Sharp can process (HEIC/HIF need libheif in Sharp build) */
-const PROCESSABLE_EXTENSIONS = /\.(jpe?g|png|webp|heic|hif|tiff?)$/i;
+/** Image extensions Sharp can process in the default server/runtime stack */
+const PROCESSABLE_EXTENSIONS = /\.(jpe?g|png|webp|tiff?)$/i;
+
+/** HEIF stills require a dedicated conversion path on the server */
+const HEIF_EXTENSIONS = /\.(heic|heif|hif)$/i;
 
 /** Camera RAW stills we should treat as visual media even without generated variants */
 const RAW_IMAGE_EXTENSIONS = /\.(dng|arw|cr2|cr3|nef|orf|raf|rw2|raw)$/i;
@@ -123,6 +126,7 @@ function getFileKind(filename: string): FileKind {
   const ext = path.extname(filename).toLowerCase();
   if (ANIMATED_EXTENSIONS.test(ext)) return "gif";
   if (PROCESSABLE_EXTENSIONS.test(ext)) return "image";
+  if (HEIF_EXTENSIONS.test(ext)) return "image";
   if (RAW_IMAGE_EXTENSIONS.test(ext)) return "image";
   if (VIDEO_EXTENSIONS.test(ext)) return "video";
   if (AUDIO_EXTENSIONS.test(ext)) return "audio";
@@ -760,9 +764,9 @@ type RotationOverride = (typeof ROTATION_OVERRIDES)[number];
  *
  * Rotation is handled entirely by Sharp (cross-platform):
  *   JPEG/PNG/TIFF/WebP → EXIF orientation tag  → `.rotate()` reads and applies
- *   HEIC/HIF           → HEIF container `irot`  → libvips/libheif applies at decode
+ *   HEIC/HIF           → requires a dedicated server/client HEIF decode path
  *
- * Sharp 0.33+ ships with libheif on all platforms via npm. No OS-specific tools needed.
+ * The default server/runtime stack intentionally does not assume HEIF support in Sharp.
  */
 async function autoRotate(
   raw: Buffer,
@@ -1198,6 +1202,7 @@ export {
   OG_WIDTH,
   OG_HEIGHT,
   PROCESSABLE_EXTENSIONS,
+  HEIF_EXTENSIONS,
   RAW_IMAGE_EXTENSIONS,
   ANIMATED_EXTENSIONS,
   VIDEO_EXTENSIONS,

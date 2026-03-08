@@ -89,4 +89,38 @@ describe("transfer raw preview fallback", () => {
     );
   });
 
+  it("marks server-side HEIF uploads as original_only without attempting Sharp processing", async () => {
+    const uploadBuffer = vi.fn().mockResolvedValue(undefined);
+    const processImageVariants = vi.fn();
+
+    vi.doMock("@/lib/platform/r2", () => ({
+      downloadBuffer: vi.fn(),
+      headObject: vi.fn(),
+      uploadBuffer,
+    }));
+
+    vi.doMock("@/features/media/processing", async () => {
+      const actual = await vi.importActual<typeof import("@/features/media/processing")>(
+        "@/features/media/processing"
+      );
+      return {
+        ...actual,
+        processImageVariants,
+      };
+    });
+
+    const { processTransferBufferLocally } = await import("@/features/media/backends/local");
+    const result = await processTransferBufferLocally(
+      Buffer.from("heif"),
+      "DSC00001.HIF",
+      "transfer-1"
+    );
+
+    expect(processImageVariants).not.toHaveBeenCalled();
+    expect(result.file.previewStatus).toBe("original_only");
+    expect(result.file.processingStatus).toBe("failed");
+    expect(result.file.processingErrorCode).toBe("heif_server_unsupported");
+    expect(result.file.storageKey).toBe("transfers/transfer-1/originals/DSC00001.HIF");
+  });
+
 });

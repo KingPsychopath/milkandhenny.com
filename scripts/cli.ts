@@ -224,11 +224,11 @@ function validateDir(dir: string): { valid: boolean; error?: string; count?: num
   }
   const images = fs
     .readdirSync(absDir)
-    .filter((f) => /\.(jpe?g|png|webp|heic|hif)$/i.test(f));
+    .filter((f) => /\.(jpe?g|png|webp)$/i.test(f));
   if (images.length === 0) {
     return {
       valid: false,
-      error: `No images found in ${absDir}. Supported: .jpg, .jpeg, .png, .webp, .heic, .hif`,
+      error: `No images found in ${absDir}. Supported: .jpg, .jpeg, .png, .webp`,
     };
   }
   return { valid: true, count: images.length };

@@ -21,7 +21,7 @@ import { enqueueWorkerJob, refreshQueuedTransferState, requeueTransferFile } fro
 const TRANSFER_BACKFILL_CONCURRENCY = 2;
 
 function canUseWorkerForRoute(route: ProcessingRoute): boolean {
-  return route === "worker_heif" || route === "raw_try_local" || route === "local_video";
+  return route === "raw_try_local" || route === "local_video";
 }
 
 class LocalProcessingTimeoutError extends Error {
