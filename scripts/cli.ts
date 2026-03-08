@@ -54,6 +54,7 @@ import {
   getTransferInfo,
   listActiveTransfers,
   deleteTransfer,
+  deleteTransferFile,
   cleanupExpiredTransfers,
   drainTransferMediaQueue,
   nukeAllTransfers,
@@ -1075,6 +1076,52 @@ async function cmdTransfersDelete(id: string) {
   console.log();
   log(green(`✓ Deleted ${result.deletedFiles} files from R2`));
   log(green(`✓ Transfer metadata ${result.dataDeleted ? "removed" : "already expired"}`));
+  console.log();
+}
+
+async function cmdTransfersDeleteFile(id: string, selector: string) {
+  const info = await getTransferInfo(id);
+  if (!info) throw new Error(`Transfer "${id}" not found or already expired.`);
+
+  const exactId = info.files.find((file) => file.id === selector);
+  const matchingFilename = info.files.filter((file) => file.filename === selector);
+  const target =
+    exactId ??
+    (matchingFilename.length === 1 ? matchingFilename[0] : null);
+
+  if (!target) {
+    throw new Error(
+      matchingFilename.length > 1
+        ? `Multiple files match "${selector}". Use the file id instead.`
+        : `No file matched "${selector}" in transfer "${id}".`
+    );
+  }
+
+  heading(`Delete file from transfer: ${info.title}`);
+  log(`${dim("File:")} ${target.filename}`);
+  log(`${dim("File ID:")} ${target.id}`);
+  log(`${dim("Kind:")} ${target.kind}`);
+  console.log();
+
+  const ok = await confirm(
+    `${red("Permanently")} delete "${target.filename}" from transfer "${id}"?`
+  );
+  if (!ok) {
+    log(dim("Cancelled."));
+    console.log();
+    return;
+  }
+
+  const result = await deleteTransferFile(id, target.id, (msg) => progress(msg));
+
+  console.log();
+  log(green(`✓ Deleted ${result.deletedObjects} objects from R2`));
+  if (result.deletedTransfer) {
+    log(green("✓ That was the last file; the transfer was removed"));
+  } else {
+    log(green(`✓ Removed ${result.file.filename} from transfer metadata`));
+    log(dim(`  transfer now has ${result.transfer?.files.length ?? 0} files`));
+  }
   console.log();
 }
 
@@ -2543,6 +2590,7 @@ function showHelp() {
       --expires ${dim("<time>")}  ${dim("Expiry: 30m, 1h, 12h, 1d, 7d, 14d, 30d (default: 7d)")}
       ${dim("If interrupted, rerun the same command in the same folder to auto-resume.")}
     transfers append ${dim("<id>")} --dir ${dim("<path>")}          Add files to an active transfer
+    transfers delete-file ${dim("<id>")} --file ${dim("<file-id|filename>")}  Delete one file from a transfer
     transfers delete ${dim("<id>")}                    Take down a transfer + delete R2 files
     transfers media-status                  Show worker heartbeat + queue length
     transfers media-drain ${dim("[--limit 8]")}            Drain queued worker jobs now
@@ -4389,6 +4437,14 @@ async function direct() {
             const id = args[2];
             if (!id) throw new Error("Usage: pnpm cli transfers delete <id>");
             return cmdTransfersDelete(id);
+          }
+          case "delete-file": {
+            const id = args[2];
+            const file = getArg("file");
+            if (!id || !file) {
+              throw new Error("Usage: pnpm cli transfers delete-file <id> --file <file-id|filename>");
+            }
+            return cmdTransfersDeleteFile(id, file);
           }
           case "cleanup":
             return cmdTransfersCleanup();

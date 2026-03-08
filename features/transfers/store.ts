@@ -39,6 +39,10 @@ type TransferFile = {
   height?: number;
   /** EXIF date (processable images only) */
   takenAt?: string;
+  /** Still-image Live Photo content identifier when present. */
+  livePhotoContentId?: string;
+  groupId?: string;
+  groupRole?: AssetGroupMember["role"];
   /** Whether preview/thumb/full assets exist or only the original is available */
   previewStatus?: PreviewStatus;
   /** Explicit processing state for local/worker media handling */
@@ -53,10 +57,24 @@ type TransferFile = {
   retryCount?: number;
 };
 
+type AssetGroupMember = {
+  fileId: string;
+  role: "primary" | "raw" | "motion";
+  mimeType: string;
+};
+
+type AssetGroup = {
+  id: string;
+  type: "live_photo" | "raw_pair";
+  capturedAt?: string;
+  members: AssetGroupMember[];
+};
+
 type TransferData = {
   id: string;
   title: string;
   files: TransferFile[];
+  groups?: AssetGroup[];
   createdAt: string;
   expiresAt: string;
   deleteToken: string;
@@ -211,6 +229,58 @@ async function saveTransfer(
   }
 }
 
+function clearTransferFileGroup(file: TransferFile): TransferFile {
+  const next = { ...file };
+  delete next.groupId;
+  delete next.groupRole;
+  return next;
+}
+
+function removeTransferFileFromGroups(data: TransferData, fileId: string): TransferData {
+  if (!data.groups || data.groups.length === 0) return data;
+
+  let groupsChanged = false;
+  let clearedIds: string[] = [];
+  const nextGroups: AssetGroup[] = [];
+
+  for (const group of data.groups) {
+    if (!group.members.some((member) => member.fileId === fileId)) {
+      nextGroups.push(group);
+      continue;
+    }
+
+    groupsChanged = true;
+    const remainingMembers = group.members.filter((member) => member.fileId !== fileId);
+    if (remainingMembers.length >= 2) {
+      nextGroups.push({ ...group, members: remainingMembers });
+    } else {
+      clearedIds = [...clearedIds, ...remainingMembers.map((member) => member.fileId)];
+    }
+  }
+
+  if (!groupsChanged) return data;
+
+  const clearSet = new Set(clearedIds);
+  const files = data.files.map((file) => {
+    if (file.id === fileId || clearSet.has(file.id)) return clearTransferFileGroup(file);
+    return file;
+  });
+
+  return {
+    ...data,
+    files,
+    groups: nextGroups.length > 0 ? nextGroups : undefined,
+  };
+}
+
+function removeTransferFile(data: TransferData, fileId: string): TransferData {
+  const next = removeTransferFileFromGroups(data, fileId);
+  return {
+    ...next,
+    files: next.files.filter((file) => file.id !== fileId),
+  };
+}
+
 /** Get a transfer by ID. Returns null if expired or not found. */
 async function getTransfer(id: string): Promise<TransferData | null> {
   const redis = requireTransferRedis();
@@ -342,6 +412,8 @@ export {
   getTransfer,
   listTransfers,
   deleteTransferData,
+  removeTransferFile,
+  removeTransferFileFromGroups,
   validateDeleteToken,
   generateTransferId,
   generateDeleteToken,
@@ -354,4 +426,4 @@ export {
   FILE_KINDS,
 };
 
-export type { TransferData, TransferFile, TransferSummary, FileKind };
+export type { AssetGroup, AssetGroupMember, TransferData, TransferFile, TransferSummary, FileKind };

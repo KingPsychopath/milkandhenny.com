@@ -1,15 +1,15 @@
 "use client";
 
 import { useState, useCallback, useEffect, useMemo, memo } from "react";
-import { usePathname, useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { getTransferThumbUrl, getTransferFullUrl, getTransferStorageUrl } from "@/features/media/storage";
-import { buildLivePhotoVisualItems, type LivePhotoVisualItem } from "@/features/transfers/live-photo";
+import { buildTransferVisualItems, type TransferVisualItem } from "@/features/transfers/live-photo";
 import { fetchBlob, downloadBlob } from "@/lib/client/media-download";
 import { formatBytes } from "@/lib/shared/format";
 import { useLazyImage } from "@/hooks/useLazyImage";
 import { useSwipe } from "@/hooks/useSwipe";
 import { SelectionToggle } from "@/components/SelectionToggle";
-import type { FileKind } from "@/features/transfers/store";
+import type { AssetGroup, FileKind } from "@/features/transfers/store";
 
 /* ─── Types ─── */
 
@@ -25,6 +25,10 @@ type TransferFileData = {
   convertedFrom?: "heic";
   width?: number;
   height?: number;
+  takenAt?: string;
+  livePhotoContentId?: string;
+  groupId?: string;
+  groupRole?: "primary" | "raw" | "motion";
   previewStatus?: "ready" | "original_only";
   processingStatus?: "pending" | "skipped" | "local_done" | "queued" | "processing" | "worker_done" | "failed";
 };
@@ -32,12 +36,14 @@ type TransferFileData = {
 type TransferGalleryProps = {
   transferId: string;
   files: TransferFileData[];
+  groups?: AssetGroup[];
+  deleteToken?: string;
 };
 
 type GalleryFilter = "all" | "photos" | "videos" | "audio" | "files";
 type BrowseMode = "scroll" | "pages";
 type LivePhotoMode = "paired" | "separate";
-type VisualGalleryItem = LivePhotoVisualItem<TransferFileData>;
+type VisualGalleryItem = TransferVisualItem<TransferFileData>;
 type GalleryEntry =
   | { id: string; type: "visual"; item: VisualGalleryItem }
   | { id: string; type: "file"; file: TransferFileData };
@@ -98,20 +104,23 @@ function getDownloadFilename(file: TransferFileData): string {
 }
 
 function getVisualItemFiles(item: VisualGalleryItem): TransferFileData[] {
-  return item.type === "live" ? [item.photo, item.motion] : [item.file];
+  if (item.type === "single") return [item.file];
+  if (item.type === "live_photo") return [item.photo, item.motion];
+  return [item.primary, item.raw];
 }
 
 function getVisualItemPrimaryFile(item: VisualGalleryItem): TransferFileData {
-  return item.type === "live" ? item.photo : item.file;
+  return item.type === "single" ? item.file : item.primary;
 }
 
 function getVisualItemLabel(item: VisualGalleryItem): string {
-  return item.type === "live" ? item.photo.filename : item.file.filename;
+  if (item.type === "single") return item.file.filename;
+  if (item.type === "live_photo") return item.photo.filename;
+  return `${item.primary.filename} + ${item.raw.filename}`;
 }
 
 function shouldShowRawPreviewNotice(item: VisualGalleryItem): boolean {
-  const file = getVisualItemPrimaryFile(item);
-  return isRawImage(file);
+  return item.type === "raw_pair" || isRawImage(getVisualItemPrimaryFile(item));
 }
 
 function getVisualLoadFailureMessage(file: TransferFileData): string {
@@ -391,53 +400,68 @@ function LightboxContent({
   item,
   transferId,
   onError,
+  onActiveFileChange,
 }: {
   item: VisualGalleryItem;
   transferId: string;
   onError: () => void;
+  onActiveFileChange?: (file: TransferFileData) => void;
 }) {
-  const [activePanel, setActivePanel] = useState<"photo" | "motion">("photo");
+  const [activePanel, setActivePanel] = useState<"primary" | "secondary">("primary");
 
   useEffect(() => {
-    setActivePanel("photo");
+    setActivePanel("primary");
   }, [item.id]);
 
   if (item.type === "single") {
     return <SingleVisualContent file={item.file} transferId={transferId} onError={onError} />;
   }
 
-  const showing = activePanel === "photo" ? item.photo : item.motion;
+  const showing =
+    item.type === "live_photo"
+      ? activePanel === "primary"
+        ? item.photo
+        : item.motion
+      : activePanel === "primary"
+        ? item.primary
+        : item.raw;
+
+  useEffect(() => {
+    onActiveFileChange?.(showing);
+  }, [onActiveFileChange, showing]);
 
   return (
     <div className="flex flex-col items-center gap-4" onClick={(e) => e.stopPropagation()}>
       <div className="flex items-center gap-2 font-mono text-micro tracking-wide">
-        <span className="text-white/35">live photo</span>
+        <span className="text-white/35">{item.type === "live_photo" ? "live photo" : "raw pair"}</span>
         <button
           type="button"
-          onClick={() => setActivePanel("photo")}
+          onClick={() => setActivePanel("primary")}
           className={
-            activePanel === "photo"
+            activePanel === "primary"
               ? "px-2 py-1 rounded-sm border border-white/30 text-white"
               : "px-2 py-1 rounded-sm border border-white/15 text-white/50 hover:text-white transition-colors"
           }
         >
-          [photo]
+          [{item.type === "live_photo" ? "photo" : "preview"}]
         </button>
         <button
           type="button"
-          onClick={() => setActivePanel("motion")}
+          onClick={() => setActivePanel("secondary")}
           className={
-            activePanel === "motion"
+            activePanel === "secondary"
               ? "px-2 py-1 rounded-sm border border-white/30 text-white"
               : "px-2 py-1 rounded-sm border border-white/15 text-white/50 hover:text-white transition-colors"
           }
         >
-          [motion]
+          [{item.type === "live_photo" ? "motion" : "raw"}]
         </button>
       </div>
       <SingleVisualContent file={showing} transferId={transferId} onError={onError} />
       <p className="font-mono text-nano text-white/35 tracking-wide text-center">
-        {item.photo.filename} + {item.motion.filename}
+        {item.type === "live_photo"
+          ? `${item.photo.filename} + ${item.motion.filename}`
+          : `${item.primary.filename} + ${item.raw.filename}`}
       </p>
     </div>
   );
@@ -451,13 +475,18 @@ function LightboxContent({
  * - Videos: masonry grid cards with play overlay, lightbox with <video>
  * - Files/Audio: list section below the gallery with download buttons
  */
-export function TransferGallery({ transferId, files }: TransferGalleryProps) {
+export function TransferGallery({ transferId, files, groups, deleteToken }: TransferGalleryProps) {
   const pathname = usePathname();
+  const router = useRouter();
   const searchParams = useSearchParams();
+  const [currentFiles, setCurrentFiles] = useState(files);
+  const [currentGroups, setCurrentGroups] = useState(groups);
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const [downloading, setDownloading] = useState(false);
   const [downloadProgress, setDownloadProgress] = useState<{ done: number; total: number } | null>(null);
   const [savingSingle, setSavingSingle] = useState(false);
+  const [deletingFileId, setDeletingFileId] = useState<string | null>(null);
+  const [deleteError, setDeleteError] = useState("");
   const [lightboxError, setLightboxError] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
   const [activeFilter, setActiveFilter] = useState<GalleryFilter>(() => {
@@ -477,6 +506,14 @@ export function TransferGallery({ transferId, files }: TransferGalleryProps) {
     return Number.isFinite(raw) && raw > 0 ? Math.floor(raw) : 1;
   });
 
+  useEffect(() => {
+    setCurrentFiles(files);
+  }, [files]);
+
+  useEffect(() => {
+    setCurrentGroups(groups);
+  }, [groups]);
+
   const grouped = useMemo(() => {
     const photos: TransferFileData[] = [];
     const videos: TransferFileData[] = [];
@@ -484,7 +521,7 @@ export function TransferGallery({ transferId, files }: TransferGalleryProps) {
     const fileOnly: TransferFileData[] = [];
     const visual: TransferFileData[] = [];
 
-    for (const file of files) {
+    for (const file of currentFiles) {
       if (isPhotoLike(file)) {
         photos.push(file);
         visual.push(file);
@@ -503,24 +540,24 @@ export function TransferGallery({ transferId, files }: TransferGalleryProps) {
     }
 
     return { photos, videos, audio, fileOnly, visual };
-  }, [files]);
+  }, [currentFiles]);
 
   const filterCounts = useMemo(
     () => ({
-      all: files.length,
+      all: currentFiles.length,
       photos: grouped.photos.length,
       videos: grouped.videos.length,
       audio: grouped.audio.length,
       files: grouped.fileOnly.length,
     }),
-    [files.length, grouped]
+    [currentFiles.length, grouped]
   );
   const pairedVisualItems = useMemo(
-    () => buildLivePhotoVisualItems(grouped.visual),
-    [grouped.visual]
+    () => buildTransferVisualItems(grouped.visual, currentGroups),
+    [grouped.visual, currentGroups]
   );
-  const hasLivePhotoPairs = useMemo(
-    () => pairedVisualItems.some((item) => item.type === "live"),
+  const hasGroupedVisualItems = useMemo(
+    () => pairedVisualItems.some((item) => item.type !== "single"),
     [pairedVisualItems]
   );
 
@@ -637,6 +674,14 @@ export function TransferGallery({ transferId, files }: TransferGalleryProps) {
       Math.min(nonVisualFiles.length, Math.max(prev, INITIAL_FILE_LIST_RENDER_COUNT))
     );
   }, [nonVisualFiles.length]);
+
+  useEffect(() => {
+    const allowedIds = new Set(currentFiles.map((file) => file.id));
+    setSelectedIds((prev) => {
+      const next = new Set(Array.from(prev).filter((id) => allowedIds.has(id)));
+      return next.size === prev.size ? prev : next;
+    });
+  }, [currentFiles]);
 
   const visibleVisualFiles =
     browseMode === "pages" ? visualItems : visualItems.slice(0, visibleVisualCount);
@@ -862,9 +907,9 @@ export function TransferGallery({ transferId, files }: TransferGalleryProps) {
 
   /** Download all files as a zip with progress */
   const downloadAll = useCallback(() => {
-    if (files.length === 0) return;
-    downloadFiles(files);
-  }, [files, downloadFiles]);
+    if (currentFiles.length === 0) return;
+    downloadFiles(currentFiles);
+  }, [currentFiles, downloadFiles]);
 
   const downloadVisualItem = useCallback(
     async (item: VisualGalleryItem) => {
@@ -875,10 +920,10 @@ export function TransferGallery({ transferId, files }: TransferGalleryProps) {
 
   /** Download only selected files */
   const downloadSelected = useCallback(() => {
-    const selected = files.filter((f) => selectedIds.has(f.id));
+    const selected = currentFiles.filter((f) => selectedIds.has(f.id));
     if (selected.length === 0) return;
     downloadFiles(selected);
-  }, [files, selectedIds, downloadFiles]);
+  }, [currentFiles, selectedIds, downloadFiles]);
 
   const toggleSelection = useCallback((id: string) => {
     setSelectedIds((prev) => {
@@ -933,10 +978,66 @@ export function TransferGallery({ transferId, files }: TransferGalleryProps) {
   const clearSelection = useCallback(() => {
     setSelectedIds(new Set());
   }, []);
+  const [activeLightboxFile, setActiveLightboxFile] = useState<TransferFileData | null>(null);
+
+  const handleDeleteFile = useCallback(
+    async (file: TransferFileData) => {
+      if (!deleteToken || deletingFileId) return;
+      const confirmed = window.confirm(`Delete "${file.filename}" from this transfer?`);
+      if (!confirmed) return;
+
+      setDeleteError("");
+      setDeletingFileId(file.id);
+
+      try {
+        const res = await fetch(`/api/transfers/${transferId}/files/${encodeURIComponent(file.id)}`, {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ token: deleteToken }),
+        });
+        const data = await res.json().catch(() => ({}));
+
+        if (!res.ok) {
+          setDeleteError(typeof data?.error === "string" ? data.error : "Delete failed.");
+          return;
+        }
+
+        setSelectedIds((prev) => {
+          const next = new Set(prev);
+          next.delete(file.id);
+          return next;
+        });
+        setLightboxError(false);
+        setLightboxIndex(null);
+
+        if (data.deletedTransfer) {
+          router.replace("/");
+          router.refresh();
+          return;
+        }
+
+        if (data.transfer) {
+          setCurrentFiles(data.transfer.files as TransferFileData[]);
+          setCurrentGroups((data.transfer.groups as AssetGroup[] | undefined) ?? undefined);
+        } else {
+          setCurrentFiles((prev) => prev.filter((candidate) => candidate.id !== file.id));
+          setCurrentGroups((prev) => prev);
+        }
+      } catch {
+        setDeleteError("Connection error. Try again.");
+      } finally {
+        setDeletingFileId(null);
+      }
+    },
+    [deleteToken, deletingFileId, router, transferId]
+  );
 
   const selectedCount = selectedIds.size;
   const selectedDisplayCount = selectedInFilteredCount;
   const currentVisual = lightboxIndex !== null ? lightboxVisualFiles[lightboxIndex] : null;
+  useEffect(() => {
+    if (!currentVisual) setActiveLightboxFile(null);
+  }, [currentVisual]);
   const visibleFilterTabs = ([
     { key: "all", label: "all", count: filterCounts.all },
     { key: "photos", label: "photos", count: filterCounts.photos },
@@ -974,9 +1075,9 @@ export function TransferGallery({ transferId, files }: TransferGalleryProps) {
         </div>
 
         <div className="flex flex-wrap items-center gap-2 font-mono text-micro tracking-wide">
-          {hasLivePhotoPairs && (activeFilter === "all" || activeFilter === "photos") && (
+          {hasGroupedVisualItems && (activeFilter === "all" || activeFilter === "photos") && (
             <>
-              <span className="theme-muted">live photos</span>
+              <span className="theme-muted">grouped</span>
               <button
                 type="button"
                 onClick={() => handleLivePhotoModeChange("paired")}
@@ -1042,7 +1143,7 @@ export function TransferGallery({ transferId, files }: TransferGalleryProps) {
           {selectedCount > 0
             ? `${selectedDisplayCount} selected in current view`
             : browseMode === "pages" && canPaginate
-              ? `showing ${pageEntries.length} of ${filteredEntries.length} in filter (${files.length} files total)`
+              ? `showing ${pageEntries.length} of ${filteredEntries.length} in filter (${currentFiles.length} files total)`
               : `${filteredEntries.length} ${filteredEntries.length === 1 ? "item" : "items"} in filter`}
         </span>
         <div className="flex items-center gap-3 font-mono text-micro tracking-wide">
@@ -1075,10 +1176,15 @@ export function TransferGallery({ transferId, files }: TransferGalleryProps) {
             disabled={downloading}
             className="text-amber-600 hover:text-amber-500 transition-colors disabled:opacity-50"
           >
-            {downloading && (!downloadProgress || downloadProgress.total === files.length) ? downloadLabel : "[ download all ]"}
+            {downloading && (!downloadProgress || downloadProgress.total === currentFiles.length) ? downloadLabel : "[ download all ]"}
           </button>
         </div>
       </div>
+      {deleteError ? (
+        <p className="mb-4 font-mono text-micro tracking-wide text-red-600">
+          {deleteError}
+        </p>
+      ) : null}
 
       {/* Visual media grid (images, GIFs, videos) */}
       {visualItems.length > 0 && (
@@ -1166,6 +1272,8 @@ export function TransferGallery({ transferId, files }: TransferGalleryProps) {
                 isSelected={selectedIds.has(file.id)}
                 onToggleSelect={() => toggleSelection(file.id)}
                 onDownload={() => downloadSingle(file)}
+                onDelete={deleteToken ? () => handleDeleteFile(file) : undefined}
+                deleting={deletingFileId === file.id}
               />
             ))}
           </div>
@@ -1226,6 +1334,7 @@ export function TransferGallery({ transferId, files }: TransferGalleryProps) {
                 item={currentVisual}
                 transferId={transferId}
                 onError={() => setLightboxError(true)}
+                onActiveFileChange={setActiveLightboxFile}
               />
             )}
           </div>
@@ -1252,12 +1361,21 @@ export function TransferGallery({ transferId, files }: TransferGalleryProps) {
               <span className="font-mono text-micro text-white/30">
                 {lightboxIndex + 1} / {lightboxVisualFiles.length}
               </span>
+              {deleteToken && activeLightboxFile && (
+                <button
+                  onClick={() => handleDeleteFile(activeLightboxFile)}
+                  disabled={deletingFileId === activeLightboxFile.id}
+                  className="font-mono text-xs text-red-400/80 hover:text-red-300 transition-colors disabled:opacity-50"
+                >
+                  {deletingFileId === activeLightboxFile.id ? "deleting..." : "delete file"}
+                </button>
+              )}
               <button
                 onClick={() => downloadVisualItem(currentVisual)}
                 disabled={savingSingle}
                 className="font-mono text-xs text-white/50 hover:text-white transition-colors disabled:opacity-50"
               >
-                {savingSingle ? "saving..." : currentVisual.type === "live" ? "download pair ↓" : "download ↓"}
+                {savingSingle ? "saving..." : currentVisual.type === "single" ? "download ↓" : "download pair ↓"}
               </button>
             </div>
           </div>
@@ -1267,6 +1385,14 @@ export function TransferGallery({ transferId, files }: TransferGalleryProps) {
               onClick={(e) => e.stopPropagation()}
             >
               RAW previews may differ slightly from the original. Download the source file for full-quality editing and accurate color.
+            </p>
+          ) : null}
+          {deleteError ? (
+            <p
+              className="mt-3 max-w-md px-4 text-center font-mono text-nano tracking-wide text-red-300/80"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {deleteError}
             </p>
           ) : null}
         </div>
@@ -1372,7 +1498,7 @@ const VisualCard = memo(function VisualCard({
         }}
         className="block relative overflow-hidden rounded-sm w-full text-left cursor-pointer"
         style={{ paddingBottom: `${aspectRatio * 100}%` }}
-        aria-label={`Open ${item.type === "live" ? `${item.photo.filename} live photo` : file.filename}`}
+        aria-label={`Open ${item.type === "single" ? file.filename : getVisualItemLabel(item)}`}
       >
         {/* Selection toggle — stop propagation so card click opens lightbox */}
         <div className="absolute top-2 left-2 z-10" onClick={(e) => e.stopPropagation()} role="none">
@@ -1419,7 +1545,7 @@ const VisualCard = memo(function VisualCard({
         )}
 
         {/* Video play overlay */}
-        {(file.kind === "video" || item.type === "live") && hasThumbnail && (
+        {(file.kind === "video" || item.type === "live_photo") && hasThumbnail && (
           <div className="absolute inset-0 flex items-center justify-center">
             <div className="w-12 h-12 rounded-full bg-black/40 backdrop-blur-sm flex items-center justify-center">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="white" stroke="none">
@@ -1429,7 +1555,7 @@ const VisualCard = memo(function VisualCard({
           </div>
         )}
 
-        {item.type === "live" && (
+        {item.type !== "single" && (
           <>
             <div className="absolute top-2 right-2 z-10">
               <span className="font-mono text-pico bg-black/50 text-white/80 px-1.5 py-0.5 rounded tracking-wider uppercase">
@@ -1438,7 +1564,7 @@ const VisualCard = memo(function VisualCard({
             </div>
             <div className="absolute left-2 right-2 bottom-8 z-10">
               <span className="inline-block font-mono text-pico bg-black/55 text-white/85 px-1.5 py-0.5 rounded tracking-wider uppercase">
-                photo + motion
+                {item.type === "live_photo" ? "photo + motion" : "preview + raw"}
               </span>
             </div>
           </>
@@ -1464,15 +1590,23 @@ const VisualCard = memo(function VisualCard({
         {file.convertedFrom && !isRawImage(file) && (
           <div className="absolute bottom-2 left-2">
             <span className="font-mono text-pico bg-black/50 text-white/80 px-1.5 py-0.5 rounded tracking-wider uppercase">
-              {item.type === "live" ? "live" : "optimized"}
+              {item.type === "live_photo" ? "live" : "optimized"}
             </span>
           </div>
         )}
 
-        {item.type === "live" && file.convertedFrom !== "heic" && (
+        {item.type === "live_photo" && file.convertedFrom !== "heic" && (
           <div className="absolute bottom-2 left-2">
             <span className="font-mono text-pico bg-black/50 text-white/80 px-1.5 py-0.5 rounded tracking-wider uppercase">
               live
+            </span>
+          </div>
+        )}
+
+        {item.type === "raw_pair" && (
+          <div className="absolute bottom-2 left-2">
+            <span className="font-mono text-pico bg-black/50 text-white/80 px-1.5 py-0.5 rounded tracking-wider uppercase">
+              raw pair
             </span>
           </div>
         )}
@@ -1507,12 +1641,16 @@ function FileCard({
   isSelected,
   onToggleSelect,
   onDownload,
+  onDelete,
+  deleting,
 }: {
   transferId: string;
   file: TransferFileData;
   isSelected: boolean;
   onToggleSelect: () => void;
   onDownload: () => void;
+  onDelete?: () => void;
+  deleting?: boolean;
 }) {
   const checkbox = <SelectionToggle selected={isSelected} onToggle={onToggleSelect} variant="surface" />;
 
@@ -1530,6 +1668,15 @@ function FileCard({
         </div>
         <div className="flex flex-col items-end gap-1 shrink-0">
           <span className="font-mono text-nano theme-muted">{formatBytes(file.size)}</span>
+          {onDelete && (
+            <button
+              onClick={onDelete}
+              disabled={deleting}
+              className="font-mono text-micro text-red-500/80 hover:text-red-400 transition-colors disabled:opacity-50"
+            >
+              {deleting ? "..." : "x"}
+            </button>
+          )}
           <button onClick={onDownload} className="font-mono text-micro text-amber-600 hover:text-amber-500 transition-colors">
             ↓
           </button>
@@ -1551,12 +1698,23 @@ function FileCard({
           {file.mimeType.split("/").pop()} · {formatBytes(file.size)}
         </p>
       </div>
-      <button
-        onClick={onDownload}
-        className="font-mono text-micro text-amber-600 hover:text-amber-500 transition-colors shrink-0"
-      >
-        [ download ]
-      </button>
+      <div className="flex items-center gap-3 shrink-0">
+        {onDelete && (
+          <button
+            onClick={onDelete}
+            disabled={deleting}
+            className="font-mono text-micro text-red-500/80 hover:text-red-400 transition-colors disabled:opacity-50"
+          >
+            {deleting ? "[ deleting ]" : "[ delete ]"}
+          </button>
+        )}
+        <button
+          onClick={onDownload}
+          className="font-mono text-micro text-amber-600 hover:text-amber-500 transition-colors"
+        >
+          [ download ]
+        </button>
+      </div>
     </div>
   );
 }

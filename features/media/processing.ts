@@ -640,6 +640,8 @@ type ProcessedImage = {
   height: number;
   /** ISO date from EXIF DateTimeOriginal, if available */
   takenAt: string | null;
+  /** Still-image Live Photo content identifier, if available. */
+  livePhotoContentId?: string | null;
   /** Tiny base64 data URI for blur-up placeholder (~300 bytes) */
   blur: string;
 };
@@ -685,6 +687,35 @@ function extractExifDate(exifBuffer: Buffer | undefined): string | null {
       null;
     if (date instanceof Date && !isNaN(date.getTime())) {
       return date.toISOString();
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+async function extractStillImageLivePhotoContentId(raw: Buffer): Promise<string | null> {
+  try {
+    const exifr = await import("exifr");
+    const tags = await exifr.parse(raw, {
+      tiff: true,
+      exif: true,
+      xmp: true,
+      gps: false,
+      icc: false,
+      iptc: false,
+      jfif: false,
+    });
+    if (!tags || typeof tags !== "object") return null;
+    for (const key of [
+      "ContentIdentifier",
+      "MediaGroupUUID",
+      "AssetIdentifier",
+      "assetIdentifier",
+      "contentIdentifier",
+    ] as const) {
+      const value = tags[key];
+      if (typeof value === "string" && value.trim()) return value.trim();
     }
     return null;
   } catch {
@@ -778,7 +809,7 @@ async function processImageVariants(
   const { buffer: rotated, width, height } = await autoRotate(processingSource, rotationOverride);
 
   // Generate all variants in parallel where possible
-  const [thumb, full, blur, originalBuffer, og] = await Promise.all([
+  const [thumb, full, blur, originalBuffer, og, livePhotoContentId] = await Promise.all([
     sharp(rotated).resize(THUMB_WIDTH).webp({ quality: 80 }).toBuffer(),
     sharp(rotated).resize(FULL_WIDTH).webp({ quality: 85 }).toBuffer(),
     generateBlurDataUri(rotated),
@@ -792,6 +823,7 @@ async function processImageVariants(
       }
       return ogPipeline.jpeg({ quality: 70, mozjpeg: true }).toBuffer();
     })(),
+    extractStillImageLivePhotoContentId(raw),
   ]);
 
   const isJpeg = ext === ".jpg" || ext === ".jpeg";
@@ -808,6 +840,7 @@ async function processImageVariants(
     width,
     height,
     takenAt,
+    ...(livePhotoContentId ? { livePhotoContentId } : {}),
     blur,
   };
 }

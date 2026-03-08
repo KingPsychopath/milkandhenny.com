@@ -10,6 +10,7 @@ import "server-only";
 
 import path from "path";
 import { getMediaProcessor } from "@/features/media/processor";
+import { inferTransferAssetGroups } from "./live-photo";
 import type { TransferData, TransferFile } from "./store";
 import type { ProcessFileResult, TransferUploadFileInput } from "./upload-types";
 
@@ -70,5 +71,16 @@ function sortTransferFiles(files: TransferFile[]): TransferFile[] {
   return [...visual, ...nonVisual];
 }
 
-export { backfillTransferMedia, isSafeTransferFilename, processTransferFile, processUploadedFile, sortTransferFiles };
+function applyTransferAssetGroups(files: TransferFile[]): { files: TransferFile[]; groups: TransferData["groups"] } {
+  return inferTransferAssetGroups(files);
+}
+
+export {
+  applyTransferAssetGroups,
+  backfillTransferMedia,
+  isSafeTransferFilename,
+  processTransferFile,
+  processUploadedFile,
+  sortTransferFiles,
+};
 export type { ProcessFileResult };

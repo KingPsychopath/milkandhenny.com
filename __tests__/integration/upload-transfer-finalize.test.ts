@@ -46,6 +46,7 @@ describe("upload transfer finalize", () => {
       MAX_TRANSFER_TOTAL_BYTES: 1024 * 1024 * 1024,
     }));
     vi.doMock("@/features/transfers/upload", () => ({
+      applyTransferAssetGroups: (files: unknown[]) => ({ files, groups: [] }),
       processUploadedFile,
       sortTransferFiles: (files: unknown[]) => files,
       isSafeTransferFilename: () => true,

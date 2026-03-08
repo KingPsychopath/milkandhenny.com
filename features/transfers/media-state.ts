@@ -186,6 +186,9 @@ function didTransferFileChange(
     width?: number;
     height?: number;
     takenAt?: string | null;
+    livePhotoContentId?: string;
+    groupId?: string;
+    groupRole?: string;
     previewStatus?: PreviewStatus;
     processingStatus?: ProcessingStatus;
     processingBackend?: ProcessingBackend;
@@ -211,6 +214,9 @@ function didTransferFileChange(
     width?: number;
     height?: number;
     takenAt?: string | null;
+    livePhotoContentId?: string;
+    groupId?: string;
+    groupRole?: string;
     previewStatus?: PreviewStatus;
     processingStatus?: ProcessingStatus;
     processingBackend?: ProcessingBackend;
@@ -237,6 +243,9 @@ function didTransferFileChange(
     before.width !== after.width ||
     before.height !== after.height ||
     before.takenAt !== after.takenAt ||
+    before.livePhotoContentId !== after.livePhotoContentId ||
+    before.groupId !== after.groupId ||
+    before.groupRole !== after.groupRole ||
     before.previewStatus !== after.previewStatus ||
     before.processingStatus !== after.processingStatus ||
     before.processingBackend !== after.processingBackend ||

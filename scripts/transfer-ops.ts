@@ -24,7 +24,8 @@ import {
   resolveTransferUploadIds,
   type TransferProcessingCounts,
 } from "../features/transfers/media-state";
-import { processTransferFile, sortTransferFiles } from "../features/transfers/upload";
+import { getTransferFileDeleteKeys, resolveTransferFileForDelete } from "../features/transfers/delete";
+import { applyTransferAssetGroups, processTransferFile, sortTransferFiles } from "../features/transfers/upload";
 import { backfillTransferMedia } from "../features/transfers/upload";
 import type { ProcessFileResult } from "../features/transfers/upload";
 import { getTransferMediaQueueLength } from "../features/transfers/media-queue";
@@ -37,6 +38,7 @@ import {
   getTransfer,
   listTransfers,
   deleteTransferData,
+  removeTransferFile,
   generateTransferId,
   generateDeleteToken,
   parseExpiry,
@@ -427,10 +429,12 @@ async function createTransfer(
     );
   }
 
+  const groupedTransfer = applyTransferAssetGroups(sortedFiles);
   const transfer: TransferData = {
     id: transferId,
     title: checkpoint?.title ?? opts.title,
-    files: sortedFiles,
+    files: groupedTransfer.files,
+    groups: groupedTransfer.groups,
     createdAt: createdAt.toISOString(),
     expiresAt: expiresAt.toISOString(),
     deleteToken,
@@ -446,8 +450,8 @@ async function createTransfer(
   const shareUrl = `${BASE_URL}/t/${transferId}`;
   const adminUrl = `${BASE_URL}/t/${transferId}?token=${deleteToken}`;
 
-  const fileCounts = transferFileCounts(sortedFiles);
-  const processingCounts = buildTransferProcessingCounts(sortedFiles);
+  const fileCounts = transferFileCounts(groupedTransfer.files);
+  const processingCounts = buildTransferProcessingCounts(groupedTransfer.files);
 
   return { transfer, shareUrl, adminUrl, totalSize, fileCounts, processingCounts };
 }
@@ -627,9 +631,11 @@ async function appendToTransfer(
   }
 
   const mergedFiles = sortTransferFiles([...transfer.files, ...addedResults.map((r) => r.file)]);
+  const groupedTransfer = applyTransferAssetGroups(mergedFiles);
   const updatedTransfer: TransferData = {
     ...transfer,
-    files: mergedFiles,
+    files: groupedTransfer.files,
+    groups: groupedTransfer.groups,
   };
 
   await saveTransfer(updatedTransfer, remainingTtlSeconds);
@@ -694,6 +700,60 @@ async function deleteTransfer(
   onProgress?.("Done.");
 
   return { deletedFiles, dataDeleted };
+}
+
+async function deleteTransferFile(
+  id: string,
+  selector: string,
+  onProgress?: (msg: string) => void
+): Promise<{
+  deletedObjects: number;
+  deletedTransfer: boolean;
+  file: TransferData["files"][number];
+  transfer?: TransferData;
+}> {
+  requireRedis();
+  requireR2();
+
+  const transfer = await getTransfer(id);
+  if (!transfer) {
+    throw new Error(`Transfer "${id}" not found or already expired.`);
+  }
+
+  const file = resolveTransferFileForDelete(transfer.files, selector);
+  if (!file) {
+    throw new Error(`No file matched "${selector}" in transfer "${id}".`);
+  }
+
+  const keys = getTransferFileDeleteKeys(id, file);
+  let deletedObjects = 0;
+  if (keys.length > 0) {
+    onProgress?.(`Deleting ${keys.length} objects for ${file.filename}...`);
+    deletedObjects = await deleteObjects(keys);
+  }
+
+  const updatedTransfer = removeTransferFile(transfer, file.id);
+  if (updatedTransfer.files.length === 0) {
+    await deleteTransferData(id);
+    onProgress?.("Deleted last file; transfer removed.");
+    return { deletedObjects, deletedTransfer: true, file };
+  }
+
+  const remainingTtlSeconds = Math.floor(
+    (new Date(transfer.expiresAt).getTime() - Date.now()) / 1000
+  );
+  if (remainingTtlSeconds <= 0) {
+    throw new Error(`Transfer "${id}" expired while deleting file.`);
+  }
+
+  await saveTransfer(updatedTransfer, remainingTtlSeconds);
+  onProgress?.("Done.");
+  return {
+    deletedObjects,
+    deletedTransfer: false,
+    file,
+    transfer: updatedTransfer,
+  };
 }
 
 async function getTransferMediaStatus(): Promise<TransferMediaStatusResult> {
@@ -848,6 +908,7 @@ export {
   getTransferInfo,
   listActiveTransfers,
   deleteTransfer,
+  deleteTransferFile,
   cleanupExpiredTransfers,
   getTransferMediaStatus,
   drainTransferMediaQueue,

@@ -7,6 +7,7 @@ import {
   MAX_TRANSFER_TOTAL_BYTES,
 } from "@/features/transfers/store";
 import {
+  applyTransferAssetGroups,
   processUploadedFile,
   sortTransferFiles,
   isSafeTransferFilename,
@@ -163,8 +164,9 @@ export async function POST(request: NextRequest) {
     }
 
     const sortedFiles = sortTransferFiles(results.map((r) => r.file));
+    const groupedTransfer = applyTransferAssetGroups(sortedFiles);
     const totalSize = results.reduce((sum, r) => sum + r.uploadedBytes, 0);
-    const processingCounts = buildTransferProcessingCounts(sortedFiles);
+    const processingCounts = buildTransferProcessingCounts(groupedTransfer.files);
 
     const now = new Date();
     const expiresAt = new Date(now.getTime() + expiresSeconds * 1000);
@@ -172,7 +174,8 @@ export async function POST(request: NextRequest) {
     const transfer = {
       id: transferId,
       title: title || "untitled",
-      files: sortedFiles,
+      files: groupedTransfer.files,
+      groups: groupedTransfer.groups,
       createdAt: now.toISOString(),
       expiresAt: expiresAt.toISOString(),
       deleteToken,
@@ -186,7 +189,7 @@ export async function POST(request: NextRequest) {
       transfer: {
         id: transferId,
         title: title || "untitled",
-        fileCount: sortedFiles.length,
+        fileCount: groupedTransfer.files.length,
         expiresAt: expiresAt.toISOString(),
       },
       totalSize,

@@ -71,6 +71,7 @@ function buildReadyVisualFile(
   processingStatus: CompletedProcessingStatus,
   processingBackend: ProcessingBackend,
   takenAt?: string | null,
+  livePhotoContentId?: string | null,
   original?: Pick<TransferUploadFileInput, "originalName" | "originalType" | "convertedFrom">,
   previewSource?: TransferFile["previewSource"]
 ): TransferFile {
@@ -89,6 +90,7 @@ function buildReadyVisualFile(
     width,
     height,
     ...(takenAt ? { takenAt } : {}),
+    ...(livePhotoContentId ? { livePhotoContentId } : {}),
     previewStatus: "ready",
     processingStatus,
     processingBackend,
@@ -118,6 +120,18 @@ function buildOriginalOnlyFailureFile(
     processingRoute: route,
     processingErrorCode: code,
     retryCount,
+  };
+}
+
+function preserveTransferGrouping(
+  next: TransferFile,
+  current?: Pick<TransferFile, "groupId" | "groupRole">
+): TransferFile {
+  if (!current?.groupId || !current.groupRole) return next;
+  return {
+    ...next,
+    groupId: current.groupId,
+    groupRole: current.groupRole,
   };
 }
 
@@ -257,6 +271,7 @@ async function materializeVisualFromBuffer(params: {
         processingStatus,
         processingBackend,
         undefined,
+        undefined,
         file
       ),
       uploadedBytes:
@@ -302,6 +317,7 @@ async function materializeVisualFromBuffer(params: {
         processingStatus,
         processingBackend,
         processed.takenAt,
+        processed.livePhotoContentId,
         file
       ),
       uploadedBytes:
@@ -336,6 +352,7 @@ async function materializeVisualFromBuffer(params: {
             processingStatus,
             processingBackend,
             processed.takenAt,
+            processed.livePhotoContentId,
             file,
             "server_raw"
           ),
@@ -546,7 +563,7 @@ async function retryLocalTransferFile(
       code: isRawPreviewUnavailableError(error) ? "raw_preview_unavailable" : "processing_failed",
     });
     return {
-      ...failed.file,
+      ...preserveTransferGrouping(failed.file, file),
       retryCount,
     };
   }
@@ -610,7 +627,7 @@ function createLocalMediaProcessor() {
             if (didTransferFileChange(inferred, retried)) {
               changed = true;
             }
-            return retried;
+            return preserveTransferGrouping(retried, inferred);
           }
 
           if (isTransferProcessingStale(inferred, nowMs) && canRetryTransferProcessing(inferred)) {
@@ -618,7 +635,7 @@ function createLocalMediaProcessor() {
             if (didTransferFileChange(inferred, retried)) {
               changed = true;
             }
-            return retried;
+            return preserveTransferGrouping(retried, inferred);
           }
 
           if (isTransferProcessingStale(inferred, nowMs) && !canRetryTransferProcessing(inferred)) {

@@ -173,7 +173,12 @@ export default async function TransferPage({ params, searchParams }: Props) {
       </section>
 
         <section className="max-w-4xl mx-auto px-6 pb-12" aria-label="Gallery">
-          <TransferGallery transferId={transfer.id} files={transfer.files} />
+          <TransferGallery
+            transferId={transfer.id}
+            files={transfer.files}
+            groups={transfer.groups}
+            deleteToken={isAdmin ? token : undefined}
+          />
         </section>
 
         {/* Admin takedown */}

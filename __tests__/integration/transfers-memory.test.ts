@@ -17,6 +17,7 @@ import {
   saveTransfer,
   getTransfer,
   deleteTransferData,
+  removeTransferFileFromGroups,
   validateDeleteToken,
   generateTransferId,
   generateDeleteToken,
@@ -103,6 +104,49 @@ describe("transfers (in-memory fallback)", () => {
   it("returns false when deleting a non-existent transfer", async () => {
     const deleted = await deleteTransferData("nonexistent-id");
     expect(deleted).toBe(false);
+  });
+
+  it("dissolves groups and clears dangling file metadata", () => {
+    const transfer = makeTransfer({
+      files: [
+        {
+          id: "still",
+          filename: "IMG_1234.HEIC",
+          kind: "image",
+          size: 1024,
+          mimeType: "image/heic",
+          storageKey: "transfers/test-transfer/original/still.heic",
+          groupId: "raw_pair:primary:still:raw:raw",
+          groupRole: "primary",
+        },
+        {
+          id: "raw",
+          filename: "IMG_1234.ARW",
+          kind: "image",
+          size: 4096,
+          mimeType: "image/x-sony-arw",
+          storageKey: "transfers/test-transfer/original/raw.arw",
+          groupId: "raw_pair:primary:still:raw:raw",
+          groupRole: "raw",
+        },
+      ],
+      groups: [
+        {
+          id: "raw_pair:primary:still:raw:raw",
+          type: "raw_pair",
+          members: [
+            { fileId: "still", role: "primary", mimeType: "image/heic" },
+            { fileId: "raw", role: "raw", mimeType: "image/x-sony-arw" },
+          ],
+        },
+      ],
+    });
+
+    const updated = removeTransferFileFromGroups(transfer, "raw");
+    expect(updated.groups).toBeUndefined();
+    expect(updated.files.find((file) => file.id === "still")).toMatchObject({ id: "still" });
+    expect(updated.files.find((file) => file.id === "still")).not.toHaveProperty("groupId");
+    expect(updated.files.find((file) => file.id === "still")).not.toHaveProperty("groupRole");
   });
 
   it("generateTransferId returns a 3-word hyphenated id", () => {

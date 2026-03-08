@@ -1,7 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuthWithPayload } from "@/features/auth/server";
 import { getTransfer, saveTransfer } from "@/features/transfers/store";
-import { processUploadedFile, sortTransferFiles, isSafeTransferFilename } from "@/features/transfers/upload";
+import {
+  applyTransferAssetGroups,
+  processUploadedFile,
+  sortTransferFiles,
+  isSafeTransferFilename,
+} from "@/features/transfers/upload";
 import {
   buildTransferProcessingCounts,
   classifyTransferProcessingRoute,
@@ -112,7 +117,12 @@ export async function POST(request: NextRequest) {
     }
 
     const mergedFiles = sortTransferFiles([...transfer.files, ...results.map((r) => r.file)]);
-    const updatedTransfer = { ...transfer, files: mergedFiles };
+    const groupedTransfer = applyTransferAssetGroups(mergedFiles);
+    const updatedTransfer = {
+      ...transfer,
+      files: groupedTransfer.files,
+      groups: groupedTransfer.groups,
+    };
     await saveTransfer(updatedTransfer, remainingTtlSeconds);
 
     const totalSize = results.reduce((sum, r) => sum + r.uploadedBytes, 0);
@@ -124,7 +134,7 @@ export async function POST(request: NextRequest) {
       transfer: {
         id: transferId,
         title: transfer.title,
-        fileCount: mergedFiles.length,
+        fileCount: groupedTransfer.files.length,
         expiresAt: transfer.expiresAt,
       },
       addedCount: results.length,

@@ -232,13 +232,14 @@ async function processWorkerJob(job: TransferMediaJob): Promise<"succeeded" | "f
           current.originalStorageKey,
           processed.width,
           processed.height,
-          job.processingRoute,
-          "worker_done",
-          "worker",
-          processed.takenAt ?? current.takenAt ?? null,
-          job.file,
-          "server_raw"
-        ),
+        job.processingRoute,
+        "worker_done",
+        "worker",
+        processed.takenAt ?? current.takenAt ?? null,
+        processed.livePhotoContentId ?? current.livePhotoContentId ?? null,
+        job.file,
+        "server_raw"
+      ),
         uploadedBytes:
           processed.thumb.buffer.byteLength +
           processed.full.buffer.byteLength +
@@ -259,7 +260,13 @@ async function processWorkerJob(job: TransferMediaJob): Promise<"succeeded" | "f
     const updated: TransferData = {
       ...processingTransfer,
       files: processingTransfer.files.map((file, index) =>
-        index === fileIndex ? result.file : file
+        index === fileIndex
+          ? {
+              ...result.file,
+              ...(current.groupId ? { groupId: current.groupId } : {}),
+              ...(current.groupRole ? { groupRole: current.groupRole } : {}),
+            }
+          : file
       ),
     };
     await saveTransfer(updated, remainingSeconds);
@@ -284,6 +291,8 @@ async function processWorkerJob(job: TransferMediaJob): Promise<"succeeded" | "f
               ...(current.originalFilename ? { originalFilename: current.originalFilename } : {}),
               ...(current.originalMimeType ? { originalMimeType: current.originalMimeType } : {}),
               ...(current.convertedFrom ? { convertedFrom: current.convertedFrom } : {}),
+              ...(current.groupId ? { groupId: current.groupId } : {}),
+              ...(current.groupRole ? { groupRole: current.groupRole } : {}),
               processingErrorDetail: errorDetail,
             }
           : file
