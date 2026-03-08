@@ -916,6 +916,15 @@ async function withTempFile<T>(
   }
 }
 
+async function canSharpReadImage(buffer: Buffer): Promise<boolean> {
+  try {
+    const metadata = await sharp(buffer, { failOn: "none", unlimited: true }).metadata();
+    return (metadata.width ?? 0) > 0 && (metadata.height ?? 0) > 0;
+  } catch {
+    return false;
+  }
+}
+
 async function decodeRawFileWithLibraw(filename: string): Promise<Buffer> {
   const candidates = ["dcraw_emu", "dcraw"];
   let lastError: unknown = null;
@@ -934,18 +943,13 @@ async function decodeRawFileWithLibraw(filename: string): Promise<Buffer> {
       if (buffer.length === 0) {
         throw new Error(`${binary} produced no decoded output`);
       }
+      if (!(await canSharpReadImage(buffer))) {
+        throw new Error(`${binary} produced output Sharp could not decode`);
+      }
       return buffer;
     } catch (error) {
-      if (
-        error &&
-        typeof error === "object" &&
-        "code" in error &&
-        ((error as { code?: string }).code === "ENOENT")
-      ) {
-        lastError = error;
-        continue;
-      }
-      throw error;
+      lastError = error;
+      continue;
     }
   }
 

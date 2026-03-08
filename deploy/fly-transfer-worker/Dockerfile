@@ -23,4 +23,4 @@ RUN pnpm install --prod --no-frozen-lockfile
 ENV NODE_ENV=production
 EXPOSE 8080
 
-CMD ["pnpm", "worker:transfer-media"]
+CMD ["./node_modules/.bin/tsx", "--tsconfig", "tsconfig.worker.json", "scripts/transfer-media-worker.ts"]

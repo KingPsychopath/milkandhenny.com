@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getTransfer, deleteTransferData, validateDeleteToken } from '@/features/transfers/store';
+import { backfillTransferMedia } from '@/features/transfers/upload';
 import { deleteObjects, isConfigured, listObjects } from '@/lib/platform/r2';
 
 type RouteContext = {
@@ -15,7 +16,8 @@ type RouteContext = {
 export async function GET(_request: NextRequest, context: RouteContext) {
   const { id } = await context.params;
 
-  const transfer = await getTransfer(id);
+  const transferRecord = await getTransfer(id);
+  const transfer = transferRecord ? await backfillTransferMedia(transferRecord) : null;
   if (!transfer) {
     return NextResponse.json(
       { error: 'Transfer not found or expired' },
