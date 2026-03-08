@@ -114,6 +114,26 @@ function shouldShowRawPreviewNotice(item: VisualGalleryItem): boolean {
   return isRawImage(file);
 }
 
+function getVisualLoadFailureMessage(file: TransferFileData): string {
+  if (file.processingStatus === "queued" || file.processingStatus === "processing") {
+    return "Preview is still processing. Wait a moment, then reload the page or download the original file.";
+  }
+
+  if (file.processingStatus === "failed") {
+    return "Preview generation failed for this file. Download the original file instead.";
+  }
+
+  if (file.previewStatus === "original_only") {
+    return "No browser preview is available for this file type. Download the original file instead.";
+  }
+
+  if (file.kind === "video") {
+    return "This video could not be loaded in the browser. Download the original file instead.";
+  }
+
+  return "This preview could not be loaded. The preview asset or original file may be missing. Try downloading the original file instead.";
+}
+
 function isVisualItemSelected(item: VisualGalleryItem, selectedIds: Set<string>): boolean {
   return getVisualItemFiles(item).every((file) => selectedIds.has(file.id));
 }
@@ -1187,7 +1207,10 @@ export function TransferGallery({ transferId, files }: TransferGalleryProps) {
                   <polyline points="21 15 16 10 5 21" />
                 </svg>
                 <p className="font-mono text-sm text-white/40 tracking-wide">
-                  failed to load {getVisualItemLabel(currentVisual)}
+                  could not load {getVisualItemLabel(currentVisual)}
+                </p>
+                <p className="max-w-sm text-center font-mono text-xs text-white/30 leading-relaxed">
+                  {getVisualLoadFailureMessage(getVisualItemPrimaryFile(currentVisual))}
                 </p>
                 <button
                   onClick={() => downloadVisualItem(currentVisual)}
@@ -1279,6 +1302,9 @@ function BrokenImageFallback({ filename }: { filename: string }) {
         <circle cx="8.5" cy="8.5" r="1.5" />
         <polyline points="21 15 16 10 5 21" />
       </svg>
+      <span className="font-mono text-[10px] theme-muted opacity-60 tracking-wide uppercase">
+        preview unavailable
+      </span>
       <span className="font-mono text-nano theme-muted opacity-60 tracking-wide truncate max-w-[80%] px-2 text-center">
         {filename}
       </span>

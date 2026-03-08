@@ -18,4 +18,8 @@ const BASE_URL = (process.env.NEXT_PUBLIC_BASE_URL || "https://milkandhenny.com"
 /** Public R2 / CDN origin for images and transfer files */
 const R2_PUBLIC_URL = process.env.NEXT_PUBLIC_R2_PUBLIC_URL ?? "";
 
-export { SITE_NAME, SITE_BRAND, BASE_URL, R2_PUBLIC_URL };
+function hasPublicR2Url(): boolean {
+  return R2_PUBLIC_URL.trim().length > 0;
+}
+
+export { SITE_NAME, SITE_BRAND, BASE_URL, R2_PUBLIC_URL, hasPublicR2Url };

@@ -13,7 +13,7 @@ import {
 } from "@/features/transfers/upload";
 import { buildTransferProcessingCounts, resolveTransferUploadIds } from "@/features/transfers/media-state";
 import type { TransferUploadFileInput } from "@/features/transfers/upload-types";
-import { BASE_URL } from "@/lib/shared/config";
+import { BASE_URL, hasPublicR2Url } from "@/lib/shared/config";
 import { apiErrorFromRequest } from "@/lib/platform/api-error";
 import { mapWithConcurrency } from "@/lib/shared/map-with-concurrency";
 
@@ -38,6 +38,16 @@ export async function POST(request: NextRequest) {
   const { error: authErr, payload } = await requireAuthWithPayload(request, "upload");
   if (authErr) return authErr;
   const isAdmin = payload?.role === "admin";
+
+  if (!hasPublicR2Url()) {
+    return NextResponse.json(
+      {
+        error:
+          "Transfers are not viewable because NEXT_PUBLIC_R2_PUBLIC_URL is missing. Configure the public R2/CDN URL before uploading.",
+      },
+      { status: 503 }
+    );
+  }
 
   let body: {
     transferId?: string;

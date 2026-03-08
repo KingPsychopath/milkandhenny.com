@@ -16,6 +16,7 @@ import { buildTransferArchivedOriginalStorageKey, buildTransferPrimaryStorageKey
 import type { TransferUploadFileInput } from "@/features/transfers/upload-types";
 import { apiErrorFromRequest } from "@/lib/platform/api-error";
 import { isSafeTransferFilename } from "@/features/transfers/upload";
+import { hasPublicR2Url } from "@/lib/shared/config";
 
 type FileEntry = TransferUploadFileInput;
 
@@ -39,6 +40,16 @@ export async function POST(request: NextRequest) {
   if (!isConfigured()) {
     return NextResponse.json(
       { error: "R2 storage is not configured. Add R2 env vars." },
+      { status: 503 }
+    );
+  }
+
+  if (!hasPublicR2Url()) {
+    return NextResponse.json(
+      {
+        error:
+          "Transfers are not viewable because NEXT_PUBLIC_R2_PUBLIC_URL is missing. Configure the public R2/CDN URL before uploading.",
+      },
       { status: 503 }
     );
   }
