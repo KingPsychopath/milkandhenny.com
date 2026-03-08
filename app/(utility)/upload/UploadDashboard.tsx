@@ -211,7 +211,15 @@ export function UploadDashboard({ isAdmin }: UploadDashboardProps) {
   const effectiveToken =
     mode === "words"
       ? adminToken
-      : uploadToken || adminToken;
+      : adminToken || uploadToken;
+  const effectiveTokenRole =
+    mode === "words"
+      ? (adminToken ? "admin" : null)
+      : adminToken
+        ? "admin"
+        : uploadToken
+          ? "upload"
+          : null;
 
   const authFetch = useCallback(
     async (url: string, options: RequestInit = {}) => {
@@ -224,12 +232,12 @@ export function UploadDashboard({ isAdmin }: UploadDashboardProps) {
       });
       if (res.status === 401) {
         // Clear the token that was actually being used so the user can re-auth.
-        if (uploadToken) {
-          removeStored("uploadToken");
-          setUploadToken("");
-        } else if (adminToken) {
+        if (effectiveTokenRole === "admin") {
           removeStored("adminToken");
           setAdminToken("");
+        } else if (effectiveTokenRole === "upload") {
+          removeStored("uploadToken");
+          setUploadToken("");
         } else {
           // Cookie session is missing/expired. Force the server auth gate.
           window.location.assign("/upload");
@@ -237,7 +245,7 @@ export function UploadDashboard({ isAdmin }: UploadDashboardProps) {
       }
       return res;
     },
-    [adminToken, effectiveToken, uploadToken]
+    [effectiveToken, effectiveTokenRole]
   );
 
   const adminAuthFetch = useCallback(
