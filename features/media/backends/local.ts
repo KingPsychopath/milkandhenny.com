@@ -66,7 +66,8 @@ function buildReadyVisualFile(
   processingStatus: CompletedProcessingStatus,
   processingBackend: ProcessingBackend,
   takenAt?: string | null,
-  original?: Pick<TransferUploadFileInput, "originalName" | "originalType" | "convertedFrom">
+  original?: Pick<TransferUploadFileInput, "originalName" | "originalType" | "convertedFrom">,
+  previewSource?: TransferFile["previewSource"]
 ): TransferFile {
   return {
     id: getTransferFileId(filename),
@@ -79,6 +80,7 @@ function buildReadyVisualFile(
     ...(original?.originalName ? { originalFilename: original.originalName } : {}),
     ...(original?.originalType ? { originalMimeType: original.originalType } : {}),
     ...(original?.convertedFrom ? { convertedFrom: original.convertedFrom } : {}),
+    ...(previewSource ? { previewSource } : {}),
     width,
     height,
     ...(takenAt ? { takenAt } : {}),
@@ -252,6 +254,12 @@ async function materializeVisualFromBuffer(params: {
     if (!processed) {
       throw primaryError;
     }
+    const previewSource =
+      file.convertedFrom === "raw"
+        ? upgradedFromRaw
+          ? "server_raw"
+          : "client_raw"
+        : undefined;
 
     await Promise.all([
       uploadBuffer(`${prefix}/thumb/${derivedId}.webp`, processed.thumb.buffer, processed.thumb.contentType),
@@ -273,7 +281,8 @@ async function materializeVisualFromBuffer(params: {
         processingStatus,
         processingBackend,
         processed.takenAt,
-        file
+        file,
+        previewSource
       ),
       uploadedBytes:
         processed.thumb.buffer.byteLength +

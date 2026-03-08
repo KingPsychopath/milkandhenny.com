@@ -91,6 +91,53 @@ function resolveAcceptedRawPreviewThreshold(longestEdge: number): number | null 
   return null;
 }
 
+type RawPreviewCandidate = {
+  blob: Blob;
+  width: number;
+  height: number;
+  longestEdge: number;
+  acceptedThreshold: number;
+  byteLength: number;
+};
+
+function compareRawPreviewCandidates(a: RawPreviewCandidate, b: RawPreviewCandidate): number {
+  if (a.longestEdge !== b.longestEdge) return b.longestEdge - a.longestEdge;
+  if (a.width !== b.width) return b.width - a.width;
+  if (a.height !== b.height) return b.height - a.height;
+  return b.byteLength - a.byteLength;
+}
+
+function copyPreviewBytes(preview: Uint8Array | ArrayBuffer): Uint8Array {
+  const previewBytes = preview instanceof Uint8Array ? preview : new Uint8Array(preview);
+  const previewCopy = new Uint8Array(previewBytes.byteLength);
+  previewCopy.set(previewBytes);
+  return previewCopy;
+}
+
+function toBlobPart(bytes: Uint8Array): ArrayBuffer {
+  const copy = new Uint8Array(bytes.byteLength);
+  copy.set(bytes);
+  return copy.buffer;
+}
+
+async function inspectRawPreviewBlob(blob: Blob): Promise<RawPreviewCandidate> {
+  const { width, height } = await getImageDimensions(blob);
+  const longestEdge = Math.max(width, height);
+  const acceptedThreshold = resolveAcceptedRawPreviewThreshold(longestEdge);
+  if (acceptedThreshold === null) {
+    throw new Error("Embedded RAW preview is too small");
+  }
+
+  return {
+    blob,
+    width,
+    height,
+    longestEdge,
+    acceptedThreshold,
+    byteLength: blob.size,
+  };
+}
+
 function inferHeifMimeType(file: Pick<File, "name" | "type">): string {
   if (HEIF_MIME_TYPES.includes(file.type.toLowerCase() as (typeof HEIF_MIME_TYPES)[number])) {
     return file.type.toLowerCase();
@@ -479,27 +526,56 @@ async function convertHeifFile(file: File): Promise<File> {
 async function extractRawPreviewFile(
   file: File
 ): Promise<{ file: File; longestEdge: number; acceptedThreshold: number }> {
-  const preview = await exifr.thumbnail(file);
-  if (!preview) throw new Error("No embedded RAW preview found");
+  const candidates: RawPreviewCandidate[] = [];
 
-  const previewBytes = preview instanceof Uint8Array ? preview : new Uint8Array(preview);
-  const previewCopy = new Uint8Array(previewBytes.byteLength);
-  previewCopy.set(previewBytes);
-  const previewBlob = new Blob([previewCopy], { type: "image/jpeg" });
-  const { width, height } = await getImageDimensions(previewBlob);
-  const longestEdge = Math.max(width, height);
-  const acceptedThreshold = resolveAcceptedRawPreviewThreshold(longestEdge);
-  if (acceptedThreshold === null) {
-    throw new Error("Embedded RAW preview is too small");
+  try {
+    const preview = await exifr.thumbnail(file);
+    if (preview) {
+      const previewBlob = new Blob([toBlobPart(copyPreviewBytes(preview))], { type: "image/jpeg" });
+      candidates.push(await inspectRawPreviewBlob(previewBlob));
+    }
+  } catch {
+    // Keep searching for other embedded JPEG previews.
+  }
+
+  const rawBytes = new Uint8Array(await file.arrayBuffer());
+  let jpegStart = -1;
+  for (let i = 0; i < rawBytes.length - 1; i++) {
+    const a = rawBytes[i];
+    const b = rawBytes[i + 1];
+
+    if (jpegStart === -1 && a === 0xff && b === 0xd8) {
+      jpegStart = i;
+      i += 1;
+      continue;
+    }
+
+    if (jpegStart !== -1 && a === 0xff && b === 0xd9) {
+      const end = i + 2;
+      const candidateBytes = rawBytes.slice(jpegStart, end);
+      jpegStart = -1;
+      i += 1;
+
+      try {
+        candidates.push(await inspectRawPreviewBlob(new Blob([toBlobPart(candidateBytes)], { type: "image/jpeg" })));
+      } catch {
+        continue;
+      }
+    }
+  }
+
+  const bestCandidate = candidates.sort(compareRawPreviewCandidates)[0];
+  if (!bestCandidate) {
+    throw new Error("No embedded RAW preview found");
   }
 
   return {
-    file: new File([previewBlob], replaceExtensionWithJpg(file.name), {
+    file: new File([bestCandidate.blob], replaceExtensionWithJpg(file.name), {
       type: "image/jpeg",
       lastModified: file.lastModified,
     }),
-    longestEdge,
-    acceptedThreshold,
+    longestEdge: bestCandidate.longestEdge,
+    acceptedThreshold: bestCandidate.acceptedThreshold,
   };
 }
 

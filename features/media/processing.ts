@@ -143,31 +143,53 @@ function resolveAcceptedRawPreviewThreshold(longestEdge: number): number | null 
   return null;
 }
 
-async function validateRawPreviewBuffer(
+type RawPreviewCandidate = {
+  buffer: Buffer;
+  width: number;
+  height: number;
+  longestEdge: number;
+  byteLength: number;
+};
+
+function compareRawPreviewCandidates(a: RawPreviewCandidate, b: RawPreviewCandidate): number {
+  if (a.longestEdge !== b.longestEdge) return b.longestEdge - a.longestEdge;
+  if (a.width !== b.width) return b.width - a.width;
+  if (a.height !== b.height) return b.height - a.height;
+  return b.byteLength - a.byteLength;
+}
+
+async function inspectRawPreviewBuffer(
   preview: Buffer | Uint8Array,
   sourceExt: string
-): Promise<Buffer> {
+): Promise<RawPreviewCandidate> {
   const buffer = normalizePreviewBuffer(preview);
   const metadata = await sharp(buffer).metadata();
   const width = metadata.width ?? 0;
   const height = metadata.height ?? 0;
-  const acceptedThreshold = resolveAcceptedRawPreviewThreshold(Math.max(width, height));
+  const longestEdge = Math.max(width, height);
+  const acceptedThreshold = resolveAcceptedRawPreviewThreshold(longestEdge);
 
   if (acceptedThreshold === null) {
     throw new RawPreviewUnavailableError(sourceExt, "too_small");
   }
 
-  return buffer;
+  return {
+    buffer,
+    width,
+    height,
+    longestEdge,
+    byteLength: buffer.byteLength,
+  };
 }
 
-async function resolveExifrRawPreview(raw: Buffer, sourceExt: string): Promise<Buffer | null> {
+async function resolveExifrRawPreview(raw: Buffer, sourceExt: string): Promise<RawPreviewCandidate | null> {
   const exifr = (await import("exifr")).default;
   const preview = await exifr.thumbnail(raw);
   if (!preview) return null;
-  return validateRawPreviewBuffer(preview, sourceExt);
+  return inspectRawPreviewBuffer(preview, sourceExt);
 }
 
-async function extractEmbeddedJpegPreview(raw: Buffer): Promise<Buffer | null> {
+async function extractEmbeddedJpegPreview(raw: Buffer, sourceExt: string): Promise<RawPreviewCandidate | null> {
   const candidates: Array<{ start: number; end: number; length: number }> = [];
   const minimumCandidateLength = 64;
   let jpegStart = -1;
@@ -194,13 +216,22 @@ async function extractEmbeddedJpegPreview(raw: Buffer): Promise<Buffer | null> {
   }
 
   candidates.sort((a, b) => b.length - a.length);
+  let bestCandidate: RawPreviewCandidate | null = null;
 
-  for (const candidate of candidates.slice(0, 6)) {
+  for (const candidate of candidates) {
     const preview = raw.subarray(candidate.start, candidate.end);
-    if (await isValidJpegBuffer(preview)) return Buffer.from(preview);
+    if (!await isValidJpegBuffer(preview)) continue;
+    try {
+      const inspected = await inspectRawPreviewBuffer(Buffer.from(preview), sourceExt);
+      if (!bestCandidate || compareRawPreviewCandidates(inspected, bestCandidate) < 0) {
+        bestCandidate = inspected;
+      }
+    } catch {
+      continue;
+    }
   }
 
-  return null;
+  return bestCandidate;
 }
 
 type TiffReadContext = {
@@ -334,30 +365,41 @@ function extractDngPreviewFromTiff(raw: Buffer): Buffer | null {
   return bestCandidate;
 }
 
-async function resolveLegacyRawPreview(raw: Buffer, sourceExt: string): Promise<Buffer | null> {
+async function resolveLegacyRawPreview(raw: Buffer, sourceExt: string): Promise<RawPreviewCandidate | null> {
+  const candidates: RawPreviewCandidate[] = [];
   const tiffPreview = hasClassicTiffHeader(raw) ? extractDngPreviewFromTiff(raw) : null;
   if (tiffPreview && await isValidJpegBuffer(tiffPreview)) {
-    return validateRawPreviewBuffer(tiffPreview, sourceExt);
+    try {
+      candidates.push(await inspectRawPreviewBuffer(tiffPreview, sourceExt));
+    } catch {
+      // Ignore invalid previews and keep checking other candidates.
+    }
   }
 
-  const embeddedPreview = await extractEmbeddedJpegPreview(raw);
+  const embeddedPreview = await extractEmbeddedJpegPreview(raw, sourceExt);
   if (embeddedPreview) {
-    return validateRawPreviewBuffer(embeddedPreview, sourceExt);
+    candidates.push(embeddedPreview);
   }
 
-  return null;
+  if (candidates.length === 0) return null;
+  return candidates.sort(compareRawPreviewCandidates)[0] ?? null;
 }
 
 async function resolveRawPreview(raw: Buffer, sourceExt: string): Promise<Buffer> {
+  const candidates: RawPreviewCandidate[] = [];
   try {
     const exifrPreview = await resolveExifrRawPreview(raw, sourceExt);
-    if (exifrPreview) return exifrPreview;
+    if (exifrPreview) candidates.push(exifrPreview);
   } catch {
     // Try the legacy extractor before falling back to original-only.
   }
 
   const legacyPreview = await resolveLegacyRawPreview(raw, sourceExt);
-  if (legacyPreview) return legacyPreview;
+  if (legacyPreview) candidates.push(legacyPreview);
+
+  if (candidates.length > 0) {
+    return candidates.sort(compareRawPreviewCandidates)[0]!.buffer;
+  }
 
   throw new RawPreviewUnavailableError(sourceExt, "missing");
 }

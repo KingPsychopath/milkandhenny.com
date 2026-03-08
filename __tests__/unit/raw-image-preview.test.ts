@@ -119,6 +119,22 @@ describe("raw image preview processing", () => {
     expect(result.height).toBe(120);
   });
 
+  it("prefers a larger embedded jpeg over a tiny exifr thumbnail", async () => {
+    const preview = await makeJpegBuffer(160, 120);
+    const rawLike = await makeEmbeddedJpegRawLikeBuffer(1400, 900);
+    vi.doMock("exifr", () => ({
+      default: {
+        thumbnail: vi.fn().mockResolvedValue(preview),
+      },
+    }));
+
+    const { processToWebP } = await importProcessingModule();
+    const result = await processToWebP(rawLike, "IMG_3001.arw");
+
+    expect(result.width).toBe(1400);
+    expect(result.height).toBe(900);
+  });
+
   it("throws when exifr finds no embedded preview", async () => {
     vi.doMock("exifr", () => ({
       default: {
