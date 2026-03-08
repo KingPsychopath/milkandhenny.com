@@ -982,7 +982,8 @@ async function applyBaselineExposure(
         : 0;
 
     if (Number.isFinite(baselineEV) && Math.abs(baselineEV) > 0.05) {
-      return pipeline.linear(Math.pow(2, baselineEV), 0);
+      // DNG baseline exposure is compensation metadata, so apply the inverse gain here.
+      return pipeline.linear(Math.pow(2, -baselineEV), 0);
     }
   } catch {
     // Ignore missing tags and parser errors; fallback decode should still succeed.
@@ -995,18 +996,20 @@ async function processRawWithDcraw(raw: Buffer, sourceExtOrFilename = ".dng"): P
   const ext = path.extname(sourceExtOrFilename).toLowerCase() || sourceExtOrFilename.toLowerCase();
   return withTempFile("transfer-raw", ext, raw, async (tempFile) => {
     const isDng = ext === ".dng";
-    let pipeline = sharp(tempFile, { failOn: "none", unlimited: true })
-      .rotate()
-      .pipelineColourspace("scrgb");
+    const input = sharp(tempFile, { failOn: "none", unlimited: true }).rotate();
+    const metadata = await input.metadata();
+    const isLinearScrgb = metadata.space === "scrgb";
+    let pipeline = input;
 
-    if (isDng) {
-      pipeline = await applyBaselineExposure(pipeline, raw);
+    if (isLinearScrgb) {
+      pipeline = pipeline.pipelineColourspace("scrgb");
+      if (isDng) {
+        pipeline = await applyBaselineExposure(pipeline, raw);
+      }
+      pipeline = pipeline.toColourspace("srgb");
     }
 
-    const buffer = await pipeline
-      .toColourspace("srgb")
-      .jpeg({ quality: 95, mozjpeg: true })
-      .toBuffer();
+    const buffer = await pipeline.jpeg({ quality: 95, mozjpeg: true }).toBuffer();
     if (buffer.length === 0) {
       throw new Error("Failed to decode raw image");
     }
