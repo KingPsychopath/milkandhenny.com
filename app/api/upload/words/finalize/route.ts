@@ -19,9 +19,10 @@ import {
 import { getFileKind } from "@/features/media/processing";
 import type { FileKind } from "@/features/media/file-kinds";
 import { mapWithConcurrency } from "@/lib/shared/map-with-concurrency";
+import { enqueueWordMediaJob } from "@/features/words/media-queue";
 
-/** Allow longer execution for image processing */
-export const maxDuration = 60;
+/** Keep finalize short; deterministic image processing is queued for the worker. */
+export const maxDuration = 15;
 const FINALIZE_CONCURRENCY = 2;
 
 type FinalizeFile = {
@@ -31,6 +32,21 @@ type FinalizeFile = {
   size: number;
   kind: FileKind;
   overwrote: boolean;
+};
+
+type FinalizeSuccess = {
+  uploaded: Array<{
+    original: string;
+    filename: string;
+    kind: FileKind;
+    width?: number;
+    height?: number;
+    size: number;
+    markdown: string;
+    overwrote: boolean;
+  }>;
+  skipped: string[];
+  queuedCount: number;
 };
 
 const SAFE_WORD_FILENAME = /^[a-z0-9-]+\.[a-z0-9]{1,8}$/;
@@ -116,10 +132,34 @@ export async function POST(request: NextRequest) {
   }
 
   try {
+    let queuedCount = 0;
     const uploaded = await mapWithConcurrency(files, FINALIZE_CONCURRENCY, async (file) => {
       const original = file.original.trim();
 
       if (isProcessableImage(original)) {
+        if (!isRawWordUpload(original)) {
+          const webpFilename = toR2Filename(original);
+          await enqueueWordMediaJob({
+            target,
+            original,
+            uploadKey: file.uploadKey,
+            finalFilename: webpFilename,
+            size: file.size,
+            overwrote: !!file.overwrote,
+            enqueuedAt: new Date().toISOString(),
+          });
+          queuedCount += 1;
+
+          return {
+            original,
+            filename: webpFilename,
+            kind: "image" as const,
+            size: file.size,
+            markdown: toMarkdownSnippetForTarget(target, webpFilename, "image"),
+            overwrote: !!file.overwrote,
+          };
+        }
+
         // Uploaded to a temp key → download → process → upload to final key → delete temp key.
         const raw = await downloadBuffer(file.uploadKey);
         const webpFilename = toR2Filename(original);
@@ -184,7 +224,8 @@ export async function POST(request: NextRequest) {
       };
     });
 
-    return NextResponse.json({ uploaded, skipped });
+    const payload: FinalizeSuccess = { uploaded, skipped, queuedCount };
+    return NextResponse.json(payload);
   } catch (e) {
     const incomingKeys = files
       .map((file) => file.uploadKey)

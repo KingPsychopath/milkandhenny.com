@@ -4,6 +4,8 @@ import { getRedis } from "@/lib/platform/redis";
 import { isConfigured, listPrefixes, listObjects, deleteObjects } from "@/lib/platform/r2";
 import { apiErrorFromRequest } from "@/lib/platform/api-error";
 
+type CleanupMode = "index" | "deep";
+
 /**
  * On-demand admin cleanup for expired/orphaned transfers.
  * Mirrors cron behavior but is manually triggered from dashboard.
@@ -23,6 +25,14 @@ export async function POST(request: NextRequest) {
   }
 
   try {
+    let mode: CleanupMode = "index";
+    try {
+      const body = (await request.json()) as { mode?: CleanupMode };
+      if (body.mode === "deep") mode = "deep";
+    } catch {
+      // Default to lightweight index cleanup when no body is provided.
+    }
+
     const indexedIds: string[] = await redis.smembers("transfer:index");
 
     let expiredIds: string[] = [];
@@ -43,16 +53,25 @@ export async function POST(request: NextRequest) {
       await cleanupPipeline.exec();
     }
 
+    if (mode !== "deep") {
+      return NextResponse.json({
+        success: true,
+        mode,
+        expiredIndexEntries: expiredIds.length,
+        scannedPrefixes: 0,
+        deletedObjects: 0,
+        timestamp: new Date().toISOString(),
+      });
+    }
+
     const transferPrefixes = await listPrefixes("transfers/");
     const allR2Ids = transferPrefixes
       .map((p) => p.replace("transfers/", "").replace(/\/$/, ""))
       .filter(Boolean);
 
+    const orphanIds = await findMissingTransferIds(redis, allR2Ids);
     let deletedObjects = 0;
-    for (const id of allR2Ids) {
-      const exists = await redis.exists(`transfer:${id}`);
-      if (exists) continue;
-
+    for (const id of orphanIds) {
       const objects = await listObjects(`transfers/${id}/`);
       const keys = objects.map((o) => o.key);
       if (keys.length > 0) {
@@ -63,6 +82,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
+      mode,
       expiredIndexEntries: expiredIds.length,
       scannedPrefixes: allR2Ids.length,
       deletedObjects,
@@ -76,4 +96,17 @@ export async function POST(request: NextRequest) {
       error
     );
   }
+}
+
+async function findMissingTransferIds(
+  redis: NonNullable<ReturnType<typeof getRedis>>,
+  ids: string[]
+): Promise<string[]> {
+  if (ids.length === 0) return [];
+  const pipeline = redis.pipeline();
+  for (const id of ids) {
+    pipeline.exists(`transfer:${id}`);
+  }
+  const results = await pipeline.exec();
+  return ids.filter((_, index) => results[index] === 0);
 }

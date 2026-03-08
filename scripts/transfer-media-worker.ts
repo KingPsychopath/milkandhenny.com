@@ -2,6 +2,7 @@ import "./r2-client";
 
 import { createServer } from "node:http";
 import { processWorkerJob } from "@/features/media/backends/worker";
+import { processWordMediaJob } from "@/features/words/media-worker";
 import { closeDirectRedisConnections } from "@/lib/platform/redis-direct";
 import {
   ackTransferMediaJob,
@@ -9,6 +10,12 @@ import {
   recoverTransferMediaProcessingJobs,
   requeueTransferMediaJob,
 } from "@/features/transfers/media-queue";
+import {
+  ackWordMediaJob,
+  claimWordMediaJobBlocking,
+  recoverWordMediaProcessingJobs,
+  requeueWordMediaJob,
+} from "@/features/words/media-queue";
 import { updateTransferMediaWorkerStatus } from "@/features/transfers/media-worker-status";
 
 const WORKER_ENABLED = process.env.TRANSFER_MEDIA_WORKER_ENABLED !== "0";
@@ -61,9 +68,12 @@ async function main() {
   }
 
   const recovered = await recoverTransferMediaProcessingJobs();
+  const recoveredWordJobs = await recoverWordMediaProcessingJobs();
   console.log(
     `[transfer-media-worker] starting with concurrency ${WORKER_CONCURRENCY}${
-      recovered > 0 ? ` (requeued ${recovered} in-flight jobs)` : ""
+      recovered > 0 || recoveredWordJobs > 0
+        ? ` (requeued ${recovered} transfer and ${recoveredWordJobs} word-media in-flight jobs)`
+        : ""
     }`
   );
 
@@ -73,23 +83,43 @@ async function main() {
 
   async function consumeLoop(index: number) {
     while (running) {
-      let claimed: Awaited<ReturnType<typeof claimTransferMediaJobBlocking>> | null = null;
+      let claimedTransfer: Awaited<ReturnType<typeof claimTransferMediaJobBlocking>> | null = null;
+      let claimedWord: Awaited<ReturnType<typeof claimWordMediaJobBlocking>> | null = null;
 
       try {
-        claimed = await claimTransferMediaJobBlocking();
+        claimedTransfer = await claimTransferMediaJobBlocking(1);
         if (!running) break;
 
-        const outcome = await processWorkerJob(claimed.job);
-        await ackTransferMediaJob(claimed.raw);
-        await updateTransferMediaWorkerStatus({
-          lastHeartbeatAt: new Date().toISOString(),
-          lastProcessedAt: new Date().toISOString(),
-        });
-        console.log(`[transfer-media-worker] worker=${index} outcome=${outcome}`);
+        if (claimedTransfer) {
+          const outcome = await processWorkerJob(claimedTransfer.job);
+          await ackTransferMediaJob(claimedTransfer.raw);
+          await updateTransferMediaWorkerStatus({
+            lastHeartbeatAt: new Date().toISOString(),
+            lastProcessedAt: new Date().toISOString(),
+          });
+          console.log(`[transfer-media-worker] worker=${index} transfer=${outcome}`);
+          continue;
+        }
+
+        claimedWord = await claimWordMediaJobBlocking(1);
+        if (!running) break;
+
+        if (claimedWord) {
+          const outcome = await processWordMediaJob(claimedWord.job);
+          await ackWordMediaJob(claimedWord.raw);
+          await updateTransferMediaWorkerStatus({
+            lastHeartbeatAt: new Date().toISOString(),
+            lastProcessedAt: new Date().toISOString(),
+          });
+          console.log(`[transfer-media-worker] worker=${index} word-media=${outcome}`);
+        }
       } catch (error) {
         if (!running) break;
-        if (claimed) {
-          await requeueTransferMediaJob(claimed.raw);
+        if (claimedTransfer) {
+          await requeueTransferMediaJob(claimedTransfer.raw);
+        }
+        if (claimedWord) {
+          await requeueWordMediaJob(claimedWord.raw);
         }
         const message = error instanceof Error ? error.stack ?? error.message : String(error);
         await updateTransferMediaWorkerStatus({

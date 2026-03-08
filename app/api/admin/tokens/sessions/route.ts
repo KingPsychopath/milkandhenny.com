@@ -14,6 +14,9 @@ type SessionRecord = {
   status: "active" | "expired" | "revoked" | "invalidated";
 };
 
+const DEFAULT_SESSION_PAGE_SIZE = 100;
+const MAX_SESSION_PAGE_SIZE = 250;
+
 export async function GET(request: NextRequest) {
   const authErr = await requireAuth(request, "admin");
   if (authErr) return authErr;
@@ -29,6 +32,10 @@ export async function GET(request: NextRequest) {
   try {
     const jtis: string[] = await redis.smembers("auth:sessions:index");
     const now = Math.floor(Date.now() / 1000);
+    const rawLimit = Number(request.nextUrl.searchParams.get("limit") ?? DEFAULT_SESSION_PAGE_SIZE);
+    const limit = Number.isFinite(rawLimit)
+      ? Math.min(MAX_SESSION_PAGE_SIZE, Math.max(1, Math.floor(rawLimit)))
+      : DEFAULT_SESSION_PAGE_SIZE;
 
     // Fetch current token versions so we can flag invalidated sessions.
     const [adminTv, staffTv, uploadTv] = await Promise.all([
@@ -42,38 +49,50 @@ export async function GET(request: NextRequest) {
       upload: typeof uploadTv === "number" ? uploadTv : 1,
     } as const;
 
-    // For small lists, parallel is fine. If this grows large, we can page.
-    const raw = await Promise.all(
-      jtis.slice(0, 250).map(async (jti) => {
-        const session = await redis.get<{
-          role: SessionRecord["role"];
-          iat: number;
-          exp: number;
-          tv: number;
-          ip?: string;
-          ua?: string;
-        }>(`auth:session:${jti}`);
+    const pageJtis = jtis.slice(0, limit);
+    const sessionPipeline = redis.pipeline();
+    for (const jti of pageJtis) {
+      sessionPipeline.get(`auth:session:${jti}`);
+    }
+    const sessionsRaw = await sessionPipeline.exec();
 
-        if (!session) return null;
-        const revoked = await redis.exists(`auth:revoked-jti:${jti}`);
+    const revokedPipeline = redis.pipeline();
+    for (const jti of pageJtis) {
+      revokedPipeline.exists(`auth:revoked-jti:${jti}`);
+    }
+    const revokedRaw = await revokedPipeline.exec();
 
-        let status: SessionRecord["status"] = "active";
-        if (session.exp <= now) status = "expired";
-        else if (revoked) status = "revoked";
-        else if (session.tv !== currentTv[session.role]) status = "invalidated";
+    const raw = pageJtis.map((jti, index) => {
+      const session = sessionsRaw[index] as
+        | {
+            role: SessionRecord["role"];
+            iat: number;
+            exp: number;
+            tv: number;
+            ip?: string;
+            ua?: string;
+          }
+        | null;
+      if (!session) return null;
 
-        return {
-          jti,
-          role: session.role,
-          iat: session.iat,
-          exp: session.exp,
-          tv: session.tv,
-          ip: session.ip,
-          ua: session.ua,
-          status,
-        } satisfies SessionRecord;
-      })
-    );
+      const revoked = revokedRaw[index] === 1;
+
+      let status: SessionRecord["status"] = "active";
+      if (session.exp <= now) status = "expired";
+      else if (revoked) status = "revoked";
+      else if (session.tv !== currentTv[session.role]) status = "invalidated";
+
+      return {
+        jti,
+        role: session.role,
+        iat: session.iat,
+        exp: session.exp,
+        tv: session.tv,
+        ip: session.ip,
+        ua: session.ua,
+        status,
+      } satisfies SessionRecord;
+    });
 
     const sessions = raw
       .filter((s): s is SessionRecord => s !== null)
@@ -82,6 +101,8 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       success: true,
       count: sessions.length,
+      totalIndexed: jtis.length,
+      truncated: jtis.length > limit,
       sessions,
       now,
       currentTv,
@@ -90,4 +111,3 @@ export async function GET(request: NextRequest) {
     return apiErrorFromRequest(request, "admin.tokens.sessions", "Failed to list token sessions", error);
   }
 }
-

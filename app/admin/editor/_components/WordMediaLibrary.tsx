@@ -46,6 +46,7 @@ type WordsPresignResponse = {
 type WordsFinalizeResponse = {
   uploaded: Array<{ markdown: string }>;
   skipped: string[];
+  queuedCount?: number;
 };
 
 const DIRECT_UPLOAD_CONCURRENCY = 4;
@@ -233,6 +234,10 @@ export function WordMediaLibrary({
       setUploadStatus(
         `uploaded ${finalizeData.uploaded.length} file${finalizeData.uploaded.length === 1 ? "" : "s"}${
           autoAppendUploaded && finalizeData.uploaded.length > 0 ? " · snippets appended" : ""
+        }${
+          (finalizeData.queuedCount ?? 0) > 0
+            ? ` · ${finalizeData.queuedCount} queued for processing`
+            : ""
         }`
       );
     } catch (error) {

@@ -15,6 +15,65 @@ describe("words raw upload handling", () => {
     vi.clearAllMocks();
   });
 
+  it("queues non-raw image uploads instead of processing them inline", async () => {
+    const enqueueWordMediaJob = vi.fn().mockResolvedValue(undefined);
+    const downloadBuffer = vi.fn();
+    const uploadBuffer = vi.fn();
+    const deleteObject = vi.fn();
+
+    vi.doMock("@/features/auth/server", () => ({
+      requireAuthWithPayload: vi.fn().mockResolvedValue({ error: null }),
+    }));
+    vi.doMock("@/lib/platform/r2", () => ({
+      deleteObject,
+      downloadBuffer,
+      isConfigured: () => true,
+      uploadBuffer,
+    }));
+    vi.doMock("@/features/words/media-queue", () => ({
+      enqueueWordMediaJob,
+    }));
+
+    const { POST } = await import("@/app/api/upload/words/finalize/route");
+    const response = await POST(
+      makeRequest("/api/upload/words/finalize", {
+        slug: "launch-notes",
+        files: [
+          {
+            original: "Hero.JPG",
+            filename: "hero.webp",
+            uploadKey: "words/media/launch-notes/incoming/tmp-hero.jpg",
+            kind: "image",
+            size: 42,
+            overwrote: false,
+          },
+        ],
+      })
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      uploaded: [
+        {
+          filename: "hero.webp",
+          kind: "image",
+          markdown: "![hero](words/media/launch-notes/hero.webp)",
+        },
+      ],
+      queuedCount: 1,
+    });
+    expect(enqueueWordMediaJob).toHaveBeenCalledWith(
+      expect.objectContaining({
+        original: "Hero.JPG",
+        uploadKey: "words/media/launch-notes/incoming/tmp-hero.jpg",
+        finalFilename: "hero.webp",
+      })
+    );
+    expect(downloadBuffer).not.toHaveBeenCalled();
+    expect(uploadBuffer).not.toHaveBeenCalled();
+    expect(deleteObject).not.toHaveBeenCalled();
+  });
+
   it("returns webp output when raw preview extraction succeeds", async () => {
     const downloadBuffer = vi.fn().mockResolvedValue(Buffer.from("raw"));
     const uploadBuffer = vi.fn().mockResolvedValue(undefined);

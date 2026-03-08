@@ -12,6 +12,7 @@ function makeRequest(body: unknown) {
 describe("upload transfer presign", () => {
   beforeEach(() => {
     vi.resetModules();
+    process.env.NEXT_PUBLIC_R2_PUBLIC_URL = "https://example.com";
   });
 
   it("should bypass transfer size caps for admins", async () => {

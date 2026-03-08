@@ -139,15 +139,7 @@ async function enqueueWorkerJob(params: {
       attempt,
       enqueuedAt,
     });
-    if (process.env.NODE_ENV !== "test") {
-      void fetch(
-        process.env.TRANSFER_MEDIA_WORKER_WAKE_URL ?? "https://party-guest-list-transfer-worker.fly.dev/wake",
-        {
-          method: "POST",
-          signal: AbortSignal.timeout(1500),
-        }
-      ).catch(() => {});
-    }
+    void wakeTransferMediaWorker();
 
     return {
       file: {
@@ -165,6 +157,28 @@ async function enqueueWorkerJob(params: {
     };
   } catch {
     return buildFailedQueueResult(mediaId, params.file.name, params.file.size, storageKey, route, "enqueue_failed", attempt);
+  }
+}
+
+async function wakeTransferMediaWorker(): Promise<boolean> {
+  if (process.env.NODE_ENV === "test") return true;
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 1500);
+
+  try {
+    const res = await fetch(
+      process.env.TRANSFER_MEDIA_WORKER_WAKE_URL ?? "https://party-guest-list-transfer-worker.fly.dev/wake",
+      {
+        method: "POST",
+        signal: controller.signal,
+      }
+    );
+    return res.ok;
+  } catch {
+    return false;
+  } finally {
+    clearTimeout(timeout);
   }
 }
 
@@ -385,6 +399,7 @@ export {
   refreshQueuedTransferState,
   requeueTransferFile,
   runTransferMediaJobs,
+  wakeTransferMediaWorker,
 };
 
 export type { WorkerRunResult };

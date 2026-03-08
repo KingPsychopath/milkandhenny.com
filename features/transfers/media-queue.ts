@@ -105,7 +105,7 @@ function parseTransferMediaJob(raw: string): TransferMediaJob | null {
   return null;
 }
 
-async function claimTransferMediaJobBlocking(): Promise<ClaimedTransferMediaJob> {
+async function claimTransferMediaJobBlocking(timeoutSeconds = 0): Promise<ClaimedTransferMediaJob | null> {
   if (!isWorkerEnabled() || !isWorkerQueueEnabled()) {
     throw new Error("Transfer media queue is disabled.");
   }
@@ -114,10 +114,10 @@ async function claimTransferMediaJobBlocking(): Promise<ClaimedTransferMediaJob>
     const raw = await getBlockingRedis().brpoplpush(
       TRANSFER_MEDIA_QUEUE_KEY,
       TRANSFER_MEDIA_PROCESSING_KEY,
-      0
+      timeoutSeconds
     );
     if (!raw) {
-      continue;
+      return null;
     }
 
     const job = parseTransferMediaJob(raw);

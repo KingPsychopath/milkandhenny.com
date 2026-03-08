@@ -269,6 +269,7 @@ export function AdminDashboard() {
   const [sharedWordPurgeLoading, setSharedWordPurgeLoading] = useState(false);
   const [transferActionLoading, setTransferActionLoading] = useState<string | null>(null);
   const [transferCleanupLoading, setTransferCleanupLoading] = useState(false);
+  const [transferDeepCleanupLoading, setTransferDeepCleanupLoading] = useState(false);
   const [transferNukeLoading, setTransferNukeLoading] = useState(false);
   const [transferStatusMessage, setTransferStatusMessage] = useState("");
   const [copiedTransferId, setCopiedTransferId] = useState<string | null>(null);
@@ -426,20 +427,23 @@ export function AdminDashboard() {
     void loadWordMediaOrphans();
   }, [loadWordMediaOrphans]);
 
-  const runContentAudit = async () => {
+  const runContentAudit = async (refresh = false) => {
     setAuditLoading(true);
     setErrorMessage("");
     setStatusMessage("");
     try {
-      const res = await authFetch("/api/admin/content-audit");
-      const data = await res.json().catch(() => ({}));
+      const res = await authFetch(`/api/admin/content-audit${refresh ? "?refresh=1" : ""}`);
+      const data = (await res.json().catch(() => ({}))) as Partial<ContentAuditResponse> & {
+        error?: string;
+        cached?: boolean;
+      };
       if (!res.ok) {
         throw new Error((data.error as string) || "Failed to run content audit");
       }
       setAudit(data as ContentAuditResponse);
       setAuditView("all");
       setShowAllBrokenRefs(false);
-      setStatusMessage("Content audit completed.");
+      setStatusMessage(data.cached ? "Loaded cached content audit." : "Content audit completed.");
       // Defer so the results section exists in the DOM.
       setTimeout(() => {
         auditResultsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -922,15 +926,18 @@ export function AdminDashboard() {
     }
   };
 
-  const handleCleanupExpiredTransfers = async () => {
+  const handleCleanupExpiredTransfers = async (mode: "index" | "deep" = "index") => {
     if (
       !confirm(
-        "Run cleanup expired transfers now?\n\nThis is not a full nuke. Active transfers are kept."
+        mode === "deep"
+          ? "Run deep transfer cleanup now?\n\nThis scans transfer storage for orphaned prefixes and may take longer."
+          : "Run quick cleanup expired transfers now?\n\nThis only cleans expired Redis index entries. Active transfers are kept."
       )
     ) {
       return;
     }
-    setTransferCleanupLoading(true);
+    if (mode === "deep") setTransferDeepCleanupLoading(true);
+    else setTransferCleanupLoading(true);
     setErrorMessage("");
     setStatusMessage("");
     setTransferStatusMessage("");
@@ -939,13 +946,17 @@ export function AdminDashboard() {
       if (!stepToken) return;
       const res = await authFetch("/api/admin/transfers/cleanup", {
         method: "POST",
-        headers: withStepUpHeaders(stepToken),
+        headers: withStepUpHeaders(stepToken, { "Content-Type": "application/json" }),
+        body: JSON.stringify({ mode }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         throw new Error((data.error as string) || "Failed to run cleanup");
       }
-      const msg = `Cleanup expired complete: removed ${data.deletedObjects ?? 0} orphaned files.`;
+      const msg =
+        mode === "deep"
+          ? `Deep cleanup complete: removed ${data.deletedObjects ?? 0} orphaned files across ${data.scannedPrefixes ?? 0} prefixes.`
+          : `Quick cleanup complete: removed ${data.expiredIndexEntries ?? 0} expired index entries.`;
       setStatusMessage(msg);
       setTransferStatus(msg);
       await loadTransfers();
@@ -953,7 +964,8 @@ export function AdminDashboard() {
       const msg = err instanceof Error ? err.message : "Failed to run cleanup";
       setErrorMessage(msg);
     } finally {
-      setTransferCleanupLoading(false);
+      if (mode === "deep") setTransferDeepCleanupLoading(false);
+      else setTransferCleanupLoading(false);
     }
   };
 
@@ -995,6 +1007,11 @@ export function AdminDashboard() {
   const cleanupTransfersAndScroll = async () => {
     transfersSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
     await handleCleanupExpiredTransfers();
+  };
+
+  const deepCleanupTransfersAndScroll = async () => {
+    transfersSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    await handleCleanupExpiredTransfers("deep");
   };
 
   const nukeTransfersAndScroll = async () => {
@@ -1303,10 +1320,19 @@ export function AdminDashboard() {
               type="button"
               disabled={auditLoading}
               onClick={() => void runContentAudit()}
-              title="Runs deeper checks: album manifest validation + broken words media references against R2."
+              title="Loads a cached content audit when available to avoid recomputing the full scan."
               className="border theme-border rounded-md px-3 py-2 font-mono text-sm text-left hover:border-[var(--stone-400)] transition-colors disabled:opacity-50"
             >
-              {auditLoading ? "auditing..." : "run content audit"}
+              {auditLoading ? "auditing..." : "load audit"}
+            </button>
+            <button
+              type="button"
+              disabled={auditLoading}
+              onClick={() => void runContentAudit(true)}
+              title="Forces a fresh content audit recomputation."
+              className="border theme-border rounded-md px-3 py-2 font-mono text-sm text-left hover:border-[var(--stone-400)] transition-colors disabled:opacity-50"
+            >
+              {auditLoading ? "auditing..." : "fresh audit"}
             </button>
           </div>
           {audit ? (
@@ -1513,9 +1539,18 @@ export function AdminDashboard() {
                 disabled={transferCleanupLoading}
                 onClick={() => void cleanupTransfersAndScroll()}
                 className="font-mono text-xs theme-muted hover:text-[var(--foreground)] transition-colors disabled:opacity-50"
-                title="Deletes expired/orphaned transfer files now. Active transfers are not removed."
+                title="Quick cleanup: removes expired transfer index entries without scanning the whole bucket."
               >
-                {transferCleanupLoading ? "cleaning..." : "cleanup expired"}
+                {transferCleanupLoading ? "cleaning..." : "quick cleanup"}
+              </button>
+              <button
+                type="button"
+                disabled={transferDeepCleanupLoading}
+                onClick={() => void deepCleanupTransfersAndScroll()}
+                className="font-mono text-xs theme-muted hover:text-[var(--foreground)] transition-colors disabled:opacity-50"
+                title="Deep cleanup: scans transfer storage for orphaned prefixes. Use only when needed."
+              >
+                {transferDeepCleanupLoading ? "deep cleaning..." : "deep cleanup"}
               </button>
               <button
                 type="button"
