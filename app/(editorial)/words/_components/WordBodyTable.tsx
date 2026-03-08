@@ -337,10 +337,10 @@ export function WordBodyTableCell({
   node?: unknown;
 }) {
   const tableContext = React.useContext(TableRenderContext);
-  if (!tableContext) return <td {...props}>{children}</td>;
-
   const rowContextId = React.useContext(TableRowContext);
   const fallbackRowId = React.useId();
+  if (!tableContext) return <td {...props}>{children}</td>;
+
   const rowId = rowContextId ?? getNodeLineId(node) ?? `row:${fallbackRowId}`;
   const text = textFromChildren(children);
   const canClamp = shouldClampCell(text);

@@ -407,15 +407,33 @@ function LightboxContent({
   onError: () => void;
   onActiveFileChange?: (file: TransferFileData) => void;
 }) {
-  const [activePanel, setActivePanel] = useState<"primary" | "secondary">("primary");
-
-  useEffect(() => {
-    setActivePanel("primary");
-  }, [item.id]);
-
   if (item.type === "single") {
     return <SingleVisualContent file={item.file} transferId={transferId} onError={onError} />;
   }
+
+  return (
+    <MultiVisualContent
+      key={item.id}
+      item={item}
+      transferId={transferId}
+      onError={onError}
+      onActiveFileChange={onActiveFileChange}
+    />
+  );
+}
+
+function MultiVisualContent({
+  item,
+  transferId,
+  onError,
+  onActiveFileChange,
+}: {
+  item: Exclude<VisualGalleryItem, { type: "single" }>;
+  transferId: string;
+  onError: () => void;
+  onActiveFileChange?: (file: TransferFileData) => void;
+}) {
+  const [activePanel, setActivePanel] = useState<"primary" | "secondary">("primary");
 
   const showing =
     item.type === "live_photo"
@@ -866,7 +884,7 @@ export function TransferGallery({ transferId, files, groups, deleteToken }: Tran
         setSavingSingle(false);
       }
     },
-    [transferId, savingSingle]
+    [savingSingle]
   );
 
   /** Download a subset of files (zip or single) */
@@ -1267,7 +1285,6 @@ export function TransferGallery({ transferId, files, groups, deleteToken }: Tran
             {visibleNonVisualFiles.map((file) => (
               <FileCard
                 key={file.id}
-                transferId={transferId}
                 file={file}
                 isSelected={selectedIds.has(file.id)}
                 onToggleSelect={() => toggleSelection(file.id)}
@@ -1636,7 +1653,6 @@ const VisualCard = memo(function VisualCard({
 /* ─── File Card (audio, documents, archives) ─── */
 
 function FileCard({
-  transferId,
   file,
   isSelected,
   onToggleSelect,
@@ -1644,7 +1660,6 @@ function FileCard({
   onDelete,
   deleting,
 }: {
-  transferId: string;
   file: TransferFileData;
   isSelected: boolean;
   onToggleSelect: () => void;

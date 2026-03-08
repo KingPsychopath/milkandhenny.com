@@ -14,8 +14,6 @@ export const metadata: Metadata = {
 export const dynamic = "force-static";
 export const revalidate = 60;
 
-type Props = Record<string, never>;
-
 function formatDate(isoOrDate: string): string {
   const withTime = /^\d{4}-\d{2}-\d{2}$/.test(isoOrDate)
     ? `${isoOrDate}T00:00:00`
@@ -29,7 +27,7 @@ function formatDate(isoOrDate: string): string {
   });
 }
 
-export default async function WordsPage(_props: Props) {
+export default async function WordsPage() {
   const noteItems = isWordsEnabled()
     ? (await listWords({ includeNonPublic: false, limit: 1000 })).words
     : [];

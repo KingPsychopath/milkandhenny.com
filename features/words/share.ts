@@ -340,7 +340,7 @@ async function updateShareLink(
     throw new Error("Cannot update PIN on an expired or revoked share link.");
   }
 
-  let next = { ...current };
+  const next = { ...current };
   const nowIso = new Date().toISOString();
   let nextToken: string | undefined;
 

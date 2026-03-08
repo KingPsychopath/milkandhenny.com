@@ -16,7 +16,12 @@ import { enqueueWorkerJob, refreshQueuedTransferState, requeueTransferFile } fro
 
 const TRANSFER_BACKFILL_CONCURRENCY = 2;
 
+function canUseWorkerForRoute(route: ProcessingRoute): boolean {
+  return route === "worker_heif" || route === "raw_try_local" || route === "local_video";
+}
+
 function shouldQueueBeforeLocal(mode: MediaProcessorMode, route: ProcessingRoute): boolean {
+  if (!canUseWorkerForRoute(route)) return false;
   if (mode === "worker") return true;
   return shouldRouteToWorkerFirst(route);
 }
@@ -64,6 +69,9 @@ async function processTransferBuffer(
     }
     return result;
   } catch {
+    if (!canUseWorkerForRoute(route)) {
+      throw new Error(`Local processing failed for ${route}`);
+    }
     return enqueueWorkerJob({
       transferId,
       file: { ...file, size: buffer.byteLength },
@@ -104,6 +112,9 @@ async function processTransferObject(
     }
     return result;
   } catch {
+    if (!canUseWorkerForRoute(route)) {
+      throw new Error(`Local processing failed for ${route}`);
+    }
     return enqueueWorkerJob({
       transferId,
       file,
@@ -159,6 +170,9 @@ async function repairOrQueueLegacyFile(
       )
     ).file;
   } catch {
+    if (!canUseWorkerForRoute(route)) {
+      throw new Error(`Local processing failed for ${route}`);
+    }
     return (
       await enqueueWorkerJob({
         transferId: transfer.id,
@@ -210,7 +224,8 @@ async function backfillTransferMedia(transfer: TransferData, mode: MediaProcesso
       if (
         inferred.processingStatus === "failed" &&
         inferred.processingRoute &&
-        canRetryTransferProcessing(inferred)
+        canRetryTransferProcessing(inferred) &&
+        canUseWorkerForRoute(inferred.processingRoute)
       ) {
         const retried = await requeueTransferFile(refreshed, inferred);
         if (didTransferFileChange(inferred, retried)) {
@@ -220,6 +235,9 @@ async function backfillTransferMedia(transfer: TransferData, mode: MediaProcesso
       }
 
       if (isTransferProcessingStale(inferred) && canRetryTransferProcessing(inferred)) {
+        if (!inferred.processingRoute || !canUseWorkerForRoute(inferred.processingRoute)) {
+          return inferred;
+        }
         const retried = await requeueTransferFile(refreshed, inferred);
         if (didTransferFileChange(inferred, retried)) {
           changed = true;

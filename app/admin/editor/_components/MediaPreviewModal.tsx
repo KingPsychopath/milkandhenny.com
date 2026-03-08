@@ -11,15 +11,53 @@ type MediaPreviewModalProps = {
   onIndexChange: (index: number) => void;
 };
 
+function ImagePreview({ current }: { current: MediaPreviewItem }) {
+  const [previewError, setPreviewError] = useState(false);
+  const [previewLoaded, setPreviewLoaded] = useState(false);
+
+  if (previewError) {
+    return (
+      <div className="w-full max-w-xl border border-white/20 rounded-md p-4 space-y-3 text-center">
+        <p className="font-mono text-xs text-white/80">failed to load {current.filename}</p>
+        <a
+          href={current.url}
+          target="_blank"
+          rel="noreferrer"
+          className="font-mono text-xs underline text-white/80"
+        >
+          open in new tab
+        </a>
+      </div>
+    );
+  }
+
+  return (
+    <div className="relative">
+      {!previewLoaded ? (
+        <div className="absolute inset-0 flex items-center justify-center">
+          <span className="font-mono text-micro text-white/50 animate-pulse">loading...</span>
+        </div>
+      ) : null}
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={current.url}
+        alt={current.filename}
+        className={`max-w-full max-h-[78vh] rounded-sm object-contain transition-opacity ${
+          previewLoaded ? "opacity-100" : "opacity-0"
+        }`}
+        onLoad={() => setPreviewLoaded(true)}
+        onError={() => setPreviewError(true)}
+      />
+    </div>
+  );
+}
+
 export function MediaPreviewModal({
   items,
   index,
   onClose,
   onIndexChange,
 }: MediaPreviewModalProps) {
-  const [previewError, setPreviewError] = useState(false);
-  const [previewLoaded, setPreviewLoaded] = useState(false);
-
   const current = useMemo(() => items[index] ?? null, [index, items]);
   const canNavigate = items.length > 1;
   const hasPrev = canNavigate && index > 0;
@@ -34,11 +72,6 @@ export function MediaPreviewModal({
     if (!hasNext) return;
     onIndexChange(index + 1);
   }, [hasNext, index, onIndexChange]);
-
-  useEffect(() => {
-    setPreviewError(false);
-    setPreviewLoaded(false);
-  }, [index]);
 
   const swipeRef = useSwipe<HTMLDivElement>({
     onSwipeLeft: hasNext ? showNext : undefined,
@@ -93,12 +126,11 @@ export function MediaPreviewModal({
             controls
             autoPlay
             className="max-w-full max-h-[78vh] rounded-sm"
-            onError={() => setPreviewError(true)}
           />
         ) : current.kind === "audio" ? (
           <div className="w-full max-w-xl border border-white/20 rounded-md p-4 space-y-3">
             <p className="font-mono text-xs text-white/80 truncate">{current.filename}</p>
-            <audio src={current.url} controls className="w-full" onError={() => setPreviewError(true)} />
+            <audio src={current.url} controls className="w-full" />
           </div>
         ) : current.kind === "file" ? (
           <div className="w-full max-w-xl border border-white/20 rounded-md p-4 space-y-3 text-center">
@@ -113,36 +145,8 @@ export function MediaPreviewModal({
               open file
             </a>
           </div>
-        ) : previewError ? (
-          <div className="w-full max-w-xl border border-white/20 rounded-md p-4 space-y-3 text-center">
-            <p className="font-mono text-xs text-white/80">failed to load {current.filename}</p>
-            <a
-              href={current.url}
-              target="_blank"
-              rel="noreferrer"
-              className="font-mono text-xs underline text-white/80"
-            >
-              open in new tab
-            </a>
-          </div>
         ) : (
-          <div className="relative">
-            {!previewLoaded ? (
-              <div className="absolute inset-0 flex items-center justify-center">
-                <span className="font-mono text-micro text-white/50 animate-pulse">loading...</span>
-              </div>
-            ) : null}
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={current.url}
-              alt={current.filename}
-              className={`max-w-full max-h-[78vh] rounded-sm object-contain transition-opacity ${
-                previewLoaded ? "opacity-100" : "opacity-0"
-              }`}
-              onLoad={() => setPreviewLoaded(true)}
-              onError={() => setPreviewError(true)}
-            />
-          </div>
+          <ImagePreview key={current.url} current={current} />
         )}
       </div>
 

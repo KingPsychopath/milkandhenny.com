@@ -32,10 +32,12 @@ async function enqueueWordMediaJob(job: WordMediaJob): Promise<void> {
   const redis = requireWordMediaQueueRedis();
   await redis.rpush(WORD_MEDIA_QUEUE_KEY, JSON.stringify(job));
   if (process.env.NODE_ENV !== "test") {
+    const wakeToken = process.env.TRANSFER_MEDIA_WORKER_WAKE_TOKEN;
     void fetch(
       process.env.TRANSFER_MEDIA_WORKER_WAKE_URL ?? "https://party-guest-list-transfer-worker.fly.dev/wake",
       {
         method: "POST",
+        headers: wakeToken ? { authorization: `Bearer ${wakeToken}` } : undefined,
         signal: AbortSignal.timeout(1500),
       }
     ).catch(() => {});

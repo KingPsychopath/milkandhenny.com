@@ -22,6 +22,8 @@ NEXT_PUBLIC_TRANSFER_MEDIA_BROWSER_PREP=auto
 TRANSFER_MEDIA_WORKER_ENABLED=1
 TRANSFER_MEDIA_QUEUE_ENABLED=1
 TRANSFER_MEDIA_FORCE_WORKER_FOR_HEIF=1
+TRANSFER_MEDIA_WORKER_WAKE_URL=https://party-guest-list-transfer-worker.fly.dev/wake
+TRANSFER_MEDIA_WORKER_WAKE_TOKEN=replace-with-a-long-random-secret
 ```
 
 Cheap local-only fallback:
@@ -87,6 +89,7 @@ fly secrets set \
   R2_ACCESS_KEY=... \
   R2_SECRET_KEY=... \
   R2_BUCKET=... \
+  TRANSFER_MEDIA_WORKER_WAKE_TOKEN=... \
   -a party-guest-list-transfer-worker
 ```
 
@@ -100,6 +103,7 @@ fly secrets set \
   R2_ACCESS_KEY="$(grep '^R2_ACCESS_KEY=' .env.local | cut -d= -f2-)" \
   R2_SECRET_KEY="$(grep '^R2_SECRET_KEY=' .env.local | cut -d= -f2-)" \
   R2_BUCKET="$(grep '^R2_BUCKET=' .env.local | cut -d= -f2-)" \
+  TRANSFER_MEDIA_WORKER_WAKE_TOKEN="$(grep '^TRANSFER_MEDIA_WORKER_WAKE_TOKEN=' .env.local | cut -d= -f2-)" \
   -a party-guest-list-transfer-worker
 ```
 
@@ -145,6 +149,7 @@ fly secrets set \
   R2_ACCESS_KEY="$(grep '^R2_ACCESS_KEY=' .env.local | cut -d= -f2-)" \
   R2_SECRET_KEY="$(grep '^R2_SECRET_KEY=' .env.local | cut -d= -f2-)" \
   R2_BUCKET="$(grep '^R2_BUCKET=' .env.local | cut -d= -f2-)" \
+  TRANSFER_MEDIA_WORKER_WAKE_TOKEN="$(grep '^TRANSFER_MEDIA_WORKER_WAKE_TOKEN=' .env.local | cut -d= -f2-)" \
   -a party-guest-list-transfer-worker
 ```
 

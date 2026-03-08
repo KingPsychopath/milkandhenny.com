@@ -28,6 +28,7 @@ const ERROR_BACKOFF_MS = Math.max(
   500,
   Number(process.env.TRANSFER_MEDIA_WORKER_ERROR_BACKOFF_MS ?? "15000")
 );
+const WAKE_TOKEN = process.env.TRANSFER_MEDIA_WORKER_WAKE_TOKEN;
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -52,6 +53,14 @@ createServer((req, res) => {
   }
 
   if (req.method === "POST" && req.url === "/wake") {
+    if (WAKE_TOKEN) {
+      const auth = req.headers.authorization;
+      if (auth !== `Bearer ${WAKE_TOKEN}`) {
+        res.writeHead(401, { "content-type": "text/plain" });
+        res.end("unauthorized");
+        return;
+      }
+    }
     res.writeHead(200, { "content-type": "text/plain" });
     res.end("woken");
     return;
@@ -59,7 +68,7 @@ createServer((req, res) => {
 
   res.writeHead(404);
   res.end();
-}).listen(PORT);
+}).listen(PORT, "0.0.0.0");
 
 async function main() {
   if (!WORKER_ENABLED) {

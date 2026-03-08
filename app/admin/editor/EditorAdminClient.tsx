@@ -391,7 +391,7 @@ export function EditorAdminClient() {
       setPageMedia([]);
       setMediaSearchQuery("");
     }
-  }, [selectedSlug]);
+  }, [selectedSlug, setMediaSearchQuery]);
 
   const selected = useMemo(
     () => notes.find((n) => n.slug === selectedSlug) ?? null,
@@ -630,10 +630,10 @@ export function EditorAdminClient() {
     ]
   );
 
-  async function saveWord() {
+  const saveWord = useCallback(async () => {
     clearAutosaveTimer();
     await saveWordToApi();
-  }
+  }, [clearAutosaveTimer, saveWordToApi]);
 
   useEffect(() => {
     if (!selectedSlug || !hasLoadedSelected || !currentPayload) return;

@@ -16,6 +16,9 @@ const REQUIRED_SECRET_KEYS = [
   "R2_SECRET_KEY",
   "R2_BUCKET",
 ] as const;
+const OPTIONAL_SECRET_KEYS = [
+  "TRANSFER_MEDIA_WORKER_WAKE_TOKEN",
+] as const;
 const DIRECT_REDIS_SECRET_KEYS = [
   "REDIS_URL",
   "UPSTASH_REDIS_URL",
@@ -82,6 +85,7 @@ function syncSecrets() {
     "secrets",
     "set",
     ...REQUIRED_SECRET_KEYS.map((key) => `${key}=${env[key]}`),
+    ...OPTIONAL_SECRET_KEYS.filter((key) => env[key]).map((key) => `${key}=${env[key]}`),
     ...DIRECT_REDIS_SECRET_KEYS.filter((key) => env[key]).map((key) => `${key}=${env[key]}`),
     "-a",
     APP_NAME,

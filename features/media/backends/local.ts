@@ -176,10 +176,6 @@ function isRawPreviewUnavailableError(error: unknown): error is RawPreviewUnavai
   return error instanceof RawPreviewUnavailableError;
 }
 
-function getProcessedImageLongestEdge(image: Pick<ProcessedImage, "width" | "height">): number {
-  return Math.max(image.width, image.height);
-}
-
 async function processRawWithLocalDecode(
   raw: Buffer,
   sourceName: string

@@ -47,6 +47,17 @@ const WORKER_ROUTE_MAP: Partial<Record<ProcessingRoute, ProcessingRoute>> = {
   local_video: "worker_video",
 };
 
+function isRawPreviewFallbackError(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  const detail = `${error.message}\n${error.stack ?? ""}`;
+  return (
+    detail.includes("spawn dcraw_emu ENOENT") ||
+    detail.includes("spawn dcraw ENOENT") ||
+    detail.includes("RAW decoder not available") ||
+    detail.includes("Sharp could not decode")
+  );
+}
+
 function buildQueuedTransferFile(
   mediaId: string,
   filename: string,
@@ -165,12 +176,14 @@ async function wakeTransferMediaWorker(): Promise<boolean> {
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 1500);
+  const wakeToken = process.env.TRANSFER_MEDIA_WORKER_WAKE_TOKEN;
 
   try {
     const res = await fetch(
       process.env.TRANSFER_MEDIA_WORKER_WAKE_URL ?? "https://party-guest-list-transfer-worker.fly.dev/wake",
       {
         method: "POST",
+        headers: wakeToken ? { authorization: `Bearer ${wakeToken}` } : undefined,
         signal: controller.signal,
       }
     );
@@ -276,6 +289,10 @@ async function processWorkerJob(job: TransferMediaJob): Promise<"succeeded" | "f
       error instanceof Error
         ? (error.stack ?? error.message).slice(0, 500)
         : String(error).slice(0, 500);
+    const failureCode =
+      job.processingRoute === "worker_raw" && isRawPreviewFallbackError(error)
+        ? "raw_preview_unavailable"
+        : "worker_failed";
     console.error(
       `[transfer-media-worker] job failed transfer=${job.transferId} mediaId=${mediaId} route=${job.processingRoute}\n${errorDetail}`
     );
@@ -284,7 +301,7 @@ async function processWorkerJob(job: TransferMediaJob): Promise<"succeeded" | "f
       files: processingTransfer.files.map((file, index) =>
         index === fileIndex
           ? {
-              ...buildOriginalOnlyFailureFile(mediaId, job.file.name, current.size, current.storageKey, job.processingRoute, "worker_failed", job.attempt),
+              ...buildOriginalOnlyFailureFile(mediaId, job.file.name, current.size, current.storageKey, job.processingRoute, failureCode, job.attempt),
               processingBackend: "worker",
               storageKey: current.storageKey,
               ...(current.originalStorageKey ? { originalStorageKey: current.originalStorageKey } : {}),
