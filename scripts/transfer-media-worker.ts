@@ -1,9 +1,11 @@
 import "./r2-client";
 
+import { createServer } from "node:http";
 import { runTransferMediaJobs } from "@/features/media/backends/worker";
 import { updateTransferMediaWorkerStatus } from "@/features/transfers/media-worker-status";
 
 const WORKER_ENABLED = process.env.TRANSFER_MEDIA_WORKER_ENABLED !== "0";
+const PORT = Math.max(1, Number(process.env.PORT ?? "8080"));
 const POLL_MS = Math.max(500, Number(process.env.TRANSFER_MEDIA_WORKER_POLL_MS ?? "2000"));
 const BATCH_SIZE = Math.max(1, Number(process.env.TRANSFER_MEDIA_WORKER_BATCH_SIZE ?? "1"));
 const EMPTY_BACKOFF_MS = Math.max(POLL_MS, Number(process.env.TRANSFER_MEDIA_WORKER_EMPTY_BACKOFF_MS ?? "10000"));
@@ -14,14 +16,63 @@ function sleep(ms: number): Promise<void> {
 }
 
 let running = true;
+let wakeResolver: (() => void) | null = null;
 
 function shutdown(signal: string) {
   console.log(`[transfer-media-worker] received ${signal}, shutting down...`);
   running = false;
+  if (wakeResolver) {
+    const resolve = wakeResolver;
+    wakeResolver = null;
+    resolve();
+  }
 }
 
 process.on("SIGINT", () => shutdown("SIGINT"));
 process.on("SIGTERM", () => shutdown("SIGTERM"));
+
+function triggerImmediatePoll() {
+  if (!wakeResolver) return;
+  const resolve = wakeResolver;
+  wakeResolver = null;
+  resolve();
+}
+
+function waitForNextPoll(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    const timeout = setTimeout(() => {
+      if (wakeResolver === resolveWake) {
+        wakeResolver = null;
+      }
+      resolve();
+    }, ms);
+
+    const resolveWake = () => {
+      clearTimeout(timeout);
+      resolve();
+    };
+
+    wakeResolver = resolveWake;
+  });
+}
+
+createServer((req, res) => {
+  if (req.url === "/health") {
+    res.writeHead(200, { "content-type": "application/json" });
+    res.end(JSON.stringify({ status: "ok" }));
+    return;
+  }
+
+  if (req.method === "POST" && req.url === "/wake") {
+    triggerImmediatePoll();
+    res.writeHead(200, { "content-type": "text/plain" });
+    res.end("woken");
+    return;
+  }
+
+  res.writeHead(404);
+  res.end();
+}).listen(PORT);
 
 async function main() {
   if (!WORKER_ENABLED) {
@@ -46,11 +97,11 @@ async function main() {
         console.log(
           `[transfer-media-worker] processed=${result.processedJobs} ok=${result.succeeded} failed=${result.failed} skipped=${result.skipped} queue=${result.queueLength}`
         );
-        await sleep(POLL_MS);
+        await waitForNextPoll(POLL_MS);
         continue;
       }
 
-      await sleep(EMPTY_BACKOFF_MS);
+      await waitForNextPoll(EMPTY_BACKOFF_MS);
     } catch (error) {
       const message = error instanceof Error ? error.stack ?? error.message : String(error);
       await updateTransferMediaWorkerStatus({
@@ -59,7 +110,7 @@ async function main() {
         lastErrorMessage: message.slice(0, 500),
       });
       console.error(`[transfer-media-worker] error\n${message}`);
-      await sleep(ERROR_BACKOFF_MS);
+      await waitForNextPoll(ERROR_BACKOFF_MS);
     }
   }
 

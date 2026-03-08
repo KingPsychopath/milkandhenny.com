@@ -1,6 +1,6 @@
 import "server-only";
 
-import { getMimeType, processImageVariants, processRawWithDcraw } from "@/features/media/processing";
+import { getMimeType, mapConcurrent, processImageVariants, processRawWithDcraw } from "@/features/media/processing";
 import { downloadBuffer, uploadBuffer } from "@/lib/platform/r2";
 import {
   canRetryTransferProcessing,
@@ -34,6 +34,11 @@ type WorkerRunResult = {
   skipped: number;
   queueLength: number;
 };
+
+const WORKER_JOB_CONCURRENCY = Math.max(
+  1,
+  Number(process.env.TRANSFER_MEDIA_WORKER_CONCURRENCY ?? "1")
+);
 
 const WORKER_ROUTE_MAP: Partial<Record<ProcessingRoute, ProcessingRoute>> = {
   raw_try_local: "worker_raw",
@@ -134,6 +139,15 @@ async function enqueueWorkerJob(params: {
       attempt,
       enqueuedAt,
     });
+    if (process.env.NODE_ENV !== "test") {
+      void fetch(
+        process.env.TRANSFER_MEDIA_WORKER_WAKE_URL ?? "https://party-guest-list-transfer-worker.fly.dev/wake",
+        {
+          method: "POST",
+          signal: AbortSignal.timeout(1500),
+        }
+      ).catch(() => {});
+    }
 
     return {
       file: {
@@ -187,7 +201,7 @@ async function processWorkerJob(job: TransferMediaJob): Promise<"succeeded" | "f
     if (job.processingRoute === "worker_raw") {
       const original = await downloadBuffer(current.storageKey);
       const decoded = await processRawWithDcraw(original, job.file.originalName ?? job.file.name);
-      const processed = await processImageVariants(decoded.buffer, ".tiff");
+      const processed = await processImageVariants(decoded.buffer, ".jpg");
       const prefix = `transfers/${job.transferId}`;
       await Promise.all([
         uploadBuffer(`${prefix}/thumb/${mediaId}.webp`, processed.thumb.buffer, processed.thumb.contentType),
@@ -272,8 +286,13 @@ async function runTransferMediaJobs(limit = 8): Promise<WorkerRunResult> {
   let failed = 0;
   let skipped = 0;
 
-  for (const job of jobs) {
-    const outcome = await processWorkerJob(job);
+  const outcomes = await mapConcurrent(
+    jobs,
+    Math.min(WORKER_JOB_CONCURRENCY, Math.max(1, jobs.length)),
+    (job) => processWorkerJob(job)
+  );
+
+  for (const outcome of outcomes) {
     if (outcome === "succeeded") succeeded += 1;
     else if (outcome === "failed") failed += 1;
     else skipped += 1;

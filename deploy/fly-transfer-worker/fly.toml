@@ -13,17 +13,34 @@ kill_timeout = "30s"
   MEDIA_PROCESSOR_MODE = "hybrid"
   TRANSFER_MEDIA_WORKER_ENABLED = "1"
   TRANSFER_MEDIA_QUEUE_ENABLED = "1"
-  NEXT_PUBLIC_TRANSFER_MEDIA_BROWSER_PREP = "auto"
-  TRANSFER_MEDIA_WORKER_BATCH_SIZE = "1"
-  TRANSFER_MEDIA_WORKER_POLL_MS = "2000"
-  TRANSFER_MEDIA_WORKER_EMPTY_BACKOFF_MS = "10000"
-  TRANSFER_MEDIA_WORKER_ERROR_BACKOFF_MS = "30000"
+  TRANSFER_MEDIA_WORKER_BATCH_SIZE = "8"
+  TRANSFER_MEDIA_WORKER_CONCURRENCY = "4"
+  TRANSFER_MEDIA_WORKER_POLL_MS = "1000"
+  TRANSFER_MEDIA_WORKER_EMPTY_BACKOFF_MS = "5000"
+  TRANSFER_MEDIA_WORKER_ERROR_BACKOFF_MS = "15000"
   TRANSFER_MEDIA_FORCE_WORKER_FOR_HEIF = "1"
+  PORT = "8080"
 
-[processes]
-  app = "pnpm worker:transfer-media"
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 0
+
+  [http_service.concurrency]
+    type = "requests"
+    hard_limit = 25
+    soft_limit = 20
+
+[[http_service.checks]]
+  interval = "30s"
+  timeout = "5s"
+  grace_period = "10s"
+  method = "GET"
+  path = "/health"
 
 [vm]
   cpu_kind = "shared"
-  cpus = 1
-  memory_mb = 1024
+  cpus = 2
+  memory_mb = 2048

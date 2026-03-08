@@ -98,7 +98,7 @@ type PreparedTransferUpload = {
   uploadFile: File;
   uploadName: string;
   originalFile?: File;
-  convertedFrom?: "heic" | "raw";
+  convertedFrom?: "heic";
 };
 
 function sleep(ms: number): Promise<void> {

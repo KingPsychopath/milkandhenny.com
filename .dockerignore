@@ -5,7 +5,11 @@ node_modules
 coverage
 dist
 tmp
+deploy
 *.log
+*.env*
+.env
+.env.*
 .DS_Store
 __tests__
 docs

@@ -1,6 +1,6 @@
 import type { TransferFile } from "./store";
 
-type ConvertedFrom = "heic" | "raw";
+type ConvertedFrom = "heic";
 
 type TransferUploadFileInput = {
   /** Filename stored in transfer metadata and shown in the gallery. */

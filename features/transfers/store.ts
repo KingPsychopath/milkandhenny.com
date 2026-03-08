@@ -32,8 +32,8 @@ type TransferFile = {
   originalFilename?: string;
   originalMimeType?: string;
   convertedFrom?: ConvertedFrom;
-  /** Source of the ready preview when the uploaded file came from a RAW still. */
-  previewSource?: "client_raw" | "server_raw";
+  /** Source of the ready preview when the server decoded a RAW still. */
+  previewSource?: "server_raw";
   /** Visual media dimensions (images, gifs, videos) */
   width?: number;
   height?: number;

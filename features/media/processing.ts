@@ -964,73 +964,56 @@ async function processVideoVariants(raw: Buffer, sourceExt = ".mp4"): Promise<Pr
   });
 }
 
+async function applyBaselineExposure(
+  pipeline: sharp.Sharp,
+  rawBuffer: Buffer
+): Promise<sharp.Sharp> {
+  try {
+    const exifr = await import("exifr");
+    const tags = await exifr.parse(rawBuffer, {
+      tiff: true,
+      ifd0: { pick: ["BaselineExposure"] },
+      exif: false,
+      gps: false,
+    });
+    const baselineEV =
+      tags && typeof tags === "object" && "BaselineExposure" in tags
+        ? Number((tags as { BaselineExposure?: number }).BaselineExposure ?? 0)
+        : 0;
+
+    if (Number.isFinite(baselineEV) && Math.abs(baselineEV) > 0.05) {
+      return pipeline.linear(Math.pow(2, baselineEV), 0);
+    }
+  } catch {
+    // Ignore missing tags and parser errors; fallback decode should still succeed.
+  }
+
+  return pipeline;
+}
+
 async function processRawWithDcraw(raw: Buffer, sourceExtOrFilename = ".dng"): Promise<DecodedRawImage> {
   const ext = path.extname(sourceExtOrFilename).toLowerCase() || sourceExtOrFilename.toLowerCase();
   return withTempFile("transfer-raw", ext, raw, async (tempFile) => {
-    let stdout: Buffer | string | undefined;
-    const commands = [
-      {
-        command: "dcraw_emu",
-        args: ["-T", "-w", "-6", "-o", "1", "-Z", "-", tempFile],
-      },
-      {
-        command: "/opt/homebrew/bin/dcraw_emu",
-        args: ["-T", "-w", "-6", "-o", "1", "-Z", "-", tempFile],
-      },
-      {
-        command: "/usr/local/bin/dcraw_emu",
-        args: ["-T", "-w", "-6", "-o", "1", "-Z", "-", tempFile],
-      },
-      {
-        command: "dcraw",
-        args: ["-c", "-T", "-w", "-6", "-o", "1", tempFile],
-      },
-      {
-        command: "/opt/homebrew/bin/dcraw",
-        args: ["-c", "-T", "-w", "-6", "-o", "1", tempFile],
-      },
-      {
-        command: "/usr/local/bin/dcraw",
-        args: ["-c", "-T", "-w", "-6", "-o", "1", tempFile],
-      },
-    ] as const;
+    const isDng = ext === ".dng";
+    let pipeline = sharp(tempFile, { failOn: "none", unlimited: true })
+      .rotate()
+      .pipelineColourspace("scrgb");
 
-    for (const { command, args } of commands) {
-      try {
-        ({ stdout } = await execFileAsync(
-          command,
-          args,
-          {
-            encoding: "buffer",
-            maxBuffer: 128 * 1024 * 1024,
-          }
-        ));
-        break;
-      } catch (error) {
-        if (
-          error &&
-          typeof error === "object" &&
-          "code" in error &&
-          error.code === "ENOENT"
-        ) {
-          continue;
-        }
-        throw error;
-      }
+    if (isDng) {
+      pipeline = await applyBaselineExposure(pipeline, raw);
     }
 
-    if (typeof stdout === "undefined") {
-      throw new Error(`No RAW decoder found (tried: ${commands.map(({ command }) => command).join(", ")})`);
-    }
-
-    const buffer = Buffer.isBuffer(stdout) ? stdout : Buffer.from(stdout);
+    const buffer = await pipeline
+      .toColourspace("srgb")
+      .jpeg({ quality: 95, mozjpeg: true })
+      .toBuffer();
     if (buffer.length === 0) {
       throw new Error("Failed to decode raw image");
     }
 
-    const metadata = await sharp(buffer).metadata();
-    const width = metadata.width ?? 0;
-    const height = metadata.height ?? 0;
+    const renderedMetadata = await sharp(buffer).metadata();
+    const width = renderedMetadata.width ?? 0;
+    const height = renderedMetadata.height ?? 0;
     if (width <= 0 || height <= 0) {
       throw new Error("Decoded raw image has invalid dimensions");
     }

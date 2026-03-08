@@ -86,68 +86,6 @@ describe("upload transfer presign", () => {
     });
   });
 
-  it("should presign both derived and archived uploads for client-derived raw previews", async () => {
-    const presignPutUrl = vi.fn().mockResolvedValue("https://example.com/upload");
-    vi.doMock("@/features/auth/server", () => ({
-      requireAuthWithPayload: vi.fn().mockResolvedValue({
-        error: null,
-        payload: { role: "upload" },
-      }),
-    }));
-    vi.doMock("@/lib/platform/r2", () => ({
-      isConfigured: () => true,
-      presignPutUrl,
-    }));
-    vi.doMock("@/features/transfers/store", () => ({
-      generateTransferId: () => "transfer-id",
-      generateDeleteToken: () => "delete-token",
-      parseExpiry: () => 3600,
-      DEFAULT_EXPIRY_SECONDS: 3600,
-      MAX_EXPIRY_SECONDS: 30 * 24 * 60 * 60,
-      MAX_TRANSFER_FILE_BYTES: 250 * 1024 * 1024,
-      MAX_TRANSFER_TOTAL_BYTES: 1024 * 1024 * 1024,
-    }));
-
-    const { POST } = await import("@/app/api/upload/transfer/presign/route");
-    const response = await POST(
-      makeRequest({
-        title: "raw preview",
-        files: [
-          {
-            name: "capture.jpg",
-            size: 1024,
-            type: "image/jpeg",
-            originalName: "capture.dng",
-            originalSize: 2048,
-            originalType: "image/x-adobe-dng",
-            convertedFrom: "raw",
-          },
-        ],
-      })
-    );
-
-    expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toMatchObject({
-      urls: [
-        {
-          name: "capture.jpg",
-          primaryUrl: "https://example.com/upload",
-          archivedOriginalUrl: "https://example.com/upload",
-        },
-      ],
-    });
-    expect(presignPutUrl).toHaveBeenNthCalledWith(
-      1,
-      "transfers/transfer-id/derived/capture.jpg",
-      "image/jpeg"
-    );
-    expect(presignPutUrl).toHaveBeenNthCalledWith(
-      2,
-      "transfers/transfer-id/originals/capture.dng",
-      "image/x-adobe-dng"
-    );
-  });
-
   it("should allow files with the same stem and assign unique media ids", async () => {
     const presignPutUrl = vi.fn().mockResolvedValue("https://example.com/upload");
     vi.doMock("@/features/auth/server", () => ({

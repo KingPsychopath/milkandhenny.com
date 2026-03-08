@@ -171,7 +171,7 @@ async function processRawWithLocalDecode(
   sourceName: string
 ): Promise<ProcessedImage> {
   const decoded = await processRawWithDcraw(raw, sourceName);
-  return processImageVariants(decoded.buffer, ".tiff");
+  return processImageVariants(decoded.buffer, ".jpg");
 }
 
 async function materializeVisualFromBuffer(params: {
@@ -276,40 +276,10 @@ async function materializeVisualFromBuffer(params: {
       primaryError = error;
     }
 
-    let upgradedFromRaw: ProcessedImage | null = null;
-    if (
-      file.convertedFrom === "raw" &&
-      archiveStorageKey &&
-      originalAlreadyStored &&
-      file.originalName
-    ) {
-      try {
-        const archivedRaw = await downloadBuffer(archiveStorageKey);
-        let rawProcessed: ProcessedImage;
-        try {
-          rawProcessed = await processImageVariants(archivedRaw, file.originalName);
-        } catch (error) {
-          if (!isRawPreviewUnavailableError(error)) throw error;
-          rawProcessed = await processRawWithLocalDecode(archivedRaw, file.originalName);
-        }
-        if (!primaryProcessed || getProcessedImageLongestEdge(rawProcessed) > getProcessedImageLongestEdge(primaryProcessed)) {
-          upgradedFromRaw = rawProcessed;
-        }
-      } catch {
-        // Keep the client-derived preview if the archived RAW cannot produce a better one.
-      }
-    }
-
-    const processed = upgradedFromRaw ?? primaryProcessed;
+    const processed = primaryProcessed;
     if (!processed) {
       throw primaryError;
     }
-    const previewSource =
-      file.convertedFrom === "raw"
-        ? upgradedFromRaw
-          ? "server_raw"
-          : "client_raw"
-        : undefined;
 
     await Promise.all([
       uploadBuffer(`${prefix}/thumb/${derivedId}.webp`, processed.thumb.buffer, processed.thumb.contentType),
@@ -332,8 +302,7 @@ async function materializeVisualFromBuffer(params: {
         processingStatus,
         processingBackend,
         processed.takenAt,
-        file,
-        previewSource
+        file
       ),
       uploadedBytes:
         processed.thumb.buffer.byteLength +

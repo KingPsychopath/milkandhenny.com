@@ -22,7 +22,7 @@ type TransferFileData = {
   storageKey: string;
   originalStorageKey?: string;
   originalFilename?: string;
-  convertedFrom?: "heic" | "raw";
+  convertedFrom?: "heic";
   width?: number;
   height?: number;
   previewStatus?: "ready" | "original_only";
@@ -107,6 +107,11 @@ function getVisualItemPrimaryFile(item: VisualGalleryItem): TransferFileData {
 
 function getVisualItemLabel(item: VisualGalleryItem): string {
   return item.type === "live" ? item.photo.filename : item.file.filename;
+}
+
+function shouldShowRawPreviewNotice(item: VisualGalleryItem): boolean {
+  const file = getVisualItemPrimaryFile(item);
+  return isRawImage(file);
 }
 
 function isVisualItemSelected(item: VisualGalleryItem, selectedIds: Set<string>): boolean {
@@ -1233,6 +1238,14 @@ export function TransferGallery({ transferId, files }: TransferGalleryProps) {
               </button>
             </div>
           </div>
+          {shouldShowRawPreviewNotice(currentVisual) ? (
+            <p
+              className="mt-3 max-w-md px-4 text-center font-mono text-nano tracking-wide text-white/45"
+              onClick={(e) => e.stopPropagation()}
+            >
+              RAW previews may differ slightly from the original. Download the source file for full-quality editing and accurate color.
+            </p>
+          ) : null}
         </div>
       )}
 
@@ -1425,7 +1438,7 @@ const VisualCard = memo(function VisualCard({
         {file.convertedFrom && !isRawImage(file) && (
           <div className="absolute bottom-2 left-2">
             <span className="font-mono text-pico bg-black/50 text-white/80 px-1.5 py-0.5 rounded tracking-wider uppercase">
-              {file.convertedFrom === "raw" ? "raw preview" : item.type === "live" ? "live" : "optimized"}
+              {item.type === "live" ? "live" : "optimized"}
             </span>
           </div>
         )}

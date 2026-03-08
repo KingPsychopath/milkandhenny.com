@@ -38,6 +38,8 @@ vi.mock("@/features/transfers/store", () => ({
 
 vi.mock("@/features/media/processing", () => ({
   getMimeType: (filename: string) => (filename.endsWith(".mov") ? "video/quicktime" : "image/jpeg"),
+  mapConcurrent: async <T, R>(items: T[], _limit: number, mapper: (item: T) => Promise<R>) =>
+    Promise.all(items.map((item) => mapper(item))),
   processImageVariants,
   processRawWithDcraw,
 }));
