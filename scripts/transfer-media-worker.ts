@@ -35,17 +35,9 @@ function sleep(ms: number): Promise<void> {
 }
 
 let running = true;
+let shutdownPromise: Promise<void> | null = null;
 
-function shutdown(signal: string) {
-  console.log(`[transfer-media-worker] received ${signal}, shutting down...`);
-  running = false;
-  void closeDirectRedisConnections();
-}
-
-process.on("SIGINT", () => shutdown("SIGINT"));
-process.on("SIGTERM", () => shutdown("SIGTERM"));
-
-createServer((req, res) => {
+const server = createServer((req, res) => {
   if (req.url === "/health") {
     res.writeHead(200, { "content-type": "application/json" });
     res.end(JSON.stringify({ status: "ok" }));
@@ -68,7 +60,24 @@ createServer((req, res) => {
 
   res.writeHead(404);
   res.end();
-}).listen(PORT, "0.0.0.0");
+});
+
+function shutdown(signal: string) {
+  if (shutdownPromise) return;
+  console.log(`[transfer-media-worker] received ${signal}, shutting down...`);
+  running = false;
+  shutdownPromise = Promise.allSettled([
+    new Promise<void>((resolve) => {
+      server.close(() => resolve());
+    }),
+    closeDirectRedisConnections(),
+  ]).then(() => undefined);
+}
+
+process.on("SIGINT", () => shutdown("SIGINT"));
+process.on("SIGTERM", () => shutdown("SIGTERM"));
+
+server.listen(PORT, "0.0.0.0");
 
 async function main() {
   if (!WORKER_ENABLED) {
@@ -143,6 +152,7 @@ async function main() {
   }
 
   await Promise.all(Array.from({ length: WORKER_CONCURRENCY }, (_, index) => consumeLoop(index + 1)));
+  await shutdownPromise;
 
   console.log("[transfer-media-worker] stopped");
 }

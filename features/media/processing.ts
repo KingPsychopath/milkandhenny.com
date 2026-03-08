@@ -19,7 +19,6 @@ import { randomUUID } from "crypto";
 import { promises as fs } from "fs";
 import os from "os";
 import path from "path";
-import { promisify } from "util";
 import sharp from "sharp";
 import exifReader from "exif-reader";
 import type { FileKind } from "./file-kinds";
@@ -30,7 +29,29 @@ import {
 } from "./raw-preview";
 import { SITE_BRAND } from "@/lib/shared/config";
 
-const execFileAsync = promisify(execFile);
+type ExecFileAsyncOptions = NonNullable<Parameters<typeof execFile>[2]>;
+type ExecFileAsyncOutput = Buffer | string;
+type ExifrModule = (typeof import("exifr"))["default"];
+
+function execFileAsync(
+  file: string,
+  args: string[],
+  options?: ExecFileAsyncOptions
+): Promise<{ stdout: ExecFileAsyncOutput; stderr: ExecFileAsyncOutput }> {
+  return new Promise((resolve, reject) => {
+    execFile(file, args, options ?? {}, (error, stdout, stderr) => {
+      if (error) {
+        reject(Object.assign(error, { stdout, stderr }));
+        return;
+      }
+      resolve({ stdout, stderr });
+    });
+  });
+}
+
+async function importExifr(): Promise<ExifrModule> {
+  return (await import("exifr")).default;
+}
 
 /* ─── Constants ─── */
 
@@ -218,7 +239,7 @@ async function inspectRawPreviewBuffer(
 }
 
 async function resolveExifrRawPreview(raw: Buffer, sourceExt: string): Promise<RawPreviewCandidate | null> {
-  const exifr = (await import("exifr")).default;
+  const exifr = await importExifr();
   const preview = await exifr.thumbnail(raw);
   if (!preview) return null;
   return inspectRawPreviewBuffer(preview, sourceExt);
@@ -696,7 +717,7 @@ function extractExifDate(exifBuffer: Buffer | undefined): string | null {
 
 async function extractStillImageLivePhotoContentId(raw: Buffer): Promise<string | null> {
   try {
-    const exifr = await import("exifr");
+    const exifr = await importExifr();
     const tags = await exifr.parse(raw, {
       tiff: true,
       exif: true,
@@ -925,9 +946,15 @@ async function canSharpReadImage(buffer: Buffer): Promise<boolean> {
   }
 }
 
+function getErrorCode(error: unknown): string | null {
+  if (!error || typeof error !== "object") return null;
+  const code = Reflect.get(error, "code");
+  return typeof code === "string" ? code : null;
+}
+
 async function decodeRawFileWithLibraw(filename: string): Promise<Buffer> {
   const candidates = ["dcraw_emu", "dcraw"];
-  let lastError: unknown = null;
+  const decodeErrors: Error[] = [];
 
   for (const binary of candidates) {
     try {
@@ -948,14 +975,23 @@ async function decodeRawFileWithLibraw(filename: string): Promise<Buffer> {
       }
       return buffer;
     } catch (error) {
-      lastError = error;
+      if (getErrorCode(error) === "ENOENT") {
+        continue;
+      }
+      decodeErrors.push(
+        error instanceof Error
+          ? new Error(`${binary} failed: ${error.message}`)
+          : new Error(`${binary} failed: ${String(error)}`)
+      );
       continue;
     }
   }
 
-  throw lastError instanceof Error
-    ? lastError
-    : new Error("RAW decoder not available: expected dcraw_emu or dcraw");
+  if (decodeErrors.length > 0) {
+    throw decodeErrors[0];
+  }
+
+  throw new Error("RAW decoder not available: expected dcraw_emu or dcraw");
 }
 
 async function probeVideoFile(filename: string): Promise<VideoProbeResult> {
@@ -971,7 +1007,9 @@ async function probeVideoFile(filename: string): Promise<VideoProbeResult> {
     { maxBuffer: 1024 * 1024 }
   );
 
-  const parsed = JSON.parse(stdout) as {
+  const parsed = JSON.parse(
+    typeof stdout === "string" ? stdout : stdout.toString("utf8")
+  ) as {
     streams?: Array<{ width?: number; height?: number }>;
     format?: { duration?: string };
   };
@@ -1044,7 +1082,7 @@ async function applyBaselineExposure(
   rawBuffer: Buffer
 ): Promise<sharp.Sharp> {
   try {
-    const exifr = await import("exifr");
+    const exifr = await importExifr();
     const tags = await exifr.parse(rawBuffer, {
       tiff: true,
       ifd0: { pick: ["BaselineExposure"] },
@@ -1057,8 +1095,8 @@ async function applyBaselineExposure(
         : 0;
 
     if (Number.isFinite(baselineEV) && Math.abs(baselineEV) > 0.05) {
-      // DNG baseline exposure is compensation metadata, so apply the inverse gain here.
-      return pipeline.linear(Math.pow(2, -baselineEV), 0);
+      // BaselineExposure is the compensation needed to reach the intended baseline rendering.
+      return pipeline.linear(Math.pow(2, baselineEV), 0);
     }
   } catch {
     // Ignore missing tags and parser errors; fallback decode should still succeed.

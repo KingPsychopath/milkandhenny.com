@@ -40,9 +40,6 @@ Optional advanced knobs:
 ```bash
 TRANSFER_MEDIA_FORCE_WORKER_FOR_RAW=0
 TRANSFER_MEDIA_FORCE_WORKER_FOR_VIDEO=0
-TRANSFER_MEDIA_WORKER_BATCH_SIZE=1
-TRANSFER_MEDIA_WORKER_POLL_MS=2000
-TRANSFER_MEDIA_WORKER_EMPTY_BACKOFF_MS=10000
 TRANSFER_MEDIA_WORKER_ERROR_BACKOFF_MS=30000
 ```
 
@@ -63,6 +60,7 @@ pnpm fly:worker -- status
 pnpm fly:worker -- machines
 pnpm fly:worker -- restart-all
 pnpm fly:worker -- sync-secrets
+pnpm worker:lock
 ```
 
 ## First-time setup
@@ -162,9 +160,6 @@ MEDIA_PROCESSOR_MODE=hybrid
 NEXT_PUBLIC_TRANSFER_MEDIA_BROWSER_PREP=auto
 TRANSFER_MEDIA_WORKER_ENABLED=1
 TRANSFER_MEDIA_QUEUE_ENABLED=1
-TRANSFER_MEDIA_WORKER_BATCH_SIZE=1
-TRANSFER_MEDIA_WORKER_POLL_MS=2000
-TRANSFER_MEDIA_WORKER_EMPTY_BACKOFF_MS=10000
 TRANSFER_MEDIA_WORKER_ERROR_BACKOFF_MS=30000
 TRANSFER_MEDIA_FORCE_WORKER_FOR_HEIF=1
 ```
@@ -174,7 +169,7 @@ Browser prep policy:
 - do not use browser RAW prep
 - keep RAW/video as local-first with worker fallback
 
-These defaults keep the pipeline simple and keep polling cost low while still reacting quickly when jobs appear.
+These defaults keep the pipeline simple while the worker blocks on Redis for new jobs.
 
 ## Cost
 
@@ -192,12 +187,9 @@ Practical expectation with current polling defaults:
 - Fly: about `$2-4/month`
 - Upstash: usually free or very low unless polling is too aggressive or the queue is busy all day
 
-Main cost risk is idle polling, not compute. Keep:
+Main cost risk is the machine footprint, not app-level polling. Keep:
 
 ```bash
-TRANSFER_MEDIA_WORKER_BATCH_SIZE=1
-TRANSFER_MEDIA_WORKER_POLL_MS=2000
-TRANSFER_MEDIA_WORKER_EMPTY_BACKOFF_MS=10000
 TRANSFER_MEDIA_WORKER_ERROR_BACKOFF_MS=30000
 ```
 
@@ -290,5 +282,4 @@ Success signs:
 - no repeated worker failures on the same item
 
 If the worker is being OOM-killed:
-- keep `TRANSFER_MEDIA_WORKER_BATCH_SIZE=1`
 - use `shared-cpu-1x` with `1024MB`

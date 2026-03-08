@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdminStepUp, requireAuth } from "@/features/auth/server";
-import { requeueTransferFile, wakeTransferMediaWorker } from "@/features/media/backends/worker";
+import {
+  requeueTransferFile,
+  runTransferMediaJobs,
+  wakeTransferMediaWorker,
+} from "@/features/media/backends/worker";
 import { backfillTransferMedia } from "@/features/transfers/upload";
 import { getTransfer, saveTransfer } from "@/features/transfers/store";
 import { apiErrorFromRequest } from "@/lib/platform/api-error";
@@ -28,15 +32,24 @@ export async function POST(request: NextRequest) {
 
   try {
     if (mode === "drain") {
-      const [wokeWorker, media] = await Promise.all([
+      const limit =
+        "limit" in body && typeof body.limit === "number" && Number.isFinite(body.limit)
+          ? Math.max(1, Math.floor(body.limit))
+          : 25;
+      const [wokeWorker, result, media] = await Promise.all([
         wakeTransferMediaWorker(),
+        runTransferMediaJobs(limit),
         getAdminTransferMediaStats(),
       ]);
       return NextResponse.json({
         success: true,
         mode,
         wokeWorker,
-        queueLength: media.queueLength,
+        processedJobs: result.processedJobs,
+        succeeded: result.succeeded,
+        failed: result.failed,
+        skipped: result.skipped,
+        queueLength: result.queueLength,
         worker: media.worker,
       });
     }

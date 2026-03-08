@@ -6,6 +6,9 @@ coverage
 dist
 tmp
 deploy
+!deploy/
+!deploy/fly-transfer-worker/
+!deploy/fly-transfer-worker/pnpm-lock.yaml
 *.log
 *.env*
 .env

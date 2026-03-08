@@ -14,6 +14,63 @@ describe("admin transfer media route", () => {
     vi.resetModules();
   });
 
+  it("drains queued worker jobs and returns the actual counts", async () => {
+    const runTransferMediaJobs = vi.fn().mockResolvedValue({
+      processedJobs: 7,
+      succeeded: 5,
+      failed: 1,
+      skipped: 1,
+      queueLength: 21,
+    });
+    const wakeTransferMediaWorker = vi.fn().mockResolvedValue(true);
+
+    vi.doMock("@/features/auth/server", () => ({
+      requireAuth: vi.fn().mockResolvedValue(null),
+      requireAdminStepUp: vi.fn().mockResolvedValue(null),
+    }));
+    vi.doMock("@/features/media/backends/worker", () => ({
+      runTransferMediaJobs,
+      wakeTransferMediaWorker,
+      requeueTransferFile: vi.fn(),
+    }));
+    vi.doMock("@/features/transfers/upload", () => ({
+      backfillTransferMedia: vi.fn(),
+    }));
+    vi.doMock("@/features/transfers/store", () => ({
+      getTransfer: vi.fn(),
+      saveTransfer: vi.fn(),
+    }));
+    vi.doMock("@/features/transfers/admin", () => ({
+      getAdminTransferMediaStats: vi.fn().mockResolvedValue({
+        queueLength: 21,
+        worker: { lastHeartbeatAt: "2026-03-08T22:29:30.000Z" },
+      }),
+    }));
+    vi.doMock("@/lib/platform/api-error", () => ({
+      apiErrorFromRequest: vi.fn(),
+    }));
+
+    const { POST } = await import("@/app/api/admin/transfers/process-media/route");
+    const response = await POST(makeRequest({ mode: "drain", limit: 7 }));
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      success: true,
+      mode: "drain",
+      wokeWorker: true,
+      processedJobs: 7,
+      succeeded: 5,
+      failed: 1,
+      skipped: 1,
+      queueLength: 21,
+      worker: {
+        lastHeartbeatAt: "2026-03-08T22:29:30.000Z",
+      },
+    });
+    expect(runTransferMediaJobs).toHaveBeenCalledWith(7);
+    expect(wakeTransferMediaWorker).toHaveBeenCalledTimes(1);
+  });
+
   it("retries the matching file by mediaId when filenames collide", async () => {
     const requeueTransferFile = vi.fn().mockResolvedValue({
       id: "photo-2",
@@ -36,6 +93,7 @@ describe("admin transfer media route", () => {
     }));
     vi.doMock("@/features/media/backends/worker", () => ({
       runTransferMediaJobs: vi.fn(),
+      wakeTransferMediaWorker: vi.fn(),
       requeueTransferFile,
     }));
     vi.doMock("@/features/transfers/upload", () => ({
@@ -129,6 +187,7 @@ describe("admin transfer media route", () => {
     }));
     vi.doMock("@/features/media/backends/worker", () => ({
       runTransferMediaJobs: vi.fn(),
+      wakeTransferMediaWorker: vi.fn(),
       requeueTransferFile: vi.fn().mockResolvedValue(target),
     }));
     vi.doMock("@/features/transfers/upload", () => ({

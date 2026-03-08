@@ -19,5 +19,24 @@
         "./scripts/server-only.ts"
       ]
     }
-  }
+  },
+  "include": [
+    "scripts/**/*.ts",
+    "features/**/*.ts",
+    "lib/platform/**/*.ts",
+    "lib/shared/**/*.ts"
+  ],
+  "exclude": [
+    "__tests__",
+    "app",
+    "components",
+    "content",
+    "deploy",
+    "docs",
+    "features/transfers/browser-heif.ts",
+    "models",
+    "node_modules",
+    "public",
+    ".next"
+  ]
 }
