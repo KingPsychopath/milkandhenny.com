@@ -105,10 +105,11 @@ function isVisualTransferFilename(filename: string): boolean {
 function getExpectedTransferAssetKeys(
   transferId: string,
   filename: string,
-  route: ProcessingRoute | null
+  route: ProcessingRoute | null,
+  mediaId?: string
 ): { thumbKey?: string; fullKey?: string } {
   if (!route) return {};
-  const id = getTransferFileId(filename);
+  const id = mediaId ?? getTransferFileId(filename);
   if (route === "local_gif") {
     return { thumbKey: `transfers/${transferId}/thumb/${id}.webp` };
   }

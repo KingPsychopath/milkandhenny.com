@@ -41,7 +41,27 @@ async function processTransferBuffer(
   }
 
   try {
-    return await processTransferBufferLocally(buffer, file, transferId, "local_done", "local", route);
+    const result = await processTransferBufferLocally(
+      buffer,
+      file,
+      transferId,
+      "local_done",
+      "local",
+      route
+    );
+    if (
+      route === "raw_try_local" &&
+      result.file.processingStatus === "failed" &&
+      result.file.processingErrorCode === "raw_preview_unavailable"
+    ) {
+      return enqueueWorkerJob({
+        transferId,
+        file: { ...file, size: buffer.byteLength },
+        route,
+        originalBuffer: buffer,
+      });
+    }
+    return result;
   } catch {
     return enqueueWorkerJob({
       transferId,
@@ -67,7 +87,21 @@ async function processTransferObject(
   }
 
   try {
-    return await processTransferObjectLocally(file, transferId, "local_done", "local", route);
+    const result = await processTransferObjectLocally(
+      file,
+      transferId,
+      "local_done",
+      "local",
+      route
+    );
+    if (
+      route === "raw_try_local" &&
+      result.file.processingStatus === "failed" &&
+      result.file.processingErrorCode === "raw_preview_unavailable"
+    ) {
+      return enqueueWorkerJob({ transferId, file, route });
+    }
+    return result;
   } catch {
     return enqueueWorkerJob({
       transferId,

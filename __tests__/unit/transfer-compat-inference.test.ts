@@ -60,6 +60,28 @@ describe("transfer compatibility inference", () => {
     expect(inferred.processingRoute).toBe("raw_try_local");
   });
 
+  it("uses the stored media id when checking derived assets", async () => {
+    headObject
+      .mockResolvedValueOnce({ exists: true })
+      .mockResolvedValueOnce({ exists: true });
+
+    const file: TransferFile = {
+      id: "clip-2",
+      filename: "clip.mp4",
+      kind: "video",
+      size: 4567,
+      mimeType: "video/mp4",
+      storageKey: "transfers/abc123/originals/clip.mp4",
+    };
+
+    const inferred = await inferCompatibleTransferFileState("abc123", file);
+
+    expect(headObject).toHaveBeenNthCalledWith(1, "transfers/abc123/thumb/clip-2.webp");
+    expect(headObject).toHaveBeenNthCalledWith(2, "transfers/abc123/full/clip-2.webp");
+    expect(inferred.previewStatus).toBe("ready");
+    expect(inferred.processingStatus).toBe("local_done");
+  });
+
   it("marks legacy non-visual media skipped", async () => {
     const file: TransferFile = {
       id: "notes.pdf",

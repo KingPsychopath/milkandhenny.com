@@ -436,7 +436,7 @@ async function inferCompatibleTransferFileState(
     };
   }
 
-  const expected = getExpectedTransferAssetKeys(transferId, file.filename, route);
+  const expected = getExpectedTransferAssetKeys(transferId, file.filename, route, file.id);
   const [thumbMeta, fullMeta] = await Promise.all([
     expected.thumbKey ? headObject(expected.thumbKey) : Promise.resolve({ exists: true }),
     expected.fullKey ? headObject(expected.fullKey) : Promise.resolve({ exists: true }),

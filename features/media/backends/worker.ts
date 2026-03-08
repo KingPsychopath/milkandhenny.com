@@ -105,7 +105,12 @@ async function enqueueWorkerJob(params: {
     );
   }
 
-  const expected = getExpectedTransferAssetKeys(params.transferId, params.file.name, route);
+  const expected = getExpectedTransferAssetKeys(
+    params.transferId,
+    params.file.name,
+    route,
+    mediaId
+  );
   const enqueuedAt = new Date().toISOString();
 
   try {
