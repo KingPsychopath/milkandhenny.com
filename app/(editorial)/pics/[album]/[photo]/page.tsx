@@ -2,7 +2,7 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import type { Metadata } from "next";
 import { getAlbumBySlug, getAllAlbumSlugs } from "@/features/media/albums";
-import { getFullUrl, getOriginalUrl } from "@/features/media/storage";
+import { getFullUrl, getOgUrl, getOriginalUrl } from "@/features/media/storage";
 import { BASE_URL, SITE_NAME, SITE_BRAND } from "@/lib/shared/config";
 import { PhotoViewer } from "../../_components/PhotoViewer";
 import { Breadcrumbs } from "@/components/Breadcrumbs";
@@ -45,11 +45,13 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
       url: `/pics/${albumSlug}/${photoId}`,
       siteName: SITE_NAME,
       type: "website",
+      images: [{ url: getOgUrl(albumSlug, photoId), alt: `${album.title} — ${photoId}` }],
     },
     twitter: {
       card: "summary_large_image",
       title: `${album.title} — ${photoId}`,
       description,
+      images: [getOgUrl(albumSlug, photoId)],
     },
   };
 }

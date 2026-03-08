@@ -11,14 +11,18 @@ import {
   sortTransferFiles,
   isSafeTransferFilename,
 } from "@/features/transfers/upload";
-import { buildTransferProcessingCounts, resolveTransferUploadIds } from "@/features/transfers/media-state";
+import {
+  buildTransferProcessingCounts,
+  classifyTransferProcessingRoute,
+  resolveTransferUploadIds,
+} from "@/features/transfers/media-state";
 import type { TransferUploadFileInput } from "@/features/transfers/upload-types";
 import { BASE_URL, hasPublicR2Url } from "@/lib/shared/config";
 import { apiErrorFromRequest } from "@/lib/platform/api-error";
 import { mapWithConcurrency } from "@/lib/shared/map-with-concurrency";
+import { enqueueWorkerJob } from "@/features/media/backends/worker";
 
-/** Allow longer execution for image processing (downloads from R2 + Sharp) */
-export const maxDuration = 60;
+export const maxDuration = 15;
 export const runtime = "nodejs";
 const FINALIZE_CONCURRENCY = 2;
 
@@ -139,7 +143,13 @@ export async function POST(request: NextRequest) {
     const results = await mapWithConcurrency(
       files,
       FINALIZE_CONCURRENCY,
-      async (file) => processUploadedFile(file, transferId)
+      async (file) => {
+        const route = classifyTransferProcessingRoute(file.name);
+        if (!route) {
+          return processUploadedFile(file, transferId);
+        }
+        return enqueueWorkerJob({ transferId, file, route });
+      }
     );
     const counts = { images: 0, videos: 0, gifs: 0, audio: 0, other: 0 };
 

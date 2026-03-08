@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { playFeedback } from '@/lib/client/feedback';
 import { SITE_NAME } from '@/lib/shared/config';
 import { getStored, setStored, removeStored } from '@/lib/client/storage';
+import { useHasMounted } from '@/hooks/useHasMounted';
 import {
   getBestDressedLeaderboardSnapshotAction,
   getBestDressedSnapshotAction,
@@ -29,6 +30,7 @@ type BestDressedClientProps = {
 };
 
 export function BestDressedClient({ initialSnapshot }: BestDressedClientProps) {
+  const hasMounted = useHasMounted();
   const [hasVoted, setHasVoted] = useState<string | null>(initialSnapshot.votedFor);
   const [currentSession, setCurrentSession] = useState<string>(initialSnapshot.session || 'initial');
   const [voteToken, setVoteToken] = useState<string>(initialSnapshot.voteToken || '');
@@ -193,6 +195,10 @@ export function BestDressedClient({ initialSnapshot }: BestDressedClientProps) {
 
   const maxVotes = leaderboard[0]?.count || 1;
   const showCodeInput = codeRequired || !!voteCode.trim();
+  const openUntilLabel =
+    hasMounted && openUntil
+      ? new Date(openUntil * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+      : null;
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-zinc-950 via-purple-950/30 to-zinc-950">
@@ -301,7 +307,7 @@ export function BestDressedClient({ initialSnapshot }: BestDressedClientProps) {
               ) : (
                 <p className="text-center text-zinc-500 text-sm">
                   Voting is open right now — no code needed
-                  {openUntil ? ` (until ${new Date(openUntil * 1000).toLocaleTimeString()})` : ''}
+                  {openUntilLabel ? ` (until ${openUntilLabel})` : ''}
                 </p>
               )}
 
@@ -381,7 +387,7 @@ export function BestDressedClient({ initialSnapshot }: BestDressedClientProps) {
             ← Back to party
           </Link>
           <p className="text-zinc-600 text-xs">
-            © {new Date().getFullYear()} {SITE_NAME}
+            © 2026 {SITE_NAME}
           </p>
         </footer>
       </div>

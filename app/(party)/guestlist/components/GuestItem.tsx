@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { Guest } from '@/features/guests/types';
 import { playFeedback } from '@/lib/client/feedback';
+import { useHasMounted } from '@/hooks/useHasMounted';
 
 type GuestItemProps = {
   guest: Guest;
@@ -48,6 +49,7 @@ function formatPlusOneStatus(plusOnes: Guest[]) {
 }
 
 export function GuestItem({ guest, onCheckIn, searchQuery }: GuestItemProps) {
+  const hasMounted = useHasMounted();
   const [expanded, setExpanded] = useState(false);
   const hasPlusOnes = guest.plusOnes && guest.plusOnes.length > 0;
   const plusOneStatus = hasPlusOnes ? formatPlusOneStatus(guest.plusOnes) : null;
@@ -102,7 +104,9 @@ export function GuestItem({ guest, onCheckIn, searchQuery }: GuestItemProps) {
                   clipRule="evenodd"
                 />
               </svg>
-              {new Date(guest.checkedInAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+              {hasMounted
+                ? new Date(guest.checkedInAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                : 'checked in'}
             </div>
           )}
         </div>
@@ -165,7 +169,9 @@ export function GuestItem({ guest, onCheckIn, searchQuery }: GuestItemProps) {
                 )}
                 {plusOne.checkedIn && plusOne.checkedInAt && (
                   <div className="text-xs text-amber-600 mt-0.5">
-                    {new Date(plusOne.checkedInAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    {hasMounted
+                      ? new Date(plusOne.checkedInAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                      : 'checked in'}
                   </div>
                 )}
               </div>
@@ -176,4 +182,3 @@ export function GuestItem({ guest, onCheckIn, searchQuery }: GuestItemProps) {
     </div>
   );
 }
-

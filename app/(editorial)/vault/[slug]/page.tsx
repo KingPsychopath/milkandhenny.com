@@ -3,19 +3,17 @@ import type { Metadata } from "next";
 import { notFound, redirect } from "next/navigation";
 import { WordBody } from "@/app/(editorial)/words/_components/WordBody";
 import { UnlockWordClient } from "@/app/(editorial)/words/_components/UnlockWordClient";
+import { getWordRenderData } from "@/app/(editorial)/words/_components/wordRenderData";
 import {
   formatWordDate,
   highlightWordTitle,
-  resolveAlbumsFromWordContent,
 } from "@/app/(editorial)/words/_components/wordPageShared";
 import { Breadcrumbs } from "@/components/Breadcrumbs";
 import { JumpRail } from "@/components/JumpRail";
 import { ReadingProgress } from "@/components/ReadingProgress";
 import { resolveWordContentRef } from "@/features/media/storage";
-import { extractHeadings } from "@/features/words/headings";
 import { canReadWordInServerContext, isWordsEnabled } from "@/features/words/reader";
 import { getWord, getWordMeta } from "@/features/words/store";
-import { estimateReadingTime } from "@/features/words/reading-time";
 import { wordPublicPath } from "@/features/words/routes";
 import { SITE_BRAND, SITE_NAME } from "@/lib/shared/config";
 
@@ -60,11 +58,10 @@ export default async function WordPrivatePage({ params }: Props) {
   if (canRead && !note) notFound();
 
   const published = meta.publishedAt ?? meta.updatedAt;
-  const readingTime = note
-    ? (meta.readingTime > 0 ? meta.readingTime : estimateReadingTime(note.markdown))
-    : 0;
-  const headings = note ? extractHeadings(note.markdown) : [];
-  const albums = note ? resolveAlbumsFromWordContent(note.markdown) : {};
+  const readingTime = note ? note.meta.readingTime : 0;
+  const renderData = note ? getWordRenderData(slug, note.meta.updatedAt, note.markdown) : null;
+  const headings = renderData?.headings ?? [];
+  const albums = renderData?.albums ?? {};
   const heroImage = note && meta.image ? resolveWordContentRef(meta.image, slug) : "";
 
   return (

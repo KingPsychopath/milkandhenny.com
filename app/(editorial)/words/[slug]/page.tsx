@@ -3,20 +3,18 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { WordBody } from "@/app/(editorial)/words/_components/WordBody";
 import { WordSplitRedirectClient } from "@/app/(editorial)/words/_components/WordSplitRedirectClient";
+import { getWordRenderData } from "@/app/(editorial)/words/_components/wordRenderData";
 import {
   formatWordDate,
   highlightWordTitle,
-  resolveAlbumsFromWordContent,
 } from "@/app/(editorial)/words/_components/wordPageShared";
 import { Breadcrumbs } from "@/components/Breadcrumbs";
 import { JumpRail } from "@/components/JumpRail";
 import { ReadingProgress } from "@/components/ReadingProgress";
 import { Share } from "@/components/Share";
 import { resolveWordContentRef } from "@/features/media/storage";
-import { extractHeadings } from "@/features/words/headings";
 import { isWordsEnabled } from "@/features/words/reader";
 import { getWord, getWordMeta, listWords } from "@/features/words/store";
-import { estimateReadingTime } from "@/features/words/reading-time";
 import { wordPrivatePath } from "@/features/words/routes";
 import { BASE_URL, SITE_BRAND, SITE_NAME } from "@/lib/shared/config";
 
@@ -123,9 +121,8 @@ export default async function WordSlugPage({ params }: Props) {
   if (!note) notFound();
 
   const published = meta.publishedAt ?? meta.updatedAt;
-  const readingTime = meta.readingTime > 0 ? meta.readingTime : estimateReadingTime(note.markdown);
-  const headings = extractHeadings(note.markdown);
-  const albums = resolveAlbumsFromWordContent(note.markdown);
+  const readingTime = note.meta.readingTime;
+  const { headings, albums } = getWordRenderData(slug, note.meta.updatedAt, note.markdown);
   const heroImage = meta.image ? resolveWordContentRef(meta.image, slug) : "";
   const pageTitle = meta.title;
   const pageSubtitle = meta.subtitle;
