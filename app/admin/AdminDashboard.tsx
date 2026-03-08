@@ -77,6 +77,8 @@ type AdminTransferDetail = {
   }>;
 };
 
+type TransferHealthFilter = "all" | "queued" | "processing" | "failed" | "worker";
+
 type SharedWordSummary = {
   slug: string;
   title: string;
@@ -215,6 +217,19 @@ function formatBytes(bytes: number): string {
   return `${size.toFixed(size >= 10 || index === 0 ? 0 : 1)} ${units[index]}`;
 }
 
+function transferMatchesHealthFilter(
+  transfer: TransferSummary,
+  detail: AdminTransferDetail | null,
+  filter: TransferHealthFilter
+): boolean {
+  if (filter === "all") return true;
+  if (!detail || detail.id !== transfer.id) return false;
+  if (filter === "queued") return detail.files.some((file) => file.processingStatus === "queued");
+  if (filter === "processing") return detail.files.some((file) => file.processingStatus === "processing");
+  if (filter === "failed") return detail.files.some((file) => file.processingStatus === "failed");
+  return detail.files.some((file) => file.processingBackend === "worker");
+}
+
 export function AdminDashboard() {
   const [loading, setLoading] = useState(false);
   const [statusMessage, setStatusMessage] = useState("");
@@ -238,6 +253,7 @@ export function AdminDashboard() {
   const [transferDetail, setTransferDetail] = useState<AdminTransferDetail | null>(null);
   const [transferDetailLoading, setTransferDetailLoading] = useState<string | null>(null);
   const [transferQuery, setTransferQuery] = useState("");
+  const [transferHealthFilter, setTransferHealthFilter] = useState<TransferHealthFilter>("all");
   const [showAllTransfers, setShowAllTransfers] = useState(false);
   const [sharedWords, setSharedWords] = useState<SharedWordSummary[]>([]);
   const [sharedWordsLoading, setSharedWordsLoading] = useState(false);
@@ -953,13 +969,15 @@ export function AdminDashboard() {
 
   const filteredTransfers = useMemo(() => {
     const q = transferQuery.trim().toLowerCase();
-    if (!q) return transfers;
-    return transfers.filter(
-      (transfer) =>
+    return transfers.filter((transfer) => {
+      const matchesQuery =
+        !q ||
         transfer.id.toLowerCase().includes(q) ||
-        transfer.title.toLowerCase().includes(q)
-    );
-  }, [transfers, transferQuery]);
+        transfer.title.toLowerCase().includes(q);
+      if (!matchesQuery) return false;
+      return transferMatchesHealthFilter(transfer, transferDetail, transferHealthFilter);
+    });
+  }, [transferDetail, transferHealthFilter, transferQuery, transfers]);
   const visibleTransfers = showAllTransfers
     ? filteredTransfers
     : filteredTransfers.slice(0, 15);
@@ -1418,6 +1436,22 @@ export function AdminDashboard() {
             placeholder="filter transfers by title or id"
             className="w-full bg-transparent border-b border-[var(--stone-200)] focus:border-[var(--foreground)] outline-none font-mono text-xs py-2 transition-colors placeholder:text-[var(--stone-400)]"
           />
+          <div className="flex flex-wrap gap-2 font-mono text-xs">
+            {(["all", "queued", "processing", "failed", "worker"] as const).map((filter) => (
+              <button
+                key={filter}
+                type="button"
+                onClick={() => setTransferHealthFilter(filter)}
+                className={
+                  transferHealthFilter === filter
+                    ? "px-2 py-1 rounded-sm border theme-border text-[var(--foreground)]"
+                    : "px-2 py-1 rounded-sm border theme-border theme-muted hover:text-[var(--foreground)] transition-colors"
+                }
+              >
+                {filter}
+              </button>
+            ))}
+          </div>
 
           {transferStatusMessage ? (
             <p className="font-mono text-xs text-[var(--prose-hashtag)]">
