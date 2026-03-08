@@ -49,6 +49,7 @@ type TransferFile = {
   processingStartedAt?: string;
   processingCompletedAt?: string;
   processingErrorCode?: string;
+  processingErrorDetail?: string;
   retryCount?: number;
 };
 

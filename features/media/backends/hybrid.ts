@@ -5,6 +5,7 @@ import { mapConcurrent } from "@/features/media/processing";
 import {
   canRetryTransferProcessing,
   classifyTransferProcessingRoute,
+  didTransferFileChange,
   isTransferProcessingStale,
   type ProcessingRoute,
 } from "@/features/transfers/media-state";
@@ -125,6 +126,7 @@ async function repairOrQueueLegacyFile(
         transferId: transfer.id,
         file: {
           name: file.filename,
+          mediaId: file.id,
           size: file.size,
           type: file.mimeType,
           originalName: file.originalFilename,
@@ -162,6 +164,7 @@ async function repairOrQueueLegacyFile(
         transferId: transfer.id,
         file: {
           name: file.filename,
+          mediaId: file.id,
           size: file.size,
           type: file.mimeType,
           originalName: file.originalFilename,
@@ -191,7 +194,7 @@ async function backfillTransferMedia(transfer: TransferData, mode: MediaProcesso
       const compatMissing =
         !file.previewStatus || !file.processingStatus || (!file.processingRoute && inferred.processingStatus !== "skipped");
 
-      if (JSON.stringify(inferred) !== JSON.stringify(file)) {
+      if (didTransferFileChange(file, inferred)) {
         changed = true;
       }
 
@@ -205,14 +208,34 @@ async function backfillTransferMedia(transfer: TransferData, mode: MediaProcesso
       }
 
       if (
-        isTransferProcessingStale(inferred) &&
+        inferred.processingStatus === "failed" &&
+        inferred.processingRoute &&
         canRetryTransferProcessing(inferred)
       ) {
         const retried = await requeueTransferFile(refreshed, inferred);
-        if (JSON.stringify(retried) !== JSON.stringify(inferred)) {
+        if (didTransferFileChange(inferred, retried)) {
           changed = true;
         }
         return retried;
+      }
+
+      if (isTransferProcessingStale(inferred) && canRetryTransferProcessing(inferred)) {
+        const retried = await requeueTransferFile(refreshed, inferred);
+        if (didTransferFileChange(inferred, retried)) {
+          changed = true;
+        }
+        return retried;
+      }
+
+      if (isTransferProcessingStale(inferred) && !canRetryTransferProcessing(inferred)) {
+        changed = true;
+        const exhausted: TransferFile = {
+          ...inferred,
+          previewStatus: "original_only",
+          processingStatus: "failed",
+          processingErrorCode: "retries_exhausted",
+        };
+        return exhausted;
       }
 
       return inferred;

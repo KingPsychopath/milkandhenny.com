@@ -5,6 +5,7 @@ import { downloadBuffer, uploadBuffer } from "@/lib/platform/r2";
 import {
   canRetryTransferProcessing,
   classifyTransferProcessingRoute,
+  didTransferFileChange,
   getExpectedTransferAssetKeys,
   getTransferFileId,
   isTransferProcessingStale,
@@ -32,6 +33,13 @@ type WorkerRunResult = {
   failed: number;
   skipped: number;
   queueLength: number;
+};
+
+const WORKER_ROUTE_MAP: Partial<Record<ProcessingRoute, ProcessingRoute>> = {
+  raw_try_local: "worker_raw",
+  local_image: "worker_image",
+  local_gif: "worker_gif",
+  local_video: "worker_video",
 };
 
 function buildQueuedTransferFile(
@@ -92,7 +100,7 @@ async function enqueueWorkerJob(params: {
   originalBuffer?: Buffer;
 }): Promise<ProcessFileResult> {
   const attempt = params.attempt ?? 1;
-  const route = params.route === "raw_try_local" ? "worker_raw" : params.route;
+  const route = WORKER_ROUTE_MAP[params.route] ?? params.route;
   const mimeType = getMimeType(params.file.name);
   const storageKey = buildTransferPrimaryStorageKey(params.transferId, params.file);
   const mediaId = params.file.mediaId ?? getTransferFileId(params.file.name);
@@ -117,6 +125,7 @@ async function enqueueWorkerJob(params: {
     await enqueueTransferMediaJob({
       transferId: params.transferId,
       file: params.file,
+      mediaId,
       storageKey,
       expectedThumbKey: expected.thumbKey,
       expectedFullKey: expected.fullKey,
@@ -149,7 +158,8 @@ async function processWorkerJob(job: TransferMediaJob): Promise<"succeeded" | "f
   const transfer = await getTransfer(job.transferId);
   if (!transfer) return "skipped";
 
-  const fileIndex = transfer.files.findIndex((file) => file.filename === job.file.name);
+  const mediaId = job.mediaId ?? job.file.mediaId ?? getTransferFileId(job.file.name);
+  const fileIndex = transfer.files.findIndex((file) => file.id === mediaId);
   if (fileIndex === -1) return "skipped";
   const current = transfer.files[fileIndex];
   if (current.processingStatus === "local_done" || current.processingStatus === "worker_done") {
@@ -180,12 +190,12 @@ async function processWorkerJob(job: TransferMediaJob): Promise<"succeeded" | "f
       const processed = await processImageVariants(decoded.buffer, ".tiff");
       const prefix = `transfers/${job.transferId}`;
       await Promise.all([
-        uploadBuffer(`${prefix}/thumb/${current.id}.webp`, processed.thumb.buffer, processed.thumb.contentType),
-        uploadBuffer(`${prefix}/full/${current.id}.webp`, processed.full.buffer, processed.full.contentType),
+        uploadBuffer(`${prefix}/thumb/${mediaId}.webp`, processed.thumb.buffer, processed.thumb.contentType),
+        uploadBuffer(`${prefix}/full/${mediaId}.webp`, processed.full.buffer, processed.full.contentType),
       ]);
       result = {
         file: buildReadyVisualFile(
-          current.id,
+          mediaId,
           job.file.name,
           current.size,
           "image",
@@ -226,19 +236,27 @@ async function processWorkerJob(job: TransferMediaJob): Promise<"succeeded" | "f
     };
     await saveTransfer(updated, remainingSeconds);
     return "succeeded";
-  } catch {
+  } catch (error) {
+    const errorDetail =
+      error instanceof Error
+        ? (error.stack ?? error.message).slice(0, 500)
+        : String(error).slice(0, 500);
+    console.error(
+      `[transfer-media-worker] job failed transfer=${job.transferId} mediaId=${mediaId} route=${job.processingRoute}\n${errorDetail}`
+    );
     const failed: TransferData = {
       ...processingTransfer,
       files: processingTransfer.files.map((file, index) =>
         index === fileIndex
           ? {
-              ...buildOriginalOnlyFailureFile(current.id, job.file.name, current.size, current.storageKey, job.processingRoute, "worker_failed", job.attempt),
+              ...buildOriginalOnlyFailureFile(mediaId, job.file.name, current.size, current.storageKey, job.processingRoute, "worker_failed", job.attempt),
               processingBackend: "worker",
               storageKey: current.storageKey,
               ...(current.originalStorageKey ? { originalStorageKey: current.originalStorageKey } : {}),
               ...(current.originalFilename ? { originalFilename: current.originalFilename } : {}),
               ...(current.originalMimeType ? { originalMimeType: current.originalMimeType } : {}),
               ...(current.convertedFrom ? { convertedFrom: current.convertedFrom } : {}),
+              processingErrorDetail: errorDetail,
             }
           : file
       ),
@@ -295,6 +313,7 @@ async function requeueTransferFile(
     transferId: transfer.id,
     file: {
       name: file.filename,
+      mediaId: file.id,
       size: file.size,
       type: file.mimeType,
       originalName: file.originalFilename,
@@ -316,9 +335,18 @@ async function refreshQueuedTransferState(transfer: TransferData): Promise<Trans
   const files = await Promise.all(
     transfer.files.map(async (file) => {
       if (!isTransferProcessingStale(file, nowMs)) return file;
-      if (!canRetryTransferProcessing(file)) return file;
+      if (!canRetryTransferProcessing(file)) {
+        const exhausted: TransferFile = {
+          ...file,
+          previewStatus: "original_only",
+          processingStatus: "failed",
+          processingErrorCode: "retries_exhausted",
+        };
+        if (didTransferFileChange(file, exhausted)) changed = true;
+        return exhausted;
+      }
       const retried = await requeueTransferFile(transfer, file, true);
-      if (JSON.stringify(retried) !== JSON.stringify(file)) changed = true;
+      if (didTransferFileChange(file, retried)) changed = true;
       return retried;
     })
   );

@@ -74,6 +74,7 @@ type AdminTransferDetail = {
     previewSource?: string;
     convertedFrom?: string;
     processingErrorCode?: string;
+    processingErrorDetail?: string;
   }>;
 };
 
@@ -674,6 +675,98 @@ export function AdminDashboard() {
       await loadTransfers();
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Failed to delete transfer";
+      setErrorMessage(msg);
+    } finally {
+      setTransferActionLoading(null);
+    }
+  };
+
+  const handleDrainTransferMediaQueue = async () => {
+    setTransferActionLoading("drain");
+    setErrorMessage("");
+    setStatusMessage("");
+    setTransferStatusMessage("");
+    try {
+      const stepToken = await ensureStepUpToken();
+      if (!stepToken) return;
+      const res = await authFetch("/api/admin/transfers/process-media", {
+        method: "POST",
+        headers: withStepUpHeaders(stepToken, { "Content-Type": "application/json" }),
+        body: JSON.stringify({ mode: "drain", limit: 25 }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error((data.error as string) || "Failed to drain transfer media queue");
+      }
+      const msg = `Drained queue: processed ${data.processedJobs ?? 0}, succeeded ${data.succeeded ?? 0}, failed ${data.failed ?? 0}, remaining ${data.queueLength ?? 0}.`;
+      setStatusMessage(msg);
+      setTransferStatus(msg);
+      await Promise.all([
+        loadTransfers(),
+        transferDetail ? handleLoadTransferDetail(transferDetail.id) : Promise.resolve(),
+      ]);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Failed to drain transfer media queue";
+      setErrorMessage(msg);
+    } finally {
+      setTransferActionLoading(null);
+    }
+  };
+
+  const handleBackfillTransferMedia = async (transferId: string) => {
+    setTransferActionLoading(`backfill:${transferId}`);
+    setErrorMessage("");
+    setStatusMessage("");
+    setTransferStatusMessage("");
+    try {
+      const stepToken = await ensureStepUpToken();
+      if (!stepToken) return;
+      const res = await authFetch("/api/admin/transfers/process-media", {
+        method: "POST",
+        headers: withStepUpHeaders(stepToken, { "Content-Type": "application/json" }),
+        body: JSON.stringify({ mode: "backfill", transferId }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error((data.error as string) || "Failed to backfill transfer media");
+      }
+      const msg = `Backfilled transfer ${transferId}.`;
+      setStatusMessage(msg);
+      setTransferStatus(msg);
+      await Promise.all([loadTransfers(), handleLoadTransferDetail(transferId)]);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Failed to backfill transfer media";
+      setErrorMessage(msg);
+    } finally {
+      setTransferActionLoading(null);
+    }
+  };
+
+  const handleRetryTransferFile = async (transferId: string, mediaId: string, filename: string) => {
+    setTransferActionLoading(`retry:${transferId}:${mediaId}`);
+    setErrorMessage("");
+    setStatusMessage("");
+    setTransferStatusMessage("");
+    try {
+      const stepToken = await ensureStepUpToken();
+      if (!stepToken) return;
+      const res = await authFetch("/api/admin/transfers/process-media", {
+        method: "POST",
+        headers: withStepUpHeaders(stepToken, { "Content-Type": "application/json" }),
+        body: JSON.stringify({ mode: "retry", transferId, mediaId, filename, force: true }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error((data.error as string) || "Failed to retry transfer file");
+      }
+      const msg = data.requeued === false
+        ? `Retry skipped for ${filename}: ${data.processingStatus ?? "unchanged"}.`
+        : `Retried ${filename}: ${data.processingStatus ?? "queued"}.`;
+      setStatusMessage(msg);
+      setTransferStatus(msg);
+      await Promise.all([loadTransfers(), handleLoadTransferDetail(transferId)]);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Failed to retry transfer file";
       setErrorMessage(msg);
     } finally {
       setTransferActionLoading(null);
@@ -1408,6 +1501,15 @@ export function AdminDashboard() {
               </button>
               <button
                 type="button"
+                disabled={transferActionLoading === "drain"}
+                onClick={() => void handleDrainTransferMediaQueue()}
+                className="font-mono text-xs theme-muted hover:text-[var(--foreground)] transition-colors disabled:opacity-50"
+                title="Runs queued transfer media jobs now and refreshes queue stats."
+              >
+                {transferActionLoading === "drain" ? "draining..." : "drain queue"}
+              </button>
+              <button
+                type="button"
                 disabled={transferCleanupLoading}
                 onClick={() => void cleanupTransfersAndScroll()}
                 className="font-mono text-xs theme-muted hover:text-[var(--foreground)] transition-colors disabled:opacity-50"
@@ -1547,6 +1649,15 @@ export function AdminDashboard() {
                     </button>
                     <button
                       type="button"
+                      disabled={transferActionLoading === `backfill:${transfer.id}`}
+                      onClick={() => void handleBackfillTransferMedia(transfer.id)}
+                      className="font-mono text-xs theme-muted hover:text-[var(--foreground)] transition-colors disabled:opacity-50"
+                      title="Re-check transfer media and requeue failed items when possible."
+                    >
+                      {transferActionLoading === `backfill:${transfer.id}` ? "backfilling..." : "backfill"}
+                    </button>
+                    <button
+                      type="button"
                       disabled={transferActionLoading === transfer.id}
                       onClick={() => void handleDeleteTransfer(transfer.id, transfer.title || "untitled")}
                       className="font-mono text-xs text-[var(--prose-hashtag)] hover:opacity-80 transition-opacity disabled:opacity-50"
@@ -1576,12 +1687,34 @@ export function AdminDashboard() {
               <div className="space-y-1">
                 {transferDetail.files.map((file) => (
                   <div key={`${transferDetail.id}:${file.id}:${file.filename}`} className="font-mono text-xs theme-muted border theme-border rounded-sm px-2 py-1">
-                    <div className="truncate text-[var(--foreground)]">{file.filename}</div>
-                    <div className="truncate">
-                      {file.kind} · {file.processingBackend ?? "n/a"} · {file.processingStatus ?? "n/a"}
-                      {file.processingRoute ? ` · ${file.processingRoute}` : ""}
-                      {file.previewSource ? ` · ${file.previewSource}` : ""}
-                      {file.processingErrorCode ? ` · ${file.processingErrorCode}` : ""}
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="truncate text-[var(--foreground)]">{file.filename}</div>
+                        <div className="truncate">
+                          {file.kind} · {file.processingBackend ?? "n/a"} · {file.processingStatus ?? "n/a"}
+                          {file.processingRoute ? ` · ${file.processingRoute}` : ""}
+                          {file.previewSource ? ` · ${file.previewSource}` : ""}
+                          {file.processingErrorCode ? ` · ${file.processingErrorCode}` : ""}
+                        </div>
+                        {file.processingErrorDetail ? (
+                          <div className="mt-1 break-words text-[10px] opacity-80">
+                            {file.processingErrorDetail}
+                          </div>
+                        ) : null}
+                      </div>
+                      {(file.processingStatus === "failed" ||
+                        file.processingStatus === "queued" ||
+                        file.processingStatus === "processing") ? (
+                        <button
+                          type="button"
+                          disabled={transferActionLoading === `retry:${transferDetail.id}:${file.id}`}
+                          onClick={() => void handleRetryTransferFile(transferDetail.id, file.id, file.filename)}
+                          className="shrink-0 font-mono text-xs theme-muted hover:text-[var(--foreground)] transition-colors disabled:opacity-50"
+                          title="Force this file back through the media pipeline."
+                        >
+                          {transferActionLoading === `retry:${transferDetail.id}:${file.id}` ? "retrying..." : "retry"}
+                        </button>
+                      ) : null}
                     </div>
                   </div>
                 ))}

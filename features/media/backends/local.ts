@@ -7,13 +7,17 @@ import {
   getMimeType,
   processGifThumb,
   processImageVariants,
+  processRawWithDcraw,
   processVideoVariants,
   type ProcessedImage,
 } from "@/features/media/processing";
 import {
+  canRetryTransferProcessing,
   classifyTransferProcessingRoute,
+  didTransferFileChange,
   getExpectedTransferAssetKeys,
   getTransferFileId,
+  isTransferProcessingStale,
   type ProcessingBackend,
   type ProcessingRoute,
   type ProcessingStatus,
@@ -48,8 +52,8 @@ function buildSkippedFile(
 }
 
 function getRouteKind(route: ProcessingRoute): TransferFile["kind"] {
-  if (route === "local_video") return "video";
-  if (route === "local_gif") return "gif";
+  if (route === "local_video" || route === "worker_video") return "video";
+  if (route === "local_gif" || route === "worker_gif") return "gif";
   return "image";
 }
 
@@ -162,6 +166,14 @@ function getProcessedImageLongestEdge(image: Pick<ProcessedImage, "width" | "hei
   return Math.max(image.width, image.height);
 }
 
+async function processRawWithLocalDecode(
+  raw: Buffer,
+  sourceName: string
+): Promise<ProcessedImage> {
+  const decoded = await processRawWithDcraw(raw, sourceName);
+  return processImageVariants(decoded.buffer, ".tiff");
+}
+
 async function materializeVisualFromBuffer(params: {
   buffer: Buffer;
   file: TransferUploadFileInput;
@@ -190,7 +202,7 @@ async function materializeVisualFromBuffer(params: {
   const archiveStorageKey = buildTransferArchivedOriginalStorageKey(transferId, file);
   const originalUploadSize = file.originalSize ?? 0;
 
-  if (route === "local_gif") {
+  if (route === "local_gif" || route === "worker_gif") {
     const gif = await processGifThumb(buffer);
     await uploadBuffer(`${prefix}/thumb/${derivedId}.webp`, gif.thumb.buffer, gif.thumb.contentType);
     if (!originalAlreadyStored && !archiveStorageKey) {
@@ -221,7 +233,7 @@ async function materializeVisualFromBuffer(params: {
     };
   }
 
-  if (route === "local_video") {
+  if (route === "local_video" || route === "worker_video") {
     const video = await processVideoVariants(buffer, filename);
 
     await Promise.all([
@@ -273,7 +285,13 @@ async function materializeVisualFromBuffer(params: {
     ) {
       try {
         const archivedRaw = await downloadBuffer(archiveStorageKey);
-        const rawProcessed = await processImageVariants(archivedRaw, file.originalName);
+        let rawProcessed: ProcessedImage;
+        try {
+          rawProcessed = await processImageVariants(archivedRaw, file.originalName);
+        } catch (error) {
+          if (!isRawPreviewUnavailableError(error)) throw error;
+          rawProcessed = await processRawWithLocalDecode(archivedRaw, file.originalName);
+        }
         if (!primaryProcessed || getProcessedImageLongestEdge(rawProcessed) > getProcessedImageLongestEdge(primaryProcessed)) {
           upgradedFromRaw = rawProcessed;
         }
@@ -324,6 +342,45 @@ async function materializeVisualFromBuffer(params: {
         originalUploadSize,
     };
   } catch (error) {
+    if (isRawPreviewUnavailableError(error) && route === "raw_try_local") {
+      try {
+        const processed = await processRawWithLocalDecode(buffer, filename);
+
+        await Promise.all([
+          uploadBuffer(`${prefix}/thumb/${derivedId}.webp`, processed.thumb.buffer, processed.thumb.contentType),
+          uploadBuffer(`${prefix}/full/${derivedId}.webp`, processed.full.buffer, processed.full.contentType),
+          originalAlreadyStored || archiveStorageKey ? Promise.resolve() : uploadOriginalBuffer(storageKey, filename, buffer),
+        ]);
+
+        return {
+          file: buildReadyVisualFile(
+            derivedId,
+            filename,
+            storedSize,
+            "image",
+            getMimeType(filename),
+            storageKey,
+            archiveStorageKey,
+            processed.width,
+            processed.height,
+            route,
+            processingStatus,
+            processingBackend,
+            processed.takenAt,
+            file,
+            "server_raw"
+          ),
+          uploadedBytes:
+            processed.thumb.buffer.byteLength +
+            processed.full.buffer.byteLength +
+            storedSize +
+            originalUploadSize,
+        };
+      } catch {
+        // If local RAW decoding is unavailable, preserve original-only behavior.
+      }
+    }
+
     if (!isRawPreviewUnavailableError(error)) {
       throw error;
     }
@@ -466,6 +523,66 @@ async function inferCompatibleTransferFileState(
   };
 }
 
+function markRetriesExhausted(file: TransferFile): TransferFile {
+  return {
+    ...file,
+    previewStatus: "original_only",
+    processingStatus: "failed",
+    processingErrorCode: "retries_exhausted",
+  };
+}
+
+async function retryLocalTransferFile(
+  transfer: TransferData,
+  file: TransferFile
+): Promise<TransferFile> {
+  const route = file.processingRoute ?? classifyTransferProcessingRoute(file.filename);
+  if (!route) return file;
+
+  const retryCount = (file.retryCount ?? 0) + 1;
+
+  try {
+    return (
+      await processTransferObjectLocally(
+        {
+          name: file.filename,
+          mediaId: file.id,
+          size: file.size,
+          type: file.mimeType,
+          originalName: file.originalFilename,
+          originalType: file.originalMimeType,
+          originalSize: file.originalStorageKey ? file.size : undefined,
+          convertedFrom: file.convertedFrom,
+        },
+        transfer.id,
+        "local_done",
+        "local",
+        route
+      )
+    ).file;
+  } catch (error) {
+    const failed = await buildFailedLocalResult({
+      transferId: transfer.id,
+      file: {
+        name: file.filename,
+        mediaId: file.id,
+        size: file.size,
+        type: file.mimeType,
+        originalName: file.originalFilename,
+        originalType: file.originalMimeType,
+        originalSize: file.originalStorageKey ? file.size : undefined,
+        convertedFrom: file.convertedFrom,
+      },
+      route,
+      code: isRawPreviewUnavailableError(error) ? "raw_preview_unavailable" : "processing_failed",
+    });
+    return {
+      ...failed.file,
+      retryCount,
+    };
+  }
+}
+
 function createLocalMediaProcessor() {
   return {
     processTransferBuffer: async (buffer: Buffer, file: TransferUploadFileInput, transferId: string) => {
@@ -506,11 +623,48 @@ function createLocalMediaProcessor() {
       const remainingSeconds = Math.ceil((new Date(transfer.expiresAt).getTime() - Date.now()) / 1000);
       if (remainingSeconds <= 0) return transfer;
 
+      let changed = false;
+      const nowMs = Date.now();
       const normalizedFiles = await Promise.all(
-        transfer.files.map((file) => inferCompatibleTransferFileState(transfer.id, file))
+        transfer.files.map(async (file) => {
+          const inferred = await inferCompatibleTransferFileState(transfer.id, file);
+          if (didTransferFileChange(file, inferred)) {
+            changed = true;
+          }
+
+          if (
+            inferred.processingStatus === "failed" &&
+            inferred.processingRoute &&
+            canRetryTransferProcessing(inferred)
+          ) {
+            const retried = await retryLocalTransferFile(transfer, inferred);
+            if (didTransferFileChange(inferred, retried)) {
+              changed = true;
+            }
+            return retried;
+          }
+
+          if (isTransferProcessingStale(inferred, nowMs) && canRetryTransferProcessing(inferred)) {
+            const retried = await retryLocalTransferFile(transfer, inferred);
+            if (didTransferFileChange(inferred, retried)) {
+              changed = true;
+            }
+            return retried;
+          }
+
+          if (isTransferProcessingStale(inferred, nowMs) && !canRetryTransferProcessing(inferred)) {
+            const exhausted = markRetriesExhausted(inferred);
+            if (didTransferFileChange(inferred, exhausted)) {
+              changed = true;
+            }
+            return exhausted;
+          }
+
+          return inferred;
+        })
       );
 
-      if (JSON.stringify(normalizedFiles) === JSON.stringify(transfer.files)) {
+      if (!changed) {
         return transfer;
       }
 

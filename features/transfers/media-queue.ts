@@ -10,6 +10,7 @@ const TRANSFER_MEDIA_QUEUE_KEY = "transfer:media:queue";
 type TransferMediaJob = {
   transferId: string;
   file: TransferUploadFileInput;
+  mediaId?: string;
   storageKey: string;
   expectedThumbKey?: string;
   expectedFullKey?: string;
@@ -50,6 +51,7 @@ async function dequeueTransferMediaJobs(limit: number): Promise<TransferMediaJob
         parsed.file &&
         typeof parsed.file === "object" &&
         typeof parsed.file.name === "string" &&
+        (typeof parsed.mediaId === "undefined" || typeof parsed.mediaId === "string") &&
         typeof parsed.storageKey === "string" &&
         typeof parsed.mimeType === "string" &&
         typeof parsed.processingRoute === "string" &&

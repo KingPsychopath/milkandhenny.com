@@ -22,6 +22,9 @@ const PROCESSING_ROUTES = [
   "raw_try_local",
   "worker_heif",
   "worker_raw",
+  "worker_image",
+  "worker_gif",
+  "worker_video",
 ] as const;
 
 type PreviewStatus = (typeof PREVIEW_STATUSES)[number];
@@ -106,11 +109,11 @@ function getExpectedTransferAssetKeys(
   transferId: string,
   filename: string,
   route: ProcessingRoute | null,
-  mediaId?: string
+  mediaId: string
 ): { thumbKey?: string; fullKey?: string } {
   if (!route) return {};
-  const id = mediaId ?? getTransferFileId(filename);
-  if (route === "local_gif") {
+  const id = mediaId;
+  if (route === "local_gif" || route === "worker_gif") {
     return { thumbKey: `transfers/${transferId}/thumb/${id}.webp` };
   }
   return {
@@ -167,6 +170,85 @@ function canRetryTransferProcessing(
   return (file.retryCount ?? 0) < MAX_TRANSFER_PROCESSING_RETRIES;
 }
 
+function didTransferFileChange(
+  before: {
+    id?: string;
+    filename?: string;
+    kind?: string;
+    size?: number;
+    mimeType?: string;
+    storageKey?: string;
+    originalStorageKey?: string;
+    originalFilename?: string;
+    originalMimeType?: string;
+    convertedFrom?: string;
+    previewSource?: string;
+    width?: number;
+    height?: number;
+    takenAt?: string | null;
+    previewStatus?: PreviewStatus;
+    processingStatus?: ProcessingStatus;
+    processingBackend?: ProcessingBackend;
+    processingRoute?: ProcessingRoute;
+    enqueuedAt?: string;
+    processingStartedAt?: string;
+    processingCompletedAt?: string;
+    processingErrorCode?: string;
+    retryCount?: number;
+  },
+  after: {
+    id?: string;
+    filename?: string;
+    kind?: string;
+    size?: number;
+    mimeType?: string;
+    storageKey?: string;
+    originalStorageKey?: string;
+    originalFilename?: string;
+    originalMimeType?: string;
+    convertedFrom?: string;
+    previewSource?: string;
+    width?: number;
+    height?: number;
+    takenAt?: string | null;
+    previewStatus?: PreviewStatus;
+    processingStatus?: ProcessingStatus;
+    processingBackend?: ProcessingBackend;
+    processingRoute?: ProcessingRoute;
+    enqueuedAt?: string;
+    processingStartedAt?: string;
+    processingCompletedAt?: string;
+    processingErrorCode?: string;
+    retryCount?: number;
+  }
+): boolean {
+  return (
+    before.id !== after.id ||
+    before.filename !== after.filename ||
+    before.kind !== after.kind ||
+    before.size !== after.size ||
+    before.mimeType !== after.mimeType ||
+    before.storageKey !== after.storageKey ||
+    before.originalStorageKey !== after.originalStorageKey ||
+    before.originalFilename !== after.originalFilename ||
+    before.originalMimeType !== after.originalMimeType ||
+    before.convertedFrom !== after.convertedFrom ||
+    before.previewSource !== after.previewSource ||
+    before.width !== after.width ||
+    before.height !== after.height ||
+    before.takenAt !== after.takenAt ||
+    before.previewStatus !== after.previewStatus ||
+    before.processingStatus !== after.processingStatus ||
+    before.processingBackend !== after.processingBackend ||
+    before.processingRoute !== after.processingRoute ||
+    before.enqueuedAt !== after.enqueuedAt ||
+    before.processingStartedAt !== after.processingStartedAt ||
+    before.processingCompletedAt !== after.processingCompletedAt ||
+    before.processingErrorCode !== after.processingErrorCode ||
+    before.retryCount !== after.retryCount
+  );
+}
+
 export {
   ANIMATED_EXTENSIONS,
   HEIF_EXTENSIONS,
@@ -183,6 +265,7 @@ export {
   buildTransferProcessingCounts,
   canRetryTransferProcessing,
   classifyTransferProcessingRoute,
+  didTransferFileChange,
   getExpectedTransferAssetKeys,
   getFilenameStem,
   getTransferFileId,

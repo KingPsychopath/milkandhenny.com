@@ -146,7 +146,7 @@ function channelsLookMonochrome(
 ): boolean {
   if (channels.length < 3) return true;
   const [r, g, b] = channels;
-  const epsilon = 0.01;
+  const epsilon = 0.5;
   return (
     Math.abs(r.mean - g.mean) < epsilon &&
     Math.abs(r.mean - b.mean) < epsilon &&
@@ -967,21 +967,61 @@ async function processVideoVariants(raw: Buffer, sourceExt = ".mp4"): Promise<Pr
 async function processRawWithDcraw(raw: Buffer, sourceExtOrFilename = ".dng"): Promise<DecodedRawImage> {
   const ext = path.extname(sourceExtOrFilename).toLowerCase() || sourceExtOrFilename.toLowerCase();
   return withTempFile("transfer-raw", ext, raw, async (tempFile) => {
-    const { stdout } = await execFileAsync(
-      "dcraw_emu",
-      [
-        "-c",
-        "-T",
-        "-w",
-        "-6",
-        "-o", "1",
-        tempFile,
-      ],
+    let stdout: Buffer | string | undefined;
+    const commands = [
       {
-        encoding: "buffer",
-        maxBuffer: 128 * 1024 * 1024,
+        command: "dcraw_emu",
+        args: ["-T", "-w", "-6", "-o", "1", "-Z", "-", tempFile],
+      },
+      {
+        command: "/opt/homebrew/bin/dcraw_emu",
+        args: ["-T", "-w", "-6", "-o", "1", "-Z", "-", tempFile],
+      },
+      {
+        command: "/usr/local/bin/dcraw_emu",
+        args: ["-T", "-w", "-6", "-o", "1", "-Z", "-", tempFile],
+      },
+      {
+        command: "dcraw",
+        args: ["-c", "-T", "-w", "-6", "-o", "1", tempFile],
+      },
+      {
+        command: "/opt/homebrew/bin/dcraw",
+        args: ["-c", "-T", "-w", "-6", "-o", "1", tempFile],
+      },
+      {
+        command: "/usr/local/bin/dcraw",
+        args: ["-c", "-T", "-w", "-6", "-o", "1", tempFile],
+      },
+    ] as const;
+
+    for (const { command, args } of commands) {
+      try {
+        ({ stdout } = await execFileAsync(
+          command,
+          args,
+          {
+            encoding: "buffer",
+            maxBuffer: 128 * 1024 * 1024,
+          }
+        ));
+        break;
+      } catch (error) {
+        if (
+          error &&
+          typeof error === "object" &&
+          "code" in error &&
+          error.code === "ENOENT"
+        ) {
+          continue;
+        }
+        throw error;
       }
-    );
+    }
+
+    if (typeof stdout === "undefined") {
+      throw new Error(`No RAW decoder found (tried: ${commands.map(({ command }) => command).join(", ")})`);
+    }
 
     const buffer = Buffer.isBuffer(stdout) ? stdout : Buffer.from(stdout);
     if (buffer.length === 0) {

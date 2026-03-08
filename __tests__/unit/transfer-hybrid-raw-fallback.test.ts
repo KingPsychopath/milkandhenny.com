@@ -2,13 +2,19 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const {
   enqueueWorkerJob,
+  inferCompatibleTransferFileState,
   processTransferBufferLocally,
   processTransferObjectLocally,
+  refreshQueuedTransferState,
+  requeueTransferFile,
   shouldRouteToWorkerFirst,
 } = vi.hoisted(() => ({
   enqueueWorkerJob: vi.fn(),
+  inferCompatibleTransferFileState: vi.fn(),
   processTransferBufferLocally: vi.fn(),
   processTransferObjectLocally: vi.fn(),
+  refreshQueuedTransferState: vi.fn(),
+  requeueTransferFile: vi.fn(),
   shouldRouteToWorkerFirst: vi.fn(),
 }));
 
@@ -17,15 +23,15 @@ vi.mock("@/features/media/config", () => ({
 }));
 
 vi.mock("@/features/media/backends/local", () => ({
-  inferCompatibleTransferFileState: vi.fn(),
+  inferCompatibleTransferFileState,
   processTransferBufferLocally,
   processTransferObjectLocally,
 }));
 
 vi.mock("@/features/media/backends/worker", () => ({
   enqueueWorkerJob,
-  refreshQueuedTransferState: vi.fn(),
-  requeueTransferFile: vi.fn(),
+  refreshQueuedTransferState,
+  requeueTransferFile,
 }));
 
 import { createHybridMediaProcessor } from "@/features/media/backends/hybrid";
@@ -34,6 +40,7 @@ describe("hybrid transfer raw fallback", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     shouldRouteToWorkerFirst.mockReturnValue(false);
+    refreshQueuedTransferState.mockImplementation(async (transfer) => transfer);
   });
 
   it("queues raw uploads for worker decoding when local preview extraction fails", async () => {
@@ -173,5 +180,45 @@ describe("hybrid transfer raw fallback", () => {
     });
     expect(result.file.processingStatus).toBe("queued");
     expect(result.file.processingRoute).toBe("worker_raw");
+  });
+
+  it("requeues failed raw files during backfill when retries remain", async () => {
+    const transfer = {
+      id: "transfer-1",
+      title: "untitled",
+      createdAt: new Date().toISOString(),
+      expiresAt: new Date(Date.now() + 60_000).toISOString(),
+      deleteToken: "token",
+      files: [
+        {
+          id: "capture",
+          filename: "capture.dng",
+          kind: "image" as const,
+          size: 4096,
+          mimeType: "image/x-adobe-dng",
+          storageKey: "transfers/transfer-1/originals/capture.dng",
+          previewStatus: "original_only" as const,
+          processingStatus: "failed" as const,
+          processingRoute: "raw_try_local" as const,
+          processingErrorCode: "raw_preview_unavailable",
+          retryCount: 0,
+        },
+      ],
+    };
+
+    inferCompatibleTransferFileState.mockResolvedValue(transfer.files[0]);
+    requeueTransferFile.mockResolvedValue({
+      ...transfer.files[0],
+      processingStatus: "queued",
+      processingBackend: "worker",
+      processingRoute: "worker_raw",
+    });
+
+    const processor = createHybridMediaProcessor("hybrid");
+    const updated = await processor.backfillTransferMedia(transfer);
+
+    expect(requeueTransferFile).toHaveBeenCalledWith(transfer, transfer.files[0]);
+    expect(updated.files[0]?.processingStatus).toBe("queued");
+    expect(updated.files[0]?.processingBackend).toBe("worker");
   });
 });

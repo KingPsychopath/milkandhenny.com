@@ -7,7 +7,7 @@ import { apiErrorFromRequest } from "@/lib/platform/api-error";
 
 type ProcessMediaBody =
   | { mode?: "drain"; limit?: number }
-  | { mode: "retry"; transferId?: string; filename?: string; force?: boolean }
+  | { mode: "retry"; transferId?: string; mediaId?: string; filename?: string; force?: boolean }
   | { mode: "backfill"; transferId?: string };
 
 export async function POST(request: NextRequest) {
@@ -52,9 +52,13 @@ export async function POST(request: NextRequest) {
     }
 
     const transferId = "transferId" in body ? body.transferId?.trim() : undefined;
+    const mediaId = "mediaId" in body ? body.mediaId?.trim() : undefined;
     const filename = "filename" in body ? body.filename?.trim() : undefined;
-    if (!transferId || !filename) {
-      return NextResponse.json({ error: "transferId and filename are required" }, { status: 400 });
+    if (!transferId || (!mediaId && !filename)) {
+      return NextResponse.json(
+        { error: "transferId and mediaId (or filename) are required" },
+        { status: 400 }
+      );
     }
 
     const transfer = await getTransfer(transferId);
@@ -67,23 +71,30 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Transfer has already expired" }, { status: 400 });
     }
 
-    const target = transfer.files.find((file) => file.filename === filename);
+    const target = transfer.files.find((file) =>
+      mediaId ? file.id === mediaId : file.filename === filename
+    );
     if (!target) {
       return NextResponse.json({ error: "File not found in transfer" }, { status: 404 });
     }
 
     const updatedFile = await requeueTransferFile(transfer, target, "force" in body && body.force === true);
+    const didRequeue =
+      updatedFile.processingStatus !== target.processingStatus ||
+      updatedFile.enqueuedAt !== target.enqueuedAt;
     const updatedTransfer = {
       ...transfer,
-      files: transfer.files.map((file) => (file.filename === filename ? updatedFile : file)),
+      files: transfer.files.map((file) => (file.id === target.id ? updatedFile : file)),
     };
     await saveTransfer(updatedTransfer, remainingSeconds);
 
     return NextResponse.json({
-      success: true,
+      success: didRequeue,
+      requeued: didRequeue,
       mode,
       transferId,
-      filename,
+      mediaId: target.id,
+      filename: target.filename,
       processingStatus: updatedFile.processingStatus,
       retryCount: updatedFile.retryCount ?? 0,
     });
