@@ -1,16 +1,8 @@
-import * as exifr from "exifr";
-import {
-  RAW_PREVIEW_ACCEPTANCE_STEPS,
-  RAW_PREVIEW_MAX_EMBEDDED_JPEG_CANDIDATES,
-  RAW_PREVIEW_TARGET_LONGEST_EDGE,
-} from "@/features/media/raw-preview";
-
 type PreparedTransferUpload = {
   uploadFile: File;
   uploadName: string;
   originalFile?: File;
-  convertedFrom?: "heic" | "raw";
-  statusLabel?: string;
+  convertedFrom?: "heic";
 };
 
 type HeifImageLike = {
@@ -31,7 +23,6 @@ type LibheifLike = {
 
 const HEIF_EXTENSIONS = [".heic", ".heif", ".hif"] as const;
 const HEIF_MIME_TYPES = ["image/heic", "image/heif", "image/hif"] as const;
-const RAW_EXTENSIONS = [".dng", ".arw", ".cr2", ".cr3", ".nef", ".orf", ".raf", ".rw2", ".raw"] as const;
 const JPEG_QUALITY = 0.9;
 
 function hasHeifExtension(filename: string): boolean {
@@ -44,102 +35,14 @@ function isHeifLikeFile(file: Pick<File, "name" | "type">): boolean {
   return hasHeifExtension(file.name) || HEIF_MIME_TYPES.includes(type as (typeof HEIF_MIME_TYPES)[number]);
 }
 
-function hasRawExtension(filename: string): boolean {
-  const lower = filename.toLowerCase();
-  return RAW_EXTENSIONS.some((ext) => lower.endsWith(ext));
-}
-
-function isRawLikeFile(file: Pick<File, "name" | "type">): boolean {
-  const type = file.type.toLowerCase();
-  return hasRawExtension(file.name) || type.startsWith("image/x-");
-}
-
 function isDerivableTransferFile(file: Pick<File, "name" | "type">): boolean {
-  return isHeifLikeFile(file) || isRawLikeFile(file);
+  return isHeifLikeFile(file);
 }
 
 function replaceExtensionWithJpg(filename: string): string {
   const lastDot = filename.lastIndexOf(".");
   if (lastDot <= 0) return `${filename}.jpg`;
   return `${filename.slice(0, lastDot)}.jpg`;
-}
-
-async function getImageDimensions(blob: Blob): Promise<{ width: number; height: number }> {
-  if ("createImageBitmap" in window) {
-    const bitmap = await createImageBitmap(blob);
-    try {
-      return { width: bitmap.width, height: bitmap.height };
-    } finally {
-      bitmap.close();
-    }
-  }
-
-  const objectUrl = URL.createObjectURL(blob);
-  try {
-    const image = await new Promise<HTMLImageElement>((resolve, reject) => {
-      const img = new Image();
-      img.onload = () => resolve(img);
-      img.onerror = () => reject(new Error("Failed to inspect derived preview dimensions"));
-      img.src = objectUrl;
-    });
-    return { width: image.naturalWidth, height: image.naturalHeight };
-  } finally {
-    URL.revokeObjectURL(objectUrl);
-  }
-}
-
-function resolveAcceptedRawPreviewThreshold(longestEdge: number): number | null {
-  for (const threshold of RAW_PREVIEW_ACCEPTANCE_STEPS) {
-    if (longestEdge >= threshold) return threshold;
-  }
-  return null;
-}
-
-type RawPreviewCandidate = {
-  blob: Blob;
-  width: number;
-  height: number;
-  longestEdge: number;
-  acceptedThreshold: number;
-  byteLength: number;
-};
-
-function compareRawPreviewCandidates(a: RawPreviewCandidate, b: RawPreviewCandidate): number {
-  if (a.longestEdge !== b.longestEdge) return b.longestEdge - a.longestEdge;
-  if (a.width !== b.width) return b.width - a.width;
-  if (a.height !== b.height) return b.height - a.height;
-  return b.byteLength - a.byteLength;
-}
-
-function copyPreviewBytes(preview: Uint8Array | ArrayBuffer): Uint8Array {
-  const previewBytes = preview instanceof Uint8Array ? preview : new Uint8Array(preview);
-  const previewCopy = new Uint8Array(previewBytes.byteLength);
-  previewCopy.set(previewBytes);
-  return previewCopy;
-}
-
-function toBlobPart(bytes: Uint8Array): ArrayBuffer {
-  const copy = new Uint8Array(bytes.byteLength);
-  copy.set(bytes);
-  return copy.buffer;
-}
-
-async function inspectRawPreviewBlob(blob: Blob): Promise<RawPreviewCandidate> {
-  const { width, height } = await getImageDimensions(blob);
-  const longestEdge = Math.max(width, height);
-  const acceptedThreshold = resolveAcceptedRawPreviewThreshold(longestEdge);
-  if (acceptedThreshold === null) {
-    throw new Error("Embedded RAW preview is too small");
-  }
-
-  return {
-    blob,
-    width,
-    height,
-    longestEdge,
-    acceptedThreshold,
-    byteLength: blob.size,
-  };
 }
 
 function inferHeifMimeType(file: Pick<File, "name" | "type">): string {
@@ -444,6 +347,7 @@ async function decodeWithImageDecoder(file: File, type: string): Promise<{ sourc
 
 async function readHeifOrientation(file: File): Promise<number> {
   try {
+    const exifr = await import("exifr");
     return (await exifr.orientation(file)) ?? 1;
   } catch {
     return 1;
@@ -527,82 +431,6 @@ async function convertHeifFile(file: File): Promise<File> {
   }
 }
 
-async function extractRawPreviewFile(
-  file: File
-): Promise<{ file: File; longestEdge: number; acceptedThreshold: number }> {
-  const candidates: RawPreviewCandidate[] = [];
-
-  try {
-    const preview = await exifr.thumbnail(file);
-    if (preview) {
-      const previewBlob = new Blob([toBlobPart(copyPreviewBytes(preview))], { type: "image/jpeg" });
-      const exifrCandidate = await inspectRawPreviewBlob(previewBlob);
-      if (exifrCandidate.longestEdge >= RAW_PREVIEW_TARGET_LONGEST_EDGE) {
-        return {
-          file: new File([exifrCandidate.blob], replaceExtensionWithJpg(file.name), {
-            type: "image/jpeg",
-            lastModified: file.lastModified,
-          }),
-          longestEdge: exifrCandidate.longestEdge,
-          acceptedThreshold: exifrCandidate.acceptedThreshold,
-        };
-      }
-      candidates.push(exifrCandidate);
-    }
-  } catch {
-    // Keep searching for other embedded JPEG previews.
-  }
-
-  const rawBytes = new Uint8Array(await file.arrayBuffer());
-  let inspectedCandidates = 0;
-  let jpegStart = -1;
-  for (let i = 0; i < rawBytes.length - 1; i++) {
-    const a = rawBytes[i];
-    const b = rawBytes[i + 1];
-
-    if (jpegStart === -1 && a === 0xff && b === 0xd8) {
-      jpegStart = i;
-      i += 1;
-      continue;
-    }
-
-    if (jpegStart !== -1 && a === 0xff && b === 0xd9) {
-      const end = i + 2;
-      const candidateBytes = rawBytes.slice(jpegStart, end);
-      jpegStart = -1;
-      i += 1;
-
-      try {
-        const candidate = await inspectRawPreviewBlob(new Blob([toBlobPart(candidateBytes)], { type: "image/jpeg" }));
-        candidates.push(candidate);
-        inspectedCandidates += 1;
-        if (
-          candidate.longestEdge >= RAW_PREVIEW_TARGET_LONGEST_EDGE ||
-          inspectedCandidates >= RAW_PREVIEW_MAX_EMBEDDED_JPEG_CANDIDATES
-        ) {
-          break;
-        }
-      } catch {
-        continue;
-      }
-    }
-  }
-
-  const bestCandidate = candidates.sort(compareRawPreviewCandidates)[0];
-  if (!bestCandidate) {
-    throw new Error("No embedded RAW preview found");
-  }
-
-  return {
-    file: new File([bestCandidate.blob], replaceExtensionWithJpg(file.name), {
-      type: "image/jpeg",
-      lastModified: file.lastModified,
-    }),
-    longestEdge: bestCandidate.longestEdge,
-    acceptedThreshold: bestCandidate.acceptedThreshold,
-  };
-}
-
 async function prepareTransferUploadFile(
   file: File,
   options: { derivePreview?: boolean } = {}
@@ -621,35 +449,18 @@ async function prepareTransferUploadFile(
       uploadName: jpegFile.name,
       originalFile: file,
       convertedFrom: "heic",
-      statusLabel: `prepared preview from ${file.name}`,
     };
   }
 
-  try {
-    const preview = await extractRawPreviewFile(file);
-    return {
-      uploadFile: preview.file,
-      uploadName: preview.file.name,
-      originalFile: file,
-      convertedFrom: "raw",
-      statusLabel:
-        preview.acceptedThreshold >= 1024
-          ? `extracted embedded preview from ${file.name} (${preview.longestEdge}px)`
-          : `extracted low-res embedded preview from ${file.name} (${preview.longestEdge}px)`,
-    };
-  } catch {
-    return {
-      uploadFile: file,
-      uploadName: file.name,
-      statusLabel: `no usable embedded preview in ${file.name} — uploading original only`,
-    };
-  }
+  return {
+    uploadFile: file,
+    uploadName: file.name,
+  };
 }
 
 export {
   isDerivableTransferFile,
   isHeifLikeFile,
-  isRawLikeFile,
   prepareTransferUploadFile,
 };
 

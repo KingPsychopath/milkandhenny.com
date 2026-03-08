@@ -55,9 +55,12 @@ import {
   listActiveTransfers,
   deleteTransfer,
   cleanupExpiredTransfers,
+  drainTransferMediaQueue,
   nukeAllTransfers,
   formatDuration,
+  getTransferMediaStatus,
   parseExpiry,
+  reconcileTransferMedia,
 } from "./transfer-ops";
 import {
   getWordMediaUploadCheckpointFilename,
@@ -1092,6 +1095,51 @@ async function cmdTransfersCleanup() {
   log(green(`✓ Removed ${result.expiredIndexEntries} expired index entries`));
   log(green(`✓ Deleted ${result.deletedObjects} orphaned files`));
   log(dim(`Scanned ${result.scannedPrefixes} transfer prefixes.`));
+  console.log();
+}
+
+async function cmdTransfersMediaStatus() {
+  heading("Transfer media status");
+  const result = await getTransferMediaStatus();
+  log(`${dim("Queue:")} ${result.queueLength}`);
+  log(
+    `${dim("Last heartbeat:")} ${
+      result.worker.lastHeartbeatAt
+        ? new Date(result.worker.lastHeartbeatAt).toLocaleString("en-GB")
+        : "—"
+    }`
+  );
+  log(
+    `${dim("Last processed:")} ${
+      result.worker.lastProcessedAt
+        ? new Date(result.worker.lastProcessedAt).toLocaleString("en-GB")
+        : "—"
+    }`
+  );
+  if (result.worker.lastErrorMessage) {
+    log(`${dim("Last error:")} ${yellow(result.worker.lastErrorMessage)}`);
+  }
+  console.log();
+}
+
+async function cmdTransfersMediaDrain(limit = 8) {
+  heading("Drain transfer media queue");
+  const result = await drainTransferMediaQueue(limit);
+  log(green(`✓ Processed ${result.processedJobs} queued jobs`));
+  log(dim(`  succeeded: ${result.succeeded}`));
+  log(dim(`  failed: ${result.failed}`));
+  log(dim(`  skipped: ${result.skipped}`));
+  log(dim(`  remaining queue: ${result.queueLength}`));
+  console.log();
+}
+
+async function cmdTransfersMediaReconcile() {
+  heading("Reconcile transfer media state");
+  const result = await reconcileTransferMedia((msg) => progress(msg));
+  console.log();
+  log(green(`✓ Scanned ${result.scannedTransfers} active transfers`));
+  log(green(`✓ Updated ${result.updatedTransfers} transfers`));
+  log(dim(`Queue length now ${result.queueLength}`));
   console.log();
 }
 
@@ -2496,6 +2544,9 @@ function showHelp() {
       ${dim("If interrupted, rerun the same command in the same folder to auto-resume.")}
     transfers append ${dim("<id>")} --dir ${dim("<path>")}          Add files to an active transfer
     transfers delete ${dim("<id>")}                    Take down a transfer + delete R2 files
+    transfers media-status                  Show worker heartbeat + queue length
+    transfers media-drain ${dim("[--limit 8]")}            Drain queued worker jobs now
+    transfers media-reconcile               Reconcile stale queued/processing transfer states
     transfers cleanup                        Cleanup expired/orphaned transfer storage
     transfers nuke                           Wipe ALL transfers (R2 + Redis) — nuclear option
 
@@ -4340,6 +4391,15 @@ async function direct() {
           }
           case "cleanup":
             return cmdTransfersCleanup();
+          case "media-status":
+            return cmdTransfersMediaStatus();
+          case "media-drain": {
+            const limitRaw = getArg("limit");
+            const limit = limitRaw ? Number(limitRaw) : 8;
+            return cmdTransfersMediaDrain(Number.isFinite(limit) && limit > 0 ? Math.floor(limit) : 8);
+          }
+          case "media-reconcile":
+            return cmdTransfersMediaReconcile();
           case "nuke":
             return cmdTransfersNuke();
           default:

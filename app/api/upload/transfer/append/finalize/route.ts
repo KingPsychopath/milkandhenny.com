@@ -2,13 +2,14 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireAuthWithPayload } from "@/features/auth/server";
 import { getTransfer, saveTransfer } from "@/features/transfers/store";
 import { processUploadedFile, sortTransferFiles, isSafeTransferFilename } from "@/features/transfers/upload";
-import { buildTransferProcessingCounts, getTransferFileId } from "@/features/transfers/media-state";
+import { buildTransferProcessingCounts, resolveTransferUploadIds } from "@/features/transfers/media-state";
 import type { TransferUploadFileInput } from "@/features/transfers/upload-types";
 import { BASE_URL } from "@/lib/shared/config";
 import { apiErrorFromRequest } from "@/lib/platform/api-error";
 import { mapWithConcurrency } from "@/lib/shared/map-with-concurrency";
 
 export const maxDuration = 60;
+export const runtime = "nodejs";
 const FINALIZE_CONCURRENCY = 2;
 
 type FileEntry = TransferUploadFileInput;
@@ -25,11 +26,11 @@ export async function POST(request: NextRequest) {
   }
 
   const transferId = body.transferId?.trim();
-  const files = body.files;
+  const rawFiles = body.files;
   if (!transferId) {
     return NextResponse.json({ error: "Missing transferId" }, { status: 400 });
   }
-  if (!Array.isArray(files) || files.length === 0) {
+  if (!Array.isArray(rawFiles) || rawFiles.length === 0) {
     return NextResponse.json({ error: "No files provided" }, { status: 400 });
   }
 
@@ -37,6 +38,7 @@ export async function POST(request: NextRequest) {
   if (!transfer) {
     return NextResponse.json({ error: "Transfer not found or expired" }, { status: 404 });
   }
+  const files = resolveTransferUploadIds(rawFiles, transfer.files.map((f) => f.id));
 
   const remainingTtlSeconds = Math.floor(
     (new Date(transfer.expiresAt).getTime() - Date.now()) / 1000
@@ -49,10 +51,8 @@ export async function POST(request: NextRequest) {
   const existingArchivedNames = new Set(
     transfer.files.flatMap((f) => [f.filename, f.originalFilename].filter((value): value is string => typeof value === "string"))
   );
-  const existingIds = new Set(transfer.files.map((f) => f.id));
   const seenNames = new Set<string>();
   const seenArchivedNames = new Set<string>();
-  const seenIds = new Set<string>();
 
   for (const file of files) {
     if (!file || typeof file.name !== "string" || !isSafeTransferFilename(file.name)) {
@@ -81,20 +81,6 @@ export async function POST(request: NextRequest) {
       seenArchivedNames.add(file.originalName);
     }
 
-    const predictedId = getTransferFileId(file.name);
-    if (seenIds.has(predictedId)) {
-      return NextResponse.json(
-        { error: `Conflicting media filenames share the same transfer ID/stem: ${predictedId}` },
-        { status: 400 }
-      );
-    }
-    if (existingIds.has(predictedId)) {
-      return NextResponse.json(
-        { error: `Media ID/stem already exists in transfer: ${predictedId}` },
-        { status: 400 }
-      );
-    }
-    seenIds.add(predictedId);
   }
 
   try {

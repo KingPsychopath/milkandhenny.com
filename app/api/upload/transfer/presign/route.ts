@@ -11,13 +11,15 @@ import {
   MAX_TRANSFER_TOTAL_BYTES,
 } from "@/features/transfers/store";
 import { getMimeType } from "@/features/media/processing";
-import { getTransferFileId } from "@/features/transfers/media-state";
+import { resolveTransferUploadIds } from "@/features/transfers/media-state";
 import { buildTransferArchivedOriginalStorageKey, buildTransferPrimaryStorageKey } from "@/features/transfers/storage";
 import type { TransferUploadFileInput } from "@/features/transfers/upload-types";
 import { apiErrorFromRequest } from "@/lib/platform/api-error";
 import { isSafeTransferFilename } from "@/features/transfers/upload";
 
 type FileEntry = TransferUploadFileInput;
+
+export const runtime = "nodejs";
 
 /**
  * POST /api/upload/transfer/presign
@@ -48,14 +50,14 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
 
-  const files = body.files;
-  if (!Array.isArray(files) || files.length === 0) {
+  const rawFiles = body.files;
+  if (!Array.isArray(rawFiles) || rawFiles.length === 0) {
     return NextResponse.json({ error: "No files provided" }, { status: 400 });
   }
+  const files = resolveTransferUploadIds(rawFiles);
   let totalBytes = 0;
   const seenNames = new Set<string>();
   const seenArchivedNames = new Set<string>();
-  const seenIds = new Set<string>();
   for (const file of files) {
     if (!file || typeof file.name !== "string" || !isSafeTransferFilename(file.name)) {
       return NextResponse.json(
@@ -95,15 +97,6 @@ export async function POST(request: NextRequest) {
       seenArchivedNames.add(file.originalName);
     }
 
-    const predictedId = getTransferFileId(file.name);
-    if (seenIds.has(predictedId)) {
-      return NextResponse.json(
-        { error: `Conflicting media filenames share the same transfer ID/stem: ${predictedId}` },
-        { status: 400 }
-      );
-    }
-    seenIds.add(predictedId);
-
     totalBytes += file.size + (file.originalSize ?? 0);
     if (!isAdmin && totalBytes > MAX_TRANSFER_TOTAL_BYTES) {
       return NextResponse.json(
@@ -134,12 +127,14 @@ export async function POST(request: NextRequest) {
         const primaryKey = buildTransferPrimaryStorageKey(transferId, file);
         const primaryUrl = await presignPutUrl(primaryKey, getMimeType(file.name));
         const archivedOriginalKey = buildTransferArchivedOriginalStorageKey(transferId, file);
-        const archivedOriginalUrl = archivedOriginalKey && file.originalName
-          ? await presignPutUrl(archivedOriginalKey, getMimeType(file.originalName))
-          : undefined;
+        const archivedOriginalUrl =
+          archivedOriginalKey && file.originalName
+            ? await presignPutUrl(archivedOriginalKey, getMimeType(file.originalName))
+            : undefined;
 
         return {
           name: file.name,
+          mediaId: file.mediaId,
           primaryUrl,
           archivedOriginalUrl,
         };

@@ -1,5 +1,6 @@
 import "server-only";
 
+import { isWorkerEnabled, isWorkerQueueEnabled } from "@/features/media/config";
 import { getRedis } from "@/lib/platform/redis";
 import type { ProcessingRoute } from "./media-state";
 import type { TransferUploadFileInput } from "./upload-types";
@@ -19,6 +20,9 @@ type TransferMediaJob = {
 };
 
 function requireTransferMediaQueueRedis() {
+  if (!isWorkerEnabled() || !isWorkerQueueEnabled()) {
+    throw new Error("Transfer media queue is disabled.");
+  }
   const redis = getRedis();
   if (!redis) {
     throw new Error("Transfer media queue requires Redis/KV.");

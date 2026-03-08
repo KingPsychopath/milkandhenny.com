@@ -49,6 +49,34 @@ type TransferSummary = {
   remainingSeconds: number;
 };
 
+type TransferMediaAdminStats = {
+  queueLength: number;
+  worker: {
+    lastHeartbeatAt?: string;
+    lastProcessedAt?: string;
+    lastErrorAt?: string;
+    lastErrorMessage?: string;
+  };
+};
+
+type AdminTransferDetail = {
+  id: string;
+  title: string;
+  files: Array<{
+    id: string;
+    filename: string;
+    kind: string;
+    mimeType: string;
+    previewStatus?: string;
+    processingStatus?: string;
+    processingBackend?: string;
+    processingRoute?: string;
+    previewSource?: string;
+    convertedFrom?: string;
+    processingErrorCode?: string;
+  }>;
+};
+
 type SharedWordSummary = {
   slug: string;
   title: string;
@@ -206,6 +234,9 @@ export function AdminDashboard() {
   const [albumActionLoading, setAlbumActionLoading] = useState<string | null>(null);
   const [transfers, setTransfers] = useState<TransferSummary[]>([]);
   const [transfersLoading, setTransfersLoading] = useState(false);
+  const [transferMediaStats, setTransferMediaStats] = useState<TransferMediaAdminStats | null>(null);
+  const [transferDetail, setTransferDetail] = useState<AdminTransferDetail | null>(null);
+  const [transferDetailLoading, setTransferDetailLoading] = useState<string | null>(null);
   const [transferQuery, setTransferQuery] = useState("");
   const [showAllTransfers, setShowAllTransfers] = useState(false);
   const [sharedWords, setSharedWords] = useState<SharedWordSummary[]>([]);
@@ -315,6 +346,7 @@ export function AdminDashboard() {
         throw new Error((data.error as string) || "Failed to load transfers");
       }
       setTransfers((data.transfers as TransferSummary[]) ?? []);
+      setTransferMediaStats((data.media as TransferMediaAdminStats) ?? null);
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Failed to load transfers";
       setErrorMessage(msg);
@@ -629,6 +661,24 @@ export function AdminDashboard() {
       setErrorMessage(msg);
     } finally {
       setTransferActionLoading(null);
+    }
+  };
+
+  const handleLoadTransferDetail = async (id: string) => {
+    setTransferDetailLoading(id);
+    setErrorMessage("");
+    try {
+      const res = await authFetch(`/api/admin/transfers/${encodeURIComponent(id)}`);
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error((data.error as string) || "Failed to load transfer");
+      }
+      setTransferDetail((data.transfer as AdminTransferDetail) ?? null);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Failed to load transfer";
+      setErrorMessage(msg);
+    } finally {
+      setTransferDetailLoading(null);
     }
   };
 
@@ -1391,6 +1441,35 @@ export function AdminDashboard() {
               </p>
             </div>
           </div>
+          {transferMediaStats ? (
+            <div className="grid grid-cols-3 gap-3 font-mono text-sm">
+              <div className="border theme-border rounded-md p-3">
+                <p className="theme-muted text-xs">worker queue</p>
+                <p className="text-lg">{transferMediaStats.queueLength}</p>
+              </div>
+              <div className="border theme-border rounded-md p-3">
+                <p className="theme-muted text-xs">last heartbeat</p>
+                <p className="text-sm">
+                  {transferMediaStats.worker.lastHeartbeatAt
+                    ? new Date(transferMediaStats.worker.lastHeartbeatAt).toLocaleString()
+                    : "—"}
+                </p>
+              </div>
+              <div className="border theme-border rounded-md p-3">
+                <p className="theme-muted text-xs">last processed</p>
+                <p className="text-sm">
+                  {transferMediaStats.worker.lastProcessedAt
+                    ? new Date(transferMediaStats.worker.lastProcessedAt).toLocaleString()
+                    : "—"}
+                </p>
+              </div>
+            </div>
+          ) : null}
+          {transferMediaStats?.worker.lastErrorMessage ? (
+            <p className="font-mono text-xs theme-muted">
+              worker error {transferMediaStats.worker.lastErrorAt ? `(${new Date(transferMediaStats.worker.lastErrorAt).toLocaleString()})` : ""}: {transferMediaStats.worker.lastErrorMessage}
+            </p>
+          ) : null}
 
           {filteredTransfers.length === 0 && !transfersLoading ? (
             <p className="font-mono text-xs theme-muted">No active transfers.</p>
@@ -1426,6 +1505,14 @@ export function AdminDashboard() {
                     </button>
                     <button
                       type="button"
+                      onClick={() => void handleLoadTransferDetail(transfer.id)}
+                      className="font-mono text-xs theme-muted hover:text-[var(--foreground)] transition-colors"
+                      title="Inspect file processing details."
+                    >
+                      {transferDetailLoading === transfer.id ? "loading..." : "details"}
+                    </button>
+                    <button
+                      type="button"
                       disabled={transferActionLoading === transfer.id}
                       onClick={() => void handleDeleteTransfer(transfer.id, transfer.title || "untitled")}
                       className="font-mono text-xs text-[var(--prose-hashtag)] hover:opacity-80 transition-opacity disabled:opacity-50"
@@ -1438,6 +1525,35 @@ export function AdminDashboard() {
               </div>
             ))}
           </div>
+          {transferDetail ? (
+            <div className="border theme-border rounded-md p-3 space-y-2">
+              <div className="flex items-center justify-between gap-3">
+                <p className="font-mono text-sm">
+                  {transferDetail.title || "untitled"} <span className="theme-muted">· {transferDetail.id}</span>
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setTransferDetail(null)}
+                  className="font-mono text-xs theme-muted hover:text-[var(--foreground)] transition-colors"
+                >
+                  close
+                </button>
+              </div>
+              <div className="space-y-1">
+                {transferDetail.files.map((file) => (
+                  <div key={`${transferDetail.id}:${file.id}:${file.filename}`} className="font-mono text-xs theme-muted border theme-border rounded-sm px-2 py-1">
+                    <div className="truncate text-[var(--foreground)]">{file.filename}</div>
+                    <div className="truncate">
+                      {file.kind} · {file.processingBackend ?? "n/a"} · {file.processingStatus ?? "n/a"}
+                      {file.processingRoute ? ` · ${file.processingRoute}` : ""}
+                      {file.previewSource ? ` · ${file.previewSource}` : ""}
+                      {file.processingErrorCode ? ` · ${file.processingErrorCode}` : ""}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : null}
           {filteredTransfers.length > 15 ? (
             <button
               type="button"

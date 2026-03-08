@@ -11,7 +11,7 @@ import {
   sortTransferFiles,
   isSafeTransferFilename,
 } from "@/features/transfers/upload";
-import { buildTransferProcessingCounts, getTransferFileId } from "@/features/transfers/media-state";
+import { buildTransferProcessingCounts, resolveTransferUploadIds } from "@/features/transfers/media-state";
 import type { TransferUploadFileInput } from "@/features/transfers/upload-types";
 import { BASE_URL } from "@/lib/shared/config";
 import { apiErrorFromRequest } from "@/lib/platform/api-error";
@@ -19,6 +19,7 @@ import { mapWithConcurrency } from "@/lib/shared/map-with-concurrency";
 
 /** Allow longer execution for image processing (downloads from R2 + Sharp) */
 export const maxDuration = 60;
+export const runtime = "nodejs";
 const FINALIZE_CONCURRENCY = 2;
 
 type FileEntry = TransferUploadFileInput;
@@ -51,7 +52,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
 
-  const { transferId, deleteToken, title, expiresSeconds, files } = body;
+  const { transferId, deleteToken, title, expiresSeconds, files: rawFiles } = body;
 
   if (!transferId || !deleteToken) {
     return NextResponse.json(
@@ -59,13 +60,13 @@ export async function POST(request: NextRequest) {
       { status: 400 }
     );
   }
-  if (!Array.isArray(files) || files.length === 0) {
+  if (!Array.isArray(rawFiles) || rawFiles.length === 0) {
     return NextResponse.json({ error: "No files provided" }, { status: 400 });
   }
+  const files = resolveTransferUploadIds(rawFiles);
   let totalBytes = 0;
   const seenNames = new Set<string>();
   const seenArchivedNames = new Set<string>();
-  const seenIds = new Set<string>();
   for (const file of files) {
     if (!file || typeof file.name !== "string" || !isSafeTransferFilename(file.name)) {
       return NextResponse.json(
@@ -104,15 +105,6 @@ export async function POST(request: NextRequest) {
       }
       seenArchivedNames.add(file.originalName);
     }
-
-    const predictedId = getTransferFileId(file.name);
-    if (seenIds.has(predictedId)) {
-      return NextResponse.json(
-        { error: `Conflicting media filenames share the same transfer ID/stem: ${predictedId}` },
-        { status: 400 }
-      );
-    }
-    seenIds.add(predictedId);
 
     totalBytes += file.size + (file.originalSize ?? 0);
     if (!isAdmin && totalBytes > MAX_TRANSFER_TOTAL_BYTES) {

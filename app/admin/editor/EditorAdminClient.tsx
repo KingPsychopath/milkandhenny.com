@@ -244,7 +244,6 @@ export function EditorAdminClient() {
   const [autosaveError, setAutosaveError] = useState("");
   const [autosaveSavedAt, setAutosaveSavedAt] = useState<string | null>(null);
   const autosaveTimerRef = useRef<number | null>(null);
-  const autosaveSavingRef = useRef(false);
   const restoredDraftKeyRef = useRef<string>("");
 
   const storeShareToken = useCallback((shareId: string, token: string) => {

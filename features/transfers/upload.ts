@@ -25,10 +25,14 @@ function isSafeTransferFilename(filename: string): boolean {
 
 async function processTransferFile(
   buffer: Buffer,
-  filename: string,
+  file: TransferUploadFileInput | string,
   transferId: string
 ): Promise<ProcessFileResult> {
-  return getMediaProcessor().processTransferBuffer(buffer, filename, transferId);
+  const input =
+    typeof file === "string"
+      ? { name: file, size: buffer.byteLength }
+      : file;
+  return getMediaProcessor().processTransferBuffer(buffer, input, transferId);
 }
 
 async function processUploadedFile(

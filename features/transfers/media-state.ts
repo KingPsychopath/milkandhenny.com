@@ -20,6 +20,7 @@ const PROCESSING_ROUTES = [
   "local_gif",
   "local_video",
   "raw_try_local",
+  "worker_heif",
   "worker_raw",
 ] as const;
 
@@ -57,7 +58,39 @@ function getTransferFileId(filename: string): string {
   return filename;
 }
 
+function buildUniqueTransferFileId(
+  filename: string,
+  seenIds: Set<string>
+): string {
+  const base = getTransferFileId(filename);
+  if (!seenIds.has(base)) {
+    seenIds.add(base);
+    return base;
+  }
+
+  let index = 2;
+  while (true) {
+    const candidate = `${base}-${index}`;
+    if (!seenIds.has(candidate)) {
+      seenIds.add(candidate);
+      return candidate;
+    }
+    index += 1;
+  }
+}
+
+function resolveTransferUploadIds<
+  T extends { name: string }
+>(files: T[], existingIds: Iterable<string> = []): Array<T & { mediaId: string }> {
+  const seenIds = new Set(existingIds);
+  return files.map((file) => ({
+    ...file,
+    mediaId: buildUniqueTransferFileId(file.name, seenIds),
+  }));
+}
+
 function classifyTransferProcessingRoute(filename: string): ProcessingRoute | null {
+  if (HEIF_EXTENSIONS.test(filename)) return "worker_heif";
   if (RAW_IMAGE_EXTENSIONS.test(filename)) return "raw_try_local";
   if (ANIMATED_EXTENSIONS.test(filename)) return "local_gif";
   if (VIDEO_EXTENSIONS.test(filename)) return "local_video";
@@ -145,12 +178,14 @@ export {
   RAW_IMAGE_EXTENSIONS,
   TRANSFER_MEDIA_STALE_AFTER_MS,
   VIDEO_EXTENSIONS,
+  buildUniqueTransferFileId,
   buildTransferProcessingCounts,
   canRetryTransferProcessing,
   classifyTransferProcessingRoute,
   getExpectedTransferAssetKeys,
   getFilenameStem,
   getTransferFileId,
+  resolveTransferUploadIds,
   isTransferProcessingStale,
   isVisualTransferFilename,
 };

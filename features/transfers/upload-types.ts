@@ -5,6 +5,8 @@ type ConvertedFrom = "heic" | "raw";
 type TransferUploadFileInput = {
   /** Filename stored in transfer metadata and shown in the gallery. */
   name: string;
+  /** Stable unique media identifier used for derived assets and gallery state. */
+  mediaId?: string;
   /** Size in bytes of the primary uploaded object. */
   size: number;
   type?: string;

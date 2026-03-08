@@ -147,4 +147,54 @@ describe("upload transfer presign", () => {
       "image/x-adobe-dng"
     );
   });
+
+  it("should allow files with the same stem and assign unique media ids", async () => {
+    const presignPutUrl = vi.fn().mockResolvedValue("https://example.com/upload");
+    vi.doMock("@/features/auth/server", () => ({
+      requireAuthWithPayload: vi.fn().mockResolvedValue({
+        error: null,
+        payload: { role: "upload" },
+      }),
+    }));
+    vi.doMock("@/lib/platform/r2", () => ({
+      isConfigured: () => true,
+      presignPutUrl,
+    }));
+    vi.doMock("@/features/transfers/store", () => ({
+      generateTransferId: () => "transfer-id",
+      generateDeleteToken: () => "delete-token",
+      parseExpiry: () => 3600,
+      DEFAULT_EXPIRY_SECONDS: 3600,
+      MAX_EXPIRY_SECONDS: 30 * 24 * 60 * 60,
+      MAX_TRANSFER_FILE_BYTES: 250 * 1024 * 1024,
+      MAX_TRANSFER_TOTAL_BYTES: 1024 * 1024 * 1024,
+    }));
+
+    const { POST } = await import("@/app/api/upload/transfer/presign/route");
+    const response = await POST(
+      makeRequest({
+        title: "same stem files",
+        files: [
+          { name: "Screen Recording 2026-03-06 at 17.49.53.mov", size: 10, type: "video/quicktime" },
+          { name: "Screen Recording 2026-03-06 at 17.49.53.mp4", size: 20, type: "video/mp4" },
+        ],
+      })
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      urls: [
+        {
+          name: "Screen Recording 2026-03-06 at 17.49.53.mov",
+          mediaId: "Screen Recording 2026-03-06 at 17.49.53",
+          primaryUrl: "https://example.com/upload",
+        },
+        {
+          name: "Screen Recording 2026-03-06 at 17.49.53.mp4",
+          mediaId: "Screen Recording 2026-03-06 at 17.49.53-2",
+          primaryUrl: "https://example.com/upload",
+        },
+      ],
+    });
+  });
 });

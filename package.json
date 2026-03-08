@@ -8,6 +8,7 @@
     "start": "next start",
     "lint": "eslint",
     "cli": "tsx --tsconfig tsconfig.cli.json scripts/cli.ts",
+    "fly:worker": "tsx --tsconfig tsconfig.cli.json scripts/fly-worker.ts",
     "worker:transfer-media": "tsx --tsconfig tsconfig.cli.json scripts/transfer-media-worker.ts",
     "typecheck": "tsc --noEmit",
     "typecheck:ci": "node -e \"require('fs').rmSync('.next',{recursive:true,force:true})\" && tsc --noEmit",

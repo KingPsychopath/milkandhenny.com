@@ -33,17 +33,6 @@ type FinalizeFile = {
   overwrote: boolean;
 };
 
-type UploadedWordFile = {
-  original: string;
-  filename: string;
-  kind: FileKind;
-  width?: number;
-  height?: number;
-  size: number;
-  markdown: string;
-  overwrote: boolean;
-};
-
 const SAFE_WORD_FILENAME = /^[a-z0-9-]+\.[a-z0-9]{1,8}$/;
 function isSafeUploadKey(targetPrefix: string, uploadKey: string): boolean {
   if (!uploadKey.startsWith(targetPrefix)) {

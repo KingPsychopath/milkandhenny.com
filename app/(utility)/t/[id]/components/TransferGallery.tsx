@@ -76,10 +76,6 @@ function isPhotoLike(file: TransferFileData): boolean {
   return file.kind === "image" || file.kind === "gif" || isRawImage(file);
 }
 
-function isVisualFile(file: TransferFileData): boolean {
-  return isPhotoLike(file) || file.kind === "video";
-}
-
 function hasVisualThumbnail(file: TransferFileData): boolean {
   return (
     (file.kind === "video" && file.previewStatus === "ready" && typeof file.width === "number" && typeof file.height === "number") ||

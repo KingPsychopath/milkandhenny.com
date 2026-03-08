@@ -37,7 +37,7 @@ export function BestDressedClient({ initialSnapshot }: BestDressedClientProps) {
   const [openUntil, setOpenUntil] = useState<number | null>(
     typeof initialSnapshot.openUntil === 'number' ? initialSnapshot.openUntil : null
   );
-  const [guestNames, setGuestNames] = useState<string[]>(initialSnapshot.guestNames || []);
+  const [guestNames] = useState<string[]>(initialSnapshot.guestNames || []);
   const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>(initialSnapshot.leaderboard || []);
   const [totalVotes, setTotalVotes] = useState(initialSnapshot.totalVotes || 0);
   const [searchQuery, setSearchQuery] = useState('');
@@ -388,4 +388,3 @@ export function BestDressedClient({ initialSnapshot }: BestDressedClientProps) {
     </div>
   );
 }
-

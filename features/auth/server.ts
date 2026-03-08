@@ -17,7 +17,7 @@ import { createHash, createHmac, randomBytes, randomUUID, timingSafeEqual } from
 import { NextRequest, NextResponse } from "next/server";
 import { cookies, headers } from "next/headers";
 import { getRedis } from "@/lib/platform/redis";
-import { getAuthCookieMaxAgeSeconds, getAuthCookieName } from "./cookies";
+import { getAuthCookieName } from "./cookies";
 
 /* ─── Types ─── */
 

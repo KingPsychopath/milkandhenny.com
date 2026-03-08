@@ -54,6 +54,7 @@ function getRouteKind(route: ProcessingRoute): TransferFile["kind"] {
 }
 
 function buildReadyVisualFile(
+  mediaId: string,
   filename: string,
   size: number,
   kind: TransferFile["kind"],
@@ -70,7 +71,7 @@ function buildReadyVisualFile(
   previewSource?: TransferFile["previewSource"]
 ): TransferFile {
   return {
-    id: getTransferFileId(filename),
+    id: mediaId,
     filename,
     kind,
     size,
@@ -93,6 +94,7 @@ function buildReadyVisualFile(
 }
 
 function buildOriginalOnlyFailureFile(
+  mediaId: string,
   filename: string,
   size: number,
   storageKey: string,
@@ -101,7 +103,7 @@ function buildOriginalOnlyFailureFile(
   retryCount = 0
 ): TransferFile {
   return {
-    id: getTransferFileId(filename),
+    id: mediaId,
     filename,
     kind: getRouteKind(route),
     size,
@@ -121,6 +123,35 @@ async function uploadOriginalBuffer(
   buffer: Buffer
 ): Promise<void> {
   await uploadBuffer(storageKey, buffer, getMimeType(filename));
+}
+
+async function buildFailedLocalResult(
+  params: {
+    transferId: string;
+    file: TransferUploadFileInput;
+    route: ProcessingRoute;
+    buffer?: Buffer;
+    code?: string;
+  }
+): Promise<ProcessFileResult> {
+  const { transferId, file, route, buffer, code = "processing_failed" } = params;
+  const storageKey = buildTransferPrimaryStorageKey(transferId, file);
+  const archivedStorageKey = buildTransferArchivedOriginalStorageKey(transferId, file);
+
+  if (buffer) {
+    await uploadOriginalBuffer(storageKey, file.name, buffer);
+  }
+
+  return {
+    file: {
+      ...buildOriginalOnlyFailureFile(file.mediaId ?? getTransferFileId(file.name), file.name, file.size, storageKey, route, code),
+      ...(archivedStorageKey ? { originalStorageKey: archivedStorageKey } : {}),
+      ...(file.originalName ? { originalFilename: file.originalName } : {}),
+      ...(file.originalType ? { originalMimeType: file.originalType } : {}),
+      ...(file.convertedFrom ? { convertedFrom: file.convertedFrom } : {}),
+    },
+    uploadedBytes: file.size + (file.originalSize ?? 0),
+  };
 }
 
 function isRawPreviewUnavailableError(error: unknown): error is RawPreviewUnavailableError {
@@ -155,7 +186,7 @@ async function materializeVisualFromBuffer(params: {
   } = params;
   const filename = file.name;
   const prefix = `transfers/${transferId}`;
-  const derivedId = getTransferFileId(filename);
+  const derivedId = file.mediaId ?? getTransferFileId(filename);
   const archiveStorageKey = buildTransferArchivedOriginalStorageKey(transferId, file);
   const originalUploadSize = file.originalSize ?? 0;
 
@@ -200,8 +231,9 @@ async function materializeVisualFromBuffer(params: {
     ]);
 
     return {
-      file: buildReadyVisualFile(
-        filename,
+        file: buildReadyVisualFile(
+          derivedId,
+          filename,
         storedSize,
         "video",
         getMimeType(filename),
@@ -268,7 +300,8 @@ async function materializeVisualFromBuffer(params: {
     ]);
 
     return {
-      file: buildReadyVisualFile(
+        file: buildReadyVisualFile(
+        derivedId,
         filename,
         storedSize,
         "image",
@@ -302,6 +335,7 @@ async function materializeVisualFromBuffer(params: {
     return {
       file: {
         ...buildOriginalOnlyFailureFile(
+          derivedId,
           filename,
           storedSize,
           storageKey,
@@ -320,14 +354,18 @@ async function materializeVisualFromBuffer(params: {
 
 async function processTransferBufferLocally(
   buffer: Buffer,
-  filename: string,
+  input: TransferUploadFileInput | string,
   transferId: string,
   processingStatus: CompletedProcessingStatus = "local_done",
   processingBackend: ProcessingBackend = "local",
   explicitRoute?: ProcessingRoute | null
 ): Promise<ProcessFileResult> {
+  const file =
+    typeof input === "string"
+      ? { name: input, size: buffer.byteLength, type: getMimeType(input) }
+      : { ...input, size: buffer.byteLength };
+  const filename = file.name;
   const route = explicitRoute ?? classifyTransferProcessingRoute(filename);
-  const file: TransferUploadFileInput = { name: filename, size: buffer.byteLength, type: getMimeType(filename) };
   const storageKey = buildTransferPrimaryStorageKey(transferId, file);
   if (!route) {
     await uploadOriginalBuffer(storageKey, filename, buffer);
@@ -417,7 +455,8 @@ async function inferCompatibleTransferFileState(
 
   return {
     ...file,
-    ...buildOriginalOnlyFailureFile(
+      ...buildOriginalOnlyFailureFile(
+      file.id,
       file.filename,
       file.size,
       file.storageKey ?? buildTransferPrimaryStorageKey(transferId, { name: file.filename }),
@@ -429,10 +468,40 @@ async function inferCompatibleTransferFileState(
 
 function createLocalMediaProcessor() {
   return {
-    processTransferBuffer: (buffer: Buffer, filename: string, transferId: string) =>
-      processTransferBufferLocally(buffer, filename, transferId),
-    processTransferObject: (file: TransferUploadFileInput, transferId: string) =>
-      processTransferObjectLocally(file, transferId),
+    processTransferBuffer: async (buffer: Buffer, file: TransferUploadFileInput, transferId: string) => {
+      const route = classifyTransferProcessingRoute(file.name);
+      try {
+        return await processTransferBufferLocally(
+          buffer,
+          { ...file, size: buffer.byteLength },
+          transferId,
+          "local_done",
+          "local",
+          route
+        );
+      } catch (error) {
+        return buildFailedLocalResult({
+          transferId,
+          file: { ...file, size: buffer.byteLength },
+          route: route ?? "local_image",
+          buffer,
+          code: isRawPreviewUnavailableError(error) ? "raw_preview_unavailable" : "processing_failed",
+        });
+      }
+    },
+    processTransferObject: async (file: TransferUploadFileInput, transferId: string) => {
+      const route = classifyTransferProcessingRoute(file.name);
+      try {
+        return await processTransferObjectLocally(file, transferId, "local_done", "local", route);
+      } catch (error) {
+        return buildFailedLocalResult({
+          transferId,
+          file,
+          route: route ?? "local_image",
+          code: isRawPreviewUnavailableError(error) ? "raw_preview_unavailable" : "processing_failed",
+        });
+      }
+    },
     backfillTransferMedia: async (transfer: TransferData) => {
       const remainingSeconds = Math.ceil((new Date(transfer.expiresAt).getTime() - Date.now()) / 1000);
       if (remainingSeconds <= 0) return transfer;
@@ -458,6 +527,7 @@ function createLocalMediaProcessor() {
 
 export {
   buildOriginalOnlyFailureFile,
+  buildFailedLocalResult,
   buildSkippedFile,
   createLocalMediaProcessor,
   getRouteKind,

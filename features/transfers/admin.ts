@@ -1,7 +1,9 @@
 import "server-only";
 
+import { getTransferMediaQueueLength } from "./media-queue";
+import { getTransferMediaWorkerStatus } from "./media-worker-status";
 import { deleteObjects, listObjects } from "@/lib/platform/r2";
-import { deleteTransferData, listTransfers } from "./store";
+import { deleteTransferData, getTransfer, listTransfers } from "./store";
 
 const SAFE_TRANSFER_ID = /^[A-Za-z0-9-]+$/;
 
@@ -11,6 +13,25 @@ function isSafeTransferId(id: string): boolean {
 
 async function listAdminTransfers() {
   return listTransfers();
+}
+
+async function getAdminTransferMediaStats() {
+  const [queueLength, worker] = await Promise.all([
+    getTransferMediaQueueLength().catch(() => 0),
+    getTransferMediaWorkerStatus().catch(() => ({})),
+  ]);
+
+  return {
+    queueLength,
+    worker,
+  };
+}
+
+async function getAdminTransfer(id: string) {
+  if (!isSafeTransferId(id)) {
+    throw new Error("Invalid transfer id");
+  }
+  return getTransfer(id);
 }
 
 async function adminDeleteTransfer(id: string): Promise<{
@@ -30,4 +51,4 @@ async function adminDeleteTransfer(id: string): Promise<{
   return { deletedFiles, dataDeleted };
 }
 
-export { isSafeTransferId, listAdminTransfers, adminDeleteTransfer };
+export { isSafeTransferId, listAdminTransfers, getAdminTransfer, getAdminTransferMediaStats, adminDeleteTransfer };

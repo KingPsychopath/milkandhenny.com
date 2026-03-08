@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireAuthWithPayload } from "@/features/auth/server";
 import { getTransfer } from "@/features/transfers/store";
 import { isSafeTransferFilename } from "@/features/transfers/upload";
-import { getTransferFileId } from "@/features/transfers/media-state";
+import { resolveTransferUploadIds } from "@/features/transfers/media-state";
 import { presignPutUrl, isConfigured } from "@/lib/platform/r2";
 import { getMimeType } from "@/features/media/processing";
 import { buildTransferArchivedOriginalStorageKey, buildTransferPrimaryStorageKey } from "@/features/transfers/storage";
@@ -10,6 +10,8 @@ import type { TransferUploadFileInput } from "@/features/transfers/upload-types"
 import { apiErrorFromRequest } from "@/lib/platform/api-error";
 
 type FileEntry = TransferUploadFileInput;
+
+export const runtime = "nodejs";
 
 export async function POST(request: NextRequest) {
   const { error: authErr } = await requireAuthWithPayload(request, "admin");
@@ -30,11 +32,11 @@ export async function POST(request: NextRequest) {
   }
 
   const transferId = body.transferId?.trim();
-  const files = body.files;
+  const rawFiles = body.files;
   if (!transferId) {
     return NextResponse.json({ error: "Missing transferId" }, { status: 400 });
   }
-  if (!Array.isArray(files) || files.length === 0) {
+  if (!Array.isArray(rawFiles) || rawFiles.length === 0) {
     return NextResponse.json({ error: "No files provided" }, { status: 400 });
   }
 
@@ -42,6 +44,7 @@ export async function POST(request: NextRequest) {
   if (!transfer) {
     return NextResponse.json({ error: "Transfer not found or expired" }, { status: 404 });
   }
+  const files = resolveTransferUploadIds(rawFiles, transfer.files.map((f) => f.id));
 
   const remainingTtlSeconds = Math.floor(
     (new Date(transfer.expiresAt).getTime() - Date.now()) / 1000
@@ -54,10 +57,8 @@ export async function POST(request: NextRequest) {
   const existingArchivedNames = new Set(
     transfer.files.flatMap((f) => [f.filename, f.originalFilename].filter((value): value is string => typeof value === "string"))
   );
-  const existingIds = new Set(transfer.files.map((f) => f.id));
   const seenNames = new Set<string>();
   const seenArchivedNames = new Set<string>();
-  const seenIds = new Set<string>();
 
   for (const file of files) {
     if (!file || typeof file.name !== "string" || !isSafeTransferFilename(file.name)) {
@@ -85,21 +86,6 @@ export async function POST(request: NextRequest) {
       }
       seenArchivedNames.add(file.originalName);
     }
-
-    const predictedId = getTransferFileId(file.name);
-    if (seenIds.has(predictedId)) {
-      return NextResponse.json(
-        { error: `Conflicting media filenames share the same transfer ID/stem: ${predictedId}` },
-        { status: 400 }
-      );
-    }
-    if (existingIds.has(predictedId)) {
-      return NextResponse.json(
-        { error: `Media ID/stem already exists in transfer: ${predictedId}` },
-        { status: 400 }
-      );
-    }
-    seenIds.add(predictedId);
   }
 
   try {
@@ -108,10 +94,11 @@ export async function POST(request: NextRequest) {
         const primaryKey = buildTransferPrimaryStorageKey(transferId, file);
         const primaryUrl = await presignPutUrl(primaryKey, getMimeType(file.name));
         const archivedOriginalKey = buildTransferArchivedOriginalStorageKey(transferId, file);
-        const archivedOriginalUrl = archivedOriginalKey && file.originalName
-          ? await presignPutUrl(archivedOriginalKey, getMimeType(file.originalName))
-          : undefined;
-        return { name: file.name, primaryUrl, archivedOriginalUrl };
+        const archivedOriginalUrl =
+          archivedOriginalKey && file.originalName
+            ? await presignPutUrl(archivedOriginalKey, getMimeType(file.originalName))
+            : undefined;
+        return { name: file.name, mediaId: file.mediaId, primaryUrl, archivedOriginalUrl };
       })
     );
 

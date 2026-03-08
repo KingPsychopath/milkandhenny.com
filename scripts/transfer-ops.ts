@@ -21,11 +21,15 @@ import {
 } from "../features/media/processing";
 import {
   buildTransferProcessingCounts,
-  getTransferFileId,
+  resolveTransferUploadIds,
   type TransferProcessingCounts,
 } from "../features/transfers/media-state";
 import { processTransferFile, sortTransferFiles } from "../features/transfers/upload";
+import { backfillTransferMedia } from "../features/transfers/upload";
 import type { ProcessFileResult } from "../features/transfers/upload";
+import { getTransferMediaQueueLength } from "../features/transfers/media-queue";
+import { getTransferMediaWorkerStatus } from "../features/transfers/media-worker-status";
+import { runTransferMediaJobs } from "../features/media/backends/worker";
 import { BASE_URL } from "../lib/shared/config";
 import { getRedis } from "../lib/platform/redis";
 import {
@@ -99,6 +103,22 @@ type AppendTransferResult = {
   addedSize: number;
   fileCounts: { images: number; videos: number; gifs: number; audio: number; other: number };
   processingCounts: TransferProcessingCounts;
+};
+
+type TransferMediaStatusResult = {
+  queueLength: number;
+  worker: {
+    lastHeartbeatAt?: string;
+    lastProcessedAt?: string;
+    lastErrorAt?: string;
+    lastErrorMessage?: string;
+  };
+};
+
+type ReconcileTransferMediaResult = {
+  scannedTransfers: number;
+  updatedTransfers: number;
+  queueLength: number;
 };
 
 /* ─── Transfer operations ─── */
@@ -276,10 +296,6 @@ function transferFileCounts(files: TransferData["files"]) {
   };
 }
 
-function predictedTransferFileId(filename: string): string {
-  return getTransferFileId(filename);
-}
-
 /** Create a new transfer: process files, upload to R2, save metadata to Redis */
 async function createTransfer(
   opts: CreateTransferOpts,
@@ -290,6 +306,7 @@ async function createTransfer(
 
   const absDir = resolveTransferDir(opts.dir);
   const entries = listTransferEntries(absDir);
+  const preparedEntries = resolveTransferUploadIds(entries.map((name) => ({ name })));
 
   const checkpoint = readTransferCheckpoint(absDir);
   if (checkpoint && checkpoint.dir !== absDir) {
@@ -331,12 +348,12 @@ async function createTransfer(
   }
 
   // Classify for concurrency control (Sharp is CPU-heavy)
-  const pendingEntries = entries.filter((f) => !completed[f]);
+  const pendingEntries = preparedEntries.filter((f) => !completed[f.name]);
   const heavy = pendingEntries.filter(
-    (f) => PROCESSABLE_EXTENSIONS.test(f) || ANIMATED_EXTENSIONS.test(f)
+    (f) => PROCESSABLE_EXTENSIONS.test(f.name) || ANIMATED_EXTENSIONS.test(f.name)
   );
   const light = pendingEntries.filter(
-    (f) => !PROCESSABLE_EXTENSIONS.test(f) && !ANIMATED_EXTENSIONS.test(f)
+    (f) => !PROCESSABLE_EXTENSIONS.test(f.name) && !ANIMATED_EXTENSIONS.test(f.name)
   );
 
   const resumedCount = entries.length - pendingEntries.length;
@@ -373,13 +390,13 @@ async function createTransfer(
     return checkpointWriteQueue;
   };
 
-  const processFile = async (file: string) => {
-    const raw = fs.readFileSync(path.join(absDir, file));
-    onProgress?.(`Processing ${file}...`);
-    const result = await processTransferFile(raw, file, transferId);
-    completed[file] = result;
+  const processFile = async (file: { name: string; mediaId: string }) => {
+    const raw = fs.readFileSync(path.join(absDir, file.name));
+    onProgress?.(`Processing ${file.name}...`);
+    const result = await processTransferFile(raw, { ...file, size: raw.byteLength }, transferId);
+    completed[file.name] = result;
     await queueCheckpointWrite();
-    onProgress?.(`Uploaded ${file}`);
+    onProgress?.(`Uploaded ${file.name}`);
     return result;
   };
 
@@ -457,6 +474,10 @@ async function appendToTransfer(
 
   const absDir = resolveTransferDir(opts.dir);
   const entries = listTransferEntries(absDir);
+  const preparedEntries = resolveTransferUploadIds(
+    entries.map((name) => ({ name })),
+    transfer.files.map((f) => f.id)
+  );
   const checkpoint = readTransferAppendCheckpoint(absDir, transfer.id);
 
   if (checkpoint && checkpoint.dir !== absDir) {
@@ -513,31 +534,16 @@ async function appendToTransfer(
     }
   }
 
-  const newPredictedIds = new Set<string>();
   const duplicateNames: string[] = [];
-  const duplicateIds: string[] = [];
-  const duplicateIdsWithinSource: string[] = [];
 
-  for (const file of entries) {
-    const predictedId = predictedTransferFileId(file);
-    if (existingNames.has(file)) duplicateNames.push(file);
-    if (existingIds.has(predictedId)) duplicateIds.push(`${file} → ${predictedId}`);
-    if (newPredictedIds.has(predictedId)) duplicateIdsWithinSource.push(`${file} → ${predictedId}`);
-    newPredictedIds.add(predictedId);
+  for (const file of preparedEntries) {
+    if (existingNames.has(file.name)) duplicateNames.push(file.name);
   }
 
-  if (duplicateNames.length > 0 || duplicateIds.length > 0 || duplicateIdsWithinSource.length > 0) {
+  if (duplicateNames.length > 0) {
     const parts: string[] = [];
     if (duplicateNames.length > 0) {
       parts.push(`Existing filenames conflict: ${duplicateNames.slice(0, 5).join(", ")}${duplicateNames.length > 5 ? "…" : ""}`);
-    }
-    if (duplicateIds.length > 0) {
-      parts.push(`Existing media IDs conflict: ${duplicateIds.slice(0, 5).join(", ")}${duplicateIds.length > 5 ? "…" : ""}`);
-    }
-    if (duplicateIdsWithinSource.length > 0) {
-      parts.push(
-        `Source folder contains duplicate transfer IDs (same image/GIF stem): ${duplicateIdsWithinSource.slice(0, 5).join(", ")}${duplicateIdsWithinSource.length > 5 ? "…" : ""}`
-      );
     }
     throw new Error(
       `Append aborted to avoid overwriting existing transfer files.\n${parts.join("\n")}`
@@ -558,7 +564,7 @@ async function appendToTransfer(
     });
   }
 
-  const pendingEntries = entries.filter((f) => !completed[f]);
+  const pendingEntries = preparedEntries.filter((f) => !completed[f.name]);
   const resumedCount = entries.length - pendingEntries.length;
 
   if (checkpoint) {
@@ -570,10 +576,10 @@ async function appendToTransfer(
   }
 
   const heavy = pendingEntries.filter(
-    (f) => PROCESSABLE_EXTENSIONS.test(f) || ANIMATED_EXTENSIONS.test(f)
+    (f) => PROCESSABLE_EXTENSIONS.test(f.name) || ANIMATED_EXTENSIONS.test(f.name)
   );
   const light = pendingEntries.filter(
-    (f) => !PROCESSABLE_EXTENSIONS.test(f) && !ANIMATED_EXTENSIONS.test(f)
+    (f) => !PROCESSABLE_EXTENSIONS.test(f.name) && !ANIMATED_EXTENSIONS.test(f.name)
   );
 
   let checkpointWriteQueue = Promise.resolve();
@@ -593,13 +599,13 @@ async function appendToTransfer(
     return checkpointWriteQueue;
   };
 
-  const processFile = async (file: string) => {
-    const raw = fs.readFileSync(path.join(absDir, file));
-    onProgress?.(`Processing ${file}...`);
-    const result = await processTransferFile(raw, file, transfer.id);
-    completed[file] = result;
+  const processFile = async (file: { name: string; mediaId: string }) => {
+    const raw = fs.readFileSync(path.join(absDir, file.name));
+    onProgress?.(`Processing ${file.name}...`);
+    const result = await processTransferFile(raw, { ...file, size: raw.byteLength }, transfer.id);
+    completed[file.name] = result;
     await queueCheckpointWrite();
-    onProgress?.(`Uploaded ${file}`);
+    onProgress?.(`Uploaded ${file.name}`);
     return result;
   };
 
@@ -688,6 +694,47 @@ async function deleteTransfer(
   onProgress?.("Done.");
 
   return { deletedFiles, dataDeleted };
+}
+
+async function getTransferMediaStatus(): Promise<TransferMediaStatusResult> {
+  requireRedis();
+  const [queueLength, worker] = await Promise.all([
+    getTransferMediaQueueLength().catch(() => 0),
+    getTransferMediaWorkerStatus().catch(() => ({})),
+  ]);
+
+  return { queueLength, worker };
+}
+
+async function drainTransferMediaQueue(
+  limit = 8
+): Promise<Awaited<ReturnType<typeof runTransferMediaJobs>>> {
+  requireRedis();
+  return runTransferMediaJobs(limit);
+}
+
+async function reconcileTransferMedia(
+  onProgress?: (msg: string) => void
+): Promise<ReconcileTransferMediaResult> {
+  requireRedis();
+  const summaries = await listTransfers();
+  let updatedTransfers = 0;
+
+  for (const summary of summaries) {
+    const transfer = await getTransfer(summary.id);
+    if (!transfer) continue;
+    onProgress?.(`Reconciling ${summary.id}...`);
+    const updated = await backfillTransferMedia(transfer);
+    if (JSON.stringify(updated.files) !== JSON.stringify(transfer.files)) {
+      updatedTransfers += 1;
+    }
+  }
+
+  return {
+    scannedTransfers: summaries.length,
+    updatedTransfers,
+    queueLength: await getTransferMediaQueueLength().catch(() => 0),
+  };
 }
 
 /**
@@ -802,6 +849,9 @@ export {
   listActiveTransfers,
   deleteTransfer,
   cleanupExpiredTransfers,
+  getTransferMediaStatus,
+  drainTransferMediaQueue,
+  reconcileTransferMedia,
   nukeAllTransfers,
   formatDuration,
   parseExpiry,

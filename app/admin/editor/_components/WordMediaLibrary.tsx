@@ -26,7 +26,6 @@ type WordMediaLibraryProps = {
   onAppendSnippet: (snippet: string) => void;
 };
 
-type UploadScope = "word" | "asset";
 type PendingUploadTarget =
   | { scope: "word"; slug: string }
   | { scope: "asset"; assetId: string };

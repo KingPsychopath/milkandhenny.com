@@ -1,11 +1,33 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdminStepUp, requireAuth } from "@/features/auth/server";
-import { adminDeleteTransfer, isSafeTransferId } from "@/features/transfers/admin";
+import { adminDeleteTransfer, getAdminTransfer, isSafeTransferId } from "@/features/transfers/admin";
 import { apiErrorFromRequest } from "@/lib/platform/api-error";
 
 type RouteContext = {
   params: Promise<{ id: string }>;
 };
+
+export async function GET(request: NextRequest, context: RouteContext) {
+  const authErr = await requireAuth(request, "admin");
+  if (authErr) return authErr;
+
+  const { id } = await context.params;
+  if (!isSafeTransferId(id)) {
+    return NextResponse.json({ error: "Invalid transfer id" }, { status: 400 });
+  }
+
+  try {
+    const transfer = await getAdminTransfer(id);
+    if (!transfer) {
+      return NextResponse.json({ error: "Transfer not found" }, { status: 404 });
+    }
+    return NextResponse.json({ transfer });
+  } catch (error) {
+    return apiErrorFromRequest(request, "admin.transfers.get", "Failed to load transfer", error, {
+      id,
+    });
+  }
+}
 
 export async function DELETE(request: NextRequest, context: RouteContext) {
   const authErr = await requireAuth(request, "admin");

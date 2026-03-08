@@ -5,11 +5,7 @@ import Link from "next/link";
 import { getStored, removeStored } from "@/lib/client/storage";
 import { mapWithConcurrency } from "@/lib/shared/map-with-concurrency";
 import { SITE_BRAND } from "@/lib/shared/config";
-import {
-  isDerivableTransferFile,
-  prepareTransferUploadFile,
-  type PreparedTransferUpload,
-} from "@/features/transfers/browser-heif";
+import { prepareTransferUploadFile } from "@/features/transfers/browser-heif";
 import type { TransferUploadFileInput } from "@/features/transfers/upload-types";
 
 /* ─── Types ─── */
@@ -93,9 +89,17 @@ type UploadDashboardProps = {
 };
 
 const DIRECT_UPLOAD_CONCURRENCY = 4;
-const DERIVATION_CONCURRENCY = 2;
 const DIRECT_UPLOAD_RETRIES = 3;
 const API_REQUEST_RETRIES = 2;
+const BROWSER_PREP_MODE = process.env.NEXT_PUBLIC_TRANSFER_MEDIA_BROWSER_PREP ?? "auto";
+const BROWSER_PREP_CONCURRENCY = 2;
+
+type PreparedTransferUpload = {
+  uploadFile: File;
+  uploadName: string;
+  originalFile?: File;
+  convertedFrom?: "heic" | "raw";
+};
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -109,6 +113,40 @@ function retryDelayMs(attempt: number): number {
   const base = 350 * Math.pow(2, attempt - 1);
   const jitter = Math.floor(Math.random() * 120);
   return base + jitter;
+}
+
+async function isReadableLocalFile(file: File): Promise<boolean> {
+  try {
+    await file.slice(0, 1).arrayBuffer();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function toFriendlyUploadError(error: unknown, file?: File): Promise<Error> {
+  if (!file) {
+    return error instanceof Error ? error : new Error("Upload failed");
+  }
+
+  const message = error instanceof Error ? error.message : String(error);
+  const isGenericFetchFailure =
+    message === "Failed to fetch" ||
+    message.includes("ERR_UPLOAD_FILE_CHANGED") ||
+    message.includes("ERR_FILE_NOT_FOUND");
+
+  if (!isGenericFetchFailure) {
+    return error instanceof Error ? error : new Error("Upload failed");
+  }
+
+  const readable = await isReadableLocalFile(file);
+  if (!readable) {
+    return new Error(
+      `The browser lost access to ${file.name}. Copy files to a normal local folder and retry, or use CLI.`
+    );
+  }
+
+  return error instanceof Error ? error : new Error("Upload failed");
 }
 
 export function UploadDashboard({ isAdmin }: UploadDashboardProps) {
@@ -139,7 +177,6 @@ export function UploadDashboard({ isAdmin }: UploadDashboardProps) {
   const [transferResult, setTransferResult] = useState<TransferResult | null>(
     null
   );
-  const [deriveTransferPreviews, setDeriveTransferPreviews] = useState(true);
 
   /* Words fields */
   const [wordsScope, setWordsScope] = useState<WordsScope>("word");
@@ -155,12 +192,11 @@ export function UploadDashboard({ isAdmin }: UploadDashboardProps) {
 
   /* Upload progress (presigned flow) */
   const [uploadProgress, setUploadProgress] = useState<{
-    phase: "converting" | "uploading" | "processing";
+    phase: "uploading" | "processing";
     current: number;
     total: number;
     filename?: string;
   } | null>(null);
-  const [conversionStatuses, setConversionStatuses] = useState<Record<string, string>>({});
 
   /* Drag state */
   const [isDragging, setIsDragging] = useState(false);
@@ -324,7 +360,6 @@ export function UploadDashboard({ isAdmin }: UploadDashboardProps) {
       return next;
     });
     setUploadError("");
-    setConversionStatuses({});
   }, []);
 
   const removeFile = useCallback((target: File) => {
@@ -338,7 +373,6 @@ export function UploadDashboard({ isAdmin }: UploadDashboardProps) {
     setTransferResult(null);
     setWordsResult(null);
     setUploadError("");
-    setConversionStatuses({});
   }, []);
 
   const uploadPresignedFiles = useCallback(
@@ -371,9 +405,13 @@ export function UploadDashboard({ isAdmin }: UploadDashboardProps) {
                 throw new Error(`Failed to upload ${entry.file.name} (${putRes.status})`);
               }
             } catch (error) {
-              lastPutError = error;
+              lastPutError = await toFriendlyUploadError(error, entry.file);
               if (attempt > DIRECT_UPLOAD_RETRIES) {
-                throw (error instanceof Error ? error : new Error(`Failed to upload ${entry.file.name}`));
+                throw (
+                  lastPutError instanceof Error
+                    ? lastPutError
+                    : new Error(`Failed to upload ${entry.file.name}`)
+                );
               }
             }
 
@@ -406,54 +444,29 @@ export function UploadDashboard({ isAdmin }: UploadDashboardProps) {
 
   const prepareTransferUploads = useCallback(
     async (selectedFiles: File[]) => {
-      const derivableFiles = selectedFiles.filter((file) => isDerivableTransferFile(file));
-      if (!deriveTransferPreviews || derivableFiles.length === 0) {
+      if (BROWSER_PREP_MODE === "off") {
         return selectedFiles.map<PreparedTransferUpload>((file) => ({
           uploadFile: file,
           uploadName: file.name,
         }));
       }
 
-      let completed = 0;
-      setUploadProgress({
-        phase: "converting",
-        current: 0,
-        total: derivableFiles.length,
-      });
-      setConversionStatuses(
-        Object.fromEntries(
-          derivableFiles.map((file) => [`${file.name}:${file.size}`, "queued for preview derivation"])
-        )
-      );
-
-      const prepared = await mapWithConcurrency(selectedFiles, DERIVATION_CONCURRENCY, async (file) => {
-        if (!isDerivableTransferFile(file)) {
-          return {
-            uploadFile: file,
-            uploadName: file.name,
-          } satisfies PreparedTransferUpload;
+      return mapWithConcurrency(
+        selectedFiles,
+        BROWSER_PREP_CONCURRENCY,
+        async (file) => {
+          try {
+            return await prepareTransferUploadFile(file, { derivePreview: true });
+          } catch {
+            return {
+              uploadFile: file,
+              uploadName: file.name,
+            } satisfies PreparedTransferUpload;
+          }
         }
-
-        const key = `${file.name}:${file.size}`;
-        setConversionStatuses((current) => ({ ...current, [key]: `Preparing preview for ${file.name}...` }));
-        const result = await prepareTransferUploadFile(file, { derivePreview: true });
-        completed += 1;
-        setConversionStatuses((current) => ({
-          ...current,
-          [key]: result.statusLabel ?? `Prepared ${result.uploadName}`,
-        }));
-        setUploadProgress({
-          phase: "converting",
-          current: completed,
-          total: derivableFiles.length,
-          filename: file.name,
-        });
-        return result;
-      });
-
-      return prepared;
+      );
     },
-    [deriveTransferPreviews]
+    []
   );
 
   /* ─── Drag & drop ─── */
@@ -568,8 +581,13 @@ export function UploadDashboard({ isAdmin }: UploadDashboardProps) {
       transferId: string;
       deleteToken: string;
       expiresSeconds: number;
-      urls: Array<{ name: string; primaryUrl: string; archivedOriginalUrl?: string }>;
+      urls: Array<{ name: string; mediaId: string; primaryUrl: string; archivedOriginalUrl?: string }>;
     };
+    const mediaIdsByName = new Map(urls.map((entry) => [entry.name, entry.mediaId]));
+    const finalizeFiles: TransferUploadFileInput[] = presignFiles.map((file) => ({
+      ...file,
+      mediaId: mediaIdsByName.get(file.name),
+    }));
 
     // 2. Upload files directly to R2 (bounded parallelism for faster uploads)
     const preparedByName = new Map(preparedFiles.map((file) => [file.uploadName, file]));
@@ -603,7 +621,7 @@ export function UploadDashboard({ isAdmin }: UploadDashboardProps) {
         deleteToken,
         title: title || "untitled",
         expiresSeconds,
-        files: presignFiles,
+        files: finalizeFiles,
       }),
     });
 
@@ -651,7 +669,12 @@ export function UploadDashboard({ isAdmin }: UploadDashboardProps) {
       throw new Error((presignData as { error?: string }).error || "Failed to prepare append upload");
     }
 
-    const { urls } = presignData as { urls: Array<{ name: string; primaryUrl: string; archivedOriginalUrl?: string }> };
+    const { urls } = presignData as { urls: Array<{ name: string; mediaId: string; primaryUrl: string; archivedOriginalUrl?: string }> };
+    const mediaIdsByName = new Map(urls.map((entry) => [entry.name, entry.mediaId]));
+    const finalizeFiles: TransferUploadFileInput[] = presignFiles.map((file) => ({
+      ...file,
+      mediaId: mediaIdsByName.get(file.name),
+    }));
 
     const preparedByName = new Map(preparedFiles.map((file) => [file.uploadName, file]));
     const uploadEntries = urls.flatMap((entry) => {
@@ -672,7 +695,7 @@ export function UploadDashboard({ isAdmin }: UploadDashboardProps) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         transferId,
-        files: presignFiles,
+        files: finalizeFiles,
       }),
     });
 
@@ -795,7 +818,6 @@ export function UploadDashboard({ isAdmin }: UploadDashboardProps) {
         setWordsResult(result);
       }
       setFiles([]);
-      setConversionStatuses({});
     } catch (e) {
       setUploadError((e as Error).message || "Upload failed");
     } finally {
@@ -833,9 +855,6 @@ export function UploadDashboard({ isAdmin }: UploadDashboardProps) {
   };
 
   const totalFileSize = files.reduce((sum, f) => sum + f.size, 0);
-  const derivableTransferFileCount =
-    mode === "transfer" ? files.filter((file) => isDerivableTransferFile(file)).length : 0;
-
   /* ─── Render: wait for mount (avoids hydration mismatch) ─── */
   if (!mounted) {
     return (
@@ -991,45 +1010,9 @@ export function UploadDashboard({ isAdmin }: UploadDashboardProps) {
                   ))}
                 </select>
               </div>
-              {derivableTransferFileCount > 0 ? (
-                <button
-                  type="button"
-                  onClick={() => setDeriveTransferPreviews((current) => !current)}
-                  className="flex items-center gap-2.5 cursor-pointer group"
-                >
-                  <span
-                    className={`w-4 h-4 rounded border flex items-center justify-center transition-colors ${
-                      deriveTransferPreviews
-                        ? "bg-[var(--foreground)] border-[var(--foreground)]"
-                        : "border-[var(--stone-300)] group-hover:border-[var(--stone-400)]"
-                    }`}
-                  >
-                    {deriveTransferPreviews ? (
-                      <svg
-                        width="10"
-                        height="10"
-                        viewBox="0 0 10 10"
-                        fill="none"
-                        stroke="var(--background)"
-                        strokeWidth="1.5"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      >
-                        <path d="M1.5 5.5L4 8L8.5 2" />
-                      </svg>
-                    ) : null}
-                  </span>
-                  <span className="font-mono text-xs theme-muted text-left">
-                    derive previews before upload
-                    <span className="block text-micro theme-faint mt-1">
-                      {derivableTransferFileCount} HEIC/RAW file{derivableTransferFileCount === 1 ? "" : "s"} detected.
-                      {deriveTransferPreviews
-                        ? " Slower upload, but preview-ready galleries when derivation succeeds."
-                        : " Faster upload, but those files stay original-only with no preview."}
-                    </span>
-                  </span>
-                </button>
-              ) : null}
+              <p className="font-mono text-micro theme-faint">
+                uploads send original files directly; previews are generated after upload on the server
+              </p>
             </>
           )}
         </div>
@@ -1234,11 +1217,6 @@ export function UploadDashboard({ isAdmin }: UploadDashboardProps) {
                   <span className="font-mono text-sm truncate block">
                     {file.name}
                   </span>
-                  {conversionStatuses[`${file.name}:${file.size}`] ? (
-                    <span className="font-mono text-micro theme-faint block mt-0.5">
-                      {conversionStatuses[`${file.name}:${file.size}`]}
-                    </span>
-                  ) : null}
                 </div>
                 <div className="flex items-center gap-3 shrink-0">
                   <span className="font-mono text-xs theme-muted">
@@ -1265,8 +1243,6 @@ export function UploadDashboard({ isAdmin }: UploadDashboardProps) {
             {uploading && uploadProgress
               ? uploadProgress.phase === "processing"
                 ? "processing thumbnails..."
-                : uploadProgress.phase === "converting"
-                  ? `converting ${uploadProgress.current}/${uploadProgress.total}...`
                 : `uploading ${uploadProgress.current}/${uploadProgress.total}...`
               : uploading
                 ? "uploading..."

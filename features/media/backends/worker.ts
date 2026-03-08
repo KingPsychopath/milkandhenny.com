@@ -34,6 +34,7 @@ type WorkerRunResult = {
 };
 
 function buildQueuedTransferFile(
+  mediaId: string,
   filename: string,
   size: number,
   storageKey: string,
@@ -41,7 +42,7 @@ function buildQueuedTransferFile(
   attempt: number
 ): TransferFile {
   return {
-    id: getTransferFileId(filename),
+    id: mediaId,
     filename,
     kind: getRouteKind(route),
     size,
@@ -57,6 +58,7 @@ function buildQueuedTransferFile(
 }
 
 function buildFailedQueueResult(
+  mediaId: string,
   filename: string,
   size: number,
   storageKey: string,
@@ -67,6 +69,7 @@ function buildFailedQueueResult(
   return {
     file: {
       ...buildOriginalOnlyFailureFile(
+        mediaId,
         filename,
         size,
         storageKey,
@@ -91,6 +94,7 @@ async function enqueueWorkerJob(params: {
   const route = params.route === "raw_try_local" ? "worker_raw" : params.route;
   const mimeType = getMimeType(params.file.name);
   const storageKey = buildTransferPrimaryStorageKey(params.transferId, params.file);
+  const mediaId = params.file.mediaId ?? getTransferFileId(params.file.name);
 
   if (params.originalBuffer) {
     await uploadBuffer(
@@ -118,7 +122,7 @@ async function enqueueWorkerJob(params: {
 
     return {
       file: {
-        ...buildQueuedTransferFile(params.file.name, params.file.size, storageKey, route, attempt),
+        ...buildQueuedTransferFile(mediaId, params.file.name, params.file.size, storageKey, route, attempt),
         mimeType,
         ...(params.file.originalName ? { originalFilename: params.file.originalName } : {}),
         ...(params.file.originalType ? { originalMimeType: params.file.originalType } : {}),
@@ -131,7 +135,7 @@ async function enqueueWorkerJob(params: {
       uploadedBytes: params.file.size + (params.file.originalSize ?? 0),
     };
   } catch {
-    return buildFailedQueueResult(params.file.name, params.file.size, storageKey, route, "enqueue_failed", attempt);
+    return buildFailedQueueResult(mediaId, params.file.name, params.file.size, storageKey, route, "enqueue_failed", attempt);
   }
 }
 
@@ -187,7 +191,7 @@ async function processWorkerJob(job: TransferMediaJob): Promise<"succeeded" | "f
       files: processingTransfer.files.map((file, index) =>
         index === fileIndex
           ? {
-              ...buildOriginalOnlyFailureFile(job.file.name, current.size, current.storageKey, job.processingRoute, "worker_failed", job.attempt),
+              ...buildOriginalOnlyFailureFile(current.id, job.file.name, current.size, current.storageKey, job.processingRoute, "worker_failed", job.attempt),
               processingBackend: "worker",
               storageKey: current.storageKey,
               ...(current.originalStorageKey ? { originalStorageKey: current.originalStorageKey } : {}),
