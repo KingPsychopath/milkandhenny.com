@@ -527,6 +527,7 @@ function createLocalMediaProcessor() {
 
 export {
   buildOriginalOnlyFailureFile,
+  buildReadyVisualFile,
   buildFailedLocalResult,
   buildSkippedFile,
   createLocalMediaProcessor,

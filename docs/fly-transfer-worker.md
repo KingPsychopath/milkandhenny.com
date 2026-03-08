@@ -7,6 +7,11 @@ Current intended use:
 - RAW fallback when local preview extraction fails
 - Video fallback when local poster/thumb generation fails
 
+Worker media stack:
+- `ffmpeg` for video poster/thumb work
+- `libheif` for HEIF/HIF fallback support
+- `libraw-bin` / `dcraw_emu` for worker-side RAW decode
+
 ## Minimum envs
 
 For most setups, you only need these app-side envs:

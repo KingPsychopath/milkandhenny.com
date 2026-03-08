@@ -665,6 +665,12 @@ type ProcessedVideo = {
   durationSeconds: number | null;
 };
 
+type DecodedRawImage = {
+  buffer: Buffer;
+  width: number;
+  height: number;
+};
+
 /* ─── EXIF ─── */
 
 /** Extract the date a photo was taken from EXIF data, or null */
@@ -958,6 +964,41 @@ async function processVideoVariants(raw: Buffer, sourceExt = ".mp4"): Promise<Pr
   });
 }
 
+async function processRawWithDcraw(raw: Buffer, sourceExtOrFilename = ".dng"): Promise<DecodedRawImage> {
+  const ext = path.extname(sourceExtOrFilename).toLowerCase() || sourceExtOrFilename.toLowerCase();
+  return withTempFile("transfer-raw", ext, raw, async (tempFile) => {
+    const { stdout } = await execFileAsync(
+      "dcraw_emu",
+      [
+        "-c",
+        "-T",
+        "-w",
+        "-6",
+        "-o", "1",
+        tempFile,
+      ],
+      {
+        encoding: "buffer",
+        maxBuffer: 128 * 1024 * 1024,
+      }
+    );
+
+    const buffer = Buffer.isBuffer(stdout) ? stdout : Buffer.from(stdout);
+    if (buffer.length === 0) {
+      throw new Error("Failed to decode raw image");
+    }
+
+    const metadata = await sharp(buffer).metadata();
+    const width = metadata.width ?? 0;
+    const height = metadata.height ?? 0;
+    if (width <= 0 || height <= 0) {
+      throw new Error("Decoded raw image has invalid dimensions");
+    }
+
+    return { buffer, width, height };
+  });
+}
+
 /**
  * Process a single image to a web-optimised WebP.
  * Simpler than processImageVariants — one output, not three.
@@ -1032,9 +1073,10 @@ export {
   processImageVariants,
   processToOg,
   processGifThumb,
+  processRawWithDcraw,
   processVideoVariants,
   processToWebP,
   mapConcurrent,
 };
 
-export type { ImageVariant, ProcessedImage, ProcessedGif, ProcessedVideo, OgOverlay, RotationOverride };
+export type { ImageVariant, ProcessedImage, ProcessedGif, ProcessedVideo, DecodedRawImage, OgOverlay, RotationOverride };

@@ -1,7 +1,7 @@
 import "server-only";
 
-import { getMimeType } from "@/features/media/processing";
-import { uploadBuffer } from "@/lib/platform/r2";
+import { getMimeType, processImageVariants, processRawWithDcraw } from "@/features/media/processing";
+import { downloadBuffer, uploadBuffer } from "@/lib/platform/r2";
 import {
   canRetryTransferProcessing,
   classifyTransferProcessingRoute,
@@ -21,6 +21,7 @@ import type { ProcessFileResult, TransferUploadFileInput } from "@/features/tran
 import { buildTransferArchivedOriginalStorageKey, buildTransferPrimaryStorageKey } from "@/features/transfers/storage";
 import {
   buildOriginalOnlyFailureFile,
+  buildReadyVisualFile,
   getRouteKind,
   processTransferObjectLocally,
 } from "@/features/media/backends/local";
@@ -167,16 +168,51 @@ async function processWorkerJob(job: TransferMediaJob): Promise<"succeeded" | "f
   await saveTransfer(processingTransfer, remainingSeconds);
 
   try {
-    const result = await processTransferObjectLocally(
-      {
-        ...job.file,
-        size: current.size,
-      },
-      job.transferId,
-      "worker_done",
-      "worker",
-      job.processingRoute
-    );
+    let result: ProcessFileResult;
+    if (job.processingRoute === "worker_raw") {
+      const original = await downloadBuffer(current.storageKey);
+      const decoded = await processRawWithDcraw(original, job.file.originalName ?? job.file.name);
+      const processed = await processImageVariants(decoded.buffer, ".tiff");
+      const prefix = `transfers/${job.transferId}`;
+      await Promise.all([
+        uploadBuffer(`${prefix}/thumb/${current.id}.webp`, processed.thumb.buffer, processed.thumb.contentType),
+        uploadBuffer(`${prefix}/full/${current.id}.webp`, processed.full.buffer, processed.full.contentType),
+      ]);
+      result = {
+        file: buildReadyVisualFile(
+          current.id,
+          job.file.name,
+          current.size,
+          "image",
+          current.mimeType,
+          current.storageKey,
+          current.originalStorageKey,
+          processed.width,
+          processed.height,
+          job.processingRoute,
+          "worker_done",
+          "worker",
+          processed.takenAt ?? current.takenAt ?? null,
+          job.file,
+          "server_raw"
+        ),
+        uploadedBytes:
+          processed.thumb.buffer.byteLength +
+          processed.full.buffer.byteLength +
+          current.size,
+      };
+    } else {
+      result = await processTransferObjectLocally(
+        {
+          ...job.file,
+          size: current.size,
+        },
+        job.transferId,
+        "worker_done",
+        "worker",
+        job.processingRoute
+      );
+    }
     const updated: TransferData = {
       ...processingTransfer,
       files: processingTransfer.files.map((file, index) =>
