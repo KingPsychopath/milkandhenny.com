@@ -2,7 +2,7 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import type { Metadata } from "next";
 import { getAlbumBySlug, getAllAlbumSlugs } from "@/features/media/albums";
-import { getFullUrl, getOgUrl, getOriginalStorageKey } from "@/features/media/storage";
+import { getFullUrl, getOgUrl, getOriginalStorageKey, getOriginalUrl } from "@/features/media/storage";
 import { BASE_URL, SITE_NAME, SITE_BRAND } from "@/lib/shared/config";
 import { PhotoViewer } from "../../_components/PhotoViewer";
 import { Breadcrumbs } from "@/components/Breadcrumbs";
@@ -98,6 +98,7 @@ export default async function PhotoPage({ params }: Props) {
           <PhotoViewer
             src={getFullUrl(albumSlug, photoId)}
             downloadStorageKey={getOriginalStorageKey(albumSlug, photoId)}
+            downloadUrl={getOriginalUrl(albumSlug, photoId)}
             filename={`${photoId}.jpg`}
             width={photo.width}
             height={photo.height}

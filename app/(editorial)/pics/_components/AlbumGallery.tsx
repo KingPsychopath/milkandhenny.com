@@ -311,6 +311,7 @@ export function AlbumGallery({ albumSlug, photos }: AlbumGalleryProps) {
         return;
       }
 
+      setPreparingDownload(false);
       await executePreparedDownload(prepared);
     } catch (err) {
       if (isAbortError(err)) return;

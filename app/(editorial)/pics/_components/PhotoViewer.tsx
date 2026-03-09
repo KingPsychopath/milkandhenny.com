@@ -5,11 +5,13 @@ import { useRouter } from "next/navigation";
 import { getStored, setStored } from "@/lib/client/storage";
 import Link from "next/link";
 import { useSwipe } from "@/hooks/useSwipe";
-import { downloadViaPresignedUrl } from "@/lib/client/media-download";
+import { downloadFile, type SingleFileDownloadProgress } from "@/lib/client/media-download";
+import { formatBytes } from "@/lib/shared/format";
 
 type PhotoViewerProps = {
   src: string;
   downloadStorageKey: string;
+  downloadUrl: string;
   filename: string;
   width: number;
   height: number;
@@ -32,6 +34,7 @@ type PhotoViewerProps = {
 export function PhotoViewer({
   src,
   downloadStorageKey,
+  downloadUrl,
   filename,
   width,
   height,
@@ -48,6 +51,7 @@ export function PhotoViewer({
   const [imageLoaded, setImageLoaded] = useState(false);
   const [showSkeleton, setShowSkeleton] = useState(false);
   const [showLoadingText, setShowLoadingText] = useState(false);
+  const [downloadProgress, setDownloadProgress] = useState<SingleFileDownloadProgress | null>(null);
   const savingRef = useRef(false);
   const imgRef = useRef<HTMLImageElement>(null);
   const skeletonTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -163,15 +167,31 @@ export function PhotoViewer({
     if (savingRef.current) return;
     savingRef.current = true;
     setSaving(true);
+    setDownloadProgress(null);
     try {
-      await downloadViaPresignedUrl(downloadStorageKey, filename);
+      await downloadFile({
+        storageKey: downloadStorageKey,
+        filename,
+        fallbackUrl: downloadUrl,
+        onProgress: setDownloadProgress,
+      });
     } catch (err) {
       console.error("Download failed:", err);
     } finally {
       savingRef.current = false;
       setSaving(false);
+      setDownloadProgress(null);
     }
-  }, [downloadStorageKey, filename]);
+  }, [downloadStorageKey, downloadUrl, filename]);
+
+  const downloadLabel =
+    saving && downloadProgress
+      ? downloadProgress.totalBytes
+        ? `${formatBytes(downloadProgress.receivedBytes)} / ${formatBytes(downloadProgress.totalBytes)}`
+        : `${formatBytes(downloadProgress.receivedBytes)}`
+      : saving
+        ? "saving..."
+        : "download ↓";
 
   const isPortrait = height > width;
 
@@ -261,7 +281,7 @@ export function PhotoViewer({
         <div className="flex items-center gap-4">
           {actions}
           <button onClick={handleDownload} disabled={saving} className="hover:text-foreground transition-colors disabled:opacity-50">
-            {saving ? "saving..." : "download ↓"}
+            {downloadLabel}
           </button>
         </div>
       </div>

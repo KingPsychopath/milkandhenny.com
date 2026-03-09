@@ -1271,6 +1271,7 @@ export function TransferGallery({ transferId, files, groups, deleteToken }: Tran
           return;
         }
 
+        setPreparingDownload(false);
         await executePreparedDownload(prepared);
       } finally {
         setPreparingDownload(false);

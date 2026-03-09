@@ -12,6 +12,11 @@ const BLOB_ZIP_DOWNLOAD_LIMIT_BYTES = 200 * 1024 * 1024;
 const LARGE_STREAMING_ZIP_NOTICE_BYTES = 1024 * 1024 * 1024;
 const PRESIGNED_DOWNLOAD_TIMEOUT_MS = 8000;
 
+type SingleFileDownloadProgress = {
+  receivedBytes: number;
+  totalBytes: number | null;
+};
+
 /**
  * Fetch a file as a Blob from a CORS-enabled origin.
  * @param url - The URL to fetch
@@ -35,6 +40,88 @@ async function fetchBlob(url: string, retries = 2): Promise<Blob> {
   }
 
   throw lastError ?? new Error(`Failed to fetch ${url}`);
+}
+
+function parseContentLength(headers: Headers): number | null {
+  const raw = headers.get("content-length");
+  if (!raw) return null;
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
+}
+
+async function fetchBlobWithProgress(
+  url: string,
+  options?: {
+    retries?: number;
+    signal?: AbortSignal;
+    onProgress?: (progress: SingleFileDownloadProgress) => void;
+  }
+): Promise<Blob> {
+  const retries = options?.retries ?? 2;
+  let lastError: Error | null = null;
+
+  for (let attempt = 0; attempt <= retries; attempt += 1) {
+    try {
+      const response = await fetch(url, {
+        mode: "cors",
+        signal: options?.signal,
+      });
+      if (!response.ok) throw new Error(`Fetch failed: ${response.status} ${response.statusText}`);
+
+      const totalBytes = parseContentLength(response.headers);
+      if (!response.body) {
+        const blob = await response.blob();
+        options?.onProgress?.({
+          receivedBytes: blob.size,
+          totalBytes: totalBytes ?? blob.size,
+        });
+        return blob;
+      }
+
+      const reader = response.body.getReader();
+      const chunks: Uint8Array[] = [];
+      let receivedBytes = 0;
+      options?.onProgress?.({ receivedBytes, totalBytes });
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        if (!value) continue;
+        chunks.push(value);
+        receivedBytes += value.byteLength;
+        options?.onProgress?.({ receivedBytes, totalBytes });
+      }
+
+      return new Blob(
+        chunks.map((chunk) => {
+          const buffer = new ArrayBuffer(chunk.byteLength);
+          new Uint8Array(buffer).set(chunk);
+          return buffer;
+        }),
+        {
+        type: response.headers.get("content-type") ?? "application/octet-stream",
+        }
+      );
+    } catch (error) {
+      if (options?.signal?.aborted || (error instanceof DOMException && error.name === "AbortError")) {
+        throw options?.signal?.reason instanceof Error ? options.signal.reason : error;
+      }
+      lastError = error instanceof Error ? error : new Error(String(error));
+      if (attempt < retries) {
+        await new Promise((resolve) => setTimeout(resolve, 500 * (attempt + 1)));
+      }
+    }
+  }
+
+  throw lastError ?? new Error(`Failed to fetch ${url}`);
+}
+
+function isIOSDownloadBrowser(): boolean {
+  if (typeof navigator === "undefined") return false;
+  return (
+    /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+    (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1)
+  );
 }
 
 async function getPresignedDownloadUrl(storageKey: string, filename: string): Promise<string> {
@@ -90,17 +177,32 @@ async function downloadFile(options: {
   storageKey: string;
   filename: string;
   fallbackUrl: string;
+  onProgress?: (progress: SingleFileDownloadProgress) => void;
 }): Promise<void> {
+  if (!isIOSDownloadBrowser()) {
+    const blob = await fetchBlobWithProgress(options.fallbackUrl, {
+      onProgress: options.onProgress,
+    });
+    downloadBlob(blob, options.filename);
+    return;
+  }
+
   try {
     await downloadViaPresignedUrl(options.storageKey, options.filename);
   } catch (error) {
     if (error instanceof DOMException && error.name === "AbortError") {
-      triggerBrowserDownload(options.fallbackUrl, options.filename);
+      const blob = await fetchBlobWithProgress(options.fallbackUrl, {
+        onProgress: options.onProgress,
+      });
+      downloadBlob(blob, options.filename);
       return;
     }
 
     if (error instanceof Error && error.message.startsWith("Failed to prepare download")) {
-      triggerBrowserDownload(options.fallbackUrl, options.filename);
+      const blob = await fetchBlobWithProgress(options.fallbackUrl, {
+        onProgress: options.onProgress,
+      });
+      downloadBlob(blob, options.filename);
       return;
     }
 
@@ -244,8 +346,12 @@ export {
   canUseSaveFilePicker,
   createZipFileWritable,
   fetchContentLength,
+  fetchBlobWithProgress,
   getPresignedDownloadUrl,
   getZipDownloadErrorMessage,
   isAbortError,
+  isIOSDownloadBrowser,
+  parseContentLength,
   triggerBrowserDownload,
 };
+export type { SingleFileDownloadProgress };
