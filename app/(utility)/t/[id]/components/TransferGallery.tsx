@@ -1638,7 +1638,15 @@ export function TransferGallery({ transferId, files, groups, deleteToken }: Tran
                       >
                         [
                         <span>{bucket.label}</span>
-                        <span className={isActive ? "text-foreground/65" : "theme-muted/80"}> {bucket.count}</span>
+                        <span
+                          className={
+                            isActive
+                              ? "ml-2 inline-flex min-w-5 items-center justify-center rounded-full border border-foreground/20 px-1.5 text-nano text-foreground/70"
+                              : "ml-2 inline-flex min-w-5 items-center justify-center rounded-full border theme-border px-1.5 text-nano theme-muted"
+                          }
+                        >
+                          {bucket.count}
+                        </span>
                         ]
                       </button>
                     );
