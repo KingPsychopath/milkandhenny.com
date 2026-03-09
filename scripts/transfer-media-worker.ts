@@ -18,6 +18,7 @@ import {
 } from "@/features/words/media-queue";
 import { updateTransferMediaWorkerStatus } from "@/features/transfers/media-worker-status";
 
+const IDLE_TIMEOUT_COUNT = 3; // 3 consecutive misses ≈ 30s idle → exit so Fly autostop works
 const WORKER_ENABLED = process.env.TRANSFER_MEDIA_WORKER_ENABLED !== "0";
 const WORKER_CONCURRENCY = Math.max(
   1,
@@ -62,9 +63,9 @@ const server = createServer((req, res) => {
   res.end();
 });
 
-function shutdown(signal: string) {
+function initiateShutdown(reason: string) {
   if (shutdownPromise) return;
-  console.log(`[transfer-media-worker] received ${signal}, shutting down...`);
+  console.log(`[transfer-media-worker] ${reason}, shutting down...`);
   running = false;
   shutdownPromise = Promise.allSettled([
     new Promise<void>((resolve) => {
@@ -74,8 +75,8 @@ function shutdown(signal: string) {
   ]).then(() => undefined);
 }
 
-process.on("SIGINT", () => shutdown("SIGINT"));
-process.on("SIGTERM", () => shutdown("SIGTERM"));
+process.on("SIGINT", () => initiateShutdown("received SIGINT"));
+process.on("SIGTERM", () => initiateShutdown("received SIGTERM"));
 
 server.listen(PORT, "0.0.0.0");
 
@@ -100,15 +101,18 @@ async function main() {
   });
 
   async function consumeLoop(index: number) {
+    let idleMisses = 0;
+
     while (running) {
       let claimedTransfer: Awaited<ReturnType<typeof claimTransferMediaJobBlocking>> | null = null;
       let claimedWord: Awaited<ReturnType<typeof claimWordMediaJobBlocking>> | null = null;
 
       try {
-        claimedTransfer = await claimTransferMediaJobBlocking(1);
+        claimedTransfer = await claimTransferMediaJobBlocking(10);
         if (!running) break;
 
         if (claimedTransfer) {
+          idleMisses = 0;
           const outcome = await processWorkerJob(claimedTransfer.job);
           await ackTransferMediaJob(claimedTransfer.raw);
           await updateTransferMediaWorkerStatus({
@@ -123,6 +127,7 @@ async function main() {
         if (!running) break;
 
         if (claimedWord) {
+          idleMisses = 0;
           const outcome = await processWordMediaJob(claimedWord.job);
           await ackWordMediaJob(claimedWord.raw);
           await updateTransferMediaWorkerStatus({
@@ -130,6 +135,15 @@ async function main() {
             lastProcessedAt: new Date().toISOString(),
           });
           console.log(`[transfer-media-worker] worker=${index} word-media=${outcome}`);
+          continue;
+        }
+
+        idleMisses += 1;
+        if (idleMisses >= IDLE_TIMEOUT_COUNT) {
+          console.log(`[transfer-media-worker] worker=${index} idle, exiting`);
+          running = false;
+          initiateShutdown("idle timeout");
+          break;
         }
       } catch (error) {
         if (!running) break;

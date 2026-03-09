@@ -93,6 +93,8 @@ const DIRECT_UPLOAD_RETRIES = 3;
 const API_REQUEST_RETRIES = 2;
 const BROWSER_PREP_MODE = process.env.NEXT_PUBLIC_TRANSFER_MEDIA_BROWSER_PREP ?? "auto";
 const BROWSER_PREP_CONCURRENCY = 2;
+const LARGE_BATCH_ENTRY_COUNT = 24;
+const LARGE_BATCH_UPLOAD_CONCURRENCY = 2;
 
 type PreparedTransferUpload = {
   uploadFile: File;
@@ -113,6 +115,35 @@ function retryDelayMs(attempt: number): number {
   const base = 350 * Math.pow(2, attempt - 1);
   const jitter = Math.floor(Math.random() * 120);
   return base + jitter;
+}
+
+function sanitizeUrlForLogs(url: string): string {
+  try {
+    const parsed = new URL(url);
+    return `${parsed.origin}${parsed.pathname}`;
+  } catch {
+    return "[invalid-url]";
+  }
+}
+
+function formatUploadContext(params: {
+  file: File;
+  label: string;
+  contentType: string;
+  url: string;
+  attempt: number;
+  totalAttempts: number;
+}): string {
+  const bits = [
+    `file=${params.file.name}`,
+    `label=${params.label}`,
+    `size=${params.file.size}`,
+    `fileType=${params.file.type || "(empty)"}`,
+    `putType=${params.contentType || "(empty)"}`,
+    `url=${sanitizeUrlForLogs(params.url)}`,
+    `attempt=${params.attempt}/${params.totalAttempts}`,
+  ];
+  return bits.join(" | ");
 }
 
 async function isReadableLocalFile(file: File): Promise<boolean> {
@@ -147,6 +178,29 @@ async function toFriendlyUploadError(error: unknown, file?: File): Promise<Error
   }
 
   return error instanceof Error ? error : new Error("Upload failed");
+}
+
+function buildUploadFailureMessage(params: {
+  file: File;
+  label: string;
+  contentType: string;
+  url: string;
+  error: unknown;
+  attempt: number;
+  totalAttempts: number;
+}): Error {
+  const context = formatUploadContext(params);
+  const message =
+    params.error instanceof Error && params.error.message
+      ? params.error.message
+      : String(params.error);
+
+  console.error("Direct upload failed", {
+    context,
+    error: params.error,
+  });
+
+  return new Error(`Failed to upload ${params.file.name}. ${message}. ${context}`);
 }
 
 export function UploadDashboard({ isAdmin }: UploadDashboardProps) {
@@ -389,6 +443,11 @@ export function UploadDashboard({ isAdmin }: UploadDashboardProps) {
 
       let nextIndex = 0;
       let completed = 0;
+      const totalAttempts = DIRECT_UPLOAD_RETRIES + 1;
+      const workerCount =
+        entries.length >= LARGE_BATCH_ENTRY_COUNT
+          ? Math.min(LARGE_BATCH_UPLOAD_CONCURRENCY, entries.length)
+          : Math.min(DIRECT_UPLOAD_CONCURRENCY, entries.length);
 
       const worker = async () => {
         while (true) {
@@ -402,6 +461,10 @@ export function UploadDashboard({ isAdmin }: UploadDashboardProps) {
 
           for (let attempt = 1; attempt <= DIRECT_UPLOAD_RETRIES + 1; attempt++) {
             try {
+              if (!entry.url || !/^https?:\/\//i.test(entry.url)) {
+                throw new Error(`Invalid presigned upload URL: ${entry.url || "(empty)"}`);
+              }
+
               putRes = await fetch(entry.url, {
                 method: "PUT",
                 headers: { "Content-Type": entry.contentType },
@@ -415,11 +478,15 @@ export function UploadDashboard({ isAdmin }: UploadDashboardProps) {
             } catch (error) {
               lastPutError = await toFriendlyUploadError(error, entry.file);
               if (attempt > DIRECT_UPLOAD_RETRIES) {
-                throw (
-                  lastPutError instanceof Error
-                    ? lastPutError
-                    : new Error(`Failed to upload ${entry.file.name}`)
-                );
+                throw buildUploadFailureMessage({
+                  file: entry.file,
+                  label: entry.label,
+                  contentType: entry.contentType,
+                  url: entry.url,
+                  error: lastPutError,
+                  attempt,
+                  totalAttempts,
+                });
               }
             }
 
@@ -427,11 +494,15 @@ export function UploadDashboard({ isAdmin }: UploadDashboardProps) {
           }
 
           if (!putRes?.ok) {
-            throw (
-              lastPutError instanceof Error
-                ? lastPutError
-                : new Error(`Failed to upload ${entry.file.name}`)
-            );
+            throw buildUploadFailureMessage({
+              file: entry.file,
+              label: entry.label,
+              contentType: entry.contentType,
+              url: entry.url,
+              error: lastPutError,
+              attempt: totalAttempts,
+              totalAttempts,
+            });
           }
 
           completed += 1;
@@ -444,7 +515,6 @@ export function UploadDashboard({ isAdmin }: UploadDashboardProps) {
         }
       };
 
-      const workerCount = Math.min(DIRECT_UPLOAD_CONCURRENCY, entries.length);
       await Promise.all(Array.from({ length: workerCount }, worker));
     },
     []
