@@ -45,6 +45,7 @@ type ToggleVariant = keyof typeof TOGGLE_VARIANTS;
 
 type SelectionToggleProps = {
   selected: boolean;
+  indeterminate?: boolean;
   onToggle: () => void;
   /** @default "square" */
   shape?: ToggleShape;
@@ -65,6 +66,7 @@ type SelectionToggleProps = {
  */
 export const SelectionToggle = memo(function SelectionToggle({
   selected,
+  indeterminate = false,
   onToggle,
   shape = "square",
   size = "sm",
@@ -74,6 +76,7 @@ export const SelectionToggle = memo(function SelectionToggle({
   const { box, svg } = TOGGLE_SIZES[size];
   const rounding = TOGGLE_SHAPES[shape];
   const { unselected, border } = TOGGLE_VARIANTS[variant];
+  const active = selected || indeterminate;
 
   return (
     <button
@@ -83,9 +86,9 @@ export const SelectionToggle = memo(function SelectionToggle({
         e.stopPropagation();
         onToggle();
       }}
-      aria-label={selected ? "Deselect" : "Select for download"}
+      aria-label={selected ? "Deselect" : indeterminate ? "Partially selected; select all" : "Select for download"}
       className={`group/toggle flex items-center justify-center ${box} ${rounding} ${border} shrink-0 transition-colors ${
-        selected
+        active
           ? "bg-amber-500 border-amber-500 text-white"
           : unselected
       } ${className}`}
@@ -96,12 +99,16 @@ export const SelectionToggle = memo(function SelectionToggle({
         viewBox="0 0 24 24"
         fill="none"
         stroke="currentColor"
-        strokeWidth={selected ? 3 : 2}
+        strokeWidth={active ? 3 : 2}
         strokeLinecap="round"
         strokeLinejoin="round"
-        className={selected ? "" : "opacity-0 group-hover/toggle:opacity-100 transition-opacity"}
+        className={active ? "" : "opacity-0 group-hover/toggle:opacity-100 transition-opacity"}
       >
-        <polyline points="20 6 9 17 4 12" />
+        {indeterminate && !selected ? (
+          <line x1="5" y1="12" x2="19" y2="12" />
+        ) : (
+          <polyline points="20 6 9 17 4 12" />
+        )}
       </svg>
     </button>
   );
