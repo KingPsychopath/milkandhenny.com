@@ -1,6 +1,13 @@
 import "server-only";
+import path from "path";
 
-import { getMimeType, mapConcurrent, processImageVariants, processRawWithDcraw } from "@/features/media/processing";
+import {
+  getMimeType,
+  mapConcurrent,
+  processImageVariants,
+  RawPreviewUnavailableError,
+  resolveImageProcessingSource,
+} from "@/features/media/processing";
 import { downloadBuffer, uploadBuffer } from "@/lib/platform/r2";
 import {
   canRetryTransferProcessing,
@@ -227,13 +234,28 @@ async function processWorkerJob(job: TransferMediaJob): Promise<"succeeded" | "f
     let result: ProcessFileResult;
     if (job.processingRoute === "worker_raw") {
       const original = await downloadBuffer(current.storageKey);
-      const decoded = await processRawWithDcraw(original, job.file.originalName ?? job.file.name);
-      const processed = await processImageVariants(decoded.buffer, ".jpg");
+      const filename = job.file.originalName ?? job.file.name;
+      const ext = path.extname(filename).toLowerCase() || ".dng";
+
+      const { buffer: source, takenAt } =
+        await resolveImageProcessingSource(original, ext);
+
+      const processed = await processImageVariants(source, ".jpg");
+
       const prefix = `transfers/${job.transferId}`;
       await Promise.all([
-        uploadBuffer(`${prefix}/thumb/${mediaId}.webp`, processed.thumb.buffer, processed.thumb.contentType),
-        uploadBuffer(`${prefix}/full/${mediaId}.webp`, processed.full.buffer, processed.full.contentType),
+        uploadBuffer(
+          `${prefix}/thumb/${mediaId}.webp`,
+          processed.thumb.buffer,
+          processed.thumb.contentType
+        ),
+        uploadBuffer(
+          `${prefix}/full/${mediaId}.webp`,
+          processed.full.buffer,
+          processed.full.contentType
+        ),
       ]);
+
       result = {
         file: buildReadyVisualFile(
           mediaId,
@@ -245,14 +267,14 @@ async function processWorkerJob(job: TransferMediaJob): Promise<"succeeded" | "f
           current.originalStorageKey,
           processed.width,
           processed.height,
-        job.processingRoute,
-        "worker_done",
-        "worker",
-        processed.takenAt ?? current.takenAt ?? null,
-        processed.livePhotoContentId ?? current.livePhotoContentId ?? null,
-        job.file,
-        "server_raw"
-      ),
+          job.processingRoute,
+          "worker_done",
+          "worker",
+          processed.takenAt ?? takenAt ?? current.takenAt ?? null,
+          processed.livePhotoContentId ?? current.livePhotoContentId ?? null,
+          job.file,
+          "server_raw"
+        ),
         uploadedBytes:
           processed.thumb.buffer.byteLength +
           processed.full.buffer.byteLength +
@@ -290,7 +312,8 @@ async function processWorkerJob(job: TransferMediaJob): Promise<"succeeded" | "f
         ? (error.stack ?? error.message).slice(0, 500)
         : String(error).slice(0, 500);
     const failureCode =
-      job.processingRoute === "worker_raw" && isRawPreviewFallbackError(error)
+      job.processingRoute === "worker_raw" &&
+      (error instanceof RawPreviewUnavailableError || isRawPreviewFallbackError(error))
         ? "raw_preview_unavailable"
         : "worker_failed";
     console.error(

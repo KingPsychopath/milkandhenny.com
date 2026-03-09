@@ -22,11 +22,6 @@ import path from "path";
 import sharp from "sharp";
 import exifReader from "exif-reader";
 import type { FileKind } from "./file-kinds";
-import {
-  RAW_PREVIEW_ACCEPTANCE_STEPS,
-  RAW_PREVIEW_MAX_EMBEDDED_JPEG_CANDIDATES,
-  RAW_PREVIEW_TARGET_LONGEST_EDGE,
-} from "./raw-preview";
 import { SITE_BRAND } from "@/lib/shared/config";
 
 type ExecFileAsyncOptions = NonNullable<Parameters<typeof execFile>[2]>;
@@ -138,465 +133,121 @@ function isProcessableImage(filename: string): boolean {
   return PROCESSABLE_EXTENSIONS.test(filename) || RAW_IMAGE_EXTENSIONS.test(filename);
 }
 
+/* ─── RAW processing ─── */
+
 class RawPreviewUnavailableError extends Error {
-  constructor(sourceExt: string, reason: "missing" | "too_small" | "monochrome") {
-    super(
-      reason === "too_small"
-        ? `Embedded preview below minimum resolution for ${sourceExt} image`
-        : reason === "monochrome"
-          ? `Embedded preview is monochrome for ${sourceExt} image`
-        : `No usable embedded preview found in ${sourceExt} image`
-    );
+  constructor(sourceExt: string, reason: string) {
+    super(`RAW preview unavailable for ${sourceExt}: ${reason}`);
     this.name = "RawPreviewUnavailableError";
   }
 }
 
-function normalizePreviewBuffer(preview: Buffer | Uint8Array): Buffer {
-  return Buffer.isBuffer(preview)
-    ? preview
-    : Buffer.from(preview.buffer, preview.byteOffset, preview.byteLength);
-}
-
-async function isValidJpegBuffer(candidate: Buffer): Promise<boolean> {
-  try {
-    const metadata = await sharp(candidate).metadata();
-    return typeof metadata.width === "number" && typeof metadata.height === "number";
-  } catch {
-    return false;
-  }
-}
-
-function channelsLookMonochrome(
-  channels: Array<{ mean: number; stdev: number; min: number; max: number }>
-): boolean {
-  if (channels.length < 3) return true;
-  const [r, g, b] = channels;
-  const epsilon = 0.5;
-  return (
-    Math.abs(r.mean - g.mean) < epsilon &&
-    Math.abs(r.mean - b.mean) < epsilon &&
-    Math.abs(r.stdev - g.stdev) < epsilon &&
-    Math.abs(r.stdev - b.stdev) < epsilon &&
-    Math.abs(r.min - g.min) < epsilon &&
-    Math.abs(r.min - b.min) < epsilon &&
-    Math.abs(r.max - g.max) < epsilon &&
-    Math.abs(r.max - b.max) < epsilon
-  );
-}
-
-function resolveAcceptedRawPreviewThreshold(longestEdge: number): number | null {
-  for (const threshold of RAW_PREVIEW_ACCEPTANCE_STEPS) {
-    if (longestEdge >= threshold) return threshold;
-  }
-  return null;
-}
-
-type RawPreviewCandidate = {
-  buffer: Buffer;
-  width: number;
-  height: number;
-  longestEdge: number;
-  byteLength: number;
-};
-
-function compareRawPreviewCandidates(a: RawPreviewCandidate, b: RawPreviewCandidate): number {
-  if (a.longestEdge !== b.longestEdge) return b.longestEdge - a.longestEdge;
-  if (a.width !== b.width) return b.width - a.width;
-  if (a.height !== b.height) return b.height - a.height;
-  return b.byteLength - a.byteLength;
-}
-
-function isTargetQualityRawPreview(candidate: Pick<RawPreviewCandidate, "longestEdge">): boolean {
-  return candidate.longestEdge >= RAW_PREVIEW_TARGET_LONGEST_EDGE;
-}
-
-async function inspectRawPreviewBuffer(
-  preview: Buffer | Uint8Array,
-  sourceExt: string
-): Promise<RawPreviewCandidate> {
-  const buffer = normalizePreviewBuffer(preview);
-  const metadata = await sharp(buffer).metadata();
-  const width = metadata.width ?? 0;
-  const height = metadata.height ?? 0;
-  const longestEdge = Math.max(width, height);
-  const acceptedThreshold = resolveAcceptedRawPreviewThreshold(longestEdge);
-
-  if (acceptedThreshold === null) {
-    throw new RawPreviewUnavailableError(sourceExt, "too_small");
-  }
-  const stats = await sharp(buffer).stats();
-  if (
-    metadata.space === "b-w" ||
-    metadata.channels === 1 ||
-    channelsLookMonochrome(stats.channels)
-  ) {
-    throw new RawPreviewUnavailableError(sourceExt, "monochrome");
-  }
-
-  return {
-    buffer,
-    width,
-    height,
-    longestEdge,
-    byteLength: buffer.byteLength,
-  };
-}
-
-async function resolveExifrRawPreview(raw: Buffer, sourceExt: string): Promise<RawPreviewCandidate | null> {
-  const exifr = await importExifr();
-  const preview = await exifr.thumbnail(raw);
-  if (!preview) return null;
-  return inspectRawPreviewBuffer(preview, sourceExt);
-}
-
-async function extractEmbeddedJpegPreview(raw: Buffer, sourceExt: string): Promise<RawPreviewCandidate | null> {
-  const candidates: Array<{ start: number; end: number; length: number }> = [];
-  const minimumCandidateLength = 64;
-  let jpegStart = -1;
-
-  for (let i = 0; i < raw.length - 1; i++) {
-    const a = raw[i];
-    const b = raw[i + 1];
-
-    if (jpegStart === -1 && a === 0xff && b === 0xd8) {
-      jpegStart = i;
-      i += 1;
-      continue;
-    }
-
-    if (jpegStart !== -1 && a === 0xff && b === 0xd9) {
-      const end = i + 2;
-      const length = end - jpegStart;
-      if (length >= minimumCandidateLength) {
-        candidates.push({ start: jpegStart, end, length });
-      }
-      jpegStart = -1;
-      i += 1;
-    }
-  }
-
-  candidates.sort((a, b) => b.length - a.length);
-  let bestCandidate: RawPreviewCandidate | null = null;
-  let inspectedCandidates = 0;
-
-  for (const candidate of candidates) {
-    const preview = raw.subarray(candidate.start, candidate.end);
-    if (!await isValidJpegBuffer(preview)) continue;
-    try {
-      const inspected = await inspectRawPreviewBuffer(Buffer.from(preview), sourceExt);
-      inspectedCandidates += 1;
-      if (!bestCandidate || compareRawPreviewCandidates(inspected, bestCandidate) < 0) {
-        bestCandidate = inspected;
-      }
-      if (
-        (bestCandidate && isTargetQualityRawPreview(bestCandidate)) ||
-        inspectedCandidates >= RAW_PREVIEW_MAX_EMBEDDED_JPEG_CANDIDATES
-      ) {
-        break;
-      }
-    } catch {
-      continue;
-    }
-  }
-
-  return bestCandidate;
-}
-
-type TiffReadContext = {
-  littleEndian: boolean;
-  bigTiff: boolean;
-  offsetSize: 4 | 8;
-  firstIfdOffset: number;
-  entryCountSize: 2 | 8;
-  entrySize: 12 | 20;
-};
-
-function hasClassicTiffHeader(raw: Buffer): boolean {
-  return raw.length >= 8 && (
-    (raw[0] === 0x49 && raw[1] === 0x49 && raw[2] === 0x2a && raw[3] === 0x00) ||
-    (raw[0] === 0x4d && raw[1] === 0x4d && raw[2] === 0x00 && raw[3] === 0x2a)
-  );
-}
-
-function getTiffContext(raw: Buffer): TiffReadContext | null {
-  if (raw.length < 8) return null;
-  if (raw[0] === 0x49 && raw[1] === 0x49) {
-    if (raw[2] === 0x2a && raw[3] === 0x00) {
-      return {
-        littleEndian: true,
-        bigTiff: false,
-        offsetSize: 4,
-        firstIfdOffset: readUint32(raw, 4, true),
-        entryCountSize: 2,
-        entrySize: 12,
-      };
-    }
-    if (raw[2] === 0x2b && raw[3] === 0x00) {
-      if (raw.length < 16 || raw[4] !== 8 || raw[5] !== 0 || raw[6] !== 0 || raw[7] !== 0) return null;
-      const firstIfdOffset = readUint64(raw, 8, true);
-      if (firstIfdOffset === null) return null;
-      return {
-        littleEndian: true,
-        bigTiff: true,
-        offsetSize: 8,
-        firstIfdOffset,
-        entryCountSize: 8,
-        entrySize: 20,
-      };
-    }
-    return null;
-  }
-  if (raw[0] === 0x4d && raw[1] === 0x4d) {
-    if (raw[2] === 0x00 && raw[3] === 0x2a) {
-      return {
-        littleEndian: false,
-        bigTiff: false,
-        offsetSize: 4,
-        firstIfdOffset: readUint32(raw, 4, false),
-        entryCountSize: 2,
-        entrySize: 12,
-      };
-    }
-    if (raw[2] === 0x00 && raw[3] === 0x2b) {
-      if (raw.length < 16 || raw[4] !== 0 || raw[5] !== 8 || raw[6] !== 0 || raw[7] !== 0) return null;
-      const firstIfdOffset = readUint64(raw, 8, false);
-      if (firstIfdOffset === null) return null;
-      return {
-        littleEndian: false,
-        bigTiff: true,
-        offsetSize: 8,
-        firstIfdOffset,
-        entryCountSize: 8,
-        entrySize: 20,
-      };
-    }
-    return null;
-  }
-  return null;
-}
-
-function readUint16(raw: Buffer, offset: number, littleEndian: boolean): number {
-  return littleEndian ? raw.readUInt16LE(offset) : raw.readUInt16BE(offset);
-}
-
-function readUint32(raw: Buffer, offset: number, littleEndian: boolean): number {
-  return littleEndian ? raw.readUInt32LE(offset) : raw.readUInt32BE(offset);
-}
-
-function readUint64(raw: Buffer, offset: number, littleEndian: boolean): number | null {
-  const value = littleEndian ? raw.readBigUInt64LE(offset) : raw.readBigUInt64BE(offset);
-  return value <= BigInt(Number.MAX_SAFE_INTEGER) ? Number(value) : null;
-}
-
-function readTiffNumber(raw: Buffer, offset: number, byteSize: 2 | 4 | 8, littleEndian: boolean): number | null {
-  if (offset < 0 || offset + byteSize > raw.length) return null;
-  if (byteSize === 2) return readUint16(raw, offset, littleEndian);
-  if (byteSize === 4) return readUint32(raw, offset, littleEndian);
-  return readUint64(raw, offset, littleEndian);
-}
-
-function readInlineTiffValue(
+/**
+ * Extract the camera-embedded JPEG preview via exiftool.
+ *
+ * Tries `-PreviewImage` first (full-size, Sony/Canon/Nikon/Apple all
+ * embed one), then falls back to `-ThumbnailImage`.
+ *
+ * exiftool is:
+ * - Concurrent-safe (no database, no locks)
+ * - Format-agnostic (ARW, DNG, CR3, NEF, RAF, …)
+ * - Extracts the camera-ISP-rendered preview (correct gamma/color)
+ */
+async function extractPreviewWithExiftool(
   raw: Buffer,
-  offset: number,
-  littleEndian: boolean,
-  type: number,
-  valueFieldSize: 4 | 8
-): number | null {
-  if (type === 3) return readTiffNumber(raw, offset, 2, littleEndian);
-  return readTiffNumber(raw, offset, valueFieldSize, littleEndian);
-}
-
-function extractDngPreviewFromTiff(raw: Buffer): Buffer | null {
-  const ctx = getTiffContext(raw);
-  if (!ctx) return null;
-
-  const entryValueSizeByType: Record<number, number> = {
-    1: 1,
-    2: 1,
-    3: 2,
-    4: 4,
-    5: 8,
-    7: 1,
-    13: 4,
-    16: 8,
-    17: 8,
-    18: 8,
-  };
-  const visited = new Set<number>();
-  const queue: number[] = [ctx.firstIfdOffset];
-  let bestCandidate: Buffer | null = null;
-
-  while (queue.length > 0) {
-    const ifdOffset = queue.shift() ?? 0;
-    if (ifdOffset <= 0 || visited.has(ifdOffset)) continue;
-    visited.add(ifdOffset);
-    if (ifdOffset + ctx.entryCountSize > raw.length) continue;
-
-    const entryCount = readTiffNumber(raw, ifdOffset, ctx.entryCountSize, ctx.littleEndian);
-    if (entryCount === null) continue;
-    const entriesOffset = ifdOffset + ctx.entryCountSize;
-    const nextIfdOffsetPos = entriesOffset + entryCount * ctx.entrySize;
-    if (nextIfdOffsetPos + ctx.offsetSize > raw.length) continue;
-
-    let jpegOffset: number | null = null;
-    let jpegLength: number | null = null;
-
-    for (let i = 0; i < entryCount; i++) {
-      const entryOffset = entriesOffset + i * ctx.entrySize;
-      if (entryOffset + ctx.entrySize > raw.length) break;
-
-      const tag = readUint16(raw, entryOffset, ctx.littleEndian);
-      const type = readUint16(raw, entryOffset + 2, ctx.littleEndian);
-      const count = readTiffNumber(raw, entryOffset + 4, ctx.entryCountSize, ctx.littleEndian);
-      if (count === null) continue;
-      const valueOrOffset = entryOffset + 4 + ctx.entryCountSize;
-
-      if (tag === 0x0201) {
-        jpegOffset = readInlineTiffValue(raw, valueOrOffset, ctx.littleEndian, type, ctx.offsetSize);
-        continue;
-      }
-
-      if (tag === 0x0202) {
-        jpegLength = readInlineTiffValue(raw, valueOrOffset, ctx.littleEndian, type, ctx.offsetSize);
-        continue;
-      }
-
-      if (tag === 0x014a && count > 0) {
-        const valueSize = entryValueSizeByType[type] ?? 0;
-        if (valueSize === 0) continue;
-        const totalBytes = valueSize * count;
-        const baseOffset =
-          totalBytes <= ctx.offsetSize
-            ? valueOrOffset
-            : readTiffNumber(raw, valueOrOffset, ctx.offsetSize, ctx.littleEndian);
-
-        if (baseOffset === null || baseOffset <= 0 || baseOffset + totalBytes > raw.length) continue;
-
-        for (let j = 0; j < count; j++) {
-          const subIfdOffset =
-            type === 3
-              ? readTiffNumber(raw, baseOffset + j * valueSize, 2, ctx.littleEndian)
-              : readTiffNumber(raw, baseOffset + j * valueSize, ctx.offsetSize, ctx.littleEndian);
-          if (subIfdOffset && subIfdOffset > 0 && !visited.has(subIfdOffset)) queue.push(subIfdOffset);
-        }
-      }
-    }
-
-    if (
-      jpegOffset !== null &&
-      jpegLength !== null &&
-      jpegOffset > 0 &&
-      jpegLength > 0 &&
-      jpegOffset + jpegLength <= raw.length
-    ) {
-      const candidate = raw.subarray(jpegOffset, jpegOffset + jpegLength);
-      if (!bestCandidate || candidate.length > bestCandidate.length) {
-        bestCandidate = Buffer.from(candidate);
-      }
-    }
-
-    const nextIfdOffset = readTiffNumber(raw, nextIfdOffsetPos, ctx.offsetSize, ctx.littleEndian);
-    if (nextIfdOffset && nextIfdOffset > 0 && !visited.has(nextIfdOffset)) queue.push(nextIfdOffset);
-  }
-
-  return bestCandidate;
-}
-
-async function resolveLegacyRawPreview(raw: Buffer, sourceExt: string): Promise<RawPreviewCandidate | null> {
-  const candidates: RawPreviewCandidate[] = [];
-  const tiffPreview = hasClassicTiffHeader(raw) ? extractDngPreviewFromTiff(raw) : null;
-  if (tiffPreview && await isValidJpegBuffer(tiffPreview)) {
-    try {
-      const inspected = await inspectRawPreviewBuffer(tiffPreview, sourceExt);
-      if (isTargetQualityRawPreview(inspected)) return inspected;
-      candidates.push(inspected);
-    } catch {
-      // Ignore invalid previews and keep checking other candidates.
-    }
-  }
-
-  const embeddedPreview = await extractEmbeddedJpegPreview(raw, sourceExt);
-  if (embeddedPreview) {
-    candidates.push(embeddedPreview);
-  }
-
-  if (candidates.length === 0) return null;
-  return candidates.sort(compareRawPreviewCandidates)[0] ?? null;
-}
-
-async function resolveDcrawEmbeddedPreview(raw: Buffer, sourceExt: string): Promise<RawPreviewCandidate | null> {
+  sourceExt: string
+): Promise<Buffer> {
   const ext = sourceExt.startsWith(".") ? sourceExt : `.${sourceExt}`;
 
-  return withTempFile("transfer-raw-preview", ext, raw, async (tempFile) => {
-    const tempDir = path.dirname(tempFile);
-    const tempStem = path.basename(tempFile, ext);
-    const candidates = ["dcraw_emu", "dcraw"];
+  return withTempFile("raw-preview", ext, raw, async (tempFile) => {
+    const tags = ["-PreviewImage", "-JpgFromRaw", "-ThumbnailImage"];
 
-    for (const binary of candidates) {
+    for (const tag of tags) {
       try {
-        await execFileAsync(binary, ["-e", tempFile], {
-          maxBuffer: 32 * 1024 * 1024,
-        });
-      } catch (error) {
-        if (getErrorCode(error) === "ENOENT") continue;
+        const { stdout } = await execFileAsync(
+          "exiftool",
+          ["-b", tag, tempFile],
+          {
+            encoding: "buffer",
+            maxBuffer: 64 * 1024 * 1024,
+          }
+        );
+
+        const buf = Buffer.isBuffer(stdout)
+          ? stdout
+          : Buffer.from(stdout);
+
+        if (buf.length < 1000) continue;
+
+        const meta = await sharp(buf).metadata();
+        if (!meta.width || !meta.height) continue;
+        if (Math.max(meta.width, meta.height) < 600) continue;
+
+        return buf;
+      } catch {
         continue;
-      }
-
-      const generated = (await fs.readdir(tempDir))
-        .filter((entry) => entry.startsWith(`${tempStem}.thumb.`))
-        .sort();
-
-      for (const entry of generated) {
-        try {
-          const preview = await fs.readFile(path.join(tempDir, entry));
-          return await inspectRawPreviewBuffer(preview, sourceExt);
-        } catch {
-          continue;
-        }
       }
     }
 
-    return null;
+    throw new RawPreviewUnavailableError(
+      sourceExt,
+      "no usable embedded preview found"
+    );
   });
 }
 
-async function resolveRawPreview(raw: Buffer, sourceExt: string): Promise<Buffer> {
-  const candidates: RawPreviewCandidate[] = [];
-  try {
-    const exifrPreview = await resolveExifrRawPreview(raw, sourceExt);
-    if (exifrPreview) {
-      if (isTargetQualityRawPreview(exifrPreview)) return exifrPreview.buffer;
-      candidates.push(exifrPreview);
-    }
-  } catch {
-    // Try the legacy extractor before falling back to original-only.
-  }
+type DecodedRawImage = {
+  buffer: Buffer;
+  width: number;
+  height: number;
+};
 
-  const legacyPreview = await resolveLegacyRawPreview(raw, sourceExt);
-  if (legacyPreview) candidates.push(legacyPreview);
+/**
+ * "Decode" a RAW file by extracting its embedded preview and
+ * converting to JPEG. For callers that need a DecodedRawImage.
+ */
+async function processRawWithExiftool(
+  raw: Buffer,
+  sourceExtOrFilename = ".dng"
+): Promise<DecodedRawImage> {
+  const ext =
+    path.extname(sourceExtOrFilename).toLowerCase() ||
+    sourceExtOrFilename.toLowerCase();
 
-  const dcrawPreview = await resolveDcrawEmbeddedPreview(raw, sourceExt);
-  if (dcrawPreview) candidates.push(dcrawPreview);
+  const preview = await extractPreviewWithExiftool(raw, ext);
+  const { buffer: rotated, width, height } = await autoRotate(preview);
+  const buffer = await sharp(rotated)
+    .jpeg({ quality: 95, mozjpeg: true })
+    .toBuffer();
 
-  if (candidates.length > 0) {
-    return candidates.sort(compareRawPreviewCandidates)[0]!.buffer;
-  }
-
-  throw new RawPreviewUnavailableError(sourceExt, "missing");
+  return { buffer, width, height };
 }
 
+/**
+ * Resolve the best processing source for an image.
+ *
+ * For RAW: extract camera-rendered embedded preview via exiftool.
+ * No BaselineExposure correction — the preview is already properly
+ * tone-mapped by the camera ISP.
+ *
+ * For standard images: pass through as-is.
+ */
 async function resolveImageProcessingSource(
   raw: Buffer,
   sourceExt: string
 ): Promise<{ buffer: Buffer; takenAt: string | null }> {
-  if (RAW_IMAGE_EXTENSIONS.test(sourceExt)) {
-    const preview = await resolveRawPreview(raw, sourceExt);
-    const takenAt = extractExifDate((await sharp(preview).metadata()).exif);
-    return { buffer: preview, takenAt };
+  if (!RAW_IMAGE_EXTENSIONS.test(sourceExt)) {
+    const takenAt = extractExifDate(
+      (await sharp(raw).metadata()).exif
+    );
+    return { buffer: raw, takenAt };
   }
 
-  const takenAt = extractExifDate((await sharp(raw).metadata()).exif);
-  return { buffer: raw, takenAt };
+  const preview = await extractPreviewWithExiftool(raw, sourceExt);
+  const takenAt = extractExifDate(
+    (await sharp(preview).metadata()).exif
+  );
+  return { buffer: preview, takenAt };
 }
 
 /* ─── OG crop helper ─── */
@@ -729,12 +380,6 @@ type ProcessedVideo = {
   height: number;
   /** Duration in seconds if probe metadata is available */
   durationSeconds: number | null;
-};
-
-type DecodedRawImage = {
-  buffer: Buffer;
-  width: number;
-  height: number;
 };
 
 /* ─── EXIF ─── */
@@ -995,48 +640,6 @@ function getErrorCode(error: unknown): string | null {
   return typeof code === "string" ? code : null;
 }
 
-async function decodeRawFileWithLibraw(filename: string): Promise<Buffer> {
-  const candidates = ["dcraw_emu", "dcraw"];
-  const decodeErrors: Error[] = [];
-
-  for (const binary of candidates) {
-    try {
-      const { stdout } = await execFileAsync(
-        binary,
-        ["-T", "-c", "-w", "-H", "5", filename],
-        {
-          encoding: "buffer",
-          maxBuffer: 128 * 1024 * 1024,
-        }
-      );
-      const buffer = Buffer.isBuffer(stdout) ? stdout : Buffer.from(stdout);
-      if (buffer.length === 0) {
-        throw new Error(`${binary} produced no decoded output`);
-      }
-      if (!(await canSharpReadImage(buffer))) {
-        throw new Error(`${binary} produced output Sharp could not decode`);
-      }
-      return buffer;
-    } catch (error) {
-      if (getErrorCode(error) === "ENOENT") {
-        continue;
-      }
-      decodeErrors.push(
-        error instanceof Error
-          ? new Error(`${binary} failed: ${error.message}`)
-          : new Error(`${binary} failed: ${String(error)}`)
-      );
-      continue;
-    }
-  }
-
-  if (decodeErrors.length > 0) {
-    throw decodeErrors[0];
-  }
-
-  throw new Error("RAW decoder not available: expected dcraw_emu or dcraw");
-}
-
 async function probeVideoFile(filename: string): Promise<VideoProbeResult> {
   const { stdout } = await execFileAsync(
     "ffprobe",
@@ -1120,69 +723,6 @@ async function processVideoVariants(raw: Buffer, sourceExt = ".mp4"): Promise<Pr
   });
 }
 
-async function applyBaselineExposure(
-  pipeline: sharp.Sharp,
-  rawBuffer: Buffer
-): Promise<sharp.Sharp> {
-  try {
-    const exifr = await importExifr();
-    const tags = await exifr.parse(rawBuffer, {
-      tiff: true,
-      ifd0: { pick: ["BaselineExposure"] },
-      exif: false,
-      gps: false,
-    });
-    const baselineEV =
-      tags && typeof tags === "object" && "BaselineExposure" in tags
-        ? Number((tags as { BaselineExposure?: number }).BaselineExposure ?? 0)
-        : 0;
-
-    if (Number.isFinite(baselineEV) && Math.abs(baselineEV) > 0.05) {
-      // BaselineExposure is the compensation needed to reach the intended baseline rendering.
-      return pipeline.linear(Math.pow(2, baselineEV), 0);
-    }
-  } catch {
-    // Ignore missing tags and parser errors; fallback decode should still succeed.
-  }
-
-  return pipeline;
-}
-
-async function processRawWithDcraw(raw: Buffer, sourceExtOrFilename = ".dng"): Promise<DecodedRawImage> {
-  const ext = path.extname(sourceExtOrFilename).toLowerCase() || sourceExtOrFilename.toLowerCase();
-  return withTempFile("transfer-raw", ext, raw, async (tempFile) => {
-    const isDng = ext === ".dng";
-    const decoded = await decodeRawFileWithLibraw(tempFile);
-    const metadata = await sharp(decoded, { failOn: "none", unlimited: true }).metadata();
-    const isLinearScrgb = metadata.space === "scrgb";
-    let pipeline = sharp(decoded, { failOn: "none", unlimited: true }).rotate();
-
-    if (isLinearScrgb) {
-      pipeline = pipeline.pipelineColourspace("scrgb");
-    }
-    if (isDng) {
-      pipeline = await applyBaselineExposure(pipeline, raw);
-    }
-    if (isLinearScrgb) {
-      pipeline = pipeline.toColourspace("srgb");
-    }
-
-    const buffer = await pipeline.jpeg({ quality: 95, mozjpeg: true }).toBuffer();
-    if (buffer.length === 0) {
-      throw new Error("Failed to decode raw image");
-    }
-
-    const renderedMetadata = await sharp(buffer).metadata();
-    const width = renderedMetadata.width ?? 0;
-    const height = renderedMetadata.height ?? 0;
-    if (width <= 0 || height <= 0) {
-      throw new Error("Decoded raw image has invalid dimensions");
-    }
-
-    return { buffer, width, height };
-  });
-}
-
 /**
  * Process a single image to a web-optimised WebP.
  * Simpler than processImageVariants — one output, not three.
@@ -1248,7 +788,6 @@ export {
   AUDIO_EXTENSIONS,
   MIME_TYPES,
   ROTATION_OVERRIDES,
-  RAW_PREVIEW_ACCEPTANCE_STEPS,
   RawPreviewUnavailableError,
   getMimeType,
   getFileKind,
@@ -1258,7 +797,11 @@ export {
   processImageVariants,
   processToOg,
   processGifThumb,
-  processRawWithDcraw,
+  processRawWithExiftool as processRawWithDcraw,
+  processRawWithExiftool,
+  extractPreviewWithExiftool as resolveRawPreview,
+  extractPreviewWithExiftool,
+  resolveImageProcessingSource,
   processVideoVariants,
   processToWebP,
   mapConcurrent,

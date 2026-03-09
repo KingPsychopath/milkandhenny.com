@@ -18,8 +18,17 @@ const BASE_URL = (process.env.NEXT_PUBLIC_BASE_URL || "https://milkandhenny.com"
 /** Public R2 / CDN origin for images and transfer files */
 const R2_PUBLIC_URL = process.env.NEXT_PUBLIC_R2_PUBLIC_URL ?? "";
 
+/** Base URL for share links — uses request origin when available (e.g. localhost in dev), else BASE_URL */
+function getBaseUrlForRequest(request: { url: string }): string {
+  try {
+    return new URL(request.url).origin;
+  } catch {
+    return BASE_URL;
+  }
+}
+
 function hasPublicR2Url(): boolean {
   return R2_PUBLIC_URL.trim().length > 0;
 }
 
-export { SITE_NAME, SITE_BRAND, BASE_URL, R2_PUBLIC_URL, hasPublicR2Url };
+export { SITE_NAME, SITE_BRAND, BASE_URL, R2_PUBLIC_URL, hasPublicR2Url, getBaseUrlForRequest };

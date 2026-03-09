@@ -19,7 +19,7 @@ import {
   resolveTransferUploadIds,
 } from "@/features/transfers/media-state";
 import type { TransferUploadFileInput } from "@/features/transfers/upload-types";
-import { BASE_URL, hasPublicR2Url } from "@/lib/shared/config";
+import { getBaseUrlForRequest, hasPublicR2Url } from "@/lib/shared/config";
 import { apiErrorFromRequest } from "@/lib/platform/api-error";
 import { mapWithConcurrency } from "@/lib/shared/map-with-concurrency";
 
@@ -181,8 +181,8 @@ export async function POST(request: NextRequest) {
     await saveTransfer(transfer, expiresSeconds);
 
     return NextResponse.json({
-      shareUrl: `${BASE_URL}/t/${transferId}`,
-      adminUrl: `${BASE_URL}/t/${transferId}?token=${deleteToken}`,
+      shareUrl: `${getBaseUrlForRequest(request)}/t/${transferId}`,
+      adminUrl: `${getBaseUrlForRequest(request)}/t/${transferId}?token=${deleteToken}`,
       transfer: {
         id: transferId,
         title: title || "untitled",

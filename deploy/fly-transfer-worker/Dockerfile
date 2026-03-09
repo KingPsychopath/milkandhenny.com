@@ -2,15 +2,10 @@ FROM node:20-bookworm-slim
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
   ffmpeg \
-  libraw-dev \
-  libraw-bin \
-  && ln -sf "$(command -v dcraw_emu)" /usr/local/bin/dcraw \
-  && command -v dcraw_emu \
-  && command -v dcraw \
+  libimage-exiftool-perl \
   && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
-
 RUN corepack enable
 
 COPY package.transfer-worker.json ./package.json

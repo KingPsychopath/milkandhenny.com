@@ -320,10 +320,12 @@ function SingleVisualContent({
   file,
   transferId,
   onError,
+  maxHeightClass = "max-h-media",
 }: {
   file: TransferFileData;
   transferId: string;
   onError: () => void;
+  maxHeightClass?: string;
 }) {
   const { loaded, handleLoad, imgRef } = useLazyImage();
 
@@ -334,7 +336,7 @@ function SingleVisualContent({
         poster={file.previewStatus === "ready" ? getTransferFullUrl(transferId, file.id) : undefined}
         controls
         autoPlay
-        className="max-w-full max-h-media photo-page-fade-in"
+        className={`max-w-full ${maxHeightClass} photo-page-fade-in`}
         style={{ objectFit: "contain" }}
         onClick={(e) => e.stopPropagation()}
         onError={onError}
@@ -388,7 +390,7 @@ function SingleVisualContent({
         ref={imgRef}
         src={imgSrc}
         alt={file.filename}
-        className={`max-w-full max-h-media object-contain transition-opacity duration-300 ${loaded ? "opacity-100" : "opacity-0"}`}
+        className={`max-w-full ${maxHeightClass} object-contain transition-opacity duration-300 ${loaded ? "opacity-100" : "opacity-0"}`}
         onLoad={handleLoad}
         onError={onError}
       />
@@ -449,7 +451,7 @@ function MultiVisualContent({
   }, [onActiveFileChange, showing]);
 
   return (
-    <div className="flex flex-col items-center gap-4" onClick={(e) => e.stopPropagation()}>
+    <div className="flex flex-col items-center gap-4 pb-4 sm:pb-0" onClick={(e) => e.stopPropagation()}>
       <div className="flex items-center gap-2 font-mono text-micro tracking-wide">
         <span className="text-white/35">{item.type === "live_photo" ? "live photo" : "raw pair"}</span>
         <button
@@ -475,12 +477,12 @@ function MultiVisualContent({
           [{item.type === "live_photo" ? "motion" : "raw"}]
         </button>
       </div>
-      <SingleVisualContent file={showing} transferId={transferId} onError={onError} />
-      <p className="font-mono text-nano text-white/35 tracking-wide text-center">
-        {item.type === "live_photo"
-          ? `${item.photo.filename} + ${item.motion.filename}`
-          : `${item.primary.filename} + ${item.raw.filename}`}
-      </p>
+      <SingleVisualContent
+        file={showing}
+        transferId={transferId}
+        onError={onError}
+        maxHeightClass="max-h-[65vh] sm:max-h-media"
+      />
     </div>
   );
 }
@@ -1357,8 +1359,11 @@ export function TransferGallery({ transferId, files, groups, deleteToken }: Tran
           </div>
 
           {/* Controls — stop propagation so clicking nav/download doesn't close */}
-          <div className="flex items-center justify-between mt-4 max-w-md w-full px-4" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center gap-4 font-mono text-xs text-white/50">
+          <div
+            className="mt-5 flex w-full max-w-md flex-col gap-3 px-4 sm:mt-4 sm:flex-row sm:items-center sm:justify-between"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between gap-4 font-mono text-xs text-white/50 sm:justify-start">
               {lightboxIndex > 0 ? (
                 <button onClick={goPrev} className="hover:text-white transition-colors" aria-label="Previous file">
                   ← prev
@@ -1374,7 +1379,7 @@ export function TransferGallery({ transferId, files, groups, deleteToken }: Tran
                 <span className="text-white/20">next →</span>
               )}
             </div>
-            <div className="flex items-center gap-4">
+            <div className="flex items-center justify-between gap-4 sm:justify-end">
               <span className="font-mono text-micro text-white/30">
                 {lightboxIndex + 1} / {lightboxVisualFiles.length}
               </span>
@@ -1579,7 +1584,7 @@ const VisualCard = memo(function VisualCard({
                 linked
               </span>
             </div>
-            <div className="absolute left-2 right-2 bottom-8 z-10">
+            <div className="absolute left-2 bottom-2 z-10">
               <span className="inline-block font-mono text-pico bg-black/55 text-white/85 px-1.5 py-0.5 rounded tracking-wider uppercase">
                 {item.type === "live_photo" ? "photo + motion" : "preview + raw"}
               </span>
@@ -1596,7 +1601,7 @@ const VisualCard = memo(function VisualCard({
           </div>
         )}
 
-        {isRawImage(file) && (
+        {item.type === "single" && isRawImage(file) && (
           <div className="absolute bottom-2 left-2">
             <span className="font-mono text-pico bg-black/50 text-white/80 px-1.5 py-0.5 rounded tracking-wider uppercase">
               {file.previewStatus === "ready" ? "raw preview" : "raw"}
@@ -1604,26 +1609,10 @@ const VisualCard = memo(function VisualCard({
           </div>
         )}
 
-        {file.convertedFrom && !isRawImage(file) && (
+        {item.type === "single" && file.convertedFrom && !isRawImage(file) && (
           <div className="absolute bottom-2 left-2">
             <span className="font-mono text-pico bg-black/50 text-white/80 px-1.5 py-0.5 rounded tracking-wider uppercase">
-              {item.type === "live_photo" ? "live" : "optimized"}
-            </span>
-          </div>
-        )}
-
-        {item.type === "live_photo" && file.convertedFrom !== "heic" && (
-          <div className="absolute bottom-2 left-2">
-            <span className="font-mono text-pico bg-black/50 text-white/80 px-1.5 py-0.5 rounded tracking-wider uppercase">
-              live
-            </span>
-          </div>
-        )}
-
-        {item.type === "raw_pair" && (
-          <div className="absolute bottom-2 left-2">
-            <span className="font-mono text-pico bg-black/50 text-white/80 px-1.5 py-0.5 rounded tracking-wider uppercase">
-              raw pair
+              optimized
             </span>
           </div>
         )}

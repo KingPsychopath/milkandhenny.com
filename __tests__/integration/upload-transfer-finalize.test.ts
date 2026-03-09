@@ -65,7 +65,7 @@ describe("upload transfer finalize", () => {
         files.map((file) => ({ ...file, mediaId: file.name.replace(/\.[^.]+$/, "") })),
     }));
     vi.doMock("@/lib/shared/config", () => ({
-      BASE_URL: "https://example.com",
+      getBaseUrlForRequest: (req: { url: string }) => new URL(req.url).origin,
       hasPublicR2Url: () => true,
     }));
     vi.doMock("@/lib/platform/api-error", () => ({
@@ -125,7 +125,7 @@ describe("upload transfer finalize", () => {
         files.map((file) => ({ ...file, mediaId: file.name.replace(/\.[^.]+$/, "") })),
     }));
     vi.doMock("@/lib/shared/config", () => ({
-      BASE_URL: "https://example.com",
+      getBaseUrlForRequest: (req: { url: string }) => new URL(req.url).origin,
       hasPublicR2Url: () => true,
     }));
     vi.doMock("@/lib/platform/api-error", () => ({
