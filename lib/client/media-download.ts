@@ -10,6 +10,7 @@
 
 const BLOB_ZIP_DOWNLOAD_LIMIT_BYTES = 200 * 1024 * 1024;
 const LARGE_STREAMING_ZIP_NOTICE_BYTES = 1024 * 1024 * 1024;
+const PRESIGNED_DOWNLOAD_TIMEOUT_MS = 8000;
 
 /**
  * Fetch a file as a Blob from a CORS-enabled origin.
@@ -41,10 +42,20 @@ async function getPresignedDownloadUrl(storageKey: string, filename: string): Pr
     key: storageKey,
     filename,
   });
-  const response = await fetch(`/api/download/presign?${params.toString()}`, {
-    method: "GET",
-    cache: "no-store",
-  });
+  const controller = new AbortController();
+  const timeout = setTimeout(() => {
+    controller.abort(new DOMException("Timed out preparing download", "AbortError"));
+  }, PRESIGNED_DOWNLOAD_TIMEOUT_MS);
+  let response: Response;
+  try {
+    response = await fetch(`/api/download/presign?${params.toString()}`, {
+      method: "GET",
+      cache: "no-store",
+      signal: controller.signal,
+    });
+  } finally {
+    clearTimeout(timeout);
+  }
 
   if (!response.ok) {
     let message = `Failed to prepare download: ${response.status}`;
@@ -73,6 +84,28 @@ function triggerBrowserDownload(url: string, filename?: string): void {
 async function downloadViaPresignedUrl(storageKey: string, filename: string): Promise<void> {
   const url = await getPresignedDownloadUrl(storageKey, filename);
   triggerBrowserDownload(url, filename);
+}
+
+async function downloadFile(options: {
+  storageKey: string;
+  filename: string;
+  fallbackUrl: string;
+}): Promise<void> {
+  try {
+    await downloadViaPresignedUrl(options.storageKey, options.filename);
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError") {
+      triggerBrowserDownload(options.fallbackUrl, options.filename);
+      return;
+    }
+
+    if (error instanceof Error && error.message.startsWith("Failed to prepare download")) {
+      triggerBrowserDownload(options.fallbackUrl, options.filename);
+      return;
+    }
+
+    throw error;
+  }
 }
 
 /** Trigger a browser download from a Blob */
@@ -204,7 +237,7 @@ async function fetchImageForCanvas(url: string): Promise<HTMLImageElement> {
   });
 }
 
-export { fetchBlob, downloadBlob, downloadViaPresignedUrl, fetchImageForCanvas };
+export { downloadFile, fetchBlob, downloadBlob, downloadViaPresignedUrl, fetchImageForCanvas };
 export {
   BLOB_ZIP_DOWNLOAD_LIMIT_BYTES,
   LARGE_STREAMING_ZIP_NOTICE_BYTES,

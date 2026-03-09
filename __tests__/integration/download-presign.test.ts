@@ -28,7 +28,7 @@ describe("download presign", () => {
       responseContentDisposition:
         'attachment; filename="DSC08357.jpg"; filename*=UTF-8\'\'DSC08357.jpg',
       responseContentType: "application/octet-stream",
-      expiresIn: 300,
+      expiresIn: 3600,
     });
   });
 
@@ -63,7 +63,7 @@ describe("download presign", () => {
       responseContentDisposition:
         'attachment; filename="IMG_1234.HEIC"; filename*=UTF-8\'\'IMG_1234.HEIC',
       responseContentType: "application/octet-stream",
-      expiresIn: 300,
+      expiresIn: 3600,
     });
   });
 });

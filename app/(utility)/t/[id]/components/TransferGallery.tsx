@@ -1215,19 +1215,21 @@ export function TransferGallery({ transferId, files, groups, deleteToken }: Tran
     async (filesToDownload: TransferFileData[]) => {
       if (downloading || preparingDownload || filesToDownload.length === 0) return;
 
+      if (filesToDownload.length === 1) {
+        setDownloadError("");
+        setPendingMultipartDownload(null);
+        await downloadViaPresignedUrl(
+          getDownloadStorageKey(filesToDownload[0]),
+          getDownloadFilename(filesToDownload[0])
+        );
+        return;
+      }
+
       setDownloadError("");
       setPendingMultipartDownload(null);
       setPreparingDownload(true);
 
       try {
-        if (filesToDownload.length === 1) {
-          await downloadViaPresignedUrl(
-            getDownloadStorageKey(filesToDownload[0]),
-            getDownloadFilename(filesToDownload[0])
-          );
-          return;
-        }
-
         const archiveName =
           filesToDownload.length === currentFiles.length
             ? `transfer-${transferId}.zip`

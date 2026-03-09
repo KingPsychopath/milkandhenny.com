@@ -272,18 +272,19 @@ export function AlbumGallery({ albumSlug, photos }: AlbumGalleryProps) {
       return;
     }
 
+    const ids = Array.from(selected);
+    if (ids.length === 1) {
+      setDownloadError("");
+      setPendingMultipartDownload(null);
+      await downloadViaPresignedUrl(getOriginalStorageKey(albumSlug, ids[0]), `${ids[0]}.jpg`);
+      return;
+    }
+
     setDownloadError("");
     setPendingMultipartDownload(null);
     setPreparingDownload(true);
 
     try {
-      const ids = Array.from(selected);
-      if (ids.length === 1) {
-        const id = ids[0];
-        await downloadViaPresignedUrl(getOriginalStorageKey(albumSlug, id), `${id}.jpg`);
-        return;
-      }
-
       const resolved = await resolveAlbumZipFiles(ids);
       const prepared: PreparedZipDownload = {
         archiveName: `${albumSlug}-photos.zip`,
