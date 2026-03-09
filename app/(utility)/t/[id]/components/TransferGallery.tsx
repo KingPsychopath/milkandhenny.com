@@ -4,7 +4,8 @@ import { useState, useCallback, useEffect, useMemo, memo } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { getTransferThumbUrl, getTransferFullUrl, getTransferStorageUrl } from "@/features/media/storage";
 import { buildTransferVisualItems, type TransferVisualItem } from "@/features/transfers/live-photo";
-import { fetchBlob, downloadBlob } from "@/lib/client/media-download";
+import { canUseSaveFilePicker, createZipFileWritable, fetchBlob, downloadBlob } from "@/lib/client/media-download";
+import { buildZipArchive } from "@/lib/client/streaming-zip";
 import { formatBytes } from "@/lib/shared/format";
 import { useLazyImage } from "@/hooks/useLazyImage";
 import { useSwipe } from "@/hooks/useSwipe";
@@ -47,6 +48,11 @@ type VisualGalleryItem = TransferVisualItem<TransferFileData>;
 type GalleryEntry =
   | { id: string; type: "visual"; item: VisualGalleryItem }
   | { id: string; type: "file"; file: TransferFileData };
+type DownloadProgress = {
+  done: number;
+  total: number;
+  phase: "fetching" | "zipping";
+};
 
 const INITIAL_VISUAL_RENDER_COUNT = 120;
 const VISUAL_RENDER_INCREMENT = 120;
@@ -503,7 +509,8 @@ export function TransferGallery({ transferId, files, groups, deleteToken }: Tran
   const [currentGroups, setCurrentGroups] = useState(groups);
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const [downloading, setDownloading] = useState(false);
-  const [downloadProgress, setDownloadProgress] = useState<{ done: number; total: number } | null>(null);
+  const [downloadProgress, setDownloadProgress] = useState<DownloadProgress | null>(null);
+  const [downloadError, setDownloadError] = useState("");
   const [savingSingle, setSavingSingle] = useState(false);
   const [deletingFileId, setDeletingFileId] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState("");
@@ -894,6 +901,7 @@ export function TransferGallery({ transferId, files, groups, deleteToken }: Tran
     async (filesToDownload: TransferFileData[]) => {
       if (downloading || filesToDownload.length === 0) return;
       setDownloading(true);
+      setDownloadError("");
       try {
         if (filesToDownload.length === 1) {
           const blob = await fetchBlob(getDownloadUrl(filesToDownload[0]));
@@ -901,28 +909,60 @@ export function TransferGallery({ transferId, files, groups, deleteToken }: Tran
           return;
         }
 
-        const JSZip = (await import("jszip")).default;
-        const zip = new JSZip();
-        setDownloadProgress({ done: 0, total: filesToDownload.length });
+        setDownloadProgress({ done: 0, total: filesToDownload.length, phase: "fetching" });
 
-        await Promise.all(
-          filesToDownload.map(async (f) => {
-            const blob = await fetchBlob(getDownloadUrl(f));
-            zip.file(getDownloadFilename(f), blob);
-            setDownloadProgress((prev) => (prev ? { ...prev, done: prev.done + 1 } : null));
-          })
-        );
+        const archiveName =
+          filesToDownload.length === currentFiles.length
+            ? `transfer-${transferId}.zip`
+            : `transfer-${transferId}-selected.zip`;
+        const writable = canUseSaveFilePicker() ? await createZipFileWritable(archiveName) : null;
 
-        const content = await zip.generateAsync({ type: "blob" });
-        downloadBlob(content, `transfer-${transferId}-selected.zip`);
+        const result = await buildZipArchive({
+          files: filesToDownload.map((file) => ({
+            id: file.id,
+            url: getDownloadUrl(file),
+            filename: getDownloadFilename(file),
+            size: file.size,
+          })),
+          onProgress: (progress) => {
+            setDownloadProgress({
+              done: progress.done,
+              total: progress.total,
+              phase: progress.phase,
+            });
+          },
+          saveTarget: writable
+            ? {
+                write: async (chunk) => {
+                  await writable.write(new Uint8Array(chunk));
+                },
+                close: async () => {
+                  await writable.close();
+                },
+                abort: async (reason) => {
+                  await writable.abort(reason);
+                },
+              }
+            : undefined,
+        });
+
+        if (result.type === "blob") {
+          downloadBlob(result.blob, archiveName);
+        }
       } catch (err) {
+        if (err instanceof DOMException && err.name === "AbortError") return;
         console.error("Download failed:", err);
+        setDownloadError(
+          err instanceof Error
+            ? err.message
+            : "Zip download failed. Try a smaller selection or use a browser with save-to-disk support."
+        );
       } finally {
         setDownloading(false);
         setDownloadProgress(null);
       }
     },
-    [transferId, downloading]
+    [currentFiles.length, downloading, transferId]
   );
 
   /** Download all files as a zip with progress */
@@ -1054,6 +1094,14 @@ export function TransferGallery({ transferId, files, groups, deleteToken }: Tran
 
   const selectedCount = selectedIds.size;
   const selectedDisplayCount = selectedInFilteredCount;
+  const selectedTotalBytes = useMemo(
+    () => currentFiles.reduce((sum, file) => sum + (selectedIds.has(file.id) ? file.size : 0), 0),
+    [currentFiles, selectedIds]
+  );
+  const totalTransferBytes = useMemo(
+    () => currentFiles.reduce((sum, file) => sum + file.size, 0),
+    [currentFiles]
+  );
   const currentVisual = lightboxIndex !== null ? lightboxVisualFiles[lightboxIndex] : null;
   useEffect(() => {
     if (!currentVisual) setActiveLightboxFile(null);
@@ -1068,7 +1116,12 @@ export function TransferGallery({ transferId, files, groups, deleteToken }: Tran
     (tab) => tab.key === "all" || (tab.count > 0 && tab.count < filterCounts.all)
   );
 
-  const downloadLabel = downloadProgress ? `[ ${downloadProgress.done}/${downloadProgress.total} fetched... ]` : "[ zipping... ]";
+  const downloadLabel =
+    downloadProgress?.phase === "fetching"
+      ? `[ ${downloadProgress.done}/${downloadProgress.total} fetched... ]`
+      : downloadProgress?.phase === "zipping"
+        ? "[ finalizing archive... ]"
+        : "[ zipping... ]";
 
   return (
     <div>
@@ -1161,10 +1214,10 @@ export function TransferGallery({ transferId, files, groups, deleteToken }: Tran
       <div className="flex flex-wrap items-center justify-between gap-2 mb-6">
         <span className="font-mono text-micro theme-muted tracking-wide">
           {selectedCount > 0
-            ? `${selectedDisplayCount} selected in current view`
+            ? `${selectedDisplayCount} selected in current view • ${formatBytes(selectedTotalBytes)}`
             : browseMode === "pages" && canPaginate
-              ? `showing ${pageEntries.length} of ${filteredEntries.length} in filter (${currentFiles.length} files total)`
-              : `${filteredEntries.length} ${filteredEntries.length === 1 ? "item" : "items"} in filter`}
+              ? `showing ${pageEntries.length} of ${filteredEntries.length} in filter (${currentFiles.length} files • ${formatBytes(totalTransferBytes)} total)`
+              : `${filteredEntries.length} ${filteredEntries.length === 1 ? "item" : "items"} in filter • ${formatBytes(totalTransferBytes)}`}
         </span>
         <div className="flex items-center gap-3 font-mono text-micro tracking-wide">
           {selectedCount > 0 && (
@@ -1200,6 +1253,11 @@ export function TransferGallery({ transferId, files, groups, deleteToken }: Tran
           </button>
         </div>
       </div>
+      {downloadError ? (
+        <p className="mb-4 font-mono text-micro tracking-wide text-red-600">
+          {downloadError}
+        </p>
+      ) : null}
       {deleteError ? (
         <p className="mb-4 font-mono text-micro tracking-wide text-red-600">
           {deleteError}

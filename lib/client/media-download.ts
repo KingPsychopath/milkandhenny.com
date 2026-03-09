@@ -43,6 +43,45 @@ function downloadBlob(blob: Blob, filename: string) {
   URL.revokeObjectURL(href);
 }
 
+interface SaveFilePickerAcceptType {
+  description?: string;
+  accept: Record<string, string[]>;
+}
+
+interface SaveFilePickerOptions {
+  suggestedName?: string;
+  types?: SaveFilePickerAcceptType[];
+}
+
+interface SaveFileHandleLike {
+  createWritable(): Promise<FileSystemWritableFileStream>;
+}
+
+interface WindowWithSaveFilePicker extends Window {
+  showSaveFilePicker?: (options?: SaveFilePickerOptions) => Promise<SaveFileHandleLike>;
+}
+
+function canUseSaveFilePicker(): boolean {
+  return typeof window !== "undefined" && typeof (window as WindowWithSaveFilePicker).showSaveFilePicker === "function";
+}
+
+async function createZipFileWritable(filename: string): Promise<FileSystemWritableFileStream | null> {
+  const picker = (window as WindowWithSaveFilePicker).showSaveFilePicker;
+  if (!picker) return null;
+
+  const handle = await picker({
+    suggestedName: filename,
+    types: [
+      {
+        description: "ZIP archive",
+        accept: { "application/zip": [".zip"] },
+      },
+    ],
+  });
+
+  return handle.createWritable();
+}
+
 /**
  * Fetch an image for Canvas drawing (CORS-safe).
  *
@@ -70,4 +109,4 @@ async function fetchImageForCanvas(url: string): Promise<HTMLImageElement> {
 }
 
 export { fetchBlob, downloadBlob, fetchImageForCanvas };
-
+export { canUseSaveFilePicker, createZipFileWritable };
