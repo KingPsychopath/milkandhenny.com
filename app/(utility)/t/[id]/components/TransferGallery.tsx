@@ -4,7 +4,13 @@ import { useState, useCallback, useEffect, useMemo, memo } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { getTransferThumbUrl, getTransferFullUrl, getTransferStorageUrl } from "@/features/media/storage";
 import { buildTransferVisualItems, type TransferVisualItem } from "@/features/transfers/live-photo";
-import { canUseSaveFilePicker, createZipFileWritable, fetchBlob, downloadBlob } from "@/lib/client/media-download";
+import {
+  BLOB_ZIP_DOWNLOAD_LIMIT_BYTES,
+  canUseSaveFilePicker,
+  createZipFileWritable,
+  fetchBlob,
+  downloadBlob,
+} from "@/lib/client/media-download";
 import { buildZipArchive } from "@/lib/client/streaming-zip";
 import { formatBytes } from "@/lib/shared/format";
 import { useLazyImage } from "@/hooks/useLazyImage";
@@ -900,6 +906,19 @@ export function TransferGallery({ transferId, files, groups, deleteToken }: Tran
   const downloadFiles = useCallback(
     async (filesToDownload: TransferFileData[]) => {
       if (downloading || filesToDownload.length === 0) return;
+      const canStreamToDisk = canUseSaveFilePicker();
+      const totalBytes = filesToDownload.reduce((sum, file) => sum + file.size, 0);
+      if (
+        filesToDownload.length > 1 &&
+        !canStreamToDisk &&
+        totalBytes > BLOB_ZIP_DOWNLOAD_LIMIT_BYTES
+      ) {
+        setDownloadError(
+          `ZIP downloads over ${formatBytes(BLOB_ZIP_DOWNLOAD_LIMIT_BYTES)} require Chrome or Edge. Download files individually, or open this page in Chrome.`
+        );
+        return;
+      }
+
       setDownloading(true);
       setDownloadError("");
       try {
@@ -915,7 +934,7 @@ export function TransferGallery({ transferId, files, groups, deleteToken }: Tran
           filesToDownload.length === currentFiles.length
             ? `transfer-${transferId}.zip`
             : `transfer-${transferId}-selected.zip`;
-        const writable = canUseSaveFilePicker() ? await createZipFileWritable(archiveName) : null;
+        const writable = canStreamToDisk ? await createZipFileWritable(archiveName) : null;
 
         const result = await buildZipArchive({
           files: filesToDownload.map((file) => ({

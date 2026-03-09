@@ -8,6 +8,8 @@
  * TransferGallery, PhotoViewer, and useBrandedImage.
  */
 
+const BLOB_ZIP_DOWNLOAD_LIMIT_BYTES = 200 * 1024 * 1024;
+
 /**
  * Fetch a file as a Blob from a CORS-enabled origin.
  * @param url - The URL to fetch
@@ -82,6 +84,30 @@ async function createZipFileWritable(filename: string): Promise<FileSystemWritab
   return handle.createWritable();
 }
 
+async function fetchContentLength(url: string, retries = 2): Promise<number | null> {
+  let lastError: Error | null = null;
+
+  for (let attempt = 0; attempt <= retries; attempt += 1) {
+    try {
+      const response = await fetch(url, { method: "HEAD", mode: "cors" });
+      if (!response.ok) throw new Error(`HEAD failed: ${response.status} ${response.statusText}`);
+
+      const raw = response.headers.get("content-length");
+      if (!raw) return null;
+
+      const parsed = Number(raw);
+      return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
+    } catch (error) {
+      lastError = error instanceof Error ? error : new Error(String(error));
+      if (attempt < retries) {
+        await new Promise((resolve) => setTimeout(resolve, 500 * (attempt + 1)));
+      }
+    }
+  }
+
+  throw lastError ?? new Error(`Failed to read content length for ${url}`);
+}
+
 /**
  * Fetch an image for Canvas drawing (CORS-safe).
  *
@@ -109,4 +135,4 @@ async function fetchImageForCanvas(url: string): Promise<HTMLImageElement> {
 }
 
 export { fetchBlob, downloadBlob, fetchImageForCanvas };
-export { canUseSaveFilePicker, createZipFileWritable };
+export { BLOB_ZIP_DOWNLOAD_LIMIT_BYTES, canUseSaveFilePicker, createZipFileWritable, fetchContentLength };

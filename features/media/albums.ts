@@ -14,6 +14,7 @@ type Photo = {
   id: string;
   width: number;
   height: number;
+  size?: number;
   /** Optional tiny base64 blur placeholder */
   blur?: string;
   /** ISO date from EXIF DateTimeOriginal (when the photo was taken) */
@@ -106,6 +107,9 @@ function validateAlbum(album: Album): string[] {
     }
     if (typeof photo.width !== "number" || typeof photo.height !== "number") {
       errors.push(`${prefix}: width and height must be numbers`);
+    }
+    if (photo.size !== undefined && typeof photo.size !== "number") {
+      errors.push(`${prefix}: size must be a number when provided`);
     }
     if (photo.focalPoint !== undefined) {
       if (typeof photo.focalPoint !== "string" || !isValidFocalPreset(photo.focalPoint)) {

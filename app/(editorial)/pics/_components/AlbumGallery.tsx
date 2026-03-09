@@ -1,11 +1,21 @@
 "use client";
 
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useMemo, useRef } from "react";
 import { MasonryGrid } from "./MasonryGrid";
 import { PhotoCard } from "./PhotoCard";
 import type { Photo } from "@/features/media/albums";
 import { getThumbUrl, getOriginalUrl } from "@/features/media/storage";
-import { fetchBlob, downloadBlob } from "@/lib/client/media-download";
+import {
+  BLOB_ZIP_DOWNLOAD_LIMIT_BYTES,
+  canUseSaveFilePicker,
+  createZipFileWritable,
+  fetchBlob,
+  fetchContentLength,
+  downloadBlob,
+} from "@/lib/client/media-download";
+import { buildZipArchive } from "@/lib/client/streaming-zip";
+import { formatBytes } from "@/lib/shared/format";
+import { mapWithConcurrency } from "@/lib/shared/map-with-concurrency";
 
 type AlbumGalleryProps = {
   albumSlug: string;
@@ -15,8 +25,13 @@ type AlbumGalleryProps = {
 /** Max photos in a single batch download before showing a warning */
 const BATCH_DOWNLOAD_WARN = 20;
 
-/** Concurrent fetches per batch — bounds peak memory to ~5 full-res images */
-const BATCH_CONCURRENCY = 5;
+const SIZE_LOOKUP_CONCURRENCY = 5;
+
+type DownloadProgress = {
+  done: number;
+  total: number;
+  phase: "fetching" | "zipping";
+};
 
 /**
  * Full album gallery with masonry/single toggle, multi-select, and batch download.
@@ -27,8 +42,55 @@ export function AlbumGallery({ albumSlug, photos }: AlbumGalleryProps) {
   const [selectable, setSelectable] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [downloading, setDownloading] = useState(false);
-  const [downloadProgress, setDownloadProgress] = useState<{ done: number; total: number } | null>(null);
-  const abortRef = useRef(false);
+  const [downloadProgress, setDownloadProgress] = useState<DownloadProgress | null>(null);
+  const [downloadError, setDownloadError] = useState("");
+  const sizeCacheRef = useRef<Map<string, number>>(new Map());
+  const photoById = useMemo(() => new Map(photos.map((photo) => [photo.id, photo])), [photos]);
+  const selectedIds = useMemo(() => Array.from(selected), [selected]);
+  const selectedTotalBytes = useMemo(() => {
+    let total = 0;
+
+    for (const id of selectedIds) {
+      const size = photoById.get(id)?.size ?? sizeCacheRef.current.get(id);
+      if (typeof size !== "number") return null;
+      total += size;
+    }
+
+    return total;
+  }, [photoById, selectedIds]);
+
+  const resolveSelectedTotalBytes = useCallback(
+    async (ids: string[]): Promise<number | null> => {
+      let total = 0;
+      const unresolvedIds: string[] = [];
+
+      for (const id of ids) {
+        const size = photoById.get(id)?.size ?? sizeCacheRef.current.get(id);
+        if (typeof size === "number") {
+          total += size;
+          if (!sizeCacheRef.current.has(id)) sizeCacheRef.current.set(id, size);
+          continue;
+        }
+        unresolvedIds.push(id);
+      }
+
+      if (unresolvedIds.length === 0) return total;
+
+      const resolvedSizes = await mapWithConcurrency(unresolvedIds, SIZE_LOOKUP_CONCURRENCY, async (id) => {
+        const size = await fetchContentLength(getOriginalUrl(albumSlug, id));
+        return { id, size };
+      });
+
+      for (const resolved of resolvedSizes) {
+        if (typeof resolved.size !== "number") return null;
+        sizeCacheRef.current.set(resolved.id, resolved.size);
+        total += resolved.size;
+      }
+
+      return total;
+    },
+    [albumSlug, photoById]
+  );
 
   const toggleSelect = useCallback((photoId: string) => {
     setSelected((prev) => {
@@ -58,60 +120,90 @@ export function AlbumGallery({ albumSlug, photos }: AlbumGalleryProps) {
       return;
     }
 
+    setDownloadError("");
+    const ids = Array.from(selected);
+    const canStreamToDisk = canUseSaveFilePicker();
+
+    if (ids.length > 1 && !canStreamToDisk) {
+      const totalBytes = await resolveSelectedTotalBytes(ids);
+      if (totalBytes === null) {
+        setDownloadError("Could not determine ZIP size in this browser. Open this page in Chrome or Edge, or download files individually.");
+        return;
+      }
+      if (totalBytes > BLOB_ZIP_DOWNLOAD_LIMIT_BYTES) {
+        setDownloadError(
+          `ZIP downloads over ${formatBytes(BLOB_ZIP_DOWNLOAD_LIMIT_BYTES)} require Chrome or Edge. Download files individually, or open this page in Chrome.`
+        );
+        return;
+      }
+    }
+
     setDownloading(true);
-    abortRef.current = false;
 
     try {
-      if (selected.size === 1) {
-        const id = Array.from(selected)[0];
+      if (ids.length === 1) {
+        const id = ids[0];
         const blob = await fetchBlob(getOriginalUrl(albumSlug, id));
         downloadBlob(blob, `${id}.jpg`);
         return;
       }
 
-      const JSZip = (await import("jszip")).default;
-      const zip = new JSZip();
-      const ids = Array.from(selected);
+      setDownloadProgress({ done: 0, total: ids.length, phase: "fetching" });
 
-      setDownloadProgress({ done: 0, total: ids.length });
+      const archiveName = `${albumSlug}-photos.zip`;
+      const writable = canStreamToDisk ? await createZipFileWritable(archiveName) : null;
+      const result = await buildZipArchive({
+        files: ids.map((id) => ({
+          id,
+          url: getOriginalUrl(albumSlug, id),
+          filename: `${id}.jpg`,
+          size: photoById.get(id)?.size ?? sizeCacheRef.current.get(id),
+        })),
+        onProgress: (progress) => {
+          setDownloadProgress({
+            done: progress.done,
+            total: progress.total,
+            phase: progress.phase,
+          });
+        },
+        saveTarget: writable
+          ? {
+              write: async (chunk) => {
+                await writable.write(new Uint8Array(chunk));
+              },
+              close: async () => {
+                await writable.close();
+              },
+              abort: async (reason) => {
+                await writable.abort(reason);
+              },
+            }
+          : undefined,
+      });
 
-      /*
-       * Fetch in chunks of BATCH_CONCURRENCY — each chunk runs in parallel,
-       * then blobs are added to the ZIP and can be GC'd before the next chunk
-       * starts. This bounds peak memory to ~5 full-res images instead of all N.
-       */
-      for (let i = 0; i < ids.length; i += BATCH_CONCURRENCY) {
-        if (abortRef.current) break;
-
-        const chunk = ids.slice(i, i + BATCH_CONCURRENCY);
-        const blobs = await Promise.all(
-          chunk.map(async (id) => {
-            if (abortRef.current) return null;
-            return { id, blob: await fetchBlob(getOriginalUrl(albumSlug, id)) };
-          })
-        );
-
-        for (const result of blobs) {
-          if (!result || abortRef.current) continue;
-          zip.file(`${result.id}.jpg`, result.blob);
-        }
-
-        setDownloadProgress((prev) => (prev ? { ...prev, done: Math.min(i + chunk.length, ids.length) } : null));
-      }
-
-      if (!abortRef.current) {
-        const content = await zip.generateAsync({ type: "blob" });
-        downloadBlob(content, `${albumSlug}-photos.zip`);
+      if (result.type === "blob") {
+        downloadBlob(result.blob, archiveName);
       }
     } catch (err) {
+      if (err instanceof DOMException && err.name === "AbortError") return;
       console.error("Download failed:", err);
+      setDownloadError(
+        err instanceof Error
+          ? err.message
+          : "ZIP download failed. Try a smaller selection or open this page in Chrome or Edge."
+      );
     } finally {
       setDownloading(false);
       setDownloadProgress(null);
     }
-  }, [selected, albumSlug, downloading]);
+  }, [albumSlug, downloading, photoById, resolveSelectedTotalBytes, selected]);
 
-  const progressLabel = downloadProgress ? `[ ${downloadProgress.done}/${downloadProgress.total} fetched... ]` : "[ zipping... ]";
+  const progressLabel =
+    downloadProgress?.phase === "fetching"
+      ? `[ ${downloadProgress.done}/${downloadProgress.total} fetched... ]`
+      : downloadProgress?.phase === "zipping"
+        ? "[ finalizing archive... ]"
+        : "[ zipping... ]";
 
   return (
     <div>
@@ -134,8 +226,17 @@ export function AlbumGallery({ albumSlug, photos }: AlbumGalleryProps) {
             </button>
           )}
         </div>
-        <span className="font-mono text-micro theme-muted tracking-wide">{photos.length} photos</span>
+        <span className="font-mono text-micro theme-muted tracking-wide">
+          {selected.size > 0 && selectedTotalBytes !== null
+            ? `${selected.size} selected • ${formatBytes(selectedTotalBytes)}`
+            : `${photos.length} photos`}
+        </span>
       </div>
+      {downloadError ? (
+        <p className="mb-4 font-mono text-micro tracking-wide text-red-600">
+          {downloadError}
+        </p>
+      ) : null}
 
       <MasonryGrid>
         {photos.map((photo) => (
@@ -156,4 +257,3 @@ export function AlbumGallery({ albumSlug, photos }: AlbumGalleryProps) {
     </div>
   );
 }
-

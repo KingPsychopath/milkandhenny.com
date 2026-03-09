@@ -42,6 +42,7 @@ type PhotoMeta = {
   id: string;
   width: number;
   height: number;
+  size?: number;
   /** Tiny base64 data URI for blur-up placeholder */
   blur?: string;
   takenAt?: string; // ISO date from EXIF DateTimeOriginal
@@ -312,6 +313,7 @@ async function processAndUploadPhoto(
       id,
       width: processed.width,
       height: processed.height,
+      size: processed.original.buffer.byteLength,
       blur: processed.blur,
       ...(processed.takenAt ? { takenAt: processed.takenAt } : {}),
       ...(autoFocal ? { autoFocal } : {}),
