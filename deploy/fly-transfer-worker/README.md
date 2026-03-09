@@ -40,13 +40,12 @@ Recommended runtime defaults:
 - `MEDIA_PROCESSOR_MODE=hybrid`
 - `TRANSFER_MEDIA_WORKER_ENABLED=1`
 - `TRANSFER_MEDIA_QUEUE_ENABLED=1`
-- `TRANSFER_MEDIA_FORCE_WORKER_FOR_HEIF=1`
 - `TRANSFER_MEDIA_FORCE_WORKER_FOR_RAW=0`
 - `TRANSFER_MEDIA_FORCE_WORKER_FOR_VIDEO=0`
 
 Operational notes:
 
 - The worker uses a blocking direct Redis consumer (`BRPOPLPUSH` + processing list), not REST polling.
-- Browser uploads can still do local browser prep first.
+- Browser uploads must convert HEIC/HIF client-side before transfer upload.
 - In `hybrid` mode, the app still tries local processing for supported formats and only uses the worker for worker-first routes or local failures.
 - Flip `MEDIA_PROCESSOR_MODE=local` or `TRANSFER_MEDIA_WORKER_ENABLED=0` to degrade back to local-only behavior.

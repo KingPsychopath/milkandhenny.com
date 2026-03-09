@@ -2,7 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireAuthWithPayload } from "@/features/auth/server";
 import { getTransfer } from "@/features/transfers/store";
 import { isSafeTransferFilename } from "@/features/transfers/upload";
-import { resolveTransferUploadIds } from "@/features/transfers/media-state";
+import {
+  HEIF_TRANSFER_UPLOAD_ERROR,
+  isHeifUploadLike,
+  resolveTransferUploadIds,
+} from "@/features/transfers/media-state";
 import { presignPutUrl, isConfigured } from "@/lib/platform/r2";
 import { getMimeType } from "@/features/media/processing";
 import { buildTransferArchivedOriginalStorageKey, buildTransferPrimaryStorageKey } from "@/features/transfers/storage";
@@ -63,6 +67,9 @@ export async function POST(request: NextRequest) {
   for (const file of files) {
     if (!file || typeof file.name !== "string" || !isSafeTransferFilename(file.name)) {
       return NextResponse.json({ error: "Each file must have a safe filename" }, { status: 400 });
+    }
+    if (isHeifUploadLike(file)) {
+      return NextResponse.json({ error: HEIF_TRANSFER_UPLOAD_ERROR }, { status: 400 });
     }
     if (!Number.isFinite(file.size) || file.size < 0) {
       return NextResponse.json({ error: "Each file must include a valid non-negative size" }, { status: 400 });

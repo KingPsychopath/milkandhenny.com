@@ -9,6 +9,8 @@ import {
 } from "@/features/transfers/upload";
 import {
   buildTransferProcessingCounts,
+  HEIF_TRANSFER_UPLOAD_ERROR,
+  isHeifUploadLike,
   resolveTransferUploadIds,
 } from "@/features/transfers/media-state";
 import type { TransferUploadFileInput } from "@/features/transfers/upload-types";
@@ -65,6 +67,9 @@ export async function POST(request: NextRequest) {
   for (const file of files) {
     if (!file || typeof file.name !== "string" || !isSafeTransferFilename(file.name)) {
       return NextResponse.json({ error: "Each file must have a safe filename" }, { status: 400 });
+    }
+    if (isHeifUploadLike(file)) {
+      return NextResponse.json({ error: HEIF_TRANSFER_UPLOAD_ERROR }, { status: 400 });
     }
     if (!Number.isFinite(file.size) || file.size < 0) {
       return NextResponse.json({ error: "Each file must include a valid non-negative size" }, { status: 400 });

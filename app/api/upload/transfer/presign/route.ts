@@ -11,7 +11,11 @@ import {
   MAX_TRANSFER_TOTAL_BYTES,
 } from "@/features/transfers/store";
 import { getMimeType } from "@/features/media/processing";
-import { resolveTransferUploadIds } from "@/features/transfers/media-state";
+import {
+  HEIF_TRANSFER_UPLOAD_ERROR,
+  isHeifUploadLike,
+  resolveTransferUploadIds,
+} from "@/features/transfers/media-state";
 import { buildTransferArchivedOriginalStorageKey, buildTransferPrimaryStorageKey } from "@/features/transfers/storage";
 import type { TransferUploadFileInput } from "@/features/transfers/upload-types";
 import { apiErrorFromRequest } from "@/lib/platform/api-error";
@@ -75,6 +79,9 @@ export async function POST(request: NextRequest) {
         { error: "Each file must have a safe filename" },
         { status: 400 }
       );
+    }
+    if (isHeifUploadLike(file)) {
+      return NextResponse.json({ error: HEIF_TRANSFER_UPLOAD_ERROR }, { status: 400 });
     }
     if (!Number.isFinite(file.size) || file.size < 0) {
       return NextResponse.json(

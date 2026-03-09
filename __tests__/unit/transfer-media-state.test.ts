@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
+  HEIF_TRANSFER_UPLOAD_ERROR,
   buildTransferProcessingCounts,
   canRetryTransferProcessing,
   classifyTransferProcessingRoute,
   getTransferFileId,
+  isHeifUploadLike,
   isTransferProcessingStale,
 } from "@/features/transfers/media-state";
 
@@ -20,8 +22,14 @@ describe("transfer media state helpers", () => {
     expect(classifyTransferProcessingRoute("loop.gif")).toBe("local_gif");
     expect(classifyTransferProcessingRoute("clip.mov")).toBe("local_video");
     expect(classifyTransferProcessingRoute("capture.dng")).toBe("raw_try_local");
-    expect(classifyTransferProcessingRoute("capture.hif")).toBe("worker_heif");
+    expect(classifyTransferProcessingRoute("capture.hif")).toBeNull();
     expect(classifyTransferProcessingRoute("notes.pdf")).toBeNull();
+  });
+
+  it("detects raw heif uploads so transfer routes can reject them", () => {
+    expect(isHeifUploadLike({ name: "capture.hif", type: "image/heif" })).toBe(true);
+    expect(isHeifUploadLike({ name: "capture.jpg", type: "image/jpeg" })).toBe(false);
+    expect(HEIF_TRANSFER_UPLOAD_ERROR).toContain("converted in the browser");
   });
 
   it("counts ready, queued, failed, skipped, and original-only files", () => {

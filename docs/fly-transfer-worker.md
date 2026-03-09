@@ -3,13 +3,11 @@
 This worker drains the transfer media queue for formats that are awkward or expensive to process on a serverless host.
 
 Current intended use:
-- HEIC/HIF fallback when browser prep does not convert successfully
 - RAW fallback when local preview extraction fails
 - Video fallback when local poster/thumb generation fails
 
 Worker media stack:
 - `ffmpeg` for video poster/thumb work
-- `libheif` for HEIF/HIF fallback support
 - `libraw-bin` / `dcraw_emu` for worker-side RAW decode
 
 ## Minimum envs
@@ -21,7 +19,6 @@ MEDIA_PROCESSOR_MODE=hybrid
 NEXT_PUBLIC_TRANSFER_MEDIA_BROWSER_PREP=auto
 TRANSFER_MEDIA_WORKER_ENABLED=1
 TRANSFER_MEDIA_QUEUE_ENABLED=1
-TRANSFER_MEDIA_FORCE_WORKER_FOR_HEIF=1
 TRANSFER_MEDIA_WORKER_WAKE_URL=https://party-guest-list-transfer-worker.fly.dev/wake
 TRANSFER_MEDIA_WORKER_WAKE_TOKEN=replace-with-a-long-random-secret
 ```
@@ -161,11 +158,10 @@ NEXT_PUBLIC_TRANSFER_MEDIA_BROWSER_PREP=auto
 TRANSFER_MEDIA_WORKER_ENABLED=1
 TRANSFER_MEDIA_QUEUE_ENABLED=1
 TRANSFER_MEDIA_WORKER_ERROR_BACKOFF_MS=30000
-TRANSFER_MEDIA_FORCE_WORKER_FOR_HEIF=1
 ```
 
 Browser prep policy:
-- keep browser prep for HEIC/HIF
+- HEIC/HIF transfer uploads must stay on browser prep
 - do not use browser RAW prep
 - keep RAW/video as local-first with worker fallback
 
@@ -224,7 +220,6 @@ Vercel app:
 - `NEXT_PUBLIC_TRANSFER_MEDIA_BROWSER_PREP`
 - `TRANSFER_MEDIA_WORKER_ENABLED`
 - `TRANSFER_MEDIA_QUEUE_ENABLED`
-- `TRANSFER_MEDIA_FORCE_WORKER_FOR_HEIF`
 - same Redis/R2 envs the app already uses
 
 Fly worker:
@@ -253,7 +248,6 @@ MEDIA_PROCESSOR_MODE=hybrid
 NEXT_PUBLIC_TRANSFER_MEDIA_BROWSER_PREP=auto
 TRANSFER_MEDIA_WORKER_ENABLED=1
 TRANSFER_MEDIA_QUEUE_ENABLED=1
-TRANSFER_MEDIA_FORCE_WORKER_FOR_HEIF=1
 ```
 
 3. Redeploy the app after setting envs.
@@ -266,7 +260,7 @@ TRANSFER_MEDIA_FORCE_WORKER_FOR_HEIF=1
 
 5. Expected behavior:
 - JPEG/PNG: local success, ready immediately
-- HEIC/HIF: browser prep or queued worker fallback
+- HEIC/HIF: browser conversion required before transfer upload
 - RAW: local first, worker fallback on failure
 - video: local first, worker fallback on failure
 

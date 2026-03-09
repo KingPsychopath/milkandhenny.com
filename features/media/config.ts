@@ -34,9 +34,6 @@ function isWorkerQueueEnabled(): boolean {
 }
 
 function shouldRouteToWorkerFirst(route: ProcessingRoute): boolean {
-  if (route === "worker_heif") {
-    return readBooleanEnv("TRANSFER_MEDIA_FORCE_WORKER_FOR_HEIF", true);
-  }
   if (route === "raw_try_local") {
     return readBooleanEnv("TRANSFER_MEDIA_FORCE_WORKER_FOR_RAW", false);
   }

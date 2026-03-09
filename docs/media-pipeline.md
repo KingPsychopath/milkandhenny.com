@@ -99,9 +99,9 @@ Portrait photos often store pixel data in landscape orientation with a rotation 
 | Format | Rotation storage | How we handle it |
 |--------|-----------------|-----------------|
 | JPEG, PNG, TIFF, WebP | **EXIF** orientation tag | Sharp `.rotate()` reads EXIF and applies the transform |
-| HEIC, HIF | **HEIF container** `irot` box (also EXIF in most Canon HIF) | libvips/libheif applies rotation at decode |
+| HEIC, HIF | **HEIF container** `irot` box (also EXIF in most Canon HIF) | Transfer web uploads convert in the browser first; CLI/server flows still rely on libheif at decode |
 
-Both are handled automatically during upload. Sharp 0.33+ ships with libheif on all platforms — no OS-specific tools, fully cross-platform.
+For transfer web uploads, HEIC/HIF is a browser-side requirement: the client converts to JPEG before upload and archives the original separately. Server-side transfer processing only handles the converted JPEG plus RAW/video fallback work.
 
 **Manual rotation override:** If EXIF data is missing or wrong (e.g. dragged from macOS Photos without metadata):
 

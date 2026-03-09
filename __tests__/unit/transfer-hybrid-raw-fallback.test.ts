@@ -225,46 +225,4 @@ describe("hybrid transfer raw fallback", () => {
     expect(updated.files[0]?.processingStatus).toBe("queued");
     expect(updated.files[0]?.processingBackend).toBe("worker");
   });
-
-  it("does not queue heif uploads for worker fallback", async () => {
-    processTransferObjectLocally.mockResolvedValue({
-      file: {
-        id: "capture",
-        filename: "capture.hif",
-        kind: "image",
-        size: 4096,
-        mimeType: "image/heif",
-        storageKey: "transfers/transfer-1/originals/capture.hif",
-        previewStatus: "original_only",
-        processingStatus: "failed",
-        processingRoute: "worker_heif",
-        processingErrorCode: "heif_server_unsupported",
-      },
-      uploadedBytes: 4096,
-    });
-
-    const processor = createHybridMediaProcessor("hybrid");
-    const result = await processor.processTransferObject(
-      {
-        name: "capture.hif",
-        size: 4096,
-        type: "image/heif",
-      },
-      "transfer-1"
-    );
-
-    expect(processTransferObjectLocally).toHaveBeenCalledWith(
-      {
-        name: "capture.hif",
-        size: 4096,
-        type: "image/heif",
-      },
-      "transfer-1",
-      "local_done",
-      "local",
-      "worker_heif"
-    );
-    expect(enqueueWorkerJob).not.toHaveBeenCalled();
-    expect(result.file.processingErrorCode).toBe("heif_server_unsupported");
-  });
 });

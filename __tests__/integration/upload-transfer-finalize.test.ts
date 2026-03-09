@@ -15,7 +15,7 @@ describe("upload transfer finalize", () => {
   });
 
   it("queues visual media instead of processing it inline", async () => {
-    const enqueueWorkerJob = vi.fn().mockResolvedValue({
+    const processUploadedFile = vi.fn().mockResolvedValue({
       file: {
         id: "photo",
         filename: "photo.jpg",
@@ -30,7 +30,6 @@ describe("upload transfer finalize", () => {
       },
       uploadedBytes: 123,
     });
-    const processUploadedFile = vi.fn();
     const saveTransfer = vi.fn().mockResolvedValue(undefined);
 
     vi.doMock("@/features/auth/server", () => ({
@@ -52,6 +51,7 @@ describe("upload transfer finalize", () => {
       isSafeTransferFilename: () => true,
     }));
     vi.doMock("@/features/transfers/media-state", () => ({
+      HEIF_TRANSFER_UPLOAD_ERROR: "HEIC/HIF transfer uploads must be converted in the browser before upload.",
       buildTransferProcessingCounts: vi.fn().mockReturnValue({
         readyCount: 0,
         queuedCount: 1,
@@ -60,11 +60,9 @@ describe("upload transfer finalize", () => {
         originalOnlyCount: 1,
       }),
       classifyTransferProcessingRoute: vi.fn().mockReturnValue("local_image"),
+      isHeifUploadLike: vi.fn().mockReturnValue(false),
       resolveTransferUploadIds: (files: Array<{ name: string }>) =>
         files.map((file) => ({ ...file, mediaId: file.name.replace(/\.[^.]+$/, "") })),
-    }));
-    vi.doMock("@/features/media/backends/worker", () => ({
-      enqueueWorkerJob,
     }));
     vi.doMock("@/lib/shared/config", () => ({
       BASE_URL: "https://example.com",
@@ -86,17 +84,69 @@ describe("upload transfer finalize", () => {
     );
 
     expect(response.status).toBe(200);
-    expect(enqueueWorkerJob).toHaveBeenCalledWith({
-      transferId: "transfer-1",
-      file: {
+    expect(processUploadedFile).toHaveBeenCalledWith(
+      {
         mediaId: "photo",
         name: "photo.jpg",
         size: 123,
         type: "image/jpeg",
       },
-      route: "local_image",
+      "transfer-1"
+    );
+    expect(saveTransfer).toHaveBeenCalledOnce();
+  });
+
+  it("rejects raw heif uploads before processing", async () => {
+    const processUploadedFile = vi.fn();
+
+    vi.doMock("@/features/auth/server", () => ({
+      requireAuthWithPayload: vi.fn().mockResolvedValue({
+        error: null,
+        payload: { role: "upload" },
+      }),
+    }));
+    vi.doMock("@/features/transfers/store", () => ({
+      saveTransfer: vi.fn(),
+      MAX_EXPIRY_SECONDS: 30 * 24 * 60 * 60,
+      MAX_TRANSFER_FILE_BYTES: 250 * 1024 * 1024,
+      MAX_TRANSFER_TOTAL_BYTES: 1024 * 1024 * 1024,
+    }));
+    vi.doMock("@/features/transfers/upload", () => ({
+      applyTransferAssetGroups: (files: unknown[]) => ({ files, groups: [] }),
+      processUploadedFile,
+      sortTransferFiles: (files: unknown[]) => files,
+      isSafeTransferFilename: () => true,
+    }));
+    vi.doMock("@/features/transfers/media-state", () => ({
+      HEIF_TRANSFER_UPLOAD_ERROR: "HEIC/HIF transfer uploads must be converted in the browser before upload.",
+      buildTransferProcessingCounts: vi.fn(),
+      isHeifUploadLike: vi.fn().mockReturnValue(true),
+      resolveTransferUploadIds: (files: Array<{ name: string }>) =>
+        files.map((file) => ({ ...file, mediaId: file.name.replace(/\.[^.]+$/, "") })),
+    }));
+    vi.doMock("@/lib/shared/config", () => ({
+      BASE_URL: "https://example.com",
+      hasPublicR2Url: () => true,
+    }));
+    vi.doMock("@/lib/platform/api-error", () => ({
+      apiErrorFromRequest: vi.fn(),
+    }));
+
+    const { POST } = await import("@/app/api/upload/transfer/finalize/route");
+    const response = await POST(
+      makeRequest({
+        transferId: "transfer-1",
+        deleteToken: "delete-token",
+        title: "party",
+        expiresSeconds: 3600,
+        files: [{ name: "capture.hif", size: 123, type: "image/heif" }],
+      })
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      error: "HEIC/HIF transfer uploads must be converted in the browser before upload.",
     });
     expect(processUploadedFile).not.toHaveBeenCalled();
-    expect(saveTransfer).toHaveBeenCalledOnce();
   });
 });

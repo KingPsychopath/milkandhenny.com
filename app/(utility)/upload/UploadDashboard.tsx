@@ -5,7 +5,7 @@ import Link from "next/link";
 import { getStored, removeStored } from "@/lib/client/storage";
 import { mapWithConcurrency } from "@/lib/shared/map-with-concurrency";
 import { SITE_BRAND } from "@/lib/shared/config";
-import { prepareTransferUploadFile } from "@/features/transfers/browser-heif";
+import { isHeifLikeFile, prepareTransferUploadFile } from "@/features/transfers/browser-heif";
 import type { TransferUploadFileInput } from "@/features/transfers/upload-types";
 
 /* ─── Types ─── */
@@ -453,6 +453,12 @@ export function UploadDashboard({ isAdmin }: UploadDashboardProps) {
   const prepareTransferUploads = useCallback(
     async (selectedFiles: File[]) => {
       if (BROWSER_PREP_MODE === "off") {
+        const blockedFile = selectedFiles.find((file) => isHeifLikeFile(file));
+        if (blockedFile) {
+          throw new Error(
+            `HEIC/HIF transfer uploads require browser-side conversion. Re-enable browser prep and retry ${blockedFile.name}.`
+          );
+        }
         return selectedFiles.map<PreparedTransferUpload>((file) => ({
           uploadFile: file,
           uploadName: file.name,
@@ -465,7 +471,13 @@ export function UploadDashboard({ isAdmin }: UploadDashboardProps) {
         async (file) => {
           try {
             return await prepareTransferUploadFile(file, { derivePreview: true });
-          } catch {
+          } catch (error) {
+            if (isHeifLikeFile(file)) {
+              const detail = error instanceof Error && error.message ? ` ${error.message}` : "";
+              throw new Error(
+                `Could not convert ${file.name} in the browser. HEIC/HIF transfer uploads require client-side conversion.${detail}`
+              );
+            }
             return {
               uploadFile: file,
               uploadName: file.name,

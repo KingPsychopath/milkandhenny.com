@@ -2,7 +2,6 @@ import "server-only";
 
 import { downloadBuffer, headObject, uploadBuffer } from "@/lib/platform/r2";
 import {
-  HEIF_EXTENSIONS,
   RawPreviewUnavailableError,
   getFileKind,
   getMimeType,
@@ -212,30 +211,6 @@ async function materializeVisualFromBuffer(params: {
   const derivedId = file.mediaId ?? getTransferFileId(filename);
   const archiveStorageKey = buildTransferArchivedOriginalStorageKey(transferId, file);
   const originalUploadSize = file.originalSize ?? 0;
-
-  if (route === "worker_heif" || HEIF_EXTENSIONS.test(filename)) {
-    if (!originalAlreadyStored && !archiveStorageKey) {
-      await uploadOriginalBuffer(storageKey, filename, buffer);
-    }
-
-    return {
-      file: {
-        ...buildOriginalOnlyFailureFile(
-          derivedId,
-          filename,
-          storedSize,
-          storageKey,
-          route,
-          "heif_server_unsupported"
-        ),
-        ...(archiveStorageKey ? { originalStorageKey: archiveStorageKey } : {}),
-        ...(file.originalName ? { originalFilename: file.originalName } : {}),
-        ...(file.originalType ? { originalMimeType: file.originalType } : {}),
-        ...(file.convertedFrom ? { convertedFrom: file.convertedFrom } : {}),
-      },
-      uploadedBytes: storedSize + originalUploadSize,
-    };
-  }
 
   if (route === "local_gif" || route === "worker_gif") {
     const gif = await processGifThumb(buffer);

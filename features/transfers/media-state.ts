@@ -20,7 +20,6 @@ const PROCESSING_ROUTES = [
   "local_gif",
   "local_video",
   "raw_try_local",
-  "worker_heif",
   "worker_raw",
   "worker_image",
   "worker_gif",
@@ -34,6 +33,8 @@ type ProcessingRoute = (typeof PROCESSING_ROUTES)[number];
 
 const MAX_TRANSFER_PROCESSING_RETRIES = 3;
 const TRANSFER_MEDIA_STALE_AFTER_MS = 15 * 60 * 1000;
+const HEIF_TRANSFER_UPLOAD_ERROR =
+  "HEIC/HIF transfer uploads must be converted in the browser before upload.";
 
 type TransferProcessingCounts = {
   readyCount: number;
@@ -93,12 +94,20 @@ function resolveTransferUploadIds<
 }
 
 function classifyTransferProcessingRoute(filename: string): ProcessingRoute | null {
-  if (HEIF_EXTENSIONS.test(filename)) return "worker_heif";
   if (RAW_IMAGE_EXTENSIONS.test(filename)) return "raw_try_local";
   if (ANIMATED_EXTENSIONS.test(filename)) return "local_gif";
   if (VIDEO_EXTENSIONS.test(filename)) return "local_video";
   if (PROCESSABLE_IMAGE_EXTENSIONS.test(filename)) return "local_image";
   return null;
+}
+
+function isHeifUploadLike(file: { name: string; type?: string | null }): boolean {
+  return (
+    HEIF_EXTENSIONS.test(file.name) ||
+    file.type?.toLowerCase() === "image/heic" ||
+    file.type?.toLowerCase() === "image/heif" ||
+    file.type?.toLowerCase() === "image/hif"
+  );
 }
 
 function isVisualTransferFilename(filename: string): boolean {
@@ -261,6 +270,7 @@ function didTransferFileChange(
 export {
   ANIMATED_EXTENSIONS,
   HEIF_EXTENSIONS,
+  HEIF_TRANSFER_UPLOAD_ERROR,
   MAX_TRANSFER_PROCESSING_RETRIES,
   PREVIEW_STATUSES,
   PROCESSABLE_IMAGE_EXTENSIONS,
@@ -278,6 +288,7 @@ export {
   getExpectedTransferAssetKeys,
   getFilenameStem,
   getTransferFileId,
+  isHeifUploadLike,
   resolveTransferUploadIds,
   isTransferProcessingStale,
   isVisualTransferFilename,
