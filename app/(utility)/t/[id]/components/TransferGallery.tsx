@@ -1636,18 +1636,16 @@ export function TransferGallery({ transferId, files, groups, deleteToken }: Tran
                             : "px-2 py-1 rounded-sm border theme-border theme-muted hover:text-foreground transition-colors"
                         }
                       >
-                        [
-                        <span>{bucket.label}</span>
+                        <span>[{bucket.label}]</span>
                         <span
                           className={
                             isActive
-                              ? "ml-2 inline-flex min-w-5 items-center justify-center rounded-full border border-foreground/20 px-1.5 text-nano text-foreground/70"
-                              : "ml-2 inline-flex min-w-5 items-center justify-center rounded-full border theme-border px-1.5 text-nano theme-muted"
+                              ? "ml-2 text-nano tabular-nums text-foreground/70"
+                              : "ml-2 text-nano tabular-nums theme-muted"
                           }
                         >
                           {bucket.count}
                         </span>
-                        ]
                       </button>
                     );
                   })}
