@@ -219,6 +219,18 @@ function getScopeSelectLabel(filter: GalleryFilter): string {
   return "[ select all files ]";
 }
 
+function formatTimeFinderDateLabel(dateKey: string): string {
+  const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"] as const;
+  const [yearRaw, monthRaw, dayRaw] = dateKey.split("-");
+  const month = Number.parseInt(monthRaw ?? "", 10);
+  const day = Number.parseInt(dayRaw ?? "", 10);
+  if (!Number.isFinite(month) || month < 1 || month > 12 || !Number.isFinite(day) || day < 1 || day > 31) {
+    return dateKey;
+  }
+  const yearSuffix = yearRaw && yearRaw.length >= 2 ? yearRaw.slice(-2) : yearRaw;
+  return `${String(day).padStart(2, "0")} ${months[month - 1]} '${yearSuffix}`;
+}
+
 function getGalleryEntryPrimaryFile(entry: GalleryEntry): TransferFileData {
   return entry.type === "visual" ? getVisualItemPrimaryFile(entry.item) : entry.file;
 }
@@ -1435,6 +1447,10 @@ export function TransferGallery({ transferId, files, groups, deleteToken }: Tran
   const busy = preparingDownload || downloading;
   const streamingNoticeBytes = selectedCount > 1 ? selectedTotalBytes : totalTransferBytes;
   const shouldShowTimeFinder = timeFinderModel.showFinder;
+  const hasMultipleTimeFinderDates = useMemo(
+    () => new Set(timeFinderModel.buckets.map((bucket) => bucket.dateKey)).size > 1,
+    [timeFinderModel.buckets]
+  );
   const renderSection = (section: GallerySection) => {
     const sectionVisualItems = section.entries
       .filter((entry): entry is Extract<GalleryEntry, { type: "visual" }> => entry.type === "visual")
@@ -1594,6 +1610,9 @@ export function TransferGallery({ transferId, files, groups, deleteToken }: Tran
           <div className="mt-3 flex flex-wrap items-center gap-2 font-mono text-micro tracking-wide">
             {timeFinderModel.buckets.map((bucket) => {
               const isActive = activeTimeBucket?.key === bucket.key;
+              const chipLabel = hasMultipleTimeFinderDates
+                ? `${formatTimeFinderDateLabel(bucket.dateKey)} ${bucket.label}`
+                : bucket.label;
               return (
                 <button
                   key={bucket.key}
@@ -1607,7 +1626,7 @@ export function TransferGallery({ transferId, files, groups, deleteToken }: Tran
                       : "px-2 py-1 rounded-sm border theme-border theme-muted hover:text-foreground transition-colors"
                   }
                 >
-                  [{bucket.label} {bucket.count}]
+                  [{chipLabel} {bucket.count}]
                 </button>
               );
             })}
