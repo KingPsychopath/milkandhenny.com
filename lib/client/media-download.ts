@@ -9,6 +9,7 @@
  */
 
 const BLOB_ZIP_DOWNLOAD_LIMIT_BYTES = 200 * 1024 * 1024;
+const LARGE_STREAMING_ZIP_NOTICE_BYTES = 1024 * 1024 * 1024;
 
 /**
  * Fetch a file as a Blob from a CORS-enabled origin.
@@ -108,6 +109,36 @@ async function fetchContentLength(url: string, retries = 2): Promise<number | nu
   throw lastError ?? new Error(`Failed to read content length for ${url}`);
 }
 
+function isAbortError(error: unknown): boolean {
+  return error instanceof DOMException && error.name === "AbortError";
+}
+
+function getZipDownloadErrorMessage(error: unknown, fallbackMessage: string): string {
+  if (
+    error instanceof DOMException &&
+    (error.name === "QuotaExceededError" || error.name === "NotReadableError" || error.name === "NoModificationAllowedError")
+  ) {
+    return "Download failed: not enough disk space.";
+  }
+
+  if (error instanceof Error) {
+    const message = error.message.toLowerCase();
+    if (
+      message.includes("quotaexceedederror") ||
+      message.includes("not enough disk space") ||
+      message.includes("no space left") ||
+      message.includes("disk full") ||
+      message.includes("insufficient space")
+    ) {
+      return "Download failed: not enough disk space.";
+    }
+
+    return error.message;
+  }
+
+  return fallbackMessage;
+}
+
 /**
  * Fetch an image for Canvas drawing (CORS-safe).
  *
@@ -135,4 +166,12 @@ async function fetchImageForCanvas(url: string): Promise<HTMLImageElement> {
 }
 
 export { fetchBlob, downloadBlob, fetchImageForCanvas };
-export { BLOB_ZIP_DOWNLOAD_LIMIT_BYTES, canUseSaveFilePicker, createZipFileWritable, fetchContentLength };
+export {
+  BLOB_ZIP_DOWNLOAD_LIMIT_BYTES,
+  LARGE_STREAMING_ZIP_NOTICE_BYTES,
+  canUseSaveFilePicker,
+  createZipFileWritable,
+  fetchContentLength,
+  getZipDownloadErrorMessage,
+  isAbortError,
+};

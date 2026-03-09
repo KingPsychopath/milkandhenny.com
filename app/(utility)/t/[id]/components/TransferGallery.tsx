@@ -1,15 +1,18 @@
 "use client";
 
-import { useState, useCallback, useEffect, useMemo, memo } from "react";
+import { useState, useCallback, useEffect, useMemo, useRef, memo } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { getTransferThumbUrl, getTransferFullUrl, getTransferStorageUrl } from "@/features/media/storage";
 import { buildTransferVisualItems, type TransferVisualItem } from "@/features/transfers/live-photo";
 import {
   BLOB_ZIP_DOWNLOAD_LIMIT_BYTES,
+  LARGE_STREAMING_ZIP_NOTICE_BYTES,
   canUseSaveFilePicker,
   createZipFileWritable,
   fetchBlob,
   downloadBlob,
+  getZipDownloadErrorMessage,
+  isAbortError,
 } from "@/lib/client/media-download";
 import { buildZipArchive } from "@/lib/client/streaming-zip";
 import { formatBytes } from "@/lib/shared/format";
@@ -517,6 +520,8 @@ export function TransferGallery({ transferId, files, groups, deleteToken }: Tran
   const [downloading, setDownloading] = useState(false);
   const [downloadProgress, setDownloadProgress] = useState<DownloadProgress | null>(null);
   const [downloadError, setDownloadError] = useState("");
+  const [supportsStreamingZip, setSupportsStreamingZip] = useState(false);
+  const abortControllerRef = useRef<AbortController | null>(null);
   const [savingSingle, setSavingSingle] = useState(false);
   const [deletingFileId, setDeletingFileId] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState("");
@@ -546,6 +551,21 @@ export function TransferGallery({ transferId, files, groups, deleteToken }: Tran
   useEffect(() => {
     setCurrentGroups(groups);
   }, [groups]);
+
+  useEffect(() => {
+    setSupportsStreamingZip(canUseSaveFilePicker());
+  }, []);
+
+  useEffect(() => {
+    if (!downloading) return;
+
+    const handleBeforeUnload = () => {
+      abortControllerRef.current?.abort(new DOMException("Page unloading", "AbortError"));
+    };
+
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, [downloading]);
 
   const grouped = useMemo(() => {
     const photos: TransferFileData[] = [];
@@ -906,7 +926,7 @@ export function TransferGallery({ transferId, files, groups, deleteToken }: Tran
   const downloadFiles = useCallback(
     async (filesToDownload: TransferFileData[]) => {
       if (downloading || filesToDownload.length === 0) return;
-      const canStreamToDisk = canUseSaveFilePicker();
+      const canStreamToDisk = supportsStreamingZip;
       const totalBytes = filesToDownload.reduce((sum, file) => sum + file.size, 0);
       if (
         filesToDownload.length > 1 &&
@@ -934,6 +954,8 @@ export function TransferGallery({ transferId, files, groups, deleteToken }: Tran
           filesToDownload.length === currentFiles.length
             ? `transfer-${transferId}.zip`
             : `transfer-${transferId}-selected.zip`;
+        const controller = new AbortController();
+        abortControllerRef.current = controller;
         const writable = canStreamToDisk ? await createZipFileWritable(archiveName) : null;
 
         const result = await buildZipArchive({
@@ -943,6 +965,7 @@ export function TransferGallery({ transferId, files, groups, deleteToken }: Tran
             filename: getDownloadFilename(file),
             size: file.size,
           })),
+          signal: controller.signal,
           onProgress: (progress) => {
             setDownloadProgress({
               done: progress.done,
@@ -969,19 +992,16 @@ export function TransferGallery({ transferId, files, groups, deleteToken }: Tran
           downloadBlob(result.blob, archiveName);
         }
       } catch (err) {
-        if (err instanceof DOMException && err.name === "AbortError") return;
+        if (isAbortError(err)) return;
         console.error("Download failed:", err);
-        setDownloadError(
-          err instanceof Error
-            ? err.message
-            : "Zip download failed. Try a smaller selection or use a browser with save-to-disk support."
-        );
+        setDownloadError(getZipDownloadErrorMessage(err, "Zip download failed. Try a smaller selection or use a browser with save-to-disk support."));
       } finally {
+        abortControllerRef.current = null;
         setDownloading(false);
         setDownloadProgress(null);
       }
     },
-    [currentFiles.length, downloading, transferId]
+    [currentFiles.length, downloading, supportsStreamingZip, transferId]
   );
 
   /** Download all files as a zip with progress */
@@ -1141,6 +1161,11 @@ export function TransferGallery({ transferId, files, groups, deleteToken }: Tran
       : downloadProgress?.phase === "zipping"
         ? "[ finalizing archive... ]"
         : "[ zipping... ]";
+  const cancelDownload = useCallback(() => {
+    setDownloadError("Download cancelled.");
+    abortControllerRef.current?.abort(new DOMException("Download cancelled", "AbortError"));
+  }, []);
+  const streamingNoticeBytes = selectedCount > 1 ? selectedTotalBytes : totalTransferBytes;
 
   return (
     <div>
@@ -1251,6 +1276,11 @@ export function TransferGallery({ transferId, files, groups, deleteToken }: Tran
               >
                 {downloading && downloadProgress && downloadProgress.total === selectedCount ? downloadLabel : "[ download selected ]"}
               </button>
+              {downloading && downloadProgress ? (
+                <button onClick={cancelDownload} className="theme-muted hover:text-foreground transition-colors">
+                  [ cancel download ]
+                </button>
+              ) : null}
             </>
           )}
           {!allPageSelected && browseMode === "pages" && pageEntries.length > 1 && (
@@ -1270,11 +1300,21 @@ export function TransferGallery({ transferId, files, groups, deleteToken }: Tran
           >
             {downloading && (!downloadProgress || downloadProgress.total === currentFiles.length) ? downloadLabel : "[ download all ]"}
           </button>
+          {selectedCount === 0 && downloading && downloadProgress ? (
+            <button onClick={cancelDownload} className="theme-muted hover:text-foreground transition-colors">
+              [ cancel download ]
+            </button>
+          ) : null}
         </div>
       </div>
       {downloadError ? (
         <p className="mb-4 font-mono text-micro tracking-wide text-red-600">
           {downloadError}
+        </p>
+      ) : null}
+      {supportsStreamingZip && currentFiles.length > 1 && streamingNoticeBytes >= LARGE_STREAMING_ZIP_NOTICE_BYTES ? (
+        <p className="mb-4 font-mono text-nano theme-muted tracking-wide">
+          Large ZIPs in Chrome or Edge may temporarily require about 2x the archive size free on disk before the file is committed.
         </p>
       ) : null}
       {deleteError ? (

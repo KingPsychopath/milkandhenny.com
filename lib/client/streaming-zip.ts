@@ -17,6 +17,7 @@ interface BuildZipArchiveOptions {
   files: ZipSourceFile[];
   onProgress?: (progress: ZipProgress) => void;
   saveTarget?: ZipSaveTarget;
+  signal?: AbortSignal;
 }
 
 interface ZipSaveTarget {
@@ -46,11 +47,13 @@ interface ZipEntryRecord {
 }
 
 const textEncoder = new TextEncoder();
-const ZIP_VERSION = 20;
+const ZIP_VERSION = 45;
 const ZIP_DATA_DESCRIPTOR_FLAG = 0x0008;
 const ZIP_UTF8_FLAG = 0x0800;
 const ZIP_GENERAL_PURPOSE_FLAGS = ZIP_DATA_DESCRIPTOR_FLAG | ZIP_UTF8_FLAG;
 const ZIP_STORE_METHOD = 0;
+const ZIP64_EXTRA_FIELD_ID = 0x0001;
+const ZIP64_UINT32_SENTINEL = 0xffffffff;
 const CRC32_TABLE = createCrc32Table();
 
 function createCrc32Table(): Uint32Array {
@@ -99,6 +102,13 @@ function writeUint32(view: DataView, offset: number, value: number) {
   view.setUint32(offset, value >>> 0, true);
 }
 
+function writeUint64(view: DataView, offset: number, value: number) {
+  const low = value >>> 0;
+  const high = Math.floor(value / 0x100000000) >>> 0;
+  writeUint32(view, offset, low);
+  writeUint32(view, offset + 4, high);
+}
+
 function copyChunk(chunk: Uint8Array): Uint8Array {
   const copy = new Uint8Array(chunk.byteLength);
   copy.set(chunk);
@@ -133,16 +143,26 @@ function resolveArchiveFilenames(files: ZipSourceFile[]): Map<string, string> {
   return resolved;
 }
 
-async function fetchFileStream(url: string, retries = 2): Promise<Response> {
+function throwIfAborted(signal?: AbortSignal) {
+  if (signal?.aborted) {
+    throw signal.reason instanceof Error ? signal.reason : new DOMException("Download aborted", "AbortError");
+  }
+}
+
+async function fetchFileStream(url: string, signal?: AbortSignal, retries = 2): Promise<Response> {
   let lastError: Error | null = null;
 
   for (let attempt = 0; attempt <= retries; attempt += 1) {
     try {
-      const response = await fetch(url, { mode: "cors" });
+      throwIfAborted(signal);
+      const response = await fetch(url, { mode: "cors", signal });
       if (!response.ok) throw new Error(`Fetch failed: ${response.status} ${response.statusText}`);
       if (!response.body) throw new Error("Readable stream not available for download");
       return response;
     } catch (error) {
+      if (signal?.aborted || (error instanceof DOMException && error.name === "AbortError")) {
+        throw signal?.reason instanceof Error ? signal.reason : error;
+      }
       lastError = error instanceof Error ? error : new Error(String(error));
       if (attempt < retries) {
         await new Promise((resolve) => setTimeout(resolve, 500 * (attempt + 1)));
@@ -170,7 +190,14 @@ class BlobZipTarget implements ZipSaveTarget {
 }
 
 function buildLocalFileHeader(filenameBytes: Uint8Array, dosDate: number, dosTime: number): Uint8Array {
-  const header = new Uint8Array(30 + filenameBytes.length);
+  const extraField = new Uint8Array(20);
+  const extraFieldView = new DataView(extraField.buffer);
+  writeUint16(extraFieldView, 0, ZIP64_EXTRA_FIELD_ID);
+  writeUint16(extraFieldView, 2, 16);
+  writeUint64(extraFieldView, 4, 0);
+  writeUint64(extraFieldView, 12, 0);
+
+  const header = new Uint8Array(30 + filenameBytes.length + extraField.length);
   const view = new DataView(header.buffer);
 
   writeUint32(view, 0, 0x04034b50);
@@ -180,26 +207,35 @@ function buildLocalFileHeader(filenameBytes: Uint8Array, dosDate: number, dosTim
   writeUint16(view, 10, dosTime);
   writeUint16(view, 12, dosDate);
   writeUint32(view, 14, 0);
-  writeUint32(view, 18, 0);
-  writeUint32(view, 22, 0);
+  writeUint32(view, 18, ZIP64_UINT32_SENTINEL);
+  writeUint32(view, 22, ZIP64_UINT32_SENTINEL);
   writeUint16(view, 26, filenameBytes.length);
-  writeUint16(view, 28, 0);
+  writeUint16(view, 28, extraField.length);
   header.set(filenameBytes, 30);
+  header.set(extraField, 30 + filenameBytes.length);
   return header;
 }
 
 function buildDataDescriptor(crc32: number, size: number): Uint8Array {
-  const descriptor = new Uint8Array(16);
+  const descriptor = new Uint8Array(24);
   const view = new DataView(descriptor.buffer);
   writeUint32(view, 0, 0x08074b50);
   writeUint32(view, 4, crc32);
-  writeUint32(view, 8, size);
-  writeUint32(view, 12, size);
+  writeUint64(view, 8, size);
+  writeUint64(view, 16, size);
   return descriptor;
 }
 
 function buildCentralDirectoryEntry(record: ZipEntryRecord): Uint8Array {
-  const entry = new Uint8Array(46 + record.filenameBytes.length);
+  const extraField = new Uint8Array(28);
+  const extraFieldView = new DataView(extraField.buffer);
+  writeUint16(extraFieldView, 0, ZIP64_EXTRA_FIELD_ID);
+  writeUint16(extraFieldView, 2, 24);
+  writeUint64(extraFieldView, 4, record.size);
+  writeUint64(extraFieldView, 12, record.size);
+  writeUint64(extraFieldView, 20, record.offset);
+
+  const entry = new Uint8Array(46 + record.filenameBytes.length + extraField.length);
   const view = new DataView(entry.buffer);
 
   writeUint32(view, 0, 0x02014b50);
@@ -210,47 +246,75 @@ function buildCentralDirectoryEntry(record: ZipEntryRecord): Uint8Array {
   writeUint16(view, 12, record.dosTime);
   writeUint16(view, 14, record.dosDate);
   writeUint32(view, 16, record.crc32);
-  writeUint32(view, 20, record.size);
-  writeUint32(view, 24, record.size);
+  writeUint32(view, 20, ZIP64_UINT32_SENTINEL);
+  writeUint32(view, 24, ZIP64_UINT32_SENTINEL);
   writeUint16(view, 28, record.filenameBytes.length);
-  writeUint16(view, 30, 0);
+  writeUint16(view, 30, extraField.length);
   writeUint16(view, 32, 0);
   writeUint16(view, 34, 0);
   writeUint16(view, 36, 0);
   writeUint32(view, 38, 0);
-  writeUint32(view, 42, record.offset);
+  writeUint32(view, 42, ZIP64_UINT32_SENTINEL);
   entry.set(record.filenameBytes, 46);
+  entry.set(extraField, 46 + record.filenameBytes.length);
   return entry;
 }
 
 function buildEndOfCentralDirectory(entryCount: number, directorySize: number, directoryOffset: number): Uint8Array {
+  const zip64Record = new Uint8Array(56);
+  const zip64RecordView = new DataView(zip64Record.buffer);
+  writeUint32(zip64RecordView, 0, 0x06064b50);
+  writeUint64(zip64RecordView, 4, 44);
+  writeUint16(zip64RecordView, 12, ZIP_VERSION);
+  writeUint16(zip64RecordView, 14, ZIP_VERSION);
+  writeUint32(zip64RecordView, 16, 0);
+  writeUint32(zip64RecordView, 20, 0);
+  writeUint64(zip64RecordView, 24, entryCount);
+  writeUint64(zip64RecordView, 32, entryCount);
+  writeUint64(zip64RecordView, 40, directorySize);
+  writeUint64(zip64RecordView, 48, directoryOffset);
+
+  const zip64Locator = new Uint8Array(20);
+  const zip64LocatorView = new DataView(zip64Locator.buffer);
+  writeUint32(zip64LocatorView, 0, 0x07064b50);
+  writeUint32(zip64LocatorView, 4, 0);
+  writeUint64(zip64LocatorView, 8, directoryOffset + directorySize);
+  writeUint32(zip64LocatorView, 16, 1);
+
   const footer = new Uint8Array(22);
   const view = new DataView(footer.buffer);
 
   writeUint32(view, 0, 0x06054b50);
   writeUint16(view, 4, 0);
   writeUint16(view, 6, 0);
-  writeUint16(view, 8, entryCount);
-  writeUint16(view, 10, entryCount);
-  writeUint32(view, 12, directorySize);
-  writeUint32(view, 16, directoryOffset);
+  writeUint16(view, 8, 0xffff);
+  writeUint16(view, 10, 0xffff);
+  writeUint32(view, 12, ZIP64_UINT32_SENTINEL);
+  writeUint32(view, 16, ZIP64_UINT32_SENTINEL);
   writeUint16(view, 20, 0);
-  return footer;
+
+  const combined = new Uint8Array(zip64Record.length + zip64Locator.length + footer.length);
+  combined.set(zip64Record, 0);
+  combined.set(zip64Locator, zip64Record.length);
+  combined.set(footer, zip64Record.length + zip64Locator.length);
+  return combined;
 }
 
 async function writeFileEntry(
   file: ZipSourceFile,
   filename: string,
   target: ZipSaveTarget,
-  offset: number
+  offset: number,
+  signal?: AbortSignal
 ): Promise<{ bytesWritten: number; record: ZipEntryRecord }> {
+  throwIfAborted(signal);
   const filenameBytes = textEncoder.encode(filename);
   const { dosDate, dosTime } = getDosDateTime();
   const localHeader = buildLocalFileHeader(filenameBytes, dosDate, dosTime);
 
   await target.write(localHeader);
 
-  const response = await fetchFileStream(file.url);
+  const response = await fetchFileStream(file.url, signal);
   const reader = response.body?.getReader();
   if (!reader) throw new Error("Readable stream not available for download");
 
@@ -259,6 +323,7 @@ async function writeFileEntry(
   let bytesWritten = localHeader.length;
 
   while (true) {
+    throwIfAborted(signal);
     const { done, value } = await reader.read();
     if (done) break;
     if (!value) continue;
@@ -303,21 +368,23 @@ async function writeCentralDirectory(records: ZipEntryRecord[], target: ZipSaveT
   return directorySize + footer.length;
 }
 
-async function buildZipArchive({ files, onProgress, saveTarget }: BuildZipArchiveOptions): Promise<BuildZipArchiveResult> {
+async function buildZipArchive({ files, onProgress, saveTarget, signal }: BuildZipArchiveOptions): Promise<BuildZipArchiveResult> {
   const target = saveTarget ?? new BlobZipTarget();
   const archiveFilenames = resolveArchiveFilenames(files);
   const records: ZipEntryRecord[] = [];
   let offset = 0;
 
   try {
+    throwIfAborted(signal);
     for (let index = 0; index < files.length; index += 1) {
       const file = files[index];
-      const result = await writeFileEntry(file, archiveFilenames.get(file.id) ?? file.filename, target, offset);
+      const result = await writeFileEntry(file, archiveFilenames.get(file.id) ?? file.filename, target, offset, signal);
       offset += result.bytesWritten;
       records.push(result.record);
       onProgress?.({ phase: "fetching", done: index + 1, total: files.length });
     }
 
+    throwIfAborted(signal);
     onProgress?.({ phase: "zipping", done: 0, total: 1 });
     await writeCentralDirectory(records, target, offset);
     await target.close();

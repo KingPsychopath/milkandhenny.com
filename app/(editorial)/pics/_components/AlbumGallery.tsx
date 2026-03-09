@@ -1,17 +1,20 @@
 "use client";
 
-import { useState, useCallback, useMemo, useRef } from "react";
+import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import { MasonryGrid } from "./MasonryGrid";
 import { PhotoCard } from "./PhotoCard";
 import type { Photo } from "@/features/media/albums";
 import { getThumbUrl, getOriginalUrl } from "@/features/media/storage";
 import {
   BLOB_ZIP_DOWNLOAD_LIMIT_BYTES,
+  LARGE_STREAMING_ZIP_NOTICE_BYTES,
   canUseSaveFilePicker,
   createZipFileWritable,
   fetchBlob,
   fetchContentLength,
   downloadBlob,
+  getZipDownloadErrorMessage,
+  isAbortError,
 } from "@/lib/client/media-download";
 import { buildZipArchive } from "@/lib/client/streaming-zip";
 import { formatBytes } from "@/lib/shared/format";
@@ -44,6 +47,8 @@ export function AlbumGallery({ albumSlug, photos }: AlbumGalleryProps) {
   const [downloading, setDownloading] = useState(false);
   const [downloadProgress, setDownloadProgress] = useState<DownloadProgress | null>(null);
   const [downloadError, setDownloadError] = useState("");
+  const [supportsStreamingZip, setSupportsStreamingZip] = useState(false);
+  const abortControllerRef = useRef<AbortController | null>(null);
   const sizeCacheRef = useRef<Map<string, number>>(new Map());
   const photoById = useMemo(() => new Map(photos.map((photo) => [photo.id, photo])), [photos]);
   const selectedIds = useMemo(() => Array.from(selected), [selected]);
@@ -92,6 +97,21 @@ export function AlbumGallery({ albumSlug, photos }: AlbumGalleryProps) {
     [albumSlug, photoById]
   );
 
+  useEffect(() => {
+    setSupportsStreamingZip(canUseSaveFilePicker());
+  }, []);
+
+  useEffect(() => {
+    if (!downloading) return;
+
+    const handleBeforeUnload = () => {
+      abortControllerRef.current?.abort(new DOMException("Page unloading", "AbortError"));
+    };
+
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, [downloading]);
+
   const toggleSelect = useCallback((photoId: string) => {
     setSelected((prev) => {
       const next = new Set(prev);
@@ -122,7 +142,7 @@ export function AlbumGallery({ albumSlug, photos }: AlbumGalleryProps) {
 
     setDownloadError("");
     const ids = Array.from(selected);
-    const canStreamToDisk = canUseSaveFilePicker();
+    const canStreamToDisk = supportsStreamingZip;
 
     if (ids.length > 1 && !canStreamToDisk) {
       const totalBytes = await resolveSelectedTotalBytes(ids);
@@ -151,6 +171,8 @@ export function AlbumGallery({ albumSlug, photos }: AlbumGalleryProps) {
       setDownloadProgress({ done: 0, total: ids.length, phase: "fetching" });
 
       const archiveName = `${albumSlug}-photos.zip`;
+      const controller = new AbortController();
+      abortControllerRef.current = controller;
       const writable = canStreamToDisk ? await createZipFileWritable(archiveName) : null;
       const result = await buildZipArchive({
         files: ids.map((id) => ({
@@ -159,6 +181,7 @@ export function AlbumGallery({ albumSlug, photos }: AlbumGalleryProps) {
           filename: `${id}.jpg`,
           size: photoById.get(id)?.size ?? sizeCacheRef.current.get(id),
         })),
+        signal: controller.signal,
         onProgress: (progress) => {
           setDownloadProgress({
             done: progress.done,
@@ -185,18 +208,20 @@ export function AlbumGallery({ albumSlug, photos }: AlbumGalleryProps) {
         downloadBlob(result.blob, archiveName);
       }
     } catch (err) {
-      if (err instanceof DOMException && err.name === "AbortError") return;
+      if (isAbortError(err)) return;
       console.error("Download failed:", err);
-      setDownloadError(
-        err instanceof Error
-          ? err.message
-          : "ZIP download failed. Try a smaller selection or open this page in Chrome or Edge."
-      );
+      setDownloadError(getZipDownloadErrorMessage(err, "ZIP download failed. Try a smaller selection or open this page in Chrome or Edge."));
     } finally {
+      abortControllerRef.current = null;
       setDownloading(false);
       setDownloadProgress(null);
     }
-  }, [albumSlug, downloading, photoById, resolveSelectedTotalBytes, selected]);
+  }, [albumSlug, downloading, photoById, resolveSelectedTotalBytes, selected, supportsStreamingZip]);
+
+  const cancelDownload = useCallback(() => {
+    setDownloadError("Download cancelled.");
+    abortControllerRef.current?.abort(new DOMException("Download cancelled", "AbortError"));
+  }, []);
 
   const progressLabel =
     downloadProgress?.phase === "fetching"
@@ -217,13 +242,23 @@ export function AlbumGallery({ albumSlug, photos }: AlbumGalleryProps) {
             {selectable ? "[ cancel ]" : "[ select ]"}
           </button>
           {selectable && selected.size > 0 && (
-            <button
-              onClick={downloadSelected}
-              disabled={downloading}
-              className="font-mono text-micro text-amber-600 hover:text-amber-500 transition-colors tracking-wide disabled:opacity-50"
-            >
-              {downloading ? progressLabel : `[ download ${selected.size} ]`}
-            </button>
+            <>
+              <button
+                onClick={downloadSelected}
+                disabled={downloading}
+                className="font-mono text-micro text-amber-600 hover:text-amber-500 transition-colors tracking-wide disabled:opacity-50"
+              >
+                {downloading ? progressLabel : `[ download ${selected.size} ]`}
+              </button>
+              {downloading && downloadProgress ? (
+                <button
+                  onClick={cancelDownload}
+                  className="font-mono text-micro theme-muted hover:text-foreground transition-colors tracking-wide"
+                >
+                  [ cancel download ]
+                </button>
+              ) : null}
+            </>
           )}
         </div>
         <span className="font-mono text-micro theme-muted tracking-wide">
@@ -235,6 +270,11 @@ export function AlbumGallery({ albumSlug, photos }: AlbumGalleryProps) {
       {downloadError ? (
         <p className="mb-4 font-mono text-micro tracking-wide text-red-600">
           {downloadError}
+        </p>
+      ) : null}
+      {supportsStreamingZip && selected.size > 1 && selectedTotalBytes !== null && selectedTotalBytes >= LARGE_STREAMING_ZIP_NOTICE_BYTES ? (
+        <p className="mb-4 font-mono text-nano theme-muted tracking-wide">
+          Large ZIPs in Chrome or Edge may temporarily require about 2x the archive size free on disk before the file is committed.
         </p>
       ) : null}
 
