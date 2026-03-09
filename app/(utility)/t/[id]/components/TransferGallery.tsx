@@ -1447,10 +1447,15 @@ export function TransferGallery({ transferId, files, groups, deleteToken }: Tran
   const busy = preparingDownload || downloading;
   const streamingNoticeBytes = selectedCount > 1 ? selectedTotalBytes : totalTransferBytes;
   const shouldShowTimeFinder = timeFinderModel.showFinder;
-  const hasMultipleTimeFinderDates = useMemo(
-    () => new Set(timeFinderModel.buckets.map((bucket) => bucket.dateKey)).size > 1,
-    [timeFinderModel.buckets]
-  );
+  const timeFinderBucketGroups = useMemo(() => {
+    const groups = new Map<string, TransferTimeFinderBucket[]>();
+    for (const bucket of timeFinderModel.buckets) {
+      const existing = groups.get(bucket.dateKey);
+      if (existing) existing.push(bucket);
+      else groups.set(bucket.dateKey, [bucket]);
+    }
+    return Array.from(groups.entries()).map(([dateKey, buckets]) => ({ dateKey, buckets }));
+  }, [timeFinderModel.buckets]);
   const renderSection = (section: GallerySection) => {
     const sectionVisualItems = section.entries
       .filter((entry): entry is Extract<GalleryEntry, { type: "visual" }> => entry.type === "visual")
@@ -1607,29 +1612,40 @@ export function TransferGallery({ transferId, files, groups, deleteToken }: Tran
               </button>
             ) : null}
           </div>
-          <div className="mt-3 flex flex-wrap items-center gap-2 font-mono text-micro tracking-wide">
-            {timeFinderModel.buckets.map((bucket) => {
-              const isActive = activeTimeBucket?.key === bucket.key;
-              const chipLabel = hasMultipleTimeFinderDates
-                ? `${formatTimeFinderDateLabel(bucket.dateKey)} ${bucket.label}`
-                : bucket.label;
-              return (
-                <button
-                  key={bucket.key}
-                  type="button"
-                  onClick={() => handleTimeBucketChange(bucket)}
-                  title={`${bucket.dateKey} ${bucket.label}`}
-                  aria-label={`Show photos from ${bucket.dateKey} around ${bucket.label}`}
-                  className={
-                    isActive
-                      ? "px-2 py-1 rounded-sm border theme-border text-foreground"
-                      : "px-2 py-1 rounded-sm border theme-border theme-muted hover:text-foreground transition-colors"
-                  }
-                >
-                  [{chipLabel} {bucket.count}]
-                </button>
-              );
-            })}
+          <div className="mt-3 space-y-3">
+            {timeFinderBucketGroups.map(({ dateKey, buckets }) => (
+              <div key={dateKey}>
+                {timeFinderBucketGroups.length > 1 ? (
+                  <p className="mb-2 font-mono text-nano theme-muted tracking-wide">
+                    {formatTimeFinderDateLabel(dateKey)}
+                  </p>
+                ) : null}
+                <div className="flex flex-wrap items-center gap-2 font-mono text-micro tracking-wide">
+                  {buckets.map((bucket) => {
+                    const isActive = activeTimeBucket?.key === bucket.key;
+                    return (
+                      <button
+                        key={bucket.key}
+                        type="button"
+                        onClick={() => handleTimeBucketChange(bucket)}
+                        title={`${bucket.dateKey} ${bucket.label}`}
+                        aria-label={`Show photos from ${bucket.dateKey} around ${bucket.label}`}
+                        className={
+                          isActive
+                            ? "px-2 py-1 rounded-sm border theme-border text-foreground"
+                            : "px-2 py-1 rounded-sm border theme-border theme-muted hover:text-foreground transition-colors"
+                        }
+                      >
+                        [
+                        <span>{bucket.label}</span>
+                        <span className={isActive ? "text-foreground/65" : "theme-muted/80"}> {bucket.count}</span>
+                        ]
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
           </div>
         </div>
       )}
