@@ -219,6 +219,13 @@ export function AlbumGallery({ albumSlug, photos }: AlbumGalleryProps) {
           for (let index = 0; index < prepared.plan.parts.length; index += 1) {
             if (controller.signal.aborted) break;
             const part = prepared.plan.parts[index];
+            setDownloadProgress({
+              done: 0,
+              total: part.files.length,
+              phase: "fetching",
+              partIndex: index + 1,
+              partCount: prepared.plan.partCount,
+            });
             await runArchiveBuild(
               part.files,
               getMultipartArchiveName(prepared.archiveName, index + 1, prepared.plan.partCount),
