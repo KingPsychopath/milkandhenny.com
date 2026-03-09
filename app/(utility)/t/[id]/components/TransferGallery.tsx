@@ -14,7 +14,13 @@ import {
   getZipDownloadErrorMessage,
   isAbortError,
 } from "@/lib/client/media-download";
-import { buildZipArchive } from "@/lib/client/streaming-zip";
+import { buildZipArchive, type ZipSourceFile } from "@/lib/client/streaming-zip";
+import {
+  getMultipartArchiveName,
+  planZipDownload,
+  type ZipPlan,
+  type ZipPlanTotalBytes,
+} from "@/lib/client/zip-planner";
 import { formatBytes } from "@/lib/shared/format";
 import { useLazyImage } from "@/hooks/useLazyImage";
 import { useSwipe } from "@/hooks/useSwipe";
@@ -61,6 +67,18 @@ type DownloadProgress = {
   done: number;
   total: number;
   phase: "fetching" | "zipping";
+  partIndex?: number;
+  partCount?: number;
+};
+
+type PreparedZipDownload = {
+  archiveName: string;
+  files: ZipSourceFile[];
+  plan: ZipPlan;
+};
+
+type PendingMultipartDownload = PreparedZipDownload & {
+  plan: Extract<ZipPlan, { mode: "blob-multipart" }>;
 };
 
 const INITIAL_VISUAL_RENDER_COUNT = 120;
@@ -70,6 +88,10 @@ const FILE_LIST_RENDER_INCREMENT = 120;
 const PAGE_SIZE = 120;
 const PROCESSED_IMAGE_EXTENSIONS = /\.(jpe?g|png|webp|tiff?)$/i;
 const RAW_IMAGE_EXTENSIONS = /\.(dng|arw|cr2|cr3|nef|orf|raf|rw2|raw)$/i;
+
+function formatTotalBytes(total: ZipPlanTotalBytes): string | null {
+  return total.known ? formatBytes(total.bytes) : null;
+}
 
 function hasProcessedImageVariants(file: TransferFileData): boolean {
   if (file.kind !== "image") return false;
@@ -517,10 +539,12 @@ export function TransferGallery({ transferId, files, groups, deleteToken }: Tran
   const [currentFiles, setCurrentFiles] = useState(files);
   const [currentGroups, setCurrentGroups] = useState(groups);
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
+  const [preparingDownload, setPreparingDownload] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const [downloadProgress, setDownloadProgress] = useState<DownloadProgress | null>(null);
   const [downloadError, setDownloadError] = useState("");
   const [supportsStreamingZip, setSupportsStreamingZip] = useState(false);
+  const [pendingMultipartDownload, setPendingMultipartDownload] = useState<PendingMultipartDownload | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
   const [savingSingle, setSavingSingle] = useState(false);
   const [deletingFileId, setDeletingFileId] = useState<string | null>(null);
@@ -551,6 +575,10 @@ export function TransferGallery({ transferId, files, groups, deleteToken }: Tran
   useEffect(() => {
     setCurrentGroups(groups);
   }, [groups]);
+
+  useEffect(() => {
+    setPendingMultipartDownload(null);
+  }, [currentFiles, selectedIds]);
 
   useEffect(() => {
     setSupportsStreamingZip(canUseSaveFilePicker());
@@ -923,24 +951,105 @@ export function TransferGallery({ transferId, files, groups, deleteToken }: Tran
   );
 
   /** Download a subset of files (zip or single) */
-  const downloadFiles = useCallback(
-    async (filesToDownload: TransferFileData[]) => {
-      if (downloading || filesToDownload.length === 0) return;
-      const canStreamToDisk = supportsStreamingZip;
-      const totalBytes = filesToDownload.reduce((sum, file) => sum + file.size, 0);
-      if (
-        filesToDownload.length > 1 &&
-        !canStreamToDisk &&
-        totalBytes > BLOB_ZIP_DOWNLOAD_LIMIT_BYTES
-      ) {
-        setDownloadError(
-          `ZIP downloads over ${formatBytes(BLOB_ZIP_DOWNLOAD_LIMIT_BYTES)} require Chrome or Edge. Download files individually, or open this page in Chrome.`
-        );
-        return;
-      }
+  const runArchiveBuild = useCallback(
+    async (
+      filesToDownload: ZipSourceFile[],
+      archiveName: string,
+      controller: AbortController,
+      options?: { streamToDisk?: boolean; partIndex?: number; partCount?: number }
+    ) => {
+      const writable = options?.streamToDisk ? await createZipFileWritable(archiveName) : null;
 
+      const result = await buildZipArchive({
+        files: filesToDownload,
+        signal: controller.signal,
+        onProgress: (progress) => {
+          setDownloadProgress({
+            done: progress.done,
+            total: progress.total,
+            phase: progress.phase,
+            partIndex: options?.partIndex,
+            partCount: options?.partCount,
+          });
+        },
+        saveTarget: writable
+          ? {
+              write: async (chunk) => {
+                await writable.write(new Uint8Array(chunk));
+              },
+              close: async () => {
+                await writable.close();
+              },
+              abort: async (reason) => {
+                await writable.abort(reason);
+              },
+            }
+          : undefined,
+      });
+
+      if (result.type === "blob") {
+        downloadBlob(result.blob, archiveName);
+      }
+    },
+    []
+  );
+
+  const executePreparedDownload = useCallback(
+    async (prepared: PreparedZipDownload) => {
+      setPendingMultipartDownload(null);
       setDownloading(true);
       setDownloadError("");
+
+      const controller = new AbortController();
+      abortControllerRef.current = controller;
+
+      try {
+        if (prepared.plan.mode === "blob-multipart") {
+          for (let index = 0; index < prepared.plan.parts.length; index += 1) {
+            if (controller.signal.aborted) break;
+            const part = prepared.plan.parts[index];
+            await runArchiveBuild(
+              part.files,
+              getMultipartArchiveName(prepared.archiveName, index + 1, prepared.plan.partCount),
+              controller,
+              {
+                partIndex: index + 1,
+                partCount: prepared.plan.partCount,
+              }
+            );
+          }
+          return;
+        }
+
+        await runArchiveBuild(prepared.files, prepared.archiveName, controller, {
+          streamToDisk: prepared.plan.mode === "streaming-single",
+        });
+      } catch (err) {
+        if (isAbortError(err)) return;
+        console.error("Download failed:", err);
+        setDownloadError(
+          getZipDownloadErrorMessage(
+            err,
+            "Zip download failed. Try a smaller selection or use a browser with save-to-disk support."
+          )
+        );
+      } finally {
+        abortControllerRef.current = null;
+        setDownloading(false);
+        setDownloadProgress(null);
+      }
+    },
+    [runArchiveBuild]
+  );
+
+  const downloadFiles = useCallback(
+    async (filesToDownload: TransferFileData[]) => {
+      if (downloading || preparingDownload || filesToDownload.length === 0) return;
+
+      setDownloadError("");
+      setPendingMultipartDownload(null);
+      setPreparingDownload(true);
+
       try {
         if (filesToDownload.length === 1) {
           const blob = await fetchBlob(getDownloadUrl(filesToDownload[0]));
@@ -948,60 +1057,53 @@ export function TransferGallery({ transferId, files, groups, deleteToken }: Tran
           return;
         }
 
-        setDownloadProgress({ done: 0, total: filesToDownload.length, phase: "fetching" });
-
         const archiveName =
           filesToDownload.length === currentFiles.length
             ? `transfer-${transferId}.zip`
             : `transfer-${transferId}-selected.zip`;
-        const controller = new AbortController();
-        abortControllerRef.current = controller;
-        const writable = canStreamToDisk ? await createZipFileWritable(archiveName) : null;
-
-        const result = await buildZipArchive({
+        const prepared: PreparedZipDownload = {
+          archiveName,
           files: filesToDownload.map((file) => ({
             id: file.id,
             url: getDownloadUrl(file),
             filename: getDownloadFilename(file),
             size: file.size,
           })),
-          signal: controller.signal,
-          onProgress: (progress) => {
-            setDownloadProgress({
-              done: progress.done,
-              total: progress.total,
-              phase: progress.phase,
-            });
-          },
-          saveTarget: writable
-            ? {
-                write: async (chunk) => {
-                  await writable.write(new Uint8Array(chunk));
-                },
-                close: async () => {
-                  await writable.close();
-                },
-                abort: async (reason) => {
-                  await writable.abort(reason);
-                },
-              }
-            : undefined,
-        });
+          plan: planZipDownload(
+            filesToDownload.map((file) => ({
+              id: file.id,
+              url: getDownloadUrl(file),
+              filename: getDownloadFilename(file),
+              size: file.size,
+            })),
+            {
+              pickerAvailable: supportsStreamingZip,
+              maxPartBytes: BLOB_ZIP_DOWNLOAD_LIMIT_BYTES,
+            }
+          ),
+        };
 
-        if (result.type === "blob") {
-          downloadBlob(result.blob, archiveName);
+        if (prepared.plan.mode === "oversize-file") {
+          setDownloadError(
+            `"${prepared.plan.filename}" is larger than ${formatBytes(BLOB_ZIP_DOWNLOAD_LIMIT_BYTES)} and cannot be included in a ZIP on this browser. For a single uninterrupted ZIP download, use Chrome or Edge, or download that file individually.`
+          );
+          return;
         }
-      } catch (err) {
-        if (isAbortError(err)) return;
-        console.error("Download failed:", err);
-        setDownloadError(getZipDownloadErrorMessage(err, "Zip download failed. Try a smaller selection or use a browser with save-to-disk support."));
+
+        if (prepared.plan.mode === "blob-multipart") {
+          setPendingMultipartDownload({
+            ...prepared,
+            plan: prepared.plan,
+          });
+          return;
+        }
+
+        await executePreparedDownload(prepared);
       } finally {
-        abortControllerRef.current = null;
-        setDownloading(false);
-        setDownloadProgress(null);
+        setPreparingDownload(false);
       }
     },
-    [currentFiles.length, downloading, supportsStreamingZip, transferId]
+    [currentFiles.length, downloading, executePreparedDownload, preparingDownload, supportsStreamingZip, transferId]
   );
 
   /** Download all files as a zip with progress */
@@ -1023,6 +1125,11 @@ export function TransferGallery({ transferId, files, groups, deleteToken }: Tran
     if (selected.length === 0) return;
     downloadFiles(selected);
   }, [currentFiles, selectedIds, downloadFiles]);
+
+  const startMultipartDownload = useCallback(async () => {
+    if (!pendingMultipartDownload || downloading || preparingDownload) return;
+    await executePreparedDownload(pendingMultipartDownload);
+  }, [downloading, executePreparedDownload, pendingMultipartDownload, preparingDownload]);
 
   const toggleSelection = useCallback((id: string) => {
     setSelectedIds((prev) => {
@@ -1156,15 +1263,23 @@ export function TransferGallery({ transferId, files, groups, deleteToken }: Tran
   );
 
   const downloadLabel =
-    downloadProgress?.phase === "fetching"
-      ? `[ ${downloadProgress.done}/${downloadProgress.total} fetched... ]`
-      : downloadProgress?.phase === "zipping"
-        ? "[ finalizing archive... ]"
-        : "[ zipping... ]";
+    preparingDownload
+      ? "[ preparing download... ]"
+      : downloadProgress?.phase === "fetching"
+        ? downloadProgress.partCount
+          ? `[ part ${downloadProgress.partIndex}/${downloadProgress.partCount} · ${downloadProgress.done}/${downloadProgress.total} fetched... ]`
+          : `[ ${downloadProgress.done}/${downloadProgress.total} fetched... ]`
+        : downloadProgress?.phase === "zipping"
+          ? downloadProgress.partCount
+            ? `[ part ${downloadProgress.partIndex}/${downloadProgress.partCount} · finalizing archive... ]`
+            : "[ finalizing archive... ]"
+          : "[ zipping... ]";
   const cancelDownload = useCallback(() => {
     setDownloadError("Download cancelled.");
+    setPendingMultipartDownload(null);
     abortControllerRef.current?.abort(new DOMException("Download cancelled", "AbortError"));
   }, []);
+  const busy = preparingDownload || downloading;
   const streamingNoticeBytes = selectedCount > 1 ? selectedTotalBytes : totalTransferBytes;
 
   return (
@@ -1271,10 +1386,10 @@ export function TransferGallery({ transferId, files, groups, deleteToken }: Tran
               </button>
               <button
                 onClick={downloadSelected}
-                disabled={downloading}
+                disabled={busy}
                 className="text-amber-600 hover:text-amber-500 transition-colors disabled:opacity-50"
               >
-                {downloading && downloadProgress && downloadProgress.total === selectedCount ? downloadLabel : "[ download selected ]"}
+                {busy ? downloadLabel : "[ download selected ]"}
               </button>
               {downloading && downloadProgress ? (
                 <button onClick={cancelDownload} className="theme-muted hover:text-foreground transition-colors">
@@ -1295,10 +1410,10 @@ export function TransferGallery({ transferId, files, groups, deleteToken }: Tran
           )}
           <button
             onClick={downloadAll}
-            disabled={downloading}
+            disabled={busy}
             className="text-amber-600 hover:text-amber-500 transition-colors disabled:opacity-50"
           >
-            {downloading && (!downloadProgress || downloadProgress.total === currentFiles.length) ? downloadLabel : "[ download all ]"}
+            {busy ? downloadLabel : "[ download all ]"}
           </button>
           {selectedCount === 0 && downloading && downloadProgress ? (
             <button onClick={cancelDownload} className="theme-muted hover:text-foreground transition-colors">
@@ -1311,6 +1426,37 @@ export function TransferGallery({ transferId, files, groups, deleteToken }: Tran
         <p className="mb-4 font-mono text-micro tracking-wide text-red-600">
           {downloadError}
         </p>
+      ) : null}
+      {pendingMultipartDownload ? (
+        <div className="mb-4 rounded-sm border theme-border px-3 py-3">
+          <p className="font-mono text-micro tracking-wide">
+            This download will be split into {pendingMultipartDownload.plan.partCount} parts (up to {formatBytes(BLOB_ZIP_DOWNLOAD_LIMIT_BYTES)} each).
+          </p>
+          <p className="mt-2 font-mono text-nano theme-muted tracking-wide">
+            For a single uninterrupted ZIP download, use Chrome or Edge.
+          </p>
+          {formatTotalBytes(pendingMultipartDownload.plan.total) ? (
+            <p className="mt-2 font-mono text-nano theme-muted tracking-wide">
+              Total selected: {formatTotalBytes(pendingMultipartDownload.plan.total)}
+            </p>
+          ) : null}
+          <div className="mt-3 flex items-center gap-3 font-mono text-micro tracking-wide">
+            <button
+              onClick={startMultipartDownload}
+              disabled={busy}
+              className="text-amber-600 hover:text-amber-500 transition-colors disabled:opacity-50"
+            >
+              [ download in {pendingMultipartDownload.plan.partCount} parts ]
+            </button>
+            <button
+              onClick={() => setPendingMultipartDownload(null)}
+              disabled={busy}
+              className="theme-muted hover:text-foreground transition-colors disabled:opacity-50"
+            >
+              [ dismiss ]
+            </button>
+          </div>
+        </div>
       ) : null}
       {supportsStreamingZip && currentFiles.length > 1 && streamingNoticeBytes >= LARGE_STREAMING_ZIP_NOTICE_BYTES ? (
         <p className="mb-4 font-mono text-nano theme-muted tracking-wide">

@@ -133,4 +133,51 @@ describe("streaming zip", () => {
       })
     ).rejects.toMatchObject({ name: "AbortError" });
   });
+
+  it("builds independently readable archives from file slices", async () => {
+    const payloads = new Map<string, string>([
+      ["https://example.com/a", "alpha"],
+      ["https://example.com/b", "beta"],
+      ["https://example.com/c", "gamma"],
+    ]);
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: string | URL | Request) => {
+        const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+        const body = payloads.get(url);
+        if (!body) return new Response("missing", { status: 404 });
+
+        return new Response(
+          new ReadableStream<Uint8Array>({
+            start(controller) {
+              controller.enqueue(new TextEncoder().encode(body));
+              controller.close();
+            },
+          })
+        );
+      })
+    );
+
+    const first = await buildZipArchive({
+      files: [
+        { id: "1", filename: "a.txt", url: "https://example.com/a" },
+        { id: "2", filename: "b.txt", url: "https://example.com/b" },
+      ],
+    });
+    const second = await buildZipArchive({
+      files: [{ id: "3", filename: "c.txt", url: "https://example.com/c" }],
+    });
+
+    expect(first.type).toBe("blob");
+    expect(second.type).toBe("blob");
+    if (first.type !== "blob" || second.type !== "blob") throw new Error("Expected blob results");
+
+    const firstZip = await JSZip.loadAsync(await first.blob.arrayBuffer());
+    const secondZip = await JSZip.loadAsync(await second.blob.arrayBuffer());
+
+    await expect(firstZip.file("a.txt")?.async("string")).resolves.toBe("alpha");
+    await expect(firstZip.file("b.txt")?.async("string")).resolves.toBe("beta");
+    await expect(secondZip.file("c.txt")?.async("string")).resolves.toBe("gamma");
+  });
 });
