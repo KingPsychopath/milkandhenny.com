@@ -1,3 +1,5 @@
+import fs from "fs";
+import path from "path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import sharp from "sharp";
 
@@ -112,6 +114,8 @@ async function importProcessingModule() {
 
 describe("raw image preview processing", () => {
   beforeEach(() => {
+    vi.doUnmock("child_process");
+    vi.doUnmock("exifr");
     vi.resetModules();
     vi.clearAllMocks();
   });
@@ -223,6 +227,39 @@ describe("raw image preview processing", () => {
 
     expect(result.width).toBe(1200);
     expect(result.height).toBe(800);
+  });
+
+  it("falls back to dcraw embedded preview extraction when in-memory parsers find nothing", async () => {
+    const preview = await makeJpegBuffer(4032, 3024);
+
+    vi.doMock("child_process", () => ({
+      execFile: vi.fn(
+        (
+          _bin: string,
+          args: string[],
+          _opts: unknown,
+          callback: (error: Error | null, stdout: string, stderr: string) => void
+        ) => {
+          const input = args[args.length - 1] ?? "";
+          const ext = path.extname(input);
+          const stem = path.basename(input, ext);
+          const output = path.join(path.dirname(input), `${stem}.thumb.jpg`);
+          fs.writeFileSync(output, preview);
+          callback(null, "", "");
+        }
+      ),
+    }));
+    vi.doMock("exifr", () => ({
+      default: {
+        thumbnail: vi.fn().mockResolvedValue(undefined),
+      },
+    }));
+
+    const { processToWebP } = await importProcessingModule();
+    const result = await processToWebP(Buffer.from("raw"), "IMG_3006.dng");
+
+    expect(result.width).toBe(1600);
+    expect(result.height).toBe(1200);
   });
 
   it("falls back to the legacy DNG TIFF preview parser when exifr finds nothing", async () => {

@@ -524,6 +524,42 @@ async function resolveLegacyRawPreview(raw: Buffer, sourceExt: string): Promise<
   return candidates.sort(compareRawPreviewCandidates)[0] ?? null;
 }
 
+async function resolveDcrawEmbeddedPreview(raw: Buffer, sourceExt: string): Promise<RawPreviewCandidate | null> {
+  const ext = sourceExt.startsWith(".") ? sourceExt : `.${sourceExt}`;
+
+  return withTempFile("transfer-raw-preview", ext, raw, async (tempFile) => {
+    const tempDir = path.dirname(tempFile);
+    const tempStem = path.basename(tempFile, ext);
+    const candidates = ["dcraw_emu", "dcraw"];
+
+    for (const binary of candidates) {
+      try {
+        await execFileAsync(binary, ["-e", tempFile], {
+          maxBuffer: 32 * 1024 * 1024,
+        });
+      } catch (error) {
+        if (getErrorCode(error) === "ENOENT") continue;
+        continue;
+      }
+
+      const generated = (await fs.readdir(tempDir))
+        .filter((entry) => entry.startsWith(`${tempStem}.thumb.`))
+        .sort();
+
+      for (const entry of generated) {
+        try {
+          const preview = await fs.readFile(path.join(tempDir, entry));
+          return await inspectRawPreviewBuffer(preview, sourceExt);
+        } catch {
+          continue;
+        }
+      }
+    }
+
+    return null;
+  });
+}
+
 async function resolveRawPreview(raw: Buffer, sourceExt: string): Promise<Buffer> {
   const candidates: RawPreviewCandidate[] = [];
   try {
@@ -538,6 +574,9 @@ async function resolveRawPreview(raw: Buffer, sourceExt: string): Promise<Buffer
 
   const legacyPreview = await resolveLegacyRawPreview(raw, sourceExt);
   if (legacyPreview) candidates.push(legacyPreview);
+
+  const dcrawPreview = await resolveDcrawEmbeddedPreview(raw, sourceExt);
+  if (dcrawPreview) candidates.push(dcrawPreview);
 
   if (candidates.length > 0) {
     return candidates.sort(compareRawPreviewCandidates)[0]!.buffer;
