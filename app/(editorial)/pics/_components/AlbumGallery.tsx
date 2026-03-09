@@ -4,14 +4,14 @@ import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import { MasonryGrid } from "./MasonryGrid";
 import { PhotoCard } from "./PhotoCard";
 import type { Photo } from "@/features/media/albums";
-import { getThumbUrl, getOriginalUrl } from "@/features/media/storage";
+import { getThumbUrl, getOriginalStorageKey, getOriginalUrl } from "@/features/media/storage";
 import {
   BLOB_ZIP_DOWNLOAD_LIMIT_BYTES,
   LARGE_STREAMING_ZIP_NOTICE_BYTES,
   canUseSaveFilePicker,
   createZipFileWritable,
-  fetchBlob,
   fetchContentLength,
+  downloadViaPresignedUrl,
   downloadBlob,
   getZipDownloadErrorMessage,
   isAbortError,
@@ -280,8 +280,7 @@ export function AlbumGallery({ albumSlug, photos }: AlbumGalleryProps) {
       const ids = Array.from(selected);
       if (ids.length === 1) {
         const id = ids[0];
-        const blob = await fetchBlob(getOriginalUrl(albumSlug, id));
-        downloadBlob(blob, `${id}.jpg`);
+        await downloadViaPresignedUrl(getOriginalStorageKey(albumSlug, id), `${id}.jpg`);
         return;
       }
 

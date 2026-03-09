@@ -5,11 +5,11 @@ import { useRouter } from "next/navigation";
 import { getStored, setStored } from "@/lib/client/storage";
 import Link from "next/link";
 import { useSwipe } from "@/hooks/useSwipe";
-import { fetchBlob, downloadBlob } from "@/lib/client/media-download";
+import { downloadViaPresignedUrl } from "@/lib/client/media-download";
 
 type PhotoViewerProps = {
   src: string;
-  downloadUrl: string;
+  downloadStorageKey: string;
   filename: string;
   width: number;
   height: number;
@@ -31,7 +31,7 @@ type PhotoViewerProps = {
  */
 export function PhotoViewer({
   src,
-  downloadUrl,
+  downloadStorageKey,
   filename,
   width,
   height,
@@ -158,21 +158,20 @@ export function PhotoViewer({
     };
   }, [src, markLoaded]);
 
-  /** Fetch blob directly from R2 and trigger download */
+  /** Request a direct download URL and hand off to the browser */
   const handleDownload = useCallback(async () => {
     if (savingRef.current) return;
     savingRef.current = true;
     setSaving(true);
     try {
-      const blob = await fetchBlob(downloadUrl);
-      downloadBlob(blob, filename);
+      await downloadViaPresignedUrl(downloadStorageKey, filename);
     } catch (err) {
       console.error("Download failed:", err);
     } finally {
       savingRef.current = false;
       setSaving(false);
     }
-  }, [downloadUrl, filename]);
+  }, [downloadStorageKey, filename]);
 
   const isPortrait = height > width;
 
@@ -269,4 +268,3 @@ export function PhotoViewer({
     </div>
   );
 }
-

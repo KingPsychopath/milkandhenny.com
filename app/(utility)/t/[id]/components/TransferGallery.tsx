@@ -9,7 +9,7 @@ import {
   LARGE_STREAMING_ZIP_NOTICE_BYTES,
   canUseSaveFilePicker,
   createZipFileWritable,
-  fetchBlob,
+  downloadViaPresignedUrl,
   downloadBlob,
   getZipDownloadErrorMessage,
   isAbortError,
@@ -147,6 +147,10 @@ function getOriginalVisualUrl(transferId: string, file: TransferFileData): strin
 
 function getDownloadUrl(file: TransferFileData): string {
   return getTransferStorageUrl(file.originalStorageKey ?? file.storageKey);
+}
+
+function getDownloadStorageKey(file: TransferFileData): string {
+  return file.originalStorageKey ?? file.storageKey;
 }
 
 function getDownloadFilename(file: TransferFileData): string {
@@ -1098,8 +1102,7 @@ export function TransferGallery({ transferId, files, groups, deleteToken }: Tran
       if (savingSingle) return;
       setSavingSingle(true);
       try {
-        const blob = await fetchBlob(getDownloadUrl(file));
-        downloadBlob(blob, getDownloadFilename(file));
+        await downloadViaPresignedUrl(getDownloadStorageKey(file), getDownloadFilename(file));
       } catch (err) {
         console.error("Download failed:", err);
       } finally {
@@ -1218,8 +1221,10 @@ export function TransferGallery({ transferId, files, groups, deleteToken }: Tran
 
       try {
         if (filesToDownload.length === 1) {
-          const blob = await fetchBlob(getDownloadUrl(filesToDownload[0]));
-          downloadBlob(blob, getDownloadFilename(filesToDownload[0]));
+          await downloadViaPresignedUrl(
+            getDownloadStorageKey(filesToDownload[0]),
+            getDownloadFilename(filesToDownload[0])
+          );
           return;
         }
 

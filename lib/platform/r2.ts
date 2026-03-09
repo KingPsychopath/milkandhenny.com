@@ -374,6 +374,26 @@ async function presignPutUrl(
   return getSignedUrl(client, command, { expiresIn });
 }
 
+async function presignGetUrl(
+  key: string,
+  options?: {
+    responseContentDisposition?: string;
+    responseContentType?: string;
+    expiresIn?: number;
+  }
+): Promise<string> {
+  const { client, bucket } = getClient();
+
+  const command = new GetObjectCommand({
+    Bucket: bucket,
+    Key: key,
+    ResponseContentDisposition: options?.responseContentDisposition,
+    ResponseContentType: options?.responseContentType,
+  });
+
+  return getSignedUrl(client, command, { expiresIn: options?.expiresIn ?? 300 });
+}
+
 export {
   isConfigured,
   listObjects,
@@ -384,6 +404,7 @@ export {
   deleteObject,
   deleteObjects,
   getBucketInfo,
+  presignGetUrl,
   presignPutUrl,
 };
 

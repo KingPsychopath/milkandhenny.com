@@ -45,6 +45,10 @@ function getOriginalUrl(album: string, photoId: string): string {
   return getImageUrl(`albums/${album}/original/${photoId}.jpg`);
 }
 
+function getOriginalStorageKey(album: string, photoId: string): string {
+  return `albums/${album}/original/${photoId}.jpg`;
+}
+
 /** Get the OG-sized JPEG URL for Open Graph / social sharing */
 function getOgUrl(album: string, photoId: string): string {
   return getImageUrl(`albums/${album}/og/${photoId}.jpg`);
@@ -184,6 +188,7 @@ export {
   getThumbUrl,
   getFullUrl,
   getOriginalUrl,
+  getOriginalStorageKey,
   getOgUrl,
   getWordMediaUrl,
   getBlogImageUrl,

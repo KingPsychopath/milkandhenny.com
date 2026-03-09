@@ -36,6 +36,45 @@ async function fetchBlob(url: string, retries = 2): Promise<Blob> {
   throw lastError ?? new Error(`Failed to fetch ${url}`);
 }
 
+async function getPresignedDownloadUrl(storageKey: string, filename: string): Promise<string> {
+  const params = new URLSearchParams({
+    key: storageKey,
+    filename,
+  });
+  const response = await fetch(`/api/download/presign?${params.toString()}`, {
+    method: "GET",
+    cache: "no-store",
+  });
+
+  if (!response.ok) {
+    let message = `Failed to prepare download: ${response.status}`;
+    try {
+      const payload = (await response.json()) as { error?: string };
+      if (payload.error) message = payload.error;
+    } catch {}
+    throw new Error(message);
+  }
+
+  const payload = (await response.json()) as { url?: string };
+  if (!payload.url) throw new Error("Failed to prepare download URL.");
+  return payload.url;
+}
+
+function triggerBrowserDownload(url: string, filename?: string): void {
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  if (filename) anchor.download = filename;
+  anchor.rel = "noopener";
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+}
+
+async function downloadViaPresignedUrl(storageKey: string, filename: string): Promise<void> {
+  const url = await getPresignedDownloadUrl(storageKey, filename);
+  triggerBrowserDownload(url, filename);
+}
+
 /** Trigger a browser download from a Blob */
 function downloadBlob(blob: Blob, filename: string) {
   const href = URL.createObjectURL(blob);
@@ -165,13 +204,15 @@ async function fetchImageForCanvas(url: string): Promise<HTMLImageElement> {
   });
 }
 
-export { fetchBlob, downloadBlob, fetchImageForCanvas };
+export { fetchBlob, downloadBlob, downloadViaPresignedUrl, fetchImageForCanvas };
 export {
   BLOB_ZIP_DOWNLOAD_LIMIT_BYTES,
   LARGE_STREAMING_ZIP_NOTICE_BYTES,
   canUseSaveFilePicker,
   createZipFileWritable,
   fetchContentLength,
+  getPresignedDownloadUrl,
   getZipDownloadErrorMessage,
   isAbortError,
+  triggerBrowserDownload,
 };
