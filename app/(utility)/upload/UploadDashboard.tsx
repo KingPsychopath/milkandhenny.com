@@ -203,6 +203,30 @@ function buildUploadFailureMessage(params: {
   return new Error(`Failed to upload ${params.file.name}. ${message}. ${context}`);
 }
 
+function getUploadProgressPercent(progress: {
+  phase: "preparing" | "uploading" | "processing";
+  current: number;
+  total: number;
+}): number | null {
+  if (progress.phase === "processing") return null;
+  if (progress.total <= 0) return 0;
+  return Math.max(0, Math.min(100, Math.round((progress.current / progress.total) * 100)));
+}
+
+function getUploadProgressLabel(progress: {
+  phase: "preparing" | "uploading" | "processing";
+  current: number;
+  total: number;
+}): string {
+  if (progress.phase === "preparing") {
+    return `preparing ${progress.current}/${progress.total}`;
+  }
+  if (progress.phase === "processing") {
+    return `processing previews for ${progress.total} file${progress.total === 1 ? "" : "s"}`;
+  }
+  return `uploading ${progress.current}/${progress.total}`;
+}
+
 export function UploadDashboard({ isAdmin }: UploadDashboardProps) {
   const [mounted, setMounted] = useState(false);
   const [uploadToken, setUploadToken] = useState("");
@@ -246,7 +270,7 @@ export function UploadDashboard({ isAdmin }: UploadDashboardProps) {
 
   /* Upload progress (presigned flow) */
   const [uploadProgress, setUploadProgress] = useState<{
-    phase: "uploading" | "processing";
+    phase: "preparing" | "uploading" | "processing";
     current: number;
     total: number;
     filename?: string;
@@ -535,12 +559,27 @@ export function UploadDashboard({ isAdmin }: UploadDashboardProps) {
         }));
       }
 
+      let completed = 0;
+      setUploadProgress({
+        phase: "preparing",
+        current: 0,
+        total: selectedFiles.length,
+      });
+
       return mapWithConcurrency(
         selectedFiles,
         BROWSER_PREP_CONCURRENCY,
         async (file) => {
           try {
-            return await prepareTransferUploadFile(file, { derivePreview: true });
+            const prepared = await prepareTransferUploadFile(file, { derivePreview: true });
+            completed += 1;
+            setUploadProgress({
+              phase: "preparing",
+              current: completed,
+              total: selectedFiles.length,
+              filename: file.name,
+            });
+            return prepared;
           } catch (error) {
             if (isHeifLikeFile(file)) {
               const detail = error instanceof Error && error.message ? ` ${error.message}` : "";
@@ -1366,15 +1405,52 @@ export function UploadDashboard({ isAdmin }: UploadDashboardProps) {
             className="mt-6 w-full bg-[var(--foreground)] text-[var(--background)] font-mono text-sm lowercase tracking-wide py-2.5 rounded-md hover:opacity-90 transition-opacity disabled:opacity-30"
           >
             {uploading && uploadProgress
-              ? uploadProgress.phase === "processing"
-                ? "processing thumbnails..."
-                : `uploading ${uploadProgress.current}/${uploadProgress.total}...`
+              ? `${getUploadProgressLabel(uploadProgress)}...`
               : uploading
                 ? "uploading..."
                 : mode === "transfer" && transferAction === "append"
                   ? `append ${files.length} file${files.length !== 1 ? "s" : ""}`
                   : `upload ${files.length} file${files.length !== 1 ? "s" : ""}`}
           </button>
+          {uploading && uploadProgress ? (
+            <div
+              className="mt-3 rounded-md border theme-border px-4 py-3"
+              role="status"
+              aria-live="polite"
+              aria-atomic="true"
+            >
+              <div className="flex items-center justify-between gap-3 font-mono text-xs tracking-wide">
+                <span>{getUploadProgressLabel(uploadProgress)}</span>
+                {getUploadProgressPercent(uploadProgress) !== null ? (
+                  <span className="theme-muted">
+                    {getUploadProgressPercent(uploadProgress)}%
+                  </span>
+                ) : (
+                  <span className="theme-muted">final step</span>
+                )}
+              </div>
+              {getUploadProgressPercent(uploadProgress) !== null ? (
+                <div
+                  className="mt-2 h-1.5 overflow-hidden rounded-full bg-[var(--border)]"
+                  aria-hidden="true"
+                >
+                  <div
+                    className="h-full bg-[var(--foreground)] transition-[width] duration-200"
+                    style={{ width: `${getUploadProgressPercent(uploadProgress)}%` }}
+                  />
+                </div>
+              ) : (
+                <p className="mt-2 font-mono text-[11px] theme-muted">
+                  uploads are done. the server is building gallery previews now.
+                </p>
+              )}
+              {uploadProgress.filename ? (
+                <p className="mt-2 truncate font-mono text-[11px] theme-muted">
+                  current file: {uploadProgress.filename}
+                </p>
+              ) : null}
+            </div>
+          ) : null}
         </div>
       )}
 

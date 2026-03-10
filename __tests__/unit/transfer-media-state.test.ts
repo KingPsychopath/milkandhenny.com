@@ -13,6 +13,7 @@ describe("transfer media state helpers", () => {
   it("derives transfer file ids from visual stems", () => {
     expect(getTransferFileId("photo.jpg")).toBe("photo");
     expect(getTransferFileId("clip.mp4")).toBe("clip");
+    expect(getTransferFileId("capture.hif")).toBe("capture");
     expect(getTransferFileId("capture.arw")).toBe("capture");
     expect(getTransferFileId("notes.pdf")).toBe("notes.pdf");
   });
@@ -21,8 +22,8 @@ describe("transfer media state helpers", () => {
     expect(classifyTransferProcessingRoute("photo.jpg")).toBe("local_image");
     expect(classifyTransferProcessingRoute("loop.gif")).toBe("local_gif");
     expect(classifyTransferProcessingRoute("clip.mov")).toBe("local_video");
+    expect(classifyTransferProcessingRoute("capture.hif")).toBe("local_image");
     expect(classifyTransferProcessingRoute("capture.dng")).toBe("raw_try_local");
-    expect(classifyTransferProcessingRoute("capture.hif")).toBeNull();
     expect(classifyTransferProcessingRoute("notes.pdf")).toBeNull();
   });
 

@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const {
   downloadBuffer,
+  headObject,
   processImageVariants,
   processRawWithDcraw,
   saveTransfer,
@@ -17,6 +18,7 @@ const {
   return {
     RawPreviewUnavailableError: MockRawPreviewUnavailableError,
     downloadBuffer: vi.fn(),
+    headObject: vi.fn(),
     processImageVariants: vi.fn(),
     processRawWithDcraw: vi.fn(),
     saveTransfer: vi.fn(),
@@ -26,7 +28,7 @@ const {
 
 vi.mock("@/lib/platform/r2", () => ({
   downloadBuffer,
-  headObject: vi.fn(),
+  headObject,
   uploadBuffer,
 }));
 
@@ -110,6 +112,63 @@ describe("local transfer backfill", () => {
       processingRoute: "raw_try_local",
     });
     expect(uploadBuffer).toHaveBeenCalledTimes(2);
+    expect(saveTransfer).toHaveBeenCalled();
+  });
+
+  it("reclassifies skipped HEIF files and generates previews during backfill", async () => {
+    const { createLocalMediaProcessor } = await import("@/features/media/backends/local");
+
+    headObject.mockResolvedValue({ exists: false });
+    downloadBuffer.mockResolvedValue(Buffer.from("heif"));
+    processImageVariants.mockResolvedValue({
+      thumb: { buffer: Buffer.from("thumb"), contentType: "image/webp" },
+      full: { buffer: Buffer.from("full"), contentType: "image/webp" },
+      width: 3024,
+      height: 4032,
+      takenAt: null,
+    });
+
+    const processor = createLocalMediaProcessor();
+    const transfer = {
+      id: "transfer-1",
+      title: "transfer",
+      createdAt: new Date().toISOString(),
+      expiresAt: new Date(Date.now() + 60_000).toISOString(),
+      deleteToken: "token",
+      files: [
+        {
+          id: "capture.hif",
+          filename: "capture.hif",
+          kind: "image" as const,
+          size: 2048,
+          mimeType: "image/heif",
+          storageKey: "transfers/transfer-1/originals/capture.hif",
+          previewStatus: "original_only" as const,
+          processingStatus: "skipped" as const,
+        },
+      ],
+    };
+
+    const updated = await processor.backfillTransferMedia(transfer);
+
+    expect(updated.files[0]).toMatchObject({
+      id: "capture.hif",
+      filename: "capture.hif",
+      previewStatus: "ready",
+      processingStatus: "local_done",
+      processingRoute: "local_image",
+    });
+    expect(downloadBuffer).toHaveBeenCalledWith("transfers/transfer-1/originals/capture.hif");
+    expect(uploadBuffer).toHaveBeenCalledWith(
+      "transfers/transfer-1/thumb/capture.hif.webp",
+      Buffer.from("thumb"),
+      "image/webp"
+    );
+    expect(uploadBuffer).toHaveBeenCalledWith(
+      "transfers/transfer-1/full/capture.hif.webp",
+      Buffer.from("full"),
+      "image/webp"
+    );
     expect(saveTransfer).toHaveBeenCalled();
   });
 });

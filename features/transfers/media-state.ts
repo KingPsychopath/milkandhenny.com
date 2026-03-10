@@ -53,6 +53,7 @@ function getFilenameStem(filename: string): string {
 function getTransferFileId(filename: string): string {
   if (
     PROCESSABLE_IMAGE_EXTENSIONS.test(filename) ||
+    HEIF_EXTENSIONS.test(filename) ||
     RAW_IMAGE_EXTENSIONS.test(filename) ||
     ANIMATED_EXTENSIONS.test(filename) ||
     VIDEO_EXTENSIONS.test(filename)
@@ -97,6 +98,7 @@ function classifyTransferProcessingRoute(filename: string): ProcessingRoute | nu
   if (RAW_IMAGE_EXTENSIONS.test(filename)) return "raw_try_local";
   if (ANIMATED_EXTENSIONS.test(filename)) return "local_gif";
   if (VIDEO_EXTENSIONS.test(filename)) return "local_video";
+  if (HEIF_EXTENSIONS.test(filename)) return "local_image";
   if (PROCESSABLE_IMAGE_EXTENSIONS.test(filename)) return "local_image";
   return null;
 }

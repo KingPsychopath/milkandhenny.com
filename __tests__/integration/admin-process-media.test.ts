@@ -14,31 +14,16 @@ describe("admin transfer media route", () => {
     vi.resetModules();
   });
 
-  it("drains queued worker jobs and returns the actual counts", async () => {
-    const runTransferMediaJobs = vi.fn().mockResolvedValue({
-      processedJobs: 7,
-      succeeded: 5,
-      failed: 1,
-      skipped: 1,
-      queueLength: 21,
-    });
-    const wakeTransferMediaWorker = vi.fn().mockResolvedValue(true);
-
+  it("reports drain mode without invoking the external worker", async () => {
     vi.doMock("@/features/auth/server", () => ({
       requireAuth: vi.fn().mockResolvedValue(null),
       requireAdminStepUp: vi.fn().mockResolvedValue(null),
-    }));
-    vi.doMock("@/features/media/backends/worker", () => ({
-      runTransferMediaJobs,
-      wakeTransferMediaWorker,
-      requeueTransferFile: vi.fn(),
     }));
     vi.doMock("@/features/transfers/upload", () => ({
       backfillTransferMedia: vi.fn(),
     }));
     vi.doMock("@/features/transfers/store", () => ({
       getTransfer: vi.fn(),
-      saveTransfer: vi.fn(),
     }));
     vi.doMock("@/features/transfers/admin", () => ({
       getAdminTransferMediaStats: vi.fn().mockResolvedValue({
@@ -57,54 +42,63 @@ describe("admin transfer media route", () => {
     await expect(response.json()).resolves.toMatchObject({
       success: true,
       mode: "drain",
-      wokeWorker: true,
-      processedJobs: 7,
-      succeeded: 5,
-      failed: 1,
-      skipped: 1,
+      workerDisabled: true,
+      processedJobs: 0,
+      succeeded: 0,
+      failed: 0,
+      skipped: 0,
       queueLength: 21,
       worker: {
         lastHeartbeatAt: "2026-03-08T22:29:30.000Z",
       },
     });
-    expect(runTransferMediaJobs).toHaveBeenCalledWith(7);
-    expect(wakeTransferMediaWorker).toHaveBeenCalledTimes(1);
   });
 
   it("retries the matching file by mediaId when filenames collide", async () => {
-    const requeueTransferFile = vi.fn().mockResolvedValue({
-      id: "photo-2",
-      filename: "photo.jpg",
-      kind: "image",
-      size: 20,
-      mimeType: "image/jpeg",
-      storageKey: "transfers/transfer-1/derived/photo.jpg",
-      previewStatus: "original_only",
-      processingStatus: "queued",
-      processingRoute: "worker_image",
-      enqueuedAt: "2026-03-08T10:00:00.000Z",
-      retryCount: 1,
+    const backfillTransferMedia = vi.fn().mockResolvedValue({
+      id: "transfer-1",
+      title: "transfer",
+      createdAt: "2026-03-08T09:00:00.000Z",
+      expiresAt: "2026-03-10T11:00:00.000Z",
+      deleteToken: "token",
+      files: [
+        {
+          id: "photo",
+          filename: "photo.jpg",
+          kind: "image",
+          size: 10,
+          mimeType: "image/jpeg",
+          storageKey: "transfers/transfer-1/derived/photo.jpg",
+          processingStatus: "failed",
+        },
+        {
+          id: "photo-2",
+          filename: "photo.jpg",
+          kind: "image",
+          size: 20,
+          mimeType: "image/jpeg",
+          storageKey: "transfers/transfer-1/derived/photo.jpg",
+          previewStatus: "ready",
+          processingStatus: "local_done",
+          processingRoute: "local_image",
+          retryCount: 1,
+        },
+      ],
     });
-    const saveTransfer = vi.fn().mockResolvedValue(undefined);
 
     vi.doMock("@/features/auth/server", () => ({
       requireAuth: vi.fn().mockResolvedValue(null),
       requireAdminStepUp: vi.fn().mockResolvedValue(null),
     }));
-    vi.doMock("@/features/media/backends/worker", () => ({
-      runTransferMediaJobs: vi.fn(),
-      wakeTransferMediaWorker: vi.fn(),
-      requeueTransferFile,
-    }));
     vi.doMock("@/features/transfers/upload", () => ({
-      backfillTransferMedia: vi.fn(),
+      backfillTransferMedia,
     }));
     vi.doMock("@/features/transfers/store", () => ({
       getTransfer: vi.fn().mockResolvedValue({
         id: "transfer-1",
         title: "transfer",
         createdAt: "2026-03-08T09:00:00.000Z",
-        expiresAt: "2026-03-09T11:00:00.000Z",
+        expiresAt: "2026-03-10T11:00:00.000Z",
         deleteToken: "token",
         files: [
           {
@@ -127,7 +121,6 @@ describe("admin transfer media route", () => {
           },
         ],
       }),
-      saveTransfer,
     }));
     vi.doMock("@/lib/platform/api-error", () => ({
       apiErrorFromRequest: vi.fn(),
@@ -150,21 +143,10 @@ describe("admin transfer media route", () => {
       requeued: true,
       mediaId: "photo-2",
       filename: "photo.jpg",
-      processingStatus: "queued",
+      processingStatus: "local_done",
     });
-    expect(requeueTransferFile).toHaveBeenCalledWith(
-      expect.objectContaining({ id: "transfer-1" }),
-      expect.objectContaining({ id: "photo-2" }),
-      true
-    );
-    expect(saveTransfer).toHaveBeenCalledWith(
-      expect.objectContaining({
-        files: [
-          expect.objectContaining({ id: "photo", processingStatus: "failed" }),
-          expect.objectContaining({ id: "photo-2", processingStatus: "queued" }),
-        ],
-      }),
-      expect.any(Number)
+    expect(backfillTransferMedia).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "transfer-1" })
     );
   });
 
@@ -185,24 +167,25 @@ describe("admin transfer media route", () => {
       requireAuth: vi.fn().mockResolvedValue(null),
       requireAdminStepUp: vi.fn().mockResolvedValue(null),
     }));
-    vi.doMock("@/features/media/backends/worker", () => ({
-      runTransferMediaJobs: vi.fn(),
-      wakeTransferMediaWorker: vi.fn(),
-      requeueTransferFile: vi.fn().mockResolvedValue(target),
-    }));
     vi.doMock("@/features/transfers/upload", () => ({
-      backfillTransferMedia: vi.fn(),
+      backfillTransferMedia: vi.fn().mockResolvedValue({
+        id: "transfer-1",
+        title: "transfer",
+        createdAt: "2026-03-08T09:00:00.000Z",
+        expiresAt: "2026-03-10T11:00:00.000Z",
+        deleteToken: "token",
+        files: [target],
+      }),
     }));
     vi.doMock("@/features/transfers/store", () => ({
       getTransfer: vi.fn().mockResolvedValue({
         id: "transfer-1",
         title: "transfer",
         createdAt: "2026-03-08T09:00:00.000Z",
-        expiresAt: "2026-03-09T11:00:00.000Z",
+        expiresAt: "2026-03-10T11:00:00.000Z",
         deleteToken: "token",
         files: [target],
       }),
-      saveTransfer: vi.fn().mockResolvedValue(undefined),
     }));
     vi.doMock("@/lib/platform/api-error", () => ({
       apiErrorFromRequest: vi.fn(),

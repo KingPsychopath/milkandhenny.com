@@ -700,9 +700,11 @@ export function AdminDashboard() {
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        throw new Error((data.error as string) || "Failed to drain transfer media queue");
+        throw new Error((data.error as string) || "Failed to inspect transfer media queue");
       }
-      const msg = `Drained queue: processed ${data.processedJobs ?? 0}, succeeded ${data.succeeded ?? 0}, failed ${data.failed ?? 0}, remaining ${data.queueLength ?? 0}.`;
+      const msg = data.workerDisabled
+        ? `Worker disabled. Pending queue: ${data.queueLength ?? 0}.`
+        : `Drained queue: processed ${data.processedJobs ?? 0}, succeeded ${data.succeeded ?? 0}, failed ${data.failed ?? 0}, remaining ${data.queueLength ?? 0}.`;
       setStatusMessage(msg);
       setTransferStatus(msg);
       await Promise.all([
@@ -710,7 +712,7 @@ export function AdminDashboard() {
         transferDetail ? handleLoadTransferDetail(transferDetail.id) : Promise.resolve(),
       ]);
     } catch (err) {
-      const msg = err instanceof Error ? err.message : "Failed to drain transfer media queue";
+      const msg = err instanceof Error ? err.message : "Failed to inspect transfer media queue";
       setErrorMessage(msg);
     } finally {
       setTransferActionLoading(null);
@@ -1530,9 +1532,9 @@ export function AdminDashboard() {
                 disabled={transferActionLoading === "drain"}
                 onClick={() => void handleDrainTransferMediaQueue()}
                 className="font-mono text-xs theme-muted hover:text-[var(--foreground)] transition-colors disabled:opacity-50"
-                title="Runs queued transfer media jobs now and refreshes queue stats."
+                title="Refresh queue stats while the worker path is disabled."
               >
-                {transferActionLoading === "drain" ? "draining..." : "drain queue"}
+                {transferActionLoading === "drain" ? "checking..." : "check queue"}
               </button>
               <button
                 type="button"
@@ -1615,7 +1617,7 @@ export function AdminDashboard() {
           {transferMediaStats ? (
             <div className="grid grid-cols-3 gap-3 font-mono text-sm">
               <div className="border theme-border rounded-md p-3">
-                <p className="theme-muted text-xs">worker queue</p>
+                <p className="theme-muted text-xs">media queue</p>
                 <p className="text-lg">{transferMediaStats.queueLength}</p>
               </div>
               <div className="border theme-border rounded-md p-3">
@@ -1687,7 +1689,7 @@ export function AdminDashboard() {
                       disabled={transferActionLoading === `backfill:${transfer.id}`}
                       onClick={() => void handleBackfillTransferMedia(transfer.id)}
                       className="font-mono text-xs theme-muted hover:text-[var(--foreground)] transition-colors disabled:opacity-50"
-                      title="Re-check transfer media and requeue failed items when possible."
+                      title="Re-check transfer media and retry failed items locally when possible."
                     >
                       {transferActionLoading === `backfill:${transfer.id}` ? "backfilling..." : "backfill"}
                     </button>

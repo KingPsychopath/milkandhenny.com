@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/features/auth/server";
-import { wakeTransferMediaWorker } from "@/features/media/backends/worker";
 import { getAdminTransferMediaStats } from "@/features/transfers/admin";
 import { apiErrorFromRequest } from "@/lib/platform/api-error";
 
@@ -11,13 +10,10 @@ export async function GET(request: NextRequest) {
   if (authErr) return authErr;
 
   try {
-    const [wokeWorker, media] = await Promise.all([
-      wakeTransferMediaWorker(),
-      getAdminTransferMediaStats(),
-    ]);
+    const media = await getAdminTransferMediaStats();
     return NextResponse.json({
       success: true,
-      wokeWorker,
+      workerDisabled: true,
       queueLength: media.queueLength,
       worker: media.worker,
     });
@@ -25,7 +21,7 @@ export async function GET(request: NextRequest) {
     return apiErrorFromRequest(
       request,
       "cron.transfers.process-media",
-      "Failed to wake transfer media worker",
+      "Failed to inspect transfer media status",
       error,
     );
   }

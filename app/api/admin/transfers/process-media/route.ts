@@ -1,12 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdminStepUp, requireAuth } from "@/features/auth/server";
-import {
-  requeueTransferFile,
-  runTransferMediaJobs,
-  wakeTransferMediaWorker,
-} from "@/features/media/backends/worker";
 import { backfillTransferMedia } from "@/features/transfers/upload";
-import { getTransfer, saveTransfer } from "@/features/transfers/store";
+import { didTransferFileChange } from "@/features/transfers/media-state";
+import { getTransfer } from "@/features/transfers/store";
 import { apiErrorFromRequest } from "@/lib/platform/api-error";
 import { getAdminTransferMediaStats } from "@/features/transfers/admin";
 
@@ -32,24 +28,16 @@ export async function POST(request: NextRequest) {
 
   try {
     if (mode === "drain") {
-      const limit =
-        "limit" in body && typeof body.limit === "number" && Number.isFinite(body.limit)
-          ? Math.max(1, Math.floor(body.limit))
-          : 25;
-      const [wokeWorker, result, media] = await Promise.all([
-        wakeTransferMediaWorker(),
-        runTransferMediaJobs(limit),
-        getAdminTransferMediaStats(),
-      ]);
+      const media = await getAdminTransferMediaStats();
       return NextResponse.json({
         success: true,
         mode,
-        wokeWorker,
-        processedJobs: result.processedJobs,
-        succeeded: result.succeeded,
-        failed: result.failed,
-        skipped: result.skipped,
-        queueLength: result.queueLength,
+        workerDisabled: true,
+        processedJobs: 0,
+        succeeded: 0,
+        failed: 0,
+        skipped: 0,
+        queueLength: media.queueLength,
         worker: media.worker,
       });
     }
@@ -87,8 +75,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Transfer not found or expired" }, { status: 404 });
     }
 
-    const remainingSeconds = Math.ceil((new Date(transfer.expiresAt).getTime() - Date.now()) / 1000);
-    if (remainingSeconds <= 0) {
+    if (Math.ceil((new Date(transfer.expiresAt).getTime() - Date.now()) / 1000) <= 0) {
       return NextResponse.json({ error: "Transfer has already expired" }, { status: 400 });
     }
 
@@ -99,19 +86,16 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "File not found in transfer" }, { status: 404 });
     }
 
-    const updatedFile = await requeueTransferFile(transfer, target, "force" in body && body.force === true);
-    const didRequeue =
-      updatedFile.processingStatus !== target.processingStatus ||
-      updatedFile.enqueuedAt !== target.enqueuedAt;
-    const updatedTransfer = {
-      ...transfer,
-      files: transfer.files.map((file) => (file.id === target.id ? updatedFile : file)),
-    };
-    await saveTransfer(updatedTransfer, remainingSeconds);
+    const updatedTransfer = await backfillTransferMedia(transfer);
+    const updatedFile = updatedTransfer.files.find((file) => file.id === target.id);
+    if (!updatedFile) {
+      return NextResponse.json({ error: "File not found after refresh" }, { status: 404 });
+    }
+    const didRetry = didTransferFileChange(target, updatedFile);
 
     return NextResponse.json({
-      success: didRequeue,
-      requeued: didRequeue,
+      success: didRetry,
+      requeued: didRetry,
       mode,
       transferId,
       mediaId: target.id,

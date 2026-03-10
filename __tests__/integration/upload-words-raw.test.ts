@@ -15,11 +15,10 @@ describe("words raw upload handling", () => {
     vi.clearAllMocks();
   });
 
-  it("queues non-raw image uploads instead of processing them inline", async () => {
-    const enqueueWordMediaJob = vi.fn().mockResolvedValue(undefined);
-    const downloadBuffer = vi.fn();
-    const uploadBuffer = vi.fn();
-    const deleteObject = vi.fn();
+  it("processes non-raw image uploads inline", async () => {
+    const downloadBuffer = vi.fn().mockResolvedValue(Buffer.from("jpg"));
+    const uploadBuffer = vi.fn().mockResolvedValue(undefined);
+    const deleteObject = vi.fn().mockResolvedValue(undefined);
 
     vi.doMock("@/features/auth/server", () => ({
       requireAuthWithPayload: vi.fn().mockResolvedValue({ error: null }),
@@ -30,9 +29,20 @@ describe("words raw upload handling", () => {
       isConfigured: () => true,
       uploadBuffer,
     }));
-    vi.doMock("@/features/words/media-queue", () => ({
-      enqueueWordMediaJob,
-    }));
+    vi.doMock("@/features/media/processing", async () => {
+      const actual = await vi.importActual<typeof import("@/features/media/processing")>(
+        "@/features/media/processing"
+      );
+      return {
+        ...actual,
+        processToWebP: vi.fn().mockResolvedValue({
+          buffer: Buffer.from("webp"),
+          width: 1600,
+          height: 1067,
+          takenAt: null,
+        }),
+      };
+    });
 
     const { POST } = await import("@/app/api/upload/words/finalize/route");
     const response = await POST(
@@ -60,18 +70,15 @@ describe("words raw upload handling", () => {
           markdown: "![hero](words/media/launch-notes/hero.webp)",
         },
       ],
-      queuedCount: 1,
+      queuedCount: 0,
     });
-    expect(enqueueWordMediaJob).toHaveBeenCalledWith(
-      expect.objectContaining({
-        original: "Hero.JPG",
-        uploadKey: "words/media/launch-notes/incoming/tmp-hero.jpg",
-        finalFilename: "hero.webp",
-      })
+    expect(downloadBuffer).toHaveBeenCalledWith("words/media/launch-notes/incoming/tmp-hero.jpg");
+    expect(uploadBuffer).toHaveBeenCalledWith(
+      "words/media/launch-notes/hero.webp",
+      Buffer.from("webp"),
+      "image/webp"
     );
-    expect(downloadBuffer).not.toHaveBeenCalled();
-    expect(uploadBuffer).not.toHaveBeenCalled();
-    expect(deleteObject).not.toHaveBeenCalled();
+    expect(deleteObject).toHaveBeenCalledWith("words/media/launch-notes/incoming/tmp-hero.jpg");
   });
 
   it("returns webp output when raw preview extraction succeeds", async () => {

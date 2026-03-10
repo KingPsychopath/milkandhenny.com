@@ -461,11 +461,17 @@ async function inferCompatibleTransferFileState(
   transferId: string,
   file: TransferFile
 ): Promise<TransferFile> {
-  if (file.previewStatus && file.processingStatus && (file.processingRoute || file.processingStatus === "skipped")) {
-    return file;
+  const inferredRoute = classifyTransferProcessingRoute(file.filename);
+  if (file.previewStatus && file.processingStatus) {
+    if (file.processingRoute) {
+      return file;
+    }
+    if (file.processingStatus === "skipped" && !inferredRoute) {
+      return file;
+    }
   }
 
-  const route = classifyTransferProcessingRoute(file.filename);
+  const route = inferredRoute;
   if (!route) {
     return {
       ...file,

@@ -27,6 +27,32 @@ import { SITE_BRAND } from "@/lib/shared/config";
 type ExecFileAsyncOptions = NonNullable<Parameters<typeof execFile>[2]>;
 type ExecFileAsyncOutput = Buffer | string;
 type ExifrModule = (typeof import("exifr"))["default"];
+type ExifrParsedTags = Awaited<ReturnType<ExifrModule["parse"]>>;
+
+type HeifDisplayTarget = {
+  data: Uint8ClampedArray;
+  width: number;
+  height: number;
+};
+
+type HeifImageLike = {
+  get_width(): number;
+  get_height(): number;
+  is_primary(): boolean;
+  display(
+    target: HeifDisplayTarget,
+    callback: (result: HeifDisplayTarget | null) => void
+  ): void;
+  free(): void;
+};
+
+type HeifDecoderLike = {
+  decode(data: ArrayBuffer | Uint8Array): HeifImageLike[];
+};
+
+type LibheifLike = {
+  HeifDecoder: new () => HeifDecoderLike;
+};
 
 function execFileAsync(
   file: string,
@@ -46,6 +72,44 @@ function execFileAsync(
 
 async function importExifr(): Promise<ExifrModule> {
   return (await import("exifr")).default;
+}
+
+async function importLibheif(): Promise<LibheifLike> {
+  const imported = await import("libheif-js/wasm-bundle.js");
+  return (imported.default ?? imported) as unknown as LibheifLike;
+}
+
+async function safeReadOrientation(
+  exifr: ExifrModule,
+  raw: Buffer
+): Promise<number> {
+  try {
+    const orientation = await Promise.resolve().then(() => exifr.orientation(raw));
+    return typeof orientation === "number" ? orientation : 1;
+  } catch {
+    return 1;
+  }
+}
+
+async function safeParseMetadata(
+  exifr: ExifrModule,
+  raw: Buffer
+): Promise<ExifrParsedTags | null> {
+  try {
+    return await Promise.resolve().then(() =>
+      exifr.parse(raw, {
+        tiff: true,
+        exif: true,
+        xmp: true,
+        gps: false,
+        icc: false,
+        iptc: false,
+        jfif: false,
+      })
+    );
+  } catch {
+    return null;
+  }
 }
 
 /* ─── Constants ─── */
@@ -130,7 +194,49 @@ function getFileKind(filename: string): FileKind {
 
 /** Check if a filename is a processable image (Sharp-compatible) */
 function isProcessableImage(filename: string): boolean {
-  return PROCESSABLE_EXTENSIONS.test(filename) || RAW_IMAGE_EXTENSIONS.test(filename);
+  return (
+    PROCESSABLE_EXTENSIONS.test(filename) ||
+    HEIF_EXTENSIONS.test(filename) ||
+    RAW_IMAGE_EXTENSIONS.test(filename)
+  );
+}
+
+function getBufferArrayView(buffer: Buffer): Uint8Array {
+  return new Uint8Array(
+    buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength)
+  );
+}
+
+function getTakenAtFromParsedTags(tags: ExifrParsedTags): string | null {
+  if (!tags || typeof tags !== "object") return null;
+  for (const key of [
+    "DateTimeOriginal",
+    "DateTimeDigitized",
+    "DateTime",
+    "CreateDate",
+    "ModifyDate",
+  ] as const) {
+    const value = tags[key];
+    if (value instanceof Date && !Number.isNaN(value.getTime())) {
+      return value.toISOString();
+    }
+  }
+  return null;
+}
+
+function getLivePhotoContentIdFromParsedTags(tags: ExifrParsedTags): string | null {
+  if (!tags || typeof tags !== "object") return null;
+  for (const key of [
+    "ContentIdentifier",
+    "MediaGroupUUID",
+    "AssetIdentifier",
+    "assetIdentifier",
+    "contentIdentifier",
+  ] as const) {
+    const value = tags[key];
+    if (typeof value === "string" && value.trim()) return value.trim();
+  }
+  return null;
 }
 
 /* ─── RAW processing ─── */
@@ -223,6 +329,90 @@ async function processRawWithExiftool(
   return { buffer, width, height };
 }
 
+function applyHeifOrientation(pipeline: sharp.Sharp, orientation: number): sharp.Sharp {
+  switch (orientation) {
+    case 2:
+      return pipeline.flop();
+    case 3:
+      return pipeline.rotate(180);
+    case 4:
+      return pipeline.flip();
+    case 5:
+      return pipeline.rotate(90).flop();
+    case 6:
+      return pipeline.rotate(90);
+    case 7:
+      return pipeline.rotate(90).flip();
+    case 8:
+      return pipeline.rotate(-90);
+    default:
+      return pipeline;
+  }
+}
+
+async function decodeHeifImage(raw: Buffer): Promise<{
+  buffer: Buffer;
+  takenAt: string | null;
+  livePhotoContentId: string | null;
+}> {
+  const exifr = await importExifr();
+  const [orientation, tags, libheif] = await Promise.all([
+    safeReadOrientation(exifr, raw),
+    safeParseMetadata(exifr, raw),
+    importLibheif(),
+  ]);
+
+  const decoder = new libheif.HeifDecoder();
+  const images = decoder.decode(getBufferArrayView(raw));
+  const image = images.find((candidate) => candidate.is_primary()) ?? images[0];
+
+  if (!image) {
+    throw new Error("No HEIF image found");
+  }
+
+  const width = image.get_width();
+  const height = image.get_height();
+  const target: HeifDisplayTarget = {
+    data: new Uint8ClampedArray(width * height * 4),
+    width,
+    height,
+  };
+
+  try {
+    const displayData = await new Promise<HeifDisplayTarget>((resolve, reject) => {
+      image.display(target, (result) => {
+        if (!result) {
+          reject(new Error("HEIF decode failed"));
+          return;
+        }
+        resolve(result);
+      });
+    });
+
+    const rgba = Buffer.from(displayData.data);
+    const jpeg = await applyHeifOrientation(
+      sharp(rgba, {
+        raw: {
+          width: displayData.width,
+          height: displayData.height,
+          channels: 4,
+        },
+      }),
+      typeof orientation === "number" ? orientation : 1
+    )
+      .jpeg({ quality: 95, mozjpeg: true })
+      .toBuffer();
+
+    return {
+      buffer: jpeg,
+      takenAt: getTakenAtFromParsedTags(tags),
+      livePhotoContentId: getLivePhotoContentIdFromParsedTags(tags),
+    };
+  } finally {
+    images.forEach((candidate) => candidate.free());
+  }
+}
+
 /**
  * Resolve the best processing source for an image.
  *
@@ -235,7 +425,11 @@ async function processRawWithExiftool(
 async function resolveImageProcessingSource(
   raw: Buffer,
   sourceExt: string
-): Promise<{ buffer: Buffer; takenAt: string | null }> {
+): Promise<{ buffer: Buffer; takenAt: string | null; livePhotoContentId?: string | null }> {
+  if (HEIF_EXTENSIONS.test(sourceExt)) {
+    return decodeHeifImage(raw);
+  }
+
   if (!RAW_IMAGE_EXTENSIONS.test(sourceExt)) {
     const takenAt = extractExifDate(
       (await sharp(raw).metadata()).exif
@@ -406,27 +600,8 @@ function extractExifDate(exifBuffer: Buffer | undefined): string | null {
 async function extractStillImageLivePhotoContentId(raw: Buffer): Promise<string | null> {
   try {
     const exifr = await importExifr();
-    const tags = await exifr.parse(raw, {
-      tiff: true,
-      exif: true,
-      xmp: true,
-      gps: false,
-      icc: false,
-      iptc: false,
-      jfif: false,
-    });
-    if (!tags || typeof tags !== "object") return null;
-    for (const key of [
-      "ContentIdentifier",
-      "MediaGroupUUID",
-      "AssetIdentifier",
-      "assetIdentifier",
-      "contentIdentifier",
-    ] as const) {
-      const value = tags[key];
-      if (typeof value === "string" && value.trim()) return value.trim();
-    }
-    return null;
+    const tags = await safeParseMetadata(exifr, raw);
+    return getLivePhotoContentIdFromParsedTags(tags);
   } catch {
     return null;
   }
@@ -514,7 +689,11 @@ async function processImageVariants(
   rotationOverride?: RotationOverride,
 ): Promise<ProcessedImage> {
   const ext = sourceExt.toLowerCase();
-  const { buffer: processingSource, takenAt } = await resolveImageProcessingSource(raw, ext);
+  const {
+    buffer: processingSource,
+    takenAt,
+    livePhotoContentId: sourceLivePhotoContentId,
+  } = await resolveImageProcessingSource(raw, ext);
   const { buffer: rotated, width, height } = await autoRotate(processingSource, rotationOverride);
 
   // Generate all variants in parallel where possible
@@ -532,7 +711,11 @@ async function processImageVariants(
       }
       return ogPipeline.jpeg({ quality: 70, mozjpeg: true }).toBuffer();
     })(),
-    extractStillImageLivePhotoContentId(raw),
+    HEIF_EXTENSIONS.test(ext)
+      ? Promise.resolve(sourceLivePhotoContentId ?? null)
+      : Promise.resolve(sourceLivePhotoContentId ?? null).then((value) =>
+          value ? value : extractStillImageLivePhotoContentId(raw)
+        ),
   ]);
 
   const isJpeg = ext === ".jpg" || ext === ".jpeg";
