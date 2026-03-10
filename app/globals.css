@@ -359,7 +359,7 @@
 
   .prose-blog .prose-table--compact table {
     width: 100%;
-    min-width: 76rem;
+    min-width: 54rem;
     max-width: none;
     table-layout: fixed;
   }
@@ -380,8 +380,8 @@
 
   .prose-blog .prose-table--compact th,
   .prose-blog .prose-table--compact td {
-    min-width: 9.5rem;
-    max-width: 16rem;
+    min-width: 7.5rem;
+    max-width: 14rem;
   }
 
   .prose-blog .prose-table--compact .prose-table-cell {

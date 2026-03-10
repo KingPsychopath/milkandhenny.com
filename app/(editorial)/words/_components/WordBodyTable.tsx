@@ -223,7 +223,7 @@ export function WordBodyTable({
   ...props
 }: React.DetailedHTMLProps<React.TableHTMLAttributes<HTMLTableElement>, HTMLTableElement>) {
   const [isCollapsed, setIsCollapsed] = React.useState(true);
-  const [isFirstColumnPinned, setIsFirstColumnPinned] = React.useState(true);
+  const [isFirstColumnPinned, setIsFirstColumnPinned] = React.useState(false);
   const [expandedRows, setExpandedRows] = React.useState<Record<string, boolean>>({});
   const [copied, setCopied] = React.useState(false);
   const tableRef = React.useRef<HTMLTableElement | null>(null);
