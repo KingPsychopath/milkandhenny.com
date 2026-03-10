@@ -70,19 +70,19 @@ function isImageOnlyParagraph(node: MarkdownNode | undefined): boolean {
 
 function getBaseComponents(wordSlug?: string): Components {
   return {
-  table: ({ children, ...props }) => <WordBodyTable {...props}>{children}</WordBodyTable>,
+    table: ({ children, node, ...props }) => <WordBodyTable {...props} node={node}>{children}</WordBodyTable>,
 
-  tr: ({ children, node, ...props }) => (
-    <WordBodyTableRow {...props} node={node}>
-      {children}
-    </WordBodyTableRow>
-  ),
+    tr: ({ children, node, ...props }) => (
+      <WordBodyTableRow {...props} node={node}>
+        {children}
+      </WordBodyTableRow>
+    ),
 
-  td: ({ children, node, ...props }) => (
-    <WordBodyTableCell {...props} node={node as MarkdownNode | undefined}>
-      {children}
-    </WordBodyTableCell>
-  ),
+    td: ({ children, node, ...props }) => (
+      <WordBodyTableCell {...props} node={node as MarkdownNode | undefined}>
+        {children}
+      </WordBodyTableCell>
+    ),
 
   /**
    * Images: resolves relative paths (e.g. "words/media/slug/image.webp" or "words/assets/kit/image.webp")

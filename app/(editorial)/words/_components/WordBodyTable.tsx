@@ -13,8 +13,32 @@ type TableData = {
   rows: string[][];
 };
 
+type MarkdownNode = {
+  type?: string;
+  tagName?: string;
+  value?: string;
+  properties?: Record<string, unknown>;
+  children?: MarkdownNode[];
+};
+
+type TableShape = {
+  columnCount: number;
+  rowCount: number;
+  longestCellLength: number;
+  totalTextLength: number;
+};
+
+type OverflowState = {
+  hasHorizontalOverflow: boolean;
+  showOverflowStart: boolean;
+  showOverflowEnd: boolean;
+};
+
 const TABLE_TEXT_LIMIT = 36;
 const TABLE_LINE_LIMIT = 2;
+const COMPACT_COLUMN_THRESHOLD = 5;
+const COMPACT_TEXT_THRESHOLD = 240;
+const OVERFLOW_EPSILON_PX = 4;
 const TableRenderContext = React.createContext<TableContextValue | null>(null);
 const TableRowContext = React.createContext<string | null>(null);
 
@@ -70,6 +94,134 @@ function normalizeCellText(value: string): string {
   return value.replace(/\s+/g, " ").trim();
 }
 
+function getTagName(element: React.ReactElement): string | null {
+  return typeof element.type === "string" ? element.type : null;
+}
+
+function reactChildrenToText(children: ReactNode): string {
+  return normalizeCellText(textFromChildren(children));
+}
+
+function getReactElementChildren(element: React.ReactElement): React.ReactElement[] {
+  const childNodes = (element.props as { children?: ReactNode }).children;
+  return React.Children.toArray(childNodes).filter(React.isValidElement) as React.ReactElement[];
+}
+
+export function analyzeTableChildren(children: ReactNode): TableShape {
+  const rows: React.ReactElement[] = [];
+
+  const visit = (nodeChildren: ReactNode) => {
+    for (const child of React.Children.toArray(nodeChildren)) {
+      if (!React.isValidElement(child)) continue;
+      const tagName = getTagName(child);
+      if (tagName === "tr") {
+        rows.push(child);
+        continue;
+      }
+      visit((child.props as { children?: ReactNode }).children);
+    }
+  };
+
+  visit(children);
+
+  let columnCount = 0;
+  let longestCellLength = 0;
+  let totalTextLength = 0;
+
+  for (const row of rows) {
+    const cells = getReactElementChildren(row).filter((child) => {
+      const tagName = getTagName(child);
+      return tagName === "th" || tagName === "td";
+    });
+    columnCount = Math.max(columnCount, cells.length);
+    for (const cell of cells) {
+      const text = reactChildrenToText((cell.props as { children?: ReactNode }).children);
+      longestCellLength = Math.max(longestCellLength, text.length);
+      totalTextLength += text.length;
+    }
+  }
+
+  return {
+    columnCount,
+    rowCount: rows.length,
+    longestCellLength,
+    totalTextLength,
+  };
+}
+
+export function shouldDefaultToCompact(shape: TableShape): boolean {
+  if (shape.columnCount >= COMPACT_COLUMN_THRESHOLD) return true;
+  if (shape.columnCount >= 4 && shape.longestCellLength > TABLE_TEXT_LIMIT) return true;
+  return shape.columnCount >= 3 && shape.totalTextLength >= COMPACT_TEXT_THRESHOLD;
+}
+
+function stringifyMarkdownNode(node: MarkdownNode | undefined): string {
+  if (!node) return "";
+  if (node.type === "text") return node.value ?? "";
+  if (node.type === "inlineCode") return `\`${node.value ?? ""}\``;
+  if (node.tagName === "code") return `\`${node.children?.map(stringifyMarkdownNode).join("") ?? node.value ?? ""}\``;
+  if (node.tagName === "br") return "<br />";
+  if (node.tagName === "img") {
+    const src = typeof node.properties?.src === "string" ? node.properties.src : "";
+    const alt = typeof node.properties?.alt === "string" ? node.properties.alt : "";
+    return alt || src ? `![${alt}](${src})` : "";
+  }
+  if (node.tagName === "a") {
+    const href = typeof node.properties?.href === "string" ? node.properties.href : "";
+    const text = normalizeCellText(node.children?.map(stringifyMarkdownNode).join("") ?? "");
+    return href ? `[${text || href}](${href})` : text;
+  }
+  if (node.tagName === "ul") {
+    return node.children
+      ?.filter((child) => child.tagName === "li")
+      .map((child) => `- ${normalizeCellText(child.children?.map(stringifyMarkdownNode).join(" ") ?? "")}`)
+      .join("\n") ?? "";
+  }
+  if (node.tagName === "ol") {
+    return node.children
+      ?.filter((child) => child.tagName === "li")
+      .map((child, index) => `${index + 1}. ${normalizeCellText(child.children?.map(stringifyMarkdownNode).join(" ") ?? "")}`)
+      .join("\n") ?? "";
+  }
+
+  return node.children?.map(stringifyMarkdownNode).join("") ?? node.value ?? "";
+}
+
+function getCellNodesFromRow(row: MarkdownNode): MarkdownNode[] {
+  return (row.children ?? []).filter((child) => child.tagName === "th" || child.tagName === "td");
+}
+
+function rowCellsFromNode(row: MarkdownNode): string[] {
+  return getCellNodesFromRow(row)
+    .map((cell) => normalizeCellText(stringifyMarkdownNode(cell)))
+    .filter((value) => value.length > 0);
+}
+
+export function extractTableDataFromNode(tableNode: MarkdownNode | undefined): TableData {
+  if (!tableNode || tableNode.tagName !== "table") return { headers: [], rows: [] };
+
+  const sectionNodes = tableNode.children ?? [];
+  const thead = sectionNodes.find((child) => child.tagName === "thead");
+  const tbody = sectionNodes.find((child) => child.tagName === "tbody");
+
+  if (thead) {
+    const headerRow = (thead.children ?? []).find((child) => child.tagName === "tr");
+    const bodyRows = (tbody?.children ?? []).filter((child) => child.tagName === "tr");
+    return {
+      headers: headerRow ? rowCellsFromNode(headerRow) : [],
+      rows: bodyRows.map(rowCellsFromNode).filter((row) => row.length > 0),
+    };
+  }
+
+  const rowNodes = sectionNodes.filter((child) => child.tagName === "tr");
+  if (rowNodes.length === 0) return { headers: [], rows: [] };
+
+  return {
+    headers: rowCellsFromNode(rowNodes[0]),
+    rows: rowNodes.slice(1).map(rowCellsFromNode).filter((row) => row.length > 0),
+  };
+}
+
 function rowCellsFromDom(row: HTMLTableRowElement): string[] {
   return Array.from(row.querySelectorAll("th, td"))
     .map((cell) => normalizeCellText(cell.textContent ?? ""))
@@ -94,6 +246,23 @@ function extractTableDataFromDom(tableEl: HTMLTableElement | null): TableData {
   return {
     headers: rowCellsFromDom(first),
     rows: rest.map(rowCellsFromDom).filter((row) => row.length > 0),
+  };
+}
+
+export function getOverflowState(scrollLeft: number, clientWidth: number, scrollWidth: number): OverflowState {
+  if (scrollWidth <= clientWidth + OVERFLOW_EPSILON_PX) {
+    return {
+      hasHorizontalOverflow: false,
+      showOverflowStart: false,
+      showOverflowEnd: false,
+    };
+  }
+
+  const maxScrollLeft = Math.max(scrollWidth - clientWidth, 0);
+  return {
+    hasHorizontalOverflow: true,
+    showOverflowStart: scrollLeft > OVERFLOW_EPSILON_PX,
+    showOverflowEnd: scrollLeft < maxScrollLeft - OVERFLOW_EPSILON_PX,
   };
 }
 
@@ -220,13 +389,24 @@ function PinIcon() {
 
 export function WordBodyTable({
   children,
+  node,
   ...props
-}: React.DetailedHTMLProps<React.TableHTMLAttributes<HTMLTableElement>, HTMLTableElement>) {
-  const [isCollapsed, setIsCollapsed] = React.useState(true);
+}: React.DetailedHTMLProps<React.TableHTMLAttributes<HTMLTableElement>, HTMLTableElement> & {
+  node?: unknown;
+}) {
+  const tableShape = React.useMemo(() => analyzeTableChildren(children), [children]);
+  const sourceTableData = React.useMemo(() => extractTableDataFromNode(node as MarkdownNode | undefined), [node]);
+  const [isCollapsed, setIsCollapsed] = React.useState(() => shouldDefaultToCompact(tableShape));
   const [isFirstColumnPinned, setIsFirstColumnPinned] = React.useState(false);
   const [expandedRows, setExpandedRows] = React.useState<Record<string, boolean>>({});
   const [copied, setCopied] = React.useState(false);
+  const [overflowState, setOverflowState] = React.useState<OverflowState>({
+    hasHorizontalOverflow: false,
+    showOverflowStart: false,
+    showOverflowEnd: false,
+  });
   const tableRef = React.useRef<HTMLTableElement | null>(null);
+  const scrollRef = React.useRef<HTMLDivElement | null>(null);
 
   const toggleRow = React.useCallback((rowId: string) => {
     setExpandedRows((prev) => ({ ...prev, [rowId]: !prev[rowId] }));
@@ -247,27 +427,69 @@ export function WordBodyTable({
     return () => window.clearTimeout(timeout);
   }, [copied]);
 
+  React.useEffect(() => {
+    const scrollEl = scrollRef.current;
+    if (!scrollEl) return;
+
+    const syncOverflow = () => {
+      setOverflowState(getOverflowState(scrollEl.scrollLeft, scrollEl.clientWidth, scrollEl.scrollWidth));
+    };
+
+    syncOverflow();
+    scrollEl.addEventListener("scroll", syncOverflow, { passive: true });
+    window.addEventListener("resize", syncOverflow);
+
+    let resizeObserver: ResizeObserver | null = null;
+    if (typeof ResizeObserver !== "undefined") {
+      resizeObserver = new ResizeObserver(syncOverflow);
+      resizeObserver.observe(scrollEl);
+      if (tableRef.current) resizeObserver.observe(tableRef.current);
+    }
+
+    return () => {
+      scrollEl.removeEventListener("scroll", syncOverflow);
+      window.removeEventListener("resize", syncOverflow);
+      resizeObserver?.disconnect();
+    };
+  }, [children, isCollapsed]);
+
+  React.useEffect(() => {
+    if (!overflowState.hasHorizontalOverflow && isFirstColumnPinned) {
+      setIsFirstColumnPinned(false);
+    }
+  }, [overflowState.hasHorizontalOverflow, isFirstColumnPinned]);
+
+  const getTableData = React.useCallback(() => {
+    if (sourceTableData.headers.length > 0 || sourceTableData.rows.length > 0) return sourceTableData;
+    return extractTableDataFromDom(tableRef.current);
+  }, [sourceTableData]);
+
   const handleCopy = React.useCallback(async () => {
-    const tableData = extractTableDataFromDom(tableRef.current);
+    const tableData = getTableData();
     const markdown = toMarkdownTable(tableData);
     const fallback = toCsv(tableData).replace(/,/g, "\t");
     const ok = await copyText(markdown || fallback);
     if (ok) setCopied(true);
-  }, []);
+  }, [getTableData]);
 
   const handleDownloadCsv = React.useCallback(() => {
-    const tableData = extractTableDataFromDom(tableRef.current);
+    const tableData = getTableData();
     downloadTextFile("table.csv", toCsv(tableData), "text/csv;charset=utf-8");
-  }, []);
+  }, [getTableData]);
 
   const handleDownloadMarkdown = React.useCallback(() => {
-    const tableData = extractTableDataFromDom(tableRef.current);
+    const tableData = getTableData();
     downloadTextFile("table.md", toMarkdownTable(tableData), "text/markdown;charset=utf-8");
-  }, []);
+  }, [getTableData]);
 
   return (
-    <div className={`prose-table ${isCollapsed ? "prose-table--compact" : "prose-table--expanded"} ${isFirstColumnPinned ? "prose-table--pinned" : ""}`}>
-      <div className="prose-table-scroll">
+    <div className={`prose-table ${isCollapsed ? "prose-table--compact" : "prose-table--expanded"} ${isFirstColumnPinned ? "prose-table--pinned" : ""} ${overflowState.hasHorizontalOverflow ? "prose-table--scrollable" : ""}`}>
+      <div
+        ref={scrollRef}
+        className="prose-table-scroll"
+        data-overflow-start={overflowState.showOverflowStart ? "true" : "false"}
+        data-overflow-end={overflowState.showOverflowEnd ? "true" : "false"}
+      >
         <TableRenderContext.Provider value={contextValue}>
           <table ref={tableRef} {...props}>{children}</table>
         </TableRenderContext.Provider>
@@ -284,16 +506,18 @@ export function WordBodyTable({
           >
             {isCollapsed ? <ExpandIcon /> : <CollapseIcon />}
           </button>
-          <button
-            type="button"
-            className="prose-table-button prose-table-icon-button"
-            onClick={() => setIsFirstColumnPinned((prev) => !prev)}
-            aria-pressed={isFirstColumnPinned}
-            aria-label={isFirstColumnPinned ? "unpin first column" : "pin first column"}
-            title={isFirstColumnPinned ? "unpin first column" : "pin first column"}
-          >
-            <PinIcon />
-          </button>
+          {overflowState.hasHorizontalOverflow ? (
+            <button
+              type="button"
+              className="prose-table-button prose-table-icon-button"
+              onClick={() => setIsFirstColumnPinned((prev) => !prev)}
+              aria-pressed={isFirstColumnPinned}
+              aria-label={isFirstColumnPinned ? "unpin first column" : "pin first column"}
+              title={isFirstColumnPinned ? "unpin first column" : "pin first column"}
+            >
+              <PinIcon />
+            </button>
+          ) : null}
         </div>
         <div className="prose-table-footer-actions">
           <button
@@ -346,7 +570,7 @@ export function WordBodyTableCell({
   const canClamp = shouldClampCell(text);
   const isExpanded = !tableContext.isCollapsed || tableContext.isRowExpanded(rowId);
   const shouldClamp = tableContext.isCollapsed && canClamp && !isExpanded;
-  const isToggleable = tableContext.isCollapsed;
+  const isToggleable = tableContext.isCollapsed && canClamp;
 
   const toggle = () => tableContext.toggleRow(rowId);
   const isInteractiveTarget = (target: EventTarget | null) =>

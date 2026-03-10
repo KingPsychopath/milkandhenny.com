@@ -339,8 +339,37 @@
   }
 
   .prose-blog .prose-table-scroll {
+    position: relative;
     overflow-x: auto;
     border-bottom: 1px solid var(--stone-200);
+  }
+
+  .prose-blog .prose-table-scroll::before,
+  .prose-blog .prose-table-scroll::after {
+    content: "";
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 1.1rem;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 140ms ease;
+    z-index: 3;
+  }
+
+  .prose-blog .prose-table-scroll::before {
+    left: 0;
+    background: linear-gradient(to right, color-mix(in oklch, var(--stone-50) 96%, transparent), transparent);
+  }
+
+  .prose-blog .prose-table-scroll::after {
+    right: 0;
+    background: linear-gradient(to left, color-mix(in oklch, var(--stone-50) 96%, transparent), transparent);
+  }
+
+  .prose-blog .prose-table--scrollable .prose-table-scroll[data-overflow-start="true"]::before,
+  .prose-blog .prose-table--scrollable .prose-table-scroll[data-overflow-end="true"]::after {
+    opacity: 1;
   }
 
   .prose-blog table {
@@ -384,6 +413,18 @@
     max-width: 14rem;
   }
 
+  .prose-blog .prose-table--compact th:first-child,
+  .prose-blog .prose-table--compact td:first-child {
+    min-width: 6.5rem;
+    max-width: 10rem;
+  }
+
+  .prose-blog .prose-table--compact th:not(:first-child),
+  .prose-blog .prose-table--compact td:not(:first-child) {
+    min-width: 8rem;
+    max-width: 15rem;
+  }
+
   .prose-blog .prose-table--compact .prose-table-cell {
     hyphens: manual;
     overflow-wrap: normal;
@@ -407,6 +448,11 @@
     font-weight: 400;
     overflow-wrap: break-word;
     word-break: normal;
+  }
+
+  .prose-blog tbody td:first-child {
+    font-weight: 600;
+    color: var(--prose-heading);
   }
 
   .prose-blog .prose-table-cell {
