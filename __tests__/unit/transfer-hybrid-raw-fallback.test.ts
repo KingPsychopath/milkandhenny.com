@@ -4,6 +4,8 @@ const {
   enqueueWorkerJob,
   getLocalProcessingTimeoutMs,
   inferCompatibleTransferFileState,
+  listExistingTransferDerivativeKeys,
+  needsCompatibilityInference,
   processTransferBufferLocally,
   processTransferObjectLocally,
   refreshQueuedTransferState,
@@ -13,6 +15,8 @@ const {
   enqueueWorkerJob: vi.fn(),
   getLocalProcessingTimeoutMs: vi.fn(),
   inferCompatibleTransferFileState: vi.fn(),
+  listExistingTransferDerivativeKeys: vi.fn(),
+  needsCompatibilityInference: vi.fn(),
   processTransferBufferLocally: vi.fn(),
   processTransferObjectLocally: vi.fn(),
   refreshQueuedTransferState: vi.fn(),
@@ -27,6 +31,8 @@ vi.mock("@/features/media/config", () => ({
 
 vi.mock("@/features/media/backends/local", () => ({
   inferCompatibleTransferFileState,
+  listExistingTransferDerivativeKeys,
+  needsCompatibilityInference,
   processTransferBufferLocally,
   processTransferObjectLocally,
 }));
@@ -37,33 +43,18 @@ vi.mock("@/features/media/backends/worker", () => ({
   requeueTransferFile,
 }));
 
-import { createHybridMediaProcessor } from "@/features/media/backends/hybrid";
-
 describe("hybrid transfer raw fallback", () => {
   beforeEach(() => {
+    vi.resetModules();
     vi.clearAllMocks();
     getLocalProcessingTimeoutMs.mockReturnValue(0);
     shouldRouteToWorkerFirst.mockReturnValue(false);
     refreshQueuedTransferState.mockImplementation(async (transfer) => transfer);
+    needsCompatibilityInference.mockReturnValue(false);
+    listExistingTransferDerivativeKeys.mockResolvedValue(new Set());
   });
 
-  it("queues raw uploads for worker decoding when local preview extraction fails", async () => {
-    processTransferObjectLocally.mockResolvedValue({
-      file: {
-        id: "capture",
-        filename: "capture.dng",
-        kind: "image",
-        size: 4096,
-        mimeType: "image/x-adobe-dng",
-        storageKey: "transfers/transfer-1/originals/capture.dng",
-        previewStatus: "original_only",
-        processingStatus: "failed",
-        processingRoute: "raw_try_local",
-        processingErrorCode: "raw_preview_unavailable",
-      },
-      uploadedBytes: 4096,
-    });
-
+  it("queues raw uploads immediately in hybrid mode", async () => {
     enqueueWorkerJob.mockResolvedValue({
       file: {
         id: "capture",
@@ -76,10 +67,11 @@ describe("hybrid transfer raw fallback", () => {
         processingStatus: "queued",
         processingBackend: "worker",
         processingRoute: "worker_raw",
-      },
-      uploadedBytes: 4096,
+        },
+        uploadedBytes: 4096,
     });
 
+    const { createHybridMediaProcessor } = await import("@/features/media/backends/hybrid");
     const processor = createHybridMediaProcessor("hybrid");
     const result = await processor.processTransferObject(
       {
@@ -90,17 +82,7 @@ describe("hybrid transfer raw fallback", () => {
       "transfer-1"
     );
 
-    expect(processTransferObjectLocally).toHaveBeenCalledWith(
-      {
-        name: "capture.dng",
-        size: 4096,
-        type: "image/x-adobe-dng",
-      },
-      "transfer-1",
-      "local_done",
-      "local",
-      "raw_try_local"
-    );
+    expect(processTransferObjectLocally).not.toHaveBeenCalled();
     expect(enqueueWorkerJob).toHaveBeenCalledWith({
       transferId: "transfer-1",
       file: {
@@ -114,24 +96,8 @@ describe("hybrid transfer raw fallback", () => {
     expect(result.file.processingRoute).toBe("worker_raw");
   });
 
-  it("queues direct raw buffers for worker decoding when local preview extraction fails", async () => {
+  it("queues direct raw buffers immediately in hybrid mode", async () => {
     const buffer = Buffer.from("raw");
-
-    processTransferBufferLocally.mockResolvedValue({
-      file: {
-        id: "capture",
-        filename: "capture.dng",
-        kind: "image",
-        size: buffer.byteLength,
-        mimeType: "image/x-adobe-dng",
-        storageKey: "transfers/transfer-1/originals/capture.dng",
-        previewStatus: "original_only",
-        processingStatus: "failed",
-        processingRoute: "raw_try_local",
-        processingErrorCode: "raw_preview_unavailable",
-      },
-      uploadedBytes: buffer.byteLength,
-    });
 
     enqueueWorkerJob.mockResolvedValue({
       file: {
@@ -149,6 +115,7 @@ describe("hybrid transfer raw fallback", () => {
       uploadedBytes: buffer.byteLength,
     });
 
+    const { createHybridMediaProcessor } = await import("@/features/media/backends/hybrid");
     const processor = createHybridMediaProcessor("hybrid");
     const result = await processor.processTransferBuffer(
       buffer,
@@ -160,18 +127,7 @@ describe("hybrid transfer raw fallback", () => {
       "transfer-1"
     );
 
-    expect(processTransferBufferLocally).toHaveBeenCalledWith(
-      buffer,
-      {
-        name: "capture.dng",
-        size: buffer.byteLength,
-        type: "image/x-adobe-dng",
-      },
-      "transfer-1",
-      "local_done",
-      "local",
-      "raw_try_local"
-    );
+    expect(processTransferBufferLocally).not.toHaveBeenCalled();
     expect(enqueueWorkerJob).toHaveBeenCalledWith({
       transferId: "transfer-1",
       file: {
@@ -184,6 +140,48 @@ describe("hybrid transfer raw fallback", () => {
     });
     expect(result.file.processingStatus).toBe("queued");
     expect(result.file.processingRoute).toBe("worker_raw");
+  });
+
+  it("queues video uploads immediately in hybrid mode", async () => {
+    enqueueWorkerJob.mockResolvedValue({
+      file: {
+        id: "clip",
+        filename: "clip.mov",
+        kind: "video",
+        size: 8192,
+        mimeType: "video/quicktime",
+        storageKey: "transfers/transfer-1/originals/clip.mov",
+        previewStatus: "original_only",
+        processingStatus: "queued",
+        processingBackend: "worker",
+        processingRoute: "worker_video",
+      },
+      uploadedBytes: 8192,
+    });
+
+    const { createHybridMediaProcessor } = await import("@/features/media/backends/hybrid");
+    const processor = createHybridMediaProcessor("hybrid");
+    const result = await processor.processTransferObject(
+      {
+        name: "clip.mov",
+        size: 8192,
+        type: "video/quicktime",
+      },
+      "transfer-1"
+    );
+
+    expect(processTransferObjectLocally).not.toHaveBeenCalled();
+    expect(enqueueWorkerJob).toHaveBeenCalledWith({
+      transferId: "transfer-1",
+      file: {
+        name: "clip.mov",
+        size: 8192,
+        type: "video/quicktime",
+      },
+      route: "local_video",
+    });
+    expect(result.file.processingStatus).toBe("queued");
+    expect(result.file.processingRoute).toBe("worker_video");
   });
 
   it("requeues failed raw files during backfill when retries remain", async () => {
@@ -218,6 +216,7 @@ describe("hybrid transfer raw fallback", () => {
       processingRoute: "worker_raw",
     });
 
+    const { createHybridMediaProcessor } = await import("@/features/media/backends/hybrid");
     const processor = createHybridMediaProcessor("hybrid");
     const updated = await processor.backfillTransferMedia(transfer);
 

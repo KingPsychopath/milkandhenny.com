@@ -9,15 +9,16 @@ WORKDIR /app
 RUN corepack enable
 
 COPY package.transfer-worker.json ./package.json
-COPY deploy/fly-transfer-worker/pnpm-lock.yaml ./pnpm-lock.yaml
 COPY tsconfig.worker.json ./
 COPY scripts ./scripts
 COPY features ./features
 COPY lib ./lib
+COPY deploy/cloudflare-transfer-worker/container ./deploy/cloudflare-transfer-worker/container
 
-RUN pnpm install --prod --frozen-lockfile
+RUN pnpm install --prod --no-frozen-lockfile
 
 ENV NODE_ENV=production
+ENV PORT=8080
 EXPOSE 8080
 
-CMD ["./node_modules/.bin/tsx", "--tsconfig", "tsconfig.worker.json", "scripts/transfer-media-worker.ts"]
+CMD ["./node_modules/.bin/tsx", "--tsconfig", "tsconfig.worker.json", "deploy/cloudflare-transfer-worker/container/server.ts"]

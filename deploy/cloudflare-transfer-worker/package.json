@@ -1,0 +1,16 @@
+{
+  "name": "cloudflare-transfer-worker",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "deploy": "wrangler deploy",
+    "dev": "wrangler dev"
+  },
+  "dependencies": {
+    "@cloudflare/containers": "latest"
+  },
+  "devDependencies": {
+    "typescript": "latest",
+    "wrangler": "latest"
+  }
+}

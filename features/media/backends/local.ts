@@ -1,6 +1,6 @@
 import "server-only";
 
-import { downloadBuffer, headObject, uploadBuffer } from "@/lib/platform/r2";
+import { downloadBuffer, headObject, listObjects, uploadBuffer } from "@/lib/platform/r2";
 import {
   RawPreviewUnavailableError,
   getFileKind,
@@ -459,16 +459,12 @@ async function processTransferObjectLocally(
 
 async function inferCompatibleTransferFileState(
   transferId: string,
-  file: TransferFile
+  file: TransferFile,
+  existingDerivativeKeys?: Set<string>
 ): Promise<TransferFile> {
   const inferredRoute = classifyTransferProcessingRoute(file.filename);
-  if (file.previewStatus && file.processingStatus) {
-    if (file.processingRoute) {
-      return file;
-    }
-    if (file.processingStatus === "skipped" && !inferredRoute) {
-      return file;
-    }
+  if (!needsCompatibilityInference(file)) {
+    return file;
   }
 
   const route = inferredRoute;
@@ -482,12 +478,21 @@ async function inferCompatibleTransferFileState(
   }
 
   const expected = getExpectedTransferAssetKeys(transferId, file.filename, route, file.id);
-  const [thumbMeta, fullMeta] = await Promise.all([
-    expected.thumbKey ? headObject(expected.thumbKey) : Promise.resolve({ exists: true }),
-    expected.fullKey ? headObject(expected.fullKey) : Promise.resolve({ exists: true }),
-  ]);
+  const [thumbExists, fullExists] = existingDerivativeKeys
+    ? [
+        expected.thumbKey ? existingDerivativeKeys.has(expected.thumbKey) : true,
+        expected.fullKey ? existingDerivativeKeys.has(expected.fullKey) : true,
+      ]
+    : await Promise.all([
+        expected.thumbKey
+          ? headObject(expected.thumbKey).then((meta) => meta.exists)
+          : Promise.resolve(true),
+        expected.fullKey
+          ? headObject(expected.fullKey).then((meta) => meta.exists)
+          : Promise.resolve(true),
+      ]);
 
-  if (thumbMeta.exists && fullMeta.exists) {
+  if (thumbExists && fullExists) {
     return {
       ...file,
       storageKey: file.storageKey ?? buildTransferPrimaryStorageKey(transferId, { name: file.filename }),
@@ -509,6 +514,23 @@ async function inferCompatibleTransferFileState(
       "legacy_missing_derivatives"
     ),
   };
+}
+
+function needsCompatibilityInference(file: TransferFile): boolean {
+  const inferredRoute = classifyTransferProcessingRoute(file.filename);
+  if (file.previewStatus && file.processingStatus) {
+    if (file.processingRoute) return false;
+    if (file.processingStatus === "skipped" && !inferredRoute) return false;
+  }
+  return true;
+}
+
+async function listExistingTransferDerivativeKeys(transferId: string): Promise<Set<string>> {
+  const [thumbObjects, fullObjects] = await Promise.all([
+    listObjects(`transfers/${transferId}/thumb/`),
+    listObjects(`transfers/${transferId}/full/`),
+  ]);
+  return new Set([...thumbObjects, ...fullObjects].map((object) => object.key));
 }
 
 function markRetriesExhausted(file: TransferFile): TransferFile {
@@ -613,9 +635,16 @@ function createLocalMediaProcessor() {
 
       let changed = false;
       const nowMs = Date.now();
+      const existingDerivativeKeys = transfer.files.some((file) => needsCompatibilityInference(file))
+        ? await listExistingTransferDerivativeKeys(transfer.id)
+        : undefined;
       const normalizedFiles = await Promise.all(
         transfer.files.map(async (file) => {
-          const inferred = await inferCompatibleTransferFileState(transfer.id, file);
+          const inferred = await inferCompatibleTransferFileState(
+            transfer.id,
+            file,
+            existingDerivativeKeys
+          );
           if (didTransferFileChange(file, inferred)) {
             changed = true;
           }
@@ -675,6 +704,8 @@ export {
   createLocalMediaProcessor,
   getRouteKind,
   inferCompatibleTransferFileState,
+  listExistingTransferDerivativeKeys,
+  needsCompatibilityInference,
   processTransferBufferLocally,
   processTransferObjectLocally,
 };

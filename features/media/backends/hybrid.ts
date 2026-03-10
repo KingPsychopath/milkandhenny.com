@@ -15,7 +15,13 @@ import {
 } from "@/features/transfers/media-state";
 import { saveTransfer, type TransferData, type TransferFile } from "@/features/transfers/store";
 import type { TransferUploadFileInput } from "@/features/transfers/upload-types";
-import { inferCompatibleTransferFileState, processTransferBufferLocally, processTransferObjectLocally } from "./local";
+import {
+  inferCompatibleTransferFileState,
+  listExistingTransferDerivativeKeys,
+  needsCompatibilityInference,
+  processTransferBufferLocally,
+  processTransferObjectLocally,
+} from "./local";
 import { enqueueWorkerJob, refreshQueuedTransferState, requeueTransferFile } from "./worker";
 
 const TRANSFER_BACKFILL_CONCURRENCY = 2;
@@ -51,7 +57,7 @@ async function withLocalProcessingTimeout<T>(
 
 function shouldQueueBeforeLocal(mode: MediaProcessorMode, route: ProcessingRoute): boolean {
   if (!canUseWorkerForRoute(route)) return false;
-  if (mode === "worker") return true;
+  if (mode === "worker" || mode === "hybrid") return true;
   return shouldRouteToWorkerFirst(route);
 }
 
@@ -237,12 +243,19 @@ async function backfillTransferMedia(transfer: TransferData, mode: MediaProcesso
 
   const refreshed = await refreshQueuedTransferState(transfer);
   let changed = refreshed !== transfer;
+  const existingDerivativeKeys = refreshed.files.some((file) => needsCompatibilityInference(file))
+    ? await listExistingTransferDerivativeKeys(refreshed.id)
+    : undefined;
 
   const files = await mapConcurrent(
     refreshed.files,
     TRANSFER_BACKFILL_CONCURRENCY,
     async (file) => {
-      const inferred = await inferCompatibleTransferFileState(refreshed.id, file);
+      const inferred = await inferCompatibleTransferFileState(
+        refreshed.id,
+        file,
+        existingDerivativeKeys
+      );
       const compatMissing =
         !file.previewStatus || !file.processingStatus || (!file.processingRoute && inferred.processingStatus !== "skipped");
 

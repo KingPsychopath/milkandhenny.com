@@ -37,6 +37,7 @@
     ".next/dev/types/**/*.ts"
   ],
   "exclude": [
+    "deploy/cloudflare-transfer-worker",
     "node_modules",
     ".next"
   ]

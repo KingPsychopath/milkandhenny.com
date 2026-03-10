@@ -1,11 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { headObject } = vi.hoisted(() => ({
+const { headObject, listObjects } = vi.hoisted(() => ({
   headObject: vi.fn(),
+  listObjects: vi.fn(),
 }));
 
 vi.mock("@/lib/platform/r2", () => ({
   headObject,
+  listObjects,
   downloadBuffer: vi.fn(),
   uploadBuffer: vi.fn(),
 }));
@@ -16,6 +18,7 @@ import type { TransferFile } from "@/features/transfers/store";
 describe("transfer compatibility inference", () => {
   beforeEach(() => {
     headObject.mockReset();
+    listObjects.mockReset();
   });
 
   it("marks legacy visual media ready when derived assets exist", async () => {
@@ -96,5 +99,26 @@ describe("transfer compatibility inference", () => {
 
     expect(inferred.previewStatus).toBe("original_only");
     expect(inferred.processingStatus).toBe("skipped");
+  });
+
+  it("uses preloaded derivative keys without probing R2 per file", async () => {
+    const file: TransferFile = {
+      id: "photo",
+      filename: "photo.jpg",
+      kind: "image",
+      size: 1234,
+      mimeType: "image/jpeg",
+      storageKey: "transfers/abc123/originals/photo.jpg",
+    };
+
+    const inferred = await inferCompatibleTransferFileState(
+      "abc123",
+      file,
+      new Set(["transfers/abc123/thumb/photo.webp", "transfers/abc123/full/photo.webp"])
+    );
+
+    expect(headObject).not.toHaveBeenCalled();
+    expect(inferred.previewStatus).toBe("ready");
+    expect(inferred.processingStatus).toBe("local_done");
   });
 });

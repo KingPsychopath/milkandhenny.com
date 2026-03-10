@@ -6,7 +6,7 @@ const {
   getTransfer,
   getTransferMediaQueueLength,
   processImageVariants,
-  processRawWithDcraw,
+  resolveImageProcessingSource,
   saveTransfer,
   uploadBuffer,
 } = vi.hoisted(() => ({
@@ -15,7 +15,7 @@ const {
   getTransfer: vi.fn(),
   getTransferMediaQueueLength: vi.fn(),
   processImageVariants: vi.fn(),
-  processRawWithDcraw: vi.fn(),
+  resolveImageProcessingSource: vi.fn(),
   saveTransfer: vi.fn(),
   uploadBuffer: vi.fn(),
 }));
@@ -37,11 +37,12 @@ vi.mock("@/features/transfers/store", () => ({
 }));
 
 vi.mock("@/features/media/processing", () => ({
+  RawPreviewUnavailableError: class RawPreviewUnavailableError extends Error {},
   getMimeType: (filename: string) => (filename.endsWith(".mov") ? "video/quicktime" : "image/jpeg"),
   mapConcurrent: async <T, R>(items: T[], _limit: number, mapper: (item: T) => Promise<R>) =>
     Promise.all(items.map((item) => mapper(item))),
   processImageVariants,
-  processRawWithDcraw,
+  resolveImageProcessingSource,
 }));
 
 vi.mock("@/features/media/backends/local", () => ({
@@ -164,10 +165,9 @@ describe("worker media processing", () => {
         },
       ],
     });
-    processRawWithDcraw.mockResolvedValue({
+    resolveImageProcessingSource.mockResolvedValue({
       buffer: Buffer.from("decoded"),
-      width: 3000,
-      height: 2000,
+      takenAt: null,
     });
     processImageVariants.mockResolvedValue({
       thumb: { buffer: Buffer.from("thumb"), contentType: "image/webp" },

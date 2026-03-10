@@ -18,6 +18,7 @@ import {
   isTransferProcessingStale,
   type ProcessingRoute,
 } from "@/features/transfers/media-state";
+import { wakeTransferMediaWorker } from "@/features/media/worker-wake";
 import {
   dequeueTransferMediaJobs,
   enqueueTransferMediaJob,
@@ -175,30 +176,6 @@ async function enqueueWorkerJob(params: {
     };
   } catch {
     return buildFailedQueueResult(mediaId, params.file.name, params.file.size, storageKey, route, "enqueue_failed", attempt);
-  }
-}
-
-async function wakeTransferMediaWorker(): Promise<boolean> {
-  if (process.env.NODE_ENV === "test") return true;
-
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 1500);
-  const wakeToken = process.env.TRANSFER_MEDIA_WORKER_WAKE_TOKEN;
-
-  try {
-    const res = await fetch(
-      process.env.TRANSFER_MEDIA_WORKER_WAKE_URL ?? "https://party-guest-list-transfer-worker.fly.dev/wake",
-      {
-        method: "POST",
-        headers: wakeToken ? { authorization: `Bearer ${wakeToken}` } : undefined,
-        signal: controller.signal,
-      }
-    );
-    return res.ok;
-  } catch {
-    return false;
-  } finally {
-    clearTimeout(timeout);
   }
 }
 

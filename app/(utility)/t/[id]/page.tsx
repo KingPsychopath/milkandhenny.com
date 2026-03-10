@@ -17,8 +17,7 @@ export const dynamic = "force-dynamic";
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { id } = await params;
-  const transferRecord = await getTransfer(id);
-  const transfer = transferRecord ? await backfillTransferMedia(transferRecord) : null;
+  const transfer = await getTransfer(id);
 
   if (!transfer) {
     return { title: `Transfer Not Found — ${SITE_NAME}` };
