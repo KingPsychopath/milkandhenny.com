@@ -22,6 +22,7 @@ import {
   HeadObjectCommand,
 } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
+import { NodeHttpHandler } from "@smithy/node-http-handler";
 
 /* ─── Types ─── */
 
@@ -47,17 +48,45 @@ type RetryableR2Error = {
   cause?: unknown;
 };
 
+type R2RuntimeConfig = {
+  accountId: string;
+  accessKey: string;
+  secretKey: string;
+  bucket: string;
+  maxSockets: number;
+  socketAcquisitionWarningTimeoutMs: number;
+};
+
+type R2ClientState = {
+  client: S3Client;
+  bucket: string;
+  configKey: string;
+};
+
 /* ─── Client singleton ─── */
 
-let _client: S3Client | null = null;
-let _bucket = "";
 const R2_RETRIES = Math.max(0, Math.floor(Number(process.env.R2_RETRIES ?? "4")));
 const R2_RETRY_BASE_DELAY_MS = Math.max(
   0,
   Math.floor(Number(process.env.R2_RETRY_BASE_DELAY_MS ?? "400"))
 );
 
-function getEnv() {
+const globalForR2 = globalThis as typeof globalThis & {
+  __partyGuestListR2ClientState__?: R2ClientState;
+};
+
+function parsePositiveInt(value: string | undefined, fallback: number): number {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : fallback;
+}
+
+function getDefaultMaxSockets(): number {
+  if (!process.env.TRANSFER_MEDIA_WORKER_CONCURRENCY) return 50;
+  const workerConcurrency = parsePositiveInt(process.env.TRANSFER_MEDIA_WORKER_CONCURRENCY, 1);
+  return Math.min(200, Math.max(50, workerConcurrency * 3));
+}
+
+function getRuntimeConfig(): R2RuntimeConfig {
   const accountId = process.env.R2_ACCOUNT_ID;
   const accessKey = process.env.R2_ACCESS_KEY;
   const secretKey = process.env.R2_SECRET_KEY;
@@ -69,24 +98,52 @@ function getEnv() {
     );
   }
 
-  return { accountId, accessKey, secretKey, bucket };
+  return {
+    accountId,
+    accessKey,
+    secretKey,
+    bucket,
+    maxSockets: parsePositiveInt(process.env.R2_MAX_SOCKETS, getDefaultMaxSockets()),
+    socketAcquisitionWarningTimeoutMs: parsePositiveInt(
+      process.env.R2_SOCKET_ACQUISITION_WARNING_TIMEOUT_MS,
+      10_000
+    ),
+  };
 }
 
 function getClient(): { client: S3Client; bucket: string } {
-  if (_client) return { client: _client, bucket: _bucket };
+  const config = getRuntimeConfig();
+  const configKey = JSON.stringify(config);
+  const cached = globalForR2.__partyGuestListR2ClientState__;
 
-  const env = getEnv();
-  _client = new S3Client({
+  if (cached && cached.configKey === configKey) {
+    return { client: cached.client, bucket: cached.bucket };
+  }
+
+  cached?.client.destroy();
+
+  const client = new S3Client({
     region: "auto",
-    endpoint: `https://${env.accountId}.r2.cloudflarestorage.com`,
+    endpoint: `https://${config.accountId}.r2.cloudflarestorage.com`,
     credentials: {
-      accessKeyId: env.accessKey,
-      secretAccessKey: env.secretKey,
+      accessKeyId: config.accessKey,
+      secretAccessKey: config.secretKey,
     },
+    requestHandler: new NodeHttpHandler({
+      httpsAgent: {
+        keepAlive: true,
+        maxSockets: config.maxSockets,
+      },
+      socketAcquisitionWarningTimeout: config.socketAcquisitionWarningTimeoutMs,
+    }),
   });
-  _bucket = env.bucket;
+  globalForR2.__partyGuestListR2ClientState__ = {
+    client,
+    bucket: config.bucket,
+    configKey,
+  };
 
-  return { client: _client, bucket: _bucket };
+  return { client, bucket: config.bucket };
 }
 
 function sleep(ms: number): Promise<void> {
