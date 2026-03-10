@@ -31,6 +31,7 @@ import type { ProcessFileResult } from "../features/transfers/upload";
 import { getTransferMediaQueueLength } from "../features/transfers/media-queue";
 import { getTransferMediaWorkerStatus } from "../features/transfers/media-worker-status";
 import { runTransferMediaJobs } from "../features/media/backends/worker";
+import { isSafeTransferId } from "../features/transfers/admin";
 import { BASE_URL } from "../lib/shared/config";
 import { getRedis } from "../lib/platform/redis";
 import {
@@ -121,6 +122,26 @@ type ReconcileTransferMediaResult = {
   scannedTransfers: number;
   updatedTransfers: number;
   queueLength: number;
+};
+
+type ClearTransferMediaQueueResult = {
+  deletedKeys: number;
+  queueLengthBefore: number;
+  processingLengthBefore: number;
+};
+
+type RetryTransferMediaResult = {
+  transferId: string;
+  selector?: string;
+  requeued: boolean;
+  fileCount: number;
+  queueLength: number;
+  target?: {
+    id: string;
+    filename: string;
+    processingStatus?: TransferData["files"][number]["processingStatus"];
+    retryCount?: number;
+  };
 };
 
 /* ─── Transfer operations ─── */
@@ -797,6 +818,73 @@ async function reconcileTransferMedia(
   };
 }
 
+async function clearTransferMediaQueue(): Promise<ClearTransferMediaQueueResult> {
+  requireRedis();
+  const redis = getRedis()!;
+  const [queueLengthBefore, processingLengthBefore] = await Promise.all([
+    redis.llen("transfer:media:queue").then((value) => (typeof value === "number" ? value : 0)),
+    redis.llen("transfer:media:processing").then((value) => (typeof value === "number" ? value : 0)),
+  ]);
+  const deletedKeys = await redis.del("transfer:media:queue", "transfer:media:processing");
+
+  return {
+    deletedKeys,
+    queueLengthBefore,
+    processingLengthBefore,
+  };
+}
+
+async function retryTransferMedia(
+  id: string,
+  selector?: string
+): Promise<RetryTransferMediaResult> {
+  requireRedis();
+
+  if (!isSafeTransferId(id)) {
+    throw new Error("Invalid transfer id");
+  }
+
+  const transfer = await getTransfer(id);
+  if (!transfer) {
+    throw new Error(`Transfer "${id}" not found or expired.`);
+  }
+
+  const beforeTarget = selector
+    ? resolveTransferFileForDelete(transfer.files, selector)
+    : undefined;
+
+  if (selector && !beforeTarget) {
+    throw new Error(`No file matched "${selector}" in transfer "${id}".`);
+  }
+
+  const updated = await backfillTransferMedia(transfer);
+  const target = beforeTarget
+    ? updated.files.find((file) => file.id === beforeTarget.id)
+    : undefined;
+
+  const requeued = beforeTarget
+    ? JSON.stringify(target) !== JSON.stringify(beforeTarget)
+    : JSON.stringify(updated.files) !== JSON.stringify(transfer.files);
+
+  return {
+    transferId: id,
+    ...(selector ? { selector } : {}),
+    requeued,
+    fileCount: updated.files.length,
+    queueLength: await getTransferMediaQueueLength().catch(() => 0),
+    ...(target
+      ? {
+          target: {
+            id: target.id,
+            filename: target.filename,
+            processingStatus: target.processingStatus,
+            retryCount: target.retryCount,
+          },
+        }
+      : {}),
+  };
+}
+
 /**
  * Cleanup expired/orphaned transfers without touching active ones.
  */
@@ -912,7 +1000,9 @@ export {
   cleanupExpiredTransfers,
   getTransferMediaStatus,
   drainTransferMediaQueue,
+  clearTransferMediaQueue,
   reconcileTransferMedia,
+  retryTransferMedia,
   nukeAllTransfers,
   formatDuration,
   parseExpiry,

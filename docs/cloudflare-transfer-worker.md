@@ -19,13 +19,17 @@ Set these on the Vercel app:
 
 ```bash
 MEDIA_PROCESSOR_MODE=hybrid
-TRANSFER_MEDIA_WORKER_ENABLED=1
-TRANSFER_MEDIA_QUEUE_ENABLED=1
-TRANSFER_MEDIA_WORKER_WAKE_URL=https://party-guest-list-transfer-worker.<your-subdomain>.workers.dev/wake
-TRANSFER_MEDIA_WORKER_WAKE_TOKEN=replace-with-a-long-random-secret
+TRANSFER_MEDIA_WAKE_URL=https://party-guest-list-transfer-worker.<your-subdomain>.workers.dev/wake
+TRANSFER_MEDIA_WAKE_TOKEN=replace-with-a-long-random-secret
+NEXT_PUBLIC_MULTI_FILE_ZIP_URL=https://party-guest-list-transfer-worker.<your-subdomain>.workers.dev/zip
+NEXT_PUBLIC_MULTI_FILE_ZIP_MODE=auto
 ```
 
 Hybrid mode keeps JPEG/PNG/GIF/HEIC inline and queues RAW/video immediately.
+ZIP fallback mode:
+- `auto`: use Worker ZIP only for non-streaming multi-file downloads when configured
+- `client`: keep the legacy browser ZIP fallback
+- `worker`: force the Worker ZIP path for non-streaming multi-file downloads
 
 ## Cloudflare setup
 
@@ -53,15 +57,18 @@ npx wrangler secret put R2_ACCOUNT_ID --config deploy/cloudflare-transfer-worker
 npx wrangler secret put R2_ACCESS_KEY --config deploy/cloudflare-transfer-worker/wrangler.jsonc
 npx wrangler secret put R2_SECRET_KEY --config deploy/cloudflare-transfer-worker/wrangler.jsonc
 npx wrangler secret put R2_BUCKET --config deploy/cloudflare-transfer-worker/wrangler.jsonc
-npx wrangler secret put TRANSFER_MEDIA_WORKER_WAKE_TOKEN --config deploy/cloudflare-transfer-worker/wrangler.jsonc
+npx wrangler secret put TRANSFER_MEDIA_WAKE_TOKEN --config deploy/cloudflare-transfer-worker/wrangler.jsonc
 ```
 
 If you use discrete Upstash direct Redis fields instead of `REDIS_URL`, set those secrets too.
+
+Set `R2_PUBLIC_URL` in `deploy/cloudflare-transfer-worker/wrangler.jsonc` to the same public media origin as `NEXT_PUBLIC_R2_PUBLIC_URL`.
 
 ## Endpoints
 
 - `GET /health` returns worker health
 - `POST /wake` validates the bearer token and tells the singleton container to start draining
+- `POST /zip` streams a store-mode ZIP from the public media origin for Safari/Firefox-style fallback downloads
 - container-private `POST /drain` returns `202` immediately and drains queues in the background
 
 ## Notes

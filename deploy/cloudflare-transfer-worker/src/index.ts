@@ -1,5 +1,6 @@
 import { env } from "cloudflare:workers";
 import { Container } from "@cloudflare/containers";
+import { streamZipFromPublicOrigin, type ZipRequestFile } from "./zip";
 
 export class TransferMediaContainer extends Container {
   defaultPort = 8080;
@@ -20,8 +21,6 @@ export class TransferMediaContainer extends Container {
     R2_SECRET_KEY: env.R2_SECRET_KEY,
     R2_BUCKET: env.R2_BUCKET,
     MEDIA_PROCESSOR_MODE: env.MEDIA_PROCESSOR_MODE,
-    TRANSFER_MEDIA_WORKER_ENABLED: env.TRANSFER_MEDIA_WORKER_ENABLED,
-    TRANSFER_MEDIA_QUEUE_ENABLED: env.TRANSFER_MEDIA_QUEUE_ENABLED,
     TRANSFER_MEDIA_WORKER_CONCURRENCY: env.TRANSFER_MEDIA_WORKER_CONCURRENCY,
     TRANSFER_MEDIA_WORKER_ERROR_BACKOFF_MS: env.TRANSFER_MEDIA_WORKER_ERROR_BACKOFF_MS,
   };
@@ -29,11 +28,12 @@ export class TransferMediaContainer extends Container {
 
 interface Env {
   TRANSFER_MEDIA: DurableObjectNamespace<TransferMediaContainer>;
-  TRANSFER_MEDIA_WORKER_WAKE_TOKEN?: string;
+  TRANSFER_MEDIA_WAKE_TOKEN?: string;
+  R2_PUBLIC_URL?: string;
 }
 
 function isAuthorized(request: Request, env: Env): boolean {
-  const expected = env.TRANSFER_MEDIA_WORKER_WAKE_TOKEN?.trim();
+  const expected = env.TRANSFER_MEDIA_WAKE_TOKEN?.trim();
   if (!expected) return true;
   return request.headers.get("authorization") === `Bearer ${expected}`;
 }
@@ -59,6 +59,21 @@ export default {
       return new Response(response.body, {
         status: response.status,
         headers: response.headers,
+      });
+    }
+
+    if (request.method === "POST" && url.pathname === "/zip") {
+      let body: { filename?: string; files?: ZipRequestFile[] };
+      try {
+        body = await request.json<{ filename?: string; files?: ZipRequestFile[] }>();
+      } catch {
+        return new Response("Invalid JSON body", { status: 400 });
+      }
+
+      return streamZipFromPublicOrigin({
+        filename: body.filename ?? "download.zip",
+        files: Array.isArray(body.files) ? body.files : [],
+        publicBaseUrl: env.R2_PUBLIC_URL ?? "",
       });
     }
 

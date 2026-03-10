@@ -1,6 +1,6 @@
 import "server-only";
 
-import { isWorkerEnabled, isWorkerQueueEnabled } from "@/features/media/config";
+import { getMediaProcessorMode } from "@/features/media/config";
 import { getBlockingRedis, getCommandRedis } from "@/lib/platform/redis-direct";
 import { getRedis } from "@/lib/platform/redis";
 import type { ProcessingRoute } from "./media-state";
@@ -23,7 +23,7 @@ type TransferMediaJob = {
 };
 
 function requireTransferMediaQueueRedis() {
-  if (!isWorkerEnabled() || !isWorkerQueueEnabled()) {
+  if (getMediaProcessorMode() === "local") {
     throw new Error("Transfer media queue is disabled.");
   }
   const redis = getRedis();
@@ -106,7 +106,7 @@ function parseTransferMediaJob(raw: string): TransferMediaJob | null {
 }
 
 async function claimTransferMediaJobBlocking(timeoutSeconds = 0): Promise<ClaimedTransferMediaJob | null> {
-  if (!isWorkerEnabled() || !isWorkerQueueEnabled()) {
+  if (getMediaProcessorMode() === "local") {
     throw new Error("Transfer media queue is disabled.");
   }
 

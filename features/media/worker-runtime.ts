@@ -1,6 +1,6 @@
 import "server-only";
 
-import { isWorkerEnabled, isWorkerQueueEnabled } from "@/features/media/config";
+import { getMediaProcessorMode } from "@/features/media/config";
 import { processWorkerJob } from "@/features/media/backends/worker";
 import { processWordMediaJob } from "@/features/words/media-worker";
 import {
@@ -58,7 +58,7 @@ function getErrorDetail(error: unknown): string {
 async function drainMediaQueuesUntilIdle(
   options: DrainMediaQueuesOptions = {}
 ): Promise<DrainMediaQueuesResult> {
-  if (!isWorkerEnabled() || !isWorkerQueueEnabled()) {
+  if (getMediaProcessorMode() === "local") {
     return {
       disabled: true,
       recoveredTransferJobs: 0,

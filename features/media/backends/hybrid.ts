@@ -2,7 +2,6 @@ import "server-only";
 
 import {
   getLocalProcessingTimeoutMs,
-  shouldRouteToWorkerFirst,
   type MediaProcessorMode,
 } from "@/features/media/config";
 import { mapConcurrent } from "@/features/media/processing";
@@ -57,8 +56,7 @@ async function withLocalProcessingTimeout<T>(
 
 function shouldQueueBeforeLocal(mode: MediaProcessorMode, route: ProcessingRoute): boolean {
   if (!canUseWorkerForRoute(route)) return false;
-  if (mode === "worker" || mode === "hybrid") return true;
-  return shouldRouteToWorkerFirst(route);
+  return mode === "worker" || mode === "hybrid";
 }
 
 async function processTransferBuffer(
@@ -213,9 +211,20 @@ async function repairOrQueueLegacyFile(
         )
       )
     ).file;
-  } catch {
+  } catch (error) {
     if (!canUseWorkerForRoute(route)) {
-      throw new Error(`Local processing failed for ${route}`);
+      const detail =
+        error instanceof Error
+          ? (error.stack ?? error.message).slice(0, 500)
+          : String(error).slice(0, 500);
+      return {
+        ...file,
+        previewStatus: "original_only",
+        processingStatus: "failed",
+        processingRoute: route,
+        processingErrorCode: file.processingErrorCode ?? "processing_failed",
+        processingErrorDetail: detail,
+      };
     }
     return (
       await enqueueWorkerJob({

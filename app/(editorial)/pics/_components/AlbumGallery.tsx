@@ -10,11 +10,13 @@ import {
   LARGE_STREAMING_ZIP_NOTICE_BYTES,
   canUseSaveFilePicker,
   createZipFileWritable,
+  downloadZipViaWorker,
   fetchContentLength,
   downloadViaPresignedUrl,
   downloadBlob,
   getZipDownloadErrorMessage,
   isAbortError,
+  shouldUseWorkerZipFallback,
 } from "@/lib/client/media-download";
 import { buildZipArchive, type ZipSourceFile } from "@/lib/client/streaming-zip";
 import {
@@ -260,6 +262,49 @@ export function AlbumGallery({ albumSlug, photos }: AlbumGalleryProps) {
     [runArchiveBuild]
   );
 
+  const executeWorkerZipDownload = useCallback(
+    async (archiveName: string, ids: string[]) => {
+      setPendingMultipartDownload(null);
+      setDownloading(true);
+      setDownloadError("");
+
+      const controller = new AbortController();
+      abortControllerRef.current = controller;
+
+      try {
+        await downloadZipViaWorker({
+          filename: archiveName,
+          files: ids.map((id) => ({
+            key: getOriginalStorageKey(albumSlug, id),
+            filename: `${id}.jpg`,
+          })),
+          signal: controller.signal,
+          onProgress: (progress) => {
+            setDownloadProgress({
+              done: progress.receivedBytes,
+              total: progress.totalBytes ?? 0,
+              phase: "zipping",
+            });
+          },
+        });
+      } catch (err) {
+        if (isAbortError(err)) return;
+        console.error("Download failed:", err);
+        setDownloadError(
+          getZipDownloadErrorMessage(
+            err,
+            "ZIP download failed. Try again or open this page in Chrome or Edge."
+          )
+        );
+      } finally {
+        abortControllerRef.current = null;
+        setDownloading(false);
+        setDownloadProgress(null);
+      }
+    },
+    [albumSlug]
+  );
+
   const downloadSelected = useCallback(async () => {
     if (selected.size === 0 || downloading || preparingDownload) return;
 
@@ -285,6 +330,17 @@ export function AlbumGallery({ albumSlug, photos }: AlbumGalleryProps) {
     setPreparingDownload(true);
 
     try {
+      if (
+        shouldUseWorkerZipFallback({
+          pickerAvailable: supportsStreamingZip,
+          fileCount: ids.length,
+        })
+      ) {
+        setPreparingDownload(false);
+        await executeWorkerZipDownload(`${albumSlug}-photos.zip`, ids);
+        return;
+      }
+
       const resolved = await resolveAlbumZipFiles(ids);
       const prepared: PreparedZipDownload = {
         archiveName: `${albumSlug}-photos.zip`,
@@ -329,6 +385,7 @@ export function AlbumGallery({ albumSlug, photos }: AlbumGalleryProps) {
     albumSlug,
     downloading,
     executePreparedDownload,
+    executeWorkerZipDownload,
     preparingDownload,
     resolveAlbumZipFiles,
     selected,

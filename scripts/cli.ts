@@ -57,11 +57,13 @@ import {
   deleteTransferFile,
   cleanupExpiredTransfers,
   drainTransferMediaQueue,
+  clearTransferMediaQueue,
   nukeAllTransfers,
   formatDuration,
   getTransferMediaStatus,
   parseExpiry,
   reconcileTransferMedia,
+  retryTransferMedia,
 } from "./transfer-ops";
 import {
   getWordMediaUploadCheckpointFilename,
@@ -941,6 +943,24 @@ async function cmdTransfersInfo(id: string) {
   }
 }
 
+async function cmdTransfersMediaRetry(id: string, selector?: string) {
+  heading(selector ? `Retry transfer media: ${id} / ${selector}` : `Retry transfer media: ${id}`);
+  const result = await retryTransferMedia(id, selector);
+  if (result.requeued) {
+    log(green(`✓ ${selector ? "Retried media file" : "Retried transfer media state"}`));
+  } else {
+    log(dim("No transfer media changes were needed."));
+  }
+  if (result.target) {
+    log(`${dim("File:")} ${result.target.filename} (${result.target.id})`);
+    log(`${dim("Status:")} ${result.target.processingStatus ?? "—"}`);
+    log(`${dim("Retries:")} ${result.target.retryCount ?? 0}`);
+  }
+  log(`${dim("Files:")} ${result.fileCount}`);
+  log(`${dim("Queue length:")} ${result.queueLength}`);
+  console.log();
+}
+
 async function cmdTransfersUpload(opts: {
   dir: string;
   title: string;
@@ -1169,6 +1189,27 @@ async function cmdTransfersMediaStatus() {
   console.log();
 }
 
+async function cmdTransfersQueueClear(skipConfirm = false) {
+  heading("Clear transfer media queue");
+  log(red("This deletes queued + processing transfer media jobs."));
+  console.log();
+
+  if (!skipConfirm) {
+    const ok = await confirm("Clear transfer media queue now?");
+    if (!ok) {
+      log(dim("Cancelled."));
+      console.log();
+      return;
+    }
+  }
+
+  const result = await clearTransferMediaQueue();
+  log(green(`✓ Deleted ${result.deletedKeys} Redis key${result.deletedKeys === 1 ? "" : "s"}`));
+  log(dim(`  queued before: ${result.queueLengthBefore}`));
+  log(dim(`  processing before: ${result.processingLengthBefore}`));
+  console.log();
+}
+
 async function cmdTransfersMediaDrain(limit = 8) {
   heading("Drain transfer media queue");
   const result = await drainTransferMediaQueue(limit);
@@ -1190,7 +1231,7 @@ async function cmdTransfersMediaReconcile() {
   console.log();
 }
 
-async function cmdTransfersNuke() {
+async function cmdTransfersNuke(skipConfirm = false) {
   const transfers = await listActiveTransfers();
 
   heading("Nuke all transfers");
@@ -1199,13 +1240,15 @@ async function cmdTransfersNuke() {
   log(red("and wipe ALL transfer metadata from Redis."));
   console.log();
 
-  const ok = await confirm(
-    `${red("PERMANENTLY")} wipe every transfer? This cannot be undone.`
-  );
-  if (!ok) {
-    log(dim("Cancelled."));
-    console.log();
-    return;
+  if (!skipConfirm) {
+    const ok = await confirm(
+      `${red("PERMANENTLY")} wipe every transfer? This cannot be undone.`
+    );
+    if (!ok) {
+      log(dim("Cancelled."));
+      console.log();
+      return;
+    }
   }
 
   const result = await nukeAllTransfers((msg) => progress(msg));
@@ -2583,7 +2626,8 @@ function showHelp() {
 
   ${bold("Transfers")} ${dim("(private, self-destructing file shares)")}
     transfers list                           List active transfers + time left
-    transfers info ${dim("<id>")}                      Show transfer details + URLs
+    transfers show ${dim("<id>")}                      Show transfer details + URLs
+    transfers info ${dim("<id>")}                      Alias for show
     transfers upload                         Upload new transfer
       --dir ${dim("<path>")}      ${dim("Folder with files (images, videos, PDFs, zips — anything)")}
       --title ${dim("<title>")}   ${dim('Title for the transfer (e.g. "Photos for John")')}
@@ -2592,12 +2636,15 @@ function showHelp() {
     transfers append ${dim("<id>")} --dir ${dim("<path>")}          Add files to an active transfer
     transfers delete-file ${dim("<id>")} --file ${dim("<file-id|filename>")}  Delete one file from a transfer
     transfers delete ${dim("<id>")}                    Take down a transfer + delete R2 files
-    transfers media-status                  Show worker heartbeat + queue length
+    transfers media retry ${dim("<id>")} [--file ${dim("<id|filename>")}]  Retry/backfill media for a transfer
+    transfers queue status                  Show worker heartbeat + queue length
+    transfers queue clear ${dim("[--yes]")}             Delete queued + processing transfer media jobs
+    transfers media-status                  Alias for queue status
     transfers media-drain ${dim("[--limit 8]")}            Drain queued worker jobs now
     transfers media-reconcile               Reconcile stale queued/processing transfer states
       ${dim("Blocking Fly worker requires direct Redis env (REDIS_URL or UPSTASH_REDIS_HOST/PORT/PASSWORD).")}
     transfers cleanup                        Cleanup expired/orphaned transfer storage
-    transfers nuke                           Wipe ALL transfers (R2 + Redis) — nuclear option
+    transfers nuke ${dim("[--yes]")}                    Wipe ALL transfers (R2 + Redis) — nuclear option
 
   ${bold("Words Media")} ${dim("(media for words + shared reusable assets)")}
     media upload --slug ${dim("<word-slug>")} --dir ${dim("<path>")}   Upload to words/media/<slug>/
@@ -2649,6 +2696,10 @@ function showHelp() {
     ${dim("   ")} ${dim("(Rerun the same transfers upload command to resume after a network interruption)")}
     ${dim("$")} pnpm cli transfers append velvet-moon-candle --dir ~/Desktop/more-photos
     ${dim("$")} pnpm cli transfers list
+    ${dim("$")} pnpm cli transfers show velvet-moon-candle
+    ${dim("$")} pnpm cli transfers media retry velvet-moon-candle --file capture
+    ${dim("$")} pnpm cli transfers queue status
+    ${dim("$")} pnpm cli transfers queue clear --yes
     ${dim("$")} pnpm cli transfers delete abc12345
     ${dim("$")} pnpm cli media upload --slug my-first-birthday --dir ~/Desktop/word-photos
     ${dim("$")} pnpm cli media upload --asset brand-kit --dir ~/Desktop/brand-assets
@@ -4407,9 +4458,10 @@ async function direct() {
         switch (subcommand) {
           case "list":
             return cmdTransfersList();
+          case "show":
           case "info": {
             const id = args[2];
-            if (!id) throw new Error("Usage: pnpm cli transfers info <id>");
+            if (!id) throw new Error("Usage: pnpm cli transfers show <id>");
             return cmdTransfersInfo(id);
           }
           case "upload": {
@@ -4448,6 +4500,22 @@ async function direct() {
           }
           case "cleanup":
             return cmdTransfersCleanup();
+          case "queue": {
+            const queueCommand = args[2];
+            if (queueCommand === "status") return cmdTransfersMediaStatus();
+            if (queueCommand === "clear") return cmdTransfersQueueClear(hasFlag("yes"));
+            throw new Error("Usage: pnpm cli transfers queue <status|clear> [--yes]");
+          }
+          case "media": {
+            const mediaCommand = args[2];
+            if (mediaCommand === "retry") {
+              const id = args[3];
+              const file = getArg("file");
+              if (!id) throw new Error("Usage: pnpm cli transfers media retry <id> [--file <file-id|filename>]");
+              return cmdTransfersMediaRetry(id, file);
+            }
+            throw new Error("Usage: pnpm cli transfers media retry <id> [--file <file-id|filename>]");
+          }
           case "media-status":
             return cmdTransfersMediaStatus();
           case "media-drain": {
@@ -4458,7 +4526,7 @@ async function direct() {
           case "media-reconcile":
             return cmdTransfersMediaReconcile();
           case "nuke":
-            return cmdTransfersNuke();
+            return hasFlag("yes") ? cmdTransfersNuke(true) : cmdTransfersNuke();
           default:
             throw new Error(`Unknown: transfers ${subcommand ?? ""}. Run 'pnpm cli help'.`);
         }

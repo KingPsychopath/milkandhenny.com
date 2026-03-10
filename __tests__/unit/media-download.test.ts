@@ -1,12 +1,17 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
-import { fetchContentLength, getZipDownloadErrorMessage } from "@/lib/client/media-download";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 describe("media download helpers", () => {
+  beforeEach(() => {
+    vi.resetModules();
+  });
+
   afterEach(() => {
     vi.restoreAllMocks();
+    vi.unstubAllEnvs();
   });
 
   it("reads content-length from a HEAD response", async () => {
+    const { fetchContentLength } = await import("@/lib/client/media-download");
     vi.stubGlobal(
       "fetch",
       vi.fn(async () => new Response(null, { status: 200, headers: { "content-length": "12345" } }))
@@ -16,6 +21,7 @@ describe("media download helpers", () => {
   });
 
   it("returns null when content-length is unavailable", async () => {
+    const { fetchContentLength } = await import("@/lib/client/media-download");
     vi.stubGlobal(
       "fetch",
       vi.fn(async () => new Response(null, { status: 200 }))
@@ -24,12 +30,31 @@ describe("media download helpers", () => {
     await expect(fetchContentLength("https://example.com/file.jpg")).resolves.toBeNull();
   });
 
-  it("maps disk-full write errors to a user-facing message", () => {
+  it("maps disk-full write errors to a user-facing message", async () => {
+    const { getZipDownloadErrorMessage } = await import("@/lib/client/media-download");
     expect(
       getZipDownloadErrorMessage(
         new DOMException("The requested operation failed", "QuotaExceededError"),
         "fallback"
       )
     ).toBe("Download failed: not enough disk space.");
+  });
+
+  it("prefers worker zip fallback only for non-picker multi-file downloads when configured", async () => {
+    vi.stubEnv("NEXT_PUBLIC_MULTI_FILE_ZIP_URL", "https://example.workers.dev/zip");
+    vi.stubEnv("NEXT_PUBLIC_MULTI_FILE_ZIP_MODE", "auto");
+    const { shouldUseWorkerZipFallback } = await import("@/lib/client/media-download");
+
+    expect(shouldUseWorkerZipFallback({ pickerAvailable: false, fileCount: 2 })).toBe(true);
+    expect(shouldUseWorkerZipFallback({ pickerAvailable: true, fileCount: 2 })).toBe(false);
+    expect(shouldUseWorkerZipFallback({ pickerAvailable: false, fileCount: 1 })).toBe(false);
+  });
+
+  it("can force the legacy client fallback off via env", async () => {
+    vi.stubEnv("NEXT_PUBLIC_MULTI_FILE_ZIP_URL", "https://example.workers.dev/zip");
+    vi.stubEnv("NEXT_PUBLIC_MULTI_FILE_ZIP_MODE", "client");
+    const { shouldUseWorkerZipFallback } = await import("@/lib/client/media-download");
+
+    expect(shouldUseWorkerZipFallback({ pickerAvailable: false, fileCount: 3 })).toBe(false);
   });
 });

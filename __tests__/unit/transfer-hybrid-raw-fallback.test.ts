@@ -224,4 +224,44 @@ describe("hybrid transfer raw fallback", () => {
     expect(updated.files[0]?.processingStatus).toBe("queued");
     expect(updated.files[0]?.processingBackend).toBe("worker");
   });
+
+  it("keeps legacy local-image failures as original-only instead of throwing", async () => {
+    const transfer = {
+      id: "transfer-1",
+      title: "untitled",
+      createdAt: new Date().toISOString(),
+      expiresAt: new Date(Date.now() + 60_000).toISOString(),
+      deleteToken: "token",
+      files: [
+        {
+          id: "photo",
+          filename: "photo.jpg",
+          kind: "image" as const,
+          size: 4096,
+          mimeType: "image/jpeg",
+          storageKey: "transfers/transfer-1/originals/photo.jpg",
+          previewStatus: "original_only" as const,
+          processingStatus: "failed" as const,
+          processingRoute: "local_image" as const,
+          processingErrorCode: "legacy_missing_derivatives",
+          retryCount: 0,
+        },
+      ],
+    };
+
+    inferCompatibleTransferFileState.mockResolvedValue(transfer.files[0]);
+    processTransferObjectLocally.mockRejectedValue(new Error("sharp failed"));
+
+    const { createHybridMediaProcessor } = await import("@/features/media/backends/hybrid");
+    const processor = createHybridMediaProcessor("hybrid");
+    const updated = await processor.backfillTransferMedia(transfer);
+
+    expect(updated.files[0]).toMatchObject({
+      id: "photo",
+      previewStatus: "original_only",
+      processingStatus: "failed",
+      processingRoute: "local_image",
+      processingErrorCode: "legacy_missing_derivatives",
+    });
+  });
 });

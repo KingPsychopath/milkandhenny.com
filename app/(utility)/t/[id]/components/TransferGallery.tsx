@@ -9,10 +9,12 @@ import {
   LARGE_STREAMING_ZIP_NOTICE_BYTES,
   canUseSaveFilePicker,
   createZipFileWritable,
+  downloadZipViaWorker,
   downloadViaPresignedUrl,
   downloadBlob,
   getZipDownloadErrorMessage,
   isAbortError,
+  shouldUseWorkerZipFallback,
 } from "@/lib/client/media-download";
 import { buildZipArchive, type ZipSourceFile } from "@/lib/client/streaming-zip";
 import {
@@ -1211,6 +1213,49 @@ export function TransferGallery({ transferId, files, groups, deleteToken }: Tran
     [runArchiveBuild]
   );
 
+  const executeWorkerZipDownload = useCallback(
+    async (archiveName: string, filesToDownload: TransferFileData[]) => {
+      setPendingMultipartDownload(null);
+      setDownloading(true);
+      setDownloadError("");
+
+      const controller = new AbortController();
+      abortControllerRef.current = controller;
+
+      try {
+        await downloadZipViaWorker({
+          filename: archiveName,
+          files: filesToDownload.map((file) => ({
+            key: getDownloadStorageKey(file),
+            filename: getDownloadFilename(file),
+          })),
+          signal: controller.signal,
+          onProgress: (progress) => {
+            setDownloadProgress({
+              done: progress.receivedBytes,
+              total: progress.totalBytes ?? 0,
+              phase: "zipping",
+            });
+          },
+        });
+      } catch (err) {
+        if (isAbortError(err)) return;
+        console.error("Download failed:", err);
+        setDownloadError(
+          getZipDownloadErrorMessage(
+            err,
+            "ZIP download failed. Try again or open this page in Chrome or Edge."
+          )
+        );
+      } finally {
+        abortControllerRef.current = null;
+        setDownloading(false);
+        setDownloadProgress(null);
+      }
+    },
+    []
+  );
+
   const downloadFiles = useCallback(
     async (filesToDownload: TransferFileData[]) => {
       if (downloading || preparingDownload || filesToDownload.length === 0) return;
@@ -1234,6 +1279,18 @@ export function TransferGallery({ transferId, files, groups, deleteToken }: Tran
           filesToDownload.length === currentFiles.length
             ? `transfer-${transferId}.zip`
             : `transfer-${transferId}-selected.zip`;
+
+        if (
+          shouldUseWorkerZipFallback({
+            pickerAvailable: supportsStreamingZip,
+            fileCount: filesToDownload.length,
+          })
+        ) {
+          setPreparingDownload(false);
+          await executeWorkerZipDownload(archiveName, filesToDownload);
+          return;
+        }
+
         const prepared: PreparedZipDownload = {
           archiveName,
           files: filesToDownload.map((file) => ({
@@ -1277,7 +1334,15 @@ export function TransferGallery({ transferId, files, groups, deleteToken }: Tran
         setPreparingDownload(false);
       }
     },
-    [currentFiles.length, downloading, executePreparedDownload, preparingDownload, supportsStreamingZip, transferId]
+    [
+      currentFiles.length,
+      downloading,
+      executePreparedDownload,
+      executeWorkerZipDownload,
+      preparingDownload,
+      supportsStreamingZip,
+      transferId,
+    ]
   );
 
   /** Download all files as a zip with progress */

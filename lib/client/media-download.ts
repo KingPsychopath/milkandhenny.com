@@ -11,8 +11,22 @@
 const BLOB_ZIP_DOWNLOAD_LIMIT_BYTES = 200 * 1024 * 1024;
 const LARGE_STREAMING_ZIP_NOTICE_BYTES = 1024 * 1024 * 1024;
 const PRESIGNED_DOWNLOAD_TIMEOUT_MS = 8000;
+const MULTI_FILE_ZIP_URL = (process.env.NEXT_PUBLIC_MULTI_FILE_ZIP_URL ?? "").trim();
+const MULTI_FILE_ZIP_MODE = (process.env.NEXT_PUBLIC_MULTI_FILE_ZIP_MODE ?? "auto")
+  .trim()
+  .toLowerCase();
 
 type SingleFileDownloadProgress = {
+  receivedBytes: number;
+  totalBytes: number | null;
+};
+
+type WorkerZipSourceFile = {
+  key: string;
+  filename: string;
+};
+
+type WorkerZipDownloadProgress = {
   receivedBytes: number;
   totalBytes: number | null;
 };
@@ -171,6 +185,85 @@ function triggerBrowserDownload(url: string, filename?: string): void {
 async function downloadViaPresignedUrl(storageKey: string, filename: string): Promise<void> {
   const url = await getPresignedDownloadUrl(storageKey, filename);
   triggerBrowserDownload(url, filename);
+}
+
+function hasWorkerZipFallbackUrl(): boolean {
+  return MULTI_FILE_ZIP_URL.length > 0;
+}
+
+function shouldUseWorkerZipFallback(options: {
+  pickerAvailable: boolean;
+  fileCount: number;
+}): boolean {
+  if (options.fileCount < 2) return false;
+  if (options.pickerAvailable) return false;
+  if (MULTI_FILE_ZIP_MODE === "client") return false;
+  return hasWorkerZipFallbackUrl();
+}
+
+async function downloadZipViaWorker(options: {
+  filename: string;
+  files: WorkerZipSourceFile[];
+  signal?: AbortSignal;
+  onProgress?: (progress: WorkerZipDownloadProgress) => void;
+}): Promise<void> {
+  if (!hasWorkerZipFallbackUrl()) {
+    throw new Error("ZIP worker fallback is not configured.");
+  }
+
+  const response = await fetch(MULTI_FILE_ZIP_URL, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+    },
+    body: JSON.stringify({
+      filename: options.filename,
+      files: options.files,
+    }),
+    signal: options.signal,
+  });
+
+  if (!response.ok) {
+    throw new Error(`ZIP worker failed: ${response.status} ${response.statusText}`);
+  }
+
+  const totalBytes = parseContentLength(response.headers);
+  if (!response.body) {
+    const blob = await response.blob();
+    options.onProgress?.({
+      receivedBytes: blob.size,
+      totalBytes: totalBytes ?? blob.size,
+    });
+    downloadBlob(blob, options.filename);
+    return;
+  }
+
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let receivedBytes = 0;
+  options.onProgress?.({ receivedBytes, totalBytes });
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    if (!value) continue;
+    chunks.push(value);
+    receivedBytes += value.byteLength;
+    options.onProgress?.({ receivedBytes, totalBytes });
+  }
+
+  const blob = new Blob(
+    chunks.map((chunk) => {
+      const buffer = new ArrayBuffer(chunk.byteLength);
+      new Uint8Array(buffer).set(chunk);
+      return buffer;
+    }),
+    {
+      type: response.headers.get("content-type") ?? "application/zip",
+    }
+  );
+
+  downloadBlob(blob, options.filename);
 }
 
 async function downloadFile(options: {
@@ -345,13 +438,16 @@ export {
   LARGE_STREAMING_ZIP_NOTICE_BYTES,
   canUseSaveFilePicker,
   createZipFileWritable,
+  downloadZipViaWorker,
   fetchContentLength,
   fetchBlobWithProgress,
   getPresignedDownloadUrl,
   getZipDownloadErrorMessage,
+  hasWorkerZipFallbackUrl,
   isAbortError,
   isIOSDownloadBrowser,
   parseContentLength,
+  shouldUseWorkerZipFallback,
   triggerBrowserDownload,
 };
-export type { SingleFileDownloadProgress };
+export type { SingleFileDownloadProgress, WorkerZipDownloadProgress, WorkerZipSourceFile };

@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { getTransfer } from "@/features/transfers/store";
-import { backfillTransferMedia } from "@/features/transfers/upload";
 import { SITE_NAME, SITE_BRAND } from "@/lib/shared/config";
 import { TransferGallery } from "./components/TransferGallery";
 import { CountdownTimer } from "./components/CountdownTimer";
@@ -76,8 +75,7 @@ function describeFiles(files: { kind: string; filename?: string }[]): string {
 export default async function TransferPage({ params, searchParams }: Props) {
   const { id } = await params;
   const { token } = await searchParams;
-  const transferRecord = await getTransfer(id);
-  const transfer = transferRecord ? await backfillTransferMedia(transferRecord) : null;
+  const transfer = await getTransfer(id);
 
   /* ─── Not found / expired ─── */
   if (!transfer) {
