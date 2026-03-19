@@ -5,6 +5,7 @@ import type { Guest } from '@/features/guests/types';
 import { useFocusTrap } from '@/hooks/useFocusTrap';
 import { useEscapeKey } from '@/hooks/useEscapeKey';
 import { useAdminAuth } from '@/app/admin/hooks/useAdminAuth';
+import { getResponseErrorMessage, readResponsePayload } from '@/lib/client/response';
 
 type LeaderboardEntry = { name: string; count: number };
 
@@ -136,8 +137,8 @@ export function useGuestManagement({ guests, onGuestAdded, onGuestRemoved, onCSV
         flashSuccess('Guest added successfully!', 2000);
         onGuestAdded();
       } else {
-        const data = await res.json();
-        setError(data.error || 'Failed to add guest');
+        const payload = await readResponsePayload(res);
+        setError(getResponseErrorMessage(payload, 'Failed to add guest'));
       }
     } catch {
       setError('Connection error. Could not add guest.');
@@ -160,8 +161,8 @@ export function useGuestManagement({ guests, onGuestAdded, onGuestRemoved, onCSV
         flashSuccess('Guest removed successfully!', 2000);
         onGuestRemoved();
       } else {
-        const data = await res.json().catch(() => ({}));
-        setError((data.error as string) || 'Failed to remove guest');
+        const payload = await readResponsePayload(res);
+        setError(getResponseErrorMessage(payload, 'Failed to remove guest'));
       }
     } catch {
       setError('Connection error. Could not remove guest.');
@@ -175,12 +176,15 @@ export function useGuestManagement({ guests, onGuestAdded, onGuestRemoved, onCSV
       const step = await ensureStepUpToken();
       if (!step) return;
       const res = await authFetch('/api/admin/guests/bootstrap', { method: 'POST', headers: withStepUpHeaders(step) });
-      const data = await res.json().catch(() => ({}));
+      const payload = await readResponsePayload(res);
+      const data = (payload.json ?? {}) as Record<string, unknown>;
       if (!res.ok) {
-        setError((data.error as string) || 'Bootstrap failed');
+        setError(getResponseErrorMessage(payload, 'Bootstrap failed'));
         return;
       }
-      flashSuccess(data.bootstrapped ? `Loaded ${data.count} guests from CSV` : (data.message || 'Guests already exist'));
+      flashSuccess(
+        data.bootstrapped ? `Loaded ${(data.count as number) ?? 0} guests from CSV` : ((data.message as string) || 'Guests already exist')
+      );
       onCSVImported();
     } catch {
       setError('Connection error. Could not bootstrap.');
@@ -197,12 +201,13 @@ export function useGuestManagement({ guests, onGuestAdded, onGuestRemoved, onCSV
       const step = await ensureStepUpToken();
       if (!step) return;
       const res = await authFetch('/api/admin/guests/bootstrap', { method: 'DELETE', headers: withStepUpHeaders(step) });
-      const data = await res.json().catch(() => ({}));
+      const payload = await readResponsePayload(res);
+      const data = (payload.json ?? {}) as Record<string, unknown>;
       if (!res.ok) {
-        setError((data.error as string) || 'Force reload failed');
+        setError(getResponseErrorMessage(payload, 'Force reload failed'));
         return;
       }
-      flashSuccess(`Reset complete! Loaded ${data.count} guests from CSV`);
+      flashSuccess(`Reset complete! Loaded ${(data.count as number) ?? 0} guests from CSV`);
       onCSVImported();
     } catch {
       setError('Connection error. Could not reload data.');
@@ -227,9 +232,10 @@ export function useGuestManagement({ guests, onGuestAdded, onGuestRemoved, onCSV
         method: 'DELETE',
         headers: withStepUpHeaders(step),
       });
-      const guestData = await guestRes.json().catch(() => ({}));
+      const guestPayload = await readResponsePayload(guestRes);
+      const guestData = (guestPayload.json ?? {}) as Record<string, unknown>;
       if (!guestRes.ok) {
-        setError((guestData.error as string) || 'Guest reset failed');
+        setError(getResponseErrorMessage(guestPayload, 'Guest reset failed'));
         return;
       }
 
@@ -242,7 +248,7 @@ export function useGuestManagement({ guests, onGuestAdded, onGuestRemoved, onCSV
 
       setBestDressedLeaderboard([]);
       setBestDressedTotalVotes(0);
-      flashSuccess(`Party ready! Loaded ${guestData.count} guests, all votes cleared.`, 5000);
+      flashSuccess(`Party ready! Loaded ${(guestData.count as number) ?? 0} guests, all votes cleared.`, 5000);
       onCSVImported();
     } catch {
       setError('Connection error. Party reset incomplete.');
@@ -272,11 +278,12 @@ export function useGuestManagement({ guests, onGuestAdded, onGuestRemoved, onCSV
         headers: withStepUpHeaders(step),
       });
       if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.error || 'Failed to import CSV');
+        const payload = await readResponsePayload(res);
+        throw new Error(getResponseErrorMessage(payload, 'Failed to import CSV'));
       }
-      const data = await res.json();
-      flashSuccess(`Imported ${data.count} guests!`);
+      const payload = await readResponsePayload(res);
+      const data = (payload.json ?? {}) as Record<string, unknown>;
+      flashSuccess(`Imported ${(data.count as number) ?? 0} guests!`);
       onCSVImported();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to import CSV');
@@ -289,9 +296,10 @@ export function useGuestManagement({ guests, onGuestAdded, onGuestRemoved, onCSV
   async function fetchBestDressedData() {
     try {
       const res = await fetch('/api/best-dressed');
-      const data = await res.json();
-      setBestDressedLeaderboard(data.leaderboard || []);
-      setBestDressedTotalVotes(data.totalVotes || 0);
+      const payload = await readResponsePayload(res);
+      const data = (payload.json ?? {}) as Record<string, unknown>;
+      setBestDressedLeaderboard((Array.isArray(data.leaderboard) ? data.leaderboard : []) as LeaderboardEntry[]);
+      setBestDressedTotalVotes((data.totalVotes as number) ?? 0);
     } catch (err) {
       console.error('Failed to fetch best dressed data:', err);
     }
@@ -310,8 +318,8 @@ export function useGuestManagement({ guests, onGuestAdded, onGuestRemoved, onCSV
         setBestDressedTotalVotes(0);
         flashSuccess('Best dressed votes cleared');
       } else {
-        const data = await res.json().catch(() => ({}));
-        setError((data.error as string) || 'Failed to clear votes');
+        const payload = await readResponsePayload(res);
+        setError(getResponseErrorMessage(payload, 'Failed to clear votes'));
       }
     } catch {
       setError('Connection error. Could not clear votes.');
@@ -368,4 +376,3 @@ export function useGuestManagement({ guests, onGuestAdded, onGuestRemoved, onCSV
     handleWipeBestDressed,
   };
 }
-

@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Guest } from '@/features/guests/types';
 import { fetchWithRetry } from '@/lib/http/fetch-with-retry';
+import { readResponsePayload } from '@/lib/client/response';
 
 /** Poll interval when the tab is focused (ms) */
 // This hits KV on every poll. 10s still feels "live" but halves read volume vs 5s.
@@ -63,9 +64,9 @@ export function useGuests(opts: UseGuestsOptions = {}) {
         return;
       }
       if (!res.ok) throw new Error('Failed to fetch guests');
-      const data = await res.json();
-      if (Array.isArray(data)) {
-        setGuests(data);
+      const payload = await readResponsePayload(res);
+      if (Array.isArray(payload.json)) {
+        setGuests(payload.json as Guest[]);
         setError(null);
         consecutiveErrors.current = 0;
       } else {
@@ -164,4 +165,3 @@ export function useGuests(opts: UseGuestsOptions = {}) {
 
   return { guests, loading, error, updateCheckIn, refetch: fetchGuests };
 }
-

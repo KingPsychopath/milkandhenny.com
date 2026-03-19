@@ -24,6 +24,7 @@ import {
   type ZipPlanTotalBytes,
 } from "@/lib/client/zip-planner";
 import { formatBytes } from "@/lib/shared/format";
+import { getResponseErrorMessage, readResponsePayload } from "@/lib/client/response";
 import { useLazyImage } from "@/hooks/useLazyImage";
 import { useSwipe } from "@/hooks/useSwipe";
 import { SelectionToggle } from "@/components/SelectionToggle";
@@ -1440,10 +1441,14 @@ export function TransferGallery({ transferId, files, groups, deleteToken }: Tran
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ token: deleteToken }),
         });
-        const data = await res.json().catch(() => ({}));
+        const payload = await readResponsePayload(res);
+        const data = (payload.json ?? {}) as Record<string, unknown>;
+        const transferData = data.transfer as
+          | { files?: TransferFileData[]; groups?: AssetGroup[] }
+          | undefined;
 
         if (!res.ok) {
-          setDeleteError(typeof data?.error === "string" ? data.error : "Delete failed.");
+          setDeleteError(getResponseErrorMessage(payload, "Delete failed."));
           return;
         }
 
@@ -1461,9 +1466,9 @@ export function TransferGallery({ transferId, files, groups, deleteToken }: Tran
           return;
         }
 
-        if (data.transfer) {
-          setCurrentFiles(data.transfer.files as TransferFileData[]);
-          setCurrentGroups((data.transfer.groups as AssetGroup[] | undefined) ?? undefined);
+        if (transferData) {
+          setCurrentFiles(transferData.files ?? []);
+          setCurrentGroups(transferData.groups ?? undefined);
         } else {
           setCurrentFiles((prev) => prev.filter((candidate) => candidate.id !== file.id));
           setCurrentGroups((prev) => prev);

@@ -5,8 +5,10 @@ import Link from "next/link";
 import { getStored, removeStored } from "@/lib/client/storage";
 import { mapWithConcurrency } from "@/lib/shared/map-with-concurrency";
 import { SITE_BRAND } from "@/lib/shared/config";
+import { getResponseErrorMessage, readResponsePayload } from "@/lib/client/response";
 import { isHeifLikeFile, prepareTransferUploadFile } from "@/features/transfers/browser-heif";
 import type { TransferUploadFileInput } from "@/features/transfers/upload-types";
+import { collectDroppedFiles } from "./drop-files";
 
 /* ─── Types ─── */
 
@@ -611,12 +613,11 @@ export function UploadDashboard({ isAdmin }: UploadDashboardProps) {
   }, []);
 
   const handleDrop = useCallback(
-    (e: React.DragEvent) => {
+    async (e: React.DragEvent) => {
       e.preventDefault();
       setIsDragging(false);
-      if (e.dataTransfer.files.length > 0) {
-        addFiles(e.dataTransfer.files);
-      }
+      const droppedFiles = await collectDroppedFiles(e.dataTransfer);
+      if (droppedFiles.length > 0) addFiles(droppedFiles);
     },
     [addFiles]
   );
@@ -701,16 +702,16 @@ export function UploadDashboard({ isAdmin }: UploadDashboardProps) {
       }),
     });
 
-    const presignData = await presignRes.json();
+    const presignPayload = await readResponsePayload(presignRes);
     if (!presignRes.ok) {
-      throw new Error(presignData.error || "Failed to prepare upload");
+      throw new Error(getResponseErrorMessage(presignPayload, "Failed to prepare upload"));
     }
 
-    const { transferId, deleteToken, expiresSeconds, urls } = presignData as {
-      transferId: string;
-      deleteToken: string;
-      expiresSeconds: number;
-      urls: Array<{
+    const presignData = presignPayload.json as {
+      transferId?: string;
+      deleteToken?: string;
+      expiresSeconds?: number;
+      urls?: Array<{
         name: string;
         mediaId: string;
         contentType: string;
@@ -718,6 +719,18 @@ export function UploadDashboard({ isAdmin }: UploadDashboardProps) {
         archivedOriginalUrl?: string;
       }>;
     };
+
+    if (
+      !presignData ||
+      typeof presignData.transferId !== "string" ||
+      typeof presignData.deleteToken !== "string" ||
+      typeof presignData.expiresSeconds !== "number" ||
+      !Array.isArray(presignData.urls)
+    ) {
+      throw new Error(getResponseErrorMessage(presignPayload, "Failed to prepare upload"));
+    }
+
+    const { transferId, deleteToken, expiresSeconds, urls } = presignData;
     const mediaIdsByName = new Map(urls.map((entry) => [entry.name, entry.mediaId]));
     const finalizeFiles: TransferUploadFileInput[] = presignFiles.map((file) => ({
       ...file,
@@ -770,14 +783,14 @@ export function UploadDashboard({ isAdmin }: UploadDashboardProps) {
       }),
     });
 
-    const finalizeData = await finalizeRes.json();
+    const finalizePayload = await readResponsePayload(finalizeRes);
     if (!finalizeRes.ok) {
       throw new Error(
-        finalizeData.error || "Upload succeeded but finalization failed"
+        getResponseErrorMessage(finalizePayload, "Upload succeeded but finalization failed")
       );
     }
 
-    return finalizeData as TransferResult;
+    return finalizePayload.json as TransferResult;
   };
 
   const handleTransferAppendUpload = async () => {
@@ -862,12 +875,14 @@ export function UploadDashboard({ isAdmin }: UploadDashboardProps) {
       }),
     });
 
-    const finalizeData = await finalizeRes.json().catch(() => ({}));
+    const finalizePayload = await readResponsePayload(finalizeRes);
     if (!finalizeRes.ok) {
-      throw new Error((finalizeData as { error?: string }).error || "Append upload succeeded but finalization failed");
+      throw new Error(
+        getResponseErrorMessage(finalizePayload, "Append upload succeeded but finalization failed")
+      );
     }
 
-    return finalizeData as TransferResult;
+    return finalizePayload.json as TransferResult;
   };
 
   /** Words upload uses presigned PUT URLs (same as transfers). */
@@ -890,12 +905,9 @@ export function UploadDashboard({ isAdmin }: UploadDashboardProps) {
         files: files.map((f) => ({ name: f.name, size: f.size, type: f.type })),
       }),
     });
-    const presignData = await presignRes.json().catch(() => ({}));
-    if (!presignRes.ok || !presignData || presignData.success !== true) {
-      throw new Error(presignData.error || "Failed to prepare words upload");
-    }
-
-    const { urls, skipped } = presignData as {
+    const presignPayload = await readResponsePayload(presignRes);
+    const presignData = presignPayload.json as Partial<{
+      success: boolean;
       urls: Array<{
         original: string;
         filename: string;
@@ -906,7 +918,16 @@ export function UploadDashboard({ isAdmin }: UploadDashboardProps) {
         overwrote: boolean;
       }>;
       skipped: string[];
-    };
+      error: string;
+    }> | null;
+    if (!presignRes.ok || !presignData || presignData.success !== true) {
+      throw new Error(getResponseErrorMessage(presignPayload, "Failed to prepare words upload"));
+    }
+
+    const { urls, skipped } = presignData;
+    if (!Array.isArray(urls) || !Array.isArray(skipped)) {
+      throw new Error(getResponseErrorMessage(presignPayload, "Failed to prepare words upload"));
+    }
 
     if (urls.length === 0) {
       return { uploaded: [], skipped };
@@ -953,12 +974,14 @@ export function UploadDashboard({ isAdmin }: UploadDashboardProps) {
         })),
       }),
     });
-    const finalizeData = await finalizeRes.json().catch(() => ({}));
+    const finalizePayload = await readResponsePayload(finalizeRes);
     if (!finalizeRes.ok) {
-      throw new Error(finalizeData.error || "Words upload succeeded but finalization failed");
+      throw new Error(
+        getResponseErrorMessage(finalizePayload, "Words upload succeeded but finalization failed")
+      );
     }
 
-    return finalizeData as WordResult;
+    return finalizePayload.json as WordResult;
   };
 
   const handleUpload = async () => {
