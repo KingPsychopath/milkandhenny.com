@@ -18,6 +18,7 @@ import {
   inferCompatibleTransferFileState,
   listExistingTransferDerivativeKeys,
   needsCompatibilityInference,
+  buildFailedLocalResult,
   processTransferBufferLocally,
   processTransferObjectLocally,
 } from "./local";
@@ -106,7 +107,12 @@ async function processTransferBuffer(
     return result;
   } catch {
     if (!canUseWorkerForRoute(route)) {
-      throw new Error(`Local processing failed for ${route}`);
+      return buildFailedLocalResult({
+        transferId,
+        file: { ...file, size: buffer.byteLength },
+        route,
+        buffer,
+      });
     }
     return enqueueWorkerJob({
       transferId,
@@ -152,7 +158,11 @@ async function processTransferObject(
     return result;
   } catch {
     if (!canUseWorkerForRoute(route)) {
-      throw new Error(`Local processing failed for ${route}`);
+      return buildFailedLocalResult({
+        transferId,
+        file,
+        route,
+      });
     }
     return enqueueWorkerJob({
       transferId,
