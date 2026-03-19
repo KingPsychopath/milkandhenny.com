@@ -57,4 +57,40 @@ describe("media download helpers", () => {
 
     expect(shouldUseWorkerZipFallback({ pickerAvailable: false, fileCount: 3 })).toBe(false);
   });
+
+  it("surfaces text error bodies from download presign responses", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        new Response("An error occurred while preparing the download.", {
+          status: 500,
+          headers: { "content-type": "text/plain" },
+        })
+      )
+    );
+
+    const { getPresignedDownloadUrl } = await import("@/lib/client/media-download");
+
+    await expect(getPresignedDownloadUrl("transfers/demo/originals/file.jpg", "file.jpg")).rejects.toThrow(
+      "An error occurred while preparing the download."
+    );
+  });
+
+  it("returns the presigned url when the response body is valid json", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        new Response(JSON.stringify({ url: "https://example.com/download" }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        })
+      )
+    );
+
+    const { getPresignedDownloadUrl } = await import("@/lib/client/media-download");
+
+    await expect(getPresignedDownloadUrl("transfers/demo/originals/file.jpg", "file.jpg")).resolves.toBe(
+      "https://example.com/download"
+    );
+  });
 });
