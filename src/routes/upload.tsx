@@ -16,11 +16,11 @@ const getUploadAccess = createServerFn({ method: "GET" }).handler(async () => {
 });
 
 export const Route = createFileRoute("/upload")({
-  component: UploadPage,
-  loader: () => getUploadAccess(),
   validateSearch: (search: Record<string, unknown>) => ({
     auth: search.auth === "failed" ? ("failed" as const) : undefined,
   }),
+  loader: () => getUploadAccess(),
+  component: UploadPage,
   head: () => ({
     meta: [
       { title: `upload · ${SITE_NAME}` },
