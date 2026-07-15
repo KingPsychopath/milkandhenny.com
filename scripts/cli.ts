@@ -27,27 +27,12 @@ import {
   getPhotoKeys,
   backfillOgVariants,
 } from "./album-ops";
-import { validateAllAlbums } from "@/features/media/albums";
+import { validateAllAlbums } from "@/features/media/albums.server";
 import { BASE_URL } from "@/lib/shared/config";
-import {
-  FOCAL_PRESETS,
-  resolveFocalPreset,
-  FOCAL_SHORTHAND,
-} from "@/features/media/focal";
-import {
-  compareStrategies,
-  DETECTION_STRATEGIES,
-  type DetectionStrategy,
-} from "./face-detect";
-import {
-  ROTATION_OVERRIDES,
-  type RotationOverride,
-} from "../features/media/processing";
-import {
-  listObjects,
-  deleteObject,
-  getBucketInfo,
-} from "./r2-client";
+import { FOCAL_PRESETS, resolveFocalPreset, FOCAL_SHORTHAND } from "@/features/media/focal";
+import { compareStrategies, DETECTION_STRATEGIES, type DetectionStrategy } from "./face-detect";
+import { ROTATION_OVERRIDES, type RotationOverride } from "../features/media/processing.server";
+import { listObjects, deleteObject, getBucketInfo } from "./r2-client";
 import {
   createTransfer,
   appendToTransfer,
@@ -144,7 +129,7 @@ function progress(msg: string) {
  */
 function formatFocalDisplay(
   photo: { focalPoint?: string; autoFocal?: { x: number; y: number } },
-  style: "tag" | "detail"
+  style: "tag" | "detail",
 ): string {
   if (photo.focalPoint && photo.focalPoint !== "center") {
     const label = `focal: ${photo.focalPoint}`;
@@ -174,10 +159,7 @@ function mediaTargetPathHint(target: WordMediaTarget): string {
     : `words/media/${target.slug}/`;
 }
 
-function getMediaTargetFromArgs(opts: {
-  slug?: string;
-  assetId?: string;
-}): WordMediaTarget {
+function getMediaTargetFromArgs(opts: { slug?: string; assetId?: string }): WordMediaTarget {
   const slug = opts.slug?.trim().toLowerCase();
   const assetId = opts.assetId?.trim().toLowerCase();
 
@@ -224,9 +206,7 @@ function validateDir(dir: string): { valid: boolean; error?: string; count?: num
   if (!fs.statSync(absDir).isDirectory()) {
     return { valid: false, error: `Not a directory: ${absDir}` };
   }
-  const images = fs
-    .readdirSync(absDir)
-    .filter((f) => /\.(jpe?g|png|webp)$/i.test(f));
+  const images = fs.readdirSync(absDir).filter((f) => /\.(jpe?g|png|webp)$/i.test(f));
   if (images.length === 0) {
     return {
       valid: false,
@@ -290,7 +270,7 @@ function getCliIoConcurrency(): number {
 async function mapWithConcurrency<T, R>(
   items: T[],
   concurrency: number,
-  worker: (item: T, index: number) => Promise<R>
+  worker: (item: T, index: number) => Promise<R>,
 ): Promise<R[]> {
   if (items.length === 0) return [];
   const results = new Array<R>(items.length);
@@ -325,7 +305,7 @@ function hasFlag(name: string): boolean {
 /** Ask for text input with optional hint and default value */
 async function ask(
   question: string,
-  opts?: { hint?: string; defaultVal?: string; required?: boolean }
+  opts?: { hint?: string; defaultVal?: string; required?: boolean },
 ): Promise<string> {
   const rl = readline.createInterface({
     input: process.stdin,
@@ -363,7 +343,7 @@ async function confirm(message: string): Promise<boolean> {
 /** Show numbered options. Returns: selected index (1-based), 0 = back, -1 = invalid */
 async function choose(
   title: string,
-  options: { label: string; detail?: string }[]
+  options: { label: string; detail?: string }[],
 ): Promise<number> {
   console.log();
   log(bold(title));
@@ -400,7 +380,7 @@ async function selectAlbum(): Promise<string | null> {
     albums.map((a) => ({
       label: a.title,
       detail: `${a.slug} · ${formatDate(a.date)} · ${a.photoCount} photos`,
-    }))
+    })),
   );
 
   if (choice <= 0) return null;
@@ -420,7 +400,7 @@ async function selectPhoto(slug: string): Promise<string | null> {
     album.photos.map((p) => ({
       label: `${p.id}${p.id === album.cover ? yellow(" ★ cover") : ""}`,
       detail: `${p.width} × ${p.height}${formatFocalDisplay(p, "detail")}`,
-    }))
+    })),
   );
 
   if (choice <= 0) return null;
@@ -451,7 +431,7 @@ async function cmdAlbumsList() {
 
   for (const a of albums) {
     log(
-      `${cyan(a.slug.padEnd(maxSlug + 2))} ${a.title.padEnd(35)} ${dim(formatDate(a.date))}  ${dim(`${a.photoCount} photos`)}`
+      `${cyan(a.slug.padEnd(maxSlug + 2))} ${a.title.padEnd(35)} ${dim(formatDate(a.date))}  ${dim(`${a.photoCount} photos`)}`,
     );
   }
   console.log();
@@ -476,7 +456,7 @@ async function cmdAlbumsShow(slug: string) {
   for (const p of album.photos) {
     const coverTag = p.id === album.cover ? yellow(" ★") : "";
     log(
-      `  ${p.id.padEnd(maxId + 2)} ${dim(`${p.width} × ${p.height}`)}${coverTag}${formatFocalDisplay(p, "tag")}`
+      `  ${p.id.padEnd(maxId + 2)} ${dim(`${p.width} × ${p.height}`)}${coverTag}${formatFocalDisplay(p, "tag")}`,
     );
   }
   console.log();
@@ -491,8 +471,16 @@ async function cmdAlbumsUpload(opts: {
   rotation?: RotationOverride;
 }) {
   heading(`Uploading: ${opts.title}`);
-  log(dim("Resume-safe: if interrupted, rerun the same albums upload command in the same folder to continue."));
-  log(dim(`Checkpoint file: ${getAlbumUploadCheckpointFilename(opts.slug)} (auto-created, auto-removed on success)`));
+  log(
+    dim(
+      "Resume-safe: if interrupted, rerun the same albums upload command in the same folder to continue.",
+    ),
+  );
+  log(
+    dim(
+      `Checkpoint file: ${getAlbumUploadCheckpointFilename(opts.slug)} (auto-created, auto-removed on success)`,
+    ),
+  );
   console.log();
 
   let jsonPath: string;
@@ -520,9 +508,7 @@ async function cmdAlbumsUpload(opts: {
   log(`  Thumbnails:  ${formatBytes(totalThumb)}`);
   log(`  Full-size:   ${formatBytes(totalFull)}`);
   log(`  Originals:   ${formatBytes(totalOrig)}`);
-  log(
-    `  ${bold("Total:")}       ${formatBytes(totalThumb + totalFull + totalOrig)}`
-  );
+  log(`  ${bold("Total:")}       ${formatBytes(totalThumb + totalFull + totalOrig)}`);
   console.log();
   log(dim("Next: commit the JSON and deploy."));
   console.log();
@@ -530,7 +516,7 @@ async function cmdAlbumsUpload(opts: {
 
 async function cmdAlbumsUpdate(
   slug: string,
-  updates: { title?: string; date?: string; description?: string; cover?: string }
+  updates: { title?: string; date?: string; description?: string; cover?: string },
 ) {
   const updated = updateAlbumMeta(slug, updates);
   if (!updated) throw new Error(`Album "${slug}" not found.`);
@@ -548,7 +534,11 @@ async function cmdAlbumsUpdate(
   console.log();
 }
 
-async function cmdAlbumsBackfillOg(skipConfirm = false, force = false, strategy?: DetectionStrategy) {
+async function cmdAlbumsBackfillOg(
+  skipConfirm = false,
+  force = false,
+  strategy?: DetectionStrategy,
+) {
   heading("Backfill OG images");
   log(dim("Downloads originals from R2, generates 1200×630 JPGs for social sharing."));
   log(dim(force ? "Regenerating all (--force)." : "Skips photos that already have og/ variant."));
@@ -592,14 +582,10 @@ async function cmdAlbumsDelete(slug: string) {
 
   heading(`Delete: ${album.title}`);
   log(`${dim("Photos:")} ${album.photos.length}`);
-  log(
-    `${dim("R2 files:")} ~${album.photos.length * 4} (thumb + full + original + og per photo)`
-  );
+  log(`${dim("R2 files:")} ~${album.photos.length * 4} (thumb + full + original + og per photo)`);
   console.log();
 
-  const ok = await confirm(
-    `${red("Permanently")} delete album "${slug}" and all its R2 files?`
-  );
+  const ok = await confirm(`${red("Permanently")} delete album "${slug}" and all its R2 files?`);
   if (!ok) {
     log(dim("Cancelled."));
     console.log();
@@ -631,7 +617,11 @@ async function cmdAlbumsValidate() {
     console.log();
   }
   log(red(`✗ ${results.length} album(s) have validation errors.`));
-  log(dim("Fix focalPoint (use a valid preset) or autoFocal (x, y in 0–100) in content/albums/*.json"));
+  log(
+    dim(
+      "Fix focalPoint (use a valid preset) or autoFocal (x, y in 0–100) in content/albums/*.json",
+    ),
+  );
   console.log();
   process.exit(1);
 }
@@ -654,7 +644,7 @@ async function cmdPhotosList(slug: string) {
     const coverTag = p.id === album.cover ? yellow(" ★ cover") : "";
     const keys = getPhotoKeys(slug, p.id);
     log(
-      `${cyan(p.id.padEnd(maxId + 2))} ${dim(`${p.width} × ${p.height}`)}${coverTag}${formatFocalDisplay(p, "tag")}`
+      `${cyan(p.id.padEnd(maxId + 2))} ${dim(`${p.width} × ${p.height}`)}${coverTag}${formatFocalDisplay(p, "tag")}`,
     );
     for (const k of keys) {
       log(`  ${dim(k)}`);
@@ -667,20 +657,13 @@ async function cmdPhotosAdd(slug: string, dir: string, rotation?: RotationOverri
   heading(`Adding photos to: ${slug}`);
   if (rotation) progress(`Rotation override: ${rotation}`);
 
-  const { added, album } = await addPhotos(slug, dir, (msg) =>
-    progress(msg),
-    rotation,
-  );
+  const { added, album } = await addPhotos(slug, dir, (msg) => progress(msg), rotation);
 
   console.log();
   if (added.length === 0) {
     log(yellow("No new photos to add (all already in album)."));
   } else {
-    log(
-      green(
-        `✓ ${added.length} photos added. Album now has ${album.photos.length} photos.`
-      )
-    );
+    log(green(`✓ ${added.length} photos added. Album now has ${album.photos.length} photos.`));
     log(dim("Next: commit the JSON and deploy."));
   }
   console.log();
@@ -693,9 +676,7 @@ async function cmdPhotosDelete(slug: string, photoId: string) {
   const photo = album.photos.find((p) => p.id === photoId);
   if (!photo) {
     const available = album.photos.map((p) => p.id).join(", ");
-    throw new Error(
-      `Photo "${photoId}" not found in album "${slug}". Available: ${available}`
-    );
+    throw new Error(`Photo "${photoId}" not found in album "${slug}". Available: ${available}`);
   }
 
   heading(`Delete photo: ${photoId}`);
@@ -716,11 +697,7 @@ async function cmdPhotosDelete(slug: string, photoId: string) {
   const result = await deletePhoto(slug, photoId, (msg) => progress(msg));
 
   console.log();
-  log(
-    green(
-      `✓ Deleted ${photoId} (${result.deletedKeys.length} files from R2)`
-    )
-  );
+  log(green(`✓ Deleted ${photoId} (${result.deletedKeys.length} files from R2)`));
   log(green(`✓ Album now has ${result.album.photos.length} photos`));
   log(dim("Next: commit the JSON and deploy."));
   console.log();
@@ -737,12 +714,10 @@ async function cmdPhotosSetCover(slug: string, photoId: string) {
 async function cmdPhotosSetFocal(
   slug: string,
   photoId: string,
-  preset: import("@/features/media/focal").FocalPreset
+  preset: import("@/features/media/focal").FocalPreset,
 ) {
   heading(`Set focal point: ${photoId}`);
-  const album = await setPhotoFocal(slug, photoId, preset, (msg) =>
-    progress(msg)
-  );
+  const album = await setPhotoFocal(slug, photoId, preset, (msg) => progress(msg));
   console.log();
   log(green(`✓ Focal set to "${preset}" — OG image regenerated.`));
   log(dim(`Album: ${album.title}`));
@@ -780,16 +755,14 @@ async function cmdPhotosCompareFocal(slug: string, photoId: string) {
 }
 
 async function cmdPhotosResetFocal(slug: string, photoId?: string, strategy?: DetectionStrategy) {
-  heading(
-    photoId ? `Reset focal: ${photoId}` : `Reset focal: all photos in ${slug}`
-  );
+  heading(photoId ? `Reset focal: ${photoId}` : `Reset focal: all photos in ${slug}`);
   if (strategy) progress(`Using ${strategy} detection strategy`);
   const album = await resetPhotoFocal(slug, photoId, (msg) => progress(msg), strategy);
   console.log();
   log(
     green(
-      `✓ Focal reset — ${photoId ? "1 photo" : `${album.photos.length} photos`} re-detected and OG images regenerated.`
-    )
+      `✓ Focal reset — ${photoId ? "1 photo" : `${album.photos.length} photos`} re-detected and OG images regenerated.`,
+    ),
   );
   log(dim("Manual overrides cleared. Auto-detected face positions applied."));
   log(dim("Next: commit the JSON and deploy."));
@@ -828,7 +801,7 @@ async function cmdBucketLs(prefix = "") {
 
   for (const [folder, info] of [...folders.entries()].sort()) {
     log(
-      `${cyan(folder.padEnd(45))} ${dim(`${info.count} files`).padEnd(20)} ${dim(formatBytes(info.size))}`
+      `${cyan(folder.padEnd(45))} ${dim(`${info.count} files`).padEnd(20)} ${dim(formatBytes(info.size))}`,
     );
   }
 
@@ -840,8 +813,8 @@ async function cmdBucketLs(prefix = "") {
   console.log();
   log(
     dim(
-      `Total: ${objects.length} objects, ${formatBytes(objects.reduce((s, o) => s + o.size, 0))}`
-    )
+      `Total: ${objects.length} objects, ${formatBytes(objects.reduce((s, o) => s + o.size, 0))}`,
+    ),
   );
   console.log();
 }
@@ -851,7 +824,7 @@ async function cmdBucketRm(key: string) {
   console.log();
 
   const ok = await confirm(
-    `Delete "${key}" from R2? ${dim("(⚠ This does NOT update album JSON — use 'photos delete' for that)")}`
+    `Delete "${key}" from R2? ${dim("(⚠ This does NOT update album JSON — use 'photos delete' for that)")}`,
   );
   if (!ok) {
     log(dim("Cancelled."));
@@ -871,14 +844,9 @@ async function cmdBucketInfo() {
   const info = await getBucketInfo();
 
   log(`${dim("Objects:")}    ${info.totalObjects.toLocaleString()}`);
-  log(
-    `${dim("Total size:")} ${info.totalSizeMB} MB (${formatBytes(info.totalSizeBytes)})`
-  );
+  log(`${dim("Total size:")} ${info.totalSizeMB} MB (${formatBytes(info.totalSizeBytes)})`);
 
-  const pctUsed = (
-    (info.totalSizeBytes / (10 * 1024 * 1024 * 1024)) *
-    100
-  ).toFixed(2);
+  const pctUsed = ((info.totalSizeBytes / (10 * 1024 * 1024 * 1024)) * 100).toFixed(2);
   log(`${dim("Free tier:")}  ${pctUsed}% of 10 GB used`);
   console.log();
 }
@@ -905,7 +873,7 @@ async function cmdTransfersList() {
       year: "numeric",
     });
     log(
-      `${cyan(t.id.padEnd(14))} ${t.title.padEnd(30)} ${dim(`${t.fileCount} files`).padEnd(22)} ${dim(created).padEnd(18)} ${yellow(remaining + " left")}`
+      `${cyan(t.id.padEnd(14))} ${t.title.padEnd(30)} ${dim(`${t.fileCount} files`).padEnd(22)} ${dim(created).padEnd(18)} ${yellow(remaining + " left")}`,
     );
   }
   console.log();
@@ -920,16 +888,12 @@ async function cmdTransfersInfo(id: string) {
   heading(info.title);
   log(`${dim("ID:")}           ${info.id}`);
   log(`${dim("Files:")}        ${info.files.length}`);
+  log(`${dim("Created:")}      ${new Date(info.createdAt).toLocaleString("en-GB")}`);
   log(
-    `${dim("Created:")}      ${new Date(info.createdAt).toLocaleString("en-GB")}`
-  );
-  log(
-    `${dim("Expires:")}      ${new Date(info.expiresAt).toLocaleString("en-GB")} ${yellow(`(${remaining} left)`)}`
+    `${dim("Expires:")}      ${new Date(info.expiresAt).toLocaleString("en-GB")} ${yellow(`(${remaining} left)`)}`,
   );
   log(`${dim("Share URL:")}    ${green(`${BASE_URL}/t/${info.id}`)}`);
-  log(
-    `${dim("Admin URL:")}    ${green(`${BASE_URL}/t/${info.id}?token=${info.deleteToken}`)}`
-  );
+  log(`${dim("Admin URL:")}    ${green(`${BASE_URL}/t/${info.id}?token=${info.deleteToken}`)}`);
   console.log();
 
   if (info.files.length <= 30) {
@@ -961,14 +925,14 @@ async function cmdTransfersMediaRetry(id: string, selector?: string) {
   console.log();
 }
 
-async function cmdTransfersUpload(opts: {
-  dir: string;
-  title: string;
-  expires?: string;
-}) {
+async function cmdTransfersUpload(opts: { dir: string; title: string; expires?: string }) {
   heading(`Creating transfer: ${opts.title}`);
-  log(dim('Resume-safe: if interrupted, rerun the same command in the same folder to continue.'));
-  log(dim('Checkpoint file: .mah-transfer-upload.checkpoint.json (auto-created, auto-removed on success)'));
+  log(dim("Resume-safe: if interrupted, rerun the same command in the same folder to continue."));
+  log(
+    dim(
+      "Checkpoint file: .mah-transfer-upload.checkpoint.json (auto-created, auto-removed on success)",
+    ),
+  );
   console.log();
 
   let result: Awaited<ReturnType<typeof createTransfer>>;
@@ -994,19 +958,27 @@ async function cmdTransfersUpload(opts: {
   if (countParts.length > 0) log(dim(`  ${countParts.join(", ")}`));
   if (result.processingCounts.queuedCount > 0 || result.processingCounts.failedCount > 0) {
     const processingParts: string[] = [];
-    if (result.processingCounts.readyCount > 0) processingParts.push(`${result.processingCounts.readyCount} ready`);
-    if (result.processingCounts.queuedCount > 0) processingParts.push(`${result.processingCounts.queuedCount} queued`);
-    if (result.processingCounts.failedCount > 0) processingParts.push(`${result.processingCounts.failedCount} failed`);
-    if (result.processingCounts.skippedCount > 0) processingParts.push(`${result.processingCounts.skippedCount} original-only`);
+    if (result.processingCounts.readyCount > 0)
+      processingParts.push(`${result.processingCounts.readyCount} ready`);
+    if (result.processingCounts.queuedCount > 0)
+      processingParts.push(`${result.processingCounts.queuedCount} queued`);
+    if (result.processingCounts.failedCount > 0)
+      processingParts.push(`${result.processingCounts.failedCount} failed`);
+    if (result.processingCounts.skippedCount > 0)
+      processingParts.push(`${result.processingCounts.skippedCount} original-only`);
     log(dim(`  processing: ${processingParts.join(", ")}`));
   }
-  if (result.transfer.files.some((file) => /\.(heic|heif|hif)$/i.test(file.filename) && file.processingStatus === "skipped")) {
+  if (
+    result.transfer.files.some(
+      (file) => /\.(heic|heif|hif)$/i.test(file.filename) && file.processingStatus === "skipped",
+    )
+  ) {
     log(dim("  note: HEIC/HIF files are stored as originals only in the CLI path"));
   }
 
   const expires = new Date(result.transfer.expiresAt);
   log(
-    `${dim("Expires:")} ${expires.toLocaleString("en-GB")} ${yellow(`(${formatDuration(Math.floor((expires.getTime() - Date.now()) / 1000))} from now)`)}`
+    `${dim("Expires:")} ${expires.toLocaleString("en-GB")} ${yellow(`(${formatDuration(Math.floor((expires.getTime() - Date.now()) / 1000))} from now)`)}`,
   );
 
   console.log();
@@ -1021,14 +993,19 @@ async function cmdTransfersUpload(opts: {
   console.log();
 }
 
-async function cmdTransfersAppend(opts: {
-  id: string;
-  dir: string;
-}) {
+async function cmdTransfersAppend(opts: { id: string; dir: string }) {
   heading(`Append files to transfer: ${opts.id}`);
   log(dim("Adds new files to an existing active transfer without changing its expiry."));
-  log(dim("Resume-safe: if interrupted, rerun the same append command in the same folder to continue."));
-  log(dim(`Checkpoint file: .mah-transfer-append.${opts.id}.checkpoint.json (auto-created, auto-removed on success)`));
+  log(
+    dim(
+      "Resume-safe: if interrupted, rerun the same append command in the same folder to continue.",
+    ),
+  );
+  log(
+    dim(
+      `Checkpoint file: .mah-transfer-append.${opts.id}.checkpoint.json (auto-created, auto-removed on success)`,
+    ),
+  );
   console.log();
 
   let result: Awaited<ReturnType<typeof appendToTransfer>>;
@@ -1041,7 +1018,11 @@ async function cmdTransfersAppend(opts: {
   }
 
   console.log();
-  log(green(`✓ Added ${result.addedCount} file${result.addedCount === 1 ? "" : "s"} to transfer ${result.transfer.id}`));
+  log(
+    green(
+      `✓ Added ${result.addedCount} file${result.addedCount === 1 ? "" : "s"} to transfer ${result.transfer.id}`,
+    ),
+  );
 
   const { fileCounts } = result;
   const countParts: string[] = [];
@@ -1053,13 +1034,21 @@ async function cmdTransfersAppend(opts: {
   if (countParts.length > 0) log(dim(`  added: ${countParts.join(", ")}`));
   if (result.processingCounts.queuedCount > 0 || result.processingCounts.failedCount > 0) {
     const processingParts: string[] = [];
-    if (result.processingCounts.readyCount > 0) processingParts.push(`${result.processingCounts.readyCount} ready`);
-    if (result.processingCounts.queuedCount > 0) processingParts.push(`${result.processingCounts.queuedCount} queued`);
-    if (result.processingCounts.failedCount > 0) processingParts.push(`${result.processingCounts.failedCount} failed`);
-    if (result.processingCounts.skippedCount > 0) processingParts.push(`${result.processingCounts.skippedCount} original-only`);
+    if (result.processingCounts.readyCount > 0)
+      processingParts.push(`${result.processingCounts.readyCount} ready`);
+    if (result.processingCounts.queuedCount > 0)
+      processingParts.push(`${result.processingCounts.queuedCount} queued`);
+    if (result.processingCounts.failedCount > 0)
+      processingParts.push(`${result.processingCounts.failedCount} failed`);
+    if (result.processingCounts.skippedCount > 0)
+      processingParts.push(`${result.processingCounts.skippedCount} original-only`);
     log(dim(`  processing: ${processingParts.join(", ")}`));
   }
-  if (result.transfer.files.some((file) => /\.(heic|heif|hif)$/i.test(file.filename) && file.processingStatus === "skipped")) {
+  if (
+    result.transfer.files.some(
+      (file) => /\.(heic|heif|hif)$/i.test(file.filename) && file.processingStatus === "skipped",
+    )
+  ) {
     log(dim("  note: HEIC/HIF files are stored as originals only in the CLI path"));
   }
 
@@ -1077,14 +1066,10 @@ async function cmdTransfersDelete(id: string) {
 
   heading(`Delete transfer: ${info.title}`);
   log(`${dim("Files:")} ${info.files.length}`);
-  log(
-    `${dim("Remaining:")} ${yellow(formatDuration(info.remainingSeconds))}`
-  );
+  log(`${dim("Remaining:")} ${yellow(formatDuration(info.remainingSeconds))}`);
   console.log();
 
-  const ok = await confirm(
-    `${red("Permanently")} delete transfer "${id}" and all its R2 files?`
-  );
+  const ok = await confirm(`${red("Permanently")} delete transfer "${id}" and all its R2 files?`);
   if (!ok) {
     log(dim("Cancelled."));
     console.log();
@@ -1105,15 +1090,13 @@ async function cmdTransfersDeleteFile(id: string, selector: string) {
 
   const exactId = info.files.find((file) => file.id === selector);
   const matchingFilename = info.files.filter((file) => file.filename === selector);
-  const target =
-    exactId ??
-    (matchingFilename.length === 1 ? matchingFilename[0] : null);
+  const target = exactId ?? (matchingFilename.length === 1 ? matchingFilename[0] : null);
 
   if (!target) {
     throw new Error(
       matchingFilename.length > 1
         ? `Multiple files match "${selector}". Use the file id instead.`
-        : `No file matched "${selector}" in transfer "${id}".`
+        : `No file matched "${selector}" in transfer "${id}".`,
     );
   }
 
@@ -1124,7 +1107,7 @@ async function cmdTransfersDeleteFile(id: string, selector: string) {
   console.log();
 
   const ok = await confirm(
-    `${red("Permanently")} delete "${target.filename}" from transfer "${id}"?`
+    `${red("Permanently")} delete "${target.filename}" from transfer "${id}"?`,
   );
   if (!ok) {
     log(dim("Cancelled."));
@@ -1174,14 +1157,14 @@ async function cmdTransfersMediaStatus() {
       result.worker.lastHeartbeatAt
         ? new Date(result.worker.lastHeartbeatAt).toLocaleString("en-GB")
         : "—"
-    }`
+    }`,
   );
   log(
     `${dim("Last processed:")} ${
       result.worker.lastProcessedAt
         ? new Date(result.worker.lastProcessedAt).toLocaleString("en-GB")
         : "—"
-    }`
+    }`,
   );
   if (result.worker.lastErrorMessage) {
     log(`${dim("Last error:")} ${yellow(result.worker.lastErrorMessage)}`);
@@ -1241,9 +1224,7 @@ async function cmdTransfersNuke(skipConfirm = false) {
   console.log();
 
   if (!skipConfirm) {
-    const ok = await confirm(
-      `${red("PERMANENTLY")} wipe every transfer? This cannot be undone.`
-    );
+    const ok = await confirm(`${red("PERMANENTLY")} wipe every transfer? This cannot be undone.`);
     if (!ok) {
       log(dim("Cancelled."));
       console.log();
@@ -1335,7 +1316,9 @@ async function resolveAdminTokenForCli(opts: {
 
   const password = opts.adminPassword?.trim();
   if (!password) {
-    throw new Error("No cached admin session. Provide --admin-password (recommended) or --admin-token.");
+    throw new Error(
+      "No cached admin session. Provide --admin-password (recommended) or --admin-token.",
+    );
   }
 
   progress("Signing in as admin...");
@@ -1353,7 +1336,7 @@ async function withResolvedAdminToken<T>(
     adminToken?: string;
     adminPassword?: string;
   },
-  task: (adminToken: string) => Promise<T>
+  task: (adminToken: string) => Promise<T>,
 ): Promise<T> {
   const initialToken = await resolveAdminTokenForCli(opts);
 
@@ -1391,7 +1374,7 @@ async function cmdAuthListSessions(opts: {
 
   const data = await withResolvedAdminToken(
     { baseUrl, adminToken: opts.adminToken, adminPassword: opts.adminPassword },
-    (adminToken) => listTokenSessions({ baseUrl, adminToken })
+    (adminToken) => listTokenSessions({ baseUrl, adminToken }),
   );
   const sessions = Array.isArray(data.sessions) ? data.sessions : [];
   if (sessions.length === 0) {
@@ -1400,7 +1383,11 @@ async function cmdAuthListSessions(opts: {
     return;
   }
 
-  log(dim(`Current token versions: admin=${data.currentTv.admin}, staff=${data.currentTv.staff}, upload=${data.currentTv.upload}`));
+  log(
+    dim(
+      `Current token versions: admin=${data.currentTv.admin}, staff=${data.currentTv.staff}, upload=${data.currentTv.upload}`,
+    ),
+  );
   console.log();
 
   const now = typeof data.now === "number" ? data.now : Math.floor(Date.now() / 1000);
@@ -1422,12 +1409,16 @@ async function cmdAuthListSessions(opts: {
             : dim("expired");
 
     log(
-      `${cyan(s.role.padEnd(7))} ${status.padEnd(14)} ${dim(jtiShort.padEnd(20))} ${dim(`tv ${s.tv}`.padEnd(6))} ${dim(ip.padEnd(16))} ${dim(`exp ${formatDuration(expiresIn)}`.padEnd(18))} ${dim(`iat ${formatDuration(issuedAgo)} ago`.padEnd(22))} ${dim(uaShort)}`
+      `${cyan(s.role.padEnd(7))} ${status.padEnd(14)} ${dim(jtiShort.padEnd(20))} ${dim(`tv ${s.tv}`.padEnd(6))} ${dim(ip.padEnd(16))} ${dim(`exp ${formatDuration(expiresIn)}`.padEnd(18))} ${dim(`iat ${formatDuration(issuedAgo)} ago`.padEnd(22))} ${dim(uaShort)}`,
     );
   }
   if (sessions.length > 60) {
     console.log();
-    log(dim(`Showing first 60 of ${sessions.length}. Use filter/search in the admin dashboard for longer lists.`));
+    log(
+      dim(
+        `Showing first 60 of ${sessions.length}. Use filter/search in the admin dashboard for longer lists.`,
+      ),
+    );
   }
   console.log();
 }
@@ -1447,7 +1438,9 @@ async function cmdAuthDiagnose(opts: {
   const cachedToken = getCachedAdminToken(baseUrl) ?? undefined;
   const resolvedToken = opts.adminToken?.trim() || cachedToken;
   if (!opts.adminPassword && !resolvedToken) {
-    throw new Error("No cached admin session. Provide --admin-password (recommended) or --admin-token.");
+    throw new Error(
+      "No cached admin session. Provide --admin-password (recommended) or --admin-token.",
+    );
   }
 
   heading("Auth diagnostics");
@@ -1470,7 +1463,9 @@ async function cmdAuthDiagnose(opts: {
     const verifyState = report.verify.ok
       ? green(`ok (${report.verify.status ?? "n/a"})`)
       : red(`failed (${report.verify.status ?? "n/a"})`);
-    log(`${dim("Verify:")} ${verifyState}${report.verify.error ? ` ${dim(report.verify.error)}` : ""}`);
+    log(
+      `${dim("Verify:")} ${verifyState}${report.verify.error ? ` ${dim(report.verify.error)}` : ""}`,
+    );
   } else {
     log(`${dim("Verify:")} ${dim("skipped (token mode)")}`);
   }
@@ -1482,7 +1477,7 @@ async function cmdAuthDiagnose(opts: {
         ? `${claims.jti.slice(0, 10)}…${claims.jti.slice(-8)}`
         : (claims.jti ?? "—");
     log(
-      `${dim("Token:")} role=${claims.role ?? "?"} tv=${claims.tv ?? "?"} exp=${formatUnixSecondsForCli(claims.exp)} iat=${formatUnixSecondsForCli(claims.iat)} jti=${jtiShort}`
+      `${dim("Token:")} role=${claims.role ?? "?"} tv=${claims.tv ?? "?"} exp=${formatUnixSecondsForCli(claims.exp)} iat=${formatUnixSecondsForCli(claims.iat)} jti=${jtiShort}`,
     );
   } else {
     log(`${dim("Token:")} ${dim("not decoded")}`);
@@ -1516,13 +1511,13 @@ async function cmdAuthDiagnose(opts: {
 
   const hasVerifySuccess = report.verify?.ok ?? Boolean(opts.adminToken);
   const hasUnauthorizedProtected = report.probes.some(
-    (probe) => probe.ok === false && probe.status === 401
+    (probe) => probe.ok === false && probe.status === 401,
   );
   if (hasVerifySuccess && hasUnauthorizedProtected) {
     log(
       yellow(
-        "Verify succeeded but protected routes returned 401. Check for AUTH_SECRET mismatch across deployments or a proxy stripping Authorization headers."
-      )
+        "Verify succeeded but protected routes returned 401. Check for AUTH_SECRET mismatch across deployments or a proxy stripping Authorization headers.",
+      ),
     );
   } else {
     log(yellow("Auth diagnostics found failures. See probe errors above."));
@@ -1566,7 +1561,7 @@ async function cmdAuthRevoke(opts: {
         stepUpToken: stepUpData.token,
         role,
       });
-    }
+    },
   );
 
   const revoked = Array.isArray(revokeData.revoked)
@@ -1596,8 +1591,16 @@ async function cmdWordsMediaUpload(opts: {
 }) {
   heading(`Uploading media for ${mediaTargetLabel(opts.target)}`);
   log(dim(`target path: ${mediaTargetPathHint(opts.target)}`));
-  log(dim("Resume-safe: if interrupted, rerun the same media upload command in the same folder to continue."));
-  log(dim(`Checkpoint file: ${getWordMediaUploadCheckpointFilename(opts.target)} (auto-created, auto-removed on success)`));
+  log(
+    dim(
+      "Resume-safe: if interrupted, rerun the same media upload command in the same folder to continue.",
+    ),
+  );
+  log(
+    dim(
+      `Checkpoint file: ${getWordMediaUploadCheckpointFilename(opts.target)} (auto-created, auto-removed on success)`,
+    ),
+  );
   console.log();
 
   let result: Awaited<ReturnType<typeof uploadWordMediaFiles>>;
@@ -1615,7 +1618,11 @@ async function cmdWordsMediaUpload(opts: {
   console.log();
 
   if (result.uploaded.length > 0) {
-    log(green(`✓ Uploaded ${result.uploaded.length} new file${result.uploaded.length > 1 ? "s" : ""}`));
+    log(
+      green(
+        `✓ Uploaded ${result.uploaded.length} new file${result.uploaded.length > 1 ? "s" : ""}`,
+      ),
+    );
     const totalNew = result.uploaded.reduce((sum, r) => sum + r.size, 0);
     log(dim(`  New: ${formatBytes(totalNew)}`));
   }
@@ -1649,7 +1656,11 @@ async function cmdWordsMediaUpload(opts: {
   }
 
   console.log();
-  log(dim(`Tip: use generated paths directly in markdown, e.g. ${mediaTargetPathHint(opts.target)}...`));
+  log(
+    dim(
+      `Tip: use generated paths directly in markdown, e.g. ${mediaTargetPathHint(opts.target)}...`,
+    ),
+  );
   console.log();
 }
 
@@ -1740,7 +1751,7 @@ async function cmdWordsMediaOrphans(limitRaw?: string) {
       ? new Date(folder.latestModifiedAt).toLocaleString()
       : "—";
     log(
-      `  ${folder.slug}  ${dim(`${folder.objectCount} objects`)}  ${dim(formatBytes(folder.totalBytes))}  ${dim(latest)}`
+      `  ${folder.slug}  ${dim(`${folder.objectCount} objects`)}  ${dim(formatBytes(folder.totalBytes))}  ${dim(latest)}`,
     );
   }
   console.log();
@@ -1794,7 +1805,14 @@ function parseWordType(value?: string): WordType | undefined {
 
 function parseTags(raw?: string): string[] | undefined {
   if (!raw) return undefined;
-  const tags = [...new Set(raw.split(",").map((t) => t.trim().toLowerCase()).filter(Boolean))];
+  const tags = [
+    ...new Set(
+      raw
+        .split(",")
+        .map((t) => t.trim().toLowerCase())
+        .filter(Boolean),
+    ),
+  ];
   return tags.length > 0 ? tags : undefined;
 }
 
@@ -1839,13 +1857,17 @@ function resolveMarkdownFilePath(filePath: string): { requestedAbs: string; reso
   return { requestedAbs, resolvedAbs };
 }
 
-function assertReadableMarkdownFile(filePath: string): { requestedAbs: string; resolvedAbs: string } {
+function assertReadableMarkdownFile(filePath: string): {
+  requestedAbs: string;
+  resolvedAbs: string;
+} {
   const paths = resolveMarkdownFilePath(filePath);
   if (!fs.existsSync(paths.resolvedAbs)) {
     throw new Error(`File not found: ${paths.requestedAbs}`);
   }
   const stats = fs.statSync(paths.resolvedAbs);
-  if (!stats.isFile()) throw new Error(`Expected a file path, but received a directory: ${paths.resolvedAbs}`);
+  if (!stats.isFile())
+    throw new Error(`Expected a file path, but received a directory: ${paths.resolvedAbs}`);
   return paths;
 }
 
@@ -1875,8 +1897,13 @@ function buildWordTemplateMarkdown(opts: {
   visibility: NoteVisibility;
   tags?: string[];
 }): string {
-  const tags = opts.tags && opts.tags.length > 0 ? `[${opts.tags.map((t) => `"${escapeYamlString(t)}"`).join(", ")}]` : "[]";
-  const subtitleLine = opts.subtitle ? `subtitle: "${escapeYamlString(opts.subtitle)}"` : "subtitle: \"\"";
+  const tags =
+    opts.tags && opts.tags.length > 0
+      ? `[${opts.tags.map((t) => `"${escapeYamlString(t)}"`).join(", ")}]`
+      : "[]";
+  const subtitleLine = opts.subtitle
+    ? `subtitle: "${escapeYamlString(opts.subtitle)}"`
+    : 'subtitle: ""';
   return [
     "---",
     `slug: "${escapeYamlString(opts.slug)}"`,
@@ -1910,9 +1937,12 @@ async function cmdWordsTemplate(opts: {
   if (exists && !opts.overwrite) {
     throw new Error(`File already exists: ${requestedAbs}. Re-run with --overwrite to replace it.`);
   }
-  const derivedTitle = (opts.title?.trim() || path.basename(requestedAbs, path.extname(requestedAbs))).trim();
+  const derivedTitle = (
+    opts.title?.trim() || path.basename(requestedAbs, path.extname(requestedAbs))
+  ).trim();
   const title = derivedTitle || "New Note";
-  const slug = opts.slug?.trim() || slugifyLoose(path.basename(requestedAbs, path.extname(requestedAbs)));
+  const slug =
+    opts.slug?.trim() || slugifyLoose(path.basename(requestedAbs, path.extname(requestedAbs)));
   const markdown = buildWordTemplateMarkdown({
     slug,
     title,
@@ -1943,7 +1973,10 @@ function toIsoDate(value: unknown): string | undefined {
   return parsed.toISOString();
 }
 
-function noteSyncInputFromFile(absFile: string, rootDir: string): {
+function noteSyncInputFromFile(
+  absFile: string,
+  rootDir: string,
+): {
   slug: string;
   title: string;
   subtitle?: string;
@@ -1964,11 +1997,9 @@ function noteSyncInputFromFile(absFile: string, rootDir: string): {
   const filenameSlug = path.basename(absFile, ".md").toLowerCase();
   const folderTypeGuess = relPath.split("/")[0];
   const slug =
-    (typeof parsed.data.slug === "string" && parsed.data.slug.trim().toLowerCase()) ||
-    filenameSlug;
+    (typeof parsed.data.slug === "string" && parsed.data.slug.trim().toLowerCase()) || filenameSlug;
   const title =
-    (typeof parsed.data.title === "string" && parsed.data.title.trim()) ||
-    slug.replace(/-/g, " ");
+    (typeof parsed.data.title === "string" && parsed.data.title.trim()) || slug.replace(/-/g, " ");
   const subtitle =
     typeof parsed.data.subtitle === "string" && parsed.data.subtitle.trim()
       ? parsed.data.subtitle.trim()
@@ -1978,16 +2009,15 @@ function noteSyncInputFromFile(absFile: string, rootDir: string): {
       ? parsed.data.image.trim()
       : undefined;
   const type = parseWordType(
-    typeof parsed.data.type === "string" ? parsed.data.type : folderTypeGuess
+    typeof parsed.data.type === "string" ? parsed.data.type : folderTypeGuess,
   );
   const visibility = parseNoteVisibility(
-    typeof parsed.data.visibility === "string" ? parsed.data.visibility : undefined
+    typeof parsed.data.visibility === "string" ? parsed.data.visibility : undefined,
   );
   const tagsRaw = parsed.data.tags;
-  const tags =
-    Array.isArray(tagsRaw)
-      ? [...new Set(tagsRaw.map((t) => String(t).trim().toLowerCase()).filter(Boolean))]
-      : parseTags(typeof tagsRaw === "string" ? tagsRaw : undefined);
+  const tags = Array.isArray(tagsRaw)
+    ? [...new Set(tagsRaw.map((t) => String(t).trim().toLowerCase()).filter(Boolean))]
+    : parseTags(typeof tagsRaw === "string" ? tagsRaw : undefined);
 
   return {
     slug,
@@ -2143,7 +2173,9 @@ async function cmdWordsList(opts?: {
   }
 
   for (const word of words) {
-    log(`${bold(word.slug)} ${dim(`(${word.type} · ${word.visibility}${word.featured ? " · featured" : ""})`)}`);
+    log(
+      `${bold(word.slug)} ${dim(`(${word.type} · ${word.visibility}${word.featured ? " · featured" : ""})`)}`,
+    );
     log(`  ${word.title}`);
     if (word.subtitle) log(`  ${dim(word.subtitle)}`);
     if (word.tags.length > 0) log(`  ${dim("#" + word.tags.join(" #"))}`);
@@ -2163,7 +2195,7 @@ async function cmdWordsUpdate(
     tags?: string[];
     featured?: boolean;
     markdownFile?: string;
-  }
+  },
 ) {
   const before = await getWordRecord(slug);
   let markdown: string | undefined;
@@ -2247,7 +2279,12 @@ async function cmdWordsShareList(slug: string) {
 async function cmdWordsShareUpdate(
   slug: string,
   id: string,
-  opts: { pinRequired?: boolean; pin?: string | null; expiresInDays?: number; rotateToken?: boolean }
+  opts: {
+    pinRequired?: boolean;
+    pin?: string | null;
+    expiresInDays?: number;
+    rotateToken?: boolean;
+  },
 ) {
   heading(`Update share link: ${id}`);
   const updated = await updateWordShare(slug, id, opts);
@@ -2320,7 +2357,11 @@ async function cmdWordsShareReset(all: boolean) {
   }
 
   const result = await resetWordShares();
-  log(green(`✓ Reset complete. Removed ${result.deletedLinks} links across ${result.scannedSlugs} slug(s).`));
+  log(
+    green(
+      `✓ Reset complete. Removed ${result.deletedLinks} links across ${result.scannedSlugs} slug(s).`,
+    ),
+  );
   console.log();
 }
 
@@ -2341,7 +2382,11 @@ async function cmdWordsMigrateLegacy(purgeLegacy: boolean) {
   log(green(`✓ Found ${result.indexSlugsFound} legacy slug(s)`));
   log(green(`✓ Migrated ${result.metaRecordsMigrated} metadata record(s)`));
   log(green(`✓ Migrated ${result.shareRecordsMigrated} share record(s)`));
-  log(green(`✓ Migrated ${result.shareIndexMembersMigrated} share index member(s) across ${result.shareIndexSetsMigrated} set(s)`));
+  log(
+    green(
+      `✓ Migrated ${result.shareIndexMembersMigrated} share index member(s) across ${result.shareIndexSetsMigrated} set(s)`,
+    ),
+  );
   if (result.shareSlugsMigrated > 0) {
     log(green(`✓ Migrated ${result.shareSlugsMigrated} tracked share slug(s)`));
   }
@@ -2353,8 +2398,10 @@ async function cmdWordsMigrateLegacy(purgeLegacy: boolean) {
   console.log();
 }
 
-
-async function syncSingleNoteFile(absFile: string, rootDir: string): Promise<"created" | "updated" | "skipped"> {
+async function syncSingleNoteFile(
+  absFile: string,
+  rootDir: string,
+): Promise<"created" | "updated" | "skipped"> {
   if (!absFile.endsWith(".md")) return "skipped";
   if (!fs.existsSync(absFile) || !fs.statSync(absFile).isFile()) return "skipped";
 
@@ -2425,7 +2472,7 @@ async function cmdWordsSync(opts: { dir: string }) {
   }
 
   const results = await mapWithConcurrency(files, getCliIoConcurrency(), async (file) =>
-    syncSingleNoteFile(file, rootDir)
+    syncSingleNoteFile(file, rootDir),
   );
   const created = results.filter((result) => result === "created").length;
   const updated = results.filter((result) => result === "updated").length;
@@ -2479,7 +2526,9 @@ async function cmdWordsWatch(opts: { dir: string }) {
     });
     stopWatching = () => watcher.close();
   } catch {
-    log(yellow("Recursive watch unavailable in this environment. Falling back to polling every 2s."));
+    log(
+      yellow("Recursive watch unavailable in this environment. Falling back to polling every 2s."),
+    );
     const knownMtime = new Map<string, number>();
     for (const file of listMarkdownFiles(rootDir)) {
       const stat = fs.statSync(file);
@@ -2594,7 +2643,7 @@ function showHelp() {
     albums upload                            Upload new album
       --dir ${dim("<path>")}      ${dim("Folder with photos (e.g. ~/Desktop/party-photos)")}
       --slug ${dim("<slug>")}     ${dim("URL-safe name (e.g. jan-2026, summer-vibes)")}
-      --title ${dim("<title>")}   ${dim("Display title (e.g. \"Milk & Henny — January 2026\")")}
+      --title ${dim("<title>")}   ${dim('Display title (e.g. "Milk & Henny — January 2026")')}
       --date ${dim("<date>")}     ${dim("Date as YYYY-MM-DD (e.g. 2026-01-16)")}
       --description ${dim("<desc>")}  ${dim("Optional description")}
       --rotation ${dim("<portrait|landscape>")}  ${dim("Force orientation (default: trust EXIF)")}
@@ -2642,7 +2691,7 @@ function showHelp() {
     transfers media-status                  Alias for queue status
     transfers media-drain ${dim("[--limit 8]")}            Drain queued worker jobs now
     transfers media-reconcile               Reconcile stale queued/processing transfer states
-      ${dim("Blocking Fly worker requires direct Redis env (REDIS_URL or UPSTASH_REDIS_HOST/PORT/PASSWORD).")}
+      ${dim("A blocking media worker requires direct Redis env (REDIS_URL or UPSTASH_REDIS_HOST/PORT/PASSWORD).")}
     transfers cleanup                        Cleanup expired/orphaned transfer storage
     transfers nuke ${dim("[--yes]")}                    Wipe ALL transfers (R2 + Redis) — nuclear option
 
@@ -2727,11 +2776,7 @@ async function safely(fn: () => Promise<void>): Promise<void> {
 async function promptUpload(): Promise<void> {
   console.log();
   log(bold("Upload new album"));
-  log(
-    dim(
-      "This will process images from a folder on your Mac, upload them to R2,"
-    )
-  );
+  log(dim("This will process images from a folder on your Mac, upload them to R2,"));
   log(dim("and create the album JSON in content/albums/."));
   console.log();
 
@@ -2769,8 +2814,8 @@ async function promptUpload(): Promise<void> {
     if (getAlbum(slug)) {
       log(
         yellow(
-          `  Album "${slug}" already exists. Use a different slug, or add photos with Photos → Add.`
-        )
+          `  Album "${slug}" already exists. Use a different slug, or add photos with Photos → Add.`,
+        ),
       );
       continue;
     }
@@ -2860,9 +2905,7 @@ async function promptUpdate(): Promise<void> {
 
   /* Cover — show current and offer to change via photo picker */
   let newCover: string | undefined;
-  const changeCover = await confirm(
-    `Current cover: ${bold(album.cover)}. Change it?`
-  );
+  const changeCover = await confirm(`Current cover: ${bold(album.cover)}. Change it?`);
   if (changeCover) {
     console.log();
     const picked = await selectPhoto(slug);
@@ -2883,8 +2926,7 @@ async function promptUpdate(): Promise<void> {
     }
     updates.date = date;
   }
-  if (description !== (album.description ?? ""))
-    updates.description = description;
+  if (description !== (album.description ?? "")) updates.description = description;
   if (newCover) updates.cover = newCover;
 
   if (Object.keys(updates).length === 0) {
@@ -3044,24 +3086,21 @@ async function interactivePhotos() {
         const photoId = await selectPhoto(slug);
         if (!photoId) break;
 
-        const presetChoice = await choose(
-          "Focal point (where to center the crop)",
-          [
-            { label: "Center", detail: "default, good for most landscape shots" },
-            { label: "Top", detail: "face at top edge" },
-            { label: "Bottom", detail: "subject at bottom edge" },
-            { label: "Left", detail: "subject at left edge" },
-            { label: "Right", detail: "subject at right edge" },
-            { label: "Top left", detail: "subject in top-left corner" },
-            { label: "Top right", detail: "subject in top-right corner" },
-            { label: "Bottom left", detail: "subject in bottom-left corner" },
-            { label: "Bottom right", detail: "subject in bottom-right corner" },
-            { label: "Mid top", detail: "between top and center — upper third" },
-            { label: "Mid bottom", detail: "between bottom and center — lower third" },
-            { label: "Mid left", detail: "between left and center — left third" },
-            { label: "Mid right", detail: "between right and center — right third" },
-          ]
-        );
+        const presetChoice = await choose("Focal point (where to center the crop)", [
+          { label: "Center", detail: "default, good for most landscape shots" },
+          { label: "Top", detail: "face at top edge" },
+          { label: "Bottom", detail: "subject at bottom edge" },
+          { label: "Left", detail: "subject at left edge" },
+          { label: "Right", detail: "subject at right edge" },
+          { label: "Top left", detail: "subject in top-left corner" },
+          { label: "Top right", detail: "subject in top-right corner" },
+          { label: "Bottom left", detail: "subject in bottom-left corner" },
+          { label: "Bottom right", detail: "subject in bottom-right corner" },
+          { label: "Mid top", detail: "between top and center — upper third" },
+          { label: "Mid bottom", detail: "between bottom and center — lower third" },
+          { label: "Mid left", detail: "between left and center — left third" },
+          { label: "Mid right", detail: "between right and center — right third" },
+        ]);
         if (presetChoice <= 0) break;
 
         const preset = FOCAL_PRESETS[presetChoice - 1];
@@ -3078,7 +3117,7 @@ async function interactivePhotos() {
         ]);
         if (resetScope <= 0) break;
 
-        const photoId = resetScope === 2 ? (await selectPhoto(slug)) ?? undefined : undefined;
+        const photoId = resetScope === 2 ? ((await selectPhoto(slug)) ?? undefined) : undefined;
         if (resetScope === 2 && !photoId) break;
 
         const strategy = await selectStrategy();
@@ -3160,9 +3199,7 @@ async function interactiveBucket() {
 async function promptTransferUpload(): Promise<void> {
   console.log();
   log(bold("Create private transfer"));
-  log(
-    dim("Upload any files to a self-destructing shareable link.")
-  );
+  log(dim("Upload any files to a self-destructing shareable link."));
   log(dim("Images, videos, GIFs, PDFs, zips — anything goes."));
   console.log();
 
@@ -3237,7 +3274,7 @@ async function selectTransfer(): Promise<string | null> {
     transfers.map((t) => ({
       label: t.title,
       detail: `${t.id} · ${t.fileCount} files · ${yellow(formatDuration(t.remainingSeconds) + " left")}`,
-    }))
+    })),
   );
 
   if (choice <= 0) return null;
@@ -3256,7 +3293,9 @@ async function promptTransferAppend(): Promise<void> {
 
   console.log();
   log(bold(`Add files to: ${info.title}`));
-  log(dim(`${info.id} · ${info.files.length} files · ${formatDuration(info.remainingSeconds)} left`));
+  log(
+    dim(`${info.id} · ${info.files.length} files · ${formatDuration(info.remainingSeconds)} left`),
+  );
   console.log();
 
   let dir = "";
@@ -3369,9 +3408,7 @@ async function selectWordSlugForMedia(prompt = "Word slug"): Promise<string | nu
 
   while (true) {
     const slug = await ask(prompt, {
-      hint: slugs.length > 0
-        ? "pick from above or type a new slug"
-        : "e.g. my-first-word",
+      hint: slugs.length > 0 ? "pick from above or type a new slug" : "e.g. my-first-word",
     });
     if (!slug) return null;
     if (!isValidSlug(slug)) {
@@ -3383,8 +3420,8 @@ async function selectWordSlugForMedia(prompt = "Word slug"): Promise<string | nu
     if (!slugs.includes(slug)) {
       log(
         yellow(
-          `  No existing word found for "${slug}" — media will upload and can be used after creating content with this slug.`
-        )
+          `  No existing word found for "${slug}" — media will upload and can be used after creating content with this slug.`,
+        ),
       );
     }
     return slug;
@@ -3478,7 +3515,7 @@ async function selectWordsMediaTarget(scope: "word" | "asset"): Promise<WordMedi
     const slugList = [...slugs].sort();
     const choice = await choose(
       "Select word slug",
-      slugList.map((s) => ({ label: s }))
+      slugList.map((s) => ({ label: s })),
     );
 
     if (choice <= 0) return null;
@@ -3503,7 +3540,7 @@ async function selectWordsMediaTarget(scope: "word" | "asset"): Promise<WordMedi
   const idList = [...assetIds].sort();
   const choice = await choose(
     "Select asset id",
-    idList.map((id) => ({ label: id }))
+    idList.map((id) => ({ label: id })),
   );
 
   if (choice <= 0) return null;
@@ -3565,7 +3602,7 @@ async function interactiveWordsMedia() {
               files.map((f) => ({
                 label: f.filename,
                 detail: formatBytes(f.size),
-              }))
+              })),
             );
             if (fileChoice > 0) {
               await safely(() => cmdWordsMediaDelete(target, files[fileChoice - 1].filename));
@@ -3595,7 +3632,7 @@ async function interactiveWordsMedia() {
 
 async function selectWordSlug(
   promptText = "Word slug",
-  opts?: { requireNew?: boolean }
+  opts?: { requireNew?: boolean },
 ): Promise<string | null> {
   const { words } = await listWordRecords({ includeNonPublic: true });
   const existingSlugs = new Set(words.map((w) => w.slug));
@@ -3632,8 +3669,14 @@ async function promptCreateWordMarkdown(opts: {
   tags?: string[];
 }): Promise<string | null> {
   const sourceChoice = await choose("Markdown source", [
-    { label: "Use existing markdown file", detail: "recommended if you've already written your note" },
-    { label: "Create instant template file", detail: "generate a starter .md and use it immediately" },
+    {
+      label: "Use existing markdown file",
+      detail: "recommended if you've already written your note",
+    },
+    {
+      label: "Create instant template file",
+      detail: "generate a starter .md and use it immediately",
+    },
     { label: "Use quick starter content", detail: "skip files for now and publish a basic draft" },
   ]);
   if (sourceChoice <= 0) return null;
@@ -3758,8 +3801,13 @@ async function interactiveWordsContent() {
         const title = await ask("Title");
         if (!title) break;
         const subtitle = await ask("Subtitle (optional)");
-        const image = await ask("Hero image path (optional, e.g. words/media/slug/hero.webp or words/assets/kit/hero.webp)");
-        const typeChoice = await choose("Type", WORD_TYPES.map((type) => ({ label: type })));
+        const image = await ask(
+          "Hero image path (optional, e.g. words/media/slug/hero.webp or words/assets/kit/hero.webp)",
+        );
+        const typeChoice = await choose(
+          "Type",
+          WORD_TYPES.map((type) => ({ label: type })),
+        );
         if (typeChoice <= 0) break;
         const type = WORD_TYPES[typeChoice - 1];
         const tagsRaw = await ask("Tags (optional, comma-separated)");
@@ -3790,7 +3838,7 @@ async function interactiveWordsContent() {
             type,
             visibility,
             tags,
-          })
+          }),
         );
         await pause();
         break;
@@ -3802,7 +3850,9 @@ async function interactiveWordsContent() {
         if (!file) break;
         const title = await ask("Title override (optional)");
         const subtitle = await ask("Subtitle override (optional)");
-        const image = await ask("Hero image path override (optional, supports words/media or words/assets)");
+        const image = await ask(
+          "Hero image path override (optional, supports words/media or words/assets)",
+        );
         const typeChoice = await choose("Type override", [
           { label: "keep existing" },
           ...WORD_TYPES.map((type) => ({ label: type })),
@@ -3827,7 +3877,7 @@ async function interactiveWordsContent() {
             type,
             visibility,
             tags: parseTags(tagsRaw),
-          })
+          }),
         );
         await pause();
         break;
@@ -3866,7 +3916,7 @@ async function interactiveWordsContent() {
             tags: parseTags(tagsRaw),
             markdownFile: markdownFile || undefined,
             visibility,
-          })
+          }),
         );
         await pause();
         break;
@@ -3888,7 +3938,10 @@ async function interactiveWordsContent() {
         const title = await ask("Template title (optional)");
         const slug = await ask("Template slug (optional)");
         const subtitle = await ask("Template subtitle (optional)");
-        const typeChoice = await choose("Template type", WORD_TYPES.map((type) => ({ label: type })));
+        const typeChoice = await choose(
+          "Template type",
+          WORD_TYPES.map((type) => ({ label: type })),
+        );
         if (typeChoice <= 0) break;
         const visChoice = await choose("Template visibility", [
           { label: "private" },
@@ -3919,7 +3972,10 @@ async function interactiveWordsContent() {
 async function interactiveWordsLocal() {
   while (true) {
     const choice = await choose("Words · Local Sync", [
-      { label: "Pull words to folder", detail: "remote -> local (download latest words as markdown)" },
+      {
+        label: "Pull words to folder",
+        detail: "remote -> local (download latest words as markdown)",
+      },
       { label: "Sync folder once", detail: "local -> remote (upload/update from local markdown)" },
       { label: "Watch folder", detail: "local -> remote (live-sync local markdown changes)" },
     ]);
@@ -3985,7 +4041,7 @@ async function interactiveWordsShares() {
             pinRequired: withPin,
             pin: withPin ? pin : undefined,
             expiresInDays: 7,
-          })
+          }),
         );
         await pause();
         break;
@@ -4012,7 +4068,7 @@ async function interactiveWordsShares() {
           links.map((l) => ({
             label: l.id,
             detail: `${l.pinRequired ? "pin on" : "pin off"} · expires ${new Date(l.expiresAt).toLocaleDateString()}`,
-          }))
+          })),
         );
         if (pick <= 0) break;
         const link = links[pick - 1];
@@ -4031,11 +4087,12 @@ async function interactiveWordsShares() {
             cmdWordsShareUpdate(slug, link.id, {
               pinRequired: !link.pinRequired,
               ...(link.pinRequired ? {} : { pin: nextPin || undefined }),
-            })
+            }),
           );
         } else if (action === 2) {
           const pin = await ask("New PIN");
-          if (pin) await safely(() => cmdWordsShareUpdate(slug, link.id, { pinRequired: true, pin }));
+          if (pin)
+            await safely(() => cmdWordsShareUpdate(slug, link.id, { pinRequired: true, pin }));
         } else if (action === 3) {
           await safely(() => cmdWordsShareUpdate(slug, link.id, { pin: null }));
         } else if (action === 4) {
@@ -4059,7 +4116,10 @@ async function interactiveWordsShares() {
           await pause();
           break;
         }
-        const pick = await choose("Revoke which share?", links.map((l) => ({ label: l.id })));
+        const pick = await choose(
+          "Revoke which share?",
+          links.map((l) => ({ label: l.id })),
+        );
         if (pick > 0) {
           await safely(() => cmdWordsShareRevoke(slug, links[pick - 1].id));
           await pause();
@@ -4198,9 +4258,9 @@ async function promptAdminToken(): Promise<string | null> {
   return token ? token.trim() : null;
 }
 
-async function promptAdminIdentityForSessions(baseUrl: string): Promise<
-  { adminPassword?: string; adminToken?: string } | null
-> {
+async function promptAdminIdentityForSessions(
+  baseUrl: string,
+): Promise<{ adminPassword?: string; adminToken?: string } | null> {
   const canonicalBaseUrl = await resolveCanonicalBaseUrl(baseUrl);
   if (getCachedAdminToken(baseUrl) || getCachedAdminToken(canonicalBaseUrl)) {
     log(dim("Using cached admin session for this base URL."));
@@ -4230,7 +4290,10 @@ async function interactiveAuth() {
   while (true) {
     const choice = await choose("Auth", [
       { label: "List token sessions", detail: "see active/revoked/expired tokens (Redis-backed)" },
-      { label: "Diagnose admin auth", detail: "verify + protected probes with exact failure points" },
+      {
+        label: "Diagnose admin auth",
+        detail: "verify + protected probes with exact failure points",
+      },
       { label: "Revoke admin sessions", detail: red("destructive (logs out all admins)") },
       { label: "Revoke all role sessions", detail: red("destructive (staff + upload + admin)") },
     ]);
@@ -4246,7 +4309,8 @@ async function interactiveAuth() {
           try {
             await cmdAuthListSessions({ baseUrl, ...identity });
           } catch (error) {
-            const hasPassword = typeof identity.adminPassword === "string" && identity.adminPassword.length > 0;
+            const hasPassword =
+              typeof identity.adminPassword === "string" && identity.adminPassword.length > 0;
             if (hasPassword || !shouldRetryWithFreshAdminToken(error)) {
               throw error;
             }
@@ -4270,7 +4334,8 @@ async function interactiveAuth() {
           try {
             await cmdAuthDiagnose({ baseUrl, ...identity });
           } catch (error) {
-            const hasPassword = typeof identity.adminPassword === "string" && identity.adminPassword.length > 0;
+            const hasPassword =
+              typeof identity.adminPassword === "string" && identity.adminPassword.length > 0;
             if (hasPassword || !shouldRetryWithFreshAdminToken(error)) {
               throw error;
             }
@@ -4288,28 +4353,32 @@ async function interactiveAuth() {
       }
       case 3: {
         const baseUrl = await promptBaseUrl();
-        const password = await ask("Admin password", { hint: "step-up confirmation (input visible)" });
+        const password = await ask("Admin password", {
+          hint: "step-up confirmation (input visible)",
+        });
         if (!password) break;
         await safely(() =>
           cmdAuthRevoke({
             baseUrl,
             adminPassword: password,
             role: "admin",
-          })
+          }),
         );
         await pause();
         break;
       }
       case 4: {
         const baseUrl = await promptBaseUrl();
-        const password = await ask("Admin password", { hint: "step-up confirmation (input visible)" });
+        const password = await ask("Admin password", {
+          hint: "step-up confirmation (input visible)",
+        });
         if (!password) break;
         await safely(() =>
           cmdAuthRevoke({
             baseUrl,
             adminPassword: password,
             role: "all",
-          })
+          }),
         );
         await pause();
         break;
@@ -4327,530 +4396,598 @@ async function direct() {
   try {
     await (async () => {
       switch (command) {
-      case "albums":
-        switch (subcommand) {
-          case "list":
-            return cmdAlbumsList();
-          case "show": {
-            const slug = args[2];
-            if (!slug) throw new Error("Usage: pnpm cli albums show <slug>");
-            return cmdAlbumsShow(slug);
-          }
-          case "upload": {
-            const dir = getArg("dir");
-            const slug = getArg("slug");
-            const title = getArg("title");
-            const date = getArg("date");
-            const description = getArg("description");
-            const rotationArg = getArg("rotation") as RotationOverride | undefined;
-            if (!dir || !slug || !title || !date) {
-              throw new Error(
-                "Usage: pnpm cli albums upload --dir <path> --slug <slug> --title <title> --date <YYYY-MM-DD> [--description <desc>] [--rotation portrait|landscape]"
-              );
+        case "albums":
+          switch (subcommand) {
+            case "list":
+              return cmdAlbumsList();
+            case "show": {
+              const slug = args[2];
+              if (!slug) throw new Error("Usage: pnpm cli albums show <slug>");
+              return cmdAlbumsShow(slug);
             }
-            if (rotationArg && !ROTATION_OVERRIDES.includes(rotationArg)) {
-              throw new Error(`Invalid rotation. Use: ${ROTATION_OVERRIDES.join(", ")}`);
-            }
-            if (!isValidSlug(slug)) throw new Error("Slug must be lowercase letters, numbers, hyphens only.");
-            if (!isValidDate(date)) throw new Error("Date must be YYYY-MM-DD format.");
-            return cmdAlbumsUpload({ dir, slug, title, date, description, rotation: rotationArg });
-          }
-          case "update": {
-            const slug = args[2];
-            if (!slug) throw new Error("Usage: pnpm cli albums update <slug> [--title ...] [--date ...] ...");
-            const title = getArg("title");
-            const date = getArg("date");
-            const description = getArg("description");
-            const cover = getArg("cover");
-            if (!title && !date && !description && !cover) {
-              throw new Error("Nothing to update. Pass --title, --date, --description, or --cover.");
-            }
-            if (date && !isValidDate(date)) throw new Error("Date must be YYYY-MM-DD format.");
-            return cmdAlbumsUpdate(slug, { title, date, description, cover });
-          }
-          case "delete": {
-            const slug = args[2];
-            if (!slug) throw new Error("Usage: pnpm cli albums delete <slug>");
-            return cmdAlbumsDelete(slug);
-          }
-          case "backfill-og": {
-            const hasYes = args.includes("--yes");
-            const hasForce = args.includes("--force");
-            const strategyArg = getArg("strategy") as DetectionStrategy | undefined;
-            if (strategyArg && !DETECTION_STRATEGIES.includes(strategyArg)) {
-              throw new Error(`Invalid strategy. Use: ${DETECTION_STRATEGIES.join(", ")}`);
-            }
-            return cmdAlbumsBackfillOg(hasYes, hasForce, strategyArg);
-          }
-          case "validate":
-            return cmdAlbumsValidate();
-          default:
-            throw new Error(`Unknown: albums ${subcommand ?? ""}. Run 'pnpm cli help'.`);
-        }
-
-      case "photos":
-        switch (subcommand) {
-          case "list": {
-            const slug = args[2];
-            if (!slug) throw new Error("Usage: pnpm cli photos list <album-slug>");
-            return cmdPhotosList(slug);
-          }
-          case "add": {
-            const slug = args[2];
-            const dir = getArg("dir");
-            const rotationArg = getArg("rotation") as RotationOverride | undefined;
-            if (!slug || !dir) throw new Error("Usage: pnpm cli photos add <album-slug> --dir <path> [--rotation portrait|landscape]");
-            if (rotationArg && !ROTATION_OVERRIDES.includes(rotationArg)) {
-              throw new Error(`Invalid rotation. Use: ${ROTATION_OVERRIDES.join(", ")}`);
-            }
-            return cmdPhotosAdd(slug, dir, rotationArg);
-          }
-          case "delete": {
-            const slug = args[2];
-            const photoId = args[3];
-            if (!slug || !photoId) throw new Error("Usage: pnpm cli photos delete <album-slug> <photo-id>");
-            return cmdPhotosDelete(slug, photoId);
-          }
-          case "set-cover": {
-            const slug = args[2];
-            const photoId = args[3];
-            if (!slug || !photoId) throw new Error("Usage: pnpm cli photos set-cover <album-slug> <photo-id>");
-            return cmdPhotosSetCover(slug, photoId);
-          }
-          case "set-focal": {
-            const slug = args[2];
-            const photoId = args[3];
-            const presetArg = getArg("preset");
-            if (!slug || !photoId || !presetArg) {
-              throw new Error(
-                "Usage: pnpm cli photos set-focal <album-slug> <photo-id> --preset <c|t|b|l|r|tl|tr|bl|br|mt|mb|ml|mr>"
-              );
-            }
-            const preset = resolveFocalPreset(presetArg);
-            if (!preset) {
-              throw new Error(
-                `Invalid preset. Use: ${Object.keys(FOCAL_SHORTHAND).join(", ")} or full names`
-              );
-            }
-            return cmdPhotosSetFocal(slug, photoId, preset);
-          }
-          case "reset-focal": {
-            const slug = args[2];
-            if (!slug) throw new Error("Usage: pnpm cli photos reset-focal <album-slug> [photo-id] [--strategy onnx|sharp]");
-            const photoId = args[3]; // optional
-            const strategyArg = getArg("strategy") as DetectionStrategy | undefined;
-            if (strategyArg && !DETECTION_STRATEGIES.includes(strategyArg)) {
-              throw new Error(`Invalid strategy. Use: ${DETECTION_STRATEGIES.join(", ")}`);
-            }
-            return cmdPhotosResetFocal(slug, photoId, strategyArg);
-          }
-          case "compare-focal": {
-            const slug = args[2];
-            const photoId = args[3];
-            if (!slug || !photoId) throw new Error("Usage: pnpm cli photos compare-focal <album-slug> <photo-id>");
-            return cmdPhotosCompareFocal(slug, photoId);
-          }
-          default:
-            throw new Error(`Unknown: photos ${subcommand ?? ""}. Run 'pnpm cli help'.`);
-        }
-
-      case "transfers":
-        switch (subcommand) {
-          case "list":
-            return cmdTransfersList();
-          case "show":
-          case "info": {
-            const id = args[2];
-            if (!id) throw new Error("Usage: pnpm cli transfers show <id>");
-            return cmdTransfersInfo(id);
-          }
-          case "upload": {
-            const dir = getArg("dir");
-            const title = getArg("title");
-            const expires = getArg("expires");
-            if (!dir || !title) {
-              throw new Error(
-                'Usage: pnpm cli transfers upload --dir <path> --title <title> [--expires 7d]'
-              );
-            }
-            return cmdTransfersUpload({ dir, title, expires: expires ?? undefined });
-          }
-          case "append": {
-            const id = args[2];
-            const dir = getArg("dir");
-            if (!id || !dir) {
-              throw new Error(
-                'Usage: pnpm cli transfers append <id> --dir <path>'
-              );
-            }
-            return cmdTransfersAppend({ id, dir });
-          }
-          case "delete": {
-            const id = args[2];
-            if (!id) throw new Error("Usage: pnpm cli transfers delete <id>");
-            return cmdTransfersDelete(id);
-          }
-          case "delete-file": {
-            const id = args[2];
-            const file = getArg("file");
-            if (!id || !file) {
-              throw new Error("Usage: pnpm cli transfers delete-file <id> --file <file-id|filename>");
-            }
-            return cmdTransfersDeleteFile(id, file);
-          }
-          case "cleanup":
-            return cmdTransfersCleanup();
-          case "queue": {
-            const queueCommand = args[2];
-            if (queueCommand === "status") return cmdTransfersMediaStatus();
-            if (queueCommand === "clear") return cmdTransfersQueueClear(hasFlag("yes"));
-            throw new Error("Usage: pnpm cli transfers queue <status|clear> [--yes]");
-          }
-          case "media": {
-            const mediaCommand = args[2];
-            if (mediaCommand === "retry") {
-              const id = args[3];
-              const file = getArg("file");
-              if (!id) throw new Error("Usage: pnpm cli transfers media retry <id> [--file <file-id|filename>]");
-              return cmdTransfersMediaRetry(id, file);
-            }
-            throw new Error("Usage: pnpm cli transfers media retry <id> [--file <file-id|filename>]");
-          }
-          case "media-status":
-            return cmdTransfersMediaStatus();
-          case "media-drain": {
-            const limitRaw = getArg("limit");
-            const limit = limitRaw ? Number(limitRaw) : 8;
-            return cmdTransfersMediaDrain(Number.isFinite(limit) && limit > 0 ? Math.floor(limit) : 8);
-          }
-          case "media-reconcile":
-            return cmdTransfersMediaReconcile();
-          case "nuke":
-            return hasFlag("yes") ? cmdTransfersNuke(true) : cmdTransfersNuke();
-          default:
-            throw new Error(`Unknown: transfers ${subcommand ?? ""}. Run 'pnpm cli help'.`);
-        }
-
-      case "media":
-        switch (subcommand) {
-          case "upload": {
-            const slug = getArg("slug");
-            const assetId = getArg("asset");
-            const dir = getArg("dir");
-            if (!dir) {
-              throw new Error(
-                "Usage: pnpm cli media upload (--slug <word-slug> | --asset <asset-id>) --dir <path> [--force]"
-              );
-            }
-            const target = getMediaTargetFromArgs({ slug: slug ?? undefined, assetId: assetId ?? undefined });
-            return cmdWordsMediaUpload({ target, dir, force: hasFlag("force") });
-          }
-          case "list": {
-            const slug = getArg("slug");
-            const assetId = getArg("asset");
-            const target = getMediaTargetFromArgs({ slug: slug ?? undefined, assetId: assetId ?? undefined });
-            return cmdWordsMediaList(target);
-          }
-          case "delete": {
-            const slug = getArg("slug");
-            const assetId = getArg("asset");
-            const file = getArg("file");
-            const target = getMediaTargetFromArgs({ slug: slug ?? undefined, assetId: assetId ?? undefined });
-            return cmdWordsMediaDelete(target, file);
-          }
-          case "orphans":
-            return cmdWordsMediaOrphans(getArg("limit"));
-          case "purge-stale":
-            return cmdWordsMediaPurgeStale(hasFlag("yes"));
-          default:
-            throw new Error(`Unknown: media ${subcommand ?? ""}. Run 'pnpm cli help'.`);
-        }
-
-      case "words":
-        switch (subcommand) {
-          case "create": {
-            const slug = getArg("slug");
-            const title = getArg("title");
-            const markdownFile = getArg("markdown-file");
-            const subtitle = getArg("subtitle");
-            const image = getArg("image");
-            const type = parseWordType(getArg("type"));
-            const visibility = parseNoteVisibility(getArg("visibility"));
-            const tags = parseTags(getArg("tags"));
-            const featured = parseBooleanInput(getArg("featured"));
-            if (!slug || !title || !markdownFile) {
-              throw new Error(
-                "Usage: pnpm cli words create --slug <slug> --title <title> --markdown-file <path> [--subtitle <text>] [--image <path>] [--type blog|note|recipe|review] [--visibility public|unlisted|private] [--tags a,b] [--featured true|false]"
-              );
-            }
-            if (getArg("type") && !type) throw new Error("Invalid --type value.");
-            if (getArg("featured") && featured === undefined) throw new Error("Invalid --featured value. Use true/false.");
-            const markdown = readMarkdownFile(markdownFile);
-            return cmdWordsCreate({ slug, title, subtitle, image, type, visibility, tags, featured, markdown });
-          }
-          case "upload": {
-            const slug = getArg("slug");
-            const file = getArg("file");
-            const title = getArg("title");
-            const subtitle = getArg("subtitle");
-            const image = getArg("image");
-            const type = parseWordType(getArg("type"));
-            const visibility = parseNoteVisibility(getArg("visibility"));
-            const tags = parseTags(getArg("tags"));
-            const featured = parseBooleanInput(getArg("featured"));
-            if (!slug || !file) {
-              throw new Error(
-                "Usage: pnpm cli words upload --slug <slug> --file <path> [--title <title>] [--subtitle <text>] [--image <path>] [--type blog|note|recipe|review] [--visibility public|unlisted|private] [--tags a,b] [--featured true|false]"
-              );
-            }
-            if (getArg("type") && !type) throw new Error("Invalid --type value.");
-            if (getArg("featured") && featured === undefined) throw new Error("Invalid --featured value. Use true/false.");
-            return cmdWordsUpload({
-              slug,
-              file,
-              title: title ?? undefined,
-              subtitle: subtitle ?? undefined,
-              image: image ?? undefined,
-              type,
-              visibility,
-              tags,
-              featured,
-            });
-          }
-          case "list": {
-            const visibility = parseNoteVisibility(getArg("visibility"));
-            const type = parseWordType(getArg("type"));
-            const tag = getArg("tag");
-            const q = getArg("q");
-            if (getArg("type") && !type) throw new Error("Invalid --type value.");
-            return cmdWordsList({ visibility, type, tag: tag ?? undefined, q });
-          }
-          case "update": {
-            const slug = args[2];
-            if (!slug) {
-              throw new Error(
-                "Usage: pnpm cli words update <slug> [--title <title>] [--subtitle <text>] [--clear-subtitle] [--image <path>|--clear-image] [--type blog|note|recipe|review] [--visibility public|unlisted|private] [--tags a,b] [--featured true|false] [--markdown-file <path>]"
-              );
-            }
-            const title = getArg("title");
-            const subtitle = hasFlag("clear-subtitle") ? null : (getArg("subtitle") ?? undefined);
-            const image = hasFlag("clear-image") ? null : (getArg("image") ?? undefined);
-            const type = parseWordType(getArg("type"));
-            const visibility = parseNoteVisibility(getArg("visibility"));
-            const tags = parseTags(getArg("tags"));
-            const featured = parseBooleanInput(getArg("featured"));
-            const markdownFile = getArg("markdown-file");
-            if (getArg("type") && !type) throw new Error("Invalid --type value.");
-            if (getArg("featured") && featured === undefined) throw new Error("Invalid --featured value. Use true/false.");
-            if (!title && subtitle === undefined && image === undefined && !type && !visibility && !tags && featured === undefined && !markdownFile && !hasFlag("clear-subtitle") && !hasFlag("clear-image")) {
-              throw new Error("Nothing to update.");
-            }
-            return cmdWordsUpdate(slug, {
-              title: title ?? undefined,
-              subtitle,
-              image,
-              type,
-              visibility,
-              tags,
-              featured,
-              markdownFile: markdownFile ?? undefined,
-            });
-          }
-          case "delete": {
-            const slug = args[2];
-            if (!slug) throw new Error("Usage: pnpm cli words delete <slug>");
-            return cmdWordsDelete(slug);
-          }
-          case "pull": {
-            const dir = getArg("dir");
-            const type = parseWordType(getArg("type"));
-            const visibility = parseNoteVisibility(getArg("visibility"));
-            if (!dir) {
-              throw new Error("Usage: pnpm cli words pull --dir <path> [--type blog|note|recipe|review] [--visibility public|unlisted|private]");
-            }
-            if (getArg("type") && !type) throw new Error("Invalid --type value.");
-            return cmdWordsPull({ dir, type, visibility });
-          }
-          case "sync": {
-            const dir = getArg("dir");
-            if (!dir) throw new Error("Usage: pnpm cli words sync --dir <path>");
-            return cmdWordsSync({ dir });
-          }
-          case "watch": {
-            const dir = getArg("dir");
-            if (!dir) throw new Error("Usage: pnpm cli words watch --dir <path>");
-            return cmdWordsWatch({ dir });
-          }
-          case "template": {
-            const out = getArg("out") ?? getArg("file");
-            const title = getArg("title");
-            const slug = getArg("slug");
-            const subtitle = getArg("subtitle");
-            const type = parseWordType(getArg("type"));
-            const visibility = parseNoteVisibility(getArg("visibility"));
-            const tags = parseTags(getArg("tags"));
-            if (!out) {
-              throw new Error(
-                "Usage: pnpm cli words template --out <path> [--title <title>] [--slug <slug>] [--subtitle <text>] [--type blog|note|recipe|review] [--visibility public|unlisted|private] [--tags a,b] [--overwrite]"
-              );
-            }
-            if (getArg("type") && !type) throw new Error("Invalid --type value.");
-            return cmdWordsTemplate({
-              out,
-              title: title ?? undefined,
-              slug: slug ?? undefined,
-              subtitle: subtitle ?? undefined,
-              type,
-              visibility,
-              tags,
-              overwrite: hasFlag("overwrite"),
-            });
-          }
-          case "migrate-legacy": {
-            return cmdWordsMigrateLegacy(hasFlag("purge-legacy"));
-          }
-          case "share": {
-            const action = args[2];
-            if (action === "create") {
-              const slug = args[3];
-              if (!slug) throw new Error("Usage: pnpm cli words share create <slug> [--expires-days 7] [--pin-required] [--pin 1234]");
-              const expiresDaysRaw = getArg("expires-days");
-              const expiresInDays = expiresDaysRaw ? parseInt(expiresDaysRaw, 10) : undefined;
-              return cmdWordsShareCreate({
-                slug,
-                expiresInDays: Number.isFinite(expiresInDays) ? expiresInDays : undefined,
-                pinRequired: hasFlag("pin-required"),
-                pin: getArg("pin"),
-              });
-            }
-            if (action === "list") {
-              const slug = args[3];
-              if (!slug) throw new Error("Usage: pnpm cli words share list <slug>");
-              return cmdWordsShareList(slug);
-            }
-            if (action === "update") {
-              const slug = args[3];
-              const id = args[4];
-              if (!slug || !id) {
+            case "upload": {
+              const dir = getArg("dir");
+              const slug = getArg("slug");
+              const title = getArg("title");
+              const date = getArg("date");
+              const description = getArg("description");
+              const rotationArg = getArg("rotation") as RotationOverride | undefined;
+              if (!dir || !slug || !title || !date) {
                 throw new Error(
-                  "Usage: pnpm cli words share update <slug> <share-id> [--pin-required true|false] [--pin <newPin>|--clear-pin] [--expires-days <n>] [--rotate-token]"
+                  "Usage: pnpm cli albums upload --dir <path> --slug <slug> --title <title> --date <YYYY-MM-DD> [--description <desc>] [--rotation portrait|landscape]",
                 );
               }
-              const pinRequiredArg = getArg("pin-required");
-              const pinRequired =
-                pinRequiredArg === undefined ? undefined : parseBooleanInput(pinRequiredArg);
-              if (pinRequiredArg !== undefined && pinRequired === undefined) {
-                throw new Error("Invalid --pin-required value. Use true/false.");
+              if (rotationArg && !ROTATION_OVERRIDES.includes(rotationArg)) {
+                throw new Error(`Invalid rotation. Use: ${ROTATION_OVERRIDES.join(", ")}`);
               }
-              const expiresDaysRaw = getArg("expires-days");
-              const expiresInDays = expiresDaysRaw ? parseInt(expiresDaysRaw, 10) : undefined;
-              const pin = hasFlag("clear-pin") ? null : (getArg("pin") ?? undefined);
-              return cmdWordsShareUpdate(slug, id, {
-                pinRequired,
-                pin,
-                expiresInDays: Number.isFinite(expiresInDays) ? expiresInDays : undefined,
-                rotateToken: hasFlag("rotate-token"),
+              if (!isValidSlug(slug))
+                throw new Error("Slug must be lowercase letters, numbers, hyphens only.");
+              if (!isValidDate(date)) throw new Error("Date must be YYYY-MM-DD format.");
+              return cmdAlbumsUpload({
+                dir,
+                slug,
+                title,
+                date,
+                description,
+                rotation: rotationArg,
               });
             }
-            if (action === "revoke") {
-              const slug = args[3];
-              const id = args[4];
-              if (!slug || !id) throw new Error("Usage: pnpm cli words share revoke <slug> <share-id>");
-              return cmdWordsShareRevoke(slug, id);
+            case "update": {
+              const slug = args[2];
+              if (!slug)
+                throw new Error(
+                  "Usage: pnpm cli albums update <slug> [--title ...] [--date ...] ...",
+                );
+              const title = getArg("title");
+              const date = getArg("date");
+              const description = getArg("description");
+              const cover = getArg("cover");
+              if (!title && !date && !description && !cover) {
+                throw new Error(
+                  "Nothing to update. Pass --title, --date, --description, or --cover.",
+                );
+              }
+              if (date && !isValidDate(date)) throw new Error("Date must be YYYY-MM-DD format.");
+              return cmdAlbumsUpdate(slug, { title, date, description, cover });
             }
-            if (action === "cleanup") {
-              const slug = getArg("slug") ?? args[3];
-              return cmdWordsShareCleanup({ slug: slug ?? undefined });
+            case "delete": {
+              const slug = args[2];
+              if (!slug) throw new Error("Usage: pnpm cli albums delete <slug>");
+              return cmdAlbumsDelete(slug);
             }
-            if (action === "purge") {
-              const slug = getArg("slug") ?? args[3];
-              return cmdWordsSharePurge({ slug: slug ?? undefined, all: hasFlag("all") });
+            case "backfill-og": {
+              const hasYes = args.includes("--yes");
+              const hasForce = args.includes("--force");
+              const strategyArg = getArg("strategy") as DetectionStrategy | undefined;
+              if (strategyArg && !DETECTION_STRATEGIES.includes(strategyArg)) {
+                throw new Error(`Invalid strategy. Use: ${DETECTION_STRATEGIES.join(", ")}`);
+              }
+              return cmdAlbumsBackfillOg(hasYes, hasForce, strategyArg);
             }
-            if (action === "reset") {
-              return cmdWordsShareReset(hasFlag("all"));
-            }
-            throw new Error(`Unknown words share action: ${action ?? ""}`);
+            case "validate":
+              return cmdAlbumsValidate();
+            default:
+              throw new Error(`Unknown: albums ${subcommand ?? ""}. Run 'pnpm cli help'.`);
           }
-          default:
-            throw new Error(`Unknown: words ${subcommand ?? ""}. Run 'pnpm cli help'.`);
-        }
 
-      case "bucket":
-        switch (subcommand) {
-          case "ls":
-            return cmdBucketLs(args[2] ?? "");
-          case "rm": {
-            const key = args[2];
-            if (!key) throw new Error("Usage: pnpm cli bucket rm <key>");
-            return cmdBucketRm(key);
+        case "photos":
+          switch (subcommand) {
+            case "list": {
+              const slug = args[2];
+              if (!slug) throw new Error("Usage: pnpm cli photos list <album-slug>");
+              return cmdPhotosList(slug);
+            }
+            case "add": {
+              const slug = args[2];
+              const dir = getArg("dir");
+              const rotationArg = getArg("rotation") as RotationOverride | undefined;
+              if (!slug || !dir)
+                throw new Error(
+                  "Usage: pnpm cli photos add <album-slug> --dir <path> [--rotation portrait|landscape]",
+                );
+              if (rotationArg && !ROTATION_OVERRIDES.includes(rotationArg)) {
+                throw new Error(`Invalid rotation. Use: ${ROTATION_OVERRIDES.join(", ")}`);
+              }
+              return cmdPhotosAdd(slug, dir, rotationArg);
+            }
+            case "delete": {
+              const slug = args[2];
+              const photoId = args[3];
+              if (!slug || !photoId)
+                throw new Error("Usage: pnpm cli photos delete <album-slug> <photo-id>");
+              return cmdPhotosDelete(slug, photoId);
+            }
+            case "set-cover": {
+              const slug = args[2];
+              const photoId = args[3];
+              if (!slug || !photoId)
+                throw new Error("Usage: pnpm cli photos set-cover <album-slug> <photo-id>");
+              return cmdPhotosSetCover(slug, photoId);
+            }
+            case "set-focal": {
+              const slug = args[2];
+              const photoId = args[3];
+              const presetArg = getArg("preset");
+              if (!slug || !photoId || !presetArg) {
+                throw new Error(
+                  "Usage: pnpm cli photos set-focal <album-slug> <photo-id> --preset <c|t|b|l|r|tl|tr|bl|br|mt|mb|ml|mr>",
+                );
+              }
+              const preset = resolveFocalPreset(presetArg);
+              if (!preset) {
+                throw new Error(
+                  `Invalid preset. Use: ${Object.keys(FOCAL_SHORTHAND).join(", ")} or full names`,
+                );
+              }
+              return cmdPhotosSetFocal(slug, photoId, preset);
+            }
+            case "reset-focal": {
+              const slug = args[2];
+              if (!slug)
+                throw new Error(
+                  "Usage: pnpm cli photos reset-focal <album-slug> [photo-id] [--strategy onnx|sharp]",
+                );
+              const photoId = args[3]; // optional
+              const strategyArg = getArg("strategy") as DetectionStrategy | undefined;
+              if (strategyArg && !DETECTION_STRATEGIES.includes(strategyArg)) {
+                throw new Error(`Invalid strategy. Use: ${DETECTION_STRATEGIES.join(", ")}`);
+              }
+              return cmdPhotosResetFocal(slug, photoId, strategyArg);
+            }
+            case "compare-focal": {
+              const slug = args[2];
+              const photoId = args[3];
+              if (!slug || !photoId)
+                throw new Error("Usage: pnpm cli photos compare-focal <album-slug> <photo-id>");
+              return cmdPhotosCompareFocal(slug, photoId);
+            }
+            default:
+              throw new Error(`Unknown: photos ${subcommand ?? ""}. Run 'pnpm cli help'.`);
           }
-          case "info":
-            return cmdBucketInfo();
-          default:
-            throw new Error(`Unknown: bucket ${subcommand ?? ""}. Run 'pnpm cli help'.`);
-        }
 
-      case "auth":
-        switch (subcommand) {
-          case "diagnose": {
-            const adminToken = getArg("admin-token");
-            const adminPassword = getArg("admin-password");
-            const baseUrl = getArg("base-url");
-            if (!adminToken && !adminPassword) {
+        case "transfers":
+          switch (subcommand) {
+            case "list":
+              return cmdTransfersList();
+            case "show":
+            case "info": {
+              const id = args[2];
+              if (!id) throw new Error("Usage: pnpm cli transfers show <id>");
+              return cmdTransfersInfo(id);
+            }
+            case "upload": {
+              const dir = getArg("dir");
+              const title = getArg("title");
+              const expires = getArg("expires");
+              if (!dir || !title) {
+                throw new Error(
+                  "Usage: pnpm cli transfers upload --dir <path> --title <title> [--expires 7d]",
+                );
+              }
+              return cmdTransfersUpload({ dir, title, expires: expires ?? undefined });
+            }
+            case "append": {
+              const id = args[2];
+              const dir = getArg("dir");
+              if (!id || !dir) {
+                throw new Error("Usage: pnpm cli transfers append <id> --dir <path>");
+              }
+              return cmdTransfersAppend({ id, dir });
+            }
+            case "delete": {
+              const id = args[2];
+              if (!id) throw new Error("Usage: pnpm cli transfers delete <id>");
+              return cmdTransfersDelete(id);
+            }
+            case "delete-file": {
+              const id = args[2];
+              const file = getArg("file");
+              if (!id || !file) {
+                throw new Error(
+                  "Usage: pnpm cli transfers delete-file <id> --file <file-id|filename>",
+                );
+              }
+              return cmdTransfersDeleteFile(id, file);
+            }
+            case "cleanup":
+              return cmdTransfersCleanup();
+            case "queue": {
+              const queueCommand = args[2];
+              if (queueCommand === "status") return cmdTransfersMediaStatus();
+              if (queueCommand === "clear") return cmdTransfersQueueClear(hasFlag("yes"));
+              throw new Error("Usage: pnpm cli transfers queue <status|clear> [--yes]");
+            }
+            case "media": {
+              const mediaCommand = args[2];
+              if (mediaCommand === "retry") {
+                const id = args[3];
+                const file = getArg("file");
+                if (!id)
+                  throw new Error(
+                    "Usage: pnpm cli transfers media retry <id> [--file <file-id|filename>]",
+                  );
+                return cmdTransfersMediaRetry(id, file);
+              }
               throw new Error(
-                "Usage: pnpm cli auth diagnose [--admin-password <password> | --admin-token <jwt>] [--base-url http://localhost:3000]"
+                "Usage: pnpm cli transfers media retry <id> [--file <file-id|filename>]",
               );
             }
-            return cmdAuthDiagnose({
-              adminToken: adminToken ?? undefined,
-              adminPassword: adminPassword ?? undefined,
-              baseUrl: baseUrl ?? undefined,
-            });
-          }
-          case "revoke": {
-            const adminToken = getArg("admin-token");
-            const adminPassword = getArg("admin-password");
-            const roleArg = (getArg("role") ?? "admin") as RevokeRole;
-            const baseUrl = getArg("base-url");
-            if (!adminPassword) {
-              throw new Error(
-                "Usage: pnpm cli auth revoke --admin-password <password> [--admin-token <jwt>] [--role admin|staff|upload|all] [--base-url http://localhost:3000]"
+            case "media-status":
+              return cmdTransfersMediaStatus();
+            case "media-drain": {
+              const limitRaw = getArg("limit");
+              const limit = limitRaw ? Number(limitRaw) : 8;
+              return cmdTransfersMediaDrain(
+                Number.isFinite(limit) && limit > 0 ? Math.floor(limit) : 8,
               );
             }
-            if (!REVOKE_ROLES.includes(roleArg)) {
-              throw new Error(`Invalid role. Use: ${REVOKE_ROLES.join(", ")}`);
-            }
-            return cmdAuthRevoke({
-              adminToken,
-              adminPassword,
-              role: roleArg,
-              baseUrl: baseUrl ?? undefined,
-            });
+            case "media-reconcile":
+              return cmdTransfersMediaReconcile();
+            case "nuke":
+              return hasFlag("yes") ? cmdTransfersNuke(true) : cmdTransfersNuke();
+            default:
+              throw new Error(`Unknown: transfers ${subcommand ?? ""}. Run 'pnpm cli help'.`);
           }
-          case "sessions": {
-            const adminToken = getArg("admin-token");
-            const adminPassword = getArg("admin-password");
-            const baseUrl = getArg("base-url");
-            if (!adminToken && !adminPassword) {
-              throw new Error(
-                "Usage: pnpm cli auth sessions [--admin-password <password> | --admin-token <jwt>] [--base-url http://localhost:3000]"
-              );
-            }
-            return cmdAuthListSessions({
-              adminToken: adminToken ?? undefined,
-              adminPassword: adminPassword ?? undefined,
-              baseUrl: baseUrl ?? undefined,
-            });
-          }
-          default:
-            throw new Error(`Unknown: auth ${subcommand ?? ""}. Run 'pnpm cli help'.`);
-        }
 
-      default:
-        log(red(`Unknown command: ${command}`));
-        showHelp();
-        process.exit(1);
-    }
+        case "media":
+          switch (subcommand) {
+            case "upload": {
+              const slug = getArg("slug");
+              const assetId = getArg("asset");
+              const dir = getArg("dir");
+              if (!dir) {
+                throw new Error(
+                  "Usage: pnpm cli media upload (--slug <word-slug> | --asset <asset-id>) --dir <path> [--force]",
+                );
+              }
+              const target = getMediaTargetFromArgs({
+                slug: slug ?? undefined,
+                assetId: assetId ?? undefined,
+              });
+              return cmdWordsMediaUpload({ target, dir, force: hasFlag("force") });
+            }
+            case "list": {
+              const slug = getArg("slug");
+              const assetId = getArg("asset");
+              const target = getMediaTargetFromArgs({
+                slug: slug ?? undefined,
+                assetId: assetId ?? undefined,
+              });
+              return cmdWordsMediaList(target);
+            }
+            case "delete": {
+              const slug = getArg("slug");
+              const assetId = getArg("asset");
+              const file = getArg("file");
+              const target = getMediaTargetFromArgs({
+                slug: slug ?? undefined,
+                assetId: assetId ?? undefined,
+              });
+              return cmdWordsMediaDelete(target, file);
+            }
+            case "orphans":
+              return cmdWordsMediaOrphans(getArg("limit"));
+            case "purge-stale":
+              return cmdWordsMediaPurgeStale(hasFlag("yes"));
+            default:
+              throw new Error(`Unknown: media ${subcommand ?? ""}. Run 'pnpm cli help'.`);
+          }
+
+        case "words":
+          switch (subcommand) {
+            case "create": {
+              const slug = getArg("slug");
+              const title = getArg("title");
+              const markdownFile = getArg("markdown-file");
+              const subtitle = getArg("subtitle");
+              const image = getArg("image");
+              const type = parseWordType(getArg("type"));
+              const visibility = parseNoteVisibility(getArg("visibility"));
+              const tags = parseTags(getArg("tags"));
+              const featured = parseBooleanInput(getArg("featured"));
+              if (!slug || !title || !markdownFile) {
+                throw new Error(
+                  "Usage: pnpm cli words create --slug <slug> --title <title> --markdown-file <path> [--subtitle <text>] [--image <path>] [--type blog|note|recipe|review] [--visibility public|unlisted|private] [--tags a,b] [--featured true|false]",
+                );
+              }
+              if (getArg("type") && !type) throw new Error("Invalid --type value.");
+              if (getArg("featured") && featured === undefined)
+                throw new Error("Invalid --featured value. Use true/false.");
+              const markdown = readMarkdownFile(markdownFile);
+              return cmdWordsCreate({
+                slug,
+                title,
+                subtitle,
+                image,
+                type,
+                visibility,
+                tags,
+                featured,
+                markdown,
+              });
+            }
+            case "upload": {
+              const slug = getArg("slug");
+              const file = getArg("file");
+              const title = getArg("title");
+              const subtitle = getArg("subtitle");
+              const image = getArg("image");
+              const type = parseWordType(getArg("type"));
+              const visibility = parseNoteVisibility(getArg("visibility"));
+              const tags = parseTags(getArg("tags"));
+              const featured = parseBooleanInput(getArg("featured"));
+              if (!slug || !file) {
+                throw new Error(
+                  "Usage: pnpm cli words upload --slug <slug> --file <path> [--title <title>] [--subtitle <text>] [--image <path>] [--type blog|note|recipe|review] [--visibility public|unlisted|private] [--tags a,b] [--featured true|false]",
+                );
+              }
+              if (getArg("type") && !type) throw new Error("Invalid --type value.");
+              if (getArg("featured") && featured === undefined)
+                throw new Error("Invalid --featured value. Use true/false.");
+              return cmdWordsUpload({
+                slug,
+                file,
+                title: title ?? undefined,
+                subtitle: subtitle ?? undefined,
+                image: image ?? undefined,
+                type,
+                visibility,
+                tags,
+                featured,
+              });
+            }
+            case "list": {
+              const visibility = parseNoteVisibility(getArg("visibility"));
+              const type = parseWordType(getArg("type"));
+              const tag = getArg("tag");
+              const q = getArg("q");
+              if (getArg("type") && !type) throw new Error("Invalid --type value.");
+              return cmdWordsList({ visibility, type, tag: tag ?? undefined, q });
+            }
+            case "update": {
+              const slug = args[2];
+              if (!slug) {
+                throw new Error(
+                  "Usage: pnpm cli words update <slug> [--title <title>] [--subtitle <text>] [--clear-subtitle] [--image <path>|--clear-image] [--type blog|note|recipe|review] [--visibility public|unlisted|private] [--tags a,b] [--featured true|false] [--markdown-file <path>]",
+                );
+              }
+              const title = getArg("title");
+              const subtitle = hasFlag("clear-subtitle") ? null : (getArg("subtitle") ?? undefined);
+              const image = hasFlag("clear-image") ? null : (getArg("image") ?? undefined);
+              const type = parseWordType(getArg("type"));
+              const visibility = parseNoteVisibility(getArg("visibility"));
+              const tags = parseTags(getArg("tags"));
+              const featured = parseBooleanInput(getArg("featured"));
+              const markdownFile = getArg("markdown-file");
+              if (getArg("type") && !type) throw new Error("Invalid --type value.");
+              if (getArg("featured") && featured === undefined)
+                throw new Error("Invalid --featured value. Use true/false.");
+              if (
+                !title &&
+                subtitle === undefined &&
+                image === undefined &&
+                !type &&
+                !visibility &&
+                !tags &&
+                featured === undefined &&
+                !markdownFile &&
+                !hasFlag("clear-subtitle") &&
+                !hasFlag("clear-image")
+              ) {
+                throw new Error("Nothing to update.");
+              }
+              return cmdWordsUpdate(slug, {
+                title: title ?? undefined,
+                subtitle,
+                image,
+                type,
+                visibility,
+                tags,
+                featured,
+                markdownFile: markdownFile ?? undefined,
+              });
+            }
+            case "delete": {
+              const slug = args[2];
+              if (!slug) throw new Error("Usage: pnpm cli words delete <slug>");
+              return cmdWordsDelete(slug);
+            }
+            case "pull": {
+              const dir = getArg("dir");
+              const type = parseWordType(getArg("type"));
+              const visibility = parseNoteVisibility(getArg("visibility"));
+              if (!dir) {
+                throw new Error(
+                  "Usage: pnpm cli words pull --dir <path> [--type blog|note|recipe|review] [--visibility public|unlisted|private]",
+                );
+              }
+              if (getArg("type") && !type) throw new Error("Invalid --type value.");
+              return cmdWordsPull({ dir, type, visibility });
+            }
+            case "sync": {
+              const dir = getArg("dir");
+              if (!dir) throw new Error("Usage: pnpm cli words sync --dir <path>");
+              return cmdWordsSync({ dir });
+            }
+            case "watch": {
+              const dir = getArg("dir");
+              if (!dir) throw new Error("Usage: pnpm cli words watch --dir <path>");
+              return cmdWordsWatch({ dir });
+            }
+            case "template": {
+              const out = getArg("out") ?? getArg("file");
+              const title = getArg("title");
+              const slug = getArg("slug");
+              const subtitle = getArg("subtitle");
+              const type = parseWordType(getArg("type"));
+              const visibility = parseNoteVisibility(getArg("visibility"));
+              const tags = parseTags(getArg("tags"));
+              if (!out) {
+                throw new Error(
+                  "Usage: pnpm cli words template --out <path> [--title <title>] [--slug <slug>] [--subtitle <text>] [--type blog|note|recipe|review] [--visibility public|unlisted|private] [--tags a,b] [--overwrite]",
+                );
+              }
+              if (getArg("type") && !type) throw new Error("Invalid --type value.");
+              return cmdWordsTemplate({
+                out,
+                title: title ?? undefined,
+                slug: slug ?? undefined,
+                subtitle: subtitle ?? undefined,
+                type,
+                visibility,
+                tags,
+                overwrite: hasFlag("overwrite"),
+              });
+            }
+            case "migrate-legacy": {
+              return cmdWordsMigrateLegacy(hasFlag("purge-legacy"));
+            }
+            case "share": {
+              const action = args[2];
+              if (action === "create") {
+                const slug = args[3];
+                if (!slug)
+                  throw new Error(
+                    "Usage: pnpm cli words share create <slug> [--expires-days 7] [--pin-required] [--pin 1234]",
+                  );
+                const expiresDaysRaw = getArg("expires-days");
+                const expiresInDays = expiresDaysRaw ? parseInt(expiresDaysRaw, 10) : undefined;
+                return cmdWordsShareCreate({
+                  slug,
+                  expiresInDays: Number.isFinite(expiresInDays) ? expiresInDays : undefined,
+                  pinRequired: hasFlag("pin-required"),
+                  pin: getArg("pin"),
+                });
+              }
+              if (action === "list") {
+                const slug = args[3];
+                if (!slug) throw new Error("Usage: pnpm cli words share list <slug>");
+                return cmdWordsShareList(slug);
+              }
+              if (action === "update") {
+                const slug = args[3];
+                const id = args[4];
+                if (!slug || !id) {
+                  throw new Error(
+                    "Usage: pnpm cli words share update <slug> <share-id> [--pin-required true|false] [--pin <newPin>|--clear-pin] [--expires-days <n>] [--rotate-token]",
+                  );
+                }
+                const pinRequiredArg = getArg("pin-required");
+                const pinRequired =
+                  pinRequiredArg === undefined ? undefined : parseBooleanInput(pinRequiredArg);
+                if (pinRequiredArg !== undefined && pinRequired === undefined) {
+                  throw new Error("Invalid --pin-required value. Use true/false.");
+                }
+                const expiresDaysRaw = getArg("expires-days");
+                const expiresInDays = expiresDaysRaw ? parseInt(expiresDaysRaw, 10) : undefined;
+                const pin = hasFlag("clear-pin") ? null : (getArg("pin") ?? undefined);
+                return cmdWordsShareUpdate(slug, id, {
+                  pinRequired,
+                  pin,
+                  expiresInDays: Number.isFinite(expiresInDays) ? expiresInDays : undefined,
+                  rotateToken: hasFlag("rotate-token"),
+                });
+              }
+              if (action === "revoke") {
+                const slug = args[3];
+                const id = args[4];
+                if (!slug || !id)
+                  throw new Error("Usage: pnpm cli words share revoke <slug> <share-id>");
+                return cmdWordsShareRevoke(slug, id);
+              }
+              if (action === "cleanup") {
+                const slug = getArg("slug") ?? args[3];
+                return cmdWordsShareCleanup({ slug: slug ?? undefined });
+              }
+              if (action === "purge") {
+                const slug = getArg("slug") ?? args[3];
+                return cmdWordsSharePurge({ slug: slug ?? undefined, all: hasFlag("all") });
+              }
+              if (action === "reset") {
+                return cmdWordsShareReset(hasFlag("all"));
+              }
+              throw new Error(`Unknown words share action: ${action ?? ""}`);
+            }
+            default:
+              throw new Error(`Unknown: words ${subcommand ?? ""}. Run 'pnpm cli help'.`);
+          }
+
+        case "bucket":
+          switch (subcommand) {
+            case "ls":
+              return cmdBucketLs(args[2] ?? "");
+            case "rm": {
+              const key = args[2];
+              if (!key) throw new Error("Usage: pnpm cli bucket rm <key>");
+              return cmdBucketRm(key);
+            }
+            case "info":
+              return cmdBucketInfo();
+            default:
+              throw new Error(`Unknown: bucket ${subcommand ?? ""}. Run 'pnpm cli help'.`);
+          }
+
+        case "auth":
+          switch (subcommand) {
+            case "diagnose": {
+              const adminToken = getArg("admin-token");
+              const adminPassword = getArg("admin-password");
+              const baseUrl = getArg("base-url");
+              if (!adminToken && !adminPassword) {
+                throw new Error(
+                  "Usage: pnpm cli auth diagnose [--admin-password <password> | --admin-token <jwt>] [--base-url http://localhost:3000]",
+                );
+              }
+              return cmdAuthDiagnose({
+                adminToken: adminToken ?? undefined,
+                adminPassword: adminPassword ?? undefined,
+                baseUrl: baseUrl ?? undefined,
+              });
+            }
+            case "revoke": {
+              const adminToken = getArg("admin-token");
+              const adminPassword = getArg("admin-password");
+              const roleArg = (getArg("role") ?? "admin") as RevokeRole;
+              const baseUrl = getArg("base-url");
+              if (!adminPassword) {
+                throw new Error(
+                  "Usage: pnpm cli auth revoke --admin-password <password> [--admin-token <jwt>] [--role admin|staff|upload|all] [--base-url http://localhost:3000]",
+                );
+              }
+              if (!REVOKE_ROLES.includes(roleArg)) {
+                throw new Error(`Invalid role. Use: ${REVOKE_ROLES.join(", ")}`);
+              }
+              return cmdAuthRevoke({
+                adminToken,
+                adminPassword,
+                role: roleArg,
+                baseUrl: baseUrl ?? undefined,
+              });
+            }
+            case "sessions": {
+              const adminToken = getArg("admin-token");
+              const adminPassword = getArg("admin-password");
+              const baseUrl = getArg("base-url");
+              if (!adminToken && !adminPassword) {
+                throw new Error(
+                  "Usage: pnpm cli auth sessions [--admin-password <password> | --admin-token <jwt>] [--base-url http://localhost:3000]",
+                );
+              }
+              return cmdAuthListSessions({
+                adminToken: adminToken ?? undefined,
+                adminPassword: adminPassword ?? undefined,
+                baseUrl: baseUrl ?? undefined,
+              });
+            }
+            default:
+              throw new Error(`Unknown: auth ${subcommand ?? ""}. Run 'pnpm cli help'.`);
+          }
+
+        default:
+          log(red(`Unknown command: ${command}`));
+          showHelp();
+          process.exit(1);
+      }
     })();
   } catch (err) {
     console.log();

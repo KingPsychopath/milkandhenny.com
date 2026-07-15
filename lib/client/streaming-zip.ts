@@ -145,7 +145,9 @@ function resolveArchiveFilenames(files: ZipSourceFile[]): Map<string, string> {
 
 function throwIfAborted(signal?: AbortSignal) {
   if (signal?.aborted) {
-    throw signal.reason instanceof Error ? signal.reason : new DOMException("Download aborted", "AbortError");
+    throw signal.reason instanceof Error
+      ? signal.reason
+      : new DOMException("Download aborted", "AbortError");
   }
 }
 
@@ -189,7 +191,11 @@ class BlobZipTarget implements ZipSaveTarget {
   }
 }
 
-function buildLocalFileHeader(filenameBytes: Uint8Array, dosDate: number, dosTime: number): Uint8Array {
+function buildLocalFileHeader(
+  filenameBytes: Uint8Array,
+  dosDate: number,
+  dosTime: number,
+): Uint8Array {
   const extraField = new Uint8Array(20);
   const extraFieldView = new DataView(extraField.buffer);
   writeUint16(extraFieldView, 0, ZIP64_EXTRA_FIELD_ID);
@@ -260,7 +266,11 @@ function buildCentralDirectoryEntry(record: ZipEntryRecord): Uint8Array {
   return entry;
 }
 
-function buildEndOfCentralDirectory(entryCount: number, directorySize: number, directoryOffset: number): Uint8Array {
+function buildEndOfCentralDirectory(
+  entryCount: number,
+  directorySize: number,
+  directoryOffset: number,
+): Uint8Array {
   const zip64Record = new Uint8Array(56);
   const zip64RecordView = new DataView(zip64Record.buffer);
   writeUint32(zip64RecordView, 0, 0x06064b50);
@@ -305,7 +315,7 @@ async function writeFileEntry(
   filename: string,
   target: ZipSaveTarget,
   offset: number,
-  signal?: AbortSignal
+  signal?: AbortSignal,
 ): Promise<{ bytesWritten: number; record: ZipEntryRecord }> {
   throwIfAborted(signal);
   const filenameBytes = textEncoder.encode(filename);
@@ -353,7 +363,11 @@ async function writeFileEntry(
   };
 }
 
-async function writeCentralDirectory(records: ZipEntryRecord[], target: ZipSaveTarget, offset: number): Promise<number> {
+async function writeCentralDirectory(
+  records: ZipEntryRecord[],
+  target: ZipSaveTarget,
+  offset: number,
+): Promise<number> {
   let directorySize = 0;
 
   for (const record of records) {
@@ -368,7 +382,12 @@ async function writeCentralDirectory(records: ZipEntryRecord[], target: ZipSaveT
   return directorySize + footer.length;
 }
 
-async function buildZipArchive({ files, onProgress, saveTarget, signal }: BuildZipArchiveOptions): Promise<BuildZipArchiveResult> {
+async function buildZipArchive({
+  files,
+  onProgress,
+  saveTarget,
+  signal,
+}: BuildZipArchiveOptions): Promise<BuildZipArchiveResult> {
   const target = saveTarget ?? new BlobZipTarget();
   const archiveFilenames = resolveArchiveFilenames(files);
   const records: ZipEntryRecord[] = [];
@@ -378,7 +397,13 @@ async function buildZipArchive({ files, onProgress, saveTarget, signal }: BuildZ
     throwIfAborted(signal);
     for (let index = 0; index < files.length; index += 1) {
       const file = files[index];
-      const result = await writeFileEntry(file, archiveFilenames.get(file.id) ?? file.filename, target, offset, signal);
+      const result = await writeFileEntry(
+        file,
+        archiveFilenames.get(file.id) ?? file.filename,
+        target,
+        offset,
+        signal,
+      );
       offset += result.bytesWritten;
       records.push(result.record);
       onProgress?.({ phase: "fetching", done: index + 1, total: files.length });

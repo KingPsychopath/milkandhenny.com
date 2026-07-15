@@ -1,7 +1,5 @@
-"use client";
-
 import { useEffect, useState, useCallback, useRef } from "react";
-import { usePathname } from "next/navigation";
+import { useLocation } from "@tanstack/react-router";
 import { getStored, setStored } from "@/lib/client/storage";
 
 /** Routes where the lamp should be fully hidden (own dark styling or standalone pages) */
@@ -35,7 +33,7 @@ const AUTO_DARK_DELAY = 400;
  * The user's original preference is restored when they navigate away.
  */
 export function LampToggle() {
-  const pathname = usePathname();
+  const pathname = useLocation({ select: (location) => location.pathname });
   const [dark, setDark] = useState(false);
   const [pulled, setPulled] = useState(false);
   const [mounted, setMounted] = useState(false);
@@ -115,14 +113,10 @@ export function LampToggle() {
       const original = savedPref.current ?? "light";
       const shouldBeDark = original === "dark";
       setDark(shouldBeDark);
-      document.documentElement.setAttribute(
-        "data-theme",
-        shouldBeDark ? "dark" : "light"
-      );
+      document.documentElement.setAttribute("data-theme", shouldBeDark ? "dark" : "light");
       savedPref.current = null;
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isPhotoPage, mounted]);
+  }, [dark, isPhotoPage, mounted]);
 
   /** Hide lamp when scrolling down past threshold, show when near top */
   useEffect(() => {
@@ -152,10 +146,7 @@ export function LampToggle() {
 
     const next = !dark;
     setDark(next);
-    document.documentElement.setAttribute(
-      "data-theme",
-      next ? "dark" : "light"
-    );
+    document.documentElement.setAttribute("data-theme", next ? "dark" : "light");
 
     /* If user manually toggles on the photo page, respect that as their real pref */
     if (isPhotoPage) {
@@ -185,16 +176,31 @@ export function LampToggle() {
       />
 
       {/* Bulb / pull handle */}
-      <div
-        className="lamp-bulb"
-        style={{ opacity: tapped ? 1 : undefined }}
-      >
+      <div className="lamp-bulb" style={{ opacity: tapped ? 1 : undefined }}>
         {dark ? (
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <svg
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
             <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
           </svg>
         ) : (
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <svg
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
             <circle cx="12" cy="12" r="5" />
             <line x1="12" y1="1" x2="12" y2="3" />
             <line x1="12" y1="21" x2="12" y2="23" />

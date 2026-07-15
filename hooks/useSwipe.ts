@@ -33,9 +33,7 @@ type UseSwipeOptions = {
  * return <div ref={swipeRef}>...</div>;
  * ```
  */
-function useSwipe<T extends HTMLElement = HTMLDivElement>(
-  options: UseSwipeOptions
-) {
+function useSwipe<T extends HTMLElement = HTMLDivElement>(options: UseSwipeOptions) {
   const ref = useRef<T>(null);
   const touchRef = useRef<{ x: number; y: number; time: number } | null>(null);
 
@@ -73,8 +71,7 @@ function useSwipe<T extends HTMLElement = HTMLDivElement>(
       touchRef.current = null;
 
       // Must be fast, horizontal, and long enough
-      if (dt > maxTime || Math.abs(dy) > maxVertical || Math.abs(dx) < minDistance)
-        return;
+      if (dt > maxTime || Math.abs(dy) > maxVertical || Math.abs(dx) < minDistance) return;
 
       if (dx < 0) callbacksRef.current.onSwipeLeft?.();
       if (dx > 0) callbacksRef.current.onSwipeRight?.();

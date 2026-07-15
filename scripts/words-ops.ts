@@ -1,8 +1,12 @@
-import "server-only";
-
 import { BASE_URL } from "@/lib/shared/config";
-import { getRedis } from "@/lib/platform/redis";
-import { WORD_INDEX_KEY, wordMetaKey, wordShareIndexKey, wordShareKey, wordShareSlugsKey } from "@/features/words/config";
+import { getRedis } from "@/lib/platform/redis.server";
+import {
+  WORD_INDEX_KEY,
+  wordMetaKey,
+  wordShareIndexKey,
+  wordShareKey,
+  wordShareSlugsKey,
+} from "@/features/words/config.server";
 import { buildWordShareUrl } from "@/features/words/routes";
 import {
   cleanupShareLinksForSlug,
@@ -12,8 +16,15 @@ import {
   listTrackedShareSlugs,
   revokeShareLink,
   updateShareLink,
-} from "@/features/words/share";
-import { createWord, deleteWord, getWord, getWordMeta, listWords, updateWord } from "@/features/words/store";
+} from "@/features/words/share.server";
+import {
+  createWord,
+  deleteWord,
+  getWord,
+  getWordMeta,
+  listWords,
+  updateWord,
+} from "@/features/words/store.server";
 import type { NoteVisibility, ShareLink } from "@/features/words/content-types";
 import type { WordType } from "@/features/words/types";
 
@@ -87,7 +98,7 @@ async function deleteWordRecord(slug: string) {
 
 async function createWordShare(
   slug: string,
-  opts?: { expiresInDays?: number; pinRequired?: boolean; pin?: string }
+  opts?: { expiresInDays?: number; pinRequired?: boolean; pin?: string },
 ) {
   const meta = await getWordMeta(slug);
   const created = await createShareLink({
@@ -110,7 +121,12 @@ async function listWordShares(slug: string) {
 async function updateWordShare(
   slug: string,
   id: string,
-  opts: { pinRequired?: boolean; pin?: string | null; expiresInDays?: number; rotateToken?: boolean }
+  opts: {
+    pinRequired?: boolean;
+    pin?: string | null;
+    expiresInDays?: number;
+    rotateToken?: boolean;
+  },
 ) {
   const meta = await getWordMeta(slug);
   const updated = await updateShareLink(slug, id, opts);
@@ -205,7 +221,9 @@ function parseLegacyShareId(key: string): string | null {
   return id;
 }
 
-async function migrateLegacyWordsNamespace(opts?: { purgeLegacy?: boolean }): Promise<LegacyMigrationResult> {
+async function migrateLegacyWordsNamespace(opts?: {
+  purgeLegacy?: boolean;
+}): Promise<LegacyMigrationResult> {
   const redis = getRedis();
   if (!redis) {
     throw new Error("Redis/KV is not configured.");
@@ -213,8 +231,9 @@ async function migrateLegacyWordsNamespace(opts?: { purgeLegacy?: boolean }): Pr
 
   const purgeLegacy = !!opts?.purgeLegacy;
   const legacySlugsRaw = await redis.smembers(LEGACY_WORD_INDEX_KEY);
-  const legacySlugs = (Array.isArray(legacySlugsRaw) ? legacySlugsRaw : [])
-    .filter((slug): slug is string => typeof slug === "string" && !!slug);
+  const legacySlugs = (Array.isArray(legacySlugsRaw) ? legacySlugsRaw : []).filter(
+    (slug): slug is string => typeof slug === "string" && !!slug,
+  );
 
   let metaRecordsMigrated = 0;
   let shareRecordsMigrated = 0;
@@ -241,8 +260,9 @@ async function migrateLegacyWordsNamespace(opts?: { purgeLegacy?: boolean }): Pr
   }
 
   const legacyShareKeysRaw = await redis.keys(`${LEGACY_WORD_SHARE_PREFIX}*`);
-  const legacyShareKeys = (Array.isArray(legacyShareKeysRaw) ? legacyShareKeysRaw : [])
-    .filter((key): key is string => typeof key === "string");
+  const legacyShareKeys = (Array.isArray(legacyShareKeysRaw) ? legacyShareKeysRaw : []).filter(
+    (key): key is string => typeof key === "string",
+  );
 
   for (const key of legacyShareKeys) {
     const shareId = parseLegacyShareId(key);
@@ -271,15 +291,17 @@ async function migrateLegacyWordsNamespace(opts?: { purgeLegacy?: boolean }): Pr
   }
 
   const legacyShareIndexKeysRaw = await redis.keys(`${LEGACY_WORD_SHARE_INDEX_PREFIX}*`);
-  const legacyShareIndexKeys = (Array.isArray(legacyShareIndexKeysRaw) ? legacyShareIndexKeysRaw : [])
-    .filter((key): key is string => typeof key === "string");
+  const legacyShareIndexKeys = (
+    Array.isArray(legacyShareIndexKeysRaw) ? legacyShareIndexKeysRaw : []
+  ).filter((key): key is string => typeof key === "string");
 
   for (const key of legacyShareIndexKeys) {
     const slug = key.slice(LEGACY_WORD_SHARE_INDEX_PREFIX.length);
     if (!slug) continue;
     const idsRaw = await redis.smembers(key);
-    const ids = (Array.isArray(idsRaw) ? idsRaw : [])
-      .filter((id): id is string => typeof id === "string" && !!id);
+    const ids = (Array.isArray(idsRaw) ? idsRaw : []).filter(
+      (id): id is string => typeof id === "string" && !!id,
+    );
     if (ids.length > 0) {
       for (const id of ids) {
         await redis.sadd(wordShareIndexKey(slug), id);
@@ -295,8 +317,9 @@ async function migrateLegacyWordsNamespace(opts?: { purgeLegacy?: boolean }): Pr
   }
 
   const legacyShareSlugsRaw = await redis.smembers(LEGACY_WORD_SHARE_SLUGS_KEY);
-  const legacyShareSlugs = (Array.isArray(legacyShareSlugsRaw) ? legacyShareSlugsRaw : [])
-    .filter((slug): slug is string => typeof slug === "string" && !!slug);
+  const legacyShareSlugs = (Array.isArray(legacyShareSlugsRaw) ? legacyShareSlugsRaw : []).filter(
+    (slug): slug is string => typeof slug === "string" && !!slug,
+  );
   if (legacyShareSlugs.length > 0) {
     for (const slug of legacyShareSlugs) {
       await redis.sadd(wordShareSlugsKey(), slug);

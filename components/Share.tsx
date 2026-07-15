@@ -21,8 +21,7 @@ const COPIED_DURATION_MS = 2000;
 function canUseNativeShareOnMobile(): boolean {
   if (typeof window === "undefined") return false;
   return (
-    typeof navigator.share === "function" &&
-    /Android|iPhone|iPad|iPod/i.test(navigator.userAgent)
+    typeof navigator.share === "function" && /Android|iPhone|iPad|iPod/i.test(navigator.userAgent)
   );
 }
 
@@ -31,7 +30,9 @@ async function copyToClipboard(text: string): Promise<boolean> {
   try {
     await navigator.clipboard.writeText(text);
     return true;
-  } catch { /* not available — try fallback */ }
+  } catch {
+    /* not available — try fallback */
+  }
 
   try {
     const textarea = document.createElement("textarea");
@@ -135,12 +136,35 @@ export function Share({ url, title = "", label = "Share", className = "" }: Shar
           role="menu"
         >
           {[
-            { label: "Copy link", action: () => { handleCopy(); setDropdownOpen(false); } },
-            { label: "X (Twitter)", action: () => window.open(shareUrls.twitter, "_blank", "noopener") },
-            { label: "Facebook", action: () => window.open(shareUrls.facebook, "_blank", "noopener") },
-            { label: "LinkedIn", action: () => window.open(shareUrls.linkedin, "_blank", "noopener") },
-            { label: "WhatsApp", action: () => window.open(shareUrls.whatsapp, "_blank", "noopener") },
-            { label: "Email", action: () => { window.location.href = shareUrls.email; } },
+            {
+              label: "Copy link",
+              action: () => {
+                handleCopy();
+                setDropdownOpen(false);
+              },
+            },
+            {
+              label: "X (Twitter)",
+              action: () => window.open(shareUrls.twitter, "_blank", "noopener"),
+            },
+            {
+              label: "Facebook",
+              action: () => window.open(shareUrls.facebook, "_blank", "noopener"),
+            },
+            {
+              label: "LinkedIn",
+              action: () => window.open(shareUrls.linkedin, "_blank", "noopener"),
+            },
+            {
+              label: "WhatsApp",
+              action: () => window.open(shareUrls.whatsapp, "_blank", "noopener"),
+            },
+            {
+              label: "Email",
+              action: () => {
+                window.location.href = shareUrls.email;
+              },
+            },
           ].map((item) => (
             <button
               key={item.label}

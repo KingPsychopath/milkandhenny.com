@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { createWord, deleteWord } from "@/features/words/store";
-import { createShareLink, listShareLinks, listTrackedShareSlugs } from "@/features/words/share";
+import { createWord, deleteWord } from "@/features/words/store.server";
+import {
+  createShareLink,
+  listShareLinks,
+  listTrackedShareSlugs,
+} from "@/features/words/share.server";
 
 function uniqueSlug(prefix: string): string {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;

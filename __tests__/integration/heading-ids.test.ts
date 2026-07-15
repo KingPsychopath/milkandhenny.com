@@ -86,9 +86,7 @@ describe("extractHeadings ↔ rehypeSlug contract", () => {
       const tree = buildHastTree(headings);
       const plugin = rehypeSlug();
       plugin(tree);
-      const rehypeIds = tree.children.map(
-        (node) => node.properties.id as string
-      );
+      const rehypeIds = tree.children.map((node) => node.properties.id as string);
 
       // They must match — this is the contract
       expect(blogIds).toEqual(rehypeIds);

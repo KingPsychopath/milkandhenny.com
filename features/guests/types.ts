@@ -1,15 +1,12 @@
-export type GuestStatus = 'Approved' | 'Pending' | "Can't Go" | 'Invited';
+export type GuestStatus = "Approved" | "Pending" | "Can't Go" | "Invited";
 
 /**
  * Generate a deterministic guest ID from a name.
  * Pass a suffix (index or timestamp) for uniqueness.
  * Defaults to Date.now() when no suffix is provided.
  */
-export function generateGuestId(
-  name: string,
-  suffix: string | number = Date.now()
-): string {
-  return `${name.toLowerCase().replace(/\s+/g, '-')}-${suffix}`;
+export function generateGuestId(name: string, suffix: string | number = Date.now()): string {
+  return `${name.toLowerCase().replace(/\s+/g, "-")}-${suffix}`;
 }
 
 export type Guest = {
@@ -33,4 +30,4 @@ export type GuestStats = {
   totalCheckedIn: number;
 };
 
-export type SearchFilter = 'all' | 'invites' | 'plusOnes' | 'checkedIn' | 'notCheckedIn';
+export type SearchFilter = "all" | "invites" | "plusOnes" | "checkedIn" | "notCheckedIn";

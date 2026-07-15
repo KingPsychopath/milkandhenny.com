@@ -1,0 +1,12 @@
+{
+  "ignorePatterns": [
+    ".output/**",
+    ".tanstack/**",
+    "coverage/**",
+    "content/**",
+    ".cursor/**",
+    "AGENTS.md",
+    "public/**",
+    "src/routeTree.gen.ts"
+  ]
+}

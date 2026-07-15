@@ -32,11 +32,7 @@ async function makeGrayscaleJpegBuffer(width: number, height: number): Promise<B
 
 async function makeEmbeddedJpegRawLikeBuffer(width: number, height: number): Promise<Buffer> {
   const jpeg = await makeJpegBuffer(width, height);
-  return Buffer.concat([
-    Buffer.from("RAWHEADER"),
-    jpeg,
-    Buffer.from("RAWTRAILER"),
-  ]);
+  return Buffer.concat([Buffer.from("RAWHEADER"), jpeg, Buffer.from("RAWTRAILER")]);
 }
 
 async function makeDngLikeTiffWithSubIfdPreview(width: number, height: number): Promise<Buffer> {
@@ -109,7 +105,7 @@ async function makeBigTiffLikePreview(width: number, height: number): Promise<Bu
 }
 
 async function importProcessingModule() {
-  return import("@/features/media/processing");
+  return import("@/features/media/processing.server");
 }
 
 describe("raw image preview processing", () => {
@@ -195,7 +191,7 @@ describe("raw image preview processing", () => {
     const { RawPreviewUnavailableError, processToWebP } = await importProcessingModule();
 
     await expect(processToWebP(Buffer.from("raw"), "IMG_3002.dng")).rejects.toBeInstanceOf(
-      RawPreviewUnavailableError
+      RawPreviewUnavailableError,
     );
   });
 
@@ -210,7 +206,7 @@ describe("raw image preview processing", () => {
     const { RawPreviewUnavailableError, processToWebP } = await importProcessingModule();
 
     await expect(processToWebP(Buffer.from("raw"), "IMG_3013.dng")).rejects.toBeInstanceOf(
-      RawPreviewUnavailableError
+      RawPreviewUnavailableError,
     );
   });
 
@@ -238,7 +234,7 @@ describe("raw image preview processing", () => {
           _bin: string,
           args: string[],
           _opts: unknown,
-          callback: (error: Error | null, stdout: string, stderr: string) => void
+          callback: (error: Error | null, stdout: string, stderr: string) => void,
         ) => {
           const input = args[args.length - 1] ?? "";
           const ext = path.extname(input);
@@ -246,7 +242,7 @@ describe("raw image preview processing", () => {
           const output = path.join(path.dirname(input), `${stem}.thumb.jpg`);
           fs.writeFileSync(output, preview);
           callback(null, "", "");
-        }
+        },
       ),
     }));
     vi.doMock("exifr", () => ({

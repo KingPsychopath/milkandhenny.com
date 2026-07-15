@@ -7,13 +7,7 @@
 
 import fs from "fs";
 import path from "path";
-import {
-  uploadBuffer,
-  downloadBuffer,
-  deleteObjects,
-  listObjects,
-  headObject,
-} from "./r2-client";
+import { uploadBuffer, downloadBuffer, deleteObjects, listObjects, headObject } from "./r2-client";
 import {
   PROCESSABLE_EXTENSIONS,
   processImageVariants,
@@ -21,7 +15,7 @@ import {
   mapConcurrent,
   type OgOverlay,
   type RotationOverride,
-} from "../features/media/processing";
+} from "../features/media/processing.server";
 import {
   type FocalPreset,
   isValidFocalPreset,
@@ -131,9 +125,7 @@ function sortByDate(photos: { photo: PhotoMeta; [k: string]: unknown }[]) {
  * Resolve the effective focal point for a photo.
  * Priority: manual focalPoint preset → auto-detected face → center (50, 50).
  */
-function resolveEffectiveFocal(
-  photo: PhotoMeta
-): { x: number; y: number } {
+function resolveEffectiveFocal(photo: PhotoMeta): { x: number; y: number } {
   if (photo.focalPoint && isValidFocalPreset(photo.focalPoint)) {
     return focalPresetToPercent(photo.focalPoint);
   }
@@ -163,7 +155,11 @@ function getAlbumUploadCheckpointPath(absDir: string, slug: string): string {
   return path.join(absDir, getAlbumUploadCheckpointFilename(slug));
 }
 
-function writeAlbumUploadCheckpoint(absDir: string, slug: string, checkpoint: AlbumUploadCheckpoint): void {
+function writeAlbumUploadCheckpoint(
+  absDir: string,
+  slug: string,
+  checkpoint: AlbumUploadCheckpoint,
+): void {
   const file = getAlbumUploadCheckpointPath(absDir, slug);
   const tmp = `${file}.tmp`;
   fs.writeFileSync(tmp, JSON.stringify(checkpoint, null, 2), "utf-8");
@@ -194,7 +190,7 @@ function readAlbumUploadCheckpoint(absDir: string, slug: string): AlbumUploadChe
     typeof parsed.completed !== "object"
   ) {
     throw new Error(
-      `Invalid album upload checkpoint file: ${file}. Delete it and retry to start fresh.`
+      `Invalid album upload checkpoint file: ${file}. Delete it and retry to start fresh.`,
     );
   }
 
@@ -206,7 +202,9 @@ function readAlbumUploadCheckpoint(absDir: string, slug: string): AlbumUploadChe
       slug: parsed.opts.slug,
       title: parsed.opts.title,
       date: parsed.opts.date,
-      ...(typeof parsed.opts.description === "string" ? { description: parsed.opts.description } : {}),
+      ...(typeof parsed.opts.description === "string"
+        ? { description: parsed.opts.description }
+        : {}),
       ...(parsed.opts.rotation === "portrait" || parsed.opts.rotation === "landscape"
         ? { rotation: parsed.opts.rotation }
         : {}),
@@ -278,23 +276,27 @@ async function processAndUploadPhoto(
   ogOverlay?: OgOverlay,
   rotationOverride?: RotationOverride,
 ): Promise<ProcessResult> {
-  const rawExt = path.extname(filePath);           // original case: ".HIF"
-  const ext = rawExt.toLowerCase();                  // normalised: ".hif"
-  const id = path.basename(filePath, rawExt);        // strip with original case → "DSC08382"
+  const rawExt = path.extname(filePath); // original case: ".HIF"
+  const ext = rawExt.toLowerCase(); // normalised: ".hif"
+  const id = path.basename(filePath, rawExt); // strip with original case → "DSC08382"
   const raw = fs.readFileSync(filePath);
 
   // Auto-detect focal point (face or saliency)
   const autoFocal = await detectFocal(raw).catch(() => null);
 
-  const processed = await processImageVariants(raw, ext, autoFocal ?? undefined, ogOverlay, rotationOverride);
+  const processed = await processImageVariants(
+    raw,
+    ext,
+    autoFocal ?? undefined,
+    ogOverlay,
+    rotationOverride,
+  );
 
   const faceTag = autoFocal ? ` 🎯 face(${autoFocal.x}%,${autoFocal.y}%)` : "";
   onProgress?.(
     `Processing ${id} (${processed.width}×${processed.height})${
-      processed.takenAt
-        ? ` taken ${new Date(processed.takenAt).toLocaleDateString()}`
-        : ""
-    }${faceTag}...`
+      processed.takenAt ? ` taken ${new Date(processed.takenAt).toLocaleDateString()}` : ""
+    }${faceTag}...`,
   );
 
   /* Upload all 4 versions */
@@ -302,7 +304,11 @@ async function processAndUploadPhoto(
   await Promise.all([
     uploadBuffer(`${prefix}/thumb/${id}.webp`, processed.thumb.buffer, processed.thumb.contentType),
     uploadBuffer(`${prefix}/full/${id}.webp`, processed.full.buffer, processed.full.contentType),
-    uploadBuffer(`${prefix}/original/${id}.jpg`, processed.original.buffer, processed.original.contentType),
+    uploadBuffer(
+      `${prefix}/original/${id}.jpg`,
+      processed.original.buffer,
+      processed.original.contentType,
+    ),
     uploadBuffer(`${prefix}/og/${id}.jpg`, processed.og.buffer, processed.og.contentType),
   ]);
 
@@ -328,7 +334,7 @@ async function processAndUploadPhoto(
 /** Create a new album: process all images from dir, upload, write JSON */
 async function createAlbum(
   opts: CreateAlbumOpts,
-  onProgress?: (msg: string) => void
+  onProgress?: (msg: string) => void,
 ): Promise<{ album: AlbumData; jsonPath: string; results: ProcessResult[] }> {
   const absDir = path.resolve(opts.dir);
   if (!fs.existsSync(absDir)) {
@@ -347,28 +353,26 @@ async function createAlbum(
   const checkpoint = readAlbumUploadCheckpoint(absDir, opts.slug);
   if (checkpoint && checkpoint.dir !== absDir) {
     throw new Error(
-      `Album upload checkpoint directory mismatch at ${getAlbumUploadCheckpointPath(absDir, opts.slug)}. Delete it and retry.`
+      `Album upload checkpoint directory mismatch at ${getAlbumUploadCheckpointPath(absDir, opts.slug)}. Delete it and retry.`,
     );
   }
   if (checkpoint && !arraysEqual(checkpoint.files, files)) {
     throw new Error(
       `Album source files changed since checkpoint was created (${getAlbumUploadCheckpointPath(absDir, opts.slug)}).\n` +
-      "Restore the original files or delete the checkpoint file to start a new album upload."
+        "Restore the original files or delete the checkpoint file to start a new album upload.",
     );
   }
   if (
     checkpoint &&
-    (
-      checkpoint.opts.slug !== opts.slug ||
+    (checkpoint.opts.slug !== opts.slug ||
       checkpoint.opts.title !== opts.title ||
       checkpoint.opts.date !== opts.date ||
       checkpoint.opts.description !== opts.description ||
-      checkpoint.opts.rotation !== opts.rotation
-    )
+      checkpoint.opts.rotation !== opts.rotation)
   ) {
     throw new Error(
       `Album upload options changed since checkpoint was created (${getAlbumUploadCheckpointPath(absDir, opts.slug)}).\n` +
-      "Rerun with the same slug/title/date/description/rotation or delete the checkpoint file to start fresh."
+        "Rerun with the same slug/title/date/description/rotation or delete the checkpoint file to start fresh.",
     );
   }
 
@@ -392,7 +396,9 @@ async function createAlbum(
   const pendingFiles = files.filter((file) => !completed[file]);
   const resumedCount = files.length - pendingFiles.length;
   if (checkpoint) {
-    onProgress?.(`Resuming album upload ${opts.slug}: ${resumedCount}/${files.length} photos already complete.`);
+    onProgress?.(
+      `Resuming album upload ${opts.slug}: ${resumedCount}/${files.length} photos already complete.`,
+    );
   } else {
     onProgress?.(`Found ${files.length} photos. Uploading...`);
   }
@@ -413,8 +419,8 @@ async function createAlbum(
             ...(opts.rotation ? { rotation: opts.rotation } : {}),
           },
           completed,
-        })
-      )
+        }),
+      ),
     );
     return checkpointWriteQueue;
   };
@@ -423,7 +429,13 @@ async function createAlbum(
     await mapConcurrent(pendingFiles, 3, async (file) => {
       const id = path.basename(file, path.extname(file));
       const overlay: OgOverlay = { title: opts.title, photoId: id };
-      const result = await processAndUploadPhoto(path.join(absDir, file), opts.slug, onProgress, overlay, opts.rotation);
+      const result = await processAndUploadPhoto(
+        path.join(absDir, file),
+        opts.slug,
+        onProgress,
+        overlay,
+        opts.rotation,
+      );
       completed[file] = result;
       await queueCheckpointWrite();
       return result;
@@ -438,14 +450,16 @@ async function createAlbum(
 
   if (results.length !== files.length) {
     throw new Error(
-      `Album upload checkpoint incomplete (${results.length}/${files.length}). Rerun the same albums upload command to continue.`
+      `Album upload checkpoint incomplete (${results.length}/${files.length}). Rerun the same albums upload command to continue.`,
     );
   }
 
   // Sort by EXIF date (earliest first), falling back to filename
   sortByDate(results);
   const datedCount = results.filter((r) => r.photo.takenAt).length;
-  onProgress?.(`Sorted ${results.length} photos (${datedCount} with EXIF dates, ${results.length - datedCount} by filename)`);
+  onProgress?.(
+    `Sorted ${results.length} photos (${datedCount} with EXIF dates, ${results.length - datedCount} by filename)`,
+  );
 
   const album: AlbumData = {
     title: opts.title,
@@ -465,10 +479,7 @@ async function createAlbum(
 }
 
 /** Update album metadata (title, date, description, cover) */
-function updateAlbumMeta(
-  slug: string,
-  updates: UpdateAlbumOpts
-): AlbumData | null {
+function updateAlbumMeta(slug: string, updates: UpdateAlbumOpts): AlbumData | null {
   const data = readAlbum(slug);
   if (!data) return null;
 
@@ -488,7 +499,7 @@ function updateAlbumMeta(
 /** Delete an entire album: R2 files + JSON */
 async function deleteAlbum(
   slug: string,
-  onProgress?: (msg: string) => void
+  onProgress?: (msg: string) => void,
 ): Promise<{ deletedFiles: number; jsonDeleted: boolean }> {
   /* Delete all R2 objects under this album's prefix */
   const prefix = `albums/${slug}/`;
@@ -573,7 +584,7 @@ async function addPhotos(
 async function deletePhoto(
   slug: string,
   photoId: string,
-  onProgress?: (msg: string) => void
+  onProgress?: (msg: string) => void,
 ): Promise<{ album: AlbumData; deletedKeys: string[] }> {
   const data = readAlbum(slug);
   if (!data) throw new Error(`Album "${slug}" not found`);
@@ -635,7 +646,7 @@ function getPhotoKeys(albumSlug: string, photoId: string): string[] {
 /** Backfill OG variants for existing albums. Downloads original from R2, processes to og, uploads. */
 async function backfillOgVariants(
   onProgress?: (msg: string) => void,
-  options?: { force?: boolean; strategy?: DetectionStrategy }
+  options?: { force?: boolean; strategy?: DetectionStrategy },
 ): Promise<{ processed: number; skipped: number; failed: number }> {
   const albums = listAlbums();
   let processed = 0;
@@ -700,7 +711,7 @@ async function setPhotoFocal(
   slug: string,
   photoId: string,
   preset: FocalPreset,
-  onProgress?: (msg: string) => void
+  onProgress?: (msg: string) => void,
 ): Promise<AlbumData> {
   const data = readAlbum(slug);
   if (!data) throw new Error(`Album "${slug}" not found`);
@@ -710,7 +721,7 @@ async function setPhotoFocal(
 
   if (!isValidFocalPreset(preset)) {
     throw new Error(
-      `Invalid preset. Use: center, top, bottom, top left, top right, bottom left, bottom right`
+      `Invalid preset. Use: center, top, bottom, top left, top right, bottom left, bottom right`,
     );
   }
 
@@ -739,14 +750,12 @@ async function resetPhotoFocal(
   slug: string,
   photoId?: string,
   onProgress?: (msg: string) => void,
-  strategy?: DetectionStrategy
+  strategy?: DetectionStrategy,
 ): Promise<AlbumData> {
   const data = readAlbum(slug);
   if (!data) throw new Error(`Album "${slug}" not found`);
 
-  const photos = photoId
-    ? data.photos.filter((p) => p.id === photoId)
-    : data.photos;
+  const photos = photoId ? data.photos.filter((p) => p.id === photoId) : data.photos;
 
   if (photoId && photos.length === 0) {
     throw new Error(`Photo "${photoId}" not found in album "${slug}"`);
@@ -769,7 +778,7 @@ async function resetPhotoFocal(
     onProgress?.(
       detected
         ? `  🎯 ${photo.id}: face at (${detected.x}%, ${detected.y}%)`
-        : `  ${photo.id}: no face detected, using center`
+        : `  ${photo.id}: no face detected, using center`,
     );
 
     // Regenerate OG
@@ -800,11 +809,4 @@ export {
   backfillOgVariants,
 };
 
-export type {
-  PhotoMeta,
-  AlbumData,
-  AlbumSummary,
-  CreateAlbumOpts,
-  UpdateAlbumOpts,
-  ProcessResult,
-};
+export type { PhotoMeta, AlbumData, AlbumSummary, CreateAlbumOpts, UpdateAlbumOpts, ProcessResult };

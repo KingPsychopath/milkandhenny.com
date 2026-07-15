@@ -16,30 +16,30 @@ const {
     }
   }
 
-    return {
-      RawPreviewUnavailableError: MockRawPreviewUnavailableError,
-      downloadBuffer: vi.fn(),
-      headObject: vi.fn(),
-      listObjects: vi.fn(),
-      processImageVariants: vi.fn(),
-      processRawWithDcraw: vi.fn(),
-      saveTransfer: vi.fn(),
-      uploadBuffer: vi.fn(),
-    };
+  return {
+    RawPreviewUnavailableError: MockRawPreviewUnavailableError,
+    downloadBuffer: vi.fn(),
+    headObject: vi.fn(),
+    listObjects: vi.fn(),
+    processImageVariants: vi.fn(),
+    processRawWithDcraw: vi.fn(),
+    saveTransfer: vi.fn(),
+    uploadBuffer: vi.fn(),
+  };
 });
 
-vi.mock("@/lib/platform/r2", () => ({
+vi.mock("@/lib/platform/r2.server", () => ({
   downloadBuffer,
   headObject,
   listObjects,
   uploadBuffer,
 }));
 
-vi.mock("@/features/transfers/store", () => ({
+vi.mock("@/features/transfers/store.server", () => ({
   saveTransfer,
 }));
 
-vi.mock("@/features/media/processing", () => {
+vi.mock("@/features/media/processing.server", () => {
   class MockRawPreviewUnavailableError extends Error {
     constructor() {
       super("raw preview unavailable");
@@ -65,11 +65,16 @@ describe("local transfer backfill", () => {
   });
 
   it("retries failed raw files during local backfill", async () => {
-    const { createLocalMediaProcessor } = await import("@/features/media/backends/local");
+    const { createLocalMediaProcessor } = await import("@/features/media/backends/local.server");
 
     downloadBuffer.mockResolvedValue(Buffer.from("raw"));
     processImageVariants
-      .mockRejectedValueOnce(new (await import("@/features/media/processing")).RawPreviewUnavailableError(".dng", "missing"))
+      .mockRejectedValueOnce(
+        new (await import("@/features/media/processing.server")).RawPreviewUnavailableError(
+          ".dng",
+          "missing",
+        ),
+      )
       .mockResolvedValueOnce({
         thumb: { buffer: Buffer.from("thumb"), contentType: "image/webp" },
         full: { buffer: Buffer.from("full"), contentType: "image/webp" },
@@ -120,7 +125,7 @@ describe("local transfer backfill", () => {
   });
 
   it("reclassifies skipped HEIF files and generates previews during backfill", async () => {
-    const { createLocalMediaProcessor } = await import("@/features/media/backends/local");
+    const { createLocalMediaProcessor } = await import("@/features/media/backends/local.server");
 
     downloadBuffer.mockResolvedValue(Buffer.from("heif"));
     processImageVariants.mockResolvedValue({
@@ -165,12 +170,12 @@ describe("local transfer backfill", () => {
     expect(uploadBuffer).toHaveBeenCalledWith(
       "transfers/transfer-1/thumb/capture.hif.webp",
       Buffer.from("thumb"),
-      "image/webp"
+      "image/webp",
     );
     expect(uploadBuffer).toHaveBeenCalledWith(
       "transfers/transfer-1/full/capture.hif.webp",
       Buffer.from("full"),
-      "image/webp"
+      "image/webp",
     );
     expect(listObjects).toHaveBeenCalledWith("transfers/transfer-1/thumb/");
     expect(listObjects).toHaveBeenCalledWith("transfers/transfer-1/full/");

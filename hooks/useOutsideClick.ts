@@ -12,7 +12,7 @@ import { useEffect, useRef, type RefObject } from "react";
 export function useOutsideClick<T extends HTMLElement>(
   ref: RefObject<T | null>,
   onOutside: () => void,
-  enabled: boolean
+  enabled: boolean,
 ): void {
   const onOutsideRef = useRef(onOutside);
   useEffect(() => {

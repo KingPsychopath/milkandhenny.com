@@ -8,19 +8,14 @@
 
 import fs from "fs";
 import path from "path";
-import {
-  uploadBuffer,
-  deleteObjects,
-  listObjects,
-  isConfigured,
-} from "./r2-client";
+import { uploadBuffer, deleteObjects, listObjects, isConfigured } from "./r2-client";
 import {
   isProcessableImage,
   getFileKind,
   getMimeType,
   processToWebP,
   mapConcurrent,
-} from "../features/media/processing";
+} from "../features/media/processing.server";
 import {
   mediaPrefixForTarget,
   parseWordMediaTarget,
@@ -95,7 +90,7 @@ type WordMediaFileInfo = {
 function requireR2(): void {
   if (!isConfigured()) {
     throw new Error(
-      "R2 not configured. Set R2_ACCOUNT_ID, R2_ACCESS_KEY, R2_SECRET_KEY, R2_BUCKET in .env.local."
+      "R2 not configured. Set R2_ACCOUNT_ID, R2_ACCESS_KEY, R2_SECRET_KEY, R2_BUCKET in .env.local.",
     );
   }
 }
@@ -121,7 +116,7 @@ function getWordMediaUploadCheckpointPath(absDir: string, target: WordMediaTarge
 function writeWordMediaUploadCheckpoint(
   absDir: string,
   target: WordMediaTarget,
-  checkpoint: WordMediaUploadCheckpoint
+  checkpoint: WordMediaUploadCheckpoint,
 ): void {
   const file = getWordMediaUploadCheckpointPath(absDir, target);
   const tmp = `${file}.tmp`;
@@ -135,12 +130,17 @@ function deleteWordMediaUploadCheckpoint(absDir: string, target: WordMediaTarget
 }
 
 function sameWordMediaTarget(a: WordMediaTarget, b: WordMediaTarget): boolean {
-  return a.scope === b.scope && (a.scope === "asset" ? a.assetId === (b as { assetId: string }).assetId : a.slug === (b as { slug: string }).slug);
+  return (
+    a.scope === b.scope &&
+    (a.scope === "asset"
+      ? a.assetId === (b as { assetId: string }).assetId
+      : a.slug === (b as { slug: string }).slug)
+  );
 }
 
 function readWordMediaUploadCheckpoint(
   absDir: string,
-  target: WordMediaTarget
+  target: WordMediaTarget,
 ): WordMediaUploadCheckpoint | null {
   const file = getWordMediaUploadCheckpointPath(absDir, target);
   if (!fs.existsSync(file)) return null;
@@ -162,14 +162,14 @@ function readWordMediaUploadCheckpoint(
     !parsed.target
   ) {
     throw new Error(
-      `Invalid words media upload checkpoint file: ${file}. Delete it and retry to start fresh.`
+      `Invalid words media upload checkpoint file: ${file}. Delete it and retry to start fresh.`,
     );
   }
 
   const targetResult = parseWordMediaTarget(parsed.target);
   if (!targetResult.ok) {
     throw new Error(
-      `Invalid words media upload checkpoint target in ${file}. Delete it and retry to start fresh.`
+      `Invalid words media upload checkpoint target in ${file}. Delete it and retry to start fresh.`,
     );
   }
 
@@ -205,7 +205,7 @@ function arraysEqual(a: string[], b: string[]): boolean {
 async function uploadWordMediaFiles(
   target: WordMediaTarget,
   dir: string,
-  opts?: { force?: boolean; onProgress?: (msg: string) => void }
+  opts?: { force?: boolean; onProgress?: (msg: string) => void },
 ): Promise<UploadWordMediaResult> {
   requireR2();
 
@@ -229,23 +229,23 @@ async function uploadWordMediaFiles(
   const checkpoint = readWordMediaUploadCheckpoint(absDir, target);
   if (checkpoint && checkpoint.dir !== absDir) {
     throw new Error(
-      `Words media checkpoint directory mismatch at ${getWordMediaUploadCheckpointPath(absDir, target)}. Delete it and retry.`
+      `Words media checkpoint directory mismatch at ${getWordMediaUploadCheckpointPath(absDir, target)}. Delete it and retry.`,
     );
   }
   if (checkpoint && !sameWordMediaTarget(checkpoint.target, target)) {
     throw new Error(
-      `Words media checkpoint target mismatch at ${getWordMediaUploadCheckpointPath(absDir, target)}. Delete it and retry.`
+      `Words media checkpoint target mismatch at ${getWordMediaUploadCheckpointPath(absDir, target)}. Delete it and retry.`,
     );
   }
   if (checkpoint && checkpoint.force !== force) {
     throw new Error(
-      `Words media checkpoint force flag mismatch at ${getWordMediaUploadCheckpointPath(absDir, target)}. Rerun with the same --force setting or delete the checkpoint.`
+      `Words media checkpoint force flag mismatch at ${getWordMediaUploadCheckpointPath(absDir, target)}. Rerun with the same --force setting or delete the checkpoint.`,
     );
   }
   if (checkpoint && !arraysEqual(checkpoint.files, files)) {
     throw new Error(
       `Words media source files changed since checkpoint was created (${getWordMediaUploadCheckpointPath(absDir, target)}).\n` +
-      "Restore the original files or delete the checkpoint file to start a new upload."
+        "Restore the original files or delete the checkpoint file to start a new upload.",
     );
   }
 
@@ -300,7 +300,7 @@ async function uploadWordMediaFiles(
     if (duplicateBatchMappings.length > 0) {
       throw new Error(
         `Source files collide after filename sanitization (would overwrite each other): ` +
-        `${duplicateBatchMappings.slice(0, 5).join(", ")}${duplicateBatchMappings.length > 5 ? "…" : ""}`
+          `${duplicateBatchMappings.slice(0, 5).join(", ")}${duplicateBatchMappings.length > 5 ? "…" : ""}`,
       );
     }
 
@@ -336,14 +336,16 @@ async function uploadWordMediaFiles(
   const parts: string[] = [];
   const imagePlan = uploadPlan.filter((e) => e.lane === "image");
   const rawPlan = uploadPlan.filter((e) => e.lane === "raw");
-  if (imagePlan.length > 0) parts.push(`${imagePlan.length} image${imagePlan.length > 1 ? "s" : ""}`);
-  if (rawPlan.length > 0) parts.push(`${rawPlan.length} other file${rawPlan.length > 1 ? "s" : ""}`);
+  if (imagePlan.length > 0)
+    parts.push(`${imagePlan.length} image${imagePlan.length > 1 ? "s" : ""}`);
+  if (rawPlan.length > 0)
+    parts.push(`${rawPlan.length} other file${rawPlan.length > 1 ? "s" : ""}`);
 
   const pendingPlan = uploadPlan.filter((entry) => !completed[entry.file]);
   const resumedCount = uploadPlan.length - pendingPlan.length;
   if (checkpoint) {
     onProgress?.(
-      `Resuming upload to ${targetLabel(target)}: ${resumedCount}/${uploadPlan.length} files already complete.`
+      `Resuming upload to ${targetLabel(target)}: ${resumedCount}/${uploadPlan.length} files already complete.`,
     );
   } else {
     onProgress?.(`Uploading to ${targetLabel(target)}: ${parts.join(" + ")}...`);
@@ -362,8 +364,8 @@ async function uploadWordMediaFiles(
           skipped,
           uploads: uploadPlan,
           completed,
-        })
-      )
+        }),
+      ),
     );
     return checkpointWriteQueue;
   };
@@ -376,7 +378,9 @@ async function uploadWordMediaFiles(
         const raw = fs.readFileSync(path.join(absDir, file));
         const r2Key = `${mediaPrefixForTarget(target)}${r2Filename}`;
 
-        onProgress?.(overwrites ? `Re-uploading ${r2Filename} (overwrite)...` : `Processing ${file}...`);
+        onProgress?.(
+          overwrites ? `Re-uploading ${r2Filename} (overwrite)...` : `Processing ${file}...`,
+        );
 
         const { buffer, width, height } = await processToWebP(raw, file);
         await uploadBuffer(r2Key, buffer, "image/webp");
@@ -395,7 +399,7 @@ async function uploadWordMediaFiles(
         onProgress?.(`Uploaded ${r2Filename} (${width}×${height})`);
 
         return uploaded;
-      }
+      },
     );
 
     await mapConcurrent(
@@ -410,7 +414,7 @@ async function uploadWordMediaFiles(
         onProgress?.(
           overwrites
             ? `Re-uploading ${r2Filename} (overwrite)...`
-            : `Uploading ${file} (${formatBytes(raw.byteLength)}, ${kind})...`
+            : `Uploading ${file} (${formatBytes(raw.byteLength)}, ${kind})...`,
         );
 
         await uploadBuffer(r2Key, raw, mimeType);
@@ -427,7 +431,7 @@ async function uploadWordMediaFiles(
         onProgress?.(`Uploaded ${r2Filename}`);
 
         return uploaded;
-      }
+      },
     );
   } finally {
     await checkpointWriteQueue;
@@ -439,7 +443,7 @@ async function uploadWordMediaFiles(
 
   if (uploadedOrdered.length !== uploadPlan.length) {
     throw new Error(
-      `Words media checkpoint incomplete (${uploadedOrdered.length}/${uploadPlan.length}). Rerun the same media upload command to continue.`
+      `Words media checkpoint incomplete (${uploadedOrdered.length}/${uploadPlan.length}). Rerun the same media upload command to continue.`,
     );
   }
 
@@ -473,7 +477,7 @@ async function listWordMediaFiles(target: WordMediaTarget): Promise<WordMediaFil
 async function deleteWordMediaFile(
   target: WordMediaTarget,
   filename: string,
-  onProgress?: (msg: string) => void
+  onProgress?: (msg: string) => void,
 ): Promise<void> {
   requireR2();
 
@@ -485,7 +489,7 @@ async function deleteWordMediaFile(
 
 async function deleteAllWordMediaFiles(
   target: WordMediaTarget,
-  onProgress?: (msg: string) => void
+  onProgress?: (msg: string) => void,
 ): Promise<number> {
   requireR2();
 

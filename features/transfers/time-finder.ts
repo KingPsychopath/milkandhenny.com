@@ -77,7 +77,12 @@ function parseWallClockCore(value: string, withSeconds: boolean): WallClockTime 
   const normalized = normalizeTimeString(value);
   const expectedLength = withSeconds ? 19 : 16;
   if (normalized.length < expectedLength) return null;
-  if (normalized[4] !== "-" || normalized[7] !== "-" || normalized[10] !== "T" || normalized[13] !== ":") {
+  if (
+    normalized[4] !== "-" ||
+    normalized[7] !== "-" ||
+    normalized[10] !== "T" ||
+    normalized[13] !== ":"
+  ) {
     return null;
   }
   if (withSeconds && normalized[16] !== ":") return null;
@@ -159,7 +164,8 @@ function daysFromCivil(year: number, month: number, day: number): number {
   const yearOfEra = adjustedYear - era * 400;
   const monthIndex = month > 2 ? month - 3 : month + 9;
   const dayOfYear = Math.trunc((153 * monthIndex + 2) / 5) + day - 1;
-  const dayOfEra = yearOfEra * 365 + Math.trunc(yearOfEra / 4) - Math.trunc(yearOfEra / 100) + dayOfYear;
+  const dayOfEra =
+    yearOfEra * 365 + Math.trunc(yearOfEra / 4) - Math.trunc(yearOfEra / 100) + dayOfYear;
   return era * 146097 + dayOfEra - 719468;
 }
 
@@ -173,7 +179,7 @@ function getCalendarDayDistance(left: string, right: string): number {
   if (!leftParsed || !rightParsed) return Number.POSITIVE_INFINITY;
   return Math.abs(
     daysFromCivil(leftParsed.year, leftParsed.month, leftParsed.day) -
-      daysFromCivil(rightParsed.year, rightParsed.month, rightParsed.day)
+      daysFromCivil(rightParsed.year, rightParsed.month, rightParsed.day),
   );
 }
 
@@ -201,10 +207,16 @@ function getModeDateKey(dateKeys: readonly string[]): string | null {
 }
 
 function buildTransferTimeFinderModel<T>(
-  inputs: readonly TransferTimeFinderInput<T>[]
+  inputs: readonly TransferTimeFinderInput<T>[],
 ): TransferTimeFinderModel<T> {
   const preparedEntries: TransferTimeFinderPreparedEntry<T>[] = [];
-  const datedCandidates: Array<TransferTimeFinderPreparedEntry<T> & { wallClock: WallClockTime; dateKey: string; minuteOfDay: number }> = [];
+  const datedCandidates: Array<
+    TransferTimeFinderPreparedEntry<T> & {
+      wallClock: WallClockTime;
+      dateKey: string;
+      minuteOfDay: number;
+    }
+  > = [];
 
   for (const input of inputs) {
     if (!isTransferTimeFinderEligible(input.kind)) {
@@ -257,7 +269,12 @@ function buildTransferTimeFinderModel<T>(
   const bucketCounts = new Map<string, TransferTimeFinderBucket>();
 
   for (const entry of preparedEntries) {
-    if (entry.classification !== "dated" || !modeDateKey || entry.dateKey === null || entry.minuteOfDay === null) {
+    if (
+      entry.classification !== "dated" ||
+      !modeDateKey ||
+      entry.dateKey === null ||
+      entry.minuteOfDay === null
+    ) {
       continue;
     }
 
@@ -286,7 +303,7 @@ function buildTransferTimeFinderModel<T>(
   }
 
   const buckets = Array.from(bucketCounts.values()).sort((left, right) =>
-    compareDateKeys(left.key, right.key)
+    compareDateKeys(left.key, right.key),
   );
 
   return {
@@ -299,7 +316,7 @@ function buildTransferTimeFinderModel<T>(
 
 function resolveTransferTimeFinderBucket(
   value: string | null | undefined,
-  buckets: readonly TransferTimeFinderBucket[]
+  buckets: readonly TransferTimeFinderBucket[],
 ): TransferTimeFinderBucket | null {
   const parsed = parseTimeFinderParam(value);
   if (!parsed) return null;
@@ -309,7 +326,7 @@ function resolveTransferTimeFinderBucket(
 
 function applyTransferTimeFinderFilter<T>(
   model: TransferTimeFinderModel<T>,
-  selectedBucket: TransferTimeFinderBucket | null
+  selectedBucket: TransferTimeFinderBucket | null,
 ): {
   orderedEntries: TransferTimeFinderPreparedEntry<T>[];
   categoryById: Map<string, TransferTimeFilterCategory>;

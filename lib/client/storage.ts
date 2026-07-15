@@ -31,4 +31,3 @@ export function removeStored(name: StorageKeyName): void {
 
 export type { StorageKeyName };
 export { SESSION_KEYS, LOCAL_KEYS, getStorageKey };
-

@@ -17,8 +17,7 @@ export function ReadingProgress() {
 
     function update() {
       const scrollTop = window.scrollY;
-      const docHeight =
-        document.documentElement.scrollHeight - window.innerHeight;
+      const docHeight = document.documentElement.scrollHeight - window.innerHeight;
       if (docHeight <= 0 || !barRef.current) return;
       const pct = Math.min((scrollTop / docHeight) * 100, 100);
       barRef.current.style.width = `${pct}%`;

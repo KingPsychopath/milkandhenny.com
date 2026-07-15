@@ -32,7 +32,10 @@ function hasHeifExtension(filename: string): boolean {
 
 function isHeifLikeFile(file: Pick<File, "name" | "type">): boolean {
   const type = file.type.toLowerCase();
-  return hasHeifExtension(file.name) || HEIF_MIME_TYPES.includes(type as (typeof HEIF_MIME_TYPES)[number]);
+  return (
+    hasHeifExtension(file.name) ||
+    HEIF_MIME_TYPES.includes(type as (typeof HEIF_MIME_TYPES)[number])
+  );
 }
 
 function isDerivableTransferFile(file: Pick<File, "name" | "type">): boolean {
@@ -70,7 +73,12 @@ function createCanvas(width: number, height: number): HTMLCanvasElement {
   return canvas;
 }
 
-function getOrientedCanvas(image: CanvasImageSource, width: number, height: number, orientation: number): HTMLCanvasElement {
+function getOrientedCanvas(
+  image: CanvasImageSource,
+  width: number,
+  height: number,
+  orientation: number,
+): HTMLCanvasElement {
   const swap = orientation >= 5 && orientation <= 8;
   const canvas = createCanvas(swap ? height : width, swap ? width : height);
   const ctx = canvas.getContext("2d");
@@ -116,13 +124,17 @@ function getOrientedCanvas(image: CanvasImageSource, width: number, height: numb
 
 function canvasToJpegBlob(canvas: HTMLCanvasElement): Promise<Blob> {
   return new Promise((resolve, reject) => {
-    canvas.toBlob((blob) => {
-      if (!blob) {
-        reject(new Error("Failed to encode JPEG"));
-        return;
-      }
-      resolve(blob);
-    }, "image/jpeg", JPEG_QUALITY);
+    canvas.toBlob(
+      (blob) => {
+        if (!blob) {
+          reject(new Error("Failed to encode JPEG"));
+          return;
+        }
+        resolve(blob);
+      },
+      "image/jpeg",
+      JPEG_QUALITY,
+    );
   });
 }
 
@@ -133,19 +145,23 @@ function getUint(view: DataView, offset: number, size: number): number {
   if (size === 4) return view.getUint32(offset);
   if (size === 8) {
     const value = Number(view.getBigUint64(offset));
-    if (!Number.isSafeInteger(value)) throw new Error("HEIF metadata offset exceeds safe integer range");
+    if (!Number.isSafeInteger(value))
+      throw new Error("HEIF metadata offset exceeds safe integer range");
     return value;
   }
   throw new Error(`Unsupported integer size ${size}`);
 }
 
-function parseBoxHead(view: DataView, offset: number): { kind: string; length: number; start: number } {
+function parseBoxHead(
+  view: DataView,
+  offset: number,
+): { kind: string; length: number; start: number } {
   const length32 = view.getUint32(offset);
   const kind = String.fromCharCode(
     view.getUint8(offset + 4),
     view.getUint8(offset + 5),
     view.getUint8(offset + 6),
-    view.getUint8(offset + 7)
+    view.getUint8(offset + 7),
   );
   if (length32 === 1) {
     const length64 = Number(view.getBigUint64(offset + 8));
@@ -154,7 +170,11 @@ function parseBoxHead(view: DataView, offset: number): { kind: string; length: n
   return { kind, length: length32, start: offset + 8 };
 }
 
-function parseChildBoxes(view: DataView, start: number, length: number): Array<{ kind: string; offset: number; length: number; start: number }> {
+function parseChildBoxes(
+  view: DataView,
+  start: number,
+  length: number,
+): Array<{ kind: string; offset: number; length: number; start: number }> {
   const boxes: Array<{ kind: string; offset: number; length: number; start: number }> = [];
   let offset = start;
   const end = start + length;
@@ -169,7 +189,10 @@ function parseChildBoxes(view: DataView, start: number, length: number): Array<{
   return boxes;
 }
 
-function findBox(boxes: Array<{ kind: string; offset: number; length: number; start: number }>, kind: string) {
+function findBox(
+  boxes: Array<{ kind: string; offset: number; length: number; start: number }>,
+  kind: string,
+) {
   return boxes.find((box) => box.kind === kind);
 }
 
@@ -186,7 +209,7 @@ function findExifItemId(view: DataView, iinfBox: { start: number; length: number
       view.getUint8(nameOffset),
       view.getUint8(nameOffset + 1),
       view.getUint8(nameOffset + 2),
-      view.getUint8(nameOffset + 3)
+      view.getUint8(nameOffset + 3),
     );
     if (itemType !== "Exif") continue;
     return getUint(view, itemStart, idSize);
@@ -194,7 +217,11 @@ function findExifItemId(view: DataView, iinfBox: { start: number; length: number
   return null;
 }
 
-function findExtentInIloc(view: DataView, ilocBox: { start: number; length: number }, wantedItemId: number): { offset: number; length: number } | null {
+function findExtentInIloc(
+  view: DataView,
+  ilocBox: { start: number; length: number },
+  wantedItemId: number,
+): { offset: number; length: number } | null {
   const version = view.getUint8(ilocBox.start);
   let offset = ilocBox.start + 4;
   const sizeByte = view.getUint8(offset);
@@ -278,15 +305,23 @@ function normalizeExifOrientation(tiffBytes: Uint8Array): Uint8Array {
   const littleEndian = byteOrder === 0x4949;
   const ifd0Offset = littleEndian ? view.getUint32(4, true) : view.getUint32(4, false);
   if (ifd0Offset + 2 > copy.byteLength) return copy;
-  const entryCount = littleEndian ? view.getUint16(ifd0Offset, true) : view.getUint16(ifd0Offset, false);
+  const entryCount = littleEndian
+    ? view.getUint16(ifd0Offset, true)
+    : view.getUint16(ifd0Offset, false);
 
   for (let index = 0; index < entryCount; index += 1) {
     const entryOffset = ifd0Offset + 2 + index * 12;
     if (entryOffset + 12 > copy.byteLength) return copy;
-    const tag = littleEndian ? view.getUint16(entryOffset, true) : view.getUint16(entryOffset, false);
+    const tag = littleEndian
+      ? view.getUint16(entryOffset, true)
+      : view.getUint16(entryOffset, false);
     if (tag !== 0x0112) continue;
-    const type = littleEndian ? view.getUint16(entryOffset + 2, true) : view.getUint16(entryOffset + 2, false);
-    const count = littleEndian ? view.getUint32(entryOffset + 4, true) : view.getUint32(entryOffset + 4, false);
+    const type = littleEndian
+      ? view.getUint16(entryOffset + 2, true)
+      : view.getUint16(entryOffset + 2, false);
+    const count = littleEndian
+      ? view.getUint32(entryOffset + 4, true)
+      : view.getUint32(entryOffset + 4, false);
     if (type !== 3 || count !== 1) return copy;
     if (littleEndian) {
       view.setUint16(entryOffset + 8, 1, true);
@@ -331,7 +366,10 @@ function injectExifIntoJpeg(jpegBytes: Uint8Array, tiffBytes: Uint8Array): Blob 
   return new Blob([mergedCopy.buffer], { type: "image/jpeg" });
 }
 
-async function decodeWithImageDecoder(file: File, type: string): Promise<{ source: CanvasImageSource; width: number; height: number; close: () => void }> {
+async function decodeWithImageDecoder(
+  file: File,
+  type: string,
+): Promise<{ source: CanvasImageSource; width: number; height: number; close: () => void }> {
   const decoder = new ImageDecoder({
     data: await file.arrayBuffer(),
     type,
@@ -354,7 +392,9 @@ async function readHeifOrientation(file: File): Promise<number> {
   }
 }
 
-async function decodeWithLibheif(file: File): Promise<{ source: CanvasImageSource; width: number; height: number; close: () => void }> {
+async function decodeWithLibheif(
+  file: File,
+): Promise<{ source: CanvasImageSource; width: number; height: number; close: () => void }> {
   const imported = await import("libheif-js/wasm-bundle");
   const libheif = (imported.default ?? imported) as unknown as LibheifLike;
   const decoder = new libheif.HeifDecoder();
@@ -433,7 +473,7 @@ async function convertHeifFile(file: File): Promise<File> {
 
 async function prepareTransferUploadFile(
   file: File,
-  options: { derivePreview?: boolean } = {}
+  options: { derivePreview?: boolean } = {},
 ): Promise<PreparedTransferUpload> {
   if (!options.derivePreview || !isDerivableTransferFile(file)) {
     return {
@@ -458,10 +498,6 @@ async function prepareTransferUploadFile(
   };
 }
 
-export {
-  isDerivableTransferFile,
-  isHeifLikeFile,
-  prepareTransferUploadFile,
-};
+export { isDerivableTransferFile, isHeifLikeFile, prepareTransferUploadFile };
 
 export type { PreparedTransferUpload };

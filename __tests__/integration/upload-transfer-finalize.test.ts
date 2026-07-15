@@ -1,8 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { NextRequest } from "next/server";
 
 function makeRequest(body: unknown) {
-  return new NextRequest("http://localhost/api/upload/transfer/finalize", {
+  return new Request("http://localhost/api/upload/transfer/finalize", {
     method: "POST",
     body: JSON.stringify(body),
     headers: { "content-type": "application/json" },
@@ -32,26 +31,27 @@ describe("upload transfer finalize", () => {
     });
     const saveTransfer = vi.fn().mockResolvedValue(undefined);
 
-    vi.doMock("@/features/auth/server", () => ({
+    vi.doMock("@/features/auth/auth.server", () => ({
       requireAuthWithPayload: vi.fn().mockResolvedValue({
         error: null,
         payload: { role: "upload" },
       }),
     }));
-    vi.doMock("@/features/transfers/store", () => ({
+    vi.doMock("@/features/transfers/store.server", () => ({
       saveTransfer,
       MAX_EXPIRY_SECONDS: 30 * 24 * 60 * 60,
       MAX_TRANSFER_FILE_BYTES: 250 * 1024 * 1024,
       MAX_TRANSFER_TOTAL_BYTES: 1024 * 1024 * 1024,
     }));
-    vi.doMock("@/features/transfers/upload", () => ({
+    vi.doMock("@/features/transfers/upload.server", () => ({
       applyTransferAssetGroups: (files: unknown[]) => ({ files, groups: [] }),
       processUploadedFile,
       sortTransferFiles: (files: unknown[]) => files,
       isSafeTransferFilename: () => true,
     }));
     vi.doMock("@/features/transfers/media-state", () => ({
-      HEIF_TRANSFER_UPLOAD_ERROR: "HEIC/HIF transfer uploads must be converted in the browser before upload.",
+      HEIF_TRANSFER_UPLOAD_ERROR:
+        "HEIC/HIF transfer uploads must be converted in the browser before upload.",
       buildTransferProcessingCounts: vi.fn().mockReturnValue({
         readyCount: 0,
         queuedCount: 1,
@@ -66,13 +66,13 @@ describe("upload transfer finalize", () => {
     }));
     vi.doMock("@/lib/shared/config", () => ({
       getBaseUrlForRequest: (req: { url: string }) => new URL(req.url).origin,
-      hasPublicR2Url: () => true,
+      hasMediaPublicUrl: () => true,
     }));
     vi.doMock("@/lib/platform/api-error", () => ({
       apiErrorFromRequest: vi.fn(),
     }));
 
-    const { POST } = await import("@/app/api/upload/transfer/finalize/route");
+    const { POST } = await import("@/src/routes/api/upload/transfer/finalize/route");
     const response = await POST(
       makeRequest({
         transferId: "transfer-1",
@@ -80,7 +80,7 @@ describe("upload transfer finalize", () => {
         title: "party",
         expiresSeconds: 3600,
         files: [{ name: "photo.jpg", size: 123, type: "image/jpeg" }],
-      })
+      }),
     );
 
     expect(response.status).toBe(200);
@@ -91,7 +91,7 @@ describe("upload transfer finalize", () => {
         size: 123,
         type: "image/jpeg",
       },
-      "transfer-1"
+      "transfer-1",
     );
     expect(saveTransfer).toHaveBeenCalledOnce();
   });
@@ -99,26 +99,27 @@ describe("upload transfer finalize", () => {
   it("rejects raw heif uploads before processing", async () => {
     const processUploadedFile = vi.fn();
 
-    vi.doMock("@/features/auth/server", () => ({
+    vi.doMock("@/features/auth/auth.server", () => ({
       requireAuthWithPayload: vi.fn().mockResolvedValue({
         error: null,
         payload: { role: "upload" },
       }),
     }));
-    vi.doMock("@/features/transfers/store", () => ({
+    vi.doMock("@/features/transfers/store.server", () => ({
       saveTransfer: vi.fn(),
       MAX_EXPIRY_SECONDS: 30 * 24 * 60 * 60,
       MAX_TRANSFER_FILE_BYTES: 250 * 1024 * 1024,
       MAX_TRANSFER_TOTAL_BYTES: 1024 * 1024 * 1024,
     }));
-    vi.doMock("@/features/transfers/upload", () => ({
+    vi.doMock("@/features/transfers/upload.server", () => ({
       applyTransferAssetGroups: (files: unknown[]) => ({ files, groups: [] }),
       processUploadedFile,
       sortTransferFiles: (files: unknown[]) => files,
       isSafeTransferFilename: () => true,
     }));
     vi.doMock("@/features/transfers/media-state", () => ({
-      HEIF_TRANSFER_UPLOAD_ERROR: "HEIC/HIF transfer uploads must be converted in the browser before upload.",
+      HEIF_TRANSFER_UPLOAD_ERROR:
+        "HEIC/HIF transfer uploads must be converted in the browser before upload.",
       buildTransferProcessingCounts: vi.fn(),
       isHeifUploadLike: vi.fn().mockReturnValue(true),
       resolveTransferUploadIds: (files: Array<{ name: string }>) =>
@@ -126,13 +127,13 @@ describe("upload transfer finalize", () => {
     }));
     vi.doMock("@/lib/shared/config", () => ({
       getBaseUrlForRequest: (req: { url: string }) => new URL(req.url).origin,
-      hasPublicR2Url: () => true,
+      hasMediaPublicUrl: () => true,
     }));
     vi.doMock("@/lib/platform/api-error", () => ({
       apiErrorFromRequest: vi.fn(),
     }));
 
-    const { POST } = await import("@/app/api/upload/transfer/finalize/route");
+    const { POST } = await import("@/src/routes/api/upload/transfer/finalize/route");
     const response = await POST(
       makeRequest({
         transferId: "transfer-1",
@@ -140,7 +141,7 @@ describe("upload transfer finalize", () => {
         title: "party",
         expiresSeconds: 3600,
         files: [{ name: "capture.hif", size: 123, type: "image/heif" }],
-      })
+      }),
     );
 
     expect(response.status).toBe(400);

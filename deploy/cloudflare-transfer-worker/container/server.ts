@@ -1,6 +1,9 @@
 import { createServer, type ServerResponse } from "node:http";
-import { closeDirectRedisConnections } from "@/lib/platform/redis-direct";
-import { drainMediaQueuesUntilIdle, type DrainMediaQueuesResult } from "@/features/media/worker-runtime";
+import { closeDirectRedisConnections } from "@/lib/platform/redis-direct.server";
+import {
+  drainMediaQueuesUntilIdle,
+  type DrainMediaQueuesResult,
+} from "@/features/media/worker-runtime.server";
 
 const PORT = Math.max(1, Number(process.env.PORT ?? "8080"));
 
@@ -21,7 +24,7 @@ function startDrain(): boolean {
       return result;
     })
     .catch((error) => {
-      const detail = error instanceof Error ? error.stack ?? error.message : String(error);
+      const detail = error instanceof Error ? (error.stack ?? error.message) : String(error);
       console.error(`[transfer-media-container] drain failed\n${detail}`);
       return {
         disabled: false,

@@ -52,8 +52,9 @@ function deriveDownloadFilename(key: string, requestedFilename?: string | null):
 }
 
 function encodeContentDispositionFilename(filename: string): string {
-  return encodeURIComponent(filename).replace(/['()*]/g, (char) =>
-    `%${char.charCodeAt(0).toString(16).toUpperCase()}`
+  return encodeURIComponent(filename).replace(
+    /['()*]/g,
+    (char) => `%${char.charCodeAt(0).toString(16).toUpperCase()}`,
   );
 }
 
@@ -62,8 +63,4 @@ function buildAttachmentContentDisposition(filename: string): string {
   return `attachment; filename="${quoted}"; filename*=UTF-8''${encodeContentDispositionFilename(filename)}`;
 }
 
-export {
-  buildAttachmentContentDisposition,
-  deriveDownloadFilename,
-  isAllowedDownloadStorageKey,
-};
+export { buildAttachmentContentDisposition, deriveDownloadFilename, isAllowedDownloadStorageKey };

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { parseExpiry, formatDuration } from "@/features/transfers/store";
+import { parseExpiry, formatDuration } from "@/features/transfers/store.server";
 
 describe("parseExpiry", () => {
   it("parses minutes", () => {

@@ -1,5 +1,5 @@
-import { deleteObjects, isConfigured, listObjects } from "@/lib/platform/r2";
-import { listWords } from "@/features/words/store";
+import { deleteObjects, isConfigured, listObjects } from "@/lib/platform/r2.server";
+import { listWords } from "@/features/words/store.server";
 
 type FolderAggregate = {
   slug: string;
@@ -112,15 +112,23 @@ async function collectWordMediaFolders(includeKeys: boolean): Promise<FolderAggr
 
     const currentLatest = existing.latestModifiedAt;
     const candidate = toIsoOrNull(object.lastModified);
-    if (!currentLatest || (candidate && new Date(candidate).getTime() > new Date(currentLatest).getTime())) {
+    if (
+      !currentLatest ||
+      (candidate && new Date(candidate).getTime() > new Date(currentLatest).getTime())
+    ) {
       existing.latestModifiedAt = candidate;
     }
   }
 
-  return [...bySlug.values()].sort((a, b) => b.objectCount - a.objectCount || compareLatest(a.latestModifiedAt, b.latestModifiedAt));
+  return [...bySlug.values()].sort(
+    (a, b) =>
+      b.objectCount - a.objectCount || compareLatest(a.latestModifiedAt, b.latestModifiedAt),
+  );
 }
 
-async function scanOrphanWordMediaFolders(options?: { limit?: number }): Promise<WordMediaOrphanSummary> {
+async function scanOrphanWordMediaFolders(options?: {
+  limit?: number;
+}): Promise<WordMediaOrphanSummary> {
   if (!isConfigured()) {
     return {
       r2Configured: false,
@@ -207,7 +215,7 @@ async function cleanupOrphanWordMediaFolders(): Promise<WordMediaOrphanCleanupRe
       (obj) =>
         obj.key.includes("/incoming/") &&
         !!obj.lastModified &&
-        nowMs - obj.lastModified.getTime() >= STALE_INCOMING_MIN_AGE_MS
+        nowMs - obj.lastModified.getTime() >= STALE_INCOMING_MIN_AGE_MS,
     );
 
   staleIncomingCandidates = staleIncomingObjects.length;
@@ -233,13 +241,6 @@ async function cleanupOrphanWordMediaFolders(): Promise<WordMediaOrphanCleanupRe
   };
 }
 
-export {
-  scanOrphanWordMediaFolders,
-  cleanupOrphanWordMediaFolders,
-};
+export { scanOrphanWordMediaFolders, cleanupOrphanWordMediaFolders };
 
-export type {
-  WordMediaOrphanFolder,
-  WordMediaOrphanSummary,
-  WordMediaOrphanCleanupResult,
-};
+export type { WordMediaOrphanFolder, WordMediaOrphanSummary, WordMediaOrphanCleanupResult };

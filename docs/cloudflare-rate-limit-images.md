@@ -2,7 +2,7 @@
 
 Prevent one IP from spamming your R2 image URLs and burning through read quota.
 
-**Requirement:** Your images must be served from a domain that is on your Cloudflare account and **proxied** (orange cloud). Example: `pics.milkandhenny.com` (or whatever you set in `NEXT_PUBLIC_R2_PUBLIC_URL`). If you use an `*.r2.dev` URL, you cannot rate limit it here — switch to a custom domain on Cloudflare first.
+**Requirement:** Your images must be served from a domain that is on your Cloudflare account and **proxied** (orange cloud). Example: `pics.milkandhenny.com` (or whatever you set in `VITE_MEDIA_PUBLIC_URL`). If you use an `*.r2.dev` URL, you cannot rate limit it here — switch to a custom domain on Cloudflare first.
 
 ---
 

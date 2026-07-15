@@ -9,14 +9,22 @@ const SITE_NAME = "Milk & Henny";
 /** Lowercase brand for editorial UI, nav headers, OG alt text, RSS title */
 const SITE_BRAND = "milk & henny";
 
+const viteEnv = import.meta.env as Record<string, string | undefined> | undefined;
+const runtimeEnv = typeof process === "undefined" ? undefined : process.env;
+
 /** Canonical base URL (sitemap, RSS, OG, share links). Strips inline env comments. */
-const BASE_URL = (process.env.NEXT_PUBLIC_BASE_URL || "https://milkandhenny.com")
+const BASE_URL = (viteEnv?.VITE_BASE_URL || runtimeEnv?.VITE_BASE_URL || "https://milkandhenny.com")
   .trim()
   .split(/\s+#/)[0]
   .trim();
 
-/** Public R2 / CDN origin for images and transfer files */
-const R2_PUBLIC_URL = process.env.NEXT_PUBLIC_R2_PUBLIC_URL ?? "";
+/** Public media/CDN origin. The R2 name is retained only as a migration alias. */
+const MEDIA_PUBLIC_URL =
+  viteEnv?.VITE_MEDIA_PUBLIC_URL ??
+  runtimeEnv?.VITE_MEDIA_PUBLIC_URL ??
+  viteEnv?.VITE_R2_PUBLIC_URL ??
+  runtimeEnv?.VITE_R2_PUBLIC_URL ??
+  "";
 
 /** Base URL for share links — uses request origin when available (e.g. localhost in dev), else BASE_URL */
 function getBaseUrlForRequest(request: { url: string }): string {
@@ -27,8 +35,15 @@ function getBaseUrlForRequest(request: { url: string }): string {
   }
 }
 
-function hasPublicR2Url(): boolean {
-  return R2_PUBLIC_URL.trim().length > 0;
+function hasMediaPublicUrl(): boolean {
+  return MEDIA_PUBLIC_URL.trim().length > 0;
 }
 
-export { SITE_NAME, SITE_BRAND, BASE_URL, R2_PUBLIC_URL, hasPublicR2Url, getBaseUrlForRequest };
+export {
+  SITE_NAME,
+  SITE_BRAND,
+  BASE_URL,
+  MEDIA_PUBLIC_URL,
+  hasMediaPublicUrl,
+  getBaseUrlForRequest,
+};

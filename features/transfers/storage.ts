@@ -6,7 +6,7 @@ function buildTransferOriginalStorageKey(transferId: string, filename: string): 
 
 function buildTransferPrimaryStorageKey(
   transferId: string,
-  file: Pick<TransferUploadFileInput, "name" | "convertedFrom">
+  file: Pick<TransferUploadFileInput, "name" | "convertedFrom">,
 ): string {
   if (file.convertedFrom) {
     return `transfers/${transferId}/derived/${file.name}`;
@@ -16,7 +16,7 @@ function buildTransferPrimaryStorageKey(
 
 function buildTransferArchivedOriginalStorageKey(
   transferId: string,
-  file: Pick<TransferUploadFileInput, "convertedFrom" | "originalName">
+  file: Pick<TransferUploadFileInput, "convertedFrom" | "originalName">,
 ): string | undefined {
   if (!file.convertedFrom || !file.originalName) return undefined;
   return buildTransferOriginalStorageKey(transferId, file.originalName);

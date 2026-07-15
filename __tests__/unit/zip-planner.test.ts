@@ -15,7 +15,7 @@ describe("zip planner", () => {
         { id: "b", filename: "b.jpg", url: "b", size: 80 },
         { id: "c", filename: "c.jpg", url: "c", size: 50 },
       ],
-      maxPartBytes
+      maxPartBytes,
     );
 
     expect(parts).toHaveLength(2);
@@ -32,7 +32,7 @@ describe("zip planner", () => {
         { id: "b", filename: "b.jpg", url: "b" },
         { id: "c", filename: "c.jpg", url: "c", size: 50 },
       ],
-      maxPartBytes
+      maxPartBytes,
     );
 
     expect(parts).toHaveLength(3);
@@ -43,10 +43,10 @@ describe("zip planner", () => {
 
   it("returns streaming-single for picker browsers even with oversize files", () => {
     expect(
-      planZipDownload(
-        [{ id: "a", filename: "big.mov", url: "a", size: 500 }],
-        { pickerAvailable: true, maxPartBytes }
-      )
+      planZipDownload([{ id: "a", filename: "big.mov", url: "a", size: 500 }], {
+        pickerAvailable: true,
+        maxPartBytes,
+      }),
     ).toEqual({
       mode: "streaming-single",
       total: { known: true, bytes: 500 },
@@ -55,10 +55,10 @@ describe("zip planner", () => {
 
   it("returns oversize-file for blob browsers with a file above the cap", () => {
     expect(
-      planZipDownload(
-        [{ id: "a", filename: "big.mov", url: "a", size: 500 }],
-        { pickerAvailable: false, maxPartBytes }
-      )
+      planZipDownload([{ id: "a", filename: "big.mov", url: "a", size: 500 }], {
+        pickerAvailable: false,
+        maxPartBytes,
+      }),
     ).toEqual({
       mode: "oversize-file",
       filename: "big.mov",
@@ -73,8 +73,8 @@ describe("zip planner", () => {
           { id: "a", filename: "a.jpg", url: "a", size: 100 },
           { id: "b", filename: "b.jpg", url: "b", size: 50 },
         ],
-        { pickerAvailable: false, maxPartBytes }
-      )
+        { pickerAvailable: false, maxPartBytes },
+      ),
     ).toEqual({
       mode: "blob-single",
       total: { known: true, bytes: 150 },
@@ -87,14 +87,17 @@ describe("zip planner", () => {
         { id: "a", filename: "a.jpg", url: "a", size: 120 },
         { id: "b", filename: "b.jpg", url: "b", size: 100 },
       ],
-      { pickerAvailable: false, maxPartBytes }
+      { pickerAvailable: false, maxPartBytes },
     );
 
     expect(plan.mode).toBe("blob-multipart");
     if (plan.mode !== "blob-multipart") throw new Error("Expected multipart plan");
     expect(plan.total).toEqual({ known: true, bytes: 220 });
     expect(plan.partCount).toBe(2);
-    expect(plan.partBytes).toEqual([{ known: true, bytes: 120 }, { known: true, bytes: 100 }]);
+    expect(plan.partBytes).toEqual([
+      { known: true, bytes: 120 },
+      { known: true, bytes: 100 },
+    ]);
   });
 
   it("returns blob-multipart when sizes are unknown and known bytes are below the cap", () => {
@@ -103,7 +106,7 @@ describe("zip planner", () => {
         { id: "a", filename: "a.jpg", url: "a", size: 100 },
         { id: "b", filename: "b.jpg", url: "b" },
       ],
-      { pickerAvailable: false, maxPartBytes }
+      { pickerAvailable: false, maxPartBytes },
     );
 
     expect(plan.mode).toBe("blob-multipart");
@@ -118,7 +121,7 @@ describe("zip planner", () => {
         { id: "a", filename: "a.jpg", url: "a", size: 210 },
         { id: "b", filename: "b.jpg", url: "b" },
       ],
-      { pickerAvailable: false, maxPartBytes: 250 }
+      { pickerAvailable: false, maxPartBytes: 250 },
     );
 
     expect(plan.mode).toBe("blob-multipart");

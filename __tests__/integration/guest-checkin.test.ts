@@ -9,15 +9,11 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
  */
 
 // Force in-memory fallback
-vi.mock("@/lib/platform/redis", () => ({
+vi.mock("@/lib/platform/redis.server", () => ({
   getRedis: () => null,
 }));
 
-import {
-  getGuests,
-  setGuests,
-  updateGuestCheckIn,
-} from "@/features/guests/store";
+import { getGuests, setGuests, updateGuestCheckIn } from "@/features/guests/store";
 import type { Guest } from "@/features/guests/types";
 
 function makeGuest(overrides: Partial<Guest> & { id: string; name: string }): Guest {
@@ -55,9 +51,7 @@ describe("guest list KV operations (in-memory fallback)", () => {
   });
 
   it("checks in a main guest", async () => {
-    await setGuests([
-      makeGuest({ id: "alice-0", name: "Alice", checkedIn: false }),
-    ]);
+    await setGuests([makeGuest({ id: "alice-0", name: "Alice", checkedIn: false })]);
 
     await updateGuestCheckIn("alice-0", true);
 
@@ -112,9 +106,7 @@ describe("guest list KV operations (in-memory fallback)", () => {
   });
 
   it("handles check-in for non-existent guest ID gracefully", async () => {
-    await setGuests([
-      makeGuest({ id: "alice-0", name: "Alice", checkedIn: false }),
-    ]);
+    await setGuests([makeGuest({ id: "alice-0", name: "Alice", checkedIn: false })]);
 
     // Should not throw — the ID just doesn't match anyone
     await updateGuestCheckIn("nonexistent-99", true);

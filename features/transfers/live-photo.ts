@@ -1,5 +1,5 @@
 import type { FileKind } from "@/features/media/file-kinds";
-import type { AssetGroup, AssetGroupMember } from "./store";
+import type { AssetGroup, AssetGroupMember } from "./types";
 
 const RAW_IMAGE_EXTENSIONS = /\.(dng|arw|cr2|cr3|nef|orf|raf|rw2|raw)$/i;
 const VIEWABLE_STILL_EXTENSIONS = /\.(jpe?g|heic|heif|hif)$/i;
@@ -37,7 +37,9 @@ function isRawImageFile<T extends TransferGroupableFile>(file: T): boolean {
 }
 
 function isViewableStillFile<T extends TransferGroupableFile>(file: T): boolean {
-  return file.kind === "image" && !isRawImageFile(file) && VIEWABLE_STILL_EXTENSIONS.test(file.filename);
+  return (
+    file.kind === "image" && !isRawImageFile(file) && VIEWABLE_STILL_EXTENSIONS.test(file.filename)
+  );
 }
 
 function isLivePhotoCandidatePhoto<T extends TransferGroupableFile>(file: T): boolean {
@@ -70,14 +72,16 @@ function getStillPreferenceScore<T extends TransferGroupableFile>(file: T): numb
 
 function buildGroupId(
   type: AssetGroup["type"],
-  members: ReadonlyArray<{ fileId: string; role: AssetGroupMember["role"] }>
+  members: ReadonlyArray<{ fileId: string; role: AssetGroupMember["role"] }>,
 ): string {
-  const ordered = [...members].sort((a, b) => a.role.localeCompare(b.role) || a.fileId.localeCompare(b.fileId));
+  const ordered = [...members].sort(
+    (a, b) => a.role.localeCompare(b.role) || a.fileId.localeCompare(b.fileId),
+  );
   return `${type}:${ordered.map((member) => `${member.role}:${member.fileId}`).join(":")}`;
 }
 
 function inferTransferAssetGroups<T extends TransferGroupableFile>(
-  inputFiles: readonly T[]
+  inputFiles: readonly T[],
 ): {
   files: Array<T & Pick<TransferGroupableFile, "groupId" | "groupRole">>;
   groups: AssetGroup[];
@@ -104,8 +108,14 @@ function inferTransferAssetGroups<T extends TransferGroupableFile>(
     const raws = bucket.filter((file) => isRawImageFile(file) && !usedIds.has(file.id));
     const stills = bucket
       .filter((file) => isViewableStillFile(file) && !usedIds.has(file.id))
-      .sort((a, b) => getStillPreferenceScore(b) - getStillPreferenceScore(a) || a.filename.localeCompare(b.filename));
-    const motions = bucket.filter((file) => isLivePhotoCandidateMotion(file) && !usedIds.has(file.id));
+      .sort(
+        (a, b) =>
+          getStillPreferenceScore(b) - getStillPreferenceScore(a) ||
+          a.filename.localeCompare(b.filename),
+      );
+    const motions = bucket.filter(
+      (file) => isLivePhotoCandidateMotion(file) && !usedIds.has(file.id),
+    );
 
     if (raws.length > 0 && stills.length > 0) {
       const raw = raws[0];
@@ -134,7 +144,11 @@ function inferTransferAssetGroups<T extends TransferGroupableFile>(
 
     const photos = bucket
       .filter((file) => isLivePhotoCandidatePhoto(file) && !usedIds.has(file.id))
-      .sort((a, b) => Number(Boolean(b.livePhotoContentId)) - Number(Boolean(a.livePhotoContentId)) || a.filename.localeCompare(b.filename));
+      .sort(
+        (a, b) =>
+          Number(Boolean(b.livePhotoContentId)) - Number(Boolean(a.livePhotoContentId)) ||
+          a.filename.localeCompare(b.filename),
+      );
     const motion = motions[0];
     if (photos.length > 0 && motion) {
       const photo = photos.find((candidate) => passesTimestampGate(candidate, motion));
@@ -165,7 +179,7 @@ function inferTransferAssetGroups<T extends TransferGroupableFile>(
 
 function buildTransferVisualItems<T extends TransferGroupableFile>(
   files: readonly T[],
-  groups?: readonly AssetGroup[]
+  groups?: readonly AssetGroup[],
 ): TransferVisualItem<T>[] {
   if (!groups || groups.length === 0) {
     return buildLegacyLivePhotoVisualItems(files);
@@ -228,7 +242,7 @@ function buildTransferVisualItems<T extends TransferGroupableFile>(
 }
 
 function buildLegacyLivePhotoVisualItems<T extends TransferGroupableFile>(
-  files: readonly T[]
+  files: readonly T[],
 ): TransferVisualItem<T>[] {
   const motionByStem = new Map<string, T[]>();
   for (const file of files) {

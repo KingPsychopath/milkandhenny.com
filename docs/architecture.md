@@ -1,204 +1,77 @@
 # Architecture
 
-How the app is built, where things run, how data flows, and the conventions that hold it together.
+## Shape
 
----
+Milk & Henny is a provider-neutral modular monolith deployed as one Node service.
 
-## Hosting & Routing
-
-| What | Where | Why |
-|------|-------|-----|
-| App (HTML, API) | Vercel | Next.js serverless, edge |
-| Images & transfer files | Cloudflare R2 | Custom domain `pics.milkandhenny.com` — zero egress |
-| Guest list + best dressed + transfer metadata | Vercel KV | Redis with TTL, auto-injected credentials |
-
-**Cost-saving routing:** All image/file requests go directly to `pics.milkandhenny.com` (R2 + Cloudflare CDN). They never touch Vercel — no bandwidth cost, no function invocations. ZIP downloads and individual file downloads also fetch directly from R2 via CORS.
-
----
-
-## Data Storage Patterns
-
-Three features store media in R2, but their metadata lives in different places — each approach fits its use case.
-
-| | Albums | Transfers | Words content |
-|---|--------|-----------|-------------|
-| **R2 prefix** | `albums/{slug}/` | `transfers/{id}/` | `words/{type}/{slug}/content.md` + `words/media/{slug}/` |
-| **Metadata** | JSON manifest in git (`content/albums/`) | Redis key with TTL | KV (`words:meta:{slug}` + `words:index`) |
-| **Variants** | thumb + full + original + og | thumb + full + original | Images: WebP; others: raw |
-| **Lifecycle** | Permanent (lives in git) | Auto-expires via Redis TTL | Permanent unless deleted; visibility controls + share links |
-| **Cost per view** | $0 (fully static/CDN) | ~$0 (1 KV GET, CDN-cached 60s) | Public/unlisted: $0 static. Private: dynamic gate + API verify when unlocking. |
-| **Update flow** | CLI writes JSON → git commit → Vercel rebuild | CLI writes to Redis → instant | CLI/admin writes KV metadata + R2 markdown/media |
-
-Albums are the strongest pattern for permanent content — zero runtime cost, fully CDN-cached, no KV dependency. Transfers use KV because they need to self-destruct (a git-based approach would require a redeploy to expire content). Words content uses KV + R2 so public/unlisted/private behavior and share-link access all use one consistent model.
-
----
-
-## Caching Strategy
-
-Three layers of caching keep the site fast and cheap: static generation at build, CDN edge caching at runtime, and Cloudflare CDN for media.
-
-### Static pages (built once, served from CDN)
-
-| Page | How | Why static works |
-|------|-----|-----------------|
-| `/`, `/words`, `/pics` | ISR/static pages with revalidation | Content is cache-friendly, updates are revalidated on write |
-| `/words/[slug]` | `generateStaticParams` for public words + ISR fallback for unlisted | Public editorial surface only |
-| `/pics/[album]`, `/pics/[album]/[photo]` | `generateStaticParams` from album JSON | Albums are JSON manifests in git |
-| All OG images for above | `generateStaticParams` + `s-maxage=86400` | Images don't change post-deploy |
-
-### Dynamic pages (server-rendered with CDN edge cache)
-
-| Page | Rendering | Cache | Rationale |
-|------|-----------|-------|-----------|
-| `/t/[id]` (transfers) | `force-dynamic` (reads Redis) | CDN: 60s, stale-while-revalidate: 5min. Browser: no-cache. | Saves KV reads. After takedown, stale may serve up to 60s but R2 files are already deleted. |
-| `/vault/[slug]` (private words) | `force-dynamic` (auth/share gate + cookie/session checks) | Browser: no-store semantics for gated content | Keeps private access flow isolated from static public words navigation. |
-| `/t/[id]/opengraph-image` | `force-dynamic` | 24h (`s-maxage=86400`) | One serverless run per new shared link, then cached. |
-| `/api/cron/cleanup-transfers` | `force-dynamic` | None | Daily cron, no caching needed. |
-
-### API routes
-
-All API routes (`/api/guests`, `/api/best-dressed`, `/api/transfers/[id]`) return real-time data. No caching — stale data here would cause UX bugs (wrong check-in state, stale votes).
-
-### RSS feed
-
-`s-maxage=3600, stale-while-revalidate=3600` — CDN caches 1 hour. Feed includes public `blog`-type words only.
-
-### Media (Cloudflare R2 + CDN)
-
-Images and transfer files are served from `pics.milkandhenny.com` (R2 custom domain). Cloudflare's CDN caches static assets by default. Rate limiting is configured at the Cloudflare level (see [cloudflare-rate-limit-images.md](./cloudflare-rate-limit-images.md)). These requests never touch Vercel.
-
-### Transfer page CDN caching (proxy.ts)
-
-`proxy.ts` adds CDN edge headers to `/t/*` routes:
-
-- **CDN edge**: 60s cache, stale up to 5min while revalidating
-- **Browser**: `no-cache` — countdown timer needs fresh data on hard refresh
-- **Trade-off**: After takedown, CDN may serve stale page for up to 60s. R2 files are deleted immediately, so downloads 404. Acceptable for a private sharing tool.
-
-### Client-side fetch caching
-
-`fetchImageForCanvas` in `lib/client/media-download.ts` uses `cache: "no-store"` to bypass the browser cache. This prevents the tainted canvas problem where a non-CORS cached response would block Canvas pixel access.
-
----
-
-## Resilience: What Happens When Env Vars Are Missing
-
-Every feature degrades gracefully — nothing crashes. The fallback strategy matches the context: local dev features get in-memory fallback, production-only features fail explicitly.
-
-| Feature | Missing KV vars | Missing R2 API vars | Missing `NEXT_PUBLIC_R2_PUBLIC_URL` |
-|---------|----------------|---------------------|--------------------------------------|
-| **Words** (`/`, `/words`) | No impact | No impact | No impact |
-| **Photo gallery** (`/pics`) | No impact | No impact | Images break — URLs resolve to `/{path}` |
-| **Guest list** (`/guestlist`) | In-memory fallback — works per process, doesn't persist across cold starts | No impact | No impact |
-| **Best dressed** (`/best-dressed`) | In-memory fallback — same as guest list | No impact | No impact |
-| **Admin dashboard** (`/admin`) | Rejects auth (fails closed; requires KV for rate limiting + revocation) | No impact | No impact |
-| **Transfer page** (`/t/{id}`) | Shows "expired" page (no crash) | No impact (files via CDN) | File URLs break |
-| **Transfer CLI** | `requireRedis()` throws — no silent fallback | `requireR2()` throws | Share URL defaults to `https://milkandhenny.com` |
-| **Album CLI** | No impact | Throws — can't upload without R2 | No impact |
-| **Words CLI** | No impact | `requireR2()` throws | Media URLs in markdown break |
-| **Cron cleanup** | Returns `{ skipped: true }` | Returns `{ skipped: true }` | No impact |
-| **`STAFF_PIN`** missing | — | — | Guest list accessible without PIN (open gate) |
-| **`ADMIN_PASSWORD`** missing | — | — | Admin-only surfaces reject auth (locked out) |
-| **`UPLOAD_PIN`** missing | — | — | Upload page rejects all PINs (locked out) |
-
-**Design rationale:** Guest list and best-dressed use in-memory fallback because they're the most common local dev surfaces — `pnpm dev` should work immediately. Transfer CLI refuses to run without Redis because silent fallback caused real data loss (uploads to R2 with no metadata). The separation is intentional.
-
----
-
-## Navigation & Footer Design
-
-The site has **two distinct navigation worlds** that coexist through shared tone (lowercase, warm, honest) while differing in visual language.
-
-### Two-world model
-
-| World | Pages | Navigation style | Audience |
-|-------|-------|-----------------|----------|
-| **Editorial** | `/`, `/words`, `/words/[slug]`, `/vault/[slug]`, `/pics`, `/pics/[album]`, `/pics/[album]/[photo]` | Header with `← contextual back` + `milk & henny` brand link + Breadcrumbs | Word readers, private-share viewers, photo viewers |
-| **Party** | `/party`, `/icebreaker`, `/best-dressed`, `/guestlist` | Minimal, kiosk-style — funnels back to `/party`, then `/` | Event-night guests, door staff |
-
-**Standalone pages** (`/exam`, `/t/[id]`) have their own minimal navigation.
-
-### Footer tiers
-
-| Tier | Left side | Right side | Used on |
-|------|-----------|------------|---------|
-| **Editorial** | `← contextual back` (e.g. "← home", "← all albums") | `© year milk & henny` | Words, pics, albums, photos |
-| **Party** | `← back to party` (or `← back to home` from hub) | `© year Milk & Henny` | Party hub, icebreaker, best dressed, guest list |
-
-Page-specific personality lives **above** the footer line: icebreaker's consent note, transfer's self-destruct date, exam's "end of questions."
-
-### Accessibility landmarks
-
-- `role="banner"` on headers, `role="contentinfo"` on footers
-- `id="main"` on primary content (targeted by global skip link)
-- `aria-label="Breadcrumb"` on breadcrumb navs
-- Skip link: `<a href="#main">Skip to main content</a>` on every page
-
-### Shared global elements (root layout)
-
-- **LampToggle**: Theme toggle (lamp pull-cord), hidden on party/game pages
-- **BackToTop**: Scroll-to-top button, hidden on same routes as LampToggle
-
-### Design decisions
-
-- **No global nav bar.** Single-column, minimal chrome. The masthead on `/` is the hub; inner pages use contextual back links + breadcrumbs.
-- **Party pages don't cross-link to editorial.** A party guest doesn't need to find the blog. The two worlds connect only through the home page.
-- **Every page has a way home.** Even standalone and expired pages include a brand link or "← home."
-- **Photo pages auto-enable dark mode** for optimal viewing.
-- **Batch download cap.** Album gallery warns before downloading 20+ full-res photos.
-
----
-
-## Error Handling & Logging
-
-Two shared utilities for server-side errors and logs.
-
-**Mental model:** In a route handler catch block and need to return a 500? → **`apiErrorFromRequest()`**. Server-side but only need to record something? → **`log`**. On the client? → Show `data.error` from the API.
-
-### When to use what
-
-| Situation | Use | Where |
-|-----------|-----|--------|
-| API route catches an error, must return a response | `apiErrorFromRequest()` | `app/api/**/*.ts` |
-| Server code needs to log something (no response) | `log.info` / `log.warn` / `log.error` | API routes, `lib/`, scripts |
-| Client shows a message to the user | Existing UI state (e.g. `setError(data.error)`) | Components, hooks |
-
-### API routes — safe 500s
-
-```ts
-import { apiErrorFromRequest } from '@/lib/platform/api-error';
-
-export async function POST(request: NextRequest) {
-  try {
-    // ... do work ...
-    return NextResponse.json({ success: true });
-  } catch (e) {
-    return apiErrorFromRequest(request, 'myroute.action', 'Short user-facing message.', e, { id: someId });
-  }
-}
+```text
+Browser
+  -> TanStack Start / Nitro Node server
+       -> feature workflows
+            -> Redis REST adapter
+            -> S3-compatible storage adapter
+            -> optional media-worker wake adapter
+  -> public media origin (direct images and downloads)
 ```
 
-- **Scope** (first arg): dot-separated, e.g. `upload.transfer`, `guests.bootstrap`. Filter logs by scope in Vercel.
-- **Message** (second arg): what the client sees. No internal details.
-- **Context** (fourth arg, optional): ids, slugs, etc. — log entry only.
-- `apiErrorFromRequest()` automatically includes `requestId` (from `x-request-id`) and `path` in the log context.
+The host supplies a port and environment variables. Railway, Docker Compose, Kubernetes, and a plain VPS all run the same `.output/server/index.mjs` artifact.
 
-Use `NextResponse.json({ error: '...' }, { status: 400 })` for validation failures. Use `apiErrorFromRequest` for unexpected failures (R2, Redis, etc.).
+## Ownership
 
-### Logging without a response
+| Layer                       | Responsibility                                                      |
+| --------------------------- | ------------------------------------------------------------------- |
+| `src/routes`                | Routing, transport validation, response shape, coarse authorization |
+| `features/*/*.functions.ts` | TanStack server-function boundaries                                 |
+| `features/*/*.server.ts`    | Feature workflows and durable product rules                         |
+| `features/*/ui`             | User interaction and rendering                                      |
+| `lib/platform`              | Redis, object storage, logging, HTTP/provider translation           |
+| `lib/shared`                | Environment-safe shared constants and pure utilities                |
+| `ops`                       | Deployment-independent operational entry points                     |
+| `deploy`                    | Optional independently deployed workloads                           |
 
-```ts
-import { log } from '@/lib/platform/logger';
+Routes do not own business truth. Workers may execute feature workflows but must not redefine eligibility or state transitions.
 
-log.info('cron.cleanup', 'Cleanup finished', { deletedCount: 5 });
-log.warn('cron.cleanup', 'R2 not configured — skipping file deletion');
-log.error('lib.r2', 'ListObjects failed', { prefix: 'transfers/' }, err);
+## Persistence
+
+Redis stores mutable application state: guest check-ins, voting, transfer metadata, authentication sessions, rate limits, word metadata, and share records. `REDIS_REST_URL` and `REDIS_REST_TOKEN` are the canonical application contract.
+
+The production app fails closed when required persistence is unavailable. In-memory fallbacks are limited to explicit development/test scenarios.
+
+## Media
+
+R2 is currently the S3-compatible object store. Browser uploads use presigned URLs, so large file bodies bypass the web service. Public delivery uses `VITE_MEDIA_PUBLIC_URL`, normally an R2 custom domain behind Cloudflare.
+
+Storage implementation details remain behind `lib/platform/r2.server.ts`; the application host does not need to be Cloudflare.
+
+## Media processing
+
+`MEDIA_PROCESSOR_MODE=local` is the safe default. It keeps the dedicated queue consumer disabled and avoids jobs accumulating for a worker that does not exist.
+
+The optional worker boundary exists for sustained RAW/video processing:
+
+```text
+web request -> Redis queue -> authenticated wake endpoint -> worker drain -> R2 derivatives
 ```
 
-### Scopes
+Enable it only when the worker is deployed, observable, and supplied with direct Redis plus storage credentials.
 
-Keep scopes short and consistent: `upload.transfer`, `guests.add`, `best-dressed.vote`, `cron.cleanup`, `lib.r2`. Production logs are JSON lines with `level`, `scope`, `message`, `context`, `error`, `ts`.
+## Maintenance
 
-### Client-side
+Cleanup workflows remain authenticated HTTP use cases. `ops/run-maintenance.mjs` calls them sequentially, emits structured results, and exits non-zero on failure. Any scheduler can execute it; scheduling is not embedded in application code.
 
-Don't use `log` or `apiError` in React components (server-only). On the client, show `data.error` from the API.
+## Health
+
+- `/api/health` performs configuration-only readiness checks and is safe for frequent polling.
+- `/health` renders the same safe capability model for humans.
+- `/api/debug` is admin-protected and performs live Redis/object-storage probes.
+
+Required capability failures produce an unhealthy readiness response. Missing optional maintenance or worker configuration is visible without taking the core site offline.
+
+## Deployment invariants
+
+- The server listens on `$HOST` and `$PORT`.
+- Public `VITE_*` values are present at build time.
+- Secrets are supplied at runtime and never enter the client bundle.
+- The container filesystem is ephemeral; durable mutations belong in Redis, object storage, or git.
+- `/api/health` must pass before traffic cutover.
+- The previous deployment remains available until post-cutover verification completes.

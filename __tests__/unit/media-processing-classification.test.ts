@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { getFileKind, getMimeType } from "@/features/media/processing";
+import { getFileKind, getMimeType } from "@/features/media/processing.server";
 
 describe("media processing classification", () => {
   it("treats camera raw files as visual images", () => {

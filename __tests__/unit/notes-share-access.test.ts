@@ -5,7 +5,7 @@ import {
   updateShareLink,
   verifyWordAccessToken,
   verifyShareLinkAccess,
-} from "@/features/words/share";
+} from "@/features/words/share.server";
 
 function uniqueSlug(prefix: string): string {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -116,7 +116,7 @@ describe("notes share access", () => {
         updateShareLink(slug, created.link.id, {
           pinRequired: true,
           pin: "4321",
-        })
+        }),
       ).rejects.toThrow(/expired|revoked/i);
     } finally {
       nowSpy.mockRestore();

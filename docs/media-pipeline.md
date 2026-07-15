@@ -6,13 +6,13 @@ How images are processed, how OG images are generated, and how focal points work
 
 ## File Type Support
 
-| Type | In the gallery | Processing |
-|------|---------------|------------|
-| Images (JPEG, PNG, WebP, HEIC, HIF, TIFF) | Masonry grid + lightbox | Thumb (600px) + full (1600px) + original + og (1200×630) |
-| GIFs | Grid card + animated lightbox | Static first-frame thumb + original |
-| Videos (MP4, MOV, WebM, AVI, MKV) | Play icon card + video player lightbox | Uploaded as-is |
-| Audio (MP3, WAV, FLAC, etc.) | Inline audio player card | Uploaded as-is |
-| Documents / archives / everything else | File card + download button | Uploaded as-is |
+| Type                                      | In the gallery                         | Processing                                               |
+| ----------------------------------------- | -------------------------------------- | -------------------------------------------------------- |
+| Images (JPEG, PNG, WebP, HEIC, HIF, TIFF) | Masonry grid + lightbox                | Thumb (600px) + full (1600px) + original + og (1200×630) |
+| GIFs                                      | Grid card + animated lightbox          | Static first-frame thumb + original                      |
+| Videos (MP4, MOV, WebM, AVI, MKV)         | Play icon card + video player lightbox | Uploaded as-is                                           |
+| Audio (MP3, WAV, FLAC, etc.)              | Inline audio player card               | Uploaded as-is                                           |
+| Documents / archives / everything else    | File card + download button            | Uploaded as-is                                           |
 
 ---
 
@@ -44,9 +44,9 @@ pnpm cli albums backfill-og --yes --force  # Regenerate all
 
 Unlike albums, transfer metadata lives in Redis so there's no build-time manifest. The transfer OG image is **generated at request time** when a crawler first hits the image URL: one serverless run per transfer ID, then cached for 24h (`s-maxage=86400`). To use the default site OG image instead, remove `app/t/[id]/opengraph-image.tsx`.
 
-### Vercel hobby limits
+### Runtime limits
 
-OG images are pre-built JPGs served from R2 — zero runtime serverless invocations. Build time fetches the og URL per page (one R2 GET each), but that's a one-time cost per deploy.
+OG images are pre-built JPGs served from R2, so the application host does not process them per request.
 
 ---
 
@@ -65,13 +65,13 @@ pnpm cli media delete --slug <word-slug> --file <name>   # Delete a single file
 pnpm cli media upload --asset <asset-id> --dir <path>    # Upload shared reusable assets
 ```
 
-Web upload: `/upload` supports words uploads via presigned PUT URLs (no file bytes pass through Vercel). For large batches, the CLI is still faster and easier to retry.
+Web upload: `/upload` supports words uploads via presigned PUT URLs, so file bytes bypass the application host. For large batches, the CLI is still faster and easier to retry.
 
 ---
 
 ## Web Upload (Presigned URLs)
 
-The upload page uses **presigned PUT URLs** so file bytes go directly from the browser to R2 — they never pass through Vercel. This removes the 4.5 MB serverless body limit and reduces Vercel bandwidth usage.
+The upload page uses **presigned PUT URLs** so file bytes go directly from the browser to R2. This avoids application-server body limits and bandwidth.
 
 **Flow:** presign (tiny JSON request) → browser PUTs each file to R2 → finalize (tiny JSON request, server generates thumbnails).
 
@@ -96,10 +96,10 @@ Transfers use `POST /api/upload/transfer/presign` + `POST /api/upload/transfer/f
 
 Portrait photos often store pixel data in landscape orientation with a rotation instruction. Where that rotation lives depends on the format:
 
-| Format | Rotation storage | How we handle it |
-|--------|-----------------|-----------------|
-| JPEG, PNG, TIFF, WebP | **EXIF** orientation tag | Sharp `.rotate()` reads EXIF and applies the transform |
-| HEIC, HIF | **HEIF container** `irot` box (also EXIF in most Canon HIF) | Transfer web uploads convert in the browser first; CLI/server flows still rely on libheif at decode |
+| Format                | Rotation storage                                            | How we handle it                                                                                    |
+| --------------------- | ----------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| JPEG, PNG, TIFF, WebP | **EXIF** orientation tag                                    | Sharp `.rotate()` reads EXIF and applies the transform                                              |
+| HEIC, HIF             | **HEIF container** `irot` box (also EXIF in most Canon HIF) | Transfer web uploads convert in the browser first; CLI/server flows still rely on libheif at decode |
 
 For transfer web uploads, HEIC/HIF is a browser-side requirement: the client converts to JPEG before upload and archives the original separately. Server-side transfer processing only handles the converted JPEG plus RAW/video fallback work.
 
@@ -120,10 +120,10 @@ OG images crop to 1200×630. Every photo is run through **automatic face detecti
 
 ### Detection strategies
 
-| Strategy | How it works | Best for |
-|----------|-------------|----------|
+| Strategy         | How it works                                                                                            | Best for                                       |
+| ---------------- | ------------------------------------------------------------------------------------------------------- | ---------------------------------------------- |
 | `onnx` (default) | UltraFace 320 neural network via ONNX Runtime (~1.2 MB model). True face detection with bounding boxes. | Portraits, group photos — any image with faces |
-| `sharp` | Sharp's attention-based saliency (libvips). Detects skin tones, luminance, saturation. No ML model. | Scenes without faces, food, architecture |
+| `sharp`          | Sharp's attention-based saliency (libvips). Detects skin tones, luminance, saturation. No ML model.     | Scenes without faces, food, architecture       |
 
 ### Manual override with presets
 
@@ -136,21 +136,21 @@ pnpm cli photos set-focal <album> <photoId> --preset c    # reset to "center"
 
 ### Preset reference
 
-| Shorthand | Full name | Position (x%, y%) | When to use |
-|-----------|-----------|-------------------|-------------|
-| `c` | `center` | 50, 50 | Default — most landscape shots |
-| `t` | `top` | 50, 0 | Face at top edge |
-| `b` | `bottom` | 50, 100 | Subject at bottom of frame |
-| `l` | `left` | 0, 50 | Subject at left edge |
-| `r` | `right` | 100, 50 | Subject at right edge |
-| `tl` | `top left` | 0, 0 | Top-left corner |
-| `tr` | `top right` | 100, 0 | Top-right corner |
-| `bl` | `bottom left` | 0, 100 | Bottom-left corner |
-| `br` | `bottom right` | 100, 100 | Bottom-right corner |
-| `mt` | `mid top` | 50, 25 | Upper third |
-| `mb` | `mid bottom` | 50, 75 | Lower third |
-| `ml` | `mid left` | 25, 50 | Left third |
-| `mr` | `mid right` | 75, 50 | Right third |
+| Shorthand | Full name      | Position (x%, y%) | When to use                    |
+| --------- | -------------- | ----------------- | ------------------------------ |
+| `c`       | `center`       | 50, 50            | Default — most landscape shots |
+| `t`       | `top`          | 50, 0             | Face at top edge               |
+| `b`       | `bottom`       | 50, 100           | Subject at bottom of frame     |
+| `l`       | `left`         | 0, 50             | Subject at left edge           |
+| `r`       | `right`        | 100, 50           | Subject at right edge          |
+| `tl`      | `top left`     | 0, 0              | Top-left corner                |
+| `tr`      | `top right`    | 100, 0            | Top-right corner               |
+| `bl`      | `bottom left`  | 0, 100            | Bottom-left corner             |
+| `br`      | `bottom right` | 100, 100          | Bottom-right corner            |
+| `mt`      | `mid top`      | 50, 25            | Upper third                    |
+| `mb`      | `mid bottom`   | 50, 75            | Lower third                    |
+| `ml`      | `mid left`     | 25, 50            | Left third                     |
+| `mr`      | `mid right`    | 75, 50            | Right third                    |
 
 **Priority:** manual preset (`focalPoint`) > auto-detected (`autoFocal`) > center (50%, 50%).
 
@@ -196,4 +196,4 @@ Standalone album links in words pages (`[Title](/pics/slug)` on its own line) re
 
 Inline mentions stay as normal links.
 
-> **Staleness note**: Embed cards are resolved at build time (SSG). If you update an album after deploy, the card shows stale data until the next Vercel rebuild. This is consistent with how all album data works — JSON manifests live in git.
+> **Staleness note**: Embed cards are resolved at build time. If you update an album after deploy, the card remains stale until the next application build because JSON manifests live in git.

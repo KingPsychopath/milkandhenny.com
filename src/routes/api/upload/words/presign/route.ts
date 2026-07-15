@@ -1,0 +1,199 @@
+import { createFileRoute } from "@tanstack/react-router";
+import { requireAuthWithPayload } from "@/features/auth/auth.server";
+import { presignPutUrl, isConfigured, listObjects } from "@/lib/platform/r2.server";
+import { apiErrorFromRequest } from "@/lib/platform/api-error";
+import { getMimeType, isProcessableImage } from "@/features/media/processing.server";
+import {
+  getWordUploadFilenameCandidates,
+  isRawWordUpload,
+  mediaPrefixForTarget,
+  parseWordMediaTarget,
+  sanitiseStem,
+  toR2Filename,
+} from "@/features/words/upload";
+import { getFileKind } from "@/features/media/processing.server";
+import type { FileKind } from "@/features/media/file-kinds";
+import { randomUUID } from "crypto";
+import path from "path";
+
+type FileEntry = { name: string; size: number; type?: string };
+
+type PresignEntry = {
+  original: string;
+  /** Final filename in the selected media target path */
+  filename: string;
+  /** Where the browser PUTs the bytes */
+  uploadKey: string;
+  /** One-time presigned PUT URL */
+  url: string;
+  /** MIME type used to sign the upload request */
+  contentType: string;
+  /** File kind based on the original extension */
+  kind: FileKind;
+  /** True if a file with this final name already existed */
+  overwrote: boolean;
+};
+
+const SAFE_WORD_FILENAME = /^[a-z0-9-]+\.[a-z0-9]{1,8}$/;
+function safeIncomingExt(original: string): string {
+  const ext = path.extname(original).toLowerCase();
+  return /^\.[a-z0-9]{1,8}$/.test(ext) ? ext : ".bin";
+}
+
+/**
+ * POST /api/upload/words/presign
+ *
+ * Step 1 of the words media presigned upload flow.
+ * Returns presigned PUT URLs so the browser can upload direct to R2.
+ *
+ * Body: { scope?: "word"|"asset", slug?, assetId?, force?, files: [{ name, size, type? }] }
+ * Returns: { success: true, urls: PresignEntry[], skipped: string[] }
+ */
+async function handlePOST(request: Request) {
+  const { error: authErr } = await requireAuthWithPayload(request, "admin");
+  if (authErr) return authErr;
+
+  if (!isConfigured()) {
+    return Response.json(
+      { error: "R2 storage is not configured. Add R2 env vars." },
+      { status: 503 },
+    );
+  }
+
+  let body: {
+    scope?: string;
+    slug?: string;
+    assetId?: string;
+    force?: boolean;
+    files?: FileEntry[];
+  };
+  try {
+    body = await request.json();
+  } catch {
+    return Response.json({ error: "Invalid JSON body" }, { status: 400 });
+  }
+
+  const targetResult = parseWordMediaTarget({
+    scope: body.scope,
+    slug: body.slug,
+    assetId: body.assetId,
+  });
+  if (!targetResult.ok) {
+    return Response.json({ error: targetResult.error }, { status: 400 });
+  }
+
+  const target = targetResult.target;
+  const targetPrefix = mediaPrefixForTarget(target);
+  const force = !!body.force;
+  const files = body.files;
+
+  if (!Array.isArray(files) || files.length === 0) {
+    return Response.json({ error: "No files provided" }, { status: 400 });
+  }
+
+  for (const file of files) {
+    if (!file || typeof file.name !== "string" || !file.name.trim()) {
+      return Response.json({ error: "Each file must include a name" }, { status: 400 });
+    }
+    if (!Number.isFinite(file.size) || file.size < 0) {
+      return Response.json({ error: "Each file must include a valid size" }, { status: 400 });
+    }
+  }
+
+  try {
+    const existingObjects = await listObjects(targetPrefix);
+
+    const existingNames = new Set(
+      existingObjects.map((o) => {
+        const parts = o.key.split("/");
+        return parts[parts.length - 1];
+      }),
+    );
+
+    const urls: PresignEntry[] = [];
+    const skipped: string[] = [];
+    const reservedNames = new Set<string>();
+
+    for (const file of files) {
+      const original = file.name.trim();
+      const filename = toR2Filename(original, { preserveRawExtension: isRawWordUpload(original) });
+      const filenameCandidates = getWordUploadFilenameCandidates(original);
+
+      if (!SAFE_WORD_FILENAME.test(filename)) {
+        return Response.json(
+          { error: `Unsafe filename derived from "${original}"` },
+          { status: 400 },
+        );
+      }
+
+      if (filenameCandidates.some((candidate) => reservedNames.has(candidate))) {
+        return Response.json(
+          {
+            error:
+              `Two selected files resolve to the same destination filename: ${filename}. ` +
+              "Rename one file and try again.",
+          },
+          { status: 400 },
+        );
+      }
+      for (const candidate of filenameCandidates) {
+        reservedNames.add(candidate);
+      }
+
+      const alreadyExists = filenameCandidates.some((candidate) => existingNames.has(candidate));
+      if (alreadyExists && !force) {
+        skipped.push(filename);
+        continue;
+      }
+
+      const isImage = isProcessableImage(original);
+      const kind: FileKind = isImage ? "image" : getFileKind(original);
+      const contentType = getMimeType(original);
+
+      // Processable images are uploaded to a temp key, then finalized into either
+      // WebP or original RAW storage depending on preview extraction success.
+      const uploadKey = isImage
+        ? `${targetPrefix}incoming/${randomUUID()}-${sanitiseStem(original)}${safeIncomingExt(original)}`
+        : `${targetPrefix}${filename}`;
+
+      const url = await presignPutUrl(uploadKey, contentType);
+
+      urls.push({
+        original,
+        filename,
+        uploadKey,
+        url,
+        contentType,
+        kind,
+        overwrote: alreadyExists,
+      });
+    }
+
+    return Response.json({
+      success: true,
+      target:
+        target.scope === "asset"
+          ? { scope: "asset", assetId: target.assetId }
+          : { scope: "word", slug: target.slug },
+      urls,
+      skipped,
+    });
+  } catch (e) {
+    return apiErrorFromRequest(
+      request,
+      "upload.words.presign",
+      "Failed to generate upload URLs. Please try again.",
+      e,
+    );
+  }
+}
+
+export const Route = createFileRoute("/api/upload/words/presign")({
+  server: {
+    handlers: {
+      POST: ({ request }) => handlePOST(request),
+    },
+  },
+});
+
+export { handlePOST as POST };

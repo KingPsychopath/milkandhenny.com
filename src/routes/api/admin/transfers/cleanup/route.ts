@@ -1,0 +1,117 @@
+import { createFileRoute } from "@tanstack/react-router";
+import { requireAdminStepUp, requireAuth } from "@/features/auth/auth.server";
+import { getRedis } from "@/lib/platform/redis.server";
+import { isConfigured, listPrefixes, listObjects, deleteObjects } from "@/lib/platform/r2.server";
+import { apiErrorFromRequest } from "@/lib/platform/api-error";
+
+type CleanupMode = "index" | "deep";
+
+/**
+ * On-demand admin cleanup for expired/orphaned transfers.
+ * Mirrors cron behavior but is manually triggered from dashboard.
+ */
+async function handlePOST(request: Request) {
+  const authErr = await requireAuth(request, "admin");
+  if (authErr) return authErr;
+  const stepUpErr = await requireAdminStepUp(request);
+  if (stepUpErr) return stepUpErr;
+
+  const redis = getRedis();
+  if (!redis || !isConfigured()) {
+    return Response.json({ error: "Redis or R2 not configured" }, { status: 503 });
+  }
+
+  try {
+    let mode: CleanupMode = "index";
+    try {
+      const body = (await request.json()) as { mode?: CleanupMode };
+      if (body.mode === "deep") mode = "deep";
+    } catch {
+      // Default to lightweight index cleanup when no body is provided.
+    }
+
+    const indexedIds: string[] = await redis.smembers("transfer:index");
+
+    let expiredIds: string[] = [];
+    if (indexedIds.length > 0) {
+      const pipeline = redis.pipeline();
+      for (const id of indexedIds) {
+        pipeline.exists(`transfer:${id}`);
+      }
+      const results = await pipeline.exec();
+      expiredIds = indexedIds.filter((_, i) => results[i] === 0);
+    }
+
+    if (expiredIds.length > 0) {
+      const cleanupPipeline = redis.pipeline();
+      for (const id of expiredIds) {
+        cleanupPipeline.srem("transfer:index", id);
+      }
+      await cleanupPipeline.exec();
+    }
+
+    if (mode !== "deep") {
+      return Response.json({
+        success: true,
+        mode,
+        expiredIndexEntries: expiredIds.length,
+        scannedPrefixes: 0,
+        deletedObjects: 0,
+        timestamp: new Date().toISOString(),
+      });
+    }
+
+    const transferPrefixes = await listPrefixes("transfers/");
+    const allR2Ids = transferPrefixes
+      .map((p) => p.replace("transfers/", "").replace(/\/$/, ""))
+      .filter(Boolean);
+
+    const orphanIds = await findMissingTransferIds(redis, allR2Ids);
+    let deletedObjects = 0;
+    for (const id of orphanIds) {
+      const objects = await listObjects(`transfers/${id}/`);
+      const keys = objects.map((o) => o.key);
+      if (keys.length > 0) {
+        deletedObjects += await deleteObjects(keys);
+      }
+      await redis.srem("transfer:index", id);
+    }
+
+    return Response.json({
+      success: true,
+      mode,
+      expiredIndexEntries: expiredIds.length,
+      scannedPrefixes: allR2Ids.length,
+      deletedObjects,
+      timestamp: new Date().toISOString(),
+    });
+  } catch (error) {
+    return apiErrorFromRequest(
+      request,
+      "admin.transfers.cleanup",
+      "Failed to run transfer cleanup",
+      error,
+    );
+  }
+}
+
+async function findMissingTransferIds(
+  redis: NonNullable<ReturnType<typeof getRedis>>,
+  ids: string[],
+): Promise<string[]> {
+  if (ids.length === 0) return [];
+  const pipeline = redis.pipeline();
+  for (const id of ids) {
+    pipeline.exists(`transfer:${id}`);
+  }
+  const results = await pipeline.exec();
+  return ids.filter((_, index) => results[index] === 0);
+}
+
+export const Route = createFileRoute("/api/admin/transfers/cleanup")({
+  server: {
+    handlers: {
+      POST: ({ request }) => handlePOST(request),
+    },
+  },
+});

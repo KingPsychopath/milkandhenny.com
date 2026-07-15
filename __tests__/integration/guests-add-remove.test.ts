@@ -7,16 +7,11 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
  * and remove for main guest, plus-one, and non-existent id.
  */
 
-vi.mock("@/lib/platform/redis", () => ({
+vi.mock("@/lib/platform/redis.server", () => ({
   getRedis: () => null,
 }));
 
-import {
-  getGuests,
-  setGuests,
-  addGuest,
-  removeGuest,
-} from "@/features/guests/store";
+import { getGuests, setGuests, addGuest, removeGuest } from "@/features/guests/store";
 
 describe("guests add/remove (in-memory fallback)", () => {
   beforeEach(async () => {

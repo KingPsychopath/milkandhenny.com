@@ -1,0 +1,107 @@
+import { Link, createFileRoute, notFound } from "@tanstack/react-router";
+import { createServerFn } from "@tanstack/react-start";
+import { getAlbumBySlug } from "@/features/media/albums.server";
+import { getOgUrl } from "@/features/media/storage";
+import { SITE_NAME, SITE_BRAND } from "@/lib/shared/config";
+import { AlbumGallery } from "@/features/media/components/AlbumGallery";
+import { Breadcrumbs } from "@/components/Breadcrumbs";
+
+const getAlbum = createServerFn({ method: "GET" })
+  .validator((data: { album: string }) => data)
+  .handler(({ data }) => {
+    const album = getAlbumBySlug(data.album);
+    if (!album) throw notFound();
+    return album;
+  });
+
+export const Route = createFileRoute("/pics/$album/")({
+  component: AlbumPage,
+  loader: ({ params }) => getAlbum({ data: params }),
+  head: ({ loaderData: album }) => {
+    if (!album) return {};
+    const description = album.description ?? `${album.photos.length} photos from ${album.title}`;
+    return {
+      meta: [
+        { title: `${album.title} — Pics — ${SITE_NAME}` },
+        { name: "description", content: description },
+        { property: "og:title", content: album.title },
+        { property: "og:description", content: description },
+        { property: "og:image", content: getOgUrl(album.slug, album.cover) },
+      ],
+    };
+  },
+});
+
+function formatDate(dateStr: string) {
+  const d = new Date(dateStr + "T00:00:00");
+  return d.toLocaleDateString("en-GB", {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  });
+}
+
+function AlbumPage() {
+  const album = Route.useLoaderData();
+
+  return (
+    <div className="min-h-screen bg-background">
+      <header role="banner" className="max-w-4xl mx-auto px-6 pt-10 pb-6">
+        <div className="flex items-center justify-between font-mono text-sm">
+          <Link
+            to="/pics"
+            className="theme-muted hover:text-foreground transition-colors tracking-tight"
+          >
+            ← albums
+          </Link>
+          <Link
+            to="/"
+            className="font-bold text-foreground tracking-tighter hover:opacity-70 transition-opacity"
+          >
+            {SITE_BRAND}
+          </Link>
+        </div>
+      </header>
+
+      <div className="max-w-4xl mx-auto px-6">
+        <div className="border-t theme-border" />
+      </div>
+
+      <main id="main">
+        <section className="max-w-4xl mx-auto px-6 pt-12 pb-8" aria-label="Album info">
+          <Breadcrumbs
+            items={[
+              { label: "home", href: "/" },
+              { label: "pics", href: "/pics" },
+              { label: album.title },
+            ]}
+          />
+          <div className="flex items-center gap-3 font-mono text-xs theme-muted tracking-wide mt-2">
+            <time>{formatDate(album.date)}</time>
+          </div>
+          <h1 className="font-serif text-3xl sm:text-4xl text-foreground leading-tight tracking-tight mt-3">
+            {album.title}
+          </h1>
+          {album.description && (
+            <p className="mt-3 theme-subtle text-lg leading-relaxed">{album.description}</p>
+          )}
+        </section>
+
+        <section className="max-w-4xl mx-auto px-6 pb-24" aria-label="Gallery">
+          <AlbumGallery albumSlug={album.slug} photos={album.photos} />
+        </section>
+      </main>
+
+      <footer role="contentinfo" className="border-t theme-border">
+        <div className="max-w-4xl mx-auto px-6 py-8 flex items-center justify-between font-mono text-micro theme-muted tracking-wide">
+          <Link to="/pics" className="hover:text-foreground transition-colors">
+            ← all albums
+          </Link>
+          <span>
+            © {new Date().getFullYear()} {SITE_BRAND}
+          </span>
+        </div>
+      </footer>
+    </div>
+  );
+}

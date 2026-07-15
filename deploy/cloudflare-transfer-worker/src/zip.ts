@@ -75,7 +75,11 @@ function writeUint64(view: DataView, offset: number, value: number) {
   writeUint32(view, offset + 4, high);
 }
 
-function buildLocalFileHeader(filenameBytes: Uint8Array, dosDate: number, dosTime: number): Uint8Array {
+function buildLocalFileHeader(
+  filenameBytes: Uint8Array,
+  dosDate: number,
+  dosTime: number,
+): Uint8Array {
   const extraField = new Uint8Array(20);
   const extraFieldView = new DataView(extraField.buffer);
   writeUint16(extraFieldView, 0, ZIP64_EXTRA_FIELD_ID);
@@ -144,7 +148,11 @@ function buildCentralDirectoryEntry(record: ZipEntryRecord): Uint8Array {
   return entry;
 }
 
-function buildEndOfCentralDirectory(entryCount: number, directorySize: number, directoryOffset: number): Uint8Array {
+function buildEndOfCentralDirectory(
+  entryCount: number,
+  directorySize: number,
+  directoryOffset: number,
+): Uint8Array {
   const zip64Record = new Uint8Array(56);
   const zip64RecordView = new DataView(zip64Record.buffer);
   writeUint32(zip64RecordView, 0, 0x06064b50);
@@ -225,8 +233,9 @@ function isSafeDownloadFilename(filename: string): boolean {
 }
 
 function encodeContentDispositionFilename(filename: string): string {
-  return encodeURIComponent(filename).replace(/['()*]/g, (char) =>
-    `%${char.charCodeAt(0).toString(16).toUpperCase()}`
+  return encodeURIComponent(filename).replace(
+    /['()*]/g,
+    (char) => `%${char.charCodeAt(0).toString(16).toUpperCase()}`,
   );
 }
 
@@ -272,7 +281,7 @@ async function streamZipFromPublicOrigin(params: {
   }
   if (
     params.files.some(
-      (file) => !isAllowedDownloadStorageKey(file.key) || !isSafeDownloadFilename(file.filename)
+      (file) => !isAllowedDownloadStorageKey(file.key) || !isSafeDownloadFilename(file.filename),
     )
   ) {
     return new Response("Invalid file selection", { status: 400 });
