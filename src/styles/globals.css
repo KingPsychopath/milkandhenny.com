@@ -33,6 +33,11 @@
   --prose-pre-fg: oklch(0.918 0.006 70.7);
   --selection-bg: oklch(0.965 0.058 95.28);
   --selection-fg: oklch(0.45 0.134 47.6);
+  --things-night: oklch(0.17 0.015 56.42);
+  --things-amber: oklch(0.82 0.16 79);
+  --things-green: oklch(0.72 0.17 151);
+  --things-stone: oklch(0.78 0.025 70.7);
+  --things-cream: oklch(0.96 0.02 86.42);
 }
 
 [data-theme="dark"] {
@@ -211,6 +216,34 @@
 }
 
 @layer components {
+  .things-game {
+    min-height: 100svh;
+    display: flex;
+    flex-direction: column;
+    overflow-x: hidden;
+    transition: background-color 280ms cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  .things-game--night {
+    background: var(--things-night);
+  }
+
+  .things-game--amber {
+    background: var(--things-amber);
+  }
+
+  .things-game--green {
+    background: var(--things-green);
+  }
+
+  .things-game--stone {
+    background: var(--things-stone);
+  }
+
+  .things-game--cream {
+    background: var(--things-cream);
+  }
+
   /* ─── Blog prose ─── */
   .prose-blog {
     font-family: var(--font-serif), Georgia, "Times New Roman", serif;
