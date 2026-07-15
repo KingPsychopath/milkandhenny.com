@@ -16,6 +16,7 @@ declare const self: ServiceWorkerGlobalScope;
 
 const BUILD_ID = __BUILD_ID__;
 const CACHE_PREFIX = "mah-thing-offline";
+const OPTIONAL_AI_CACHE = `mah-optional-ai:${safeBuildId()}`;
 const preparations = new Map<OfflineThingSlug, Promise<boolean>>();
 
 clientsClaim();
@@ -56,6 +57,10 @@ function isCacheableAssetPath(pathname: string) {
     pathname.startsWith("/icon") ||
     pathname.startsWith("/manifest")
   );
+}
+
+function isOptionalAiAsset(pathname: string) {
+  return pathname.startsWith("/assets/whisper.worker-") || pathname.startsWith("/assets/ort-wasm-");
 }
 
 function normaliseResourceUrl(value: string, slug: OfflineThingSlug) {
@@ -305,6 +310,18 @@ self.addEventListener("message", (event) => {
     })(),
   );
 });
+
+registerRoute(
+  ({ request, url }) => request.method === "GET" && isOptionalAiAsset(url.pathname),
+  async ({ request }) => {
+    const cache = await caches.open(OPTIONAL_AI_CACHE);
+    const cached = await cache.match(request);
+    if (cached) return cached;
+    const response = await fetch(request);
+    if (response.ok) await cache.put(request, response.clone());
+    return response;
+  },
+);
 
 registerRoute(
   ({ request, url }) =>

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { stablePitch, TiltGestureDetector } from "../../features/things/heads-up/tiltDetection";
+import { stablePitch, TiltGestureDetector } from "../../features/things/shared/tiltDetection";
 
 describe("TiltGestureDetector", () => {
   it("ignores a brief accidental threshold crossing", () => {

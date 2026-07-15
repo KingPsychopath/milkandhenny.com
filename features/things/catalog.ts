@@ -1,17 +1,27 @@
 import { THING_OFFLINE } from "./offline";
 
 export interface Thing {
-  slug: "icebreaker" | "heads-up";
+  slug: "icebreaker" | "heads-up" | "spelling-bee";
   name: string;
   description: string;
   eyebrow: string;
-  href: "/things/icebreaker" | "/things/heads-up";
+  href: "/things/icebreaker" | "/things/heads-up" | "/things/spelling-bee";
   status: "ready";
   symbol: string;
   offline: (typeof THING_OFFLINE)[keyof typeof THING_OFFLINE] | null;
 }
 
 export const THINGS = [
+  {
+    slug: "spelling-bee",
+    name: "spelling bee",
+    description: "Hear the word, spell it aloud, and let a nearby or remote judge decide.",
+    eyebrow: "word game · 1+ people",
+    href: "/things/spelling-bee",
+    status: "ready",
+    symbol: "æ",
+    offline: THING_OFFLINE["spelling-bee"],
+  },
   {
     slug: "heads-up",
     name: "forehead",

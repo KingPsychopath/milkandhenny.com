@@ -24,6 +24,13 @@ export const THING_OFFLINE = {
     storageVersion: 1,
     requiredAssets: [...SHARED_OFFLINE_ASSETS, "/manifest-forehead.webmanifest"],
   },
+  "spelling-bee": {
+    entryPath: "/things/spelling-bee",
+    manifestPath: "/manifest.json",
+    catalogueVersion: 1,
+    storageVersion: 1,
+    requiredAssets: [...SHARED_OFFLINE_ASSETS, "/manifest.json"],
+  },
   icebreaker: {
     entryPath: "/things/icebreaker",
     manifestPath: "/manifest.json",

@@ -1,4 +1,5 @@
 export interface RoundResult {
+  id: string;
   card: string;
   decision: "correct" | "pass";
 }
@@ -49,9 +50,9 @@ export function RoundResults({ results, score, onBack, onPlayAgain }: RoundResul
             the cards
           </h2>
           <ul className="mt-3 border-t border-black/15">
-            {results.map((result, index) => (
+            {results.map((result) => (
               <li
-                key={`${result.card}-${index}`}
+                key={result.id}
                 className="flex min-w-0 items-center justify-between gap-4 border-b border-black/15 py-3"
               >
                 <span className="min-w-0 break-words font-serif text-lg [overflow-wrap:anywhere]">

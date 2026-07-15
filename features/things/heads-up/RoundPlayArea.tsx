@@ -1,12 +1,13 @@
 import { TextMorph } from "torph/react";
-import type { MotionPauseReason } from "./useTiltControl";
+import type { MotionPauseReason } from "../shared/useTiltControl";
 
 type Decision = "correct" | "pass";
 
 interface RoundPlayAreaProps {
   card: string;
   feedback: Decision | null;
-  pauseReason: MotionPauseReason | "interrupted" | null;
+  controlsLocked?: boolean;
+  pauseReason: MotionPauseReason | "interrupted" | "remote" | null;
   onDecision: (decision: Decision) => void;
   onResume: () => void;
 }
@@ -22,6 +23,7 @@ function cardSizeClass(card: string) {
 
 export function RoundPlayArea({
   card,
+  controlsLocked = false,
   feedback,
   pauseReason,
   onDecision,
@@ -41,20 +43,24 @@ export function RoundPlayArea({
               round paused · timer stopped
             </p>
             <h1 className="mt-4 font-serif text-5xl font-semibold leading-none">
-              {pauseReason === "wrong-orientation"
+              {pauseReason === "remote"
+                ? "Judge paused the round."
+                : pauseReason === "wrong-orientation"
                 ? "Turn the phone back."
                 : pauseReason === "settling"
                   ? "Hold steady…"
                   : "Welcome back."}
             </h1>
             <p className="mt-5 font-serif text-lg text-black/65">
-              {pauseReason === "wrong-orientation"
+              {pauseReason === "remote"
+                ? "Resume here or from the judge’s phone when everyone is ready."
+                : pauseReason === "wrong-orientation"
                 ? "This round is locked to the position you started in."
                 : pauseReason === "settling"
                   ? "Recalibrating so your next movement is deliberate."
                   : "The round stayed paused while the app was away."}
             </p>
-            {pauseReason === "interrupted" ? (
+            {pauseReason === "interrupted" || pauseReason === "remote" ? (
               <button
                 type="button"
                 onClick={onResume}
@@ -81,7 +87,7 @@ export function RoundPlayArea({
               {card}
             </TextMorph>
             <p className="mt-8 font-mono text-micro uppercase tracking-[0.18em] text-black/50">
-              down = correct · up = pass
+              {controlsLocked ? "judge controls this round" : "down = correct · up = pass"}
             </p>
           </>
         )}
@@ -91,7 +97,7 @@ export function RoundPlayArea({
         <button
           type="button"
           onClick={() => onDecision("pass")}
-          disabled={paused}
+          disabled={paused || controlsLocked}
           className="min-h-14 rounded-full border border-black/20 bg-black/5 font-mono text-sm font-semibold text-black disabled:opacity-35"
         >
           ↑ pass
@@ -99,7 +105,7 @@ export function RoundPlayArea({
         <button
           type="button"
           onClick={() => onDecision("correct")}
-          disabled={paused}
+          disabled={paused || controlsLocked}
           className="min-h-14 rounded-full bg-black font-mono text-sm font-semibold text-white disabled:opacity-35"
         >
           correct ↓

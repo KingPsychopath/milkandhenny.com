@@ -1,6 +1,7 @@
 import { Link } from "@tanstack/react-router";
+import type { ReactNode } from "react";
 import type { GameDeck } from "./decks";
-import { OrientationControls } from "./OrientationControls";
+import { OrientationControls } from "../shared/OrientationControls";
 
 interface HeadsUpSetupProps {
   decks: GameDeck[];
@@ -15,6 +16,7 @@ interface HeadsUpSetupProps {
   soundEnabled: boolean;
   customDeckIds: Set<string>;
   shareMessage: string | null;
+  remoteControls: ReactNode;
   onCreateDeck: () => void;
   onEditDeck: (id: string) => void;
   onFullscreen: () => void;
@@ -38,6 +40,7 @@ export function HeadsUpSetup({
   soundEnabled,
   customDeckIds,
   shareMessage,
+  remoteControls,
   onCreateDeck,
   onEditDeck,
   onFullscreen,
@@ -147,6 +150,8 @@ export function HeadsUpSetup({
             {shareMessage}
           </p>
         </section>
+
+        <div className="mx-auto max-w-lg">{remoteControls}</div>
 
         <OrientationControls
           fullscreenActive={fullscreenActive}

@@ -26,6 +26,7 @@ import { Route as PicsIndexRouteImport } from './routes/pics/index'
 import { Route as AdminIndexRouteImport } from './routes/admin/index'
 import { Route as WordsSlugRouteImport } from './routes/words/$slug'
 import { Route as VaultSlugRouteImport } from './routes/vault/$slug'
+import { Route as ThingsSpellingBeeRouteImport } from './routes/things.spelling-bee'
 import { Route as ThingsIcebreakerRouteImport } from './routes/things.icebreaker'
 import { Route as ThingsHeadsUpRouteImport } from './routes/things.heads-up'
 import { Route as TIdRouteImport } from './routes/t/$id'
@@ -36,6 +37,7 @@ import { Route as ApiGuestsRouteRouteImport } from './routes/api/guests/route'
 import { Route as ApiDebugRouteRouteImport } from './routes/api/debug/route'
 import { Route as ApiBestDressedRouteRouteImport } from './routes/api/best-dressed/route'
 import { Route as PicsAlbumIndexRouteImport } from './routes/pics/$album/index'
+import { Route as ThingsJudgeRoomIdRouteImport } from './routes/things.judge.$roomId'
 import { Route as PicsAlbumPhotoRouteImport } from './routes/pics/$album/$photo'
 import { Route as ApiWordsSlugRouteRouteImport } from './routes/api/words/$slug/route'
 import { Route as ApiUploadVerifyPinRouteRouteImport } from './routes/api/upload/verify-pin/route'
@@ -172,6 +174,11 @@ const VaultSlugRoute = VaultSlugRouteImport.update({
   path: '/vault/$slug',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ThingsSpellingBeeRoute = ThingsSpellingBeeRouteImport.update({
+  id: '/spelling-bee',
+  path: '/spelling-bee',
+  getParentRoute: () => ThingsRoute,
+} as any)
 const ThingsIcebreakerRoute = ThingsIcebreakerRouteImport.update({
   id: '/icebreaker',
   path: '/icebreaker',
@@ -221,6 +228,11 @@ const PicsAlbumIndexRoute = PicsAlbumIndexRouteImport.update({
   id: '/pics/$album/',
   path: '/pics/$album/',
   getParentRoute: () => rootRouteImport,
+} as any)
+const ThingsJudgeRoomIdRoute = ThingsJudgeRoomIdRouteImport.update({
+  id: '/judge/$roomId',
+  path: '/judge/$roomId',
+  getParentRoute: () => ThingsRoute,
 } as any)
 const PicsAlbumPhotoRoute = PicsAlbumPhotoRouteImport.update({
   id: '/pics/$album/$photo',
@@ -531,6 +543,7 @@ export interface FileRoutesByFullPath {
   '/t/$id': typeof TIdRoute
   '/things/heads-up': typeof ThingsHeadsUpRoute
   '/things/icebreaker': typeof ThingsIcebreakerRoute
+  '/things/spelling-bee': typeof ThingsSpellingBeeRoute
   '/vault/$slug': typeof VaultSlugRoute
   '/words/$slug': typeof WordsSlugRoute
   '/admin/': typeof AdminIndexRoute
@@ -554,6 +567,7 @@ export interface FileRoutesByFullPath {
   '/api/upload/verify-pin': typeof ApiUploadVerifyPinRouteRoute
   '/api/words/$slug': typeof ApiWordsSlugRouteRouteWithChildren
   '/pics/$album/$photo': typeof PicsAlbumPhotoRoute
+  '/things/judge/$roomId': typeof ThingsJudgeRoomIdRoute
   '/pics/$album/': typeof PicsAlbumIndexRoute
   '/api/admin/albums/$slug': typeof ApiAdminAlbumsSlugRouteRouteWithChildren
   '/api/admin/guests/add': typeof ApiAdminGuestsAddRouteRoute
@@ -610,6 +624,7 @@ export interface FileRoutesByTo {
   '/t/$id': typeof TIdRoute
   '/things/heads-up': typeof ThingsHeadsUpRoute
   '/things/icebreaker': typeof ThingsIcebreakerRoute
+  '/things/spelling-bee': typeof ThingsSpellingBeeRoute
   '/vault/$slug': typeof VaultSlugRoute
   '/words/$slug': typeof WordsSlugRoute
   '/admin': typeof AdminIndexRoute
@@ -633,6 +648,7 @@ export interface FileRoutesByTo {
   '/api/upload/verify-pin': typeof ApiUploadVerifyPinRouteRoute
   '/api/words/$slug': typeof ApiWordsSlugRouteRouteWithChildren
   '/pics/$album/$photo': typeof PicsAlbumPhotoRoute
+  '/things/judge/$roomId': typeof ThingsJudgeRoomIdRoute
   '/pics/$album': typeof PicsAlbumIndexRoute
   '/api/admin/albums/$slug': typeof ApiAdminAlbumsSlugRouteRouteWithChildren
   '/api/admin/guests/add': typeof ApiAdminGuestsAddRouteRoute
@@ -690,6 +706,7 @@ export interface FileRoutesById {
   '/t/$id': typeof TIdRoute
   '/things/heads-up': typeof ThingsHeadsUpRoute
   '/things/icebreaker': typeof ThingsIcebreakerRoute
+  '/things/spelling-bee': typeof ThingsSpellingBeeRoute
   '/vault/$slug': typeof VaultSlugRoute
   '/words/$slug': typeof WordsSlugRoute
   '/admin/': typeof AdminIndexRoute
@@ -713,6 +730,7 @@ export interface FileRoutesById {
   '/api/upload/verify-pin': typeof ApiUploadVerifyPinRouteRoute
   '/api/words/$slug': typeof ApiWordsSlugRouteRouteWithChildren
   '/pics/$album/$photo': typeof PicsAlbumPhotoRoute
+  '/things/judge/$roomId': typeof ThingsJudgeRoomIdRoute
   '/pics/$album/': typeof PicsAlbumIndexRoute
   '/api/admin/albums/$slug': typeof ApiAdminAlbumsSlugRouteRouteWithChildren
   '/api/admin/guests/add': typeof ApiAdminGuestsAddRouteRoute
@@ -771,6 +789,7 @@ export interface FileRouteTypes {
     | '/t/$id'
     | '/things/heads-up'
     | '/things/icebreaker'
+    | '/things/spelling-bee'
     | '/vault/$slug'
     | '/words/$slug'
     | '/admin/'
@@ -794,6 +813,7 @@ export interface FileRouteTypes {
     | '/api/upload/verify-pin'
     | '/api/words/$slug'
     | '/pics/$album/$photo'
+    | '/things/judge/$roomId'
     | '/pics/$album/'
     | '/api/admin/albums/$slug'
     | '/api/admin/guests/add'
@@ -850,6 +870,7 @@ export interface FileRouteTypes {
     | '/t/$id'
     | '/things/heads-up'
     | '/things/icebreaker'
+    | '/things/spelling-bee'
     | '/vault/$slug'
     | '/words/$slug'
     | '/admin'
@@ -873,6 +894,7 @@ export interface FileRouteTypes {
     | '/api/upload/verify-pin'
     | '/api/words/$slug'
     | '/pics/$album/$photo'
+    | '/things/judge/$roomId'
     | '/pics/$album'
     | '/api/admin/albums/$slug'
     | '/api/admin/guests/add'
@@ -929,6 +951,7 @@ export interface FileRouteTypes {
     | '/t/$id'
     | '/things/heads-up'
     | '/things/icebreaker'
+    | '/things/spelling-bee'
     | '/vault/$slug'
     | '/words/$slug'
     | '/admin/'
@@ -952,6 +975,7 @@ export interface FileRouteTypes {
     | '/api/upload/verify-pin'
     | '/api/words/$slug'
     | '/pics/$album/$photo'
+    | '/things/judge/$roomId'
     | '/pics/$album/'
     | '/api/admin/albums/$slug'
     | '/api/admin/guests/add'
@@ -1165,6 +1189,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof VaultSlugRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/things/spelling-bee': {
+      id: '/things/spelling-bee'
+      path: '/spelling-bee'
+      fullPath: '/things/spelling-bee'
+      preLoaderRoute: typeof ThingsSpellingBeeRouteImport
+      parentRoute: typeof ThingsRoute
+    }
     '/things/icebreaker': {
       id: '/things/icebreaker'
       path: '/icebreaker'
@@ -1234,6 +1265,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/pics/$album/'
       preLoaderRoute: typeof PicsAlbumIndexRouteImport
       parentRoute: typeof rootRouteImport
+    }
+    '/things/judge/$roomId': {
+      id: '/things/judge/$roomId'
+      path: '/judge/$roomId'
+      fullPath: '/things/judge/$roomId'
+      preLoaderRoute: typeof ThingsJudgeRoomIdRouteImport
+      parentRoute: typeof ThingsRoute
     }
     '/pics/$album/$photo': {
       id: '/pics/$album/$photo'
@@ -1591,11 +1629,15 @@ declare module '@tanstack/react-router' {
 interface ThingsRouteChildren {
   ThingsHeadsUpRoute: typeof ThingsHeadsUpRoute
   ThingsIcebreakerRoute: typeof ThingsIcebreakerRoute
+  ThingsSpellingBeeRoute: typeof ThingsSpellingBeeRoute
+  ThingsJudgeRoomIdRoute: typeof ThingsJudgeRoomIdRoute
 }
 
 const ThingsRouteChildren: ThingsRouteChildren = {
   ThingsHeadsUpRoute: ThingsHeadsUpRoute,
   ThingsIcebreakerRoute: ThingsIcebreakerRoute,
+  ThingsSpellingBeeRoute: ThingsSpellingBeeRoute,
+  ThingsJudgeRoomIdRoute: ThingsJudgeRoomIdRoute,
 }
 
 const ThingsRouteWithChildren =

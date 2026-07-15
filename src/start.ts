@@ -31,7 +31,7 @@ const SECURITY_HEADERS = {
   "X-Frame-Options": "DENY",
   "X-Permitted-Cross-Domain-Policies": "none",
   "Permissions-Policy":
-    "accelerometer=(self), camera=(), geolocation=(), gyroscope=(self), microphone=(), payment=(), usb=()",
+    "accelerometer=(self), camera=(), geolocation=(), gyroscope=(self), microphone=(self), on-device-speech-recognition=(self), payment=(), usb=()",
 } as const;
 
 function requestOriginAllowed(origin: string, request: Request) {
