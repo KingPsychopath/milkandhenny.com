@@ -1,4 +1,5 @@
 /// <reference lib="webworker" />
+/* oxlint-disable unicorn/require-post-message-target-origin -- WorkerGlobalScope.postMessage has no targetOrigin parameter. */
 
 import { env, pipeline } from "@huggingface/transformers";
 
@@ -18,10 +19,13 @@ env.useBrowserCache = true;
 env.allowLocalModels = false;
 env.allowRemoteModels = true;
 
-self.onmessage = async (event: MessageEvent<{ type: "load" } | { type: "transcribe"; audio: Float32Array }>) => {
+self.onmessage = async (
+  event: MessageEvent<{ type: "load" } | { type: "transcribe"; audio: Float32Array }>,
+) => {
   try {
     if (event.data.type === "load") {
-      const progressCallback = (progress: ProgressEvent) => self.postMessage({ type: "progress", progress });
+      const progressCallback = (progress: ProgressEvent) =>
+        self.postMessage({ type: "progress", progress });
       let device: "webgpu" | "wasm" = "gpu" in navigator ? "webgpu" : "wasm";
       let created: unknown;
       try {
@@ -45,9 +49,15 @@ self.onmessage = async (event: MessageEvent<{ type: "load" } | { type: "transcri
     }
     if (!transcriber) throw new Error("Speech model is not ready");
     const output = await transcriber(event.data.audio, { language: "english", task: "transcribe" });
-    const text = output && typeof output === "object" && "text" in output && typeof output.text === "string" ? output.text : "";
+    const text =
+      output && typeof output === "object" && "text" in output && typeof output.text === "string"
+        ? output.text
+        : "";
     self.postMessage({ type: "transcript", text });
   } catch (error) {
-    self.postMessage({ type: "error", error: error instanceof Error ? error.message : "Local speech failed" });
+    self.postMessage({
+      type: "error",
+      error: error instanceof Error ? error.message : "Local speech failed",
+    });
   }
 };

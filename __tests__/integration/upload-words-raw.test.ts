@@ -12,6 +12,9 @@ describe("words raw upload handling", () => {
   beforeEach(() => {
     vi.resetModules();
     vi.clearAllMocks();
+    vi.doMock("@/features/words/media-storage.server", () => ({
+      getWordMediaStorageScope: vi.fn().mockResolvedValue("public"),
+    }));
   });
 
   it("processes non-raw image uploads inline", async () => {
@@ -71,13 +74,18 @@ describe("words raw upload handling", () => {
       ],
       queuedCount: 0,
     });
-    expect(downloadBuffer).toHaveBeenCalledWith("words/media/launch-notes/incoming/tmp-hero.jpg");
+    expect(downloadBuffer).toHaveBeenCalledWith("words/media/launch-notes/incoming/tmp-hero.jpg", {
+      scope: "public",
+    });
     expect(uploadBuffer).toHaveBeenCalledWith(
       "words/media/launch-notes/hero.webp",
       Buffer.from("webp"),
       "image/webp",
+      { scope: "public" },
     );
-    expect(deleteObject).toHaveBeenCalledWith("words/media/launch-notes/incoming/tmp-hero.jpg");
+    expect(deleteObject).toHaveBeenCalledWith("words/media/launch-notes/incoming/tmp-hero.jpg", {
+      scope: "public",
+    });
   });
 
   it("returns webp output when raw preview extraction succeeds", async () => {
@@ -140,8 +148,11 @@ describe("words raw upload handling", () => {
       "words/media/launch-notes/capture.webp",
       Buffer.from("webp"),
       "image/webp",
+      { scope: "public" },
     );
-    expect(deleteObject).toHaveBeenCalledWith("words/media/launch-notes/incoming/tmp-capture.dng");
+    expect(deleteObject).toHaveBeenCalledWith("words/media/launch-notes/incoming/tmp-capture.dng", {
+      scope: "public",
+    });
   });
 
   it("stores the original raw and returns link markdown when no preview is usable", async () => {
@@ -201,8 +212,11 @@ describe("words raw upload handling", () => {
       "words/media/launch-notes/capture.dng",
       Buffer.from("raw"),
       "image/x-adobe-dng",
+      { scope: "public" },
     );
-    expect(deleteObject).toHaveBeenCalledWith("words/media/launch-notes/incoming/tmp-capture.dng");
+    expect(deleteObject).toHaveBeenCalledWith("words/media/launch-notes/incoming/tmp-capture.dng", {
+      scope: "public",
+    });
   });
 
   it("treats raw uploads as colliding with existing webp names during presign", async () => {

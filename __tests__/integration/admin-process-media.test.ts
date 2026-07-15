@@ -58,7 +58,7 @@ describe("admin transfer media route", () => {
       id: "transfer-1",
       title: "transfer",
       createdAt: "2026-03-08T09:00:00.000Z",
-      expiresAt: "2026-03-10T11:00:00.000Z",
+      expiresAt: "2099-03-10T11:00:00.000Z",
       deleteToken: "token",
       files: [
         {
@@ -97,7 +97,7 @@ describe("admin transfer media route", () => {
         id: "transfer-1",
         title: "transfer",
         createdAt: "2026-03-08T09:00:00.000Z",
-        expiresAt: "2026-03-10T11:00:00.000Z",
+        expiresAt: "2099-03-10T11:00:00.000Z",
         deleteToken: "token",
         files: [
           {
@@ -171,7 +171,7 @@ describe("admin transfer media route", () => {
         id: "transfer-1",
         title: "transfer",
         createdAt: "2026-03-08T09:00:00.000Z",
-        expiresAt: "2026-03-10T11:00:00.000Z",
+        expiresAt: "2099-03-10T11:00:00.000Z",
         deleteToken: "token",
         files: [target],
       }),
@@ -181,7 +181,7 @@ describe("admin transfer media route", () => {
         id: "transfer-1",
         title: "transfer",
         createdAt: "2026-03-08T09:00:00.000Z",
-        expiresAt: "2026-03-10T11:00:00.000Z",
+        expiresAt: "2099-03-10T11:00:00.000Z",
         deleteToken: "token",
         files: [target],
       }),
