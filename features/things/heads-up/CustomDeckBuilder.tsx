@@ -10,7 +10,7 @@ interface CustomDeckBuilderProps {
 
 export function CustomDeckBuilder({ deck, onCancel, onDelete, onSave }: CustomDeckBuilderProps) {
   const [name, setName] = useState(deck?.name ?? "");
-  const [cardText, setCardText] = useState(deck?.cards.join("\n") ?? "");
+  const [cardText, setCardText] = useState(() => deck?.cards.join("\n") ?? "");
   const [message, setMessage] = useState<string | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
   const cards = useMemo(() => parseDeckText(cardText), [cardText]);

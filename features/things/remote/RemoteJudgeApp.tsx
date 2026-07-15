@@ -72,7 +72,8 @@ export function RemoteJudgeApp({ roomId }: { roomId: string }) {
   const [endConfirmationOpen, setEndConfirmationOpen] = useState(false);
   const [endingRoom, setEndingRoom] = useState(false);
   const pollNowRef = useRef<(() => void) | null>(null);
-  const judgeEpoch = useRef(crypto.randomUUID());
+  const judgeEpoch = useRef<string | null>(null);
+  if (judgeEpoch.current === null) judgeEpoch.current = crypto.randomUUID();
   const takeoverRequested = useRef(false);
   const flushingCommands = useRef(false);
   const roomExpiresAt = useRef(Date.now() + 4 * 60 * 60 * 1_000);
@@ -374,7 +375,9 @@ export function RemoteJudgeApp({ roomId }: { roomId: string }) {
       </main>
 
       {endConfirmationOpen ? (
+        /* react-doctor-disable-next-line no-static-element-interactions -- the backdrop is mouse-only; the dialog has global Escape and trapped Tab handling */
         <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/65 p-4 backdrop-blur-sm sm:items-center" onMouseDown={(event) => { if (event.target === event.currentTarget) dismissEndConfirmation(); }}>
+          {/* react-doctor-disable-next-line prefer-html-dialog -- the effect above traps focus, handles Escape, and restores trigger focus */}
           <section ref={endConfirmationRef} role="dialog" aria-modal="true" aria-labelledby="end-room-title" aria-describedby="end-room-description" className="w-full max-w-md rounded-[2rem] border border-white/12 bg-[var(--things-night)] p-6 text-center shadow-2xl">
             <p className="font-mono text-micro uppercase tracking-[0.18em] text-white/45">{tokens.playerToken ? "end game" : "leave judging"}</p>
             <h2 id="end-room-title" className="mt-3 font-serif text-4xl font-semibold">{tokens.playerToken ? "End this game?" : "Leave judging?"}</h2>

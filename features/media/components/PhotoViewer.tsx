@@ -313,7 +313,7 @@ export function PhotoViewer({
         </div>
         <div className="flex items-center gap-4">
           {actions}
-          <button
+          <button type="button"
             onClick={handleDownload}
             disabled={saving}
             className="hover:text-foreground transition-colors disabled:opacity-50"

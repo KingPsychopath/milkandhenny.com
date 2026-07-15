@@ -167,7 +167,7 @@ export function LampToggle() {
   if (!mounted || hidden) return null;
 
   return (
-    <button
+    <button type="button"
       onClick={toggle}
       aria-label={dark ? "Switch to light mode" : "Switch to dark mode"}
       className={`lamp-toggle group ${isPhotoPage ? "lamp-toggle--photo" : ""}`}

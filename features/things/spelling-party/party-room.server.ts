@@ -76,9 +76,13 @@ async function migrateLegacyJoinReceipts(room: PartyRoomState, keys: PartyRedisK
   if (!room.joinReceipts) return false;
   const expiresAt = Math.min(room.expiresAt, Date.now() + JOIN_RECEIPT_TTL_SECONDS * 1_000);
   const redis = getRedis();
+  const knownReceiptIds = new Set(room.joinReceiptIds);
   for (const [joinId, receipt] of Object.entries(room.joinReceipts)) {
     const next = { ...receipt, expiresAt };
-    if (!room.joinReceiptIds.includes(joinId)) room.joinReceiptIds.push(joinId);
+    if (!knownReceiptIds.has(joinId)) {
+      knownReceiptIds.add(joinId);
+      room.joinReceiptIds.push(joinId);
+    }
     if (redis) await redis.set(keys.joinReceipt(joinId), next, { ex: remainingTtlSeconds(expiresAt) });
     else memoryJoinReceipts.set(memoryReceiptKey(room.roomId, joinId), next);
   }

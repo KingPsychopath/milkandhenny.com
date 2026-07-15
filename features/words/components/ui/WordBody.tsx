@@ -212,8 +212,10 @@ function withAlbumEmbeds(
   };
 }
 
+const EMPTY_ALBUMS: Record<string, EmbeddedAlbum> = {};
+
 /** Renders words markdown content as styled prose. Hashtags (#word) are styled via rehype-hashtags. */
-export function WordBody({ content, wordSlug, albums = {}, privateMedia = false }: WordBodyProps) {
+export function WordBody({ content, wordSlug, albums = EMPTY_ALBUMS, privateMedia = false }: WordBodyProps) {
   const hasAlbums = Object.keys(albums).length > 0;
 
   const components = React.useMemo(

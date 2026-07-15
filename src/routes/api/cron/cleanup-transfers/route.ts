@@ -87,8 +87,10 @@ async function handleGET(request: Request) {
       await redis.srem("transfer:index", id);
     }
 
+    const indexedIdSet = new Set(indexedIds);
+    const expiredIdSet = new Set(expiredIds);
     const orphanedR2Prefixes = allR2Ids.filter(
-      (id) => !indexedIds.includes(id) || expiredIds.includes(id),
+      (id) => !indexedIdSet.has(id) || expiredIdSet.has(id),
     ).length;
 
     const durationMs = Date.now() - startedAtMs;

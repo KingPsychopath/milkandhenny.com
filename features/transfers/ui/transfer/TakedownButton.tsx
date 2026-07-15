@@ -63,13 +63,13 @@ export function TakedownButton({ transferId, deleteToken }: TakedownButtonProps)
     return (
       <div className="flex items-center gap-3">
         <span className="font-mono text-micro text-red-500">permanently delete this transfer?</span>
-        <button
+        <button type="button"
           onClick={handleTakedown}
           className="font-mono text-micro text-red-500 hover:text-red-400 transition-colors tracking-wide"
         >
           [ yes, take down ]
         </button>
-        <button
+        <button type="button"
           onClick={() => setState("idle")}
           className="font-mono text-micro theme-muted hover:text-foreground transition-colors tracking-wide"
         >
@@ -83,7 +83,7 @@ export function TakedownButton({ transferId, deleteToken }: TakedownButtonProps)
     return (
       <div className="flex items-center gap-3">
         <span className="font-mono text-micro text-red-500">error: {errorMsg}</span>
-        <button
+        <button type="button"
           onClick={() => setState("idle")}
           className="font-mono text-micro theme-muted hover:text-foreground transition-colors tracking-wide"
         >
@@ -94,7 +94,7 @@ export function TakedownButton({ transferId, deleteToken }: TakedownButtonProps)
   }
 
   return (
-    <button
+    <button type="button"
       onClick={() => setState("confirm")}
       disabled={state === "deleting"}
       className="font-mono text-micro text-red-500/70 hover:text-red-500 transition-colors tracking-wide disabled:opacity-50"

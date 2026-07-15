@@ -61,7 +61,7 @@ export function GuestItem({ guest, onCheckIn, searchQuery }: GuestItemProps) {
     >
       <div className="flex items-center p-4 gap-4">
         {/* Check-in button */}
-        <button
+        <button type="button"
           onClick={() => {
             playFeedback(guest.checkedIn ? "check-out" : "check-in");
             onCheckIn(guest.id, !guest.checkedIn);
@@ -133,7 +133,7 @@ export function GuestItem({ guest, onCheckIn, searchQuery }: GuestItemProps) {
 
         {/* Expand button for +1s */}
         {hasPlusOnes && (
-          <button
+          <button type="button"
             onClick={() => setExpanded(!expanded)}
             className={`flex-shrink-0 w-10 h-10 rounded-xl flex items-center justify-center transition-all ${
               expanded
@@ -170,7 +170,7 @@ export function GuestItem({ guest, onCheckIn, searchQuery }: GuestItemProps) {
                 index < guest.plusOnes.length - 1 ? "border-b border-stone-100" : ""
               }`}
             >
-              <button
+              <button type="button"
                 onClick={() => {
                   playFeedback(plusOne.checkedIn ? "check-out" : "check-in");
                   onCheckIn(plusOne.id, !plusOne.checkedIn);

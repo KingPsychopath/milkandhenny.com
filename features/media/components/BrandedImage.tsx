@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { useBrandedImage, type BrandedFormat } from "../hooks/useBrandedImage";
 import { useOutsideClick } from "@/hooks/useOutsideClick";
 import { useEscapeKey } from "@/hooks/useEscapeKey";
+import { useFocusTrap } from "@/hooks/useFocusTrap";
 import type { FocalPreset } from "@/features/media/focal";
 
 type BrandedImageProps = {
@@ -95,6 +96,7 @@ export function BrandedImage({
   const [isMobile] = useState<boolean>(() => canUseNativeShareOnMobile());
   const [activeFormat, setActiveFormat] = useState<BrandedFormat>("portrait");
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const previewDialogRef = useFocusTrap<HTMLDivElement>(showPreview);
 
   useEffect(() => {
     if (!copied) return;
@@ -208,7 +210,9 @@ export function BrandedImage({
 
       {/* Frame preview — always shown after generation */}
       {showPreview && (
+        /* react-doctor-disable-next-line prefer-html-dialog -- useFocusTrap and useEscapeKey provide modal keyboard behavior */
         <div
+          ref={previewDialogRef}
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm"
           onClick={handleClose}
           onKeyDown={(event) => {
@@ -227,7 +231,7 @@ export function BrandedImage({
             {error && (
               <div className="max-w-xs text-center">
                 <p className="font-mono text-micro text-red-400 tracking-wide">{error}</p>
-                <button
+                <button type="button"
                   onClick={handleClose}
                   className="mt-4 font-mono text-micro text-white/50 hover:text-white transition-colors tracking-wide"
                 >
@@ -258,27 +262,27 @@ export function BrandedImage({
                     Desktop: copy image + download + close */}
                 <div className="flex items-center gap-6 font-mono text-micro tracking-wide">
                   {isMobile ? (
-                    <button
+                    <button type="button"
                       onClick={handleShare}
                       className="text-white hover:text-amber-400 transition-colors"
                     >
                       share
                     </button>
                   ) : (
-                    <button
+                    <button type="button"
                       onClick={handleCopy}
                       className="text-white hover:text-amber-400 transition-colors"
                     >
                       {copied ? "copied" : "copy image"}
                     </button>
                   )}
-                  <button
+                  <button type="button"
                     onClick={handleDownload}
                     className="text-white hover:text-amber-400 transition-colors"
                   >
                     download ↓
                   </button>
-                  <button
+                  <button type="button"
                     onClick={handleClose}
                     className="text-white/50 hover:text-white transition-colors"
                   >

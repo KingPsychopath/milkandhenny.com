@@ -54,7 +54,7 @@ export function SearchBar({
             />
           </svg>
           {searchQuery && (
-            <button
+            <button type="button"
               onClick={() => onSearchChange("")}
               className="absolute right-4 top-1/2 transform -translate-y-1/2 text-stone-400 hover:text-stone-600 p-1"
               aria-label="Clear search"
@@ -74,7 +74,7 @@ export function SearchBar({
         {/* Filter chips */}
         <div className="flex gap-2 mt-3 overflow-x-auto pb-1 scrollbar-hide">
           {filterOptions.map((option) => (
-            <button
+            <button type="button"
               key={option.value}
               onClick={() => onFilterChange(option.value)}
               className={`flex items-center gap-1.5 px-4 py-2 text-sm font-medium rounded-xl whitespace-nowrap transition-all active:scale-95 ${

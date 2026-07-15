@@ -175,7 +175,7 @@ function ExamPage() {
                 className="border rounded-md overflow-hidden transition-colors duration-300 theme-border"
               >
                 {/* Envelope header */}
-                <button
+                <button type="button"
                   id={`exam-q-${q.id}-btn`}
                   onClick={() => toggle(q.id)}
                   aria-expanded={isOpen}
@@ -267,7 +267,7 @@ function ExamPage() {
                     pinError ? "border-red-500" : "theme-border-strong"
                   }`}
                 />
-                <button
+                <button type="button"
                   onClick={handlePinSubmit}
                   className="font-mono text-xs px-4 py-2 rounded border cursor-pointer transition-opacity duration-300 hover:opacity-70 theme-border-strong bg-[var(--stone-100)] text-foreground"
                 >
