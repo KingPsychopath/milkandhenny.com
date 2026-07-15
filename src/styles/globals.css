@@ -356,12 +356,14 @@
   .things-game-card[torph-root] {
     width: 100% !important;
     max-width: 100% !important;
+    text-align: center !important;
     white-space: normal !important;
     overflow-wrap: anywhere !important;
     word-break: break-word;
   }
 
   .things-game-card [torph-item] {
+    text-align: center;
     white-space: normal;
   }
 

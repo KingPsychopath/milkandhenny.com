@@ -43,7 +43,7 @@ function SpellingBeeExperience({ remoteSession }: { remoteSession?: RemotePlayer
     words: joinedSetup.deck.words,
   } : null;
   const [phase, setPhase] = useState<Phase>("setup");
-  useUpdateReloadSafety("spelling-bee-round", phase === "setup" || phase === "builder" || phase === "results");
+  useUpdateReloadSafety("spelling-bee-round", phase === "setup" || phase === "results");
   const [deckId, setDeckId] = useState(joinedDeck?.id ?? SPELLING_DECKS[0].id);
   const [words, setWords] = useState(() => shuffledWords(joinedDeck?.words ?? SPELLING_DECKS[0].words));
   const [wordIndex, setWordIndex] = useState(0);

@@ -87,7 +87,7 @@ export function RoundPlayArea({
               as="h1"
               duration={320}
               ease={SNAP_EASE}
-              className={`things-game-card w-full max-w-3xl font-serif font-semibold leading-[0.95] tracking-tight ${cardSizeClass(card)}`}
+              className={`things-game-card w-full max-w-3xl text-center font-serif font-semibold leading-[0.95] tracking-tight ${cardSizeClass(card)}`}
             >
               {card}
             </TextMorph>

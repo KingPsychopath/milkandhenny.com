@@ -8,11 +8,18 @@ const states = new Map<OfflineThingSlug, OfflineState>();
 const listeners = new Set<() => void>();
 const preparation = new Map<OfflineThingSlug, Promise<void>>();
 let registrationPromise: Promise<ServiceWorkerRegistration | null> | null = null;
-type SiteUpdateState = "idle" | "ready" | "activating";
+type SiteUpdateState = "idle" | "ready" | "activating" | "failed";
 let siteUpdateState: SiteUpdateState = "idle";
 let waitingWorker: ServiceWorker | null = null;
 let reloadForUpdate = false;
+let activationTimeout: number | null = null;
 const updateListeners = new Set<() => void>();
+
+function clearActivationTimeout() {
+  if (activationTimeout === null) return;
+  window.clearTimeout(activationTimeout);
+  activationTimeout = null;
+}
 
 function publishSiteUpdate(state: SiteUpdateState, worker?: ServiceWorker | null) {
   if (worker !== undefined) waitingWorker = worker;
@@ -39,6 +46,7 @@ function observeRegistration(registration: ServiceWorkerRegistration) {
   navigator.serviceWorker.addEventListener("controllerchange", () => {
     if (!reloadForUpdate) return;
     reloadForUpdate = false;
+    clearActivationTimeout();
     location.reload();
   });
 }
@@ -93,12 +101,32 @@ export function useSiteUpdateState() {
 export async function activateSiteUpdate() {
   const registration = await registerOfflinePlatform();
   const worker = registration?.waiting ?? waitingWorker;
-  if (!worker) return false;
+  if (!worker) {
+    publishSiteUpdate("failed");
+    return false;
+  }
+  if (worker.state === "activated") {
+    location.reload();
+    return true;
+  }
   reloadForUpdate = true;
   publishSiteUpdate("activating", worker);
-  // ServiceWorker.postMessage has no targetOrigin argument.
-  // oxlint-disable-next-line unicorn/require-post-message-target-origin
-  worker.postMessage({ type: "SKIP_WAITING" });
+  clearActivationTimeout();
+  activationTimeout = window.setTimeout(() => {
+    reloadForUpdate = false;
+    activationTimeout = null;
+    publishSiteUpdate("failed", worker);
+  }, 10_000);
+  try {
+    // ServiceWorker.postMessage has no targetOrigin argument.
+    // oxlint-disable-next-line unicorn/require-post-message-target-origin
+    worker.postMessage({ type: "SKIP_WAITING" });
+  } catch {
+    reloadForUpdate = false;
+    clearActivationTimeout();
+    publishSiteUpdate("failed", worker);
+    return false;
+  }
   return true;
 }
 

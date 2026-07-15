@@ -55,7 +55,7 @@ function HeadsUpExperience({ fullscreen, remoteSession }: { fullscreen: Fullscre
     cards: joinedSetup.deck.cards,
   } : null;
   const [phase, setPhase] = useState<Phase>("setup");
-  useUpdateReloadSafety("heads-up-round", phase === "setup" || phase === "builder" || phase === "results");
+  useUpdateReloadSafety("heads-up-round", phase === "setup" || phase === "results");
   const [deckId, setDeckId] = useState(joinedDeck?.id ?? GAME_DECKS[0].id);
   const [cards, setCards] = useState(() => shuffledCards(joinedDeck?.cards ?? GAME_DECKS[0].cards));
   const [cardIndex, setCardIndex] = useState(0);

@@ -11,6 +11,7 @@ import { useCustomSpellingDecks } from "../spelling-bee/useCustomSpellingDecks";
 import { readRecentSpellingWordIds, rememberSpellingWords } from "../spelling-bee/wordRotation.client";
 import { gameBrowserKeys } from "../shared/game-keys";
 import { writeExpiringLocalValue } from "../shared/game-storage.client";
+import { useUpdateReloadSafety } from "@/features/offline/update-safety.client";
 
 export function PartySetupApp({ decks }: { decks: PartyDeckSummary[] }) {
   const navigate = useNavigate();
@@ -23,6 +24,7 @@ export function PartySetupApp({ decks }: { decks: PartyDeckSummary[] }) {
   const [joinCode, setJoinCode] = useState("");
   const [building, setBuilding] = useState(false);
   const [editingDeck, setEditingDeck] = useState<CustomSpellingDeck | null>(null);
+  useUpdateReloadSafety("spelling-party-setup", !building);
   const selectedCustomDeck = customDecks.find(({ id }) => id === deckId);
   const deckItems = [
     ...decks,
