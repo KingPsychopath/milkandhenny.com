@@ -1,27 +1,34 @@
 import { Link, createFileRoute } from "@tanstack/react-router";
 import { createServerFn } from "@tanstack/react-start";
-import { getTransfer } from "@/features/transfers/store.server";
+import { getTransfer, validateDeleteToken } from "@/features/transfers/store.server";
+import { toPublicTransfer } from "@/features/transfers/public";
 import { SITE_NAME, SITE_BRAND } from "@/lib/shared/config";
 import { TransferGallery } from "@/features/transfers/ui/transfer/TransferGallery";
 import { CountdownTimer } from "@/features/transfers/ui/transfer/CountdownTimer";
 import { TakedownButton } from "@/features/transfers/ui/transfer/TakedownButton";
 
 const getTransferPage = createServerFn({ method: "GET" })
-  .validator((data: { id: string }) => data)
+  .validator((data: { id: string; token?: string }) => data)
   .handler(async ({ data }) => {
     const transfer = await getTransfer(data.id);
     const remainingSeconds = transfer
       ? Math.floor((new Date(transfer.expiresAt).getTime() - Date.now()) / 1000)
       : 0;
-    return { transfer, remainingSeconds };
+    const canDelete = data.token ? await validateDeleteToken(data.id, data.token) : false;
+    return {
+      transfer: transfer ? toPublicTransfer(transfer) : null,
+      remainingSeconds,
+      canDelete,
+    };
   });
 
 export const Route = createFileRoute("/t/$id")({
   component: TransferPage,
-  loader: ({ params }) => getTransferPage({ data: params }),
   validateSearch: (search: Record<string, unknown>) => ({
     token: typeof search.token === "string" ? search.token : undefined,
   }),
+  loaderDeps: ({ search }) => ({ token: search.token }),
+  loader: ({ params, deps }) => getTransferPage({ data: { id: params.id, token: deps.token } }),
   head: ({ loaderData }) => {
     const transfer = loaderData?.transfer;
     if (!transfer) return { meta: [{ title: `Transfer Not Found — ${SITE_NAME}` }] };
@@ -31,6 +38,7 @@ export const Route = createFileRoute("/t/$id")({
         { title: `${transfer.title} — ${SITE_NAME}` },
         { name: "description", content: description },
         { name: "robots", content: "noindex, nofollow" },
+        { name: "referrer", content: "no-referrer" },
         { property: "og:title", content: `${transfer.title} — ${SITE_NAME}` },
         { property: "og:description", content: description },
       ],
@@ -68,7 +76,7 @@ function describeFiles(files: { kind: string; filename?: string }[]): string {
 }
 
 function TransferPage() {
-  const { transfer, remainingSeconds } = Route.useLoaderData();
+  const { transfer, remainingSeconds, canDelete } = Route.useLoaderData();
   const { token } = Route.useSearch();
 
   /* ─── Not found / expired ─── */
@@ -123,8 +131,6 @@ function TransferPage() {
     );
   }
 
-  const isAdmin = !!token && token === transfer.deleteToken;
-
   return (
     <div className="min-h-screen bg-background">
       <header role="banner" className="max-w-4xl mx-auto px-6 pt-10 pb-6">
@@ -163,12 +169,12 @@ function TransferPage() {
             transferId={transfer.id}
             files={transfer.files}
             groups={transfer.groups}
-            deleteToken={isAdmin ? token : undefined}
+            deleteToken={canDelete ? token : undefined}
           />
         </section>
 
         {/* Admin takedown */}
-        {isAdmin && (
+        {canDelete && token && (
           <section className="max-w-4xl mx-auto px-6 pb-12" aria-label="Admin">
             <div className="border-t theme-border pt-6">
               <p className="font-mono text-micro theme-muted tracking-wide mb-3">admin controls</p>

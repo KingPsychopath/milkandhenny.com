@@ -1,11 +1,13 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { apiErrorFromRequest } from "@/lib/platform/api-error";
-import { isConfigured, presignGetUrl } from "@/lib/platform/r2.server";
+import { isConfigured, isTransferStorageConfigured, presignGetUrl } from "@/lib/platform/r2.server";
 import {
   buildAttachmentContentDisposition,
   deriveDownloadFilename,
   isAllowedDownloadStorageKey,
 } from "@/features/downloads/presign";
+import { transferContainsStorageKey } from "@/features/transfers/media-access";
+import { getTransfer } from "@/features/transfers/store.server";
 
 const DOWNLOAD_URL_TTL_SECONDS = 3600;
 const DOWNLOAD_RESPONSE_CONTENT_TYPE = "application/octet-stream";
@@ -25,6 +27,24 @@ async function handleGET(request: Request) {
 
   if (!isAllowedDownloadStorageKey(key)) {
     return Response.json({ error: "Invalid download key." }, { status: 400 });
+  }
+
+  if (key.startsWith("transfers/")) {
+    if (!isTransferStorageConfigured()) {
+      return Response.json(
+        { error: "Private transfer storage is not configured." },
+        { status: 503 },
+      );
+    }
+    const transferId = key.split("/")[1] ?? "";
+    const transfer = await getTransfer(transferId);
+    if (
+      !transfer ||
+      new Date(transfer.expiresAt).getTime() <= Date.now() ||
+      !transferContainsStorageKey(transfer, key)
+    ) {
+      return Response.json({ error: "Transfer file not found or expired." }, { status: 404 });
+    }
   }
 
   const filename = deriveDownloadFilename(key, requestedFilename);

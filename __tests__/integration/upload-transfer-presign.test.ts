@@ -22,7 +22,7 @@ describe("upload transfer presign", () => {
       }),
     }));
     vi.doMock("@/lib/platform/r2.server", () => ({
-      isConfigured: () => true,
+      isTransferStorageConfigured: () => true,
       presignPutUrl: vi.fn().mockResolvedValue("https://example.com/upload"),
     }));
     vi.doMock("@/features/transfers/store.server", () => ({
@@ -59,7 +59,7 @@ describe("upload transfer presign", () => {
       }),
     }));
     vi.doMock("@/lib/platform/r2.server", () => ({
-      isConfigured: () => true,
+      isTransferStorageConfigured: () => true,
       presignPutUrl: vi.fn(),
     }));
     vi.doMock("@/features/transfers/store.server", () => ({
@@ -95,7 +95,7 @@ describe("upload transfer presign", () => {
       }),
     }));
     vi.doMock("@/lib/platform/r2.server", () => ({
-      isConfigured: () => true,
+      isTransferStorageConfigured: () => true,
       presignPutUrl,
     }));
     vi.doMock("@/features/transfers/store.server", () => ({
@@ -148,7 +148,7 @@ describe("upload transfer presign", () => {
       }),
     }));
     vi.doMock("@/lib/platform/r2.server", () => ({
-      isConfigured: () => true,
+      isTransferStorageConfigured: () => true,
       presignPutUrl: vi.fn(),
     }));
     vi.doMock("@/features/transfers/store.server", () => ({

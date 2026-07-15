@@ -1,7 +1,12 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { getRedis } from "@/lib/platform/redis.server";
 import { requireAuth } from "@/features/auth/auth.server";
-import { isConfigured, listPrefixes, listObjects, deleteObjects } from "@/lib/platform/r2.server";
+import {
+  isTransferStorageConfigured,
+  listPrefixes,
+  listObjects,
+  deleteObjects,
+} from "@/lib/platform/r2.server";
 import { apiErrorFromRequest } from "@/lib/platform/api-error";
 import { log } from "@/lib/platform/logger.server";
 
@@ -27,7 +32,7 @@ async function handleGET(request: Request) {
     log.info("cron.cleanup-transfers", "Cron cleanup started", { requestId });
 
     const redis = getRedis();
-    if (!redis || !isConfigured()) {
+    if (!redis || !isTransferStorageConfigured()) {
       log.warn("cron.cleanup-transfers", "Cron cleanup skipped (missing config)", { requestId });
       return Response.json({
         skipped: true,

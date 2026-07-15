@@ -149,11 +149,10 @@ describe("transfers (in-memory fallback)", () => {
     expect(updated.files.find((file) => file.id === "still")).not.toHaveProperty("groupRole");
   });
 
-  it("generateTransferId returns a 3-word hyphenated id", () => {
-    const id = generateTransferId();
-    const parts = id.split("-");
-    expect(parts.length).toBe(3);
-    expect(parts.every((p) => p.length > 0)).toBe(true);
+  it("generateTransferId returns a 128-bit base64url capability id", () => {
+    const ids = new Set(Array.from({ length: 20 }, () => generateTransferId()));
+    expect(ids.size).toBe(20);
+    expect([...ids].every((id) => id.length === 22 && /^[A-Za-z0-9_-]+$/.test(id))).toBe(true);
   });
 
   it("generateDeleteToken returns a non-empty string", () => {

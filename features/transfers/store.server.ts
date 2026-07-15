@@ -2,7 +2,6 @@ import { randomBytes, timingSafeEqual } from "crypto";
 import { getRedis } from "@/lib/platform/redis.server";
 import { FILE_KINDS } from "@/features/media/file-kinds";
 import type { AssetGroup, TransferData, TransferFile, TransferSummary } from "./types";
-import { generateWordId } from "./words.server";
 
 /* ─── Constants ─── */
 
@@ -21,18 +20,11 @@ const MAX_TRANSFER_TOTAL_BYTES = 1024 * 1024 * 1024; // 1GB
 
 /* ─── ID Generation ─── */
 
-const TRANSFER_ID_STYLE = (process.env.TRANSFER_ID_STYLE ?? "words") as "words" | "random";
-
 /**
- * Generate a URL-safe transfer ID.
- *
- * - `"words"` (default): 3-word hyphenated combo, e.g. "velvet-moon-candle"
- * - `"random"`: 11-char base64url string, e.g. "xK9mP2nQ7vL"
- *
- * Toggle via `TRANSFER_ID_STYLE` env var.
+ * Generate a 128-bit URL-safe capability ID. Anyone with this ID can view the transfer.
  */
 function generateTransferId(): string {
-  return TRANSFER_ID_STYLE === "words" ? generateWordId() : randomBytes(8).toString("base64url");
+  return randomBytes(16).toString("base64url");
 }
 
 /** Generate a delete token (22 chars, URL-safe) */

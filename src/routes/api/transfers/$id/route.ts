@@ -4,7 +4,8 @@ import {
   deleteTransferData,
   validateDeleteToken,
 } from "@/features/transfers/store.server";
-import { deleteObjects, isConfigured, listObjects } from "@/lib/platform/r2.server";
+import { deleteObjects, isTransferStorageConfigured, listObjects } from "@/lib/platform/r2.server";
+import { toPublicTransfer } from "@/features/transfers/public";
 
 type RouteContext = {
   params: Promise<{ id: string }>;
@@ -31,14 +32,7 @@ async function handleGET(_request: Request, context: RouteContext) {
   }
 
   // Return public data — no deleteToken
-  return Response.json({
-    id: transfer.id,
-    title: transfer.title,
-    files: transfer.files,
-    createdAt: transfer.createdAt,
-    expiresAt: transfer.expiresAt,
-    remainingSeconds,
-  });
+  return Response.json({ ...toPublicTransfer(transfer), remainingSeconds });
 }
 
 /**
@@ -71,7 +65,7 @@ async function handleDELETE(request: Request, context: RouteContext) {
   // Delete R2 objects
   const prefix = `transfers/${id}/`;
   let deletedFiles = 0;
-  if (isConfigured()) {
+  if (isTransferStorageConfigured()) {
     const objects = await listObjects(prefix);
     const keys = objects.map((o) => o.key).filter((k) => k && k.startsWith(prefix));
     deletedFiles = await deleteObjects(keys);

@@ -4,6 +4,7 @@ import { getSecurityWarnings } from "@/features/auth/auth.server";
 import {
   checkConnection as checkObjectStorage,
   isConfigured as isObjectStorageConfigured,
+  isTransferStorageConfigured,
 } from "@/lib/platform/r2.server";
 import { getRedis, getRedisRestConfig } from "@/lib/platform/redis.server";
 import { hasMediaPublicUrl } from "@/lib/shared/config";
@@ -31,6 +32,7 @@ function getRuntimeMetadata() {
 function getConfiguredCapabilities(): Capability[] {
   const redisConfigured = getRedisRestConfig() !== null;
   const objectStorageConfigured = isObjectStorageConfigured();
+  const privateTransferStorageConfigured = isTransferStorageConfigured();
   const authConfigured = REQUIRED_AUTH_VARIABLES.every(isConfigured);
   const maintenanceConfigured = isConfigured("CRON_SECRET");
   const mediaMode = getMediaProcessorMode();
@@ -68,11 +70,13 @@ function getConfiguredCapabilities(): Capability[] {
     {
       id: "media-storage",
       label: "media storage",
-      status: objectStorageConfigured ? "available" : "unavailable",
+      status:
+        objectStorageConfigured && privateTransferStorageConfigured ? "available" : "unavailable",
       required: true,
-      detail: objectStorageConfigured
-        ? "Uploads and media administration are configured."
-        : "Uploads and media administration are not configured.",
+      detail:
+        objectStorageConfigured && privateTransferStorageConfigured
+          ? "Public and private media storage are configured."
+          : "Public media storage or the private transfer bucket is not configured.",
     },
     {
       id: "authentication",

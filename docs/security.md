@@ -151,14 +151,14 @@ Notes:
 
 ## Cloudflare WAF (Rate Limiting)
 
-Images and transfer files are served from `pics.milkandhenny.com` (R2 custom domain). Every request counts as an R2 read. Rate limiting prevents abuse.
+Public images are served from `pics.milkandhenny.com` (the public R2 bucket's custom domain). Transfer files live in a separate private R2 bucket and are reached through short-lived signed redirects from the application. Every successful object request counts as an R2 read.
 
 In **Cloudflare Dashboard → Security → WAF → Rate limiting rules**, create two rules:
 
 | Rule           | Match                   | Per IP | Threshold     | Action | Duration |
 | -------------- | ----------------------- | ------ | ------------- | ------ | -------- |
 | Album images   | URI path `/albums/*`    | Yes    | 100 req / 10s | Block  | 10s      |
-| Transfer files | URI path `/transfers/*` | Yes    | 100 req / 10s | Block  | 10s      |
+| Transfer media | URI path `/api/transfers/*/media/*` | Yes | 100 req / 10s | Block | 10s |
 
 > Free plan limits: 10-second period and 10-second block duration only.
 

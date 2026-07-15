@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { requireAdminStepUp, requireAuth } from "@/features/auth/auth.server";
 import { getRedis } from "@/lib/platform/redis.server";
-import { isConfigured, listObjects, deleteObjects } from "@/lib/platform/r2.server";
+import { isTransferStorageConfigured, listObjects, deleteObjects } from "@/lib/platform/r2.server";
 import { apiErrorFromRequest } from "@/lib/platform/api-error";
 
 /**
@@ -15,7 +15,7 @@ async function handlePOST(request: Request) {
   if (stepUpErr) return stepUpErr;
 
   const redis = getRedis();
-  if (!redis || !isConfigured()) {
+  if (!redis || !isTransferStorageConfigured()) {
     return Response.json({ error: "Redis or R2 not configured" }, { status: 503 });
   }
 
