@@ -88,7 +88,7 @@ export function useLocalSpellingAssistant() {
   const [downloadEstimate, setDownloadEstimate] = useState("usually under a minute on Wi-Fi");
   const [progress, setProgress] = useState(0);
   const [match, setMatch] = useState<SpellingMatch>({ letters: "", matchedCount: 0, complete: false, mismatchAt: null });
-  const [message, setMessage] = useState<string | null>("Checking for private speech recognition on this device…");
+  const [message, setMessage] = useState<string | null>("Checking whether this device can follow the spelling…");
   const workerRef = useRef<Worker | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const recognitionRef = useRef<BrowserRecognition | null>(null);
@@ -108,7 +108,7 @@ export function useLocalSpellingAssistant() {
         if (active) {
           setBrowserAvailability("unavailable");
           setStatus("disabled");
-          setMessage(`Built-in private speech is unavailable. The ~50 MB Whisper pack takes ${estimatedWhisperDownload()}.`);
+          setMessage(`A one-time 50 MB setup is needed. It takes ${estimatedWhisperDownload()}.`);
         }
         return;
       }
@@ -119,16 +119,16 @@ export function useLocalSpellingAssistant() {
         setStatus("disabled");
         setMessage(
           availability === "available"
-            ? "Private speech recognition is already installed on this device—no model download needed."
+            ? "Ready to turn on—nothing to download."
             : availability === "downloadable" || availability === "downloading"
-              ? "This browser offers its own private English speech pack. Install it before trying Whisper."
-              : `Built-in private speech is unavailable. The ~50 MB Whisper pack takes ${estimatedWhisperDownload()}.`,
+              ? "A one-time speech setup is needed before this device can listen."
+              : `A one-time 50 MB setup is needed. It takes ${estimatedWhisperDownload()}.`,
         );
       } catch {
         if (active) {
           setBrowserAvailability("unavailable");
           setStatus("disabled");
-          setMessage(`Built-in private speech could not be verified. The ~50 MB Whisper pack takes ${estimatedWhisperDownload()}.`);
+          setMessage(`A one-time 50 MB setup is needed. It takes ${estimatedWhisperDownload()}.`);
         }
       }
     };
@@ -163,18 +163,18 @@ export function useLocalSpellingAssistant() {
         for (const key of await caches.keys()) if (key.startsWith("mah-optional-ai:")) await caches.delete(key);
       } catch { /* Storage may be unavailable. */ }
     }
-    setMessage(browserAvailability === "available" ? "Private device speech is available and currently off." : `Live assistance is off. The optional Whisper pack takes ${estimatedWhisperDownload()} to download.`);
-  }, [backend, browserAvailability, stop]);
+    setMessage("Following is off.");
+  }, [backend, stop]);
 
   const loadWhisper = useCallback(() => {
     if (workerRef.current) return;
     if (!("Worker" in window) || !("MediaRecorder" in window) || !navigator.mediaDevices?.getUserMedia) {
       setStatus("error");
-      setMessage("This browser cannot run the private Whisper pack.");
+      setMessage("This browser cannot follow spoken spelling.");
       return;
     }
     setStatus("loading");
-    setMessage(`Downloading ~50 MB for fully local speech—${estimatedWhisperDownload()}.`);
+    setMessage(`Getting spoken-letter following ready—${estimatedWhisperDownload()}.`);
     const worker = new Worker(new URL("./whisper.worker.ts", import.meta.url), { type: "module" });
     workerRef.current = worker;
     worker.onmessage = (event: MessageEvent<WorkerEvent>) => {
@@ -188,13 +188,13 @@ export function useLocalSpellingAssistant() {
         setBackend("whisper");
         setProgress(100);
         setStatus("ready");
-        setMessage(`Private Whisper speech is ready${data.device === "webgpu" ? " with GPU acceleration" : ""}. Audio never leaves this device.`);
+        setMessage("Ready. What you say stays on this device.");
         return;
       }
       if (data.type === "error") {
         busyRef.current = false;
         setStatus("error");
-        setMessage(data.error ?? "Private Whisper speech failed.");
+        setMessage(data.error ?? "Spoken-letter following could not start.");
         return;
       }
       busyRef.current = false;
@@ -203,7 +203,7 @@ export function useLocalSpellingAssistant() {
       transcriptRef.current = `${transcriptRef.current} ${text}`.trim();
       setMatch(matchSpellingTranscript(transcriptRef.current, targetRef.current));
     };
-    worker.onerror = () => { setStatus("error"); setMessage("Private Whisper speech could not start."); };
+    worker.onerror = () => { setStatus("error"); setMessage("Spoken-letter following could not start."); };
     worker.postMessage({ type: "load" });
   }, []);
 
@@ -212,22 +212,22 @@ export function useLocalSpellingAssistant() {
     if (browserAvailability === "available" && Constructor) {
       setBackend("browser");
       setStatus("ready");
-      setMessage("Using the browser’s on-device English recogniser. Audio stays local.");
+      setMessage("Ready. What you say stays on this device.");
       return;
     }
     if ((browserAvailability === "downloadable" || browserAvailability === "downloading") && Constructor?.install) {
       setStatus("loading");
-      setMessage("Installing the browser’s private English speech pack…");
+      setMessage("Getting spoken-letter following ready…");
       const installed = await Constructor.install({ langs: ["en-GB"], processLocally: true, quality: "command" }).catch(() => false);
       if (installed) {
         setBrowserAvailability("available");
         setBackend("browser");
         setStatus("ready");
-        setMessage("The browser’s private speech pack is installed and ready.");
+        setMessage("Ready. What you say stays on this device.");
       } else {
         setBrowserAvailability("unavailable");
         setStatus("disabled");
-        setMessage(`The browser pack was unavailable. Download private Whisper instead (~50 MB, ${estimatedWhisperDownload()}).`);
+        setMessage(`One more setup step is needed: about 50 MB and ${estimatedWhisperDownload()}. Tap “set up once” again.`);
       }
       return;
     }
@@ -257,13 +257,13 @@ export function useLocalSpellingAssistant() {
       const text = `${browserFinalRef.current} ${interim}`.trim();
       setMatch(matchSpellingTranscript(text, targetRef.current));
     };
-    recognition.onerror = () => { listeningRef.current = false; setStatus("error"); setMessage("The browser’s private recogniser stopped."); };
+    recognition.onerror = () => { listeningRef.current = false; setStatus("error"); setMessage("Listening stopped. Turn following off and on to try again."); };
     recognition.onend = () => { if (listeningRef.current) { try { recognition.start(); } catch { listeningRef.current = false; setStatus("ready"); } } };
     recognitionRef.current = recognition;
     listeningRef.current = true;
     recognition.start();
     setStatus("listening");
-    setMessage("Listening with the browser’s private on-device recogniser…");
+    setMessage("Listening and following the spelling…");
   }, []);
 
   const startWhisper = useCallback(async (target: string) => {
@@ -287,7 +287,7 @@ export function useLocalSpellingAssistant() {
       };
       recorder.start(2_200);
       setStatus("listening");
-      setMessage("Listening with private Whisper…");
+      setMessage("Listening and following the spelling…");
     } catch {
       setStatus("error");
       setMessage("Microphone access is needed for live spelling assistance.");

@@ -25,6 +25,11 @@ export default defineConfig({
   plugins: [
     tanstackStart(),
     nitro({
+      serverDir: "server",
+      serverAssets: [{ baseName: "party-audio", dir: "./assets/party-spelling-audio" }],
+      features: {
+        websocket: true,
+      },
       routeRules: {
         "/sw.js": {
           headers: {

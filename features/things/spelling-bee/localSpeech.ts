@@ -5,7 +5,17 @@ export function getLocalVoices(locale = "en-GB") {
   const language = locale.split("-")[0];
   return speechSynthesis
     .getVoices()
-    .filter((voice) => voice.localService && voice.lang.toLocaleLowerCase().startsWith(language));
+    .filter((voice) => voice.localService && voice.lang.toLocaleLowerCase().startsWith(language))
+    .sort((left, right) => voiceScore(right, locale) - voiceScore(left, locale));
+}
+
+function voiceScore(voice: SpeechSynthesisVoice, locale: string) {
+  const name = voice.name.toLocaleLowerCase();
+  const exactLocale = voice.lang.toLocaleLowerCase() === locale.toLocaleLowerCase();
+  const qualityHint = /premium|enhanced|natural/.test(name);
+  const naturalVoiceName = /arthur|daniel|jamie|kate|martha|moira|samantha|serena|siri/.test(name);
+  const lowQualityHint = /compact|espeak|novelty/.test(name);
+  return (exactLocale ? 100 : 0) + (qualityHint ? 40 : 0) + (naturalVoiceName ? 20 : 0) + (voice.default ? 10 : 0) - (lowQualityHint ? 50 : 0);
 }
 
 export function speakWord(item: SpellingWord, options?: { slower?: boolean; locale?: string }) {
@@ -19,7 +29,7 @@ export function speakWord(item: SpellingWord, options?: { slower?: boolean; loca
     const utterance = new SpeechSynthesisUtterance(item.speakAs ?? item.word);
     utterance.voice = voice;
     utterance.lang = voice.lang;
-    utterance.rate = options?.slower ? 0.72 : 0.9;
+    utterance.rate = options?.slower ? 0.8 : 0.95;
     utterance.pitch = 1;
     utterance.onend = () => resolve(true);
     utterance.onerror = () => resolve(false);

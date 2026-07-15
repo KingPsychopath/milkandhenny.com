@@ -47,6 +47,10 @@ function offlineThingForPath(pathname: string) {
   );
 }
 
+function isPlayerJoinPath(pathname: string) {
+  return /^\/things\/play\/[A-Z2-9]{7}$/i.test(pathname);
+}
+
 function isCacheableAssetPath(pathname: string) {
   return (
     pathname.startsWith("/assets/") ||
@@ -167,8 +171,9 @@ async function cacheResource(
 async function performThingPreparation(
   slug: OfflineThingSlug,
   pageResources: string[],
+  refresh = false,
 ) {
-  if (await isReady(slug)) return true;
+  if (!refresh && await isReady(slug)) return true;
 
   const thing = THING_OFFLINE[slug];
   const resourceUrls = new Set<string>();
@@ -221,11 +226,11 @@ async function performThingPreparation(
   }
 }
 
-function prepareThing(slug: OfflineThingSlug, pageResources: string[]) {
+function prepareThing(slug: OfflineThingSlug, pageResources: string[], refresh = false) {
   const existing = preparations.get(slug);
   if (existing) return existing;
 
-  const preparation = performThingPreparation(slug, pageResources).finally(
+  const preparation = performThingPreparation(slug, pageResources, refresh).finally(
     () => {
       preparations.delete(slug);
     },
@@ -263,6 +268,7 @@ function parseWorkerRequest(value: unknown): OfflineWorkerRequest | null {
       slug: message.slug,
       buildId: message.buildId,
       resourceUrls: message.resourceUrls,
+      refresh: message.refresh === true,
     };
   }
   return null;
@@ -298,7 +304,7 @@ self.addEventListener("message", (event) => {
           buildId: BUILD_ID,
         };
       } else {
-        const ready = await prepareThing(message.slug, message.resourceUrls);
+        const ready = await prepareThing(message.slug, message.resourceUrls, message.refresh);
         response = {
           ok: ready,
           state: ready ? "ready" : "failed",
@@ -320,6 +326,18 @@ registerRoute(
     const response = await fetch(request);
     if (response.ok) await cache.put(request, response.clone());
     return response;
+  },
+);
+
+registerRoute(
+  ({ request, url }) => request.mode === "navigate" && isPlayerJoinPath(url.pathname),
+  async ({ request }) => {
+    for (const slug of ["heads-up", "spelling-bee"] as const) {
+      const canonicalRequest = new Request(new URL(THING_OFFLINE[slug].entryPath, self.location.origin));
+      const cached = await matchThingCaches(canonicalRequest, slug);
+      if (cached) return cached;
+    }
+    return fetch(request);
   },
 );
 

@@ -1,4 +1,32 @@
 export type RemoteGameKind = "heads-up" | "spelling-bee";
+export type RemoteRoomRole = "player" | "judge";
+
+export interface RemoteHeadsUpSetup {
+  game: "heads-up";
+  deck: {
+    name: string;
+    cards: string[];
+  };
+  positionLock: boolean;
+}
+
+export interface RemoteSpellingSetup {
+  game: "spelling-bee";
+  deck: {
+    name: string;
+    words: Array<{
+      id: string;
+      word: string;
+      partOfSpeech?: string;
+      definition?: string;
+      speakAs?: string;
+    }>;
+  };
+  timerSeconds: number;
+  autoSpeak: boolean;
+}
+
+export type RemoteGameSetup = RemoteHeadsUpSetup | RemoteSpellingSetup;
 
 export type RemoteResultDecision = "correct" | "incorrect" | "pass";
 
@@ -19,14 +47,22 @@ export interface RemoteGameSnapshot {
   nextLabel: string | null;
   secondsRemaining: number | null;
   paused: boolean;
+  transitioning?: boolean;
   pauseReason?: string;
   score: number;
   results: RemoteResultItem[];
   transcript?: string;
+  /** Stable local identity for the current card/word within a round. */
+  itemKey?: string;
   updatedAt: number;
 }
 
-export type RemoteCommand =
+export interface RemoteCommandTarget {
+  roundId: string;
+  itemId: string;
+}
+
+export type RemoteCommandRequest = (
   | { id: string; type: "correct" | "incorrect" | "pass" | "pause" | "resume" | "undo"; createdAt: number }
   | {
       id: string;
@@ -34,16 +70,43 @@ export type RemoteCommand =
       resultId: string;
       decision: RemoteResultDecision;
       createdAt: number;
-    };
+    }
+) & RemoteCommandTarget;
+
+export type RemoteCommand = RemoteCommandRequest & { sequence: number };
+
+export interface RemoteCommandReceipt {
+  commandId: string;
+  sequence: number;
+  status: "applied" | "rejected";
+  reason?: "stale round" | "stale item";
+}
+
+export interface RemoteSyncedSnapshot extends RemoteGameSnapshot {
+  roundId: string | null;
+  itemId: string | null;
+  revision: number;
+  connectionEpoch: string;
+  commandReceipts: RemoteCommandReceipt[];
+}
 
 export interface RemoteRoomCredentials {
   roomId: string;
-  hostToken: string;
+  playerToken: string;
   judgeToken: string;
+  creatorRole: RemoteRoomRole;
   expiresAt: number;
 }
 
-export interface RemoteHostSyncResult {
+export interface RemotePlayerSession {
+  roomId: string;
+  playerToken: string;
+  connectionEpoch: string;
+  expiresAt: number;
+  setup: RemoteGameSetup;
+}
+
+export interface RemotePlayerSyncResult {
   ok: boolean;
   commands: RemoteCommand[];
   judgeConnected: boolean;
@@ -52,8 +115,18 @@ export interface RemoteHostSyncResult {
 
 export interface RemoteJudgeSnapshotResult {
   ok: boolean;
-  snapshot: RemoteGameSnapshot | null;
-  hostConnected: boolean;
+  snapshot: RemoteSyncedSnapshot | null;
+  playerConnected: boolean;
+  expiresAt: number | null;
+  error?: string;
+}
+
+export type RemoteTransportState = "connected" | "reconnecting" | "local";
+
+export interface RemotePlayerSetupResult {
+  ok: boolean;
+  setup: RemoteGameSetup | null;
+  judgeConnected: boolean;
   expiresAt: number | null;
   error?: string;
 }

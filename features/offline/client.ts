@@ -89,19 +89,20 @@ export async function refreshOfflineState(slug: OfflineThingSlug) {
   publish(slug, response?.state ?? "unavailable");
 }
 
-export function prepareThingOffline(slug: OfflineThingSlug) {
+export function prepareThingOffline(slug: OfflineThingSlug, options?: { refresh?: boolean }) {
   const existing = preparation.get(slug);
   if (existing) return existing;
 
   const pending = (async () => {
     await refreshOfflineState(slug);
-    if (states.get(slug) === "ready") return;
+    if (states.get(slug) === "ready" && !options?.refresh) return;
     publish(slug, "preparing");
     const response = await sendWorkerMessage({
       type: "PREPARE_THING_OFFLINE",
       slug,
       buildId: BUILD_ID,
       resourceUrls: collectCurrentPageResources(),
+      refresh: options?.refresh,
     });
     publish(slug, response?.state ?? "failed");
     if (response?.state === "ready") void requestPersistentStorage();

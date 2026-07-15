@@ -1,0 +1,180 @@
+import { Link } from "@tanstack/react-router";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { TextMorph } from "torph/react";
+import { useWebHaptics } from "web-haptics/react";
+import { applyPlayerActionFn, joinPartyRoomFn } from "./party-room.functions";
+import type { PartyClueKind, PartyPlayerAction, PartyPlayerCredentials } from "./types";
+import { usePartyLiveSnapshot } from "./usePartyLiveSnapshot";
+import { useSynchronizedPartyStage } from "./useSynchronizedPartyStage";
+
+function joinToken(roomId: string) {
+  const key = `spelling-party-invite:v1:${roomId}`;
+  const fromHash = location.hash.slice(1).trim();
+  if (fromHash) { sessionStorage.setItem(key, fromHash); history.replaceState(null, "", location.pathname); return fromHash; }
+  return sessionStorage.getItem(key) ?? "";
+}
+function playerKey(roomId: string) { return `spelling-party-player:v1:${roomId}`; }
+function readPlayer(roomId: string): PartyPlayerCredentials | null {
+  try {
+    const value = JSON.parse(localStorage.getItem(playerKey(roomId)) ?? "null") as Partial<PartyPlayerCredentials> | null;
+    return value?.roomId === roomId && typeof value.playerId === "string" && typeof value.playerToken === "string" && typeof value.expiresAt === "number" && value.expiresAt > Date.now() ? value as PartyPlayerCredentials : null;
+  } catch { return null; }
+}
+
+export function PartyPlayerApp({ roomId }: { roomId: string }) {
+  const [invite, setInvite] = useState("");
+  const [credentials, setCredentials] = useState<PartyPlayerCredentials | null>(null);
+  const [name, setName] = useState("");
+  const [joining, setJoining] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+  const joinId = useRef(crypto.randomUUID());
+  useEffect(() => { setInvite(joinToken(roomId)); setCredentials(readPlayer(roomId)); }, [roomId]);
+  const handleJoin = async () => {
+    if (!invite || !name.trim() || joining) return;
+    setJoining(true); setMessage(null);
+    try {
+      const result = await joinPartyRoomFn({ data: { roomId, joinToken: invite, name, joinId: joinId.current } });
+      if ("error" in result) { setMessage(result.error); setJoining(false); return; }
+      localStorage.setItem(playerKey(roomId), JSON.stringify(result)); setCredentials(result);
+    } catch { setMessage("Could not join. Check your connection and try again."); setJoining(false); }
+  };
+  if (credentials) return <PartyPlayerGame credentials={credentials} />;
+  return <main id="main" className="things-game things-game--night flex items-center justify-center px-6 text-white"><form onSubmit={(event) => { event.preventDefault(); void handleJoin(); }} className="w-full max-w-sm text-center"><p className="font-mono text-micro uppercase tracking-[0.2em] text-white/45">room {roomId}</p><h1 className="mt-3 font-serif text-5xl font-semibold">What should we call you?</h1><label htmlFor="party-name" className="sr-only">Your display name</label><input id="party-name" value={name} onChange={(event) => setName(event.target.value)} maxLength={24} autoComplete="name" enterKeyHint="go" placeholder="Your name" className="mt-7 min-h-14 w-full rounded-full border border-white/20 bg-white/[0.06] px-5 text-center font-serif text-xl placeholder:text-white/30" /><button type="submit" disabled={!invite || !name.trim() || joining} className="mt-4 min-h-14 w-full rounded-full bg-[var(--things-amber)] px-6 font-mono text-sm font-bold text-black disabled:opacity-35">{joining ? "joining…" : "join the room"}</button><p aria-live="polite" className="mt-4 min-h-5 font-mono text-xs text-amber-200">{message ?? (!invite ? "This invite is missing. Ask the presenter for a new link." : "")}</p></form></main>;
+}
+
+function PartyPlayerGame({ credentials }: { credentials: PartyPlayerCredentials }) {
+  const live = usePartyLiveSnapshot({ roomId: credentials.roomId, role: "player", credential: credentials.playerToken, playerId: credentials.playerId, initialSnapshot: credentials.snapshot });
+  const stage = useSynchronizedPartyStage(live.snapshot, live.clockOffset);
+  const [draft, setDraft] = useState(credentials.snapshot.player?.draft ?? "");
+  const draftRevision = useRef(credentials.snapshot.player?.draftRevision ?? 0);
+  const roundRef = useRef(credentials.snapshot.round?.roundId ?? "");
+  const hiddenAt = useRef<number | null>(null);
+  const priorLocked = useRef(false);
+  const priorPhase = useRef(live.snapshot?.phase);
+  const haptics = useWebHaptics();
+  const queueKey = `spelling-party-actions:v1:${credentials.roomId}:${credentials.playerId}`;
+
+  const queued = useCallback((): PartyPlayerAction[] => {
+    try { const value = JSON.parse(localStorage.getItem(queueKey) ?? "[]") as unknown; return Array.isArray(value) ? value as PartyPlayerAction[] : []; } catch { return []; }
+  }, [queueKey]);
+  const enqueue = useCallback((action: PartyPlayerAction) => {
+    const next = [...queued().filter(({ actionId }) => actionId !== action.actionId), action].slice(-40);
+    localStorage.setItem(queueKey, JSON.stringify(next));
+  }, [queueKey, queued]);
+
+  const send = useCallback(async (action: PartyPlayerAction, buffer = true) => {
+    try {
+      const result = await applyPlayerActionFn({ data: { roomId: credentials.roomId, playerId: credentials.playerId, playerToken: credentials.playerToken, action } });
+      if (result.snapshot) live.setSnapshot(result.snapshot);
+      if (!result.accepted) { live.setMessage(result.error ?? "That action is no longer available."); return false; }
+      const remaining = queued().filter(({ actionId }) => actionId !== action.actionId); localStorage.setItem(queueKey, JSON.stringify(remaining));
+      live.notify(); live.setMessage(null); return true;
+    } catch { if (buffer) enqueue(action); live.setMessage("Saved on this phone. Reconnecting…"); return false; }
+  }, [credentials.playerId, credentials.playerToken, credentials.roomId, enqueue, live, queueKey, queued]);
+
+  const flush = useCallback(async () => {
+    for (const action of queued()) { const ok = await send(action, false); if (!ok) break; }
+  }, [queued, send]);
+  useEffect(() => { if (live.connectionState === "connected") void flush(); }, [flush, live.connectionState]);
+
+  const snapshot = live.snapshot; const round = snapshot?.round; const player = snapshot?.player;
+  useEffect(() => {
+    if (!round || !player) return;
+    const key = `spelling-party-draft:v1:${credentials.roomId}:${round.roundId}`;
+    if (roundRef.current !== round.roundId) {
+      roundRef.current = round.roundId;
+      try {
+        const local = JSON.parse(localStorage.getItem(key) ?? "null") as { draft?: string; revision?: number } | null;
+        if (local && typeof local.draft === "string" && typeof local.revision === "number" && local.revision > player.draftRevision) { setDraft(local.draft); draftRevision.current = local.revision; }
+        else { setDraft(player.draft); draftRevision.current = player.draftRevision; }
+      } catch { setDraft(player.draft); draftRevision.current = player.draftRevision; }
+    } else if (player.draftRevision > draftRevision.current) { setDraft(player.draft); draftRevision.current = player.draftRevision; }
+  }, [credentials.roomId, player, round]);
+
+  useEffect(() => {
+    if (!round || snapshot?.phase !== "answer" || player?.locked) return;
+    const key = `spelling-party-draft:v1:${credentials.roomId}:${round.roundId}`;
+    localStorage.setItem(key, JSON.stringify({ draft, revision: draftRevision.current }));
+    const action: PartyPlayerAction = { actionId: `${credentials.playerId}:${round.roundId}:draft:${draftRevision.current}`, type: "draft.update", roundId: round.roundId, draft, draftRevision: draftRevision.current };
+    const timer = window.setTimeout(() => void send(action), 140);
+    return () => window.clearTimeout(timer);
+  }, [credentials.playerId, credentials.roomId, draft, player?.locked, round, send, snapshot?.phase]);
+
+  const canType = snapshot?.phase === "answer" && !player?.locked;
+  const addLetter = useCallback((letter: string) => {
+    if (!canType) return;
+    setDraft((current) => current.length >= 32 ? current : `${current}${letter}`);
+    draftRevision.current += 1; void haptics.trigger("selection");
+  }, [canType, haptics]);
+  const backspace = useCallback(() => {
+    if (!canType) return;
+    setDraft((current) => current.slice(0, -1)); draftRevision.current += 1; void haptics.trigger("nudge");
+  }, [canType, haptics]);
+  const lock = useCallback(async () => {
+    if (!round || !canType) return;
+    const update: PartyPlayerAction = { actionId: `${credentials.playerId}:${round.roundId}:draft:${draftRevision.current}`, type: "draft.update", roundId: round.roundId, draft, draftRevision: draftRevision.current };
+    await send(update);
+    const accepted = await send({ actionId: crypto.randomUUID(), type: "answer.lock", roundId: round.roundId });
+    if (accepted) void haptics.trigger("success");
+  }, [canType, credentials.playerId, draft, haptics, round, send]);
+
+  useEffect(() => {
+    const handleKey = (event: KeyboardEvent) => {
+      if (/^[a-z]$/i.test(event.key)) { event.preventDefault(); addLetter(event.key.toLocaleUpperCase()); }
+      else if (event.key === "Backspace") { event.preventDefault(); backspace(); }
+      else if (event.key === "Enter") { event.preventDefault(); void lock(); }
+    };
+    window.addEventListener("keydown", handleKey); return () => window.removeEventListener("keydown", handleKey);
+  }, [addLetter, backspace, lock]);
+
+  const requestClue = async (clue: PartyClueKind) => {
+    if (!round) return;
+    if (clue === "sentence" && !window.confirm(`Use one of the room’s ${round.sentenceCluesRemaining} sentence clues for everyone?`)) return;
+    await send({ actionId: crypto.randomUUID(), type: "clue.request", roundId: round.roundId, clue });
+  };
+
+  useEffect(() => {
+    const handleVisibility = () => {
+      if (document.hidden && snapshot?.phase === "answer") hiddenAt.current = Date.now();
+      else if (!document.hidden && hiddenAt.current && round) {
+        const hiddenMs = Date.now() - hiddenAt.current; hiddenAt.current = null;
+        if (hiddenMs >= 1_000) void send({ actionId: crypto.randomUUID(), type: "integrity.notice", roundId: round.roundId, hiddenMs });
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibility); return () => document.removeEventListener("visibilitychange", handleVisibility);
+  }, [round, send, snapshot?.phase]);
+
+  useEffect(() => {
+    if (player?.locked && !priorLocked.current) void haptics.trigger(player.lockedAutomatically ? "selection" : "success");
+    priorLocked.current = player?.locked ?? false;
+    if (snapshot?.phase === "reveal" && priorPhase.current !== "reveal") {
+      const answer = round?.answers?.find(({ playerId }) => playerId === credentials.playerId);
+      void haptics.trigger(answer?.correct ? "success" : "nudge");
+    }
+    if (snapshot?.phase === "answer" && priorPhase.current !== "answer") void haptics.trigger("selection");
+    if (snapshot?.phase === "finished" && priorPhase.current !== "finished") void haptics.trigger("success");
+    priorPhase.current = snapshot?.phase;
+  }, [credentials.playerId, haptics, player?.locked, player?.lockedAutomatically, round?.answers, snapshot?.phase]);
+
+  const previousTick = useRef("");
+  useEffect(() => { if (/^[123]$/.test(stage.label) && stage.label !== previousTick.current) void haptics.trigger("selection"); previousTick.current = stage.label; }, [haptics, stage.label]);
+
+  const leaderboard = useMemo(() => [...(snapshot?.players ?? [])].sort((a, b) => b.score - a.score || a.name.localeCompare(b.name)), [snapshot?.players]);
+  if (!snapshot) return <PlayerMessage title="Rejoining…" detail={live.message ?? "Your place is saved."} />;
+  const ownReveal = round?.answers?.find(({ playerId }) => playerId === credentials.playerId);
+  return <div className="things-game things-game--night text-white"><header className="flex items-center justify-between gap-4 p-5 font-mono text-xs text-white/55"><Link to="/things/spelling-party" className="inline-flex min-h-11 items-center">← leave</Link><span aria-live="polite">{live.connectionState === "connected" ? "● live" : "reconnecting · draft saved"}</span></header><main id="main" className="mx-auto flex w-full max-w-lg flex-1 flex-col px-5 pb-8 text-center">
+    <p className="mt-4 font-mono text-micro uppercase tracking-[0.2em] text-white/45">{round ? `word ${round.number} of ${round.total}` : snapshot.deckName}</p>
+    {snapshot.phase === "lobby" ? <section className="flex flex-1 flex-col justify-center"><h1 className="font-serif text-5xl font-semibold">You’re in.</h1><p className="mt-4 font-serif text-lg text-white/60">The presenter will start when everyone is ready.</p></section> : snapshot.phase === "finished" ? <section className="flex flex-1 flex-col justify-center"><h1 className="font-serif text-5xl font-semibold">Final scores.</h1><ScoreList players={leaderboard} /></section> : <>
+      <section className="pt-8"><TextMorph as="h1" className="break-words font-serif text-6xl font-semibold leading-none [overflow-wrap:anywhere]">{stage.label}</TextMorph>{stage.seconds !== null ? <p className="mt-4 font-mono text-xl text-white/55">{stage.seconds}s</p> : null}</section>
+      {snapshot.phase === "answer" && !player?.locked ? <><div className="mt-8 flex min-h-16 flex-wrap justify-center gap-2" aria-label={draft ? `Your spelling: ${draft.split("").join(" ")}` : "Your spelling is blank"}>{draft.split("").map((letter, index) => <span key={`${index}-${letter}`} className="flex h-12 min-w-10 items-center justify-center rounded-xl border border-white/20 bg-white/[0.07] px-2 font-mono text-xl">{letter}</span>)}{!draft ? <span className="font-serif text-lg text-white/35">start typing</span> : null}</div><PartyKeyboard onLetter={addLetter} onBackspace={backspace} /><button type="button" onClick={() => void lock()} className="mt-4 min-h-14 w-full rounded-full bg-[var(--things-amber)] px-6 font-mono text-sm font-bold text-black">lock it in</button><div className="mt-5 grid grid-cols-3 gap-2"><button type="button" disabled={round?.repeatUsed} onClick={() => void requestClue("repeat")} className="min-h-12 rounded-full border border-white/15 px-2 font-mono text-micro disabled:opacity-30">hear again</button><button type="button" disabled={round?.definitionUsed} onClick={() => void requestClue("definition")} className="min-h-12 rounded-full border border-white/15 px-2 font-mono text-micro disabled:opacity-30">definition</button><button type="button" disabled={!round?.sentenceCluesRemaining} onClick={() => void requestClue("sentence")} className="min-h-12 rounded-full border border-white/15 px-2 font-mono text-micro disabled:opacity-30">sentence · {round?.sentenceCluesRemaining}</button></div></> : null}
+      {(snapshot.phase === "answer" || snapshot.phase === "locked") && player?.locked ? <section className="flex flex-1 flex-col justify-center"><h2 className="font-serif text-4xl font-semibold">Locked in.</h2><p className="mt-3 font-serif text-lg text-white/55">Waiting for everyone else.</p></section> : null}
+      {snapshot.phase === "reveal" && round ? <section className="mt-8"><p className="font-mono text-micro uppercase tracking-[0.18em] text-white/45">{ownReveal?.correct ? "correct" : "not this time"}</p><p className="mt-4 font-serif text-2xl text-white/60">you wrote · {ownReveal?.answer || "no answer"}</p><ScoreList players={leaderboard} /><p className="mt-6 font-serif text-lg text-white/50">Waiting for the presenter…</p></section> : null}
+    </>}
+    {snapshot.recentClues.at(-1) ? <p className="mt-4 font-mono text-xs text-amber-200">{snapshot.recentClues.at(-1)?.message}</p> : null}<p aria-live="polite" className="mt-3 min-h-5 font-mono text-xs text-amber-200">{live.message}</p>
+  </main></div>;
+}
+
+const KEY_ROWS = ["QWERTYUIOP", "ASDFGHJKL", "ZXCVBNM"];
+function PartyKeyboard({ onLetter, onBackspace }: { onLetter: (letter: string) => void; onBackspace: () => void }) { return <div className="mt-8 grid gap-2" aria-label="Spelling keyboard">{KEY_ROWS.map((row, rowIndex) => <div key={row} className="flex justify-center gap-1.5">{row.split("").map((letter) => <button key={letter} type="button" aria-label={letter} onClick={() => onLetter(letter)} className="h-12 min-w-0 flex-1 rounded-xl border border-white/15 bg-white/[0.06] font-mono text-sm active:bg-white/15">{letter}</button>)}{rowIndex === 2 ? <button type="button" aria-label="Backspace" onClick={onBackspace} className="h-12 min-w-12 rounded-xl border border-white/15 bg-white/[0.06] font-mono text-xs">⌫</button> : null}</div>)}</div>; }
+function ScoreList({ players }: { players: Array<{ id: string; name: string; score: number }> }) { return <ol className="mt-8 border-t border-white/12">{players.map((player, index) => <li key={player.id} className="grid grid-cols-[2rem_1fr_auto] items-center gap-3 border-b border-white/12 py-3 text-left transition-transform motion-reduce:transition-none"><span className="font-mono text-xs text-white/40">{index + 1}</span><span className="font-serif text-xl">{player.name}</span><span className="font-mono text-sm">{player.score}</span></li>)}</ol>; }
+function PlayerMessage({ title, detail }: { title: string; detail: string }) { return <main id="main" className="things-game things-game--night flex items-center justify-center px-6 text-center text-white"><div><h1 className="font-serif text-5xl font-semibold">{title}</h1><p className="mt-4 font-serif text-lg text-white/60">{detail}</p></div></main>; }

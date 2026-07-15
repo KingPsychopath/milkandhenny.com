@@ -17,6 +17,7 @@ export function SpellingPlayArea({
   onReplay,
   onPause,
   onResume,
+  onEnd,
   onDecision,
 }: {
   item: SpellingWord;
@@ -34,12 +35,13 @@ export function SpellingPlayArea({
   onReplay: (slower?: boolean) => void;
   onPause: () => void;
   onResume: () => void;
+  onEnd: () => void;
   onDecision: (decision: "correct" | "incorrect") => void;
 }) {
   return (
     <div className={`things-game ${feedback === "correct" ? "things-game--green" : feedback === "incorrect" ? "things-game--stone" : "things-game--amber"} text-black`}>
       <header className="grid grid-cols-3 items-center px-5 py-4">
-        <span>{remoteBadge}</span><span className="justify-self-center rounded-full border border-black/15 px-4 py-2 font-mono text-lg font-semibold tabular-nums">{seconds === null ? "∞" : seconds}</span><span className="justify-self-end font-mono text-xs opacity-60">{score} correct</span>
+        <span className="flex items-center gap-3"><button type="button" onClick={onEnd} className="min-h-11 font-mono text-xs opacity-60">end round</button>{remoteBadge}</span><span className="justify-self-center rounded-full border border-black/15 px-4 py-2 font-mono text-lg font-semibold tabular-nums">{seconds === null ? "∞" : seconds}</span><span className="justify-self-end font-mono text-xs opacity-60">{score} correct</span>
       </header>
       <main id="main" className="relative flex flex-1 flex-col items-center justify-center overflow-hidden px-6 text-center">
         {paused ? <div role="alert"><p className="font-mono text-micro uppercase tracking-[0.2em] text-black/50">word paused</p><h1 className="mt-4 font-serif text-5xl font-semibold">Take a breath.</h1><button type="button" onClick={onResume} className="mt-7 min-h-12 rounded-full bg-black px-6 font-mono text-sm font-semibold text-white">resume</button></div> : <>

@@ -13,6 +13,7 @@ export type OfflineWorkerRequest =
       slug: OfflineThingSlug;
       buildId: string;
       resourceUrls: string[];
+      refresh?: boolean;
     }
   | {
       type: "REMOVE_THING_OFFLINE";

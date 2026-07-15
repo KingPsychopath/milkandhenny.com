@@ -12,8 +12,9 @@ import { useCustomDecks } from "./useCustomDecks";
 import { useFullscreen } from "../shared/useFullscreen";
 import { useTiltControl } from "../shared/useTiltControl";
 import { RemoteConnectionBadge, RemoteHostPanel } from "../remote/RemoteHostPanel";
-import { useRemoteGameHost } from "../remote/useRemoteGameHost";
-import type { RemoteCommand, RemoteGameSnapshot } from "../remote/types";
+import { RemotePlayerReady } from "../remote/RemotePlayerReady";
+import { useRemotePlayerRoom } from "../remote/useRemotePlayerRoom";
+import type { RemoteCommand, RemoteGameSnapshot, RemoteHeadsUpSetup, RemotePlayerSession } from "../remote/types";
 import { GameShell } from "../shared/GameShell";
 
 type Phase = "setup" | "builder" | "countdown" | "playing" | "results";
@@ -23,12 +24,12 @@ const ROUND_SECONDS = 60;
 const SNAP_EASE = "cubic-bezier(0.16, 1, 0.3, 1)";
 const ROUND_STORAGE_KEY = "forehead:active-round:v1";
 
-export function HeadsUpApp() {
+export function HeadsUpApp({ remoteSession }: { remoteSession?: RemotePlayerSession } = {}) {
   const fullscreen = useFullscreen();
 
   return (
     <div ref={fullscreen.targetRef} className="things-game-fullscreen">
-      <HeadsUpExperience fullscreen={fullscreen} />
+      <HeadsUpExperience fullscreen={fullscreen} remoteSession={remoteSession} />
     </div>
   );
 }
@@ -42,17 +43,26 @@ interface FullscreenControls {
   toggle: () => Promise<void>;
 }
 
-function HeadsUpExperience({ fullscreen }: { fullscreen: FullscreenControls }) {
+function HeadsUpExperience({ fullscreen, remoteSession }: { fullscreen: FullscreenControls; remoteSession?: RemotePlayerSession }) {
+  const roundStorageKey = remoteSession ? `${ROUND_STORAGE_KEY}:${remoteSession.roomId}` : ROUND_STORAGE_KEY;
+  const joinedSetup = remoteSession?.setup.game === "heads-up" ? remoteSession.setup : null;
+  const joinedDeck: GameDeck | null = joinedSetup ? {
+    id: `remote-${remoteSession?.roomId ?? "player"}`,
+    name: joinedSetup.deck.name,
+    description: "Prepared by your judge.",
+    symbol: "↗",
+    cards: joinedSetup.deck.cards,
+  } : null;
   const [phase, setPhase] = useState<Phase>("setup");
-  const [deckId, setDeckId] = useState(GAME_DECKS[0].id);
-  const [cards, setCards] = useState(() => shuffledCards(GAME_DECKS[0].cards));
+  const [deckId, setDeckId] = useState(joinedDeck?.id ?? GAME_DECKS[0].id);
+  const [cards, setCards] = useState(() => shuffledCards(joinedDeck?.cards ?? GAME_DECKS[0].cards));
   const [cardIndex, setCardIndex] = useState(0);
   const [countdown, setCountdown] = useState(3);
   const [seconds, setSeconds] = useState(ROUND_SECONDS);
   const [results, setResults] = useState<RoundResult[]>([]);
   const [feedback, setFeedback] = useState<Decision | null>(null);
   const [soundEnabled, setSoundEnabled] = useState(true);
-  const [positionLock, setPositionLock] = useState(false);
+  const [positionLock, setPositionLock] = useState(joinedSetup?.positionLock ?? false);
   const [interrupted, setInterrupted] = useState(false);
   const [remotePaused, setRemotePaused] = useState(false);
   const [remoteExclusive, setRemoteExclusive] = useState(false);
@@ -65,7 +75,7 @@ function HeadsUpExperience({ fullscreen }: { fullscreen: FullscreenControls }) {
   const restoredRound = useRef(false);
   const haptics = useWebHaptics();
   const { customDecks, saveDeck, deleteDeck } = useCustomDecks();
-  const allDecks = [...GAME_DECKS, ...customDecks.map(customDeckAsGameDeck)];
+  const allDecks = joinedDeck ? [joinedDeck] : [...GAME_DECKS, ...customDecks.map(customDeckAsGameDeck)];
 
   const selectedDeck = allDecks.find((deck) => deck.id === deckId) ?? GAME_DECKS[0];
   const card = cards[cardIndex] ?? selectedDeck.cards[0];
@@ -111,6 +121,20 @@ function HeadsUpExperience({ fullscreen }: { fullscreen: FullscreenControls }) {
     decisionTimeout.current = null;
   }, []);
 
+  const endRound = useCallback((confirmFirst = true) => {
+    if (confirmFirst && !window.confirm("End this round and return to the decks?")) return;
+    clearDecisionTimeout();
+    clearOrientationLock();
+    processing.current = false;
+    setFeedback(null);
+    setResults([]);
+    setInterrupted(false);
+    setRemotePaused(false);
+    sessionStorage.removeItem(roundStorageKey);
+    restoredRound.current = false;
+    setPhase("setup");
+  }, [clearDecisionTimeout, clearOrientationLock, roundStorageKey]);
+
   const undoDecision = useCallback(() => {
     if (phase !== "playing") return;
     clearDecisionTimeout();
@@ -147,6 +171,7 @@ function HeadsUpExperience({ fullscreen }: { fullscreen: FullscreenControls }) {
     nextLabel: phase === "playing" ? cards[(cardIndex + 1) % cards.length] ?? null : null,
     secondsRemaining: phase === "playing" ? seconds : null,
     paused: pauseReason !== null,
+    transitioning: feedback !== null,
     pauseReason: pauseReason ?? undefined,
     score,
     results: results.map((result) => ({
@@ -154,13 +179,19 @@ function HeadsUpExperience({ fullscreen }: { fullscreen: FullscreenControls }) {
       label: result.card,
       decision: result.decision,
     })),
+    itemKey: phase === "playing" ? String(cardIndex) : undefined,
     updatedAt: Date.now(),
   };
-  const remote = useRemoteGameHost("heads-up", remoteSnapshot, handleRemoteCommand);
+  const remoteSetup: RemoteHeadsUpSetup = {
+    game: "heads-up",
+    deck: { name: selectedDeck.name, cards: [...selectedDeck.cards] },
+    positionLock,
+  };
+  const remote = useRemotePlayerRoom("heads-up", remoteSetup, remoteSnapshot, handleRemoteCommand, remoteSession);
 
   useEffect(() => {
     try {
-      const stored: unknown = JSON.parse(sessionStorage.getItem(ROUND_STORAGE_KEY) ?? "null");
+      const stored: unknown = JSON.parse(sessionStorage.getItem(roundStorageKey) ?? "null");
       if (!stored || typeof stored !== "object") return;
       const value = stored as {
         phase?: Phase;
@@ -189,18 +220,18 @@ function HeadsUpExperience({ fullscreen }: { fullscreen: FullscreenControls }) {
       if (value.phase !== "results") setInterrupted(true);
       restoredRound.current = true;
     } catch {
-      sessionStorage.removeItem(ROUND_STORAGE_KEY);
+      sessionStorage.removeItem(roundStorageKey);
     }
-  }, []);
+  }, [roundStorageKey]);
 
   useEffect(() => {
     if (phase === "setup" || phase === "builder") {
-      if (restoredRound.current) sessionStorage.removeItem(ROUND_STORAGE_KEY);
+      if (restoredRound.current) sessionStorage.removeItem(roundStorageKey);
       return;
     }
-    sessionStorage.setItem(ROUND_STORAGE_KEY, JSON.stringify({ phase, deckId, cards, cardIndex, seconds, results, savedAt: Date.now() }));
+    sessionStorage.setItem(roundStorageKey, JSON.stringify({ phase, deckId, cards, cardIndex, seconds, results, savedAt: Date.now() }));
     restoredRound.current = true;
-  }, [cardIndex, cards, deckId, phase, results, seconds]);
+  }, [cardIndex, cards, deckId, phase, results, roundStorageKey, seconds]);
 
   const startRound = async (deck: GameDeck = selectedDeck) => {
     primeGameAudio();
@@ -336,6 +367,7 @@ function HeadsUpExperience({ fullscreen }: { fullscreen: FullscreenControls }) {
   if (phase === "countdown") {
     return (
       <GameShell tone="amber">
+        <header className="p-5"><button type="button" onClick={() => endRound(false)} className="min-h-11 font-mono text-xs text-black/60">← cancel round</button></header>
         <main id="main" className="flex flex-1 flex-col items-center justify-center text-center">
           <p className="font-mono text-xs uppercase tracking-[0.2em] text-black/55">get ready</p>
           <TextMorph
@@ -360,7 +392,7 @@ function HeadsUpExperience({ fullscreen }: { fullscreen: FullscreenControls }) {
     return (
       <GameShell tone={feedback === "correct" ? "green" : feedback === "pass" ? "stone" : "amber"}>
         <header className="grid grid-cols-3 items-center px-5 py-4 text-black">
-          <span className="min-w-0 truncate font-mono text-xs opacity-60">{selectedDeck.name}</span>
+          <button type="button" onClick={() => endRound()} className="min-h-11 justify-self-start font-mono text-xs opacity-60">end round</button>
           <span
             className="justify-self-center rounded-full border border-black/15 px-4 py-2 font-mono text-lg font-semibold tabular-nums"
             aria-label={`${seconds} seconds remaining`}
@@ -403,6 +435,10 @@ function HeadsUpExperience({ fullscreen }: { fullscreen: FullscreenControls }) {
     );
   }
 
+  if (joinedDeck) {
+    return <RemotePlayerReady gameName="Forehead" deckName={joinedDeck.name} detail="Hold this phone to your forehead. Starting may ask for motion access so tilting can score each card." judgeConnected={remote.judgeConnected} onFullscreen={() => void fullscreen.toggle()} onStart={() => void startRound(joinedDeck)} />;
+  }
+
   return (
     <HeadsUpSetup
       decks={allDecks}
@@ -427,6 +463,7 @@ function HeadsUpExperience({ fullscreen }: { fullscreen: FullscreenControls }) {
           message={remote.message}
           exclusive={remoteExclusive}
           onCreate={remote.createRoom}
+          onCreatePlayerRoom={remote.createJudgeRoom}
           onClose={remote.closeRoom}
           onMessage={remote.setMessage}
           onToggleExclusive={() => setRemoteExclusive((value) => !value)}

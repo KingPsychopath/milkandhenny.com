@@ -10,6 +10,7 @@ interface RemoteHostPanelProps {
   message: string | null;
   exclusive: boolean;
   onCreate: () => Promise<unknown>;
+  onCreatePlayerRoom: () => Promise<unknown>;
   onClose: () => Promise<void>;
   onMessage: (message: string | null) => void;
   onToggleExclusive: () => void;
@@ -24,6 +25,7 @@ export function RemoteHostPanel({
   message,
   exclusive,
   onCreate,
+  onCreatePlayerRoom,
   onClose,
   onMessage,
   onToggleExclusive,
@@ -78,19 +80,17 @@ export function RemoteHostPanel({
 
   return (
     <section className="mt-9 rounded-3xl border border-white/12 bg-white/[0.04] p-5" aria-labelledby="remote-judge-title">
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <h2 id="remote-judge-title" className="font-serif text-2xl font-semibold">
-            Remote judge
-          </h2>
-          <p className="mt-2 max-w-sm text-sm leading-relaxed text-white/55">
-            Optional. Share one link; your game keeps working if either connection drops.
-          </p>
-        </div>
+      <div>
+        <h2 id="remote-judge-title" className="font-serif text-2xl font-semibold">
+          Remote judge
+        </h2>
+        <p className="mt-2 max-w-sm text-sm leading-relaxed text-white/55">
+          Invite someone to score the game from their phone. You can keep playing if either phone loses signal.
+        </p>
         {roomId ? (
-          <span className={`rounded-full border px-3 py-2 font-mono text-micro uppercase tracking-[0.12em] ${connected ? "border-emerald-300/35 text-emerald-200" : "border-white/15 text-white/45"}`} aria-live="polite">
-            {connected ? "● connected" : "○ waiting"}
-          </span>
+          <p className={`mt-3 font-mono text-xs ${connected ? "text-emerald-200" : "text-white/45"}`} aria-live="polite">
+            {connected ? "● judge connected" : "waiting for your judge to join…"}
+          </p>
         ) : null}
       </div>
 
@@ -102,6 +102,22 @@ export function RemoteHostPanel({
       >
         {roomId ? "share judge invite" : syncing ? "making invite…" : "invite a judge"}
       </button>
+
+      {!roomId ? (
+        <div className="mt-4 border-t border-white/10 pt-4">
+          <p className="text-sm leading-relaxed text-white/55">
+            Want this phone to be the judge instead? Choose the game here, then let the player scan a code on their phone.
+          </p>
+          <button
+            type="button"
+            onClick={() => void onCreatePlayerRoom()}
+            disabled={syncing}
+            className="mt-3 min-h-12 w-full rounded-full border border-white/15 px-5 font-mono text-sm text-white/75 disabled:opacity-40"
+          >
+            set up as the judge
+          </button>
+        </div>
+      ) : null}
 
       {roomId ? (
         <div className="mt-5 grid gap-5 sm:grid-cols-[9rem_1fr] sm:items-center">
@@ -134,9 +150,6 @@ export function RemoteHostPanel({
 }
 
 export function RemoteConnectionBadge({ connected }: { connected: boolean }) {
-  return (
-    <span className="rounded-full border border-black/15 px-2 py-1 font-mono text-[0.6rem] uppercase tracking-[0.12em] text-black/55" aria-label={connected ? "Remote judge connected" : "Remote judge not connected"}>
-      {connected ? "● judge" : "○ local"}
-    </span>
-  );
+  if (!connected) return null;
+  return <span className="font-mono text-micro text-black/55" aria-label="Remote judge connected">● judge connected</span>;
 }
