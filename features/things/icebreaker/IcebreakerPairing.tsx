@@ -180,7 +180,12 @@ function QrScanner({ playerId, onCancel, onScan }: QrScannerProps) {
   );
 }
 
-function MyCode({ player, onScan, onClose }: IcebreakerPairingProps & { onScan: () => void }) {
+function MyCode({
+  player,
+  onScan,
+  onClose,
+  returnToResult = false,
+}: IcebreakerPairingProps & { onScan: () => void; returnToResult?: boolean }) {
   const [qrCode, setQrCode] = useState<string | null>(null);
 
   useEffect(() => {
@@ -213,18 +218,20 @@ function MyCode({ player, onScan, onClose }: IcebreakerPairingProps & { onScan: 
       <p className="mt-1 font-mono text-xl tracking-[0.18em]">{pairingCode(player)}</p>
       <button
         type="button"
-        onClick={onScan}
+        onClick={returnToResult ? onClose : onScan}
         className="mt-7 min-h-12 w-full rounded-full bg-white px-6 font-mono text-sm font-semibold text-black focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-transparent"
       >
-        scan their code
+        {returnToResult ? "back to our result" : "scan their code"}
       </button>
-      <button
-        type="button"
-        onClick={onClose}
-        className="mt-2 min-h-11 font-mono text-xs text-white/65 hover:text-white focus-visible:ring-2 focus-visible:ring-white/75"
-      >
-        back to my colour
-      </button>
+      {!returnToResult ? (
+        <button
+          type="button"
+          onClick={onClose}
+          className="mt-2 min-h-11 font-mono text-xs text-white/65 hover:text-white focus-visible:ring-2 focus-visible:ring-white/75"
+        >
+          back to my colour
+        </button>
+      ) : null}
     </section>
   );
 }
@@ -271,7 +278,7 @@ function PairingResultView({
         <p className="mt-3 font-serif text-xl leading-snug">“{result.question}”</p>
       </div>
       <p className="mt-5 font-serif text-sm text-white/70">
-        Let them scan your code too so both phones remember the moment.
+        Let them scan your code too so both phones see the same result.
       </p>
       <button
         type="button"
@@ -308,15 +315,23 @@ export function IcebreakerPairing({ player, onClose }: IcebreakerPairingProps) {
     setResult(createPairingResult(player, partner));
   };
 
+  if (view === "show") {
+    return (
+      <MyCode
+        player={player}
+        onScan={() => setView("scan")}
+        onClose={() => (result ? setView("choose") : onClose())}
+        returnToResult={Boolean(result)}
+      />
+    );
+  }
+
   if (result) {
     return (
       <PairingResultView
         player={player}
         result={result}
-        onShowCode={() => {
-          setResult(null);
-          setView("show");
-        }}
+        onShowCode={() => setView("show")}
         onPairAgain={() => {
           setResult(null);
           setView("choose");
@@ -330,10 +345,6 @@ export function IcebreakerPairing({ player, onClose }: IcebreakerPairingProps) {
     return (
       <QrScanner playerId={player.id} onScan={handleScan} onCancel={() => setView("choose")} />
     );
-  }
-
-  if (view === "show") {
-    return <MyCode player={player} onScan={() => setView("scan")} onClose={onClose} />;
   }
 
   return (
