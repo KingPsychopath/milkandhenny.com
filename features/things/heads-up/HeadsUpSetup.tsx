@@ -1,0 +1,148 @@
+import { Link } from "@tanstack/react-router";
+import type { GameDeck } from "./decks";
+import { OrientationControls } from "./OrientationControls";
+
+interface HeadsUpSetupProps {
+  decks: GameDeck[];
+  locked: boolean;
+  motionUnavailable: boolean;
+  selectedDeckId: string;
+  soundEnabled: boolean;
+  customDeckIds: Set<string>;
+  shareMessage: string | null;
+  onCreateDeck: () => void;
+  onEditDeck: (id: string) => void;
+  onSelectDeck: (id: string) => void;
+  onShareDeck: (id: string) => void;
+  onStart: () => void;
+  onToggleLock: () => void;
+  onToggleSound: () => void;
+}
+
+export function HeadsUpSetup({
+  decks,
+  locked,
+  motionUnavailable,
+  selectedDeckId,
+  soundEnabled,
+  customDeckIds,
+  shareMessage,
+  onCreateDeck,
+  onEditDeck,
+  onSelectDeck,
+  onShareDeck,
+  onStart,
+  onToggleLock,
+  onToggleSound,
+}: HeadsUpSetupProps) {
+  const selectedIsCustom = customDeckIds.has(selectedDeckId);
+
+  return (
+    <div className="things-game things-game--night text-white">
+      <header className="flex items-center justify-between p-5 font-mono text-xs text-white/55">
+        <Link to="/things" className="min-h-11 inline-flex items-center hover:text-white">
+          ← things
+        </Link>
+        <button
+          type="button"
+          onClick={onToggleSound}
+          className="min-h-11 rounded-full px-2 hover:text-white"
+          aria-pressed={soundEnabled}
+        >
+          sound {soundEnabled ? "on" : "off"}
+        </button>
+      </header>
+
+      <main id="main" className="flex-1 px-5 pb-10">
+        <section className="mx-auto max-w-lg pt-7">
+          <p className="font-mono text-micro uppercase tracking-[0.2em] text-white/45">
+            a guessing game
+          </p>
+          <h1 className="mt-3 font-serif text-6xl font-semibold leading-none tracking-tight">
+            Forehead.
+          </h1>
+          <p className="mt-5 max-w-md font-serif text-lg leading-relaxed text-white/65">
+            Pick a deck. Your friends give clues. Tilt down when you get it, or up to pass.
+          </p>
+        </section>
+
+        <section className="mx-auto mt-10 max-w-lg" aria-labelledby="choose-deck">
+          <div className="flex items-center justify-between gap-4">
+            <h2
+              id="choose-deck"
+              className="font-mono text-micro uppercase tracking-[0.18em] text-white/45"
+            >
+              choose a deck
+            </h2>
+            <button
+              type="button"
+              onClick={onCreateDeck}
+              className="min-h-11 rounded-full border border-white/15 px-4 font-mono text-xs text-white/70"
+            >
+              + make a deck
+            </button>
+          </div>
+
+          <div className="mt-3 grid gap-3">
+            {decks.map((deck) => {
+              const selected = deck.id === selectedDeckId;
+              return (
+                <button
+                  type="button"
+                  key={deck.id}
+                  onClick={() => onSelectDeck(deck.id)}
+                  aria-pressed={selected}
+                  className={`grid min-h-24 min-w-0 grid-cols-[2.75rem_minmax(0,1fr)_auto] items-center gap-3 rounded-3xl border p-4 text-left transition-[transform,border-color,background-color] ${
+                    selected ? "border-white/60 bg-white/12" : "border-white/12 bg-white/[0.04]"
+                  }`}
+                >
+                  <span className="font-serif text-3xl text-white/65" aria-hidden="true">
+                    {deck.symbol}
+                  </span>
+                  <span className="min-w-0">
+                    <span className="block truncate font-serif text-xl font-semibold">
+                      {deck.name}
+                    </span>
+                    <span className="mt-1 block text-xs leading-relaxed text-white/50">
+                      {deck.description}
+                    </span>
+                  </span>
+                  <span className="font-mono text-xs text-white/45">{deck.cards.length}</span>
+                </button>
+              );
+            })}
+          </div>
+
+          {selectedIsCustom ? (
+            <div className="mt-3 flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => onEditDeck(selectedDeckId)}
+                className="min-h-11 rounded-full border border-white/15 px-4 font-mono text-xs text-white/65"
+              >
+                edit
+              </button>
+              <button
+                type="button"
+                onClick={() => onShareDeck(selectedDeckId)}
+                className="min-h-11 rounded-full border border-white/15 px-4 font-mono text-xs text-white/65"
+              >
+                share / export
+              </button>
+            </div>
+          ) : null}
+          <p aria-live="polite" className="mt-2 min-h-4 text-right font-mono text-xs text-white/55">
+            {shareMessage}
+          </p>
+        </section>
+
+        <OrientationControls
+          locked={locked}
+          motionUnavailable={motionUnavailable}
+          onStart={onStart}
+          onToggle={onToggleLock}
+        />
+      </main>
+    </div>
+  );
+}
