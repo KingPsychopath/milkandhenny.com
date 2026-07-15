@@ -69,3 +69,5 @@ Repeated diagnostics are grouped by rule below; the count covers every reported 
 ## Verification
 
 Each fix commit is checked with `npm run typecheck`, `npm run lint`, and React Doctor’s changed-scope scan against `main`. The full scan remains the baseline for deferred families.
+
+Final full scan: 47/100, 10 errors and 290 warnings across 89 files. The stacked fixes removed 12 errors and 7 warnings; the remaining errors are the eight concurrency-sensitive ref writes and the two high-confidence false positives documented above.
