@@ -91,6 +91,10 @@ function rejectJudgeCommand(meta: RoomMeta, command: RemoteCommandRequest, reaso
   return { ok: false as const, error };
 }
 
+function targetsKnownResult(snapshot: RemoteSyncedSnapshot | null, command: RemoteCommandRequest) {
+  return command.type !== "amend" || Boolean(snapshot?.results.some(({ id }) => id === command.resultId));
+}
+
 function allRemoteKeys(roomId: string) {
   return [remoteRoomRedisKeys(roomId), remoteRoomRedisKeys(roomId, true)]
     .flatMap((roomKeys) => Object.values(roomKeys));
@@ -376,7 +380,8 @@ export async function sendRemoteJudgeCommand(input: {
     const existingSequence = room.commandSequences.get(input.command.id);
     if (existingSequence !== undefined) return { ok: true, sequence: existingSequence };
     if (room.snapshot?.roundId !== input.command.roundId) return rejectJudgeCommand(meta, input.command, "stale_round", "Round changed");
-    if (room.snapshot?.itemId !== input.command.itemId) return rejectJudgeCommand(meta, input.command, "stale_item", "Card changed");
+    if (input.command.type !== "amend" && room.snapshot?.itemId !== input.command.itemId) return rejectJudgeCommand(meta, input.command, "stale_item", "Card changed");
+    if (!targetsKnownResult(room.snapshot, input.command)) return rejectJudgeCommand(meta, input.command, "stale_result", "Result changed");
     const isDecision = input.command.type === "correct" || input.command.type === "incorrect" || input.command.type === "pass" || input.command.type === "skip";
     const decisionDeadline = room.snapshot.decisionGraceEndsAt ?? room.snapshot.decisionClosesAt;
     if (isDecision && decisionDeadline && receivedAt > decisionDeadline) {
@@ -400,7 +405,8 @@ export async function sendRemoteJudgeCommand(input: {
   if (rate > 120) return { ok: false, error: "Too many controls" };
   const snapshot = await redis.get<RemoteSyncedSnapshot>(roomKeys.snapshot);
   if (snapshot?.roundId !== input.command.roundId) return rejectJudgeCommand(meta, input.command, "stale_round", "Round changed");
-  if (snapshot?.itemId !== input.command.itemId) return rejectJudgeCommand(meta, input.command, "stale_item", "Card changed");
+  if (input.command.type !== "amend" && snapshot?.itemId !== input.command.itemId) return rejectJudgeCommand(meta, input.command, "stale_item", "Card changed");
+  if (!targetsKnownResult(snapshot, input.command)) return rejectJudgeCommand(meta, input.command, "stale_result", "Result changed");
   const isDecision = input.command.type === "correct" || input.command.type === "incorrect" || input.command.type === "pass" || input.command.type === "skip";
   const decisionDeadline = snapshot.decisionGraceEndsAt ?? snapshot.decisionClosesAt;
   if (isDecision && decisionDeadline && receivedAt > decisionDeadline) {

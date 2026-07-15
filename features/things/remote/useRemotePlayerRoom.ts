@@ -228,7 +228,7 @@ export function useRemotePlayerRoom(
           let receipt: RemoteCommandReceipt;
           if (latest.roundId !== command.roundId) {
             receipt = { commandId: command.id, sequence: command.sequence, status: "rejected", reason: "stale round" };
-          } else if (latest.itemId !== command.itemId || (isDecision && latest.transitioning)) {
+          } else if ((command.type !== "amend" && latest.itemId !== command.itemId) || (isDecision && latest.transitioning)) {
             receipt = { commandId: command.id, sequence: command.sequence, status: "rejected", reason: "stale item" };
           } else if (isDecision && (latest.decisionGraceEndsAt ?? latest.decisionClosesAt) && command.receivedAt > (latest.decisionGraceEndsAt ?? latest.decisionClosesAt)!) {
             receipt = { commandId: command.id, sequence: command.sequence, status: "rejected", reason: "decision closed" };

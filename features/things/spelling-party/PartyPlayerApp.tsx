@@ -14,6 +14,7 @@ import { usePartyLiveSnapshot } from "./usePartyLiveSnapshot";
 import { useSynchronizedPartyStage } from "./useSynchronizedPartyStage";
 import { PartyClosenessBoard } from "./PartyClosenessBoard";
 import { gameBrowserKeys, legacyGameBrowserKeys } from "../shared/game-keys";
+import { EndGameDialog } from "../shared/EndGameDialog";
 import {
   clearExpiredGameLocalStorage,
   readExpiringLocalValue,
@@ -178,6 +179,8 @@ function PartyPlayerGame({ credentials }: { credentials: PartyPlayerCredentials 
   const priorLocked = useRef(false);
   const priorPhase = useRef(live.snapshot?.phase);
   const playedAudio = useRef(new Set<string>());
+  const [endConfirmationOpen, setEndConfirmationOpen] = useState(false);
+  const [leaving, setLeaving] = useState(false);
   const haptics = useWebHaptics();
   const queueKey = gameBrowserKeys.partyPendingActions(credentials.roomId, credentials.playerId);
 
@@ -264,6 +267,7 @@ function PartyPlayerGame({ credentials }: { credentials: PartyPlayerCredentials 
   }, [flush, live.connectionState]);
 
   const snapshot = live.snapshot;
+  const setLiveMessage = live.setMessage;
   const round = snapshot?.round;
   const player = snapshot?.player;
   const recoveredHost = isHost
@@ -294,12 +298,12 @@ function PartyPlayerGame({ credentials }: { credentials: PartyPlayerCredentials 
       playedAudio.current.add(`word:${round.roundId}`);
       void playPartySpeech(round.wordAudioUrl, round.spokenWord, round.speechLocale).then(
         (played) => {
-          if (!played) live.setMessage("Tap ‘play word again’—this phone blocked automatic audio.");
+          if (!played) setLiveMessage("Tap ‘play word again’—this phone blocked automatic audio.");
         },
       );
     }, delay);
     return () => window.clearTimeout(timer);
-  }, [isHost, live.clockOffset, live.setMessage, round, snapshot?.phase]);
+  }, [isHost, live.clockOffset, round, setLiveMessage, snapshot?.phase]);
 
   useEffect(() => {
     if (!isHost) return;
@@ -307,9 +311,9 @@ function PartyPlayerGame({ credentials }: { credentials: PartyPlayerCredentials 
     if (!clue || playedAudio.current.has(`clue:${clue.id}`)) return;
     playedAudio.current.add(`clue:${clue.id}`);
     void playPartySpeech(clue.audioUrl, clue.speechText, round?.speechLocale).then((played) => {
-      if (!played) live.setMessage("Tap the clue notice to play it.");
+      if (!played) setLiveMessage("Tap the clue notice to play it.");
     });
-  }, [isHost, live.setMessage, round?.activeClue, round?.speechLocale]);
+  }, [isHost, round?.activeClue, round?.speechLocale, setLiveMessage]);
   useEffect(() => {
     if (!round || !player) return;
     const key = gameBrowserKeys.partyDraft(credentials.roomId, round.roundId);
@@ -551,10 +555,7 @@ function PartyPlayerGame({ credentials }: { credentials: PartyPlayerCredentials 
   };
 
   const handleLeave = async () => {
-    const confirmMessage = isHost
-      ? "End this party for everyone?"
-      : "Leave this party? You cannot rejoin after the game starts.";
-    if (!live.ended && snapshot?.phase !== "finished" && !window.confirm(confirmMessage)) return;
+    setLeaving(true);
     if (isHost && credentials.presenterToken)
       await closePartyRoomFn({
         data: { roomId: credentials.roomId, presenterToken: credentials.presenterToken },
@@ -607,7 +608,7 @@ function PartyPlayerGame({ credentials }: { credentials: PartyPlayerCredentials 
   return (
     <div className="things-game things-game--night text-white">
       <header className="flex items-center justify-between gap-4 p-5 font-mono text-xs text-white/55">
-        <button type="button" onClick={() => void handleLeave()} className="min-h-11">
+        <button type="button" onClick={() => setEndConfirmationOpen(true)} className="min-h-11">
           {isHost ? "end party" : "leave game"}
         </button>
         <span aria-live="polite">
@@ -799,6 +800,22 @@ function PartyPlayerGame({ credentials }: { credentials: PartyPlayerCredentials 
           {live.message}
         </p>
       </main>
+      {endConfirmationOpen ? (
+        <EndGameDialog
+          tone="dark"
+          eyebrow={isHost ? "end party" : "leave game"}
+          title={isHost ? "End for everyone?" : "Leave this game?"}
+          description={
+            isHost
+              ? "The room will close and every player’s game will end. This cannot be undone."
+              : "Your place in this game will be cleared. You cannot rejoin after the round starts."
+          }
+          confirmLabel={isHost ? "end party" : "leave game"}
+          pending={leaving}
+          onCancel={() => setEndConfirmationOpen(false)}
+          onConfirm={() => void handleLeave()}
+        />
+      ) : null}
     </div>
   );
 }

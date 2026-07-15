@@ -2,34 +2,14 @@ import { useCallback, useState, useSyncExternalStore } from "react";
 import { Link } from "@tanstack/react-router";
 import { getStored, setStored } from "@/lib/client/storage";
 import { playFeedback } from "@/lib/client/feedback";
-
-const COLOURS = [
-  { name: "Ruby", background: "oklch(0.58 0.22 25)", ink: "white" },
-  { name: "Sapphire", background: "oklch(0.53 0.2 255)", ink: "white" },
-  { name: "Emerald", background: "oklch(0.57 0.16 155)", ink: "white" },
-  { name: "Amethyst", background: "oklch(0.56 0.2 305)", ink: "white" },
-  { name: "Topaz", background: "oklch(0.78 0.16 78)", ink: "black" },
-  { name: "Rose", background: "oklch(0.66 0.2 5)", ink: "white" },
-  { name: "Coral", background: "oklch(0.68 0.19 45)", ink: "black" },
-  { name: "Teal", background: "oklch(0.61 0.12 190)", ink: "black" },
-] as const;
-
-const QUESTIONS = [
-  "What's a hill you're willing to die on?",
-  "What's your most unpopular opinion?",
-  "What's the best meal you've ever had?",
-  "What's something you're irrationally afraid of?",
-  "What's your go-to karaoke song?",
-  "What's a skill you wish you had?",
-  "What's the most spontaneous thing you've ever done?",
-  "If you could live anywhere for a year, where would it be?",
-  "What's the best advice you've ever received?",
-  "What would your last meal be?",
-  "What's something on your bucket list?",
-  "What's the most overrated thing?",
-] as const;
-
-type Colour = (typeof COLOURS)[number];
+import { IcebreakerPairing } from "./IcebreakerPairing";
+import {
+  COLOURS,
+  QUESTIONS,
+  createPlayerId,
+  type Colour,
+  type IcebreakerPlayer,
+} from "./icebreaker-pairing";
 
 function randomQuestion(exclude?: string) {
   const options = exclude ? QUESTIONS.filter((question) => question !== exclude) : QUESTIONS;
@@ -64,10 +44,20 @@ function useAssignedColour() {
   return useSyncExternalStore(subscribe, assignedColour, () => COLOURS[0]);
 }
 
+function assignedPlayerId() {
+  const stored = getStored("icebreakerPlayerId");
+  if (stored && /^[A-Z2-9]{5}$/.test(stored)) return stored;
+  const id = createPlayerId();
+  setStored("icebreakerPlayerId", id);
+  return id;
+}
+
 export function IcebreakerApp() {
   const colour = useAssignedColour();
   const [revealed, setRevealed] = useState(false);
   const [question, setQuestion] = useState<string>(() => QUESTIONS[0]);
+  const [pairing, setPairing] = useState(false);
+  const [playerId] = useState(assignedPlayerId);
 
   const handleReveal = () => {
     playFeedback("reveal");
@@ -93,7 +83,12 @@ export function IcebreakerApp() {
       </header>
 
       <main id="main" className="flex-1 flex items-center justify-center px-6 py-10">
-        {!revealed ? (
+        {pairing ? (
+          <IcebreakerPairing
+            player={{ colour, id: playerId } satisfies IcebreakerPlayer}
+            onClose={() => setPairing(false)}
+          />
+        ) : !revealed ? (
           <section className="text-center max-w-sm text-white" aria-labelledby="icebreaker-title">
             <p className="font-mono text-micro uppercase tracking-[0.2em] text-white/50">
               find your people
@@ -155,6 +150,15 @@ export function IcebreakerApp() {
               </div>
               <p className="mt-3 font-serif text-xl leading-snug">“{question}”</p>
             </div>
+
+            <button
+              type="button"
+              onClick={() => setPairing(true)}
+              className="mt-5 min-h-12 font-mono text-sm font-semibold opacity-75 hover:opacity-100 focus-visible:ring-2 focus-visible:ring-current"
+            >
+              found someone? pair phones →
+            </button>
+            <p className="font-mono text-micro opacity-55">match your colour—or mix with anyone</p>
           </section>
         )}
       </main>

@@ -16,6 +16,7 @@ import { RemotePlayerReady } from "../remote/RemotePlayerReady";
 import { useRemotePlayerRoom } from "../remote/useRemotePlayerRoom";
 import type { RemoteCommand, RemoteGameSnapshot, RemoteHeadsUpSetup, RemotePlayerSession } from "../remote/types";
 import { GameShell } from "../shared/GameShell";
+import { EndGameDialog } from "../shared/EndGameDialog";
 import { useUpdateReloadSafety } from "@/features/offline/update-safety.client";
 
 type Phase = "setup" | "builder" | "countdown" | "playing" | "results";
@@ -70,6 +71,7 @@ function HeadsUpExperience({ fullscreen, remoteSession }: { fullscreen: Fullscre
   const [remoteExclusive, setRemoteExclusive] = useState(false);
   const [editingDeck, setEditingDeck] = useState<CustomDeck | null>(null);
   const [shareMessage, setShareMessage] = useState<string | null>(null);
+  const [endConfirmationOpen, setEndConfirmationOpen] = useState(false);
   const processing = useRef(false);
   const roundPaused = useRef(false);
   const previousPauseReason = useRef<string | null>(null);
@@ -116,8 +118,8 @@ function HeadsUpExperience({ fullscreen, remoteSession }: { fullscreen: Fullscre
   );
   const pauseReason = remotePaused ? "remote" : interrupted ? "interrupted" : motionPauseReason;
   useEffect(() => {
-    roundPaused.current = pauseReason !== null;
-  }, [pauseReason]);
+    roundPaused.current = pauseReason !== null || endConfirmationOpen;
+  }, [endConfirmationOpen, pauseReason]);
 
   const clearDecisionTimeout = useCallback(() => {
     if (decisionTimeout.current === null) return;
@@ -125,8 +127,8 @@ function HeadsUpExperience({ fullscreen, remoteSession }: { fullscreen: Fullscre
     decisionTimeout.current = null;
   }, []);
 
-  const endRound = useCallback((confirmFirst = true) => {
-    if (confirmFirst && !window.confirm("End this round and return to the decks?")) return;
+  const endRound = useCallback(() => {
+    setEndConfirmationOpen(false);
     clearDecisionTimeout();
     clearOrientationLock();
     processing.current = false;
@@ -140,13 +142,14 @@ function HeadsUpExperience({ fullscreen, remoteSession }: { fullscreen: Fullscre
   }, [clearDecisionTimeout, clearOrientationLock, roundStorageKey]);
 
   const undoDecision = useCallback(() => {
-    if (phase !== "playing") return;
+    if (phase !== "playing" || results.length === 0) return;
+    const cardAlreadyAdvanced = decisionTimeout.current === null;
     clearDecisionTimeout();
     setResults((current) => current.slice(0, -1));
-    setCardIndex((current) => (current - 1 + cards.length) % cards.length);
+    if (cardAlreadyAdvanced) setCardIndex((current) => (current - 1 + cards.length) % cards.length);
     setFeedback(null);
     processing.current = false;
-  }, [cards.length, clearDecisionTimeout, phase]);
+  }, [cards.length, clearDecisionTimeout, phase, results.length]);
 
   const handleRemoteCommand = useCallback(
     (command: RemoteCommand) => {
@@ -207,7 +210,7 @@ function HeadsUpExperience({ fullscreen, remoteSession }: { fullscreen: Fullscre
         savedAt?: number;
       };
       if (!value.savedAt || Date.now() - value.savedAt > 2 * 60 * 60 * 1000) return;
-      if (!Array.isArray(value.cards) || !value.cards.every((card) => typeof card === "string")) return;
+      if (!Array.isArray(value.cards) || value.cards.length === 0 || !value.cards.every((card) => typeof card === "string")) return;
       if (!Array.isArray(value.results)) return;
       const restoredResults = value.results.filter((result): result is RoundResult => {
         if (!result || typeof result !== "object") return false;
@@ -293,12 +296,12 @@ function HeadsUpExperience({ fullscreen, remoteSession }: { fullscreen: Fullscre
   }, [calibrate, countdown, phase, soundEnabled]);
 
   useEffect(() => {
-    if (phase !== "playing" || pauseReason) return;
+    if (phase !== "playing" || pauseReason || endConfirmationOpen) return;
     const interval = window.setInterval(() => {
       setSeconds((current) => Math.max(0, current - 1));
     }, 1000);
     return () => window.clearInterval(interval);
-  }, [pauseReason, phase]);
+  }, [endConfirmationOpen, pauseReason, phase]);
 
   useEffect(() => {
     if (phase !== "playing" || seconds <= 0 || seconds > 5) return;
@@ -371,7 +374,7 @@ function HeadsUpExperience({ fullscreen, remoteSession }: { fullscreen: Fullscre
   if (phase === "countdown") {
     return (
       <GameShell tone="amber">
-        <header className="p-5"><button type="button" onClick={() => endRound(false)} className="min-h-11 font-mono text-xs text-black/60">← cancel round</button></header>
+        <header className="p-5"><button type="button" onClick={endRound} className="min-h-11 font-mono text-xs text-black/60">← cancel round</button></header>
         <main id="main" className="flex flex-1 flex-col items-center justify-center text-center">
           <p className="font-mono text-xs uppercase tracking-[0.2em] text-black/55">get ready</p>
           <TextMorph
@@ -396,7 +399,7 @@ function HeadsUpExperience({ fullscreen, remoteSession }: { fullscreen: Fullscre
     return (
       <GameShell tone={feedback === "correct" ? "green" : feedback === "pass" ? "stone" : "amber"}>
         <header className="grid grid-cols-3 items-center px-5 py-4 text-black">
-          <button type="button" onClick={() => endRound()} className="min-h-11 justify-self-start rounded-full border border-black/20 px-3 font-mono text-xs">end round</button>
+          <button type="button" onClick={() => setEndConfirmationOpen(true)} className="min-h-11 justify-self-start rounded-full border border-black/20 px-3 font-mono text-xs">end round</button>
           <span
             className="justify-self-center rounded-full border border-black/15 px-4 py-2 font-mono text-lg font-semibold tabular-nums"
             aria-label={`${seconds} seconds remaining`}
@@ -415,7 +418,7 @@ function HeadsUpExperience({ fullscreen, remoteSession }: { fullscreen: Fullscre
           feedback={feedback}
           pauseReason={pauseReason}
           onDecision={handleDecision}
-          onEnd={() => endRound()}
+          onEnd={() => setEndConfirmationOpen(true)}
           onResume={() => {
             if (remotePaused) {
               setRemotePaused(false);
@@ -425,6 +428,7 @@ function HeadsUpExperience({ fullscreen, remoteSession }: { fullscreen: Fullscre
             settle();
           }}
         />
+        {endConfirmationOpen ? <EndGameDialog tone="light" eyebrow="end round" title="Leave this game?" description="Your cards and score from this round will be cleared." confirmLabel="end round" onCancel={() => setEndConfirmationOpen(false)} onConfirm={endRound} /> : null}
       </GameShell>
     );
   }

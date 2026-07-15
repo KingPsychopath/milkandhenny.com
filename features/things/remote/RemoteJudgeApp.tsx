@@ -198,7 +198,7 @@ export function RemoteJudgeApp({ roomId }: { roomId: string }) {
   }, [pendingCommandId, pendingCommandLabel, roomId, tokens.judgeToken]);
 
   const send = useCallback(async (command: RemoteCommandInput) => {
-    if (!tokens.judgeToken || !judgeActive || !playerConnected || sending || pendingCommandId || !snapshot?.roundId || !snapshot.itemId) return;
+    if (!tokens.judgeToken || !judgeActive || !playerConnected || sending || pendingCommandId || !snapshot?.roundId || (command.type !== "amend" && !snapshot.itemId)) return;
     const label = commandLabel(command);
     setSending(true);
     setControlFeedback(`${label} sent…`);
@@ -207,7 +207,7 @@ export function RemoteJudgeApp({ roomId }: { roomId: string }) {
       id: crypto.randomUUID(),
       createdAt: Date.now(),
       roundId: snapshot.roundId,
-      itemId: snapshot.itemId,
+      itemId: snapshot.itemId ?? `results:${snapshot.roundId}`,
     } as RemoteCommandRequest;
     try {
       const result = await sendRemoteJudgeCommandFn({ data: { roomId, judgeToken: tokens.judgeToken, judgeEpoch: judgeEpoch.current, command: payload } });
@@ -364,11 +364,11 @@ export function RemoteJudgeApp({ roomId }: { roomId: string }) {
             </div>
             <p aria-live="polite" className="mt-3 min-h-5 text-center font-mono text-xs text-emerald-200">{controlFeedback}</p>
             <div className="mt-1 grid grid-cols-2 gap-2">
-              <button type="button" disabled={!playerConnected || controlsBusy || snapshot.results.length === 0} onClick={() => void send({ type: "undo" })} className="min-h-12 rounded-full border border-white/12 font-mono text-xs text-white/60 disabled:opacity-30">undo last</button>
-              <button type="button" disabled={!playerConnected || controlsBusy || snapshot.phase !== "playing" || awaitingDecision} onClick={() => void send({ type: snapshot.paused ? "resume" : "pause" })} className="min-h-12 rounded-full border border-white/12 font-mono text-xs text-white/60 disabled:opacity-30">{snapshot.paused ? "resume round" : "pause round"}</button>
+              <button type="button" disabled={!judgeActive || !playerConnected || controlsBusy || snapshot.phase !== "playing" || snapshot.transitioning || snapshot.results.length === 0} onClick={() => void send({ type: "undo" })} className="min-h-12 rounded-full border border-white/12 font-mono text-xs text-white/60 disabled:opacity-30">undo last</button>
+              <button type="button" disabled={!judgeActive || !playerConnected || controlsBusy || snapshot.phase !== "playing" || snapshot.transitioning || awaitingDecision} onClick={() => void send({ type: snapshot.paused ? "resume" : "pause" })} className="min-h-12 rounded-full border border-white/12 font-mono text-xs text-white/60 disabled:opacity-30">{snapshot.paused ? "resume round" : "pause round"}</button>
             </div>
 
-            {snapshot.results.length > 0 ? <section className="mt-8" aria-labelledby="judged-items"><h2 id="judged-items" className="font-mono text-micro uppercase tracking-[0.18em] text-white/40">judged · tap to correct</h2><ul className="mt-3 border-t border-white/12">{snapshot.results.toReversed().slice(0, 8).map((result) => <li key={result.id} className="grid grid-cols-[1fr_auto] items-center gap-4 border-b border-white/12 py-3"><span className="min-w-0 truncate font-serif text-lg">{result.label}</span><select aria-label={`Change result for ${result.label}`} value={result.decision} onChange={(event) => void send({ type: "amend", resultId: result.id, decision: event.target.value as RemoteResultDecision })} disabled={!judgeActive || !playerConnected} className="min-h-11 rounded-full border border-white/15 bg-[var(--things-night)] px-3 font-mono text-xs text-white"><option value="correct">{decisionLabels.correct}</option><option value="incorrect">{decisionLabels.incorrect}</option>{snapshot.game === "spelling-bee" ? <option value="skipped">{decisionLabels.pass}</option> : <option value="pass">{decisionLabels.pass}</option>}{snapshot.game === "spelling-bee" ? <option value="timed_out">{decisionLabels.timed_out}</option> : null}</select></li>)}</ul></section> : null}
+              {snapshot.results.length > 0 ? <section className="mt-8" aria-labelledby="judged-items"><h2 id="judged-items" className="font-mono text-micro uppercase tracking-[0.18em] text-white/40">judged · tap to correct</h2><ul className="mt-3 border-t border-white/12">{snapshot.results.toReversed().slice(0, 8).map((result) => <li key={result.id} className="grid grid-cols-[1fr_auto] items-center gap-4 border-b border-white/12 py-3"><span className="min-w-0 truncate font-serif text-lg">{result.label}</span><select aria-label={`Change result for ${result.label}`} value={result.decision} onChange={(event) => void send({ type: "amend", resultId: result.id, decision: event.target.value as RemoteResultDecision })} disabled={!judgeActive || !playerConnected || controlsBusy || !snapshot.roundId} className="min-h-11 rounded-full border border-white/15 bg-[var(--things-night)] px-3 font-mono text-xs text-white"><option value="correct">{decisionLabels.correct}</option><option value="incorrect">{decisionLabels.incorrect}</option>{snapshot.game === "spelling-bee" ? <option value="skipped">{decisionLabels.pass}</option> : <option value="pass">{decisionLabels.pass}</option>}{snapshot.game === "spelling-bee" ? <option value="timed_out">{decisionLabels.timed_out}</option> : null}</select></li>)}</ul></section> : null}
           </>
         )}
         <p aria-live="polite" className="mt-4 min-h-5 text-center font-mono text-xs text-amber-200/80">{error}</p>
