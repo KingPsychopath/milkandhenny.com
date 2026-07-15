@@ -1,6 +1,8 @@
 import { Link, Outlet, createFileRoute, useMatchRoute } from "@tanstack/react-router";
 import { SITE_BRAND, SITE_NAME } from "@/lib/shared/config";
 import { THINGS } from "@/features/things/catalog";
+import { useThingOfflineState } from "@/features/offline/client";
+import type { Thing } from "@/features/things/catalog";
 
 export const Route = createFileRoute("/things")({
   component: ThingsRoute,
@@ -66,6 +68,7 @@ function ThingsRoute() {
                   <span className="block mt-2 max-w-md text-sm leading-relaxed theme-muted">
                     {thing.description}
                   </span>
+                  <ThingOfflineStatus thing={thing} />
                 </span>
                 <span
                   aria-hidden="true"
@@ -79,5 +82,26 @@ function ThingsRoute() {
         </ul>
       </main>
     </div>
+  );
+}
+
+function ThingOfflineStatus({ thing }: { thing: Thing }) {
+  const state = useThingOfflineState(thing.slug);
+  if (!thing.offline) return null;
+
+  const label =
+    state === "ready"
+      ? "✓ ready offline"
+      : state === "preparing"
+        ? "preparing offline…"
+        : "works offline";
+
+  return (
+    <span
+      className="mt-4 inline-flex min-h-6 items-center rounded-full border theme-border px-2.5 font-mono text-micro uppercase tracking-[0.12em] theme-muted"
+      aria-live="polite"
+    >
+      {label}
+    </span>
   );
 }

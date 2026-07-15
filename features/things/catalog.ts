@@ -1,3 +1,5 @@
+import { THING_OFFLINE } from "./offline";
+
 export interface Thing {
   slug: "icebreaker" | "heads-up";
   name: string;
@@ -6,6 +8,7 @@ export interface Thing {
   href: "/things/icebreaker" | "/things/heads-up";
   status: "ready";
   symbol: string;
+  offline: (typeof THING_OFFLINE)[keyof typeof THING_OFFLINE] | null;
 }
 
 export const THINGS = [
@@ -17,6 +20,7 @@ export const THINGS = [
     href: "/things/heads-up",
     status: "ready",
     symbol: "↕",
+    offline: THING_OFFLINE["heads-up"],
   },
   {
     slug: "icebreaker",
@@ -26,5 +30,6 @@ export const THINGS = [
     href: "/things/icebreaker",
     status: "ready",
     symbol: "◉",
+    offline: THING_OFFLINE.icebreaker,
   },
 ] satisfies readonly Thing[];

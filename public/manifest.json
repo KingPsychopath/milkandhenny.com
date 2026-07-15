@@ -1,11 +1,28 @@
 {
   "name": "Milk & Henny",
   "short_name": "milk & henny",
+  "id": "/",
   "description": "Thoughts, stories, and things worth sharing.",
   "start_url": "/",
+  "scope": "/",
   "display": "standalone",
   "background_color": "#fafaf9",
   "theme_color": "#1c1917",
+  "categories": ["lifestyle", "entertainment"],
+  "shortcuts": [
+    {
+      "name": "Forehead",
+      "short_name": "Forehead",
+      "url": "/things/heads-up",
+      "icons": [{ "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" }]
+    },
+    {
+      "name": "Icebreaker",
+      "short_name": "Icebreaker",
+      "url": "/things/icebreaker",
+      "icons": [{ "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" }]
+    }
+  ],
   "icons": [
     {
       "src": "/icon-192.png",

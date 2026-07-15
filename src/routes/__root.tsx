@@ -5,12 +5,14 @@ import {
   Scripts,
   createRootRoute,
   useRouter,
+  useRouterState,
 } from "@tanstack/react-router";
 import type { ErrorComponentProps } from "@tanstack/react-router";
 import type { ReactNode } from "react";
 import { useEffect } from "react";
 import { BackToTop } from "@/components/BackToTop";
 import { LampToggle } from "@/components/LampToggle";
+import { OfflinePlatform } from "@/components/OfflinePlatform";
 import { BASE_URL, SITE_BRAND, SITE_NAME } from "@/lib/shared/config";
 import { LOCAL_KEYS } from "@/lib/shared/storage-keys";
 import "@/src/styles/globals.css";
@@ -40,14 +42,7 @@ export const Route = createRootRoute({
       { rel: "icon", href: "/favicon.ico", type: "image/x-icon" },
       { rel: "icon", href: "/icon.svg", type: "image/svg+xml" },
       { rel: "apple-touch-icon", href: "/apple-icon.png" },
-      { rel: "manifest", href: "/manifest.json" },
       { rel: "alternate", type: "application/rss+xml", href: "/feed.xml" },
-      { rel: "preconnect", href: "https://fonts.googleapis.com" },
-      { rel: "preconnect", href: "https://fonts.gstatic.com", crossOrigin: "anonymous" },
-      {
-        rel: "stylesheet",
-        href: "https://fonts.googleapis.com/css2?family=Geist:wght@100..900&family=Geist+Mono:wght@100..900&family=Lora:ital,wght@0,400..700;1,400..700&display=swap",
-      },
     ],
   }),
   component: RootComponent,
@@ -68,6 +63,7 @@ function RootDocument({ children }: Readonly<{ children: ReactNode }>) {
     <html lang="en" suppressHydrationWarning>
       <head>
         <HeadContent />
+        <ManifestLink />
         <script
           dangerouslySetInnerHTML={{
             __html: `(function(){var t=localStorage.getItem("${LOCAL_KEYS.theme}");if(t==="dark")document.documentElement.setAttribute("data-theme","dark");})();`,
@@ -80,11 +76,19 @@ function RootDocument({ children }: Readonly<{ children: ReactNode }>) {
         </a>
         <LampToggle />
         <BackToTop />
+        <OfflinePlatform />
         {children}
         <Scripts />
       </body>
     </html>
   );
+}
+
+function ManifestLink() {
+  const pathname = useRouterState({ select: (state) => state.location.pathname });
+  const href =
+    pathname === "/things/heads-up" ? "/manifest-forehead.webmanifest" : "/manifest.json";
+  return <link rel="manifest" href={href} />;
 }
 
 function NotFound() {

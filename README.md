@@ -61,20 +61,18 @@ REDIS_REST_TOKEN=
 R2_ACCOUNT_ID=
 R2_ACCESS_KEY=
 R2_SECRET_KEY=
-R2_PUBLIC_BUCKET=milkandhenny-public
+R2_PUBLIC_BUCKET=milkandhenny-pics
 R2_PRIVATE_BUCKET=milkandhenny-private
 
 AUTH_SECRET=
 ADMIN_PASSWORD=
 STAFF_PIN=
 UPLOAD_PIN=
-CRON_SECRET=
-
-MEDIA_PROCESSOR_MODE=local
-VITE_TRANSFER_MEDIA_BROWSER_PREP=auto
 ```
 
 Only `VITE_*` variables enter the browser bundle. Never prefix credentials or authentication secrets with `VITE_`.
+
+`CRON_SECRET`, media-worker configuration, external ZIP service settings, and performance tuning are optional and documented in `.env.example`.
 
 `REDIS_REST_*` is the canonical provider-neutral Redis contract. Legacy `KV_REST_API_*` and `UPSTASH_REDIS_REST_*` names remain temporary rollback aliases during the migration.
 

@@ -148,7 +148,7 @@ export function useGuests(opts: UseGuestsOptions = {}) {
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ id, checkedIn }),
           },
-          { retries: 3, baseDelayMs: 500 },
+          { retries: 3, baseDelayMs: 500, retryMethods: ["POST"] },
         );
 
         if (res.status === 401) {
