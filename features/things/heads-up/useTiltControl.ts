@@ -7,16 +7,47 @@ type PermissionedDeviceOrientationEvent = typeof DeviceOrientationEvent & {
   requestPermission?: () => Promise<"granted" | "denied">;
 };
 
+function toRadians(degrees: number) {
+  return (degrees * Math.PI) / 180;
+}
+
+function screenAngle() {
+  const legacyOrientation = (window as Window & { orientation?: number }).orientation;
+  return window.screen.orientation?.angle ?? legacyOrientation ?? 0;
+}
+
+function normalizedDifference(current: number, baseline: number) {
+  return ((current - baseline + 540) % 360) - 180;
+}
+
+/** Pitch around the screen's horizontal axis, independent of portrait/landscape rotation. */
+export function screenRelativePitch(beta: number, gamma: number, orientationAngle: number) {
+  const betaRadians = toRadians(beta);
+  const gammaRadians = toRadians(gamma);
+  const orientationRadians = toRadians(orientationAngle);
+
+  // Earth's up vector expressed in the device's natural coordinate frame.
+  const deviceX = -Math.cos(betaRadians) * Math.sin(gammaRadians);
+  const deviceY = Math.sin(betaRadians);
+  const deviceZ = Math.cos(betaRadians) * Math.cos(gammaRadians);
+
+  // Rotate natural device coordinates into the screen's current orientation.
+  const screenUp = Math.cos(orientationRadians) * deviceY - Math.sin(orientationRadians) * deviceX;
+
+  return (Math.atan2(deviceZ, screenUp) * 180) / Math.PI;
+}
+
 export function useTiltControl(enabled: boolean, onDecision: (decision: TiltDecision) => void) {
   const [status, setStatus] = useState<MotionStatus>("idle");
   const neutral = useRef<number | null>(null);
-  const currentAngle = useRef<number | null>(null);
+  const currentPitch = useRef<number | null>(null);
+  const orientationAngle = useRef<number | null>(null);
   const armed = useRef(true);
   const decisionRef = useRef(onDecision);
   decisionRef.current = onDecision;
 
   const calibrate = useCallback(() => {
-    neutral.current = currentAngle.current;
+    neutral.current = currentPitch.current;
     armed.current = true;
   }, []);
 
@@ -46,12 +77,22 @@ export function useTiltControl(enabled: boolean, onDecision: (decision: TiltDeci
     if (status !== "enabled") return;
 
     const handleOrientation = (event: DeviceOrientationEvent) => {
-      if (event.beta === null) return;
-      currentAngle.current = event.beta;
-      if (!enabled) return;
-      neutral.current ??= event.beta;
+      if (event.beta === null || event.gamma === null) return;
+      const nextOrientationAngle = screenAngle();
+      const nextPitch = screenRelativePitch(event.beta, event.gamma, nextOrientationAngle);
+      currentPitch.current = nextPitch;
 
-      const difference = event.beta - neutral.current;
+      if (orientationAngle.current !== nextOrientationAngle) {
+        orientationAngle.current = nextOrientationAngle;
+        neutral.current = nextPitch;
+        armed.current = true;
+        return;
+      }
+
+      if (!enabled) return;
+      neutral.current ??= nextPitch;
+
+      const difference = normalizedDifference(nextPitch, neutral.current);
       if (Math.abs(difference) < 9) armed.current = true;
       if (!armed.current) return;
 

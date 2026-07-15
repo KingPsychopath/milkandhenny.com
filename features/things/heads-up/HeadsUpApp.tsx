@@ -119,7 +119,8 @@ export function HeadsUpApp() {
             {String(countdown)}
           </TextMorph>
           <p className="mt-8 max-w-xs px-6 font-serif text-xl text-black/70">
-            Hold the phone upright against your forehead, screen facing your friends.
+            Hold the phone against your forehead in portrait or landscape, screen facing your
+            friends.
           </p>
         </main>
       </GameShell>
@@ -320,7 +321,11 @@ export function HeadsUpApp() {
             <p className="mt-3 text-center font-mono text-micro text-white/45">
               motion unavailable — use the on-screen buttons
             </p>
-          ) : null}
+          ) : (
+            <p className="mt-3 text-center font-mono text-micro text-white/45">
+              portrait + landscape · auto-calibrates
+            </p>
+          )}
         </div>
       </main>
     </GameShell>
