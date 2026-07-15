@@ -1,11 +1,20 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  STABLE_WINDOW_MS,
+  stablePitch,
+  TiltGestureDetector,
+  type TiltDecision,
+  type TiltSample,
+} from "./tiltDetection";
 
-type TiltDecision = "correct" | "pass";
 type MotionStatus = "idle" | "enabled" | "denied" | "unavailable";
+export type MotionPauseReason = "wrong-orientation" | "settling";
 
 type PermissionedDeviceOrientationEvent = typeof DeviceOrientationEvent & {
   requestPermission?: () => Promise<"granted" | "denied">;
 };
+
+const FALLBACK_SETTLE_MS = 700;
 
 function toRadians(degrees: number) {
   return (degrees * Math.PI) / 180;
@@ -17,22 +26,15 @@ function screenAngle() {
   return ((angle % 360) + 360) % 360;
 }
 
-function normalizedDifference(current: number, baseline: number) {
-  return ((current - baseline + 540) % 360) - 180;
-}
-
 /** Pitch around the screen's horizontal axis, independent of portrait/landscape rotation. */
 export function screenRelativePitch(beta: number, gamma: number, orientationAngle: number) {
   const betaRadians = toRadians(beta);
   const gammaRadians = toRadians(gamma);
   const orientationRadians = toRadians(orientationAngle);
 
-  // Earth's up vector expressed in the device's natural coordinate frame.
   const deviceX = -Math.cos(betaRadians) * Math.sin(gammaRadians);
   const deviceY = Math.sin(betaRadians);
   const deviceZ = Math.cos(betaRadians) * Math.cos(gammaRadians);
-
-  // Rotate natural device coordinates into the screen's current orientation.
   const screenUp = Math.cos(orientationRadians) * deviceY - Math.sin(orientationRadians) * deviceX;
 
   return (Math.atan2(deviceZ, screenUp) * 180) / Math.PI;
@@ -44,31 +46,76 @@ export function useTiltControl(
   lockCurrentOrientation: boolean,
 ) {
   const [status, setStatus] = useState<MotionStatus>("idle");
-  const [orientationMismatch, setOrientationMismatch] = useState(false);
-  const neutral = useRef<number | null>(null);
+  const [pauseReason, setPauseReason] = useState<MotionPauseReason | null>(null);
+  const statusRef = useRef<MotionStatus>("idle");
+  const pauseReasonRef = useRef<MotionPauseReason | null>(null);
   const currentPitch = useRef<number | null>(null);
   const orientationAngle = useRef<number | null>(null);
   const lockedOrientationAngle = useRef<number | null>(null);
-  const mismatchRef = useRef(false);
-  const armed = useRef(true);
+  const stableSamples = useRef<TiltSample[]>([]);
+  const gestureDetector = useRef(new TiltGestureDetector());
+  const settleTimeout = useRef<number | null>(null);
   const decisionRef = useRef(onDecision);
   decisionRef.current = onDecision;
+  statusRef.current = status;
+
+  const updatePauseReason = useCallback((reason: MotionPauseReason | null) => {
+    pauseReasonRef.current = reason;
+    setPauseReason((current) => (current === reason ? current : reason));
+  }, []);
+
+  const clearSettleTimeout = useCallback(() => {
+    if (settleTimeout.current === null) return;
+    window.clearTimeout(settleTimeout.current);
+    settleTimeout.current = null;
+  }, []);
+
+  const finishSettling = useCallback(
+    (pitch = currentPitch.current) => {
+      clearSettleTimeout();
+      orientationAngle.current = screenAngle();
+      stableSamples.current = [];
+      gestureDetector.current.reset(pitch);
+      updatePauseReason(null);
+    },
+    [clearSettleTimeout, updatePauseReason],
+  );
+
+  const beginSettling = useCallback(() => {
+    clearSettleTimeout();
+    stableSamples.current = [];
+    gestureDetector.current.reset(null);
+    updatePauseReason("settling");
+
+    if (statusRef.current !== "enabled") {
+      settleTimeout.current = window.setTimeout(() => finishSettling(), FALLBACK_SETTLE_MS);
+    }
+  }, [clearSettleTimeout, finishSettling, updatePauseReason]);
+
+  const pauseForOrientation = useCallback(() => {
+    clearSettleTimeout();
+    stableSamples.current = [];
+    gestureDetector.current.reset(null);
+    updatePauseReason("wrong-orientation");
+  }, [clearSettleTimeout, updatePauseReason]);
 
   const calibrate = useCallback(() => {
+    clearSettleTimeout();
     const currentOrientationAngle = screenAngle();
     orientationAngle.current = currentOrientationAngle;
     lockedOrientationAngle.current = lockCurrentOrientation ? currentOrientationAngle : null;
-    neutral.current = currentPitch.current;
-    mismatchRef.current = false;
-    setOrientationMismatch(false);
-    armed.current = true;
-  }, [lockCurrentOrientation]);
+    stableSamples.current = [];
+    gestureDetector.current.reset(currentPitch.current);
+    updatePauseReason(null);
+  }, [clearSettleTimeout, lockCurrentOrientation, updatePauseReason]);
 
   const clearOrientationLock = useCallback(() => {
+    clearSettleTimeout();
     lockedOrientationAngle.current = null;
-    mismatchRef.current = false;
-    setOrientationMismatch(false);
-  }, []);
+    stableSamples.current = [];
+    gestureDetector.current.reset(null);
+    updatePauseReason(null);
+  }, [clearSettleTimeout, updatePauseReason]);
 
   const requestAccess = useCallback(async () => {
     if (typeof window === "undefined" || !("DeviceOrientationEvent" in window)) {
@@ -99,69 +146,59 @@ export function useTiltControl(
       if (event.beta === null || event.gamma === null) return;
       const nextOrientationAngle = screenAngle();
       const nextPitch = screenRelativePitch(event.beta, event.gamma, nextOrientationAngle);
+      const now = Date.now();
       currentPitch.current = nextPitch;
 
       if (
         lockedOrientationAngle.current !== null &&
         nextOrientationAngle !== lockedOrientationAngle.current
       ) {
-        if (!mismatchRef.current) {
-          mismatchRef.current = true;
-          setOrientationMismatch(true);
-        }
-        armed.current = false;
+        if (pauseReasonRef.current !== "wrong-orientation") pauseForOrientation();
         return;
       }
 
-      if (mismatchRef.current) {
-        mismatchRef.current = false;
-        setOrientationMismatch(false);
+      if (pauseReasonRef.current === "wrong-orientation") {
         orientationAngle.current = nextOrientationAngle;
-        neutral.current = nextPitch;
-        armed.current = true;
-        return;
+        beginSettling();
+      } else if (orientationAngle.current !== nextOrientationAngle) {
+        orientationAngle.current = nextOrientationAngle;
+        beginSettling();
       }
 
-      if (orientationAngle.current !== nextOrientationAngle) {
-        orientationAngle.current = nextOrientationAngle;
-        neutral.current = nextPitch;
-        armed.current = true;
+      if (pauseReasonRef.current === "settling") {
+        const recentSamples = stableSamples.current.filter(
+          (sample) => now - sample.time <= STABLE_WINDOW_MS,
+        );
+        recentSamples.push({ pitch: nextPitch, time: now });
+        stableSamples.current = recentSamples;
+
+        const baseline = stablePitch(recentSamples, now);
+        if (baseline !== null) finishSettling(baseline);
         return;
       }
 
       if (!enabled) return;
-      neutral.current ??= nextPitch;
-
-      const difference = normalizedDifference(nextPitch, neutral.current);
-      if (Math.abs(difference) < 9) armed.current = true;
-      if (!armed.current) return;
-
-      if (difference <= -24) {
-        armed.current = false;
-        decisionRef.current("correct");
-      } else if (difference >= 24) {
-        armed.current = false;
-        decisionRef.current("pass");
-      }
+      const decision = gestureDetector.current.sample(nextPitch, now);
+      if (decision) decisionRef.current(decision);
     };
 
     window.addEventListener("deviceorientation", handleOrientation, true);
     return () => window.removeEventListener("deviceorientation", handleOrientation, true);
-  }, [enabled, status]);
+  }, [beginSettling, enabled, finishSettling, pauseForOrientation, status]);
 
   useEffect(() => {
     const handleScreenOrientation = () => {
-      if (lockedOrientationAngle.current === null) return;
       const nextOrientationAngle = screenAngle();
-      const mismatch = nextOrientationAngle !== lockedOrientationAngle.current;
-      mismatchRef.current = mismatch;
-      setOrientationMismatch(mismatch);
-      armed.current = !mismatch;
-
-      if (!mismatch) {
-        orientationAngle.current = nextOrientationAngle;
-        neutral.current = currentPitch.current;
+      if (
+        lockedOrientationAngle.current !== null &&
+        nextOrientationAngle !== lockedOrientationAngle.current
+      ) {
+        pauseForOrientation();
+        return;
       }
+
+      orientationAngle.current = nextOrientationAngle;
+      beginSettling();
     };
 
     window.screen.orientation?.addEventListener("change", handleScreenOrientation);
@@ -170,7 +207,16 @@ export function useTiltControl(
       window.screen.orientation?.removeEventListener("change", handleScreenOrientation);
       window.removeEventListener("orientationchange", handleScreenOrientation);
     };
-  }, []);
+  }, [beginSettling, pauseForOrientation]);
 
-  return { status, orientationMismatch, requestAccess, calibrate, clearOrientationLock };
+  useEffect(() => clearSettleTimeout, [clearSettleTimeout]);
+
+  return {
+    status,
+    pauseReason,
+    requestAccess,
+    calibrate,
+    settle: beginSettling,
+    clearOrientationLock,
+  };
 }

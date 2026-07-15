@@ -1,34 +1,61 @@
 import { TextMorph } from "torph/react";
+import type { MotionPauseReason } from "./useTiltControl";
 
 type Decision = "correct" | "pass";
 
 interface RoundPlayAreaProps {
   card: string;
   feedback: Decision | null;
-  paused: boolean;
+  pauseReason: MotionPauseReason | "interrupted" | null;
   onDecision: (decision: Decision) => void;
+  onResume: () => void;
 }
 
 const SNAP_EASE = "cubic-bezier(0.16, 1, 0.3, 1)";
 
-export function RoundPlayArea({ card, feedback, paused, onDecision }: RoundPlayAreaProps) {
+export function RoundPlayArea({
+  card,
+  feedback,
+  pauseReason,
+  onDecision,
+  onResume,
+}: RoundPlayAreaProps) {
+  const paused = pauseReason !== null;
+
   return (
     <>
       <main
         id="main"
         className="relative flex flex-1 flex-col items-center justify-center px-6 text-center text-black"
       >
-        {paused ? (
+        {pauseReason ? (
           <div role="alert" aria-live="assertive" className="max-w-sm">
             <p className="font-mono text-micro uppercase tracking-[0.2em] text-black/50">
               round paused · timer stopped
             </p>
             <h1 className="mt-4 font-serif text-5xl font-semibold leading-none">
-              Turn the phone back.
+              {pauseReason === "wrong-orientation"
+                ? "Turn the phone back."
+                : pauseReason === "settling"
+                  ? "Hold steady…"
+                  : "Welcome back."}
             </h1>
             <p className="mt-5 font-serif text-lg text-black/65">
-              This round is locked to the position you started in. It will resume automatically.
+              {pauseReason === "wrong-orientation"
+                ? "This round is locked to the position you started in."
+                : pauseReason === "settling"
+                  ? "Recalibrating so your next movement is deliberate."
+                  : "The round stayed paused while the app was away."}
             </p>
+            {pauseReason === "interrupted" ? (
+              <button
+                type="button"
+                onClick={onResume}
+                className="mt-7 min-h-12 rounded-full bg-black px-6 font-mono text-sm font-semibold text-white"
+              >
+                resume round
+              </button>
+            ) : null}
           </div>
         ) : (
           <>

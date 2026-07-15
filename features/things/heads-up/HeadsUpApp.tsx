@@ -30,9 +30,11 @@ export function HeadsUpApp() {
   const [feedback, setFeedback] = useState<Decision | null>(null);
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [positionLock, setPositionLock] = useState(false);
+  const [interrupted, setInterrupted] = useState(false);
   const processing = useRef(false);
   const roundPaused = useRef(false);
-  const wasOrientationMismatch = useRef(false);
+  const previousPauseReason = useRef<string | null>(null);
+  const decisionTimeout = useRef<number | null>(null);
   const haptics = useWebHaptics();
 
   const selectedDeck = GAME_DECKS.find((deck) => deck.id === deckId) ?? GAME_DECKS[0];
@@ -48,10 +50,11 @@ export function HeadsUpApp() {
       playGameSound(decision, soundEnabled);
       void haptics.trigger(decision === "correct" ? "success" : "nudge");
 
-      window.setTimeout(() => {
+      decisionTimeout.current = window.setTimeout(() => {
         setCardIndex((current) => (current + 1) % cards.length);
         setFeedback(null);
         processing.current = false;
+        decisionTimeout.current = null;
       }, 360);
     },
     [card, cards.length, haptics, phase, soundEnabled],
@@ -59,12 +62,20 @@ export function HeadsUpApp() {
 
   const {
     status: motionStatus,
-    orientationMismatch,
+    pauseReason: motionPauseReason,
     requestAccess,
     calibrate,
+    settle,
     clearOrientationLock,
   } = useTiltControl(phase === "playing" && !feedback, handleDecision, positionLock);
-  roundPaused.current = orientationMismatch;
+  const pauseReason = interrupted ? "interrupted" : motionPauseReason;
+  roundPaused.current = pauseReason !== null;
+
+  const clearDecisionTimeout = useCallback(() => {
+    if (decisionTimeout.current === null) return;
+    window.clearTimeout(decisionTimeout.current);
+    decisionTimeout.current = null;
+  }, []);
 
   const startRound = async () => {
     primeGameAudio();
@@ -76,6 +87,8 @@ export function HeadsUpApp() {
     setFeedback(null);
     setSeconds(ROUND_SECONDS);
     setCountdown(3);
+    setInterrupted(false);
+    clearDecisionTimeout();
     processing.current = false;
     setPhase("countdown");
   };
@@ -96,37 +109,57 @@ export function HeadsUpApp() {
   }, [calibrate, countdown, phase, soundEnabled]);
 
   useEffect(() => {
-    if (phase !== "playing" || orientationMismatch) return;
+    if (phase !== "playing" || pauseReason) return;
     const interval = window.setInterval(() => {
-      setSeconds((current) => {
-        const next = current - 1;
-        if (next <= 0) {
-          playGameSound("end", soundEnabled);
-          void haptics.trigger("heavy");
-          setPositionLock(false);
-          clearOrientationLock();
-          setPhase("results");
-          return 0;
-        }
-        if (next <= 5) playGameSound("tick", soundEnabled);
-        return next;
-      });
+      setSeconds((current) => Math.max(0, current - 1));
     }, 1000);
     return () => window.clearInterval(interval);
-  }, [clearOrientationLock, haptics, orientationMismatch, phase, soundEnabled]);
+  }, [pauseReason, phase]);
+
+  useEffect(() => {
+    if (phase !== "playing" || seconds <= 0 || seconds > 5) return;
+    playGameSound("tick", soundEnabled);
+  }, [phase, seconds, soundEnabled]);
+
+  useEffect(() => {
+    if (phase !== "playing" || seconds !== 0) return;
+    clearDecisionTimeout();
+    playGameSound("end", soundEnabled);
+    void haptics.trigger("heavy");
+    clearOrientationLock();
+    processing.current = false;
+    setPhase("results");
+  }, [clearDecisionTimeout, clearOrientationLock, haptics, phase, seconds, soundEnabled]);
 
   useEffect(() => {
     if (phase !== "playing") {
-      wasOrientationMismatch.current = false;
+      previousPauseReason.current = null;
       return;
     }
-    if (orientationMismatch && !wasOrientationMismatch.current) {
+    if (pauseReason && !previousPauseReason.current) {
       void haptics.trigger("nudge");
-    } else if (!orientationMismatch && wasOrientationMismatch.current) {
+    } else if (!pauseReason && previousPauseReason.current) {
       void haptics.trigger("selection");
     }
-    wasOrientationMismatch.current = orientationMismatch;
-  }, [haptics, orientationMismatch, phase]);
+    previousPauseReason.current = pauseReason;
+  }, [haptics, pauseReason, phase]);
+
+  useEffect(() => {
+    if (phase !== "playing") return;
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "hidden") setInterrupted(true);
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
+  }, [phase]);
+
+  useEffect(() => {
+    if (phase === "playing") return;
+    clearDecisionTimeout();
+    processing.current = false;
+  }, [clearDecisionTimeout, phase]);
+
+  useEffect(() => clearDecisionTimeout, [clearDecisionTimeout]);
 
   if (phase === "countdown") {
     return (
@@ -168,8 +201,12 @@ export function HeadsUpApp() {
         <RoundPlayArea
           card={card}
           feedback={feedback}
-          paused={orientationMismatch}
+          pauseReason={pauseReason}
           onDecision={handleDecision}
+          onResume={() => {
+            setInterrupted(false);
+            settle();
+          }}
         />
       </GameShell>
     );
