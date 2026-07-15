@@ -9,6 +9,7 @@ import { HeadsUpSetup } from "./HeadsUpSetup";
 import { RoundPlayArea } from "./RoundPlayArea";
 import { RoundResults, type RoundResult } from "./RoundResults";
 import { useCustomDecks } from "./useCustomDecks";
+import { useFullscreen } from "./useFullscreen";
 import { useTiltControl } from "./useTiltControl";
 
 type Phase = "setup" | "builder" | "countdown" | "playing" | "results";
@@ -18,6 +19,25 @@ const ROUND_SECONDS = 60;
 const SNAP_EASE = "cubic-bezier(0.16, 1, 0.3, 1)";
 
 export function HeadsUpApp() {
+  const fullscreen = useFullscreen();
+
+  return (
+    <div ref={fullscreen.targetRef} className="things-game-fullscreen">
+      <HeadsUpExperience fullscreen={fullscreen} />
+    </div>
+  );
+}
+
+interface FullscreenControls {
+  active: boolean;
+  installFallback: boolean;
+  message: string | null;
+  standalone: boolean;
+  supported: boolean;
+  toggle: () => Promise<void>;
+}
+
+function HeadsUpExperience({ fullscreen }: { fullscreen: FullscreenControls }) {
   const [phase, setPhase] = useState<Phase>("setup");
   const [deckId, setDeckId] = useState(GAME_DECKS[0].id);
   const [cards, setCards] = useState(() => shuffledCards(GAME_DECKS[0].cards));
@@ -274,6 +294,11 @@ export function HeadsUpApp() {
   return (
     <HeadsUpSetup
       decks={allDecks}
+      fullscreenActive={fullscreen.active}
+      fullscreenInstallFallback={fullscreen.installFallback}
+      fullscreenMessage={fullscreen.message}
+      fullscreenStandalone={fullscreen.standalone}
+      fullscreenSupported={fullscreen.supported}
       locked={positionLock}
       motionUnavailable={motionStatus === "denied" || motionStatus === "unavailable"}
       selectedDeckId={deckId}
@@ -288,6 +313,7 @@ export function HeadsUpApp() {
         setEditingDeck(customDecks.find((deck) => deck.id === id) ?? null);
         setPhase("builder");
       }}
+      onFullscreen={() => void fullscreen.toggle()}
       onSelectDeck={(id) => {
         setDeckId(id);
         setShareMessage(null);

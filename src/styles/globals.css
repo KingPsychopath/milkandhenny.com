@@ -216,6 +216,23 @@
 }
 
 @layer components {
+  .things-game-fullscreen {
+    min-height: 100svh;
+    background: var(--things-night);
+  }
+
+  .things-game-fullscreen:fullscreen,
+  .things-game-fullscreen:-webkit-full-screen {
+    width: 100%;
+    height: 100%;
+    overflow: auto;
+  }
+
+  .things-game-fullscreen:fullscreen > .things-game,
+  .things-game-fullscreen:-webkit-full-screen > .things-game {
+    min-height: 100%;
+  }
+
   .things-game {
     min-height: 100svh;
     display: flex;

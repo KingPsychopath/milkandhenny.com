@@ -1,13 +1,25 @@
 interface OrientationControlsProps {
+  fullscreenActive: boolean;
+  fullscreenInstallFallback: boolean;
+  fullscreenMessage: string | null;
+  fullscreenStandalone: boolean;
+  fullscreenSupported: boolean;
   locked: boolean;
   motionUnavailable: boolean;
+  onFullscreen: () => void;
   onStart: () => void;
   onToggle: () => void;
 }
 
 export function OrientationControls({
+  fullscreenActive,
+  fullscreenInstallFallback,
+  fullscreenMessage,
+  fullscreenStandalone,
+  fullscreenSupported,
   locked,
   motionUnavailable,
+  onFullscreen,
   onStart,
   onToggle,
 }: OrientationControlsProps) {
@@ -29,6 +41,30 @@ export function OrientationControls({
           orientation · {locked ? "locked" : "auto"} {locked ? "▣" : "↻"}
         </button>
       </div>
+      {fullscreenSupported ? (
+        <button
+          type="button"
+          onClick={onFullscreen}
+          aria-pressed={fullscreenActive}
+          className="mb-3 min-h-11 w-full rounded-full border border-white/15 px-4 font-mono text-xs text-white/65"
+        >
+          {fullscreenActive ? "exit fullscreen" : "enter fullscreen"} {fullscreenActive ? "↙" : "↗"}
+        </button>
+      ) : fullscreenStandalone ? (
+        <p className="mb-3 text-center font-mono text-micro text-white/45">running fullscreen</p>
+      ) : fullscreenInstallFallback ? (
+        <p className="mb-3 text-center font-mono text-micro leading-relaxed text-white/45">
+          For fewer browser bars, add this page to your Home Screen.
+        </p>
+      ) : null}
+      {fullscreenMessage ? (
+        <p
+          aria-live="polite"
+          className="mb-3 text-center font-mono text-micro leading-relaxed text-white/55"
+        >
+          {fullscreenMessage}
+        </p>
+      ) : null}
       <button
         type="button"
         onClick={onStart}

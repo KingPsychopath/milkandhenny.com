@@ -4,6 +4,11 @@ import { OrientationControls } from "./OrientationControls";
 
 interface HeadsUpSetupProps {
   decks: GameDeck[];
+  fullscreenActive: boolean;
+  fullscreenInstallFallback: boolean;
+  fullscreenMessage: string | null;
+  fullscreenStandalone: boolean;
+  fullscreenSupported: boolean;
   locked: boolean;
   motionUnavailable: boolean;
   selectedDeckId: string;
@@ -12,6 +17,7 @@ interface HeadsUpSetupProps {
   shareMessage: string | null;
   onCreateDeck: () => void;
   onEditDeck: (id: string) => void;
+  onFullscreen: () => void;
   onSelectDeck: (id: string) => void;
   onShareDeck: (id: string) => void;
   onStart: () => void;
@@ -21,6 +27,11 @@ interface HeadsUpSetupProps {
 
 export function HeadsUpSetup({
   decks,
+  fullscreenActive,
+  fullscreenInstallFallback,
+  fullscreenMessage,
+  fullscreenStandalone,
+  fullscreenSupported,
   locked,
   motionUnavailable,
   selectedDeckId,
@@ -29,6 +40,7 @@ export function HeadsUpSetup({
   shareMessage,
   onCreateDeck,
   onEditDeck,
+  onFullscreen,
   onSelectDeck,
   onShareDeck,
   onStart,
@@ -137,8 +149,14 @@ export function HeadsUpSetup({
         </section>
 
         <OrientationControls
+          fullscreenActive={fullscreenActive}
+          fullscreenInstallFallback={fullscreenInstallFallback}
+          fullscreenMessage={fullscreenMessage}
+          fullscreenStandalone={fullscreenStandalone}
+          fullscreenSupported={fullscreenSupported}
           locked={locked}
           motionUnavailable={motionUnavailable}
+          onFullscreen={onFullscreen}
           onStart={onStart}
           onToggle={onToggleLock}
         />
