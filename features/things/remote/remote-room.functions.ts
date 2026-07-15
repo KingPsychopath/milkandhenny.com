@@ -78,7 +78,10 @@ export function remoteGameSetup(value: unknown): RemoteGameSetup {
   const timerSeconds = typeof data.timerSeconds === "number" && Number.isInteger(data.timerSeconds)
     ? Math.max(0, Math.min(60, data.timerSeconds))
     : 30;
-  return { game, deck: { name, words }, timerSeconds, autoSpeak: data.autoSpeak !== false };
+  const roundWordCount = typeof data.roundWordCount === "number" && Number.isInteger(data.roundWordCount)
+    ? Math.max(1, Math.min(words.length, data.roundWordCount))
+    : Math.min(5, words.length);
+  return { game, deck: { name, words }, timerSeconds, roundWordCount, autoSpeak: data.autoSpeak !== false };
 }
 
 function command(value: unknown): RemoteCommandRequest {

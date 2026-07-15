@@ -48,16 +48,16 @@ export function PartyPlayerApp({ roomId }: { roomId: string }) {
   const joinId = useRef(crypto.randomUUID());
   useEffect(() => { clearExpiredGameLocalStorage(); setInvite(joinToken(roomId)); setCredentials(readPlayer(roomId)); }, [roomId]);
   const handleJoin = async () => {
-    if (!invite || !name.trim() || joining) return;
+    if (!name.trim() || joining) return;
     setJoining(true); setMessage(null);
     try {
-      const result = await joinPartyRoomFn({ data: { roomId, joinToken: invite, name, joinId: joinId.current } });
+      const result = await joinPartyRoomFn({ data: { roomId, joinToken: invite || undefined, name, joinId: joinId.current } });
       if ("error" in result) { setMessage(result.error); setJoining(false); return; }
       writeExpiringLocalValue(playerKey(roomId), result, result.expiresAt); setCredentials(result);
     } catch { setMessage("Could not join. Check your connection and try again."); setJoining(false); }
   };
   if (credentials) return <PartyPlayerGame credentials={credentials} />;
-  return <main id="main" className="things-game things-game--night flex items-center justify-center px-6 text-white"><form onSubmit={(event) => { event.preventDefault(); void handleJoin(); }} className="w-full max-w-sm text-center"><p className="font-mono text-micro uppercase tracking-[0.2em] text-white/45">room {roomId}</p><h1 className="mt-3 font-serif text-5xl font-semibold">What should we call you?</h1><label htmlFor="party-name" className="sr-only">Your display name</label><input id="party-name" value={name} onChange={(event) => setName(event.target.value)} maxLength={24} autoComplete="name" enterKeyHint="go" placeholder="Your name" className="mt-7 min-h-14 w-full rounded-full border border-white/20 bg-white/[0.06] px-5 text-center font-serif text-xl placeholder:text-white/30" /><button type="submit" disabled={!invite || !name.trim() || joining} className="mt-4 min-h-14 w-full rounded-full bg-[var(--things-amber)] px-6 font-mono text-sm font-bold text-black disabled:opacity-35">{joining ? "joining…" : "join the room"}</button><p aria-live="polite" className="mt-4 min-h-5 font-mono text-xs text-amber-200">{message ?? (!invite ? "This invite is missing. Ask the presenter for a new link." : "")}</p></form></main>;
+  return <main id="main" className="things-game things-game--night flex items-center justify-center px-6 text-white"><form onSubmit={(event) => { event.preventDefault(); void handleJoin(); }} className="w-full max-w-sm text-center"><p className="font-mono text-micro uppercase tracking-[0.2em] text-white/45">room {roomId}</p><h1 className="mt-3 font-serif text-5xl font-semibold">What should we call you?</h1><label htmlFor="party-name" className="sr-only">Your display name</label><input id="party-name" value={name} onChange={(event) => setName(event.target.value)} maxLength={24} autoComplete="name" enterKeyHint="go" placeholder="Your name" className="mt-7 min-h-14 w-full rounded-full border border-white/20 bg-white/[0.06] px-5 text-center font-serif text-xl placeholder:text-white/30" /><button type="submit" disabled={!name.trim() || joining} className="mt-4 min-h-14 w-full rounded-full bg-[var(--things-amber)] px-6 font-mono text-sm font-bold text-black disabled:opacity-35">{joining ? "joining…" : "join the room"}</button><p aria-live="polite" className="mt-4 min-h-5 font-mono text-xs text-amber-200">{message}</p></form></main>;
 }
 
 function PartyPlayerGame({ credentials }: { credentials: PartyPlayerCredentials }) {

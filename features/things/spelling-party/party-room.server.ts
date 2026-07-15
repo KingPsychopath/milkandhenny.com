@@ -8,6 +8,7 @@ import type {
   PartyActionResult,
   PartyClueEvent,
   PartyClueKind,
+  PartyCustomDeckInput,
   PartyPlayerAction,
   PartyPlayerCredentials,
   PartyPresenterAction,
@@ -30,12 +31,13 @@ interface PlayerState {
 }
 interface RoundState {
   roundId: string; number: number; wordId: string; countdownStartsAt: number; audioPlaysAt: number;
-  answerOpensAt: number; answerLocksAt: number; revealAt: number; wordAudio: AudioCapability;
+  answerOpensAt: number; answerLocksAt: number; revealAt: number; wordAudio: AudioCapability | null;
   repeatUsed: boolean; definitionUsed: boolean; activeClue: PartyClueEvent | null; clueCapabilities: AudioCapability[]; scored: boolean;
 }
 interface JoinReceipt { playerId: string; playerToken: string; expiresAt: number }
 interface PartyRoomState {
   roomId: string; deckId: string; deckName: string; answerSeconds: number; roundTotal: number; wordIds: string[];
+  words?: PartyWord[]; usesLocalSpeech?: boolean;
   phase: "lobby" | "countdown" | "answer" | "locked" | "reveal" | "finished";
   revision: number; sequence: number; presenterHash: string; joinHash: string; expiresAt: number; sentenceCluesRemaining: number;
   players: PlayerState[]; round: RoundState | null; recentClues: PartyClueEvent[]; processedActions: string[];
@@ -84,6 +86,11 @@ async function migrateLegacyJoinReceipts(room: PartyRoomState, keys: PartyRedisK
   return true;
 }
 
+function hydrateRoomWords(room: PartyRoomState) {
+  room.words ??= partyDeck(room.deckId)?.words ?? [];
+  room.usesLocalSpeech ??= false;
+}
+
 async function deletePartyRoom(room: PartyRoomState, keys: PartyRedisKeys) {
   const redis = getRedis();
   if (redis) {
@@ -100,6 +107,7 @@ async function loadRoom(id: string): Promise<LoadedRoom | null> {
     const room = memoryRooms.get(id) ?? null;
     if (!room) return null;
     room.joinReceiptIds ??= [];
+    hydrateRoomWords(room);
     if (room.expiresAt <= Date.now()) {
       await deletePartyRoom(room, partyRoomRedisKeys(id));
       return null;
@@ -111,6 +119,7 @@ async function loadRoom(id: string): Promise<LoadedRoom | null> {
     const room = await redis.get<PartyRoomState>(keys.state);
     if (!room) continue;
     room.joinReceiptIds ??= [];
+    hydrateRoomWords(room);
     if (room.expiresAt <= Date.now()) {
       await deletePartyRoom(room, keys);
       return null;
@@ -185,9 +194,8 @@ async function writeJoinReceipt(room: PartyRoomState, joinId: string, receipt: J
 }
 
 function wordFor(room: PartyRoomState): PartyWord | null {
-  const deck = partyDeck(room.deckId);
   const id = room.round?.wordId;
-  return deck?.words.find((word) => word.id === id) ?? null;
+  return room.words?.find((word) => word.id === id) ?? null;
 }
 
 function lockAll(room: PartyRoomState, now: number) {
@@ -230,6 +238,12 @@ function audioUrl(roomIdValue: string, assetId: string) {
   return `/api/things/party-audio/${roomIdValue}/${assetId}`;
 }
 
+function clueForRole(clue: PartyClueEvent | null, role: PartyRole) {
+  if (!clue || role === "presenter" || !clue.speechText) return clue;
+  const { speechText: _, ...publicClue } = clue;
+  return publicClue;
+}
+
 function snapshot(room: PartyRoomState, role: PartyRole, playerId?: string): PartySnapshot {
   advance(room);
   const now = Date.now();
@@ -264,8 +278,12 @@ function snapshot(room: PartyRoomState, role: PartyRole, playerId?: string): Par
       answerOpensAt: room.round.answerOpensAt,
       answerLocksAt: room.round.answerLocksAt,
       revealAt: room.round.revealAt,
-      wordAudioUrl: audioUrl(room.roomId, room.round.wordAudio.id),
-      activeClue: room.round.activeClue,
+      wordAudioUrl: room.round.wordAudio ? audioUrl(room.roomId, room.round.wordAudio.id) : null,
+      ...(role === "presenter" ? {
+        ...(room.usesLocalSpeech && word ? { spokenWord: word.speakAs ?? word.word } : {}),
+        speechLocale: room.deckId === "american-english" ? "en-US" as const : "en-GB" as const,
+      } : {}),
+      activeClue: clueForRole(room.round.activeClue, role),
       repeatUsed: room.round.repeatUsed,
       definitionUsed: room.round.definitionUsed,
       sentenceCluesRemaining: room.sentenceCluesRemaining,
@@ -277,7 +295,7 @@ function snapshot(room: PartyRoomState, role: PartyRole, playerId?: string): Par
         })), word.word),
       } : {}),
     } : null,
-    recentClues: room.recentClues.slice(-4),
+    recentClues: room.recentClues.slice(-4).map((clue) => clueForRole(clue, role)!),
     player: currentPlayer ? { draft: currentPlayer.draft, draftRevision: currentPlayer.draftRevision, locked: currentPlayer.locked, lockedAutomatically: currentPlayer.automatic } : null,
   };
 }
@@ -291,7 +309,7 @@ function startRound(room: PartyRoomState, now = Date.now()) {
     return;
   }
   const wordId = room.wordIds[number - 1];
-  const word = partyDeck(room.deckId)?.words.find(({ id }) => id === wordId);
+  const word = room.words?.find(({ id }) => id === wordId);
   if (!word) throw new Error("Word unavailable");
   const countdownStartsAt = now + 700;
   const audioPlaysAt = countdownStartsAt + 3_000;
@@ -300,36 +318,50 @@ function startRound(room: PartyRoomState, now = Date.now()) {
   room.players.forEach((player) => { player.draft = ""; player.draftRevision = 0; player.locked = false; player.automatic = false; player.lockedAt = null; });
   room.round = {
     roundId: token(), number, wordId, countdownStartsAt, audioPlaysAt, answerOpensAt, answerLocksAt, revealAt: answerLocksAt + 650,
-    wordAudio: { id: capability(), key: partyAudioAssetKey(word, "word") }, repeatUsed: false, definitionUsed: false,
+    wordAudio: room.usesLocalSpeech ? null : { id: capability(), key: partyAudioAssetKey(word, "word") }, repeatUsed: false, definitionUsed: false,
     activeClue: null, clueCapabilities: [], scored: false,
   };
   room.phase = "countdown";
   changed(room);
 }
 
-export async function createPartyRoom(input: { deckId: string; answerSeconds: number; roundTotal: number }): Promise<PartyRoomCredentials> {
-  const deck = partyDeck(input.deckId);
+export async function createPartyRoom(input: { deckId: string; customDeck?: PartyCustomDeckInput; recentWordIds?: string[]; answerSeconds: number; roundTotal: number }): Promise<PartyRoomCredentials> {
+  const seen = new Set<string>();
+  const customWords: PartyWord[] = (input.customDeck?.words ?? []).flatMap((word) => {
+    const key = normalizeAnswer(word.word);
+    if (!key || seen.has(key)) return [];
+    seen.add(key);
+    return [{ ...word, sentence: word.sentence ?? `The word for this round is ${word.word}.` }];
+  });
+  const deck = input.customDeck && customWords.length >= 3
+    ? { id: input.customDeck.id, name: input.customDeck.name.trim() || "My words", words: customWords }
+    : partyDeck(input.deckId);
   if (!deck) throw new Error("Deck unavailable");
   const presenterToken = token();
   const joinToken = token();
   const expiresAt = Date.now() + ROOM_TTL_SECONDS * 1_000;
-  const words = [...deck.words];
-  for (let index = words.length - 1; index > 0; index -= 1) { const swap = randomInt(index + 1); [words[index], words[swap]] = [words[swap], words[index]]; }
+  const recent = new Set(input.recentWordIds ?? []);
+  const freshWords = deck.words.filter(({ id }) => !recent.has(id));
+  const previousWords = deck.words.filter(({ id }) => recent.has(id));
+  for (const words of [freshWords, previousWords]) {
+    for (let index = words.length - 1; index > 0; index -= 1) { const swap = randomInt(index + 1); [words[index], words[swap]] = [words[swap], words[index]]; }
+  }
+  const words = [...freshWords, ...previousWords];
   const room: PartyRoomState = {
     roomId: roomId(), deckId: deck.id, deckName: deck.name, answerSeconds: Math.max(8, Math.min(60, input.answerSeconds)),
     roundTotal: Math.max(1, Math.min(words.length, input.roundTotal)), wordIds: words.map(({ id }) => id), phase: "lobby", revision: 1,
     sequence: 1, presenterHash: hash(presenterToken), joinHash: hash(joinToken), expiresAt, sentenceCluesRemaining: 3,
-    players: [], round: null, recentClues: [], processedActions: [], joinReceiptIds: [],
+    players: [], round: null, recentClues: [], processedActions: [], joinReceiptIds: [], words, usesLocalSpeech: Boolean(input.customDeck),
   };
   if (!getRedis() && process.env.NODE_ENV === "production") throw new Error("Party rooms require Redis");
   await saveRoom(room);
   log.info("things.spelling-party", "Room created", { deckId: deck.id, roundTotal: room.roundTotal });
-  return { roomId: room.roomId, presenterToken, joinToken, expiresAt };
+  return { roomId: room.roomId, presenterToken, joinToken, expiresAt, selectedWordIds: room.wordIds.slice(0, room.roundTotal) };
 }
 
-export async function joinPartyRoom(input: { roomId: string; joinToken: string; name: string; joinId: string }): Promise<PartyPlayerCredentials | { error: string }> {
+export async function joinPartyRoom(input: { roomId: string; joinToken?: string; name: string; joinId: string }): Promise<PartyPlayerCredentials | { error: string }> {
   const result = await withRoom(input.roomId, async (room, keys) => {
-    if (!safeEqual(input.joinToken, room.joinHash)) return { error: "Invite expired" } as const;
+    if (input.joinToken !== undefined && !safeEqual(input.joinToken, room.joinHash)) return { error: "Invite expired" } as const;
     if (room.phase !== "lobby") return { error: "This game has already started" } as const;
     const receipt = await readJoinReceipt(room.roomId, input.joinId, keys);
     if (receipt) return { receipt, snapshot: snapshot(room, "player", receipt.playerId), expiresAt: room.expiresAt };
@@ -416,10 +448,12 @@ export async function applyPlayerAction(input: { roomId: string; playerId: strin
       if (kind === "repeat") round.repeatUsed = true;
       if (kind === "definition") round.definitionUsed = true;
       if (kind === "sentence") room.sentenceCluesRemaining -= 1;
-      const asset: AudioCapability = { id: capability(), key: partyAudioAssetKey(word, kind === "repeat" ? "word" : kind) };
-      round.clueCapabilities.push(asset);
+      const eventId = capability();
+      const asset: AudioCapability | null = room.usesLocalSpeech ? null : { id: eventId, key: partyAudioAssetKey(word, kind === "repeat" ? "word" : kind) };
+      if (asset) round.clueCapabilities.push(asset);
       const message = kind === "repeat" ? `${player.name} asked to hear it again.` : kind === "definition" ? `${player.name} asked for the definition.` : `${player.name} used a sentence clue · ${room.sentenceCluesRemaining} remaining.`;
-      const event: PartyClueEvent = { id: asset.id, kind, playerName: player.name, message, createdAt: now, audioUrl: audioUrl(room.roomId, asset.id) };
+      const speechText = kind === "repeat" ? word.speakAs ?? word.word : kind === "definition" ? word.definition ?? "No definition is available for this word." : word.sentence;
+      const event: PartyClueEvent = { id: eventId, kind, playerName: player.name, message, createdAt: now, audioUrl: asset ? audioUrl(room.roomId, asset.id) : null, speechText };
       round.activeClue = event; room.recentClues.push(event); changed(room);
     }
     rememberAction(room, input.action.actionId);
@@ -437,7 +471,7 @@ export async function getPartyAudioAsset(roomIdValue: string, assetId: string) {
   const loaded = await loadRoom(roomIdValue);
   const round = loaded?.room.round;
   if (!round || assetId.length > 80) return null;
-  if (round.wordAudio.id === assetId) return round.wordAudio.key;
+  if (round.wordAudio?.id === assetId) return round.wordAudio.key;
   return round.clueCapabilities.find(({ id }) => id === assetId)?.key ?? null;
 }
 

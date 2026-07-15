@@ -23,6 +23,7 @@ export interface RemoteSpellingSetup {
     }>;
   };
   timerSeconds: number;
+  roundWordCount?: number;
   autoSpeak: boolean;
 }
 

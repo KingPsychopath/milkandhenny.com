@@ -1,7 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { partyDeckCatalog } from "./party-content.server";
 import { applyPlayerAction, applyPresenterAction, closePartyRoom, createPartyRoom, joinPartyRoom, readPartySnapshot } from "./party-room.server";
-import type { PartyClueKind, PartyPlayerAction, PartyPresenterAction, PartyRole } from "./types";
+import type { PartyClueKind, PartyCustomDeckInput, PartyPlayerAction, PartyPresenterAction, PartyRole } from "./types";
 
 function record(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("Invalid request");
@@ -19,6 +19,31 @@ function roomId(value: unknown) {
 function actionId(value: unknown) { return text(value, 80); }
 function credential(value: unknown) { return text(value, 120); }
 function sequence(value: unknown) { return typeof value === "number" && Number.isFinite(value) ? Math.max(0, Math.floor(value)) : 0; }
+
+function optionalText(value: unknown, max: number) {
+  return typeof value === "string" && value.trim() ? value.trim().slice(0, max) : undefined;
+}
+
+function customDeck(value: unknown): PartyCustomDeckInput | undefined {
+  if (value === undefined || value === null) return undefined;
+  const data = record(value);
+  if (!Array.isArray(data.words) || data.words.length < 3 || data.words.length > 200) throw new Error("Invalid custom deck");
+  return {
+    id: text(data.id, 80),
+    name: text(data.name, 50).trim(),
+    words: data.words.map((candidate) => {
+      const word = record(candidate);
+      return {
+        id: text(word.id, 100),
+        word: text(word.word, 80).trim(),
+        partOfSpeech: optionalText(word.partOfSpeech, 30),
+        definition: optionalText(word.definition, 220),
+        speakAs: optionalText(word.speakAs, 100),
+        sentence: optionalText(word.sentence, 240),
+      };
+    }),
+  };
+}
 
 function role(value: unknown): PartyRole {
   if (value === "presenter" || value === "player") return value;
@@ -52,14 +77,15 @@ export const partyDeckCatalogFn = createServerFn({ method: "GET" }).handler(() =
 export const createPartyRoomFn = createServerFn({ method: "POST" })
   .validator((value: unknown) => {
     const data = record(value);
-    return { deckId: text(data.deckId, 80), answerSeconds: Math.max(8, Math.min(60, sequence(data.answerSeconds) || 20)), roundTotal: Math.max(1, Math.min(20, sequence(data.roundTotal) || 5)) };
+    const recentWordIds = Array.isArray(data.recentWordIds) ? data.recentWordIds.slice(0, 200).map((id) => text(id, 100)) : [];
+    return { deckId: text(data.deckId, 80), customDeck: customDeck(data.customDeck), recentWordIds, answerSeconds: Math.max(8, Math.min(60, sequence(data.answerSeconds) || 20)), roundTotal: Math.max(1, Math.min(24, sequence(data.roundTotal) || 5)) };
   })
   .handler(({ data }) => createPartyRoom(data));
 
 export const joinPartyRoomFn = createServerFn({ method: "POST" })
   .validator((value: unknown) => {
     const data = record(value);
-    return { roomId: roomId(data.roomId), joinToken: credential(data.joinToken), name: text(data.name, 40), joinId: actionId(data.joinId) };
+    return { roomId: roomId(data.roomId), joinToken: data.joinToken === undefined ? undefined : credential(data.joinToken), name: text(data.name, 40), joinId: actionId(data.joinId) };
   })
   .handler(({ data }) => joinPartyRoom(data));
 

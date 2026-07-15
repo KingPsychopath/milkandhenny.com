@@ -18,7 +18,7 @@ export function parseSpellingWords(value: string) {
   for (const rawLine of value.split(/\r?\n/)) {
     const line = rawLine.replace(/^(?:[-*•◦▪]|\d+[.)])\s*/, "").trim();
     if (!line) continue;
-    const [rawWord, partOfSpeech, definition, speakAs] = line.split("|").map((part) => part.trim());
+    const [rawWord, partOfSpeech, definition, speakAs, sentence] = line.split("|").map((part) => part.trim());
     const spelling = rawWord.slice(0, 80);
     const key = spelling.toLocaleLowerCase();
     if (!spelling || seen.has(key)) continue;
@@ -29,6 +29,7 @@ export function parseSpellingWords(value: string) {
       partOfSpeech: partOfSpeech?.slice(0, 30) || undefined,
       definition: definition?.slice(0, 220) || undefined,
       speakAs: speakAs?.slice(0, 100) || undefined,
+      sentence: sentence?.slice(0, 240) || undefined,
     });
     if (words.length === MAX_WORDS) break;
   }
@@ -37,7 +38,11 @@ export function parseSpellingWords(value: string) {
 
 export function formatSpellingWords(words: readonly SpellingWord[]) {
   return words
-    .map((item) => [item.word, item.partOfSpeech, item.definition, item.speakAs].filter(Boolean).join(" | "))
+    .map((item) => {
+      const fields = [item.word, item.partOfSpeech ?? "", item.definition ?? "", item.speakAs ?? "", item.sentence ?? ""];
+      while (fields.at(-1) === "") fields.pop();
+      return fields.join(" | ");
+    })
     .join("\n");
 }
 
@@ -57,6 +62,7 @@ function normalise(value: unknown): CustomSpellingDeck[] {
         partOfSpeech: typeof entry.partOfSpeech === "string" ? entry.partOfSpeech.slice(0, 30) : undefined,
         definition: typeof entry.definition === "string" ? entry.definition.slice(0, 220) : undefined,
         speakAs: typeof entry.speakAs === "string" ? entry.speakAs.slice(0, 100) : undefined,
+        sentence: typeof entry.sentence === "string" ? entry.sentence.slice(0, 240) : undefined,
       }];
     }).slice(0, MAX_WORDS);
     if (words.length < 3) return [];

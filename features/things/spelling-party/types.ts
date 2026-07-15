@@ -10,6 +10,19 @@ export interface PartyDeckSummary {
   wordCount: number;
 }
 
+export interface PartyCustomDeckInput {
+  id: string;
+  name: string;
+  words: Array<{
+    id: string;
+    word: string;
+    partOfSpeech?: string;
+    definition?: string;
+    speakAs?: string;
+    sentence?: string;
+  }>;
+}
+
 export interface PartyPlayerSummary {
   id: string;
   name: string;
@@ -37,7 +50,8 @@ export interface PartyClueEvent {
   playerName: string;
   message: string;
   createdAt: number;
-  audioUrl: string;
+  audioUrl: string | null;
+  speechText?: string;
 }
 
 export interface PartyRoundSnapshot {
@@ -49,7 +63,9 @@ export interface PartyRoundSnapshot {
   answerOpensAt: number;
   answerLocksAt: number;
   revealAt: number;
-  wordAudioUrl: string;
+  wordAudioUrl: string | null;
+  spokenWord?: string;
+  speechLocale?: "en-GB" | "en-US";
   activeClue: PartyClueEvent | null;
   repeatUsed: boolean;
   definitionUsed: boolean;
@@ -84,6 +100,7 @@ export interface PartyRoomCredentials {
   presenterToken: string;
   joinToken: string;
   expiresAt: number;
+  selectedWordIds: string[];
 }
 
 export interface PartyPlayerCredentials {

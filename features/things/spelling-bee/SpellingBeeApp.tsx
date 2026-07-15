@@ -18,6 +18,7 @@ import { SpellingResults, type SpellingResult } from "./SpellingResults";
 import { SpellingSetup } from "./SpellingSetup";
 import { useCustomSpellingDecks } from "./useCustomSpellingDecks";
 import { useLocalSpellingAssistant } from "./useLocalSpellingAssistant";
+import { rememberSpellingWords, selectSpellingRoundWords } from "./wordRotation.client";
 import { activeWord, feedbackDurationMs, remainingWordMs, type AloudDecision, type AloudEvaluationReason, type AloudWordState } from "./aloud-word-state";
 import { useUpdateReloadSafety } from "@/features/offline/update-safety.client";
 
@@ -48,6 +49,7 @@ function SpellingBeeExperience({ remoteSession }: { remoteSession?: RemotePlayer
   const [wordIndex, setWordIndex] = useState(0);
   const [countdown, setCountdown] = useState(3);
   const [timerSeconds, setTimerSeconds] = useState(joinedSetup?.timerSeconds ?? 30);
+  const [roundTotal, setRoundTotal] = useState(joinedSetup?.roundWordCount ?? 5);
   const [seconds, setSeconds] = useState<number | null>(joinedSetup?.timerSeconds ?? 30);
   const [results, setResults] = useState<SpellingResult[]>([]);
   const [feedback, setFeedback] = useState<AloudDecision | null>(null);
@@ -172,6 +174,7 @@ function SpellingBeeExperience({ remoteSession }: { remoteSession?: RemotePlayer
     game: "spelling-bee",
     deck: { name: selectedDeck.name, words: selectedDeck.words.map((word) => ({ ...word })) },
     timerSeconds,
+    roundWordCount: Math.min(roundTotal, selectedDeck.words.length),
     autoSpeak,
   };
   const remote = useRemotePlayerRoom("spelling-bee", remoteSetup, remoteSnapshot, handleRemoteCommand, remoteSession);
@@ -181,7 +184,7 @@ function SpellingBeeExperience({ remoteSession }: { remoteSession?: RemotePlayer
     try {
       const stored: unknown = JSON.parse(sessionStorage.getItem(roundStorageKey) ?? "null");
       if (!stored || typeof stored !== "object") return;
-      const value = stored as { phase?: Phase; deckId?: string; words?: unknown; wordIndex?: number; seconds?: number | null; results?: unknown; timerSeconds?: number; savedAt?: number; decisionClosesAt?: number; remoteExclusive?: boolean };
+      const value = stored as { phase?: Phase; deckId?: string; words?: unknown; wordIndex?: number; seconds?: number | null; results?: unknown; timerSeconds?: number; roundTotal?: number; savedAt?: number; decisionClosesAt?: number; remoteExclusive?: boolean };
       if (!value.savedAt || Date.now() - value.savedAt > 2 * 60 * 60 * 1000) { sessionStorage.removeItem(roundStorageKey); return; }
       if (!Array.isArray(value.words) || !value.words.every((entry) => entry && typeof entry === "object" && typeof (entry as { word?: unknown }).word === "string")) { sessionStorage.removeItem(roundStorageKey); return; }
       if (!Array.isArray(value.results)) { sessionStorage.removeItem(roundStorageKey); return; }
@@ -196,6 +199,7 @@ function SpellingBeeExperience({ remoteSession }: { remoteSession?: RemotePlayer
       setWordIndex(typeof value.wordIndex === "number" ? Math.max(0, Math.min(value.wordIndex, value.words.length - 1)) : 0);
       setSeconds(typeof value.seconds === "number" ? Math.max(0, value.seconds) : null);
       setTimerSeconds(typeof value.timerSeconds === "number" ? value.timerSeconds : 30);
+      setRoundTotal(typeof value.roundTotal === "number" ? Math.max(1, Math.min(value.words.length, value.roundTotal)) : value.words.length);
       setResults(restoredResults);
       if (typeof value.remoteExclusive === "boolean") setRemoteExclusive(value.remoteExclusive);
       setPhase(value.phase === "countdown" ? "playing" : value.phase);
@@ -211,15 +215,17 @@ function SpellingBeeExperience({ remoteSession }: { remoteSession?: RemotePlayer
       if (restoredRound.current) sessionStorage.removeItem(roundStorageKey);
       return;
     }
-    sessionStorage.setItem(roundStorageKey, JSON.stringify({ phase, deckId, words, wordIndex, seconds, results, timerSeconds, remoteExclusive, decisionClosesAt: wordState.status === "active" ? wordState.decisionClosesAt : undefined, savedAt: Date.now() }));
+    sessionStorage.setItem(roundStorageKey, JSON.stringify({ phase, deckId, words, wordIndex, seconds, results, timerSeconds, roundTotal, remoteExclusive, decisionClosesAt: wordState.status === "active" ? wordState.decisionClosesAt : undefined, savedAt: Date.now() }));
     restoredRound.current = true;
-  }, [deckId, phase, remoteExclusive, results, roundStorageKey, seconds, timerSeconds, wordIndex, wordState, words]);
+  }, [deckId, phase, remoteExclusive, results, roundStorageKey, roundTotal, seconds, timerSeconds, wordIndex, wordState, words]);
 
   const startRound = useCallback(async (deck: SpellingDeck = selectedDeck) => {
     primeGameAudio();
     stopAssistant();
     cancelLocalSpeech();
-    setWords(shuffledWords(deck.words));
+    const selectedWords = selectSpellingRoundWords(deck.id, deck.words, Math.min(roundTotal, deck.words.length));
+    rememberSpellingWords(deck.id, selectedWords.map(({ id }) => id), deck.words.length);
+    setWords(selectedWords);
     setWordIndex(0);
     setResults([]);
     setFeedback(null);
@@ -231,7 +237,7 @@ function SpellingBeeExperience({ remoteSession }: { remoteSession?: RemotePlayer
     await requestAccess();
     void haptics.trigger("medium");
     setPhase("countdown");
-  }, [clearTransition, haptics, requestAccess, selectedDeck, stopAssistant, timerSeconds]);
+  }, [clearTransition, haptics, requestAccess, roundTotal, selectedDeck, stopAssistant, timerSeconds]);
 
   const endRound = useCallback((confirmFirst = true) => {
     if (confirmFirst) { setEndConfirmationOpen(true); return; }
@@ -321,7 +327,7 @@ function SpellingBeeExperience({ remoteSession }: { remoteSession?: RemotePlayer
 
   useEffect(() => () => { clearTransition(); cancelLocalSpeech(); }, [clearTransition]);
 
-  if (phase === "builder") return <SpellingDeckBuilder deck={editingDeck} onCancel={() => setPhase("setup")} onDelete={(deck) => { if (!confirm(`Delete “${deck.name}”?`)) return; deleteDeck(deck.id); setDeckId(SPELLING_DECKS[0].id); setPhase("setup"); }} onSave={(deck) => { saveDeck(deck); setDeckId(deck.id); setEditingDeck(deck); void startRound(customSpellingDeckAsDeck(deck)); }} />;
+  if (phase === "builder") return <SpellingDeckBuilder deck={editingDeck} onCancel={() => setPhase("setup")} onDelete={(deck) => { deleteDeck(deck.id); setDeckId(SPELLING_DECKS[0].id); setPhase("setup"); }} onSave={(deck) => { saveDeck(deck); setDeckId(deck.id); setRoundTotal((current) => Math.min(current, deck.words.length)); setEditingDeck(deck); void startRound(customSpellingDeckAsDeck(deck)); }} />;
 
   if (phase === "countdown") return <GameShell tone="amber"><header className="p-5 text-black"><button type="button" onClick={() => endRound(false)} className="min-h-11 font-mono text-xs opacity-60">← cancel round</button></header><main id="main" className="flex flex-1 flex-col items-center justify-center text-center text-black"><p className="font-mono text-xs uppercase tracking-[0.2em] text-black/55">get ready to spell</p><TextMorph as="h1" className="mt-2 font-serif text-[8rem] font-semibold leading-none">{String(countdown)}</TextMorph><p className="mt-8 max-w-xs px-6 font-serif text-xl text-black/70">The word will be read aloud. The judge can ask for it again.</p></main></GameShell>;
 
@@ -331,7 +337,7 @@ function SpellingBeeExperience({ remoteSession }: { remoteSession?: RemotePlayer
 
   if (joinedDeck) return <RemotePlayerReady gameName="Spelling Bee" deckName={joinedDeck.name} detail={`Words will be read aloud on this phone${timerSeconds ? ` with ${timerSeconds} seconds per word` : " with no timer"}.`} judgeConnected={remote.judgeConnected} onStart={() => void startRound(joinedDeck)} />;
 
-  return <SpellingSetup decks={allDecks} selectedDeckId={deckId} customDeckIds={new Set(customDecks.map(({ id }) => id))} timerSeconds={timerSeconds} autoSpeak={autoSpeak} soundEnabled={soundEnabled} assistantStatus={assistantStatus} assistantBackend={assistantBackend} browserSpeechAvailability={browserSpeechAvailability} assistantProgress={assistantProgress} assistantMessage={assistantMessage} downloadEstimate={downloadEstimate} remoteControls={<RemoteHostPanel gameLabel="Spelling Bee" inviteUrl={remote.inviteUrl} roomId={remote.room?.roomId ?? null} connected={remote.judgeConnected} syncing={remote.syncing} message={remote.message} exclusive={remoteExclusive} onCreate={remote.createRoom} onCreatePlayerRoom={remote.createJudgeRoom} onClose={remote.closeRoom} onMessage={remote.setMessage} onToggleExclusive={() => setRemoteExclusive((value) => !value)} />} onSelectDeck={setDeckId} onTimerChange={setTimerSeconds} onToggleAutoSpeak={() => setAutoSpeak((value) => !value)} onToggleSound={() => setSoundEnabled((value) => !value)} onEnableAssistant={() => void enableAssistant()} onDisableAssistant={() => void disableAssistant()} onCreateDeck={() => { setEditingDeck(null); setPhase("builder"); }} onEditDeck={(id) => { setEditingDeck(customDecks.find((deck) => deck.id === id) ?? null); setPhase("builder"); }} onStart={() => void startRound()} />;
+  return <SpellingSetup decks={allDecks} selectedDeckId={deckId} customDeckIds={new Set(customDecks.map(({ id }) => id))} timerSeconds={timerSeconds} roundTotal={Math.min(roundTotal, selectedDeck.words.length)} autoSpeak={autoSpeak} soundEnabled={soundEnabled} assistantStatus={assistantStatus} assistantBackend={assistantBackend} browserSpeechAvailability={browserSpeechAvailability} assistantProgress={assistantProgress} assistantMessage={assistantMessage} downloadEstimate={downloadEstimate} remoteControls={<RemoteHostPanel gameLabel="Spelling Bee" inviteUrl={remote.inviteUrl} roomId={remote.room?.roomId ?? null} connected={remote.judgeConnected} syncing={remote.syncing} message={remote.message} exclusive={remoteExclusive} onCreate={remote.createRoom} onCreatePlayerRoom={remote.createJudgeRoom} onClose={remote.closeRoom} onMessage={remote.setMessage} onToggleExclusive={() => setRemoteExclusive((value) => !value)} />} onSelectDeck={(id) => { setDeckId(id); const deck = allDecks.find((candidate) => candidate.id === id); if (deck) setRoundTotal((current) => Math.min(current, deck.words.length)); }} onRoundTotalChange={setRoundTotal} onTimerChange={setTimerSeconds} onToggleAutoSpeak={() => setAutoSpeak((value) => !value)} onToggleSound={() => setSoundEnabled((value) => !value)} onEnableAssistant={() => void enableAssistant()} onDisableAssistant={() => void disableAssistant()} onCreateDeck={() => { setEditingDeck(null); setPhase("builder"); }} onEditDeck={(id) => { setEditingDeck(customDecks.find((deck) => deck.id === id) ?? null); setPhase("builder"); }} onStart={() => void startRound()} />;
 }
 
 function EndRoundModal({ onCancel, onConfirm }: { onCancel: () => void; onConfirm: () => void }) {

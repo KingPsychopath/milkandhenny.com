@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "audio:spelling": "tsx scripts/generate-party-spelling-audio.ts",
     "dev": "vite dev",
     "build": "vite build",
     "start": "node .output/server/index.mjs",

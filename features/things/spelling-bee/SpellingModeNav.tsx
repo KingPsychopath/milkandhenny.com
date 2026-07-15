@@ -3,6 +3,7 @@ import { Link } from "@tanstack/react-router";
 export function SpellingModeNav({ mode }: { mode: "aloud" | "together" }) {
   const itemClass = (active: boolean) =>
     `min-h-24 p-4 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--things-amber)] ${active ? "bg-white/12 text-white" : "text-white/55 hover:bg-white/[0.06] hover:text-white"}`;
+  const resetModeScroll = () => requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "instant" }));
 
   return (
     <nav aria-label="Spelling Bee mode" className="mt-7 overflow-hidden rounded-3xl border border-white/15">
@@ -10,11 +11,11 @@ export function SpellingModeNav({ mode }: { mode: "aloud" | "together" }) {
         How are you playing?
       </p>
       <div className="grid grid-cols-2 divide-x divide-white/12">
-        <Link to="/things/spelling-bee" aria-current={mode === "aloud" ? "page" : undefined} className={itemClass(mode === "aloud")}>
+        <Link to="/things/spelling-bee" onClick={resetModeScroll} aria-current={mode === "aloud" ? "page" : undefined} className={itemClass(mode === "aloud")}>
           <span className="block font-serif text-lg font-semibold leading-tight">Say it aloud</span>
           <span className="mt-2 block font-mono text-micro leading-relaxed text-white/45">one phone · offline</span>
         </Link>
-        <Link to="/things/spelling-party" aria-current={mode === "together" ? "page" : undefined} className={itemClass(mode === "together")}>
+        <Link to="/things/spelling-party" onClick={resetModeScroll} aria-current={mode === "together" ? "page" : undefined} className={itemClass(mode === "together")}>
           <span className="block font-serif text-lg font-semibold leading-tight">Type together</span>
           <span className="mt-2 block font-mono text-micro leading-relaxed text-white/45">shared screen · live</span>
         </Link>

@@ -1,7 +1,9 @@
 import { Link } from "@tanstack/react-router";
 import type { ReactNode } from "react";
 import type { SpellingDeck } from "./decks";
+import { spellingRoundOptions } from "./decks";
 import { SpellingSetupIntro } from "./SpellingSetupIntro";
+import { SpellingDeckPicker } from "./SpellingDeckPicker";
 import type { AssistantBackend, AssistantStatus, BrowserSpeechAvailability } from "./useLocalSpellingAssistant";
 
 export function SpellingSetup({
@@ -9,6 +11,7 @@ export function SpellingSetup({
   selectedDeckId,
   customDeckIds,
   timerSeconds,
+  roundTotal,
   autoSpeak,
   soundEnabled,
   remoteControls,
@@ -20,6 +23,7 @@ export function SpellingSetup({
   downloadEstimate,
   onSelectDeck,
   onTimerChange,
+  onRoundTotalChange,
   onToggleAutoSpeak,
   onToggleSound,
   onCreateDeck,
@@ -32,6 +36,7 @@ export function SpellingSetup({
   selectedDeckId: string;
   customDeckIds: Set<string>;
   timerSeconds: number;
+  roundTotal: number;
   autoSpeak: boolean;
   soundEnabled: boolean;
   remoteControls: ReactNode;
@@ -43,6 +48,7 @@ export function SpellingSetup({
   downloadEstimate: string;
   onSelectDeck: (id: string) => void;
   onTimerChange: (seconds: number) => void;
+  onRoundTotalChange: (count: number) => void;
   onToggleAutoSpeak: () => void;
   onToggleSound: () => void;
   onCreateDeck: () => void;
@@ -51,6 +57,8 @@ export function SpellingSetup({
   onEnableAssistant: () => void;
   onDisableAssistant: () => void;
 }) {
+  const selectedDeck = decks.find(({ id }) => id === selectedDeckId) ?? decks[0];
+  const wordCount = selectedDeck?.words.length ?? 0;
   return (
     <div className="things-game things-game--night text-white">
       <header className="flex items-center justify-between p-5 font-mono text-xs text-white/55">
@@ -59,23 +67,11 @@ export function SpellingSetup({
       </header>
       <main id="main" className="flex-1 px-5 pb-10">
         <SpellingSetupIntro mode="aloud" />
-        <section className="mx-auto mt-10 max-w-lg" aria-labelledby="spelling-decks">
-          <div className="flex items-center justify-between gap-4"><h2 id="spelling-decks" className="font-mono text-micro uppercase tracking-[0.18em] text-white/45">choose words</h2><button type="button" onClick={onCreateDeck} className="min-h-11 rounded-full border border-white/15 px-4 font-mono text-xs">+ make a deck</button></div>
-          <div className="mt-3 grid gap-3">
-            {decks.map((deck) => {
-              const selected = deck.id === selectedDeckId;
-              return <div key={deck.id} className={`grid grid-cols-[1fr_auto] items-center gap-2 rounded-3xl border p-2 ${selected ? "border-white/60 bg-white/12" : "border-white/12 bg-white/[0.04]"}`}>
-                <button type="button" onClick={() => onSelectDeck(deck.id)} aria-pressed={selected} className="grid min-h-20 grid-cols-[2.75rem_1fr_auto] items-center gap-3 p-2 text-left">
-                  <span aria-hidden="true" className="font-serif text-2xl text-white/60">{deck.symbol}</span><span><span className="block font-serif text-xl font-semibold">{deck.name}</span><span className="mt-1 block text-xs leading-relaxed text-white/50">{deck.description}</span></span><span className="font-mono text-xs text-white/40">{deck.words.length}</span>
-                </button>
-                {customDeckIds.has(deck.id) ? <button type="button" onClick={() => onEditDeck(deck.id)} className="min-h-11 rounded-full px-3 font-mono text-xs text-white/55">edit</button> : null}
-              </div>;
-            })}
-          </div>
-        </section>
+        <SpellingDeckPicker decks={decks.map((deck) => ({ id: deck.id, name: deck.name, description: deck.description, symbol: deck.symbol, wordCount: deck.words.length }))} selectedDeckId={selectedDeckId} customDeckIds={customDeckIds} onSelectDeck={onSelectDeck} onCreateDeck={onCreateDeck} onEditDeck={onEditDeck} />
         <section className="mx-auto mt-8 max-w-lg rounded-3xl border border-white/12 p-5" aria-labelledby="bee-settings">
           <h2 id="bee-settings" className="font-mono text-micro uppercase tracking-[0.18em] text-white/45">round settings</h2>
-          <label htmlFor="word-timer" className="mt-5 flex items-center justify-between gap-4 font-mono text-xs text-white/65"><span>time per word</span><select id="word-timer" value={timerSeconds} onChange={(event) => onTimerChange(Number(event.target.value))} className="min-h-11 rounded-full border border-white/15 bg-[var(--things-night)] px-4 text-white"><option value={0}>off</option>{[10, 15, 20, 30, 45, 60].map((value) => <option key={value} value={value}>{value} seconds</option>)}</select></label>
+          <label htmlFor="round-words" className="mt-5 flex items-center justify-between gap-4 font-mono text-xs text-white/65"><span>words this game</span><select id="round-words" value={Math.min(roundTotal, wordCount)} onChange={(event) => onRoundTotalChange(Number(event.target.value))} className="min-h-11 rounded-full border border-white/15 bg-[var(--things-night)] px-4 text-white">{spellingRoundOptions(wordCount).map((value) => <option key={value} value={value}>{value === wordCount ? `all ${value}` : value}</option>)}</select></label>
+          <label htmlFor="word-timer" className="mt-3 flex items-center justify-between gap-4 font-mono text-xs text-white/65"><span>time per word</span><select id="word-timer" value={timerSeconds} onChange={(event) => onTimerChange(Number(event.target.value))} className="min-h-11 rounded-full border border-white/15 bg-[var(--things-night)] px-4 text-white"><option value={0}>off</option>{[10, 15, 20, 30, 45, 60].map((value) => <option key={value} value={value}>{value} seconds</option>)}</select></label>
           <label className="mt-3 flex min-h-11 cursor-pointer items-center justify-between gap-4 font-mono text-xs text-white/65"><span>read each word aloud</span><input type="checkbox" checked={autoSpeak} onChange={onToggleAutoSpeak} className="h-5 w-5 accent-[var(--things-amber)]" /></label>
           <div className="mt-4 border-t border-white/10 pt-4">
             <div className="flex items-start justify-between gap-4"><div><p className="font-mono text-xs text-white/70">follow the spelling</p><p className="mt-1 max-w-xs text-xs leading-relaxed text-white/45">Optional. Highlights each letter as it is spoken and pauses when the word looks complete. The judge still makes the final call.</p><p className="mt-2 max-w-xs text-xs leading-relaxed text-white/45">Reduces steady background noise when this device supports it. A quieter room still works best.</p>{browserSpeechAvailability === "downloadable" || browserSpeechAvailability === "downloading" ? <p className="mt-2 max-w-xs text-xs leading-relaxed text-white/45">This device needs a one-time speech setup before it can listen.</p> : browserSpeechAvailability === "unavailable" ? <p className="mt-2 max-w-xs text-xs leading-relaxed text-white/45">First use needs a one-time 50 MB setup and takes {downloadEstimate}.</p> : null}</div>{assistantStatus === "checking" ? <span className="shrink-0 px-2 py-3 font-mono text-micro text-white/40">checking…</span> : assistantBackend || assistantStatus === "ready" || assistantStatus === "listening" ? <button type="button" onClick={onDisableAssistant} className="min-h-11 shrink-0 rounded-full border border-white/15 px-4 font-mono text-xs text-white/55">turn off</button> : <button type="button" onClick={onEnableAssistant} className="min-h-11 shrink-0 rounded-full border border-white/15 px-4 font-mono text-xs">{browserSpeechAvailability === "available" ? "turn on" : "set up once"}</button>}</div>

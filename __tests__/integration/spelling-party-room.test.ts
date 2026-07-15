@@ -23,6 +23,56 @@ async function joined(roomId: string, joinToken: string, name: string, joinId: s
 }
 
 describe("Party Typing rooms", () => {
+  it("uses a validated room-local custom deck without exposing its word to players", async () => {
+    vi.useFakeTimers(); vi.setSystemTime(new Date("2026-07-15T11:00:00Z"));
+    const customDeck = {
+      id: "spelling-custom-family",
+      name: "Family words",
+      words: [
+        { id: "custom-one", word: "kumquat", definition: "a small citrus fruit", sentence: "She sliced a kumquat into the salad." },
+        { id: "custom-two", word: "gazebo", sentence: "We ate lunch beneath the gazebo." },
+        { id: "custom-three", word: "ukulele", sentence: "She learned a song on the ukulele." },
+      ],
+    };
+    const room = await createPartyRoom({ deckId: customDeck.id, customDeck, answerSeconds: 20, roundTotal: 3 });
+    const player = await joined(room.roomId, room.joinToken, "Maya", "custom-join");
+    const started = await applyPresenterAction({ roomId: room.roomId, presenterToken: room.presenterToken, action: { actionId: "custom-start", type: "round.start" } });
+    expect(started.snapshot?.round?.wordAudioUrl).toBeNull();
+    expect(customDeck.words.map(({ word }) => word)).toContain(started.snapshot?.round?.spokenWord);
+
+    const playerView = await readPartySnapshot({ roomId: room.roomId, role: "player", credential: player.playerToken, playerId: player.playerId, lastSequence: 0 });
+    expect(playerView.snapshot?.round).not.toHaveProperty("spokenWord");
+    expect(JSON.stringify(playerView.snapshot)).not.toContain(started.snapshot?.round?.spokenWord ?? "missing");
+
+    vi.setSystemTime(started.snapshot!.round!.answerOpensAt + 1);
+    await applyPlayerAction({ roomId: room.roomId, playerId: player.playerId, playerToken: player.playerToken, action: { actionId: "custom-repeat", type: "clue.request", roundId: started.snapshot!.round!.roundId, clue: "repeat" } });
+    const presenterView = await readPartySnapshot({ roomId: room.roomId, role: "presenter", credential: room.presenterToken, lastSequence: 0 });
+    const playerAfterClue = await readPartySnapshot({ roomId: room.roomId, role: "player", credential: player.playerToken, playerId: player.playerId, lastSequence: 0 });
+    expect(presenterView.snapshot?.round?.activeClue?.speechText).toBe(started.snapshot?.round?.spokenWord);
+    expect(playerAfterClue.snapshot?.round?.activeClue).not.toHaveProperty("speechText");
+    await applyPlayerAction({ roomId: room.roomId, playerId: player.playerId, playerToken: player.playerToken, action: { actionId: "custom-sentence", type: "clue.request", roundId: started.snapshot!.round!.roundId, clue: "sentence" } });
+    const afterSentence = await readPartySnapshot({ roomId: room.roomId, role: "presenter", credential: room.presenterToken, lastSequence: 0 });
+    const expectedSentence = customDeck.words.find(({ word }) => word === started.snapshot?.round?.spokenWord)?.sentence;
+    expect(afterSentence.snapshot?.round?.activeClue?.speechText).toBe(expectedSentence);
+  });
+
+  it("prioritizes words that have not appeared in recent games", async () => {
+    const deck = partyDeck("warm-up")!;
+    const recentWordIds = deck.words.slice(0, 20).map(({ id }) => id);
+    const room = await createPartyRoom({ deckId: deck.id, recentWordIds, answerSeconds: 20, roundTotal: 4 });
+    expect(room.selectedWordIds).toHaveLength(4);
+    expect(room.selectedWordIds.every((id) => !recentWordIds.includes(id))).toBe(true);
+  });
+
+  it("allows a player with the room code to join while the lobby is open", async () => {
+    const room = await createPartyRoom({ deckId: "warm-up", answerSeconds: 20, roundTotal: 3 });
+    const player = await joinPartyRoom({ roomId: room.roomId, name: "Maya", joinId: "code-join" });
+    expect(player).not.toHaveProperty("error");
+    if ("error" in player) throw new Error(player.error);
+    await applyPresenterAction({ roomId: room.roomId, presenterToken: room.presenterToken, action: { actionId: "start-after-code", type: "round.start" } });
+    expect(await joinPartyRoom({ roomId: room.roomId, name: "Daniel", joinId: "late-code-join" })).toEqual({ error: "This game has already started" });
+  });
+
   it("keeps the word and private drafts secret, then reveals and scores everyone together", async () => {
     vi.useFakeTimers(); vi.setSystemTime(new Date("2026-07-15T12:00:00Z"));
     const room = await createPartyRoom({ deckId: "warm-up", answerSeconds: 20, roundTotal: 3 });
@@ -35,7 +85,7 @@ describe("Party Typing rooms", () => {
     expect(countdown.round).not.toHaveProperty("correctWord");
     expect(JSON.stringify(countdown)).not.toContain("beautiful");
 
-    const assetId = countdown.round!.wordAudioUrl.split("/").at(-1)!;
+    const assetId = countdown.round!.wordAudioUrl!.split("/").at(-1)!;
     const assetKey = await getPartyAudioAsset(room.roomId, assetId);
     const deck = partyDeck("warm-up")!;
     const secret = deck.words.find((word) => partyAudioAssetKey(word, "word") === assetKey)!;
