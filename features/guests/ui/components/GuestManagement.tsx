@@ -133,7 +133,7 @@ function RemoveGuestTab({
       {filteredForRemoval.length > 0 && (
         <div className="border border-stone-200 rounded-xl max-h-48 overflow-y-auto">
           {filteredForRemoval.map((guest) => (
-            <button
+            <button type="button"
               key={guest.id}
               onClick={() => setRemoveId(guest.id)}
               className={`w-full text-left px-4 py-3 border-b border-stone-100 last:border-b-0 transition-colors ${
@@ -145,7 +145,7 @@ function RemoveGuestTab({
           ))}
         </div>
       )}
-      <button
+      <button type="button"
         onClick={handleRemove}
         disabled={!removeId}
         className="w-full bg-red-600 text-white py-3 rounded-xl font-medium hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
@@ -315,7 +315,7 @@ function GamesTab({
             ))}
           </div>
         )}
-        <button
+        <button type="button"
           onClick={fetchBestDressedData}
           className="w-full py-2 text-sm text-purple-600 hover:text-purple-800 transition-colors"
         >
@@ -330,7 +330,7 @@ function GamesTab({
             Permanently deletes all votes. Cannot be undone.
           </p>
         </div>
-        <button
+        <button type="button"
           onClick={handleWipeBestDressed}
           disabled={gamesLoading}
           className="w-full bg-red-600 text-white py-2.5 rounded-xl font-medium hover:bg-red-700 disabled:opacity-50 transition-colors flex items-center justify-center gap-2"
@@ -419,7 +419,7 @@ export function GuestManagement({
   if (!isOpen) {
     return (
       <div className="fixed bottom-6 right-6 z-20">
-        <button
+        <button type="button"
           onClick={openModal}
           className="bg-gradient-to-r from-amber-600 to-yellow-500 text-white px-5 py-3 rounded-2xl shadow-lg shadow-amber-300/50 hover:shadow-xl hover:shadow-amber-300/50 transition-all flex items-center gap-2 font-medium"
         >
@@ -444,6 +444,7 @@ export function GuestManagement({
   }
 
   return (
+    /* react-doctor-disable-next-line prefer-html-dialog -- useGuestManagement provides focus trapping, Escape dismissal, and focus restoration */
     <div
       ref={modalRef}
       role="dialog"
@@ -484,7 +485,7 @@ export function GuestManagement({
             {/* Tabs */}
             <div className="flex gap-1 bg-stone-100 p-1 rounded-xl">
               {TABS.map((tab) => (
-                <button
+                <button type="button"
                   key={tab}
                   onClick={() => setActiveTab(tab)}
                   className={`flex-1 py-2 px-1 rounded-lg text-xs font-medium transition-all ${

@@ -53,7 +53,7 @@ export function useTiltControl(
   const orientationAngle = useRef<number | null>(null);
   const lockedOrientationAngle = useRef<number | null>(null);
   const stableSamples = useRef<TiltSample[]>([]);
-  const gestureDetector = useRef(new TiltGestureDetector());
+  const [gestureDetector] = useState(() => new TiltGestureDetector());
   const settleTimeout = useRef<number | null>(null);
   const decisionRef = useRef(onDecision);
   useEffect(() => {
@@ -77,29 +77,29 @@ export function useTiltControl(
       clearSettleTimeout();
       orientationAngle.current = screenAngle();
       stableSamples.current = [];
-      gestureDetector.current.reset(pitch);
+      gestureDetector.reset(pitch);
       updatePauseReason(null);
     },
-    [clearSettleTimeout, updatePauseReason],
+    [clearSettleTimeout, gestureDetector, updatePauseReason],
   );
 
   const beginSettling = useCallback(() => {
     clearSettleTimeout();
     stableSamples.current = [];
-    gestureDetector.current.reset(null);
+    gestureDetector.reset(null);
     updatePauseReason("settling");
 
     if (statusRef.current !== "enabled") {
       settleTimeout.current = window.setTimeout(() => finishSettling(), FALLBACK_SETTLE_MS);
     }
-  }, [clearSettleTimeout, finishSettling, updatePauseReason]);
+  }, [clearSettleTimeout, finishSettling, gestureDetector, updatePauseReason]);
 
   const pauseForOrientation = useCallback(() => {
     clearSettleTimeout();
     stableSamples.current = [];
-    gestureDetector.current.reset(null);
+    gestureDetector.reset(null);
     updatePauseReason("wrong-orientation");
-  }, [clearSettleTimeout, updatePauseReason]);
+  }, [clearSettleTimeout, gestureDetector, updatePauseReason]);
 
   const calibrate = useCallback(() => {
     clearSettleTimeout();
@@ -107,17 +107,17 @@ export function useTiltControl(
     orientationAngle.current = currentOrientationAngle;
     lockedOrientationAngle.current = lockCurrentOrientation ? currentOrientationAngle : null;
     stableSamples.current = [];
-    gestureDetector.current.reset(currentPitch.current);
+    gestureDetector.reset(currentPitch.current);
     updatePauseReason(null);
-  }, [clearSettleTimeout, lockCurrentOrientation, updatePauseReason]);
+  }, [clearSettleTimeout, gestureDetector, lockCurrentOrientation, updatePauseReason]);
 
   const clearOrientationLock = useCallback(() => {
     clearSettleTimeout();
     lockedOrientationAngle.current = null;
     stableSamples.current = [];
-    gestureDetector.current.reset(null);
+    gestureDetector.reset(null);
     updatePauseReason(null);
-  }, [clearSettleTimeout, updatePauseReason]);
+  }, [clearSettleTimeout, gestureDetector, updatePauseReason]);
 
   const requestAccess = useCallback(async () => {
     if (typeof window === "undefined" || !("DeviceOrientationEvent" in window)) {
@@ -180,13 +180,13 @@ export function useTiltControl(
       }
 
       if (!enabled) return;
-      const decision = gestureDetector.current.sample(nextPitch, now);
+      const decision = gestureDetector.sample(nextPitch, now);
       if (decision) decisionRef.current(decision);
     };
 
     window.addEventListener("deviceorientation", handleOrientation, true);
     return () => window.removeEventListener("deviceorientation", handleOrientation, true);
-  }, [beginSettling, enabled, finishSettling, pauseForOrientation, status]);
+  }, [beginSettling, enabled, finishSettling, gestureDetector, pauseForOrientation, status]);
 
   useEffect(() => {
     const handleScreenOrientation = () => {

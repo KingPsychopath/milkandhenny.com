@@ -44,7 +44,7 @@ export function BackToTop() {
   if (hidden) return null;
 
   return (
-    <button
+    <button type="button"
       onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
       aria-label="Back to top"
       className="back-to-top"

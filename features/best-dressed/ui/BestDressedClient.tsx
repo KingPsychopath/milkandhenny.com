@@ -268,7 +268,7 @@ export function BestDressedClient({ initialSnapshot }: BestDressedClientProps) {
                     className="absolute z-10 w-full mt-2 bg-zinc-900 border border-white/10 rounded-2xl shadow-2xl overflow-hidden"
                   >
                     {filteredGuests.map((name) => (
-                      <button
+                      <button type="button"
                         key={name}
                         id={`bd-option-${name.replace(/\s+/g, "-")}`}
                         role="option"
@@ -303,7 +303,7 @@ export function BestDressedClient({ initialSnapshot }: BestDressedClientProps) {
               {voteError && (
                 <div className="bg-red-500/20 border border-red-500/30 rounded-2xl p-4 text-center">
                   <p className="text-red-300 text-sm">{voteError}</p>
-                  <button
+                  <button type="button"
                     onClick={() => window.location.reload()}
                     className="mt-2 text-red-400 hover:text-red-300 text-sm underline"
                   >
@@ -336,7 +336,7 @@ export function BestDressedClient({ initialSnapshot }: BestDressedClientProps) {
               )}
 
               {/* Vote Button */}
-              <button
+              <button type="button"
                 onClick={handleVote}
                 disabled={!selectedName || !voteToken || submitting}
                 className="w-full py-5 bg-gradient-to-r from-pink-500 to-purple-600 hover:from-pink-400 hover:to-purple-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold text-xl rounded-2xl transition-all shadow-lg shadow-purple-500/30 hover:shadow-purple-500/50 hover-scale-slight"

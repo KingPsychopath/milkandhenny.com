@@ -6,6 +6,8 @@ import {
   type CustomSpellingDeck,
 } from "./customDecks";
 import { speakWord } from "./localSpeech";
+import { useEscapeKey } from "@/hooks/useEscapeKey";
+import { useFocusTrap } from "@/hooks/useFocusTrap";
 
 export function SpellingDeckBuilder({
   deck,
@@ -24,6 +26,8 @@ export function SpellingDeckBuilder({
   const [text, setText] = useState(deck ? formatSpellingWords(deck.words) : "");
   const [message, setMessage] = useState<string | null>(null);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const deleteDialogRef = useFocusTrap<HTMLDivElement>(Boolean(deck && confirmingDelete));
+  useEscapeKey(() => setConfirmingDelete(false), Boolean(deck && confirmingDelete));
   const words = useMemo(() => parseSpellingWords(text), [text]);
   const canSave = name.trim().length > 0 && words.length >= 3;
 
@@ -61,7 +65,8 @@ export function SpellingDeckBuilder({
         </button>
         {deck ? <button type="button" onClick={() => setConfirmingDelete(true)} className="mt-4 min-h-11 w-full font-mono text-xs text-white/45">delete this deck</button> : null}
       </main>
-      {deck && confirmingDelete ? <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/65 p-4 sm:items-center" role="dialog" aria-modal="true" aria-labelledby="delete-deck-title"><section className="w-full max-w-md rounded-[2rem] border border-white/12 bg-[var(--things-night)] p-6 text-center shadow-2xl"><p className="font-mono text-micro uppercase tracking-[0.18em] text-white/45">delete deck</p><h2 id="delete-deck-title" className="mt-3 font-serif text-4xl font-semibold">Delete “{deck.name}”?</h2><p className="mt-3 font-serif text-base text-white/60">This removes it from both Spelling Bee modes on this device.</p><div className="mt-7 grid grid-cols-2 gap-3"><button type="button" autoFocus onClick={() => setConfirmingDelete(false)} className="min-h-14 rounded-full border border-white/20 font-mono text-sm font-semibold">keep deck</button><button type="button" onClick={() => onDelete(deck)} className="min-h-14 rounded-full bg-white font-mono text-sm font-bold text-black">delete deck</button></div></section></div> : null}
+      {/* react-doctor-disable-next-line prefer-html-dialog -- shared hooks provide focus trapping, Escape dismissal, and focus restoration */}
+      {deck && confirmingDelete ? <div ref={deleteDialogRef} className="fixed inset-0 z-50 flex items-end justify-center bg-black/65 p-4 sm:items-center" role="dialog" aria-modal="true" aria-labelledby="delete-deck-title"><section className="w-full max-w-md rounded-[2rem] border border-white/12 bg-[var(--things-night)] p-6 text-center shadow-2xl"><p className="font-mono text-micro uppercase tracking-[0.18em] text-white/45">delete deck</p><h2 id="delete-deck-title" className="mt-3 font-serif text-4xl font-semibold">Delete “{deck.name}”?</h2><p className="mt-3 font-serif text-base text-white/60">This removes it from both Spelling Bee modes on this device.</p><div className="mt-7 grid grid-cols-2 gap-3"><button type="button" autoFocus onClick={() => setConfirmingDelete(false)} className="min-h-14 rounded-full border border-white/20 font-mono text-sm font-semibold">keep deck</button><button type="button" onClick={() => onDelete(deck)} className="min-h-14 rounded-full bg-white font-mono text-sm font-bold text-black">delete deck</button></div></section></div> : null}
     </div>
   );
 }

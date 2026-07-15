@@ -12,6 +12,8 @@ import { gameBrowserKeys, legacyGameBrowserKeys } from "../shared/game-keys";
 import { readExpiringLocalValue, removeStorageKeys, writeExpiringLocalValue } from "../shared/game-storage.client";
 import { useUpdateReloadSafety } from "@/features/offline/update-safety.client";
 import { speakWord } from "../spelling-bee/localSpeech";
+import { useEscapeKey } from "@/hooks/useEscapeKey";
+import { useFocusTrap } from "@/hooks/useFocusTrap";
 
 function roomTokens(roomId: string) {
   const sessionKey = gameBrowserKeys.partyPresenterSession(roomId);
@@ -70,6 +72,8 @@ export function PartyPresenterApp({ roomId }: { roomId: string }) {
   const [manualInvite, setManualInvite] = useState(false);
   const [closing, setClosing] = useState(false);
   const [endConfirmationOpen, setEndConfirmationOpen] = useState(false);
+  const endDialogRef = useFocusTrap<HTMLDivElement>(endConfirmationOpen);
+  useEscapeKey(() => setEndConfirmationOpen(false), endConfirmationOpen && !closing);
   const playedAudio = useRef(new Set<string>());
   const haptics = useWebHaptics();
   useEffect(() => setTokens(roomTokens(roomId)), [roomId]);
@@ -230,7 +234,8 @@ export function PartyPresenterApp({ roomId }: { roomId: string }) {
       {round && snapshot.phase !== "lobby" && snapshot.phase !== "finished" ? <button type="button" onClick={replay} className="mx-auto mt-3 min-h-11 px-4 font-mono text-xs text-white/45">play word again on this screen</button> : null}
       <p aria-live="polite" className="mt-3 min-h-5 text-center font-mono text-xs text-amber-200">{live.message}</p>
     </main>
-    {endConfirmationOpen ? <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/65 p-4 sm:items-center" role="dialog" aria-modal="true" aria-labelledby="end-party-title"><section className="w-full max-w-md rounded-[2rem] border border-white/12 bg-[var(--things-night)] p-6 text-center shadow-2xl"><p className="font-mono text-micro uppercase tracking-[0.18em] text-white/45">end party</p><h2 id="end-party-title" className="mt-3 font-serif text-4xl font-semibold">End for everyone?</h2><p className="mt-3 font-serif text-base text-white/60">Players will see that the room has ended. This cannot be undone.</p><div className="mt-7 grid grid-cols-2 gap-3"><button type="button" autoFocus onClick={() => setEndConfirmationOpen(false)} className="min-h-14 rounded-full border border-white/20 font-mono text-sm font-semibold">keep playing</button><button type="button" onClick={() => void handleEnd(false)} className="min-h-14 rounded-full bg-white font-mono text-sm font-bold text-black">end party</button></div></section></div> : null}
+    {/* react-doctor-disable-next-line prefer-html-dialog -- shared hooks provide focus trapping, Escape dismissal, and focus restoration */}
+    {endConfirmationOpen ? <div ref={endDialogRef} className="fixed inset-0 z-50 flex items-end justify-center bg-black/65 p-4 sm:items-center" role="dialog" aria-modal="true" aria-labelledby="end-party-title"><section className="w-full max-w-md rounded-[2rem] border border-white/12 bg-[var(--things-night)] p-6 text-center shadow-2xl"><p className="font-mono text-micro uppercase tracking-[0.18em] text-white/45">end party</p><h2 id="end-party-title" className="mt-3 font-serif text-4xl font-semibold">End for everyone?</h2><p className="mt-3 font-serif text-base text-white/60">Players will see that the room has ended. This cannot be undone.</p><div className="mt-7 grid grid-cols-2 gap-3"><button type="button" autoFocus onClick={() => setEndConfirmationOpen(false)} className="min-h-14 rounded-full border border-white/20 font-mono text-sm font-semibold">keep playing</button><button type="button" onClick={() => void handleEnd(false)} className="min-h-14 rounded-full bg-white font-mono text-sm font-bold text-black">end party</button></div></section></div> : null}
   </div>;
 }
 

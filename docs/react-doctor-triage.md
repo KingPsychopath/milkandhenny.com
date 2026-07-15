@@ -98,3 +98,39 @@ Remaining warning decisions:
 | Crypto / pnpm hardening | 4 | False positives: generated output plus a non-security JSON change signature; pnpm findings cite a nonexistent `pnpm-workspace.yaml`. |
 
 Final second-pass scan: 54/100, **0 errors** and 231 warnings across 71 files.
+
+## Final warning audit — 2026-07-15
+
+This pass reviewed every remaining instance, grouped by rule. It fixed all 64 missing button types, closed the 10 modal/backdrop findings with focus and Escape handling or evidence-backed suppressions, corrected one misapplied alert-dialog role, and applied nine low-risk initialization/lookup optimizations. No warning was suppressed solely to improve the score.
+
+| Rule | Count | Decision |
+| --- | ---: | --- |
+| `no-chain-state-updates` | 12 | Leave. These state-heavy flows intentionally reset related state together; reducer conversion is behavior-sensitive and no defect is demonstrated. |
+| `prefer-use-effect-event` | 9 | Leave. Listener and socket callbacks depend on current state; conversion needs concurrency-specific verification. |
+| `no-effect-chain` | 8 | Leave. The chains coordinate editor, selection, and transfer resets; changing ownership could alter visible behavior. |
+| `prefer-useReducer` | 5 | Leave. Structural recommendation, not a correctness finding. |
+| `no-array-index-as-key` | 3 | Leave. Keys cover derived text and display-only leaderboard fragments with no row-local state. |
+| `no-fetch-in-effect` | 2 | Leave. Intentional client transitions: voting-window refresh and lazy games-tab loading. |
+| `no-locale-format-in-render` | 2 | False positive. Both render paths are gated by `hasMounted`, so server and hydration output match. |
+| `no-mirror-prop-effect` | 2 | Leave. Transfer gallery deliberately creates local interaction state from refreshed server props. |
+| `no-pass-live-state-to-parent` | 1 | Leave. The parent notification is intentional transfer-gallery coordination. |
+| `no-prop-callback-in-effect` | 1 | Leave. Callback timing is part of the gallery synchronization contract. |
+| `no-giant-component` | 12 | Leave. Real maintainability debt, but splitting these components is not a warning-level correctness fix. |
+| `prefer-module-scope-pure-function` | 9 | Leave. Low-impact organization advice; move functions when their owning components are refactored. |
+| `unused-export` | 6 | Leave. Analyzer reachability does not include every script and framework convention. |
+| `unused-file` | 6 | Leave. Includes convention-routed Nitro/WebSocket and deployment files that are not dead. |
+| `no-multi-comp` | 4 | Leave. Co-location preference with no runtime impact. |
+| `only-export-components` | 4 | Leave. Fast-refresh convention with no demonstrated production defect. |
+| `no-inline-exhaustive-style` | 1 | Leave. Style exhaustiveness preference, not a defect. |
+| `prefer-module-scope-static-value` | 1 | Leave. Negligible allocation in a non-hot path. |
+| `async-await-in-loop` | 25 | Leave. Reviewed loops preserve ordering/backpressure or avoid storage races and request bursts. |
+| `js-combine-iterations` | 16 | Leave. Micro-optimization without hot-path or input-size evidence. |
+| `js-flatmap-filter` | 6 | Leave. Equivalent rewrite would reduce clarity without measured benefit. |
+| `js-cache-property-access` | 3 | Leave. Micro-optimization without profiling evidence. |
+| `rendering-hydration-no-flicker` | 3 | Leave. File-system, sharing, and media-query capabilities are client-only; SSR must use a conservative default. |
+| `rerender-state-only-in-handlers` | 2 | Leave. State coordinates asynchronous handlers; replacing it with refs risks stale or reordered updates. |
+| `no-large-animated-blur` | 1 | Leave. Intentional photo-viewer treatment; change only with device profiling or an approved visual alternative. |
+| `insecure-crypto-risk` | 2 | False positive. One hit is generated output; the source hit compares JSON as a change signature, not for security. |
+| `require-pnpm-hardening` | 2 | False positive. Both diagnostics refer to a nonexistent `pnpm-workspace.yaml`; this repository uses only a lockfile. |
+
+Final audited scan: 55/100, **0 errors** and 148 warnings across 60 files. All 148 remaining warnings are covered by the decisions above.

@@ -420,8 +420,9 @@ async function refreshQueuedTransferState(transfer: TransferData): Promise<Trans
 
   if (!changed) return transfer;
 
+  const originalFilesById = new Map(transfer.files.map((file) => [file.id, file]));
   for (const file of files) {
-    const original = transfer.files.find((candidate) => candidate.id === file.id);
+    const original = originalFilesById.get(file.id);
     if (original && didTransferFileChange(original, file)) {
       await updateTransferFile(transfer.id, file);
     }

@@ -45,7 +45,8 @@ export function PartyPlayerApp({ roomId }: { roomId: string }) {
   const [name, setName] = useState("");
   const [joining, setJoining] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
-  const joinId = useRef(crypto.randomUUID());
+  const joinId = useRef<string | null>(null);
+  if (joinId.current === null) joinId.current = crypto.randomUUID();
   useEffect(() => { clearExpiredGameLocalStorage(); setInvite(joinToken(roomId)); setCredentials(readPlayer(roomId)); }, [roomId]);
   const handleJoin = async () => {
     if (!name.trim() || joining) return;

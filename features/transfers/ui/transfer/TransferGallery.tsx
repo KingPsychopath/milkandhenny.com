@@ -28,6 +28,7 @@ import { formatBytes } from "@/lib/shared/format";
 import { getResponseErrorMessage, readResponsePayload } from "@/lib/client/response";
 import { useLazyImage } from "@/hooks/useLazyImage";
 import { useSwipe } from "@/hooks/useSwipe";
+import { useFocusTrap } from "@/hooks/useFocusTrap";
 import { SelectionToggle } from "@/components/SelectionToggle";
 import type { AssetGroup, FileKind } from "@/features/transfers/types";
 import {
@@ -1174,6 +1175,14 @@ export function TransferGallery({ transferId, files, groups, deleteToken }: Tran
     onSwipeRight: goPrev,
     enabled: lightboxIndex !== null,
   });
+  const lightboxFocusRef = useFocusTrap<HTMLDivElement>(lightboxIndex !== null);
+  const setLightboxRef = useCallback(
+    (node: HTMLDivElement | null) => {
+      swipeRef.current = node;
+      lightboxFocusRef.current = node;
+    },
+    [lightboxFocusRef, swipeRef],
+  );
 
   /* Lock body scroll when lightbox open */
   useEffect(() => {
@@ -1792,13 +1801,13 @@ export function TransferGallery({ transferId, files, groups, deleteToken }: Tran
         <div className="flex items-center gap-3 font-mono text-micro tracking-wide">
           {selectedCount > 0 && (
             <>
-              <button
+              <button type="button"
                 onClick={clearSelection}
                 className="theme-muted hover:text-foreground transition-colors"
               >
                 [ clear ]
               </button>
-              <button
+              <button type="button"
                 onClick={downloadSelected}
                 disabled={busy}
                 className="text-amber-600 hover:text-amber-500 transition-colors disabled:opacity-50"
@@ -1806,7 +1815,7 @@ export function TransferGallery({ transferId, files, groups, deleteToken }: Tran
                 {busy ? downloadLabel : "[ download selected ]"}
               </button>
               {downloading && downloadProgress ? (
-                <button
+                <button type="button"
                   onClick={cancelDownload}
                   className="theme-muted hover:text-foreground transition-colors"
                 >
@@ -1816,7 +1825,7 @@ export function TransferGallery({ transferId, files, groups, deleteToken }: Tran
             </>
           )}
           {!allPageSelected && browseMode === "pages" && pageEntries.length > 1 && (
-            <button
+            <button type="button"
               onClick={selectPage}
               className="theme-muted hover:text-foreground transition-colors"
             >
@@ -1824,14 +1833,14 @@ export function TransferGallery({ transferId, files, groups, deleteToken }: Tran
             </button>
           )}
           {!allFilteredSelected && filteredEntries.length > 1 && (
-            <button
+            <button type="button"
               onClick={selectFiltered}
               className="theme-muted hover:text-foreground transition-colors"
             >
               {getScopeSelectLabel(activeFilter)}
             </button>
           )}
-          <button
+          <button type="button"
             onClick={downloadAll}
             disabled={busy}
             className="text-amber-600 hover:text-amber-500 transition-colors disabled:opacity-50"
@@ -1839,7 +1848,7 @@ export function TransferGallery({ transferId, files, groups, deleteToken }: Tran
             {busy ? downloadLabel : "[ download all ]"}
           </button>
           {selectedCount === 0 && downloading && downloadProgress ? (
-            <button
+            <button type="button"
               onClick={cancelDownload}
               className="theme-muted hover:text-foreground transition-colors"
             >
@@ -1866,14 +1875,14 @@ export function TransferGallery({ transferId, files, groups, deleteToken }: Tran
             </p>
           ) : null}
           <div className="mt-3 flex items-center gap-3 font-mono text-micro tracking-wide">
-            <button
+            <button type="button"
               onClick={startMultipartDownload}
               disabled={busy}
               className="text-amber-600 hover:text-amber-500 transition-colors disabled:opacity-50"
             >
               [ download in {pendingMultipartDownload.plan.partCount} parts ]
             </button>
-            <button
+            <button type="button"
               onClick={() => setPendingMultipartDownload(null)}
               disabled={busy}
               className="theme-muted hover:text-foreground transition-colors disabled:opacity-50"
@@ -1958,8 +1967,9 @@ export function TransferGallery({ transferId, files, groups, deleteToken }: Tran
 
       {/* Lightbox (images, GIFs, videos) */}
       {currentVisual && lightboxIndex !== null && (
+        /* react-doctor-disable-next-line prefer-html-dialog -- useFocusTrap and the keyboard effect provide modal behavior */
         <div
-          ref={swipeRef}
+          ref={setLightboxRef}
           className="fixed inset-0 z-50 bg-black/90 flex flex-col items-center justify-center touch-pan-y"
           onClick={closeLightbox}
           onKeyDown={(event) => {
@@ -1970,7 +1980,7 @@ export function TransferGallery({ transferId, files, groups, deleteToken }: Tran
           aria-label="Media preview"
           tabIndex={-1}
         >
-          <button
+          <button type="button"
             onClick={closeLightbox}
             className="absolute top-4 right-4 z-10 font-mono text-sm text-white/60 hover:text-white transition-colors"
             aria-label="Close"
@@ -2009,7 +2019,7 @@ export function TransferGallery({ transferId, files, groups, deleteToken }: Tran
                 <p className="max-w-sm text-center font-mono text-xs text-white/30 leading-relaxed">
                   {getVisualLoadFailureMessage(getVisualItemPrimaryFile(currentVisual))}
                 </p>
-                <button
+                <button type="button"
                   onClick={() => downloadVisualItem(currentVisual)}
                   disabled={savingSingle}
                   className="font-mono text-xs text-amber-500 hover:text-amber-400 transition-colors"
@@ -2035,7 +2045,7 @@ export function TransferGallery({ transferId, files, groups, deleteToken }: Tran
           >
             <div className="flex items-center justify-between gap-4 font-mono text-xs text-white/50 sm:justify-start">
               {lightboxIndex > 0 ? (
-                <button
+                <button type="button"
                   onClick={goPrev}
                   className="hover:text-white transition-colors"
                   aria-label="Previous file"
@@ -2046,7 +2056,7 @@ export function TransferGallery({ transferId, files, groups, deleteToken }: Tran
                 <span className="text-white/20">← prev</span>
               )}
               {lightboxIndex < lightboxVisualFiles.length - 1 ? (
-                <button
+                <button type="button"
                   onClick={goNext}
                   className="hover:text-white transition-colors"
                   aria-label="Next file"
@@ -2062,7 +2072,7 @@ export function TransferGallery({ transferId, files, groups, deleteToken }: Tran
                 {lightboxIndex + 1} / {lightboxVisualFiles.length}
               </span>
               {deleteToken && activeLightboxFile && (
-                <button
+                <button type="button"
                   onClick={() => handleDeleteFile(activeLightboxFile)}
                   disabled={deletingFileId === activeLightboxFile.id}
                   className="font-mono text-xs text-red-400/80 hover:text-red-300 transition-colors disabled:opacity-50"
@@ -2070,7 +2080,7 @@ export function TransferGallery({ transferId, files, groups, deleteToken }: Tran
                   {deletingFileId === activeLightboxFile.id ? "deleting..." : "delete file"}
                 </button>
               )}
-              <button
+              <button type="button"
                 onClick={() => downloadVisualItem(currentVisual)}
                 disabled={savingSingle}
                 className="font-mono text-xs text-white/50 hover:text-white transition-colors disabled:opacity-50"
@@ -2375,7 +2385,7 @@ function FileCard({
         <div className="flex flex-col items-end gap-1 shrink-0">
           <span className="font-mono text-nano theme-muted">{formatBytes(file.size)}</span>
           {onDelete && (
-            <button
+            <button type="button"
               onClick={onDelete}
               disabled={deleting}
               className="font-mono text-micro text-red-500/80 hover:text-red-400 transition-colors disabled:opacity-50"
@@ -2383,7 +2393,7 @@ function FileCard({
               {deleting ? "..." : "x"}
             </button>
           )}
-          <button
+          <button type="button"
             onClick={onDownload}
             className="font-mono text-micro text-amber-600 hover:text-amber-500 transition-colors"
           >
@@ -2409,7 +2419,7 @@ function FileCard({
       </div>
       <div className="flex items-center gap-3 shrink-0">
         {onDelete && (
-          <button
+          <button type="button"
             onClick={onDelete}
             disabled={deleting}
             className="font-mono text-micro text-red-500/80 hover:text-red-400 transition-colors disabled:opacity-50"
@@ -2417,7 +2427,7 @@ function FileCard({
             {deleting ? "[ deleting ]" : "[ delete ]"}
           </button>
         )}
-        <button
+        <button type="button"
           onClick={onDownload}
           className="font-mono text-micro text-amber-600 hover:text-amber-500 transition-colors"
         >

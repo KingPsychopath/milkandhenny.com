@@ -1087,7 +1087,7 @@ export function UploadDashboard({ isAdmin }: UploadDashboardProps) {
 
       {/* Mode toggle */}
       <div className="flex gap-6 mb-8">
-        <button
+        <button type="button"
           onClick={() => switchMode("transfer")}
           className={`font-mono text-sm lowercase tracking-wide pb-1 border-b-2 transition-colors ${
             mode === "transfer"
@@ -1098,7 +1098,7 @@ export function UploadDashboard({ isAdmin }: UploadDashboardProps) {
           transfer
         </button>
         {isAdmin ? (
-          <button
+          <button type="button"
             onClick={() => switchMode("words")}
             className={`font-mono text-sm lowercase tracking-wide pb-1 border-b-2 transition-colors ${
               mode === "words"
@@ -1414,7 +1414,7 @@ export function UploadDashboard({ isAdmin }: UploadDashboardProps) {
               {mode === "transfer" && <span className="theme-faint"> (direct to R2)</span>}
               {mode === "words" && <span className="theme-faint"> (direct to R2)</span>}
             </span>
-            <button
+            <button type="button"
               onClick={clearAll}
               className="font-mono text-xs theme-muted hover:text-[var(--foreground)] transition-colors"
             >
@@ -1433,7 +1433,7 @@ export function UploadDashboard({ isAdmin }: UploadDashboardProps) {
                 </div>
                 <div className="flex items-center gap-3 shrink-0">
                   <span className="font-mono text-xs theme-muted">{formatBytes(file.size)}</span>
-                  <button
+                  <button type="button"
                     onClick={() => removeFile(file)}
                     className="theme-muted hover:text-[var(--foreground)] transition-colors text-sm leading-none"
                     aria-label={`Remove ${file.name}`}
@@ -1446,7 +1446,7 @@ export function UploadDashboard({ isAdmin }: UploadDashboardProps) {
           </div>
 
           {/* Upload button */}
-          <button
+          <button type="button"
             onClick={handleUpload}
             disabled={uploading || files.length === 0}
             className="mt-6 w-full bg-[var(--foreground)] text-[var(--background)] font-mono text-sm lowercase tracking-wide py-2.5 rounded-md hover:opacity-90 transition-opacity disabled:opacity-30"
@@ -1522,7 +1522,7 @@ export function UploadDashboard({ isAdmin }: UploadDashboardProps) {
                   >
                     {transferResult.shareUrl}
                   </a>
-                  <button
+                  <button type="button"
                     onClick={() => copyToClipboard(transferResult.shareUrl, "share")}
                     className="font-mono text-xs theme-muted hover:text-[var(--foreground)] transition-colors shrink-0"
                   >
@@ -1542,7 +1542,7 @@ export function UploadDashboard({ isAdmin }: UploadDashboardProps) {
                   >
                     {transferResult.adminUrl}
                   </a>
-                  <button
+                  <button type="button"
                     onClick={() => copyToClipboard(transferResult.adminUrl, "admin")}
                     className="font-mono text-xs theme-muted hover:text-[var(--foreground)] transition-colors shrink-0"
                   >
@@ -1580,7 +1580,7 @@ export function UploadDashboard({ isAdmin }: UploadDashboardProps) {
             </div>
           </div>
 
-          <button
+          <button type="button"
             onClick={clearAll}
             className="mt-6 w-full border border-[var(--stone-200)] text-[var(--foreground)] font-mono text-sm lowercase tracking-wide py-2.5 rounded-md hover:border-[var(--stone-400)] transition-colors"
           >
@@ -1616,7 +1616,7 @@ export function UploadDashboard({ isAdmin }: UploadDashboardProps) {
                       <code className="font-mono text-xs theme-muted flex-1 truncate">
                         {file.markdown}
                       </code>
-                      <button
+                      <button type="button"
                         onClick={() => copyToClipboard(file.markdown, file.filename)}
                         className="font-mono text-xs theme-muted hover:text-[var(--foreground)] transition-colors shrink-0"
                       >
@@ -1632,7 +1632,7 @@ export function UploadDashboard({ isAdmin }: UploadDashboardProps) {
                   </div>
                 ))}
 
-                <button
+                <button type="button"
                   onClick={() =>
                     copyToClipboard(
                       wordsResult.uploaded.map((f) => f.markdown).join("\n"),
@@ -1656,7 +1656,7 @@ export function UploadDashboard({ isAdmin }: UploadDashboardProps) {
             )}
           </div>
 
-          <button
+          <button type="button"
             onClick={clearAll}
             className="mt-6 w-full border border-[var(--stone-200)] text-[var(--foreground)] font-mono text-sm lowercase tracking-wide py-2.5 rounded-md hover:border-[var(--stone-400)] transition-colors"
           >
