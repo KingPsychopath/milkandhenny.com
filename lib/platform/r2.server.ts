@@ -62,7 +62,11 @@ type R2ClientState = {
   configKey: string;
 };
 
-type StorageScope = "public" | "transfer";
+type StorageScope = "public" | "private";
+
+type R2OperationOptions = {
+  scope?: StorageScope;
+};
 
 /* ─── Client singleton ─── */
 
@@ -149,9 +153,7 @@ function getClient(): { client: S3Client; config: R2RuntimeConfig } {
 }
 
 function getStorageScope(keyOrPrefix: string): StorageScope {
-  return keyOrPrefix === "transfers" || keyOrPrefix.startsWith("transfers/")
-    ? "transfer"
-    : "public";
+  return keyOrPrefix === "transfers" || keyOrPrefix.startsWith("transfers/") ? "private" : "public";
 }
 
 function getBucket(scope: StorageScope): string {
@@ -163,8 +165,8 @@ function getBucket(scope: StorageScope): string {
   return config.transferBucket;
 }
 
-function getBucketForKey(keyOrPrefix: string): string {
-  return getBucket(getStorageScope(keyOrPrefix));
+function getBucketForKey(keyOrPrefix: string, options?: R2OperationOptions): string {
+  return getBucket(options?.scope ?? getStorageScope(keyOrPrefix));
 }
 
 function sleep(ms: number): Promise<void> {
@@ -273,9 +275,9 @@ async function checkConnection(): Promise<void> {
 /* ─── Operations ─── */
 
 /** List objects under a prefix. Pass empty string for root. */
-async function listObjects(prefix = ""): Promise<R2Object[]> {
+async function listObjects(prefix = "", options?: R2OperationOptions): Promise<R2Object[]> {
   const { client } = getClient();
-  const bucket = getBucketForKey(prefix);
+  const bucket = getBucketForKey(prefix, options);
   const objects: R2Object[] = [];
   let continuationToken: string | undefined;
 
@@ -308,9 +310,9 @@ async function listObjects(prefix = ""): Promise<R2Object[]> {
  * List immediate sub-prefixes under a prefix (like listing directories).
  * Returns the full prefix strings (e.g. "transfers/abc123/").
  */
-async function listPrefixes(prefix: string): Promise<string[]> {
+async function listPrefixes(prefix: string, options?: R2OperationOptions): Promise<string[]> {
   const { client } = getClient();
-  const bucket = getBucketForKey(prefix);
+  const bucket = getBucketForKey(prefix, options);
   const prefixes: string[] = [];
   let continuationToken: string | undefined;
 
@@ -339,9 +341,10 @@ async function listPrefixes(prefix: string): Promise<string[]> {
 /** Check if an object exists and get its metadata. */
 async function headObject(
   key: string,
+  options?: R2OperationOptions,
 ): Promise<{ exists: boolean; size?: number; contentType?: string }> {
   const { client } = getClient();
-  const bucket = getBucketForKey(key);
+  const bucket = getBucketForKey(key, options);
 
   try {
     const res = await sendWithRetry("headObject", () =>
@@ -359,9 +362,9 @@ async function headObject(
 }
 
 /** Download an object as a Buffer. Throws if not found. */
-async function downloadBuffer(key: string): Promise<Buffer> {
+async function downloadBuffer(key: string, options?: R2OperationOptions): Promise<Buffer> {
   const { client } = getClient();
-  const bucket = getBucketForKey(key);
+  const bucket = getBucketForKey(key, options);
 
   const res = await sendWithRetry("downloadBuffer", () =>
     client.send(new GetObjectCommand({ Bucket: bucket, Key: key })),
@@ -379,9 +382,14 @@ async function downloadBuffer(key: string): Promise<Buffer> {
 }
 
 /** Upload a buffer to the bucket. */
-async function uploadBuffer(key: string, buffer: Buffer, contentType: string): Promise<void> {
+async function uploadBuffer(
+  key: string,
+  buffer: Buffer,
+  contentType: string,
+  options?: R2OperationOptions,
+): Promise<void> {
   const { client } = getClient();
-  const bucket = getBucketForKey(key);
+  const bucket = getBucketForKey(key, options);
 
   await sendWithRetry("uploadBuffer", () =>
     client.send(
@@ -396,9 +404,9 @@ async function uploadBuffer(key: string, buffer: Buffer, contentType: string): P
 }
 
 /** Delete a single object. */
-async function deleteObject(key: string): Promise<void> {
+async function deleteObject(key: string, options?: R2OperationOptions): Promise<void> {
   const { client } = getClient();
-  const bucket = getBucketForKey(key);
+  const bucket = getBucketForKey(key, options);
 
   await sendWithRetry("deleteObject", () =>
     client.send(new DeleteObjectCommand({ Bucket: bucket, Key: key })),
@@ -406,7 +414,7 @@ async function deleteObject(key: string): Promise<void> {
 }
 
 /** Delete multiple objects at once (max 1000 per call). */
-async function deleteObjects(keys: string[]): Promise<number> {
+async function deleteObjects(keys: string[], options?: R2OperationOptions): Promise<number> {
   if (keys.length === 0) return 0;
 
   const { client } = getClient();
@@ -414,7 +422,7 @@ async function deleteObjects(keys: string[]): Promise<number> {
   const keysByScope = new Map<StorageScope, string[]>();
 
   for (const key of keys) {
-    const scope = getStorageScope(key);
+    const scope = options?.scope ?? getStorageScope(key);
     const scopedKeys = keysByScope.get(scope) ?? [];
     scopedKeys.push(key);
     keysByScope.set(scope, scopedKeys);
@@ -425,7 +433,7 @@ async function deleteObjects(keys: string[]): Promise<number> {
     for (let i = 0; i < scopedKeys.length; i += 1000) {
       const batch = scopedKeys.slice(i, i + 1000);
 
-      await sendWithRetry("deleteObjects", () =>
+      const response = await sendWithRetry("deleteObjects", () =>
         client.send(
           new DeleteObjectsCommand({
             Bucket: bucket,
@@ -436,6 +444,13 @@ async function deleteObjects(keys: string[]): Promise<number> {
           }),
         ),
       );
+
+      if ((response.Errors?.length ?? 0) > 0) {
+        const failedKeys = response.Errors?.map((error) => error.Key).filter(Boolean) ?? [];
+        throw new Error(
+          `R2 delete failed for ${response.Errors?.length ?? 0} object(s): ${failedKeys.join(", ")}`,
+        );
+      }
 
       deleted += batch.length;
     }
@@ -464,9 +479,14 @@ async function getBucketInfo(): Promise<BucketInfo> {
  * @param contentType - MIME type the client will send
  * @param expiresIn   - URL validity in seconds (default 900 = 15 min)
  */
-async function presignPutUrl(key: string, contentType: string, expiresIn = 900): Promise<string> {
+async function presignPutUrl(
+  key: string,
+  contentType: string,
+  expiresIn = 900,
+  options?: R2OperationOptions,
+): Promise<string> {
   const { client } = getClient();
-  const bucket = getBucketForKey(key);
+  const bucket = getBucketForKey(key, options);
 
   const command = new PutObjectCommand({
     Bucket: bucket,
@@ -483,10 +503,11 @@ async function presignGetUrl(
     responseContentDisposition?: string;
     responseContentType?: string;
     expiresIn?: number;
+    scope?: StorageScope;
   },
 ): Promise<string> {
   const { client } = getClient();
-  const bucket = getBucketForKey(key);
+  const bucket = getBucketForKey(key, options);
 
   const command = new GetObjectCommand({
     Bucket: bucket,
@@ -514,4 +535,4 @@ export {
   presignPutUrl,
 };
 
-export type { R2Object, BucketInfo };
+export type { R2Object, BucketInfo, R2OperationOptions, StorageScope };

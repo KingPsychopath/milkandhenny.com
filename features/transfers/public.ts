@@ -1,12 +1,20 @@
 import type { TransferData, TransferFile } from "./types";
 
-type PublicTransferFile = Omit<TransferFile, "storageKey" | "originalStorageKey">;
+type PublicTransferFile = Omit<
+  TransferFile,
+  "storageKey" | "originalStorageKey" | "processingErrorDetail"
+>;
 type PublicTransfer = Omit<TransferData, "deleteToken" | "files"> & {
   files: PublicTransferFile[];
 };
 
 function toPublicTransferFile(file: TransferFile): PublicTransferFile {
-  const { storageKey: _storageKey, originalStorageKey: _originalStorageKey, ...publicFile } = file;
+  const {
+    storageKey: _storageKey,
+    originalStorageKey: _originalStorageKey,
+    processingErrorDetail: _processingErrorDetail,
+    ...publicFile
+  } = file;
   return publicFile;
 }
 

@@ -5,6 +5,7 @@ import {
   clearBestDressedVotes,
   getBestDressedLeaderboardSnapshot,
   getBestDressedSnapshot,
+  searchBestDressedGuests,
   voteBestDressed,
 } from "./best-dressed.server";
 import type { VoteInput } from "./best-dressed.server";
@@ -16,6 +17,10 @@ export const getBestDressedSnapshotFn = createServerFn({ method: "GET" }).handle
 export const voteBestDressedFn = createServerFn({ method: "POST" })
   .validator((data: VoteInput) => data)
   .handler(({ data }) => voteBestDressed(data));
+
+export const searchBestDressedGuestsFn = createServerFn({ method: "POST" })
+  .validator((data: { query: string; voteToken: string; code?: string }) => data)
+  .handler(({ data }) => searchBestDressedGuests(data));
 
 export const getBestDressedLeaderboardFn = createServerFn({ method: "GET" }).handler(() =>
   getBestDressedLeaderboardSnapshot(),

@@ -106,7 +106,11 @@ function resolveImageSrc(src: string): string {
  *   - /hero.webp
  *   - hero.webp
  */
-function resolveWordContentRef(ref: string, wordSlug?: string): string {
+function resolveWordContentRef(
+  ref: string,
+  wordSlug?: string,
+  options?: { privacy?: "public" | "private" },
+): string {
   const extractedRef = ref.trim();
   if (!extractedRef || extractedRef.includes("\0")) return "";
   const markdownRefMatch = extractedRef.match(/^!?\[[^\]]*]\((\S+)(?:\s+["'][^"']*["'])?\)$/);
@@ -123,6 +127,20 @@ function resolveWordContentRef(ref: string, wordSlug?: string): string {
 
   const normalized = trimmed.replace(/^\/+/, "");
   const normalizedLower = normalized.toLowerCase();
+
+  if (options?.privacy === "private") {
+    const privateMediaPrefix = wordSlug ? `words/media/${wordSlug}/` : "";
+    if (privateMediaPrefix && normalizedLower.startsWith(privateMediaPrefix.toLowerCase())) {
+      const filename = normalized.slice(privateMediaPrefix.length);
+      if (/^[a-z0-9-]+\.[a-z0-9]{1,8}$/i.test(filename)) {
+        return `/api/words/${encodeStoragePathSegment(wordSlug ?? "")}/media/${encodeStoragePathSegment(filename)}`;
+      }
+      return "";
+    }
+    if (normalizedLower.startsWith("words/assets/") || normalizedLower.startsWith("assets/")) {
+      return "";
+    }
+  }
 
   if (normalizedLower.startsWith("words/media/") || normalizedLower.startsWith("words/assets/")) {
     return getImageUrl(normalized);
@@ -153,6 +171,10 @@ function resolveWordContentRef(ref: string, wordSlug?: string): string {
   }
 
   if (wordSlug && /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(wordSlug)) {
+    if (options?.privacy === "private") {
+      if (!/^[a-z0-9-]+\.[a-z0-9]{1,8}$/i.test(normalized)) return "";
+      return `/api/words/${encodeStoragePathSegment(wordSlug)}/media/${encodeStoragePathSegment(normalized)}`;
+    }
     return getImageUrl(`words/media/${wordSlug}/${normalized}`);
   }
 

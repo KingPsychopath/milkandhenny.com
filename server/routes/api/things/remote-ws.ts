@@ -1,6 +1,7 @@
 import { defineWebSocketHandler } from "nitro/h3";
 import { authorizeRemoteSocket } from "@/features/things/remote/remote-room.server";
 import type { RemoteRoomRole } from "@/features/things/remote/types";
+import { gameRealtimeChannels } from "@/features/things/shared/game-keys";
 
 const sessions = new Map<string, { roomId: string; role: RemoteRoomRole }>();
 
@@ -32,9 +33,9 @@ export default defineWebSocketHandler({
         return;
       }
       sessions.set(peer.id, { roomId: payload.roomId, role: payload.role });
-      peer.subscribe(`remote-room:${payload.roomId}`);
+      peer.subscribe(gameRealtimeChannels.remoteRoom(payload.roomId));
       peer.send(JSON.stringify({ type: "ready" }));
-      peer.publish(`remote-room:${payload.roomId}`, JSON.stringify({ type: "wake", source: payload.role }));
+      peer.publish(gameRealtimeChannels.remoteRoom(payload.roomId), JSON.stringify({ type: "wake", source: payload.role }));
       return;
     }
     const session = sessions.get(peer.id);
@@ -45,12 +46,12 @@ export default defineWebSocketHandler({
     if (payload.type === "ping") {
       peer.send(JSON.stringify({ type: "pong" }));
     } else if (payload.type === "changed") {
-      peer.publish(`remote-room:${session.roomId}`, JSON.stringify({ type: "wake", source: session.role }));
+      peer.publish(gameRealtimeChannels.remoteRoom(session.roomId), JSON.stringify({ type: "wake", source: session.role }));
     }
   },
   close(peer) {
     const session = sessions.get(peer.id);
-    if (session) peer.unsubscribe(`remote-room:${session.roomId}`);
+    if (session) peer.unsubscribe(gameRealtimeChannels.remoteRoom(session.roomId));
     sessions.delete(peer.id);
   },
   error(peer) {

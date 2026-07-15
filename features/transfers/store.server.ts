@@ -127,6 +127,56 @@ async function saveTransfer(data: TransferData, ttlSeconds: number): Promise<voi
   }
 }
 
+/** Create a transfer exactly once. Existing capability IDs are never overwritten. */
+async function createTransfer(data: TransferData, ttlSeconds: number): Promise<boolean> {
+  const redis = requireTransferRedis();
+  const key = `${TRANSFER_PREFIX}${data.id}`;
+
+  if (redis) {
+    const created = await redis.set(key, JSON.stringify(data), { ex: ttlSeconds, nx: true });
+    if (!created) return false;
+    try {
+      await redis.sadd(TRANSFER_INDEX_KEY, data.id);
+    } catch (error) {
+      await redis.del(key).catch(() => undefined);
+      throw error;
+    }
+    return true;
+  }
+
+  if (memoryTransfers.has(key)) return false;
+  memoryTransfers.set(key, data);
+  memoryIndex.add(data.id);
+  setTimeout(() => {
+    memoryTransfers.delete(key);
+    memoryIndex.delete(data.id);
+  }, ttlSeconds * 1000).unref?.();
+  return true;
+}
+
+/** Merge one file into the latest transfer value without overwriting sibling worker updates. */
+async function updateTransferFile(transferId: string, file: TransferFile): Promise<boolean> {
+  const redis = requireTransferRedis();
+  const key = `${TRANSFER_PREFIX}${transferId}`;
+  if (redis) {
+    const updated = await redis.eval<string[], number>(
+      "local raw = redis.call('get', KEYS[1]); if not raw then return 0 end; local transfer = cjson.decode(raw); for i, current in ipairs(transfer.files) do if current.id == ARGV[1] then transfer.files[i] = cjson.decode(ARGV[2]); redis.call('set', KEYS[1], cjson.encode(transfer), 'KEEPTTL'); return 1 end end; return 0",
+      [key],
+      [file.id, JSON.stringify(file)],
+    );
+    return updated === 1;
+  }
+
+  const transfer = memoryTransfers.get(key);
+  if (!transfer) return false;
+  const fileIndex = transfer.files.findIndex((candidate) => candidate.id === file.id);
+  if (fileIndex === -1) return false;
+  const files = [...transfer.files];
+  files[fileIndex] = file;
+  memoryTransfers.set(key, { ...transfer, files });
+  return true;
+}
+
 function clearTransferFileGroup(file: TransferFile): TransferFile {
   const next = { ...file };
   delete next.groupId;
@@ -304,6 +354,8 @@ async function validateDeleteToken(id: string, token: string): Promise<boolean> 
 
 export {
   saveTransfer,
+  updateTransferFile,
+  createTransfer,
   getTransfer,
   listTransfers,
   deleteTransferData,

@@ -33,6 +33,7 @@ const spellingSetup: RemoteSpellingSetup = {
   timerSeconds: 30,
   autoSpeak: true,
 };
+const judgeLease = { judgeEpoch: "judge-test-epoch", takeover: false } as const;
 
 const snapshot: RemoteSyncedSnapshot = {
   game: "heads-up",
@@ -58,13 +59,14 @@ describe("remote game rooms", () => {
     const initial = await syncRemotePlayer({ roomId: room.roomId, playerToken: room.playerToken, snapshot, lastCommandSequence: 0 });
     expect(initial.ok).toBe(true);
 
-    const judge = await readRemoteJudge({ roomId: room.roomId, judgeToken: room.judgeToken });
+    const judge = await readRemoteJudge({ roomId: room.roomId, judgeToken: room.judgeToken, ...judgeLease });
     expect(judge.snapshot?.currentLabel).toBe("Bubble wrap");
     expect(judge.playerConnected).toBe(true);
 
     await sendRemoteJudgeCommand({
       roomId: room.roomId,
       judgeToken: room.judgeToken,
+      judgeEpoch: judgeLease.judgeEpoch,
       command: { id: "decision-1", type: "correct", createdAt: Date.now(), roundId: snapshot.roundId!, itemId: snapshot.itemId! },
     });
     const received = await syncRemotePlayer({ roomId: room.roomId, playerToken: room.playerToken, snapshot, lastCommandSequence: 0 });
@@ -88,8 +90,9 @@ describe("remote game rooms", () => {
   it("keeps role credentials separate and only lets the room creator close from the judge role", async () => {
     const playerCreated = await createRemoteRoom({ creatorRole: "player", setup: headsUpSetup });
     expect((await readRemotePlayerSetup({ roomId: playerCreated.roomId, playerToken: playerCreated.judgeToken })).ok).toBe(false);
-    expect((await readRemoteJudge({ roomId: playerCreated.roomId, judgeToken: playerCreated.playerToken })).ok).toBe(false);
+    expect((await readRemoteJudge({ roomId: playerCreated.roomId, judgeToken: playerCreated.playerToken, ...judgeLease })).ok).toBe(false);
     expect((await closeRemoteRoom(playerCreated.roomId, "judge", playerCreated.judgeToken)).ok).toBe(false);
+    expect((await closeRemoteRoom(playerCreated.roomId, "player", playerCreated.playerToken)).ok).toBe(true);
     expect((await closeRemoteRoom(playerCreated.roomId, "player", playerCreated.playerToken)).ok).toBe(true);
 
     const judgeCreated = await createRemoteRoom({ creatorRole: "judge", setup: spellingSetup });
@@ -104,8 +107,8 @@ describe("remote game rooms", () => {
   it("rejects stale and future-dated judge commands", async () => {
     const room = await createRemoteRoom({ creatorRole: "player", setup: headsUpSetup });
     const target = { roundId: "round-1", itemId: "round-1:card-1" };
-    const stale = await sendRemoteJudgeCommand({ roomId: room.roomId, judgeToken: room.judgeToken, command: { id: "stale", type: "correct", createdAt: Date.now() - 20_000, ...target } });
-    const future = await sendRemoteJudgeCommand({ roomId: room.roomId, judgeToken: room.judgeToken, command: { id: "future", type: "correct", createdAt: Date.now() + 20_000, ...target } });
+    const stale = await sendRemoteJudgeCommand({ roomId: room.roomId, judgeToken: room.judgeToken, judgeEpoch: judgeLease.judgeEpoch, command: { id: "stale", type: "correct", createdAt: Date.now() - 20_000, ...target } });
+    const future = await sendRemoteJudgeCommand({ roomId: room.roomId, judgeToken: room.judgeToken, judgeEpoch: judgeLease.judgeEpoch, command: { id: "future", type: "correct", createdAt: Date.now() + 20_000, ...target } });
     expect(stale.ok).toBe(false);
     expect(future.ok).toBe(false);
   });
@@ -117,7 +120,7 @@ describe("remote game rooms", () => {
 
     const older = { ...snapshot, revision: 1 };
     expect((await syncRemotePlayer({ roomId: room.roomId, playerToken: room.playerToken, snapshot: older, lastCommandSequence: 0 })).ok).toBe(true);
-    expect((await readRemoteJudge({ roomId: room.roomId, judgeToken: room.judgeToken })).snapshot?.currentLabel).toBe("Chess");
+    expect((await readRemoteJudge({ roomId: room.roomId, judgeToken: room.judgeToken, ...judgeLease })).snapshot?.currentLabel).toBe("Chess");
 
     const duplicateTab = { ...newer, connectionEpoch: "connection-2", revision: 3 };
     const fenced = await syncRemotePlayer({ roomId: room.roomId, playerToken: room.playerToken, snapshot: duplicateTab, lastCommandSequence: 0 });
@@ -126,8 +129,25 @@ describe("remote game rooms", () => {
     const staleTarget = await sendRemoteJudgeCommand({
       roomId: room.roomId,
       judgeToken: room.judgeToken,
+      judgeEpoch: judgeLease.judgeEpoch,
       command: { id: "late-decision", type: "correct", createdAt: Date.now(), roundId: "round-1", itemId: "round-1:card-1" },
     });
     expect(staleTarget).toMatchObject({ ok: false, error: "Card changed" });
+  });
+
+  it("gives one judge control, supports explicit takeover, and rejects decisions received after the deadline", async () => {
+    const room = await createRemoteRoom({ creatorRole: "player", setup: spellingSetup });
+    const expiredSnapshot: RemoteSyncedSnapshot = { ...snapshot, game: "spelling-bee", decisionClosesAt: Date.now() - 1, connectionEpoch: "deadline-player" };
+    expect((await syncRemotePlayer({ roomId: room.roomId, playerToken: room.playerToken, snapshot: expiredSnapshot, lastCommandSequence: 0 })).ok).toBe(true);
+
+    const first = await readRemoteJudge({ roomId: room.roomId, judgeToken: room.judgeToken, judgeEpoch: "judge-one", takeover: false });
+    const second = await readRemoteJudge({ roomId: room.roomId, judgeToken: room.judgeToken, judgeEpoch: "judge-two", takeover: false });
+    expect(first.judgeActive).toBe(true);
+    expect(second.judgeActive).toBe(false);
+
+    const takeover = await readRemoteJudge({ roomId: room.roomId, judgeToken: room.judgeToken, judgeEpoch: "judge-two", takeover: true });
+    expect(takeover.judgeActive).toBe(true);
+    const late = await sendRemoteJudgeCommand({ roomId: room.roomId, judgeToken: room.judgeToken, judgeEpoch: "judge-two", command: { id: "late", type: "correct", createdAt: Date.now(), roundId: expiredSnapshot.roundId!, itemId: expiredSnapshot.itemId! } });
+    expect(late).toMatchObject({ ok: false, error: "Decision window closed" });
   });
 });

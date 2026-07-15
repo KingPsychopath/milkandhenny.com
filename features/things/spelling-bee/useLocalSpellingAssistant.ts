@@ -30,11 +30,18 @@ interface BrowserRecognition {
   lang: string;
   processLocally: boolean;
   onresult: ((event: BrowserRecognitionEvent) => void) | null;
-  onerror: (() => void) | null;
+  onerror: ((event: { error: string; message?: string }) => void) | null;
   onend: (() => void) | null;
   start: () => void;
   abort: () => void;
 }
+
+const AUDIO_CONSTRAINTS: MediaTrackConstraints = {
+  channelCount: 1,
+  echoCancellation: true,
+  noiseSuppression: true,
+  autoGainControl: true,
+};
 
 interface BrowserRecognitionConstructor {
   new (): BrowserRecognition;
@@ -87,6 +94,7 @@ export function useLocalSpellingAssistant() {
   const [browserAvailability, setBrowserAvailability] = useState<BrowserSpeechAvailability>("checking");
   const [downloadEstimate, setDownloadEstimate] = useState("usually under a minute on Wi-Fi");
   const [progress, setProgress] = useState(0);
+  const [inputLevel, setInputLevel] = useState(0);
   const [match, setMatch] = useState<SpellingMatch>({ letters: "", matchedCount: 0, complete: false, mismatchAt: null });
   const [message, setMessage] = useState<string | null>("Checking whether this device can follow the spelling…");
   const workerRef = useRef<Worker | null>(null);
@@ -98,6 +106,46 @@ export function useLocalSpellingAssistant() {
   const browserFinalRef = useRef("");
   const busyRef = useRef(false);
   const listeningRef = useRef(false);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const levelFrameRef = useRef<number | null>(null);
+
+  const stopLevelMonitor = useCallback(() => {
+    if (levelFrameRef.current !== null) cancelAnimationFrame(levelFrameRef.current);
+    levelFrameRef.current = null;
+    const context = audioContextRef.current;
+    audioContextRef.current = null;
+    if (context) void context.close();
+    setInputLevel(0);
+  }, []);
+
+  const startLevelMonitor = useCallback(async (stream: MediaStream) => {
+    stopLevelMonitor();
+    const context = new AudioContext();
+    audioContextRef.current = context;
+    const source = context.createMediaStreamSource(stream);
+    const analyser = context.createAnalyser();
+    analyser.fftSize = 256;
+    analyser.smoothingTimeConstant = 0.78;
+    source.connect(analyser);
+    const samples = new Uint8Array(analyser.fftSize);
+    let lastUpdate = 0;
+    const readLevel = (now: number) => {
+      analyser.getByteTimeDomainData(samples);
+      if (now - lastUpdate >= 70) {
+        let sum = 0;
+        for (const sample of samples) {
+          const amplitude = (sample - 128) / 128;
+          sum += amplitude * amplitude;
+        }
+        const level = Math.min(1, Math.sqrt(sum / samples.length) * 8);
+        setInputLevel(Math.round(level * 20) / 20);
+        lastUpdate = now;
+      }
+      levelFrameRef.current = requestAnimationFrame(readLevel);
+    };
+    await context.resume();
+    levelFrameRef.current = requestAnimationFrame(readLevel);
+  }, [stopLevelMonitor]);
 
   useEffect(() => {
     let active = true;
@@ -144,9 +192,10 @@ export function useLocalSpellingAssistant() {
     recognitionRef.current = null;
     streamRef.current?.getTracks().forEach((track) => track.stop());
     streamRef.current = null;
+    stopLevelMonitor();
     busyRef.current = false;
     setStatus((current) => current === "listening" ? "ready" : current);
-  }, []);
+  }, [stopLevelMonitor]);
 
   const disable = useCallback(async () => {
     stop();
@@ -204,6 +253,8 @@ export function useLocalSpellingAssistant() {
       setMatch(matchSpellingTranscript(transcriptRef.current, targetRef.current));
     };
     worker.onerror = () => { setStatus("error"); setMessage("Spoken-letter following could not start."); };
+    // Worker.postMessage has no targetOrigin argument.
+    // oxlint-disable-next-line unicorn/require-post-message-target-origin
     worker.postMessage({ type: "load" });
   }, []);
 
@@ -234,13 +285,22 @@ export function useLocalSpellingAssistant() {
     loadWhisper();
   }, [browserAvailability, loadWhisper]);
 
-  const startBrowser = useCallback((target: string) => {
+  const startBrowser = useCallback(async (target: string) => {
     const Constructor = recognitionConstructor();
     if (!Constructor) return;
     targetRef.current = target;
     transcriptRef.current = "";
     browserFinalRef.current = "";
     setMatch({ letters: "", matchedCount: 0, complete: false, mismatchAt: null });
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: AUDIO_CONSTRAINTS, video: false });
+      streamRef.current = stream;
+      await startLevelMonitor(stream);
+    } catch {
+      setStatus("error");
+      setMessage("Microphone access is blocked. Allow it in your browser, then try again.");
+      return;
+    }
     const recognition = new Constructor();
     recognition.processLocally = true;
     recognition.lang = "en-GB";
@@ -257,14 +317,54 @@ export function useLocalSpellingAssistant() {
       const text = `${browserFinalRef.current} ${interim}`.trim();
       setMatch(matchSpellingTranscript(text, targetRef.current));
     };
-    recognition.onerror = () => { listeningRef.current = false; setStatus("error"); setMessage("Listening stopped. Turn following off and on to try again."); };
-    recognition.onend = () => { if (listeningRef.current) { try { recognition.start(); } catch { listeningRef.current = false; setStatus("ready"); } } };
+    recognition.onerror = (event) => {
+      if (event.error === "no-speech") {
+        setMessage("Mic on · waiting to hear a letter.");
+        return;
+      }
+      if (event.error === "aborted" && !listeningRef.current) return;
+      listeningRef.current = false;
+      streamRef.current?.getTracks().forEach((track) => track.stop());
+      streamRef.current = null;
+      stopLevelMonitor();
+      setStatus("error");
+      setMessage(
+        event.error === "not-allowed" || event.error === "service-not-allowed"
+          ? "Microphone access is blocked. Allow it in your browser, then try again."
+          : event.error === "audio-capture"
+            ? "No working microphone was found. Check this device’s audio input."
+            : "Following stopped. Tap try again—the game can keep going.",
+      );
+    };
+    recognition.onend = () => {
+      if (!listeningRef.current) return;
+      try {
+        recognition.start();
+      } catch {
+        listeningRef.current = false;
+        streamRef.current?.getTracks().forEach((track) => track.stop());
+        streamRef.current = null;
+        stopLevelMonitor();
+        setStatus("error");
+        setMessage("Following stopped. Tap try again—the game can keep going.");
+      }
+    };
     recognitionRef.current = recognition;
     listeningRef.current = true;
-    recognition.start();
+    try {
+      recognition.start();
+    } catch {
+      listeningRef.current = false;
+      streamRef.current?.getTracks().forEach((track) => track.stop());
+      streamRef.current = null;
+      stopLevelMonitor();
+      setStatus("error");
+      setMessage("Following could not start. Tap try again or keep playing without it.");
+      return;
+    }
     setStatus("listening");
     setMessage("Listening and following the spelling…");
-  }, []);
+  }, [startLevelMonitor, stopLevelMonitor]);
 
   const startWhisper = useCallback(async (target: string) => {
     if (!workerRef.current) return;
@@ -272,8 +372,9 @@ export function useLocalSpellingAssistant() {
     transcriptRef.current = "";
     setMatch({ letters: "", matchedCount: 0, complete: false, mismatchAt: null });
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true }, video: false });
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: AUDIO_CONSTRAINTS, video: false });
       streamRef.current = stream;
+      await startLevelMonitor(stream);
       const mimeType = supportedMimeType();
       const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
       recorderRef.current = recorder;
@@ -292,14 +393,21 @@ export function useLocalSpellingAssistant() {
       setStatus("error");
       setMessage("Microphone access is needed for live spelling assistance.");
     }
-  }, []);
+  }, [startLevelMonitor]);
 
   const start = useCallback(async (target: string) => {
     if (status !== "ready") return;
     stop();
-    if (backend === "browser") startBrowser(target);
+    if (backend === "browser") await startBrowser(target);
     else if (backend === "whisper") await startWhisper(target);
   }, [backend, startBrowser, startWhisper, status, stop]);
+
+  const retry = useCallback(() => {
+    stop();
+    if (!backend) return;
+    setStatus("ready");
+    setMessage("Ready to listen again.");
+  }, [backend, stop]);
 
   useEffect(() => () => { stop(); workerRef.current?.terminate(); }, [stop]);
 
@@ -308,6 +416,7 @@ export function useLocalSpellingAssistant() {
     backend,
     browserAvailability,
     progress,
+    inputLevel,
     match,
     message,
     downloadEstimate,
@@ -315,5 +424,6 @@ export function useLocalSpellingAssistant() {
     disable,
     start,
     stop,
+    retry,
   };
 }

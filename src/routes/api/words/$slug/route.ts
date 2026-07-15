@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { getCookie } from "@/lib/http/cookies";
-import { requireAuth } from "@/features/auth/auth.server";
+import { requireAdminStepUp, requireAuth } from "@/features/auth/auth.server";
 import { isWordsEnabled } from "@/features/words/reader.server";
 import { wordAccessCookieName, verifyWordAccessToken } from "@/features/words/share.server";
 import { deleteWord, getWord, updateWord } from "@/features/words/store.server";
@@ -136,6 +136,8 @@ async function handleDELETE(request: Request, { params }: Params) {
 
   const authErr = await requireAuth(request, "admin");
   if (authErr) return authErr;
+  const stepUpErr = await requireAdminStepUp(request);
+  if (stepUpErr) return stepUpErr;
 
   const { slug } = await params;
   try {

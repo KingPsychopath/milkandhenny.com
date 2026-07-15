@@ -55,13 +55,18 @@ function execFileAsync(
   options?: ExecFileAsyncOptions,
 ): Promise<{ stdout: ExecFileAsyncOutput; stderr: ExecFileAsyncOutput }> {
   return new Promise((resolve, reject) => {
-    execFile(file, args, options ?? {}, (error, stdout, stderr) => {
-      if (error) {
-        reject(Object.assign(error, { stdout, stderr }));
-        return;
-      }
-      resolve({ stdout, stderr });
-    });
+    execFile(
+      file,
+      args,
+      { timeout: 60_000, killSignal: "SIGKILL", ...options },
+      (error, stdout, stderr) => {
+        if (error) {
+          reject(Object.assign(error, { stdout, stderr }));
+          return;
+        }
+        resolve({ stdout, stderr });
+      },
+    );
   });
 }
 

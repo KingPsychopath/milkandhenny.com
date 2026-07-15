@@ -746,8 +746,23 @@ export function EditorAdminClient() {
     setError("");
     setStatus("");
     try {
+      const password = window.prompt("Re-enter your admin password to delete this word");
+      if (!password) return;
+      const stepUpRes = await fetch("/api/admin/step-up", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password }),
+      });
+      const stepUpData = (await stepUpRes.json().catch(() => ({}))) as {
+        error?: string;
+        token?: string;
+      };
+      if (!stepUpRes.ok || !stepUpData.token) {
+        throw new Error(stepUpData.error ?? "Admin re-authentication failed");
+      }
       const res = await fetch(`/api/words/${encodeURIComponent(selectedSlug)}`, {
         method: "DELETE",
+        headers: { "x-admin-step-up": stepUpData.token },
       });
       const data = (await res.json().catch(() => ({}))) as { error?: string };
       if (!res.ok) throw new Error(data.error ?? "Failed to delete word");

@@ -1,6 +1,13 @@
 import { BASE_URL } from "@/lib/shared/config";
 import { getRedis } from "@/lib/platform/redis.server";
 import {
+  deleteObject,
+  downloadBuffer,
+  headObject,
+  listObjects,
+  uploadBuffer,
+} from "@/lib/platform/r2.server";
+import {
   WORD_INDEX_KEY,
   wordMetaKey,
   wordShareIndexKey,
@@ -94,6 +101,43 @@ async function updateWordRecord(slug: string, input: UpdateWordInput) {
 
 async function deleteWordRecord(slug: string) {
   return deleteWord(slug);
+}
+
+async function migratePrivateWordStorage(): Promise<{
+  wordsMigrated: number;
+  mediaMigrated: number;
+}> {
+  let cursor: string | undefined;
+  let wordsMigrated = 0;
+  let mediaMigrated = 0;
+
+  do {
+    const page = await listWords({
+      visibility: "private",
+      includeNonPublic: true,
+      limit: 100,
+      cursor,
+    });
+    for (const word of page.words) {
+      const record = await getWord(word.slug);
+      if (!record) throw new Error(`Could not migrate private word body: ${word.slug}`);
+      wordsMigrated += 1;
+
+      const objects = await listObjects(`words/media/${word.slug}/`, { scope: "public" });
+      for (const object of objects) {
+        const metadata = await headObject(object.key, { scope: "public" });
+        const body = await downloadBuffer(object.key, { scope: "public" });
+        await uploadBuffer(object.key, body, metadata.contentType ?? "application/octet-stream", {
+          scope: "private",
+        });
+        await deleteObject(object.key, { scope: "public" });
+        mediaMigrated += 1;
+      }
+    }
+    cursor = page.nextCursor ?? undefined;
+  } while (cursor);
+
+  return { wordsMigrated, mediaMigrated };
 }
 
 async function createWordShare(
@@ -356,4 +400,5 @@ export {
   purgeWordShares,
   resetWordShares,
   migrateLegacyWordsNamespace,
+  migratePrivateWordStorage,
 };

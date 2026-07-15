@@ -28,7 +28,7 @@ export interface RemoteSpellingSetup {
 
 export type RemoteGameSetup = RemoteHeadsUpSetup | RemoteSpellingSetup;
 
-export type RemoteResultDecision = "correct" | "incorrect" | "pass";
+export type RemoteResultDecision = "correct" | "incorrect" | "pass" | "skipped" | "timed_out";
 
 export interface RemoteResultItem {
   id: string;
@@ -46,6 +46,10 @@ export interface RemoteGameSnapshot {
   currentPartOfSpeech?: string;
   nextLabel: string | null;
   secondsRemaining: number | null;
+  /** Absolute player-authoritative deadline for the current item. */
+  decisionClosesAt?: number;
+  /** Short receipt-only window; the UI must not accept new decisions during it. */
+  decisionGraceEndsAt?: number;
   paused: boolean;
   transitioning?: boolean;
   pauseReason?: string;
@@ -63,7 +67,7 @@ export interface RemoteCommandTarget {
 }
 
 export type RemoteCommandRequest = (
-  | { id: string; type: "correct" | "incorrect" | "pass" | "pause" | "resume" | "undo"; createdAt: number }
+  | { id: string; type: "correct" | "incorrect" | "pass" | "skip" | "pause" | "resume" | "undo"; createdAt: number }
   | {
       id: string;
       type: "amend";
@@ -73,13 +77,13 @@ export type RemoteCommandRequest = (
     }
 ) & RemoteCommandTarget;
 
-export type RemoteCommand = RemoteCommandRequest & { sequence: number };
+export type RemoteCommand = RemoteCommandRequest & { sequence: number; receivedAt: number };
 
 export interface RemoteCommandReceipt {
   commandId: string;
   sequence: number;
   status: "applied" | "rejected";
-  reason?: "stale round" | "stale item";
+  reason?: "stale round" | "stale item" | "decision closed" | "already decided";
 }
 
 export interface RemoteSyncedSnapshot extends RemoteGameSnapshot {
@@ -117,6 +121,7 @@ export interface RemoteJudgeSnapshotResult {
   ok: boolean;
   snapshot: RemoteSyncedSnapshot | null;
   playerConnected: boolean;
+  judgeActive: boolean;
   expiresAt: number | null;
   error?: string;
 }

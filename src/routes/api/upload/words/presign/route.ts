@@ -15,6 +15,7 @@ import { getFileKind } from "@/features/media/processing.server";
 import type { FileKind } from "@/features/media/file-kinds";
 import { randomUUID } from "crypto";
 import path from "path";
+import { getWordMediaStorageScope } from "@/features/words/media-storage.server";
 
 type FileEntry = { name: string; size: number; type?: string };
 
@@ -84,6 +85,7 @@ async function handlePOST(request: Request) {
 
   const target = targetResult.target;
   const targetPrefix = mediaPrefixForTarget(target);
+  const storageScope = await getWordMediaStorageScope(target);
   const force = !!body.force;
   const files = body.files;
 
@@ -101,7 +103,7 @@ async function handlePOST(request: Request) {
   }
 
   try {
-    const existingObjects = await listObjects(targetPrefix);
+    const existingObjects = await listObjects(targetPrefix, { scope: storageScope });
 
     const existingNames = new Set(
       existingObjects.map((o) => {
@@ -156,7 +158,7 @@ async function handlePOST(request: Request) {
         ? `${targetPrefix}incoming/${randomUUID()}-${sanitiseStem(original)}${safeIncomingExt(original)}`
         : `${targetPrefix}${filename}`;
 
-      const url = await presignPutUrl(uploadKey, contentType);
+      const url = await presignPutUrl(uploadKey, contentType, 900, { scope: storageScope });
 
       urls.push({
         original,

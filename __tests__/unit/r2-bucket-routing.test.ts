@@ -25,8 +25,14 @@ describe("R2 bucket routing", () => {
     const privateUrl = new URL(
       await presignPutUrl("transfers/transfer/originals/photo.jpg", "image/jpeg"),
     );
+    const privateWordUrl = new URL(
+      await presignPutUrl("words/media/private-note/photo.jpg", "image/jpeg", 900, {
+        scope: "private",
+      }),
+    );
 
     expect(publicUrl.host).toBe("public-bucket.test-account.r2.cloudflarestorage.com");
     expect(privateUrl.host).toBe("private-bucket.test-account.r2.cloudflarestorage.com");
+    expect(privateWordUrl.host).toBe("private-bucket.test-account.r2.cloudflarestorage.com");
   });
 });

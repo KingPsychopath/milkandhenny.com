@@ -19,6 +19,7 @@ import {
 import { getFileKind } from "@/features/media/processing.server";
 import type { FileKind } from "@/features/media/file-kinds";
 import { mapWithConcurrency } from "@/lib/shared/map-with-concurrency";
+import { getWordMediaStorageScope } from "@/features/words/media-storage.server";
 export const maxDuration = 15;
 const FINALIZE_CONCURRENCY = 2;
 
@@ -99,6 +100,7 @@ async function handlePOST(request: Request) {
   }
   const target = targetResult.target;
   const targetPrefix = mediaPrefixForTarget(target);
+  const storageScope = await getWordMediaStorageScope(target);
   const files = body.files;
   const skipped = Array.isArray(body.skipped)
     ? body.skipped.filter((s) => typeof s === "string")
@@ -140,16 +142,16 @@ async function handlePOST(request: Request) {
 
       if (isProcessableImage(original)) {
         // Uploaded to a temp key → download → process → upload to final key → delete temp key.
-        const raw = await downloadBuffer(file.uploadKey);
+        const raw = await downloadBuffer(file.uploadKey, { scope: storageScope });
         const webpFilename = toR2Filename(original);
         const webpKey = mediaPathForTarget(target, webpFilename);
 
         try {
           const { buffer: webpBuffer, width, height } = await processToWebP(raw, original);
-          await uploadBuffer(webpKey, webpBuffer, "image/webp");
+          await uploadBuffer(webpKey, webpBuffer, "image/webp", { scope: storageScope });
 
           try {
-            await deleteObject(file.uploadKey);
+            await deleteObject(file.uploadKey, { scope: storageScope });
           } catch {
             // Best-effort cleanup. The temp file is not referenced by markdown and can be cleaned manually.
           }
@@ -172,10 +174,10 @@ async function handlePOST(request: Request) {
           const fallbackFilename = toR2Filename(original, { preserveRawExtension: true });
           const fallbackKey = mediaPathForTarget(target, fallbackFilename);
           const fallbackKind: FileKind = "file";
-          await uploadBuffer(fallbackKey, raw, getMimeType(original));
+          await uploadBuffer(fallbackKey, raw, getMimeType(original), { scope: storageScope });
 
           try {
-            await deleteObject(file.uploadKey);
+            await deleteObject(file.uploadKey, { scope: storageScope });
           } catch {
             // Best-effort cleanup. The temp file is not referenced by markdown and can be cleaned manually.
           }
@@ -217,7 +219,7 @@ async function handlePOST(request: Request) {
     await Promise.all(
       incomingKeys.map(async (key) => {
         try {
-          await deleteObject(key);
+          await deleteObject(key, { scope: storageScope });
         } catch {
           // Best-effort temp cleanup after finalize failure.
         }

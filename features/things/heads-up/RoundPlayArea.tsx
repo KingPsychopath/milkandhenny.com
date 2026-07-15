@@ -10,6 +10,7 @@ interface RoundPlayAreaProps {
   pauseReason: MotionPauseReason | "interrupted" | "remote" | null;
   onDecision: (decision: Decision) => void;
   onResume: () => void;
+  onEnd: () => void;
 }
 
 const SNAP_EASE = "cubic-bezier(0.16, 1, 0.3, 1)";
@@ -28,6 +29,7 @@ export function RoundPlayArea({
   pauseReason,
   onDecision,
   onResume,
+  onEnd,
 }: RoundPlayAreaProps) {
   const paused = pauseReason !== null;
 
@@ -69,6 +71,9 @@ export function RoundPlayArea({
                 resume round
               </button>
             ) : null}
+            <button type="button" onClick={onEnd} className="mt-2 min-h-11 px-4 font-mono text-xs text-black/55 underline underline-offset-4">
+              end round
+            </button>
           </div>
         ) : (
           <>

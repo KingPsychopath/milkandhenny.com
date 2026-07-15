@@ -29,19 +29,33 @@ describe("upload transfer finalize", () => {
       },
       uploadedBytes: 123,
     });
-    const saveTransfer = vi.fn().mockResolvedValue(undefined);
+    const createTransfer = vi.fn().mockResolvedValue(true);
 
     vi.doMock("@/features/auth/auth.server", () => ({
       requireAuthWithPayload: vi.fn().mockResolvedValue({
         error: null,
-        payload: { role: "upload" },
+        payload: { role: "upload", jti: "upload-session" },
       }),
     }));
     vi.doMock("@/features/transfers/store.server", () => ({
-      saveTransfer,
+      createTransfer,
       MAX_EXPIRY_SECONDS: 30 * 24 * 60 * 60,
       MAX_TRANSFER_FILE_BYTES: 250 * 1024 * 1024,
       MAX_TRANSFER_TOTAL_BYTES: 1024 * 1024 * 1024,
+    }));
+    vi.doMock("@/features/transfers/upload-reservation.server", () => ({
+      deleteTransferUploadReservation: vi.fn().mockResolvedValue(undefined),
+      getTransferUploadReservation: vi.fn().mockResolvedValue({
+        transferId: "transfer-1",
+        deleteToken: "delete-token",
+        actorJti: "upload-session",
+        expiresSeconds: 3600,
+        filesFingerprint: "fingerprint",
+      }),
+      transferUploadFilesFingerprint: vi.fn().mockReturnValue("fingerprint"),
+    }));
+    vi.doMock("@/lib/platform/r2.server", () => ({
+      headObject: vi.fn().mockResolvedValue({ exists: true, size: 123 }),
     }));
     vi.doMock("@/features/transfers/upload.server", () => ({
       applyTransferAssetGroups: (files: unknown[]) => ({ files, groups: [] }),
@@ -93,7 +107,7 @@ describe("upload transfer finalize", () => {
       },
       "transfer-1",
     );
-    expect(saveTransfer).toHaveBeenCalledOnce();
+    expect(createTransfer).toHaveBeenCalledOnce();
   });
 
   it("rejects raw heif uploads before processing", async () => {
@@ -102,11 +116,11 @@ describe("upload transfer finalize", () => {
     vi.doMock("@/features/auth/auth.server", () => ({
       requireAuthWithPayload: vi.fn().mockResolvedValue({
         error: null,
-        payload: { role: "upload" },
+        payload: { role: "upload", jti: "upload-session" },
       }),
     }));
     vi.doMock("@/features/transfers/store.server", () => ({
-      saveTransfer: vi.fn(),
+      createTransfer: vi.fn(),
       MAX_EXPIRY_SECONDS: 30 * 24 * 60 * 60,
       MAX_TRANSFER_FILE_BYTES: 250 * 1024 * 1024,
       MAX_TRANSFER_TOTAL_BYTES: 1024 * 1024 * 1024,

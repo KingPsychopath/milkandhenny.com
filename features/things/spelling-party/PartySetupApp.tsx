@@ -1,9 +1,13 @@
-import { Link } from "@tanstack/react-router";
+import { Link, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { createPartyRoomFn } from "./party-room.functions";
 import type { PartyDeckSummary } from "./types";
+import { SpellingSetupIntro } from "../spelling-bee/SpellingSetupIntro";
+import { gameBrowserKeys } from "../shared/game-keys";
+import { writeExpiringLocalValue } from "../shared/game-storage.client";
 
 export function PartySetupApp({ decks }: { decks: PartyDeckSummary[] }) {
+  const navigate = useNavigate();
   const [deckId, setDeckId] = useState(decks[0]?.id ?? "");
   const [answerSeconds, setAnswerSeconds] = useState(20);
   const [roundTotal, setRoundTotal] = useState(5);
@@ -15,17 +19,21 @@ export function PartySetupApp({ decks }: { decks: PartyDeckSummary[] }) {
     setCreating(true); setMessage(null);
     try {
       const room = await createPartyRoomFn({ data: { deckId, answerSeconds, roundTotal } });
-      const fragment = new URLSearchParams({ presenter: room.presenterToken, join: room.joinToken });
-      location.assign(`/things/spelling-party/${room.roomId}/present#${fragment.toString()}`);
+      const recovery = { presenterToken: room.presenterToken, joinToken: room.joinToken };
+      writeExpiringLocalValue(gameBrowserKeys.partyPresenterRecovery(room.roomId), recovery, room.expiresAt);
+      const fragment = new URLSearchParams({ presenter: room.presenterToken, join: room.joinToken, expires: String(room.expiresAt) });
+      await navigate({
+        to: "/things/spelling-party/$roomId/present",
+        params: { roomId: room.roomId },
+        hash: fragment.toString(),
+      });
     } catch { setMessage("Could not make the room. Check your connection and try again."); setCreating(false); }
   };
 
   return <div className="things-game things-game--night text-white">
-    <header className="flex items-center justify-between p-5 font-mono text-xs text-white/55"><Link to="/things/spelling-bee" className="inline-flex min-h-11 items-center">← spelling bee</Link><span>party typing</span></header>
-    <main id="main" className="mx-auto w-full max-w-lg flex-1 px-5 pb-12 pt-7">
-      <p className="font-mono text-micro uppercase tracking-[0.2em] text-white/45">everyone spells together</p>
-      <h1 className="mt-3 font-serif text-6xl font-semibold leading-none">Party Typing.</h1>
-      <p className="mt-5 font-serif text-lg leading-relaxed text-white/60">Put this screen where everyone can hear it. Players scan once, type privately, and reveal together.</p>
+    <header className="flex items-center justify-between p-5 font-mono text-xs text-white/55"><Link to="/things" className="inline-flex min-h-11 items-center">← things</Link><span>type together</span></header>
+    <main id="main" className="mx-auto w-full max-w-lg flex-1 px-5 pb-12">
+      <SpellingSetupIntro mode="together" />
       <section className="mt-10" aria-labelledby="party-decks"><h2 id="party-decks" className="font-mono text-micro uppercase tracking-[0.18em] text-white/45">choose words</h2><div className="mt-3 grid gap-3">
         {decks.map((deck) => <button key={deck.id} type="button" aria-pressed={deck.id === deckId} onClick={() => setDeckId(deck.id)} className={`grid min-h-20 grid-cols-[2.75rem_1fr_auto] items-center gap-3 rounded-3xl border p-4 text-left ${deck.id === deckId ? "border-white/60 bg-white/12" : "border-white/12 bg-white/[0.04]"}`}><span aria-hidden="true" className="font-serif text-2xl text-white/60">{deck.symbol}</span><span><span className="block font-serif text-xl font-semibold">{deck.name}</span><span className="mt-1 block text-xs leading-relaxed text-white/50">{deck.description}</span></span><span className="font-mono text-xs text-white/40">{deck.wordCount}</span></button>)}
       </div></section>
@@ -35,7 +43,7 @@ export function PartySetupApp({ decks }: { decks: PartyDeckSummary[] }) {
       </section>
       <button type="button" onClick={() => void handleCreate()} disabled={creating || !deckId} className="mt-8 min-h-16 w-full rounded-full bg-[var(--things-amber)] px-6 font-mono text-sm font-bold text-black disabled:opacity-40">{creating ? "making room…" : "create party room"}</button>
       <p aria-live="polite" className="mt-3 min-h-5 text-center font-mono text-xs text-amber-200">{message}</p>
-      <p className="mt-6 text-center text-xs leading-relaxed text-white/40">Classic Spelling Bee remains available offline. Party Typing needs an internet connection for every phone.</p>
+      <p className="mt-6 text-center text-xs leading-relaxed text-white/40">Say It Aloud works offline. Type Together needs an internet connection for every phone.</p>
     </main>
   </div>;
 }

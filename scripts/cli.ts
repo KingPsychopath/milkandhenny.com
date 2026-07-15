@@ -83,6 +83,7 @@ import {
   resetWordShares,
   revokeWordShare,
   migrateLegacyWordsNamespace,
+  migratePrivateWordStorage,
   updateWordRecord,
   updateWordShare,
 } from "./words-ops";
@@ -2398,6 +2399,14 @@ async function cmdWordsMigrateLegacy(purgeLegacy: boolean) {
   console.log();
 }
 
+async function cmdWordsMigratePrivateStorage() {
+  heading("Migrate private words into private R2 storage");
+  const result = await migratePrivateWordStorage();
+  log(green(`✓ Secured ${result.wordsMigrated} private word body/bodies`));
+  log(green(`✓ Moved ${result.mediaMigrated} private media object(s)`));
+  console.log();
+}
+
 async function syncSingleNoteFile(
   absFile: string,
   rootDir: string,
@@ -2724,6 +2733,7 @@ function showHelp() {
     words share purge ${dim("--slug <slug> | --all")}
     words share reset ${dim("--all")}
     words migrate-legacy ${dim("[--purge-legacy]")}
+    words migrate-private-storage
 
   ${bold("Bucket")} ${dim("(raw R2 access)")}
     bucket ls ${dim("[prefix]")}                       Browse bucket contents
@@ -4841,6 +4851,9 @@ async function direct() {
             }
             case "migrate-legacy": {
               return cmdWordsMigrateLegacy(hasFlag("purge-legacy"));
+            }
+            case "migrate-private-storage": {
+              return cmdWordsMigratePrivateStorage();
             }
             case "share": {
               const action = args[2];

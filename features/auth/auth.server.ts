@@ -12,6 +12,7 @@
  */
 
 import { createHash, createHmac, randomBytes, randomUUID, timingSafeEqual } from "crypto";
+import { isIP } from "node:net";
 import { getCookie } from "@/lib/http/cookies";
 import { getRedis } from "@/lib/platform/redis.server";
 import { getAuthCookieName } from "./cookies";
@@ -161,6 +162,10 @@ function generateTokenJti(): string {
   return `${Date.now().toString(36)}-${randomUUID()}-${randomBytes(6).toString("hex")}`;
 }
 
+function isValidTokenJti(value: string): boolean {
+  return value.length <= 128 && /^[a-z0-9]+-[0-9a-f-]{36}-[0-9a-f]{12}$/i.test(value);
+}
+
 async function signToken(role: TokenRole): Promise<string | null> {
   const { secret } = getAuthSecretStatus();
   if (!secret) return null;
@@ -272,11 +277,17 @@ function safeCompare(a: string, b: string): boolean {
  * Uses common proxy headers and falls back to "unknown".
  */
 function getClientIp(request: Request): string {
-  return (
-    request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
-    request.headers.get("x-real-ip") ||
-    "unknown"
-  );
+  const forwarded = request.headers
+    .get("x-forwarded-for")
+    ?.split(",")
+    .map((value) => value.trim())
+    .filter(Boolean);
+  const candidates = [
+    request.headers.get("cf-connecting-ip")?.trim(),
+    request.headers.get("x-real-ip")?.trim(),
+    forwarded?.at(-1),
+  ];
+  return candidates.find((value): value is string => Boolean(value && isIP(value))) ?? "unknown";
 }
 
 function extractBearer(request: Request): string {
@@ -374,6 +385,52 @@ async function clearRateLimit(role: AuthRole, ip: string): Promise<void> {
     return;
   }
   await redis.del(`auth:ratelimit:${role}:${ip}`);
+}
+
+function stepUpRateLimitKey(parentJti: string): string {
+  return `auth:step-up-ratelimit:${parentJti}`;
+}
+
+async function getStepUpAttempts(parentJti: string): Promise<number | null> {
+  const redis = getRedis();
+  const key = stepUpRateLimitKey(parentJti);
+  if (!redis) {
+    const entry = memoryRateLimit.get(`mem:${key}`);
+    if (!entry || entry.resetAtMs <= Date.now()) return 0;
+    return entry.attempts;
+  }
+  try {
+    return (await redis.get<number>(key)) ?? 0;
+  } catch {
+    return null;
+  }
+}
+
+async function recordStepUpFailure(parentJti: string): Promise<void> {
+  const redis = getRedis();
+  const key = stepUpRateLimitKey(parentJti);
+  if (!redis) {
+    const memoryId = `mem:${key}`;
+    const entry = memoryRateLimit.get(memoryId);
+    const attempts = entry && entry.resetAtMs > Date.now() ? entry.attempts + 1 : 1;
+    memoryRateLimit.set(memoryId, {
+      attempts,
+      resetAtMs: Date.now() + LOCKOUT_SECONDS * 1000,
+    });
+    return;
+  }
+  await redis.incr(key);
+  await redis.expire(key, LOCKOUT_SECONDS);
+}
+
+async function clearStepUpFailures(parentJti: string): Promise<void> {
+  const redis = getRedis();
+  const key = stepUpRateLimitKey(parentJti);
+  if (!redis) {
+    memoryRateLimit.delete(`mem:${key}`);
+    return;
+  }
+  await redis.del(key);
 }
 
 /* ─── Route guard ─── */
@@ -535,6 +592,14 @@ async function createAdminStepUpToken(request: Request, password: string): Promi
     return error ?? Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 
+  const attempts = await getStepUpAttempts(payload.jti);
+  if (attempts === null || attempts >= MAX_ATTEMPTS) {
+    return Response.json(
+      { error: "Too many step-up attempts. Try again later." },
+      { status: 429, headers: { "Retry-After": String(LOCKOUT_SECONDS) } },
+    );
+  }
+
   const adminSecretStatus = getRoleSecretStatus("admin");
   if (!adminSecretStatus.secret) {
     return Response.json(
@@ -543,6 +608,7 @@ async function createAdminStepUpToken(request: Request, password: string): Promi
     );
   }
   if (!safeCompare(password.trim(), adminSecretStatus.secret)) {
+    await recordStepUpFailure(payload.jti);
     return Response.json({ error: "Invalid password" }, { status: 401 });
   }
 
@@ -550,6 +616,7 @@ async function createAdminStepUpToken(request: Request, password: string): Promi
   if (!token) {
     return Response.json({ error: "Failed to create step-up token" }, { status: 503 });
   }
+  await clearStepUpFailures(payload.jti);
   return Response.json({
     ok: true,
     token,
@@ -749,6 +816,7 @@ export {
   getSecurityWarnings,
   safeCompare,
   getClientIp,
+  isValidTokenJti,
   authenticateRequest,
 };
 export type { AuthRole, RevocableRole };

@@ -14,6 +14,10 @@ const SENTENCES: Record<string, string> = {
   caricature: "The artist drew a playful caricature of the mayor.", courgette: "Slice the courgette into thin ribbons.", handkerchief: "He folded the handkerchief into his pocket.",
   licence: "You need a licence before you can drive.", manoeuvre: "Parking there requires a careful manoeuvre.", parliament: "The proposal will be debated in parliament.",
   quay: "Fishing boats were tied along the quay.", silhouette: "We could see her silhouette against the sunset.", yoghurt: "He added berries to a bowl of yoghurt.",
+  aluminum: "The bicycle frame is made from aluminum.", analyze: "The scientist will analyze the results tomorrow.", canceled: "The outdoor concert was canceled because of the storm.",
+  center: "Place the vase in the center of the table.", color: "She chose a bright color for the front door.", defense: "The team strengthened its defense before the final game.",
+  gray: "A gray cloud drifted over the city.", jewelry: "The necklace was her favorite piece of jewelry.", license: "You need a license before you can drive.",
+  maneuver: "Parking there requires a careful maneuver.", pajamas: "He changed into his pajamas before bed.", theater: "We arrived at the theater before the show began.",
 };
 
 export interface PartyWord extends SpellingWord {

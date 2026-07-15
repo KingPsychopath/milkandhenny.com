@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { requireAuthWithPayload } from "@/features/auth/auth.server";
 import {
-  saveTransfer,
+  createTransfer,
   MAX_EXPIRY_SECONDS,
   MAX_TRANSFER_FILE_BYTES,
   MAX_TRANSFER_TOTAL_BYTES,
@@ -22,6 +22,16 @@ import type { TransferUploadFileInput } from "@/features/transfers/upload-types"
 import { getBaseUrlForRequest } from "@/lib/shared/config";
 import { apiErrorFromRequest } from "@/lib/platform/api-error";
 import { mapWithConcurrency } from "@/lib/shared/map-with-concurrency";
+import { headObject } from "@/lib/platform/r2.server";
+import {
+  buildTransferArchivedOriginalStorageKey,
+  buildTransferPrimaryStorageKey,
+} from "@/features/transfers/storage";
+import {
+  deleteTransferUploadReservation,
+  getTransferUploadReservation,
+  transferUploadFilesFingerprint,
+} from "@/features/transfers/upload-reservation.server";
 
 export const maxDuration = 15;
 export const runtime = "nodejs";
@@ -130,7 +140,58 @@ async function handlePOST(request: Request) {
     return Response.json({ error: "Invalid expiresSeconds" }, { status: 400 });
   }
 
+  if (!payload?.jti) {
+    return Response.json(
+      { error: "Authenticated upload session is missing an ID" },
+      { status: 401 },
+    );
+  }
+
+  const reservation = await getTransferUploadReservation(transferId);
+  if (!reservation) {
+    return Response.json({ error: "Upload reservation is missing or expired" }, { status: 409 });
+  }
+  if (
+    reservation.actorJti !== payload.jti ||
+    reservation.deleteToken !== deleteToken ||
+    reservation.expiresSeconds !== expiresSeconds ||
+    reservation.filesFingerprint !== transferUploadFilesFingerprint(files)
+  ) {
+    return Response.json(
+      { error: "Upload reservation does not match this request" },
+      { status: 403 },
+    );
+  }
+
   try {
+    let actualUploadedBytes = 0;
+    for (const file of files) {
+      const primaryKey = buildTransferPrimaryStorageKey(transferId, file);
+      const primary = await headObject(primaryKey, { scope: "private" });
+      if (!primary.exists || primary.size !== file.size) {
+        return Response.json(
+          { error: `Uploaded object size does not match the reservation for ${file.name}` },
+          { status: 400 },
+        );
+      }
+      actualUploadedBytes += primary.size;
+
+      const archivedKey = buildTransferArchivedOriginalStorageKey(transferId, file);
+      if (archivedKey) {
+        const archived = await headObject(archivedKey, { scope: "private" });
+        if (!archived.exists || archived.size !== file.originalSize) {
+          return Response.json(
+            { error: `Archived original size does not match the reservation for ${file.name}` },
+            { status: 400 },
+          );
+        }
+        actualUploadedBytes += archived.size ?? 0;
+      }
+    }
+    if (!isAdmin && actualUploadedBytes > MAX_TRANSFER_TOTAL_BYTES) {
+      return Response.json({ error: "Transfer too large. Max 1GB total." }, { status: 400 });
+    }
+
     const results = await mapWithConcurrency(files, FINALIZE_CONCURRENCY, async (file) =>
       processUploadedFile(file, transferId),
     );
@@ -163,7 +224,11 @@ async function handlePOST(request: Request) {
       deleteToken,
     };
 
-    await saveTransfer(transfer, expiresSeconds);
+    const created = await createTransfer(transfer, expiresSeconds);
+    if (!created) {
+      return Response.json({ error: "Transfer ID already exists" }, { status: 409 });
+    }
+    await deleteTransferUploadReservation(transferId).catch(() => undefined);
 
     return Response.json({
       shareUrl: `${getBaseUrlForRequest(request)}/t/${transferId}`,

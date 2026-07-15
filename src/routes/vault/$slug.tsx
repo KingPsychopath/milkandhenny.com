@@ -32,7 +32,8 @@ const getPrivateWord = createServerFn({ method: "GET" })
     const renderData = note ? getWordRenderData(slug, note.meta.updatedAt, note.markdown) : null;
     const headings = renderData?.headings ?? [];
     const albums = renderData?.albums ?? {};
-    const heroImage = note && meta.image ? resolveWordContentRef(meta.image, slug) : "";
+    const heroImage =
+      note && meta.image ? resolveWordContentRef(meta.image, slug, { privacy: "private" }) : "";
 
     return { meta, note, published, readingTime, headings, albums, heroImage };
   });
@@ -136,7 +137,7 @@ function WordPrivatePage() {
           ) : null}
 
           {note ? (
-            <WordBody content={note.markdown} wordSlug={slug} albums={albums} />
+            <WordBody content={note.markdown} wordSlug={slug} albums={albums} privateMedia />
           ) : (
             <UnlockWordClient slug={slug} />
           )}

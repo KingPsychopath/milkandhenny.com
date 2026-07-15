@@ -31,6 +31,15 @@ export function RemoteHostPanel({
   onToggleExclusive,
 }: RemoteHostPanelProps) {
   const [qrCode, setQrCode] = useState<string | null>(null);
+  const [ending, setEnding] = useState(false);
+  const [confirmingEnd, setConfirmingEnd] = useState(false);
+  const [nativeShare, setNativeShare] = useState(false);
+  const [manualCopyUrl, setManualCopyUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    const coarsePointer = window.matchMedia("(hover: none) and (pointer: coarse)");
+    setNativeShare(typeof navigator.share === "function" && coarsePointer.matches);
+  }, []);
 
   useEffect(() => {
     if (!inviteUrl) {
@@ -46,7 +55,30 @@ export function RemoteHostPanel({
     };
   }, [inviteUrl]);
 
+  const copyInvite = async (url: string) => {
+    try {
+      await navigator.clipboard.writeText(url);
+      return true;
+    } catch {
+      const textarea = document.createElement("textarea");
+      textarea.value = url;
+      textarea.readOnly = true;
+      textarea.style.position = "fixed";
+      textarea.style.opacity = "0";
+      document.body.append(textarea);
+      textarea.select();
+      let copied = false;
+      try {
+        copied = document.execCommand("copy");
+      } finally {
+        textarea.remove();
+      }
+      return copied;
+    }
+  };
+
   const handleShare = async () => {
+    setManualCopyUrl(null);
     let url = inviteUrl;
     if (!url) {
       const created = await onCreate();
@@ -59,23 +91,27 @@ export function RemoteHostPanel({
       text: `Open this to judge our ${gameLabel} game.`,
       url,
     };
-    try {
-      if (navigator.share) {
+    if (nativeShare && navigator.share && (!navigator.canShare || navigator.canShare(share))) {
+      try {
         await navigator.share(share);
         onMessage("Invite shared.");
-      } else {
-        await navigator.clipboard.writeText(url);
-        onMessage("Judge link copied.");
-      }
-    } catch (error) {
-      if (error instanceof DOMException && error.name === "AbortError") return;
-      try {
-        await navigator.clipboard.writeText(url);
-        onMessage("Judge link copied.");
-      } catch {
-        onMessage("Could not share—use the QR code instead.");
+        return;
+      } catch (error) {
+        if (error instanceof DOMException && error.name === "AbortError") return;
       }
     }
+    if (await copyInvite(url)) {
+      onMessage("Judge link copied.");
+    } else {
+      setManualCopyUrl(url);
+      onMessage("Copy the judge link below.");
+    }
+  };
+
+  const handleEnd = async () => {
+    setConfirmingEnd(false);
+    setEnding(true);
+    try { await onClose(); } finally { setEnding(false); }
   };
 
   return (
@@ -97,11 +133,24 @@ export function RemoteHostPanel({
       <button
         type="button"
         onClick={() => void handleShare()}
-        disabled={syncing}
+        disabled={syncing || ending}
         className="mt-5 min-h-12 w-full rounded-full border border-white/20 px-5 font-mono text-sm font-semibold text-white disabled:opacity-40"
       >
-        {roomId ? "share judge invite" : syncing ? "making invite…" : "invite a judge"}
+        {syncing ? "making invite…" : nativeShare ? "share judge invite" : roomId ? "copy judge link" : "invite a judge"}
       </button>
+
+      {manualCopyUrl ? (
+        <label className="mt-3 block font-mono text-micro text-white/55">
+          judge link
+          <input
+            type="text"
+            readOnly
+            value={manualCopyUrl}
+            onFocus={(event) => event.currentTarget.select()}
+            className="mt-2 min-h-11 w-full rounded-xl border border-white/15 bg-transparent px-3 font-mono text-xs text-white"
+          />
+        </label>
+      ) : null}
 
       {!roomId ? (
         <div className="mt-4 border-t border-white/10 pt-4">
@@ -131,13 +180,14 @@ export function RemoteHostPanel({
               <a href={inviteUrl ?? undefined} target="_blank" rel="noreferrer" className="inline-flex min-h-11 items-center font-mono text-xs text-white/60 hover:text-white">
                 open judge view
               </a>
-              <button type="button" onClick={() => void onClose()} className="min-h-11 font-mono text-xs text-white/45 hover:text-white/70">
-                end remote judging
+              <button type="button" onClick={() => connected ? setConfirmingEnd(true) : void handleEnd()} disabled={ending} className="inline-flex min-h-11 items-center font-mono text-xs text-white/45 hover:text-white disabled:opacity-40">
+                {ending ? "ending…" : connected ? "end remote judging" : "cancel invite"}
               </button>
             </div>
           </div>
         </div>
       ) : null}
+      {confirmingEnd ? <div className="mt-4 rounded-2xl border border-white/15 bg-white/[0.04] p-4 text-center" role="alertdialog" aria-labelledby="end-judging-title"><h3 id="end-judging-title" className="font-serif text-xl font-semibold">End remote judging?</h3><p className="mt-1 text-sm text-white/55">The game keeps working on this phone.</p><div className="mt-3 grid grid-cols-2 gap-2"><button type="button" autoFocus onClick={() => setConfirmingEnd(false)} className="min-h-11 rounded-full border border-white/15 font-mono text-xs">keep judge</button><button type="button" onClick={() => void handleEnd()} className="min-h-11 rounded-full bg-white font-mono text-xs font-semibold text-black">end judging</button></div></div> : null}
       {roomId ? (
         <label className="mt-4 flex min-h-11 cursor-pointer items-center justify-between gap-4 border-t border-white/10 pt-4 font-mono text-xs text-white/60">
           <span>judge-only controls</span>

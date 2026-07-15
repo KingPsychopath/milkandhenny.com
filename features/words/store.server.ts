@@ -1,4 +1,10 @@
-import { deleteObject, downloadBuffer, isConfigured, uploadBuffer } from "@/lib/platform/r2.server";
+import {
+  deleteObject,
+  downloadBuffer,
+  isConfigured,
+  uploadBuffer,
+  type StorageScope,
+} from "@/lib/platform/r2.server";
 import { getRedis } from "@/lib/platform/redis.server";
 import { WORD_INDEX_KEY, wordContentKey, wordMetaKey } from "./config.server";
 import { deleteAllShareLinksForSlug } from "./share.server";
@@ -155,21 +161,46 @@ function isValidWordSlug(slug: string): boolean {
   return SAFE_NOTE_SLUG.test(slug);
 }
 
-async function writeNoteContent(key: string, markdown: string): Promise<void> {
+function storageScopeForVisibility(visibility: WordVisibility): StorageScope {
+  return visibility === "private" ? "private" : "public";
+}
+
+async function writeNoteContent(
+  key: string,
+  markdown: string,
+  visibility: WordVisibility,
+): Promise<void> {
   if (isConfigured()) {
-    await uploadBuffer(key, Buffer.from(markdown, "utf-8"), "text/markdown; charset=utf-8");
+    await uploadBuffer(key, Buffer.from(markdown, "utf-8"), "text/markdown; charset=utf-8", {
+      scope: storageScopeForVisibility(visibility),
+    });
     return;
   }
   memoryContent.set(key, markdown);
 }
 
-async function readContentByKey(key: string): Promise<string | null> {
+async function readContentByKey(key: string, visibility: WordVisibility): Promise<string | null> {
   if (isConfigured()) {
     try {
-      const buf = await downloadBuffer(key);
+      const buf = await downloadBuffer(key, { scope: storageScopeForVisibility(visibility) });
+      if (visibility === "private") {
+        await deleteObject(key, { scope: "public" });
+      }
       return buf.toString("utf-8");
     } catch {
-      return null;
+      if (visibility !== "private") return null;
+
+      // One-time compatibility migration for private content written before
+      // storage scope became explicit. Do not return the body until the public
+      // copy has been removed successfully.
+      try {
+        const legacy = await downloadBuffer(key, { scope: "public" });
+        await uploadBuffer(key, legacy, "text/markdown; charset=utf-8", { scope: "private" });
+        await deleteObject(key, { scope: "public" });
+        return legacy.toString("utf-8");
+      } catch {
+        return null;
+      }
     }
   }
   return memoryContent.get(key) ?? null;
@@ -183,10 +214,10 @@ function candidateContentKeys(meta: Pick<NoteMeta, "slug" | "type" | "bodyKey">)
 }
 
 async function readNoteContent(
-  meta: Pick<NoteMeta, "slug" | "type" | "bodyKey">,
+  meta: Pick<NoteMeta, "slug" | "type" | "bodyKey" | "visibility">,
 ): Promise<{ markdown: string; key: string } | null> {
   for (const key of candidateContentKeys(meta)) {
-    const markdown = await readContentByKey(key);
+    const markdown = await readContentByKey(key, meta.visibility);
     if (markdown !== null) return { markdown, key };
   }
   return null;
@@ -202,13 +233,11 @@ function parseRawMeta(raw: unknown): NoteMeta | null {
   }
 }
 
-async function deleteNoteContent(keys: string[]): Promise<void> {
+async function deleteNoteContent(keys: string[], scopes: StorageScope[]): Promise<void> {
   for (const key of keys) {
     if (isConfigured()) {
-      try {
-        await deleteObject(key);
-      } catch {
-        // Best-effort cleanup; metadata deletion is source of truth.
+      for (const scope of scopes) {
+        await deleteObject(key, { scope });
       }
       continue;
     }
@@ -315,6 +344,7 @@ async function createWord(input: {
     featured: !!input.featured,
     authorRole: "admin",
   };
+  await writeNoteContent(meta.bodyKey, normalisedMarkdown, meta.visibility);
   const redis = getRedis();
   if (redis) {
     await redis.set(wordMetaKey(slug), meta);
@@ -322,8 +352,6 @@ async function createWord(input: {
   } else {
     memoryMeta.set(slug, meta);
   }
-
-  await writeNoteContent(meta.bodyKey, normalisedMarkdown);
   return { meta, markdown: normalisedMarkdown };
 }
 
@@ -374,7 +402,8 @@ async function updateWord(
   const tagsChanged = !arraysEqual(nextTags, existing.tags);
   const featuredChanged = nextFeatured !== existing.featured;
 
-  const needsContentRead = typeof nextMarkdown === "string" || typeChanged || bodyKeyChanged;
+  const needsContentRead =
+    typeof nextMarkdown === "string" || typeChanged || bodyKeyChanged || visibilityChanged;
   const currentContent = needsContentRead ? await readNoteContent(existing) : null;
   const markdownChanged =
     typeof nextMarkdown === "string" && (currentContent?.markdown ?? null) !== nextMarkdown;
@@ -419,30 +448,45 @@ async function updateWord(
     featured: nextFeatured,
   };
 
-  const redis = getRedis();
-  if (redis) {
-    await redis.set(wordMetaKey(slug), meta);
-  } else {
-    memoryMeta.set(slug, meta);
-  }
-
   let markdown = markdownChanged && typeof nextMarkdown === "string" ? nextMarkdown : null;
   let sourceKey: string | null = null;
-  if (markdown === null && (nextType !== existing.type || nextBodyKey !== existing.bodyKey)) {
+  if (markdown === null && (typeChanged || bodyKeyChanged || visibilityChanged)) {
     markdown = currentContent?.markdown ?? null;
     sourceKey = currentContent?.key ?? null;
   }
 
+  if ((typeChanged || bodyKeyChanged || visibilityChanged) && markdown === null) {
+    return null;
+  }
+
   if (markdown !== null) {
-    await writeNoteContent(nextBodyKey, markdown);
+    await writeNoteContent(nextBodyKey, markdown, nextVisibility);
+
+    if (isConfigured()) {
+      const nextScope = storageScopeForVisibility(nextVisibility);
+      const previousScope = storageScopeForVisibility(existing.visibility);
+      if (nextBodyKey !== existing.bodyKey || nextScope !== previousScope) {
+        await deleteObject(existing.bodyKey, { scope: previousScope });
+      }
+      const oppositeScope: StorageScope = nextScope === "private" ? "public" : "private";
+      await deleteObject(nextBodyKey, { scope: oppositeScope });
+    }
+
     const staleKeys = new Set<string>();
     if (existing.bodyKey !== nextBodyKey) staleKeys.add(existing.bodyKey);
     if (sourceKey && sourceKey !== nextBodyKey) staleKeys.add(sourceKey);
     if (nextType !== existing.type) staleKeys.add(wordContentKey(existing.type, slug));
     staleKeys.delete(nextBodyKey);
     if (staleKeys.size > 0) {
-      await deleteNoteContent([...staleKeys]);
+      await deleteNoteContent([...staleKeys], ["public", "private"]);
     }
+  }
+
+  const redis = getRedis();
+  if (redis) {
+    await redis.set(wordMetaKey(slug), meta);
+  } else {
+    memoryMeta.set(slug, meta);
   }
 
   if (typeof input.markdown === "string") {
@@ -460,6 +504,7 @@ async function updateWord(
 async function deleteWord(slug: string): Promise<boolean> {
   const existing = await getWordMeta(slug);
   if (!existing) return false;
+  await deleteNoteContent(candidateContentKeys(existing), ["public", "private"]);
   const redis = getRedis();
   if (redis) {
     await Promise.all([
@@ -471,7 +516,6 @@ async function deleteWord(slug: string): Promise<boolean> {
     memoryMeta.delete(slug);
     await deleteAllShareLinksForSlug(slug);
   }
-  await deleteNoteContent(candidateContentKeys(existing));
   return true;
 }
 
@@ -503,7 +547,7 @@ async function listWords(
     if (idx >= 0) start = idx + 1;
   }
   const page = filtered.slice(start, start + limit);
-  const nextCursor = filtered[start + limit]?.slug ?? null;
+  const nextCursor = start + limit < filtered.length ? (page.at(-1)?.slug ?? null) : null;
   return { words: page, nextCursor };
 }
 

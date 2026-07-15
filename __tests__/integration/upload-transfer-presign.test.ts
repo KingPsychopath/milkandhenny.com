@@ -18,7 +18,7 @@ describe("upload transfer presign", () => {
     vi.doMock("@/features/auth/auth.server", () => ({
       requireAuthWithPayload: vi.fn().mockResolvedValue({
         error: null,
-        payload: { role: "admin" },
+        payload: { role: "admin", jti: "admin-session" },
       }),
     }));
     vi.doMock("@/lib/platform/r2.server", () => ({
@@ -33,6 +33,10 @@ describe("upload transfer presign", () => {
       MAX_EXPIRY_SECONDS: 30 * 24 * 60 * 60,
       MAX_TRANSFER_FILE_BYTES: 250 * 1024 * 1024,
       MAX_TRANSFER_TOTAL_BYTES: 1024 * 1024 * 1024,
+    }));
+    vi.doMock("@/features/transfers/upload-reservation.server", () => ({
+      createTransferUploadReservation: vi.fn().mockResolvedValue(true),
+      transferUploadFilesFingerprint: vi.fn().mockReturnValue("fingerprint"),
     }));
 
     const { POST } = await import("@/src/routes/api/upload/transfer/presign/route");
@@ -55,7 +59,7 @@ describe("upload transfer presign", () => {
     vi.doMock("@/features/auth/auth.server", () => ({
       requireAuthWithPayload: vi.fn().mockResolvedValue({
         error: null,
-        payload: { role: "upload" },
+        payload: { role: "upload", jti: "upload-session" },
       }),
     }));
     vi.doMock("@/lib/platform/r2.server", () => ({
@@ -91,7 +95,7 @@ describe("upload transfer presign", () => {
     vi.doMock("@/features/auth/auth.server", () => ({
       requireAuthWithPayload: vi.fn().mockResolvedValue({
         error: null,
-        payload: { role: "upload" },
+        payload: { role: "upload", jti: "upload-session" },
       }),
     }));
     vi.doMock("@/lib/platform/r2.server", () => ({
@@ -106,6 +110,10 @@ describe("upload transfer presign", () => {
       MAX_EXPIRY_SECONDS: 30 * 24 * 60 * 60,
       MAX_TRANSFER_FILE_BYTES: 250 * 1024 * 1024,
       MAX_TRANSFER_TOTAL_BYTES: 1024 * 1024 * 1024,
+    }));
+    vi.doMock("@/features/transfers/upload-reservation.server", () => ({
+      createTransferUploadReservation: vi.fn().mockResolvedValue(true),
+      transferUploadFilesFingerprint: vi.fn().mockReturnValue("fingerprint"),
     }));
 
     const { POST } = await import("@/src/routes/api/upload/transfer/presign/route");
@@ -144,7 +152,7 @@ describe("upload transfer presign", () => {
     vi.doMock("@/features/auth/auth.server", () => ({
       requireAuthWithPayload: vi.fn().mockResolvedValue({
         error: null,
-        payload: { role: "upload" },
+        payload: { role: "upload", jti: "upload-session" },
       }),
     }));
     vi.doMock("@/lib/platform/r2.server", () => ({

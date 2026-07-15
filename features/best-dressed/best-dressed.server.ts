@@ -5,6 +5,7 @@ import { getGuests } from "@/features/guests/store";
 import { getAllGuestNames } from "@/features/guests/utils";
 
 const VOTES_KEY = "best-dressed:votes";
+const VOTES_HASH_KEY = "best-dressed:votes:v2";
 const SESSION_KEY = "best-dressed:session";
 const OPEN_UNTIL_KEY = "best-dressed:open-until"; // unix seconds; when voting can proceed without a code
 const TOKEN_KEY_PREFIX = "best-dressed:token:"; // One-time vote token keys (Redis string with TTL)
@@ -30,7 +31,6 @@ export type LeaderboardEntry = { name: string; count: number };
 
 export type BestDressedSnapshot = {
   leaderboard: LeaderboardEntry[];
-  guestNames: string[];
   totalVotes: number;
   session: string;
   voteToken: string;
@@ -195,24 +195,43 @@ async function resetSession(): Promise<string> {
 async function getVotes(): Promise<VotesRecord> {
   const redis = getRedis();
   if (redis) {
-    const votes = await redis.get<VotesRecord>(VOTES_KEY);
-    return votes || {};
+    const [legacyVotes, atomicVotes] = await Promise.all([
+      redis.get<VotesRecord>(VOTES_KEY),
+      redis.hgetall<Record<string, string | number>>(VOTES_HASH_KEY),
+    ]);
+    const votes: VotesRecord = { ...(legacyVotes || {}) };
+    for (const [name, count] of Object.entries(atomicVotes || {})) {
+      const parsed = typeof count === "number" ? count : Number.parseInt(count, 10);
+      if (Number.isFinite(parsed)) votes[name] = (votes[name] || 0) + parsed;
+    }
+    return votes;
   }
   return Object.fromEntries(memoryVotes);
 }
 
-async function addVote(name: string): Promise<VotesRecord> {
+async function addVoteAtomically(
+  session: string,
+  voterId: string,
+  name: string,
+): Promise<{ added: boolean; votedFor: string | null; votes: VotesRecord }> {
   const redis = getRedis();
-  const votes = await getVotes();
-  votes[name] = (votes[name] || 0) + 1;
-
   if (redis) {
-    await redis.set(VOTES_KEY, votes);
-  } else {
-    memoryVotes.set(name, votes[name]);
+    const result = await redis.eval<string[], [number, string]>(
+      "local existing = redis.call('hget', KEYS[1], ARGV[1]); if existing then return {0, existing}; end; redis.call('hset', KEYS[1], ARGV[1], ARGV[2]); redis.call('expire', KEYS[1], ARGV[3]); redis.call('hincrby', KEYS[2], ARGV[2], 1); return {1, ARGV[2]}",
+      [votedKey(session), VOTES_HASH_KEY],
+      [voterId, name, String(VOTED_TTL_SECONDS)],
+    );
+    const votes = await getVotes();
+    return { added: result[0] === 1, votedFor: result[1] || null, votes };
   }
 
-  return votes;
+  const voted = memoryVotedBySession.get(session) ?? new Map<string, string>();
+  const existing = voted.get(voterId);
+  if (existing) return { added: false, votedFor: existing, votes: Object.fromEntries(memoryVotes) };
+  voted.set(voterId, name);
+  memoryVotedBySession.set(session, voted);
+  memoryVotes.set(name, (memoryVotes.get(name) || 0) + 1);
+  return { added: true, votedFor: name, votes: Object.fromEntries(memoryVotes) };
 }
 
 async function issueToken(): Promise<string> {
@@ -243,6 +262,13 @@ async function consumeToken(token: string): Promise<boolean> {
   return true;
 }
 
+async function tokenExists(token: string): Promise<boolean> {
+  if (!token || typeof token !== "string" || !token.startsWith("vt_")) return false;
+  const redis = getRedis();
+  if (redis) return (await redis.exists(tokenKey(token))) === 1;
+  return memoryTokens.has(token);
+}
+
 async function getVotedFor(session: string, voterId: string): Promise<string | null> {
   const redis = getRedis();
   if (redis) {
@@ -253,29 +279,15 @@ async function getVotedFor(session: string, voterId: string): Promise<string | n
   return map?.get(voterId) ?? null;
 }
 
-async function setVotedFor(session: string, voterId: string, name: string): Promise<void> {
-  const redis = getRedis();
-  if (redis) {
-    await redis.hset(votedKey(session), { [voterId]: name });
-    await redis.expire(votedKey(session), VOTED_TTL_SECONDS);
-    return;
-  }
-  const map = memoryVotedBySession.get(session) ?? new Map<string, string>();
-  map.set(voterId, name);
-  memoryVotedBySession.set(session, map);
-}
-
 export async function getBestDressedSnapshot(): Promise<BestDressedSnapshot> {
   const voterId = await getExistingVoterId();
-  const [votes, guests, session, voteToken, openUntil] = await Promise.all([
+  const [votes, session, voteToken, openUntil] = await Promise.all([
     getVotes(),
-    getGuests(),
     getSession(),
     issueToken(),
     getOpenUntilSeconds(),
   ]);
 
-  const guestNames = getAllGuestNames(guests);
   const votedFor = voterId ? await getVotedFor(session, voterId) : null;
   const now = Math.floor(Date.now() / 1000);
   const codeRequired = !(openUntil > now);
@@ -287,13 +299,35 @@ export async function getBestDressedSnapshot(): Promise<BestDressedSnapshot> {
 
   return {
     leaderboard,
-    guestNames,
     totalVotes: Object.values(votes).reduce((a, b) => a + b, 0),
     session,
     voteToken,
     votedFor,
     codeRequired,
     openUntil: openUntil || null,
+  };
+}
+
+export async function searchBestDressedGuests(input: {
+  query: string;
+  voteToken: string;
+  code?: string;
+}): Promise<{ names: string[] }> {
+  const query = typeof input.query === "string" ? input.query.trim().toLocaleLowerCase() : "";
+  if (query.length < 2 || !(await tokenExists(input.voteToken))) return { names: [] };
+  const openUntil = await getOpenUntilSeconds();
+  if (openUntil <= Math.floor(Date.now() / 1000)) {
+    const redis = getRedis();
+    const variants = voteCodeVariants(typeof input.code === "string" ? input.code : "");
+    if (!redis || variants.length === 0) return { names: [] };
+    const codeExists = await Promise.all(variants.map((variant) => redis.exists(codeKey(variant))));
+    if (!codeExists.some((exists) => exists === 1)) return { names: [] };
+  }
+  const guests = await getGuests();
+  return {
+    names: getAllGuestNames(guests)
+      .filter((name) => name.toLocaleLowerCase().includes(query))
+      .slice(0, 8),
   };
 }
 
@@ -391,6 +425,18 @@ export async function voteBestDressed(input: VoteInput): Promise<VoteResult> {
     };
   }
 
+  const now = Math.floor(Date.now() / 1000);
+  const codeRequired = !(openUntil > now);
+  const variants = voteCodeVariants(typeof input.code === "string" ? input.code : "");
+  if (codeRequired && variants.length === 0) {
+    return {
+      ok: false,
+      status: 400,
+      error: "A vote code is required. Ask staff for a code.",
+      session,
+    };
+  }
+
   const tokenValid = await consumeToken(input.voteToken);
   if (!tokenValid) {
     const votes = await getVotes();
@@ -408,19 +454,7 @@ export async function voteBestDressed(input: VoteInput): Promise<VoteResult> {
     };
   }
 
-  const now = Math.floor(Date.now() / 1000);
-  const codeRequired = !(openUntil > now);
-  const variants = voteCodeVariants(typeof input.code === "string" ? input.code : "");
-
   if (codeRequired) {
-    if (variants.length === 0) {
-      return {
-        ok: false,
-        status: 400,
-        error: "A vote code is required. Ask staff for a code.",
-        session,
-      };
-    }
     const redis = getRedis();
     if (!redis) {
       return {
@@ -449,8 +483,22 @@ export async function voteBestDressed(input: VoteInput): Promise<VoteResult> {
     }
   }
 
-  const votes = await addVote(trimmedName);
-  await setVotedFor(session, voterId, trimmedName);
+  const recorded = await addVoteAtomically(session, voterId, trimmedName);
+  const votes = recorded.votes;
+  if (!recorded.added) {
+    return {
+      ok: false,
+      status: 409,
+      error: "You can only vote once.",
+      votedFor: recorded.votedFor ?? undefined,
+      leaderboard: Object.entries(votes)
+        .map(([n, count]) => ({ name: n, count }))
+        .sort((a, b) => b.count - a.count)
+        .slice(0, 10),
+      totalVotes: Object.values(votes).reduce((a, b) => a + b, 0),
+      session,
+    };
+  }
 
   const leaderboard = Object.entries(votes)
     .map(([n, count]) => ({ name: n, count }))
@@ -471,7 +519,7 @@ export async function voteBestDressed(input: VoteInput): Promise<VoteResult> {
 export async function clearBestDressedVotes(): Promise<{ ok: true; session: string }> {
   const redis = getRedis();
   if (redis) {
-    await redis.del(VOTES_KEY);
+    await redis.del(VOTES_KEY, VOTES_HASH_KEY);
   }
   memoryVotes.clear();
   const session = await resetSession();

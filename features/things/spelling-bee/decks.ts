@@ -90,6 +90,26 @@ export const SPELLING_DECKS = [
       word("yoghurt", "noun", "a fermented milk food"),
     ],
   },
+  {
+    id: "american-english",
+    name: "American English",
+    description: "Color, center and other familiar US spellings.",
+    symbol: "US",
+    words: [
+      word("aluminum", "noun", "a lightweight silvery metal"),
+      word("analyze", "verb", "to examine something carefully"),
+      word("canceled", "verb", "called off before it could happen"),
+      word("center", "noun", "the middle point of something"),
+      word("color", "noun", "the appearance created by reflected light"),
+      word("defense", "noun", "protection against attack or criticism"),
+      word("gray", "adjective", "a color between black and white"),
+      word("jewelry", "noun", "decorative items worn for personal adornment"),
+      word("license", "noun", "official permission to do or own something"),
+      word("maneuver", "noun", "a movement requiring skill and care"),
+      word("pajamas", "noun", "clothes worn for sleeping"),
+      word("theater", "noun", "a building where plays or films are shown"),
+    ],
+  },
 ] satisfies readonly SpellingDeck[];
 
 export function shuffledWords(words: readonly SpellingWord[]) {

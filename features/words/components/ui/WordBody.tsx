@@ -18,6 +18,7 @@ type WordBodyProps = {
    * To remove this feature: delete this prop and the AlbumEmbed import.
    */
   albums?: Record<string, EmbeddedAlbum>;
+  privateMedia?: boolean;
 };
 
 type MarkdownNode = {
@@ -72,7 +73,7 @@ function isImageOnlyParagraph(node: MarkdownNode | undefined): boolean {
 
 /* ─── Base components (always active) ─── */
 
-function getBaseComponents(wordSlug?: string): Components {
+function getBaseComponents(wordSlug?: string, privateMedia = false): Components {
   return {
     table: ({ children, node, ...props }) => (
       <WordBodyTable {...props} node={node}>
@@ -99,7 +100,10 @@ function getBaseComponents(wordSlug?: string): Components {
      */
     img: ({ src, alt }) => {
       if (!src || typeof src !== "string") return null;
-      const resolved = resolveWordContentRef(src, wordSlug);
+      const resolved = resolveWordContentRef(src, wordSlug, {
+        privacy: privateMedia ? "private" : "public",
+      });
+      if (!resolved) return null;
 
       /** Hide the image (or figure) if it fails to load */
       const handleError = (e: React.SyntheticEvent<HTMLImageElement>) => {
@@ -132,7 +136,10 @@ function getBaseComponents(wordSlug?: string): Components {
       if (!href || typeof href !== "string") {
         return <a {...props}>{children}</a>;
       }
-      const resolved = resolveWordContentRef(href, wordSlug);
+      const resolved = resolveWordContentRef(href, wordSlug, {
+        privacy: privateMedia ? "private" : "public",
+      });
+      if (!resolved) return <span>{children}</span>;
       return (
         <a href={resolved} {...props}>
           {children}
@@ -159,8 +166,12 @@ function getBaseComponents(wordSlug?: string): Components {
  * Only called when there are actual albums to embed — otherwise
  * the default <p> renderer is used and AlbumEmbed is never invoked.
  */
-function withAlbumEmbeds(albums: Record<string, EmbeddedAlbum>, wordSlug?: string): Components {
-  const baseComponents = getBaseComponents(wordSlug);
+function withAlbumEmbeds(
+  albums: Record<string, EmbeddedAlbum>,
+  wordSlug?: string,
+  privateMedia = false,
+): Components {
+  const baseComponents = getBaseComponents(wordSlug, privateMedia);
   return {
     ...baseComponents,
 
@@ -202,12 +213,15 @@ function withAlbumEmbeds(albums: Record<string, EmbeddedAlbum>, wordSlug?: strin
 }
 
 /** Renders words markdown content as styled prose. Hashtags (#word) are styled via rehype-hashtags. */
-export function WordBody({ content, wordSlug, albums = {} }: WordBodyProps) {
+export function WordBody({ content, wordSlug, albums = {}, privateMedia = false }: WordBodyProps) {
   const hasAlbums = Object.keys(albums).length > 0;
 
   const components = React.useMemo(
-    () => (hasAlbums ? withAlbumEmbeds(albums, wordSlug) : getBaseComponents(wordSlug)),
-    [albums, hasAlbums, wordSlug],
+    () =>
+      hasAlbums
+        ? withAlbumEmbeds(albums, wordSlug, privateMedia)
+        : getBaseComponents(wordSlug, privateMedia),
+    [albums, hasAlbums, privateMedia, wordSlug],
   );
 
   return (

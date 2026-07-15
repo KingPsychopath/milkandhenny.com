@@ -24,7 +24,7 @@ import {
   getTransferMediaQueueLength,
   type TransferMediaJob,
 } from "@/features/transfers/media-queue.server";
-import { getTransfer, saveTransfer } from "@/features/transfers/store.server";
+import { getTransfer, updateTransferFile } from "@/features/transfers/store.server";
 import type { TransferData, TransferFile } from "@/features/transfers/types";
 import type { ProcessFileResult, TransferUploadFileInput } from "@/features/transfers/upload-types";
 import {
@@ -222,11 +222,7 @@ async function processWorkerJob(
     processingRoute: job.processingRoute,
     processingStartedAt: new Date().toISOString(),
   };
-  const processingTransfer: TransferData = {
-    ...transfer,
-    files: transfer.files.map((file, index) => (index === fileIndex ? processingFile : file)),
-  };
-  await saveTransfer(processingTransfer, remainingSeconds);
+  await updateTransferFile(job.transferId, processingFile);
 
   try {
     let result: ProcessFileResult;
@@ -287,19 +283,12 @@ async function processWorkerJob(
         job.processingRoute,
       );
     }
-    const updated: TransferData = {
-      ...processingTransfer,
-      files: processingTransfer.files.map((file, index) =>
-        index === fileIndex
-          ? {
-              ...result.file,
-              ...(current.groupId ? { groupId: current.groupId } : {}),
-              ...(current.groupRole ? { groupRole: current.groupRole } : {}),
-            }
-          : file,
-      ),
+    const updatedFile: TransferFile = {
+      ...result.file,
+      ...(current.groupId ? { groupId: current.groupId } : {}),
+      ...(current.groupRole ? { groupRole: current.groupRole } : {}),
     };
-    await saveTransfer(updated, remainingSeconds);
+    await updateTransferFile(job.transferId, updatedFile);
     return "succeeded";
   } catch (error) {
     const errorDetail =
@@ -314,36 +303,27 @@ async function processWorkerJob(
     console.error(
       `[transfer-media-worker] job failed transfer=${job.transferId} mediaId=${mediaId} route=${job.processingRoute}\n${errorDetail}`,
     );
-    const failed: TransferData = {
-      ...processingTransfer,
-      files: processingTransfer.files.map((file, index) =>
-        index === fileIndex
-          ? {
-              ...buildOriginalOnlyFailureFile(
-                mediaId,
-                job.file.name,
-                current.size,
-                current.storageKey,
-                job.processingRoute,
-                failureCode,
-                job.attempt,
-              ),
-              processingBackend: "worker",
-              storageKey: current.storageKey,
-              ...(current.originalStorageKey
-                ? { originalStorageKey: current.originalStorageKey }
-                : {}),
-              ...(current.originalFilename ? { originalFilename: current.originalFilename } : {}),
-              ...(current.originalMimeType ? { originalMimeType: current.originalMimeType } : {}),
-              ...(current.convertedFrom ? { convertedFrom: current.convertedFrom } : {}),
-              ...(current.groupId ? { groupId: current.groupId } : {}),
-              ...(current.groupRole ? { groupRole: current.groupRole } : {}),
-              processingErrorDetail: errorDetail,
-            }
-          : file,
+    const failedFile: TransferFile = {
+      ...buildOriginalOnlyFailureFile(
+        mediaId,
+        job.file.name,
+        current.size,
+        current.storageKey,
+        job.processingRoute,
+        failureCode,
+        job.attempt,
       ),
+      processingBackend: "worker",
+      storageKey: current.storageKey,
+      ...(current.originalStorageKey ? { originalStorageKey: current.originalStorageKey } : {}),
+      ...(current.originalFilename ? { originalFilename: current.originalFilename } : {}),
+      ...(current.originalMimeType ? { originalMimeType: current.originalMimeType } : {}),
+      ...(current.convertedFrom ? { convertedFrom: current.convertedFrom } : {}),
+      ...(current.groupId ? { groupId: current.groupId } : {}),
+      ...(current.groupRole ? { groupRole: current.groupRole } : {}),
+      processingErrorDetail: errorDetail,
     };
-    await saveTransfer(failed, remainingSeconds);
+    await updateTransferFile(job.transferId, failedFile);
     return "failed";
   }
 }
@@ -440,9 +420,13 @@ async function refreshQueuedTransferState(transfer: TransferData): Promise<Trans
 
   if (!changed) return transfer;
 
-  const updated = { ...transfer, files };
-  await saveTransfer(updated, remainingSeconds);
-  return updated;
+  for (const file of files) {
+    const original = transfer.files.find((candidate) => candidate.id === file.id);
+    if (original && didTransferFileChange(original, file)) {
+      await updateTransferFile(transfer.id, file);
+    }
+  }
+  return { ...transfer, files };
 }
 
 export {

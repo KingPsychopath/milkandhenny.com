@@ -1,24 +1,42 @@
-import { Link } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate } from "@tanstack/react-router";
 import { TextMorph } from "torph/react";
 import { useWebHaptics } from "web-haptics/react";
 import { applyPlayerActionFn, joinPartyRoomFn } from "./party-room.functions";
 import type { PartyClueKind, PartyPlayerAction, PartyPlayerCredentials } from "./types";
 import { usePartyLiveSnapshot } from "./usePartyLiveSnapshot";
 import { useSynchronizedPartyStage } from "./useSynchronizedPartyStage";
+import { PartyClosenessBoard } from "./PartyClosenessBoard";
+import { gameBrowserKeys, legacyGameBrowserKeys } from "../shared/game-keys";
+import { clearExpiredGameLocalStorage, readExpiringLocalValue, removeStorageKeys, removeStoragePrefix, writeExpiringLocalValue } from "../shared/game-storage.client";
+import { useUpdateReloadSafety } from "@/features/offline/update-safety.client";
 
 function joinToken(roomId: string) {
-  const key = `spelling-party-invite:v1:${roomId}`;
+  const key = gameBrowserKeys.partyInvite(roomId);
   const fromHash = location.hash.slice(1).trim();
   if (fromHash) { sessionStorage.setItem(key, fromHash); history.replaceState(null, "", location.pathname); return fromHash; }
-  return sessionStorage.getItem(key) ?? "";
+  const current = sessionStorage.getItem(key);
+  if (current) return current;
+  const legacyKey = legacyGameBrowserKeys.partyInvite(roomId);
+  const legacy = sessionStorage.getItem(legacyKey) ?? "";
+  if (legacy) sessionStorage.setItem(key, legacy);
+  sessionStorage.removeItem(legacyKey);
+  return legacy;
 }
-function playerKey(roomId: string) { return `spelling-party-player:v1:${roomId}`; }
+function playerKey(roomId: string) { return gameBrowserKeys.partyPlayerSession(roomId); }
 function readPlayer(roomId: string): PartyPlayerCredentials | null {
+  const current = readExpiringLocalValue<PartyPlayerCredentials>(playerKey(roomId));
+  if (current?.roomId === roomId && typeof current.playerId === "string" && typeof current.playerToken === "string") return current;
+  const legacyKey = legacyGameBrowserKeys.partyPlayerSession(roomId);
   try {
-    const value = JSON.parse(localStorage.getItem(playerKey(roomId)) ?? "null") as Partial<PartyPlayerCredentials> | null;
-    return value?.roomId === roomId && typeof value.playerId === "string" && typeof value.playerToken === "string" && typeof value.expiresAt === "number" && value.expiresAt > Date.now() ? value as PartyPlayerCredentials : null;
-  } catch { return null; }
+    const legacy = JSON.parse(localStorage.getItem(legacyKey) ?? "null") as Partial<PartyPlayerCredentials> | null;
+    localStorage.removeItem(legacyKey);
+    if (legacy?.roomId === roomId && typeof legacy.playerId === "string" && typeof legacy.playerToken === "string" && typeof legacy.expiresAt === "number" && legacy.expiresAt > Date.now()) {
+      writeExpiringLocalValue(playerKey(roomId), legacy as PartyPlayerCredentials, legacy.expiresAt);
+      return legacy as PartyPlayerCredentials;
+    }
+  } catch { localStorage.removeItem(legacyKey); }
+  return null;
 }
 
 export function PartyPlayerApp({ roomId }: { roomId: string }) {
@@ -28,14 +46,14 @@ export function PartyPlayerApp({ roomId }: { roomId: string }) {
   const [joining, setJoining] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const joinId = useRef(crypto.randomUUID());
-  useEffect(() => { setInvite(joinToken(roomId)); setCredentials(readPlayer(roomId)); }, [roomId]);
+  useEffect(() => { clearExpiredGameLocalStorage(); setInvite(joinToken(roomId)); setCredentials(readPlayer(roomId)); }, [roomId]);
   const handleJoin = async () => {
     if (!invite || !name.trim() || joining) return;
     setJoining(true); setMessage(null);
     try {
       const result = await joinPartyRoomFn({ data: { roomId, joinToken: invite, name, joinId: joinId.current } });
       if ("error" in result) { setMessage(result.error); setJoining(false); return; }
-      localStorage.setItem(playerKey(roomId), JSON.stringify(result)); setCredentials(result);
+      writeExpiringLocalValue(playerKey(roomId), result, result.expiresAt); setCredentials(result);
     } catch { setMessage("Could not join. Check your connection and try again."); setJoining(false); }
   };
   if (credentials) return <PartyPlayerGame credentials={credentials} />;
@@ -43,7 +61,9 @@ export function PartyPlayerApp({ roomId }: { roomId: string }) {
 }
 
 function PartyPlayerGame({ credentials }: { credentials: PartyPlayerCredentials }) {
+  const navigate = useNavigate();
   const live = usePartyLiveSnapshot({ roomId: credentials.roomId, role: "player", credential: credentials.playerToken, playerId: credentials.playerId, initialSnapshot: credentials.snapshot });
+  useUpdateReloadSafety("spelling-party-player", live.snapshot?.phase === "lobby" || live.snapshot?.phase === "finished");
   const stage = useSynchronizedPartyStage(live.snapshot, live.clockOffset);
   const [draft, setDraft] = useState(credentials.snapshot.player?.draft ?? "");
   const draftRevision = useRef(credentials.snapshot.player?.draftRevision ?? 0);
@@ -52,25 +72,38 @@ function PartyPlayerGame({ credentials }: { credentials: PartyPlayerCredentials 
   const priorLocked = useRef(false);
   const priorPhase = useRef(live.snapshot?.phase);
   const haptics = useWebHaptics();
-  const queueKey = `spelling-party-actions:v1:${credentials.roomId}:${credentials.playerId}`;
+  const queueKey = gameBrowserKeys.partyPendingActions(credentials.roomId, credentials.playerId);
 
   const queued = useCallback((): PartyPlayerAction[] => {
-    try { const value = JSON.parse(localStorage.getItem(queueKey) ?? "[]") as unknown; return Array.isArray(value) ? value as PartyPlayerAction[] : []; } catch { return []; }
-  }, [queueKey]);
+    const current = readExpiringLocalValue<PartyPlayerAction[]>(queueKey);
+    if (current) return current;
+    const legacyKey = legacyGameBrowserKeys.partyPendingActions(credentials.roomId, credentials.playerId);
+    try {
+      const legacy = JSON.parse(localStorage.getItem(legacyKey) ?? "[]") as unknown;
+      localStorage.removeItem(legacyKey);
+      if (Array.isArray(legacy) && legacy.length) {
+        writeExpiringLocalValue(queueKey, legacy as PartyPlayerAction[], credentials.expiresAt);
+        return legacy as PartyPlayerAction[];
+      }
+    } catch { localStorage.removeItem(legacyKey); }
+    return [];
+  }, [credentials.expiresAt, credentials.playerId, credentials.roomId, queueKey]);
   const enqueue = useCallback((action: PartyPlayerAction) => {
     const next = [...queued().filter(({ actionId }) => actionId !== action.actionId), action].slice(-40);
-    localStorage.setItem(queueKey, JSON.stringify(next));
-  }, [queueKey, queued]);
+    writeExpiringLocalValue(queueKey, next, credentials.expiresAt);
+  }, [credentials.expiresAt, queueKey, queued]);
 
   const send = useCallback(async (action: PartyPlayerAction, buffer = true) => {
     try {
       const result = await applyPlayerActionFn({ data: { roomId: credentials.roomId, playerId: credentials.playerId, playerToken: credentials.playerToken, action } });
       if (result.snapshot) live.setSnapshot(result.snapshot);
       if (!result.accepted) { live.setMessage(result.error ?? "That action is no longer available."); return false; }
-      const remaining = queued().filter(({ actionId }) => actionId !== action.actionId); localStorage.setItem(queueKey, JSON.stringify(remaining));
+      const remaining = queued().filter(({ actionId }) => actionId !== action.actionId);
+      if (remaining.length) writeExpiringLocalValue(queueKey, remaining, credentials.expiresAt);
+      else localStorage.removeItem(queueKey);
       live.notify(); live.setMessage(null); return true;
     } catch { if (buffer) enqueue(action); live.setMessage("Saved on this phone. Reconnecting…"); return false; }
-  }, [credentials.playerId, credentials.playerToken, credentials.roomId, enqueue, live, queueKey, queued]);
+  }, [credentials.expiresAt, credentials.playerId, credentials.playerToken, credentials.roomId, enqueue, live, queueKey, queued]);
 
   const flush = useCallback(async () => {
     for (const action of queued()) { const ok = await send(action, false); if (!ok) break; }
@@ -80,25 +113,32 @@ function PartyPlayerGame({ credentials }: { credentials: PartyPlayerCredentials 
   const snapshot = live.snapshot; const round = snapshot?.round; const player = snapshot?.player;
   useEffect(() => {
     if (!round || !player) return;
-    const key = `spelling-party-draft:v1:${credentials.roomId}:${round.roundId}`;
+    const key = gameBrowserKeys.partyDraft(credentials.roomId, round.roundId);
     if (roundRef.current !== round.roundId) {
+      if (roundRef.current) removeStorageKeys(localStorage, [gameBrowserKeys.partyDraft(credentials.roomId, roundRef.current), legacyGameBrowserKeys.partyDraft(credentials.roomId, roundRef.current)]);
       roundRef.current = round.roundId;
-      try {
-        const local = JSON.parse(localStorage.getItem(key) ?? "null") as { draft?: string; revision?: number } | null;
-        if (local && typeof local.draft === "string" && typeof local.revision === "number" && local.revision > player.draftRevision) { setDraft(local.draft); draftRevision.current = local.revision; }
-        else { setDraft(player.draft); draftRevision.current = player.draftRevision; }
-      } catch { setDraft(player.draft); draftRevision.current = player.draftRevision; }
+      let local = readExpiringLocalValue<{ draft: string; revision: number }>(key);
+      if (!local) {
+        const legacyKey = legacyGameBrowserKeys.partyDraft(credentials.roomId, round.roundId);
+        try {
+          const legacy = JSON.parse(localStorage.getItem(legacyKey) ?? "null") as { draft?: unknown; revision?: unknown } | null;
+          localStorage.removeItem(legacyKey);
+          if (typeof legacy?.draft === "string" && typeof legacy.revision === "number") local = { draft: legacy.draft, revision: legacy.revision };
+        } catch { localStorage.removeItem(legacyKey); }
+      }
+      if (local && local.revision > player.draftRevision) { setDraft(local.draft); draftRevision.current = local.revision; }
+      else { setDraft(player.draft); draftRevision.current = player.draftRevision; }
     } else if (player.draftRevision > draftRevision.current) { setDraft(player.draft); draftRevision.current = player.draftRevision; }
   }, [credentials.roomId, player, round]);
 
   useEffect(() => {
     if (!round || snapshot?.phase !== "answer" || player?.locked) return;
-    const key = `spelling-party-draft:v1:${credentials.roomId}:${round.roundId}`;
-    localStorage.setItem(key, JSON.stringify({ draft, revision: draftRevision.current }));
+    const key = gameBrowserKeys.partyDraft(credentials.roomId, round.roundId);
+    writeExpiringLocalValue(key, { draft, revision: draftRevision.current }, credentials.expiresAt);
     const action: PartyPlayerAction = { actionId: `${credentials.playerId}:${round.roundId}:draft:${draftRevision.current}`, type: "draft.update", roundId: round.roundId, draft, draftRevision: draftRevision.current };
     const timer = window.setTimeout(() => void send(action), 140);
     return () => window.clearTimeout(timer);
-  }, [credentials.playerId, credentials.roomId, draft, player?.locked, round, send, snapshot?.phase]);
+  }, [credentials.expiresAt, credentials.playerId, credentials.roomId, draft, player?.locked, round, send, snapshot?.phase]);
 
   const canType = snapshot?.phase === "answer" && !player?.locked;
   const addLetter = useCallback((letter: string) => {
@@ -159,16 +199,47 @@ function PartyPlayerGame({ credentials }: { credentials: PartyPlayerCredentials 
   const previousTick = useRef("");
   useEffect(() => { if (/^[123]$/.test(stage.label) && stage.label !== previousTick.current) void haptics.trigger("selection"); previousTick.current = stage.label; }, [haptics, stage.label]);
 
+  useEffect(() => {
+    if (snapshot?.phase !== "finished") return;
+    removeStorageKeys(localStorage, [queueKey, legacyGameBrowserKeys.partyPendingActions(credentials.roomId, credentials.playerId)]);
+    removeStoragePrefix(localStorage, gameBrowserKeys.partyDraftPrefix(credentials.roomId));
+    removeStoragePrefix(localStorage, legacyGameBrowserKeys.partyDraftPrefix(credentials.roomId));
+    writeExpiringLocalValue(playerKey(credentials.roomId), credentials, Math.min(credentials.expiresAt, Date.now() + 15 * 60_000));
+  }, [credentials, queueKey, snapshot?.phase]);
+
+  useEffect(() => {
+    if (!live.ended) return;
+    removeStorageKeys(sessionStorage, [gameBrowserKeys.partyInvite(credentials.roomId), legacyGameBrowserKeys.partyInvite(credentials.roomId)]);
+    removeStorageKeys(localStorage, [playerKey(credentials.roomId), legacyGameBrowserKeys.partyPlayerSession(credentials.roomId), queueKey, legacyGameBrowserKeys.partyPendingActions(credentials.roomId, credentials.playerId)]);
+    removeStoragePrefix(localStorage, gameBrowserKeys.partyDraftPrefix(credentials.roomId));
+    removeStoragePrefix(localStorage, legacyGameBrowserKeys.partyDraftPrefix(credentials.roomId));
+  }, [credentials.playerId, credentials.roomId, live.ended, queueKey]);
+
+  const handleLeave = () => {
+    if (!live.ended && snapshot?.phase !== "finished" && !window.confirm("Leave this party? You cannot rejoin after the game starts.")) return;
+    removeStorageKeys(sessionStorage, [gameBrowserKeys.partyInvite(credentials.roomId), legacyGameBrowserKeys.partyInvite(credentials.roomId)]);
+    removeStorageKeys(localStorage, [
+      playerKey(credentials.roomId),
+      legacyGameBrowserKeys.partyPlayerSession(credentials.roomId),
+      queueKey,
+      legacyGameBrowserKeys.partyPendingActions(credentials.roomId, credentials.playerId),
+    ]);
+    removeStoragePrefix(localStorage, gameBrowserKeys.partyDraftPrefix(credentials.roomId));
+    removeStoragePrefix(localStorage, legacyGameBrowserKeys.partyDraftPrefix(credentials.roomId));
+    void navigate({ to: "/things/spelling-party" });
+  };
+
   const leaderboard = useMemo(() => [...(snapshot?.players ?? [])].sort((a, b) => b.score - a.score || a.name.localeCompare(b.name)), [snapshot?.players]);
+  if (live.ended) return <main id="main" className="things-game things-game--night flex items-center justify-center px-6 text-center text-white"><div><h1 className="font-serif text-5xl font-semibold">Party ended.</h1><p className="mt-4 font-serif text-lg text-white/60">This room has been cleared.</p><button type="button" onClick={handleLeave} className="mt-6 min-h-12 rounded-full border border-white/20 px-6 font-mono text-sm">back to spelling bee</button></div></main>;
   if (!snapshot) return <PlayerMessage title="Rejoining…" detail={live.message ?? "Your place is saved."} />;
   const ownReveal = round?.answers?.find(({ playerId }) => playerId === credentials.playerId);
-  return <div className="things-game things-game--night text-white"><header className="flex items-center justify-between gap-4 p-5 font-mono text-xs text-white/55"><Link to="/things/spelling-party" className="inline-flex min-h-11 items-center">← leave</Link><span aria-live="polite">{live.connectionState === "connected" ? "● live" : "reconnecting · draft saved"}</span></header><main id="main" className="mx-auto flex w-full max-w-lg flex-1 flex-col px-5 pb-8 text-center">
+  return <div className="things-game things-game--night text-white"><header className="flex items-center justify-between gap-4 p-5 font-mono text-xs text-white/55"><button type="button" onClick={handleLeave} className="min-h-11">leave game</button><span aria-live="polite">{live.connectionState === "connected" ? "● live" : "reconnecting · draft saved"}</span></header><main id="main" className="mx-auto flex w-full max-w-lg flex-1 flex-col px-5 pb-8 text-center">
     <p className="mt-4 font-mono text-micro uppercase tracking-[0.2em] text-white/45">{round ? `word ${round.number} of ${round.total}` : snapshot.deckName}</p>
     {snapshot.phase === "lobby" ? <section className="flex flex-1 flex-col justify-center"><h1 className="font-serif text-5xl font-semibold">You’re in.</h1><p className="mt-4 font-serif text-lg text-white/60">The presenter will start when everyone is ready.</p></section> : snapshot.phase === "finished" ? <section className="flex flex-1 flex-col justify-center"><h1 className="font-serif text-5xl font-semibold">Final scores.</h1><ScoreList players={leaderboard} /></section> : <>
       <section className="pt-8"><TextMorph as="h1" className="break-words font-serif text-6xl font-semibold leading-none [overflow-wrap:anywhere]">{stage.label}</TextMorph>{stage.seconds !== null ? <p className="mt-4 font-mono text-xl text-white/55">{stage.seconds}s</p> : null}</section>
       {snapshot.phase === "answer" && !player?.locked ? <><div className="mt-8 flex min-h-16 flex-wrap justify-center gap-2" aria-label={draft ? `Your spelling: ${draft.split("").join(" ")}` : "Your spelling is blank"}>{draft.split("").map((letter, index) => <span key={`${index}-${letter}`} className="flex h-12 min-w-10 items-center justify-center rounded-xl border border-white/20 bg-white/[0.07] px-2 font-mono text-xl">{letter}</span>)}{!draft ? <span className="font-serif text-lg text-white/35">start typing</span> : null}</div><PartyKeyboard onLetter={addLetter} onBackspace={backspace} /><button type="button" onClick={() => void lock()} className="mt-4 min-h-14 w-full rounded-full bg-[var(--things-amber)] px-6 font-mono text-sm font-bold text-black">lock it in</button><div className="mt-5 grid grid-cols-3 gap-2"><button type="button" disabled={round?.repeatUsed} onClick={() => void requestClue("repeat")} className="min-h-12 rounded-full border border-white/15 px-2 font-mono text-micro disabled:opacity-30">hear again</button><button type="button" disabled={round?.definitionUsed} onClick={() => void requestClue("definition")} className="min-h-12 rounded-full border border-white/15 px-2 font-mono text-micro disabled:opacity-30">definition</button><button type="button" disabled={!round?.sentenceCluesRemaining} onClick={() => void requestClue("sentence")} className="min-h-12 rounded-full border border-white/15 px-2 font-mono text-micro disabled:opacity-30">sentence · {round?.sentenceCluesRemaining}</button></div></> : null}
       {(snapshot.phase === "answer" || snapshot.phase === "locked") && player?.locked ? <section className="flex flex-1 flex-col justify-center"><h2 className="font-serif text-4xl font-semibold">Locked in.</h2><p className="mt-3 font-serif text-lg text-white/55">Waiting for everyone else.</p></section> : null}
-      {snapshot.phase === "reveal" && round ? <section className="mt-8"><p className="font-mono text-micro uppercase tracking-[0.18em] text-white/45">{ownReveal?.correct ? "correct" : "not this time"}</p><p className="mt-4 font-serif text-2xl text-white/60">you wrote · {ownReveal?.answer || "no answer"}</p><ScoreList players={leaderboard} /><p className="mt-6 font-serif text-lg text-white/50">Waiting for the presenter…</p></section> : null}
+      {snapshot.phase === "reveal" && round ? <section className="mt-8"><p className="font-mono text-micro uppercase tracking-[0.18em] text-white/45">{ownReveal?.correct ? "correct" : ownReveal?.distance === 1 ? "one letter away" : "not this time"}</p><p className="mt-4 font-serif text-2xl text-white/60">you wrote · {ownReveal?.answer || "no answer"}</p>{round.answers ? <PartyClosenessBoard answers={round.answers} currentPlayerId={credentials.playerId} /> : null}<p className="mt-6 font-serif text-lg text-white/50">Scores are saved for the final reveal.</p></section> : null}
     </>}
     {snapshot.recentClues.at(-1) ? <p className="mt-4 font-mono text-xs text-amber-200">{snapshot.recentClues.at(-1)?.message}</p> : null}<p aria-live="polite" className="mt-3 min-h-5 font-mono text-xs text-amber-200">{live.message}</p>
   </main></div>;

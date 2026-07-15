@@ -1,13 +1,11 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { requireAdminStepUp, requireAuth } from "@/features/auth/auth.server";
+import { isValidTokenJti, requireAdminStepUp, requireAuth } from "@/features/auth/auth.server";
 import { getRedis } from "@/lib/platform/redis.server";
 import { apiErrorFromRequest } from "@/lib/platform/api-error";
 
 type RouteContext = {
   params: Promise<{ jti: string }>;
 };
-
-const SAFE_JTI = /^[0-9a-fA-F-]{32,40}$/;
 
 async function handleDELETE(request: Request, context: RouteContext) {
   const authErr = await requireAuth(request, "admin");
@@ -25,7 +23,7 @@ async function handleDELETE(request: Request, context: RouteContext) {
 
   const { jti } = await context.params;
   const clean = decodeURIComponent(jti).trim();
-  if (!SAFE_JTI.test(clean)) {
+  if (!isValidTokenJti(clean)) {
     return Response.json({ error: "Invalid session id" }, { status: 400 });
   }
 

@@ -225,41 +225,13 @@ function ImportTab({ uploading, fileInputRef, handleFileUpload }: ImportTabProps
 }
 
 type DataTabProps = {
-  dataLoading: boolean;
-  handlePartyReset: () => void;
   guestsCount: number;
   plusOneCount: number;
-  handleBootstrap: () => void;
-  handleForceReload: () => void;
 };
 
-function DataTab({
-  dataLoading,
-  handlePartyReset,
-  guestsCount,
-  plusOneCount,
-  handleBootstrap,
-  handleForceReload,
-}: DataTabProps) {
+function DataTab({ guestsCount, plusOneCount }: DataTabProps) {
   return (
     <div className="space-y-4">
-      <button
-        onClick={handlePartyReset}
-        disabled={dataLoading}
-        className="w-full py-4 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-zinc-950 font-bold text-lg rounded-2xl shadow-lg shadow-amber-500/30 hover:shadow-amber-500/50 disabled:opacity-50 transition-all flex items-center justify-center gap-3"
-      >
-        {dataLoading ? (
-          <div className="w-6 h-6 border-2 border-zinc-950/30 border-t-zinc-950 rounded-full animate-spin" />
-        ) : (
-          <>
-            <span className="text-2xl">*</span>Party Reset
-          </>
-        )}
-      </button>
-      <p className="text-center text-stone-500 text-xs">
-        Resets check-ins + clears votes in one click
-      </p>
-
       <div className="bg-stone-50 rounded-xl p-4 mt-4">
         <h3 className="font-medium text-stone-700 mb-2">Current Data</h3>
         <div className="grid grid-cols-2 gap-3 text-sm">
@@ -274,67 +246,11 @@ function DataTab({
         </div>
       </div>
 
-      <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 space-y-3">
-        <div>
-          <h4 className="font-medium text-emerald-800">Load from CSV (Safe)</h4>
-          <p className="text-sm text-emerald-700 mt-1">
-            Only loads if database is empty. <strong>Preserves existing check-ins.</strong>
-          </p>
-        </div>
-        <button
-          onClick={handleBootstrap}
-          disabled={dataLoading}
-          className="w-full bg-emerald-600 text-white py-2.5 rounded-xl font-medium hover:bg-emerald-700 disabled:opacity-50 transition-colors flex items-center justify-center gap-2"
-        >
-          {dataLoading ? (
-            <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-          ) : (
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
-              />
-            </svg>
-          )}
-          Bootstrap from CSV
-        </button>
-      </div>
-
-      <div className="bg-red-50 border border-red-200 rounded-xl p-4 space-y-3">
-        <div>
-          <h4 className="font-medium text-red-800">Force Reload (Destructive)</h4>
-          <p className="text-sm text-red-700 mt-1">
-            Clears ALL data including check-ins and reloads fresh from CSV.
-          </p>
-        </div>
-        <button
-          onClick={handleForceReload}
-          disabled={dataLoading}
-          className="w-full bg-red-600 text-white py-2.5 rounded-xl font-medium hover:bg-red-700 disabled:opacity-50 transition-colors flex items-center justify-center gap-2"
-        >
-          {dataLoading ? (
-            <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-          ) : (
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
-              />
-            </svg>
-          )}
-          Reset &amp; Reload from CSV
-        </button>
-      </div>
-
       <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
         <p className="text-sm text-blue-800">
           <strong>How check-ins persist:</strong> All check-ins are saved to Redis immediately. They
-          persist across page refreshes and device switches. Only a Force Reload or new CSV import
-          will clear them.
+          persist across page refreshes and device switches. Use the protected Import tab when you
+          intentionally want to replace the guest list from a local CSV.
         </p>
       </div>
     </div>
@@ -472,11 +388,6 @@ export function GuestManagement({
     uploading,
     fileInputRef,
     handleFileUpload,
-    // data
-    dataLoading,
-    handleBootstrap,
-    handleForceReload,
-    handlePartyReset,
     // games
     bestDressedLeaderboard,
     bestDressedTotalVotes,
@@ -645,14 +556,7 @@ export function GuestManagement({
 
             {/* ── Data tab ── */}
             {activeTab === "data" && (
-              <DataTab
-                dataLoading={dataLoading}
-                handlePartyReset={handlePartyReset}
-                guestsCount={guests.length}
-                plusOneCount={plusOneCount}
-                handleBootstrap={handleBootstrap}
-                handleForceReload={handleForceReload}
-              />
+              <DataTab guestsCount={guests.length} plusOneCount={plusOneCount} />
             )}
 
             {/* ── Games tab ── */}

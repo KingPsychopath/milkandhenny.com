@@ -7,7 +7,7 @@ const {
   getTransferMediaQueueLength,
   processImageVariants,
   resolveImageProcessingSource,
-  saveTransfer,
+  updateTransferFile,
   uploadBuffer,
 } = vi.hoisted(() => ({
   dequeueTransferMediaJobs: vi.fn(),
@@ -16,7 +16,7 @@ const {
   getTransferMediaQueueLength: vi.fn(),
   processImageVariants: vi.fn(),
   resolveImageProcessingSource: vi.fn(),
-  saveTransfer: vi.fn(),
+  updateTransferFile: vi.fn().mockResolvedValue(true),
   uploadBuffer: vi.fn(),
 }));
 
@@ -33,7 +33,7 @@ vi.mock("@/features/transfers/media-queue.server", () => ({
 
 vi.mock("@/features/transfers/store.server", () => ({
   getTransfer,
-  saveTransfer,
+  updateTransferFile,
 }));
 
 vi.mock("@/features/media/processing.server", () => ({
@@ -214,16 +214,9 @@ describe("worker media processing", () => {
       expect.any(Buffer),
       "image/webp",
     );
-    expect(saveTransfer).toHaveBeenLastCalledWith(
-      expect.objectContaining({
-        files: expect.arrayContaining([
-          expect.objectContaining({
-            id: "photo-2",
-            processingStatus: "worker_done",
-          }),
-        ]),
-      }),
-      expect.any(Number),
+    expect(updateTransferFile).toHaveBeenLastCalledWith(
+      "transfer-1",
+      expect.objectContaining({ id: "photo-2", processingStatus: "worker_done" }),
     );
     expect(result.succeeded).toBe(1);
   });
@@ -261,6 +254,9 @@ describe("worker media processing", () => {
       processingErrorCode: "retries_exhausted",
       previewStatus: "original_only",
     });
-    expect(saveTransfer).toHaveBeenCalled();
+    expect(updateTransferFile).toHaveBeenCalledWith(
+      "transfer-1",
+      expect.objectContaining({ processingErrorCode: "retries_exhausted" }),
+    );
   });
 });

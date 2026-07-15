@@ -16,6 +16,7 @@ import { RemotePlayerReady } from "../remote/RemotePlayerReady";
 import { useRemotePlayerRoom } from "../remote/useRemotePlayerRoom";
 import type { RemoteCommand, RemoteGameSnapshot, RemoteHeadsUpSetup, RemotePlayerSession } from "../remote/types";
 import { GameShell } from "../shared/GameShell";
+import { useUpdateReloadSafety } from "@/features/offline/update-safety.client";
 
 type Phase = "setup" | "builder" | "countdown" | "playing" | "results";
 type Decision = "correct" | "pass";
@@ -54,6 +55,7 @@ function HeadsUpExperience({ fullscreen, remoteSession }: { fullscreen: Fullscre
     cards: joinedSetup.deck.cards,
   } : null;
   const [phase, setPhase] = useState<Phase>("setup");
+  useUpdateReloadSafety("heads-up-round", phase === "setup" || phase === "builder" || phase === "results");
   const [deckId, setDeckId] = useState(joinedDeck?.id ?? GAME_DECKS[0].id);
   const [cards, setCards] = useState(() => shuffledCards(joinedDeck?.cards ?? GAME_DECKS[0].cards));
   const [cardIndex, setCardIndex] = useState(0);
@@ -392,7 +394,7 @@ function HeadsUpExperience({ fullscreen, remoteSession }: { fullscreen: Fullscre
     return (
       <GameShell tone={feedback === "correct" ? "green" : feedback === "pass" ? "stone" : "amber"}>
         <header className="grid grid-cols-3 items-center px-5 py-4 text-black">
-          <button type="button" onClick={() => endRound()} className="min-h-11 justify-self-start font-mono text-xs opacity-60">end round</button>
+          <button type="button" onClick={() => endRound()} className="min-h-11 justify-self-start rounded-full border border-black/20 px-3 font-mono text-xs">end round</button>
           <span
             className="justify-self-center rounded-full border border-black/15 px-4 py-2 font-mono text-lg font-semibold tabular-nums"
             aria-label={`${seconds} seconds remaining`}
@@ -411,6 +413,7 @@ function HeadsUpExperience({ fullscreen, remoteSession }: { fullscreen: Fullscre
           feedback={feedback}
           pauseReason={pauseReason}
           onDecision={handleDecision}
+          onEnd={() => endRound()}
           onResume={() => {
             if (remotePaused) {
               setRemotePaused(false);

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useNavigate } from "@tanstack/react-router";
 import { closeRemoteRoomFn, createRemoteRoomFn, syncRemotePlayerFn } from "./remote-room.functions";
 import type {
   RemoteCommand,
@@ -11,6 +12,8 @@ import type {
   RemoteSyncedSnapshot,
 } from "./types";
 import { useRemoteSocket } from "./useRemoteSocket";
+import { gameBrowserKeys, legacyGameBrowserKeys } from "../shared/game-keys";
+import { migrateSessionValue, removeStorageKeys } from "../shared/game-storage.client";
 
 const SAFETY_SYNC_INTERVAL_MS = 12_000;
 
@@ -23,7 +26,7 @@ interface PlayerRoom {
 }
 
 function storageKey(game: RemoteGameKind) {
-  return `thing-remote-player:v2:${game}`;
+  return gameBrowserKeys.remoteHostSession(game);
 }
 
 function playerRoom(value: RemoteRoomCredentials | RemotePlayerSession): PlayerRoom {
@@ -43,6 +46,7 @@ export function useRemotePlayerRoom(
   onCommand: (command: RemoteCommand) => void,
   initialSession?: RemotePlayerSession,
 ) {
+  const navigate = useNavigate();
   const [room, setRoom] = useState<PlayerRoom | null>(() => initialSession ? playerRoom(initialSession) : null);
   const [judgeConnected, setJudgeConnected] = useState(false);
   const [syncing, setSyncing] = useState(false);
@@ -57,7 +61,8 @@ export function useRemotePlayerRoom(
   const roundIdRef = useRef<string | null>(null);
   const lastRevisionSignatureRef = useRef("");
   const revisionRef = useRef(0);
-  const syncNowRef = useRef<(() => void) | null>(null);
+  const syncNowRef = useRef<(() => Promise<void>) | null>(null);
+  const syncWaitersRef = useRef<Array<() => void>>([]);
   snapshotRef.current = snapshot;
   commandRef.current = onCommand;
 
@@ -93,13 +98,14 @@ export function useRemotePlayerRoom(
     roomId: room?.roomId ?? null,
     role: "player",
     token: room?.playerToken ?? null,
-    onWake: () => syncNowRef.current?.(),
+    onWake: () => { void syncNowRef.current?.(); },
   });
 
   useEffect(() => {
     if (initialSession) return;
     try {
-      const stored: unknown = JSON.parse(sessionStorage.getItem(storageKey(game)) ?? "null");
+      const raw = migrateSessionValue(storageKey(game), [legacyGameBrowserKeys.remoteHostSession(game)]);
+      const stored: unknown = JSON.parse(raw ?? "null");
       if (!stored || typeof stored !== "object") return;
       const value = stored as Partial<PlayerRoom>;
       if (typeof value.roomId === "string" && typeof value.playerToken === "string" && typeof value.expiresAt === "number" && value.expiresAt > Date.now()) {
@@ -107,7 +113,7 @@ export function useRemotePlayerRoom(
         setRoom(value as PlayerRoom);
       }
     } catch {
-      sessionStorage.removeItem(storageKey(game));
+      removeStorageKeys(sessionStorage, [storageKey(game), legacyGameBrowserKeys.remoteHostSession(game)]);
     }
   }, [game, initialSession]);
 
@@ -118,6 +124,7 @@ export function useRemotePlayerRoom(
   }, [game, initialSession, room]);
 
   const createRoom = useCallback(async () => {
+    if (room || syncing) return null;
     setSyncing(true);
     setMessage(null);
     try {
@@ -131,15 +138,20 @@ export function useRemotePlayerRoom(
     } finally {
       setSyncing(false);
     }
-  }, [setup]);
+  }, [room, setup, syncing]);
 
   const createJudgeRoom = useCallback(async () => {
+    if (syncing) return null;
     setSyncing(true);
     setMessage(null);
     try {
       const credentials = await createRemoteRoomFn({ data: { creatorRole: "judge", setup } });
       const hash = new URLSearchParams({ judge: credentials.judgeToken, player: credentials.playerToken, game });
-      window.location.assign(`/things/judge/${credentials.roomId}#${hash.toString()}`);
+      await navigate({
+        to: "/things/judge/$roomId",
+        params: { roomId: credentials.roomId },
+        hash: hash.toString(),
+      });
       return credentials;
     } catch {
       setMessage("Could not make the player invite. Check your connection and try again.");
@@ -147,32 +159,43 @@ export function useRemotePlayerRoom(
     } finally {
       setSyncing(false);
     }
-  }, [game, setup]);
+  }, [game, navigate, setup, syncing]);
 
   const closeRoom = useCallback(async () => {
     const current = room;
+    if (syncing) return;
+    setSyncing(true);
     setRoom(null);
     setJudgeConnected(false);
     lastCommandSequenceRef.current = 0;
     processedCommands.current.clear();
     decidedItemsRef.current.clear();
     receiptsRef.current = [];
-    if (!initialSession) sessionStorage.removeItem(storageKey(game));
-    if (!current) return;
+    if (!initialSession) removeStorageKeys(sessionStorage, [storageKey(game), legacyGameBrowserKeys.remoteHostSession(game)]);
+    if (!current) { setSyncing(false); return; }
     try {
       await closeRemoteRoomFn({ data: { roomId: current.roomId, role: "player", token: current.playerToken } });
+      setMessage("Remote judging ended. Your game stays on this phone.");
     } catch {
       // Rooms expire automatically; local play must not depend on cleanup.
+    } finally {
+      setSyncing(false);
     }
-  }, [game, initialSession, room]);
+  }, [game, initialSession, room, syncing]);
 
   useEffect(() => {
     if (!room) return;
     let active = true;
     let inFlight = false;
+    let syncRequested = false;
+    const syncWaiters = syncWaitersRef.current;
 
     const sync = async () => {
-      if (inFlight || !active) return;
+      if (!active) return;
+      if (inFlight) {
+        syncRequested = true;
+        return;
+      }
       inFlight = true;
       try {
         const currentSnapshot = syncedSnapshot();
@@ -189,7 +212,7 @@ export function useRemotePlayerRoom(
           setMessage(result.error ?? "Remote room ended. Local play continues.");
           setRoom(null);
           setJudgeConnected(false);
-          if (!initialSession) sessionStorage.removeItem(storageKey(game));
+          if (!initialSession) removeStorageKeys(sessionStorage, [storageKey(game), legacyGameBrowserKeys.remoteHostSession(game)]);
           return;
         }
         setJudgeConnected(result.judgeConnected);
@@ -199,12 +222,16 @@ export function useRemotePlayerRoom(
           if (processedCommands.current.has(command.id)) continue;
           processedCommands.current.add(command.id);
           const latest = syncedSnapshot();
-          const isDecision = command.type === "correct" || command.type === "incorrect" || command.type === "pass";
+          const isDecision = command.type === "correct" || command.type === "incorrect" || command.type === "pass" || command.type === "skip";
           let receipt: RemoteCommandReceipt;
           if (latest.roundId !== command.roundId) {
             receipt = { commandId: command.id, sequence: command.sequence, status: "rejected", reason: "stale round" };
-          } else if (latest.itemId !== command.itemId || (isDecision && (latest.transitioning || decidedItemsRef.current.has(command.itemId)))) {
+          } else if (latest.itemId !== command.itemId || (isDecision && latest.transitioning)) {
             receipt = { commandId: command.id, sequence: command.sequence, status: "rejected", reason: "stale item" };
+          } else if (isDecision && (latest.decisionGraceEndsAt ?? latest.decisionClosesAt) && command.receivedAt > (latest.decisionGraceEndsAt ?? latest.decisionClosesAt)!) {
+            receipt = { commandId: command.id, sequence: command.sequence, status: "rejected", reason: "decision closed" };
+          } else if (isDecision && decidedItemsRef.current.has(command.itemId)) {
+            receipt = { commandId: command.id, sequence: command.sequence, status: "rejected", reason: "already decided" };
           } else {
             commandRef.current(command);
             if (isDecision) decidedItemsRef.current.add(command.itemId);
@@ -217,7 +244,7 @@ export function useRemotePlayerRoom(
           processedCommands.current = new Set([...processedCommands.current].slice(-250));
         }
         notifySocket();
-        if (received) window.setTimeout(() => syncNowRef.current?.(), 0);
+        if (received) syncRequested = true;
       } catch {
         if (active) {
           setJudgeConnected(false);
@@ -225,11 +252,21 @@ export function useRemotePlayerRoom(
         }
       } finally {
         inFlight = false;
+        if (syncRequested && active) {
+          syncRequested = false;
+          window.setTimeout(() => void sync(), 0);
+        } else {
+          const waiters = syncWaiters.splice(0);
+          waiters.forEach((resolve) => resolve());
+        }
       }
     };
 
     const handleResume = () => void sync();
-    syncNowRef.current = () => void sync();
+    syncNowRef.current = () => new Promise<void>((resolve) => {
+      syncWaiters.push(resolve);
+      void sync();
+    });
     void sync();
     const interval = window.setInterval(() => void sync(), SAFETY_SYNC_INTERVAL_MS);
     window.addEventListener("online", handleResume);
@@ -237,6 +274,7 @@ export function useRemotePlayerRoom(
     return () => {
       active = false;
       syncNowRef.current = null;
+      syncWaiters.splice(0).forEach((resolve) => resolve());
       window.clearInterval(interval);
       window.removeEventListener("online", handleResume);
       document.removeEventListener("visibilitychange", handleResume);
@@ -245,12 +283,13 @@ export function useRemotePlayerRoom(
 
   const snapshotSignature = JSON.stringify({ ...snapshot, updatedAt: 0 });
   useEffect(() => {
-    if (room) syncNowRef.current?.();
+    if (room) void syncNowRef.current?.();
   }, [room, snapshotSignature]);
 
   const inviteUrl = room?.judgeToken && typeof window !== "undefined"
     ? `${window.location.origin}/things/judge/${room.roomId}#${room.judgeToken}`
     : null;
+  const syncNow = useCallback(() => syncNowRef.current?.() ?? Promise.resolve(), []);
 
   return {
     room,
@@ -262,6 +301,7 @@ export function useRemotePlayerRoom(
     createRoom,
     createJudgeRoom,
     closeRoom,
+    syncNow,
     setMessage,
   };
 }

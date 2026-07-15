@@ -8,6 +8,40 @@ const states = new Map<OfflineThingSlug, OfflineState>();
 const listeners = new Set<() => void>();
 const preparation = new Map<OfflineThingSlug, Promise<void>>();
 let registrationPromise: Promise<ServiceWorkerRegistration | null> | null = null;
+type SiteUpdateState = "idle" | "ready" | "activating";
+let siteUpdateState: SiteUpdateState = "idle";
+let waitingWorker: ServiceWorker | null = null;
+let reloadForUpdate = false;
+const updateListeners = new Set<() => void>();
+
+function publishSiteUpdate(state: SiteUpdateState, worker?: ServiceWorker | null) {
+  if (worker !== undefined) waitingWorker = worker;
+  if (siteUpdateState === state) return;
+  siteUpdateState = state;
+  for (const listener of updateListeners) listener();
+}
+
+function observeRegistration(registration: ServiceWorkerRegistration) {
+  const showWaitingUpdate = () => {
+    if (registration.waiting && navigator.serviceWorker.controller) {
+      publishSiteUpdate("ready", registration.waiting);
+    }
+  };
+  const watchInstalling = (installing: ServiceWorker | null) => {
+    if (!installing) return;
+    installing.addEventListener("statechange", () => {
+      if (installing.state === "installed") showWaitingUpdate();
+    });
+  };
+  showWaitingUpdate();
+  watchInstalling(registration.installing);
+  registration.addEventListener("updatefound", () => watchInstalling(registration.installing));
+  navigator.serviceWorker.addEventListener("controllerchange", () => {
+    if (!reloadForUpdate) return;
+    reloadForUpdate = false;
+    location.reload();
+  });
+}
 
 function publish(slug: OfflineThingSlug, state: OfflineState) {
   if (states.get(slug) === state) return;
@@ -34,13 +68,38 @@ export function registerOfflinePlatform() {
   registrationPromise = (async () => {
     if (!import.meta.env.PROD || !("serviceWorker" in navigator)) return null;
     await waitForPageLoad();
-    await navigator.serviceWorker.register("/sw.js", {
+    const registration = await navigator.serviceWorker.register("/sw.js", {
       scope: "/",
       updateViaCache: "none",
     });
+    observeRegistration(registration);
+    void registration.update();
     return navigator.serviceWorker.ready;
   })().catch(() => null);
   return registrationPromise;
+}
+
+export function useSiteUpdateState() {
+  return useSyncExternalStore(
+    (listener) => {
+      updateListeners.add(listener);
+      return () => updateListeners.delete(listener);
+    },
+    () => siteUpdateState,
+    () => "idle" as const,
+  );
+}
+
+export async function activateSiteUpdate() {
+  const registration = await registerOfflinePlatform();
+  const worker = registration?.waiting ?? waitingWorker;
+  if (!worker) return false;
+  reloadForUpdate = true;
+  publishSiteUpdate("activating", worker);
+  // ServiceWorker.postMessage has no targetOrigin argument.
+  // oxlint-disable-next-line unicorn/require-post-message-target-origin
+  worker.postMessage({ type: "SKIP_WAITING" });
+  return true;
 }
 
 async function sendWorkerMessage(

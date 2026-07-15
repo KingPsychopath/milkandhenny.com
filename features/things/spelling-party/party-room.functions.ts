@@ -1,6 +1,6 @@
 import { createServerFn } from "@tanstack/react-start";
 import { partyDeckCatalog } from "./party-content.server";
-import { applyPlayerAction, applyPresenterAction, createPartyRoom, joinPartyRoom, readPartySnapshot } from "./party-room.server";
+import { applyPlayerAction, applyPresenterAction, closePartyRoom, createPartyRoom, joinPartyRoom, readPartySnapshot } from "./party-room.server";
 import type { PartyClueKind, PartyPlayerAction, PartyPresenterAction, PartyRole } from "./types";
 
 function record(value: unknown): Record<string, unknown> {
@@ -83,3 +83,10 @@ export const applyPlayerActionFn = createServerFn({ method: "POST" })
     return { roomId: roomId(data.roomId), playerId: text(data.playerId, 120), playerToken: credential(data.playerToken), action: playerAction(data.action) };
   })
   .handler(({ data }) => applyPlayerAction(data));
+
+export const closePartyRoomFn = createServerFn({ method: "POST" })
+  .validator((value: unknown) => {
+    const data = record(value);
+    return { roomId: roomId(data.roomId), presenterToken: credential(data.presenterToken) };
+  })
+  .handler(({ data }) => closePartyRoom(data.roomId, data.presenterToken));

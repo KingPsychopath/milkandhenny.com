@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { playFeedback } from "@/lib/client/feedback";
 import { SITE_NAME } from "@/lib/shared/config";
@@ -9,6 +9,7 @@ import { useHasMounted } from "@/hooks/useHasMounted";
 import {
   getBestDressedLeaderboardFn,
   getBestDressedSnapshotFn,
+  searchBestDressedGuestsFn,
   voteBestDressedFn,
 } from "@/features/best-dressed/best-dressed.functions";
 
@@ -16,7 +17,6 @@ type LeaderboardEntry = { name: string; count: number };
 type StoredVote = { session: string; name: string };
 type BestDressedSnapshot = {
   leaderboard: LeaderboardEntry[];
-  guestNames: string[];
   totalVotes: number;
   session: string;
   voteToken: string;
@@ -41,7 +41,7 @@ export function BestDressedClient({ initialSnapshot }: BestDressedClientProps) {
   const [openUntil, setOpenUntil] = useState<number | null>(
     typeof initialSnapshot.openUntil === "number" ? initialSnapshot.openUntil : null,
   );
-  const [guestNames] = useState<string[]>(initialSnapshot.guestNames || []);
+  const [filteredGuests, setFilteredGuests] = useState<string[]>([]);
   const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>(
     initialSnapshot.leaderboard || [],
   );
@@ -126,12 +126,21 @@ export function BestDressedClient({ initialSnapshot }: BestDressedClientProps) {
     };
   }, [hasVoted]);
 
-  // Filter guests by search
-  const filteredGuests = useMemo(() => {
-    if (!searchQuery.trim()) return guestNames.slice(0, 8);
-    const q = searchQuery.toLowerCase();
-    return guestNames.filter((n) => n.toLowerCase().includes(q)).slice(0, 8);
-  }, [searchQuery, guestNames]);
+  useEffect(() => {
+    const query = searchQuery.trim();
+    if (query.length < 2 || !voteToken || selectedName === query) {
+      setFilteredGuests([]);
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      void searchBestDressedGuestsFn({
+        data: { query, voteToken, ...(voteCode.trim() ? { code: voteCode.trim() } : {}) },
+      })
+        .then((result) => setFilteredGuests(result.names))
+        .catch(() => setFilteredGuests([]));
+    }, 200);
+    return () => window.clearTimeout(timer);
+  }, [searchQuery, selectedName, voteCode, voteToken]);
 
   const handleVote = async () => {
     if (!selectedName || !voteToken) return;

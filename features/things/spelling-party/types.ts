@@ -26,6 +26,9 @@ export interface PartyRevealAnswer {
   correct: boolean;
   automatic: boolean;
   lockedAt: number;
+  distance: number;
+  similarity: number;
+  place: number;
 }
 
 export interface PartyClueEvent {

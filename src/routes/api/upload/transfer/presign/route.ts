@@ -23,6 +23,10 @@ import {
 import type { TransferUploadFileInput } from "@/features/transfers/upload-types";
 import { apiErrorFromRequest } from "@/lib/platform/api-error";
 import { isSafeTransferFilename } from "@/features/transfers/upload.server";
+import {
+  createTransferUploadReservation,
+  transferUploadFilesFingerprint,
+} from "@/features/transfers/upload-reservation.server";
 
 type FileEntry = TransferUploadFileInput;
 
@@ -130,6 +134,7 @@ async function handlePOST(request: Request) {
 
   const transferId = generateTransferId();
   const deleteToken = generateDeleteToken();
+  const boundedExpiresSeconds = Math.min(expiresSeconds, MAX_EXPIRY_SECONDS);
 
   try {
     const urls = await Promise.all(
@@ -152,10 +157,31 @@ async function handlePOST(request: Request) {
       }),
     );
 
+    if (!payload?.jti) {
+      return Response.json(
+        { error: "Authenticated upload session is missing an ID" },
+        { status: 401 },
+      );
+    }
+    const reserved = await createTransferUploadReservation({
+      transferId,
+      deleteToken,
+      actorJti: payload.jti,
+      expiresSeconds: boundedExpiresSeconds,
+      filesFingerprint: transferUploadFilesFingerprint(files),
+      createdAt: new Date().toISOString(),
+    });
+    if (!reserved) {
+      return Response.json(
+        { error: "Unable to reserve transfer ID. Please retry." },
+        { status: 409 },
+      );
+    }
+
     return Response.json({
       transferId,
       deleteToken,
-      expiresSeconds: Math.min(expiresSeconds, MAX_EXPIRY_SECONDS),
+      expiresSeconds: boundedExpiresSeconds,
       urls,
     });
   } catch (e) {

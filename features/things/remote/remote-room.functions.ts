@@ -89,10 +89,10 @@ function command(value: unknown): RemoteCommandRequest {
   if (!Number.isFinite(createdAt)) throw new Error("Invalid command time");
   if (data.type === "amend") {
     const decision = data.decision;
-    if (decision !== "correct" && decision !== "incorrect" && decision !== "pass") throw new Error("Invalid decision");
+    if (decision !== "correct" && decision !== "incorrect" && decision !== "pass" && decision !== "skipped" && decision !== "timed_out") throw new Error("Invalid decision");
     return { id, type: "amend", resultId: shortText(data.resultId, 80), decision, createdAt, ...target };
   }
-  if (data.type === "correct" || data.type === "incorrect" || data.type === "pass" || data.type === "pause" || data.type === "resume" || data.type === "undo") {
+  if (data.type === "correct" || data.type === "incorrect" || data.type === "pass" || data.type === "skip" || data.type === "pause" || data.type === "resume" || data.type === "undo") {
     return { id, type: data.type, createdAt, ...target };
   }
   throw new Error("Invalid command");
@@ -105,7 +105,7 @@ function snapshot(value: unknown): RemoteGameSnapshot {
   if (!Array.isArray(data.results) || data.results.length > 200) throw new Error("Invalid results");
   const results = data.results.map((value) => {
     const item = record(value);
-    if (item.decision !== "correct" && item.decision !== "incorrect" && item.decision !== "pass") throw new Error("Invalid result");
+    if (item.decision !== "correct" && item.decision !== "incorrect" && item.decision !== "pass" && item.decision !== "skipped" && item.decision !== "timed_out") throw new Error("Invalid result");
     return {
       id: shortText(item.id, 80),
       label: shortText(item.label, 100),
@@ -122,6 +122,8 @@ function snapshot(value: unknown): RemoteGameSnapshot {
     currentPartOfSpeech: optionalText(data.currentPartOfSpeech, 40),
     nextLabel: data.nextLabel === null ? null : shortText(data.nextLabel, 100),
     secondsRemaining: data.secondsRemaining === null ? null : typeof data.secondsRemaining === "number" && data.secondsRemaining >= 0 && data.secondsRemaining <= 3600 ? data.secondsRemaining : null,
+    decisionClosesAt: typeof data.decisionClosesAt === "number" && Number.isFinite(data.decisionClosesAt) ? data.decisionClosesAt : undefined,
+    decisionGraceEndsAt: typeof data.decisionGraceEndsAt === "number" && Number.isFinite(data.decisionGraceEndsAt) ? data.decisionGraceEndsAt : undefined,
     paused: data.paused === true,
     transitioning: data.transitioning === true,
     pauseReason: optionalText(data.pauseReason, 100),
@@ -146,7 +148,7 @@ function syncedSnapshot(value: unknown): RemoteSyncedSnapshot {
     commandReceipts: data.commandReceipts.map((value) => {
       const receipt = record(value);
       if (receipt.status !== "applied" && receipt.status !== "rejected") throw new Error("Invalid receipt");
-      const reason = receipt.reason === "stale round" || receipt.reason === "stale item" ? receipt.reason : undefined;
+      const reason = receipt.reason === "stale round" || receipt.reason === "stale item" || receipt.reason === "decision closed" || receipt.reason === "already decided" ? receipt.reason : undefined;
       return {
         commandId: shortText(receipt.commandId, 80),
         sequence: typeof receipt.sequence === "number" ? Math.max(0, Math.floor(receipt.sequence)) : 0,
@@ -181,14 +183,14 @@ export const syncRemotePlayerFn = createServerFn({ method: "POST" })
 export const readRemoteJudgeFn = createServerFn({ method: "POST" })
   .validator((value: unknown) => {
     const data = record(value);
-    return { roomId: roomId(data.roomId), judgeToken: token(data.judgeToken) };
+    return { roomId: roomId(data.roomId), judgeToken: token(data.judgeToken), judgeEpoch: shortText(data.judgeEpoch, 80), takeover: data.takeover === true };
   })
   .handler(({ data }) => readRemoteJudge(data));
 
 export const sendRemoteJudgeCommandFn = createServerFn({ method: "POST" })
   .validator((value: unknown) => {
     const data = record(value);
-    return { roomId: roomId(data.roomId), judgeToken: token(data.judgeToken), command: command(data.command) };
+    return { roomId: roomId(data.roomId), judgeToken: token(data.judgeToken), judgeEpoch: shortText(data.judgeEpoch, 80), command: command(data.command) };
   })
   .handler(({ data }) => sendRemoteJudgeCommand(data));
 

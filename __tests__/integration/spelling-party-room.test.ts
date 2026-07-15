@@ -6,6 +6,7 @@ vi.mock("@/lib/platform/logger.server", () => ({ log: { info: vi.fn(), warn: vi.
 import {
   applyPlayerAction,
   applyPresenterAction,
+  closePartyRoom,
   createPartyRoom,
   getPartyAudioAsset,
   joinPartyRoom,
@@ -55,6 +56,10 @@ describe("Party Typing rooms", () => {
     const revealed = await readPartySnapshot({ roomId: room.roomId, role: "presenter", credential: room.presenterToken, lastSequence: allLocked.snapshot!.sequence });
     expect(revealed.snapshot?.phase).toBe("reveal");
     expect(revealed.snapshot?.round?.correctWord).toBe(secret.word);
+    expect(revealed.snapshot?.round?.answers?.map(({ name, place }) => ({ name, place }))).toEqual([
+      { name: "Maya", place: 1 },
+      { name: "Daniel", place: 2 },
+    ]);
     expect(revealed.snapshot?.players.find(({ id }) => id === maya.playerId)?.score).toBe(1);
     expect(revealed.snapshot?.players.find(({ id }) => id === daniel.playerId)?.score).toBe(0);
   });
@@ -90,5 +95,27 @@ describe("Party Typing rooms", () => {
     expect(clue.snapshot?.recentClues.at(-1)?.message).toBe("Maya asked to hear it again.");
     const duplicate = await applyPlayerAction({ roomId: room.roomId, playerId: second.playerId, playerToken: second.playerToken, action: { actionId: "repeat-two", type: "clue.request", roundId: started.snapshot!.round!.roundId, clue: "repeat" } });
     expect(duplicate).toMatchObject({ accepted: false, error: "The word is already being repeated" });
+  });
+
+  it("closes rooms idempotently and keeps finished results only for the reconnect grace period", async () => {
+    vi.useFakeTimers(); vi.setSystemTime(new Date("2026-07-15T15:00:00Z"));
+    const disposable = await createPartyRoom({ deckId: "warm-up", answerSeconds: 10, roundTotal: 1 });
+    expect((await closePartyRoom(disposable.roomId, "wrong-token")).ok).toBe(false);
+    expect((await closePartyRoom(disposable.roomId, disposable.presenterToken)).ok).toBe(true);
+    expect((await closePartyRoom(disposable.roomId, disposable.presenterToken)).ok).toBe(true);
+
+    const room = await createPartyRoom({ deckId: "warm-up", answerSeconds: 10, roundTotal: 1 });
+    const player = await joined(room.roomId, room.joinToken, "Ava", "join-finish");
+    const started = await applyPresenterAction({ roomId: room.roomId, presenterToken: room.presenterToken, action: { actionId: "start-finish", type: "round.start" } });
+    vi.setSystemTime(started.snapshot!.round!.answerOpensAt + 1);
+    const locked = await applyPlayerAction({ roomId: room.roomId, playerId: player.playerId, playerToken: player.playerToken, action: { actionId: "lock-finish", type: "answer.lock", roundId: started.snapshot!.round!.roundId } });
+    vi.setSystemTime(locked.snapshot!.round!.revealAt + 1);
+    await readPartySnapshot({ roomId: room.roomId, role: "presenter", credential: room.presenterToken, lastSequence: 0 });
+    const finished = await applyPresenterAction({ roomId: room.roomId, presenterToken: room.presenterToken, action: { actionId: "finish", type: "round.next" } });
+    expect(finished.snapshot?.phase).toBe("finished");
+    vi.advanceTimersByTime(14 * 60_000);
+    expect((await readPartySnapshot({ roomId: room.roomId, role: "presenter", credential: room.presenterToken, lastSequence: 0 })).ok).toBe(true);
+    vi.advanceTimersByTime(2 * 60_000);
+    expect((await readPartySnapshot({ roomId: room.roomId, role: "presenter", credential: room.presenterToken, lastSequence: 0 })).ok).toBe(false);
   });
 });

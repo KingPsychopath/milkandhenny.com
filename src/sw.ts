@@ -21,6 +21,18 @@ const preparations = new Map<OfflineThingSlug, Promise<boolean>>();
 
 clientsClaim();
 
+self.addEventListener("activate", (event) => {
+  event.waitUntil(
+    (async () => {
+      for (const name of await caches.keys()) {
+        const oldOptionalAi = name.startsWith("mah-optional-ai:") && name !== OPTIONAL_AI_CACHE;
+        const abandonedStaging = name.startsWith(`${CACHE_PREFIX}:`) && name.endsWith(":staging");
+        if (oldOptionalAi || abandonedStaging) await caches.delete(name);
+      }
+    })(),
+  );
+});
+
 function safeBuildId() {
   return BUILD_ID.replace(/[^a-zA-Z0-9._-]/g, "-");
 }
@@ -275,6 +287,10 @@ function parseWorkerRequest(value: unknown): OfflineWorkerRequest | null {
 }
 
 self.addEventListener("message", (event) => {
+  if (event.data?.type === "SKIP_WAITING") {
+    event.waitUntil(self.skipWaiting());
+    return;
+  }
   const message = parseWorkerRequest(event.data);
   const port = event.ports[0];
   if (!message || !port) return;
@@ -332,12 +348,17 @@ registerRoute(
 registerRoute(
   ({ request, url }) => request.mode === "navigate" && isPlayerJoinPath(url.pathname),
   async ({ request }) => {
+    try {
+      return await fetch(request);
+    } catch {
+      // A player can still open the locally installed game when the network is unavailable.
+    }
     for (const slug of ["heads-up", "spelling-bee"] as const) {
       const canonicalRequest = new Request(new URL(THING_OFFLINE[slug].entryPath, self.location.origin));
       const cached = await matchThingCaches(canonicalRequest, slug);
       if (cached) return cached;
     }
-    return fetch(request);
+    return Response.error();
   },
 );
 
@@ -351,7 +372,11 @@ registerRoute(
     const canonicalRequest = new Request(
       new URL(match[1].entryPath, self.location.origin),
     );
-    return (await matchThingCaches(canonicalRequest, slug)) ?? fetch(request);
+    try {
+      return await fetch(request);
+    } catch {
+      return (await matchThingCaches(canonicalRequest, slug)) ?? Response.error();
+    }
   },
 );
 
