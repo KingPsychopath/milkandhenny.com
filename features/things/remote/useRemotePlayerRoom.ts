@@ -63,8 +63,10 @@ export function useRemotePlayerRoom(
   const revisionRef = useRef(0);
   const syncNowRef = useRef<(() => Promise<void>) | null>(null);
   const syncWaitersRef = useRef<Array<() => void>>([]);
-  snapshotRef.current = snapshot;
-  commandRef.current = onCommand;
+  useEffect(() => {
+    snapshotRef.current = snapshot;
+    commandRef.current = onCommand;
+  });
 
   const syncedSnapshot = useCallback((): RemoteSyncedSnapshot => {
     const current = snapshotRef.current;

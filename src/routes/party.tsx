@@ -11,7 +11,7 @@ function PartyHome() {
     <div className="min-h-screen bg-gradient-to-br from-zinc-950 via-zinc-900 to-stone-900 flex items-center justify-center p-6">
       <div className="text-center space-y-5 max-w-md">
         {/* Text Logo */}
-        <header role="banner">
+        <header>
           <Link to="/" className="block px-4">
             <img
               src="/MAHtext.svg"
@@ -87,7 +87,7 @@ function PartyHome() {
         </main>
 
         {/* Footer */}
-        <footer role="contentinfo" className="pt-4 space-y-2">
+        <footer className="pt-4 space-y-2">
           <Link to="/" className="text-zinc-500 hover:text-amber-400 text-xs transition-colors">
             ← back to home
           </Link>

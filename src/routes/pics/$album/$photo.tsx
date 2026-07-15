@@ -53,7 +53,7 @@ function PhotoPage() {
 
   return (
     <div className="min-h-screen bg-background">
-      <header role="banner" className="max-w-4xl mx-auto px-6 pt-6 pb-4">
+      <header className="max-w-4xl mx-auto px-6 pt-6 pb-4">
         <Breadcrumbs
           items={[
             { label: "home", href: "/" },
@@ -111,7 +111,7 @@ function PhotoPage() {
         </section>
       </main>
 
-      <footer role="contentinfo" className="theme-border border-t">
+      <footer className="theme-border border-t">
         <div className="max-w-4xl mx-auto px-6 py-6 flex items-center justify-between font-mono text-micro theme-muted tracking-wide">
           <Link
             to="/pics/$album"

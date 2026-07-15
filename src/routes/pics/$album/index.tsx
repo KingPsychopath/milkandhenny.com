@@ -46,7 +46,7 @@ function AlbumPage() {
 
   return (
     <div className="min-h-screen bg-background">
-      <header role="banner" className="max-w-4xl mx-auto px-6 pt-10 pb-6">
+      <header className="max-w-4xl mx-auto px-6 pt-10 pb-6">
         <div className="flex items-center justify-between font-mono text-sm">
           <Link
             to="/pics"
@@ -92,7 +92,7 @@ function AlbumPage() {
         </section>
       </main>
 
-      <footer role="contentinfo" className="border-t theme-border">
+      <footer className="border-t theme-border">
         <div className="max-w-4xl mx-auto px-6 py-8 flex items-center justify-between font-mono text-micro theme-muted tracking-wide">
           <Link to="/pics" className="hover:text-foreground transition-colors">
             ← all albums

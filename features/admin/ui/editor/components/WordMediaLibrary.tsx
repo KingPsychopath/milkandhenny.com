@@ -295,8 +295,11 @@ export function WordMediaLibrary({
           </button>
         </div>
         <div className="flex items-center gap-2">
-          <label className="font-mono text-micro theme-faint shrink-0">asset id</label>
+          <label htmlFor="shared-asset-id" className="font-mono text-micro theme-faint shrink-0">
+            asset id
+          </label>
           <input
+            id="shared-asset-id"
             value={assetUploadId}
             onChange={(event) => setAssetUploadId(event.target.value)}
             placeholder="brand-kit"

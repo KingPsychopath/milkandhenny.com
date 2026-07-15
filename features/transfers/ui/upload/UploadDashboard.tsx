@@ -1159,8 +1159,14 @@ export function UploadDashboard({ isAdmin }: UploadDashboardProps) {
 
           {transferAction === "append" ? (
             <div>
-              <label className="font-mono text-xs theme-muted block mb-1.5">transfer id</label>
+              <label
+                htmlFor="append-transfer-id"
+                className="font-mono text-xs theme-muted block mb-1.5"
+              >
+                transfer id
+              </label>
               <input
+                id="append-transfer-id"
                 type="text"
                 value={appendTransferId}
                 onChange={(e) => setAppendTransferId(e.target.value)}
@@ -1174,8 +1180,14 @@ export function UploadDashboard({ isAdmin }: UploadDashboardProps) {
           ) : (
             <>
               <div>
-                <label className="font-mono text-xs theme-muted block mb-1.5">title</label>
+                <label
+                  htmlFor="transfer-title"
+                  className="font-mono text-xs theme-muted block mb-1.5"
+                >
+                  title
+                </label>
                 <input
+                  id="transfer-title"
                   type="text"
                   value={title}
                   onChange={(e) => setTitle(e.target.value)}
@@ -1184,8 +1196,14 @@ export function UploadDashboard({ isAdmin }: UploadDashboardProps) {
                 />
               </div>
               <div>
-                <label className="font-mono text-xs theme-muted block mb-1.5">expires</label>
+                <label
+                  htmlFor="transfer-expiry"
+                  className="font-mono text-xs theme-muted block mb-1.5"
+                >
+                  expires
+                </label>
                 <select
+                  id="transfer-expiry"
                   value={expiry}
                   onChange={(e) => setExpiry(e.target.value)}
                   className="w-full bg-[var(--background)] border-b border-[var(--stone-200)] focus:border-[var(--foreground)] outline-none font-mono text-sm py-2 transition-colors cursor-pointer"
@@ -1253,10 +1271,14 @@ export function UploadDashboard({ isAdmin }: UploadDashboardProps) {
             </p>
           </div>
           <div>
-            <label className="font-mono text-xs theme-muted block mb-1.5">
+            <label
+              htmlFor="words-upload-target"
+              className="font-mono text-xs theme-muted block mb-1.5"
+            >
               {wordsScope === "word" ? "slug" : "asset id"}
             </label>
             <input
+              id="words-upload-target"
               type="text"
               list={wordsScope === "word" ? "word-slug-options" : "asset-id-options"}
               value={wordsScope === "word" ? slug : assetId}
@@ -1354,6 +1376,15 @@ export function UploadDashboard({ isAdmin }: UploadDashboardProps) {
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
         onClick={() => fileInputRef.current?.click()}
+        onKeyDown={(event) => {
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            fileInputRef.current?.click();
+          }
+        }}
+        role="button"
+        tabIndex={0}
+        aria-label="Choose files to upload or drop files here"
         className={`border rounded-lg p-10 text-center cursor-pointer transition-colors ${
           isDragging
             ? "border-[var(--prose-hashtag)] border-solid bg-[var(--selection-bg)]/20"
@@ -1634,7 +1665,7 @@ export function UploadDashboard({ isAdmin }: UploadDashboardProps) {
         </div>
       )}
 
-      <footer role="contentinfo" className="border-t theme-border mt-16 pt-8">
+      <footer className="border-t theme-border mt-16 pt-8">
         <div className="flex items-center justify-between font-mono text-micro theme-muted tracking-wide">
           <Link to="/" className="hover:text-[var(--foreground)] transition-colors">
             ← home

@@ -38,8 +38,11 @@ function AddGuestTab({
   return (
     <form onSubmit={handleAdd} className="space-y-4">
       <div>
-        <label className="block text-sm font-medium text-stone-700 mb-1.5">Name *</label>
+        <label htmlFor="guest-name" className="block text-sm font-medium text-stone-700 mb-1.5">
+          Name *
+        </label>
         <input
+          id="guest-name"
           type="text"
           value={name}
           onChange={(e) => setName(e.target.value)}
@@ -49,10 +52,14 @@ function AddGuestTab({
         />
       </div>
       <div>
-        <label className="block text-sm font-medium text-stone-700 mb-1.5">
+        <label
+          htmlFor="guest-full-name"
+          className="block text-sm font-medium text-stone-700 mb-1.5"
+        >
           Full Name (optional)
         </label>
         <input
+          id="guest-full-name"
           type="text"
           value={fullName}
           onChange={(e) => setFullName(e.target.value)}
@@ -105,10 +112,14 @@ function RemoveGuestTab({
   return (
     <div className="space-y-4">
       <div>
-        <label className="block text-sm font-medium text-stone-700 mb-1.5">
+        <label
+          htmlFor="guest-remove-search"
+          className="block text-sm font-medium text-stone-700 mb-1.5"
+        >
           Search guest to remove
         </label>
         <input
+          id="guest-remove-search"
           type="text"
           value={removeSearch}
           onChange={(e) => {
@@ -447,6 +458,8 @@ export function GuestManagement({
         <div className="px-6 py-4 border-b border-stone-100 flex justify-between items-center bg-gradient-to-r from-amber-600 to-yellow-500">
           <h2 className="text-lg font-semibold text-white">Manage Guests</h2>
           <button
+            type="button"
+            aria-label="Close guest management"
             onClick={closeModal}
             className="text-white/80 hover:text-white p-1 rounded-lg hover:bg-white/10 transition-colors"
           >

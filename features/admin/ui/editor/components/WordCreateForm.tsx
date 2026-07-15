@@ -94,6 +94,7 @@ export function WordCreateForm({
         />
         <div className="grid grid-cols-1 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] gap-2">
           <select
+            aria-label="Post type"
             value={createType}
             onChange={(event) => onCreateTypeChange(event.target.value as WordType)}
             className="bg-transparent border theme-border rounded px-2 py-2 font-mono text-xs"
@@ -105,6 +106,7 @@ export function WordCreateForm({
             ))}
           </select>
           <select
+            aria-label="Post visibility"
             value={createVisibility}
             onChange={(event) => onCreateVisibilityChange(event.target.value as NoteVisibility)}
             className="bg-transparent border theme-border rounded px-2 py-2 font-mono text-xs"

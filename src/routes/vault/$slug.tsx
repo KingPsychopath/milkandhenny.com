@@ -69,7 +69,7 @@ function WordPrivatePage() {
       <ReadingProgress />
       {headings.length > 0 && <JumpRail items={headings} ariaLabel="Jump to heading" />}
 
-      <header role="banner" className="max-w-2xl mx-auto px-6 pt-10 pb-6">
+      <header className="max-w-2xl mx-auto px-6 pt-10 pb-6">
         <div className="flex items-center justify-between font-mono text-sm">
           <Link
             to="/words"

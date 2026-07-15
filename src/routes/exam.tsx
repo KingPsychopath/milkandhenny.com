@@ -280,10 +280,7 @@ function ExamPage() {
         </div>
 
         {/* ── Footer ── */}
-        <footer
-          role="contentinfo"
-          className="mt-12 text-center font-mono text-xs space-y-3 theme-muted"
-        >
+        <footer className="mt-12 text-center font-mono text-xs space-y-3 theme-muted">
           <p>end of questions</p>
           <div className="border-t theme-border pt-4">
             <Link to="/" className="hover:opacity-60 transition-opacity duration-300">

@@ -226,7 +226,7 @@ export function BestDressedClient({ initialSnapshot }: BestDressedClientProps) {
     <div className="min-h-screen bg-gradient-to-br from-zinc-950 via-purple-950/30 to-zinc-950">
       <div className="max-w-lg mx-auto px-5 py-8">
         {/* Header */}
-        <header role="banner" className="text-center mb-8">
+        <header className="text-center mb-8">
           <div className="text-5xl mb-3">👑</div>
           <h1 className="text-3xl font-bold text-white mb-2">Best Dressed</h1>
           <p className="text-purple-300/80">
@@ -419,7 +419,7 @@ export function BestDressedClient({ initialSnapshot }: BestDressedClientProps) {
         </main>
 
         {/* Back link */}
-        <footer role="contentinfo" className="mt-10 text-center space-y-2">
+        <footer className="mt-10 text-center space-y-2">
           <Link
             to="/party"
             className="text-zinc-500 hover:text-purple-400 text-sm transition-colors block"

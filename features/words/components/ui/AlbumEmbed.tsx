@@ -22,11 +22,12 @@ type EmbeddedAlbum = {
 type EmbedVariant = "compact" | "masonry";
 
 function formatDate(dateStr: string) {
-  const d = new Date(dateStr + "T00:00:00");
+  const d = new Date(`${dateStr}T00:00:00Z`);
   return d.toLocaleDateString("en-GB", {
     day: "numeric",
     month: "long",
     year: "numeric",
+    timeZone: "UTC",
   });
 }
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { TOKEN_SESSION_STATUS, type TokenSessionStatusKey } from "./tokenSessionsStatus";
 import { useTokenSessions } from "../hooks/useTokenSessions";
 
@@ -17,6 +17,14 @@ export function TokenSessionsPanel(props: {
   const { isAuthed, authFetch, formatRemaining, ensureStepUpToken, onError, onStatus } = props;
 
   const [revokeLoading, setRevokeLoading] = useState<string | null>(null);
+  const [nowSeconds, setNowSeconds] = useState<number | null>(null);
+
+  useEffect(() => {
+    const updateNow = () => setNowSeconds(Math.floor(Date.now() / 1000));
+    updateNow();
+    const interval = window.setInterval(updateNow, 30_000);
+    return () => window.clearInterval(interval);
+  }, []);
 
   const {
     loading,
@@ -113,8 +121,8 @@ export function TokenSessionsPanel(props: {
       ) : (
         <div className="space-y-2">
           {visible.map((s) => {
-            const expiresIn = s.exp - Math.floor(Date.now() / 1000);
-            const issuedAgo = Math.max(0, Math.floor(Date.now() / 1000) - s.iat);
+            const expiresIn = nowSeconds === null ? null : s.exp - nowSeconds;
+            const issuedAgo = nowSeconds === null ? null : Math.max(0, nowSeconds - s.iat);
             const statusKey = s.status as TokenSessionStatusKey;
             const status = TOKEN_SESSION_STATUS[statusKey];
 
@@ -138,8 +146,8 @@ export function TokenSessionsPanel(props: {
                         </span>
                       </p>
                       <p className="font-mono text-xs theme-muted truncate">
-                        issued {formatRemaining(issuedAgo)} ago · expires in{" "}
-                        {formatRemaining(expiresIn)}
+                        issued {issuedAgo === null ? "—" : `${formatRemaining(issuedAgo)} ago`} ·
+                        expires in {expiresIn === null ? "—" : formatRemaining(expiresIn)}
                       </p>
                     </div>
                     <span className="font-mono text-xs theme-muted shrink-0">details</span>

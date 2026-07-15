@@ -588,15 +588,12 @@ export function GuestListClient({ initialGuests }: GuestListClientProps) {
         )}
 
         {/* Guest list */}
-        <div className="pb-32" role="list" aria-label="Guest list">
+        <ul className="pb-32" aria-label="Guest list">
           <GuestList guests={filteredGuests} onCheckIn={updateCheckIn} searchQuery={searchQuery} />
-        </div>
+        </ul>
 
         {/* Footer */}
-        <footer
-          role="contentinfo"
-          className="px-5 py-6 border-t border-stone-200 text-center space-y-1"
-        >
+        <footer className="px-5 py-6 border-t border-stone-200 text-center space-y-1">
           <Link
             to="/party"
             className="text-stone-400 hover:text-amber-600 text-sm transition-colors"

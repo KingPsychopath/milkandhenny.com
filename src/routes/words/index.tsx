@@ -59,7 +59,7 @@ function WordsPage() {
 
   return (
     <div className="min-h-screen bg-background">
-      <header role="banner" className="max-w-2xl mx-auto px-6 pt-10 pb-6">
+      <header className="max-w-2xl mx-auto px-6 pt-10 pb-6">
         <div className="flex items-center justify-between font-mono text-sm">
           <Link
             to="/"

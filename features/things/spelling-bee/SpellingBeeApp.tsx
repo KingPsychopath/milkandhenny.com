@@ -89,7 +89,9 @@ function SpellingBeeExperience({ remoteSession }: { remoteSession?: RemotePlayer
   const paused = wordState.status === "paused";
   const evaluating = wordState.status === "local-evaluation";
   const evaluationReason = evaluating ? wordState.reason : null;
-  wordStateRef.current = wordState;
+  useEffect(() => {
+    wordStateRef.current = wordState;
+  }, [wordState]);
 
   const clearTransition = useCallback(() => {
     if (transitionTimeout.current === null) return;

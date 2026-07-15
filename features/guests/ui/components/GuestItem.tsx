@@ -55,14 +55,11 @@ export function GuestItem({ guest, onCheckIn, searchQuery }: GuestItemProps) {
   const plusOneStatus = hasPlusOnes ? formatPlusOneStatus(guest.plusOnes) : null;
 
   return (
-    <div
+    <li
       className={`border-b border-stone-100 transition-colors ${guest.checkedIn ? "bg-amber-50/50" : "bg-white"}`}
+      aria-label={`${guest.name}${guest.checkedIn ? ", checked in" : ""}`}
     >
-      <div
-        className="flex items-center p-4 gap-4"
-        role="listitem"
-        aria-label={`${guest.name}${guest.checkedIn ? ", checked in" : ""}`}
-      >
+      <div className="flex items-center p-4 gap-4">
         {/* Check-in button */}
         <button
           onClick={() => {
@@ -228,6 +225,6 @@ export function GuestItem({ guest, onCheckIn, searchQuery }: GuestItemProps) {
           ))}
         </div>
       )}
-    </div>
+    </li>
   );
 }
