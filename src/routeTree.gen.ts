@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as UploadRouteImport } from './routes/upload'
+import { Route as ThingsRouteImport } from './routes/things'
 import { Route as SitemapDotxmlRouteImport } from './routes/sitemap[.]xml'
 import { Route as PartyRouteImport } from './routes/party'
 import { Route as IcebreakerRouteImport } from './routes/icebreaker'
@@ -25,6 +26,8 @@ import { Route as PicsIndexRouteImport } from './routes/pics/index'
 import { Route as AdminIndexRouteImport } from './routes/admin/index'
 import { Route as WordsSlugRouteImport } from './routes/words/$slug'
 import { Route as VaultSlugRouteImport } from './routes/vault/$slug'
+import { Route as ThingsIcebreakerRouteImport } from './routes/things.icebreaker'
+import { Route as ThingsHeadsUpRouteImport } from './routes/things.heads-up'
 import { Route as TIdRouteImport } from './routes/t/$id'
 import { Route as AdminEditorRouteImport } from './routes/admin/editor'
 import { Route as ApiWordsRouteRouteImport } from './routes/api/words/route'
@@ -86,6 +89,11 @@ import { Route as ApiAdminAlbumsSlugPhotosPhotoIdRouteRouteImport } from './rout
 const UploadRoute = UploadRouteImport.update({
   id: '/upload',
   path: '/upload',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ThingsRoute = ThingsRouteImport.update({
+  id: '/things',
+  path: '/things',
   getParentRoute: () => rootRouteImport,
 } as any)
 const SitemapDotxmlRoute = SitemapDotxmlRouteImport.update({
@@ -162,6 +170,16 @@ const VaultSlugRoute = VaultSlugRouteImport.update({
   id: '/vault/$slug',
   path: '/vault/$slug',
   getParentRoute: () => rootRouteImport,
+} as any)
+const ThingsIcebreakerRoute = ThingsIcebreakerRouteImport.update({
+  id: '/icebreaker',
+  path: '/icebreaker',
+  getParentRoute: () => ThingsRoute,
+} as any)
+const ThingsHeadsUpRoute = ThingsHeadsUpRouteImport.update({
+  id: '/heads-up',
+  path: '/heads-up',
+  getParentRoute: () => ThingsRoute,
 } as any)
 const TIdRoute = TIdRouteImport.update({
   id: '/t/$id',
@@ -495,6 +513,7 @@ export interface FileRoutesByFullPath {
   '/icebreaker': typeof IcebreakerRoute
   '/party': typeof PartyRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
+  '/things': typeof ThingsRouteWithChildren
   '/upload': typeof UploadRoute
   '/api/best-dressed': typeof ApiBestDressedRouteRouteWithChildren
   '/api/debug': typeof ApiDebugRouteRoute
@@ -503,6 +522,8 @@ export interface FileRoutesByFullPath {
   '/api/words': typeof ApiWordsRouteRouteWithChildren
   '/admin/editor': typeof AdminEditorRoute
   '/t/$id': typeof TIdRoute
+  '/things/heads-up': typeof ThingsHeadsUpRoute
+  '/things/icebreaker': typeof ThingsIcebreakerRoute
   '/vault/$slug': typeof VaultSlugRoute
   '/words/$slug': typeof WordsSlugRoute
   '/admin/': typeof AdminIndexRoute
@@ -570,6 +591,7 @@ export interface FileRoutesByTo {
   '/icebreaker': typeof IcebreakerRoute
   '/party': typeof PartyRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
+  '/things': typeof ThingsRouteWithChildren
   '/upload': typeof UploadRoute
   '/api/best-dressed': typeof ApiBestDressedRouteRouteWithChildren
   '/api/debug': typeof ApiDebugRouteRoute
@@ -578,6 +600,8 @@ export interface FileRoutesByTo {
   '/api/words': typeof ApiWordsRouteRouteWithChildren
   '/admin/editor': typeof AdminEditorRoute
   '/t/$id': typeof TIdRoute
+  '/things/heads-up': typeof ThingsHeadsUpRoute
+  '/things/icebreaker': typeof ThingsIcebreakerRoute
   '/vault/$slug': typeof VaultSlugRoute
   '/words/$slug': typeof WordsSlugRoute
   '/admin': typeof AdminIndexRoute
@@ -646,6 +670,7 @@ export interface FileRoutesById {
   '/icebreaker': typeof IcebreakerRoute
   '/party': typeof PartyRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
+  '/things': typeof ThingsRouteWithChildren
   '/upload': typeof UploadRoute
   '/api/best-dressed': typeof ApiBestDressedRouteRouteWithChildren
   '/api/debug': typeof ApiDebugRouteRoute
@@ -654,6 +679,8 @@ export interface FileRoutesById {
   '/api/words': typeof ApiWordsRouteRouteWithChildren
   '/admin/editor': typeof AdminEditorRoute
   '/t/$id': typeof TIdRoute
+  '/things/heads-up': typeof ThingsHeadsUpRoute
+  '/things/icebreaker': typeof ThingsIcebreakerRoute
   '/vault/$slug': typeof VaultSlugRoute
   '/words/$slug': typeof WordsSlugRoute
   '/admin/': typeof AdminIndexRoute
@@ -723,6 +750,7 @@ export interface FileRouteTypes {
     | '/icebreaker'
     | '/party'
     | '/sitemap.xml'
+    | '/things'
     | '/upload'
     | '/api/best-dressed'
     | '/api/debug'
@@ -731,6 +759,8 @@ export interface FileRouteTypes {
     | '/api/words'
     | '/admin/editor'
     | '/t/$id'
+    | '/things/heads-up'
+    | '/things/icebreaker'
     | '/vault/$slug'
     | '/words/$slug'
     | '/admin/'
@@ -798,6 +828,7 @@ export interface FileRouteTypes {
     | '/icebreaker'
     | '/party'
     | '/sitemap.xml'
+    | '/things'
     | '/upload'
     | '/api/best-dressed'
     | '/api/debug'
@@ -806,6 +837,8 @@ export interface FileRouteTypes {
     | '/api/words'
     | '/admin/editor'
     | '/t/$id'
+    | '/things/heads-up'
+    | '/things/icebreaker'
     | '/vault/$slug'
     | '/words/$slug'
     | '/admin'
@@ -873,6 +906,7 @@ export interface FileRouteTypes {
     | '/icebreaker'
     | '/party'
     | '/sitemap.xml'
+    | '/things'
     | '/upload'
     | '/api/best-dressed'
     | '/api/debug'
@@ -881,6 +915,8 @@ export interface FileRouteTypes {
     | '/api/words'
     | '/admin/editor'
     | '/t/$id'
+    | '/things/heads-up'
+    | '/things/icebreaker'
     | '/vault/$slug'
     | '/words/$slug'
     | '/admin/'
@@ -949,6 +985,7 @@ export interface RootRouteChildren {
   IcebreakerRoute: typeof IcebreakerRoute
   PartyRoute: typeof PartyRoute
   SitemapDotxmlRoute: typeof SitemapDotxmlRoute
+  ThingsRoute: typeof ThingsRouteWithChildren
   UploadRoute: typeof UploadRoute
   ApiBestDressedRouteRoute: typeof ApiBestDressedRouteRouteWithChildren
   ApiDebugRouteRoute: typeof ApiDebugRouteRoute
@@ -1001,6 +1038,13 @@ declare module '@tanstack/react-router' {
       path: '/upload'
       fullPath: '/upload'
       preLoaderRoute: typeof UploadRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/things': {
+      id: '/things'
+      path: '/things'
+      fullPath: '/things'
+      preLoaderRoute: typeof ThingsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/sitemap.xml': {
@@ -1107,6 +1151,20 @@ declare module '@tanstack/react-router' {
       fullPath: '/vault/$slug'
       preLoaderRoute: typeof VaultSlugRouteImport
       parentRoute: typeof rootRouteImport
+    }
+    '/things/icebreaker': {
+      id: '/things/icebreaker'
+      path: '/icebreaker'
+      fullPath: '/things/icebreaker'
+      preLoaderRoute: typeof ThingsIcebreakerRouteImport
+      parentRoute: typeof ThingsRoute
+    }
+    '/things/heads-up': {
+      id: '/things/heads-up'
+      path: '/heads-up'
+      fullPath: '/things/heads-up'
+      preLoaderRoute: typeof ThingsHeadsUpRouteImport
+      parentRoute: typeof ThingsRoute
     }
     '/t/$id': {
       id: '/t/$id'
@@ -1510,6 +1568,19 @@ declare module '@tanstack/react-router' {
   }
 }
 
+interface ThingsRouteChildren {
+  ThingsHeadsUpRoute: typeof ThingsHeadsUpRoute
+  ThingsIcebreakerRoute: typeof ThingsIcebreakerRoute
+}
+
+const ThingsRouteChildren: ThingsRouteChildren = {
+  ThingsHeadsUpRoute: ThingsHeadsUpRoute,
+  ThingsIcebreakerRoute: ThingsIcebreakerRoute,
+}
+
+const ThingsRouteWithChildren =
+  ThingsRoute._addFileChildren(ThingsRouteChildren)
+
 interface ApiBestDressedRouteRouteChildren {
   ApiBestDressedCodesMintRouteRoute: typeof ApiBestDressedCodesMintRouteRoute
   ApiBestDressedCodesMintBatchRouteRoute: typeof ApiBestDressedCodesMintBatchRouteRoute
@@ -1693,6 +1764,7 @@ const rootRouteChildren: RootRouteChildren = {
   IcebreakerRoute: IcebreakerRoute,
   PartyRoute: PartyRoute,
   SitemapDotxmlRoute: SitemapDotxmlRoute,
+  ThingsRoute: ThingsRouteWithChildren,
   UploadRoute: UploadRoute,
   ApiBestDressedRouteRoute: ApiBestDressedRouteRouteWithChildren,
   ApiDebugRouteRoute: ApiDebugRouteRoute,

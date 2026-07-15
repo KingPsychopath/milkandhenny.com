@@ -68,6 +68,9 @@ function Home() {
           <Link to="/words" className="theme-muted hover:text-foreground transition-colors">
             [words]
           </Link>
+          <Link to="/things" className="theme-muted hover:text-foreground transition-colors">
+            [things] +
+          </Link>
           <Link
             to="/upload"
             search={{ auth: undefined }}
