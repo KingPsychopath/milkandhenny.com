@@ -8,28 +8,28 @@
     "MEDIA_PROCESSOR_MODE": "hybrid",
     "R2_PUBLIC_URL": "",
     "TRANSFER_MEDIA_WORKER_CONCURRENCY": "2",
-    "TRANSFER_MEDIA_WORKER_ERROR_BACKOFF_MS": "15000"
+    "TRANSFER_MEDIA_WORKER_ERROR_BACKOFF_MS": "15000",
   },
   "durable_objects": {
     "bindings": [
       {
         "name": "TRANSFER_MEDIA",
-        "class_name": "TransferMediaContainer"
-      }
-    ]
+        "class_name": "TransferMediaContainer",
+      },
+    ],
   },
   "migrations": [
     {
       "tag": "v1",
-      "new_sqlite_classes": ["TransferMediaContainer"]
-    }
+      "new_sqlite_classes": ["TransferMediaContainer"],
+    },
   ],
   "containers": [
     {
       "class_name": "TransferMediaContainer",
       "image": "./Dockerfile",
       "max_instances": 1,
-      "instance_type": "basic"
-    }
-  ]
+      "instance_type": "basic",
+    },
+  ],
 }

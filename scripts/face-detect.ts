@@ -61,7 +61,7 @@ async function preprocessOnnx(raw: Buffer) {
   const { ort: ortMod } = await getOrtSession();
 
   const { data } = await sharp(raw)
-    .rotate()  // auto-orient from EXIF so faces are upright
+    .rotate() // auto-orient from EXIF so faces are upright
     .resize(INPUT_WIDTH, INPUT_HEIGHT, { fit: "fill" })
     .removeAlpha()
     .raw()
@@ -103,11 +103,7 @@ function nms(boxes: Box[]): Box[] {
   return kept;
 }
 
-function decodeOutputs(
-  scores: Float32Array,
-  boxes: Float32Array,
-  numAnchors: number
-): Box[] {
+function decodeOutputs(scores: Float32Array, boxes: Float32Array, numAnchors: number): Box[] {
   const detected: Box[] = [];
   for (let i = 0; i < numAnchors; i++) {
     const faceScore = scores[i * 2 + 1];
@@ -235,11 +231,13 @@ const STRATEGIES: Record<DetectionStrategy, FocalDetector> = {
  */
 async function detectFocal(
   raw: Buffer,
-  strategy: DetectionStrategy = DEFAULT_STRATEGY
+  strategy: DetectionStrategy = DEFAULT_STRATEGY,
 ): Promise<{ x: number; y: number } | null> {
   const detector = STRATEGIES[strategy];
   if (!detector) {
-    throw new Error(`Unknown detection strategy: "${strategy}". Use: ${DETECTION_STRATEGIES.join(", ")}`);
+    throw new Error(
+      `Unknown detection strategy: "${strategy}". Use: ${DETECTION_STRATEGIES.join(", ")}`,
+    );
   }
   return detector(raw);
 }
@@ -249,7 +247,7 @@ async function detectFocal(
  * Useful for testing which strategy works best for your photos.
  */
 async function compareStrategies(
-  raw: Buffer
+  raw: Buffer,
 ): Promise<Record<DetectionStrategy, { x: number; y: number } | null>> {
   const results = {} as Record<DetectionStrategy, { x: number; y: number } | null>;
   for (const name of DETECTION_STRATEGIES) {

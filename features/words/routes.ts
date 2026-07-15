@@ -23,7 +23,7 @@ function buildWordShareUrl(
   baseUrl: string,
   slug: string,
   token: string,
-  visibility: WordVisibility
+  visibility: WordVisibility,
 ): string {
   const origin = trimTrailingSlash(baseUrl);
   const path = wordPathForVisibility(slug, visibility);

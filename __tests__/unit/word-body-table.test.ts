@@ -1,20 +1,31 @@
 import React from "react";
 import { describe, expect, it } from "vitest";
-import { analyzeTableChildren, extractTableDataFromNode, getOverflowState, shouldDefaultToCompact } from "@/app/(editorial)/words/_components/WordBodyTable";
+import {
+  analyzeTableChildren,
+  extractTableDataFromNode,
+  getOverflowState,
+  shouldDefaultToCompact,
+} from "@/features/words/components/ui/WordBodyTable";
 
 describe("WordBodyTable helpers", () => {
   it("should keep a small simple table expanded by default", () => {
     const shape = analyzeTableChildren(
-      React.createElement("tbody", null,
-        React.createElement("tr", null,
+      React.createElement(
+        "tbody",
+        null,
+        React.createElement(
+          "tr",
+          null,
           React.createElement("th", null, "Name"),
-          React.createElement("th", null, "Role")
+          React.createElement("th", null, "Role"),
         ),
-        React.createElement("tr", null,
+        React.createElement(
+          "tr",
+          null,
           React.createElement("td", null, "Ada"),
-          React.createElement("td", null, "Host")
-        )
-      )
+          React.createElement("td", null, "Host"),
+        ),
+      ),
     );
 
     expect(shape).toMatchObject({ columnCount: 2, rowCount: 2 });
@@ -23,22 +34,28 @@ describe("WordBodyTable helpers", () => {
 
   it("should start compact for a wide markdown table", () => {
     const shape = analyzeTableChildren(
-      React.createElement("tbody", null,
-        React.createElement("tr", null,
+      React.createElement(
+        "tbody",
+        null,
+        React.createElement(
+          "tr",
+          null,
           React.createElement("th", null, "Name"),
           React.createElement("th", null, "Role"),
           React.createElement("th", null, "Arrival"),
           React.createElement("th", null, "Drink"),
-          React.createElement("th", null, "Notes")
+          React.createElement("th", null, "Notes"),
         ),
-        React.createElement("tr", null,
+        React.createElement(
+          "tr",
+          null,
           React.createElement("td", null, "Ada"),
           React.createElement("td", null, "Host"),
           React.createElement("td", null, "19:30"),
           React.createElement("td", null, "Negroni"),
-          React.createElement("td", null, "Prefers the quieter table near the back wall.")
-        )
-      )
+          React.createElement("td", null, "Prefers the quieter table near the back wall."),
+        ),
+      ),
     );
 
     expect(shouldDefaultToCompact(shape)).toBe(true);

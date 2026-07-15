@@ -7,19 +7,16 @@ import { describe, it, expect, vi } from "vitest";
  * invalid ids without touching R2/Redis.
  */
 
-vi.mock("@/lib/platform/redis", () => ({
+vi.mock("@/lib/platform/redis.server", () => ({
   getRedis: () => null,
 }));
 
-vi.mock("@/lib/platform/r2", () => ({
+vi.mock("@/lib/platform/r2.server", () => ({
   listObjects: vi.fn().mockResolvedValue([]),
   deleteObjects: vi.fn().mockResolvedValue(0),
 }));
 
-import {
-  isSafeTransferId,
-  adminDeleteTransfer,
-} from "@/features/transfers/admin";
+import { isSafeTransferId, adminDeleteTransfer } from "@/features/transfers/admin.server";
 
 describe("transfers admin", () => {
   describe("isSafeTransferId", () => {
@@ -40,12 +37,8 @@ describe("transfers admin", () => {
 
   describe("adminDeleteTransfer", () => {
     it("throws for invalid transfer id without calling R2 or store", async () => {
-      await expect(adminDeleteTransfer("invalid!id")).rejects.toThrow(
-        "Invalid transfer id"
-      );
-      await expect(adminDeleteTransfer("../../../etc")).rejects.toThrow(
-        "Invalid transfer id"
-      );
+      await expect(adminDeleteTransfer("invalid!id")).rejects.toThrow("Invalid transfer id");
+      await expect(adminDeleteTransfer("../../../etc")).rejects.toThrow("Invalid transfer id");
     });
   });
 });

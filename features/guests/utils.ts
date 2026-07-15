@@ -1,4 +1,4 @@
-import type { Guest } from './types';
+import type { Guest } from "./types";
 
 /**
  * Collect all unique guest names from a guest list, including plus-ones.
@@ -16,4 +16,3 @@ export function getAllGuestNames(guests: Guest[]): string[] {
 
   return Array.from(set).sort((a, b) => a.localeCompare(b));
 }
-

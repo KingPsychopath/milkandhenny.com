@@ -10,11 +10,7 @@ import {
 
 type Entry = TransferTimeFinderInput<{ label: string }>;
 
-function makeEntry(
-  id: string,
-  kind: Entry["kind"],
-  takenAt?: unknown
-): Entry {
+function makeEntry(id: string, kind: Entry["kind"], takenAt?: unknown): Entry {
   return {
     id,
     kind,
@@ -88,7 +84,13 @@ describe("transfer time finder", () => {
         makeEntry("d", "image", "2024-06-01T14:45:00.000Z"),
       ]);
 
-      expect(model.buckets.map((bucket) => ({ key: bucket.key, label: bucket.label, param: bucket.param }))).toEqual([
+      expect(
+        model.buckets.map((bucket) => ({
+          key: bucket.key,
+          label: bucket.label,
+          param: bucket.param,
+        })),
+      ).toEqual([
         { key: "2024-06-01T14:15", label: "14:15", param: "2024-06-01T14:15" },
         { key: "2024-06-01T14:30", label: "14:30", param: "2024-06-01T14:30" },
         { key: "2024-06-01T14:45", label: "14:45", param: "2024-06-01T14:45" },
@@ -154,7 +156,9 @@ describe("transfer time finder", () => {
         makeEntry("b", "image", "2024-06-01T15:00:00.000Z"),
       ]);
 
-      expect(resolveTransferTimeFinderBucket("2024-06-01T14:30", model.buckets)?.key).toBe("2024-06-01T14:30");
+      expect(resolveTransferTimeFinderBucket("2024-06-01T14:30", model.buckets)?.key).toBe(
+        "2024-06-01T14:30",
+      );
       expect(resolveTransferTimeFinderBucket("2024-06-01T16:30", model.buckets)).toBeNull();
     });
   });

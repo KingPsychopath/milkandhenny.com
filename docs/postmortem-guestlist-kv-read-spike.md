@@ -20,14 +20,14 @@ Two changes interacted badly:
 1. The guestlist page added a 1-second UI tick to display "voting open (Xm left)" for best-dressed.
 2. The guestlist page passed an inline `onUnauthorized` callback into `useGuests(...)`.
 
-Because the UI tick caused a re-render every second, the inline callback became a *new function each render*, which caused the `useGuests` polling effect to restart and immediately refetch guests.
+Because the UI tick caused a re-render every second, the inline callback became a _new function each render_, which caused the `useGuests` polling effect to restart and immediately refetch guests.
 
 Result: the intended polling rate (seconds) accidentally became ~**1 request / second**.
 
 ## Why This Was Easy To Miss
 
 - The bug looked like "just logs" in dev, but every log line was a real KV-backed API request.
-- React Strict Mode can amplify "effect correctness" issues in dev (double-invocation), so code must be idempotent and cleanup must be correct. This incident was not *caused* by Strict Mode, but Strict Mode is a good forcing function to write safer effects.
+- React Strict Mode can amplify "effect correctness" issues in dev (double-invocation), so code must be idempotent and cleanup must be correct. This incident was not _caused_ by Strict Mode, but Strict Mode is a good forcing function to write safer effects.
 
 ## Fix
 
@@ -79,4 +79,3 @@ This halves reads vs the previous 5s/30s behavior while still feeling "live" for
 ## Lesson
 
 When a page is allowed to re-render frequently (timers, animations, live countdowns), treat any `useEffect` that fetches data as a potential "traffic amplifier". Defensive measures (stable deps, refs for callbacks, minimum fetch gaps, and conservative retry rules) prevent expensive regressions.
-

@@ -63,10 +63,7 @@ function getTransferFileId(filename: string): string {
   return filename;
 }
 
-function buildUniqueTransferFileId(
-  filename: string,
-  seenIds: Set<string>
-): string {
+function buildUniqueTransferFileId(filename: string, seenIds: Set<string>): string {
   const base = getTransferFileId(filename);
   if (!seenIds.has(base)) {
     seenIds.add(base);
@@ -84,9 +81,10 @@ function buildUniqueTransferFileId(
   }
 }
 
-function resolveTransferUploadIds<
-  T extends { name: string }
->(files: T[], existingIds: Iterable<string> = []): Array<T & { mediaId: string }> {
+function resolveTransferUploadIds<T extends { name: string }>(
+  files: T[],
+  existingIds: Iterable<string> = [],
+): Array<T & { mediaId: string }> {
   const seenIds = new Set(existingIds);
   return files.map((file) => ({
     ...file,
@@ -120,7 +118,7 @@ function getExpectedTransferAssetKeys(
   transferId: string,
   filename: string,
   route: ProcessingRoute | null,
-  mediaId: string
+  mediaId: string,
 ): { thumbKey?: string; fullKey?: string } {
   if (!route) return {};
   const id = mediaId;
@@ -134,7 +132,7 @@ function getExpectedTransferAssetKeys(
 }
 
 function buildTransferProcessingCounts<
-  T extends { previewStatus?: PreviewStatus; processingStatus?: ProcessingStatus }
+  T extends { previewStatus?: PreviewStatus; processingStatus?: ProcessingStatus },
 >(files: T[]): TransferProcessingCounts {
   return files.reduce<TransferProcessingCounts>(
     (counts, file) => {
@@ -153,13 +151,13 @@ function buildTransferProcessingCounts<
       failedCount: 0,
       skippedCount: 0,
       originalOnlyCount: 0,
-    }
+    },
   );
 }
 
 function isTransferProcessingStale(
   file: { processingStatus?: ProcessingStatus; enqueuedAt?: string; processingStartedAt?: string },
-  nowMs = Date.now()
+  nowMs = Date.now(),
 ): boolean {
   if (file.processingStatus === "queued" && file.enqueuedAt) {
     return nowMs - new Date(file.enqueuedAt).getTime() > TRANSFER_MEDIA_STALE_AFTER_MS;
@@ -172,10 +170,14 @@ function isTransferProcessingStale(
 
 function canRetryTransferProcessing(
   file: { retryCount?: number; processingStatus?: ProcessingStatus },
-  force = false
+  force = false,
 ): boolean {
   if (force) return true;
-  if (file.processingStatus !== "failed" && file.processingStatus !== "queued" && file.processingStatus !== "processing") {
+  if (
+    file.processingStatus !== "failed" &&
+    file.processingStatus !== "queued" &&
+    file.processingStatus !== "processing"
+  ) {
     return false;
   }
   return (file.retryCount ?? 0) < MAX_TRANSFER_PROCESSING_RETRIES;
@@ -237,7 +239,7 @@ function didTransferFileChange(
     processingCompletedAt?: string;
     processingErrorCode?: string;
     retryCount?: number;
-  }
+  },
 ): boolean {
   return (
     before.id !== after.id ||

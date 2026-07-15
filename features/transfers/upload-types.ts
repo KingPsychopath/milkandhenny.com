@@ -1,6 +1,4 @@
-import type { TransferFile } from "./store";
-
-type ConvertedFrom = "heic";
+import type { ConvertedFrom, TransferFile } from "./types";
 
 type TransferUploadFileInput = {
   /** Filename stored in transfer metadata and shown in the gallery. */

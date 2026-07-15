@@ -1,8 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { NextRequest } from "next/server";
 
 function makeRequest(url: string, body: unknown) {
-  return new NextRequest(`http://localhost${url}`, {
+  return new Request(`http://localhost${url}`, {
     method: "POST",
     body: JSON.stringify(body),
     headers: { "content-type": "application/json" },
@@ -20,18 +19,18 @@ describe("words raw upload handling", () => {
     const uploadBuffer = vi.fn().mockResolvedValue(undefined);
     const deleteObject = vi.fn().mockResolvedValue(undefined);
 
-    vi.doMock("@/features/auth/server", () => ({
+    vi.doMock("@/features/auth/auth.server", () => ({
       requireAuthWithPayload: vi.fn().mockResolvedValue({ error: null }),
     }));
-    vi.doMock("@/lib/platform/r2", () => ({
+    vi.doMock("@/lib/platform/r2.server", () => ({
       deleteObject,
       downloadBuffer,
       isConfigured: () => true,
       uploadBuffer,
     }));
-    vi.doMock("@/features/media/processing", async () => {
-      const actual = await vi.importActual<typeof import("@/features/media/processing")>(
-        "@/features/media/processing"
+    vi.doMock("@/features/media/processing.server", async () => {
+      const actual = await vi.importActual<typeof import("@/features/media/processing.server")>(
+        "@/features/media/processing.server",
       );
       return {
         ...actual,
@@ -44,7 +43,7 @@ describe("words raw upload handling", () => {
       };
     });
 
-    const { POST } = await import("@/app/api/upload/words/finalize/route");
+    const { POST } = await import("@/src/routes/api/upload/words/finalize/route");
     const response = await POST(
       makeRequest("/api/upload/words/finalize", {
         slug: "launch-notes",
@@ -58,7 +57,7 @@ describe("words raw upload handling", () => {
             overwrote: false,
           },
         ],
-      })
+      }),
     );
 
     expect(response.status).toBe(200);
@@ -76,7 +75,7 @@ describe("words raw upload handling", () => {
     expect(uploadBuffer).toHaveBeenCalledWith(
       "words/media/launch-notes/hero.webp",
       Buffer.from("webp"),
-      "image/webp"
+      "image/webp",
     );
     expect(deleteObject).toHaveBeenCalledWith("words/media/launch-notes/incoming/tmp-hero.jpg");
   });
@@ -86,18 +85,18 @@ describe("words raw upload handling", () => {
     const uploadBuffer = vi.fn().mockResolvedValue(undefined);
     const deleteObject = vi.fn().mockResolvedValue(undefined);
 
-    vi.doMock("@/features/auth/server", () => ({
+    vi.doMock("@/features/auth/auth.server", () => ({
       requireAuthWithPayload: vi.fn().mockResolvedValue({ error: null }),
     }));
-    vi.doMock("@/lib/platform/r2", () => ({
+    vi.doMock("@/lib/platform/r2.server", () => ({
       deleteObject,
       downloadBuffer,
       isConfigured: () => true,
       uploadBuffer,
     }));
-    vi.doMock("@/features/media/processing", async () => {
-      const actual = await vi.importActual<typeof import("@/features/media/processing")>(
-        "@/features/media/processing"
+    vi.doMock("@/features/media/processing.server", async () => {
+      const actual = await vi.importActual<typeof import("@/features/media/processing.server")>(
+        "@/features/media/processing.server",
       );
       return {
         ...actual,
@@ -110,7 +109,7 @@ describe("words raw upload handling", () => {
       };
     });
 
-    const { POST } = await import("@/app/api/upload/words/finalize/route");
+    const { POST } = await import("@/src/routes/api/upload/words/finalize/route");
     const response = await POST(
       makeRequest("/api/upload/words/finalize", {
         slug: "launch-notes",
@@ -124,7 +123,7 @@ describe("words raw upload handling", () => {
             overwrote: false,
           },
         ],
-      })
+      }),
     );
 
     expect(response.status).toBe(200);
@@ -140,7 +139,7 @@ describe("words raw upload handling", () => {
     expect(uploadBuffer).toHaveBeenCalledWith(
       "words/media/launch-notes/capture.webp",
       Buffer.from("webp"),
-      "image/webp"
+      "image/webp",
     );
     expect(deleteObject).toHaveBeenCalledWith("words/media/launch-notes/incoming/tmp-capture.dng");
   });
@@ -150,18 +149,18 @@ describe("words raw upload handling", () => {
     const uploadBuffer = vi.fn().mockResolvedValue(undefined);
     const deleteObject = vi.fn().mockResolvedValue(undefined);
 
-    vi.doMock("@/features/auth/server", () => ({
+    vi.doMock("@/features/auth/auth.server", () => ({
       requireAuthWithPayload: vi.fn().mockResolvedValue({ error: null }),
     }));
-    vi.doMock("@/lib/platform/r2", () => ({
+    vi.doMock("@/lib/platform/r2.server", () => ({
       deleteObject,
       downloadBuffer,
       isConfigured: () => true,
       uploadBuffer,
     }));
-    vi.doMock("@/features/media/processing", async () => {
-      const actual = await vi.importActual<typeof import("@/features/media/processing")>(
-        "@/features/media/processing"
+    vi.doMock("@/features/media/processing.server", async () => {
+      const actual = await vi.importActual<typeof import("@/features/media/processing.server")>(
+        "@/features/media/processing.server",
       );
       return {
         ...actual,
@@ -171,7 +170,7 @@ describe("words raw upload handling", () => {
       };
     });
 
-    const { POST } = await import("@/app/api/upload/words/finalize/route");
+    const { POST } = await import("@/src/routes/api/upload/words/finalize/route");
     const response = await POST(
       makeRequest("/api/upload/words/finalize", {
         slug: "launch-notes",
@@ -185,7 +184,7 @@ describe("words raw upload handling", () => {
             overwrote: false,
           },
         ],
-      })
+      }),
     );
 
     expect(response.status).toBe(200);
@@ -201,27 +200,27 @@ describe("words raw upload handling", () => {
     expect(uploadBuffer).toHaveBeenCalledWith(
       "words/media/launch-notes/capture.dng",
       Buffer.from("raw"),
-      "image/x-adobe-dng"
+      "image/x-adobe-dng",
     );
     expect(deleteObject).toHaveBeenCalledWith("words/media/launch-notes/incoming/tmp-capture.dng");
   });
 
   it("treats raw uploads as colliding with existing webp names during presign", async () => {
-    vi.doMock("@/features/auth/server", () => ({
+    vi.doMock("@/features/auth/auth.server", () => ({
       requireAuthWithPayload: vi.fn().mockResolvedValue({ error: null }),
     }));
-    vi.doMock("@/lib/platform/r2", () => ({
+    vi.doMock("@/lib/platform/r2.server", () => ({
       isConfigured: () => true,
       listObjects: vi.fn().mockResolvedValue([{ key: "words/media/launch-notes/capture.webp" }]),
       presignPutUrl: vi.fn(),
     }));
 
-    const { POST } = await import("@/app/api/upload/words/presign/route");
+    const { POST } = await import("@/src/routes/api/upload/words/presign/route");
     const response = await POST(
       makeRequest("/api/upload/words/presign", {
         slug: "launch-notes",
         files: [{ name: "Capture.DNG", size: 42, type: "image/x-adobe-dng" }],
-      })
+      }),
     );
 
     expect(response.status).toBe(200);

@@ -49,24 +49,21 @@ export function JumpRail({ items, ariaLabel }: JumpRailProps) {
   }, []);
 
   /** Swipe left on tab → open. Swipe right on panel → close. */
-  const handleTouchEnd = useCallback(
-    (e: React.TouchEvent, onPanel: boolean) => {
-      const endX = e.changedTouches[0].clientX;
-      const delta = touchStartX.current - endX;
-      if (onPanel) {
-        if (delta < -SWIPE_THRESHOLD) {
-          didSwipe.current = true;
-          setOpen(false);
-        }
-      } else {
-        if (delta > SWIPE_THRESHOLD) {
-          didSwipe.current = true;
-          setOpen(true);
-        }
+  const handleTouchEnd = useCallback((e: React.TouchEvent, onPanel: boolean) => {
+    const endX = e.changedTouches[0].clientX;
+    const delta = touchStartX.current - endX;
+    if (onPanel) {
+      if (delta < -SWIPE_THRESHOLD) {
+        didSwipe.current = true;
+        setOpen(false);
       }
-    },
-    []
-  );
+    } else {
+      if (delta > SWIPE_THRESHOLD) {
+        didSwipe.current = true;
+        setOpen(true);
+      }
+    }
+  }, []);
 
   const handleTabClick = useCallback(() => {
     if (didSwipe.current) return;

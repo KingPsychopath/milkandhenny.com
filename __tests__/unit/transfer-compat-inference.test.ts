@@ -5,15 +5,15 @@ const { headObject, listObjects } = vi.hoisted(() => ({
   listObjects: vi.fn(),
 }));
 
-vi.mock("@/lib/platform/r2", () => ({
+vi.mock("@/lib/platform/r2.server", () => ({
   headObject,
   listObjects,
   downloadBuffer: vi.fn(),
   uploadBuffer: vi.fn(),
 }));
 
-import { inferCompatibleTransferFileState } from "@/features/media/backends/local";
-import type { TransferFile } from "@/features/transfers/store";
+import { inferCompatibleTransferFileState } from "@/features/media/backends/local.server";
+import type { TransferFile } from "@/features/transfers/types";
 
 describe("transfer compatibility inference", () => {
   beforeEach(() => {
@@ -22,9 +22,7 @@ describe("transfer compatibility inference", () => {
   });
 
   it("marks legacy visual media ready when derived assets exist", async () => {
-    headObject
-      .mockResolvedValueOnce({ exists: true })
-      .mockResolvedValueOnce({ exists: true });
+    headObject.mockResolvedValueOnce({ exists: true }).mockResolvedValueOnce({ exists: true });
 
     const file: TransferFile = {
       id: "photo",
@@ -43,9 +41,7 @@ describe("transfer compatibility inference", () => {
   });
 
   it("marks legacy visual media failed when derived assets are missing", async () => {
-    headObject
-      .mockResolvedValueOnce({ exists: false })
-      .mockResolvedValueOnce({ exists: false });
+    headObject.mockResolvedValueOnce({ exists: false }).mockResolvedValueOnce({ exists: false });
 
     const file: TransferFile = {
       id: "capture",
@@ -64,9 +60,7 @@ describe("transfer compatibility inference", () => {
   });
 
   it("uses the stored media id when checking derived assets", async () => {
-    headObject
-      .mockResolvedValueOnce({ exists: true })
-      .mockResolvedValueOnce({ exists: true });
+    headObject.mockResolvedValueOnce({ exists: true }).mockResolvedValueOnce({ exists: true });
 
     const file: TransferFile = {
       id: "clip-2",
@@ -114,7 +108,7 @@ describe("transfer compatibility inference", () => {
     const inferred = await inferCompatibleTransferFileState(
       "abc123",
       file,
-      new Set(["transfers/abc123/thumb/photo.webp", "transfers/abc123/full/photo.webp"])
+      new Set(["transfers/abc123/thumb/photo.webp", "transfers/abc123/full/photo.webp"]),
     );
 
     expect(headObject).not.toHaveBeenCalled();

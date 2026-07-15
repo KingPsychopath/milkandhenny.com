@@ -1,12 +1,12 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import type { NextRequest } from "next/server";
-import { NextRequest as RealNextRequest } from "next/server";
+type NextRequest = Request;
+const RealNextRequest = Request;
 
 /**
  * Auth integration tests.
  *
  * Notes:
- * - We use a lightweight request mock and cast it to `NextRequest` because the
+ * - We use a lightweight request mock and cast it to `Request` because the
  *   auth helpers only read `headers`, `url`, and `json()`.
  * - Redis is mocked in-memory so we can exercise revoke behavior deterministically.
  */
@@ -99,10 +99,7 @@ function createRedisMock(): RedisLike {
   return api;
 }
 
-function mockRequest(opts: {
-  headers?: Record<string, string>;
-  jsonBody?: unknown;
-}) {
+function mockRequest(opts: { headers?: Record<string, string>; jsonBody?: unknown }) {
   const headers = new Headers(opts.headers ?? {});
   return {
     headers,
@@ -121,8 +118,7 @@ describe("auth security flows", () => {
     process.env = {
       ...ORIGINAL_ENV,
       NODE_ENV: "test",
-      AUTH_SECRET:
-        "test-secret-key-for-jwt-signing-1234567890-EXTRA-LENGTH",
+      AUTH_SECRET: "test-secret-key-for-jwt-signing-1234567890-EXTRA-LENGTH",
       STAFF_PIN: "1234",
       ADMIN_PASSWORD: "a-very-strong-admin-password",
       UPLOAD_PIN: "9999",
@@ -135,24 +131,24 @@ describe("auth security flows", () => {
   });
 
   it("safeCompare behaves correctly", async () => {
-    vi.doMock("@/lib/platform/redis", () => ({ getRedis: () => null }));
-    const { safeCompare } = await import("@/features/auth/server");
+    vi.doMock("@/lib/platform/redis.server", () => ({ getRedis: () => null }));
+    const { safeCompare } = await import("@/features/auth/auth.server");
     expect(safeCompare("secret", "secret")).toBe(true);
     expect(safeCompare("secret", "wrong")).toBe(false);
     expect(safeCompare("short", "much-longer-string")).toBe(false);
   });
 
   it("issues role-based TTL tokens (admin shorter than staff)", async () => {
-    vi.doMock("@/lib/platform/redis", () => ({ getRedis: () => null }));
-    const { handleVerifyRequest } = await import("@/features/auth/server");
+    vi.doMock("@/lib/platform/redis.server", () => ({ getRedis: () => null }));
+    const { handleVerifyRequest } = await import("@/features/auth/auth.server");
 
     const adminRes = await handleVerifyRequest(
       mockRequest({ jsonBody: { password: process.env.ADMIN_PASSWORD } }) as unknown as NextRequest,
-      "admin"
+      "admin",
     );
     const staffRes = await handleVerifyRequest(
       mockRequest({ jsonBody: { pin: process.env.STAFF_PIN } }) as unknown as NextRequest,
-      "staff"
+      "staff",
     );
 
     const adminJson = (await adminRes.json()) as { token: string };
@@ -160,7 +156,8 @@ describe("auth security flows", () => {
 
     const decodePayload = (token: string) => {
       const payloadB64 = token.split(".")[1];
-      const padded = payloadB64.replace(/-/g, "+").replace(/_/g, "/") + "===".slice((payloadB64.length + 3) % 4);
+      const padded =
+        payloadB64.replace(/-/g, "+").replace(/_/g, "/") + "===".slice((payloadB64.length + 3) % 4);
       return JSON.parse(Buffer.from(padded, "base64").toString("utf8")) as {
         role: string;
         iat: number;
@@ -181,18 +178,19 @@ describe("auth security flows", () => {
 
   it("revoking a specific jti makes that token unauthorized", async () => {
     const redis = createRedisMock();
-    vi.doMock("@/lib/platform/redis", () => ({ getRedis: () => redis }));
-    const { handleVerifyRequest, requireAuth } = await import("@/features/auth/server");
+    vi.doMock("@/lib/platform/redis.server", () => ({ getRedis: () => redis }));
+    const { handleVerifyRequest, requireAuth } = await import("@/features/auth/auth.server");
 
     const verifyRes = await handleVerifyRequest(
       mockRequest({ jsonBody: { password: process.env.ADMIN_PASSWORD } }) as unknown as NextRequest,
-      "admin"
+      "admin",
     );
     const { token } = (await verifyRes.json()) as { token: string };
     expect(typeof token).toBe("string");
 
     const payloadB64 = token.split(".")[1];
-    const padded = payloadB64.replace(/-/g, "+").replace(/_/g, "/") + "===".slice((payloadB64.length + 3) % 4);
+    const padded =
+      payloadB64.replace(/-/g, "+").replace(/_/g, "/") + "===".slice((payloadB64.length + 3) % 4);
     const payload = JSON.parse(Buffer.from(padded, "base64").toString("utf8")) as {
       jti: string;
       exp: number;
@@ -203,7 +201,7 @@ describe("auth security flows", () => {
 
     const err = await requireAuth(
       mockRequest({ headers: { authorization: `Bearer ${token}` } }) as unknown as NextRequest,
-      "admin"
+      "admin",
     );
     expect(err).not.toBeNull();
     expect(err?.status).toBe(401);
@@ -211,19 +209,19 @@ describe("auth security flows", () => {
 
   it("accepts staff auth via httpOnly cookie (no Authorization header)", async () => {
     const redis = createRedisMock();
-    vi.doMock("@/lib/platform/redis", () => ({ getRedis: () => redis }));
-    const { handleVerifyRequest, requireAuth } = await import("@/features/auth/server");
+    vi.doMock("@/lib/platform/redis.server", () => ({ getRedis: () => redis }));
+    const { handleVerifyRequest, requireAuth } = await import("@/features/auth/auth.server");
 
     const staffRes = await handleVerifyRequest(
       mockRequest({ jsonBody: { pin: process.env.STAFF_PIN } }) as unknown as NextRequest,
-      "staff"
+      "staff",
     );
     const { token } = (await staffRes.json()) as { token: string };
 
     const req = new RealNextRequest(
       new Request("http://localhost/api/guests", {
         headers: { cookie: `mah-auth-staff=${encodeURIComponent(token)}` },
-      })
+      }),
     );
 
     const err = await requireAuth(req, "staff");
@@ -232,17 +230,20 @@ describe("auth security flows", () => {
 
   it("prefers admin auth when both upload and admin cookies are present", async () => {
     const redis = createRedisMock();
-    vi.doMock("@/lib/platform/redis", () => ({ getRedis: () => redis }));
-    const { handleVerifyRequest, requireAuthWithPayload } = await import("@/features/auth/server");
+    vi.doMock("@/lib/platform/redis.server", () => ({ getRedis: () => redis }));
+    const { handleVerifyRequest, requireAuthWithPayload } =
+      await import("@/features/auth/auth.server");
 
     const [uploadRes, adminRes] = await Promise.all([
       handleVerifyRequest(
         mockRequest({ jsonBody: { pin: process.env.UPLOAD_PIN } }) as unknown as NextRequest,
-        "upload"
+        "upload",
       ),
       handleVerifyRequest(
-        mockRequest({ jsonBody: { password: process.env.ADMIN_PASSWORD } }) as unknown as NextRequest,
-        "admin"
+        mockRequest({
+          jsonBody: { password: process.env.ADMIN_PASSWORD },
+        }) as unknown as NextRequest,
+        "admin",
       ),
     ]);
 
@@ -257,7 +258,7 @@ describe("auth security flows", () => {
             `mah-auth-admin=${encodeURIComponent(adminToken)}`,
           ].join("; "),
         },
-      })
+      }),
     );
 
     const { error, payload } = await requireAuthWithPayload(req, "upload");
@@ -267,17 +268,17 @@ describe("auth security flows", () => {
 
   it("step-up gate blocks destructive actions without x-admin-step-up", async () => {
     const redis = createRedisMock();
-    vi.doMock("@/lib/platform/redis", () => ({ getRedis: () => redis }));
-    const { handleVerifyRequest, requireAdminStepUp } = await import("@/features/auth/server");
+    vi.doMock("@/lib/platform/redis.server", () => ({ getRedis: () => redis }));
+    const { handleVerifyRequest, requireAdminStepUp } = await import("@/features/auth/auth.server");
 
     const verifyRes = await handleVerifyRequest(
       mockRequest({ jsonBody: { password: process.env.ADMIN_PASSWORD } }) as unknown as NextRequest,
-      "admin"
+      "admin",
     );
     const { token } = (await verifyRes.json()) as { token: string };
 
     const missing = await requireAdminStepUp(
-      mockRequest({ headers: { authorization: `Bearer ${token}` } }) as unknown as NextRequest
+      mockRequest({ headers: { authorization: `Bearer ${token}` } }) as unknown as NextRequest,
     );
     expect(missing).not.toBeNull();
     expect(missing?.status).toBe(428);
@@ -285,9 +286,9 @@ describe("auth security flows", () => {
 
   it("step-up token is bound to the admin session (jti)", async () => {
     const redis = createRedisMock();
-    vi.doMock("@/lib/platform/redis", () => ({ getRedis: () => redis }));
+    vi.doMock("@/lib/platform/redis.server", () => ({ getRedis: () => redis }));
     const { handleVerifyRequest, createAdminStepUpToken, requireAdminStepUp } =
-      await import("@/features/auth/server");
+      await import("@/features/auth/auth.server");
 
     // Admin token A
     const verifyA = await handleVerifyRequest(
@@ -295,7 +296,7 @@ describe("auth security flows", () => {
         headers: { "x-forwarded-for": "203.0.113.10" },
         jsonBody: { password: process.env.ADMIN_PASSWORD },
       }) as unknown as NextRequest,
-      "admin"
+      "admin",
     );
     const { token: tokenA } = (await verifyA.json()) as { token: string };
 
@@ -305,7 +306,7 @@ describe("auth security flows", () => {
         headers: { "x-forwarded-for": "203.0.113.11" },
         jsonBody: { password: process.env.ADMIN_PASSWORD },
       }) as unknown as NextRequest,
-      "admin"
+      "admin",
     );
     const { token: tokenB } = (await verifyB.json()) as { token: string };
 
@@ -314,7 +315,7 @@ describe("auth security flows", () => {
       mockRequest({
         headers: { authorization: `Bearer ${tokenA}` },
       }) as unknown as NextRequest,
-      process.env.ADMIN_PASSWORD ?? ""
+      process.env.ADMIN_PASSWORD ?? "",
     );
     const stepJson = (await stepRes.json()) as { token?: string };
     expect(typeof stepJson.token).toBe("string");
@@ -326,7 +327,7 @@ describe("auth security flows", () => {
           authorization: `Bearer ${tokenB}`,
           "x-admin-step-up": stepJson.token as string,
         },
-      }) as unknown as NextRequest
+      }) as unknown as NextRequest,
     );
     expect(mismatch).not.toBeNull();
     expect(mismatch?.status).toBe(401);
@@ -334,14 +335,13 @@ describe("auth security flows", () => {
 
   it("token-version bump invalidates previously issued tokens", async () => {
     const redis = createRedisMock();
-    vi.doMock("@/lib/platform/redis", () => ({ getRedis: () => redis }));
-    const { handleVerifyRequest, requireAuth, revokeRoleTokens } = await import(
-      "@/features/auth/server"
-    );
+    vi.doMock("@/lib/platform/redis.server", () => ({ getRedis: () => redis }));
+    const { handleVerifyRequest, requireAuth, revokeRoleTokens } =
+      await import("@/features/auth/auth.server");
 
     const verify = await handleVerifyRequest(
       mockRequest({ jsonBody: { password: process.env.ADMIN_PASSWORD } }) as unknown as NextRequest,
-      "admin"
+      "admin",
     );
     const { token } = (await verify.json()) as { token: string };
 
@@ -350,7 +350,7 @@ describe("auth security flows", () => {
 
     const err = await requireAuth(
       mockRequest({ headers: { authorization: `Bearer ${token}` } }) as unknown as NextRequest,
-      "admin"
+      "admin",
     );
     expect(err).not.toBeNull();
     expect(err?.status).toBe(401);

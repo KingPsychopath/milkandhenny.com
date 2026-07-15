@@ -1,8 +1,6 @@
 import type { ZipSourceFile } from "./streaming-zip";
 
-type ZipPlanTotalBytes =
-  | { known: true; bytes: number }
-  | { known: false };
+type ZipPlanTotalBytes = { known: true; bytes: number } | { known: false };
 
 type ZipPlanPart = {
   files: ZipSourceFile[];
@@ -73,7 +71,10 @@ function partitionFilesBySize(files: ZipSourceFile[], maxPartBytes: number): Zip
   return parts;
 }
 
-function planZipDownload(files: ZipSourceFile[], { pickerAvailable, maxPartBytes }: ZipPlannerOptions): ZipPlan {
+function planZipDownload(
+  files: ZipSourceFile[],
+  { pickerAvailable, maxPartBytes }: ZipPlannerOptions,
+): ZipPlan {
   const total = getTotalBytes(files);
 
   // Evaluation order matters:
@@ -84,7 +85,7 @@ function planZipDownload(files: ZipSourceFile[], { pickerAvailable, maxPartBytes
 
   // 2. Oversize-file only applies on the blob fallback path.
   const oversizeFile = files.find(
-    (file) => typeof file.size === "number" && file.size > maxPartBytes
+    (file) => typeof file.size === "number" && file.size > maxPartBytes,
   );
   if (oversizeFile && typeof oversizeFile.size === "number") {
     return {
@@ -125,7 +126,11 @@ function planZipDownload(files: ZipSourceFile[], { pickerAvailable, maxPartBytes
   };
 }
 
-function getMultipartArchiveName(archiveName: string, partIndex: number, partCount: number): string {
+function getMultipartArchiveName(
+  archiveName: string,
+  partIndex: number,
+  partCount: number,
+): string {
   if (archiveName.toLowerCase().endsWith(".zip")) {
     return archiveName.replace(/\.zip$/i, `-part-${partIndex}-of-${partCount}.zip`);
   }

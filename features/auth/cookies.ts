@@ -1,5 +1,3 @@
-import "server-only";
-
 export const AUTH_COOKIES = {
   staff: "mah-auth-staff",
   admin: "mah-auth-admin",
@@ -13,7 +11,7 @@ export function getAuthCookieName(role: AuthCookieRole): string {
 }
 
 export function getAuthCookieMaxAgeSeconds(role: AuthCookieRole): number {
-  // Keep in sync with TOKEN_EXPIRY_SECONDS_BY_ROLE in `features/auth/server.ts`.
+  // Keep in sync with TOKEN_EXPIRY_SECONDS_BY_ROLE in `features/auth/auth.server.ts`.
   if (role === "staff") return 24 * 60 * 60;
   if (role === "admin") return 60 * 60;
   return 12 * 60 * 60; // upload

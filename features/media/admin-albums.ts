@@ -1,6 +1,6 @@
 import fs from "fs";
 import path from "path";
-import { deleteObjects, listObjects } from "@/lib/platform/r2";
+import { deleteObjects, listObjects } from "@/lib/platform/r2.server";
 
 const ALBUMS_DIR = path.join(process.cwd(), "content/albums");
 const SAFE_ALBUM_SLUG = /^[a-z0-9-]+$/;
@@ -50,7 +50,7 @@ function parseAlbum(raw: string): AlbumJson | null {
     const photos = data.photos
       .filter(
         (p): p is AlbumPhoto =>
-          !!p && typeof p === "object" && typeof (p as { id?: unknown }).id === "string"
+          !!p && typeof p === "object" && typeof (p as { id?: unknown }).id === "string",
       )
       .map((p) => ({ ...p, id: p.id }));
     return {
@@ -74,7 +74,7 @@ function assertAlbumManifestWritable(): void {
     fs.accessSync(ALBUMS_DIR, fs.constants.W_OK);
   } catch {
     throw new Error(
-      "Album manifests are read-only in this runtime. Use the CLI and commit changes to git."
+      "Album manifests are read-only in this runtime. Use the CLI and commit changes to git.",
     );
   }
 }
@@ -119,9 +119,7 @@ function listAdminAlbums(): AdminAlbum[] {
     })
     .filter((a): a is AdminAlbum => a !== null);
 
-  return albums.sort(
-    (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
-  );
+  return albums.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 }
 
 async function deleteAlbum(slug: string): Promise<{ deletedFiles: number; deletedJson: boolean }> {
@@ -146,7 +144,7 @@ async function deleteAlbum(slug: string): Promise<{ deletedFiles: number; delete
 
 async function deleteAlbumPhoto(
   slug: string,
-  photoId: string
+  photoId: string,
 ): Promise<{ album: AdminAlbum; deletedKeys: string[] }> {
   if (!isSafeAlbumSlug(slug)) throw new Error("Invalid album slug");
   if (!isSafePhotoId(photoId)) throw new Error("Invalid photo id");

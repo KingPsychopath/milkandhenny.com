@@ -23,10 +23,7 @@ describe("parseCSV", () => {
   });
 
   it("links plus-ones to their host", () => {
-    const input = csv(
-      "Alice,Approved,2026-01-15,,",
-      "Bob,Approved,2026-01-15,,Alice"
-    );
+    const input = csv("Alice,Approved,2026-01-15,,", "Bob,Approved,2026-01-15,,Alice");
     const guests = parseCSV(input);
 
     // Only main guests (non-plus-ones) in top-level array
@@ -38,12 +35,7 @@ describe("parseCSV", () => {
   });
 
   it("normalizes statuses", () => {
-    const input = csv(
-      "A,Can't Go,,,",
-      "B,Invited,,,",
-      "C,Pending,,,",
-      "D,Approved,,,"
-    );
+    const input = csv("A,Can't Go,,,", "B,Invited,,,", "C,Pending,,,", "D,Approved,,,");
     const guests = parseCSV(input);
     const statuses = guests.map((g) => g.status).sort();
 

@@ -2,12 +2,7 @@
   "extends": "./tsconfig.json",
   "compilerOptions": {
     "paths": {
-      "@/*": [
-        "./*"
-      ],
-      "server-only": [
-        "./scripts/server-only.ts"
-      ]
+      "@/*": ["./*"]
     }
   }
 }

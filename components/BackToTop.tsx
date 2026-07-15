@@ -1,7 +1,5 @@
-"use client";
-
 import { useEffect, useState, useRef } from "react";
-import { usePathname } from "next/navigation";
+import { useLocation } from "@tanstack/react-router";
 
 /** Routes where the button should be hidden */
 const HIDDEN_ROUTES = ["/party", "/icebreaker", "/best-dressed", "/guestlist", "/t"] as const;
@@ -14,7 +12,7 @@ const SHOW_THRESHOLD = 400;
  * has scrolled past the fold. Matches the lamp's visual language.
  */
 export function BackToTop() {
-  const pathname = usePathname();
+  const pathname = useLocation({ select: (location) => location.pathname });
   const [show, setShow] = useState(false);
   const ticking = useRef(false);
 

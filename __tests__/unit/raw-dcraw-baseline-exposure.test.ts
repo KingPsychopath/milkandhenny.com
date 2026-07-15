@@ -8,7 +8,7 @@ const { mockParse } = vi.hoisted(() => ({
 async function makeJpegBuffer(
   width: number,
   height: number,
-  rgb: { r: number; g: number; b: number }
+  rgb: { r: number; g: number; b: number },
 ): Promise<Buffer> {
   return sharp({
     create: {
@@ -32,9 +32,16 @@ describe("dcraw baseline exposure handling", () => {
     const decoded = await makeJpegBuffer(64, 64, { r: 64, g: 64, b: 64 });
 
     vi.doMock("child_process", () => ({
-      execFile: vi.fn((_bin: string, _args: string[], _opts: unknown, callback: (error: Error | null, stdout: Buffer, stderr: Buffer) => void) => {
-        callback(null, decoded, Buffer.alloc(0));
-      }),
+      execFile: vi.fn(
+        (
+          _bin: string,
+          _args: string[],
+          _opts: unknown,
+          callback: (error: Error | null, stdout: Buffer, stderr: Buffer) => void,
+        ) => {
+          callback(null, decoded, Buffer.alloc(0));
+        },
+      ),
     }));
     vi.doMock("exifr", () => ({
       default: {
@@ -42,7 +49,7 @@ describe("dcraw baseline exposure handling", () => {
       },
     }));
 
-    const { processRawWithDcraw } = await import("@/features/media/processing");
+    const { processRawWithDcraw } = await import("@/features/media/processing.server");
     const result = await processRawWithDcraw(Buffer.from("raw"), "IMG_3006.dng");
     const stats = await sharp(result.buffer).stats();
 

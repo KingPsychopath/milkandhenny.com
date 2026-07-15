@@ -20,23 +20,23 @@ const {
   uploadBuffer: vi.fn(),
 }));
 
-vi.mock("@/lib/platform/r2", () => ({
+vi.mock("@/lib/platform/r2.server", () => ({
   downloadBuffer: vi.fn().mockResolvedValue(Buffer.from("raw")),
   uploadBuffer,
 }));
 
-vi.mock("@/features/transfers/media-queue", () => ({
+vi.mock("@/features/transfers/media-queue.server", () => ({
   dequeueTransferMediaJobs,
   enqueueTransferMediaJob,
   getTransferMediaQueueLength,
 }));
 
-vi.mock("@/features/transfers/store", () => ({
+vi.mock("@/features/transfers/store.server", () => ({
   getTransfer,
   saveTransfer,
 }));
 
-vi.mock("@/features/media/processing", () => ({
+vi.mock("@/features/media/processing.server", () => ({
   RawPreviewUnavailableError: class RawPreviewUnavailableError extends Error {},
   getMimeType: (filename: string) => (filename.endsWith(".mov") ? "video/quicktime" : "image/jpeg"),
   mapConcurrent: async <T, R>(items: T[], _limit: number, mapper: (item: T) => Promise<R>) =>
@@ -45,9 +45,17 @@ vi.mock("@/features/media/processing", () => ({
   resolveImageProcessingSource,
 }));
 
-vi.mock("@/features/media/backends/local", () => ({
+vi.mock("@/features/media/backends/local.server", () => ({
   buildOriginalOnlyFailureFile: vi.fn(
-    (mediaId: string, filename: string, size: number, storageKey: string, route: string, code: string, retryCount: number) => ({
+    (
+      mediaId: string,
+      filename: string,
+      size: number,
+      storageKey: string,
+      route: string,
+      code: string,
+      retryCount: number,
+    ) => ({
       id: mediaId,
       filename,
       kind: "image",
@@ -59,10 +67,23 @@ vi.mock("@/features/media/backends/local", () => ({
       processingRoute: route,
       processingErrorCode: code,
       retryCount,
-    })
+    }),
   ),
   buildReadyVisualFile: vi.fn(
-    (mediaId: string, filename: string, size: number, kind: string, mimeType: string, storageKey: string, _originalStorageKey: string | undefined, width: number, height: number, route: string, processingStatus: string, processingBackend: string) => ({
+    (
+      mediaId: string,
+      filename: string,
+      size: number,
+      kind: string,
+      mimeType: string,
+      storageKey: string,
+      _originalStorageKey: string | undefined,
+      width: number,
+      height: number,
+      route: string,
+      processingStatus: string,
+      processingBackend: string,
+    ) => ({
       id: mediaId,
       filename,
       kind,
@@ -75,9 +96,11 @@ vi.mock("@/features/media/backends/local", () => ({
       processingStatus,
       processingBackend,
       processingRoute: route,
-    })
+    }),
   ),
-  getRouteKind: vi.fn((route: string) => (route.includes("video") ? "video" : route.includes("gif") ? "gif" : "image")),
+  getRouteKind: vi.fn((route: string) =>
+    route.includes("video") ? "video" : route.includes("gif") ? "gif" : "image",
+  ),
   processTransferObjectLocally: vi.fn(),
 }));
 
@@ -88,7 +111,7 @@ describe("worker media processing", () => {
   });
 
   it("persists mediaId on queued jobs and remaps local video to worker_video", async () => {
-    const { enqueueWorkerJob } = await import("@/features/media/backends/worker");
+    const { enqueueWorkerJob } = await import("@/features/media/backends/worker.server");
 
     enqueueTransferMediaJob.mockResolvedValue(undefined);
 
@@ -107,14 +130,14 @@ describe("worker media processing", () => {
       expect.objectContaining({
         mediaId: "clip-2",
         processingRoute: "worker_video",
-      })
+      }),
     );
     expect(result.file.id).toBe("clip-2");
     expect(result.file.processingRoute).toBe("worker_video");
   });
 
   it("matches worker jobs by mediaId when filenames collide", async () => {
-    const { runTransferMediaJobs } = await import("@/features/media/backends/worker");
+    const { runTransferMediaJobs } = await import("@/features/media/backends/worker.server");
 
     dequeueTransferMediaJobs.mockResolvedValue([
       {
@@ -183,13 +206,13 @@ describe("worker media processing", () => {
       1,
       "transfers/transfer-1/thumb/photo-2.webp",
       expect.any(Buffer),
-      "image/webp"
+      "image/webp",
     );
     expect(uploadBuffer).toHaveBeenNthCalledWith(
       2,
       "transfers/transfer-1/full/photo-2.webp",
       expect.any(Buffer),
-      "image/webp"
+      "image/webp",
     );
     expect(saveTransfer).toHaveBeenLastCalledWith(
       expect.objectContaining({
@@ -200,13 +223,13 @@ describe("worker media processing", () => {
           }),
         ]),
       }),
-      expect.any(Number)
+      expect.any(Number),
     );
     expect(result.succeeded).toBe(1);
   });
 
   it("marks stale exhausted files as failed instead of leaving them queued", async () => {
-    const { refreshQueuedTransferState } = await import("@/features/media/backends/worker");
+    const { refreshQueuedTransferState } = await import("@/features/media/backends/worker.server");
 
     const transfer = {
       id: "transfer-1",

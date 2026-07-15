@@ -32,7 +32,7 @@ describe("words media upload helpers", () => {
   it("builds media prefixes for word and asset targets", () => {
     expect(mediaPrefixForTarget({ scope: "word", slug: "hello" })).toBe("words/media/hello/");
     expect(mediaPrefixForTarget({ scope: "asset", assetId: "brand-kit" })).toBe(
-      "words/assets/brand-kit/"
+      "words/assets/brand-kit/",
     );
   });
 
@@ -54,17 +54,13 @@ describe("words media upload helpers", () => {
 
   it("creates image markdown snippets for word-scoped media", () => {
     expect(
-      toMarkdownSnippetForTarget({ scope: "word", slug: "launch-notes" }, "hero.webp", "image")
+      toMarkdownSnippetForTarget({ scope: "word", slug: "launch-notes" }, "hero.webp", "image"),
     ).toBe("![hero](words/media/launch-notes/hero.webp)");
   });
 
   it("creates link markdown snippets for shared non-image assets", () => {
     expect(
-      toMarkdownSnippetForTarget(
-        { scope: "asset", assetId: "brand-kit" },
-        "logo.svg",
-        "file"
-      )
+      toMarkdownSnippetForTarget({ scope: "asset", assetId: "brand-kit" }, "logo.svg", "file"),
     ).toBe("[logo](words/assets/brand-kit/logo.svg)");
   });
 });

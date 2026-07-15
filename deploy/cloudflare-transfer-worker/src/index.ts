@@ -8,8 +8,8 @@ export class TransferMediaContainer extends Container {
   envVars = {
     NODE_ENV: "production",
     PORT: "8080",
-    KV_REST_API_URL: env.KV_REST_API_URL,
-    KV_REST_API_TOKEN: env.KV_REST_API_TOKEN,
+    REDIS_REST_URL: env.REDIS_REST_URL,
+    REDIS_REST_TOKEN: env.REDIS_REST_TOKEN,
     REDIS_URL: env.REDIS_URL,
     UPSTASH_REDIS_URL: env.UPSTASH_REDIS_URL,
     UPSTASH_REDIS_HOST: env.UPSTASH_REDIS_HOST,
@@ -34,8 +34,7 @@ interface Env {
 
 function isAuthorized(request: Request, env: Env): boolean {
   const expected = env.TRANSFER_MEDIA_WAKE_TOKEN?.trim();
-  if (!expected) return true;
-  return request.headers.get("authorization") === `Bearer ${expected}`;
+  return Boolean(expected) && request.headers.get("authorization") === `Bearer ${expected}`;
 }
 
 export default {
@@ -47,6 +46,9 @@ export default {
     }
 
     if (request.method === "POST" && url.pathname === "/wake") {
+      if (!env.TRANSFER_MEDIA_WAKE_TOKEN?.trim()) {
+        return new Response("worker wake is not configured", { status: 503 });
+      }
       if (!isAuthorized(request, env)) {
         return new Response("unauthorized", { status: 401 });
       }

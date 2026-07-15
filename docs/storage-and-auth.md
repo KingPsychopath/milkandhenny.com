@@ -14,12 +14,12 @@ It also documents why the old model (client storage + `useEffect` fetch + API ro
 
 ### Two separate questions
 
-1) **Who needs to read the value?**
+1. **Who needs to read the value?**
 
 - **Server needs it** (Server Components, Server Actions, Route Handlers) -> use **cookies**
 - **Only the browser needs it** -> use **localStorage** (or React state)
 
-2) **Should JavaScript be allowed to read it?**
+2. **Should JavaScript be allowed to read it?**
 
 - **No** (auth/session tokens) -> use **httpOnly cookies**
 - **Yes** (theme, UI preferences, convenience hints) -> use **localStorage**
@@ -85,16 +85,16 @@ Notes:
 
 ### Problems it creates (mental model)
 
-1) **The server is blind**
+1. **The server is blind**
 
 Server Components / Server Actions cannot see browser storage. That forces the app into a client-first architecture even for pages that should be server-rendered.
 
-2) **You can’t “render authenticated HTML”**
+2. **You can’t “render authenticated HTML”**
 
 If auth is only in localStorage, the server can't know you're logged in while rendering HTML.
 Result: you render a shell, then `useEffect` fetches, then the UI fills in (slower, more moving parts).
 
-3) **More `useEffect` + more traffic amplifiers**
+3. **More `useEffect` + more traffic amplifiers**
 
 Every client fetch is an effect with dependencies. In a page with timers, polling, or frequent re-renders, it’s easy to accidentally restart effects and spike reads.
 
@@ -102,11 +102,11 @@ This repo already hit that exact failure mode:
 
 - see `docs/postmortem-guestlist-kv-read-spike.md`
 
-4) **Harder to use App Router primitives**
+4. **Harder to use App Router primitives**
 
 Server rendering, `loading.tsx`, caching/revalidation, and Server Actions become less useful when auth is only client-side.
 
-5) **Security footgun**
+5. **Security footgun**
 
 Bearer tokens in localStorage are readable by JS, which raises the blast radius of any XSS.
 httpOnly cookies reduce that risk by making the token inaccessible to client JS.
@@ -118,4 +118,3 @@ httpOnly cookies reduce that risk by making the token inaccessible to client JS.
 - If you need the server to decide anything (gate a page, fetch initial data, run a Server Action) -> **cookie**
 - If it’s a client-only preference or hint -> **localStorage**
 - Avoid `sessionStorage` unless you have a very specific reason (debuggability and “tab lost state” issues)
-

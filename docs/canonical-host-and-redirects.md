@@ -10,10 +10,14 @@ A canonical host is the one true hostname your app treats as primary.
 
 Example:
 
-- Input host: `https://milkandhenny.com`
-- Canonical host: `https://www.milkandhenny.com`
+- Input host: `https://www.milkandhenny.com`
+- Canonical host: `https://milkandhenny.com`
 
 Non-canonical hosts should redirect to the canonical one.
+
+Production enforces this at Cloudflare with a permanent redirect that preserves
+the path and query string. Railway keeps both custom domains attached so TLS and
+origin ownership remain valid for either hostname.
 
 ---
 

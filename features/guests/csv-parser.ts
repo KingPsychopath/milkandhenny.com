@@ -1,21 +1,21 @@
-import Papa from 'papaparse';
-import { log } from '@/lib/platform/logger';
-import { Guest, GuestStatus, generateGuestId } from './types';
+import Papa from "papaparse";
+import { log } from "@/lib/platform/logger.server";
+import { Guest, GuestStatus, generateGuestId } from "./types";
 
 type CSVRow = {
   Name: string;
   Status: string;
-  'RSVP date': string;
-  'Did you enter your full name? (Enter your full name)': string;
-  'Is Plus One Of': string;
+  "RSVP date": string;
+  "Did you enter your full name? (Enter your full name)": string;
+  "Is Plus One Of": string;
 };
 
 function normalizeStatus(status: string): GuestStatus {
   const normalized = status.trim();
   if (normalized === "Can't Go") return "Can't Go";
-  if (normalized === 'Invited') return 'Invited';
-  if (normalized === 'Pending') return 'Pending';
-  return 'Approved';
+  if (normalized === "Invited") return "Invited";
+  if (normalized === "Pending") return "Pending";
+  return "Approved";
 }
 
 export function parseCSV(csvContent: string): Guest[] {
@@ -26,7 +26,7 @@ export function parseCSV(csvContent: string): Guest[] {
   });
 
   if (result.errors.length > 0) {
-    log.warn('guests.csv', 'CSV parsing errors', { errors: result.errors });
+    log.warn("guests.csv", "CSV parsing errors", { errors: result.errors });
   }
 
   const rows = result.data;
@@ -37,11 +37,12 @@ export function parseCSV(csvContent: string): Guest[] {
     const name = row.Name?.trim();
     if (!name) return;
 
-    const isPlusOne = !!row['Is Plus One Of']?.trim();
-    const plusOneOf = row['Is Plus One Of']?.trim() || undefined;
-    const fullName = row['Did you enter your full name? (Enter your full name)']?.trim() || undefined;
-    const status = normalizeStatus(row.Status || 'Pending');
-    const rsvpDate = row['RSVP date']?.trim() || undefined;
+    const isPlusOne = !!row["Is Plus One Of"]?.trim();
+    const plusOneOf = row["Is Plus One Of"]?.trim() || undefined;
+    const fullName =
+      row["Did you enter your full name? (Enter your full name)"]?.trim() || undefined;
+    const status = normalizeStatus(row.Status || "Pending");
+    const rsvpDate = row["RSVP date"]?.trim() || undefined;
 
     const guest: Guest = {
       id: generateGuestId(name, index),
@@ -92,7 +93,7 @@ export async function parseCSVFile(file: File): Promise<Guest[]> {
         reject(error);
       }
     };
-    reader.onerror = () => reject(new Error('Failed to read file'));
+    reader.onerror = () => reject(new Error("Failed to read file"));
     reader.readAsText(file);
   });
 }

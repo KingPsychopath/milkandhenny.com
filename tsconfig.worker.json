@@ -1,6 +1,6 @@
 {
   "compilerOptions": {
-    "target": "ES2017",
+    "target": "ES2022",
     "allowJs": true,
     "skipLibCheck": true,
     "strict": true,
@@ -10,14 +10,8 @@
     "moduleResolution": "bundler",
     "resolveJsonModule": true,
     "isolatedModules": true,
-    "baseUrl": ".",
     "paths": {
-      "@/*": [
-        "./*"
-      ],
-      "server-only": [
-        "./scripts/server-only.ts"
-      ]
+      "@/*": ["./*"]
     }
   },
   "include": [
@@ -29,7 +23,7 @@
   ],
   "exclude": [
     "__tests__",
-    "app",
+    "src",
     "components",
     "content",
     "docs",
@@ -37,6 +31,6 @@
     "models",
     "node_modules",
     "public",
-    ".next"
+    ".output"
   ]
 }

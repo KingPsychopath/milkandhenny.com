@@ -13,7 +13,7 @@ type FetchWithRetryOptions = {
 export async function fetchWithRetry(
   url: string,
   options?: RequestInit,
-  retryOptions?: FetchWithRetryOptions
+  retryOptions?: FetchWithRetryOptions,
 ): Promise<Response> {
   const retries = Math.max(0, Math.floor(retryOptions?.retries ?? 2));
   const baseDelayMs = Math.max(0, Math.floor(retryOptions?.baseDelayMs ?? 500));
@@ -36,4 +36,3 @@ export async function fetchWithRetry(
 
   throw new Error("Fetch failed after retries");
 }
-

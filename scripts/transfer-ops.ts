@@ -8,32 +8,34 @@
 
 import fs from "fs";
 import path from "path";
-import {
-  deleteObjects,
-  listObjects,
-  listPrefixes,
-  isConfigured,
-} from "./r2-client";
+import { deleteObjects, listObjects, listPrefixes, isConfigured } from "./r2-client";
 import {
   PROCESSABLE_EXTENSIONS,
   ANIMATED_EXTENSIONS,
   mapConcurrent,
-} from "../features/media/processing";
+} from "../features/media/processing.server";
 import {
   buildTransferProcessingCounts,
   resolveTransferUploadIds,
   type TransferProcessingCounts,
 } from "../features/transfers/media-state";
-import { getTransferFileDeleteKeys, resolveTransferFileForDelete } from "../features/transfers/delete";
-import { applyTransferAssetGroups, processTransferFile, sortTransferFiles } from "../features/transfers/upload";
-import { backfillTransferMedia } from "../features/transfers/upload";
-import type { ProcessFileResult } from "../features/transfers/upload";
-import { getTransferMediaQueueLength } from "../features/transfers/media-queue";
-import { getTransferMediaWorkerStatus } from "../features/transfers/media-worker-status";
-import { runTransferMediaJobs } from "../features/media/backends/worker";
-import { isSafeTransferId } from "../features/transfers/admin";
+import {
+  getTransferFileDeleteKeys,
+  resolveTransferFileForDelete,
+} from "../features/transfers/delete";
+import {
+  applyTransferAssetGroups,
+  processTransferFile,
+  sortTransferFiles,
+} from "../features/transfers/upload.server";
+import { backfillTransferMedia } from "../features/transfers/upload.server";
+import type { ProcessFileResult } from "../features/transfers/upload.server";
+import { getTransferMediaQueueLength } from "../features/transfers/media-queue.server";
+import { getTransferMediaWorkerStatus } from "../features/transfers/media-worker-status.server";
+import { runTransferMediaJobs } from "../features/media/backends/worker.server";
+import { isSafeTransferId } from "../features/transfers/admin.server";
 import { BASE_URL } from "../lib/shared/config";
-import { getRedis } from "../lib/platform/redis";
+import { getRedis } from "../lib/platform/redis.server";
 import {
   saveTransfer,
   getTransfer,
@@ -45,8 +47,8 @@ import {
   parseExpiry,
   formatDuration,
   DEFAULT_EXPIRY_SECONDS,
-} from "../features/transfers/store";
-import type { TransferData, TransferSummary } from "../features/transfers/store";
+} from "../features/transfers/store.server";
+import type { TransferData, TransferSummary } from "../features/transfers/types";
 
 /* ─── Preflight checks ─── */
 
@@ -59,9 +61,8 @@ function requireRedis(): void {
   const redis = getRedis();
   if (!redis) {
     throw new Error(
-      "Redis/KV not configured. Transfer metadata requires Redis to persist.\n" +
-      "Add KV_REST_API_URL and KV_REST_API_TOKEN to .env.local.\n" +
-      "Copy them from your Vercel dashboard → Storage → KV."
+      "Redis not configured. Transfer metadata requires Redis to persist.\n" +
+        "Add REDIS_REST_URL and REDIS_REST_TOKEN to .env.local.",
     );
   }
 }
@@ -69,7 +70,7 @@ function requireRedis(): void {
 function requireR2(): void {
   if (!isConfigured()) {
     throw new Error(
-      "R2 not configured. Set R2_ACCOUNT_ID, R2_ACCESS_KEY, R2_SECRET_KEY, R2_BUCKET in .env.local."
+      "R2 not configured. Set R2_ACCOUNT_ID, R2_ACCESS_KEY, R2_SECRET_KEY, R2_BUCKET in .env.local.",
     );
   }
 }
@@ -210,7 +211,7 @@ function readTransferCheckpoint(absDir: string): TransferUploadCheckpoint | null
     typeof parsed.completed !== "object"
   ) {
     throw new Error(
-      `Invalid transfer checkpoint file: ${file}. Delete it and retry to start fresh.`
+      `Invalid transfer checkpoint file: ${file}. Delete it and retry to start fresh.`,
     );
   }
 
@@ -230,14 +231,14 @@ function readTransferCheckpoint(absDir: string): TransferUploadCheckpoint | null
 function getTransferAppendCheckpointPath(absDir: string, transferId: string): string {
   return path.join(
     absDir,
-    `${TRANSFER_APPEND_CHECKPOINT_PREFIX}${transferId}${TRANSFER_APPEND_CHECKPOINT_SUFFIX}`
+    `${TRANSFER_APPEND_CHECKPOINT_PREFIX}${transferId}${TRANSFER_APPEND_CHECKPOINT_SUFFIX}`,
   );
 }
 
 function writeTransferAppendCheckpoint(
   absDir: string,
   transferId: string,
-  checkpoint: TransferAppendCheckpoint
+  checkpoint: TransferAppendCheckpoint,
 ): void {
   const file = getTransferAppendCheckpointPath(absDir, transferId);
   const tmp = `${file}.tmp`;
@@ -252,7 +253,7 @@ function deleteTransferAppendCheckpoint(absDir: string, transferId: string): voi
 
 function readTransferAppendCheckpoint(
   absDir: string,
-  transferId: string
+  transferId: string,
 ): TransferAppendCheckpoint | null {
   const file = getTransferAppendCheckpointPath(absDir, transferId);
   if (!fs.existsSync(file)) return null;
@@ -270,7 +271,7 @@ function readTransferAppendCheckpoint(
     typeof parsed.completed !== "object"
   ) {
     throw new Error(
-      `Invalid transfer append checkpoint file: ${file}. Delete it and retry to start fresh.`
+      `Invalid transfer append checkpoint file: ${file}. Delete it and retry to start fresh.`,
     );
   }
 
@@ -322,7 +323,7 @@ function transferFileCounts(files: TransferData["files"]) {
 /** Create a new transfer: process files, upload to R2, save metadata to Redis */
 async function createTransfer(
   opts: CreateTransferOpts,
-  onProgress?: (msg: string) => void
+  onProgress?: (msg: string) => void,
 ): Promise<CreateTransferResult> {
   requireRedis();
   requireR2();
@@ -334,14 +335,14 @@ async function createTransfer(
   const checkpoint = readTransferCheckpoint(absDir);
   if (checkpoint && checkpoint.dir !== absDir) {
     throw new Error(
-      `Transfer checkpoint directory mismatch at ${getTransferCheckpointPath(absDir)}. Delete it and retry.`
+      `Transfer checkpoint directory mismatch at ${getTransferCheckpointPath(absDir)}. Delete it and retry.`,
     );
   }
 
   if (checkpoint && !arraysEqual(checkpoint.entries, entries)) {
     throw new Error(
       `Transfer source files changed since checkpoint was created (${getTransferCheckpointPath(absDir)}).\n` +
-      "Restore the original files or delete the checkpoint file to start a new transfer."
+        "Restore the original files or delete the checkpoint file to start a new transfer.",
     );
   }
 
@@ -373,24 +374,24 @@ async function createTransfer(
   // Classify for concurrency control (Sharp is CPU-heavy)
   const pendingEntries = preparedEntries.filter((f) => !completed[f.name]);
   const heavy = pendingEntries.filter(
-    (f) => PROCESSABLE_EXTENSIONS.test(f.name) || ANIMATED_EXTENSIONS.test(f.name)
+    (f) => PROCESSABLE_EXTENSIONS.test(f.name) || ANIMATED_EXTENSIONS.test(f.name),
   );
   const light = pendingEntries.filter(
-    (f) => !PROCESSABLE_EXTENSIONS.test(f.name) && !ANIMATED_EXTENSIONS.test(f.name)
+    (f) => !PROCESSABLE_EXTENSIONS.test(f.name) && !ANIMATED_EXTENSIONS.test(f.name),
   );
 
   const resumedCount = entries.length - pendingEntries.length;
   if (checkpoint) {
     onProgress?.(
-      `Resuming transfer ${transferId}: ${resumedCount}/${entries.length} files already complete.`
+      `Resuming transfer ${transferId}: ${resumedCount}/${entries.length} files already complete.`,
     );
     if (checkpoint.title !== opts.title) {
-      onProgress?.(`Using checkpoint title "${checkpoint.title}" (ignoring current title for consistency).`);
+      onProgress?.(
+        `Using checkpoint title "${checkpoint.title}" (ignoring current title for consistency).`,
+      );
     }
   } else {
-    onProgress?.(
-      `Found ${entries.length} files. Creating transfer ${transferId}...`
-    );
+    onProgress?.(`Found ${entries.length} files. Creating transfer ${transferId}...`);
   }
 
   let checkpointWriteQueue = Promise.resolve();
@@ -407,8 +408,8 @@ async function createTransfer(
           ttlSeconds,
           startedAt,
           completed,
-        })
-      )
+        }),
+      ),
     );
     return checkpointWriteQueue;
   };
@@ -430,11 +431,13 @@ async function createTransfer(
     await checkpointWriteQueue;
   }
 
-  const allResults = entries.filter((file): file is string => !!completed[file]).map((file) => completed[file]);
+  const allResults = entries
+    .filter((file): file is string => !!completed[file])
+    .map((file) => completed[file]);
 
   if (allResults.length !== entries.length) {
     throw new Error(
-      `Transfer checkpoint incomplete (${allResults.length}/${entries.length}). Rerun the same command to continue.`
+      `Transfer checkpoint incomplete (${allResults.length}/${entries.length}). Rerun the same command to continue.`,
     );
   }
 
@@ -446,7 +449,7 @@ async function createTransfer(
   const remainingTtlSeconds = Math.floor((expiresAt.getTime() - Date.now()) / 1000);
   if (remainingTtlSeconds <= 0) {
     throw new Error(
-      `Transfer ${transferId} expired before finalizing. Delete ${getTransferCheckpointPath(absDir)} and retry with a longer --expires.`
+      `Transfer ${transferId} expired before finalizing. Delete ${getTransferCheckpointPath(absDir)} and retry with a longer --expires.`,
     );
   }
 
@@ -480,7 +483,7 @@ async function createTransfer(
 /** Append files to an existing active transfer and preserve its expiry. */
 async function appendToTransfer(
   opts: AppendTransferOpts,
-  onProgress?: (msg: string) => void
+  onProgress?: (msg: string) => void,
 ): Promise<AppendTransferResult> {
   requireRedis();
   requireR2();
@@ -491,7 +494,7 @@ async function appendToTransfer(
   }
 
   const remainingTtlSeconds = Math.floor(
-    (new Date(transfer.expiresAt).getTime() - Date.now()) / 1000
+    (new Date(transfer.expiresAt).getTime() - Date.now()) / 1000,
   );
   if (remainingTtlSeconds <= 0) {
     throw new Error(`Transfer "${opts.id}" has already expired.`);
@@ -501,26 +504,26 @@ async function appendToTransfer(
   const entries = listTransferEntries(absDir);
   const preparedEntries = resolveTransferUploadIds(
     entries.map((name) => ({ name })),
-    transfer.files.map((f) => f.id)
+    transfer.files.map((f) => f.id),
   );
   const checkpoint = readTransferAppendCheckpoint(absDir, transfer.id);
 
   if (checkpoint && checkpoint.dir !== absDir) {
     throw new Error(
-      `Transfer append checkpoint directory mismatch at ${getTransferAppendCheckpointPath(absDir, transfer.id)}. Delete it and retry.`
+      `Transfer append checkpoint directory mismatch at ${getTransferAppendCheckpointPath(absDir, transfer.id)}. Delete it and retry.`,
     );
   }
 
   if (checkpoint && checkpoint.transferId !== transfer.id) {
     throw new Error(
-      `Transfer append checkpoint target mismatch at ${getTransferAppendCheckpointPath(absDir, transfer.id)}. Delete it and retry.`
+      `Transfer append checkpoint target mismatch at ${getTransferAppendCheckpointPath(absDir, transfer.id)}. Delete it and retry.`,
     );
   }
 
   if (checkpoint && !arraysEqual(checkpoint.entries, entries)) {
     throw new Error(
       `Append source files changed since checkpoint was created (${getTransferAppendCheckpointPath(absDir, transfer.id)}).\n` +
-      "Restore the original files or delete the checkpoint file to start the append again."
+        "Restore the original files or delete the checkpoint file to start the append again.",
     );
   }
 
@@ -534,12 +537,12 @@ async function appendToTransfer(
 
     if (completedResults.length === entries.length && entries.length > 0) {
       const alreadyFinalized = completedResults.every(
-        (r) => existingIds.has(r.file.id) && existingNames.has(r.file.filename)
+        (r) => existingIds.has(r.file.id) && existingNames.has(r.file.filename),
       );
 
       if (alreadyFinalized) {
         onProgress?.(
-          `Append checkpoint already finalized for ${transfer.id}; cleaning up stale checkpoint.`
+          `Append checkpoint already finalized for ${transfer.id}; cleaning up stale checkpoint.`,
         );
         try {
           deleteTransferAppendCheckpoint(absDir, transfer.id);
@@ -568,10 +571,12 @@ async function appendToTransfer(
   if (duplicateNames.length > 0) {
     const parts: string[] = [];
     if (duplicateNames.length > 0) {
-      parts.push(`Existing filenames conflict: ${duplicateNames.slice(0, 5).join(", ")}${duplicateNames.length > 5 ? "…" : ""}`);
+      parts.push(
+        `Existing filenames conflict: ${duplicateNames.slice(0, 5).join(", ")}${duplicateNames.length > 5 ? "…" : ""}`,
+      );
     }
     throw new Error(
-      `Append aborted to avoid overwriting existing transfer files.\n${parts.join("\n")}`
+      `Append aborted to avoid overwriting existing transfer files.\n${parts.join("\n")}`,
     );
   }
 
@@ -594,17 +599,17 @@ async function appendToTransfer(
 
   if (checkpoint) {
     onProgress?.(
-      `Resuming append to ${transfer.id}: ${resumedCount}/${entries.length} files already complete.`
+      `Resuming append to ${transfer.id}: ${resumedCount}/${entries.length} files already complete.`,
     );
   } else {
     onProgress?.(`Appending ${entries.length} files to transfer ${transfer.id}...`);
   }
 
   const heavy = pendingEntries.filter(
-    (f) => PROCESSABLE_EXTENSIONS.test(f.name) || ANIMATED_EXTENSIONS.test(f.name)
+    (f) => PROCESSABLE_EXTENSIONS.test(f.name) || ANIMATED_EXTENSIONS.test(f.name),
   );
   const light = pendingEntries.filter(
-    (f) => !PROCESSABLE_EXTENSIONS.test(f.name) && !ANIMATED_EXTENSIONS.test(f.name)
+    (f) => !PROCESSABLE_EXTENSIONS.test(f.name) && !ANIMATED_EXTENSIONS.test(f.name),
   );
 
   let checkpointWriteQueue = Promise.resolve();
@@ -618,8 +623,8 @@ async function appendToTransfer(
           transferId: transfer.id,
           startedAt,
           completed,
-        })
-      )
+        }),
+      ),
     );
     return checkpointWriteQueue;
   };
@@ -647,7 +652,7 @@ async function appendToTransfer(
 
   if (addedResults.length !== entries.length) {
     throw new Error(
-      `Append checkpoint incomplete (${addedResults.length}/${entries.length}). Rerun the same transfers append command to continue.`
+      `Append checkpoint incomplete (${addedResults.length}/${entries.length}). Rerun the same transfers append command to continue.`,
     );
   }
 
@@ -679,15 +684,13 @@ async function appendToTransfer(
 
 /** Get a transfer's full data and computed metadata */
 async function getTransferInfo(
-  id: string
+  id: string,
 ): Promise<(TransferData & { remainingSeconds: number }) | null> {
   requireRedis();
   const transfer = await getTransfer(id);
   if (!transfer) return null;
 
-  const remaining = Math.floor(
-    (new Date(transfer.expiresAt).getTime() - Date.now()) / 1000
-  );
+  const remaining = Math.floor((new Date(transfer.expiresAt).getTime() - Date.now()) / 1000);
 
   return { ...transfer, remainingSeconds: remaining };
 }
@@ -701,7 +704,7 @@ async function listActiveTransfers(): Promise<TransferSummary[]> {
 /** Delete a transfer: remove R2 files + Redis metadata */
 async function deleteTransfer(
   id: string,
-  onProgress?: (msg: string) => void
+  onProgress?: (msg: string) => void,
 ): Promise<{ deletedFiles: number; dataDeleted: boolean }> {
   requireRedis();
   requireR2();
@@ -726,7 +729,7 @@ async function deleteTransfer(
 async function deleteTransferFile(
   id: string,
   selector: string,
-  onProgress?: (msg: string) => void
+  onProgress?: (msg: string) => void,
 ): Promise<{
   deletedObjects: number;
   deletedTransfer: boolean;
@@ -761,7 +764,7 @@ async function deleteTransferFile(
   }
 
   const remainingTtlSeconds = Math.floor(
-    (new Date(transfer.expiresAt).getTime() - Date.now()) / 1000
+    (new Date(transfer.expiresAt).getTime() - Date.now()) / 1000,
   );
   if (remainingTtlSeconds <= 0) {
     throw new Error(`Transfer "${id}" expired while deleting file.`);
@@ -788,14 +791,14 @@ async function getTransferMediaStatus(): Promise<TransferMediaStatusResult> {
 }
 
 async function drainTransferMediaQueue(
-  limit = 8
+  limit = 8,
 ): Promise<Awaited<ReturnType<typeof runTransferMediaJobs>>> {
   requireRedis();
   return runTransferMediaJobs(limit);
 }
 
 async function reconcileTransferMedia(
-  onProgress?: (msg: string) => void
+  onProgress?: (msg: string) => void,
 ): Promise<ReconcileTransferMediaResult> {
   requireRedis();
   const summaries = await listTransfers();
@@ -823,7 +826,9 @@ async function clearTransferMediaQueue(): Promise<ClearTransferMediaQueueResult>
   const redis = getRedis()!;
   const [queueLengthBefore, processingLengthBefore] = await Promise.all([
     redis.llen("transfer:media:queue").then((value) => (typeof value === "number" ? value : 0)),
-    redis.llen("transfer:media:processing").then((value) => (typeof value === "number" ? value : 0)),
+    redis
+      .llen("transfer:media:processing")
+      .then((value) => (typeof value === "number" ? value : 0)),
   ]);
   const deletedKeys = await redis.del("transfer:media:queue", "transfer:media:processing");
 
@@ -836,7 +841,7 @@ async function clearTransferMediaQueue(): Promise<ClearTransferMediaQueueResult>
 
 async function retryTransferMedia(
   id: string,
-  selector?: string
+  selector?: string,
 ): Promise<RetryTransferMediaResult> {
   requireRedis();
 
@@ -889,7 +894,7 @@ async function retryTransferMedia(
  * Cleanup expired/orphaned transfers without touching active ones.
  */
 async function cleanupExpiredTransfers(
-  onProgress?: (msg: string) => void
+  onProgress?: (msg: string) => void,
 ): Promise<{ expiredIndexEntries: number; scannedPrefixes: number; deletedObjects: number }> {
   requireRedis();
   requireR2();
@@ -948,7 +953,7 @@ async function cleanupExpiredTransfers(
  * clear the Redis index + all transfer:* keys. Full reset.
  */
 async function nukeAllTransfers(
-  onProgress?: (msg: string) => void
+  onProgress?: (msg: string) => void,
 ): Promise<{ deletedFiles: number; deletedKeys: number }> {
   requireRedis();
   requireR2();

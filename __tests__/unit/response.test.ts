@@ -7,7 +7,7 @@ describe("response helpers", () => {
       new Response(JSON.stringify({ error: "nope" }), {
         status: 400,
         headers: { "content-type": "application/json" },
-      })
+      }),
     );
 
     expect(payload.json).toEqual({ error: "nope" });
@@ -20,12 +20,12 @@ describe("response helpers", () => {
       new Response("An error occurred while preparing the download.", {
         status: 500,
         headers: { "content-type": "text/plain" },
-      })
+      }),
     );
 
     expect(payload.json).toBeNull();
     expect(getResponseErrorMessage(payload, "fallback")).toBe(
-      "An error occurred while preparing the download."
+      "An error occurred while preparing the download.",
     );
   });
 });

@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { buildTransferVisualItems, inferTransferAssetGroups } from "@/features/transfers/live-photo";
+import {
+  buildTransferVisualItems,
+  inferTransferAssetGroups,
+} from "@/features/transfers/live-photo";
 
 describe("transfer asset grouping", () => {
   it("infers a live photo group from matching still and motion files", () => {
@@ -53,7 +56,12 @@ describe("transfer asset grouping", () => {
     const items = buildTransferVisualItems(
       [
         { id: "still", filename: "IMG_1234.jpg", kind: "image" as const, mimeType: "image/jpeg" },
-        { id: "motion", filename: "IMG_1234.mov", kind: "video" as const, mimeType: "video/quicktime" },
+        {
+          id: "motion",
+          filename: "IMG_1234.mov",
+          kind: "video" as const,
+          mimeType: "video/quicktime",
+        },
       ],
       [
         {
@@ -64,7 +72,7 @@ describe("transfer asset grouping", () => {
             { fileId: "motion", role: "motion", mimeType: "video/quicktime" },
           ],
         },
-      ]
+      ],
     );
 
     expect(items).toHaveLength(1);

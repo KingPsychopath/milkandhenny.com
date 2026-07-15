@@ -22,7 +22,8 @@ describe("streaming zip", () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async (input: string | URL | Request) => {
-        const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+        const url =
+          typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
         const body = payloads.get(url);
         if (!body) return new Response("missing", { status: 404 });
 
@@ -32,9 +33,9 @@ describe("streaming zip", () => {
               controller.enqueue(new TextEncoder().encode(body));
               controller.close();
             },
-          })
+          }),
         );
-      })
+      }),
     );
 
     const result = await buildZipArchive({
@@ -55,16 +56,17 @@ describe("streaming zip", () => {
   it("writes Zip64 records and sentinels", async () => {
     vi.stubGlobal(
       "fetch",
-      vi.fn(async () =>
-        new Response(
-          new ReadableStream<Uint8Array>({
-            start(controller) {
-              controller.enqueue(new Uint8Array([1, 2, 3, 4]));
-              controller.close();
-            },
-          })
-        )
-      )
+      vi.fn(
+        async () =>
+          new Response(
+            new ReadableStream<Uint8Array>({
+              start(controller) {
+                controller.enqueue(new Uint8Array([1, 2, 3, 4]));
+                controller.close();
+              },
+            }),
+          ),
+      ),
     );
 
     const result = await buildZipArchive({
@@ -112,8 +114,8 @@ describe("streaming zip", () => {
           { id: "2", filename: "clip.mp4", url: "b" },
           { id: "3", filename: "clip", url: "c" },
           { id: "4", filename: "clip", url: "d" },
-        ]).entries()
-      )
+        ]).entries(),
+      ),
     ).toEqual([
       ["1", "clip.mp4"],
       ["2", "clip (2).mp4"],
@@ -130,7 +132,7 @@ describe("streaming zip", () => {
       buildZipArchive({
         files: [{ id: "1", filename: "photo.jpg", url: "https://example.com/a" }],
         signal: controller.signal,
-      })
+      }),
     ).rejects.toMatchObject({ name: "AbortError" });
   });
 
@@ -144,7 +146,8 @@ describe("streaming zip", () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async (input: string | URL | Request) => {
-        const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+        const url =
+          typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
         const body = payloads.get(url);
         if (!body) return new Response("missing", { status: 404 });
 
@@ -154,9 +157,9 @@ describe("streaming zip", () => {
               controller.enqueue(new TextEncoder().encode(body));
               controller.close();
             },
-          })
+          }),
         );
-      })
+      }),
     );
 
     const first = await buildZipArchive({

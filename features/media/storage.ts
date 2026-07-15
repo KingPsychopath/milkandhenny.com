@@ -4,11 +4,11 @@
  * To switch providers, change the env vars — zero code changes.
  */
 
-import { R2_PUBLIC_URL } from "@/lib/shared/config";
+import { MEDIA_PUBLIC_URL } from "@/lib/shared/config";
 
 /** Build the public URL for a file in the bucket */
 function getImageUrl(path: string): string {
-  return `${R2_PUBLIC_URL}/${path}`;
+  return `${MEDIA_PUBLIC_URL}/${path}`;
 }
 
 function encodeStoragePathSegment(value: string): string {
@@ -59,7 +59,7 @@ function getOgUrl(album: string, photoId: string): string {
 /** Get the URL for per-word media (stored at words/media/{slug}/{filename}) */
 function getWordMediaUrl(slug: string, filename: string): string {
   return getImageUrl(
-    `words/media/${encodeStoragePathSegment(slug)}/${encodeStoragePathSegment(filename)}`
+    `words/media/${encodeStoragePathSegment(slug)}/${encodeStoragePathSegment(filename)}`,
   );
 }
 
@@ -71,7 +71,7 @@ function getBlogImageUrl(slug: string, filename: string): string {
 /** Get the URL for a shared reusable asset (stored at words/assets/{assetId}/{filename}) */
 function getSharedAssetUrl(assetId: string, filename: string): string {
   return getImageUrl(
-    `words/assets/${encodeStoragePathSegment(assetId)}/${encodeStoragePathSegment(filename)}`
+    `words/assets/${encodeStoragePathSegment(assetId)}/${encodeStoragePathSegment(filename)}`,
   );
 }
 
@@ -140,7 +140,10 @@ function resolveWordContentRef(ref: string, wordSlug?: string): string {
     }
   }
 
-  if (trimmed.startsWith("/") && INTERNAL_ROUTE_PREFIXES.some((prefix) => trimmed.startsWith(prefix))) {
+  if (
+    trimmed.startsWith("/") &&
+    INTERNAL_ROUTE_PREFIXES.some((prefix) => trimmed.startsWith(prefix))
+  ) {
     return trimmed;
   }
 
@@ -161,21 +164,21 @@ function resolveWordContentRef(ref: string, wordSlug?: string): string {
 /** Get the thumbnail URL for a transfer image (WebP, images and GIF first-frame only) */
 function getTransferThumbUrl(transferId: string, fileId: string): string {
   return getImageUrl(
-    `transfers/${encodeStoragePathSegment(transferId)}/thumb/${encodeStoragePathSegment(fileId)}.webp`
+    `transfers/${encodeStoragePathSegment(transferId)}/thumb/${encodeStoragePathSegment(fileId)}.webp`,
   );
 }
 
 /** Get the full-size viewing URL for a transfer image (WebP, processed images only) */
 function getTransferFullUrl(transferId: string, fileId: string): string {
   return getImageUrl(
-    `transfers/${encodeStoragePathSegment(transferId)}/full/${encodeStoragePathSegment(fileId)}.webp`
+    `transfers/${encodeStoragePathSegment(transferId)}/full/${encodeStoragePathSegment(fileId)}.webp`,
   );
 }
 
 /** Get the original file URL for any transfer file (preserves real filename) */
 function getTransferFileUrl(transferId: string, filename: string): string {
   return getImageUrl(
-    `transfers/${encodeStoragePathSegment(transferId)}/original/${encodeStoragePathSegment(filename)}`
+    `transfers/${encodeStoragePathSegment(transferId)}/original/${encodeStoragePathSegment(filename)}`,
   );
 }
 

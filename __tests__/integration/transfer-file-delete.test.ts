@@ -1,8 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { NextRequest } from "next/server";
 
 function makeRequest(body: unknown) {
-  return new NextRequest("http://localhost/api/transfers/transfer-1/files/photo", {
+  return new Request("http://localhost/api/transfers/transfer-1/files/photo", {
     method: "DELETE",
     body: JSON.stringify(body),
     headers: { "content-type": "application/json" },
@@ -19,7 +18,7 @@ describe("transfer file delete route", () => {
     const deleteTransferData = vi.fn().mockResolvedValue(false);
     const deleteObjects = vi.fn().mockResolvedValue(3);
 
-    vi.doMock("@/features/transfers/store", () => ({
+    vi.doMock("@/features/transfers/store.server", () => ({
       getTransfer: vi.fn().mockResolvedValue({
         id: "transfer-1",
         title: "party",
@@ -89,12 +88,12 @@ describe("transfer file delete route", () => {
         fullKey: "transfers/transfer-1/full/photo.webp",
       }),
     }));
-    vi.doMock("@/lib/platform/r2", () => ({
+    vi.doMock("@/lib/platform/r2.server", () => ({
       deleteObjects,
       isConfigured: () => true,
     }));
 
-    const { DELETE } = await import("@/app/api/transfers/[id]/files/[fileId]/route");
+    const { DELETE } = await import("@/src/routes/api/transfers/$id/files/$fileId/route");
     const response = await DELETE(makeRequest({ token: "token" }), {
       params: Promise.resolve({ id: "transfer-1", fileId: "photo" }),
     });
@@ -122,7 +121,7 @@ describe("transfer file delete route", () => {
   it("takes down the transfer when the last file is removed", async () => {
     const deleteTransferData = vi.fn().mockResolvedValue(true);
 
-    vi.doMock("@/features/transfers/store", () => ({
+    vi.doMock("@/features/transfers/store.server", () => ({
       getTransfer: vi.fn().mockResolvedValue({
         id: "transfer-1",
         title: "party",
@@ -141,7 +140,11 @@ describe("transfer file delete route", () => {
         ],
       }),
       validateDeleteToken: vi.fn().mockResolvedValue(true),
-      removeTransferFile: (transfer: { files: unknown[] }) => ({ ...transfer, files: [], groups: undefined }),
+      removeTransferFile: (transfer: { files: unknown[] }) => ({
+        ...transfer,
+        files: [],
+        groups: undefined,
+      }),
       saveTransfer: vi.fn(),
       deleteTransferData,
     }));
@@ -149,12 +152,12 @@ describe("transfer file delete route", () => {
       classifyTransferProcessingRoute: vi.fn().mockReturnValue("local_image"),
       getExpectedTransferAssetKeys: vi.fn().mockReturnValue({}),
     }));
-    vi.doMock("@/lib/platform/r2", () => ({
+    vi.doMock("@/lib/platform/r2.server", () => ({
       deleteObjects: vi.fn().mockResolvedValue(1),
       isConfigured: () => true,
     }));
 
-    const { DELETE } = await import("@/app/api/transfers/[id]/files/[fileId]/route");
+    const { DELETE } = await import("@/src/routes/api/transfers/$id/files/$fileId/route");
     const response = await DELETE(makeRequest({ token: "token" }), {
       params: Promise.resolve({ id: "transfer-1", fileId: "photo" }),
     });

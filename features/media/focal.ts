@@ -67,9 +67,7 @@ export function focalPresetToPercent(preset: FocalPreset): { x: number; y: numbe
 export function resolveFocalPreset(value: string): FocalPreset | null {
   const lower = value.toLowerCase().trim();
   const expanded = FOCAL_SHORTHAND[lower] ?? lower;
-  return FOCAL_PRESETS.includes(expanded as FocalPreset)
-    ? (expanded as FocalPreset)
-    : null;
+  return FOCAL_PRESETS.includes(expanded as FocalPreset) ? (expanded as FocalPreset) : null;
 }
 
 /** Type guard for preset strings from JSON */

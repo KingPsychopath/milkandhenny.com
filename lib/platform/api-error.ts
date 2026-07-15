@@ -10,11 +10,7 @@
  *   return apiError('guests.add', 'Failed to add guest', error);
  */
 
-import "server-only";
-
-import { NextResponse } from 'next/server';
-import { log } from './logger';
-import type { NextRequest } from 'next/server';
+import { log } from "./logger.server";
 
 /**
  * Build a safe 500 JSON response. Logs the real error, returns a clean message.
@@ -30,10 +26,10 @@ export function apiError(
   message: string,
   err?: unknown,
   context?: Record<string, unknown>,
-  status = 500
-): NextResponse {
+  status = 500,
+): Response {
   log.error(scope, message, context, err);
-  return NextResponse.json({ error: message }, { status });
+  return Response.json({ error: message }, { status });
 }
 
 /**
@@ -41,14 +37,14 @@ export function apiError(
  * Use this in API route catch blocks.
  */
 export function apiErrorFromRequest(
-  request: NextRequest,
+  request: Request,
   scope: string,
   message: string,
   err?: unknown,
   context?: Record<string, unknown>,
-  status = 500
-): NextResponse {
-  const requestId = request.headers.get('x-request-id') ?? null;
-  const path = request.nextUrl?.pathname ?? null;
+  status = 500,
+): Response {
+  const requestId = request.headers.get("x-request-id") ?? null;
+  const path = new URL(request.url).pathname;
   return apiError(scope, message, err, { requestId, path, ...(context ?? {}) }, status);
 }

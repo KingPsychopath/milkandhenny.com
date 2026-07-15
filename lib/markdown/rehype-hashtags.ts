@@ -10,11 +10,7 @@ type RootNode = { type: "root"; children: UnistNode[] };
 type UnistNode = TextNode | ElementNode | RootNode;
 
 /** Walk tree and replace text nodes that contain #hashtags with mixed content */
-function visit(
-  node: UnistNode,
-  parent: (ElementNode | RootNode) | null,
-  index: number
-): void {
+function visit(node: UnistNode, parent: (ElementNode | RootNode) | null, index: number): void {
   if (node.type === "text" && parent && /#\w+/.test(node.value)) {
     const parts = node.value.split(/(#\w+)/g);
     const newNodes: UnistNode[] = parts.map((part) => {

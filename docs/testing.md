@@ -20,11 +20,11 @@ pnpm test:coverage # run with coverage report
 
 ## Test types at a glance
 
-| Type | What it tests | Speed | Mocks? | Where it lives |
-|------|---------------|-------|--------|----------------|
-| **Unit** | Pure functions in isolation | ~1ms each | Rarely (storage/network wrappers) | `__tests__/unit/` |
-| **Integration** | Multiple modules working together | ~5-70ms each | External services only (Redis) | `__tests__/integration/` |
-| **E2E** | Full user flows in a real browser | Seconds | None | Skipped — see [why](#why-we-dont-have-e2e-tests-and-when-we-would) |
+| Type            | What it tests                     | Speed        | Mocks?                            | Where it lives                                                     |
+| --------------- | --------------------------------- | ------------ | --------------------------------- | ------------------------------------------------------------------ |
+| **Unit**        | Pure functions in isolation       | ~1ms each    | Rarely (storage/network wrappers) | `__tests__/unit/`                                                  |
+| **Integration** | Multiple modules working together | ~5-70ms each | External services only (Redis)    | `__tests__/integration/`                                           |
+| **E2E**         | Full user flows in a real browser | Seconds      | None                              | Skipped — see [why](#why-we-dont-have-e2e-tests-and-when-we-would) |
 
 ---
 
@@ -38,16 +38,16 @@ pnpm test:coverage # run with coverage report
 
 ### What's covered
 
-| Test file | Module | What it validates |
-|-----------|--------|-------------------|
-| `slug.test.ts` | `lib/markdown/slug.ts` | Heading slugification, duplicate id generation, edge cases (emoji, symbols, empty input) |
-| `format.test.ts` | `lib/shared/format.ts` | Byte formatting (B → KB → MB → GB), boundary values |
-| `transfers.test.ts` | `features/transfers/store.ts` | Expiry parsing (30m, 1h, 7d), duration formatting, error cases (invalid format, exceeds max) |
-| `guest-types.test.ts` | `features/guests/types.ts` | Guest ID generation (lowercase, hyphenation, suffix handling) |
-| `csv-parser.test.ts` | `features/guests/csv-parser.ts` | Partiful CSV import — status normalization, plus-one linking, alphabetical sort, empty rows, fullName logic |
-| `notes-reading-time.test.ts` | `features/words/store.ts` | Reading-time calculation on create/update and metadata persistence |
-| `note-markdown-normalization.test.ts` | `features/words/store.ts` | Markdown path normalization to canonical `words/media` + `words/assets` refs |
-| `notes-share-access.test.ts` | `features/words/share.ts` | Share token, PIN, cookie/session invalidation behavior |
+| Test file                             | Module                          | What it validates                                                                                           |
+| ------------------------------------- | ------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| `slug.test.ts`                        | `lib/markdown/slug.ts`          | Heading slugification, duplicate id generation, edge cases (emoji, symbols, empty input)                    |
+| `format.test.ts`                      | `lib/shared/format.ts`          | Byte formatting (B → KB → MB → GB), boundary values                                                         |
+| `transfers.test.ts`                   | `features/transfers/store.ts`   | Expiry parsing (30m, 1h, 7d), duration formatting, error cases (invalid format, exceeds max)                |
+| `guest-types.test.ts`                 | `features/guests/types.ts`      | Guest ID generation (lowercase, hyphenation, suffix handling)                                               |
+| `csv-parser.test.ts`                  | `features/guests/csv-parser.ts` | Partiful CSV import — status normalization, plus-one linking, alphabetical sort, empty rows, fullName logic |
+| `notes-reading-time.test.ts`          | `features/words/store.ts`       | Reading-time calculation on create/update and metadata persistence                                          |
+| `note-markdown-normalization.test.ts` | `features/words/store.ts`       | Markdown path normalization to canonical `words/media` + `words/assets` refs                                |
+| `notes-share-access.test.ts`          | `features/words/share.ts`       | Share token, PIN, cookie/session invalidation behavior                                                      |
 
 ### Why these modules and not others
 
@@ -59,6 +59,7 @@ The rule: **test pure logic, skip glue code.**
 - `guests/types.ts` — guest ID generation feeds into every KV operation. A broken ID means orphaned data.
 
 **What we intentionally skip:**
+
 - `lib/platform/redis.ts`, `lib/platform/r2.ts` — thin wrappers around SDK clients. Testing them means testing the SDK, not our code.
 - `lib/platform/logger.ts` — side-effect-only (console output). Not worth mocking.
 - `lib/shared/config.ts` — reads env vars. Tested implicitly by integration tests.
@@ -76,18 +77,18 @@ The rule: **test pure logic, skip glue code.**
 
 ### What's covered
 
-| Test file | Flow | What it validates |
-|-----------|------|-------------------|
-| `transfers-memory.test.ts` | Full transfer lifecycle | Save → get → validate delete token → delete → confirm gone. Uses the in-memory fallback (same code path as local dev). Also validates ID format (3-word) and token length (22 chars). |
-| `transfers-admin.test.ts` | Transfers admin validation | `isSafeTransferId` (valid vs invalid patterns). `adminDeleteTransfer` rejects invalid ids with a throw, so bad input never touches R2/Redis. |
-| `guest-checkin.test.ts` | Guest list check-in flow | Set guests → check in main guest → check in plus-one → check out → verify isolation between guests. The most-used feature at events — if this breaks, door staff can't check anyone in. |
-| `guests-add-remove.test.ts` | Guest add/remove | Add main guest, add plus-one (and 404 when main missing), validation (empty name). Remove main guest, remove plus-one, empty id 400, non-existent id leaves list unchanged. |
-| `heading-ids.test.ts` | TOC ↔ rehype-slug contract | Verifies that `extractHeadings()` (`features/words/headings.ts`) and `rehypeSlug()` (`lib/markdown/rehype-slug.ts`) produce identical IDs for the same headings. If they drift, JumpRail links scroll to nowhere. Tests unique headings, duplicates, special characters, and mixed cases. |
-| `auth.test.ts` | Authentication primitives | Timing-safe string comparison (matching, different, different-length). Tests the `safeCompare` function that guards every PIN/password check. |
+| Test file                   | Flow                       | What it validates                                                                                                                                                                                                                                                                         |
+| --------------------------- | -------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `transfers-memory.test.ts`  | Full transfer lifecycle    | Save → get → validate delete token → delete → confirm gone. Uses the in-memory fallback (same code path as local dev). Also validates ID format (3-word) and token length (22 chars).                                                                                                     |
+| `transfers-admin.test.ts`   | Transfers admin validation | `isSafeTransferId` (valid vs invalid patterns). `adminDeleteTransfer` rejects invalid ids with a throw, so bad input never touches R2/Redis.                                                                                                                                              |
+| `guest-checkin.test.ts`     | Guest list check-in flow   | Set guests → check in main guest → check in plus-one → check out → verify isolation between guests. The most-used feature at events — if this breaks, door staff can't check anyone in.                                                                                                   |
+| `guests-add-remove.test.ts` | Guest add/remove           | Add main guest, add plus-one (and 404 when main missing), validation (empty name). Remove main guest, remove plus-one, empty id 400, non-existent id leaves list unchanged.                                                                                                               |
+| `heading-ids.test.ts`       | TOC ↔ rehype-slug contract | Verifies that `extractHeadings()` (`features/words/headings.ts`) and `rehypeSlug()` (`lib/markdown/rehype-slug.ts`) produce identical IDs for the same headings. If they drift, JumpRail links scroll to nowhere. Tests unique headings, duplicates, special characters, and mixed cases. |
+| `auth.test.ts`              | Authentication primitives  | Timing-safe string comparison (matching, different, different-length). Tests the `safeCompare` function that guards every PIN/password check.                                                                                                                                             |
 
 ### Why in-memory fallback, not mocked Redis
 
-The app has a built-in `Map`-based fallback when `KV_REST_API_URL` is missing. Integration tests use this _real fallback_ instead of mocking Redis. This means:
+The app has a built-in `Map`-based fallback when `REDIS_REST_URL` is missing. Integration tests use this _real fallback_ instead of mocking Redis. This means:
 
 - Tests exercise the actual production code path used in local dev
 - No mock maintenance — when the transfer schema changes, no mock to update
@@ -128,6 +129,7 @@ Colocated tests (`lib/slug.test.ts`) work well for large projects with deep nest
 ### When to write a unit test
 
 Write a unit test when you add or change a function in `lib/` that:
+
 - Takes input and returns output (pure or near-pure)
 - Is used by multiple consumers (pages, API routes, CLI)
 - Has edge cases that aren't obvious (empty strings, negative numbers, malformed input)
@@ -135,6 +137,7 @@ Write a unit test when you add or change a function in `lib/` that:
 ### When to write an integration test
 
 Write an integration test when:
+
 - A feature involves a multi-step flow (save → retrieve → validate → delete)
 - Two modules interact in a way that could break subtly (serialization, key format)
 - You're testing a code path that runs differently in dev vs production (in-memory fallback vs Redis)
@@ -155,11 +158,11 @@ Not everything in the codebase needs a test. The mental model for deciding is: *
 
 Every module in this project falls into one of three buckets. Only the first one is worth testing.
 
-| Kind | What it does | Example | Test? | Why |
-|------|-------------|---------|-------|-----|
-| **Logic** | Transforms data — input in, output out. Decisions, parsing, formatting, validation. | `slug()`, `parseExpiry()`, `parseCSV()`, `updateGuestCheckIn()` | **Yes** | A bug here silently corrupts data or breaks features. The function's contract matters and has edge cases. Tests are fast, stable, and high-value. |
-| **Glue** | Wires things together — passes props, calls APIs, orchestrates steps. No interesting decisions of its own. | React components, API route handlers, upload orchestration | **No** | Testing glue means testing that you called the right function with the right args. That's verifying wiring, not behaviour. These tests are brittle (break when you refactor) and low-signal (pass even when the underlying logic is wrong). |
-| **Delegation** | Thin wrapper around an external library or service. Configures and calls someone else's code. | `lib/platform/redis.ts` (Upstash client), `lib/platform/r2.ts` (S3 client), Sharp image processing | **No** | You'd be testing the library, not your code. If Sharp's `resize()` breaks, that's Sharp's problem. If the S3 SDK's `putObject` breaks, that's AWS's problem. Your wrapper has no logic to verify. |
+| Kind           | What it does                                                                                               | Example                                                                                            | Test?   | Why                                                                                                                                                                                                                                         |
+| -------------- | ---------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Logic**      | Transforms data — input in, output out. Decisions, parsing, formatting, validation.                        | `slug()`, `parseExpiry()`, `parseCSV()`, `updateGuestCheckIn()`                                    | **Yes** | A bug here silently corrupts data or breaks features. The function's contract matters and has edge cases. Tests are fast, stable, and high-value.                                                                                           |
+| **Glue**       | Wires things together — passes props, calls APIs, orchestrates steps. No interesting decisions of its own. | React components, API route handlers, upload orchestration                                         | **No**  | Testing glue means testing that you called the right function with the right args. That's verifying wiring, not behaviour. These tests are brittle (break when you refactor) and low-signal (pass even when the underlying logic is wrong). |
+| **Delegation** | Thin wrapper around an external library or service. Configures and calls someone else's code.              | `lib/platform/redis.ts` (Upstash client), `lib/platform/r2.ts` (S3 client), Sharp image processing | **No**  | You'd be testing the library, not your code. If Sharp's `resize()` breaks, that's Sharp's problem. If the S3 SDK's `putObject` breaks, that's AWS's problem. Your wrapper has no logic to verify.                                           |
 
 ### Applying this to specific features
 
@@ -214,6 +217,7 @@ Add E2E tests (with [Playwright](https://playwright.dev/)) if any of these becom
 **Where they'd live:** `__tests__/e2e/` — same tree, new directory. Separate Playwright config, separate CI step. The tool is Playwright (not Cypress, not Vitest browser mode) because it supports Chromium, Firefox, and WebKit with the best API for testing real navigation.
 
 **What they'd cover (when the time comes):**
+
 - Guest list: PIN entry → search → check in → verify checked-in state persists on refresh
 - Transfer: share link → preview gallery → download → countdown timer accuracy
 - Words: navigate to a page → click TOC heading → verify scroll position

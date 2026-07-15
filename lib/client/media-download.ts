@@ -1,5 +1,3 @@
-"use client";
-
 import { getResponseErrorMessage, readResponsePayload } from "@/lib/client/response";
 
 /**
@@ -13,8 +11,8 @@ import { getResponseErrorMessage, readResponsePayload } from "@/lib/client/respo
 const BLOB_ZIP_DOWNLOAD_LIMIT_BYTES = 200 * 1024 * 1024;
 const LARGE_STREAMING_ZIP_NOTICE_BYTES = 1024 * 1024 * 1024;
 const PRESIGNED_DOWNLOAD_TIMEOUT_MS = 8000;
-const MULTI_FILE_ZIP_URL = (process.env.NEXT_PUBLIC_MULTI_FILE_ZIP_URL ?? "").trim();
-const MULTI_FILE_ZIP_MODE = (process.env.NEXT_PUBLIC_MULTI_FILE_ZIP_MODE ?? "auto")
+const MULTI_FILE_ZIP_URL = (import.meta.env.VITE_MULTI_FILE_ZIP_URL ?? "").trim();
+const MULTI_FILE_ZIP_MODE = (import.meta.env.VITE_MULTI_FILE_ZIP_MODE ?? "auto")
   .trim()
   .toLowerCase();
 
@@ -71,7 +69,7 @@ async function fetchBlobWithProgress(
     retries?: number;
     signal?: AbortSignal;
     onProgress?: (progress: SingleFileDownloadProgress) => void;
-  }
+  },
 ): Promise<Blob> {
   const retries = options?.retries ?? 2;
   let lastError: Error | null = null;
@@ -115,11 +113,14 @@ async function fetchBlobWithProgress(
           return buffer;
         }),
         {
-        type: response.headers.get("content-type") ?? "application/octet-stream",
-        }
+          type: response.headers.get("content-type") ?? "application/octet-stream",
+        },
       );
     } catch (error) {
-      if (options?.signal?.aborted || (error instanceof DOMException && error.name === "AbortError")) {
+      if (
+        options?.signal?.aborted ||
+        (error instanceof DOMException && error.name === "AbortError")
+      ) {
         throw options?.signal?.reason instanceof Error ? options.signal.reason : error;
       }
       lastError = error instanceof Error ? error : new Error(String(error));
@@ -162,7 +163,9 @@ async function getPresignedDownloadUrl(storageKey: string, filename: string): Pr
 
   if (!response.ok) {
     const payload = await readResponsePayload(response);
-    throw new Error(getResponseErrorMessage(payload, `Failed to prepare download: ${response.status}`));
+    throw new Error(
+      getResponseErrorMessage(payload, `Failed to prepare download: ${response.status}`),
+    );
   }
 
   const payload = await readResponsePayload(response);
@@ -262,7 +265,7 @@ async function downloadZipViaWorker(options: {
     }),
     {
       type: response.headers.get("content-type") ?? "application/zip",
-    }
+    },
   );
 
   downloadBlob(blob, options.filename);
@@ -334,10 +337,15 @@ interface WindowWithSaveFilePicker extends Window {
 }
 
 function canUseSaveFilePicker(): boolean {
-  return typeof window !== "undefined" && typeof (window as WindowWithSaveFilePicker).showSaveFilePicker === "function";
+  return (
+    typeof window !== "undefined" &&
+    typeof (window as WindowWithSaveFilePicker).showSaveFilePicker === "function"
+  );
 }
 
-async function createZipFileWritable(filename: string): Promise<FileSystemWritableFileStream | null> {
+async function createZipFileWritable(
+  filename: string,
+): Promise<FileSystemWritableFileStream | null> {
   const picker = (window as WindowWithSaveFilePicker).showSaveFilePicker;
   if (!picker) return null;
 
@@ -385,7 +393,9 @@ function isAbortError(error: unknown): boolean {
 function getZipDownloadErrorMessage(error: unknown, fallbackMessage: string): string {
   if (
     error instanceof DOMException &&
-    (error.name === "QuotaExceededError" || error.name === "NotReadableError" || error.name === "NoModificationAllowedError")
+    (error.name === "QuotaExceededError" ||
+      error.name === "NotReadableError" ||
+      error.name === "NoModificationAllowedError")
   ) {
     return "Download failed: not enough disk space.";
   }

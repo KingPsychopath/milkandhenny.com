@@ -22,7 +22,9 @@ export type TokenSessionsListResponse =
     }
   | { error?: string };
 
-export type StepUpResponse = { ok: true; token: string; expiresInSeconds: number } | { error?: string };
+export type StepUpResponse =
+  | { ok: true; token: string; expiresInSeconds: number }
+  | { error?: string };
 
 export type RevokeResponse =
   | {
@@ -182,7 +184,8 @@ export async function runAdminAuthDiagnostics(params: {
         error:
           verifyRes.ok && tokenFromVerify
             ? undefined
-            : errorFromBody(data) || (verifyRes.ok ? "Token missing from verify response" : `HTTP ${verifyRes.status}`),
+            : errorFromBody(data) ||
+              (verifyRes.ok ? "Token missing from verify response" : `HTTP ${verifyRes.status}`),
       };
       adminToken = tokenFromVerify;
     } catch (error) {
@@ -204,7 +207,7 @@ export async function runAdminAuthDiagnostics(params: {
       path: "/api/debug",
       adminToken,
       name: "Debug endpoint",
-    })
+    }),
   );
 
   diagnostics.probes.push(
@@ -214,7 +217,7 @@ export async function runAdminAuthDiagnostics(params: {
       path: "/api/admin/tokens/sessions",
       adminToken,
       name: "List token sessions",
-    })
+    }),
   );
 
   if (password) {
@@ -226,14 +229,17 @@ export async function runAdminAuthDiagnostics(params: {
         adminToken,
         body: { password },
         name: "Create step-up token",
-      })
+      }),
     );
   }
 
   return diagnostics;
 }
 
-export async function issueAdminToken(params: { baseUrl: string; adminPassword: string }): Promise<string> {
+export async function issueAdminToken(params: {
+  baseUrl: string;
+  adminPassword: string;
+}): Promise<string> {
   const res = await fetch(`${params.baseUrl}/api/admin/verify`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },

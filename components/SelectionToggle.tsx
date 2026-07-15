@@ -32,7 +32,8 @@ type ToggleSize = keyof typeof TOGGLE_SIZES;
  */
 const TOGGLE_VARIANTS = {
   overlay: {
-    unselected: "bg-black/30 border-white/40 text-transparent hover:border-white/70 hover:text-white/70",
+    unselected:
+      "bg-black/30 border-white/40 text-transparent hover:border-white/70 hover:text-white/70",
     border: "border",
   },
   surface: {
@@ -86,11 +87,15 @@ export const SelectionToggle = memo(function SelectionToggle({
         e.stopPropagation();
         onToggle();
       }}
-      aria-label={selected ? "Deselect" : indeterminate ? "Partially selected; select all" : "Select for download"}
+      aria-label={
+        selected
+          ? "Deselect"
+          : indeterminate
+            ? "Partially selected; select all"
+            : "Select for download"
+      }
       className={`group/toggle flex items-center justify-center ${box} ${rounding} ${border} shrink-0 transition-colors ${
-        active
-          ? "bg-amber-500 border-amber-500 text-white"
-          : unselected
+        active ? "bg-amber-500 border-amber-500 text-white" : unselected
       } ${className}`}
     >
       <svg

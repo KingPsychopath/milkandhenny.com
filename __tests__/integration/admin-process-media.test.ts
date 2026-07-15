@@ -1,8 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { NextRequest } from "next/server";
 
 function makeRequest(body: unknown) {
-  return new NextRequest("http://localhost/api/admin/transfers/process-media", {
+  return new Request("http://localhost/api/admin/transfers/process-media", {
     method: "POST",
     body: JSON.stringify(body),
     headers: { "content-type": "application/json" },
@@ -15,17 +14,17 @@ describe("admin transfer media route", () => {
   });
 
   it("reports drain mode without invoking the external worker", async () => {
-    vi.doMock("@/features/auth/server", () => ({
+    vi.doMock("@/features/auth/auth.server", () => ({
       requireAuth: vi.fn().mockResolvedValue(null),
       requireAdminStepUp: vi.fn().mockResolvedValue(null),
     }));
-    vi.doMock("@/features/transfers/upload", () => ({
+    vi.doMock("@/features/transfers/upload.server", () => ({
       backfillTransferMedia: vi.fn(),
     }));
-    vi.doMock("@/features/transfers/store", () => ({
+    vi.doMock("@/features/transfers/store.server", () => ({
       getTransfer: vi.fn(),
     }));
-    vi.doMock("@/features/transfers/admin", () => ({
+    vi.doMock("@/features/transfers/admin.server", () => ({
       getAdminTransferMediaStats: vi.fn().mockResolvedValue({
         queueLength: 21,
         worker: { lastHeartbeatAt: "2026-03-08T22:29:30.000Z" },
@@ -35,7 +34,7 @@ describe("admin transfer media route", () => {
       apiErrorFromRequest: vi.fn(),
     }));
 
-    const { POST } = await import("@/app/api/admin/transfers/process-media/route");
+    const { POST } = await import("@/src/routes/api/admin/transfers/process-media/route");
     const response = await POST(makeRequest({ mode: "drain", limit: 7 }));
 
     expect(response.status).toBe(200);
@@ -86,14 +85,14 @@ describe("admin transfer media route", () => {
       ],
     });
 
-    vi.doMock("@/features/auth/server", () => ({
+    vi.doMock("@/features/auth/auth.server", () => ({
       requireAuth: vi.fn().mockResolvedValue(null),
       requireAdminStepUp: vi.fn().mockResolvedValue(null),
     }));
-    vi.doMock("@/features/transfers/upload", () => ({
+    vi.doMock("@/features/transfers/upload.server", () => ({
       backfillTransferMedia,
     }));
-    vi.doMock("@/features/transfers/store", () => ({
+    vi.doMock("@/features/transfers/store.server", () => ({
       getTransfer: vi.fn().mockResolvedValue({
         id: "transfer-1",
         title: "transfer",
@@ -126,7 +125,7 @@ describe("admin transfer media route", () => {
       apiErrorFromRequest: vi.fn(),
     }));
 
-    const { POST } = await import("@/app/api/admin/transfers/process-media/route");
+    const { POST } = await import("@/src/routes/api/admin/transfers/process-media/route");
     const response = await POST(
       makeRequest({
         mode: "retry",
@@ -134,7 +133,7 @@ describe("admin transfer media route", () => {
         mediaId: "photo-2",
         filename: "photo.jpg",
         force: true,
-      })
+      }),
     );
 
     expect(response.status).toBe(200);
@@ -146,7 +145,7 @@ describe("admin transfer media route", () => {
       processingStatus: "local_done",
     });
     expect(backfillTransferMedia).toHaveBeenCalledWith(
-      expect.objectContaining({ id: "transfer-1" })
+      expect.objectContaining({ id: "transfer-1" }),
     );
   });
 
@@ -163,11 +162,11 @@ describe("admin transfer media route", () => {
       retryCount: 3,
     };
 
-    vi.doMock("@/features/auth/server", () => ({
+    vi.doMock("@/features/auth/auth.server", () => ({
       requireAuth: vi.fn().mockResolvedValue(null),
       requireAdminStepUp: vi.fn().mockResolvedValue(null),
     }));
-    vi.doMock("@/features/transfers/upload", () => ({
+    vi.doMock("@/features/transfers/upload.server", () => ({
       backfillTransferMedia: vi.fn().mockResolvedValue({
         id: "transfer-1",
         title: "transfer",
@@ -177,7 +176,7 @@ describe("admin transfer media route", () => {
         files: [target],
       }),
     }));
-    vi.doMock("@/features/transfers/store", () => ({
+    vi.doMock("@/features/transfers/store.server", () => ({
       getTransfer: vi.fn().mockResolvedValue({
         id: "transfer-1",
         title: "transfer",
@@ -191,14 +190,14 @@ describe("admin transfer media route", () => {
       apiErrorFromRequest: vi.fn(),
     }));
 
-    const { POST } = await import("@/app/api/admin/transfers/process-media/route");
+    const { POST } = await import("@/src/routes/api/admin/transfers/process-media/route");
     const response = await POST(
       makeRequest({
         mode: "retry",
         transferId: "transfer-1",
         mediaId: "capture",
         force: true,
-      })
+      }),
     );
 
     expect(response.status).toBe(200);

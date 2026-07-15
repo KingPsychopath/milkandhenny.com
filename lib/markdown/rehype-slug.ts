@@ -13,22 +13,12 @@ const HEADING_TAGS = ["h1", "h2", "h3"];
 
 function getTextContent(node: UnistNode): string {
   if (node.type === "text") return node.value ?? "";
-  if ("children" in node)
-    return (node as ElementNode).children.map(getTextContent).join("");
+  if ("children" in node) return (node as ElementNode).children.map(getTextContent).join("");
   return "";
 }
 
-function visit(
-  node: UnistNode,
-  root: RootNode,
-  usedIds: Set<string>,
-  slug: (t: string) => string
-): void {
-  if (
-    node.type === "element" &&
-    HEADING_TAGS.includes(node.tagName) &&
-    node.properties
-  ) {
+function visit(node: UnistNode, usedIds: Set<string>, slug: (t: string) => string): void {
+  if (node.type === "element" && HEADING_TAGS.includes(node.tagName) && node.properties) {
     const text = getTextContent(node).trim();
     const base = slug(text) || "section";
     let id = base;
@@ -42,7 +32,7 @@ function visit(
     return;
   }
   if ("children" in node && Array.isArray(node.children)) {
-    for (const child of node.children) visit(child, root, usedIds, slug);
+    for (const child of node.children) visit(child, usedIds, slug);
   }
 }
 
@@ -57,7 +47,7 @@ export function rehypeSlug() {
     if (tree.type === "root" && Array.isArray(tree.children)) {
       const usedIds = new Set<string>();
       for (const child of tree.children) {
-        visit(child, tree, usedIds, slugify);
+        visit(child, usedIds, slugify);
       }
     }
   };

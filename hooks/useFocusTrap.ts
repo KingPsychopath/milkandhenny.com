@@ -1,13 +1,13 @@
-import { useEffect, useRef, type RefObject } from 'react';
+import { useEffect, useRef, type RefObject } from "react";
 
 const FOCUSABLE_SELECTOR = [
-  'a[href]',
-  'button:not([disabled])',
-  'input:not([disabled])',
-  'textarea:not([disabled])',
-  'select:not([disabled])',
+  "a[href]",
+  "button:not([disabled])",
+  "input:not([disabled])",
+  "textarea:not([disabled])",
+  "select:not([disabled])",
   '[tabindex]:not([tabindex="-1"])',
-].join(', ');
+].join(", ");
 
 /**
  * Traps keyboard focus inside a container while active.
@@ -33,12 +33,12 @@ export function useFocusTrap<T extends HTMLElement = HTMLElement>(
     if (firstFocusable) {
       firstFocusable.focus();
     } else {
-      container.setAttribute('tabindex', '-1');
+      container.setAttribute("tabindex", "-1");
       container.focus();
     }
 
     function handleKeyDown(e: KeyboardEvent) {
-      if (e.key !== 'Tab') return;
+      if (e.key !== "Tab") return;
 
       const focusableEls = container!.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR);
       if (focusableEls.length === 0) {
@@ -64,10 +64,10 @@ export function useFocusTrap<T extends HTMLElement = HTMLElement>(
       }
     }
 
-    document.addEventListener('keydown', handleKeyDown);
+    document.addEventListener("keydown", handleKeyDown);
 
     return () => {
-      document.removeEventListener('keydown', handleKeyDown);
+      document.removeEventListener("keydown", handleKeyDown);
       // Restore focus on cleanup
       try {
         previouslyFocusedRef.current?.focus();

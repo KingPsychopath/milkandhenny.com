@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { Link } from "@tanstack/react-router";
 
 type Crumb = {
   label: string;
@@ -24,13 +24,17 @@ export function Breadcrumbs({ items }: Props) {
               {i > 0 && <span className="theme-faint">/</span>}
               {isLast || !item.href ? (
                 <span
-                  className={isLast ? "text-foreground max-w-[10rem] sm:max-w-[20rem] md:max-w-xs truncate inline-block align-bottom" : undefined}
+                  className={
+                    isLast
+                      ? "text-foreground max-w-[10rem] sm:max-w-[20rem] md:max-w-xs truncate inline-block align-bottom"
+                      : undefined
+                  }
                   title={isLast ? item.label : undefined}
                 >
                   {item.label}
                 </span>
               ) : (
-                <Link href={item.href} className="hover:text-foreground transition-colors">
+                <Link to={item.href} className="hover:text-foreground transition-colors">
                   {item.label}
                 </Link>
               )}

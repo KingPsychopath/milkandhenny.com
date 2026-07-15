@@ -1,11 +1,11 @@
 /**
  * R2 client for CLI/scripts.
  *
- * Loads .env.local (not available outside the Next.js runtime) then
+ * Loads .env.local (not available outside the app runtime) then
  * delegates to the shared lib/r2 module for all actual operations.
  *
  * Scripts import from here: `import { uploadBuffer } from "./r2-client"`
- * API routes import from `@/lib/platform/r2` directly (Next.js provides env vars).
+ * API routes import from `@/lib/platform/r2.server` directly (the server runtime provides env vars).
  */
 
 import fs from "fs";
@@ -38,6 +38,6 @@ export {
   deleteObject,
   deleteObjects,
   getBucketInfo,
-} from "../lib/platform/r2";
+} from "../lib/platform/r2.server";
 
-export type { R2Object, BucketInfo } from "../lib/platform/r2";
+export type { R2Object, BucketInfo } from "../lib/platform/r2.server";

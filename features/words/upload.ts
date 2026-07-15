@@ -6,14 +6,12 @@
  */
 
 import path from "path";
-import { RAW_IMAGE_EXTENSIONS, isProcessableImage } from "@/features/media/processing";
+import { RAW_IMAGE_EXTENSIONS, isProcessableImage } from "@/features/media/processing.server";
 import type { FileKind } from "@/features/media/file-kinds";
 
 const SAFE_MEDIA_TARGET_ID = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
-type WordMediaTarget =
-  | { scope: "word"; slug: string }
-  | { scope: "asset"; assetId: string };
+type WordMediaTarget = { scope: "word"; slug: string } | { scope: "asset"; assetId: string };
 
 type WordFilenameOptions = {
   preserveRawExtension?: boolean;
@@ -77,7 +75,10 @@ function parseWordMediaTarget(input: {
       return { ok: false, error: "Asset ID is required for shared assets." };
     }
     if (!isValidWordMediaTargetId(assetId)) {
-      return { ok: false, error: "Asset ID must use lowercase letters, numbers, and hyphens only." };
+      return {
+        ok: false,
+        error: "Asset ID must use lowercase letters, numbers, and hyphens only.",
+      };
     }
     return { ok: true, target: { scope: "asset", assetId } };
   }
@@ -104,7 +105,7 @@ function mediaPathForTarget(target: WordMediaTarget, filename: string): string {
 function toMarkdownSnippetForTarget(
   target: WordMediaTarget,
   filename: string,
-  kind: FileKind
+  kind: FileKind,
 ): string {
   const r2Path = mediaPathForTarget(target, filename);
   const label = filename.replace(/\.[^.]+$/, "");

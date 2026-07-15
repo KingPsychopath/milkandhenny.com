@@ -39,7 +39,8 @@ function getAudioContext(): AudioContext | null {
 
   // Get AudioContext constructor (supports both standard and webkit prefix)
   const AudioContextClass =
-    window.AudioContext || (window as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    window.AudioContext ||
+    (window as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
   if (!AudioContextClass) return null;
 
   if (!audioContext) {
@@ -131,4 +132,3 @@ export function playFeedback(type: "check-in" | "check-out" | "vote" | "reveal")
       break;
   }
 }
-

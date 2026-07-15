@@ -5,7 +5,7 @@ import path from "path";
 import { promisify } from "util";
 import { describe, expect, it } from "vitest";
 import sharp from "sharp";
-import { processVideoVariants } from "@/features/media/processing";
+import { processVideoVariants } from "@/features/media/processing.server";
 
 const execFileAsync = promisify(execFile);
 
@@ -16,10 +16,14 @@ async function makeVideoBuffer(): Promise<Buffer> {
   try {
     await execFileAsync("ffmpeg", [
       "-hide_banner",
-      "-loglevel", "error",
-      "-f", "lavfi",
-      "-i", "color=c=#336699:s=160x90:d=1",
-      "-pix_fmt", "yuv420p",
+      "-loglevel",
+      "error",
+      "-f",
+      "lavfi",
+      "-i",
+      "color=c=#336699:s=160x90:d=1",
+      "-pix_fmt",
+      "yuv420p",
       outputPath,
     ]);
 

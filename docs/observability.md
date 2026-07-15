@@ -1,112 +1,51 @@
-# Observability & Alerts
+# Observability
 
-What to monitor, where to monitor it (given our infra), and which alerts are worth setting up so we find outages/cost spikes *before* they matter.
+## Signals
 
----
+| Question                                              | Signal                                                 | Owner                   |
+| ----------------------------------------------------- | ------------------------------------------------------ | ----------------------- |
+| Is the process configured to serve traffic?           | `GET /api/health`                                      | Web runtime             |
+| Which core and optional capabilities are enabled?     | `GET /health`                                          | Capability model        |
+| Can Redis and object storage actually be reached?     | Admin `GET /api/debug`                                 | Platform adapters       |
+| Did an API workflow succeed and how long did it take? | Structured JSON request/domain logs                    | Route and feature owner |
+| Did scheduled cleanup run?                            | `maintenance.request` plus cleanup completion events   | Maintenance runner      |
+| Is the optional worker alive and draining?            | Worker heartbeat, queue depth, completion/error events | Media worker            |
 
-## Infra map (where failures show up)
+## Health semantics
 
-| Surface | Provider | Primary failure modes | Where you’ll notice first |
-|---|---|---|---|
-| App HTML + API routes | Vercel | 5xx errors, cold starts/timeouts, deploy misconfig | Vercel logs + function metrics |
-| Guestlist + best dressed + transfer metadata | Vercel KV (Upstash Redis) | latency spikes, auth/rate-limit bugs, command budget exhaustion | Upstash metrics, Vercel logs, user-reported “loading” |
-| Media (images + transfer files) | Cloudflare R2 + CDN | R2 read/write failures, lifecycle/cleanup gaps, abuse driving ops | Cloudflare analytics + billing/usage |
-| Rate limiting | Cloudflare WAF | rule not applied, false positives, attack traffic | Cloudflare Security → Events |
-| Cleanup cron | Vercel Cron → `/api/cron/cleanup-transfers` | cron not running, auth/secret broken, R2 or KV unavailable | Vercel logs + a dedicated “cron didn’t run” alert |
+`/api/health` is configuration-only. It performs no Redis or object-storage operations, returns `Cache-Control: no-store`, and uses status 503 only when a required capability is unavailable. Optional maintenance or worker degradation remains visible without failing platform readiness.
 
----
+`/health` uses the same model and exposes no credentials, provider account identifiers, hostnames, or raw errors.
 
-## What we already have (good baseline)
+`/api/debug` requires admin authentication. It performs one read-only Redis operation and one object-storage bucket probe, reports bounded latency, and normalizes failures without returning secrets.
 
-- **Structured server logs** via `lib/logger.ts` (JSON lines in prod; easy filtering by `scope`).
-- **Safe 500s** via `lib/api-error.ts` (`apiErrorFromRequest()` logs the real error server-side, returns a user-safe message).
-- **Request correlation**: every `/api/*` response includes `x-request-id` (added in `proxy.ts`).
-- **Debug/health snapshot** at `GET /api/debug` (admin-only; includes Redis reachability + latency).
-- **Known cost pressure point**: guestlist polling / KV commands (see `docs/operations.md` + postmortem).
+## Structured events
 
-This means the *minimum viable observability* is mostly “wire alerts to the logs/usage you already have”.
+Production logs are one-line JSON objects with stable fields:
 
----
+```json
+{
+  "level": "info",
+  "scope": "cron.cleanup-transfers",
+  "message": "Cron cleanup finished",
+  "context": {
+    "requestId": "…",
+    "durationMs": 120,
+    "deletedObjects": 4
+  },
+  "ts": "2026-07-15T12:00:00.000Z"
+}
+```
 
-## Alerts to set up (recommended)
+Never log passwords, PINs, tokens, cookies, presigned URLs, or direct personal identifiers.
 
-### Vercel (app)
+## Minimum monitoring
 
-- **Deploy failures**: enable email notifications for failed production deploys.
-- **Server errors (5xx)**:
-  - Alert on spikes in 500 responses (especially routes used on event night: `/api/guests`, `/api/best-dressed`).
-  - If you add a log drain (Axiom/Datadog/etc.), alert on `{"level":"error"}` or on specific scopes.
-- **Usage/billing thresholds** (Hobby tier is easy to hit accidentally):
-  - Bandwidth usage approaching limit
-  - Function invocations/timeouts (especially if an upload/finalize endpoint starts failing)
-- **Cron did not run**:
-  - Vercel Cron can fail silently if `CRON_SECRET` is missing/rotated or the route errors.
-  - Add an alert that fires if no successful cron log appears within 36 hours.
+- Poll `/api/health` every five minutes from outside the host.
+- Alert after two consecutive failures, not a single transient error.
+- Alert when scheduled maintenance has no successful completion for 36 hours.
+- Track memory, CPU, restarts, HTTP 5xx rate, and response latency at the host.
+- Track Redis command usage and R2 storage/operation usage at their providers.
+- If the media worker is enabled, alert on stale heartbeat, growing queue depth, or repeated retry exhaustion.
 
-### Vercel KV / Upstash (Redis)
-
-- **Daily command usage**:
-  - Warn at ~70–80% of the free budget.
-  - Alert at ~90% (this is where you want to intervene before the guestlist becomes flaky).
-- **Latency / timeouts**:
-  - Alert on sustained latency increases (user-facing symptoms: “stuck loading”, slow check-in, votes failing).
-- **Errors**:
-  - Alert on `ECONNRESET`, `ETIMEDOUT`, and 5xx responses from the REST endpoint (if you’re draining logs).
-
-### Cloudflare (R2 + CDN + WAF)
-
-- **Billing/usage alerts**:
-  - Set a low billing alert (you already call out `$5` as a good “something is wrong” tripwire in `docs/security.md`).
-  - Track R2 Class B ops and storage (unexpected growth usually means a cleanup gap or abuse).
-- **WAF rate limit events**:
-  - Verify rate limit rules are actually triggering during abuse.
-  - Watch for false positives (legit guests blocked) on event night.
-- **Edge 5xx spikes** on `pics.*`:
-  - If media starts 5xx’ing, the app may still look “up” but experience is broken.
-
----
-
-## Uptime checks (external)
-
-Provider dashboards are great, but they don’t replace “someone hit the site from the outside”.
-
-- **Public page check**: monitor `/party` (or `/`) for a 200.
-- **API check**: monitor `GET /api/health` every 5 minutes (requires header auth).
-
-Notes:
-- `GET /api/debug` is **admin-only** and returns environment detail. It’s not suitable for a third-party uptime probe.
-- `GET /api/health` intentionally avoids Redis/R2 checks so frequent monitoring doesn’t create KV commands (and it doesn’t leak infra details).
-- Health checks still create Vercel **function invocations**. On Hobby, prefer a 5-minute interval unless you have a reason to be more aggressive.
-- `GET /api/health` is protected by `HEALTHCHECK_TOKEN` and requires the header `x-health-token: <token>`. If `HEALTHCHECK_TOKEN` is missing, the endpoint fails closed (503).
-
----
-
-## Log drain (optional, but the “alerts” unlock)
-
-If you want real alerts without building your own monitoring system, set up a Vercel **log drain** to a service that supports queries + alerting (Axiom, Datadog, Better Stack, etc.).
-
-Recommended alert queries (conceptual):
-
-- **Any server error**: `level=error` grouped by `scope`
-- **Spike in guestlist failures**: `scope="guests.*"` + error count threshold
-- **Cron failures**: `scope="cron.cleanup-transfers"` + error OR missing-success window
-- **Auth anomalies**: repeated failures on `admin.verify`, `guests.verify-staff-pin`, `upload.verify-pin`
-
-Because logs are structured, you can alert on *exact scopes* instead of brittle string matches.
-
----
-
-## “Event night” checklist (quick)
-
-- Vercel KV usage: confirm you have budget headroom for the expected number of guestlist devices.
-- Cloudflare WAF: rate limit rules enabled for `pics.*` (and you know where to view events).
-- Vercel logs: you can filter by scope quickly (`guests.*`, `best-dressed.*`).
-- Cron: not critical for event night, but confirm it’s running daily in the days after (transfer cleanup).
-
----
-
-## Gaps / follow-ups (small, high leverage)
-
-- Add a log drain + alerts (Axiom/Datadog/Better Stack) so you can alert on `scope` + `level=error`.
-- Consider adding lightweight route timing for the busiest endpoints (`/api/guests`, `/api/best-dressed`) if you want latency alerts without full tracing.
-
+Every alert needs a target owner and a link to [`deployment.md`](./deployment.md) for rollback.

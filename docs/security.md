@@ -6,14 +6,14 @@ Authentication, protections, rate limiting, and what to do when credentials leak
 
 ## Authentication
 
-| Gate | Env var | Protects | Verified by |
-|------|---------|----------|-------------|
-| Staff PIN | `STAFF_PIN` | Guest list page access (door staff) | `POST /api/guests/verify-staff-pin` |
-| Admin password | `ADMIN_PASSWORD` | Manage (add/remove/import, wipe best-dressed), admin tools | `POST /api/admin/verify` |
-| Upload PIN | `UPLOAD_PIN` | Web upload page (`/upload`) | `POST /api/upload/verify-pin` |
-| Word share PIN | Per-share link (stored hashed) | Optional second factor for signed word links | `POST /api/words/share/verify` |
+| Gate           | Env var                        | Protects                                                   | Verified by                         |
+| -------------- | ------------------------------ | ---------------------------------------------------------- | ----------------------------------- |
+| Staff PIN      | `STAFF_PIN`                    | Guest list page access (door staff)                        | `POST /api/guests/verify-staff-pin` |
+| Admin password | `ADMIN_PASSWORD`               | Manage (add/remove/import, wipe best-dressed), admin tools | `POST /api/admin/verify`            |
+| Upload PIN     | `UPLOAD_PIN`                   | Web upload page (`/upload`)                                | `POST /api/upload/verify-pin`       |
+| Word share PIN | Per-share link (stored hashed) | Optional second factor for signed word links               | `POST /api/words/share/verify`      |
 
-All role gates are env vars, never in the client bundle. Set in Vercel and `.env.local`.  
+All role gates are runtime environment variables and never enter the client bundle.
 Words do **not** use a global reader env PIN: PIN is configured per share link and stored as a hash.
 
 Verify endpoints issue short-lived JWTs (role-based TTLs). The app stores role JWTs in **httpOnly cookies** by default (not raw credentials), so:
@@ -47,10 +47,10 @@ What makes an existing token stop working:
 - **Role-wide invalidate**: bump the role **token version** (the JWT `tv` must match `auth:token-version:{role}`).
 - **Secret rotation**: change `AUTH_SECRET` (signature check fails for every previously issued token).
 
-What does *not* revoke existing tokens:
+What does _not_ revoke existing tokens:
 
-- **Vercel deploys / rebuilds** (code changes alone).
-- **Changing `ADMIN_PASSWORD`, `STAFF_PIN`, or `UPLOAD_PIN`**: this only affects *future* logins. Existing JWTs remain valid until they expire or are revoked/invalidated.
+- **Deploys / rebuilds** (code changes alone).
+- **Changing `ADMIN_PASSWORD`, `STAFF_PIN`, or `UPLOAD_PIN`**: this only affects _future_ logins. Existing JWTs remain valid until they expire or are revoked/invalidated.
 
 Notes:
 
@@ -61,13 +61,13 @@ Notes:
 
 These endpoints are intended for operational control and incident response.
 
-| Operation | Endpoint | Notes |
-|----------|----------|-------|
-| Admin login (issue JWT) | `POST /api/admin/verify` | Returns `{ token }` on success |
-| Step-up token | `POST /api/admin/step-up` | Requires an admin session (cookie or `Authorization: Bearer <adminJWT>`) + body `{ password }`. Returns short-lived step-up token |
-| List token sessions | `GET /api/admin/tokens/sessions` | Redis-backed list of issued sessions by `jti` with status + expiry |
-| Revoke one session | `DELETE /api/admin/tokens/sessions/{jti}` | Requires `x-admin-step-up` header |
-| Revoke many sessions | `POST /api/admin/tokens/revoke` | Body `{ role: "admin" \| "staff" \| "upload" \| "all" }` + requires `x-admin-step-up` |
+| Operation               | Endpoint                                  | Notes                                                                                                                             |
+| ----------------------- | ----------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| Admin login (issue JWT) | `POST /api/admin/verify`                  | Returns `{ token }` on success                                                                                                    |
+| Step-up token           | `POST /api/admin/step-up`                 | Requires an admin session (cookie or `Authorization: Bearer <adminJWT>`) + body `{ password }`. Returns short-lived step-up token |
+| List token sessions     | `GET /api/admin/tokens/sessions`          | Redis-backed list of issued sessions by `jti` with status + expiry                                                                |
+| Revoke one session      | `DELETE /api/admin/tokens/sessions/{jti}` | Requires `x-admin-step-up` header                                                                                                 |
+| Revoke many sessions    | `POST /api/admin/tokens/revoke`           | Body `{ role: "admin" \| "staff" \| "upload" \| "all" }` + requires `x-admin-step-up`                                             |
 
 ### CLI auth reliability note (learning)
 
@@ -108,7 +108,7 @@ If `verify` succeeds but protected probes return `401`, check:
 
 Revoking a session does not delete the session record immediately. We keep a small Redis-backed record (`auth:session:{jti}`) until the token’s natural expiry so:
 
-- the admin dashboard can show *what happened* (`revoked` / `signed out` / `expired`) instead of the row disappearing instantly
+- the admin dashboard can show _what happened_ (`revoked` / `signed out` / `expired`) instead of the row disappearing instantly
 - you can confirm you revoked the correct session during an incident
 
 The actual “revoked” enforcement is separate (`auth:revoked-jti:{jti}`) and is checked on every authenticated request. Both keys age out automatically around the token expiry.
@@ -125,17 +125,17 @@ Admin tokens act as the master token for normal app gates: an `admin` JWT is acc
 - **Admin-only takedown**: only the uploader can delete (CLI or admin URL)
 - **No indexing**: `robots: noindex, nofollow` on all transfer pages
 - **Auto-expiry**: Redis TTL + server-side check + daily cron R2 cleanup
-- **CDN caching**: Vercel edge caches transfer pages for 60s (zero KV cost on repeat visits)
+- **CDN caching**: a reverse proxy/CDN may cache transfer pages for 60 seconds when configured
 
 ---
 
 ## Best-Dressed Protections
 
-| Risk | Mitigation |
-|------|------------|
-| Vote stuffing | Default: staff-minted one-time vote codes (single-use). Also uses a one-time vote token (GET issues, POST consumes) + a coarse per-IP rate limit as a backstop. Optional: door staff can temporarily open voting without codes for a fixed window. |
-| Fake names | Server validates the voted name is in the guest list. Arbitrary names rejected. |
-| Anyone wiping votes | `DELETE /api/best-dressed` requires admin token. |
+| Risk                | Mitigation                                                                                                                                                                                                                                         |
+| ------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Vote stuffing       | Default: staff-minted one-time vote codes (single-use). Also uses a one-time vote token (GET issues, POST consumes) + a coarse per-IP rate limit as a backstop. Optional: door staff can temporarily open voting without codes for a fixed window. |
+| Fake names          | Server validates the voted name is in the guest list. Arbitrary names rejected.                                                                                                                                                                    |
+| Anyone wiping votes | `DELETE /api/best-dressed` requires admin token.                                                                                                                                                                                                   |
 
 Notes:
 
@@ -155,10 +155,10 @@ Images and transfer files are served from `pics.milkandhenny.com` (R2 custom dom
 
 In **Cloudflare Dashboard → Security → WAF → Rate limiting rules**, create two rules:
 
-| Rule | Match | Per IP | Threshold | Action | Duration |
-|------|-------|--------|-----------|--------|----------|
-| Album images | URI path `/albums/*` | Yes | 100 req / 10s | Block | 10s |
-| Transfer files | URI path `/transfers/*` | Yes | 100 req / 10s | Block | 10s |
+| Rule           | Match                   | Per IP | Threshold     | Action | Duration |
+| -------------- | ----------------------- | ------ | ------------- | ------ | -------- |
+| Album images   | URI path `/albums/*`    | Yes    | 100 req / 10s | Block  | 10s      |
+| Transfer files | URI path `/transfers/*` | Yes    | 100 req / 10s | Block  | 10s      |
 
 > Free plan limits: 10-second period and 10-second block duration only.
 
@@ -166,10 +166,10 @@ For the step-by-step Cloudflare walkthrough, see [cloudflare-rate-limit-images.m
 
 ### Worst-case cost with rate limiting
 
-| Attack scenario | Requests/day (sustained) | R2 cost/month |
-|-----------------|--------------------------|---------------|
-| 1 IP (script kiddie) | ~432,000 | ~$1 |
-| 10 IPs (VPN/proxies) | ~4.3M | ~$43 |
+| Attack scenario      | Requests/day (sustained) | R2 cost/month |
+| -------------------- | ------------------------ | ------------- |
+| 1 IP (script kiddie) | ~432,000                 | ~$1           |
+| 10 IPs (VPN/proxies) | ~4.3M                    | ~$43          |
 
 A casual single-IP attacker costs ~$1/month. A serious multi-IP attack is extremely unlikely for a personal site. Cloudflare's automatic DDoS protection (included free) is always active.
 
@@ -194,19 +194,19 @@ These are the highest-impact credentials — they grant read/write/delete access
 3. **Create a new token** with the same permissions (Object Read & Write on your bucket)
 4. Copy the new Access Key ID and Secret Access Key
 5. **Update `.env.local`** with the new values
-6. **Update Vercel env vars** (Settings → Environment Variables)
-7. **Redeploy** on Vercel so the cron picks up the new token
+6. **Update the production host's secret variables**
+7. **Redeploy** so the app and maintenance runner use the new token
 8. Test: `pnpm cli bucket ls` — should return bucket contents
 
 **Downtime:** Zero for the public site (images served via Cloudflare CDN). CLI operations fail between steps 2–5. Cron fails until redeploy.
 
-### KV / Redis credentials leaked (`KV_REST_API_URL` / `KV_REST_API_TOKEN`)
+### Redis credentials leaked (`REDIS_REST_URL` / `REDIS_REST_TOKEN`)
 
-1. **Upstash Console → your database → REST API section → Reset token** (or rotate via Vercel Dashboard → Storage → KV → Settings)
+1. **Redis provider console → REST API section → Reset token**
 2. Copy the new URL and token
 3. **Update `.env.local`**
-4. **Update Vercel env vars** (if set manually; Vercel KV auto-updates if rotated from Vercel Dashboard)
-5. **Redeploy** on Vercel
+4. **Update the production host's secret variables**
+5. **Redeploy**
 6. Test: `pnpm cli transfers list`
 
 **Downtime:** Guest list polling and transfer pages return errors during rotation (~30s). CDN-cached transfer pages keep serving for up to 60s.
@@ -215,8 +215,8 @@ These are the highest-impact credentials — they grant read/write/delete access
 
 ### Admin password, Upload PIN, or Staff PIN leaked
 
-1. **Update Vercel env vars** → `ADMIN_PASSWORD`, `UPLOAD_PIN`, and/or `STAFF_PIN`
-2. **Redeploy** on Vercel
+1. **Update production secrets** → `ADMIN_PASSWORD`, `UPLOAD_PIN`, and/or `STAFF_PIN`
+2. **Redeploy**
 3. Update `.env.local` for local dev
 
 **Downtime:** None. Existing tokens remain valid until expiry, but you can also revoke sessions immediately (Admin dashboard → session security, or `pnpm cli auth revoke ...`).
@@ -224,30 +224,27 @@ These are the highest-impact credentials — they grant read/write/delete access
 ### CRON_SECRET leaked
 
 1. Generate: `openssl rand -hex 32`
-2. **Update Vercel env var** → `CRON_SECRET`
+2. **Update the production `CRON_SECRET`**
 3. **Redeploy**
 
 **Downtime:** None. The cron runs daily; next invocation uses the new secret.
 
 ### Quick-reference: where each secret lives
 
-| Secret | `.env.local` | Vercel env vars | Cloudflare | Upstash |
-|--------|:---:|:---:|:---:|:---:|
-| `R2_ACCESS_KEY` / `R2_SECRET_KEY` | Yes | Yes | Source of truth | — |
-| `KV_REST_API_URL` / `KV_REST_API_TOKEN` | Yes | Auto-injected | — | Source of truth |
-| `STAFF_PIN` | Yes | Yes | — | — |
-| `ADMIN_PASSWORD` | Yes | Yes | — | — |
-| `UPLOAD_PIN` | Yes | Yes | — | — |
-| `CRON_SECRET` | No | Yes | — | — |
-| `NEXT_PUBLIC_R2_PUBLIC_URL` | Yes | Yes | — | — |
-| `NEXT_PUBLIC_BASE_URL` | Yes (CLI) | No | — | — |
+| Secret/config                                 | Local development | Production host | Source of truth   |
+| --------------------------------------------- | :---------------: | :-------------: | ----------------- |
+| `R2_ACCESS_KEY` / `R2_SECRET_KEY`             |        Yes        |       Yes       | Cloudflare R2     |
+| `REDIS_REST_URL` / `REDIS_REST_TOKEN`         |        Yes        |       Yes       | Redis provider    |
+| `STAFF_PIN` / `ADMIN_PASSWORD` / `UPLOAD_PIN` |        Yes        |       Yes       | Secret manager    |
+| `CRON_SECRET`                                 |     Optional      |       Yes       | Secret manager    |
+| `VITE_MEDIA_PUBLIC_URL` / `VITE_BASE_URL`     |        Yes        |   Build-time    | Deployment config |
 
 ### General incident checklist
 
 1. **Identify** which credential was exposed and where
-2. **Revoke/rotate** at the source immediately (Cloudflare, Upstash, or Vercel)
-3. **Update** `.env.local` + Vercel env vars
-4. **Redeploy** on Vercel
+2. **Revoke/rotate** at the source immediately
+3. **Update** local and production secret stores
+4. **Redeploy**
 5. **Verify** with a CLI or browser test
 6. **Audit** Cloudflare Analytics and Upstash Monitor for suspicious activity
 7. **Document** what happened
@@ -255,7 +252,7 @@ These are the highest-impact credentials — they grant read/write/delete access
 ### What makes this app rotation-friendly
 
 - **No secrets in code.** Every credential is an env var — rotation is config-only.
-- **No secrets in the client bundle.** `NEXT_PUBLIC_*` vars contain only public URLs, not secrets.
+- **No secrets in the client bundle.** `VITE_*` vars contain only public URLs and client configuration, never secrets.
 - **Token-based auth.** Short-lived JWTs (role-based TTLs), stored in httpOnly cookies by default, never raw credentials.
 - **Layered storage.** R2 and KV credentials are independent — leaking one doesn't compromise the other.
 - **CDN buffer.** Cached content continues serving even during a rotation window.

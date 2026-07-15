@@ -6,7 +6,7 @@ function useHasMounted(): boolean {
   return useSyncExternalStore(
     () => () => {},
     () => true,
-    () => false
+    () => false,
   );
 }
 

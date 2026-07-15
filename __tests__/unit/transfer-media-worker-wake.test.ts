@@ -17,7 +17,7 @@ describe("transfer media worker wake", () => {
     vi.stubEnv("TRANSFER_MEDIA_WAKE_URL", "https://example.workers.dev/wake");
     vi.stubEnv("TRANSFER_MEDIA_WAKE_TOKEN", "secret-token");
 
-    const { wakeTransferMediaWorker } = await import("@/features/media/worker-wake");
+    const { wakeTransferMediaWorker } = await import("@/features/media/worker-wake.server");
     await expect(wakeTransferMediaWorker()).resolves.toBe(true);
 
     expect(fetchMock).toHaveBeenCalledWith(
@@ -27,7 +27,7 @@ describe("transfer media worker wake", () => {
         headers: {
           authorization: "Bearer secret-token",
         },
-      })
+      }),
     );
   });
 
@@ -37,7 +37,7 @@ describe("transfer media worker wake", () => {
     vi.stubEnv("TRANSFER_MEDIA_WAKE_URL", "");
     vi.stubEnv("TRANSFER_MEDIA_WAKE_TOKEN", "");
 
-    const { wakeTransferMediaWorker } = await import("@/features/media/worker-wake");
+    const { wakeTransferMediaWorker } = await import("@/features/media/worker-wake.server");
     await expect(wakeTransferMediaWorker()).resolves.toBe(false);
     expect(fetchMock).not.toHaveBeenCalled();
   });
