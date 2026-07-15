@@ -1,0 +1,85 @@
+name: Purge service worker cache
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: purge-production-service-worker
+  cancel-in-progress: true
+
+jobs:
+  purge:
+    name: Purge /sw.js after production deploy
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Wait for Railway production
+        env:
+          EXPECTED_COMMIT: ${{ github.sha }}
+        run: |
+          for attempt in $(seq 1 60); do
+            deployed_commit="$(
+              curl --silent --show-error --fail \
+                "https://milkandhenny.com/api/health?commit=${EXPECTED_COMMIT}&attempt=${attempt}" \
+                | jq -r '.commit // empty' \
+                || true
+            )"
+
+            if [ "$deployed_commit" = "$EXPECTED_COMMIT" ]; then
+              echo "Railway is serving the expected commit."
+              exit 0
+            fi
+
+            echo "Waiting for Railway production (${attempt}/60)."
+            sleep 10
+          done
+
+          echo "Railway did not serve the expected commit within 10 minutes." >&2
+          exit 1
+
+      - name: Purge Cloudflare service worker cache
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ZONE_ID: ${{ vars.CLOUDFLARE_ZONE_ID }}
+        run: |
+          response="$(
+            curl --silent --show-error --fail-with-body \
+              --request POST \
+              "https://api.cloudflare.com/client/v4/zones/${CLOUDFLARE_ZONE_ID}/purge_cache" \
+              --header "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
+              --header "Content-Type: application/json" \
+              --data '{"files":["https://milkandhenny.com/sw.js"]}'
+          )"
+
+          if [ "$(printf '%s' "$response" | jq -r '.success')" != "true" ]; then
+            printf '%s\n' "$response" | jq . >&2
+            exit 1
+          fi
+
+          echo "Cloudflare purged /sw.js."
+
+      - name: Verify service worker headers
+        run: |
+          headers="$(mktemp)"
+          trap 'rm -f "$headers"' EXIT
+
+          curl --silent --show-error --fail \
+            --dump-header "$headers" \
+            --output /dev/null \
+            "https://milkandhenny.com/sw.js?verify=${GITHUB_SHA}"
+
+          grep -Eiq '^cache-control:.*(no-cache|max-age=0)' "$headers"
+          grep -Eiq '^service-worker-allowed:[[:space:]]*/' "$headers"
+
+          if grep -Eiq '^cf-cache-status:[[:space:]]*HIT' "$headers"; then
+            echo "Cloudflare unexpectedly cached /sw.js." >&2
+            exit 1
+          fi
+
+          echo "Service worker is served dynamically with revalidation headers."
