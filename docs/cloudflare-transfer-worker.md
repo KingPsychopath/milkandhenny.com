@@ -4,7 +4,7 @@ This deployment is not required for the core application and is intentionally di
 
 It combines:
 
-- a lightweight Cloudflare Worker for authenticated wake requests and streamed ZIP responses;
+- a lightweight Cloudflare Worker for authenticated wake requests;
 - a sleeping Cloudflare Container for ffmpeg, ExifTool, Sharp, RAW, and video processing;
 - Redis for the durable queue;
 - R2 for originals and derivatives.
@@ -30,7 +30,8 @@ REDIS_URL (or direct UPSTASH_REDIS_* fields)
 R2_ACCOUNT_ID
 R2_ACCESS_KEY
 R2_SECRET_KEY
-R2_BUCKET
+R2_PUBLIC_BUCKET
+R2_PRIVATE_BUCKET
 TRANSFER_MEDIA_WAKE_TOKEN
 ```
 
@@ -48,6 +49,6 @@ Before switching modes, verify:
 2. An unauthorized `/wake` request is rejected.
 3. An authorized wake drains a disposable queue item.
 4. Worker heartbeat and queue depth appear in admin diagnostics.
-5. RAW and video derivatives are readable from the public media origin.
+5. RAW and video derivatives are readable through the application's protected transfer-media route.
 
 Use concurrency `1` initially. Raise it only after observing memory and CPU usage.

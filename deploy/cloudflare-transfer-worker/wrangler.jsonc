@@ -6,7 +6,6 @@
   "compatibility_flags": ["nodejs_compat"],
   "vars": {
     "MEDIA_PROCESSOR_MODE": "hybrid",
-    "R2_PUBLIC_URL": "",
     "TRANSFER_MEDIA_WORKER_CONCURRENCY": "2",
     "TRANSFER_MEDIA_WORKER_ERROR_BACKOFF_MS": "15000",
   },

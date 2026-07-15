@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { requireAuthWithPayload } from "@/features/auth/auth.server";
-import { presignPutUrl, isConfigured } from "@/lib/platform/r2.server";
+import { presignPutUrl, isTransferStorageConfigured } from "@/lib/platform/r2.server";
 import {
   generateTransferId,
   generateDeleteToken,
@@ -23,7 +23,6 @@ import {
 import type { TransferUploadFileInput } from "@/features/transfers/upload-types";
 import { apiErrorFromRequest } from "@/lib/platform/api-error";
 import { isSafeTransferFilename } from "@/features/transfers/upload.server";
-import { hasMediaPublicUrl } from "@/lib/shared/config";
 
 type FileEntry = TransferUploadFileInput;
 
@@ -44,19 +43,9 @@ async function handlePOST(request: Request) {
   if (authErr) return authErr;
   const isAdmin = payload?.role === "admin";
 
-  if (!isConfigured()) {
+  if (!isTransferStorageConfigured()) {
     return Response.json(
-      { error: "R2 storage is not configured. Add R2 env vars." },
-      { status: 503 },
-    );
-  }
-
-  if (!hasMediaPublicUrl()) {
-    return Response.json(
-      {
-        error:
-          "Transfers are not viewable because VITE_MEDIA_PUBLIC_URL is missing. Configure the public media URL before uploading.",
-      },
+      { error: "Private transfer storage is not configured. Set R2_PRIVATE_BUCKET." },
       { status: 503 },
     );
   }

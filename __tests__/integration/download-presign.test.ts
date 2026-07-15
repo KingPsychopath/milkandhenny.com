@@ -13,6 +13,7 @@ describe("download presign", () => {
     const presignGetUrl = vi.fn().mockResolvedValue("https://example.com/download");
     vi.doMock("@/lib/platform/r2.server", () => ({
       isConfigured: () => true,
+      isTransferStorageConfigured: () => true,
       presignGetUrl,
     }));
 
@@ -36,6 +37,7 @@ describe("download presign", () => {
   it("should reject keys outside the allowed public download scope", async () => {
     vi.doMock("@/lib/platform/r2.server", () => ({
       isConfigured: () => true,
+      isTransferStorageConfigured: () => true,
       presignGetUrl: vi.fn(),
     }));
 
@@ -50,7 +52,20 @@ describe("download presign", () => {
     const presignGetUrl = vi.fn().mockResolvedValue("https://example.com/download");
     vi.doMock("@/lib/platform/r2.server", () => ({
       isConfigured: () => true,
+      isTransferStorageConfigured: () => true,
       presignGetUrl,
+    }));
+    vi.doMock("@/features/transfers/store.server", () => ({
+      getTransfer: vi.fn().mockResolvedValue({
+        id: "velvet-moon-candle",
+        expiresAt: "2999-01-01T00:00:00.000Z",
+        files: [
+          {
+            id: "photo",
+            storageKey: "transfers/velvet-moon-candle/originals/IMG_1234.HEIC",
+          },
+        ],
+      }),
     }));
 
     const { GET } = await import("@/src/routes/api/download/presign/route");
@@ -69,5 +84,34 @@ describe("download presign", () => {
         expiresIn: 3600,
       },
     );
+  });
+
+  it("should reject a valid-looking transfer key that is not in that transfer", async () => {
+    const presignGetUrl = vi.fn();
+    vi.doMock("@/lib/platform/r2.server", () => ({
+      isConfigured: () => true,
+      isTransferStorageConfigured: () => true,
+      presignGetUrl,
+    }));
+    vi.doMock("@/features/transfers/store.server", () => ({
+      getTransfer: vi.fn().mockResolvedValue({
+        id: "private-transfer",
+        expiresAt: "2999-01-01T00:00:00.000Z",
+        files: [
+          {
+            id: "allowed",
+            storageKey: "transfers/private-transfer/originals/allowed.jpg",
+          },
+        ],
+      }),
+    }));
+
+    const { GET } = await import("@/src/routes/api/download/presign/route");
+    const response = await GET(
+      makeRequest("/api/download/presign?key=transfers/private-transfer/originals/secret.jpg"),
+    );
+
+    expect(response.status).toBe(404);
+    expect(presignGetUrl).not.toHaveBeenCalled();
   });
 });

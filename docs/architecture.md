@@ -39,7 +39,7 @@ The production app fails closed when required persistence is unavailable. In-mem
 
 ## Media
 
-R2 is currently the S3-compatible object store. Browser uploads use presigned URLs, so large file bodies bypass the web service. Public delivery uses `VITE_MEDIA_PUBLIC_URL`, normally an R2 custom domain behind Cloudflare.
+R2 is currently the S3-compatible object store. `R2_PUBLIC_BUCKET` contains albums and editorial media and is delivered through `VITE_MEDIA_PUBLIC_URL`. `R2_PRIVATE_BUCKET` contains transfers, has no public domain or `r2.dev` access, and is read only through short-lived URLs issued after the application validates the transfer capability ID. Browser uploads use presigned URLs, so large file bodies bypass the web service.
 
 Storage implementation details remain behind `lib/platform/r2.server.ts`; the application host does not need to be Cloudflare.
 

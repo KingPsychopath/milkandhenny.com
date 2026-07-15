@@ -24,6 +24,7 @@ describe("transfers admin", () => {
       expect(isSafeTransferId("velvet-moon-candle")).toBe(true);
       expect(isSafeTransferId("a-b-c")).toBe(true);
       expect(isSafeTransferId("xK9mP2nQ7vL")).toBe(true);
+      expect(isSafeTransferId("xK9mP2_Q7vL")).toBe(true);
     });
 
     it("returns false for empty or invalid characters", () => {

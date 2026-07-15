@@ -19,7 +19,7 @@ import {
   resolveTransferUploadIds,
 } from "@/features/transfers/media-state";
 import type { TransferUploadFileInput } from "@/features/transfers/upload-types";
-import { getBaseUrlForRequest, hasMediaPublicUrl } from "@/lib/shared/config";
+import { getBaseUrlForRequest } from "@/lib/shared/config";
 import { apiErrorFromRequest } from "@/lib/platform/api-error";
 import { mapWithConcurrency } from "@/lib/shared/map-with-concurrency";
 
@@ -43,16 +43,6 @@ async function handlePOST(request: Request) {
   const { error: authErr, payload } = await requireAuthWithPayload(request, "upload");
   if (authErr) return authErr;
   const isAdmin = payload?.role === "admin";
-
-  if (!hasMediaPublicUrl()) {
-    return Response.json(
-      {
-        error:
-          "Transfers are not viewable because VITE_MEDIA_PUBLIC_URL is missing. Configure the public media URL before uploading.",
-      },
-      { status: 503 },
-    );
-  }
 
   let body: {
     transferId?: string;

@@ -7,7 +7,7 @@ import {
   saveTransfer,
   validateDeleteToken,
 } from "@/features/transfers/store.server";
-import { deleteObjects, isConfigured } from "@/lib/platform/r2.server";
+import { deleteObjects, isTransferStorageConfigured } from "@/lib/platform/r2.server";
 
 type RouteContext = {
   params: Promise<{ id: string; fileId: string }>;
@@ -44,7 +44,7 @@ async function handleDELETE(request: Request, context: RouteContext) {
   }
 
   let deletedObjects = 0;
-  if (isConfigured()) {
+  if (isTransferStorageConfigured()) {
     const keys = getTransferFileDeleteKeys(id, file);
     deletedObjects = keys.length > 0 ? await deleteObjects(keys) : 0;
   }

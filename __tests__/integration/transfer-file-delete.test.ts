@@ -23,7 +23,7 @@ describe("transfer file delete route", () => {
         id: "transfer-1",
         title: "party",
         createdAt: "2026-03-08T10:00:00.000Z",
-        expiresAt: "2026-03-09T10:00:00.000Z",
+        expiresAt: "2999-03-09T10:00:00.000Z",
         deleteToken: "token",
         files: [
           {
@@ -90,7 +90,7 @@ describe("transfer file delete route", () => {
     }));
     vi.doMock("@/lib/platform/r2.server", () => ({
       deleteObjects,
-      isConfigured: () => true,
+      isTransferStorageConfigured: () => true,
     }));
 
     const { DELETE } = await import("@/src/routes/api/transfers/$id/files/$fileId/route");
@@ -126,7 +126,7 @@ describe("transfer file delete route", () => {
         id: "transfer-1",
         title: "party",
         createdAt: "2026-03-08T10:00:00.000Z",
-        expiresAt: "2026-03-09T10:00:00.000Z",
+        expiresAt: "2999-03-09T10:00:00.000Z",
         deleteToken: "token",
         files: [
           {
@@ -154,7 +154,7 @@ describe("transfer file delete route", () => {
     }));
     vi.doMock("@/lib/platform/r2.server", () => ({
       deleteObjects: vi.fn().mockResolvedValue(1),
-      isConfigured: () => true,
+      isTransferStorageConfigured: () => true,
     }));
 
     const { DELETE } = await import("@/src/routes/api/transfers/$id/files/$fileId/route");
