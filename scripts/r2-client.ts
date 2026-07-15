@@ -30,6 +30,7 @@ if (fs.existsSync(envPath)) {
 
 export {
   isConfigured,
+  isTransferStorageConfigured,
   listObjects,
   listPrefixes,
   headObject,

@@ -7,7 +7,7 @@ import {
   isHeifUploadLike,
   resolveTransferUploadIds,
 } from "@/features/transfers/media-state";
-import { presignPutUrl, isConfigured } from "@/lib/platform/r2.server";
+import { presignPutUrl, isTransferStorageConfigured } from "@/lib/platform/r2.server";
 import { getMimeType } from "@/features/media/processing.server";
 import {
   buildTransferArchivedOriginalStorageKey,
@@ -24,9 +24,9 @@ async function handlePOST(request: Request) {
   const { error: authErr } = await requireAuthWithPayload(request, "admin");
   if (authErr) return authErr;
 
-  if (!isConfigured()) {
+  if (!isTransferStorageConfigured()) {
     return Response.json(
-      { error: "R2 storage is not configured. Add R2 env vars." },
+      { error: "Private transfer storage is not configured. Set R2_PRIVATE_BUCKET." },
       { status: 503 },
     );
   }

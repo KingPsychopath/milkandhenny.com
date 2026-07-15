@@ -161,29 +161,32 @@ function resolveWordContentRef(ref: string, wordSlug?: string): string {
 
 /* ─── Transfer URLs ─── */
 
-/** Get the thumbnail URL for a transfer image (WebP, images and GIF first-frame only) */
+function getTransferMediaUrl(
+  transferId: string,
+  fileId: string,
+  variant: "primary" | "original" | "thumb" | "full",
+  download = false,
+): string {
+  const path = `/api/transfers/${encodeStoragePathSegment(transferId)}/media/${encodeStoragePathSegment(fileId)}/${variant}`;
+  return download ? `${path}?download=1` : path;
+}
+
+/** Get the protected thumbnail URL for a transfer image. */
 function getTransferThumbUrl(transferId: string, fileId: string): string {
-  return getImageUrl(
-    `transfers/${encodeStoragePathSegment(transferId)}/thumb/${encodeStoragePathSegment(fileId)}.webp`,
-  );
+  return getTransferMediaUrl(transferId, fileId, "thumb");
 }
 
-/** Get the full-size viewing URL for a transfer image (WebP, processed images only) */
+/** Get the protected full-size preview URL for a transfer image. */
 function getTransferFullUrl(transferId: string, fileId: string): string {
-  return getImageUrl(
-    `transfers/${encodeStoragePathSegment(transferId)}/full/${encodeStoragePathSegment(fileId)}.webp`,
-  );
+  return getTransferMediaUrl(transferId, fileId, "full");
 }
 
-/** Get the original file URL for any transfer file (preserves real filename) */
-function getTransferFileUrl(transferId: string, filename: string): string {
-  return getImageUrl(
-    `transfers/${encodeStoragePathSegment(transferId)}/original/${encodeStoragePathSegment(filename)}`,
-  );
+function getTransferPrimaryUrl(transferId: string, fileId: string): string {
+  return getTransferMediaUrl(transferId, fileId, "primary");
 }
 
-function getTransferStorageUrl(storageKey: string): string {
-  return getImageUrl(storageKey);
+function getTransferOriginalUrl(transferId: string, fileId: string, download = false): string {
+  return getTransferMediaUrl(transferId, fileId, "original", download);
 }
 
 export {
@@ -200,6 +203,6 @@ export {
   resolveWordContentRef,
   getTransferThumbUrl,
   getTransferFullUrl,
-  getTransferFileUrl,
-  getTransferStorageUrl,
+  getTransferPrimaryUrl,
+  getTransferOriginalUrl,
 };

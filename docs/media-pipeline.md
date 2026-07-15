@@ -77,14 +77,15 @@ The upload page uses **presigned PUT URLs** so file bytes go directly from the b
 
 Transfers use `POST /api/upload/transfer/presign` + `POST /api/upload/transfer/finalize`.
 
-**R2 CORS requirement:** Your R2 bucket needs a CORS rule allowing PUT from your app origin:
+**Private R2 CORS requirement:** `R2_PRIVATE_BUCKET` needs a CORS rule allowing signed uploads and reads from your app origin:
 
 ```json
 [
   {
     "AllowedOrigins": ["https://milkandhenny.com", "http://localhost:3000"],
-    "AllowedMethods": ["PUT"],
-    "AllowedHeaders": ["Content-Type"],
+    "AllowedMethods": ["GET", "HEAD", "PUT"],
+    "AllowedHeaders": ["Content-Type", "Range"],
+    "ExposeHeaders": ["Content-Length", "Content-Range", "ETag"],
     "MaxAgeSeconds": 3600
   }
 ]

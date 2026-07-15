@@ -3,7 +3,8 @@ import { useLocation, useNavigate, useRouter } from "@tanstack/react-router";
 import {
   getTransferThumbUrl,
   getTransferFullUrl,
-  getTransferStorageUrl,
+  getTransferOriginalUrl,
+  getTransferPrimaryUrl,
 } from "@/features/media/storage";
 import { buildTransferVisualItems, type TransferVisualItem } from "@/features/transfers/live-photo";
 import {
@@ -11,12 +12,10 @@ import {
   LARGE_STREAMING_ZIP_NOTICE_BYTES,
   canUseSaveFilePicker,
   createZipFileWritable,
-  downloadZipViaWorker,
-  downloadViaPresignedUrl,
   downloadBlob,
   getZipDownloadErrorMessage,
   isAbortError,
-  shouldUseWorkerZipFallback,
+  triggerBrowserDownload,
 } from "@/lib/client/media-download";
 import { buildZipArchive, type ZipSourceFile } from "@/lib/client/streaming-zip";
 import {
@@ -48,8 +47,6 @@ type TransferFileData = {
   kind: FileKind;
   size: number;
   mimeType: string;
-  storageKey: string;
-  originalStorageKey?: string;
   originalFilename?: string;
   convertedFrom?: "heic";
   width?: number;
@@ -165,15 +162,11 @@ function hasVisualThumbnail(file: TransferFileData): boolean {
 }
 
 function getOriginalVisualUrl(transferId: string, file: TransferFileData): string {
-  return getTransferStorageUrl(file.storageKey);
+  return getTransferPrimaryUrl(transferId, file.id);
 }
 
-function getDownloadUrl(file: TransferFileData): string {
-  return getTransferStorageUrl(file.originalStorageKey ?? file.storageKey);
-}
-
-function getDownloadStorageKey(file: TransferFileData): string {
-  return file.originalStorageKey ?? file.storageKey;
+function getDownloadUrl(transferId: string, file: TransferFileData, download = false): string {
+  return getTransferOriginalUrl(transferId, file.id, download);
 }
 
 function getDownloadFilename(file: TransferFileData): string {
@@ -457,7 +450,7 @@ function SingleVisualContent({
   if (file.kind === "video") {
     return (
       <video
-        src={getTransferStorageUrl(file.storageKey)}
+        src={getTransferPrimaryUrl(transferId, file.id)}
         poster={
           file.previewStatus === "ready" ? getTransferFullUrl(transferId, file.id) : undefined
         }
@@ -503,10 +496,10 @@ function SingleVisualContent({
 
   const imgSrc =
     file.kind === "gif"
-      ? getTransferStorageUrl(file.storageKey)
+      ? getTransferPrimaryUrl(transferId, file.id)
       : hasProcessedImageVariants(file)
         ? getTransferFullUrl(transferId, file.id)
-        : getTransferStorageUrl(file.storageKey);
+        : getTransferPrimaryUrl(transferId, file.id);
 
   return (
     <div className="relative" onClick={(e) => e.stopPropagation()}>
@@ -1196,14 +1189,14 @@ export function TransferGallery({ transferId, files, groups, deleteToken }: Tran
       if (savingSingle) return;
       setSavingSingle(true);
       try {
-        await downloadViaPresignedUrl(getDownloadStorageKey(file), getDownloadFilename(file));
+        triggerBrowserDownload(getDownloadUrl(transferId, file, true), getDownloadFilename(file));
       } catch (err) {
         console.error("Download failed:", err);
       } finally {
         setSavingSingle(false);
       }
     },
-    [savingSingle],
+    [savingSingle, transferId],
   );
 
   /** Download a subset of files (zip or single) */
@@ -1305,49 +1298,6 @@ export function TransferGallery({ transferId, files, groups, deleteToken }: Tran
     [runArchiveBuild],
   );
 
-  const executeWorkerZipDownload = useCallback(
-    async (archiveName: string, filesToDownload: TransferFileData[]) => {
-      setPendingMultipartDownload(null);
-      setDownloading(true);
-      setDownloadError("");
-
-      const controller = new AbortController();
-      abortControllerRef.current = controller;
-
-      try {
-        await downloadZipViaWorker({
-          filename: archiveName,
-          files: filesToDownload.map((file) => ({
-            key: getDownloadStorageKey(file),
-            filename: getDownloadFilename(file),
-          })),
-          signal: controller.signal,
-          onProgress: (progress) => {
-            setDownloadProgress({
-              done: progress.receivedBytes,
-              total: progress.totalBytes ?? 0,
-              phase: "zipping",
-            });
-          },
-        });
-      } catch (err) {
-        if (isAbortError(err)) return;
-        console.error("Download failed:", err);
-        setDownloadError(
-          getZipDownloadErrorMessage(
-            err,
-            "ZIP download failed. Try again or open this page in Chrome or Edge.",
-          ),
-        );
-      } finally {
-        abortControllerRef.current = null;
-        setDownloading(false);
-        setDownloadProgress(null);
-      }
-    },
-    [],
-  );
-
   const downloadFiles = useCallback(
     async (filesToDownload: TransferFileData[]) => {
       if (downloading || preparingDownload || filesToDownload.length === 0) return;
@@ -1355,8 +1305,8 @@ export function TransferGallery({ transferId, files, groups, deleteToken }: Tran
       if (filesToDownload.length === 1) {
         setDownloadError("");
         setPendingMultipartDownload(null);
-        await downloadViaPresignedUrl(
-          getDownloadStorageKey(filesToDownload[0]),
+        triggerBrowserDownload(
+          getDownloadUrl(transferId, filesToDownload[0], true),
           getDownloadFilename(filesToDownload[0]),
         );
         return;
@@ -1372,29 +1322,18 @@ export function TransferGallery({ transferId, files, groups, deleteToken }: Tran
             ? `transfer-${transferId}.zip`
             : `transfer-${transferId}-selected.zip`;
 
-        if (
-          shouldUseWorkerZipFallback({
-            pickerAvailable: supportsStreamingZip,
-            fileCount: filesToDownload.length,
-          })
-        ) {
-          setPreparingDownload(false);
-          await executeWorkerZipDownload(archiveName, filesToDownload);
-          return;
-        }
-
         const prepared: PreparedZipDownload = {
           archiveName,
           files: filesToDownload.map((file) => ({
             id: file.id,
-            url: getDownloadUrl(file),
+            url: getDownloadUrl(transferId, file),
             filename: getDownloadFilename(file),
             size: file.size,
           })),
           plan: planZipDownload(
             filesToDownload.map((file) => ({
               id: file.id,
-              url: getDownloadUrl(file),
+              url: getDownloadUrl(transferId, file),
               filename: getDownloadFilename(file),
               size: file.size,
             })),
@@ -1430,7 +1369,6 @@ export function TransferGallery({ transferId, files, groups, deleteToken }: Tran
       currentFiles.length,
       downloading,
       executePreparedDownload,
-      executeWorkerZipDownload,
       preparingDownload,
       supportsStreamingZip,
       transferId,
@@ -1676,6 +1614,7 @@ export function TransferGallery({ transferId, files, groups, deleteToken }: Tran
               {sectionNonVisualFiles.map((file) => (
                 <FileCard
                   key={file.id}
+                  transferId={transferId}
                   file={file}
                   isSelected={selectedIds.has(file.id)}
                   onToggleSelect={() => toggleSelection(file.id)}
@@ -2220,7 +2159,7 @@ const VisualCard = memo(function VisualCard({
       : hasProcessedImageVariants(file)
         ? getTransferThumbUrl(transferId, file.id)
         : canRenderOriginalVisual(file)
-          ? getTransferStorageUrl(file.storageKey)
+          ? getTransferPrimaryUrl(transferId, file.id)
           : "";
   const [thumbUrl, setThumbUrl] = useState(primaryThumbUrl);
   const aspectRatio = file.width && file.height ? file.height / file.width : 9 / 16;
@@ -2389,6 +2328,7 @@ const VisualCard = memo(function VisualCard({
 /* ─── File Card (audio, documents, archives) ─── */
 
 function FileCard({
+  transferId,
   file,
   isSelected,
   onToggleSelect,
@@ -2396,6 +2336,7 @@ function FileCard({
   onDelete,
   deleting,
 }: {
+  transferId: string;
   file: TransferFileData;
   isSelected: boolean;
   onToggleSelect: () => void;
@@ -2418,7 +2359,7 @@ function FileCard({
         <div className="flex-1 min-w-0">
           <p className="font-mono text-sm text-foreground truncate">{file.filename}</p>
           <audio
-            src={getTransferStorageUrl(file.storageKey)}
+            src={getTransferPrimaryUrl(transferId, file.id)}
             controls
             preload="none"
             className="w-full mt-2 h-8"

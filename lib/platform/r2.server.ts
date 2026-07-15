@@ -51,16 +51,18 @@ type R2RuntimeConfig = {
   accountId: string;
   accessKey: string;
   secretKey: string;
-  bucket: string;
+  publicBucket: string;
+  transferBucket?: string;
   maxSockets: number;
   socketAcquisitionWarningTimeoutMs: number;
 };
 
 type R2ClientState = {
   client: S3Client;
-  bucket: string;
   configKey: string;
 };
+
+type StorageScope = "public" | "transfer";
 
 /* ─── Client singleton ─── */
 
@@ -89,11 +91,12 @@ function getRuntimeConfig(): R2RuntimeConfig {
   const accountId = process.env.R2_ACCOUNT_ID;
   const accessKey = process.env.R2_ACCESS_KEY;
   const secretKey = process.env.R2_SECRET_KEY;
-  const bucket = process.env.R2_BUCKET;
+  const publicBucket = process.env.R2_PUBLIC_BUCKET?.trim() || process.env.R2_BUCKET;
+  const transferBucket = process.env.R2_PRIVATE_BUCKET?.trim() || undefined;
 
-  if (!accountId || !accessKey || !secretKey || !bucket) {
+  if (!accountId || !accessKey || !secretKey || !publicBucket) {
     throw new Error(
-      "Missing R2 env vars. Set R2_ACCOUNT_ID, R2_ACCESS_KEY, R2_SECRET_KEY, R2_BUCKET.",
+      "Missing R2 env vars. Set R2_ACCOUNT_ID, R2_ACCESS_KEY, R2_SECRET_KEY, and R2_PUBLIC_BUCKET.",
     );
   }
 
@@ -101,7 +104,8 @@ function getRuntimeConfig(): R2RuntimeConfig {
     accountId,
     accessKey,
     secretKey,
-    bucket,
+    publicBucket,
+    transferBucket,
     maxSockets: parsePositiveInt(process.env.R2_MAX_SOCKETS, getDefaultMaxSockets()),
     socketAcquisitionWarningTimeoutMs: parsePositiveInt(
       process.env.R2_SOCKET_ACQUISITION_WARNING_TIMEOUT_MS,
@@ -110,13 +114,13 @@ function getRuntimeConfig(): R2RuntimeConfig {
   };
 }
 
-function getClient(): { client: S3Client; bucket: string } {
+function getClient(): { client: S3Client; config: R2RuntimeConfig } {
   const config = getRuntimeConfig();
   const configKey = JSON.stringify(config);
   const cached = globalForR2.__partyGuestListR2ClientState__;
 
   if (cached && cached.configKey === configKey) {
-    return { client: cached.client, bucket: cached.bucket };
+    return { client: cached.client, config };
   }
 
   cached?.client.destroy();
@@ -138,11 +142,29 @@ function getClient(): { client: S3Client; bucket: string } {
   });
   globalForR2.__partyGuestListR2ClientState__ = {
     client,
-    bucket: config.bucket,
     configKey,
   };
 
-  return { client, bucket: config.bucket };
+  return { client, config };
+}
+
+function getStorageScope(keyOrPrefix: string): StorageScope {
+  return keyOrPrefix === "transfers" || keyOrPrefix.startsWith("transfers/")
+    ? "transfer"
+    : "public";
+}
+
+function getBucket(scope: StorageScope): string {
+  const { config } = getClient();
+  if (scope === "public") return config.publicBucket;
+  if (!config.transferBucket) {
+    throw new Error("Private transfer storage is not configured. Set R2_PRIVATE_BUCKET.");
+  }
+  return config.transferBucket;
+}
+
+function getBucketForKey(keyOrPrefix: string): string {
+  return getBucket(getStorageScope(keyOrPrefix));
 }
 
 function sleep(ms: number): Promise<void> {
@@ -225,15 +247,26 @@ function isConfigured(): boolean {
     process.env.R2_ACCOUNT_ID &&
     process.env.R2_ACCESS_KEY &&
     process.env.R2_SECRET_KEY &&
-    process.env.R2_BUCKET
+    (process.env.R2_PUBLIC_BUCKET || process.env.R2_BUCKET)
   );
+}
+
+function isTransferStorageConfigured(): boolean {
+  return isConfigured() && Boolean(process.env.R2_PRIVATE_BUCKET?.trim());
 }
 
 /** Lightweight authenticated dependency probe for admin diagnostics. */
 async function checkConnection(): Promise<void> {
-  const { client, bucket } = getClient();
-  await sendWithRetry("checkConnection", () =>
-    client.send(new HeadBucketCommand({ Bucket: bucket })),
+  const { client, config } = getClient();
+  const buckets = [config.publicBucket, config.transferBucket].filter((bucket): bucket is string =>
+    Boolean(bucket),
+  );
+  await Promise.all(
+    buckets.map((bucket) =>
+      sendWithRetry("checkConnection", () =>
+        client.send(new HeadBucketCommand({ Bucket: bucket })),
+      ),
+    ),
   );
 }
 
@@ -241,7 +274,8 @@ async function checkConnection(): Promise<void> {
 
 /** List objects under a prefix. Pass empty string for root. */
 async function listObjects(prefix = ""): Promise<R2Object[]> {
-  const { client, bucket } = getClient();
+  const { client } = getClient();
+  const bucket = getBucketForKey(prefix);
   const objects: R2Object[] = [];
   let continuationToken: string | undefined;
 
@@ -275,7 +309,8 @@ async function listObjects(prefix = ""): Promise<R2Object[]> {
  * Returns the full prefix strings (e.g. "transfers/abc123/").
  */
 async function listPrefixes(prefix: string): Promise<string[]> {
-  const { client, bucket } = getClient();
+  const { client } = getClient();
+  const bucket = getBucketForKey(prefix);
   const prefixes: string[] = [];
   let continuationToken: string | undefined;
 
@@ -305,7 +340,8 @@ async function listPrefixes(prefix: string): Promise<string[]> {
 async function headObject(
   key: string,
 ): Promise<{ exists: boolean; size?: number; contentType?: string }> {
-  const { client, bucket } = getClient();
+  const { client } = getClient();
+  const bucket = getBucketForKey(key);
 
   try {
     const res = await sendWithRetry("headObject", () =>
@@ -324,7 +360,8 @@ async function headObject(
 
 /** Download an object as a Buffer. Throws if not found. */
 async function downloadBuffer(key: string): Promise<Buffer> {
-  const { client, bucket } = getClient();
+  const { client } = getClient();
+  const bucket = getBucketForKey(key);
 
   const res = await sendWithRetry("downloadBuffer", () =>
     client.send(new GetObjectCommand({ Bucket: bucket, Key: key })),
@@ -343,7 +380,8 @@ async function downloadBuffer(key: string): Promise<Buffer> {
 
 /** Upload a buffer to the bucket. */
 async function uploadBuffer(key: string, buffer: Buffer, contentType: string): Promise<void> {
-  const { client, bucket } = getClient();
+  const { client } = getClient();
+  const bucket = getBucketForKey(key);
 
   await sendWithRetry("uploadBuffer", () =>
     client.send(
@@ -359,7 +397,8 @@ async function uploadBuffer(key: string, buffer: Buffer, contentType: string): P
 
 /** Delete a single object. */
 async function deleteObject(key: string): Promise<void> {
-  const { client, bucket } = getClient();
+  const { client } = getClient();
+  const bucket = getBucketForKey(key);
 
   await sendWithRetry("deleteObject", () =>
     client.send(new DeleteObjectCommand({ Bucket: bucket, Key: key })),
@@ -370,25 +409,36 @@ async function deleteObject(key: string): Promise<void> {
 async function deleteObjects(keys: string[]): Promise<number> {
   if (keys.length === 0) return 0;
 
-  const { client, bucket } = getClient();
+  const { client } = getClient();
   let deleted = 0;
+  const keysByScope = new Map<StorageScope, string[]>();
 
-  for (let i = 0; i < keys.length; i += 1000) {
-    const batch = keys.slice(i, i + 1000);
+  for (const key of keys) {
+    const scope = getStorageScope(key);
+    const scopedKeys = keysByScope.get(scope) ?? [];
+    scopedKeys.push(key);
+    keysByScope.set(scope, scopedKeys);
+  }
 
-    await sendWithRetry("deleteObjects", () =>
-      client.send(
-        new DeleteObjectsCommand({
-          Bucket: bucket,
-          Delete: {
-            Objects: batch.map((Key) => ({ Key })),
-            Quiet: true,
-          },
-        }),
-      ),
-    );
+  for (const [scope, scopedKeys] of keysByScope) {
+    const bucket = getBucket(scope);
+    for (let i = 0; i < scopedKeys.length; i += 1000) {
+      const batch = scopedKeys.slice(i, i + 1000);
 
-    deleted += batch.length;
+      await sendWithRetry("deleteObjects", () =>
+        client.send(
+          new DeleteObjectsCommand({
+            Bucket: bucket,
+            Delete: {
+              Objects: batch.map((Key) => ({ Key })),
+              Quiet: true,
+            },
+          }),
+        ),
+      );
+
+      deleted += batch.length;
+    }
   }
 
   return deleted;
@@ -415,7 +465,8 @@ async function getBucketInfo(): Promise<BucketInfo> {
  * @param expiresIn   - URL validity in seconds (default 900 = 15 min)
  */
 async function presignPutUrl(key: string, contentType: string, expiresIn = 900): Promise<string> {
-  const { client, bucket } = getClient();
+  const { client } = getClient();
+  const bucket = getBucketForKey(key);
 
   const command = new PutObjectCommand({
     Bucket: bucket,
@@ -434,7 +485,8 @@ async function presignGetUrl(
     expiresIn?: number;
   },
 ): Promise<string> {
-  const { client, bucket } = getClient();
+  const { client } = getClient();
+  const bucket = getBucketForKey(key);
 
   const command = new GetObjectCommand({
     Bucket: bucket,
@@ -449,6 +501,7 @@ async function presignGetUrl(
 export {
   checkConnection,
   isConfigured,
+  isTransferStorageConfigured,
   listObjects,
   listPrefixes,
   headObject,

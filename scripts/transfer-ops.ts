@@ -8,7 +8,7 @@
 
 import fs from "fs";
 import path from "path";
-import { deleteObjects, listObjects, listPrefixes, isConfigured } from "./r2-client";
+import { deleteObjects, listObjects, listPrefixes, isTransferStorageConfigured } from "./r2-client";
 import {
   PROCESSABLE_EXTENSIONS,
   ANIMATED_EXTENSIONS,
@@ -68,9 +68,9 @@ function requireRedis(): void {
 }
 
 function requireR2(): void {
-  if (!isConfigured()) {
+  if (!isTransferStorageConfigured()) {
     throw new Error(
-      "R2 not configured. Set R2_ACCOUNT_ID, R2_ACCESS_KEY, R2_SECRET_KEY, R2_BUCKET in .env.local.",
+      "Private R2 storage not configured. Set R2_ACCOUNT_ID, R2_ACCESS_KEY, R2_SECRET_KEY, R2_PUBLIC_BUCKET, and R2_PRIVATE_BUCKET in .env.local.",
     );
   }
 }

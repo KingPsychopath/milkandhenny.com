@@ -3,7 +3,7 @@ import { getTransferMediaWorkerStatus } from "./media-worker-status.server";
 import { deleteObjects, listObjects } from "@/lib/platform/r2.server";
 import { deleteTransferData, getTransfer, listTransfers } from "./store.server";
 
-const SAFE_TRANSFER_ID = /^[A-Za-z0-9-]+$/;
+const SAFE_TRANSFER_ID = /^[A-Za-z0-9_-]+$/;
 
 function isSafeTransferId(id: string): boolean {
   return SAFE_TRANSFER_ID.test(id);
