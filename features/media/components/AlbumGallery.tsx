@@ -160,14 +160,12 @@ export function AlbumGallery({ albumSlug, photos }: AlbumGalleryProps) {
   }, []);
 
   const toggleSelectMode = useCallback(() => {
-    setSelectable((prev) => {
-      if (prev) {
-        setSelected(new Set());
-        setPendingMultipartDownload(null);
-      }
-      return !prev;
-    });
-  }, []);
+    if (selectable) {
+      setSelected(new Set());
+      setPendingMultipartDownload(null);
+    }
+    setSelectable(!selectable);
+  }, [selectable]);
 
   const runArchiveBuild = useCallback(
     async (
