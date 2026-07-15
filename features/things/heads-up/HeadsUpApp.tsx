@@ -4,6 +4,8 @@ import { TextMorph } from "torph/react";
 import { useWebHaptics } from "web-haptics/react";
 import { GAME_DECKS, shuffledCards } from "./decks";
 import { playGameSound, primeGameAudio } from "./gameSound";
+import { OrientationControls } from "./OrientationControls";
+import { RoundPlayArea } from "./RoundPlayArea";
 import { useTiltControl } from "./useTiltControl";
 
 type Phase = "setup" | "countdown" | "playing" | "results";
@@ -27,7 +29,10 @@ export function HeadsUpApp() {
   const [results, setResults] = useState<Result[]>([]);
   const [feedback, setFeedback] = useState<Decision | null>(null);
   const [soundEnabled, setSoundEnabled] = useState(true);
+  const [positionLock, setPositionLock] = useState(false);
   const processing = useRef(false);
+  const roundPaused = useRef(false);
+  const wasOrientationMismatch = useRef(false);
   const haptics = useWebHaptics();
 
   const selectedDeck = GAME_DECKS.find((deck) => deck.id === deckId) ?? GAME_DECKS[0];
@@ -36,7 +41,7 @@ export function HeadsUpApp() {
 
   const handleDecision = useCallback(
     (decision: Decision) => {
-      if (phase !== "playing" || processing.current) return;
+      if (phase !== "playing" || processing.current || roundPaused.current) return;
       processing.current = true;
       setFeedback(decision);
       setResults((current) => [...current, { card, decision }]);
@@ -54,9 +59,12 @@ export function HeadsUpApp() {
 
   const {
     status: motionStatus,
+    orientationMismatch,
     requestAccess,
     calibrate,
-  } = useTiltControl(phase === "playing" && !feedback, handleDecision);
+    clearOrientationLock,
+  } = useTiltControl(phase === "playing" && !feedback, handleDecision, positionLock);
+  roundPaused.current = orientationMismatch;
 
   const startRound = async () => {
     primeGameAudio();
@@ -88,13 +96,15 @@ export function HeadsUpApp() {
   }, [calibrate, countdown, phase, soundEnabled]);
 
   useEffect(() => {
-    if (phase !== "playing") return;
+    if (phase !== "playing" || orientationMismatch) return;
     const interval = window.setInterval(() => {
       setSeconds((current) => {
         const next = current - 1;
         if (next <= 0) {
           playGameSound("end", soundEnabled);
           void haptics.trigger("heavy");
+          setPositionLock(false);
+          clearOrientationLock();
           setPhase("results");
           return 0;
         }
@@ -103,7 +113,20 @@ export function HeadsUpApp() {
       });
     }, 1000);
     return () => window.clearInterval(interval);
-  }, [haptics, phase, soundEnabled]);
+  }, [clearOrientationLock, haptics, orientationMismatch, phase, soundEnabled]);
+
+  useEffect(() => {
+    if (phase !== "playing") {
+      wasOrientationMismatch.current = false;
+      return;
+    }
+    if (orientationMismatch && !wasOrientationMismatch.current) {
+      void haptics.trigger("nudge");
+    } else if (!orientationMismatch && wasOrientationMismatch.current) {
+      void haptics.trigger("selection");
+    }
+    wasOrientationMismatch.current = orientationMismatch;
+  }, [haptics, orientationMismatch, phase]);
 
   if (phase === "countdown") {
     return (
@@ -119,8 +142,9 @@ export function HeadsUpApp() {
             {String(countdown)}
           </TextMorph>
           <p className="mt-8 max-w-xs px-6 font-serif text-xl text-black/70">
-            Hold the phone against your forehead in portrait or landscape, screen facing your
-            friends.
+            {positionLock
+              ? "Keep the phone in this position, screen facing your friends."
+              : "Hold the phone against your forehead in portrait or landscape, screen facing your friends."}
           </p>
         </main>
       </GameShell>
@@ -141,45 +165,12 @@ export function HeadsUpApp() {
           <span className="justify-self-end font-mono text-xs opacity-60">{score} correct</span>
         </header>
 
-        <main
-          id="main"
-          className="relative flex flex-1 flex-col items-center justify-center px-6 text-center text-black"
-        >
-          <div
-            aria-live="polite"
-            className="absolute top-5 font-mono text-sm font-semibold uppercase tracking-[0.2em]"
-          >
-            {feedback === "correct" ? "✓ correct" : feedback === "pass" ? "↑ pass" : ""}
-          </div>
-          <TextMorph
-            as="h1"
-            duration={320}
-            ease={SNAP_EASE}
-            className="max-w-3xl font-serif text-5xl font-semibold leading-[0.95] tracking-tight sm:text-7xl"
-          >
-            {card}
-          </TextMorph>
-          <p className="mt-8 font-mono text-micro uppercase tracking-[0.18em] text-black/50">
-            down = correct · up = pass
-          </p>
-        </main>
-
-        <footer className="grid grid-cols-2 gap-3 p-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
-          <button
-            type="button"
-            onClick={() => handleDecision("pass")}
-            className="min-h-14 rounded-full border border-black/20 bg-black/5 font-mono text-sm font-semibold text-black"
-          >
-            ↑ pass
-          </button>
-          <button
-            type="button"
-            onClick={() => handleDecision("correct")}
-            className="min-h-14 rounded-full bg-black font-mono text-sm font-semibold text-white"
-          >
-            correct ↓
-          </button>
-        </footer>
+        <RoundPlayArea
+          card={card}
+          feedback={feedback}
+          paused={orientationMismatch}
+          onDecision={handleDecision}
+        />
       </GameShell>
     );
   }
@@ -309,24 +300,15 @@ export function HeadsUpApp() {
           </div>
         </section>
 
-        <div className="mx-auto mt-6 max-w-lg">
-          <button
-            type="button"
-            onClick={() => void startRound()}
-            className="min-h-16 w-full rounded-full bg-[var(--things-amber)] px-6 font-mono text-sm font-bold text-black shadow-2xl transition-transform hover:scale-[1.01]"
-          >
-            start 60-second round
-          </button>
-          {motionStatus === "denied" || motionStatus === "unavailable" ? (
-            <p className="mt-3 text-center font-mono text-micro text-white/45">
-              motion unavailable — use the on-screen buttons
-            </p>
-          ) : (
-            <p className="mt-3 text-center font-mono text-micro text-white/45">
-              portrait + landscape · auto-calibrates
-            </p>
-          )}
-        </div>
+        <OrientationControls
+          locked={positionLock}
+          motionUnavailable={motionStatus === "denied" || motionStatus === "unavailable"}
+          onStart={() => void startRound()}
+          onToggle={() => {
+            setPositionLock((locked) => !locked);
+            void haptics.trigger("selection");
+          }}
+        />
       </main>
     </GameShell>
   );

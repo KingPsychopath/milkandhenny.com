@@ -13,7 +13,8 @@ function toRadians(degrees: number) {
 
 function screenAngle() {
   const legacyOrientation = (window as Window & { orientation?: number }).orientation;
-  return window.screen.orientation?.angle ?? legacyOrientation ?? 0;
+  const angle = window.screen.orientation?.angle ?? legacyOrientation ?? 0;
+  return ((angle % 360) + 360) % 360;
 }
 
 function normalizedDifference(current: number, baseline: number) {
@@ -37,18 +38,36 @@ export function screenRelativePitch(beta: number, gamma: number, orientationAngl
   return (Math.atan2(deviceZ, screenUp) * 180) / Math.PI;
 }
 
-export function useTiltControl(enabled: boolean, onDecision: (decision: TiltDecision) => void) {
+export function useTiltControl(
+  enabled: boolean,
+  onDecision: (decision: TiltDecision) => void,
+  lockCurrentOrientation: boolean,
+) {
   const [status, setStatus] = useState<MotionStatus>("idle");
+  const [orientationMismatch, setOrientationMismatch] = useState(false);
   const neutral = useRef<number | null>(null);
   const currentPitch = useRef<number | null>(null);
   const orientationAngle = useRef<number | null>(null);
+  const lockedOrientationAngle = useRef<number | null>(null);
+  const mismatchRef = useRef(false);
   const armed = useRef(true);
   const decisionRef = useRef(onDecision);
   decisionRef.current = onDecision;
 
   const calibrate = useCallback(() => {
+    const currentOrientationAngle = screenAngle();
+    orientationAngle.current = currentOrientationAngle;
+    lockedOrientationAngle.current = lockCurrentOrientation ? currentOrientationAngle : null;
     neutral.current = currentPitch.current;
+    mismatchRef.current = false;
+    setOrientationMismatch(false);
     armed.current = true;
+  }, [lockCurrentOrientation]);
+
+  const clearOrientationLock = useCallback(() => {
+    lockedOrientationAngle.current = null;
+    mismatchRef.current = false;
+    setOrientationMismatch(false);
   }, []);
 
   const requestAccess = useCallback(async () => {
@@ -82,6 +101,27 @@ export function useTiltControl(enabled: boolean, onDecision: (decision: TiltDeci
       const nextPitch = screenRelativePitch(event.beta, event.gamma, nextOrientationAngle);
       currentPitch.current = nextPitch;
 
+      if (
+        lockedOrientationAngle.current !== null &&
+        nextOrientationAngle !== lockedOrientationAngle.current
+      ) {
+        if (!mismatchRef.current) {
+          mismatchRef.current = true;
+          setOrientationMismatch(true);
+        }
+        armed.current = false;
+        return;
+      }
+
+      if (mismatchRef.current) {
+        mismatchRef.current = false;
+        setOrientationMismatch(false);
+        orientationAngle.current = nextOrientationAngle;
+        neutral.current = nextPitch;
+        armed.current = true;
+        return;
+      }
+
       if (orientationAngle.current !== nextOrientationAngle) {
         orientationAngle.current = nextOrientationAngle;
         neutral.current = nextPitch;
@@ -109,5 +149,28 @@ export function useTiltControl(enabled: boolean, onDecision: (decision: TiltDeci
     return () => window.removeEventListener("deviceorientation", handleOrientation, true);
   }, [enabled, status]);
 
-  return { status, requestAccess, calibrate };
+  useEffect(() => {
+    const handleScreenOrientation = () => {
+      if (lockedOrientationAngle.current === null) return;
+      const nextOrientationAngle = screenAngle();
+      const mismatch = nextOrientationAngle !== lockedOrientationAngle.current;
+      mismatchRef.current = mismatch;
+      setOrientationMismatch(mismatch);
+      armed.current = !mismatch;
+
+      if (!mismatch) {
+        orientationAngle.current = nextOrientationAngle;
+        neutral.current = currentPitch.current;
+      }
+    };
+
+    window.screen.orientation?.addEventListener("change", handleScreenOrientation);
+    window.addEventListener("orientationchange", handleScreenOrientation);
+    return () => {
+      window.screen.orientation?.removeEventListener("change", handleScreenOrientation);
+      window.removeEventListener("orientationchange", handleScreenOrientation);
+    };
+  }, []);
+
+  return { status, orientationMismatch, requestAccess, calibrate, clearOrientationLock };
 }
