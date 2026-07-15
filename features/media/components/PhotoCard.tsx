@@ -69,7 +69,7 @@ export const PhotoCard = memo(function PhotoCard({
           <img
             ref={imgRef}
             src={thumbUrl}
-            alt={`Photo ${photoId} from album`}
+            alt={`${photoId} from album`}
             width={width}
             height={height}
             loading="lazy"

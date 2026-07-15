@@ -267,7 +267,7 @@ export function PhotoViewer({
           <img
             ref={imgRef}
             src={src}
-            alt={`Full size photo — ${filename}`}
+            alt={filename}
             width={width}
             height={height}
             onLoad={markLoaded}

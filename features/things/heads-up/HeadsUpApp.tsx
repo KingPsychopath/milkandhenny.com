@@ -115,7 +115,9 @@ function HeadsUpExperience({ fullscreen, remoteSession }: { fullscreen: Fullscre
     positionLock,
   );
   const pauseReason = remotePaused ? "remote" : interrupted ? "interrupted" : motionPauseReason;
-  roundPaused.current = pauseReason !== null;
+  useEffect(() => {
+    roundPaused.current = pauseReason !== null;
+  }, [pauseReason]);
 
   const clearDecisionTimeout = useCallback(() => {
     if (decisionTimeout.current === null) return;

@@ -280,8 +280,8 @@ async function getVotedFor(session: string, voterId: string): Promise<string | n
 }
 
 export async function getBestDressedSnapshot(): Promise<BestDressedSnapshot> {
-  const voterId = await getExistingVoterId();
-  const [votes, session, voteToken, openUntil] = await Promise.all([
+  const [voterId, votes, session, voteToken, openUntil] = await Promise.all([
+    getExistingVoterId(),
     getVotes(),
     getSession(),
     issueToken(),
@@ -384,8 +384,11 @@ export async function voteBestDressed(input: VoteInput): Promise<VoteResult> {
     };
   }
 
-  const { voterId } = await getOrCreateVoterId();
-  const [session, openUntil] = await Promise.all([getSession(), getOpenUntilSeconds()]);
+  const [{ voterId }, session, openUntil] = await Promise.all([
+    getOrCreateVoterId(),
+    getSession(),
+    getOpenUntilSeconds(),
+  ]);
   const alreadyVotedFor = await getVotedFor(session, voterId);
   if (alreadyVotedFor) {
     const votes = await getVotes();

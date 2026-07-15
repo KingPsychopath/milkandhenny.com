@@ -166,7 +166,12 @@ function formatDate(date: string | null): string {
   if (!date) return "—";
   const parsed = new Date(date);
   if (Number.isNaN(parsed.getTime())) return "—";
-  return parsed.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
+  return parsed.toLocaleDateString("en-GB", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    timeZone: "Europe/London",
+  });
 }
 
 function formatRemaining(seconds: number): string {
@@ -1611,7 +1616,7 @@ export function AdminDashboard() {
             <p className="font-mono text-xs theme-muted">
               worker error{" "}
               {transferMediaStats.worker.lastErrorAt
-                ? `(${new Date(transferMediaStats.worker.lastErrorAt).toLocaleString()})`
+                ? `(${new Date(transferMediaStats.worker.lastErrorAt).toLocaleString("en-GB", { timeZone: "Europe/London" })})`
                 : ""}
               : {transferMediaStats.worker.lastErrorMessage}
             </p>
@@ -1630,7 +1635,9 @@ export function AdminDashboard() {
                     <p className="font-mono text-xs theme-muted truncate">
                       {transfer.id} · {transfer.fileCount} files · expires in{" "}
                       {formatRemaining(transfer.remainingSeconds)} · until{" "}
-                      {new Date(transfer.expiresAt).toLocaleString()}
+                      {new Date(transfer.expiresAt).toLocaleString("en-GB", {
+                        timeZone: "Europe/London",
+                      })}
                     </p>
                   </div>
                   <div className="flex items-center gap-2 shrink-0">

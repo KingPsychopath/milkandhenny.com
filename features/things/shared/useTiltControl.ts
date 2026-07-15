@@ -56,8 +56,10 @@ export function useTiltControl(
   const gestureDetector = useRef(new TiltGestureDetector());
   const settleTimeout = useRef<number | null>(null);
   const decisionRef = useRef(onDecision);
-  decisionRef.current = onDecision;
-  statusRef.current = status;
+  useEffect(() => {
+    decisionRef.current = onDecision;
+    statusRef.current = status;
+  });
 
   const updatePauseReason = useCallback((reason: MotionPauseReason | null) => {
     pauseReasonRef.current = reason;

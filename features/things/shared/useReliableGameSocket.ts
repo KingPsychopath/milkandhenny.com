@@ -7,17 +7,22 @@ export function useReliableGameSocket(input: { path: string; hello: Record<strin
   const [state, setState] = useState<ReliableGameSocketState>(() => typeof navigator === "undefined" || navigator.onLine ? "reconnecting" : "offline");
   const socketRef = useRef<WebSocket | null>(null);
   const wakeRef = useRef(input.onWake);
-  wakeRef.current = input.onWake;
+  useEffect(() => {
+    wakeRef.current = input.onWake;
+  });
   const helloJson = input.hello ? JSON.stringify({ type: "hello", ...input.hello }) : "";
 
+  // react-doctor-disable-next-line effect-needs-cleanup -- cleanup closes every owned socket and clears both timers and listeners
   useEffect(() => {
     if (!helloJson) return;
     let active = true; let attempt = 0; let retryTimer: number | null = null; let heartbeat: number | null = null;
+    const sockets = new Set<WebSocket>();
     const connect = () => {
       if (!active || !navigator.onLine) { setState("offline"); return; }
       setState("reconnecting");
       const protocol = location.protocol === "https:" ? "wss:" : "ws:";
       const socket = new WebSocket(`${protocol}//${location.host}${input.path}`);
+      sockets.add(socket);
       socketRef.current = socket;
       socket.onopen = () => socket.send(helloJson);
       socket.onmessage = (event) => {
@@ -28,6 +33,7 @@ export function useReliableGameSocket(input: { path: string; hello: Record<strin
         } catch { /* HTTPS reconciliation is authoritative. */ }
       };
       socket.onclose = () => {
+        sockets.delete(socket);
         if (!active) return;
         if (heartbeat !== null) window.clearInterval(heartbeat);
         setState(navigator.onLine ? "reconnecting" : "offline");
@@ -40,7 +46,7 @@ export function useReliableGameSocket(input: { path: string; hello: Record<strin
     connect(); window.addEventListener("online", resume); document.addEventListener("visibilitychange", resume);
     return () => {
       active = false; if (retryTimer !== null) window.clearTimeout(retryTimer); if (heartbeat !== null) window.clearInterval(heartbeat);
-      window.removeEventListener("online", resume); document.removeEventListener("visibilitychange", resume); socketRef.current?.close(1000, "leaving");
+      window.removeEventListener("online", resume); document.removeEventListener("visibilitychange", resume); sockets.forEach((socket) => socket.close(1000, "leaving"));
     };
   }, [helloJson, input.path]);
 

@@ -28,7 +28,9 @@ export function usePartyLiveSnapshot(input: { roomId: string; role: PartyRole; c
     } catch { setMessage("Reconnecting…"); }
     finally { inFlight.current = false; }
   }, [input.credential, input.playerId, input.role, input.roomId]);
-  refreshRef.current = () => void refresh();
+  useEffect(() => {
+    refreshRef.current = () => void refresh();
+  }, [refresh]);
 
   const socket = usePartySocket({ roomId: ended ? null : input.roomId, role: input.role, credential: ended ? null : input.credential, playerId: input.playerId, onWake: () => refreshRef.current() });
 

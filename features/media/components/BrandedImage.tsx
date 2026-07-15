@@ -211,6 +211,10 @@ export function BrandedImage({
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm"
           onClick={handleClose}
+          onKeyDown={(event) => {
+            if (event.key === "Escape") handleClose();
+          }}
+          tabIndex={-1}
           role="dialog"
           aria-modal="true"
           aria-label="Frame preview"
@@ -244,7 +248,7 @@ export function BrandedImage({
                 >
                   <img
                     src={previewUrl}
-                    alt="Framed image with milk & henny overlay"
+                    alt="Milk & Henny branded frame preview"
                     className="h-full w-full object-contain"
                   />
                 </div>

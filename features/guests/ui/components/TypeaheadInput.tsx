@@ -57,8 +57,14 @@ export function TypeaheadInput({
 
   return (
     <div className="relative">
-      <label className="block text-sm font-medium text-stone-700 mb-1.5">{label}</label>
+      <label
+        htmlFor={`${listboxId}-input`}
+        className="block text-sm font-medium text-stone-700 mb-1.5"
+      >
+        {label}
+      </label>
       <input
+        id={`${listboxId}-input`}
         ref={inputRef}
         type="text"
         value={value}

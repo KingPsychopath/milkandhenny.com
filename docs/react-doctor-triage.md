@@ -71,3 +71,30 @@ Repeated diagnostics are grouped by rule below; the count covers every reported 
 Each fix commit is checked with `npm run typecheck`, `npm run lint`, and React Doctor’s changed-scope scan against `main`. The full scan remains the baseline for deferred families.
 
 Final full scan: 47/100, 10 errors and 290 warnings across 89 files. The stacked fixes removed 12 errors and 7 warnings; the remaining errors are the eight concurrency-sensitive ref writes and the two high-confidence false positives documented above.
+
+## Follow-up review — 2026-07-15
+
+The second pass fixes every error without weakening runtime behavior. Live callback/state refs now synchronize after commit, Nitro’s non-React `useStorage` API is aliased, and the socket effect explicitly owns and closes every connection it creates. The socket cleanup diagnostic is suppressed with local evidence because React Doctor does not follow the owned `Set<WebSocket>` cleanup.
+
+Actionable warnings fixed in this pass:
+
+- escaped content-derived JSON-LD at the inline-script boundary, with focused malicious and legitimate-value regression coverage;
+- missing form-control labels, redundant/non-native roles, redundant image alt wording, and keyboard access for upload/lightbox surfaces;
+- nondeterministic SSR locale/time formatting and render-time clocks;
+- two independent server operations that were unnecessarily awaited in sequence.
+
+Remaining warning decisions:
+
+| Families | Count | Decision |
+| --- | ---: | --- |
+| Missing button `type` | 64 | Worth fixing as a dedicated form audit. Many are outside forms and cannot submit anything, so the rule overstates current impact; adding types remains useful hardening. |
+| Native dialog / static backdrop interaction | 10 | Worth fixing as a focused modal migration with focus, Escape, backdrop, and return-focus verification. |
+| State/effect synchronization and reducer suggestions | 38 | Not false positives, but behavior-sensitive refactor advice rather than demonstrated defects. Change only with flow-specific tests or an observed bug. |
+| Fetch-in-effect | 2 | Intentional client transitions: initial voting-window refresh and lazy loading when the games tab opens. No server-render ownership issue. |
+| Locale formatting | 2 | False positives: both values are gated behind `hasMounted`, so server and hydration output match. |
+| Array-index keys | 3 | Not actionable: derived text/leaderboard rows carry no local component state; reordering cannot associate user input with another row. |
+| Maintainability | 43 | Real debt, not runtime defects. Split giant components and move pure values only when those areas are actively changed. |
+| Performance | 65 | Hypotheses, not verified regressions. Sequential loops include ordered, streaming, and rate-sensitive work; iteration rewrites need profiling/input-size evidence. |
+| Crypto / pnpm hardening | 4 | False positives: generated output plus a non-security JSON change signature; pnpm findings cite a nonexistent `pnpm-workspace.yaml`. |
+
+Final second-pass scan: 54/100, **0 errors** and 231 warnings across 71 files.

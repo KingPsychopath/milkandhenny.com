@@ -105,7 +105,6 @@ export function SearchableWordList({ items }: Props) {
           <input
             id="words-search"
             type="text"
-            role="search"
             value={query}
             onChange={handleSearchChange}
             placeholder="what are you looking for?"

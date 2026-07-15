@@ -39,6 +39,7 @@ export function EditorFiltersPanel({
           className="bg-transparent border-b theme-border outline-none font-mono text-sm py-2"
         />
         <select
+          aria-label="Filter by type"
           value={filterType}
           onChange={(event) => onFilterTypeChange(event.target.value as WordType | "all")}
           className="bg-transparent border theme-border rounded px-2 py-2 font-mono text-xs"
@@ -51,6 +52,7 @@ export function EditorFiltersPanel({
           ))}
         </select>
         <select
+          aria-label="Filter by visibility"
           value={filterVisibility}
           onChange={(event) =>
             onFilterVisibilityChange(event.target.value as NoteVisibility | "all")

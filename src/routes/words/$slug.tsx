@@ -12,6 +12,7 @@ import { resolveWordContentRef } from "@/features/media/storage";
 import { isWordsEnabled } from "@/features/words/reader.server";
 import { getWord, getWordMeta } from "@/features/words/store.server";
 import { BASE_URL, SITE_BRAND, SITE_NAME } from "@/lib/shared/config";
+import { serializeJsonForHtml } from "@/lib/shared/serialize-json-for-html";
 
 const getWordPage = createServerFn({ method: "GET" })
   .validator((data: { slug: string }) => data)
@@ -71,7 +72,7 @@ function WordSlugPage() {
   if (data.kind === "private") {
     return (
       <div className="min-h-screen bg-background">
-        <header role="banner" className="max-w-2xl mx-auto px-6 pt-10 pb-6">
+        <header className="max-w-2xl mx-auto px-6 pt-10 pb-6">
           <div className="flex items-center justify-between font-mono text-sm">
             <Link
               to="/words"
@@ -126,14 +127,15 @@ function WordSlugPage() {
 
   return (
     <div className="min-h-screen bg-background">
+      {/* react-doctor-disable-next-line dangerous-html-sink -- JSON-LD is serialized with inline-script escaping */}
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+        dangerouslySetInnerHTML={{ __html: serializeJsonForHtml(jsonLd) }}
       />
       <ReadingProgress />
       {headings.length > 0 && <JumpRail items={headings} ariaLabel="Jump to heading" />}
 
-      <header role="banner" className="max-w-2xl mx-auto px-6 pt-10 pb-6">
+      <header className="max-w-2xl mx-auto px-6 pt-10 pb-6">
         <div className="flex items-center justify-between font-mono text-sm">
           <Link
             to="/words"

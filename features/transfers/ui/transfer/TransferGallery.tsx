@@ -1962,6 +1962,13 @@ export function TransferGallery({ transferId, files, groups, deleteToken }: Tran
           ref={swipeRef}
           className="fixed inset-0 z-50 bg-black/90 flex flex-col items-center justify-center touch-pan-y"
           onClick={closeLightbox}
+          onKeyDown={(event) => {
+            if (event.key === "Escape") closeLightbox();
+          }}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Media preview"
+          tabIndex={-1}
         >
           <button
             onClick={closeLightbox}

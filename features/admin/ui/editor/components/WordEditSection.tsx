@@ -303,6 +303,7 @@ export function WordEditSection({
 
       <div className="grid sm:grid-cols-2 gap-3">
         <input
+          aria-label="Title"
           value={editTitle}
           onChange={(event) => onEditTitleChange(event.target.value)}
           onBlur={onFieldBlur}
@@ -333,6 +334,7 @@ export function WordEditSection({
 
       <div className="grid grid-cols-1 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] gap-2">
         <select
+          aria-label="Post type"
           value={editType}
           onChange={(event) => onEditTypeChange(event.target.value as WordType)}
           onBlur={onFieldBlur}
@@ -345,6 +347,7 @@ export function WordEditSection({
           ))}
         </select>
         <select
+          aria-label="Post visibility"
           value={editVisibility}
           onChange={(event) => onEditVisibilityChange(event.target.value as NoteVisibility)}
           onBlur={onFieldBlur}
@@ -527,6 +530,7 @@ export function WordEditSection({
               </div>
             ) : (
               <textarea
+                aria-label="Post content"
                 ref={markdownTextareaRef}
                 value={editMarkdown}
                 onChange={(event) => onEditMarkdownChange(event.target.value)}

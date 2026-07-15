@@ -93,8 +93,9 @@ export function WordShareSection({
               <div key={link.id} className="border theme-border rounded p-3">
                 <p className="font-mono text-xs">{link.id}</p>
                 <p className="font-mono text-micro theme-muted mt-1">
-                  expires {new Date(link.expiresAt).toLocaleString()} · {statusLabel} ·{" "}
-                  {link.pinRequired ? "pin on" : "pin off"}
+                  expires{" "}
+                  {new Date(link.expiresAt).toLocaleString("en-GB", { timeZone: "Europe/London" })}{" "}
+                  · {statusLabel} · {link.pinRequired ? "pin on" : "pin off"}
                 </p>
                 <div className="mt-2 flex flex-wrap gap-3 font-mono text-xs">
                   {!isRevoked ? (

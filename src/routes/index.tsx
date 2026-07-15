@@ -49,7 +49,7 @@ function Home() {
   return (
     <div className="min-h-screen bg-background">
       {/* Masthead — site banner */}
-      <header role="banner" className="max-w-2xl mx-auto px-6 pt-20 pb-16 text-center">
+      <header className="max-w-2xl mx-auto px-6 pt-20 pb-16 text-center">
         <Link to="/" className="inline-block">
           <h1 className="font-mono text-[2.5rem] sm:text-6xl font-bold text-foreground tracking-tighter leading-none">
             {SITE_BRAND}
@@ -113,7 +113,7 @@ function Home() {
         )}
       </main>
 
-      <footer role="contentinfo" className="border-t theme-border">
+      <footer className="border-t theme-border">
         <div className="max-w-2xl mx-auto px-6 py-8 space-y-4">
           <div className="flex items-center justify-between font-mono text-micro theme-muted tracking-wide">
             <span>
