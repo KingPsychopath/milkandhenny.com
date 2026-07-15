@@ -244,6 +244,18 @@
     background: var(--things-cream);
   }
 
+  .things-game-card[torph-root] {
+    width: 100% !important;
+    max-width: 100% !important;
+    white-space: normal !important;
+    overflow-wrap: anywhere !important;
+    word-break: break-word;
+  }
+
+  .things-game-card [torph-item] {
+    white-space: normal;
+  }
+
   /* ─── Blog prose ─── */
   .prose-blog {
     font-family: var(--font-serif), Georgia, "Times New Roman", serif;

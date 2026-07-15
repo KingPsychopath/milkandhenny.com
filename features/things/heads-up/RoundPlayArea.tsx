@@ -13,6 +13,13 @@ interface RoundPlayAreaProps {
 
 const SNAP_EASE = "cubic-bezier(0.16, 1, 0.3, 1)";
 
+function cardSizeClass(card: string) {
+  if (card.length > 45) return "text-2xl sm:text-4xl";
+  if (card.length > 30) return "text-3xl sm:text-5xl";
+  if (card.length > 20) return "text-4xl sm:text-6xl";
+  return "text-5xl sm:text-7xl";
+}
+
 export function RoundPlayArea({
   card,
   feedback,
@@ -26,7 +33,7 @@ export function RoundPlayArea({
     <>
       <main
         id="main"
-        className="relative flex flex-1 flex-col items-center justify-center px-6 text-center text-black"
+        className="relative flex min-w-0 flex-1 flex-col items-center justify-center overflow-hidden px-6 text-center text-black"
       >
         {pauseReason ? (
           <div role="alert" aria-live="assertive" className="max-w-sm">
@@ -69,7 +76,7 @@ export function RoundPlayArea({
               as="h1"
               duration={320}
               ease={SNAP_EASE}
-              className="max-w-3xl font-serif text-5xl font-semibold leading-[0.95] tracking-tight sm:text-7xl"
+              className={`things-game-card w-full max-w-3xl font-serif font-semibold leading-[0.95] tracking-tight ${cardSizeClass(card)}`}
             >
               {card}
             </TextMorph>
