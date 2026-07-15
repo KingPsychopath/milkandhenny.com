@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useEffectEvent } from "react";
 
 /**
  * Calls `onEscape` when the Escape key is pressed.
@@ -9,16 +9,13 @@ import { useEffect, useRef } from "react";
  * @param enabled - When false, no listener is attached.
  */
 export function useEscapeKey(onEscape: () => void, enabled: boolean): void {
-  const onEscapeRef = useRef(onEscape);
-  useEffect(() => {
-    onEscapeRef.current = onEscape;
-  }, [onEscape]);
+  const handleEscape = useEffectEvent(onEscape);
 
   useEffect(() => {
     if (!enabled) return;
 
     function handle(e: KeyboardEvent) {
-      if (e.key === "Escape") onEscapeRef.current();
+      if (e.key === "Escape") handleEscape();
     }
 
     document.addEventListener("keydown", handle);

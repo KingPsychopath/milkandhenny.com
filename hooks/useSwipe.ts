@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useEffect } from "react";
+import { useEffect, useEffectEvent, useRef } from "react";
 
 type UseSwipeOptions = {
   /** Callback when user swipes left */
@@ -37,21 +37,28 @@ function useSwipe<T extends HTMLElement = HTMLDivElement>(options: UseSwipeOptio
   const ref = useRef<T>(null);
   const touchRef = useRef<{ x: number; y: number; time: number } | null>(null);
 
-  // Store callbacks in refs so the effect doesn't re-attach listeners on every render
-  const callbacksRef = useRef(options);
-  useEffect(() => {
-    callbacksRef.current = options;
-  }, [options]);
-
   const enabled = options.enabled ?? true;
+
+  const handleTouchEnd = useEffectEvent((e: TouchEvent) => {
+    if (!touchRef.current) return;
+    const touch = e.changedTouches[0];
+    const dx = touch.clientX - touchRef.current.x;
+    const dy = touch.clientY - touchRef.current.y;
+    const dt = Date.now() - touchRef.current.time;
+    touchRef.current = null;
+
+    const minDistance = options.minDistance ?? 50;
+    const maxTime = options.maxTime ?? 300;
+    const maxVertical = options.maxVertical ?? 80;
+    if (dt > maxTime || Math.abs(dy) > maxVertical || Math.abs(dx) < minDistance) return;
+
+    if (dx < 0) options.onSwipeLeft?.();
+    if (dx > 0) options.onSwipeRight?.();
+  });
 
   useEffect(() => {
     const el = ref.current;
     if (!el || !enabled) return;
-
-    const minDistance = callbacksRef.current.minDistance ?? 50;
-    const maxTime = callbacksRef.current.maxTime ?? 300;
-    const maxVertical = callbacksRef.current.maxVertical ?? 80;
 
     const onTouchStart = (e: TouchEvent) => {
       const touch = e.touches[0];
@@ -62,26 +69,11 @@ function useSwipe<T extends HTMLElement = HTMLDivElement>(options: UseSwipeOptio
       };
     };
 
-    const onTouchEnd = (e: TouchEvent) => {
-      if (!touchRef.current) return;
-      const touch = e.changedTouches[0];
-      const dx = touch.clientX - touchRef.current.x;
-      const dy = touch.clientY - touchRef.current.y;
-      const dt = Date.now() - touchRef.current.time;
-      touchRef.current = null;
-
-      // Must be fast, horizontal, and long enough
-      if (dt > maxTime || Math.abs(dy) > maxVertical || Math.abs(dx) < minDistance) return;
-
-      if (dx < 0) callbacksRef.current.onSwipeLeft?.();
-      if (dx > 0) callbacksRef.current.onSwipeRight?.();
-    };
-
     el.addEventListener("touchstart", onTouchStart, { passive: true });
-    el.addEventListener("touchend", onTouchEnd, { passive: true });
+    el.addEventListener("touchend", handleTouchEnd, { passive: true });
     return () => {
       el.removeEventListener("touchstart", onTouchStart);
-      el.removeEventListener("touchend", onTouchEnd);
+      el.removeEventListener("touchend", handleTouchEnd);
     };
   }, [enabled]);
 

@@ -1,4 +1,4 @@
-import { useEffect, useRef, type RefObject } from "react";
+import { useEffect, useEffectEvent, type RefObject } from "react";
 
 /**
  * Calls `onOutside` when the user clicks or touches outside the given element.
@@ -14,10 +14,7 @@ export function useOutsideClick<T extends HTMLElement>(
   onOutside: () => void,
   enabled: boolean,
 ): void {
-  const onOutsideRef = useRef(onOutside);
-  useEffect(() => {
-    onOutsideRef.current = onOutside;
-  }, [onOutside]);
+  const handleOutside = useEffectEvent(onOutside);
 
   useEffect(() => {
     if (!enabled) return;
@@ -25,7 +22,7 @@ export function useOutsideClick<T extends HTMLElement>(
     function handle(e: MouseEvent | TouchEvent) {
       const target = (e.target as Node) ?? null;
       if (!target || ref.current?.contains(target)) return;
-      onOutsideRef.current();
+      handleOutside();
     }
 
     document.addEventListener("mousedown", handle, true);
