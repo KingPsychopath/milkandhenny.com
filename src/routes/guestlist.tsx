@@ -19,11 +19,11 @@ const getGuestListPage = createServerFn({ method: "GET" }).handler(async () => {
 });
 
 export const Route = createFileRoute("/guestlist")({
-  component: GuestListPage,
-  loader: () => getGuestListPage(),
   validateSearch: (search: Record<string, unknown>) => ({
     auth: search.auth === "failed" ? ("failed" as const) : undefined,
   }),
+  loader: () => getGuestListPage(),
+  component: GuestListPage,
   head: () => ({ meta: [{ title: `Guest list — ${SITE_NAME}` }] }),
 });
 

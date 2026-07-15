@@ -39,11 +39,11 @@ const getPrivateWord = createServerFn({ method: "GET" })
   });
 
 export const Route = createFileRoute("/vault/$slug")({
-  component: WordPrivatePage,
-  loader: ({ params }) => getPrivateWord({ data: params }),
   validateSearch: (search: Record<string, unknown>) => ({
     share: typeof search.share === "string" ? search.share : undefined,
   }),
+  loader: ({ params }) => getPrivateWord({ data: params }),
+  component: WordPrivatePage,
   head: ({ loaderData }) => {
     if (!loaderData) return {};
     return {

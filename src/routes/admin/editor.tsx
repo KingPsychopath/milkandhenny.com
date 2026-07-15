@@ -10,11 +10,11 @@ const getEditorAccess = createServerFn({ method: "GET" }).handler(() =>
 );
 
 export const Route = createFileRoute("/admin/editor")({
-  component: AdminEditorPage,
-  loader: () => getEditorAccess(),
   validateSearch: (search: Record<string, unknown>) => ({
     slug: typeof search.slug === "string" ? search.slug : undefined,
   }),
+  loader: () => getEditorAccess(),
+  component: AdminEditorPage,
   head: () => ({
     meta: [
       { title: `admin editor · ${SITE_NAME}` },
