@@ -107,6 +107,7 @@ export interface PartyPlayerCredentials {
   roomId: string;
   playerId: string;
   playerToken: string;
+  presenterToken?: string;
   expiresAt: number;
   snapshot: PartySnapshot;
 }
@@ -122,7 +123,13 @@ export type PartyPresenterAction =
   | { actionId: string; type: "round.next" };
 
 export type PartyPlayerAction =
-  | { actionId: string; type: "draft.update"; roundId: string; draft: string; draftRevision: number }
+  | {
+      actionId: string;
+      type: "draft.update";
+      roundId: string;
+      draft: string;
+      draftRevision: number;
+    }
   | { actionId: string; type: "answer.lock"; roundId: string }
   | { actionId: string; type: "clue.request"; roundId: string; clue: PartyClueKind }
   | { actionId: string; type: "integrity.notice"; roundId: string; hiddenMs: number };

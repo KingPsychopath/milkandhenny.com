@@ -10,7 +10,7 @@ export function SpellingSetupIntro({ mode }: { mode: "aloud" | "together" }) {
       <p className="mt-5 min-h-14 max-w-md font-serif text-lg leading-relaxed text-white/65">
         {mode === "aloud"
           ? "Hear the word, spell it aloud, then tilt or let a judge decide."
-          : "Share this screen. Players listen, type privately, then reveal together."}
+          : "Invite friends, listen together, type privately, then reveal everyone’s spelling."}
       </p>
       <SpellingModeNav mode={mode} />
     </section>

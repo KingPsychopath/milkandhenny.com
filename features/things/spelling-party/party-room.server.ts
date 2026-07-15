@@ -24,23 +24,64 @@ const JOIN_RECEIPT_TTL_SECONDS = 2 * 60;
 const CONNECTED_WINDOW_MS = 22_000;
 const ROOM_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 
-interface AudioCapability { id: string; key: string }
+interface AudioCapability {
+  id: string;
+  key: string;
+}
 interface PlayerState {
-  id: string; name: string; tokenHash: string; score: number; draft: string; draftRevision: number;
-  locked: boolean; automatic: boolean; lockedAt: number | null; lastSeenAt: number; integrityRoundIds: string[];
+  id: string;
+  name: string;
+  tokenHash: string;
+  score: number;
+  draft: string;
+  draftRevision: number;
+  locked: boolean;
+  automatic: boolean;
+  lockedAt: number | null;
+  lastSeenAt: number;
+  integrityRoundIds: string[];
 }
 interface RoundState {
-  roundId: string; number: number; wordId: string; countdownStartsAt: number; audioPlaysAt: number;
-  answerOpensAt: number; answerLocksAt: number; revealAt: number; wordAudio: AudioCapability | null;
-  repeatUsed: boolean; definitionUsed: boolean; activeClue: PartyClueEvent | null; clueCapabilities: AudioCapability[]; scored: boolean;
+  roundId: string;
+  number: number;
+  wordId: string;
+  countdownStartsAt: number;
+  audioPlaysAt: number;
+  answerOpensAt: number;
+  answerLocksAt: number;
+  revealAt: number;
+  wordAudio: AudioCapability | null;
+  repeatUsed: boolean;
+  definitionUsed: boolean;
+  activeClue: PartyClueEvent | null;
+  clueCapabilities: AudioCapability[];
+  scored: boolean;
 }
-interface JoinReceipt { playerId: string; playerToken: string; expiresAt: number }
+interface JoinReceipt {
+  playerId: string;
+  playerToken: string;
+  expiresAt: number;
+}
 interface PartyRoomState {
-  roomId: string; deckId: string; deckName: string; answerSeconds: number; roundTotal: number; wordIds: string[];
-  words?: PartyWord[]; usesLocalSpeech?: boolean;
+  roomId: string;
+  deckId: string;
+  deckName: string;
+  answerSeconds: number;
+  roundTotal: number;
+  wordIds: string[];
+  words?: PartyWord[];
+  usesLocalSpeech?: boolean;
   phase: "lobby" | "countdown" | "answer" | "locked" | "reveal" | "finished";
-  revision: number; sequence: number; presenterHash: string; joinHash: string; expiresAt: number; sentenceCluesRemaining: number;
-  players: PlayerState[]; round: RoundState | null; recentClues: PartyClueEvent[]; processedActions: string[];
+  revision: number;
+  sequence: number;
+  presenterHash: string;
+  joinHash: string;
+  expiresAt: number;
+  sentenceCluesRemaining: number;
+  players: PlayerState[];
+  round: RoundState | null;
+  recentClues: PartyClueEvent[];
+  processedActions: string[];
   joinReceiptIds: string[];
   joinReceipts?: Record<string, Omit<JoinReceipt, "expiresAt">>;
 }
@@ -49,19 +90,35 @@ const memoryRooms = new Map<string, PartyRoomState>();
 const memoryJoinReceipts = new Map<string, JoinReceipt>();
 
 type PartyRedisKeys = ReturnType<typeof partyRoomRedisKeys>;
-interface LoadedRoom { room: PartyRoomState; keys: PartyRedisKeys }
-function hash(value: string) { return createHash("sha256").update(value).digest("hex"); }
-function token() { return randomBytes(24).toString("base64url"); }
-function capability() { return randomBytes(18).toString("base64url"); }
-function roomId() { return Array.from(randomBytes(7), (byte) => ROOM_ALPHABET[byte % ROOM_ALPHABET.length]).join(""); }
+interface LoadedRoom {
+  room: PartyRoomState;
+  keys: PartyRedisKeys;
+}
+function hash(value: string) {
+  return createHash("sha256").update(value).digest("hex");
+}
+function token() {
+  return randomBytes(24).toString("base64url");
+}
+function capability() {
+  return randomBytes(18).toString("base64url");
+}
+function roomId() {
+  return Array.from(randomBytes(7), (byte) => ROOM_ALPHABET[byte % ROOM_ALPHABET.length]).join("");
+}
 function safeEqual(value: string, expectedHash: string) {
   if (!value || value.length > 120 || expectedHash.length !== 64) return false;
   const left = Buffer.from(hash(value), "hex");
   const right = Buffer.from(expectedHash, "hex");
   return left.length === right.length && timingSafeEqual(left, right);
 }
-function changed(room: PartyRoomState) { room.revision += 1; room.sequence += 1; }
-function normalizeAnswer(value: string) { return value.normalize("NFKC").trim().toLocaleLowerCase("en-US"); }
+function changed(room: PartyRoomState) {
+  room.revision += 1;
+  room.sequence += 1;
+}
+function normalizeAnswer(value: string) {
+  return value.normalize("NFKC").trim().toLocaleLowerCase("en-US");
+}
 
 function remainingTtlSeconds(expiresAt: number) {
   return Math.max(1, Math.ceil((expiresAt - Date.now()) / 1_000));
@@ -83,7 +140,8 @@ async function migrateLegacyJoinReceipts(room: PartyRoomState, keys: PartyRedisK
       knownReceiptIds.add(joinId);
       room.joinReceiptIds.push(joinId);
     }
-    if (redis) await redis.set(keys.joinReceipt(joinId), next, { ex: remainingTtlSeconds(expiresAt) });
+    if (redis)
+      await redis.set(keys.joinReceipt(joinId), next, { ex: remainingTtlSeconds(expiresAt) });
     else memoryJoinReceipts.set(memoryReceiptKey(room.roomId, joinId), next);
   }
   delete room.joinReceipts;
@@ -98,10 +156,15 @@ function hydrateRoomWords(room: PartyRoomState) {
 async function deletePartyRoom(room: PartyRoomState, keys: PartyRedisKeys) {
   const redis = getRedis();
   if (redis) {
-    await redis.del(keys.state, keys.lock, ...room.joinReceiptIds.map((joinId) => keys.joinReceipt(joinId)));
+    await redis.del(
+      keys.state,
+      keys.lock,
+      ...room.joinReceiptIds.map((joinId) => keys.joinReceipt(joinId)),
+    );
   } else {
     memoryRooms.delete(room.roomId);
-    for (const joinId of room.joinReceiptIds) memoryJoinReceipts.delete(memoryReceiptKey(room.roomId, joinId));
+    for (const joinId of room.joinReceiptIds)
+      memoryJoinReceipts.delete(memoryReceiptKey(room.roomId, joinId));
   }
 }
 
@@ -146,7 +209,10 @@ async function saveRoom(room: PartyRoomState, keys = partyRoomRedisKeys(room.roo
   else memoryRooms.set(room.roomId, room);
 }
 
-async function withRoom<T>(id: string, use: (room: PartyRoomState, keys: PartyRedisKeys) => T | Promise<T>): Promise<T | null> {
+async function withRoom<T>(
+  id: string,
+  use: (room: PartyRoomState, keys: PartyRedisKeys) => T | Promise<T>,
+): Promise<T | null> {
   const redis = getRedis();
   if (!redis) {
     const loaded = await loadRoom(id);
@@ -173,7 +239,11 @@ async function withRoom<T>(id: string, use: (room: PartyRoomState, keys: PartyRe
     await saveRoom(room, initial.keys);
     return result;
   } finally {
-    await redis.eval("if redis.call('get', KEYS[1]) == ARGV[1] then return redis.call('del', KEYS[1]) else return 0 end", [initial.keys.lock], [owner]);
+    await redis.eval(
+      "if redis.call('get', KEYS[1]) == ARGV[1] then return redis.call('del', KEYS[1]) else return 0 end",
+      [initial.keys.lock],
+      [owner],
+    );
   }
 }
 
@@ -181,7 +251,7 @@ async function readJoinReceipt(roomIdValue: string, joinId: string, keys: PartyR
   const redis = getRedis();
   const receipt = redis
     ? await redis.get<JoinReceipt>(keys.joinReceipt(joinId))
-    : memoryJoinReceipts.get(memoryReceiptKey(roomIdValue, joinId)) ?? null;
+    : (memoryJoinReceipts.get(memoryReceiptKey(roomIdValue, joinId)) ?? null);
   if (!receipt || receipt.expiresAt <= Date.now()) {
     if (redis) await redis.del(keys.joinReceipt(joinId));
     else memoryJoinReceipts.delete(memoryReceiptKey(roomIdValue, joinId));
@@ -190,10 +260,18 @@ async function readJoinReceipt(roomIdValue: string, joinId: string, keys: PartyR
   return receipt;
 }
 
-async function writeJoinReceipt(room: PartyRoomState, joinId: string, receipt: JoinReceipt, keys: PartyRedisKeys) {
+async function writeJoinReceipt(
+  room: PartyRoomState,
+  joinId: string,
+  receipt: JoinReceipt,
+  keys: PartyRedisKeys,
+) {
   if (!room.joinReceiptIds.includes(joinId)) room.joinReceiptIds.push(joinId);
   const redis = getRedis();
-  if (redis) await redis.set(keys.joinReceipt(joinId), receipt, { ex: remainingTtlSeconds(receipt.expiresAt) });
+  if (redis)
+    await redis.set(keys.joinReceipt(joinId), receipt, {
+      ex: remainingTtlSeconds(receipt.expiresAt),
+    });
   else memoryJoinReceipts.set(memoryReceiptKey(room.roomId, joinId), receipt);
 }
 
@@ -233,7 +311,10 @@ function reveal(room: PartyRoomState) {
 function advance(room: PartyRoomState, now = Date.now()) {
   const round = room.round;
   if (!round) return;
-  if (room.phase === "countdown" && now >= round.answerOpensAt) { room.phase = "answer"; changed(room); }
+  if (room.phase === "countdown" && now >= round.answerOpensAt) {
+    room.phase = "answer";
+    changed(room);
+  }
   if (room.phase === "answer" && now >= round.answerLocksAt) lockAll(room, round.answerLocksAt);
   if (room.phase === "locked" && now >= round.revealAt) reveal(room);
 }
@@ -242,18 +323,24 @@ function audioUrl(roomIdValue: string, assetId: string) {
   return `/api/things/party-audio/${roomIdValue}/${assetId}`;
 }
 
-function clueForRole(clue: PartyClueEvent | null, role: PartyRole) {
-  if (!clue || role === "presenter" || !clue.speechText) return clue;
+function clueForRole(clue: PartyClueEvent | null, role: PartyRole, hostPlayer = false) {
+  if (!clue || role === "presenter" || hostPlayer || !clue.speechText) return clue;
   const { speechText: _, ...publicClue } = clue;
   return publicClue;
 }
 
-function snapshot(room: PartyRoomState, role: PartyRole, playerId?: string): PartySnapshot {
+function snapshot(
+  room: PartyRoomState,
+  role: PartyRole,
+  playerId?: string,
+  hostPlayer = false,
+): PartySnapshot {
   advance(room);
   const now = Date.now();
   const word = wordFor(room);
   const revealed = room.phase === "reveal" || room.phase === "finished";
-  const currentPlayer = role === "player" ? room.players.find(({ id }) => id === playerId) : undefined;
+  const currentPlayer =
+    role === "player" ? room.players.find(({ id }) => id === playerId) : undefined;
   return {
     roomId: room.roomId,
     deckName: room.deckName,
@@ -267,40 +354,69 @@ function snapshot(room: PartyRoomState, role: PartyRole, playerId?: string): Par
       return {
         id: player.id,
         name: player.name,
-        status: connected ? (player.locked ? "locked" : player.draft ? "typing" : "ready") : "disconnected",
+        status: connected
+          ? player.locked
+            ? "locked"
+            : player.draft
+              ? "typing"
+              : "ready"
+          : "disconnected",
         score: player.score,
         connected,
         integrityNotices: player.integrityRoundIds.length,
       };
     }),
-    round: room.round ? {
-      roundId: room.round.roundId,
-      number: room.round.number,
-      total: room.roundTotal,
-      countdownStartsAt: room.round.countdownStartsAt,
-      audioPlaysAt: room.round.audioPlaysAt,
-      answerOpensAt: room.round.answerOpensAt,
-      answerLocksAt: room.round.answerLocksAt,
-      revealAt: room.round.revealAt,
-      wordAudioUrl: room.round.wordAudio ? audioUrl(room.roomId, room.round.wordAudio.id) : null,
-      ...(role === "presenter" ? {
-        ...(room.usesLocalSpeech && word ? { spokenWord: word.speakAs ?? word.word } : {}),
-        speechLocale: room.deckId === "american-english" ? "en-US" as const : "en-GB" as const,
-      } : {}),
-      activeClue: clueForRole(room.round.activeClue, role),
-      repeatUsed: room.round.repeatUsed,
-      definitionUsed: room.round.definitionUsed,
-      sentenceCluesRemaining: room.sentenceCluesRemaining,
-      ...(revealed && word ? {
-        correctWord: word.word,
-        answers: rankSpellingAnswers(room.players.map((player) => ({
-          playerId: player.id, name: player.name, answer: player.draft, correct: normalizeAnswer(player.draft) === normalizeAnswer(word.word),
-          automatic: player.automatic, lockedAt: player.lockedAt ?? room.round!.answerLocksAt,
-        })), word.word),
-      } : {}),
-    } : null,
-    recentClues: room.recentClues.slice(-4).map((clue) => clueForRole(clue, role)!),
-    player: currentPlayer ? { draft: currentPlayer.draft, draftRevision: currentPlayer.draftRevision, locked: currentPlayer.locked, lockedAutomatically: currentPlayer.automatic } : null,
+    round: room.round
+      ? {
+          roundId: room.round.roundId,
+          number: room.round.number,
+          total: room.roundTotal,
+          countdownStartsAt: room.round.countdownStartsAt,
+          audioPlaysAt: room.round.audioPlaysAt,
+          answerOpensAt: room.round.answerOpensAt,
+          answerLocksAt: room.round.answerLocksAt,
+          revealAt: room.round.revealAt,
+          wordAudioUrl: room.round.wordAudio
+            ? audioUrl(room.roomId, room.round.wordAudio.id)
+            : null,
+          ...(role === "presenter" || hostPlayer
+            ? {
+                ...(room.usesLocalSpeech && word ? { spokenWord: word.speakAs ?? word.word } : {}),
+                speechLocale:
+                  room.deckId === "american-english" ? ("en-US" as const) : ("en-GB" as const),
+              }
+            : {}),
+          activeClue: clueForRole(room.round.activeClue, role, hostPlayer),
+          repeatUsed: room.round.repeatUsed,
+          definitionUsed: room.round.definitionUsed,
+          sentenceCluesRemaining: room.sentenceCluesRemaining,
+          ...(revealed && word
+            ? {
+                correctWord: word.word,
+                answers: rankSpellingAnswers(
+                  room.players.map((player) => ({
+                    playerId: player.id,
+                    name: player.name,
+                    answer: player.draft,
+                    correct: normalizeAnswer(player.draft) === normalizeAnswer(word.word),
+                    automatic: player.automatic,
+                    lockedAt: player.lockedAt ?? room.round!.answerLocksAt,
+                  })),
+                  word.word,
+                ),
+              }
+            : {}),
+        }
+      : null,
+    recentClues: room.recentClues.slice(-4).map((clue) => clueForRole(clue, role, hostPlayer)!),
+    player: currentPlayer
+      ? {
+          draft: currentPlayer.draft,
+          draftRevision: currentPlayer.draftRevision,
+          locked: currentPlayer.locked,
+          lockedAutomatically: currentPlayer.automatic,
+        }
+      : null,
   };
 }
 
@@ -319,17 +435,42 @@ function startRound(room: PartyRoomState, now = Date.now()) {
   const audioPlaysAt = countdownStartsAt + 3_000;
   const answerOpensAt = audioPlaysAt + 1_300;
   const answerLocksAt = answerOpensAt + room.answerSeconds * 1_000;
-  room.players.forEach((player) => { player.draft = ""; player.draftRevision = 0; player.locked = false; player.automatic = false; player.lockedAt = null; });
+  room.players.forEach((player) => {
+    player.draft = "";
+    player.draftRevision = 0;
+    player.locked = false;
+    player.automatic = false;
+    player.lockedAt = null;
+  });
   room.round = {
-    roundId: token(), number, wordId, countdownStartsAt, audioPlaysAt, answerOpensAt, answerLocksAt, revealAt: answerLocksAt + 650,
-    wordAudio: room.usesLocalSpeech ? null : { id: capability(), key: partyAudioAssetKey(word, "word") }, repeatUsed: false, definitionUsed: false,
-    activeClue: null, clueCapabilities: [], scored: false,
+    roundId: token(),
+    number,
+    wordId,
+    countdownStartsAt,
+    audioPlaysAt,
+    answerOpensAt,
+    answerLocksAt,
+    revealAt: answerLocksAt + 650,
+    wordAudio: room.usesLocalSpeech
+      ? null
+      : { id: capability(), key: partyAudioAssetKey(word, "word") },
+    repeatUsed: false,
+    definitionUsed: false,
+    activeClue: null,
+    clueCapabilities: [],
+    scored: false,
   };
   room.phase = "countdown";
   changed(room);
 }
 
-export async function createPartyRoom(input: { deckId: string; customDeck?: PartyCustomDeckInput; recentWordIds?: string[]; answerSeconds: number; roundTotal: number }): Promise<PartyRoomCredentials> {
+export async function createPartyRoom(input: {
+  deckId: string;
+  customDeck?: PartyCustomDeckInput;
+  recentWordIds?: string[];
+  answerSeconds: number;
+  roundTotal: number;
+}): Promise<PartyRoomCredentials> {
   const seen = new Set<string>();
   const customWords: PartyWord[] = (input.customDeck?.words ?? []).flatMap((word) => {
     const key = normalizeAnswer(word.word);
@@ -337,9 +478,14 @@ export async function createPartyRoom(input: { deckId: string; customDeck?: Part
     seen.add(key);
     return [{ ...word, sentence: word.sentence ?? `The word for this round is ${word.word}.` }];
   });
-  const deck = input.customDeck && customWords.length >= 3
-    ? { id: input.customDeck.id, name: input.customDeck.name.trim() || "My words", words: customWords }
-    : partyDeck(input.deckId);
+  const deck =
+    input.customDeck && customWords.length >= 3
+      ? {
+          id: input.customDeck.id,
+          name: input.customDeck.name.trim() || "My words",
+          words: customWords,
+        }
+      : partyDeck(input.deckId);
   if (!deck) throw new Error("Deck unavailable");
   const presenterToken = token();
   const joinToken = token();
@@ -348,117 +494,305 @@ export async function createPartyRoom(input: { deckId: string; customDeck?: Part
   const freshWords = deck.words.filter(({ id }) => !recent.has(id));
   const previousWords = deck.words.filter(({ id }) => recent.has(id));
   for (const words of [freshWords, previousWords]) {
-    for (let index = words.length - 1; index > 0; index -= 1) { const swap = randomInt(index + 1); [words[index], words[swap]] = [words[swap], words[index]]; }
+    for (let index = words.length - 1; index > 0; index -= 1) {
+      const swap = randomInt(index + 1);
+      [words[index], words[swap]] = [words[swap], words[index]];
+    }
   }
   const words = [...freshWords, ...previousWords];
   const room: PartyRoomState = {
-    roomId: roomId(), deckId: deck.id, deckName: deck.name, answerSeconds: Math.max(8, Math.min(60, input.answerSeconds)),
-    roundTotal: Math.max(1, Math.min(words.length, input.roundTotal)), wordIds: words.map(({ id }) => id), phase: "lobby", revision: 1,
-    sequence: 1, presenterHash: hash(presenterToken), joinHash: hash(joinToken), expiresAt, sentenceCluesRemaining: 3,
-    players: [], round: null, recentClues: [], processedActions: [], joinReceiptIds: [], words, usesLocalSpeech: Boolean(input.customDeck),
+    roomId: roomId(),
+    deckId: deck.id,
+    deckName: deck.name,
+    answerSeconds: Math.max(8, Math.min(60, input.answerSeconds)),
+    roundTotal: Math.max(1, Math.min(words.length, input.roundTotal)),
+    wordIds: words.map(({ id }) => id),
+    phase: "lobby",
+    revision: 1,
+    sequence: 1,
+    presenterHash: hash(presenterToken),
+    joinHash: hash(joinToken),
+    expiresAt,
+    sentenceCluesRemaining: 3,
+    players: [],
+    round: null,
+    recentClues: [],
+    processedActions: [],
+    joinReceiptIds: [],
+    words,
+    usesLocalSpeech: Boolean(input.customDeck),
   };
-  if (!getRedis() && process.env.NODE_ENV === "production") throw new Error("Party rooms require Redis");
+  if (!getRedis() && process.env.NODE_ENV === "production")
+    throw new Error("Party rooms require Redis");
   await saveRoom(room);
-  log.info("things.spelling-party", "Room created", { deckId: deck.id, roundTotal: room.roundTotal });
-  return { roomId: room.roomId, presenterToken, joinToken, expiresAt, selectedWordIds: room.wordIds.slice(0, room.roundTotal) };
+  log.info("things.spelling-party", "Room created", {
+    deckId: deck.id,
+    roundTotal: room.roundTotal,
+  });
+  return {
+    roomId: room.roomId,
+    presenterToken,
+    joinToken,
+    expiresAt,
+    selectedWordIds: room.wordIds.slice(0, room.roundTotal),
+  };
 }
 
-export async function joinPartyRoom(input: { roomId: string; joinToken?: string; name: string; joinId: string }): Promise<PartyPlayerCredentials | { error: string }> {
+export async function joinPartyRoom(input: {
+  roomId: string;
+  joinToken?: string;
+  name: string;
+  joinId: string;
+}): Promise<PartyPlayerCredentials | { error: string }> {
   const result = await withRoom(input.roomId, async (room, keys) => {
-    if (input.joinToken !== undefined && !safeEqual(input.joinToken, room.joinHash)) return { error: "Invite expired" } as const;
+    if (input.joinToken !== undefined && !safeEqual(input.joinToken, room.joinHash))
+      return { error: "Invite expired" } as const;
     if (room.phase !== "lobby") return { error: "This game has already started" } as const;
     const receipt = await readJoinReceipt(room.roomId, input.joinId, keys);
-    if (receipt) return { receipt, snapshot: snapshot(room, "player", receipt.playerId), expiresAt: room.expiresAt };
+    if (receipt)
+      return {
+        receipt,
+        snapshot: snapshot(room, "player", receipt.playerId),
+        expiresAt: room.expiresAt,
+      };
     const name = input.name.trim().replace(/\s+/g, " ").slice(0, 24);
     if (name.length < 1) return { error: "Enter your name" } as const;
-    if (room.players.some((player) => player.name.toLocaleLowerCase() === name.toLocaleLowerCase())) return { error: "That name is already in the room" } as const;
+    if (room.players.some((player) => player.name.toLocaleLowerCase() === name.toLocaleLowerCase()))
+      return { error: "That name is already in the room" } as const;
     if (room.players.length >= 12) return { error: "This room is full" } as const;
     const playerToken = token();
-    const player: PlayerState = { id: token(), name, tokenHash: hash(playerToken), score: 0, draft: "", draftRevision: 0, locked: false, automatic: false, lockedAt: null, lastSeenAt: Date.now(), integrityRoundIds: [] };
+    const player: PlayerState = {
+      id: token(),
+      name,
+      tokenHash: hash(playerToken),
+      score: 0,
+      draft: "",
+      draftRevision: 0,
+      locked: false,
+      automatic: false,
+      lockedAt: null,
+      lastSeenAt: Date.now(),
+      integrityRoundIds: [],
+    };
     room.players.push(player);
-    const nextReceipt: JoinReceipt = { playerId: player.id, playerToken, expiresAt: Math.min(room.expiresAt, Date.now() + JOIN_RECEIPT_TTL_SECONDS * 1_000) };
+    const nextReceipt: JoinReceipt = {
+      playerId: player.id,
+      playerToken,
+      expiresAt: Math.min(room.expiresAt, Date.now() + JOIN_RECEIPT_TTL_SECONDS * 1_000),
+    };
     await writeJoinReceipt(room, input.joinId, nextReceipt, keys);
     changed(room);
-    return { receipt: nextReceipt, snapshot: snapshot(room, "player", player.id), expiresAt: room.expiresAt };
+    return {
+      receipt: nextReceipt,
+      snapshot: snapshot(room, "player", player.id),
+      expiresAt: room.expiresAt,
+    };
   });
   if (!result) return { error: "Room unavailable" };
-  if ("receipt" in result && result.receipt) return { roomId: input.roomId, playerId: result.receipt.playerId, playerToken: result.receipt.playerToken, expiresAt: result.expiresAt, snapshot: result.snapshot };
+  if ("receipt" in result && result.receipt)
+    return {
+      roomId: input.roomId,
+      playerId: result.receipt.playerId,
+      playerToken: result.receipt.playerToken,
+      expiresAt: result.expiresAt,
+      snapshot: result.snapshot,
+    };
   return { error: result.error ?? "Could not join" };
 }
 
-function authenticate(room: PartyRoomState, role: PartyRole, credential: string, playerId?: string) {
+function authenticate(
+  room: PartyRoomState,
+  role: PartyRole,
+  credential: string,
+  playerId?: string,
+) {
   if (role === "presenter") return safeEqual(credential, room.presenterHash);
   const player = room.players.find(({ id }) => id === playerId);
   return Boolean(player && safeEqual(credential, player.tokenHash));
 }
 
-export async function readPartySnapshot(input: { roomId: string; role: PartyRole; credential: string; playerId?: string; lastSequence: number }): Promise<PartySnapshotResult> {
+export async function readPartySnapshot(input: {
+  roomId: string;
+  role: PartyRole;
+  credential: string;
+  playerId?: string;
+  presenterToken?: string;
+  lastSequence: number;
+}): Promise<PartySnapshotResult> {
   const result = await withRoom(input.roomId, (room) => {
-    if (!authenticate(room, input.role, input.credential, input.playerId)) return { ok: false, snapshot: null, error: "Room unavailable" };
+    if (!authenticate(room, input.role, input.credential, input.playerId))
+      return { ok: false, snapshot: null, error: "Room unavailable" };
     if (input.role === "player") {
       const player = room.players.find(({ id }) => id === input.playerId);
       if (player) player.lastSeenAt = Date.now();
     }
     advance(room);
-    return { ok: true, snapshot: snapshot(room, input.role, input.playerId) };
+    const hostPlayer =
+      input.role === "player" &&
+      Boolean(input.presenterToken && safeEqual(input.presenterToken, room.presenterHash));
+    return { ok: true, snapshot: snapshot(room, input.role, input.playerId, hostPlayer) };
   });
   return result ?? { ok: false, snapshot: null, error: "Room unavailable" };
 }
 
-function actionSeen(room: PartyRoomState, actionId: string) { return room.processedActions.includes(actionId); }
-function rememberAction(room: PartyRoomState, actionId: string) { room.processedActions = [...room.processedActions, actionId].slice(-300); }
+function actionSeen(room: PartyRoomState, actionId: string) {
+  return room.processedActions.includes(actionId);
+}
+function rememberAction(room: PartyRoomState, actionId: string) {
+  room.processedActions = [...room.processedActions, actionId].slice(-300);
+}
 
-export async function applyPresenterAction(input: { roomId: string; presenterToken: string; action: PartyPresenterAction }): Promise<PartyActionResult> {
+export async function applyPresenterAction(input: {
+  roomId: string;
+  presenterToken: string;
+  action: PartyPresenterAction;
+}): Promise<PartyActionResult> {
   const result = await withRoom(input.roomId, (room) => {
-    if (!safeEqual(input.presenterToken, room.presenterHash)) return { ok: false, accepted: false, snapshot: null, error: "Room unavailable" };
+    if (!safeEqual(input.presenterToken, room.presenterHash))
+      return { ok: false, accepted: false, snapshot: null, error: "Room unavailable" };
     advance(room);
-    if (actionSeen(room, input.action.actionId)) return { ok: true, accepted: true, snapshot: snapshot(room, "presenter") };
-    if (input.action.type === "round.start" && room.phase === "lobby" && room.players.length > 0) startRound(room);
+    if (actionSeen(room, input.action.actionId))
+      return { ok: true, accepted: true, snapshot: snapshot(room, "presenter") };
+    if (input.action.type === "round.start" && room.phase === "lobby" && room.players.length > 0)
+      startRound(room);
     else if (input.action.type === "round.next" && room.phase === "reveal") startRound(room);
-    else return { ok: true, accepted: false, snapshot: snapshot(room, "presenter"), error: room.players.length ? "That action is not available now" : "Waiting for at least one player" };
+    else
+      return {
+        ok: true,
+        accepted: false,
+        snapshot: snapshot(room, "presenter"),
+        error: room.players.length
+          ? "That action is not available now"
+          : "Waiting for at least one player",
+      };
     rememberAction(room, input.action.actionId);
     return { ok: true, accepted: true, snapshot: snapshot(room, "presenter") };
   });
   return result ?? { ok: false, accepted: false, snapshot: null, error: "Room unavailable" };
 }
 
-export async function applyPlayerAction(input: { roomId: string; playerId: string; playerToken: string; action: PartyPlayerAction }): Promise<PartyActionResult> {
+export async function applyPlayerAction(input: {
+  roomId: string;
+  playerId: string;
+  playerToken: string;
+  action: PartyPlayerAction;
+}): Promise<PartyActionResult> {
   const result = await withRoom(input.roomId, (room) => {
     const player = room.players.find(({ id }) => id === input.playerId);
-    if (!player || !safeEqual(input.playerToken, player.tokenHash)) return { ok: false, accepted: false, snapshot: null, error: "Room unavailable" };
+    if (!player || !safeEqual(input.playerToken, player.tokenHash))
+      return { ok: false, accepted: false, snapshot: null, error: "Room unavailable" };
     player.lastSeenAt = Date.now();
     advance(room);
-    if (actionSeen(room, input.action.actionId)) return { ok: true, accepted: true, snapshot: snapshot(room, "player", player.id) };
+    if (actionSeen(room, input.action.actionId))
+      return { ok: true, accepted: true, snapshot: snapshot(room, "player", player.id) };
     const round = room.round;
-    if (!round || input.action.roundId !== round.roundId) return { ok: true, accepted: false, snapshot: snapshot(room, "player", player.id), error: "That word has ended" };
+    if (!round || input.action.roundId !== round.roundId)
+      return {
+        ok: true,
+        accepted: false,
+        snapshot: snapshot(room, "player", player.id),
+        error: "That word has ended",
+      };
     const now = Date.now();
     if (input.action.type === "draft.update") {
-      if (room.phase !== "answer" || player.locked || now >= round.answerLocksAt) return { ok: true, accepted: false, snapshot: snapshot(room, "player", player.id), error: "Answers are locked" };
-      if (input.action.draftRevision > player.draftRevision) { player.draft = input.action.draft.slice(0, 64); player.draftRevision = input.action.draftRevision; changed(room); }
+      if (room.phase !== "answer" || player.locked || now >= round.answerLocksAt)
+        return {
+          ok: true,
+          accepted: false,
+          snapshot: snapshot(room, "player", player.id),
+          error: "Answers are locked",
+        };
+      if (input.action.draftRevision > player.draftRevision) {
+        player.draft = input.action.draft.slice(0, 64);
+        player.draftRevision = input.action.draftRevision;
+        changed(room);
+      }
     } else if (input.action.type === "answer.lock") {
-      if (room.phase !== "answer" || now >= round.answerLocksAt) return { ok: true, accepted: false, snapshot: snapshot(room, "player", player.id), error: "Answers are locked" };
-      player.locked = true; player.automatic = false; player.lockedAt = now; changed(room);
+      if (room.phase !== "answer" || now >= round.answerLocksAt)
+        return {
+          ok: true,
+          accepted: false,
+          snapshot: snapshot(room, "player", player.id),
+          error: "Answers are locked",
+        };
+      player.locked = true;
+      player.automatic = false;
+      player.lockedAt = now;
+      changed(room);
       if (room.players.every(({ locked }) => locked)) lockAll(room, now);
     } else if (input.action.type === "integrity.notice") {
-      if ((room.phase === "answer" || room.phase === "locked") && input.action.hiddenMs >= 1_000 && !player.integrityRoundIds.includes(round.roundId)) { player.integrityRoundIds.push(round.roundId); changed(room); }
+      if (
+        (room.phase === "answer" || room.phase === "locked") &&
+        input.action.hiddenMs >= 1_000 &&
+        !player.integrityRoundIds.includes(round.roundId)
+      ) {
+        player.integrityRoundIds.push(round.roundId);
+        changed(room);
+      }
     } else if (input.action.type === "clue.request") {
-      if (room.phase !== "answer") return { ok: true, accepted: false, snapshot: snapshot(room, "player", player.id), error: "Clues are not available now" };
+      if (room.phase !== "answer")
+        return {
+          ok: true,
+          accepted: false,
+          snapshot: snapshot(room, "player", player.id),
+          error: "Clues are not available now",
+        };
       const word = wordFor(room);
       if (!word) return { ok: false, accepted: false, snapshot: null, error: "Word unavailable" };
       const kind: PartyClueKind = input.action.clue;
-      if (kind === "repeat" && round.repeatUsed) return { ok: true, accepted: false, snapshot: snapshot(room, "player", player.id), error: "The word is already being repeated" };
-      if (kind === "definition" && round.definitionUsed) return { ok: true, accepted: false, snapshot: snapshot(room, "player", player.id), error: "The definition has already been played" };
-      if (kind === "sentence" && room.sentenceCluesRemaining <= 0) return { ok: true, accepted: false, snapshot: snapshot(room, "player", player.id), error: "No sentence clues remain" };
+      if (kind === "repeat" && round.repeatUsed)
+        return {
+          ok: true,
+          accepted: false,
+          snapshot: snapshot(room, "player", player.id),
+          error: "The word is already being repeated",
+        };
+      if (kind === "definition" && round.definitionUsed)
+        return {
+          ok: true,
+          accepted: false,
+          snapshot: snapshot(room, "player", player.id),
+          error: "The definition has already been played",
+        };
+      if (kind === "sentence" && room.sentenceCluesRemaining <= 0)
+        return {
+          ok: true,
+          accepted: false,
+          snapshot: snapshot(room, "player", player.id),
+          error: "No sentence clues remain",
+        };
       if (kind === "repeat") round.repeatUsed = true;
       if (kind === "definition") round.definitionUsed = true;
       if (kind === "sentence") room.sentenceCluesRemaining -= 1;
       const eventId = capability();
-      const asset: AudioCapability | null = room.usesLocalSpeech ? null : { id: eventId, key: partyAudioAssetKey(word, kind === "repeat" ? "word" : kind) };
+      const asset: AudioCapability | null = room.usesLocalSpeech
+        ? null
+        : { id: eventId, key: partyAudioAssetKey(word, kind === "repeat" ? "word" : kind) };
       if (asset) round.clueCapabilities.push(asset);
-      const message = kind === "repeat" ? `${player.name} asked to hear it again.` : kind === "definition" ? `${player.name} asked for the definition.` : `${player.name} used a sentence clue · ${room.sentenceCluesRemaining} remaining.`;
-      const speechText = kind === "repeat" ? word.speakAs ?? word.word : kind === "definition" ? word.definition ?? "No definition is available for this word." : word.sentence;
-      const event: PartyClueEvent = { id: eventId, kind, playerName: player.name, message, createdAt: now, audioUrl: asset ? audioUrl(room.roomId, asset.id) : null, speechText };
-      round.activeClue = event; room.recentClues.push(event); changed(room);
+      const message =
+        kind === "repeat"
+          ? `${player.name} asked to hear it again.`
+          : kind === "definition"
+            ? `${player.name} asked for the definition.`
+            : `${player.name} used a sentence clue · ${room.sentenceCluesRemaining} remaining.`;
+      const speechText =
+        kind === "repeat"
+          ? (word.speakAs ?? word.word)
+          : kind === "definition"
+            ? (word.definition ?? "No definition is available for this word.")
+            : word.sentence;
+      const event: PartyClueEvent = {
+        id: eventId,
+        kind,
+        playerName: player.name,
+        message,
+        createdAt: now,
+        audioUrl: asset ? audioUrl(room.roomId, asset.id) : null,
+        speechText,
+      };
+      round.activeClue = event;
+      room.recentClues.push(event);
+      changed(room);
     }
     rememberAction(room, input.action.actionId);
     return { ok: true, accepted: true, snapshot: snapshot(room, "player", player.id) };
@@ -466,7 +800,12 @@ export async function applyPlayerAction(input: { roomId: string; playerId: strin
   return result ?? { ok: false, accepted: false, snapshot: null, error: "Room unavailable" };
 }
 
-export async function authorizePartySocket(input: { roomId: string; role: PartyRole; credential: string; playerId?: string }) {
+export async function authorizePartySocket(input: {
+  roomId: string;
+  role: PartyRole;
+  credential: string;
+  playerId?: string;
+}) {
   const loaded = await loadRoom(input.roomId);
   return Boolean(loaded && authenticate(loaded.room, input.role, input.credential, input.playerId));
 }

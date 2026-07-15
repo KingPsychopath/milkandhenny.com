@@ -17,7 +17,7 @@ export function SpellingModeNav({ mode }: { mode: "aloud" | "together" }) {
         </Link>
         <Link to="/things/spelling-party" onClick={resetModeScroll} aria-current={mode === "together" ? "page" : undefined} className={itemClass(mode === "together")}>
           <span className="block font-serif text-lg font-semibold leading-tight">Type together</span>
-          <span className="mt-2 block font-mono text-micro leading-relaxed text-white/45">shared screen · live</span>
+          <span className="mt-2 block font-mono text-micro leading-relaxed text-white/45">many phones · live</span>
         </Link>
       </div>
     </nav>
