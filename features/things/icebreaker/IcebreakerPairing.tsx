@@ -1,257 +1,51 @@
-import { useEffect, useId, useRef, useState } from "react";
-import QRCode from "qrcode";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { IcebreakerPairingCode } from "./IcebreakerPairingCode";
+import { IcebreakerQrScanner } from "./IcebreakerQrScanner";
 import {
-  createPairingResult,
-  pairingCode,
-  pairingPayload,
-  parsePairingCode,
+  encounterResult,
+  type EncounterOutcome,
   type IcebreakerPlayer,
   type PairingResult,
 } from "./icebreaker-pairing";
 
 interface IcebreakerPairingProps {
   player: IcebreakerPlayer;
+  initialPartner?: IcebreakerPlayer | null;
+  initialError?: string | null;
   onClose: () => void;
+  onEncounter: (partner: IcebreakerPlayer) => EncounterOutcome;
 }
 
-interface QrScannerProps {
-  playerId: string;
-  onCancel: () => void;
-  onScan: (partner: IcebreakerPlayer) => void;
-}
-
-function ManualCodeEntry({ playerId, onScan }: Pick<QrScannerProps, "playerId" | "onScan">) {
-  const inputId = useId();
-  const errorId = useId();
-  const [code, setCode] = useState("");
-  const [error, setError] = useState<string | null>(null);
-
-  const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    const partner = parsePairingCode(code);
-    if (!partner) {
-      setError("That code doesn't look right. Try the six characters shown on their screen.");
-      return;
-    }
-    if (partner.id === playerId) {
-      setError("That's your own code. Enter the code from the other phone.");
-      return;
-    }
-    onScan(partner);
-  };
-
-  return (
-    <details className="mt-5 border-t border-white/15 pt-4 text-left">
-      <summary className="min-h-11 cursor-pointer content-center font-mono text-xs opacity-70">
-        camera not working?
-      </summary>
-      <form onSubmit={handleSubmit} className="mt-3">
-        <label htmlFor={inputId} className="font-mono text-xs opacity-70">
-          enter their code
-        </label>
-        <div className="mt-2 flex gap-2">
-          <input
-            id={inputId}
-            value={code}
-            onChange={(event) => {
-              setCode(event.target.value.toUpperCase());
-              setError(null);
-            }}
-            autoCapitalize="characters"
-            autoComplete="off"
-            spellCheck={false}
-            placeholder="R-ABCDE"
-            aria-invalid={Boolean(error)}
-            aria-describedby={error ? errorId : undefined}
-            className="min-h-12 min-w-0 flex-1 rounded-full border border-white/20 bg-black/15 px-4 font-mono text-base uppercase tracking-[0.14em] outline-none focus-visible:ring-2 focus-visible:ring-white/75"
-          />
-          <button
-            type="submit"
-            className="min-h-12 rounded-full bg-white px-5 font-mono text-sm font-semibold text-black focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-transparent"
-          >
-            pair
-          </button>
-        </div>
-        {error ? (
-          <p id={errorId} role="alert" className="mt-2 font-mono text-xs text-white/75">
-            {error}
-          </p>
-        ) : null}
-      </form>
-    </details>
-  );
-}
-
-function QrScanner({ playerId, onCancel, onScan }: QrScannerProps) {
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const onScanRef = useRef(onScan);
-  const [message, setMessage] = useState("asking for camera access…");
-
-  useEffect(() => {
-    onScanRef.current = onScan;
-  }, [onScan]);
-
-  useEffect(() => {
-    let active = true;
-    let stream: MediaStream | null = null;
-    let animationFrame = 0;
-
-    const stop = () => {
-      active = false;
-      cancelAnimationFrame(animationFrame);
-      stream?.getTracks().forEach((track) => track.stop());
-    };
-
-    const start = async () => {
-      const Detector = window.BarcodeDetector;
-      if (!Detector || !navigator.mediaDevices?.getUserMedia) {
-        setMessage("QR scanning isn't available in this browser. Use their short code below.");
-        return;
-      }
-
-      try {
-        stream = await navigator.mediaDevices.getUserMedia({
-          audio: false,
-          video: { facingMode: { ideal: "environment" } },
-        });
-        if (!active || !videoRef.current) return stop();
-        videoRef.current.srcObject = stream;
-        await videoRef.current.play();
-        setMessage("Point the camera at their QR code.");
-        const detector = new Detector({ formats: ["qr_code"] });
-
-        const scanFrame = async () => {
-          if (!active || !videoRef.current) return;
-          try {
-            const codes = await detector.detect(videoRef.current);
-            const partner = codes[0] ? parsePairingCode(codes[0].rawValue) : null;
-            if (partner) {
-              if (partner.id === playerId) {
-                setMessage("That's your own code. Scan the code on the other phone.");
-              } else {
-                stop();
-                onScanRef.current(partner);
-                return;
-              }
-            }
-          } catch {
-            // Some browsers throw while the video is warming up; keep scanning.
-          }
-          animationFrame = requestAnimationFrame(() => void scanFrame());
-        };
-        animationFrame = requestAnimationFrame(() => void scanFrame());
-      } catch {
-        setMessage("Camera access wasn't available. You can enter their short code below.");
-      }
-    };
-
-    void start();
-    return stop;
-  }, [playerId]);
-
-  return (
-    <section className="w-full max-w-sm text-center text-white" aria-labelledby="scanner-title">
-      <p className="font-mono text-micro uppercase tracking-[0.2em] text-white/55">pair phones</p>
-      <h1 id="scanner-title" className="mt-2 font-serif text-4xl font-semibold">
-        Scan their code.
-      </h1>
-      <div className="relative mt-7 aspect-square overflow-hidden rounded-3xl border border-white/20 bg-black/25">
-        <video ref={videoRef} muted playsInline className="h-full w-full object-cover" />
-        <div
-          aria-hidden="true"
-          className="pointer-events-none absolute inset-[14%] rounded-2xl border-2 border-white/75"
-        />
-      </div>
-      <p
-        aria-live="polite"
-        className="mt-4 min-h-10 font-mono text-xs leading-relaxed text-white/70"
-      >
-        {message}
-      </p>
-      <ManualCodeEntry playerId={playerId} onScan={onScan} />
-      <button
-        type="button"
-        onClick={onCancel}
-        className="mt-3 min-h-11 font-mono text-xs text-white/65 hover:text-white focus-visible:ring-2 focus-visible:ring-white/75"
-      >
-        cancel
-      </button>
-    </section>
-  );
-}
-
-function MyCode({
-  player,
-  onScan,
-  onClose,
-  returnToResult = false,
-}: IcebreakerPairingProps & { onScan: () => void; returnToResult?: boolean }) {
-  const [qrCode, setQrCode] = useState<string | null>(null);
-
-  useEffect(() => {
-    let active = true;
-    void QRCode.toDataURL(pairingPayload(player), { width: 320, margin: 1 }).then((value) => {
-      if (active) setQrCode(value);
-    });
-    return () => {
-      active = false;
-    };
-  }, [player]);
-
-  return (
-    <section className="w-full max-w-sm text-center text-white" aria-labelledby="my-code-title">
-      <p className="font-mono text-micro uppercase tracking-[0.2em] text-white/55">pair phones</p>
-      <h1 id="my-code-title" className="mt-2 font-serif text-4xl font-semibold">
-        Show them this.
-      </h1>
-      <p className="mt-3 font-serif text-lg text-white/70">Once they scan it, swap roles.</p>
-      <div className="mx-auto mt-7 aspect-square w-full max-w-72 rounded-3xl bg-white p-4 shadow-2xl">
-        {qrCode ? (
-          <img src={qrCode} alt="Your Icebreaker pairing QR code" className="h-full w-full" />
-        ) : (
-          <div className="grid h-full place-items-center font-mono text-xs text-black/55">
-            making code…
-          </div>
-        )}
-      </div>
-      <p className="mt-4 font-mono text-xs text-white/55">short code</p>
-      <p className="mt-1 font-mono text-xl tracking-[0.18em]">{pairingCode(player)}</p>
-      <button
-        type="button"
-        onClick={returnToResult ? onClose : onScan}
-        className="mt-7 min-h-12 w-full rounded-full bg-white px-6 font-mono text-sm font-semibold text-black focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-transparent"
-      >
-        {returnToResult ? "back to our result" : "scan their code"}
-      </button>
-      {!returnToResult ? (
-        <button
-          type="button"
-          onClick={onClose}
-          className="mt-2 min-h-11 font-mono text-xs text-white/65 hover:text-white focus-visible:ring-2 focus-visible:ring-white/75"
-        >
-          back to my colour
-        </button>
-      ) : null}
-    </section>
-  );
+interface PairingDisplay {
+  persisted: boolean;
+  result: PairingResult;
+  status: "new" | "repeat";
 }
 
 function PairingResultView({
   player,
-  result,
+  display,
   onShowCode,
   onPairAgain,
   onClose,
-}: IcebreakerPairingProps & {
-  result: PairingResult;
+}: Pick<IcebreakerPairingProps, "player" | "onClose"> & {
+  display: PairingDisplay;
   onShowCode: () => void;
   onPairAgain: () => void;
 }) {
+  const { result, status } = display;
   const partner = result.partner;
+  const colours = [player.colour, partner.colour].sort((first, second) =>
+    first.code.localeCompare(second.code),
+  );
   return (
     <section className="w-full max-w-sm text-center text-white" aria-labelledby="pair-result-title">
       <p className="font-mono text-micro uppercase tracking-[0.2em] text-white/65">
-        {result.kind === "match" ? "it's a match" : "you made a mix"}
+        {status === "repeat"
+          ? "already in your colour book"
+          : result.kind === "match"
+            ? "it's a match"
+            : "you made a mix"}
       </p>
       <div
         className="mx-auto mt-5 h-28 w-28 rounded-full border border-white/35 shadow-2xl"
@@ -259,7 +53,7 @@ function PairingResultView({
           background:
             result.kind === "match"
               ? player.colour.background
-              : `linear-gradient(135deg, ${player.colour.background}, ${partner.colour.background})`,
+              : `linear-gradient(135deg, ${colours[0]?.background}, ${colours[1]?.background})`,
         }}
         aria-hidden="true"
       />
@@ -271,19 +65,26 @@ function PairingResultView({
           ? `${player.colour.name} + ${partner.colour.name}`
           : `${player.colour.name} × ${partner.colour.name}`}
       </p>
-      <div className="mt-7 rounded-3xl bg-black/20 p-6 text-left backdrop-blur-sm">
+      <p className="mt-4 font-mono text-xs text-white/55">
+        {!display.persisted
+          ? "saved for this visit · device storage is unavailable"
+          : status === "new"
+            ? "✓ saved on this device"
+            : "✓ no duplicate added"}
+      </p>
+      <div className="mt-6 rounded-3xl bg-white/[0.08] p-6 text-left">
         <h2 className="font-mono text-micro uppercase tracking-[0.18em] text-white/60">
           ask each other
         </h2>
         <p className="mt-3 font-serif text-xl leading-snug">“{result.question}”</p>
       </div>
-      <p className="mt-5 font-serif text-sm text-white/70">
-        Let them scan your code too so both phones see the same result.
+      <p className="mt-5 font-serif text-sm leading-relaxed text-white/70">
+        Show them your code so they can save this result too.
       </p>
       <button
         type="button"
         onClick={onShowCode}
-        className="mt-4 min-h-12 w-full rounded-full bg-white px-6 font-mono text-sm font-semibold text-black focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-transparent"
+        className="mt-4 min-h-12 w-full rounded-full bg-white px-6 font-mono text-sm font-semibold text-black focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--things-night)]"
       >
         show my code
       </button>
@@ -307,33 +108,63 @@ function PairingResultView({
   );
 }
 
-export function IcebreakerPairing({ player, onClose }: IcebreakerPairingProps) {
+export function IcebreakerPairing({
+  player,
+  initialPartner = null,
+  initialError = null,
+  onClose,
+  onEncounter,
+}: IcebreakerPairingProps) {
   const [view, setView] = useState<"choose" | "scan" | "show">("choose");
-  const [result, setResult] = useState<PairingResult | null>(null);
+  const [display, setDisplay] = useState<PairingDisplay | null>(null);
+  const [error, setError] = useState<string | null>(initialError);
+  const consumedInitialPartner = useRef(false);
 
-  const handleScan = (partner: IcebreakerPlayer) => {
-    setResult(createPairingResult(player, partner));
-  };
+  const handlePartner = useCallback(
+    (partner: IcebreakerPlayer) => {
+      const outcome = onEncounter(partner);
+      if (outcome.status === "self" || !outcome.encounter) {
+        setError("That's your own code. Scan the code on the other phone.");
+        setView("choose");
+        return;
+      }
+      const result = encounterResult(outcome.encounter);
+      if (!result) {
+        setError("That pairing couldn't be read. Ask them to show their code again.");
+        setView("choose");
+        return;
+      }
+      setError(null);
+      setDisplay({ persisted: outcome.persisted !== false, result, status: outcome.status });
+    },
+    [onEncounter],
+  );
+
+  useEffect(() => {
+    if (!initialPartner || consumedInitialPartner.current) return;
+    consumedInitialPartner.current = true;
+    handlePartner(initialPartner);
+  }, [handlePartner, initialPartner]);
 
   if (view === "show") {
     return (
-      <MyCode
+      <IcebreakerPairingCode
         player={player}
+        returningToResult={Boolean(display)}
         onScan={() => setView("scan")}
-        onClose={() => (result ? setView("choose") : onClose())}
-        returnToResult={Boolean(result)}
+        onBack={() => (display ? setView("choose") : onClose())}
       />
     );
   }
 
-  if (result) {
+  if (display) {
     return (
       <PairingResultView
         player={player}
-        result={result}
+        display={display}
         onShowCode={() => setView("show")}
         onPairAgain={() => {
-          setResult(null);
+          setDisplay(null);
           setView("choose");
         }}
         onClose={onClose}
@@ -343,26 +174,39 @@ export function IcebreakerPairing({ player, onClose }: IcebreakerPairingProps) {
 
   if (view === "scan") {
     return (
-      <QrScanner playerId={player.id} onScan={handleScan} onCancel={() => setView("choose")} />
+      <IcebreakerQrScanner
+        playerId={player.id}
+        onScan={handlePartner}
+        onCancel={() => setView("choose")}
+      />
     );
   }
 
   return (
     <section className="w-full max-w-sm text-center text-white" aria-labelledby="pair-title">
       <p className="font-mono text-micro uppercase tracking-[0.2em] text-white/55">
-        optional extra
+        optional confirmation
       </p>
       <h1 id="pair-title" className="mt-2 font-serif text-5xl font-semibold">
-        Pair phones.
+        Pair colours.
       </h1>
       <p className="mt-4 font-serif text-lg leading-relaxed text-white/70">
-        One person shows their code. The other scans it. Then swap.
+        One person shows a code. The other scans it. Take turns only if you want the result on both
+        phones.
       </p>
+      {error ? (
+        <p
+          role="alert"
+          className="mt-4 rounded-2xl bg-white/10 p-3 font-mono text-xs text-white/80"
+        >
+          {error}
+        </p>
+      ) : null}
       <div className="mt-8 grid gap-3">
         <button
           type="button"
           onClick={() => setView("scan")}
-          className="min-h-14 rounded-full bg-white px-6 font-mono text-sm font-semibold text-black focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-transparent"
+          className="min-h-14 rounded-full bg-white px-6 font-mono text-sm font-semibold text-black focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--things-night)]"
         >
           scan their code
         </button>
@@ -375,7 +219,7 @@ export function IcebreakerPairing({ player, onClose }: IcebreakerPairingProps) {
         </button>
       </div>
       <p className="mt-5 font-mono text-xs leading-relaxed text-white/50">
-        Same colour makes a match. Different colours make something new.
+        Same colour confirms a match. Different colours create a collectible mix.
       </p>
       <button
         type="button"

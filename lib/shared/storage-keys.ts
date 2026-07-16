@@ -20,6 +20,7 @@ export const LOCAL_KEYS = {
   theme: "theme",
   bestDressedVote: "mah-best-dressed-vote",
   icebreakerColor: "mah-icebreaker-color",
+  icebreakerLedger: "mah-icebreaker-ledger",
   icebreakerPlayerId: "mah-icebreaker-player-id",
   swipeHintCount: "mah-swipe-hint-count",
 } as const;

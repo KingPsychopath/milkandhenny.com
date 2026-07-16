@@ -38,6 +38,38 @@ export interface PairingResult {
   partner: IcebreakerPlayer;
 }
 
+export interface IcebreakerEncounter {
+  id: string;
+  partnerId: string;
+  ownColourCode: Colour["code"];
+  partnerColourCode: Colour["code"];
+  kind: PairingResult["kind"];
+  name: string;
+  question: string;
+  firstMetAt: string;
+  lastMetAt: string;
+}
+
+export interface IcebreakerLedger {
+  version: 1;
+  ownerId: string;
+  ownerColourCode: Colour["code"];
+  encounters: IcebreakerEncounter[];
+}
+
+export interface EncounterOutcome {
+  encounter: IcebreakerEncounter | null;
+  ledger: IcebreakerLedger;
+  persisted?: boolean;
+  status: "new" | "repeat" | "self";
+}
+
+export const MAX_LEDGER_ENCOUNTERS = 100;
+
+const PLAYER_ID_PATTERN = /^[A-Z2-9]{5}$/;
+const CODE_PATTERN = /^(?:MH1-)?([RSEATOLC])-([A-Z2-9]{5})$/;
+const MAX_PAIRING_INPUT_LENGTH = 512;
+
 const BLEND_NAMES: Record<string, string> = {
   "Amethyst-Coral": "Electric Sunset",
   "Amethyst-Emerald": "Enchanted Forest",
@@ -69,7 +101,27 @@ const BLEND_NAMES: Record<string, string> = {
   "Teal-Topaz": "Citrus Tide",
 };
 
-const CODE_PATTERN = /^(?:MH1-)?([RSEATOLC])-([A-Z2-9]{5})$/;
+function colourFromCode(code: unknown): Colour | null {
+  return typeof code === "string"
+    ? (COLOURS.find((candidate) => candidate.code === code) ?? null)
+    : null;
+}
+
+function pairingValue(value: string) {
+  const trimmed = value.trim();
+  if (!trimmed || trimmed.length > MAX_PAIRING_INPUT_LENGTH) return null;
+
+  const hashIndex = trimmed.indexOf("#");
+  if (hashIndex >= 0) {
+    const parameters = new URLSearchParams(trimmed.slice(hashIndex + 1));
+    return parameters.get("pair");
+  }
+  return trimmed.startsWith("pair=") ? new URLSearchParams(trimmed).get("pair") : trimmed;
+}
+
+export function isPlayerId(value: string) {
+  return PLAYER_ID_PATTERN.test(value);
+}
 
 export function createPlayerId() {
   const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
@@ -85,10 +137,17 @@ export function pairingPayload(player: IcebreakerPlayer) {
   return `MH1-${pairingCode(player)}`;
 }
 
+export function pairingUrl(origin: string, player: IcebreakerPlayer) {
+  const cleanOrigin = origin.replace(/\/$/, "");
+  return `${cleanOrigin}/things/icebreaker#pair=${encodeURIComponent(pairingPayload(player))}`;
+}
+
 export function parsePairingCode(value: string): IcebreakerPlayer | null {
-  const match = CODE_PATTERN.exec(value.trim().toUpperCase().replaceAll(" ", ""));
+  const candidate = pairingValue(value);
+  if (!candidate) return null;
+  const match = CODE_PATTERN.exec(candidate.trim().toUpperCase().replaceAll(" ", ""));
   if (!match) return null;
-  const colour = COLOURS.find((candidate) => candidate.code === match[1]);
+  const colour = colourFromCode(match[1]);
   const id = match[2];
   return colour && id ? { colour, id } : null;
 }
@@ -100,6 +159,10 @@ function hashPair(firstId: string, secondId: string) {
     hash = Math.imul(hash, 16777619);
   }
   return hash >>> 0;
+}
+
+export function encounterId(firstId: string, secondId: string) {
+  return [firstId, secondId].sort().join(".");
 }
 
 export function createPairingResult(
@@ -117,5 +180,136 @@ export function createPairingResult(
     name: BLEND_NAMES[key] ?? `${player.colour.name} mix`,
     question,
     partner,
+  };
+}
+
+export function createEmptyLedger(player: IcebreakerPlayer): IcebreakerLedger {
+  return {
+    version: 1,
+    ownerId: player.id,
+    ownerColourCode: player.colour.code,
+    encounters: [],
+  };
+}
+
+function isValidTimestamp(value: unknown): value is string {
+  return typeof value === "string" && value.length <= 40 && !Number.isNaN(Date.parse(value));
+}
+
+function parseEncounter(value: unknown, player: IcebreakerPlayer): IcebreakerEncounter | null {
+  if (!value || typeof value !== "object") return null;
+  const record = value as Partial<IcebreakerEncounter>;
+  const partnerColour = colourFromCode(record.partnerColourCode);
+  if (
+    typeof record.partnerId !== "string" ||
+    !isPlayerId(record.partnerId) ||
+    record.partnerId === player.id ||
+    record.ownColourCode !== player.colour.code ||
+    !partnerColour ||
+    !isValidTimestamp(record.firstMetAt) ||
+    !isValidTimestamp(record.lastMetAt)
+  ) {
+    return null;
+  }
+
+  const partner = { id: record.partnerId, colour: partnerColour };
+  const result = createPairingResult(player, partner);
+  return {
+    id: encounterId(player.id, partner.id),
+    partnerId: partner.id,
+    ownColourCode: player.colour.code,
+    partnerColourCode: partner.colour.code,
+    kind: result.kind,
+    name: result.name,
+    question: result.question,
+    firstMetAt: record.firstMetAt,
+    lastMetAt: record.lastMetAt,
+  };
+}
+
+export function parseLedger(value: string | null, player: IcebreakerPlayer): IcebreakerLedger {
+  if (!value) return createEmptyLedger(player);
+  try {
+    const parsed: unknown = JSON.parse(value);
+    if (!parsed || typeof parsed !== "object") return createEmptyLedger(player);
+    const record = parsed as Partial<IcebreakerLedger>;
+    if (
+      record.version !== 1 ||
+      record.ownerId !== player.id ||
+      record.ownerColourCode !== player.colour.code ||
+      !Array.isArray(record.encounters)
+    ) {
+      return createEmptyLedger(player);
+    }
+
+    const unique = new Map<string, IcebreakerEncounter>();
+    for (const candidate of record.encounters) {
+      const encounter = parseEncounter(candidate, player);
+      if (encounter && !unique.has(encounter.partnerId)) {
+        unique.set(encounter.partnerId, encounter);
+      }
+      if (unique.size === MAX_LEDGER_ENCOUNTERS) break;
+    }
+    return { ...createEmptyLedger(player), encounters: [...unique.values()] };
+  } catch {
+    return createEmptyLedger(player);
+  }
+}
+
+export function recordEncounter(
+  ledger: IcebreakerLedger,
+  player: IcebreakerPlayer,
+  partner: IcebreakerPlayer,
+  now: string,
+): EncounterOutcome {
+  const current =
+    ledger.ownerId === player.id && ledger.ownerColourCode === player.colour.code
+      ? ledger
+      : createEmptyLedger(player);
+  if (partner.id === player.id) return { encounter: null, ledger: current, status: "self" };
+
+  const existing = current.encounters.find((encounter) => encounter.partnerId === partner.id);
+  if (existing) {
+    const updated = { ...existing, lastMetAt: now };
+    return {
+      encounter: updated,
+      ledger: {
+        ...current,
+        encounters: [updated, ...current.encounters.filter((item) => item.id !== updated.id)],
+      },
+      status: "repeat",
+    };
+  }
+
+  const result = createPairingResult(player, partner);
+  const encounter: IcebreakerEncounter = {
+    id: encounterId(player.id, partner.id),
+    partnerId: partner.id,
+    ownColourCode: player.colour.code,
+    partnerColourCode: partner.colour.code,
+    kind: result.kind,
+    name: result.name,
+    question: result.question,
+    firstMetAt: now,
+    lastMetAt: now,
+  };
+  return {
+    encounter,
+    ledger: {
+      ...current,
+      encounters: [encounter, ...current.encounters].slice(0, MAX_LEDGER_ENCOUNTERS),
+    },
+    status: "new",
+  };
+}
+
+export function encounterResult(encounter: IcebreakerEncounter): PairingResult | null {
+  const partnerColour = colourFromCode(encounter.partnerColourCode);
+  if (!partnerColour) return null;
+  return {
+    kind: encounter.kind,
+    name: encounter.name,
+    question: encounter.question,
+    partner: { id: encounter.partnerId, colour: partnerColour },
   };
 }

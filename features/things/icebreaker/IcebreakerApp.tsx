@@ -1,15 +1,23 @@
-import { useCallback, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { Link } from "@tanstack/react-router";
 import { getStored, setStored } from "@/lib/client/storage";
 import { playFeedback } from "@/lib/client/feedback";
 import { IcebreakerPairing } from "./IcebreakerPairing";
+import { IcebreakerColourBook } from "./IcebreakerColourBook";
 import {
   COLOURS,
   QUESTIONS,
   createPlayerId,
+  parsePairingCode,
   type Colour,
   type IcebreakerPlayer,
 } from "./icebreaker-pairing";
+import { useIcebreakerLedger } from "./useIcebreakerLedger";
+
+interface PairingLaunch {
+  error: string | null;
+  partner: IcebreakerPlayer | null;
+}
 
 function randomQuestion(exclude?: string) {
   const options = exclude ? QUESTIONS.filter((question) => question !== exclude) : QUESTIONS;
@@ -56,8 +64,22 @@ export function IcebreakerApp() {
   const colour = useAssignedColour();
   const [revealed, setRevealed] = useState(false);
   const [question, setQuestion] = useState<string>(() => QUESTIONS[0]);
-  const [pairing, setPairing] = useState(false);
+  const [pairing, setPairing] = useState<PairingLaunch | null>(null);
+  const [showingColourBook, setShowingColourBook] = useState(false);
   const [playerId] = useState(assignedPlayerId);
+  const player = useMemo(() => ({ colour, id: playerId }), [colour, playerId]);
+  const { ledger, addEncounter } = useIcebreakerLedger(player);
+
+  useEffect(() => {
+    if (!window.location.hash.startsWith("#pair=")) return;
+    const partner = parsePairingCode(window.location.hash);
+    window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}`);
+    setRevealed(true);
+    setPairing({
+      partner,
+      error: partner ? null : "That pairing link isn't valid. Ask them to show a fresh code.",
+    });
+  }, []);
 
   const handleReveal = () => {
     playFeedback("reveal");
@@ -73,7 +95,14 @@ export function IcebreakerApp() {
   return (
     <div
       className="min-h-[100svh] flex flex-col transition-colors duration-700"
-      style={{ background: revealed ? colour.background : "var(--things-night)" }}
+      style={{
+        background:
+          pairing || showingColourBook
+            ? "var(--things-night)"
+            : revealed
+              ? colour.background
+              : "var(--things-night)",
+      }}
     >
       <header className="flex items-center justify-between p-5 font-mono text-xs text-white/60">
         <Link to="/things" className="min-h-11 inline-flex items-center hover:text-white">
@@ -83,10 +112,19 @@ export function IcebreakerApp() {
       </header>
 
       <main id="main" className="flex-1 flex items-center justify-center px-6 py-10">
-        {pairing ? (
+        {showingColourBook ? (
+          <IcebreakerColourBook
+            player={player}
+            ledger={ledger}
+            onClose={() => setShowingColourBook(false)}
+          />
+        ) : pairing ? (
           <IcebreakerPairing
-            player={{ colour, id: playerId } satisfies IcebreakerPlayer}
-            onClose={() => setPairing(false)}
+            player={player}
+            initialPartner={pairing.partner}
+            initialError={pairing.error}
+            onEncounter={addEncounter}
+            onClose={() => setPairing(null)}
           />
         ) : !revealed ? (
           <section className="text-center max-w-sm text-white" aria-labelledby="icebreaker-title">
@@ -153,12 +191,19 @@ export function IcebreakerApp() {
 
             <button
               type="button"
-              onClick={() => setPairing(true)}
+              onClick={() => setPairing({ partner: null, error: null })}
               className="mt-5 min-h-12 font-mono text-sm font-semibold opacity-75 hover:opacity-100 focus-visible:ring-2 focus-visible:ring-current"
             >
               found someone? pair phones →
             </button>
             <p className="font-mono text-micro opacity-55">match your colour—or mix with anyone</p>
+            <button
+              type="button"
+              onClick={() => setShowingColourBook(true)}
+              className="mt-3 min-h-11 font-mono text-xs opacity-60 hover:opacity-100 focus-visible:ring-2 focus-visible:ring-current"
+            >
+              my colour book · {ledger.encounters.length}
+            </button>
           </section>
         )}
       </main>
