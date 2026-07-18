@@ -5,6 +5,7 @@ import type { PartyDeckSummary } from "./types";
 import { SpellingDeckBuilder } from "../spelling/SpellingDeckBuilder";
 import { SpellingDeckPicker } from "../spelling/SpellingDeckPicker";
 import type { CustomSpellingDeck } from "../spelling/customDecks";
+import { AppSelect } from "@/components/AppSelect";
 import { spellingRoundOptions } from "../spelling/decks";
 import { useCustomSpellingDecks } from "../spelling/useCustomSpellingDecks";
 import { readRecentSpellingWordIds, rememberSpellingWords } from "../spelling/wordRotation.client";
@@ -18,6 +19,7 @@ import {
   GameLaunchChoices,
   GameLaunchMeta,
 } from "../shared/GameLaunch";
+import { RoomJoinControl } from "../shared/RoomJoinControl";
 
 export function PartySetupApp({ decks }: { decks: PartyDeckSummary[] }) {
   const navigate = useNavigate();
@@ -117,8 +119,8 @@ export function PartySetupApp({ decks }: { decks: PartyDeckSummary[] }) {
     }
   };
 
-  const handleCodeJoin = async () => {
-    const roomId = joinCode.trim().toUpperCase();
+  const handleCodeJoin = async (code = joinCode) => {
+    const roomId = code.trim().toUpperCase();
     if (!/^[A-Z2-9]{7}$/.test(roomId)) {
       setMessage("Enter the 7-character room code.");
       return;
@@ -245,48 +247,22 @@ export function PartySetupApp({ decks }: { decks: PartyDeckSummary[] }) {
         ) : null}
 
         {panel === "join" ? (
-          <form
-            onSubmit={(event) => {
-              event.preventDefault();
-              void handleCodeJoin();
-            }}
+          <section
             className="mx-auto mt-10 max-w-lg border-t border-white/12 pt-7"
+            aria-label="Join a room"
           >
-            <label htmlFor="party-room-code" className="block font-serif text-3xl font-semibold">
-              Room code
-            </label>
-            <div className="mt-4 grid grid-cols-[1fr_auto] gap-2">
-              <input
-                id="party-room-code"
-                value={joinCode}
-                onChange={(event) =>
-                  setJoinCode(
-                    event.target.value
-                      .toUpperCase()
-                      .replace(/[^A-Z2-9]/g, "")
-                      .slice(0, 7),
-                  )
-                }
-                autoCapitalize="characters"
-                autoComplete="off"
-                spellCheck={false}
-                enterKeyHint="go"
-                placeholder="ROOM CODE"
-                aria-label="Room code"
-                className="min-h-14 min-w-0 rounded-full border border-white/20 bg-white/[0.06] px-5 text-center font-mono text-base uppercase tracking-[0.16em] placeholder:text-white/30"
-              />
-              <button
-                type="submit"
-                disabled={joinCode.length !== 7}
-                className="min-h-14 rounded-full border border-white/20 px-5 font-mono text-xs font-semibold disabled:opacity-35"
-              >
-                join room
-              </button>
-            </div>
-            <p aria-live="polite" className="mt-3 min-h-5 font-mono text-xs text-amber-200">
-              {message}
-            </p>
-          </form>
+            <RoomJoinControl
+              value={joinCode}
+              gamePath="/things/spelling-party"
+              tone="dark"
+              message={message}
+              onValueChange={(value) => {
+                setJoinCode(value);
+                setMessage(null);
+              }}
+              onJoin={handleCodeJoin}
+            />
+          </section>
         ) : null}
 
         {panel === "options" ? (
@@ -314,31 +290,29 @@ export function PartySetupApp({ decks }: { decks: PartyDeckSummary[] }) {
             <div className="mt-8 rounded-3xl border border-white/12 p-5">
               <label className="flex min-h-11 items-center justify-between gap-4 font-mono text-xs text-white/65">
                 <span>words</span>
-                <select
+                <AppSelect
                   value={Math.min(roundTotal, selectedWordCount)}
-                  onChange={(event) => setRoundTotal(Number(event.target.value))}
-                  className="min-h-11 rounded-full border border-white/15 bg-[var(--things-night)] px-4"
-                >
-                  {roundOptions.map((value) => (
-                    <option key={value} value={value}>
-                      {value === selectedWordCount ? `all ${value}` : value}
-                    </option>
-                  ))}
-                </select>
+                  onValueChange={(value) => setRoundTotal(Number(value))}
+                  ariaLabel="Words per round"
+                  tone="night"
+                  options={roundOptions.map((value) => ({
+                    value,
+                    label: value === selectedWordCount ? `all ${value}` : String(value),
+                  }))}
+                />
               </label>
               <label className="mt-3 flex min-h-11 items-center justify-between gap-4 font-mono text-xs text-white/65">
                 <span>typing time</span>
-                <select
+                <AppSelect
                   value={answerSeconds}
-                  onChange={(event) => setAnswerSeconds(Number(event.target.value))}
-                  className="min-h-11 rounded-full border border-white/15 bg-[var(--things-night)] px-4"
-                >
-                  {[10, 15, 20, 30, 45].map((value) => (
-                    <option key={value} value={value}>
-                      {value} seconds
-                    </option>
-                  ))}
-                </select>
+                  onValueChange={(value) => setAnswerSeconds(Number(value))}
+                  ariaLabel="Typing time"
+                  tone="night"
+                  options={[10, 15, 20, 30, 45].map((value) => ({
+                    value,
+                    label: `${value} seconds`,
+                  }))}
+                />
               </label>
             </div>
             <fieldset className="mt-8">

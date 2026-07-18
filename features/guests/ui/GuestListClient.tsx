@@ -1,5 +1,6 @@
 "use client";
 
+import { AppSelect } from "@/components/AppSelect";
 import { useEffect, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { SITE_NAME } from "@/lib/shared/config";
@@ -415,53 +416,47 @@ export function GuestListClient({ initialGuests }: GuestListClientProps) {
             </summary>
             <div className="mt-3 space-y-2">
               <div className="flex flex-wrap items-center gap-2">
-                <select
+                <AppSelect
                   value={voteCodeWords}
-                  onChange={(e) => setVoteCodeWords(Number(e.target.value) === 1 ? 1 : 2)}
-                  className="px-3 py-2 rounded-lg bg-white border border-stone-200 text-sm"
-                  aria-label="Vote code word count"
+                  onValueChange={(value) => setVoteCodeWords(Number(value) === 1 ? 1 : 2)}
+                  className="rounded-lg text-sm"
+                  ariaLabel="Vote code word count"
                   title="How many words a minted vote code has."
-                >
-                  <option value={2}>code 2 words</option>
-                  <option value={1}>code 1 word</option>
-                </select>
+                  options={[
+                    { value: 2, label: "code 2 words" },
+                    { value: 1, label: "code 1 word" },
+                  ]}
+                />
 
-                <select
+                <AppSelect
                   value={codeTtlMinutes}
-                  onChange={(e) => setCodeTtlMinutes(Number(e.target.value))}
-                  className="px-3 py-2 rounded-lg bg-white border border-stone-200 text-sm"
-                  aria-label="Vote code TTL"
+                  onValueChange={(value) => setCodeTtlMinutes(Number(value))}
+                  className="rounded-lg text-sm"
+                  ariaLabel="Vote code TTL"
                   title="How long minted codes remain valid."
-                >
-                  <option value={60}>ttl 1h</option>
-                  <option value={180}>ttl 3h</option>
-                  <option value={360}>ttl 6h</option>
-                  <option value={720}>ttl 12h</option>
-                </select>
+                  options={[
+                    { value: 60, label: "ttl 1h" },
+                    { value: 180, label: "ttl 3h" },
+                    { value: 360, label: "ttl 6h" },
+                    { value: 720, label: "ttl 12h" },
+                  ]}
+                />
 
-                <select
+                <AppSelect
                   value={sheetCount}
-                  onChange={(e) => setSheetCount(Number(e.target.value))}
-                  className="px-3 py-2 rounded-lg bg-white border border-stone-200 text-sm"
-                  aria-label="Vote sheet count"
-                >
-                  <option value={10}>sheet 10</option>
-                  <option value={20}>sheet 20</option>
-                  <option value={30}>sheet 30</option>
-                  <option value={50}>sheet 50</option>
-                </select>
+                  onValueChange={(value) => setSheetCount(Number(value))}
+                  className="rounded-lg text-sm"
+                  ariaLabel="Vote sheet count"
+                  options={[10, 20, 30, 50].map((value) => ({ value, label: `sheet ${value}` }))}
+                />
 
-                <select
+                <AppSelect
                   value={voteWindowMinutes}
-                  onChange={(e) => setVoteWindowMinutes(Number(e.target.value))}
-                  className="px-3 py-2 rounded-lg bg-white border border-stone-200 text-sm"
-                  aria-label="Voting window minutes"
-                >
-                  <option value={5}>window 5m</option>
-                  <option value={10}>window 10m</option>
-                  <option value={15}>window 15m</option>
-                  <option value={30}>window 30m</option>
-                </select>
+                  onValueChange={(value) => setVoteWindowMinutes(Number(value))}
+                  className="rounded-lg text-sm"
+                  ariaLabel="Voting window minutes"
+                  options={[5, 10, 15, 30].map((value) => ({ value, label: `window ${value}m` }))}
+                />
 
                 <button
                   type="button"

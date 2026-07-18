@@ -15,7 +15,13 @@ function voiceScore(voice: SpeechSynthesisVoice, locale: string) {
   const qualityHint = /premium|enhanced|natural/.test(name);
   const naturalVoiceName = /arthur|daniel|jamie|kate|martha|moira|samantha|serena|siri/.test(name);
   const lowQualityHint = /compact|espeak|novelty/.test(name);
-  return (exactLocale ? 100 : 0) + (qualityHint ? 40 : 0) + (naturalVoiceName ? 20 : 0) + (voice.default ? 10 : 0) - (lowQualityHint ? 50 : 0);
+  return (
+    (exactLocale ? 100 : 0) +
+    (qualityHint ? 40 : 0) +
+    (naturalVoiceName ? 20 : 0) +
+    (voice.default ? 10 : 0) -
+    (lowQualityHint ? 50 : 0)
+  );
 }
 
 export function speakWord(item: SpellingWord, options?: { slower?: boolean; locale?: string }) {
@@ -23,13 +29,21 @@ export function speakWord(item: SpellingWord, options?: { slower?: boolean; loca
     if (!("speechSynthesis" in window)) return resolve(false);
     const locale = options?.locale ?? "en-GB";
     const voices = getLocalVoices(locale);
-    const voice = voices.find(({ lang }) => lang.toLocaleLowerCase() === locale.toLocaleLowerCase()) ?? voices[0];
+    const voice =
+      voices.find(({ lang }) => lang.toLocaleLowerCase() === locale.toLocaleLowerCase()) ??
+      voices[0];
     if (!voice) return resolve(false);
     speechSynthesis.cancel();
-    const utterance = new SpeechSynthesisUtterance(item.speakAs ?? item.word);
+    const spokenWord = item.speakAs ?? item.word;
+    const utterance = new SpeechSynthesisUtterance(
+      options?.slower ? spokenWord.replace(/[-–—/]+/g, ", ") : spokenWord,
+    );
     utterance.voice = voice;
     utterance.lang = voice.lang;
-    utterance.rate = options?.slower ? 0.8 : 0.95;
+    // 0.8 is rendered almost identically to 0.95 by several Apple voices.
+    // A materially slower rate makes this control useful while punctuation in
+    // custom pronunciation hints produces a short, natural pause.
+    utterance.rate = options?.slower ? 0.52 : 0.95;
     utterance.pitch = 1;
     utterance.onend = () => resolve(true);
     utterance.onerror = () => resolve(false);

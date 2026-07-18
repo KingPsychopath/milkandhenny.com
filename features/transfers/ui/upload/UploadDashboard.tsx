@@ -1,5 +1,6 @@
 "use client";
 
+import { AppSelect } from "@/components/AppSelect";
 import { useState, useRef, useCallback, useEffect, useDeferredValue } from "react";
 import { Link } from "@tanstack/react-router";
 import { getStored, removeStored } from "@/lib/client/storage";
@@ -1088,7 +1089,8 @@ export function UploadDashboard({ isAdmin }: UploadDashboardProps) {
 
       {/* Mode toggle */}
       <div className="flex gap-6 mb-8">
-        <button type="button"
+        <button
+          type="button"
           onClick={() => switchMode("transfer")}
           className={`font-mono text-sm lowercase tracking-wide pb-1 border-b-2 transition-colors ${
             mode === "transfer"
@@ -1099,7 +1101,8 @@ export function UploadDashboard({ isAdmin }: UploadDashboardProps) {
           transfer
         </button>
         {isAdmin ? (
-          <button type="button"
+          <button
+            type="button"
             onClick={() => switchMode("words")}
             className={`font-mono text-sm lowercase tracking-wide pb-1 border-b-2 transition-colors ${
               mode === "words"
@@ -1203,22 +1206,13 @@ export function UploadDashboard({ isAdmin }: UploadDashboardProps) {
                 >
                   expires
                 </label>
-                <select
+                <AppSelect
                   id="transfer-expiry"
                   value={expiry}
-                  onChange={(e) => setExpiry(e.target.value)}
-                  className="w-full bg-[var(--background)] border-b border-[var(--stone-200)] focus:border-[var(--foreground)] outline-none font-mono text-sm py-2 transition-colors cursor-pointer"
-                >
-                  {EXPIRY_OPTIONS.map((opt) => (
-                    <option
-                      key={opt.value}
-                      value={opt.value}
-                      className="bg-[var(--background)] text-[var(--foreground)]"
-                    >
-                      {opt.label}
-                    </option>
-                  ))}
-                </select>
+                  onValueChange={setExpiry}
+                  className="w-full rounded-lg text-sm"
+                  options={EXPIRY_OPTIONS}
+                />
               </div>
               <p className="font-mono text-micro theme-faint">
                 uploads send original files directly; previews are generated after upload on the
@@ -1415,7 +1409,8 @@ export function UploadDashboard({ isAdmin }: UploadDashboardProps) {
               {mode === "transfer" && <span className="theme-faint"> (direct to R2)</span>}
               {mode === "words" && <span className="theme-faint"> (direct to R2)</span>}
             </span>
-            <button type="button"
+            <button
+              type="button"
               onClick={clearAll}
               className="font-mono text-xs theme-muted hover:text-[var(--foreground)] transition-colors"
             >
@@ -1434,7 +1429,8 @@ export function UploadDashboard({ isAdmin }: UploadDashboardProps) {
                 </div>
                 <div className="flex items-center gap-3 shrink-0">
                   <span className="font-mono text-xs theme-muted">{formatBytes(file.size)}</span>
-                  <button type="button"
+                  <button
+                    type="button"
                     onClick={() => removeFile(file)}
                     className="theme-muted hover:text-[var(--foreground)] transition-colors text-sm leading-none"
                     aria-label={`Remove ${file.name}`}
@@ -1447,7 +1443,8 @@ export function UploadDashboard({ isAdmin }: UploadDashboardProps) {
           </div>
 
           {/* Upload button */}
-          <button type="button"
+          <button
+            type="button"
             onClick={handleUpload}
             disabled={uploading || files.length === 0}
             className="mt-6 w-full bg-[var(--foreground)] text-[var(--background)] font-mono text-sm lowercase tracking-wide py-2.5 rounded-md hover:opacity-90 transition-opacity disabled:opacity-30"
@@ -1523,7 +1520,8 @@ export function UploadDashboard({ isAdmin }: UploadDashboardProps) {
                   >
                     {transferResult.shareUrl}
                   </a>
-                  <button type="button"
+                  <button
+                    type="button"
                     onClick={() => copyToClipboard(transferResult.shareUrl, "share")}
                     className="font-mono text-xs theme-muted hover:text-[var(--foreground)] transition-colors shrink-0"
                   >
@@ -1543,7 +1541,8 @@ export function UploadDashboard({ isAdmin }: UploadDashboardProps) {
                   >
                     {transferResult.adminUrl}
                   </a>
-                  <button type="button"
+                  <button
+                    type="button"
                     onClick={() => copyToClipboard(transferResult.adminUrl, "admin")}
                     className="font-mono text-xs theme-muted hover:text-[var(--foreground)] transition-colors shrink-0"
                   >
@@ -1581,7 +1580,8 @@ export function UploadDashboard({ isAdmin }: UploadDashboardProps) {
             </div>
           </div>
 
-          <button type="button"
+          <button
+            type="button"
             onClick={clearAll}
             className="mt-6 w-full border border-[var(--stone-200)] text-[var(--foreground)] font-mono text-sm lowercase tracking-wide py-2.5 rounded-md hover:border-[var(--stone-400)] transition-colors"
           >
@@ -1617,7 +1617,8 @@ export function UploadDashboard({ isAdmin }: UploadDashboardProps) {
                       <code className="font-mono text-xs theme-muted flex-1 truncate">
                         {file.markdown}
                       </code>
-                      <button type="button"
+                      <button
+                        type="button"
                         onClick={() => copyToClipboard(file.markdown, file.filename)}
                         className="font-mono text-xs theme-muted hover:text-[var(--foreground)] transition-colors shrink-0"
                       >
@@ -1633,7 +1634,8 @@ export function UploadDashboard({ isAdmin }: UploadDashboardProps) {
                   </div>
                 ))}
 
-                <button type="button"
+                <button
+                  type="button"
                   onClick={() =>
                     copyToClipboard(
                       wordsResult.uploaded.map((f) => f.markdown).join("\n"),
@@ -1657,7 +1659,8 @@ export function UploadDashboard({ isAdmin }: UploadDashboardProps) {
             )}
           </div>
 
-          <button type="button"
+          <button
+            type="button"
             onClick={clearAll}
             className="mt-6 w-full border border-[var(--stone-200)] text-[var(--foreground)] font-mono text-sm lowercase tracking-wide py-2.5 rounded-md hover:border-[var(--stone-400)] transition-colors"
           >

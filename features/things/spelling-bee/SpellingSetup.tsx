@@ -1,6 +1,7 @@
 import { Link } from "@tanstack/react-router";
 import { useState, type ReactNode } from "react";
 import type { SpellingDeck } from "../spelling/decks";
+import { AppSelect } from "@/components/AppSelect";
 import { spellingRoundOptions } from "../spelling/decks";
 import { SpellingDeckPicker } from "../spelling/SpellingDeckPicker";
 import {
@@ -81,7 +82,12 @@ export function SpellingSetup({
         <Link to="/things" className="inline-flex min-h-11 items-center">
           ← things
         </Link>
-        <button type="button" onClick={onToggleSound} aria-pressed={soundEnabled} className="min-h-11 rounded-full px-2">
+        <button
+          type="button"
+          onClick={onToggleSound}
+          aria-pressed={soundEnabled}
+          className="min-h-11 rounded-full px-2"
+        >
           sound {soundEnabled ? "on" : "off"}
         </button>
       </header>
@@ -163,37 +169,35 @@ export function SpellingSetup({
               className="mt-5 flex items-center justify-between gap-4 font-mono text-xs text-white/65"
             >
               <span>words</span>
-              <select
+              <AppSelect
                 id="round-words"
                 value={Math.min(roundTotal, wordCount)}
-                onChange={(event) => onRoundTotalChange(Number(event.target.value))}
-                className="min-h-11 rounded-full border border-white/15 bg-[var(--things-night)] px-4 text-white"
-              >
-                {spellingRoundOptions(wordCount).map((value) => (
-                  <option key={value} value={value}>
-                    {value === wordCount ? `all ${value}` : value}
-                  </option>
-                ))}
-              </select>
+                onValueChange={(value) => onRoundTotalChange(Number(value))}
+                tone="night"
+                options={spellingRoundOptions(wordCount).map((value) => ({
+                  value,
+                  label: value === wordCount ? `all ${value}` : String(value),
+                }))}
+              />
             </label>
             <label
               htmlFor="word-timer"
               className="mt-3 flex items-center justify-between gap-4 font-mono text-xs text-white/65"
             >
               <span>time per word</span>
-              <select
+              <AppSelect
                 id="word-timer"
                 value={timerSeconds}
-                onChange={(event) => onTimerChange(Number(event.target.value))}
-                className="min-h-11 rounded-full border border-white/15 bg-[var(--things-night)] px-4 text-white"
-              >
-                <option value={0}>off</option>
-                {[10, 15, 20, 30, 45, 60].map((value) => (
-                  <option key={value} value={value}>
-                    {value} seconds
-                  </option>
-                ))}
-              </select>
+                onValueChange={(value) => onTimerChange(Number(value))}
+                tone="night"
+                options={[
+                  { value: 0, label: "off" },
+                  ...[10, 15, 20, 30, 45, 60].map((value) => ({
+                    value,
+                    label: `${value} seconds`,
+                  })),
+                ]}
+              />
             </label>
             <label className="mt-3 flex min-h-11 cursor-pointer items-center justify-between gap-4 font-mono text-xs text-white/65">
               <span>read words aloud</span>

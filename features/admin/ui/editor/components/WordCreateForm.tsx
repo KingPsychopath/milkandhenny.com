@@ -1,5 +1,6 @@
 "use client";
 
+import { AppSelect } from "@/components/AppSelect";
 import { WORD_TYPES, getWordTypeLabel } from "@/features/words/types";
 import type { NoteVisibility, WordType } from "../types";
 
@@ -93,28 +94,24 @@ export function WordCreateForm({
           className="bg-transparent border-b theme-border outline-none font-mono text-sm py-2"
         />
         <div className="grid grid-cols-1 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] gap-2">
-          <select
-            aria-label="Post type"
+          <AppSelect
+            ariaLabel="Post type"
             value={createType}
-            onChange={(event) => onCreateTypeChange(event.target.value as WordType)}
-            className="bg-transparent border theme-border rounded px-2 py-2 font-mono text-xs"
-          >
-            {WORD_TYPES.map((type) => (
-              <option key={type} value={type}>
-                {getWordTypeLabel(type)}
-              </option>
-            ))}
-          </select>
-          <select
-            aria-label="Post visibility"
+            onValueChange={(value) => onCreateTypeChange(value as WordType)}
+            className="rounded-lg"
+            options={WORD_TYPES.map((type) => ({ value: type, label: getWordTypeLabel(type) }))}
+          />
+          <AppSelect
+            ariaLabel="Post visibility"
             value={createVisibility}
-            onChange={(event) => onCreateVisibilityChange(event.target.value as NoteVisibility)}
-            className="bg-transparent border theme-border rounded px-2 py-2 font-mono text-xs"
-          >
-            <option value="private">private</option>
-            <option value="unlisted">unlisted</option>
-            <option value="public">public</option>
-          </select>
+            onValueChange={(value) => onCreateVisibilityChange(value as NoteVisibility)}
+            className="rounded-lg"
+            options={[
+              { value: "private", label: "private" },
+              { value: "unlisted", label: "unlisted" },
+              { value: "public", label: "public" },
+            ]}
+          />
           <button
             type="button"
             onClick={onToggleCreateFeatured}

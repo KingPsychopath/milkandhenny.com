@@ -1,3 +1,4 @@
+import { AppSelect } from "@/components/AppSelect";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { useWebHaptics } from "web-haptics/react";
@@ -150,31 +151,25 @@ export function DrawCountryApp() {
               </label>
               <label className="font-mono text-xs text-black/55">
                 <span className="block pb-2">rounds</span>
-                <select
+                <AppSelect
                   value={roundTotal}
-                  onChange={(event) => setRoundTotal(Number(event.target.value))}
-                  className="min-h-12 w-full rounded-full border border-black/15 bg-white/55 px-4 text-black"
-                >
-                  {[3, 5, 7, 10].map((value) => (
-                    <option key={value} value={value}>
-                      {value}
-                    </option>
-                  ))}
-                </select>
+                  onValueChange={(value) => setRoundTotal(Number(value))}
+                  ariaLabel="Rounds"
+                  tone="cream"
+                  className="min-h-12 w-full"
+                  options={[3, 5, 7, 10].map((value) => ({ value, label: String(value) }))}
+                />
               </label>
               <label className="font-mono text-xs text-black/55">
                 <span className="block pb-2">draw time</span>
-                <select
+                <AppSelect
                   value={drawSeconds}
-                  onChange={(event) => setDrawSeconds(Number(event.target.value))}
-                  className="min-h-12 w-full rounded-full border border-black/15 bg-white/55 px-4 text-black"
-                >
-                  {[20, 30, 45, 60].map((value) => (
-                    <option key={value} value={value}>
-                      {value} seconds
-                    </option>
-                  ))}
-                </select>
+                  onValueChange={(value) => setDrawSeconds(Number(value))}
+                  ariaLabel="Draw time"
+                  tone="cream"
+                  className="min-h-12 w-full"
+                  options={[20, 30, 45, 60].map((value) => ({ value, label: `${value} seconds` }))}
+                />
               </label>
               <button
                 type="submit"

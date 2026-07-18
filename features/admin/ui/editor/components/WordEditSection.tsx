@@ -1,5 +1,6 @@
 "use client";
 
+import { AppSelect } from "@/components/AppSelect";
 import { Link } from "@tanstack/react-router";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -333,30 +334,26 @@ export function WordEditSection({
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] gap-2">
-        <select
-          aria-label="Post type"
+        <AppSelect
+          ariaLabel="Post type"
           value={editType}
-          onChange={(event) => onEditTypeChange(event.target.value as WordType)}
+          onValueChange={(value) => onEditTypeChange(value as WordType)}
           onBlur={onFieldBlur}
-          className="bg-transparent border theme-border rounded px-2 py-2 font-mono text-xs"
-        >
-          {WORD_TYPES.map((type) => (
-            <option key={type} value={type}>
-              {getWordTypeLabel(type)}
-            </option>
-          ))}
-        </select>
-        <select
-          aria-label="Post visibility"
+          className="rounded-lg"
+          options={WORD_TYPES.map((type) => ({ value: type, label: getWordTypeLabel(type) }))}
+        />
+        <AppSelect
+          ariaLabel="Post visibility"
           value={editVisibility}
-          onChange={(event) => onEditVisibilityChange(event.target.value as NoteVisibility)}
+          onValueChange={(value) => onEditVisibilityChange(value as NoteVisibility)}
           onBlur={onFieldBlur}
-          className="bg-transparent border theme-border rounded px-2 py-2 font-mono text-xs"
-        >
-          <option value="private">private</option>
-          <option value="unlisted">unlisted</option>
-          <option value="public">public</option>
-        </select>
+          className="rounded-lg"
+          options={[
+            { value: "private", label: "private" },
+            { value: "unlisted", label: "unlisted" },
+            { value: "public", label: "public" },
+          ]}
+        />
         <button
           type="button"
           onClick={onToggleEditFeatured}

@@ -1,5 +1,6 @@
 "use client";
 
+import { AppSelect } from "@/components/AppSelect";
 import { WORD_TYPE_TABS, getWordTypeLabel } from "@/features/words/types";
 import type { NoteVisibility, WordType } from "../types";
 
@@ -38,32 +39,31 @@ export function EditorFiltersPanel({
           placeholder="search title, slug, tags"
           className="bg-transparent border-b theme-border outline-none font-mono text-sm py-2"
         />
-        <select
-          aria-label="Filter by type"
+        <AppSelect
+          ariaLabel="Filter by type"
           value={filterType}
-          onChange={(event) => onFilterTypeChange(event.target.value as WordType | "all")}
-          className="bg-transparent border theme-border rounded px-2 py-2 font-mono text-xs"
-        >
-          <option value="all">all types</option>
-          {WORD_TYPE_TABS.filter((type): type is WordType => type !== "all").map((type) => (
-            <option key={type} value={type}>
-              {getWordTypeLabel(type)}
-            </option>
-          ))}
-        </select>
-        <select
-          aria-label="Filter by visibility"
+          onValueChange={(value) => onFilterTypeChange(value as WordType | "all")}
+          className="rounded-lg"
+          options={[
+            { value: "all", label: "all types" },
+            ...WORD_TYPE_TABS.filter((type): type is WordType => type !== "all").map((type) => ({
+              value: type,
+              label: getWordTypeLabel(type),
+            })),
+          ]}
+        />
+        <AppSelect
+          ariaLabel="Filter by visibility"
           value={filterVisibility}
-          onChange={(event) =>
-            onFilterVisibilityChange(event.target.value as NoteVisibility | "all")
-          }
-          className="bg-transparent border theme-border rounded px-2 py-2 font-mono text-xs"
-        >
-          <option value="all">all visibility</option>
-          <option value="public">public</option>
-          <option value="unlisted">unlisted</option>
-          <option value="private">private</option>
-        </select>
+          onValueChange={(value) => onFilterVisibilityChange(value as NoteVisibility | "all")}
+          className="rounded-lg"
+          options={[
+            { value: "all", label: "all visibility" },
+            { value: "public", label: "public" },
+            { value: "unlisted", label: "unlisted" },
+            { value: "private", label: "private" },
+          ]}
+        />
         <input
           value={filterTag}
           onChange={(event) => onFilterTagChange(event.target.value)}

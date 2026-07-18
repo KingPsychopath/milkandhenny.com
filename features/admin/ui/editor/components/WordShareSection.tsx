@@ -1,5 +1,6 @@
 "use client";
 
+import { AppSelect } from "@/components/AppSelect";
 import type { ShareLink, ShareStateFilter } from "../types";
 
 function isExpiredShare(link: ShareLink): boolean {
@@ -45,18 +46,13 @@ export function WordShareSection({
           <label className="font-mono text-micro theme-muted" htmlFor="share-expiry-days">
             expires
           </label>
-          <select
+          <AppSelect
             id="share-expiry-days"
             value={newShareExpiryDays}
-            onChange={(event) => onNewShareExpiryDaysChange(Number(event.target.value))}
-            className="font-mono text-xs bg-transparent border theme-border rounded px-2 py-1"
-          >
-            {shareExpiryOptions.map((days) => (
-              <option key={days} value={days}>
-                {days}d
-              </option>
-            ))}
-          </select>
+            onValueChange={(value) => onNewShareExpiryDaysChange(Number(value))}
+            className="min-h-11 rounded-lg px-3"
+            options={shareExpiryOptions.map((days) => ({ value: days, label: `${days}d` }))}
+          />
           <button type="button" onClick={onCreateShare} className="font-mono text-xs underline">
             create share link
           </button>
