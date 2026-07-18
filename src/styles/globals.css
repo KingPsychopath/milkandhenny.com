@@ -392,8 +392,7 @@
 
   .country-reveal-reference,
   .country-reveal-drawing,
-  .country-reveal-error,
-  .country-reveal-connector {
+  .country-reveal-guide {
     stroke-dasharray: 1;
     stroke-dashoffset: 1;
     animation: country-outline-trace 680ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
@@ -407,44 +406,28 @@
     stroke: var(--things-country-point);
   }
 
-  .country-reveal-error {
+  .country-reveal-guide {
     animation-name: country-guide-trace;
     animation-duration: 460ms;
-    animation-delay: 760ms;
   }
 
-  .country-reveal-error--outside {
+  .country-reveal-guide--outside {
     stroke: var(--things-country-outside);
   }
 
-  .country-reveal-error--inside {
+  .country-reveal-guide--inside {
     stroke: var(--things-country-inside);
   }
 
-  .country-reveal-connector {
-    opacity: 0.42;
-    animation-name: country-guide-trace;
-    animation-duration: 420ms;
-  }
-
-  .country-reveal-connector--outside {
-    stroke: var(--things-country-outside);
-  }
-
-  .country-reveal-connector--inside {
-    stroke: var(--things-country-inside);
-  }
-
-  .country-reveal-connector-origin--outside {
-    fill: var(--things-country-outside);
-  }
-
-  .country-reveal-connector-origin--inside {
-    fill: var(--things-country-inside);
+  .country-reveal-point {
+    fill: var(--things-country-point);
+    opacity: 0;
+    transform-box: fill-box;
+    transform-origin: center;
+    animation: country-point-in 320ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
   }
 
   .country-legend-reference,
-  .country-legend-drawing,
   .country-legend-outside,
   .country-legend-inside {
     display: inline-block;
@@ -456,10 +439,6 @@
     border-color: var(--things-country-reference);
   }
 
-  .country-legend-drawing {
-    border-color: var(--things-country-point);
-  }
-
   .country-legend-outside {
     border-color: var(--things-country-outside);
   }
@@ -468,19 +447,25 @@
     border-color: var(--things-country-inside);
   }
 
+  .country-legend-point {
+    width: 0.45rem;
+    height: 0.45rem;
+    border-radius: 999px;
+    background: var(--things-country-point);
+  }
+
   @media (prefers-reduced-motion: reduce) {
     .country-reveal-reference,
     .country-reveal-drawing,
-    .country-reveal-error,
-    .country-reveal-connector {
+    .country-reveal-guide,
+    .country-reveal-point {
       animation: none;
       opacity: 1;
       stroke-dashoffset: 0;
       transform: none;
     }
 
-    .country-reveal-error,
-    .country-reveal-connector {
+    .country-reveal-guide {
       opacity: 0.72;
     }
   }
