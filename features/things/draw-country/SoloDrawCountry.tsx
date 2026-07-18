@@ -5,6 +5,7 @@ import { useWebHaptics } from "web-haptics/react";
 import { useUpdateReloadSafety } from "@/features/offline/update-safety.client";
 import { CountryReveal, CountryRevealLegend } from "./CountryReveal";
 import { CountryRoundBoard } from "./CountryRoundBoard";
+import { resultReaction } from "./result-copy";
 import { nextSoloCountry, rememberCountry } from "./rotation.client";
 import { scoreCountryDrawing } from "./scoring";
 import type { CountryDrawing, CountryOutline } from "./types";
@@ -85,7 +86,7 @@ export function SoloDrawCountry({ onExit }: { onExit: () => void }) {
         <div className="flex items-end justify-between gap-5">
           <div>
             <p className="font-mono text-micro uppercase tracking-[0.18em] text-black/45">
-              {evaluation.accuracy}
+              {resultReaction(evaluation.score, country.id)}
             </p>
             <h1 className="mt-2 font-serif text-4xl font-semibold sm:text-5xl">{country.name}</h1>
           </div>

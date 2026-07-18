@@ -59,16 +59,49 @@ function pointInReference(point: DrawPoint, reference: CountryDrawing) {
   return reference.some((ring) => pointInRing(point, ring));
 }
 
+function ringLength(ring: DrawPoint[]) {
+  return ring.reduce((total, point, index) => {
+    const next = ring[(index + 1) % ring.length];
+    return total + Math.hypot(point.x - next.x, point.y - next.y);
+  }, 0);
+}
+
+function guidePoints(drawing: CountryDrawing) {
+  const rings = drawing.filter((ring) => ring.length);
+  const pointCount = rings.reduce((total, ring) => total + ring.length, 0);
+  const budget = Math.min(MAX_GUIDES, pointCount);
+  if (!budget) return [];
+
+  const lengths = rings.map(ringLength);
+  const totalLength = lengths.reduce((total, length) => total + length, 0);
+  const minimum = budget >= rings.length ? 1 : 0;
+  const remaining = budget - minimum * rings.length;
+  const allocations = lengths.map((length, index) => {
+    const exact = totalLength ? (length / totalLength) * remaining : 0;
+    return { index, count: minimum + Math.floor(exact), remainder: exact % 1 };
+  });
+  let assigned = allocations.reduce((total, allocation) => total + allocation.count, 0);
+  for (const allocation of allocations.toSorted((a, b) => b.remainder - a.remainder)) {
+    if (assigned >= budget) break;
+    allocations[allocation.index].count += 1;
+    assigned += 1;
+  }
+
+  return rings.flatMap((ring, index) => {
+    const count = allocations[index].count;
+    return Array.from(
+      { length: count },
+      (_, pointIndex) => ring[Math.floor((pointIndex / count) * ring.length)],
+    );
+  });
+}
+
 function guideLines(drawing: CountryDrawing, reference: CountryDrawing) {
-  const points = drawing.flat();
-  const stride = Math.max(1, Math.ceil(points.length / MAX_GUIDES));
-  return points
-    .filter((_, index) => index % stride === 0)
-    .map((point) => ({
-      point,
-      target: closestOnBorder(point, reference),
-      position: pointInReference(point, reference) ? "inside" : "outside",
-    }));
+  return guidePoints(drawing).map((point) => ({
+    point,
+    target: closestOnBorder(point, reference),
+    position: pointInReference(point, reference) ? "inside" : "outside",
+  }));
 }
 
 export function CountryReveal({ evaluation }: { evaluation: CountryEvaluation }) {
@@ -135,29 +168,26 @@ export function CountryReveal({ evaluation }: { evaluation: CountryEvaluation })
 
 export function CountryRevealLegend() {
   return (
-    <div className="mt-4 font-mono text-micro text-black/50">
-      <ul className="flex flex-wrap gap-x-5 gap-y-3" aria-label="Comparison key">
-        <li className="flex items-center gap-2">
-          <span className="country-legend-reference" aria-hidden="true" />
-          reference
-        </li>
-        <li className="flex items-center gap-2">
-          <span className="country-legend-point" aria-hidden="true" />
-          your points
-        </li>
-        <li className="flex items-center gap-2">
-          <span className="country-legend-outside" aria-hidden="true" />
-          outside
-        </li>
-        <li className="flex items-center gap-2">
-          <span className="country-legend-inside" aria-hidden="true" />
-          inside
-        </li>
-      </ul>
-      <p className="mt-3 max-w-2xl leading-relaxed text-black/45">
-        Reference is the real border. Red reaches back from points outside it; blue from points
-        inside it. Position and size are aligned before comparison.
-      </p>
-    </div>
+    <ul
+      className="mt-4 flex flex-wrap gap-x-5 gap-y-3 font-mono text-micro text-black/50"
+      aria-label="Comparison key"
+    >
+      <li className="flex items-center gap-2">
+        <span className="country-legend-reference" aria-hidden="true" />
+        reference
+      </li>
+      <li className="flex items-center gap-2">
+        <span className="country-legend-point" aria-hidden="true" />
+        your points
+      </li>
+      <li className="flex items-center gap-2">
+        <span className="country-legend-outside" aria-hidden="true" />
+        outside
+      </li>
+      <li className="flex items-center gap-2">
+        <span className="country-legend-inside" aria-hidden="true" />
+        inside
+      </li>
+    </ul>
   );
 }

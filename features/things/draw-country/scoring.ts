@@ -152,14 +152,10 @@ export function scoreCountryDrawing(
   const outward = averageNearest(drawing.points, reference.points);
   const inward = averageNearest(reference.points, drawing.points);
   const deviation = outward * 0.45 + inward * 0.55;
-  const islandPenalty = Math.max(
-    0.82,
-    1 - Math.abs(drawing.rings.length - reference.rings.length) * 0.018,
-  );
   const score =
     deviation < 0.002
       ? 100
-      : Math.max(0, Math.min(100, Math.round(100 * Math.exp(-7.4 * deviation) * islandPenalty)));
+      : Math.max(0, Math.min(100, Math.round(100 * Math.exp(-7.4 * deviation))));
   return {
     score,
     deviation: Math.round(deviation * 1_000) / 10,

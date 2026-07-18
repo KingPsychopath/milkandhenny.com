@@ -7,6 +7,7 @@ import { CountryReveal, CountryRevealLegend } from "./CountryReveal";
 import { countryById } from "./countries";
 import { buildDrawCountryPlayerInviteUrl } from "./draw-country-invite";
 import { drawCountryBrowserKeys } from "./draw-country-keys";
+import { resultReaction } from "./result-copy";
 import { scoreCountryDrawing } from "./scoring";
 import type { CountryDrawing, DrawCountrySnapshot } from "./types";
 
@@ -153,7 +154,10 @@ export function RoomReveal({
         <div className="flex items-end justify-between gap-4">
           <div>
             <p className="font-mono text-micro uppercase tracking-[0.16em] text-black/40">
-              round {snapshot.round?.number} · {evaluation?.accuracy ?? "result"}
+              round {snapshot.round?.number} ·{" "}
+              {evaluation
+                ? resultReaction(evaluation.score, snapshot.round?.countryId ?? "")
+                : "result"}
             </p>
             <h1 className="mt-2 font-serif text-4xl font-semibold sm:text-5xl">
               {snapshot.round?.countryName}
