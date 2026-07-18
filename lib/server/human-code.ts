@@ -465,32 +465,24 @@ const WORDS_ALL: readonly string[] = [...DESCRIPTORS, ...NOUNS_A, ...NOUNS_B];
 
 /**
  * Pick a cryptographically random element from a readonly array.
- * Uses `crypto.getRandomValues` for uniform distribution without modulo bias.
+ * Uses Node's rejection-sampled `randomInt` for a uniform selection.
  */
 function pick<T>(list: readonly T[]): T {
-  const arr = new Uint32Array(1);
-  crypto.getRandomValues(arr);
-  return list[arr[0] % list.length];
+  return list[randomInt(list.length)];
 }
 
-type WordCodeLength = 1 | 2 | 3;
+export type HumanCodeLength = 1 | 2 | 3;
 
 /**
  * Generate a short human-readable hyphenated code.
  *
  * - 1 word: "amber"
  * - 2 words: "amber-crown"
- * - 3 words: "velvet-moon-candle" (default transfer style)
+ * - 3 words: "velvet-moon-candle"
  */
-function generateWordsCode(words: WordCodeLength): string {
+export function generateHumanCode(words: HumanCodeLength): string {
   if (words === 1) return `${pick(WORDS_ALL)}`;
   if (words === 2) return `${pick(DESCRIPTORS)}-${pick(NOUNS_ALL)}`;
   return `${pick(DESCRIPTORS)}-${pick(NOUNS_A)}-${pick(NOUNS_B)}`;
 }
-
-/** Generate a 3-word hyphenated transfer ID, e.g. "velvet-moon-candle" */
-function generateWordId(): string {
-  return generateWordsCode(3);
-}
-
-export { generateWordId, generateWordsCode };
+import { randomInt } from "node:crypto";
