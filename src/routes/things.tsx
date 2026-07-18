@@ -40,7 +40,7 @@ function ThingsRoute() {
           things<span className="theme-faint">+</span>
         </h1>
         <p className="mt-5 max-w-lg font-serif text-lg leading-relaxed theme-muted">
-          Small tools, games, and experiments. Made to be opened, used, and passed around.
+          Things are made to be used. Small tools, games and experiments.
         </p>
       </header>
 
