@@ -3,7 +3,7 @@ interface ExpiringValue<T> {
   value: T;
 }
 
-const GAME_PREFIXES = ["things:remote:", "things:spelling-party:"];
+const GAME_PREFIXES = ["things:remote:", "things:spelling-party:", "things:draw-country:"];
 
 export function readExpiringLocalValue<T>(key: string): T | null {
   try {

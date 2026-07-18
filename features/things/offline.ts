@@ -38,6 +38,13 @@ export const THING_OFFLINE = {
     storageVersion: 1,
     requiredAssets: [...SHARED_OFFLINE_ASSETS, "/manifest.json"],
   },
+  "draw-country": {
+    entryPath: "/things/draw-country",
+    manifestPath: "/manifest.json",
+    catalogueVersion: 1,
+    storageVersion: 1,
+    requiredAssets: [...SHARED_OFFLINE_ASSETS, "/manifest.json"],
+  },
 } as const;
 
 export type OfflineThingSlug = keyof typeof THING_OFFLINE;

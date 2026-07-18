@@ -44,6 +44,12 @@ export const Route = createFileRoute("/sitemap.xml")({
           { url: `${BASE_URL}/pics`, lastModified: now, changeFrequency: "weekly", priority: 0.9 },
           { url: `${BASE_URL}/words`, lastModified: now, changeFrequency: "weekly", priority: 0.9 },
           {
+            url: `${BASE_URL}/things/draw-country`,
+            lastModified: new Date("2026-07-18"),
+            changeFrequency: "monthly",
+            priority: 0.7,
+          },
+          {
             url: `${BASE_URL}/party`,
             lastModified: new Date("2026-01-16"),
             changeFrequency: "yearly",

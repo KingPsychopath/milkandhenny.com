@@ -22,7 +22,9 @@ interface BackplaneEnvelope {
 type BackplaneListener = (channel: string, message: string) => void;
 
 function validChannel(value: string) {
-  const match = /^things:(remote:v3|spelling-party:v2):room:([^:]+):events$/.exec(value);
+  const match = /^things:(remote:v3|spelling-party:v2|draw-country:v1):room:([^:]+):events$/.exec(
+    value,
+  );
   return Boolean(match?.[2] && MULTIPLAYER_ROOM_ID_PATTERN.test(match[2]));
 }
 
