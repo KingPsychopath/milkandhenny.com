@@ -6,7 +6,7 @@ const DRAWING_SAMPLES = 320;
 const ALIGNMENT_TRIM = 0.025;
 const MINIMUM_DRAWING_EXTENT = 8;
 const MAX_POINT_DEVIATION = 0.5;
-const SILHOUETTE_GRID_SIZE = 28;
+const SILHOUETTE_GRID_SIZE = 48;
 const SILHOUETTE_COMPACTNESS_BASELINE = 0.5;
 const MINIMUM_SILHOUETTE_SENSITIVITY = 0.3;
 const PERIMETER_ALLOWANCE = 1.25;
@@ -16,6 +16,12 @@ const COVERAGE_WEIGHT = 0.3;
 const BORDER_COVERAGE_GUARD_MULTIPLIER = 1.1;
 const SILHOUETTE_GUARD_THRESHOLD = 0.3;
 const SILHOUETTE_GUARD_EXCESS_WEIGHT = 1;
+const MINIMUM_MISMATCH_EXCESS_WEIGHT = 0.25;
+const MISMATCH_COMPACTNESS_DISCOUNT = 2 / 3;
+const ENCLOSURE_INSIDE_TOLERANCE = 0.005;
+const ENCLOSURE_OUTSIDE_THRESHOLD = 0.05;
+const ENCLOSURE_SILHOUETTE_THRESHOLD = 0.2;
+const ENCLOSURE_MINIMUM_DEVIATION = 0.18;
 const SILHOUETTE_WEIGHT = 0.25;
 const STROKE_QUALITY_WEIGHT = 0.1;
 const ISLAND_BALANCE_WEIGHT = 0.05;
@@ -375,6 +381,7 @@ export function scoreCountryDrawing(
     return {
       score: 0,
       deviation: 100,
+      mismatchDeviation: 0,
       borderDeviation: 100,
       outsideDeviation: 0,
       insideDeviation: 0,
@@ -389,12 +396,11 @@ export function scoreCountryDrawing(
 
   const fit = borderFit(drawing.points, reference.rings);
   const coverage = averageDistanceToBorder(reference.points, drawing.rings);
-  const silhouette =
-    silhouetteDeviation(reference.rings, drawing.rings) *
-    silhouetteSensitivity(reference.rings);
+  const sensitivity = silhouetteSensitivity(reference.rings);
+  const silhouette = silhouetteDeviation(reference.rings, drawing.rings) * sensitivity;
   const strokeQuality = strokeQualityDeviation(drawing.rings, reference.rings);
   const islandBalance = islandBalanceDeviation(reference.rings, drawing.rings);
-  const deviation =
+  const weightedDeviation =
     fit.border * BORDER_FIT_WEIGHT +
     coverage * COVERAGE_WEIGHT +
     silhouette * SILHOUETTE_WEIGHT +
@@ -402,16 +408,28 @@ export function scoreCountryDrawing(
     islandBalance * ISLAND_BALANCE_WEIGHT;
   const mismatchGuardDeviation =
     (fit.border + coverage) * BORDER_COVERAGE_GUARD_MULTIPLIER +
-    Math.max(0, silhouette - SILHOUETTE_GUARD_THRESHOLD) *
-      SILHOUETTE_GUARD_EXCESS_WEIGHT;
-  const score = Math.min(
-    scoreFromDeviation(deviation),
-    scoreFromDeviation(mismatchGuardDeviation),
-    strokeQualityScore(strokeQuality),
+    Math.max(0, silhouette - SILHOUETTE_GUARD_THRESHOLD) * SILHOUETTE_GUARD_EXCESS_WEIGHT;
+  const mismatchExcessWeight = Math.max(
+    MINIMUM_MISMATCH_EXCESS_WEIGHT,
+    1 - sensitivity * MISMATCH_COMPACTNESS_DISCOUNT,
   );
+  const mismatchAdjustedDeviation =
+    weightedDeviation +
+    Math.max(0, mismatchGuardDeviation - weightedDeviation) * mismatchExcessWeight;
+  const enclosesReference =
+    fit.inside <= ENCLOSURE_INSIDE_TOLERANCE &&
+    fit.outside >= ENCLOSURE_OUTSIDE_THRESHOLD &&
+    silhouette >= ENCLOSURE_SILHOUETTE_THRESHOLD;
+  const deviation = Math.max(
+    mismatchAdjustedDeviation,
+    enclosesReference ? ENCLOSURE_MINIMUM_DEVIATION : 0,
+  );
+  const mismatchDeviation = deviation - weightedDeviation;
+  const score = Math.min(scoreFromDeviation(deviation), strokeQualityScore(strokeQuality));
   return {
     score,
     deviation: percentage(deviation),
+    mismatchDeviation: percentage(mismatchDeviation),
     borderDeviation: percentage(fit.border),
     outsideDeviation: percentage(fit.outside * BORDER_FIT_WEIGHT),
     insideDeviation: percentage(fit.inside * BORDER_FIT_WEIGHT),

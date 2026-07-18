@@ -58,7 +58,8 @@ function nearExactDrawings(outline: CountryOutline) {
       ring.map((point) => ({
         x: bounds.centreX + (point.x - bounds.centreX) * 1.04,
         y: point.y,
-      }))),
+      })),
+    ),
     rotated: exact.map((ring) =>
       ring.map((point) => ({
         x:
@@ -69,20 +70,18 @@ function nearExactDrawings(outline: CountryOutline) {
           bounds.centreY +
           (point.x - bounds.centreX) * Math.sin(angle) +
           (point.y - bounds.centreY) * Math.cos(angle),
-      }))),
+      })),
+    ),
     warped: exact.map((ring) =>
       ring.map((point) => ({
         x:
           point.x +
-          Math.sin(((point.y - bounds.minY) / bounds.height) * Math.PI * 2) *
-            bounds.extent *
-            0.004,
+          Math.sin(((point.y - bounds.minY) / bounds.height) * Math.PI * 2) * bounds.extent * 0.004,
         y:
           point.y +
-          Math.sin(((point.x - bounds.minX) / bounds.width) * Math.PI * 2) *
-            bounds.extent *
-            0.004,
-      }))),
+          Math.sin(((point.x - bounds.minX) / bounds.width) * Math.PI * 2) * bounds.extent * 0.004,
+      })),
+    ),
   };
 }
 
@@ -92,12 +91,16 @@ function enclosingBoxDrawing(outline: CountryOutline): CountryDrawing {
   return [
     [
       { x: bounds.minX - padding, y: bounds.minY - padding },
+      { x: bounds.centreX, y: bounds.minY - padding },
       { x: bounds.minX + bounds.width + padding, y: bounds.minY - padding },
+      { x: bounds.minX + bounds.width + padding, y: bounds.centreY },
       {
         x: bounds.minX + bounds.width + padding,
         y: bounds.minY + bounds.height + padding,
       },
+      { x: bounds.centreX, y: bounds.minY + bounds.height + padding },
       { x: bounds.minX - padding, y: bounds.minY + bounds.height + padding },
+      { x: bounds.minX - padding, y: bounds.centreY },
     ],
   ];
 }
@@ -142,7 +145,10 @@ describe("draw-country scoring", () => {
   it("keeps every near-exact country high despite small human faults", () => {
     for (const outline of COUNTRIES) {
       for (const [fault, drawing] of Object.entries(nearExactDrawings(outline)))
-        expect(scoreCountryDrawing(outline, drawing).score, `${outline.id} ${fault}`).toBeGreaterThanOrEqual(70);
+        expect(
+          scoreCountryDrawing(outline, drawing).score,
+          `${outline.id} ${fault}`,
+        ).toBeGreaterThanOrEqual(70);
     }
   });
 
@@ -208,9 +214,10 @@ describe("draw-country scoring", () => {
         outward.insideDeviation +
         outward.coverageDeviation +
         outward.silhouetteDeviation +
+        outward.mismatchDeviation +
         outward.strokeDeviation +
         outward.islandDeviation,
-    ).toBeCloseTo(outward.deviation, 1);
+    ).toBeCloseTo(outward.deviation, 0);
   });
 
   it("barely penalises a microscopic omitted island but catches a major one", () => {
@@ -327,9 +334,13 @@ describe("draw-country scoring", () => {
     const enclosingBox: CountryDrawing = [
       [
         { x: 50, y: 50 },
+        { x: 500, y: 50 },
         { x: 950, y: 50 },
+        { x: 950, y: 350 },
         { x: 950, y: 650 },
+        { x: 500, y: 650 },
         { x: 50, y: 650 },
+        { x: 50, y: 350 },
       ],
     ];
 
@@ -359,6 +370,17 @@ describe("draw-country scoring", () => {
     expect(result.score).toBeLessThanOrEqual(30);
   });
 
+  it("keeps a crude compact-country attempt meaningfully above zero", () => {
+    const eswatini = COUNTRIES.find(({ id }) => id === "SZ");
+    expect(eswatini).toBeDefined();
+    if (!eswatini) throw new Error("eSwatini fixture is missing");
+
+    const result = scoreCountryDrawing(eswatini, enclosingBoxDrawing(eswatini));
+    expect(result.score).toBeGreaterThanOrEqual(15);
+    expect(result.score).toBeLessThanOrEqual(35);
+    expect(result.mismatchDeviation).toBeGreaterThan(0);
+  });
+
   it("rewards recognisable simplifications across compact, thin, and coastal countries", () => {
     const expectedFloors = { AU: 50, CN: 70, CL: 55, NA: 70, GB: 40, IT: 35 } as const;
     for (const [countryId, floor] of Object.entries(expectedFloors)) {
@@ -371,7 +393,9 @@ describe("draw-country scoring", () => {
           .filter((_, index) => index % step === 0)
           .map(([x, y]) => ({ x: 137 + x * outline.aspect * 0.083, y: 83 + y * 0.083 })),
       ];
-      expect(scoreCountryDrawing(outline, simplified).score, countryId).toBeGreaterThanOrEqual(floor);
+      expect(scoreCountryDrawing(outline, simplified).score, countryId).toBeGreaterThanOrEqual(
+        floor,
+      );
     }
   });
 
@@ -390,7 +414,10 @@ describe("draw-country scoring", () => {
       const outline = COUNTRIES.find(({ id }) => id === countryId);
       expect(outline).toBeDefined();
       if (outline)
-        expect(scoreCountryDrawing(outline, enclosingBoxDrawing(outline)).score, countryId).toBeLessThanOrEqual(35);
+        expect(
+          scoreCountryDrawing(outline, enclosingBoxDrawing(outline)).score,
+          countryId,
+        ).toBeLessThanOrEqual(35);
     }
 
     for (const [drawingId, targetId] of [

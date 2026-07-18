@@ -25,6 +25,7 @@ export interface CountryOutline {
 export interface CountryScore {
   score: number;
   deviation: number;
+  mismatchDeviation: number;
   borderDeviation: number;
   outsideDeviation: number;
   insideDeviation: number;

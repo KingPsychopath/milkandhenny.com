@@ -14,16 +14,20 @@ export type ScoreMetricKey =
   | "inside"
   | "missed"
   | "shape"
+  | "mismatch"
   | "strokes"
   | "islands";
 
 const SCORE_EXPLANATIONS: Record<ScoreMetricKey, string> = {
-  average: "All scoring checks together. The board shows every comparison. Lower is better.",
+  average:
+    "The total error used for your score. It combines the checks below and any severe mismatch penalty. Lower is better.",
   outside: "Red lines measure from your outside points to the reference. Lower is better.",
   inside: "Blue lines measure from points that cut inside to the reference. Lower is better.",
   missed: "Dashed lines show reference sections your outline did not reach. Lower is better.",
   shape:
     "The filled silhouettes show overall overlap, with extra tolerance for thin or fragmented countries. Lower is better.",
+  mismatch:
+    "An extra penalty when the border, missed sections, and silhouette substantially disagree, or when a generic outline encloses the country. Lower is better.",
   strokes:
     "Your black outline is checked for crossings, thin marks, and excessive tracing. 0% means no penalty.",
   islands:
@@ -232,9 +236,9 @@ export function CountryScoreDetails({
   }> = [
     {
       key: "average",
-      label: "average",
+      label: "score error",
       value: evaluation.deviation,
-      accessibleLabel: "Average weighted deviation",
+      accessibleLabel: "Total scoring error",
     },
     {
       key: "outside",
@@ -259,6 +263,12 @@ export function CountryScoreDetails({
       label: "shape",
       value: evaluation.silhouetteDeviation,
       accessibleLabel: "Shape deviation contribution",
+    },
+    {
+      key: "mismatch",
+      label: "mismatch",
+      value: evaluation.mismatchDeviation,
+      accessibleLabel: "Severe mismatch penalty",
     },
     {
       key: "strokes",

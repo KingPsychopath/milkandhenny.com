@@ -60,6 +60,7 @@ function countryScore(evaluation: ReturnType<typeof scoreCountryDrawing>): Count
   return {
     score: evaluation.score,
     deviation: evaluation.deviation,
+    mismatchDeviation: evaluation.mismatchDeviation,
     borderDeviation: evaluation.borderDeviation,
     outsideDeviation: evaluation.outsideDeviation,
     insideDeviation: evaluation.insideDeviation,
