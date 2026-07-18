@@ -40,7 +40,7 @@ export function OfflinePlatform() {
   const message = activating
     ? "updating…"
     : updated
-      ? "updated"
+      ? "you’re up to date"
       : failed
         ? "couldn’t update"
         : safeToReload
