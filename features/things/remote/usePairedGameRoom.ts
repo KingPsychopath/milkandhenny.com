@@ -12,8 +12,7 @@ import type {
   RemoteSyncedSnapshot,
 } from "./types";
 import { useRemoteSocket } from "./useRemoteSocket";
-import { legacyRemoteBrowserKeys, remoteBrowserKeys } from "./remote-keys";
-import { migrateSessionValue, removeStorageKeys } from "../shared/game-storage.client";
+import { remoteBrowserKeys } from "./remote-keys";
 import { useRoomReconciler } from "../shared/useRoomReconciler";
 import { buildPairedGameJudgeInviteUrl, pairedGameJudgeFragment } from "./paired-game-invite";
 
@@ -107,7 +106,7 @@ export function usePairedGameRoom(
   useEffect(() => {
     if (initialSession) return;
     try {
-      const raw = migrateSessionValue(storageKey(game), [legacyRemoteBrowserKeys.hostSession(game)]);
+      const raw = sessionStorage.getItem(storageKey(game));
       const stored: unknown = JSON.parse(raw ?? "null");
       if (!stored || typeof stored !== "object") return;
       const value = stored as Partial<PlayerRoom>;
@@ -116,7 +115,7 @@ export function usePairedGameRoom(
         setRoom(value as PlayerRoom);
       }
     } catch {
-      removeStorageKeys(sessionStorage, [storageKey(game), legacyRemoteBrowserKeys.hostSession(game)]);
+      sessionStorage.removeItem(storageKey(game));
     }
   }, [game, initialSession]);
 
@@ -179,13 +178,9 @@ export function usePairedGameRoom(
     receiptsRef.current = [];
     if (initialSession) {
       const roomId = current?.roomId ?? initialSession.roomId;
-      removeStorageKeys(sessionStorage, [
-        remoteBrowserKeys.playerSession(roomId),
-        legacyRemoteBrowserKeys.playerSession(roomId),
-        legacyRemoteBrowserKeys.playerToken(roomId),
-      ]);
+      sessionStorage.removeItem(remoteBrowserKeys.playerSession(roomId));
     } else {
-      removeStorageKeys(sessionStorage, [storageKey(game), legacyRemoteBrowserKeys.hostSession(game)]);
+      sessionStorage.removeItem(storageKey(game));
     }
     if (!current) { setSyncing(false); return; }
     try {
@@ -215,7 +210,7 @@ export function usePairedGameRoom(
           setMessage(result.error ?? "Remote room ended. Local play continues.");
           setRoom(null);
           setJudgeConnected(false);
-          if (!initialSession) removeStorageKeys(sessionStorage, [storageKey(game), legacyRemoteBrowserKeys.hostSession(game)]);
+          if (!initialSession) sessionStorage.removeItem(storageKey(game));
           return;
         }
         setJudgeConnected(result.judgeConnected);

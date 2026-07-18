@@ -12,16 +12,16 @@ vi.mock("@/lib/platform/r2.server", () => ({
   uploadBuffer: vi.fn(),
 }));
 
-import { inferCompatibleTransferFileState } from "@/features/transfers/media-backends/local.server";
+import { inferTransferFileState } from "@/features/transfers/media-backends/local.server";
 import type { TransferFile } from "@/features/transfers/types";
 
-describe("transfer compatibility inference", () => {
+describe("transfer state inference", () => {
   beforeEach(() => {
     headObject.mockReset();
     listObjects.mockReset();
   });
 
-  it("marks legacy visual media ready when derived assets exist", async () => {
+  it("marks incomplete visual media ready when derived assets exist", async () => {
     headObject.mockResolvedValueOnce({ exists: true }).mockResolvedValueOnce({ exists: true });
 
     const file: TransferFile = {
@@ -33,14 +33,14 @@ describe("transfer compatibility inference", () => {
       storageKey: "transfers/abc123/originals/photo.jpg",
     };
 
-    const inferred = await inferCompatibleTransferFileState("abc123", file);
+    const inferred = await inferTransferFileState("abc123", file);
 
     expect(inferred.previewStatus).toBe("ready");
     expect(inferred.processingStatus).toBe("local_done");
     expect(inferred.processingRoute).toBe("local_image");
   });
 
-  it("marks legacy visual media failed when derived assets are missing", async () => {
+  it("marks incomplete visual media failed when derived assets are missing", async () => {
     headObject.mockResolvedValueOnce({ exists: false }).mockResolvedValueOnce({ exists: false });
 
     const file: TransferFile = {
@@ -52,7 +52,7 @@ describe("transfer compatibility inference", () => {
       storageKey: "transfers/abc123/originals/capture.dng",
     };
 
-    const inferred = await inferCompatibleTransferFileState("abc123", file);
+    const inferred = await inferTransferFileState("abc123", file);
 
     expect(inferred.previewStatus).toBe("original_only");
     expect(inferred.processingStatus).toBe("failed");
@@ -71,7 +71,7 @@ describe("transfer compatibility inference", () => {
       storageKey: "transfers/abc123/originals/clip.mp4",
     };
 
-    const inferred = await inferCompatibleTransferFileState("abc123", file);
+    const inferred = await inferTransferFileState("abc123", file);
 
     expect(headObject).toHaveBeenNthCalledWith(1, "transfers/abc123/thumb/clip-2.webp");
     expect(headObject).toHaveBeenNthCalledWith(2, "transfers/abc123/full/clip-2.webp");
@@ -79,7 +79,7 @@ describe("transfer compatibility inference", () => {
     expect(inferred.processingStatus).toBe("local_done");
   });
 
-  it("marks legacy non-visual media skipped", async () => {
+  it("marks incomplete non-visual media skipped", async () => {
     const file: TransferFile = {
       id: "notes.pdf",
       filename: "notes.pdf",
@@ -89,7 +89,7 @@ describe("transfer compatibility inference", () => {
       storageKey: "transfers/abc123/originals/notes.pdf",
     };
 
-    const inferred = await inferCompatibleTransferFileState("abc123", file);
+    const inferred = await inferTransferFileState("abc123", file);
 
     expect(inferred.previewStatus).toBe("original_only");
     expect(inferred.processingStatus).toBe("skipped");
@@ -105,7 +105,7 @@ describe("transfer compatibility inference", () => {
       storageKey: "transfers/abc123/originals/photo.jpg",
     };
 
-    const inferred = await inferCompatibleTransferFileState(
+    const inferred = await inferTransferFileState(
       "abc123",
       file,
       new Set(["transfers/abc123/thumb/photo.webp", "transfers/abc123/full/photo.webp"]),

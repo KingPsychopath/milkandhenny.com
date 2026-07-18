@@ -1,19 +1,4 @@
 import { BASE_URL } from "@/lib/shared/config";
-import { getRedis } from "@/lib/platform/redis.server";
-import {
-  deleteObject,
-  downloadBuffer,
-  headObject,
-  listObjects,
-  uploadBuffer,
-} from "@/lib/platform/r2.server";
-import {
-  WORD_INDEX_KEY,
-  wordMetaKey,
-  wordShareIndexKey,
-  wordShareKey,
-  wordShareSlugsKey,
-} from "@/features/words/config.server";
 import { buildWordShareUrl } from "@/features/words/routes";
 import {
   cleanupShareLinksForSlug,
@@ -32,14 +17,8 @@ import {
   listWords,
   updateWord,
 } from "@/features/words/store.server";
-import type { NoteVisibility, ShareLink } from "@/features/words/content-types";
+import type { NoteVisibility } from "@/features/words/content-types";
 import type { WordType } from "@/features/words/types";
-
-const LEGACY_WORD_INDEX_KEY = "notes:index";
-const LEGACY_WORD_META_PREFIX = "notes:meta:";
-const LEGACY_WORD_SHARE_PREFIX = "notes:share:";
-const LEGACY_WORD_SHARE_INDEX_PREFIX = "notes:share-index:";
-const LEGACY_WORD_SHARE_SLUGS_KEY = "notes:share-slugs";
 
 type CreateWordInput = {
   slug: string;
@@ -101,43 +80,6 @@ async function updateWordRecord(slug: string, input: UpdateWordInput) {
 
 async function deleteWordRecord(slug: string) {
   return deleteWord(slug);
-}
-
-async function migratePrivateWordStorage(): Promise<{
-  wordsMigrated: number;
-  mediaMigrated: number;
-}> {
-  let cursor: string | undefined;
-  let wordsMigrated = 0;
-  let mediaMigrated = 0;
-
-  do {
-    const page = await listWords({
-      visibility: "private",
-      includeNonPublic: true,
-      limit: 100,
-      cursor,
-    });
-    for (const word of page.words) {
-      const record = await getWord(word.slug);
-      if (!record) throw new Error(`Could not migrate private word body: ${word.slug}`);
-      wordsMigrated += 1;
-
-      const objects = await listObjects(`words/media/${word.slug}/`, { scope: "public" });
-      for (const object of objects) {
-        const metadata = await headObject(object.key, { scope: "public" });
-        const body = await downloadBuffer(object.key, { scope: "public" });
-        await uploadBuffer(object.key, body, metadata.contentType ?? "application/octet-stream", {
-          scope: "private",
-        });
-        await deleteObject(object.key, { scope: "public" });
-        mediaMigrated += 1;
-      }
-    }
-    cursor = page.nextCursor ?? undefined;
-  } while (cursor);
-
-  return { wordsMigrated, mediaMigrated };
 }
 
 async function createWordShare(
@@ -244,148 +186,6 @@ async function resetWordShares() {
   return purgeWordShares();
 }
 
-type LegacyMigrationResult = {
-  indexSlugsFound: number;
-  metaRecordsMigrated: number;
-  shareRecordsMigrated: number;
-  shareIndexSetsMigrated: number;
-  shareIndexMembersMigrated: number;
-  shareSlugsMigrated: number;
-  legacyKeysPurged: number;
-};
-
-function legacyWordMetaKey(slug: string): string {
-  return `${LEGACY_WORD_META_PREFIX}${slug}`;
-}
-
-function parseLegacyShareId(key: string): string | null {
-  if (!key.startsWith(LEGACY_WORD_SHARE_PREFIX)) return null;
-  const id = key.slice(LEGACY_WORD_SHARE_PREFIX.length);
-  if (!id || id.includes(":")) return null;
-  return id;
-}
-
-async function migrateLegacyWordsNamespace(opts?: {
-  purgeLegacy?: boolean;
-}): Promise<LegacyMigrationResult> {
-  const redis = getRedis();
-  if (!redis) {
-    throw new Error("Redis/KV is not configured.");
-  }
-
-  const purgeLegacy = !!opts?.purgeLegacy;
-  const legacySlugsRaw = await redis.smembers(LEGACY_WORD_INDEX_KEY);
-  const legacySlugs = (Array.isArray(legacySlugsRaw) ? legacySlugsRaw : []).filter(
-    (slug): slug is string => typeof slug === "string" && !!slug,
-  );
-
-  let metaRecordsMigrated = 0;
-  let shareRecordsMigrated = 0;
-  let shareIndexSetsMigrated = 0;
-  let shareIndexMembersMigrated = 0;
-  let shareSlugsMigrated = 0;
-  let legacyKeysPurged = 0;
-
-  for (const slug of legacySlugs) {
-    const legacyMeta = await redis.get(legacyWordMetaKey(slug));
-    if (!legacyMeta) continue;
-    await Promise.all([
-      redis.set(wordMetaKey(slug), legacyMeta as object),
-      redis.sadd(WORD_INDEX_KEY, slug),
-    ]);
-    metaRecordsMigrated += 1;
-    if (purgeLegacy) {
-      await Promise.all([
-        redis.del(legacyWordMetaKey(slug)),
-        redis.srem(LEGACY_WORD_INDEX_KEY, slug),
-      ]);
-      legacyKeysPurged += 1;
-    }
-  }
-
-  const legacyShareKeysRaw = await redis.keys(`${LEGACY_WORD_SHARE_PREFIX}*`);
-  const legacyShareKeys = (Array.isArray(legacyShareKeysRaw) ? legacyShareKeysRaw : []).filter(
-    (key): key is string => typeof key === "string",
-  );
-
-  for (const key of legacyShareKeys) {
-    const shareId = parseLegacyShareId(key);
-    if (!shareId) continue;
-    const raw = await redis.get<ShareLink | string>(key);
-    if (!raw) continue;
-    const link = typeof raw === "string" ? (JSON.parse(raw) as ShareLink) : raw;
-    if (!link?.slug) continue;
-
-    await Promise.all([
-      redis.set(wordShareKey(shareId), raw as object),
-      redis.sadd(wordShareIndexKey(link.slug), shareId),
-      redis.sadd(wordShareSlugsKey(), link.slug),
-    ]);
-
-    const ttl = await redis.ttl(key);
-    if (typeof ttl === "number" && ttl > 0) {
-      await redis.expire(wordShareKey(shareId), ttl);
-    }
-
-    shareRecordsMigrated += 1;
-    if (purgeLegacy) {
-      await redis.del(key);
-      legacyKeysPurged += 1;
-    }
-  }
-
-  const legacyShareIndexKeysRaw = await redis.keys(`${LEGACY_WORD_SHARE_INDEX_PREFIX}*`);
-  const legacyShareIndexKeys = (
-    Array.isArray(legacyShareIndexKeysRaw) ? legacyShareIndexKeysRaw : []
-  ).filter((key): key is string => typeof key === "string");
-
-  for (const key of legacyShareIndexKeys) {
-    const slug = key.slice(LEGACY_WORD_SHARE_INDEX_PREFIX.length);
-    if (!slug) continue;
-    const idsRaw = await redis.smembers(key);
-    const ids = (Array.isArray(idsRaw) ? idsRaw : []).filter(
-      (id): id is string => typeof id === "string" && !!id,
-    );
-    if (ids.length > 0) {
-      for (const id of ids) {
-        await redis.sadd(wordShareIndexKey(slug), id);
-      }
-      await redis.sadd(wordShareSlugsKey(), slug);
-      shareIndexMembersMigrated += ids.length;
-    }
-    shareIndexSetsMigrated += 1;
-    if (purgeLegacy) {
-      await redis.del(key);
-      legacyKeysPurged += 1;
-    }
-  }
-
-  const legacyShareSlugsRaw = await redis.smembers(LEGACY_WORD_SHARE_SLUGS_KEY);
-  const legacyShareSlugs = (Array.isArray(legacyShareSlugsRaw) ? legacyShareSlugsRaw : []).filter(
-    (slug): slug is string => typeof slug === "string" && !!slug,
-  );
-  if (legacyShareSlugs.length > 0) {
-    for (const slug of legacyShareSlugs) {
-      await redis.sadd(wordShareSlugsKey(), slug);
-    }
-    shareSlugsMigrated = legacyShareSlugs.length;
-  }
-  if (purgeLegacy) {
-    await redis.del(LEGACY_WORD_SHARE_SLUGS_KEY);
-    legacyKeysPurged += 1;
-  }
-
-  return {
-    indexSlugsFound: legacySlugs.length,
-    metaRecordsMigrated,
-    shareRecordsMigrated,
-    shareIndexSetsMigrated,
-    shareIndexMembersMigrated,
-    shareSlugsMigrated,
-    legacyKeysPurged,
-  };
-}
-
 export {
   createWordRecord,
   listWordRecords,
@@ -399,6 +199,4 @@ export {
   cleanupWordShares,
   purgeWordShares,
   resetWordShares,
-  migrateLegacyWordsNamespace,
-  migratePrivateWordStorage,
 };

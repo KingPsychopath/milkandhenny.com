@@ -491,13 +491,13 @@ async function processTransferObjectLocally(
   });
 }
 
-async function inferCompatibleTransferFileState(
+async function inferTransferFileState(
   transferId: string,
   file: TransferFile,
   existingDerivativeKeys?: Set<string>,
 ): Promise<TransferFile> {
   const inferredRoute = classifyTransferProcessingRoute(file.filename);
-  if (!needsCompatibilityInference(file)) {
+  if (!needsStateInference(file)) {
     return file;
   }
 
@@ -547,12 +547,12 @@ async function inferCompatibleTransferFileState(
       file.size,
       file.storageKey ?? buildTransferPrimaryStorageKey(transferId, { name: file.filename }),
       route,
-      "legacy_missing_derivatives",
+      "missing_derivatives",
     ),
   };
 }
 
-function needsCompatibilityInference(file: TransferFile): boolean {
+function needsStateInference(file: TransferFile): boolean {
   const inferredRoute = classifyTransferProcessingRoute(file.filename);
   if (file.previewStatus && file.processingStatus) {
     if (file.processingRoute) return false;
@@ -682,13 +682,13 @@ function createLocalMediaProcessor() {
       let changed = false;
       const nowMs = Date.now();
       const existingDerivativeKeys = transfer.files.some((file) =>
-        needsCompatibilityInference(file),
+        needsStateInference(file),
       )
         ? await listExistingTransferDerivativeKeys(transfer.id)
         : undefined;
       const normalizedFiles = await Promise.all(
         transfer.files.map(async (file) => {
-          const inferred = await inferCompatibleTransferFileState(
+          const inferred = await inferTransferFileState(
             transfer.id,
             file,
             existingDerivativeKeys,
@@ -751,9 +751,9 @@ export {
   buildSkippedFile,
   createLocalMediaProcessor,
   getRouteKind,
-  inferCompatibleTransferFileState,
+  inferTransferFileState,
   listExistingTransferDerivativeKeys,
-  needsCompatibilityInference,
+  needsStateInference,
   processTransferBufferLocally,
   processTransferObjectLocally,
 };

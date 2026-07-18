@@ -9,7 +9,7 @@ export interface CustomDeck {
   updatedAt: number;
 }
 
-const LEGACY_STORAGE_KEY = "forehead.custom-decks.v1";
+const FALLBACK_STORAGE_KEY = "things:heads-up:custom-decks:fallback";
 const STORAGE_KEY = "heads-up:custom-decks";
 const STORAGE_VERSION = THING_OFFLINE["heads-up"].storageVersion;
 const MAX_CARDS = 200;
@@ -97,10 +97,10 @@ function normaliseCustomDecks(value: unknown) {
   });
 }
 
-function loadLegacyCustomDecks() {
+function loadFallbackCustomDecks() {
   try {
     return normaliseCustomDecks(
-      JSON.parse(window.localStorage.getItem(LEGACY_STORAGE_KEY) ?? "[]"),
+      JSON.parse(window.localStorage.getItem(FALLBACK_STORAGE_KEY) ?? "[]"),
     );
   } catch {
     return [];
@@ -108,7 +108,7 @@ function loadLegacyCustomDecks() {
 }
 
 export async function loadCustomDecks() {
-  const legacy = loadLegacyCustomDecks();
+  const fallback = loadFallbackCustomDecks();
   try {
     const record = await readThingData(STORAGE_KEY);
     if (record) {
@@ -119,21 +119,21 @@ export async function loadCustomDecks() {
       }
       return decks;
     }
-    if (legacy.length > 0) {
-      await writeThingData(STORAGE_KEY, STORAGE_VERSION, legacy);
-      window.localStorage.removeItem(LEGACY_STORAGE_KEY);
+    if (fallback.length > 0) {
+      await writeThingData(STORAGE_KEY, STORAGE_VERSION, fallback);
+      window.localStorage.removeItem(FALLBACK_STORAGE_KEY);
     }
   } catch {
-    // IndexedDB can be unavailable in private modes; retain the legacy fallback.
+    // IndexedDB can be unavailable in private browsing modes.
   }
-  return legacy;
+  return fallback;
 }
 
 export async function storeCustomDecks(decks: CustomDeck[]) {
   try {
     await writeThingData(STORAGE_KEY, STORAGE_VERSION, decks);
-    window.localStorage.removeItem(LEGACY_STORAGE_KEY);
+    window.localStorage.removeItem(FALLBACK_STORAGE_KEY);
   } catch {
-    window.localStorage.setItem(LEGACY_STORAGE_KEY, JSON.stringify(decks));
+    window.localStorage.setItem(FALLBACK_STORAGE_KEY, JSON.stringify(decks));
   }
 }

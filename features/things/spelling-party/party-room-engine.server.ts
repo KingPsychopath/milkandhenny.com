@@ -106,8 +106,8 @@ interface PartyRoomState {
   answerSeconds: number;
   roundTotal: number;
   wordIds: string[];
-  words?: PartyWord[];
-  usesLocalSpeech?: boolean;
+  words: PartyWord[];
+  usesLocalSpeech: boolean;
   phase: "lobby" | "countdown" | "answer" | "locked" | "reveal" | "finished";
   revision: number;
   sequence: number;
@@ -120,7 +120,6 @@ interface PartyRoomState {
   recentClues: PartyClueEvent[];
   processedActions: string[];
   joinReceiptIds: string[];
-  joinReceipts?: Record<string, Omit<JoinReceipt, "expiresAt">>;
 }
 
 const memoryRooms = new Map<string, PartyRoomState>();
@@ -154,36 +153,6 @@ function memoryReceiptKey(roomIdValue: string, joinId: string) {
   return `${roomIdValue}:${joinId}`;
 }
 
-async function migrateLegacyJoinReceipts(room: PartyRoomState, keys: PartyRedisKeys) {
-  room.joinReceiptIds ??= [];
-  if (!room.joinReceipts) return false;
-  const expiresAt = Math.min(room.expiresAt, Date.now() + JOIN_RECEIPT_TTL_SECONDS * 1_000);
-  const redis = getRedis();
-  const knownReceiptIds = new Set(room.joinReceiptIds);
-  for (const [joinId, receipt] of Object.entries(room.joinReceipts)) {
-    const next = { ...receipt, expiresAt };
-    if (!knownReceiptIds.has(joinId)) {
-      knownReceiptIds.add(joinId);
-      room.joinReceiptIds.push(joinId);
-    }
-    if (redis)
-      await redis.set(keys.joinReceipt(joinId), next, {
-        ex: remainingMultiplayerRoomTtlSeconds(expiresAt),
-      });
-    else memoryJoinReceipts.set(memoryReceiptKey(room.roomId, joinId), next);
-  }
-  delete room.joinReceipts;
-  return true;
-}
-
-function hydrateRoomWords(room: PartyRoomState) {
-  room.words ??= partyDeck(room.deckId)?.words ?? [];
-  room.usesLocalSpeech ??= false;
-  const round = room.round;
-  if (round && round.nextRoundAt === undefined)
-    round.nextRoundAt = room.phase === "reveal" ? Date.now() + PARTY_REVEAL_COOLDOWN_MS : null;
-}
-
 async function deletePartyRoom(room: PartyRoomState, keys: PartyRedisKeys) {
   const redis = getRedis();
   if (redis) {
@@ -204,30 +173,20 @@ async function loadRoom(id: string): Promise<LoadedRoom | null> {
   if (!redis) {
     const room = memoryRooms.get(id) ?? null;
     if (!room) return null;
-    room.joinReceiptIds ??= [];
-    hydrateRoomWords(room);
     if (room.expiresAt <= Date.now()) {
       await deletePartyRoom(room, partyRoomRedisKeys(id));
       return null;
     }
-    await migrateLegacyJoinReceipts(room, partyRoomRedisKeys(id));
     return { room, keys: partyRoomRedisKeys(id) };
   }
-  for (const keys of [partyRoomRedisKeys(id), partyRoomRedisKeys(id, true)]) {
-    const room = await redis.get<PartyRoomState>(keys.state);
-    if (!room) continue;
-    room.joinReceiptIds ??= [];
-    hydrateRoomWords(room);
-    if (room.expiresAt <= Date.now()) {
-      await deletePartyRoom(room, keys);
-      return null;
-    }
-    if (await migrateLegacyJoinReceipts(room, keys)) {
-      await redis.set(keys.state, room, { ex: remainingMultiplayerRoomTtlSeconds(room.expiresAt) });
-    }
-    return { room, keys };
+  const keys = partyRoomRedisKeys(id);
+  const room = await redis.get<PartyRoomState>(keys.state);
+  if (!room) return null;
+  if (room.expiresAt <= Date.now()) {
+    await deletePartyRoom(room, keys);
+    return null;
   }
-  return null;
+  return { room, keys };
 }
 
 async function saveRoom(room: PartyRoomState, keys = partyRoomRedisKeys(room.roomId)) {
@@ -274,8 +233,6 @@ async function withRoom<T>(
   try {
     const room = await redis.get<PartyRoomState>(initial.keys.state);
     if (!room || room.expiresAt <= Date.now()) return null;
-    room.joinReceiptIds ??= [];
-    hydrateRoomWords(room);
     const result = await use(room, initial.keys);
     await saveRoom(room, initial.keys);
     return result;

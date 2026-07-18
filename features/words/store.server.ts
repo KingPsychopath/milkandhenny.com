@@ -188,19 +188,7 @@ async function readContentByKey(key: string, visibility: WordVisibility): Promis
       }
       return buf.toString("utf-8");
     } catch {
-      if (visibility !== "private") return null;
-
-      // One-time compatibility migration for private content written before
-      // storage scope became explicit. Do not return the body until the public
-      // copy has been removed successfully.
-      try {
-        const legacy = await downloadBuffer(key, { scope: "public" });
-        await uploadBuffer(key, legacy, "text/markdown; charset=utf-8", { scope: "private" });
-        await deleteObject(key, { scope: "public" });
-        return legacy.toString("utf-8");
-      } catch {
-        return null;
-      }
+      return null;
     }
   }
   return memoryContent.get(key) ?? null;

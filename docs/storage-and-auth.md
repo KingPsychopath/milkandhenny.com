@@ -60,7 +60,7 @@ Cookies are sent automatically by the browser on same-site requests, which makes
 
 - **Auth**: JWT in **httpOnly cookie** (`mah-auth-upload` or `mah-auth-admin`)
 - **Why**: admin sessions should satisfy upload access (least privilege + fewer logins). Upload API routes accept cookie auth.
-- **Client storage**: optional legacy tokens may still exist in `localStorage`, but cookie auth is the default path now.
+- **Client storage**: authentication is cookie-based; authorization tokens are not stored in `localStorage`.
 
 Notes:
 

@@ -29,7 +29,6 @@ export function pairedGameJudgeFragment(invite: PairedGameJudgeInvite) {
 
 export function parsePairedGameJudgeFragment(fragment: string): PairedGameJudgeInvite {
   const value = fragment.replace(/^#/, "").trim();
-  if (!value.includes("=")) return { judgeToken: value };
   const params = new URLSearchParams(value);
   return {
     judgeToken: params.get("judge") ?? "",
@@ -40,7 +39,6 @@ export function parsePairedGameJudgeFragment(fragment: string): PairedGameJudgeI
 
 export function parsePairedGamePlayerFragment(fragment: string) {
   const value = fragment.replace(/^#/, "").trim();
-  if (!value.includes("=")) return value;
   return new URLSearchParams(value).get("player") ?? "";
 }
 

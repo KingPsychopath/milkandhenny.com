@@ -22,7 +22,6 @@ export function isWordType(value: string): value is WordType {
 
 export function normaliseWordType(value: unknown): WordType {
   if (typeof value !== "string") return DEFAULT_WORD_TYPE;
-  if (value === "post") return "blog"; // legacy alias
   return isWordType(value) ? value : DEFAULT_WORD_TYPE;
 }
 

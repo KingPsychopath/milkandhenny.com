@@ -18,12 +18,10 @@ const BASE_URL = (viteEnv?.VITE_BASE_URL || runtimeEnv?.VITE_BASE_URL || "https:
   .split(/\s+#/)[0]
   .trim();
 
-/** Public media/CDN origin. The R2 name is retained only as a migration alias. */
+/** Public media/CDN origin. */
 const MEDIA_PUBLIC_URL =
   viteEnv?.VITE_MEDIA_PUBLIC_URL ??
   runtimeEnv?.VITE_MEDIA_PUBLIC_URL ??
-  viteEnv?.VITE_R2_PUBLIC_URL ??
-  runtimeEnv?.VITE_R2_PUBLIC_URL ??
   "";
 
 /** Base URL for share links — uses request origin when available (e.g. localhost in dev), else BASE_URL */

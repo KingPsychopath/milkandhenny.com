@@ -23,17 +23,6 @@ Use two R2 buckets:
 
 The R2 API token must have object read/write access to both buckets. Never connect the private bucket to a public hostname.
 
-### Private-transfer cutover
-
-1. Create `milkandhenny-private`; leave both its custom-domain and `r2.dev` access disabled.
-2. Create an R2 API token scoped to both the existing public bucket and the new private bucket.
-3. Start a short maintenance window and, while the old public-bucket configuration is still active, run `pnpm cli transfers nuke`. Confirm the prompt to invalidate existing transfers and delete the legacy public `transfers/` prefix. Old three-word transfer links are intentionally not migrated because they do not meet the new capability-entropy requirement.
-4. Configure `R2_PUBLIC_BUCKET` with the existing bucket name and `R2_PRIVATE_BUCKET=milkandhenny-private`.
-5. Apply the private-bucket CORS policy in `docs/media-pipeline.md`.
-6. Deploy, upload a disposable transfer, and verify that its object URL is signed and the same `transfers/...` path returns 404 from `pics.milkandhenny.com`.
-
-Do not enable transfer uploads between steps 5 and 6.
-
 ## Railway
 
 `railway.toml` selects the Dockerfile, `/api/health`, and an on-failure restart policy. Start with one replica, 512 MB–1 GB memory, 0.5–1 vCPU, and no persistent volume.

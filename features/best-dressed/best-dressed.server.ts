@@ -4,7 +4,6 @@ import { getRedis } from "@/lib/platform/redis.server";
 import { getGuests } from "@/features/guests/store";
 import { getAllGuestNames } from "@/features/guests/utils";
 
-const VOTES_KEY = "best-dressed:votes";
 const VOTES_HASH_KEY = "best-dressed:votes:v2";
 const SESSION_KEY = "best-dressed:session";
 const OPEN_UNTIL_KEY = "best-dressed:open-until"; // unix seconds; when voting can proceed without a code
@@ -195,11 +194,8 @@ async function resetSession(): Promise<string> {
 async function getVotes(): Promise<VotesRecord> {
   const redis = getRedis();
   if (redis) {
-    const [legacyVotes, atomicVotes] = await Promise.all([
-      redis.get<VotesRecord>(VOTES_KEY),
-      redis.hgetall<Record<string, string | number>>(VOTES_HASH_KEY),
-    ]);
-    const votes: VotesRecord = { ...(legacyVotes || {}) };
+    const atomicVotes = await redis.hgetall<Record<string, string | number>>(VOTES_HASH_KEY);
+    const votes: VotesRecord = {};
     for (const [name, count] of Object.entries(atomicVotes || {})) {
       const parsed = typeof count === "number" ? count : Number.parseInt(count, 10);
       if (Number.isFinite(parsed)) votes[name] = (votes[name] || 0) + parsed;
@@ -522,7 +518,7 @@ export async function voteBestDressed(input: VoteInput): Promise<VoteResult> {
 export async function clearBestDressedVotes(): Promise<{ ok: true; session: string }> {
   const redis = getRedis();
   if (redis) {
-    await redis.del(VOTES_KEY, VOTES_HASH_KEY);
+    await redis.del(VOTES_HASH_KEY);
   }
   memoryVotes.clear();
   const session = await resetSession();

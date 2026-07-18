@@ -182,7 +182,7 @@ function buildTransferVisualItems<T extends TransferGroupableFile>(
   groups?: readonly AssetGroup[],
 ): TransferVisualItem<T>[] {
   if (!groups || groups.length === 0) {
-    return buildLegacyLivePhotoVisualItems(files);
+    return inferLivePhotoVisualItems(files);
   }
 
   const fileById = new Map(files.map((file) => [file.id, file]));
@@ -241,7 +241,7 @@ function buildTransferVisualItems<T extends TransferGroupableFile>(
   return items;
 }
 
-function buildLegacyLivePhotoVisualItems<T extends TransferGroupableFile>(
+function inferLivePhotoVisualItems<T extends TransferGroupableFile>(
   files: readonly T[],
 ): TransferVisualItem<T>[] {
   const motionByStem = new Map<string, T[]>();
@@ -268,7 +268,7 @@ function buildLegacyLivePhotoVisualItems<T extends TransferGroupableFile>(
         items.push({
           id: `live:${file.id}:${motion.id}`,
           type: "live_photo",
-          groupId: `legacy:${file.id}:${motion.id}`,
+          groupId: `inferred:${file.id}:${motion.id}`,
           primary: file,
           photo: file,
           motion,

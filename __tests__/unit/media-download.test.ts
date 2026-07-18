@@ -52,7 +52,7 @@ describe("media download helpers", () => {
     expect(shouldUseWorkerZipFallback({ pickerAvailable: false, fileCount: 1 })).toBe(false);
   });
 
-  it("can force the legacy client fallback off via env", async () => {
+  it("can force the client download path via env", async () => {
     vi.stubEnv("VITE_MULTI_FILE_ZIP_URL", "https://example.workers.dev/zip");
     vi.stubEnv("VITE_MULTI_FILE_ZIP_MODE", "client");
     const { shouldUseWorkerZipFallback } = await import("@/lib/client/media-download");

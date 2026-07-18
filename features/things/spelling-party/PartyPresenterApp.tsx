@@ -8,7 +8,7 @@ import { useSynchronizedPartyStage } from "./useSynchronizedPartyStage";
 import { PartyClosenessBoard } from "./PartyClosenessBoard";
 import { PartyRoundCooldown } from "./PartyRoundCooldown";
 import type { PartyClueEvent, PartyPresenterAction } from "./types";
-import { legacyPartyBrowserKeys, partyBrowserKeys } from "./party-keys";
+import { partyBrowserKeys } from "./party-keys";
 import {
   readExpiringLocalValue,
   removeStorageKeys,
@@ -59,16 +59,7 @@ function roomTokens(roomId: string) {
     sessionStorage.setItem(sessionKey, JSON.stringify(recovered));
     return recovered;
   }
-  const presenterToken =
-    sessionStorage.getItem(legacyPartyBrowserKeys.presenterToken(roomId)) ?? "";
-  const joinToken = sessionStorage.getItem(legacyPartyBrowserKeys.joinToken(roomId)) ?? "";
-  if (presenterToken || joinToken)
-    sessionStorage.setItem(sessionKey, JSON.stringify({ presenterToken, joinToken }));
-  removeStorageKeys(sessionStorage, [
-    legacyPartyBrowserKeys.presenterToken(roomId),
-    legacyPartyBrowserKeys.joinToken(roomId),
-  ]);
-  return { presenterToken, joinToken };
+  return { presenterToken: "", joinToken: "" };
 }
 
 export function PartyPresenterApp({ roomId }: { roomId: string }) {
@@ -217,11 +208,7 @@ export function PartyPresenterApp({ roomId }: { roomId: string }) {
     await closePartyRoomFn({ data: { roomId, presenterToken: tokens.presenterToken } }).catch(
       () => null,
     );
-    removeStorageKeys(sessionStorage, [
-      partyBrowserKeys.presenterSession(roomId),
-      legacyPartyBrowserKeys.presenterToken(roomId),
-      legacyPartyBrowserKeys.joinToken(roomId),
-    ]);
+    sessionStorage.removeItem(partyBrowserKeys.presenterSession(roomId));
     removeStorageKeys(localStorage, [partyBrowserKeys.presenterRecovery(roomId)]);
     await navigate({ to: "/things/spelling-party" });
   };
@@ -236,11 +223,7 @@ export function PartyPresenterApp({ roomId }: { roomId: string }) {
 
   useEffect(() => {
     if (!live.ended) return;
-    removeStorageKeys(sessionStorage, [
-      partyBrowserKeys.presenterSession(roomId),
-      legacyPartyBrowserKeys.presenterToken(roomId),
-      legacyPartyBrowserKeys.joinToken(roomId),
-    ]);
+    sessionStorage.removeItem(partyBrowserKeys.presenterSession(roomId));
     removeStorageKeys(localStorage, [partyBrowserKeys.presenterRecovery(roomId)]);
   }, [live.ended, roomId]);
 

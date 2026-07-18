@@ -1626,7 +1626,7 @@ export function UploadDashboard({ isAdmin }: UploadDashboardProps) {
                     </div>
                     <p
                       className="font-mono text-[10px] theme-faint mt-1"
-                      title="Use canonical snippet output. Legacy short refs in markdown are interpreted and normalized when words are saved."
+                      title="Use canonical snippet output. Short media references are normalized when word markdown is saved."
                     >
                       use canonical snippet for best compatibility
                     </p>

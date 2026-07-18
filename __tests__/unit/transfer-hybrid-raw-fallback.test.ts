@@ -3,9 +3,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const {
   enqueueWorkerJob,
   getLocalProcessingTimeoutMs,
-  inferCompatibleTransferFileState,
+  inferTransferFileState,
   listExistingTransferDerivativeKeys,
-  needsCompatibilityInference,
+  needsStateInference,
   processTransferBufferLocally,
   processTransferObjectLocally,
   refreshQueuedTransferState,
@@ -14,9 +14,9 @@ const {
 } = vi.hoisted(() => ({
   enqueueWorkerJob: vi.fn(),
   getLocalProcessingTimeoutMs: vi.fn(),
-  inferCompatibleTransferFileState: vi.fn(),
+  inferTransferFileState: vi.fn(),
   listExistingTransferDerivativeKeys: vi.fn(),
-  needsCompatibilityInference: vi.fn(),
+  needsStateInference: vi.fn(),
   processTransferBufferLocally: vi.fn(),
   processTransferObjectLocally: vi.fn(),
   refreshQueuedTransferState: vi.fn(),
@@ -29,9 +29,9 @@ vi.mock("@/features/transfers/media-processing-config.server", () => ({
 }));
 
 vi.mock("@/features/transfers/media-backends/local.server", () => ({
-  inferCompatibleTransferFileState,
+  inferTransferFileState,
   listExistingTransferDerivativeKeys,
-  needsCompatibilityInference,
+  needsStateInference,
   processTransferBufferLocally,
   processTransferObjectLocally,
 }));
@@ -49,7 +49,7 @@ describe("hybrid transfer raw fallback", () => {
     getLocalProcessingTimeoutMs.mockReturnValue(0);
     shouldRouteToWorkerFirst.mockReturnValue(false);
     refreshQueuedTransferState.mockImplementation(async (transfer) => transfer);
-    needsCompatibilityInference.mockReturnValue(false);
+    needsStateInference.mockReturnValue(false);
     listExistingTransferDerivativeKeys.mockResolvedValue(new Set());
   });
 
@@ -207,7 +207,7 @@ describe("hybrid transfer raw fallback", () => {
       ],
     };
 
-    inferCompatibleTransferFileState.mockResolvedValue(transfer.files[0]);
+    inferTransferFileState.mockResolvedValue(transfer.files[0]);
     requeueTransferFile.mockResolvedValue({
       ...transfer.files[0],
       processingStatus: "queued",
@@ -224,7 +224,7 @@ describe("hybrid transfer raw fallback", () => {
     expect(updated.files[0]?.processingBackend).toBe("worker");
   });
 
-  it("keeps legacy local-image failures as original-only instead of throwing", async () => {
+  it("keeps incomplete local-image failures as original-only instead of throwing", async () => {
     const transfer = {
       id: "transfer-1",
       title: "untitled",
@@ -242,13 +242,13 @@ describe("hybrid transfer raw fallback", () => {
           previewStatus: "original_only" as const,
           processingStatus: "failed" as const,
           processingRoute: "local_image" as const,
-          processingErrorCode: "legacy_missing_derivatives",
+          processingErrorCode: "missing_derivatives",
           retryCount: 0,
         },
       ],
     };
 
-    inferCompatibleTransferFileState.mockResolvedValue(transfer.files[0]);
+    inferTransferFileState.mockResolvedValue(transfer.files[0]);
     processTransferObjectLocally.mockRejectedValue(new Error("sharp failed"));
 
     const { createHybridMediaProcessor } = await import("@/features/transfers/media-backends/hybrid.server");
@@ -260,7 +260,7 @@ describe("hybrid transfer raw fallback", () => {
       previewStatus: "original_only",
       processingStatus: "failed",
       processingRoute: "local_image",
-      processingErrorCode: "legacy_missing_derivatives",
+      processingErrorCode: "missing_derivatives",
     });
   });
 });

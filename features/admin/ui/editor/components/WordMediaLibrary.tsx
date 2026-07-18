@@ -354,7 +354,7 @@ export function WordMediaLibrary({
               </code>
               <p
                 className="font-mono text-[10px] theme-faint"
-                title="Canonical paths are recommended. Legacy short refs are still interpreted and normalized when note markdown is saved."
+                title="Canonical paths are recommended. Short media references are normalized when word markdown is saved."
               >
                 use canonical snippet
               </p>
@@ -415,7 +415,7 @@ export function WordMediaLibrary({
               </code>
               <p
                 className="font-mono text-[10px] theme-faint"
-                title="Canonical paths are recommended. Legacy short refs are still interpreted and normalized when note markdown is saved."
+                title="Canonical paths are recommended. Short media references are normalized when word markdown is saved."
               >
                 use canonical snippet
               </p>

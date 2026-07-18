@@ -21,8 +21,8 @@ function toRadians(degrees: number) {
 }
 
 function screenAngle() {
-  const legacyOrientation = (window as Window & { orientation?: number }).orientation;
-  const angle = window.screen.orientation?.angle ?? legacyOrientation ?? 0;
+  const orientationFallback = (window as Window & { orientation?: number }).orientation;
+  const angle = window.screen.orientation?.angle ?? orientationFallback ?? 0;
   return ((angle % 360) + 360) % 360;
 }
 

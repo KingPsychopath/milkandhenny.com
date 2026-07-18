@@ -12,9 +12,9 @@ import { saveTransfer } from "@/features/transfers/store.server";
 import type { TransferData, TransferFile } from "@/features/transfers/types";
 import type { TransferUploadFileInput } from "@/features/transfers/upload-types";
 import {
-  inferCompatibleTransferFileState,
+  inferTransferFileState,
   listExistingTransferDerivativeKeys,
-  needsCompatibilityInference,
+  needsStateInference,
   buildFailedLocalResult,
   processTransferBufferLocally,
   processTransferObjectLocally,
@@ -154,7 +154,7 @@ async function processTransferObject(
   }
 }
 
-async function repairOrQueueLegacyFile(
+async function repairOrQueueIncompleteFile(
   transfer: TransferData,
   file: TransferFile,
   mode: MediaProcessorMode,
@@ -246,7 +246,7 @@ async function backfillTransferMedia(
 
   const refreshed = await refreshQueuedTransferState(transfer);
   let changed = refreshed !== transfer;
-  const existingDerivativeKeys = refreshed.files.some((file) => needsCompatibilityInference(file))
+  const existingDerivativeKeys = refreshed.files.some((file) => needsStateInference(file))
     ? await listExistingTransferDerivativeKeys(refreshed.id)
     : undefined;
 
@@ -254,12 +254,12 @@ async function backfillTransferMedia(
     refreshed.files,
     TRANSFER_BACKFILL_CONCURRENCY,
     async (file) => {
-      const inferred = await inferCompatibleTransferFileState(
+      const inferred = await inferTransferFileState(
         refreshed.id,
         file,
         existingDerivativeKeys,
       );
-      const compatMissing =
+      const stateIncomplete =
         !file.previewStatus ||
         !file.processingStatus ||
         (!file.processingRoute && inferred.processingStatus !== "skipped");
@@ -268,9 +268,9 @@ async function backfillTransferMedia(
         changed = true;
       }
 
-      if (compatMissing && inferred.processingStatus === "failed" && inferred.processingRoute) {
+      if (stateIncomplete && inferred.processingStatus === "failed" && inferred.processingRoute) {
         changed = true;
-        return repairOrQueueLegacyFile(refreshed, inferred, mode);
+        return repairOrQueueIncompleteFile(refreshed, inferred, mode);
       }
 
       if (

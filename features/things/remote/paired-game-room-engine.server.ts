@@ -159,9 +159,7 @@ function judgeCommandPolicy(
 }
 
 function allPairedGameKeys(roomId: string) {
-  return [pairedGameRoomRedisKeys(roomId), pairedGameRoomRedisKeys(roomId, true)].flatMap((roomKeys) =>
-    Object.values(roomKeys),
-  );
+  return Object.values(pairedGameRoomRedisKeys(roomId));
 }
 
 async function readRoom(roomId: string): Promise<RoomContext | null> {
@@ -174,16 +172,14 @@ async function readRoom(roomId: string): Promise<RoomContext | null> {
     }
     return { meta: room.meta, keys: pairedGameRoomRedisKeys(roomId) };
   }
-  for (const roomKeys of [pairedGameRoomRedisKeys(roomId), pairedGameRoomRedisKeys(roomId, true)]) {
-    const meta = await redis.get<RoomMeta>(roomKeys.meta);
-    if (!meta) continue;
-    if (multiplayerRoomExpired(meta.expiresAt)) {
-      await redis.del(...allPairedGameKeys(roomId));
-      return null;
-    }
-    return { meta, keys: roomKeys };
+  const roomKeys = pairedGameRoomRedisKeys(roomId);
+  const meta = await redis.get<RoomMeta>(roomKeys.meta);
+  if (!meta) return null;
+  if (multiplayerRoomExpired(meta.expiresAt)) {
+    await redis.del(...allPairedGameKeys(roomId));
+    return null;
   }
-  return null;
+  return { meta, keys: roomKeys };
 }
 
 function roleMatches(meta: RoomMeta, role: PairedGameRoomRole, token: string) {

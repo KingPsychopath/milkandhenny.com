@@ -34,7 +34,6 @@ export function parsePartyPresenterFragment(fragment: string): PartyPresenterInv
 
 export function parsePartyPlayerFragment(fragment: string) {
   const value = fragment.replace(/^#/, "").trim();
-  if (!value.includes("=")) return value;
   return new URLSearchParams(value).get("join") ?? "";
 }
 

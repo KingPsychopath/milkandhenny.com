@@ -83,8 +83,6 @@ import {
   purgeWordShares,
   resetWordShares,
   revokeWordShare,
-  migrateLegacyWordsNamespace,
-  migratePrivateWordStorage,
   updateWordRecord,
   updateWordShare,
 } from "./words-ops";
@@ -2367,47 +2365,6 @@ async function cmdWordsShareReset(all: boolean) {
   console.log();
 }
 
-async function cmdWordsMigrateLegacy(purgeLegacy: boolean) {
-  heading("Migrate legacy words namespace");
-  if (purgeLegacy) {
-    log(red("This will purge legacy notes:* keys after migration."));
-    console.log();
-    const ok = await confirm("Continue?");
-    if (!ok) {
-      log(dim("Cancelled."));
-      console.log();
-      return;
-    }
-  }
-
-  const result = await migrateLegacyWordsNamespace({ purgeLegacy });
-  log(green(`✓ Found ${result.indexSlugsFound} legacy slug(s)`));
-  log(green(`✓ Migrated ${result.metaRecordsMigrated} metadata record(s)`));
-  log(green(`✓ Migrated ${result.shareRecordsMigrated} share record(s)`));
-  log(
-    green(
-      `✓ Migrated ${result.shareIndexMembersMigrated} share index member(s) across ${result.shareIndexSetsMigrated} set(s)`,
-    ),
-  );
-  if (result.shareSlugsMigrated > 0) {
-    log(green(`✓ Migrated ${result.shareSlugsMigrated} tracked share slug(s)`));
-  }
-  if (purgeLegacy) {
-    log(green(`✓ Purged ${result.legacyKeysPurged} legacy key(s)`));
-  } else {
-    log(dim("Legacy keys kept. Re-run with --purge-legacy to remove old keys."));
-  }
-  console.log();
-}
-
-async function cmdWordsMigratePrivateStorage() {
-  heading("Migrate private words into private R2 storage");
-  const result = await migratePrivateWordStorage();
-  log(green(`✓ Secured ${result.wordsMigrated} private word body/bodies`));
-  log(green(`✓ Moved ${result.mediaMigrated} private media object(s)`));
-  console.log();
-}
-
 async function syncSingleNoteFile(
   absFile: string,
   rootDir: string,
@@ -2733,8 +2690,6 @@ function showHelp() {
     words share cleanup ${dim("[--slug <slug>]")}
     words share purge ${dim("--slug <slug> | --all")}
     words share reset ${dim("--all")}
-    words migrate-legacy ${dim("[--purge-legacy]")}
-    words migrate-private-storage
 
   ${bold("Bucket")} ${dim("(raw R2 access)")}
     bucket ls ${dim("[prefix]")}                       Browse bucket contents
@@ -4849,12 +4804,6 @@ async function direct() {
                 tags,
                 overwrite: hasFlag("overwrite"),
               });
-            }
-            case "migrate-legacy": {
-              return cmdWordsMigrateLegacy(hasFlag("purge-legacy"));
-            }
-            case "migrate-private-storage": {
-              return cmdWordsMigratePrivateStorage();
             }
             case "share": {
               const action = args[2];

@@ -5,7 +5,7 @@ import { useWebHaptics } from "web-haptics/react";
 import { closePairedGameRoomFn, readPairedGameJudgeFn, sendPairedGameJudgeCommandFn } from "./paired-game-room.functions";
 import type { RemoteCommandReceiptReason, RemoteCommandRequest, RemoteGameKind, RemoteResultDecision, RemoteSyncedSnapshot } from "./types";
 import { useRemoteSocket } from "./useRemoteSocket";
-import { legacyRemoteBrowserKeys, remoteBrowserKeys } from "./remote-keys";
+import { remoteBrowserKeys } from "./remote-keys";
 import { clearExpiredGameLocalStorage, readExpiringLocalValue, removeStorageKeys, writeExpiringLocalValue } from "../shared/game-storage.client";
 import { EndGameDialog } from "../shared/EndGameDialog";
 import { shareOrCopy } from "@/lib/client/share";
@@ -59,14 +59,7 @@ function tokensForRoom(roomId: string): StoredRoomTokens {
   } catch {
     sessionStorage.removeItem(sessionKey);
   }
-  const legacyJudgeKey = legacyRemoteBrowserKeys.judgeToken(roomId);
-  const legacyPlayerKey = legacyRemoteBrowserKeys.playerInviteToken(roomId);
-  const legacyGameKey = legacyRemoteBrowserKeys.judgeGame(roomId);
-  const game = sessionStorage.getItem(legacyGameKey);
-  const migrated = { judgeToken: sessionStorage.getItem(legacyJudgeKey) ?? "", playerToken: sessionStorage.getItem(legacyPlayerKey) ?? "", game: game === "heads-up" || game === "spelling-bee" ? game : null } satisfies StoredRoomTokens;
-  if (migrated.judgeToken) sessionStorage.setItem(sessionKey, JSON.stringify(migrated));
-  removeStorageKeys(sessionStorage, [legacyJudgeKey, legacyPlayerKey, legacyGameKey]);
-  return migrated;
+  return { judgeToken: "", playerToken: "", game: null };
 }
 
 export function RemoteJudgeApp({ roomId }: { roomId: string }) {
@@ -110,7 +103,7 @@ export function RemoteJudgeApp({ roomId }: { roomId: string }) {
           setError(result.error ?? "This invite is no longer available.");
           setPlayerConnected(false);
           removeStorageKeys(sessionStorage, [remoteBrowserKeys.judgeSession(roomId)]);
-          removeStorageKeys(localStorage, [remoteBrowserKeys.pendingCommands(roomId), legacyRemoteBrowserKeys.pendingCommands(roomId)]);
+          localStorage.removeItem(remoteBrowserKeys.pendingCommands(roomId));
           return;
         }
         if (result.expiresAt) roomExpiresAt.current = result.expiresAt;
@@ -194,13 +187,7 @@ export function RemoteJudgeApp({ roomId }: { roomId: string }) {
   useEffect(() => {
     if (transportState !== "connected" || !tokens.judgeToken || !judgeActive || flushingCommands.current) return;
     const queueKey = remoteBrowserKeys.pendingCommands(roomId);
-    let commands = readExpiringLocalValue<RemoteCommandRequest[]>(queueKey) ?? [];
-    if (!commands.length) {
-      try {
-        commands = JSON.parse(localStorage.getItem(legacyRemoteBrowserKeys.pendingCommands(roomId)) ?? "[]") as RemoteCommandRequest[];
-        localStorage.removeItem(legacyRemoteBrowserKeys.pendingCommands(roomId));
-      } catch { localStorage.removeItem(legacyRemoteBrowserKeys.pendingCommands(roomId)); }
-    }
+    const commands = readExpiringLocalValue<RemoteCommandRequest[]>(queueKey) ?? [];
     if (!commands.length) return;
     flushingCommands.current = true;
     void (async () => {
@@ -237,13 +224,8 @@ export function RemoteJudgeApp({ roomId }: { roomId: string }) {
     if (endingRoom) return;
     setEndingRoom(true);
     await closePairedGameRoomFn({ data: { roomId, role: "judge", token: tokens.judgeToken } }).catch(() => null);
-    removeStorageKeys(sessionStorage, [
-      remoteBrowserKeys.judgeSession(roomId),
-      legacyRemoteBrowserKeys.judgeToken(roomId),
-      legacyRemoteBrowserKeys.playerInviteToken(roomId),
-      legacyRemoteBrowserKeys.judgeGame(roomId),
-    ]);
-    removeStorageKeys(localStorage, [remoteBrowserKeys.pendingCommands(roomId), legacyRemoteBrowserKeys.pendingCommands(roomId)]);
+    sessionStorage.removeItem(remoteBrowserKeys.judgeSession(roomId));
+    localStorage.removeItem(remoteBrowserKeys.pendingCommands(roomId));
     await navigate({ to: "/things" });
   };
 

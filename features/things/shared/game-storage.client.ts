@@ -23,19 +23,6 @@ export function writeExpiringLocalValue<T>(key: string, value: T, expiresAt: num
   localStorage.setItem(key, JSON.stringify({ expiresAt, value } satisfies ExpiringValue<T>));
 }
 
-export function migrateSessionValue(currentKey: string, legacyKeys: string[]) {
-  const current = sessionStorage.getItem(currentKey);
-  if (current !== null) return current;
-  for (const legacyKey of legacyKeys) {
-    const legacy = sessionStorage.getItem(legacyKey);
-    if (legacy === null) continue;
-    sessionStorage.setItem(currentKey, legacy);
-    sessionStorage.removeItem(legacyKey);
-    return legacy;
-  }
-  return null;
-}
-
 export function removeStorageKeys(storage: Storage, keys: string[]) {
   for (const key of keys) storage.removeItem(key);
 }
