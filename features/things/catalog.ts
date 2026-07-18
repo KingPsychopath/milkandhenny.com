@@ -1,17 +1,27 @@
 import { THING_OFFLINE } from "./offline";
 
 export interface Thing {
-  slug: "icebreaker" | "heads-up" | "spelling-bee";
+  slug: "icebreaker" | "heads-up" | "spelling-bee" | "draw-country";
   name: string;
   description: string;
   eyebrow: string;
-  href: "/things/icebreaker" | "/things/heads-up" | "/things/spelling-bee";
+  href: "/things/icebreaker" | "/things/heads-up" | "/things/spelling-bee" | "/things/draw-country";
   status: "ready";
   symbol: string;
   offline: (typeof THING_OFFLINE)[keyof typeof THING_OFFLINE] | null;
 }
 
 export const THINGS = [
+  {
+    slug: "draw-country",
+    name: "draw the country",
+    description: "Sketch a border from memory, see exactly where it drifted, or race your friends.",
+    eyebrow: "drawing game · 1–16 people",
+    href: "/things/draw-country",
+    status: "ready",
+    symbol: "◇",
+    offline: THING_OFFLINE["draw-country"],
+  },
   {
     slug: "spelling-bee",
     name: "spelling bee",

@@ -173,7 +173,7 @@ export class MultiplayerTelemetry extends Context.Service<
         }),
       snapshot: Effect.gen(function* () {
         const games = {} as MultiplayerTelemetrySnapshot["games"];
-        for (const game of ["remote", "spelling-party"] as const) {
+        for (const game of ["remote", "spelling-party", "draw-country"] as const) {
           const [active, success, failure, limited, reconciliation] = yield* Effect.all([
             Metric.value(gameMetric(activeSockets, game)),
             Metric.value(Metric.withAttributes(operationCounter, { game, result: "success" })),
