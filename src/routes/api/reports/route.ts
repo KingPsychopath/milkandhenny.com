@@ -13,10 +13,6 @@ async function handlePOST(request: Request) {
   if (Number.isFinite(contentLength) && contentLength > MAX_REPORT_BYTES)
     return Response.json({ error: "Report is too large" }, { status: 413 });
 
-  const origin = request.headers.get("origin");
-  if (origin && origin !== new URL(request.url).origin)
-    return Response.json({ error: "Invalid report origin" }, { status: 403 });
-
   let input: unknown;
   try {
     const body = await request.text();
@@ -46,3 +42,5 @@ export const Route = createFileRoute("/api/reports")({
     },
   },
 });
+
+export { handlePOST as POST };

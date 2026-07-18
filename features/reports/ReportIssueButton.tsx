@@ -14,19 +14,25 @@ export function ReportIssueButton<Type extends ReportType>({
   label?: string;
 }) {
   const [status, setStatus] = useState<"idle" | "sending" | "sent" | "error">("idle");
+  const [errorMessage, setErrorMessage] = useState("");
 
   const submit = async () => {
     if (status === "sending" || status === "sent") return;
     setStatus("sending");
+    setErrorMessage("");
     try {
       const response = await fetch("/api/reports", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ type, context }),
       });
-      if (!response.ok) throw new Error("Report failed");
+      const result = (await response.json().catch(() => null)) as { error?: string } | null;
+      if (!response.ok) throw new Error(result?.error || "Could not save this report");
       setStatus("sent");
-    } catch {
+    } catch (error) {
+      setErrorMessage(
+        error instanceof Error ? error.message : "Could not report — check your connection",
+      );
       setStatus("error");
     }
   };
@@ -41,7 +47,7 @@ export function ReportIssueButton<Type extends ReportType>({
       >
         {status === "sending" ? "reporting…" : status === "sent" ? "reported — thank you" : label}
       </button>
-      <span aria-live="polite">{status === "error" ? "couldn’t report — try again" : ""}</span>
+      <span aria-live="polite">{status === "error" ? `${errorMessage} — try again` : ""}</span>
     </div>
   );
 }
