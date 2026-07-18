@@ -26,7 +26,7 @@ export function CountryRoundBoard({
   return (
     <main
       id="main"
-      className="mx-auto flex w-full max-w-[min(56rem,max(20rem,calc((100svh-13rem)*10/7)))] flex-1 flex-col px-4 pb-6 sm:px-6"
+      className="mx-auto flex w-full max-w-[min(56rem,max(20rem,calc((100svh-13rem)*4/3)))] flex-1 flex-col px-4 pb-6 sm:px-6"
     >
       <div className="flex min-h-16 items-end justify-between gap-4 pb-3 font-mono text-xs uppercase tracking-[0.14em] text-black/55">
         <div>
