@@ -3,6 +3,7 @@ import { Context, Effect, Layer, Schedule } from "effect";
 
 import { getDirectRedisConfig } from "@/lib/platform/redis-direct.server";
 import { log } from "@/lib/platform/logger.server";
+import { getRuntimeInstanceId } from "@/lib/platform/runtime-metadata.server";
 
 import { isMultiplayerServerMessage } from "./multiplayer-realtime";
 import { MULTIPLAYER_ROOM_ID_PATTERN } from "./multiplayer";
@@ -77,10 +78,7 @@ export class MultiplayerRealtimeBackplane extends Context.Service<
         };
       }
 
-      const origin =
-        process.env.RAILWAY_REPLICA_ID?.trim() ||
-        process.env.HOSTNAME?.trim() ||
-        `local-${process.pid}`;
+      const origin = getRuntimeInstanceId();
       const listeners = new Set<BackplaneListener>();
       const { publisher, subscriber: _subscriber } = yield* Effect.acquireRelease(
         Effect.sync(() => {

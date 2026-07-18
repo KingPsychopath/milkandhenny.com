@@ -28,6 +28,8 @@ Use `/health` for the safe human view. Use the admin-protected `/api/debug` only
 - Set host-level memory and spending limits, but leave enough headroom for image transformations.
 - Set `RAILWAY_DEPLOYMENT_DRAINING_SECONDS=30` so Nitro can close sockets and dispose the Effect runtime after `SIGTERM`.
 
+`RAILWAY_DEPLOYMENT_DRAINING_SECONDS` is Railway lifecycle configuration, not part of the application environment contract. Application runtime metadata uses `APP_COMMIT_SHA` and `APP_INSTANCE_ID`; Railway-provided metadata is an optional deployment adapter.
+
 ## Multiplayer scaling
 
 Each replica owns one managed Effect runtime, one bounded local socket registry, and—when `REDIS_URL` is configured—one Redis publisher and one Redis subscriber. Authoritative rooms remain in Redis REST storage; the direct connection carries advisory cross-replica wake events only.

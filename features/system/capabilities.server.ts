@@ -11,6 +11,7 @@ import {
 import { getRedis, getRedisRestConfig } from "@/lib/platform/redis.server";
 import { getDirectRedisConfig } from "@/lib/platform/redis-direct.server";
 import { hasMediaPublicUrl } from "@/lib/shared/config";
+import { getRuntimeMetadata } from "@/lib/platform/runtime-metadata.server";
 
 const REQUIRED_AUTH_VARIABLES = [
   "AUTH_SECRET",
@@ -21,15 +22,6 @@ const REQUIRED_AUTH_VARIABLES = [
 
 function isConfigured(name: string): boolean {
   return Boolean(process.env[name]?.trim());
-}
-
-function getRuntimeMetadata() {
-  return {
-    environment: process.env.APP_ENV?.trim() || process.env.NODE_ENV || "unknown",
-    version: process.env.APP_VERSION?.trim() || "0.1.0",
-    commit:
-      process.env.APP_COMMIT_SHA?.trim() || process.env.RAILWAY_GIT_COMMIT_SHA?.trim() || null,
-  };
 }
 
 function getConfiguredCapabilities(): Capability[] {

@@ -5,10 +5,9 @@ import { fileURLToPath, URL } from "node:url";
 import { defineConfig } from "vite";
 import { VitePWA } from "vite-plugin-pwa";
 
-const buildId =
-  process.env.RAILWAY_GIT_COMMIT_SHA ??
-  process.env.APP_COMMIT_SHA ??
-  `local-${new Date().toISOString()}`;
+import { getRuntimeCommitSha } from "./lib/platform/runtime-metadata.server";
+
+const buildId = getRuntimeCommitSha() ?? `local-${new Date().toISOString()}`;
 
 export default defineConfig({
   define: {

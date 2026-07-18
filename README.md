@@ -78,6 +78,8 @@ Only `VITE_*` variables enter the browser bundle. Never prefix credentials or au
 
 Multiplayer uses a server-only Effect v4 managed runtime. A direct `REDIS_URL` enables cross-replica WebSocket wake fan-out and is required before scaling the web service beyond one replica; authoritative room state continues to use the Redis REST contract.
 
+Application-owned runtime metadata uses `APP_COMMIT_SHA` and `APP_INSTANCE_ID`. Hosting-provider metadata is accepted only as an adapter when those canonical variables are omitted; an instance ID must be unique per running process or replica.
+
 ## Health and capabilities
 
 - `/api/health` — cheap machine-readable readiness check; no dependency operations.

@@ -1,5 +1,7 @@
 import { Context, Effect, Layer, Metric } from "effect";
 
+import { getRuntimeInstanceId } from "@/lib/platform/runtime-metadata.server";
+
 import type {
   MultiplayerGame,
   MultiplayerLatencySnapshot,
@@ -114,10 +116,7 @@ export class MultiplayerTelemetry extends Context.Service<
   static readonly layer = Layer.sync(this, () => {
     let backplaneMode: "local" | "redis" = "local";
     const runtimeStartedAt = new Date().toISOString();
-    const replica =
-      process.env.RAILWAY_REPLICA_ID?.trim() ||
-      process.env.HOSTNAME?.trim() ||
-      `local-${process.pid}`;
+    const replica = getRuntimeInstanceId();
 
     return {
       recordBackplane: (direction, outcome) =>
