@@ -34,6 +34,7 @@ import { Route as ThingsDrawCountryRouteImport } from './routes/things.draw-coun
 import { Route as TIdRouteImport } from './routes/t/$id'
 import { Route as AdminEditorRouteImport } from './routes/admin/editor'
 import { Route as ApiWordsRouteRouteImport } from './routes/api/words/route'
+import { Route as ApiReportsRouteRouteImport } from './routes/api/reports/route'
 import { Route as ApiHealthRouteRouteImport } from './routes/api/health/route'
 import { Route as ApiGuestsRouteRouteImport } from './routes/api/guests/route'
 import { Route as ApiDebugRouteRouteImport } from './routes/api/debug/route'
@@ -58,6 +59,7 @@ import { Route as ApiAdminWordMediaRouteRouteImport } from './routes/api/admin/w
 import { Route as ApiAdminVerifyRouteRouteImport } from './routes/api/admin/verify/route'
 import { Route as ApiAdminTransfersRouteRouteImport } from './routes/api/admin/transfers/route'
 import { Route as ApiAdminStepUpRouteRouteImport } from './routes/api/admin/step-up/route'
+import { Route as ApiAdminReportsRouteRouteImport } from './routes/api/admin/reports/route'
 import { Route as ApiAdminContentSummaryRouteRouteImport } from './routes/api/admin/content-summary/route'
 import { Route as ApiAdminContentAuditRouteRouteImport } from './routes/api/admin/content-audit/route'
 import { Route as ApiAdminAlbumsRouteRouteImport } from './routes/api/admin/albums/route'
@@ -221,6 +223,11 @@ const ApiWordsRouteRoute = ApiWordsRouteRouteImport.update({
   path: '/api/words',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiReportsRouteRoute = ApiReportsRouteRouteImport.update({
+  id: '/api/reports',
+  path: '/api/reports',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiHealthRouteRoute = ApiHealthRouteRouteImport.update({
   id: '/api/health',
   path: '/api/health',
@@ -345,6 +352,11 @@ const ApiAdminTransfersRouteRoute = ApiAdminTransfersRouteRouteImport.update({
 const ApiAdminStepUpRouteRoute = ApiAdminStepUpRouteRouteImport.update({
   id: '/api/admin/step-up',
   path: '/api/admin/step-up',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiAdminReportsRouteRoute = ApiAdminReportsRouteRouteImport.update({
+  id: '/api/admin/reports',
+  path: '/api/admin/reports',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiAdminContentSummaryRouteRoute =
@@ -583,6 +595,7 @@ export interface FileRoutesByFullPath {
   '/api/debug': typeof ApiDebugRouteRoute
   '/api/guests': typeof ApiGuestsRouteRouteWithChildren
   '/api/health': typeof ApiHealthRouteRoute
+  '/api/reports': typeof ApiReportsRouteRoute
   '/api/words': typeof ApiWordsRouteRouteWithChildren
   '/admin/editor': typeof AdminEditorRoute
   '/t/$id': typeof TIdRoute
@@ -599,6 +612,7 @@ export interface FileRoutesByFullPath {
   '/api/admin/albums': typeof ApiAdminAlbumsRouteRouteWithChildren
   '/api/admin/content-audit': typeof ApiAdminContentAuditRouteRoute
   '/api/admin/content-summary': typeof ApiAdminContentSummaryRouteRoute
+  '/api/admin/reports': typeof ApiAdminReportsRouteRoute
   '/api/admin/step-up': typeof ApiAdminStepUpRouteRoute
   '/api/admin/transfers': typeof ApiAdminTransfersRouteRouteWithChildren
   '/api/admin/verify': typeof ApiAdminVerifyRouteRoute
@@ -671,6 +685,7 @@ export interface FileRoutesByTo {
   '/api/debug': typeof ApiDebugRouteRoute
   '/api/guests': typeof ApiGuestsRouteRouteWithChildren
   '/api/health': typeof ApiHealthRouteRoute
+  '/api/reports': typeof ApiReportsRouteRoute
   '/api/words': typeof ApiWordsRouteRouteWithChildren
   '/admin/editor': typeof AdminEditorRoute
   '/t/$id': typeof TIdRoute
@@ -687,6 +702,7 @@ export interface FileRoutesByTo {
   '/api/admin/albums': typeof ApiAdminAlbumsRouteRouteWithChildren
   '/api/admin/content-audit': typeof ApiAdminContentAuditRouteRoute
   '/api/admin/content-summary': typeof ApiAdminContentSummaryRouteRoute
+  '/api/admin/reports': typeof ApiAdminReportsRouteRoute
   '/api/admin/step-up': typeof ApiAdminStepUpRouteRoute
   '/api/admin/transfers': typeof ApiAdminTransfersRouteRouteWithChildren
   '/api/admin/verify': typeof ApiAdminVerifyRouteRoute
@@ -760,6 +776,7 @@ export interface FileRoutesById {
   '/api/debug': typeof ApiDebugRouteRoute
   '/api/guests': typeof ApiGuestsRouteRouteWithChildren
   '/api/health': typeof ApiHealthRouteRoute
+  '/api/reports': typeof ApiReportsRouteRoute
   '/api/words': typeof ApiWordsRouteRouteWithChildren
   '/admin/editor': typeof AdminEditorRoute
   '/t/$id': typeof TIdRoute
@@ -776,6 +793,7 @@ export interface FileRoutesById {
   '/api/admin/albums': typeof ApiAdminAlbumsRouteRouteWithChildren
   '/api/admin/content-audit': typeof ApiAdminContentAuditRouteRoute
   '/api/admin/content-summary': typeof ApiAdminContentSummaryRouteRoute
+  '/api/admin/reports': typeof ApiAdminReportsRouteRoute
   '/api/admin/step-up': typeof ApiAdminStepUpRouteRoute
   '/api/admin/transfers': typeof ApiAdminTransfersRouteRouteWithChildren
   '/api/admin/verify': typeof ApiAdminVerifyRouteRoute
@@ -850,6 +868,7 @@ export interface FileRouteTypes {
     | '/api/debug'
     | '/api/guests'
     | '/api/health'
+    | '/api/reports'
     | '/api/words'
     | '/admin/editor'
     | '/t/$id'
@@ -866,6 +885,7 @@ export interface FileRouteTypes {
     | '/api/admin/albums'
     | '/api/admin/content-audit'
     | '/api/admin/content-summary'
+    | '/api/admin/reports'
     | '/api/admin/step-up'
     | '/api/admin/transfers'
     | '/api/admin/verify'
@@ -938,6 +958,7 @@ export interface FileRouteTypes {
     | '/api/debug'
     | '/api/guests'
     | '/api/health'
+    | '/api/reports'
     | '/api/words'
     | '/admin/editor'
     | '/t/$id'
@@ -954,6 +975,7 @@ export interface FileRouteTypes {
     | '/api/admin/albums'
     | '/api/admin/content-audit'
     | '/api/admin/content-summary'
+    | '/api/admin/reports'
     | '/api/admin/step-up'
     | '/api/admin/transfers'
     | '/api/admin/verify'
@@ -1026,6 +1048,7 @@ export interface FileRouteTypes {
     | '/api/debug'
     | '/api/guests'
     | '/api/health'
+    | '/api/reports'
     | '/api/words'
     | '/admin/editor'
     | '/t/$id'
@@ -1042,6 +1065,7 @@ export interface FileRouteTypes {
     | '/api/admin/albums'
     | '/api/admin/content-audit'
     | '/api/admin/content-summary'
+    | '/api/admin/reports'
     | '/api/admin/step-up'
     | '/api/admin/transfers'
     | '/api/admin/verify'
@@ -1115,6 +1139,7 @@ export interface RootRouteChildren {
   ApiDebugRouteRoute: typeof ApiDebugRouteRoute
   ApiGuestsRouteRoute: typeof ApiGuestsRouteRouteWithChildren
   ApiHealthRouteRoute: typeof ApiHealthRouteRoute
+  ApiReportsRouteRoute: typeof ApiReportsRouteRoute
   ApiWordsRouteRoute: typeof ApiWordsRouteRouteWithChildren
   AdminEditorRoute: typeof AdminEditorRoute
   TIdRoute: typeof TIdRoute
@@ -1126,6 +1151,7 @@ export interface RootRouteChildren {
   ApiAdminAlbumsRouteRoute: typeof ApiAdminAlbumsRouteRouteWithChildren
   ApiAdminContentAuditRouteRoute: typeof ApiAdminContentAuditRouteRoute
   ApiAdminContentSummaryRouteRoute: typeof ApiAdminContentSummaryRouteRoute
+  ApiAdminReportsRouteRoute: typeof ApiAdminReportsRouteRoute
   ApiAdminStepUpRouteRoute: typeof ApiAdminStepUpRouteRoute
   ApiAdminTransfersRouteRoute: typeof ApiAdminTransfersRouteRouteWithChildren
   ApiAdminVerifyRouteRoute: typeof ApiAdminVerifyRouteRoute
@@ -1332,6 +1358,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiWordsRouteRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/reports': {
+      id: '/api/reports'
+      path: '/api/reports'
+      fullPath: '/api/reports'
+      preLoaderRoute: typeof ApiReportsRouteRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/health': {
       id: '/api/health'
       path: '/api/health'
@@ -1498,6 +1531,13 @@ declare module '@tanstack/react-router' {
       path: '/api/admin/step-up'
       fullPath: '/api/admin/step-up'
       preLoaderRoute: typeof ApiAdminStepUpRouteRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/admin/reports': {
+      id: '/api/admin/reports'
+      path: '/api/admin/reports'
+      fullPath: '/api/admin/reports'
+      preLoaderRoute: typeof ApiAdminReportsRouteRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/admin/content-summary': {
@@ -1985,6 +2025,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiDebugRouteRoute: ApiDebugRouteRoute,
   ApiGuestsRouteRoute: ApiGuestsRouteRouteWithChildren,
   ApiHealthRouteRoute: ApiHealthRouteRoute,
+  ApiReportsRouteRoute: ApiReportsRouteRoute,
   ApiWordsRouteRoute: ApiWordsRouteRouteWithChildren,
   AdminEditorRoute: AdminEditorRoute,
   TIdRoute: TIdRoute,
@@ -1996,6 +2037,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiAdminAlbumsRouteRoute: ApiAdminAlbumsRouteRouteWithChildren,
   ApiAdminContentAuditRouteRoute: ApiAdminContentAuditRouteRoute,
   ApiAdminContentSummaryRouteRoute: ApiAdminContentSummaryRouteRoute,
+  ApiAdminReportsRouteRoute: ApiAdminReportsRouteRoute,
   ApiAdminStepUpRouteRoute: ApiAdminStepUpRouteRoute,
   ApiAdminTransfersRouteRoute: ApiAdminTransfersRouteRouteWithChildren,
   ApiAdminVerifyRouteRoute: ApiAdminVerifyRouteRoute,

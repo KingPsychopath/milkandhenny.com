@@ -13,45 +13,13 @@ import {
   joinDrawCountryRoom,
   readDrawCountrySnapshot,
 } from "./draw-country-room.server";
-import {
-  DRAWING_HEIGHT,
-  DRAWING_WIDTH,
-  MAX_DRAWING_POINTS,
-  MAX_DRAWING_RINGS,
-  MAX_POINTS_PER_RING,
-} from "./drawing-constraints";
-import type { CountryDrawing, DrawPoint } from "./types";
+import { parseCountryDrawing } from "./drawing-constraints";
+import type { CountryDrawing } from "./types";
 
 const record = multiplayerRecord;
 const text = multiplayerText;
 const credential = multiplayerCredential;
 const sequence = multiplayerSequence;
-
-function drawing(value: unknown): CountryDrawing {
-  if (!Array.isArray(value) || value.length > MAX_DRAWING_RINGS) throw new Error("Invalid drawing");
-  let total = 0;
-  return value.map((candidate) => {
-    if (!Array.isArray(candidate) || candidate.length > MAX_POINTS_PER_RING)
-      throw new Error("Invalid drawing");
-    total += candidate.length;
-    if (total > MAX_DRAWING_POINTS) throw new Error("Drawing is too detailed");
-    return candidate.map((raw): DrawPoint => {
-      const point = record(raw);
-      if (
-        typeof point.x !== "number" ||
-        typeof point.y !== "number" ||
-        !Number.isFinite(point.x) ||
-        !Number.isFinite(point.y) ||
-        point.x < 0 ||
-        point.x > DRAWING_WIDTH ||
-        point.y < 0 ||
-        point.y > DRAWING_HEIGHT
-      )
-        throw new Error("Invalid point");
-      return { x: Math.round(point.x * 10) / 10, y: Math.round(point.y * 10) / 10 };
-    });
-  });
-}
 
 export const createDrawCountryRoomFn = createServerFn({ method: "POST" })
   .validator((value: unknown) => {
@@ -112,7 +80,7 @@ export const applyDrawCountryActionFn = createServerFn({ method: "POST" })
       action = {
         type: rawAction.type,
         roundId: text(rawAction.roundId, 80),
-        drawing: drawing(rawAction.drawing),
+        drawing: parseCountryDrawing(rawAction.drawing),
       };
     else throw new Error("Invalid action");
     return {

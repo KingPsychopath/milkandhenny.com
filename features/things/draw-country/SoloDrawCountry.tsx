@@ -4,6 +4,7 @@ import { TextMorph } from "torph/react";
 import { useWebHaptics } from "web-haptics/react";
 import { useUpdateReloadSafety } from "@/features/offline/update-safety.client";
 import { CountryReveal, CountryRevealLegend, CountryScoreDetails } from "./CountryReveal";
+import { DrawCountryResultReport } from "./DrawCountryResultReport";
 import { CountryRoundBoard } from "./CountryRoundBoard";
 import { resultReaction } from "./result-copy";
 import { nextSoloCountry, rememberCountry } from "./rotation.client";
@@ -107,6 +108,7 @@ export function SoloDrawCountry({ onExit }: { onExit: () => void }) {
         </div>
         <CountryScoreDetails evaluation={evaluation} />
         <CountryRevealLegend />
+        <DrawCountryResultReport countryId={country.id} drawing={drawing} mode="solo" />
         <button
           type="button"
           onClick={playAgain}

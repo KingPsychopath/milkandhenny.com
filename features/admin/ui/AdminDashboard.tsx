@@ -6,6 +6,7 @@ import type { SystemCapabilities } from "@/features/system/capabilities";
 import type { MultiplayerTelemetrySnapshot } from "@/features/things/shared/multiplayer-telemetry";
 import { SITE_BRAND } from "@/lib/shared/config";
 import { TokenSessionsPanel } from "./components/TokenSessionsPanel";
+import { ReportsPanel } from "./components/ReportsPanel";
 import { useAdminAuth } from "@/features/auth/useAdminAuth";
 import { useActionDialog } from "@/hooks/useActionDialog";
 import { buildTransferUrl } from "@/features/transfers/routes";
@@ -1158,6 +1159,9 @@ export function AdminDashboard() {
             <a href="#system-health" className="hover:text-[var(--foreground)] transition-colors">
               health
             </a>
+            <a href="#user-reports" className="hover:text-[var(--foreground)] transition-colors">
+              reports
+            </a>
             <a
               href="#transfer-manager"
               className="hover:text-[var(--foreground)] transition-colors"
@@ -1261,6 +1265,12 @@ export function AdminDashboard() {
             <p className="text-lg">{content?.gallery.albumsWithoutDescription ?? "—"}</p>
           </div>
         </div>
+
+        <ReportsPanel
+          authFetch={authFetch}
+          onError={setErrorMessage}
+          onStatus={setStatusMessage}
+        />
 
         <div id="system-health" className="border-t theme-border pt-6 space-y-3 scroll-mt-6">
           <div className="flex items-center justify-between">
