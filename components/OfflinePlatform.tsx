@@ -36,18 +36,21 @@ export function OfflinePlatform() {
   const activating = updateState === "activating";
   const updated = updateState === "updated";
   const failed = updateState === "failed";
+  const hasActions = safeToReload && !activating && !updated;
   const message = activating
     ? "updating…"
     : updated
-      ? "you’re up to date"
+      ? "updated"
       : failed
-        ? "update paused"
+        ? "couldn’t update"
         : safeToReload
           ? "update ready"
           : "update ready after this round";
 
   return (
-    <aside className="fixed bottom-4 left-1/2 z-[100] flex max-w-[calc(100%-2rem)] -translate-x-1/2 items-center gap-1 rounded-full border theme-border bg-background/95 py-1 pl-4 pr-1 text-foreground shadow-md backdrop-blur-sm">
+    <aside
+      className={`fixed bottom-4 left-1/2 z-[100] flex max-w-[calc(100%-2rem)] -translate-x-1/2 items-center rounded-full border theme-border bg-background/95 text-foreground shadow-md backdrop-blur-sm ${hasActions ? "gap-1 py-1 pl-4 pr-1" : "gap-2 px-4 py-3"}`}
+    >
       {activating ? (
         <span
           aria-hidden="true"
@@ -58,23 +61,23 @@ export function OfflinePlatform() {
         role="status"
         aria-live="polite"
         aria-atomic="true"
-        className="whitespace-nowrap font-mono text-xs theme-muted"
+        className="whitespace-nowrap font-mono text-xs font-bold"
       >
         {message}
       </p>
-      {safeToReload && !activating && !updated ? (
+      {hasActions ? (
         <div className="flex shrink-0 items-center gap-1">
           <button
             type="button"
             onClick={() => setDismissed(true)}
-            className="min-h-11 px-2 font-mono text-xs opacity-55 transition-opacity hover:opacity-100"
+            className="min-h-11 px-2 font-mono text-xs opacity-55 underline underline-offset-4 transition-opacity hover:opacity-100"
           >
             later
           </button>
           <button
             type="button"
             onClick={() => void activateSiteUpdate()}
-            className="min-h-11 rounded-full px-3 font-mono text-xs font-bold transition-opacity hover:opacity-60"
+            className="min-h-11 px-3 font-mono text-xs font-bold underline underline-offset-4 transition-opacity hover:opacity-60"
           >
             {failed ? "try again" : "update"}
           </button>
