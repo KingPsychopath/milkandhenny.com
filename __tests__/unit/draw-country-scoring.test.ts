@@ -18,11 +18,14 @@ function country(rings: number[][][] = [SQUARE], aspect = 1): CountryOutline {
   return { id: "ZZ", name: "Testland", continent: "Test", aspect, rings };
 }
 
-function exactDrawing(outline: CountryOutline): CountryDrawing {
+function exactDrawing(
+  outline: CountryOutline,
+  placement = { x: 137, y: 83, scale: 0.083 },
+): CountryDrawing {
   return outline.rings.map((ring) =>
     ring.map(([x, y]) => ({
-      x: 137 + x * outline.aspect * 0.083,
-      y: 83 + y * 0.083,
+      x: placement.x + x * outline.aspect * placement.scale,
+      y: placement.y + y * placement.scale,
     })),
   );
 }
@@ -48,6 +51,20 @@ describe("draw-country scoring", () => {
   it("scores every translated and uniformly scaled reference outline at 100", () => {
     for (const outline of COUNTRIES)
       expect(scoreCountryDrawing(outline, exactDrawing(outline)).score, outline.id).toBe(100);
+  });
+
+  it("does not penalise an exact outline drawn at a different position or size", () => {
+    const namibia = COUNTRIES.find(({ id }) => id === "NA");
+    expect(namibia).toBeDefined();
+    if (!namibia) throw new Error("Namibia fixture is missing");
+
+    expect(
+      [
+        { x: 20, y: 15, scale: 0.035 },
+        { x: 420, y: 180, scale: 0.061 },
+        { x: -260, y: -310, scale: 0.14 },
+      ].map((placement) => scoreCountryDrawing(namibia, exactDrawing(namibia, placement)).score),
+    ).toEqual([100, 100, 100]);
   });
 
   it("aligns translation and uniform scale without correcting rotation", () => {

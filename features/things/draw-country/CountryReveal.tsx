@@ -1,61 +1,42 @@
 import type { CountryEvaluation } from "./scoring";
 import type { CountryDrawing, DrawPoint } from "./types";
-import { closestOnBorder, pointInShape, ringLength } from "./geometry";
+import { closestOnBorder, pointInShape } from "./geometry";
 
 const SCALE = 820;
 const OFFSET = 90;
-const MAX_GUIDES = 40;
+const VISUAL_MATCH_DISTANCE = 8 / SCALE;
 
 function pathFor(ring: DrawPoint[], scale = 820, offset = 90) {
   if (!ring.length) return "";
   return `${ring.map((point, index) => `${index ? "L" : "M"}${offset + point.x * scale} ${offset + point.y * scale}`).join(" ")} Z`;
 }
 
-function guidePoints(drawing: CountryDrawing) {
-  const rings = drawing.filter((ring) => ring.length);
-  const pointCount = rings.reduce((total, ring) => total + ring.length, 0);
-  const budget = Math.min(MAX_GUIDES, pointCount);
-  if (!budget) return [];
-
-  const lengths = rings.map(ringLength);
-  const totalLength = lengths.reduce((total, length) => total + length, 0);
-  const minimum = budget >= rings.length ? 1 : 0;
-  const remaining = budget - minimum * rings.length;
-  const allocations = lengths.map((length, index) => {
-    const exact = totalLength ? (length / totalLength) * remaining : 0;
-    return { index, count: minimum + Math.floor(exact), remainder: exact % 1 };
-  });
-  let assigned = allocations.reduce((total, allocation) => total + allocation.count, 0);
-  for (const allocation of allocations.toSorted((a, b) => b.remainder - a.remainder)) {
-    if (assigned >= budget) break;
-    allocations[allocation.index].count += 1;
-    assigned += 1;
-  }
-
-  return rings.flatMap((ring, index) => {
-    const count = allocations[index].count;
-    return Array.from(
-      { length: count },
-      (_, pointIndex) => ring[Math.floor((pointIndex / count) * ring.length)],
-    );
-  });
+function segmentPath(start: DrawPoint, end: DrawPoint) {
+  return `M${OFFSET + start.x * SCALE} ${OFFSET + start.y * SCALE} L${OFFSET + end.x * SCALE} ${OFFSET + end.y * SCALE}`;
 }
 
-function guideLines(drawing: CountryDrawing, reference: CountryDrawing) {
-  return guidePoints(drawing).map((point) => ({
-    point,
-    target: closestOnBorder(point, reference).point,
-    position: pointInShape(point, reference) ? "inside" : "outside",
-  }));
+function errorPaths(drawing: CountryDrawing, reference: CountryDrawing) {
+  const paths = { outside: [] as string[], inside: [] as string[] };
+  for (const ring of drawing) {
+    for (let index = 0; index < ring.length; index += 1) {
+      const start = ring[index];
+      const end = ring[(index + 1) % ring.length];
+      const midpoint = { x: (start.x + end.x) / 2, y: (start.y + end.y) / 2 };
+      if (closestOnBorder(midpoint, reference).distance <= VISUAL_MATCH_DISTANCE) continue;
+      const position = pointInShape(midpoint, reference) ? "inside" : "outside";
+      paths[position].push(segmentPath(start, end));
+    }
+  }
+  return { outside: paths.outside.join(" "), inside: paths.inside.join(" ") };
 }
 
 export function CountryReveal({ evaluation }: { evaluation: CountryEvaluation }) {
-  const guides = guideLines(evaluation.drawing, evaluation.reference);
+  const errors = errorPaths(evaluation.drawing, evaluation.reference);
   return (
     <svg
       viewBox="0 0 1000 1000"
       role="img"
-      aria-label={`Actual country border compared with your aligned drawing. Red connectors measure gaps from drawing points outside the border; blue connectors measure gaps from points inside it. Score ${evaluation.score} out of 100.`}
+      aria-label={`Actual country border compared with your aligned drawing. Red portions of your outline fall outside the country; blue portions cut inside it; black portions closely match. Position and size are normalised before comparison. Score ${evaluation.score} out of 100.`}
       className="block aspect-square w-full rounded-[1.75rem] border border-black/15 bg-white/45"
     >
       <title>Actual country border and your aligned drawing</title>
@@ -71,19 +52,6 @@ export function CountryReveal({ evaluation }: { evaluation: CountryEvaluation })
           style={{ animationDelay: `${Math.min(index * 30, 240)}ms` }}
         />
       ))}
-      {guides.map(({ point, target, position }, index) => (
-        <line
-          key={index}
-          x1={OFFSET + point.x * SCALE}
-          y1={OFFSET + point.y * SCALE}
-          x2={OFFSET + target.x * SCALE}
-          y2={OFFSET + target.y * SCALE}
-          pathLength="1"
-          className={`country-reveal-guide country-reveal-guide--${position}`}
-          strokeWidth="2"
-          style={{ animationDelay: `${760 + index * 22}ms` }}
-        />
-      ))}
       {evaluation.drawing.map((ring, index) => (
         <path
           key={`drawing-${index}`}
@@ -97,16 +65,28 @@ export function CountryReveal({ evaluation }: { evaluation: CountryEvaluation })
           style={{ animationDelay: `${280 + Math.min(index * 45, 260)}ms` }}
         />
       ))}
-      {guides.map(({ point }, index) => (
-        <circle
-          key={`point-${index}`}
-          cx={OFFSET + point.x * SCALE}
-          cy={OFFSET + point.y * SCALE}
-          r="4"
-          className="country-reveal-point"
-          style={{ animationDelay: `${880 + index * 22}ms` }}
+      {errors.outside ? (
+        <path
+          d={errors.outside}
+          pathLength="1"
+          fill="none"
+          className="country-reveal-error country-reveal-error--outside"
+          strokeWidth="5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
         />
-      ))}
+      ) : null}
+      {errors.inside ? (
+        <path
+          d={errors.inside}
+          pathLength="1"
+          fill="none"
+          className="country-reveal-error country-reveal-error--inside"
+          strokeWidth="5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      ) : null}
     </svg>
   );
 }
@@ -120,23 +100,23 @@ export function CountryRevealLegend() {
       >
         <li className="flex items-center gap-2">
           <span className="country-legend-reference" aria-hidden="true" />
-          reference
+          actual border
         </li>
         <li className="flex items-center gap-2">
-          <span className="country-legend-point" aria-hidden="true" />
-          your outline
+          <span className="country-legend-drawing" aria-hidden="true" />
+          close match
         </li>
         <li className="flex items-center gap-2">
           <span className="country-legend-outside" aria-hidden="true" />
-          outside gap
+          outside country
         </li>
         <li className="flex items-center gap-2">
           <span className="country-legend-inside" aria-hidden="true" />
-          inside gap
+          cuts inside
         </li>
       </ul>
       <p className="mt-3 font-mono text-micro leading-relaxed text-black/40">
-        coloured lines measure the shortest gap from your outline to the reference
+        colours sit directly on your aligned outline · position and size are normalised
       </p>
     </div>
   );

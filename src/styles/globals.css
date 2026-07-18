@@ -392,7 +392,7 @@
 
   .country-reveal-reference,
   .country-reveal-drawing,
-  .country-reveal-guide {
+  .country-reveal-error {
     stroke-dasharray: 1;
     stroke-dashoffset: 1;
     animation: country-outline-trace 680ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
@@ -406,28 +406,22 @@
     stroke: var(--things-country-point);
   }
 
-  .country-reveal-guide {
+  .country-reveal-error {
     animation-name: country-guide-trace;
     animation-duration: 460ms;
+    animation-delay: 760ms;
   }
 
-  .country-reveal-guide--outside {
+  .country-reveal-error--outside {
     stroke: var(--things-country-outside);
   }
 
-  .country-reveal-guide--inside {
+  .country-reveal-error--inside {
     stroke: var(--things-country-inside);
   }
 
-  .country-reveal-point {
-    fill: var(--things-country-point);
-    opacity: 0;
-    transform-box: fill-box;
-    transform-origin: center;
-    animation: country-point-in 320ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
-  }
-
   .country-legend-reference,
+  .country-legend-drawing,
   .country-legend-outside,
   .country-legend-inside {
     display: inline-block;
@@ -439,6 +433,10 @@
     border-color: var(--things-country-reference);
   }
 
+  .country-legend-drawing {
+    border-color: var(--things-country-point);
+  }
+
   .country-legend-outside {
     border-color: var(--things-country-outside);
   }
@@ -447,25 +445,17 @@
     border-color: var(--things-country-inside);
   }
 
-  .country-legend-point {
-    width: 0.45rem;
-    height: 0.45rem;
-    border-radius: 999px;
-    background: var(--things-country-point);
-  }
-
   @media (prefers-reduced-motion: reduce) {
     .country-reveal-reference,
     .country-reveal-drawing,
-    .country-reveal-guide,
-    .country-reveal-point {
+    .country-reveal-error {
       animation: none;
       opacity: 1;
       stroke-dashoffset: 0;
       transform: none;
     }
 
-    .country-reveal-guide {
+    .country-reveal-error {
       opacity: 0.72;
     }
   }
