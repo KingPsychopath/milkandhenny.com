@@ -7,7 +7,23 @@ const OUTPUT = resolve("features/things/draw-country/countries.generated.json");
 const COORDINATE_SCALE = 10_000;
 const MAX_RINGS = 32;
 const MINIMUM_RELATIVE_AREA = 0.00004;
-const CORE_OUTLINE_CODES = new Set(["CL", "EC", "ES", "FR", "NL", "NO", "PT"]);
+const MINIMUM_DISPLAY_AREA = 0.01;
+// Crop distant territories or island groups whose full geographic spread makes the outline unreadable.
+const CORE_OUTLINE_CODES = new Set([
+  "CL",
+  "EC",
+  "ES",
+  "FM",
+  "FR",
+  "KI",
+  "MH",
+  "MV",
+  "NL",
+  "NO",
+  "PT",
+  "PW",
+  "TO",
+]);
 const COUNTRY_CODES =
   `AF AL DZ AD AO AG AR AM AU AT AZ BS BH BD BB BY BE BZ BJ BT BO BA BW BR BN BG BF BI CV KH CM CA CF TD CL CN CO KM CG CD CR CI HR CU CY CZ DK DJ DM DO EC EG SV GQ ER EE SZ ET FJ FI FR GA GM GE DE GH GR GD GT GN GW GY HT HN HU IS IN ID IR IQ IE IL IT JM JP JO KZ KE KI KP KR KW KG LA LV LB LS LR LY LI LT LU MG MW MY MV ML MT MH MR MU MX FM MD MC MN ME MA MZ MM NA NR NP NL NZ NI NE NG MK NO OM PK PW PA PG PY PE PH PL PT QA RO RU RW KN LC VC WS SM ST SA SN RS SC SL SG SK SI SB SO ZA SS ES LK SD SR SE CH SY TJ TZ TH TL TG TO TT TN TR TM TV UG UA AE GB US UY UZ VU VA VE VN YE ZM ZW PS`.split(
     " ",
@@ -179,6 +195,12 @@ function auditCountries(countries) {
     if (!Number.isFinite(country.aspect) || country.aspect <= 0)
       throw new Error(`Invalid aspect for ${country.id}`);
     if (!country.rings.length) throw new Error(`Missing outline for ${country.id}`);
+    const displayArea =
+      country.rings.reduce((total, ring) => total + polygonArea(ring), 0) /
+      COORDINATE_SCALE ** 2 /
+      Math.max(country.aspect, 1 / country.aspect);
+    if (displayArea < MINIMUM_DISPLAY_AREA)
+      throw new Error(`Outline for ${country.id} is too sparse to display clearly`);
     for (const [ringIndex, ring] of country.rings.entries()) {
       const label = `${country.id} ring ${ringIndex + 1}`;
       if (ring.length < 3) throw new Error(`${label} has fewer than three points`);
