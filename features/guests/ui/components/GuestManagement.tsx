@@ -405,6 +405,7 @@ export function GuestManagement({
     gamesLoading,
     fetchBestDressedData,
     handleWipeBestDressed,
+    dialogs,
   } = useGuestManagement({ guests, onGuestAdded, onGuestRemoved, onCSVImported });
 
   const plusOneCount = useMemo(
@@ -444,16 +445,17 @@ export function GuestManagement({
   }
 
   return (
-    /* react-doctor-disable-next-line prefer-html-dialog -- useGuestManagement provides focus trapping, Escape dismissal, and focus restoration */
-    <div
-      ref={modalRef}
-      role="dialog"
-      aria-modal="true"
-      aria-label="Manage Guests"
-      className="fixed inset-0 bg-black/60 backdrop-blur-sm z-20 flex items-end sm:items-center justify-center"
-      onClick={handleBackdropClick}
-      onKeyDown={undefined}
-    >
+    <>
+      {/* react-doctor-disable-next-line prefer-html-dialog -- useGuestManagement provides focus trapping, Escape dismissal, and focus restoration */}
+      <div
+        ref={modalRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Manage Guests"
+        className="fixed inset-0 bg-black/60 backdrop-blur-sm z-20 flex items-end sm:items-center justify-center"
+        onClick={handleBackdropClick}
+        onKeyDown={undefined}
+      >
       <div className="bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl w-full sm:max-w-md max-h-modal overflow-hidden animate-in slide-in-from-bottom anim-duration-300">
         {/* Header */}
         <div className="px-6 py-4 border-b border-stone-100 flex justify-between items-center bg-gradient-to-r from-amber-600 to-yellow-500">
@@ -586,6 +588,8 @@ export function GuestManagement({
           </div>
         </div>
       </div>
-    </div>
+      </div>
+      {dialogs}
+    </>
   );
 }

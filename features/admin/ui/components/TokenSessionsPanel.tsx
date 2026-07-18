@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { TOKEN_SESSION_STATUS, type TokenSessionStatusKey } from "./tokenSessionsStatus";
 import { useTokenSessions } from "../hooks/useTokenSessions";
+import { useActionDialog } from "@/hooks/useActionDialog";
 
 type AuthFetch = (url: string, options?: RequestInit) => Promise<Response>;
 
@@ -18,6 +19,7 @@ export function TokenSessionsPanel(props: {
 
   const [revokeLoading, setRevokeLoading] = useState<string | null>(null);
   const [nowSeconds, setNowSeconds] = useState<number | null>(null);
+  const { confirm: confirmAction, dialog: actionDialog } = useActionDialog();
 
   useEffect(() => {
     const updateNow = () => setNowSeconds(Math.floor(Date.now() / 1000));
@@ -41,7 +43,13 @@ export function TokenSessionsPanel(props: {
   } = useTokenSessions({ isAuthed, authFetch });
 
   const handleRevokeSingleSession = async (jti: string) => {
-    if (!confirm(`Revoke this session?\n\n${jti}\n\nThis immediately invalidates that token.`)) {
+    if (!(await confirmAction({
+      eyebrow: "session security",
+      title: "Revoke this session?",
+      description: <>Token <span className="font-mono text-xs break-all">{jti}</span> will immediately stop working.</>,
+      confirmLabel: "revoke session",
+      intent: "danger",
+    }))) {
       return;
     }
     setRevokeLoading(jti);
@@ -198,6 +206,7 @@ export function TokenSessionsPanel(props: {
           ) : null}
         </div>
       )}
+      {actionDialog}
     </div>
   );
 }

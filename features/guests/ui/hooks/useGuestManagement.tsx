@@ -6,6 +6,7 @@ import { useFocusTrap } from "@/hooks/useFocusTrap";
 import { useEscapeKey } from "@/hooks/useEscapeKey";
 import { useAdminAuth } from "@/features/admin/ui/hooks/useAdminAuth";
 import { getResponseErrorMessage, readResponsePayload } from "@/lib/client/response";
+import { useActionDialog } from "@/hooks/useActionDialog";
 
 type LeaderboardEntry = { name: string; count: number };
 
@@ -28,14 +29,18 @@ export function useGuestManagement({
 }: GuestManagementInput) {
   /* ─── Modal ─── */
   const [isOpen, setIsOpen] = useState(false);
-  const modalRef = useFocusTrap<HTMLDivElement>(isOpen);
 
   /* ─── Auth ─── */
   const {
     authFetch,
     ensureStepUpToken: ensureStepUpTokenResult,
     withStepUpHeaders,
+    authDialog,
+    authDialogOpen,
   } = useAdminAuth();
+  const actionDialog = useActionDialog();
+  const childDialogOpen = actionDialog.isOpen || authDialogOpen;
+  const modalRef = useFocusTrap<HTMLDivElement>(isOpen && !childDialogOpen);
 
   const ensureStepUpToken = useCallback(async (): Promise<string | null> => {
     const result = await ensureStepUpTokenResult();
@@ -115,7 +120,7 @@ export function useGuestManagement({
 
   /* ─── Effects ─── */
 
-  useEscapeKey(closeModal, isOpen);
+  useEscapeKey(closeModal, isOpen && !childDialogOpen);
 
   useEffect(() => {
     if (activeTab === "games") {
@@ -215,8 +220,15 @@ export function useGuestManagement({
   }
 
   async function handleForceReload() {
-    if (!confirm("WARNING: This will DELETE all check-ins and reload from CSV. Are you sure?"))
-      return;
+    if (
+      !(await actionDialog.confirm({
+        eyebrow: "guest data",
+        title: "Reload every guest?",
+        description: "This deletes every check-in and reloads the guest list from CSV.",
+        confirmLabel: "reload guests",
+        intent: "danger",
+      }))
+    ) return;
     setDataLoading(true);
     setError(null);
     try {
@@ -243,9 +255,14 @@ export function useGuestManagement({
 
   async function handlePartyReset() {
     if (
-      !confirm(
-        "PARTY RESET\n\nThis will:\n- Reset guest list from CSV (clears all check-ins)\n- Clear all Best Dressed votes\n\nThis prepares a fresh state for the party. Continue?",
-      )
+      !(await actionDialog.confirm({
+        eyebrow: "party reset",
+        title: "Prepare a fresh party state?",
+        description:
+          "This reloads the guest list from CSV, clears every check-in, and deletes all Best Dressed votes.",
+        confirmLabel: "reset party",
+        intent: "danger",
+      }))
     )
       return;
     setDataLoading(true);
@@ -339,7 +356,15 @@ export function useGuestManagement({
   }
 
   async function handleWipeBestDressed() {
-    if (!confirm("This will delete ALL best dressed votes. Are you sure?")) return;
+    if (
+      !(await actionDialog.confirm({
+        eyebrow: "best dressed",
+        title: "Delete every vote?",
+        description: "This permanently clears the Best Dressed leaderboard.",
+        confirmLabel: "delete votes",
+        intent: "danger",
+      }))
+    ) return;
     setGamesLoading(true);
     setError(null);
     try {
@@ -410,5 +435,11 @@ export function useGuestManagement({
     gamesLoading,
     fetchBestDressedData,
     handleWipeBestDressed,
+    dialogs: (
+      <>
+        {actionDialog.dialog}
+        {authDialog}
+      </>
+    ),
   };
 }

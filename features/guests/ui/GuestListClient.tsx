@@ -10,6 +10,7 @@ import { SearchBar } from "./components/SearchBar";
 import { GuestList } from "./components/GuestList";
 import { GuestStats } from "./components/GuestStats";
 import { GuestManagement } from "./components/GuestManagement";
+import { useActionDialog } from "@/hooks/useActionDialog";
 
 type QrCodeModule = {
   toDataURL: (text: string, options?: { margin?: number; width?: number }) => Promise<string>;
@@ -46,6 +47,7 @@ export function GuestListClient({ initialGuests }: GuestListClientProps) {
   const [sheetExpiresAt, setSheetExpiresAt] = useState<string | null>(null);
   const [nowTick, setNowTick] = useState(() => Date.now());
   const [revokeCodesLoading, setRevokeCodesLoading] = useState(false);
+  const { confirm: confirmAction, dialog: actionDialog } = useActionDialog();
 
   const { guests, loading, error, updateCheckIn, refetch } = useGuests({ initialGuests });
   const { searchQuery, setSearchQuery, filter, setFilter, filteredGuests, searchStats } =
@@ -176,9 +178,13 @@ export function GuestListClient({ initialGuests }: GuestListClientProps) {
   };
 
   const handleRevokeAllVoteCodes = async () => {
-    const ok = window.confirm(
-      "Revoke ALL minted best dressed codes?\n\nThis will invalidate any printed codes that have not been used yet.",
-    );
+    const ok = await confirmAction({
+      eyebrow: "best dressed",
+      title: "Revoke every vote code?",
+      description: "This invalidates every minted code, including unused codes on printed sheets.",
+      confirmLabel: "revoke codes",
+      intent: "danger",
+    });
     if (!ok) return;
 
     setRevokeCodesLoading(true);
@@ -333,6 +339,7 @@ export function GuestListClient({ initialGuests }: GuestListClientProps) {
         onGuestRemoved={refetch}
         onCSVImported={refetch}
       />
+      {actionDialog}
 
       <main
         id="main"
