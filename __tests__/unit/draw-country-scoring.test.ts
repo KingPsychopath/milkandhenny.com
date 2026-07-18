@@ -152,13 +152,30 @@ describe("draw-country scoring", () => {
     }
   });
 
-  it("aligns translation and uniform scale without correcting rotation", () => {
+  it("forgives slight hand tilt without correcting a wrong orientation", () => {
     const rectangle = country([SQUARE], 2);
     const exact = exactDrawing(rectangle);
-    const rotated = exact.map((ring) => ring.map(({ x, y }) => ({ x: 800 - y, y: x + 200 })));
+    const bounds = drawingBounds(exact);
+    const slightAngle = (2.5 * Math.PI) / 180;
+    const slightlyRotated = exact.map((ring) =>
+      ring.map(({ x, y }) => ({
+        x:
+          bounds.centreX +
+          (x - bounds.centreX) * Math.cos(slightAngle) -
+          (y - bounds.centreY) * Math.sin(slightAngle),
+        y:
+          bounds.centreY +
+          (x - bounds.centreX) * Math.sin(slightAngle) +
+          (y - bounds.centreY) * Math.cos(slightAngle),
+      })),
+    );
+    const wronglyRotated = exact.map((ring) =>
+      ring.map(({ x, y }) => ({ x: 800 - y, y: x + 200 })),
+    );
 
     expect(scoreCountryDrawing(rectangle, exact).score).toBe(100);
-    expect(scoreCountryDrawing(rectangle, rotated).score).toBeLessThan(60);
+    expect(scoreCountryDrawing(rectangle, slightlyRotated).score).toBeGreaterThanOrEqual(95);
+    expect(scoreCountryDrawing(rectangle, wronglyRotated).score).toBeLessThan(60);
   });
 
   it("keeps the main outline aligned when a tiny stray stroke is far away", () => {

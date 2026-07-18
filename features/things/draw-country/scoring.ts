@@ -4,6 +4,20 @@ import type { CountryDrawing, CountryOutline, CountryScore, DrawPoint } from "./
 const REFERENCE_SAMPLES = 320;
 const DRAWING_SAMPLES = 320;
 const ALIGNMENT_TRIM = 0.025;
+const ALIGNMENT_OPTIMISATION_SAMPLES = 32;
+const ALIGNMENT_DISTANCE_TRIM = 0.05;
+const ALIGNMENT_MINIMUM_RING_SHARE = 0.03;
+const ALIGNMENT_ACCEPTABLE_ERROR = 0.002;
+const ALIGNMENT_FULL_SEARCH_ERROR = 0.02;
+const ALIGNMENT_REFINEMENTS = 4;
+const ALIGNMENT_PASSES_PER_REFINEMENT = 2;
+const ALIGNMENT_TRANSLATION_STEP = 0.025;
+const ALIGNMENT_SCALE_STEP = 0.025;
+const ALIGNMENT_ROTATION_STEP = (1.5 * Math.PI) / 180;
+const ALIGNMENT_MAXIMUM_TRANSLATION = 0.05;
+const ALIGNMENT_MINIMUM_SCALE = 0.95;
+const ALIGNMENT_MAXIMUM_SCALE = 1.05;
+const ALIGNMENT_MAXIMUM_ROTATION = (3 * Math.PI) / 180;
 const MINIMUM_DRAWING_EXTENT = 8;
 const MAX_POINT_DEVIATION = 0.5;
 const SILHOUETTE_GRID_SIZE = 48;
@@ -44,11 +58,22 @@ interface NormalisedShape {
   points: DrawPoint[];
 }
 
+interface AlignedShape extends NormalisedShape {
+  baselineRings: CountryDrawing;
+}
+
 interface ShapeBounds {
   minX: number;
   maxX: number;
   minY: number;
   maxY: number;
+}
+
+interface AlignmentTransform {
+  x: number;
+  y: number;
+  scale: number;
+  angle: number;
 }
 
 export interface CountryEvaluation extends CountryScore {
@@ -139,6 +164,126 @@ function boundsCentre(bounds: ShapeBounds) {
   return { x: (bounds.minX + bounds.maxX) / 2, y: (bounds.minY + bounds.maxY) / 2 };
 }
 
+function transformPoint(
+  point: DrawPoint,
+  centre: DrawPoint,
+  transform: AlignmentTransform,
+): DrawPoint {
+  const x = point.x - centre.x;
+  const y = point.y - centre.y;
+  const cosine = Math.cos(transform.angle);
+  const sine = Math.sin(transform.angle);
+  return {
+    x: centre.x + transform.x + (x * cosine - y * sine) * transform.scale,
+    y: centre.y + transform.y + (x * sine + y * cosine) * transform.scale,
+  };
+}
+
+function robustNearestPointDistance(source: DrawPoint[], target: DrawPoint[]) {
+  const distances = source
+    .map((point) =>
+      Math.sqrt(
+        target.reduce((nearest, candidate) => {
+          const x = point.x - candidate.x;
+          const y = point.y - candidate.y;
+          return Math.min(nearest, x * x + y * y);
+        }, Number.POSITIVE_INFINITY),
+      ),
+    )
+    .toSorted((first, second) => first - second);
+  const kept = Math.max(1, Math.floor(distances.length * (1 - ALIGNMENT_DISTANCE_TRIM)));
+  return distances.slice(0, kept).reduce((total, distance) => total + distance, 0) / kept;
+}
+
+function symmetricAlignmentError(drawing: DrawPoint[], reference: DrawPoint[]) {
+  return (
+    (robustNearestPointDistance(drawing, reference) +
+      robustNearestPointDistance(reference, drawing)) /
+    2
+  );
+}
+
+function significantAlignmentRings(rings: CountryDrawing) {
+  const lengths = rings.map(ringLength);
+  const total = lengths.reduce((sum, length) => sum + length, 0);
+  const significant = rings.filter(
+    (_, index) => lengths[index] / total >= ALIGNMENT_MINIMUM_RING_SHARE,
+  );
+  return significant.length ? significant : rings;
+}
+
+function optimiseAlignment(rings: CountryDrawing, reference: NormalisedShape, centre: DrawPoint) {
+  const drawingPoints = sampleShape(
+    significantAlignmentRings(rings),
+    ALIGNMENT_OPTIMISATION_SAMPLES,
+  );
+  const referencePoints = sampleShape(
+    significantAlignmentRings(reference.rings),
+    ALIGNMENT_OPTIMISATION_SAMPLES,
+  );
+  const identity: AlignmentTransform = { x: 0, y: 0, scale: 1, angle: 0 };
+  let best = identity;
+  let bestError = symmetricAlignmentError(drawingPoints, referencePoints);
+  if (bestError <= ALIGNMENT_ACCEPTABLE_ERROR) return { rings, preserveBaseline: false };
+  const fullSearch = bestError > ALIGNMENT_FULL_SEARCH_ERROR;
+
+  let translationStep = ALIGNMENT_TRANSLATION_STEP;
+  let scaleStep = ALIGNMENT_SCALE_STEP;
+  let rotationStep = ALIGNMENT_ROTATION_STEP;
+  const errorFor = (transform: AlignmentTransform) =>
+    symmetricAlignmentError(
+      drawingPoints.map((point) => transformPoint(point, centre, transform)),
+      referencePoints,
+    );
+
+  for (let refinement = 0; refinement < ALIGNMENT_REFINEMENTS; refinement += 1) {
+    for (let pass = 0; pass < ALIGNMENT_PASSES_PER_REFINEMENT; pass += 1) {
+      const candidates: AlignmentTransform[] = [
+        ...(fullSearch
+          ? [
+              { ...best, x: best.x - translationStep },
+              { ...best, x: best.x + translationStep },
+              { ...best, y: best.y - translationStep },
+              { ...best, y: best.y + translationStep },
+              { ...best, scale: best.scale - scaleStep },
+              { ...best, scale: best.scale + scaleStep },
+            ]
+          : []),
+        { ...best, angle: best.angle - rotationStep },
+        { ...best, angle: best.angle + rotationStep },
+      ].filter(
+        (candidate) =>
+          Math.abs(candidate.x) <= ALIGNMENT_MAXIMUM_TRANSLATION &&
+          Math.abs(candidate.y) <= ALIGNMENT_MAXIMUM_TRANSLATION &&
+          candidate.scale >= ALIGNMENT_MINIMUM_SCALE &&
+          candidate.scale <= ALIGNMENT_MAXIMUM_SCALE &&
+          Math.abs(candidate.angle) <= ALIGNMENT_MAXIMUM_ROTATION,
+      );
+      let next = best;
+      let nextError = bestError;
+      for (const candidate of candidates) {
+        const candidateError = errorFor(candidate);
+        if (candidateError < nextError - Number.EPSILON) {
+          next = candidate;
+          nextError = candidateError;
+        }
+      }
+      if (next === best) break;
+      best = next;
+      bestError = nextError;
+    }
+    translationStep /= 2;
+    scaleStep /= 2;
+    rotationStep /= 2;
+  }
+
+  if (best === identity) return { rings, preserveBaseline: false };
+  return {
+    rings: rings.map((ring) => ring.map((point) => transformPoint(point, centre, best))),
+    preserveBaseline: fullSearch,
+  };
+}
+
 function normaliseReference(country: CountryOutline): NormalisedShape {
   const width = country.aspect;
   const height = 1;
@@ -154,7 +299,7 @@ function normaliseReference(country: CountryOutline): NormalisedShape {
   return { rings, points: sampleShape(rings, REFERENCE_SAMPLES) };
 }
 
-function alignDrawing(input: CountryDrawing, reference: NormalisedShape): NormalisedShape | null {
+function alignDrawing(input: CountryDrawing, reference: NormalisedShape): AlignedShape | null {
   const usable = input.filter((ring) => ring.length >= 3);
   const sampled = sampleShape(usable, DRAWING_SAMPLES);
   if (sampled.length < 3 || reference.points.length < 3) return null;
@@ -168,13 +313,18 @@ function alignDrawing(input: CountryDrawing, reference: NormalisedShape): Normal
   const drawingCentre = boundsCentre(drawingBounds);
   const referenceCentre = boundsCentre(referenceBounds);
   const scale = referenceExtent / drawingExtent;
-  const rings = usable.map((ring) =>
+  const centredRings = usable.map((ring) =>
     ring.map(({ x, y }) => ({
       x: referenceCentre.x + (x - drawingCentre.x) * scale,
       y: referenceCentre.y + (y - drawingCentre.y) * scale,
     })),
   );
-  return { rings, points: sampleShape(rings, DRAWING_SAMPLES) };
+  const alignment = optimiseAlignment(centredRings, reference, referenceCentre);
+  return {
+    rings: alignment.rings,
+    points: sampleShape(alignment.rings, DRAWING_SAMPLES),
+    baselineRings: alignment.preserveBaseline ? centredRings : alignment.rings,
+  };
 }
 
 function borderFit(points: DrawPoint[], reference: CountryDrawing) {
@@ -202,6 +352,25 @@ function averageDistanceToBorder(points: DrawPoint[], border: CountryDrawing) {
         total + Math.min(closestOnBorder(point, border).distance, MAX_POINT_DEVIATION),
       0,
     ) / points.length
+  );
+}
+
+function mismatchGuardDeviation(
+  fit: ReturnType<typeof borderFit>,
+  coverage: number,
+  silhouette: number,
+) {
+  return (
+    (fit.border + coverage) * BORDER_COVERAGE_GUARD_MULTIPLIER +
+    Math.max(0, silhouette - SILHOUETTE_GUARD_THRESHOLD) * SILHOUETTE_GUARD_EXCESS_WEIGHT
+  );
+}
+
+function enclosesReference(fit: ReturnType<typeof borderFit>, silhouette: number) {
+  return (
+    fit.inside <= ENCLOSURE_INSIDE_TOLERANCE &&
+    fit.outside >= ENCLOSURE_OUTSIDE_THRESHOLD &&
+    silhouette >= ENCLOSURE_SILHOUETTE_THRESHOLD
   );
 }
 
@@ -406,23 +575,29 @@ export function scoreCountryDrawing(
     silhouette * SILHOUETTE_WEIGHT +
     strokeQuality * STROKE_QUALITY_WEIGHT +
     islandBalance * ISLAND_BALANCE_WEIGHT;
-  const mismatchGuardDeviation =
-    (fit.border + coverage) * BORDER_COVERAGE_GUARD_MULTIPLIER +
-    Math.max(0, silhouette - SILHOUETTE_GUARD_THRESHOLD) * SILHOUETTE_GUARD_EXCESS_WEIGHT;
+  let guardDeviation = mismatchGuardDeviation(fit, coverage, silhouette);
+  let enclosing = enclosesReference(fit, silhouette);
+  if (drawing.rings !== drawing.baselineRings) {
+    const baselinePoints = sampleShape(drawing.baselineRings, DRAWING_SAMPLES);
+    const baselineFit = borderFit(baselinePoints, reference.rings);
+    const baselineCoverage = averageDistanceToBorder(reference.points, drawing.baselineRings);
+    const baselineSilhouette =
+      silhouetteDeviation(reference.rings, drawing.baselineRings) * sensitivity;
+    guardDeviation = Math.max(
+      guardDeviation,
+      mismatchGuardDeviation(baselineFit, baselineCoverage, baselineSilhouette),
+    );
+    enclosing ||= enclosesReference(baselineFit, baselineSilhouette);
+  }
   const mismatchExcessWeight = Math.max(
     MINIMUM_MISMATCH_EXCESS_WEIGHT,
     1 - sensitivity * MISMATCH_COMPACTNESS_DISCOUNT,
   );
   const mismatchAdjustedDeviation =
-    weightedDeviation +
-    Math.max(0, mismatchGuardDeviation - weightedDeviation) * mismatchExcessWeight;
-  const enclosesReference =
-    fit.inside <= ENCLOSURE_INSIDE_TOLERANCE &&
-    fit.outside >= ENCLOSURE_OUTSIDE_THRESHOLD &&
-    silhouette >= ENCLOSURE_SILHOUETTE_THRESHOLD;
+    weightedDeviation + Math.max(0, guardDeviation - weightedDeviation) * mismatchExcessWeight;
   const deviation = Math.max(
     mismatchAdjustedDeviation,
-    enclosesReference ? ENCLOSURE_MINIMUM_DEVIATION : 0,
+    enclosing ? ENCLOSURE_MINIMUM_DEVIATION : 0,
   );
   const mismatchDeviation = deviation - weightedDeviation;
   const score = Math.min(scoreFromDeviation(deviation), strokeQualityScore(strokeQuality));
