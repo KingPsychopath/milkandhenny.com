@@ -12,13 +12,16 @@ import type {
   UserReportRecord,
 } from "./types";
 
-const REPORT_INDEX_KEY = "user-report:index:v1";
+const REPORT_INDEX_KEY = "user-report:index:v2";
+const LEGACY_REPORT_INDEX_KEY = "user-report:index:v1";
 const REPORT_KEY_PREFIX = "user-report:v1:";
 const REPORT_RATE_LIMIT_PREFIX = "user-report:rate:v1:";
 const REPORT_DUPLICATE_PREFIX = "user-report:duplicate:v1:";
 const RATE_LIMIT_WINDOW_SECONDS = 60 * 60;
 const RATE_LIMIT_MAX = 8;
 const MAX_ADMIN_REPORTS = 500;
+const MAX_REPORT_RETENTION_SECONDS =
+  Math.max(...Object.values(REPORT_POLICIES).map(({ retentionDays }) => retentionDays)) * 86_400;
 
 const memoryReports = new Map<string, UserReportRecord>();
 const memoryRateLimits = new Map<string, { count: number; resetAtMs: number }>();
@@ -98,7 +101,7 @@ function buildDrawCountryReport(value: unknown): UserReportDraft {
         .slice(0, 16),
     },
     result: countryScore(evaluation),
-    drawing: { raw: drawing, aligned: evaluation.drawing },
+    drawing: { raw: drawing },
   };
   return {
     type: "draw_country_result_issue",
@@ -160,8 +163,28 @@ async function saveReport(report: UserReportRecord) {
     const ttlSeconds = REPORT_POLICIES[report.type].retentionDays * 86_400;
     await Promise.all([
       redis.set(reportKey(report.id), JSON.stringify(report), { ex: ttlSeconds }),
-      redis.sadd(REPORT_INDEX_KEY, report.id),
+      redis.zadd(REPORT_INDEX_KEY, {
+        score: new Date(report.createdAt).getTime(),
+        member: report.id,
+      }),
     ]);
+    await redis.zremrangebyscore(
+      REPORT_INDEX_KEY,
+      "-inf",
+      Date.now() - MAX_REPORT_RETENTION_SECONDS * 1_000,
+    );
+    const indexedCount = await redis.zcard(REPORT_INDEX_KEY);
+    if (indexedCount > MAX_ADMIN_REPORTS) {
+      const overflowIds = await redis.zrange<string[]>(
+        REPORT_INDEX_KEY,
+        0,
+        indexedCount - MAX_ADMIN_REPORTS - 1,
+      );
+      const pipeline = redis.pipeline();
+      for (const id of overflowIds) pipeline.del(reportKey(id));
+      pipeline.zrem(REPORT_INDEX_KEY, ...overflowIds);
+      await pipeline.exec();
+    }
     return;
   }
   if (process.env.NODE_ENV === "production") throw new Error("Report storage unavailable");
@@ -203,7 +226,13 @@ function isUserReportRecord(value: unknown): value is UserReportRecord {
 async function listReportRecords() {
   const redis = getRedis();
   if (!redis) return [...memoryReports.values()];
-  const ids = ((await redis.smembers(REPORT_INDEX_KEY)) as string[]).slice(0, MAX_ADMIN_REPORTS);
+  const [currentIds, legacyIds, legacyTtl] = await Promise.all([
+    redis.zrange<string[]>(REPORT_INDEX_KEY, 0, MAX_ADMIN_REPORTS - 1, { rev: true }),
+    redis.smembers(LEGACY_REPORT_INDEX_KEY) as Promise<string[]>,
+    redis.ttl(LEGACY_REPORT_INDEX_KEY),
+  ]);
+  if (legacyTtl === -1) await redis.expire(LEGACY_REPORT_INDEX_KEY, MAX_REPORT_RETENTION_SECONDS);
+  const ids = [...new Set([...currentIds, ...legacyIds])].slice(0, MAX_ADMIN_REPORTS);
   const values = await Promise.all(
     ids.map((id) => redis.get<UserReportRecord | string>(reportKey(id))),
   );
@@ -222,7 +251,11 @@ async function listReportRecords() {
       staleIds.push(ids[index]);
     }
   });
-  if (staleIds.length) await redis.srem(REPORT_INDEX_KEY, ...staleIds);
+  if (staleIds.length)
+    await Promise.all([
+      redis.zrem(REPORT_INDEX_KEY, ...staleIds),
+      redis.srem(LEGACY_REPORT_INDEX_KEY, ...staleIds),
+    ]);
   return reports;
 }
 
@@ -288,7 +321,8 @@ export async function dismissUserReports(ids: string[]) {
   if (redis) {
     const pipeline = redis.pipeline();
     for (const id of validIds) pipeline.del(reportKey(id));
-    pipeline.srem(REPORT_INDEX_KEY, ...validIds);
+    pipeline.zrem(REPORT_INDEX_KEY, ...validIds);
+    pipeline.srem(LEGACY_REPORT_INDEX_KEY, ...validIds);
     await pipeline.exec();
     return validIds.length;
   }

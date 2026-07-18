@@ -15,7 +15,7 @@ export interface DrawCountryResultIssueContext {
   result: CountryScore;
   drawing: {
     raw: CountryDrawing;
-    aligned: CountryDrawing;
+    aligned?: CountryDrawing;
   };
 }
 
