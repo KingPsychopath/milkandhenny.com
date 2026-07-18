@@ -8,7 +8,8 @@ const states = new Map<OfflineThingSlug, OfflineState>();
 const listeners = new Set<() => void>();
 const preparation = new Map<OfflineThingSlug, Promise<void>>();
 let registrationPromise: Promise<ServiceWorkerRegistration | null> | null = null;
-type SiteUpdateState = "idle" | "ready" | "activating" | "failed";
+type SiteUpdateState = "idle" | "ready" | "activating" | "updated" | "failed";
+const UPDATE_RELOAD_KEY = "milkandhenny:site-update-reload";
 let siteUpdateState: SiteUpdateState = "idle";
 let waitingWorker: ServiceWorker | null = null;
 let reloadForUpdate = false;
@@ -26,6 +27,25 @@ function publishSiteUpdate(state: SiteUpdateState, worker?: ServiceWorker | null
   if (siteUpdateState === state) return;
   siteUpdateState = state;
   for (const listener of updateListeners) listener();
+}
+
+function reloadForSiteUpdate() {
+  try {
+    sessionStorage.setItem(UPDATE_RELOAD_KEY, "1");
+  } catch {
+    // A blocked session store should not prevent the update.
+  }
+  location.reload();
+}
+
+function showCompletedUpdate() {
+  try {
+    if (sessionStorage.getItem(UPDATE_RELOAD_KEY) !== "1") return;
+    sessionStorage.removeItem(UPDATE_RELOAD_KEY);
+    publishSiteUpdate("updated");
+  } catch {
+    // A blocked session store only removes the completion message.
+  }
 }
 
 function observeRegistration(registration: ServiceWorkerRegistration) {
@@ -47,7 +67,7 @@ function observeRegistration(registration: ServiceWorkerRegistration) {
     if (!reloadForUpdate) return;
     reloadForUpdate = false;
     clearActivationTimeout();
-    location.reload();
+    reloadForSiteUpdate();
   });
 }
 
@@ -75,6 +95,7 @@ export function registerOfflinePlatform() {
   if (registrationPromise) return registrationPromise;
   registrationPromise = (async () => {
     if (!import.meta.env.PROD || !("serviceWorker" in navigator)) return null;
+    showCompletedUpdate();
     await waitForPageLoad();
     const registration = await navigator.serviceWorker.register("/sw.js", {
       scope: "/",
@@ -106,7 +127,7 @@ export async function activateSiteUpdate() {
     return false;
   }
   if (worker.state === "activated") {
-    location.reload();
+    reloadForSiteUpdate();
     return true;
   }
   reloadForUpdate = true;
