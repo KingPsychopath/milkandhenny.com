@@ -10,6 +10,7 @@ interface RemoteRealtimeSession {
 
 export default createRealtimeRoomHandler<RemoteRealtimeSession>({
   channel: remoteRealtimeChannel,
+  game: "remote",
   async authorize(payload) {
     const roomId = typeof payload.roomId === "string" ? payload.roomId : "";
     const token = typeof payload.token === "string" ? payload.token : "";

@@ -10,6 +10,8 @@
 | Did an API workflow succeed and how long did it take? | Structured JSON request/domain logs                    | Route and feature owner |
 | Did scheduled cleanup run?                            | `maintenance.request` plus cleanup completion events   | Maintenance runner      |
 | Is the optional worker alive and draining?            | Worker heartbeat, queue depth, completion/error events | Media worker            |
+| Is multiplayer healthy on this replica?               | Admin multiplayer runtime panel                        | Multiplayer runtime     |
+| Are replicas sharing realtime wakes?                  | Backplane mode/publication/failure counters            | Realtime backplane      |
 
 ## Health semantics
 
@@ -17,7 +19,20 @@
 
 `/health` uses the same model and exposes no credentials, provider account identifiers, hostnames, or raw errors.
 
-`/api/debug` requires admin authentication. It performs one read-only Redis operation and one object-storage bucket probe, reports bounded latency, and normalizes failures without returning secrets.
+`/api/debug` requires admin authentication. It performs one read-only Redis operation and one object-storage bucket probe, reports bounded latency, and normalizes failures without returning secrets. Its multiplayer section is a live per-replica Effect metric snapshot; counters reset when that replica restarts.
+
+## Multiplayer signals
+
+The managed runtime records bounded, low-cardinality metrics for:
+
+- operations and operational failures by game;
+- authoritative reconciliation latency;
+- authenticated active sockets and bounded termination reasons;
+- command/socket rate-limit enforcement;
+- Spelling Party lock acquisition, contention, failure, and wait time;
+- Redis backplane publication, receipt, and failure.
+
+Room IDs, player IDs, credentials, action IDs, and tokens are never metric labels or log context. The admin panel provides the current replica view. Production history comes from Railway structured logs; use an OTLP-compatible collector when cross-replica percentile dashboards and longer retention become necessary.
 
 ## Structured events
 
@@ -46,6 +61,7 @@ Never log passwords, PINs, tokens, cookies, presigned URLs, or direct personal i
 - Alert when scheduled maintenance has no successful completion for 36 hours.
 - Track memory, CPU, restarts, HTTP 5xx rate, and response latency at the host.
 - Track Redis command usage and R2 storage/operation usage at their providers.
+- Alert on sustained multiplayer operation failures, lock failures, or realtime backplane failures.
 - If the media worker is enabled, alert on stale heartbeat, growing queue depth, or repeated retry exhaustion.
 
 Every alert needs a target owner and a link to [`deployment.md`](./deployment.md) for rollback.

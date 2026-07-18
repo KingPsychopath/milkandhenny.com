@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import type { SystemCapabilities } from "@/features/system/capabilities";
+import type { MultiplayerTelemetrySnapshot } from "@/features/things/shared/multiplayer-telemetry";
 import { SITE_BRAND } from "@/lib/shared/config";
 import { TokenSessionsPanel } from "./components/TokenSessionsPanel";
 import { useAdminAuth } from "./hooks/useAdminAuth";
@@ -153,6 +154,7 @@ type ContentAuditResponse = {
 };
 
 type DebugResponse = SystemCapabilities & {
+  multiplayer: MultiplayerTelemetrySnapshot;
   securityWarnings: string[];
   help?: {
     forceReload?: string;
@@ -1226,6 +1228,62 @@ export function AdminDashboard() {
               </div>
             )) ?? <p className="theme-muted text-xs">not checked</p>}
           </div>
+        </div>
+
+        <div className="border-t theme-border pt-6 space-y-3">
+          <div className="flex items-center justify-between gap-4">
+            <p className="font-mono text-xs theme-muted">multiplayer runtime</p>
+            <p className="font-mono text-micro theme-faint truncate">
+              {debugData?.multiplayer.backplane.mode ?? "—"} fan-out · replica{" "}
+              {debugData?.multiplayer.replica ?? "not checked"}
+            </p>
+          </div>
+          <div className="grid sm:grid-cols-2 gap-3 font-mono text-sm">
+            {debugData
+              ? Object.entries(debugData.multiplayer.games).map(([game, metrics]) => (
+                  <div key={game} className="border theme-border rounded-md p-3 space-y-1">
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="theme-muted text-xs">{game}</p>
+                      <p className="text-xs">{metrics.activeSockets} sockets</p>
+                    </div>
+                    <p className="text-lg">{metrics.operations} operations</p>
+                    <p className="theme-faint text-micro">
+                      {metrics.operationFailures} failed · {metrics.rateLimited} rate limited
+                    </p>
+                    <p className="theme-faint text-micro">
+                      reconciliation {metrics.reconciliation.averageMs ?? "—"}ms avg ·{" "}
+                      {metrics.reconciliation.maxMs ?? "—"}ms max
+                    </p>
+                    <p className="theme-faint text-micro">
+                      socket closes{" "}
+                      {Object.entries(metrics.socketTerminations)
+                        .map(([reason, count]) => `${reason} ${count}`)
+                        .join(" · ") || "none"}
+                    </p>
+                  </div>
+                ))
+              : null}
+            <div className="border theme-border rounded-md p-3 space-y-1">
+              <p className="theme-muted text-xs">spelling-party lock</p>
+              <p className="text-lg">
+                {debugData?.multiplayer.partyRoomLock.acquisitions ?? "—"} acquisitions
+              </p>
+              <p className="theme-faint text-micro">
+                {debugData?.multiplayer.partyRoomLock.contention ?? "—"} contended ·{" "}
+                {debugData?.multiplayer.partyRoomLock.failures ?? "—"} failed
+              </p>
+              <p className="theme-faint text-micro">
+                wait {debugData?.multiplayer.partyRoomLock.wait.averageMs ?? "—"}ms avg ·{" "}
+                {debugData?.multiplayer.partyRoomLock.wait.maxMs ?? "—"}ms max
+              </p>
+            </div>
+          </div>
+          <p className="font-mono text-micro theme-faint">
+            Backplane {debugData?.multiplayer.backplane.published ?? "—"} published ·{" "}
+            {debugData?.multiplayer.backplane.received ?? "—"} received ·{" "}
+            {debugData?.multiplayer.backplane.failures ?? "—"} failed. Per-replica counters reset on
+            deploy; Railway logs retain operational history.
+          </p>
         </div>
 
         <div className="border-t theme-border pt-6 space-y-3">

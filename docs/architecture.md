@@ -31,6 +31,28 @@ The host supplies a port and environment variables. Railway, Docker Compose, Kub
 
 Routes do not own business truth. Workers may execute feature workflows but must not redefine eligibility or state transitions.
 
+## Multiplayer runtime
+
+Multiplayer is a server-only Effect v4 subsystem inside the modular monolith:
+
+```text
+TanStack / Nitro boundary
+  -> one process-wide ManagedRuntime
+       -> game-owned Effect service
+            -> game-owned domain engine and policy
+                 -> Redis or development-memory adapter
+       -> bounded telemetry
+       -> optional Redis realtime backplane
+```
+
+`remote` and `spelling-party` own their state transitions, authorization rules, Redis keys, contracts, and browser reconciliation. Shared multiplayer code owns only repeatable capabilities: runtime lifecycle, room credentials, validation primitives, wake transport, backpressure, telemetry, and cross-replica fan-out.
+
+The runtime is built lazily once per Node process and disposed by a Nitro shutdown hook. It owns services, Redis pub/sub connections, metrics, timeouts, and scoped cleanup. It never owns authoritative room state or a permanent fiber per room. Redis remains the distributed source of truth, so another replica can serve the next request.
+
+Effect is pinned to an exact v4 beta version while v4 is prerelease. It remains behind `.server.ts` boundaries; browser contracts, React, offline games, reducers, and reconciliation hooks do not import its runtime. Promise conversion happens only at TanStack/Nitro edges.
+
+Wake publication is safe to retry because it is advisory and idempotent. Room creation and state mutations are not retried generically; their atomicity and idempotency remain explicit in the game engine. Spelling Party serializes mutations with a bounded Redis lease, while Remote commands use action IDs and atomic Redis claims.
+
 ## Persistence
 
 Redis stores mutable application state: guest check-ins, voting, transfer metadata, authentication sessions, rate limits, word metadata, and share records. `REDIS_REST_URL` and `REDIS_REST_TOKEN` are the canonical application contract.
@@ -64,6 +86,7 @@ Cleanup workflows remain authenticated HTTP use cases. `ops/run-maintenance.mjs`
 - `/api/health` performs configuration-only readiness checks and is safe for frequent polling.
 - `/health` renders the same safe capability model for humans.
 - `/api/debug` is admin-protected and performs live Redis/object-storage probes.
+- `/api/debug` also exposes per-replica multiplayer operations, failures, reconciliation latency, socket termination, rate-limit, lock-contention, and realtime-backplane metrics.
 
 Required capability failures produce an unhealthy readiness response. Missing optional maintenance or worker configuration is visible without taking the core site offline.
 

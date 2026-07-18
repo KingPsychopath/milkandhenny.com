@@ -11,6 +11,7 @@ interface PartyRealtimeSession {
 
 export default createRealtimeRoomHandler<PartyRealtimeSession>({
   channel: partyRealtimeChannel,
+  game: "spelling-party",
   async authorize(payload) {
     const roomId = typeof payload.roomId === "string" ? payload.roomId : "";
     const credential = typeof payload.credential === "string" ? payload.credential : "";

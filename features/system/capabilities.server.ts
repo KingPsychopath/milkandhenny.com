@@ -1,5 +1,7 @@
 import { getMediaProcessorMode } from "@/features/media/config.server";
 import type { Capability, SystemCapabilities } from "@/features/system/capabilities";
+import { multiplayerTelemetrySnapshot } from "@/features/things/shared/multiplayer-runtime.server";
+import type { MultiplayerTelemetrySnapshot } from "@/features/things/shared/multiplayer-telemetry";
 import { getSecurityWarnings } from "@/features/auth/auth.server";
 import {
   checkConnection as checkObjectStorage,
@@ -7,6 +9,7 @@ import {
   isTransferStorageConfigured,
 } from "@/lib/platform/r2.server";
 import { getRedis, getRedisRestConfig } from "@/lib/platform/redis.server";
+import { getDirectRedisConfig } from "@/lib/platform/redis-direct.server";
 import { hasMediaPublicUrl } from "@/lib/shared/config";
 
 const REQUIRED_AUTH_VARIABLES = [
@@ -35,6 +38,7 @@ function getConfiguredCapabilities(): Capability[] {
   const privateTransferStorageConfigured = isTransferStorageConfigured();
   const authConfigured = REQUIRED_AUTH_VARIABLES.every(isConfigured);
   const maintenanceConfigured = isConfigured("CRON_SECRET");
+  const realtimeBackplaneConfigured = getDirectRedisConfig() !== null;
   const mediaMode = getMediaProcessorMode();
   const workerConfigured =
     mediaMode !== "local" &&
@@ -97,6 +101,15 @@ function getConfiguredCapabilities(): Capability[] {
         : "The app works, but automated cleanup is not configured.",
     },
     {
+      id: "multiplayer-realtime",
+      label: "multiplayer fan-out",
+      status: realtimeBackplaneConfigured ? "available" : "degraded",
+      required: false,
+      detail: realtimeBackplaneConfigured
+        ? "Cross-replica multiplayer wake delivery is configured."
+        : "Multiplayer wake delivery is local to one replica; set REDIS_URL before scaling replicas.",
+    },
+    {
       id: "media-worker",
       label: "advanced media processing",
       status: mediaMode === "local" ? "disabled" : workerConfigured ? "available" : "degraded",
@@ -134,7 +147,10 @@ function getSystemCapabilities(): SystemCapabilities {
 }
 
 async function probeSystemCapabilities(): Promise<
-  SystemCapabilities & { securityWarnings: string[] }
+  SystemCapabilities & {
+    multiplayer: MultiplayerTelemetrySnapshot;
+    securityWarnings: string[];
+  }
 > {
   const snapshot = getSystemCapabilities();
   const capabilities = [...snapshot.capabilities];
@@ -184,6 +200,7 @@ async function probeSystemCapabilities(): Promise<
     status: getOverallStatus(capabilities),
     timestamp: new Date().toISOString(),
     capabilities,
+    multiplayer: await multiplayerTelemetrySnapshot(),
     securityWarnings: getSecurityWarnings(),
   };
 }

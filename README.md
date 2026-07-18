@@ -76,6 +76,8 @@ Only `VITE_*` variables enter the browser bundle. Never prefix credentials or au
 
 `REDIS_REST_*` is the canonical provider-neutral Redis contract. Legacy `KV_REST_API_*` and `UPSTASH_REDIS_REST_*` names remain temporary rollback aliases during the migration.
 
+Multiplayer uses a server-only Effect v4 managed runtime. A direct `REDIS_URL` enables cross-replica WebSocket wake fan-out and is required before scaling the web service beyond one replica; authoritative room state continues to use the Redis REST contract.
+
 ## Health and capabilities
 
 - `/api/health` — cheap machine-readable readiness check; no dependency operations.

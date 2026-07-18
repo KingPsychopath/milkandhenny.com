@@ -70,7 +70,12 @@ describe("Party Typing rooms", () => {
     expect(player).not.toHaveProperty("error");
     if ("error" in player) throw new Error(player.error);
     await applyPresenterAction({ roomId: room.roomId, presenterToken: room.presenterToken, action: { actionId: "start-after-code", type: "round.start" } });
-    expect(await joinPartyRoom({ roomId: room.roomId, name: "Daniel", joinId: "late-code-join" })).toEqual({ error: "This game has already started" });
+    expect(await joinPartyRoom({ roomId: room.roomId, name: "Daniel", joinId: "late-code-join" })).toEqual({
+      ok: false,
+      errorCode: "game_started",
+      error: "This game has already started",
+      retryable: false,
+    });
   });
 
   it("keeps the word and private drafts secret, then reveals and scores everyone together", async () => {
