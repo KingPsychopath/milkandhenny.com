@@ -1,11 +1,14 @@
-import type { ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import type { SpellingWord } from "../spelling/decks";
+import type { MotionPauseReason } from "../shared/useTiltControl";
 
 export function SpellingPlayArea({
   item,
   seconds,
   score,
   paused,
+  pauseReason,
+  tiltEnabled,
   presenting,
   awaitingRemoteDecision,
   controlsLocked,
@@ -29,6 +32,8 @@ export function SpellingPlayArea({
   seconds: number | null;
   score: number;
   paused: boolean;
+  pauseReason: MotionPauseReason | null;
+  tiltEnabled: boolean;
   presenting: boolean;
   awaitingRemoteDecision: boolean;
   controlsLocked: boolean;
@@ -41,20 +46,37 @@ export function SpellingPlayArea({
   followingError: string | null;
   inputLevel: number;
   remoteBadge: ReactNode;
-  onReplay: (slower?: boolean) => void;
+  onReplay: (slowLevel?: number) => void;
   onRetryFollowing: () => void;
   onPause: () => void;
   onResume: () => void;
   onEnd: () => void;
   onDecision: (decision: "correct" | "incorrect" | "skipped") => void;
 }) {
+  const [slowLevel, setSlowLevel] = useState(0);
+  useEffect(() => setSlowLevel(0), [item.id]);
+
+  const replaySlower = () => {
+    const nextLevel = Math.min(3, slowLevel + 1);
+    setSlowLevel(nextLevel);
+    onReplay(nextLevel);
+  };
+  const slowLabel =
+    slowLevel === 0
+      ? "say it slowly"
+      : slowLevel === 1
+        ? "say it even slower"
+        : slowLevel === 2
+          ? "say it at slowest"
+          : "repeat at slowest";
+
   return (
     <div className={`things-game ${feedback === "correct" ? "things-game--green" : feedback ? "things-game--stone" : "things-game--amber"} text-black`}>
       <header className="spelling-play-header grid grid-cols-3 items-center px-5 py-4">
         <span className="flex items-center gap-3"><button type="button" onClick={onEnd} className="min-h-11 rounded-full border border-black/20 px-3 font-mono text-xs">end round</button>{remoteBadge}</span><span className="justify-self-center rounded-full border border-black/15 px-4 py-2 font-mono text-lg font-semibold tabular-nums">{seconds === null ? "∞" : seconds}</span><span className="justify-self-end font-mono text-xs opacity-60">{score} correct</span>
       </header>
       <main id="main" className="spelling-play-main relative flex min-h-0 flex-1 flex-col items-center justify-center overflow-hidden px-6 text-center">
-        {paused ? <div role="alert"><p className="font-mono text-micro uppercase tracking-[0.2em] text-black/50">word paused · timer stopped</p><h1 className="mt-4 font-serif text-5xl font-semibold">Take a breath.</h1><div className="mt-7 flex flex-col items-center gap-2"><button type="button" onClick={onResume} className="min-h-12 rounded-full bg-black px-6 font-mono text-sm font-semibold text-white">resume with {seconds === null ? "no timer" : `${seconds}s left`}</button><button type="button" onClick={onEnd} className="min-h-11 px-4 font-mono text-xs text-black/55 underline underline-offset-4">end round</button></div></div> : <>
+        {paused ? <div role="alert"><p className="font-mono text-micro uppercase tracking-[0.2em] text-black/50">{pauseReason ? "motion paused · timer stopped" : "word paused · timer stopped"}</p><h1 className="mt-4 font-serif text-5xl font-semibold">{pauseReason === "wrong-orientation" ? "Return the phone to its starting orientation." : pauseReason === "settling" ? "Hold the phone steady." : "Take a breath."}</h1><div className="mt-7 flex flex-col items-center gap-2">{pauseReason ? <p className="font-mono text-xs text-black/55">the round resumes automatically</p> : <button type="button" onClick={onResume} className="min-h-12 rounded-full bg-black px-6 font-mono text-sm font-semibold text-white">resume with {seconds === null ? "no timer" : `${seconds}s left`}</button>}<button type="button" onClick={onEnd} className="min-h-11 px-4 font-mono text-xs text-black/55 underline underline-offset-4">end round</button></div></div> : <>
           <p className="font-mono text-micro uppercase tracking-[0.2em] text-black/45">{presenting ? "listen" : awaitingRemoteDecision ? "time’s up · checking judge" : feedback === "timed_out" ? "timed out" : feedback ?? "spell this"}</p>
           <HighlightedWord word={item.word} matchedCount={matchedCount} mismatchAt={mismatchAt} listening={listening} />
           {item.definition || item.partOfSpeech ? <p className="spelling-play-definition mt-5 max-w-lg font-serif text-lg leading-relaxed text-black/60">{item.partOfSpeech ? <em>{item.partOfSpeech}</em> : null}{item.partOfSpeech && item.definition ? " · " : null}{item.definition}</p> : null}
@@ -67,10 +89,10 @@ export function SpellingPlayArea({
             </div>
           ) : null}
           {transcript ? <p className="mt-5 font-mono text-sm tracking-[0.14em] text-black/65">heard · {transcript}</p> : null}
-          <div className="spelling-play-actions mt-8 flex flex-wrap justify-center gap-2"><button type="button" onClick={() => onReplay()} className="min-h-11 rounded-full border border-black/20 px-4 font-mono text-xs">↻ say it again</button><button type="button" onClick={() => onReplay(true)} className="min-h-11 rounded-full border border-black/20 px-4 font-mono text-xs">say it slowly</button><button type="button" onClick={onPause} className="min-h-11 rounded-full border border-black/20 px-4 font-mono text-xs">pause</button></div>
+          <div className="spelling-play-actions mt-8 flex flex-wrap justify-center gap-2"><button type="button" onClick={() => onReplay()} className="min-h-11 rounded-full border border-black/20 px-4 font-mono text-xs">↻ say it again</button><button type="button" onClick={replaySlower} className="min-h-11 rounded-full border border-black/20 px-4 font-mono text-xs">{slowLabel}</button><button type="button" onClick={onPause} className="min-h-11 rounded-full border border-black/20 px-4 font-mono text-xs">pause</button></div>
         </>}
       </main>
-      <footer className="spelling-play-footer grid grid-cols-2 gap-3 p-4 pb-[max(1rem,env(safe-area-inset-bottom))] landscape:grid-cols-3"><button type="button" disabled={paused || presenting || controlsLocked} onClick={() => onDecision("incorrect")} className="min-h-14 rounded-full border border-black/20 bg-black/5 font-mono text-sm font-semibold disabled:opacity-35">incorrect</button><button type="button" disabled={paused || presenting || controlsLocked} onClick={() => onDecision("correct")} className="min-h-14 rounded-full bg-black font-mono text-sm font-semibold text-white disabled:opacity-35">correct ↓</button><button type="button" disabled={paused || presenting || controlsLocked} onClick={() => onDecision("skipped")} className="col-span-2 min-h-11 rounded-full font-mono text-xs text-black/55 underline underline-offset-4 disabled:opacity-35 landscape:col-span-1 landscape:min-h-14">skip this word ↑</button></footer>
+      <footer className="spelling-play-footer grid grid-cols-2 gap-3 p-4 pb-[max(1rem,env(safe-area-inset-bottom))] landscape:grid-cols-3"><button type="button" disabled={paused || presenting || controlsLocked} onClick={() => onDecision("incorrect")} className="min-h-14 rounded-full border border-black/20 bg-black/5 font-mono text-sm font-semibold disabled:opacity-35">incorrect{tiltEnabled ? " ↑" : ""}</button><button type="button" disabled={paused || presenting || controlsLocked} onClick={() => onDecision("correct")} className="min-h-14 rounded-full bg-black font-mono text-sm font-semibold text-white disabled:opacity-35">correct{tiltEnabled ? " ↓" : ""}</button><button type="button" disabled={paused || presenting || controlsLocked} onClick={() => onDecision("skipped")} className="col-span-2 min-h-11 rounded-full font-mono text-xs text-black/55 underline underline-offset-4 disabled:opacity-35 landscape:col-span-1 landscape:min-h-14">skip this word</button></footer>
     </div>
   );
 }

@@ -12,7 +12,12 @@ import { useFullscreen } from "../shared/useFullscreen";
 import { useTiltControl } from "../shared/useTiltControl";
 import { customSpellingDeckAsDeck, type CustomSpellingDeck } from "../spelling/customDecks";
 import { SPELLING_DECKS, shuffledWords, type SpellingDeck } from "../spelling/decks";
-import { cancelLocalSpeech, speakWord } from "../spelling/localSpeech";
+import { cancelLocalSpeech, getLocalVoices, speakWord } from "../spelling/localSpeech";
+import {
+  DEFAULT_SPELLING_PREFERENCES,
+  readSpellingPreferences,
+  writeSpellingPreferences,
+} from "../spelling/spellingPreferences.client";
 import { SpellingDeckBuilder } from "../spelling/SpellingDeckBuilder";
 import { SpellingPlayArea } from "./SpellingPlayArea";
 import { SpellingResults, type SpellingResult } from "./SpellingResults";
@@ -57,6 +62,10 @@ function SpellingBeeExperience({ remoteSession }: { remoteSession?: RemotePlayer
   const [feedback, setFeedback] = useState<AloudDecision | null>(null);
   const [wordState, setWordState] = useState<AloudWordState>({ status: "idle" });
   const [autoSpeak, setAutoSpeak] = useState(joinedSetup?.autoSpeak ?? true);
+  const [tiltEnabled, setTiltEnabled] = useState(DEFAULT_SPELLING_PREFERENCES.tiltEnabled);
+  const [positionLock, setPositionLock] = useState(DEFAULT_SPELLING_PREFERENCES.positionLock);
+  const [voiceURI, setVoiceURI] = useState(DEFAULT_SPELLING_PREFERENCES.voiceURI);
+  const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [remoteExclusive, setRemoteExclusive] = useState(Boolean(remoteSession));
   const [endConfirmationOpen, setEndConfirmationOpen] = useState(false);
@@ -66,6 +75,10 @@ function SpellingBeeExperience({ remoteSession }: { remoteSession?: RemotePlayer
   const wordStateRef = useRef(wordState);
   const restoredRound = useRef(false);
   const restoredWordPaused = useRef(false);
+  const motionPaused = useRef(false);
+  const replayGeneration = useRef(0);
+  const replayRemainingMs = useRef<number | undefined>(undefined);
+  const [preferencesLoaded, setPreferencesLoaded] = useState(false);
   const haptics = useWebHaptics();
   const {
     status: assistantStatus,
@@ -96,11 +109,45 @@ function SpellingBeeExperience({ remoteSession }: { remoteSession?: RemotePlayer
     wordStateRef.current = wordState;
   }, [wordState]);
 
+  useEffect(() => {
+    const preferences = readSpellingPreferences();
+    setTiltEnabled(preferences.tiltEnabled);
+    setPositionLock(preferences.positionLock);
+    setVoiceURI(preferences.voiceURI);
+    setPreferencesLoaded(true);
+
+    const refreshVoices = () => setVoices(getLocalVoices());
+    refreshVoices();
+    if (!("speechSynthesis" in window)) return;
+    speechSynthesis.addEventListener("voiceschanged", refreshVoices);
+    return () => speechSynthesis.removeEventListener("voiceschanged", refreshVoices);
+  }, []);
+
+  useEffect(() => {
+    if (!preferencesLoaded) return;
+    writeSpellingPreferences({ positionLock, tiltEnabled, voiceURI });
+  }, [positionLock, preferencesLoaded, tiltEnabled, voiceURI]);
+
   const clearTransition = useCallback(() => {
     if (transitionTimeout.current === null) return;
     window.clearTimeout(transitionTimeout.current);
     transitionTimeout.current = null;
   }, []);
+
+  const replayWord = useCallback((slowLevel?: number) => {
+    if (phase !== "playing") return;
+    const generation = replayGeneration.current + 1;
+    replayGeneration.current = generation;
+    const remainingMs = replayRemainingMs.current ?? remainingWordMs(wordStateRef.current) ?? (seconds === null ? undefined : seconds * 1_000);
+    replayRemainingMs.current = remainingMs;
+    stopAssistant();
+    setWordState({ status: "presenting" });
+    void speakWord(item, { slowLevel, voiceURI }).finally(() => {
+      if (replayGeneration.current !== generation) return;
+      replayRemainingMs.current = undefined;
+      setWordState((current) => current.status === "presenting" ? activeWord(remainingMs === undefined ? timerSeconds : remainingMs / 1_000) : current);
+    });
+  }, [item, phase, seconds, stopAssistant, timerSeconds, voiceURI]);
 
   const completeWord = useCallback((decision: AloudDecision) => {
     const decisionState = wordState.status === "active" || wordState.status === "local-evaluation" || wordState.status === "remote-grace";
@@ -150,11 +197,37 @@ function SpellingBeeExperience({ remoteSession }: { remoteSession?: RemotePlayer
     setResults((current) => current.map((result) => result.id === command.resultId ? { ...result, decision } : result));
   }, [completeWord, timerSeconds, undoDecision]);
 
-  const { requestAccess, calibrate } = useTiltControl(
-    phase === "playing" && !feedback && wordState.status === "active" && !remoteExclusive,
-    (decision) => completeWord(decision === "correct" ? "correct" : "skipped"),
-    false,
+  const {
+    status: motionStatus,
+    pauseReason: motionPauseReason,
+    requestAccess,
+    calibrate,
+    clearOrientationLock,
+  } = useTiltControl(
+    tiltEnabled && phase === "playing" && !feedback && wordState.status === "active" && !remoteExclusive,
+    (decision) => completeWord(decision === "correct" ? "correct" : "incorrect"),
+    positionLock,
   );
+
+  useEffect(() => {
+    if (phase !== "playing" || !tiltEnabled || remoteExclusive) {
+      motionPaused.current = false;
+      return;
+    }
+    if (motionPauseReason) {
+      if (wordState.status !== "active") return;
+      motionPaused.current = true;
+      setWordState({ status: "paused", remainingMs: remainingWordMs(wordState) });
+      return;
+    }
+    if (!motionPaused.current || wordState.status !== "paused") return;
+    motionPaused.current = false;
+    setWordState(
+      activeWord(
+        wordState.remainingMs !== undefined ? wordState.remainingMs / 1_000 : timerSeconds,
+      ),
+    );
+  }, [motionPauseReason, phase, remoteExclusive, tiltEnabled, timerSeconds, wordState]);
 
   const remoteSnapshot: RemoteGameSnapshot = {
     game: "spelling-bee",
@@ -243,15 +316,18 @@ function SpellingBeeExperience({ remoteSession }: { remoteSession?: RemotePlayer
     setSeconds(timerSeconds || null);
     processing.current = false;
     clearTransition();
-    await requestAccess();
+    if (tiltEnabled) await requestAccess();
     void haptics.trigger("medium");
     setPhase("countdown");
-  }, [clearTransition, haptics, requestAccess, roundTotal, selectedDeck, stopAssistant, timerSeconds]);
+  }, [clearTransition, haptics, requestAccess, roundTotal, selectedDeck, stopAssistant, tiltEnabled, timerSeconds]);
 
   const endRound = useCallback((confirmFirst = true) => {
     if (confirmFirst) { setEndConfirmationOpen(true); return; }
     setEndConfirmationOpen(false);
     clearTransition();
+    clearOrientationLock();
+    replayGeneration.current += 1;
+    replayRemainingMs.current = undefined;
     cancelLocalSpeech();
     stopAssistant();
     processing.current = false;
@@ -261,17 +337,17 @@ function SpellingBeeExperience({ remoteSession }: { remoteSession?: RemotePlayer
     sessionStorage.removeItem(roundStorageKey);
     restoredRound.current = false;
     setPhase("setup");
-  }, [clearTransition, roundStorageKey, stopAssistant]);
+  }, [clearOrientationLock, clearTransition, roundStorageKey, stopAssistant]);
 
   useEffect(() => {
     if (phase !== "countdown") return;
     const timeout = window.setTimeout(() => {
       playGameSound("tick", soundEnabled);
-      if (countdown <= 1) { calibrate(); setPhase("playing"); }
+      if (countdown <= 1) { if (tiltEnabled) calibrate(); setPhase("playing"); }
       else setCountdown((current) => current - 1);
     }, 850);
     return () => window.clearTimeout(timeout);
-  }, [calibrate, countdown, phase, soundEnabled]);
+  }, [calibrate, countdown, phase, soundEnabled, tiltEnabled]);
 
   useEffect(() => {
     if (phase !== "playing") return;
@@ -282,10 +358,13 @@ function SpellingBeeExperience({ remoteSession }: { remoteSession?: RemotePlayer
     setSeconds(timerSeconds || null);
     if (!autoSpeak) { setWordState(activeWord(timerSeconds)); return; }
     let active = true;
+    const generation = replayGeneration.current + 1;
+    replayGeneration.current = generation;
+    replayRemainingMs.current = undefined;
     setWordState({ status: "presenting" });
-    void speakWord(item).finally(() => { if (active) setWordState(activeWord(timerSeconds)); });
+    void speakWord(item, { voiceURI }).finally(() => { if (active && replayGeneration.current === generation) setWordState(activeWord(timerSeconds)); });
     return () => { active = false; cancelLocalSpeech(); };
-  }, [autoSpeak, item, phase, timerSeconds]);
+  }, [autoSpeak, item, phase, timerSeconds, voiceURI]);
 
   useEffect(() => {
     if (!paused) return;
@@ -344,13 +423,13 @@ function SpellingBeeExperience({ remoteSession }: { remoteSession?: RemotePlayer
 
   if (phase === "countdown") return <GameShell tone="amber"><header className="p-5 text-black"><button type="button" onClick={() => setEndConfirmationOpen(true)} className="min-h-11 font-mono text-xs opacity-60">← cancel round</button></header><main id="main" className="flex flex-1 flex-col items-center justify-center text-center text-black"><p className="font-mono text-xs uppercase tracking-[0.2em] text-black/55">get ready to spell</p><TextMorph as="h1" className="mt-2 font-serif text-[8rem] font-semibold leading-none">{String(countdown)}</TextMorph><p className="mt-8 max-w-xs px-6 font-serif text-xl text-black/70">Listen for the word.</p></main>{endConfirmationOpen ? <EndGameDialog tone="light" eyebrow="cancel round" title="Cancel this round?" description="The round will return to setup before play begins." cancelLabel="keep counting" confirmLabel="cancel round" onCancel={() => setEndConfirmationOpen(false)} onConfirm={() => endRound(false)} /> : null}</GameShell>;
 
-  if (phase === "playing") return <div className="relative"><SpellingPlayArea item={item} seconds={seconds} score={score} paused={paused} presenting={presenting} awaitingRemoteDecision={wordState.status === "remote-grace"} controlsLocked={remoteExclusive && remote.room !== null} feedback={feedback} transcript={transcript} matchedCount={assistantMatch.matchedCount} mismatchAt={assistantMatch.mismatchAt} listening={assistantStatus === "listening"} followingEnabled={assistantBackend !== null} followingError={assistantStatus === "error" ? assistantMessage : null} inputLevel={assistantInputLevel} remoteBadge={<RemoteConnectionBadge connected={remote.judgeConnected} />} onReplay={(slower) => void speakWord(item, { slower })} onRetryFollowing={retryAssistant} onPause={() => setWordState((current) => ({ status: "paused", remainingMs: remainingWordMs(current) }))} onResume={() => setWordState((current) => activeWord(current.status === "paused" && current.remainingMs !== undefined ? current.remainingMs / 1_000 : timerSeconds))} onEnd={() => endRound()} onDecision={completeWord} />{evaluating && !(remoteExclusive && remote.room) ? <EvaluationModal word={item.word} transcript={transcript} reason={wordState.status === "local-evaluation" ? wordState.reason : "time-up"} onCorrect={() => completeWord("correct")} onIncorrect={() => completeWord("incorrect")} onMoreTime={() => { const extraSeconds = timerSeconds || 15; setSeconds(extraSeconds); setWordState(activeWord(extraSeconds)); }} onReplay={() => void speakWord(item)} onEnd={() => endRound()} /> : null}{endConfirmationOpen ? <EndGameDialog tone="light" eyebrow="end round" title="Leave this game?" description="Your words from this round will be cleared." confirmLabel="end round" onCancel={() => setEndConfirmationOpen(false)} onConfirm={() => endRound(false)} /> : null}</div>;
+  if (phase === "playing") return <div className="relative"><SpellingPlayArea item={item} seconds={seconds} score={score} paused={paused} pauseReason={motionPaused.current ? motionPauseReason : null} tiltEnabled={tiltEnabled && !remoteExclusive} presenting={presenting} awaitingRemoteDecision={wordState.status === "remote-grace"} controlsLocked={remoteExclusive && remote.room !== null} feedback={feedback} transcript={transcript} matchedCount={assistantMatch.matchedCount} mismatchAt={assistantMatch.mismatchAt} listening={assistantStatus === "listening"} followingEnabled={assistantBackend !== null} followingError={assistantStatus === "error" ? assistantMessage : null} inputLevel={assistantInputLevel} remoteBadge={<RemoteConnectionBadge connected={remote.judgeConnected} />} onReplay={replayWord} onRetryFollowing={retryAssistant} onPause={() => setWordState((current) => ({ status: "paused", remainingMs: remainingWordMs(current) }))} onResume={() => setWordState((current) => activeWord(current.status === "paused" && current.remainingMs !== undefined ? current.remainingMs / 1_000 : timerSeconds))} onEnd={() => endRound()} onDecision={completeWord} />{evaluating && !(remoteExclusive && remote.room) ? <EvaluationModal word={item.word} transcript={transcript} reason={wordState.status === "local-evaluation" ? wordState.reason : "time-up"} onCorrect={() => completeWord("correct")} onIncorrect={() => completeWord("incorrect")} onMoreTime={() => { const extraSeconds = timerSeconds || 15; setSeconds(extraSeconds); setWordState(activeWord(extraSeconds)); }} onReplay={() => void speakWord(item, { voiceURI })} onEnd={() => endRound()} /> : null}{endConfirmationOpen ? <EndGameDialog tone="light" eyebrow="end round" title="Leave this game?" description="Your words from this round will be cleared." confirmLabel="end round" onCancel={() => setEndConfirmationOpen(false)} onConfirm={() => endRound(false)} /> : null}</div>;
 
   if (phase === "results") return <SpellingResults results={results} onBack={() => setPhase("setup")} onAgain={() => void startRound()} onAmend={(id, decision) => setResults((current) => current.map((result) => result.id === id ? { ...result, decision } : result))} />;
 
   if (joinedDeck) return <PairedGamePlayerReady gameName="Spelling Bee" deckName={joinedDeck.name} detail={timerSeconds ? `${timerSeconds} seconds per word.` : "No timer."} judgeConnected={remote.judgeConnected} onLeave={remote.closeRoom} onStart={() => void startRound(joinedDeck)} />;
 
-  return <SpellingSetup decks={allDecks} selectedDeckId={deckId} customDeckIds={new Set(customDecks.map(({ id }) => id))} timerSeconds={timerSeconds} roundTotal={Math.min(roundTotal, selectedDeck.words.length)} autoSpeak={autoSpeak} soundEnabled={soundEnabled} assistantStatus={assistantStatus} assistantBackend={assistantBackend} browserSpeechAvailability={browserSpeechAvailability} assistantProgress={assistantProgress} assistantMessage={assistantMessage} downloadEstimate={downloadEstimate} remoteControls={<PairedGameHostPanel gameLabel="Spelling Bee" inviteUrl={remote.inviteUrl} roomId={remote.room?.roomId ?? null} connected={remote.judgeConnected} syncing={remote.syncing} message={remote.message} exclusive={remoteExclusive} onCreate={remote.createRoom} onCreatePlayerRoom={remote.createJudgeRoom} onClose={remote.closeRoom} onMessage={remote.setMessage} onToggleExclusive={() => setRemoteExclusive((value) => !value)} />} onSelectDeck={(id) => { setDeckId(id); const deck = allDecks.find((candidate) => candidate.id === id); if (deck) setRoundTotal((current) => Math.min(current, deck.words.length)); }} onRoundTotalChange={setRoundTotal} onTimerChange={setTimerSeconds} onToggleAutoSpeak={() => setAutoSpeak((value) => !value)} onToggleSound={() => setSoundEnabled((value) => !value)} onEnableAssistant={() => void enableAssistant()} onDisableAssistant={() => void disableAssistant()} onCreateDeck={() => { setEditingDeck(null); setPhase("builder"); }} onEditDeck={(id) => { setEditingDeck(customDecks.find((deck) => deck.id === id) ?? null); setPhase("builder"); }} onStart={() => void startRound()} />;
+  return <SpellingSetup decks={allDecks} selectedDeckId={deckId} customDeckIds={new Set(customDecks.map(({ id }) => id))} timerSeconds={timerSeconds} roundTotal={Math.min(roundTotal, selectedDeck.words.length)} autoSpeak={autoSpeak} tiltEnabled={tiltEnabled} positionLock={positionLock} voiceURI={voiceURI} voices={voices} motionUnavailable={motionStatus === "unavailable"} soundEnabled={soundEnabled} assistantStatus={assistantStatus} assistantBackend={assistantBackend} browserSpeechAvailability={browserSpeechAvailability} assistantProgress={assistantProgress} assistantMessage={assistantMessage} downloadEstimate={downloadEstimate} remoteControls={<PairedGameHostPanel gameLabel="Spelling Bee" inviteUrl={remote.inviteUrl} roomId={remote.room?.roomId ?? null} connected={remote.judgeConnected} syncing={remote.syncing} message={remote.message} exclusive={remoteExclusive} onCreate={remote.createRoom} onCreatePlayerRoom={remote.createJudgeRoom} onClose={remote.closeRoom} onMessage={remote.setMessage} onToggleExclusive={() => setRemoteExclusive((value) => !value)} />} onSelectDeck={(id) => { setDeckId(id); const deck = allDecks.find((candidate) => candidate.id === id); if (deck) setRoundTotal((current) => Math.min(current, deck.words.length)); }} onRoundTotalChange={setRoundTotal} onTimerChange={setTimerSeconds} onToggleAutoSpeak={() => setAutoSpeak((value) => !value)} onToggleTilt={() => setTiltEnabled((value) => !value)} onTogglePositionLock={() => setPositionLock((value) => !value)} onVoiceChange={(nextVoiceURI) => { setVoiceURI(nextVoiceURI); const preview = selectedDeck.words[0]; if (preview) void speakWord(preview, { voiceURI: nextVoiceURI }); }} onToggleSound={() => setSoundEnabled((value) => !value)} onEnableAssistant={() => void enableAssistant()} onDisableAssistant={() => void disableAssistant()} onCreateDeck={() => { setEditingDeck(null); setPhase("builder"); }} onEditDeck={(id) => { setEditingDeck(customDecks.find((deck) => deck.id === id) ?? null); setPhase("builder"); }} onStart={() => void startRound()} />;
 }
 
 function EvaluationModal({ word, transcript, reason, onCorrect, onIncorrect, onMoreTime, onReplay, onEnd }: { word: string; transcript: string; reason: AloudEvaluationReason; onCorrect: () => void; onIncorrect: () => void; onMoreTime: () => void; onReplay: () => void; onEnd: () => void }) {

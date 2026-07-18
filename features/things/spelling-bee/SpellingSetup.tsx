@@ -4,6 +4,7 @@ import type { SpellingDeck } from "../spelling/decks";
 import { AppSelect } from "@/components/AppSelect";
 import { spellingRoundOptions } from "../spelling/decks";
 import { SpellingDeckPicker } from "../spelling/SpellingDeckPicker";
+import { OrientationLockControl } from "../shared/OrientationControls";
 import {
   GameLaunch,
   GameLaunchButton,
@@ -35,12 +36,20 @@ interface SpellingSetupProps {
   onStart: () => void;
   onTimerChange: (seconds: number) => void;
   onToggleAutoSpeak: () => void;
+  onTogglePositionLock: () => void;
   onToggleSound: () => void;
+  onToggleTilt: () => void;
+  onVoiceChange: (voiceURI: string) => void;
+  positionLock: boolean;
   remoteControls: ReactNode;
   roundTotal: number;
   selectedDeckId: string;
   soundEnabled: boolean;
+  tiltEnabled: boolean;
   timerSeconds: number;
+  voiceURI: string;
+  voices: readonly { lang: string; name: string; voiceURI: string }[];
+  motionUnavailable: boolean;
 }
 
 export function SpellingSetup({
@@ -50,6 +59,11 @@ export function SpellingSetup({
   timerSeconds,
   roundTotal,
   autoSpeak,
+  tiltEnabled,
+  positionLock,
+  voiceURI,
+  voices,
+  motionUnavailable,
   soundEnabled,
   remoteControls,
   assistantStatus,
@@ -62,6 +76,9 @@ export function SpellingSetup({
   onTimerChange,
   onRoundTotalChange,
   onToggleAutoSpeak,
+  onToggleTilt,
+  onTogglePositionLock,
+  onVoiceChange,
   onToggleSound,
   onCreateDeck,
   onEditDeck,
@@ -97,7 +114,11 @@ export function SpellingSetup({
           tone="night"
           eyebrow="spelling bee · say it aloud"
           title="Spelling Bee."
-          description="Hear the word. Spell it aloud. Tilt down for correct, up to skip."
+          description={
+            tiltEnabled
+              ? "Hear the word. Spell it aloud. Tilt down for correct, up for incorrect."
+              : "Hear the word. Spell it aloud. Judge with the on-screen controls."
+          }
         >
           <GameLaunchButton accent="amber" onClick={onStart}>
             start
@@ -208,6 +229,62 @@ export function SpellingSetup({
                 className="h-5 w-5 accent-[var(--things-amber)]"
               />
             </label>
+
+            <label
+              htmlFor="spelling-voice"
+              className="mt-3 flex items-center justify-between gap-4 font-mono text-xs text-white/65"
+            >
+              <span>voice</span>
+              <AppSelect
+                id="spelling-voice"
+                value={voices.some((voice) => voice.voiceURI === voiceURI) ? voiceURI : ""}
+                onValueChange={onVoiceChange}
+                disabled={voices.length === 0}
+                tone="night"
+                className="max-w-[15rem]"
+                options={[
+                  { value: "", label: "automatic" },
+                  ...voices.map((voice) => ({
+                    value: voice.voiceURI,
+                    label: `${voice.name} · ${voice.lang}`,
+                  })),
+                ]}
+              />
+            </label>
+            <p className="mt-1 text-right font-mono text-micro text-white/40">
+              {voices.length
+                ? "choosing a voice plays a preview · saved on this device"
+                : "no local English voices found"}
+            </p>
+
+            <div className="mt-4 border-t border-white/10 pt-4">
+              <label className="flex min-h-11 cursor-pointer items-center justify-between gap-4 font-mono text-xs text-white/65">
+                <span>
+                  tilt judging
+                  <span className="mt-1 block max-w-xs font-sans text-xs leading-relaxed text-white/45">
+                    down for correct · up for incorrect
+                  </span>
+                </span>
+                <input
+                  type="checkbox"
+                  checked={tiltEnabled}
+                  onChange={onToggleTilt}
+                  className="h-5 w-5 accent-[var(--things-amber)]"
+                />
+              </label>
+              <div className="mt-3">
+                <OrientationLockControl
+                  disabled={!tiltEnabled}
+                  locked={positionLock}
+                  onToggle={onTogglePositionLock}
+                />
+              </div>
+              {motionUnavailable && tiltEnabled ? (
+                <p className="font-mono text-micro text-white/45">
+                  motion is unavailable — use the on-screen buttons
+                </p>
+              ) : null}
+            </div>
 
             <div className="mt-4 border-t border-white/10 pt-4">
               <div className="flex items-start justify-between gap-4">

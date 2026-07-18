@@ -1,3 +1,42 @@
+import { useId } from "react";
+
+interface OrientationLockControlProps {
+  disabled?: boolean;
+  locked: boolean;
+  onToggle: () => void;
+}
+
+export function OrientationLockControl({
+  disabled = false,
+  locked,
+  onToggle,
+}: OrientationLockControlProps) {
+  const noteId = useId();
+  return (
+    <div className="mb-3 flex items-center justify-between gap-4">
+      <p id={noteId} className="font-mono text-micro leading-relaxed text-white/45">
+        {disabled
+          ? "turn tilt judging on to use orientation lock"
+          : locked
+            ? "pauses if the phone rotates"
+            : "adapts when the phone rotates"}
+      </p>
+      <button
+        type="button"
+        onClick={onToggle}
+        disabled={disabled}
+        aria-pressed={locked}
+        aria-describedby={noteId}
+        className={`min-h-11 shrink-0 rounded-full border px-4 font-mono text-xs transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
+          locked ? "border-white/55 bg-white/12 text-white" : "border-white/15 text-white/55"
+        }`}
+      >
+        orientation · {locked ? "locked" : "auto"} {locked ? "▣" : "↻"}
+      </button>
+    </div>
+  );
+}
+
 interface OrientationControlsProps {
   fullscreenActive: boolean;
   fullscreenInstallFallback: boolean;
@@ -23,22 +62,7 @@ export function OrientationControls({
 }: OrientationControlsProps) {
   return (
     <div className="mx-auto mt-6 max-w-lg">
-      <div className="mb-3 flex items-center justify-between gap-4">
-        <p id="position-lock-note" className="font-mono text-micro leading-relaxed text-white/45">
-          {locked ? "pauses if the phone rotates" : "adapts when the phone rotates"}
-        </p>
-        <button
-          type="button"
-          onClick={onToggle}
-          aria-pressed={locked}
-          aria-describedby="position-lock-note"
-          className={`min-h-11 shrink-0 rounded-full border px-4 font-mono text-xs transition-colors ${
-            locked ? "border-white/55 bg-white/12 text-white" : "border-white/15 text-white/55"
-          }`}
-        >
-          orientation · {locked ? "locked" : "auto"} {locked ? "▣" : "↻"}
-        </button>
-      </div>
+      <OrientationLockControl locked={locked} onToggle={onToggle} />
       {fullscreenSupported ? (
         <button
           type="button"
