@@ -1,5 +1,5 @@
 import { createServerFn } from "@tanstack/react-start";
-import { multiplayerCredential, multiplayerRecord, multiplayerRoomId, multiplayerSequence, multiplayerText, optionalMultiplayerText } from "../shared/multiplayer-validation";
+import { multiplayerBoundedText, multiplayerCredential, multiplayerRecord, multiplayerRoomId, multiplayerSequence, multiplayerText, optionalMultiplayerText } from "../shared/multiplayer-validation";
 import { partyDeckCatalog } from "./party-content.server";
 import {
   applyPlayerAction,
@@ -79,7 +79,7 @@ function playerAction(value: unknown): PartyPlayerAction {
     return {
       ...base,
       type: data.type,
-      draft: typeof data.draft === "string" ? data.draft.slice(0, 64) : "",
+      draft: multiplayerBoundedText(data.draft, 64, "Invalid draft"),
       draftRevision: sequence(data.draftRevision),
     };
   if (data.type === "answer.lock") return { ...base, type: data.type };
@@ -103,8 +103,8 @@ export const createPartyRoomFn = createServerFn({ method: "POST" })
       deckId: text(data.deckId, 80),
       customDeck: customDeck(data.customDeck),
       recentWordIds,
-      answerSeconds: Math.max(8, Math.min(60, sequence(data.answerSeconds) || 20)),
-      roundTotal: Math.max(1, Math.min(24, sequence(data.roundTotal) || 5)),
+      answerSeconds: Math.max(8, Math.min(60, sequence(data.answerSeconds ?? 20))),
+      roundTotal: Math.max(1, Math.min(24, sequence(data.roundTotal ?? 5))),
     };
   })
   .handler(({ data }) => createPartyRoom(data));
@@ -128,7 +128,7 @@ export const readPartySnapshotFn = createServerFn({ method: "POST" })
       roomId: roomId(data.roomId),
       role: role(data.role),
       credential: credential(data.credential),
-      playerId: typeof data.playerId === "string" ? data.playerId.slice(0, 120) : undefined,
+      playerId: data.playerId === undefined ? undefined : text(data.playerId, 120),
       presenterToken:
         data.presenterToken === undefined ? undefined : credential(data.presenterToken),
       lastSequence: sequence(data.lastSequence),

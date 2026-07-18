@@ -3,16 +3,31 @@ import { MULTIPLAYER_ROOM_ID_PATTERN } from "./multiplayer";
 export function multiplayerRecord(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== "object" || Array.isArray(value))
     throw new Error("Invalid request");
-  return value as Record<string, unknown>;
+  return Object.fromEntries(Object.entries(value));
 }
 
-export function multiplayerText(value: unknown, max: number, error = "Invalid text") {
-  if (typeof value !== "string" || value.length < 1 || value.length > max) throw new Error(error);
+export function multiplayerBoundedText(
+  value: unknown,
+  max: number,
+  error = "Invalid text",
+) {
+  if (typeof value !== "string" || value.length > max) throw new Error(error);
   return value;
 }
 
+export function multiplayerText(value: unknown, max: number, error = "Invalid text") {
+  const text = multiplayerBoundedText(value, max, error);
+  if (text.length < 1) throw new Error(error);
+  return text;
+}
+
 export function optionalMultiplayerText(value: unknown, max: number) {
-  return typeof value === "string" && value.trim() ? value.trim().slice(0, max) : undefined;
+  if (value === undefined || value === null) return undefined;
+  if (typeof value !== "string") throw new Error("Invalid text");
+  const text = value.trim();
+  if (!text) return undefined;
+  if (text.length > max) throw new Error("Invalid text");
+  return text;
 }
 
 export function multiplayerRoomId(value: unknown) {
@@ -26,5 +41,7 @@ export function multiplayerCredential(value: unknown, max = 120) {
 }
 
 export function multiplayerSequence(value: unknown) {
-  return typeof value === "number" && Number.isFinite(value) ? Math.max(0, Math.floor(value)) : 0;
+  if (typeof value !== "number" || !Number.isInteger(value) || value < 0)
+    throw new Error("Invalid sequence");
+  return Math.floor(value);
 }

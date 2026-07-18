@@ -3,9 +3,9 @@ import { useNavigate } from "@tanstack/react-router";
 import { TextMorph } from "torph/react";
 import { useWebHaptics } from "web-haptics/react";
 import { closeRemoteRoomFn, readRemoteJudgeFn, sendRemoteJudgeCommandFn } from "./remote-room.functions";
-import type { RemoteCommandRequest, RemoteGameKind, RemoteResultDecision, RemoteSyncedSnapshot } from "./types";
+import type { RemoteCommandReceiptReason, RemoteCommandRequest, RemoteGameKind, RemoteResultDecision, RemoteSyncedSnapshot } from "./types";
 import { useRemoteSocket } from "./useRemoteSocket";
-import { gameBrowserKeys, legacyGameBrowserKeys } from "../shared/game-keys";
+import { legacyRemoteBrowserKeys, remoteBrowserKeys } from "./remote-keys";
 import { clearExpiredGameLocalStorage, readExpiringLocalValue, removeStorageKeys, writeExpiringLocalValue } from "../shared/game-storage.client";
 import { EndGameDialog } from "../shared/EndGameDialog";
 import { shareOrCopy } from "../shared/share.client";
@@ -13,6 +13,13 @@ import { useQrCode } from "../shared/useQrCode";
 import { useRoomReconciler } from "../shared/useRoomReconciler";
 
 const SAFETY_POLL_MS = 12_000;
+
+const receiptReasonLabels: Record<RemoteCommandReceiptReason, string> = {
+  stale_round: "round changed",
+  stale_item: "card changed",
+  decision_closed: "decision window closed",
+  already_decided: "word already decided",
+};
 
 type RemoteCommandInput =
   | { type: "correct" | "incorrect" | "pass" | "skip" | "pause" | "resume" | "undo" }
@@ -30,7 +37,7 @@ interface StoredRoomTokens {
 }
 
 function tokensForRoom(roomId: string): StoredRoomTokens {
-  const sessionKey = gameBrowserKeys.remoteJudgeSession(roomId);
+  const sessionKey = remoteBrowserKeys.judgeSession(roomId);
   const hash = location.hash.slice(1).trim();
   if (hash) {
     const params = new URLSearchParams(hash);
@@ -50,9 +57,9 @@ function tokensForRoom(roomId: string): StoredRoomTokens {
   } catch {
     sessionStorage.removeItem(sessionKey);
   }
-  const legacyJudgeKey = legacyGameBrowserKeys.remoteJudgeToken(roomId);
-  const legacyPlayerKey = legacyGameBrowserKeys.remotePlayerInviteToken(roomId);
-  const legacyGameKey = legacyGameBrowserKeys.remoteJudgeGame(roomId);
+  const legacyJudgeKey = legacyRemoteBrowserKeys.judgeToken(roomId);
+  const legacyPlayerKey = legacyRemoteBrowserKeys.playerInviteToken(roomId);
+  const legacyGameKey = legacyRemoteBrowserKeys.judgeGame(roomId);
   const game = sessionStorage.getItem(legacyGameKey);
   const migrated = { judgeToken: sessionStorage.getItem(legacyJudgeKey) ?? "", playerToken: sessionStorage.getItem(legacyPlayerKey) ?? "", game: game === "heads-up" || game === "spelling-bee" ? game : null } satisfies StoredRoomTokens;
   if (migrated.judgeToken) sessionStorage.setItem(sessionKey, JSON.stringify(migrated));
@@ -100,8 +107,8 @@ export function RemoteJudgeApp({ roomId }: { roomId: string }) {
         if (!result.ok) {
           setError(result.error ?? "This invite is no longer available.");
           setPlayerConnected(false);
-          removeStorageKeys(sessionStorage, [gameBrowserKeys.remoteJudgeSession(roomId)]);
-          removeStorageKeys(localStorage, [gameBrowserKeys.remotePendingCommands(roomId), legacyGameBrowserKeys.remotePendingCommands(roomId)]);
+          removeStorageKeys(sessionStorage, [remoteBrowserKeys.judgeSession(roomId)]);
+          removeStorageKeys(localStorage, [remoteBrowserKeys.pendingCommands(roomId), legacyRemoteBrowserKeys.pendingCommands(roomId)]);
           return;
         }
         if (result.expiresAt) roomExpiresAt.current = result.expiresAt;
@@ -116,7 +123,11 @@ export function RemoteJudgeApp({ roomId }: { roomId: string }) {
             setPendingCommandId(null);
             setPendingCommandLabel(null);
             setControlFeedback(receipt.status === "applied" ? `${pendingCommandLabel ?? "Control"} accepted.` : null);
-            setError(receipt.status === "applied" ? null : `Control ignored: ${receipt.reason ?? "game moved on"}.`);
+            setError(
+              receipt.status === "applied"
+                ? null
+                : `Control ignored: ${receipt.reason ? receiptReasonLabels[receipt.reason] : "game moved on"}.`,
+            );
           }
         }
         setPlayerConnected(result.playerConnected);
@@ -168,7 +179,7 @@ export function RemoteJudgeApp({ roomId }: { roomId: string }) {
         void haptics.trigger("selection");
       }
     } catch {
-      const queueKey = gameBrowserKeys.remotePendingCommands(roomId);
+      const queueKey = remoteBrowserKeys.pendingCommands(roomId);
       const stored = readExpiringLocalValue<RemoteCommandRequest[]>(queueKey) ?? [];
       writeExpiringLocalValue(queueKey, [...stored.filter(({ id }) => id !== payload.id), payload].slice(-20), roomExpiresAt.current);
       setControlFeedback(null);
@@ -180,13 +191,13 @@ export function RemoteJudgeApp({ roomId }: { roomId: string }) {
 
   useEffect(() => {
     if (transportState !== "connected" || !tokens.judgeToken || !judgeActive || flushingCommands.current) return;
-    const queueKey = gameBrowserKeys.remotePendingCommands(roomId);
+    const queueKey = remoteBrowserKeys.pendingCommands(roomId);
     let commands = readExpiringLocalValue<RemoteCommandRequest[]>(queueKey) ?? [];
     if (!commands.length) {
       try {
-        commands = JSON.parse(localStorage.getItem(legacyGameBrowserKeys.remotePendingCommands(roomId)) ?? "[]") as RemoteCommandRequest[];
-        localStorage.removeItem(legacyGameBrowserKeys.remotePendingCommands(roomId));
-      } catch { localStorage.removeItem(legacyGameBrowserKeys.remotePendingCommands(roomId)); }
+        commands = JSON.parse(localStorage.getItem(legacyRemoteBrowserKeys.pendingCommands(roomId)) ?? "[]") as RemoteCommandRequest[];
+        localStorage.removeItem(legacyRemoteBrowserKeys.pendingCommands(roomId));
+      } catch { localStorage.removeItem(legacyRemoteBrowserKeys.pendingCommands(roomId)); }
     }
     if (!commands.length) return;
     flushingCommands.current = true;
@@ -195,7 +206,13 @@ export function RemoteJudgeApp({ roomId }: { roomId: string }) {
       for (const command of commands) {
         try {
           const result = await sendRemoteJudgeCommandFn({ data: { roomId, judgeToken: tokens.judgeToken, judgeEpoch: judgeEpoch.current, command } });
-          if (!result.ok && result.error !== "Round changed" && result.error !== "Card changed" && result.error !== "Command expired") break;
+          if (
+            !result.ok &&
+            result.errorCode !== "stale_round" &&
+            result.errorCode !== "stale_item" &&
+            result.errorCode !== "command_expired"
+          )
+            break;
           remaining.shift();
           if (result.ok) { setPendingCommandId(command.id); setPendingCommandLabel(commandLabel(command)); notifySocket(); }
         } catch { break; }
@@ -219,12 +236,12 @@ export function RemoteJudgeApp({ roomId }: { roomId: string }) {
     setEndingRoom(true);
     await closeRemoteRoomFn({ data: { roomId, role: "judge", token: tokens.judgeToken } }).catch(() => null);
     removeStorageKeys(sessionStorage, [
-      gameBrowserKeys.remoteJudgeSession(roomId),
-      legacyGameBrowserKeys.remoteJudgeToken(roomId),
-      legacyGameBrowserKeys.remotePlayerInviteToken(roomId),
-      legacyGameBrowserKeys.remoteJudgeGame(roomId),
+      remoteBrowserKeys.judgeSession(roomId),
+      legacyRemoteBrowserKeys.judgeToken(roomId),
+      legacyRemoteBrowserKeys.playerInviteToken(roomId),
+      legacyRemoteBrowserKeys.judgeGame(roomId),
     ]);
-    removeStorageKeys(localStorage, [gameBrowserKeys.remotePendingCommands(roomId), legacyGameBrowserKeys.remotePendingCommands(roomId)]);
+    removeStorageKeys(localStorage, [remoteBrowserKeys.pendingCommands(roomId), legacyRemoteBrowserKeys.pendingCommands(roomId)]);
     await navigate({ to: "/things" });
   };
 

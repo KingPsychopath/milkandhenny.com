@@ -8,7 +8,7 @@ import { useSynchronizedPartyStage } from "./useSynchronizedPartyStage";
 import { PartyClosenessBoard } from "./PartyClosenessBoard";
 import { PartyRoundCooldown } from "./PartyRoundCooldown";
 import type { PartyClueEvent, PartyPresenterAction } from "./types";
-import { gameBrowserKeys, legacyGameBrowserKeys } from "../shared/game-keys";
+import { legacyPartyBrowserKeys, partyBrowserKeys } from "./party-keys";
 import {
   readExpiringLocalValue,
   removeStorageKeys,
@@ -21,8 +21,8 @@ import { shareOrCopy } from "../shared/share.client";
 import { useQrCode } from "../shared/useQrCode";
 
 function roomTokens(roomId: string) {
-  const sessionKey = gameBrowserKeys.partyPresenterSession(roomId);
-  const recoveryKey = gameBrowserKeys.partyPresenterRecovery(roomId);
+  const sessionKey = partyBrowserKeys.presenterSession(roomId);
+  const recoveryKey = partyBrowserKeys.presenterRecovery(roomId);
   const params = new URLSearchParams(location.hash.slice(1));
   const presenter = params.get("presenter");
   const join = params.get("join");
@@ -57,13 +57,13 @@ function roomTokens(roomId: string) {
     return recovered;
   }
   const presenterToken =
-    sessionStorage.getItem(legacyGameBrowserKeys.partyPresenterToken(roomId)) ?? "";
-  const joinToken = sessionStorage.getItem(legacyGameBrowserKeys.partyJoinToken(roomId)) ?? "";
+    sessionStorage.getItem(legacyPartyBrowserKeys.presenterToken(roomId)) ?? "";
+  const joinToken = sessionStorage.getItem(legacyPartyBrowserKeys.joinToken(roomId)) ?? "";
   if (presenterToken || joinToken)
     sessionStorage.setItem(sessionKey, JSON.stringify({ presenterToken, joinToken }));
   removeStorageKeys(sessionStorage, [
-    legacyGameBrowserKeys.partyPresenterToken(roomId),
-    legacyGameBrowserKeys.partyJoinToken(roomId),
+    legacyPartyBrowserKeys.presenterToken(roomId),
+    legacyPartyBrowserKeys.joinToken(roomId),
   ]);
   return { presenterToken, joinToken };
 }
@@ -222,11 +222,11 @@ export function PartyPresenterApp({ roomId }: { roomId: string }) {
       () => null,
     );
     removeStorageKeys(sessionStorage, [
-      gameBrowserKeys.partyPresenterSession(roomId),
-      legacyGameBrowserKeys.partyPresenterToken(roomId),
-      legacyGameBrowserKeys.partyJoinToken(roomId),
+      partyBrowserKeys.presenterSession(roomId),
+      legacyPartyBrowserKeys.presenterToken(roomId),
+      legacyPartyBrowserKeys.joinToken(roomId),
     ]);
-    removeStorageKeys(localStorage, [gameBrowserKeys.partyPresenterRecovery(roomId)]);
+    removeStorageKeys(localStorage, [partyBrowserKeys.presenterRecovery(roomId)]);
     await navigate({ to: "/things/spelling-party" });
   };
   const players = snapshot?.players ?? [];
@@ -241,11 +241,11 @@ export function PartyPresenterApp({ roomId }: { roomId: string }) {
   useEffect(() => {
     if (!live.ended) return;
     removeStorageKeys(sessionStorage, [
-      gameBrowserKeys.partyPresenterSession(roomId),
-      legacyGameBrowserKeys.partyPresenterToken(roomId),
-      legacyGameBrowserKeys.partyJoinToken(roomId),
+      partyBrowserKeys.presenterSession(roomId),
+      legacyPartyBrowserKeys.presenterToken(roomId),
+      legacyPartyBrowserKeys.joinToken(roomId),
     ]);
-    removeStorageKeys(localStorage, [gameBrowserKeys.partyPresenterRecovery(roomId)]);
+    removeStorageKeys(localStorage, [partyBrowserKeys.presenterRecovery(roomId)]);
   }, [live.ended, roomId]);
 
   if (!tokens.presenterToken)

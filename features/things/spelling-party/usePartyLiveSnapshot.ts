@@ -33,10 +33,10 @@ export function usePartyLiveSnapshot(input: {
       });
       const endedAt = Date.now();
       if (!isCurrent()) return;
-      if (!result.ok || !result.snapshot) {
+      if (!result.ok) {
         setEnded(true);
         setSnapshot(null);
-        setMessage(result.error ?? "Room unavailable");
+        setMessage(result.error);
         return;
       }
       sequenceRef.current = result.snapshot.sequence;

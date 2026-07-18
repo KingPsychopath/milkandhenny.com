@@ -1,6 +1,6 @@
 import { authorizeRemoteSocket } from "@/features/things/remote/remote-room.server";
+import { remoteRealtimeChannel } from "@/features/things/remote/remote-keys";
 import type { RemoteRoomRole } from "@/features/things/remote/types";
-import { gameRealtimeChannels } from "@/features/things/shared/game-keys";
 import { createRealtimeRoomHandler } from "@/features/things/shared/realtime-room-handler.server";
 
 interface RemoteRealtimeSession {
@@ -9,7 +9,7 @@ interface RemoteRealtimeSession {
 }
 
 export default createRealtimeRoomHandler<RemoteRealtimeSession>({
-  channel: gameRealtimeChannels.remoteRoom,
+  channel: remoteRealtimeChannel,
   async authorize(payload) {
     const roomId = typeof payload.roomId === "string" ? payload.roomId : "";
     const token = typeof payload.token === "string" ? payload.token : "";

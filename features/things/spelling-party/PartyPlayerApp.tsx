@@ -18,7 +18,7 @@ import { usePartyLiveSnapshot } from "./usePartyLiveSnapshot";
 import { useSynchronizedPartyStage } from "./useSynchronizedPartyStage";
 import { PartyClosenessBoard } from "./PartyClosenessBoard";
 import { PartyRoundCooldown } from "./PartyRoundCooldown";
-import { gameBrowserKeys, legacyGameBrowserKeys } from "../shared/game-keys";
+import { legacyPartyBrowserKeys, partyBrowserKeys } from "./party-keys";
 import { EndGameDialog } from "../shared/EndGameDialog";
 import {
   clearExpiredGameLocalStorage,
@@ -33,7 +33,7 @@ import { shareOrCopy } from "../shared/share.client";
 import { useQrCode } from "../shared/useQrCode";
 
 function joinToken(roomId: string) {
-  const key = gameBrowserKeys.partyInvite(roomId);
+  const key = partyBrowserKeys.invite(roomId);
   const fromHash = location.hash.slice(1).trim();
   if (fromHash) {
     sessionStorage.setItem(key, fromHash);
@@ -42,14 +42,14 @@ function joinToken(roomId: string) {
   }
   const current = sessionStorage.getItem(key);
   if (current) return current;
-  const legacyKey = legacyGameBrowserKeys.partyInvite(roomId);
+  const legacyKey = legacyPartyBrowserKeys.invite(roomId);
   const legacy = sessionStorage.getItem(legacyKey) ?? "";
   if (legacy) sessionStorage.setItem(key, legacy);
   sessionStorage.removeItem(legacyKey);
   return legacy;
 }
 function playerKey(roomId: string) {
-  return gameBrowserKeys.partyPlayerSession(roomId);
+  return partyBrowserKeys.playerSession(roomId);
 }
 function readPlayer(roomId: string): PartyPlayerCredentials | null {
   const current = readExpiringLocalValue<PartyPlayerCredentials>(playerKey(roomId));
@@ -59,7 +59,7 @@ function readPlayer(roomId: string): PartyPlayerCredentials | null {
     typeof current.playerToken === "string"
   )
     return current;
-  const legacyKey = legacyGameBrowserKeys.partyPlayerSession(roomId);
+  const legacyKey = legacyPartyBrowserKeys.playerSession(roomId);
   try {
     const legacy = JSON.parse(
       localStorage.getItem(legacyKey) ?? "null",
@@ -106,7 +106,7 @@ export function PartyPlayerApp({ roomId }: { roomId: string }) {
       const result = await joinPartyRoomFn({
         data: { roomId, joinToken: invite || undefined, name, joinId: joinId.current },
       });
-      if ("error" in result) {
+      if (!result.ok) {
         setMessage(result.error);
         setJoining(false);
         return;
@@ -189,12 +189,12 @@ function PartyPlayerGame({ credentials }: { credentials: PartyPlayerCredentials 
   const [endConfirmationOpen, setEndConfirmationOpen] = useState(false);
   const [leaving, setLeaving] = useState(false);
   const haptics = useWebHaptics();
-  const queueKey = gameBrowserKeys.partyPendingActions(credentials.roomId, credentials.playerId);
+  const queueKey = partyBrowserKeys.pendingActions(credentials.roomId, credentials.playerId);
 
   const queued = useCallback((): PartyPlayerAction[] => {
     const current = readExpiringLocalValue<PartyPlayerAction[]>(queueKey);
     if (current) return current;
-    const legacyKey = legacyGameBrowserKeys.partyPendingActions(
+    const legacyKey = legacyPartyBrowserKeys.pendingActions(
       credentials.roomId,
       credentials.playerId,
     );
@@ -279,12 +279,12 @@ function PartyPlayerGame({ credentials }: { credentials: PartyPlayerCredentials 
   const player = snapshot?.player;
   const recoveredHost = isHost
     ? readExpiringLocalValue<{ joinToken?: string }>(
-        gameBrowserKeys.partyPresenterRecovery(credentials.roomId),
+        partyBrowserKeys.presenterRecovery(credentials.roomId),
       )
     : null;
   const hostJoinToken =
     typeof window !== "undefined"
-      ? (sessionStorage.getItem(gameBrowserKeys.partyInvite(credentials.roomId)) ??
+      ? (sessionStorage.getItem(partyBrowserKeys.invite(credentials.roomId)) ??
         recoveredHost?.joinToken)
       : null;
   const hostInvite =
@@ -323,17 +323,17 @@ function PartyPlayerGame({ credentials }: { credentials: PartyPlayerCredentials 
   }, [isHost, round?.activeClue, round?.speechLocale, setLiveMessage]);
   useEffect(() => {
     if (!round || !player) return;
-    const key = gameBrowserKeys.partyDraft(credentials.roomId, round.roundId);
+    const key = partyBrowserKeys.draft(credentials.roomId, round.roundId);
     if (roundRef.current !== round.roundId) {
       if (roundRef.current)
         removeStorageKeys(localStorage, [
-          gameBrowserKeys.partyDraft(credentials.roomId, roundRef.current),
-          legacyGameBrowserKeys.partyDraft(credentials.roomId, roundRef.current),
+          partyBrowserKeys.draft(credentials.roomId, roundRef.current),
+          legacyPartyBrowserKeys.draft(credentials.roomId, roundRef.current),
         ]);
       roundRef.current = round.roundId;
       let local = readExpiringLocalValue<{ draft: string; revision: number }>(key);
       if (!local) {
-        const legacyKey = legacyGameBrowserKeys.partyDraft(credentials.roomId, round.roundId);
+        const legacyKey = legacyPartyBrowserKeys.draft(credentials.roomId, round.roundId);
         try {
           const legacy = JSON.parse(localStorage.getItem(legacyKey) ?? "null") as {
             draft?: unknown;
@@ -361,7 +361,7 @@ function PartyPlayerGame({ credentials }: { credentials: PartyPlayerCredentials 
 
   useEffect(() => {
     if (!round || snapshot?.phase !== "answer" || player?.locked) return;
-    const key = gameBrowserKeys.partyDraft(credentials.roomId, round.roundId);
+    const key = partyBrowserKeys.draft(credentials.roomId, round.roundId);
     writeExpiringLocalValue(key, { draft, revision: draftRevision.current }, credentials.expiresAt);
     const action: PartyPlayerAction = {
       actionId: `${credentials.playerId}:${round.roundId}:draft:${draftRevision.current}`,
@@ -503,10 +503,10 @@ function PartyPlayerGame({ credentials }: { credentials: PartyPlayerCredentials 
     if (snapshot?.phase !== "finished") return;
     removeStorageKeys(localStorage, [
       queueKey,
-      legacyGameBrowserKeys.partyPendingActions(credentials.roomId, credentials.playerId),
+      legacyPartyBrowserKeys.pendingActions(credentials.roomId, credentials.playerId),
     ]);
-    removeStoragePrefix(localStorage, gameBrowserKeys.partyDraftPrefix(credentials.roomId));
-    removeStoragePrefix(localStorage, legacyGameBrowserKeys.partyDraftPrefix(credentials.roomId));
+    removeStoragePrefix(localStorage, partyBrowserKeys.draftPrefix(credentials.roomId));
+    removeStoragePrefix(localStorage, legacyPartyBrowserKeys.draftPrefix(credentials.roomId));
     writeExpiringLocalValue(
       playerKey(credentials.roomId),
       credentials,
@@ -517,17 +517,17 @@ function PartyPlayerGame({ credentials }: { credentials: PartyPlayerCredentials 
   useEffect(() => {
     if (!live.ended) return;
     removeStorageKeys(sessionStorage, [
-      gameBrowserKeys.partyInvite(credentials.roomId),
-      legacyGameBrowserKeys.partyInvite(credentials.roomId),
+      partyBrowserKeys.invite(credentials.roomId),
+      legacyPartyBrowserKeys.invite(credentials.roomId),
     ]);
     removeStorageKeys(localStorage, [
       playerKey(credentials.roomId),
-      legacyGameBrowserKeys.partyPlayerSession(credentials.roomId),
+      legacyPartyBrowserKeys.playerSession(credentials.roomId),
       queueKey,
-      legacyGameBrowserKeys.partyPendingActions(credentials.roomId, credentials.playerId),
+      legacyPartyBrowserKeys.pendingActions(credentials.roomId, credentials.playerId),
     ]);
-    removeStoragePrefix(localStorage, gameBrowserKeys.partyDraftPrefix(credentials.roomId));
-    removeStoragePrefix(localStorage, legacyGameBrowserKeys.partyDraftPrefix(credentials.roomId));
+    removeStoragePrefix(localStorage, partyBrowserKeys.draftPrefix(credentials.roomId));
+    removeStoragePrefix(localStorage, legacyPartyBrowserKeys.draftPrefix(credentials.roomId));
   }, [credentials.playerId, credentials.roomId, live.ended, queueKey]);
 
   const sendHostAction = async (type: PartyPresenterAction["type"]) => {
@@ -568,18 +568,18 @@ function PartyPlayerGame({ credentials }: { credentials: PartyPlayerCredentials 
         data: { roomId: credentials.roomId, presenterToken: credentials.presenterToken },
       }).catch(() => null);
     removeStorageKeys(sessionStorage, [
-      gameBrowserKeys.partyInvite(credentials.roomId),
-      legacyGameBrowserKeys.partyInvite(credentials.roomId),
+      partyBrowserKeys.invite(credentials.roomId),
+      legacyPartyBrowserKeys.invite(credentials.roomId),
     ]);
     removeStorageKeys(localStorage, [
       playerKey(credentials.roomId),
-      legacyGameBrowserKeys.partyPlayerSession(credentials.roomId),
+      legacyPartyBrowserKeys.playerSession(credentials.roomId),
       queueKey,
-      legacyGameBrowserKeys.partyPendingActions(credentials.roomId, credentials.playerId),
+      legacyPartyBrowserKeys.pendingActions(credentials.roomId, credentials.playerId),
     ]);
-    removeStoragePrefix(localStorage, gameBrowserKeys.partyDraftPrefix(credentials.roomId));
-    removeStoragePrefix(localStorage, legacyGameBrowserKeys.partyDraftPrefix(credentials.roomId));
-    removeStorageKeys(localStorage, [gameBrowserKeys.partyPresenterRecovery(credentials.roomId)]);
+    removeStoragePrefix(localStorage, partyBrowserKeys.draftPrefix(credentials.roomId));
+    removeStoragePrefix(localStorage, legacyPartyBrowserKeys.draftPrefix(credentials.roomId));
+    removeStorageKeys(localStorage, [partyBrowserKeys.presenterRecovery(credentials.roomId)]);
     await navigate({ to: "/things/spelling-party" });
   };
 

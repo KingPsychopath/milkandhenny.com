@@ -48,9 +48,12 @@ export function useRoomReconciler({ enabled, intervalMs, roomKey, reconcile }: R
       }
     };
 
-    const resume = () => void run();
+    const trigger = () => void run().catch(() => undefined);
+    const resume = () => {
+      if (document.visibilityState !== "hidden") trigger();
+    };
     runRef.current = run;
-    void run();
+    trigger();
     const interval = window.setInterval(resume, intervalMs);
     window.addEventListener("online", resume);
     document.addEventListener("visibilitychange", resume);

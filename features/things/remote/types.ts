@@ -1,4 +1,9 @@
-import type { MultiplayerRevision, MultiplayerRoomLifetime } from "../shared/multiplayer";
+import type {
+  MultiplayerFailure,
+  MultiplayerRevision,
+  MultiplayerRoomLifetime,
+  MultiplayerSuccess,
+} from "../shared/multiplayer";
 
 export type RemoteGameKind = "heads-up" | "spelling-bee";
 export type RemoteRoomRole = "player" | "judge";
@@ -82,11 +87,17 @@ export type RemoteCommandRequest = (
 
 export type RemoteCommand = RemoteCommandRequest & { sequence: number; receivedAt: number };
 
+export type RemoteCommandReceiptReason =
+  | "stale_round"
+  | "stale_item"
+  | "decision_closed"
+  | "already_decided";
+
 export interface RemoteCommandReceipt {
   commandId: string;
   sequence: number;
   status: "applied" | "rejected";
-  reason?: "stale round" | "stale item" | "decision closed" | "already decided";
+  reason?: RemoteCommandReceiptReason;
 }
 
 export interface RemoteSyncedSnapshot extends RemoteGameSnapshot, MultiplayerRevision {
@@ -109,28 +120,55 @@ export interface RemotePlayerSession extends MultiplayerRoomLifetime {
   setup: RemoteGameSetup;
 }
 
-export interface RemotePlayerSyncResult {
-  ok: boolean;
-  commands: RemoteCommand[];
-  judgeConnected: boolean;
-  error?: string;
-}
+export type RemoteRoomErrorCode = "invite_expired" | "room_unavailable";
+export type RemotePlayerSyncErrorCode =
+  | RemoteRoomErrorCode
+  | "game_mismatch"
+  | "player_conflict";
+export type RemoteCommandErrorCode =
+  | RemoteRoomErrorCode
+  | RemoteCommandReceiptReason
+  | "command_expired"
+  | "inactive_judge"
+  | "stale_result"
+  | "transitioning"
+  | "rate_limited";
 
-export interface RemoteJudgeSnapshotResult {
-  ok: boolean;
-  snapshot: RemoteSyncedSnapshot | null;
-  playerConnected: boolean;
-  judgeActive: boolean;
-  expiresAt: number | null;
-  error?: string;
-}
+export type RemotePlayerSyncResult =
+  | MultiplayerSuccess<{ commands: RemoteCommand[]; judgeConnected: boolean }>
+  | (MultiplayerFailure<RemotePlayerSyncErrorCode> & {
+      commands: [];
+      judgeConnected: false;
+    });
+
+export type RemoteJudgeSnapshotResult =
+  | MultiplayerSuccess<{
+      snapshot: RemoteSyncedSnapshot | null;
+      playerConnected: boolean;
+      judgeActive: boolean;
+      expiresAt: number;
+    }>
+  | (MultiplayerFailure<RemoteRoomErrorCode> & {
+      snapshot: null;
+      playerConnected: false;
+      judgeActive: false;
+      expiresAt: null;
+    });
 
 export type RemoteTransportState = "connected" | "reconnecting" | "local";
 
-export interface RemotePlayerSetupResult {
-  ok: boolean;
-  setup: RemoteGameSetup | null;
-  judgeConnected: boolean;
-  expiresAt: number | null;
-  error?: string;
-}
+export type RemotePlayerSetupResult =
+  | MultiplayerSuccess<{
+      setup: RemoteGameSetup;
+      judgeConnected: boolean;
+      expiresAt: number;
+    }>
+  | (MultiplayerFailure<RemoteRoomErrorCode> & {
+      setup: null;
+      judgeConnected: false;
+      expiresAt: null;
+    });
+
+export type RemoteCommandResult =
+  | MultiplayerSuccess<{ sequence: number }>
+  | MultiplayerFailure<RemoteCommandErrorCode>;

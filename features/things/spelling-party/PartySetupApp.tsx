@@ -12,7 +12,7 @@ import {
   readRecentSpellingWordIds,
   rememberSpellingWords,
 } from "../spelling-bee/wordRotation.client";
-import { gameBrowserKeys } from "../shared/game-keys";
+import { partyBrowserKeys } from "./party-keys";
 import { writeExpiringLocalValue } from "../shared/game-storage.client";
 import { useUpdateReloadSafety } from "@/features/offline/update-safety.client";
 
@@ -72,7 +72,7 @@ export function PartySetupApp({ decks }: { decks: PartyDeckSummary[] }) {
       const recovery = { presenterToken: room.presenterToken, joinToken: room.joinToken };
       rememberSpellingWords(deckId, room.selectedWordIds, selectedWordCount);
       writeExpiringLocalValue(
-        gameBrowserKeys.partyPresenterRecovery(room.roomId),
+        partyBrowserKeys.presenterRecovery(room.roomId),
         recovery,
         room.expiresAt,
       );
@@ -85,11 +85,11 @@ export function PartySetupApp({ decks }: { decks: PartyDeckSummary[] }) {
             joinId: crypto.randomUUID(),
           },
         });
-        if ("error" in joined) throw new Error(joined.error);
+        if (!joined.ok) throw new Error(joined.error);
         const credentials = { ...joined, presenterToken: room.presenterToken };
-        sessionStorage.setItem(gameBrowserKeys.partyInvite(room.roomId), room.joinToken);
+        sessionStorage.setItem(partyBrowserKeys.invite(room.roomId), room.joinToken);
         writeExpiringLocalValue(
-          gameBrowserKeys.partyPlayerSession(room.roomId),
+          partyBrowserKeys.playerSession(room.roomId),
           credentials,
           room.expiresAt,
         );

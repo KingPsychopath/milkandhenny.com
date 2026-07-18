@@ -1,19 +1,22 @@
 import { randomInt } from "node:crypto";
 import { getRedis } from "@/lib/platform/redis.server";
 import { log } from "@/lib/platform/logger.server";
-import { partyRoomRedisKeys } from "../shared/game-keys";
+import { partyRoomRedisKeys } from "./party-keys";
 import { createAvailableMultiplayerRoomId, createMultiplayerCredential, hashMultiplayerCredential, multiplayerActionSeen, multiplayerCredentialsMatch, multiplayerRoomExpiresAt, rememberMultiplayerAction, remainingMultiplayerRoomTtlSeconds } from "../shared/multiplayer-room.server";
+import { multiplayerFailure } from "../shared/multiplayer";
 import { partyAudioAssetKey, partyDeck, type PartyWord } from "./party-content.server";
 import { rankSpellingAnswers } from "./spelling-closeness";
 import type {
   PartyActionResult,
+  PartyActionRejectionCode,
   PartyClueEvent,
   PartyClueKind,
   PartyCustomDeckInput,
   PartyPlayerAction,
-  PartyPlayerCredentials,
+  PartyJoinResult,
   PartyPresenterAction,
   PartyRole,
+  PartyRoomErrorCode,
   PartyRoomCredentials,
   PartySnapshot,
   PartySnapshotResult,
@@ -23,6 +26,33 @@ import { PARTY_REVEAL_COOLDOWN_MS } from "./types";
 const FINISHED_GRACE_SECONDS = 15 * 60;
 const JOIN_RECEIPT_TTL_SECONDS = 2 * 60;
 const CONNECTED_WINDOW_MS = 22_000;
+
+function partyActionFailure(
+  errorCode: PartyRoomErrorCode,
+  error: string,
+): PartyActionResult {
+  return { ...multiplayerFailure(errorCode, error), accepted: false, snapshot: null };
+}
+
+function rejectPartyAction(
+  currentSnapshot: PartySnapshot,
+  errorCode: PartyActionRejectionCode,
+  error: string,
+  retryable = false,
+): PartyActionResult {
+  return {
+    ok: true,
+    accepted: false,
+    snapshot: currentSnapshot,
+    errorCode,
+    error,
+    retryable,
+  };
+}
+
+function acceptPartyAction(currentSnapshot: PartySnapshot): PartyActionResult {
+  return { ok: true, accepted: true, snapshot: currentSnapshot };
+}
 
 interface AudioCapability {
   id: string;
@@ -536,11 +566,12 @@ export async function joinPartyRoom(input: {
   joinToken?: string;
   name: string;
   joinId: string;
-}): Promise<PartyPlayerCredentials | { error: string }> {
+}): Promise<PartyJoinResult> {
   const result = await withRoom(input.roomId, async (room, keys) => {
     if (input.joinToken !== undefined && !safeEqual(input.joinToken, room.joinHash))
-      return { error: "Invite expired" } as const;
-    if (room.phase !== "lobby") return { error: "This game has already started" } as const;
+      return { errorCode: "invite_expired", error: "Invite expired" } as const;
+    if (room.phase !== "lobby")
+      return { errorCode: "game_started", error: "This game has already started" } as const;
     const receipt = await readJoinReceipt(room.roomId, input.joinId, keys);
     if (receipt)
       return {
@@ -548,11 +579,15 @@ export async function joinPartyRoom(input: {
         snapshot: snapshot(room, "player", receipt.playerId),
         expiresAt: room.expiresAt,
       };
-    const name = input.name.trim().replace(/\s+/g, " ").slice(0, 24);
-    if (name.length < 1) return { error: "Enter your name" } as const;
+    const name = input.name.trim().replace(/\s+/g, " ");
+    if (name.length < 1)
+      return { errorCode: "invalid_name", error: "Enter your name" } as const;
+    if (name.length > 24)
+      return { errorCode: "invalid_name", error: "Use 24 characters or fewer" } as const;
     if (room.players.some((player) => player.name.toLocaleLowerCase() === name.toLocaleLowerCase()))
-      return { error: "That name is already in the room" } as const;
-    if (room.players.length >= 12) return { error: "This room is full" } as const;
+      return { errorCode: "name_taken", error: "That name is already in the room" } as const;
+    if (room.players.length >= 12)
+      return { errorCode: "room_full", error: "This room is full" } as const;
     const playerToken = token();
     const player: PlayerState = {
       id: token(),
@@ -581,16 +616,20 @@ export async function joinPartyRoom(input: {
       expiresAt: room.expiresAt,
     };
   });
-  if (!result) return { error: "Room unavailable" };
+  if (!result) return multiplayerFailure("room_unavailable", "Room unavailable");
   if ("receipt" in result && result.receipt)
     return {
+      ok: true,
       roomId: input.roomId,
       playerId: result.receipt.playerId,
       playerToken: result.receipt.playerToken,
       expiresAt: result.expiresAt,
       snapshot: result.snapshot,
     };
-  return { error: result.error ?? "Could not join" };
+  return multiplayerFailure(
+    result.errorCode,
+    result.error ?? "Could not join",
+  );
 }
 
 function authenticate(
@@ -614,7 +653,7 @@ export async function readPartySnapshot(input: {
 }): Promise<PartySnapshotResult> {
   const result = await withRoom(input.roomId, (room) => {
     if (!authenticate(room, input.role, input.credential, input.playerId))
-      return { ok: false, snapshot: null, error: "Room unavailable" };
+      return { ...multiplayerFailure("room_unavailable", "Room unavailable"), snapshot: null };
     if (input.role === "player") {
       const player = room.players.find(({ id }) => id === input.playerId);
       if (player) player.lastSeenAt = Date.now();
@@ -623,9 +662,15 @@ export async function readPartySnapshot(input: {
     const hostPlayer =
       input.role === "player" &&
       Boolean(input.presenterToken && safeEqual(input.presenterToken, room.presenterHash));
-    return { ok: true, snapshot: snapshot(room, input.role, input.playerId, hostPlayer) };
+    return {
+      ok: true as const,
+      snapshot: snapshot(room, input.role, input.playerId, hostPlayer),
+    };
   });
-  return result ?? { ok: false, snapshot: null, error: "Room unavailable" };
+  return result ?? {
+    ...multiplayerFailure("room_unavailable", "Room unavailable"),
+    snapshot: null,
+  };
 }
 
 export async function applyPresenterAction(input: {
@@ -635,10 +680,10 @@ export async function applyPresenterAction(input: {
 }): Promise<PartyActionResult> {
   const result = await withRoom(input.roomId, (room) => {
     if (!safeEqual(input.presenterToken, room.presenterHash))
-      return { ok: false, accepted: false, snapshot: null, error: "Room unavailable" };
+      return partyActionFailure("room_unavailable", "Room unavailable");
     advance(room);
     if (multiplayerActionSeen(room.processedActions, input.action.actionId))
-      return { ok: true, accepted: true, snapshot: snapshot(room, "presenter") };
+      return acceptPartyAction(snapshot(room, "presenter"));
     if (input.action.type === "round.start" && room.phase === "lobby" && room.players.length > 0)
       startRound(room);
     else if (input.action.type === "round.next" && room.phase === "reveal") startRound(room);
@@ -658,19 +703,21 @@ export async function applyPresenterAction(input: {
     ) {
       room.round.nextRoundAt = Date.now() + PARTY_REVEAL_COOLDOWN_MS;
       changed(room);
-    } else
-      return {
-        ok: true,
-        accepted: false,
-        snapshot: snapshot(room, "presenter"),
-        error: room.players.length
-          ? "That action is not available now"
-          : "Waiting for at least one player",
-      };
+    } else {
+      const waitingForPlayers = room.players.length === 0;
+      return rejectPartyAction(
+        snapshot(room, "presenter"),
+        waitingForPlayers ? "waiting_for_players" : "action_unavailable",
+        waitingForPlayers
+          ? "Waiting for at least one player"
+          : "That action is not available now",
+        true,
+      );
+    }
     room.processedActions = rememberMultiplayerAction(room.processedActions, input.action.actionId);
-    return { ok: true, accepted: true, snapshot: snapshot(room, "presenter") };
+    return acceptPartyAction(snapshot(room, "presenter"));
   });
-  return result ?? { ok: false, accepted: false, snapshot: null, error: "Room unavailable" };
+  return result ?? partyActionFailure("room_unavailable", "Room unavailable");
 }
 
 export async function applyPlayerAction(input: {
@@ -682,28 +729,26 @@ export async function applyPlayerAction(input: {
   const result = await withRoom(input.roomId, (room) => {
     const player = room.players.find(({ id }) => id === input.playerId);
     if (!player || !safeEqual(input.playerToken, player.tokenHash))
-      return { ok: false, accepted: false, snapshot: null, error: "Room unavailable" };
+      return partyActionFailure("room_unavailable", "Room unavailable");
     player.lastSeenAt = Date.now();
     advance(room);
     if (multiplayerActionSeen(room.processedActions, input.action.actionId))
-      return { ok: true, accepted: true, snapshot: snapshot(room, "player", player.id) };
+      return acceptPartyAction(snapshot(room, "player", player.id));
     const round = room.round;
     if (!round || input.action.roundId !== round.roundId)
-      return {
-        ok: true,
-        accepted: false,
-        snapshot: snapshot(room, "player", player.id),
-        error: "That word has ended",
-      };
+      return rejectPartyAction(
+        snapshot(room, "player", player.id),
+        "round_ended",
+        "That word has ended",
+      );
     const now = Date.now();
     if (input.action.type === "draft.update") {
       if (room.phase !== "answer" || player.locked || now >= round.answerLocksAt)
-        return {
-          ok: true,
-          accepted: false,
-          snapshot: snapshot(room, "player", player.id),
-          error: "Answers are locked",
-        };
+        return rejectPartyAction(
+          snapshot(room, "player", player.id),
+          "answers_locked",
+          "Answers are locked",
+        );
       if (input.action.draftRevision > player.draftRevision) {
         player.draft = input.action.draft.slice(0, 64);
         player.draftRevision = input.action.draftRevision;
@@ -711,12 +756,11 @@ export async function applyPlayerAction(input: {
       }
     } else if (input.action.type === "answer.lock") {
       if (room.phase !== "answer" || now >= round.answerLocksAt)
-        return {
-          ok: true,
-          accepted: false,
-          snapshot: snapshot(room, "player", player.id),
-          error: "Answers are locked",
-        };
+        return rejectPartyAction(
+          snapshot(room, "player", player.id),
+          "answers_locked",
+          "Answers are locked",
+        );
       player.locked = true;
       player.automatic = false;
       player.lockedAt = now;
@@ -733,36 +777,33 @@ export async function applyPlayerAction(input: {
       }
     } else if (input.action.type === "clue.request") {
       if (room.phase !== "answer")
-        return {
-          ok: true,
-          accepted: false,
-          snapshot: snapshot(room, "player", player.id),
-          error: "Clues are not available now",
-        };
+        return rejectPartyAction(
+          snapshot(room, "player", player.id),
+          "clues_unavailable",
+          "Clues are not available now",
+          true,
+        );
       const word = wordFor(room);
-      if (!word) return { ok: false, accepted: false, snapshot: null, error: "Word unavailable" };
+      if (!word) return partyActionFailure("word_unavailable", "Word unavailable");
       const kind: PartyClueKind = input.action.clue;
       if (kind === "repeat" && round.repeatUsed)
-        return {
-          ok: true,
-          accepted: false,
-          snapshot: snapshot(room, "player", player.id),
-          error: "The word is already being repeated",
-        };
+        return rejectPartyAction(
+          snapshot(room, "player", player.id),
+          "repeat_already_used",
+          "The word is already being repeated",
+        );
       if (kind === "definition" && round.definitionUsed)
-        return {
-          ok: true,
-          accepted: false,
-          snapshot: snapshot(room, "player", player.id),
-          error: "The definition has already been played",
-        };
+        return rejectPartyAction(
+          snapshot(room, "player", player.id),
+          "definition_already_used",
+          "The definition has already been played",
+        );
       if (kind === "sentence" && room.sentenceCluesRemaining <= 0)
-        return {
-          ok: true,
-          accepted: false,
-          snapshot: snapshot(room, "player", player.id),
-          error: "No sentence clues remain",
-        };
+        return rejectPartyAction(
+          snapshot(room, "player", player.id),
+          "sentence_clues_exhausted",
+          "No sentence clues remain",
+        );
       if (kind === "repeat") round.repeatUsed = true;
       if (kind === "definition") round.definitionUsed = true;
       if (kind === "sentence") room.sentenceCluesRemaining -= 1;
@@ -797,9 +838,9 @@ export async function applyPlayerAction(input: {
       changed(room);
     }
     room.processedActions = rememberMultiplayerAction(room.processedActions, input.action.actionId);
-    return { ok: true, accepted: true, snapshot: snapshot(room, "player", player.id) };
+    return acceptPartyAction(snapshot(room, "player", player.id));
   });
-  return result ?? { ok: false, accepted: false, snapshot: null, error: "Room unavailable" };
+  return result ?? partyActionFailure("room_unavailable", "Room unavailable");
 }
 
 export async function authorizePartySocket(input: {

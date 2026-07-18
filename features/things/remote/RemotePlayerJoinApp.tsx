@@ -4,11 +4,11 @@ import { HeadsUpApp } from "../heads-up/HeadsUpApp";
 import { SpellingBeeApp } from "../spelling-bee/SpellingBeeApp";
 import { readRemotePlayerSetupFn } from "./remote-room.functions";
 import type { RemotePlayerSession } from "./types";
-import { gameBrowserKeys, legacyGameBrowserKeys } from "../shared/game-keys";
+import { legacyRemoteBrowserKeys, remoteBrowserKeys } from "./remote-keys";
 import { removeStorageKeys } from "../shared/game-storage.client";
 
 function sessionKey(roomId: string) {
-  return gameBrowserKeys.remotePlayerSession(roomId);
+  return remoteBrowserKeys.playerSession(roomId);
 }
 
 function playerTokenForRoom(roomId: string) {
@@ -22,7 +22,7 @@ function playerTokenForRoom(roomId: string) {
     const current = JSON.parse(sessionStorage.getItem(sessionKey(roomId)) ?? "null") as { playerToken?: unknown } | null;
     if (typeof current?.playerToken === "string") return current.playerToken;
   } catch { sessionStorage.removeItem(sessionKey(roomId)); }
-  const legacyKey = legacyGameBrowserKeys.remotePlayerToken(roomId);
+  const legacyKey = legacyRemoteBrowserKeys.playerToken(roomId);
   const legacy = sessionStorage.getItem(legacyKey) ?? "";
   sessionStorage.removeItem(legacyKey);
   if (legacy) sessionStorage.setItem(sessionKey(roomId), JSON.stringify({ playerToken: legacy }));
@@ -33,7 +33,7 @@ function cachedSession(roomId: string): RemotePlayerSession | null {
   try {
     let raw = sessionStorage.getItem(sessionKey(roomId));
     if (!raw) {
-      const legacyKey = legacyGameBrowserKeys.remotePlayerSession(roomId);
+      const legacyKey = legacyRemoteBrowserKeys.playerSession(roomId);
       raw = sessionStorage.getItem(legacyKey);
       if (raw) sessionStorage.setItem(sessionKey(roomId), raw);
       sessionStorage.removeItem(legacyKey);
@@ -42,7 +42,7 @@ function cachedSession(roomId: string): RemotePlayerSession | null {
     if (!value || typeof value !== "object") return null;
     const session = value as Partial<RemotePlayerSession>;
     if (session.roomId !== roomId || typeof session.playerToken !== "string" || typeof session.expiresAt !== "number" || session.expiresAt <= Date.now() || !session.setup) {
-      if (typeof session.expiresAt === "number" && session.expiresAt <= Date.now()) removeStorageKeys(sessionStorage, [sessionKey(roomId), legacyGameBrowserKeys.remotePlayerSession(roomId)]);
+      if (typeof session.expiresAt === "number" && session.expiresAt <= Date.now()) removeStorageKeys(sessionStorage, [sessionKey(roomId), legacyRemoteBrowserKeys.playerSession(roomId)]);
       return null;
     }
     if (typeof session.connectionEpoch !== "string") session.connectionEpoch = crypto.randomUUID();
@@ -72,9 +72,9 @@ export function RemotePlayerJoinApp({ roomId }: { roomId: string }) {
       try {
         const result = await readRemotePlayerSetupFn({ data: { roomId, playerToken: token } });
         if (!active) return;
-        if (!result.ok || !result.setup || !result.expiresAt) {
-          setError(result.error ?? "This player invite is no longer available.");
-          removeStorageKeys(sessionStorage, [sessionKey(roomId), legacyGameBrowserKeys.remotePlayerSession(roomId), legacyGameBrowserKeys.remotePlayerToken(roomId)]);
+        if (!result.ok) {
+          setError(result.error);
+          removeStorageKeys(sessionStorage, [sessionKey(roomId), legacyRemoteBrowserKeys.playerSession(roomId), legacyRemoteBrowserKeys.playerToken(roomId)]);
           return;
         }
         const next: RemotePlayerSession = { roomId, playerToken: token, connectionEpoch: crypto.randomUUID(), expiresAt: result.expiresAt, setup: result.setup };

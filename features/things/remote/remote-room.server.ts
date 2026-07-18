@@ -1,11 +1,13 @@
 import { getRedis } from "@/lib/platform/redis.server";
 import { log } from "@/lib/platform/logger.server";
-import { remoteRoomRedisKeys } from "../shared/game-keys";
+import { remoteRoomRedisKeys } from "./remote-keys";
 import { createAvailableMultiplayerRoomId, createMultiplayerCredential, hashMultiplayerCredential, multiplayerCredentialsMatch, multiplayerRoomExpired, multiplayerRoomExpiresAt, remainingMultiplayerRoomTtlSeconds } from "../shared/multiplayer-room.server";
-import { MULTIPLAYER_ROOM_ID_PATTERN, MULTIPLAYER_ROOM_TTL_SECONDS } from "../shared/multiplayer";
+import { MULTIPLAYER_ROOM_ID_PATTERN, MULTIPLAYER_ROOM_TTL_SECONDS, multiplayerFailure } from "../shared/multiplayer";
 import type {
   RemoteCommand,
+  RemoteCommandErrorCode,
   RemoteCommandRequest,
+  RemoteCommandResult,
   RemoteGameKind,
   RemoteGameSetup,
   RemoteSyncedSnapshot,
@@ -57,13 +59,87 @@ function logSnapshotTransitions(previous: RemoteSyncedSnapshot | null, next: Rem
   if (timedOut > 0) log.info("things.remote-room", "Words timed out", { game: next.game, count: timedOut });
 }
 
-function rejectJudgeCommand(meta: RoomMeta, command: RemoteCommandRequest, reason: string, error: string) {
-  log.info("things.remote-room", "Judge command rejected", { game: meta.game, commandType: command.type, reason });
-  return { ok: false as const, error };
+function rejectJudgeCommand(
+  meta: RoomMeta,
+  command: RemoteCommandRequest,
+  errorCode: RemoteCommandErrorCode,
+  error: string,
+) {
+  log.info("things.remote-room", "Judge command rejected", {
+    game: meta.game,
+    commandType: command.type,
+    reason: errorCode,
+  });
+  return multiplayerFailure(errorCode, error);
+}
+
+function remoteSetupFailure(
+  errorCode: "invite_expired" | "room_unavailable",
+  error: string,
+): RemotePlayerSetupResult {
+  return {
+    ...multiplayerFailure(errorCode, error),
+    setup: null,
+    judgeConnected: false,
+    expiresAt: null,
+  };
+}
+
+function remotePlayerSyncFailure(
+  errorCode: "room_unavailable" | "game_mismatch" | "player_conflict",
+  error: string,
+): RemotePlayerSyncResult {
+  return {
+    ...multiplayerFailure(errorCode, error, errorCode === "player_conflict"),
+    commands: [],
+    judgeConnected: false,
+  };
+}
+
+function remoteJudgeFailure(
+  errorCode: "invite_expired" | "room_unavailable",
+  error: string,
+): RemoteJudgeSnapshotResult {
+  return {
+    ...multiplayerFailure(errorCode, error),
+    snapshot: null,
+    playerConnected: false,
+    judgeActive: false,
+    expiresAt: null,
+  };
 }
 
 function targetsKnownResult(snapshot: RemoteSyncedSnapshot | null, command: RemoteCommandRequest) {
   return command.type !== "amend" || Boolean(snapshot?.results.some(({ id }) => id === command.resultId));
+}
+
+function isRemoteDecisionCommand(command: RemoteCommandRequest) {
+  return (
+    command.type === "correct" ||
+    command.type === "incorrect" ||
+    command.type === "pass" ||
+    command.type === "skip"
+  );
+}
+
+function judgeCommandPolicy(
+  snapshot: RemoteSyncedSnapshot | null,
+  command: RemoteCommandRequest,
+  receivedAt: number,
+): { errorCode: RemoteCommandErrorCode; error: string } | null {
+  if (snapshot?.roundId !== command.roundId)
+    return { errorCode: "stale_round", error: "Round changed" };
+  if (command.type !== "amend" && snapshot.itemId !== command.itemId)
+    return { errorCode: "stale_item", error: "Card changed" };
+  if (!targetsKnownResult(snapshot, command))
+    return { errorCode: "stale_result", error: "Result changed" };
+  if (!isRemoteDecisionCommand(command)) return null;
+  const decisionDeadline = snapshot.decisionGraceEndsAt ?? snapshot.decisionClosesAt;
+  if (decisionDeadline && receivedAt > decisionDeadline)
+    return { errorCode: "decision_closed", error: "Decision window closed" };
+  if (snapshot.transitioning)
+    return { errorCode: "transitioning", error: "Card is changing" };
+  return null;
 }
 
 function allRemoteKeys(roomId: string) {
@@ -165,13 +241,13 @@ export async function readRemotePlayerSetup(input: {
   const context = await readRoom(input.roomId);
   const meta = context?.meta;
   if (!context || !meta || !multiplayerCredentialsMatch(input.playerToken, meta.playerHash)) {
-    return { ok: false, setup: null, judgeConnected: false, expiresAt: null, error: "Invite expired" };
+    return remoteSetupFailure("invite_expired", "Invite expired");
   }
   const now = Date.now();
   const redis = getRedis();
   if (!redis) {
     const room = memoryRooms.get(input.roomId);
-    if (!room) return { ok: false, setup: null, judgeConnected: false, expiresAt: null };
+    if (!room) return remoteSetupFailure("room_unavailable", "Room unavailable");
     room.playerSeenAt = now;
     return {
       ok: true,
@@ -182,9 +258,11 @@ export async function readRemotePlayerSetup(input: {
   }
   const roomKeys = context.keys;
   await redis.set(roomKeys.playerPresence, now, { ex: PRESENCE_TTL_SECONDS });
+  const setup = await redis.get<RemoteGameSetup>(roomKeys.setup);
+  if (!setup) return remoteSetupFailure("room_unavailable", "Room unavailable");
   return {
     ok: true,
-    setup: await redis.get<RemoteGameSetup>(roomKeys.setup),
+    setup,
     judgeConnected: (await redis.exists(roomKeys.judgePresence)) === 1,
     expiresAt: meta.expiresAt,
   };
@@ -199,19 +277,19 @@ export async function syncRemotePlayer(input: {
   const context = await readRoom(input.roomId);
   const meta = context?.meta;
   if (!context || !meta || !multiplayerCredentialsMatch(input.playerToken, meta.playerHash)) {
-    return { ok: false, commands: [], judgeConnected: false, error: "Room unavailable" };
+    return remotePlayerSyncFailure("room_unavailable", "Room unavailable");
   }
   if (meta.game !== input.snapshot.game) {
-    return { ok: false, commands: [], judgeConnected: false, error: "Game mismatch" };
+    return remotePlayerSyncFailure("game_mismatch", "Game mismatch");
   }
   const now = Date.now();
   const redis = getRedis();
   if (!redis) {
     const room = memoryRooms.get(input.roomId);
-    if (!room) return { ok: false, commands: [], judgeConnected: false };
+    if (!room) return remotePlayerSyncFailure("room_unavailable", "Room unavailable");
     if (room.activePlayerEpoch && room.activePlayerEpoch !== input.snapshot.connectionEpoch && now - room.playerSeenAt <= PRESENCE_TTL_SECONDS * 1000) {
       log.warn("things.remote-room", "Player lease rejected", { game: meta.game, reason: "active_epoch" });
-      return { ok: false, commands: [], judgeConnected: false, error: "Game is active on another phone" };
+      return remotePlayerSyncFailure("player_conflict", "Game is active on another phone");
     }
     room.activePlayerEpoch = input.snapshot.connectionEpoch;
     if (input.lastCommandSequence > 0) {
@@ -235,14 +313,14 @@ export async function syncRemotePlayer(input: {
   const activePlayerEpoch = await redis.get<string>(roomKeys.playerEpoch);
   if (activePlayerEpoch && activePlayerEpoch !== input.snapshot.connectionEpoch) {
     log.warn("things.remote-room", "Player lease rejected", { game: meta.game, reason: "active_epoch" });
-    return { ok: false, commands: [], judgeConnected: false, error: "Game is active on another phone" };
+    return remotePlayerSyncFailure("player_conflict", "Game is active on another phone");
   }
   if (activePlayerEpoch) {
     await redis.set(roomKeys.playerEpoch, input.snapshot.connectionEpoch, { ex: PRESENCE_TTL_SECONDS });
   } else {
     const claimed = await redis.set(roomKeys.playerEpoch, input.snapshot.connectionEpoch, { ex: PRESENCE_TTL_SECONDS, nx: true });
     if (!claimed && (await redis.get<string>(roomKeys.playerEpoch)) !== input.snapshot.connectionEpoch) {
-      return { ok: false, commands: [], judgeConnected: false, error: "Game is active on another phone" };
+      return remotePlayerSyncFailure("player_conflict", "Game is active on another phone");
     }
   }
   const queuedCommands = await redis.lrange<RemoteCommand>(roomKeys.commands, 0, -1);
@@ -282,13 +360,13 @@ export async function readRemoteJudge(input: {
   const context = await readRoom(input.roomId);
   const meta = context?.meta;
   if (!context || !meta || !multiplayerCredentialsMatch(input.judgeToken, meta.judgeHash)) {
-    return { ok: false, snapshot: null, playerConnected: false, judgeActive: false, expiresAt: null, error: "Invite expired" };
+    return remoteJudgeFailure("invite_expired", "Invite expired");
   }
   const now = Date.now();
   const redis = getRedis();
   if (!redis) {
     const room = memoryRooms.get(input.roomId);
-    if (!room) return { ok: false, snapshot: null, playerConnected: false, judgeActive: false, expiresAt: null };
+    if (!room) return remoteJudgeFailure("room_unavailable", "Room unavailable");
     const leaseExpired = now - room.judgeSeenAt > JUDGE_LEASE_TTL_SECONDS * 1000;
     const judgeActive = input.takeover || leaseExpired || !room.activeJudgeEpoch || room.activeJudgeEpoch === input.judgeEpoch;
     if (judgeActive) {
@@ -335,29 +413,31 @@ export async function sendRemoteJudgeCommand(input: {
   judgeToken: string;
   judgeEpoch: string;
   command: RemoteCommandRequest;
-}): Promise<{ ok: boolean; sequence?: number; error?: string }> {
+}): Promise<RemoteCommandResult> {
   const context = await readRoom(input.roomId);
   const meta = context?.meta;
-  if (!context || !meta || !multiplayerCredentialsMatch(input.judgeToken, meta.judgeHash)) return { ok: false, error: "Invite expired" };
+  if (!context || !meta || !multiplayerCredentialsMatch(input.judgeToken, meta.judgeHash))
+    return multiplayerFailure("invite_expired", "Invite expired");
   const receivedAt = Date.now();
   const commandAge = receivedAt - input.command.createdAt;
-  if (commandAge > COMMAND_MAX_AGE_MS || commandAge < -5_000) return { ok: false, error: "Command expired" };
+  if (commandAge > COMMAND_MAX_AGE_MS || commandAge < -5_000)
+    return multiplayerFailure("command_expired", "Command expired");
   const redis = getRedis();
   if (!redis) {
     const room = memoryRooms.get(input.roomId);
-    if (!room) return { ok: false };
+    if (!room) return multiplayerFailure("room_unavailable", "Room unavailable");
     if (room.activeJudgeEpoch !== input.judgeEpoch || receivedAt - room.judgeSeenAt > JUDGE_LEASE_TTL_SECONDS * 1000) return rejectJudgeCommand(meta, input.command, "inactive_judge", "Controls are active on another screen");
     const existingSequence = room.commandSequences.get(input.command.id);
     if (existingSequence !== undefined) return { ok: true, sequence: existingSequence };
-    if (room.snapshot?.roundId !== input.command.roundId) return rejectJudgeCommand(meta, input.command, "stale_round", "Round changed");
-    if (input.command.type !== "amend" && room.snapshot?.itemId !== input.command.itemId) return rejectJudgeCommand(meta, input.command, "stale_item", "Card changed");
-    if (!targetsKnownResult(room.snapshot, input.command)) return rejectJudgeCommand(meta, input.command, "stale_result", "Result changed");
-    const isDecision = input.command.type === "correct" || input.command.type === "incorrect" || input.command.type === "pass" || input.command.type === "skip";
-    const decisionDeadline = room.snapshot.decisionGraceEndsAt ?? room.snapshot.decisionClosesAt;
-    if (isDecision && decisionDeadline && receivedAt > decisionDeadline) {
-      return rejectJudgeCommand(meta, input.command, "decision_closed", "Decision window closed");
-    }
-    if (room.snapshot.transitioning && isDecision) return rejectJudgeCommand(meta, input.command, "transitioning", "Card is changing");
+    const policyRejection = judgeCommandPolicy(room.snapshot, input.command, receivedAt);
+    if (policyRejection)
+      return rejectJudgeCommand(
+        meta,
+        input.command,
+        policyRejection.errorCode,
+        policyRejection.error,
+      );
+    const isDecision = isRemoteDecisionCommand(input.command);
     if (isDecision && room.decidedItems.has(input.command.itemId)) return rejectJudgeCommand(meta, input.command, "already_decided", "Word already decided");
     const queued = { ...input.command, sequence: room.nextSequence++, receivedAt };
     room.commandSequences.set(input.command.id, queued.sequence);
@@ -372,17 +452,18 @@ export async function sendRemoteJudgeCommand(input: {
   if (existingSequence !== null) return { ok: true, sequence: existingSequence };
   const rate = await redis.incr(roomKeys.commandRate);
   if (rate === 1) await redis.expire(roomKeys.commandRate, 60);
-  if (rate > 120) return { ok: false, error: "Too many controls" };
+  if (rate > 120)
+    return rejectJudgeCommand(meta, input.command, "rate_limited", "Too many controls");
   const snapshot = await redis.get<RemoteSyncedSnapshot>(roomKeys.snapshot);
-  if (snapshot?.roundId !== input.command.roundId) return rejectJudgeCommand(meta, input.command, "stale_round", "Round changed");
-  if (input.command.type !== "amend" && snapshot?.itemId !== input.command.itemId) return rejectJudgeCommand(meta, input.command, "stale_item", "Card changed");
-  if (!targetsKnownResult(snapshot, input.command)) return rejectJudgeCommand(meta, input.command, "stale_result", "Result changed");
-  const isDecision = input.command.type === "correct" || input.command.type === "incorrect" || input.command.type === "pass" || input.command.type === "skip";
-  const decisionDeadline = snapshot.decisionGraceEndsAt ?? snapshot.decisionClosesAt;
-  if (isDecision && decisionDeadline && receivedAt > decisionDeadline) {
-    return rejectJudgeCommand(meta, input.command, "decision_closed", "Decision window closed");
-  }
-  if (snapshot.transitioning && isDecision) return rejectJudgeCommand(meta, input.command, "transitioning", "Card is changing");
+  const policyRejection = judgeCommandPolicy(snapshot, input.command, receivedAt);
+  if (policyRejection)
+    return rejectJudgeCommand(
+      meta,
+      input.command,
+      policyRejection.errorCode,
+      policyRejection.error,
+    );
+  const isDecision = isRemoteDecisionCommand(input.command);
   const sequence = await redis.incr(roomKeys.commandSequence);
   const roomTtl = remainingMultiplayerRoomTtlSeconds(meta.expiresAt);
   const claimedSequence = await redis.eval<unknown[], number>(

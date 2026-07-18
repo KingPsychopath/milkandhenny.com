@@ -13,8 +13,8 @@ import type {
   RemoteGameKind,
   RemoteGameSetup,
   RemoteGameSnapshot,
-  RemoteSyncedSnapshot,
   RemoteResultDecision,
+  RemoteSyncedSnapshot,
   RemoteRoomRole,
 } from "./types";
 
@@ -32,6 +32,18 @@ function gameKind(value: unknown): RemoteGameKind {
 function roomRole(value: unknown): RemoteRoomRole {
   if (value === "player" || value === "judge") return value;
   throw new Error("Invalid role");
+}
+
+function resultDecision(value: unknown): RemoteResultDecision {
+  if (
+    value === "correct" ||
+    value === "incorrect" ||
+    value === "pass" ||
+    value === "skipped" ||
+    value === "timed_out"
+  )
+    return value;
+  throw new Error("Invalid decision");
 }
 
 function boundedList(value: unknown, min: number, max: number) {
@@ -91,11 +103,10 @@ function snapshot(value: unknown): RemoteGameSnapshot {
   if (!Array.isArray(data.results) || data.results.length > 200) throw new Error("Invalid results");
   const results = data.results.map((value) => {
     const item = record(value);
-    if (item.decision !== "correct" && item.decision !== "incorrect" && item.decision !== "pass" && item.decision !== "skipped" && item.decision !== "timed_out") throw new Error("Invalid result");
     return {
       id: shortText(item.id, 80),
       label: shortText(item.label, 100),
-      decision: item.decision as RemoteResultDecision,
+      decision: resultDecision(item.decision),
       detail: optionalText(item.detail, 200),
     };
   });
@@ -134,7 +145,13 @@ function syncedSnapshot(value: unknown): RemoteSyncedSnapshot {
     commandReceipts: data.commandReceipts.map((value) => {
       const receipt = record(value);
       if (receipt.status !== "applied" && receipt.status !== "rejected") throw new Error("Invalid receipt");
-      const reason = receipt.reason === "stale round" || receipt.reason === "stale item" || receipt.reason === "decision closed" || receipt.reason === "already decided" ? receipt.reason : undefined;
+      const reason =
+        receipt.reason === "stale_round" ||
+        receipt.reason === "stale_item" ||
+        receipt.reason === "decision_closed" ||
+        receipt.reason === "already_decided"
+          ? receipt.reason
+          : undefined;
       return {
         commandId: shortText(receipt.commandId, 80),
         sequence: typeof receipt.sequence === "number" ? Math.max(0, Math.floor(receipt.sequence)) : 0,

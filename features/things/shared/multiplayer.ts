@@ -24,3 +24,20 @@ export interface MultiplayerSequence {
 export interface MultiplayerAction {
   actionId: string;
 }
+
+export interface MultiplayerFailure<Code extends string> {
+  ok: false;
+  errorCode: Code;
+  error: string;
+  retryable: boolean;
+}
+
+export type MultiplayerSuccess<Value extends object> = { ok: true } & Value;
+
+export function multiplayerFailure<Code extends string>(
+  errorCode: Code,
+  error: string,
+  retryable = false,
+): MultiplayerFailure<Code> {
+  return { ok: false, errorCode, error, retryable };
+}

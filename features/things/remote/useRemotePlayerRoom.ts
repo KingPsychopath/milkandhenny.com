@@ -12,7 +12,7 @@ import type {
   RemoteSyncedSnapshot,
 } from "./types";
 import { useRemoteSocket } from "./useRemoteSocket";
-import { gameBrowserKeys, legacyGameBrowserKeys } from "../shared/game-keys";
+import { legacyRemoteBrowserKeys, remoteBrowserKeys } from "./remote-keys";
 import { migrateSessionValue, removeStorageKeys } from "../shared/game-storage.client";
 import { useRoomReconciler } from "../shared/useRoomReconciler";
 
@@ -27,7 +27,7 @@ interface PlayerRoom {
 }
 
 function storageKey(game: RemoteGameKind) {
-  return gameBrowserKeys.remoteHostSession(game);
+  return remoteBrowserKeys.hostSession(game);
 }
 
 function playerRoom(value: RemoteRoomCredentials | RemotePlayerSession): PlayerRoom {
@@ -106,7 +106,7 @@ export function useRemotePlayerRoom(
   useEffect(() => {
     if (initialSession) return;
     try {
-      const raw = migrateSessionValue(storageKey(game), [legacyGameBrowserKeys.remoteHostSession(game)]);
+      const raw = migrateSessionValue(storageKey(game), [legacyRemoteBrowserKeys.hostSession(game)]);
       const stored: unknown = JSON.parse(raw ?? "null");
       if (!stored || typeof stored !== "object") return;
       const value = stored as Partial<PlayerRoom>;
@@ -115,7 +115,7 @@ export function useRemotePlayerRoom(
         setRoom(value as PlayerRoom);
       }
     } catch {
-      removeStorageKeys(sessionStorage, [storageKey(game), legacyGameBrowserKeys.remoteHostSession(game)]);
+      removeStorageKeys(sessionStorage, [storageKey(game), legacyRemoteBrowserKeys.hostSession(game)]);
     }
   }, [game, initialSession]);
 
@@ -173,7 +173,7 @@ export function useRemotePlayerRoom(
     processedCommands.current.clear();
     decidedItemsRef.current.clear();
     receiptsRef.current = [];
-    if (!initialSession) removeStorageKeys(sessionStorage, [storageKey(game), legacyGameBrowserKeys.remoteHostSession(game)]);
+    if (!initialSession) removeStorageKeys(sessionStorage, [storageKey(game), legacyRemoteBrowserKeys.hostSession(game)]);
     if (!current) { setSyncing(false); return; }
     try {
       await closeRemoteRoomFn({ data: { roomId: current.roomId, role: "player", token: current.playerToken } });
@@ -202,7 +202,7 @@ export function useRemotePlayerRoom(
           setMessage(result.error ?? "Remote room ended. Local play continues.");
           setRoom(null);
           setJudgeConnected(false);
-          if (!initialSession) removeStorageKeys(sessionStorage, [storageKey(game), legacyGameBrowserKeys.remoteHostSession(game)]);
+          if (!initialSession) removeStorageKeys(sessionStorage, [storageKey(game), legacyRemoteBrowserKeys.hostSession(game)]);
           return;
         }
         setJudgeConnected(result.judgeConnected);
@@ -215,13 +215,13 @@ export function useRemotePlayerRoom(
           const isDecision = command.type === "correct" || command.type === "incorrect" || command.type === "pass" || command.type === "skip";
           let receipt: RemoteCommandReceipt;
           if (latest.roundId !== command.roundId) {
-            receipt = { commandId: command.id, sequence: command.sequence, status: "rejected", reason: "stale round" };
+            receipt = { commandId: command.id, sequence: command.sequence, status: "rejected", reason: "stale_round" };
           } else if ((command.type !== "amend" && latest.itemId !== command.itemId) || (isDecision && latest.transitioning)) {
-            receipt = { commandId: command.id, sequence: command.sequence, status: "rejected", reason: "stale item" };
+            receipt = { commandId: command.id, sequence: command.sequence, status: "rejected", reason: "stale_item" };
           } else if (isDecision && (latest.decisionGraceEndsAt ?? latest.decisionClosesAt) && command.receivedAt > (latest.decisionGraceEndsAt ?? latest.decisionClosesAt)!) {
-            receipt = { commandId: command.id, sequence: command.sequence, status: "rejected", reason: "decision closed" };
+            receipt = { commandId: command.id, sequence: command.sequence, status: "rejected", reason: "decision_closed" };
           } else if (isDecision && decidedItemsRef.current.has(command.itemId)) {
-            receipt = { commandId: command.id, sequence: command.sequence, status: "rejected", reason: "already decided" };
+            receipt = { commandId: command.id, sequence: command.sequence, status: "rejected", reason: "already_decided" };
           } else {
             commandRef.current(command);
             if (isDecision) decidedItemsRef.current.add(command.itemId);

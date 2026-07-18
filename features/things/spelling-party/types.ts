@@ -1,9 +1,11 @@
 import type {
   MultiplayerAction,
+  MultiplayerFailure,
   MultiplayerRevision,
   MultiplayerRoomIdentity,
   MultiplayerRoomLifetime,
   MultiplayerSequence,
+  MultiplayerSuccess,
 } from "../shared/multiplayer";
 
 export type PartyPhase = "lobby" | "countdown" | "answer" | "locked" | "reveal" | "finished";
@@ -115,11 +117,31 @@ export interface PartyPlayerCredentials extends MultiplayerRoomLifetime {
   snapshot: PartySnapshot;
 }
 
-export interface PartySnapshotResult {
-  ok: boolean;
-  snapshot: PartySnapshot | null;
-  error?: string;
-}
+export type PartyRoomErrorCode = "room_unavailable" | "word_unavailable";
+export type PartyJoinErrorCode =
+  | "invite_expired"
+  | "game_started"
+  | "invalid_name"
+  | "name_taken"
+  | "room_full"
+  | "room_unavailable";
+export type PartyActionRejectionCode =
+  | "action_unavailable"
+  | "waiting_for_players"
+  | "round_ended"
+  | "answers_locked"
+  | "clues_unavailable"
+  | "repeat_already_used"
+  | "definition_already_used"
+  | "sentence_clues_exhausted";
+
+export type PartyJoinResult =
+  | MultiplayerSuccess<PartyPlayerCredentials>
+  | MultiplayerFailure<PartyJoinErrorCode>;
+
+export type PartySnapshotResult =
+  | MultiplayerSuccess<{ snapshot: PartySnapshot }>
+  | (MultiplayerFailure<"room_unavailable"> & { snapshot: null });
 
 export type PartyPresenterAction = MultiplayerAction & {
   type: "round.start" | "round.next" | "round.pause" | "round.resume";
@@ -137,6 +159,16 @@ export type PartyPlayerAction = MultiplayerAction & (
   | { type: "integrity.notice"; roundId: string; hiddenMs: number }
 );
 
-export interface PartyActionResult extends PartySnapshotResult {
-  accepted: boolean;
-}
+export type PartyActionResult =
+  | MultiplayerSuccess<{ accepted: true; snapshot: PartySnapshot }>
+  | (MultiplayerSuccess<{
+      accepted: false;
+      snapshot: PartySnapshot;
+      errorCode: PartyActionRejectionCode;
+      error: string;
+      retryable: boolean;
+    }>)
+  | (MultiplayerFailure<PartyRoomErrorCode> & {
+      accepted: false;
+      snapshot: null;
+    });
