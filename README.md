@@ -140,7 +140,7 @@ Keep this disabled initially:
 MEDIA_PROCESSOR_MODE=local
 ```
 
-When a dedicated worker is deployed, configure `MEDIA_WORKER_WAKE_URL`, `MEDIA_WORKER_WAKE_TOKEN`, a direct `REDIS_URL`, and change the mode to `hybrid` or `worker`. The legacy `TRANSFER_MEDIA_*` names remain accepted during migration.
+When a dedicated worker is deployed, configure `MEDIA_WORKER_WAKE_URL`, `MEDIA_WORKER_WAKE_TOKEN`, a direct `REDIS_URL`, and change the mode to `hybrid` or `worker`.
 
 ## Documentation
 

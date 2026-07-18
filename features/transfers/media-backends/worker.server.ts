@@ -48,11 +48,7 @@ type WorkerRunResult = {
 
 const WORKER_JOB_CONCURRENCY = Math.max(
   1,
-  Number(
-    process.env.MEDIA_WORKER_CONCURRENCY ??
-      process.env.TRANSFER_MEDIA_WORKER_CONCURRENCY ??
-      "1",
-  ),
+  Number(process.env.MEDIA_WORKER_CONCURRENCY ?? "1"),
 );
 
 const WORKER_ROUTE_MAP: Partial<Record<ProcessingRoute, ProcessingRoute>> = {

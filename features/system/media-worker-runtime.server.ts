@@ -36,19 +36,11 @@ const DEFAULT_TRANSFER_CLAIM_TIMEOUT_SECONDS = 10;
 const DEFAULT_WORD_CLAIM_TIMEOUT_SECONDS = 1;
 const DEFAULT_WORKER_CONCURRENCY = Math.max(
   1,
-  Number(
-    process.env.MEDIA_WORKER_CONCURRENCY ??
-      process.env.TRANSFER_MEDIA_WORKER_CONCURRENCY ??
-      "1",
-  ),
+  Number(process.env.MEDIA_WORKER_CONCURRENCY ?? "1"),
 );
 const DEFAULT_ERROR_BACKOFF_MS = Math.max(
   500,
-  Number(
-    process.env.MEDIA_WORKER_ERROR_BACKOFF_MS ??
-      process.env.TRANSFER_MEDIA_WORKER_ERROR_BACKOFF_MS ??
-      "15000",
-  ),
+  Number(process.env.MEDIA_WORKER_ERROR_BACKOFF_MS ?? "15000"),
 );
 
 function sleep(ms: number): Promise<void> {
