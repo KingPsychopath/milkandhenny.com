@@ -15,8 +15,7 @@ import { useRemoteSocket } from "./useRemoteSocket";
 import { remoteBrowserKeys } from "./remote-keys";
 import { useRoomReconciler } from "../shared/useRoomReconciler";
 import { buildPairedGameJudgeInviteUrl, pairedGameJudgeFragment } from "./paired-game-invite";
-
-const SAFETY_SYNC_INTERVAL_MS = 12_000;
+import { PAIRED_GAME_SAFETY_SYNC_INTERVAL_MS } from "./paired-game-timing";
 
 interface PlayerRoom {
   roomId: string;
@@ -253,7 +252,7 @@ export function usePairedGameRoom(
 
   const reconcileNow = useRoomReconciler({
     enabled: Boolean(room),
-    intervalMs: SAFETY_SYNC_INTERVAL_MS,
+    intervalMs: PAIRED_GAME_SAFETY_SYNC_INTERVAL_MS,
     roomKey: room ? `${room.roomId}:${room.connectionEpoch}` : null,
     reconcile,
   });

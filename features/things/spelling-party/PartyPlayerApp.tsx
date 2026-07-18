@@ -63,6 +63,7 @@ function readPlayer(roomId: string): PartyPlayerCredentials | null {
 export function PartyPlayerApp({ roomId }: { roomId: string }) {
   const [invite, setInvite] = useState("");
   const [credentials, setCredentials] = useState<PartyPlayerCredentials | null>(null);
+  const [sessionReadyForRoom, setSessionReadyForRoom] = useState<string | null>(null);
   const [name, setName] = useState("");
   const [joining, setJoining] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -72,6 +73,7 @@ export function PartyPlayerApp({ roomId }: { roomId: string }) {
     clearExpiredGameLocalStorage();
     setInvite(joinToken(roomId));
     setCredentials(readPlayer(roomId));
+    setSessionReadyForRoom(roomId);
   }, [roomId]);
   const handleJoin = async () => {
     if (!name.trim() || joining) return;
@@ -94,6 +96,8 @@ export function PartyPlayerApp({ roomId }: { roomId: string }) {
     }
   };
   if (credentials) return <PartyPlayerGame credentials={credentials} />;
+  if (sessionReadyForRoom !== roomId)
+    return <PlayerMessage title="Opening the room…" detail="Keep this screen open for a moment." />;
   return (
     <main
       id="main"
@@ -339,6 +343,18 @@ function PartyPlayerGame({ credentials }: { credentials: PartyPlayerCredentials 
   ]);
 
   const canType = snapshot?.phase === "answer" && !player?.locked;
+  const connectionLabel =
+    live.connectionState === "connected"
+      ? isHost
+        ? "● hosting & playing"
+        : "● live"
+      : live.connectionState === "offline"
+        ? canType
+          ? "playing offline · draft saved"
+          : "playing offline"
+        : canType
+          ? "reconnecting · draft saved"
+          : "reconnecting";
   const addLetter = useCallback(
     (letter: string) => {
       if (!canType) return;
@@ -588,23 +604,18 @@ function PartyPlayerGame({ credentials }: { credentials: PartyPlayerCredentials 
   const ownReveal = round?.answers?.find(({ playerId }) => playerId === credentials.playerId);
   return (
     <div className="things-game things-game--night text-white">
-      <header className="flex items-center justify-between gap-4 p-5 font-mono text-xs text-white/55">
+      <header className="party-player-header flex items-center justify-between gap-4 p-5 font-mono text-xs text-white/55">
         <button type="button" onClick={() => setEndConfirmationOpen(true)} className="min-h-11">
           {isHost ? "end party" : "leave game"}
         </button>
-        <span aria-live="polite">
-          {live.connectionState === "connected"
-            ? isHost
-              ? "● hosting & playing"
-              : "● live"
-            : "reconnecting · draft saved"}
-        </span>
+        <span aria-live="polite">{connectionLabel}</span>
       </header>
       <main
         id="main"
-        className="mx-auto flex w-full max-w-lg flex-1 flex-col px-5 pb-8 text-center"
+        data-phase={snapshot.phase}
+        className="party-player-main mx-auto flex w-full max-w-lg flex-1 flex-col px-5 pb-8 text-center"
       >
-        <p className="mt-4 font-mono text-micro uppercase tracking-[0.2em] text-white/45">
+        <p className="party-round-eyebrow mt-4 font-mono text-micro uppercase tracking-[0.2em] text-white/45">
           {round ? `word ${round.number} of ${round.total}` : snapshot.deckName}
         </p>
         {snapshot.phase === "lobby" ? (
@@ -649,7 +660,7 @@ function PartyPlayerGame({ credentials }: { credentials: PartyPlayerCredentials 
           </section>
         ) : (
           <>
-            <section className="pt-8">
+            <section className="party-round-stage pt-8">
               <TextMorph
                 as="h1"
                 className="break-words font-serif text-6xl font-semibold leading-none [overflow-wrap:anywhere]"
@@ -667,11 +678,11 @@ function PartyPlayerGame({ credentials }: { credentials: PartyPlayerCredentials 
                 <button
                   type="button"
                   onClick={() => void lock()}
-                  className="mt-4 min-h-14 w-full rounded-full bg-[var(--things-amber)] px-6 font-mono text-sm font-bold text-black"
+                  className="party-lock-answer mt-4 min-h-14 w-full rounded-full bg-[var(--things-amber)] px-6 font-mono text-sm font-bold text-black"
                 >
                   lock it in
                 </button>
-                <div className="mt-5 grid grid-cols-3 gap-2">
+                <div className="party-clue-controls mt-5 grid grid-cols-3 gap-2">
                   <button
                     type="button"
                     disabled={round?.repeatUsed}
@@ -751,7 +762,7 @@ function PartyPlayerGame({ credentials }: { credentials: PartyPlayerCredentials 
           <button
             type="button"
             onClick={replayHostAudio}
-            className="mx-auto mt-4 min-h-11 px-4 font-mono text-xs text-white/55"
+            className="party-host-replay mx-auto mt-4 min-h-11 px-4 font-mono text-xs text-white/55"
           >
             play word again
           </button>
@@ -764,17 +775,17 @@ function PartyPlayerGame({ credentials }: { credentials: PartyPlayerCredentials 
                 const clue = snapshot.recentClues.at(-1);
                 if (clue) void playPartySpeech(clue.audioUrl, clue.speechText, round?.speechLocale);
               }}
-              className="mt-4 min-h-11 font-mono text-xs text-amber-200"
+              className="party-recent-clue mt-4 min-h-11 font-mono text-xs text-amber-200"
             >
               {snapshot.recentClues.at(-1)?.message}
             </button>
           ) : (
-            <p className="mt-4 font-mono text-xs text-amber-200">
+            <p className="party-recent-clue mt-4 font-mono text-xs text-amber-200">
               {snapshot.recentClues.at(-1)?.message}
             </p>
           )
         ) : null}
-        <p aria-live="polite" className="mt-3 min-h-5 font-mono text-xs text-amber-200">
+        <p aria-live="polite" className="party-live-message mt-3 min-h-5 font-mono text-xs text-amber-200">
           {live.message}
         </p>
       </main>
@@ -954,7 +965,7 @@ function DraftDisplay({ draft }: { draft: string }) {
   return (
     <div
       ref={rail}
-      className="mt-8 h-16 overflow-x-auto overflow-y-hidden overscroll-x-contain"
+      className="party-draft-display mt-8 h-16 overflow-x-auto overflow-y-hidden overscroll-x-contain"
       aria-label={draft ? `Your spelling: ${draft.split("").join(" ")}` : "Your spelling is blank"}
     >
       <div className="mx-auto flex h-16 w-max min-w-full items-center justify-center gap-1.5 px-1">
@@ -980,11 +991,11 @@ function PartyKeyboard({
   onBackspace: () => void;
 }) {
   return (
-    <div className="mt-6 grid select-none gap-2 touch-manipulation" aria-label="Spelling keyboard">
+    <div className="party-keyboard mt-6 grid select-none gap-2 touch-manipulation" aria-label="Spelling keyboard">
       {KEY_ROWS.map((row, rowIndex) => (
         <div
           key={row}
-          className={`grid gap-1.5 ${
+          className={`party-keyboard-row grid gap-1.5 ${
             rowIndex === 0
               ? "grid-cols-10"
               : rowIndex === 1

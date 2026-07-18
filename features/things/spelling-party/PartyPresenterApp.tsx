@@ -66,6 +66,7 @@ function roomTokens(roomId: string) {
 export function PartyPresenterApp({ roomId }: { roomId: string }) {
   const navigate = useNavigate();
   const [tokens, setTokens] = useState({ presenterToken: "", joinToken: "" });
+  const [tokensReadyForRoom, setTokensReadyForRoom] = useState<string | null>(null);
   const nativeShare = useNativeShareAvailability({ coarsePointerOnly: true });
   const [inviteMessage, setInviteMessage] = useState<string | null>(null);
   const [manualInvite, setManualInvite] = useState(false);
@@ -75,7 +76,10 @@ export function PartyPresenterApp({ roomId }: { roomId: string }) {
   const [confirmingStart, setConfirmingStart] = useState(false);
   const playedAudio = useRef(new Set<string>());
   const haptics = useWebHaptics();
-  useEffect(() => setTokens(roomTokens(roomId)), [roomId]);
+  useEffect(() => {
+    setTokens(roomTokens(roomId));
+    setTokensReadyForRoom(roomId);
+  }, [roomId]);
   const live = usePartyLiveSnapshot({
     roomId,
     role: "presenter",
@@ -251,6 +255,8 @@ export function PartyPresenterApp({ roomId }: { roomId: string }) {
     removeStorageKeys(localStorage, [partyBrowserKeys.presenterRecovery(roomId)]);
   }, [live.ended, roomId]);
 
+  if (tokensReadyForRoom !== roomId)
+    return <PartyScreenMessage title="Opening the room…" detail="Keep this screen open." />;
   if (!tokens.presenterToken)
     return (
       <PartyScreenMessage

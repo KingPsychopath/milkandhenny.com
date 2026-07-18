@@ -13,8 +13,7 @@ import { useQrCode } from "@/hooks/useQrCode";
 import { useRoomReconciler } from "../shared/useRoomReconciler";
 import { consumeLocationFragment } from "@/lib/client/url-fragment";
 import { buildPairedGamePlayerInviteUrl, parsePairedGameJudgeFragment } from "./paired-game-invite";
-
-const SAFETY_POLL_MS = 12_000;
+import { PAIRED_GAME_SAFETY_SYNC_INTERVAL_MS } from "./paired-game-timing";
 
 const receiptReasonLabels: Record<RemoteCommandReceiptReason, string> = {
   stale_round: "round changed",
@@ -65,6 +64,7 @@ function tokensForRoom(roomId: string): StoredRoomTokens {
 export function RemoteJudgeApp({ roomId }: { roomId: string }) {
   const navigate = useNavigate();
   const [tokens, setTokens] = useState<StoredRoomTokens>({ judgeToken: "", playerToken: "", game: null });
+  const [tokensReadyForRoom, setTokensReadyForRoom] = useState<string | null>(null);
   const [snapshot, setSnapshot] = useState<RemoteSyncedSnapshot | null>(null);
   const [playerConnected, setPlayerConnected] = useState(false);
   const [judgeActive, setJudgeActive] = useState(true);
@@ -87,7 +87,11 @@ export function RemoteJudgeApp({ roomId }: { roomId: string }) {
     : null;
   const { dataUrl: qrCode, failed: qrFailed } = useQrCode(playerInviteUrl, 280);
 
-  useEffect(() => { clearExpiredGameLocalStorage(); setTokens(tokensForRoom(roomId)); }, [roomId]);
+  useEffect(() => {
+    clearExpiredGameLocalStorage();
+    setTokens(tokensForRoom(roomId));
+    setTokensReadyForRoom(roomId);
+  }, [roomId]);
 
   useEffect(() => {
     if (!controlFeedback?.endsWith("accepted.")) return;
@@ -137,7 +141,7 @@ export function RemoteJudgeApp({ roomId }: { roomId: string }) {
 
   const pollNow = useRoomReconciler({
     enabled: Boolean(tokens.judgeToken),
-    intervalMs: SAFETY_POLL_MS,
+    intervalMs: PAIRED_GAME_SAFETY_SYNC_INTERVAL_MS,
     roomKey: tokens.judgeToken ? `${roomId}:${tokens.judgeToken}` : null,
     reconcile,
   });
@@ -247,6 +251,8 @@ export function RemoteJudgeApp({ roomId }: { roomId: string }) {
       ? "Spelling may be complete · waiting for your decision"
       : snapshot?.paused ? "Round paused" : null;
 
+  if (tokensReadyForRoom !== roomId)
+    return <JudgeMessage title="Opening judge view…" detail="Keep this screen open for a moment." />;
   if (!tokens.judgeToken) return <JudgeMessage title="Invite missing" detail="Ask the player to share the judge link again." />;
 
   return (

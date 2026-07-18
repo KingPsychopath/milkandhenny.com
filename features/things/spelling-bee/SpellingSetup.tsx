@@ -81,7 +81,7 @@ export function SpellingSetup({
         <Link to="/things" className="inline-flex min-h-11 items-center">
           ← things
         </Link>
-        <button type="button" onClick={onToggleSound} className="min-h-11 rounded-full px-2">
+        <button type="button" onClick={onToggleSound} aria-pressed={soundEnabled} className="min-h-11 rounded-full px-2">
           sound {soundEnabled ? "on" : "off"}
         </button>
       </header>

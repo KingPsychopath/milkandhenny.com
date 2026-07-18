@@ -29,8 +29,8 @@ import type {
   PairedGameRoomCredentials,
   PairedGameRoomRole,
 } from "./types";
+import { PAIRED_GAME_PRESENCE_TTL_SECONDS } from "./paired-game-timing";
 
-const PRESENCE_TTL_SECONDS = 6;
 const JUDGE_LEASE_TTL_SECONDS = 30;
 const COMMAND_MAX_AGE_MS = 12_000;
 
@@ -278,12 +278,12 @@ export async function readPairedGamePlayerSetup(input: {
     return {
       ok: true,
       setup: room.setup,
-      judgeConnected: now - room.judgeSeenAt <= PRESENCE_TTL_SECONDS * 1000,
+      judgeConnected: now - room.judgeSeenAt <= PAIRED_GAME_PRESENCE_TTL_SECONDS * 1000,
       expiresAt: meta.expiresAt,
     };
   }
   const roomKeys = context.keys;
-  await redis.set(roomKeys.playerPresence, now, { ex: PRESENCE_TTL_SECONDS });
+  await redis.set(roomKeys.playerPresence, now, { ex: PAIRED_GAME_PRESENCE_TTL_SECONDS });
   const setup = await redis.get<RemoteGameSetup>(roomKeys.setup);
   if (!setup) return remoteSetupFailure("room_unavailable", "Room unavailable");
   return {
@@ -316,7 +316,7 @@ export async function syncPairedGamePlayer(input: {
     if (
       room.activePlayerEpoch &&
       room.activePlayerEpoch !== input.snapshot.connectionEpoch &&
-      now - room.playerSeenAt <= PRESENCE_TTL_SECONDS * 1000
+      now - room.playerSeenAt <= PAIRED_GAME_PRESENCE_TTL_SECONDS * 1000
     ) {
       log.warn("things.paired-game-room", "Player lease rejected", {
         game: meta.game,
@@ -345,7 +345,7 @@ export async function syncPairedGamePlayer(input: {
     return {
       ok: true,
       commands: room.commands.filter((command) => command.sequence > input.lastCommandSequence),
-      judgeConnected: now - room.judgeSeenAt <= PRESENCE_TTL_SECONDS * 1000,
+      judgeConnected: now - room.judgeSeenAt <= PAIRED_GAME_PRESENCE_TTL_SECONDS * 1000,
     };
   }
 
@@ -361,11 +361,11 @@ export async function syncPairedGamePlayer(input: {
   }
   if (activePlayerEpoch) {
     await redis.set(roomKeys.playerEpoch, input.snapshot.connectionEpoch, {
-      ex: PRESENCE_TTL_SECONDS,
+      ex: PAIRED_GAME_PRESENCE_TTL_SECONDS,
     });
   } else {
     const claimed = await redis.set(roomKeys.playerEpoch, input.snapshot.connectionEpoch, {
-      ex: PRESENCE_TTL_SECONDS,
+      ex: PAIRED_GAME_PRESENCE_TTL_SECONDS,
       nx: true,
     });
     if (
@@ -401,7 +401,7 @@ export async function syncPairedGamePlayer(input: {
     shouldStoreSnapshot
       ? redis.set(roomKeys.snapshot, { ...input.snapshot, updatedAt: now }, { ex: roomTtl })
       : Promise.resolve(null),
-    redis.set(roomKeys.playerPresence, now, { ex: PRESENCE_TTL_SECONDS }),
+    redis.set(roomKeys.playerPresence, now, { ex: PAIRED_GAME_PRESENCE_TTL_SECONDS }),
   ]);
   return {
     ok: true,
@@ -445,7 +445,7 @@ export async function readPairedGameJudge(input: {
     return {
       ok: true,
       snapshot: room.snapshot,
-      playerConnected: now - room.playerSeenAt <= PRESENCE_TTL_SECONDS * 1000,
+      playerConnected: now - room.playerSeenAt <= PAIRED_GAME_PRESENCE_TTL_SECONDS * 1000,
       judgeActive,
       expiresAt: meta.expiresAt,
     };
@@ -472,7 +472,8 @@ export async function readPairedGameJudge(input: {
       }),
     );
   }
-  if (judgeActive) await redis.set(roomKeys.judgePresence, now, { ex: PRESENCE_TTL_SECONDS });
+  if (judgeActive)
+    await redis.set(roomKeys.judgePresence, now, { ex: PAIRED_GAME_PRESENCE_TTL_SECONDS });
   return {
     ok: true,
     snapshot: await redis.get<RemoteSyncedSnapshot>(roomKeys.snapshot),

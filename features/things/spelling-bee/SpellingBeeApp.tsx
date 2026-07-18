@@ -65,6 +65,7 @@ function SpellingBeeExperience({ remoteSession }: { remoteSession?: RemotePlayer
   const transitionTimeout = useRef<number | null>(null);
   const wordStateRef = useRef(wordState);
   const restoredRound = useRef(false);
+  const restoredWordPaused = useRef(false);
   const haptics = useWebHaptics();
   const {
     status: assistantStatus,
@@ -208,7 +209,10 @@ function SpellingBeeExperience({ remoteSession }: { remoteSession?: RemotePlayer
       setResults(restoredResults);
       if (typeof value.remoteExclusive === "boolean") setRemoteExclusive(value.remoteExclusive);
       setPhase(value.phase === "countdown" ? "playing" : value.phase);
-      if (value.phase !== "results") setWordState({ status: "paused", remainingMs: typeof value.decisionClosesAt === "number" ? Math.max(0, value.decisionClosesAt - Date.now()) : typeof value.seconds === "number" ? value.seconds * 1_000 : undefined });
+      if (value.phase !== "results") {
+        restoredWordPaused.current = true;
+        setWordState({ status: "paused", remainingMs: typeof value.decisionClosesAt === "number" ? Math.max(0, value.decisionClosesAt - Date.now()) : typeof value.seconds === "number" ? value.seconds * 1_000 : undefined });
+      }
       restoredRound.current = true;
     } catch {
       sessionStorage.removeItem(roundStorageKey);
@@ -271,6 +275,10 @@ function SpellingBeeExperience({ remoteSession }: { remoteSession?: RemotePlayer
 
   useEffect(() => {
     if (phase !== "playing") return;
+    if (restoredWordPaused.current) {
+      restoredWordPaused.current = false;
+      return;
+    }
     setSeconds(timerSeconds || null);
     if (!autoSpeak) { setWordState(activeWord(timerSeconds)); return; }
     let active = true;

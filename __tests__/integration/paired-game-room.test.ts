@@ -76,6 +76,25 @@ describe("remote game rooms", () => {
     expect(acknowledged.commands).toHaveLength(0);
   });
 
+  it("keeps HTTPS fallback presence alive between safety polls", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-07-18T10:00:00Z"));
+    try {
+      const room = await createPairedGameRoom({ creatorRole: "player", setup: headsUpSetup });
+      await syncPairedGamePlayer({ roomId: room.roomId, playerToken: room.playerToken, snapshot, lastCommandSequence: 0 });
+
+      vi.advanceTimersByTime(12_500);
+      const judge = await readPairedGameJudge({ roomId: room.roomId, judgeToken: room.judgeToken, ...judgeLease });
+      expect(judge.playerConnected).toBe(true);
+
+      vi.advanceTimersByTime(12_500);
+      const player = await syncPairedGamePlayer({ roomId: room.roomId, playerToken: room.playerToken, snapshot, lastCommandSequence: 0 });
+      expect(player.judgeConnected).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("lets a judge-created room transfer setup to the player without transferring device preferences", async () => {
     const room = await createPairedGameRoom({ creatorRole: "judge", setup: spellingSetup });
     const player = await readPairedGamePlayerSetup({ roomId: room.roomId, playerToken: room.playerToken });
