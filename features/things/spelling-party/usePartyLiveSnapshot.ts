@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { readPartySnapshotFn } from "./party-room.functions";
 import type { PartyRole, PartySnapshot } from "./types";
 import { usePartySocket } from "./usePartySocket";
+import { useRoomReconciler } from "../shared/useRoomReconciler";
 
 export function usePartyLiveSnapshot(input: {
   roomId: string;
@@ -15,13 +16,9 @@ export function usePartyLiveSnapshot(input: {
   const [clockOffset, setClockOffset] = useState(0);
   const [message, setMessage] = useState<string | null>(null);
   const [ended, setEnded] = useState(false);
-  const inFlight = useRef(false);
   const sequenceRef = useRef(input.initialSnapshot?.sequence ?? 0);
-  const refreshRef = useRef<() => void>(() => undefined);
 
-  const refresh = useCallback(async () => {
-    if (inFlight.current) return;
-    inFlight.current = true;
+  const reconcile = useCallback(async (isCurrent: () => boolean) => {
     const startedAt = Date.now();
     try {
       const result = await readPartySnapshotFn({
@@ -35,6 +32,7 @@ export function usePartyLiveSnapshot(input: {
         },
       });
       const endedAt = Date.now();
+      if (!isCurrent()) return;
       if (!result.ok || !result.snapshot) {
         setEnded(true);
         setSnapshot(null);
@@ -47,36 +45,26 @@ export function usePartyLiveSnapshot(input: {
       setEnded(false);
       setMessage(null);
     } catch {
-      setMessage("Reconnecting…");
-    } finally {
-      inFlight.current = false;
+      if (isCurrent()) setMessage("Reconnecting…");
     }
   }, [input.credential, input.playerId, input.presenterToken, input.role, input.roomId]);
-  useEffect(() => {
-    refreshRef.current = () => void refresh();
-  }, [refresh]);
+
+  const refresh = useRoomReconciler({
+    enabled: Boolean(input.credential) && !ended,
+    intervalMs: 10_000,
+    roomKey: input.credential
+      ? `${input.roomId}:${input.role}:${input.credential}:${input.playerId ?? ""}`
+      : null,
+    reconcile,
+  });
 
   const socket = usePartySocket({
     roomId: ended ? null : input.roomId,
     role: input.role,
     credential: ended ? null : input.credential,
     playerId: input.playerId,
-    onWake: () => refreshRef.current(),
+    onWake: () => void refresh(),
   });
-
-  useEffect(() => {
-    if (ended) return;
-    void refresh();
-    const interval = window.setInterval(() => void refresh(), 10_000);
-    const resume = () => void refresh();
-    window.addEventListener("online", resume);
-    document.addEventListener("visibilitychange", resume);
-    return () => {
-      window.clearInterval(interval);
-      window.removeEventListener("online", resume);
-      document.removeEventListener("visibilitychange", resume);
-    };
-  }, [ended, refresh]);
 
   useEffect(() => {
     const round = snapshot?.round;

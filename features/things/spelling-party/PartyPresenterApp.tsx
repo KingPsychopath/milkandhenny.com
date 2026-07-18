@@ -1,4 +1,3 @@
-import QRCode from "qrcode";
 import { useNavigate } from "@tanstack/react-router";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { TextMorph } from "torph/react";
@@ -16,9 +15,10 @@ import {
   writeExpiringLocalValue,
 } from "../shared/game-storage.client";
 import { useUpdateReloadSafety } from "@/features/offline/update-safety.client";
-import { useEscapeKey } from "@/hooks/useEscapeKey";
-import { useFocusTrap } from "@/hooks/useFocusTrap";
 import { playPartySpeech, unlockPartyAudio } from "./party-audio.client";
+import { EndGameDialog } from "../shared/EndGameDialog";
+import { shareOrCopy } from "../shared/share.client";
+import { useQrCode } from "../shared/useQrCode";
 
 function roomTokens(roomId: string) {
   const sessionKey = gameBrowserKeys.partyPresenterSession(roomId);
@@ -71,14 +71,11 @@ function roomTokens(roomId: string) {
 export function PartyPresenterApp({ roomId }: { roomId: string }) {
   const navigate = useNavigate();
   const [tokens, setTokens] = useState({ presenterToken: "", joinToken: "" });
-  const [qr, setQr] = useState<string | null>(null);
   const [nativeShare, setNativeShare] = useState(false);
   const [inviteMessage, setInviteMessage] = useState<string | null>(null);
   const [manualInvite, setManualInvite] = useState(false);
   const [closing, setClosing] = useState(false);
   const [endConfirmationOpen, setEndConfirmationOpen] = useState(false);
-  const endDialogRef = useFocusTrap<HTMLDivElement>(endConfirmationOpen);
-  useEscapeKey(() => setEndConfirmationOpen(false), endConfirmationOpen && !closing);
   const playedAudio = useRef(new Set<string>());
   const haptics = useWebHaptics();
   useEffect(() => setTokens(roomTokens(roomId)), [roomId]);
@@ -97,6 +94,7 @@ export function PartyPresenterApp({ roomId }: { roomId: string }) {
   const invite = tokens.joinToken
     ? `${location.origin}/things/spelling-party/${roomId}#${tokens.joinToken}`
     : null;
+  const { dataUrl: qr } = useQrCode(invite, 320);
 
   useEffect(() => {
     setNativeShare(
@@ -104,37 +102,6 @@ export function PartyPresenterApp({ roomId }: { roomId: string }) {
         window.matchMedia("(hover: none) and (pointer: coarse)").matches,
     );
   }, []);
-
-  useEffect(() => {
-    if (!invite) return;
-    let active = true;
-    void QRCode.toDataURL(invite, { width: 320, margin: 1 }).then((value) => {
-      if (active) setQr(value);
-    });
-    return () => {
-      active = false;
-    };
-  }, [invite]);
-
-  const copyInvite = async (value: string) => {
-    try {
-      await navigator.clipboard.writeText(value);
-      return true;
-    } catch {
-      const textarea = document.createElement("textarea");
-      textarea.value = value;
-      textarea.readOnly = true;
-      textarea.style.position = "fixed";
-      textarea.style.opacity = "0";
-      document.body.append(textarea);
-      textarea.select();
-      try {
-        return document.execCommand("copy");
-      } finally {
-        textarea.remove();
-      }
-    }
-  };
 
   const shareInvite = async () => {
     if (!invite) return;
@@ -144,17 +111,10 @@ export function PartyPresenterApp({ roomId }: { roomId: string }) {
       text: `Join room ${roomId} and type along.`,
       url: invite,
     };
-    if (nativeShare && navigator.share && (!navigator.canShare || navigator.canShare(share))) {
-      try {
-        await navigator.share(share);
-        setInviteMessage("Invite shared.");
-        return;
-      } catch (error) {
-        if (error instanceof DOMException && error.name === "AbortError") return;
-      }
-    }
-    if (await copyInvite(invite)) setInviteMessage("Player link copied.");
-    else {
+    const result = await shareOrCopy(share, { useNativeShare: nativeShare, copyValue: invite });
+    if (result === "shared") setInviteMessage("Invite shared.");
+    else if (result === "copied") setInviteMessage("Player link copied.");
+    else if (result === "failed") {
       setManualInvite(true);
       setInviteMessage("Copy the player link below.");
     }
@@ -518,44 +478,8 @@ export function PartyPresenterApp({ roomId }: { roomId: string }) {
           {live.message}
         </p>
       </main>
-      {/* react-doctor-disable-next-line prefer-html-dialog -- shared hooks provide focus trapping, Escape dismissal, and focus restoration */}
       {endConfirmationOpen ? (
-        <div
-          ref={endDialogRef}
-          className="fixed inset-0 z-50 flex items-end justify-center bg-black/65 p-4 sm:items-center"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="end-party-title"
-        >
-          <section className="w-full max-w-md rounded-[2rem] border border-white/12 bg-[var(--things-night)] p-6 text-center shadow-2xl">
-            <p className="font-mono text-micro uppercase tracking-[0.18em] text-white/45">
-              end party
-            </p>
-            <h2 id="end-party-title" className="mt-3 font-serif text-4xl font-semibold">
-              End for everyone?
-            </h2>
-            <p className="mt-3 font-serif text-base text-white/60">
-              Players will see that the room has ended. This cannot be undone.
-            </p>
-            <div className="mt-7 grid grid-cols-2 gap-3">
-              <button
-                type="button"
-                autoFocus
-                onClick={() => setEndConfirmationOpen(false)}
-                className="min-h-14 rounded-full border border-white/20 font-mono text-sm font-semibold"
-              >
-                keep playing
-              </button>
-              <button
-                type="button"
-                onClick={() => void handleEnd(false)}
-                className="min-h-14 rounded-full bg-white font-mono text-sm font-bold text-black"
-              >
-                end party
-              </button>
-            </div>
-          </section>
-        </div>
+        <EndGameDialog tone="dark" eyebrow="end party" title="End for everyone?" description="Players will see that the room has ended. This cannot be undone." confirmLabel="end party" pending={closing} onCancel={() => setEndConfirmationOpen(false)} onConfirm={() => void handleEnd(false)} />
       ) : null}
     </div>
   );

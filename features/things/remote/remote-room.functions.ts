@@ -1,4 +1,5 @@
 import { createServerFn } from "@tanstack/react-start";
+import { multiplayerCredential, multiplayerRecord, multiplayerRoomId, multiplayerText, optionalMultiplayerText } from "../shared/multiplayer-validation";
 import {
   closeRemoteRoom,
   createRemoteRoom,
@@ -17,29 +18,11 @@ import type {
   RemoteRoomRole,
 } from "./types";
 
-function record(value: unknown): Record<string, unknown> {
-  if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("Invalid request");
-  return value as Record<string, unknown>;
-}
-
-function shortText(value: unknown, max = 200): string {
-  if (typeof value !== "string" || value.length === 0 || value.length > max) throw new Error("Invalid text");
-  return value;
-}
-
-function optionalText(value: unknown, max: number) {
-  return typeof value === "string" && value.length > 0 ? value.slice(0, max) : undefined;
-}
-
-function roomId(value: unknown) {
-  const id = shortText(value, 12).toUpperCase();
-  if (!/^[A-Z2-9]{7}$/.test(id)) throw new Error("Invalid room");
-  return id;
-}
-
-function token(value: unknown) {
-  return shortText(value, 100);
-}
+const record = multiplayerRecord;
+const shortText = multiplayerText;
+const optionalText = optionalMultiplayerText;
+const roomId = multiplayerRoomId;
+const token = (value: unknown) => multiplayerCredential(value, 100);
 
 function gameKind(value: unknown): RemoteGameKind {
   if (value === "heads-up" || value === "spelling-bee") return value;

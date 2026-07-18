@@ -1,7 +1,8 @@
-import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { getRedis } from "@/lib/platform/redis.server";
 import { log } from "@/lib/platform/logger.server";
 import { remoteRoomRedisKeys } from "../shared/game-keys";
+import { createAvailableMultiplayerRoomId, createMultiplayerCredential, hashMultiplayerCredential, multiplayerCredentialsMatch, multiplayerRoomExpired, multiplayerRoomExpiresAt, remainingMultiplayerRoomTtlSeconds } from "../shared/multiplayer-room.server";
+import { MULTIPLAYER_ROOM_ID_PATTERN, MULTIPLAYER_ROOM_TTL_SECONDS } from "../shared/multiplayer";
 import type {
   RemoteCommand,
   RemoteCommandRequest,
@@ -15,11 +16,9 @@ import type {
   RemoteRoomRole,
 } from "./types";
 
-const ROOM_TTL_SECONDS = 4 * 60 * 60;
 const PRESENCE_TTL_SECONDS = 6;
 const JUDGE_LEASE_TTL_SECONDS = 30;
 const COMMAND_MAX_AGE_MS = 12_000;
-const ROOM_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 
 interface RoomMeta {
   game: RemoteGameKind;
@@ -52,34 +51,6 @@ interface RoomContext {
   keys: RemoteRedisKeys;
 }
 
-function tokenHash(token: string) {
-  return createHash("sha256").update(token).digest("hex");
-}
-
-function tokensMatch(token: string, expectedHash: string) {
-  if (!token || token.length > 200 || expectedHash.length !== 64) return false;
-  const actual = Buffer.from(tokenHash(token), "hex");
-  const expected = Buffer.from(expectedHash, "hex");
-  return actual.length === expected.length && timingSafeEqual(actual, expected);
-}
-
-function randomToken() {
-  return randomBytes(24).toString("base64url");
-}
-
-function randomRoomId() {
-  const bytes = randomBytes(7);
-  return Array.from(bytes, (byte) => ROOM_ALPHABET[byte % ROOM_ALPHABET.length]).join("");
-}
-
-function roomExpired(meta: RoomMeta) {
-  return meta.expiresAt <= Date.now();
-}
-
-function remainingTtlSeconds(expiresAt: number) {
-  return Math.max(1, Math.ceil((expiresAt - Date.now()) / 1_000));
-}
-
 function logSnapshotTransitions(previous: RemoteSyncedSnapshot | null, next: RemoteSyncedSnapshot) {
   const previousIds = new Set(previous?.results.map(({ id }) => id) ?? []);
   const timedOut = next.results.filter(({ id, decision }) => decision === "timed_out" && !previousIds.has(id)).length;
@@ -104,7 +75,7 @@ async function readRoom(roomId: string): Promise<RoomContext | null> {
   const redis = getRedis();
   if (!redis) {
     const room = memoryRooms.get(roomId);
-    if (!room || roomExpired(room.meta)) {
+    if (!room || multiplayerRoomExpired(room.meta.expiresAt)) {
       memoryRooms.delete(roomId);
       return null;
     }
@@ -113,7 +84,7 @@ async function readRoom(roomId: string): Promise<RoomContext | null> {
   for (const roomKeys of [remoteRoomRedisKeys(roomId), remoteRoomRedisKeys(roomId, true)]) {
     const meta = await redis.get<RoomMeta>(roomKeys.meta);
     if (!meta) continue;
-    if (roomExpired(meta)) {
+    if (multiplayerRoomExpired(meta.expiresAt)) {
       await redis.del(...allRemoteKeys(roomId));
       return null;
     }
@@ -124,7 +95,7 @@ async function readRoom(roomId: string): Promise<RoomContext | null> {
 
 function roleMatches(meta: RoomMeta, role: RemoteRoomRole, token: string) {
   if (role === "judge" && meta.creatorRole !== "judge") return false;
-  return tokensMatch(token, role === "player" ? meta.playerHash : meta.judgeHash);
+  return multiplayerCredentialsMatch(token, role === "player" ? meta.playerHash : meta.judgeHash, 200);
 }
 
 export async function authorizeRemoteSocket(input: {
@@ -132,26 +103,25 @@ export async function authorizeRemoteSocket(input: {
   role: RemoteRoomRole;
   token: string;
 }) {
-  if (!/^[A-Z2-9]{7}$/.test(input.roomId) || !input.token || input.token.length > 100) return false;
+  if (!MULTIPLAYER_ROOM_ID_PATTERN.test(input.roomId) || !input.token || input.token.length > 100) return false;
   const room = await readRoom(input.roomId);
   if (!room) return false;
-  return tokensMatch(input.token, input.role === "player" ? room.meta.playerHash : room.meta.judgeHash);
+  return multiplayerCredentialsMatch(input.token, input.role === "player" ? room.meta.playerHash : room.meta.judgeHash, 100);
 }
 
 export async function createRemoteRoom(input: {
   creatorRole: RemoteRoomRole;
   setup: RemoteGameSetup;
 }): Promise<RemoteRoomCredentials> {
-  const playerToken = randomToken();
-  const judgeToken = randomToken();
-  const expiresAt = Date.now() + ROOM_TTL_SECONDS * 1000;
-  let roomId = randomRoomId();
-  for (let attempt = 0; attempt < 4 && (await readRoom(roomId)); attempt += 1) roomId = randomRoomId();
+  const playerToken = createMultiplayerCredential();
+  const judgeToken = createMultiplayerCredential();
+  const expiresAt = multiplayerRoomExpiresAt();
+  const roomId = await createAvailableMultiplayerRoomId(async (candidate) => Boolean(await readRoom(candidate)));
   const meta: RoomMeta = {
     game: input.setup.game,
     creatorRole: input.creatorRole,
-    playerHash: tokenHash(playerToken),
-    judgeHash: tokenHash(judgeToken),
+    playerHash: hashMultiplayerCredential(playerToken),
+    judgeHash: hashMultiplayerCredential(judgeToken),
     expiresAt,
   };
   const redis = getRedis();
@@ -162,8 +132,8 @@ export async function createRemoteRoom(input: {
   if (redis) {
     const roomKeys = remoteRoomRedisKeys(roomId);
     await Promise.all([
-      redis.set(roomKeys.meta, meta, { ex: ROOM_TTL_SECONDS }),
-      redis.set(roomKeys.setup, input.setup, { ex: ROOM_TTL_SECONDS }),
+      redis.set(roomKeys.meta, meta, { ex: MULTIPLAYER_ROOM_TTL_SECONDS }),
+      redis.set(roomKeys.setup, input.setup, { ex: MULTIPLAYER_ROOM_TTL_SECONDS }),
     ]);
   } else {
     memoryRooms.set(roomId, {
@@ -194,7 +164,7 @@ export async function readRemotePlayerSetup(input: {
 }): Promise<RemotePlayerSetupResult> {
   const context = await readRoom(input.roomId);
   const meta = context?.meta;
-  if (!context || !meta || !tokensMatch(input.playerToken, meta.playerHash)) {
+  if (!context || !meta || !multiplayerCredentialsMatch(input.playerToken, meta.playerHash)) {
     return { ok: false, setup: null, judgeConnected: false, expiresAt: null, error: "Invite expired" };
   }
   const now = Date.now();
@@ -228,7 +198,7 @@ export async function syncRemotePlayer(input: {
 }): Promise<RemotePlayerSyncResult> {
   const context = await readRoom(input.roomId);
   const meta = context?.meta;
-  if (!context || !meta || !tokensMatch(input.playerToken, meta.playerHash)) {
+  if (!context || !meta || !multiplayerCredentialsMatch(input.playerToken, meta.playerHash)) {
     return { ok: false, commands: [], judgeConnected: false, error: "Room unavailable" };
   }
   if (meta.game !== input.snapshot.game) {
@@ -261,7 +231,7 @@ export async function syncRemotePlayer(input: {
   }
 
   const roomKeys = context.keys;
-  const roomTtl = remainingTtlSeconds(meta.expiresAt);
+  const roomTtl = remainingMultiplayerRoomTtlSeconds(meta.expiresAt);
   const activePlayerEpoch = await redis.get<string>(roomKeys.playerEpoch);
   if (activePlayerEpoch && activePlayerEpoch !== input.snapshot.connectionEpoch) {
     log.warn("things.remote-room", "Player lease rejected", { game: meta.game, reason: "active_epoch" });
@@ -311,7 +281,7 @@ export async function readRemoteJudge(input: {
 }): Promise<RemoteJudgeSnapshotResult> {
   const context = await readRoom(input.roomId);
   const meta = context?.meta;
-  if (!context || !meta || !tokensMatch(input.judgeToken, meta.judgeHash)) {
+  if (!context || !meta || !multiplayerCredentialsMatch(input.judgeToken, meta.judgeHash)) {
     return { ok: false, snapshot: null, playerConnected: false, judgeActive: false, expiresAt: null, error: "Invite expired" };
   }
   const now = Date.now();
@@ -368,7 +338,7 @@ export async function sendRemoteJudgeCommand(input: {
 }): Promise<{ ok: boolean; sequence?: number; error?: string }> {
   const context = await readRoom(input.roomId);
   const meta = context?.meta;
-  if (!context || !meta || !tokensMatch(input.judgeToken, meta.judgeHash)) return { ok: false, error: "Invite expired" };
+  if (!context || !meta || !multiplayerCredentialsMatch(input.judgeToken, meta.judgeHash)) return { ok: false, error: "Invite expired" };
   const receivedAt = Date.now();
   const commandAge = receivedAt - input.command.createdAt;
   if (commandAge > COMMAND_MAX_AGE_MS || commandAge < -5_000) return { ok: false, error: "Command expired" };
@@ -414,11 +384,11 @@ export async function sendRemoteJudgeCommand(input: {
   }
   if (snapshot.transitioning && isDecision) return rejectJudgeCommand(meta, input.command, "transitioning", "Card is changing");
   const sequence = await redis.incr(roomKeys.commandSequence);
-  const roomTtl = remainingTtlSeconds(meta.expiresAt);
+  const roomTtl = remainingMultiplayerRoomTtlSeconds(meta.expiresAt);
   const claimedSequence = await redis.eval<unknown[], number>(
     "local existing=redis.call('hget',KEYS[1],ARGV[1]); if existing then return tonumber(existing) end; if ARGV[2]~='' and redis.call('hexists',KEYS[2],ARGV[2])==1 then return -1 end; redis.call('hset',KEYS[1],ARGV[1],ARGV[3]); if ARGV[2]~='' then redis.call('hset',KEYS[2],ARGV[2],ARGV[3]) end; return tonumber(ARGV[3])",
     [roomKeys.commandIds, roomKeys.decidedItems],
-    [input.command.id, isDecision ? tokenHash(input.command.itemId) : "", String(sequence)],
+    [input.command.id, isDecision ? hashMultiplayerCredential(input.command.itemId) : "", String(sequence)],
   );
   if (claimedSequence === -1) return rejectJudgeCommand(meta, input.command, "already_decided", "Word already decided");
   if (claimedSequence !== sequence) return { ok: true, sequence: claimedSequence };

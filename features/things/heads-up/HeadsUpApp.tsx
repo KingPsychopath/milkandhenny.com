@@ -17,6 +17,7 @@ import { useRemotePlayerRoom } from "../remote/useRemotePlayerRoom";
 import type { RemoteCommand, RemoteGameSnapshot, RemoteHeadsUpSetup, RemotePlayerSession } from "../remote/types";
 import { GameShell } from "../shared/GameShell";
 import { EndGameDialog } from "../shared/EndGameDialog";
+import { shareOrCopy } from "../shared/share.client";
 import { useUpdateReloadSafety } from "@/features/offline/update-safety.client";
 
 type Phase = "setup" | "builder" | "countdown" | "playing" | "results";
@@ -261,23 +262,10 @@ function HeadsUpExperience({ fullscreen, remoteSession }: { fullscreen: Fullscre
     const deck = customDecks.find((current) => current.id === id);
     if (!deck) return;
     const text = formatDeckText(deck);
-    try {
-      if (navigator.share) {
-        await navigator.share({ title: `Forehead deck: ${deck.name}`, text });
-        setShareMessage("Shared.");
-      } else {
-        await navigator.clipboard.writeText(text);
-        setShareMessage("Copied — paste it into Notes or Keep.");
-      }
-    } catch (error) {
-      if (error instanceof DOMException && error.name === "AbortError") return;
-      try {
-        await navigator.clipboard.writeText(text);
-        setShareMessage("Copied — paste it wherever you like.");
-      } catch {
-        setShareMessage("Open edit and copy the list from there.");
-      }
-    }
+    const result = await shareOrCopy({ title: `Forehead deck: ${deck.name}`, text });
+    if (result === "shared") setShareMessage("Shared.");
+    else if (result === "copied") setShareMessage("Copied — paste it wherever you like.");
+    else if (result === "failed") setShareMessage("Open edit and copy the list from there.");
   };
 
   useEffect(() => {

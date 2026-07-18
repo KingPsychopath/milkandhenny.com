@@ -14,6 +14,7 @@ import type {
 import { useRemoteSocket } from "./useRemoteSocket";
 import { gameBrowserKeys, legacyGameBrowserKeys } from "../shared/game-keys";
 import { migrateSessionValue, removeStorageKeys } from "../shared/game-storage.client";
+import { useRoomReconciler } from "../shared/useRoomReconciler";
 
 const SAFETY_SYNC_INTERVAL_MS = 12_000;
 
@@ -62,7 +63,6 @@ export function useRemotePlayerRoom(
   const lastRevisionSignatureRef = useRef("");
   const revisionRef = useRef(0);
   const syncNowRef = useRef<(() => Promise<void>) | null>(null);
-  const syncWaitersRef = useRef<Array<() => void>>([]);
   useEffect(() => {
     snapshotRef.current = snapshot;
     commandRef.current = onCommand;
@@ -185,20 +185,8 @@ export function useRemotePlayerRoom(
     }
   }, [game, initialSession, room, syncing]);
 
-  useEffect(() => {
-    if (!room) return;
-    let active = true;
-    let inFlight = false;
-    let syncRequested = false;
-    const syncWaiters = syncWaitersRef.current;
-
-    const sync = async () => {
-      if (!active) return;
-      if (inFlight) {
-        syncRequested = true;
-        return;
-      }
-      inFlight = true;
+  const reconcile = useCallback(async (isCurrent: () => boolean) => {
+      if (!room) return;
       try {
         const currentSnapshot = syncedSnapshot();
         const result = await syncRemotePlayerFn({
@@ -209,7 +197,7 @@ export function useRemotePlayerRoom(
             lastCommandSequence: lastCommandSequenceRef.current,
           },
         });
-        if (!active) return;
+        if (!isCurrent()) return;
         if (!result.ok) {
           setMessage(result.error ?? "Remote room ended. Local play continues.");
           setRoom(null);
@@ -246,42 +234,27 @@ export function useRemotePlayerRoom(
           processedCommands.current = new Set([...processedCommands.current].slice(-250));
         }
         notifySocket();
-        if (received) syncRequested = true;
+        if (received) void syncNowRef.current?.();
       } catch {
-        if (active) {
+        if (isCurrent()) {
           setJudgeConnected(false);
           setMessage("Judge reconnecting. Your game keeps working.");
         }
-      } finally {
-        inFlight = false;
-        if (syncRequested && active) {
-          syncRequested = false;
-          window.setTimeout(() => void sync(), 0);
-        } else {
-          const waiters = syncWaiters.splice(0);
-          waiters.forEach((resolve) => resolve());
-        }
       }
-    };
-
-    const handleResume = () => void sync();
-    syncNowRef.current = () => new Promise<void>((resolve) => {
-      syncWaiters.push(resolve);
-      void sync();
-    });
-    void sync();
-    const interval = window.setInterval(() => void sync(), SAFETY_SYNC_INTERVAL_MS);
-    window.addEventListener("online", handleResume);
-    document.addEventListener("visibilitychange", handleResume);
-    return () => {
-      active = false;
-      syncNowRef.current = null;
-      syncWaiters.splice(0).forEach((resolve) => resolve());
-      window.clearInterval(interval);
-      window.removeEventListener("online", handleResume);
-      document.removeEventListener("visibilitychange", handleResume);
-    };
   }, [game, initialSession, notifySocket, room, syncedSnapshot]);
+
+  const reconcileNow = useRoomReconciler({
+    enabled: Boolean(room),
+    intervalMs: SAFETY_SYNC_INTERVAL_MS,
+    roomKey: room ? `${room.roomId}:${room.connectionEpoch}` : null,
+    reconcile,
+  });
+  useEffect(() => {
+    syncNowRef.current = reconcileNow;
+    return () => {
+      syncNowRef.current = null;
+    };
+  }, [reconcileNow]);
 
   const snapshotSignature = JSON.stringify({ ...snapshot, updatedAt: 0 });
   useEffect(() => {

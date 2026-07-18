@@ -1,3 +1,5 @@
+import type { MultiplayerRevision, MultiplayerRoomLifetime } from "../shared/multiplayer";
+
 export type RemoteGameKind = "heads-up" | "spelling-bee";
 export type RemoteRoomRole = "player" | "judge";
 
@@ -87,7 +89,7 @@ export interface RemoteCommandReceipt {
   reason?: "stale round" | "stale item" | "decision closed" | "already decided";
 }
 
-export interface RemoteSyncedSnapshot extends RemoteGameSnapshot {
+export interface RemoteSyncedSnapshot extends RemoteGameSnapshot, MultiplayerRevision {
   roundId: string | null;
   itemId: string | null;
   revision: number;
@@ -95,19 +97,15 @@ export interface RemoteSyncedSnapshot extends RemoteGameSnapshot {
   commandReceipts: RemoteCommandReceipt[];
 }
 
-export interface RemoteRoomCredentials {
-  roomId: string;
+export interface RemoteRoomCredentials extends MultiplayerRoomLifetime {
   playerToken: string;
   judgeToken: string;
   creatorRole: RemoteRoomRole;
-  expiresAt: number;
 }
 
-export interface RemotePlayerSession {
-  roomId: string;
+export interface RemotePlayerSession extends MultiplayerRoomLifetime {
   playerToken: string;
   connectionEpoch: string;
-  expiresAt: number;
   setup: RemoteGameSetup;
 }
 

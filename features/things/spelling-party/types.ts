@@ -1,3 +1,11 @@
+import type {
+  MultiplayerAction,
+  MultiplayerRevision,
+  MultiplayerRoomIdentity,
+  MultiplayerRoomLifetime,
+  MultiplayerSequence,
+} from "../shared/multiplayer";
+
 export type PartyPhase = "lobby" | "countdown" | "answer" | "locked" | "reveal" | "finished";
 export type PartyRole = "presenter" | "player";
 export type PartyClueKind = "repeat" | "definition" | "sentence";
@@ -83,12 +91,9 @@ export interface PartyPlayerPrivateState {
   lockedAutomatically: boolean;
 }
 
-export interface PartySnapshot {
-  roomId: string;
+export interface PartySnapshot extends MultiplayerRoomIdentity, MultiplayerRevision, MultiplayerSequence {
   deckName: string;
   phase: PartyPhase;
-  revision: number;
-  sequence: number;
   serverNow: number;
   answerSeconds: number;
   players: PartyPlayerSummary[];
@@ -97,20 +102,16 @@ export interface PartySnapshot {
   player: PartyPlayerPrivateState | null;
 }
 
-export interface PartyRoomCredentials {
-  roomId: string;
+export interface PartyRoomCredentials extends MultiplayerRoomLifetime {
   presenterToken: string;
   joinToken: string;
-  expiresAt: number;
   selectedWordIds: string[];
 }
 
-export interface PartyPlayerCredentials {
-  roomId: string;
+export interface PartyPlayerCredentials extends MultiplayerRoomLifetime {
   playerId: string;
   playerToken: string;
   presenterToken?: string;
-  expiresAt: number;
   snapshot: PartySnapshot;
 }
 
@@ -120,23 +121,21 @@ export interface PartySnapshotResult {
   error?: string;
 }
 
-export type PartyPresenterAction =
-  | { actionId: string; type: "round.start" }
-  | { actionId: string; type: "round.next" }
-  | { actionId: string; type: "round.pause" }
-  | { actionId: string; type: "round.resume" };
+export type PartyPresenterAction = MultiplayerAction & {
+  type: "round.start" | "round.next" | "round.pause" | "round.resume";
+};
 
-export type PartyPlayerAction =
+export type PartyPlayerAction = MultiplayerAction & (
   | {
-      actionId: string;
       type: "draft.update";
       roundId: string;
       draft: string;
       draftRevision: number;
     }
-  | { actionId: string; type: "answer.lock"; roundId: string }
-  | { actionId: string; type: "clue.request"; roundId: string; clue: PartyClueKind }
-  | { actionId: string; type: "integrity.notice"; roundId: string; hiddenMs: number };
+  | { type: "answer.lock"; roundId: string }
+  | { type: "clue.request"; roundId: string; clue: PartyClueKind }
+  | { type: "integrity.notice"; roundId: string; hiddenMs: number }
+);
 
 export interface PartyActionResult extends PartySnapshotResult {
   accepted: boolean;

@@ -1,4 +1,5 @@
 import { createServerFn } from "@tanstack/react-start";
+import { multiplayerCredential, multiplayerRecord, multiplayerRoomId, multiplayerSequence, multiplayerText, optionalMultiplayerText } from "../shared/multiplayer-validation";
 import { partyDeckCatalog } from "./party-content.server";
 import {
   applyPlayerAction,
@@ -16,34 +17,15 @@ import type {
   PartyRole,
 } from "./types";
 
-function record(value: unknown): Record<string, unknown> {
-  if (!value || typeof value !== "object" || Array.isArray(value))
-    throw new Error("Invalid request");
-  return value as Record<string, unknown>;
-}
-function text(value: unknown, max: number) {
-  if (typeof value !== "string" || value.length < 1 || value.length > max)
-    throw new Error("Invalid text");
-  return value;
-}
-function roomId(value: unknown) {
-  const id = text(value, 12).toUpperCase();
-  if (!/^[A-Z2-9]{7}$/.test(id)) throw new Error("Invalid room");
-  return id;
-}
+const record = multiplayerRecord;
+const text = multiplayerText;
+const roomId = multiplayerRoomId;
 function actionId(value: unknown) {
   return text(value, 80);
 }
-function credential(value: unknown) {
-  return text(value, 120);
-}
-function sequence(value: unknown) {
-  return typeof value === "number" && Number.isFinite(value) ? Math.max(0, Math.floor(value)) : 0;
-}
-
-function optionalText(value: unknown, max: number) {
-  return typeof value === "string" && value.trim() ? value.trim().slice(0, max) : undefined;
-}
+const credential = multiplayerCredential;
+const sequence = multiplayerSequence;
+const optionalText = optionalMultiplayerText;
 
 function customDeck(value: unknown): PartyCustomDeckInput | undefined {
   if (value === undefined || value === null) return undefined;

@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
-import QRCode from "qrcode";
 import { TextMorph } from "torph/react";
 import { useWebHaptics } from "web-haptics/react";
 import { closeRemoteRoomFn, readRemoteJudgeFn, sendRemoteJudgeCommandFn } from "./remote-room.functions";
@@ -8,6 +7,10 @@ import type { RemoteCommandRequest, RemoteGameKind, RemoteResultDecision, Remote
 import { useRemoteSocket } from "./useRemoteSocket";
 import { gameBrowserKeys, legacyGameBrowserKeys } from "../shared/game-keys";
 import { clearExpiredGameLocalStorage, readExpiringLocalValue, removeStorageKeys, writeExpiringLocalValue } from "../shared/game-storage.client";
+import { EndGameDialog } from "../shared/EndGameDialog";
+import { shareOrCopy } from "../shared/share.client";
+import { useQrCode } from "../shared/useQrCode";
+import { useRoomReconciler } from "../shared/useRoomReconciler";
 
 const SAFETY_POLL_MS = 12_000;
 
@@ -65,33 +68,22 @@ export function RemoteJudgeApp({ roomId }: { roomId: string }) {
   const [judgeActive, setJudgeActive] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
-  const [qrCode, setQrCode] = useState<string | null>(null);
   const [pendingCommandId, setPendingCommandId] = useState<string | null>(null);
   const [pendingCommandLabel, setPendingCommandLabel] = useState<string | null>(null);
   const [controlFeedback, setControlFeedback] = useState<string | null>(null);
   const [endConfirmationOpen, setEndConfirmationOpen] = useState(false);
   const [endingRoom, setEndingRoom] = useState(false);
-  const pollNowRef = useRef<(() => void) | null>(null);
   const judgeEpoch = useRef<string | null>(null);
   if (judgeEpoch.current === null) judgeEpoch.current = crypto.randomUUID();
   const takeoverRequested = useRef(false);
   const flushingCommands = useRef(false);
   const roomExpiresAt = useRef(Date.now() + 4 * 60 * 60 * 1_000);
-  const endRoomButtonRef = useRef<HTMLButtonElement>(null);
-  const cancelEndButtonRef = useRef<HTMLButtonElement>(null);
-  const endConfirmationRef = useRef<HTMLElement>(null);
   const haptics = useWebHaptics();
-
-  const { state: transportState, notify: notifySocket } = useRemoteSocket({
-    roomId: tokens.judgeToken ? roomId : null,
-    role: "judge",
-    token: tokens.judgeToken || null,
-    onWake: () => pollNowRef.current?.(),
-  });
 
   const playerInviteUrl = tokens.playerToken && typeof window !== "undefined"
     ? `${location.origin}/things/play/${roomId}#${tokens.playerToken}`
     : null;
+  const { dataUrl: qrCode } = useQrCode(playerInviteUrl, 280);
 
   useEffect(() => { clearExpiredGameLocalStorage(); setTokens(tokensForRoom(roomId)); }, [roomId]);
 
@@ -101,54 +93,10 @@ export function RemoteJudgeApp({ roomId }: { roomId: string }) {
     return () => window.clearTimeout(timeout);
   }, [controlFeedback]);
 
-  useEffect(() => {
-    if (!endConfirmationOpen) return;
-    cancelEndButtonRef.current?.focus();
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && !endingRoom) {
-        setEndConfirmationOpen(false);
-        endRoomButtonRef.current?.focus();
-        return;
-      }
-      if (event.key !== "Tab") return;
-      const controls = [...(endConfirmationRef.current?.querySelectorAll<HTMLButtonElement>("button:not(:disabled)") ?? [])];
-      const first = controls.at(0);
-      const last = controls.at(-1);
-      if (!first || !last) return;
-      if (event.shiftKey && document.activeElement === first) {
-        event.preventDefault();
-        last.focus();
-      } else if (!event.shiftKey && document.activeElement === last) {
-        event.preventDefault();
-        first.focus();
-      }
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [endConfirmationOpen, endingRoom]);
-
-  useEffect(() => {
-    if (!playerInviteUrl) {
-      setQrCode(null);
-      return;
-    }
-    let active = true;
-    void QRCode.toDataURL(playerInviteUrl, { width: 280, margin: 1 }).then((value) => {
-      if (active) setQrCode(value);
-    });
-    return () => { active = false; };
-  }, [playerInviteUrl]);
-
-  useEffect(() => {
-    if (!tokens.judgeToken) return;
-    let active = true;
-    let inFlight = false;
-    const poll = async () => {
-      if (inFlight || !active) return;
-      inFlight = true;
+  const reconcile = useCallback(async (isCurrent: () => boolean) => {
       try {
         const result = await readRemoteJudgeFn({ data: { roomId, judgeToken: tokens.judgeToken, judgeEpoch: judgeEpoch.current, takeover: takeoverRequested.current } });
-        if (!active) return;
+        if (!isCurrent()) return;
         if (!result.ok) {
           setError(result.error ?? "This invite is no longer available.");
           setPlayerConnected(false);
@@ -174,28 +122,26 @@ export function RemoteJudgeApp({ roomId }: { roomId: string }) {
         setPlayerConnected(result.playerConnected);
         if (!commandResolved) setError(null);
       } catch {
-        if (active) {
+        if (isCurrent()) {
           setPlayerConnected(false);
           setError("Reconnecting…");
         }
-      } finally {
-        inFlight = false;
       }
-    };
-    const handleResume = () => void poll();
-    pollNowRef.current = () => void poll();
-    void poll();
-    const interval = window.setInterval(() => void poll(), SAFETY_POLL_MS);
-    window.addEventListener("online", handleResume);
-    document.addEventListener("visibilitychange", handleResume);
-    return () => {
-      active = false;
-      pollNowRef.current = null;
-      window.clearInterval(interval);
-      window.removeEventListener("online", handleResume);
-      document.removeEventListener("visibilitychange", handleResume);
-    };
   }, [pendingCommandId, pendingCommandLabel, roomId, tokens.judgeToken]);
+
+  const pollNow = useRoomReconciler({
+    enabled: Boolean(tokens.judgeToken),
+    intervalMs: SAFETY_POLL_MS,
+    roomKey: tokens.judgeToken ? `${roomId}:${tokens.judgeToken}` : null,
+    reconcile,
+  });
+
+  const { state: transportState, notify: notifySocket } = useRemoteSocket({
+    roomId: tokens.judgeToken ? roomId : null,
+    role: "judge",
+    token: tokens.judgeToken || null,
+    onWake: () => void pollNow(),
+  });
 
   const send = useCallback(async (command: RemoteCommandInput) => {
     if (!tokens.judgeToken || !judgeActive || !playerConnected || sending || pendingCommandId || !snapshot?.roundId || (command.type !== "amend" && !snapshot.itemId)) return;
@@ -262,16 +208,10 @@ export function RemoteJudgeApp({ roomId }: { roomId: string }) {
 
   const handleSharePlayerInvite = async () => {
     if (!playerInviteUrl) return;
-    try {
-      if (navigator.share) await navigator.share({ title: "Join the game", text: "Open this on the phone that will run the game.", url: playerInviteUrl });
-      else {
-        await navigator.clipboard.writeText(playerInviteUrl);
-        setError("Player link copied.");
-      }
-    } catch (shareError) {
-      if (shareError instanceof DOMException && shareError.name === "AbortError") return;
-      setError("Could not share. Ask the player to scan the code instead.");
-    }
+    const result = await shareOrCopy({ title: "Join the game", text: "Open this on the phone that will run the game.", url: playerInviteUrl });
+    if (result === "shared") setError("Invite shared.");
+    else if (result === "copied") setError("Player link copied.");
+    else if (result === "failed") setError("Could not share. Ask the player to scan the code instead.");
   };
 
   const handleEndRoom = async () => {
@@ -286,12 +226,6 @@ export function RemoteJudgeApp({ roomId }: { roomId: string }) {
     ]);
     removeStorageKeys(localStorage, [gameBrowserKeys.remotePendingCommands(roomId), legacyGameBrowserKeys.remotePendingCommands(roomId)]);
     await navigate({ to: "/things" });
-  };
-
-  const dismissEndConfirmation = () => {
-    if (endingRoom) return;
-    setEndConfirmationOpen(false);
-    requestAnimationFrame(() => endRoomButtonRef.current?.focus());
   };
 
   const gameKind = snapshot?.game ?? tokens.game;
@@ -317,7 +251,7 @@ export function RemoteJudgeApp({ roomId }: { roomId: string }) {
   return (
     <div className="things-game things-game--night text-white">
       <header className="flex items-center justify-between gap-4 p-5 font-mono text-xs text-white/55">
-        <button ref={endRoomButtonRef} type="button" onClick={() => setEndConfirmationOpen(true)} className="min-h-11 rounded-full border border-white/15 px-4 text-white/75">
+        <button type="button" onClick={() => setEndConfirmationOpen(true)} className="min-h-11 rounded-full border border-white/15 px-4 text-white/75">
           {tokens.playerToken ? "end game" : "leave judging"}
         </button>
         <span aria-live="polite" className={playerConnected && transportState === "connected" ? "text-emerald-200" : "text-amber-200"}>
@@ -327,7 +261,7 @@ export function RemoteJudgeApp({ roomId }: { roomId: string }) {
 
       <main id="main" className="mx-auto flex w-full max-w-xl flex-1 flex-col px-5 pb-8">
         <p className="mt-4 font-mono text-micro uppercase tracking-[0.2em] text-white/45">remote judge · {gameName}</p>
-        {!judgeActive ? <section className="mt-4 rounded-2xl border border-white/15 bg-white/[0.05] p-4 text-center" aria-labelledby="view-only-title"><h2 id="view-only-title" className="font-serif text-xl font-semibold">View only on this screen.</h2><p className="mt-1 font-mono text-xs text-white/50">Another judge screen owns the controls.</p><button type="button" onClick={() => { takeoverRequested.current = true; setControlFeedback("Taking over controls…"); pollNowRef.current?.(); notifySocket(); }} className="mt-3 min-h-11 rounded-full border border-white/20 px-5 font-mono text-xs">take over controls</button></section> : null}
+        {!judgeActive ? <section className="mt-4 rounded-2xl border border-white/15 bg-white/[0.05] p-4 text-center" aria-labelledby="view-only-title"><h2 id="view-only-title" className="font-serif text-xl font-semibold">View only on this screen.</h2><p className="mt-1 font-mono text-xs text-white/50">Another judge screen owns the controls.</p><button type="button" onClick={() => { takeoverRequested.current = true; setControlFeedback("Taking over controls…"); void pollNow(); notifySocket(); }} className="mt-3 min-h-11 rounded-full border border-white/20 px-5 font-mono text-xs">take over controls</button></section> : null}
         {roundStatus ? <p role="status" className="mt-4 rounded-2xl border border-amber-200/20 bg-amber-200/[0.08] px-4 py-3 text-center font-mono text-xs text-amber-100">{roundStatus}</p> : null}
         {!snapshot ? (
           playerInviteUrl ? (
@@ -375,25 +309,7 @@ export function RemoteJudgeApp({ roomId }: { roomId: string }) {
       </main>
 
       {endConfirmationOpen ? (
-        /* react-doctor-disable-next-line no-static-element-interactions -- the backdrop is mouse-only; the dialog has global Escape and trapped Tab handling */
-        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/65 p-4 backdrop-blur-sm sm:items-center" onMouseDown={(event) => { if (event.target === event.currentTarget) dismissEndConfirmation(); }}>
-          {/* react-doctor-disable-next-line prefer-html-dialog -- the effect above traps focus, handles Escape, and restores trigger focus */}
-          <section ref={endConfirmationRef} role="dialog" aria-modal="true" aria-labelledby="end-room-title" aria-describedby="end-room-description" className="w-full max-w-md rounded-[2rem] border border-white/12 bg-[var(--things-night)] p-6 text-center shadow-2xl">
-            <p className="font-mono text-micro uppercase tracking-[0.18em] text-white/45">{tokens.playerToken ? "end game" : "leave judging"}</p>
-            <h2 id="end-room-title" className="mt-3 font-serif text-4xl font-semibold">{tokens.playerToken ? "End this game?" : "Leave judging?"}</h2>
-            <p id="end-room-description" className="mx-auto mt-3 max-w-sm font-serif text-base leading-relaxed text-white/60">
-              {tokens.playerToken ? "This ends the game for both phones. It cannot be undone." : "The game will keep working on the player’s phone without this judge."}
-            </p>
-            <div className="mt-7 grid grid-cols-2 gap-3">
-              <button ref={cancelEndButtonRef} type="button" disabled={endingRoom} onClick={dismissEndConfirmation} className="min-h-14 rounded-full border border-white/20 px-4 font-mono text-sm font-semibold disabled:opacity-40">
-                {tokens.playerToken ? "keep playing" : "stay"}
-              </button>
-              <button type="button" disabled={endingRoom} onClick={() => void handleEndRoom()} className="min-h-14 rounded-full bg-white px-4 font-mono text-sm font-bold text-black disabled:opacity-55">
-                {endingRoom ? "ending…" : tokens.playerToken ? "end game" : "leave judging"}
-              </button>
-            </div>
-          </section>
-        </div>
+        <EndGameDialog tone="dark" eyebrow={tokens.playerToken ? "end game" : "leave judging"} title={tokens.playerToken ? "End this game?" : "Leave judging?"} description={tokens.playerToken ? "This ends the game for both phones. It cannot be undone." : "The game will keep working on the player’s phone without this judge."} cancelLabel={tokens.playerToken ? "keep playing" : "stay"} confirmLabel={tokens.playerToken ? "end game" : "leave judging"} pending={endingRoom} onCancel={() => setEndConfirmationOpen(false)} onConfirm={() => void handleEndRoom()} />
       ) : null}
     </div>
   );

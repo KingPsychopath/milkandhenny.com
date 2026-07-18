@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
-import QRCode from "qrcode";
 import { TextMorph } from "torph/react";
 import { useWebHaptics } from "web-haptics/react";
 import {
@@ -30,6 +29,8 @@ import {
 } from "../shared/game-storage.client";
 import { useUpdateReloadSafety } from "@/features/offline/update-safety.client";
 import { playPartySpeech, unlockPartyAudio } from "./party-audio.client";
+import { shareOrCopy } from "../shared/share.client";
+import { useQrCode } from "../shared/useQrCode";
 
 function joinToken(roomId: string) {
   const key = gameBrowserKeys.partyInvite(roomId);
@@ -824,38 +825,18 @@ function HostPlayerLobby({
   players: Array<{ id: string; name: string }>;
   onStart: () => void;
 }) {
-  const [qr, setQr] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
-  useEffect(() => {
-    let active = true;
-    void QRCode.toDataURL(invite, { width: 280, margin: 1 }).then((value) => {
-      if (active) setQr(value);
-    });
-    return () => {
-      active = false;
-    };
-  }, [invite]);
+  const { dataUrl: qr } = useQrCode(invite, 280);
   const shareInvite = async () => {
     const share = {
       title: "Join our Spelling Bee",
       text: `Join room ${roomId} and type along.`,
       url: invite,
     };
-    if (navigator.share && (!navigator.canShare || navigator.canShare(share))) {
-      try {
-        await navigator.share(share);
-        setMessage("Invite shared.");
-        return;
-      } catch (error) {
-        if (error instanceof DOMException && error.name === "AbortError") return;
-      }
-    }
-    try {
-      await navigator.clipboard.writeText(invite);
-      setMessage("Player link copied.");
-    } catch {
-      setMessage("Ask players to scan the code or enter the room code.");
-    }
+    const result = await shareOrCopy(share, { copyValue: invite });
+    if (result === "shared") setMessage("Invite shared.");
+    else if (result === "copied") setMessage("Player link copied.");
+    else if (result === "failed") setMessage("Ask players to scan the code or enter the room code.");
   };
   return (
     <section

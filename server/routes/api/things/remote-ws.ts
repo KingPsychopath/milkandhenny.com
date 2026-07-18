@@ -1,60 +1,21 @@
-import { defineWebSocketHandler } from "nitro/h3";
 import { authorizeRemoteSocket } from "@/features/things/remote/remote-room.server";
 import type { RemoteRoomRole } from "@/features/things/remote/types";
 import { gameRealtimeChannels } from "@/features/things/shared/game-keys";
+import { createRealtimeRoomHandler } from "@/features/things/shared/realtime-room-handler.server";
 
-const sessions = new Map<string, { roomId: string; role: RemoteRoomRole }>();
+interface RemoteRealtimeSession {
+  roomId: string;
+  role: RemoteRoomRole;
+}
 
-export default defineWebSocketHandler({
-  async message(peer, message) {
-    let payload: { type?: string; roomId?: string; role?: string; token?: string };
-    try {
-      if (message.text().length > 1_000) {
-        peer.close(1009, "message too large");
-        return;
-      }
-      payload = message.json();
-    } catch {
-      peer.close(1008, "invalid message");
-      return;
-    }
-    if (payload.type === "hello") {
-      if ((payload.role !== "player" && payload.role !== "judge") || !payload.roomId || !payload.token) {
-        peer.close(1008, "invalid hello");
-        return;
-      }
-      const authorized = await authorizeRemoteSocket({
-        roomId: payload.roomId,
-        role: payload.role,
-        token: payload.token,
-      });
-      if (!authorized) {
-        peer.close(1008, "unauthorized");
-        return;
-      }
-      sessions.set(peer.id, { roomId: payload.roomId, role: payload.role });
-      peer.subscribe(gameRealtimeChannels.remoteRoom(payload.roomId));
-      peer.send(JSON.stringify({ type: "ready" }));
-      peer.publish(gameRealtimeChannels.remoteRoom(payload.roomId), JSON.stringify({ type: "wake", source: payload.role }));
-      return;
-    }
-    const session = sessions.get(peer.id);
-    if (!session) {
-      peer.close(1008, "hello required");
-      return;
-    }
-    if (payload.type === "ping") {
-      peer.send(JSON.stringify({ type: "pong" }));
-    } else if (payload.type === "changed") {
-      peer.publish(gameRealtimeChannels.remoteRoom(session.roomId), JSON.stringify({ type: "wake", source: session.role }));
-    }
+export default createRealtimeRoomHandler<RemoteRealtimeSession>({
+  channel: gameRealtimeChannels.remoteRoom,
+  async authorize(payload) {
+    const roomId = typeof payload.roomId === "string" ? payload.roomId : "";
+    const token = typeof payload.token === "string" ? payload.token : "";
+    const role = payload.role;
+    if ((role !== "player" && role !== "judge") || !roomId || !token) return null;
+    return (await authorizeRemoteSocket({ roomId, role, token })) ? { roomId, role } : null;
   },
-  close(peer) {
-    const session = sessions.get(peer.id);
-    if (session) peer.unsubscribe(gameRealtimeChannels.remoteRoom(session.roomId));
-    sessions.delete(peer.id);
-  },
-  error(peer) {
-    sessions.delete(peer.id);
-  },
+  wakeMessage: ({ role }) => ({ type: "wake", source: role }),
 });

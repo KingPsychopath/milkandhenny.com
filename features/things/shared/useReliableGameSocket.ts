@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import type { MultiplayerConnectionState } from "./multiplayer";
 
-export type ReliableGameSocketState = "connected" | "reconnecting" | "offline";
+export type ReliableGameSocketState = MultiplayerConnectionState;
 
 /** Shared wake-up transport. Durable commands and snapshots stay on HTTPS. */
 export function useReliableGameSocket(input: { path: string; hello: Record<string, string | undefined> | null; onWake: () => void }) {

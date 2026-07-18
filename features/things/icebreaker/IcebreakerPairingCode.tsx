@@ -1,6 +1,5 @@
-import { useEffect, useState } from "react";
-import QRCode from "qrcode";
 import { pairingCode, pairingUrl, type IcebreakerPlayer } from "./icebreaker-pairing";
+import { useQrCode } from "../shared/useQrCode";
 
 interface IcebreakerPairingCodeProps {
   player: IcebreakerPlayer;
@@ -15,27 +14,8 @@ export function IcebreakerPairingCode({
   onScan,
   onBack,
 }: IcebreakerPairingCodeProps) {
-  const [qrCode, setQrCode] = useState<string | null>(null);
-  const [qrFailed, setQrFailed] = useState(false);
-
-  useEffect(() => {
-    let active = true;
-    setQrFailed(false);
-    const url = pairingUrl(window.location.origin, player);
-    void QRCode.toDataURL(url, { width: 320, margin: 1 })
-      .then((value) => {
-        if (active) setQrCode(value);
-      })
-      .catch(() => {
-        if (active) {
-          setQrCode(null);
-          setQrFailed(true);
-        }
-      });
-    return () => {
-      active = false;
-    };
-  }, [player]);
+  const pairingLink = typeof window === "undefined" ? null : pairingUrl(window.location.origin, player);
+  const { dataUrl: qrCode, failed: qrFailed } = useQrCode(pairingLink, 320);
 
   return (
     <section className="w-full max-w-sm text-center text-white" aria-labelledby="my-code-title">

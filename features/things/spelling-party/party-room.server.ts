@@ -1,7 +1,8 @@
-import { createHash, randomBytes, randomInt, timingSafeEqual } from "node:crypto";
+import { randomInt } from "node:crypto";
 import { getRedis } from "@/lib/platform/redis.server";
 import { log } from "@/lib/platform/logger.server";
 import { partyRoomRedisKeys } from "../shared/game-keys";
+import { createAvailableMultiplayerRoomId, createMultiplayerCredential, hashMultiplayerCredential, multiplayerActionSeen, multiplayerCredentialsMatch, multiplayerRoomExpiresAt, rememberMultiplayerAction, remainingMultiplayerRoomTtlSeconds } from "../shared/multiplayer-room.server";
 import { partyAudioAssetKey, partyDeck, type PartyWord } from "./party-content.server";
 import { rankSpellingAnswers } from "./spelling-closeness";
 import type {
@@ -19,11 +20,9 @@ import type {
 } from "./types";
 import { PARTY_REVEAL_COOLDOWN_MS } from "./types";
 
-const ROOM_TTL_SECONDS = 4 * 60 * 60;
 const FINISHED_GRACE_SECONDS = 15 * 60;
 const JOIN_RECEIPT_TTL_SECONDS = 2 * 60;
 const CONNECTED_WINDOW_MS = 22_000;
-const ROOM_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 
 interface AudioCapability {
   id: string;
@@ -96,34 +95,16 @@ interface LoadedRoom {
   room: PartyRoomState;
   keys: PartyRedisKeys;
 }
-function hash(value: string) {
-  return createHash("sha256").update(value).digest("hex");
-}
-function token() {
-  return randomBytes(24).toString("base64url");
-}
-function capability() {
-  return randomBytes(18).toString("base64url");
-}
-function roomId() {
-  return Array.from(randomBytes(7), (byte) => ROOM_ALPHABET[byte % ROOM_ALPHABET.length]).join("");
-}
-function safeEqual(value: string, expectedHash: string) {
-  if (!value || value.length > 120 || expectedHash.length !== 64) return false;
-  const left = Buffer.from(hash(value), "hex");
-  const right = Buffer.from(expectedHash, "hex");
-  return left.length === right.length && timingSafeEqual(left, right);
-}
+const token = createMultiplayerCredential;
+const capability = () => createMultiplayerCredential(18);
+const hash = hashMultiplayerCredential;
+const safeEqual = multiplayerCredentialsMatch;
 function changed(room: PartyRoomState) {
   room.revision += 1;
   room.sequence += 1;
 }
 function normalizeAnswer(value: string) {
   return value.normalize("NFKC").trim().toLocaleLowerCase("en-US");
-}
-
-function remainingTtlSeconds(expiresAt: number) {
-  return Math.max(1, Math.ceil((expiresAt - Date.now()) / 1_000));
 }
 
 function memoryReceiptKey(roomIdValue: string, joinId: string) {
@@ -143,7 +124,7 @@ async function migrateLegacyJoinReceipts(room: PartyRoomState, keys: PartyRedisK
       room.joinReceiptIds.push(joinId);
     }
     if (redis)
-      await redis.set(keys.joinReceipt(joinId), next, { ex: remainingTtlSeconds(expiresAt) });
+      await redis.set(keys.joinReceipt(joinId), next, { ex: remainingMultiplayerRoomTtlSeconds(expiresAt) });
     else memoryJoinReceipts.set(memoryReceiptKey(room.roomId, joinId), next);
   }
   delete room.joinReceipts;
@@ -197,7 +178,7 @@ async function loadRoom(id: string): Promise<LoadedRoom | null> {
       return null;
     }
     if (await migrateLegacyJoinReceipts(room, keys)) {
-      await redis.set(keys.state, room, { ex: remainingTtlSeconds(room.expiresAt) });
+      await redis.set(keys.state, room, { ex: remainingMultiplayerRoomTtlSeconds(room.expiresAt) });
     }
     return { room, keys };
   }
@@ -210,7 +191,7 @@ async function saveRoom(room: PartyRoomState, keys = partyRoomRedisKeys(room.roo
     await deletePartyRoom(room, keys);
     return;
   }
-  if (redis) await redis.set(keys.state, room, { ex: remainingTtlSeconds(room.expiresAt) });
+  if (redis) await redis.set(keys.state, room, { ex: remainingMultiplayerRoomTtlSeconds(room.expiresAt) });
   else memoryRooms.set(room.roomId, room);
 }
 
@@ -276,7 +257,7 @@ async function writeJoinReceipt(
   const redis = getRedis();
   if (redis)
     await redis.set(keys.joinReceipt(joinId), receipt, {
-      ex: remainingTtlSeconds(receipt.expiresAt),
+      ex: remainingMultiplayerRoomTtlSeconds(receipt.expiresAt),
     });
   else memoryJoinReceipts.set(memoryReceiptKey(room.roomId, joinId), receipt);
 }
@@ -500,7 +481,8 @@ export async function createPartyRoom(input: {
   if (!deck) throw new Error("Deck unavailable");
   const presenterToken = token();
   const joinToken = token();
-  const expiresAt = Date.now() + ROOM_TTL_SECONDS * 1_000;
+  const expiresAt = multiplayerRoomExpiresAt();
+  const nextRoomId = await createAvailableMultiplayerRoomId(async (candidate) => Boolean(await loadRoom(candidate)));
   const recent = new Set(input.recentWordIds ?? []);
   const freshWords = deck.words.filter(({ id }) => !recent.has(id));
   const previousWords = deck.words.filter(({ id }) => recent.has(id));
@@ -512,7 +494,7 @@ export async function createPartyRoom(input: {
   }
   const words = [...freshWords, ...previousWords];
   const room: PartyRoomState = {
-    roomId: roomId(),
+    roomId: nextRoomId,
     deckId: deck.id,
     deckName: deck.name,
     answerSeconds: Math.max(8, Math.min(60, input.answerSeconds)),
@@ -646,13 +628,6 @@ export async function readPartySnapshot(input: {
   return result ?? { ok: false, snapshot: null, error: "Room unavailable" };
 }
 
-function actionSeen(room: PartyRoomState, actionId: string) {
-  return room.processedActions.includes(actionId);
-}
-function rememberAction(room: PartyRoomState, actionId: string) {
-  room.processedActions = [...room.processedActions, actionId].slice(-300);
-}
-
 export async function applyPresenterAction(input: {
   roomId: string;
   presenterToken: string;
@@ -662,7 +637,7 @@ export async function applyPresenterAction(input: {
     if (!safeEqual(input.presenterToken, room.presenterHash))
       return { ok: false, accepted: false, snapshot: null, error: "Room unavailable" };
     advance(room);
-    if (actionSeen(room, input.action.actionId))
+    if (multiplayerActionSeen(room.processedActions, input.action.actionId))
       return { ok: true, accepted: true, snapshot: snapshot(room, "presenter") };
     if (input.action.type === "round.start" && room.phase === "lobby" && room.players.length > 0)
       startRound(room);
@@ -692,7 +667,7 @@ export async function applyPresenterAction(input: {
           ? "That action is not available now"
           : "Waiting for at least one player",
       };
-    rememberAction(room, input.action.actionId);
+    room.processedActions = rememberMultiplayerAction(room.processedActions, input.action.actionId);
     return { ok: true, accepted: true, snapshot: snapshot(room, "presenter") };
   });
   return result ?? { ok: false, accepted: false, snapshot: null, error: "Room unavailable" };
@@ -710,7 +685,7 @@ export async function applyPlayerAction(input: {
       return { ok: false, accepted: false, snapshot: null, error: "Room unavailable" };
     player.lastSeenAt = Date.now();
     advance(room);
-    if (actionSeen(room, input.action.actionId))
+    if (multiplayerActionSeen(room.processedActions, input.action.actionId))
       return { ok: true, accepted: true, snapshot: snapshot(room, "player", player.id) };
     const round = room.round;
     if (!round || input.action.roundId !== round.roundId)
@@ -821,7 +796,7 @@ export async function applyPlayerAction(input: {
       room.recentClues.push(event);
       changed(room);
     }
-    rememberAction(room, input.action.actionId);
+    room.processedActions = rememberMultiplayerAction(room.processedActions, input.action.actionId);
     return { ok: true, accepted: true, snapshot: snapshot(room, "player", player.id) };
   });
   return result ?? { ok: false, accepted: false, snapshot: null, error: "Room unavailable" };

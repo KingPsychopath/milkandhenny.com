@@ -2,8 +2,24 @@ import type { RemoteGameKind } from "../remote/types";
 
 const PREFIX = "things";
 
+export function gameNamespace(game: string, version: number) {
+  return `${PREFIX}:${game}:v${version}`;
+}
+
+export function gameRoomNamespace(game: string, version: number, roomId: string) {
+  return `${gameNamespace(game, version)}:room:${roomId}`;
+}
+
+export function gameRealtimeChannel(game: string, version: number, roomId: string) {
+  return `${gameRoomNamespace(game, version, roomId)}:events`;
+}
+
+export function gameBrowserKey(game: string, version: number, ...segments: string[]) {
+  return [gameNamespace(game, version), ...segments].join(":");
+}
+
 export function remoteRoomRedisKeys(roomId: string, legacy = false) {
-  const base = legacy ? `thing-room:v2:${roomId}` : `${PREFIX}:remote:v3:room:${roomId}`;
+  const base = legacy ? `thing-room:v2:${roomId}` : gameRoomNamespace("remote", 3, roomId);
   return {
     meta: `${base}:meta`,
     setup: `${base}:setup`,
@@ -21,7 +37,7 @@ export function remoteRoomRedisKeys(roomId: string, legacy = false) {
 }
 
 export function partyRoomRedisKeys(roomId: string, legacy = false) {
-  const base = legacy ? `spelling-party:v1:${roomId}` : `${PREFIX}:spelling-party:v2:room:${roomId}`;
+  const base = legacy ? `spelling-party:v1:${roomId}` : gameRoomNamespace("spelling-party", 2, roomId);
   return {
     state: `${base}:state`,
     lock: `${base}:lock`,
@@ -30,22 +46,22 @@ export function partyRoomRedisKeys(roomId: string, legacy = false) {
 }
 
 export const gameRealtimeChannels = {
-  remoteRoom: (roomId: string) => `${PREFIX}:remote:v3:room:${roomId}:events`,
-  spellingPartyRoom: (roomId: string) => `${PREFIX}:spelling-party:v2:room:${roomId}:events`,
+  remoteRoom: (roomId: string) => gameRealtimeChannel("remote", 3, roomId),
+  spellingPartyRoom: (roomId: string) => gameRealtimeChannel("spelling-party", 2, roomId),
 } as const;
 
 export const gameBrowserKeys = {
-  remoteHostSession: (game: RemoteGameKind) => `${PREFIX}:remote:v3:host:${game}:session`,
-  remoteJudgeSession: (roomId: string) => `${PREFIX}:remote:v3:room:${roomId}:judge-session`,
-  remotePlayerSession: (roomId: string) => `${PREFIX}:remote:v3:room:${roomId}:player-session`,
-  remotePendingCommands: (roomId: string) => `${PREFIX}:remote:v3:room:${roomId}:pending-commands`,
-  partyPresenterSession: (roomId: string) => `${PREFIX}:spelling-party:v2:room:${roomId}:presenter-session`,
-  partyPresenterRecovery: (roomId: string) => `${PREFIX}:spelling-party:v2:room:${roomId}:presenter-recovery`,
-  partyInvite: (roomId: string) => `${PREFIX}:spelling-party:v2:room:${roomId}:invite`,
-  partyPlayerSession: (roomId: string) => `${PREFIX}:spelling-party:v2:room:${roomId}:player-session`,
-  partyPendingActions: (roomId: string, playerId: string) => `${PREFIX}:spelling-party:v2:room:${roomId}:player:${playerId}:pending-actions`,
-  partyDraft: (roomId: string, roundId: string) => `${PREFIX}:spelling-party:v2:room:${roomId}:round:${roundId}:draft`,
-  partyDraftPrefix: (roomId: string) => `${PREFIX}:spelling-party:v2:room:${roomId}:round:`,
+  remoteHostSession: (game: RemoteGameKind) => gameBrowserKey("remote", 3, "host", game, "session"),
+  remoteJudgeSession: (roomId: string) => gameBrowserKey("remote", 3, "room", roomId, "judge-session"),
+  remotePlayerSession: (roomId: string) => gameBrowserKey("remote", 3, "room", roomId, "player-session"),
+  remotePendingCommands: (roomId: string) => gameBrowserKey("remote", 3, "room", roomId, "pending-commands"),
+  partyPresenterSession: (roomId: string) => gameBrowserKey("spelling-party", 2, "room", roomId, "presenter-session"),
+  partyPresenterRecovery: (roomId: string) => gameBrowserKey("spelling-party", 2, "room", roomId, "presenter-recovery"),
+  partyInvite: (roomId: string) => gameBrowserKey("spelling-party", 2, "room", roomId, "invite"),
+  partyPlayerSession: (roomId: string) => gameBrowserKey("spelling-party", 2, "room", roomId, "player-session"),
+  partyPendingActions: (roomId: string, playerId: string) => gameBrowserKey("spelling-party", 2, "room", roomId, "player", playerId, "pending-actions"),
+  partyDraft: (roomId: string, roundId: string) => gameBrowserKey("spelling-party", 2, "room", roomId, "round", roundId, "draft"),
+  partyDraftPrefix: (roomId: string) => gameBrowserKey("spelling-party", 2, "room", roomId, "round", ""),
 } as const;
 
 export const legacyGameBrowserKeys = {

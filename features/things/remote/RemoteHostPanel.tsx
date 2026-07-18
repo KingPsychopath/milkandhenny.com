@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
-import QRCode from "qrcode";
+import { EndGameDialog } from "../shared/EndGameDialog";
+import { shareOrCopy } from "../shared/share.client";
+import { useQrCode } from "../shared/useQrCode";
 
 interface RemoteHostPanelProps {
   gameLabel: string;
@@ -30,52 +32,16 @@ export function RemoteHostPanel({
   onMessage,
   onToggleExclusive,
 }: RemoteHostPanelProps) {
-  const [qrCode, setQrCode] = useState<string | null>(null);
   const [ending, setEnding] = useState(false);
   const [confirmingEnd, setConfirmingEnd] = useState(false);
   const [nativeShare, setNativeShare] = useState(false);
   const [manualCopyUrl, setManualCopyUrl] = useState<string | null>(null);
+  const { dataUrl: qrCode } = useQrCode(inviteUrl, 240);
 
   useEffect(() => {
     const coarsePointer = window.matchMedia("(hover: none) and (pointer: coarse)");
     setNativeShare(typeof navigator.share === "function" && coarsePointer.matches);
   }, []);
-
-  useEffect(() => {
-    if (!inviteUrl) {
-      setQrCode(null);
-      return;
-    }
-    let active = true;
-    void QRCode.toDataURL(inviteUrl, { width: 240, margin: 1 }).then((value) => {
-      if (active) setQrCode(value);
-    });
-    return () => {
-      active = false;
-    };
-  }, [inviteUrl]);
-
-  const copyInvite = async (url: string) => {
-    try {
-      await navigator.clipboard.writeText(url);
-      return true;
-    } catch {
-      const textarea = document.createElement("textarea");
-      textarea.value = url;
-      textarea.readOnly = true;
-      textarea.style.position = "fixed";
-      textarea.style.opacity = "0";
-      document.body.append(textarea);
-      textarea.select();
-      let copied = false;
-      try {
-        copied = document.execCommand("copy");
-      } finally {
-        textarea.remove();
-      }
-      return copied;
-    }
-  };
 
   const handleShare = async () => {
     setManualCopyUrl(null);
@@ -91,18 +57,10 @@ export function RemoteHostPanel({
       text: `Open this to judge our ${gameLabel} game.`,
       url,
     };
-    if (nativeShare && navigator.share && (!navigator.canShare || navigator.canShare(share))) {
-      try {
-        await navigator.share(share);
-        onMessage("Invite shared.");
-        return;
-      } catch (error) {
-        if (error instanceof DOMException && error.name === "AbortError") return;
-      }
-    }
-    if (await copyInvite(url)) {
-      onMessage("Judge link copied.");
-    } else {
+    const result = await shareOrCopy(share, { useNativeShare: nativeShare, copyValue: url });
+    if (result === "shared") onMessage("Invite shared.");
+    else if (result === "copied") onMessage("Judge link copied.");
+    else if (result === "failed") {
       setManualCopyUrl(url);
       onMessage("Copy the judge link below.");
     }
@@ -187,7 +145,7 @@ export function RemoteHostPanel({
           </div>
         </div>
       ) : null}
-      {confirmingEnd ? <div className="mt-4 rounded-2xl border border-white/15 bg-white/[0.04] p-4 text-center" role="group" aria-labelledby="end-judging-title"><h3 id="end-judging-title" className="font-serif text-xl font-semibold">End remote judging?</h3><p className="mt-1 text-sm text-white/55">The game keeps working on this phone.</p><div className="mt-3 grid grid-cols-2 gap-2"><button type="button" autoFocus onClick={() => setConfirmingEnd(false)} className="min-h-11 rounded-full border border-white/15 font-mono text-xs">keep judge</button><button type="button" onClick={() => void handleEnd()} className="min-h-11 rounded-full bg-white font-mono text-xs font-semibold text-black">end judging</button></div></div> : null}
+      {confirmingEnd ? <EndGameDialog tone="dark" eyebrow="remote judge" title="End remote judging?" description="The game keeps working on this phone." confirmLabel="end judging" cancelLabel="keep judge" pending={ending} onCancel={() => setConfirmingEnd(false)} onConfirm={() => void handleEnd()} /> : null}
       {roomId ? (
         <label className="mt-4 flex min-h-11 cursor-pointer items-center justify-between gap-4 border-t border-white/10 pt-4 font-mono text-xs text-white/60">
           <span>judge-only controls</span>
