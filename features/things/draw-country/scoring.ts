@@ -7,6 +7,8 @@ const ALIGNMENT_TRIM = 0.025;
 const MINIMUM_DRAWING_EXTENT = 8;
 const MAX_POINT_DEVIATION = 0.5;
 const SILHOUETTE_GRID_SIZE = 28;
+const SILHOUETTE_GUARD_KNEE = 0.25;
+const SILHOUETTE_GUARD_TAIL_EXPONENT = 3.7;
 const PERIMETER_ALLOWANCE = 1.25;
 const COUNTRY_COORDINATE_SCALE = 10_000;
 const BORDER_FIT_WEIGHT = 0.3;
@@ -338,7 +340,11 @@ function accuracyFor(score: number): CountryScore["accuracy"] {
 }
 
 function silhouetteScore(deviation: number) {
-  return Math.round(100 * Math.max(0, 1 - Math.max(0, deviation) * 2.2));
+  const bounded = Math.max(0, Math.min(1, deviation));
+  if (bounded <= SILHOUETTE_GUARD_KNEE) return Math.round(100 * (1 - bounded * 2.2));
+  const kneeScore = 1 - SILHOUETTE_GUARD_KNEE * 2.2;
+  const remainingShape = (1 - bounded) / (1 - SILHOUETTE_GUARD_KNEE);
+  return Math.round(100 * kneeScore * remainingShape ** SILHOUETTE_GUARD_TAIL_EXPONENT);
 }
 
 function strokeQualityScore(deviation: number) {

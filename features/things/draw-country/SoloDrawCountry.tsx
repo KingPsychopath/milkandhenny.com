@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { TextMorph } from "torph/react";
 import { useWebHaptics } from "web-haptics/react";
 import { useUpdateReloadSafety } from "@/features/offline/update-safety.client";
-import { CountryReveal, CountryRevealLegend, CountryScoreDetails } from "./CountryReveal";
+import { CountryRevealAnalysis } from "./CountryReveal";
 import { DrawCountryResultReport } from "./DrawCountryResultReport";
 import { CountryRoundBoard } from "./CountryRoundBoard";
 import { resultReaction } from "./result-copy";
@@ -21,7 +21,10 @@ export function SoloDrawCountry({ onExit }: { onExit: () => void }) {
   const [seconds, setSeconds] = useState(ROUND_SECONDS);
   const haptics = useWebHaptics();
   useUpdateReloadSafety("draw-country-solo", phase === "reveal");
-  const evaluation = useMemo(() => scoreCountryDrawing(country, drawing), [country, drawing]);
+  const evaluation = useMemo(
+    () => (phase === "reveal" ? scoreCountryDrawing(country, drawing) : null),
+    [country, drawing, phase],
+  );
 
   useEffect(() => {
     window.scrollTo({ top: 0 });
@@ -73,6 +76,8 @@ export function SoloDrawCountry({ onExit }: { onExit: () => void }) {
       </div>
     );
 
+  if (!evaluation) return null;
+
   return (
     <div className="things-game things-game--cream text-black">
       <header className="mx-auto flex w-full max-w-3xl items-center justify-between px-5 pt-3 font-mono text-xs text-black/50">
@@ -104,10 +109,8 @@ export function SoloDrawCountry({ onExit }: { onExit: () => void }) {
           </div>
         </div>
         <div className="mt-6">
-          <CountryReveal evaluation={evaluation} />
+          <CountryRevealAnalysis evaluation={evaluation} />
         </div>
-        <CountryScoreDetails evaluation={evaluation} />
-        <CountryRevealLegend />
         <DrawCountryResultReport countryId={country.id} drawing={drawing} mode="solo" />
         <button
           type="button"

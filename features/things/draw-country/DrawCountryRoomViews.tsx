@@ -3,7 +3,7 @@ import { useState } from "react";
 import { TextMorph } from "torph/react";
 import { useQrCode } from "@/hooks/useQrCode";
 import { shareOrCopy } from "@/lib/client/share";
-import { CountryReveal, CountryRevealLegend, CountryScoreDetails } from "./CountryReveal";
+import { CountryRevealAnalysis } from "./CountryReveal";
 import { DrawCountryResultReport } from "./DrawCountryResultReport";
 import { countryById } from "./countries";
 import { buildDrawCountryPlayerInviteUrl } from "./draw-country-invite";
@@ -192,9 +192,7 @@ export function RoomReveal({
         <div className="mt-5 grid gap-6 sm:grid-cols-[minmax(0,1.3fr)_minmax(15rem,0.7fr)] sm:items-start">
           {evaluation ? (
             <div>
-              <CountryReveal evaluation={evaluation} />
-              <CountryScoreDetails evaluation={evaluation} />
-              <CountryRevealLegend />
+              <CountryRevealAnalysis evaluation={evaluation} />
               <DrawCountryResultReport
                 countryId={snapshot.round?.countryId ?? ""}
                 drawing={drawing}

@@ -396,6 +396,9 @@
     stroke-dasharray: 1;
     stroke-dashoffset: 1;
     animation: country-outline-trace 680ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    transition:
+      filter 180ms ease,
+      stroke-width 180ms ease;
   }
 
   .country-reveal-reference {
@@ -419,12 +422,108 @@
     stroke: var(--things-country-inside);
   }
 
+  .country-reveal-guide--missed {
+    stroke: var(--things-country-point);
+    stroke-dasharray: 0.035 0.025;
+  }
+
   .country-reveal-point {
     fill: var(--things-country-point);
     opacity: 0;
     transform-box: fill-box;
     transform-origin: center;
     animation: country-point-in 320ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    transition: filter 180ms ease;
+  }
+
+  .country-reveal-shape {
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 180ms ease;
+  }
+
+  .country-reveal-shape--reference {
+    fill: var(--things-country-reference);
+  }
+
+  .country-reveal-shape--drawing {
+    fill: var(--things-country-point);
+  }
+
+  .country-reveal-board[data-focus="outside"] .country-reveal-reference,
+  .country-reveal-board[data-focus="inside"] .country-reveal-reference {
+    filter: opacity(0.55);
+  }
+
+  .country-reveal-board[data-focus="outside"] .country-reveal-drawing,
+  .country-reveal-board[data-focus="inside"] .country-reveal-drawing {
+    filter: opacity(0.42);
+  }
+
+  .country-reveal-board[data-focus="outside"] .country-reveal-guide--inside,
+  .country-reveal-board[data-focus="outside"] .country-reveal-point--inside,
+  .country-reveal-board[data-focus="inside"] .country-reveal-guide--outside,
+  .country-reveal-board[data-focus="inside"] .country-reveal-point--outside {
+    filter: opacity(0.08);
+  }
+
+  .country-reveal-board[data-focus="outside"] .country-reveal-guide--outside,
+  .country-reveal-board[data-focus="inside"] .country-reveal-guide--inside {
+    stroke-width: 3;
+  }
+
+  .country-reveal-board[data-focus="missed"]
+    .country-reveal-guide:not(.country-reveal-guide--missed),
+  .country-reveal-board[data-focus="missed"] .country-reveal-point {
+    filter: opacity(0.08);
+  }
+
+  .country-reveal-board[data-focus="missed"] .country-reveal-drawing {
+    filter: opacity(0.4);
+  }
+
+  .country-reveal-board[data-focus="shape"] .country-reveal-guide,
+  .country-reveal-board[data-focus="shape"] .country-reveal-point {
+    filter: opacity(0.06);
+  }
+
+  .country-reveal-board[data-focus="shape"] .country-reveal-shape--reference {
+    opacity: 0.38;
+  }
+
+  .country-reveal-board[data-focus="shape"] .country-reveal-shape--drawing {
+    opacity: 0.12;
+  }
+
+  .country-reveal-board[data-focus="strokes"] .country-reveal-reference,
+  .country-reveal-board[data-focus="strokes"] .country-reveal-guide {
+    filter: opacity(0.08);
+  }
+
+  .country-reveal-board[data-focus="strokes"] .country-reveal-drawing {
+    stroke-width: 7;
+  }
+
+  .country-reveal-board[data-focus="strokes"] .country-reveal-point {
+    filter: opacity(0.7);
+  }
+
+  .country-reveal-board[data-focus="islands"] .country-reveal-guide,
+  .country-reveal-board[data-focus="islands"] .country-reveal-point {
+    filter: opacity(0.06);
+  }
+
+  .country-reveal-board[data-focus="islands"] .country-reveal-reference,
+  .country-reveal-board[data-focus="islands"] .country-reveal-drawing {
+    stroke-width: 6;
+  }
+
+  .country-reveal-board[data-focus="islands"] .country-reveal-shape--reference {
+    opacity: 0.28;
+  }
+
+  .country-reveal-board[data-focus="islands"] .country-reveal-shape--drawing {
+    opacity: 0.08;
   }
 
   .country-legend-reference,

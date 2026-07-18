@@ -261,6 +261,25 @@ describe("draw-country scoring", () => {
     expect(scoreCountryDrawing(australia, enclosingBox).score).toBeLessThanOrEqual(30);
   });
 
+  it("keeps a coherent rough silhouette low without collapsing it to zero", () => {
+    const china = COUNTRIES.find(({ id }) => id === "CN");
+    expect(china).toBeDefined();
+    if (!china) throw new Error("China fixture is missing");
+    const roughPentagon: CountryDrawing = [
+      [
+        { x: 180, y: 110 },
+        { x: 610, y: 130 },
+        { x: 850, y: 360 },
+        { x: 600, y: 650 },
+        { x: 120, y: 560 },
+      ],
+    ];
+
+    const result = scoreCountryDrawing(china, roughPentagon);
+    expect(result.score).toBeGreaterThanOrEqual(10);
+    expect(result.score).toBeLessThanOrEqual(30);
+  });
+
   it("still rewards a coherent simplified outline", () => {
     const australia = COUNTRIES.find(({ id }) => id === "AU");
     expect(australia).toBeDefined();
