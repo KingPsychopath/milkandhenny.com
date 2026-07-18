@@ -1,10 +1,11 @@
 import { Link } from "@tanstack/react-router";
 import { useState } from "react";
 import { TextMorph } from "torph/react";
-import { shareOrCopy } from "../shared/share.client";
-import { useQrCode } from "../shared/useQrCode";
+import { useQrCode } from "@/hooks/useQrCode";
+import { shareOrCopy } from "@/lib/client/share";
 import { CountryReveal } from "./CountryReveal";
 import { countryById } from "./countries";
+import { buildDrawCountryPlayerInviteUrl } from "./draw-country-invite";
 import { drawCountryBrowserKeys } from "./draw-country-keys";
 import { scoreCountryDrawing } from "./scoring";
 import type { CountryDrawing, DrawCountrySnapshot } from "./types";
@@ -41,8 +42,12 @@ export function RoomLobby({
   const invite =
     typeof window === "undefined"
       ? ""
-      : `${location.origin}/things/draw-country/${snapshot.roomId}${token ? `#join=${token}` : ""}`;
-  const { dataUrl: qr } = useQrCode(invite || null, 280);
+      : buildDrawCountryPlayerInviteUrl(
+          window.location.origin,
+          snapshot.roomId,
+          token ?? undefined,
+        );
+  const { dataUrl: qr, failed: qrFailed } = useQrCode(invite || null, 280);
   const share = async () => {
     const result = await shareOrCopy(
       { title: "Draw the Country", text: `Join room ${snapshot.roomId}.`, url: invite },
@@ -76,6 +81,11 @@ export function RoomLobby({
             alt="QR code to join the draw the country room"
             className="mt-6 w-48 rounded-3xl bg-white p-3"
           />
+        ) : null}
+        {qrFailed ? (
+          <p className="mt-4 font-mono text-xs text-black/45">
+            QR unavailable — share the link or room code.
+          </p>
         ) : null}
         <p className="mt-4 font-mono text-micro uppercase tracking-[0.17em] text-black/40">
           room code
