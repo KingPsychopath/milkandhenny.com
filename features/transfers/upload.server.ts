@@ -7,7 +7,7 @@
  */
 
 import path from "path";
-import { getMediaProcessor } from "@/features/media/processor.server";
+import { getMediaProcessor } from "@/features/transfers/media-processor.server";
 import { inferTransferAssetGroups } from "./live-photo";
 import type { TransferData, TransferFile } from "./types";
 import type { ProcessFileResult, TransferUploadFileInput } from "./upload-types";

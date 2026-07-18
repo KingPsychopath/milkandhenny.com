@@ -15,6 +15,7 @@ import { useRemoteSocket } from "./useRemoteSocket";
 import { legacyRemoteBrowserKeys, remoteBrowserKeys } from "./remote-keys";
 import { migrateSessionValue, removeStorageKeys } from "../shared/game-storage.client";
 import { useRoomReconciler } from "../shared/useRoomReconciler";
+import { buildPairedGameJudgeInviteUrl, pairedGameJudgeFragment } from "./paired-game-invite";
 
 const SAFETY_SYNC_INTERVAL_MS = 12_000;
 
@@ -148,11 +149,14 @@ export function usePairedGameRoom(
     setMessage(null);
     try {
       const credentials = await createPairedGameRoomFn({ data: { creatorRole: "judge", setup } });
-      const hash = new URLSearchParams({ judge: credentials.judgeToken, player: credentials.playerToken, game });
       await navigate({
         to: "/things/judge/$roomId",
         params: { roomId: credentials.roomId },
-        hash: hash.toString(),
+        hash: pairedGameJudgeFragment({
+          judgeToken: credentials.judgeToken,
+          playerToken: credentials.playerToken,
+          game,
+        }),
       });
       return credentials;
     } catch {
@@ -271,7 +275,9 @@ export function usePairedGameRoom(
   }, [room, snapshotSignature]);
 
   const inviteUrl = room?.judgeToken && typeof window !== "undefined"
-    ? `${window.location.origin}/things/judge/${room.roomId}#${room.judgeToken}`
+    ? buildPairedGameJudgeInviteUrl(window.location.origin, room.roomId, {
+        judgeToken: room.judgeToken,
+      })
     : null;
   const syncNow = useCallback(() => syncNowRef.current?.() ?? Promise.resolve(), []);
 

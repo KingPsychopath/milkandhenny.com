@@ -20,14 +20,14 @@ describe("media processor selection", () => {
     vi.doMock("@/features/media/config.server", () => ({
       getMediaProcessorMode: () => "local",
     }));
-    vi.doMock("@/features/media/backends/local.server", () => ({
+    vi.doMock("@/features/transfers/media-backends/local.server", () => ({
       createLocalMediaProcessor: () => localProcessor,
     }));
-    vi.doMock("@/features/media/backends/hybrid.server", () => ({
+    vi.doMock("@/features/transfers/media-backends/hybrid.server", () => ({
       createHybridMediaProcessor: vi.fn(() => hybridProcessor),
     }));
 
-    const { getMediaProcessor } = await import("@/features/media/processor.server");
+    const { getMediaProcessor } = await import("@/features/transfers/media-processor.server");
     expect(getMediaProcessor()).toBe(localProcessor);
   });
 
@@ -47,14 +47,14 @@ describe("media processor selection", () => {
     vi.doMock("@/features/media/config.server", () => ({
       getMediaProcessorMode: () => "hybrid",
     }));
-    vi.doMock("@/features/media/backends/local.server", () => ({
+    vi.doMock("@/features/transfers/media-backends/local.server", () => ({
       createLocalMediaProcessor: () => localProcessor,
     }));
-    vi.doMock("@/features/media/backends/hybrid.server", () => ({
+    vi.doMock("@/features/transfers/media-backends/hybrid.server", () => ({
       createHybridMediaProcessor,
     }));
 
-    const { getMediaProcessor } = await import("@/features/media/processor.server");
+    const { getMediaProcessor } = await import("@/features/transfers/media-processor.server");
     expect(getMediaProcessor()).toBe(hybridProcessor);
     expect(createHybridMediaProcessor).toHaveBeenCalledWith("hybrid");
   });
@@ -70,14 +70,14 @@ describe("media processor selection", () => {
     vi.doMock("@/features/media/config.server", () => ({
       getMediaProcessorMode: () => "worker",
     }));
-    vi.doMock("@/features/media/backends/local.server", () => ({
+    vi.doMock("@/features/transfers/media-backends/local.server", () => ({
       createLocalMediaProcessor: vi.fn(),
     }));
-    vi.doMock("@/features/media/backends/hybrid.server", () => ({
+    vi.doMock("@/features/transfers/media-backends/hybrid.server", () => ({
       createHybridMediaProcessor,
     }));
 
-    const { getMediaProcessor } = await import("@/features/media/processor.server");
+    const { getMediaProcessor } = await import("@/features/transfers/media-processor.server");
     expect(getMediaProcessor()).toBe(hybridProcessor);
     expect(createHybridMediaProcessor).toHaveBeenCalledWith("worker");
   });

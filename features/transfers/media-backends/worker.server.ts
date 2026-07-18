@@ -17,7 +17,7 @@ import {
   isTransferProcessingStale,
   type ProcessingRoute,
 } from "@/features/transfers/media-state";
-import { wakeTransferMediaWorker } from "@/features/media/worker-wake.server";
+import { wakeMediaWorker } from "@/features/system/media-worker-wake.server";
 import {
   dequeueTransferMediaJobs,
   enqueueTransferMediaJob,
@@ -36,7 +36,7 @@ import {
   buildReadyVisualFile,
   getRouteKind,
   processTransferObjectLocally,
-} from "@/features/media/backends/local.server";
+} from "@/features/transfers/media-backends/local.server";
 
 type WorkerRunResult = {
   processedJobs: number;
@@ -48,7 +48,7 @@ type WorkerRunResult = {
 
 const WORKER_JOB_CONCURRENCY = Math.max(
   1,
-  Number(process.env.TRANSFER_MEDIA_WORKER_CONCURRENCY ?? "1"),
+  Number(process.env.MEDIA_WORKER_CONCURRENCY ?? "1"),
 );
 
 const WORKER_ROUTE_MAP: Partial<Record<ProcessingRoute, ProcessingRoute>> = {
@@ -157,7 +157,7 @@ async function enqueueWorkerJob(params: {
       attempt,
       enqueuedAt,
     });
-    void wakeTransferMediaWorker();
+    void wakeMediaWorker();
 
     return {
       file: {
@@ -438,7 +438,6 @@ export {
   refreshQueuedTransferState,
   requeueTransferFile,
   runTransferMediaJobs,
-  wakeTransferMediaWorker,
 };
 
 export type { WorkerRunResult };

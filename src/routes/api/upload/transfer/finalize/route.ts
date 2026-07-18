@@ -20,6 +20,7 @@ import {
 } from "@/features/transfers/media-state";
 import type { TransferUploadFileInput } from "@/features/transfers/upload-types";
 import { getBaseUrlForRequest } from "@/lib/shared/config";
+import { buildTransferUrl } from "@/features/transfers/routes";
 import { apiErrorFromRequest } from "@/lib/platform/api-error";
 import { mapWithConcurrency } from "@/lib/shared/map-with-concurrency";
 import { headObject } from "@/lib/platform/r2.server";
@@ -231,8 +232,8 @@ async function handlePOST(request: Request) {
     await deleteTransferUploadReservation(transferId).catch(() => undefined);
 
     return Response.json({
-      shareUrl: `${getBaseUrlForRequest(request)}/t/${transferId}`,
-      adminUrl: `${getBaseUrlForRequest(request)}/t/${transferId}?token=${deleteToken}`,
+      shareUrl: buildTransferUrl(getBaseUrlForRequest(request), transferId),
+      adminUrl: buildTransferUrl(getBaseUrlForRequest(request), transferId, deleteToken),
       transfer: {
         id: transferId,
         title: title || "untitled",

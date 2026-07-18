@@ -1,4 +1,4 @@
-import { wakeTransferMediaWorker } from "@/features/media/worker-wake.server";
+import { wakeMediaWorker } from "@/features/system/media-worker-wake.server";
 import { getBlockingRedis, getCommandRedis } from "@/lib/platform/redis-direct.server";
 import { getRedis } from "@/lib/platform/redis.server";
 
@@ -29,7 +29,7 @@ async function enqueueWordMediaJob(job: WordMediaJob): Promise<void> {
   const redis = requireWordMediaQueueRedis();
   await redis.rpush(WORD_MEDIA_QUEUE_KEY, JSON.stringify(job));
   if (process.env.NODE_ENV !== "test") {
-    void wakeTransferMediaWorker();
+  void wakeMediaWorker();
   }
 }
 

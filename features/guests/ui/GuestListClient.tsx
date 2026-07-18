@@ -10,17 +10,9 @@ import { SearchBar } from "./components/SearchBar";
 import { GuestList } from "./components/GuestList";
 import { GuestStats } from "./components/GuestStats";
 import { GuestManagement } from "./components/GuestManagement";
-
-type QrCodeModule = {
-  toDataURL: (text: string, options?: { margin?: number; width?: number }) => Promise<string>;
-};
-
-let qrCodeModulePromise: Promise<QrCodeModule> | null = null;
-
-function loadQrCode(): Promise<QrCodeModule> {
-  qrCodeModulePromise ??= import("qrcode/lib/browser").then((mod) => mod as QrCodeModule);
-  return qrCodeModulePromise;
-}
+import { useActionDialog } from "@/hooks/useActionDialog";
+import { generateQrCode } from "@/lib/client/qr-code";
+import { buildBestDressedUrl } from "@/features/best-dressed/routes";
 
 type GuestListClientProps = {
   initialGuests: Guest[];
@@ -46,6 +38,7 @@ export function GuestListClient({ initialGuests }: GuestListClientProps) {
   const [sheetExpiresAt, setSheetExpiresAt] = useState<string | null>(null);
   const [nowTick, setNowTick] = useState(() => Date.now());
   const [revokeCodesLoading, setRevokeCodesLoading] = useState(false);
+  const { confirm: confirmAction, dialog: actionDialog } = useActionDialog();
 
   const { guests, loading, error, updateCheckIn, refetch } = useGuests({ initialGuests });
   const { searchQuery, setSearchQuery, filter, setFilter, filteredGuests, searchStats } =
@@ -113,9 +106,8 @@ export function GuestListClient({ initialGuests }: GuestListClientProps) {
 
       const code = (data.code as string) || "";
       if (code) {
-        const link = `${window.location.origin}/best-dressed?code=${encodeURIComponent(code)}`;
-        const QRCode = await loadQrCode();
-        const qr = await QRCode.toDataURL(link, { margin: 1, width: 220 });
+        const link = buildBestDressedUrl(window.location.origin, code);
+        const qr = await generateQrCode(link, { width: 220 });
         setVoteCodeQr(qr);
       } else {
         setVoteCodeQr(null);
@@ -158,9 +150,8 @@ export function GuestListClient({ initialGuests }: GuestListClientProps) {
       // Generate QR images client-side, then print in-page (avoids popup blockers).
       const rows = await Promise.all(
         codes.map(async (code) => {
-          const link = `${window.location.origin}/best-dressed?code=${encodeURIComponent(code)}`;
-          const QRCode = await loadQrCode();
-          const qr = await QRCode.toDataURL(link, { margin: 1, width: 140 });
+          const link = buildBestDressedUrl(window.location.origin, code);
+          const qr = await generateQrCode(link, { width: 140 });
           return { code, qr };
         }),
       );
@@ -176,9 +167,13 @@ export function GuestListClient({ initialGuests }: GuestListClientProps) {
   };
 
   const handleRevokeAllVoteCodes = async () => {
-    const ok = window.confirm(
-      "Revoke ALL minted best dressed codes?\n\nThis will invalidate any printed codes that have not been used yet.",
-    );
+    const ok = await confirmAction({
+      eyebrow: "best dressed",
+      title: "Revoke every vote code?",
+      description: "This invalidates every minted code, including unused codes on printed sheets.",
+      confirmLabel: "revoke codes",
+      intent: "danger",
+    });
     if (!ok) return;
 
     setRevokeCodesLoading(true);
@@ -225,9 +220,8 @@ export function GuestListClient({ initialGuests }: GuestListClientProps) {
   useEffect(() => {
     // Pre-generate an "event QR" once after mount. It's just a deep link to the voting page.
     if (djQr) return;
-    const link = `${window.location.origin}/best-dressed`;
-    loadQrCode()
-      .then((QRCode) => QRCode.toDataURL(link, { margin: 1, width: 260 }))
+    const link = buildBestDressedUrl(window.location.origin);
+    generateQrCode(link, { width: 260 })
       .then((qr) => setDjQr(qr))
       .catch(() => {
         /* ignore */
@@ -333,6 +327,7 @@ export function GuestListClient({ initialGuests }: GuestListClientProps) {
         onGuestRemoved={refetch}
         onCSVImported={refetch}
       />
+      {actionDialog}
 
       <main
         id="main"

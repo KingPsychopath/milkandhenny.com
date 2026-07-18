@@ -1,17 +1,17 @@
-function getTransferMediaWorkerWakeUrl(): string | null {
-  const wakeUrl = process.env.TRANSFER_MEDIA_WAKE_URL?.trim();
+function getMediaWorkerWakeUrl(): string | null {
+  const wakeUrl = process.env.MEDIA_WORKER_WAKE_URL?.trim();
   return wakeUrl ? wakeUrl : null;
 }
 
-async function wakeTransferMediaWorker(): Promise<boolean> {
+async function wakeMediaWorker(): Promise<boolean> {
   if (process.env.NODE_ENV === "test") return true;
 
-  const wakeUrl = getTransferMediaWorkerWakeUrl();
+  const wakeUrl = getMediaWorkerWakeUrl();
   if (!wakeUrl) return false;
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 1500);
-  const wakeToken = process.env.TRANSFER_MEDIA_WAKE_TOKEN;
+  const wakeToken = process.env.MEDIA_WORKER_WAKE_TOKEN;
 
   try {
     const response = await fetch(wakeUrl, {
@@ -27,4 +27,4 @@ async function wakeTransferMediaWorker(): Promise<boolean> {
   }
 }
 
-export { getTransferMediaWorkerWakeUrl, wakeTransferMediaWorker };
+export { getMediaWorkerWakeUrl, wakeMediaWorker };

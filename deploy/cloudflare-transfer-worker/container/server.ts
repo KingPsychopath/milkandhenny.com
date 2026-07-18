@@ -3,7 +3,7 @@ import { closeDirectRedisConnections } from "@/lib/platform/redis-direct.server"
 import {
   drainMediaQueuesUntilIdle,
   type DrainMediaQueuesResult,
-} from "@/features/media/worker-runtime.server";
+} from "@/features/system/media-worker-runtime.server";
 
 const PORT = Math.max(1, Number(process.env.PORT ?? "8080"));
 

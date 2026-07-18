@@ -30,6 +30,7 @@ import { useLazyImage } from "@/hooks/useLazyImage";
 import { useSwipe } from "@/hooks/useSwipe";
 import { useFocusTrap } from "@/hooks/useFocusTrap";
 import { SelectionToggle } from "@/components/SelectionToggle";
+import { useActionDialog } from "@/hooks/useActionDialog";
 import type { AssetGroup, FileKind } from "@/features/transfers/types";
 import {
   TIME_FINDER_WINDOW_MINUTES,
@@ -626,6 +627,11 @@ function MultiVisualContent({
  * - Files/Audio: list section below the gallery with download buttons
  */
 export function TransferGallery({ transferId, files, groups, deleteToken }: TransferGalleryProps) {
+  const {
+    confirm: confirmAction,
+    dialog: actionDialog,
+    isOpen: actionDialogOpen,
+  } = useActionDialog();
   const pathname = useLocation({ select: (location) => location.pathname });
   const searchString = useLocation({ select: (location) => location.searchStr });
   const navigate = useNavigate();
@@ -1161,13 +1167,14 @@ export function TransferGallery({ transferId, files, groups, deleteToken }: Tran
   useEffect(() => {
     if (lightboxIndex === null) return;
     function onKeyDown(e: KeyboardEvent) {
+      if (actionDialogOpen) return;
       if (e.key === "Escape") closeLightbox();
       if (e.key === "ArrowRight") goNext();
       if (e.key === "ArrowLeft") goPrev();
     }
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [lightboxIndex, closeLightbox, goNext, goPrev]);
+  }, [actionDialogOpen, lightboxIndex, closeLightbox, goNext, goPrev]);
 
   /* Swipe detection via shared hook */
   const swipeRef = useSwipe<HTMLDivElement>({
@@ -1175,7 +1182,7 @@ export function TransferGallery({ transferId, files, groups, deleteToken }: Tran
     onSwipeRight: goPrev,
     enabled: lightboxIndex !== null,
   });
-  const lightboxFocusRef = useFocusTrap<HTMLDivElement>(lightboxIndex !== null);
+  const lightboxFocusRef = useFocusTrap<HTMLDivElement>(lightboxIndex !== null && !actionDialogOpen);
   const setLightboxRef = useCallback(
     (node: HTMLDivElement | null) => {
       swipeRef.current = node;
@@ -1467,7 +1474,13 @@ export function TransferGallery({ transferId, files, groups, deleteToken }: Tran
   const handleDeleteFile = useCallback(
     async (file: TransferFileData) => {
       if (!deleteToken || deletingFileId) return;
-      const confirmed = window.confirm(`Delete "${file.filename}" from this transfer?`);
+      const confirmed = await confirmAction({
+        eyebrow: "delete file",
+        title: `Delete “${file.filename}”?`,
+        description: "This permanently removes the file from this transfer.",
+        confirmLabel: "delete file",
+        intent: "danger",
+      });
       if (!confirmed) return;
 
       setDeleteError("");
@@ -1520,7 +1533,7 @@ export function TransferGallery({ transferId, files, groups, deleteToken }: Tran
         setDeletingFileId(null);
       }
     },
-    [deleteToken, deletingFileId, navigate, router, transferId],
+    [confirmAction, deleteToken, deletingFileId, navigate, router, transferId],
   );
 
   const selectedCount = selectedIds.size;
@@ -2118,6 +2131,7 @@ export function TransferGallery({ transferId, files, groups, deleteToken }: Tran
           <PageControls page={page} totalPages={totalPages} onPageChange={handlePageChange} />
         </div>
       )}
+      {actionDialog}
     </div>
   );
 }

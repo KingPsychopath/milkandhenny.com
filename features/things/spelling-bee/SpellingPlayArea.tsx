@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import type { SpellingWord } from "./decks";
+import type { SpellingWord } from "../spelling/decks";
 
 export function SpellingPlayArea({
   item,

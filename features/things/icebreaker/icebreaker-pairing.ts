@@ -138,8 +138,9 @@ export function pairingPayload(player: IcebreakerPlayer) {
 }
 
 export function pairingUrl(origin: string, player: IcebreakerPlayer) {
-  const cleanOrigin = origin.replace(/\/$/, "");
-  return `${cleanOrigin}/things/icebreaker#pair=${encodeURIComponent(pairingPayload(player))}`;
+  return buildAppUrl(origin, "/things/icebreaker", {
+    fragment: { pair: pairingPayload(player) },
+  });
 }
 
 export function parsePairingCode(value: string): IcebreakerPlayer | null {
@@ -313,3 +314,4 @@ export function encounterResult(encounter: IcebreakerEncounter): PairingResult |
     partner: { id: encounter.partnerId, colour: partnerColour },
   };
 }
+import { buildAppUrl } from "@/lib/shared/app-url";

@@ -1,4 +1,4 @@
-import { SPELLING_DECKS, type SpellingWord } from "../spelling-bee/decks";
+import { SPELLING_DECKS, type SpellingWord } from "../spelling/decks";
 import type { PartyDeckSummary } from "./types";
 
 const SENTENCES: Record<string, string> = {

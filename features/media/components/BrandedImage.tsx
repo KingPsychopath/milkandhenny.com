@@ -6,6 +6,7 @@ import { useOutsideClick } from "@/hooks/useOutsideClick";
 import { useEscapeKey } from "@/hooks/useEscapeKey";
 import { useFocusTrap } from "@/hooks/useFocusTrap";
 import type { FocalPreset } from "@/features/media/focal";
+import { useNativeShareAvailability } from "@/hooks/useNativeShareAvailability";
 
 type BrandedImageProps = {
   /** Full-size image URL (WebP from R2) */
@@ -21,13 +22,6 @@ type BrandedImageProps = {
 };
 
 const COPIED_DURATION_MS = 2000;
-
-function canUseNativeShareOnMobile(): boolean {
-  if (typeof window === "undefined") return false;
-  return (
-    typeof navigator.share === "function" && /Android|iPhone|iPad|iPod/i.test(navigator.userAgent)
-  );
-}
 
 /** Copy a blob as an image to the clipboard (re-encodes as PNG for compat) */
 async function copyImageToClipboard(blob: Blob): Promise<boolean> {
@@ -93,7 +87,7 @@ export function BrandedImage({
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
   const [copied, setCopied] = useState(false);
-  const [isMobile] = useState<boolean>(() => canUseNativeShareOnMobile());
+  const isMobile = useNativeShareAvailability({ coarsePointerOnly: true });
   const [activeFormat, setActiveFormat] = useState<BrandedFormat>("portrait");
   const dropdownRef = useRef<HTMLDivElement>(null);
   const previewDialogRef = useFocusTrap<HTMLDivElement>(showPreview);

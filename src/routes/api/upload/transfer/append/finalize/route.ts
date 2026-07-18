@@ -15,6 +15,7 @@ import {
 } from "@/features/transfers/media-state";
 import type { TransferUploadFileInput } from "@/features/transfers/upload-types";
 import { getBaseUrlForRequest } from "@/lib/shared/config";
+import { buildTransferUrl } from "@/features/transfers/routes";
 import { apiErrorFromRequest } from "@/lib/platform/api-error";
 import { mapWithConcurrency } from "@/lib/shared/map-with-concurrency";
 
@@ -154,8 +155,8 @@ async function handlePOST(request: Request) {
     const processingCounts = buildTransferProcessingCounts(results.map((r) => r.file));
 
     return Response.json({
-      shareUrl: `${getBaseUrlForRequest(request)}/t/${transferId}`,
-      adminUrl: `${getBaseUrlForRequest(request)}/t/${transferId}?token=${transfer.deleteToken}`,
+      shareUrl: buildTransferUrl(getBaseUrlForRequest(request), transferId),
+      adminUrl: buildTransferUrl(getBaseUrlForRequest(request), transferId, transfer.deleteToken),
       transfer: {
         id: transferId,
         title: transfer.title,

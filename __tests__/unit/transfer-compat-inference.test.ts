@@ -12,7 +12,7 @@ vi.mock("@/lib/platform/r2.server", () => ({
   uploadBuffer: vi.fn(),
 }));
 
-import { inferCompatibleTransferFileState } from "@/features/media/backends/local.server";
+import { inferCompatibleTransferFileState } from "@/features/transfers/media-backends/local.server";
 import type { TransferFile } from "@/features/transfers/types";
 
 describe("transfer compatibility inference", () => {

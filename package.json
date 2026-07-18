@@ -14,7 +14,7 @@
     "format:check": "oxfmt --check .",
     "cli": "tsx --tsconfig tsconfig.cli.json scripts/cli.ts",
     "maintenance": "node ops/run-maintenance.mjs",
-    "worker:transfer-media": "tsx --tsconfig tsconfig.cli.json scripts/transfer-media-worker.ts",
+    "worker:media": "tsx --tsconfig tsconfig.cli.json scripts/media-worker.ts",
     "typecheck": "tsgo --noEmit",
     "typecheck:ci": "tsgo --noEmit",
     "test": "vitest run",

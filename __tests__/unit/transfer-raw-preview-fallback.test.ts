@@ -25,7 +25,7 @@ describe("transfer raw preview fallback", () => {
       };
     });
 
-    const { processTransferBufferLocally } = await import("@/features/media/backends/local.server");
+    const { processTransferBufferLocally } = await import("@/features/transfers/media-backends/local.server");
     const result = await processTransferBufferLocally(
       Buffer.from("raw"),
       "capture.dng",
@@ -81,7 +81,7 @@ describe("transfer raw preview fallback", () => {
       };
     });
 
-    const { processTransferBufferLocally } = await import("@/features/media/backends/local.server");
+    const { processTransferBufferLocally } = await import("@/features/transfers/media-backends/local.server");
     const result = await processTransferBufferLocally(
       Buffer.from("raw"),
       "capture.dng",

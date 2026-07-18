@@ -12,6 +12,9 @@ import { useEditorFilters } from "./hooks/useEditorFilters";
 import { useWordFormState } from "./hooks/useWordFormState";
 import { useMediaPreviewState } from "./hooks/useMediaPreviewState";
 import { buildWordShareUrl } from "@/features/words/routes";
+import { useActionDialog } from "@/hooks/useActionDialog";
+import { useAdminAuth } from "@/features/auth/useAdminAuth";
+import { copyText } from "@/lib/client/share";
 import type {
   NoteMeta,
   NoteVisibility,
@@ -155,6 +158,13 @@ function payloadFromNote(record: NoteRecord): WordSavePayload {
 }
 
 export function EditorAdminClient() {
+  const {
+    confirm: confirmAction,
+    prompt: promptAction,
+    dialog: actionDialog,
+    isOpen: actionDialogOpen,
+  } = useActionDialog();
+  const { ensureStepUpToken, authDialog, authDialogOpen } = useAdminAuth();
   const [notes, setNotes] = useState<NoteMeta[]>([]);
   const [selectedSlug, setSelectedSlug] = useState("");
   const [current, setCurrent] = useState<NoteRecord | null>(null);
@@ -314,7 +324,7 @@ export function EditorAdminClient() {
 
   const copySnippet = useCallback(async (snippet: string, copyId: string) => {
     try {
-      await navigator.clipboard.writeText(snippet);
+      await copyText(snippet);
       setMediaCopied(copyId);
       setStatus("snippet copied");
       setTimeout(() => setMediaCopied((current) => (current === copyId ? null : current)), 1200);
@@ -693,6 +703,7 @@ export function EditorAdminClient() {
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
+      if (actionDialogOpen || authDialogOpen) return;
       if (!(event.metaKey || event.ctrlKey) || event.key.toLowerCase() !== "s") return;
       if (!selectedSlug) return;
       event.preventDefault();
@@ -700,7 +711,7 @@ export function EditorAdminClient() {
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [saveWord, selectedSlug]);
+  }, [actionDialogOpen, authDialogOpen, saveWord, selectedSlug]);
 
   useEffect(() => {
     const onVisibility = () => {
@@ -740,29 +751,29 @@ export function EditorAdminClient() {
 
   async function deleteCurrentWord() {
     if (!selectedSlug) return;
-    if (!window.confirm(`Delete word "${selectedSlug}"?`)) return;
+    if (
+      !(await confirmAction({
+        eyebrow: "delete word",
+        title: `Delete “${selectedSlug}”?`,
+        description: "This permanently deletes the word and cannot be undone.",
+        confirmLabel: "delete word",
+        intent: "danger",
+      }))
+    ) return;
+
+    const stepUp = await ensureStepUpToken();
+    if (!stepUp.ok) {
+      if ("error" in stepUp) setError(stepUp.error);
+      return;
+    }
 
     setBusy(true);
     setError("");
     setStatus("");
     try {
-      const password = window.prompt("Re-enter your admin password to delete this word");
-      if (!password) return;
-      const stepUpRes = await fetch("/api/admin/step-up", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ password }),
-      });
-      const stepUpData = (await stepUpRes.json().catch(() => ({}))) as {
-        error?: string;
-        token?: string;
-      };
-      if (!stepUpRes.ok || !stepUpData.token) {
-        throw new Error(stepUpData.error ?? "Admin re-authentication failed");
-      }
       const res = await fetch(`/api/words/${encodeURIComponent(selectedSlug)}`, {
         method: "DELETE",
-        headers: { "x-admin-step-up": stepUpData.token },
+        headers: { "x-admin-step-up": stepUp.token },
       });
       const data = (await res.json().catch(() => ({}))) as { error?: string };
       if (!res.ok) throw new Error(data.error ?? "Failed to delete word");
@@ -781,8 +792,18 @@ export function EditorAdminClient() {
 
   async function createShare() {
     if (!selectedSlug) return;
-    const withPin = window.confirm("Protect this new share link with a PIN?");
-    const pin = withPin ? (window.prompt("Enter share PIN") ?? "") : "";
+    const pinInput = await promptAction({
+      eyebrow: "new share link",
+      title: "Create a share link",
+      description: "Add an optional PIN, or leave this field blank for a link without one.",
+      label: "PIN (optional)",
+      inputType: "password",
+      autoComplete: "new-password",
+      confirmLabel: "create link",
+    });
+    if (pinInput === null) return;
+    const pin = pinInput.trim();
+    const withPin = pin.length > 0;
 
     setBusy(true);
     setError("");
@@ -806,7 +827,7 @@ export function EditorAdminClient() {
       if (!data.token || !data.link) throw new Error("Share link created but token missing.");
 
       storeShareToken(data.link.id, data.token);
-      await navigator.clipboard.writeText(buildShareUrl(selectedSlug, data.token));
+      await copyText(buildShareUrl(selectedSlug, data.token));
       setStatus("share link created and copied");
       await loadSharedStatus();
       await loadWord(selectedSlug);
@@ -823,7 +844,18 @@ export function EditorAdminClient() {
       return;
     }
     const enable = !link.pinRequired;
-    const pin = enable ? (window.prompt("Set PIN for this link") ?? "") : null;
+    const pin = enable
+      ? await promptAction({
+          eyebrow: "share security",
+          title: "Protect this link",
+          description: "People opening the share link will need this PIN.",
+          label: "New PIN",
+          inputType: "password",
+          autoComplete: "new-password",
+          confirmLabel: "enable PIN",
+          required: true,
+        })
+      : null;
     if (enable && !pin) return;
 
     setBusy(true);
@@ -874,7 +906,7 @@ export function EditorAdminClient() {
       if (!data.token) throw new Error("Token rotation succeeded but no token was returned.");
 
       storeShareToken(link.id, data.token);
-      await navigator.clipboard.writeText(buildShareUrl(link.slug, data.token));
+      await copyText(buildShareUrl(link.slug, data.token));
       if (reason === "reissue" && isExpired) {
         setStatus(`share link reissued for ${newShareExpiryDays} day(s) and copied`);
       } else {
@@ -898,11 +930,25 @@ export function EditorAdminClient() {
       setError("Cannot extend a revoked share link.");
       return;
     }
-    const raw = window.prompt(
-      "Extend from now by how many days? (1-30)",
-      String(newShareExpiryDays),
-    );
-    if (!raw) return;
+    const raw = await promptAction({
+      eyebrow: "share expiry",
+      title: "Extend this link",
+      description: "Choose how many days from now the link should remain active.",
+      label: "Days (1–30)",
+      inputType: "number",
+      defaultValue: String(newShareExpiryDays),
+      min: 1,
+      max: 30,
+      confirmLabel: "extend link",
+      required: true,
+      validate: (value) => {
+        const days = Number(value);
+        return Number.isInteger(days) && days >= 1 && days <= 30
+          ? null
+          : "Enter a whole number from 1 to 30.";
+      },
+    });
+    if (raw === null) return;
     const days = Number.parseInt(raw, 10);
     if (!Number.isFinite(days) || days < 1 || days > 30) {
       setError("Expiry must be between 1 and 30 days.");
@@ -944,14 +990,19 @@ export function EditorAdminClient() {
 
       const knownToken = shareTokensById[link.id];
       if (knownToken) {
-        await navigator.clipboard.writeText(buildShareUrl(link.slug, knownToken));
+        await copyText(buildShareUrl(link.slug, knownToken));
         setStatus("share link copied");
         return;
       }
 
-      const shouldReissue = window.confirm(
-        "For security, existing tokens are stored as hashes and cannot be read back. Reissue this link now? (This invalidates the previous URL.)",
-      );
+      const shouldReissue = await confirmAction({
+        eyebrow: "share link",
+        title: "Reissue this link?",
+        description:
+          "Existing tokens are stored as hashes and cannot be recovered. Reissuing creates a new URL and invalidates the previous one.",
+        confirmLabel: "reissue link",
+        intent: "danger",
+      });
       if (!shouldReissue) return;
 
       await rotateShare(link, "reissue");
@@ -961,7 +1012,15 @@ export function EditorAdminClient() {
   }
 
   async function revokeShare(link: ShareLink) {
-    if (!window.confirm("Revoke this share link?")) return;
+    if (
+      !(await confirmAction({
+        eyebrow: "share link",
+        title: "Revoke this link?",
+        description: "Anyone using its current URL will immediately lose access.",
+        confirmLabel: "revoke link",
+        intent: "danger",
+      }))
+    ) return;
 
     setBusy(true);
     setError("");
@@ -1178,6 +1237,8 @@ export function EditorAdminClient() {
           onIndexChange={setPreviewIndex}
         />
       ) : null}
+      {actionDialog}
+      {authDialog}
     </div>
   );
 }

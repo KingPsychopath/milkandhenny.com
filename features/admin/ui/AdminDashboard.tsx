@@ -6,7 +6,10 @@ import type { SystemCapabilities } from "@/features/system/capabilities";
 import type { MultiplayerTelemetrySnapshot } from "@/features/things/shared/multiplayer-telemetry";
 import { SITE_BRAND } from "@/lib/shared/config";
 import { TokenSessionsPanel } from "./components/TokenSessionsPanel";
-import { useAdminAuth } from "./hooks/useAdminAuth";
+import { useAdminAuth } from "@/features/auth/useAdminAuth";
+import { useActionDialog } from "@/hooks/useActionDialog";
+import { buildTransferUrl } from "@/features/transfers/routes";
+import { copyText } from "@/lib/client/share";
 
 type BlogSummary = {
   totalPosts: number;
@@ -209,6 +212,7 @@ function transferMatchesHealthFilter(
 }
 
 export function AdminDashboard() {
+  const { confirm: confirmAction, dialog: actionDialog } = useActionDialog();
   const [loading, setLoading] = useState(false);
   const [statusMessage, setStatusMessage] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
@@ -277,6 +281,7 @@ export function AdminDashboard() {
     authFetch,
     ensureStepUpToken: ensureStepUpTokenResult,
     withStepUpHeaders,
+    authDialog,
   } = useAdminAuth();
 
   const refreshDashboard = useCallback(async () => {
@@ -518,7 +523,7 @@ export function AdminDashboard() {
 
   const copyCommand = async (key: string, command: string) => {
     try {
-      await navigator.clipboard.writeText(command);
+      await copyText(command);
       setCopiedCommand(key);
       setTimeout(() => setCopiedCommand(null), 1800);
     } catch {
@@ -528,8 +533,8 @@ export function AdminDashboard() {
 
   const copyTransferUrl = async (transferId: string) => {
     try {
-      const url = `${window.location.origin}/t/${transferId}`;
-      await navigator.clipboard.writeText(url);
+      const url = buildTransferUrl(window.location.origin, transferId);
+      await copyText(url);
       setCopiedTransferId(transferId);
       setTransferStatus("Transfer URL copied.");
       setTimeout(() => {
@@ -542,9 +547,13 @@ export function AdminDashboard() {
 
   const handleDeleteAlbum = async (slug: string, title: string) => {
     if (
-      !confirm(
-        `Delete album "${title}"?\n\nThis removes its JSON manifest and all album files from R2.`,
-      )
+      !(await confirmAction({
+        eyebrow: "album manager",
+        title: `Delete “${title}”?`,
+        description: "This removes the album manifest and every album file from storage.",
+        confirmLabel: "delete album",
+        intent: "danger",
+      }))
     ) {
       return;
     }
@@ -575,9 +584,13 @@ export function AdminDashboard() {
 
   const handleDeletePhoto = async (slug: string, photoId: string) => {
     if (
-      !confirm(
-        `Delete photo "${photoId}" from "${slug}"?\n\nThis removes thumb/full/original/og files from R2 and updates the album manifest.`,
-      )
+      !(await confirmAction({
+        eyebrow: "album manager",
+        title: `Delete “${photoId}”?`,
+        description: `This removes every stored variant from “${slug}” and updates its manifest.`,
+        confirmLabel: "delete photo",
+        intent: "danger",
+      }))
     ) {
       return;
     }
@@ -631,9 +644,13 @@ export function AdminDashboard() {
 
   const handleDeleteTransfer = async (id: string, title: string) => {
     if (
-      !confirm(
-        `Delete transfer "${title}" (${id})?\n\nThis removes transfer metadata and all transfer files from R2.`,
-      )
+      !(await confirmAction({
+        eyebrow: "transfer manager",
+        title: `Delete “${title}”?`,
+        description: `This permanently removes transfer ${id}, its metadata, and every stored file.`,
+        confirmLabel: "delete transfer",
+        intent: "danger",
+      }))
     ) {
       return;
     }
@@ -778,7 +795,13 @@ export function AdminDashboard() {
   };
 
   const handleRevokeSharedWord = async (slug: string) => {
-    if (!confirm(`Revoke all active share links for "${slug}"?`)) {
+    if (!(await confirmAction({
+      eyebrow: "shared pages",
+      title: `Revoke links for “${slug}”?`,
+      description: "Every active share URL for this page will immediately stop working.",
+      confirmLabel: "revoke links",
+      intent: "danger",
+    }))) {
       return;
     }
     setSharedWordActionLoading(slug);
@@ -808,9 +831,13 @@ export function AdminDashboard() {
 
   const handlePurgeStaleSharedWords = async () => {
     if (
-      !confirm(
-        "Purge stale share links now?\n\nThis removes expired/revoked records and stale index entries. Active links remain untouched.",
-      )
+      !(await confirmAction({
+        eyebrow: "shared pages",
+        title: "Purge stale share links?",
+        description: "This removes expired and revoked records plus stale index entries. Active links remain untouched.",
+        confirmLabel: "purge stale links",
+        intent: "danger",
+      }))
     ) {
       return;
     }
@@ -842,9 +869,13 @@ export function AdminDashboard() {
 
   const handleNukeSharedWords = async () => {
     if (
-      !confirm(
-        "NUKE ALL shared page links?\n\nThis deletes all active/expired/revoked share records globally and cannot be undone.",
-      )
+      !(await confirmAction({
+        eyebrow: "shared pages",
+        title: "Delete every shared-page link?",
+        description: "This permanently deletes all active, expired, and revoked share records across the site.",
+        confirmLabel: "delete all links",
+        intent: "danger",
+      }))
     ) {
       return;
     }
@@ -877,9 +908,13 @@ export function AdminDashboard() {
 
   const handlePurgeStaleWordMedia = async () => {
     if (
-      !confirm(
-        "Purge stale word media now?\n\nThis deletes media folders under words/media/{slug}/ when that slug has no existing word page.",
-      )
+      !(await confirmAction({
+        eyebrow: "word media",
+        title: "Purge orphaned word media?",
+        description: "This deletes stored media folders whose slug no longer has a word page.",
+        confirmLabel: "purge media",
+        intent: "danger",
+      }))
     ) {
       return;
     }
@@ -912,11 +947,16 @@ export function AdminDashboard() {
 
   const handleCleanupExpiredTransfers = async (mode: "index" | "deep" = "index") => {
     if (
-      !confirm(
-        mode === "deep"
-          ? "Run deep transfer cleanup now?\n\nThis scans transfer storage for orphaned prefixes and may take longer."
-          : "Run quick cleanup expired transfers now?\n\nThis only cleans expired Redis index entries. Active transfers are kept.",
-      )
+      !(await confirmAction({
+        eyebrow: "transfer cleanup",
+        title: mode === "deep" ? "Run deep cleanup?" : "Run quick cleanup?",
+        description:
+          mode === "deep"
+            ? "This scans transfer storage for orphaned prefixes and may take longer."
+            : "This removes expired Redis index entries while keeping active transfers.",
+        confirmLabel: mode === "deep" ? "run deep cleanup" : "run cleanup",
+        intent: "danger",
+      }))
     ) {
       return;
     }
@@ -955,9 +995,13 @@ export function AdminDashboard() {
 
   const handleNukeTransfers = async () => {
     if (
-      !confirm(
-        "NUKE ALL TRANSFERS?\n\nThis deletes ALL active transfers, their metadata, and all transfer files in R2. This cannot be undone.",
-      )
+      !(await confirmAction({
+        eyebrow: "transfer manager",
+        title: "Delete every transfer?",
+        description: "This permanently deletes all active transfers, their metadata, and every stored transfer file.",
+        confirmLabel: "delete all transfers",
+        intent: "danger",
+      }))
     ) {
       return;
     }
@@ -1005,7 +1049,13 @@ export function AdminDashboard() {
 
   const handleRevokeSessions = async (role: "admin" | "all") => {
     const label = role === "admin" ? "admin sessions" : "all role sessions";
-    if (!confirm(`Revoke ${label} now?\n\nThis immediately invalidates active tokens.`)) {
+    if (!(await confirmAction({
+      eyebrow: "session security",
+      title: `Revoke ${label}?`,
+      description: "This immediately invalidates every affected active token.",
+      confirmLabel: "revoke sessions",
+      intent: "danger",
+    }))) {
       return;
     }
     setRevokeLoading(role);
@@ -2239,6 +2289,8 @@ export function AdminDashboard() {
           <p className="font-mono text-xs text-[var(--prose-hashtag)]">{errorMessage}</p>
         ) : null}
       </section>
+      {actionDialog}
+      {authDialog}
     </div>
   );
 }

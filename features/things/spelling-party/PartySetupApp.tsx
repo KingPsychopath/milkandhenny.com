@@ -2,19 +2,20 @@ import { Link, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { createPartyRoomFn, joinPartyRoomFn } from "./party-room.functions";
 import type { PartyDeckSummary } from "./types";
-import { SpellingDeckBuilder } from "../spelling-bee/SpellingDeckBuilder";
-import { SpellingDeckPicker } from "../spelling-bee/SpellingDeckPicker";
-import { SpellingSetupIntro } from "../spelling-bee/SpellingSetupIntro";
-import type { CustomSpellingDeck } from "../spelling-bee/customDecks";
-import { spellingRoundOptions } from "../spelling-bee/decks";
-import { useCustomSpellingDecks } from "../spelling-bee/useCustomSpellingDecks";
+import { SpellingDeckBuilder } from "../spelling/SpellingDeckBuilder";
+import { SpellingDeckPicker } from "../spelling/SpellingDeckPicker";
+import { SpellingSetupIntro } from "../spelling/SpellingSetupIntro";
+import type { CustomSpellingDeck } from "../spelling/customDecks";
+import { spellingRoundOptions } from "../spelling/decks";
+import { useCustomSpellingDecks } from "../spelling/useCustomSpellingDecks";
 import {
   readRecentSpellingWordIds,
   rememberSpellingWords,
-} from "../spelling-bee/wordRotation.client";
+} from "../spelling/wordRotation.client";
 import { partyBrowserKeys } from "./party-keys";
 import { writeExpiringLocalValue } from "../shared/game-storage.client";
 import { useUpdateReloadSafety } from "@/features/offline/update-safety.client";
+import { partyPresenterFragment } from "./party-invite";
 
 export function PartySetupApp({ decks }: { decks: PartyDeckSummary[] }) {
   const navigate = useNavigate();
@@ -96,15 +97,14 @@ export function PartySetupApp({ decks }: { decks: PartyDeckSummary[] }) {
         await navigate({ to: "/things/spelling-party/$roomId", params: { roomId: room.roomId } });
         return;
       }
-      const fragment = new URLSearchParams({
-        presenter: room.presenterToken,
-        join: room.joinToken,
-        expires: String(room.expiresAt),
-      });
       await navigate({
         to: "/things/spelling-party/$roomId/present",
         params: { roomId: room.roomId },
-        hash: fragment.toString(),
+        hash: partyPresenterFragment({
+          presenterToken: room.presenterToken,
+          joinToken: room.joinToken,
+          expiresAt: room.expiresAt,
+        }),
       });
     } catch {
       setMessage("Could not make the room. Check your connection and try again.");

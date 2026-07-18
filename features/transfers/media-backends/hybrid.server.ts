@@ -1,7 +1,5 @@
-import {
-  getLocalProcessingTimeoutMs,
-  type MediaProcessorMode,
-} from "@/features/media/config.server";
+import type { MediaProcessorMode } from "@/features/media/config.server";
+import { getLocalProcessingTimeoutMs } from "@/features/transfers/media-processing-config.server";
 import { mapConcurrent } from "@/features/media/processing.server";
 import {
   canRetryTransferProcessing,

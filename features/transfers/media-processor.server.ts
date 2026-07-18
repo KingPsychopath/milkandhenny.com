@@ -1,6 +1,6 @@
 import { getMediaProcessorMode } from "@/features/media/config.server";
-import { createHybridMediaProcessor } from "@/features/media/backends/hybrid.server";
-import { createLocalMediaProcessor } from "@/features/media/backends/local.server";
+import { createHybridMediaProcessor } from "./media-backends/hybrid.server";
+import { createLocalMediaProcessor } from "./media-backends/local.server";
 import type { TransferData } from "@/features/transfers/types";
 import type { ProcessFileResult, TransferUploadFileInput } from "@/features/transfers/upload-types";
 

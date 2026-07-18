@@ -4,7 +4,7 @@ import { useWebHaptics } from "web-haptics/react";
 import { customDeckAsGameDeck, formatDeckText, type CustomDeck } from "./customDecks";
 import { CustomDeckBuilder } from "./CustomDeckBuilder";
 import { GAME_DECKS, shuffledCards, type GameDeck } from "./decks";
-import { playGameSound, primeGameAudio } from "./gameSound";
+import { playGameSound, primeGameAudio } from "../shared/game-sound.client";
 import { HeadsUpSetup } from "./HeadsUpSetup";
 import { RoundPlayArea } from "./RoundPlayArea";
 import { RoundResults, type RoundResult } from "./RoundResults";
@@ -17,7 +17,7 @@ import { usePairedGameRoom } from "../remote/usePairedGameRoom";
 import type { RemoteCommand, RemoteGameSnapshot, RemoteHeadsUpSetup, RemotePlayerSession } from "../remote/types";
 import { GameShell } from "../shared/GameShell";
 import { EndGameDialog } from "../shared/EndGameDialog";
-import { shareOrCopy } from "../shared/share.client";
+import { shareOrCopy } from "@/lib/client/share";
 import { useUpdateReloadSafety } from "@/features/offline/update-safety.client";
 
 type Phase = "setup" | "builder" | "countdown" | "playing" | "results";

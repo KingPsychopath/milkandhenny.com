@@ -1,9 +1,9 @@
 import { Link } from "@tanstack/react-router";
 import type { ReactNode } from "react";
-import type { SpellingDeck } from "./decks";
-import { spellingRoundOptions } from "./decks";
-import { SpellingSetupIntro } from "./SpellingSetupIntro";
-import { SpellingDeckPicker } from "./SpellingDeckPicker";
+import type { SpellingDeck } from "../spelling/decks";
+import { spellingRoundOptions } from "../spelling/decks";
+import { SpellingSetupIntro } from "../spelling/SpellingSetupIntro";
+import { SpellingDeckPicker } from "../spelling/SpellingDeckPicker";
 import type { AssistantBackend, AssistantStatus, BrowserSpeechAvailability } from "./useLocalSpellingAssistant";
 
 export function SpellingSetup({

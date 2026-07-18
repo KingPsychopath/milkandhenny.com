@@ -2,7 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { requireAuth } from "@/features/auth/auth.server";
 import { getRedis } from "@/lib/platform/redis.server";
 import { apiErrorFromRequest } from "@/lib/platform/api-error";
-import { generateWordsCode } from "@/features/transfers/words.server";
+import { generateHumanCode } from "@/lib/server/human-code";
 
 const CODE_TTL_SECONDS = 6 * 60 * 60; // 6 hours
 const CODE_KEY_PREFIX = "best-dressed:code:";
@@ -69,7 +69,7 @@ async function handlePOST(request: Request) {
     // Avoid collisions; try a few times.
     const maxAttempts = words === 1 ? 25 : 5;
     for (let i = 0; i < maxAttempts; i++) {
-      const code = normalizeVoteCode(generateWordsCode(words));
+      const code = normalizeVoteCode(generateHumanCode(words));
       const key = codeKey(code);
 
       // NX so we never overwrite an existing code.

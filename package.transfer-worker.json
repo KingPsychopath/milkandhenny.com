@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "worker:transfer-media": "tsx --tsconfig tsconfig.worker.json scripts/transfer-media-worker.ts"
+    "worker:media": "tsx --tsconfig tsconfig.worker.json scripts/media-worker.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.988.0",

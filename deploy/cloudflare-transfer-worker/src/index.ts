@@ -21,18 +21,18 @@ export class TransferMediaContainer extends Container {
     R2_PUBLIC_BUCKET: env.R2_PUBLIC_BUCKET,
     R2_PRIVATE_BUCKET: env.R2_PRIVATE_BUCKET,
     MEDIA_PROCESSOR_MODE: env.MEDIA_PROCESSOR_MODE,
-    TRANSFER_MEDIA_WORKER_CONCURRENCY: env.TRANSFER_MEDIA_WORKER_CONCURRENCY,
-    TRANSFER_MEDIA_WORKER_ERROR_BACKOFF_MS: env.TRANSFER_MEDIA_WORKER_ERROR_BACKOFF_MS,
+    MEDIA_WORKER_CONCURRENCY: env.MEDIA_WORKER_CONCURRENCY,
+    MEDIA_WORKER_ERROR_BACKOFF_MS: env.MEDIA_WORKER_ERROR_BACKOFF_MS,
   };
 }
 
 interface Env {
   TRANSFER_MEDIA: DurableObjectNamespace<TransferMediaContainer>;
-  TRANSFER_MEDIA_WAKE_TOKEN?: string;
+  MEDIA_WORKER_WAKE_TOKEN?: string;
 }
 
 function isAuthorized(request: Request, env: Env): boolean {
-  const expected = env.TRANSFER_MEDIA_WAKE_TOKEN?.trim();
+  const expected = env.MEDIA_WORKER_WAKE_TOKEN?.trim();
   return Boolean(expected) && request.headers.get("authorization") === `Bearer ${expected}`;
 }
 
@@ -45,7 +45,7 @@ export default {
     }
 
     if (request.method === "POST" && url.pathname === "/wake") {
-      if (!env.TRANSFER_MEDIA_WAKE_TOKEN?.trim()) {
+      if (!env.MEDIA_WORKER_WAKE_TOKEN?.trim()) {
         return new Response("worker wake is not configured", { status: 503 });
       }
       if (!isAuthorized(request, env)) {

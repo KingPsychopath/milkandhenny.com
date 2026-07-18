@@ -45,7 +45,7 @@ vi.mock("@/features/media/processing.server", () => ({
   resolveImageProcessingSource,
 }));
 
-vi.mock("@/features/media/backends/local.server", () => ({
+vi.mock("@/features/transfers/media-backends/local.server", () => ({
   buildOriginalOnlyFailureFile: vi.fn(
     (
       mediaId: string,
@@ -111,7 +111,7 @@ describe("worker media processing", () => {
   });
 
   it("persists mediaId on queued jobs and remaps local video to worker_video", async () => {
-    const { enqueueWorkerJob } = await import("@/features/media/backends/worker.server");
+    const { enqueueWorkerJob } = await import("@/features/transfers/media-backends/worker.server");
 
     enqueueTransferMediaJob.mockResolvedValue(undefined);
 
@@ -137,7 +137,7 @@ describe("worker media processing", () => {
   });
 
   it("matches worker jobs by mediaId when filenames collide", async () => {
-    const { runTransferMediaJobs } = await import("@/features/media/backends/worker.server");
+    const { runTransferMediaJobs } = await import("@/features/transfers/media-backends/worker.server");
 
     dequeueTransferMediaJobs.mockResolvedValue([
       {
@@ -222,7 +222,7 @@ describe("worker media processing", () => {
   });
 
   it("marks stale exhausted files as failed instead of leaving them queued", async () => {
-    const { refreshQueuedTransferState } = await import("@/features/media/backends/worker.server");
+    const { refreshQueuedTransferState } = await import("@/features/transfers/media-backends/worker.server");
 
     const transfer = {
       id: "transfer-1",

@@ -32,15 +32,15 @@ R2_ACCESS_KEY
 R2_SECRET_KEY
 R2_PUBLIC_BUCKET
 R2_PRIVATE_BUCKET
-TRANSFER_MEDIA_WAKE_TOKEN
+MEDIA_WORKER_WAKE_TOKEN
 ```
 
 Configure the web application with the same wake-token value:
 
 ```dotenv
 MEDIA_PROCESSOR_MODE=hybrid
-TRANSFER_MEDIA_WAKE_URL=https://<worker-host>/wake
-TRANSFER_MEDIA_WAKE_TOKEN=<shared-secret>
+MEDIA_WORKER_WAKE_URL=https://<worker-host>/wake
+MEDIA_WORKER_WAKE_TOKEN=<shared-secret>
 ```
 
 Before switching modes, verify:

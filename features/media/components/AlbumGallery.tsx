@@ -27,6 +27,7 @@ import {
 } from "@/lib/client/zip-planner";
 import { formatBytes } from "@/lib/shared/format";
 import { mapWithConcurrency } from "@/lib/shared/map-with-concurrency";
+import { useActionDialog } from "@/hooks/useActionDialog";
 
 type AlbumGalleryProps = {
   albumSlug: string;
@@ -60,6 +61,7 @@ function formatTotalBytes(total: ZipPlanTotalBytes): string | null {
 }
 
 export function AlbumGallery({ albumSlug, photos }: AlbumGalleryProps) {
+  const { confirm: confirmAction, dialog: actionDialog } = useActionDialog();
   const [selectable, setSelectable] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [preparingDownload, setPreparingDownload] = useState(false);
@@ -313,12 +315,13 @@ export function AlbumGallery({ albumSlug, photos }: AlbumGalleryProps) {
 
     if (
       selected.size > BATCH_DOWNLOAD_WARN &&
-      !window.confirm(
-        `You're about to download ${selected.size} full-resolution photos. This may use a lot of memory on your device. Continue?`,
-      )
-    ) {
-      return;
-    }
+      !(await confirmAction({
+        eyebrow: "large download",
+        title: `Download ${selected.size} full-resolution photos?`,
+        description: "A download this large may use significant memory and storage on this device.",
+        confirmLabel: "download photos",
+      }))
+    ) return;
 
     const ids = Array.from(selected);
     if (ids.length === 1) {
@@ -386,6 +389,7 @@ export function AlbumGallery({ albumSlug, photos }: AlbumGalleryProps) {
     }
   }, [
     albumSlug,
+    confirmAction,
     downloading,
     executePreparedDownload,
     executeWorkerZipDownload,
@@ -521,6 +525,7 @@ export function AlbumGallery({ albumSlug, photos }: AlbumGalleryProps) {
           />
         ))}
       </MasonryGrid>
+      {actionDialog}
     </div>
   );
 }

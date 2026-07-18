@@ -1,5 +1,5 @@
 import { pairingCode, pairingUrl, type IcebreakerPlayer } from "./icebreaker-pairing";
-import { useQrCode } from "../shared/useQrCode";
+import { useQrCode } from "@/hooks/useQrCode";
 
 interface IcebreakerPairingCodeProps {
   player: IcebreakerPlayer;

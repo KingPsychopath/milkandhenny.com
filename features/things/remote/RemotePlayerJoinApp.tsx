@@ -6,16 +6,17 @@ import { readPairedGamePlayerSetupFn } from "./paired-game-room.functions";
 import type { RemotePlayerSession } from "./types";
 import { legacyRemoteBrowserKeys, remoteBrowserKeys } from "./remote-keys";
 import { removeStorageKeys } from "../shared/game-storage.client";
+import { consumeLocationFragment } from "@/lib/client/url-fragment";
+import { parsePairedGamePlayerFragment } from "./paired-game-invite";
 
 function sessionKey(roomId: string) {
   return remoteBrowserKeys.playerSession(roomId);
 }
 
 function playerTokenForRoom(roomId: string) {
-  const hashToken = location.hash.slice(1).trim();
+  const hashToken = parsePairedGamePlayerFragment(consumeLocationFragment());
   if (hashToken) {
     sessionStorage.setItem(sessionKey(roomId), JSON.stringify({ playerToken: hashToken }));
-    history.replaceState(null, "", `${location.pathname}${location.search}`);
     return hashToken;
   }
   try {

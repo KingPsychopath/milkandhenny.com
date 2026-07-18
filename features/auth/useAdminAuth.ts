@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useRef } from "react";
+import { useActionDialog } from "@/hooks/useActionDialog";
 
 type EnsureStepUpResult =
   | { ok: true; token: string }
@@ -19,6 +20,7 @@ export function useAdminAuth() {
   // Step-up is operational state; keep it in refs to avoid re-render churn.
   const stepUpTokenRef = useRef<string>("");
   const stepUpExpiryMsRef = useRef<number>(0);
+  const { prompt: promptStepUp, dialog: authDialog, isOpen: authDialogOpen } = useActionDialog();
 
   const authFetch = useCallback(async (url: string, options: RequestInit = {}) => {
     const res = await fetch(url, {
@@ -40,7 +42,16 @@ export function useAdminAuth() {
       return { ok: true, token: stepUpTokenRef.current };
     }
 
-    const password = window.prompt("Re-enter your admin password to confirm this action.");
+    const password = await promptStepUp({
+      eyebrow: "security check",
+      title: "Confirm it’s you",
+      description: "Re-enter your admin password to continue with this protected action.",
+      label: "Admin password",
+      inputType: "password",
+      autoComplete: "current-password",
+      confirmLabel: "verify",
+      required: true,
+    });
     if (!password) return { ok: false, cancelled: true };
 
     const res = await authFetch("/api/admin/step-up", {
@@ -63,7 +74,7 @@ export function useAdminAuth() {
     stepUpTokenRef.current = token;
     stepUpExpiryMsRef.current = Date.now() + expiresInSeconds * 1000;
     return { ok: true, token };
-  }, [authFetch]);
+  }, [authFetch, promptStepUp]);
 
   const withStepUpHeaders = useCallback(
     (token: string, extra?: Record<string, string>): Record<string, string> => ({
@@ -77,5 +88,7 @@ export function useAdminAuth() {
     authFetch,
     ensureStepUpToken,
     withStepUpHeaders,
+    authDialog,
+    authDialogOpen,
   };
 }

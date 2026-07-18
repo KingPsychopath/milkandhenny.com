@@ -1,7 +1,9 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { EndGameDialog } from "../shared/EndGameDialog";
-import { shareOrCopy } from "../shared/share.client";
-import { useQrCode } from "../shared/useQrCode";
+import { shareOrCopy } from "@/lib/client/share";
+import { useQrCode } from "@/hooks/useQrCode";
+import { useNativeShareAvailability } from "@/hooks/useNativeShareAvailability";
+import { buildPairedGameJudgeInviteUrl } from "./paired-game-invite";
 
 interface PairedGameHostPanelProps {
   gameLabel: string;
@@ -34,14 +36,9 @@ export function PairedGameHostPanel({
 }: PairedGameHostPanelProps) {
   const [ending, setEnding] = useState(false);
   const [confirmingEnd, setConfirmingEnd] = useState(false);
-  const [nativeShare, setNativeShare] = useState(false);
+  const nativeShare = useNativeShareAvailability({ coarsePointerOnly: true });
   const [manualCopyUrl, setManualCopyUrl] = useState<string | null>(null);
-  const { dataUrl: qrCode } = useQrCode(inviteUrl, 240);
-
-  useEffect(() => {
-    const coarsePointer = window.matchMedia("(hover: none) and (pointer: coarse)");
-    setNativeShare(typeof navigator.share === "function" && coarsePointer.matches);
-  }, []);
+  const { dataUrl: qrCode, failed: qrFailed } = useQrCode(inviteUrl, 240);
 
   const handleShare = async () => {
     setManualCopyUrl(null);
@@ -50,7 +47,9 @@ export function PairedGameHostPanel({
       const created = await onCreate();
       if (!created || typeof created !== "object" || !("roomId" in created)) return;
       const credentials = created as { roomId: string; judgeToken: string };
-      url = `${window.location.origin}/things/judge/${credentials.roomId}#${credentials.judgeToken}`;
+      url = buildPairedGameJudgeInviteUrl(window.location.origin, credentials.roomId, {
+        judgeToken: credentials.judgeToken,
+      });
     }
     const share = {
       title: `Judge ${gameLabel}`,
@@ -130,6 +129,8 @@ export function PairedGameHostPanel({
         <div className="mt-5 grid gap-5 sm:grid-cols-[9rem_1fr] sm:items-center">
           {qrCode ? (
             <img src={qrCode} alt="QR code for the remote judge invite" className="mx-auto w-36 rounded-2xl bg-white p-2" />
+          ) : qrFailed ? (
+            <p className="font-mono text-xs text-white/50">QR unavailable—share the link instead.</p>
           ) : null}
           <div className="text-center sm:text-left">
             <p className="font-mono text-micro uppercase tracking-[0.15em] text-white/40">room</p>

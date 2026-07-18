@@ -4,6 +4,8 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { useFocusTrap } from "@/hooks/useFocusTrap";
 import { useOutsideClick } from "@/hooks/useOutsideClick";
 import { useEscapeKey } from "@/hooks/useEscapeKey";
+import { copyText } from "@/lib/client/share";
+import { useNativeShareAvailability } from "@/hooks/useNativeShareAvailability";
 
 type ShareProps = {
   /** Full URL to share */
@@ -17,36 +19,6 @@ type ShareProps = {
 };
 
 const COPIED_DURATION_MS = 2000;
-
-function canUseNativeShareOnMobile(): boolean {
-  if (typeof window === "undefined") return false;
-  return (
-    typeof navigator.share === "function" && /Android|iPhone|iPad|iPod/i.test(navigator.userAgent)
-  );
-}
-
-/** Clipboard write with fallback for non-secure contexts (localhost / HTTP) */
-async function copyToClipboard(text: string): Promise<boolean> {
-  try {
-    await navigator.clipboard.writeText(text);
-    return true;
-  } catch {
-    /* not available — try fallback */
-  }
-
-  try {
-    const textarea = document.createElement("textarea");
-    textarea.value = text;
-    textarea.style.cssText = "position:fixed;opacity:0;left:-9999px";
-    document.body.appendChild(textarea);
-    textarea.select();
-    const ok = document.execCommand("copy");
-    document.body.removeChild(textarea);
-    return ok;
-  } catch {
-    return false;
-  }
-}
 
 function buildShareUrls(url: string, title: string) {
   const encodedUrl = encodeURIComponent(url);
@@ -68,7 +40,7 @@ function buildShareUrls(url: string, title: string) {
 export function Share({ url, title = "", label = "Share", className = "" }: ShareProps) {
   const [copied, setCopied] = useState(false);
   const [dropdownOpen, setDropdownOpen] = useState(false);
-  const [isMobile] = useState<boolean>(() => canUseNativeShareOnMobile());
+  const isMobile = useNativeShareAvailability({ coarsePointerOnly: true });
   const dropdownRef = useRef<HTMLDivElement>(null);
   const dropdownMenuRef = useFocusTrap<HTMLDivElement>(dropdownOpen);
 
@@ -83,7 +55,7 @@ export function Share({ url, title = "", label = "Share", className = "" }: Shar
   useOutsideClick(dropdownRef, () => setDropdownOpen(false), dropdownOpen);
 
   const handleCopy = useCallback(async () => {
-    const ok = await copyToClipboard(url);
+    const ok = await copyText(url);
     if (ok) setCopied(true);
   }, [url]);
 

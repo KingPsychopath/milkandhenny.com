@@ -13,6 +13,7 @@ import {
   type IcebreakerPlayer,
 } from "./icebreaker-pairing";
 import { useIcebreakerLedger } from "./useIcebreakerLedger";
+import { consumeLocationFragment } from "@/lib/client/url-fragment";
 
 interface PairingLaunch {
   error: string | null;
@@ -71,9 +72,9 @@ export function IcebreakerApp() {
   const { ledger, addEncounter } = useIcebreakerLedger(player);
 
   useEffect(() => {
-    if (!window.location.hash.startsWith("#pair=")) return;
-    const partner = parsePairingCode(window.location.hash);
-    window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}`);
+    const fragment = consumeLocationFragment();
+    if (!fragment.startsWith("pair=")) return;
+    const partner = parsePairingCode(fragment);
     setRevealed(true);
     setPairing({
       partner,
