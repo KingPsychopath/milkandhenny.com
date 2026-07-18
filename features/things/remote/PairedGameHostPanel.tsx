@@ -3,7 +3,7 @@ import { EndGameDialog } from "../shared/EndGameDialog";
 import { shareOrCopy } from "../shared/share.client";
 import { useQrCode } from "../shared/useQrCode";
 
-interface RemoteHostPanelProps {
+interface PairedGameHostPanelProps {
   gameLabel: string;
   inviteUrl: string | null;
   roomId: string | null;
@@ -18,7 +18,7 @@ interface RemoteHostPanelProps {
   onToggleExclusive: () => void;
 }
 
-export function RemoteHostPanel({
+export function PairedGameHostPanel({
   gameLabel,
   inviteUrl,
   roomId,
@@ -31,7 +31,7 @@ export function RemoteHostPanel({
   onClose,
   onMessage,
   onToggleExclusive,
-}: RemoteHostPanelProps) {
+}: PairedGameHostPanelProps) {
   const [ending, setEnding] = useState(false);
   const [confirmingEnd, setConfirmingEnd] = useState(false);
   const [nativeShare, setNativeShare] = useState(false);

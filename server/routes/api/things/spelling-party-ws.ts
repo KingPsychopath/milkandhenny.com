@@ -1,7 +1,7 @@
 import { authorizePartySocket } from "@/features/things/spelling-party/party-room.server";
 import { partyRealtimeChannel } from "@/features/things/spelling-party/party-keys";
 import type { PartyRole } from "@/features/things/spelling-party/types";
-import { createRealtimeRoomHandler } from "@/features/things/shared/realtime-room-handler.server";
+import { createMultiplayerWakeHandler } from "@/features/things/shared/multiplayer-wake-handler.server";
 
 interface PartyRealtimeSession {
   roomId: string;
@@ -9,7 +9,7 @@ interface PartyRealtimeSession {
   playerId?: string;
 }
 
-export default createRealtimeRoomHandler<PartyRealtimeSession>({
+export default createMultiplayerWakeHandler<PartyRealtimeSession>({
   channel: partyRealtimeChannel,
   game: "spelling-party",
   async authorize(payload) {

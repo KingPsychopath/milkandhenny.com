@@ -1,12 +1,15 @@
-import { Link } from "@tanstack/react-router";
+import { useNavigate } from "@tanstack/react-router";
+import { useState } from "react";
+import { EndGameDialog } from "../shared/EndGameDialog";
 
-export function RemotePlayerReady({
+export function PairedGamePlayerReady({
   gameName,
   deckName,
   detail,
   judgeConnected,
   onStart,
   onFullscreen,
+  onLeave,
 }: {
   gameName: string;
   deckName: string;
@@ -14,11 +17,29 @@ export function RemotePlayerReady({
   judgeConnected: boolean;
   onStart: () => void;
   onFullscreen?: () => void;
+  onLeave: () => Promise<void>;
 }) {
+  const navigate = useNavigate();
+  const [leaveConfirmationOpen, setLeaveConfirmationOpen] = useState(false);
+  const [leaving, setLeaving] = useState(false);
+  const handleLeave = async () => {
+    if (leaving) return;
+    setLeaving(true);
+    try {
+      await onLeave();
+    } finally {
+      try {
+        await navigate({ to: "/things" });
+      } finally {
+        setLeaving(false);
+      }
+    }
+  };
+
   return (
     <div className="things-game things-game--night text-white">
       <header className="flex items-center justify-between p-5 font-mono text-xs text-white/55">
-        <Link to="/things" className="inline-flex min-h-11 items-center">← leave</Link>
+        <button type="button" onClick={() => setLeaveConfirmationOpen(true)} className="inline-flex min-h-11 items-center">← leave</button>
         <span aria-live="polite" className={judgeConnected ? "text-emerald-200" : "text-amber-200"}>
           {judgeConnected ? "● judge connected" : "judge reconnecting"}
         </span>
@@ -32,6 +53,7 @@ export function RemotePlayerReady({
         {onFullscreen ? <button type="button" onClick={onFullscreen} className="mt-6 min-h-11 font-mono text-xs text-white/60">use full screen</button> : null}
         <button type="button" onClick={onStart} className="mt-4 min-h-16 rounded-full bg-[var(--things-amber)] px-6 font-mono text-sm font-bold text-black">start on this phone</button>
       </main>
+      {leaveConfirmationOpen ? <EndGameDialog tone="dark" eyebrow="leave game" title="Leave this game?" description="This closes the connection for both phones. You can ask the judge for a new invite later." cancelLabel="stay" confirmLabel="leave game" pending={leaving} onCancel={() => setLeaveConfirmationOpen(false)} onConfirm={() => void handleLeave()} /> : null}
     </div>
   );
 }

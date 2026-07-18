@@ -11,7 +11,7 @@ import {
   multiplayerRoomExpiresAt,
   rememberMultiplayerAction,
   remainingMultiplayerRoomTtlSeconds,
-} from "../shared/multiplayer-room.server";
+} from "../shared/room-primitives.server";
 import { multiplayerFailure } from "../shared/multiplayer";
 import { partyAudioAssetKey, partyDeck, type PartyWord } from "./party-content.server";
 import { rankSpellingAnswers } from "./spelling-closeness";

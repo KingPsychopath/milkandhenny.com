@@ -1,7 +1,7 @@
 import { gameBrowserKey, gameRealtimeChannel, gameRoomNamespace } from "../shared/multiplayer-keys";
 import type { RemoteGameKind } from "./types";
 
-export function remoteRoomRedisKeys(roomId: string, legacy = false) {
+export function pairedGameRoomRedisKeys(roomId: string, legacy = false) {
   const base = legacy ? `thing-room:v2:${roomId}` : gameRoomNamespace("remote", 3, roomId);
   return {
     meta: `${base}:meta`,
@@ -19,7 +19,7 @@ export function remoteRoomRedisKeys(roomId: string, legacy = false) {
   };
 }
 
-export const remoteRealtimeChannel = (roomId: string) =>
+export const pairedGameRealtimeChannel = (roomId: string) =>
   gameRealtimeChannel("remote", 3, roomId);
 
 export const remoteBrowserKeys = {

@@ -6,7 +6,7 @@ import type {
 } from "../shared/multiplayer";
 
 export type RemoteGameKind = "heads-up" | "spelling-bee";
-export type RemoteRoomRole = "player" | "judge";
+export type PairedGameRoomRole = "player" | "judge";
 
 export interface RemoteHeadsUpSetup {
   game: "heads-up";
@@ -108,10 +108,10 @@ export interface RemoteSyncedSnapshot extends RemoteGameSnapshot, MultiplayerRev
   commandReceipts: RemoteCommandReceipt[];
 }
 
-export interface RemoteRoomCredentials extends MultiplayerRoomLifetime {
+export interface PairedGameRoomCredentials extends MultiplayerRoomLifetime {
   playerToken: string;
   judgeToken: string;
-  creatorRole: RemoteRoomRole;
+  creatorRole: PairedGameRoomRole;
 }
 
 export interface RemotePlayerSession extends MultiplayerRoomLifetime {
@@ -120,13 +120,13 @@ export interface RemotePlayerSession extends MultiplayerRoomLifetime {
   setup: RemoteGameSetup;
 }
 
-export type RemoteRoomErrorCode = "invite_expired" | "room_unavailable";
+export type PairedGameRoomErrorCode = "invite_expired" | "room_unavailable";
 export type RemotePlayerSyncErrorCode =
-  | RemoteRoomErrorCode
+  | PairedGameRoomErrorCode
   | "game_mismatch"
   | "player_conflict";
 export type RemoteCommandErrorCode =
-  | RemoteRoomErrorCode
+  | PairedGameRoomErrorCode
   | RemoteCommandReceiptReason
   | "command_expired"
   | "inactive_judge"
@@ -148,7 +148,7 @@ export type RemoteJudgeSnapshotResult =
       judgeActive: boolean;
       expiresAt: number;
     }>
-  | (MultiplayerFailure<RemoteRoomErrorCode> & {
+  | (MultiplayerFailure<PairedGameRoomErrorCode> & {
       snapshot: null;
       playerConnected: false;
       judgeActive: false;
@@ -163,7 +163,7 @@ export type RemotePlayerSetupResult =
       judgeConnected: boolean;
       expiresAt: number;
     }>
-  | (MultiplayerFailure<RemoteRoomErrorCode> & {
+  | (MultiplayerFailure<PairedGameRoomErrorCode> & {
       setup: null;
       judgeConnected: false;
       expiresAt: null;

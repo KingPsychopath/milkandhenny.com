@@ -12,18 +12,18 @@ import { MultiplayerTelemetry } from "./multiplayer-telemetry.server";
 import type { MultiplayerGame } from "./multiplayer-telemetry";
 import { multiplayerRecord } from "./multiplayer-validation";
 
-interface RealtimeRoomSession {
+interface MultiplayerWakeSession {
   roomId: string;
 }
 
-interface RealtimeRoomHandlerOptions<Session extends RealtimeRoomSession> {
+interface MultiplayerWakeHandlerOptions<Session extends MultiplayerWakeSession> {
   authorize: (hello: Record<string, unknown>) => Promise<Session | null>;
   channel: (roomId: string) => string;
   game: MultiplayerGame;
   wakeMessage?: (session: Session) => Record<string, string>;
 }
 
-interface RealtimeConnection<Session> {
+interface MultiplayerWakeConnection<Session> {
   lastWakeAt: number;
   messageCount: number;
   peer: { send: (message: string) => void };
@@ -32,10 +32,10 @@ interface RealtimeConnection<Session> {
 }
 
 /** Shared authenticated wake-up transport. Game state remains authoritative over HTTPS. */
-export function createRealtimeRoomHandler<Session extends RealtimeRoomSession>(
-  options: RealtimeRoomHandlerOptions<Session>,
+export function createMultiplayerWakeHandler<Session extends MultiplayerWakeSession>(
+  options: MultiplayerWakeHandlerOptions<Session>,
 ) {
-  const connections = new Map<string, RealtimeConnection<Session>>();
+  const connections = new Map<string, MultiplayerWakeConnection<Session>>();
   const roomConnectionCounts = new Map<string, number>();
   const terminatedPeers = new Set<string>();
   const channelFor = (session: Session) => options.channel(session.roomId);

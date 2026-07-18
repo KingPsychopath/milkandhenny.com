@@ -1,13 +1,13 @@
 import { Effect, Layer, ManagedRuntime } from "effect";
 
-import { RemoteRoomService } from "../remote/remote-room-service.server";
+import { PairedGameRoomService } from "../remote/paired-game-room-service.server";
 import { PartyRoomService } from "../spelling-party/party-room-service.server";
 import { MultiplayerTelemetry } from "./multiplayer-telemetry.server";
 import { MultiplayerRealtimeBackplane } from "./multiplayer-realtime-backplane.server";
 
 const multiplayerLayer = Layer.mergeAll(
   MultiplayerTelemetry.layer,
-  RemoteRoomService.layer,
+  PairedGameRoomService.layer,
   PartyRoomService.layer.pipe(Layer.provide(MultiplayerTelemetry.layer)),
   MultiplayerRealtimeBackplane.layer.pipe(Layer.provide(MultiplayerTelemetry.layer)),
 );
@@ -17,7 +17,7 @@ const multiplayerRuntime = ManagedRuntime.make(multiplayerLayer);
 type MultiplayerServices =
   | MultiplayerTelemetry
   | MultiplayerRealtimeBackplane
-  | RemoteRoomService
+  | PairedGameRoomService
   | PartyRoomService;
 
 export function runMultiplayerEffect<A, E>(

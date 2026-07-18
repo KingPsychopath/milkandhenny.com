@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { GameActionDialog } from "../shared/GameActionDialog";
 import { createCustomDeck, deckNameFromText, parseDeckText, type CustomDeck } from "./customDecks";
 
 interface CustomDeckBuilderProps {
@@ -12,6 +13,7 @@ export function CustomDeckBuilder({ deck, onCancel, onDelete, onSave }: CustomDe
   const [name, setName] = useState(deck?.name ?? "");
   const [cardText, setCardText] = useState(() => deck?.cards.join("\n") ?? "");
   const [message, setMessage] = useState<string | null>(null);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
   const cards = useMemo(() => parseDeckText(cardText), [cardText]);
   const canSave = name.trim().length > 0 && cards.length >= 3;
@@ -145,13 +147,25 @@ export function CustomDeckBuilder({ deck, onCancel, onDelete, onSave }: CustomDe
         {deck ? (
           <button
             type="button"
-            onClick={() => onDelete(deck)}
+            onClick={() => setConfirmingDelete(true)}
             className="mt-4 min-h-11 w-full font-mono text-xs text-white/45 hover:text-white/70"
           >
             delete this deck
           </button>
         ) : null}
       </main>
+      {deck && confirmingDelete ? (
+        <GameActionDialog
+          tone="dark"
+          eyebrow="delete deck"
+          title={`Delete “${deck.name}”?`}
+          description="This removes the deck from this device. It cannot be undone."
+          cancelLabel="keep deck"
+          confirmLabel="delete deck"
+          onCancel={() => setConfirmingDelete(false)}
+          onConfirm={() => onDelete(deck)}
+        />
+      ) : null}
     </div>
   );
 }

@@ -11,9 +11,9 @@ import { RoundResults, type RoundResult } from "./RoundResults";
 import { useCustomDecks } from "./useCustomDecks";
 import { useFullscreen } from "../shared/useFullscreen";
 import { useTiltControl } from "../shared/useTiltControl";
-import { RemoteConnectionBadge, RemoteHostPanel } from "../remote/RemoteHostPanel";
-import { RemotePlayerReady } from "../remote/RemotePlayerReady";
-import { useRemotePlayerRoom } from "../remote/useRemotePlayerRoom";
+import { RemoteConnectionBadge, PairedGameHostPanel } from "../remote/PairedGameHostPanel";
+import { PairedGamePlayerReady } from "../remote/PairedGamePlayerReady";
+import { usePairedGameRoom } from "../remote/usePairedGameRoom";
 import type { RemoteCommand, RemoteGameSnapshot, RemoteHeadsUpSetup, RemotePlayerSession } from "../remote/types";
 import { GameShell } from "../shared/GameShell";
 import { EndGameDialog } from "../shared/EndGameDialog";
@@ -195,7 +195,7 @@ function HeadsUpExperience({ fullscreen, remoteSession }: { fullscreen: Fullscre
     deck: { name: selectedDeck.name, cards: [...selectedDeck.cards] },
     positionLock,
   };
-  const remote = useRemotePlayerRoom("heads-up", remoteSetup, remoteSnapshot, handleRemoteCommand, remoteSession);
+  const remote = usePairedGameRoom("heads-up", remoteSetup, remoteSnapshot, handleRemoteCommand, remoteSession);
 
   useEffect(() => {
     try {
@@ -342,7 +342,6 @@ function HeadsUpExperience({ fullscreen, remoteSession }: { fullscreen: Fullscre
         deck={editingDeck}
         onCancel={() => setPhase("setup")}
         onDelete={(deck) => {
-          if (!window.confirm(`Delete “${deck.name}”?`)) return;
           deleteDeck(deck.id);
           setDeckId(GAME_DECKS[0].id);
           setEditingDeck(null);
@@ -362,7 +361,7 @@ function HeadsUpExperience({ fullscreen, remoteSession }: { fullscreen: Fullscre
   if (phase === "countdown") {
     return (
       <GameShell tone="amber">
-        <header className="p-5"><button type="button" onClick={endRound} className="min-h-11 font-mono text-xs text-black/60">← cancel round</button></header>
+        <header className="p-5"><button type="button" onClick={() => setEndConfirmationOpen(true)} className="min-h-11 font-mono text-xs text-black/60">← cancel round</button></header>
         <main id="main" className="flex flex-1 flex-col items-center justify-center text-center">
           <p className="font-mono text-xs uppercase tracking-[0.2em] text-black/55">get ready</p>
           <TextMorph
@@ -379,6 +378,7 @@ function HeadsUpExperience({ fullscreen, remoteSession }: { fullscreen: Fullscre
               : "Hold the phone against your forehead in portrait or landscape, screen facing your friends."}
           </p>
         </main>
+        {endConfirmationOpen ? <EndGameDialog tone="light" eyebrow="cancel round" title="Cancel this round?" description="The round will return to setup before play begins." cancelLabel="keep counting" confirmLabel="cancel round" onCancel={() => setEndConfirmationOpen(false)} onConfirm={endRound} /> : null}
       </GameShell>
     );
   }
@@ -433,7 +433,7 @@ function HeadsUpExperience({ fullscreen, remoteSession }: { fullscreen: Fullscre
   }
 
   if (joinedDeck) {
-    return <RemotePlayerReady gameName="Forehead" deckName={joinedDeck.name} detail="Hold this phone to your forehead. Starting may ask for motion access so tilting can score each card." judgeConnected={remote.judgeConnected} onFullscreen={() => void fullscreen.toggle()} onStart={() => void startRound(joinedDeck)} />;
+    return <PairedGamePlayerReady gameName="Forehead" deckName={joinedDeck.name} detail="Hold this phone to your forehead. Starting may ask for motion access so tilting can score each card." judgeConnected={remote.judgeConnected} onFullscreen={() => void fullscreen.toggle()} onLeave={remote.closeRoom} onStart={() => void startRound(joinedDeck)} />;
   }
 
   return (
@@ -451,7 +451,7 @@ function HeadsUpExperience({ fullscreen, remoteSession }: { fullscreen: Fullscre
       customDeckIds={new Set(customDecks.map((deck) => deck.id))}
       shareMessage={shareMessage}
       remoteControls={
-        <RemoteHostPanel
+        <PairedGameHostPanel
           gameLabel="Forehead"
           inviteUrl={remote.inviteUrl}
           roomId={remote.room?.roomId ?? null}

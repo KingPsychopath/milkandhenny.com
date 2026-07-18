@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { TextMorph } from "torph/react";
 import { useWebHaptics } from "web-haptics/react";
-import { closeRemoteRoomFn, readRemoteJudgeFn, sendRemoteJudgeCommandFn } from "./remote-room.functions";
+import { closePairedGameRoomFn, readPairedGameJudgeFn, sendPairedGameJudgeCommandFn } from "./paired-game-room.functions";
 import type { RemoteCommandReceiptReason, RemoteCommandRequest, RemoteGameKind, RemoteResultDecision, RemoteSyncedSnapshot } from "./types";
 import { useRemoteSocket } from "./useRemoteSocket";
 import { legacyRemoteBrowserKeys, remoteBrowserKeys } from "./remote-keys";
@@ -102,7 +102,7 @@ export function RemoteJudgeApp({ roomId }: { roomId: string }) {
 
   const reconcile = useCallback(async (isCurrent: () => boolean) => {
       try {
-        const result = await readRemoteJudgeFn({ data: { roomId, judgeToken: tokens.judgeToken, judgeEpoch: judgeEpoch.current, takeover: takeoverRequested.current } });
+        const result = await readPairedGameJudgeFn({ data: { roomId, judgeToken: tokens.judgeToken, judgeEpoch: judgeEpoch.current, takeover: takeoverRequested.current } });
         if (!isCurrent()) return;
         if (!result.ok) {
           setError(result.error ?? "This invite is no longer available.");
@@ -167,7 +167,7 @@ export function RemoteJudgeApp({ roomId }: { roomId: string }) {
       itemId: snapshot.itemId ?? `results:${snapshot.roundId}`,
     } as RemoteCommandRequest;
     try {
-      const result = await sendRemoteJudgeCommandFn({ data: { roomId, judgeToken: tokens.judgeToken, judgeEpoch: judgeEpoch.current, command: payload } });
+      const result = await sendPairedGameJudgeCommandFn({ data: { roomId, judgeToken: tokens.judgeToken, judgeEpoch: judgeEpoch.current, command: payload } });
       if (!result.ok) {
         setControlFeedback(null);
         setError(result.error ?? "Control did not send.");
@@ -205,7 +205,7 @@ export function RemoteJudgeApp({ roomId }: { roomId: string }) {
       const remaining = [...commands];
       for (const command of commands) {
         try {
-          const result = await sendRemoteJudgeCommandFn({ data: { roomId, judgeToken: tokens.judgeToken, judgeEpoch: judgeEpoch.current, command } });
+          const result = await sendPairedGameJudgeCommandFn({ data: { roomId, judgeToken: tokens.judgeToken, judgeEpoch: judgeEpoch.current, command } });
           if (
             !result.ok &&
             result.errorCode !== "stale_round" &&
@@ -234,7 +234,7 @@ export function RemoteJudgeApp({ roomId }: { roomId: string }) {
   const handleEndRoom = async () => {
     if (endingRoom) return;
     setEndingRoom(true);
-    await closeRemoteRoomFn({ data: { roomId, role: "judge", token: tokens.judgeToken } }).catch(() => null);
+    await closePairedGameRoomFn({ data: { roomId, role: "judge", token: tokens.judgeToken } }).catch(() => null);
     removeStorageKeys(sessionStorage, [
       remoteBrowserKeys.judgeSession(roomId),
       legacyRemoteBrowserKeys.judgeToken(roomId),

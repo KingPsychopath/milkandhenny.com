@@ -45,13 +45,28 @@ TanStack / Nitro boundary
        -> optional Redis realtime backplane
 ```
 
-`remote` and `spelling-party` own their state transitions, authorization rules, Redis keys, contracts, and browser reconciliation. Shared multiplayer code owns only repeatable capabilities: runtime lifecycle, room credentials, validation primitives, wake transport, backpressure, telemetry, and cross-replica fan-out.
+The paired-game and party-room profiles own their state transitions, authorization rules, Redis keys, contracts, and browser reconciliation. Shared multiplayer code owns only repeatable capabilities: runtime lifecycle, room credentials, validation primitives, wake transport, backpressure, telemetry, and cross-replica fan-out.
+
+```text
+PairedGameRoom                 PartyRoom
+  local game authority          server game authority
+  player + judge roles          presenter + player membership
+  snapshot reconciliation       authoritative state transitions
+  command journal               action idempotency
+  device leases                 distributed mutation lock
+          \                       /
+           shared room primitives
+           shared wake transport
+           shared runtime + telemetry
+```
+
+`PairedGameRoom` names the reusable two-device authority model used by remote judging. `PartyRoom` stays scoped to the `spelling-party` feature and does not pretend to be a universal party-game abstraction. New room models compose the shared capabilities they require instead of inheriting from one generic room class.
 
 The runtime is built lazily once per Node process and disposed by a Nitro shutdown hook. It owns services, Redis pub/sub connections, metrics, timeouts, and scoped cleanup. It never owns authoritative room state or a permanent fiber per room. Redis remains the distributed source of truth, so another replica can serve the next request.
 
 Effect is pinned to an exact v4 beta version while v4 is prerelease. It remains behind `.server.ts` boundaries; browser contracts, React, offline games, reducers, and reconciliation hooks do not import its runtime. Promise conversion happens only at TanStack/Nitro edges.
 
-Wake publication is safe to retry because it is advisory and idempotent. Room creation and state mutations are not retried generically; their atomicity and idempotency remain explicit in the game engine. Spelling Party serializes mutations with a bounded Redis lease, while Remote commands use action IDs and atomic Redis claims.
+Wake publication is safe to retry because it is advisory and idempotent. Room creation and state mutations are not retried generically; their atomicity and idempotency remain explicit in the game engine. Party Room serializes mutations with a bounded Redis lease, while Paired Game commands use action IDs and atomic Redis claims.
 
 ## Persistence
 

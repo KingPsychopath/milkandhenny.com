@@ -2,10 +2,10 @@ import { Context, Effect, Layer } from "effect";
 
 import { MultiplayerTelemetry } from "../shared/multiplayer-telemetry.server";
 import { multiplayerOperation } from "../shared/multiplayer-operation.server";
-import * as engine from "./remote-room-engine.server";
+import * as engine from "./paired-game-room-engine.server";
 
-export class RemoteRoomService extends Context.Service<
-  RemoteRoomService,
+export class PairedGameRoomService extends Context.Service<
+  PairedGameRoomService,
   {
     readonly authorizeSocket: typeof authorizeSocket;
     readonly closeRoom: typeof closeRoom;
@@ -15,7 +15,7 @@ export class RemoteRoomService extends Context.Service<
     readonly sendJudgeCommand: typeof sendJudgeCommand;
     readonly syncPlayer: typeof syncPlayer;
   }
->()("RemoteRoomService") {
+>()("PairedGameRoomService") {
   static readonly layer = Layer.succeed(this)({
     authorizeSocket,
     closeRoom,
@@ -27,43 +27,43 @@ export class RemoteRoomService extends Context.Service<
   });
 }
 
-function authorizeSocket(input: Parameters<typeof engine.authorizeRemoteSocket>[0]) {
+function authorizeSocket(input: Parameters<typeof engine.authorizePairedGameSocket>[0]) {
   return multiplayerOperation(
     { game: "remote", operation: "authorize_socket", timeoutMs: 4_000 },
-    () => engine.authorizeRemoteSocket(input),
+    () => engine.authorizePairedGameSocket(input),
   );
 }
 
-function createRoom(input: Parameters<typeof engine.createRemoteRoom>[0]) {
+function createRoom(input: Parameters<typeof engine.createPairedGameRoom>[0]) {
   return multiplayerOperation({ game: "remote", operation: "create_room", timeoutMs: false }, () =>
-    engine.createRemoteRoom(input),
+    engine.createPairedGameRoom(input),
   );
 }
 
-function readPlayerSetup(input: Parameters<typeof engine.readRemotePlayerSetup>[0]) {
+function readPlayerSetup(input: Parameters<typeof engine.readPairedGamePlayerSetup>[0]) {
   return multiplayerOperation(
     { game: "remote", operation: "read_player_setup", reconciliation: true },
-    () => engine.readRemotePlayerSetup(input),
+    () => engine.readPairedGamePlayerSetup(input),
   );
 }
 
-function syncPlayer(input: Parameters<typeof engine.syncRemotePlayer>[0]) {
+function syncPlayer(input: Parameters<typeof engine.syncPairedGamePlayer>[0]) {
   return multiplayerOperation(
     { game: "remote", operation: "sync_player", reconciliation: true },
-    () => engine.syncRemotePlayer(input),
+    () => engine.syncPairedGamePlayer(input),
   );
 }
 
-function readJudge(input: Parameters<typeof engine.readRemoteJudge>[0]) {
+function readJudge(input: Parameters<typeof engine.readPairedGameJudge>[0]) {
   return multiplayerOperation(
     { game: "remote", operation: "read_judge", reconciliation: true },
-    () => engine.readRemoteJudge(input),
+    () => engine.readPairedGameJudge(input),
   );
 }
 
-function sendJudgeCommand(input: Parameters<typeof engine.sendRemoteJudgeCommand>[0]) {
+function sendJudgeCommand(input: Parameters<typeof engine.sendPairedGameJudgeCommand>[0]) {
   return multiplayerOperation({ game: "remote", operation: "send_judge_command" }, () =>
-    engine.sendRemoteJudgeCommand(input),
+    engine.sendPairedGameJudgeCommand(input),
   ).pipe(
     Effect.tap((result) =>
       !result.ok && result.errorCode === "rate_limited"
@@ -75,8 +75,8 @@ function sendJudgeCommand(input: Parameters<typeof engine.sendRemoteJudgeCommand
   );
 }
 
-function closeRoom(...input: Parameters<typeof engine.closeRemoteRoom>) {
+function closeRoom(...input: Parameters<typeof engine.closePairedGameRoom>) {
   return multiplayerOperation({ game: "remote", operation: "close_room" }, () =>
-    engine.closeRemoteRoom(...input),
+    engine.closePairedGameRoom(...input),
   );
 }

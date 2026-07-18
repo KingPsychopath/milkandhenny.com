@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { prepareThingOffline } from "@/features/offline/client";
 import { HeadsUpApp } from "../heads-up/HeadsUpApp";
 import { SpellingBeeApp } from "../spelling-bee/SpellingBeeApp";
-import { readRemotePlayerSetupFn } from "./remote-room.functions";
+import { readPairedGamePlayerSetupFn } from "./paired-game-room.functions";
 import type { RemotePlayerSession } from "./types";
 import { legacyRemoteBrowserKeys, remoteBrowserKeys } from "./remote-keys";
 import { removeStorageKeys } from "../shared/game-storage.client";
@@ -70,7 +70,7 @@ export function RemotePlayerJoinApp({ roomId }: { roomId: string }) {
     const load = async () => {
       setError(null);
       try {
-        const result = await readRemotePlayerSetupFn({ data: { roomId, playerToken: token } });
+        const result = await readPairedGamePlayerSetupFn({ data: { roomId, playerToken: token } });
         if (!active) return;
         if (!result.ok) {
           setError(result.error);

@@ -1,13 +1,13 @@
 import { createServerFn } from "@tanstack/react-start";
 import { multiplayerCredential, multiplayerRecord, multiplayerRoomId, multiplayerText, optionalMultiplayerText } from "../shared/multiplayer-validation";
 import {
-  closeRemoteRoom,
-  createRemoteRoom,
-  readRemoteJudge,
-  readRemotePlayerSetup,
-  sendRemoteJudgeCommand,
-  syncRemotePlayer,
-} from "./remote-room.server";
+  closePairedGameRoom,
+  createPairedGameRoom,
+  readPairedGameJudge,
+  readPairedGamePlayerSetup,
+  sendPairedGameJudgeCommand,
+  syncPairedGamePlayer,
+} from "./paired-game-room.server";
 import type {
   RemoteCommandRequest,
   RemoteGameKind,
@@ -15,7 +15,7 @@ import type {
   RemoteGameSnapshot,
   RemoteResultDecision,
   RemoteSyncedSnapshot,
-  RemoteRoomRole,
+  PairedGameRoomRole,
 } from "./types";
 
 const record = multiplayerRecord;
@@ -29,7 +29,7 @@ function gameKind(value: unknown): RemoteGameKind {
   throw new Error("Invalid game");
 }
 
-function roomRole(value: unknown): RemoteRoomRole {
+function roomRole(value: unknown): PairedGameRoomRole {
   if (value === "player" || value === "judge") return value;
   throw new Error("Invalid role");
 }
@@ -162,44 +162,44 @@ function syncedSnapshot(value: unknown): RemoteSyncedSnapshot {
   };
 }
 
-export const createRemoteRoomFn = createServerFn({ method: "POST" })
+export const createPairedGameRoomFn = createServerFn({ method: "POST" })
   .validator((value: unknown) => {
     const data = record(value);
     return { creatorRole: roomRole(data.creatorRole), setup: remoteGameSetup(data.setup) };
   })
-  .handler(({ data }) => createRemoteRoom(data));
+  .handler(({ data }) => createPairedGameRoom(data));
 
-export const readRemotePlayerSetupFn = createServerFn({ method: "POST" })
+export const readPairedGamePlayerSetupFn = createServerFn({ method: "POST" })
   .validator((value: unknown) => {
     const data = record(value);
     return { roomId: roomId(data.roomId), playerToken: token(data.playerToken) };
   })
-  .handler(({ data }) => readRemotePlayerSetup(data));
+  .handler(({ data }) => readPairedGamePlayerSetup(data));
 
-export const syncRemotePlayerFn = createServerFn({ method: "POST" })
+export const syncPairedGamePlayerFn = createServerFn({ method: "POST" })
   .validator((value: unknown) => {
     const data = record(value);
     return { roomId: roomId(data.roomId), playerToken: token(data.playerToken), snapshot: syncedSnapshot(data.snapshot), lastCommandSequence: typeof data.lastCommandSequence === "number" ? Math.max(0, Math.floor(data.lastCommandSequence)) : 0 };
   })
-  .handler(({ data }) => syncRemotePlayer(data));
+  .handler(({ data }) => syncPairedGamePlayer(data));
 
-export const readRemoteJudgeFn = createServerFn({ method: "POST" })
+export const readPairedGameJudgeFn = createServerFn({ method: "POST" })
   .validator((value: unknown) => {
     const data = record(value);
     return { roomId: roomId(data.roomId), judgeToken: token(data.judgeToken), judgeEpoch: shortText(data.judgeEpoch, 80), takeover: data.takeover === true };
   })
-  .handler(({ data }) => readRemoteJudge(data));
+  .handler(({ data }) => readPairedGameJudge(data));
 
-export const sendRemoteJudgeCommandFn = createServerFn({ method: "POST" })
+export const sendPairedGameJudgeCommandFn = createServerFn({ method: "POST" })
   .validator((value: unknown) => {
     const data = record(value);
     return { roomId: roomId(data.roomId), judgeToken: token(data.judgeToken), judgeEpoch: shortText(data.judgeEpoch, 80), command: command(data.command) };
   })
-  .handler(({ data }) => sendRemoteJudgeCommand(data));
+  .handler(({ data }) => sendPairedGameJudgeCommand(data));
 
-export const closeRemoteRoomFn = createServerFn({ method: "POST" })
+export const closePairedGameRoomFn = createServerFn({ method: "POST" })
   .validator((value: unknown) => {
     const data = record(value);
     return { roomId: roomId(data.roomId), role: roomRole(data.role), token: token(data.token) };
   })
-  .handler(({ data }) => closeRemoteRoom(data.roomId, data.role, data.token));
+  .handler(({ data }) => closePairedGameRoom(data.roomId, data.role, data.token));

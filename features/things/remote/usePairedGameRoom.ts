@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
-import { closeRemoteRoomFn, createRemoteRoomFn, syncRemotePlayerFn } from "./remote-room.functions";
+import { closePairedGameRoomFn, createPairedGameRoomFn, syncPairedGamePlayerFn } from "./paired-game-room.functions";
 import type {
   RemoteCommand,
   RemoteCommandReceipt,
@@ -8,7 +8,7 @@ import type {
   RemoteGameSetup,
   RemoteGameSnapshot,
   RemotePlayerSession,
-  RemoteRoomCredentials,
+  PairedGameRoomCredentials,
   RemoteSyncedSnapshot,
 } from "./types";
 import { useRemoteSocket } from "./useRemoteSocket";
@@ -30,7 +30,7 @@ function storageKey(game: RemoteGameKind) {
   return remoteBrowserKeys.hostSession(game);
 }
 
-function playerRoom(value: RemoteRoomCredentials | RemotePlayerSession): PlayerRoom {
+function playerRoom(value: PairedGameRoomCredentials | RemotePlayerSession): PlayerRoom {
   return {
     roomId: value.roomId,
     playerToken: value.playerToken,
@@ -40,7 +40,7 @@ function playerRoom(value: RemoteRoomCredentials | RemotePlayerSession): PlayerR
   };
 }
 
-export function useRemotePlayerRoom(
+export function usePairedGameRoom(
   game: RemoteGameKind,
   setup: RemoteGameSetup,
   snapshot: RemoteGameSnapshot,
@@ -130,7 +130,7 @@ export function useRemotePlayerRoom(
     setSyncing(true);
     setMessage(null);
     try {
-      const credentials = await createRemoteRoomFn({ data: { creatorRole: "player", setup } });
+      const credentials = await createPairedGameRoomFn({ data: { creatorRole: "player", setup } });
       setRoom(playerRoom(credentials));
       setMessage("Judge invite ready.");
       return credentials;
@@ -147,7 +147,7 @@ export function useRemotePlayerRoom(
     setSyncing(true);
     setMessage(null);
     try {
-      const credentials = await createRemoteRoomFn({ data: { creatorRole: "judge", setup } });
+      const credentials = await createPairedGameRoomFn({ data: { creatorRole: "judge", setup } });
       const hash = new URLSearchParams({ judge: credentials.judgeToken, player: credentials.playerToken, game });
       await navigate({
         to: "/things/judge/$roomId",
@@ -173,10 +173,19 @@ export function useRemotePlayerRoom(
     processedCommands.current.clear();
     decidedItemsRef.current.clear();
     receiptsRef.current = [];
-    if (!initialSession) removeStorageKeys(sessionStorage, [storageKey(game), legacyRemoteBrowserKeys.hostSession(game)]);
+    if (initialSession) {
+      const roomId = current?.roomId ?? initialSession.roomId;
+      removeStorageKeys(sessionStorage, [
+        remoteBrowserKeys.playerSession(roomId),
+        legacyRemoteBrowserKeys.playerSession(roomId),
+        legacyRemoteBrowserKeys.playerToken(roomId),
+      ]);
+    } else {
+      removeStorageKeys(sessionStorage, [storageKey(game), legacyRemoteBrowserKeys.hostSession(game)]);
+    }
     if (!current) { setSyncing(false); return; }
     try {
-      await closeRemoteRoomFn({ data: { roomId: current.roomId, role: "player", token: current.playerToken } });
+      await closePairedGameRoomFn({ data: { roomId: current.roomId, role: "player", token: current.playerToken } });
       setMessage("Remote judging ended. Your game stays on this phone.");
     } catch {
       // Rooms expire automatically; local play must not depend on cleanup.
@@ -189,7 +198,7 @@ export function useRemotePlayerRoom(
       if (!room) return;
       try {
         const currentSnapshot = syncedSnapshot();
-        const result = await syncRemotePlayerFn({
+        const result = await syncPairedGamePlayerFn({
           data: {
             roomId: room.roomId,
             playerToken: room.playerToken,

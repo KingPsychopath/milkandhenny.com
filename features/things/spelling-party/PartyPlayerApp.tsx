@@ -20,6 +20,7 @@ import { PartyClosenessBoard } from "./PartyClosenessBoard";
 import { PartyRoundCooldown } from "./PartyRoundCooldown";
 import { legacyPartyBrowserKeys, partyBrowserKeys } from "./party-keys";
 import { EndGameDialog } from "../shared/EndGameDialog";
+import { GameActionDialog } from "../shared/GameActionDialog";
 import {
   clearExpiredGameLocalStorage,
   readExpiringLocalValue,
@@ -187,6 +188,8 @@ function PartyPlayerGame({ credentials }: { credentials: PartyPlayerCredentials 
   const priorPhase = useRef(live.snapshot?.phase);
   const playedAudio = useRef(new Set<string>());
   const [endConfirmationOpen, setEndConfirmationOpen] = useState(false);
+  const [sentenceClueConfirmationOpen, setSentenceClueConfirmationOpen] = useState(false);
+  const [requestingSentenceClue, setRequestingSentenceClue] = useState(false);
   const [leaving, setLeaving] = useState(false);
   const haptics = useWebHaptics();
   const queueKey = partyBrowserKeys.pendingActions(credentials.roomId, credentials.playerId);
@@ -419,6 +422,7 @@ function PartyPlayerGame({ credentials }: { credentials: PartyPlayerCredentials 
 
   useEffect(() => {
     const handleKey = (event: KeyboardEvent) => {
+      if (endConfirmationOpen || sentenceClueConfirmationOpen) return;
       if (/^[a-z]$/i.test(event.key)) {
         event.preventDefault();
         addLetter(event.key.toLocaleUpperCase());
@@ -432,23 +436,32 @@ function PartyPlayerGame({ credentials }: { credentials: PartyPlayerCredentials 
     };
     window.addEventListener("keydown", handleKey);
     return () => window.removeEventListener("keydown", handleKey);
-  }, [addLetter, backspace, lock]);
+  }, [addLetter, backspace, endConfirmationOpen, lock, sentenceClueConfirmationOpen]);
 
-  const requestClue = async (clue: PartyClueKind) => {
+  const sendClueRequest = async (clue: PartyClueKind) => {
     if (!round) return;
-    if (
-      clue === "sentence" &&
-      !window.confirm(
-        `Use one of the room’s ${round.sentenceCluesRemaining} sentence clues for everyone?`,
-      )
-    )
-      return;
     await send({
       actionId: crypto.randomUUID(),
       type: "clue.request",
       roundId: round.roundId,
       clue,
     });
+  };
+  const requestClue = (clue: PartyClueKind) => {
+    if (clue === "sentence") {
+      setSentenceClueConfirmationOpen(true);
+      return;
+    }
+    void sendClueRequest(clue);
+  };
+  const confirmSentenceClue = async () => {
+    setRequestingSentenceClue(true);
+    try {
+      await sendClueRequest("sentence");
+      setSentenceClueConfirmationOpen(false);
+    } finally {
+      setRequestingSentenceClue(false);
+    }
   };
 
   useEffect(() => {
@@ -691,7 +704,7 @@ function PartyPlayerGame({ credentials }: { credentials: PartyPlayerCredentials 
                   <button
                     type="button"
                     disabled={round?.repeatUsed}
-                    onClick={() => void requestClue("repeat")}
+                    onClick={() => requestClue("repeat")}
                     className="min-h-12 rounded-full border border-white/15 px-2 font-mono text-micro disabled:opacity-30"
                   >
                     hear again
@@ -699,7 +712,7 @@ function PartyPlayerGame({ credentials }: { credentials: PartyPlayerCredentials 
                   <button
                     type="button"
                     disabled={round?.definitionUsed}
-                    onClick={() => void requestClue("definition")}
+                    onClick={() => requestClue("definition")}
                     className="min-h-12 rounded-full border border-white/15 px-2 font-mono text-micro disabled:opacity-30"
                   >
                     definition
@@ -707,7 +720,7 @@ function PartyPlayerGame({ credentials }: { credentials: PartyPlayerCredentials 
                   <button
                     type="button"
                     disabled={!round?.sentenceCluesRemaining}
-                    onClick={() => void requestClue("sentence")}
+                    onClick={() => requestClue("sentence")}
                     className="min-h-12 rounded-full border border-white/15 px-2 font-mono text-micro disabled:opacity-30"
                   >
                     sentence · {round?.sentenceCluesRemaining}
@@ -808,6 +821,20 @@ function PartyPlayerGame({ credentials }: { credentials: PartyPlayerCredentials 
           pending={leaving}
           onCancel={() => setEndConfirmationOpen(false)}
           onConfirm={() => void handleLeave()}
+        />
+      ) : null}
+      {sentenceClueConfirmationOpen ? (
+        <GameActionDialog
+          tone="dark"
+          eyebrow="sentence clue"
+          title="Use a shared clue?"
+          description={`This uses one of the room’s ${round?.sentenceCluesRemaining ?? 0} sentence clues for everyone.`}
+          cancelLabel="keep clue"
+          confirmLabel="use clue"
+          pending={requestingSentenceClue}
+          pendingLabel="requesting…"
+          onCancel={() => setSentenceClueConfirmationOpen(false)}
+          onConfirm={() => void confirmSentenceClue()}
         />
       ) : null}
     </div>

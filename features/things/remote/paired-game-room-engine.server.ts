@@ -1,6 +1,6 @@
 import { getRedis } from "@/lib/platform/redis.server";
 import { log } from "@/lib/platform/logger.server";
-import { remoteRoomRedisKeys } from "./remote-keys";
+import { pairedGameRoomRedisKeys } from "./remote-keys";
 import {
   createAvailableMultiplayerRoomId,
   createMultiplayerCredential,
@@ -9,7 +9,7 @@ import {
   multiplayerRoomExpired,
   multiplayerRoomExpiresAt,
   remainingMultiplayerRoomTtlSeconds,
-} from "../shared/multiplayer-room.server";
+} from "../shared/room-primitives.server";
 import {
   MULTIPLAYER_ROOM_ID_PATTERN,
   MULTIPLAYER_ROOM_TTL_SECONDS,
@@ -26,8 +26,8 @@ import type {
   RemoteJudgeSnapshotResult,
   RemotePlayerSetupResult,
   RemotePlayerSyncResult,
-  RemoteRoomCredentials,
-  RemoteRoomRole,
+  PairedGameRoomCredentials,
+  PairedGameRoomRole,
 } from "./types";
 
 const PRESENCE_TTL_SECONDS = 6;
@@ -36,7 +36,7 @@ const COMMAND_MAX_AGE_MS = 12_000;
 
 interface RoomMeta {
   game: RemoteGameKind;
-  creatorRole: RemoteRoomRole;
+  creatorRole: PairedGameRoomRole;
   playerHash: string;
   judgeHash: string;
   expiresAt: number;
@@ -58,7 +58,7 @@ interface MemoryRoom {
 
 const memoryRooms = new Map<string, MemoryRoom>();
 
-type RemoteRedisKeys = ReturnType<typeof remoteRoomRedisKeys>;
+type RemoteRedisKeys = ReturnType<typeof pairedGameRoomRedisKeys>;
 
 interface RoomContext {
   meta: RoomMeta;
@@ -71,7 +71,7 @@ function logSnapshotTransitions(previous: RemoteSyncedSnapshot | null, next: Rem
     ({ id, decision }) => decision === "timed_out" && !previousIds.has(id),
   ).length;
   if (timedOut > 0)
-    log.info("things.remote-room", "Words timed out", { game: next.game, count: timedOut });
+    log.info("things.paired-game-room", "Words timed out", { game: next.game, count: timedOut });
 }
 
 function rejectJudgeCommand(
@@ -80,7 +80,7 @@ function rejectJudgeCommand(
   errorCode: RemoteCommandErrorCode,
   error: string,
 ) {
-  log.info("things.remote-room", "Judge command rejected", {
+  log.info("things.paired-game-room", "Judge command rejected", {
     game: meta.game,
     commandType: command.type,
     reason: errorCode,
@@ -158,8 +158,8 @@ function judgeCommandPolicy(
   return null;
 }
 
-function allRemoteKeys(roomId: string) {
-  return [remoteRoomRedisKeys(roomId), remoteRoomRedisKeys(roomId, true)].flatMap((roomKeys) =>
+function allPairedGameKeys(roomId: string) {
+  return [pairedGameRoomRedisKeys(roomId), pairedGameRoomRedisKeys(roomId, true)].flatMap((roomKeys) =>
     Object.values(roomKeys),
   );
 }
@@ -172,13 +172,13 @@ async function readRoom(roomId: string): Promise<RoomContext | null> {
       memoryRooms.delete(roomId);
       return null;
     }
-    return { meta: room.meta, keys: remoteRoomRedisKeys(roomId) };
+    return { meta: room.meta, keys: pairedGameRoomRedisKeys(roomId) };
   }
-  for (const roomKeys of [remoteRoomRedisKeys(roomId), remoteRoomRedisKeys(roomId, true)]) {
+  for (const roomKeys of [pairedGameRoomRedisKeys(roomId), pairedGameRoomRedisKeys(roomId, true)]) {
     const meta = await redis.get<RoomMeta>(roomKeys.meta);
     if (!meta) continue;
     if (multiplayerRoomExpired(meta.expiresAt)) {
-      await redis.del(...allRemoteKeys(roomId));
+      await redis.del(...allPairedGameKeys(roomId));
       return null;
     }
     return { meta, keys: roomKeys };
@@ -186,7 +186,7 @@ async function readRoom(roomId: string): Promise<RoomContext | null> {
   return null;
 }
 
-function roleMatches(meta: RoomMeta, role: RemoteRoomRole, token: string) {
+function roleMatches(meta: RoomMeta, role: PairedGameRoomRole, token: string) {
   if (role === "judge" && meta.creatorRole !== "judge") return false;
   return multiplayerCredentialsMatch(
     token,
@@ -195,9 +195,9 @@ function roleMatches(meta: RoomMeta, role: RemoteRoomRole, token: string) {
   );
 }
 
-export async function authorizeRemoteSocket(input: {
+export async function authorizePairedGameSocket(input: {
   roomId: string;
-  role: RemoteRoomRole;
+  role: PairedGameRoomRole;
   token: string;
 }) {
   if (!MULTIPLAYER_ROOM_ID_PATTERN.test(input.roomId) || !input.token || input.token.length > 100)
@@ -211,10 +211,10 @@ export async function authorizeRemoteSocket(input: {
   );
 }
 
-export async function createRemoteRoom(input: {
-  creatorRole: RemoteRoomRole;
+export async function createPairedGameRoom(input: {
+  creatorRole: PairedGameRoomRole;
   setup: RemoteGameSetup;
-}): Promise<RemoteRoomCredentials> {
+}): Promise<PairedGameRoomCredentials> {
   const playerToken = createMultiplayerCredential();
   const judgeToken = createMultiplayerCredential();
   const expiresAt = multiplayerRoomExpiresAt();
@@ -230,13 +230,13 @@ export async function createRemoteRoom(input: {
   };
   const redis = getRedis();
   if (!redis && process.env.NODE_ENV === "production") {
-    log.error("things.remote-room", "Room creation unavailable", {
+    log.error("things.paired-game-room", "Room creation unavailable", {
       reason: "redis_not_configured",
     });
     throw new Error("Remote rooms require Redis");
   }
   if (redis) {
-    const roomKeys = remoteRoomRedisKeys(roomId);
+    const roomKeys = pairedGameRoomRedisKeys(roomId);
     await Promise.all([
       redis.set(roomKeys.meta, meta, { ex: MULTIPLAYER_ROOM_TTL_SECONDS }),
       redis.set(roomKeys.setup, input.setup, { ex: MULTIPLAYER_ROOM_TTL_SECONDS }),
@@ -256,7 +256,7 @@ export async function createRemoteRoom(input: {
       judgeSeenAt: input.creatorRole === "judge" ? Date.now() : 0,
     });
   }
-  log.info("things.remote-room", "Room created", {
+  log.info("things.paired-game-room", "Room created", {
     game: input.setup.game,
     creatorRole: input.creatorRole,
     storage: redis ? "redis" : "memory",
@@ -264,7 +264,7 @@ export async function createRemoteRoom(input: {
   return { roomId, playerToken, judgeToken, creatorRole: input.creatorRole, expiresAt };
 }
 
-export async function readRemotePlayerSetup(input: {
+export async function readPairedGamePlayerSetup(input: {
   roomId: string;
   playerToken: string;
 }): Promise<RemotePlayerSetupResult> {
@@ -298,7 +298,7 @@ export async function readRemotePlayerSetup(input: {
   };
 }
 
-export async function syncRemotePlayer(input: {
+export async function syncPairedGamePlayer(input: {
   roomId: string;
   playerToken: string;
   snapshot: RemoteSyncedSnapshot;
@@ -322,7 +322,7 @@ export async function syncRemotePlayer(input: {
       room.activePlayerEpoch !== input.snapshot.connectionEpoch &&
       now - room.playerSeenAt <= PRESENCE_TTL_SECONDS * 1000
     ) {
-      log.warn("things.remote-room", "Player lease rejected", {
+      log.warn("things.paired-game-room", "Player lease rejected", {
         game: meta.game,
         reason: "active_epoch",
       });
@@ -357,7 +357,7 @@ export async function syncRemotePlayer(input: {
   const roomTtl = remainingMultiplayerRoomTtlSeconds(meta.expiresAt);
   const activePlayerEpoch = await redis.get<string>(roomKeys.playerEpoch);
   if (activePlayerEpoch && activePlayerEpoch !== input.snapshot.connectionEpoch) {
-    log.warn("things.remote-room", "Player lease rejected", {
+    log.warn("things.paired-game-room", "Player lease rejected", {
       game: meta.game,
       reason: "active_epoch",
     });
@@ -414,7 +414,7 @@ export async function syncRemotePlayer(input: {
   };
 }
 
-export async function readRemoteJudge(input: {
+export async function readPairedGameJudge(input: {
   roomId: string;
   judgeToken: string;
   judgeEpoch: string;
@@ -438,7 +438,7 @@ export async function readRemoteJudge(input: {
       room.activeJudgeEpoch === input.judgeEpoch;
     if (judgeActive) {
       if (input.takeover && room.activeJudgeEpoch && room.activeJudgeEpoch !== input.judgeEpoch) {
-        log.info("things.remote-room", "Judge control taken over", {
+        log.info("things.paired-game-room", "Judge control taken over", {
           game: meta.game,
           storage: "memory",
         });
@@ -461,7 +461,7 @@ export async function readRemoteJudge(input: {
     judgeActive = true;
     await redis.set(roomKeys.judgeEpoch, input.judgeEpoch, { ex: JUDGE_LEASE_TTL_SECONDS });
     if (existingJudgeEpoch && existingJudgeEpoch !== input.judgeEpoch) {
-      log.info("things.remote-room", "Judge control taken over", {
+      log.info("things.paired-game-room", "Judge control taken over", {
         game: meta.game,
         storage: "redis",
       });
@@ -486,7 +486,7 @@ export async function readRemoteJudge(input: {
   };
 }
 
-export async function sendRemoteJudgeCommand(input: {
+export async function sendPairedGameJudgeCommand(input: {
   roomId: string;
   judgeToken: string;
   judgeEpoch: string;
@@ -583,7 +583,7 @@ export async function sendRemoteJudgeCommand(input: {
   return { ok: true, sequence };
 }
 
-export async function closeRemoteRoom(roomId: string, role: RemoteRoomRole, token: string) {
+export async function closePairedGameRoom(roomId: string, role: PairedGameRoomRole, token: string) {
   const context = await readRoom(roomId);
   if (!context) return { ok: true };
   if (!roleMatches(context.meta, role, token)) return { ok: false };
@@ -591,8 +591,8 @@ export async function closeRemoteRoom(roomId: string, role: RemoteRoomRole, toke
   if (!redis) {
     memoryRooms.delete(roomId);
   } else {
-    await redis.del(...allRemoteKeys(roomId));
+    await redis.del(...allPairedGameKeys(roomId));
   }
-  log.info("things.remote-room", "Room closed", { game: context.meta.game, closedBy: role });
+  log.info("things.paired-game-room", "Room closed", { game: context.meta.game, closedBy: role });
   return { ok: true };
 }
