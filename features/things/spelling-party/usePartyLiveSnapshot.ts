@@ -82,7 +82,8 @@ export function usePartyLiveSnapshot(input: {
     const round = snapshot?.round;
     if (!round) return;
     const now = Date.now() + clockOffset;
-    const boundary = [round.answerOpensAt, round.answerLocksAt, round.revealAt]
+    const boundary = [round.answerOpensAt, round.answerLocksAt, round.revealAt, round.nextRoundAt]
+      .filter((time): time is number => time !== null)
       .filter((time) => time > now + 20)
       .sort((a, b) => a - b)[0];
     if (!boundary) return;

@@ -9,10 +9,16 @@ import {
   closePartyRoomFn,
   joinPartyRoomFn,
 } from "./party-room.functions";
-import type { PartyClueKind, PartyPlayerAction, PartyPlayerCredentials } from "./types";
+import type {
+  PartyClueKind,
+  PartyPlayerAction,
+  PartyPlayerCredentials,
+  PartyPresenterAction,
+} from "./types";
 import { usePartyLiveSnapshot } from "./usePartyLiveSnapshot";
 import { useSynchronizedPartyStage } from "./useSynchronizedPartyStage";
 import { PartyClosenessBoard } from "./PartyClosenessBoard";
+import { PartyRoundCooldown } from "./PartyRoundCooldown";
 import { gameBrowserKeys, legacyGameBrowserKeys } from "../shared/game-keys";
 import { EndGameDialog } from "../shared/EndGameDialog";
 import {
@@ -523,7 +529,7 @@ function PartyPlayerGame({ credentials }: { credentials: PartyPlayerCredentials 
     removeStoragePrefix(localStorage, legacyGameBrowserKeys.partyDraftPrefix(credentials.roomId));
   }, [credentials.playerId, credentials.roomId, live.ended, queueKey]);
 
-  const sendHostAction = async (type: "round.start" | "round.next") => {
+  const sendHostAction = async (type: PartyPresenterAction["type"]) => {
     if (!credentials.presenterToken) return;
     unlockPartyAudio();
     try {
@@ -665,30 +671,13 @@ function PartyPlayerGame({ credentials }: { credentials: PartyPlayerCredentials 
               >
                 {stage.label}
               </TextMorph>
-              {stage.seconds !== null ? (
+              {stage.seconds !== null && snapshot.phase !== "reveal" ? (
                 <p className="mt-4 font-mono text-xl text-white/55">{stage.seconds}s</p>
               ) : null}
             </section>
             {snapshot.phase === "answer" && !player?.locked ? (
               <>
-                <div
-                  className="mt-8 flex min-h-16 flex-wrap justify-center gap-2"
-                  aria-label={
-                    draft ? `Your spelling: ${draft.split("").join(" ")}` : "Your spelling is blank"
-                  }
-                >
-                  {draft.split("").map((letter, index) => (
-                    <span
-                      key={`${index}-${letter}`}
-                      className="flex h-12 min-w-10 items-center justify-center rounded-xl border border-white/20 bg-white/[0.07] px-2 font-mono text-xl"
-                    >
-                      {letter}
-                    </span>
-                  ))}
-                  {!draft ? (
-                    <span className="font-serif text-lg text-white/35">start typing</span>
-                  ) : null}
-                </div>
+                <DraftDisplay draft={draft} />
                 <PartyKeyboard onLetter={addLetter} onBackspace={backspace} />
                 <button
                   type="button"
@@ -752,15 +741,19 @@ function PartyPlayerGame({ credentials }: { credentials: PartyPlayerCredentials 
                 <p className="mt-6 font-serif text-lg text-white/50">
                   Scores are saved for the final reveal.
                 </p>
-                {isHost ? (
-                  <button
-                    type="button"
-                    onClick={() => void sendHostAction("round.next")}
-                    className="mt-7 min-h-14 w-full rounded-full bg-[var(--things-amber)] px-6 font-mono text-sm font-bold text-black"
-                  >
-                    {round.number >= round.total ? "reveal final scores" : "next word"}
-                  </button>
-                ) : null}
+                <PartyRoundCooldown
+                  progress={stage.cooldownProgress}
+                  seconds={stage.seconds}
+                  finalRound={round.number >= round.total}
+                  onTogglePause={
+                    isHost
+                      ? () =>
+                          void sendHostAction(
+                            round.nextRoundAt === null ? "round.resume" : "round.pause",
+                          )
+                      : undefined
+                  }
+                />
               </section>
             ) : null}
           </>
@@ -924,6 +917,33 @@ function HostPlayerLobby({
 }
 
 const KEY_ROWS = ["QWERTYUIOP", "ASDFGHJKL", "ZXCVBNM"];
+
+function DraftDisplay({ draft }: { draft: string }) {
+  const rail = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    rail.current?.scrollTo({ left: rail.current.scrollWidth, behavior: "smooth" });
+  }, [draft]);
+  return (
+    <div
+      ref={rail}
+      className="mt-8 h-16 overflow-x-auto overflow-y-hidden overscroll-x-contain"
+      aria-label={draft ? `Your spelling: ${draft.split("").join(" ")}` : "Your spelling is blank"}
+    >
+      <div className="mx-auto flex h-16 w-max min-w-full items-center justify-center gap-1.5 px-1">
+        {draft.split("").map((letter, index) => (
+          <span
+            key={`${index}-${letter}`}
+            className="flex h-12 min-w-9 items-center justify-center rounded-xl border border-white/20 bg-white/[0.07] px-2 font-mono text-xl"
+          >
+            {letter}
+          </span>
+        ))}
+        {!draft ? <span className="font-serif text-lg text-white/35">start typing</span> : null}
+      </div>
+    </div>
+  );
+}
+
 function PartyKeyboard({
   onLetter,
   onBackspace,
@@ -932,16 +952,25 @@ function PartyKeyboard({
   onBackspace: () => void;
 }) {
   return (
-    <div className="mt-8 grid gap-2" aria-label="Spelling keyboard">
+    <div className="mt-6 grid select-none gap-2 touch-manipulation" aria-label="Spelling keyboard">
       {KEY_ROWS.map((row, rowIndex) => (
-        <div key={row} className="flex justify-center gap-1.5">
+        <div
+          key={row}
+          className={`grid gap-1.5 ${
+            rowIndex === 0
+              ? "grid-cols-10"
+              : rowIndex === 1
+                ? "grid-cols-9 px-[5%]"
+                : "grid-cols-[repeat(7,minmax(0,1fr))_1.45fr] px-[8%]"
+          }`}
+        >
           {row.split("").map((letter) => (
             <button
               key={letter}
               type="button"
               aria-label={letter}
               onClick={() => onLetter(letter)}
-              className="h-12 min-w-0 flex-1 rounded-xl border border-white/15 bg-white/[0.06] font-mono text-sm active:bg-white/15"
+              className="h-13 min-w-0 rounded-xl border border-white/15 bg-white/[0.07] font-mono text-sm shadow-sm focus-visible:ring-2 focus-visible:ring-white/75 active:translate-y-px active:bg-white/20"
             >
               {letter}
             </button>
@@ -951,7 +980,7 @@ function PartyKeyboard({
               type="button"
               aria-label="Backspace"
               onClick={onBackspace}
-              className="h-12 min-w-12 rounded-xl border border-white/15 bg-white/[0.06] font-mono text-xs"
+              className="h-13 min-w-0 rounded-xl border border-white/15 bg-white/[0.07] font-mono text-base shadow-sm focus-visible:ring-2 focus-visible:ring-white/75 active:translate-y-px active:bg-white/20"
             >
               ⌫
             </button>

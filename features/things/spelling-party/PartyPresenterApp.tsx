@@ -7,7 +7,8 @@ import { applyPresenterActionFn, closePartyRoomFn } from "./party-room.functions
 import { usePartyLiveSnapshot } from "./usePartyLiveSnapshot";
 import { useSynchronizedPartyStage } from "./useSynchronizedPartyStage";
 import { PartyClosenessBoard } from "./PartyClosenessBoard";
-import type { PartyClueEvent } from "./types";
+import { PartyRoundCooldown } from "./PartyRoundCooldown";
+import type { PartyClueEvent, PartyPresenterAction } from "./types";
 import { gameBrowserKeys, legacyGameBrowserKeys } from "../shared/game-keys";
 import {
   readExpiringLocalValue,
@@ -209,7 +210,7 @@ export function PartyPresenterApp({ roomId }: { roomId: string }) {
     previousPhase.current = snapshot?.phase;
   }, [haptics, snapshot?.phase]);
 
-  const send = async (type: "round.start" | "round.next") => {
+  const send = async (type: PartyPresenterAction["type"]) => {
     if (!tokens.presenterToken) return;
     unlockPartyAudio();
     try {
@@ -443,7 +444,7 @@ export function PartyPresenterApp({ roomId }: { roomId: string }) {
               >
                 {stage.label}
               </TextMorph>
-              {stage.seconds !== null ? (
+              {stage.seconds !== null && snapshot.phase !== "reveal" ? (
                 <p className="mt-4 font-mono text-xl text-white/55">{stage.seconds}s</p>
               ) : null}
               {snapshot.phase === "answer" ? (
@@ -464,13 +465,14 @@ export function PartyPresenterApp({ roomId }: { roomId: string }) {
                   <p className="mt-6 font-serif text-base text-white/45">
                     Scores stay hidden until the end.
                   </p>
-                  <button
-                    type="button"
-                    onClick={() => void send("round.next")}
-                    className="mt-7 min-h-14 w-full rounded-full bg-[var(--things-amber)] px-6 font-mono text-sm font-bold text-black"
-                  >
-                    {round.number >= round.total ? "reveal final scores" : "next word"}
-                  </button>
+                  <PartyRoundCooldown
+                    progress={stage.cooldownProgress}
+                    seconds={stage.seconds}
+                    finalRound={round.number >= round.total}
+                    onTogglePause={() =>
+                      void send(round.nextRoundAt === null ? "round.resume" : "round.pause")
+                    }
+                  />
                 </div>
               ) : null}
             </section>

@@ -75,7 +75,12 @@ function role(value: unknown): PartyRole {
 function presenterAction(value: unknown): PartyPresenterAction {
   const data = record(value);
   const id = actionId(data.actionId);
-  if (data.type === "round.start" || data.type === "round.next")
+  if (
+    data.type === "round.start" ||
+    data.type === "round.next" ||
+    data.type === "round.pause" ||
+    data.type === "round.resume"
+  )
     return { actionId: id, type: data.type };
   throw new Error("Invalid action");
 }

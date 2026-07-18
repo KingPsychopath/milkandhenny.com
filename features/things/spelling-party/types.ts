@@ -1,6 +1,7 @@
 export type PartyPhase = "lobby" | "countdown" | "answer" | "locked" | "reveal" | "finished";
 export type PartyRole = "presenter" | "player";
 export type PartyClueKind = "repeat" | "definition" | "sentence";
+export const PARTY_REVEAL_COOLDOWN_MS = 8_000;
 
 export interface PartyDeckSummary {
   id: string;
@@ -63,6 +64,7 @@ export interface PartyRoundSnapshot {
   answerOpensAt: number;
   answerLocksAt: number;
   revealAt: number;
+  nextRoundAt: number | null;
   wordAudioUrl: string | null;
   spokenWord?: string;
   speechLocale?: "en-GB" | "en-US";
@@ -120,7 +122,9 @@ export interface PartySnapshotResult {
 
 export type PartyPresenterAction =
   | { actionId: string; type: "round.start" }
-  | { actionId: string; type: "round.next" };
+  | { actionId: string; type: "round.next" }
+  | { actionId: string; type: "round.pause" }
+  | { actionId: string; type: "round.resume" };
 
 export type PartyPlayerAction =
   | {

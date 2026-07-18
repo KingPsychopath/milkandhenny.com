@@ -17,6 +17,7 @@ import type {
   PartySnapshot,
   PartySnapshotResult,
 } from "./types";
+import { PARTY_REVEAL_COOLDOWN_MS } from "./types";
 
 const ROOM_TTL_SECONDS = 4 * 60 * 60;
 const FINISHED_GRACE_SECONDS = 15 * 60;
@@ -50,6 +51,7 @@ interface RoundState {
   answerOpensAt: number;
   answerLocksAt: number;
   revealAt: number;
+  nextRoundAt: number | null;
   wordAudio: AudioCapability | null;
   repeatUsed: boolean;
   definitionUsed: boolean;
@@ -151,6 +153,9 @@ async function migrateLegacyJoinReceipts(room: PartyRoomState, keys: PartyRedisK
 function hydrateRoomWords(room: PartyRoomState) {
   room.words ??= partyDeck(room.deckId)?.words ?? [];
   room.usesLocalSpeech ??= false;
+  const round = room.round;
+  if (round && round.nextRoundAt === undefined)
+    round.nextRoundAt = room.phase === "reveal" ? Date.now() + PARTY_REVEAL_COOLDOWN_MS : null;
 }
 
 async function deletePartyRoom(room: PartyRoomState, keys: PartyRedisKeys) {
@@ -235,6 +240,7 @@ async function withRoom<T>(
     const room = await redis.get<PartyRoomState>(initial.keys.state);
     if (!room || room.expiresAt <= Date.now()) return null;
     room.joinReceiptIds ??= [];
+    hydrateRoomWords(room);
     const result = await use(room, initial.keys);
     await saveRoom(room, initial.keys);
     return result;
@@ -304,6 +310,7 @@ function reveal(room: PartyRoomState) {
     }
     room.round.scored = true;
   }
+  room.round.nextRoundAt = Date.now() + PARTY_REVEAL_COOLDOWN_MS;
   room.phase = "reveal";
   changed(room);
 }
@@ -317,6 +324,8 @@ function advance(room: PartyRoomState, now = Date.now()) {
   }
   if (room.phase === "answer" && now >= round.answerLocksAt) lockAll(room, round.answerLocksAt);
   if (room.phase === "locked" && now >= round.revealAt) reveal(room);
+  if (room.phase === "reveal" && round.nextRoundAt !== null && now >= round.nextRoundAt)
+    startRound(room, round.nextRoundAt);
 }
 
 function audioUrl(roomIdValue: string, assetId: string) {
@@ -376,6 +385,7 @@ function snapshot(
           answerOpensAt: room.round.answerOpensAt,
           answerLocksAt: room.round.answerLocksAt,
           revealAt: room.round.revealAt,
+          nextRoundAt: room.round.nextRoundAt ?? null,
           wordAudioUrl: room.round.wordAudio
             ? audioUrl(room.roomId, room.round.wordAudio.id)
             : null,
@@ -451,6 +461,7 @@ function startRound(room: PartyRoomState, now = Date.now()) {
     answerOpensAt,
     answerLocksAt,
     revealAt: answerLocksAt + 650,
+    nextRoundAt: null,
     wordAudio: room.usesLocalSpeech
       ? null
       : { id: capability(), key: partyAudioAssetKey(word, "word") },
@@ -656,7 +667,23 @@ export async function applyPresenterAction(input: {
     if (input.action.type === "round.start" && room.phase === "lobby" && room.players.length > 0)
       startRound(room);
     else if (input.action.type === "round.next" && room.phase === "reveal") startRound(room);
-    else
+    else if (
+      input.action.type === "round.pause" &&
+      room.phase === "reveal" &&
+      room.round &&
+      room.round.nextRoundAt !== null
+    ) {
+      room.round.nextRoundAt = null;
+      changed(room);
+    } else if (
+      input.action.type === "round.resume" &&
+      room.phase === "reveal" &&
+      room.round &&
+      room.round.nextRoundAt === null
+    ) {
+      room.round.nextRoundAt = Date.now() + PARTY_REVEAL_COOLDOWN_MS;
+      changed(room);
+    } else
       return {
         ok: true,
         accepted: false,
