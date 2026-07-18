@@ -130,6 +130,10 @@
   --things-green: oklch(0.72 0.17 151);
   --things-stone: oklch(0.78 0.025 70.7);
   --things-cream: oklch(0.96 0.02 86.42);
+  --things-country-reference: oklch(0.77 0.012 75);
+  --things-country-outside: oklch(0.57 0.19 28);
+  --things-country-inside: oklch(0.53 0.15 253);
+  --things-country-point: oklch(0.2 0.01 56.42);
 }
 
 [data-theme="dark"] {
@@ -307,6 +311,39 @@
   }
 }
 
+@keyframes country-outline-trace {
+  from {
+    opacity: 0;
+    stroke-dashoffset: 1;
+  }
+  to {
+    opacity: 1;
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes country-guide-trace {
+  from {
+    opacity: 0;
+    stroke-dashoffset: 1;
+  }
+  to {
+    opacity: 0.72;
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes country-point-in {
+  from {
+    opacity: 0;
+    transform: scale(0.4);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
 @layer components {
   .things-game-fullscreen {
     min-height: 100svh;
@@ -351,6 +388,86 @@
 
   .things-game--cream {
     background: var(--things-cream);
+  }
+
+  .country-reveal-reference,
+  .country-reveal-drawing,
+  .country-reveal-guide {
+    stroke-dasharray: 1;
+    stroke-dashoffset: 1;
+    animation: country-outline-trace 680ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  }
+
+  .country-reveal-reference {
+    stroke: var(--things-country-reference);
+  }
+
+  .country-reveal-drawing {
+    stroke: var(--things-country-point);
+  }
+
+  .country-reveal-guide {
+    animation-name: country-guide-trace;
+    animation-duration: 460ms;
+  }
+
+  .country-reveal-guide--outside {
+    stroke: var(--things-country-outside);
+  }
+
+  .country-reveal-guide--inside {
+    stroke: var(--things-country-inside);
+  }
+
+  .country-reveal-point {
+    fill: var(--things-country-point);
+    opacity: 0;
+    transform-box: fill-box;
+    transform-origin: center;
+    animation: country-point-in 320ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  }
+
+  .country-legend-reference,
+  .country-legend-outside,
+  .country-legend-inside {
+    display: inline-block;
+    width: 1.5rem;
+    border-top: 2px solid;
+  }
+
+  .country-legend-reference {
+    border-color: var(--things-country-reference);
+  }
+
+  .country-legend-outside {
+    border-color: var(--things-country-outside);
+  }
+
+  .country-legend-inside {
+    border-color: var(--things-country-inside);
+  }
+
+  .country-legend-point {
+    width: 0.45rem;
+    height: 0.45rem;
+    border-radius: 999px;
+    background: var(--things-country-point);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .country-reveal-reference,
+    .country-reveal-drawing,
+    .country-reveal-guide,
+    .country-reveal-point {
+      animation: none;
+      opacity: 1;
+      stroke-dashoffset: 0;
+      transform: none;
+    }
+
+    .country-reveal-guide {
+      opacity: 0.72;
+    }
   }
 
   .things-game-card[torph-root] {

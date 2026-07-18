@@ -46,7 +46,8 @@ export function CountryRoundBoard({
       </div>
       <DrawCanvas drawing={drawing} disabled={submitting || submitted} onChange={onChange} />
       <p className="mt-3 px-1 font-mono text-micro leading-relaxed text-black/45">
-        drag one continuous outline · lift and draw again for islands
+        draw anywhere — we align position and size · keep clear of the edge · lift to close; draw
+        again for islands
       </p>
       <div className="mt-4 flex items-center justify-between gap-3">
         <div className="flex gap-2">

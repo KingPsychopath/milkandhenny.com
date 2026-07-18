@@ -1,4 +1,4 @@
-import { useRef } from "react";
+import { useRef, useState } from "react";
 import type { CountryDrawing, DrawPoint } from "./types";
 
 const WIDTH = 1_000;
@@ -6,9 +6,9 @@ const HEIGHT = 700;
 const MIN_POINT_DISTANCE = 7;
 const MAX_POINTS = 850;
 
-function pathFor(ring: DrawPoint[]) {
+function pathFor(ring: DrawPoint[], closed: boolean) {
   if (!ring.length) return "";
-  return `${ring.map((point, index) => `${index ? "L" : "M"}${point.x} ${point.y}`).join(" ")}${ring.length > 2 ? " Z" : ""}`;
+  return `${ring.map((point, index) => `${index ? "L" : "M"}${point.x} ${point.y}`).join(" ")}${closed && ring.length > 2 ? " Z" : ""}`;
 }
 
 export function DrawCanvas({
@@ -22,6 +22,7 @@ export function DrawCanvas({
 }) {
   const svgRef = useRef<SVGSVGElement>(null);
   const pointerRef = useRef<number | null>(null);
+  const [activeRing, setActiveRing] = useState<number | null>(null);
 
   const pointFromEvent = (event: React.PointerEvent<SVGSVGElement>): DrawPoint | null => {
     const bounds = svgRef.current?.getBoundingClientRect();
@@ -38,6 +39,7 @@ export function DrawCanvas({
     if (!point) return;
     event.currentTarget.setPointerCapture(event.pointerId);
     pointerRef.current = event.pointerId;
+    setActiveRing(drawing.length);
     onChange([...drawing, [point]]);
   };
 
@@ -59,6 +61,7 @@ export function DrawCanvas({
   const handlePointerEnd = (event: React.PointerEvent<SVGSVGElement>) => {
     if (pointerRef.current !== event.pointerId) return;
     pointerRef.current = null;
+    setActiveRing(null);
     if (drawing.at(-1)?.length === 1) onChange(drawing.slice(0, -1));
   };
 
@@ -67,7 +70,7 @@ export function DrawCanvas({
       ref={svgRef}
       viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
       role="img"
-      aria-label="Drawing area. Drag to draw the country outline; lift and drag again for another island."
+      aria-label="Drawing area. Drag to draw the country outline. A faint guide returns to your starting point and becomes the closing edge when you lift. Drag again for another island."
       className="block aspect-[10/7] w-full touch-none cursor-crosshair rounded-[1.75rem] border border-black/20 bg-white/45 shadow-[inset_0_1px_0_rgba(255,255,255,0.65)]"
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
@@ -86,19 +89,47 @@ export function DrawCanvas({
         fill="url(#draw-country-grid)"
         className="text-black/[0.035]"
       />
-      {drawing.map((ring, index) => (
-        <path
-          key={index}
-          d={pathFor(ring)}
-          fill={ring.length > 2 ? "currentColor" : "none"}
-          fillOpacity="0.035"
-          stroke="currentColor"
-          strokeWidth="5"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          vectorEffect="non-scaling-stroke"
-        />
-      ))}
+      {drawing.map((ring, index) => {
+        const active = index === activeRing;
+        const first = ring[0];
+        const last = ring.at(-1);
+        return (
+          <g key={index}>
+            <path
+              d={pathFor(ring, !active)}
+              fill={!active && ring.length > 2 ? "currentColor" : "none"}
+              fillOpacity="0.035"
+              stroke="currentColor"
+              strokeWidth="5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              vectorEffect="non-scaling-stroke"
+            />
+            {active && first && last && ring.length > 1 ? (
+              <line
+                x1={last.x}
+                y1={last.y}
+                x2={first.x}
+                y2={first.y}
+                className="stroke-black/20"
+                strokeWidth="2"
+                strokeDasharray="7 8"
+                vectorEffect="non-scaling-stroke"
+              />
+            ) : null}
+            {active && first ? (
+              <circle
+                cx={first.x}
+                cy={first.y}
+                r="7"
+                className="fill-[var(--things-cream)] stroke-black/40"
+                strokeWidth="2"
+                vectorEffect="non-scaling-stroke"
+              />
+            ) : null}
+          </g>
+        );
+      })}
     </svg>
   );
 }

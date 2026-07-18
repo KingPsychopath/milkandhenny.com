@@ -3,7 +3,7 @@ import { useState } from "react";
 import { TextMorph } from "torph/react";
 import { useQrCode } from "@/hooks/useQrCode";
 import { shareOrCopy } from "@/lib/client/share";
-import { CountryReveal } from "./CountryReveal";
+import { CountryReveal, CountryRevealLegend } from "./CountryReveal";
 import { countryById } from "./countries";
 import { buildDrawCountryPlayerInviteUrl } from "./draw-country-invite";
 import { drawCountryBrowserKeys } from "./draw-country-keys";
@@ -167,7 +167,12 @@ export function RoomReveal({
           </div>
         </div>
         <div className="mt-5 grid gap-6 sm:grid-cols-[minmax(0,1.3fr)_minmax(15rem,0.7fr)] sm:items-start">
-          {evaluation ? <CountryReveal evaluation={evaluation} /> : null}
+          {evaluation ? (
+            <div>
+              <CountryReveal evaluation={evaluation} />
+              <CountryRevealLegend />
+            </div>
+          ) : null}
           <section
             aria-labelledby="round-ranking"
             className="rounded-[1.5rem] border border-black/15 bg-white/25 p-4"
