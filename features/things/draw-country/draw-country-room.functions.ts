@@ -86,11 +86,20 @@ export const applyDrawCountryActionFn = createServerFn({ method: "POST" })
     const data = record(value);
     const rawAction = record(data.action);
     let action:
-      | { type: "game.start" }
+      | { type: "game.start"; removePlayerIds?: string[] }
+      | { type: "readiness.set"; ready: boolean }
       | { type: "round.next" }
       | { type: "drawing.submit"; roundId: string; drawing: CountryDrawing };
-    if (rawAction.type === "game.start" || rawAction.type === "round.next")
-      action = { type: rawAction.type };
+    if (rawAction.type === "game.start")
+      action = {
+        type: rawAction.type,
+        removePlayerIds: Array.isArray(rawAction.removePlayerIds)
+          ? rawAction.removePlayerIds.slice(0, 16).map((playerId) => text(playerId, 80))
+          : undefined,
+      };
+    else if (rawAction.type === "readiness.set" && typeof rawAction.ready === "boolean")
+      action = { type: rawAction.type, ready: rawAction.ready };
+    else if (rawAction.type === "round.next") action = { type: rawAction.type };
     else if (rawAction.type === "drawing.submit")
       action = {
         type: rawAction.type,

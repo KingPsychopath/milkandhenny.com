@@ -1,5 +1,13 @@
 import { createServerFn } from "@tanstack/react-start";
-import { multiplayerBoundedText, multiplayerCredential, multiplayerRecord, multiplayerRoomId, multiplayerSequence, multiplayerText, optionalMultiplayerText } from "../shared/multiplayer-validation";
+import {
+  multiplayerBoundedText,
+  multiplayerCredential,
+  multiplayerRecord,
+  multiplayerRoomId,
+  multiplayerSequence,
+  multiplayerText,
+  optionalMultiplayerText,
+} from "../shared/multiplayer-validation";
 import { partyDeckCatalog } from "./party-content.server";
 import {
   applyPlayerAction,
@@ -57,12 +65,15 @@ function role(value: unknown): PartyRole {
 function presenterAction(value: unknown): PartyPresenterAction {
   const data = record(value);
   const id = actionId(data.actionId);
-  if (
-    data.type === "round.start" ||
-    data.type === "round.next" ||
-    data.type === "round.pause" ||
-    data.type === "round.resume"
-  )
+  if (data.type === "round.start")
+    return {
+      actionId: id,
+      type: data.type,
+      removePlayerIds: Array.isArray(data.removePlayerIds)
+        ? data.removePlayerIds.slice(0, 12).map((playerId) => text(playerId, 120))
+        : undefined,
+    };
+  if (data.type === "round.next" || data.type === "round.pause" || data.type === "round.resume")
     return { actionId: id, type: data.type };
   throw new Error("Invalid action");
 }
@@ -74,7 +85,10 @@ function clue(value: unknown): PartyClueKind {
 
 function playerAction(value: unknown): PartyPlayerAction {
   const data = record(value);
-  const base = { actionId: actionId(data.actionId), roundId: text(data.roundId, 120) };
+  const id = actionId(data.actionId);
+  if (data.type === "readiness.set" && typeof data.ready === "boolean")
+    return { actionId: id, type: data.type, ready: data.ready };
+  const base = { actionId: id, roundId: text(data.roundId, 120) };
   if (data.type === "draft.update")
     return {
       ...base,
@@ -117,6 +131,8 @@ export const joinPartyRoomFn = createServerFn({ method: "POST" })
       joinToken: data.joinToken === undefined ? undefined : credential(data.joinToken),
       name: text(data.name, 40),
       joinId: actionId(data.joinId),
+      presenterToken:
+        data.presenterToken === undefined ? undefined : credential(data.presenterToken),
     };
   })
   .handler(({ data }) => joinPartyRoom(data));

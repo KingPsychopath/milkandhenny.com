@@ -8,10 +8,7 @@ import { SpellingSetupIntro } from "../spelling/SpellingSetupIntro";
 import type { CustomSpellingDeck } from "../spelling/customDecks";
 import { spellingRoundOptions } from "../spelling/decks";
 import { useCustomSpellingDecks } from "../spelling/useCustomSpellingDecks";
-import {
-  readRecentSpellingWordIds,
-  rememberSpellingWords,
-} from "../spelling/wordRotation.client";
+import { readRecentSpellingWordIds, rememberSpellingWords } from "../spelling/wordRotation.client";
 import { partyBrowserKeys } from "./party-keys";
 import { writeExpiringLocalValue } from "../shared/game-storage.client";
 import { useUpdateReloadSafety } from "@/features/offline/update-safety.client";
@@ -82,6 +79,7 @@ export function PartySetupApp({ decks }: { decks: PartyDeckSummary[] }) {
           data: {
             roomId: room.roomId,
             joinToken: room.joinToken,
+            presenterToken: room.presenterToken,
             name: playerName,
             joinId: crypto.randomUUID(),
           },

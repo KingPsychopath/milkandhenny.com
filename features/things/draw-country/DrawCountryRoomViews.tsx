@@ -26,13 +26,17 @@ export function RoomHeader({ roomId, connection }: { roomId: string; connection:
 
 export function RoomLobby({
   snapshot,
+  playerId,
   connection,
   message,
+  onReadyChange,
   onStart,
 }: {
   snapshot: DrawCountrySnapshot;
+  playerId: string;
   connection: string;
   message: string | null;
+  onReadyChange: (ready: boolean) => void;
   onStart: () => void;
 }) {
   const [shareMessage, setShareMessage] = useState<string | null>(null);
@@ -49,6 +53,8 @@ export function RoomLobby({
           token ?? undefined,
         );
   const { dataUrl: qr, failed: qrFailed } = useQrCode(invite || null, 280);
+  const currentPlayer = snapshot.players.find(({ id }) => id === playerId);
+  const readyCount = snapshot.players.filter(({ ready }) => ready !== false).length;
   const share = async () => {
     const result = await shareOrCopy(
       { title: "Draw the Country", text: `Join room ${snapshot.roomId}.`, url: invite },
@@ -108,10 +114,21 @@ export function RoomLobby({
               key={player.id}
               className="rounded-full border border-black/15 bg-white/30 px-4 py-2 font-mono text-sm"
             >
-              {player.name}
+              {player.name} · {player.ready !== false ? "ready" : "not ready"}
             </li>
           ))}
         </ul>
+        <p aria-live="polite" className="mt-3 font-mono text-xs text-black/45">
+          {readyCount} of {snapshot.players.length} ready
+        </p>
+        <button
+          type="button"
+          aria-pressed={currentPlayer?.ready ?? true}
+          onClick={() => onReadyChange(!(currentPlayer?.ready ?? true))}
+          className="mt-4 min-h-12 rounded-full border border-black/20 px-6 font-mono text-xs font-semibold uppercase tracking-[0.12em]"
+        >
+          {currentPlayer?.ready ? "ready · tap to wait" : "not ready · tap when ready"}
+        </button>
         {snapshot.canControl ? (
           <button
             type="button"

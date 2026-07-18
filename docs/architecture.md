@@ -62,6 +62,8 @@ PairedGameRoom                 PartyRoom
 
 `PairedGameRoom` names the reusable two-device authority model used by remote judging. `PartyRoom` stays scoped to the `spelling-party` feature and does not pretend to be a universal party-game abstraction. New room models compose the shared capabilities they require instead of inheriting from one generic room class.
 
+Shared-room games with simultaneous starts compose the multiplayer readiness policy. Players join ready, may opt out while the lobby is open, and receive a persisted, rate-limited start request when a host tries to begin. Starting with unready players requires a second explicit action naming those players; the game engine rechecks the same players atomically before removing them. Solo games and paired-device authority flows do not use lobby readiness.
+
 The runtime is built lazily once per Node process and disposed by a Nitro shutdown hook. It owns services, Redis pub/sub connections, metrics, timeouts, and scoped cleanup. It never owns authoritative room state or a permanent fiber per room. Redis remains the distributed source of truth, so another replica can serve the next request.
 
 Effect is pinned to an exact v4 beta version while v4 is prerelease. It remains behind `.server.ts` boundaries; browser contracts, React, offline games, reducers, and reconciliation hooks do not import its runtime. Promise conversion happens only at TanStack/Nitro edges.

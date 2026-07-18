@@ -163,9 +163,12 @@ function PartyPlayerGame({ credentials }: { credentials: PartyPlayerCredentials 
   const playedAudio = useRef(new Set<string>());
   const [endConfirmationOpen, setEndConfirmationOpen] = useState(false);
   const [sentenceClueConfirmationOpen, setSentenceClueConfirmationOpen] = useState(false);
+  const [removePlayerIds, setRemovePlayerIds] = useState<string[] | null>(null);
+  const [confirmingStart, setConfirmingStart] = useState(false);
   const [requestingSentenceClue, setRequestingSentenceClue] = useState(false);
   const [leaving, setLeaving] = useState(false);
   const haptics = useWebHaptics();
+  const previousStartRequest = useRef<string | null>(null);
   const queueKey = partyBrowserKeys.pendingActions(credentials.roomId, credentials.playerId);
 
   const queued = useCallback((): PartyPlayerAction[] => {
@@ -252,6 +255,14 @@ function PartyPlayerGame({ credentials }: { credentials: PartyPlayerCredentials 
     isHost && hostJoinToken
       ? buildPartyPlayerInviteUrl(location.origin, credentials.roomId, hostJoinToken)
       : null;
+
+  useEffect(() => {
+    const requestId = player?.startRequestId ?? null;
+    if (!requestId || requestId === previousStartRequest.current) return;
+    previousStartRequest.current = requestId;
+    setLiveMessage("The host is ready to start — tap Ready when you are.");
+    void haptics.trigger("heavy");
+  }, [haptics, player?.startRequestId, setLiveMessage]);
 
   useEffect(() => {
     if (!isHost || !round || snapshot?.phase !== "countdown") return;
@@ -471,7 +482,16 @@ function PartyPlayerGame({ credentials }: { credentials: PartyPlayerCredentials 
     removeStoragePrefix(localStorage, partyBrowserKeys.draftPrefix(credentials.roomId));
   }, [credentials.playerId, credentials.roomId, live.ended, queueKey]);
 
-  const sendHostAction = async (type: PartyPresenterAction["type"]) => {
+  const setReady = async (ready: boolean) => {
+    const accepted = await send({
+      actionId: crypto.randomUUID(),
+      type: "readiness.set",
+      ready,
+    });
+    if (accepted) void haptics.trigger("selection");
+  };
+
+  const sendHostAction = async (type: PartyPresenterAction["type"], removePlayerIds?: string[]) => {
     if (!credentials.presenterToken) return;
     unlockPartyAudio();
     try {
@@ -479,17 +499,39 @@ function PartyPlayerGame({ credentials }: { credentials: PartyPlayerCredentials 
         data: {
           roomId: credentials.roomId,
           presenterToken: credentials.presenterToken,
-          action: { actionId: crypto.randomUUID(), type },
+          action:
+            type === "round.start"
+              ? { actionId: crypto.randomUUID(), type, removePlayerIds }
+              : { actionId: crypto.randomUUID(), type },
         },
       });
       if (!result.accepted) {
         live.setMessage(result.error ?? "That action is not ready yet.");
+        if (result.errorCode === "players_not_ready" && result.snapshot) {
+          const removable = result.snapshot.players.filter(
+            ({ id, ready }) => !ready && id !== credentials.playerId,
+          );
+          if (result.snapshot.player?.ready && removable.length > 0)
+            setRemovePlayerIds(removable.map(({ id }) => id));
+        }
+        live.notify();
         return;
       }
+      setRemovePlayerIds(null);
       live.notify();
       await live.refresh();
     } catch {
       live.setMessage("Reconnecting… Try that once more.");
+    }
+  };
+
+  const confirmStart = async () => {
+    if (!removePlayerIds) return;
+    setConfirmingStart(true);
+    try {
+      await sendHostAction("round.start", removePlayerIds);
+    } finally {
+      setConfirmingStart(false);
     }
   };
 
@@ -571,6 +613,8 @@ function PartyPlayerGame({ credentials }: { credentials: PartyPlayerCredentials 
               roomId={credentials.roomId}
               invite={hostInvite}
               players={snapshot.players}
+              currentPlayerId={credentials.playerId}
+              onReadyChange={(ready) => void setReady(ready)}
               onStart={() => void sendHostAction("round.start")}
             />
           ) : (
@@ -579,6 +623,14 @@ function PartyPlayerGame({ credentials }: { credentials: PartyPlayerCredentials 
               <p className="mt-4 font-serif text-lg text-white/60">
                 The host will start when everyone is ready.
               </p>
+              <button
+                type="button"
+                aria-pressed={player?.ready ?? true}
+                onClick={() => void setReady(!(player?.ready ?? true))}
+                className="mx-auto mt-6 min-h-12 rounded-full border border-white/20 px-6 font-mono text-xs font-semibold"
+              >
+                {player?.ready ? "ready · tap to wait" : "not ready · tap when ready"}
+              </button>
             </section>
           )
         ) : snapshot.phase === "finished" ? (
@@ -756,6 +808,35 @@ function PartyPlayerGame({ credentials }: { credentials: PartyPlayerCredentials 
           onConfirm={() => void confirmSentenceClue()}
         />
       ) : null}
+      {removePlayerIds ? (
+        <GameActionDialog
+          tone="dark"
+          eyebrow="players not ready"
+          title={
+            snapshot.players.some(({ id, ready }) => removePlayerIds.includes(id) && !ready)
+              ? "Start without them?"
+              : "Everyone is ready now."
+          }
+          description={(() => {
+            const names = snapshot.players
+              .filter(({ id, ready }) => removePlayerIds.includes(id) && !ready)
+              .map(({ name }) => name);
+            return names.length
+              ? `${names.join(" and ")} will be removed from this game.`
+              : "No one will be removed.";
+          })()}
+          cancelLabel="keep waiting"
+          confirmLabel={
+            snapshot.players.some(({ id, ready }) => removePlayerIds.includes(id) && !ready)
+              ? "remove & start"
+              : "start game"
+          }
+          pending={confirmingStart}
+          pendingLabel="starting…"
+          onCancel={() => setRemovePlayerIds(null)}
+          onConfirm={() => void confirmStart()}
+        />
+      ) : null}
     </div>
   );
 }
@@ -764,15 +845,20 @@ function HostPlayerLobby({
   roomId,
   invite,
   players,
+  currentPlayerId,
+  onReadyChange,
   onStart,
 }: {
   roomId: string;
   invite: string;
-  players: Array<{ id: string; name: string }>;
+  players: Array<{ id: string; name: string; ready: boolean }>;
+  currentPlayerId: string;
+  onReadyChange: (ready: boolean) => void;
   onStart: () => void;
 }) {
   const [message, setMessage] = useState<string | null>(null);
   const { dataUrl: qr, failed: qrFailed } = useQrCode(invite, 280);
+  const currentPlayer = players.find(({ id }) => id === currentPlayerId);
   const shareInvite = async () => {
     const share = {
       title: "Join our Spelling Bee",
@@ -782,7 +868,8 @@ function HostPlayerLobby({
     const result = await shareOrCopy(share, { copyValue: invite });
     if (result === "shared") setMessage("Invite shared.");
     else if (result === "copied") setMessage("Player link copied.");
-    else if (result === "failed") setMessage("Ask players to scan the code or enter the room code.");
+    else if (result === "failed")
+      setMessage("Ask players to scan the code or enter the room code.");
   };
   return (
     <section
@@ -805,7 +892,9 @@ function HostPlayerLobby({
           className="mt-6 w-52 rounded-3xl bg-white p-3"
         />
       ) : qrFailed ? (
-        <p className="mt-5 font-mono text-xs text-white/50">QR unavailable—share the player link or room code.</p>
+        <p className="mt-5 font-mono text-xs text-white/50">
+          QR unavailable—share the player link or room code.
+        </p>
       ) : null}
       <p className="mt-4 font-mono text-micro uppercase tracking-[0.18em] text-white/40">
         room code
@@ -827,13 +916,23 @@ function HostPlayerLobby({
             key={player.id}
             className="rounded-full border border-white/15 px-4 py-2 font-mono text-sm"
           >
-            {player.name}
+            {player.name} · {player.ready !== false ? "ready" : "not ready"}
           </li>
         ))}
       </ul>
       <p className="mt-3 font-mono text-xs text-white/45">
-        {players.length === 1 ? "Just you so far" : `${players.length} players ready`}
+        {players.length === 1
+          ? "Just you so far"
+          : `${players.filter(({ ready }) => ready !== false).length} of ${players.length} ready`}
       </p>
+      <button
+        type="button"
+        aria-pressed={currentPlayer?.ready ?? true}
+        onClick={() => onReadyChange(!(currentPlayer?.ready ?? true))}
+        className="mt-4 min-h-12 rounded-full border border-white/20 px-6 font-mono text-xs font-semibold"
+      >
+        {currentPlayer?.ready ? "ready · tap to wait" : "not ready · tap when ready"}
+      </button>
       <button
         type="button"
         onClick={onStart}

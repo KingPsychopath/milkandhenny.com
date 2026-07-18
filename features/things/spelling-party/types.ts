@@ -7,6 +7,7 @@ import type {
   MultiplayerSequence,
   MultiplayerSuccess,
 } from "../shared/multiplayer";
+import type { MultiplayerReadiness } from "../shared/multiplayer-readiness";
 
 export type PartyPhase = "lobby" | "countdown" | "answer" | "locked" | "reveal" | "finished";
 export type PartyRole = "presenter" | "player";
@@ -40,6 +41,7 @@ export interface PartyPlayerSummary {
   status: "ready" | "typing" | "locked" | "disconnected";
   score: number;
   connected: boolean;
+  ready: boolean;
   integrityNotices: number;
 }
 
@@ -86,14 +88,15 @@ export interface PartyRoundSnapshot {
   answers?: PartyRevealAnswer[];
 }
 
-export interface PartyPlayerPrivateState {
+export interface PartyPlayerPrivateState extends MultiplayerReadiness {
   draft: string;
   draftRevision: number;
   locked: boolean;
   lockedAutomatically: boolean;
 }
 
-export interface PartySnapshot extends MultiplayerRoomIdentity, MultiplayerRevision, MultiplayerSequence {
+export interface PartySnapshot
+  extends MultiplayerRoomIdentity, MultiplayerRevision, MultiplayerSequence {
   deckName: string;
   phase: PartyPhase;
   serverNow: number;
@@ -128,6 +131,7 @@ export type PartyJoinErrorCode =
 export type PartyActionRejectionCode =
   | "action_unavailable"
   | "waiting_for_players"
+  | "players_not_ready"
   | "round_ended"
   | "answers_locked"
   | "clues_unavailable"
@@ -143,31 +147,35 @@ export type PartySnapshotResult =
   | MultiplayerSuccess<{ snapshot: PartySnapshot }>
   | (MultiplayerFailure<"room_unavailable"> & { snapshot: null });
 
-export type PartyPresenterAction = MultiplayerAction & {
-  type: "round.start" | "round.next" | "round.pause" | "round.resume";
-};
+export type PartyPresenterAction = MultiplayerAction &
+  (
+    | { type: "round.start"; removePlayerIds?: string[] }
+    | { type: "round.next" | "round.pause" | "round.resume" }
+  );
 
-export type PartyPlayerAction = MultiplayerAction & (
-  | {
-      type: "draft.update";
-      roundId: string;
-      draft: string;
-      draftRevision: number;
-    }
-  | { type: "answer.lock"; roundId: string }
-  | { type: "clue.request"; roundId: string; clue: PartyClueKind }
-  | { type: "integrity.notice"; roundId: string; hiddenMs: number }
-);
+export type PartyPlayerAction = MultiplayerAction &
+  (
+    | { type: "readiness.set"; ready: boolean }
+    | {
+        type: "draft.update";
+        roundId: string;
+        draft: string;
+        draftRevision: number;
+      }
+    | { type: "answer.lock"; roundId: string }
+    | { type: "clue.request"; roundId: string; clue: PartyClueKind }
+    | { type: "integrity.notice"; roundId: string; hiddenMs: number }
+  );
 
 export type PartyActionResult =
   | MultiplayerSuccess<{ accepted: true; snapshot: PartySnapshot }>
-  | (MultiplayerSuccess<{
+  | MultiplayerSuccess<{
       accepted: false;
       snapshot: PartySnapshot;
       errorCode: PartyActionRejectionCode;
       error: string;
       retryable: boolean;
-    }>)
+    }>
   | (MultiplayerFailure<PartyRoomErrorCode> & {
       accepted: false;
       snapshot: null;

@@ -5,6 +5,7 @@ import type {
   MultiplayerSequence,
   MultiplayerSuccess,
 } from "../shared/multiplayer";
+import type { MultiplayerReadiness } from "../shared/multiplayer-readiness";
 
 export interface DrawPoint {
   x: number;
@@ -41,6 +42,7 @@ export interface DrawCountryPlayer {
   roundScore: number | null;
   submitted: boolean;
   connected: boolean;
+  ready: boolean;
   place: number | null;
 }
 
@@ -63,6 +65,7 @@ export interface DrawCountrySnapshot extends MultiplayerRevision, MultiplayerSeq
   hostPlayerId: string;
   canControl: boolean;
   players: DrawCountryPlayer[];
+  player: MultiplayerReadiness;
   round: DrawCountryRound | null;
 }
 
@@ -96,6 +99,7 @@ export type DrawCountryActionResult =
   | MultiplayerSuccess<{ accepted: true; snapshot: DrawCountrySnapshot }>
   | MultiplayerSuccess<{
       accepted: false;
+      errorCode?: "players_not_ready" | "action_unavailable";
       error: string;
       snapshot: DrawCountrySnapshot;
     }>

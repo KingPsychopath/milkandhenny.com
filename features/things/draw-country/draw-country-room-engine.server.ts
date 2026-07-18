@@ -9,6 +9,12 @@ import {
   remainingMultiplayerRoomTtlSeconds,
 } from "../shared/room-primitives.server";
 import { multiplayerFailure } from "../shared/multiplayer";
+import {
+  multiplayerPlayerReady,
+  multiplayerUnreadyPlayers,
+  requestMultiplayerReadiness,
+  setMultiplayerPlayerReady,
+} from "../shared/multiplayer-readiness";
 import { countryById } from "./countries";
 import { drawCountryRoomRedisKeys } from "./draw-country-keys";
 import { selectRoomCountries } from "./rotation.server";
@@ -36,6 +42,9 @@ interface PlayerState {
   submitted: boolean;
   drawing: CountryDrawing | null;
   lastSeenAt: number;
+  ready?: boolean;
+  startRequestId?: string | null;
+  startRequestedAt?: number | null;
 }
 
 interface RoundState {
@@ -158,8 +167,15 @@ function snapshot(room: RoomState, playerId: string): DrawCountrySnapshot {
       roundScore: player.roundScore,
       submitted: player.submitted,
       connected: now - player.lastSeenAt <= CONNECTED_WINDOW_MS,
+      ready: multiplayerPlayerReady(player),
       place: places.get(player.id) ?? null,
     })),
+    player: {
+      ready: multiplayerPlayerReady(
+        room.players.find(({ id }) => id === playerId) ?? { id: playerId },
+      ),
+      startRequestId: room.players.find(({ id }) => id === playerId)?.startRequestId ?? null,
+    },
     round:
       room.round && country
         ? {
@@ -269,6 +285,9 @@ export async function createDrawCountryRoom(input: {
         submitted: false,
         drawing: null,
         lastSeenAt: Date.now(),
+        ready: true,
+        startRequestId: null,
+        startRequestedAt: null,
       },
     ],
     round: null,
@@ -311,6 +330,9 @@ export async function joinDrawCountryRoom(input: {
       submitted: false,
       drawing: null,
       lastSeenAt: Date.now(),
+      ready: true,
+      startRequestId: null,
+      startRequestedAt: null,
     };
     room.players.push(player);
     changed(room);
@@ -351,7 +373,8 @@ export async function applyDrawCountryAction(input: {
   playerId: string;
   playerToken: string;
   action:
-    | { type: "game.start" }
+    | { type: "game.start"; removePlayerIds?: string[] }
+    | { type: "readiness.set"; ready: boolean }
     | { type: "round.next" }
     | { type: "drawing.submit"; roundId: string; drawing: CountryDrawing };
 }): Promise<DrawCountryActionResult> {
@@ -361,6 +384,21 @@ export async function applyDrawCountryAction(input: {
     player.lastSeenAt = Date.now();
     advance(room);
     const current = () => snapshot(room, player.id);
+    if (input.action.type === "readiness.set") {
+      if (room.phase !== "lobby")
+        return {
+          ok: true,
+          accepted: false,
+          errorCode: "action_unavailable",
+          error: "Readiness can only change in the lobby",
+          snapshot: current(),
+        } as const;
+      if (multiplayerPlayerReady(player) !== input.action.ready) {
+        setMultiplayerPlayerReady(player, input.action.ready);
+        changed(room);
+      }
+      return { ok: true, accepted: true, snapshot: current() } as const;
+    }
     if (input.action.type === "drawing.submit") {
       if (room.phase !== "drawing" || room.round?.id !== input.action.roundId)
         return {
@@ -388,6 +426,32 @@ export async function applyDrawCountryAction(input: {
         snapshot: current(),
       } as const;
     if (input.action.type === "game.start" && room.phase === "lobby") {
+      const confirmed = new Set(input.action.removePlayerIds ?? []);
+      const unready = multiplayerUnreadyPlayers(room.players);
+      const unconfirmed = unready.filter(
+        ({ id, startRequestId }) => id === player.id || !confirmed.has(id) || !startRequestId,
+      );
+      if (unconfirmed.length > 0) {
+        if (requestMultiplayerReadiness(unconfirmed, crypto.randomUUID())) changed(room);
+        return {
+          ok: true,
+          accepted: false,
+          errorCode: "players_not_ready",
+          error: unconfirmed.some(({ id }) => id === player.id)
+            ? "Set yourself ready before starting"
+            : "Some players are not ready",
+          snapshot: current(),
+        } as const;
+      }
+      if (confirmed.size > 0) {
+        room.players = room.players.filter(
+          (candidate) =>
+            multiplayerPlayerReady(candidate) ||
+            candidate.id === player.id ||
+            !confirmed.has(candidate.id),
+        );
+        changed(room);
+      }
       startRound(room, 0);
       return { ok: true, accepted: true, snapshot: current() } as const;
     }

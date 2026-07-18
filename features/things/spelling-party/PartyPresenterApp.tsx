@@ -17,6 +17,7 @@ import {
 import { useUpdateReloadSafety } from "@/features/offline/update-safety.client";
 import { playPartySpeech, unlockPartyAudio } from "./party-audio.client";
 import { EndGameDialog } from "../shared/EndGameDialog";
+import { GameActionDialog } from "../shared/GameActionDialog";
 import { shareOrCopy } from "@/lib/client/share";
 import { useQrCode } from "@/hooks/useQrCode";
 import { useNativeShareAvailability } from "@/hooks/useNativeShareAvailability";
@@ -70,6 +71,8 @@ export function PartyPresenterApp({ roomId }: { roomId: string }) {
   const [manualInvite, setManualInvite] = useState(false);
   const [closing, setClosing] = useState(false);
   const [endConfirmationOpen, setEndConfirmationOpen] = useState(false);
+  const [removePlayerIds, setRemovePlayerIds] = useState<string[] | null>(null);
+  const [confirmingStart, setConfirmingStart] = useState(false);
   const playedAudio = useRef(new Set<string>());
   const haptics = useWebHaptics();
   useEffect(() => setTokens(roomTokens(roomId)), [roomId]);
@@ -157,7 +160,7 @@ export function PartyPresenterApp({ roomId }: { roomId: string }) {
     previousPhase.current = snapshot?.phase;
   }, [haptics, snapshot?.phase]);
 
-  const send = async (type: PartyPresenterAction["type"]) => {
+  const send = async (type: PartyPresenterAction["type"], removePlayerIds?: string[]) => {
     if (!tokens.presenterToken) return;
     unlockPartyAudio();
     try {
@@ -165,17 +168,38 @@ export function PartyPresenterApp({ roomId }: { roomId: string }) {
         data: {
           roomId,
           presenterToken: tokens.presenterToken,
-          action: { actionId: crypto.randomUUID(), type },
+          action:
+            type === "round.start"
+              ? { actionId: crypto.randomUUID(), type, removePlayerIds }
+              : { actionId: crypto.randomUUID(), type },
         },
       });
       if (result.snapshot) live.setSnapshot(result.snapshot);
-      if (!result.accepted) live.setMessage(result.error ?? "That action is not ready yet.");
-      else {
+      if (!result.accepted) {
+        live.setMessage(result.error ?? "That action is not ready yet.");
+        if (result.errorCode === "players_not_ready" && result.snapshot) {
+          const unready = result.snapshot.players.filter(({ ready }) => !ready);
+          if (unready.length > 0 && unready.length < result.snapshot.players.length)
+            setRemovePlayerIds(unready.map(({ id }) => id));
+        }
+        live.notify();
+      } else {
+        setRemovePlayerIds(null);
         live.notify();
         live.setMessage(null);
       }
     } catch {
       live.setMessage("Reconnecting… Try that once more.");
+    }
+  };
+
+  const confirmStart = async () => {
+    if (!removePlayerIds) return;
+    setConfirmingStart(true);
+    try {
+      await send("round.start", removePlayerIds);
+    } finally {
+      setConfirmingStart(false);
     }
   };
 
@@ -299,7 +323,9 @@ export function PartyPresenterApp({ roomId }: { roomId: string }) {
                 className="mt-7 w-60 rounded-3xl bg-white p-3"
               />
             ) : qrFailed ? (
-              <p className="mt-6 font-mono text-xs text-white/50">QR unavailable—share the player link or room code.</p>
+              <p className="mt-6 font-mono text-xs text-white/50">
+                QR unavailable—share the player link or room code.
+              </p>
             ) : null}
             <div className="mt-5">
               <p className="font-mono text-micro uppercase tracking-[0.18em] text-white/40">
@@ -336,12 +362,14 @@ export function PartyPresenterApp({ roomId }: { roomId: string }) {
                   key={player.id}
                   className="rounded-full border border-white/15 px-4 py-2 font-mono text-sm"
                 >
-                  {player.name}
+                  {player.name} · {player.ready !== false ? "ready" : "not ready"}
                 </li>
               ))}
             </ul>
             <p aria-live="polite" className="mt-4 font-mono text-xs text-white/45">
-              {players.length ? `${players.length} ready` : "Waiting for the first player…"}
+              {players.length
+                ? `${players.filter(({ ready }) => ready !== false).length} of ${players.length} ready`
+                : "Waiting for the first player…"}
             </p>
             <button
               type="button"
@@ -460,7 +488,45 @@ export function PartyPresenterApp({ roomId }: { roomId: string }) {
         </p>
       </main>
       {endConfirmationOpen ? (
-        <EndGameDialog tone="dark" eyebrow="end party" title="End for everyone?" description="Players will see that the room has ended. This cannot be undone." confirmLabel="end party" pending={closing} onCancel={() => setEndConfirmationOpen(false)} onConfirm={() => void handleEnd(false)} />
+        <EndGameDialog
+          tone="dark"
+          eyebrow="end party"
+          title="End for everyone?"
+          description="Players will see that the room has ended. This cannot be undone."
+          confirmLabel="end party"
+          pending={closing}
+          onCancel={() => setEndConfirmationOpen(false)}
+          onConfirm={() => void handleEnd(false)}
+        />
+      ) : null}
+      {removePlayerIds ? (
+        <GameActionDialog
+          tone="dark"
+          eyebrow="players not ready"
+          title={
+            players.some(({ id, ready }) => removePlayerIds.includes(id) && !ready)
+              ? "Start without them?"
+              : "Everyone is ready now."
+          }
+          description={(() => {
+            const names = players
+              .filter(({ id, ready }) => removePlayerIds.includes(id) && !ready)
+              .map(({ name }) => name);
+            return names.length
+              ? `${names.join(" and ")} will be removed from this game.`
+              : "No one will be removed.";
+          })()}
+          cancelLabel="keep waiting"
+          confirmLabel={
+            players.some(({ id, ready }) => removePlayerIds.includes(id) && !ready)
+              ? "remove & start"
+              : "start game"
+          }
+          pending={confirmingStart}
+          pendingLabel="starting…"
+          onCancel={() => setRemovePlayerIds(null)}
+          onConfirm={() => void confirmStart()}
+        />
       ) : null}
     </div>
   );

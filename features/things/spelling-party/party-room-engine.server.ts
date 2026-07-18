@@ -13,6 +13,12 @@ import {
   remainingMultiplayerRoomTtlSeconds,
 } from "../shared/room-primitives.server";
 import { multiplayerFailure } from "../shared/multiplayer";
+import {
+  multiplayerPlayerReady,
+  multiplayerUnreadyPlayers,
+  requestMultiplayerReadiness,
+  setMultiplayerPlayerReady,
+} from "../shared/multiplayer-readiness";
 import { partyAudioAssetKey, partyDeck, type PartyWord } from "./party-content.server";
 import { rankSpellingAnswers } from "./spelling-closeness";
 import type {
@@ -75,6 +81,9 @@ interface PlayerState {
   automatic: boolean;
   lockedAt: number | null;
   lastSeenAt: number;
+  ready?: boolean;
+  startRequestId?: string | null;
+  startRequestedAt?: number | null;
   integrityRoundIds: string[];
 }
 interface RoundState {
@@ -116,6 +125,7 @@ interface PartyRoomState {
   expiresAt: number;
   sentenceCluesRemaining: number;
   players: PlayerState[];
+  hostPlayerId?: string;
   round: RoundState | null;
   recentClues: PartyClueEvent[];
   processedActions: string[];
@@ -364,6 +374,7 @@ function snapshot(
           : "disconnected",
         score: player.score,
         connected,
+        ready: multiplayerPlayerReady(player),
         integrityNotices: player.integrityRoundIds.length,
       };
     }),
@@ -413,6 +424,8 @@ function snapshot(
     recentClues: room.recentClues.slice(-4).map((clue) => clueForRole(clue, role, hostPlayer)!),
     player: currentPlayer
       ? {
+          ready: multiplayerPlayerReady(currentPlayer),
+          startRequestId: currentPlayer.startRequestId ?? null,
           draft: currentPlayer.draft,
           draftRevision: currentPlayer.draftRevision,
           locked: currentPlayer.locked,
@@ -549,6 +562,7 @@ export async function joinPartyRoom(input: {
   joinToken?: string;
   name: string;
   joinId: string;
+  presenterToken?: string;
 }): Promise<PartyJoinResult> {
   const result = await withRoom(input.roomId, async (room, keys) => {
     if (input.joinToken !== undefined && !safeEqual(input.joinToken, room.joinHash))
@@ -582,9 +596,14 @@ export async function joinPartyRoom(input: {
       automatic: false,
       lockedAt: null,
       lastSeenAt: Date.now(),
+      ready: true,
+      startRequestId: null,
+      startRequestedAt: null,
       integrityRoundIds: [],
     };
     room.players.push(player);
+    if (input.presenterToken && safeEqual(input.presenterToken, room.presenterHash))
+      room.hostPlayerId = player.id;
     const nextReceipt: JoinReceipt = {
       playerId: player.id,
       playerToken,
@@ -641,6 +660,10 @@ export async function readPartySnapshot(input: {
     const hostPlayer =
       input.role === "player" &&
       Boolean(input.presenterToken && safeEqual(input.presenterToken, room.presenterHash));
+    if (hostPlayer && !room.hostPlayerId && input.playerId) {
+      room.hostPlayerId = input.playerId;
+      changed(room);
+    }
     return {
       ok: true as const,
       snapshot: snapshot(room, input.role, input.playerId, hostPlayer),
@@ -665,9 +688,47 @@ export async function applyPresenterAction(input: {
     advance(room);
     if (multiplayerActionSeen(room.processedActions, input.action.actionId))
       return acceptPartyAction(snapshot(room, "presenter"));
-    if (input.action.type === "round.start" && room.phase === "lobby" && room.players.length > 0)
+    if (input.action.type === "round.start" && room.phase === "lobby") {
+      const confirmed = new Set(input.action.removePlayerIds ?? []);
+      const unready = multiplayerUnreadyPlayers(room.players);
+      const unconfirmed = unready.filter(
+        ({ id, startRequestId }) =>
+          id === room.hostPlayerId || !confirmed.has(id) || !startRequestId,
+      );
+      if (unconfirmed.length > 0) {
+        if (requestMultiplayerReadiness(unconfirmed, token())) changed(room);
+        return rejectPartyAction(
+          snapshot(room, "presenter"),
+          "players_not_ready",
+          unconfirmed.some(({ id }) => id === room.hostPlayerId)
+            ? "Set yourself ready before starting"
+            : "Some players are not ready",
+          true,
+        );
+      }
+      if (confirmed.size > 0) {
+        const remainingPlayers = room.players.filter(
+          (player) => multiplayerPlayerReady(player) || !confirmed.has(player.id),
+        );
+        if (remainingPlayers.length === 0)
+          return rejectPartyAction(
+            snapshot(room, "presenter"),
+            "waiting_for_players",
+            "At least one ready player is needed",
+            true,
+          );
+        room.players = remainingPlayers;
+        changed(room);
+      }
+      if (room.players.length === 0)
+        return rejectPartyAction(
+          snapshot(room, "presenter"),
+          "waiting_for_players",
+          "Waiting for at least one player",
+          true,
+        );
       startRound(room);
-    else if (input.action.type === "round.next" && room.phase === "reveal") startRound(room);
+    } else if (input.action.type === "round.next" && room.phase === "reveal") startRound(room);
     else if (
       input.action.type === "round.pause" &&
       room.phase === "reveal" &&
@@ -713,6 +774,23 @@ export async function applyPlayerAction(input: {
     advance(room);
     if (multiplayerActionSeen(room.processedActions, input.action.actionId))
       return acceptPartyAction(snapshot(room, "player", player.id));
+    if (input.action.type === "readiness.set") {
+      if (room.phase !== "lobby")
+        return rejectPartyAction(
+          snapshot(room, "player", player.id),
+          "action_unavailable",
+          "Readiness can only change in the lobby",
+        );
+      if (multiplayerPlayerReady(player) !== input.action.ready) {
+        setMultiplayerPlayerReady(player, input.action.ready);
+        changed(room);
+      }
+      room.processedActions = rememberMultiplayerAction(
+        room.processedActions,
+        input.action.actionId,
+      );
+      return acceptPartyAction(snapshot(room, "player", player.id));
+    }
     const round = room.round;
     if (!round || input.action.roundId !== round.roundId)
       return rejectPartyAction(

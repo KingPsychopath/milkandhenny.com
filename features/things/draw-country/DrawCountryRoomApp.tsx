@@ -2,6 +2,7 @@ import { Link } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 import { useWebHaptics } from "web-haptics/react";
 import { readExpiringLocalValue } from "../shared/game-storage.client";
+import { GameActionDialog } from "../shared/GameActionDialog";
 import { CountryRoundBoard } from "./CountryRoundBoard";
 import { applyDrawCountryActionFn } from "./draw-country-room.functions";
 import { drawCountryBrowserKeys } from "./draw-country-keys";
@@ -78,6 +79,10 @@ function DrawCountryRoom({
   const submittedRound = useRef<string | null>(null);
   const submitRef = useRef<() => Promise<void>>(async () => undefined);
   const previousPhase = useRef(snapshot?.phase);
+  const previousStartRequest = useRef<string | null>(null);
+  const [removePlayerIds, setRemovePlayerIds] = useState<string[] | null>(null);
+  const [confirmingStart, setConfirmingStart] = useState(false);
+  const setLiveMessage = live.setMessage;
 
   useEffect(() => {
     window.scrollTo({ top: 0 });
@@ -107,6 +112,14 @@ function DrawCountryRoom({
       void haptics.trigger("success");
     previousPhase.current = snapshot?.phase;
   }, [haptics, snapshot?.phase]);
+
+  useEffect(() => {
+    const requestId = snapshot?.player?.startRequestId ?? null;
+    if (!requestId || requestId === previousStartRequest.current) return;
+    previousStartRequest.current = requestId;
+    setLiveMessage("The host is ready to start — tap Ready when you are.");
+    void haptics.trigger("heavy");
+  }, [haptics, setLiveMessage, snapshot?.player?.startRequestId]);
 
   const setDrawing = (next: CountryDrawing) => {
     setDrawingState(next);
@@ -152,22 +165,48 @@ function DrawCountryRoom({
       void submitRef.current();
   }, [live.clockOffset, seconds, snapshot?.phase, snapshot?.round]);
 
-  const control = async (type: "game.start" | "round.next") => {
+  const control = async (
+    action:
+      | { type: "game.start"; removePlayerIds?: string[] }
+      | { type: "round.next" }
+      | { type: "readiness.set"; ready: boolean },
+  ) => {
     try {
       const result = await applyDrawCountryActionFn({
         data: {
           roomId,
           playerId: credentials.playerId,
           playerToken: credentials.playerToken,
-          action: { type },
+          action,
         },
       });
       if (result.snapshot) live.setSnapshot(result.snapshot);
-      if (!result.ok || !result.accepted) live.setMessage(result.error);
-      else void haptics.trigger("selection");
+      if (!result.ok || !result.accepted) {
+        live.setMessage(result.error);
+        if (result.ok && result.errorCode === "players_not_ready" && result.snapshot) {
+          const removable = result.snapshot.players.filter(
+            ({ id, ready }) => !ready && id !== credentials.playerId,
+          );
+          if (result.snapshot.player.ready && removable.length > 0)
+            setRemovePlayerIds(removable.map(({ id }) => id));
+        }
+      } else {
+        setRemovePlayerIds(null);
+        void haptics.trigger("selection");
+      }
       live.notify();
     } catch {
       live.setMessage("That did not reach the room. Try once more.");
+    }
+  };
+
+  const confirmStart = async () => {
+    if (!removePlayerIds) return;
+    setConfirmingStart(true);
+    try {
+      await control({ type: "game.start", removePlayerIds });
+    } finally {
+      setConfirmingStart(false);
     }
   };
 
@@ -191,12 +230,45 @@ function DrawCountryRoom({
 
   if (snapshot.phase === "lobby")
     return (
-      <RoomLobby
-        snapshot={snapshot}
-        connection={live.connectionState}
-        message={live.message}
-        onStart={() => void control("game.start")}
-      />
+      <>
+        <RoomLobby
+          snapshot={snapshot}
+          playerId={credentials.playerId}
+          connection={live.connectionState}
+          message={live.message}
+          onReadyChange={(ready) => void control({ type: "readiness.set", ready })}
+          onStart={() => void control({ type: "game.start" })}
+        />
+        {removePlayerIds ? (
+          <GameActionDialog
+            tone="light"
+            eyebrow="players not ready"
+            title={
+              snapshot.players.some(({ id, ready }) => removePlayerIds.includes(id) && !ready)
+                ? "Start without them?"
+                : "Everyone is ready now."
+            }
+            description={(() => {
+              const names = snapshot.players
+                .filter(({ id, ready }) => removePlayerIds.includes(id) && !ready)
+                .map(({ name }) => name);
+              return names.length
+                ? `${names.join(" and ")} will be removed from this game.`
+                : "No one will be removed.";
+            })()}
+            cancelLabel="keep waiting"
+            confirmLabel={
+              snapshot.players.some(({ id, ready }) => removePlayerIds.includes(id) && !ready)
+                ? "remove & start"
+                : "start game"
+            }
+            pending={confirmingStart}
+            pendingLabel="starting…"
+            onCancel={() => setRemovePlayerIds(null)}
+            onConfirm={() => void confirmStart()}
+          />
+        ) : null}
+      </>
     );
 
   if (snapshot.phase === "drawing" && snapshot.round) {
@@ -230,7 +302,7 @@ function DrawCountryRoom({
         playerId={credentials.playerId}
         drawing={drawing}
         connection={live.connectionState}
-        onNext={() => void control("round.next")}
+        onNext={() => void control({ type: "round.next" })}
       />
     );
 
