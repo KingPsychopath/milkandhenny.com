@@ -7,12 +7,15 @@ const ALIGNMENT_TRIM = 0.025;
 const MINIMUM_DRAWING_EXTENT = 8;
 const MAX_POINT_DEVIATION = 0.5;
 const SILHOUETTE_GRID_SIZE = 28;
-const SILHOUETTE_GUARD_KNEE = 0.25;
-const SILHOUETTE_GUARD_TAIL_EXPONENT = 3.7;
+const SILHOUETTE_COMPACTNESS_BASELINE = 0.5;
+const MINIMUM_SILHOUETTE_SENSITIVITY = 0.3;
 const PERIMETER_ALLOWANCE = 1.25;
 const COUNTRY_COORDINATE_SCALE = 10_000;
 const BORDER_FIT_WEIGHT = 0.3;
 const COVERAGE_WEIGHT = 0.3;
+const BORDER_COVERAGE_GUARD_MULTIPLIER = 1.1;
+const SILHOUETTE_GUARD_THRESHOLD = 0.3;
+const SILHOUETTE_GUARD_EXCESS_WEIGHT = 1;
 const SILHOUETTE_WEIGHT = 0.25;
 const STROKE_QUALITY_WEIGHT = 0.1;
 const ISLAND_BALANCE_WEIGHT = 0.05;
@@ -219,6 +222,22 @@ function silhouetteDeviation(reference: CountryDrawing, drawing: CountryDrawing)
   return largestArea ? Math.abs(referenceArea - drawingArea) / largestArea : 1;
 }
 
+function silhouetteSensitivity(reference: CountryDrawing) {
+  const points = reference.flat();
+  if (!points.length) return 1;
+  const minX = Math.min(...points.map(({ x }) => x));
+  const maxX = Math.max(...points.map(({ x }) => x));
+  const minY = Math.min(...points.map(({ y }) => y));
+  const maxY = Math.max(...points.map(({ y }) => y));
+  const boundsArea = (maxX - minX) * (maxY - minY);
+  if (!boundsArea) return 1;
+  const fillRatio = reference.reduce((total, ring) => total + ringArea(ring), 0) / boundsArea;
+  return Math.max(
+    MINIMUM_SILHOUETTE_SENSITIVITY,
+    Math.min(1, fillRatio / SILHOUETTE_COMPACTNESS_BASELINE),
+  );
+}
+
 interface DrawingSegment {
   start: DrawPoint;
   end: DrawPoint;
@@ -252,7 +271,8 @@ function segmentsCross(
 function segmentsAreAdjacent(first: DrawingSegment, second: DrawingSegment) {
   if (first.ringIndex !== second.ringIndex) return false;
   const difference = Math.abs(first.segmentIndex - second.segmentIndex);
-  return difference <= 1 || difference === first.ringSize - 1;
+  const wrappedDifference = Math.min(difference, first.ringSize - difference);
+  return wrappedDifference <= 3;
 }
 
 function strokeQualityDeviation(drawing: CountryDrawing, reference: CountryDrawing) {
@@ -339,16 +359,10 @@ function accuracyFor(score: number): CountryScore["accuracy"] {
   return "adventurous";
 }
 
-function silhouetteScore(deviation: number) {
-  const bounded = Math.max(0, Math.min(1, deviation));
-  if (bounded <= SILHOUETTE_GUARD_KNEE) return Math.round(100 * (1 - bounded * 2.2));
-  const kneeScore = 1 - SILHOUETTE_GUARD_KNEE * 2.2;
-  const remainingShape = (1 - bounded) / (1 - SILHOUETTE_GUARD_KNEE);
-  return Math.round(100 * kneeScore * remainingShape ** SILHOUETTE_GUARD_TAIL_EXPONENT);
-}
-
 function strokeQualityScore(deviation: number) {
-  return Math.round(100 * (1 - Math.max(0, Math.min(1, deviation))) ** 1.5);
+  const bounded = Math.max(0, Math.min(1, deviation));
+  if (bounded <= 0.2) return 100;
+  return Math.round(100 * ((1 - bounded) / 0.8) ** 1.7);
 }
 
 export function scoreCountryDrawing(
@@ -375,7 +389,9 @@ export function scoreCountryDrawing(
 
   const fit = borderFit(drawing.points, reference.rings);
   const coverage = averageDistanceToBorder(reference.points, drawing.rings);
-  const silhouette = silhouetteDeviation(reference.rings, drawing.rings);
+  const silhouette =
+    silhouetteDeviation(reference.rings, drawing.rings) *
+    silhouetteSensitivity(reference.rings);
   const strokeQuality = strokeQualityDeviation(drawing.rings, reference.rings);
   const islandBalance = islandBalanceDeviation(reference.rings, drawing.rings);
   const deviation =
@@ -384,11 +400,13 @@ export function scoreCountryDrawing(
     silhouette * SILHOUETTE_WEIGHT +
     strokeQuality * STROKE_QUALITY_WEIGHT +
     islandBalance * ISLAND_BALANCE_WEIGHT;
+  const mismatchGuardDeviation =
+    (fit.border + coverage) * BORDER_COVERAGE_GUARD_MULTIPLIER +
+    Math.max(0, silhouette - SILHOUETTE_GUARD_THRESHOLD) *
+      SILHOUETTE_GUARD_EXCESS_WEIGHT;
   const score = Math.min(
     scoreFromDeviation(deviation),
-    scoreFromDeviation(fit.border),
-    scoreFromDeviation(coverage),
-    silhouetteScore(silhouette),
+    scoreFromDeviation(mismatchGuardDeviation),
     strokeQualityScore(strokeQuality),
   );
   return {

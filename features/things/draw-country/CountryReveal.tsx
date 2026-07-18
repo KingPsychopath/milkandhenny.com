@@ -23,7 +23,7 @@ const SCORE_EXPLANATIONS: Record<ScoreMetricKey, string> = {
   inside: "Blue lines measure from points that cut inside to the reference. Lower is better.",
   missed: "Dashed lines show reference sections your outline did not reach. Lower is better.",
   shape:
-    "The filled silhouettes show how your overall shape overlaps the reference. Lower is better.",
+    "The filled silhouettes show overall overlap, with extra tolerance for thin or fragmented countries. Lower is better.",
   strokes:
     "Your black outline is checked for crossings, thin marks, and excessive tracing. 0% means no penalty.",
   islands:

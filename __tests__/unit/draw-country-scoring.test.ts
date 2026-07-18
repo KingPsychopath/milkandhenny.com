@@ -30,6 +30,78 @@ function exactDrawing(
   );
 }
 
+function drawingBounds(drawing: CountryDrawing) {
+  const points = drawing.flat();
+  const x = points.map((point) => point.x);
+  const y = points.map((point) => point.y);
+  const minX = Math.min(...x);
+  const maxX = Math.max(...x);
+  const minY = Math.min(...y);
+  const maxY = Math.max(...y);
+  return {
+    minX,
+    minY,
+    width: maxX - minX,
+    height: maxY - minY,
+    extent: Math.max(maxX - minX, maxY - minY),
+    centreX: (minX + maxX) / 2,
+    centreY: (minY + maxY) / 2,
+  };
+}
+
+function nearExactDrawings(outline: CountryOutline) {
+  const exact = exactDrawing(outline);
+  const bounds = drawingBounds(exact);
+  const angle = Math.PI / 120;
+  return {
+    stretched: exact.map((ring) =>
+      ring.map((point) => ({
+        x: bounds.centreX + (point.x - bounds.centreX) * 1.04,
+        y: point.y,
+      }))),
+    rotated: exact.map((ring) =>
+      ring.map((point) => ({
+        x:
+          bounds.centreX +
+          (point.x - bounds.centreX) * Math.cos(angle) -
+          (point.y - bounds.centreY) * Math.sin(angle),
+        y:
+          bounds.centreY +
+          (point.x - bounds.centreX) * Math.sin(angle) +
+          (point.y - bounds.centreY) * Math.cos(angle),
+      }))),
+    warped: exact.map((ring) =>
+      ring.map((point) => ({
+        x:
+          point.x +
+          Math.sin(((point.y - bounds.minY) / bounds.height) * Math.PI * 2) *
+            bounds.extent *
+            0.004,
+        y:
+          point.y +
+          Math.sin(((point.x - bounds.minX) / bounds.width) * Math.PI * 2) *
+            bounds.extent *
+            0.004,
+      }))),
+  };
+}
+
+function enclosingBoxDrawing(outline: CountryOutline): CountryDrawing {
+  const bounds = drawingBounds(exactDrawing(outline));
+  const padding = bounds.extent * 0.03;
+  return [
+    [
+      { x: bounds.minX - padding, y: bounds.minY - padding },
+      { x: bounds.minX + bounds.width + padding, y: bounds.minY - padding },
+      {
+        x: bounds.minX + bounds.width + padding,
+        y: bounds.minY + bounds.height + padding,
+      },
+      { x: bounds.minX - padding, y: bounds.minY + bounds.height + padding },
+    ],
+  ];
+}
+
 describe("draw-country scoring", () => {
   it("requires a closed area rather than a line with enough sampled points", () => {
     const line = [Array.from({ length: 6 }, (_, index) => ({ x: 100 + index * 20, y: 100 }))];
@@ -65,6 +137,13 @@ describe("draw-country scoring", () => {
         { x: -260, y: -310, scale: 0.14 },
       ].map((placement) => scoreCountryDrawing(namibia, exactDrawing(namibia, placement)).score),
     ).toEqual([100, 100, 100]);
+  });
+
+  it("keeps every near-exact country high despite small human faults", () => {
+    for (const outline of COUNTRIES) {
+      for (const [fault, drawing] of Object.entries(nearExactDrawings(outline)))
+        expect(scoreCountryDrawing(outline, drawing).score, `${outline.id} ${fault}`).toBeGreaterThanOrEqual(70);
+    }
   });
 
   it("aligns translation and uniform scale without correcting rotation", () => {
@@ -280,18 +359,20 @@ describe("draw-country scoring", () => {
     expect(result.score).toBeLessThanOrEqual(30);
   });
 
-  it("still rewards a coherent simplified outline", () => {
-    const australia = COUNTRIES.find(({ id }) => id === "AU");
-    expect(australia).toBeDefined();
-    if (!australia) throw new Error("Australia fixture is missing");
-    const step = Math.max(1, Math.floor(australia.rings[0].length / 20));
-    const simplified: CountryDrawing = [
-      australia.rings[0]
-        .filter((_, index) => index % step === 0)
-        .map(([x, y]) => ({ x: 137 + x * australia.aspect * 0.083, y: 83 + y * 0.083 })),
-    ];
-
-    expect(scoreCountryDrawing(australia, simplified).score).toBeGreaterThanOrEqual(45);
+  it("rewards recognisable simplifications across compact, thin, and coastal countries", () => {
+    const expectedFloors = { AU: 50, CN: 70, CL: 55, NA: 70, GB: 40, IT: 35 } as const;
+    for (const [countryId, floor] of Object.entries(expectedFloors)) {
+      const outline = COUNTRIES.find(({ id }) => id === countryId);
+      expect(outline).toBeDefined();
+      if (!outline) continue;
+      const step = Math.max(1, Math.floor(outline.rings[0].length / 20));
+      const simplified: CountryDrawing = [
+        outline.rings[0]
+          .filter((_, index) => index % step === 0)
+          .map(([x, y]) => ({ x: 137 + x * outline.aspect * 0.083, y: 83 + y * 0.083 })),
+      ];
+      expect(scoreCountryDrawing(outline, simplified).score, countryId).toBeGreaterThanOrEqual(floor);
+    }
   });
 
   it("does not mistake another recognisable country for the target", () => {
@@ -302,6 +383,32 @@ describe("draw-country scoring", () => {
     if (!australia || !brazil) throw new Error("Country fixtures are missing");
 
     expect(scoreCountryDrawing(australia, exactDrawing(brazil)).score).toBeLessThanOrEqual(25);
+  });
+
+  it("keeps compactness tolerance strict against boxes and wrong countries", () => {
+    for (const countryId of ["CL", "GB", "IT", "ID", "AU", "CN"]) {
+      const outline = COUNTRIES.find(({ id }) => id === countryId);
+      expect(outline).toBeDefined();
+      if (outline)
+        expect(scoreCountryDrawing(outline, enclosingBoxDrawing(outline)).score, countryId).toBeLessThanOrEqual(35);
+    }
+
+    for (const [drawingId, targetId] of [
+      ["BR", "CL"],
+      ["AU", "GB"],
+      ["BR", "IT"],
+      ["NA", "ID"],
+    ]) {
+      const drawingCountry = COUNTRIES.find(({ id }) => id === drawingId);
+      const targetCountry = COUNTRIES.find(({ id }) => id === targetId);
+      expect(drawingCountry).toBeDefined();
+      expect(targetCountry).toBeDefined();
+      if (drawingCountry && targetCountry)
+        expect(
+          scoreCountryDrawing(targetCountry, exactDrawing(drawingCountry)).score,
+          `${drawingId} as ${targetId}`,
+        ).toBeLessThanOrEqual(25);
+    }
   });
 
   it("uses explicit, monotonic calibration anchors", () => {
