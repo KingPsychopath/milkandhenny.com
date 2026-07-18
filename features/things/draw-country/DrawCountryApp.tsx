@@ -13,6 +13,7 @@ import {
   GameLaunchChoices,
   GameLaunchMeta,
 } from "../shared/GameLaunch";
+import { RoomJoinControl } from "../shared/RoomJoinControl";
 
 export function DrawCountryApp() {
   const navigate = useNavigate();
@@ -64,8 +65,8 @@ export function DrawCountryApp() {
     }
   };
 
-  const handleJoin = async () => {
-    const roomId = joinCode.trim().toUpperCase();
+  const handleJoin = async (code = joinCode) => {
+    const roomId = code.trim().toUpperCase();
     if (!/^[A-Z2-9]{7}$/.test(roomId)) {
       setMessage("Enter the 7-character room code.");
       return;
@@ -190,50 +191,19 @@ export function DrawCountryApp() {
         {panel === "join" ? (
           <section
             className="mx-auto mt-10 max-w-lg border-t border-black/15 pt-7"
-            aria-labelledby="join-room"
+            aria-label="Join a room"
           >
-            <h2 id="join-room" className="font-serif text-3xl font-semibold">
-              Room code
-            </h2>
-            <form
-              onSubmit={(event) => {
-                event.preventDefault();
-                void handleJoin();
+            <RoomJoinControl
+              value={joinCode}
+              gamePath="/things/draw-country"
+              tone="light"
+              message={message}
+              onValueChange={(value) => {
+                setJoinCode(value);
+                setMessage(null);
               }}
-              className="mt-5 flex items-end gap-3"
-            >
-              <label className="min-w-0 flex-1 font-mono text-xs text-black/55">
-                <span className="sr-only">room code</span>
-                <input
-                  name="roomCode"
-                  value={joinCode}
-                  maxLength={7}
-                  minLength={7}
-                  pattern="[A-Z2-9]{7}"
-                  required
-                  title="Enter the 7-character room code"
-                  autoCapitalize="characters"
-                  enterKeyHint="go"
-                  spellCheck={false}
-                  onChange={(event) => {
-                    setJoinCode(event.target.value.toUpperCase());
-                    setMessage(null);
-                  }}
-                  className="min-h-12 w-full rounded-full border border-black/15 bg-white/55 px-5 font-mono uppercase tracking-[0.18em] text-black"
-                />
-              </label>
-              <button
-                type="submit"
-                className="min-h-12 rounded-full border border-black/25 px-6 font-mono text-xs font-semibold uppercase tracking-[0.14em]"
-              >
-                join
-              </button>
-            </form>
-            {message ? (
-              <p role="status" className="mt-4 font-mono text-xs text-amber-800">
-                {message}
-              </p>
-            ) : null}
+              onJoin={handleJoin}
+            />
           </section>
         ) : null}
       </main>
