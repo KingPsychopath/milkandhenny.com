@@ -30,15 +30,16 @@ import {
 } from "../shared/game-storage.client";
 import { useUpdateReloadSafety } from "@/features/offline/update-safety.client";
 import { playPartySpeech, unlockPartyAudio } from "./party-audio.client";
-import { shareOrCopy } from "../shared/share.client";
-import { useQrCode } from "../shared/useQrCode";
+import { shareOrCopy } from "@/lib/client/share";
+import { useQrCode } from "@/hooks/useQrCode";
+import { consumeLocationFragment } from "@/lib/client/url-fragment";
+import { buildPartyPlayerInviteUrl, parsePartyPlayerFragment } from "./party-invite";
 
 function joinToken(roomId: string) {
   const key = partyBrowserKeys.invite(roomId);
-  const fromHash = location.hash.slice(1).trim();
+  const fromHash = parsePartyPlayerFragment(consumeLocationFragment());
   if (fromHash) {
     sessionStorage.setItem(key, fromHash);
-    history.replaceState(null, "", location.pathname);
     return fromHash;
   }
   const current = sessionStorage.getItem(key);
@@ -292,7 +293,7 @@ function PartyPlayerGame({ credentials }: { credentials: PartyPlayerCredentials 
       : null;
   const hostInvite =
     isHost && hostJoinToken
-      ? `${location.origin}/things/spelling-party/${credentials.roomId}#${hostJoinToken}`
+      ? buildPartyPlayerInviteUrl(location.origin, credentials.roomId, hostJoinToken)
       : null;
 
   useEffect(() => {
@@ -853,7 +854,7 @@ function HostPlayerLobby({
   onStart: () => void;
 }) {
   const [message, setMessage] = useState<string | null>(null);
-  const { dataUrl: qr } = useQrCode(invite, 280);
+  const { dataUrl: qr, failed: qrFailed } = useQrCode(invite, 280);
   const shareInvite = async () => {
     const share = {
       title: "Join our Spelling Bee",
@@ -885,6 +886,8 @@ function HostPlayerLobby({
           alt="QR code for players to join this spelling room"
           className="mt-6 w-52 rounded-3xl bg-white p-3"
         />
+      ) : qrFailed ? (
+        <p className="mt-5 font-mono text-xs text-white/50">QR unavailable—share the player link or room code.</p>
       ) : null}
       <p className="mt-4 font-mono text-micro uppercase tracking-[0.18em] text-white/40">
         room code

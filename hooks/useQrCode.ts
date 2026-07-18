@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import QRCode from "qrcode";
+import { generateQrCode } from "@/lib/client/qr-code";
 
 export function useQrCode(value: string | null, width: number) {
   const [dataUrl, setDataUrl] = useState<string | null>(null);
@@ -12,7 +12,7 @@ export function useQrCode(value: string | null, width: number) {
     if (!value) {
       return;
     }
-    void QRCode.toDataURL(value, { width, margin: 1 })
+    void generateQrCode(value, { width })
       .then((nextDataUrl) => {
         if (active) setDataUrl(nextDataUrl);
       })

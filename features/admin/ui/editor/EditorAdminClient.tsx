@@ -13,7 +13,8 @@ import { useWordFormState } from "./hooks/useWordFormState";
 import { useMediaPreviewState } from "./hooks/useMediaPreviewState";
 import { buildWordShareUrl } from "@/features/words/routes";
 import { useActionDialog } from "@/hooks/useActionDialog";
-import { useAdminAuth } from "../hooks/useAdminAuth";
+import { useAdminAuth } from "@/features/auth/useAdminAuth";
+import { copyText } from "@/lib/client/share";
 import type {
   NoteMeta,
   NoteVisibility,
@@ -323,7 +324,7 @@ export function EditorAdminClient() {
 
   const copySnippet = useCallback(async (snippet: string, copyId: string) => {
     try {
-      await navigator.clipboard.writeText(snippet);
+      await copyText(snippet);
       setMediaCopied(copyId);
       setStatus("snippet copied");
       setTimeout(() => setMediaCopied((current) => (current === copyId ? null : current)), 1200);
@@ -826,7 +827,7 @@ export function EditorAdminClient() {
       if (!data.token || !data.link) throw new Error("Share link created but token missing.");
 
       storeShareToken(data.link.id, data.token);
-      await navigator.clipboard.writeText(buildShareUrl(selectedSlug, data.token));
+      await copyText(buildShareUrl(selectedSlug, data.token));
       setStatus("share link created and copied");
       await loadSharedStatus();
       await loadWord(selectedSlug);
@@ -905,7 +906,7 @@ export function EditorAdminClient() {
       if (!data.token) throw new Error("Token rotation succeeded but no token was returned.");
 
       storeShareToken(link.id, data.token);
-      await navigator.clipboard.writeText(buildShareUrl(link.slug, data.token));
+      await copyText(buildShareUrl(link.slug, data.token));
       if (reason === "reissue" && isExpired) {
         setStatus(`share link reissued for ${newShareExpiryDays} day(s) and copied`);
       } else {
@@ -989,7 +990,7 @@ export function EditorAdminClient() {
 
       const knownToken = shareTokensById[link.id];
       if (knownToken) {
-        await navigator.clipboard.writeText(buildShareUrl(link.slug, knownToken));
+        await copyText(buildShareUrl(link.slug, knownToken));
         setStatus("share link copied");
         return;
       }

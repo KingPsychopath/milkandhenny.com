@@ -4,7 +4,7 @@ import { useState, useRef, useMemo, useEffect, useCallback } from "react";
 import type { Guest } from "@/features/guests/types";
 import { useFocusTrap } from "@/hooks/useFocusTrap";
 import { useEscapeKey } from "@/hooks/useEscapeKey";
-import { useAdminAuth } from "@/features/admin/ui/hooks/useAdminAuth";
+import { useAdminAuth } from "@/features/auth/useAdminAuth";
 import { getResponseErrorMessage, readResponsePayload } from "@/lib/client/response";
 import { useActionDialog } from "@/hooks/useActionDialog";
 

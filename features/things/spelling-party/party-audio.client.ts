@@ -1,4 +1,4 @@
-import { speakWord } from "../spelling-bee/localSpeech";
+import { speakWord } from "../spelling/localSpeech";
 
 export function unlockPartyAudio() {
   const AudioContextClass = window.AudioContext;

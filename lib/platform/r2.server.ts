@@ -86,8 +86,10 @@ function parsePositiveInt(value: string | undefined, fallback: number): number {
 }
 
 function getDefaultMaxSockets(): number {
-  if (!process.env.TRANSFER_MEDIA_WORKER_CONCURRENCY) return 50;
-  const workerConcurrency = parsePositiveInt(process.env.TRANSFER_MEDIA_WORKER_CONCURRENCY, 1);
+  const configuredConcurrency =
+    process.env.MEDIA_WORKER_CONCURRENCY ?? process.env.TRANSFER_MEDIA_WORKER_CONCURRENCY;
+  if (!configuredConcurrency) return 50;
+  const workerConcurrency = parsePositiveInt(configuredConcurrency, 1);
   return Math.min(200, Math.max(50, workerConcurrency * 3));
 }
 

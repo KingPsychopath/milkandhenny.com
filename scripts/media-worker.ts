@@ -1,7 +1,7 @@
 import "./r2-client";
 
 import { closeDirectRedisConnections } from "@/lib/platform/redis-direct.server";
-import { drainMediaQueuesUntilIdle } from "@/features/media/worker-runtime.server";
+import { drainMediaQueuesUntilIdle } from "@/features/system/media-worker-runtime.server";
 
 async function main() {
   const result = await drainMediaQueuesUntilIdle();

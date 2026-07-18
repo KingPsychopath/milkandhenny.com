@@ -34,8 +34,8 @@ function getConfiguredCapabilities(): Capability[] {
   const mediaMode = getMediaProcessorMode();
   const workerConfigured =
     mediaMode !== "local" &&
-    isConfigured("TRANSFER_MEDIA_WAKE_URL") &&
-    isConfigured("TRANSFER_MEDIA_WAKE_TOKEN");
+    (isConfigured("MEDIA_WORKER_WAKE_URL") || isConfigured("TRANSFER_MEDIA_WAKE_URL")) &&
+    (isConfigured("MEDIA_WORKER_WAKE_TOKEN") || isConfigured("TRANSFER_MEDIA_WAKE_TOKEN"));
 
   return [
     {

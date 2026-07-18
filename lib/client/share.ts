@@ -1,5 +1,10 @@
 export type ShareOrCopyResult = "shared" | "copied" | "cancelled" | "failed";
 
+export function canUseNativeShare(options: { coarsePointerOnly?: boolean } = {}) {
+  if (typeof window === "undefined" || typeof navigator.share !== "function") return false;
+  return !options.coarsePointerOnly || window.matchMedia("(hover: none) and (pointer: coarse)").matches;
+}
+
 export async function copyText(value: string) {
   try {
     await navigator.clipboard.writeText(value);
@@ -27,7 +32,7 @@ export async function shareOrCopy(
   options: { useNativeShare?: boolean; copyValue?: string } = {},
 ): Promise<ShareOrCopyResult> {
   const useNativeShare = options.useNativeShare ?? true;
-  if (useNativeShare && navigator.share && (!navigator.canShare || navigator.canShare(share))) {
+  if (useNativeShare && canUseNativeShare() && (!navigator.canShare || navigator.canShare(share))) {
     try {
       await navigator.share(share);
       return "shared";

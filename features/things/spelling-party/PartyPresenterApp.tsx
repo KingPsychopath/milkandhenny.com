@@ -17,22 +17,25 @@ import {
 import { useUpdateReloadSafety } from "@/features/offline/update-safety.client";
 import { playPartySpeech, unlockPartyAudio } from "./party-audio.client";
 import { EndGameDialog } from "../shared/EndGameDialog";
-import { shareOrCopy } from "../shared/share.client";
-import { useQrCode } from "../shared/useQrCode";
+import { shareOrCopy } from "@/lib/client/share";
+import { useQrCode } from "@/hooks/useQrCode";
+import { useNativeShareAvailability } from "@/hooks/useNativeShareAvailability";
+import { consumeLocationFragment } from "@/lib/client/url-fragment";
+import { buildPartyPlayerInviteUrl, parsePartyPresenterFragment } from "./party-invite";
 
 function roomTokens(roomId: string) {
   const sessionKey = partyBrowserKeys.presenterSession(roomId);
   const recoveryKey = partyBrowserKeys.presenterRecovery(roomId);
-  const params = new URLSearchParams(location.hash.slice(1));
-  const presenter = params.get("presenter");
-  const join = params.get("join");
-  if (presenter || join) {
-    const session = { presenterToken: presenter ?? "", joinToken: join ?? "" };
+  const fragment = consumeLocationFragment();
+  if (fragment) {
+    const invite = parsePartyPresenterFragment(fragment);
+    const session = {
+      presenterToken: invite.presenterToken,
+      joinToken: invite.joinToken,
+    };
     sessionStorage.setItem(sessionKey, JSON.stringify(session));
-    const expiresAt = Number(params.get("expires"));
-    if (Number.isFinite(expiresAt) && expiresAt > Date.now())
-      writeExpiringLocalValue(recoveryKey, session, expiresAt);
-    history.replaceState(null, "", location.pathname);
+    if (invite.expiresAt && invite.expiresAt > Date.now())
+      writeExpiringLocalValue(recoveryKey, session, invite.expiresAt);
     return session;
   }
   try {
@@ -71,7 +74,7 @@ function roomTokens(roomId: string) {
 export function PartyPresenterApp({ roomId }: { roomId: string }) {
   const navigate = useNavigate();
   const [tokens, setTokens] = useState({ presenterToken: "", joinToken: "" });
-  const [nativeShare, setNativeShare] = useState(false);
+  const nativeShare = useNativeShareAvailability({ coarsePointerOnly: true });
   const [inviteMessage, setInviteMessage] = useState<string | null>(null);
   const [manualInvite, setManualInvite] = useState(false);
   const [closing, setClosing] = useState(false);
@@ -92,16 +95,9 @@ export function PartyPresenterApp({ roomId }: { roomId: string }) {
   );
   const setMessage = live.setMessage;
   const invite = tokens.joinToken
-    ? `${location.origin}/things/spelling-party/${roomId}#${tokens.joinToken}`
+    ? buildPartyPlayerInviteUrl(location.origin, roomId, tokens.joinToken)
     : null;
-  const { dataUrl: qr } = useQrCode(invite, 320);
-
-  useEffect(() => {
-    setNativeShare(
-      typeof navigator.share === "function" &&
-        window.matchMedia("(hover: none) and (pointer: coarse)").matches,
-    );
-  }, []);
+  const { dataUrl: qr, failed: qrFailed } = useQrCode(invite, 320);
 
   const shareInvite = async () => {
     if (!invite) return;
@@ -319,6 +315,8 @@ export function PartyPresenterApp({ roomId }: { roomId: string }) {
                 alt="QR code for players to join this spelling room"
                 className="mt-7 w-60 rounded-3xl bg-white p-3"
               />
+            ) : qrFailed ? (
+              <p className="mt-6 font-mono text-xs text-white/50">QR unavailable—share the player link or room code.</p>
             ) : null}
             <div className="mt-5">
               <p className="font-mono text-micro uppercase tracking-[0.18em] text-white/40">

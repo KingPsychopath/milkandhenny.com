@@ -8,9 +8,11 @@ import { useRemoteSocket } from "./useRemoteSocket";
 import { legacyRemoteBrowserKeys, remoteBrowserKeys } from "./remote-keys";
 import { clearExpiredGameLocalStorage, readExpiringLocalValue, removeStorageKeys, writeExpiringLocalValue } from "../shared/game-storage.client";
 import { EndGameDialog } from "../shared/EndGameDialog";
-import { shareOrCopy } from "../shared/share.client";
-import { useQrCode } from "../shared/useQrCode";
+import { shareOrCopy } from "@/lib/client/share";
+import { useQrCode } from "@/hooks/useQrCode";
 import { useRoomReconciler } from "../shared/useRoomReconciler";
+import { consumeLocationFragment } from "@/lib/client/url-fragment";
+import { buildPairedGamePlayerInviteUrl, parsePairedGameJudgeFragment } from "./paired-game-invite";
 
 const SAFETY_POLL_MS = 12_000;
 
@@ -38,15 +40,15 @@ interface StoredRoomTokens {
 
 function tokensForRoom(roomId: string): StoredRoomTokens {
   const sessionKey = remoteBrowserKeys.judgeSession(roomId);
-  const hash = location.hash.slice(1).trim();
+  const hash = consumeLocationFragment();
   if (hash) {
-    const params = new URLSearchParams(hash);
-    const judgeToken = params.get("judge") ?? (hash.includes("=") ? "" : hash);
-    const playerToken = params.get("player") ?? "";
-    const game = params.get("game");
-    const session = { judgeToken, playerToken, game: game === "heads-up" || game === "spelling-bee" ? game : null } satisfies StoredRoomTokens;
+    const invite = parsePairedGameJudgeFragment(hash);
+    const session = {
+      judgeToken: invite.judgeToken,
+      playerToken: invite.playerToken ?? "",
+      game: invite.game ?? null,
+    } satisfies StoredRoomTokens;
     sessionStorage.setItem(sessionKey, JSON.stringify(session));
-    history.replaceState(null, "", `${location.pathname}${location.search}`);
     return session;
   }
   try {
@@ -88,9 +90,9 @@ export function RemoteJudgeApp({ roomId }: { roomId: string }) {
   const haptics = useWebHaptics();
 
   const playerInviteUrl = tokens.playerToken && typeof window !== "undefined"
-    ? `${location.origin}/things/play/${roomId}#${tokens.playerToken}`
+    ? buildPairedGamePlayerInviteUrl(location.origin, roomId, tokens.playerToken)
     : null;
-  const { dataUrl: qrCode } = useQrCode(playerInviteUrl, 280);
+  const { dataUrl: qrCode, failed: qrFailed } = useQrCode(playerInviteUrl, 280);
 
   useEffect(() => { clearExpiredGameLocalStorage(); setTokens(tokensForRoom(roomId)); }, [roomId]);
 
@@ -286,7 +288,7 @@ export function RemoteJudgeApp({ roomId }: { roomId: string }) {
               <p className="font-mono text-micro uppercase tracking-[0.2em] text-white/45">this phone is the judge</p>
               <h1 id="player-invite-title" className="mt-3 font-serif text-5xl font-semibold">Scan to play.</h1>
               <p className="mt-4 max-w-sm font-serif text-lg text-white/55">Open this code on the phone that will show the game and request any motion or microphone access.</p>
-              {qrCode ? <img src={qrCode} alt="QR code to open the game on the player’s phone" className="mt-7 w-56 rounded-3xl bg-white p-3" /> : null}
+              {qrCode ? <img src={qrCode} alt="QR code to open the game on the player’s phone" className="mt-7 w-56 rounded-3xl bg-white p-3" /> : qrFailed ? <p className="mt-6 font-mono text-xs text-white/50">QR unavailable—share the player link instead.</p> : null}
               <p className="mt-4 font-mono text-sm tracking-[0.18em] text-white/60">{roomId}</p>
               <button type="button" onClick={() => void handleSharePlayerInvite()} className="mt-5 min-h-12 rounded-full border border-white/20 px-6 font-mono text-sm">share player invite</button>
               <p className="mt-5 font-mono text-xs text-white/45">{playerConnected ? "Player connected. Waiting for them to start…" : "Waiting for the player to scan…"}</p>

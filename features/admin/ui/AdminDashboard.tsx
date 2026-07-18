@@ -6,8 +6,10 @@ import type { SystemCapabilities } from "@/features/system/capabilities";
 import type { MultiplayerTelemetrySnapshot } from "@/features/things/shared/multiplayer-telemetry";
 import { SITE_BRAND } from "@/lib/shared/config";
 import { TokenSessionsPanel } from "./components/TokenSessionsPanel";
-import { useAdminAuth } from "./hooks/useAdminAuth";
+import { useAdminAuth } from "@/features/auth/useAdminAuth";
 import { useActionDialog } from "@/hooks/useActionDialog";
+import { buildTransferUrl } from "@/features/transfers/routes";
+import { copyText } from "@/lib/client/share";
 
 type BlogSummary = {
   totalPosts: number;
@@ -521,7 +523,7 @@ export function AdminDashboard() {
 
   const copyCommand = async (key: string, command: string) => {
     try {
-      await navigator.clipboard.writeText(command);
+      await copyText(command);
       setCopiedCommand(key);
       setTimeout(() => setCopiedCommand(null), 1800);
     } catch {
@@ -531,8 +533,8 @@ export function AdminDashboard() {
 
   const copyTransferUrl = async (transferId: string) => {
     try {
-      const url = `${window.location.origin}/t/${transferId}`;
-      await navigator.clipboard.writeText(url);
+      const url = buildTransferUrl(window.location.origin, transferId);
+      await copyText(url);
       setCopiedTransferId(transferId);
       setTransferStatus("Transfer URL copied.");
       setTimeout(() => {

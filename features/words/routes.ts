@@ -1,11 +1,8 @@
 import type { WordVisibility } from "./content-types";
+import { buildAppUrl } from "@/lib/shared/app-url";
 
 const WORDS_PUBLIC_PREFIX = "/words";
 const WORDS_PRIVATE_PREFIX = "/vault";
-
-function trimTrailingSlash(url: string): string {
-  return url.endsWith("/") ? url.slice(0, -1) : url;
-}
 
 function wordPublicPath(slug: string): string {
   return `${WORDS_PUBLIC_PREFIX}/${slug}`;
@@ -25,9 +22,8 @@ function buildWordShareUrl(
   token: string,
   visibility: WordVisibility,
 ): string {
-  const origin = trimTrailingSlash(baseUrl);
   const path = wordPathForVisibility(slug, visibility);
-  return `${origin}${path}?share=${encodeURIComponent(token)}`;
+  return buildAppUrl(baseUrl, path, { search: { share: token } });
 }
 
 export {

@@ -32,9 +32,10 @@ import { backfillTransferMedia } from "../features/transfers/upload.server";
 import type { ProcessFileResult } from "../features/transfers/upload.server";
 import { getTransferMediaQueueLength } from "../features/transfers/media-queue.server";
 import { getTransferMediaWorkerStatus } from "../features/transfers/media-worker-status.server";
-import { runTransferMediaJobs } from "../features/media/backends/worker.server";
+import { runTransferMediaJobs } from "../features/transfers/media-backends/worker.server";
 import { isSafeTransferId } from "../features/transfers/admin.server";
 import { BASE_URL } from "../lib/shared/config";
+import { buildTransferUrl } from "../features/transfers/routes";
 import { getRedis } from "../lib/platform/redis.server";
 import {
   saveTransfer,
@@ -471,8 +472,8 @@ async function createTransfer(
     // Non-fatal: the transfer is created, user can delete the stale checkpoint manually.
   }
 
-  const shareUrl = `${BASE_URL}/t/${transferId}`;
-  const adminUrl = `${BASE_URL}/t/${transferId}?token=${deleteToken}`;
+  const shareUrl = buildTransferUrl(BASE_URL, transferId);
+  const adminUrl = buildTransferUrl(BASE_URL, transferId, deleteToken);
 
   const fileCounts = transferFileCounts(groupedTransfer.files);
   const processingCounts = buildTransferProcessingCounts(groupedTransfer.files);
@@ -551,8 +552,8 @@ async function appendToTransfer(
         }
         return {
           transfer,
-          shareUrl: `${BASE_URL}/t/${transfer.id}`,
-          adminUrl: `${BASE_URL}/t/${transfer.id}?token=${transfer.deleteToken}`,
+          shareUrl: buildTransferUrl(BASE_URL, transfer.id),
+          adminUrl: buildTransferUrl(BASE_URL, transfer.id, transfer.deleteToken),
           addedCount: 0,
           addedSize: 0,
           fileCounts: { images: 0, videos: 0, gifs: 0, audio: 0, other: 0 },
@@ -673,8 +674,8 @@ async function appendToTransfer(
 
   return {
     transfer: updatedTransfer,
-    shareUrl: `${BASE_URL}/t/${transfer.id}`,
-    adminUrl: `${BASE_URL}/t/${transfer.id}?token=${transfer.deleteToken}`,
+    shareUrl: buildTransferUrl(BASE_URL, transfer.id),
+    adminUrl: buildTransferUrl(BASE_URL, transfer.id, transfer.deleteToken),
     addedCount: addedResults.length,
     addedSize: addedResults.reduce((sum, r) => sum + r.uploadedBytes, 0),
     fileCounts: transferFileCounts(addedResults.map((r) => r.file) as TransferData["files"]),

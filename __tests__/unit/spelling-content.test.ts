@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { formatSpellingWords, parseSpellingWords } from "../../features/things/spelling-bee/customDecks";
-import { SPELLING_DECKS } from "../../features/things/spelling-bee/decks";
+import { formatSpellingWords, parseSpellingWords } from "../../features/things/spelling/customDecks";
+import { SPELLING_DECKS } from "../../features/things/spelling/decks";
 import { partyAudioAssetKey, partyDeck } from "../../features/things/spelling-party/party-content.server";
 
 describe("spelling content", () => {

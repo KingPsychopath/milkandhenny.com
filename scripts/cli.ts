@@ -29,6 +29,7 @@ import {
 } from "./album-ops";
 import { validateAllAlbums } from "@/features/media/albums.server";
 import { BASE_URL } from "@/lib/shared/config";
+import { buildTransferUrl } from "@/features/transfers/routes";
 import { FOCAL_PRESETS, resolveFocalPreset, FOCAL_SHORTHAND } from "@/features/media/focal";
 import { compareStrategies, DETECTION_STRATEGIES, type DetectionStrategy } from "./face-detect";
 import { ROTATION_OVERRIDES, type RotationOverride } from "../features/media/processing.server";
@@ -893,8 +894,8 @@ async function cmdTransfersInfo(id: string) {
   log(
     `${dim("Expires:")}      ${new Date(info.expiresAt).toLocaleString("en-GB")} ${yellow(`(${remaining} left)`)}`,
   );
-  log(`${dim("Share URL:")}    ${green(`${BASE_URL}/t/${info.id}`)}`);
-  log(`${dim("Admin URL:")}    ${green(`${BASE_URL}/t/${info.id}?token=${info.deleteToken}`)}`);
+  log(`${dim("Share URL:")}    ${green(buildTransferUrl(BASE_URL, info.id))}`);
+  log(`${dim("Admin URL:")}    ${green(buildTransferUrl(BASE_URL, info.id, info.deleteToken))}`);
   console.log();
 
   if (info.files.length <= 30) {

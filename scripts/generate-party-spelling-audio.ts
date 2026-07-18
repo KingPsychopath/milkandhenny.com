@@ -2,7 +2,7 @@ import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { SPELLING_DECKS } from "../features/things/spelling-bee/decks";
+import { SPELLING_DECKS } from "../features/things/spelling/decks";
 import { partyAudioAssetKey, partyDeck } from "../features/things/spelling-party/party-content.server";
 
 const outputDirectory = join(process.cwd(), "assets/party-spelling-audio");

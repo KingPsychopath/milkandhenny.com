@@ -9,6 +9,7 @@ import { getResponseErrorMessage, readResponsePayload } from "@/lib/client/respo
 import { isHeifLikeFile, prepareTransferUploadFile } from "@/features/transfers/browser-heif";
 import type { TransferUploadFileInput } from "@/features/transfers/upload-types";
 import { collectDroppedFiles } from "./drop-files";
+import { copyText } from "@/lib/client/share";
 
 /* ─── Types ─── */
 
@@ -1017,7 +1018,7 @@ export function UploadDashboard({ isAdmin }: UploadDashboardProps) {
 
   const copyToClipboard = async (text: string, label: string) => {
     try {
-      await navigator.clipboard.writeText(text);
+      await copyText(text);
       setCopied(label);
       setTimeout(() => setCopied(null), 2000);
     } catch {
