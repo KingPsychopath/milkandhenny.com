@@ -2,6 +2,7 @@ import type { CountryDrawing, CountryOutline, CountryScore, DrawPoint } from "./
 
 const REFERENCE_SAMPLES = 320;
 const DRAWING_SAMPLES = 320;
+const COUNTRY_COORDINATE_SCALE = 10_000;
 
 interface NormalisedShape {
   rings: CountryDrawing;
@@ -26,7 +27,8 @@ function ringLength(points: DrawPoint[]) {
 }
 
 function sampleRing(points: DrawPoint[], count: number) {
-  if (points.length < 2 || count <= 0) return points;
+  if (count <= 0) return [];
+  if (points.length < 2) return points.slice(0, count);
   const segments = points.map((point, index) => ({
     from: point,
     to: points[(index + 1) % points.length],
@@ -57,11 +59,23 @@ function sampleRing(points: DrawPoint[], count: number) {
 }
 
 function sampleShape(rings: CountryDrawing, count: number) {
+  if (!rings.length || count <= 0) return [];
   const lengths = rings.map(ringLength);
   const total = lengths.reduce((sum, value) => sum + value, 0);
-  return rings.flatMap((ring, index) =>
-    sampleRing(ring, Math.max(5, Math.round((lengths[index] / Math.max(total, 1)) * count))),
-  );
+  if (!total) return [];
+  const minimum = count >= rings.length ? 1 : 0;
+  const remaining = count - minimum * rings.length;
+  const allocations = lengths.map((length, index) => {
+    const exact = (length / total) * remaining;
+    return { index, count: minimum + Math.floor(exact), remainder: exact % 1 };
+  });
+  let assigned = allocations.reduce((sum, allocation) => sum + allocation.count, 0);
+  for (const allocation of allocations.toSorted((a, b) => b.remainder - a.remainder)) {
+    if (assigned >= count) break;
+    allocations[allocation.index].count += 1;
+    assigned += 1;
+  }
+  return rings.flatMap((ring, index) => sampleRing(ring, allocations[index].count));
 }
 
 function normaliseDrawing(rings: CountryDrawing): NormalisedShape | null {
@@ -95,8 +109,8 @@ function normaliseReference(country: CountryOutline): NormalisedShape {
   const offsetY = (1 - height / scale) / 2;
   const rings = country.rings.map((ring) =>
     ring.map(([x, y]) => ({
-      x: offsetX + (x / 1_000) * (width / scale),
-      y: offsetY + (y / 1_000) * (height / scale),
+      x: offsetX + (x / COUNTRY_COORDINATE_SCALE) * (width / scale),
+      y: offsetY + (y / COUNTRY_COORDINATE_SCALE) * (height / scale),
     })),
   );
   return { rings, points: sampleShape(rings, REFERENCE_SAMPLES) };
@@ -145,10 +159,7 @@ export function scoreCountryDrawing(
   const score =
     deviation < 0.002
       ? 100
-      : Math.max(
-          0,
-          Math.min(100, Math.round(100 * Math.exp(-7.4 * deviation) * islandPenalty)),
-        );
+      : Math.max(0, Math.min(100, Math.round(100 * Math.exp(-7.4 * deviation) * islandPenalty)));
   return {
     score,
     deviation: Math.round(deviation * 1_000) / 10,
