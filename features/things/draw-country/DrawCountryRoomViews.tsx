@@ -81,7 +81,7 @@ export function RoomLobby({
         <p className="font-mono text-micro uppercase tracking-[0.18em] text-black/40">room ready</p>
         <h1 className="mt-3 font-serif text-5xl font-semibold">Bring everyone in.</h1>
         <p className="mt-3 max-w-md font-serif text-lg text-black/55">
-          You will all draw on your own screen. The closest border wins each round.
+          Draw together. Closest border wins.
         </p>
         {qr ? (
           <img

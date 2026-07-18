@@ -938,7 +938,7 @@ function HostPlayerLobby({
         onClick={onStart}
         className="mt-6 min-h-16 w-full rounded-full bg-[var(--things-amber)] px-6 font-mono text-sm font-bold text-black"
       >
-        {players.length === 1 ? "start solo" : "start game"}
+        start game
       </button>
     </section>
   );

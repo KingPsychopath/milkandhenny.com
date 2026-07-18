@@ -6,6 +6,12 @@ import { createDrawCountryRoomFn } from "./draw-country-room.functions";
 import { drawCountryBrowserKeys } from "./draw-country-keys";
 import { recentCountryIds } from "./rotation.client";
 import { SoloDrawCountry } from "./SoloDrawCountry";
+import {
+  GameLaunch,
+  GameLaunchButton,
+  GameLaunchChoices,
+  GameLaunchMeta,
+} from "../shared/GameLaunch";
 
 export function DrawCountryApp() {
   const navigate = useNavigate();
@@ -17,6 +23,7 @@ export function DrawCountryApp() {
   const [joinCode, setJoinCode] = useState("");
   const [creating, setCreating] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [panel, setPanel] = useState<"friends" | "join" | null>(null);
 
   if (solo) return <SoloDrawCountry onExit={() => setSolo(false)} />;
 
@@ -73,156 +80,167 @@ export function DrawCountryApp() {
         </Link>
         <span>draw the country</span>
       </header>
-      <main id="main" className="mx-auto w-full max-w-3xl px-5 pb-16 pt-10 sm:pt-16">
-        <p className="font-mono text-micro uppercase tracking-[0.2em] text-black/40">
-          195 borders · from memory
-        </p>
-        <h1 className="mt-4 max-w-2xl font-serif text-5xl font-semibold leading-[0.98] tracking-tight sm:text-7xl">
-          How well do you remember a country?
-        </h1>
-        <p className="mt-6 max-w-xl font-serif text-lg leading-relaxed text-black/60">
-          Draw its outline in thirty seconds. We align the scale, compare both borders, and show
-          exactly where you wandered.
-        </p>
-
-        <section className="mt-12 border-t border-black/15 pt-7" aria-labelledby="solo-mode">
-          <div className="grid gap-5 sm:grid-cols-[1fr_auto] sm:items-end">
-            <div>
-              <p className="font-mono text-micro uppercase tracking-[0.18em] text-black/40">
-                01 · on this device
-              </p>
-              <h2 id="solo-mode" className="mt-2 font-serif text-3xl font-semibold">
-                play solo
-              </h2>
-              <p className="mt-2 max-w-md text-sm leading-relaxed text-black/55">
-                Endless countries with a smart rotation that avoids recent repeats. Fully available
-                offline.
-              </p>
-            </div>
+      <main id="main" className="mx-auto w-full max-w-3xl px-5 pb-16 pt-3 sm:pt-8">
+        <GameLaunch
+          tone="cream"
+          eyebrow="from memory"
+          title="How well do you remember a country?"
+          description="Draw its outline in thirty seconds and see how close you get."
+        >
+          <GameLaunchButton
+            accent="ink"
+            onClick={() => {
+              setSolo(true);
+              void haptics.trigger("selection");
+            }}
+          >
+            start
+          </GameLaunchButton>
+          <GameLaunchMeta tone="light">30 seconds · works offline</GameLaunchMeta>
+          <GameLaunchChoices tone="light">
             <button
               type="button"
-              onClick={() => {
-                setSolo(true);
-                void haptics.trigger("selection");
+              onClick={() => setPanel(panel === "friends" ? null : "friends")}
+              aria-pressed={panel === "friends"}
+              className="min-h-11"
+            >
+              play with friends
+            </button>
+            <button
+              type="button"
+              onClick={() => setPanel(panel === "join" ? null : "join")}
+              aria-pressed={panel === "join"}
+              className="min-h-11"
+            >
+              join a room
+            </button>
+          </GameLaunchChoices>
+        </GameLaunch>
+
+        {panel === "friends" ? (
+          <section
+            className="mx-auto mt-10 max-w-lg border-t border-black/15 pt-7"
+            aria-labelledby="together-mode"
+          >
+            <h2 id="together-mode" className="font-serif text-3xl font-semibold">
+              Play with friends
+            </h2>
+            <form
+              onSubmit={(event) => {
+                event.preventDefault();
+                void handleCreate();
               }}
-              className="min-h-12 rounded-full bg-black px-7 font-mono text-xs font-semibold uppercase tracking-[0.14em] text-white"
+              className="mt-5 grid gap-4 rounded-[1.75rem] border border-black/15 bg-white/25 p-5 sm:grid-cols-3"
             >
-              start solo
-            </button>
-          </div>
-        </section>
-
-        <section className="mt-10 border-t border-black/15 pt-7" aria-labelledby="together-mode">
-          <p className="font-mono text-micro uppercase tracking-[0.18em] text-black/40">
-            02 · shared room
-          </p>
-          <h2 id="together-mode" className="mt-2 font-serif text-3xl font-semibold">
-            play with friends
-          </h2>
-          <p className="mt-2 max-w-xl text-sm leading-relaxed text-black/55">
-            Everyone draws the same country on their own screen. Scores reveal together, then the
-            room moves to the next round automatically.
-          </p>
-          <form
-            onSubmit={(event) => {
-              event.preventDefault();
-              void handleCreate();
-            }}
-            className="mt-6 grid gap-4 rounded-[1.75rem] border border-black/15 bg-white/25 p-5 sm:grid-cols-3"
-          >
-            <label className="font-mono text-xs text-black/55">
-              <span className="block pb-2">your name</span>
-              <input
-                name="playerName"
-                value={name}
-                maxLength={32}
-                required
-                autoComplete="name"
-                enterKeyHint="go"
-                onChange={(event) => {
-                  setName(event.target.value);
-                  setMessage(null);
-                }}
-                className="min-h-12 w-full rounded-full border border-black/15 bg-white/55 px-4 text-black"
-              />
-            </label>
-            <label className="font-mono text-xs text-black/55">
-              <span className="block pb-2">rounds</span>
-              <select
-                value={roundTotal}
-                onChange={(event) => setRoundTotal(Number(event.target.value))}
-                className="min-h-12 w-full rounded-full border border-black/15 bg-white/55 px-4 text-black"
+              <label className="font-mono text-xs text-black/55">
+                <span className="block pb-2">your name</span>
+                <input
+                  name="playerName"
+                  value={name}
+                  maxLength={32}
+                  required
+                  autoComplete="name"
+                  enterKeyHint="go"
+                  onChange={(event) => {
+                    setName(event.target.value);
+                    setMessage(null);
+                  }}
+                  className="min-h-12 w-full rounded-full border border-black/15 bg-white/55 px-4 text-black"
+                />
+              </label>
+              <label className="font-mono text-xs text-black/55">
+                <span className="block pb-2">rounds</span>
+                <select
+                  value={roundTotal}
+                  onChange={(event) => setRoundTotal(Number(event.target.value))}
+                  className="min-h-12 w-full rounded-full border border-black/15 bg-white/55 px-4 text-black"
+                >
+                  {[3, 5, 7, 10].map((value) => (
+                    <option key={value} value={value}>
+                      {value}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="font-mono text-xs text-black/55">
+                <span className="block pb-2">draw time</span>
+                <select
+                  value={drawSeconds}
+                  onChange={(event) => setDrawSeconds(Number(event.target.value))}
+                  className="min-h-12 w-full rounded-full border border-black/15 bg-white/55 px-4 text-black"
+                >
+                  {[20, 30, 45, 60].map((value) => (
+                    <option key={value} value={value}>
+                      {value} seconds
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <button
+                type="submit"
+                disabled={creating}
+                className="min-h-12 rounded-full bg-black px-6 font-mono text-xs font-semibold uppercase tracking-[0.14em] text-white disabled:opacity-40 sm:col-span-3"
               >
-                {[3, 5, 7, 10].map((value) => (
-                  <option key={value} value={value}>
-                    {value}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="font-mono text-xs text-black/55">
-              <span className="block pb-2">draw time</span>
-              <select
-                value={drawSeconds}
-                onChange={(event) => setDrawSeconds(Number(event.target.value))}
-                className="min-h-12 w-full rounded-full border border-black/15 bg-white/55 px-4 text-black"
-              >
-                {[20, 30, 45, 60].map((value) => (
-                  <option key={value} value={value}>
-                    {value} seconds
-                  </option>
-                ))}
-              </select>
-            </label>
-            <button
-              type="submit"
-              disabled={creating}
-              className="min-h-12 rounded-full bg-black px-6 font-mono text-xs font-semibold uppercase tracking-[0.14em] text-white disabled:opacity-40 sm:col-span-3"
-            >
-              {creating ? "making room…" : "create room & play"}
-            </button>
-          </form>
+                {creating ? "making room…" : "create room"}
+              </button>
+            </form>
+            {message ? (
+              <p role="status" className="mt-4 font-mono text-xs text-amber-800">
+                {message}
+              </p>
+            ) : null}
+          </section>
+        ) : null}
 
-          <form
-            onSubmit={(event) => {
-              event.preventDefault();
-              void handleJoin();
-            }}
-            className="mt-7 flex items-end gap-3 border-t border-black/10 pt-6"
+        {panel === "join" ? (
+          <section
+            className="mx-auto mt-10 max-w-lg border-t border-black/15 pt-7"
+            aria-labelledby="join-room"
           >
-            <label className="min-w-0 flex-1 font-mono text-xs text-black/55">
-              <span className="block pb-2">or join with a room code</span>
-              <input
-                name="roomCode"
-                value={joinCode}
-                maxLength={7}
-                minLength={7}
-                pattern="[A-Z2-9]{7}"
-                required
-                title="Enter the 7-character room code"
-                autoCapitalize="characters"
-                enterKeyHint="go"
-                spellCheck={false}
-                onChange={(event) => {
-                  setJoinCode(event.target.value.toUpperCase());
-                  setMessage(null);
-                }}
-                className="min-h-12 w-full rounded-full border border-black/15 bg-white/55 px-5 font-mono uppercase tracking-[0.18em] text-black"
-              />
-            </label>
-            <button
-              type="submit"
-              className="min-h-12 rounded-full border border-black/25 px-6 font-mono text-xs font-semibold uppercase tracking-[0.14em]"
+            <h2 id="join-room" className="font-serif text-3xl font-semibold">
+              Room code
+            </h2>
+            <form
+              onSubmit={(event) => {
+                event.preventDefault();
+                void handleJoin();
+              }}
+              className="mt-5 flex items-end gap-3"
             >
-              join
-            </button>
-          </form>
-          {message ? (
-            <p role="status" className="mt-4 font-mono text-xs text-amber-800">
-              {message}
-            </p>
-          ) : null}
-        </section>
+              <label className="min-w-0 flex-1 font-mono text-xs text-black/55">
+                <span className="sr-only">room code</span>
+                <input
+                  name="roomCode"
+                  value={joinCode}
+                  maxLength={7}
+                  minLength={7}
+                  pattern="[A-Z2-9]{7}"
+                  required
+                  title="Enter the 7-character room code"
+                  autoCapitalize="characters"
+                  enterKeyHint="go"
+                  spellCheck={false}
+                  onChange={(event) => {
+                    setJoinCode(event.target.value.toUpperCase());
+                    setMessage(null);
+                  }}
+                  className="min-h-12 w-full rounded-full border border-black/15 bg-white/55 px-5 font-mono uppercase tracking-[0.18em] text-black"
+                />
+              </label>
+              <button
+                type="submit"
+                className="min-h-12 rounded-full border border-black/25 px-6 font-mono text-xs font-semibold uppercase tracking-[0.14em]"
+              >
+                join
+              </button>
+            </form>
+            {message ? (
+              <p role="status" className="mt-4 font-mono text-xs text-amber-800">
+                {message}
+              </p>
+            ) : null}
+          </section>
+        ) : null}
       </main>
     </div>
   );

@@ -78,7 +78,7 @@ export function PairedGameHostPanel({
           Remote judge
         </h2>
         <p className="mt-2 max-w-sm text-sm leading-relaxed text-white/55">
-          Invite someone to score the game from their phone. You can keep playing if either phone loses signal.
+          Let someone score from their phone.
         </p>
         {roomId ? (
           <p className={`mt-3 font-mono text-xs ${connected ? "text-emerald-200" : "text-white/45"}`} aria-live="polite">
@@ -111,16 +111,14 @@ export function PairedGameHostPanel({
 
       {!roomId ? (
         <div className="mt-4 border-t border-white/10 pt-4">
-          <p className="text-sm leading-relaxed text-white/55">
-            Want this phone to be the judge instead? Choose the game here, then let the player scan a code on their phone.
-          </p>
+          <p className="text-sm leading-relaxed text-white/55">Use this phone as the judge.</p>
           <button
             type="button"
             onClick={() => void onCreatePlayerRoom()}
             disabled={syncing}
             className="mt-3 min-h-12 w-full rounded-full border border-white/15 px-5 font-mono text-sm text-white/75 disabled:opacity-40"
           >
-            set up as the judge
+            use as judge
           </button>
         </div>
       ) : null}

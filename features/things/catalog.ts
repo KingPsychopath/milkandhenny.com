@@ -15,7 +15,7 @@ export const THINGS = [
   {
     slug: "draw-country",
     name: "draw the country",
-    description: "Sketch a border from memory, see exactly where it drifted, or race your friends.",
+    description: "Draw a country from memory and see how close you get.",
     eyebrow: "drawing game · 1–16 people",
     href: "/things/draw-country",
     status: "ready",
@@ -25,7 +25,7 @@ export const THINGS = [
   {
     slug: "spelling-bee",
     name: "spelling bee",
-    description: "Hear the word, spell it aloud, and let a nearby or remote judge decide.",
+    description: "Hear the word. Spell it aloud—or type together.",
     eyebrow: "word game · 1+ people",
     href: "/things/spelling-bee",
     status: "ready",
@@ -35,7 +35,7 @@ export const THINGS = [
   {
     slug: "heads-up",
     name: "forehead",
-    description: "Guess the card from your friends' clues. Tilt down for correct, up to pass.",
+    description: "Guess the card from your friends' clues.",
     eyebrow: "party game · 2+ people",
     href: "/things/heads-up",
     status: "ready",
@@ -45,7 +45,7 @@ export const THINGS = [
   {
     slug: "icebreaker",
     name: "icebreaker",
-    description: "Find your colour, meet your group, and start a better conversation.",
+    description: "Reveal a colour and find your people.",
     eyebrow: "social tool · groups",
     href: "/things/icebreaker",
     status: "ready",
