@@ -7,6 +7,7 @@ const ALIGNMENT_TRIM = 0.025;
 const MINIMUM_DRAWING_EXTENT = 8;
 const MAX_POINT_DEVIATION = 0.5;
 const SILHOUETTE_GRID_SIZE = 28;
+const PERIMETER_ALLOWANCE = 1.25;
 const COUNTRY_COORDINATE_SCALE = 10_000;
 const BORDER_FIT_WEIGHT = 0.3;
 const COVERAGE_WEIGHT = 0.3;
@@ -252,10 +253,11 @@ function segmentsAreAdjacent(first: DrawingSegment, second: DrawingSegment) {
   return difference <= 1 || difference === first.ringSize - 1;
 }
 
-function strokeQualityDeviation(drawing: CountryDrawing) {
+function strokeQualityDeviation(drawing: CountryDrawing, reference: CountryDrawing) {
   const lengths = drawing.map(ringLength);
   const totalLength = lengths.reduce((total, length) => total + length, 0);
   if (!totalLength) return 1;
+  const referenceLength = reference.reduce((total, ring) => total + ringLength(ring), 0);
 
   const degenerateLength = drawing.reduce((total, ring, index) => {
     const length = lengths[index];
@@ -284,8 +286,13 @@ function strokeQualityDeviation(drawing: CountryDrawing) {
     }
   }
 
-  const crossingDeviation = Math.min(1, crossings / Math.max(1, segments.length * 0.02));
-  return Math.min(1, (degenerateLength / totalLength) * 0.75 + crossingDeviation);
+  const crossingDeviation = Math.min(1, crossings / Math.max(3, segments.length * 0.03));
+  const perimeterRatio = referenceLength ? totalLength / referenceLength : Number.POSITIVE_INFINITY;
+  const perimeterDeviation = Math.min(1, Math.max(0, perimeterRatio - PERIMETER_ALLOWANCE));
+  return Math.min(
+    1,
+    (degenerateLength / totalLength) * 0.75 + crossingDeviation + perimeterDeviation,
+  );
 }
 
 function areaDistribution(rings: CountryDrawing) {
@@ -330,6 +337,14 @@ function accuracyFor(score: number): CountryScore["accuracy"] {
   return "adventurous";
 }
 
+function silhouetteScore(deviation: number) {
+  return Math.round(100 * Math.max(0, 1 - Math.max(0, deviation) * 2.2));
+}
+
+function strokeQualityScore(deviation: number) {
+  return Math.round(100 * (1 - Math.max(0, Math.min(1, deviation))) ** 1.5);
+}
+
 export function scoreCountryDrawing(
   country: CountryOutline,
   input: CountryDrawing,
@@ -355,7 +370,7 @@ export function scoreCountryDrawing(
   const fit = borderFit(drawing.points, reference.rings);
   const coverage = averageDistanceToBorder(reference.points, drawing.rings);
   const silhouette = silhouetteDeviation(reference.rings, drawing.rings);
-  const strokeQuality = strokeQualityDeviation(drawing.rings);
+  const strokeQuality = strokeQualityDeviation(drawing.rings, reference.rings);
   const islandBalance = islandBalanceDeviation(reference.rings, drawing.rings);
   const deviation =
     fit.border * BORDER_FIT_WEIGHT +
@@ -363,7 +378,13 @@ export function scoreCountryDrawing(
     silhouette * SILHOUETTE_WEIGHT +
     strokeQuality * STROKE_QUALITY_WEIGHT +
     islandBalance * ISLAND_BALANCE_WEIGHT;
-  const score = scoreFromDeviation(deviation);
+  const score = Math.min(
+    scoreFromDeviation(deviation),
+    scoreFromDeviation(fit.border),
+    scoreFromDeviation(coverage),
+    silhouetteScore(silhouette),
+    strokeQualityScore(strokeQuality),
+  );
   return {
     score,
     deviation: percentage(deviation),
@@ -381,5 +402,12 @@ export function scoreCountryDrawing(
 }
 
 export function drawingIsValid(drawing: CountryDrawing) {
-  return drawing.some((ring) => ring.length >= 3) && drawing.flat().length >= 6;
+  const pointCount = drawing.reduce((total, ring) => total + ring.length, 0);
+  return (
+    pointCount >= 6 &&
+    drawing.some((ring) => {
+      const length = ringLength(ring);
+      return ring.length >= 3 && length > 0 && ringArea(ring) / (length * length) >= 0.001;
+    })
+  );
 }

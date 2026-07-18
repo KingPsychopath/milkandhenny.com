@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { COUNTRIES } from "../../features/things/draw-country/countries";
 import {
+  drawingIsValid,
   scoreCountryDrawing,
   scoreFromDeviation,
 } from "../../features/things/draw-country/scoring";
@@ -27,6 +28,23 @@ function exactDrawing(outline: CountryOutline): CountryDrawing {
 }
 
 describe("draw-country scoring", () => {
+  it("requires a closed area rather than a line with enough sampled points", () => {
+    const line = [Array.from({ length: 6 }, (_, index) => ({ x: 100 + index * 20, y: 100 }))];
+    const outline = [
+      [
+        { x: 100, y: 100 },
+        { x: 200, y: 100 },
+        { x: 250, y: 160 },
+        { x: 200, y: 220 },
+        { x: 100, y: 220 },
+        { x: 50, y: 160 },
+      ],
+    ];
+
+    expect(drawingIsValid(line)).toBe(false);
+    expect(drawingIsValid(outline)).toBe(true);
+  });
+
   it("scores every translated and uniformly scaled reference outline at 100", () => {
     for (const outline of COUNTRIES)
       expect(scoreCountryDrawing(outline, exactDrawing(outline)).score, outline.id).toBe(100);
@@ -187,6 +205,67 @@ describe("draw-country scoring", () => {
     ];
 
     expect(scoreCountryDrawing(australia, scribble).score).toBeLessThanOrEqual(20);
+  });
+
+  it("does not reward covering, enclosing, or repeatedly tracing the country", () => {
+    const australia = COUNTRIES.find(({ id }) => id === "AU");
+    expect(australia).toBeDefined();
+    if (!australia) throw new Error("Australia fixture is missing");
+
+    const serpent: CountryDrawing[number] = [];
+    for (let row = 0; row < 12; row += 1) {
+      const y = 100 + row * 45;
+      serpent.push(
+        ...(row % 2
+          ? [
+              { x: 850, y },
+              { x: 120, y },
+            ]
+          : [
+              { x: 120, y },
+              { x: 850, y },
+            ]),
+      );
+    }
+    const exact = exactDrawing(australia);
+    const enclosingBox: CountryDrawing = [
+      [
+        { x: 50, y: 50 },
+        { x: 950, y: 50 },
+        { x: 950, y: 650 },
+        { x: 50, y: 650 },
+      ],
+    ];
+
+    expect(scoreCountryDrawing(australia, [serpent]).score).toBeLessThanOrEqual(10);
+    expect(
+      scoreCountryDrawing(australia, [...exact, ...exact, ...exact]).score,
+    ).toBeLessThanOrEqual(10);
+    expect(scoreCountryDrawing(australia, enclosingBox).score).toBeLessThanOrEqual(30);
+  });
+
+  it("still rewards a coherent simplified outline", () => {
+    const australia = COUNTRIES.find(({ id }) => id === "AU");
+    expect(australia).toBeDefined();
+    if (!australia) throw new Error("Australia fixture is missing");
+    const step = Math.max(1, Math.floor(australia.rings[0].length / 20));
+    const simplified: CountryDrawing = [
+      australia.rings[0]
+        .filter((_, index) => index % step === 0)
+        .map(([x, y]) => ({ x: 137 + x * australia.aspect * 0.083, y: 83 + y * 0.083 })),
+    ];
+
+    expect(scoreCountryDrawing(australia, simplified).score).toBeGreaterThanOrEqual(45);
+  });
+
+  it("does not mistake another recognisable country for the target", () => {
+    const australia = COUNTRIES.find(({ id }) => id === "AU");
+    const brazil = COUNTRIES.find(({ id }) => id === "BR");
+    expect(australia).toBeDefined();
+    expect(brazil).toBeDefined();
+    if (!australia || !brazil) throw new Error("Country fixtures are missing");
+
+    expect(scoreCountryDrawing(australia, exactDrawing(brazil)).score).toBeLessThanOrEqual(25);
   });
 
   it("uses explicit, monotonic calibration anchors", () => {

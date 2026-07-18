@@ -13,6 +13,13 @@ import {
   joinDrawCountryRoom,
   readDrawCountrySnapshot,
 } from "./draw-country-room.server";
+import {
+  DRAWING_HEIGHT,
+  DRAWING_WIDTH,
+  MAX_DRAWING_POINTS,
+  MAX_DRAWING_RINGS,
+  MAX_POINTS_PER_RING,
+} from "./drawing-constraints";
 import type { CountryDrawing, DrawPoint } from "./types";
 
 const record = multiplayerRecord;
@@ -21,12 +28,13 @@ const credential = multiplayerCredential;
 const sequence = multiplayerSequence;
 
 function drawing(value: unknown): CountryDrawing {
-  if (!Array.isArray(value) || value.length > 20) throw new Error("Invalid drawing");
+  if (!Array.isArray(value) || value.length > MAX_DRAWING_RINGS) throw new Error("Invalid drawing");
   let total = 0;
   return value.map((candidate) => {
-    if (!Array.isArray(candidate) || candidate.length > 500) throw new Error("Invalid drawing");
+    if (!Array.isArray(candidate) || candidate.length > MAX_POINTS_PER_RING)
+      throw new Error("Invalid drawing");
     total += candidate.length;
-    if (total > 900) throw new Error("Drawing is too detailed");
+    if (total > MAX_DRAWING_POINTS) throw new Error("Drawing is too detailed");
     return candidate.map((raw): DrawPoint => {
       const point = record(raw);
       if (
@@ -35,9 +43,9 @@ function drawing(value: unknown): CountryDrawing {
         !Number.isFinite(point.x) ||
         !Number.isFinite(point.y) ||
         point.x < 0 ||
-        point.x > 1_000 ||
+        point.x > DRAWING_WIDTH ||
         point.y < 0 ||
-        point.y > 700
+        point.y > DRAWING_HEIGHT
       )
         throw new Error("Invalid point");
       return { x: Math.round(point.x * 10) / 10, y: Math.round(point.y * 10) / 10 };

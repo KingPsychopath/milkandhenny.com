@@ -144,35 +144,40 @@ export function CountryRevealLegend() {
 
 export function CountryScoreDetails({ evaluation }: { evaluation: CountryEvaluation }) {
   return (
-    <dl className="mt-4 flex flex-wrap gap-x-4 gap-y-1 font-mono text-micro text-black/45">
-      <div>
-        <dt className="sr-only">Average border deviation</dt>
-        <dd>average {evaluation.deviation}%</dd>
-      </div>
-      <div>
-        <dt className="sr-only">Outside score contribution</dt>
-        <dd>outside {evaluation.outsideDeviation}%</dd>
-      </div>
-      <div>
-        <dt className="sr-only">Inside score contribution</dt>
-        <dd>inside {evaluation.insideDeviation}%</dd>
-      </div>
-      <div>
-        <dt className="sr-only">Missing border score contribution</dt>
-        <dd>missed {evaluation.coverageDeviation}%</dd>
-      </div>
-      <div>
-        <dt className="sr-only">Silhouette score contribution</dt>
-        <dd>shape {evaluation.silhouetteDeviation}%</dd>
-      </div>
-      <div>
-        <dt className="sr-only">Stroke quality score contribution</dt>
-        <dd>strokes {evaluation.strokeDeviation}%</dd>
-      </div>
-      <div>
-        <dt className="sr-only">Island score contribution</dt>
-        <dd>islands {evaluation.islandDeviation}%</dd>
-      </div>
-    </dl>
+    <div className="mt-4">
+      <dl className="flex flex-wrap gap-x-4 gap-y-1 font-mono text-micro text-black/45">
+        <div>
+          <dt className="sr-only">Average border deviation</dt>
+          <dd>average {evaluation.deviation}%</dd>
+        </div>
+        <div>
+          <dt className="sr-only">Outside score contribution</dt>
+          <dd>outside {evaluation.outsideDeviation}%</dd>
+        </div>
+        <div>
+          <dt className="sr-only">Inside score contribution</dt>
+          <dd>inside {evaluation.insideDeviation}%</dd>
+        </div>
+        <div>
+          <dt className="sr-only">Missing border score contribution</dt>
+          <dd>missed {evaluation.coverageDeviation}%</dd>
+        </div>
+        <div>
+          <dt className="sr-only">Silhouette score contribution</dt>
+          <dd>shape {evaluation.silhouetteDeviation}%</dd>
+        </div>
+        <div>
+          <dt className="sr-only">Stroke quality score contribution</dt>
+          <dd>strokes {evaluation.strokeDeviation}%</dd>
+        </div>
+        <div>
+          <dt className="sr-only">Island score contribution</dt>
+          <dd>islands {evaluation.islandDeviation}%</dd>
+        </div>
+      </dl>
+      <p className="mt-2 font-mono text-micro leading-relaxed text-black/40">
+        every check must hold — the weakest one limits your score
+      </p>
+    </div>
   );
 }

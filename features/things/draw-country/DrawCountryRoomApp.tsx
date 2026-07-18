@@ -7,6 +7,13 @@ import { CountryRoundBoard } from "./CountryRoundBoard";
 import { applyDrawCountryActionFn } from "./draw-country-room.functions";
 import { drawCountryBrowserKeys } from "./draw-country-keys";
 import { FinalRanking, RoomHeader, RoomLobby, RoomReveal } from "./DrawCountryRoomViews";
+import {
+  DRAWING_HEIGHT,
+  DRAWING_WIDTH,
+  MAX_DRAWING_POINTS,
+  MAX_DRAWING_RINGS,
+  MAX_POINTS_PER_RING,
+} from "./drawing-constraints";
 import { captureDrawCountryInvite } from "./invite.client";
 import { JoinDrawCountryRoom } from "./JoinDrawCountryRoom";
 import type { CountryDrawing, DrawCountryPlayerCredentials } from "./types";
@@ -39,20 +46,33 @@ function readDrawing(roomId: string, roundId: string): CountryDrawing {
   try {
     const value: unknown = JSON.parse(sessionStorage.getItem(drawingKey(roomId, roundId)) ?? "[]");
     if (!Array.isArray(value)) return [];
-    return value
-      .filter(Array.isArray)
-      .map((ring) =>
-        ring
-          .filter((point): point is { x: number; y: number } =>
-            Boolean(
-              point &&
-              typeof point === "object" &&
-              typeof Reflect.get(point, "x") === "number" &&
-              typeof Reflect.get(point, "y") === "number",
-            ),
-          )
-          .map(({ x, y }) => ({ x, y })),
-      );
+    const result: CountryDrawing = [];
+    let total = 0;
+    for (const candidate of value.slice(0, MAX_DRAWING_RINGS)) {
+      if (!Array.isArray(candidate) || total >= MAX_DRAWING_POINTS) continue;
+      const ring: CountryDrawing[number] = [];
+      for (const point of candidate.slice(0, MAX_POINTS_PER_RING)) {
+        if (total >= MAX_DRAWING_POINTS) break;
+        if (!point || typeof point !== "object") continue;
+        const x = Reflect.get(point, "x");
+        const y = Reflect.get(point, "y");
+        if (
+          typeof x !== "number" ||
+          typeof y !== "number" ||
+          !Number.isFinite(x) ||
+          !Number.isFinite(y) ||
+          x < 0 ||
+          x > DRAWING_WIDTH ||
+          y < 0 ||
+          y > DRAWING_HEIGHT
+        )
+          continue;
+        ring.push({ x, y });
+        total += 1;
+      }
+      if (ring.length) result.push(ring);
+    }
+    return result;
   } catch {
     return [];
   }

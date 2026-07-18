@@ -1,10 +1,14 @@
 import { useRef, useState } from "react";
+import {
+  DRAWING_HEIGHT,
+  DRAWING_WIDTH,
+  MAX_DRAWING_POINTS,
+  MAX_DRAWING_RINGS,
+  MAX_POINTS_PER_RING,
+} from "./drawing-constraints";
 import type { CountryDrawing, DrawPoint } from "./types";
 
-const WIDTH = 1_000;
-const HEIGHT = 700;
 const MIN_POINT_DISTANCE = 7;
-const MAX_POINTS = 850;
 
 function pathFor(ring: DrawPoint[], closed: boolean) {
   if (!ring.length) return "";
@@ -28,8 +32,14 @@ export function DrawCanvas({
     const bounds = svgRef.current?.getBoundingClientRect();
     if (!bounds) return null;
     return {
-      x: Math.max(0, Math.min(WIDTH, ((event.clientX - bounds.left) / bounds.width) * WIDTH)),
-      y: Math.max(0, Math.min(HEIGHT, ((event.clientY - bounds.top) / bounds.height) * HEIGHT)),
+      x: Math.max(
+        0,
+        Math.min(DRAWING_WIDTH, ((event.clientX - bounds.left) / bounds.width) * DRAWING_WIDTH),
+      ),
+      y: Math.max(
+        0,
+        Math.min(DRAWING_HEIGHT, ((event.clientY - bounds.top) / bounds.height) * DRAWING_HEIGHT),
+      ),
     };
   };
 
@@ -40,7 +50,8 @@ export function DrawCanvas({
       pointerRef.current !== null ||
       !event.isPrimary ||
       event.button !== 0 ||
-      pointCount >= MAX_POINTS
+      drawing.length >= MAX_DRAWING_RINGS ||
+      pointCount >= MAX_DRAWING_POINTS
     )
       return;
     const point = pointFromEvent(event);
@@ -54,9 +65,9 @@ export function DrawCanvas({
   const handlePointerMove = (event: React.PointerEvent<SVGSVGElement>) => {
     if (disabled || pointerRef.current !== event.pointerId) return;
     const pointCount = drawing.reduce((total, ring) => total + ring.length, 0);
-    if (pointCount >= MAX_POINTS) return;
-    const point = pointFromEvent(event);
     const ring = drawing.at(-1);
+    if (!ring || pointCount >= MAX_DRAWING_POINTS || ring.length >= MAX_POINTS_PER_RING) return;
+    const point = pointFromEvent(event);
     const previous = ring?.at(-1);
     if (
       !ring ||
@@ -78,7 +89,7 @@ export function DrawCanvas({
   return (
     <svg
       ref={svgRef}
-      viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
+      viewBox={`0 0 ${DRAWING_WIDTH} ${DRAWING_HEIGHT}`}
       role="img"
       aria-label="Drawing area. Drag to draw the country outline. A faint guide returns to your starting point and becomes the closing edge when you lift. Drag again for another island."
       aria-describedby="draw-country-instructions"
@@ -96,8 +107,8 @@ export function DrawCanvas({
         </pattern>
       </defs>
       <rect
-        width={WIDTH}
-        height={HEIGHT}
+        width={DRAWING_WIDTH}
+        height={DRAWING_HEIGHT}
         fill="url(#draw-country-grid)"
         className="text-black/[0.035]"
       />
