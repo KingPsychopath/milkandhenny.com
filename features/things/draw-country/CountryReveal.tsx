@@ -162,6 +162,14 @@ export function CountryScoreDetails({ evaluation }: { evaluation: CountryEvaluat
         <dd>missed {evaluation.coverageDeviation}%</dd>
       </div>
       <div>
+        <dt className="sr-only">Silhouette score contribution</dt>
+        <dd>shape {evaluation.silhouetteDeviation}%</dd>
+      </div>
+      <div>
+        <dt className="sr-only">Stroke quality score contribution</dt>
+        <dd>strokes {evaluation.strokeDeviation}%</dd>
+      </div>
+      <div>
         <dt className="sr-only">Island score contribution</dt>
         <dd>islands {evaluation.islandDeviation}%</dd>
       </div>

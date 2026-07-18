@@ -29,6 +29,8 @@ export interface CountryScore {
   outsideDeviation: number;
   insideDeviation: number;
   coverageDeviation: number;
+  silhouetteDeviation: number;
+  strokeDeviation: number;
   islandDeviation: number;
   accuracy: "uncanny" | "close" | "recognisable" | "adventurous";
 }

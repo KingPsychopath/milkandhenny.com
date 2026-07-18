@@ -93,6 +93,8 @@ describe("draw-country scoring", () => {
       outward.outsideDeviation +
         outward.insideDeviation +
         outward.coverageDeviation +
+        outward.silhouetteDeviation +
+        outward.strokeDeviation +
         outward.islandDeviation,
     ).toBeCloseTo(outward.deviation, 1);
   });
@@ -133,7 +135,58 @@ describe("draw-country scoring", () => {
     expect(microscopicResult.score).toBeGreaterThanOrEqual(95);
     expect(microscopicResult.islandDeviation).toBeLessThan(1);
     expect(majorResult.score).toBeLessThanOrEqual(60);
-    expect(majorResult.islandDeviation).toBeGreaterThan(1);
+    expect(majorResult.islandDeviation).toBeGreaterThan(0);
+  });
+
+  it("rejects fragmented crossing scribbles that happen to touch much of the border", () => {
+    const australia = COUNTRIES.find(({ id }) => id === "AU");
+    expect(australia).toBeDefined();
+    if (!australia) throw new Error("Australia fixture is missing");
+    const points = (values: number[][]) => values.map(([x, y]) => ({ x, y }));
+    const scribble: CountryDrawing = [
+      points([
+        [380, 180],
+        [500, 150],
+        [620, 160],
+        [700, 240],
+        [680, 330],
+        [760, 400],
+        [720, 500],
+        [580, 550],
+        [430, 500],
+        [330, 420],
+        [320, 300],
+      ]),
+      points([
+        [120, 500],
+        [350, 510],
+        [560, 560],
+        [820, 590],
+        [850, 650],
+        [250, 650],
+        [120, 620],
+      ]),
+      points([
+        [180, 520],
+        [380, 540],
+        [580, 590],
+        [360, 500],
+      ]),
+      points([
+        [160, 160],
+        [160, 220],
+        [160, 280],
+        [160, 340],
+      ]),
+      points([
+        [420, 100],
+        [420, 170],
+        [420, 240],
+        [420, 310],
+      ]),
+    ];
+
+    expect(scoreCountryDrawing(australia, scribble).score).toBeLessThanOrEqual(20);
   });
 
   it("uses explicit, monotonic calibration anchors", () => {

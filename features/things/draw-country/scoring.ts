@@ -6,10 +6,13 @@ const DRAWING_SAMPLES = 320;
 const ALIGNMENT_TRIM = 0.025;
 const MINIMUM_DRAWING_EXTENT = 8;
 const MAX_POINT_DEVIATION = 0.5;
+const SILHOUETTE_GRID_SIZE = 28;
 const COUNTRY_COORDINATE_SCALE = 10_000;
-const BORDER_FIT_WEIGHT = 0.45;
-const COVERAGE_WEIGHT = 0.45;
-const ISLAND_BALANCE_WEIGHT = 0.1;
+const BORDER_FIT_WEIGHT = 0.3;
+const COVERAGE_WEIGHT = 0.3;
+const SILHOUETTE_WEIGHT = 0.25;
+const STROKE_QUALITY_WEIGHT = 0.1;
+const ISLAND_BALANCE_WEIGHT = 0.05;
 
 const SCORE_CALIBRATION = [
   { deviation: 0, score: 100 },
@@ -190,6 +193,101 @@ function averageDistanceToBorder(points: DrawPoint[], border: CountryDrawing) {
   );
 }
 
+function silhouetteDeviation(reference: CountryDrawing, drawing: CountryDrawing) {
+  let intersection = 0;
+  let union = 0;
+  for (let row = 0; row < SILHOUETTE_GRID_SIZE; row += 1) {
+    for (let column = 0; column < SILHOUETTE_GRID_SIZE; column += 1) {
+      const point = {
+        x: (column + 0.5) / SILHOUETTE_GRID_SIZE,
+        y: (row + 0.5) / SILHOUETTE_GRID_SIZE,
+      };
+      const inReference = pointInShape(point, reference);
+      const inDrawing = pointInShape(point, drawing);
+      if (inReference && inDrawing) intersection += 1;
+      if (inReference || inDrawing) union += 1;
+    }
+  }
+  if (union >= 12) return 1 - intersection / union;
+
+  const referenceArea = reference.reduce((total, ring) => total + ringArea(ring), 0);
+  const drawingArea = drawing.reduce((total, ring) => total + ringArea(ring), 0);
+  const largestArea = Math.max(referenceArea, drawingArea);
+  return largestArea ? Math.abs(referenceArea - drawingArea) / largestArea : 1;
+}
+
+interface DrawingSegment {
+  start: DrawPoint;
+  end: DrawPoint;
+  ringIndex: number;
+  segmentIndex: number;
+  ringSize: number;
+}
+
+function cross(origin: DrawPoint, first: DrawPoint, second: DrawPoint) {
+  return (
+    (first.x - origin.x) * (second.y - origin.y) - (first.y - origin.y) * (second.x - origin.x)
+  );
+}
+
+function segmentsCross(
+  firstStart: DrawPoint,
+  firstEnd: DrawPoint,
+  secondStart: DrawPoint,
+  secondEnd: DrawPoint,
+) {
+  const firstSideStart = cross(firstStart, firstEnd, secondStart);
+  const firstSideEnd = cross(firstStart, firstEnd, secondEnd);
+  const secondSideStart = cross(secondStart, secondEnd, firstStart);
+  const secondSideEnd = cross(secondStart, secondEnd, firstEnd);
+  return (
+    firstSideStart * firstSideEnd < -Number.EPSILON &&
+    secondSideStart * secondSideEnd < -Number.EPSILON
+  );
+}
+
+function segmentsAreAdjacent(first: DrawingSegment, second: DrawingSegment) {
+  if (first.ringIndex !== second.ringIndex) return false;
+  const difference = Math.abs(first.segmentIndex - second.segmentIndex);
+  return difference <= 1 || difference === first.ringSize - 1;
+}
+
+function strokeQualityDeviation(drawing: CountryDrawing) {
+  const lengths = drawing.map(ringLength);
+  const totalLength = lengths.reduce((total, length) => total + length, 0);
+  if (!totalLength) return 1;
+
+  const degenerateLength = drawing.reduce((total, ring, index) => {
+    const length = lengths[index];
+    const compactness = length ? ringArea(ring) / (length * length) : 0;
+    return compactness < 0.001 ? total + length : total;
+  }, 0);
+  const segments: DrawingSegment[] = drawing.flatMap((ring, ringIndex) =>
+    ring.map((start, segmentIndex) => ({
+      start,
+      end: ring[(segmentIndex + 1) % ring.length],
+      ringIndex,
+      segmentIndex,
+      ringSize: ring.length,
+    })),
+  );
+  let crossings = 0;
+  for (let firstIndex = 0; firstIndex < segments.length; firstIndex += 1) {
+    for (let secondIndex = firstIndex + 1; secondIndex < segments.length; secondIndex += 1) {
+      const first = segments[firstIndex];
+      const second = segments[secondIndex];
+      if (
+        !segmentsAreAdjacent(first, second) &&
+        segmentsCross(first.start, first.end, second.start, second.end)
+      )
+        crossings += 1;
+    }
+  }
+
+  const crossingDeviation = Math.min(1, crossings / Math.max(1, segments.length * 0.02));
+  return Math.min(1, (degenerateLength / totalLength) * 0.75 + crossingDeviation);
+}
+
 function areaDistribution(rings: CountryDrawing) {
   const areas = rings
     .map(ringArea)
@@ -246,6 +344,8 @@ export function scoreCountryDrawing(
       outsideDeviation: 0,
       insideDeviation: 0,
       coverageDeviation: 100,
+      silhouetteDeviation: 0,
+      strokeDeviation: 0,
       islandDeviation: 0,
       accuracy: "adventurous",
       drawing: [],
@@ -254,10 +354,14 @@ export function scoreCountryDrawing(
 
   const fit = borderFit(drawing.points, reference.rings);
   const coverage = averageDistanceToBorder(reference.points, drawing.rings);
+  const silhouette = silhouetteDeviation(reference.rings, drawing.rings);
+  const strokeQuality = strokeQualityDeviation(drawing.rings);
   const islandBalance = islandBalanceDeviation(reference.rings, drawing.rings);
   const deviation =
     fit.border * BORDER_FIT_WEIGHT +
     coverage * COVERAGE_WEIGHT +
+    silhouette * SILHOUETTE_WEIGHT +
+    strokeQuality * STROKE_QUALITY_WEIGHT +
     islandBalance * ISLAND_BALANCE_WEIGHT;
   const score = scoreFromDeviation(deviation);
   return {
@@ -267,6 +371,8 @@ export function scoreCountryDrawing(
     outsideDeviation: percentage(fit.outside * BORDER_FIT_WEIGHT),
     insideDeviation: percentage(fit.inside * BORDER_FIT_WEIGHT),
     coverageDeviation: percentage(coverage * COVERAGE_WEIGHT),
+    silhouetteDeviation: percentage(silhouette * SILHOUETTE_WEIGHT),
+    strokeDeviation: percentage(strokeQuality * STROKE_QUALITY_WEIGHT),
     islandDeviation: percentage(islandBalance * ISLAND_BALANCE_WEIGHT),
     accuracy: accuracyFor(score),
     drawing: drawing.rings,
