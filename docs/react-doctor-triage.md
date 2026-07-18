@@ -12,7 +12,7 @@ Repeated diagnostics are grouped by rule below; the count covers every reported 
 | `no-impure-state-updater` | 1 | Fix | High | `AlbumGallery` clears other state inside a `setSelectable` updater. Move the clearing to the event callback. |
 | `tanstack-start-route-property-order` | 4 | Fix | High | Four route definitions put `validateSearch` after `loader`; reorder without changing behavior. |
 | `no-ref-current-in-render` | 8 | Follow-up | Medium | Six real-time/game files mirror live state or callbacks into refs during render. The pattern needs event-by-event concurrency review; a mechanical effect conversion can introduce stale reads. |
-| `effect-needs-cleanup` | 1 | No change | High | `useReliableGameSocket` already clears retry/heartbeat timers, removes both listeners, marks the closure inactive, and closes the socket in its effect cleanup. |
+| `effect-needs-cleanup` | 1 | No change | High | `useMultiplayerWakeSocket` clears retry/heartbeat timers, removes both listeners, marks the closure inactive, and closes the socket in its effect cleanup. |
 | `rules-of-hooks` | 1 | No change | High | `useStorage` is Nitro’s request-scoped storage API in a server route, not a React Hook. |
 
 ## Warnings
