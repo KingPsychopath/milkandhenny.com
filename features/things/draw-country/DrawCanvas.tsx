@@ -34,7 +34,15 @@ export function DrawCanvas({
   };
 
   const handlePointerDown = (event: React.PointerEvent<SVGSVGElement>) => {
-    if (disabled || drawing.flat().length >= MAX_POINTS) return;
+    const pointCount = drawing.reduce((total, ring) => total + ring.length, 0);
+    if (
+      disabled ||
+      pointerRef.current !== null ||
+      !event.isPrimary ||
+      event.button !== 0 ||
+      pointCount >= MAX_POINTS
+    )
+      return;
     const point = pointFromEvent(event);
     if (!point) return;
     event.currentTarget.setPointerCapture(event.pointerId);
@@ -45,6 +53,8 @@ export function DrawCanvas({
 
   const handlePointerMove = (event: React.PointerEvent<SVGSVGElement>) => {
     if (disabled || pointerRef.current !== event.pointerId) return;
+    const pointCount = drawing.reduce((total, ring) => total + ring.length, 0);
+    if (pointCount >= MAX_POINTS) return;
     const point = pointFromEvent(event);
     const ring = drawing.at(-1);
     const previous = ring?.at(-1);
@@ -71,11 +81,13 @@ export function DrawCanvas({
       viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
       role="img"
       aria-label="Drawing area. Drag to draw the country outline. A faint guide returns to your starting point and becomes the closing edge when you lift. Drag again for another island."
-      className="block aspect-[10/7] w-full touch-none cursor-crosshair rounded-[1.75rem] border border-black/20 bg-white/45 shadow-[inset_0_1px_0_rgba(255,255,255,0.65)]"
+      aria-describedby="draw-country-instructions"
+      className="block aspect-[10/7] w-full touch-none cursor-crosshair select-none rounded-[1.75rem] border border-black/20 bg-white/45 shadow-[inset_0_1px_0_rgba(255,255,255,0.65)]"
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerEnd}
       onPointerCancel={handlePointerEnd}
+      onLostPointerCapture={handlePointerEnd}
     >
       <title>Country drawing area</title>
       <defs>

@@ -23,7 +23,7 @@ export function JoinDrawCountryRoom({
     setMessage(null);
     try {
       const result = await joinDrawCountryRoomFn({
-        data: { roomId, joinToken: captureDrawCountryInvite(roomId), name },
+        data: { roomId, joinToken: captureDrawCountryInvite(roomId), name: name.trim() },
       });
       if (!result.ok) {
         setMessage(result.error);
@@ -68,33 +68,42 @@ export function JoinDrawCountryRoom({
         <p className="mt-4 font-serif text-lg text-black/55">
           Add the name your friends will see on the round ranking.
         </p>
-        <label className="mt-8 font-mono text-xs text-black/55">
-          <span className="block pb-2">your name</span>
-          <input
-            value={name}
-            maxLength={32}
-            autoFocus
-            autoComplete="name"
-            onChange={(event) => setName(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === "Enter") void handleJoin();
-            }}
-            className="min-h-12 w-full rounded-full border border-black/15 bg-white/55 px-5 text-black"
-          />
-        </label>
-        <button
-          type="button"
-          disabled={!name.trim() || joining}
-          onClick={() => void handleJoin()}
-          className="mt-4 min-h-12 rounded-full bg-black px-6 font-mono text-xs font-semibold uppercase tracking-[0.14em] text-white disabled:opacity-35"
+        <form
+          onSubmit={(event) => {
+            event.preventDefault();
+            void handleJoin();
+          }}
         >
-          {joining ? "joining…" : "join room"}
-        </button>
-        {message ? (
-          <p role="alert" className="mt-4 font-mono text-xs text-amber-800">
-            {message}
-          </p>
-        ) : null}
+          <label className="mt-8 block font-mono text-xs text-black/55">
+            <span className="block pb-2">your name</span>
+            <input
+              name="playerName"
+              value={name}
+              maxLength={32}
+              required
+              autoFocus
+              autoComplete="name"
+              enterKeyHint="go"
+              onChange={(event) => {
+                setName(event.target.value);
+                setMessage(null);
+              }}
+              className="min-h-12 w-full rounded-full border border-black/15 bg-white/55 px-5 text-black"
+            />
+          </label>
+          <button
+            type="submit"
+            disabled={!name.trim() || joining}
+            className="mt-4 min-h-12 w-full rounded-full bg-black px-6 font-mono text-xs font-semibold uppercase tracking-[0.14em] text-white disabled:opacity-35"
+          >
+            {joining ? "joining…" : "join room"}
+          </button>
+          {message ? (
+            <p role="alert" className="mt-4 font-mono text-xs text-amber-800">
+              {message}
+            </p>
+          ) : null}
+        </form>
       </main>
     </div>
   );

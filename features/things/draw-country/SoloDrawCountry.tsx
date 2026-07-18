@@ -84,13 +84,16 @@ export function SoloDrawCountry({ onExit }: { onExit: () => void }) {
       </header>
       <main id="main" className="mx-auto w-full max-w-3xl px-5 pb-12 pt-5">
         <div className="flex items-end justify-between gap-5">
-          <div>
+          <div className="min-w-0">
             <p className="font-mono text-micro uppercase tracking-[0.18em] text-black/45">
               {resultReaction(evaluation.score, country.id)}
             </p>
-            <h1 className="mt-2 font-serif text-4xl font-semibold sm:text-5xl">{country.name}</h1>
+            <h1 className="mt-2 break-words font-serif text-4xl font-semibold sm:text-5xl">
+              {country.name}
+            </h1>
           </div>
-          <div className="text-right">
+          <p className="sr-only">Score {evaluation.score} out of 100</p>
+          <div className="shrink-0 text-right" aria-hidden="true">
             <TextMorph as="p" className="font-mono text-4xl font-semibold sm:text-5xl">
               {String(evaluation.score)}
             </TextMorph>

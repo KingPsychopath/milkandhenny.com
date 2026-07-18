@@ -30,7 +30,7 @@ export function DrawCountryApp() {
     try {
       const room = await createDrawCountryRoomFn({
         data: {
-          hostName: name,
+          hostName: name.trim(),
           roundTotal,
           drawSeconds,
           recentCountryIds: recentCountryIds(),
@@ -123,14 +123,26 @@ export function DrawCountryApp() {
             Everyone draws the same country on their own screen. Scores reveal together, then the
             room moves to the next round automatically.
           </p>
-          <div className="mt-6 grid gap-4 rounded-[1.75rem] border border-black/15 bg-white/25 p-5 sm:grid-cols-3">
+          <form
+            onSubmit={(event) => {
+              event.preventDefault();
+              void handleCreate();
+            }}
+            className="mt-6 grid gap-4 rounded-[1.75rem] border border-black/15 bg-white/25 p-5 sm:grid-cols-3"
+          >
             <label className="font-mono text-xs text-black/55">
               <span className="block pb-2">your name</span>
               <input
+                name="playerName"
                 value={name}
                 maxLength={32}
+                required
                 autoComplete="name"
-                onChange={(event) => setName(event.target.value)}
+                enterKeyHint="go"
+                onChange={(event) => {
+                  setName(event.target.value);
+                  setMessage(null);
+                }}
                 className="min-h-12 w-full rounded-full border border-black/15 bg-white/55 px-4 text-black"
               />
             </label>
@@ -163,35 +175,48 @@ export function DrawCountryApp() {
               </select>
             </label>
             <button
-              type="button"
+              type="submit"
               disabled={creating}
-              onClick={() => void handleCreate()}
               className="min-h-12 rounded-full bg-black px-6 font-mono text-xs font-semibold uppercase tracking-[0.14em] text-white disabled:opacity-40 sm:col-span-3"
             >
               {creating ? "making room…" : "create room & play"}
             </button>
-          </div>
+          </form>
 
-          <div className="mt-7 flex items-end gap-3 border-t border-black/10 pt-6">
+          <form
+            onSubmit={(event) => {
+              event.preventDefault();
+              void handleJoin();
+            }}
+            className="mt-7 flex items-end gap-3 border-t border-black/10 pt-6"
+          >
             <label className="min-w-0 flex-1 font-mono text-xs text-black/55">
               <span className="block pb-2">or join with a room code</span>
               <input
+                name="roomCode"
                 value={joinCode}
                 maxLength={7}
+                minLength={7}
+                pattern="[A-Z2-9]{7}"
+                required
+                title="Enter the 7-character room code"
                 autoCapitalize="characters"
+                enterKeyHint="go"
                 spellCheck={false}
-                onChange={(event) => setJoinCode(event.target.value.toUpperCase())}
+                onChange={(event) => {
+                  setJoinCode(event.target.value.toUpperCase());
+                  setMessage(null);
+                }}
                 className="min-h-12 w-full rounded-full border border-black/15 bg-white/55 px-5 font-mono uppercase tracking-[0.18em] text-black"
               />
             </label>
             <button
-              type="button"
-              onClick={() => void handleJoin()}
+              type="submit"
               className="min-h-12 rounded-full border border-black/25 px-6 font-mono text-xs font-semibold uppercase tracking-[0.14em]"
             >
               join
             </button>
-          </div>
+          </form>
           {message ? (
             <p role="status" className="mt-4 font-mono text-xs text-amber-800">
               {message}

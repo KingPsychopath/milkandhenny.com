@@ -17,7 +17,7 @@ export function RoomHeader({ roomId, connection }: { roomId: string; connection:
       <Link to="/things/draw-country" className="inline-flex min-h-11 items-center">
         ← leave
       </Link>
-      <span>
+      <span className="min-w-0 truncate text-right">
         {roomId} · {connection}
       </span>
     </header>
@@ -169,18 +169,19 @@ export function RoomReveal({
       <RoomHeader roomId={snapshot.roomId} connection={connection} />
       <main id="main" className="mx-auto w-full max-w-3xl px-5 pb-12 pt-4">
         <div className="flex items-end justify-between gap-4">
-          <div>
+          <div className="min-w-0">
             <p className="font-mono text-micro uppercase tracking-[0.16em] text-black/40">
               round {snapshot.round?.number} ·{" "}
               {evaluation
                 ? resultReaction(evaluation.score, snapshot.round?.countryId ?? "")
                 : "result"}
             </p>
-            <h1 className="mt-2 font-serif text-4xl font-semibold sm:text-5xl">
+            <h1 className="mt-2 break-words font-serif text-4xl font-semibold sm:text-5xl">
               {snapshot.round?.countryName}
             </h1>
           </div>
-          <div className="text-right">
+          <p className="sr-only">Your score this round is {me?.roundScore ?? 0}</p>
+          <div className="shrink-0 text-right" aria-hidden="true">
             <TextMorph as="p" className="font-mono text-4xl font-semibold">
               {String(me?.roundScore ?? 0)}
             </TextMorph>

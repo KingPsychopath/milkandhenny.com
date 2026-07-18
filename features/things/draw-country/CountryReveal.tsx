@@ -55,7 +55,7 @@ export function CountryReveal({ evaluation }: { evaluation: CountryEvaluation })
     <svg
       viewBox="0 0 1000 1000"
       role="img"
-      aria-label={`Actual country border compared with your aligned drawing. Red lines mark points outside the border and blue lines mark points inside it. Score ${evaluation.score} out of 100.`}
+      aria-label={`Actual country border compared with your aligned drawing. Red connectors measure gaps from drawing points outside the border; blue connectors measure gaps from points inside it. Score ${evaluation.score} out of 100.`}
       className="block aspect-square w-full rounded-[1.75rem] border border-black/15 bg-white/45"
     >
       <title>Actual country border and your aligned drawing</title>
@@ -113,27 +113,32 @@ export function CountryReveal({ evaluation }: { evaluation: CountryEvaluation })
 
 export function CountryRevealLegend() {
   return (
-    <ul
-      className="mt-4 flex flex-wrap gap-x-5 gap-y-3 font-mono text-micro text-black/50"
-      aria-label="Comparison key"
-    >
-      <li className="flex items-center gap-2">
-        <span className="country-legend-reference" aria-hidden="true" />
-        reference
-      </li>
-      <li className="flex items-center gap-2">
-        <span className="country-legend-point" aria-hidden="true" />
-        your points
-      </li>
-      <li className="flex items-center gap-2">
-        <span className="country-legend-outside" aria-hidden="true" />
-        outside
-      </li>
-      <li className="flex items-center gap-2">
-        <span className="country-legend-inside" aria-hidden="true" />
-        inside
-      </li>
-    </ul>
+    <div className="mt-4">
+      <ul
+        className="flex flex-wrap gap-x-5 gap-y-3 font-mono text-micro text-black/50"
+        aria-label="Comparison key"
+      >
+        <li className="flex items-center gap-2">
+          <span className="country-legend-reference" aria-hidden="true" />
+          reference
+        </li>
+        <li className="flex items-center gap-2">
+          <span className="country-legend-point" aria-hidden="true" />
+          your outline
+        </li>
+        <li className="flex items-center gap-2">
+          <span className="country-legend-outside" aria-hidden="true" />
+          outside gap
+        </li>
+        <li className="flex items-center gap-2">
+          <span className="country-legend-inside" aria-hidden="true" />
+          inside gap
+        </li>
+      </ul>
+      <p className="mt-3 font-mono text-micro leading-relaxed text-black/40">
+        coloured lines measure the shortest gap from your outline to the reference
+      </p>
+    </div>
   );
 }
 
