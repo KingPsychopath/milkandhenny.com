@@ -7,7 +7,6 @@ interface OrientationControlsProps {
   locked: boolean;
   motionUnavailable: boolean;
   onFullscreen: () => void;
-  onStart: () => void;
   onToggle: () => void;
 }
 
@@ -20,7 +19,6 @@ export function OrientationControls({
   locked,
   motionUnavailable,
   onFullscreen,
-  onStart,
   onToggle,
 }: OrientationControlsProps) {
   return (
@@ -65,13 +63,6 @@ export function OrientationControls({
           {fullscreenMessage}
         </p>
       ) : null}
-      <button
-        type="button"
-        onClick={onStart}
-        className="min-h-16 w-full rounded-full bg-[var(--things-amber)] px-6 font-mono text-sm font-bold text-black shadow-2xl transition-transform hover:scale-[1.01]"
-      >
-        start 60-second round
-      </button>
       <p className="mt-3 text-center font-mono text-micro text-white/45">
         {motionUnavailable
           ? "motion unavailable — use the on-screen buttons"

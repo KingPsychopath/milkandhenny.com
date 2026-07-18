@@ -433,7 +433,7 @@ function HeadsUpExperience({ fullscreen, remoteSession }: { fullscreen: Fullscre
   }
 
   if (joinedDeck) {
-    return <PairedGamePlayerReady gameName="Forehead" deckName={joinedDeck.name} detail="Hold this phone to your forehead. Starting may ask for motion access so tilting can score each card." judgeConnected={remote.judgeConnected} onFullscreen={() => void fullscreen.toggle()} onLeave={remote.closeRoom} onStart={() => void startRound(joinedDeck)} />;
+    return <PairedGamePlayerReady gameName="Forehead" deckName={joinedDeck.name} detail="Hold it to your forehead." judgeConnected={remote.judgeConnected} onFullscreen={() => void fullscreen.toggle()} onLeave={remote.closeRoom} onStart={() => void startRound(joinedDeck)} />;
   }
 
   return (

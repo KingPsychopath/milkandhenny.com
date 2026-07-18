@@ -65,9 +65,6 @@ export function JoinDrawCountryRoom({
           shared room
         </p>
         <h1 className="mt-3 font-serif text-5xl font-semibold">Ready to draw?</h1>
-        <p className="mt-4 font-serif text-lg text-black/55">
-          Add the name your friends will see on the round ranking.
-        </p>
         <form
           onSubmit={(event) => {
             event.preventDefault();

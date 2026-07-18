@@ -16,7 +16,7 @@ export function RoundResults({ results, score, onBack, onPlayAgain }: RoundResul
     <div className="things-game things-game--cream">
       <header className="flex items-center justify-between p-5 font-mono text-xs text-black/55">
         <button type="button" onClick={onBack} className="min-h-11">
-          ← decks
+          ← setup
         </button>
         <span>round complete</span>
       </header>

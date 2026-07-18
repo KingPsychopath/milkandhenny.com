@@ -14,6 +14,7 @@ import {
 } from "./icebreaker-pairing";
 import { useIcebreakerLedger } from "./useIcebreakerLedger";
 import { consumeLocationFragment } from "@/lib/client/url-fragment";
+import { GameLaunch, GameLaunchButton } from "../shared/GameLaunch";
 
 interface PairingLaunch {
   error: string | null;
@@ -128,24 +129,19 @@ export function IcebreakerApp() {
             onClose={() => setPairing(null)}
           />
         ) : !revealed ? (
-          <section className="text-center max-w-sm text-white" aria-labelledby="icebreaker-title">
-            <p className="font-mono text-micro uppercase tracking-[0.2em] text-white/50">
-              find your people
-            </p>
-            <h1 id="icebreaker-title" className="mt-4 font-serif text-5xl font-medium">
-              Break the ice.
-            </h1>
-            <p className="mt-5 font-serif text-lg leading-relaxed text-white/65">
-              Reveal a colour, find the people who match, and begin with a better question.
-            </p>
-            <button
-              type="button"
-              onClick={handleReveal}
-              className="mt-9 min-h-14 rounded-full bg-white px-8 font-mono text-sm font-semibold text-black shadow-xl transition-transform hover:scale-[1.03]"
+          <div className="w-full max-w-sm text-white">
+            <GameLaunch
+              align="center"
+              tone="paper"
+              eyebrow="find your people"
+              title="Break the ice."
+              description="Reveal a colour, find the people who match."
             >
-              reveal my colour
-            </button>
-          </section>
+              <GameLaunchButton accent="paper" onClick={handleReveal} className="mx-auto max-w-xs">
+                reveal my colour
+              </GameLaunchButton>
+            </GameLaunch>
+          </div>
         ) : (
           <section
             className="w-full max-w-sm text-center"
