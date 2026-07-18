@@ -24,6 +24,11 @@ export interface CountryOutline {
 export interface CountryScore {
   score: number;
   deviation: number;
+  borderDeviation: number;
+  outsideDeviation: number;
+  insideDeviation: number;
+  coverageDeviation: number;
+  islandDeviation: number;
   accuracy: "uncanny" | "close" | "recognisable" | "adventurous";
 }
 

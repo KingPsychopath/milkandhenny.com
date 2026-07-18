@@ -1,5 +1,6 @@
 import type { CountryEvaluation } from "./scoring";
 import type { CountryDrawing, DrawPoint } from "./types";
+import { closestOnBorder, pointInShape, ringLength } from "./geometry";
 
 const SCALE = 820;
 const OFFSET = 90;
@@ -8,62 +9,6 @@ const MAX_GUIDES = 40;
 function pathFor(ring: DrawPoint[], scale = 820, offset = 90) {
   if (!ring.length) return "";
   return `${ring.map((point, index) => `${index ? "L" : "M"}${offset + point.x * scale} ${offset + point.y * scale}`).join(" ")} Z`;
-}
-
-function closestOnSegment(point: DrawPoint, start: DrawPoint, end: DrawPoint) {
-  const dx = end.x - start.x;
-  const dy = end.y - start.y;
-  const lengthSquared = dx * dx + dy * dy;
-  const progress = lengthSquared
-    ? Math.max(
-        0,
-        Math.min(1, ((point.x - start.x) * dx + (point.y - start.y) * dy) / lengthSquared),
-      )
-    : 0;
-  return { x: start.x + dx * progress, y: start.y + dy * progress };
-}
-
-function closestOnBorder(point: DrawPoint, rings: CountryDrawing) {
-  let nearest = rings[0]?.[0] ?? point;
-  let distance = Number.POSITIVE_INFINITY;
-  for (const ring of rings) {
-    for (let index = 0; index < ring.length; index += 1) {
-      const candidate = closestOnSegment(point, ring[index], ring[(index + 1) % ring.length]);
-      const nextDistance = Math.hypot(point.x - candidate.x, point.y - candidate.y);
-      if (nextDistance < distance) {
-        distance = nextDistance;
-        nearest = candidate;
-      }
-    }
-  }
-  return nearest;
-}
-
-function pointInRing(point: DrawPoint, ring: DrawPoint[]) {
-  let inside = false;
-  for (let index = 0, previous = ring.length - 1; index < ring.length; previous = index++) {
-    const currentPoint = ring[index];
-    const previousPoint = ring[previous];
-    const crosses =
-      currentPoint.y > point.y !== previousPoint.y > point.y &&
-      point.x <
-        ((previousPoint.x - currentPoint.x) * (point.y - currentPoint.y)) /
-          (previousPoint.y - currentPoint.y) +
-          currentPoint.x;
-    if (crosses) inside = !inside;
-  }
-  return inside;
-}
-
-function pointInReference(point: DrawPoint, reference: CountryDrawing) {
-  return reference.some((ring) => pointInRing(point, ring));
-}
-
-function ringLength(ring: DrawPoint[]) {
-  return ring.reduce((total, point, index) => {
-    const next = ring[(index + 1) % ring.length];
-    return total + Math.hypot(point.x - next.x, point.y - next.y);
-  }, 0);
 }
 
 function guidePoints(drawing: CountryDrawing) {
@@ -99,8 +44,8 @@ function guidePoints(drawing: CountryDrawing) {
 function guideLines(drawing: CountryDrawing, reference: CountryDrawing) {
   return guidePoints(drawing).map((point) => ({
     point,
-    target: closestOnBorder(point, reference),
-    position: pointInReference(point, reference) ? "inside" : "outside",
+    target: closestOnBorder(point, reference).point,
+    position: pointInShape(point, reference) ? "inside" : "outside",
   }));
 }
 
@@ -189,5 +134,32 @@ export function CountryRevealLegend() {
         inside
       </li>
     </ul>
+  );
+}
+
+export function CountryScoreDetails({ evaluation }: { evaluation: CountryEvaluation }) {
+  return (
+    <dl className="mt-4 flex flex-wrap gap-x-4 gap-y-1 font-mono text-micro text-black/45">
+      <div>
+        <dt className="sr-only">Average border deviation</dt>
+        <dd>average {evaluation.deviation}%</dd>
+      </div>
+      <div>
+        <dt className="sr-only">Outside score contribution</dt>
+        <dd>outside {evaluation.outsideDeviation}%</dd>
+      </div>
+      <div>
+        <dt className="sr-only">Inside score contribution</dt>
+        <dd>inside {evaluation.insideDeviation}%</dd>
+      </div>
+      <div>
+        <dt className="sr-only">Missing border score contribution</dt>
+        <dd>missed {evaluation.coverageDeviation}%</dd>
+      </div>
+      <div>
+        <dt className="sr-only">Island score contribution</dt>
+        <dd>islands {evaluation.islandDeviation}%</dd>
+      </div>
+    </dl>
   );
 }

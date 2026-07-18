@@ -3,7 +3,7 @@ import { useState } from "react";
 import { TextMorph } from "torph/react";
 import { useQrCode } from "@/hooks/useQrCode";
 import { shareOrCopy } from "@/lib/client/share";
-import { CountryReveal, CountryRevealLegend } from "./CountryReveal";
+import { CountryReveal, CountryRevealLegend, CountryScoreDetails } from "./CountryReveal";
 import { countryById } from "./countries";
 import { buildDrawCountryPlayerInviteUrl } from "./draw-country-invite";
 import { drawCountryBrowserKeys } from "./draw-country-keys";
@@ -174,6 +174,7 @@ export function RoomReveal({
           {evaluation ? (
             <div>
               <CountryReveal evaluation={evaluation} />
+              <CountryScoreDetails evaluation={evaluation} />
               <CountryRevealLegend />
             </div>
           ) : null}

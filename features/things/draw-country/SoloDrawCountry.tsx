@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { TextMorph } from "torph/react";
 import { useWebHaptics } from "web-haptics/react";
 import { useUpdateReloadSafety } from "@/features/offline/update-safety.client";
-import { CountryReveal, CountryRevealLegend } from "./CountryReveal";
+import { CountryReveal, CountryRevealLegend, CountryScoreDetails } from "./CountryReveal";
 import { CountryRoundBoard } from "./CountryRoundBoard";
 import { resultReaction } from "./result-copy";
 import { nextSoloCountry, rememberCountry } from "./rotation.client";
@@ -102,9 +102,7 @@ export function SoloDrawCountry({ onExit }: { onExit: () => void }) {
         <div className="mt-6">
           <CountryReveal evaluation={evaluation} />
         </div>
-        <div className="mt-4 font-mono text-xs text-black/50">
-          <span>average border deviation {evaluation.deviation}%</span>
-        </div>
+        <CountryScoreDetails evaluation={evaluation} />
         <CountryRevealLegend />
         <button
           type="button"
