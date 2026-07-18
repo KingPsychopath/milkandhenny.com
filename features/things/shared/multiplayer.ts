@@ -1,4 +1,6 @@
-export const MULTIPLAYER_ROOM_TTL_SECONDS = 4 * 60 * 60;
+// Quick-play rooms need enough time for setup, reconnects and a full session,
+// without retaining abandoned transient state for the rest of the day.
+export const MULTIPLAYER_ROOM_TTL_SECONDS = 90 * 60;
 export const MULTIPLAYER_ROOM_ID_LENGTH = 7;
 export const MULTIPLAYER_ROOM_ID_PATTERN = /^[A-Z2-9]{7}$/;
 export const MULTIPLAYER_ROOM_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";

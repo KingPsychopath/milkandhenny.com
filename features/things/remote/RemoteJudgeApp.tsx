@@ -1,4 +1,5 @@
 import { AppSelect } from "@/components/AppSelect";
+import { MULTIPLAYER_ROOM_TTL_SECONDS } from "../shared/multiplayer";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { TextMorph } from "torph/react";
@@ -111,7 +112,7 @@ export function RemoteJudgeApp({ roomId }: { roomId: string }) {
   if (judgeEpoch.current === null) judgeEpoch.current = crypto.randomUUID();
   const takeoverRequested = useRef(false);
   const flushingCommands = useRef(false);
-  const roomExpiresAt = useRef(Date.now() + 4 * 60 * 60 * 1_000);
+  const roomExpiresAt = useRef(Date.now() + MULTIPLAYER_ROOM_TTL_SECONDS * 1_000);
   const haptics = useWebHaptics();
 
   const playerInviteUrl =
