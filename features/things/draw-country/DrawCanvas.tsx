@@ -93,7 +93,7 @@ export function DrawCanvas({
       role="img"
       aria-label="Drawing area. Drag to draw the country outline. A faint guide returns to your starting point and becomes the closing edge when you lift. Drag again for another island."
       aria-describedby="draw-country-instructions"
-      className="block aspect-[10/7] w-full touch-none cursor-crosshair select-none rounded-[1.75rem] border border-black/20 bg-white/45 shadow-[inset_0_1px_0_rgba(255,255,255,0.65)]"
+      className="block aspect-[4/3] w-full touch-none cursor-crosshair select-none rounded-[1.75rem] border border-black/20 bg-white/45 shadow-[inset_0_1px_0_rgba(255,255,255,0.65)]"
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerEnd}
