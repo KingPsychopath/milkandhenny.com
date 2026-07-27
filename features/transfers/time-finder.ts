@@ -154,8 +154,18 @@ function formatMinuteOfDay(minuteOfDay: number): string {
   return `${pad2(Math.floor(minuteOfDay / 60))}:${pad2(minuteOfDay % 60)}`;
 }
 
+/**
+ * Which kinds can carry a capture time worth searching by.
+ *
+ * Videos were excluded because nothing read their capture time — every clip
+ * would have landed in the undated pile and made the finder look broken. Now
+ * that the pipeline reads it from container metadata, a clip of the speeches
+ * is findable at the moment the speeches happened, which is the whole point.
+ *
+ * GIFs stay out: nothing gives them a capture time to begin with.
+ */
 function isTransferTimeFinderEligible(kind: FileKind): boolean {
-  return kind === "image";
+  return kind === "image" || kind === "video";
 }
 
 function daysFromCivil(year: number, month: number, day: number): number {
