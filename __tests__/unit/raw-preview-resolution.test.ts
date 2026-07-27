@@ -32,8 +32,8 @@ describe("raw decoder resolution", () => {
     );
     vi.doMock("child_process", () => ({ execFile }));
 
-    const { processRawWithDcraw } = await import("@/features/media/processing.server");
-    const result = await processRawWithDcraw(Buffer.from("raw"), "IMG_3006.dng");
+    const { processRawWithExiftool } = await import("@/features/media/processing.server");
+    const result = await processRawWithExiftool(Buffer.from("raw"), "IMG_3006.dng");
 
     expect(result.width).toBe(800);
     expect(result.height).toBe(600);
@@ -57,8 +57,8 @@ describe("raw decoder resolution", () => {
     );
     vi.doMock("child_process", () => ({ execFile }));
 
-    const { processRawWithDcraw } = await import("@/features/media/processing.server");
-    await expect(processRawWithDcraw(Buffer.from("raw"), "IMG_3006.dng")).rejects.toThrow(
+    const { processRawWithExiftool } = await import("@/features/media/processing.server");
+    await expect(processRawWithExiftool(Buffer.from("raw"), "IMG_3006.dng")).rejects.toThrow(
       "RAW preview unavailable for .dng",
     );
     expect(execFile).toHaveBeenCalledTimes(3);

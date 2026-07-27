@@ -56,10 +56,10 @@ describe("media processor selection", () => {
 
     const { getMediaProcessor } = await import("@/features/transfers/media-processor.server");
     expect(getMediaProcessor()).toBe(hybridProcessor);
-    expect(createHybridMediaProcessor).toHaveBeenCalledWith("hybrid");
+    expect(createHybridMediaProcessor).toHaveBeenCalledWith();
   });
 
-  it("returns the hybrid worker-backed processor in worker mode", async () => {
+  it("treats the deprecated worker mode as hybrid", async () => {
     const hybridProcessor = {
       processTransferBuffer: vi.fn(),
       processTransferObject: vi.fn(),
@@ -68,7 +68,8 @@ describe("media processor selection", () => {
     const createHybridMediaProcessor = vi.fn(() => hybridProcessor);
 
     vi.doMock("@/features/media/config.server", () => ({
-      getMediaProcessorMode: () => "worker",
+      // getMediaProcessorMode normalises the deprecated "worker" value to "hybrid".
+      getMediaProcessorMode: () => "hybrid",
     }));
     vi.doMock("@/features/transfers/media-backends/local.server", () => ({
       createLocalMediaProcessor: vi.fn(),
@@ -79,6 +80,6 @@ describe("media processor selection", () => {
 
     const { getMediaProcessor } = await import("@/features/transfers/media-processor.server");
     expect(getMediaProcessor()).toBe(hybridProcessor);
-    expect(createHybridMediaProcessor).toHaveBeenCalledWith("worker");
+    expect(createHybridMediaProcessor).toHaveBeenCalledWith();
   });
 });

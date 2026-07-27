@@ -41,6 +41,22 @@ function isTransferMediaVariant(value: string): value is TransferMediaVariant {
   return value === "primary" || value === "original" || value === "thumb" || value === "full";
 }
 
+/** A derivative is fetched once and cached by the browser. */
+const DERIVATIVE_MEDIA_URL_TTL_SECONDS = 60;
+
+/**
+ * Originals are streamed, not fetched: a `<video>` element re-requests byte
+ * ranges whenever the viewer seeks or resumes, and a signed URL that expired
+ * mid-playback answers those with a 403. Cover a long watch.
+ */
+const ORIGINAL_MEDIA_URL_TTL_SECONDS = 60 * 60;
+
+function getTransferMediaUrlTtlSeconds(variant: TransferMediaVariant): number {
+  return variant === "primary" || variant === "original"
+    ? ORIGINAL_MEDIA_URL_TTL_SECONDS
+    : DERIVATIVE_MEDIA_URL_TTL_SECONDS;
+}
+
 function transferContainsStorageKey(transfer: TransferData, key: string): boolean {
   if (!key.startsWith(`transfers/${transfer.id}/`)) return false;
 
@@ -54,5 +70,10 @@ function transferContainsStorageKey(transfer: TransferData, key: string): boolea
   });
 }
 
-export { isTransferMediaVariant, resolveTransferMediaTarget, transferContainsStorageKey };
+export {
+  getTransferMediaUrlTtlSeconds,
+  isTransferMediaVariant,
+  resolveTransferMediaTarget,
+  transferContainsStorageKey,
+};
 export type { TransferMediaTarget, TransferMediaVariant };

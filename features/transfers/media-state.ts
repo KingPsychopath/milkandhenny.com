@@ -168,8 +168,30 @@ function isTransferProcessingStale(
   return false;
 }
 
+/**
+ * Failures that a retry cannot fix.
+ *
+ * These are properties of the file, not of the attempt: a RAW with no embedded
+ * preview has none on the third try either, and a video over the poster cap is
+ * still over it. Retrying them costs a download and a decode per attempt and
+ * ends in the same state, so the answer is recorded once and left alone.
+ */
+const TERMINAL_PROCESSING_ERROR_CODES = new Set([
+  "raw_preview_unavailable",
+  "video_too_large_for_poster",
+  "retries_exhausted",
+]);
+
+function isTerminalProcessingFailure(file: { processingErrorCode?: string }): boolean {
+  return Boolean(file.processingErrorCode && TERMINAL_PROCESSING_ERROR_CODES.has(file.processingErrorCode));
+}
+
 function canRetryTransferProcessing(
-  file: { retryCount?: number; processingStatus?: ProcessingStatus },
+  file: {
+    retryCount?: number;
+    processingStatus?: ProcessingStatus;
+    processingErrorCode?: string;
+  },
   force = false,
 ): boolean {
   if (force) return true;
@@ -180,6 +202,7 @@ function canRetryTransferProcessing(
   ) {
     return false;
   }
+  if (isTerminalProcessingFailure(file)) return false;
   return (file.retryCount ?? 0) < MAX_TRANSFER_PROCESSING_RETRIES;
 }
 
@@ -293,9 +316,11 @@ export {
   getFilenameStem,
   getTransferFileId,
   isHeifUploadLike,
+  isTerminalProcessingFailure,
   resolveTransferUploadIds,
   isTransferProcessingStale,
   isVisualTransferFilename,
+  TERMINAL_PROCESSING_ERROR_CODES,
 };
 
 export type {

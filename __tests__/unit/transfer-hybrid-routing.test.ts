@@ -2,7 +2,6 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const {
   enqueueWorkerJob,
-  getLocalProcessingTimeoutMs,
   inferTransferFileState,
   listExistingTransferDerivativeKeys,
   needsStateInference,
@@ -10,10 +9,8 @@ const {
   processTransferObjectLocally,
   refreshQueuedTransferState,
   requeueTransferFile,
-  shouldRouteToWorkerFirst,
 } = vi.hoisted(() => ({
   enqueueWorkerJob: vi.fn(),
-  getLocalProcessingTimeoutMs: vi.fn(),
   inferTransferFileState: vi.fn(),
   listExistingTransferDerivativeKeys: vi.fn(),
   needsStateInference: vi.fn(),
@@ -21,11 +18,6 @@ const {
   processTransferObjectLocally: vi.fn(),
   refreshQueuedTransferState: vi.fn(),
   requeueTransferFile: vi.fn(),
-  shouldRouteToWorkerFirst: vi.fn(),
-}));
-
-vi.mock("@/features/transfers/media-processing-config.server", () => ({
-  getLocalProcessingTimeoutMs,
 }));
 
 vi.mock("@/features/transfers/media-backends/local.server", () => ({
@@ -42,12 +34,10 @@ vi.mock("@/features/transfers/media-backends/worker.server", () => ({
   requeueTransferFile,
 }));
 
-describe("hybrid transfer raw fallback", () => {
+describe("hybrid transfer routing", () => {
   beforeEach(() => {
     vi.resetModules();
     vi.clearAllMocks();
-    getLocalProcessingTimeoutMs.mockReturnValue(0);
-    shouldRouteToWorkerFirst.mockReturnValue(false);
     refreshQueuedTransferState.mockImplementation(async (transfer) => transfer);
     needsStateInference.mockReturnValue(false);
     listExistingTransferDerivativeKeys.mockResolvedValue(new Set());
@@ -71,7 +61,7 @@ describe("hybrid transfer raw fallback", () => {
     });
 
     const { createHybridMediaProcessor } = await import("@/features/transfers/media-backends/hybrid.server");
-    const processor = createHybridMediaProcessor("hybrid");
+    const processor = createHybridMediaProcessor();
     const result = await processor.processTransferObject(
       {
         name: "capture.dng",
@@ -115,7 +105,7 @@ describe("hybrid transfer raw fallback", () => {
     });
 
     const { createHybridMediaProcessor } = await import("@/features/transfers/media-backends/hybrid.server");
-    const processor = createHybridMediaProcessor("hybrid");
+    const processor = createHybridMediaProcessor();
     const result = await processor.processTransferBuffer(
       buffer,
       {
@@ -159,7 +149,7 @@ describe("hybrid transfer raw fallback", () => {
     });
 
     const { createHybridMediaProcessor } = await import("@/features/transfers/media-backends/hybrid.server");
-    const processor = createHybridMediaProcessor("hybrid");
+    const processor = createHybridMediaProcessor();
     const result = await processor.processTransferObject(
       {
         name: "clip.mov",
@@ -183,7 +173,7 @@ describe("hybrid transfer raw fallback", () => {
     expect(result.file.processingRoute).toBe("worker_video");
   });
 
-  it("requeues failed raw files during backfill when retries remain", async () => {
+  it("requeues a transient worker failure during backfill when retries remain", async () => {
     const transfer = {
       id: "transfer-1",
       title: "untitled",
@@ -201,7 +191,7 @@ describe("hybrid transfer raw fallback", () => {
           previewStatus: "original_only" as const,
           processingStatus: "failed" as const,
           processingRoute: "raw_try_local" as const,
-          processingErrorCode: "raw_preview_unavailable",
+          processingErrorCode: "worker_failed",
           retryCount: 0,
         },
       ],
@@ -216,7 +206,7 @@ describe("hybrid transfer raw fallback", () => {
     });
 
     const { createHybridMediaProcessor } = await import("@/features/transfers/media-backends/hybrid.server");
-    const processor = createHybridMediaProcessor("hybrid");
+    const processor = createHybridMediaProcessor();
     const updated = await processor.backfillTransferMedia(transfer);
 
     expect(requeueTransferFile).toHaveBeenCalledWith(transfer, transfer.files[0]);
@@ -252,7 +242,7 @@ describe("hybrid transfer raw fallback", () => {
     processTransferObjectLocally.mockRejectedValue(new Error("sharp failed"));
 
     const { createHybridMediaProcessor } = await import("@/features/transfers/media-backends/hybrid.server");
-    const processor = createHybridMediaProcessor("hybrid");
+    const processor = createHybridMediaProcessor();
     const updated = await processor.backfillTransferMedia(transfer);
 
     expect(updated.files[0]).toMatchObject({

@@ -9,7 +9,6 @@
     ".output/**",
     ".tanstack/**",
     "coverage/**",
-    "deploy/cloudflare-transfer-worker/**",
     "node_modules/**",
     "src/routeTree.gen.ts"
   ],

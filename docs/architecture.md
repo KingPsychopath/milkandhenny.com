@@ -84,15 +84,15 @@ Storage implementation details remain behind `lib/platform/r2.server.ts`; the ap
 
 ## Media processing
 
-`MEDIA_PROCESSOR_MODE=local` is the safe default. It keeps the dedicated queue consumer disabled and avoids jobs accumulating for a worker that does not exist.
-
-The optional worker boundary exists for sustained RAW/video processing:
+Images and GIFs are processed on the request that finalises the upload. RAW and video are queued, because they cost seconds of CPU and can pull gigabytes off object storage:
 
 ```text
-web request -> Redis queue -> authenticated wake endpoint -> worker drain -> R2 derivatives
+web request -> Redis queue -> media worker drain -> R2 derivatives -> Redis pub/sub -> SSE to the viewer
 ```
 
-Enable it only when the worker is deployed, observable, and supplied with direct Redis plus storage credentials.
+The worker is the same server image with `MEDIA_WORKER_ROLE=worker`; there is no separate worker build to drift. `MEDIA_PROCESSOR_MODE=local` processes everything inline and disables the queue — the right default, and the right setting whenever no worker is running, since a queue with no consumer just accumulates.
+
+See [media-worker.md](./media-worker.md).
 
 ## Maintenance
 

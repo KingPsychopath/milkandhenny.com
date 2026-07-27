@@ -876,29 +876,56 @@ async function extractVideoFrame(filename: string, timestamp: string): Promise<B
   return frame;
 }
 
+/**
+ * Derive poster variants from a video already on disk.
+ *
+ * Prefer this over `processVideoVariants` wherever the source can be streamed
+ * — a video never needs to exist as a Buffer, and originals routinely run to
+ * gigabytes.
+ */
+async function processVideoVariantsFromFile(filename: string): Promise<ProcessedVideo> {
+  const probe = await probeVideoFile(filename);
+  const frame = await extractVideoFrame(filename, getVideoCaptureTimestamp(probe.durationSeconds));
+  const { buffer: poster, width, height } = await autoRotate(frame);
+
+  const [thumb, full] = await Promise.all([
+    sharp(poster).resize(THUMB_WIDTH).webp({ quality: 80 }).toBuffer(),
+    sharp(poster).resize(FULL_WIDTH).webp({ quality: 85 }).toBuffer(),
+  ]);
+
+  return {
+    thumb: { buffer: thumb, contentType: "image/webp", ext: ".webp" },
+    full: { buffer: full, contentType: "image/webp", ext: ".webp" },
+    width,
+    height,
+    durationSeconds: probe.durationSeconds,
+  };
+}
+
+/** Buffer-sourced variant, for callers that already hold the bytes (CLI, direct upload). */
 async function processVideoVariants(raw: Buffer, sourceExt = ".mp4"): Promise<ProcessedVideo> {
   const ext = sourceExt.startsWith(".") ? sourceExt : `.${sourceExt}`;
-  return withTempFile("transfer-video", ext, raw, async (tempFile) => {
-    const probe = await probeVideoFile(tempFile);
-    const frame = await extractVideoFrame(
-      tempFile,
-      getVideoCaptureTimestamp(probe.durationSeconds),
-    );
-    const { buffer: poster, width, height } = await autoRotate(frame);
+  return withTempFile("transfer-video", ext, raw, (tempFile) =>
+    processVideoVariantsFromFile(tempFile),
+  );
+}
 
-    const [thumb, full] = await Promise.all([
-      sharp(poster).resize(THUMB_WIDTH).webp({ quality: 80 }).toBuffer(),
-      sharp(poster).resize(FULL_WIDTH).webp({ quality: 85 }).toBuffer(),
-    ]);
-
-    return {
-      thumb: { buffer: thumb, contentType: "image/webp", ext: ".webp" },
-      full: { buffer: full, contentType: "image/webp", ext: ".webp" },
-      width,
-      height,
-      durationSeconds: probe.durationSeconds,
-    };
-  });
+/**
+ * Stream a video into a temp file, derive its poster variants, then clean up.
+ * `fetchTo` receives the destination path and is responsible for filling it.
+ */
+async function processVideoVariantsFromSource(
+  sourceExt: string,
+  fetchTo: (destination: string) => Promise<unknown>,
+): Promise<ProcessedVideo> {
+  const ext = sourceExt.startsWith(".") ? sourceExt : `.${sourceExt}`;
+  const tempFile = path.join(os.tmpdir(), `transfer-video-${randomUUID()}${ext}`);
+  try {
+    await fetchTo(tempFile);
+    return await processVideoVariantsFromFile(tempFile);
+  } finally {
+    await fs.rm(tempFile, { force: true });
+  }
 }
 
 /**
@@ -973,12 +1000,13 @@ export {
   processImageVariants,
   processToOg,
   processGifThumb,
-  processRawWithExiftool as processRawWithDcraw,
   processRawWithExiftool,
   extractPreviewWithExiftool as resolveRawPreview,
   extractPreviewWithExiftool,
   resolveImageProcessingSource,
   processVideoVariants,
+  processVideoVariantsFromFile,
+  processVideoVariantsFromSource,
   processToWebP,
   mapConcurrent,
 };

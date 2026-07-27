@@ -24,7 +24,7 @@ Use `/health` for the safe human view. Use the admin-protected `/api/debug` only
 - Keep one replica until observed traffic requires more.
 - Before adding a second web replica, link direct Redis as `REDIS_URL`; otherwise WebSocket wake delivery is process-local.
 - Do not attach a volume; application durability belongs in Redis, object storage, or git.
-- Keep `MEDIA_PROCESSOR_MODE=local` while no dedicated worker exists.
+- Keep `MEDIA_PROCESSOR_MODE=local` while no media worker is running; a queue with no consumer only accumulates.
 - Set host-level memory and spending limits, but leave enough headroom for image transformations.
 - Set `RAILWAY_DEPLOYMENT_DRAINING_SECONDS=30` so Nitro can close sockets and dispose the Effect runtime after `SIGTERM`.
 
@@ -55,6 +55,8 @@ Socket input is bounded by message size, message rate, wake frequency, per-room 
 5. Roll back DNS or the deployment if a required flow is broken.
 6. Rotate credentials only if exposure is suspected; rotation makes rollback harder.
 
-## Optional worker
+## Media worker
 
-Do not set `MEDIA_PROCESSOR_MODE=hybrid` or `worker` until the wake endpoint, token, direct Redis connection, dependency health, and queue monitoring are all in place. A disabled worker is safer than a configured queue with no consumer.
+Bring the worker up before switching the web service to `hybrid` — the reverse order queues jobs nobody drains. Full cutover and rollback order is in [media-worker.md](./media-worker.md#cutover).
+
+The worker's Redis cost is proportional to work, not to time: one blocking claim per queue while idle, a heartbeat at most every 30s, and one publish per file processed.

@@ -71,6 +71,7 @@ import { Route as ApiUploadWordsPresignRouteRouteImport } from './routes/api/upl
 import { Route as ApiUploadWordsFinalizeRouteRouteImport } from './routes/api/upload/words/finalize/route'
 import { Route as ApiUploadTransferPresignRouteRouteImport } from './routes/api/upload/transfer/presign/route'
 import { Route as ApiUploadTransferFinalizeRouteRouteImport } from './routes/api/upload/transfer/finalize/route'
+import { Route as ApiTransfersIdEventsRouteRouteImport } from './routes/api/transfers/$id/events/route'
 import { Route as ApiBestDressedVotingOpenRouteRouteImport } from './routes/api/best-dressed/voting/open/route'
 import { Route as ApiBestDressedCodesRevokeAllRouteRouteImport } from './routes/api/best-dressed/codes/revoke-all/route'
 import { Route as ApiBestDressedCodesMintBatchRouteRouteImport } from './routes/api/best-dressed/codes/mint-batch/route'
@@ -423,6 +424,12 @@ const ApiUploadTransferFinalizeRouteRoute =
     path: '/api/upload/transfer/finalize',
     getParentRoute: () => rootRouteImport,
   } as any)
+const ApiTransfersIdEventsRouteRoute =
+  ApiTransfersIdEventsRouteRouteImport.update({
+    id: '/events',
+    path: '/events',
+    getParentRoute: () => ApiTransfersIdRouteRoute,
+  } as any)
 const ApiBestDressedVotingOpenRouteRoute =
   ApiBestDressedVotingOpenRouteRouteImport.update({
     id: '/voting/open',
@@ -650,6 +657,7 @@ export interface FileRoutesByFullPath {
   '/api/best-dressed/codes/mint-batch': typeof ApiBestDressedCodesMintBatchRouteRoute
   '/api/best-dressed/codes/revoke-all': typeof ApiBestDressedCodesRevokeAllRouteRoute
   '/api/best-dressed/voting/open': typeof ApiBestDressedVotingOpenRouteRoute
+  '/api/transfers/$id/events': typeof ApiTransfersIdEventsRouteRoute
   '/api/upload/transfer/finalize': typeof ApiUploadTransferFinalizeRouteRoute
   '/api/upload/transfer/presign': typeof ApiUploadTransferPresignRouteRoute
   '/api/upload/words/finalize': typeof ApiUploadWordsFinalizeRouteRoute
@@ -740,6 +748,7 @@ export interface FileRoutesByTo {
   '/api/best-dressed/codes/mint-batch': typeof ApiBestDressedCodesMintBatchRouteRoute
   '/api/best-dressed/codes/revoke-all': typeof ApiBestDressedCodesRevokeAllRouteRoute
   '/api/best-dressed/voting/open': typeof ApiBestDressedVotingOpenRouteRoute
+  '/api/transfers/$id/events': typeof ApiTransfersIdEventsRouteRoute
   '/api/upload/transfer/finalize': typeof ApiUploadTransferFinalizeRouteRoute
   '/api/upload/transfer/presign': typeof ApiUploadTransferPresignRouteRoute
   '/api/upload/words/finalize': typeof ApiUploadWordsFinalizeRouteRoute
@@ -831,6 +840,7 @@ export interface FileRoutesById {
   '/api/best-dressed/codes/mint-batch': typeof ApiBestDressedCodesMintBatchRouteRoute
   '/api/best-dressed/codes/revoke-all': typeof ApiBestDressedCodesRevokeAllRouteRoute
   '/api/best-dressed/voting/open': typeof ApiBestDressedVotingOpenRouteRoute
+  '/api/transfers/$id/events': typeof ApiTransfersIdEventsRouteRoute
   '/api/upload/transfer/finalize': typeof ApiUploadTransferFinalizeRouteRoute
   '/api/upload/transfer/presign': typeof ApiUploadTransferPresignRouteRoute
   '/api/upload/words/finalize': typeof ApiUploadWordsFinalizeRouteRoute
@@ -923,6 +933,7 @@ export interface FileRouteTypes {
     | '/api/best-dressed/codes/mint-batch'
     | '/api/best-dressed/codes/revoke-all'
     | '/api/best-dressed/voting/open'
+    | '/api/transfers/$id/events'
     | '/api/upload/transfer/finalize'
     | '/api/upload/transfer/presign'
     | '/api/upload/words/finalize'
@@ -1013,6 +1024,7 @@ export interface FileRouteTypes {
     | '/api/best-dressed/codes/mint-batch'
     | '/api/best-dressed/codes/revoke-all'
     | '/api/best-dressed/voting/open'
+    | '/api/transfers/$id/events'
     | '/api/upload/transfer/finalize'
     | '/api/upload/transfer/presign'
     | '/api/upload/words/finalize'
@@ -1103,6 +1115,7 @@ export interface FileRouteTypes {
     | '/api/best-dressed/codes/mint-batch'
     | '/api/best-dressed/codes/revoke-all'
     | '/api/best-dressed/voting/open'
+    | '/api/transfers/$id/events'
     | '/api/upload/transfer/finalize'
     | '/api/upload/transfer/presign'
     | '/api/upload/words/finalize'
@@ -1617,6 +1630,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiUploadTransferFinalizeRouteRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/transfers/$id/events': {
+      id: '/api/transfers/$id/events'
+      path: '/events'
+      fullPath: '/api/transfers/$id/events'
+      preLoaderRoute: typeof ApiTransfersIdEventsRouteRouteImport
+      parentRoute: typeof ApiTransfersIdRouteRoute
+    }
     '/api/best-dressed/voting/open': {
       id: '/api/best-dressed/voting/open'
       path: '/voting/open'
@@ -1981,11 +2001,13 @@ const ApiAdminWordSharesRouteRouteWithChildren =
   )
 
 interface ApiTransfersIdRouteRouteChildren {
+  ApiTransfersIdEventsRouteRoute: typeof ApiTransfersIdEventsRouteRoute
   ApiTransfersIdFilesFileIdRouteRoute: typeof ApiTransfersIdFilesFileIdRouteRoute
   ApiTransfersIdMediaFileIdVariantRouteRoute: typeof ApiTransfersIdMediaFileIdVariantRouteRoute
 }
 
 const ApiTransfersIdRouteRouteChildren: ApiTransfersIdRouteRouteChildren = {
+  ApiTransfersIdEventsRouteRoute: ApiTransfersIdEventsRouteRoute,
   ApiTransfersIdFilesFileIdRouteRoute: ApiTransfersIdFilesFileIdRouteRoute,
   ApiTransfersIdMediaFileIdVariantRouteRoute:
     ApiTransfersIdMediaFileIdVariantRouteRoute,

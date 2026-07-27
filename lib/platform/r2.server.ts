@@ -382,6 +382,39 @@ async function downloadBuffer(key: string, options?: R2OperationOptions): Promis
   return Buffer.concat(chunks);
 }
 
+/**
+ * Stream an object straight to disk.
+ *
+ * Videos are the reason this exists: `downloadBuffer` would hold a multi-GB
+ * original in memory, and ffmpeg wants a seekable file on disk anyway, so
+ * buffering first is pure overhead plus an OOM risk.
+ */
+async function downloadToFile(
+  key: string,
+  destination: string,
+  options?: R2OperationOptions,
+): Promise<number> {
+  const { client } = getClient();
+  const bucket = getBucketForKey(key, options);
+
+  const res = await sendWithRetry("downloadToFile", () =>
+    client.send(new GetObjectCommand({ Bucket: bucket, Key: key })),
+  );
+
+  if (!res.Body) {
+    throw new Error(`Object ${key} has no body`);
+  }
+
+  const { createWriteStream } = await import("node:fs");
+  const { pipeline } = await import("node:stream/promises");
+  const { Readable } = await import("node:stream");
+
+  const body = res.Body as AsyncIterable<Uint8Array>;
+  await pipeline(Readable.from(body), createWriteStream(destination));
+
+  return res.ContentLength ?? 0;
+}
+
 /** Upload a buffer to the bucket. */
 async function uploadBuffer(
   key: string,
@@ -528,6 +561,7 @@ export {
   listPrefixes,
   headObject,
   downloadBuffer,
+  downloadToFile,
   uploadBuffer,
   deleteObject,
   deleteObjects,

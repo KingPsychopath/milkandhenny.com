@@ -29,6 +29,14 @@ ENV NODE_ENV=production
 ENV HOST=0.0.0.0
 ENV PORT=3000
 WORKDIR /app
+
+# ffmpeg powers video poster frames; exiftool recovers previews from RAW files.
+# Both the web role (inline images, RAW retry) and the worker role (video, RAW)
+# shell out to these, so they belong in the shared runtime image.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+  ffmpeg \
+  libimage-exiftool-perl \
+  && rm -rf /var/lib/apt/lists/*
 COPY --from=build --chown=node:node /app/.output ./.output
 COPY --from=build --chown=node:node /app/content ./content
 COPY --chown=node:node ops ./ops
