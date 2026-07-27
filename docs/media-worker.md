@@ -165,6 +165,25 @@ It is gone.
 Scaling out is safe: the queue is the coordination point, and recovery only
 runs at startup, so replicas do not steal each other's in-flight jobs.
 
+## Rebuilding finished files
+
+Reconciliation deliberately leaves `ready` files alone — nothing about their
+recorded state says anything is wrong. But when the pipeline itself learns
+something new (a metadata field we did not used to read, a decode bug fixed),
+existing derivatives are stale in a way no inspection can detect.
+
+That is what `mode: "reprocess"` on `POST /api/admin/transfers/process-media`
+is for — an explicit "do it again" for a chosen set. Admin plus step-up:
+
+```jsonc
+{ "mode": "reprocess", "transferId": "abc123", "kind": "video" }   // every video
+{ "mode": "reprocess", "transferId": "abc123", "mediaId": "IMG_1741" } // just one
+```
+
+It force-requeues matching files regardless of their current state and returns
+the ids it queued. Files with no worker route (audio, documents) are reported
+as skipped rather than silently ignored.
+
 ## Cutover
 
 Order matters. Setting `hybrid` before a worker exists queues jobs nobody
