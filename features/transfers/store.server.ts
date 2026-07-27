@@ -14,9 +14,12 @@ const MAX_EXPIRY_SECONDS = 30 * 24 * 60 * 60;
 /** Default expiry: 7 days */
 const DEFAULT_EXPIRY_SECONDS = 7 * 24 * 60 * 60;
 
-/** Upload constraints (enforced in upload API routes) */
-const MAX_TRANSFER_FILE_BYTES = 250 * 1024 * 1024; // 250MB
-const MAX_TRANSFER_TOTAL_BYTES = 1024 * 1024 * 1024; // 1GB
+/**
+ * Upload constraints for public transfers (enforced in upload API routes; admins are exempt).
+ * The per-file cap matches the total so a single large video can use the whole allowance.
+ */
+const MAX_TRANSFER_FILE_BYTES = 5 * 1024 * 1024 * 1024; // 5GB
+const MAX_TRANSFER_TOTAL_BYTES = 5 * 1024 * 1024 * 1024; // 5GB
 
 /* ─── ID Generation ─── */
 

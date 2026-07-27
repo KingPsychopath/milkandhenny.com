@@ -24,6 +24,9 @@ const SILHOUETTE_GRID_SIZE = 48;
 const SILHOUETTE_COMPACTNESS_BASELINE = 0.5;
 const MINIMUM_SILHOUETTE_SENSITIVITY = 0.3;
 const PERIMETER_ALLOWANCE = 1.25;
+const DEGENERATE_COMPACTNESS = 0.001;
+const SEPARATE_STROKE_CROSSING_WEIGHT = 0.25;
+const SILHOUETTE_FULL_WEIGHT_FIT_ERROR = 0.3;
 const COUNTRY_COORDINATE_SCALE = 10_000;
 const BORDER_FIT_WEIGHT = 0.3;
 const COVERAGE_WEIGHT = 0.3;
@@ -397,6 +400,18 @@ function silhouetteDeviation(reference: CountryDrawing, drawing: CountryDrawing)
   return largestArea ? Math.abs(referenceArea - drawingArea) / largestArea : 1;
 }
 
+/**
+ * Thin, straggly countries lose silhouette overlap to the smallest wobble, so their shape term is
+ * damped — but that same damping would shield an answer that is simply the wrong country, whose
+ * overlap is poor too. Overlap alone cannot tell those apart; how closely the stroke tracks the
+ * real border can. A drawing that follows the coastline keeps the forgiveness it needs, and one
+ * that wanders loses it.
+ */
+function weightedSilhouette(raw: number, sensitivity: number, fitError: number) {
+  const severity = Math.min(1, fitError / SILHOUETTE_FULL_WEIGHT_FIT_ERROR);
+  return raw * (sensitivity + (1 - sensitivity) * severity);
+}
+
 function silhouetteSensitivity(reference: CountryDrawing) {
   const points = reference.flat();
   if (!points.length) return 1;
@@ -450,17 +465,39 @@ function segmentsAreAdjacent(first: DrawingSegment, second: DrawingSegment) {
   return wrappedDifference <= 3;
 }
 
-function strokeQualityDeviation(drawing: CountryDrawing, reference: CountryDrawing) {
-  const lengths = drawing.map(ringLength);
+/**
+ * Share of a shape's outline made of slivers too thin to enclose real area. In a drawing that means
+ * scribbles; in a reference it means genuine geography, so the two are compared rather than the
+ * drawing's share being charged outright.
+ */
+function degenerateShare(rings: CountryDrawing) {
+  const lengths = rings.map(ringLength);
   const totalLength = lengths.reduce((total, length) => total + length, 0);
-  if (!totalLength) return 1;
-  const referenceLength = reference.reduce((total, ring) => total + ringLength(ring), 0);
-
-  const degenerateLength = drawing.reduce((total, ring, index) => {
+  if (!totalLength) return 0;
+  const degenerateLength = rings.reduce((total, ring, index) => {
     const length = lengths[index];
     const compactness = length ? ringArea(ring) / (length * length) : 0;
-    return compactness < 0.001 ? total + length : total;
+    return compactness < DEGENERATE_COMPACTNESS ? total + length : total;
   }, 0);
+  return degenerateLength / totalLength;
+}
+
+interface StrokeQuality {
+  /** Full messiness signal, contributing its weight to the overall deviation. */
+  deviation: number;
+  /** The portion that caps the score no matter how well the drawing lands. */
+  abuse: number;
+}
+
+function strokeQualityDeviation(drawing: CountryDrawing, reference: CountryDrawing): StrokeQuality {
+  const lengths = drawing.map(ringLength);
+  const totalLength = lengths.reduce((total, length) => total + length, 0);
+  if (!totalLength) return { deviation: 1, abuse: 1 };
+  const referenceLength = reference.reduce((total, ring) => total + ringLength(ring), 0);
+
+  // Countries with thin islands — Myanmar's Mergui Archipelago, Croatia's coast — are themselves
+  // built from slivers, so only scribbling beyond what the target already contains is a fault.
+  const degenerate = Math.max(0, degenerateShare(drawing) - degenerateShare(reference));
   const segments: DrawingSegment[] = drawing.flatMap((ring, ringIndex) =>
     ring.map((start, segmentIndex) => ({
       start,
@@ -470,26 +507,40 @@ function strokeQualityDeviation(drawing: CountryDrawing, reference: CountryDrawi
       ringSize: ring.length,
     })),
   );
-  let crossings = 0;
+  // A scribble is a stroke that doubles back through itself. Two separate strokes overlapping is
+  // ordinary in a country full of islands — drawing the Bahamas by hand means clipping neighbours
+  // constantly — so those count for far less than a stroke crossing itself.
+  let selfCrossings = 0;
+  let strokeCrossings = 0;
   for (let firstIndex = 0; firstIndex < segments.length; firstIndex += 1) {
     for (let secondIndex = firstIndex + 1; secondIndex < segments.length; secondIndex += 1) {
       const first = segments[firstIndex];
       const second = segments[secondIndex];
       if (
-        !segmentsAreAdjacent(first, second) &&
-        segmentsCross(first.start, first.end, second.start, second.end)
+        segmentsAreAdjacent(first, second) ||
+        !segmentsCross(first.start, first.end, second.start, second.end)
       )
-        crossings += 1;
+        continue;
+      if (first.ringIndex === second.ringIndex) selfCrossings += 1;
+      else strokeCrossings += 1;
     }
   }
 
-  const crossingDeviation = Math.min(1, crossings / Math.max(3, segments.length * 0.03));
+  const threshold = Math.max(3, segments.length * 0.03);
+  const selfCrossingDeviation = Math.min(1, selfCrossings / threshold);
+  const separateCrossingDeviation = Math.min(
+    1,
+    (strokeCrossings * SEPARATE_STROKE_CROSSING_WEIGHT) / threshold,
+  );
   const perimeterRatio = referenceLength ? totalLength / referenceLength : Number.POSITIVE_INFINITY;
   const perimeterDeviation = Math.min(1, Math.max(0, perimeterRatio - PERIMETER_ALLOWANCE));
-  return Math.min(
-    1,
-    (degenerateLength / totalLength) * 0.75 + crossingDeviation + perimeterDeviation,
-  );
+
+  // `abuse` is the part no amount of accuracy should excuse — padding the perimeter by tracing the
+  // country repeatedly, scribbling, or looping a stroke through itself — and it caps the final
+  // score outright. Untidy overlap between separate strokes only costs its share of the weighted
+  // deviation, so a faithful archipelago drawn with clipping islands is marked on where it landed.
+  const abuse = Math.min(1, degenerate * 0.75 + selfCrossingDeviation + perimeterDeviation);
+  return { deviation: Math.min(1, abuse + separateCrossingDeviation), abuse };
 }
 
 function areaDistribution(rings: CountryDrawing) {
@@ -566,14 +617,18 @@ export function scoreCountryDrawing(
   const fit = borderFit(drawing.points, reference.rings);
   const coverage = averageDistanceToBorder(reference.points, drawing.rings);
   const sensitivity = silhouetteSensitivity(reference.rings);
-  const silhouette = silhouetteDeviation(reference.rings, drawing.rings) * sensitivity;
+  const silhouette = weightedSilhouette(
+    silhouetteDeviation(reference.rings, drawing.rings),
+    sensitivity,
+    fit.border + coverage,
+  );
   const strokeQuality = strokeQualityDeviation(drawing.rings, reference.rings);
   const islandBalance = islandBalanceDeviation(reference.rings, drawing.rings);
   const weightedDeviation =
     fit.border * BORDER_FIT_WEIGHT +
     coverage * COVERAGE_WEIGHT +
     silhouette * SILHOUETTE_WEIGHT +
-    strokeQuality * STROKE_QUALITY_WEIGHT +
+    strokeQuality.deviation * STROKE_QUALITY_WEIGHT +
     islandBalance * ISLAND_BALANCE_WEIGHT;
   let guardDeviation = mismatchGuardDeviation(fit, coverage, silhouette);
   let enclosing = enclosesReference(fit, silhouette);
@@ -581,8 +636,11 @@ export function scoreCountryDrawing(
     const baselinePoints = sampleShape(drawing.baselineRings, DRAWING_SAMPLES);
     const baselineFit = borderFit(baselinePoints, reference.rings);
     const baselineCoverage = averageDistanceToBorder(reference.points, drawing.baselineRings);
-    const baselineSilhouette =
-      silhouetteDeviation(reference.rings, drawing.baselineRings) * sensitivity;
+    const baselineSilhouette = weightedSilhouette(
+      silhouetteDeviation(reference.rings, drawing.baselineRings),
+      sensitivity,
+      baselineFit.border + baselineCoverage,
+    );
     guardDeviation = Math.max(
       guardDeviation,
       mismatchGuardDeviation(baselineFit, baselineCoverage, baselineSilhouette),
@@ -600,7 +658,7 @@ export function scoreCountryDrawing(
     enclosing ? ENCLOSURE_MINIMUM_DEVIATION : 0,
   );
   const mismatchDeviation = deviation - weightedDeviation;
-  const score = Math.min(scoreFromDeviation(deviation), strokeQualityScore(strokeQuality));
+  const score = Math.min(scoreFromDeviation(deviation), strokeQualityScore(strokeQuality.abuse));
   return {
     score,
     deviation: percentage(deviation),
@@ -610,7 +668,7 @@ export function scoreCountryDrawing(
     insideDeviation: percentage(fit.inside * BORDER_FIT_WEIGHT),
     coverageDeviation: percentage(coverage * COVERAGE_WEIGHT),
     silhouetteDeviation: percentage(silhouette * SILHOUETTE_WEIGHT),
-    strokeDeviation: percentage(strokeQuality * STROKE_QUALITY_WEIGHT),
+    strokeDeviation: percentage(strokeQuality.deviation * STROKE_QUALITY_WEIGHT),
     islandDeviation: percentage(islandBalance * ISLAND_BALANCE_WEIGHT),
     accuracy: accuracyFor(score),
     drawing: drawing.rings,

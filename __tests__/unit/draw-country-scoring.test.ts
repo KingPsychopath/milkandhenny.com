@@ -399,7 +399,10 @@ describe("draw-country scoring", () => {
   });
 
   it("rewards recognisable simplifications across compact, thin, and coastal countries", () => {
-    const expectedFloors = { AU: 50, CN: 70, CL: 55, NA: 70, GB: 40, IT: 35 } as const;
+    // Floors track the reference outlines. This simplification keeps only the largest ring, so a
+    // country whose reference gained separate islands is scored on less of itself than before —
+    // the United Kingdom's ring is Great Britain alone, without Northern Ireland or the isles.
+    const expectedFloors = { AU: 50, CN: 70, CL: 55, NA: 65, GB: 33, IT: 28 } as const;
     for (const [countryId, floor] of Object.entries(expectedFloors)) {
       const outline = COUNTRIES.find(({ id }) => id === countryId);
       expect(outline).toBeDefined();
@@ -453,6 +456,35 @@ describe("draw-country scoring", () => {
           `${drawingId} as ${targetId}`,
         ).toBeLessThanOrEqual(25);
     }
+  });
+
+  it("does not treat a country's own thin islands as scribbling", () => {
+    // Myanmar's Mergui Archipelago and the Bahamas' cays are slivers in the reference itself. An
+    // exact trace of them once collapsed to single digits because the tidiness check charged the
+    // drawing for geography it was faithfully reproducing.
+    for (const countryId of ["MM", "BS", "HR", "GR"]) {
+      const outline = COUNTRIES.find(({ id }) => id === countryId);
+      expect(outline).toBeDefined();
+      if (!outline) continue;
+      const evaluation = scoreCountryDrawing(outline, exactDrawing(outline));
+      expect(evaluation.score, countryId).toBe(100);
+      expect(evaluation.strokeDeviation, countryId).toBe(0);
+    }
+  });
+
+  it("keeps islands that clip their neighbours away from the scribble penalty", () => {
+    const bahamas = COUNTRIES.find(({ id }) => id === "BS");
+    expect(bahamas).toBeDefined();
+    if (!bahamas) throw new Error("Bahamas fixture is missing");
+
+    // Separate strokes overlapping is ordinary when a country is a scatter of cays; only a stroke
+    // crossing itself, or padding the perimeter, should cap the score.
+    const exact = exactDrawing(bahamas);
+    const smeared = exact.map((ring, index) =>
+      ring.map(({ x, y }) => ({ x: x + (index % 2 ? 6 : -6), y: y + (index % 3 ? 5 : -5) })),
+    );
+
+    expect(scoreCountryDrawing(bahamas, smeared).score).toBeGreaterThanOrEqual(55);
   });
 
   it("uses explicit, monotonic calibration anchors", () => {

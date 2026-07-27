@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback } from "react";
+import { useLiveRoomSnapshot } from "../shared/useLiveRoomSnapshot";
 import { readPartySnapshotFn } from "./party-room.functions";
 import type { PartyRole, PartySnapshot } from "./types";
 import { usePartySocket } from "./usePartySocket";
-import { useRoomReconciler } from "../shared/useRoomReconciler";
 
 export function usePartyLiveSnapshot(input: {
   roomId: string;
@@ -12,85 +12,61 @@ export function usePartyLiveSnapshot(input: {
   presenterToken?: string;
   initialSnapshot?: PartySnapshot;
 }) {
-  const [snapshot, setSnapshot] = useState<PartySnapshot | null>(input.initialSnapshot ?? null);
-  const [clockOffset, setClockOffset] = useState(0);
-  const [message, setMessage] = useState<string | null>(null);
-  const [ended, setEnded] = useState(false);
-  const sequenceRef = useRef(input.initialSnapshot?.sequence ?? 0);
-
-  const reconcile = useCallback(async (isCurrent: () => boolean) => {
-    const startedAt = Date.now();
-    try {
-      const result = await readPartySnapshotFn({
+  const read = useCallback(
+    (lastSequence: number) =>
+      readPartySnapshotFn({
         data: {
           roomId: input.roomId,
           role: input.role,
           credential: input.credential,
           playerId: input.playerId,
           presenterToken: input.presenterToken,
-          lastSequence: sequenceRef.current,
+          lastSequence,
         },
-      });
-      const endedAt = Date.now();
-      if (!isCurrent()) return;
-      if (!result.ok) {
-        setEnded(true);
-        setSnapshot(null);
-        setMessage(result.error);
-        return;
-      }
-      sequenceRef.current = result.snapshot.sequence;
-      setClockOffset(result.snapshot.serverNow - (startedAt + endedAt) / 2);
-      setSnapshot(result.snapshot);
-      setEnded(false);
-      setMessage(null);
-    } catch {
-      if (isCurrent()) setMessage("Reconnecting…");
-    }
-  }, [input.credential, input.playerId, input.presenterToken, input.role, input.roomId]);
+      }).then((result) =>
+        result.ok
+          ? ({ ok: true, snapshot: result.snapshot } as const)
+          : ({ ok: false, error: result.error } as const),
+      ),
+    [input.credential, input.playerId, input.presenterToken, input.role, input.roomId],
+  );
 
-  const refresh = useRoomReconciler({
-    enabled: Boolean(input.credential) && !ended,
+  const room = useLiveRoomSnapshot<PartySnapshot>({
+    enabled: Boolean(input.credential),
     intervalMs: 10_000,
     roomKey: input.credential
       ? `${input.roomId}:${input.role}:${input.credential}:${input.playerId ?? ""}`
       : null,
-    reconcile,
+    initialSnapshot: input.initialSnapshot,
+    read,
+    boundariesOf: (snapshot) =>
+      snapshot.round
+        ? [
+            snapshot.round.answerOpensAt,
+            snapshot.round.answerLocksAt,
+            snapshot.round.revealAt,
+            snapshot.round.nextRoundAt,
+          ]
+        : [],
   });
 
   const socket = usePartySocket({
-    roomId: ended ? null : input.roomId,
+    roomId: room.ended ? null : input.roomId,
     role: input.role,
-    credential: ended ? null : input.credential,
+    credential: room.ended ? null : input.credential,
     playerId: input.playerId,
-    onWake: () => void refresh(),
+    onWake: () => void room.refresh(),
   });
 
-  useEffect(() => {
-    const round = snapshot?.round;
-    if (!round) return;
-    const now = Date.now() + clockOffset;
-    const boundary = [round.answerOpensAt, round.answerLocksAt, round.revealAt, round.nextRoundAt]
-      .filter((time): time is number => time !== null)
-      .filter((time) => time > now + 20)
-      .sort((a, b) => a - b)[0];
-    if (!boundary) return;
-    const timer = window.setTimeout(
-      () => void refresh(),
-      Math.min(2_147_000_000, boundary - now + 60),
-    );
-    return () => window.clearTimeout(timer);
-  }, [clockOffset, refresh, snapshot?.phase, snapshot?.round]);
-
   return {
-    snapshot,
-    setSnapshot,
-    clockOffset,
+    snapshot: room.snapshot,
+    setSnapshot: room.setSnapshot,
+    clockOffset: room.clockOffset,
     connectionState: socket.state,
     notify: socket.notify,
-    refresh,
-    ended,
-    message,
-    setMessage,
+    refresh: room.refresh,
+    ended: room.ended,
+    message: room.message,
+    setMessage: room.setMessage,
   };
 }

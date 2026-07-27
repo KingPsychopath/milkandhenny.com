@@ -1,4 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { formatBytes } from "@/lib/shared/format";
 import { requireAuthWithPayload } from "@/features/auth/auth.server";
 import { presignPutUrl, isTransferStorageConfigured } from "@/lib/platform/r2.server";
 import {
@@ -92,7 +93,10 @@ async function handlePOST(request: Request) {
       );
     }
     if (!isAdmin && file.size > MAX_TRANSFER_FILE_BYTES) {
-      return Response.json({ error: "File too large. Max 250MB per file." }, { status: 400 });
+      return Response.json(
+        { error: `File too large. Max ${formatBytes(MAX_TRANSFER_FILE_BYTES)} per file.` },
+        { status: 400 },
+      );
     }
     if (seenNames.has(file.name)) {
       return Response.json(
@@ -119,7 +123,10 @@ async function handlePOST(request: Request) {
 
     totalBytes += file.size + (file.originalSize ?? 0);
     if (!isAdmin && totalBytes > MAX_TRANSFER_TOTAL_BYTES) {
-      return Response.json({ error: "Transfer too large. Max 1GB total." }, { status: 400 });
+      return Response.json(
+        { error: `Transfer too large. Max ${formatBytes(MAX_TRANSFER_TOTAL_BYTES)} total.` },
+        { status: 400 },
+      );
     }
   }
 

@@ -86,7 +86,7 @@ describe("upload transfer presign", () => {
 
     expect(response.status).toBe(400);
     await expect(response.json()).resolves.toMatchObject({
-      error: "File too large. Max 250MB per file.",
+      error: "File too large. Max 250.0 MB per file.",
     });
   });
 
