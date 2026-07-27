@@ -133,6 +133,25 @@ Finalize returns immediately for queued files — they come back as `original_on
 
 Transfers use `POST /api/upload/transfer/presign` + `POST /api/upload/transfer/finalize`.
 
+### Upload window
+
+Every presigned PUT for a batch is signed **before the first byte moves**, so
+the expiry has to cover the whole selection, not one request. `TRANSFER_UPLOAD_URL_TTL_SECONDS`
+defaults to 6 hours, and the upload reservation is always minted 30 minutes
+longer than the URLs it guards — an upload that finishes inside the window must
+still find something to finalise against.
+
+At the old 15 minutes, a guest emptying a phone over hotel wifi hit dead URLs
+partway through the batch, and a finalize arriving after an hour of successful
+uploading was rejected outright.
+
+A single PUT cannot exceed **5 GiB** (the S3/R2 limit; we do not implement
+multipart). That is now rejected up front for everyone, admins included, rather
+than failing with an opaque `EntityTooLarge` after hours of transfer.
+
+Finalize verifies every object exists and that its stored size matches what was
+reserved, so a truncated upload is rejected rather than recorded as complete.
+
 **Private R2 CORS requirement:** `R2_PRIVATE_BUCKET` needs a CORS rule allowing signed uploads and reads from your app origin:
 
 ```json

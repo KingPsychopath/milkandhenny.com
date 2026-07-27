@@ -1,4 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { formatBytes } from "@/lib/shared/format";
 import { requireAuthWithPayload } from "@/features/auth/auth.server";
 import { getTransfer } from "@/features/transfers/store.server";
 import { isSafeTransferFilename } from "@/features/transfers/upload.server";
@@ -15,6 +16,10 @@ import {
 } from "@/features/transfers/storage";
 import type { TransferUploadFileInput } from "@/features/transfers/upload-types";
 import { apiErrorFromRequest } from "@/lib/platform/api-error";
+import {
+  getUploadUrlTtlSeconds,
+  MAX_SINGLE_PUT_BYTES,
+} from "@/features/transfers/upload-window.server";
 
 type FileEntry = TransferUploadFileInput;
 
@@ -87,6 +92,17 @@ async function handlePOST(request: Request) {
         { status: 400 },
       );
     }
+    // This route is admin-only, so the per-transfer quotas are deliberately not
+    // applied — but 5 GiB is the S3/R2 single-PUT limit, not a policy of ours,
+    // and no amount of authority makes an oversized PUT succeed.
+    if (file.size > MAX_SINGLE_PUT_BYTES) {
+      return Response.json(
+        {
+          error: `File too large to upload in one piece. Max ${formatBytes(MAX_SINGLE_PUT_BYTES)} per file.`,
+        },
+        { status: 400 },
+      );
+    }
     if (
       file.originalSize !== undefined &&
       (!Number.isFinite(file.originalSize) || file.originalSize < 0)
@@ -129,15 +145,24 @@ async function handlePOST(request: Request) {
     }
   }
 
+  const uploadUrlTtlSeconds = getUploadUrlTtlSeconds();
   try {
     const urls = await Promise.all(
       files.map(async (file) => {
         const primaryKey = buildTransferPrimaryStorageKey(transferId, file);
-        const primaryUrl = await presignPutUrl(primaryKey, getMimeType(file.name));
+        const primaryUrl = await presignPutUrl(
+          primaryKey,
+          getMimeType(file.name),
+          uploadUrlTtlSeconds,
+        );
         const archivedOriginalKey = buildTransferArchivedOriginalStorageKey(transferId, file);
         const archivedOriginalUrl =
           archivedOriginalKey && file.originalName
-            ? await presignPutUrl(archivedOriginalKey, getMimeType(file.originalName))
+            ? await presignPutUrl(
+                archivedOriginalKey,
+                getMimeType(file.originalName),
+                uploadUrlTtlSeconds,
+              )
             : undefined;
         return {
           name: file.name,

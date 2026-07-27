@@ -23,6 +23,10 @@ import {
 } from "@/features/transfers/storage";
 import type { TransferUploadFileInput } from "@/features/transfers/upload-types";
 import { apiErrorFromRequest } from "@/lib/platform/api-error";
+import {
+  getUploadUrlTtlSeconds,
+  MAX_SINGLE_PUT_BYTES,
+} from "@/features/transfers/upload-window.server";
 import { isSafeTransferFilename } from "@/features/transfers/upload.server";
 import {
   createTransferUploadReservation,
@@ -92,6 +96,17 @@ async function handlePOST(request: Request) {
         { status: 400 },
       );
     }
+    // A single presigned PUT tops out at 5 GiB in S3/R2 and we do not do
+    // multipart, so this ceiling binds admins too — otherwise an oversized file
+    // uploads for hours and dies with an opaque EntityTooLarge from storage.
+    if (file.size > MAX_SINGLE_PUT_BYTES) {
+      return Response.json(
+        {
+          error: `File too large to upload in one piece. Max ${formatBytes(MAX_SINGLE_PUT_BYTES)} per file.`,
+        },
+        { status: 400 },
+      );
+    }
     if (!isAdmin && file.size > MAX_TRANSFER_FILE_BYTES) {
       return Response.json(
         { error: `File too large. Max ${formatBytes(MAX_TRANSFER_FILE_BYTES)} per file.` },
@@ -139,6 +154,7 @@ async function handlePOST(request: Request) {
     }
   }
 
+  const uploadUrlTtlSeconds = getUploadUrlTtlSeconds();
   const transferId = generateTransferId();
   const deleteToken = generateDeleteToken();
   const boundedExpiresSeconds = Math.min(expiresSeconds, MAX_EXPIRY_SECONDS);
@@ -147,11 +163,19 @@ async function handlePOST(request: Request) {
     const urls = await Promise.all(
       files.map(async (file) => {
         const primaryKey = buildTransferPrimaryStorageKey(transferId, file);
-        const primaryUrl = await presignPutUrl(primaryKey, getMimeType(file.name));
+        const primaryUrl = await presignPutUrl(
+          primaryKey,
+          getMimeType(file.name),
+          uploadUrlTtlSeconds,
+        );
         const archivedOriginalKey = buildTransferArchivedOriginalStorageKey(transferId, file);
         const archivedOriginalUrl =
           archivedOriginalKey && file.originalName
-            ? await presignPutUrl(archivedOriginalKey, getMimeType(file.originalName))
+            ? await presignPutUrl(
+                archivedOriginalKey,
+                getMimeType(file.originalName),
+                uploadUrlTtlSeconds,
+              )
             : undefined;
 
         return {
