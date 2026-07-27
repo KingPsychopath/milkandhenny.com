@@ -95,6 +95,39 @@ and the client closes the stream instead of reconnecting forever.
   (default 10 min) before it is failed and acked rather than requeued —
   retrying a job that already blew its budget would just wedge the next slot.
 
+## Reconciliation
+
+Jobs get lost. A worker dies between claiming a job and finishing it, a deploy
+lands mid-flight, a derivative gets deleted from object storage. Each leaves a
+file stuck: `queued` with no job behind it, `processing` with no worker on it,
+or `ready` pointing at a thumbnail that is gone.
+
+`backfillTransferMedia` repairs all of those — it re-derives each file's state
+from what is actually in object storage and requeues whatever is genuinely
+unfinished. Two things run it:
+
+1. **The worker, whenever its queue goes idle** (`MEDIA_RECONCILE_INTERVAL_MS`,
+   default 15 min — the staleness window, so a stranded file is repaired within
+   about two windows). Idle is the cheapest moment to look for work that should
+   have been in the queue.
+2. **The daily maintenance run**, as `POST /api/cron/process-transfer-media`.
+   This is the backstop for the case the worker sweep cannot cover: the worker
+   itself being down.
+
+Both take the same Redis lock (`transfer:media:reconcile-lock`), so overlap is
+harmless — two backfills racing on one transfer would each write their own view
+of the file list.
+
+The sweep reads every live transfer in **one pipelined round trip** and filters
+in memory, so a healthy transfer costs no object-storage calls at all. It only
+descends into object storage for files that look unfinished, and it skips
+terminal failures entirely.
+
+What it does **not** do is retry `raw_preview_unavailable` or
+`video_too_large_for_poster` — see the delivery section above. Those are
+properties of the file, and a sweep every 15 minutes re-downloading and
+re-decoding them forever would be the worst possible version of this.
+
 ## Configuration
 
 | Variable | Default | Applies to | Meaning |
@@ -104,6 +137,7 @@ and the client closes the stream instead of reconnecting forever.
 | `MEDIA_WORKER_CONCURRENCY` | `1` | worker | jobs in flight per instance |
 | `MEDIA_WORKER_JOB_TIMEOUT_MS` | `600000` | worker | per-job ceiling |
 | `MEDIA_WORKER_ERROR_BACKOFF_MS` | `15000` | worker | pause after a claim error |
+| `MEDIA_RECONCILE_INTERVAL_MS` | `900000` | worker | idle sweep for stranded files; `0` disables |
 | `MEDIA_INLINE_PROCESSING_TIMEOUT_MS` | `120000` | web | ceiling for work the request path still does |
 | `MEDIA_VIDEO_POSTER_MAX_BYTES` | `2147483648` | worker | above this, skip the poster; `0` disables the cap |
 | `REDIS_URL` | — | both | direct connection; required for the queue and for SSE |
@@ -118,6 +152,8 @@ Health and queue depth appear in the admin dashboard and in
 - **growing queue depth** — arrivals outpacing the worker; raise
   `MEDIA_WORKER_CONCURRENCY` or add a replica.
 - **repeated retry exhaustion** — something is failing that is not terminal.
+- **a reconcile sweep that keeps finding work** — files are being stranded
+  faster than they are processed, which usually means the worker is flapping.
 
 Scaling out is safe: the queue is the coordination point, and recovery only
 runs at startup, so replicas do not steal each other's in-flight jobs.
