@@ -73,6 +73,21 @@ photo taken beside it.
 This is what lets the gallery interleave videos with photos in one timeline,
 and what makes "find media by capture time" work across both.
 
+### Finding media by capture time
+
+The transfer gallery groups dated media into 15-minute buckets and lets a
+viewer narrow to one. Two levels, because a wedding is not one moment:
+
+- **a day** — shown only when a transfer spans more than one, since narrowing
+  to "the only day" filters nothing
+- **a 15-minute window** — ±15 min around the chip, and windows deliberately
+  never span midnight
+
+Both photos and videos participate, which is what the shared capture-time
+convention above buys. Media with no readable time is appended as `undated`
+rather than dropped, so nothing becomes invisible just because a camera wrote
+no metadata.
+
 ### Rotation
 
 Handled once, centrally, in `autoRotate`: Sharp reads the EXIF orientation tag
