@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { getAllAlbums } from "@/features/media/albums.server";
+import { listEvents } from "@/features/events/store.server";
 import { isWordsEnabled } from "@/features/words/reader.server";
 import { listWords } from "@/features/words/store.server";
 import { BASE_URL } from "@/lib/shared/config";
@@ -38,6 +39,9 @@ export const Route = createFileRoute("/sitemap.xml")({
             ).words
           : [];
 
+        // An events outage should degrade the sitemap, not fail it.
+        const publicEvents = await listEvents({ limit: 200 }).catch(() => []);
+
         const now = new Date();
         const entries: SitemapEntry[] = [
           { url: BASE_URL, lastModified: now, changeFrequency: "weekly", priority: 1 },
@@ -50,17 +54,17 @@ export const Route = createFileRoute("/sitemap.xml")({
             priority: 0.7,
           },
           {
-            url: `${BASE_URL}/party`,
-            lastModified: new Date("2026-01-16"),
-            changeFrequency: "yearly",
-            priority: 0.5,
+            url: `${BASE_URL}/events`,
+            lastModified: now,
+            changeFrequency: "weekly",
+            priority: 0.9,
           },
-          {
-            url: `${BASE_URL}/guestlist`,
-            lastModified: new Date("2026-01-16"),
-            changeFrequency: "yearly",
-            priority: 0.3,
-          },
+          ...publicEvents.map((event) => ({
+            url: `${BASE_URL}/events/${event.slug}`,
+            lastModified: new Date(event.updatedAt),
+            changeFrequency: "weekly" as const,
+            priority: 0.8,
+          })),
           {
             url: `${BASE_URL}/icebreaker`,
             lastModified: new Date("2026-01-16"),

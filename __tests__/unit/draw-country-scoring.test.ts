@@ -142,7 +142,10 @@ describe("draw-country scoring", () => {
     ).toEqual([100, 100, 100]);
   });
 
-  it("keeps every near-exact country high despite small human faults", () => {
+  // Scores every country against every fault, so it runs a few seconds and
+  // sat on vitest's 5s default — it failed only under full-suite parallel
+  // load, which reads as a flaky scoring bug rather than a slow test.
+  it("keeps every near-exact country high despite small human faults", { timeout: 30_000 }, () => {
     for (const outline of COUNTRIES) {
       for (const [fault, drawing] of Object.entries(nearExactDrawings(outline)))
         expect(
