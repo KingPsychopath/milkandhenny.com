@@ -54,7 +54,7 @@ export const signInStaff = createServerFn({ method: "POST" })
   .validator(readCredential("pin"))
   .handler(async ({ data }) => {
     const ok = await verifyAndSetCookie("staff", { pin: data.value });
-    throw redirect({ href: ok ? "/guestlist" : "/guestlist?auth=failed" });
+    throw redirect({ href: ok ? "/door" : "/door?auth=failed" });
   });
 
 export const signInAdmin = createServerFn({ method: "POST" })

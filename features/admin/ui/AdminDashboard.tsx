@@ -7,6 +7,7 @@ import type { MultiplayerTelemetrySnapshot } from "@/features/things/shared/mult
 import { SITE_BRAND } from "@/lib/shared/config";
 import { TokenSessionsPanel } from "./components/TokenSessionsPanel";
 import { ReportsPanel } from "./components/ReportsPanel";
+import { EventsPanel } from "./components/EventsPanel";
 import { useAdminAuth } from "@/features/auth/useAdminAuth";
 import { useActionDialog } from "@/hooks/useActionDialog";
 import { buildTransferUrl } from "@/features/transfers/routes";
@@ -1162,6 +1163,9 @@ export function AdminDashboard() {
             <a href="#user-reports" className="hover:text-[var(--foreground)] transition-colors">
               reports
             </a>
+            <a href="#events-manager" className="hover:text-[var(--foreground)] transition-colors">
+              events
+            </a>
             <a
               href="#transfer-manager"
               className="hover:text-[var(--foreground)] transition-colors"
@@ -1271,6 +1275,16 @@ export function AdminDashboard() {
           onError={setErrorMessage}
           onStatus={setStatusMessage}
         />
+
+        <div className="border-t theme-border pt-6">
+          <EventsPanel
+            authFetch={authFetch}
+            onError={setErrorMessage}
+            onStatus={setStatusMessage}
+            ensureStepUpToken={ensureStepUpTokenResult}
+            withStepUpHeaders={withStepUpHeaders}
+          />
+        </div>
 
         <div id="system-health" className="border-t theme-border pt-6 space-y-3 scroll-mt-6">
           <div className="flex items-center justify-between">
@@ -2277,11 +2291,11 @@ export function AdminDashboard() {
           <p className="font-mono text-xs theme-muted mb-2">party tools (secondary)</p>
           <div className="grid sm:grid-cols-2 gap-3">
             <Link
-              to="/guestlist"
-              search={{ auth: undefined }}
+              to="/door"
+              search={{ auth: undefined, event: undefined }}
               className="border theme-border rounded-md px-3 py-2 font-mono text-sm hover:border-[var(--stone-400)] transition-colors"
             >
-              manage guestlist
+              door check-in
             </Link>
             <Link
               to="/best-dressed"

@@ -38,16 +38,18 @@ pnpm test:coverage # run with coverage report
 
 ### What's covered
 
-| Test file                             | Module                          | What it validates                                                                                           |
-| ------------------------------------- | ------------------------------- | ----------------------------------------------------------------------------------------------------------- |
-| `slug.test.ts`                        | `lib/markdown/slug.ts`          | Heading slugification, duplicate id generation, edge cases (emoji, symbols, empty input)                    |
-| `format.test.ts`                      | `lib/shared/format.ts`          | Byte formatting (B → KB → MB → GB), boundary values                                                         |
-| `transfers.test.ts`                   | `features/transfers/store.ts`   | Expiry parsing (30m, 1h, 7d), duration formatting, error cases (invalid format, exceeds max)                |
-| `guest-types.test.ts`                 | `features/guests/types.ts`      | Guest ID generation (lowercase, hyphenation, suffix handling)                                               |
-| `csv-parser.test.ts`                  | `features/guests/csv-parser.ts` | Partiful CSV import — status normalization, plus-one linking, alphabetical sort, empty rows, fullName logic |
-| `notes-reading-time.test.ts`          | `features/words/store.ts`       | Reading-time calculation on create/update and metadata persistence                                          |
-| `note-markdown-normalization.test.ts` | `features/words/store.ts`       | Markdown path normalization to canonical `words/media` + `words/assets` refs                                |
-| `notes-share-access.test.ts`          | `features/words/share.ts`       | Share token, PIN, cookie/session invalidation behavior                                                      |
+The full list lives in `__tests__/unit/`. Rather than mirror 52 filenames here (the
+last attempt drifted into listing tests that no longer exist), these are the suites
+worth knowing about because a failure means something specific is broken:
+
+| Test file                      | Why it matters                                                                              |
+| ------------------------------ | ------------------------------------------------------------------------------------------- |
+| `slug.test.ts`                 | A drifted slug breaks every TOC anchor across words pages                                   |
+| `ticket-qr.test.ts`            | Signature forgery and tamper rejection — the only thing between a scanner and a fake ticket |
+| `event-validation.test.ts`     | Publish rules and the address-gating projection; a leak here exposes a home address         |
+| `draw-country-scoring.test.ts` | Scoring fairness across every country outline (slow — has an explicit 30s timeout)          |
+| `fetch-with-retry.test.ts`     | Enforces never-retry-4xx, one of the guest-list postmortem rules                            |
+| `csv-parser.test.ts`           | Parses external Partiful exports, whose shape we do not control                             |
 
 ### Why these modules and not others
 
@@ -60,8 +62,8 @@ The rule: **test pure logic, skip glue code.**
 
 **What we intentionally skip:**
 
-- `lib/platform/redis.ts`, `lib/platform/r2.ts` — thin wrappers around SDK clients. Testing them means testing the SDK, not our code.
-- `lib/platform/logger.ts` — side-effect-only (console output). Not worth mocking.
+- `lib/platform/redis.server.ts`, `lib/platform/r2.server.ts` — thin wrappers around SDK clients. Testing them means testing the SDK, not our code.
+- `lib/platform/logger.server.ts` — side-effect-only (console output). Not worth mocking.
 - `lib/shared/config.ts` — reads env vars. Tested implicitly by integration tests.
 - React components — these are rendering glue. The design system rules handle visual correctness. If we add component tests later, they'd use React Testing Library.
 
@@ -77,14 +79,15 @@ The rule: **test pure logic, skip glue code.**
 
 ### What's covered
 
-| Test file                   | Flow                       | What it validates                                                                                                                                                                                                                                                                         |
-| --------------------------- | -------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `transfers-memory.test.ts`  | Full transfer lifecycle    | Save → get → validate delete token → delete → confirm gone. Uses the in-memory fallback (same code path as local dev). Also validates ID format (3-word) and token length (22 chars).                                                                                                     |
-| `transfers-admin.test.ts`   | Transfers admin validation | `isSafeTransferId` (valid vs invalid patterns). `adminDeleteTransfer` rejects invalid ids with a throw, so bad input never touches R2/Redis.                                                                                                                                              |
-| `guest-checkin.test.ts`     | Guest list check-in flow   | Set guests → check in main guest → check in plus-one → check out → verify isolation between guests. The most-used feature at events — if this breaks, door staff can't check anyone in.                                                                                                   |
-| `guests-add-remove.test.ts` | Guest add/remove           | Add main guest, add plus-one (and 404 when main missing), validation (empty name). Remove main guest, remove plus-one, empty id 400, non-existent id leaves list unchanged.                                                                                                               |
-| `heading-ids.test.ts`       | TOC ↔ rehype-slug contract | Verifies that `extractHeadings()` (`features/words/headings.ts`) and `rehypeSlug()` (`lib/markdown/rehype-slug.ts`) produce identical IDs for the same headings. If they drift, JumpRail links scroll to nowhere. Tests unique headings, duplicates, special characters, and mixed cases. |
-| `auth.test.ts`              | Authentication primitives  | Timing-safe string comparison (matching, different, different-length). Tests the `safeCompare` function that guards every PIN/password check.                                                                                                                                             |
+The full list lives in `__tests__/integration/`. The ones that carry real risk:
+
+| Test file                                                                              | Flow                                                                                 |
+| -------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
+| `ticket-issuance-redemption.test.ts`                                                   | A ticket admits exactly once under concurrent scans, and capacity cannot be oversold |
+| `auth.test.ts`                                                                         | Timing-safe comparison guarding every PIN and password check                         |
+| `transfers-memory.test.ts`                                                             | Full transfer lifecycle through the in-memory fallback                               |
+| `heading-ids.test.ts`                                                                  | TOC and rehype-slug agree on ids, or JumpRail links scroll nowhere                   |
+| `paired-game-room.test.ts`, `spelling-party-room.test.ts`, `draw-country-room.test.ts` | Multiplayer room state transitions and locking                                       |
 
 ### Why in-memory fallback, not mocked Redis
 
@@ -102,21 +105,13 @@ The trade-off: these tests don't verify Redis-specific behaviour (TTL expiry, pi
 
 ```
 __tests__/
-├── unit/                        # Pure function tests — no I/O, no mocks (mostly)
-│   ├── slug.test.ts
-│   ├── format.test.ts
-│   ├── transfers.test.ts
-│   ├── guest-types.test.ts
-│   ├── csv-parser.test.ts
-│   └── notes-reading-time.test.ts
-└── integration/                 # Multi-module tests — mock only external services
-    ├── auth.test.ts
-    ├── guest-checkin.test.ts
-    ├── guests-add-remove.test.ts
-    ├── heading-ids.test.ts
-    ├── transfers-admin.test.ts
-    └── transfers-memory.test.ts
+├── unit/          # Pure logic — no I/O, mocks only for storage wrappers
+└── integration/   # Multi-module flows — external services use in-memory fallbacks
 ```
+
+There are currently 52 unit suites and 19 integration suites; `ls __tests__/unit` is the
+source of truth rather than a list in this document, which drifted badly last time one
+was kept here.
 
 **Why `__tests__/` at the root instead of colocated?**
 
@@ -145,7 +140,7 @@ Write an integration test when:
 ### When NOT to write a test
 
 - **Rendering glue** — components that just arrange props into JSX. The design system handles visual correctness.
-- **SDK wrappers** — `lib/platform/redis.ts`, `lib/platform/r2.ts`. You'd be testing the SDK, not your code.
+- **SDK wrappers** — `lib/platform/redis.server.ts`, `lib/platform/r2.server.ts`. You'd be testing the SDK, not your code.
 - **One-off scripts** — CLI commands that are run manually and verified by their output.
 
 ---
@@ -158,11 +153,11 @@ Not everything in the codebase needs a test. The mental model for deciding is: *
 
 Every module in this project falls into one of three buckets. Only the first one is worth testing.
 
-| Kind           | What it does                                                                                               | Example                                                                                            | Test?   | Why                                                                                                                                                                                                                                         |
-| -------------- | ---------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Logic**      | Transforms data — input in, output out. Decisions, parsing, formatting, validation.                        | `slug()`, `parseExpiry()`, `parseCSV()`, `updateGuestCheckIn()`                                    | **Yes** | A bug here silently corrupts data or breaks features. The function's contract matters and has edge cases. Tests are fast, stable, and high-value.                                                                                           |
-| **Glue**       | Wires things together — passes props, calls APIs, orchestrates steps. No interesting decisions of its own. | React components, API route handlers, upload orchestration                                         | **No**  | Testing glue means testing that you called the right function with the right args. That's verifying wiring, not behaviour. These tests are brittle (break when you refactor) and low-signal (pass even when the underlying logic is wrong). |
-| **Delegation** | Thin wrapper around an external library or service. Configures and calls someone else's code.              | `lib/platform/redis.ts` (Upstash client), `lib/platform/r2.ts` (S3 client), Sharp image processing | **No**  | You'd be testing the library, not your code. If Sharp's `resize()` breaks, that's Sharp's problem. If the S3 SDK's `putObject` breaks, that's AWS's problem. Your wrapper has no logic to verify.                                           |
+| Kind           | What it does                                                                                               | Example                                                                                                          | Test?   | Why                                                                                                                                                                                                                                         |
+| -------------- | ---------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Logic**      | Transforms data — input in, output out. Decisions, parsing, formatting, validation.                        | `slug()`, `parseExpiry()`, `parseCSV()`, `updateGuestCheckIn()`                                                  | **Yes** | A bug here silently corrupts data or breaks features. The function's contract matters and has edge cases. Tests are fast, stable, and high-value.                                                                                           |
+| **Glue**       | Wires things together — passes props, calls APIs, orchestrates steps. No interesting decisions of its own. | React components, API route handlers, upload orchestration                                                       | **No**  | Testing glue means testing that you called the right function with the right args. That's verifying wiring, not behaviour. These tests are brittle (break when you refactor) and low-signal (pass even when the underlying logic is wrong). |
+| **Delegation** | Thin wrapper around an external library or service. Configures and calls someone else's code.              | `lib/platform/redis.server.ts` (Upstash client), `lib/platform/r2.server.ts` (S3 client), Sharp image processing | **No**  | You'd be testing the library, not your code. If Sharp's `resize()` breaks, that's Sharp's problem. If the S3 SDK's `putObject` breaks, that's AWS's problem. Your wrapper has no logic to verify.                                           |
 
 ### Applying this to specific features
 
@@ -170,11 +165,11 @@ Every module in this project falls into one of three buckets. Only the first one
 
 **Transfer upload flow** (`features/transfers/upload.ts`, presign/finalize routes) — this is **glue + delegation**. The flow is: call R2 for a presigned URL → return it to the client → client PUTs to R2 → call finalize → server runs Sharp. Testing it means mocking S3 presign, mocking Sharp, mocking the request/response cycle, and asserting that your orchestration called them in order. That's a test of your mock setup, not your logic. The actual data integrity (does a saved transfer come back correctly?) is already tested in `transfers-memory.test.ts`.
 
-**Media processing** (`features/media/processing.ts`, `storage.ts`, `download.ts`) — this is **delegation**. These files call Sharp to resize, call S3 to upload, call fetch to download. There's no decision logic — just "take this image, resize to 600px, upload to this key." Testing it means testing Sharp and S3, which is their job.
+**Media processing** (`features/media/*.server.ts`) — this is **delegation**. These files call Sharp to resize, call S3 to upload, call fetch to download. There's no decision logic — just "take this image, resize to 600px, upload to this key." Testing it means testing Sharp and S3, which is their job.
 
 **`features/media/file-kinds.ts`** — this is a const array and a type export. There is literally no logic to test.
 
-**`features/media/albums.ts`** — this is similar to `blog` (reads JSON manifests from disk), but the data shape is simpler (no frontmatter parsing, no heading extraction, no reading time calculation). The JSON → object path is trivial. If it were doing transformations or validations on the album data, it would be worth testing.
+**`features/media/albums.server.ts`** — this is similar to `blog` (reads JSON manifests from disk), but the data shape is simpler (no frontmatter parsing, no heading extraction, no reading time calculation). The JSON → object path is trivial. If it were doing transformations or validations on the album data, it would be worth testing.
 
 ### The mental model, summarised
 
@@ -196,20 +191,27 @@ E2E (end-to-end) tests run in a real browser against the full running app. They'
 - **Expensive to maintain:** Tests break when a class name, layout, or selector changes, even if the feature still works
 - **Require infrastructure:** A running dev server, browser binaries, CI config, screenshot storage
 
-### Why we're skipping them now
+### Status: the trigger has fired
 
-This project is a **personal site for house parties and a blog**. The blast radius of a bug is "awkward moment at a party," not "revenue lost." Given that:
+This section used to say E2E was unnecessary because the blast radius of a bug was
+"an awkward moment at a party." That is no longer true. The events platform issues
+tickets, gates a home address on ticket ownership, and will take card payments in
+Phase 2. The first trigger listed below — paid events — is now live.
 
-1. **The UI is simple.** Single column, tap to check in, enter a PIN, read a blog post. No complex multi-step wizards, drag-and-drop, or real-time collaboration that's hard to test without a browser.
-2. **The bugs that would actually hurt are logic bugs** — wrong guest parsed from CSV, broken heading anchors, transfers expiring at the wrong time. Unit and integration tests catch those.
-3. **The check-in flow is already integration-tested** through the in-memory fallback. The logic (set guests → toggle check-in → verify plus-ones) is proven. What E2E would add is "does the button render and does the tap handler fire" — which manual testing covers.
-4. **Manual testing before each event is natural and sufficient.** You already `pnpm dev` and click through the guest list before every party.
+E2E tests are still absent, which is a **known gap, not a considered decision**. The
+door flow is covered at the integration level (`ticket-issuance-redemption.test.ts`
+proves single admission under concurrent scans and no overselling), but nothing
+exercises a real camera, a real offline transition, or a real payment redirect.
+
+Until that gap is closed, the rehearsal checklist in
+[`events-platform.md`](./events-platform.md) is the compensating control, and it is
+not optional before an event that matters.
 
 ### When E2E would be worth adding
 
 Add E2E tests (with [Playwright](https://playwright.dev/)) if any of these become true:
 
-- **Paid events** — if the guest check-in becomes mission-critical for ticketed events where a bug costs money
+- **Paid events** — ✅ fired. Ticketing exists; Stripe checkout lands in Phase 2.
 - **User accounts / payment** — auth flows with OAuth, session tokens, and payment forms have enough moving parts that browser-level testing catches real bugs unit tests can't
 - **Complex upload flows** — if the web upload UI grows beyond the current presign → PUT → finalize pipeline into a multi-step wizard with progress, retries, and error recovery
 - **Multiple contributors** — if other people start shipping code and you can't manually verify every change
@@ -218,7 +220,7 @@ Add E2E tests (with [Playwright](https://playwright.dev/)) if any of these becom
 
 **What they'd cover (when the time comes):**
 
-- Guest list: PIN entry → search → check in → verify checked-in state persists on refresh
+- Door: staff PIN → scan a QR → admitted → scan again → already-redeemed → drop the network → scan → queued and synced
 - Transfer: share link → preview gallery → download → countdown timer accuracy
 - Words: navigate to a page → click TOC heading → verify scroll position
 
@@ -230,8 +232,8 @@ Add E2E tests (with [Playwright](https://playwright.dev/)) if any of these becom
 
 - Path aliases (`@/` → project root) match `tsconfig.json`
 - Node environment (no jsdom needed — we're testing server logic)
-- Coverage scoped to `lib/` (the code that matters)
-- Excludes `redis.ts`, `r2.ts`, `logger.ts` from coverage (SDK wrappers / side-effect-only)
+- Coverage covers `lib/**` and `features/**`
+- Excludes `redis.ts`, `r2.ts`, `logger.ts` from coverage (note: these exclude patterns predate the `.server.ts` rename and no longer match — see `vitest.config.ts`) (SDK wrappers / side-effect-only)
 
 **`package.json` scripts:**
 

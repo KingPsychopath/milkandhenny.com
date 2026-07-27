@@ -1,0 +1,293 @@
+import { Effect } from "effect";
+import { createServerFn } from "@tanstack/react-start";
+import { getRequest, getRequestIP } from "@tanstack/react-start/server";
+
+import { authenticateRequest } from "@/features/auth/auth.server";
+import { getBaseUrlForRequest } from "@/lib/shared/config";
+import { EventsService } from "@/features/events/events-service.server";
+import { runEventsResult } from "@/features/events/events-runtime.server";
+import { toTicketHolderEvent, type EventRecord } from "@/features/events/types";
+import { TicketsService } from "./tickets-service.server";
+import { sendTicketEmail } from "./email.server";
+import { buildTicketQrPayload } from "./qr.server";
+import { rateLimitClaim } from "./tickets.server";
+import { rememberTicketHolder } from "./holder-cookie.server";
+import { isValidEmail, type DoorTicketView, type RedeemOutcome, type TicketRecord } from "./types";
+
+/**
+ * TanStack server-function boundary for tickets.
+ */
+
+export type ClaimTicketInput = {
+  eventSlug: string;
+  ticketTypeId: string;
+  holderName: string;
+  email: string;
+  quantity: number;
+};
+
+export type ClaimTicketResult =
+  | { ok: true; ticketIds: string[]; emailed: boolean; emailError?: string }
+  | { ok: false; status: number; error: string };
+
+/**
+ * Claim free tickets.
+ *
+ * Paid claims do not come through here — Phase 2 issues those from the
+ * Stripe webhook, so that a ticket is never created on the strength of a
+ * browser saying a payment happened.
+ */
+export const claimFreeTicketsFn = createServerFn({ method: "POST" })
+  .validator((data: ClaimTicketInput) => data)
+  .handler(async ({ data }): Promise<ClaimTicketResult> => {
+    const request = getRequest();
+    const origin = getBaseUrlForRequest(request);
+
+    if (!(await rateLimitClaim(getRequestIP() || "unknown"))) {
+      return { ok: false, status: 429, error: "Too many requests. Try again shortly." };
+    }
+
+    if (!isValidEmail(data.email)) {
+      return { ok: false, status: 400, error: "That email address doesn't look right" };
+    }
+
+    const loaded = await runEventsResult(
+      Effect.gen(function* () {
+        const events = yield* EventsService;
+        return yield* events.read(data.eventSlug);
+      }),
+    );
+    if (!loaded.ok) return { ok: false, status: loaded.status, error: loaded.error };
+
+    const event = loaded.value;
+    if (!event) return { ok: false, status: 404, error: "Event not found" };
+
+    const ticketType = event.ticketTypes.find((type) => type.id === data.ticketTypeId);
+    if (!ticketType) return { ok: false, status: 404, error: "Ticket type not found" };
+    if (ticketType.priceMinor > 0) {
+      return { ok: false, status: 400, error: "This ticket has to be paid for" };
+    }
+
+    const issued = await runEventsResult(
+      Effect.gen(function* () {
+        const tickets = yield* TicketsService;
+        return yield* tickets.issue({
+          eventSlug: data.eventSlug,
+          ticketTypeId: data.ticketTypeId,
+          holderName: data.holderName,
+          email: data.email,
+          quantity: data.quantity,
+          kind: "free",
+        });
+      }),
+    );
+    if (!issued.ok) return { ok: false, status: issued.status, error: issued.error };
+    if (!issued.value.ok)
+      return { ok: false, status: issued.value.status, error: issued.value.error };
+
+    const { tickets } = issued.value.value;
+
+    // Delivery failure must not fail issuance — the tickets exist and the
+    // resend flow can recover them.
+    const delivery = await sendTicketEmail({ event, tickets, origin });
+
+    rememberTicketHolder(event.slug);
+
+    return {
+      ok: true,
+      ticketIds: tickets.map((ticket) => ticket.id),
+      emailed: delivery.sent,
+      emailError: delivery.error,
+    };
+  });
+
+export type TicketPageResult =
+  | { found: false }
+  | {
+      found: true;
+      ticket: TicketRecord;
+      qrPayload: string;
+      event: ReturnType<typeof toTicketHolderEvent>;
+      /** Other tickets bought in the same order, so a group sees all its QRs. */
+      orderTicketIds: string[];
+    };
+
+export const getTicketPageFn = createServerFn({ method: "GET" })
+  .validator((data: { id: string }) => data)
+  .handler(async ({ data }): Promise<TicketPageResult> => {
+    const loaded = await runEventsResult(
+      Effect.gen(function* () {
+        const tickets = yield* TicketsService;
+        return yield* tickets.read(data.id);
+      }),
+    );
+    if (!loaded.ok || !loaded.value) return { found: false };
+
+    const ticket = loaded.value;
+    const eventResult = await runEventsResult(
+      Effect.gen(function* () {
+        const events = yield* EventsService;
+        return yield* events.read(ticket.eventSlug);
+      }),
+    );
+    if (!eventResult.ok || !eventResult.value) return { found: false };
+
+    const event: EventRecord = eventResult.value;
+
+    // Holding a ticket is what earns the address.
+    rememberTicketHolder(event.slug);
+
+    return {
+      found: true,
+      ticket,
+      qrPayload: buildTicketQrPayload(ticket.id),
+      event: toTicketHolderEvent(event),
+      orderTicketIds: [ticket.id],
+    };
+  });
+
+export type ResendResult = { ok: true } | { ok: false; status: number; error: string };
+
+/**
+ * Resend an order's tickets.
+ *
+ * Always reports success when the address is well-formed, whether or not it
+ * matched anything. Reporting "no tickets for that address" would turn this
+ * into a way to test who is attending.
+ */
+export const resendTicketsFn = createServerFn({ method: "POST" })
+  .validator((data: { eventSlug: string; email: string }) => data)
+  .handler(async ({ data }): Promise<ResendResult> => {
+    const request = getRequest();
+    const origin = getBaseUrlForRequest(request);
+
+    if (!isValidEmail(data.email)) {
+      return { ok: false, status: 400, error: "That email address doesn't look right" };
+    }
+
+    const found = await runEventsResult(
+      Effect.gen(function* () {
+        const tickets = yield* TicketsService;
+        return yield* tickets.lookupByEmail(data.eventSlug, data.email);
+      }),
+    );
+    if (!found.ok) return { ok: false, status: found.status, error: found.error };
+    if (!found.value.ok) {
+      return { ok: false, status: found.value.status, error: found.value.error };
+    }
+
+    const { tickets, event } = found.value.value;
+    if (event && tickets.length > 0) {
+      await sendTicketEmail({ event, tickets, origin });
+    }
+
+    return { ok: true };
+  });
+
+export type DoorRedeemResult = { authorised: false } | { authorised: true; outcome: RedeemOutcome };
+
+export const redeemTicketFn = createServerFn({ method: "POST" })
+  .validator(
+    (data: { scanned: string; eventSlug: string; redeemedBy?: string; offline?: boolean }) => data,
+  )
+  .handler(async ({ data }): Promise<DoorRedeemResult> => {
+    const request = getRequest();
+    const auth = await authenticateRequest(request, "staff");
+    if (!auth.ok) return { authorised: false };
+
+    const result = await runEventsResult(
+      Effect.gen(function* () {
+        const tickets = yield* TicketsService;
+        return yield* tickets.redeem(data);
+      }),
+    );
+
+    if (!result.ok) return { authorised: true, outcome: { result: "invalid" } };
+    return { authorised: true, outcome: result.value };
+  });
+
+export type DoorDataResult =
+  | { authorised: false }
+  | {
+      authorised: true;
+      eventSlug: string;
+      eventTitle: string;
+      manifestHashes: string[];
+      generatedAt: string;
+      summary: { total: number; redeemed: number };
+      tickets: (DoorTicketView & { issuedAt: string })[];
+    };
+
+/** Everything a door device needs to keep working when the wifi drops. */
+export const getDoorDataFn = createServerFn({ method: "GET" })
+  .validator((data: { eventSlug: string }) => data)
+  .handler(async ({ data }): Promise<DoorDataResult> => {
+    const request = getRequest();
+    const auth = await authenticateRequest(request, "staff");
+    if (!auth.ok) return { authorised: false };
+
+    const result = await runEventsResult(
+      Effect.gen(function* () {
+        const events = yield* EventsService;
+        const tickets = yield* TicketsService;
+        const event = yield* events.read(data.eventSlug);
+        const manifest = yield* tickets.manifest(data.eventSlug);
+        const summary = yield* tickets.forEvent(data.eventSlug);
+        return { event, manifest, summary };
+      }),
+    );
+
+    if (!result.ok || !result.value.event) return { authorised: false };
+
+    const { event, manifest, summary } = result.value;
+    return {
+      authorised: true,
+      eventSlug: event.slug,
+      eventTitle: event.title,
+      manifestHashes: manifest.hashes,
+      generatedAt: manifest.generatedAt,
+      summary: { total: summary.total, redeemed: summary.redeemed },
+      tickets: summary.tickets.map(({ email: _email, ...rest }) => rest),
+    };
+  });
+
+export type DoorPageResult =
+  | { isAuthed: false }
+  | {
+      isAuthed: true;
+      events: { slug: string; title: string; startsAt: string }[];
+      door: Extract<DoorDataResult, { authorised: true }> | null;
+    };
+
+/**
+ * The door page payload: staff auth, which events can be worked, and the
+ * selected event's manifest in one round trip so a phone on bad signal makes
+ * one request rather than three.
+ */
+export const getDoorPageFn = createServerFn({ method: "GET" })
+  .validator((data: { eventSlug?: string }) => data)
+  .handler(async ({ data }): Promise<DoorPageResult> => {
+    const request = getRequest();
+    const auth = await authenticateRequest(request, "staff");
+    if (!auth.ok) return { isAuthed: false };
+
+    const listed = await runEventsResult(
+      Effect.gen(function* () {
+        const events = yield* EventsService;
+        return yield* events.list({ includeHidden: true });
+      }),
+    );
+
+    // Drafts are included deliberately: a door may open before an event is
+    // public, and staff already hold a privileged session here.
+    const events = (listed.ok ? listed.value : [])
+      .filter((event) => event.status !== "archived")
+      .slice(0, 25)
+      .map((event) => ({ slug: event.slug, title: event.title, startsAt: event.startsAt }));
+
+    const slug = data.eventSlug ?? events[0]?.slug;
+    if (!slug) return { isAuthed: true, events, door: null };
+
+    const door = await getDoorDataFn({ data: { eventSlug: slug } });
+    return { isAuthed: true, events, door: door.authorised ? door : null };
+  });

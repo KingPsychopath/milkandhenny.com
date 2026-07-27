@@ -31,9 +31,26 @@ The host supplies a port and environment variables. Railway, Docker Compose, Kub
 
 Routes do not own business truth. Workers may execute feature workflows but must not redefine eligibility or state transitions.
 
+## Effect subsystems
+
+Effect v4 is used at service boundaries, not as a general programming style. Two subsystems use it today: multiplayer (`features/things/shared`) and events/ticketing (`features/events`, `features/tickets`).
+
+The shared shape is the same in both:
+
+```text
+TanStack / Nitro boundary
+  -> ManagedRuntime (one per subsystem, disposed by a Nitro close hook)
+       -> Context.Service wrapping plain async engine functions
+            -> timeout, Data.TaggedError failures, structured logs, spans
+```
+
+Engine functions stay ordinary `async` code in `*.server.ts` and own the product rules. The service layer owns how those calls behave operationally. Effect remains behind `.server.ts` boundaries; browser contracts, React, offline games, reducers, and reconciliation hooks do not import its runtime. Promise conversion happens only at TanStack/Nitro edges.
+
+Effect is pinned to an exact v4 beta version while v4 is prerelease, so a version bump is a coordinated change rather than a routine upgrade.
+
 ## Multiplayer runtime
 
-Multiplayer is a server-only Effect v4 subsystem inside the modular monolith:
+Multiplayer is the larger of the two Effect subsystems:
 
 ```text
 TanStack / Nitro boundary
@@ -66,15 +83,17 @@ Shared-room games with simultaneous starts compose the multiplayer readiness pol
 
 The runtime is built lazily once per Node process and disposed by a Nitro shutdown hook. It owns services, Redis pub/sub connections, metrics, timeouts, and scoped cleanup. It never owns authoritative room state or a permanent fiber per room. Redis remains the distributed source of truth, so another replica can serve the next request.
 
-Effect is pinned to an exact v4 beta version while v4 is prerelease. It remains behind `.server.ts` boundaries; browser contracts, React, offline games, reducers, and reconciliation hooks do not import its runtime. Promise conversion happens only at TanStack/Nitro edges.
-
 Wake publication is safe to retry because it is advisory and idempotent. Room creation and state mutations are not retried generically; their atomicity and idempotency remain explicit in the game engine. Party Room serializes mutations with a bounded Redis lease, while Paired Game commands use action IDs and atomic Redis claims.
 
 ## Persistence
 
-Redis stores mutable application state: guest check-ins, voting, transfer metadata, authentication sessions, rate limits, word metadata, and share records. `REDIS_REST_URL` and `REDIS_REST_TOKEN` are the canonical application contract.
+Redis stores mutable application state: events, tickets and redemptions, voting, transfer metadata, authentication sessions, rate limits, word metadata, and share records. `REDIS_REST_URL` and `REDIS_REST_TOKEN` are the canonical application contract.
 
 The production app fails closed when required persistence is unavailable. In-memory fallbacks are limited to explicit development/test scenarios.
+
+**One key per record.** Collections are indexed with a set or sorted set and read with `mget`, never stored as a single serialized blob. A single-key collection plus a re-rendering poll loop is what caused [the guest-list KV read spike](./postmortem-guestlist-kv-read-spike.md); door scanning is more read-heavy than the page that caused it.
+
+Tickets are receipts and are never given a TTL. Single-use redemption is enforced by an atomic `SET NX` claim key rather than by a read-modify-write on the ticket record, so two door devices scanning the same phone cannot both admit.
 
 ## Media
 

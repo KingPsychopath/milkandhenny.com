@@ -20,7 +20,7 @@ The application is a modular monolith. UI routes collect intent, server function
 ## Requirements
 
 - Node.js 22+
-- pnpm 9.15.4
+- pnpm 11.17.0 (pinned by the `packageManager` field)
 - Redis REST credentials
 - S3-compatible object-storage credentials
 

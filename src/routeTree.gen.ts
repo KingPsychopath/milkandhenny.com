@@ -15,28 +15,30 @@ import { Route as SitemapDotxmlRouteImport } from './routes/sitemap[.]xml'
 import { Route as PartyRouteImport } from './routes/party'
 import { Route as IcebreakerRouteImport } from './routes/icebreaker'
 import { Route as HealthRouteImport } from './routes/health'
-import { Route as GuestlistRouteImport } from './routes/guestlist'
 import { Route as FontTestRouteImport } from './routes/font-test'
 import { Route as FeedDotxmlRouteImport } from './routes/feed[.]xml'
 import { Route as ExamRouteImport } from './routes/exam'
+import { Route as DoorRouteImport } from './routes/door'
 import { Route as BestDressedRouteImport } from './routes/best-dressed'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as WordsIndexRouteImport } from './routes/words/index'
 import { Route as PicsIndexRouteImport } from './routes/pics/index'
+import { Route as EventsIndexRouteImport } from './routes/events/index'
 import { Route as AdminIndexRouteImport } from './routes/admin/index'
 import { Route as WordsSlugRouteImport } from './routes/words/$slug'
 import { Route as VaultSlugRouteImport } from './routes/vault/$slug'
+import { Route as TicketIdRouteImport } from './routes/ticket.$id'
 import { Route as ThingsSpellingPartyRouteImport } from './routes/things.spelling-party'
 import { Route as ThingsSpellingBeeRouteImport } from './routes/things.spelling-bee'
 import { Route as ThingsIcebreakerRouteImport } from './routes/things.icebreaker'
 import { Route as ThingsHeadsUpRouteImport } from './routes/things.heads-up'
 import { Route as ThingsDrawCountryRouteImport } from './routes/things.draw-country'
 import { Route as TIdRouteImport } from './routes/t/$id'
+import { Route as EventsSlugRouteImport } from './routes/events/$slug'
 import { Route as AdminEditorRouteImport } from './routes/admin/editor'
 import { Route as ApiWordsRouteRouteImport } from './routes/api/words/route'
 import { Route as ApiReportsRouteRouteImport } from './routes/api/reports/route'
 import { Route as ApiHealthRouteRouteImport } from './routes/api/health/route'
-import { Route as ApiGuestsRouteRouteImport } from './routes/api/guests/route'
 import { Route as ApiDebugRouteRouteImport } from './routes/api/debug/route'
 import { Route as ApiBestDressedRouteRouteImport } from './routes/api/best-dressed/route'
 import { Route as PicsAlbumIndexRouteImport } from './routes/pics/$album/index'
@@ -48,7 +50,6 @@ import { Route as PicsAlbumPhotoRouteImport } from './routes/pics/$album/$photo'
 import { Route as ApiWordsSlugRouteRouteImport } from './routes/api/words/$slug/route'
 import { Route as ApiUploadVerifyPinRouteRouteImport } from './routes/api/upload/verify-pin/route'
 import { Route as ApiTransfersIdRouteRouteImport } from './routes/api/transfers/$id/route'
-import { Route as ApiGuestsVerifyStaffPinRouteRouteImport } from './routes/api/guests/verify-staff-pin/route'
 import { Route as ApiDownloadPresignRouteRouteImport } from './routes/api/download/presign/route'
 import { Route as ApiCronProcessTransferMediaRouteRouteImport } from './routes/api/cron/process-transfer-media/route'
 import { Route as ApiCronCleanupWordSharesRouteRouteImport } from './routes/api/cron/cleanup-word-shares/route'
@@ -60,6 +61,7 @@ import { Route as ApiAdminVerifyRouteRouteImport } from './routes/api/admin/veri
 import { Route as ApiAdminTransfersRouteRouteImport } from './routes/api/admin/transfers/route'
 import { Route as ApiAdminStepUpRouteRouteImport } from './routes/api/admin/step-up/route'
 import { Route as ApiAdminReportsRouteRouteImport } from './routes/api/admin/reports/route'
+import { Route as ApiAdminEventsRouteRouteImport } from './routes/api/admin/events/route'
 import { Route as ApiAdminContentSummaryRouteRouteImport } from './routes/api/admin/content-summary/route'
 import { Route as ApiAdminContentAuditRouteRouteImport } from './routes/api/admin/content-audit/route'
 import { Route as ApiAdminAlbumsRouteRouteImport } from './routes/api/admin/albums/route'
@@ -72,6 +74,7 @@ import { Route as ApiUploadWordsFinalizeRouteRouteImport } from './routes/api/up
 import { Route as ApiUploadTransferPresignRouteRouteImport } from './routes/api/upload/transfer/presign/route'
 import { Route as ApiUploadTransferFinalizeRouteRouteImport } from './routes/api/upload/transfer/finalize/route'
 import { Route as ApiTransfersIdEventsRouteRouteImport } from './routes/api/transfers/$id/events/route'
+import { Route as ApiEventsSlugIcsRouteRouteImport } from './routes/api/events/$slug/ics/route'
 import { Route as ApiBestDressedVotingOpenRouteRouteImport } from './routes/api/best-dressed/voting/open/route'
 import { Route as ApiBestDressedCodesRevokeAllRouteRouteImport } from './routes/api/best-dressed/codes/revoke-all/route'
 import { Route as ApiBestDressedCodesMintBatchRouteRouteImport } from './routes/api/best-dressed/codes/mint-batch/route'
@@ -84,10 +87,7 @@ import { Route as ApiAdminTransfersCleanupRouteRouteImport } from './routes/api/
 import { Route as ApiAdminTransfersIdRouteRouteImport } from './routes/api/admin/transfers/$id/route'
 import { Route as ApiAdminTokensSessionsRouteRouteImport } from './routes/api/admin/tokens/sessions/route'
 import { Route as ApiAdminTokensRevokeRouteRouteImport } from './routes/api/admin/tokens/revoke/route'
-import { Route as ApiAdminGuestsRemoveRouteRouteImport } from './routes/api/admin/guests/remove/route'
-import { Route as ApiAdminGuestsImportRouteRouteImport } from './routes/api/admin/guests/import/route'
-import { Route as ApiAdminGuestsBootstrapRouteRouteImport } from './routes/api/admin/guests/bootstrap/route'
-import { Route as ApiAdminGuestsAddRouteRouteImport } from './routes/api/admin/guests/add/route'
+import { Route as ApiAdminEventsSlugRouteRouteImport } from './routes/api/admin/events/$slug/route'
 import { Route as ApiAdminAlbumsSlugRouteRouteImport } from './routes/api/admin/albums/$slug/route'
 import { Route as ApiWordsSlugSharesIdRouteRouteImport } from './routes/api/words/$slug/shares/$id/route'
 import { Route as ApiWordsSlugMediaFilenameRouteRouteImport } from './routes/api/words/$slug/media/$filename/route'
@@ -129,11 +129,6 @@ const HealthRoute = HealthRouteImport.update({
   path: '/health',
   getParentRoute: () => rootRouteImport,
 } as any)
-const GuestlistRoute = GuestlistRouteImport.update({
-  id: '/guestlist',
-  path: '/guestlist',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const FontTestRoute = FontTestRouteImport.update({
   id: '/font-test',
   path: '/font-test',
@@ -147,6 +142,11 @@ const FeedDotxmlRoute = FeedDotxmlRouteImport.update({
 const ExamRoute = ExamRouteImport.update({
   id: '/exam',
   path: '/exam',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const DoorRoute = DoorRouteImport.update({
+  id: '/door',
+  path: '/door',
   getParentRoute: () => rootRouteImport,
 } as any)
 const BestDressedRoute = BestDressedRouteImport.update({
@@ -169,6 +169,11 @@ const PicsIndexRoute = PicsIndexRouteImport.update({
   path: '/pics/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const EventsIndexRoute = EventsIndexRouteImport.update({
+  id: '/events/',
+  path: '/events/',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AdminIndexRoute = AdminIndexRouteImport.update({
   id: '/admin/',
   path: '/admin/',
@@ -182,6 +187,11 @@ const WordsSlugRoute = WordsSlugRouteImport.update({
 const VaultSlugRoute = VaultSlugRouteImport.update({
   id: '/vault/$slug',
   path: '/vault/$slug',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const TicketIdRoute = TicketIdRouteImport.update({
+  id: '/ticket/$id',
+  path: '/ticket/$id',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ThingsSpellingPartyRoute = ThingsSpellingPartyRouteImport.update({
@@ -214,6 +224,11 @@ const TIdRoute = TIdRouteImport.update({
   path: '/t/$id',
   getParentRoute: () => rootRouteImport,
 } as any)
+const EventsSlugRoute = EventsSlugRouteImport.update({
+  id: '/events/$slug',
+  path: '/events/$slug',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AdminEditorRoute = AdminEditorRouteImport.update({
   id: '/admin/editor',
   path: '/admin/editor',
@@ -232,11 +247,6 @@ const ApiReportsRouteRoute = ApiReportsRouteRouteImport.update({
 const ApiHealthRouteRoute = ApiHealthRouteRouteImport.update({
   id: '/api/health',
   path: '/api/health',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ApiGuestsRouteRoute = ApiGuestsRouteRouteImport.update({
-  id: '/api/guests',
-  path: '/api/guests',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiDebugRouteRoute = ApiDebugRouteRouteImport.update({
@@ -295,12 +305,6 @@ const ApiTransfersIdRouteRoute = ApiTransfersIdRouteRouteImport.update({
   path: '/api/transfers/$id',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ApiGuestsVerifyStaffPinRouteRoute =
-  ApiGuestsVerifyStaffPinRouteRouteImport.update({
-    id: '/verify-staff-pin',
-    path: '/verify-staff-pin',
-    getParentRoute: () => ApiGuestsRouteRoute,
-  } as any)
 const ApiDownloadPresignRouteRoute = ApiDownloadPresignRouteRouteImport.update({
   id: '/api/download/presign',
   path: '/api/download/presign',
@@ -358,6 +362,11 @@ const ApiAdminStepUpRouteRoute = ApiAdminStepUpRouteRouteImport.update({
 const ApiAdminReportsRouteRoute = ApiAdminReportsRouteRouteImport.update({
   id: '/api/admin/reports',
   path: '/api/admin/reports',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiAdminEventsRouteRoute = ApiAdminEventsRouteRouteImport.update({
+  id: '/api/admin/events',
+  path: '/api/admin/events',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiAdminContentSummaryRouteRoute =
@@ -430,6 +439,11 @@ const ApiTransfersIdEventsRouteRoute =
     path: '/events',
     getParentRoute: () => ApiTransfersIdRouteRoute,
   } as any)
+const ApiEventsSlugIcsRouteRoute = ApiEventsSlugIcsRouteRouteImport.update({
+  id: '/api/events/$slug/ics',
+  path: '/api/events/$slug/ics',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiBestDressedVotingOpenRouteRoute =
   ApiBestDressedVotingOpenRouteRouteImport.update({
     id: '/voting/open',
@@ -502,28 +516,10 @@ const ApiAdminTokensRevokeRouteRoute =
     path: '/api/admin/tokens/revoke',
     getParentRoute: () => rootRouteImport,
   } as any)
-const ApiAdminGuestsRemoveRouteRoute =
-  ApiAdminGuestsRemoveRouteRouteImport.update({
-    id: '/api/admin/guests/remove',
-    path: '/api/admin/guests/remove',
-    getParentRoute: () => rootRouteImport,
-  } as any)
-const ApiAdminGuestsImportRouteRoute =
-  ApiAdminGuestsImportRouteRouteImport.update({
-    id: '/api/admin/guests/import',
-    path: '/api/admin/guests/import',
-    getParentRoute: () => rootRouteImport,
-  } as any)
-const ApiAdminGuestsBootstrapRouteRoute =
-  ApiAdminGuestsBootstrapRouteRouteImport.update({
-    id: '/api/admin/guests/bootstrap',
-    path: '/api/admin/guests/bootstrap',
-    getParentRoute: () => rootRouteImport,
-  } as any)
-const ApiAdminGuestsAddRouteRoute = ApiAdminGuestsAddRouteRouteImport.update({
-  id: '/api/admin/guests/add',
-  path: '/api/admin/guests/add',
-  getParentRoute: () => rootRouteImport,
+const ApiAdminEventsSlugRouteRoute = ApiAdminEventsSlugRouteRouteImport.update({
+  id: '/$slug',
+  path: '/$slug',
+  getParentRoute: () => ApiAdminEventsRouteRoute,
 } as any)
 const ApiAdminAlbumsSlugRouteRoute = ApiAdminAlbumsSlugRouteRouteImport.update({
   id: '/$slug',
@@ -588,10 +584,10 @@ const ApiAdminAlbumsSlugPhotosPhotoIdRouteRoute =
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/best-dressed': typeof BestDressedRoute
+  '/door': typeof DoorRoute
   '/exam': typeof ExamRoute
   '/feed.xml': typeof FeedDotxmlRoute
   '/font-test': typeof FontTestRoute
-  '/guestlist': typeof GuestlistRoute
   '/health': typeof HealthRoute
   '/icebreaker': typeof IcebreakerRoute
   '/party': typeof PartyRoute
@@ -600,25 +596,28 @@ export interface FileRoutesByFullPath {
   '/upload': typeof UploadRoute
   '/api/best-dressed': typeof ApiBestDressedRouteRouteWithChildren
   '/api/debug': typeof ApiDebugRouteRoute
-  '/api/guests': typeof ApiGuestsRouteRouteWithChildren
   '/api/health': typeof ApiHealthRouteRoute
   '/api/reports': typeof ApiReportsRouteRoute
   '/api/words': typeof ApiWordsRouteRouteWithChildren
   '/admin/editor': typeof AdminEditorRoute
+  '/events/$slug': typeof EventsSlugRoute
   '/t/$id': typeof TIdRoute
   '/things/draw-country': typeof ThingsDrawCountryRoute
   '/things/heads-up': typeof ThingsHeadsUpRoute
   '/things/icebreaker': typeof ThingsIcebreakerRoute
   '/things/spelling-bee': typeof ThingsSpellingBeeRoute
   '/things/spelling-party': typeof ThingsSpellingPartyRoute
+  '/ticket/$id': typeof TicketIdRoute
   '/vault/$slug': typeof VaultSlugRoute
   '/words/$slug': typeof WordsSlugRoute
   '/admin/': typeof AdminIndexRoute
+  '/events/': typeof EventsIndexRoute
   '/pics/': typeof PicsIndexRoute
   '/words/': typeof WordsIndexRoute
   '/api/admin/albums': typeof ApiAdminAlbumsRouteRouteWithChildren
   '/api/admin/content-audit': typeof ApiAdminContentAuditRouteRoute
   '/api/admin/content-summary': typeof ApiAdminContentSummaryRouteRoute
+  '/api/admin/events': typeof ApiAdminEventsRouteRouteWithChildren
   '/api/admin/reports': typeof ApiAdminReportsRouteRoute
   '/api/admin/step-up': typeof ApiAdminStepUpRouteRoute
   '/api/admin/transfers': typeof ApiAdminTransfersRouteRouteWithChildren
@@ -630,7 +629,6 @@ export interface FileRoutesByFullPath {
   '/api/cron/cleanup-word-shares': typeof ApiCronCleanupWordSharesRouteRoute
   '/api/cron/process-transfer-media': typeof ApiCronProcessTransferMediaRouteRoute
   '/api/download/presign': typeof ApiDownloadPresignRouteRoute
-  '/api/guests/verify-staff-pin': typeof ApiGuestsVerifyStaffPinRouteRoute
   '/api/transfers/$id': typeof ApiTransfersIdRouteRouteWithChildren
   '/api/upload/verify-pin': typeof ApiUploadVerifyPinRouteRoute
   '/api/words/$slug': typeof ApiWordsSlugRouteRouteWithChildren
@@ -641,10 +639,7 @@ export interface FileRoutesByFullPath {
   '/things/spelling-party/$roomId': typeof ThingsSpellingPartyRoomIdRoute
   '/pics/$album/': typeof PicsAlbumIndexRoute
   '/api/admin/albums/$slug': typeof ApiAdminAlbumsSlugRouteRouteWithChildren
-  '/api/admin/guests/add': typeof ApiAdminGuestsAddRouteRoute
-  '/api/admin/guests/bootstrap': typeof ApiAdminGuestsBootstrapRouteRoute
-  '/api/admin/guests/import': typeof ApiAdminGuestsImportRouteRoute
-  '/api/admin/guests/remove': typeof ApiAdminGuestsRemoveRouteRoute
+  '/api/admin/events/$slug': typeof ApiAdminEventsSlugRouteRoute
   '/api/admin/tokens/revoke': typeof ApiAdminTokensRevokeRouteRoute
   '/api/admin/tokens/sessions': typeof ApiAdminTokensSessionsRouteRouteWithChildren
   '/api/admin/transfers/$id': typeof ApiAdminTransfersIdRouteRoute
@@ -657,6 +652,7 @@ export interface FileRoutesByFullPath {
   '/api/best-dressed/codes/mint-batch': typeof ApiBestDressedCodesMintBatchRouteRoute
   '/api/best-dressed/codes/revoke-all': typeof ApiBestDressedCodesRevokeAllRouteRoute
   '/api/best-dressed/voting/open': typeof ApiBestDressedVotingOpenRouteRoute
+  '/api/events/$slug/ics': typeof ApiEventsSlugIcsRouteRoute
   '/api/transfers/$id/events': typeof ApiTransfersIdEventsRouteRoute
   '/api/upload/transfer/finalize': typeof ApiUploadTransferFinalizeRouteRoute
   '/api/upload/transfer/presign': typeof ApiUploadTransferPresignRouteRoute
@@ -679,10 +675,10 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/best-dressed': typeof BestDressedRoute
+  '/door': typeof DoorRoute
   '/exam': typeof ExamRoute
   '/feed.xml': typeof FeedDotxmlRoute
   '/font-test': typeof FontTestRoute
-  '/guestlist': typeof GuestlistRoute
   '/health': typeof HealthRoute
   '/icebreaker': typeof IcebreakerRoute
   '/party': typeof PartyRoute
@@ -691,25 +687,28 @@ export interface FileRoutesByTo {
   '/upload': typeof UploadRoute
   '/api/best-dressed': typeof ApiBestDressedRouteRouteWithChildren
   '/api/debug': typeof ApiDebugRouteRoute
-  '/api/guests': typeof ApiGuestsRouteRouteWithChildren
   '/api/health': typeof ApiHealthRouteRoute
   '/api/reports': typeof ApiReportsRouteRoute
   '/api/words': typeof ApiWordsRouteRouteWithChildren
   '/admin/editor': typeof AdminEditorRoute
+  '/events/$slug': typeof EventsSlugRoute
   '/t/$id': typeof TIdRoute
   '/things/draw-country': typeof ThingsDrawCountryRoute
   '/things/heads-up': typeof ThingsHeadsUpRoute
   '/things/icebreaker': typeof ThingsIcebreakerRoute
   '/things/spelling-bee': typeof ThingsSpellingBeeRoute
   '/things/spelling-party': typeof ThingsSpellingPartyRoute
+  '/ticket/$id': typeof TicketIdRoute
   '/vault/$slug': typeof VaultSlugRoute
   '/words/$slug': typeof WordsSlugRoute
   '/admin': typeof AdminIndexRoute
+  '/events': typeof EventsIndexRoute
   '/pics': typeof PicsIndexRoute
   '/words': typeof WordsIndexRoute
   '/api/admin/albums': typeof ApiAdminAlbumsRouteRouteWithChildren
   '/api/admin/content-audit': typeof ApiAdminContentAuditRouteRoute
   '/api/admin/content-summary': typeof ApiAdminContentSummaryRouteRoute
+  '/api/admin/events': typeof ApiAdminEventsRouteRouteWithChildren
   '/api/admin/reports': typeof ApiAdminReportsRouteRoute
   '/api/admin/step-up': typeof ApiAdminStepUpRouteRoute
   '/api/admin/transfers': typeof ApiAdminTransfersRouteRouteWithChildren
@@ -721,7 +720,6 @@ export interface FileRoutesByTo {
   '/api/cron/cleanup-word-shares': typeof ApiCronCleanupWordSharesRouteRoute
   '/api/cron/process-transfer-media': typeof ApiCronProcessTransferMediaRouteRoute
   '/api/download/presign': typeof ApiDownloadPresignRouteRoute
-  '/api/guests/verify-staff-pin': typeof ApiGuestsVerifyStaffPinRouteRoute
   '/api/transfers/$id': typeof ApiTransfersIdRouteRouteWithChildren
   '/api/upload/verify-pin': typeof ApiUploadVerifyPinRouteRoute
   '/api/words/$slug': typeof ApiWordsSlugRouteRouteWithChildren
@@ -732,10 +730,7 @@ export interface FileRoutesByTo {
   '/things/spelling-party/$roomId': typeof ThingsSpellingPartyRoomIdRoute
   '/pics/$album': typeof PicsAlbumIndexRoute
   '/api/admin/albums/$slug': typeof ApiAdminAlbumsSlugRouteRouteWithChildren
-  '/api/admin/guests/add': typeof ApiAdminGuestsAddRouteRoute
-  '/api/admin/guests/bootstrap': typeof ApiAdminGuestsBootstrapRouteRoute
-  '/api/admin/guests/import': typeof ApiAdminGuestsImportRouteRoute
-  '/api/admin/guests/remove': typeof ApiAdminGuestsRemoveRouteRoute
+  '/api/admin/events/$slug': typeof ApiAdminEventsSlugRouteRoute
   '/api/admin/tokens/revoke': typeof ApiAdminTokensRevokeRouteRoute
   '/api/admin/tokens/sessions': typeof ApiAdminTokensSessionsRouteRouteWithChildren
   '/api/admin/transfers/$id': typeof ApiAdminTransfersIdRouteRoute
@@ -748,6 +743,7 @@ export interface FileRoutesByTo {
   '/api/best-dressed/codes/mint-batch': typeof ApiBestDressedCodesMintBatchRouteRoute
   '/api/best-dressed/codes/revoke-all': typeof ApiBestDressedCodesRevokeAllRouteRoute
   '/api/best-dressed/voting/open': typeof ApiBestDressedVotingOpenRouteRoute
+  '/api/events/$slug/ics': typeof ApiEventsSlugIcsRouteRoute
   '/api/transfers/$id/events': typeof ApiTransfersIdEventsRouteRoute
   '/api/upload/transfer/finalize': typeof ApiUploadTransferFinalizeRouteRoute
   '/api/upload/transfer/presign': typeof ApiUploadTransferPresignRouteRoute
@@ -771,10 +767,10 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/best-dressed': typeof BestDressedRoute
+  '/door': typeof DoorRoute
   '/exam': typeof ExamRoute
   '/feed.xml': typeof FeedDotxmlRoute
   '/font-test': typeof FontTestRoute
-  '/guestlist': typeof GuestlistRoute
   '/health': typeof HealthRoute
   '/icebreaker': typeof IcebreakerRoute
   '/party': typeof PartyRoute
@@ -783,25 +779,28 @@ export interface FileRoutesById {
   '/upload': typeof UploadRoute
   '/api/best-dressed': typeof ApiBestDressedRouteRouteWithChildren
   '/api/debug': typeof ApiDebugRouteRoute
-  '/api/guests': typeof ApiGuestsRouteRouteWithChildren
   '/api/health': typeof ApiHealthRouteRoute
   '/api/reports': typeof ApiReportsRouteRoute
   '/api/words': typeof ApiWordsRouteRouteWithChildren
   '/admin/editor': typeof AdminEditorRoute
+  '/events/$slug': typeof EventsSlugRoute
   '/t/$id': typeof TIdRoute
   '/things/draw-country': typeof ThingsDrawCountryRoute
   '/things/heads-up': typeof ThingsHeadsUpRoute
   '/things/icebreaker': typeof ThingsIcebreakerRoute
   '/things/spelling-bee': typeof ThingsSpellingBeeRoute
   '/things/spelling-party': typeof ThingsSpellingPartyRoute
+  '/ticket/$id': typeof TicketIdRoute
   '/vault/$slug': typeof VaultSlugRoute
   '/words/$slug': typeof WordsSlugRoute
   '/admin/': typeof AdminIndexRoute
+  '/events/': typeof EventsIndexRoute
   '/pics/': typeof PicsIndexRoute
   '/words/': typeof WordsIndexRoute
   '/api/admin/albums': typeof ApiAdminAlbumsRouteRouteWithChildren
   '/api/admin/content-audit': typeof ApiAdminContentAuditRouteRoute
   '/api/admin/content-summary': typeof ApiAdminContentSummaryRouteRoute
+  '/api/admin/events': typeof ApiAdminEventsRouteRouteWithChildren
   '/api/admin/reports': typeof ApiAdminReportsRouteRoute
   '/api/admin/step-up': typeof ApiAdminStepUpRouteRoute
   '/api/admin/transfers': typeof ApiAdminTransfersRouteRouteWithChildren
@@ -813,7 +812,6 @@ export interface FileRoutesById {
   '/api/cron/cleanup-word-shares': typeof ApiCronCleanupWordSharesRouteRoute
   '/api/cron/process-transfer-media': typeof ApiCronProcessTransferMediaRouteRoute
   '/api/download/presign': typeof ApiDownloadPresignRouteRoute
-  '/api/guests/verify-staff-pin': typeof ApiGuestsVerifyStaffPinRouteRoute
   '/api/transfers/$id': typeof ApiTransfersIdRouteRouteWithChildren
   '/api/upload/verify-pin': typeof ApiUploadVerifyPinRouteRoute
   '/api/words/$slug': typeof ApiWordsSlugRouteRouteWithChildren
@@ -824,10 +822,7 @@ export interface FileRoutesById {
   '/things/spelling-party_/$roomId': typeof ThingsSpellingPartyRoomIdRoute
   '/pics/$album/': typeof PicsAlbumIndexRoute
   '/api/admin/albums/$slug': typeof ApiAdminAlbumsSlugRouteRouteWithChildren
-  '/api/admin/guests/add': typeof ApiAdminGuestsAddRouteRoute
-  '/api/admin/guests/bootstrap': typeof ApiAdminGuestsBootstrapRouteRoute
-  '/api/admin/guests/import': typeof ApiAdminGuestsImportRouteRoute
-  '/api/admin/guests/remove': typeof ApiAdminGuestsRemoveRouteRoute
+  '/api/admin/events/$slug': typeof ApiAdminEventsSlugRouteRoute
   '/api/admin/tokens/revoke': typeof ApiAdminTokensRevokeRouteRoute
   '/api/admin/tokens/sessions': typeof ApiAdminTokensSessionsRouteRouteWithChildren
   '/api/admin/transfers/$id': typeof ApiAdminTransfersIdRouteRoute
@@ -840,6 +835,7 @@ export interface FileRoutesById {
   '/api/best-dressed/codes/mint-batch': typeof ApiBestDressedCodesMintBatchRouteRoute
   '/api/best-dressed/codes/revoke-all': typeof ApiBestDressedCodesRevokeAllRouteRoute
   '/api/best-dressed/voting/open': typeof ApiBestDressedVotingOpenRouteRoute
+  '/api/events/$slug/ics': typeof ApiEventsSlugIcsRouteRoute
   '/api/transfers/$id/events': typeof ApiTransfersIdEventsRouteRoute
   '/api/upload/transfer/finalize': typeof ApiUploadTransferFinalizeRouteRoute
   '/api/upload/transfer/presign': typeof ApiUploadTransferPresignRouteRoute
@@ -864,10 +860,10 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/best-dressed'
+    | '/door'
     | '/exam'
     | '/feed.xml'
     | '/font-test'
-    | '/guestlist'
     | '/health'
     | '/icebreaker'
     | '/party'
@@ -876,25 +872,28 @@ export interface FileRouteTypes {
     | '/upload'
     | '/api/best-dressed'
     | '/api/debug'
-    | '/api/guests'
     | '/api/health'
     | '/api/reports'
     | '/api/words'
     | '/admin/editor'
+    | '/events/$slug'
     | '/t/$id'
     | '/things/draw-country'
     | '/things/heads-up'
     | '/things/icebreaker'
     | '/things/spelling-bee'
     | '/things/spelling-party'
+    | '/ticket/$id'
     | '/vault/$slug'
     | '/words/$slug'
     | '/admin/'
+    | '/events/'
     | '/pics/'
     | '/words/'
     | '/api/admin/albums'
     | '/api/admin/content-audit'
     | '/api/admin/content-summary'
+    | '/api/admin/events'
     | '/api/admin/reports'
     | '/api/admin/step-up'
     | '/api/admin/transfers'
@@ -906,7 +905,6 @@ export interface FileRouteTypes {
     | '/api/cron/cleanup-word-shares'
     | '/api/cron/process-transfer-media'
     | '/api/download/presign'
-    | '/api/guests/verify-staff-pin'
     | '/api/transfers/$id'
     | '/api/upload/verify-pin'
     | '/api/words/$slug'
@@ -917,10 +915,7 @@ export interface FileRouteTypes {
     | '/things/spelling-party/$roomId'
     | '/pics/$album/'
     | '/api/admin/albums/$slug'
-    | '/api/admin/guests/add'
-    | '/api/admin/guests/bootstrap'
-    | '/api/admin/guests/import'
-    | '/api/admin/guests/remove'
+    | '/api/admin/events/$slug'
     | '/api/admin/tokens/revoke'
     | '/api/admin/tokens/sessions'
     | '/api/admin/transfers/$id'
@@ -933,6 +928,7 @@ export interface FileRouteTypes {
     | '/api/best-dressed/codes/mint-batch'
     | '/api/best-dressed/codes/revoke-all'
     | '/api/best-dressed/voting/open'
+    | '/api/events/$slug/ics'
     | '/api/transfers/$id/events'
     | '/api/upload/transfer/finalize'
     | '/api/upload/transfer/presign'
@@ -955,10 +951,10 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/best-dressed'
+    | '/door'
     | '/exam'
     | '/feed.xml'
     | '/font-test'
-    | '/guestlist'
     | '/health'
     | '/icebreaker'
     | '/party'
@@ -967,25 +963,28 @@ export interface FileRouteTypes {
     | '/upload'
     | '/api/best-dressed'
     | '/api/debug'
-    | '/api/guests'
     | '/api/health'
     | '/api/reports'
     | '/api/words'
     | '/admin/editor'
+    | '/events/$slug'
     | '/t/$id'
     | '/things/draw-country'
     | '/things/heads-up'
     | '/things/icebreaker'
     | '/things/spelling-bee'
     | '/things/spelling-party'
+    | '/ticket/$id'
     | '/vault/$slug'
     | '/words/$slug'
     | '/admin'
+    | '/events'
     | '/pics'
     | '/words'
     | '/api/admin/albums'
     | '/api/admin/content-audit'
     | '/api/admin/content-summary'
+    | '/api/admin/events'
     | '/api/admin/reports'
     | '/api/admin/step-up'
     | '/api/admin/transfers'
@@ -997,7 +996,6 @@ export interface FileRouteTypes {
     | '/api/cron/cleanup-word-shares'
     | '/api/cron/process-transfer-media'
     | '/api/download/presign'
-    | '/api/guests/verify-staff-pin'
     | '/api/transfers/$id'
     | '/api/upload/verify-pin'
     | '/api/words/$slug'
@@ -1008,10 +1006,7 @@ export interface FileRouteTypes {
     | '/things/spelling-party/$roomId'
     | '/pics/$album'
     | '/api/admin/albums/$slug'
-    | '/api/admin/guests/add'
-    | '/api/admin/guests/bootstrap'
-    | '/api/admin/guests/import'
-    | '/api/admin/guests/remove'
+    | '/api/admin/events/$slug'
     | '/api/admin/tokens/revoke'
     | '/api/admin/tokens/sessions'
     | '/api/admin/transfers/$id'
@@ -1024,6 +1019,7 @@ export interface FileRouteTypes {
     | '/api/best-dressed/codes/mint-batch'
     | '/api/best-dressed/codes/revoke-all'
     | '/api/best-dressed/voting/open'
+    | '/api/events/$slug/ics'
     | '/api/transfers/$id/events'
     | '/api/upload/transfer/finalize'
     | '/api/upload/transfer/presign'
@@ -1046,10 +1042,10 @@ export interface FileRouteTypes {
     | '__root__'
     | '/'
     | '/best-dressed'
+    | '/door'
     | '/exam'
     | '/feed.xml'
     | '/font-test'
-    | '/guestlist'
     | '/health'
     | '/icebreaker'
     | '/party'
@@ -1058,25 +1054,28 @@ export interface FileRouteTypes {
     | '/upload'
     | '/api/best-dressed'
     | '/api/debug'
-    | '/api/guests'
     | '/api/health'
     | '/api/reports'
     | '/api/words'
     | '/admin/editor'
+    | '/events/$slug'
     | '/t/$id'
     | '/things/draw-country'
     | '/things/heads-up'
     | '/things/icebreaker'
     | '/things/spelling-bee'
     | '/things/spelling-party'
+    | '/ticket/$id'
     | '/vault/$slug'
     | '/words/$slug'
     | '/admin/'
+    | '/events/'
     | '/pics/'
     | '/words/'
     | '/api/admin/albums'
     | '/api/admin/content-audit'
     | '/api/admin/content-summary'
+    | '/api/admin/events'
     | '/api/admin/reports'
     | '/api/admin/step-up'
     | '/api/admin/transfers'
@@ -1088,7 +1087,6 @@ export interface FileRouteTypes {
     | '/api/cron/cleanup-word-shares'
     | '/api/cron/process-transfer-media'
     | '/api/download/presign'
-    | '/api/guests/verify-staff-pin'
     | '/api/transfers/$id'
     | '/api/upload/verify-pin'
     | '/api/words/$slug'
@@ -1099,10 +1097,7 @@ export interface FileRouteTypes {
     | '/things/spelling-party_/$roomId'
     | '/pics/$album/'
     | '/api/admin/albums/$slug'
-    | '/api/admin/guests/add'
-    | '/api/admin/guests/bootstrap'
-    | '/api/admin/guests/import'
-    | '/api/admin/guests/remove'
+    | '/api/admin/events/$slug'
     | '/api/admin/tokens/revoke'
     | '/api/admin/tokens/sessions'
     | '/api/admin/transfers/$id'
@@ -1115,6 +1110,7 @@ export interface FileRouteTypes {
     | '/api/best-dressed/codes/mint-batch'
     | '/api/best-dressed/codes/revoke-all'
     | '/api/best-dressed/voting/open'
+    | '/api/events/$slug/ics'
     | '/api/transfers/$id/events'
     | '/api/upload/transfer/finalize'
     | '/api/upload/transfer/presign'
@@ -1138,10 +1134,10 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   BestDressedRoute: typeof BestDressedRoute
+  DoorRoute: typeof DoorRoute
   ExamRoute: typeof ExamRoute
   FeedDotxmlRoute: typeof FeedDotxmlRoute
   FontTestRoute: typeof FontTestRoute
-  GuestlistRoute: typeof GuestlistRoute
   HealthRoute: typeof HealthRoute
   IcebreakerRoute: typeof IcebreakerRoute
   PartyRoute: typeof PartyRoute
@@ -1150,20 +1146,23 @@ export interface RootRouteChildren {
   UploadRoute: typeof UploadRoute
   ApiBestDressedRouteRoute: typeof ApiBestDressedRouteRouteWithChildren
   ApiDebugRouteRoute: typeof ApiDebugRouteRoute
-  ApiGuestsRouteRoute: typeof ApiGuestsRouteRouteWithChildren
   ApiHealthRouteRoute: typeof ApiHealthRouteRoute
   ApiReportsRouteRoute: typeof ApiReportsRouteRoute
   ApiWordsRouteRoute: typeof ApiWordsRouteRouteWithChildren
   AdminEditorRoute: typeof AdminEditorRoute
+  EventsSlugRoute: typeof EventsSlugRoute
   TIdRoute: typeof TIdRoute
+  TicketIdRoute: typeof TicketIdRoute
   VaultSlugRoute: typeof VaultSlugRoute
   WordsSlugRoute: typeof WordsSlugRoute
   AdminIndexRoute: typeof AdminIndexRoute
+  EventsIndexRoute: typeof EventsIndexRoute
   PicsIndexRoute: typeof PicsIndexRoute
   WordsIndexRoute: typeof WordsIndexRoute
   ApiAdminAlbumsRouteRoute: typeof ApiAdminAlbumsRouteRouteWithChildren
   ApiAdminContentAuditRouteRoute: typeof ApiAdminContentAuditRouteRoute
   ApiAdminContentSummaryRouteRoute: typeof ApiAdminContentSummaryRouteRoute
+  ApiAdminEventsRouteRoute: typeof ApiAdminEventsRouteRouteWithChildren
   ApiAdminReportsRouteRoute: typeof ApiAdminReportsRouteRoute
   ApiAdminStepUpRouteRoute: typeof ApiAdminStepUpRouteRoute
   ApiAdminTransfersRouteRoute: typeof ApiAdminTransfersRouteRouteWithChildren
@@ -1179,12 +1178,9 @@ export interface RootRouteChildren {
   ApiUploadVerifyPinRouteRoute: typeof ApiUploadVerifyPinRouteRoute
   PicsAlbumPhotoRoute: typeof PicsAlbumPhotoRoute
   PicsAlbumIndexRoute: typeof PicsAlbumIndexRoute
-  ApiAdminGuestsAddRouteRoute: typeof ApiAdminGuestsAddRouteRoute
-  ApiAdminGuestsBootstrapRouteRoute: typeof ApiAdminGuestsBootstrapRouteRoute
-  ApiAdminGuestsImportRouteRoute: typeof ApiAdminGuestsImportRouteRoute
-  ApiAdminGuestsRemoveRouteRoute: typeof ApiAdminGuestsRemoveRouteRoute
   ApiAdminTokensRevokeRouteRoute: typeof ApiAdminTokensRevokeRouteRoute
   ApiAdminTokensSessionsRouteRoute: typeof ApiAdminTokensSessionsRouteRouteWithChildren
+  ApiEventsSlugIcsRouteRoute: typeof ApiEventsSlugIcsRouteRoute
   ApiUploadTransferFinalizeRouteRoute: typeof ApiUploadTransferFinalizeRouteRoute
   ApiUploadTransferPresignRouteRoute: typeof ApiUploadTransferPresignRouteRoute
   ApiUploadWordsFinalizeRouteRoute: typeof ApiUploadWordsFinalizeRouteRoute
@@ -1238,13 +1234,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof HealthRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/guestlist': {
-      id: '/guestlist'
-      path: '/guestlist'
-      fullPath: '/guestlist'
-      preLoaderRoute: typeof GuestlistRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/font-test': {
       id: '/font-test'
       path: '/font-test'
@@ -1264,6 +1253,13 @@ declare module '@tanstack/react-router' {
       path: '/exam'
       fullPath: '/exam'
       preLoaderRoute: typeof ExamRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/door': {
+      id: '/door'
+      path: '/door'
+      fullPath: '/door'
+      preLoaderRoute: typeof DoorRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/best-dressed': {
@@ -1294,6 +1290,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PicsIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/events/': {
+      id: '/events/'
+      path: '/events'
+      fullPath: '/events/'
+      preLoaderRoute: typeof EventsIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/admin/': {
       id: '/admin/'
       path: '/admin'
@@ -1313,6 +1316,13 @@ declare module '@tanstack/react-router' {
       path: '/vault/$slug'
       fullPath: '/vault/$slug'
       preLoaderRoute: typeof VaultSlugRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/ticket/$id': {
+      id: '/ticket/$id'
+      path: '/ticket/$id'
+      fullPath: '/ticket/$id'
+      preLoaderRoute: typeof TicketIdRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/things/spelling-party': {
@@ -1357,6 +1367,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof TIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/events/$slug': {
+      id: '/events/$slug'
+      path: '/events/$slug'
+      fullPath: '/events/$slug'
+      preLoaderRoute: typeof EventsSlugRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/admin/editor': {
       id: '/admin/editor'
       path: '/admin/editor'
@@ -1383,13 +1400,6 @@ declare module '@tanstack/react-router' {
       path: '/api/health'
       fullPath: '/api/health'
       preLoaderRoute: typeof ApiHealthRouteRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/guests': {
-      id: '/api/guests'
-      path: '/api/guests'
-      fullPath: '/api/guests'
-      preLoaderRoute: typeof ApiGuestsRouteRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/debug': {
@@ -1469,13 +1479,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiTransfersIdRouteRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/api/guests/verify-staff-pin': {
-      id: '/api/guests/verify-staff-pin'
-      path: '/verify-staff-pin'
-      fullPath: '/api/guests/verify-staff-pin'
-      preLoaderRoute: typeof ApiGuestsVerifyStaffPinRouteRouteImport
-      parentRoute: typeof ApiGuestsRouteRoute
-    }
     '/api/download/presign': {
       id: '/api/download/presign'
       path: '/api/download/presign'
@@ -1551,6 +1554,13 @@ declare module '@tanstack/react-router' {
       path: '/api/admin/reports'
       fullPath: '/api/admin/reports'
       preLoaderRoute: typeof ApiAdminReportsRouteRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/admin/events': {
+      id: '/api/admin/events'
+      path: '/api/admin/events'
+      fullPath: '/api/admin/events'
+      preLoaderRoute: typeof ApiAdminEventsRouteRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/admin/content-summary': {
@@ -1637,6 +1647,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiTransfersIdEventsRouteRouteImport
       parentRoute: typeof ApiTransfersIdRouteRoute
     }
+    '/api/events/$slug/ics': {
+      id: '/api/events/$slug/ics'
+      path: '/api/events/$slug/ics'
+      fullPath: '/api/events/$slug/ics'
+      preLoaderRoute: typeof ApiEventsSlugIcsRouteRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/best-dressed/voting/open': {
       id: '/api/best-dressed/voting/open'
       path: '/voting/open'
@@ -1721,33 +1738,12 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiAdminTokensRevokeRouteRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/api/admin/guests/remove': {
-      id: '/api/admin/guests/remove'
-      path: '/api/admin/guests/remove'
-      fullPath: '/api/admin/guests/remove'
-      preLoaderRoute: typeof ApiAdminGuestsRemoveRouteRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/admin/guests/import': {
-      id: '/api/admin/guests/import'
-      path: '/api/admin/guests/import'
-      fullPath: '/api/admin/guests/import'
-      preLoaderRoute: typeof ApiAdminGuestsImportRouteRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/admin/guests/bootstrap': {
-      id: '/api/admin/guests/bootstrap'
-      path: '/api/admin/guests/bootstrap'
-      fullPath: '/api/admin/guests/bootstrap'
-      preLoaderRoute: typeof ApiAdminGuestsBootstrapRouteRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/admin/guests/add': {
-      id: '/api/admin/guests/add'
-      path: '/api/admin/guests/add'
-      fullPath: '/api/admin/guests/add'
-      preLoaderRoute: typeof ApiAdminGuestsAddRouteRouteImport
-      parentRoute: typeof rootRouteImport
+    '/api/admin/events/$slug': {
+      id: '/api/admin/events/$slug'
+      path: '/$slug'
+      fullPath: '/api/admin/events/$slug'
+      preLoaderRoute: typeof ApiAdminEventsSlugRouteRouteImport
+      parentRoute: typeof ApiAdminEventsRouteRoute
     }
     '/api/admin/albums/$slug': {
       id: '/api/admin/albums/$slug'
@@ -1870,18 +1866,6 @@ const ApiBestDressedRouteRouteChildren: ApiBestDressedRouteRouteChildren = {
 const ApiBestDressedRouteRouteWithChildren =
   ApiBestDressedRouteRoute._addFileChildren(ApiBestDressedRouteRouteChildren)
 
-interface ApiGuestsRouteRouteChildren {
-  ApiGuestsVerifyStaffPinRouteRoute: typeof ApiGuestsVerifyStaffPinRouteRoute
-}
-
-const ApiGuestsRouteRouteChildren: ApiGuestsRouteRouteChildren = {
-  ApiGuestsVerifyStaffPinRouteRoute: ApiGuestsVerifyStaffPinRouteRoute,
-}
-
-const ApiGuestsRouteRouteWithChildren = ApiGuestsRouteRoute._addFileChildren(
-  ApiGuestsRouteRouteChildren,
-)
-
 interface ApiWordsSlugSharesRouteRouteChildren {
   ApiWordsSlugSharesIdRouteRoute: typeof ApiWordsSlugSharesIdRouteRoute
 }
@@ -1950,6 +1934,17 @@ const ApiAdminAlbumsRouteRouteChildren: ApiAdminAlbumsRouteRouteChildren = {
 
 const ApiAdminAlbumsRouteRouteWithChildren =
   ApiAdminAlbumsRouteRoute._addFileChildren(ApiAdminAlbumsRouteRouteChildren)
+
+interface ApiAdminEventsRouteRouteChildren {
+  ApiAdminEventsSlugRouteRoute: typeof ApiAdminEventsSlugRouteRoute
+}
+
+const ApiAdminEventsRouteRouteChildren: ApiAdminEventsRouteRouteChildren = {
+  ApiAdminEventsSlugRouteRoute: ApiAdminEventsSlugRouteRoute,
+}
+
+const ApiAdminEventsRouteRouteWithChildren =
+  ApiAdminEventsRouteRoute._addFileChildren(ApiAdminEventsRouteRouteChildren)
 
 interface ApiAdminTransfersRouteRouteChildren {
   ApiAdminTransfersIdRouteRoute: typeof ApiAdminTransfersIdRouteRoute
@@ -2033,10 +2028,10 @@ const ApiAdminTokensSessionsRouteRouteWithChildren =
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   BestDressedRoute: BestDressedRoute,
+  DoorRoute: DoorRoute,
   ExamRoute: ExamRoute,
   FeedDotxmlRoute: FeedDotxmlRoute,
   FontTestRoute: FontTestRoute,
-  GuestlistRoute: GuestlistRoute,
   HealthRoute: HealthRoute,
   IcebreakerRoute: IcebreakerRoute,
   PartyRoute: PartyRoute,
@@ -2045,20 +2040,23 @@ const rootRouteChildren: RootRouteChildren = {
   UploadRoute: UploadRoute,
   ApiBestDressedRouteRoute: ApiBestDressedRouteRouteWithChildren,
   ApiDebugRouteRoute: ApiDebugRouteRoute,
-  ApiGuestsRouteRoute: ApiGuestsRouteRouteWithChildren,
   ApiHealthRouteRoute: ApiHealthRouteRoute,
   ApiReportsRouteRoute: ApiReportsRouteRoute,
   ApiWordsRouteRoute: ApiWordsRouteRouteWithChildren,
   AdminEditorRoute: AdminEditorRoute,
+  EventsSlugRoute: EventsSlugRoute,
   TIdRoute: TIdRoute,
+  TicketIdRoute: TicketIdRoute,
   VaultSlugRoute: VaultSlugRoute,
   WordsSlugRoute: WordsSlugRoute,
   AdminIndexRoute: AdminIndexRoute,
+  EventsIndexRoute: EventsIndexRoute,
   PicsIndexRoute: PicsIndexRoute,
   WordsIndexRoute: WordsIndexRoute,
   ApiAdminAlbumsRouteRoute: ApiAdminAlbumsRouteRouteWithChildren,
   ApiAdminContentAuditRouteRoute: ApiAdminContentAuditRouteRoute,
   ApiAdminContentSummaryRouteRoute: ApiAdminContentSummaryRouteRoute,
+  ApiAdminEventsRouteRoute: ApiAdminEventsRouteRouteWithChildren,
   ApiAdminReportsRouteRoute: ApiAdminReportsRouteRoute,
   ApiAdminStepUpRouteRoute: ApiAdminStepUpRouteRoute,
   ApiAdminTransfersRouteRoute: ApiAdminTransfersRouteRouteWithChildren,
@@ -2075,13 +2073,10 @@ const rootRouteChildren: RootRouteChildren = {
   ApiUploadVerifyPinRouteRoute: ApiUploadVerifyPinRouteRoute,
   PicsAlbumPhotoRoute: PicsAlbumPhotoRoute,
   PicsAlbumIndexRoute: PicsAlbumIndexRoute,
-  ApiAdminGuestsAddRouteRoute: ApiAdminGuestsAddRouteRoute,
-  ApiAdminGuestsBootstrapRouteRoute: ApiAdminGuestsBootstrapRouteRoute,
-  ApiAdminGuestsImportRouteRoute: ApiAdminGuestsImportRouteRoute,
-  ApiAdminGuestsRemoveRouteRoute: ApiAdminGuestsRemoveRouteRoute,
   ApiAdminTokensRevokeRouteRoute: ApiAdminTokensRevokeRouteRoute,
   ApiAdminTokensSessionsRouteRoute:
     ApiAdminTokensSessionsRouteRouteWithChildren,
+  ApiEventsSlugIcsRouteRoute: ApiEventsSlugIcsRouteRoute,
   ApiUploadTransferFinalizeRouteRoute: ApiUploadTransferFinalizeRouteRoute,
   ApiUploadTransferPresignRouteRoute: ApiUploadTransferPresignRouteRoute,
   ApiUploadWordsFinalizeRouteRoute: ApiUploadWordsFinalizeRouteRoute,

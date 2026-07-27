@@ -1,8 +1,7 @@
 import { createHash, randomBytes } from "crypto";
 import { getCookie, getRequestIP, setCookie } from "@tanstack/react-start/server";
 import { getRedis } from "@/lib/platform/redis.server";
-import { getGuests } from "@/features/guests/store";
-import { getAllGuestNames } from "@/features/guests/utils";
+import { getAttendeeNames } from "./attendees.server";
 
 const VOTES_HASH_KEY = "best-dressed:votes:v2";
 const SESSION_KEY = "best-dressed:session";
@@ -319,11 +318,9 @@ export async function searchBestDressedGuests(input: {
     const codeExists = await Promise.all(variants.map((variant) => redis.exists(codeKey(variant))));
     if (!codeExists.some((exists) => exists === 1)) return { names: [] };
   }
-  const guests = await getGuests();
+  const attendees = await getAttendeeNames();
   return {
-    names: getAllGuestNames(guests)
-      .filter((name) => name.toLocaleLowerCase().includes(query))
-      .slice(0, 8),
+    names: attendees.filter((name) => name.toLocaleLowerCase().includes(query)).slice(0, 8),
   };
 }
 
@@ -406,9 +403,8 @@ export async function voteBestDressed(input: VoteInput): Promise<VoteResult> {
   const trimmedName = typeof input.name === "string" ? input.name.trim() : "";
   if (!trimmedName) return { ok: false, status: 400, error: "Name is required" };
 
-  const guests = await getGuests();
-  const guestNamesSet = new Set(getAllGuestNames(guests));
-  if (!guestNamesSet.has(trimmedName)) {
+  const attendeeNames = new Set(await getAttendeeNames());
+  if (!attendeeNames.has(trimmedName)) {
     const votes = await getVotes();
     const leaderboard = Object.entries(votes)
       .map(([n, count]) => ({ name: n, count }))
@@ -417,7 +413,7 @@ export async function voteBestDressed(input: VoteInput): Promise<VoteResult> {
     return {
       ok: false,
       status: 400,
-      error: "You can only vote for someone on the guest list.",
+      error: "You can only vote for someone holding a ticket.",
       leaderboard,
       totalVotes: Object.values(votes).reduce((a, b) => a + b, 0),
       session,

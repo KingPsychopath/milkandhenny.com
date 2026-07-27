@@ -8,6 +8,7 @@ This folder holds deeper reference docs. Pick by topic:
 | ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
 | [design-language.md](./design-language.md)                             | Design language — palette, typography, motion, interaction rules, and why the UI looks the way it does |
 | [architecture.md](./architecture.md)                                   | Provider-neutral runtime boundaries, ownership, storage, maintenance, and health                       |
+| [events-platform.md](./events-platform.md)                             | Events, ticketing, signed QR, door check-in, email and payments — spec and phasing                     |
 | [deployment.md](./deployment.md)                                       | Railway, Docker/VPS deployment, cutover, and rollback                                                  |
 | [observability.md](./observability.md)                                 | Health checks, structured logs, dependency probes, and operator signals                                |
 | [security.md](./security.md)                                           | Authentication, rate limiting, incident response & key rotation                                        |

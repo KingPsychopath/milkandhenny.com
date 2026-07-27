@@ -1,0 +1,253 @@
+import { Link } from "@tanstack/react-router";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+
+import { SITE_BRAND } from "@/lib/shared/config";
+import { eventIcsPath } from "../routes";
+import {
+  formatEventDate,
+  formatEventTime,
+  hasTickets,
+  type TicketHolderEvent,
+  type ViewableEvent,
+} from "../types";
+import type { TicketTypeAvailability } from "../events.server";
+import { ClaimTicketForm } from "./ClaimTicketForm";
+import { ResendTicketForm } from "./ResendTicketForm";
+
+/**
+ * The event page.
+ *
+ * Ordering is deliberate: what and when, then how to get in, then
+ * everything else. Someone deciding on a phone should be able to answer
+ * "am I going?" and act on it without scrolling past a wall of prose.
+ */
+
+function isRevealed(event: ViewableEvent): event is TicketHolderEvent {
+  return event.locationRevealed;
+}
+
+function Fact({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="flex gap-4 py-2">
+      <dt className="shrink-0 w-20 font-mono text-micro theme-muted tracking-widest uppercase pt-0.5">
+        {label}
+      </dt>
+      <dd className="min-w-0 flex-1 font-serif text-sm text-foreground leading-relaxed">
+        {children}
+      </dd>
+    </div>
+  );
+}
+
+function StatusBanner({ status }: { status: ViewableEvent["status"] }) {
+  if (status === "published") return null;
+
+  const copy =
+    status === "cancelled"
+      ? "This event has been cancelled."
+      : status === "sold-out"
+        ? "This event is sold out."
+        : status === "draft"
+          ? "Draft — only you can see this."
+          : "This event is archived.";
+
+  return (
+    <p className="mb-6 px-4 py-3 border theme-border-strong rounded-lg font-mono text-xs text-foreground">
+      {copy}
+    </p>
+  );
+}
+
+export function EventDetailPage({
+  event,
+  availability,
+}: {
+  event: ViewableEvent;
+  availability: TicketTypeAvailability[];
+}) {
+  const revealed = isRevealed(event);
+  const ticketsExist = hasTickets(event);
+
+  return (
+    <div className="min-h-screen bg-background">
+      <header className="max-w-2xl mx-auto px-6 pt-12 pb-6">
+        <Link
+          to="/events"
+          className="font-mono text-micro theme-muted tracking-wide hover:text-foreground transition-colors"
+        >
+          ← {SITE_BRAND} events
+        </Link>
+      </header>
+
+      <main id="main" className="max-w-2xl mx-auto px-6 pb-24">
+        <StatusBanner status={event.status} />
+
+        {event.heroImage && (
+          <img
+            src={event.heroImage}
+            alt=""
+            className="w-full h-auto rounded-lg mb-8"
+            loading="eager"
+          />
+        )}
+
+        <h1 className="font-serif text-3xl sm:text-4xl text-foreground leading-tight">
+          {event.title}
+        </h1>
+        {event.tagline && (
+          <p className="mt-3 font-serif text-lg theme-subtle leading-relaxed">{event.tagline}</p>
+        )}
+
+        {/* Key facts — everything needed to decide, above the fold. */}
+        <dl className="mt-8 divide-y theme-border border-y theme-border py-2">
+          <Fact label="When">
+            {formatEventDate(event.startsAt, event.timezone)}
+            <br />
+            <span className="theme-subtle">
+              {event.doorsAt ? `Doors ${formatEventTime(event.doorsAt, event.timezone)} · ` : ""}
+              {formatEventTime(event.startsAt, event.timezone)}
+              {event.endsAt ? ` – ${formatEventTime(event.endsAt, event.timezone)}` : ""}
+            </span>
+            {event.lastEntryAt && (
+              <>
+                <br />
+                <span className="theme-muted font-mono text-micro">
+                  last entry {formatEventTime(event.lastEntryAt, event.timezone)}
+                </span>
+              </>
+            )}
+          </Fact>
+
+          <Fact label="Where">
+            {revealed ? (
+              <>
+                {event.venueName && <span className="block">{event.venueName}</span>}
+                {event.address && <span className="block theme-subtle">{event.address}</span>}
+                {event.doorCode && (
+                  <span className="block font-mono text-xs mt-1">
+                    door code <strong>{event.doorCode}</strong>
+                  </span>
+                )}
+                {event.threeWordHint && (
+                  <span className="block font-mono text-xs theme-muted mt-1">
+                    {event.threeWordHint}
+                  </span>
+                )}
+                {event.mapUrl && (
+                  <a
+                    href={event.mapUrl}
+                    target="_blank"
+                    rel="noreferrer noopener"
+                    className="inline-block mt-2 font-mono text-xs underline hover:opacity-70 transition-opacity"
+                  >
+                    open in maps ↗
+                  </a>
+                )}
+                {event.transportNote && (
+                  <span className="block theme-muted text-sm mt-2">{event.transportNote}</span>
+                )}
+              </>
+            ) : (
+              <>
+                {event.area ?? "London"}
+                <span className="block font-mono text-micro theme-muted mt-1">
+                  exact address once you have a ticket
+                </span>
+              </>
+            )}
+          </Fact>
+
+          {event.lineup.length > 0 && (
+            <Fact label="Lineup">
+              <span className="flex flex-wrap gap-x-2 gap-y-1">
+                {event.lineup.map((name, index) => (
+                  <span key={name}>
+                    {name}
+                    {index < event.lineup.length - 1 && (
+                      <span className="theme-faint ml-2" aria-hidden="true">
+                        ·
+                      </span>
+                    )}
+                  </span>
+                ))}
+              </span>
+            </Fact>
+          )}
+        </dl>
+
+        {/* Tickets — the point of the page, kept high. */}
+        {ticketsExist && (
+          <section id="tickets" className="mt-10 scroll-mt-6">
+            <h2 className="font-mono text-micro theme-muted tracking-widest uppercase py-2">
+              Tickets
+            </h2>
+            <div className="border-t theme-border">
+              {availability.map((entry) => (
+                <ClaimTicketForm key={entry.type.id} eventSlug={event.slug} availability={entry} />
+              ))}
+            </div>
+            <div className="mt-4">
+              <ResendTicketForm eventSlug={event.slug} />
+            </div>
+          </section>
+        )}
+
+        {event.description && (
+          <section className="mt-12 prose-blog">
+            <ReactMarkdown remarkPlugins={[remarkGfm]}>{event.description}</ReactMarkdown>
+          </section>
+        )}
+
+        {(event.dressCode ||
+          event.ageLimit ||
+          event.stepFreeAccess !== undefined ||
+          event.houseRules) && (
+          <section className="mt-12">
+            <h2 className="font-mono text-micro theme-muted tracking-widest uppercase py-2">
+              Good to know
+            </h2>
+            <dl className="divide-y theme-border border-y theme-border py-2">
+              {event.dressCode && <Fact label="Dress">{event.dressCode}</Fact>}
+              {event.ageLimit && <Fact label="Age">{event.ageLimit}</Fact>}
+              {event.stepFreeAccess !== undefined && (
+                <Fact label="Access">
+                  {event.stepFreeAccess
+                    ? "Step-free access."
+                    : "There are stairs and no step-free access — ask us if that's a problem and we'll sort something."}
+                </Fact>
+              )}
+              {event.houseRules && <Fact label="House">{event.houseRules}</Fact>}
+            </dl>
+          </section>
+        )}
+
+        <section className="mt-12 flex flex-wrap gap-4">
+          <a
+            href={eventIcsPath(event.slug)}
+            className="font-mono text-xs theme-muted hover:text-foreground transition-colors underline"
+          >
+            add to calendar
+          </a>
+        </section>
+
+        {event.refundPolicy && (
+          <p className="mt-8 font-mono text-micro theme-muted leading-relaxed">
+            {event.refundPolicy}
+          </p>
+        )}
+      </main>
+
+      <footer className="border-t theme-border">
+        <div className="max-w-2xl mx-auto px-6 py-8 flex items-center justify-between font-mono text-micro theme-muted tracking-wide">
+          <span>
+            © {new Date().getFullYear()} {SITE_BRAND}
+          </span>
+          <Link to="/events" className="hover:text-foreground transition-colors">
+            all events
+          </Link>
+        </div>
+      </footer>
+    </div>
+  );
+}

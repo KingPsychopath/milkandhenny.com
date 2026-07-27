@@ -10,6 +10,7 @@ import {
   isTransferStorageConfigured,
 } from "@/lib/platform/r2.server";
 import { getRedis, getRedisRestConfig } from "@/lib/platform/redis.server";
+import { describeEmailCapability } from "@/lib/platform/email.server";
 import { getDirectRedisConfig } from "@/lib/platform/redis-direct.server";
 import { hasMediaPublicUrl } from "@/lib/shared/config";
 import { getRuntimeMetadata } from "@/lib/platform/runtime-metadata.server";
@@ -32,6 +33,7 @@ function getConfiguredCapabilities(): Capability[] {
   const authConfigured = REQUIRED_AUTH_VARIABLES.every(isConfigured);
   const maintenanceConfigured = isConfigured("CRON_SECRET");
   const realtimeBackplaneConfigured = getDirectRedisConfig() !== null;
+  const emailCapability = describeEmailCapability();
   const mediaMode = getMediaProcessorMode();
   const mediaRole = getMediaRole();
   // The worker claims jobs over the direct Redis connection, so that is the
@@ -92,6 +94,15 @@ function getConfiguredCapabilities(): Capability[] {
       detail: maintenanceConfigured
         ? "Authenticated cleanup jobs can run from any scheduler."
         : "The app works, but automated cleanup is not configured.",
+    },
+    {
+      id: "ticket-email",
+      label: "ticket delivery",
+      status: emailCapability.configured ? "available" : "degraded",
+      required: false,
+      detail: emailCapability.configured
+        ? `Ticket emails send via ${emailCapability.provider} from ${emailCapability.from}.`
+        : "Tickets can be issued and opened by link, but cannot be emailed.",
     },
     {
       id: "multiplayer-realtime",

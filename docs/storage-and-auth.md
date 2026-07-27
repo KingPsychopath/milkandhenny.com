@@ -37,11 +37,19 @@ Cookies are sent automatically by the browser on same-site requests, which makes
 
 ## Feature-by-feature: what we store where (and why)
 
-### Guestlist (`/guestlist`)
+### Door check-in (`/door`)
+
+Replaced `/guestlist`, which was removed along with the standalone guest list.
 
 - **Auth**: JWT in **httpOnly cookie** (`mah-auth-staff` or `mah-auth-admin`)
-- **Why**: server page can gate access and render initial data; client polling can stay lightweight
-- **Client storage**: none for auth (no `staffToken`/`adminToken` in localStorage anymore)
+- **Why**: the server page gates access and ships the manifest with the first render, so a phone on bad signal makes one request rather than three
+- **Client storage**: no auth. The offline scan queue and downloaded manifest live in component state; the manifest holds truncated hashes, never ticket ids, so a lost device is not a forgery kit
+
+### Ticket (`/ticket/$id`)
+
+- **Auth**: none — the ticket id in the URL is the bearer token, so the page is `noindex`
+- **Client storage**: none
+- **Cookie side effect**: opening a valid ticket sets `mah-ticket-holder`, an **httpOnly, signed** list of event slugs this browser holds a ticket for. That cookie is what reveals the exact address on the event page. It is a convenience marker, not authorization — anything that matters re-checks the ticket server-side
 
 ### Admin (`/admin`)
 
