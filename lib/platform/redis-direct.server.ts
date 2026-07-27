@@ -46,6 +46,14 @@ function createRedisClient(): Redis {
   });
 }
 
+/**
+ * A connection of your own. Needed for pub/sub: a subscribed client cannot run
+ * ordinary commands, so it must not share with the queue clients.
+ */
+function createDirectRedisClient(): Redis {
+  return createRedisClient();
+}
+
 function getBlockingRedis(): Redis {
   if (!blockingRedis) {
     blockingRedis = createRedisClient();
@@ -76,4 +84,10 @@ async function closeDirectRedisConnections(): Promise<void> {
   );
 }
 
-export { closeDirectRedisConnections, getBlockingRedis, getCommandRedis, getDirectRedisConfig };
+export {
+  closeDirectRedisConnections,
+  createDirectRedisClient,
+  getBlockingRedis,
+  getCommandRedis,
+  getDirectRedisConfig,
+};

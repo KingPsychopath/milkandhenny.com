@@ -7,6 +7,7 @@ import {
   getTransferPrimaryUrl,
 } from "@/features/media/storage";
 import { buildTransferVisualItems, type TransferVisualItem } from "@/features/transfers/live-photo";
+import { useTransferMediaEvents } from "@/features/transfers/ui/transfer/useTransferMediaEvents";
 import {
   BLOB_ZIP_DOWNLOAD_LIMIT_BYTES,
   LARGE_STREAMING_ZIP_NOTICE_BYTES,
@@ -677,6 +678,32 @@ export function TransferGallery({ transferId, files, groups, deleteToken }: Tran
   useEffect(() => {
     setCurrentFiles(files);
   }, [files]);
+
+  // Files handed to the media worker arrive here without a preview. Stream in
+  // their posters as the worker finishes, instead of asking viewers to refresh.
+  const awaitingProcessing = useMemo(
+    () =>
+      currentFiles.some(
+        (file) => file.processingStatus === "queued" || file.processingStatus === "processing",
+      ),
+    [currentFiles],
+  );
+
+  const applyProcessedFile = useCallback((incoming: TransferFileData) => {
+    setCurrentFiles((previous) => {
+      const index = previous.findIndex((file) => file.id === incoming.id);
+      if (index === -1) return previous;
+      const next = [...previous];
+      next[index] = { ...next[index], ...incoming };
+      return next;
+    });
+  }, []);
+
+  useTransferMediaEvents<TransferFileData>({
+    transferId,
+    enabled: awaitingProcessing,
+    onFile: applyProcessedFile,
+  });
 
   useEffect(() => {
     setCurrentGroups(groups);

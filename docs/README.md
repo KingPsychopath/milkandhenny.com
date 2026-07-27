@@ -15,7 +15,7 @@ This folder holds deeper reference docs. Pick by topic:
 | [storage-and-auth.md](./storage-and-auth.md)                           | Mental model: httpOnly cookies vs localStorage in this app (feature-by-feature)                        |
 | [media-pipeline.md](./media-pipeline.md)                               | OG images, face detection, focal points, image rotation & HEIC, blog file uploads                      |
 | [operations.md](./operations.md)                                       | KV command budget, cost & limits, R2 lifecycle rules                                                   |
-| [cloudflare-transfer-worker.md](./cloudflare-transfer-worker.md)       | Cloudflare Worker + Container setup for queued RAW/video transfer processing                           |
+| [media-worker.md](./media-worker.md)                                   | Queued RAW/video processing: the worker role, delivery guarantees, live updates, and cutover           |
 | [cloudflare-rate-limit-images.md](./cloudflare-rate-limit-images.md)   | Step-by-step Cloudflare WAF rate limiting setup                                                        |
 | [service-worker-cache-recovery.md](./service-worker-cache-recovery.md) | Manual recovery when Cloudflare unexpectedly caches `/sw.js`                                           |
 | [testing.md](./testing.md)                                             | Testing strategy — unit vs integration vs E2E, what we test and why                                    |

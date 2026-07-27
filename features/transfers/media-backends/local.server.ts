@@ -1,14 +1,29 @@
-import { downloadBuffer, headObject, listObjects, uploadBuffer } from "@/lib/platform/r2.server";
+import path from "path";
+
+import {
+  downloadBuffer,
+  downloadToFile,
+  headObject,
+  listObjects,
+  uploadBuffer,
+} from "@/lib/platform/r2.server";
 import {
   RawPreviewUnavailableError,
   getFileKind,
   getMimeType,
+  mapConcurrent,
   processGifThumb,
   processImageVariants,
-  processRawWithDcraw,
   processVideoVariants,
+  processVideoVariantsFromSource,
+  type ProcessedVideo,
   type ProcessedImage,
 } from "@/features/media/processing.server";
+import {
+  getInlineProcessingTimeoutMs,
+  getVideoPosterMaxBytes,
+  withProcessingTimeout,
+} from "@/features/transfers/media-processing-config.server";
 import {
   canRetryTransferProcessing,
   classifyTransferProcessingRoute,
@@ -29,6 +44,9 @@ import {
 } from "@/features/transfers/storage";
 
 type CompletedProcessingStatus = Extract<ProcessingStatus, "local_done" | "worker_done">;
+
+/** Matches the hybrid backend: two decodes at a time is plenty for one box. */
+const TRANSFER_BACKFILL_CONCURRENCY = 2;
 
 function buildSkippedFile(
   filename: string,
@@ -125,6 +143,102 @@ function buildOriginalOnlyFailureFile(
   };
 }
 
+function buildVideoFile(params: {
+  derivedId: string;
+  filename: string;
+  storedSize: number;
+  storageKey: string;
+  archiveStorageKey: string | undefined;
+  video: ProcessedVideo;
+  route: ProcessingRoute;
+  processingStatus: CompletedProcessingStatus;
+  processingBackend: ProcessingBackend;
+  file: TransferUploadFileInput;
+}): TransferFile {
+  return buildReadyVisualFile(
+    params.derivedId,
+    params.filename,
+    params.storedSize,
+    "video",
+    getMimeType(params.filename),
+    params.storageKey,
+    params.archiveStorageKey,
+    params.video.width,
+    params.video.height,
+    params.route,
+    params.processingStatus,
+    params.processingBackend,
+    undefined,
+    undefined,
+    params.file,
+  );
+}
+
+/**
+ * Poster variants for a video whose original is already in R2.
+ *
+ * The bytes go object storage → temp file → ffmpeg, never through a Buffer,
+ * so a 3 GB clip costs disk rather than heap. Anything past the configured cap
+ * is left as a playable original with no poster.
+ */
+async function materializeVideoFromStorage(params: {
+  file: TransferUploadFileInput;
+  transferId: string;
+  storageKey: string;
+  route: ProcessingRoute;
+  processingStatus: CompletedProcessingStatus;
+  processingBackend: ProcessingBackend;
+}): Promise<ProcessFileResult> {
+  const { file, transferId, storageKey, route, processingStatus, processingBackend } = params;
+  const filename = file.name;
+  const prefix = `transfers/${transferId}`;
+  const derivedId = file.mediaId ?? getTransferFileId(filename);
+  const archiveStorageKey = buildTransferArchivedOriginalStorageKey(transferId, file);
+  const originalUploadSize = file.originalSize ?? 0;
+
+  const maxBytes = getVideoPosterMaxBytes();
+  const head = await headObject(storageKey);
+  const sourceSize = head.size ?? file.size;
+
+  if (maxBytes > 0 && sourceSize > maxBytes) {
+    return {
+      file: {
+        ...buildSkippedFile(filename, file.size, storageKey, file, getMimeType(filename), "video"),
+        id: derivedId,
+        processingRoute: route,
+        processingErrorCode: "video_too_large_for_poster",
+      },
+      uploadedBytes: file.size + originalUploadSize,
+    };
+  }
+
+  const video = await processVideoVariantsFromSource(path.extname(filename) || ".mp4", (destination) =>
+    downloadToFile(storageKey, destination),
+  );
+
+  await Promise.all([
+    uploadBuffer(`${prefix}/thumb/${derivedId}.webp`, video.thumb.buffer, video.thumb.contentType),
+    uploadBuffer(`${prefix}/full/${derivedId}.webp`, video.full.buffer, video.full.contentType),
+  ]);
+
+  return {
+    file: buildVideoFile({
+      derivedId,
+      filename,
+      storedSize: file.size,
+      storageKey,
+      archiveStorageKey,
+      video,
+      route,
+      processingStatus,
+      processingBackend,
+      file,
+    }),
+    uploadedBytes:
+      video.thumb.buffer.byteLength + video.full.buffer.byteLength + file.size + originalUploadSize,
+  };
+}
+
 function preserveTransferGrouping(
   next: TransferFile,
   current?: Pick<TransferFile, "groupId" | "groupRole">,
@@ -179,13 +293,16 @@ async function buildFailedLocalResult(params: {
   };
 }
 
-function isRawPreviewUnavailableError(error: unknown): error is RawPreviewUnavailableError {
-  return error instanceof RawPreviewUnavailableError;
-}
-
-async function processRawWithLocalDecode(raw: Buffer, sourceName: string): Promise<ProcessedImage> {
-  const decoded = await processRawWithDcraw(raw, sourceName);
-  return processImageVariants(decoded.buffer, ".jpg");
+/**
+ * A RAW file we cannot preview.
+ *
+ * Covers both "the camera embedded no preview" and "exiftool is not installed"
+ * — from the caller's side both mean the same thing, and both should leave a
+ * downloadable original rather than a hard failure.
+ */
+function isRawPreviewUnavailableError(error: unknown): boolean {
+  if (error instanceof RawPreviewUnavailableError) return true;
+  return error instanceof Error && /spawn exiftool ENOENT/.test(error.message);
 }
 
 async function materializeVisualFromBuffer(params: {
@@ -267,23 +384,18 @@ async function materializeVisualFromBuffer(params: {
     ]);
 
     return {
-      file: buildReadyVisualFile(
+      file: buildVideoFile({
         derivedId,
         filename,
         storedSize,
-        "video",
-        getMimeType(filename),
         storageKey,
         archiveStorageKey,
-        video.width,
-        video.height,
+        video,
         route,
         processingStatus,
         processingBackend,
-        undefined,
-        undefined,
         file,
-      ),
+      }),
       uploadedBytes:
         video.thumb.buffer.byteLength +
         video.full.buffer.byteLength +
@@ -293,18 +405,7 @@ async function materializeVisualFromBuffer(params: {
   }
 
   try {
-    let primaryProcessed: ProcessedImage | null = null;
-    let primaryError: unknown;
-    try {
-      primaryProcessed = await processImageVariants(buffer, filename);
-    } catch (error) {
-      primaryError = error;
-    }
-
-    const processed = primaryProcessed;
-    if (!processed) {
-      throw primaryError;
-    }
+    const processed: ProcessedImage = await processImageVariants(buffer, filename);
 
     await Promise.all([
       uploadBuffer(
@@ -347,56 +448,9 @@ async function materializeVisualFromBuffer(params: {
         originalUploadSize,
     };
   } catch (error) {
-    if (isRawPreviewUnavailableError(error) && route === "raw_try_local") {
-      try {
-        const processed = await processRawWithLocalDecode(buffer, filename);
-
-        await Promise.all([
-          uploadBuffer(
-            `${prefix}/thumb/${derivedId}.webp`,
-            processed.thumb.buffer,
-            processed.thumb.contentType,
-          ),
-          uploadBuffer(
-            `${prefix}/full/${derivedId}.webp`,
-            processed.full.buffer,
-            processed.full.contentType,
-          ),
-          originalAlreadyStored || archiveStorageKey
-            ? Promise.resolve()
-            : uploadOriginalBuffer(storageKey, filename, buffer),
-        ]);
-
-        return {
-          file: buildReadyVisualFile(
-            derivedId,
-            filename,
-            storedSize,
-            "image",
-            getMimeType(filename),
-            storageKey,
-            archiveStorageKey,
-            processed.width,
-            processed.height,
-            route,
-            processingStatus,
-            processingBackend,
-            processed.takenAt,
-            processed.livePhotoContentId,
-            file,
-            "server_raw",
-          ),
-          uploadedBytes:
-            processed.thumb.buffer.byteLength +
-            processed.full.buffer.byteLength +
-            storedSize +
-            originalUploadSize,
-        };
-      } catch {
-        // If local RAW decoding is unavailable, preserve original-only behavior.
-      }
-    }
-
+    // No second attempt for RAW: the only decoder is the camera's embedded
+    // preview, so `raw_preview_unavailable` means the file genuinely has none.
+    // Retrying would re-run the same exiftool call for the same answer.
     if (!isRawPreviewUnavailableError(error)) {
       throw error;
     }
@@ -475,6 +529,18 @@ async function processTransferObjectLocally(
       file: buildSkippedFile(file.name, file.size, storageKey, file),
       uploadedBytes: file.size + (file.originalSize ?? 0),
     };
+  }
+
+  // Videos stream to disk; everything else is small enough to hold in memory.
+  if (route === "local_video" || route === "worker_video") {
+    return materializeVideoFromStorage({
+      file,
+      transferId,
+      storageKey,
+      route,
+      processingStatus,
+      processingBackend,
+    });
   }
 
   const buffer = await downloadBuffer(storageKey);
@@ -629,6 +695,13 @@ async function retryLocalTransferFile(
   }
 }
 
+function withLocalTimeout<T>(
+  route: ProcessingRoute | null,
+  work: () => Promise<T>,
+): Promise<T> {
+  return withProcessingTimeout(route ?? "passthrough", getInlineProcessingTimeoutMs(), work);
+}
+
 function createLocalMediaProcessor() {
   return {
     processTransferBuffer: async (
@@ -638,13 +711,15 @@ function createLocalMediaProcessor() {
     ) => {
       const route = classifyTransferProcessingRoute(file.name);
       try {
-        return await processTransferBufferLocally(
-          buffer,
-          { ...file, size: buffer.byteLength },
-          transferId,
-          "local_done",
-          "local",
-          route,
+        return await withLocalTimeout(route, () =>
+          processTransferBufferLocally(
+            buffer,
+            { ...file, size: buffer.byteLength },
+            transferId,
+            "local_done",
+            "local",
+            route,
+          ),
         );
       } catch (error) {
         return buildFailedLocalResult({
@@ -661,7 +736,9 @@ function createLocalMediaProcessor() {
     processTransferObject: async (file: TransferUploadFileInput, transferId: string) => {
       const route = classifyTransferProcessingRoute(file.name);
       try {
-        return await processTransferObjectLocally(file, transferId, "local_done", "local", route);
+        return await withLocalTimeout(route, () =>
+          processTransferObjectLocally(file, transferId, "local_done", "local", route),
+        );
       } catch (error) {
         return buildFailedLocalResult({
           transferId,
@@ -686,8 +763,12 @@ function createLocalMediaProcessor() {
       )
         ? await listExistingTransferDerivativeKeys(transfer.id)
         : undefined;
-      const normalizedFiles = await Promise.all(
-        transfer.files.map(async (file) => {
+      // Bounded, not `Promise.all`: each retry downloads an original and runs a
+      // decoder, so a 200-file transfer would otherwise start 200 at once.
+      const normalizedFiles = await mapConcurrent(
+        transfer.files,
+        TRANSFER_BACKFILL_CONCURRENCY,
+        async (file) => {
           const inferred = await inferTransferFileState(
             transfer.id,
             file,
@@ -726,7 +807,7 @@ function createLocalMediaProcessor() {
           }
 
           return inferred;
-        }),
+        },
       );
 
       if (!changed) {

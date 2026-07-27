@@ -1,5 +1,6 @@
 import { getMediaProcessorMode } from "@/features/media/config.server";
 import type { Capability, SystemCapabilities } from "@/features/system/capabilities";
+import { getMediaRole } from "@/features/system/media-role.server";
 import { multiplayerTelemetrySnapshot } from "@/features/things/shared/multiplayer-runtime.server";
 import type { MultiplayerTelemetrySnapshot } from "@/features/things/shared/multiplayer-telemetry";
 import { getSecurityWarnings } from "@/features/auth/auth.server";
@@ -32,9 +33,10 @@ function getConfiguredCapabilities(): Capability[] {
   const maintenanceConfigured = isConfigured("CRON_SECRET");
   const realtimeBackplaneConfigured = getDirectRedisConfig() !== null;
   const mediaMode = getMediaProcessorMode();
-  const workerConfigured =
-    mediaMode !== "local" &&
-    isConfigured("MEDIA_WORKER_WAKE_URL") && isConfigured("MEDIA_WORKER_WAKE_TOKEN");
+  const mediaRole = getMediaRole();
+  // The worker claims jobs over the direct Redis connection, so that is the
+  // only thing it needs configured beyond a non-local mode.
+  const workerConfigured = mediaMode !== "local" && realtimeBackplaneConfigured;
 
   return [
     {
@@ -107,10 +109,10 @@ function getConfiguredCapabilities(): Capability[] {
       required: false,
       detail:
         mediaMode === "local"
-          ? "The optional RAW and video worker is intentionally disabled."
+          ? "RAW and video derivatives are processed inline; no worker queue is in use."
           : workerConfigured
-            ? "The optional media worker wake path is configured."
-            : "Worker processing is selected but its wake path is incomplete.",
+            ? `RAW and video derivatives are queued for the media worker (this instance runs the ${mediaRole} role).`
+            : "Worker processing is selected but REDIS_URL is missing, so the queue cannot be claimed.",
     },
   ];
 }

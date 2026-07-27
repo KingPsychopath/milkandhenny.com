@@ -17,7 +17,6 @@ import {
   isTransferProcessingStale,
   type ProcessingRoute,
 } from "@/features/transfers/media-state";
-import { wakeMediaWorker } from "@/features/system/media-worker-wake.server";
 import {
   dequeueTransferMediaJobs,
   enqueueTransferMediaJob,
@@ -25,6 +24,11 @@ import {
   type TransferMediaJob,
 } from "@/features/transfers/media-queue.server";
 import { getTransfer, updateTransferFile } from "@/features/transfers/store.server";
+import { publishTransferMediaEvent } from "@/features/transfers/media-events.server";
+import {
+  getWorkerProcessingTimeoutMs,
+  withProcessingTimeout,
+} from "@/features/transfers/media-processing-config.server";
 import type { TransferData, TransferFile } from "@/features/transfers/types";
 import type { ProcessFileResult, TransferUploadFileInput } from "@/features/transfers/upload-types";
 import {
@@ -58,15 +62,25 @@ const WORKER_ROUTE_MAP: Partial<Record<ProcessingRoute, ProcessingRoute>> = {
   local_video: "worker_video",
 };
 
+/**
+ * Persist a file's new state and tell anyone watching the transfer.
+ *
+ * Every worker-side state change goes through here so a viewer sees queued →
+ * processing → ready without touching the server.
+ */
+async function saveAndAnnounceTransferFile(transferId: string, file: TransferFile): Promise<void> {
+  await updateTransferFile(transferId, file);
+  await publishTransferMediaEvent(transferId, file);
+}
+
+/**
+ * Distinguish "this RAW cannot be previewed" from a genuine processing bug, so
+ * the file is reported as a downloadable original rather than a failure.
+ */
 function isRawPreviewFallbackError(error: unknown): boolean {
   if (!(error instanceof Error)) return false;
   const detail = `${error.message}\n${error.stack ?? ""}`;
-  return (
-    detail.includes("spawn dcraw_emu ENOENT") ||
-    detail.includes("spawn dcraw ENOENT") ||
-    detail.includes("RAW decoder not available") ||
-    detail.includes("Sharp could not decode")
-  );
+  return detail.includes("spawn exiftool ENOENT") || detail.includes("Sharp could not decode");
 }
 
 function buildQueuedTransferFile(
@@ -157,8 +171,6 @@ async function enqueueWorkerJob(params: {
       attempt,
       enqueuedAt,
     });
-    void wakeMediaWorker();
-
     return {
       file: {
         ...buildQueuedTransferFile(
@@ -222,73 +234,82 @@ async function processWorkerJob(
     processingRoute: job.processingRoute,
     processingStartedAt: new Date().toISOString(),
   };
-  await updateTransferFile(job.transferId, processingFile);
+  await saveAndAnnounceTransferFile(job.transferId, processingFile);
 
   try {
-    let result: ProcessFileResult;
-    if (job.processingRoute === "worker_raw") {
-      const original = await downloadBuffer(current.storageKey);
-      const filename = job.file.originalName ?? job.file.name;
-      const ext = path.extname(filename).toLowerCase() || ".dng";
+    // A wedged decode must fail the job rather than hold the only worker slot.
+    // The error lands in the catch below, which records it and acks — retrying
+    // a job that already blew its budget would just wedge the next slot too.
+    const result = await withProcessingTimeout(
+      `${job.processingRoute} ${mediaId}`,
+      getWorkerProcessingTimeoutMs(),
+      async (): Promise<ProcessFileResult> => {
+        if (job.processingRoute === "worker_raw") {
+          const original = await downloadBuffer(current.storageKey);
+          const filename = job.file.originalName ?? job.file.name;
+          const ext = path.extname(filename).toLowerCase() || ".dng";
 
-      const { buffer: source, takenAt } = await resolveImageProcessingSource(original, ext);
+          const { buffer: source, takenAt } = await resolveImageProcessingSource(original, ext);
 
-      const processed = await processImageVariants(source, ".jpg");
+          const processed = await processImageVariants(source, ".jpg");
 
-      const prefix = `transfers/${job.transferId}`;
-      await Promise.all([
-        uploadBuffer(
-          `${prefix}/thumb/${mediaId}.webp`,
-          processed.thumb.buffer,
-          processed.thumb.contentType,
-        ),
-        uploadBuffer(
-          `${prefix}/full/${mediaId}.webp`,
-          processed.full.buffer,
-          processed.full.contentType,
-        ),
-      ]);
+          const prefix = `transfers/${job.transferId}`;
+          await Promise.all([
+            uploadBuffer(
+              `${prefix}/thumb/${mediaId}.webp`,
+              processed.thumb.buffer,
+              processed.thumb.contentType,
+            ),
+            uploadBuffer(
+              `${prefix}/full/${mediaId}.webp`,
+              processed.full.buffer,
+              processed.full.contentType,
+            ),
+          ]);
 
-      result = {
-        file: buildReadyVisualFile(
-          mediaId,
-          job.file.name,
-          current.size,
-          "image",
-          current.mimeType,
-          current.storageKey,
-          current.originalStorageKey,
-          processed.width,
-          processed.height,
-          job.processingRoute,
+          return {
+            file: buildReadyVisualFile(
+              mediaId,
+              job.file.name,
+              current.size,
+              "image",
+              current.mimeType,
+              current.storageKey,
+              current.originalStorageKey,
+              processed.width,
+              processed.height,
+              job.processingRoute,
+              "worker_done",
+              "worker",
+              processed.takenAt ?? takenAt ?? current.takenAt ?? null,
+              processed.livePhotoContentId ?? current.livePhotoContentId ?? null,
+              job.file,
+              "server_raw",
+            ),
+            uploadedBytes:
+              processed.thumb.buffer.byteLength + processed.full.buffer.byteLength + current.size,
+          };
+        }
+
+        return processTransferObjectLocally(
+          {
+            ...job.file,
+            size: current.size,
+          },
+          job.transferId,
           "worker_done",
           "worker",
-          processed.takenAt ?? takenAt ?? current.takenAt ?? null,
-          processed.livePhotoContentId ?? current.livePhotoContentId ?? null,
-          job.file,
-          "server_raw",
-        ),
-        uploadedBytes:
-          processed.thumb.buffer.byteLength + processed.full.buffer.byteLength + current.size,
-      };
-    } else {
-      result = await processTransferObjectLocally(
-        {
-          ...job.file,
-          size: current.size,
-        },
-        job.transferId,
-        "worker_done",
-        "worker",
-        job.processingRoute,
-      );
-    }
+          job.processingRoute,
+        );
+      },
+    );
+
     const updatedFile: TransferFile = {
       ...result.file,
       ...(current.groupId ? { groupId: current.groupId } : {}),
       ...(current.groupRole ? { groupRole: current.groupRole } : {}),
     };
-    await updateTransferFile(job.transferId, updatedFile);
+    await saveAndAnnounceTransferFile(job.transferId, updatedFile);
     return "succeeded";
   } catch (error) {
     const errorDetail =
@@ -323,7 +344,7 @@ async function processWorkerJob(
       ...(current.groupRole ? { groupRole: current.groupRole } : {}),
       processingErrorDetail: errorDetail,
     };
-    await updateTransferFile(job.transferId, failedFile);
+    await saveAndAnnounceTransferFile(job.transferId, failedFile);
     return "failed";
   }
 }

@@ -17,11 +17,8 @@ interface MediaProcessor {
   backfillTransferMedia(transfer: TransferData): Promise<TransferData>;
 }
 
-const MEDIA_PROCESSOR = (() => {
-  const mode = getMediaProcessorMode();
-  if (mode === "local") return createLocalMediaProcessor();
-  return createHybridMediaProcessor(mode);
-})();
+const MEDIA_PROCESSOR =
+  getMediaProcessorMode() === "local" ? createLocalMediaProcessor() : createHybridMediaProcessor();
 
 function getMediaProcessor(): MediaProcessor {
   return MEDIA_PROCESSOR;

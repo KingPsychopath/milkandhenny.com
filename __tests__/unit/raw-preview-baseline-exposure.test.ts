@@ -24,8 +24,8 @@ describe("embedded RAW preview exposure", () => {
       ),
     }));
 
-    const { processRawWithDcraw } = await import("@/features/media/processing.server");
-    const result = await processRawWithDcraw(Buffer.from("raw"), "IMG_3006.dng");
+    const { processRawWithExiftool } = await import("@/features/media/processing.server");
+    const result = await processRawWithExiftool(Buffer.from("raw"), "IMG_3006.dng");
     const stats = await sharp(result.buffer).stats();
 
     expect(stats.channels[0].mean).toBeGreaterThan(50);

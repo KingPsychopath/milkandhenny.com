@@ -3,6 +3,7 @@ import {
   buildAttachmentContentDisposition,
 } from "@/features/downloads/presign";
 import {
+  getTransferMediaUrlTtlSeconds,
   isTransferMediaVariant,
   resolveTransferMediaTarget,
 } from "@/features/transfers/media-access";
@@ -12,8 +13,6 @@ import {
   presignGetUrl,
 } from "@/lib/platform/r2.server";
 import { apiErrorFromRequest } from "@/lib/platform/api-error";
-
-const MEDIA_URL_TTL_SECONDS = 60;
 
 type RouteContext = {
   params: Promise<{ id: string; fileId: string; variant: string }>;
@@ -43,7 +42,7 @@ async function handleMedia(request: Request, context: RouteContext) {
 
   try {
     const url = await presignGetUrl(target.key, {
-      expiresIn: MEDIA_URL_TTL_SECONDS,
+      expiresIn: getTransferMediaUrlTtlSeconds(variant),
       responseContentDisposition: download
         ? buildAttachmentContentDisposition(target.filename)
         : undefined,

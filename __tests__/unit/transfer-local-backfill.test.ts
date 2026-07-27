@@ -5,7 +5,7 @@ const {
   headObject,
   listObjects,
   processImageVariants,
-  processRawWithDcraw,
+  processRawWithExiftool,
   saveTransfer,
   uploadBuffer,
 } = vi.hoisted(() => {
@@ -22,7 +22,7 @@ const {
     headObject: vi.fn(),
     listObjects: vi.fn(),
     processImageVariants: vi.fn(),
-    processRawWithDcraw: vi.fn(),
+    processRawWithExiftool: vi.fn(),
     saveTransfer: vi.fn(),
     uploadBuffer: vi.fn(),
   };
@@ -50,43 +50,28 @@ vi.mock("@/features/media/processing.server", () => {
   return {
     RawPreviewUnavailableError: MockRawPreviewUnavailableError,
     getFileKind: () => "image",
+    mapConcurrent: async <T, R>(items: T[], _limit: number, fn: (item: T) => Promise<R>) =>
+      Promise.all(items.map(fn)),
     getMimeType: () => "image/x-adobe-dng",
     processGifThumb: vi.fn(),
     processImageVariants,
-    processRawWithDcraw,
+    processRawWithExiftool,
     processVideoVariants: vi.fn(),
   };
 });
 
 describe("local transfer backfill", () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    // resetAllMocks, not clearAllMocks: queued `*Once` behaviours would
+    // otherwise survive into the next test and decide its outcome.
+    vi.resetAllMocks();
     listObjects.mockResolvedValue([]);
   });
 
-  it("retries failed raw files during local backfill", async () => {
+  it("leaves a raw file with no embedded preview alone during local backfill", async () => {
     const { createLocalMediaProcessor } = await import("@/features/transfers/media-backends/local.server");
 
     downloadBuffer.mockResolvedValue(Buffer.from("raw"));
-    processImageVariants
-      .mockRejectedValueOnce(
-        new (await import("@/features/media/processing.server")).RawPreviewUnavailableError(
-          ".dng",
-          "missing",
-        ),
-      )
-      .mockResolvedValueOnce({
-        thumb: { buffer: Buffer.from("thumb"), contentType: "image/webp" },
-        full: { buffer: Buffer.from("full"), contentType: "image/webp" },
-        width: 2400,
-        height: 1600,
-        takenAt: null,
-      });
-    processRawWithDcraw.mockResolvedValue({
-      buffer: Buffer.from("decoded"),
-      width: 2400,
-      height: 1600,
-    });
 
     const processor = createLocalMediaProcessor();
     const transfer = {
@@ -114,14 +99,18 @@ describe("local transfer backfill", () => {
 
     const updated = await processor.backfillTransferMedia(transfer);
 
+    // `raw_preview_unavailable` is a property of the file, not of the attempt.
+    // Backfill runs on demand, so retrying would re-download and re-decode the
+    // original every time for the same answer.
     expect(updated.files[0]).toMatchObject({
       id: "capture",
-      processingStatus: "local_done",
-      previewStatus: "ready",
+      processingStatus: "failed",
+      previewStatus: "original_only",
       processingRoute: "raw_try_local",
+      processingErrorCode: "raw_preview_unavailable",
     });
-    expect(uploadBuffer).toHaveBeenCalledTimes(2);
-    expect(saveTransfer).toHaveBeenCalled();
+    expect(uploadBuffer).not.toHaveBeenCalled();
+    expect(processImageVariants).not.toHaveBeenCalled();
   });
 
   it("reclassifies skipped HEIF files and generates previews during backfill", async () => {

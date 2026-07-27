@@ -1,5 +1,7 @@
-import type { MediaProcessorMode } from "@/features/media/config.server";
-import { getLocalProcessingTimeoutMs } from "@/features/transfers/media-processing-config.server";
+import {
+  getInlineProcessingTimeoutMs,
+  withProcessingTimeout,
+} from "@/features/transfers/media-processing-config.server";
 import { mapConcurrent } from "@/features/media/processing.server";
 import {
   canRetryTransferProcessing,
@@ -23,52 +25,37 @@ import { enqueueWorkerJob, refreshQueuedTransferState, requeueTransferFile } fro
 
 const TRANSFER_BACKFILL_CONCURRENCY = 2;
 
+/**
+ * Which routes are worth a round trip through the queue.
+ *
+ * RAW and video are the expensive ones: seconds of CPU, hundreds of megabytes
+ * to gigabytes of source. Images and GIFs finish inline in well under a second,
+ * so queueing them would only add latency and Redis traffic.
+ */
 function canUseWorkerForRoute(route: ProcessingRoute): boolean {
   return route === "raw_try_local" || route === "local_video";
 }
 
-class LocalProcessingTimeoutError extends Error {
-  constructor(route: ProcessingRoute, timeoutMs: number) {
-    super(`Local processing timed out for ${route} after ${timeoutMs}ms`);
-    this.name = "LocalProcessingTimeoutError";
-  }
-}
-
-async function withLocalProcessingTimeout<T>(
-  route: ProcessingRoute,
-  work: () => Promise<T>,
-): Promise<T> {
-  const timeoutMs = getLocalProcessingTimeoutMs(route);
-  if (timeoutMs <= 0) return work();
-
-  return await Promise.race([
-    work(),
-    new Promise<T>((_, reject) => {
-      const timer = setTimeout(() => {
-        reject(new LocalProcessingTimeoutError(route, timeoutMs));
-      }, timeoutMs);
-      timer.unref?.();
-    }),
-  ]);
-}
-
-function shouldQueueBeforeLocal(mode: MediaProcessorMode, route: ProcessingRoute): boolean {
-  if (!canUseWorkerForRoute(route)) return false;
-  return mode === "worker" || mode === "hybrid";
+/**
+ * Ceiling for the work the web role still does itself. Nothing catches a file
+ * that blows it — a queued route never reaches here — so it exists purely to
+ * stop a wedged decode from holding a request open.
+ */
+function withInlineTimeout<T>(route: ProcessingRoute, work: () => Promise<T>): Promise<T> {
+  return withProcessingTimeout(route, getInlineProcessingTimeoutMs(), work);
 }
 
 async function processTransferBuffer(
   buffer: Buffer,
   file: TransferUploadFileInput,
   transferId: string,
-  mode: MediaProcessorMode,
 ) {
   const route = classifyTransferProcessingRoute(file.name);
   if (!route) {
     return processTransferBufferLocally(buffer, file, transferId);
   }
 
-  if (shouldQueueBeforeLocal(mode, route)) {
+  if (canUseWorkerForRoute(route)) {
     return enqueueWorkerJob({
       transferId,
       file: { ...file, size: buffer.byteLength },
@@ -78,91 +65,46 @@ async function processTransferBuffer(
   }
 
   try {
-    const result = await withLocalProcessingTimeout(route, () =>
+    return await withInlineTimeout(route, () =>
       processTransferBufferLocally(buffer, file, transferId, "local_done", "local", route),
     );
-    if (
-      route === "raw_try_local" &&
-      result.file.processingStatus === "failed" &&
-      result.file.processingErrorCode === "raw_preview_unavailable"
-    ) {
-      return enqueueWorkerJob({
-        transferId,
-        file: { ...file, size: buffer.byteLength },
-        route,
-        originalBuffer: buffer,
-      });
-    }
-    return result;
   } catch {
-    if (!canUseWorkerForRoute(route)) {
-      return buildFailedLocalResult({
-        transferId,
-        file: { ...file, size: buffer.byteLength },
-        route,
-        buffer,
-      });
-    }
-    return enqueueWorkerJob({
+    return buildFailedLocalResult({
       transferId,
       file: { ...file, size: buffer.byteLength },
       route,
-      originalBuffer: buffer,
+      buffer,
     });
   }
 }
 
-async function processTransferObject(
-  file: TransferUploadFileInput,
-  transferId: string,
-  mode: MediaProcessorMode,
-) {
+async function processTransferObject(file: TransferUploadFileInput, transferId: string) {
   const route = classifyTransferProcessingRoute(file.name);
   if (!route) {
     return processTransferObjectLocally(file, transferId);
   }
 
-  if (shouldQueueBeforeLocal(mode, route)) {
+  if (canUseWorkerForRoute(route)) {
     return enqueueWorkerJob({ transferId, file, route });
   }
 
   try {
-    const result = await withLocalProcessingTimeout(route, () =>
+    return await withInlineTimeout(route, () =>
       processTransferObjectLocally(file, transferId, "local_done", "local", route),
     );
-    if (
-      route === "raw_try_local" &&
-      result.file.processingStatus === "failed" &&
-      result.file.processingErrorCode === "raw_preview_unavailable"
-    ) {
-      return enqueueWorkerJob({ transferId, file, route });
-    }
-    return result;
   } catch {
-    if (!canUseWorkerForRoute(route)) {
-      return buildFailedLocalResult({
-        transferId,
-        file,
-        route,
-      });
-    }
-    return enqueueWorkerJob({
-      transferId,
-      file,
-      route,
-    });
+    return buildFailedLocalResult({ transferId, file, route });
   }
 }
 
 async function repairOrQueueIncompleteFile(
   transfer: TransferData,
   file: TransferFile,
-  mode: MediaProcessorMode,
 ): Promise<TransferFile> {
   const route = file.processingRoute ?? classifyTransferProcessingRoute(file.filename);
   if (!route) return file;
 
-  if (shouldQueueBeforeLocal(mode, route)) {
+  if (canUseWorkerForRoute(route)) {
     return (
       await enqueueWorkerJob({
         transferId: transfer.id,
@@ -184,7 +126,7 @@ async function repairOrQueueIncompleteFile(
 
   try {
     return (
-      await withLocalProcessingTimeout(route, () =>
+      await withInlineTimeout(route, () =>
         processTransferObjectLocally(
           {
             name: file.filename,
@@ -203,43 +145,23 @@ async function repairOrQueueIncompleteFile(
       )
     ).file;
   } catch (error) {
-    if (!canUseWorkerForRoute(route)) {
-      const detail =
-        error instanceof Error
-          ? (error.stack ?? error.message).slice(0, 500)
-          : String(error).slice(0, 500);
-      return {
-        ...file,
-        previewStatus: "original_only",
-        processingStatus: "failed",
-        processingRoute: route,
-        processingErrorCode: file.processingErrorCode ?? "processing_failed",
-        processingErrorDetail: detail,
-      };
-    }
-    return (
-      await enqueueWorkerJob({
-        transferId: transfer.id,
-        file: {
-          name: file.filename,
-          mediaId: file.id,
-          size: file.size,
-          type: file.mimeType,
-          originalName: file.originalFilename,
-          originalType: file.originalMimeType,
-          originalSize: file.originalStorageKey ? file.size : undefined,
-          convertedFrom: file.convertedFrom,
-        },
-        route,
-        attempt: (file.retryCount ?? 0) + 1,
-      })
-    ).file;
+    const detail =
+      error instanceof Error
+        ? (error.stack ?? error.message).slice(0, 500)
+        : String(error).slice(0, 500);
+    return {
+      ...file,
+      previewStatus: "original_only",
+      processingStatus: "failed",
+      processingRoute: route,
+      processingErrorCode: file.processingErrorCode ?? "processing_failed",
+      processingErrorDetail: detail,
+    };
   }
 }
 
 async function backfillTransferMedia(
   transfer: TransferData,
-  mode: MediaProcessorMode,
 ): Promise<TransferData> {
   const remainingSeconds = Math.ceil((new Date(transfer.expiresAt).getTime() - Date.now()) / 1000);
   if (remainingSeconds <= 0) return transfer;
@@ -270,7 +192,7 @@ async function backfillTransferMedia(
 
       if (stateIncomplete && inferred.processingStatus === "failed" && inferred.processingRoute) {
         changed = true;
-        return repairOrQueueIncompleteFile(refreshed, inferred, mode);
+        return repairOrQueueIncompleteFile(refreshed, inferred);
       }
 
       if (
@@ -319,13 +241,11 @@ async function backfillTransferMedia(
   return updated;
 }
 
-function createHybridMediaProcessor(mode: MediaProcessorMode = "hybrid") {
+function createHybridMediaProcessor() {
   return {
-    processTransferBuffer: (buffer: Buffer, file: TransferUploadFileInput, transferId: string) =>
-      processTransferBuffer(buffer, file, transferId, mode),
-    processTransferObject: (file: TransferUploadFileInput, transferId: string) =>
-      processTransferObject(file, transferId, mode),
-    backfillTransferMedia: (transfer: TransferData) => backfillTransferMedia(transfer, mode),
+    processTransferBuffer,
+    processTransferObject,
+    backfillTransferMedia,
   };
 }
 

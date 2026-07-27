@@ -28,7 +28,7 @@ describe("protected transfer media", () => {
     vi.resetModules();
   });
 
-  it("should redirect an existing transfer file to a short-lived private URL", async () => {
+  it("should redirect an existing transfer file to a private URL that outlasts playback", async () => {
     const presignGetUrl = vi.fn().mockResolvedValue("https://private.example/signed");
     vi.doMock("@/features/transfers/store.server", () => ({
       getTransfer: vi.fn().mockResolvedValue(transfer),
@@ -55,9 +55,11 @@ describe("protected transfer media", () => {
     expect(response.status).toBe(307);
     expect(response.headers.get("location")).toBe("https://private.example/signed");
     expect(response.headers.get("cache-control")).toBe("private, no-store");
+    // Originals are streamed: a `<video>` re-requests byte ranges when the
+    // viewer seeks, so the signature has to outlive a long watch.
     expect(presignGetUrl).toHaveBeenCalledWith(
       "transfers/private-transfer/originals/photo.jpg",
-      expect.objectContaining({ expiresIn: 60 }),
+      expect.objectContaining({ expiresIn: 3600 }),
     );
   });
 

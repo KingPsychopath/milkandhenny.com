@@ -1,5 +1,8 @@
 import { getTransferMediaQueueLength } from "./media-queue.server";
-import { getTransferMediaWorkerStatus } from "./media-worker-status.server";
+import {
+  getTransferMediaWorkerStatus,
+  type TransferMediaWorkerStatus,
+} from "./media-worker-status.server";
 import { deleteObjects, listObjects } from "@/lib/platform/r2.server";
 import { deleteTransferData, getTransfer, listTransfers } from "./store.server";
 import type { TransferData } from "./types";
@@ -17,7 +20,7 @@ async function listAdminTransfers() {
 async function getAdminTransferMediaStats() {
   const [queueLength, worker] = await Promise.all([
     getTransferMediaQueueLength().catch(() => 0),
-    getTransferMediaWorkerStatus().catch(() => ({})),
+    getTransferMediaWorkerStatus().catch((): TransferMediaWorkerStatus => ({})),
   ]);
 
   return {

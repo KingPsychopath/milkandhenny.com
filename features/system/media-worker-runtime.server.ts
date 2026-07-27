@@ -30,6 +30,14 @@ interface DrainMediaQueuesOptions {
   transferClaimTimeoutSeconds?: number;
   wordClaimTimeoutSeconds?: number;
   errorBackoffMs?: number;
+  /**
+   * Requeue jobs stranded in the processing list by a crashed run.
+   *
+   * Only safe when nothing else is mid-job: a recovery sweep cannot tell a
+   * crashed job from one another replica is working on right now. The
+   * long-running loop recovers once at startup and never again.
+   */
+  recoverStuckJobs?: boolean;
 }
 
 const DEFAULT_TRANSFER_CLAIM_TIMEOUT_SECONDS = 10;
@@ -42,6 +50,31 @@ const DEFAULT_ERROR_BACKOFF_MS = Math.max(
   500,
   Number(process.env.MEDIA_WORKER_ERROR_BACKOFF_MS ?? "15000"),
 );
+
+/**
+ * An idle drain pass costs one blocking claim per queue (~11s), so an
+ * unthrottled loop would write a heartbeat roughly five times a minute forever.
+ * Redis writes are metered — keep the liveness signal, drop the noise.
+ */
+const HEARTBEAT_MIN_INTERVAL_MS = 30_000;
+let lastHeartbeatAtMs = 0;
+
+async function heartbeat(force = false): Promise<void> {
+  const now = Date.now();
+  if (!force && now - lastHeartbeatAtMs < HEARTBEAT_MIN_INTERVAL_MS) return;
+  lastHeartbeatAtMs = now;
+  await updateTransferMediaWorkerStatus({ lastHeartbeatAt: new Date(now).toISOString() });
+}
+
+async function markMediaJobProcessed(): Promise<void> {
+  const now = Date.now();
+  lastHeartbeatAtMs = now;
+  const timestamp = new Date(now).toISOString();
+  await updateTransferMediaWorkerStatus({
+    lastHeartbeatAt: timestamp,
+    lastProcessedAt: timestamp,
+  });
+}
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -75,14 +108,12 @@ async function drainMediaQueuesUntilIdle(
   const concurrency = Math.max(1, options.concurrency ?? DEFAULT_WORKER_CONCURRENCY);
   const errorBackoffMs = options.errorBackoffMs ?? DEFAULT_ERROR_BACKOFF_MS;
 
-  const [recoveredTransferJobs, recoveredWordJobs] = await Promise.all([
-    recoverTransferMediaProcessingJobs(),
-    recoverWordMediaProcessingJobs(),
-  ]);
+  const [recoveredTransferJobs, recoveredWordJobs] =
+    options.recoverStuckJobs === false
+      ? [0, 0]
+      : await Promise.all([recoverTransferMediaProcessingJobs(), recoverWordMediaProcessingJobs()]);
 
-  await updateTransferMediaWorkerStatus({
-    lastHeartbeatAt: new Date().toISOString(),
-  });
+  await heartbeat(true);
 
   async function consumeLoop(): Promise<
     Pick<DrainMediaQueuesResult, "processedJobs" | "succeeded" | "failed" | "skipped">
@@ -106,10 +137,7 @@ async function drainMediaQueuesUntilIdle(
           else if (outcome === "failed") failed += 1;
           else skipped += 1;
 
-          await updateTransferMediaWorkerStatus({
-            lastHeartbeatAt: new Date().toISOString(),
-            lastProcessedAt: new Date().toISOString(),
-          });
+          await markMediaJobProcessed();
           continue;
         }
 
@@ -121,10 +149,7 @@ async function drainMediaQueuesUntilIdle(
           if (outcome === "succeeded") succeeded += 1;
           else skipped += 1;
 
-          await updateTransferMediaWorkerStatus({
-            lastHeartbeatAt: new Date().toISOString(),
-            lastProcessedAt: new Date().toISOString(),
-          });
+          await markMediaJobProcessed();
           continue;
         }
 
@@ -138,6 +163,7 @@ async function drainMediaQueuesUntilIdle(
         }
 
         const errorDetail = getErrorDetail(error);
+        lastHeartbeatAtMs = Date.now();
         await updateTransferMediaWorkerStatus({
           lastHeartbeatAt: new Date().toISOString(),
           lastErrorAt: new Date().toISOString(),
@@ -167,5 +193,66 @@ async function drainMediaQueuesUntilIdle(
   };
 }
 
-export { drainMediaQueuesUntilIdle };
+/* ─── Long-running worker role ─── */
+
+type MediaWorkerLoop = {
+  stop: () => void;
+  finished: Promise<void>;
+};
+
+let activeLoop: MediaWorkerLoop | null = null;
+
+/**
+ * Drain the media queues for as long as the process lives.
+ *
+ * `drainMediaQueuesUntilIdle` returns once both queues are empty; each claim
+ * blocks server-side, so re-entering it is a blocking wait rather than a poll.
+ * Stuck-job recovery runs only on the first pass — see `recoverStuckJobs`.
+ */
+function startMediaWorkerLoop(options: DrainMediaQueuesOptions = {}): void {
+  if (activeLoop) return;
+
+  const state = { stopped: false };
+  const stop = () => {
+    state.stopped = true;
+  };
+
+  const finished = (async () => {
+    let firstPass = true;
+
+    while (!state.stopped) {
+      try {
+        const result = await drainMediaQueuesUntilIdle({
+          ...options,
+          recoverStuckJobs: firstPass,
+        });
+
+        if (result.disabled) {
+          console.warn(
+            "[media-worker] MEDIA_PROCESSOR_MODE=local — the worker role has nothing to drain, exiting loop",
+          );
+          return;
+        }
+
+        firstPass = false;
+      } catch (error) {
+        console.error(`[media-worker] drain pass failed\n${getErrorDetail(error)}`);
+        await sleep(options.errorBackoffMs ?? DEFAULT_ERROR_BACKOFF_MS);
+      }
+    }
+  })();
+
+  activeLoop = { stop, finished };
+}
+
+/** Stop the loop and wait for the in-flight claim to settle. */
+async function stopMediaWorkerLoop(): Promise<void> {
+  const loop = activeLoop;
+  if (!loop) return;
+  activeLoop = null;
+  loop.stop();
+  await loop.finished;
+}
+
+export { drainMediaQueuesUntilIdle, startMediaWorkerLoop, stopMediaWorkerLoop };
 export type { DrainMediaQueuesOptions, DrainMediaQueuesResult };

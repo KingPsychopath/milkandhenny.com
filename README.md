@@ -130,17 +130,18 @@ Run it from Railway Cron, system cron, GitHub Actions, or any scheduler:
 15 3 * * * cd /srv/milkandhenny && pnpm maintenance
 ```
 
-## Optional media worker
+## Media worker
 
-The core site, ordinary image uploads, galleries, and transfers do not require a dedicated worker. RAW previews and video derivatives do.
-
-Keep this disabled initially:
+Images and GIFs are processed inline. RAW previews and video posters are queued
+for a dedicated worker — the same server image run with `MEDIA_WORKER_ROLE=worker`.
 
 ```dotenv
-MEDIA_PROCESSOR_MODE=local
+MEDIA_PROCESSOR_MODE=local    # everything inline; the default, and right for development
+MEDIA_PROCESSOR_MODE=hybrid   # heavy routes queued; needs a worker instance and a direct REDIS_URL
 ```
 
-When a dedicated worker is deployed, configure `MEDIA_WORKER_WAKE_URL`, `MEDIA_WORKER_WAKE_TOKEN`, a direct `REDIS_URL`, and change the mode to `hybrid` or `worker`.
+See [`docs/media-worker.md`](./docs/media-worker.md) for the split, the delivery
+guarantees, and the cutover order.
 
 ## Documentation
 
