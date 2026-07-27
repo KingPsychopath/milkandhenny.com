@@ -781,14 +781,20 @@ type VideoProbeResult = {
   durationSeconds: number | null;
 };
 
+/**
+ * Where to grab the poster frame.
+ *
+ * Roughly 10% in, because videos routinely open on a black or blurred frame —
+ * but never past the midpoint. That upper bound has to be a true fraction of
+ * the duration: a Live Photo motion clip is about a third of a second long, and
+ * flooring the bound at 0.5s (as this used to) seeks past the end of the clip
+ * and ffmpeg returns no frame at all.
+ */
 function getVideoCaptureTimestamp(durationSeconds: number | null): string {
   if (!durationSeconds || !Number.isFinite(durationSeconds) || durationSeconds <= 0.25) {
     return "0";
   }
-  const seconds = Math.min(
-    Math.max(durationSeconds * 0.1, 0.5),
-    Math.max(0.5, durationSeconds / 2),
-  );
+  const seconds = Math.min(Math.max(durationSeconds * 0.1, 0.5), durationSeconds / 2);
   return seconds.toFixed(3);
 }
 
@@ -885,7 +891,19 @@ async function extractVideoFrame(filename: string, timestamp: string): Promise<B
  */
 async function processVideoVariantsFromFile(filename: string): Promise<ProcessedVideo> {
   const probe = await probeVideoFile(filename);
-  const frame = await extractVideoFrame(filename, getVideoCaptureTimestamp(probe.durationSeconds));
+  const timestamp = getVideoCaptureTimestamp(probe.durationSeconds);
+
+  // A seek can still come up empty on a file whose container duration lies, or
+  // whose only keyframe is the first one. The opening frame is a worse poster
+  // than one taken a moment in, but it beats no poster at all.
+  let frame: Buffer;
+  try {
+    frame = await extractVideoFrame(filename, timestamp);
+  } catch (error) {
+    if (timestamp === "0") throw error;
+    frame = await extractVideoFrame(filename, "0");
+  }
+
   const { buffer: poster, width, height } = await autoRotate(frame);
 
   const [thumb, full] = await Promise.all([
@@ -994,6 +1012,7 @@ export {
   RawPreviewUnavailableError,
   getMimeType,
   getFileKind,
+  getVideoCaptureTimestamp,
   isProcessableImage,
   extractExifDate,
   generateBlurDataUri,

@@ -50,3 +50,39 @@ describe("video preview processing", () => {
     expect(fullMeta.format).toBe("webp");
   });
 });
+
+describe("poster frame timestamp", () => {
+  it("stays inside a Live Photo motion clip", async () => {
+    const { getVideoCaptureTimestamp } = await import("@/features/media/processing.server");
+
+    // iPhone Live Photo clips run about a third of a second. Seeking to a
+    // fixed 0.5s — as this once did — lands past the end and ffmpeg returns
+    // no frame, which is how every sub-second video silently lost its poster.
+    expect(Number(getVideoCaptureTimestamp(0.333))).toBeLessThan(0.333);
+    expect(Number(getVideoCaptureTimestamp(0.6))).toBeLessThan(0.6);
+    expect(Number(getVideoCaptureTimestamp(0.9))).toBeLessThan(0.9);
+  });
+
+  it("never seeks past the midpoint", async () => {
+    const { getVideoCaptureTimestamp } = await import("@/features/media/processing.server");
+
+    for (const duration of [0.3, 0.5, 1, 2, 10, 600]) {
+      expect(Number(getVideoCaptureTimestamp(duration))).toBeLessThanOrEqual(duration / 2);
+    }
+  });
+
+  it("skips the opening frame on anything long enough to have one", async () => {
+    const { getVideoCaptureTimestamp } = await import("@/features/media/processing.server");
+
+    expect(Number(getVideoCaptureTimestamp(10))).toBeGreaterThan(0);
+    expect(Number(getVideoCaptureTimestamp(600))).toBeGreaterThan(0);
+  });
+
+  it("falls back to the first frame when duration is unknown or trivial", async () => {
+    const { getVideoCaptureTimestamp } = await import("@/features/media/processing.server");
+
+    expect(getVideoCaptureTimestamp(null)).toBe("0");
+    expect(getVideoCaptureTimestamp(0.1)).toBe("0");
+    expect(getVideoCaptureTimestamp(Number.NaN)).toBe("0");
+  });
+});
