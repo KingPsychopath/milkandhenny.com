@@ -253,4 +253,48 @@ describe("hybrid transfer routing", () => {
       processingErrorCode: "missing_derivatives",
     });
   });
+
+  it("requeues a file that failed inside the worker", async () => {
+    // Enqueueing rewrites the route to its `worker_*` spelling, so a file that
+    // has already been through the worker carries that name. Reconciliation
+    // must still recognise it as requeueable, or a transient worker failure is
+    // permanent despite having retries left.
+    const failedInWorker = {
+      id: "clip",
+      filename: "clip.mov",
+      kind: "video" as const,
+      size: 8192,
+      mimeType: "video/quicktime",
+      storageKey: "transfers/transfer-1/originals/clip.mov",
+      previewStatus: "original_only" as const,
+      processingStatus: "failed" as const,
+      processingBackend: "worker" as const,
+      processingRoute: "worker_video" as const,
+      processingErrorCode: "worker_failed",
+      retryCount: 1,
+    };
+    const transfer = {
+      id: "transfer-1",
+      title: "untitled",
+      createdAt: new Date().toISOString(),
+      expiresAt: new Date(Date.now() + 60_000).toISOString(),
+      deleteToken: "token",
+      files: [failedInWorker],
+    };
+
+    inferTransferFileState.mockResolvedValue(failedInWorker);
+    requeueTransferFile.mockResolvedValue({
+      ...failedInWorker,
+      processingStatus: "queued",
+      retryCount: 2,
+    });
+
+    const { createHybridMediaProcessor } = await import(
+      "@/features/transfers/media-backends/hybrid.server"
+    );
+    const updated = await createHybridMediaProcessor().backfillTransferMedia(transfer);
+
+    expect(requeueTransferFile).toHaveBeenCalledWith(transfer, failedInWorker);
+    expect(updated.files[0]?.processingStatus).toBe("queued");
+  });
 });

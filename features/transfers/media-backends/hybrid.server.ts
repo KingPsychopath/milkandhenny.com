@@ -31,9 +31,20 @@ const TRANSFER_BACKFILL_CONCURRENCY = 2;
  * RAW and video are the expensive ones: seconds of CPU, hundreds of megabytes
  * to gigabytes of source. Images and GIFs finish inline in well under a second,
  * so queueing them would only add latency and Redis traffic.
+ *
+ * Both spellings of each route count. Enqueueing rewrites `local_video` to
+ * `worker_video` (see WORKER_ROUTE_MAP), so a file that has already been
+ * through the worker carries the `worker_*` name — and recognising only the
+ * pre-queue names meant a file that failed *in* the worker could never be
+ * requeued by reconciliation, no matter how many retries it had left.
  */
 function canUseWorkerForRoute(route: ProcessingRoute): boolean {
-  return route === "raw_try_local" || route === "local_video";
+  return (
+    route === "raw_try_local" ||
+    route === "local_video" ||
+    route === "worker_raw" ||
+    route === "worker_video"
+  );
 }
 
 /**
