@@ -61,6 +61,18 @@ Both are expensive and both shell out to a binary:
 Both binaries are in the runtime image for both roles, so the split is about
 resources, not capability. See [media-worker.md](./media-worker.md).
 
+### Capture time
+
+Both stills and videos record a `takenAt`, and both use the same convention:
+wall-clock time, offset discarded. EXIF gives stills no timezone and
+`exif-reader` returns them as if UTC, so a photo taken at 20:37 local is stored
+as `20:37Z`; videos read Apple's `com.apple.quicktime.creationdate` the same
+way. Honouring the video's real offset would place a clip an hour from the
+photo taken beside it.
+
+This is what lets the gallery interleave videos with photos in one timeline,
+and what makes "find media by capture time" work across both.
+
 ### Rotation
 
 Handled once, centrally, in `autoRotate`: Sharp reads the EXIF orientation tag

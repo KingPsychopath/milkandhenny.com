@@ -1764,7 +1764,7 @@ export function TransferGallery({ transferId, files, groups, deleteToken }: Tran
         <div className="mb-4 rounded-sm border theme-border px-3 py-3">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="font-mono text-micro tracking-wide">
-              <p className="text-foreground">find photos by capture time</p>
+              <p className="text-foreground">find media by capture time</p>
               <p className="theme-muted text-nano">
                 wall-clock time · +/- {TIME_FINDER_WINDOW_MINUTES} min
               </p>
@@ -1796,7 +1796,7 @@ export function TransferGallery({ transferId, files, groups, deleteToken }: Tran
                         type="button"
                         onClick={() => handleTimeBucketChange(bucket)}
                         title={`${bucket.dateKey} ${bucket.label}`}
-                        aria-label={`Show photos from ${bucket.dateKey} around ${bucket.label}`}
+                        aria-label={`Show media from ${bucket.dateKey} around ${bucket.label}`}
                         className={
                           isActive
                             ? "px-2 py-1 rounded-sm border theme-border text-foreground"

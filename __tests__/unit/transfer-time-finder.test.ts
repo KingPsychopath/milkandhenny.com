@@ -54,10 +54,13 @@ describe("transfer time finder", () => {
   });
 
   describe("eligibility", () => {
-    it("should only include still images in the time finder", () => {
+    it("should include anything that carries a capture time", () => {
       expect(isTransferTimeFinderEligible("image")).toBe(true);
+      // Videos carry a capture time now that it is read from container
+      // metadata, so a clip is findable at the moment it was taken.
+      expect(isTransferTimeFinderEligible("video")).toBe(true);
+      // Nothing gives a GIF a capture time to search by.
       expect(isTransferTimeFinderEligible("gif")).toBe(false);
-      expect(isTransferTimeFinderEligible("video")).toBe(false);
       expect(isTransferTimeFinderEligible("audio")).toBe(false);
       expect(isTransferTimeFinderEligible("file")).toBe(false);
     });
@@ -122,11 +125,15 @@ describe("transfer time finder", () => {
         makeEntry("dated-a", "image", "2024-06-01T14:30:00.000Z"),
         makeEntry("dated-b", "image", "2024-06-01T15:00:00.000Z"),
         makeEntry("bad", "image", "0000-00-00T00:00:00"),
-        makeEntry("video", "video", "2024-06-01T14:35:00.000Z"),
+        makeEntry("video-no-time", "video"),
       ]);
 
       expect(model.entries.find((entry) => entry.id === "bad")?.classification).toBe("undated");
-      expect(model.entries.find((entry) => entry.id === "video")?.classification).toBe("undated");
+      // A video with no readable capture time falls back to undated rather
+      // than inventing a position in the timeline.
+      expect(model.entries.find((entry) => entry.id === "video-no-time")?.classification).toBe(
+        "undated",
+      );
       expect(model.showFinder).toBe(true);
     });
 
@@ -201,7 +208,7 @@ describe("transfer time finder", () => {
         makeEntry("match-a", "image", "2024-06-01T14:30:00.000Z"),
         makeEntry("match-b", "image", "2024-06-01T14:40:00.000Z"),
         makeEntry("undated-image", "image"),
-        makeEntry("video", "video", "2024-06-01T14:35:00.000Z"),
+        makeEntry("undated-video", "video"),
         makeEntry("outlier", "image", "2018-02-03T09:00:00.000Z"),
       ]);
       const bucket = resolveTransferTimeFinderBucket("2024-06-01T14:30", model.buckets);
@@ -212,11 +219,42 @@ describe("transfer time finder", () => {
         "match-a",
         "match-b",
         "undated-image",
-        "video",
+        "undated-video",
         "outlier",
       ]);
-      expect(filtered.categoryById.get("video")).toBe("undated");
+      expect(filtered.categoryById.get("undated-video")).toBe("undated");
       expect(filtered.categoryById.get("outlier")).toBe("outlier");
+    });
+
+    it("should match a video taken alongside the photos in the same window", () => {
+      // The case this exists for: a clip of the speeches should surface when
+      // you search the time the speeches happened, not sit in an undated pile.
+      const model = buildTransferTimeFinderModel([
+        makeEntry("photo-a", "image", "2024-06-01T14:30:00.000Z"),
+        makeEntry("photo-b", "image", "2024-06-01T14:40:00.000Z"),
+        makeEntry("clip", "video", "2024-06-01T14:35:00.000Z"),
+        makeEntry("later-photo", "image", "2024-06-01T18:00:00.000Z"),
+      ]);
+      const bucket = resolveTransferTimeFinderBucket("2024-06-01T14:30", model.buckets);
+
+      const filtered = applyTransferTimeFinderFilter(model, bucket);
+
+      expect(filtered.categoryById.get("clip")).toBe("matched");
+      expect(filtered.orderedEntries.map((entry) => entry.id)).toContain("clip");
+      expect(filtered.categoryById.get("later-photo")).toBeUndefined();
+    });
+
+    it("should build buckets from a video-only selection", () => {
+      // The videos tab scopes the finder to videos alone. Before capture time
+      // was read, every entry was undated, no buckets formed, and the finder
+      // did not render at all.
+      const model = buildTransferTimeFinderModel([
+        makeEntry("clip-a", "video", "2024-06-01T14:30:00.000Z"),
+        makeEntry("clip-b", "video", "2024-06-01T18:05:00.000Z"),
+      ]);
+
+      expect(model.buckets.length).toBeGreaterThanOrEqual(2);
+      expect(model.showFinder).toBe(true);
     });
   });
 });
