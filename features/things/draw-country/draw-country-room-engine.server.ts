@@ -1,4 +1,3 @@
-import { randomInt } from "node:crypto";
 import { getRedis } from "@/lib/platform/redis.server";
 import {
   createAvailableMultiplayerRoomId,
@@ -7,6 +6,7 @@ import {
   multiplayerCredentialsMatch,
   multiplayerRoomExpiresAt,
   remainingMultiplayerRoomTtlSeconds,
+  withMultiplayerRoomLock,
 } from "../shared/room-primitives.server";
 import { multiplayerFailure } from "../shared/multiplayer";
 import {
@@ -113,27 +113,13 @@ async function withRoom<T>(roomId: string, use: (room: RoomState) => T | Promise
   const initial = await loadRoom(roomId);
   if (!initial) return null;
   const keys: Keys = drawCountryRoomRedisKeys(roomId);
-  const owner = createMultiplayerCredential();
-  let acquired = false;
-  for (let attempt = 0; attempt < 12; attempt += 1) {
-    acquired = Boolean(await redis.set(keys.lock, owner, { nx: true, px: 5_000 }));
-    if (acquired) break;
-    await new Promise((resolve) => setTimeout(resolve, 20 + randomInt(25)));
-  }
-  if (!acquired) throw new Error("Room is busy");
-  try {
+  return withMultiplayerRoomLock(redis, { roomId, lockKey: keys.lock }, async () => {
     const room = await redis.get<RoomState>(keys.state);
     if (!room || room.expiresAt <= Date.now()) return null;
     const result = await use(room);
     await saveRoom(room);
     return result;
-  } finally {
-    await redis.eval(
-      "if redis.call('get', KEYS[1]) == ARGV[1] then return redis.call('del', KEYS[1]) else return 0 end",
-      [keys.lock],
-      [owner],
-    );
-  }
+  });
 }
 
 function currentCountry(room: RoomState) {

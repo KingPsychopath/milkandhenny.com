@@ -11,7 +11,9 @@ import {
   multiplayerRoomExpiresAt,
   rememberMultiplayerAction,
   remainingMultiplayerRoomTtlSeconds,
+  withMultiplayerRoomLock,
 } from "../shared/room-primitives.server";
+import type { MultiplayerLockAttempt } from "../shared/room-primitives.server";
 import { multiplayerFailure } from "../shared/multiplayer";
 import {
   multiplayerPlayerReady,
@@ -134,9 +136,7 @@ interface PartyRoomState {
 
 const memoryRooms = new Map<string, PartyRoomState>();
 const memoryJoinReceipts = new Map<string, JoinReceipt>();
-let lockObserver:
-  | ((input: { acquired: boolean; contended: boolean; waitMs: number }) => void)
-  | null = null;
+let lockObserver: ((input: MultiplayerLockAttempt) => void) | null = null;
 
 export function setPartyRoomLockObserver(observer: typeof lockObserver) {
   lockObserver = observer;
@@ -224,35 +224,17 @@ async function withRoom<T>(
   }
   const initial = await loadRoom(id);
   if (!initial) return null;
-  const owner = token();
-  const lockStartedAt = performance.now();
-  let acquired = false;
-  let contended = false;
-  for (let attempt = 0; attempt < 12; attempt += 1) {
-    acquired = Boolean(await redis.set(initial.keys.lock, owner, { nx: true, px: 5_000 }));
-    if (acquired) break;
-    contended = true;
-    await new Promise((resolve) => setTimeout(resolve, 20 + randomInt(25)));
-  }
-  lockObserver?.({
-    acquired,
-    contended,
-    waitMs: performance.now() - lockStartedAt,
-  });
-  if (!acquired) throw new Error("Room is busy");
-  try {
-    const room = await redis.get<PartyRoomState>(initial.keys.state);
-    if (!room || room.expiresAt <= Date.now()) return null;
-    const result = await use(room, initial.keys);
-    await saveRoom(room, initial.keys);
-    return result;
-  } finally {
-    await redis.eval(
-      "if redis.call('get', KEYS[1]) == ARGV[1] then return redis.call('del', KEYS[1]) else return 0 end",
-      [initial.keys.lock],
-      [owner],
-    );
-  }
+  return withMultiplayerRoomLock(
+    redis,
+    { roomId: id, lockKey: initial.keys.lock, onAttempt: (attempt) => lockObserver?.(attempt) },
+    async () => {
+      const room = await redis.get<PartyRoomState>(initial.keys.state);
+      if (!room || room.expiresAt <= Date.now()) return null;
+      const result = await use(room, initial.keys);
+      await saveRoom(room, initial.keys);
+      return result;
+    },
+  );
 }
 
 async function readJoinReceipt(roomIdValue: string, joinId: string, keys: PartyRedisKeys) {

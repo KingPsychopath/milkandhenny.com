@@ -1,13 +1,36 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 
+// 10m is the finest Natural Earth admin-0 tier. The coarser 50m tier collapses microstates into
+// unrecognisable blobs — San Marino arrived as a six-point lozenge — so every outline is sourced
+// here and simplified back down to a shared point budget instead.
 const SOURCE =
-  "https://raw.githubusercontent.com/nvkelso/natural-earth-vector/v5.1.2/geojson/ne_50m_admin_0_countries.geojson";
+  "https://raw.githubusercontent.com/nvkelso/natural-earth-vector/v5.1.2/geojson/ne_10m_admin_0_countries.geojson";
 const OUTPUT = resolve("features/things/draw-country/countries.generated.json");
 const COORDINATE_SCALE = 10_000;
 const MAX_RINGS = 32;
-const MINIMUM_RELATIVE_AREA = 0.00004;
+// Islands below a thousandth of the mainland are specks no player could place; at 10m resolution
+// the source is full of them, and keeping them only adds noise to the outline and the score.
+const MINIMUM_RELATIVE_AREA = 0.001;
 const MINIMUM_DISPLAY_AREA = 0.01;
+// Automatic cropping of remote specks: only rings holding a rounding error of the country's land
+// may go, and only when dropping one measurably enlarges what the player actually draws.
+const NEGLIGIBLE_RING_AREA = 0.005;
+const CROP_MINIMUM_GAIN = 1.25;
+// Douglas–Peucker runs only as hard as it must: the smallest tolerance that fits the budget wins,
+// so simple outlines keep every source vertex and only the sprawling coastlines get thinned.
+const POINT_BUDGET = 500;
+// A ring that cannot reach its allowance without self-intersecting is allowed to overshoot, so the
+// audit bound is looser than the budget the simplifier aims for.
+const MAX_OUTLINE_POINTS = 4_000;
+const MINIMUM_RING_POINTS = 8;
+const MAX_SIMPLIFY_TOLERANCE = COORDINATE_SCALE / 20;
+const SIMPLIFY_SEARCH_STEPS = 32;
+const SIMPLIFY_BACKOFF_STEPS = 24;
+const SIMPLIFY_BACKOFF_RATIO = 0.7;
+// Warn (don't fail) when a country is inherently low-detail — Vatican City and Nauru really are
+// this simple at every resolution, but a regression elsewhere should be visible in the log.
+const COARSE_OUTLINE_POINTS = 12;
 // Crop distant territories or island groups whose full geographic spread makes the outline unreadable.
 const CORE_OUTLINE_CODES = new Set([
   "CL",
@@ -17,12 +40,15 @@ const CORE_OUTLINE_CODES = new Set([
   "FR",
   "KI",
   "MH",
+  "MU",
   "MV",
   "NL",
   "NO",
   "PT",
   "PW",
+  "SC",
   "TO",
+  "TV",
 ]);
 const COUNTRY_CODES =
   `AF AL DZ AD AO AG AR AM AU AT AZ BS BH BD BB BY BE BZ BJ BT BO BA BW BR BN BG BF BI CV KH CM CA CF TD CL CN CO KM CG CD CR CI HR CU CY CZ DK DJ DM DO EC EG SV GQ ER EE SZ ET FJ FI FR GA GM GE DE GH GR GD GT GN GW GY HT HN HU IS IN ID IR IQ IE IL IT JM JP JO KZ KE KI KP KR KW KG LA LV LB LS LR LY LI LT LU MG MW MY MV ML MT MH MR MU MX FM MD MC MN ME MA MZ MM NA NR NP NL NZ NI NE NG MK NO OM PK PW PA PG PY PE PH PL PT QA RO RU RW KN LC VC WS SM ST SA SN RS SC SL SG SK SI SB SO ZA SS ES LK SD SR SE CH SY TJ TZ TH TL TG TO TT TN TR TM TV UG UA AE GB US UY UZ VU VA VE VN YE ZM ZW PS`.split(
@@ -78,6 +104,201 @@ function ringCrossesItself(ring) {
     }
   }
   return false;
+}
+
+function perpendicularDistance(point, start, end) {
+  const dx = end[0] - start[0];
+  const dy = end[1] - start[1];
+  const length = Math.hypot(dx, dy);
+  if (!length) return Math.hypot(point[0] - start[0], point[1] - start[1]);
+  return Math.abs(dy * point[0] - dx * point[1] + end[0] * start[1] - end[1] * start[0]) / length;
+}
+
+function simplifyLine(points, tolerance) {
+  if (points.length < 3) return points;
+  let furthest = 0;
+  let index = 0;
+  for (let candidate = 1; candidate < points.length - 1; candidate += 1) {
+    const distance = perpendicularDistance(points[candidate], points[0], points.at(-1));
+    if (distance > furthest) {
+      furthest = distance;
+      index = candidate;
+    }
+  }
+  if (furthest <= tolerance) return [points[0], points.at(-1)];
+  return [
+    ...simplifyLine(points.slice(0, index + 1), tolerance).slice(0, -1),
+    ...simplifyLine(points.slice(index), tolerance),
+  ];
+}
+
+/**
+ * Simplify a closed ring without letting the arbitrary start vertex anchor the result: the ring is
+ * cut at the vertex furthest from its start so both halves are simplified as open polylines.
+ */
+function simplifyRing(ring, tolerance) {
+  if (ring.length <= 4 || tolerance <= 0) return ring;
+  let split = 0;
+  let furthest = -1;
+  for (let candidate = 1; candidate < ring.length; candidate += 1) {
+    const distance = Math.hypot(ring[candidate][0] - ring[0][0], ring[candidate][1] - ring[0][1]);
+    if (distance > furthest) {
+      furthest = distance;
+      split = candidate;
+    }
+  }
+  const head = simplifyLine(ring.slice(0, split + 1), tolerance);
+  const tail = simplifyLine([...ring.slice(split), ring[0]], tolerance);
+  const merged = [...head.slice(0, -1), ...tail.slice(0, -1)];
+  if (merged.length >= 3) return merged;
+
+  // A tolerance coarse enough to collapse the ring must still yield a triangle, never the original:
+  // callers binary-search tolerances assuming the point count only falls, and handing back the full
+  // ring at the coarse end hides every finer tolerance from the search.
+  let widest = 0;
+  let apex = -1;
+  for (let candidate = 0; candidate < ring.length; candidate += 1) {
+    if (candidate === 0 || candidate === split) continue;
+    const distance = perpendicularDistance(ring[candidate], ring[0], ring[split]);
+    if (distance > widest) {
+      widest = distance;
+      apex = candidate;
+    }
+  }
+  if (apex < 0) return ring;
+  const triangle = [ring[0], ring[split], ring[apex]].toSorted(
+    (a, b) => ring.indexOf(a) - ring.indexOf(b),
+  );
+  return polygonArea(triangle) > 0 ? triangle : ring;
+}
+
+function countPoints(rings) {
+  return rings.reduce((total, ring) => total + ring.length, 0);
+}
+
+function ringsIntersect(first, second) {
+  for (let a = 0; a < first.length; a += 1)
+    for (let b = 0; b < second.length; b += 1)
+      if (
+        segmentsCross(
+          first[a],
+          first[(a + 1) % first.length],
+          second[b],
+          second[(b + 1) % second.length],
+        )
+      )
+        return true;
+  return false;
+}
+
+/**
+ * Simplifying a coastline can sweep it across a neighbouring islet, leaving two rings that overlap —
+ * which reads as a crossed-out scribble to both the eye and the scorer. An islet the simplified
+ * coastline now covers is smaller than the outline's own accuracy, so it is dropped rather than
+ * redrawn; the largest ring is never the one discarded.
+ */
+function separateRings(rings) {
+  const ordered = rings.toSorted((a, b) => polygonArea(b) - polygonArea(a));
+  const kept = [];
+  for (const ring of ordered)
+    if (!kept.some((other) => ringsIntersect(other, ring))) kept.push(ring);
+  return kept;
+}
+
+function ringIsSimple(ring) {
+  return ring.length >= 3 && polygonArea(ring) > 0 && !ringCrossesItself(ring);
+}
+
+/**
+ * Thin one ring towards its share of the budget without letting it fold onto itself.
+ *
+ * Douglas–Peucker is not topology-preserving: a coast cut by hairpin inlets — Britain's firths,
+ * Germany's North Sea fringe, Senegal wrapping The Gambia — pinches shut well before it reaches its
+ * allowance. Such a ring settles for whichever intact simplification it can reach, which leaves the
+ * handful of countries listed above either coarser than their share (Britain) or well over it
+ * (Germany, Chile). Fixing that properly needs a topology-preserving simplifier; the search below
+ * only ever returns rings that are intact, never folded.
+ */
+function simplifyRingToAllowance(ring, allowance) {
+  if (ring.length <= allowance) return ring;
+  // Point count falls monotonically as the tolerance rises, so binary-search the gentlest tolerance
+  // that reaches the allowance. Sampling a fixed ladder of tolerances instead would step straight
+  // over the useful band — it once cut New Zealand's South Island from hundreds of points to twenty.
+  let low = 0;
+  let high = MAX_SIMPLIFY_TOLERANCE;
+  let best = null;
+  for (let step = 0; step < SIMPLIFY_SEARCH_STEPS; step += 1) {
+    const tolerance = (low + high) / 2;
+    const candidate = simplifyRing(ring, tolerance);
+    if (candidate.length > allowance) {
+      low = tolerance;
+      continue;
+    }
+    high = tolerance;
+    // Keep the richest intact candidate that still fits, not merely the last one probed: the search
+    // does not necessarily finish on its tightest tolerance, and intricate coastlines fold shut at
+    // some tolerances but not others.
+    if (ringIsSimple(candidate) && (!best || candidate.length > best.length)) best = candidate;
+  }
+  if (best) return best;
+
+  // Nothing that reaches the allowance survives. Back the tolerance off until the ring holds
+  // together; at zero it is the source ring again, so this always lands somewhere, over budget.
+  let tolerance = high;
+  for (let step = 0; step < SIMPLIFY_BACKOFF_STEPS; step += 1) {
+    tolerance *= SIMPLIFY_BACKOFF_RATIO;
+    const candidate = simplifyRing(ring, tolerance);
+    if (ringIsSimple(candidate)) return candidate;
+  }
+  return ring;
+}
+
+/**
+ * Rounding source degrees onto the integer grid can pinch a hair-thin feature — Eritrea's Dahlak
+ * reefs are the culprit — into a ring that crosses itself. Simplify just enough to undo the fold,
+ * and drop the ring outright when nothing recovers it.
+ */
+function repairRing(ring) {
+  if (ringIsSimple(ring)) return ring;
+  for (let step = 1; step <= SIMPLIFY_SEARCH_STEPS; step += 1) {
+    const tolerance = MAX_SIMPLIFY_TOLERANCE * (step / SIMPLIFY_SEARCH_STEPS) ** 3;
+    const candidate = simplifyRing(ring, tolerance);
+    if (candidate.length < ring.length && ringIsSimple(candidate)) return candidate;
+  }
+  return null;
+}
+
+/**
+ * Fit an outline into the shared point budget, giving each ring a share proportional to its source
+ * detail. Outlines already under budget keep every source vertex untouched.
+ */
+function ringPerimeter(ring) {
+  let total = 0;
+  for (let index = 0; index < ring.length; index += 1) {
+    const next = ring[(index + 1) % ring.length];
+    total += Math.hypot(next[0] - ring[index][0], next[1] - ring[index][1]);
+  }
+  return total;
+}
+
+/**
+ * Fit an outline into the shared point budget. Shares go by drawn perimeter rather than by source
+ * vertex count: a fjord-riddled islet can carry more source vertices than a whole mainland without
+ * being any more of the picture, and paying by vertices left Great Britain thinner than its own
+ * offshore rocks.
+ */
+function simplifyToBudget(rings) {
+  if (countPoints(rings) <= POINT_BUDGET) return rings;
+  const perimeters = rings.map(ringPerimeter);
+  const total = perimeters.reduce((sum, value) => sum + value, 0) || 1;
+  return rings
+    .map((ring, index) =>
+      simplifyRingToAllowance(
+        ring,
+        Math.max(MINIMUM_RING_POINTS, Math.floor((perimeters[index] / total) * POINT_BUDGET)),
+      ),
+    )
+    .filter((ring) => ring.length >= 3 && polygonArea(ring) > 0);
 }
 
 function openRing(points) {
@@ -140,16 +361,7 @@ function recognisableCore(ranked) {
   });
 }
 
-function normalise(feature, code) {
-  const projected = projectedRings(feature);
-  const allRanked = projected
-    .map((points) => ({ points, area: polygonArea(points) }))
-    .toSorted((a, b) => b.area - a.area);
-  const ranked = CORE_OUTLINE_CODES.has(code) ? recognisableCore(allRanked) : allRanked;
-  const minimumArea = ranked[0].area * MINIMUM_RELATIVE_AREA;
-  const retained = ranked.filter(
-    ({ area }, index) => index < MAX_RINGS && (index === 0 || area >= minimumArea),
-  );
+function buildOutline(feature, retained) {
   const all = retained.flatMap(({ points }) => points);
   const minX = Math.min(...all.map(([x]) => x));
   const maxX = Math.max(...all.map(([x]) => x));
@@ -176,16 +388,68 @@ function normalise(feature, code) {
     })
     .filter((ring) => ring.length >= 3 && polygonArea(ring) > 0);
   if (!rings.length) throw new Error(`No usable rings for ${feature.properties.ADMIN}`);
+  const simplified = simplifyToBudget(rings).map(repairRing);
+  if (!simplified[0]) throw new Error(`Main outline for ${feature.properties.ADMIN} is degenerate`);
   return {
     aspect: Math.round((width / height) * 1_000) / 1_000,
-    rings,
+    rings: separateRings(simplified.filter(Boolean)),
   };
+}
+
+/**
+ * How much of the drawing frame the country actually fills. Normalising maps the combined bounding
+ * box onto the coordinate square, so this reduces to land area over the squared longer side.
+ */
+function readability(ranked) {
+  const all = ranked.flatMap(({ points }) => points);
+  const bounds = ringBounds(all);
+  const side = Math.max(bounds.maxX - bounds.minX, bounds.maxY - bounds.minY);
+  if (!side) return 0;
+  return ranked.reduce((sum, { area }) => sum + area, 0) / side ** 2;
+}
+
+/**
+ * Drop remote specks that stretch the frame without adding anything to draw. Removing whole regions
+ * at once is too blunt — Equatorial Guinea's Annobón has to go while Bioko stays — so rings are
+ * dropped one at a time, always the negligible ring whose removal recovers the most drawing area,
+ * and only while that recovery is worth having.
+ */
+function withoutRemoteSpecks(ranked) {
+  let current = ranked;
+  let currentReadability = readability(current);
+  while (current.length > 1) {
+    const totalArea = current.reduce((sum, { area }) => sum + area, 0);
+    let best = null;
+    for (const [index, ring] of current.entries()) {
+      if (ring.area > totalArea * NEGLIGIBLE_RING_AREA) continue;
+      const candidate = current.filter((_, position) => position !== index);
+      const gained = readability(candidate);
+      if (!best || gained > best.readability) best = { candidate, readability: gained };
+    }
+    if (!best || best.readability < currentReadability * CROP_MINIMUM_GAIN) return current;
+    current = best.candidate;
+    currentReadability = best.readability;
+  }
+  return current;
+}
+
+function normalise(feature, code) {
+  const allRanked = projectedRings(feature)
+    .map((points) => ({ points, area: polygonArea(points) }))
+    .toSorted((a, b) => b.area - a.area);
+  const ranked = CORE_OUTLINE_CODES.has(code) ? recognisableCore(allRanked) : allRanked;
+  const minimumArea = ranked[0].area * MINIMUM_RELATIVE_AREA;
+  const retained = ranked.filter(
+    ({ area }, index) => index < MAX_RINGS && (index === 0 || area >= minimumArea),
+  );
+  return buildOutline(feature, withoutRemoteSpecks(retained));
 }
 
 function auditCountries(countries) {
   if (countries.length !== COUNTRY_CODES.length)
     throw new Error(`Expected ${COUNTRY_CODES.length} countries, received ${countries.length}`);
   const ids = new Set();
+  const coarse = [];
   let ringCount = 0;
   let pointCount = 0;
   for (const country of countries) {
@@ -201,6 +465,11 @@ function auditCountries(countries) {
       Math.max(country.aspect, 1 / country.aspect);
     if (displayArea < MINIMUM_DISPLAY_AREA)
       throw new Error(`Outline for ${country.id} is too sparse to display clearly`);
+    const countryPoints = country.rings.reduce((total, ring) => total + ring.length, 0);
+    if (countryPoints > MAX_OUTLINE_POINTS)
+      throw new Error(`Outline for ${country.id} exceeds the ${MAX_OUTLINE_POINTS} point ceiling`);
+    const mainRingPoints = Math.max(...country.rings.map((ring) => ring.length));
+    if (mainRingPoints < COARSE_OUTLINE_POINTS) coarse.push(`${country.id} (${mainRingPoints})`);
     for (const [ringIndex, ring] of country.rings.entries()) {
       const label = `${country.id} ring ${ringIndex + 1}`;
       if (ring.length < 3) throw new Error(`${label} has fewer than three points`);
@@ -222,13 +491,16 @@ function auditCountries(countries) {
         if (x === next[0] && y === next[1])
           throw new Error(`${label} repeats point ${pointIndex + 1}`);
       }
+      for (const [otherIndex, other] of country.rings.entries())
+        if (otherIndex > ringIndex && ringsIntersect(ring, other))
+          throw new Error(`${label} overlaps ring ${otherIndex + 1}`);
       ringCount += 1;
       pointCount += ring.length;
     }
   }
   const missing = COUNTRY_CODES.filter((id) => !ids.has(id));
   if (missing.length) throw new Error(`Missing country ids: ${missing.join(", ")}`);
-  return { ringCount, pointCount };
+  return { ringCount, pointCount, coarse };
 }
 
 const response = await fetch(SOURCE);
@@ -288,4 +560,8 @@ await writeFile(OUTPUT, `${JSON.stringify(countries)}\n`);
 console.log(
   `Audited ${countries.length} countries, ${audit.ringCount} rings, and ${audit.pointCount} points`,
 );
+if (audit.coarse.length)
+  console.log(
+    `Inherently low-detail outlines (fewer than ${COARSE_OUTLINE_POINTS} points): ${audit.coarse.join(", ")}`,
+  );
 console.log(`Wrote country outlines to ${OUTPUT}`);
