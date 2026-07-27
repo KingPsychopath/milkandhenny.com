@@ -1,0 +1,9 @@
+# pnpm 11 refuses to install when a dependency's build script is neither approved nor declined, and
+# no longer reads the `pnpm` field in package.json. These are exactly the scripts that ran under the
+# pnpm 9 builds this image used before, so the produced install is unchanged.
+allowBuilds:
+  esbuild: true
+  msgpackr-extract: true
+  onnxruntime-node: true
+  protobufjs: true
+  sharp: true
