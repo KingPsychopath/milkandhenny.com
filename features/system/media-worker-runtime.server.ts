@@ -1,4 +1,5 @@
 import { getMediaProcessorMode } from "@/features/media/config.server";
+import { reconcileTransferMedia } from "@/features/transfers/media-reconcile.server";
 import { processWorkerJob } from "@/features/transfers/media-backends/worker.server";
 import { processWordMediaJob } from "@/features/words/media-worker.server";
 import {
@@ -50,6 +51,16 @@ const DEFAULT_ERROR_BACKOFF_MS = Math.max(
   500,
   Number(process.env.MEDIA_WORKER_ERROR_BACKOFF_MS ?? "15000"),
 );
+
+/**
+ * How often the idle worker sweeps for stranded files. Matches the staleness
+ * window, so a file goes from "claimed" to "repaired" in about two windows at
+ * worst. `0` disables the sweep.
+ */
+function getReconcileIntervalMs(): number {
+  const raw = Number(process.env.MEDIA_RECONCILE_INTERVAL_MS ?? "");
+  return Number.isFinite(raw) && raw >= 0 ? raw : 15 * 60_000;
+}
 
 /**
  * An idle drain pass costs one blocking claim per queue (~11s), so an
@@ -219,6 +230,7 @@ function startMediaWorkerLoop(options: DrainMediaQueuesOptions = {}): void {
 
   const finished = (async () => {
     let firstPass = true;
+    let lastReconcileAtMs = 0;
 
     while (!state.stopped) {
       try {
@@ -235,6 +247,19 @@ function startMediaWorkerLoop(options: DrainMediaQueuesOptions = {}): void {
         }
 
         firstPass = false;
+
+        // The queue is empty, so this is the cheapest moment to look for work
+        // that should have been in it: files a lost job left stranded.
+        const reconcileIntervalMs = getReconcileIntervalMs();
+        if (reconcileIntervalMs > 0 && Date.now() - lastReconcileAtMs >= reconcileIntervalMs) {
+          lastReconcileAtMs = Date.now();
+          const swept = await reconcileTransferMedia();
+          if (swept.transfersRepaired > 0) {
+            console.log(
+              `[media-worker] reconciled ${swept.filesRepaired} file(s) across ${swept.transfersRepaired} transfer(s)`,
+            );
+          }
+        }
       } catch (error) {
         console.error(`[media-worker] drain pass failed\n${getErrorDetail(error)}`);
         await sleep(options.errorBackoffMs ?? DEFAULT_ERROR_BACKOFF_MS);

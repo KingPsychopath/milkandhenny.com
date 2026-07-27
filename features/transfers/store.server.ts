@@ -250,7 +250,14 @@ async function getTransfer(id: string): Promise<TransferData | null> {
 }
 
 /** List all active (non-expired) transfers */
-async function listTransfers(): Promise<TransferSummary[]> {
+/**
+ * Every live transfer, in one pipelined round trip.
+ *
+ * Callers that need the files (reconciliation, admin views) would otherwise do
+ * a `GET` per id. Expired ids found along the way are pruned from the index as
+ * a side effect, which is the only place that garbage gets collected.
+ */
+async function listTransferData(): Promise<TransferData[]> {
   const redis = requireTransferRedis();
   const now = Date.now();
 
@@ -264,7 +271,7 @@ async function listTransfers(): Promise<TransferSummary[]> {
     }
     const results = await pipeline.exec();
 
-    const summaries: TransferSummary[] = [];
+    const live: TransferData[] = [];
     const expiredIds: string[] = [];
 
     for (let i = 0; i < ids.length; i++) {
@@ -275,22 +282,12 @@ async function listTransfers(): Promise<TransferSummary[]> {
       }
 
       const data: TransferData = typeof raw === "string" ? JSON.parse(raw) : (raw as TransferData);
-      const expiresMs = new Date(data.expiresAt).getTime();
-      const remaining = Math.floor((expiresMs - now) / 1000);
-
-      if (remaining <= 0) {
+      if (new Date(data.expiresAt).getTime() - now <= 0) {
         expiredIds.push(ids[i]);
         continue;
       }
 
-      summaries.push({
-        id: data.id,
-        title: data.title,
-        fileCount: data.files.length,
-        createdAt: data.createdAt,
-        expiresAt: data.expiresAt,
-        remainingSeconds: remaining,
-      });
+      live.push(data);
     }
 
     if (expiredIds.length > 0) {
@@ -301,9 +298,31 @@ async function listTransfers(): Promise<TransferSummary[]> {
       await cleanupPipeline.exec();
     }
 
-    return summaries.sort(
-      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
-    );
+    return live;
+  }
+
+  // Memory fallback
+  return [...memoryTransfers.values()].filter(
+    (data) => new Date(data.expiresAt).getTime() - now > 0,
+  );
+}
+
+async function listTransfers(): Promise<TransferSummary[]> {
+  const now = Date.now();
+  const redis = requireTransferRedis();
+
+  if (redis) {
+    const live = await listTransferData();
+    return live
+      .map((data) => ({
+        id: data.id,
+        title: data.title,
+        fileCount: data.files.length,
+        createdAt: data.createdAt,
+        expiresAt: data.expiresAt,
+        remainingSeconds: Math.floor((new Date(data.expiresAt).getTime() - now) / 1000),
+      }))
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   }
 
   // Memory fallback
@@ -361,6 +380,7 @@ export {
   createTransfer,
   getTransfer,
   listTransfers,
+  listTransferData,
   deleteTransferData,
   removeTransferFile,
   removeTransferFileFromGroups,

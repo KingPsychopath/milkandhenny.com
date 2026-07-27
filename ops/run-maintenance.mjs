@@ -4,18 +4,23 @@ const secret = process.env.CRON_SECRET?.trim();
 if (!baseUrl) throw new Error("APP_BASE_URL or VITE_BASE_URL is required");
 if (!secret) throw new Error("CRON_SECRET is required");
 
-const paths = [
-  "/api/cron/cleanup-transfers",
-  "/api/cron/cleanup-word-shares",
-  "/api/cron/cleanup-word-media-orphans",
+const jobs = [
+  { path: "/api/cron/cleanup-transfers" },
+  { path: "/api/cron/cleanup-word-shares" },
+  { path: "/api/cron/cleanup-word-media-orphans" },
+  // Reconcile media the worker never finished. The worker sweeps for this
+  // itself whenever its queue goes idle; this is the backstop for the worker
+  // being down. Both share a Redis lock, so overlap is harmless.
+  { path: "/api/cron/process-transfer-media", method: "POST" },
 ];
 
 let failed = false;
 
-for (const path of paths) {
+for (const { path, method = "GET" } of jobs) {
   const startedAt = Date.now();
   try {
     const response = await fetch(`${baseUrl}${path}`, {
+      method,
       headers: {
         authorization: `Bearer ${secret}`,
         "x-request-id": crypto.randomUUID(),
