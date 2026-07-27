@@ -5,6 +5,7 @@ import {
   isTransferTimeFinderEligible,
   parseWallClockTime,
   resolveTransferTimeFinderBucket,
+  resolveTransferTimeFinderSelection,
   type TransferTimeFinderInput,
 } from "@/features/transfers/time-finder";
 
@@ -255,6 +256,63 @@ describe("transfer time finder", () => {
 
       expect(model.buckets.length).toBeGreaterThanOrEqual(2);
       expect(model.showFinder).toBe(true);
+    });
+  });
+
+  describe("whole-day selection", () => {
+    const multiDay = () =>
+      buildTransferTimeFinderModel([
+        makeEntry("sat-morning", "image", "2024-06-01T09:00:00.000Z"),
+        makeEntry("sat-evening", "image", "2024-06-01T21:00:00.000Z"),
+        makeEntry("sat-clip", "video", "2024-06-01T21:05:00.000Z"),
+        makeEntry("sun-brunch", "image", "2024-06-02T11:00:00.000Z"),
+      ]);
+
+    it("counts every dated item on each day", () => {
+      const model = multiDay();
+
+      expect(model.dates.map((date) => [date.dateKey, date.count])).toEqual([
+        ["2024-06-01", 3],
+        ["2024-06-02", 1],
+      ]);
+    });
+
+    it("selects a whole day from a bare date, and a window from a date plus time", () => {
+      const model = multiDay();
+
+      // The two forms cannot collide: one has a T, the other does not.
+      expect(resolveTransferTimeFinderSelection("2024-06-01", model)).toMatchObject({
+        type: "date",
+      });
+      expect(resolveTransferTimeFinderSelection("2024-06-01T09:00", model)).toMatchObject({
+        type: "bucket",
+      });
+      expect(resolveTransferTimeFinderSelection("2024-06-03", model)).toBeNull();
+      expect(resolveTransferTimeFinderSelection(null, model)).toBeNull();
+    });
+
+    it("matches everything from the chosen day, morning to night", () => {
+      const model = multiDay();
+      const selection = resolveTransferTimeFinderSelection("2024-06-01", model);
+
+      const filtered = applyTransferTimeFinderFilter(model, selection);
+
+      // A day is far wider than any single window — that is the point of it
+      // being its own kind of selection.
+      expect(filtered.categoryById.get("sat-morning")).toBe("matched");
+      expect(filtered.categoryById.get("sat-evening")).toBe("matched");
+      expect(filtered.categoryById.get("sat-clip")).toBe("matched");
+      expect(filtered.categoryById.get("sun-brunch")).toBeUndefined();
+    });
+
+    it("still accepts a bare bucket, for callers predating day selection", () => {
+      const model = multiDay();
+      const bucket = resolveTransferTimeFinderBucket("2024-06-01T09:00", model.buckets);
+
+      const filtered = applyTransferTimeFinderFilter(model, bucket);
+
+      expect(filtered.categoryById.get("sat-morning")).toBe("matched");
+      expect(filtered.categoryById.get("sat-evening")).toBeUndefined();
     });
   });
 });

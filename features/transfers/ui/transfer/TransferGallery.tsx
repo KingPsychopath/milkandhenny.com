@@ -37,7 +37,7 @@ import {
   TIME_FINDER_WINDOW_MINUTES,
   applyTransferTimeFinderFilter,
   buildTransferTimeFinderModel,
-  resolveTransferTimeFinderBucket,
+  resolveTransferTimeFinderSelection,
   type TransferTimeFilterCategory,
   type TransferTimeFinderBucket,
 } from "@/features/transfers/time-finder";
@@ -246,6 +246,43 @@ function getScopeSelectLabel(filter: GalleryFilter): string {
   if (filter === "videos") return "[ select all videos ]";
   if (filter === "audio") return "[ select all audio ]";
   return "[ select all files ]";
+}
+
+/**
+ * A whole day, selectable.
+ *
+ * The date used to be a plain caption, so a transfer spanning several days
+ * could only be narrowed fifteen minutes at a time — there was no way to ask
+ * for "everything from Saturday". It reads as a chip because it behaves like
+ * one, and sits above its own times so the hierarchy is obvious.
+ */
+function TimeFinderDateChip({
+  dateKey,
+  count,
+  isActive,
+  onSelect,
+}: {
+  dateKey: string;
+  count: number;
+  isActive: boolean;
+  onSelect: (param: string | null) => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={() => onSelect(dateKey)}
+      aria-pressed={isActive}
+      aria-label={`Show everything from ${dateKey}`}
+      className={
+        isActive
+          ? "mb-2 font-mono text-nano tracking-wide text-foreground"
+          : "mb-2 font-mono text-nano tracking-wide theme-muted hover:text-foreground transition-colors"
+      }
+    >
+      <span>[ {formatTimeFinderDateLabel(dateKey)} ]</span>
+      {count > 0 ? <span className="ml-2 tabular-nums">{count}</span> : null}
+    </button>
+  );
 }
 
 function formatTimeFinderDateLabel(dateKey: string): string {
@@ -883,15 +920,18 @@ export function TransferGallery({ transferId, files, groups, deleteToken }: Tran
       ),
     [scopedEntries],
   );
-  const activeTimeBucket = useMemo(
-    () => resolveTransferTimeFinderBucket(selectedTimeParam, timeFinderModel.buckets),
-    [selectedTimeParam, timeFinderModel.buckets],
+  const activeTimeSelection = useMemo(
+    () => resolveTransferTimeFinderSelection(selectedTimeParam, timeFinderModel),
+    [selectedTimeParam, timeFinderModel],
   );
-  const hasActiveTimeFilter = timeFinderModel.showFinder && activeTimeBucket !== null;
+  const hasActiveTimeFilter = timeFinderModel.showFinder && activeTimeSelection !== null;
   const timeFilterResult = useMemo(
     () =>
-      applyTransferTimeFinderFilter(timeFinderModel, hasActiveTimeFilter ? activeTimeBucket : null),
-    [activeTimeBucket, hasActiveTimeFilter, timeFinderModel],
+      applyTransferTimeFinderFilter(
+        timeFinderModel,
+        hasActiveTimeFilter ? activeTimeSelection : null,
+      ),
+    [activeTimeSelection, hasActiveTimeFilter, timeFinderModel],
   );
   const filteredEntries = useMemo(
     () =>
@@ -1007,7 +1047,7 @@ export function TransferGallery({ transferId, files, groups, deleteToken }: Tran
   useEffect(() => {
     setVisibleVisualCount(Math.min(visualItems.length, INITIAL_VISUAL_RENDER_COUNT));
     setVisibleFileListCount(Math.min(nonVisualFiles.length, INITIAL_FILE_LIST_RENDER_COUNT));
-  }, [activeTimeBucket?.key, visualItems.length, nonVisualFiles.length]);
+  }, [selectedTimeParam, visualItems.length, nonVisualFiles.length]);
 
   useEffect(() => {
     const allowedIds = new Set(currentFiles.map((file) => file.id));
@@ -1139,9 +1179,10 @@ export function TransferGallery({ transferId, files, groups, deleteToken }: Tran
     [livePhotoMode],
   );
 
-  const handleTimeBucketChange = useCallback((nextBucket: TransferTimeFinderBucket | null) => {
-    const nextParam = nextBucket?.param ?? null;
-    setSelectedTimeParam((prev) => (prev === nextParam ? prev : nextParam));
+  const handleTimeParamChange = useCallback((nextParam: string | null) => {
+    // Clicking the active chip clears it — the same control that narrows also
+    // widens, so there is no dead end without hunting for the clear button.
+    setSelectedTimeParam((prev) => (prev === nextParam ? null : nextParam));
     setLightboxIndex(null);
     setPage(1);
   }, []);
@@ -1209,7 +1250,9 @@ export function TransferGallery({ transferId, files, groups, deleteToken }: Tran
     onSwipeRight: goPrev,
     enabled: lightboxIndex !== null,
   });
-  const lightboxFocusRef = useFocusTrap<HTMLDivElement>(lightboxIndex !== null && !actionDialogOpen);
+  const lightboxFocusRef = useFocusTrap<HTMLDivElement>(
+    lightboxIndex !== null && !actionDialogOpen,
+  );
   const setLightboxRef = useCallback(
     (node: HTMLDivElement | null) => {
       swipeRef.current = node;
@@ -1614,6 +1657,10 @@ export function TransferGallery({ transferId, files, groups, deleteToken }: Tran
     }
     return Array.from(groups.entries()).map(([dateKey, buckets]) => ({ dateKey, buckets }));
   }, [timeFinderModel.buckets]);
+  const timeFinderDateCounts = useMemo(
+    () => new Map(timeFinderModel.dates.map((date) => [date.dateKey, date.count])),
+    [timeFinderModel.dates],
+  );
   const renderSection = (section: GallerySection) => {
     const sectionVisualItems = section.entries
       .filter(
@@ -1766,13 +1813,15 @@ export function TransferGallery({ transferId, files, groups, deleteToken }: Tran
             <div className="font-mono text-micro tracking-wide">
               <p className="text-foreground">find media by capture time</p>
               <p className="theme-muted text-nano">
-                wall-clock time · +/- {TIME_FINDER_WINDOW_MINUTES} min
+                {timeFinderModel.dates.length > 1
+                  ? `pick a day or a time · +/- ${TIME_FINDER_WINDOW_MINUTES} min`
+                  : `wall-clock time · +/- ${TIME_FINDER_WINDOW_MINUTES} min`}
               </p>
             </div>
             {hasActiveTimeFilter ? (
               <button
                 type="button"
-                onClick={() => handleTimeBucketChange(null)}
+                onClick={() => handleTimeParamChange(null)}
                 className="font-mono text-micro theme-muted hover:text-foreground transition-colors"
               >
                 [ clear time ]
@@ -1783,18 +1832,26 @@ export function TransferGallery({ transferId, files, groups, deleteToken }: Tran
             {timeFinderBucketGroups.map(({ dateKey, buckets }) => (
               <div key={dateKey}>
                 {timeFinderBucketGroups.length > 1 ? (
-                  <p className="mb-2 font-mono text-nano theme-muted tracking-wide">
-                    {formatTimeFinderDateLabel(dateKey)}
-                  </p>
+                  <TimeFinderDateChip
+                    dateKey={dateKey}
+                    count={timeFinderDateCounts.get(dateKey) ?? 0}
+                    isActive={
+                      activeTimeSelection?.type === "date" &&
+                      activeTimeSelection.date.dateKey === dateKey
+                    }
+                    onSelect={handleTimeParamChange}
+                  />
                 ) : null}
                 <div className="flex flex-wrap items-center gap-2 font-mono text-micro tracking-wide">
                   {buckets.map((bucket) => {
-                    const isActive = activeTimeBucket?.key === bucket.key;
+                    const isActive =
+                      activeTimeSelection?.type === "bucket" &&
+                      activeTimeSelection.bucket.key === bucket.key;
                     return (
                       <button
                         key={bucket.key}
                         type="button"
-                        onClick={() => handleTimeBucketChange(bucket)}
+                        onClick={() => handleTimeParamChange(bucket.param)}
                         title={`${bucket.dateKey} ${bucket.label}`}
                         aria-label={`Show media from ${bucket.dateKey} around ${bucket.label}`}
                         className={
@@ -1841,13 +1898,15 @@ export function TransferGallery({ transferId, files, groups, deleteToken }: Tran
         <div className="flex items-center gap-3 font-mono text-micro tracking-wide">
           {selectedCount > 0 && (
             <>
-              <button type="button"
+              <button
+                type="button"
                 onClick={clearSelection}
                 className="theme-muted hover:text-foreground transition-colors"
               >
                 [ clear ]
               </button>
-              <button type="button"
+              <button
+                type="button"
                 onClick={downloadSelected}
                 disabled={busy}
                 className="text-amber-600 hover:text-amber-500 transition-colors disabled:opacity-50"
@@ -1855,7 +1914,8 @@ export function TransferGallery({ transferId, files, groups, deleteToken }: Tran
                 {busy ? downloadLabel : "[ download selected ]"}
               </button>
               {downloading && downloadProgress ? (
-                <button type="button"
+                <button
+                  type="button"
                   onClick={cancelDownload}
                   className="theme-muted hover:text-foreground transition-colors"
                 >
@@ -1865,7 +1925,8 @@ export function TransferGallery({ transferId, files, groups, deleteToken }: Tran
             </>
           )}
           {!allPageSelected && browseMode === "pages" && pageEntries.length > 1 && (
-            <button type="button"
+            <button
+              type="button"
               onClick={selectPage}
               className="theme-muted hover:text-foreground transition-colors"
             >
@@ -1873,14 +1934,16 @@ export function TransferGallery({ transferId, files, groups, deleteToken }: Tran
             </button>
           )}
           {!allFilteredSelected && filteredEntries.length > 1 && (
-            <button type="button"
+            <button
+              type="button"
               onClick={selectFiltered}
               className="theme-muted hover:text-foreground transition-colors"
             >
               {getScopeSelectLabel(activeFilter)}
             </button>
           )}
-          <button type="button"
+          <button
+            type="button"
             onClick={downloadAll}
             disabled={busy}
             className="text-amber-600 hover:text-amber-500 transition-colors disabled:opacity-50"
@@ -1888,7 +1951,8 @@ export function TransferGallery({ transferId, files, groups, deleteToken }: Tran
             {busy ? downloadLabel : "[ download all ]"}
           </button>
           {selectedCount === 0 && downloading && downloadProgress ? (
-            <button type="button"
+            <button
+              type="button"
               onClick={cancelDownload}
               className="theme-muted hover:text-foreground transition-colors"
             >
@@ -1915,14 +1979,16 @@ export function TransferGallery({ transferId, files, groups, deleteToken }: Tran
             </p>
           ) : null}
           <div className="mt-3 flex items-center gap-3 font-mono text-micro tracking-wide">
-            <button type="button"
+            <button
+              type="button"
               onClick={startMultipartDownload}
               disabled={busy}
               className="text-amber-600 hover:text-amber-500 transition-colors disabled:opacity-50"
             >
               [ download in {pendingMultipartDownload.plan.partCount} parts ]
             </button>
-            <button type="button"
+            <button
+              type="button"
               onClick={() => setPendingMultipartDownload(null)}
               disabled={busy}
               className="theme-muted hover:text-foreground transition-colors disabled:opacity-50"
@@ -2020,7 +2086,8 @@ export function TransferGallery({ transferId, files, groups, deleteToken }: Tran
           aria-label="Media preview"
           tabIndex={-1}
         >
-          <button type="button"
+          <button
+            type="button"
             onClick={closeLightbox}
             className="absolute top-4 right-4 z-10 font-mono text-sm text-white/60 hover:text-white transition-colors"
             aria-label="Close"
@@ -2059,7 +2126,8 @@ export function TransferGallery({ transferId, files, groups, deleteToken }: Tran
                 <p className="max-w-sm text-center font-mono text-xs text-white/30 leading-relaxed">
                   {getVisualLoadFailureMessage(getVisualItemPrimaryFile(currentVisual))}
                 </p>
-                <button type="button"
+                <button
+                  type="button"
                   onClick={() => downloadVisualItem(currentVisual)}
                   disabled={savingSingle}
                   className="font-mono text-xs text-amber-500 hover:text-amber-400 transition-colors"
@@ -2085,7 +2153,8 @@ export function TransferGallery({ transferId, files, groups, deleteToken }: Tran
           >
             <div className="flex items-center justify-between gap-4 font-mono text-xs text-white/50 sm:justify-start">
               {lightboxIndex > 0 ? (
-                <button type="button"
+                <button
+                  type="button"
                   onClick={goPrev}
                   className="hover:text-white transition-colors"
                   aria-label="Previous file"
@@ -2096,7 +2165,8 @@ export function TransferGallery({ transferId, files, groups, deleteToken }: Tran
                 <span className="text-white/20">← prev</span>
               )}
               {lightboxIndex < lightboxVisualFiles.length - 1 ? (
-                <button type="button"
+                <button
+                  type="button"
                   onClick={goNext}
                   className="hover:text-white transition-colors"
                   aria-label="Next file"
@@ -2112,7 +2182,8 @@ export function TransferGallery({ transferId, files, groups, deleteToken }: Tran
                 {lightboxIndex + 1} / {lightboxVisualFiles.length}
               </span>
               {deleteToken && activeLightboxFile && (
-                <button type="button"
+                <button
+                  type="button"
                   onClick={() => handleDeleteFile(activeLightboxFile)}
                   disabled={deletingFileId === activeLightboxFile.id}
                   className="font-mono text-xs text-red-400/80 hover:text-red-300 transition-colors disabled:opacity-50"
@@ -2120,7 +2191,8 @@ export function TransferGallery({ transferId, files, groups, deleteToken }: Tran
                   {deletingFileId === activeLightboxFile.id ? "deleting..." : "delete file"}
                 </button>
               )}
-              <button type="button"
+              <button
+                type="button"
                 onClick={() => downloadVisualItem(currentVisual)}
                 disabled={savingSingle}
                 className="font-mono text-xs text-white/50 hover:text-white transition-colors disabled:opacity-50"
@@ -2426,7 +2498,8 @@ function FileCard({
         <div className="flex flex-col items-end gap-1 shrink-0">
           <span className="font-mono text-nano theme-muted">{formatBytes(file.size)}</span>
           {onDelete && (
-            <button type="button"
+            <button
+              type="button"
               onClick={onDelete}
               disabled={deleting}
               className="font-mono text-micro text-red-500/80 hover:text-red-400 transition-colors disabled:opacity-50"
@@ -2434,7 +2507,8 @@ function FileCard({
               {deleting ? "..." : "x"}
             </button>
           )}
-          <button type="button"
+          <button
+            type="button"
             onClick={onDownload}
             className="font-mono text-micro text-amber-600 hover:text-amber-500 transition-colors"
           >
@@ -2460,7 +2534,8 @@ function FileCard({
       </div>
       <div className="flex items-center gap-3 shrink-0">
         {onDelete && (
-          <button type="button"
+          <button
+            type="button"
             onClick={onDelete}
             disabled={deleting}
             className="font-mono text-micro text-red-500/80 hover:text-red-400 transition-colors disabled:opacity-50"
@@ -2468,7 +2543,8 @@ function FileCard({
             {deleting ? "[ deleting ]" : "[ delete ]"}
           </button>
         )}
-        <button type="button"
+        <button
+          type="button"
           onClick={onDownload}
           className="font-mono text-micro text-amber-600 hover:text-amber-500 transition-colors"
         >

@@ -40,9 +40,28 @@ type TransferTimeFinderPreparedEntry<T> = {
   bucketKey: string | null;
 };
 
+/** A whole day of capture, selectable when a transfer spans more than one. */
+type TransferTimeFinderDate = {
+  dateKey: string;
+  param: string;
+  count: number;
+};
+
+/**
+ * What the viewer is currently narrowing to: one time window, or a whole day.
+ *
+ * A day is not expressible as a window — a wedding runs from morning prep to
+ * the last dance, far wider than any single bucket — so it is its own kind of
+ * selection rather than a very wide bucket.
+ */
+type TransferTimeFinderSelection =
+  | { type: "bucket"; bucket: TransferTimeFinderBucket }
+  | { type: "date"; date: TransferTimeFinderDate };
+
 type TransferTimeFinderModel<T> = {
   entries: TransferTimeFinderPreparedEntry<T>[];
   buckets: TransferTimeFinderBucket[];
+  dates: TransferTimeFinderDate[];
   showFinder: boolean;
   modeDateKey: string | null;
 };
@@ -316,9 +335,27 @@ function buildTransferTimeFinderModel<T>(
     compareDateKeys(left.key, right.key),
   );
 
+  const dateCounts = new Map<string, TransferTimeFinderDate>();
+  for (const bucket of buckets) {
+    const existing = dateCounts.get(bucket.dateKey);
+    if (existing) {
+      existing.count += bucket.count;
+      continue;
+    }
+    dateCounts.set(bucket.dateKey, {
+      dateKey: bucket.dateKey,
+      param: bucket.dateKey,
+      count: bucket.count,
+    });
+  }
+  const dates = Array.from(dateCounts.values()).sort((left, right) =>
+    compareDateKeys(left.dateKey, right.dateKey),
+  );
+
   return {
     entries: preparedEntries,
     buckets,
+    dates,
     showFinder: buckets.length >= 2,
     modeDateKey,
   };
@@ -334,19 +371,47 @@ function resolveTransferTimeFinderBucket(
   return buckets.find((bucket) => bucket.key === expectedKey) ?? null;
 }
 
+/**
+ * Resolve a URL parameter to whatever it names.
+ *
+ * A bare date (`2026-07-26`) means the whole day; a date plus a time
+ * (`2026-07-26T14:15`) means that window. The two cannot collide — one has a
+ * `T` and the other does not.
+ */
+function resolveTransferTimeFinderSelection<T>(
+  value: string | null | undefined,
+  model: TransferTimeFinderModel<T>,
+): TransferTimeFinderSelection | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+
+  if (!trimmed.includes("T")) {
+    const date = model.dates.find((candidate) => candidate.dateKey === trimmed);
+    return date ? { type: "date", date } : null;
+  }
+
+  const bucket = resolveTransferTimeFinderBucket(trimmed, model.buckets);
+  return bucket ? { type: "bucket", bucket } : null;
+}
+
 function applyTransferTimeFinderFilter<T>(
   model: TransferTimeFinderModel<T>,
-  selectedBucket: TransferTimeFinderBucket | null,
+  selection: TransferTimeFinderSelection | TransferTimeFinderBucket | null,
 ): {
   orderedEntries: TransferTimeFinderPreparedEntry<T>[];
   categoryById: Map<string, TransferTimeFilterCategory>;
 } {
-  if (!selectedBucket) {
+  if (!selection) {
     return {
       orderedEntries: model.entries,
       categoryById: new Map(),
     };
   }
+
+  // Callers predating whole-day selection pass a bucket directly.
+  const resolved: TransferTimeFinderSelection =
+    "type" in selection ? selection : { type: "bucket", bucket: selection };
 
   const matched: TransferTimeFinderPreparedEntry<T>[] = [];
   const undated: TransferTimeFinderPreparedEntry<T>[] = [];
@@ -361,6 +426,13 @@ function applyTransferTimeFinderFilter<T>(
       outliers.push(entry);
       continue;
     }
+
+    if (resolved.type === "date") {
+      if (entry.dateKey === resolved.date.dateKey) matched.push(entry);
+      continue;
+    }
+
+    const selectedBucket = resolved.bucket;
     if (entry.dateKey !== selectedBucket.dateKey || entry.minuteOfDay === null) {
       continue;
     }
@@ -401,11 +473,14 @@ export {
   parseTimeFinderParam,
   parseWallClockTime,
   resolveTransferTimeFinderBucket,
+  resolveTransferTimeFinderSelection,
 };
 
 export type {
   TransferTimeFilterCategory,
   TransferTimeFinderBucket,
+  TransferTimeFinderDate,
+  TransferTimeFinderSelection,
   TransferTimeFinderInput,
   TransferTimeFinderModel,
   TransferTimeFinderPreparedEntry,
