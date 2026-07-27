@@ -5,11 +5,14 @@ import { didTransferFileChange } from "@/features/transfers/media-state";
 import { getTransfer } from "@/features/transfers/store.server";
 import { apiErrorFromRequest } from "@/lib/platform/api-error";
 import { getAdminTransferMediaStats } from "@/features/transfers/admin.server";
+import { getMediaProcessorMode } from "@/features/media/config.server";
+import { forceReprocessTransferFiles } from "@/features/transfers/media-backends/worker.server";
 
 type ProcessMediaBody =
   | { mode?: "drain"; limit?: number }
   | { mode: "retry"; transferId?: string; mediaId?: string; filename?: string; force?: boolean }
-  | { mode: "backfill"; transferId?: string };
+  | { mode: "backfill"; transferId?: string }
+  | { mode: "reprocess"; transferId?: string; kind?: string; mediaId?: string; filename?: string };
 
 async function handlePOST(request: Request) {
   const authErr = await requireAuth(request, "admin");
@@ -28,17 +31,57 @@ async function handlePOST(request: Request) {
 
   try {
     if (mode === "drain") {
+      // The worker drains continuously; there is nothing to poke. Report what
+      // it is doing so the dashboard can show queue depth and liveness.
       const media = await getAdminTransferMediaStats();
       return Response.json({
         success: true,
         mode,
-        workerDisabled: true,
-        processedJobs: 0,
-        succeeded: 0,
-        failed: 0,
-        skipped: 0,
+        processorMode: getMediaProcessorMode(),
         queueLength: media.queueLength,
         worker: media.worker,
+      });
+    }
+
+    if (mode === "reprocess") {
+      // Rebuild derivatives for files that are already finished — the path for
+      // when the pipeline learns something new and existing files are stale in
+      // a way their recorded state cannot reveal.
+      const transferId = "transferId" in body ? body.transferId?.trim() : undefined;
+      if (!transferId) {
+        return Response.json({ error: "transferId is required" }, { status: 400 });
+      }
+      const transfer = await getTransfer(transferId);
+      if (!transfer) {
+        return Response.json({ error: "Transfer not found or expired" }, { status: 404 });
+      }
+      if (Math.ceil((new Date(transfer.expiresAt).getTime() - Date.now()) / 1000) <= 0) {
+        return Response.json({ error: "Transfer has already expired" }, { status: 400 });
+      }
+
+      const kind = "kind" in body ? body.kind?.trim() : undefined;
+      const mediaId = "mediaId" in body ? body.mediaId?.trim() : undefined;
+      const filename = "filename" in body ? body.filename?.trim() : undefined;
+      if (!kind && !mediaId && !filename) {
+        return Response.json(
+          { error: "One of kind, mediaId, or filename is required" },
+          { status: 400 },
+        );
+      }
+
+      const { requeued, skipped } = await forceReprocessTransferFiles(transfer, (file) => {
+        if (mediaId) return file.id === mediaId;
+        if (filename) return file.filename === filename;
+        return file.kind === kind;
+      });
+
+      return Response.json({
+        success: true,
+        mode,
+        transferId,
+        requeuedCount: requeued.length,
+        skippedCount: skipped.length,
+        requeued,
       });
     }
 

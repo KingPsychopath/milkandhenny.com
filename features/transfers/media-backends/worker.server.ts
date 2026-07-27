@@ -50,10 +50,7 @@ type WorkerRunResult = {
   queueLength: number;
 };
 
-const WORKER_JOB_CONCURRENCY = Math.max(
-  1,
-  Number(process.env.MEDIA_WORKER_CONCURRENCY ?? "1"),
-);
+const WORKER_JOB_CONCURRENCY = Math.max(1, Number(process.env.MEDIA_WORKER_CONCURRENCY ?? "1"));
 
 const WORKER_ROUTE_MAP: Partial<Record<ProcessingRoute, ProcessingRoute>> = {
   raw_try_local: "worker_raw",
@@ -414,6 +411,39 @@ async function requeueTransferFile(
   return result.file;
 }
 
+/**
+ * Requeue files that are already finished.
+ *
+ * Reconciliation deliberately leaves `ready` files alone — nothing is wrong
+ * with them. But when the pipeline itself learns something new (a metadata
+ * field we did not used to read, a decode bug fixed), their derivatives are
+ * stale in a way no amount of state inspection can detect. This is the operator
+ * path for that: an explicit "do it again" for a chosen set.
+ */
+async function forceReprocessTransferFiles(
+  transfer: TransferData,
+  match: (file: TransferFile) => boolean,
+): Promise<{ requeued: string[]; skipped: string[] }> {
+  const requeued: string[] = [];
+  const skipped: string[] = [];
+
+  for (const file of transfer.files) {
+    if (!match(file)) continue;
+
+    const next = await requeueTransferFile(transfer, file, true);
+    if (next.processingStatus === "queued") {
+      await saveAndAnnounceTransferFile(transfer.id, next);
+      requeued.push(file.id);
+    } else {
+      // No worker route — an audio file or a plain document has no derivative
+      // to rebuild.
+      skipped.push(file.id);
+    }
+  }
+
+  return { requeued, skipped };
+}
+
 async function refreshQueuedTransferState(transfer: TransferData): Promise<TransferData> {
   const remainingSeconds = Math.ceil((new Date(transfer.expiresAt).getTime() - Date.now()) / 1000);
   if (remainingSeconds <= 0) return transfer;
@@ -454,6 +484,7 @@ async function refreshQueuedTransferState(transfer: TransferData): Promise<Trans
 export {
   buildQueuedTransferFile,
   enqueueWorkerJob,
+  forceReprocessTransferFiles,
   getTransferMediaQueueLength,
   processWorkerJob,
   refreshQueuedTransferState,

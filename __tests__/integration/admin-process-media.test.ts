@@ -13,7 +13,7 @@ describe("admin transfer media route", () => {
     vi.resetModules();
   });
 
-  it("reports drain mode without invoking the external worker", async () => {
+  it("reports queue depth and worker liveness in drain mode", async () => {
     vi.doMock("@/features/auth/auth.server", () => ({
       requireAuth: vi.fn().mockResolvedValue(null),
       requireAdminStepUp: vi.fn().mockResolvedValue(null),
@@ -39,13 +39,10 @@ describe("admin transfer media route", () => {
 
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toMatchObject({
+      // Nothing to drain on demand — the worker consumes continuously. This
+      // mode exists to report what it is doing.
       success: true,
       mode: "drain",
-      workerDisabled: true,
-      processedJobs: 0,
-      succeeded: 0,
-      failed: 0,
-      skipped: 0,
       queueLength: 21,
       worker: {
         lastHeartbeatAt: "2026-03-08T22:29:30.000Z",
