@@ -1,7 +1,6 @@
 import { getMediaProcessorMode } from "@/features/media/config.server";
 import { reconcileTransferMedia } from "@/features/transfers/media-reconcile.server";
 import { processWorkerJob } from "@/features/transfers/media-backends/worker.server";
-import { processWordMediaJob } from "@/features/words/media-worker.server";
 import {
   ackTransferMediaJob,
   claimTransferMediaJobBlocking,
@@ -9,17 +8,10 @@ import {
   requeueTransferMediaJob,
 } from "@/features/transfers/media-queue.server";
 import { updateTransferMediaWorkerStatus } from "@/features/transfers/media-worker-status.server";
-import {
-  ackWordMediaJob,
-  claimWordMediaJobBlocking,
-  recoverWordMediaProcessingJobs,
-  requeueWordMediaJob,
-} from "@/features/words/media-queue.server";
 
 interface DrainMediaQueuesResult {
   disabled: boolean;
   recoveredTransferJobs: number;
-  recoveredWordJobs: number;
   processedJobs: number;
   succeeded: number;
   failed: number;
@@ -29,7 +21,6 @@ interface DrainMediaQueuesResult {
 interface DrainMediaQueuesOptions {
   concurrency?: number;
   transferClaimTimeoutSeconds?: number;
-  wordClaimTimeoutSeconds?: number;
   errorBackoffMs?: number;
   /**
    * Requeue jobs stranded in the processing list by a crashed run.
@@ -42,7 +33,6 @@ interface DrainMediaQueuesOptions {
 }
 
 const DEFAULT_TRANSFER_CLAIM_TIMEOUT_SECONDS = 10;
-const DEFAULT_WORD_CLAIM_TIMEOUT_SECONDS = 1;
 const DEFAULT_WORKER_CONCURRENCY = Math.max(
   1,
   Number(process.env.MEDIA_WORKER_CONCURRENCY ?? "1"),
@@ -63,7 +53,7 @@ function getReconcileIntervalMs(): number {
 }
 
 /**
- * An idle drain pass costs one blocking claim per queue (~11s), so an
+ * An idle drain pass costs one blocking claim (~10s), so an
  * unthrottled loop would write a heartbeat roughly five times a minute forever.
  * Redis writes are metered — keep the liveness signal, drop the noise.
  */
@@ -104,7 +94,6 @@ async function drainMediaQueuesUntilIdle(
     return {
       disabled: true,
       recoveredTransferJobs: 0,
-      recoveredWordJobs: 0,
       processedJobs: 0,
       succeeded: 0,
       failed: 0,
@@ -114,15 +103,11 @@ async function drainMediaQueuesUntilIdle(
 
   const transferClaimTimeoutSeconds =
     options.transferClaimTimeoutSeconds ?? DEFAULT_TRANSFER_CLAIM_TIMEOUT_SECONDS;
-  const wordClaimTimeoutSeconds =
-    options.wordClaimTimeoutSeconds ?? DEFAULT_WORD_CLAIM_TIMEOUT_SECONDS;
   const concurrency = Math.max(1, options.concurrency ?? DEFAULT_WORKER_CONCURRENCY);
   const errorBackoffMs = options.errorBackoffMs ?? DEFAULT_ERROR_BACKOFF_MS;
 
-  const [recoveredTransferJobs, recoveredWordJobs] =
-    options.recoverStuckJobs === false
-      ? [0, 0]
-      : await Promise.all([recoverTransferMediaProcessingJobs(), recoverWordMediaProcessingJobs()]);
+  const recoveredTransferJobs =
+    options.recoverStuckJobs === false ? 0 : await recoverTransferMediaProcessingJobs();
 
   await heartbeat(true);
 
@@ -136,7 +121,6 @@ async function drainMediaQueuesUntilIdle(
 
     while (true) {
       let claimedTransfer: Awaited<ReturnType<typeof claimTransferMediaJobBlocking>> | null = null;
-      let claimedWord: Awaited<ReturnType<typeof claimWordMediaJobBlocking>> | null = null;
 
       try {
         claimedTransfer = await claimTransferMediaJobBlocking(transferClaimTimeoutSeconds);
@@ -152,27 +136,11 @@ async function drainMediaQueuesUntilIdle(
           continue;
         }
 
-        claimedWord = await claimWordMediaJobBlocking(wordClaimTimeoutSeconds);
-        if (claimedWord) {
-          const outcome = await processWordMediaJob(claimedWord.job);
-          await ackWordMediaJob(claimedWord.raw);
-          processedJobs += 1;
-          if (outcome === "succeeded") succeeded += 1;
-          else skipped += 1;
-
-          await markMediaJobProcessed();
-          continue;
-        }
-
         return { processedJobs, succeeded, failed, skipped };
       } catch (error) {
         if (claimedTransfer) {
           await requeueTransferMediaJob(claimedTransfer.raw);
         }
-        if (claimedWord) {
-          await requeueWordMediaJob(claimedWord.raw);
-        }
-
         const errorDetail = getErrorDetail(error);
         lastHeartbeatAtMs = Date.now();
         await updateTransferMediaWorkerStatus({
@@ -196,7 +164,6 @@ async function drainMediaQueuesUntilIdle(
   return {
     disabled: false,
     recoveredTransferJobs,
-    recoveredWordJobs,
     processedJobs,
     succeeded,
     failed,
@@ -216,8 +183,8 @@ let activeLoop: MediaWorkerLoop | null = null;
 /**
  * Drain the media queues for as long as the process lives.
  *
- * `drainMediaQueuesUntilIdle` returns once both queues are empty; each claim
- * blocks server-side, so re-entering it is a blocking wait rather than a poll.
+ * `drainMediaQueuesUntilIdle` returns once the queue is empty; the claim blocks
+ * server-side, so re-entering it is a blocking wait rather than a poll.
  * Stuck-job recovery runs only on the first pass — see `recoverStuckJobs`.
  */
 function startMediaWorkerLoop(options: DrainMediaQueuesOptions = {}): void {

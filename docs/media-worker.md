@@ -155,6 +155,12 @@ Health and queue depth appear in the admin dashboard and in
 - **a reconcile sweep that keeps finding work** — files are being stranded
   faster than they are processed, which usually means the worker is flapping.
 
+The worker drains one queue, `transfer:media:queue`. A parallel word-media
+queue used to be claimed on every idle pass; it had a consumer but no producer
+— word uploads have always been processed inline by the finalize route — so it
+was costing a blocking Redis call every loop to watch a queue nothing wrote to.
+It is gone.
+
 Scaling out is safe: the queue is the coordination point, and recovery only
 runs at startup, so replicas do not steal each other's in-flight jobs.
 
