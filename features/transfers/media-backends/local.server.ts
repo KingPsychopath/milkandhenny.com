@@ -168,8 +168,8 @@ function buildVideoFile(params: {
     params.route,
     params.processingStatus,
     params.processingBackend,
-    undefined,
-    undefined,
+    params.video.takenAt,
+    params.video.livePhotoContentId,
     params.file,
   );
 }

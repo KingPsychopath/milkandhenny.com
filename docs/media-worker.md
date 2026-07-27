@@ -141,6 +141,7 @@ re-decoding them forever would be the worst possible version of this.
 | `MEDIA_INLINE_PROCESSING_TIMEOUT_MS` | `120000` | web | ceiling for work the request path still does |
 | `MEDIA_VIDEO_POSTER_MAX_BYTES` | `2147483648` | worker | above this, skip the poster; `0` disables the cap |
 | `REDIS_URL` | — | both | direct connection; required for the queue and for SSE |
+| `TRANSFER_UPLOAD_URL_TTL_SECONDS` | `21600` | web | how long a batch has to finish uploading |
 
 ## Operating it
 

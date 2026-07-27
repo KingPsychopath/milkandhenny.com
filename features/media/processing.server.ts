@@ -570,6 +570,10 @@ type ProcessedVideo = {
   height: number;
   /** Duration in seconds if probe metadata is available */
   durationSeconds: number | null;
+  /** Capture time from container metadata, matching the stills' convention */
+  takenAt: string | null;
+  /** Live Photo content identifier, when the motion clip still carries one */
+  livePhotoContentId: string | null;
 };
 
 /* ─── EXIF ─── */
@@ -779,7 +783,27 @@ type VideoProbeResult = {
   width: number;
   height: number;
   durationSeconds: number | null;
+  takenAt: string | null;
+  livePhotoContentId: string | null;
 };
+
+/**
+ * Read a QuickTime capture date as wall-clock time, discarding the offset.
+ *
+ * Deliberate, and it has to match how stills are read. EXIF `DateTimeOriginal`
+ * carries no timezone, and `exif-reader` hands it back as if it were UTC — so
+ * a photo taken at 20:37 local is stored as 20:37Z. Apple stamps videos with a
+ * real offset (`2026-07-26T20:37:45+0100`), and honouring it would place the
+ * clip an hour away from the photo taken beside it, scattering a gallery that
+ * is sorted by capture time. Same convention for both wins.
+ */
+function parseQuickTimeCreationDate(value: string | undefined): string | null {
+  if (!value) return null;
+  const match = /^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2}):(\d{2})/.exec(value.trim());
+  if (!match) return null;
+  const [, year, month, day, hour, minute, second] = match;
+  return `${year}-${month}-${day}T${hour}:${minute}:${second}.000Z`;
+}
 
 /**
  * Where to grab the poster frame.
@@ -822,7 +846,7 @@ async function probeVideoFile(filename: string): Promise<VideoProbeResult> {
       "-select_streams",
       "v:0",
       "-show_entries",
-      "stream=width,height:format=duration",
+      "stream=width,height:format=duration:format_tags",
       "-of",
       "json",
       filename,
@@ -832,21 +856,34 @@ async function probeVideoFile(filename: string): Promise<VideoProbeResult> {
 
   const parsed = JSON.parse(typeof stdout === "string" ? stdout : stdout.toString("utf8")) as {
     streams?: Array<{ width?: number; height?: number }>;
-    format?: { duration?: string };
+    format?: { duration?: string; tags?: Record<string, string> };
   };
   const stream = parsed.streams?.[0];
   const width = stream?.width ?? 0;
   const height = stream?.height ?? 0;
   const durationValue = parsed.format?.duration ? Number(parsed.format.duration) : NaN;
+  const tags = parsed.format?.tags ?? {};
 
   if (width <= 0 || height <= 0) {
     throw new Error("Unable to determine video dimensions");
   }
 
+  // Apple's tag is the capture moment. The generic `creation_time` is when the
+  // file was written, which for an exported clip is the export — a day or more
+  // after the wedding it belongs to — so it is only a fallback for cameras that
+  // write nothing better.
+  const takenAt =
+    parseQuickTimeCreationDate(tags["com.apple.quicktime.creationdate"]) ??
+    parseQuickTimeCreationDate(tags["creation_time"]);
+
   return {
     width,
     height,
     durationSeconds: Number.isFinite(durationValue) && durationValue > 0 ? durationValue : null,
+    takenAt,
+    // Present on a Live Photo's motion half; it is what actually ties the clip
+    // to its still, independent of filenames.
+    livePhotoContentId: tags["com.apple.quicktime.content.identifier"]?.trim() || null,
   };
 }
 
@@ -917,6 +954,8 @@ async function processVideoVariantsFromFile(filename: string): Promise<Processed
     width,
     height,
     durationSeconds: probe.durationSeconds,
+    takenAt: probe.takenAt,
+    livePhotoContentId: probe.livePhotoContentId,
   };
 }
 

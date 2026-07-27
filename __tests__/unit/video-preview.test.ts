@@ -9,6 +9,29 @@ import { processVideoVariants } from "@/features/media/processing.server";
 
 const execFileAsync = promisify(execFile);
 
+async function makeVideoFile(extraArgs: string[] = []): Promise<string> {
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), "video-meta-test-"));
+  const outputPath = path.join(tempDir, "fixture.mov");
+  await execFileAsync("ffmpeg", [
+    "-hide_banner",
+    "-loglevel",
+    "error",
+    "-f",
+    "lavfi",
+    "-i",
+    "color=c=#336699:s=160x90:d=0.4",
+    "-pix_fmt",
+    "yuv420p",
+    // Without this the mov muxer silently drops any tag it does not recognise,
+    // including every com.apple.quicktime.* key we care about.
+    "-movflags",
+    "use_metadata_tags",
+    ...extraArgs,
+    outputPath,
+  ]);
+  return outputPath;
+}
+
 async function makeVideoBuffer(): Promise<Buffer> {
   const tempDir = await mkdtemp(path.join(os.tmpdir(), "video-preview-test-"));
   const outputPath = path.join(tempDir, "fixture.mp4");
@@ -84,5 +107,55 @@ describe("poster frame timestamp", () => {
     expect(getVideoCaptureTimestamp(null)).toBe("0");
     expect(getVideoCaptureTimestamp(0.1)).toBe("0");
     expect(getVideoCaptureTimestamp(Number.NaN)).toBe("0");
+  });
+});
+
+describe("video capture metadata", () => {
+  it("reads Apple's capture date as wall clock, matching how stills are read", async () => {
+    const { processVideoVariantsFromFile } = await import("@/features/media/processing.server");
+    const file = await makeVideoFile([
+      "-metadata",
+      "com.apple.quicktime.creationdate=2026-07-26T20:37:45+0100",
+    ]);
+
+    try {
+      const result = await processVideoVariantsFromFile(file);
+      // EXIF gives stills no timezone and exif-reader reads them as UTC, so a
+      // photo taken at 20:37 local is stored as 20:37Z. Honouring the video's
+      // +0100 here would drop the clip an hour away from the photo taken
+      // beside it and scatter a gallery sorted by capture time.
+      expect(result.takenAt).toBe("2026-07-26T20:37:45.000Z");
+    } finally {
+      await rm(path.dirname(file), { recursive: true, force: true });
+    }
+  });
+
+  it("picks up the Live Photo content identifier when the clip carries one", async () => {
+    const { processVideoVariantsFromFile } = await import("@/features/media/processing.server");
+    const file = await makeVideoFile([
+      "-metadata",
+      "com.apple.quicktime.content.identifier=ABC-123",
+    ]);
+
+    try {
+      const result = await processVideoVariantsFromFile(file);
+      expect(result.livePhotoContentId).toBe("ABC-123");
+    } finally {
+      await rm(path.dirname(file), { recursive: true, force: true });
+    }
+  });
+
+  it("still produces a poster for a sub-second motion clip", async () => {
+    const { processVideoVariantsFromFile } = await import("@/features/media/processing.server");
+    const file = await makeVideoFile();
+
+    try {
+      const result = await processVideoVariantsFromFile(file);
+      expect(result.durationSeconds).toBeLessThan(1);
+      expect(result.thumb.buffer.byteLength).toBeGreaterThan(0);
+      expect(result.full.buffer.byteLength).toBeGreaterThan(0);
+    } finally {
+      await rm(path.dirname(file), { recursive: true, force: true });
+    }
   });
 });

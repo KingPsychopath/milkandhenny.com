@@ -1,8 +1,8 @@
 import { getRedis } from "@/lib/platform/redis.server";
+import { getUploadReservationTtlSeconds } from "./upload-window.server";
 import type { TransferUploadFileInput } from "./upload-types";
 
 const RESERVATION_PREFIX = "transfer:upload-reservation:";
-const RESERVATION_TTL_SECONDS = 15 * 60;
 
 type TransferUploadReservation = {
   transferId: string;
@@ -54,7 +54,7 @@ async function createTransferUploadReservation(
   if (redis) {
     return Boolean(
       await redis.set(reservationKey(reservation.transferId), reservation, {
-        ex: RESERVATION_TTL_SECONDS,
+        ex: getUploadReservationTtlSeconds(),
         nx: true,
       }),
     );
@@ -63,7 +63,7 @@ async function createTransferUploadReservation(
   const key = reservationKey(reservation.transferId);
   if (memoryReservations.has(key)) return false;
   memoryReservations.set(key, reservation);
-  setTimeout(() => memoryReservations.delete(key), RESERVATION_TTL_SECONDS * 1000).unref?.();
+  setTimeout(() => memoryReservations.delete(key), getUploadReservationTtlSeconds() * 1000).unref?.();
   return true;
 }
 

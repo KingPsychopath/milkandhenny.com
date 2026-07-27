@@ -1,4 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { getUploadUrlTtlSeconds } from "@/features/transfers/upload-window.server";
 import { requireAuthWithPayload } from "@/features/auth/auth.server";
 import { presignPutUrl, isConfigured, listObjects } from "@/lib/platform/r2.server";
 import { apiErrorFromRequest } from "@/lib/platform/api-error";
@@ -158,7 +159,9 @@ async function handlePOST(request: Request) {
         ? `${targetPrefix}incoming/${randomUUID()}-${sanitiseStem(original)}${safeIncomingExt(original)}`
         : `${targetPrefix}${filename}`;
 
-      const url = await presignPutUrl(uploadKey, contentType, 900, { scope: storageScope });
+      const url = await presignPutUrl(uploadKey, contentType, getUploadUrlTtlSeconds(), {
+        scope: storageScope,
+      });
 
       urls.push({
         original,
