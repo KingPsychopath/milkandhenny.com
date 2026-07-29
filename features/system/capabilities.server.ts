@@ -128,12 +128,12 @@ function getConfiguredCapabilities(): Capability[] {
     },
     {
       id: "ticket-email",
-      label: "ticket delivery",
+      label: "transactional email",
       status: emailCapability.configured ? "available" : "degraded",
       required: false,
       detail: emailCapability.configured
-        ? `Ticket emails send via ${emailCapability.provider} from ${emailCapability.from}.`
-        : "Tickets can be issued and opened by link, but cannot be emailed.",
+        ? `Ticket and studio emails send via ${emailCapability.provider} from ${emailCapability.senders?.tickets} and ${emailCapability.senders?.studio}; replies go to ${emailCapability.replyTo}.`
+        : "Ticket and studio email channels are not fully configured.",
     },
     {
       id: "multiplayer-realtime",

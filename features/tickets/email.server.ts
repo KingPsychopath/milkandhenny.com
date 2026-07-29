@@ -146,6 +146,7 @@ export async function sendTicketEmail(input: {
   const attachment = await renderQrAttachment(buildTicketQrPayload(tickets[0].id));
 
   const result = await sendEmail({
+    channel: "tickets",
     to: recipient,
     subject: `You're in — ${event.title}`,
     text: buildText(event, tickets, origin),
@@ -218,6 +219,7 @@ export async function sendRefundEmail(input: {
 </div>`;
 
   const result = await sendEmail({
+    channel: "tickets",
     to: recipient,
     subject: `Refund confirmed — ${event.title}`,
     text,

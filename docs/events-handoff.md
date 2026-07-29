@@ -31,16 +31,16 @@ Do **not** skip this on the grounds that test mode passed. Test mode passing is 
 
 Live at `milkandhenny.com`, commit `a942265`. 409 tests passing, lint clean, 0 type errors.
 
-| Capability | State |
-|---|---|
-| Events: model, `/events`, `/events/$slug`, admin CRUD, nav, `.ics`, JSON-LD, OG, sitemap | ✅ done |
-| Tickets: issuance, signed QR, `/ticket/$id`, resend-by-email | ✅ done |
-| Door: `/door`, scanner-first, offline manifest + queue | ✅ done |
-| Postgres: events, tickets, redemptions, checkout sessions | ✅ done, migrations run on boot |
-| Stripe: Checkout, webhook, refunds, disputes | ✅ code done, ✅ live config correct, ⚠️ live path unverified |
-| Email: provider-neutral adapter, ticket template with inline QR | ✅ configured, ✅ Gmail delivery rehearsed, ⚠️ iCloud/Outlook unverified |
-| `/party` → `/events` redirect; guestlist deleted | ✅ done |
-| Hot takes (Phase 3) | ❌ not started |
+| Capability                                                                               | State                                                                    |
+| ---------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| Events: model, `/events`, `/events/$slug`, admin CRUD, nav, `.ics`, JSON-LD, OG, sitemap | ✅ done                                                                  |
+| Tickets: issuance, signed QR, `/ticket/$id`, resend-by-email                             | ✅ done                                                                  |
+| Door: `/door`, scanner-first, offline manifest + queue                                   | ✅ done                                                                  |
+| Postgres: events, tickets, redemptions, checkout sessions                                | ✅ done, migrations run on boot                                          |
+| Stripe: Checkout, webhook, refunds, disputes                                             | ✅ code done, ✅ live config correct, ⚠️ live path unverified            |
+| Email: provider-neutral adapter, ticket template with inline QR                          | ✅ configured, ✅ Gmail delivery rehearsed, ⚠️ iCloud/Outlook unverified |
+| `/party` → `/events` redirect; guestlist deleted                                         | ✅ done                                                                  |
+| Hot takes (Phase 3)                                                                      | ❌ not started                                                           |
 
 `/api/health` currently reports **healthy** on the deployed commit.
 
@@ -49,29 +49,41 @@ Live at `milkandhenny.com`, commit `a942265`. 409 tests passing, lint clean, 0 t
 ## Blocked on Abel
 
 ### 1. Live dress rehearsal
+
 See the warning above. Do this before publishing the first paid event.
 
 ### 2. Cloudflare Email DNS — configured
-`tickets.milkandhenny.com` is enabled for Email Sending with the `cf-bounce`
-DKIM selector and return-path domain. A real ticket email reached Gmail's
-personal inbox with the inline QR intact on 29 July.
+
+`tickets.milkandhenny.com` and `notify.milkandhenny.com` are enabled for Email
+Sending with dedicated `cf-bounce` DKIM selectors and return-path domains. A
+real ticket email reached Gmail's personal inbox with the inline QR intact on
+29 July. Live channel checks also reached Gmail from
+`tickets@tickets.milkandhenny.com` and `studio@notify.milkandhenny.com`.
+
+`hello@milkandhenny.com` will forward replies to `work@owenabel.com`.
+Cloudflare requires that destination to be verified before the routing rule
+can be enabled.
 
 ### 3. Cloudflare API tokens — configured
+
 Two, with different blast radii:
 
-| Token | Scope | Lives in |
-|---|---|---|
+| Token | Scope                                                              | Lives in                             |
+| ----- | ------------------------------------------------------------------ | ------------------------------------ |
 | Shell | Account → Email Sending: Edit; Zone → milkandhenny.com → DNS: Edit | `~/.zshrc` as `CLOUDFLARE_API_TOKEN` |
-| App | Account → Email Sending: Edit **only** | Railway as `EMAIL_API_KEY` |
+| App   | Account → Email Sending: Edit **only**                             | Railway as `EMAIL_API_KEY`           |
 
 `CLOUDFLARE_ACCOUNT_ID` is already exported in `~/.zshrc` (backup at `~/.zshrc.bak-*`).
 
 ### 4. Railway email variables — configured
-`EMAIL_API_KEY`, `EMAIL_FROM=tickets@tickets.milkandhenny.com`, and
-`EMAIL_FROM_NAME=milk & henny` are set. `EMAIL_ACCOUNT_ID` falls back to
-`R2_ACCOUNT_ID`.
+
+`EMAIL_API_KEY`, `EMAIL_TICKETS_FROM=tickets@tickets.milkandhenny.com`,
+`EMAIL_STUDIO_FROM=studio@notify.milkandhenny.com`, and
+`EMAIL_REPLY_TO=hello@milkandhenny.com` are set. `EMAIL_ACCOUNT_ID` falls back
+to `R2_ACCOUNT_ID`.
 
 ### 5. Finish rotating the leaked secrets
+
 `ADMIN_PASSWORD`, `STAFF_PIN`, `UPLOAD_PIN`, `AUTH_SECRET`, `R2_SECRET_KEY`, `REDIS_REST_TOKEN` and `CRON_SECRET` were printed into a chat transcript on 29 July by a `railway variables` call that returned values, not just names. Nothing hostile happened; rotate the short human-memorable ones at minimum.
 
 `AUTH_SECRET` was rotated across web and media-worker before any real event
@@ -81,20 +93,20 @@ tickets were issued. The other listed secrets still need rotation.
 
 ## Decisions already made — don't re-litigate
 
-| Decision | Reasoning |
-|---|---|
-| **No user accounts.** Email is the identity. | 80–100 people. Accounts are friction and a GDPR liability. "Enter your email, we resend your tickets" *is* the auth. |
-| **Don't collect phone numbers.** | Extra PII, no SMS planned, Stripe collects what payment needs. |
-| **Postgres for events/tickets, Redis for the rest.** | Refunds need one transaction; capacity needs a row lock; redemption needs a real constraint. Redis keeps sessions, rate limits, room state, wake fan-out. |
-| **Stripe over a ticketing platform.** | At £15–20, self-hosted is ~2.8% vs Eventbrite/DICE/Skiddle at 10–12%. More importantly the games in `/things` are the differentiator, and no platform can host those. |
-| **Separate Stripe account** (`acct_1TyaNFCsZcQabsWS`) from Out of Office Collective. | Stripe policy requires it for independent projects; statement descriptor confusion causes disputes. |
-| **No Connect.** | Connect is for routing money to third parties. Own tickets, own money. |
-| **Hosted Checkout, not a custom card form.** | Apple/Google Pay free, zero PCI surface. |
-| **The webhook issues tickets, not the redirect.** | People close the tab. |
-| **No door sales in v1.** | Turns the scanner into a POS. Comps at the door still work. |
-| **Hot takes is submission-only in v1.** | No slide editor. The presenter view is the valuable half. |
-| **Effect at service boundaries only.** | Engines stay plain async; `Context.Service` adds timeout, tagged errors, spans. Matches `features/things/shared`. |
-| **Refund cutoff: self-serve until doors open.** | Refused once anyone on the order has scanned in. Not yet confirmed by Abel. |
+| Decision                                                                             | Reasoning                                                                                                                                                             |
+| ------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **No user accounts.** Email is the identity.                                         | 80–100 people. Accounts are friction and a GDPR liability. "Enter your email, we resend your tickets" _is_ the auth.                                                  |
+| **Don't collect phone numbers.**                                                     | Extra PII, no SMS planned, Stripe collects what payment needs.                                                                                                        |
+| **Postgres for events/tickets, Redis for the rest.**                                 | Refunds need one transaction; capacity needs a row lock; redemption needs a real constraint. Redis keeps sessions, rate limits, room state, wake fan-out.             |
+| **Stripe over a ticketing platform.**                                                | At £15–20, self-hosted is ~2.8% vs Eventbrite/DICE/Skiddle at 10–12%. More importantly the games in `/things` are the differentiator, and no platform can host those. |
+| **Separate Stripe account** (`acct_1TyaNFCsZcQabsWS`) from Out of Office Collective. | Stripe policy requires it for independent projects; statement descriptor confusion causes disputes.                                                                   |
+| **No Connect.**                                                                      | Connect is for routing money to third parties. Own tickets, own money.                                                                                                |
+| **Hosted Checkout, not a custom card form.**                                         | Apple/Google Pay free, zero PCI surface.                                                                                                                              |
+| **The webhook issues tickets, not the redirect.**                                    | People close the tab.                                                                                                                                                 |
+| **No door sales in v1.**                                                             | Turns the scanner into a POS. Comps at the door still work.                                                                                                           |
+| **Hot takes is submission-only in v1.**                                              | No slide editor. The presenter view is the valuable half.                                                                                                             |
+| **Effect at service boundaries only.**                                               | Engines stay plain async; `Context.Service` adds timeout, tagged errors, spans. Matches `features/things/shared`.                                                     |
+| **Refund cutoff: self-serve until doors open.**                                      | Refused once anyone on the order has scanned in. Not yet confirmed by Abel.                                                                                           |
 
 ---
 
@@ -110,7 +122,7 @@ Each of these cost real debugging time. Do not rediscover them.
 
 **The CSRF middleware blocks server-to-server POSTs.** `allowRequestsWithoutOriginCheck: false` means anything without a same-origin `Origin` gets 403 — which silently broke every Stripe webhook. Exempt paths are in `ORIGIN_CHECK_EXEMPT_PATHS` in `src/start.ts`, guarded by `__tests__/unit/csrf-webhook-exemption.test.ts`. **Any future webhook needs the same exemption.**
 
-**`stripe config --list` prints keys for *all* profiles.** Parse only the `[default]` section, or you'll grab the wrong account's key. Ask for `--project-name default` explicitly.
+**`stripe config --list` prints keys for _all_ profiles.** Parse only the `[default]` section, or you'll grab the wrong account's key. Ask for `--project-name default` explicitly.
 
 **The Stripe CLI's key expires** (`test_mode_key_expires_at`). Fine for local dev, wrong for Railway.
 
@@ -148,10 +160,10 @@ Nothing counts until each of these has been observed, not reasoned about.
 - [ ] **Live-mode** purchase issues tickets end to end (different keys, endpoint and secret — test mode proves nothing here)
 - [x] The same webhook event delivered 3× still issues exactly one set
 - [x] `charge.refunded` voids tickets and returns the seats
-- [x] A **partial** refund voids only the tickets it covers *(integration test, not a live payload)*
-- [ ] `charge.dispute.closed` with status `won` restores tickets *(untested against a real payload)*
-- [ ] `checkout.session.expired` closes the pending session *(untested against a real payload)*
-- [ ] `radar.early_fraud_warning.created` logs *(untested against a real payload)*
+- [x] A **partial** refund voids only the tickets it covers _(integration test, not a live payload)_
+- [ ] `charge.dispute.closed` with status `won` restores tickets _(untested against a real payload)_
+- [ ] `checkout.session.expired` closes the pending session _(untested against a real payload)_
+- [ ] `radar.early_fraud_warning.created` logs _(untested against a real payload)_
 - [x] Ticket email arrives in the **Gmail** personal inbox, not spam
 - [ ] Ticket email arrives in **iCloud and Outlook** inboxes, not spam
 - [x] The delivered email contains its inline QR, and the ticket link works independently

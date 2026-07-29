@@ -14,13 +14,13 @@ import { log } from "./logger.server";
  */
 
 export type EmailProvider = "cloudflare" | "resend";
+export type EmailChannel = "tickets" | "studio";
 
 export type EmailConfig = {
   provider: EmailProvider;
   apiKey: string;
-  from: string;
-  fromName?: string;
-  replyTo?: string;
+  senders: Record<EmailChannel, { address: string; name: string }>;
+  replyTo: string;
   /** Cloudflare only: the account that owns the sending domain. */
   accountId?: string;
 };
@@ -36,12 +36,12 @@ export type EmailAttachment = {
 };
 
 export type EmailMessage = {
+  channel: EmailChannel;
   to: string;
   subject: string;
   /** Always required. Ticket mail must survive image blocking and HTML stripping. */
   text: string;
   html?: string;
-  replyTo?: string;
   attachments?: EmailAttachment[];
 };
 
@@ -56,8 +56,10 @@ function readProvider(): EmailProvider {
 
 export function getEmailConfig(): EmailConfig | null {
   const apiKey = process.env.EMAIL_API_KEY?.trim();
-  const from = process.env.EMAIL_FROM?.trim();
-  if (!apiKey || !from) return null;
+  const ticketsFrom = process.env.EMAIL_TICKETS_FROM?.trim();
+  const studioFrom = process.env.EMAIL_STUDIO_FROM?.trim();
+  const replyTo = process.env.EMAIL_REPLY_TO?.trim();
+  if (!apiKey || !ticketsFrom || !studioFrom || !replyTo) return null;
 
   const provider = readProvider();
   // Falls back to the R2 account only as a convenience; a dedicated,
@@ -68,9 +70,11 @@ export function getEmailConfig(): EmailConfig | null {
   return {
     provider,
     apiKey,
-    from,
-    fromName: process.env.EMAIL_FROM_NAME?.trim() || undefined,
-    replyTo: process.env.EMAIL_REPLY_TO?.trim() || undefined,
+    senders: {
+      tickets: { address: ticketsFrom, name: "milk & henny tickets" },
+      studio: { address: studioFrom, name: "milk & henny studio" },
+    },
+    replyTo,
     accountId,
   };
 }
@@ -83,13 +87,20 @@ export function isEmailConfigured(): boolean {
 export function describeEmailCapability(): {
   configured: boolean;
   provider: EmailProvider | null;
-  from: string | null;
+  senders: Record<EmailChannel, string> | null;
+  replyTo: string | null;
 } {
   const config = getEmailConfig();
   return {
     configured: config !== null,
     provider: config?.provider ?? null,
-    from: config?.from ?? null,
+    senders: config
+      ? {
+          tickets: config.senders.tickets.address,
+          studio: config.senders.studio.address,
+        }
+      : null,
+    replyTo: config?.replyTo ?? null,
   };
 }
 
@@ -160,19 +171,19 @@ async function sendViaCloudflare(
   config: EmailConfig,
   message: EmailMessage,
 ): Promise<SendEmailResult> {
-  const replyTo = message.replyTo ?? config.replyTo;
+  const sender = config.senders[message.channel];
   const { status, payload } = await postJson(
     `https://api.cloudflare.com/client/v4/accounts/${config.accountId}/email/sending/send`,
     config.apiKey,
     {
       to: message.to,
       // REST uses `address`, unlike the Workers binding's `email`.
-      from: config.fromName ? { address: config.from, name: config.fromName } : config.from,
+      from: sender,
       subject: message.subject,
       text: message.text,
       ...(message.html ? { html: message.html } : {}),
       // snake_case on REST, unlike the binding's `replyTo`.
-      ...(replyTo ? { reply_to: replyTo } : {}),
+      reply_to: config.replyTo,
       ...(message.attachments?.length
         ? {
             attachments: message.attachments.map((attachment) => ({
@@ -191,14 +202,14 @@ async function sendViaCloudflare(
 }
 
 async function sendViaResend(config: EmailConfig, message: EmailMessage): Promise<SendEmailResult> {
-  const replyTo = message.replyTo ?? config.replyTo;
+  const sender = config.senders[message.channel];
   const { status, payload } = await postJson("https://api.resend.com/emails", config.apiKey, {
-    from: config.fromName ? `${config.fromName} <${config.from}>` : config.from,
+    from: `${sender.name} <${sender.address}>`,
     to: [message.to],
     subject: message.subject,
     text: message.text,
     ...(message.html ? { html: message.html } : {}),
-    ...(replyTo ? { reply_to: replyTo } : {}),
+    reply_to: config.replyTo,
     ...(message.attachments?.length
       ? {
           attachments: message.attachments.map((attachment) => ({
@@ -234,6 +245,7 @@ export async function sendEmail(message: EmailMessage): Promise<SendEmailResult>
   const config = getEmailConfig();
   if (!config) {
     log.warn("email.send", "Email is not configured; message dropped", {
+      channel: message.channel,
       subject: message.subject,
     });
     return { ok: false, status: 503, error: "Email is not configured" };
@@ -248,13 +260,19 @@ export async function sendEmail(message: EmailMessage): Promise<SendEmailResult>
     if (!result.ok) {
       log.error("email.send", "Email provider rejected the message", {
         provider: config.provider,
+        channel: message.channel,
         status: result.status,
         error: result.error,
       });
     }
     return result;
   } catch (error) {
-    log.error("email.send", "Email delivery threw", { provider: config.provider }, error);
+    log.error(
+      "email.send",
+      "Email delivery threw",
+      { provider: config.provider, channel: message.channel },
+      error,
+    );
     return { ok: false, status: 502, error: "Email delivery failed" };
   }
 }

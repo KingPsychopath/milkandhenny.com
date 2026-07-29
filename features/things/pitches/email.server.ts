@@ -45,6 +45,7 @@ export async function sendPitchWelcomeEmail(input: {
 }): Promise<SendEmailResult> {
   const url = editUrl(input.origin, input.deck.id, input.token);
   return sendEmail({
+    channel: "studio",
     to: input.email,
     subject: `Your pitch is ready — ${input.deck.title}`,
     text: [
@@ -77,6 +78,7 @@ export async function sendPitchPublishedEmail(input: {
   const publicUrl = `${input.origin}/things/pitches/${encodeURIComponent(input.deck.id)}`;
   const privateUrl = editUrl(input.origin, input.deck.id, input.token);
   return sendEmail({
+    channel: "studio",
     to: input.email,
     subject: `${input.deck.title} is on the wall`,
     text: [
@@ -125,6 +127,7 @@ export async function sendPitchRecoveryEmail(input: {
     .join("");
 
   return sendEmail({
+    channel: "studio",
     to: input.email,
     subject: input.decks.length === 1 ? "Your pitch editing link" : "Your pitch editing links",
     text,
