@@ -70,7 +70,8 @@
 
 .pitch-night-nav-home,
 .pitch-night-nav-story,
-.pitch-night-nav-ticket {
+.pitch-night-nav-ticket,
+.pitch-night-sound {
   min-height: 44px;
   display: inline-flex;
   align-items: center;
@@ -78,14 +79,48 @@
 }
 
 .pitch-night-nav-home,
-.pitch-night-nav-story {
+.pitch-night-nav-story,
+.pitch-night-sound {
   opacity: 0.68;
 }
 
 .pitch-night-nav-home:hover,
 .pitch-night-nav-story:hover,
-.pitch-night-nav-ticket:hover {
+.pitch-night-nav-ticket:hover,
+.pitch-night-sound:hover {
   opacity: 0.72;
+}
+
+.pitch-night-sound {
+  gap: 0.5rem;
+  color: inherit;
+  cursor: pointer;
+}
+
+.pitch-night-sound-wave {
+  display: inline-flex;
+  height: 0.75rem;
+  align-items: center;
+  gap: 2px;
+}
+
+.pitch-night-sound-wave span {
+  width: 1px;
+  height: 28%;
+  background: currentColor;
+  transform-origin: center;
+}
+
+.pitch-night-sound-wave[data-active] span {
+  animation: pitch-night-sound-wave 1.6s ease-in-out infinite alternate;
+}
+
+.pitch-night-sound-wave[data-active] span:nth-child(2) {
+  animation-delay: -0.8s;
+}
+
+.pitch-night-sound-wave[data-active] span:nth-child(3) {
+  animation-delay: -0.35s;
 }
 
 .pitch-night-nav-actions {
@@ -1068,6 +1103,16 @@
   }
 }
 
+@keyframes pitch-night-sound-wave {
+  from {
+    transform: scaleY(0.45);
+  }
+
+  to {
+    transform: scaleY(1);
+  }
+}
+
 @media (max-width: 767px) {
   .pitch-night-nav {
     padding-inline: 1rem;
@@ -1079,6 +1124,10 @@
 
   .pitch-night-nav-actions {
     gap: 0.6rem;
+  }
+
+  .pitch-night-sound {
+    font-size: 0.61rem;
   }
 
   .pitch-night-hero {
@@ -1318,7 +1367,8 @@
   }
 
   .pitch-night-breath-track,
-  .pitch-night-firefly {
+  .pitch-night-firefly,
+  .pitch-night-sound-wave[data-active] span {
     animation: none;
   }
 

@@ -1,6 +1,7 @@
 import { Link } from "@tanstack/react-router";
 import { useRef } from "react";
 
+import { PitchNightAmbience } from "./PitchNightAmbience";
 import { DjScene, Finale, GamesScene, SpellingScene, SupperScene } from "./PitchNightJourney";
 import { PitchNightHero, PitchNightPrologue, PitchScene } from "./PitchNightOpening";
 import { usePitchNightMotion } from "./usePitchNightMotion";
@@ -24,6 +25,7 @@ export function PitchNightExperience({ ticketHref }: { ticketHref: string }) {
           milk & henny
         </Link>
         <div className="pitch-night-nav-actions">
+          <PitchNightAmbience />
           <a href="#the-night" className="pitch-night-nav-story">
             the night
           </a>
