@@ -30,7 +30,13 @@ import {
   unredeemTicket,
   voidTicket,
 } from "@/features/tickets/tickets.server";
-import { getSoldCounts } from "@/features/tickets/store.server";
+import {
+  getSoldCounts,
+  markOrderDisputed,
+  markOrderRefunded,
+  restoreDisputedTickets,
+  insertTicketsWithCapacity,
+} from "@/features/tickets/store.server";
 import { buildTicketQrPayload, hashTicketId, signTicketId } from "@/features/tickets/qr.server";
 import type { EventRecord } from "@/features/events/types";
 
@@ -363,6 +369,75 @@ describeWithDatabase("tickets (postgres)", () => {
       expect((await redeemTicket({ scanned: payload, eventSlug: SLUG })).result).toBe("admitted");
       await unredeemTicket(ticket.id);
       expect((await redeemTicket({ scanned: payload, eventSlug: SLUG })).result).toBe("admitted");
+    });
+  });
+
+  describe("refunds", () => {
+    /** Three £15 tickets on one payment, each carrying its own share. */
+    async function issuePaidOrder() {
+      await seedEvent(10);
+      const outcome = await insertTicketsWithCapacity(
+        {
+          eventSlug: SLUG,
+          ticketTypeId: "entry",
+          kind: "paid",
+          orderId: "ord_test",
+          paymentRef: "pi_test_123",
+          amountPaidMinor: 1500,
+          currency: "GBP",
+        },
+        [
+          { id: "AAAAAAAAAAAAAAAA", holderName: "Buyer" },
+          { id: "BBBBBBBBBBBBBBBB", holderName: "Buyer +1" },
+          { id: "CCCCCCCCCCCCCCCC", holderName: "Buyer +2" },
+        ],
+      );
+      expect(outcome.ok).toBe(true);
+    }
+
+    it("voids the whole order for a full refund", async () => {
+      await issuePaidOrder();
+      const voided = await markOrderRefunded("pi_test_123", "re_1", 4500);
+      expect(voided).toHaveLength(3);
+      expect((await getSoldCounts(SLUG)).entry ?? 0).toBe(0);
+    });
+
+    it("voids only what a partial refund covers", async () => {
+      await issuePaidOrder();
+      // One ticket's worth back — the other two are still paid for.
+      const voided = await markOrderRefunded("pi_test_123", "re_2", 1500);
+      expect(voided).toHaveLength(1);
+      expect((await getSoldCounts(SLUG)).entry).toBe(2);
+    });
+
+    it("voids two when two tickets' worth is refunded", async () => {
+      await issuePaidOrder();
+      const voided = await markOrderRefunded("pi_test_123", "re_3", 3000);
+      expect(voided).toHaveLength(2);
+      expect((await getSoldCounts(SLUG)).entry).toBe(1);
+    });
+
+    it("treats an unknown amount as a full refund", async () => {
+      await issuePaidOrder();
+      expect(await markOrderRefunded("pi_test_123", "re_4")).toHaveLength(3);
+    });
+
+    it("restores tickets when a dispute is won, but not genuine refunds", async () => {
+      await issuePaidOrder();
+
+      // A dispute voids without setting refunded_at.
+      await markOrderDisputed("pi_test_123", "dp_1");
+      expect((await getSoldCounts(SLUG)).entry ?? 0).toBe(0);
+
+      const restored = await restoreDisputedTickets("pi_test_123", "dp_1");
+      expect(restored).toHaveLength(3);
+      expect((await getSoldCounts(SLUG)).entry).toBe(3);
+    });
+
+    it("does not restore under a different dispute reference", async () => {
+      await issuePaidOrder();
+      await markOrderDisputed("pi_test_123", "dp_1");
+      expect(await restoreDisputedTickets("pi_test_123", "dp_other")).toHaveLength(0);
     });
   });
 

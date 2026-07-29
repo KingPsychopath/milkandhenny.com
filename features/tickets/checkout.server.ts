@@ -164,6 +164,13 @@ export type FulfilResult =
  * trade is that a rare oversell race ends in an automatic refund rather than
  * a person being quietly turned away at the door.
  */
+export async function expireCheckout(sessionId: string): Promise<void> {
+  await query(
+    `update checkout_sessions set status = 'expired' where id = $1 and status = 'pending'`,
+    [sessionId],
+  );
+}
+
 export async function fulfilCheckout(sessionId: string, origin: string): Promise<FulfilResult> {
   // Only the transaction that moves the row out of `pending` proceeds, so a
   // redelivered webhook cannot issue a second set of tickets.
@@ -203,7 +210,9 @@ export async function fulfilCheckout(sessionId: string, origin: string): Promise
     kind: "paid",
     paymentRef: session.paymentIntentId ?? undefined,
     checkoutRef: sessionId,
-    amountPaidMinor: claimed.amount_minor,
+    // Per ticket, not the order total: the refund UI shows this figure, and
+    // partial refunds are settled by summing what each ticket actually cost.
+    amountPaidMinor: Math.round(claimed.amount_minor / Math.max(1, claimed.quantity)),
     currency: claimed.currency,
   });
 

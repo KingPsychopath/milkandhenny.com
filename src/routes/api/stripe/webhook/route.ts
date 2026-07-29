@@ -3,8 +3,12 @@ import { createFileRoute } from "@tanstack/react-router";
 import { log } from "@/lib/platform/logger.server";
 import { getBaseUrlForRequest } from "@/lib/shared/config";
 import { constructWebhookEvent, isPaymentsConfigured } from "@/lib/platform/stripe.server";
-import { fulfilCheckout } from "@/features/tickets/checkout.server";
-import { markOrderRefunded } from "@/features/tickets/store.server";
+import { expireCheckout, fulfilCheckout } from "@/features/tickets/checkout.server";
+import {
+  markOrderDisputed,
+  markOrderRefunded,
+  restoreDisputedTickets,
+} from "@/features/tickets/store.server";
 
 /**
  * Stripe webhook.
@@ -21,8 +25,11 @@ import { markOrderRefunded } from "@/features/tickets/store.server";
 const HANDLED = new Set([
   "checkout.session.completed",
   "checkout.session.async_payment_succeeded",
+  "checkout.session.expired",
   "charge.refunded",
   "charge.dispute.created",
+  "charge.dispute.closed",
+  "radar.early_fraud_warning.created",
 ]);
 
 async function handlePOST(request: Request) {
@@ -66,27 +73,77 @@ async function handlePOST(request: Request) {
         break;
       }
 
+      case "checkout.session.expired": {
+        const session = event.data.object as { id: string };
+        // Nothing was issued, so this is bookkeeping only: it stops abandoned
+        // baskets sitting as `pending` forever.
+        await expireCheckout(session.id);
+        break;
+      }
+
       case "charge.refunded": {
         const charge = event.data.object as {
           payment_intent: string | null;
           id: string;
+          amount_refunded: number | null;
         };
         if (charge.payment_intent) {
-          // Covers refunds started from the Stripe dashboard as well as ours,
-          // so a ticket always stops working when the money goes back.
-          const voided = await markOrderRefunded(charge.payment_intent, charge.id);
+          // Fires for partial refunds too, so the amount decides how many
+          // tickets are voided. Covers dashboard-initiated refunds as well as
+          // ours, so a ticket always stops working when the money goes back.
+          const voided = await markOrderRefunded(
+            charge.payment_intent,
+            charge.id,
+            charge.amount_refunded ?? undefined,
+          );
           log.info("stripe.webhook", "Refund applied", {
             paymentIntent: charge.payment_intent,
+            amountRefunded: charge.amount_refunded,
             tickets: voided.length,
           });
         }
         break;
       }
 
+      case "charge.dispute.closed": {
+        const dispute = event.data.object as {
+          payment_intent: string | null;
+          id: string;
+          status: string;
+        };
+        if (dispute.payment_intent && dispute.status === "won") {
+          // The charge stands, so the ticket should too. Only reverses a
+          // dispute-driven void — a real refund set `refunded_at` and stays put.
+          const restored = await restoreDisputedTickets(dispute.payment_intent, dispute.id);
+          log.info("stripe.webhook", "Dispute won; tickets restored", {
+            disputeId: dispute.id,
+            tickets: restored.length,
+          });
+        } else {
+          log.info("stripe.webhook", "Dispute closed", {
+            disputeId: dispute.id,
+            status: dispute.status,
+          });
+        }
+        break;
+      }
+
+      case "radar.early_fraud_warning.created": {
+        const warning = event.data.object as { charge: string | null; id: string };
+        // Stripe thinks this charge will be disputed. Refunding now avoids the
+        // dispute fee entirely, but that is a judgement call, so this only
+        // raises the flag loudly rather than acting on its own.
+        log.error("stripe.webhook", "Early fraud warning — consider refunding proactively", {
+          warningId: warning.id,
+          charge: warning.charge,
+        });
+        break;
+      }
+
       case "charge.dispute.created": {
         const dispute = event.data.object as { payment_intent: string | null; id: string };
         if (dispute.payment_intent) {
-          const voided = await markOrderRefunded(dispute.payment_intent, dispute.id);
+          const voided = await markOrderDisputed(dispute.payment_intent, dispute.id);
           // Loud on purpose: a dispute needs a human, and the door record is
           // the evidence if it is worth contesting.
           log.error("stripe.webhook", "Chargeback opened; tickets voided", {

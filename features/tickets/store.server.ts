@@ -301,13 +301,90 @@ export async function markTicketStatus(
 export async function markOrderRefunded(
   paymentRef: string,
   refundRef: string,
+  amountRefundedMinor?: number,
+): Promise<TicketRecord[]> {
+  return transaction(async (client) => {
+    const { rows: live } = await client.query<TicketRow>(
+      `select * from tickets
+        where payment_ref = $1 and status <> 'refunded'
+        order by issued_at, id
+        for update`,
+      [paymentRef],
+    );
+    if (live.length === 0) return [];
+
+    // Stripe fires charge.refunded for partial refunds too. Voiding the whole
+    // order on a partial would kill tickets the buyer still paid for, so only
+    // as many tickets as the refunded amount covers are voided — oldest first,
+    // which leaves the lead booker's own ticket alive longest.
+    let toVoid = live;
+    if (typeof amountRefundedMinor === "number" && amountRefundedMinor > 0) {
+      const total = live.reduce((sum, row) => sum + (row.amount_paid_minor ?? 0), 0);
+      if (amountRefundedMinor < total) {
+        const covered: TicketRow[] = [];
+        let remaining = amountRefundedMinor;
+        for (const row of live) {
+          const price = row.amount_paid_minor ?? 0;
+          if (price <= 0 || price > remaining) break;
+          remaining -= price;
+          covered.push(row);
+        }
+        toVoid = covered;
+      }
+    }
+
+    if (toVoid.length === 0) return [];
+
+    const { rows } = await client.query<TicketRow>(
+      `update tickets
+          set status = 'refunded', refunded_at = now(), refund_ref = $2
+        where id = any($1::text[])
+        returning *`,
+      [toVoid.map((row) => row.id), refundRef],
+    );
+    return rows.map(toTicket);
+  });
+}
+
+/**
+ * Void an order because a chargeback was opened.
+ *
+ * Deliberately distinct from a refund: the ticket becomes `void`, not
+ * `refunded`, and `refunded_at` stays null because no money has been
+ * returned — the bank is holding it pending the outcome. That distinction is
+ * what makes the dispute reversible if it is later won.
+ */
+export async function markOrderDisputed(
+  paymentRef: string,
+  disputeRef: string,
 ): Promise<TicketRecord[]> {
   const rows = await query<TicketRow>(
     `update tickets
-        set status = 'refunded', refunded_at = now(), refund_ref = $2
-      where payment_ref = $1 and status <> 'refunded'
+        set status = 'void', refund_ref = $2
+      where payment_ref = $1 and status = 'valid'
       returning *`,
-    [paymentRef, refundRef],
+    [paymentRef, disputeRef],
+  );
+  return rows.map(toTicket);
+}
+
+/**
+ * Restore tickets voided by a dispute that was later won.
+ *
+ * Only reverses a dispute-driven void: a genuine refund sets `refunded_at`,
+ * and money that went back should stay gone.
+ */
+export async function restoreDisputedTickets(
+  paymentRef: string,
+  disputeRef: string,
+): Promise<TicketRecord[]> {
+  const rows = await query<TicketRow>(
+    `update tickets
+        set status = 'valid', refund_ref = null
+      where payment_ref = $1 and status = 'void'
+        and refund_ref = $2 and refunded_at is null
+      returning *`,
+    [paymentRef, disputeRef],
   );
   return rows.map(toTicket);
 }
