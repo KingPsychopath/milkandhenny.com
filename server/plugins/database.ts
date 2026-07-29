@@ -17,20 +17,19 @@ import { runMigrations } from "@/lib/platform/migrations.server";
  * pics, games — keeps serving rather than the whole app refusing to start
  * over a ticketing table.
  */
-export default definePlugin((nitroApp) => {
+export default definePlugin(async (nitroApp) => {
   if (isDatabaseConfigured()) {
-    void runMigrations()
-      .then((result) => {
-        if (result.applied.length > 0) {
-          log.info("postgres.migrate", "Migrations applied", {
-            applied: result.applied,
-            alreadyApplied: result.alreadyApplied,
-          });
-        }
-      })
-      .catch((error) => {
-        log.error("postgres.migrate", "Migrations failed on boot", {}, error);
-      });
+    try {
+      const result = await runMigrations();
+      if (result.applied.length > 0) {
+        log.info("postgres.migrate", "Migrations applied", {
+          applied: result.applied,
+          alreadyApplied: result.alreadyApplied,
+        });
+      }
+    } catch (error) {
+      log.error("postgres.migrate", "Migrations failed on boot", {}, error);
+    }
   } else {
     log.warn("postgres", "DATABASE_URL is not set; events and ticketing are unavailable");
   }

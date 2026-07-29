@@ -341,15 +341,24 @@ export function buildAvailability(
   sold: Record<string, number>,
   now = Date.now(),
 ): TicketTypeAvailability[] {
+  const eventRemaining =
+    event.capacity === undefined
+      ? Number.POSITIVE_INFINITY
+      : Math.max(
+          0,
+          event.capacity - Object.values(sold).reduce((total, count) => total + count, 0),
+        );
+
   return event.ticketTypes
     .filter((type) => !type.hidden)
     .map((type) => {
       const soldCount = sold[type.id] ?? 0;
+      const sales = ticketTypeSalesState(event, type, soldCount, now);
       return {
         type,
         sold: soldCount,
-        remaining: Math.max(0, type.quantity - soldCount),
-        sales: ticketTypeSalesState(event, type, soldCount, now),
+        remaining: Math.min(Math.max(0, type.quantity - soldCount), eventRemaining),
+        sales: eventRemaining === 0 && sales.state === "on-sale" ? { state: "sold-out" } : sales,
       };
     });
 }

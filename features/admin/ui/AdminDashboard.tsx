@@ -1214,6 +1214,16 @@ export function AdminDashboard() {
         </div>
       </header>
 
+      <div className="mb-10 border-y theme-border py-6">
+        <EventsPanel
+          authFetch={authFetch}
+          onError={setErrorMessage}
+          onStatus={setStatusMessage}
+          ensureStepUpToken={ensureStepUpTokenResult}
+          withStepUpHeaders={withStepUpHeaders}
+        />
+      </div>
+
       <section id="content-summary" className="space-y-4 scroll-mt-6">
         <div className="flex items-center justify-between">
           <p className="font-mono text-xs theme-muted">content summary</p>
@@ -1275,16 +1285,6 @@ export function AdminDashboard() {
           onError={setErrorMessage}
           onStatus={setStatusMessage}
         />
-
-        <div className="border-t theme-border pt-6">
-          <EventsPanel
-            authFetch={authFetch}
-            onError={setErrorMessage}
-            onStatus={setStatusMessage}
-            ensureStepUpToken={ensureStepUpTokenResult}
-            withStepUpHeaders={withStepUpHeaders}
-          />
-        </div>
 
         <div id="system-health" className="border-t theme-border pt-6 space-y-3 scroll-mt-6">
           <div className="flex items-center justify-between">

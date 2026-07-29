@@ -6,7 +6,7 @@ import { SITE_BRAND } from "@/lib/shared/config";
 import { useQrCode } from "@/hooks/useQrCode";
 import { eventIcsPath } from "@/features/events/routes";
 import { formatEventDate, formatEventTime, type TicketHolderEvent } from "@/features/events/types";
-import type { TicketRecord } from "../types";
+import type { OrderTicketView, TicketPageTicket } from "../types";
 import { RefundTicketButton } from "./RefundTicketButton";
 
 /**
@@ -21,16 +21,26 @@ export function TicketPage({
   ticket,
   event,
   qrPayload,
+  orderTickets,
 }: {
-  ticket: TicketRecord;
+  ticket: TicketPageTicket;
   event: TicketHolderEvent;
   qrPayload: string;
+  orderTickets: OrderTicketView[];
 }) {
   const { dataUrl: qr, failed } = useQrCode(qrPayload, 512);
   const redeemed = Boolean(ticket.redeemedAt);
   const invalid = ticket.status !== "valid";
   // Self-serve refunds close when doors open; after that it is a conversation.
   const doorsOpen = Date.now() >= Date.parse(event.doorsAt ?? event.startsAt);
+  const orderSize = orderTickets.length;
+  const anyOrderTicketRedeemed = orderTickets.some((entry) => Boolean(entry.redeemedAt));
+  const anyOrderTicketInvalid = orderTickets.some((entry) => entry.status !== "valid");
+  const orderAmountMinor = orderTickets.reduce(
+    (sum, entry) => sum + (entry.amountPaidMinor ?? 0),
+    0,
+  );
+  const orderCurrency = orderTickets.find((entry) => entry.currency)?.currency;
 
   return (
     <div className="min-h-screen bg-background">
@@ -42,6 +52,35 @@ export function TicketPage({
         >
           ← {event.title}
         </Link>
+
+        {orderSize > 1 && (
+          <nav aria-label="Tickets in this order" className="mt-6 border-y theme-border py-3">
+            <p className="font-mono text-micro theme-muted">
+              {orderSize} tickets in this order · choose a QR
+            </p>
+            <div className="mt-2 flex gap-2 overflow-x-auto pb-1">
+              {orderTickets.map((entry, index) => {
+                const current = entry.id === ticket.id;
+                return (
+                  <Link
+                    key={entry.id}
+                    to="/ticket/$id"
+                    params={{ id: entry.id }}
+                    aria-current={current ? "page" : undefined}
+                    className={`shrink-0 rounded-full border px-3 py-2 font-mono text-micro transition-opacity hover:opacity-70 ${
+                      current
+                        ? "border-foreground bg-foreground text-background"
+                        : "theme-border-strong text-foreground"
+                    }`}
+                  >
+                    {index + 1} · {entry.holderName}
+                    {entry.redeemedAt ? " · in" : entry.status !== "valid" ? " · void" : ""}
+                  </Link>
+                );
+              })}
+            </div>
+          </nav>
+        )}
 
         {invalid && (
           <p className="mt-6 px-4 py-3 border theme-border-strong rounded-lg font-mono text-xs text-foreground">
@@ -152,13 +191,16 @@ export function TicketPage({
           <div className="mt-8 border-t theme-border pt-6">
             <RefundTicketButton
               ticketId={ticket.id}
-              amountMinor={ticket.amountPaidMinor}
-              currency={ticket.currency}
+              ticketCount={orderSize}
+              amountMinor={orderAmountMinor || ticket.amountPaidMinor}
+              currency={orderCurrency ?? ticket.currency}
               disabledReason={
-                ticket.status === "refunded"
-                  ? "This ticket has been refunded."
-                  : redeemed
-                    ? "You're already checked in — message us if something's wrong."
+                anyOrderTicketInvalid
+                  ? orderSize === 1
+                    ? "This ticket has been refunded."
+                    : "This order has already been partly or fully refunded. Message us if something's wrong."
+                  : anyOrderTicketRedeemed
+                    ? "Someone on this order is already checked in. Message us and we'll review it with the door record."
                     : doorsOpen
                       ? "Doors are open, so refunds are no longer self-serve. Message us."
                       : undefined

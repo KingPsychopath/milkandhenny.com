@@ -23,6 +23,7 @@ export class TicketsService extends Context.Service<
     readonly holderNames: typeof holderNames;
     readonly lookupByEmail: typeof lookupByEmail;
     readonly read: typeof read;
+    readonly order: typeof order;
   }
 >()("TicketsService") {
   static readonly layer = Layer.succeed(this, {
@@ -35,6 +36,7 @@ export class TicketsService extends Context.Service<
     holderNames,
     lookupByEmail,
     read,
+    order,
   });
 }
 
@@ -89,5 +91,11 @@ function lookupByEmail(eventSlug: string, email: string) {
 function read(ticketId: string) {
   return eventsOperation({ domain: "tickets", operation: "read" }, () =>
     engine.getTicket(ticketId),
+  );
+}
+
+function order(orderId: string) {
+  return eventsOperation({ domain: "tickets", operation: "order" }, () =>
+    engine.getTicketOrder(orderId),
   );
 }

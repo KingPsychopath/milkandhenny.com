@@ -15,11 +15,13 @@ import { formatMoney } from "@/features/events/types";
  */
 export function RefundTicketButton({
   ticketId,
+  ticketCount,
   amountMinor,
   currency,
   disabledReason,
 }: {
   ticketId: string;
+  ticketCount: number;
   amountMinor?: number;
   currency?: string;
   /** Set when a refund is not offered, e.g. already scanned or doors open. */
@@ -27,6 +29,7 @@ export function RefundTicketButton({
 }) {
   const [state, setState] = useState<"idle" | "confirming" | "working" | "done" | "error">("idle");
   const [message, setMessage] = useState("");
+  const [emailSent, setEmailSent] = useState(false);
 
   if (disabledReason) {
     return (
@@ -39,14 +42,20 @@ export function RefundTicketButton({
   if (state === "done") {
     return (
       <p className="text-center font-mono text-micro theme-subtle leading-relaxed">
-        Refunded. It usually lands back within a few working days, and this ticket no longer works
+        Refunded.{" "}
+        {emailSent
+          ? "We've emailed confirmation."
+          : "The confirmation email could not be sent, so keep this page as your record."}{" "}
+        It usually lands back within a few working days, and{" "}
+        {ticketCount === 1 ? " this QR no longer works" : " all QRs in this order no longer work"}{" "}
         at the door.
       </p>
     );
   }
 
   const amount =
-    amountMinor !== undefined && currency ? formatMoney(amountMinor, currency) : "your ticket";
+    amountMinor !== undefined && currency ? formatMoney(amountMinor, currency) : "the order";
+  const ticketLabel = ticketCount === 1 ? "this ticket" : `all ${ticketCount} tickets`;
 
   const submit = async () => {
     setState("working");
@@ -57,6 +66,7 @@ export function RefundTicketButton({
         setState("error");
         return;
       }
+      setEmailSent(result.emailed);
       setState("done");
     } catch {
       setMessage("That didn't work. Try again, or message us.");
@@ -69,7 +79,7 @@ export function RefundTicketButton({
       {state === "confirming" ? (
         <div className="space-y-2">
           <p className="font-mono text-micro theme-subtle">
-            Refund {amount} and cancel this ticket?
+            Refund {amount} and cancel {ticketLabel}?
           </p>
           <div className="flex justify-center gap-3">
             <button
@@ -95,7 +105,9 @@ export function RefundTicketButton({
           onClick={() => setState("confirming")}
           className="min-h-10 font-mono text-micro theme-muted underline hover:text-foreground transition-colors disabled:opacity-50"
         >
-          {state === "working" ? "refunding…" : "can't make it? refund this ticket"}
+          {state === "working"
+            ? "refunding…"
+            : `can't make it? refund ${ticketCount === 1 ? "this ticket" : "this order"}`}
         </button>
       )}
 

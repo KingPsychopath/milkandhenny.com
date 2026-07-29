@@ -17,6 +17,7 @@ import {
   insertTicketsWithCapacity,
   listTicketsForEmail,
   listTicketsForEvent,
+  listTicketsForOrder,
   listValidTicketIds,
   markTicketStatus,
   releaseRedemption,
@@ -77,6 +78,7 @@ function findTicketType(event: EventRecord, ticketTypeId: string): TicketType | 
 function toDoorView(ticket: TicketRecord, ticketTypeName: string): DoorTicketView {
   return {
     id: ticket.id,
+    orderId: ticket.orderId,
     holderName: ticket.holderName,
     ticketTypeName,
     kind: ticket.kind,
@@ -84,6 +86,10 @@ function toDoorView(ticket: TicketRecord, ticketTypeName: string): DoorTicketVie
     redeemedAt: ticket.redeemedAt,
     isPlusOne: Boolean(ticket.parentTicketId),
   };
+}
+
+export async function getTicketOrder(orderId: string): Promise<TicketRecord[]> {
+  return listTicketsForOrder(orderId);
 }
 
 export type IssueTicketsInput = {
@@ -287,10 +293,23 @@ export async function buildDoorManifest(eventSlug: string): Promise<DoorManifest
 }
 
 export type EventTicketSummary = {
+  /** All tickets ever issued, including refunded and void tickets. */
   total: number;
+  /** Tickets that can still enter; this is the current sold count. */
+  valid: number;
   redeemed: number;
+  refunded: number;
+  void: number;
+  grossMinor: number;
+  netMinor: number;
+  currency?: string;
   byType: Record<string, { name: string; issued: number; redeemed: number }>;
-  tickets: (DoorTicketView & { email?: string; issuedAt: string })[];
+  tickets: (DoorTicketView & {
+    email?: string;
+    issuedAt: string;
+    amountPaidMinor?: number;
+    currency?: string;
+  })[];
 };
 
 export async function getEventTickets(eventSlug: string): Promise<EventTicketSummary> {
@@ -298,21 +317,42 @@ export async function getEventTickets(eventSlug: string): Promise<EventTicketSum
 
   const byType: EventTicketSummary["byType"] = {};
   let redeemed = 0;
+  let valid = 0;
+  let refunded = 0;
+  let voidCount = 0;
+  let grossMinor = 0;
+  let netMinor = 0;
+  const currency = tickets.find((ticket) => ticket.currency)?.currency;
 
   for (const ticket of tickets) {
     const name = (event ? findTicketType(event, ticket.ticketTypeId)?.name : null) ?? "Ticket";
     const bucket = byType[ticket.ticketTypeId] ?? { name, issued: 0, redeemed: 0 };
     bucket.issued += 1;
-    if (ticket.redeemedAt) {
-      bucket.redeemed += 1;
-      redeemed += 1;
+    if (ticket.status === "valid") {
+      valid += 1;
+      netMinor += ticket.amountPaidMinor ?? 0;
+      if (ticket.redeemedAt) {
+        bucket.redeemed += 1;
+        redeemed += 1;
+      }
+    } else if (ticket.status === "refunded") {
+      refunded += 1;
+    } else {
+      voidCount += 1;
     }
+    grossMinor += ticket.amountPaidMinor ?? 0;
     byType[ticket.ticketTypeId] = bucket;
   }
 
   return {
     total: tickets.length,
+    valid,
     redeemed,
+    refunded,
+    void: voidCount,
+    grossMinor,
+    netMinor,
+    currency,
     byType,
     tickets: tickets.map((ticket) => ({
       ...toDoorView(
@@ -321,6 +361,8 @@ export async function getEventTickets(eventSlug: string): Promise<EventTicketSum
       ),
       email: ticket.email,
       issuedAt: ticket.issuedAt,
+      amountPaidMinor: ticket.amountPaidMinor,
+      currency: ticket.currency,
     })),
   };
 }

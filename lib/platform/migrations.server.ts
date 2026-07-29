@@ -140,6 +140,14 @@ const MIGRATIONS: Migration[] = [
         on checkout_sessions (event_slug, status);
     `,
   },
+  {
+    id: "0003_ticket_terms_acceptance",
+    sql: `
+      alter table checkout_sessions
+        add column if not exists terms_accepted_at timestamptz,
+        add column if not exists terms_snapshot jsonb;
+    `,
+  },
 ];
 
 export type MigrationResult = { applied: string[]; alreadyApplied: number };

@@ -24,5 +24,12 @@ export const Route = createFileRoute("/ticket/$id")({
 
 function TicketRoute() {
   const data = Route.useLoaderData();
-  return <TicketPage ticket={data.ticket} event={data.event} qrPayload={data.qrPayload} />;
+  return (
+    <TicketPage
+      ticket={data.ticket}
+      event={data.event}
+      qrPayload={data.qrPayload}
+      orderTickets={data.orderTickets}
+    />
+  );
 }

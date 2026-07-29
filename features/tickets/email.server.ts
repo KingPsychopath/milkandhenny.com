@@ -3,7 +3,7 @@ import QRCode from "qrcode";
 import { sendEmail, type EmailAttachment } from "@/lib/platform/email.server";
 import { log } from "@/lib/platform/logger.server";
 import { buildTicketUrl } from "@/features/events/routes";
-import { formatEventDateTime } from "@/features/events/types";
+import { formatEventDateTime, formatMoney } from "@/features/events/types";
 import type { EventRecord } from "@/features/events/types";
 import { buildTicketQrPayload } from "./qr.server";
 import type { TicketRecord } from "./types";
@@ -65,6 +65,12 @@ function buildText(event: EventRecord, tickets: TicketRecord[], origin: string):
       : null,
     event.ageLimit ? `${event.ageLimit}.` : null,
     "",
+    "Ticket terms:",
+    event.terms ??
+      "Tickets are for this named, dated event. Entry is subject to the event details and house rules.",
+    event.refundPolicy ??
+      "Self-serve refunds are available before doors open while nobody on the order has checked in. After that, contact us so the door record can be reviewed.",
+    "",
     "— milk & henny",
   ];
   return lines.filter((line) => line !== null).join("\n");
@@ -106,6 +112,11 @@ function buildHtml(
       ${event.lastEntryAt ? `Last entry ${escapeHtml(formatEventDateTime(event.lastEntryAt, event.timezone))}.` : ""}
       ${event.ageLimit ? escapeHtml(event.ageLimit) + "." : ""}
     </p>
+    <div style="border-top:1px solid #e7e5e4;margin-top:20px;padding-top:16px;color:#78716c;font-size:12px;line-height:1.6">
+      <strong style="color:#1c1917">Ticket terms</strong><br>
+      ${escapeHtml(event.terms ?? "Tickets are for this named, dated event. Entry is subject to the event details and house rules.")}<br><br>
+      ${escapeHtml(event.refundPolicy ?? "Self-serve refunds are available before doors open while nobody on the order has checked in. After that, contact us so the door record can be reviewed.")}
+    </div>
     <p style="margin:24px 0 0;color:#a8a29e;font-size:12px">milk &amp; henny</p>
   </div>
 </div>`;
@@ -152,5 +163,76 @@ export async function sendTicketEmail(input: {
   }
 
   log.info("tickets.email", "Ticket email sent", { slug: event.slug, count: tickets.length });
+  return { sent: true };
+}
+
+function refundAmount(tickets: TicketRecord[]): string | null {
+  const currency = tickets.find((ticket) => ticket.currency)?.currency;
+  if (!currency) return null;
+  const amount = tickets.reduce((sum, ticket) => sum + (ticket.amountPaidMinor ?? 0), 0);
+  return amount > 0 ? formatMoney(amount, currency) : null;
+}
+
+/** Confirm that money is going back and every affected QR has been cancelled. */
+export async function sendRefundEmail(input: {
+  event: EventRecord;
+  tickets: TicketRecord[];
+}): Promise<TicketEmailResult> {
+  const { event, tickets } = input;
+  const recipient = tickets.find((ticket) => ticket.email)?.email;
+  if (!recipient) return { sent: false, error: "No email address on this order" };
+  if (tickets.length === 0) return { sent: false, error: "No refunded tickets to confirm" };
+
+  const amount = refundAmount(tickets);
+  const count = tickets.length;
+  const ticketLabel = `${count} ticket${count === 1 ? "" : "s"}`;
+  const when = formatEventDateTime(event.startsAt, event.timezone);
+  const text = [
+    `Refund confirmed — ${event.title}`,
+    "",
+    `${amount ? `${amount} for ` : ""}${ticketLabel} is on its way back to the original payment method.`,
+    "It usually arrives within a few working days.",
+    "",
+    `${event.title} · ${when}`,
+    ...tickets.map((ticket) => `  ${ticket.holderName} — ${ticket.id}`),
+    "",
+    `The ${count === 1 ? "QR code is" : "QR codes are"} cancelled and will no longer work at the door.`,
+    "",
+    "— milk & henny",
+  ].join("\n");
+  const rows = tickets
+    .map(
+      (ticket) =>
+        `<li style="margin:0 0 6px">${escapeHtml(ticket.holderName)} <span style="color:#78716c">${escapeHtml(ticket.id)}</span></li>`,
+    )
+    .join("");
+  const html = `<div style="font-family:ui-monospace,SFMono-Regular,Menlo,monospace;background:#fafaf9;color:#1c1917;padding:24px">
+  <div style="max-width:520px;margin:0 auto">
+    <h1 style="font-family:Georgia,serif;font-size:24px;margin:0 0 4px">Refund confirmed</h1>
+    <p style="margin:0 0 20px;color:#78716c">${escapeHtml(event.title)} · ${escapeHtml(when)}</p>
+    <p style="margin:0 0 12px;line-height:1.6">${amount ? `${escapeHtml(amount)} for ` : ""}${ticketLabel} is on its way back to the original payment method. It usually arrives within a few working days.</p>
+    <ul style="margin:0 0 20px;padding-left:20px">${rows}</ul>
+    <p style="margin:0;color:#78716c;font-size:13px;line-height:1.6">The ${count === 1 ? "QR code is" : "QR codes are"} cancelled and will no longer work at the door.</p>
+    <p style="margin:24px 0 0;color:#a8a29e;font-size:12px">milk &amp; henny</p>
+  </div>
+</div>`;
+
+  const result = await sendEmail({
+    to: recipient,
+    subject: `Refund confirmed — ${event.title}`,
+    text,
+    html,
+  });
+
+  if (!result.ok) {
+    log.error("tickets.email", "Refund email failed", {
+      slug: event.slug,
+      count,
+      status: result.status,
+    });
+    return { sent: false, error: result.error };
+  }
+
+  log.info("tickets.email", "Refund email sent", { slug: event.slug, count });
   return { sent: true };
 }

@@ -7,7 +7,7 @@ import { describe, it, expect } from "vitest";
  * they are tested directly rather than through a route.
  */
 
-import { normaliseEventInput } from "@/features/events/events.server";
+import { buildAvailability, normaliseEventInput } from "@/features/events/events.server";
 import {
   isPubliclyVisible,
   isUpcoming,
@@ -194,6 +194,39 @@ describe("normaliseEventInput", () => {
       // Unspecified fields survive a partial update.
       expect(second.value.area).toBe("East London");
     }
+  });
+});
+
+describe("event-wide capacity", () => {
+  it("limits every ticket type by the remaining room capacity", () => {
+    const result = normaliseEventInput(
+      validInput({
+        capacity: 3,
+        ticketTypes: [
+          {
+            id: "entry",
+            name: "Entry",
+            priceMinor: 0,
+            currency: "GBP",
+            quantity: 10,
+            perPersonLimit: 4,
+          },
+          {
+            id: "guest",
+            name: "Guest",
+            priceMinor: 0,
+            currency: "GBP",
+            quantity: 10,
+            perPersonLimit: 4,
+          },
+        ],
+      }),
+    );
+    if (!result.ok) throw new Error(result.error);
+
+    const availability = buildAvailability(result.value, { entry: 2, guest: 1 });
+    expect(availability.map((entry) => entry.remaining)).toEqual([0, 0]);
+    expect(availability.map((entry) => entry.sales.state)).toEqual(["sold-out", "sold-out"]);
   });
 });
 

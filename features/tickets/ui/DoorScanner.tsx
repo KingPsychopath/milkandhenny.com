@@ -41,6 +41,14 @@ type Verdict =
   | { kind: "rejected"; title: string; detail: string }
   | { kind: "queued"; name: string; detail: string };
 
+type ScanResult = "admitted" | "queued" | "already" | "rejected";
+
+type PendingGroup = {
+  raw: string;
+  anchor: DoorTicketView;
+  tickets: DoorTicketView[];
+};
+
 function verdictStyle(kind: Verdict["kind"]): string {
   switch (kind) {
     case "admitted":
@@ -170,6 +178,8 @@ export function DoorScanner({
   const [query, setQuery] = useState("");
   const [manualId, setManualId] = useState("");
   const [busy, setBusy] = useState(false);
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const [pendingGroup, setPendingGroup] = useState<PendingGroup | null>(null);
 
   const lastScanRef = useRef<{ value: string; at: number } | null>(null);
   const lastRefreshRef = useRef(0);
@@ -253,15 +263,16 @@ export function DoorScanner({
   }, [online, syncQueue]);
 
   const handleScan = useCallback(
-    async (raw: string) => {
+    async (raw: string, bypassGroup = false): Promise<ScanResult> => {
       const now = Date.now();
       // Debounce: the camera fires many frames per second on one code.
       if (
+        !bypassGroup &&
         lastScanRef.current &&
         lastScanRef.current.value === raw &&
         now - lastScanRef.current.at < 2_500
       ) {
-        return;
+        return "rejected";
       }
       lastScanRef.current = { value: raw, at: now };
 
@@ -271,7 +282,24 @@ export function DoorScanner({
 
       if (!ticketId) {
         setVerdict({ kind: "rejected", title: "Not a ticket", detail: "That code isn't ours." });
-        return;
+        return "rejected";
+      }
+
+      const known = tickets.find((ticket) => ticket.id === ticketId);
+      if (!bypassGroup && known?.status === "valid" && !known.redeemedAt) {
+        const queuedIds = new Set(offlineRef.current.queue.map((entry) => entry.ticketId));
+        const availableGroup = tickets.filter(
+          (ticket) =>
+            ticket.orderId === known.orderId &&
+            ticket.status === "valid" &&
+            !ticket.redeemedAt &&
+            !queuedIds.has(ticket.id),
+        );
+        if (availableGroup.length > 1) {
+          setPendingGroup({ raw, anchor: known, tickets: availableGroup });
+          setVerdict({ kind: "idle" });
+          return "rejected";
+        }
       }
 
       setBusy(true);
@@ -287,7 +315,7 @@ export function DoorScanner({
               title: "Signed out",
               detail: "Staff session expired — sign in again.",
             });
-            return;
+            return "rejected";
           }
 
           const outcome = result.outcome;
@@ -299,6 +327,13 @@ export function DoorScanner({
                 detail: outcome.ticket.ticketTypeName,
               });
               setSummary((prev) => ({ ...prev, redeemed: prev.redeemed + 1 }));
+              setTickets((current) =>
+                current.map((entry) =>
+                  entry.id === outcome.ticket.id
+                    ? { ...entry, redeemedAt: new Date().toISOString() }
+                    : entry,
+                ),
+              );
               break;
             case "already-redeemed":
               setVerdict({
@@ -328,7 +363,11 @@ export function DoorScanner({
                 detail: "Nothing matches that code.",
               });
           }
-          return;
+          return outcome.result === "admitted"
+            ? "admitted"
+            : outcome.result === "already-redeemed"
+              ? "already"
+              : "rejected";
         }
 
         // Offline: decide from the manifest and queue the redemption.
@@ -338,27 +377,36 @@ export function DoorScanner({
           ticketHash,
           scannedAt: new Date().toISOString(),
         });
+        offlineRef.current = outcome.state;
         setOffline(outcome.state);
 
-        const known = tickets.find((ticket) => ticket.id === ticketId);
         if (outcome.result === "admitted-offline") {
+          setSummary((prev) => ({ ...prev, redeemed: prev.redeemed + 1 }));
+          setTickets((current) =>
+            current.map((entry) =>
+              entry.id === ticketId ? { ...entry, redeemedAt: new Date().toISOString() } : entry,
+            ),
+          );
           setVerdict({
             kind: "queued",
             name: known?.holderName ?? ticketId,
             detail: "Let them in — will sync when back online.",
           });
+          return "queued";
         } else if (outcome.result === "already-redeemed-offline") {
           setVerdict({
             kind: "already",
             name: known?.holderName ?? ticketId,
             detail: "Already scanned on this device.",
           });
+          return "already";
         } else {
           setVerdict({
             kind: "rejected",
             title: "Not on the list",
             detail: "No signal, and this ticket isn't in the downloaded list.",
           });
+          return "rejected";
         }
       } finally {
         setBusy(false);
@@ -366,6 +414,37 @@ export function DoorScanner({
     },
     [eventSlug, tickets],
   );
+
+  const admitPendingGroup = useCallback(async () => {
+    const group = pendingGroup;
+    if (!group) return;
+
+    setPendingGroup(null);
+    setBulkBusy(true);
+    let admitted = 0;
+    let queued = 0;
+    try {
+      for (const ticket of group.tickets) {
+        const result = await handleScan(ticket.id, true);
+        if (result === "admitted") admitted += 1;
+        if (result === "queued") queued += 1;
+      }
+    } finally {
+      setBulkBusy(false);
+    }
+
+    const accepted = admitted + queued;
+    if (accepted > 0) {
+      setVerdict({
+        kind: queued > 0 ? "queued" : "admitted",
+        name: `${accepted} guest${accepted === 1 ? "" : "s"}`,
+        detail:
+          queued > 0
+            ? "Group checked in — will sync when back online."
+            : `Group checked in · ${group.anchor.ticketTypeName}`,
+      });
+    }
+  }, [handleScan, pendingGroup]);
 
   const matches = useMemo(() => {
     const term = query.trim().toLowerCase();
@@ -417,8 +496,63 @@ export function DoorScanner({
           )}
         </div>
 
+        {pendingGroup && (
+          <section
+            aria-labelledby="door-group-title"
+            className="mt-4 rounded-2xl border theme-border-strong p-4"
+          >
+            <p id="door-group-title" className="font-serif text-xl text-foreground">
+              {pendingGroup.tickets.length} people on this order
+            </p>
+            <p className="mt-1 font-mono text-micro theme-muted">Who is coming in right now?</p>
+            <ul className="mt-3 divide-y theme-border border-y theme-border">
+              {pendingGroup.tickets.map((ticket) => (
+                <li
+                  key={ticket.id}
+                  className="flex items-center justify-between gap-3 py-2 font-mono text-xs"
+                >
+                  <span className="truncate text-foreground">{ticket.holderName}</span>
+                  <span className="shrink-0 theme-muted">{ticket.ticketTypeName}</span>
+                </li>
+              ))}
+            </ul>
+            <div className="mt-4 grid gap-2">
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => void admitPendingGroup()}
+                className="min-h-12 rounded-lg bg-foreground px-4 font-mono text-xs text-background disabled:opacity-50"
+              >
+                check in all {pendingGroup.tickets.length}
+              </button>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => {
+                  const selected = pendingGroup;
+                  setPendingGroup(null);
+                  void handleScan(selected.raw, true);
+                }}
+                className="min-h-12 rounded-lg border theme-border-strong px-4 font-mono text-xs text-foreground disabled:opacity-50"
+              >
+                only {pendingGroup.anchor.holderName}
+              </button>
+              <button
+                type="button"
+                onClick={() => setPendingGroup(null)}
+                className="min-h-10 font-mono text-micro theme-muted hover:text-foreground transition-colors"
+              >
+                cancel
+              </button>
+            </div>
+          </section>
+        )}
+
         <div className="mt-4">
-          <CameraFeed onCode={(raw) => void handleScan(raw)} paused={busy} />
+          <CameraFeed
+            onCode={(raw) => void handleScan(raw)}
+            paused={busy || bulkBusy || pendingGroup !== null}
+          />
         </div>
 
         <form

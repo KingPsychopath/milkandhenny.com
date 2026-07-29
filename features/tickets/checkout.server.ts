@@ -14,7 +14,7 @@ import { buildEventUrl, ticketPath } from "@/features/events/routes";
 import { getSoldCounts, listTicketsForOrder, markOrderRefunded } from "./store.server";
 import { hashEmail, isTicketSigningConfigured } from "./qr.server";
 import { issueTickets, type TicketOpResult } from "./tickets.server";
-import { sendTicketEmail } from "./email.server";
+import { sendRefundEmail, sendTicketEmail } from "./email.server";
 import { getCheckoutMinimumMinor, isCheckoutTotalSupported } from "./payment-limits";
 import { isValidEmail, normaliseEmail, type TicketRecord } from "./types";
 
@@ -35,6 +35,7 @@ export type StartCheckoutInput = {
   email: string;
   quantity: number;
   origin: string;
+  acceptedTerms: boolean;
 };
 
 export type StartCheckoutResult = TicketOpResult<{ url: string; sessionId: string }>;
@@ -45,6 +46,9 @@ export async function startCheckout(input: StartCheckoutInput): Promise<StartChe
   }
   if (!isTicketSigningConfigured()) {
     return { ok: false, status: 503, error: "Ticketing is not configured" };
+  }
+  if (input.acceptedTerms !== true) {
+    return { ok: false, status: 400, error: "Agree to the ticket terms before checkout" };
   }
 
   const holderName = input.holderName?.trim();
@@ -81,11 +85,19 @@ export async function startCheckout(input: StartCheckoutInput): Promise<StartChe
   }
 
   const remaining = Math.max(0, ticketType.quantity - (sold[ticketType.id] ?? 0));
-  if (quantity > remaining) {
+  const eventRemaining =
+    event.capacity === undefined
+      ? Number.POSITIVE_INFINITY
+      : Math.max(
+          0,
+          event.capacity - Object.values(sold).reduce((total, count) => total + count, 0),
+        );
+  const available = Math.min(remaining, eventRemaining);
+  if (quantity > available) {
     return {
       ok: false,
       status: 409,
-      error: remaining === 0 ? "Sold out" : `Only ${remaining} left`,
+      error: available === 0 ? "Sold out" : `Only ${available} left`,
     };
   }
 
@@ -130,8 +142,8 @@ export async function startCheckout(input: StartCheckoutInput): Promise<StartChe
   await query(
     `insert into checkout_sessions (
        id, event_slug, ticket_type_id, quantity, holder_name, email, email_hash,
-       amount_minor, currency, status
-     ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,'pending')
+       amount_minor, currency, status, terms_accepted_at, terms_snapshot
+     ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,'pending',now(),$10::jsonb)
      on conflict (id) do nothing`,
     [
       session.id,
@@ -143,6 +155,11 @@ export async function startCheckout(input: StartCheckoutInput): Promise<StartChe
       hashEmail(email),
       amountMinor,
       ticketType.currency,
+      JSON.stringify({
+        eventTerms: event.terms ?? null,
+        refundPolicy: event.refundPolicy ?? null,
+        transferable: event.transferable,
+      }),
     ],
   );
 
@@ -264,7 +281,7 @@ export async function fulfilCheckout(sessionId: string, origin: string): Promise
   return { outcome: "issued", tickets: issued.value.tickets };
 }
 
-export type SelfRefundResult = TicketOpResult<{ refunded: number }>;
+export type SelfRefundResult = TicketOpResult<{ refunded: number; emailed: boolean }>;
 
 /**
  * Refund an order at the buyer's request.
@@ -297,7 +314,7 @@ export async function refundOrder(input: {
     };
   }
   if (tickets.every((ticket) => ticket.status === "refunded")) {
-    return { ok: true, value: { refunded: 0 } };
+    return { ok: true, value: { refunded: 0, emailed: false } };
   }
 
   const refund = await refundPayment({
@@ -307,13 +324,21 @@ export async function refundOrder(input: {
   if (!refund.ok) return { ok: false, status: 502, error: refund.error };
 
   const updated = await markOrderRefunded(anchor.payment_ref, refund.refundId);
+  let emailed = false;
+  if (updated.length > 0) {
+    const event = await getEvent(anchor.event_slug);
+    if (event) {
+      const delivery = await sendRefundEmail({ event, tickets: updated });
+      emailed = delivery.sent;
+    }
+  }
   log.info("checkout.refund", "Order refunded", {
     orderId: anchor.order_id,
     count: updated.length,
     reason: input.reason,
   });
 
-  return { ok: true, value: { refunded: updated.length } };
+  return { ok: true, value: { refunded: updated.length, emailed } };
 }
 
 export { ticketPath };

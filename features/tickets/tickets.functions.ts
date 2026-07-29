@@ -17,8 +17,9 @@ import {
   isValidEmail,
   isValidTicketId,
   type DoorTicketView,
+  type OrderTicketView,
+  type TicketPageTicket,
   type RedeemOutcome,
-  type TicketRecord,
 } from "./types";
 
 /**
@@ -112,11 +113,11 @@ export type TicketPageResult =
   | { found: false }
   | {
       found: true;
-      ticket: TicketRecord;
+      ticket: TicketPageTicket;
       qrPayload: string;
       event: ReturnType<typeof toTicketHolderEvent>;
-      /** Other tickets bought in the same order, so a group sees all its QRs. */
-      orderTicketIds: string[];
+      /** Tickets bought together, so one delivery link opens the whole order. */
+      orderTickets: OrderTicketView[];
     };
 
 export const getTicketPageFn = createServerFn({ method: "GET" })
@@ -131,25 +132,45 @@ export const getTicketPageFn = createServerFn({ method: "GET" })
     if (!loaded.ok || !loaded.value) return { found: false };
 
     const ticket = loaded.value;
-    const eventResult = await runEventsResult(
+    const detailResult = await runEventsResult(
       Effect.gen(function* () {
         const events = yield* EventsService;
-        return yield* events.read(ticket.eventSlug);
+        const tickets = yield* TicketsService;
+        const event = yield* events.read(ticket.eventSlug);
+        const orderTickets = yield* tickets.order(ticket.orderId);
+        return { event, orderTickets };
       }),
     );
-    if (!eventResult.ok || !eventResult.value) return { found: false };
+    if (!detailResult.ok || !detailResult.value.event) return { found: false };
 
-    const event: EventRecord = eventResult.value;
+    const event: EventRecord = detailResult.value.event;
 
     // Holding a ticket is what earns the address.
     rememberTicketHolder(event.slug);
 
     return {
       found: true,
-      ticket,
+      ticket: {
+        id: ticket.id,
+        holderName: ticket.holderName,
+        kind: ticket.kind,
+        status: ticket.status,
+        redeemedAt: ticket.redeemedAt,
+        amountPaidMinor: ticket.amountPaidMinor,
+        currency: ticket.currency,
+      },
       qrPayload: buildTicketQrPayload(ticket.id),
       event: toTicketHolderEvent(event),
-      orderTicketIds: [ticket.id],
+      orderTickets: detailResult.value.orderTickets.map(
+        ({ id, holderName, status, redeemedAt, amountPaidMinor, currency }) => ({
+          id,
+          holderName,
+          status,
+          redeemedAt,
+          amountPaidMinor,
+          currency,
+        }),
+      ),
     };
   });
 
@@ -253,7 +274,7 @@ export const getDoorDataFn = createServerFn({ method: "GET" })
       eventTitle: event.title,
       manifestHashes: manifest.hashes,
       generatedAt: manifest.generatedAt,
-      summary: { total: summary.total, redeemed: summary.redeemed },
+      summary: { total: summary.valid, redeemed: summary.redeemed },
       tickets: summary.tickets.map(({ email: _email, ...rest }) => rest),
     };
   });
@@ -317,6 +338,7 @@ export const startCheckoutFn = createServerFn({ method: "POST" })
       holderName: string;
       email: string;
       quantity: number;
+      acceptedTerms: boolean;
     }) => data,
   )
   .handler(async ({ data }): Promise<StartCheckoutResult> => {
@@ -331,7 +353,9 @@ export const startCheckoutFn = createServerFn({ method: "POST" })
     return { ok: true, url: result.value.url };
   });
 
-export type RefundResult = { ok: true; refunded: number } | { ok: false; error: string };
+export type RefundResult =
+  | { ok: true; refunded: number; emailed: boolean }
+  | { ok: false; error: string };
 
 /**
  * Self-serve refund from the ticket page.
@@ -348,5 +372,9 @@ export const refundOwnTicketFn = createServerFn({ method: "POST" })
     }
     const result = await refundOrder({ ticketId: data.ticketId, reason: "self-serve" });
     if (!result.ok) return { ok: false, error: result.error };
-    return { ok: true, refunded: result.value.refunded };
+    return {
+      ok: true,
+      refunded: result.value.refunded,
+      emailed: result.value.emailed,
+    };
   });

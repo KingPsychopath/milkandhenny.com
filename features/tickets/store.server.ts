@@ -173,6 +173,16 @@ export async function insertTicketsWithCapacity(
   newTickets: NewTicket[],
 ): Promise<IssueOutcome> {
   return transaction(async (client) => {
+    // Lock the event before its ticket type. Every issuance takes locks in
+    // this order, so ticket types selling concurrently cannot exceed the
+    // room-wide cap or deadlock each other.
+    const eventResult = await client.query<{ capacity: number | null }>(
+      `select capacity from events where slug = $1 for update`,
+      [input.eventSlug],
+    );
+    const event = eventResult.rows[0];
+    if (!event) return { ok: false as const, reason: "unknown-type" as const };
+
     const typeResult = await client.query<{ quantity: number }>(
       `select quantity from ticket_types
         where event_slug = $1 and id = $2
@@ -189,7 +199,18 @@ export async function insertTicketsWithCapacity(
         [input.eventSlug, input.ticketTypeId],
       );
       const sold = Number.parseInt(soldResult.rows[0]?.sold ?? "0", 10);
-      const remaining = Math.max(0, ticketType.quantity - sold);
+      const typeRemaining = Math.max(0, ticketType.quantity - sold);
+      let eventRemaining = Number.POSITIVE_INFINITY;
+      if (event.capacity !== null) {
+        const eventSoldResult = await client.query<{ sold: string }>(
+          `select count(*)::text as sold from tickets
+            where event_slug = $1 and status = 'valid'`,
+          [input.eventSlug],
+        );
+        const eventSold = Number.parseInt(eventSoldResult.rows[0]?.sold ?? "0", 10);
+        eventRemaining = Math.max(0, event.capacity - eventSold);
+      }
+      const remaining = Math.min(typeRemaining, eventRemaining);
       if (newTickets.length > remaining) {
         return { ok: false as const, reason: "sold-out" as const, remaining };
       }

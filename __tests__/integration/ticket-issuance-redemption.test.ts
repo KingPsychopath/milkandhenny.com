@@ -181,6 +181,52 @@ describeWithDatabase("tickets (postgres)", () => {
   });
 
   describe("capacity", () => {
+    it("enforces the event-wide cap across ticket types", async () => {
+      const result = normaliseEventInput({
+        slug: SLUG,
+        title: "Apartment Life",
+        status: "published",
+        area: "East London",
+        startsAt: new Date(Date.now() + 86_400_000).toISOString(),
+        capacity: 3,
+        ticketTypes: [
+          {
+            id: "entry",
+            name: "Entry",
+            priceMinor: 0,
+            currency: "GBP",
+            quantity: 10,
+            perPersonLimit: 10,
+          },
+          {
+            id: "guest",
+            name: "Guest",
+            priceMinor: 0,
+            currency: "GBP",
+            quantity: 10,
+            perPersonLimit: 10,
+          },
+        ],
+      });
+      if (!result.ok) throw new Error(result.error);
+      await putEvent(result.value);
+
+      const attempts = await Promise.all(
+        Array.from({ length: 12 }, (_, index) =>
+          issueTickets({
+            eventSlug: SLUG,
+            ticketTypeId: index % 2 === 0 ? "entry" : "guest",
+            holderName: `Guest ${index}`,
+            quantity: 1,
+            kind: "free",
+          }),
+        ),
+      );
+
+      expect(attempts.filter((attempt) => attempt.ok)).toHaveLength(3);
+      expect((await getEventTickets(SLUG)).valid).toBe(3);
+    });
+
     it("does not oversell when buyers arrive at the same instant", async () => {
       await seedEvent(3);
 
@@ -408,6 +454,12 @@ describeWithDatabase("tickets (postgres)", () => {
       const voided = await markOrderRefunded("pi_test_123", "re_2", 1500);
       expect(voided).toHaveLength(1);
       expect((await getSoldCounts(SLUG)).entry).toBe(2);
+      const summary = await getEventTickets(SLUG);
+      expect(summary.total).toBe(3);
+      expect(summary.valid).toBe(2);
+      expect(summary.refunded).toBe(1);
+      expect(summary.grossMinor).toBe(4500);
+      expect(summary.netMinor).toBe(3000);
     });
 
     it("voids two when two tickets' worth is refunded", async () => {

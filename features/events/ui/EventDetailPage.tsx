@@ -184,7 +184,13 @@ export function EventDetailPage({
             </h2>
             <div className="border-t theme-border">
               {availability.map((entry) => (
-                <ClaimTicketForm key={entry.type.id} eventSlug={event.slug} availability={entry} />
+                <ClaimTicketForm
+                  key={entry.type.id}
+                  eventSlug={event.slug}
+                  availability={entry}
+                  hasTicketTerms={Boolean(event.terms)}
+                  hasRefundPolicy={Boolean(event.refundPolicy)}
+                />
               ))}
             </div>
             <div className="mt-4">
@@ -231,11 +237,29 @@ export function EventDetailPage({
           </a>
         </section>
 
-        {event.refundPolicy && (
-          <p className="mt-8 font-mono text-micro theme-muted leading-relaxed">
-            {event.refundPolicy}
-          </p>
-        )}
+        <section id="ticket-terms" className="mt-10 scroll-mt-6 border-t theme-border pt-6">
+          <h2 className="font-mono text-micro theme-muted tracking-widest uppercase">
+            Ticket terms
+          </h2>
+          <div className="mt-3 space-y-3 font-mono text-micro theme-muted leading-relaxed">
+            {event.terms ? (
+              <p>{event.terms}</p>
+            ) : (
+              <p>
+                Tickets are for this named, dated event. Entry is subject to the event details and
+                house rules shown above.
+              </p>
+            )}
+            {event.refundPolicy ? (
+              <p>{event.refundPolicy}</p>
+            ) : (
+              <p>
+                Self-serve refunds are available before doors open while nobody on the order has
+                checked in. After that, contact us so the door record can be reviewed.
+              </p>
+            )}
+          </div>
+        </section>
       </main>
 
       <footer className="border-t theme-border">

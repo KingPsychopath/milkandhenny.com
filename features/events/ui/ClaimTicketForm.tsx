@@ -67,9 +67,13 @@ function TicketTypeHeading({ type, remaining }: { type: TicketType; remaining: n
 export function ClaimTicketForm({
   eventSlug,
   availability,
+  hasTicketTerms,
+  hasRefundPolicy,
 }: {
   eventSlug: string;
   availability: TicketTypeAvailability;
+  hasTicketTerms: boolean;
+  hasRefundPolicy: boolean;
 }) {
   const nameId = useId();
   const emailId = useId();
@@ -79,6 +83,7 @@ export function ClaimTicketForm({
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [quantity, setQuantity] = useState(1);
+  const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [state, setState] = useState<ClaimState>({ status: "idle" });
 
   const unavailable = salesMessage(availability);
@@ -113,6 +118,7 @@ export function ClaimTicketForm({
             holderName: name,
             email,
             quantity: selectedQuantity,
+            acceptedTerms,
           },
         });
 
@@ -270,9 +276,29 @@ export function ClaimTicketForm({
             </p>
           )}
 
+          {isPaid && (
+            <label className="flex items-start gap-3 rounded-lg border theme-border px-3 py-3">
+              <input
+                type="checkbox"
+                checked={acceptedTerms}
+                onChange={(event) => setAcceptedTerms(event.target.checked)}
+                required
+                className="mt-0.5 size-4 accent-[var(--prose-hashtag)]"
+              />
+              <span className="font-mono text-micro theme-muted leading-relaxed">
+                I agree to the{" "}
+                <a href="#ticket-terms" className="underline hover:text-foreground">
+                  {hasTicketTerms ? "ticket terms" : "entry terms"}
+                </a>
+                {hasRefundPolicy ? " and refund policy" : " and refund information"} shown on this
+                page.
+              </span>
+            </label>
+          )}
+
           <button
             type="submit"
-            disabled={state.status === "submitting"}
+            disabled={state.status === "submitting" || (isPaid && !acceptedTerms)}
             aria-describedby={state.status === "error" ? errorId : undefined}
             className="w-full min-h-12 font-mono text-sm bg-foreground text-background rounded-lg disabled:opacity-50 hover-scale-slight transition-transform"
           >

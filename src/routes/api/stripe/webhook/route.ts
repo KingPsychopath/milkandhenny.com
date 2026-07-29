@@ -4,6 +4,8 @@ import { log } from "@/lib/platform/logger.server";
 import { getBaseUrlForRequest } from "@/lib/shared/config";
 import { constructWebhookEvent, isPaymentsConfigured } from "@/lib/platform/stripe.server";
 import { expireCheckout, fulfilCheckout } from "@/features/tickets/checkout.server";
+import { getEvent } from "@/features/events/store.server";
+import { sendRefundEmail } from "@/features/tickets/email.server";
 import {
   markOrderDisputed,
   markOrderRefunded,
@@ -96,6 +98,10 @@ async function handlePOST(request: Request) {
             charge.id,
             charge.amount_refunded ?? undefined,
           );
+          if (voided.length > 0) {
+            const refundedEvent = await getEvent(voided[0].eventSlug);
+            if (refundedEvent) await sendRefundEmail({ event: refundedEvent, tickets: voided });
+          }
           log.info("stripe.webhook", "Refund applied", {
             paymentIntent: charge.payment_intent,
             amountRefunded: charge.amount_refunded,

@@ -46,12 +46,35 @@ export type TicketRecord = {
 /** What the door needs to make a decision, and nothing else. */
 export type DoorTicketView = {
   id: string;
+  /** Groups tickets that arrived in one purchase or guest-list add. */
+  orderId: string;
   holderName: string;
   ticketTypeName: string;
   kind: TicketKind;
   status: TicketStatus;
   redeemedAt?: string;
   isPlusOne: boolean;
+};
+
+/** Safe sibling-ticket detail exposed to someone holding one ticket in the order. */
+export type OrderTicketView = {
+  id: string;
+  holderName: string;
+  status: TicketStatus;
+  redeemedAt?: string;
+  amountPaidMinor?: number;
+  currency?: string;
+};
+
+/** Bearer-page projection; payment references and buyer email never reach the browser. */
+export type TicketPageTicket = {
+  id: string;
+  holderName: string;
+  kind: TicketKind;
+  status: TicketStatus;
+  redeemedAt?: string;
+  amountPaidMinor?: number;
+  currency?: string;
 };
 
 export type RedeemOutcome =
