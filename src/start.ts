@@ -45,9 +45,30 @@ function requestOriginAllowed(origin: string, request: Request) {
   return allowed.has(origin);
 }
 
+/**
+ * Paths that authenticate the request themselves and must be exempt from the
+ * origin check.
+ *
+ * Stripe signs every webhook with an HMAC over the raw body, which is
+ * strictly stronger evidence than an Origin header. Server-to-server callers
+ * also send no Origin at all, so leaving the CSRF check in place rejects
+ * every genuine delivery with a 403.
+ */
+const ORIGIN_CHECK_EXEMPT_PATHS = new Set(["/api/stripe/webhook"]);
+
+export function isOriginCheckExempt(request: Request): boolean {
+  try {
+    return ORIGIN_CHECK_EXEMPT_PATHS.has(new URL(request.url).pathname);
+  } catch {
+    return false;
+  }
+}
+
 const csrfMiddleware = createCsrfMiddleware({
   filter: ({ request }) =>
-    !SAFE_METHODS.has(request.method.toUpperCase()) && !request.headers.has("authorization"),
+    !SAFE_METHODS.has(request.method.toUpperCase()) &&
+    !request.headers.has("authorization") &&
+    !isOriginCheckExempt(request),
   origin: (origin, { request }) => requestOriginAllowed(origin, request),
   secFetchSite: "same-origin",
   referer: (referer, { request }) => {
