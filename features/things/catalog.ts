@@ -1,17 +1,32 @@
 import { THING_OFFLINE } from "./offline";
 
 export interface Thing {
-  slug: "icebreaker" | "heads-up" | "spelling-bee" | "draw-country";
+  slug: "icebreaker" | "heads-up" | "spelling-bee" | "draw-country" | "pitches";
   name: string;
   description: string;
   eyebrow: string;
-  href: "/things/icebreaker" | "/things/heads-up" | "/things/spelling-bee" | "/things/draw-country";
+  href:
+    | "/things/icebreaker"
+    | "/things/heads-up"
+    | "/things/spelling-bee"
+    | "/things/draw-country"
+    | "/things/pitches";
   status: "ready";
   symbol: string;
   offline: (typeof THING_OFFLINE)[keyof typeof THING_OFFLINE] | null;
 }
 
 export const THINGS = [
+  {
+    slug: "pitches",
+    name: "pitch night studio",
+    description: "Make six slides, seal the idea, and take over the big screen.",
+    eyebrow: "slides · draw, type, paste",
+    href: "/things/pitches",
+    status: "ready",
+    symbol: "▱",
+    offline: THING_OFFLINE.pitches,
+  },
   {
     slug: "draw-country",
     name: "draw the country",

@@ -148,6 +148,147 @@ const MIGRATIONS: Migration[] = [
         add column if not exists terms_snapshot jsonb;
     `,
   },
+  {
+    id: "0004_pitch_night_platform",
+    sql: `
+      alter table events
+        add column if not exists marketing_path text;
+
+      create table if not exists pitch_decks (
+        id                    text primary key
+                              check (id ~ '^p_[A-Za-z0-9_-]{22}$'),
+        create_request_id     text not null unique,
+        owner_name            text not null
+                              check (char_length(owner_name) between 1 and 120),
+        owner_email           text not null,
+        owner_email_hash      text not null
+                              check (char_length(owner_email_hash) = 64),
+        title                 text not null
+                              check (char_length(title) between 1 and 120),
+        lifecycle             text not null default 'active'
+                              check (lifecycle in ('active', 'archived', 'deleting')),
+        draft_document        jsonb not null,
+        draft_version         bigint not null default 1
+                              check (draft_version >= 1),
+        published_document    jsonb,
+        published_version     bigint,
+        published_title       text,
+        thumbnail_asset_id    text,
+        last_mutation_id      text,
+        last_backup_at        timestamptz,
+        draft_expires_at      timestamptz not null,
+        created_at            timestamptz not null default now(),
+        updated_at            timestamptz not null default now(),
+        published_at          timestamptz,
+        archived_at           timestamptz,
+        constraint pitch_decks_document_size
+          check (octet_length(draft_document::text) <= 3145728),
+        constraint pitch_decks_published_document_size
+          check (
+            published_document is null
+            or octet_length(published_document::text) <= 3145728
+          ),
+        constraint pitch_decks_published_pair
+          check (
+            (
+              published_document is null
+              and published_version is null
+              and published_title is null
+              and published_at is null
+            )
+            or
+            (
+              published_document is not null
+              and published_version is not null
+              and published_title is not null
+              and published_at is not null
+            )
+          )
+      );
+
+      create index if not exists pitch_decks_public_idx
+        on pitch_decks (published_at desc, id)
+        where published_at is not null and lifecycle = 'active';
+      create index if not exists pitch_decks_owner_email_idx
+        on pitch_decks (owner_email_hash, updated_at desc)
+        where lifecycle = 'active';
+      create index if not exists pitch_decks_expiry_idx
+        on pitch_decks (draft_expires_at, id)
+        where published_at is null and lifecycle in ('active', 'deleting');
+
+      create table if not exists pitch_access_tokens (
+        id            text primary key,
+        deck_id       text not null references pitch_decks (id) on delete cascade,
+        token_hash    text not null unique check (char_length(token_hash) = 64),
+        label         text not null default 'device',
+        created_at    timestamptz not null default now(),
+        last_used_at  timestamptz,
+        revoked_at    timestamptz
+      );
+
+      create index if not exists pitch_access_tokens_deck_idx
+        on pitch_access_tokens (deck_id, created_at desc);
+
+      create table if not exists pitch_assets (
+        id            text primary key,
+        deck_id       text not null references pitch_decks (id) on delete cascade,
+        object_key    text not null unique,
+        file_id       text,
+        kind          text not null
+                      check (kind in ('image', 'audio', 'thumbnail', 'import')),
+        state         text not null default 'pending'
+                      check (state in ('pending', 'ready')),
+        file_name     text not null,
+        mime_type     text not null,
+        bytes         bigint not null check (bytes >= 0),
+        created_at    timestamptz not null default now(),
+        ready_at      timestamptz,
+        published_at  timestamptz
+      );
+
+      create index if not exists pitch_assets_deck_idx
+        on pitch_assets (deck_id, created_at);
+      create unique index if not exists pitch_assets_file_idx
+        on pitch_assets (deck_id, file_id)
+        where file_id is not null and state = 'ready';
+
+      create table if not exists pitch_deck_backups (
+        id          bigint generated always as identity primary key,
+        deck_id     text not null references pitch_decks (id) on delete cascade,
+        version     bigint not null,
+        reason      text not null
+                    check (reason in ('periodic', 'conflict', 'publish', 'admin')),
+        document    jsonb not null,
+        created_at  timestamptz not null default now()
+      );
+
+      create index if not exists pitch_deck_backups_deck_idx
+        on pitch_deck_backups (deck_id, created_at desc);
+
+      create table if not exists pitch_mutations (
+        deck_id      text not null references pitch_decks (id) on delete cascade,
+        mutation_id  text not null,
+        version      bigint not null,
+        created_at   timestamptz not null default now(),
+        primary key (deck_id, mutation_id)
+      );
+
+      create index if not exists pitch_mutations_created_idx
+        on pitch_mutations (created_at);
+
+      create table if not exists pitch_audit_events (
+        id          bigint generated always as identity primary key,
+        deck_id     text references pitch_decks (id) on delete set null,
+        action      text not null,
+        actor       text not null,
+        metadata    jsonb not null default '{}'::jsonb,
+        created_at  timestamptz not null default now()
+      );
+
+      create index if not exists pitch_audit_events_deck_idx
+        on pitch_audit_events (deck_id, created_at desc);
+    `,
+  },
 ];
 
 export type MigrationResult = { applied: string[]; alreadyApplied: number };

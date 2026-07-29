@@ -66,6 +66,13 @@ function normaliseInstant(value: unknown): string | undefined {
   return new Date(value).toISOString();
 }
 
+function marketingPath(value: unknown): string | undefined {
+  const path = trimmed(value, 200);
+  return path && path.startsWith("/") && !path.startsWith("//") && !path.includes("\\")
+    ? path
+    : undefined;
+}
+
 function normaliseTicketType(input: unknown, index: number): EventOpResult<TicketType> {
   if (!input || typeof input !== "object" || Array.isArray(input)) {
     return { ok: false, status: 400, error: `Ticket type ${index + 1} is malformed` };
@@ -145,6 +152,17 @@ export function normaliseEventInput(
       ok: false,
       status: 400,
       error: "Slug must be 2–80 lowercase letters, numbers or dashes",
+    };
+  }
+  if (
+    typeof input.marketingPath === "string" &&
+    input.marketingPath.trim() &&
+    !marketingPath(input.marketingPath)
+  ) {
+    return {
+      ok: false,
+      status: 400,
+      error: "Marketing story path must be a local path beginning with /",
     };
   }
 
@@ -251,6 +269,7 @@ export function normaliseEventInput(
       houseRules: trimmed(input.houseRules, MAX_TEXT) ?? existing?.houseRules,
       heroImage: trimmed(input.heroImage, 500) ?? existing?.heroImage,
       ogImage: trimmed(input.ogImage, 500) ?? existing?.ogImage,
+      marketingPath: marketingPath(input.marketingPath) ?? existing?.marketingPath,
       ticketTypes,
       capacity,
       waitlistEnabled:

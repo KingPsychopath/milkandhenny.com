@@ -83,6 +83,15 @@ export function EventDetailPage({
       <main id="main" className="max-w-2xl mx-auto px-6 pb-24">
         <StatusBanner status={event.status} />
 
+        {event.marketingPath ? (
+          <a
+            href={event.marketingPath}
+            className="mb-6 inline-flex min-h-10 items-center border-b theme-border-strong font-mono text-xs text-foreground hover:opacity-60"
+          >
+            enter the full story →
+          </a>
+        ) : null}
+
         {event.heroImage && (
           <img
             src={event.heroImage}

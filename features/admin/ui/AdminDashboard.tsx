@@ -8,6 +8,7 @@ import { SITE_BRAND } from "@/lib/shared/config";
 import { TokenSessionsPanel } from "./components/TokenSessionsPanel";
 import { ReportsPanel } from "./components/ReportsPanel";
 import { EventsPanel } from "./components/EventsPanel";
+import { PitchesPanel } from "./components/PitchesPanel";
 import { useAdminAuth } from "@/features/auth/useAdminAuth";
 import { useActionDialog } from "@/hooks/useActionDialog";
 import { buildTransferUrl } from "@/features/transfers/routes";
@@ -797,13 +798,15 @@ export function AdminDashboard() {
   };
 
   const handleRevokeSharedWord = async (slug: string) => {
-    if (!(await confirmAction({
-      eyebrow: "shared pages",
-      title: `Revoke links for “${slug}”?`,
-      description: "Every active share URL for this page will immediately stop working.",
-      confirmLabel: "revoke links",
-      intent: "danger",
-    }))) {
+    if (
+      !(await confirmAction({
+        eyebrow: "shared pages",
+        title: `Revoke links for “${slug}”?`,
+        description: "Every active share URL for this page will immediately stop working.",
+        confirmLabel: "revoke links",
+        intent: "danger",
+      }))
+    ) {
       return;
     }
     setSharedWordActionLoading(slug);
@@ -836,7 +839,8 @@ export function AdminDashboard() {
       !(await confirmAction({
         eyebrow: "shared pages",
         title: "Purge stale share links?",
-        description: "This removes expired and revoked records plus stale index entries. Active links remain untouched.",
+        description:
+          "This removes expired and revoked records plus stale index entries. Active links remain untouched.",
         confirmLabel: "purge stale links",
         intent: "danger",
       }))
@@ -874,7 +878,8 @@ export function AdminDashboard() {
       !(await confirmAction({
         eyebrow: "shared pages",
         title: "Delete every shared-page link?",
-        description: "This permanently deletes all active, expired, and revoked share records across the site.",
+        description:
+          "This permanently deletes all active, expired, and revoked share records across the site.",
         confirmLabel: "delete all links",
         intent: "danger",
       }))
@@ -1000,7 +1005,8 @@ export function AdminDashboard() {
       !(await confirmAction({
         eyebrow: "transfer manager",
         title: "Delete every transfer?",
-        description: "This permanently deletes all active transfers, their metadata, and every stored transfer file.",
+        description:
+          "This permanently deletes all active transfers, their metadata, and every stored transfer file.",
         confirmLabel: "delete all transfers",
         intent: "danger",
       }))
@@ -1051,13 +1057,15 @@ export function AdminDashboard() {
 
   const handleRevokeSessions = async (role: "admin" | "all") => {
     const label = role === "admin" ? "admin sessions" : "all role sessions";
-    if (!(await confirmAction({
-      eyebrow: "session security",
-      title: `Revoke ${label}?`,
-      description: "This immediately invalidates every affected active token.",
-      confirmLabel: "revoke sessions",
-      intent: "danger",
-    }))) {
+    if (
+      !(await confirmAction({
+        eyebrow: "session security",
+        title: `Revoke ${label}?`,
+        description: "This immediately invalidates every affected active token.",
+        confirmLabel: "revoke sessions",
+        intent: "danger",
+      }))
+    ) {
       return;
     }
     setRevokeLoading(role);
@@ -1166,6 +1174,9 @@ export function AdminDashboard() {
             <a href="#events-manager" className="hover:text-[var(--foreground)] transition-colors">
               events
             </a>
+            <a href="#pitch-manager" className="hover:text-[var(--foreground)] transition-colors">
+              pitches
+            </a>
             <a
               href="#transfer-manager"
               className="hover:text-[var(--foreground)] transition-colors"
@@ -1224,6 +1235,10 @@ export function AdminDashboard() {
         />
       </div>
 
+      <div className="mb-10 border-y theme-border py-6">
+        <PitchesPanel authFetch={authFetch} onError={setErrorMessage} onStatus={setStatusMessage} />
+      </div>
+
       <section id="content-summary" className="space-y-4 scroll-mt-6">
         <div className="flex items-center justify-between">
           <p className="font-mono text-xs theme-muted">content summary</p>
@@ -1280,11 +1295,7 @@ export function AdminDashboard() {
           </div>
         </div>
 
-        <ReportsPanel
-          authFetch={authFetch}
-          onError={setErrorMessage}
-          onStatus={setStatusMessage}
-        />
+        <ReportsPanel authFetch={authFetch} onError={setErrorMessage} onStatus={setStatusMessage} />
 
         <div id="system-health" className="border-t theme-border pt-6 space-y-3 scroll-mt-6">
           <div className="flex items-center justify-between">

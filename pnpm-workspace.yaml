@@ -7,3 +7,11 @@ allowBuilds:
   onnxruntime-node: true
   protobufjs: true
   sharp: true
+
+minimumReleaseAgeExclude:
+  - drawesome@0.1.0
+
+# Excalidraw's diagram parser still asks for the pre-patch range, but the
+# patched release is API compatible and removes the avoidable audit finding.
+overrides:
+  lodash-es: 4.18.1

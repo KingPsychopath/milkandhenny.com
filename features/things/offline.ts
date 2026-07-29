@@ -17,6 +17,13 @@ const SHARED_OFFLINE_ASSETS = [
 ] as const;
 
 export const THING_OFFLINE = {
+  pitches: {
+    entryPath: "/things/pitches",
+    manifestPath: "/manifest.json",
+    catalogueVersion: 1,
+    storageVersion: 1,
+    requiredAssets: [...SHARED_OFFLINE_ASSETS, "/manifest.json"],
+  },
   "heads-up": {
     entryPath: "/things/heads-up",
     manifestPath: "/manifest-forehead.webmanifest",
@@ -54,5 +61,9 @@ export function isOfflineThingSlug(value: string): value is OfflineThingSlug {
 }
 
 export function getOfflineThingByPath(pathname: string) {
-  return Object.entries(THING_OFFLINE).find(([, thing]) => thing.entryPath === pathname);
+  return Object.entries(THING_OFFLINE).find(
+    ([slug, thing]) =>
+      thing.entryPath === pathname ||
+      (slug === "pitches" && pathname.startsWith(`${thing.entryPath}/`)),
+  );
 }

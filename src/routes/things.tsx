@@ -86,24 +86,34 @@ function ThingsRoute() {
 }
 
 function ThingOfflineStatus({ thing }: { thing: Thing }) {
-  const state = useThingOfflineState(thing.slug);
   if (!thing.offline) return null;
+  return <OfflineThingStatus slug={thing.slug} />;
+}
 
-  const mode = thing.slug === "spelling-bee" ? "say it aloud · " : "";
+function OfflineThingStatus({ slug }: { slug: Thing["slug"] }) {
+  const state = useThingOfflineState(slug);
+  const mode = slug === "spelling-bee" ? "say it aloud · " : "";
   const label =
     state === "ready"
       ? `${mode}offline ready`
       : state === "preparing"
         ? `${mode}preparing offline…`
         : `${mode}works offline`;
-  const dotClass = state === "ready" ? "text-emerald-600 dark:text-emerald-300" : state === "preparing" ? "text-amber-600 dark:text-amber-300" : "theme-faint";
+  const dotClass =
+    state === "ready"
+      ? "text-emerald-600 dark:text-emerald-300"
+      : state === "preparing"
+        ? "text-amber-600 dark:text-amber-300"
+        : "theme-faint";
 
   return (
     <span
       className="mt-4 inline-flex min-h-6 items-center gap-2 font-mono text-micro uppercase tracking-[0.12em] theme-muted"
       aria-live="polite"
     >
-      <span aria-hidden="true" className={`text-[0.65rem] ${dotClass}`}>{state === "ready" ? "●" : state === "preparing" ? "◌" : "○"}</span>
+      <span aria-hidden="true" className={`text-[0.65rem] ${dotClass}`}>
+        {state === "ready" ? "●" : state === "preparing" ? "◌" : "○"}
+      </span>
       {label}
     </span>
   );

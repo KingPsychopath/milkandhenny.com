@@ -37,6 +37,7 @@ type EventRow = {
   house_rules: string | null;
   hero_image: string | null;
   og_image: string | null;
+  marketing_path: string | null;
   capacity: number | null;
   waitlist_enabled: boolean;
   refund_policy: string | null;
@@ -67,7 +68,7 @@ const EVENT_COLUMNS = `
   slug, title, tagline, status, starts_at, ends_at, doors_at, last_entry_at, timezone,
   area, venue_name, address, door_code, three_word_hint, map_url, step_free_access,
   transport_note, description, lineup, dress_code, age_limit, house_rules, hero_image,
-  og_image, capacity, waitlist_enabled, refund_policy, transferable, terms,
+  og_image, marketing_path, capacity, waitlist_enabled, refund_policy, transferable, terms,
   check_in_opens_at, staff_notes, created_at, updated_at
 `;
 
@@ -120,6 +121,7 @@ function toEvent(row: EventRow, ticketTypes: TicketType[]): EventRecord {
     houseRules: optional(row.house_rules),
     heroImage: optional(row.hero_image),
     ogImage: optional(row.og_image),
+    marketingPath: optional(row.marketing_path),
     ticketTypes,
     capacity: row.capacity ?? undefined,
     waitlistEnabled: row.waitlist_enabled,
@@ -247,11 +249,11 @@ export async function putEvent(event: EventRecord): Promise<void> {
          slug, title, tagline, status, starts_at, ends_at, doors_at, last_entry_at, timezone,
          area, venue_name, address, door_code, three_word_hint, map_url, step_free_access,
          transport_note, description, lineup, dress_code, age_limit, house_rules, hero_image,
-         og_image, capacity, waitlist_enabled, refund_policy, transferable, terms,
+         og_image, marketing_path, capacity, waitlist_enabled, refund_policy, transferable, terms,
          check_in_opens_at, staff_notes, created_at, updated_at
        ) values (
          $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19::jsonb,$20,$21,$22,
-         $23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33
+         $23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34
        )
        on conflict (slug) do update set
          title = excluded.title, tagline = excluded.tagline, status = excluded.status,
@@ -264,6 +266,7 @@ export async function putEvent(event: EventRecord): Promise<void> {
          lineup = excluded.lineup, dress_code = excluded.dress_code,
          age_limit = excluded.age_limit, house_rules = excluded.house_rules,
          hero_image = excluded.hero_image, og_image = excluded.og_image,
+         marketing_path = excluded.marketing_path,
          capacity = excluded.capacity, waitlist_enabled = excluded.waitlist_enabled,
          refund_policy = excluded.refund_policy, transferable = excluded.transferable,
          terms = excluded.terms, check_in_opens_at = excluded.check_in_opens_at,
@@ -293,6 +296,7 @@ export async function putEvent(event: EventRecord): Promise<void> {
         event.houseRules ?? null,
         event.heroImage ?? null,
         event.ogImage ?? null,
+        event.marketingPath ?? null,
         event.capacity ?? null,
         event.waitlistEnabled,
         event.refundPolicy ?? null,

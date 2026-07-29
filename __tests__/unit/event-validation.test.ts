@@ -195,6 +195,19 @@ describe("normaliseEventInput", () => {
       expect(second.value.area).toBe("East London");
     }
   });
+
+  it("accepts a same-origin marketing story path", () => {
+    const result = normaliseEventInput(validInput({ marketingPath: "/pitch-night" }));
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.value.marketingPath).toBe("/pitch-night");
+  });
+
+  it("rejects an external marketing story URL", () => {
+    const result = normaliseEventInput(
+      validInput({ marketingPath: "https://tickets.example.com/phish" }),
+    );
+    expect(result.ok).toBe(false);
+  });
 });
 
 describe("event-wide capacity", () => {

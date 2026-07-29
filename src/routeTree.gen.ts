@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as UploadRouteImport } from './routes/upload'
 import { Route as ThingsRouteImport } from './routes/things'
 import { Route as SitemapDotxmlRouteImport } from './routes/sitemap[.]xml'
+import { Route as PitchNightRouteImport } from './routes/pitch-night'
 import { Route as PartyRouteImport } from './routes/party'
 import { Route as IcebreakerRouteImport } from './routes/icebreaker'
 import { Route as HealthRouteImport } from './routes/health'
@@ -30,6 +31,7 @@ import { Route as VaultSlugRouteImport } from './routes/vault/$slug'
 import { Route as TicketIdRouteImport } from './routes/ticket.$id'
 import { Route as ThingsSpellingPartyRouteImport } from './routes/things.spelling-party'
 import { Route as ThingsSpellingBeeRouteImport } from './routes/things.spelling-bee'
+import { Route as ThingsPitchesRouteImport } from './routes/things.pitches'
 import { Route as ThingsIcebreakerRouteImport } from './routes/things.icebreaker'
 import { Route as ThingsHeadsUpRouteImport } from './routes/things.heads-up'
 import { Route as ThingsDrawCountryRouteImport } from './routes/things.draw-country'
@@ -44,6 +46,9 @@ import { Route as ApiBestDressedRouteRouteImport } from './routes/api/best-dress
 import { Route as PicsAlbumIndexRouteImport } from './routes/pics/$album/index'
 import { Route as ThingsSpellingPartyRoomIdRouteImport } from './routes/things.spelling-party_.$roomId'
 import { Route as ThingsPlayRoomIdRouteImport } from './routes/things.play.$roomId'
+import { Route as ThingsPitchesPresentRouteImport } from './routes/things.pitches_.present'
+import { Route as ThingsPitchesNewRouteImport } from './routes/things.pitches_.new'
+import { Route as ThingsPitchesDeckIdRouteImport } from './routes/things.pitches_.$deckId'
 import { Route as ThingsJudgeRoomIdRouteImport } from './routes/things.judge.$roomId'
 import { Route as ThingsDrawCountryRoomIdRouteImport } from './routes/things.draw-country_.$roomId'
 import { Route as PicsAlbumPhotoRouteImport } from './routes/pics/$album/$photo'
@@ -56,17 +61,22 @@ import { Route as ApiCronProcessTransferMediaRouteRouteImport } from './routes/a
 import { Route as ApiCronCleanupWordSharesRouteRouteImport } from './routes/api/cron/cleanup-word-shares/route'
 import { Route as ApiCronCleanupWordMediaOrphansRouteRouteImport } from './routes/api/cron/cleanup-word-media-orphans/route'
 import { Route as ApiCronCleanupTransfersRouteRouteImport } from './routes/api/cron/cleanup-transfers/route'
+import { Route as ApiCronCleanupPitchesRouteRouteImport } from './routes/api/cron/cleanup-pitches/route'
 import { Route as ApiAdminWordSharesRouteRouteImport } from './routes/api/admin/word-shares/route'
 import { Route as ApiAdminWordMediaRouteRouteImport } from './routes/api/admin/word-media/route'
 import { Route as ApiAdminVerifyRouteRouteImport } from './routes/api/admin/verify/route'
 import { Route as ApiAdminTransfersRouteRouteImport } from './routes/api/admin/transfers/route'
 import { Route as ApiAdminStepUpRouteRouteImport } from './routes/api/admin/step-up/route'
 import { Route as ApiAdminReportsRouteRouteImport } from './routes/api/admin/reports/route'
+import { Route as ApiAdminPitchesRouteRouteImport } from './routes/api/admin/pitches/route'
 import { Route as ApiAdminEventsRouteRouteImport } from './routes/api/admin/events/route'
 import { Route as ApiAdminContentSummaryRouteRouteImport } from './routes/api/admin/content-summary/route'
 import { Route as ApiAdminContentAuditRouteRouteImport } from './routes/api/admin/content-audit/route'
 import { Route as ApiAdminAlbumsRouteRouteImport } from './routes/api/admin/albums/route'
 import { Route as ThingsSpellingPartyRoomIdPresentRouteImport } from './routes/things.spelling-party_.$roomId_.present'
+import { Route as ThingsPitchesRemoteRoomIdRouteImport } from './routes/things.pitches_.remote_.$roomId'
+import { Route as ThingsPitchesPresentRoomIdRouteImport } from './routes/things.pitches_.present_.$roomId'
+import { Route as ThingsPitchesDeckIdEditRouteImport } from './routes/things.pitches_.$deckId_.edit'
 import { Route as ApiWordsShareVerifyRouteRouteImport } from './routes/api/words/share/verify/route'
 import { Route as ApiWordsSlugSharesRouteRouteImport } from './routes/api/words/$slug/shares/route'
 import { Route as ApiUploadWordsTargetsRouteRouteImport } from './routes/api/upload/words/targets/route'
@@ -113,6 +123,11 @@ const ThingsRoute = ThingsRouteImport.update({
 const SitemapDotxmlRoute = SitemapDotxmlRouteImport.update({
   id: '/sitemap.xml',
   path: '/sitemap.xml',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PitchNightRoute = PitchNightRouteImport.update({
+  id: '/pitch-night',
+  path: '/pitch-night',
   getParentRoute: () => rootRouteImport,
 } as any)
 const PartyRoute = PartyRouteImport.update({
@@ -205,6 +220,11 @@ const ThingsSpellingBeeRoute = ThingsSpellingBeeRouteImport.update({
   path: '/spelling-bee',
   getParentRoute: () => ThingsRoute,
 } as any)
+const ThingsPitchesRoute = ThingsPitchesRouteImport.update({
+  id: '/pitches',
+  path: '/pitches',
+  getParentRoute: () => ThingsRoute,
+} as any)
 const ThingsIcebreakerRoute = ThingsIcebreakerRouteImport.update({
   id: '/icebreaker',
   path: '/icebreaker',
@@ -276,6 +296,21 @@ const ThingsPlayRoomIdRoute = ThingsPlayRoomIdRouteImport.update({
   path: '/play/$roomId',
   getParentRoute: () => ThingsRoute,
 } as any)
+const ThingsPitchesPresentRoute = ThingsPitchesPresentRouteImport.update({
+  id: '/pitches_/present',
+  path: '/pitches/present',
+  getParentRoute: () => ThingsRoute,
+} as any)
+const ThingsPitchesNewRoute = ThingsPitchesNewRouteImport.update({
+  id: '/pitches_/new',
+  path: '/pitches/new',
+  getParentRoute: () => ThingsRoute,
+} as any)
+const ThingsPitchesDeckIdRoute = ThingsPitchesDeckIdRouteImport.update({
+  id: '/pitches_/$deckId',
+  path: '/pitches/$deckId',
+  getParentRoute: () => ThingsRoute,
+} as any)
 const ThingsJudgeRoomIdRoute = ThingsJudgeRoomIdRouteImport.update({
   id: '/judge/$roomId',
   path: '/judge/$roomId',
@@ -340,6 +375,12 @@ const ApiCronCleanupTransfersRouteRoute =
     path: '/api/cron/cleanup-transfers',
     getParentRoute: () => rootRouteImport,
   } as any)
+const ApiCronCleanupPitchesRouteRoute =
+  ApiCronCleanupPitchesRouteRouteImport.update({
+    id: '/api/cron/cleanup-pitches',
+    path: '/api/cron/cleanup-pitches',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ApiAdminWordSharesRouteRoute = ApiAdminWordSharesRouteRouteImport.update({
   id: '/api/admin/word-shares',
   path: '/api/admin/word-shares',
@@ -370,6 +411,11 @@ const ApiAdminReportsRouteRoute = ApiAdminReportsRouteRouteImport.update({
   path: '/api/admin/reports',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiAdminPitchesRouteRoute = ApiAdminPitchesRouteRouteImport.update({
+  id: '/api/admin/pitches',
+  path: '/api/admin/pitches',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiAdminEventsRouteRoute = ApiAdminEventsRouteRouteImport.update({
   id: '/api/admin/events',
   path: '/api/admin/events',
@@ -398,6 +444,23 @@ const ThingsSpellingPartyRoomIdPresentRoute =
     path: '/spelling-party/$roomId/present',
     getParentRoute: () => ThingsRoute,
   } as any)
+const ThingsPitchesRemoteRoomIdRoute =
+  ThingsPitchesRemoteRoomIdRouteImport.update({
+    id: '/pitches_/remote_/$roomId',
+    path: '/pitches/remote/$roomId',
+    getParentRoute: () => ThingsRoute,
+  } as any)
+const ThingsPitchesPresentRoomIdRoute =
+  ThingsPitchesPresentRoomIdRouteImport.update({
+    id: '/pitches_/present_/$roomId',
+    path: '/pitches/present/$roomId',
+    getParentRoute: () => ThingsRoute,
+  } as any)
+const ThingsPitchesDeckIdEditRoute = ThingsPitchesDeckIdEditRouteImport.update({
+  id: '/pitches_/$deckId_/edit',
+  path: '/pitches/$deckId/edit',
+  getParentRoute: () => ThingsRoute,
+} as any)
 const ApiWordsShareVerifyRouteRoute =
   ApiWordsShareVerifyRouteRouteImport.update({
     id: '/share/verify',
@@ -597,6 +660,7 @@ export interface FileRoutesByFullPath {
   '/health': typeof HealthRoute
   '/icebreaker': typeof IcebreakerRoute
   '/party': typeof PartyRoute
+  '/pitch-night': typeof PitchNightRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/things': typeof ThingsRouteWithChildren
   '/upload': typeof UploadRoute
@@ -611,6 +675,7 @@ export interface FileRoutesByFullPath {
   '/things/draw-country': typeof ThingsDrawCountryRoute
   '/things/heads-up': typeof ThingsHeadsUpRoute
   '/things/icebreaker': typeof ThingsIcebreakerRoute
+  '/things/pitches': typeof ThingsPitchesRoute
   '/things/spelling-bee': typeof ThingsSpellingBeeRoute
   '/things/spelling-party': typeof ThingsSpellingPartyRoute
   '/ticket/$id': typeof TicketIdRoute
@@ -624,12 +689,14 @@ export interface FileRoutesByFullPath {
   '/api/admin/content-audit': typeof ApiAdminContentAuditRouteRoute
   '/api/admin/content-summary': typeof ApiAdminContentSummaryRouteRoute
   '/api/admin/events': typeof ApiAdminEventsRouteRouteWithChildren
+  '/api/admin/pitches': typeof ApiAdminPitchesRouteRoute
   '/api/admin/reports': typeof ApiAdminReportsRouteRoute
   '/api/admin/step-up': typeof ApiAdminStepUpRouteRoute
   '/api/admin/transfers': typeof ApiAdminTransfersRouteRouteWithChildren
   '/api/admin/verify': typeof ApiAdminVerifyRouteRoute
   '/api/admin/word-media': typeof ApiAdminWordMediaRouteRouteWithChildren
   '/api/admin/word-shares': typeof ApiAdminWordSharesRouteRouteWithChildren
+  '/api/cron/cleanup-pitches': typeof ApiCronCleanupPitchesRouteRoute
   '/api/cron/cleanup-transfers': typeof ApiCronCleanupTransfersRouteRoute
   '/api/cron/cleanup-word-media-orphans': typeof ApiCronCleanupWordMediaOrphansRouteRoute
   '/api/cron/cleanup-word-shares': typeof ApiCronCleanupWordSharesRouteRoute
@@ -642,6 +709,9 @@ export interface FileRoutesByFullPath {
   '/pics/$album/$photo': typeof PicsAlbumPhotoRoute
   '/things/draw-country/$roomId': typeof ThingsDrawCountryRoomIdRoute
   '/things/judge/$roomId': typeof ThingsJudgeRoomIdRoute
+  '/things/pitches/$deckId': typeof ThingsPitchesDeckIdRoute
+  '/things/pitches/new': typeof ThingsPitchesNewRoute
+  '/things/pitches/present': typeof ThingsPitchesPresentRoute
   '/things/play/$roomId': typeof ThingsPlayRoomIdRoute
   '/things/spelling-party/$roomId': typeof ThingsSpellingPartyRoomIdRoute
   '/pics/$album/': typeof PicsAlbumIndexRoute
@@ -668,6 +738,9 @@ export interface FileRoutesByFullPath {
   '/api/upload/words/targets': typeof ApiUploadWordsTargetsRouteRoute
   '/api/words/$slug/shares': typeof ApiWordsSlugSharesRouteRouteWithChildren
   '/api/words/share/verify': typeof ApiWordsShareVerifyRouteRoute
+  '/things/pitches/$deckId/edit': typeof ThingsPitchesDeckIdEditRoute
+  '/things/pitches/present/$roomId': typeof ThingsPitchesPresentRoomIdRoute
+  '/things/pitches/remote/$roomId': typeof ThingsPitchesRemoteRoomIdRoute
   '/things/spelling-party/$roomId/present': typeof ThingsSpellingPartyRoomIdPresentRoute
   '/api/admin/albums/$slug/cover': typeof ApiAdminAlbumsSlugCoverRouteRoute
   '/api/admin/tokens/sessions/$jti': typeof ApiAdminTokensSessionsJtiRouteRoute
@@ -689,6 +762,7 @@ export interface FileRoutesByTo {
   '/health': typeof HealthRoute
   '/icebreaker': typeof IcebreakerRoute
   '/party': typeof PartyRoute
+  '/pitch-night': typeof PitchNightRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/things': typeof ThingsRouteWithChildren
   '/upload': typeof UploadRoute
@@ -703,6 +777,7 @@ export interface FileRoutesByTo {
   '/things/draw-country': typeof ThingsDrawCountryRoute
   '/things/heads-up': typeof ThingsHeadsUpRoute
   '/things/icebreaker': typeof ThingsIcebreakerRoute
+  '/things/pitches': typeof ThingsPitchesRoute
   '/things/spelling-bee': typeof ThingsSpellingBeeRoute
   '/things/spelling-party': typeof ThingsSpellingPartyRoute
   '/ticket/$id': typeof TicketIdRoute
@@ -716,12 +791,14 @@ export interface FileRoutesByTo {
   '/api/admin/content-audit': typeof ApiAdminContentAuditRouteRoute
   '/api/admin/content-summary': typeof ApiAdminContentSummaryRouteRoute
   '/api/admin/events': typeof ApiAdminEventsRouteRouteWithChildren
+  '/api/admin/pitches': typeof ApiAdminPitchesRouteRoute
   '/api/admin/reports': typeof ApiAdminReportsRouteRoute
   '/api/admin/step-up': typeof ApiAdminStepUpRouteRoute
   '/api/admin/transfers': typeof ApiAdminTransfersRouteRouteWithChildren
   '/api/admin/verify': typeof ApiAdminVerifyRouteRoute
   '/api/admin/word-media': typeof ApiAdminWordMediaRouteRouteWithChildren
   '/api/admin/word-shares': typeof ApiAdminWordSharesRouteRouteWithChildren
+  '/api/cron/cleanup-pitches': typeof ApiCronCleanupPitchesRouteRoute
   '/api/cron/cleanup-transfers': typeof ApiCronCleanupTransfersRouteRoute
   '/api/cron/cleanup-word-media-orphans': typeof ApiCronCleanupWordMediaOrphansRouteRoute
   '/api/cron/cleanup-word-shares': typeof ApiCronCleanupWordSharesRouteRoute
@@ -734,6 +811,9 @@ export interface FileRoutesByTo {
   '/pics/$album/$photo': typeof PicsAlbumPhotoRoute
   '/things/draw-country/$roomId': typeof ThingsDrawCountryRoomIdRoute
   '/things/judge/$roomId': typeof ThingsJudgeRoomIdRoute
+  '/things/pitches/$deckId': typeof ThingsPitchesDeckIdRoute
+  '/things/pitches/new': typeof ThingsPitchesNewRoute
+  '/things/pitches/present': typeof ThingsPitchesPresentRoute
   '/things/play/$roomId': typeof ThingsPlayRoomIdRoute
   '/things/spelling-party/$roomId': typeof ThingsSpellingPartyRoomIdRoute
   '/pics/$album': typeof PicsAlbumIndexRoute
@@ -760,6 +840,9 @@ export interface FileRoutesByTo {
   '/api/upload/words/targets': typeof ApiUploadWordsTargetsRouteRoute
   '/api/words/$slug/shares': typeof ApiWordsSlugSharesRouteRouteWithChildren
   '/api/words/share/verify': typeof ApiWordsShareVerifyRouteRoute
+  '/things/pitches/$deckId/edit': typeof ThingsPitchesDeckIdEditRoute
+  '/things/pitches/present/$roomId': typeof ThingsPitchesPresentRoomIdRoute
+  '/things/pitches/remote/$roomId': typeof ThingsPitchesRemoteRoomIdRoute
   '/things/spelling-party/$roomId/present': typeof ThingsSpellingPartyRoomIdPresentRoute
   '/api/admin/albums/$slug/cover': typeof ApiAdminAlbumsSlugCoverRouteRoute
   '/api/admin/tokens/sessions/$jti': typeof ApiAdminTokensSessionsJtiRouteRoute
@@ -782,6 +865,7 @@ export interface FileRoutesById {
   '/health': typeof HealthRoute
   '/icebreaker': typeof IcebreakerRoute
   '/party': typeof PartyRoute
+  '/pitch-night': typeof PitchNightRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/things': typeof ThingsRouteWithChildren
   '/upload': typeof UploadRoute
@@ -796,6 +880,7 @@ export interface FileRoutesById {
   '/things/draw-country': typeof ThingsDrawCountryRoute
   '/things/heads-up': typeof ThingsHeadsUpRoute
   '/things/icebreaker': typeof ThingsIcebreakerRoute
+  '/things/pitches': typeof ThingsPitchesRoute
   '/things/spelling-bee': typeof ThingsSpellingBeeRoute
   '/things/spelling-party': typeof ThingsSpellingPartyRoute
   '/ticket/$id': typeof TicketIdRoute
@@ -809,12 +894,14 @@ export interface FileRoutesById {
   '/api/admin/content-audit': typeof ApiAdminContentAuditRouteRoute
   '/api/admin/content-summary': typeof ApiAdminContentSummaryRouteRoute
   '/api/admin/events': typeof ApiAdminEventsRouteRouteWithChildren
+  '/api/admin/pitches': typeof ApiAdminPitchesRouteRoute
   '/api/admin/reports': typeof ApiAdminReportsRouteRoute
   '/api/admin/step-up': typeof ApiAdminStepUpRouteRoute
   '/api/admin/transfers': typeof ApiAdminTransfersRouteRouteWithChildren
   '/api/admin/verify': typeof ApiAdminVerifyRouteRoute
   '/api/admin/word-media': typeof ApiAdminWordMediaRouteRouteWithChildren
   '/api/admin/word-shares': typeof ApiAdminWordSharesRouteRouteWithChildren
+  '/api/cron/cleanup-pitches': typeof ApiCronCleanupPitchesRouteRoute
   '/api/cron/cleanup-transfers': typeof ApiCronCleanupTransfersRouteRoute
   '/api/cron/cleanup-word-media-orphans': typeof ApiCronCleanupWordMediaOrphansRouteRoute
   '/api/cron/cleanup-word-shares': typeof ApiCronCleanupWordSharesRouteRoute
@@ -827,6 +914,9 @@ export interface FileRoutesById {
   '/pics/$album/$photo': typeof PicsAlbumPhotoRoute
   '/things/draw-country_/$roomId': typeof ThingsDrawCountryRoomIdRoute
   '/things/judge/$roomId': typeof ThingsJudgeRoomIdRoute
+  '/things/pitches_/$deckId': typeof ThingsPitchesDeckIdRoute
+  '/things/pitches_/new': typeof ThingsPitchesNewRoute
+  '/things/pitches_/present': typeof ThingsPitchesPresentRoute
   '/things/play/$roomId': typeof ThingsPlayRoomIdRoute
   '/things/spelling-party_/$roomId': typeof ThingsSpellingPartyRoomIdRoute
   '/pics/$album/': typeof PicsAlbumIndexRoute
@@ -853,6 +943,9 @@ export interface FileRoutesById {
   '/api/upload/words/targets': typeof ApiUploadWordsTargetsRouteRoute
   '/api/words/$slug/shares': typeof ApiWordsSlugSharesRouteRouteWithChildren
   '/api/words/share/verify': typeof ApiWordsShareVerifyRouteRoute
+  '/things/pitches_/$deckId_/edit': typeof ThingsPitchesDeckIdEditRoute
+  '/things/pitches_/present_/$roomId': typeof ThingsPitchesPresentRoomIdRoute
+  '/things/pitches_/remote_/$roomId': typeof ThingsPitchesRemoteRoomIdRoute
   '/things/spelling-party_/$roomId_/present': typeof ThingsSpellingPartyRoomIdPresentRoute
   '/api/admin/albums/$slug/cover': typeof ApiAdminAlbumsSlugCoverRouteRoute
   '/api/admin/tokens/sessions/$jti': typeof ApiAdminTokensSessionsJtiRouteRoute
@@ -876,6 +969,7 @@ export interface FileRouteTypes {
     | '/health'
     | '/icebreaker'
     | '/party'
+    | '/pitch-night'
     | '/sitemap.xml'
     | '/things'
     | '/upload'
@@ -890,6 +984,7 @@ export interface FileRouteTypes {
     | '/things/draw-country'
     | '/things/heads-up'
     | '/things/icebreaker'
+    | '/things/pitches'
     | '/things/spelling-bee'
     | '/things/spelling-party'
     | '/ticket/$id'
@@ -903,12 +998,14 @@ export interface FileRouteTypes {
     | '/api/admin/content-audit'
     | '/api/admin/content-summary'
     | '/api/admin/events'
+    | '/api/admin/pitches'
     | '/api/admin/reports'
     | '/api/admin/step-up'
     | '/api/admin/transfers'
     | '/api/admin/verify'
     | '/api/admin/word-media'
     | '/api/admin/word-shares'
+    | '/api/cron/cleanup-pitches'
     | '/api/cron/cleanup-transfers'
     | '/api/cron/cleanup-word-media-orphans'
     | '/api/cron/cleanup-word-shares'
@@ -921,6 +1018,9 @@ export interface FileRouteTypes {
     | '/pics/$album/$photo'
     | '/things/draw-country/$roomId'
     | '/things/judge/$roomId'
+    | '/things/pitches/$deckId'
+    | '/things/pitches/new'
+    | '/things/pitches/present'
     | '/things/play/$roomId'
     | '/things/spelling-party/$roomId'
     | '/pics/$album/'
@@ -947,6 +1047,9 @@ export interface FileRouteTypes {
     | '/api/upload/words/targets'
     | '/api/words/$slug/shares'
     | '/api/words/share/verify'
+    | '/things/pitches/$deckId/edit'
+    | '/things/pitches/present/$roomId'
+    | '/things/pitches/remote/$roomId'
     | '/things/spelling-party/$roomId/present'
     | '/api/admin/albums/$slug/cover'
     | '/api/admin/tokens/sessions/$jti'
@@ -968,6 +1071,7 @@ export interface FileRouteTypes {
     | '/health'
     | '/icebreaker'
     | '/party'
+    | '/pitch-night'
     | '/sitemap.xml'
     | '/things'
     | '/upload'
@@ -982,6 +1086,7 @@ export interface FileRouteTypes {
     | '/things/draw-country'
     | '/things/heads-up'
     | '/things/icebreaker'
+    | '/things/pitches'
     | '/things/spelling-bee'
     | '/things/spelling-party'
     | '/ticket/$id'
@@ -995,12 +1100,14 @@ export interface FileRouteTypes {
     | '/api/admin/content-audit'
     | '/api/admin/content-summary'
     | '/api/admin/events'
+    | '/api/admin/pitches'
     | '/api/admin/reports'
     | '/api/admin/step-up'
     | '/api/admin/transfers'
     | '/api/admin/verify'
     | '/api/admin/word-media'
     | '/api/admin/word-shares'
+    | '/api/cron/cleanup-pitches'
     | '/api/cron/cleanup-transfers'
     | '/api/cron/cleanup-word-media-orphans'
     | '/api/cron/cleanup-word-shares'
@@ -1013,6 +1120,9 @@ export interface FileRouteTypes {
     | '/pics/$album/$photo'
     | '/things/draw-country/$roomId'
     | '/things/judge/$roomId'
+    | '/things/pitches/$deckId'
+    | '/things/pitches/new'
+    | '/things/pitches/present'
     | '/things/play/$roomId'
     | '/things/spelling-party/$roomId'
     | '/pics/$album'
@@ -1039,6 +1149,9 @@ export interface FileRouteTypes {
     | '/api/upload/words/targets'
     | '/api/words/$slug/shares'
     | '/api/words/share/verify'
+    | '/things/pitches/$deckId/edit'
+    | '/things/pitches/present/$roomId'
+    | '/things/pitches/remote/$roomId'
     | '/things/spelling-party/$roomId/present'
     | '/api/admin/albums/$slug/cover'
     | '/api/admin/tokens/sessions/$jti'
@@ -1060,6 +1173,7 @@ export interface FileRouteTypes {
     | '/health'
     | '/icebreaker'
     | '/party'
+    | '/pitch-night'
     | '/sitemap.xml'
     | '/things'
     | '/upload'
@@ -1074,6 +1188,7 @@ export interface FileRouteTypes {
     | '/things/draw-country'
     | '/things/heads-up'
     | '/things/icebreaker'
+    | '/things/pitches'
     | '/things/spelling-bee'
     | '/things/spelling-party'
     | '/ticket/$id'
@@ -1087,12 +1202,14 @@ export interface FileRouteTypes {
     | '/api/admin/content-audit'
     | '/api/admin/content-summary'
     | '/api/admin/events'
+    | '/api/admin/pitches'
     | '/api/admin/reports'
     | '/api/admin/step-up'
     | '/api/admin/transfers'
     | '/api/admin/verify'
     | '/api/admin/word-media'
     | '/api/admin/word-shares'
+    | '/api/cron/cleanup-pitches'
     | '/api/cron/cleanup-transfers'
     | '/api/cron/cleanup-word-media-orphans'
     | '/api/cron/cleanup-word-shares'
@@ -1105,6 +1222,9 @@ export interface FileRouteTypes {
     | '/pics/$album/$photo'
     | '/things/draw-country_/$roomId'
     | '/things/judge/$roomId'
+    | '/things/pitches_/$deckId'
+    | '/things/pitches_/new'
+    | '/things/pitches_/present'
     | '/things/play/$roomId'
     | '/things/spelling-party_/$roomId'
     | '/pics/$album/'
@@ -1131,6 +1251,9 @@ export interface FileRouteTypes {
     | '/api/upload/words/targets'
     | '/api/words/$slug/shares'
     | '/api/words/share/verify'
+    | '/things/pitches_/$deckId_/edit'
+    | '/things/pitches_/present_/$roomId'
+    | '/things/pitches_/remote_/$roomId'
     | '/things/spelling-party_/$roomId_/present'
     | '/api/admin/albums/$slug/cover'
     | '/api/admin/tokens/sessions/$jti'
@@ -1153,6 +1276,7 @@ export interface RootRouteChildren {
   HealthRoute: typeof HealthRoute
   IcebreakerRoute: typeof IcebreakerRoute
   PartyRoute: typeof PartyRoute
+  PitchNightRoute: typeof PitchNightRoute
   SitemapDotxmlRoute: typeof SitemapDotxmlRoute
   ThingsRoute: typeof ThingsRouteWithChildren
   UploadRoute: typeof UploadRoute
@@ -1175,12 +1299,14 @@ export interface RootRouteChildren {
   ApiAdminContentAuditRouteRoute: typeof ApiAdminContentAuditRouteRoute
   ApiAdminContentSummaryRouteRoute: typeof ApiAdminContentSummaryRouteRoute
   ApiAdminEventsRouteRoute: typeof ApiAdminEventsRouteRouteWithChildren
+  ApiAdminPitchesRouteRoute: typeof ApiAdminPitchesRouteRoute
   ApiAdminReportsRouteRoute: typeof ApiAdminReportsRouteRoute
   ApiAdminStepUpRouteRoute: typeof ApiAdminStepUpRouteRoute
   ApiAdminTransfersRouteRoute: typeof ApiAdminTransfersRouteRouteWithChildren
   ApiAdminVerifyRouteRoute: typeof ApiAdminVerifyRouteRoute
   ApiAdminWordMediaRouteRoute: typeof ApiAdminWordMediaRouteRouteWithChildren
   ApiAdminWordSharesRouteRoute: typeof ApiAdminWordSharesRouteRouteWithChildren
+  ApiCronCleanupPitchesRouteRoute: typeof ApiCronCleanupPitchesRouteRoute
   ApiCronCleanupTransfersRouteRoute: typeof ApiCronCleanupTransfersRouteRoute
   ApiCronCleanupWordMediaOrphansRouteRoute: typeof ApiCronCleanupWordMediaOrphansRouteRoute
   ApiCronCleanupWordSharesRouteRoute: typeof ApiCronCleanupWordSharesRouteRoute
@@ -1224,6 +1350,13 @@ declare module '@tanstack/react-router' {
       path: '/sitemap.xml'
       fullPath: '/sitemap.xml'
       preLoaderRoute: typeof SitemapDotxmlRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/pitch-night': {
+      id: '/pitch-night'
+      path: '/pitch-night'
+      fullPath: '/pitch-night'
+      preLoaderRoute: typeof PitchNightRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/party': {
@@ -1352,6 +1485,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ThingsSpellingBeeRouteImport
       parentRoute: typeof ThingsRoute
     }
+    '/things/pitches': {
+      id: '/things/pitches'
+      path: '/pitches'
+      fullPath: '/things/pitches'
+      preLoaderRoute: typeof ThingsPitchesRouteImport
+      parentRoute: typeof ThingsRoute
+    }
     '/things/icebreaker': {
       id: '/things/icebreaker'
       path: '/icebreaker'
@@ -1450,6 +1590,27 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ThingsPlayRoomIdRouteImport
       parentRoute: typeof ThingsRoute
     }
+    '/things/pitches_/present': {
+      id: '/things/pitches_/present'
+      path: '/pitches/present'
+      fullPath: '/things/pitches/present'
+      preLoaderRoute: typeof ThingsPitchesPresentRouteImport
+      parentRoute: typeof ThingsRoute
+    }
+    '/things/pitches_/new': {
+      id: '/things/pitches_/new'
+      path: '/pitches/new'
+      fullPath: '/things/pitches/new'
+      preLoaderRoute: typeof ThingsPitchesNewRouteImport
+      parentRoute: typeof ThingsRoute
+    }
+    '/things/pitches_/$deckId': {
+      id: '/things/pitches_/$deckId'
+      path: '/pitches/$deckId'
+      fullPath: '/things/pitches/$deckId'
+      preLoaderRoute: typeof ThingsPitchesDeckIdRouteImport
+      parentRoute: typeof ThingsRoute
+    }
     '/things/judge/$roomId': {
       id: '/things/judge/$roomId'
       path: '/judge/$roomId'
@@ -1534,6 +1695,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiCronCleanupTransfersRouteRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/cron/cleanup-pitches': {
+      id: '/api/cron/cleanup-pitches'
+      path: '/api/cron/cleanup-pitches'
+      fullPath: '/api/cron/cleanup-pitches'
+      preLoaderRoute: typeof ApiCronCleanupPitchesRouteRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/admin/word-shares': {
       id: '/api/admin/word-shares'
       path: '/api/admin/word-shares'
@@ -1576,6 +1744,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiAdminReportsRouteRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/admin/pitches': {
+      id: '/api/admin/pitches'
+      path: '/api/admin/pitches'
+      fullPath: '/api/admin/pitches'
+      preLoaderRoute: typeof ApiAdminPitchesRouteRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/admin/events': {
       id: '/api/admin/events'
       path: '/api/admin/events'
@@ -1609,6 +1784,27 @@ declare module '@tanstack/react-router' {
       path: '/spelling-party/$roomId/present'
       fullPath: '/things/spelling-party/$roomId/present'
       preLoaderRoute: typeof ThingsSpellingPartyRoomIdPresentRouteImport
+      parentRoute: typeof ThingsRoute
+    }
+    '/things/pitches_/remote_/$roomId': {
+      id: '/things/pitches_/remote_/$roomId'
+      path: '/pitches/remote/$roomId'
+      fullPath: '/things/pitches/remote/$roomId'
+      preLoaderRoute: typeof ThingsPitchesRemoteRoomIdRouteImport
+      parentRoute: typeof ThingsRoute
+    }
+    '/things/pitches_/present_/$roomId': {
+      id: '/things/pitches_/present_/$roomId'
+      path: '/pitches/present/$roomId'
+      fullPath: '/things/pitches/present/$roomId'
+      preLoaderRoute: typeof ThingsPitchesPresentRoomIdRouteImport
+      parentRoute: typeof ThingsRoute
+    }
+    '/things/pitches_/$deckId_/edit': {
+      id: '/things/pitches_/$deckId_/edit'
+      path: '/pitches/$deckId/edit'
+      fullPath: '/things/pitches/$deckId/edit'
+      preLoaderRoute: typeof ThingsPitchesDeckIdEditRouteImport
       parentRoute: typeof ThingsRoute
     }
     '/api/words/share/verify': {
@@ -1842,12 +2038,19 @@ interface ThingsRouteChildren {
   ThingsDrawCountryRoute: typeof ThingsDrawCountryRoute
   ThingsHeadsUpRoute: typeof ThingsHeadsUpRoute
   ThingsIcebreakerRoute: typeof ThingsIcebreakerRoute
+  ThingsPitchesRoute: typeof ThingsPitchesRoute
   ThingsSpellingBeeRoute: typeof ThingsSpellingBeeRoute
   ThingsSpellingPartyRoute: typeof ThingsSpellingPartyRoute
   ThingsDrawCountryRoomIdRoute: typeof ThingsDrawCountryRoomIdRoute
   ThingsJudgeRoomIdRoute: typeof ThingsJudgeRoomIdRoute
+  ThingsPitchesDeckIdRoute: typeof ThingsPitchesDeckIdRoute
+  ThingsPitchesNewRoute: typeof ThingsPitchesNewRoute
+  ThingsPitchesPresentRoute: typeof ThingsPitchesPresentRoute
   ThingsPlayRoomIdRoute: typeof ThingsPlayRoomIdRoute
   ThingsSpellingPartyRoomIdRoute: typeof ThingsSpellingPartyRoomIdRoute
+  ThingsPitchesDeckIdEditRoute: typeof ThingsPitchesDeckIdEditRoute
+  ThingsPitchesPresentRoomIdRoute: typeof ThingsPitchesPresentRoomIdRoute
+  ThingsPitchesRemoteRoomIdRoute: typeof ThingsPitchesRemoteRoomIdRoute
   ThingsSpellingPartyRoomIdPresentRoute: typeof ThingsSpellingPartyRoomIdPresentRoute
 }
 
@@ -1855,12 +2058,19 @@ const ThingsRouteChildren: ThingsRouteChildren = {
   ThingsDrawCountryRoute: ThingsDrawCountryRoute,
   ThingsHeadsUpRoute: ThingsHeadsUpRoute,
   ThingsIcebreakerRoute: ThingsIcebreakerRoute,
+  ThingsPitchesRoute: ThingsPitchesRoute,
   ThingsSpellingBeeRoute: ThingsSpellingBeeRoute,
   ThingsSpellingPartyRoute: ThingsSpellingPartyRoute,
   ThingsDrawCountryRoomIdRoute: ThingsDrawCountryRoomIdRoute,
   ThingsJudgeRoomIdRoute: ThingsJudgeRoomIdRoute,
+  ThingsPitchesDeckIdRoute: ThingsPitchesDeckIdRoute,
+  ThingsPitchesNewRoute: ThingsPitchesNewRoute,
+  ThingsPitchesPresentRoute: ThingsPitchesPresentRoute,
   ThingsPlayRoomIdRoute: ThingsPlayRoomIdRoute,
   ThingsSpellingPartyRoomIdRoute: ThingsSpellingPartyRoomIdRoute,
+  ThingsPitchesDeckIdEditRoute: ThingsPitchesDeckIdEditRoute,
+  ThingsPitchesPresentRoomIdRoute: ThingsPitchesPresentRoomIdRoute,
+  ThingsPitchesRemoteRoomIdRoute: ThingsPitchesRemoteRoomIdRoute,
   ThingsSpellingPartyRoomIdPresentRoute: ThingsSpellingPartyRoomIdPresentRoute,
 }
 
@@ -2055,6 +2265,7 @@ const rootRouteChildren: RootRouteChildren = {
   HealthRoute: HealthRoute,
   IcebreakerRoute: IcebreakerRoute,
   PartyRoute: PartyRoute,
+  PitchNightRoute: PitchNightRoute,
   SitemapDotxmlRoute: SitemapDotxmlRoute,
   ThingsRoute: ThingsRouteWithChildren,
   UploadRoute: UploadRoute,
@@ -2077,12 +2288,14 @@ const rootRouteChildren: RootRouteChildren = {
   ApiAdminContentAuditRouteRoute: ApiAdminContentAuditRouteRoute,
   ApiAdminContentSummaryRouteRoute: ApiAdminContentSummaryRouteRoute,
   ApiAdminEventsRouteRoute: ApiAdminEventsRouteRouteWithChildren,
+  ApiAdminPitchesRouteRoute: ApiAdminPitchesRouteRoute,
   ApiAdminReportsRouteRoute: ApiAdminReportsRouteRoute,
   ApiAdminStepUpRouteRoute: ApiAdminStepUpRouteRoute,
   ApiAdminTransfersRouteRoute: ApiAdminTransfersRouteRouteWithChildren,
   ApiAdminVerifyRouteRoute: ApiAdminVerifyRouteRoute,
   ApiAdminWordMediaRouteRoute: ApiAdminWordMediaRouteRouteWithChildren,
   ApiAdminWordSharesRouteRoute: ApiAdminWordSharesRouteRouteWithChildren,
+  ApiCronCleanupPitchesRouteRoute: ApiCronCleanupPitchesRouteRoute,
   ApiCronCleanupTransfersRouteRoute: ApiCronCleanupTransfersRouteRoute,
   ApiCronCleanupWordMediaOrphansRouteRoute:
     ApiCronCleanupWordMediaOrphansRouteRoute,

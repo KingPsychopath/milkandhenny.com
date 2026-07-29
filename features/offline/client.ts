@@ -197,9 +197,14 @@ export async function refreshOfflineState(slug: OfflineThingSlug) {
   publish(slug, response?.state ?? "unavailable");
 }
 
-export function prepareThingOffline(slug: OfflineThingSlug, options?: { refresh?: boolean }) {
+export function prepareThingOffline(
+  slug: OfflineThingSlug,
+  options?: { refresh?: boolean },
+): Promise<void> {
   const existing = preparation.get(slug);
-  if (existing) return existing;
+  if (existing) {
+    return options?.refresh ? existing.then(() => prepareThingOffline(slug, options)) : existing;
+  }
 
   const pending = (async () => {
     await refreshOfflineState(slug);

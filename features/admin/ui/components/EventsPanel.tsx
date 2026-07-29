@@ -60,6 +60,7 @@ type Draft = {
   terms: string;
   heroImage: string;
   ogImage: string;
+  marketingPath: string;
   ticketTypes: DraftTicketType[];
 };
 
@@ -118,6 +119,7 @@ const EMPTY_DRAFT: Draft = {
   terms: "",
   heroImage: "",
   ogImage: "",
+  marketingPath: "",
   ticketTypes: [{ id: "standard", name: "Entry", price: "0", quantity: "50", perPersonLimit: "2" }],
 };
 
@@ -164,6 +166,7 @@ function toDraft(event: EventRecord): Draft {
     terms: event.terms ?? "",
     heroImage: event.heroImage ?? "",
     ogImage: event.ogImage ?? "",
+    marketingPath: event.marketingPath ?? "",
     ticketTypes: event.ticketTypes.map((type) => ({
       id: type.id,
       name: type.name,
@@ -222,6 +225,7 @@ function draftToPayload(draft: Draft): Record<string, unknown> {
     terms: draft.terms.trim() || undefined,
     heroImage: draft.heroImage.trim() || undefined,
     ogImage: draft.ogImage.trim() || undefined,
+    marketingPath: draft.marketingPath.trim() || undefined,
     ticketTypes,
   };
 }
@@ -737,6 +741,12 @@ export function EventsPanel({
               value={draft.ogImage}
               onChange={(value) => setDraft({ ...draft, ogImage: value })}
               hint="optional; hero is used when blank"
+            />
+            <Field
+              label="marketing story path"
+              value={draft.marketingPath}
+              onChange={(value) => setDraft({ ...draft, marketingPath: value })}
+              hint="e.g. /pitch-night — links this event to its cinematic page"
             />
           </div>
 

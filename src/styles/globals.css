@@ -134,6 +134,10 @@
   --things-country-outside: oklch(0.57 0.19 28);
   --things-country-inside: oklch(0.53 0.15 253);
   --things-country-point: oklch(0.2 0.01 56.42);
+  --pitch-night-night: #100d0c;
+  --pitch-night-cream: #f5eddb;
+  --pitch-night-amber: #d99a2b;
+  --pitch-night-blue: #7ab8c4;
 }
 
 [data-theme="dark"] {
@@ -155,6 +159,10 @@
   --prose-pre-fg: oklch(0.856 0.01 70.7);
   --selection-bg: oklch(0.28 0.075 47.6);
   --selection-fg: oklch(0.828 0.165 86.05);
+  --pitch-night-night: #0d0b0a;
+  --pitch-night-cream: #f4ecda;
+  --pitch-night-amber: #e2aa45;
+  --pitch-night-blue: #83c5d0;
 }
 
 @theme inline {

@@ -18,7 +18,12 @@ export function OfflinePlatform() {
   useEffect(() => {
     void registerOfflinePlatform();
     const match = getOfflineThingByPath(pathname);
-    if (match) void prepareThingOffline(match[0] as OfflineThingSlug);
+    if (match) {
+      const slug = match[0] as OfflineThingSlug;
+      void prepareThingOffline(slug, {
+        refresh: slug === "pitches" && pathname !== match[1].entryPath,
+      });
+    }
   }, [pathname]);
 
   useEffect(() => {

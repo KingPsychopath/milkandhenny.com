@@ -20,22 +20,22 @@ The host supplies a port and environment variables. Railway, Docker Compose, Kub
 
 ## Ownership
 
-| Layer                       | Responsibility                                                      |
-| --------------------------- | ------------------------------------------------------------------- |
-| `src/routes`                | Routing, transport validation, response shape, coarse authorization |
-| `features/*/*.functions.ts` | TanStack server-function boundaries                                 |
-| `features/*/*.server.ts`    | Feature workflows and durable product rules                         |
-| `features/*/ui`             | User interaction and rendering                                      |
+| Layer                       | Responsibility                                                                  |
+| --------------------------- | ------------------------------------------------------------------------------- |
+| `src/routes`                | Routing, transport validation, response shape, coarse authorization             |
+| `features/*/*.functions.ts` | TanStack server-function boundaries                                             |
+| `features/*/*.server.ts`    | Feature workflows and durable product rules                                     |
+| `features/*/ui`             | User interaction and rendering                                                  |
 | `lib/platform`              | Postgres, Redis, object storage, email, payments, logging, provider translation |
-| `lib/shared`                | Environment-safe shared constants and pure utilities                |
-| `ops`                       | Deployment-independent operational entry points                     |
-| `deploy`                    | Optional independently deployed workloads                           |
+| `lib/shared`                | Environment-safe shared constants and pure utilities                            |
+| `ops`                       | Deployment-independent operational entry points                                 |
+| `deploy`                    | Optional independently deployed workloads                                       |
 
 Routes do not own business truth. Workers may execute feature workflows but must not redefine eligibility or state transitions.
 
 ## Effect subsystems
 
-Effect v4 is used at service boundaries, not as a general programming style. Two subsystems use it today: multiplayer (`features/things/shared`) and events/ticketing (`features/events`, `features/tickets`).
+Effect v4 is used at service boundaries, not as a general programming style. Three subsystems use it today: multiplayer (`features/things/shared`), events/ticketing (`features/events`, `features/tickets`), and the Pitch Night studio (`features/things/pitches`).
 
 The shared shape is the same in both:
 

@@ -64,6 +64,8 @@ export type EventRecord = {
 
   heroImage?: string;
   ogImage?: string;
+  /** Optional same-origin story page that leads into this event's checkout. */
+  marketingPath?: string;
 
   ticketTypes: TicketType[];
   capacity?: number;
