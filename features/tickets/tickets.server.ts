@@ -12,15 +12,15 @@ import { getEvent } from "@/features/events/store.server";
 import { ticketTypeSalesState, type EventRecord, type TicketType } from "@/features/events/types";
 import {
   claimRedemption,
-  getRedemptionAt,
+  getSoldCounts,
   getTicket,
-  getTickets,
-  listTicketIdsForEmail,
-  listTicketIdsForEvent,
-  putTicket,
+  insertTicketsWithCapacity,
+  listTicketsForEmail,
+  listTicketsForEvent,
+  listValidTicketIds,
+  markTicketStatus,
   releaseRedemption,
-  releaseTicketType,
-  reserveTicketType,
+  type NewTicket,
 } from "./store.server";
 import {
   generateOrderId,
@@ -45,9 +45,9 @@ import {
 /**
  * Ticket workflows.
  *
- * Plain async engine functions, matching the shape of the multiplayer
- * engines. Timeouts, typed errors and tracing are applied one layer up in
- * `tickets-service.server.ts`.
+ * Plain async engine functions. Capacity and single-admission are enforced in
+ * the store by the database; this layer owns the product rules around them —
+ * sales windows, per-person limits, who may be comped.
  */
 
 export type TicketOpResult<T> =
@@ -56,20 +56,17 @@ export type TicketOpResult<T> =
 
 const MAX_QUANTITY_PER_CLAIM = 10;
 
-async function rateLimit(
-  key: string,
-  windowSeconds: number,
-  max: number,
-): Promise<{ allowed: boolean }> {
+/** Rate limiting stays on Redis: it is ephemeral counting, not durable truth. */
+async function rateLimit(key: string, windowSeconds: number, max: number): Promise<boolean> {
   const redis = getRedis();
-  if (!redis) return { allowed: true };
+  if (!redis) return true;
   try {
     const next = await redis.incr(key);
     if (next === 1) await redis.expire(key, windowSeconds);
-    return { allowed: next <= max };
+    return next <= max;
   } catch {
     // A rate limiter that fails closed would take the door offline.
-    return { allowed: true };
+    return true;
   }
 }
 
@@ -97,10 +94,11 @@ export type IssueTicketsInput = {
   quantity: number;
   kind: TicketKind;
   paymentRef?: string;
+  checkoutRef?: string;
   amountPaidMinor?: number;
   currency?: string;
   notes?: string;
-  /** Bypasses the sales window. Staff comping someone at the door. */
+  /** Bypasses the sales window and capacity. Staff comping at the door. */
   force?: boolean;
 };
 
@@ -110,14 +108,6 @@ export type IssuedTickets = {
   event: EventRecord;
 };
 
-/**
- * Issue one or more tickets for an event.
- *
- * Capacity is reserved per ticket before any record is written, and any
- * reservation taken before a later failure is released. Over-issuing is
- * worse than failing: a ticket that does not exist can be re-issued, a
- * person turned away at a full door cannot be un-turned-away.
- */
 export async function issueTickets(
   input: IssueTicketsInput,
 ): Promise<TicketOpResult<IssuedTickets>> {
@@ -164,77 +154,57 @@ export async function issueTickets(
     }
   }
 
-  // Reserve every unit up front so a partial order never leaves the counter
-  // ahead of the tickets actually written.
-  let reserved = 0;
-  for (let index = 0; index < quantity; index += 1) {
-    const reservation = await reserveTicketType(event.slug, ticketType.id, ticketType.quantity);
-    if (!reservation.reserved) break;
-    reserved += 1;
-  }
-
-  if (reserved < quantity) {
-    for (let index = 0; index < reserved; index += 1) {
-      await releaseTicketType(event.slug, ticketType.id);
-    }
-    return { ok: false, status: 409, error: `Not enough ${ticketType.name} tickets left` };
-  }
-
   const email = input.email ? normaliseEmail(input.email) : undefined;
-  const emailHash = email ? hashEmail(email) : undefined;
   const orderId = generateOrderId();
-  const issuedAt = new Date().toISOString();
 
-  const tickets: TicketRecord[] = [];
-  try {
-    for (let index = 0; index < quantity; index += 1) {
-      const ticket: TicketRecord = {
-        id: generateTicketId(),
-        eventSlug: event.slug,
-        ticketTypeId: ticketType.id,
-        kind: input.kind,
-        status: "valid",
-        holderName: index === 0 ? holderName : `${holderName} +${index}`,
-        email,
-        emailHash,
-        orderId,
-        parentTicketId: index === 0 ? undefined : tickets[0]?.id,
-        issuedAt,
-        paymentRef: input.paymentRef,
-        amountPaidMinor: input.amountPaidMinor,
-        currency: input.currency ?? ticketType.currency,
-        notes: input.notes,
-      };
-      await putTicket(ticket);
-      tickets.push(ticket);
+  // Ids are generated up front so plus-ones can point at the first ticket.
+  const ids = Array.from({ length: quantity }, () => generateTicketId());
+  const newTickets: NewTicket[] = ids.map((id, index) => ({
+    id,
+    holderName: index === 0 ? holderName : `${holderName} +${index}`,
+    parentTicketId: index === 0 ? undefined : ids[0],
+  }));
+
+  const outcome = await insertTicketsWithCapacity(
+    {
+      eventSlug: event.slug,
+      ticketTypeId: ticketType.id,
+      kind: input.kind,
+      orderId,
+      email,
+      emailHash: email ? hashEmail(email) : undefined,
+      paymentRef: input.paymentRef,
+      checkoutRef: input.checkoutRef,
+      amountPaidMinor: input.amountPaidMinor,
+      currency: input.currency ?? ticketType.currency,
+      notes: input.notes,
+      ignoreCapacity: input.force === true,
+    },
+    newTickets,
+  );
+
+  if (!outcome.ok) {
+    if (outcome.reason === "unknown-type") {
+      return { ok: false, status: 404, error: "Ticket type not found" };
     }
-  } catch (error) {
-    log.error(
-      "tickets.issue",
-      "Issuance failed after reserving",
-      {
-        slug: event.slug,
-        ticketTypeId: ticketType.id,
-        written: tickets.length,
-      },
-      error,
-    );
-    for (let index = tickets.length; index < reserved; index += 1) {
-      await releaseTicketType(event.slug, ticketType.id);
-    }
-    if (tickets.length === 0) {
-      return { ok: false, status: 500, error: "Could not issue tickets" };
-    }
+    return {
+      ok: false,
+      status: 409,
+      error:
+        outcome.remaining === 0
+          ? `${ticketType.name} is sold out`
+          : `Only ${outcome.remaining} ${ticketType.name} left`,
+    };
   }
 
   log.info("tickets.issue", "Tickets issued", {
     slug: event.slug,
     ticketTypeId: ticketType.id,
-    count: tickets.length,
+    count: outcome.tickets.length,
     kind: input.kind,
   });
 
-  return { ok: true, value: { orderId, tickets, event } };
+  return { ok: true, value: { orderId, tickets: outcome.tickets, event } };
 }
 
 export type RedeemInput = {
@@ -242,24 +212,13 @@ export type RedeemInput = {
   scanned: string;
   eventSlug: string;
   redeemedBy?: string;
-  /** True when the device queued this while offline and is syncing now. */
   offline?: boolean;
 };
 
-/**
- * Admit a ticket.
- *
- * The signature check rejects forgeries; the atomic claim is what makes a
- * ticket single-use even when two door devices scan the same phone at the
- * same moment.
- */
 export async function redeemTicket(input: RedeemInput): Promise<RedeemOutcome> {
   const parsed = parseTicketQrPayload(input.scanned);
-  const ticketId =
-    parsed?.ticketId ??
-    (isValidTicketId(input.scanned.trim().toUpperCase())
-      ? input.scanned.trim().toUpperCase()
-      : null);
+  const typed = input.scanned.trim().toUpperCase();
+  const ticketId = parsed?.ticketId ?? (isValidTicketId(typed) ? typed : null);
 
   if (!ticketId) return { result: "invalid" };
 
@@ -269,78 +228,61 @@ export async function redeemTicket(input: RedeemInput): Promise<RedeemOutcome> {
     return { result: "invalid" };
   }
 
-  const ticket = await getTicket(ticketId);
-  if (!ticket) return { result: "not-found" };
+  const existing = await getTicket(ticketId);
+  if (!existing) return { result: "not-found" };
 
-  const event = await getEvent(ticket.eventSlug);
+  const event = await getEvent(existing.eventSlug);
   const ticketTypeName =
-    (event ? findTicketType(event, ticket.ticketTypeId)?.name : null) ?? "Ticket";
-  const view = toDoorView(ticket, ticketTypeName);
+    (event ? findTicketType(event, existing.ticketTypeId)?.name : null) ?? "Ticket";
 
-  if (ticket.eventSlug !== input.eventSlug) return { result: "wrong-event", ticket: view };
-  if (ticket.status !== "valid") return { result: "void", ticket: view };
-
-  const redeemedAt = new Date().toISOString();
-  const claim = await claimRedemption(ticket.id, redeemedAt);
-
-  if (!claim.claimed) {
-    return {
-      result: "already-redeemed",
-      ticket: { ...view, redeemedAt: claim.redeemedAt },
-      redeemedAt: claim.redeemedAt,
-    };
+  if (existing.eventSlug !== input.eventSlug) {
+    return { result: "wrong-event", ticket: toDoorView(existing, ticketTypeName) };
+  }
+  if (existing.status !== "valid") {
+    return { result: "void", ticket: toDoorView(existing, ticketTypeName) };
   }
 
-  const updated: TicketRecord = {
-    ...ticket,
-    redeemedAt,
-    redeemedBy: input.redeemedBy?.slice(0, 40),
-    redeemedOffline: input.offline === true ? true : undefined,
-  };
-  await putTicket(updated);
+  const claim = await claimRedemption(ticketId, input.redeemedBy, input.offline === true);
 
-  return { result: "admitted", ticket: toDoorView(updated, ticketTypeName) };
+  if (claim.claimed) {
+    return { result: "admitted", ticket: toDoorView(claim.ticket, ticketTypeName) };
+  }
+
+  if (!claim.ticket) return { result: "not-found" };
+  if (claim.ticket.status !== "valid") {
+    return { result: "void", ticket: toDoorView(claim.ticket, ticketTypeName) };
+  }
+
+  return {
+    result: "already-redeemed",
+    ticket: toDoorView(claim.ticket, ticketTypeName),
+    redeemedAt: claim.ticket.redeemedAt ?? new Date().toISOString(),
+  };
 }
 
-/** Staff correction: someone scanned the wrong phone. */
 export async function unredeemTicket(ticketId: string): Promise<TicketOpResult<void>> {
   const ticket = await getTicket(ticketId);
   if (!ticket) return { ok: false, status: 404, error: "Ticket not found" };
   await releaseRedemption(ticket.id);
-  await putTicket({ ...ticket, redeemedAt: undefined, redeemedBy: undefined });
   return { ok: true, value: undefined };
 }
 
 export async function voidTicket(
   ticketId: string,
   status: "void" | "refunded" = "void",
+  refundRef?: string,
 ): Promise<TicketOpResult<TicketRecord>> {
-  const ticket = await getTicket(ticketId);
-  if (!ticket) return { ok: false, status: 404, error: "Ticket not found" };
-  const updated: TicketRecord = { ...ticket, status };
-  await putTicket(updated);
-  // Free the capacity back up so a refund does not permanently shrink the room.
-  await releaseTicketType(ticket.eventSlug, ticket.ticketTypeId);
-  log.info("tickets.void", "Ticket voided", { ticketId, status });
+  const updated = await markTicketStatus(ticketId, status, refundRef);
+  if (!updated) return { ok: false, status: 404, error: "Ticket not found" };
   return { ok: true, value: updated };
 }
 
-/**
- * The offline door manifest.
- *
- * Carries truncated hashes rather than ids, so a device left in a taxi is
- * not a ticket forgery kit. Redeemed state is included so a device that has
- * been offline since doors opened still shows a sensible answer.
- */
 export async function buildDoorManifest(eventSlug: string): Promise<DoorManifest> {
-  const ids = await listTicketIdsForEvent(eventSlug);
-  const tickets = await getTickets(ids);
+  const ids = await listValidTicketIds(eventSlug);
   return {
     eventSlug,
     generatedAt: new Date().toISOString(),
-    hashes: tickets
-      .filter((ticket) => ticket.status === "valid")
-      .map((ticket) => hashTicketId(ticket.id)),
+    hashes: ids.map(hashTicketId),
   };
 }
 
@@ -352,8 +294,7 @@ export type EventTicketSummary = {
 };
 
 export async function getEventTickets(eventSlug: string): Promise<EventTicketSummary> {
-  const [event, ids] = await Promise.all([getEvent(eventSlug), listTicketIdsForEvent(eventSlug)]);
-  const tickets = await getTickets(ids);
+  const [event, tickets] = await Promise.all([getEvent(eventSlug), listTicketsForEvent(eventSlug)]);
 
   const byType: EventTicketSummary["byType"] = {};
   let redeemed = 0;
@@ -373,23 +314,20 @@ export async function getEventTickets(eventSlug: string): Promise<EventTicketSum
     total: tickets.length,
     redeemed,
     byType,
-    tickets: tickets
-      .map((ticket) => ({
-        ...toDoorView(
-          ticket,
-          (event ? findTicketType(event, ticket.ticketTypeId)?.name : null) ?? "Ticket",
-        ),
-        email: ticket.email,
-        issuedAt: ticket.issuedAt,
-      }))
-      .sort((a, b) => a.holderName.localeCompare(b.holderName)),
+    tickets: tickets.map((ticket) => ({
+      ...toDoorView(
+        ticket,
+        (event ? findTicketType(event, ticket.ticketTypeId)?.name : null) ?? "Ticket",
+      ),
+      email: ticket.email,
+      issuedAt: ticket.issuedAt,
+    })),
   };
 }
 
 /** Names of everyone holding a valid ticket. Used by best-dressed voting. */
 export async function getTicketHolderNames(eventSlug: string): Promise<string[]> {
-  const ids = await listTicketIdsForEvent(eventSlug);
-  const tickets = await getTickets(ids);
+  const tickets = await listTicketsForEvent(eventSlug);
   const names = tickets
     .filter((ticket) => ticket.status === "valid")
     .map((ticket) => ticket.holderName.trim())
@@ -405,8 +343,8 @@ export type LookupTicketsResult = {
 /**
  * Find a buyer's tickets by email so they can be re-sent.
  *
- * Rate limited per address, and callers must not disclose whether an address
- * matched — that would turn this into an attendee-list oracle.
+ * Callers must not disclose whether an address matched — that would turn
+ * this into an attendee-list oracle.
  */
 export async function lookupTicketsByEmail(
   eventSlug: string,
@@ -417,30 +355,28 @@ export async function lookupTicketsByEmail(
   }
 
   const emailHash = hashEmail(normaliseEmail(email));
-  const limit = await rateLimit(
+  const allowed = await rateLimit(
     ticketResendRateLimitKey(emailHash),
     RESEND_RATELIMIT_WINDOW_SECONDS,
     RESEND_RATELIMIT_MAX,
   );
-  if (!limit.allowed) {
+  if (!allowed) {
     return { ok: false, status: 429, error: "Too many requests. Try again shortly." };
   }
 
-  const [ids, event] = await Promise.all([
-    listTicketIdsForEmail(eventSlug, emailHash),
+  const [tickets, event] = await Promise.all([
+    listTicketsForEmail(eventSlug, emailHash),
     getEvent(eventSlug),
   ]);
-  const tickets = (await getTickets(ids)).filter((ticket) => ticket.status === "valid");
   return { ok: true, value: { tickets, event } };
 }
 
 export async function rateLimitClaim(ip: string): Promise<boolean> {
-  const limit = await rateLimit(
+  return rateLimit(
     ticketClaimRateLimitKey(ip || "unknown"),
     CLAIM_RATELIMIT_WINDOW_SECONDS,
     CLAIM_RATELIMIT_MAX,
   );
-  return limit.allowed;
 }
 
-export { getTicket, getRedemptionAt };
+export { getTicket, getSoldCounts };

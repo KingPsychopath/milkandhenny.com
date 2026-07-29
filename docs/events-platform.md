@@ -48,7 +48,7 @@ These are decisions taken to keep momentum. Both are cheap to reverse; neither b
 
 Times are stored UTC and rendered in the venue timezone. Everything under **Where** except `area` is gated behind ticket ownership.
 
-### Redis keys
+### Storage
 
 ```text
 event:$id              one key per event

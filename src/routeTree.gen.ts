@@ -50,6 +50,7 @@ import { Route as PicsAlbumPhotoRouteImport } from './routes/pics/$album/$photo'
 import { Route as ApiWordsSlugRouteRouteImport } from './routes/api/words/$slug/route'
 import { Route as ApiUploadVerifyPinRouteRouteImport } from './routes/api/upload/verify-pin/route'
 import { Route as ApiTransfersIdRouteRouteImport } from './routes/api/transfers/$id/route'
+import { Route as ApiStripeWebhookRouteRouteImport } from './routes/api/stripe/webhook/route'
 import { Route as ApiDownloadPresignRouteRouteImport } from './routes/api/download/presign/route'
 import { Route as ApiCronProcessTransferMediaRouteRouteImport } from './routes/api/cron/process-transfer-media/route'
 import { Route as ApiCronCleanupWordSharesRouteRouteImport } from './routes/api/cron/cleanup-word-shares/route'
@@ -303,6 +304,11 @@ const ApiUploadVerifyPinRouteRoute = ApiUploadVerifyPinRouteRouteImport.update({
 const ApiTransfersIdRouteRoute = ApiTransfersIdRouteRouteImport.update({
   id: '/api/transfers/$id',
   path: '/api/transfers/$id',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiStripeWebhookRouteRoute = ApiStripeWebhookRouteRouteImport.update({
+  id: '/api/stripe/webhook',
+  path: '/api/stripe/webhook',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiDownloadPresignRouteRoute = ApiDownloadPresignRouteRouteImport.update({
@@ -629,6 +635,7 @@ export interface FileRoutesByFullPath {
   '/api/cron/cleanup-word-shares': typeof ApiCronCleanupWordSharesRouteRoute
   '/api/cron/process-transfer-media': typeof ApiCronProcessTransferMediaRouteRoute
   '/api/download/presign': typeof ApiDownloadPresignRouteRoute
+  '/api/stripe/webhook': typeof ApiStripeWebhookRouteRoute
   '/api/transfers/$id': typeof ApiTransfersIdRouteRouteWithChildren
   '/api/upload/verify-pin': typeof ApiUploadVerifyPinRouteRoute
   '/api/words/$slug': typeof ApiWordsSlugRouteRouteWithChildren
@@ -720,6 +727,7 @@ export interface FileRoutesByTo {
   '/api/cron/cleanup-word-shares': typeof ApiCronCleanupWordSharesRouteRoute
   '/api/cron/process-transfer-media': typeof ApiCronProcessTransferMediaRouteRoute
   '/api/download/presign': typeof ApiDownloadPresignRouteRoute
+  '/api/stripe/webhook': typeof ApiStripeWebhookRouteRoute
   '/api/transfers/$id': typeof ApiTransfersIdRouteRouteWithChildren
   '/api/upload/verify-pin': typeof ApiUploadVerifyPinRouteRoute
   '/api/words/$slug': typeof ApiWordsSlugRouteRouteWithChildren
@@ -812,6 +820,7 @@ export interface FileRoutesById {
   '/api/cron/cleanup-word-shares': typeof ApiCronCleanupWordSharesRouteRoute
   '/api/cron/process-transfer-media': typeof ApiCronProcessTransferMediaRouteRoute
   '/api/download/presign': typeof ApiDownloadPresignRouteRoute
+  '/api/stripe/webhook': typeof ApiStripeWebhookRouteRoute
   '/api/transfers/$id': typeof ApiTransfersIdRouteRouteWithChildren
   '/api/upload/verify-pin': typeof ApiUploadVerifyPinRouteRoute
   '/api/words/$slug': typeof ApiWordsSlugRouteRouteWithChildren
@@ -905,6 +914,7 @@ export interface FileRouteTypes {
     | '/api/cron/cleanup-word-shares'
     | '/api/cron/process-transfer-media'
     | '/api/download/presign'
+    | '/api/stripe/webhook'
     | '/api/transfers/$id'
     | '/api/upload/verify-pin'
     | '/api/words/$slug'
@@ -996,6 +1006,7 @@ export interface FileRouteTypes {
     | '/api/cron/cleanup-word-shares'
     | '/api/cron/process-transfer-media'
     | '/api/download/presign'
+    | '/api/stripe/webhook'
     | '/api/transfers/$id'
     | '/api/upload/verify-pin'
     | '/api/words/$slug'
@@ -1087,6 +1098,7 @@ export interface FileRouteTypes {
     | '/api/cron/cleanup-word-shares'
     | '/api/cron/process-transfer-media'
     | '/api/download/presign'
+    | '/api/stripe/webhook'
     | '/api/transfers/$id'
     | '/api/upload/verify-pin'
     | '/api/words/$slug'
@@ -1174,6 +1186,7 @@ export interface RootRouteChildren {
   ApiCronCleanupWordSharesRouteRoute: typeof ApiCronCleanupWordSharesRouteRoute
   ApiCronProcessTransferMediaRouteRoute: typeof ApiCronProcessTransferMediaRouteRoute
   ApiDownloadPresignRouteRoute: typeof ApiDownloadPresignRouteRoute
+  ApiStripeWebhookRouteRoute: typeof ApiStripeWebhookRouteRoute
   ApiTransfersIdRouteRoute: typeof ApiTransfersIdRouteRouteWithChildren
   ApiUploadVerifyPinRouteRoute: typeof ApiUploadVerifyPinRouteRoute
   PicsAlbumPhotoRoute: typeof PicsAlbumPhotoRoute
@@ -1477,6 +1490,13 @@ declare module '@tanstack/react-router' {
       path: '/api/transfers/$id'
       fullPath: '/api/transfers/$id'
       preLoaderRoute: typeof ApiTransfersIdRouteRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/stripe/webhook': {
+      id: '/api/stripe/webhook'
+      path: '/api/stripe/webhook'
+      fullPath: '/api/stripe/webhook'
+      preLoaderRoute: typeof ApiStripeWebhookRouteRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/download/presign': {
@@ -2069,6 +2089,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiCronCleanupWordSharesRouteRoute: ApiCronCleanupWordSharesRouteRoute,
   ApiCronProcessTransferMediaRouteRoute: ApiCronProcessTransferMediaRouteRoute,
   ApiDownloadPresignRouteRoute: ApiDownloadPresignRouteRoute,
+  ApiStripeWebhookRouteRoute: ApiStripeWebhookRouteRoute,
   ApiTransfersIdRouteRoute: ApiTransfersIdRouteRouteWithChildren,
   ApiUploadVerifyPinRouteRoute: ApiUploadVerifyPinRouteRoute,
   PicsAlbumPhotoRoute: PicsAlbumPhotoRoute,

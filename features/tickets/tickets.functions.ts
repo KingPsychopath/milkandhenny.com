@@ -11,8 +11,15 @@ import { TicketsService } from "./tickets-service.server";
 import { sendTicketEmail } from "./email.server";
 import { buildTicketQrPayload } from "./qr.server";
 import { rateLimitClaim } from "./tickets.server";
+import { refundOrder, startCheckout } from "./checkout.server";
 import { rememberTicketHolder } from "./holder-cookie.server";
-import { isValidEmail, type DoorTicketView, type RedeemOutcome, type TicketRecord } from "./types";
+import {
+  isValidEmail,
+  isValidTicketId,
+  type DoorTicketView,
+  type RedeemOutcome,
+  type TicketRecord,
+} from "./types";
 
 /**
  * TanStack server-function boundary for tickets.
@@ -290,4 +297,56 @@ export const getDoorPageFn = createServerFn({ method: "GET" })
 
     const door = await getDoorDataFn({ data: { eventSlug: slug } });
     return { isAuthed: true, events, door: door.authorised ? door : null };
+  });
+
+export type StartCheckoutResult =
+  | { ok: true; url: string }
+  | { ok: false; status: number; error: string };
+
+/**
+ * Begin a paid purchase.
+ *
+ * Returns a Stripe-hosted Checkout URL. No ticket exists yet — the webhook
+ * creates it once the payment actually succeeds.
+ */
+export const startCheckoutFn = createServerFn({ method: "POST" })
+  .validator(
+    (data: {
+      eventSlug: string;
+      ticketTypeId: string;
+      holderName: string;
+      email: string;
+      quantity: number;
+    }) => data,
+  )
+  .handler(async ({ data }): Promise<StartCheckoutResult> => {
+    const request = getRequest();
+
+    if (!(await rateLimitClaim(getRequestIP() || "unknown"))) {
+      return { ok: false, status: 429, error: "Too many requests. Try again shortly." };
+    }
+
+    const result = await startCheckout({ ...data, origin: getBaseUrlForRequest(request) });
+    if (!result.ok) return { ok: false, status: result.status, error: result.error };
+    return { ok: true, url: result.value.url };
+  });
+
+export type RefundResult = { ok: true; refunded: number } | { ok: false; error: string };
+
+/**
+ * Self-serve refund from the ticket page.
+ *
+ * The ticket id in the URL is the bearer credential — the same thing that
+ * gets someone through the door. Refusing after check-in is enforced in
+ * `refundOrder`, not here.
+ */
+export const refundOwnTicketFn = createServerFn({ method: "POST" })
+  .validator((data: { ticketId: string }) => data)
+  .handler(async ({ data }): Promise<RefundResult> => {
+    if (!isValidTicketId(data.ticketId)) {
+      return { ok: false, error: "That ticket reference doesn't look right" };
+    }
+    const result = await refundOrder({ ticketId: data.ticketId, reason: "self-serve" });
+    if (!result.ok) return { ok: false, error: result.error };
+    return { ok: true, refunded: result.value.refunded };
   });

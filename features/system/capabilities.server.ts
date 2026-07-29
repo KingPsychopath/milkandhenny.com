@@ -11,6 +11,8 @@ import {
 } from "@/lib/platform/r2.server";
 import { getRedis, getRedisRestConfig } from "@/lib/platform/redis.server";
 import { describeEmailCapability } from "@/lib/platform/email.server";
+import { describePaymentsCapability } from "@/lib/platform/stripe.server";
+import { checkDatabase, isDatabaseConfigured } from "@/lib/platform/postgres.server";
 import { getDirectRedisConfig } from "@/lib/platform/redis-direct.server";
 import { hasMediaPublicUrl } from "@/lib/shared/config";
 import { getRuntimeMetadata } from "@/lib/platform/runtime-metadata.server";
@@ -34,6 +36,8 @@ function getConfiguredCapabilities(): Capability[] {
   const maintenanceConfigured = isConfigured("CRON_SECRET");
   const realtimeBackplaneConfigured = getDirectRedisConfig() !== null;
   const emailCapability = describeEmailCapability();
+  const paymentsCapability = describePaymentsCapability();
+  const databaseConfigured = isDatabaseConfigured();
   const mediaMode = getMediaProcessorMode();
   const mediaRole = getMediaRole();
   // The worker claims jobs over the direct Redis connection, so that is the
@@ -94,6 +98,30 @@ function getConfiguredCapabilities(): Capability[] {
       detail: maintenanceConfigured
         ? "Authenticated cleanup jobs can run from any scheduler."
         : "The app works, but automated cleanup is not configured.",
+    },
+    {
+      id: "events-database",
+      label: "events and ticketing",
+      status: databaseConfigured ? "available" : "unavailable",
+      required: true,
+      detail: databaseConfigured
+        ? "Events, tickets and redemptions are configured."
+        : "DATABASE_URL is not set; events and ticketing cannot run.",
+    },
+    {
+      id: "payments",
+      label: "ticket payments",
+      status: paymentsCapability.configured
+        ? paymentsCapability.testMode
+          ? "degraded"
+          : "available"
+        : "degraded",
+      required: false,
+      detail: paymentsCapability.configured
+        ? paymentsCapability.testMode
+          ? "Stripe is in TEST mode — no real money will move."
+          : "Stripe Checkout and refunds are live."
+        : `Free tickets work; paid tickets need ${paymentsCapability.missing.join(" and ")}.`,
     },
     {
       id: "ticket-email",
@@ -177,6 +205,19 @@ async function probeSystemCapabilities(): Promise<
         detail: "Persistent application state is configured but unreachable.",
       };
     }
+  }
+
+  const databaseIndex = capabilities.findIndex(({ id }) => id === "events-database");
+  if (databaseIndex >= 0 && capabilities[databaseIndex]?.status === "available") {
+    const probe = await checkDatabase();
+    capabilities[databaseIndex] = {
+      ...capabilities[databaseIndex],
+      status: probe.ok ? "available" : "unavailable",
+      latencyMs: probe.latencyMs,
+      detail: probe.ok
+        ? "Events and ticketing storage is reachable."
+        : "Events and ticketing storage is configured but unreachable.",
+    };
   }
 
   const storageIndex = capabilities.findIndex(({ id }) => id === "media-storage");

@@ -7,6 +7,7 @@ import { useQrCode } from "@/hooks/useQrCode";
 import { eventIcsPath } from "@/features/events/routes";
 import { formatEventDate, formatEventTime, type TicketHolderEvent } from "@/features/events/types";
 import type { TicketRecord } from "../types";
+import { RefundTicketButton } from "./RefundTicketButton";
 
 /**
  * The ticket itself.
@@ -28,6 +29,8 @@ export function TicketPage({
   const { dataUrl: qr, failed } = useQrCode(qrPayload, 512);
   const redeemed = Boolean(ticket.redeemedAt);
   const invalid = ticket.status !== "valid";
+  // Self-serve refunds close when doors open; after that it is a conversation.
+  const doorsOpen = Date.now() >= Date.parse(event.doorsAt ?? event.startsAt);
 
   return (
     <div className="min-h-screen bg-background">
@@ -144,6 +147,25 @@ export function TicketPage({
             add to calendar
           </a>
         </div>
+
+        {ticket.kind === "paid" && (
+          <div className="mt-8 border-t theme-border pt-6">
+            <RefundTicketButton
+              ticketId={ticket.id}
+              amountMinor={ticket.amountPaidMinor}
+              currency={ticket.currency}
+              disabledReason={
+                ticket.status === "refunded"
+                  ? "This ticket has been refunded."
+                  : redeemed
+                    ? "You're already checked in — message us if something's wrong."
+                    : doorsOpen
+                      ? "Doors are open, so refunds are no longer self-serve. Message us."
+                      : undefined
+              }
+            />
+          </div>
+        )}
 
         <p className="mt-10 text-center font-mono text-micro theme-faint tracking-wide">
           {SITE_BRAND.toLowerCase()}

@@ -8,8 +8,10 @@ Milk & Henny is a provider-neutral modular monolith deployed as one Node service
 Browser
   -> TanStack Start / Nitro Node server
        -> feature workflows
-            -> Redis REST adapter
+            -> Postgres adapter (events, tickets)
+            -> Redis REST adapter (sessions, rate limits, rooms)
             -> S3-compatible storage adapter
+            -> email and payments adapters
             -> optional media-worker wake adapter
   -> public media origin (direct images and downloads)
 ```
@@ -24,7 +26,7 @@ The host supplies a port and environment variables. Railway, Docker Compose, Kub
 | `features/*/*.functions.ts` | TanStack server-function boundaries                                 |
 | `features/*/*.server.ts`    | Feature workflows and durable product rules                         |
 | `features/*/ui`             | User interaction and rendering                                      |
-| `lib/platform`              | Redis, object storage, logging, HTTP/provider translation           |
+| `lib/platform`              | Postgres, Redis, object storage, email, payments, logging, provider translation |
 | `lib/shared`                | Environment-safe shared constants and pure utilities                |
 | `ops`                       | Deployment-independent operational entry points                     |
 | `deploy`                    | Optional independently deployed workloads                           |
@@ -87,13 +89,22 @@ Wake publication is safe to retry because it is advisory and idempotent. Room cr
 
 ## Persistence
 
-Redis stores mutable application state: events, tickets and redemptions, voting, transfer metadata, authentication sessions, rate limits, word metadata, and share records. `REDIS_REST_URL` and `REDIS_REST_TOKEN` are the canonical application contract.
+Two stores, split by what each is good at.
 
-The production app fails closed when required persistence is unavailable. In-memory fallbacks are limited to explicit development/test scenarios.
+**Postgres** (`DATABASE_URL`) holds events, ticket types, tickets, redemptions and checkout sessions. These moved off Redis because they need guarantees Redis cannot give without hand-rolling them:
 
-**One key per record.** Collections are indexed with a set or sorted set and read with `mget`, never stored as a single serialized blob. A single-key collection plus a re-rendering poll loop is what caused [the guest-list KV read spike](./postmortem-guestlist-kv-read-spike.md); door scanning is more read-heavy than the page that caused it.
+- A refund marks the ticket refunded and returns its seat in one transaction, or does neither.
+- Capacity is a `count(*)` of live ticket rows taken under `select ... for update` on the ticket type, so two buyers racing for the last seat serialise. There is no separate counter that can drift from the rows it describes.
+- Single admission is `update tickets set redeemed_at = now() where id = $1 and redeemed_at is null returning *`. The second scanner gets zero rows.
+- `tickets` references `ticket_types` with `on delete restrict`, so deleting an event that sold tickets fails loudly instead of orphaning receipts.
 
-Tickets are receipts and are never given a TTL. Single-use redemption is enforced by an atomic `SET NX` claim key rather than by a read-modify-write on the ticket record, so two door devices scanning the same phone cannot both admit.
+Migrations are an append-only list in `lib/platform/migrations.server.ts`, applied on boot under an advisory lock so several replicas can start together. A migration failure is logged and surfaced on `/health` rather than killing the process — the rest of the site keeps serving.
+
+**Redis** (`REDIS_REST_*`) keeps what suits it: authentication sessions, rate limits, multiplayer room state, wake fan-out, transfer metadata, word metadata and share records.
+
+The production app fails closed when required persistence is unavailable. In-memory fallbacks are limited to explicit development scenarios; database-backed tests run against a real Postgres and skip when none is reachable.
+
+**One key per record** remains the rule for anything still in Redis. A single-key collection plus a re-rendering poll loop is what caused [the guest-list KV read spike](./postmortem-guestlist-kv-read-spike.md).
 
 ## Media
 

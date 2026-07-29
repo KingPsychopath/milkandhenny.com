@@ -3,7 +3,7 @@
 import { useId, useState } from "react";
 import { Link } from "@tanstack/react-router";
 
-import { claimFreeTicketsFn } from "@/features/tickets/tickets.functions";
+import { claimFreeTicketsFn, startCheckoutFn } from "@/features/tickets/tickets.functions";
 import { formatMoney, type TicketType } from "../types";
 import type { TicketTypeAvailability } from "../events.server";
 
@@ -77,6 +77,7 @@ export function ClaimTicketForm({
   const [state, setState] = useState<ClaimState>({ status: "idle" });
 
   const unavailable = salesMessage(availability);
+  const isPaid = availability.type.priceMinor > 0;
   const maxQuantity = Math.min(
     availability.type.perPersonLimit,
     Math.max(1, availability.remaining),
@@ -87,6 +88,28 @@ export function ClaimTicketForm({
     setState({ status: "submitting" });
 
     try {
+      // Paid tickets never issue from the browser — Stripe redirects here,
+      // and the webhook is what actually creates the ticket after payment.
+      if (isPaid) {
+        const checkout = await startCheckoutFn({
+          data: {
+            eventSlug,
+            ticketTypeId: availability.type.id,
+            holderName: name,
+            email,
+            quantity,
+          },
+        });
+
+        if (!checkout.ok) {
+          setState({ status: "error", message: checkout.error });
+          return;
+        }
+
+        window.location.assign(checkout.url);
+        return;
+      }
+
       const result = await claimFreeTicketsFn({
         data: {
           eventSlug,
@@ -157,7 +180,7 @@ export function ClaimTicketForm({
           onClick={() => setOpen(true)}
           className="mt-4 w-full min-h-12 font-mono text-sm bg-foreground text-background rounded-lg hover-scale-slight transition-transform"
         >
-          get ticket
+          {isPaid ? "buy ticket" : "get ticket"}
         </button>
       ) : (
         <form onSubmit={submit} className="mt-4 space-y-3">
@@ -231,7 +254,13 @@ export function ClaimTicketForm({
             aria-describedby={state.status === "error" ? errorId : undefined}
             className="w-full min-h-12 font-mono text-sm bg-foreground text-background rounded-lg disabled:opacity-50 hover-scale-slight transition-transform"
           >
-            {state.status === "submitting" ? "getting your ticket..." : "confirm"}
+            {state.status === "submitting"
+              ? isPaid
+                ? "taking you to checkout..."
+                : "getting your ticket..."
+              : isPaid
+                ? `pay ${formatMoney(availability.type.priceMinor * quantity, availability.type.currency)}`
+                : "confirm"}
           </button>
         </form>
       )}

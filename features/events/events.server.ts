@@ -1,6 +1,5 @@
-import { getRedis } from "@/lib/platform/redis.server";
 import { log } from "@/lib/platform/logger.server";
-import { ticketTypeSoldKey } from "./config.server";
+import { getSoldCounts } from "@/features/tickets/store.server";
 import { deleteEvent, getEvent, listEvents, putEvent } from "./store.server";
 import {
   isEventStatus,
@@ -330,24 +329,6 @@ export async function removeEvent(slug: string): Promise<EventOpResult<void>> {
   return { ok: true, value: undefined };
 }
 
-/** Sold counts per ticket type, read as one hash rather than by scanning tickets. */
-export async function getSoldCounts(slug: string): Promise<Record<string, number>> {
-  const redis = getRedis();
-  if (!redis) return {};
-  try {
-    const raw = await redis.hgetall<Record<string, string | number>>(ticketTypeSoldKey(slug));
-    const counts: Record<string, number> = {};
-    for (const [id, value] of Object.entries(raw ?? {})) {
-      const parsed = typeof value === "number" ? value : Number.parseInt(value, 10);
-      if (Number.isFinite(parsed)) counts[id] = parsed;
-    }
-    return counts;
-  } catch (error) {
-    log.error("events.sold", "Failed to read sold counts", { slug }, error);
-    return {};
-  }
-}
-
 export type TicketTypeAvailability = {
   type: TicketType;
   sold: number;
@@ -420,4 +401,4 @@ export async function getEventsIndex(now = Date.now()): Promise<EventsIndexData>
   return { upcoming, past };
 }
 
-export { getEvent, listEvents };
+export { getEvent, listEvents, getSoldCounts };
