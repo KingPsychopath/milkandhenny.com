@@ -49,6 +49,7 @@ import { pitchStageExport, toPitchStageScene } from "./pitch-stage.client";
 
 const PITCH_STUDIO_TOUR_KEY = "milkandhenny:pitch-studio-tour:v1";
 const PITCH_RAIL_KEY = "milkandhenny:pitch-studio-rail:v1";
+let pitchStudioTourSeenThisSession = false;
 
 const TOUR_STEPS: readonly GuidedTourStep[] = [
   {
@@ -76,7 +77,7 @@ const TOUR_STEPS: readonly GuidedTourStep[] = [
     id: "preview",
     selector: "[data-tour='preview']",
     title: "Watch it before the room does",
-    body: "Preview uses the exact same slide bounds and sound rules as the audience screen. Play through uses each slide's timing; arrows keep it manual.",
+    body: "Preview uses the exact same slide bounds and sound rules as the audience screen. Slides only move when you press next, use an arrow key or hand over the remote.",
     side: "bottom",
   },
   {
@@ -93,7 +94,7 @@ const DEMO_TOUR_STEPS: readonly GuidedTourStep[] = TOUR_STEPS.map((step) => {
     return {
       ...step,
       title: "See how timing works",
-      body: "Change each slide's length and inspect the sound timeline. Sound uploads are switched off in this no-save rehearsal.",
+      body: "Adjust the sound timeline and see where a cue would land. It never advances the slide. Sound uploads are switched off in this no-save rehearsal.",
     };
   }
   if (step.id === "publish") {
@@ -105,6 +106,24 @@ const DEMO_TOUR_STEPS: readonly GuidedTourStep[] = TOUR_STEPS.map((step) => {
   }
   return step;
 });
+
+function hasSeenPitchStudioTour(): boolean {
+  if (pitchStudioTourSeenThisSession) return true;
+  try {
+    return localStorage.getItem(PITCH_STUDIO_TOUR_KEY) === "seen";
+  } catch {
+    return false;
+  }
+}
+
+function rememberPitchStudioTour(): void {
+  pitchStudioTourSeenThisSession = true;
+  try {
+    localStorage.setItem(PITCH_STUDIO_TOUR_KEY, "seen");
+  } catch {
+    // The session flag prevents repeated prompts when preferences are blocked.
+  }
+}
 
 function randomId(prefix: string): string {
   return `${prefix}${crypto.randomUUID().replaceAll("-", "")}`;
@@ -275,24 +294,22 @@ export function PitchEditor({
   useUpdateReloadSafety(`pitch-studio:${deckId}`, reloadSafe);
 
   useEffect(() => {
-    if (isDemo) {
-      const timer = window.setTimeout(() => setTourOpen(true), 700);
-      return () => window.clearTimeout(timer);
-    }
-    try {
-      const rail = JSON.parse(localStorage.getItem(PITCH_RAIL_KEY) ?? "null") as unknown;
-      if (rail && typeof rail === "object" && !Array.isArray(rail)) {
-        const saved = rail as Record<string, unknown>;
-        if (typeof saved.open === "boolean") setRailOpen(saved.open);
-        if (typeof saved.pinned === "boolean") setRailPinned(saved.pinned);
+    if (!isDemo) {
+      try {
+        const rail = JSON.parse(localStorage.getItem(PITCH_RAIL_KEY) ?? "null") as unknown;
+        if (rail && typeof rail === "object" && !Array.isArray(rail)) {
+          const saved = rail as Record<string, unknown>;
+          if (typeof saved.open === "boolean") setRailOpen(saved.open);
+          if (typeof saved.pinned === "boolean") setRailPinned(saved.pinned);
+        }
+      } catch {
+        // Private browsing may block preferences; the studio still works.
       }
-      if (localStorage.getItem(PITCH_STUDIO_TOUR_KEY) !== "seen") {
-        const timer = window.setTimeout(() => setTourOpen(true), 700);
-        return () => window.clearTimeout(timer);
-      }
-    } catch {
-      // Private browsing may block preferences; the studio still works.
     }
+
+    if (hasSeenPitchStudioTour()) return;
+    const timer = window.setTimeout(() => setTourOpen(true), 700);
+    return () => window.clearTimeout(timer);
   }, [isDemo]);
 
   useEffect(() => {
@@ -1304,13 +1321,7 @@ export function PitchEditor({
         open={tourOpen}
         steps={isDemo ? DEMO_TOUR_STEPS : TOUR_STEPS}
         onClose={() => {
-          if (!isDemo) {
-            try {
-              localStorage.setItem(PITCH_STUDIO_TOUR_KEY, "seen");
-            } catch {
-              // The help button remains available when preferences cannot persist.
-            }
-          }
+          rememberPitchStudioTour();
           setTourOpen(false);
         }}
       />

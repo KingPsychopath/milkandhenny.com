@@ -364,7 +364,78 @@
   }
 }
 
+@keyframes guided-tour-shell-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes guided-tour-step-in {
+  from {
+    opacity: 0;
+    transform: translateY(0.6rem) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
 @layer components {
+  .guided-tour-shell {
+    animation: guided-tour-shell-in 260ms ease-out both;
+  }
+
+  .guided-tour-mask {
+    will-change: top, left, width, height;
+    transition:
+      top 560ms cubic-bezier(0.16, 1, 0.3, 1),
+      left 560ms cubic-bezier(0.16, 1, 0.3, 1),
+      width 560ms cubic-bezier(0.16, 1, 0.3, 1),
+      height 560ms cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  .guided-tour-spotlight {
+    border-radius: 1.5rem;
+    will-change: top, left, width, height;
+    transition:
+      top 560ms cubic-bezier(0.16, 1, 0.3, 1),
+      left 560ms cubic-bezier(0.16, 1, 0.3, 1),
+      width 560ms cubic-bezier(0.16, 1, 0.3, 1),
+      height 560ms cubic-bezier(0.16, 1, 0.3, 1),
+      border-radius 560ms cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  .guided-tour-card {
+    border-radius: 1.25rem;
+    will-change: top, left, width;
+    transition:
+      top 560ms cubic-bezier(0.16, 1, 0.3, 1),
+      left 560ms cubic-bezier(0.16, 1, 0.3, 1),
+      width 560ms cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  .guided-tour-step {
+    transform-origin: top center;
+    animation: guided-tour-step-in 420ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .guided-tour-shell,
+    .guided-tour-step {
+      animation: none;
+    }
+
+    .guided-tour-mask,
+    .guided-tour-spotlight,
+    .guided-tour-card {
+      transition: none;
+    }
+  }
+
   .things-game-fullscreen {
     min-height: 100svh;
     background: var(--things-night);

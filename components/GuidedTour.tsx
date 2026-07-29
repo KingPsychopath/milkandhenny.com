@@ -141,85 +141,94 @@ export function GuidedTour({
   const right = rect.left + rect.width;
   const bottom = rect.top + rect.height;
   const panels = [
-    { top: 0, left: 0, width: innerWidth, height: rect.top },
-    { top: bottom, left: 0, width: innerWidth, height: Math.max(0, innerHeight - bottom) },
-    { top: rect.top, left: 0, width: rect.left, height: rect.height },
+    { id: "top", top: 0, left: 0, width: innerWidth, height: rect.top },
     {
+      id: "bottom",
+      top: bottom,
+      left: 0,
+      width: innerWidth,
+      height: Math.max(0, innerHeight - bottom),
+    },
+    { id: "left", top: rect.top, left: 0, width: rect.left, height: rect.height },
+    {
+      id: "right",
       top: rect.top,
       left: right,
       width: Math.max(0, innerWidth - right),
       height: rect.height,
     },
-  ].filter((panel) => panel.width > 0 && panel.height > 0);
+  ];
   const last = index === steps.length - 1;
 
   return createPortal(
     <div
-      className="fixed inset-0 z-[110]"
+      className="guided-tour-shell fixed inset-0 z-[110]"
       role="dialog"
       aria-modal="true"
       aria-labelledby="guided-tour-title"
     >
-      {panels.map((panel) => (
+      {panels.map(({ id, ...panel }) => (
         <div
-          key={`${panel.top}-${panel.left}-${panel.width}`}
-          className="fixed bg-foreground/55 backdrop-blur-[1px]"
+          key={id}
+          className="guided-tour-mask fixed bg-foreground/55 backdrop-blur-[1px]"
           style={panel}
         />
       ))}
       <div
         data-guided-tour-spotlight="true"
-        className="pointer-events-none fixed border-2 border-background shadow-lg"
+        className="guided-tour-spotlight pointer-events-none fixed border-2 border-background shadow-lg"
         style={rect}
       />
       <div
         ref={cardRef}
         tabIndex={-1}
-        className="fixed border theme-border bg-background p-5 text-foreground shadow-2xl outline-none"
+        className="guided-tour-card fixed border theme-border bg-background p-5 text-foreground shadow-2xl outline-none"
         style={position}
       >
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <p className="font-mono text-micro uppercase tracking-[0.14em] theme-muted">
-              {index + 1} / {steps.length}
-            </p>
-            <h2 id="guided-tour-title" className="mt-1 font-serif text-2xl">
-              {step.title}
-            </h2>
+        <div key={step.id} className="guided-tour-step">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <p className="font-mono text-micro uppercase tracking-[0.14em] theme-muted">
+                {index + 1} / {steps.length}
+              </p>
+              <h2 id="guided-tour-title" className="mt-1 font-serif text-2xl">
+                {step.title}
+              </h2>
+            </div>
+            <button
+              type="button"
+              onClick={onClose}
+              className="min-h-11 min-w-11 font-mono text-sm theme-muted"
+              aria-label="Close tutorial"
+            >
+              ×
+            </button>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="min-h-11 min-w-11 font-mono text-sm theme-muted"
-            aria-label="Close tutorial"
-          >
-            ×
-          </button>
-        </div>
-        <p className="mt-3 font-serif leading-relaxed theme-muted">{step.body}</p>
-        <div className="mt-5 flex items-center justify-between gap-3">
-          <button
-            type="button"
-            disabled={index === 0}
-            onClick={() => setIndex((current) => Math.max(0, current - 1))}
-            className="min-h-11 px-3 font-mono text-xs theme-muted disabled:opacity-25"
-          >
-            ← back
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              if (last) {
-                onComplete?.();
-                onClose();
-              } else {
-                setIndex((current) => current + 1);
-              }
-            }}
-            className="min-h-11 bg-foreground px-5 font-mono text-xs text-background"
-          >
-            {last ? "start making →" : "next →"}
-          </button>
+          <p className="mt-3 font-serif leading-relaxed theme-muted">{step.body}</p>
+          <div className="mt-5 flex items-center justify-between gap-3">
+            <button
+              type="button"
+              disabled={index === 0}
+              onClick={() => setIndex((current) => Math.max(0, current - 1))}
+              className="min-h-11 px-3 font-mono text-xs theme-muted disabled:opacity-25"
+            >
+              ← back
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                if (last) {
+                  onComplete?.();
+                  onClose();
+                } else {
+                  setIndex((current) => current + 1);
+                }
+              }}
+              className="min-h-11 bg-foreground px-5 font-mono text-xs text-background"
+            >
+              {last ? "start making →" : "next →"}
+            </button>
+          </div>
         </div>
       </div>
     </div>,
