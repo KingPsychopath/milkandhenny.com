@@ -1,7 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useId, useState } from "react";
 
+import { AppSelect } from "@/components/AppSelect";
 import { useActionDialog } from "@/hooks/useActionDialog";
 import {
   EVENT_STATUSES,
@@ -217,6 +218,7 @@ export function EventsPanel({
   >;
   withStepUpHeaders: (token: string, extra?: Record<string, string>) => Record<string, string>;
 }) {
+  const statusId = useId();
   const [events, setEvents] = useState<EventRecord[]>([]);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -410,23 +412,21 @@ export function EventsPanel({
               value={draft.tagline}
               onChange={(value) => setDraft({ ...draft, tagline: value })}
             />
-            <label className="block">
-              <span className="font-mono text-micro theme-muted tracking-wide">status</span>
-              <select
+            <div>
+              <label htmlFor={statusId} className="font-mono text-micro theme-muted tracking-wide">
+                status
+              </label>
+              <AppSelect
+                id={statusId}
                 value={draft.status}
-                onChange={(event) =>
-                  isEventStatus(event.target.value) &&
-                  setDraft({ ...draft, status: event.target.value })
+                onValueChange={(value) =>
+                  isEventStatus(value) && setDraft({ ...draft, status: value })
                 }
-                className="mt-1 w-full min-h-10 px-3 font-mono text-sm bg-transparent border theme-border rounded text-foreground"
-              >
-                {EVENT_STATUSES.map((status) => (
-                  <option key={status} value={status}>
-                    {status}
-                  </option>
-                ))}
-              </select>
-            </label>
+                options={EVENT_STATUSES.map((status) => ({ value: status, label: status }))}
+                variant="field"
+                className="mt-1 rounded text-sm"
+              />
+            </div>
             <Field
               label="starts"
               type="datetime-local"

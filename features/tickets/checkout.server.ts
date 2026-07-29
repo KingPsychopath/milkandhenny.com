@@ -9,12 +9,13 @@ import {
   retrieveSession,
 } from "@/lib/platform/stripe.server";
 import { getEvent } from "@/features/events/store.server";
-import { ticketTypeSalesState } from "@/features/events/types";
+import { formatMoney, ticketTypeSalesState } from "@/features/events/types";
 import { buildEventUrl, ticketPath } from "@/features/events/routes";
 import { getSoldCounts, listTicketsForOrder, markOrderRefunded } from "./store.server";
 import { hashEmail, isTicketSigningConfigured } from "./qr.server";
 import { issueTickets, type TicketOpResult } from "./tickets.server";
 import { sendTicketEmail } from "./email.server";
+import { getCheckoutMinimumMinor, isCheckoutTotalSupported } from "./payment-limits";
 import { isValidEmail, normaliseEmail, type TicketRecord } from "./types";
 
 /**
@@ -91,6 +92,16 @@ export async function startCheckout(input: StartCheckoutInput): Promise<StartChe
   const email = normaliseEmail(input.email);
   const reference = randomBytes(16).toString("base64url");
   const amountMinor = ticketType.priceMinor * quantity;
+  if (!isCheckoutTotalSupported(ticketType.priceMinor, quantity, ticketType.currency)) {
+    const minimum = getCheckoutMinimumMinor(ticketType.currency);
+    return {
+      ok: false,
+      status: 409,
+      error: minimum
+        ? `Online payments must total at least ${formatMoney(minimum, ticketType.currency)}`
+        : "That payment total is too low",
+    };
+  }
 
   let session: { id: string; url: string };
   try {

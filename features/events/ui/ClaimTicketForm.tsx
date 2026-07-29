@@ -3,6 +3,11 @@
 import { useId, useState } from "react";
 import { Link } from "@tanstack/react-router";
 
+import { AppSelect } from "@/components/AppSelect";
+import {
+  getCheckoutMinimumMinor,
+  minimumCheckoutQuantity,
+} from "@/features/tickets/payment-limits";
 import { claimFreeTicketsFn, startCheckoutFn } from "@/features/tickets/tickets.functions";
 import { formatMoney, type TicketType } from "../types";
 import type { TicketTypeAvailability } from "../events.server";
@@ -82,6 +87,16 @@ export function ClaimTicketForm({
     availability.type.perPersonLimit,
     Math.max(1, availability.remaining),
   );
+  const minimumQuantity = isPaid
+    ? minimumCheckoutQuantity(availability.type.priceMinor, availability.type.currency)
+    : 1;
+  const checkoutMinimum = getCheckoutMinimumMinor(availability.type.currency);
+  const canStartOnlineCheckout = !isPaid || minimumQuantity <= maxQuantity;
+  const quantityOptions = Array.from(
+    { length: Math.max(0, maxQuantity - minimumQuantity + 1) },
+    (_, index) => minimumQuantity + index,
+  );
+  const selectedQuantity = Math.min(maxQuantity, Math.max(minimumQuantity, quantity));
 
   const submit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -97,7 +112,7 @@ export function ClaimTicketForm({
             ticketTypeId: availability.type.id,
             holderName: name,
             email,
-            quantity,
+            quantity: selectedQuantity,
           },
         });
 
@@ -116,7 +131,7 @@ export function ClaimTicketForm({
           ticketTypeId: availability.type.id,
           holderName: name,
           email,
-          quantity,
+          quantity: selectedQuantity,
         },
       });
 
@@ -174,10 +189,21 @@ export function ClaimTicketForm({
 
       {unavailable ? (
         <p className="mt-4 font-mono text-xs theme-muted tracking-wide">{unavailable}</p>
+      ) : !canStartOnlineCheckout ? (
+        <p className="mt-4 font-mono text-xs theme-muted leading-relaxed">
+          Online payments start at{" "}
+          {checkoutMinimum
+            ? formatMoney(checkoutMinimum, availability.type.currency)
+            : "the card minimum"}
+          . The remaining tickets cannot be bought online.
+        </p>
       ) : !open ? (
         <button
           type="button"
-          onClick={() => setOpen(true)}
+          onClick={() => {
+            setQuantity(minimumQuantity);
+            setOpen(true);
+          }}
           className="mt-4 w-full min-h-12 font-mono text-sm bg-foreground text-background rounded-lg hover-scale-slight transition-transform"
         >
           {isPaid ? "buy ticket" : "get ticket"}
@@ -215,7 +241,7 @@ export function ClaimTicketForm({
             />
           </div>
 
-          {maxQuantity > 1 && (
+          {quantityOptions.length > 1 && (
             <div>
               <label
                 htmlFor={`${nameId}-qty`}
@@ -223,18 +249,14 @@ export function ClaimTicketForm({
               >
                 how many
               </label>
-              <select
+              <AppSelect
                 id={`${nameId}-qty`}
-                value={quantity}
-                onChange={(event) => setQuantity(Number(event.target.value))}
-                className="mt-1 w-full min-h-12 px-4 font-mono text-base bg-transparent border theme-border-strong rounded-lg text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--prose-hashtag)]"
-              >
-                {Array.from({ length: maxQuantity }, (_, index) => index + 1).map((value) => (
-                  <option key={value} value={value}>
-                    {value}
-                  </option>
-                ))}
-              </select>
+                value={selectedQuantity}
+                onValueChange={(value) => setQuantity(Number(value))}
+                options={quantityOptions.map((value) => ({ value, label: String(value) }))}
+                variant="field"
+                className="mt-1"
+              />
             </div>
           )}
 
@@ -259,7 +281,10 @@ export function ClaimTicketForm({
                 ? "taking you to checkout..."
                 : "getting your ticket..."
               : isPaid
-                ? `pay ${formatMoney(availability.type.priceMinor * quantity, availability.type.currency)}`
+                ? `pay ${formatMoney(
+                    availability.type.priceMinor * selectedQuantity,
+                    availability.type.currency,
+                  )}`
                 : "confirm"}
           </button>
         </form>

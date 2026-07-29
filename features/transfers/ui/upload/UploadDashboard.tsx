@@ -1,5 +1,6 @@
 "use client";
 
+import { AppCombobox } from "@/components/AppCombobox";
 import { AppSelect } from "@/components/AppSelect";
 import { useState, useRef, useCallback, useEffect, useDeferredValue } from "react";
 import { Link } from "@tanstack/react-router";
@@ -1272,30 +1273,17 @@ export function UploadDashboard({ isAdmin }: UploadDashboardProps) {
             >
               {wordsScope === "word" ? "slug" : "asset id"}
             </label>
-            <input
+            <AppCombobox
               id="words-upload-target"
-              type="text"
-              list={wordsScope === "word" ? "word-slug-options" : "asset-id-options"}
               value={wordsScope === "word" ? slug : assetId}
-              onChange={(e) =>
-                wordsScope === "word" ? setSlug(e.target.value) : setAssetId(e.target.value)
+              onValueChange={(value) =>
+                wordsScope === "word" ? setSlug(value) : setAssetId(value)
               }
               placeholder={wordsScope === "word" ? "my-post-slug" : "brand-kit"}
-              className="w-full bg-transparent border-b border-[var(--stone-200)] focus:border-[var(--foreground)] outline-none font-mono text-sm py-2 transition-colors placeholder:text-[var(--stone-400)]"
+              options={(wordsScope === "word" ? wordSlugSuggestions : assetSuggestions).map(
+                (suggestion) => ({ value: suggestion, label: suggestion }),
+              )}
             />
-            {wordsScope === "word" ? (
-              <datalist id="word-slug-options">
-                {wordSlugSuggestions.map((s) => (
-                  <option key={s} value={s} />
-                ))}
-              </datalist>
-            ) : (
-              <datalist id="asset-id-options">
-                {assetSuggestions.map((s) => (
-                  <option key={s} value={s} />
-                ))}
-              </datalist>
-            )}
             <p className="font-mono text-micro theme-faint mt-1">
               {wordsScope === "word"
                 ? "stores at words/media/{slug}/..."

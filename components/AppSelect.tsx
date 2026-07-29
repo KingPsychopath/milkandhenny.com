@@ -29,6 +29,7 @@ interface AppSelectProps {
   disabled?: boolean;
   onBlur?: () => void;
   tone?: "theme" | "cream" | "night";
+  variant?: "pill" | "field";
   className?: string;
 }
 
@@ -72,6 +73,7 @@ export function AppSelect({
   disabled = false,
   onBlur,
   tone = "theme",
+  variant = "pill",
   className = "",
 }: AppSelectProps) {
   const generatedId = useId();
@@ -90,6 +92,13 @@ export function AppSelect({
   const [menuStyle, setMenuStyle] = useState<CSSProperties>({ visibility: "hidden" });
   const styles = toneClasses[tone];
   const selected = options[selectedIndex];
+  const triggerShape =
+    variant === "field"
+      ? "w-full min-h-12 rounded-lg px-4 text-base focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--prose-hashtag)]"
+      : "min-h-11 rounded-full px-4 text-xs";
+  const menuShape =
+    variant === "field" ? "rounded-lg p-1.5 text-base" : "rounded-[1.35rem] p-1.5 text-xs";
+  const optionShape = variant === "field" ? "rounded-md" : "rounded-[1rem]";
 
   const positionMenu = useCallback(() => {
     const trigger = triggerRef.current;
@@ -221,7 +230,7 @@ export function AppSelect({
             setOpen(true);
           }
         }}
-        className={`inline-flex min-h-11 items-center justify-between gap-3 rounded-full px-4 font-mono text-xs shadow-sm transition-opacity disabled:cursor-not-allowed disabled:opacity-40 ${styles.trigger} ${className}`}
+        className={`inline-flex items-center justify-between gap-3 font-mono shadow-sm transition-opacity disabled:cursor-not-allowed disabled:opacity-40 ${triggerShape} ${styles.trigger} ${className}`}
       >
         <span className="truncate">{selected?.label ?? String(value)}</span>
         <svg
@@ -248,7 +257,7 @@ export function AppSelect({
               aria-activedescendant={`${listboxId}-option-${activeIndex}`}
               onKeyDown={handleListboxKeyDown}
               style={menuStyle}
-              className={`fixed z-[100] overflow-y-auto rounded-[1.35rem] border p-1.5 font-mono text-xs shadow-xl outline-none ${styles.menu}`}
+              className={`fixed z-[100] overflow-y-auto border font-mono shadow-xl outline-none ${menuShape} ${styles.menu}`}
             >
               {options.map((option, index) => {
                 const isSelected = String(option.value) === String(value);
@@ -265,7 +274,7 @@ export function AppSelect({
                       event.preventDefault();
                       choose(index);
                     }}
-                    className={`flex min-h-11 cursor-default items-center gap-3 rounded-[1rem] px-3 outline-none ${isActive ? styles.active : ""} ${option.disabled ? `${styles.muted} opacity-50` : ""}`}
+                    className={`flex min-h-11 cursor-default items-center gap-3 px-3 outline-none ${optionShape} ${isActive ? styles.active : ""} ${option.disabled ? `${styles.muted} opacity-50` : ""}`}
                   >
                     <span
                       aria-hidden="true"
