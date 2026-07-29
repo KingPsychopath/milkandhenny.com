@@ -29,7 +29,7 @@ Do **not** skip this on the grounds that test mode passed. Test mode passing is 
 
 ## Where things stand
 
-Live at `milkandhenny.com`, commit `0d014de`. 409 tests passing, lint clean, 0 type errors.
+Live at `milkandhenny.com`, commit `a942265`. 409 tests passing, lint clean, 0 type errors.
 
 | Capability | State |
 |---|---|
@@ -38,11 +38,11 @@ Live at `milkandhenny.com`, commit `0d014de`. 409 tests passing, lint clean, 0 t
 | Door: `/door`, scanner-first, offline manifest + queue | ✅ done |
 | Postgres: events, tickets, redemptions, checkout sessions | ✅ done, migrations run on boot |
 | Stripe: Checkout, webhook, refunds, disputes | ✅ code done, ✅ live config correct, ⚠️ live path unverified |
-| Email: provider-neutral adapter, ticket template with inline QR | ✅ code done, ❌ not configured |
+| Email: provider-neutral adapter, ticket template with inline QR | ✅ configured, ✅ Gmail delivery rehearsed, ⚠️ iCloud/Outlook unverified |
 | `/party` → `/events` redirect; guestlist deleted | ✅ done |
 | Hot takes (Phase 3) | ❌ not started |
 
-`/health` currently reports **degraded**: ticket payments and ticket delivery.
+`/api/health` currently reports **healthy** on the deployed commit.
 
 ---
 
@@ -51,19 +51,12 @@ Live at `milkandhenny.com`, commit `0d014de`. 409 tests passing, lint clean, 0 t
 ### 1. Live dress rehearsal
 See the warning above. Do this before publishing the first paid event.
 
-### 2. Cloudflare Email DNS — none of it is live
-`wrangler email sending enable tickets.milkandhenny.com` succeeded, but it **did not write DNS**. Auto-configuration applies to full zones; for a subdomain you add the records yourself. Verified missing on 29 July:
+### 2. Cloudflare Email DNS — configured
+`tickets.milkandhenny.com` is enabled for Email Sending with the `cf-bounce`
+DKIM selector and return-path domain. A real ticket email reached Gmail's
+personal inbox with the inline QR intact on 29 July.
 
-```
-cf-bounce.tickets.milkandhenny.com              TXT   MISSING
-cf-bounce._domainkey.tickets.milkandhenny.com   TXT   MISSING
-_dmarc.tickets.milkandhenny.com                 TXT   MISSING
-cf-bounce.tickets.milkandhenny.com              MX    MISSING (×3)
-```
-
-Get the values with `wrangler email sending dns get tickets.milkandhenny.com`. Without DKIM and SPF, mail won't send or will land in spam.
-
-### 3. Cloudflare API tokens
+### 3. Cloudflare API tokens — configured
 Two, with different blast radii:
 
 | Token | Scope | Lives in |
@@ -73,13 +66,16 @@ Two, with different blast radii:
 
 `CLOUDFLARE_ACCOUNT_ID` is already exported in `~/.zshrc` (backup at `~/.zshrc.bak-*`).
 
-### 4. Then set on Railway
-`EMAIL_API_KEY`, `EMAIL_FROM=tickets@tickets.milkandhenny.com`, `EMAIL_FROM_NAME=milk & henny`. `EMAIL_ACCOUNT_ID` falls back to `R2_ACCOUNT_ID`.
+### 4. Railway email variables — configured
+`EMAIL_API_KEY`, `EMAIL_FROM=tickets@tickets.milkandhenny.com`, and
+`EMAIL_FROM_NAME=milk & henny` are set. `EMAIL_ACCOUNT_ID` falls back to
+`R2_ACCOUNT_ID`.
 
-### 5. Rotate the leaked secrets
+### 5. Finish rotating the leaked secrets
 `ADMIN_PASSWORD`, `STAFF_PIN`, `UPLOAD_PIN`, `AUTH_SECRET`, `R2_SECRET_KEY`, `REDIS_REST_TOKEN` and `CRON_SECRET` were printed into a chat transcript on 29 July by a `railway variables` call that returned values, not just names. Nothing hostile happened; rotate the short human-memorable ones at minimum.
 
-**`AUTH_SECRET` is the one that hurts to rotate** — it invalidates every session *and* every ticket QR signature. Rotate it before tickets are issued, or not at all.
+`AUTH_SECRET` was rotated across web and media-worker before any real event
+tickets were issued. The other listed secrets still need rotation.
 
 ---
 
@@ -156,13 +152,18 @@ Nothing counts until each of these has been observed, not reasoned about.
 - [ ] `charge.dispute.closed` with status `won` restores tickets *(untested against a real payload)*
 - [ ] `checkout.session.expired` closes the pending session *(untested against a real payload)*
 - [ ] `radar.early_fraud_warning.created` logs *(untested against a real payload)*
-- [ ] Ticket email arrives in **Gmail, iCloud and Outlook** inboxes, not spam
-- [ ] The QR in the email renders, and the link works when the image is blocked
-- [ ] Door scanner admits, rejects a second scan, and rejects a forged signature
+- [x] Ticket email arrives in the **Gmail** personal inbox, not spam
+- [ ] Ticket email arrives in **iCloud and Outlook** inboxes, not spam
+- [x] The delivered email contains its inline QR, and the ticket link works independently
+- [x] The production redemption path admits, rejects a second scan, and rejects a forged signature
 - [ ] Door works with wifi **off**, and queued scans sync on reconnect
-- [ ] `/health` fully green
+- [x] `/api/health` fully green
 
-Ticked items were verified in **test mode**. The three marked untested are covered by unit and integration tests but have never seen a real Stripe payload — close those with `stripe trigger`. Nothing at all has been verified against **live** keys.
+Payment items ticked above were verified in **test mode**. Gmail delivery,
+ticket-page access, QR redemption, and health were rehearsed against production
+on 29 July. The three marked Stripe events are covered by tests but have never
+seen a real Stripe payload — close those with `stripe trigger`. A live purchase
+and refund remain unverified.
 
 ---
 

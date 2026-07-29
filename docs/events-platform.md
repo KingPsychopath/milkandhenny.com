@@ -181,9 +181,10 @@ than "whatever is on", that resolution is the single place to change.
 
 Before the first event that matters:
 
-- [ ] Stripe test mode: buy, receive, scan, refund, confirm void
-- [ ] Ticket email lands in the inbox on Gmail, iCloud, and Outlook
+- [x] Stripe test mode: buy, receive, scan, refund, confirm void
+- [x] Ticket email lands in the Gmail personal inbox
+- [ ] Ticket email lands in the inbox on iCloud and Outlook
 - [ ] Scanner works with the venue wifi off, and the queued scans sync when it returns
-- [ ] Duplicate scan is visibly rejected
+- [x] Production redemption admits once, rejects a duplicate, and rejects a forged signature
 - [ ] Cloudflare daily quota confirmed above expected volume
-- [ ] `/api/health` reports email as a configured capability
+- [x] `/api/health` reports email as a configured capability
