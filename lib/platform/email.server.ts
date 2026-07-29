@@ -19,7 +19,7 @@ export type EmailChannel = "tickets" | "studio";
 export type EmailConfig = {
   provider: EmailProvider;
   apiKey: string;
-  senders: Record<EmailChannel, { address: string; name: string }>;
+  sender: { address: string; name: string };
   replyTo: string;
   /** Cloudflare only: the account that owns the sending domain. */
   accountId?: string;
@@ -54,12 +54,23 @@ function readProvider(): EmailProvider {
   return raw === "resend" ? "resend" : "cloudflare";
 }
 
-export function getEmailConfig(): EmailConfig | null {
+const CHANNEL_SENDERS: Record<EmailChannel, { environmentVariable: string; name: string }> = {
+  tickets: {
+    environmentVariable: "EMAIL_TICKETS_FROM",
+    name: "milk & henny tickets",
+  },
+  studio: {
+    environmentVariable: "EMAIL_STUDIO_FROM",
+    name: "milk & henny studio",
+  },
+};
+
+function getEmailConfig(channel: EmailChannel): EmailConfig | null {
   const apiKey = process.env.EMAIL_API_KEY?.trim();
-  const ticketsFrom = process.env.EMAIL_TICKETS_FROM?.trim();
-  const studioFrom = process.env.EMAIL_STUDIO_FROM?.trim();
   const replyTo = process.env.EMAIL_REPLY_TO?.trim();
-  if (!apiKey || !ticketsFrom || !studioFrom || !replyTo) return null;
+  const sender = CHANNEL_SENDERS[channel];
+  const address = process.env[sender.environmentVariable]?.trim();
+  if (!apiKey || !address || !replyTo) return null;
 
   const provider = readProvider();
   // Falls back to the R2 account only as a convenience; a dedicated,
@@ -70,37 +81,29 @@ export function getEmailConfig(): EmailConfig | null {
   return {
     provider,
     apiKey,
-    senders: {
-      tickets: { address: ticketsFrom, name: "milk & henny tickets" },
-      studio: { address: studioFrom, name: "milk & henny studio" },
-    },
+    sender: { address, name: sender.name },
     replyTo,
     accountId,
   };
-}
-
-export function isEmailConfigured(): boolean {
-  return getEmailConfig() !== null;
 }
 
 /** Surfaced on `/health` alongside the other optional capabilities. */
 export function describeEmailCapability(): {
   configured: boolean;
   provider: EmailProvider | null;
-  senders: Record<EmailChannel, string> | null;
+  senders: Record<EmailChannel, string | null>;
   replyTo: string | null;
 } {
-  const config = getEmailConfig();
+  const tickets = getEmailConfig("tickets");
+  const studio = getEmailConfig("studio");
   return {
-    configured: config !== null,
-    provider: config?.provider ?? null,
-    senders: config
-      ? {
-          tickets: config.senders.tickets.address,
-          studio: config.senders.studio.address,
-        }
-      : null,
-    replyTo: config?.replyTo ?? null,
+    configured: tickets !== null && studio !== null,
+    provider: tickets?.provider ?? studio?.provider ?? null,
+    senders: {
+      tickets: tickets?.sender.address ?? null,
+      studio: studio?.sender.address ?? null,
+    },
+    replyTo: tickets?.replyTo ?? studio?.replyTo ?? process.env.EMAIL_REPLY_TO?.trim() ?? null,
   };
 }
 
@@ -171,14 +174,13 @@ async function sendViaCloudflare(
   config: EmailConfig,
   message: EmailMessage,
 ): Promise<SendEmailResult> {
-  const sender = config.senders[message.channel];
   const { status, payload } = await postJson(
     `https://api.cloudflare.com/client/v4/accounts/${config.accountId}/email/sending/send`,
     config.apiKey,
     {
       to: message.to,
       // REST uses `address`, unlike the Workers binding's `email`.
-      from: sender,
+      from: config.sender,
       subject: message.subject,
       text: message.text,
       ...(message.html ? { html: message.html } : {}),
@@ -202,9 +204,8 @@ async function sendViaCloudflare(
 }
 
 async function sendViaResend(config: EmailConfig, message: EmailMessage): Promise<SendEmailResult> {
-  const sender = config.senders[message.channel];
   const { status, payload } = await postJson("https://api.resend.com/emails", config.apiKey, {
-    from: `${sender.name} <${sender.address}>`,
+    from: `${config.sender.name} <${config.sender.address}>`,
     to: [message.to],
     subject: message.subject,
     text: message.text,
@@ -242,7 +243,7 @@ async function sendViaResend(config: EmailConfig, message: EmailMessage): Promis
  * ticket issued is not.
  */
 export async function sendEmail(message: EmailMessage): Promise<SendEmailResult> {
-  const config = getEmailConfig();
+  const config = getEmailConfig(message.channel);
   if (!config) {
     log.warn("email.send", "Email is not configured; message dropped", {
       channel: message.channel,

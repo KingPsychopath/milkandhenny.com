@@ -132,7 +132,7 @@ function getConfiguredCapabilities(): Capability[] {
       status: emailCapability.configured ? "available" : "degraded",
       required: false,
       detail: emailCapability.configured
-        ? `Ticket and studio emails send via ${emailCapability.provider} from ${emailCapability.senders?.tickets} and ${emailCapability.senders?.studio}; replies go to ${emailCapability.replyTo}.`
+        ? `Ticket and studio emails send via ${emailCapability.provider} from ${emailCapability.senders.tickets} and ${emailCapability.senders.studio}; replies go to ${emailCapability.replyTo}.`
         : "Ticket and studio email channels are not fully configured.",
     },
     {
