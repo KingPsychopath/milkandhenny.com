@@ -117,8 +117,10 @@ function asRecord(value: unknown): Record<string, unknown> | null {
 }
 
 /**
- * Cloudflare returns `{ success, errors[], result: { delivered, permanent_bounces, queued } }`.
+ * Cloudflare returns
+ * `{ success, errors[], result: { message_id, delivered, permanent_bounces, queued } }`.
  * A 200 with the recipient in `permanent_bounces` is a failure, not a send.
+ * Live responses can issue a message id before either delivery array is populated.
  */
 function interpretCloudflareResponse(
   status: number,
@@ -141,13 +143,17 @@ function interpretCloudflareResponse(
     return { ok: false, status: 422, error: "Recipient address permanently bounced" };
   }
 
+  const id =
+    typeof result?.message_id === "string" && result.message_id.length > 0
+      ? result.message_id
+      : null;
   const delivered = Array.isArray(result?.delivered) ? result.delivered : [];
   const queued = Array.isArray(result?.queued) ? result.queued : [];
-  if (delivered.length === 0 && queued.length === 0) {
+  if (!id && delivered.length === 0 && queued.length === 0) {
     return { ok: false, status: 502, error: "Provider accepted the request but delivered nothing" };
   }
 
-  return { ok: true, id: null };
+  return { ok: true, id };
 }
 
 async function sendViaCloudflare(
