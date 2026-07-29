@@ -59,6 +59,7 @@ export function usePairedGameRoom(
   const receiptsRef = useRef<RemoteCommandReceipt[]>([]);
   const connectionEpochRef = useRef(room?.connectionEpoch ?? crypto.randomUUID());
   const roundIdRef = useRef<string | null>(null);
+  const lastSyncedPhaseRef = useRef<RemoteGameSnapshot["phase"] | null>(null);
   const lastRevisionSignatureRef = useRef("");
   const revisionRef = useRef(0);
   const syncNowRef = useRef<(() => Promise<void>) | null>(null);
@@ -70,7 +71,11 @@ export function usePairedGameRoom(
   const syncedSnapshot = useCallback((): RemoteSyncedSnapshot => {
     const current = snapshotRef.current;
     if (current.phase === "setup") roundIdRef.current = null;
-    else if (!roundIdRef.current) roundIdRef.current = crypto.randomUUID();
+    else if (!roundIdRef.current || (current.phase === "countdown" && lastSyncedPhaseRef.current !== "countdown")) {
+      roundIdRef.current = crypto.randomUUID();
+      decidedItemsRef.current.clear();
+    }
+    lastSyncedPhaseRef.current = current.phase;
     const itemId = current.phase === "playing" && current.itemKey && roundIdRef.current
       ? `${roundIdRef.current}:${current.itemKey}`
       : null;
@@ -223,8 +228,10 @@ export function usePairedGameRoom(
           let receipt: RemoteCommandReceipt;
           if (latest.roundId !== command.roundId) {
             receipt = { commandId: command.id, sequence: command.sequence, status: "rejected", reason: "stale_round" };
-          } else if ((command.type !== "amend" && latest.itemId !== command.itemId) || (isDecision && latest.transitioning)) {
+          } else if ((command.type !== "amend" && command.type !== "play_again" && latest.itemId !== command.itemId) || (isDecision && latest.transitioning)) {
             receipt = { commandId: command.id, sequence: command.sequence, status: "rejected", reason: "stale_item" };
+          } else if (command.type === "play_again" && latest.phase !== "results") {
+            receipt = { commandId: command.id, sequence: command.sequence, status: "rejected", reason: "round_not_complete" };
           } else if (isDecision && (latest.decisionGraceEndsAt ?? latest.decisionClosesAt) && command.receivedAt > (latest.decisionGraceEndsAt ?? latest.decisionClosesAt)!) {
             receipt = { commandId: command.id, sequence: command.sequence, status: "rejected", reason: "decision_closed" };
           } else if (isDecision && decidedItemsRef.current.has(command.itemId)) {

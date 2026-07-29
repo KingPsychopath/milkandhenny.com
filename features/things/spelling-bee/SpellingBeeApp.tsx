@@ -78,6 +78,7 @@ function SpellingBeeExperience({ remoteSession }: { remoteSession?: RemotePlayer
   const motionPaused = useRef(false);
   const replayGeneration = useRef(0);
   const replayRemainingMs = useRef<number | undefined>(undefined);
+  const replayRound = useRef<() => void>(() => undefined);
   const [preferencesLoaded, setPreferencesLoaded] = useState(false);
   const haptics = useWebHaptics();
   const {
@@ -185,6 +186,7 @@ function SpellingBeeExperience({ remoteSession }: { remoteSession?: RemotePlayer
   }, [clearTransition, phase, results.length]);
 
   const handleRemoteCommand = useCallback((command: RemoteCommand) => {
+    if (command.type === "play_again") return replayRound.current();
     if (command.type === "correct") return completeWord("correct");
     if (command.type === "incorrect") return completeWord("incorrect");
     if (command.type === "skip") return completeWord("skipped");
@@ -320,6 +322,9 @@ function SpellingBeeExperience({ remoteSession }: { remoteSession?: RemotePlayer
     void haptics.trigger("medium");
     setPhase("countdown");
   }, [clearTransition, haptics, requestAccess, roundTotal, selectedDeck, stopAssistant, tiltEnabled, timerSeconds]);
+  useEffect(() => {
+    replayRound.current = () => void startRound();
+  }, [startRound]);
 
   const endRound = useCallback((confirmFirst = true) => {
     if (confirmFirst) { setEndConfirmationOpen(true); return; }

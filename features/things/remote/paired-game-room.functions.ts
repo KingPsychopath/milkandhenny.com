@@ -34,6 +34,11 @@ function roomRole(value: unknown): PairedGameRoomRole {
   throw new Error("Invalid role");
 }
 
+function headsUpOrientation(value: unknown) {
+  if (value === "auto" || value === "portrait" || value === "landscape") return value;
+  throw new Error("Invalid orientation");
+}
+
 function resultDecision(value: unknown): RemoteResultDecision {
   if (
     value === "correct" ||
@@ -58,7 +63,7 @@ export function remoteGameSetup(value: unknown): RemoteGameSetup {
   const name = shortText(deck.name, 80);
   if (game === "heads-up") {
     const cards = boundedList(deck.cards, 3, 200).map((card) => shortText(card, 100));
-    return { game, deck: { name, cards }, positionLock: data.positionLock === true };
+    return { game, deck: { name, cards }, orientation: headsUpOrientation(data.orientation) };
   }
   const words = boundedList(deck.words, 3, 200).map((value) => {
     const item = record(value);
@@ -90,7 +95,7 @@ function command(value: unknown): RemoteCommandRequest {
     if (decision !== "correct" && decision !== "incorrect" && decision !== "pass" && decision !== "skipped" && decision !== "timed_out") throw new Error("Invalid decision");
     return { id, type: "amend", resultId: shortText(data.resultId, 80), decision, createdAt, ...target };
   }
-  if (data.type === "correct" || data.type === "incorrect" || data.type === "pass" || data.type === "skip" || data.type === "pause" || data.type === "resume" || data.type === "undo") {
+  if (data.type === "correct" || data.type === "incorrect" || data.type === "pass" || data.type === "skip" || data.type === "pause" || data.type === "resume" || data.type === "undo" || data.type === "play_again") {
     return { id, type: data.type, createdAt, ...target };
   }
   throw new Error("Invalid command");
@@ -149,7 +154,8 @@ function syncedSnapshot(value: unknown): RemoteSyncedSnapshot {
         receipt.reason === "stale_round" ||
         receipt.reason === "stale_item" ||
         receipt.reason === "decision_closed" ||
-        receipt.reason === "already_decided"
+        receipt.reason === "already_decided" ||
+        receipt.reason === "round_not_complete"
           ? receipt.reason
           : undefined;
       return {

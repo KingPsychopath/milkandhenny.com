@@ -37,14 +37,16 @@ const receiptReasonLabels: Record<RemoteCommandReceiptReason, string> = {
   stale_item: "card changed",
   decision_closed: "decision window closed",
   already_decided: "word already decided",
+  round_not_complete: "round is not complete",
 };
 
 type RemoteCommandInput =
-  | { type: "correct" | "incorrect" | "pass" | "skip" | "pause" | "resume" | "undo" }
+  | { type: "correct" | "incorrect" | "pass" | "skip" | "pause" | "resume" | "undo" | "play_again" }
   | { type: "amend"; resultId: string; decision: RemoteResultDecision };
 
 function commandLabel(command: RemoteCommandInput) {
   if (command.type === "amend") return "Result update";
+  if (command.type === "play_again") return "Play again";
   return command.type === "pass" || command.type === "skip"
     ? "Skip"
     : `${command.type.at(0)?.toUpperCase()}${command.type.slice(1)}`;
@@ -210,7 +212,7 @@ export function RemoteJudgeApp({ roomId }: { roomId: string }) {
         sending ||
         pendingCommandId ||
         !snapshot?.roundId ||
-        (command.type !== "amend" && !snapshot.itemId)
+        (command.type !== "amend" && command.type !== "play_again" && !snapshot.itemId)
       )
         return;
       const label = commandLabel(command);
@@ -550,6 +552,17 @@ export function RemoteJudgeApp({ roomId }: { roomId: string }) {
                 </p>
               </div>
             </section>
+
+            {snapshot.phase === "results" ? (
+              <button
+                type="button"
+                disabled={!judgeActive || !playerConnected || controlsBusy}
+                onClick={() => void send({ type: "play_again" })}
+                className="mt-4 min-h-14 w-full rounded-full bg-[var(--things-amber)] px-6 font-mono text-sm font-bold text-black disabled:opacity-30"
+              >
+                play again
+              </button>
+            ) : null}
 
             <div className="mt-4 grid grid-cols-2 gap-3">
               <button

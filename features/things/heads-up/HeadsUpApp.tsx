@@ -15,6 +15,7 @@ import { RemoteConnectionBadge, PairedGameHostPanel } from "../remote/PairedGame
 import { PairedGamePlayerReady } from "../remote/PairedGamePlayerReady";
 import { usePairedGameRoom } from "../remote/usePairedGameRoom";
 import type { RemoteCommand, RemoteGameSnapshot, RemoteHeadsUpSetup, RemotePlayerSession } from "../remote/types";
+import type { GameOrientation } from "../shared/orientation";
 import { GameShell } from "../shared/GameShell";
 import { EndGameDialog } from "../shared/EndGameDialog";
 import { shareOrCopy } from "@/lib/client/share";
@@ -44,6 +45,7 @@ interface FullscreenControls {
   standalone: boolean;
   supported: boolean;
   toggle: () => Promise<void>;
+  lockOrientation: (orientation: GameOrientation) => Promise<void>;
 }
 
 function HeadsUpExperience({ fullscreen, remoteSession }: { fullscreen: FullscreenControls; remoteSession?: RemotePlayerSession }) {
@@ -66,7 +68,7 @@ function HeadsUpExperience({ fullscreen, remoteSession }: { fullscreen: Fullscre
   const [results, setResults] = useState<RoundResult[]>([]);
   const [feedback, setFeedback] = useState<Decision | null>(null);
   const [soundEnabled, setSoundEnabled] = useState(true);
-  const [positionLock, setPositionLock] = useState(joinedSetup?.positionLock ?? false);
+  const [orientation, setOrientation] = useState<GameOrientation>(joinedSetup?.orientation ?? "auto");
   const [interrupted, setInterrupted] = useState(false);
   const [remotePaused, setRemotePaused] = useState(false);
   const [remoteExclusive, setRemoteExclusive] = useState(false);
@@ -78,6 +80,7 @@ function HeadsUpExperience({ fullscreen, remoteSession }: { fullscreen: Fullscre
   const previousPauseReason = useRef<string | null>(null);
   const decisionTimeout = useRef<number | null>(null);
   const restoredRound = useRef(false);
+  const replayRound = useRef<() => void>(() => undefined);
   const haptics = useWebHaptics();
   const { customDecks, saveDeck, deleteDeck } = useCustomDecks();
   const allDecks = joinedDeck ? [joinedDeck] : [...GAME_DECKS, ...customDecks.map(customDeckAsGameDeck)];
@@ -115,7 +118,7 @@ function HeadsUpExperience({ fullscreen, remoteSession }: { fullscreen: Fullscre
   } = useTiltControl(
     phase === "playing" && !feedback && !remoteExclusive,
     handleDecision,
-    positionLock,
+    orientation !== "auto",
   );
   const pauseReason = remotePaused ? "remote" : interrupted ? "interrupted" : motionPauseReason;
   useEffect(() => {
@@ -154,6 +157,7 @@ function HeadsUpExperience({ fullscreen, remoteSession }: { fullscreen: Fullscre
 
   const handleRemoteCommand = useCallback(
     (command: RemoteCommand) => {
+      if (command.type === "play_again") return replayRound.current();
       if (command.type === "correct") return handleDecision("correct");
       if (command.type === "pass" || command.type === "incorrect") return handleDecision("pass");
       if (command.type === "pause") return setRemotePaused(true);
@@ -193,7 +197,7 @@ function HeadsUpExperience({ fullscreen, remoteSession }: { fullscreen: Fullscre
   const remoteSetup: RemoteHeadsUpSetup = {
     game: "heads-up",
     deck: { name: selectedDeck.name, cards: [...selectedDeck.cards] },
-    positionLock,
+    orientation,
   };
   const remote = usePairedGameRoom("heads-up", remoteSetup, remoteSnapshot, handleRemoteCommand, remoteSession);
 
@@ -244,7 +248,9 @@ function HeadsUpExperience({ fullscreen, remoteSession }: { fullscreen: Fullscre
   const startRound = async (deck: GameDeck = selectedDeck) => {
     primeGameAudio();
     void haptics.trigger("medium");
-    await requestAccess();
+    const orientationLock = fullscreen.lockOrientation(orientation);
+    const motionAccess = requestAccess();
+    await Promise.all([orientationLock, motionAccess]);
     setCards(shuffledCards(deck.cards));
     setCardIndex(0);
     setResults([]);
@@ -257,6 +263,9 @@ function HeadsUpExperience({ fullscreen, remoteSession }: { fullscreen: Fullscre
     processing.current = false;
     setPhase("countdown");
   };
+  useEffect(() => {
+    replayRound.current = () => void startRound(joinedDeck ?? selectedDeck);
+  });
 
   const handleShareDeck = async (id: string) => {
     const deck = customDecks.find((current) => current.id === id);
@@ -373,10 +382,11 @@ function HeadsUpExperience({ fullscreen, remoteSession }: { fullscreen: Fullscre
             {String(countdown)}
           </TextMorph>
           <p className="mt-8 max-w-xs px-6 font-serif text-xl text-black/70">
-            {positionLock
-              ? "Keep the phone in this position, screen facing your friends."
-              : "Hold the phone against your forehead in portrait or landscape, screen facing your friends."}
+            {orientation === "auto"
+              ? "Hold the phone against your forehead in portrait or landscape, screen facing your friends."
+              : `Hold the phone ${orientation}, screen facing your friends.`}
           </p>
+          {fullscreen.message ? <p role="status" className="mt-4 max-w-sm px-6 font-mono text-xs leading-relaxed text-black/55">{fullscreen.message}</p> : null}
         </main>
         {endConfirmationOpen ? <EndGameDialog tone="light" eyebrow="cancel round" title="Cancel this round?" description="The round will return to setup before play begins." cancelLabel="keep counting" confirmLabel="cancel round" onCancel={() => setEndConfirmationOpen(false)} onConfirm={endRound} /> : null}
       </GameShell>
@@ -444,7 +454,7 @@ function HeadsUpExperience({ fullscreen, remoteSession }: { fullscreen: Fullscre
       fullscreenMessage={fullscreen.message}
       fullscreenStandalone={fullscreen.standalone}
       fullscreenSupported={fullscreen.supported}
-      locked={positionLock}
+      orientation={orientation}
       motionUnavailable={motionStatus === "denied" || motionStatus === "unavailable"}
       selectedDeckId={deckId}
       soundEnabled={soundEnabled}
@@ -482,8 +492,8 @@ function HeadsUpExperience({ fullscreen, remoteSession }: { fullscreen: Fullscre
       }}
       onShareDeck={(id) => void handleShareDeck(id)}
       onStart={() => void startRound()}
-      onToggleLock={() => {
-        setPositionLock((locked) => !locked);
+      onOrientationChange={(nextOrientation) => {
+        setOrientation(nextOrientation);
         void haptics.trigger("selection");
       }}
       onToggleSound={() => setSoundEnabled((enabled) => !enabled)}

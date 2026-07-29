@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import type { GameOrientation } from "./orientation";
 
 interface WebkitFullscreenDocument extends Document {
   webkitExitFullscreen?: () => Promise<void> | void;
@@ -8,6 +9,11 @@ interface WebkitFullscreenDocument extends Document {
 
 interface WebkitFullscreenElement extends HTMLDivElement {
   webkitRequestFullscreen?: () => Promise<void> | void;
+}
+
+interface LockableScreenOrientation {
+  lock?: (orientation: OrientationLockType) => Promise<void>;
+  unlock?: () => void;
 }
 
 function isStandalone() {
@@ -84,5 +90,37 @@ export function useFullscreen() {
     }
   }, []);
 
-  return { targetRef, supported, active, standalone, installFallback, message, toggle };
+  const lockOrientation = useCallback(async (orientation: GameOrientation) => {
+    const screenOrientation = window.screen.orientation as LockableScreenOrientation | undefined;
+    if (orientation === "auto") {
+      screenOrientation?.unlock?.();
+      return;
+    }
+    setMessage(null);
+    if (!screenOrientation?.lock) {
+      setMessage(`This browser cannot lock ${orientation}. Turn the phone before the countdown ends.`);
+      return;
+    }
+
+    const target = targetRef.current as WebkitFullscreenElement | null;
+    const webkitDocument = document as WebkitFullscreenDocument;
+    try {
+      const fullscreenElement =
+        document.fullscreenElement ?? webkitDocument.webkitFullscreenElement;
+      if (!fullscreenElement && !isStandalone() && target) {
+        if (target.requestFullscreen) await target.requestFullscreen();
+        else await target.webkitRequestFullscreen?.();
+      }
+      await screenOrientation.lock(orientation);
+    } catch {
+      setMessage(`This browser could not lock ${orientation}. Turn the phone before the countdown ends.`);
+    }
+  }, []);
+
+  useEffect(() => () => {
+    const screenOrientation = window.screen.orientation as LockableScreenOrientation | undefined;
+    screenOrientation?.unlock?.();
+  }, []);
+
+  return { targetRef, supported, active, standalone, installFallback, message, toggle, lockOrientation };
 }

@@ -4,6 +4,7 @@ import type {
   MultiplayerRoomLifetime,
   MultiplayerSuccess,
 } from "../shared/multiplayer";
+import type { GameOrientation } from "../shared/orientation";
 
 export type RemoteGameKind = "heads-up" | "spelling-bee";
 export type PairedGameRoomRole = "player" | "judge";
@@ -14,7 +15,7 @@ export interface RemoteHeadsUpSetup {
     name: string;
     cards: string[];
   };
-  positionLock: boolean;
+  orientation: GameOrientation;
 }
 
 export interface RemoteSpellingSetup {
@@ -75,7 +76,7 @@ export interface RemoteCommandTarget {
 }
 
 export type RemoteCommandRequest = (
-  | { id: string; type: "correct" | "incorrect" | "pass" | "skip" | "pause" | "resume" | "undo"; createdAt: number }
+  | { id: string; type: "correct" | "incorrect" | "pass" | "skip" | "pause" | "resume" | "undo" | "play_again"; createdAt: number }
   | {
       id: string;
       type: "amend";
@@ -91,7 +92,8 @@ export type RemoteCommandReceiptReason =
   | "stale_round"
   | "stale_item"
   | "decision_closed"
-  | "already_decided";
+  | "already_decided"
+  | "round_not_complete";
 
 export interface RemoteCommandReceipt {
   commandId: string;

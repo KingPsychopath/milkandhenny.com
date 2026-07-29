@@ -2,6 +2,7 @@ import { Link } from "@tanstack/react-router";
 import { useState, type ReactNode } from "react";
 import type { GameDeck } from "./decks";
 import { OrientationControls } from "../shared/OrientationControls";
+import type { GameOrientation } from "../shared/orientation";
 import {
   GameLaunch,
   GameLaunchButton,
@@ -16,7 +17,7 @@ interface HeadsUpSetupProps {
   fullscreenMessage: string | null;
   fullscreenStandalone: boolean;
   fullscreenSupported: boolean;
-  locked: boolean;
+  orientation: GameOrientation;
   motionUnavailable: boolean;
   selectedDeckId: string;
   soundEnabled: boolean;
@@ -29,7 +30,7 @@ interface HeadsUpSetupProps {
   onSelectDeck: (id: string) => void;
   onShareDeck: (id: string) => void;
   onStart: () => void;
-  onToggleLock: () => void;
+  onOrientationChange: (orientation: GameOrientation) => void;
   onToggleSound: () => void;
 }
 
@@ -40,7 +41,7 @@ export function HeadsUpSetup({
   fullscreenMessage,
   fullscreenStandalone,
   fullscreenSupported,
-  locked,
+  orientation,
   motionUnavailable,
   selectedDeckId,
   soundEnabled,
@@ -53,7 +54,7 @@ export function HeadsUpSetup({
   onSelectDeck,
   onShareDeck,
   onStart,
-  onToggleLock,
+  onOrientationChange,
   onToggleSound,
 }: HeadsUpSetupProps) {
   const selectedIsCustom = customDeckIds.has(selectedDeckId);
@@ -212,10 +213,10 @@ export function HeadsUpSetup({
               fullscreenMessage={fullscreenMessage}
               fullscreenStandalone={fullscreenStandalone}
               fullscreenSupported={fullscreenSupported}
-              locked={locked}
+              orientation={orientation}
               motionUnavailable={motionUnavailable}
               onFullscreen={onFullscreen}
-              onToggle={onToggleLock}
+              onOrientationChange={onOrientationChange}
             />
           </section>
         ) : null}

@@ -1,4 +1,5 @@
 import { useId } from "react";
+import type { GameOrientation } from "./orientation";
 
 interface OrientationLockControlProps {
   disabled?: boolean;
@@ -43,10 +44,10 @@ interface OrientationControlsProps {
   fullscreenMessage: string | null;
   fullscreenStandalone: boolean;
   fullscreenSupported: boolean;
-  locked: boolean;
+  orientation: GameOrientation;
   motionUnavailable: boolean;
   onFullscreen: () => void;
-  onToggle: () => void;
+  onOrientationChange: (orientation: GameOrientation) => void;
 }
 
 export function OrientationControls({
@@ -55,14 +56,35 @@ export function OrientationControls({
   fullscreenMessage,
   fullscreenStandalone,
   fullscreenSupported,
-  locked,
+  orientation,
   motionUnavailable,
   onFullscreen,
-  onToggle,
+  onOrientationChange,
 }: OrientationControlsProps) {
   return (
     <div className="mx-auto mt-6 max-w-lg">
-      <OrientationLockControl locked={locked} onToggle={onToggle} />
+      <fieldset>
+        <legend className="font-mono text-micro uppercase tracking-[0.18em] text-white/45">screen orientation</legend>
+        <div className="mt-3 grid grid-cols-3 gap-2">
+          {(["auto", "portrait", "landscape"] as const).map((value) => {
+            const selected = orientation === value;
+            return (
+              <button
+                key={value}
+                type="button"
+                onClick={() => onOrientationChange(value)}
+                aria-pressed={selected}
+                className={`min-h-11 rounded-full border px-3 font-mono text-xs ${selected ? "border-white/55 bg-white/12 text-white" : "border-white/15 text-white/55"}`}
+              >
+                {value}
+              </button>
+            );
+          })}
+        </div>
+        <p className="mt-3 font-mono text-micro leading-relaxed text-white/45">
+          {orientation === "auto" ? "adapts if the phone rotates" : `locks ${orientation} when the round starts`}
+        </p>
+      </fieldset>
       {fullscreenSupported ? (
         <button
           type="button"
@@ -90,7 +112,9 @@ export function OrientationControls({
       <p className="mt-3 text-center font-mono text-micro text-white/45">
         {motionUnavailable
           ? "motion unavailable — use the on-screen buttons"
-          : `portrait + landscape · ${locked ? "locks when the round starts" : "auto-calibrates"}`}
+          : orientation === "auto"
+            ? "portrait + landscape · auto-calibrates"
+            : `${orientation} · set before play`}
       </p>
     </div>
   );

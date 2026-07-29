@@ -146,6 +146,11 @@ function judgeCommandPolicy(
 ): { errorCode: RemoteCommandErrorCode; error: string } | null {
   if (snapshot?.roundId !== command.roundId)
     return { errorCode: "stale_round", error: "Round changed" };
+  if (command.type === "play_again") {
+    return snapshot.phase === "results"
+      ? null
+      : { errorCode: "round_not_complete", error: "Round is not complete" };
+  }
   if (command.type !== "amend" && snapshot.itemId !== command.itemId)
     return { errorCode: "stale_item", error: "Card changed" };
   if (!targetsKnownResult(snapshot, command))

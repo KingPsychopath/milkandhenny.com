@@ -17,7 +17,7 @@ import type { RemoteHeadsUpSetup, RemoteSpellingSetup, RemoteSyncedSnapshot } fr
 const headsUpSetup: RemoteHeadsUpSetup = {
   game: "heads-up",
   deck: { name: "All sorts", cards: ["Bubble wrap", "Chess", "Big Ben"] },
-  positionLock: false,
+  orientation: "auto",
 };
 
 const spellingSetup: RemoteSpellingSetup = {
@@ -152,6 +152,42 @@ describe("remote game rooms", () => {
       command: { id: "late-decision", type: "correct", createdAt: Date.now(), roundId: "round-1", itemId: "round-1:card-1" },
     });
     expect(staleTarget).toMatchObject({ ok: false, error: "Card changed" });
+  });
+
+  it("keeps the room open and lets the judge request another completed round", async () => {
+    const room = await createPairedGameRoom({ creatorRole: "player", setup: headsUpSetup });
+    await syncPairedGamePlayer({ roomId: room.roomId, playerToken: room.playerToken, snapshot, lastCommandSequence: 0 });
+    await readPairedGameJudge({ roomId: room.roomId, judgeToken: room.judgeToken, ...judgeLease });
+    const earlyReplay = await sendPairedGameJudgeCommand({
+      roomId: room.roomId,
+      judgeToken: room.judgeToken,
+      judgeEpoch: judgeLease.judgeEpoch,
+      command: { id: "replay-early", type: "play_again", createdAt: Date.now(), roundId: snapshot.roundId!, itemId: snapshot.itemId! },
+    });
+    expect(earlyReplay).toMatchObject({ ok: false, error: "Round is not complete" });
+
+    const completed = {
+      ...snapshot,
+      phase: "results" as const,
+      currentLabel: null,
+      nextLabel: null,
+      secondsRemaining: null,
+      itemId: null,
+      results: [{ id: "result-1", label: "Bubble wrap", decision: "correct" as const }],
+      revision: 2,
+    };
+    await syncPairedGamePlayer({ roomId: room.roomId, playerToken: room.playerToken, snapshot: completed, lastCommandSequence: 0 });
+
+    const replay = await sendPairedGameJudgeCommand({
+      roomId: room.roomId,
+      judgeToken: room.judgeToken,
+      judgeEpoch: judgeLease.judgeEpoch,
+      command: { id: "replay-1", type: "play_again", createdAt: Date.now(), roundId: completed.roundId!, itemId: `results:${completed.roundId}` },
+    });
+    expect(replay.ok).toBe(true);
+
+    const received = await syncPairedGamePlayer({ roomId: room.roomId, playerToken: room.playerToken, snapshot: completed, lastCommandSequence: 0 });
+    expect(received.commands).toMatchObject([{ type: "play_again" }]);
   });
 
   it("gives one judge control, supports explicit takeover, and rejects decisions received after the deadline", async () => {
