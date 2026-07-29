@@ -19,6 +19,7 @@ import {
 } from "../browser-store.client";
 import { importPresentation } from "../import.client";
 import { mergePitchDocuments } from "../merge";
+import { createEmptyPitchDocument } from "../new-document.client";
 import {
   createPitchAssetUploadFn,
   finalisePitchAssetFn,
@@ -40,6 +41,7 @@ import { ExcalidrawSurface } from "./ExcalidrawSurface";
 import { blobToDataUrl, dataUrlToBlob, loadPitchFiles } from "./files.client";
 import { DrawesomeInk } from "./DrawesomeInk";
 import { PitchAudioTimeline } from "./PitchAudioTimeline";
+import { PitchDeviceSwitcher } from "./PitchDeviceSwitcher";
 import { PitchPreview } from "./PitchPreview";
 import { PitchRecovery } from "./PitchRecovery";
 import { PitchSlideThumbnail } from "./PitchSlideThumbnail";
@@ -85,6 +87,24 @@ const TOUR_STEPS: readonly GuidedTourStep[] = [
     side: "bottom",
   },
 ];
+
+const DEMO_TOUR_STEPS: readonly GuidedTourStep[] = TOUR_STEPS.map((step) => {
+  if (step.id === "sound") {
+    return {
+      ...step,
+      title: "See how timing works",
+      body: "Change each slide's length and inspect the sound timeline. Sound uploads are switched off in this no-save rehearsal.",
+    };
+  }
+  if (step.id === "publish") {
+    return {
+      ...step,
+      title: "Create when it feels right",
+      body: "Publishing is switched off here. Download anything you want to keep, then start a real pitch when you want saving, sound and a place on the wall.",
+    };
+  }
+  return step;
+});
 
 function randomId(prefix: string): string {
   return `${prefix}${crypto.randomUUID().replaceAll("-", "")}`;
@@ -202,14 +222,27 @@ function audioDuration(file: File): Promise<number> {
   });
 }
 
-export function PitchEditor({ deckId, maximumSlides }: { deckId: string; maximumSlides: number }) {
+export type PitchEditorSession = { kind: "owned"; deckId: string } | { kind: "demo" };
+
+export function PitchEditor({
+  session,
+  maximumSlides,
+}: {
+  session: PitchEditorSession;
+  maximumSlides: number;
+}) {
+  const isDemo = session.kind === "demo";
+  const deckId = session.kind === "owned" ? session.deckId : "demo";
+  const [demoDocument] = useState(() => (isDemo ? createEmptyPitchDocument() : undefined));
   const [credential, setCredential] = useState<PitchOwnerCredential>();
   const [deck, setDeck] = useState<OwnedPitchDeck>();
-  const [documentState, setDocumentState] = useState<PitchDocument>();
+  const [documentState, setDocumentState] = useState<PitchDocument | undefined>(demoDocument);
   const [files, setFiles] = useState<BinaryFiles>({});
-  const [title, setTitle] = useState("");
-  const [activeSlideId, setActiveSlideId] = useState("");
-  const [phase, setPhase] = useState<"loading" | "ready" | "missing" | "error">("loading");
+  const [title, setTitle] = useState(isDemo ? "A pitch worth trying" : "");
+  const [activeSlideId, setActiveSlideId] = useState(demoDocument?.slides[0]?.id ?? "");
+  const [phase, setPhase] = useState<"loading" | "ready" | "missing" | "error">(
+    isDemo ? "ready" : "loading",
+  );
   const [syncState, setSyncState] = useState<"saved" | "local" | "syncing" | "merged" | "error">(
     "local",
   );
@@ -231,11 +264,16 @@ export function PitchEditor({ deckId, maximumSlides }: { deckId: string; maximum
   const lastSyncedRevision = useRef(0);
   const syncing = useRef(false);
 
-  const reloadSafe =
-    localSavedRevision >= revision && uploading.current.size === 0 && syncState !== "syncing";
+  const reloadSafe = isDemo
+    ? revision === 0
+    : localSavedRevision >= revision && uploading.current.size === 0 && syncState !== "syncing";
   useUpdateReloadSafety(`pitch-studio:${deckId}`, reloadSafe);
 
   useEffect(() => {
+    if (isDemo) {
+      const timer = window.setTimeout(() => setTourOpen(true), 700);
+      return () => window.clearTimeout(timer);
+    }
     try {
       const rail = JSON.parse(localStorage.getItem(PITCH_RAIL_KEY) ?? "null") as unknown;
       if (rail && typeof rail === "object" && !Array.isArray(rail)) {
@@ -250,17 +288,19 @@ export function PitchEditor({ deckId, maximumSlides }: { deckId: string; maximum
     } catch {
       // Private browsing may block preferences; the studio still works.
     }
-  }, []);
+  }, [isDemo]);
 
   useEffect(() => {
+    if (isDemo) return;
     try {
       localStorage.setItem(PITCH_RAIL_KEY, JSON.stringify({ open: railOpen, pinned: railPinned }));
     } catch {
       // A blocked preference store is non-critical.
     }
-  }, [railOpen, railPinned]);
+  }, [isDemo, railOpen, railPinned]);
 
   useEffect(() => {
+    if (isDemo) return;
     let cancelled = false;
     void (async () => {
       const remembered = await rememberTokenFromHash(deckId).catch(() => undefined);
@@ -316,7 +356,7 @@ export function PitchEditor({ deckId, maximumSlides }: { deckId: string; maximum
     return () => {
       cancelled = true;
     };
-  }, [deckId]);
+  }, [deckId, isDemo]);
 
   const markChanged = useCallback(() => {
     revisionRef.current += 1;
@@ -325,7 +365,7 @@ export function PitchEditor({ deckId, maximumSlides }: { deckId: string; maximum
   }, []);
 
   useEffect(() => {
-    if (!documentState || phase !== "ready") return;
+    if (isDemo || !documentState || phase !== "ready") return;
     const timer = window.setTimeout(() => {
       void saveLocalPitchDraft({
         deckId,
@@ -339,10 +379,10 @@ export function PitchEditor({ deckId, maximumSlides }: { deckId: string; maximum
         .catch(() => undefined);
     }, 180);
     return () => window.clearTimeout(timer);
-  }, [deck?.version, deckId, documentState, files, phase, title]);
+  }, [deck?.version, deckId, documentState, files, isDemo, phase, title]);
 
   const performSync = useCallback(async () => {
-    if (!credential || !deck || !documentState || !navigator.onLine) return false;
+    if (isDemo || !credential || !deck || !documentState || !navigator.onLine) return false;
     if (syncing.current) return false;
     if (revisionRef.current <= lastSyncedRevision.current) return true;
     syncing.current = true;
@@ -399,22 +439,32 @@ export function PitchEditor({ deckId, maximumSlides }: { deckId: string; maximum
       syncing.current = false;
       if (revisionRef.current > sentRevision) setSyncWake((value) => value + 1);
     }
-  }, [credential, deck, deckId, documentState, title, updateState]);
+  }, [credential, deck, deckId, documentState, isDemo, title, updateState]);
 
   useEffect(() => {
-    if (revision <= lastSyncedRevision.current) return;
+    if (isDemo || revision <= lastSyncedRevision.current) return;
     const timer = window.setTimeout(() => void performSync(), 1_800);
     return () => window.clearTimeout(timer);
-  }, [performSync, revision, syncWake]);
+  }, [isDemo, performSync, revision, syncWake]);
 
   useEffect(() => {
+    if (isDemo) return;
     const online = () => {
       setSyncWake((value) => value + 1);
       void performSync();
     };
     window.addEventListener("online", online);
     return () => window.removeEventListener("online", online);
-  }, [performSync]);
+  }, [isDemo, performSync]);
+
+  useEffect(() => {
+    if (!isDemo || revision === 0) return;
+    const warnBeforeLeaving = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+    };
+    window.addEventListener("beforeunload", warnBeforeLeaving);
+    return () => window.removeEventListener("beforeunload", warnBeforeLeaving);
+  }, [isDemo, revision]);
 
   const currentSlide = useMemo(
     () => documentState?.slides.find((slide) => slide.id === activeSlideId && !slide.deletedAt),
@@ -426,13 +476,14 @@ export function PitchEditor({ deckId, maximumSlides }: { deckId: string; maximum
   );
   const hasUnsecuredMedia = useMemo(
     () =>
+      !isDemo &&
       visibleSlides.some((slide) =>
         slide.elements.some(
           (element) =>
             element.type === "image" && Boolean(element.fileId) && !slide.assetIds[element.fileId!],
         ),
       ),
-    [visibleSlides],
+    [isDemo, visibleSlides],
   );
 
   const uploadBlob = useCallback(
@@ -583,7 +634,7 @@ export function PitchEditor({ deckId, maximumSlides }: { deckId: string; maximum
   async function attachAudio(event: React.ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
     event.target.value = "";
-    if (!file || !currentSlide) return;
+    if (isDemo || !file || !currentSlide) return;
     try {
       const durationSeconds = await audioDuration(file);
       if (!Number.isFinite(durationSeconds) || durationSeconds > PITCH_AUDIO_MAX_SECONDS) {
@@ -700,7 +751,7 @@ export function PitchEditor({ deckId, maximumSlides }: { deckId: string; maximum
         const parsed = parsePitchDocument(source, maximumSlides);
         if (!parsed.ok) throw new Error(parsed.error);
         const backupFiles = readBackupFiles(backup?.files);
-        const sameDeck = backup?.deckId === deckId;
+        const sameDeck = !isDemo && backup?.deckId === deckId;
         const restored = sameDeck
           ? { document: parsed.document, files: backupFiles }
           : rekeyBackup(parsed.document, backupFiles);
@@ -711,22 +762,26 @@ export function PitchEditor({ deckId, maximumSlides }: { deckId: string; maximum
         setFiles(restored.files);
         markChanged();
         setMessage(
-          Object.keys(restored.files).length > 0
-            ? "Native backup restored. Its images are being secured to this pitch."
-            : "Native backup restored.",
+          isDemo
+            ? "Native backup opened for this rehearsal. Download it again if you want to keep your changes."
+            : Object.keys(restored.files).length > 0
+              ? "Native backup restored. Its images are being secured to this pitch."
+              : "Native backup restored.",
         );
         return;
       }
 
       const available = maximumSlides - visibleSlides.length;
       if (available < 1) throw new Error(`This deck already has all ${maximumSlides} slides`);
-      const importedAsset = await uploadBlob(file, {
-        kind: "import",
-        fileName: file.name,
-      });
-      setDeck((current) =>
-        current ? { ...current, assets: [...current.assets, importedAsset] } : current,
-      );
+      if (!isDemo) {
+        const importedAsset = await uploadBlob(file, {
+          kind: "import",
+          fileName: file.name,
+        });
+        setDeck((current) =>
+          current ? { ...current, assets: [...current.assets, importedAsset] } : current,
+        );
+      }
       const allImported = await importPresentation(file, available);
       const imported = allImported.slice(0, available);
       if (imported.length === 0) throw new Error("That presentation contained no usable slides");
@@ -758,7 +813,7 @@ export function PitchEditor({ deckId, maximumSlides }: { deckId: string; maximum
   }
 
   async function publish() {
-    if (!credential || !currentSlide || !documentState) return;
+    if (isDemo || !credential || !currentSlide || !documentState) return;
     if (!navigator.onLine) {
       setMessage("Reconnect before publishing. Your working copy is safe on this device.");
       return;
@@ -929,33 +984,55 @@ export function PitchEditor({ deckId, maximumSlides }: { deckId: string; maximum
           }}
           className="order-last min-w-0 basis-full bg-transparent font-serif text-xl text-foreground outline-none sm:order-none sm:flex-1 sm:basis-auto"
         />
+        {!isDemo ? <PitchDeviceSwitcher deckId={deckId} /> : null}
         <span className="font-mono text-micro uppercase tracking-[0.12em] theme-muted">
-          {syncState === "saved"
-            ? "saved"
-            : syncState === "syncing"
-              ? "syncing…"
-              : syncState === "merged"
-                ? "recovered + merged"
-                : syncState === "error"
-                  ? "needs attention"
-                  : navigator.onLine
-                    ? "saved on this device"
-                    : "offline · safe here"}
+          {isDemo
+            ? "demo · not saved"
+            : syncState === "saved"
+              ? "saved"
+              : syncState === "syncing"
+                ? "syncing…"
+                : syncState === "merged"
+                  ? "recovered + merged"
+                  : syncState === "error"
+                    ? "needs attention"
+                    : navigator.onLine
+                      ? "saved on this device"
+                      : "offline · safe here"}
         </span>
         <button
           type="button"
           data-tour="publish"
           onClick={() => void publish()}
-          disabled={syncState === "syncing" || hasUnsecuredMedia}
-          className="min-h-10 bg-foreground px-5 font-mono text-xs text-background hover:opacity-80 disabled:cursor-wait disabled:opacity-45"
+          disabled={isDemo || syncState === "syncing" || hasUnsecuredMedia}
+          className="min-h-10 bg-foreground px-5 font-mono text-xs text-background hover:opacity-80 disabled:cursor-not-allowed disabled:opacity-45"
         >
-          {hasUnsecuredMedia
-            ? "securing images…"
-            : deck?.publishedAt
-              ? "republish edition"
-              : "publish + seal"}
+          {isDemo
+            ? "create to publish"
+            : hasUnsecuredMedia
+              ? "securing images…"
+              : deck?.publishedAt
+                ? "republish edition"
+                : "publish + seal"}
         </button>
       </header>
+
+      {isDemo ? (
+        <div
+          className="flex flex-wrap items-center justify-center gap-x-4 gap-y-2 border-b theme-border bg-surface px-4 py-2 text-center font-mono text-xs theme-muted"
+          role="status"
+        >
+          <span>
+            Rehearsal mode · this tab is the only copy. Sound, saving and publishing are off.
+          </span>
+          <Link
+            to="/things/pitches/new"
+            className="text-foreground underline decoration-border underline-offset-4 hover:opacity-60"
+          >
+            start one for real
+          </Link>
+        </div>
+      ) : null}
 
       {message ? (
         <div
@@ -973,7 +1050,7 @@ export function PitchEditor({ deckId, maximumSlides }: { deckId: string; maximum
               {reloadSafe ? "finish update" : "saving locally…"}
             </button>
           ) : null}
-          {syncState === "error" && updateState !== "ready" ? (
+          {!isDemo && syncState === "error" && updateState !== "ready" ? (
             <button
               type="button"
               onClick={() => {
@@ -1168,6 +1245,9 @@ export function PitchEditor({ deckId, maximumSlides }: { deckId: string; maximum
           <PitchAudioTimeline
             slide={currentSlide}
             assets={deck?.assets ?? []}
+            soundDisabledReason={
+              isDemo ? "Sound uploads are available once you start a saved pitch." : undefined
+            }
             onAddSound={(event) => void attachAudio(event)}
             onChange={(nextSlide) => {
               setDocumentState((current) =>
@@ -1191,12 +1271,14 @@ export function PitchEditor({ deckId, maximumSlides }: { deckId: string; maximum
       ) : null}
       <GuidedTour
         open={tourOpen}
-        steps={TOUR_STEPS}
+        steps={isDemo ? DEMO_TOUR_STEPS : TOUR_STEPS}
         onClose={() => {
-          try {
-            localStorage.setItem(PITCH_STUDIO_TOUR_KEY, "seen");
-          } catch {
-            // The help button remains available when preferences cannot persist.
+          if (!isDemo) {
+            try {
+              localStorage.setItem(PITCH_STUDIO_TOUR_KEY, "seen");
+            } catch {
+              // The help button remains available when preferences cannot persist.
+            }
           }
           setTourOpen(false);
         }}

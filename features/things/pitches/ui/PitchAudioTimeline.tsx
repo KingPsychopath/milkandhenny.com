@@ -15,11 +15,13 @@ export function PitchAudioTimeline({
   assets,
   onChange,
   onAddSound,
+  soundDisabledReason,
 }: {
   slide: PitchSlide;
   assets: PitchAsset[];
   onChange: (slide: PitchSlide) => void;
   onAddSound: (event: React.ChangeEvent<HTMLInputElement>) => void;
+  soundDisabledReason?: string;
 }) {
   const updateCue = (cueId: string, update: (cue: PitchAudioCue) => PitchAudioCue) => {
     onChange({
@@ -81,7 +83,7 @@ export function PitchAudioTimeline({
         </div>
         <label
           className={`inline-flex min-h-10 items-center border-b theme-border-strong px-2 font-mono text-xs ${
-            slide.audioCues.length >= PITCH_AUDIO_CUE_LIMIT
+            soundDisabledReason || slide.audioCues.length >= PITCH_AUDIO_CUE_LIMIT
               ? "cursor-not-allowed opacity-35"
               : "cursor-pointer hover:opacity-60"
           }`}
@@ -91,7 +93,9 @@ export function PitchAudioTimeline({
             type="file"
             accept="audio/mpeg,audio/mp4,audio/ogg,audio/wav,audio/webm"
             className="sr-only"
-            disabled={slide.audioCues.length >= PITCH_AUDIO_CUE_LIMIT}
+            disabled={
+              Boolean(soundDisabledReason) || slide.audioCues.length >= PITCH_AUDIO_CUE_LIMIT
+            }
             onChange={onAddSound}
           />
         </label>
@@ -125,8 +129,8 @@ export function PitchAudioTimeline({
 
       {slide.audioCues.length === 0 ? (
         <p className="mt-3 font-mono text-micro theme-muted">
-          Add a sting, song or sound effect. Nothing plays until a person presses preview or arms
-          sound on the presentation screen.
+          {soundDisabledReason ??
+            "Add a sting, song or sound effect. Nothing plays until a person presses preview or arms sound on the presentation screen."}
         </p>
       ) : (
         <div className="mt-3 space-y-3">

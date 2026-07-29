@@ -69,6 +69,15 @@ address.
 - The merged result is returned to the browser and saved locally.
 - Local edits remain usable offline and retry when connectivity returns.
 - The server keeps bounded periodic backups so an admin can inspect or recover earlier work.
+- One recovery request sends a single email containing every active pitch for that address. A
+  device holding more than one editing key can switch pitches directly inside the studio.
+
+## Rehearsal mode
+
+`/things/pitches/demo` runs the production editor with an explicit local-only session. It creates no
+pitch, credential, browser draft, upload reservation, email or server mutation. Pasted images and
+imports live only in the current tab; sound upload and publishing are disabled. A person can still
+preview and explicitly download PNG, SVG, ZIP or native backup files before leaving.
 
 ## Limits
 
@@ -84,7 +93,9 @@ Defaults are configuration, not scattered constants:
 Published decks do not expire automatically. A cleanup job first marks abandoned drafts as
 deleting, then removes R2 objects, then hard-deletes the relational records. A concurrent save
 cannot lose media between the database check and object deletion. The same maintenance pass removes
-upload reservations that never reached finalisation after one hour.
+upload reservations that never reached finalisation after one hour and prunes sync idempotency rows
+after seven days. Local browser drafts are deliberately not erased by server cleanup: they are the
+offline recovery copy and remain under the control of that browser.
 
 ## Formats
 

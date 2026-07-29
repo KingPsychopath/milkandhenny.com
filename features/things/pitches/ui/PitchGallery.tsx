@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { listPitchCredentials } from "../browser-store.client";
 import { listPublishedPitchesFn } from "../pitches.functions";
 import type { PitchOwnerCredential, PublicPitchDeck } from "../types";
+import { PitchDemoEntry } from "./PitchDemoEntry";
 import { PitchRecovery } from "./PitchRecovery";
 
 export function PitchGallery({ initialPitches }: { initialPitches: PublicPitchDeck[] }) {
@@ -47,18 +48,21 @@ export function PitchGallery({ initialPitches }: { initialPitches: PublicPitchDe
               unnecessary.
             </p>
           </div>
-          <Link
-            to="/things/pitches/new"
-            className="inline-flex min-h-12 items-center justify-center bg-foreground px-7 font-mono text-sm text-background hover:opacity-80"
-          >
-            start a pitch →
-          </Link>
-          <Link
-            to="/things/pitches/present"
-            className="inline-flex min-h-12 items-center justify-center border-b theme-border-strong px-4 font-mono text-sm text-foreground hover:opacity-60"
-          >
-            present on a screen
-          </Link>
+          <div className="grid min-w-56 gap-3">
+            <Link
+              to="/things/pitches/new"
+              className="inline-flex min-h-12 items-center justify-center bg-foreground px-7 font-mono text-sm text-background hover:opacity-80"
+            >
+              start a pitch →
+            </Link>
+            <PitchDemoEntry />
+            <Link
+              to="/things/pitches/present"
+              className="inline-flex min-h-12 items-center justify-center border-b theme-border-strong px-4 font-mono text-sm text-foreground hover:opacity-60"
+            >
+              present on a screen
+            </Link>
+          </div>
         </div>
       </header>
 

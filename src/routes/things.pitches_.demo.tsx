@@ -10,25 +10,23 @@ const PitchEditor = lazy(() =>
   })),
 );
 
-export const Route = createFileRoute("/things/pitches_/$deckId_/edit")({
+export const Route = createFileRoute("/things/pitches_/demo")({
   loader: () => listPublishedPitchesFn(),
-  component: PitchEditorRoute,
-  head: () => ({ meta: [{ title: `Pitch studio — ${SITE_NAME}` }] }),
+  component: PitchDemoRoute,
+  head: () => ({ meta: [{ title: `Explore the pitch studio — ${SITE_NAME}` }] }),
 });
 
-function PitchEditorRoute() {
-  const { deckId } = Route.useParams();
+function PitchDemoRoute() {
   const fallback = (
     <main id="main" className="p-8 font-mono text-sm theme-muted">
-      opening your studio…
+      opening the rehearsal studio…
     </main>
   );
   return (
     <ClientOnly fallback={fallback}>
       <Suspense fallback={fallback}>
         <PitchEditor
-          key={deckId}
-          session={{ kind: "owned", deckId }}
+          session={{ kind: "demo" }}
           maximumSlides={Route.useLoaderData().maximumSlides}
         />
       </Suspense>

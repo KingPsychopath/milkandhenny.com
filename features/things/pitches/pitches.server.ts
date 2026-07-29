@@ -27,6 +27,7 @@ import {
   markPitchDeckDeletingForAdmin,
   markExpiredPitchDecksDeleting,
   publishPitchDeck,
+  prunePitchMutations,
   readOwnedPitchDeck,
   readPitchDeckForAdmin,
   readPublicPitchDeck,
@@ -270,9 +271,13 @@ export async function cleanupExpiredPitches(limit = 100): Promise<{
   attempted: number;
   deleted: number;
   failed: number;
+  mutationsDeleted: number;
   staleAssets: { attempted: number; deleted: number; failed: number };
 }> {
-  const staleAssets = await cleanupStalePitchAssets(limit);
+  const [staleAssets, mutationsDeleted] = await Promise.all([
+    cleanupStalePitchAssets(limit),
+    prunePitchMutations(limit * 10),
+  ]);
   const decks = await markExpiredPitchDecksDeleting(limit);
   let deleted = 0;
   let failed = 0;
@@ -285,7 +290,7 @@ export async function cleanupExpiredPitches(limit = 100): Promise<{
       log.error("pitches.cleanup", "Could not delete abandoned pitch", { deckId: deck.id }, error);
     }
   }
-  return { attempted: decks.length, deleted, failed, staleAssets };
+  return { attempted: decks.length, deleted, failed, mutationsDeleted, staleAssets };
 }
 
 export async function readPitchForAdmin(deckId: string) {

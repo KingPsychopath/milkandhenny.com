@@ -9,6 +9,7 @@ import {
   getPitchMaxSlides,
   PITCH_BACKUP_INTERVAL_MS,
   PITCH_BACKUP_KEEP_COUNT,
+  PITCH_MUTATION_RETENTION_DAYS,
 } from "./config.server";
 import { mergePitchDocuments } from "./merge";
 import type {
@@ -994,4 +995,23 @@ export async function hardDeletePitchDeck(deckId: string): Promise<boolean> {
     log.info("pitches.cleanup", "Deleted abandoned pitch", { deckId });
   }
   return Boolean(rows[0]);
+}
+
+export async function prunePitchMutations(limit = 1_000): Promise<number> {
+  const rows = await query<{ mutation_id: string }>(
+    `with expired as (
+       select deck_id, mutation_id
+         from pitch_mutations
+        where created_at < now() - ($1 * interval '1 day')
+        order by created_at, deck_id, mutation_id
+        limit $2
+     )
+     delete from pitch_mutations mutation
+      using expired
+      where mutation.deck_id = expired.deck_id
+        and mutation.mutation_id = expired.mutation_id
+      returning mutation.mutation_id`,
+    [PITCH_MUTATION_RETENTION_DAYS, Math.min(5_000, Math.max(1, limit))],
+  );
+  return rows.length;
 }

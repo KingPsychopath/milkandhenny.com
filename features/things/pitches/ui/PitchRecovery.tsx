@@ -27,7 +27,7 @@ export function PitchRecovery({ compact = false }: { compact?: boolean }) {
   if (status === "sent") {
     return (
       <p className="font-mono text-sm leading-relaxed theme-muted" role="status">
-        If that address owns a pitch, its private links are on the way.
+        If that address owns any pitches, one email with every private link is on the way.
       </p>
     );
   }
@@ -46,6 +46,9 @@ export function PitchRecovery({ compact = false }: { compact?: boolean }) {
           className="mt-3 block min-h-12 w-full border-b theme-border-strong bg-transparent px-0 font-mono text-base text-foreground outline-none focus:border-foreground"
         />
       </label>
+      <p className="mt-3 font-mono text-micro leading-relaxed theme-muted">
+        One email brings back every active pitch registered to that address.
+      </p>
       <button
         type="submit"
         disabled={status === "sending"}

@@ -3,33 +3,11 @@ import { useState } from "react";
 
 import { createPitchFn } from "../pitches.functions";
 import { rememberPitchCredential, saveLocalPitchDraft } from "../browser-store.client";
-import {
-  PITCH_DOCUMENT_SCHEMA_VERSION,
-  PITCH_SLIDE_DEFAULT_DURATION_MS,
-  type PitchDocument,
-} from "../types";
+import { createEmptyPitchDocument } from "../new-document.client";
+import { PitchDemoEntry } from "./PitchDemoEntry";
 
 function randomId(prefix = ""): string {
   return `${prefix}${crypto.randomUUID().replaceAll("-", "")}`;
-}
-
-function initialDocument(): PitchDocument {
-  const now = Date.now();
-  return {
-    schemaVersion: PITCH_DOCUMENT_SCHEMA_VERSION,
-    slides: [
-      {
-        id: randomId("s_"),
-        name: "Slide 1",
-        version: 1,
-        updatedAt: now,
-        durationMs: PITCH_SLIDE_DEFAULT_DURATION_MS,
-        elements: [],
-        assetIds: {},
-        audioCues: [],
-      },
-    ],
-  };
 }
 
 export function NewPitch({ maximumSlides }: { maximumSlides: number }) {
@@ -45,7 +23,7 @@ export function NewPitch({ maximumSlides }: { maximumSlides: number }) {
     setState("saving");
     const ownerToken = randomId("k_");
     const createRequestId = randomId("c_");
-    const document = initialDocument();
+    const document = createEmptyPitchDocument();
     try {
       const result = await createPitchFn({
         data: {
@@ -158,6 +136,11 @@ export function NewPitch({ maximumSlides }: { maximumSlides: number }) {
           </p>
         ) : null}
       </form>
+
+      <div className="mt-12 border-t theme-border pt-8">
+        <p className="font-serif text-lg text-foreground">Not ready to introduce yourself?</p>
+        <PitchDemoEntry className="mt-4 max-w-sm" />
+      </div>
     </main>
   );
 }
