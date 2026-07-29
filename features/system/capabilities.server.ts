@@ -117,11 +117,14 @@ function getConfiguredCapabilities(): Capability[] {
           : "available"
         : "degraded",
       required: false,
-      detail: paymentsCapability.configured
-        ? paymentsCapability.testMode
-          ? "Stripe is in TEST mode — no real money will move."
-          : "Stripe Checkout and refunds are live."
-        : `Free tickets work; paid tickets need ${paymentsCapability.missing.join(" and ")}.`,
+      detail:
+        paymentsCapability.problems.length > 0
+          ? paymentsCapability.problems.join("; ")
+          : paymentsCapability.configured
+            ? paymentsCapability.testMode
+              ? "Stripe is in TEST mode — no real money will move."
+              : "Stripe Checkout and refunds are live."
+            : `Free tickets work; paid tickets need ${paymentsCapability.missing.join(" and ")}.`,
     },
     {
       id: "ticket-email",

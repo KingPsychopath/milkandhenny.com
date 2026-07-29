@@ -16,14 +16,30 @@ import { log } from "./logger.server";
 
 let client: Stripe | null = null;
 
+/**
+ * Stripe's two secrets are easy to transpose, and the failure is silent:
+ * a webhook secret in `STRIPE_SECRET_KEY` leaves the app looking configured
+ * while every API call 401s at the moment someone tries to buy. Both are
+ * shape-checked so the mistake surfaces on `/health` instead.
+ */
+const SECRET_KEY_PATTERN = /^(sk|rk)_(test|live)_[A-Za-z0-9]+$/;
+const WEBHOOK_SECRET_PATTERN = /^whsec_[A-Za-z0-9+/=_-]+$/;
+
 export function getStripeSecretKey(): string | null {
   const key = process.env.STRIPE_SECRET_KEY?.trim();
-  return key ? key : null;
+  return key && SECRET_KEY_PATTERN.test(key) ? key : null;
 }
 
 export function getWebhookSecret(): string | null {
   const secret = process.env.STRIPE_WEBHOOK_SECRET?.trim();
-  return secret ? secret : null;
+  return secret && WEBHOOK_SECRET_PATTERN.test(secret) ? secret : null;
+}
+
+/** Distinguishes "not set" from "set to something that isn't a Stripe key". */
+function describeMisconfiguration(name: string, pattern: RegExp, expected: string): string | null {
+  const raw = process.env[name]?.trim();
+  if (!raw) return null;
+  return pattern.test(raw) ? null : `${name} is set but doesn't look like ${expected}`;
 }
 
 export function isPaymentsConfigured(): boolean {
@@ -39,11 +55,18 @@ export function describePaymentsCapability(): {
   configured: boolean;
   testMode: boolean;
   missing: string[];
+  problems: string[];
 } {
   const missing: string[] = [];
   if (!getStripeSecretKey()) missing.push("STRIPE_SECRET_KEY");
   if (!getWebhookSecret()) missing.push("STRIPE_WEBHOOK_SECRET");
-  return { configured: missing.length === 0, testMode: isTestMode(), missing };
+
+  const problems = [
+    describeMisconfiguration("STRIPE_SECRET_KEY", SECRET_KEY_PATTERN, "an sk_/rk_ secret key"),
+    describeMisconfiguration("STRIPE_WEBHOOK_SECRET", WEBHOOK_SECRET_PATTERN, "a whsec_ secret"),
+  ].filter((problem): problem is string => problem !== null);
+
+  return { configured: missing.length === 0, testMode: isTestMode(), missing, problems };
 }
 
 export class PaymentsUnavailableError extends Error {
