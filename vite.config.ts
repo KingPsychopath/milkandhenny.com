@@ -44,6 +44,13 @@ export default defineConfig({
             "X-Content-Type-Options": "nosniff",
           },
         },
+        "/excalidraw/fonts/**": {
+          headers: {
+            "Cache-Control": "public, max-age=31536000, immutable",
+            "Cross-Origin-Resource-Policy": "same-site",
+            "X-Content-Type-Options": "nosniff",
+          },
+        },
         "/manifest.json": {
           headers: {
             "Cache-Control": "public, max-age=3600, must-revalidate",

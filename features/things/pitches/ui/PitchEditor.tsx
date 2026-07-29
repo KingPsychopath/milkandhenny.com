@@ -255,6 +255,8 @@ export function PitchEditor({
   const [sceneEpoch, setSceneEpoch] = useState(0);
   const [revision, setRevision] = useState(0);
   const [localSavedRevision, setLocalSavedRevision] = useState(0);
+  const [localSaveFailed, setLocalSaveFailed] = useState(false);
+  const [localSaveWake, setLocalSaveWake] = useState(0);
   const [syncWake, setSyncWake] = useState(0);
   const [uploadWake, setUploadWake] = useState(0);
   const updateState = useSiteUpdateState();
@@ -266,7 +268,10 @@ export function PitchEditor({
 
   const reloadSafe = isDemo
     ? revision === 0
-    : localSavedRevision >= revision && uploading.current.size === 0 && syncState !== "syncing";
+    : !localSaveFailed &&
+      localSavedRevision >= revision &&
+      uploading.current.size === 0 &&
+      syncState !== "syncing";
   useUpdateReloadSafety(`pitch-studio:${deckId}`, reloadSafe);
 
   useEffect(() => {
@@ -367,6 +372,7 @@ export function PitchEditor({
   useEffect(() => {
     if (isDemo || !documentState || phase !== "ready") return;
     const timer = window.setTimeout(() => {
+      const savedRevision = revision;
       void saveLocalPitchDraft({
         deckId,
         title,
@@ -375,11 +381,22 @@ export function PitchEditor({
         serverVersion: deck?.version ?? 1,
         updatedAt: new Date().toISOString(),
       })
-        .then(() => setLocalSavedRevision(revisionRef.current))
-        .catch(() => undefined);
+        .then(() => {
+          setLocalSavedRevision((current) => Math.max(current, savedRevision));
+          setLocalSaveFailed(false);
+          setMessage((current) =>
+            current.startsWith("This browser could not update its safety copy.") ? "" : current,
+          );
+        })
+        .catch(() => {
+          setLocalSaveFailed(true);
+          setMessage(
+            "This browser could not update its safety copy. Keep this tab open, free some device storage if needed, then try again.",
+          );
+        });
     }, 180);
     return () => window.clearTimeout(timer);
-  }, [deck?.version, deckId, documentState, files, isDemo, phase, title]);
+  }, [deck?.version, deckId, documentState, files, isDemo, localSaveWake, phase, revision, title]);
 
   const performSync = useCallback(async () => {
     if (isDemo || !credential || !deck || !documentState || !navigator.onLine) return false;
@@ -458,13 +475,14 @@ export function PitchEditor({
   }, [isDemo, performSync]);
 
   useEffect(() => {
-    if (!isDemo || revision === 0) return;
+    const hasUnwrittenChanges = isDemo ? revision > 0 : localSavedRevision < revision;
+    if (!hasUnwrittenChanges) return;
     const warnBeforeLeaving = (event: BeforeUnloadEvent) => {
       event.preventDefault();
     };
     window.addEventListener("beforeunload", warnBeforeLeaving);
     return () => window.removeEventListener("beforeunload", warnBeforeLeaving);
-  }, [isDemo, revision]);
+  }, [isDemo, localSavedRevision, revision]);
 
   const currentSlide = useMemo(
     () => documentState?.slides.find((slide) => slide.id === activeSlideId && !slide.deletedAt),
@@ -988,17 +1006,19 @@ export function PitchEditor({
         <span className="font-mono text-micro uppercase tracking-[0.12em] theme-muted">
           {isDemo
             ? "demo · not saved"
-            : syncState === "saved"
-              ? "saved"
-              : syncState === "syncing"
-                ? "syncing…"
-                : syncState === "merged"
-                  ? "recovered + merged"
-                  : syncState === "error"
-                    ? "needs attention"
-                    : navigator.onLine
-                      ? "saved on this device"
-                      : "offline · safe here"}
+            : localSaveFailed
+              ? "local backup needs attention"
+              : syncState === "saved"
+                ? "saved"
+                : syncState === "syncing"
+                  ? "syncing…"
+                  : syncState === "merged"
+                    ? "recovered + merged"
+                    : syncState === "error"
+                      ? "needs attention"
+                      : navigator.onLine
+                        ? "saved on this device"
+                        : "offline · safe here"}
         </span>
         <button
           type="button"
@@ -1062,6 +1082,17 @@ export function PitchEditor({
               className="ml-3 underline underline-offset-4"
             >
               try again
+            </button>
+          ) : null}
+          {!isDemo && localSaveFailed ? (
+            <button
+              type="button"
+              onClick={() => {
+                setLocalSaveWake((value) => value + 1);
+              }}
+              className="ml-3 underline underline-offset-4"
+            >
+              retry safety copy
             </button>
           ) : null}
         </div>

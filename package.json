@@ -5,7 +5,9 @@
   "type": "module",
   "scripts": {
     "audio:spelling": "tsx scripts/generate-party-spelling-audio.ts",
+    "predev": "node scripts/copy-excalidraw-fonts.mjs",
     "dev": "vite dev",
+    "prebuild": "node scripts/copy-excalidraw-fonts.mjs",
     "build": "vite build",
     "start": "node .output/server/index.mjs",
     "lint": "oxlint --deny-warnings .",

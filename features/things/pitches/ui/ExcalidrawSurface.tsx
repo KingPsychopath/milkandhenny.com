@@ -1,4 +1,12 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  Component,
+  type ErrorInfo,
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import type { BinaryFiles, ExcalidrawImperativeAPI } from "@excalidraw/excalidraw/types";
 import type { ExcalidrawElement } from "@excalidraw/excalidraw/element/types";
 import "@excalidraw/excalidraw/index.css";
@@ -43,7 +51,42 @@ function filesMatch(left: BinaryFiles, right: BinaryFiles): boolean {
   );
 }
 
-export function ExcalidrawSurface({
+// React error boundaries still require a class component. Keeping it inside
+// the adapter prevents a canvas failure from reaching the surrounding studio.
+class PitchCanvasBoundary extends Component<{ children: ReactNode }, { failed: boolean }> {
+  state = { failed: false };
+
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+
+  componentDidCatch(error: Error, info: ErrorInfo) {
+    console.error("The pitch canvas stopped and was contained", error, info);
+  }
+
+  render() {
+    if (!this.state.failed) return this.props.children;
+    return (
+      <div
+        className="flex h-full min-h-80 flex-col items-center justify-center gap-4 bg-surface px-6 text-center"
+        role="alert"
+      >
+        <p className="max-w-md font-serif text-lg text-foreground">
+          The canvas caught itself before it could disturb your saved slide.
+        </p>
+        <button
+          type="button"
+          onClick={() => this.setState({ failed: false })}
+          className="min-h-11 border-b theme-border px-4 font-mono text-xs text-foreground hover:opacity-60"
+        >
+          reopen this slide
+        </button>
+      </div>
+    );
+  }
+}
+
+function ExcalidrawSurfaceCanvas({
   slideId,
   elements,
   files,
@@ -66,9 +109,9 @@ export function ExcalidrawSurface({
   const onChangeRef = useRef(onChange);
   const elementsRef = useRef(elements);
   const filesRef = useRef(files);
-  const stageRef = useRef(toPitchStageScene(slideId, elements));
+  const [initialStage] = useState(() => toPitchStageScene(slideId, elements));
   const initialDataRef = useRef({
-    elements: stageRef.current.elements,
+    elements: initialStage.elements,
     files,
     appState: {
       currentItemFontFamily: 3 as const,
@@ -105,6 +148,11 @@ export function ExcalidrawSurface({
 
   useEffect(() => {
     let cancelled = false;
+    (
+      window as Window & {
+        EXCALIDRAW_ASSET_PATH?: string;
+      }
+    ).EXCALIDRAW_ASSET_PATH = "/excalidraw/";
     void import("@excalidraw/excalidraw").then((module) => {
       if (!cancelled) setCanvas(() => module.Excalidraw);
     });
@@ -117,13 +165,13 @@ export function ExcalidrawSurface({
     if (!api || initialised.current) return;
     initialised.current = true;
     const timer = window.setTimeout(() => {
-      api.scrollToContent([stageRef.current.frame], {
+      api.scrollToContent([initialStage.frame], {
         fitToViewport: true,
         viewportZoomFactor: readOnly ? 0.94 : 0.84,
       });
     }, 0);
     return () => window.clearTimeout(timer);
-  }, [api, readOnly]);
+  }, [api, initialStage.frame, readOnly]);
 
   if (!Canvas) {
     return (
@@ -156,5 +204,13 @@ export function ExcalidrawSurface({
         UIOptions={UI_OPTIONS}
       />
     </div>
+  );
+}
+
+export function ExcalidrawSurface(props: Parameters<typeof ExcalidrawSurfaceCanvas>[0]) {
+  return (
+    <PitchCanvasBoundary>
+      <ExcalidrawSurfaceCanvas {...props} />
+    </PitchCanvasBoundary>
   );
 }

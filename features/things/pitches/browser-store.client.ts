@@ -43,11 +43,26 @@ async function transact<T>(
   return new Promise((resolve, reject) => {
     const transaction = database.transaction(storeName, mode);
     const request = operation(transaction.objectStore(storeName));
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error ?? new Error("Local pitch storage failed"));
-    transaction.oncomplete = () => database.close();
-    transaction.onerror = () =>
-      reject(transaction.error ?? new Error("Local pitch storage failed"));
+    let result: T;
+    let settled = false;
+    const fail = () => {
+      if (settled) return;
+      settled = true;
+      database.close();
+      reject(transaction.error ?? request.error ?? new Error("Local pitch storage failed"));
+    };
+    request.onsuccess = () => {
+      result = request.result;
+    };
+    request.onerror = fail;
+    transaction.onabort = fail;
+    transaction.onerror = fail;
+    transaction.oncomplete = () => {
+      if (settled) return;
+      settled = true;
+      database.close();
+      resolve(result);
+    };
   });
 }
 
@@ -63,8 +78,22 @@ export function listPitchCredentials(): Promise<PitchOwnerCredential[]> {
   return transact(CREDENTIALS, "readonly", (store) => store.getAll());
 }
 
+const draftWriteQueues = new Map<string, Promise<IDBValidKey>>();
+
 export function saveLocalPitchDraft(draft: LocalPitchDraft): Promise<IDBValidKey> {
-  return transact(DRAFTS, "readwrite", (store) => store.put(draft));
+  const previous = draftWriteQueues.get(draft.deckId);
+  const write = (previous?.catch(() => undefined) ?? Promise.resolve()).then(() =>
+    transact(DRAFTS, "readwrite", (store) => store.put(draft)),
+  );
+  draftWriteQueues.set(draft.deckId, write);
+  void write
+    .finally(() => {
+      if (draftWriteQueues.get(draft.deckId) === write) {
+        draftWriteQueues.delete(draft.deckId);
+      }
+    })
+    .catch(() => undefined);
+  return write;
 }
 
 export async function readLocalPitchDraft(deckId: string): Promise<LocalPitchDraft | undefined> {

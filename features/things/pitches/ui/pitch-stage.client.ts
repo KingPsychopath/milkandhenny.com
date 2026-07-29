@@ -38,7 +38,7 @@ export function toPitchStageScene(
         y: 0,
         width: PITCH_SLIDE_STAGE.width,
         height: PITCH_SLIDE_STAGE.height,
-        children: content.map((element) => element.id),
+        children: [],
         name: "what the room sees",
         locked: true,
         customData: { pitchStage: true },
