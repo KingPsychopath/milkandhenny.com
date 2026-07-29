@@ -103,7 +103,7 @@ function getConfiguredCapabilities(): Capability[] {
       id: "events-database",
       label: "events and ticketing",
       status: databaseConfigured ? "available" : "unavailable",
-      required: true,
+      required: mediaRole === "web",
       detail: databaseConfigured
         ? "Events, tickets and redemptions are configured."
         : "DATABASE_URL is not set; events and ticketing cannot run.",
