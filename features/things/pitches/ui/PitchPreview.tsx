@@ -29,33 +29,28 @@ export function PitchPreview({
     slides.findIndex((slide) => slide.id === initialSlideId),
   );
   const [index, setIndex] = useState(initialIndex);
-  const [playing, setPlaying] = useState(false);
   const [sound, setSound] = useState(true);
   const slide = slides[index] ?? slides[0];
   const audio = usePitchAudioPlayback({ slide, assets, armed: sound });
 
   useEffect(() => {
-    if (!playing || !slide) return;
-    const timer = window.setTimeout(() => {
-      if (index >= slides.length - 1) {
-        setPlaying(false);
+    const keydown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        onClose();
         return;
       }
-      setIndex((current) => current + 1);
-    }, slide.durationMs);
-    return () => window.clearTimeout(timer);
-  }, [index, playing, slide, slides.length]);
-
-  useEffect(() => {
-    const keydown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
-      if (event.key === "ArrowRight")
-        setIndex((current) => Math.min(slides.length - 1, current + 1));
-      if (event.key === "ArrowLeft") setIndex((current) => Math.max(0, current - 1));
-      if (event.key === " ") {
-        event.preventDefault();
-        setPlaying((current) => !current);
+      const target = event.target;
+      if (
+        target instanceof HTMLElement &&
+        target.closest("button, a, input, textarea, select, [contenteditable='true']")
+      ) {
+        return;
       }
+      if (event.key === "ArrowRight" || event.key === " ") {
+        if (event.key === " ") event.preventDefault();
+        setIndex((current) => Math.min(slides.length - 1, current + 1));
+      }
+      if (event.key === "ArrowLeft") setIndex((current) => Math.max(0, current - 1));
     };
     window.addEventListener("keydown", keydown);
     return () => window.removeEventListener("keydown", keydown);
@@ -120,13 +115,6 @@ export function PitchPreview({
           aria-label="Previous slide"
         >
           ←
-        </button>
-        <button
-          type="button"
-          onClick={() => setPlaying((current) => !current)}
-          className="min-h-11 min-w-32 bg-foreground px-4 font-mono text-xs text-background"
-        >
-          {playing ? "pause" : "play through"}
         </button>
         <span className="min-w-16 text-center font-mono text-xs theme-muted">
           {index + 1} / {slides.length}

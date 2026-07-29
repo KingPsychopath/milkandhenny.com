@@ -14,7 +14,6 @@ export function PitchViewer({ pitch }: { pitch: PublicPitchDeckDetail }) {
   );
   const [index, setIndex] = useState(0);
   const [files, setFiles] = useState<BinaryFiles>({});
-  const [playing, setPlaying] = useState(false);
   const [sound, setSound] = useState(false);
   const slide = slides[index] ?? slides[0];
   const audio = usePitchAudioPlayback({ slide, assets: pitch.assets, armed: sound });
@@ -25,7 +24,15 @@ export function PitchViewer({ pitch }: { pitch: PublicPitchDeckDetail }) {
 
   useEffect(() => {
     const keydown = (event: KeyboardEvent) => {
+      const target = event.target;
+      if (
+        target instanceof HTMLElement &&
+        target.closest("button, a, input, textarea, select, [contenteditable='true']")
+      ) {
+        return;
+      }
       if (event.key === "ArrowRight" || event.key === " ") {
+        if (event.key === " ") event.preventDefault();
         setIndex((current) => Math.min(slides.length - 1, current + 1));
       }
       if (event.key === "ArrowLeft") setIndex((current) => Math.max(0, current - 1));
@@ -33,18 +40,6 @@ export function PitchViewer({ pitch }: { pitch: PublicPitchDeckDetail }) {
     window.addEventListener("keydown", keydown);
     return () => window.removeEventListener("keydown", keydown);
   }, [slides.length]);
-
-  useEffect(() => {
-    if (!playing || !slide) return;
-    const timer = window.setTimeout(() => {
-      if (index >= slides.length - 1) {
-        setPlaying(false);
-        return;
-      }
-      setIndex((current) => current + 1);
-    }, slide.durationMs);
-    return () => window.clearTimeout(timer);
-  }, [index, playing, slide, slides.length]);
 
   return (
     <main id="main" className="flex min-h-screen flex-col bg-background">
@@ -87,16 +82,6 @@ export function PitchViewer({ pitch }: { pitch: PublicPitchDeckDetail }) {
         <span className="font-mono text-xs theme-muted">
           {index + 1} / {slides.length}
         </span>
-        <button
-          type="button"
-          onClick={() => {
-            setSound(true);
-            setPlaying((current) => !current);
-          }}
-          className="min-h-10 bg-foreground px-4 font-mono text-xs text-background"
-        >
-          {playing ? "pause" : "play through"}
-        </button>
         <button
           type="button"
           disabled={index >= slides.length - 1}

@@ -60,7 +60,7 @@ export function PitchAudioTimeline({
             sound + timing
           </h2>
           <p className="font-mono text-micro theme-muted">
-            slide length {seconds(slide.durationMs)} · used by play-through preview
+            {seconds(slide.durationMs)} sound timeline · slides move only when you press next
           </p>
         </div>
         <div className="flex items-center gap-1">
@@ -68,7 +68,7 @@ export function PitchAudioTimeline({
             type="button"
             onClick={() => setDuration(slide.durationMs - 5_000)}
             className="min-h-10 min-w-10 border theme-border font-mono text-sm"
-            aria-label="Shorten slide by five seconds"
+            aria-label="Shorten sound timeline by five seconds"
           >
             −
           </button>
@@ -76,7 +76,7 @@ export function PitchAudioTimeline({
             type="button"
             onClick={() => setDuration(slide.durationMs + 5_000)}
             className="min-h-10 min-w-10 border theme-border font-mono text-sm"
-            aria-label="Lengthen slide by five seconds"
+            aria-label="Lengthen sound timeline by five seconds"
           >
             +
           </button>
