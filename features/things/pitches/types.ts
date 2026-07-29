@@ -6,6 +6,10 @@ export const PITCH_SLIDE_LIMIT_RANGE = { min: 1, max: 12 } as const;
 export const PITCH_DOCUMENT_MAX_BYTES = 3 * 1024 * 1024;
 export const PITCH_MAX_ELEMENTS = 1_500;
 export const PITCH_AUDIO_MAX_SECONDS = 120;
+export const PITCH_AUDIO_CUE_LIMIT = 4;
+export const PITCH_SLIDE_STAGE = { width: 960, height: 540 } as const;
+export const PITCH_SLIDE_DEFAULT_DURATION_MS = 15_000;
+export const PITCH_SLIDE_DURATION_RANGE_MS = { min: 5_000, max: 120_000 } as const;
 
 export type PitchDeckLifecycle = "active" | "archived" | "deleting";
 export type PitchAssetKind = "image" | "audio" | "thumbnail" | "import";
@@ -36,16 +40,37 @@ export interface PitchInkLayer {
   updatedAt: number;
 }
 
+export type PitchAudioCueTrigger = "enter" | "exit";
+export type PitchAudioCueEnd = "slide-exit" | "clip-end";
+
+export interface PitchAudioCue {
+  id: string;
+  assetId: string;
+  trigger: PitchAudioCueTrigger;
+  /** Delay after the trigger. */
+  delayMs: number;
+  /** The source file duration captured by the browser before upload. */
+  sourceDurationMs: number;
+  /** Trim from the beginning of the source file. */
+  startAtMs: number;
+  /** Maximum playback time after the trim point. */
+  playForMs: number;
+  volume: number;
+  /** Whether changing slides stops the cue or lets it finish naturally. */
+  end: PitchAudioCueEnd;
+}
+
 export interface PitchSlide {
   id: string;
   name: string;
   version: number;
   updatedAt: number;
+  durationMs: number;
   deletedAt?: number;
   elements: readonly ExcalidrawElement[];
   /** Excalidraw file id -> durable pitch asset id. */
   assetIds: Record<string, string>;
-  audioAssetId?: string;
+  audioCues: PitchAudioCue[];
   inkLayers?: PitchInkLayer[];
 }
 

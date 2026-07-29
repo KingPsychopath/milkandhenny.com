@@ -3,7 +3,11 @@ import { useState } from "react";
 
 import { createPitchFn } from "../pitches.functions";
 import { rememberPitchCredential, saveLocalPitchDraft } from "../browser-store.client";
-import { PITCH_DOCUMENT_SCHEMA_VERSION, type PitchDocument } from "../types";
+import {
+  PITCH_DOCUMENT_SCHEMA_VERSION,
+  PITCH_SLIDE_DEFAULT_DURATION_MS,
+  type PitchDocument,
+} from "../types";
 
 function randomId(prefix = ""): string {
   return `${prefix}${crypto.randomUUID().replaceAll("-", "")}`;
@@ -19,8 +23,10 @@ function initialDocument(): PitchDocument {
         name: "Slide 1",
         version: 1,
         updatedAt: now,
+        durationMs: PITCH_SLIDE_DEFAULT_DURATION_MS,
         elements: [],
         assetIds: {},
+        audioCues: [],
       },
     ],
   };

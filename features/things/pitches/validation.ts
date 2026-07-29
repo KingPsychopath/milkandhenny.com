@@ -3,7 +3,11 @@ import type { ExcalidrawElement } from "@excalidraw/excalidraw/element/types";
 import {
   PITCH_DOCUMENT_MAX_BYTES,
   PITCH_DOCUMENT_SCHEMA_VERSION,
+  PITCH_AUDIO_CUE_LIMIT,
   PITCH_MAX_ELEMENTS,
+  PITCH_SLIDE_DEFAULT_DURATION_MS,
+  PITCH_SLIDE_DURATION_RANGE_MS,
+  type PitchAudioCue,
   type PitchAssetKind,
   type PitchDocument,
   type PitchInkLayer,
@@ -27,8 +31,6 @@ const ELEMENT_TYPES = new Set([
   "freedraw",
   "text",
   "image",
-  "frame",
-  "magicframe",
 ]);
 const ASSET_KINDS = new Set<PitchAssetKind>(["image", "audio", "thumbnail", "import"]);
 const INK_PENS = new Set<PitchInkStroke["pen"]>([
@@ -208,12 +210,74 @@ function parseInkLayers(value: unknown): PitchInkLayer[] | null {
   return layers;
 }
 
+function parseAudioCues(value: unknown, slideDurationMs: number): PitchAudioCue[] | null {
+  if (value === undefined) return [];
+  if (!Array.isArray(value) || value.length > PITCH_AUDIO_CUE_LIMIT) return null;
+  const ids = new Set<string>();
+  const cues: PitchAudioCue[] = [];
+  for (const candidate of value) {
+    const cue = record(candidate);
+    const id =
+      typeof cue?.id === "string" && SLIDE_ID_PATTERN.test(cue.id) && !ids.has(cue.id)
+        ? cue.id
+        : null;
+    const assetId =
+      typeof cue?.assetId === "string" && ASSET_ID_PATTERN.test(cue.assetId) ? cue.assetId : null;
+    const trigger = cue?.trigger === "enter" || cue?.trigger === "exit" ? cue.trigger : null;
+    const delayMs = finiteInteger(cue?.delayMs, 0);
+    const sourceDurationMs = finiteInteger(cue?.sourceDurationMs, 1);
+    const startAtMs = finiteInteger(cue?.startAtMs, 0);
+    const playForMs = finiteInteger(cue?.playForMs, 1);
+    const volume =
+      typeof cue?.volume === "number" && Number.isFinite(cue.volume) ? cue.volume : null;
+    const end = cue?.end === "slide-exit" || cue?.end === "clip-end" ? cue.end : null;
+    if (
+      !id ||
+      !assetId ||
+      !trigger ||
+      delayMs === null ||
+      delayMs > PITCH_SLIDE_DURATION_RANGE_MS.max ||
+      (trigger === "enter" && delayMs > slideDurationMs) ||
+      sourceDurationMs === null ||
+      sourceDurationMs > PITCH_SLIDE_DURATION_RANGE_MS.max ||
+      startAtMs === null ||
+      startAtMs >= sourceDurationMs ||
+      playForMs === null ||
+      playForMs > sourceDurationMs - startAtMs ||
+      volume === null ||
+      volume < 0 ||
+      volume > 1 ||
+      !end ||
+      (trigger === "exit" && end !== "clip-end")
+    ) {
+      return null;
+    }
+    ids.add(id);
+    cues.push({
+      id,
+      assetId,
+      trigger,
+      delayMs,
+      sourceDurationMs,
+      startAtMs,
+      playForMs,
+      volume,
+      end,
+    });
+  }
+  return cues;
+}
+
 function parseSlide(value: unknown): PitchSlide | null {
   const source = record(value);
   if (!source) return null;
   const id = typeof source.id === "string" && SLIDE_ID_PATTERN.test(source.id) ? source.id : null;
   const name = boundedText(source.name, 80);
   const version = finiteInteger(source.version, 1);
+  const durationMs =
+    source.durationMs === undefined
+      ? PITCH_SLIDE_DEFAULT_DURATION_MS
+      : finiteInteger(source.durationMs, PITCH_SLIDE_DURATION_RANGE_MS.min);
   const updatedAt =
     typeof source.updatedAt === "number" &&
     Number.isFinite(source.updatedAt) &&
@@ -230,22 +294,22 @@ function parseSlide(value: unknown): PitchSlide | null {
         : null;
   const elements = parseElements(source.elements);
   const assetIds = parseAssetIds(source.assetIds);
-  const audioAssetId =
-    source.audioAssetId === undefined
-      ? undefined
-      : typeof source.audioAssetId === "string" && ASSET_ID_PATTERN.test(source.audioAssetId)
-        ? source.audioAssetId
-        : null;
+  const audioCues =
+    durationMs === null || durationMs > PITCH_SLIDE_DURATION_RANGE_MS.max
+      ? null
+      : parseAudioCues(source.audioCues, durationMs);
   const inkLayers = parseInkLayers(source.inkLayers);
   if (
     !id ||
     !name ||
     version === null ||
+    durationMs === null ||
+    durationMs > PITCH_SLIDE_DURATION_RANGE_MS.max ||
     updatedAt === null ||
     deletedAt === null ||
     !elements ||
     !assetIds ||
-    audioAssetId === null ||
+    !audioCues ||
     !inkLayers
   ) {
     return null;
@@ -255,10 +319,11 @@ function parseSlide(value: unknown): PitchSlide | null {
     name,
     version,
     updatedAt,
+    durationMs,
     deletedAt,
     elements,
     assetIds,
-    audioAssetId,
+    audioCues,
     inkLayers: inkLayers.length > 0 ? inkLayers : undefined,
   };
 }

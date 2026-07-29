@@ -1,5 +1,17 @@
 @import "tailwindcss";
 
+/* Pitch slides use one managed frame; Excalidraw's reusable-shape library is
+   intentionally outside this product's simpler studio workflow. */
+.pitch-excalidraw .default-sidebar-trigger,
+.pitch-excalidraw .App-toolbar__extra-tools-trigger {
+  display: none !important;
+}
+
+.pitch-excalidraw--readonly .layer-ui__wrapper,
+.pitch-excalidraw--readonly .App-bottom-bar {
+  display: none !important;
+}
+
 @font-face {
   font-family: "Geist";
   font-style: normal;

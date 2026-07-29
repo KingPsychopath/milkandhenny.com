@@ -1,10 +1,6 @@
 import { Link } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import {
-  convertToExcalidrawElements,
-  exportToBlob,
-  getNonDeletedElements,
-} from "@excalidraw/excalidraw";
+import { convertToExcalidrawElements, exportToBlob } from "@excalidraw/excalidraw";
 import type {
   BinaryFileData,
   BinaryFiles,
@@ -12,6 +8,9 @@ import type {
 } from "@excalidraw/excalidraw/types";
 import type { ExcalidrawElement, FileId } from "@excalidraw/excalidraw/element/types";
 
+import { GuidedTour, type GuidedTourStep } from "@/components/GuidedTour";
+import { activateSiteUpdate, useSiteUpdateState } from "@/features/offline/client";
+import { useUpdateReloadSafety } from "@/features/offline/update-safety.client";
 import {
   readLocalPitchDraft,
   rememberPitchCredential,
@@ -30,6 +29,7 @@ import {
 import {
   type OwnedPitchDeck,
   PITCH_AUDIO_MAX_SECONDS,
+  PITCH_SLIDE_DEFAULT_DURATION_MS,
   type PitchDocument,
   type PitchInkLayer,
   type PitchOwnerCredential,
@@ -39,7 +39,52 @@ import { parsePitchDocument } from "../validation";
 import { ExcalidrawSurface } from "./ExcalidrawSurface";
 import { blobToDataUrl, dataUrlToBlob, loadPitchFiles } from "./files.client";
 import { DrawesomeInk } from "./DrawesomeInk";
+import { PitchAudioTimeline } from "./PitchAudioTimeline";
+import { PitchPreview } from "./PitchPreview";
 import { PitchRecovery } from "./PitchRecovery";
+import { PitchSlideThumbnail } from "./PitchSlideThumbnail";
+import { pitchStageExport, toPitchStageScene } from "./pitch-stage.client";
+
+const PITCH_STUDIO_TOUR_KEY = "milkandhenny:pitch-studio-tour:v1";
+const PITCH_RAIL_KEY = "milkandhenny:pitch-studio-rail:v1";
+
+const TOUR_STEPS: readonly GuidedTourStep[] = [
+  {
+    id: "slides",
+    selector: "[data-tour='slides']",
+    title: "Your six beats",
+    body: "Each card is a real slide preview. Collapse this rail when you want the whole desk; pin it if you like seeing the shape of your argument.",
+    side: "right",
+  },
+  {
+    id: "stage",
+    selector: "[data-tour='stage']",
+    title: "Inside the line goes on screen",
+    body: "The labelled 16:9 frame is the slide. You can still pan around the desk, but anything outside that frame is deliberately cut from preview, export and presentation.",
+    side: "left",
+  },
+  {
+    id: "sound",
+    selector: "[data-tour='sound']",
+    title: "Give the moment a sound",
+    body: "Drop in up to four cues. Choose entry or exit, add a delay, and decide whether the sound stops with the slide or carries into the next one.",
+    side: "top",
+  },
+  {
+    id: "preview",
+    selector: "[data-tour='preview']",
+    title: "Watch it before the room does",
+    body: "Preview uses the exact same slide bounds and sound rules as the audience screen. Play through uses each slide's timing; arrows keep it manual.",
+    side: "bottom",
+  },
+  {
+    id: "publish",
+    selector: "[data-tour='publish']",
+    title: "Seal an edition",
+    body: "Publishing freezes a public edition on the wall. Your private working copy stays editable, so you can improve it and seal a newer edition later.",
+    side: "bottom",
+  },
+];
 
 function randomId(prefix: string): string {
   return `${prefix}${crypto.randomUUID().replaceAll("-", "")}`;
@@ -128,7 +173,7 @@ function rekeyBackup(
             : element,
         ),
         assetIds: {},
-        audioAssetId: undefined,
+        audioCues: [],
         inkLayers: slide.inkLayers?.map((layer) => ({
           ...layer,
           fileId: fileIds.get(layer.fileId) ?? layer.fileId,
@@ -170,14 +215,50 @@ export function PitchEditor({ deckId, maximumSlides }: { deckId: string; maximum
   );
   const [message, setMessage] = useState("");
   const [inkOpen, setInkOpen] = useState(false);
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [tourOpen, setTourOpen] = useState(false);
+  const [railOpen, setRailOpen] = useState(true);
+  const [railPinned, setRailPinned] = useState(true);
   const [sceneEpoch, setSceneEpoch] = useState(0);
   const [revision, setRevision] = useState(0);
+  const [localSavedRevision, setLocalSavedRevision] = useState(0);
   const [syncWake, setSyncWake] = useState(0);
+  const [uploadWake, setUploadWake] = useState(0);
+  const updateState = useSiteUpdateState();
   const apiRef = useRef<ExcalidrawImperativeAPI | null>(null);
   const uploading = useRef(new Set<string>());
   const revisionRef = useRef(0);
   const lastSyncedRevision = useRef(0);
   const syncing = useRef(false);
+
+  const reloadSafe =
+    localSavedRevision >= revision && uploading.current.size === 0 && syncState !== "syncing";
+  useUpdateReloadSafety(`pitch-studio:${deckId}`, reloadSafe);
+
+  useEffect(() => {
+    try {
+      const rail = JSON.parse(localStorage.getItem(PITCH_RAIL_KEY) ?? "null") as unknown;
+      if (rail && typeof rail === "object" && !Array.isArray(rail)) {
+        const saved = rail as Record<string, unknown>;
+        if (typeof saved.open === "boolean") setRailOpen(saved.open);
+        if (typeof saved.pinned === "boolean") setRailPinned(saved.pinned);
+      }
+      if (localStorage.getItem(PITCH_STUDIO_TOUR_KEY) !== "seen") {
+        const timer = window.setTimeout(() => setTourOpen(true), 700);
+        return () => window.clearTimeout(timer);
+      }
+    } catch {
+      // Private browsing may block preferences; the studio still works.
+    }
+  }, []);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(PITCH_RAIL_KEY, JSON.stringify({ open: railOpen, pinned: railPinned }));
+    } catch {
+      // A blocked preference store is non-critical.
+    }
+  }, [railOpen, railPinned]);
 
   useEffect(() => {
     let cancelled = false;
@@ -253,7 +334,9 @@ export function PitchEditor({ deckId, maximumSlides }: { deckId: string; maximum
         files,
         serverVersion: deck?.version ?? 1,
         updatedAt: new Date().toISOString(),
-      }).catch(() => undefined);
+      })
+        .then(() => setLocalSavedRevision(revisionRef.current))
+        .catch(() => undefined);
     }, 180);
     return () => window.clearTimeout(timer);
   }, [deck?.version, deckId, documentState, files, phase, title]);
@@ -304,12 +387,19 @@ export function PitchEditor({ deckId, maximumSlides }: { deckId: string; maximum
       return revisionRef.current === sentRevision;
     } catch {
       setSyncState("local");
+      setMessage(
+        updateState === "ready"
+          ? "A site update interrupted the server save. Your working copy is safe here; finish the update, then it will sync."
+          : navigator.onLine
+            ? "The server save was interrupted. Your working copy is safe here and will try again."
+            : "You’re offline. Your working copy is safe here and will sync when you reconnect.",
+      );
       return false;
     } finally {
       syncing.current = false;
       if (revisionRef.current > sentRevision) setSyncWake((value) => value + 1);
     }
-  }, [credential, deck, deckId, documentState, title]);
+  }, [credential, deck, deckId, documentState, title, updateState]);
 
   useEffect(() => {
     if (revision <= lastSyncedRevision.current) return;
@@ -413,13 +503,28 @@ export function PitchEditor({ deckId, maximumSlides }: { deckId: string; maximum
           );
           markChanged();
         })
-        .catch((error) => {
+        .catch(() => {
           setSyncState("error");
-          setMessage(error instanceof Error ? error.message : "An image could not be uploaded");
+          setMessage(
+            updateState === "ready"
+              ? "A site update interrupted this image upload. Your image is safe on this device."
+              : navigator.onLine
+                ? "This image could not reach storage. It is safe on this device; try the upload again."
+                : "This image is safe on this device and will upload when you reconnect.",
+          );
         })
         .finally(() => uploading.current.delete(fileId));
     }
-  }, [credential, currentSlide, documentState, files, markChanged, uploadBlob]);
+  }, [
+    credential,
+    currentSlide,
+    documentState,
+    files,
+    markChanged,
+    updateState,
+    uploadBlob,
+    uploadWake,
+  ]);
 
   function onCanvasChange(elements: readonly ExcalidrawElement[], nextFiles: BinaryFiles) {
     if (!currentSlide) return;
@@ -449,8 +554,10 @@ export function PitchEditor({ deckId, maximumSlides }: { deckId: string; maximum
           name: `Slide ${visibleSlides.length + 1}`,
           version: 1,
           updatedAt: Date.now(),
+          durationMs: PITCH_SLIDE_DEFAULT_DURATION_MS,
           elements: [],
           assetIds: {},
+          audioCues: [],
         },
       ],
     });
@@ -475,18 +582,33 @@ export function PitchEditor({ deckId, maximumSlides }: { deckId: string; maximum
 
   async function attachAudio(event: React.ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
+    event.target.value = "";
     if (!file || !currentSlide) return;
     try {
-      const duration = await audioDuration(file);
-      if (!Number.isFinite(duration) || duration > PITCH_AUDIO_MAX_SECONDS) {
+      const durationSeconds = await audioDuration(file);
+      if (!Number.isFinite(durationSeconds) || durationSeconds > PITCH_AUDIO_MAX_SECONDS) {
         throw new Error(`Keep slide sounds under ${PITCH_AUDIO_MAX_SECONDS / 60} minutes`);
       }
       const asset = await uploadBlob(file, { kind: "audio", fileName: file.name });
+      const durationMs = Math.max(1, Math.round(durationSeconds * 1_000));
       setDocumentState((current) =>
         current
           ? updateSlide(current, currentSlide.id, (slide) => ({
               ...slide,
-              audioAssetId: asset.id,
+              audioCues: [
+                ...slide.audioCues,
+                {
+                  id: randomId("cue_"),
+                  assetId: asset.id,
+                  trigger: "enter",
+                  delayMs: 0,
+                  sourceDurationMs: durationMs,
+                  startAtMs: 0,
+                  playForMs: durationMs,
+                  volume: 0.85,
+                  end: "slide-exit",
+                },
+              ],
               version: slide.version + 1,
               updatedAt: Date.now(),
             }))
@@ -496,6 +618,7 @@ export function PitchEditor({ deckId, maximumSlides }: { deckId: string; maximum
         current ? { ...current, assets: [...current.assets, asset] } : current,
       );
       markChanged();
+      setMessage("Sound added. Set its timing below, then test it in preview.");
     } catch (error) {
       setSyncState("error");
       setMessage(error instanceof Error ? error.message : "Sound upload failed");
@@ -554,7 +677,9 @@ export function PitchEditor({ deckId, maximumSlides }: { deckId: string; maximum
         : current,
     );
     apiRef.current?.addFiles([file]);
-    apiRef.current?.updateScene({ elements: nextElements });
+    apiRef.current?.updateScene({
+      elements: toPitchStageScene(currentSlide.id, nextElements).elements,
+    });
     markChanged();
     setInkOpen(false);
   }
@@ -610,8 +735,10 @@ export function PitchEditor({ deckId, maximumSlides }: { deckId: string; maximum
         name: slide.name,
         version: 1,
         updatedAt: Date.now(),
+        durationMs: PITCH_SLIDE_DEFAULT_DURATION_MS,
         elements: slide.elements,
         assetIds: {},
+        audioCues: [],
       }));
       setFiles((current) => imported.reduce((all, slide) => ({ ...all, ...slide.files }), current));
       setDocumentState((current) =>
@@ -648,14 +775,20 @@ export function PitchEditor({ deckId, maximumSlides }: { deckId: string; maximum
     try {
       let thumbnailAssetId: string | undefined;
       const api = apiRef.current;
-      const elements = getNonDeletedElements(currentSlide.elements);
-      if (api && elements.length > 0) {
+      const cover = visibleSlides[0];
+      if (api && cover) {
+        const stage = pitchStageExport(cover.id, cover.elements);
         const thumbnail = await exportToBlob({
-          elements,
+          ...stage,
           files,
-          appState: { ...api.getAppState(), exportBackground: true },
+          appState: {
+            ...api.getAppState(),
+            exportBackground: true,
+            frameRendering: { enabled: true, clip: true, name: false, outline: false },
+          },
           mimeType: "image/png",
           maxWidthOrHeight: 1_200,
+          exportPadding: 0,
         });
         thumbnailAssetId = (
           await uploadBlob(thumbnail, {
@@ -691,14 +824,17 @@ export function PitchEditor({ deckId, maximumSlides }: { deckId: string; maximum
 
   async function exportCurrentPng() {
     if (!currentSlide) return;
-    const elements = getNonDeletedElements(currentSlide.elements);
-    if (elements.length === 0) return;
+    const stage = pitchStageExport(currentSlide.id, currentSlide.elements);
     const blob = await exportToBlob({
-      elements,
+      ...stage,
       files,
-      appState: apiRef.current?.getAppState(),
+      appState: {
+        ...apiRef.current?.getAppState(),
+        frameRendering: { enabled: true, clip: true, name: false, outline: false },
+      },
       mimeType: "image/png",
       maxWidthOrHeight: 2_400,
+      exportPadding: 0,
     });
     download(blob, `${safeName(title)}-${currentSlide.name}.png`);
   }
@@ -706,10 +842,15 @@ export function PitchEditor({ deckId, maximumSlides }: { deckId: string; maximum
   async function exportCurrentSvg() {
     if (!currentSlide) return;
     const { exportToSvg } = await import("@excalidraw/excalidraw");
+    const stage = pitchStageExport(currentSlide.id, currentSlide.elements);
     const svg = await exportToSvg({
-      elements: getNonDeletedElements(currentSlide.elements),
+      ...stage,
       files,
-      appState: apiRef.current?.getAppState(),
+      appState: {
+        ...apiRef.current?.getAppState(),
+        frameRendering: { enabled: true, clip: true, name: false, outline: false },
+      },
+      exportPadding: 0,
     });
     download(
       new Blob([new XMLSerializer().serializeToString(svg)], { type: "image/svg+xml" }),
@@ -721,13 +862,16 @@ export function PitchEditor({ deckId, maximumSlides }: { deckId: string; maximum
     const { default: JSZip } = await import("jszip");
     const zip = new JSZip();
     for (const [index, slide] of visibleSlides.entries()) {
-      const elements = getNonDeletedElements(slide.elements);
-      if (elements.length === 0) continue;
+      const stage = pitchStageExport(slide.id, slide.elements);
       const blob = await exportToBlob({
-        elements,
+        ...stage,
         files,
+        appState: {
+          frameRendering: { enabled: true, clip: true, name: false, outline: false },
+        },
         mimeType: "image/png",
         maxWidthOrHeight: 2_400,
+        exportPadding: 0,
       });
       zip.file(`${String(index + 1).padStart(2, "0")}-${safeName(slide.name)}.png`, blob);
     }
@@ -800,6 +944,7 @@ export function PitchEditor({ deckId, maximumSlides }: { deckId: string; maximum
         </span>
         <button
           type="button"
+          data-tour="publish"
           onClick={() => void publish()}
           disabled={syncState === "syncing" || hasUnsecuredMedia}
           className="min-h-10 bg-foreground px-5 font-mono text-xs text-background hover:opacity-80 disabled:cursor-wait disabled:opacity-45"
@@ -818,85 +963,171 @@ export function PitchEditor({ deckId, maximumSlides }: { deckId: string; maximum
           role="status"
         >
           {message}
+          {updateState === "ready" ? (
+            <button
+              type="button"
+              disabled={!reloadSafe}
+              onClick={() => void activateSiteUpdate()}
+              className="ml-3 underline underline-offset-4 disabled:opacity-35"
+            >
+              {reloadSafe ? "finish update" : "saving locally…"}
+            </button>
+          ) : null}
+          {syncState === "error" && updateState !== "ready" ? (
+            <button
+              type="button"
+              onClick={() => {
+                setMessage("Trying the unfinished uploads again…");
+                setSyncState("local");
+                setUploadWake((value) => value + 1);
+                setSyncWake((value) => value + 1);
+              }}
+              className="ml-3 underline underline-offset-4"
+            >
+              try again
+            </button>
+          ) : null}
         </div>
       ) : null}
 
-      <div className="grid min-h-0 flex-1 grid-rows-[auto_minmax(28rem,1fr)] lg:grid-cols-[12rem_minmax(0,1fr)] lg:grid-rows-1">
-        <aside className="flex gap-2 overflow-x-auto border-b theme-border p-3 lg:flex-col lg:border-b-0 lg:border-r">
-          {visibleSlides.map((slide, index) => (
+      <div
+        className={`grid min-h-0 min-w-0 w-full flex-1 grid-rows-[auto_minmax(28rem,1fr)] transition-[grid-template-columns] duration-300 ease-out motion-reduce:transition-none ${
+          railOpen ? "lg:grid-cols-[14rem_minmax(0,1fr)]" : "lg:grid-cols-[3.5rem_minmax(0,1fr)]"
+        } lg:grid-rows-1`}
+      >
+        <aside
+          data-tour="slides"
+          className={`min-w-0 overflow-hidden border-b theme-border lg:border-b-0 lg:border-r ${
+            railOpen ? "p-3" : "p-2"
+          }`}
+        >
+          <div className="mb-2 flex items-center justify-between gap-1">
             <button
-              key={slide.id}
               type="button"
-              onClick={() => setActiveSlideId(slide.id)}
-              className={`min-h-14 min-w-28 border px-3 text-left font-mono text-xs ${
-                slide.id === currentSlide.id
-                  ? "theme-border-strong bg-surface text-foreground"
-                  : "theme-border theme-muted hover:opacity-60"
-              }`}
+              onClick={() => setRailOpen((open) => !open)}
+              className="min-h-10 min-w-10 font-mono text-xs theme-muted"
+              aria-label={railOpen ? "Collapse slide rail" : "Open slide rail"}
             >
-              <span className="block text-micro theme-faint">
-                {String(index + 1).padStart(2, "0")}
-              </span>
-              {slide.name}
+              {railOpen ? "←" : "→"}
             </button>
-          ))}
-          <button
-            type="button"
-            disabled={visibleSlides.length >= maximumSlides}
-            onClick={addSlide}
-            className="min-h-12 min-w-28 border border-dashed theme-border px-3 font-mono text-xs theme-muted hover:opacity-60 disabled:opacity-30"
-          >
-            + slide
-          </button>
+            {railOpen ? (
+              <button
+                type="button"
+                onClick={() => setRailPinned((pinned) => !pinned)}
+                className="min-h-10 px-2 font-mono text-micro theme-muted"
+                aria-pressed={railPinned}
+              >
+                {railPinned ? "pinned" : "auto-hide"}
+              </button>
+            ) : null}
+          </div>
+          <div className={`flex gap-2 overflow-x-auto lg:flex-col ${railOpen ? "" : "hidden"}`}>
+            {visibleSlides.map((slide, index) => (
+              <button
+                key={slide.id}
+                type="button"
+                onClick={() => {
+                  setActiveSlideId(slide.id);
+                  if (!railPinned) setRailOpen(false);
+                }}
+                className={`min-w-36 overflow-hidden border text-left font-mono text-xs lg:min-w-0 ${
+                  slide.id === currentSlide.id
+                    ? "theme-border-strong bg-surface text-foreground"
+                    : "theme-border theme-muted hover:opacity-60"
+                }`}
+              >
+                <span className="block aspect-video overflow-hidden border-b theme-border-faint bg-surface">
+                  <PitchSlideThumbnail
+                    slide={slide}
+                    files={files}
+                    className="h-full w-full object-cover"
+                  />
+                </span>
+                <span className="flex items-center gap-2 px-2 py-2">
+                  <span className="text-micro theme-faint">
+                    {String(index + 1).padStart(2, "0")}
+                  </span>
+                  <span className="truncate">{slide.name}</span>
+                </span>
+              </button>
+            ))}
+            <button
+              type="button"
+              disabled={visibleSlides.length >= maximumSlides}
+              onClick={addSlide}
+              className="min-h-12 min-w-36 border border-dashed theme-border px-3 font-mono text-xs theme-muted hover:opacity-60 disabled:opacity-30 lg:min-w-0"
+            >
+              + slide
+            </button>
+          </div>
         </aside>
 
-        <section className="relative min-h-0">
-          <div className="absolute inset-x-0 top-0 z-10 flex flex-wrap justify-end gap-2 bg-background/90 px-3 py-2 backdrop-blur">
-            <label className="inline-flex min-h-9 cursor-pointer items-center border-b theme-border-strong px-2 font-mono text-xs text-foreground hover:opacity-60">
-              add sound
-              <input
-                type="file"
-                accept="audio/mpeg,audio/mp4,audio/ogg,audio/wav,audio/webm"
-                className="sr-only"
-                onChange={(event) => void attachAudio(event)}
-              />
-            </label>
+        <section className="flex min-h-0 min-w-0 w-full flex-col">
+          <div className="z-10 flex shrink-0 items-center gap-2 overflow-x-auto border-b theme-border bg-background/90 px-3 py-2 backdrop-blur">
+            <button
+              type="button"
+              data-tour="preview"
+              onClick={() => setPreviewOpen(true)}
+              className="min-h-10 shrink-0 bg-foreground px-4 font-mono text-xs text-background hover:opacity-80"
+            >
+              preview
+            </button>
+            <input
+              value={currentSlide.name}
+              maxLength={80}
+              aria-label="Current slide name"
+              onChange={(event) => {
+                const name = event.target.value;
+                setDocumentState((current) =>
+                  current
+                    ? updateSlide(current, currentSlide.id, (slide) => ({
+                        ...slide,
+                        name,
+                        version: slide.version + 1,
+                        updatedAt: Date.now(),
+                      }))
+                    : current,
+                );
+                markChanged();
+              }}
+              className="min-h-10 min-w-32 max-w-52 shrink bg-transparent px-2 font-mono text-xs text-foreground outline-none focus:border-b theme-border-strong"
+            />
             <button
               type="button"
               onClick={() => setInkOpen(true)}
-              className="min-h-9 border-b theme-border-strong px-2 font-mono text-xs hover:opacity-60"
+              className="min-h-10 shrink-0 border-b theme-border-strong px-2 font-mono text-xs hover:opacity-60"
             >
               beautiful ink
             </button>
             <button
               type="button"
               onClick={() => void exportCurrentPng()}
-              className="min-h-9 border-b theme-border-strong px-2 font-mono text-xs hover:opacity-60"
+              className="min-h-10 shrink-0 border-b theme-border-strong px-2 font-mono text-xs hover:opacity-60"
             >
               PNG
             </button>
             <button
               type="button"
               onClick={() => void exportCurrentSvg()}
-              className="min-h-9 border-b theme-border-strong px-2 font-mono text-xs hover:opacity-60"
+              className="min-h-10 shrink-0 border-b theme-border-strong px-2 font-mono text-xs hover:opacity-60"
             >
               SVG
             </button>
             <button
               type="button"
               onClick={() => void exportDeckZip()}
-              className="min-h-9 border-b theme-border-strong px-2 font-mono text-xs hover:opacity-60"
+              className="min-h-10 shrink-0 border-b theme-border-strong px-2 font-mono text-xs hover:opacity-60"
             >
               ZIP
             </button>
             <button
               type="button"
               onClick={exportDeck}
-              className="min-h-9 border-b theme-border-strong px-2 font-mono text-xs hover:opacity-60"
+              className="min-h-10 shrink-0 border-b theme-border-strong px-2 font-mono text-xs hover:opacity-60"
             >
               backup
             </button>
-            <label className="inline-flex min-h-9 cursor-pointer items-center border-b theme-border-strong px-2 font-mono text-xs hover:opacity-60">
+            <label className="inline-flex min-h-10 shrink-0 cursor-pointer items-center border-b theme-border-strong px-2 font-mono text-xs hover:opacity-60">
               import
               <input
                 type="file"
@@ -909,14 +1140,23 @@ export function PitchEditor({ deckId, maximumSlides }: { deckId: string; maximum
               type="button"
               disabled={visibleSlides.length <= 1}
               onClick={deleteSlide}
-              className="min-h-9 border-b theme-border px-2 font-mono text-xs theme-muted hover:opacity-60 disabled:opacity-30"
+              className="min-h-10 shrink-0 border-b theme-border px-2 font-mono text-xs theme-muted hover:opacity-60 disabled:opacity-30"
             >
               remove slide
             </button>
+            <button
+              type="button"
+              onClick={() => setTourOpen(true)}
+              className="ml-auto min-h-10 min-w-10 shrink-0 rounded-full border theme-border font-mono text-xs"
+              aria-label="Open studio tutorial"
+            >
+              ?
+            </button>
           </div>
-          <div className="h-full min-h-[32rem] pt-12">
+          <div data-tour="stage" className="min-h-[24rem] flex-1">
             <ExcalidrawSurface
               key={`${currentSlide.id}:${sceneEpoch}`}
+              slideId={currentSlide.id}
               elements={currentSlide.elements}
               files={files}
               onApi={(api) => {
@@ -925,9 +1165,42 @@ export function PitchEditor({ deckId, maximumSlides }: { deckId: string; maximum
               onChange={onCanvasChange}
             />
           </div>
+          <PitchAudioTimeline
+            slide={currentSlide}
+            assets={deck?.assets ?? []}
+            onAddSound={(event) => void attachAudio(event)}
+            onChange={(nextSlide) => {
+              setDocumentState((current) =>
+                current ? updateSlide(current, nextSlide.id, () => nextSlide) : current,
+              );
+              markChanged();
+            }}
+          />
         </section>
       </div>
       {inkOpen ? <DrawesomeInk onCancel={() => setInkOpen(false)} onPlace={placeInk} /> : null}
+      {previewOpen ? (
+        <PitchPreview
+          title={title}
+          document={documentState}
+          files={files}
+          assets={deck?.assets ?? []}
+          initialSlideId={currentSlide.id}
+          onClose={() => setPreviewOpen(false)}
+        />
+      ) : null}
+      <GuidedTour
+        open={tourOpen}
+        steps={TOUR_STEPS}
+        onClose={() => {
+          try {
+            localStorage.setItem(PITCH_STUDIO_TOUR_KEY, "seen");
+          } catch {
+            // The help button remains available when preferences cannot persist.
+          }
+          setTourOpen(false);
+        }}
+      />
     </main>
   );
 }

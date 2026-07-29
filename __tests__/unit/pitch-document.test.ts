@@ -2,7 +2,11 @@ import { describe, expect, it } from "vitest";
 import type { ExcalidrawElement } from "@excalidraw/excalidraw/element/types";
 
 import { mergePitchDocuments } from "@/features/things/pitches/merge";
-import { PITCH_DOCUMENT_SCHEMA_VERSION, type PitchDocument } from "@/features/things/pitches/types";
+import {
+  PITCH_DOCUMENT_SCHEMA_VERSION,
+  PITCH_SLIDE_DEFAULT_DURATION_MS,
+  type PitchDocument,
+} from "@/features/things/pitches/types";
 import { parsePitchDocument } from "@/features/things/pitches/validation";
 
 function element(id: string, version: number, updated: number): ExcalidrawElement {
@@ -25,8 +29,10 @@ function documentWith(elements: readonly ExcalidrawElement[]): PitchDocument {
         name: "Slide 1",
         version: 1,
         updatedAt: 100,
+        durationMs: PITCH_SLIDE_DEFAULT_DURATION_MS,
         elements,
         assetIds: {},
+        audioCues: [],
       },
     ],
   };
@@ -73,8 +79,10 @@ describe("pitch documents", () => {
       name: "Slide 2",
       version: 1,
       updatedAt: 100,
+      durationMs: PITCH_SLIDE_DEFAULT_DURATION_MS,
       elements: [],
       assetIds: {},
+      audioCues: [],
     });
     incoming.slides.push(server.slides[1]);
     expect(mergePitchDocuments(server, incoming).slides[0].deletedAt).toBe(300);
@@ -106,6 +114,26 @@ describe("pitch documents", () => {
     ];
     expect(parsePitchDocument(document, 6).ok).toBe(true);
     document.slides[0].inkLayers[0].board.w = 50_000;
+    expect(parsePitchDocument(document, 6).ok).toBe(false);
+  });
+
+  it("keeps sound cues inside the slide and source timing boundaries", () => {
+    const document = documentWith([]);
+    document.slides[0].audioCues = [
+      {
+        id: "cue_12345678",
+        assetId: "pa_1234567890123456789012",
+        trigger: "enter",
+        delayMs: 2_000,
+        sourceDurationMs: 8_000,
+        startAtMs: 1_000,
+        playForMs: 4_000,
+        volume: 0.8,
+        end: "slide-exit",
+      },
+    ];
+    expect(parsePitchDocument(document, 6).ok).toBe(true);
+    document.slides[0].audioCues[0].playForMs = 7_500;
     expect(parsePitchDocument(document, 6).ok).toBe(false);
   });
 });

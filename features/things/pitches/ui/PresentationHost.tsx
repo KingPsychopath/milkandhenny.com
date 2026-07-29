@@ -1,5 +1,5 @@
 import { Link } from "@tanstack/react-router";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { BinaryFiles } from "@excalidraw/excalidraw/types";
 
 import { useQrCode } from "@/hooks/useQrCode";
@@ -8,6 +8,7 @@ import { readPublishedPitchFn } from "../pitches.functions";
 import type { PublicPitchDeckDetail } from "../types";
 import { ExcalidrawSurface } from "./ExcalidrawSurface";
 import { loadPitchFiles } from "./files.client";
+import { usePitchAudioPlayback } from "./usePitchAudioPlayback";
 import { usePresentationPoll } from "./usePresentationPoll";
 
 function hostToken(roomId: string): string {
@@ -27,7 +28,6 @@ export function PresentationHost({ roomId }: { roomId: string }) {
   const [files, setFiles] = useState<BinaryFiles>({});
   const [dockOpen, setDockOpen] = useState(true);
   const [audioArmed, setAudioArmed] = useState(false);
-  const audioRef = useRef<HTMLAudioElement | null>(null);
   useEffect(() => setToken(hostToken(roomId)), [roomId]);
   const credentials = useMemo(() => (token ? { hostToken: token } : undefined), [token]);
   const live = usePresentationPoll(roomId, credentials);
@@ -58,40 +58,10 @@ export function PresentationHost({ roomId }: { roomId: string }) {
 
   const slides = pitch?.document.slides.filter((slide) => !slide.deletedAt) ?? [];
   const slide = slides[snapshot?.slideIndex ?? 0];
-  const audio = slide?.audioAssetId
-    ? pitch?.assets.find((asset) => asset.id === slide.audioAssetId)
-    : undefined;
-
-  const playAudio = useCallback((url: string) => {
-    const player = audioRef.current ?? new Audio();
-    audioRef.current = player;
-    player.preload = "metadata";
-    if (player.src !== url) player.src = url;
-    if (player.paused) void player.play().catch(() => setAudioArmed(false));
-  }, []);
-
-  useEffect(() => {
-    if (!audioArmed) return;
-    if (audio?.url) playAudio(audio.url);
-    else audioRef.current?.pause();
-  }, [audio?.url, audioArmed, playAudio, snapshot?.slideIndex]);
-
-  useEffect(
-    () => () => {
-      audioRef.current?.pause();
-      audioRef.current = null;
-    },
-    [],
-  );
+  usePitchAudioPlayback({ slide, assets: pitch?.assets ?? [], armed: audioArmed });
 
   function toggleAudio() {
-    if (audioArmed) {
-      audioRef.current?.pause();
-      setAudioArmed(false);
-      return;
-    }
-    setAudioArmed(true);
-    if (audio?.url) playAudio(audio.url);
+    setAudioArmed((current) => !current);
   }
 
   const action = useCallback(
@@ -136,6 +106,7 @@ export function PresentationHost({ roomId }: { roomId: string }) {
       {slide ? (
         <ExcalidrawSurface
           key={`${pitch?.id}:${slide.id}`}
+          slideId={slide.id}
           elements={slide.elements}
           files={files}
           readOnly

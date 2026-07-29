@@ -3,6 +3,8 @@ import type { BinaryFiles, ExcalidrawImperativeAPI } from "@excalidraw/excalidra
 import type { ExcalidrawElement } from "@excalidraw/excalidraw/element/types";
 import "@excalidraw/excalidraw/index.css";
 
+import { fromPitchStageScene, toPitchStageScene } from "./pitch-stage.client";
+
 const UI_OPTIONS = {
   canvasActions: {
     changeViewBackgroundColor: false,
@@ -42,12 +44,14 @@ function filesMatch(left: BinaryFiles, right: BinaryFiles): boolean {
 }
 
 export function ExcalidrawSurface({
+  slideId,
   elements,
   files,
   readOnly = false,
   onChange,
   onApi,
 }: {
+  slideId: string;
   elements: readonly ExcalidrawElement[];
   files: BinaryFiles;
   readOnly?: boolean;
@@ -56,40 +60,47 @@ export function ExcalidrawSurface({
 }) {
   const initialised = useRef(false);
   const apiRef = useRef<ExcalidrawImperativeAPI | null>(null);
+  const [api, setApi] = useState<ExcalidrawImperativeAPI | null>(null);
   const [Canvas, setCanvas] = useState<(typeof import("@excalidraw/excalidraw"))["Excalidraw"]>();
   const onApiRef = useRef(onApi);
   const onChangeRef = useRef(onChange);
   const elementsRef = useRef(elements);
   const filesRef = useRef(files);
+  const stageRef = useRef(toPitchStageScene(slideId, elements));
   const initialDataRef = useRef({
-    elements,
+    elements: stageRef.current.elements,
     files,
     appState: {
       currentItemFontFamily: 3 as const,
+      frameRendering: {
+        enabled: true,
+        clip: true,
+        name: false,
+        outline: !readOnly,
+      },
     },
   });
 
   onApiRef.current = onApi;
   onChangeRef.current = onChange;
 
-  const handleApi = useCallback((api: ExcalidrawImperativeAPI) => {
-    apiRef.current = api;
-    onApiRef.current?.(api);
+  const handleApi = useCallback((nextApi: ExcalidrawImperativeAPI) => {
+    apiRef.current = nextApi;
+    setApi(nextApi);
+    onApiRef.current?.(nextApi);
   }, []);
 
   const handleChange = useCallback(
     (nextElements: readonly ExcalidrawElement[], nextFiles: BinaryFiles) => {
-      if (
-        elementsMatch(elementsRef.current, nextElements) &&
-        filesMatch(filesRef.current, nextFiles)
-      ) {
+      const content = fromPitchStageScene(slideId, nextElements);
+      if (elementsMatch(elementsRef.current, content) && filesMatch(filesRef.current, nextFiles)) {
         return;
       }
-      elementsRef.current = nextElements;
+      elementsRef.current = content;
       filesRef.current = nextFiles;
-      onChangeRef.current?.(nextElements, nextFiles);
+      onChangeRef.current?.(content, nextFiles);
     },
-    [],
+    [slideId],
   );
 
   useEffect(() => {
@@ -103,10 +114,16 @@ export function ExcalidrawSurface({
   }, []);
 
   useEffect(() => {
-    if (!apiRef.current || initialised.current) return;
+    if (!api || initialised.current) return;
     initialised.current = true;
-    requestAnimationFrame(() => apiRef.current?.scrollToContent(elements, { fitToContent: true }));
-  }, [elements]);
+    const timer = window.setTimeout(() => {
+      api.scrollToContent([stageRef.current.frame], {
+        fitToViewport: true,
+        viewportZoomFactor: readOnly ? 0.94 : 0.84,
+      });
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [api, readOnly]);
 
   if (!Canvas) {
     return (
@@ -117,18 +134,27 @@ export function ExcalidrawSurface({
   }
 
   return (
-    <Canvas
-      excalidrawAPI={handleApi}
-      initialData={initialDataRef.current}
-      viewModeEnabled={readOnly}
-      zenModeEnabled={readOnly}
-      validateEmbeddable={false}
-      onChange={
-        onChange
-          ? (nextElements, _appState, nextFiles) => handleChange(nextElements, nextFiles)
-          : undefined
-      }
-      UIOptions={UI_OPTIONS}
-    />
+    <div
+      className={`pitch-excalidraw relative h-full ${readOnly ? "pitch-excalidraw--readonly" : ""}`}
+    >
+      {!readOnly ? (
+        <span className="pointer-events-none absolute left-14 top-3 z-20 bg-background/90 px-2 py-1 font-mono text-micro theme-muted">
+          screen boundary · 16:9
+        </span>
+      ) : null}
+      <Canvas
+        excalidrawAPI={handleApi}
+        initialData={initialDataRef.current}
+        viewModeEnabled={readOnly}
+        zenModeEnabled={readOnly}
+        validateEmbeddable={false}
+        onChange={
+          onChange
+            ? (nextElements, _appState, nextFiles) => handleChange(nextElements, nextFiles)
+            : undefined
+        }
+        UIOptions={UI_OPTIONS}
+      />
+    </div>
   );
 }

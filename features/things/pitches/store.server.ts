@@ -78,6 +78,21 @@ export interface StoredPitchDeck {
   archivedAt?: string;
 }
 
+export interface PitchDeckBackup {
+  id: string;
+  version: number;
+  reason: "periodic" | "conflict" | "publish" | "admin";
+  createdAt: string;
+}
+
+export interface PitchAuditEvent {
+  id: string;
+  action: string;
+  actor: string;
+  metadata: Record<string, unknown>;
+  createdAt: string;
+}
+
 export type PitchStoreResult<T> =
   | { ok: true; value: T }
   | { ok: false; status: number; error: string };
@@ -195,6 +210,15 @@ async function insertAudit(
       values ($1,$2,$3,$4::jsonb)`,
     [input.deckId, input.action, input.actor, JSON.stringify(input.metadata ?? {})],
   );
+}
+
+export async function recordPitchAudit(input: {
+  deckId: string;
+  action: string;
+  actor: string;
+  metadata?: Record<string, unknown>;
+}): Promise<void> {
+  await transaction((client) => insertAudit(client, input));
 }
 
 export async function createPitchDeck(input: {
@@ -423,7 +447,7 @@ export async function publishPitchDeck(input: {
     const referencedAssets = new Set(
       document.slides.flatMap((slide) => [
         ...Object.values(slide.assetIds),
-        ...(slide.audioAssetId ? [slide.audioAssetId] : []),
+        ...slide.audioCues.map((cue) => cue.assetId),
       ]),
     );
     if (referencedAssets.size > 0) {
@@ -505,6 +529,16 @@ export async function listPitchAssets(deckId: string): Promise<PitchAssetRow[]> 
   return query<PitchAssetRow>(`select * from pitch_assets where deck_id = $1 order by created_at`, [
     deckId,
   ]);
+}
+
+export async function listStalePendingPitchAssets(limit = 100): Promise<PitchAssetRow[]> {
+  return query<PitchAssetRow>(
+    `select * from pitch_assets
+      where state = 'pending' and created_at < now() - interval '1 hour'
+      order by created_at, id
+      limit $1`,
+    [Math.min(500, Math.max(1, limit))],
+  );
 }
 
 export async function listPublicPitchDecks(
@@ -644,7 +678,7 @@ export async function listPitchDecksForRecovery(email: string): Promise<StoredPi
 }
 
 export async function addPitchAccessTokens(
-  entries: Array<{ deckId: string; token: string; label: string }>,
+  entries: Array<{ deckId: string; token: string; label: string; actor?: string }>,
 ): Promise<void> {
   await transaction(async (client) => {
     for (const entry of entries) {
@@ -656,7 +690,7 @@ export async function addPitchAccessTokens(
       await insertAudit(client, {
         deckId: entry.deckId,
         action: "access.issued",
-        actor: "recovery",
+        actor: entry.actor ?? "recovery",
       });
       await client.query(
         `update pitch_access_tokens
@@ -739,6 +773,164 @@ export async function readPitchDeckForAdmin(deckId: string): Promise<StoredPitch
     [deckId],
   );
   return row ? toStoredDeck(row) : null;
+}
+
+export async function listPitchBackupsForAdmin(deckId: string): Promise<PitchDeckBackup[]> {
+  const rows = await query<
+    QueryResultRow & {
+      id: string | number;
+      version: string | number;
+      reason: PitchDeckBackup["reason"];
+      created_at: Date | string;
+    }
+  >(
+    `select id, version, reason, created_at
+      from pitch_deck_backups
+      where deck_id = $1
+      order by created_at desc, id desc
+      limit 20`,
+    [deckId],
+  );
+  return rows.map((row) => ({
+    id: String(row.id),
+    version: integer(row.version),
+    reason: row.reason,
+    createdAt: iso(row.created_at),
+  }));
+}
+
+export async function listPitchAuditForAdmin(deckId: string): Promise<PitchAuditEvent[]> {
+  const rows = await query<
+    QueryResultRow & {
+      id: string | number;
+      action: string;
+      actor: string;
+      metadata: unknown;
+      created_at: Date | string;
+    }
+  >(
+    `select id, action, actor, metadata, created_at
+      from pitch_audit_events
+      where deck_id = $1
+      order by created_at desc, id desc
+      limit 50`,
+    [deckId],
+  );
+  return rows.map((row) => ({
+    id: String(row.id),
+    action: row.action,
+    actor: row.actor,
+    metadata:
+      row.metadata && typeof row.metadata === "object" && !Array.isArray(row.metadata)
+        ? (row.metadata as Record<string, unknown>)
+        : {},
+    createdAt: iso(row.created_at),
+  }));
+}
+
+export async function updatePitchDeckForAdmin(input: {
+  deckId: string;
+  title: string;
+  ownerName: string;
+  ownerEmail: string;
+}): Promise<StoredPitchDeck | null> {
+  return transaction(async (client) => {
+    const email = normalisePitchEmail(input.ownerEmail);
+    const current = await clientDeck(client, input.deckId, true);
+    if (!current || current.lifecycle === "deleting") return null;
+    const ownerChanged = current.owner_email_hash !== hashPitchValue(email);
+    const rows = await client.query<PitchDeckRow>(
+      `update pitch_decks
+        set title = $2,
+            published_title = case when published_at is null then null else $2 end,
+            owner_name = $3,
+            owner_email = $4,
+            owner_email_hash = $5,
+            updated_at = now()
+        where id = $1 and lifecycle <> 'deleting'
+        returning *`,
+      [input.deckId, input.title, input.ownerName, email, hashPitchValue(email)],
+    );
+    if (ownerChanged) {
+      await client.query(
+        `update pitch_access_tokens
+          set revoked_at = now()
+          where deck_id = $1 and revoked_at is null`,
+        [input.deckId],
+      );
+    }
+    await insertAudit(client, {
+      deckId: input.deckId,
+      action: "deck.metadata.updated",
+      actor: "admin",
+      metadata: { ownerChanged, accessRevoked: ownerChanged },
+    });
+    return toStoredDeck(rows.rows[0]);
+  });
+}
+
+export async function restorePitchBackupForAdmin(
+  deckId: string,
+  backupId: string,
+): Promise<StoredPitchDeck | null> {
+  return transaction(async (client) => {
+    const row = await clientDeck(client, deckId, true);
+    if (!row || row.lifecycle === "deleting") return null;
+    const backup = await client.query<QueryResultRow & { id: string | number; document: unknown }>(
+      `select id, document from pitch_deck_backups where id = $1 and deck_id = $2`,
+      [backupId, deckId],
+    );
+    if (!backup.rows[0]) return null;
+    const document = parseStoredDocument(backup.rows[0].document);
+    await maybeBackup(client, row, "admin");
+    const updated = await client.query<PitchDeckRow>(
+      `update pitch_decks
+        set draft_document = $2::jsonb,
+            draft_version = draft_version + 1,
+            last_mutation_id = null,
+            last_backup_at = now(),
+            draft_expires_at = $3,
+            updated_at = now()
+        where id = $1
+        returning *`,
+      [deckId, JSON.stringify(document), getPitchDraftExpiresAt()],
+    );
+    await insertAudit(client, {
+      deckId,
+      action: "backup.restored",
+      actor: "admin",
+      metadata: { backupId },
+    });
+    return toStoredDeck(updated.rows[0]);
+  });
+}
+
+export async function markPitchDeckDeletingForAdmin(
+  deckId: string,
+  confirmation: string,
+): Promise<PitchStoreResult<StoredPitchDeck>> {
+  return transaction(async (client) => {
+    const current = await clientDeck(client, deckId, true);
+    if (!current || current.lifecycle === "deleting") {
+      return { ok: false, status: 404, error: "Pitch not found" };
+    }
+    if (confirmation !== current.title) {
+      return { ok: false, status: 400, error: "Type the exact pitch title" };
+    }
+    const rows = await client.query<PitchDeckRow>(
+      `update pitch_decks
+        set lifecycle = 'deleting', updated_at = now()
+        where id = $1
+        returning *`,
+      [deckId],
+    );
+    await insertAudit(client, {
+      deckId,
+      action: "deck.delete.requested",
+      actor: "admin",
+    });
+    return { ok: true, value: toStoredDeck(rows.rows[0]) };
+  });
 }
 
 export async function setPitchDeckArchived(

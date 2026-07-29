@@ -98,6 +98,7 @@ export const createPitchFn = createServerFn({ method: "POST" })
           ownerName,
           title,
           document: document.document,
+          origin: getBaseUrlForRequest(getRequest()),
         });
       }),
     );
@@ -167,7 +168,10 @@ export const publishPitchFn = createServerFn({ method: "POST" })
     return runOperation(
       Effect.gen(function* () {
         const pitches = yield* PitchesService;
-        return yield* pitches.publish(data);
+        return yield* pitches.publish({
+          ...data,
+          origin: getBaseUrlForRequest(getRequest()),
+        });
       }),
     );
   });

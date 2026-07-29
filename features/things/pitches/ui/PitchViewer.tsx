@@ -5,6 +5,7 @@ import type { BinaryFiles } from "@excalidraw/excalidraw/types";
 import type { PublicPitchDeckDetail } from "../types";
 import { ExcalidrawSurface } from "./ExcalidrawSurface";
 import { loadPitchFiles } from "./files.client";
+import { usePitchAudioPlayback } from "./usePitchAudioPlayback";
 
 export function PitchViewer({ pitch }: { pitch: PublicPitchDeckDetail }) {
   const slides = useMemo(
@@ -13,10 +14,10 @@ export function PitchViewer({ pitch }: { pitch: PublicPitchDeckDetail }) {
   );
   const [index, setIndex] = useState(0);
   const [files, setFiles] = useState<BinaryFiles>({});
+  const [playing, setPlaying] = useState(false);
+  const [sound, setSound] = useState(false);
   const slide = slides[index] ?? slides[0];
-  const audio = slide.audioAssetId
-    ? pitch.assets.find((asset) => asset.id === slide.audioAssetId)
-    : undefined;
+  const audio = usePitchAudioPlayback({ slide, assets: pitch.assets, armed: sound });
 
   useEffect(() => {
     void loadPitchFiles(pitch.assets).then(setFiles);
@@ -32,6 +33,18 @@ export function PitchViewer({ pitch }: { pitch: PublicPitchDeckDetail }) {
     window.addEventListener("keydown", keydown);
     return () => window.removeEventListener("keydown", keydown);
   }, [slides.length]);
+
+  useEffect(() => {
+    if (!playing || !slide) return;
+    const timer = window.setTimeout(() => {
+      if (index >= slides.length - 1) {
+        setPlaying(false);
+        return;
+      }
+      setIndex((current) => current + 1);
+    }, slide.durationMs);
+    return () => window.clearTimeout(timer);
+  }, [index, playing, slide, slides.length]);
 
   return (
     <main id="main" className="flex min-h-screen flex-col bg-background">
@@ -53,7 +66,13 @@ export function PitchViewer({ pitch }: { pitch: PublicPitchDeckDetail }) {
         </Link>
       </header>
       <section className="relative min-h-[60vh] flex-1">
-        <ExcalidrawSurface key={slide.id} elements={slide.elements} files={files} readOnly />
+        <ExcalidrawSurface
+          key={slide.id}
+          slideId={slide.id}
+          elements={slide.elements}
+          files={files}
+          readOnly
+        />
       </section>
       <footer className="flex flex-wrap items-center justify-center gap-4 border-t theme-border px-4 py-3">
         <button
@@ -70,6 +89,16 @@ export function PitchViewer({ pitch }: { pitch: PublicPitchDeckDetail }) {
         </span>
         <button
           type="button"
+          onClick={() => {
+            setSound(true);
+            setPlaying((current) => !current);
+          }}
+          className="min-h-10 bg-foreground px-4 font-mono text-xs text-background"
+        >
+          {playing ? "pause" : "play through"}
+        </button>
+        <button
+          type="button"
           disabled={index >= slides.length - 1}
           onClick={() => setIndex((current) => Math.min(slides.length - 1, current + 1))}
           className="min-h-10 px-4 font-mono text-sm disabled:opacity-25"
@@ -77,17 +106,23 @@ export function PitchViewer({ pitch }: { pitch: PublicPitchDeckDetail }) {
         >
           →
         </button>
-        {audio?.url ? (
-          <audio
-            key={audio.id}
-            controls
-            preload="metadata"
-            src={audio.url}
-            className="h-9 max-w-full"
-          >
-            Your browser cannot play this slide&apos;s sound.
-          </audio>
-        ) : null}
+        <button
+          type="button"
+          onClick={() => setSound((current) => !current)}
+          className="min-h-10 border-b theme-border px-3 font-mono text-xs"
+        >
+          sound {sound ? "on" : "off"}
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            setSound(true);
+            audio.replay();
+          }}
+          className="min-h-10 px-3 font-mono text-xs theme-muted"
+        >
+          replay
+        </button>
       </footer>
     </main>
   );

@@ -1,6 +1,7 @@
 import type { BinaryFiles } from "@excalidraw/excalidraw/types";
 
-import type { PitchDocument, PitchOwnerCredential } from "./types";
+import { PITCH_SLIDE_LIMIT_RANGE, type PitchDocument, type PitchOwnerCredential } from "./types";
+import { parsePitchDocument } from "./validation";
 
 const DATABASE = "milk-and-henny-pitches";
 const VERSION = 1;
@@ -66,8 +67,32 @@ export function saveLocalPitchDraft(draft: LocalPitchDraft): Promise<IDBValidKey
   return transact(DRAFTS, "readwrite", (store) => store.put(draft));
 }
 
-export function readLocalPitchDraft(deckId: string): Promise<LocalPitchDraft | undefined> {
-  return transact(DRAFTS, "readonly", (store) => store.get(deckId));
+export async function readLocalPitchDraft(deckId: string): Promise<LocalPitchDraft | undefined> {
+  const value: unknown = await transact(DRAFTS, "readonly", (store) => store.get(deckId));
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const source = value as Record<string, unknown>;
+  const document = parsePitchDocument(source.document, PITCH_SLIDE_LIMIT_RANGE.max);
+  if (
+    source.deckId !== deckId ||
+    typeof source.title !== "string" ||
+    typeof source.serverVersion !== "number" ||
+    !Number.isInteger(source.serverVersion) ||
+    typeof source.updatedAt !== "string" ||
+    !document.ok ||
+    !source.files ||
+    typeof source.files !== "object" ||
+    Array.isArray(source.files)
+  ) {
+    return undefined;
+  }
+  return {
+    deckId,
+    title: source.title,
+    document: document.document,
+    files: source.files as BinaryFiles,
+    serverVersion: source.serverVersion,
+    updatedAt: source.updatedAt,
+  };
 }
 
 export async function rememberTokenFromHash(

@@ -1,7 +1,9 @@
 import { convertToExcalidrawElements } from "@excalidraw/excalidraw";
 import type { BinaryFileData, BinaryFiles } from "@excalidraw/excalidraw/types";
 import type { ExcalidrawElement, FileId } from "@excalidraw/excalidraw/element/types";
+import type JSZip from "jszip";
 
+import { PITCH_SLIDE_STAGE } from "./types";
 import { blobToDataUrl } from "./ui/files.client";
 
 export interface ImportedPitchSlide {
@@ -37,6 +39,18 @@ function canvasBlob(canvas: HTMLCanvasElement): Promise<Blob> {
   });
 }
 
+function fitWithinStage(width: number, height: number) {
+  const scale = Math.min(PITCH_SLIDE_STAGE.width / width, PITCH_SLIDE_STAGE.height / height);
+  const fittedWidth = width * scale;
+  const fittedHeight = height * scale;
+  return {
+    x: (PITCH_SLIDE_STAGE.width - fittedWidth) / 2,
+    y: (PITCH_SLIDE_STAGE.height - fittedHeight) / 2,
+    width: fittedWidth,
+    height: fittedHeight,
+  };
+}
+
 export async function importPdf(file: File, maximumSlides = 12): Promise<ImportedPitchSlide[]> {
   const pdfjs = await import("pdfjs-dist");
   pdfjs.GlobalWorkerOptions.workerSrc = new URL(
@@ -62,14 +76,12 @@ export async function importPdf(file: File, maximumSlides = 12): Promise<Importe
     const blob = await canvasBlob(canvas);
     const fileId = randomId("pdf_") as FileId;
     const dataURL = await blobToDataUrl(blob);
+    const bounds = fitWithinStage(natural.width, natural.height);
     const [image] = convertToExcalidrawElements(
       [
         {
           type: "image",
-          x: 0,
-          y: 0,
-          width: viewport.width,
-          height: viewport.height,
+          ...bounds,
           fileId,
           customData: { pitchImport: "pdf", page: pageNumber },
         },
@@ -90,6 +102,29 @@ export async function importPdf(file: File, maximumSlides = 12): Promise<Importe
 function emu(value: string | null, fallback: number): number {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed / 9_525 : fallback;
+}
+
+function pptxStageTransform(zip: JSZip) {
+  const fallback = {
+    scale: 1,
+    offsetX: 0,
+    offsetY: 0,
+  };
+  const presentation = zip.file("ppt/presentation.xml");
+  if (!presentation) return Promise.resolve(fallback);
+  return presentation.async("text").then((xml) => {
+    const parsed = new DOMParser().parseFromString(xml, "application/xml");
+    const size = parsed.getElementsByTagName("p:sldSz")[0];
+    const width = emu(size?.getAttribute("cx") ?? null, PITCH_SLIDE_STAGE.width);
+    const height = emu(size?.getAttribute("cy") ?? null, PITCH_SLIDE_STAGE.height);
+    if (width <= 0 || height <= 0) return fallback;
+    const fitted = fitWithinStage(width, height);
+    return {
+      scale: fitted.width / width,
+      offsetX: fitted.x,
+      offsetY: fitted.y,
+    };
+  });
 }
 
 function relationshipMap(xml: string): Map<string, string> {
@@ -124,6 +159,10 @@ export async function importPptx(file: File, maximumSlides = 12): Promise<Import
     });
   if (slidePaths.length === 0) throw new Error("That PowerPoint file contains no slides");
 
+  const stage = await pptxStageTransform(zip);
+  const point = (value: number, axis: "x" | "y") =>
+    value * stage.scale + (axis === "x" ? stage.offsetX : stage.offsetY);
+  const length = (value: number) => value * stage.scale;
   const result: ImportedPitchSlide[] = [];
   for (const [slideIndex, slidePath] of slidePaths.slice(0, maximumSlides).entries()) {
     const slideXml = await zip.file(slidePath)!.async("text");
@@ -146,11 +185,11 @@ export async function importPptx(file: File, maximumSlides = 12): Promise<Import
       skeletons.push({
         type: "text",
         text,
-        x: emu(off?.getAttribute("x") ?? null, 80),
-        y: emu(off?.getAttribute("y") ?? null, 60 + shapeIndex * 70),
-        width: Math.max(120, emu(extent?.getAttribute("cx") ?? null, 700)),
-        height: Math.max(36, emu(extent?.getAttribute("cy") ?? null, 60)),
-        fontSize: shapeIndex === 0 ? 42 : 28,
+        x: point(emu(off?.getAttribute("x") ?? null, 80), "x"),
+        y: point(emu(off?.getAttribute("y") ?? null, 60 + shapeIndex * 70), "y"),
+        width: length(Math.max(120, emu(extent?.getAttribute("cx") ?? null, 700))),
+        height: length(Math.max(36, emu(extent?.getAttribute("cy") ?? null, 60))),
+        fontSize: length(shapeIndex === 0 ? 42 : 28),
         fontFamily: 3,
         customData: { pitchImport: "pptx", slide: slideIndex + 1 },
       });
@@ -185,10 +224,10 @@ export async function importPptx(file: File, maximumSlides = 12): Promise<Import
       const extent = picture.getElementsByTagName("a:ext")[0];
       skeletons.push({
         type: "image",
-        x: emu(off?.getAttribute("x") ?? null, 100 + pictureIndex * 40),
-        y: emu(off?.getAttribute("y") ?? null, 160 + pictureIndex * 40),
-        width: Math.max(100, emu(extent?.getAttribute("cx") ?? null, 500)),
-        height: Math.max(100, emu(extent?.getAttribute("cy") ?? null, 300)),
+        x: point(emu(off?.getAttribute("x") ?? null, 100 + pictureIndex * 40), "x"),
+        y: point(emu(off?.getAttribute("y") ?? null, 160 + pictureIndex * 40), "y"),
+        width: length(Math.max(100, emu(extent?.getAttribute("cx") ?? null, 500))),
+        height: length(Math.max(100, emu(extent?.getAttribute("cy") ?? null, 300))),
         fileId,
         customData: { pitchImport: "pptx", slide: slideIndex + 1 },
       });

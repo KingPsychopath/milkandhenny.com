@@ -17,10 +17,18 @@ object editor changes. Drawesome is isolated behind `DrawesomeInk` and maps its 
 the platform-owned `PitchInkStroke` shape. It is the tactile freehand layer, not a second source of
 truth.
 
+The product owns a fixed 960×540 stage. `pitch-stage.client.ts` injects it as locked editor chrome,
+clips all editor content to it, and strips it before persistence. Thumbnails, preview, exports and
+the presentation display use the same adapter, so changing the object editor cannot change what
+counts as a slide.
+
 ## Domain language
 
 - **Deck** — the owner, public metadata, lifecycle, current draft and published snapshot.
-- **Slide** — one Excalidraw scene plus file-to-asset references and an optional short audio asset.
+- **Slide** — one editor-neutral scene, a fixed duration, file-to-asset references and bounded
+  audio cues.
+- **Audio cue** — a slide entry or exit trigger with source trim, delay, volume and an explicit
+  stop-at-slide-exit or continue-to-clip-end rule.
 - **Access token** — a high-entropy capability for one owner device. Only its hash is stored.
 - **Asset** — an image, audio file, thumbnail or import source stored in private R2.
 - **Backup** — a bounded server snapshot made independently of the current draft.
@@ -48,7 +56,9 @@ the version people may already be presenting.
 Access tokens live in URL fragments and IndexedDB, never in query strings or logs. Recovery adds a
 new device token and sends it only to the original email; it does not invalidate working devices.
 Only the newest eight device and recovery keys remain valid for a deck, which bounds forgotten
-links without unexpectedly signing out active creators.
+links without unexpectedly signing out active creators. An admin owner reassignment is the one
+intentional exception: it revokes every prior capability before a fresh link is sent to the new
+address.
 
 ## Conflict and recovery policy
 
@@ -68,11 +78,13 @@ Defaults are configuration, not scattered constants:
 - 3 active decks per email (`PITCH_MAX_DECKS_PER_EMAIL`, allowed range 1–10).
 - 48 hours for an unpublished, inactive server draft (`PITCH_DRAFT_TTL_HOURS`).
 - 10 MB per image, 15 MB per audio file, 30 MB per import and 50 MB total per deck.
+- 4 audio cues per slide; 5–120 seconds per slide and 120 seconds per source clip.
 - Short audio is presentation accompaniment, not a media-hosting product.
 
 Published decks do not expire automatically. A cleanup job first marks abandoned drafts as
 deleting, then removes R2 objects, then hard-deletes the relational records. A concurrent save
-cannot lose media between the database check and object deletion.
+cannot lose media between the database check and object deletion. The same maintenance pass removes
+upload reservations that never reached finalisation after one hour.
 
 ## Formats
 
@@ -81,7 +93,7 @@ cannot lose media between the database check and object deletion.
 - PDF pages become editable slide backgrounds in the browser.
 - PPTX is parsed in the browser with the existing JSZip dependency. Common text and image content
   becomes editable elements; unsupported PowerPoint effects degrade to a clean imported slide
-  rather than blocking the deck.
+  rather than blocking the deck. Both formats are scaled and centred into the product stage.
 
 ## Presentation model
 
@@ -90,8 +102,20 @@ approval. Approved controllers can choose a published deck and move backwards or
 command is idempotent and room state has a revision so stale phones cannot overwrite newer
 navigation.
 
-The display preloads the adjacent slide and its signed assets. Slide audio starts only after the
-display has been explicitly armed, respecting browser autoplay rules.
+The display preloads the adjacent slide and its signed assets. A shared playback adapter runs the
+same entry, exit, trim and continuation rules in preview, public viewing and presentation. Audio
+starts only after the surface has been explicitly armed, respecting browser autoplay rules.
+
+## Email and operations
+
+Creation sends the owner a branded private-studio handoff. Publishing sends the sealed public link
+while retaining the private editing link. Recovery and admin resend issue a new hashed capability.
+Provider outcomes are recorded in the pitch audit log without turning a recoverable email failure
+into a lost deck.
+
+The admin control room can correct metadata, reassign ownership, resend access, inspect slide
+previews and media state, restore a bounded backup, review audit history, archive, or delete a deck
+and all of its R2 objects.
 
 ## Marketing and tickets
 

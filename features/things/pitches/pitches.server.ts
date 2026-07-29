@@ -1,6 +1,8 @@
 import { getRedis } from "@/lib/platform/redis.server";
 import { log } from "@/lib/platform/logger.server";
 import {
+  adminPitchAssets,
+  cleanupStalePitchAssets,
   createPitchAssetUpload,
   deleteAllPitchAssets,
   finalisePitchAsset,
@@ -8,20 +10,31 @@ import {
   signedPitchAssets,
 } from "./assets.server";
 import { getPitchMaxSlides } from "./config.server";
-import { sendPitchRecoveryEmail } from "./email.server";
+import {
+  sendPitchPublishedEmail,
+  sendPitchRecoveryEmail,
+  sendPitchWelcomeEmail,
+} from "./email.server";
 import {
   addPitchAccessTokens,
   createPitchDeck,
   createPitchOwnerToken,
   hardDeletePitchDeck,
   listPitchDecksForRecovery,
+  listPitchAuditForAdmin,
+  listPitchBackupsForAdmin,
   listPublicPitchDecks,
+  markPitchDeckDeletingForAdmin,
   markExpiredPitchDecksDeleting,
   publishPitchDeck,
   readOwnedPitchDeck,
+  readPitchDeckForAdmin,
   readPublicPitchDeck,
+  recordPitchAudit,
   removePitchAccessTokens,
+  restorePitchBackupForAdmin,
   syncPitchDeck,
+  updatePitchDeckForAdmin,
   type PitchStoreResult,
   type StoredPitchDeck,
 } from "./store.server";
@@ -62,9 +75,31 @@ export async function createPitch(input: {
   ownerToken: string;
   title: string;
   document: PitchDocument;
+  origin: string;
 }): Promise<PitchStoreResult<{ deck: OwnedPitchDeck; duplicate: boolean }>> {
   const created = await createPitchDeck(input);
   if (!created.ok) return created;
+  if (!created.value.duplicate) {
+    const delivery = await sendPitchWelcomeEmail({
+      email: created.value.deck.ownerEmail,
+      origin: input.origin,
+      deck: created.value.deck,
+      token: input.ownerToken,
+    });
+    await recordPitchAudit({
+      deckId: created.value.deck.id,
+      action: delivery.ok ? "email.welcome.sent" : "email.welcome.failed",
+      actor: "system",
+      metadata: delivery.ok
+        ? { messageId: delivery.id }
+        : { status: delivery.status, error: delivery.error },
+    }).catch((error) =>
+      log.warn("pitches.email", "Could not record welcome email result", {
+        deckId: created.value.deck.id,
+        error: error instanceof Error ? error.message : String(error),
+      }),
+    );
+  }
   return {
     ok: true,
     value: {
@@ -106,9 +141,30 @@ export async function publishPitch(input: {
   deckId: string;
   ownerToken: string;
   thumbnailAssetId?: string;
+  origin: string;
 }): Promise<PitchStoreResult<OwnedPitchDeck>> {
   const published = await publishPitchDeck(input);
-  return published.ok ? { ok: true, value: await ownerView(published.value) } : published;
+  if (!published.ok) return published;
+  const delivery = await sendPitchPublishedEmail({
+    email: published.value.ownerEmail,
+    origin: input.origin,
+    deck: published.value,
+    token: input.ownerToken,
+  });
+  await recordPitchAudit({
+    deckId: published.value.id,
+    action: delivery.ok ? "email.published.sent" : "email.published.failed",
+    actor: "system",
+    metadata: delivery.ok
+      ? { messageId: delivery.id }
+      : { status: delivery.status, error: delivery.error },
+  }).catch((error) =>
+    log.warn("pitches.email", "Could not record published email result", {
+      deckId: published.value.id,
+      error: error instanceof Error ? error.message : String(error),
+    }),
+  );
+  return { ok: true, value: await ownerView(published.value) };
 }
 
 export async function listPublishedPitches(search?: string): Promise<PublicPitchDeck[]> {
@@ -129,7 +185,7 @@ export async function readPublishedPitch(deckId: string): Promise<PublicPitchDec
   const referenced = new Set(
     deck.publishedDocument.slides.flatMap((slide) => [
       ...Object.values(slide.assetIds),
-      ...(slide.audioAssetId ? [slide.audioAssetId] : []),
+      ...slide.audioCues.map((cue) => cue.assetId),
     ]),
   );
   if (deck.thumbnailAssetId) referenced.add(deck.thumbnailAssetId);
@@ -189,6 +245,18 @@ export async function recoverPitchAccess(input: {
     origin: input.origin,
     decks: issued.map(({ deckId: id, title, token }) => ({ id, title, token })),
   });
+  await Promise.all(
+    issued.map(({ deckId }) =>
+      recordPitchAudit({
+        deckId,
+        action: delivery.ok ? "email.recovery.sent" : "email.recovery.failed",
+        actor: "system",
+        metadata: delivery.ok
+          ? { messageId: delivery.id }
+          : { status: delivery.status, error: delivery.error },
+      }).catch(() => undefined),
+    ),
+  );
   if (!delivery.ok) {
     await removePitchAccessTokens(issued.map(({ token }) => token));
     return { sent: false };
@@ -202,7 +270,9 @@ export async function cleanupExpiredPitches(limit = 100): Promise<{
   attempted: number;
   deleted: number;
   failed: number;
+  staleAssets: { attempted: number; deleted: number; failed: number };
 }> {
+  const staleAssets = await cleanupStalePitchAssets(limit);
   const decks = await markExpiredPitchDecksDeleting(limit);
   let deleted = 0;
   let failed = 0;
@@ -215,7 +285,88 @@ export async function cleanupExpiredPitches(limit = 100): Promise<{
       log.error("pitches.cleanup", "Could not delete abandoned pitch", { deckId: deck.id }, error);
     }
   }
-  return { attempted: decks.length, deleted, failed };
+  return { attempted: decks.length, deleted, failed, staleAssets };
+}
+
+export async function readPitchForAdmin(deckId: string) {
+  const pitch = await readPitchDeckForAdmin(deckId);
+  if (!pitch) return null;
+  const [assets, backups, audit] = await Promise.all([
+    adminPitchAssets(deckId),
+    listPitchBackupsForAdmin(deckId),
+    listPitchAuditForAdmin(deckId),
+  ]);
+  return { pitch, assets, backups, audit };
+}
+
+export async function updatePitchForAdmin(input: {
+  deckId: string;
+  title: string;
+  ownerName: string;
+  ownerEmail: string;
+}): Promise<PitchStoreResult<StoredPitchDeck>> {
+  const pitch = await updatePitchDeckForAdmin(input);
+  return pitch ? { ok: true, value: pitch } : { ok: false, status: 404, error: "Pitch not found" };
+}
+
+export async function restorePitchForAdmin(
+  deckId: string,
+  backupId: string,
+): Promise<PitchStoreResult<StoredPitchDeck>> {
+  const pitch = await restorePitchBackupForAdmin(deckId, backupId);
+  return pitch
+    ? { ok: true, value: pitch }
+    : { ok: false, status: 404, error: "Pitch backup not found" };
+}
+
+export async function resendPitchAccessForAdmin(input: {
+  deckId: string;
+  origin: string;
+}): Promise<PitchStoreResult<{ sent: true }>> {
+  const deck = await readPitchDeckForAdmin(input.deckId);
+  if (!deck) return { ok: false, status: 404, error: "Pitch not found" };
+  const token = createPitchOwnerToken();
+  await addPitchAccessTokens([{ deckId: deck.id, token, label: "admin resend", actor: "admin" }]);
+  const delivery = await sendPitchRecoveryEmail({
+    email: deck.ownerEmail,
+    origin: input.origin,
+    decks: [{ id: deck.id, title: deck.title, token }],
+  });
+  await recordPitchAudit({
+    deckId: deck.id,
+    action: delivery.ok ? "email.recovery.sent" : "email.recovery.failed",
+    actor: "admin",
+    metadata: delivery.ok
+      ? { messageId: delivery.id }
+      : { status: delivery.status, error: delivery.error },
+  }).catch(() => undefined);
+  if (!delivery.ok) {
+    await removePitchAccessTokens([token]);
+    return { ok: false, status: 502, error: "The recovery email could not be sent" };
+  }
+  return { ok: true, value: { sent: true } };
+}
+
+export async function deletePitchForAdmin(
+  deckId: string,
+  confirmation: string,
+): Promise<PitchStoreResult<{ deleted: true }>> {
+  const marked = await markPitchDeckDeletingForAdmin(deckId, confirmation);
+  if (!marked.ok) return marked;
+  try {
+    await deleteAllPitchAssets(deckId);
+    if (!(await hardDeletePitchDeck(deckId))) {
+      return { ok: false, status: 409, error: "Pitch deletion is already in progress" };
+    }
+    return { ok: true, value: { deleted: true } };
+  } catch (error) {
+    log.error("pitches.admin", "Could not finish pitch deletion", { deckId }, error);
+    return {
+      ok: false,
+      status: 503,
+      error: "Pitch deletion will be retried by storage cleanup",
+    };
+  }
 }
 
 export type PitchAssetUploadInput = {

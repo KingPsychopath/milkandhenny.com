@@ -103,33 +103,33 @@ export function PitchGallery({ initialPitches }: { initialPitches: PublicPitchDe
 
         {pitches.length > 0 ? (
           <div className="mt-8 columns-1 gap-6 sm:columns-2 lg:columns-3">
-            {pitches.map((pitch, index) => (
+            {pitches.map((pitch) => (
               <Link
                 key={pitch.id}
                 to="/things/pitches/$deckId"
                 params={{ deckId: pitch.id }}
                 className="group mb-6 block break-inside-avoid border-b theme-border pb-5"
               >
-                <div
-                  className={`overflow-hidden bg-surface ${
-                    index % 3 === 1
-                      ? "aspect-[4/5]"
-                      : index % 3 === 2
-                        ? "aspect-square"
-                        : "aspect-video"
-                  }`}
-                >
+                <div className="relative aspect-square overflow-hidden bg-surface p-4">
                   {pitch.thumbnailUrl ? (
                     <img
                       src={pitch.thumbnailUrl}
                       alt=""
-                      className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.02]"
+                      className="h-full w-full object-contain transition-transform duration-500 group-hover:scale-[1.02]"
                     />
                   ) : (
-                    <div className="flex h-full items-center justify-center px-6 text-center font-serif text-2xl theme-subtle">
-                      {pitch.title}
+                    <div className="flex h-full flex-col items-center justify-center gap-5 px-6 text-center">
+                      <img
+                        src="/icon-192.png"
+                        alt=""
+                        className="h-16 w-16 rounded-2xl opacity-70"
+                      />
+                      <span className="font-serif text-2xl theme-subtle">{pitch.title}</span>
                     </div>
                   )}
+                  <span className="absolute bottom-3 right-3 bg-background px-2 py-1 font-mono text-micro uppercase tracking-[0.12em] theme-muted">
+                    sealed
+                  </span>
                 </div>
                 <h3 className="mt-4 font-serif text-2xl text-foreground">{pitch.title}</h3>
                 <p className="mt-1 font-mono text-xs theme-muted">

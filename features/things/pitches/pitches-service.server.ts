@@ -22,8 +22,13 @@ export class PitchesService extends Context.Service<
     readonly cleanup: typeof cleanup;
     readonly listAdmin: typeof listAdmin;
     readonly readAdmin: typeof readAdmin;
+    readonly adminDetail: typeof adminDetail;
     readonly archive: typeof archive;
     readonly adminAssets: typeof adminAssets;
+    readonly updateAdmin: typeof updateAdmin;
+    readonly restoreAdmin: typeof restoreAdmin;
+    readonly resendAdmin: typeof resendAdmin;
+    readonly deleteAdmin: typeof deleteAdmin;
     readonly createPresentation: typeof createPresentation;
     readonly joinPresentation: typeof joinPresentation;
     readonly readPresentation: typeof readPresentation;
@@ -45,8 +50,13 @@ export class PitchesService extends Context.Service<
     cleanup,
     listAdmin,
     readAdmin,
+    adminDetail,
     archive,
     adminAssets,
+    updateAdmin,
+    restoreAdmin,
+    resendAdmin,
+    deleteAdmin,
     createPresentation,
     joinPresentation,
     readPresentation,
@@ -56,7 +66,7 @@ export class PitchesService extends Context.Service<
 }
 
 function create(input: Parameters<typeof engine.createPitch>[0]) {
-  return pitchesOperation("create", () => engine.createPitch(input));
+  return pitchesOperation("create", () => engine.createPitch(input), false);
 }
 
 function readOwned(...input: Parameters<typeof engine.readOwnedPitch>) {
@@ -68,7 +78,7 @@ function sync(input: Parameters<typeof engine.syncPitch>[0]) {
 }
 
 function publish(input: Parameters<typeof engine.publishPitch>[0]) {
-  return pitchesOperation("publish", () => engine.publishPitch(input));
+  return pitchesOperation("publish", () => engine.publishPitch(input), false);
 }
 
 function listPublished(search?: string) {
@@ -107,12 +117,32 @@ function readAdmin(deckId: string) {
   return pitchesOperation("admin_read", () => store.readPitchDeckForAdmin(deckId));
 }
 
+function adminDetail(deckId: string) {
+  return pitchesOperation("admin_detail", () => engine.readPitchForAdmin(deckId));
+}
+
 function archive(deckId: string, archived: boolean) {
   return pitchesOperation("admin_archive", () => store.setPitchDeckArchived(deckId, archived));
 }
 
 function adminAssets(deckId: string) {
   return pitchesOperation("admin_assets", () => assets.signedPitchAssets(deckId));
+}
+
+function updateAdmin(input: Parameters<typeof engine.updatePitchForAdmin>[0]) {
+  return pitchesOperation("admin_update", () => engine.updatePitchForAdmin(input));
+}
+
+function restoreAdmin(...input: Parameters<typeof engine.restorePitchForAdmin>) {
+  return pitchesOperation("admin_restore_backup", () => engine.restorePitchForAdmin(...input));
+}
+
+function resendAdmin(input: Parameters<typeof engine.resendPitchAccessForAdmin>[0]) {
+  return pitchesOperation("admin_resend", () => engine.resendPitchAccessForAdmin(input), false);
+}
+
+function deleteAdmin(...input: Parameters<typeof engine.deletePitchForAdmin>) {
+  return pitchesOperation("admin_delete", () => engine.deletePitchForAdmin(...input), false);
 }
 
 function createPresentation(eventTitle?: string) {

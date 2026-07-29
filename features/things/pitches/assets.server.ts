@@ -22,6 +22,7 @@ import {
   insertPitchAsset,
   listPitchAssets,
   listReadyPitchAssets,
+  listStalePendingPitchAssets,
   markPitchAssetReady,
   ownerCanAccessPitch,
   pitchAssetBytes,
@@ -210,6 +211,35 @@ export async function signedPitchAsset(
 ): Promise<PitchAsset | null> {
   const row = await getReadyPitchAsset(deckId, assetId);
   return row ? withSignedUrl(row) : null;
+}
+
+export async function adminPitchAssets(deckId: string): Promise<PitchAsset[]> {
+  const rows = await listPitchAssets(deckId);
+  return Promise.all(
+    rows.map((row) =>
+      row.state === "ready" ? withSignedUrl(row) : Promise.resolve(toPitchAsset(row)),
+    ),
+  );
+}
+
+export async function cleanupStalePitchAssets(limit = 100): Promise<{
+  attempted: number;
+  deleted: number;
+  failed: number;
+}> {
+  const rows = await listStalePendingPitchAssets(limit);
+  let deleted = 0;
+  let failed = 0;
+  for (const row of rows) {
+    try {
+      await deleteObject(row.object_key, { scope: "private" });
+      await deletePitchAssetRecord(row.id);
+      deleted += 1;
+    } catch {
+      failed += 1;
+    }
+  }
+  return { attempted: rows.length, deleted, failed };
 }
 
 export async function deleteAllPitchAssets(deckId: string): Promise<number> {

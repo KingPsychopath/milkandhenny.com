@@ -48,7 +48,8 @@ function mergeSlide(serverSlide: PitchSlide, incomingSlide: PitchSlide): PitchSl
         : undefined,
     elements: mergeElements(serverSlide.elements, incomingSlide.elements),
     assetIds: { ...serverSlide.assetIds, ...incomingSlide.assetIds },
-    audioAssetId: incomingWins ? incomingSlide.audioAssetId : serverSlide.audioAssetId,
+    durationMs: incomingWins ? incomingSlide.durationMs : serverSlide.durationMs,
+    audioCues: incomingWins ? incomingSlide.audioCues : serverSlide.audioCues,
     inkLayers: incomingWins ? incomingSlide.inkLayers : serverSlide.inkLayers,
   };
 }
