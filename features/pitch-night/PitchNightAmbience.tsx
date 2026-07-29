@@ -1,9 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 const AMBIENCE_PREFERENCE = "pitch-night:ambience";
+const APARTMENT_LIFE_TRACK = "/audio/apartment-life-fete-recap.mp3";
+const AMBIENCE_LEVEL = 0.07;
+const AMBIENCE_UNDER_MUSIC_LEVEL = 0.024;
+const MUSIC_LEVEL = 0.18;
 
 interface AmbienceEngine {
   context: AudioContext;
+  setApartmentLifeActive: (active: boolean) => void;
   stop: () => void;
 }
 
@@ -36,7 +41,7 @@ function createAmbienceEngine(): AmbienceEngine {
   const driftDepth = context.createGain();
 
   master.gain.setValueAtTime(0, context.currentTime);
-  master.gain.linearRampToValueAtTime(0.07, context.currentTime + 1.8);
+  master.gain.linearRampToValueAtTime(AMBIENCE_LEVEL, context.currentTime + 1.8);
   master.connect(context.destination);
 
   texture.buffer = noiseBuffer(context);
@@ -75,11 +80,85 @@ function createAmbienceEngine(): AmbienceEngine {
   drift.start();
 
   let stopped = false;
+  let apartmentLifeActive = false;
+  let musicBuffer: AudioBuffer | undefined;
+  let loadingMusic: Promise<AudioBuffer> | undefined;
+  let music:
+    | {
+        source: AudioBufferSourceNode;
+        gain: GainNode;
+      }
+    | undefined;
+
+  const ramp = (gain: AudioParam, value: number, seconds: number) => {
+    const now = context.currentTime;
+    gain.cancelScheduledValues(now);
+    gain.setValueAtTime(gain.value, now);
+    gain.linearRampToValueAtTime(value, now + seconds);
+  };
+
+  const fadeOutMusic = () => {
+    const current = music;
+    if (!current) return;
+    music = undefined;
+    ramp(current.gain.gain, 0, 0.8);
+    window.setTimeout(() => {
+      try {
+        current.source.stop();
+      } catch {
+        // The audio context may already have closed.
+      }
+    }, 850);
+  };
+
+  const loadMusic = () => {
+    if (musicBuffer) return Promise.resolve(musicBuffer);
+    loadingMusic ??= fetch(APARTMENT_LIFE_TRACK)
+      .then((response) => {
+        if (!response.ok) throw new Error("Apartment Life track could not be loaded");
+        return response.arrayBuffer();
+      })
+      .then((buffer) => context.decodeAudioData(buffer))
+      .then((buffer) => {
+        musicBuffer = buffer;
+        return buffer;
+      });
+    return loadingMusic;
+  };
+
+  const startMusic = async () => {
+    try {
+      const buffer = await loadMusic();
+      if (stopped || !apartmentLifeActive || music) return;
+      const source = context.createBufferSource();
+      const gain = context.createGain();
+      source.buffer = buffer;
+      source.loop = true;
+      gain.gain.setValueAtTime(0, context.currentTime);
+      source.connect(gain).connect(context.destination);
+      source.start();
+      music = { source, gain };
+      ramp(gain.gain, MUSIC_LEVEL, 1.4);
+    } catch {
+      // The procedural ambience remains available if the track cannot load.
+    }
+  };
+
   return {
     context,
+    setApartmentLifeActive: (active) => {
+      apartmentLifeActive = active;
+      ramp(master.gain, active ? AMBIENCE_UNDER_MUSIC_LEVEL : AMBIENCE_LEVEL, 1.2);
+      if (active) {
+        void startMusic();
+      } else {
+        fadeOutMusic();
+      }
+    },
     stop: () => {
       if (stopped) return;
       stopped = true;
+      fadeOutMusic();
       const now = context.currentTime;
       master.gain.cancelScheduledValues(now);
       master.gain.setValueAtTime(master.gain.value, now);
@@ -97,17 +176,20 @@ function createAmbienceEngine(): AmbienceEngine {
 
 export function PitchNightAmbience() {
   const engineRef = useRef<AmbienceEngine | null>(null);
-  const [enabled, setEnabled] = useState(false);
+  const apartmentLifeActiveRef = useRef(false);
+  const [enabled, setEnabled] = useState(true);
   const [supported, setSupported] = useState(true);
 
   const start = useCallback(() => {
     if (engineRef.current) {
       void engineRef.current.context.resume();
+      engineRef.current.setApartmentLifeActive(apartmentLifeActiveRef.current);
       return true;
     }
     try {
       const engine = createAmbienceEngine();
       engineRef.current = engine;
+      engine.setApartmentLifeActive(apartmentLifeActiveRef.current);
       void engine.context.resume();
       return true;
     } catch {
@@ -122,10 +204,12 @@ export function PitchNightAmbience() {
   }, []);
 
   useEffect(() => {
-    const preferred = window.localStorage.getItem(AMBIENCE_PREFERENCE) === "on";
-    if (!preferred) return;
+    const preference = window.localStorage.getItem(AMBIENCE_PREFERENCE);
+    if (preference === "off") {
+      setEnabled(false);
+      return;
+    }
 
-    setEnabled(true);
     const resumeOnIntent = () => {
       start();
       window.removeEventListener("pointerdown", resumeOnIntent);
@@ -138,6 +222,21 @@ export function PitchNightAmbience() {
       window.removeEventListener("keydown", resumeOnIntent);
     };
   }, [start]);
+
+  useEffect(() => {
+    const section = document.querySelector("[data-dj-scene]");
+    if (!section) return;
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        const active = entry?.isIntersecting === true;
+        apartmentLifeActiveRef.current = active;
+        engineRef.current?.setApartmentLifeActive(active);
+      },
+      { threshold: 0.18 },
+    );
+    observer.observe(section);
+    return () => observer.disconnect();
+  }, []);
 
   useEffect(() => {
     const handleVisibility = () => {
