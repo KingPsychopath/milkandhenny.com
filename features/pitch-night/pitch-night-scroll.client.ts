@@ -517,12 +517,11 @@ function animateWorld({ compact, gsap, root, world }: MotionContext) {
     );
 }
 
-function animatePitchAndSpelling({ gsap }: MotionContext) {
-  const media = gsap.matchMedia();
+function animatePitchAndSpelling({ compact, gsap }: MotionContext) {
   const pitchCards = gsap.utils.toArray<HTMLElement>("[data-slide-card]");
   const quoteWords = gsap.utils.toArray<HTMLElement>("[data-quote-word]");
 
-  media.add("(min-width: 768px)", () => {
+  if (!compact) {
     gsap
       .timeline({
         scrollTrigger: {
@@ -568,8 +567,7 @@ function animatePitchAndSpelling({ gsap }: MotionContext) {
         },
         0.66,
       );
-  });
-  media.add("(max-width: 767px)", () => {
+  } else {
     gsap
       .timeline({
         scrollTrigger: {
@@ -622,7 +620,7 @@ function animatePitchAndSpelling({ gsap }: MotionContext) {
         once: true,
       },
     });
-  });
+  }
 
   const letters = gsap.utils.toArray<HTMLElement>("[data-spelling-letter]");
   gsap.fromTo(
@@ -650,8 +648,6 @@ function animatePitchAndSpelling({ gsap }: MotionContext) {
       },
     },
   );
-
-  return () => media.revert();
 }
 
 function animateBreath({ gsap }: MotionContext) {
@@ -695,9 +691,7 @@ function animateBreath({ gsap }: MotionContext) {
     );
 }
 
-function animateLaterScenes({ gsap }: MotionContext) {
-  const compact = matchMedia("(max-width: 767px)").matches;
-
+function animateLaterScenes({ compact, gsap }: MotionContext) {
   gsap.utils.toArray<HTMLElement>("[data-game-token]").forEach((token, index) => {
     gsap.fromTo(
       token,
@@ -945,18 +939,16 @@ function animateLaterScenes({ gsap }: MotionContext) {
 }
 
 export function createPitchNightScrollMotion(context: MotionContext) {
-  let cleanMedia = () => {};
   const motion = context.gsap.context(() => {
     animateOpening(context);
     animateWorld(context);
-    cleanMedia = animatePitchAndSpelling(context);
+    animatePitchAndSpelling(context);
     animateBreath(context);
     animateLaterScenes(context);
   }, context.root);
 
   return () => {
     context.root.removeAttribute("data-finale-active");
-    cleanMedia();
     motion.revert();
   };
 }

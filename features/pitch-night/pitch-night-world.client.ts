@@ -16,9 +16,8 @@ export interface PitchNightWorld {
 export function createPitchNightWorld(
   THREE: ThreeModule,
   canvas: HTMLCanvasElement,
-  onResize: () => void,
+  compact: boolean,
 ): PitchNightWorld {
-  const compact = matchMedia("(max-width: 767px)").matches;
   const finePointer = matchMedia("(pointer: fine)").matches;
   const styles = getComputedStyle(document.documentElement);
   const amber = styles.getPropertyValue("--pitch-night-amber").trim();
@@ -133,12 +132,7 @@ export function createPitchNightWorld(
     plane.rotation.set(spec.tilt[0], spec.tilt[1], spec.tilt[2]);
     finaleSystem.add(plane);
 
-    const orbitGeometry = new THREE.TorusGeometry(
-      spec.radius,
-      spec.tube,
-      6,
-      compact ? 96 : 176,
-    );
+    const orbitGeometry = new THREE.TorusGeometry(spec.radius, spec.tube, 6, compact ? 96 : 176);
     const orbitMaterial = new THREE.MeshBasicMaterial({
       color: new THREE.Color(index % 2 === 0 ? cream : blue).lerp(
         new THREE.Color(spec.color),
@@ -503,12 +497,16 @@ export function createPitchNightWorld(
     pointer.x = event.clientX / innerWidth - 0.5;
     pointer.y = event.clientY / innerHeight - 0.5;
   };
+  let resizeFrame = 0;
   const handleResize = () => {
-    camera.aspect = innerWidth / innerHeight;
-    camera.updateProjectionMatrix();
-    renderer.setSize(innerWidth, innerHeight);
-    renderer.setPixelRatio(Math.min(devicePixelRatio, compact ? 1.2 : 1.5));
-    onResize();
+    if (resizeFrame) return;
+    resizeFrame = requestAnimationFrame(() => {
+      resizeFrame = 0;
+      camera.aspect = innerWidth / innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setPixelRatio(Math.min(devicePixelRatio, compact ? 1.2 : 1.5));
+      renderer.setSize(innerWidth, innerHeight);
+    });
   };
   if (finePointer) addEventListener("pointermove", handlePointer, { passive: true });
   addEventListener("resize", handleResize);
@@ -548,6 +546,7 @@ export function createPitchNightWorld(
     orbitals,
     dispose: () => {
       cancelAnimationFrame(frame);
+      cancelAnimationFrame(resizeFrame);
       if (finePointer) removeEventListener("pointermove", handlePointer);
       removeEventListener("resize", handleResize);
       document.removeEventListener("visibilitychange", handleVisibility);
