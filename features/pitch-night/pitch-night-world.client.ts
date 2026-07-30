@@ -517,11 +517,12 @@ export function createPitchNightWorld(
   if (finePointer) addEventListener("pointermove", handlePointer, { passive: true });
   addEventListener("resize", handleResize);
 
-  const clock = new THREE.Clock();
+  let lastFrameTime = performance.now();
   let frame = 0;
-  const render = () => {
+  const render = (now: number) => {
     if (!document.hidden) {
-      const frameScale = Math.min(clock.getDelta(), 1 / 20) * 60;
+      const frameScale = Math.min((now - lastFrameTime) / 1_000, 1 / 20) * 60;
+      lastFrameTime = now;
       core.rotation.y += 0.0018 * frameScale;
       core.rotation.x += 0.0009 * frameScale;
       wire.rotation.y -= 0.0011 * frameScale;
@@ -547,9 +548,12 @@ export function createPitchNightWorld(
     if (finaleSystem.scale.x <= 0.0011) finaleSystem.visible = false;
   };
   void renderer.compileAsync(scene, camera).then(finishFinaleWarmup, finishFinaleWarmup);
-  render();
+  render(lastFrameTime);
   const handleVisibility = () => {
-    if (!document.hidden) renderer.render(scene, camera);
+    if (!document.hidden) {
+      lastFrameTime = performance.now();
+      renderer.render(scene, camera);
+    }
   };
   document.addEventListener("visibilitychange", handleVisibility);
 
