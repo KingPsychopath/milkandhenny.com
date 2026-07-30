@@ -6,6 +6,7 @@ import { RevealLine, SceneNumber } from "./PitchNightTypography";
 
 const SPELLING_WORD = "RHYTHM";
 const EQUALIZER = [42, 72, 56, 94, 64, 82, 48, 76, 38, 68, 52, 88];
+const FINALE_DEBRIS = Array.from({ length: 9 }, (_, index) => index);
 
 export function SpellingScene() {
   return (
@@ -202,7 +203,22 @@ export function SupperScene() {
 export function Finale({ ticketHref }: { ticketHref: string }) {
   return (
     <section className="pitch-night-finale">
-      <div className="pitch-night-final-orbit" aria-hidden="true" />
+      <div className="pitch-night-final-orbit" data-final-orbit aria-hidden="true">
+        <div className="pitch-night-final-window">
+          <i className="pitch-night-final-window-core" />
+          <i className="pitch-night-final-window-cloud pitch-night-final-window-cloud-a" />
+          <i className="pitch-night-final-window-cloud pitch-night-final-window-cloud-b" />
+        </div>
+        <i className="pitch-night-final-arc pitch-night-final-arc-a" />
+        <i className="pitch-night-final-arc pitch-night-final-arc-b" />
+        <i className="pitch-night-final-arc pitch-night-final-arc-c" />
+        <i className="pitch-night-final-arc pitch-night-final-arc-d" />
+        <div className="pitch-night-final-debris">
+          {FINALE_DEBRIS.map((piece) => (
+            <i key={piece} />
+          ))}
+        </div>
+      </div>
       <div className="pitch-night-paper-band" data-finale-flyby aria-hidden="true">
         <span className="pitch-night-band-member pitch-night-band-member-a" />
         <span className="pitch-night-band-member pitch-night-band-member-b" />

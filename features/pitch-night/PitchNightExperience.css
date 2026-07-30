@@ -2180,64 +2180,304 @@
 
 .pitch-night-final-orbit {
   position: absolute;
-  top: 49%;
-  left: 22%;
-  width: min(43vw, 37rem);
-  aspect-ratio: 1;
+  top: 48%;
+  left: 42%;
+  z-index: 1;
+  width: min(112vw, 108rem);
+  aspect-ratio: 1.42;
+  overflow: hidden;
   border-radius: 50%;
   background:
     radial-gradient(
-      circle,
-      color-mix(in srgb, var(--pitch-night-gold) 8%, transparent),
-      transparent 44%
+      ellipse at 29% 48%,
+      color-mix(in srgb, var(--pitch-night-blue) 8%, transparent),
+      transparent 28%
     ),
-    repeating-radial-gradient(
-      circle,
-      transparent 0 13.8%,
-      color-mix(in srgb, var(--pitch-night-cream) 6%, transparent) 14% 14.15%,
-      transparent 14.35% 27%
-    );
+    radial-gradient(
+      ellipse at 55% 54%,
+      color-mix(in srgb, var(--pitch-night-gold) 4%, transparent),
+      transparent 52%
+    ),
+    color-mix(in srgb, var(--pitch-night-night) 24%, transparent);
+  border: 1px solid color-mix(in srgb, var(--pitch-night-cream) 7%, transparent);
   box-shadow:
-    0 0 0 5rem color-mix(in srgb, var(--pitch-night-cream) 1.5%, transparent),
-    0 0 0 11rem color-mix(in srgb, var(--pitch-night-gold) 1.8%, transparent),
-    0 0 10rem color-mix(in srgb, var(--pitch-night-gold) 7%, transparent);
-  opacity: 0.78;
+    inset 0 0 8rem color-mix(in srgb, var(--pitch-night-night) 84%, transparent),
+    inset 0 0 0 1.5rem color-mix(in srgb, var(--pitch-night-cream) 1.5%, transparent),
+    0 0 10rem color-mix(in srgb, var(--pitch-night-gold) 5%, transparent);
+  opacity: 0.86;
+  pointer-events: none;
   translate: -50% -50%;
-  -webkit-mask-image: radial-gradient(circle, black 0 64%, transparent 82%);
-  mask-image: radial-gradient(circle, black 0 64%, transparent 82%);
-  animation: pitch-night-final-orbit-breathe 7s ease-in-out infinite alternate;
+  -webkit-mask-image: radial-gradient(ellipse, black 0 67%, transparent 92%);
+  mask-image: radial-gradient(ellipse, black 0 67%, transparent 92%);
 }
 
-.pitch-night-final-orbit::before,
-.pitch-night-final-orbit::after {
+.pitch-night-final-window {
+  position: absolute;
+  top: 17%;
+  left: 8%;
+  width: 43%;
+  aspect-ratio: 1.08;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--pitch-night-cream) 12%, transparent);
+  border-radius: 50%;
+  background:
+    radial-gradient(
+      circle at 57% 42%,
+      color-mix(in srgb, var(--pitch-night-cream) 65%, transparent) 0 0.12%,
+      transparent 0.35%
+    ),
+    radial-gradient(
+      circle at 32% 64%,
+      color-mix(in srgb, var(--pitch-night-gold) 52%, transparent) 0 0.16%,
+      transparent 0.42%
+    ),
+    radial-gradient(
+      ellipse at 44% 52%,
+      color-mix(in srgb, var(--pitch-night-blue) 20%, transparent),
+      transparent 42%
+    ),
+    repeating-radial-gradient(
+      ellipse at 48% 48%,
+      transparent 0 11%,
+      color-mix(in srgb, var(--pitch-night-cream) 5%, transparent) 11.2% 11.35%,
+      transparent 11.6% 20%
+    ),
+    color-mix(in srgb, var(--pitch-night-night) 92%, var(--pitch-night-blue));
+  box-shadow:
+    inset 0 0 5rem color-mix(in srgb, var(--pitch-night-blue) 12%, transparent),
+    0 0 5rem color-mix(in srgb, var(--pitch-night-gold) 6%, transparent);
+  animation: pitch-night-final-window-breathe 8s ease-in-out infinite alternate;
+}
+
+.pitch-night-final-window::before {
+  position: absolute;
+  inset: 5%;
+  border-radius: inherit;
+  background-image:
+    radial-gradient(
+      circle,
+      color-mix(in srgb, var(--pitch-night-cream) 65%, transparent) 0 0.07rem,
+      transparent 0.09rem
+    ),
+    radial-gradient(
+      circle,
+      color-mix(in srgb, var(--pitch-night-gold) 52%, transparent) 0 0.05rem,
+      transparent 0.08rem
+    );
+  background-position:
+    0 0,
+    1.1rem 0.8rem;
+  background-size:
+    2.9rem 2.9rem,
+    3.7rem 3.7rem;
+  content: "";
+  opacity: 0.48;
+  -webkit-mask-image: radial-gradient(ellipse, black, transparent 74%);
+  mask-image: radial-gradient(ellipse, black, transparent 74%);
+  animation: pitch-night-final-stars-drift 38s linear infinite;
+}
+
+.pitch-night-final-window-core {
+  position: absolute;
+  top: 50%;
+  left: 49%;
+  width: 25%;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: radial-gradient(
+    circle at 38% 32%,
+    color-mix(in srgb, var(--pitch-night-cream) 86%, transparent),
+    color-mix(in srgb, var(--pitch-night-gold) 36%, transparent) 20%,
+    color-mix(in srgb, var(--pitch-night-blue) 13%, transparent) 52%,
+    transparent 72%
+  );
+  box-shadow:
+    0 0 2rem color-mix(in srgb, var(--pitch-night-cream) 12%, transparent),
+    0 0 7rem color-mix(in srgb, var(--pitch-night-gold) 13%, transparent);
+  translate: -50% -50%;
+}
+
+.pitch-night-final-window-cloud {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 86%;
+  height: 28%;
+  border-radius: 50%;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    color-mix(in srgb, var(--pitch-night-blue) 15%, transparent),
+    color-mix(in srgb, var(--pitch-night-gold) 10%, transparent),
+    transparent
+  );
+  filter: blur(1.3rem);
+  transform-origin: center;
+}
+
+.pitch-night-final-window-cloud-a {
+  rotate: -24deg;
+  translate: -50% -50%;
+  animation: pitch-night-final-cloud-turn 34s linear infinite;
+}
+
+.pitch-night-final-window-cloud-b {
+  width: 72%;
+  height: 19%;
+  opacity: 0.62;
+  rotate: 38deg;
+  translate: -50% -50%;
+  animation: pitch-night-final-cloud-turn 46s linear infinite reverse;
+}
+
+.pitch-night-final-arc {
+  position: absolute;
+  top: 50%;
+  left: 31%;
+  display: block;
+  border: 1px solid color-mix(in srgb, var(--pitch-night-cream) 14%, transparent);
+  border-radius: 50%;
+  transform-origin: center;
+  translate: -50% -50%;
+}
+
+.pitch-night-final-arc::before,
+.pitch-night-final-arc::after {
   position: absolute;
   aspect-ratio: 1;
   border-radius: 50%;
   content: "";
 }
 
-.pitch-night-final-orbit::before {
-  top: 12%;
+.pitch-night-final-arc::before {
+  top: 8%;
   right: 12%;
-  width: 0.42rem;
+  width: clamp(0.38rem, 0.65vw, 0.7rem);
   background: var(--pitch-night-cream);
   box-shadow:
-    0 0 0 0.4rem color-mix(in srgb, var(--pitch-night-cream) 7%, transparent),
-    0 0 1.4rem color-mix(in srgb, var(--pitch-night-cream) 70%, transparent);
-  transform-origin: calc(-24vw + 50%) calc(24vw - 50%);
-  animation: pitch-night-final-satellite 18s linear infinite;
+    0 0 0 0.45rem color-mix(in srgb, var(--pitch-night-cream) 5%, transparent),
+    0 0 1.4rem color-mix(in srgb, var(--pitch-night-cream) 48%, transparent);
 }
 
-.pitch-night-final-orbit::after {
-  bottom: 24%;
-  left: 10%;
-  width: 0.7rem;
+.pitch-night-final-arc::after {
+  bottom: 18%;
+  left: 4%;
+  width: clamp(0.48rem, 0.85vw, 0.9rem);
   background: var(--pitch-night-gold);
   box-shadow:
-    0 0 0 0.55rem color-mix(in srgb, var(--pitch-night-gold) 8%, transparent),
-    0 0 1.8rem color-mix(in srgb, var(--pitch-night-gold) 60%, transparent);
-  transform-origin: calc(21vw + 50%) calc(-12vw + 50%);
-  animation: pitch-night-final-satellite 26s linear infinite reverse;
+    0 0 0 0.6rem color-mix(in srgb, var(--pitch-night-gold) 6%, transparent),
+    0 0 1.8rem color-mix(in srgb, var(--pitch-night-gold) 42%, transparent);
+}
+
+.pitch-night-final-arc-a {
+  width: 47%;
+  height: 35%;
+  rotate: -17deg;
+  animation: pitch-night-final-arc-a 29s linear infinite;
+}
+
+.pitch-night-final-arc-b {
+  width: 68%;
+  height: 49%;
+  border-color: color-mix(in srgb, var(--pitch-night-blue) 20%, transparent);
+  rotate: 8deg;
+  animation: pitch-night-final-arc-b 43s linear infinite reverse;
+}
+
+.pitch-night-final-arc-c {
+  width: 91%;
+  height: 62%;
+  border-color: color-mix(in srgb, var(--pitch-night-cream) 9%, transparent);
+  rotate: -6deg;
+  animation: pitch-night-final-arc-c 61s linear infinite;
+}
+
+.pitch-night-final-arc-d {
+  left: 48%;
+  width: 112%;
+  height: 80%;
+  border-color: color-mix(in srgb, var(--pitch-night-gold) 8%, transparent);
+  rotate: 13deg;
+  animation: pitch-night-final-arc-d 79s linear infinite reverse;
+}
+
+.pitch-night-final-debris {
+  position: absolute;
+  inset: 0;
+}
+
+.pitch-night-final-debris i {
+  position: absolute;
+  display: block;
+  width: clamp(0.18rem, 0.34vw, 0.38rem);
+  aspect-ratio: 1;
+  background: color-mix(in srgb, var(--pitch-night-cream) 48%, transparent);
+  box-shadow: 0 0 1rem color-mix(in srgb, var(--pitch-night-cream) 12%, transparent);
+  rotate: 12deg;
+  animation: pitch-night-final-debris-drift 7s ease-in-out infinite alternate;
+}
+
+.pitch-night-final-debris i:nth-child(1) {
+  top: 21%;
+  left: 17%;
+}
+
+.pitch-night-final-debris i:nth-child(2) {
+  top: 31%;
+  left: 47%;
+  width: clamp(0.32rem, 0.54vw, 0.58rem);
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--pitch-night-blue) 58%, transparent);
+  animation-delay: -1.8s;
+}
+
+.pitch-night-final-debris i:nth-child(3) {
+  top: 59%;
+  left: 64%;
+  animation-delay: -3.2s;
+}
+
+.pitch-night-final-debris i:nth-child(4) {
+  top: 73%;
+  left: 35%;
+  width: clamp(0.24rem, 0.42vw, 0.46rem);
+  background: color-mix(in srgb, var(--pitch-night-gold) 55%, transparent);
+  animation-delay: -4.6s;
+}
+
+.pitch-night-final-debris i:nth-child(5) {
+  top: 19%;
+  left: 76%;
+  width: clamp(0.38rem, 0.62vw, 0.68rem);
+  clip-path: polygon(50% 0, 100% 42%, 72% 100%, 14% 82%, 0 24%);
+  animation-delay: -5.4s;
+}
+
+.pitch-night-final-debris i:nth-child(6) {
+  top: 48%;
+  left: 88%;
+  animation-delay: -2.4s;
+}
+
+.pitch-night-final-debris i:nth-child(7) {
+  top: 81%;
+  left: 74%;
+  width: clamp(0.28rem, 0.5vw, 0.54rem);
+  animation-delay: -4.1s;
+}
+
+.pitch-night-final-debris i:nth-child(8) {
+  top: 66%;
+  left: 12%;
+  border-radius: 50%;
+  animation-delay: -6s;
+}
+
+.pitch-night-final-debris i:nth-child(9) {
+  top: 38%;
+  left: 57%;
+  width: clamp(0.16rem, 0.28vw, 0.31rem);
+  animation-delay: -0.9s;
 }
 
 .pitch-night-paper-band {
@@ -2406,21 +2646,65 @@
   }
 }
 
-@keyframes pitch-night-final-orbit-breathe {
+@keyframes pitch-night-final-window-breathe {
   from {
-    opacity: 0.72;
-    scale: 0.985;
+    opacity: 0.76;
+    scale: 0.98;
   }
 
   to {
     opacity: 1;
-    scale: 1.015;
+    scale: 1.025;
   }
 }
 
-@keyframes pitch-night-final-satellite {
+@keyframes pitch-night-final-stars-drift {
   to {
-    rotate: 1turn;
+    background-position:
+      2.9rem 1.45rem,
+      -2.6rem 2.65rem;
+  }
+}
+
+@keyframes pitch-night-final-cloud-turn {
+  to {
+    rotate: 336deg;
+  }
+}
+
+@keyframes pitch-night-final-arc-a {
+  to {
+    rotate: 343deg;
+  }
+}
+
+@keyframes pitch-night-final-arc-b {
+  to {
+    rotate: 368deg;
+  }
+}
+
+@keyframes pitch-night-final-arc-c {
+  to {
+    rotate: 354deg;
+  }
+}
+
+@keyframes pitch-night-final-arc-d {
+  to {
+    rotate: 373deg;
+  }
+}
+
+@keyframes pitch-night-final-debris-drift {
+  from {
+    opacity: 0.38;
+    translate: -0.2rem 0.1rem;
+  }
+
+  to {
+    opacity: 0.88;
+    translate: 0.45rem -0.65rem;
   }
 }
 
@@ -2788,7 +3072,43 @@
     top: 8%;
     left: 50%;
     width: 125vw;
+    aspect-ratio: 1;
     translate: -50% 0;
+    -webkit-mask-image: radial-gradient(circle, black 0 68%, transparent 94%);
+    mask-image: radial-gradient(circle, black 0 68%, transparent 94%);
+  }
+
+  .pitch-night-final-window {
+    top: 5%;
+    left: 18%;
+    width: 64%;
+    aspect-ratio: 1;
+  }
+
+  .pitch-night-final-arc {
+    top: 48%;
+    left: 50%;
+  }
+
+  .pitch-night-final-arc-a {
+    width: 68%;
+    height: 48%;
+  }
+
+  .pitch-night-final-arc-b {
+    width: 91%;
+    height: 63%;
+  }
+
+  .pitch-night-final-arc-c {
+    width: 118%;
+    height: 80%;
+  }
+
+  .pitch-night-final-arc-d {
+    left: 56%;
+    width: 146%;
+    height: 101%;
   }
 
   .pitch-night-paper-band {
@@ -2814,9 +3134,11 @@
   .pitch-night-lantern-aura,
   .pitch-night-lantern-flame,
   .pitch-night-candle > i,
-  .pitch-night-final-orbit,
-  .pitch-night-final-orbit::before,
-  .pitch-night-final-orbit::after {
+  .pitch-night-final-window,
+  .pitch-night-final-window::before,
+  .pitch-night-final-window-cloud,
+  .pitch-night-final-arc,
+  .pitch-night-final-debris i {
     animation: none;
   }
 

@@ -668,6 +668,8 @@ function animateBreath({ gsap }: MotionContext) {
 }
 
 function animateLaterScenes({ gsap }: MotionContext) {
+  const compact = matchMedia("(max-width: 767px)").matches;
+
   gsap.utils.toArray<HTMLElement>("[data-game-token]").forEach((token, index) => {
     gsap.fromTo(
       token,
@@ -839,6 +841,26 @@ function animateLaterScenes({ gsap }: MotionContext) {
       },
       0.84,
     );
+  gsap.fromTo(
+    "[data-final-orbit]",
+    {
+      opacity: compact ? 0.5 : 0.24,
+      rotate: compact ? -2 : -7,
+      scale: compact ? 0.94 : 0.84,
+    },
+    {
+      opacity: compact ? 0.9 : 1,
+      rotate: compact ? 0 : 1.5,
+      scale: 1,
+      ease: "none",
+      scrollTrigger: {
+        trigger: ".pitch-night-finale",
+        start: "top 86%",
+        end: "top 12%",
+        scrub: 1.2,
+      },
+    },
+  );
   gsap
     .timeline({
       scrollTrigger: {
