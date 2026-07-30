@@ -13,6 +13,9 @@ export interface PitchNightWorld {
   dispose: () => void;
 }
 
+const COMPACT_PIXEL_RATIO = 1;
+const WIDE_PIXEL_RATIO = 1.5;
+
 export function createPitchNightWorld(
   THREE: ThreeModule,
   canvas: HTMLCanvasElement,
@@ -30,9 +33,12 @@ export function createPitchNightWorld(
     canvas,
     alpha: true,
     antialias: !compact,
-    powerPreference: compact ? "default" : "high-performance",
+    powerPreference: "high-performance",
+    precision: compact ? "mediump" : "highp",
   });
-  renderer.setPixelRatio(Math.min(devicePixelRatio, compact ? 1.2 : 1.5));
+  const pixelRatio = () =>
+    Math.min(devicePixelRatio, compact ? COMPACT_PIXEL_RATIO : WIDE_PIXEL_RATIO);
+  renderer.setPixelRatio(pixelRatio());
   renderer.setSize(innerWidth, innerHeight);
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -504,32 +510,43 @@ export function createPitchNightWorld(
       resizeFrame = 0;
       camera.aspect = innerWidth / innerHeight;
       camera.updateProjectionMatrix();
-      renderer.setPixelRatio(Math.min(devicePixelRatio, compact ? 1.2 : 1.5));
+      renderer.setPixelRatio(pixelRatio());
       renderer.setSize(innerWidth, innerHeight);
     });
   };
   if (finePointer) addEventListener("pointermove", handlePointer, { passive: true });
   addEventListener("resize", handleResize);
 
+  const clock = new THREE.Clock();
   let frame = 0;
   const render = () => {
     if (!document.hidden) {
-      core.rotation.y += 0.0018;
-      core.rotation.x += 0.0009;
-      wire.rotation.y -= 0.0011;
+      const frameScale = Math.min(clock.getDelta(), 1 / 20) * 60;
+      core.rotation.y += 0.0018 * frameScale;
+      core.rotation.x += 0.0009 * frameScale;
+      wire.rotation.y -= 0.0011 * frameScale;
       if (finaleSystem.visible) {
-        finaleSystem.rotation.z += 0.00016;
-        finaleDust.rotation.z -= 0.00032;
-        for (const orbiter of finaleOrbitSpinners) orbiter.group.rotation.z += orbiter.speed;
-        for (const moon of finaleMoonSpinners) moon.group.rotation.z += moon.speed;
+        finaleSystem.rotation.z += 0.00016 * frameScale;
+        finaleDust.rotation.z -= 0.00032 * frameScale;
+        for (const orbiter of finaleOrbitSpinners) {
+          orbiter.group.rotation.z += orbiter.speed * frameScale;
+        }
+        for (const moon of finaleMoonSpinners) moon.group.rotation.z += moon.speed * frameScale;
       }
-      stars.rotation.y += 0.00012;
+      stars.rotation.y += 0.00012 * frameScale;
       group.rotation.y += (pointer.x * 0.25 - group.rotation.y) * 0.035;
       group.rotation.x += (-pointer.y * 0.18 - group.rotation.x) * 0.035;
       renderer.render(scene, camera);
     }
     frame = requestAnimationFrame(render);
   };
+  // Compile the finale's otherwise-hidden materials while the opening scene is idle. This avoids
+  // a shader compilation hitch at the exact moment the bottle and orbit system enter together.
+  finaleSystem.visible = true;
+  const finishFinaleWarmup = () => {
+    if (finaleSystem.scale.x <= 0.0011) finaleSystem.visible = false;
+  };
+  void renderer.compileAsync(scene, camera).then(finishFinaleWarmup, finishFinaleWarmup);
   render();
   const handleVisibility = () => {
     if (!document.hidden) renderer.render(scene, camera);

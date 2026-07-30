@@ -2779,6 +2779,11 @@
 }
 
 @media (max-width: 767px) {
+  .pitch-night[data-finale-active] .pitch-night-grain {
+    opacity: 0.08;
+    mix-blend-mode: normal;
+  }
+
   .pitch-night-nav {
     padding-inline: 1rem;
   }
@@ -3153,6 +3158,16 @@
     left: 15%;
     width: 70%;
     aspect-ratio: 1;
+  }
+
+  .pitch-night-final-window-cloud {
+    background: radial-gradient(
+      ellipse,
+      color-mix(in srgb, var(--pitch-night-blue) 7%, transparent),
+      color-mix(in srgb, var(--pitch-night-gold) 4%, transparent) 34%,
+      transparent 72%
+    );
+    filter: none;
   }
 
   .pitch-night-final-arc {
