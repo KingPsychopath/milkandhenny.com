@@ -2156,6 +2156,11 @@
   letter-spacing: -0.05em;
 }
 
+.pitch-night-final-question .pitch-night-line {
+  overflow: clip;
+  overflow-clip-margin: 0.16em;
+}
+
 .pitch-night-finale-copy {
   margin-top: 2.5rem;
 }
@@ -2172,14 +2177,40 @@
 
 .pitch-night-final-orbit {
   position: absolute;
-  left: 4%;
-  width: min(46vw, 38rem);
+  top: 49%;
+  left: 22%;
+  width: min(43vw, 37rem);
   aspect-ratio: 1;
   border: 1px solid color-mix(in srgb, var(--pitch-night-cream) 10%, transparent);
   border-radius: 50%;
+  background: radial-gradient(
+    circle,
+    color-mix(in srgb, var(--pitch-night-gold) 4%, transparent),
+    transparent 56%
+  );
   box-shadow:
-    0 0 0 5rem color-mix(in srgb, var(--pitch-night-cream) 2.5%, transparent),
-    0 0 0 12rem color-mix(in srgb, var(--pitch-night-gold) 2.5%, transparent);
+    0 0 0 4.5rem color-mix(in srgb, var(--pitch-night-cream) 2.3%, transparent),
+    0 0 0 10rem color-mix(in srgb, var(--pitch-night-gold) 2.4%, transparent),
+    0 0 8rem color-mix(in srgb, var(--pitch-night-gold) 5%, transparent);
+  translate: -50% -50%;
+  animation: pitch-night-final-orbit-breathe 7s ease-in-out infinite alternate;
+}
+
+.pitch-night-final-orbit::before,
+.pitch-night-final-orbit::after {
+  position: absolute;
+  border: 1px solid color-mix(in srgb, var(--pitch-night-cream) 8%, transparent);
+  border-radius: 50%;
+  content: "";
+}
+
+.pitch-night-final-orbit::before {
+  inset: 14%;
+}
+
+.pitch-night-final-orbit::after {
+  inset: 31%;
+  border-color: color-mix(in srgb, var(--pitch-night-gold) 10%, transparent);
 }
 
 .pitch-night-paper-band {
@@ -2345,6 +2376,18 @@
   to {
     opacity: 1;
     transform: scale(1.08) rotate(4deg);
+  }
+}
+
+@keyframes pitch-night-final-orbit-breathe {
+  from {
+    opacity: 0.72;
+    scale: 0.985;
+  }
+
+  to {
+    opacity: 1;
+    scale: 1.015;
   }
 }
 
@@ -2737,7 +2780,8 @@
   .pitch-night-vinyl-gesture,
   .pitch-night-lantern-aura,
   .pitch-night-lantern-flame,
-  .pitch-night-candle > i {
+  .pitch-night-candle > i,
+  .pitch-night-final-orbit {
     animation: none;
   }
 

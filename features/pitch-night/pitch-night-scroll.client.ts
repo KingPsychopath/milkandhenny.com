@@ -195,6 +195,14 @@ function animateWorld({ compact, gsap, root, world }: MotionContext) {
     gsap.set(world.liquid.scale, { x: 1, y: 0.08, z: 1 });
   };
 
+  gsap.to(world.bottle.position, {
+    y: compact ? -0.08 : 0.08,
+    duration: compact ? 3.6 : 3.2,
+    repeat: -1,
+    yoyo: true,
+    ease: "sine.inOut",
+  });
+
   gsap.to(world.celestial.rotation, {
     z: Math.PI * 1.7,
     y: Math.PI * 2.3,
@@ -344,7 +352,7 @@ function animateWorld({ compact, gsap, root, world }: MotionContext) {
       world.group.position,
       {
         x: compact ? 0 : -2.65,
-        y: compact ? 0 : 0.12,
+        y: compact ? 0 : 0.36,
         duration: 0.3,
         ease: "power2.inOut",
       },
@@ -418,7 +426,7 @@ function animateWorld({ compact, gsap, root, world }: MotionContext) {
     .to(
       world.group.position,
       {
-        y: compact ? 3.65 : 0.12,
+        y: compact ? 3.65 : 0.36,
         duration: 0.22,
         ease: "power2.in",
       },
