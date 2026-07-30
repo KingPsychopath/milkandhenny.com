@@ -3148,9 +3148,10 @@
     left: 50%;
     width: 132vw;
     aspect-ratio: 1;
+    contain: layout paint;
     translate: -50% 0;
-    -webkit-mask-image: radial-gradient(circle, black 0 72%, transparent 98%);
-    mask-image: radial-gradient(circle, black 0 72%, transparent 98%);
+    -webkit-mask-image: none;
+    mask-image: none;
   }
 
   .pitch-night-final-window {
@@ -3158,6 +3159,13 @@
     left: 15%;
     width: 70%;
     aspect-ratio: 1;
+    animation: none;
+  }
+
+  .pitch-night-final-window::before {
+    -webkit-mask-image: none;
+    mask-image: none;
+    animation: none;
   }
 
   .pitch-night-final-window-cloud {
@@ -3173,7 +3181,11 @@
   .pitch-night-final-arc {
     top: 50%;
     left: 50%;
-    border-color: color-mix(in srgb, var(--pitch-night-cream) 20%, transparent);
+    border-color: transparent;
+    border-top-color: color-mix(in srgb, var(--pitch-night-cream) 18%, transparent);
+    border-right-color: color-mix(in srgb, var(--pitch-night-blue) 14%, transparent);
+    -webkit-mask-image: none;
+    mask-image: none;
   }
 
   .pitch-night-final-arc-a {
@@ -3184,26 +3196,34 @@
   .pitch-night-final-arc-b {
     width: 91%;
     height: 63%;
-    border-color: color-mix(in srgb, var(--pitch-night-blue) 27%, transparent);
+    border-top-color: color-mix(in srgb, var(--pitch-night-blue) 24%, transparent);
+    border-right-color: color-mix(in srgb, var(--pitch-night-cream) 12%, transparent);
   }
 
   .pitch-night-final-arc-c {
     width: 118%;
     height: 80%;
-    border-color: color-mix(in srgb, var(--pitch-night-cream) 14%, transparent);
+    border-top-color: color-mix(in srgb, var(--pitch-night-cream) 13%, transparent);
+    border-right-color: color-mix(in srgb, var(--pitch-night-gold) 8%, transparent);
   }
 
   .pitch-night-final-arc-d {
     left: 56%;
     width: 146%;
     height: 101%;
-    border-color: color-mix(in srgb, var(--pitch-night-gold) 11%, transparent);
+    border-top-color: color-mix(in srgb, var(--pitch-night-gold) 10%, transparent);
+    border-right-color: color-mix(in srgb, var(--pitch-night-blue) 7%, transparent);
+  }
+
+  .pitch-night-final-debris i {
+    animation: none;
   }
 
   .pitch-night-paper-band {
     top: 34rem;
     left: 50%;
     width: 10rem;
+    filter: none;
     translate: -50% 0;
   }
 }
