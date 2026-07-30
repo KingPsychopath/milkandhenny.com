@@ -336,19 +336,26 @@ export function createPitchNightWorld(
     curveSegments: compact ? 8 : 14,
   });
   glassGeometry.translate(0, 0, -0.25);
+  // Refraction is what makes the glass read on a desktop GPU, and it is also what iOS cannot
+  // afford. A transmissive object makes three render the whole scene a second time into a
+  // multisampled buffer, resolve it and rebuild its mipmaps every frame, and with a double-sided
+  // material it re-renders the back faces on top of that. Phones get a plain translucent shell
+  // instead: no transmissive material anywhere in the scene means the second pass and its buffer
+  // never exist at all. Against a near-black sky the refraction was mostly showing dark through
+  // dark, so the shell carries the same look at a fraction of the cost.
   const glassMaterial = new THREE.MeshPhysicalMaterial({
     color: new THREE.Color(cream).lerp(new THREE.Color(amber), 0.12),
     emissive: new THREE.Color(amber),
     emissiveIntensity: 0.015,
     metalness: 0,
     roughness: 0.03,
-    transmission: 0.94,
+    transmission: compact ? 0 : 0.94,
     thickness: 0.34,
     transparent: true,
-    opacity: 0.16,
+    opacity: compact ? 0.26 : 0.16,
     clearcoat: 1,
     clearcoatRoughness: 0.02,
-    side: THREE.DoubleSide,
+    side: compact ? THREE.FrontSide : THREE.DoubleSide,
     depthWrite: false,
   });
   const glass = new THREE.Mesh(glassGeometry, glassMaterial);
@@ -392,7 +399,9 @@ export function createPitchNightWorld(
     emissiveIntensity: 0.06,
     roughness: 0.18,
     metalness: 0.02,
-    transmission: 0.08,
+    // The cognac is 86% opaque, so its 8% transmission is barely visible — but it is enough to
+    // keep the whole second pass alive on a phone by itself.
+    transmission: compact ? 0 : 0.08,
     thickness: 1.1,
     transparent: true,
     opacity: 0.86,
