@@ -185,10 +185,13 @@ function animateWorld({ compact, gsap, root, world }: MotionContext) {
   };
 
   const restoreOpeningWorld = () => {
+    root.removeAttribute("data-finale-active");
+    bottleFloat.resume();
     world.bottle.visible = false;
     world.finaleSystem.visible = false;
     gsap.set(world.group.position, { x: 0, y: 0, z: 0 });
     gsap.set(world.group.scale, { x: 1, y: 1, z: 1 });
+    gsap.set(world.bottle.position, { x: 0, y: -0.18, z: 0.08 });
     gsap.set(world.bottle.scale, { x: 0.001, y: 0.001, z: 0.001 });
     gsap.set(world.bottle.rotation, { x: 0, y: -0.12, z: 0 });
     gsap.set(world.celestial.scale, { x: 1, y: 1, z: 1 });
@@ -200,9 +203,16 @@ function animateWorld({ compact, gsap, root, world }: MotionContext) {
     gsap.set(world.liquid.scale, { x: 1, y: 0.08, z: 1 });
   };
 
-  gsap.to(world.bottle.position, {
+  const bottleFloat = gsap.to(world.bottle.position, {
     y: compact ? -0.08 : 0.08,
     duration: compact ? 3.6 : 3.2,
+    repeat: -1,
+    yoyo: true,
+    ease: "sine.inOut",
+  });
+  gsap.to(world.bottle.rotation, {
+    z: compact ? 0.024 : -0.018,
+    duration: compact ? 4.2 : 3.8,
     repeat: -1,
     yoyo: true,
     ease: "sine.inOut",
@@ -331,10 +341,13 @@ function animateWorld({ compact, gsap, root, world }: MotionContext) {
   });
 
   const restoreSupperWorld = () => {
+    root.removeAttribute("data-finale-active");
+    bottleFloat.resume();
     world.bottle.visible = true;
     world.finaleSystem.visible = false;
     gsap.set(world.group.position, supperWorld.groupPosition);
     gsap.set(world.group.scale, supperWorld.groupScale);
+    gsap.set(world.bottle.position, { x: 0, y: -0.18, z: 0.08 });
     gsap.set(world.bottle.scale, supperWorld.bottleScale);
     gsap.set(world.bottle.rotation, { x: -0.045, y: 0.2 });
     gsap.set(world.celestial.scale, supperWorld.celestialScale);
@@ -362,9 +375,13 @@ function animateWorld({ compact, gsap, root, world }: MotionContext) {
         end: "top -18%",
         scrub: 1.1,
         onEnter: () => {
+          root.setAttribute("data-finale-active", "");
+          bottleFloat.pause();
           world.finaleSystem.visible = true;
         },
         onEnterBack: () => {
+          root.setAttribute("data-finale-active", "");
+          bottleFloat.pause();
           world.finaleSystem.visible = true;
         },
         onLeaveBack: restoreWorldBeforeFinale,
@@ -376,6 +393,17 @@ function animateWorld({ compact, gsap, root, world }: MotionContext) {
         x: compact ? 0 : -2.65,
         y: compact ? 0 : 0.36,
         duration: 0.3,
+        ease: "power2.inOut",
+      },
+      0,
+    )
+    .to(
+      world.bottle.position,
+      {
+        x: compact ? 0.15 : 0,
+        y: compact ? -2.35 : -0.18,
+        z: 0.08,
+        duration: 0.34,
         ease: "power2.inOut",
       },
       0,
@@ -394,9 +422,9 @@ function animateWorld({ compact, gsap, root, world }: MotionContext) {
     .to(
       world.bottle.scale,
       {
-        x: compact ? 0.62 : 0.64,
-        y: compact ? 0.62 : 0.64,
-        z: compact ? 0.62 : 0.64,
+        x: compact ? 0.44 : 0.64,
+        y: compact ? 0.44 : 0.64,
+        z: compact ? 0.44 : 0.64,
         duration: 0.3,
         ease: "power2.inOut",
       },
@@ -927,6 +955,7 @@ export function createPitchNightScrollMotion(context: MotionContext) {
   }, context.root);
 
   return () => {
+    context.root.removeAttribute("data-finale-active");
     cleanMedia();
     motion.revert();
   };

@@ -21,6 +21,12 @@
   height: 100%;
   pointer-events: none;
   opacity: 0.74;
+  transition: opacity 600ms ease;
+}
+
+.pitch-night[data-finale-active] .pitch-night-canvas {
+  z-index: 2;
+  opacity: 0.84;
 }
 
 .pitch-night-grain {
@@ -2180,72 +2186,69 @@
 
 .pitch-night-final-orbit {
   position: absolute;
-  top: 48%;
-  left: 42%;
+  top: 49%;
+  left: 43%;
   z-index: 1;
-  width: min(112vw, 108rem);
-  aspect-ratio: 1.42;
-  overflow: hidden;
+  width: min(126vw, 124rem);
+  aspect-ratio: 1.55;
   border-radius: 50%;
   background:
     radial-gradient(
-      ellipse at 29% 48%,
-      color-mix(in srgb, var(--pitch-night-blue) 8%, transparent),
-      transparent 28%
+      ellipse at 26% 44%,
+      color-mix(in srgb, var(--pitch-night-blue) 3.5%, transparent),
+      transparent 24%
     ),
     radial-gradient(
-      ellipse at 55% 54%,
-      color-mix(in srgb, var(--pitch-night-gold) 4%, transparent),
-      transparent 52%
-    ),
-    color-mix(in srgb, var(--pitch-night-night) 24%, transparent);
-  border: 1px solid color-mix(in srgb, var(--pitch-night-cream) 7%, transparent);
+      ellipse at 54% 54%,
+      color-mix(in srgb, var(--pitch-night-gold) 2.5%, transparent),
+      transparent 50%
+    );
+  border: 1px solid color-mix(in srgb, var(--pitch-night-cream) 5.5%, transparent);
   box-shadow:
-    inset 0 0 8rem color-mix(in srgb, var(--pitch-night-night) 84%, transparent),
-    inset 0 0 0 1.5rem color-mix(in srgb, var(--pitch-night-cream) 1.5%, transparent),
-    0 0 10rem color-mix(in srgb, var(--pitch-night-gold) 5%, transparent);
-  opacity: 0.86;
+    inset 0 0 0 1.5rem color-mix(in srgb, var(--pitch-night-cream) 0.8%, transparent),
+    0 0 9rem color-mix(in srgb, var(--pitch-night-gold) 2.5%, transparent);
+  opacity: 0.82;
   pointer-events: none;
   translate: -50% -50%;
-  -webkit-mask-image: radial-gradient(ellipse, black 0 67%, transparent 92%);
-  mask-image: radial-gradient(ellipse, black 0 67%, transparent 92%);
+  -webkit-mask-image: radial-gradient(ellipse, black 0 70%, transparent 96%);
+  mask-image: radial-gradient(ellipse, black 0 70%, transparent 96%);
 }
 
 .pitch-night-final-window {
   position: absolute;
-  top: 17%;
-  left: 8%;
-  width: 43%;
-  aspect-ratio: 1.08;
+  top: 20%;
+  left: 7%;
+  width: 38%;
+  aspect-ratio: 1.16;
   overflow: hidden;
-  border: 1px solid color-mix(in srgb, var(--pitch-night-cream) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--pitch-night-cream) 8%, transparent);
   border-radius: 50%;
   background:
     radial-gradient(
       circle at 57% 42%,
-      color-mix(in srgb, var(--pitch-night-cream) 65%, transparent) 0 0.12%,
+      color-mix(in srgb, var(--pitch-night-cream) 54%, transparent) 0 0.09%,
       transparent 0.35%
     ),
     radial-gradient(
       circle at 32% 64%,
-      color-mix(in srgb, var(--pitch-night-gold) 52%, transparent) 0 0.16%,
+      color-mix(in srgb, var(--pitch-night-gold) 42%, transparent) 0 0.12%,
       transparent 0.42%
     ),
     radial-gradient(
       ellipse at 44% 52%,
-      color-mix(in srgb, var(--pitch-night-blue) 20%, transparent),
-      transparent 42%
+      color-mix(in srgb, var(--pitch-night-blue) 4%, transparent),
+      transparent 46%
     ),
     repeating-radial-gradient(
       ellipse at 48% 48%,
       transparent 0 11%,
-      color-mix(in srgb, var(--pitch-night-cream) 5%, transparent) 11.2% 11.35%,
+      color-mix(in srgb, var(--pitch-night-cream) 2.5%, transparent) 11.2% 11.35%,
       transparent 11.6% 20%
-    ),
-    color-mix(in srgb, var(--pitch-night-night) 92%, var(--pitch-night-blue));
+    );
   box-shadow:
-    inset 0 0 5rem color-mix(in srgb, var(--pitch-night-blue) 12%, transparent),
-    0 0 5rem color-mix(in srgb, var(--pitch-night-gold) 6%, transparent);
+    inset 0 0 4rem color-mix(in srgb, var(--pitch-night-blue) 4%, transparent),
+    inset 0 0 0 0.75rem color-mix(in srgb, var(--pitch-night-cream) 0.75%, transparent),
+    0 0 4rem color-mix(in srgb, var(--pitch-night-gold) 2.5%, transparent);
   animation: pitch-night-final-window-breathe 8s ease-in-out infinite alternate;
 }
 
@@ -2271,7 +2274,7 @@
     2.9rem 2.9rem,
     3.7rem 3.7rem;
   content: "";
-  opacity: 0.48;
+  opacity: 0.3;
   -webkit-mask-image: radial-gradient(ellipse, black, transparent 74%);
   mask-image: radial-gradient(ellipse, black, transparent 74%);
   animation: pitch-night-final-stars-drift 38s linear infinite;
@@ -2281,19 +2284,18 @@
   position: absolute;
   top: 50%;
   left: 49%;
-  width: 25%;
+  width: 9%;
   aspect-ratio: 1;
   border-radius: 50%;
   background: radial-gradient(
     circle at 38% 32%,
-    color-mix(in srgb, var(--pitch-night-cream) 86%, transparent),
-    color-mix(in srgb, var(--pitch-night-gold) 36%, transparent) 20%,
-    color-mix(in srgb, var(--pitch-night-blue) 13%, transparent) 52%,
-    transparent 72%
+    color-mix(in srgb, var(--pitch-night-cream) 78%, transparent),
+    color-mix(in srgb, var(--pitch-night-gold) 24%, transparent) 18%,
+    transparent 68%
   );
   box-shadow:
-    0 0 2rem color-mix(in srgb, var(--pitch-night-cream) 12%, transparent),
-    0 0 7rem color-mix(in srgb, var(--pitch-night-gold) 13%, transparent);
+    0 0 1.5rem color-mix(in srgb, var(--pitch-night-cream) 10%, transparent),
+    0 0 4rem color-mix(in srgb, var(--pitch-night-gold) 8%, transparent);
   translate: -50% -50%;
 }
 
@@ -2301,17 +2303,17 @@
   position: absolute;
   top: 50%;
   left: 50%;
-  width: 86%;
-  height: 28%;
+  width: 76%;
+  height: 18%;
   border-radius: 50%;
   background: linear-gradient(
     90deg,
     transparent,
-    color-mix(in srgb, var(--pitch-night-blue) 15%, transparent),
-    color-mix(in srgb, var(--pitch-night-gold) 10%, transparent),
+    color-mix(in srgb, var(--pitch-night-blue) 7%, transparent),
+    color-mix(in srgb, var(--pitch-night-gold) 5%, transparent),
     transparent
   );
-  filter: blur(1.3rem);
+  filter: blur(1.6rem);
   transform-origin: center;
 }
 
@@ -2324,7 +2326,7 @@
 .pitch-night-final-window-cloud-b {
   width: 72%;
   height: 19%;
-  opacity: 0.62;
+  opacity: 0.4;
   rotate: 38deg;
   translate: -50% -50%;
   animation: pitch-night-final-cloud-turn 46s linear infinite reverse;
@@ -2333,12 +2335,14 @@
 .pitch-night-final-arc {
   position: absolute;
   top: 50%;
-  left: 31%;
+  left: 32%;
   display: block;
-  border: 1px solid color-mix(in srgb, var(--pitch-night-cream) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--pitch-night-cream) 16%, transparent);
   border-radius: 50%;
   transform-origin: center;
   translate: -50% -50%;
+  -webkit-mask-image: linear-gradient(102deg, transparent, black 18% 76%, transparent 98%);
+  mask-image: linear-gradient(102deg, transparent, black 18% 76%, transparent 98%);
 }
 
 .pitch-night-final-arc::before,
@@ -2370,33 +2374,33 @@
 }
 
 .pitch-night-final-arc-a {
-  width: 47%;
-  height: 35%;
+  width: 49%;
+  height: 37%;
   rotate: -17deg;
   animation: pitch-night-final-arc-a 29s linear infinite;
 }
 
 .pitch-night-final-arc-b {
-  width: 68%;
-  height: 49%;
-  border-color: color-mix(in srgb, var(--pitch-night-blue) 20%, transparent);
+  width: 71%;
+  height: 51%;
+  border-color: color-mix(in srgb, var(--pitch-night-blue) 22%, transparent);
   rotate: 8deg;
   animation: pitch-night-final-arc-b 43s linear infinite reverse;
 }
 
 .pitch-night-final-arc-c {
-  width: 91%;
-  height: 62%;
-  border-color: color-mix(in srgb, var(--pitch-night-cream) 9%, transparent);
+  width: 95%;
+  height: 65%;
+  border-color: color-mix(in srgb, var(--pitch-night-cream) 11%, transparent);
   rotate: -6deg;
   animation: pitch-night-final-arc-c 61s linear infinite;
 }
 
 .pitch-night-final-arc-d {
-  left: 48%;
-  width: 112%;
-  height: 80%;
-  border-color: color-mix(in srgb, var(--pitch-night-gold) 8%, transparent);
+  left: 51%;
+  width: 116%;
+  height: 82%;
+  border-color: color-mix(in srgb, var(--pitch-night-gold) 9%, transparent);
   rotate: 13deg;
   animation: pitch-night-final-arc-d 79s linear infinite reverse;
 }
@@ -3069,25 +3073,26 @@
   }
 
   .pitch-night-final-orbit {
-    top: 8%;
+    top: 5%;
     left: 50%;
-    width: 125vw;
+    width: 132vw;
     aspect-ratio: 1;
     translate: -50% 0;
-    -webkit-mask-image: radial-gradient(circle, black 0 68%, transparent 94%);
-    mask-image: radial-gradient(circle, black 0 68%, transparent 94%);
+    -webkit-mask-image: radial-gradient(circle, black 0 72%, transparent 98%);
+    mask-image: radial-gradient(circle, black 0 72%, transparent 98%);
   }
 
   .pitch-night-final-window {
-    top: 5%;
-    left: 18%;
-    width: 64%;
+    top: 7%;
+    left: 15%;
+    width: 70%;
     aspect-ratio: 1;
   }
 
   .pitch-night-final-arc {
-    top: 48%;
+    top: 50%;
     left: 50%;
+    border-color: color-mix(in srgb, var(--pitch-night-cream) 20%, transparent);
   }
 
   .pitch-night-final-arc-a {
@@ -3098,17 +3103,20 @@
   .pitch-night-final-arc-b {
     width: 91%;
     height: 63%;
+    border-color: color-mix(in srgb, var(--pitch-night-blue) 27%, transparent);
   }
 
   .pitch-night-final-arc-c {
     width: 118%;
     height: 80%;
+    border-color: color-mix(in srgb, var(--pitch-night-cream) 14%, transparent);
   }
 
   .pitch-night-final-arc-d {
     left: 56%;
     width: 146%;
     height: 101%;
+    border-color: color-mix(in srgb, var(--pitch-night-gold) 11%, transparent);
   }
 
   .pitch-night-paper-band {
