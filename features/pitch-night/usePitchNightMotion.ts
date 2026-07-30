@@ -31,7 +31,7 @@ export function usePitchNightMotion(
           gsap,
           ScrollTrigger,
           root,
-          world: world.group,
+          world,
           compact: world.compact,
         });
         dispose = () => {

@@ -115,10 +115,22 @@ export function DjScene() {
 }
 
 export function SupperScene() {
+  const placeSettings = Array.from({ length: 5 }, (_, index) => index);
+  const guests = Array.from({ length: 6 }, (_, index) => index);
+
   return (
     <section className="pitch-night-supper-scene" data-supper-scene>
+      <div className="pitch-night-cabin" aria-hidden="true">
+        <span className="pitch-night-cabin-beam pitch-night-cabin-beam-left" />
+        <span className="pitch-night-cabin-beam pitch-night-cabin-beam-right" />
+        <div className="pitch-night-cabin-window">
+          <i className="pitch-night-cabin-moon" />
+          <i className="pitch-night-cabin-ridge pitch-night-cabin-ridge-far" />
+          <i className="pitch-night-cabin-ridge pitch-night-cabin-ridge-near" />
+        </div>
+      </div>
       <div className="pitch-night-lanterns" aria-hidden="true">
-        {Array.from({ length: 5 }, (_, index) => (
+        {Array.from({ length: 3 }, (_, index) => (
           <span key={index} data-lantern style={{ "--lantern-index": index } as CSSProperties}>
             <i className="pitch-night-lantern-aura" />
             <i className="pitch-night-lantern-cage">
@@ -129,21 +141,58 @@ export function SupperScene() {
       </div>
       <SceneNumber>05 · AROUND THE TABLE</SceneNumber>
       <div className="pitch-night-supper-copy">
-        <p className="pitch-night-conversation">
-          <RevealLine>There is food.</RevealLine>
-          <RevealLine>Proper food.</RevealLine>
+        <p className="pitch-night-conversation" data-supper-heading>
+          <span className="pitch-night-line">
+            <span data-supper-line>There is food.</span>
+          </span>
+          <span className="pitch-night-line">
+            <span data-supper-line>Proper food.</span>
+          </span>
         </p>
         <p className="pitch-night-body-copy" data-soft-reveal>
           Come hungry. I mean it. We’re eating together before the room gets loud, because the best
           nights begin around a table and nobody gives a good pitch on an empty stomach.
         </p>
       </div>
-      <div className="pitch-night-table" aria-hidden="true">
-        <span />
-        <span />
-        <span />
-        <span />
-        <span />
+      <div className="pitch-night-table-scene" data-table-scene aria-hidden="true">
+        <div className="pitch-night-supper-guests">
+          {guests.map((guest) => (
+            <span
+              key={guest}
+              className={`pitch-night-supper-guest pitch-night-supper-guest-${guest + 1}`}
+              data-supper-guest
+            >
+              <i className="pitch-night-guest-head" />
+              <i className="pitch-night-guest-body" />
+              <i className="pitch-night-guest-gesture" />
+            </span>
+          ))}
+        </div>
+        <i className="pitch-night-table-light" data-table-light />
+        <div className="pitch-night-table" data-table-top>
+          <i className="pitch-night-table-grain" />
+          <i className="pitch-night-table-runner" />
+          {placeSettings.map((place) => (
+            <span
+              key={place}
+              className={`pitch-night-place-setting pitch-night-place-setting-${place + 1}`}
+              data-place-setting
+            >
+              <i className="pitch-night-plate" />
+              <i className="pitch-night-napkin" />
+              <i className="pitch-night-glass" />
+              <i className="pitch-night-cutlery" />
+            </span>
+          ))}
+          <span className="pitch-night-table-centrepiece" data-table-centrepiece>
+            <i className="pitch-night-candle">
+              <i />
+            </i>
+            <i className="pitch-night-serving-bowl" />
+            <i className="pitch-night-bread" />
+          </span>
+        </div>
+        <div className="pitch-night-table-edge" />
       </div>
     </section>
   );

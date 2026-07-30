@@ -1,4 +1,4 @@
-import type { Group } from "three";
+import type { PitchNightWorld } from "./pitch-night-world.client";
 
 type Gsap = (typeof import("gsap"))["gsap"];
 type ScrollTriggerPlugin = (typeof import("gsap/ScrollTrigger"))["ScrollTrigger"];
@@ -8,7 +8,7 @@ interface MotionContext {
   compact: boolean;
   gsap: Gsap;
   root: HTMLElement;
-  world: Group;
+  world: PitchNightWorld;
 }
 
 function animateOpening({ gsap, root }: MotionContext) {
@@ -168,7 +168,7 @@ function animateOpening({ gsap, root }: MotionContext) {
 }
 
 function animateWorld({ compact, gsap, root, world }: MotionContext) {
-  gsap.to(world.rotation, {
+  gsap.to(world.celestial.rotation, {
     z: Math.PI * 1.7,
     y: Math.PI * 2.3,
     ease: "none",
@@ -179,7 +179,7 @@ function animateWorld({ compact, gsap, root, world }: MotionContext) {
       scrub: 1.4,
     },
   });
-  gsap.to(world.position, {
+  gsap.to(world.group.position, {
     x: compact ? -0.8 : -2.6,
     y: compact ? -0.6 : -0.3,
     ease: "none",
@@ -191,7 +191,7 @@ function animateWorld({ compact, gsap, root, world }: MotionContext) {
     },
   });
   gsap.fromTo(
-    world.scale,
+    world.group.scale,
     { x: 1, y: 1, z: 1 },
     {
       x: compact ? 0.72 : 0.56,
@@ -206,6 +206,175 @@ function animateWorld({ compact, gsap, root, world }: MotionContext) {
       },
     },
   );
+
+  gsap
+    .timeline({
+      scrollTrigger: {
+        trigger: "[data-supper-scene]",
+        start: "top 86%",
+        end: "center 42%",
+        scrub: 1.15,
+      },
+    })
+    .to(
+      world.group.position,
+      {
+        x: compact ? 0.08 : -2.3,
+        y: compact ? 0.42 : 0.48,
+        duration: 0.8,
+        ease: "power2.inOut",
+      },
+      0,
+    )
+    .to(
+      world.group.scale,
+      {
+        x: compact ? 0.72 : 0.66,
+        y: compact ? 0.72 : 0.66,
+        z: compact ? 0.72 : 0.66,
+        duration: 0.8,
+        ease: "power2.inOut",
+      },
+      0,
+    )
+    .to(
+      world.celestial.scale,
+      {
+        x: 0.18,
+        y: 0.18,
+        z: 0.18,
+        duration: 0.64,
+        ease: "power2.in",
+      },
+      0.02,
+    )
+    .to(
+      world.celestial.position,
+      {
+        y: 0.42,
+        z: 0.46,
+        duration: 0.72,
+        ease: "power2.in",
+      },
+      0,
+    )
+    .to(
+      world.bottle.scale,
+      {
+        x: compact ? 0.72 : 0.82,
+        y: compact ? 0.72 : 0.82,
+        z: compact ? 0.72 : 0.82,
+        duration: 0.72,
+        ease: "back.out(1.15)",
+      },
+      0.14,
+    )
+    .to(
+      world.liquid.scale,
+      {
+        y: 1,
+        duration: 0.58,
+        ease: "power2.out",
+      },
+      0.3,
+    );
+
+  gsap.to(world.bottle.rotation, {
+    y: 0.2,
+    x: -0.045,
+    ease: "none",
+    scrollTrigger: {
+      trigger: "[data-supper-scene]",
+      start: "center center",
+      end: "bottom top",
+      scrub: 1.4,
+    },
+  });
+
+  gsap
+    .timeline({
+      scrollTrigger: {
+        trigger: ".pitch-night-finale",
+        start: "top 88%",
+        end: "center 48%",
+        scrub: 1.1,
+      },
+    })
+    .to(
+      world.group.position,
+      {
+        x: compact ? 0 : -2.65,
+        y: compact ? 3 : 0.12,
+        duration: 0.8,
+        ease: "power2.inOut",
+      },
+      0,
+    )
+    .to(
+      world.group.scale,
+      {
+        x: compact ? 0.62 : 0.61,
+        y: compact ? 0.62 : 0.61,
+        z: compact ? 0.62 : 0.61,
+        duration: 0.8,
+        ease: "power2.inOut",
+      },
+      0,
+    )
+    .to(
+      world.bottle.scale,
+      {
+        x: compact ? 0.58 : 0.6,
+        y: compact ? 0.58 : 0.6,
+        z: compact ? 0.58 : 0.6,
+        duration: 0.75,
+        ease: "power2.inOut",
+      },
+      0,
+    )
+    .to(
+      world.celestial.scale,
+      {
+        x: 0.28,
+        y: 0.28,
+        z: 0.28,
+        duration: 0.72,
+        ease: "back.out(1.2)",
+      },
+      0.08,
+    )
+    .to(
+      world.celestial.position,
+      {
+        x: 0,
+        y: 0.45,
+        z: 0.62,
+        duration: 0.72,
+        ease: "power2.inOut",
+      },
+      0,
+    )
+    .to(
+      world.orbitals.scale,
+      {
+        x: 0.4,
+        y: 0.4,
+        z: 0.4,
+        duration: 0.68,
+        ease: "power2.inOut",
+      },
+      0.08,
+    )
+    .to(
+      world.bottle.rotation,
+      {
+        y: Math.PI * 2 + 0.2,
+        x: -0.025,
+        duration: 1,
+        ease: "power1.inOut",
+      },
+      0,
+    );
 }
 
 function animatePitchAndSpelling({ gsap }: MotionContext) {
@@ -445,6 +614,106 @@ function animateLaterScenes({ gsap }: MotionContext) {
       once: true,
     },
   });
+  gsap.fromTo(
+    "[data-supper-line]",
+    {
+      opacity: 0,
+      yPercent: 118,
+      rotate: 2,
+      filter: "blur(14px)",
+    },
+    {
+      opacity: 1,
+      yPercent: 0,
+      rotate: 0,
+      filter: "blur(0px)",
+      stagger: 0.16,
+      duration: 1.05,
+      ease: "power4.out",
+      scrollTrigger: {
+        trigger: "[data-supper-heading]",
+        start: "top 84%",
+        once: true,
+      },
+    },
+  );
+  gsap
+    .timeline({
+      scrollTrigger: {
+        trigger: "[data-table-scene]",
+        start: "top 92%",
+        end: "center 56%",
+        scrub: 0.9,
+      },
+    })
+    .fromTo(
+      "[data-table-top]",
+      { opacity: 0, y: 130, rotateX: 72, scale: 0.86 },
+      { opacity: 1, y: 0, rotateX: 58, scale: 1, duration: 0.8, ease: "power3.out" },
+    )
+    .fromTo(
+      "[data-place-setting]",
+      {
+        opacity: 0,
+        y: 70,
+        x: (index) => (index - 2) * 32,
+        rotate: (index) => (index - 2) * 8,
+      },
+      {
+        opacity: 1,
+        y: 0,
+        x: 0,
+        rotate: 0,
+        stagger: 0.08,
+        duration: 0.46,
+        ease: "power3.out",
+      },
+      0.3,
+    )
+    .fromTo(
+      "[data-table-centrepiece]",
+      { opacity: 0, y: 40, scale: 0.6 },
+      { opacity: 1, y: 0, scale: 1, duration: 0.52, ease: "back.out(1.4)" },
+      0.48,
+    );
+  gsap.fromTo(
+    "[data-supper-guest]",
+    {
+      opacity: 0,
+      y: 90,
+      scale: 0.82,
+      rotate: (index) => (index % 2 ? 5 : -5),
+    },
+    {
+      opacity: 1,
+      y: 0,
+      scale: 1,
+      rotate: 0,
+      stagger: { each: 0.07, from: "center" },
+      duration: 0.8,
+      ease: "power3.out",
+      scrollTrigger: {
+        trigger: "[data-table-scene]",
+        start: "top 82%",
+        once: true,
+      },
+    },
+  );
+  gsap.fromTo(
+    "[data-table-light]",
+    { opacity: 0, scale: 0.45 },
+    {
+      opacity: 1,
+      scale: 1,
+      duration: 1.4,
+      ease: "power2.out",
+      scrollTrigger: {
+        trigger: "[data-table-scene]",
+        start: "top 78%",
+        once: true,
+      },
+    },
+  );
   gsap.to("[data-final-logo]", {
     y: -18,
     rotate: 2,

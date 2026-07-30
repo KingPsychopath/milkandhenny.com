@@ -19,6 +19,7 @@ interface AmbienceEngine {
   context: AudioContext;
   beginScratch: () => void;
   endScratch: () => void;
+  playPourAccent: () => void;
   seekApartmentLifeBy: (seconds: number) => void;
   setApartmentLifeActive: (active: boolean) => void;
   setApartmentLifePaused: (paused: boolean) => void;
@@ -111,6 +112,7 @@ function createAmbienceEngine(): AmbienceEngine {
   let apartmentLifeActive = false;
   let apartmentLifePaused = false;
   let scratching = false;
+  let pourPlayed = false;
   let pauseTimer: number | undefined;
   let music:
     | {
@@ -187,6 +189,52 @@ function createAmbienceEngine(): AmbienceEngine {
       scratching = false;
       syncMusic();
     },
+    playPourAccent: () => {
+      if (stopped || pourPlayed || context.state !== "running") return;
+      pourPlayed = true;
+
+      const duration = 2.15;
+      const source = context.createBufferSource();
+      const filter = context.createBiquadFilter();
+      const gain = context.createGain();
+      const buffer = context.createBuffer(1, context.sampleRate * duration, context.sampleRate);
+      const channel = buffer.getChannelData(0);
+      let softened = 0;
+
+      for (let index = 0; index < channel.length; index += 1) {
+        const progress = index / channel.length;
+        const attack = Math.min(1, progress / 0.08);
+        const release = Math.max(0, 1 - progress) ** 0.72;
+        softened = softened * 0.84 + (Math.random() * 2 - 1) * 0.16;
+        channel[index] = softened * attack * release;
+      }
+
+      source.buffer = buffer;
+      filter.type = "bandpass";
+      filter.frequency.setValueAtTime(980, context.currentTime);
+      filter.frequency.exponentialRampToValueAtTime(520, context.currentTime + duration);
+      filter.Q.value = 0.7;
+      gain.gain.setValueAtTime(0.14, context.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, context.currentTime + duration);
+      source.connect(filter).connect(gain).connect(master);
+      source.start();
+      source.stop(context.currentTime + duration);
+
+      [0.42, 0.92, 1.46].forEach((offset, index) => {
+        const bubble = context.createOscillator();
+        const bubbleGain = context.createGain();
+        const begins = context.currentTime + offset;
+        bubble.type = "sine";
+        bubble.frequency.setValueAtTime(360 + index * 70, begins);
+        bubble.frequency.exponentialRampToValueAtTime(610 + index * 90, begins + 0.13);
+        bubbleGain.gain.setValueAtTime(0.0001, begins);
+        bubbleGain.gain.exponentialRampToValueAtTime(0.045, begins + 0.025);
+        bubbleGain.gain.exponentialRampToValueAtTime(0.0001, begins + 0.16);
+        bubble.connect(bubbleGain).connect(master);
+        bubble.start(begins);
+        bubble.stop(begins + 0.18);
+      });
+    },
     seekApartmentLifeBy: (seconds) => {
       if (!Number.isFinite(seconds) || seconds === 0) return;
       const element = ensureMusic().element;
@@ -256,10 +304,15 @@ export function PitchNightAudioProvider({ children }: { children: ReactNode }) {
       }
     }
     try {
-      engine.setApartmentLifePaused(musicPausedRef.current);
-      engine.setApartmentLifeActive(musicActiveRef.current);
       await engine.context.resume();
       const running = engine.context.state === "running";
+      if (running) {
+        // Media playback must be requested after the context resumes. Doing this
+        // in the opposite order leaves the record visually paused after the
+        // browser grants audio on a user gesture.
+        engine.setApartmentLifePaused(musicPausedRef.current);
+        engine.setApartmentLifeActive(musicActiveRef.current);
+      }
       setActivated(running);
       return running;
     } catch {
@@ -275,6 +328,22 @@ export function PitchNightAudioProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
+    const removeResumeListeners = () => {
+      window.removeEventListener("pointerdown", resumeOnIntent);
+      window.removeEventListener("keydown", resumeOnIntent);
+    };
+    const resumeOnIntent = (event: PointerEvent | KeyboardEvent) => {
+      if (
+        event.target instanceof Element &&
+        event.target.closest("[data-pitch-night-audio-toggle]")
+      ) {
+        return;
+      }
+      void start().then((running) => {
+        if (running) removeResumeListeners();
+      });
+    };
+
     try {
       if (window.localStorage.getItem(AMBIENCE_PREFERENCE) === "off") {
         setEnabled(false);
@@ -284,24 +353,13 @@ export function PitchNightAudioProvider({ children }: { children: ReactNode }) {
       // Default to available when preferences are blocked.
     }
 
-    const resumeOnIntent = (event: PointerEvent | KeyboardEvent) => {
-      if (
-        event.target instanceof Element &&
-        event.target.closest("[data-pitch-night-audio-toggle]")
-      ) {
-        return;
-      }
-      void start().then((running) => {
-        if (!running) return;
-        window.removeEventListener("pointerdown", resumeOnIntent);
-        window.removeEventListener("keydown", resumeOnIntent);
-      });
-    };
     window.addEventListener("pointerdown", resumeOnIntent);
     window.addEventListener("keydown", resumeOnIntent);
+    void start().then((running) => {
+      if (running) removeResumeListeners();
+    });
     return () => {
-      window.removeEventListener("pointerdown", resumeOnIntent);
-      window.removeEventListener("keydown", resumeOnIntent);
+      removeResumeListeners();
     };
   }, [start]);
 
@@ -315,11 +373,27 @@ export function PitchNightAudioProvider({ children }: { children: ReactNode }) {
         setMusicActive(active);
         engineRef.current?.setApartmentLifeActive(active);
       },
-      { threshold: 0.18 },
+      { rootMargin: "-6% 0px -6% 0px", threshold: 0.04 },
     );
     observer.observe(section);
     return () => observer.disconnect();
   }, []);
+
+  useEffect(() => {
+    const section = document.querySelector("[data-supper-scene]");
+    const engine = engineRef.current;
+    if (!section || !engine || !enabled || !activated) return;
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (!entry?.isIntersecting) return;
+        engine.playPourAccent();
+        observer.disconnect();
+      },
+      { threshold: 0.42 },
+    );
+    observer.observe(section);
+    return () => observer.disconnect();
+  }, [activated, enabled]);
 
   useEffect(() => {
     const handleVisibility = () => {
