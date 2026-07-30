@@ -4,7 +4,9 @@ import { createPitchNightScrollMotion } from "./pitch-night-scroll.client";
 import { createPitchNightWorld } from "./pitch-night-world.client";
 
 const COMPACT_QUERY = "(max-width: 767px)";
+const COARSE_POINTER_QUERY = "(pointer: coarse)";
 const REDUCED_MOTION_QUERY = "(prefers-reduced-motion: reduce)";
+const ANCHOR_SETTLE_MS = 180;
 const JOURNEY_SCENE_QUERY = ":scope > section, :scope > [data-breath]";
 const JOURNEY_POSITION_KEY = "pitch-night:journey-position";
 
@@ -122,13 +124,14 @@ export function usePitchNightMotion(
     const navigationType = getNavigationType();
     const cleanScrollRestoration = manageScrollRestoration();
     const compactMedia = matchMedia(COMPACT_QUERY);
+    const coarsePointerMedia = matchMedia(COARSE_POINTER_QUERY);
     const reducedMotionMedia = matchMedia(REDUCED_MOTION_QUERY);
     let cancelled = false;
     let buildVersion = 0;
     let rebuildFrame = 0;
     let settleFrame = 0;
     let secondSettleFrame = 0;
-    let anchorFrame = 0;
+    let anchorTimer = 0;
     let resizeTimer = 0;
     let stableViewportWidth = innerWidth;
     let stableViewportHeight = innerHeight;
@@ -147,15 +150,19 @@ export function usePitchNightMotion(
     let disposeSession = () => {};
 
     const updateAnchor = () => {
-      anchorFrame = 0;
+      anchorTimer = 0;
       if (innerWidth !== stableViewportWidth || innerHeight !== stableViewportHeight) {
         return;
       }
       latestAnchor = captureJourneyAnchor(root) ?? latestAnchor;
     };
+    // Measuring the anchor reads every scene's box, which forces a synchronous layout on top of
+    // the transforms the timelines just wrote. Doing that per scroll frame costs milliseconds of
+    // every frame budget, so wait for the scroll to settle — the anchor only matters once motion
+    // stops, at a resize, or on the way out of the page.
     const handleScroll = () => {
-      if (anchorFrame) return;
-      anchorFrame = requestAnimationFrame(updateAnchor);
+      window.clearTimeout(anchorTimer);
+      anchorTimer = window.setTimeout(updateAnchor, ANCHOR_SETTLE_MS);
     };
     window.addEventListener("scroll", handleScroll, { passive: true });
 
@@ -224,6 +231,16 @@ export function usePitchNightMotion(
         ) {
           return;
         }
+        const widthChanged = innerWidth !== stableViewportWidth;
+        const heightChanged = innerHeight !== stableViewportHeight;
+        // A phone showing or hiding its address bar fires resize with an unchanged width. Treating
+        // that as a real layout change refreshes every trigger and scrolls the page back to the
+        // stored anchor, which reads as a jolt in the middle of a swipe. Adopt the new height as
+        // the baseline instead, so anchor capture keeps working without moving the reader.
+        if (!widthChanged && (!heightChanged || coarsePointerMedia.matches)) {
+          stableViewportHeight = innerHeight;
+          return;
+        }
 
         modules.ScrollTrigger.refresh();
         if (latestAnchor) restoreJourneyAnchor(latestAnchor);
@@ -238,7 +255,9 @@ export function usePitchNightMotion(
       if (event.persisted) scheduleRebuild();
     };
     const handlePageHide = () => {
-      storeJourneyAnchor(root, latestAnchor ?? captureJourneyAnchor(root));
+      // Leaving the page is the one moment where a fresh measurement is free, so take it rather
+      // than trusting whatever the settle timer last recorded.
+      storeJourneyAnchor(root, captureJourneyAnchor(root) ?? latestAnchor);
     };
     compactMedia.addEventListener("change", scheduleRebuild);
     reducedMotionMedia.addEventListener("change", scheduleRebuild);
@@ -258,6 +277,9 @@ export function usePitchNightMotion(
         const gsap = gsapModule.gsap;
         const ScrollTrigger = scrollModule.ScrollTrigger;
         gsap.registerPlugin(ScrollTrigger);
+        // ScrollTrigger otherwise recalculates every trigger when a phone's address bar slides
+        // away, which lands as a stutter part-way through a swipe.
+        ScrollTrigger.config({ ignoreMobileResize: true });
         modules = { THREE, gsap, ScrollTrigger };
         buildSession(navigationType === "back_forward" ? latestAnchor : null);
       } catch {
@@ -269,7 +291,7 @@ export function usePitchNightMotion(
       cancelled = true;
       buildVersion += 1;
       cancelAnimationFrame(rebuildFrame);
-      cancelAnimationFrame(anchorFrame);
+      window.clearTimeout(anchorTimer);
       window.clearTimeout(resizeTimer);
       cancelSettling();
       compactMedia.removeEventListener("change", scheduleRebuild);

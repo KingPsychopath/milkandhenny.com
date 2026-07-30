@@ -126,6 +126,7 @@ function animateOpening({ gsap, root }: MotionContext) {
       rotate: 1.5,
       duration: 1.05,
       ease: "power4.out",
+      clearProps: "all",
       scrollTrigger: {
         trigger: line,
         start: "top 88%",
@@ -140,6 +141,9 @@ function animateOpening({ gsap, root }: MotionContext) {
       filter: "blur(12px)",
       duration: 1.15,
       ease: "power3.out",
+      // A finished reveal otherwise keeps `filter: blur(0px)` inline, which holds the paragraph in
+      // its own filter surface for the rest of the visit.
+      clearProps: "all",
       scrollTrigger: {
         trigger: element,
         start: "top 88%",
@@ -596,6 +600,7 @@ function animatePitchAndSpelling({ compact, gsap }: MotionContext) {
       stagger: 0.025,
       duration: 0.65,
       ease: "power3.out",
+      clearProps: "all",
       scrollTrigger: {
         trigger: "[data-pitch-quote]",
         start: "top 86%",
@@ -748,6 +753,7 @@ function animateLaterScenes({ compact, gsap }: MotionContext) {
       stagger: 0.16,
       duration: 1.05,
       ease: "power4.out",
+      clearProps: "all",
       scrollTrigger: {
         trigger: "[data-supper-heading]",
         start: "top 84%",

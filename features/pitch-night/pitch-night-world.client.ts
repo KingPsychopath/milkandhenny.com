@@ -38,14 +38,23 @@ export function createPitchNightWorld(
   });
   const pixelRatio = () =>
     Math.min(devicePixelRatio, compact ? COMPACT_PIXEL_RATIO : WIDE_PIXEL_RATIO);
+  // The canvas box is pinned to the large viewport, so a phone hiding its address bar never
+  // changes these numbers and never forces a drawing-buffer reallocation mid-scroll.
+  const viewportWidth = () => canvas.clientWidth || innerWidth || 1;
+  const viewportHeight = () => canvas.clientHeight || innerHeight || 1;
+  let bufferWidth = viewportWidth();
+  let bufferHeight = viewportHeight();
   renderer.setPixelRatio(pixelRatio());
-  renderer.setSize(innerWidth, innerHeight);
+  renderer.setSize(bufferWidth, bufferHeight, false);
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.12;
+  // Transmissive materials make three render the whole scene a second time into a 4x-multisampled
+  // buffer every frame. Full resolution is wasted on a dark sky, so shrink the buffer instead.
+  renderer.transmissionResolutionScale = compact ? 0.5 : 0.75;
 
   const scene = new THREE.Scene();
-  const camera = new THREE.PerspectiveCamera(42, innerWidth / innerHeight, 0.1, 100);
+  const camera = new THREE.PerspectiveCamera(42, bufferWidth / bufferHeight, 0.1, 100);
   camera.position.set(0, 0, 8);
   const group = new THREE.Group();
   const celestial = new THREE.Group();
@@ -243,7 +252,10 @@ export function createPitchNightWorld(
     emissiveIntensity: 0.08,
     metalness: 0.04,
     roughness: 0.16,
-    transmission: 0.12,
+    // The core is the one transmissive object on screen for most of the story. Dropping its 12%
+    // see-through on phones keeps the extra whole-scene transmission pass switched off until the
+    // bottle actually arrives; against a near-black sky the difference is invisible.
+    transmission: compact ? 0 : 0.12,
     thickness: 1.4,
     clearcoat: 1,
     clearcoatRoughness: 0.06,
@@ -508,10 +520,15 @@ export function createPitchNightWorld(
     if (resizeFrame) return;
     resizeFrame = requestAnimationFrame(() => {
       resizeFrame = 0;
-      camera.aspect = innerWidth / innerHeight;
+      const width = viewportWidth();
+      const height = viewportHeight();
+      if (width === bufferWidth && height === bufferHeight) return;
+      bufferWidth = width;
+      bufferHeight = height;
+      camera.aspect = width / height;
       camera.updateProjectionMatrix();
       renderer.setPixelRatio(pixelRatio());
-      renderer.setSize(innerWidth, innerHeight);
+      renderer.setSize(width, height, false);
     });
   };
   if (finePointer) addEventListener("pointermove", handlePointer, { passive: true });
@@ -536,8 +553,11 @@ export function createPitchNightWorld(
         for (const moon of finaleMoonSpinners) moon.group.rotation.z += moon.speed * frameScale;
       }
       stars.rotation.y += 0.00012 * frameScale;
-      group.rotation.y += (pointer.x * 0.25 - group.rotation.y) * 0.035;
-      group.rotation.x += (-pointer.y * 0.18 - group.rotation.x) * 0.035;
+      // Ease toward the pointer by elapsed time, so a 120Hz display drifts at the same rate a
+      // 60Hz one does instead of arriving twice as fast.
+      const follow = 1 - (1 - 0.035) ** frameScale;
+      group.rotation.y += (pointer.x * 0.25 - group.rotation.y) * follow;
+      group.rotation.x += (-pointer.y * 0.18 - group.rotation.x) * follow;
       renderer.render(scene, camera);
     }
     frame = requestAnimationFrame(render);

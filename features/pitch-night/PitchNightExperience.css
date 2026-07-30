@@ -25,6 +25,9 @@ body:has(.pitch-night) {
   z-index: 0;
   width: 100%;
   height: 100%;
+  /* Pinning to the large viewport keeps the canvas box, and so the WebGL drawing buffer, the same
+     size while a phone's address bar slides in and out mid-scroll. */
+  height: 100lvh;
   background: var(--pitch-night-backdrop);
   pointer-events: none;
   opacity: 0.74;
@@ -379,6 +382,9 @@ body:has(.pitch-night) {
   position: absolute;
   border-radius: 999px;
   filter: blur(36px);
+  /* The clouds are scrubbed sideways for the whole hero, so keep the blurred result on its own
+     layer instead of re-blurring 36px across a 62rem box every scroll frame. */
+  will-change: transform;
 }
 
 .pitch-night-cloud-far {
@@ -2325,32 +2331,40 @@ body:has(.pitch-night) {
   animation: pitch-night-final-window-breathe 8s ease-in-out infinite alternate;
 }
 
-.pitch-night-final-window::before {
+/* Two starfields rather than one two-layer background: drifting them with `translate` keeps the
+   motion on the compositor, where animating `background-position` repainted the whole window every
+   frame. Each layer travels exactly one tile per cycle so the loop stays seamless. */
+.pitch-night-final-window::before,
+.pitch-night-final-window::after {
   position: absolute;
   inset: 5%;
   border-radius: inherit;
-  background-image:
-    radial-gradient(
-      circle,
-      color-mix(in srgb, var(--pitch-night-cream) 65%, transparent) 0 0.07rem,
-      transparent 0.09rem
-    ),
-    radial-gradient(
-      circle,
-      color-mix(in srgb, var(--pitch-night-gold) 52%, transparent) 0 0.05rem,
-      transparent 0.08rem
-    );
-  background-position:
-    0 0,
-    1.1rem 0.8rem;
-  background-size:
-    2.9rem 2.9rem,
-    3.7rem 3.7rem;
   content: "";
   opacity: 0.3;
   -webkit-mask-image: radial-gradient(ellipse, black, transparent 74%);
   mask-image: radial-gradient(ellipse, black, transparent 74%);
-  animation: pitch-night-final-stars-drift 38s linear infinite;
+  will-change: translate;
+}
+
+.pitch-night-final-window::before {
+  background-image: radial-gradient(
+    circle,
+    color-mix(in srgb, var(--pitch-night-cream) 65%, transparent) 0 0.07rem,
+    transparent 0.09rem
+  );
+  background-size: 2.9rem 2.9rem;
+  animation: pitch-night-final-stars-near 38s linear infinite;
+}
+
+.pitch-night-final-window::after {
+  background-image: radial-gradient(
+    circle,
+    color-mix(in srgb, var(--pitch-night-gold) 52%, transparent) 0 0.05rem,
+    transparent 0.08rem
+  );
+  background-position: 1.1rem 0.8rem;
+  background-size: 3.7rem 3.7rem;
+  animation: pitch-night-final-stars-far 46s linear infinite;
 }
 
 .pitch-night-final-window-core {
@@ -2735,11 +2749,15 @@ body:has(.pitch-night) {
   }
 }
 
-@keyframes pitch-night-final-stars-drift {
+@keyframes pitch-night-final-stars-near {
   to {
-    background-position:
-      2.9rem 1.45rem,
-      -2.6rem 2.65rem;
+    translate: 2.9rem 2.9rem;
+  }
+}
+
+@keyframes pitch-night-final-stars-far {
+  to {
+    translate: -3.7rem 3.7rem;
   }
 }
 
@@ -3169,10 +3187,12 @@ body:has(.pitch-night) {
     animation: none;
   }
 
-  .pitch-night-final-window::before {
+  .pitch-night-final-window::before,
+  .pitch-night-final-window::after {
     -webkit-mask-image: none;
     mask-image: none;
     animation: none;
+    will-change: auto;
   }
 
   .pitch-night-final-window-cloud {
@@ -3261,6 +3281,7 @@ body:has(.pitch-night) {
   .pitch-night-candle > i,
   .pitch-night-final-window,
   .pitch-night-final-window::before,
+  .pitch-night-final-window::after,
   .pitch-night-final-window-cloud,
   .pitch-night-final-arc,
   .pitch-night-final-debris i {
