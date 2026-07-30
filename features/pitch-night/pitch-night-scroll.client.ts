@@ -12,24 +12,6 @@ interface MotionContext {
 }
 
 function animateOpening({ gsap, root }: MotionContext) {
-  gsap.set("[data-hero-line]", { yPercent: 112, rotate: 2 });
-  gsap.set("[data-hero-kicker], [data-hero-actions], [data-hero-whisper]", {
-    opacity: 0,
-    y: 18,
-  });
-  gsap
-    .timeline({ defaults: { ease: "power4.out" } })
-    .from("[data-pitch-logo]", {
-      opacity: 0,
-      scale: 0.72,
-      rotate: -4,
-      duration: 1.55,
-    })
-    .to("[data-hero-kicker]", { opacity: 1, y: 0, duration: 0.8 }, "-=0.95")
-    .to("[data-hero-line]", { yPercent: 0, rotate: 0, duration: 1.25, stagger: 0.12 }, "-=0.55")
-    .to("[data-hero-actions]", { opacity: 1, y: 0, duration: 0.75 }, "-=0.6")
-    .to("[data-hero-whisper]", { opacity: 0.62, y: 0, duration: 0.7 }, "-=0.45");
-
   gsap.to("[data-progress]", {
     scaleX: 1,
     ease: "none",

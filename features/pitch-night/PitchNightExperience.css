@@ -191,10 +191,12 @@
   left: 0;
   width: 100%;
   transform: translateY(-50%);
+  animation: pitch-night-hero-logo-in 680ms cubic-bezier(0.22, 1, 0.36, 1) backwards;
 }
 
 .pitch-night-hero .pitch-night-kicker {
   margin-top: clamp(2rem, 5vw, 4.5rem);
+  animation: pitch-night-hero-item-in 460ms cubic-bezier(0.22, 1, 0.36, 1) 60ms backwards;
 }
 
 .pitch-night-hero-title {
@@ -223,6 +225,22 @@
   transform-origin: left bottom;
 }
 
+.pitch-night-hero-line > span {
+  animation: pitch-night-hero-line-in 620ms cubic-bezier(0.22, 1, 0.36, 1) backwards;
+}
+
+.pitch-night-hero-line:nth-child(1) > span {
+  animation-delay: 100ms;
+}
+
+.pitch-night-hero-line:nth-child(2) > span {
+  animation-delay: 150ms;
+}
+
+.pitch-night-hero-line:nth-child(3) > span {
+  animation-delay: 200ms;
+}
+
 .pitch-night-hero-copy {
   max-width: 38rem;
   margin-top: 2.5rem;
@@ -230,6 +248,7 @@
   font-size: clamp(1.15rem, 2.1vw, 1.5rem);
   line-height: 1.65;
   opacity: 0.78;
+  animation: pitch-night-hero-copy-in 520ms cubic-bezier(0.22, 1, 0.36, 1) 230ms backwards;
 }
 
 .pitch-night-hero-actions,
@@ -239,6 +258,53 @@
   align-items: center;
   gap: 1rem;
   margin-top: 2.5rem;
+}
+
+.pitch-night-hero-actions {
+  animation: pitch-night-hero-item-in 460ms cubic-bezier(0.22, 1, 0.36, 1) 280ms backwards;
+}
+
+.pitch-night-scroll-whisper {
+  animation: pitch-night-hero-whisper-in 460ms cubic-bezier(0.22, 1, 0.36, 1) 330ms backwards;
+}
+
+@keyframes pitch-night-hero-logo-in {
+  from {
+    opacity: 0;
+    transform: translateY(-50%) scale(0.94);
+  }
+}
+
+@keyframes pitch-night-hero-line-in {
+  from {
+    opacity: 0;
+    transform: translateY(0.5em) rotate(0.8deg);
+  }
+}
+
+@keyframes pitch-night-hero-item-in {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+}
+
+@keyframes pitch-night-hero-copy-in {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+
+  to {
+    opacity: 0.78;
+  }
+}
+
+@keyframes pitch-night-hero-whisper-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
 }
 
 .pitch-night-button,
@@ -3128,6 +3194,15 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .pitch-night-wordmark img,
+  .pitch-night-hero .pitch-night-kicker,
+  .pitch-night-hero-line > span,
+  .pitch-night-hero-copy,
+  .pitch-night-hero-actions,
+  .pitch-night-scroll-whisper {
+    animation: none;
+  }
+
   .pitch-night-canvas {
     display: none;
   }

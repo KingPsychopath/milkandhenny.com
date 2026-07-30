@@ -42,7 +42,7 @@ export function PitchNightHero() {
             <span data-hero-line>yourself out of.</span>
           </span>
         </h1>
-        <p className="pitch-night-hero-copy" data-soft-reveal>
+        <p className="pitch-night-hero-copy">
           We’ll give it a projector. Then we’ll spell something impossible, play too seriously, eat
           well, and dance until the room forgets it had chairs.
         </p>
