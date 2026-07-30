@@ -243,24 +243,27 @@ export function PitchNightAudioProvider({ children }: { children: ReactNode }) {
   const [musicPaused, setMusicPaused] = useState(false);
   const [supported, setSupported] = useState(true);
 
-  const start = useCallback(() => {
-    if (engineRef.current) {
-      void engineRef.current.context.resume();
-      engineRef.current.setApartmentLifePaused(musicPausedRef.current);
-      engineRef.current.setApartmentLifeActive(musicActiveRef.current);
-      setActivated(true);
-      return true;
+  const start = useCallback(async () => {
+    let engine = engineRef.current;
+    if (!engine) {
+      try {
+        engine = createAmbienceEngine();
+        engineRef.current = engine;
+      } catch {
+        setActivated(false);
+        setSupported(false);
+        return false;
+      }
     }
     try {
-      const engine = createAmbienceEngine();
-      engineRef.current = engine;
       engine.setApartmentLifePaused(musicPausedRef.current);
       engine.setApartmentLifeActive(musicActiveRef.current);
-      void engine.context.resume();
-      setActivated(true);
-      return true;
+      await engine.context.resume();
+      const running = engine.context.state === "running";
+      setActivated(running);
+      return running;
     } catch {
-      setSupported(false);
+      setActivated(false);
       return false;
     }
   }, []);
@@ -288,9 +291,11 @@ export function PitchNightAudioProvider({ children }: { children: ReactNode }) {
       ) {
         return;
       }
-      start();
-      window.removeEventListener("pointerdown", resumeOnIntent);
-      window.removeEventListener("keydown", resumeOnIntent);
+      void start().then((running) => {
+        if (!running) return;
+        window.removeEventListener("pointerdown", resumeOnIntent);
+        window.removeEventListener("keydown", resumeOnIntent);
+      });
     };
     window.addEventListener("pointerdown", resumeOnIntent);
     window.addEventListener("keydown", resumeOnIntent);
@@ -335,8 +340,8 @@ export function PitchNightAudioProvider({ children }: { children: ReactNode }) {
     [],
   );
 
-  const enable = useCallback(() => {
-    if (!start()) return false;
+  const enable = useCallback(async () => {
+    if (!(await start())) return false;
     setEnabled(true);
     storePreference("on");
     return true;
@@ -344,7 +349,7 @@ export function PitchNightAudioProvider({ children }: { children: ReactNode }) {
 
   const toggleAmbience = useCallback(() => {
     if (enabled && !activated) {
-      enable();
+      void enable();
       return;
     }
     if (enabled) {
@@ -353,27 +358,31 @@ export function PitchNightAudioProvider({ children }: { children: ReactNode }) {
       storePreference("off");
       return;
     }
-    enable();
+    void enable();
   }, [activated, enable, enabled, stop]);
 
   const setMusicPlaying = useCallback(
     (playing: boolean) => {
-      if (playing) {
-        if (!enabled && !enable()) return;
-        start();
-      }
-      const paused = !playing;
-      musicPausedRef.current = paused;
-      setMusicPaused(paused);
-      engineRef.current?.setApartmentLifePaused(paused);
+      void (async () => {
+        if (playing) {
+          const running = enabled ? await start() : await enable();
+          if (!running) return;
+        }
+        const paused = !playing;
+        musicPausedRef.current = paused;
+        setMusicPaused(paused);
+        engineRef.current?.setApartmentLifePaused(paused);
+      })();
     },
     [enable, enabled, start],
   );
 
   const beginScratch = useCallback(() => {
-    if (!enabled && !enable()) return;
-    start();
-    engineRef.current?.beginScratch();
+    void (async () => {
+      const running = enabled ? await start() : await enable();
+      if (!running) return;
+      engineRef.current?.beginScratch();
+    })();
   }, [enable, enabled, start]);
 
   const endScratch = useCallback(() => {
