@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 const AMBIENCE_PREFERENCE = "pitch-night:ambience";
-const APARTMENT_LIFE_TRACK = "/audio/apartment-life-fete-recap.mp3";
+const APARTMENT_LIFE_TRACK = "/audio/apartment-life-fete-recap-4f1012ae.mp3";
 const AMBIENCE_LEVEL = 0.07;
 const AMBIENCE_UNDER_MUSIC_LEVEL = 0.024;
 const MUSIC_LEVEL = 0.18;

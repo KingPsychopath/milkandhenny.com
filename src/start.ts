@@ -113,7 +113,7 @@ function applyCachePolicy(pathname: string, response: Response) {
     response.headers.set("Service-Worker-Allowed", "/");
     return;
   }
-  if (pathname.startsWith("/fonts/")) {
+  if (pathname.startsWith("/fonts/") || pathname.startsWith("/audio/")) {
     response.headers.set("Cache-Control", "public, max-age=31536000, immutable");
     return;
   }
