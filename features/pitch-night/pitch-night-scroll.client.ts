@@ -168,6 +168,33 @@ function animateOpening({ gsap, root }: MotionContext) {
 }
 
 function animateWorld({ compact, gsap, root, world }: MotionContext) {
+  const supperWorld = {
+    groupPosition: { x: compact ? 0.08 : -2.3, y: compact ? 0.42 : 0.48 },
+    groupScale: {
+      x: compact ? 0.72 : 0.66,
+      y: compact ? 0.72 : 0.66,
+      z: compact ? 0.72 : 0.66,
+    },
+    bottleScale: {
+      x: compact ? 0.72 : 0.82,
+      y: compact ? 0.72 : 0.82,
+      z: compact ? 0.72 : 0.82,
+    },
+    celestialScale: { x: 0.16, y: 0.16, z: 0.16 },
+    celestialPosition: { x: 0, y: 0.02, z: -0.2 },
+  };
+
+  const restoreOpeningWorld = () => {
+    gsap.set(world.group.position, { x: 0, y: 0, z: 0 });
+    gsap.set(world.group.scale, { x: 1, y: 1, z: 1 });
+    gsap.set(world.bottle.scale, { x: 0.001, y: 0.001, z: 0.001 });
+    gsap.set(world.bottle.rotation, { x: 0, y: -0.12, z: 0 });
+    gsap.set(world.celestial.scale, { x: 1, y: 1, z: 1 });
+    gsap.set(world.celestial.position, { x: 0, y: 0, z: 0 });
+    gsap.set(world.orbitals.scale, { x: 1, y: 1, z: 1 });
+    gsap.set(world.liquid.scale, { x: 1, y: 0.08, z: 1 });
+  };
+
   gsap.to(world.celestial.rotation, {
     z: Math.PI * 1.7,
     y: Math.PI * 2.3,
@@ -214,13 +241,13 @@ function animateWorld({ compact, gsap, root, world }: MotionContext) {
         start: "top 86%",
         end: "center 42%",
         scrub: 1.15,
+        onLeaveBack: restoreOpeningWorld,
       },
     })
     .to(
       world.group.position,
       {
-        x: compact ? 0.08 : -2.3,
-        y: compact ? 0.42 : 0.48,
+        ...supperWorld.groupPosition,
         duration: 0.8,
         ease: "power2.inOut",
       },
@@ -229,9 +256,7 @@ function animateWorld({ compact, gsap, root, world }: MotionContext) {
     .to(
       world.group.scale,
       {
-        x: compact ? 0.72 : 0.66,
-        y: compact ? 0.72 : 0.66,
-        z: compact ? 0.72 : 0.66,
+        ...supperWorld.groupScale,
         duration: 0.8,
         ease: "power2.inOut",
       },
@@ -240,9 +265,7 @@ function animateWorld({ compact, gsap, root, world }: MotionContext) {
     .to(
       world.celestial.scale,
       {
-        x: 0.18,
-        y: 0.18,
-        z: 0.18,
+        ...supperWorld.celestialScale,
         duration: 0.64,
         ease: "power2.in",
       },
@@ -251,8 +274,7 @@ function animateWorld({ compact, gsap, root, world }: MotionContext) {
     .to(
       world.celestial.position,
       {
-        y: 0.42,
-        z: 0.46,
+        ...supperWorld.celestialPosition,
         duration: 0.72,
         ease: "power2.in",
       },
@@ -261,9 +283,7 @@ function animateWorld({ compact, gsap, root, world }: MotionContext) {
     .to(
       world.bottle.scale,
       {
-        x: compact ? 0.72 : 0.82,
-        y: compact ? 0.72 : 0.82,
-        z: compact ? 0.72 : 0.82,
+        ...supperWorld.bottleScale,
         duration: 0.72,
         ease: "back.out(1.15)",
       },
@@ -291,21 +311,32 @@ function animateWorld({ compact, gsap, root, world }: MotionContext) {
     },
   });
 
+  const restoreSupperWorld = () => {
+    gsap.set(world.group.position, supperWorld.groupPosition);
+    gsap.set(world.group.scale, supperWorld.groupScale);
+    gsap.set(world.bottle.scale, supperWorld.bottleScale);
+    gsap.set(world.bottle.rotation, { x: -0.045, y: 0.2 });
+    gsap.set(world.celestial.scale, supperWorld.celestialScale);
+    gsap.set(world.celestial.position, supperWorld.celestialPosition);
+    gsap.set(world.orbitals.scale, { x: 1, y: 1, z: 1 });
+  };
+
   gsap
     .timeline({
       scrollTrigger: {
         trigger: ".pitch-night-finale",
-        start: "top 88%",
-        end: "center 48%",
+        start: "top 62%",
+        end: "top -18%",
         scrub: 1.1,
+        onLeaveBack: restoreSupperWorld,
       },
     })
     .to(
       world.group.position,
       {
         x: compact ? 0 : -2.65,
-        y: compact ? 3 : 0.12,
-        duration: 0.8,
+        y: compact ? 0 : 0.12,
+        duration: 0.3,
         ease: "power2.inOut",
       },
       0,
@@ -316,7 +347,7 @@ function animateWorld({ compact, gsap, root, world }: MotionContext) {
         x: compact ? 0.62 : 0.61,
         y: compact ? 0.62 : 0.61,
         z: compact ? 0.62 : 0.61,
-        duration: 0.8,
+        duration: 0.3,
         ease: "power2.inOut",
       },
       0,
@@ -324,10 +355,10 @@ function animateWorld({ compact, gsap, root, world }: MotionContext) {
     .to(
       world.bottle.scale,
       {
-        x: compact ? 0.58 : 0.6,
-        y: compact ? 0.58 : 0.6,
-        z: compact ? 0.58 : 0.6,
-        duration: 0.75,
+        x: compact ? 0.62 : 0.64,
+        y: compact ? 0.62 : 0.64,
+        z: compact ? 0.62 : 0.64,
+        duration: 0.3,
         ease: "power2.inOut",
       },
       0,
@@ -335,10 +366,10 @@ function animateWorld({ compact, gsap, root, world }: MotionContext) {
     .to(
       world.celestial.scale,
       {
-        x: 0.28,
-        y: 0.28,
-        z: 0.28,
-        duration: 0.72,
+        x: 0.24,
+        y: 0.24,
+        z: 0.24,
+        duration: 0.28,
         ease: "back.out(1.2)",
       },
       0.08,
@@ -347,9 +378,9 @@ function animateWorld({ compact, gsap, root, world }: MotionContext) {
       world.celestial.position,
       {
         x: 0,
-        y: 0.45,
-        z: 0.62,
-        duration: 0.72,
+        y: 0.02,
+        z: -0.24,
+        duration: 0.3,
         ease: "power2.inOut",
       },
       0,
@@ -357,10 +388,10 @@ function animateWorld({ compact, gsap, root, world }: MotionContext) {
     .to(
       world.orbitals.scale,
       {
-        x: 0.4,
-        y: 0.4,
-        z: 0.4,
-        duration: 0.68,
+        x: 0.32,
+        y: 0.32,
+        z: 0.32,
+        duration: 0.28,
         ease: "power2.inOut",
       },
       0.08,
@@ -370,10 +401,19 @@ function animateWorld({ compact, gsap, root, world }: MotionContext) {
       {
         y: Math.PI * 2 + 0.2,
         x: -0.025,
-        duration: 1,
-        ease: "power1.inOut",
+        duration: 0.5,
+        ease: "power2.inOut",
       },
-      0,
+      0.3,
+    )
+    .to(
+      world.group.position,
+      {
+        y: compact ? 3.65 : 0.12,
+        duration: 0.22,
+        ease: "power2.in",
+      },
+      0.78,
     );
 }
 
@@ -642,17 +682,42 @@ function animateLaterScenes({ gsap }: MotionContext) {
       scrollTrigger: {
         trigger: "[data-table-scene]",
         start: "top 92%",
-        end: "center 56%",
+        end: "center 48%",
         scrub: 0.9,
       },
     })
     .fromTo(
       "[data-table-top]",
       { opacity: 0, y: 130, rotateX: 72, scale: 0.86 },
-      { opacity: 1, y: 0, rotateX: 58, scale: 1, duration: 0.8, ease: "power3.out" },
+      { opacity: 1, y: 0, rotateX: 62, scale: 1, duration: 0.72, ease: "power3.out" },
     )
     .fromTo(
-      "[data-place-setting]",
+      "[data-table-light]",
+      { opacity: 0, scale: 0.45 },
+      { opacity: 1, scale: 1, duration: 0.58, ease: "power2.out" },
+      0.08,
+    )
+    .fromTo(
+      "[data-supper-guest]",
+      {
+        opacity: 0,
+        y: 90,
+        scale: 0.76,
+        rotate: (index) => (index % 2 ? 7 : -7),
+      },
+      {
+        opacity: 1,
+        y: 0,
+        scale: 1,
+        rotate: 0,
+        stagger: { each: 0.055, from: "center" },
+        duration: 0.42,
+        ease: "back.out(1.12)",
+      },
+      0.22,
+    )
+    .fromTo(
+      "[data-table-place]",
       {
         opacity: 0,
         y: 70,
@@ -665,55 +730,73 @@ function animateLaterScenes({ gsap }: MotionContext) {
         x: 0,
         rotate: 0,
         stagger: 0.08,
-        duration: 0.46,
+        duration: 0.4,
         ease: "power3.out",
       },
-      0.3,
+      0.46,
     )
     .fromTo(
       "[data-table-centrepiece]",
       { opacity: 0, y: 40, scale: 0.6 },
       { opacity: 1, y: 0, scale: 1, duration: 0.52, ease: "back.out(1.4)" },
-      0.48,
+      0.6,
+    )
+    .fromTo(
+      "[data-table-food]",
+      { opacity: 0, scale: 0.3, rotate: -12 },
+      {
+        opacity: 1,
+        scale: 1,
+        rotate: 0,
+        stagger: 0.045,
+        duration: 0.34,
+        ease: "back.out(1.6)",
+      },
+      0.66,
+    )
+    .fromTo(
+      "[data-table-drink]",
+      { opacity: 0, y: 30, scale: 0.45 },
+      {
+        opacity: 1,
+        y: 0,
+        scale: 1,
+        stagger: 0.055,
+        duration: 0.34,
+        ease: "back.out(1.5)",
+      },
+      0.84,
     );
-  gsap.fromTo(
-    "[data-supper-guest]",
-    {
+  gsap
+    .timeline({
+      scrollTrigger: {
+        trigger: ".pitch-night-finale",
+        start: "top 30%",
+        end: "top -18%",
+        scrub: 0.8,
+      },
+    })
+    .fromTo(
+      "[data-finale-flyby]",
+      { opacity: 0, x: "-44vw", y: 34, rotate: -5, scale: 0.78 },
+      {
+        opacity: 0.72,
+        x: "-5vw",
+        y: 0,
+        rotate: 1,
+        scale: 1,
+        duration: 0.42,
+        ease: "power2.out",
+      },
+    )
+    .to("[data-finale-flyby]", {
       opacity: 0,
-      y: 90,
-      scale: 0.82,
-      rotate: (index) => (index % 2 ? 5 : -5),
-    },
-    {
-      opacity: 1,
-      y: 0,
-      scale: 1,
-      rotate: 0,
-      stagger: { each: 0.07, from: "center" },
-      duration: 0.8,
-      ease: "power3.out",
-      scrollTrigger: {
-        trigger: "[data-table-scene]",
-        start: "top 82%",
-        once: true,
-      },
-    },
-  );
-  gsap.fromTo(
-    "[data-table-light]",
-    { opacity: 0, scale: 0.45 },
-    {
-      opacity: 1,
-      scale: 1,
-      duration: 1.4,
-      ease: "power2.out",
-      scrollTrigger: {
-        trigger: "[data-table-scene]",
-        start: "top 78%",
-        once: true,
-      },
-    },
-  );
+      x: "43vw",
+      y: -22,
+      rotate: 4,
+      duration: 0.58,
+      ease: "power2.in",
+    });
   gsap.to("[data-final-logo]", {
     y: -18,
     rotate: 2,
@@ -722,6 +805,21 @@ function animateLaterScenes({ gsap }: MotionContext) {
     yoyo: true,
     ease: "sine.inOut",
   });
+  gsap.fromTo(
+    "[data-final-logo]",
+    { opacity: 0, filter: "blur(8px)" },
+    {
+      opacity: 1,
+      filter: "blur(0px)",
+      ease: "none",
+      scrollTrigger: {
+        trigger: ".pitch-night-final-question",
+        start: "top 94%",
+        end: "top 76%",
+        scrub: 0.6,
+      },
+    },
+  );
 }
 
 export function createPitchNightScrollMotion(context: MotionContext) {

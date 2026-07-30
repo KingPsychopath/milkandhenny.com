@@ -1383,12 +1383,18 @@
 }
 
 .pitch-night-cabin::before {
-  background: repeating-linear-gradient(
-    90deg,
-    color-mix(in srgb, var(--pitch-night-cream) 3.5%, transparent) 0 1px,
-    transparent 1px 11vw
-  );
-  opacity: 0.48;
+  background:
+    repeating-linear-gradient(
+      0deg,
+      transparent 0 4.9rem,
+      color-mix(in srgb, var(--pitch-night-cream) 4%, transparent) 4.95rem 5rem
+    ),
+    radial-gradient(
+      ellipse at 50% 30%,
+      color-mix(in srgb, var(--pitch-night-gold) 9%, transparent),
+      transparent 60%
+    );
+  opacity: 0.72;
 }
 
 .pitch-night-cabin::after {
@@ -1423,13 +1429,13 @@
 
 .pitch-night-cabin-window {
   position: absolute;
-  top: 16%;
+  top: 43%;
   left: 50%;
-  width: min(76vw, 64rem);
-  height: clamp(18rem, 34vw, 31rem);
+  width: min(70vw, 60rem);
+  height: clamp(16rem, 29vw, 26rem);
   overflow: hidden;
   border: 1px solid color-mix(in srgb, var(--pitch-night-cream) 20%, transparent);
-  border-radius: 50% 50% 3rem 3rem;
+  border-radius: 50% 50% 2rem 2rem;
   background:
     radial-gradient(
       circle at 58% 28%,
@@ -1440,7 +1446,10 @@
   box-shadow:
     inset 0 0 5rem color-mix(in srgb, var(--pitch-night-night) 72%, transparent),
     0 0 5rem color-mix(in srgb, var(--pitch-night-gold) 5%, transparent);
+  opacity: 0.62;
   translate: -50% 0;
+  -webkit-mask-image: linear-gradient(transparent, black 12%, black 78%, transparent);
+  mask-image: linear-gradient(transparent, black 12%, black 78%, transparent);
 }
 
 .pitch-night-cabin-window::before,
@@ -1455,7 +1464,7 @@
   top: 0;
   bottom: 0;
   left: 50%;
-  width: 0.7rem;
+  width: 0.28rem;
   translate: -50% 0;
 }
 
@@ -1463,7 +1472,7 @@
   top: 54%;
   right: 0;
   left: 0;
-  height: 0.7rem;
+  height: 0.28rem;
 }
 
 .pitch-night-cabin-moon {
@@ -1647,8 +1656,8 @@
   position: relative;
   z-index: 5;
   width: min(100%, 76rem);
-  margin: 3rem auto -5rem;
-  perspective: 900px;
+  margin: 5rem auto -4rem;
+  perspective: 1100px;
   pointer-events: none;
 }
 
@@ -1672,67 +1681,92 @@
 
 .pitch-night-supper-guests {
   position: absolute;
-  inset: -24% 2% auto;
+  inset: -22% 1% auto;
   z-index: 1;
-  height: 76%;
+  height: 74%;
 }
 
 .pitch-night-supper-guest {
   position: absolute;
   bottom: 0;
-  width: clamp(5.5rem, 10vw, 8.5rem);
-  height: clamp(10rem, 18vw, 15rem);
+  width: clamp(4.8rem, 8.2vw, 7rem);
+  height: clamp(9rem, 15vw, 13rem);
   filter: drop-shadow(0 1.5rem 2rem color-mix(in srgb, var(--pitch-night-night) 74%, transparent));
   transform-origin: center bottom;
 }
 
 .pitch-night-guest-head {
   position: absolute;
-  top: 13%;
+  top: 2%;
   left: 50%;
   z-index: 2;
-  width: 40%;
-  aspect-ratio: 0.88;
+  width: 42%;
+  aspect-ratio: 0.94;
   border: 1px solid color-mix(in srgb, var(--pitch-night-gold) 18%, transparent);
-  border-radius: 46% 54% 52% 48%;
-  background:
-    radial-gradient(
-      circle at 64% 34%,
-      color-mix(in srgb, var(--pitch-night-cream) 18%, transparent),
-      transparent 10%
-    ),
-    color-mix(in srgb, var(--pitch-night-gold) 20%, var(--pitch-night-night));
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--pitch-night-gold) 58%, var(--pitch-night-cream)) 0 48%,
+    color-mix(in srgb, var(--pitch-night-gold) 26%, var(--pitch-night-night)) 49% 100%
+  );
   box-shadow:
-    inset -0.45rem -0.5rem 0 color-mix(in srgb, var(--pitch-night-night) 22%, transparent),
+    inset -0.35rem -0.35rem 0 color-mix(in srgb, var(--pitch-night-night) 18%, transparent),
     0 0 2.4rem color-mix(in srgb, var(--pitch-night-gold) 10%, transparent);
+  clip-path: polygon(50% 0, 88% 18%, 100% 62%, 66% 100%, 25% 88%, 0 45%, 18% 10%);
   translate: -50% 0;
+}
+
+.pitch-night-guest-head::after {
+  position: absolute;
+  top: 34%;
+  right: 16%;
+  width: 12%;
+  aspect-ratio: 1;
+  background: color-mix(in srgb, var(--pitch-night-night) 72%, var(--pitch-night-blue));
+  clip-path: polygon(0 0, 100% 35%, 25% 100%);
+  content: "";
 }
 
 .pitch-night-guest-body {
   position: absolute;
-  right: 4%;
-  bottom: -8%;
-  left: 4%;
-  height: 74%;
-  border-radius: 48% 48% 16% 16%;
+  right: 0;
+  bottom: -7%;
+  left: 0;
+  height: 78%;
   background: linear-gradient(
     135deg,
-    color-mix(in srgb, var(--pitch-night-blue) 18%, var(--pitch-night-night)),
-    color-mix(in srgb, var(--pitch-night-gold) 9%, var(--pitch-night-night))
+    color-mix(in srgb, var(--pitch-night-blue) 42%, var(--pitch-night-night)) 0 46%,
+    color-mix(in srgb, var(--pitch-night-gold) 14%, var(--pitch-night-night)) 47% 100%
   );
   box-shadow: inset 0 1px color-mix(in srgb, var(--pitch-night-cream) 8%, transparent);
+  clip-path: polygon(
+    26% 0,
+    72% 0,
+    100% 30%,
+    82% 46%,
+    92% 100%,
+    57% 100%,
+    50% 67%,
+    43% 100%,
+    8% 100%,
+    18% 46%,
+    0 30%
+  );
 }
 
 .pitch-night-guest-gesture {
   position: absolute;
-  top: 50%;
-  left: 61%;
+  top: 44%;
+  left: 57%;
   z-index: 3;
-  width: 46%;
-  height: 8%;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--pitch-night-gold) 24%, var(--pitch-night-night));
-  rotate: -18deg;
+  width: 52%;
+  height: 18%;
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--pitch-night-gold) 44%, var(--pitch-night-night)),
+    color-mix(in srgb, var(--pitch-night-blue) 24%, var(--pitch-night-night))
+  );
+  clip-path: polygon(0 24%, 100% 0, 82% 54%, 100% 100%, 0 70%);
+  rotate: -14deg;
   transform-origin: left center;
 }
 
@@ -1766,15 +1800,27 @@
   scale: 0.92;
 }
 
-.pitch-night-supper-guest-2 .pitch-night-guest-head,
-.pitch-night-supper-guest-5 .pitch-night-guest-head {
-  border-radius: 56% 44% 46% 54%;
+.pitch-night-supper-guest:nth-child(even) .pitch-night-guest-head {
+  background: linear-gradient(
+    145deg,
+    color-mix(in srgb, var(--pitch-night-cream) 62%, var(--pitch-night-gold)) 0 46%,
+    color-mix(in srgb, var(--pitch-night-blue) 34%, var(--pitch-night-night)) 47% 100%
+  );
+  clip-path: polygon(42% 0, 84% 8%, 100% 48%, 76% 94%, 32% 100%, 0 58%, 10% 16%);
+}
+
+.pitch-night-supper-guest:nth-child(3n) .pitch-night-guest-body {
+  background: linear-gradient(
+    145deg,
+    color-mix(in srgb, var(--pitch-night-gold) 36%, var(--pitch-night-night)) 0 48%,
+    color-mix(in srgb, var(--pitch-night-blue) 38%, var(--pitch-night-night)) 49% 100%
+  );
 }
 
 .pitch-night-supper-guest-3 .pitch-night-guest-gesture,
 .pitch-night-supper-guest-6 .pitch-night-guest-gesture {
   left: auto;
-  right: 59%;
+  right: 56%;
   rotate: 16deg;
   transform-origin: right center;
 }
@@ -1782,41 +1828,49 @@
 .pitch-night-table {
   position: relative;
   z-index: 2;
-  width: 94%;
-  height: clamp(16rem, 28vw, 23rem);
+  width: 96%;
+  height: clamp(15rem, 25vw, 21rem);
   margin: 2rem auto 0;
   overflow: hidden;
-  border: 1px solid color-mix(in srgb, var(--pitch-night-cream) 34%, transparent);
-  border-radius: 42% 42% 16% 16%;
+  border: 1px solid color-mix(in srgb, var(--pitch-night-gold) 32%, transparent);
+  border-radius: 8% 8% 18% 18%;
   background:
     radial-gradient(
-      ellipse at 50% 44%,
-      color-mix(in srgb, var(--pitch-night-gold) 19%, transparent),
-      transparent 48%
+      ellipse at 46% 38%,
+      color-mix(in srgb, var(--pitch-night-gold) 14%, transparent),
+      transparent 42%
     ),
     repeating-linear-gradient(
       90deg,
-      color-mix(in srgb, var(--pitch-night-gold) 12%, var(--pitch-night-night)) 0 12%,
-      color-mix(in srgb, var(--pitch-night-gold) 8%, var(--pitch-night-night)) 12% 12.4%
+      color-mix(in srgb, var(--pitch-night-gold) 25%, var(--pitch-night-night)) 0 12%,
+      color-mix(in srgb, var(--pitch-night-gold) 18%, var(--pitch-night-night)) 12% 12.35%,
+      color-mix(in srgb, var(--pitch-night-gold) 22%, var(--pitch-night-night)) 12.45% 24%
     );
   box-shadow:
-    inset 0 1.5rem 4rem color-mix(in srgb, var(--pitch-night-gold) 9%, transparent),
-    inset 0 -2rem 3rem color-mix(in srgb, var(--pitch-night-night) 40%, transparent),
+    inset 0 1.5rem 3rem color-mix(in srgb, var(--pitch-night-gold) 11%, transparent),
+    inset 0 -2.5rem 4rem color-mix(in srgb, var(--pitch-night-night) 38%, transparent),
+    inset 0 0 0 0.45rem color-mix(in srgb, var(--pitch-night-night) 26%, transparent),
     0 5rem 8rem color-mix(in srgb, var(--pitch-night-night) 72%, transparent);
-  transform: rotateX(58deg);
+  transform: rotateX(62deg);
   transform-origin: center bottom;
 }
 
 .pitch-night-table-grain {
   position: absolute;
   inset: 0;
-  background: repeating-radial-gradient(
-    ellipse at 50% 50%,
-    transparent 0 2rem,
-    color-mix(in srgb, var(--pitch-night-cream) 3%, transparent) 2rem 2.05rem
-  );
+  background:
+    repeating-radial-gradient(
+      ellipse at 14% 34%,
+      transparent 0 1.3rem,
+      color-mix(in srgb, var(--pitch-night-cream) 4%, transparent) 1.34rem 1.39rem
+    ),
+    repeating-radial-gradient(
+      ellipse at 72% 62%,
+      transparent 0 2.1rem,
+      color-mix(in srgb, var(--pitch-night-night) 14%, transparent) 2.14rem 2.22rem
+    );
   mix-blend-mode: screen;
-  opacity: 0.72;
+  opacity: 0.58;
 }
 
 .pitch-night-table-runner {
@@ -1879,6 +1933,25 @@
     transparent 58%
   );
   box-shadow: 0 0.6rem 1rem color-mix(in srgb, var(--pitch-night-night) 32%, transparent);
+}
+
+.pitch-night-course {
+  position: absolute;
+  inset: 27%;
+  border-radius: 48% 52% 44% 56%;
+  background:
+    radial-gradient(
+      circle at 68% 30%,
+      color-mix(in srgb, var(--pitch-night-cream) 70%, var(--pitch-night-gold)) 0 16%,
+      transparent 17%
+    ),
+    radial-gradient(
+      circle at 35% 62%,
+      color-mix(in srgb, var(--pitch-night-blue) 38%, var(--pitch-night-night)) 0 30%,
+      transparent 31%
+    ),
+    color-mix(in srgb, var(--pitch-night-gold) 42%, var(--pitch-night-night));
+  box-shadow: 0 0.35rem 0.7rem color-mix(in srgb, var(--pitch-night-night) 40%, transparent);
 }
 
 .pitch-night-napkin {
@@ -2003,10 +2076,10 @@
 .pitch-night-table-edge {
   position: relative;
   z-index: 2;
-  width: 87%;
-  height: clamp(4.5rem, 8vw, 6.5rem);
-  margin: -4.4rem auto 0;
-  border-radius: 0 0 44% 44%;
+  width: 89%;
+  height: clamp(3rem, 5vw, 4.25rem);
+  margin: -3.7rem auto 0;
+  border-radius: 0 0 18% 18%;
   background:
     repeating-linear-gradient(
       90deg,
@@ -2016,11 +2089,35 @@
     linear-gradient(
       180deg,
       color-mix(in srgb, var(--pitch-night-gold) 14%, var(--pitch-night-night)),
-      color-mix(in srgb, var(--pitch-night-night) 96%, var(--pitch-night-gold))
+      color-mix(in srgb, var(--pitch-night-night) 90%, var(--pitch-night-gold))
     );
   box-shadow:
     inset 0 1px color-mix(in srgb, var(--pitch-night-cream) 14%, transparent),
     0 3rem 6rem color-mix(in srgb, var(--pitch-night-night) 74%, transparent);
+}
+
+.pitch-night-table-edge::before,
+.pitch-night-table-edge::after {
+  position: absolute;
+  top: 72%;
+  width: 6%;
+  height: clamp(7rem, 12vw, 10rem);
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--pitch-night-night) 92%, var(--pitch-night-gold)),
+    color-mix(in srgb, var(--pitch-night-gold) 18%, var(--pitch-night-night))
+  );
+  clip-path: polygon(12% 0, 100% 0, 76% 100%, 0 100%);
+  content: "";
+}
+
+.pitch-night-table-edge::before {
+  left: 10%;
+}
+
+.pitch-night-table-edge::after {
+  right: 10%;
+  scale: -1 1;
 }
 
 .pitch-night-finale {
@@ -2038,6 +2135,7 @@
   align-items: flex-start;
   margin-left: auto;
   text-align: left;
+  transform: translateY(12rem);
 }
 
 .pitch-night-final-logo {
@@ -2082,6 +2180,91 @@
   box-shadow:
     0 0 0 5rem color-mix(in srgb, var(--pitch-night-cream) 2.5%, transparent),
     0 0 0 12rem color-mix(in srgb, var(--pitch-night-gold) 2.5%, transparent);
+}
+
+.pitch-night-paper-band {
+  position: absolute;
+  top: 20%;
+  left: 43%;
+  z-index: 3;
+  display: flex;
+  width: clamp(11rem, 17vw, 16rem);
+  align-items: flex-end;
+  justify-content: space-between;
+  filter: drop-shadow(
+    0 1.4rem 1.5rem color-mix(in srgb, var(--pitch-night-night) 72%, transparent)
+  );
+  pointer-events: none;
+}
+
+.pitch-night-band-member {
+  position: relative;
+  display: block;
+  width: 28%;
+  aspect-ratio: 0.62;
+  border: 1px solid color-mix(in srgb, var(--pitch-night-cream) 18%, transparent);
+  background: linear-gradient(
+    132deg,
+    color-mix(in srgb, var(--pitch-night-cream) 68%, var(--pitch-night-gold)) 0 45%,
+    color-mix(in srgb, var(--pitch-night-blue) 48%, var(--pitch-night-night)) 46% 100%
+  );
+  clip-path: polygon(
+    38% 0,
+    67% 0,
+    78% 16%,
+    72% 30%,
+    100% 52%,
+    78% 65%,
+    82% 100%,
+    53% 82%,
+    22% 100%,
+    28% 63%,
+    0 49%,
+    31% 28%,
+    24% 14%
+  );
+}
+
+.pitch-night-band-member::after {
+  position: absolute;
+  top: 38%;
+  left: 66%;
+  width: 74%;
+  height: 8%;
+  background: color-mix(in srgb, var(--pitch-night-gold) 72%, var(--pitch-night-cream));
+  clip-path: polygon(0 15%, 100% 0, 84% 100%, 0 74%);
+  content: "";
+  rotate: -18deg;
+  transform-origin: left center;
+}
+
+.pitch-night-band-member-b {
+  width: 31%;
+  translate: 0 -18%;
+  rotate: -6deg;
+}
+
+.pitch-night-band-member-c {
+  scale: 0.86;
+  rotate: 8deg;
+}
+
+.pitch-night-band-note {
+  position: absolute;
+  color: var(--pitch-night-gold);
+  font-family: var(--font-serif);
+  font-size: clamp(1.2rem, 2vw, 1.8rem);
+  font-style: normal;
+}
+
+.pitch-night-band-note-a {
+  top: -34%;
+  left: 41%;
+}
+
+.pitch-night-band-note-b {
+  top: -4%;
+  right: -13%;
 }
 
 @keyframes pitch-night-firefly {
@@ -2441,9 +2624,10 @@
   }
 
   .pitch-night-cabin-window {
-    top: 17%;
-    width: 132vw;
-    height: 24rem;
+    top: 43%;
+    width: 148vw;
+    height: 20rem;
+    opacity: 0.46;
   }
 
   .pitch-night-cabin-beam-left {
@@ -2465,8 +2649,8 @@
   }
 
   .pitch-night-table-edge {
-    height: 4.6rem;
-    margin-top: -4.4rem;
+    height: 3.1rem;
+    margin-top: -3rem;
   }
 
   .pitch-night-supper-guests {
@@ -2512,6 +2696,10 @@
     transform: translateY(7rem);
   }
 
+  .pitch-night-final-logo {
+    width: 6rem;
+  }
+
   .pitch-night-final-question {
     font-size: clamp(3.4rem, 15vw, 5.4rem);
   }
@@ -2524,6 +2712,13 @@
     top: 8%;
     left: 50%;
     width: 125vw;
+    translate: -50% 0;
+  }
+
+  .pitch-night-paper-band {
+    top: 34rem;
+    left: 50%;
+    width: 10rem;
     translate: -50% 0;
   }
 }
@@ -2556,11 +2751,15 @@
   [data-eq-bar],
   [data-lantern],
   [data-table-top],
-  [data-place-setting],
+  [data-table-place],
+  [data-table-food],
+  [data-table-drink],
   [data-table-centrepiece],
   [data-supper-line],
   [data-supper-guest],
-  [data-table-light] {
+  [data-table-light],
+  [data-finale-flyby],
+  [data-final-logo] {
     opacity: 1 !important;
     filter: none !important;
     transform: none !important;

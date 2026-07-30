@@ -176,11 +176,12 @@ export function SupperScene() {
             <span
               key={place}
               className={`pitch-night-place-setting pitch-night-place-setting-${place + 1}`}
-              data-place-setting
+              data-table-place
             >
               <i className="pitch-night-plate" />
               <i className="pitch-night-napkin" />
-              <i className="pitch-night-glass" />
+              <i className="pitch-night-course" data-table-food />
+              <i className="pitch-night-glass" data-table-drink />
               <i className="pitch-night-cutlery" />
             </span>
           ))}
@@ -188,8 +189,8 @@ export function SupperScene() {
             <i className="pitch-night-candle">
               <i />
             </i>
-            <i className="pitch-night-serving-bowl" />
-            <i className="pitch-night-bread" />
+            <i className="pitch-night-serving-bowl" data-table-food />
+            <i className="pitch-night-bread" data-table-food />
           </span>
         </div>
         <div className="pitch-night-table-edge" />
@@ -202,6 +203,13 @@ export function Finale({ ticketHref }: { ticketHref: string }) {
   return (
     <section className="pitch-night-finale">
       <div className="pitch-night-final-orbit" aria-hidden="true" />
+      <div className="pitch-night-paper-band" data-finale-flyby aria-hidden="true">
+        <span className="pitch-night-band-member pitch-night-band-member-a" />
+        <span className="pitch-night-band-member pitch-night-band-member-b" />
+        <span className="pitch-night-band-member pitch-night-band-member-c" />
+        <i className="pitch-night-band-note pitch-night-band-note-a">♪</i>
+        <i className="pitch-night-band-note pitch-night-band-note-b">♫</i>
+      </div>
       <div className="pitch-night-finale-inner">
         <img data-final-logo src="/MAHLogo.svg" alt="" className="pitch-night-final-logo" />
         <p className="pitch-night-kicker" data-soft-reveal>
