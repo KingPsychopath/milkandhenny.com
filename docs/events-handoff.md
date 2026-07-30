@@ -60,9 +60,8 @@ real ticket email reached Gmail's personal inbox with the inline QR intact on
 29 July. Live channel checks also reached Gmail from
 `tickets@tickets.milkandhenny.com` and `studio@notify.milkandhenny.com`.
 
-`hello@milkandhenny.com` will forward replies to `work@owenabel.com`.
-Cloudflare requires that destination to be verified before the routing rule
-can be enabled.
+`hello@milkandhenny.com` forwards replies to the verified
+`work@owenabel.com` destination through Cloudflare Email Routing.
 
 ### 3. Cloudflare API tokens — configured
 
