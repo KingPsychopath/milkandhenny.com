@@ -10,6 +10,10 @@ const preparation = new Map<OfflineThingSlug, Promise<void>>();
 let registrationPromise: Promise<ServiceWorkerRegistration | null> | null = null;
 type SiteUpdateState = "idle" | "ready" | "activating" | "updated" | "failed";
 const UPDATE_RELOAD_KEY = "milkandhenny:site-update-reload";
+const ACTIVATION_TIMEOUT_MS = 10_000;
+// A refresh adopts the update that is waiting then, plus one that finishes installing moments
+// later. Anything that lands after this window belongs to ordinary browsing and has to ask.
+const REFRESH_ADOPTION_WINDOW_MS = 60_000;
 let siteUpdateState: SiteUpdateState = "idle";
 let waitingWorker: ServiceWorker | null = null;
 let reloadForUpdate = false;
@@ -53,7 +57,17 @@ function isReloadNavigation() {
   return navigation !== undefined && "type" in navigation && navigation.type === "reload";
 }
 
-function activateWaitingWorker(worker: ServiceWorker) {
+function completeActivation() {
+  if (!reloadForUpdate) return;
+  reloadForUpdate = false;
+  clearActivationTimeout();
+  reloadForSiteUpdate();
+}
+
+function activateWaitingWorker(
+  worker: ServiceWorker,
+  registration?: ServiceWorkerRegistration | null,
+) {
   if (reloadForUpdate && waitingWorker === worker) return true;
   if (worker.state === "activated") {
     reloadForSiteUpdate();
@@ -62,11 +76,23 @@ function activateWaitingWorker(worker: ServiceWorker) {
   reloadForUpdate = true;
   publishSiteUpdate("activating", worker);
   clearActivationTimeout();
+  // `controllerchange` is the usual signal that the new worker took over, but it is not dependable
+  // on its own: Safari skips it often enough that waiting for it alone leaves the notice spinning
+  // on "updating…" until it gives up. Take the worker reaching "activated" as an equal signal.
+  worker.addEventListener("statechange", () => {
+    if (worker.state === "activated" && waitingWorker === worker) completeActivation();
+  });
   activationTimeout = window.setTimeout(() => {
-    reloadForUpdate = false;
     activationTimeout = null;
+    // Before reporting a failure, ask the worker itself rather than trusting that an event
+    // arrived. If it did take over, reload; a missed event is not a failed update.
+    if (worker.state === "activated" || registration?.active === worker) {
+      completeActivation();
+      return;
+    }
+    reloadForUpdate = false;
     publishSiteUpdate("failed", worker);
-  }, 10_000);
+  }, ACTIVATION_TIMEOUT_MS);
   try {
     // ServiceWorker.postMessage has no targetOrigin argument.
     // oxlint-disable-next-line unicorn/require-post-message-target-origin
@@ -81,10 +107,15 @@ function activateWaitingWorker(worker: ServiceWorker) {
 }
 
 function observeRegistration(registration: ServiceWorkerRegistration, activateOnReady: boolean) {
+  const openedAt = Date.now();
+  // Refreshing means "reload this app", so an update waiting right then is adopted without asking.
+  // That consent does not extend to the rest of the visit: an update that lands while someone is
+  // reading, playing or editing must never pull the page out from under them.
+  const adoptsUpdate = () => activateOnReady && Date.now() - openedAt < REFRESH_ADOPTION_WINDOW_MS;
   const showWaitingUpdate = () => {
     if (registration.waiting && navigator.serviceWorker.controller) {
-      if (activateOnReady) {
-        activateWaitingWorker(registration.waiting);
+      if (adoptsUpdate()) {
+        activateWaitingWorker(registration.waiting, registration);
         return;
       }
       publishSiteUpdate("ready", registration.waiting);
@@ -96,12 +127,7 @@ function observeRegistration(registration: ServiceWorkerRegistration, activateOn
       if (installing.state === "installed") showWaitingUpdate();
     });
   };
-  navigator.serviceWorker.addEventListener("controllerchange", () => {
-    if (!reloadForUpdate) return;
-    reloadForUpdate = false;
-    clearActivationTimeout();
-    reloadForSiteUpdate();
-  });
+  navigator.serviceWorker.addEventListener("controllerchange", () => completeActivation());
   showWaitingUpdate();
   watchInstalling(registration.installing);
   registration.addEventListener("updatefound", () => watchInstalling(registration.installing));
@@ -162,7 +188,7 @@ export async function activateSiteUpdate() {
     publishSiteUpdate("failed");
     return false;
   }
-  return activateWaitingWorker(worker);
+  return activateWaitingWorker(worker, registration);
 }
 
 async function sendWorkerMessage(

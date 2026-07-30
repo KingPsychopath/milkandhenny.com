@@ -41,7 +41,9 @@ export function OfflinePlatform() {
   const activating = updateState === "activating";
   const updated = updateState === "updated";
   const failed = updateState === "failed";
-  const hasActions = safeToReload && !activating && !updated;
+  // A failed update always offers its way out. Withholding the buttons because the moment is
+  // unsafe leaves the notice on screen with nothing to press and no way to dismiss it.
+  const hasActions = (safeToReload || failed) && !activating && !updated;
   const message = activating
     ? "updating…"
     : updated
