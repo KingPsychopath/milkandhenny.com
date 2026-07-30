@@ -48,9 +48,45 @@ function showCompletedUpdate() {
   }
 }
 
-function observeRegistration(registration: ServiceWorkerRegistration) {
+function isReloadNavigation() {
+  const navigation = performance.getEntriesByType("navigation")[0];
+  return navigation !== undefined && "type" in navigation && navigation.type === "reload";
+}
+
+function activateWaitingWorker(worker: ServiceWorker) {
+  if (reloadForUpdate && waitingWorker === worker) return true;
+  if (worker.state === "activated") {
+    reloadForSiteUpdate();
+    return true;
+  }
+  reloadForUpdate = true;
+  publishSiteUpdate("activating", worker);
+  clearActivationTimeout();
+  activationTimeout = window.setTimeout(() => {
+    reloadForUpdate = false;
+    activationTimeout = null;
+    publishSiteUpdate("failed", worker);
+  }, 10_000);
+  try {
+    // ServiceWorker.postMessage has no targetOrigin argument.
+    // oxlint-disable-next-line unicorn/require-post-message-target-origin
+    worker.postMessage({ type: "SKIP_WAITING" });
+  } catch {
+    reloadForUpdate = false;
+    clearActivationTimeout();
+    publishSiteUpdate("failed", worker);
+    return false;
+  }
+  return true;
+}
+
+function observeRegistration(registration: ServiceWorkerRegistration, activateOnReady: boolean) {
   const showWaitingUpdate = () => {
     if (registration.waiting && navigator.serviceWorker.controller) {
+      if (activateOnReady) {
+        activateWaitingWorker(registration.waiting);
+        return;
+      }
       publishSiteUpdate("ready", registration.waiting);
     }
   };
@@ -60,15 +96,15 @@ function observeRegistration(registration: ServiceWorkerRegistration) {
       if (installing.state === "installed") showWaitingUpdate();
     });
   };
-  showWaitingUpdate();
-  watchInstalling(registration.installing);
-  registration.addEventListener("updatefound", () => watchInstalling(registration.installing));
   navigator.serviceWorker.addEventListener("controllerchange", () => {
     if (!reloadForUpdate) return;
     reloadForUpdate = false;
     clearActivationTimeout();
     reloadForSiteUpdate();
   });
+  showWaitingUpdate();
+  watchInstalling(registration.installing);
+  registration.addEventListener("updatefound", () => watchInstalling(registration.installing));
 }
 
 function publish(slug: OfflineThingSlug, state: OfflineState) {
@@ -101,7 +137,7 @@ export function registerOfflinePlatform() {
       scope: "/",
       updateViaCache: "none",
     });
-    observeRegistration(registration);
+    observeRegistration(registration, isReloadNavigation());
     void registration.update();
     return navigator.serviceWorker.ready;
   })().catch(() => null);
@@ -126,29 +162,7 @@ export async function activateSiteUpdate() {
     publishSiteUpdate("failed");
     return false;
   }
-  if (worker.state === "activated") {
-    reloadForSiteUpdate();
-    return true;
-  }
-  reloadForUpdate = true;
-  publishSiteUpdate("activating", worker);
-  clearActivationTimeout();
-  activationTimeout = window.setTimeout(() => {
-    reloadForUpdate = false;
-    activationTimeout = null;
-    publishSiteUpdate("failed", worker);
-  }, 10_000);
-  try {
-    // ServiceWorker.postMessage has no targetOrigin argument.
-    // oxlint-disable-next-line unicorn/require-post-message-target-origin
-    worker.postMessage({ type: "SKIP_WAITING" });
-  } catch {
-    reloadForUpdate = false;
-    clearActivationTimeout();
-    publishSiteUpdate("failed", worker);
-    return false;
-  }
-  return true;
+  return activateWaitingWorker(worker);
 }
 
 async function sendWorkerMessage(
