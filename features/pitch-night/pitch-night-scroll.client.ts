@@ -538,7 +538,10 @@ function animatePitchAndSpelling({ compact, gsap }: MotionContext) {
           opacity: 1,
           y: 0,
           filter: "blur(0px)",
-          stagger: 0.035,
+          // The quote is the longest track, so it always resolves at the end of the hold. A
+          // tighter stagger makes the words arrive more as one sentence than as a queue trailing
+          // the reader down the whole section.
+          stagger: 0.024,
           duration: 0.65,
         },
         0.14,

@@ -177,7 +177,9 @@ body:has(.pitch-night) {
   position: relative;
   z-index: 2;
   min-height: 122svh;
-  padding: clamp(7.5rem, 14vh, 10rem) 1.5rem 18rem;
+  /* Enough to clear the fixed nav, and no more: every pixel above the wordmark is a pixel the
+     opening line and the buttons lose on a laptop-height screen. */
+  padding: clamp(6.25rem, 11vh, 8rem) 1.5rem 18rem;
 }
 
 .pitch-night-hero-inner {
@@ -189,7 +191,9 @@ body:has(.pitch-night) {
 
 .pitch-night-wordmark {
   position: relative;
-  width: min(100%, 58rem);
+  /* Height is width / 4, so this is the tallest fixed block in the opening. Letting it answer to
+     the viewport's height keeps it from crowding everything below it off a short laptop screen. */
+  width: min(100%, 58rem, 96vh);
   aspect-ratio: 4 / 1;
   overflow: hidden;
   transform-origin: left center;
@@ -205,15 +209,17 @@ body:has(.pitch-night) {
 }
 
 .pitch-night-hero .pitch-night-kicker {
-  margin-top: clamp(2rem, 5vw, 4.5rem);
+  margin-top: clamp(1.5rem, 3vw, 2.75rem);
   animation: pitch-night-hero-item-in 460ms cubic-bezier(0.22, 1, 0.36, 1) 60ms backwards;
 }
 
 .pitch-night-hero-title {
   max-width: 15ch;
-  margin-top: 1.25rem;
+  margin-top: 0.75rem;
   font-family: var(--font-serif);
-  font-size: clamp(3.4rem, 8.5vw, 7.5rem);
+  /* Sized against the shorter of the two axes. Keyed to width alone, a wide-but-short laptop got
+     the full 7.5rem and a headline tall enough to push the buttons off the screen entirely. */
+  font-size: clamp(3.4rem, min(8.5vw, 9.5vh), 7.5rem);
   font-weight: 400;
   line-height: 0.93;
   letter-spacing: -0.045em;
@@ -252,8 +258,8 @@ body:has(.pitch-night) {
 }
 
 .pitch-night-hero-copy {
-  max-width: 38rem;
-  margin-top: 2.5rem;
+  max-width: 44rem;
+  margin-top: 1.25rem;
   font-family: var(--font-serif);
   font-size: clamp(1.15rem, 2.1vw, 1.5rem);
   line-height: 1.65;
@@ -271,6 +277,7 @@ body:has(.pitch-night) {
 }
 
 .pitch-night-hero-actions {
+  margin-top: 1.5rem;
   animation: pitch-night-hero-item-in 460ms cubic-bezier(0.22, 1, 0.36, 1) 280ms backwards;
 }
 
@@ -739,7 +746,9 @@ body:has(.pitch-night) {
 .pitch-night-pitch-scene {
   position: relative;
   z-index: 3;
-  min-height: 260svh;
+  /* The sticky panel holds for this height minus one screen. At 260svh that was 1.6 screens of
+     scrolling to finish reading a single sentence. */
+  min-height: 200svh;
 }
 
 .pitch-night-pitch-sticky {

@@ -564,9 +564,16 @@ export function createPitchNightWorld(
   };
   // Compile the finale's otherwise-hidden materials while the opening scene is idle. This avoids
   // a shader compilation hitch at the exact moment the bottle and orbit system enter together.
+  // The bottle joins the warmup because compiling shaders is only half of it: the first frame that
+  // draws anything transmissive is also where three allocates its multisampled transmission buffer
+  // and builds a mipmap chain for it, and paying for that mid-scroll is what drops the finale to a
+  // crawl. Leaving it in the frame loop until the warmup finishes gets that done while the opening
+  // is idle. Both are scaled to nothing here, so the warm frames show the viewer no difference.
+  bottle.visible = true;
   finaleSystem.visible = true;
   const finishFinaleWarmup = () => {
     if (finaleSystem.scale.x <= 0.0011) finaleSystem.visible = false;
+    if (bottle.scale.x <= 0.0011) bottle.visible = false;
   };
   void renderer.compileAsync(scene, camera).then(finishFinaleWarmup, finishFinaleWarmup);
   render();
