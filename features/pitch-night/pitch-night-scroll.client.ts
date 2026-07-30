@@ -73,6 +73,70 @@ function animateOpening({ gsap, root }: MotionContext) {
       scrub: 2.5,
     },
   });
+  gsap.to("[data-hill='back']", {
+    yPercent: -12,
+    xPercent: -2,
+    scale: 1.06,
+    ease: "none",
+    scrollTrigger: {
+      trigger: "[data-hero]",
+      start: "top top",
+      end: "bottom top",
+      scrub: 1.6,
+    },
+  });
+  gsap.to("[data-hill='front']", {
+    yPercent: -6,
+    xPercent: 3,
+    scale: 1.03,
+    ease: "none",
+    scrollTrigger: {
+      trigger: "[data-hero]",
+      start: "top top",
+      end: "bottom top",
+      scrub: 1.2,
+    },
+  });
+  gsap.to("[data-mountain-mist]", {
+    xPercent: -22,
+    opacity: 0.18,
+    ease: "none",
+    scrollTrigger: {
+      trigger: "[data-hero]",
+      start: "top top",
+      end: "bottom top",
+      scrub: 2,
+    },
+  });
+  gsap.to("[data-valley-light]", {
+    yPercent: -20,
+    scale: 1.2,
+    opacity: 0.86,
+    ease: "none",
+    scrollTrigger: {
+      trigger: "[data-hero]",
+      start: "top top",
+      end: "bottom top",
+      scrub: 1.4,
+    },
+  });
+  gsap.fromTo(
+    "[data-microphone-moment]",
+    { opacity: 0, y: 90, rotate: -18, scale: 0.72 },
+    {
+      opacity: 1,
+      y: -34,
+      rotate: 4,
+      scale: 1,
+      ease: "none",
+      scrollTrigger: {
+        trigger: "[data-prologue]",
+        start: "top 75%",
+        end: "bottom 30%",
+        scrub: 1.1,
+      },
+    },
+  );
 
   gsap.utils.toArray<HTMLElement>("[data-copy-line]").forEach((line) => {
     gsap.from(line, {
@@ -197,19 +261,46 @@ function animatePitchAndSpelling({ gsap }: MotionContext) {
       );
   });
   media.add("(max-width: 767px)", () => {
-    gsap.from(pitchCards, {
-      opacity: 0,
-      y: 70,
-      rotate: 8,
-      stagger: 0.08,
-      duration: 0.85,
-      ease: "power3.out",
-      scrollTrigger: {
-        trigger: "[data-slide-stack]",
-        start: "top 84%",
-        once: true,
-      },
-    });
+    gsap
+      .timeline({
+        scrollTrigger: {
+          trigger: "[data-slide-stack]",
+          start: "top 92%",
+          end: "center 46%",
+          scrub: 0.85,
+        },
+      })
+      .fromTo(
+        pitchCards,
+        {
+          opacity: 0,
+          x: (index) => (index % 2 === 0 ? -240 - index * 22 : 240 + index * 22),
+          y: (index) => 150 + index * 26,
+          rotate: (index) => (index % 2 === 0 ? -24 - index * 3 : 24 + index * 3),
+          scale: 0.72,
+        },
+        {
+          opacity: 1,
+          x: 0,
+          y: 0,
+          rotate: 0,
+          scale: 1,
+          stagger: 0.07,
+          duration: 0.7,
+          ease: "power3.out",
+        },
+      )
+      .to(
+        pitchCards,
+        {
+          y: (index) => index * -3,
+          rotate: (index) => (index - 2.5) * 1.15,
+          stagger: 0.025,
+          duration: 0.3,
+          ease: "power2.out",
+        },
+        0.58,
+      );
     gsap.from(quoteWords, {
       opacity: 0.15,
       y: 14,
@@ -252,6 +343,47 @@ function animatePitchAndSpelling({ gsap }: MotionContext) {
   );
 
   return () => media.revert();
+}
+
+function animateBreath({ gsap }: MotionContext) {
+  const words = gsap.utils.toArray<HTMLElement>("[data-breath-word]");
+  gsap
+    .timeline({
+      scrollTrigger: {
+        trigger: "[data-breath]",
+        start: "top 82%",
+        end: "bottom 38%",
+        scrub: 0.85,
+      },
+    })
+    .fromTo(
+      words,
+      {
+        opacity: 0.08,
+        yPercent: 80,
+        rotate: 3,
+        filter: "blur(10px)",
+      },
+      {
+        opacity: 1,
+        yPercent: 0,
+        rotate: 0,
+        filter: "blur(0px)",
+        stagger: 0.16,
+        duration: 0.65,
+        ease: "power3.out",
+      },
+    )
+    .to(
+      "[data-breath-pulse]",
+      {
+        opacity: 0,
+        scale: 2.8,
+        duration: 0.8,
+        ease: "power2.out",
+      },
+      0.12,
+    );
 }
 
 function animateLaterScenes({ gsap }: MotionContext) {
@@ -329,6 +461,7 @@ export function createPitchNightScrollMotion(context: MotionContext) {
     animateOpening(context);
     animateWorld(context);
     cleanMedia = animatePitchAndSpelling(context);
+    animateBreath(context);
     animateLaterScenes(context);
   }, context.root);
 

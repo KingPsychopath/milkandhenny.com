@@ -11,8 +11,14 @@ export function PitchNightHero() {
       <div className="pitch-night-sky" aria-hidden="true">
         <div className="pitch-night-cloud pitch-night-cloud-far" data-cloud="far" />
         <div className="pitch-night-cloud pitch-night-cloud-near" data-cloud="near" />
-        <div className="pitch-night-hill pitch-night-hill-back" />
-        <div className="pitch-night-hill pitch-night-hill-front" />
+        <div className="pitch-night-mountain-mist" data-mountain-mist />
+        <div className="pitch-night-hill pitch-night-hill-back" data-hill="back">
+          <span className="pitch-night-ridge pitch-night-ridge-back" />
+        </div>
+        <div className="pitch-night-hill pitch-night-hill-front" data-hill="front">
+          <span className="pitch-night-ridge pitch-night-ridge-front" />
+        </div>
+        <div className="pitch-night-valley-light" data-valley-light />
         {FIREFLIES.map((firefly) => (
           <span key={firefly} className={`pitch-night-firefly firefly-${firefly + 1}`} />
         ))}
@@ -78,8 +84,16 @@ export function PitchNightPrologue() {
       <div className="pitch-night-paper-note pitch-night-paper-note-a" aria-hidden="true">
         bad ideas welcome
       </div>
-      <div className="pitch-night-paper-note pitch-night-paper-note-b" aria-hidden="true">
-        take the mic
+      <div className="pitch-night-mic-moment" data-microphone-moment aria-hidden="true">
+        <svg className="pitch-night-microphone" viewBox="0 0 180 260">
+          <path
+            d="M90 18c-30 0-48 22-48 52v55c0 31 18 53 48 53s48-22 48-53V70c0-30-18-52-48-52Z"
+            fill="currentColor"
+          />
+          <path d="M65 52h50M60 79h60M60 106h60M65 133h50" fill="none" />
+          <path d="M24 113v15c0 41 25 70 66 70s66-29 66-70v-15M90 198v43M55 241h70" fill="none" />
+        </svg>
+        <span>take the mic</span>
       </div>
     </section>
   );

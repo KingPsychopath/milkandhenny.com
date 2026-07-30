@@ -326,6 +326,7 @@
   height: 24rem;
   border-radius: 50% 50% 0 0;
   transform-origin: center bottom;
+  will-change: transform;
 }
 
 .pitch-night-hill-back {
@@ -359,6 +360,77 @@
     100% 100%,
     0 100%
   );
+}
+
+.pitch-night-ridge {
+  position: absolute;
+  inset: 0;
+  opacity: 0.24;
+}
+
+.pitch-night-ridge::before,
+.pitch-night-ridge::after {
+  position: absolute;
+  right: -8%;
+  bottom: 7%;
+  left: -8%;
+  height: 76%;
+  border-top: 1px solid color-mix(in srgb, var(--pitch-night-cream) 38%, transparent);
+  border-radius: 50%;
+  content: "";
+  transform: rotate(-2deg);
+}
+
+.pitch-night-ridge::after {
+  bottom: -5%;
+  height: 62%;
+  border-color: color-mix(in srgb, var(--pitch-night-gold) 40%, transparent);
+  transform: rotate(3deg);
+}
+
+.pitch-night-ridge-front {
+  opacity: 0.32;
+}
+
+.pitch-night-mountain-mist {
+  position: absolute;
+  right: -20%;
+  bottom: 9rem;
+  left: -20%;
+  height: 13rem;
+  border-radius: 50%;
+  background:
+    radial-gradient(
+      ellipse at 28% 50%,
+      color-mix(in srgb, var(--pitch-night-blue) 25%, transparent),
+      transparent 34%
+    ),
+    radial-gradient(
+      ellipse at 72% 55%,
+      color-mix(in srgb, var(--pitch-night-cream) 12%, transparent),
+      transparent 36%
+    );
+  filter: blur(26px);
+  opacity: 0.42;
+  will-change: transform, opacity;
+}
+
+.pitch-night-valley-light {
+  position: absolute;
+  bottom: 1rem;
+  left: 50%;
+  width: min(68vw, 54rem);
+  height: 18rem;
+  border-radius: 50%;
+  background: radial-gradient(
+    ellipse,
+    color-mix(in srgb, var(--pitch-night-gold) 20%, transparent),
+    transparent 68%
+  );
+  filter: blur(22px);
+  opacity: 0.54;
+  translate: -50% 0;
+  will-change: transform, opacity;
 }
 
 .pitch-night-firefly {
@@ -535,10 +607,44 @@
   rotate: 8deg;
 }
 
-.pitch-night-paper-note-b {
-  bottom: 18%;
-  left: 4%;
-  rotate: -7deg;
+.pitch-night-mic-moment {
+  position: absolute;
+  bottom: 12%;
+  left: 5%;
+  z-index: 2;
+  display: grid;
+  width: clamp(8rem, 13vw, 12rem);
+  justify-items: center;
+  color: var(--pitch-night-cream);
+  filter: drop-shadow(
+    0 1.5rem 2.5rem color-mix(in srgb, var(--pitch-night-night) 64%, transparent)
+  );
+  transform-origin: center top;
+}
+
+.pitch-night-microphone {
+  width: 52%;
+  overflow: visible;
+  color: color-mix(in srgb, var(--pitch-night-gold) 86%, var(--pitch-night-cream));
+  animation: pitch-night-microphone-float 3.8s ease-in-out infinite alternate;
+}
+
+.pitch-night-microphone path:not(:first-child) {
+  stroke: var(--pitch-night-night);
+  stroke-linecap: round;
+  stroke-width: 7;
+}
+
+.pitch-night-mic-moment span {
+  margin-top: -0.25rem;
+  rotate: -5deg;
+  padding: 0.7rem 1rem;
+  background: var(--pitch-night-cream);
+  color: var(--pitch-night-night);
+  font-family: var(--font-mono);
+  font-size: 0.66rem;
+  letter-spacing: 0.08em;
+  box-shadow: 0 0 3rem color-mix(in srgb, var(--pitch-night-gold) 16%, transparent);
 }
 
 .pitch-night-pitch-scene {
@@ -666,19 +772,83 @@
 .pitch-night-breath {
   position: relative;
   z-index: 4;
+  display: grid;
+  min-height: 58svh;
   overflow: hidden;
   border-block: 1px solid color-mix(in srgb, var(--pitch-night-cream) 14%, transparent);
-  padding: 1.2rem 0;
+  place-content: center;
+  padding: 6rem 1.5rem;
+  background:
+    radial-gradient(
+      circle at 50% 50%,
+      color-mix(in srgb, var(--pitch-night-blue) 13%, transparent),
+      transparent 32%
+    ),
+    linear-gradient(
+      180deg,
+      transparent,
+      color-mix(in srgb, var(--pitch-night-night) 84%, transparent),
+      transparent
+    );
   font-family: var(--font-mono);
-  font-size: 0.72rem;
-  letter-spacing: 0.22em;
+  text-align: center;
+}
+
+.pitch-night-breath-horizon {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: min(82vw, 64rem);
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    color-mix(in srgb, var(--pitch-night-cream) 36%, transparent),
+    transparent
+  );
+  translate: -50% -50%;
+}
+
+.pitch-night-breath-pulse {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 7rem;
+  aspect-ratio: 1;
+  border: 1px solid color-mix(in srgb, var(--pitch-night-gold) 54%, transparent);
+  border-radius: 50%;
+  box-shadow:
+    0 0 0 2rem color-mix(in srgb, var(--pitch-night-gold) 3%, transparent),
+    0 0 5rem color-mix(in srgb, var(--pitch-night-gold) 16%, transparent);
+  translate: -50% -50%;
+}
+
+.pitch-night-breath-kicker {
+  position: relative;
+  z-index: 2;
+  margin-bottom: 2rem;
+  color: var(--pitch-night-gold);
+  font-size: 0.62rem;
+  letter-spacing: 0.18em;
   text-transform: uppercase;
 }
 
-.pitch-night-breath-track {
-  width: max-content;
-  white-space: nowrap;
-  animation: pitch-night-marquee 22s linear infinite;
+.pitch-night-breath-words {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  max-width: 70rem;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.1em 0.28em;
+  font-family: var(--font-serif);
+  font-size: clamp(2.8rem, 8vw, 7.6rem);
+  line-height: 0.92;
+  letter-spacing: -0.05em;
+}
+
+.pitch-night-breath-words span {
+  display: inline-block;
 }
 
 .pitch-night-spelling-scene,
@@ -784,6 +954,102 @@
   box-shadow: 0 1.5rem 5rem color-mix(in srgb, var(--pitch-night-night) 50%, transparent);
 }
 
+.pitch-night-token-die {
+  border-radius: 24%;
+  background: color-mix(in srgb, var(--pitch-night-cream) 90%, var(--pitch-night-gold));
+}
+
+.pitch-night-die-face {
+  position: relative;
+  width: 62%;
+  aspect-ratio: 1;
+}
+
+.pitch-night-die-face i {
+  position: absolute;
+  width: 19%;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: var(--pitch-night-night);
+}
+
+.pitch-night-die-face i:nth-child(1) {
+  top: 0;
+  left: 0;
+}
+
+.pitch-night-die-face i:nth-child(2) {
+  top: 0;
+  right: 0;
+}
+
+.pitch-night-die-face i:nth-child(3) {
+  top: 41%;
+  left: 41%;
+}
+
+.pitch-night-die-face i:nth-child(4) {
+  bottom: 0;
+  left: 0;
+}
+
+.pitch-night-die-face i:nth-child(5) {
+  right: 0;
+  bottom: 0;
+}
+
+.pitch-night-token-star {
+  border-width: 2px;
+  background:
+    radial-gradient(
+      circle,
+      color-mix(in srgb, var(--pitch-night-gold) 24%, transparent),
+      transparent 64%
+    ),
+    color-mix(in srgb, var(--pitch-night-night) 84%, transparent);
+  font-family: var(--font-serif);
+  font-size: clamp(2rem, 4vw, 3.2rem);
+  text-shadow: 0 0 1.5rem color-mix(in srgb, var(--pitch-night-gold) 60%, transparent);
+}
+
+.pitch-night-token-cards {
+  border: 0;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+}
+
+.pitch-night-token-cards i {
+  position: absolute;
+  display: grid;
+  width: 58%;
+  height: 78%;
+  place-items: center;
+  border: 1px solid color-mix(in srgb, var(--pitch-night-night) 38%, transparent);
+  border-radius: 0.35rem;
+  background: var(--pitch-night-cream);
+  color: var(--pitch-night-night);
+  font-family: var(--font-serif);
+  font-size: 1.25rem;
+  font-style: normal;
+  transform-origin: center bottom;
+}
+
+.pitch-night-token-cards i:nth-child(1) {
+  rotate: -18deg;
+  translate: -22% 3%;
+}
+
+.pitch-night-token-cards i:nth-child(2) {
+  z-index: 2;
+  color: var(--pitch-night-gold);
+}
+
+.pitch-night-token-cards i:nth-child(3) {
+  rotate: 18deg;
+  translate: 22% 3%;
+}
+
 .pitch-night-token-one {
   top: 8%;
   left: 8%;
@@ -871,9 +1137,18 @@
   place-items: center;
 }
 
+.pitch-night-vinyl-motion {
+  position: relative;
+  display: grid;
+  width: min(62vw, 37rem);
+  aspect-ratio: 1;
+  place-items: center;
+  will-change: transform;
+}
+
 .pitch-night-vinyl {
   position: relative;
-  width: min(62vw, 37rem);
+  width: 100%;
   aspect-ratio: 1;
   border: 1px solid color-mix(in srgb, var(--pitch-night-cream) 28%, transparent);
   border-radius: 50%;
@@ -885,6 +1160,31 @@
     ),
     color-mix(in srgb, var(--pitch-night-night) 92%, var(--pitch-night-blue));
   box-shadow: 0 0 6rem color-mix(in srgb, var(--pitch-night-blue) 13%, transparent);
+  cursor: grab;
+  touch-action: none;
+  transform: rotate(var(--vinyl-scratch-angle));
+  transition:
+    box-shadow 220ms ease,
+    filter 220ms ease;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.pitch-night-vinyl:hover {
+  box-shadow:
+    0 0 7rem color-mix(in srgb, var(--pitch-night-blue) 19%, transparent),
+    0 0 0 1px color-mix(in srgb, var(--pitch-night-cream) 20%, transparent);
+}
+
+.pitch-night-vinyl:active {
+  cursor: grabbing;
+  filter: brightness(1.08);
+  transform: rotate(var(--vinyl-scratch-angle)) scale(0.995);
+}
+
+.pitch-night-vinyl:focus-visible {
+  outline: 2px solid var(--pitch-night-gold);
+  outline-offset: 0.75rem;
 }
 
 .pitch-night-vinyl::after {
@@ -909,6 +1209,60 @@
   font-size: clamp(0.55rem, 1.1vw, 0.82rem);
   letter-spacing: 0.12em;
   text-transform: uppercase;
+  pointer-events: none;
+}
+
+.pitch-night-vinyl-gesture {
+  position: absolute;
+  top: 10%;
+  right: 2%;
+  z-index: 3;
+  display: grid;
+  width: 8rem;
+  justify-items: center;
+  color: var(--pitch-night-gold);
+  font-family: var(--font-mono);
+  font-size: 0.58rem;
+  letter-spacing: 0.11em;
+  pointer-events: none;
+  text-transform: uppercase;
+  transition: opacity 350ms ease;
+  animation: pitch-night-vinyl-cue 2.2s ease-in-out infinite;
+}
+
+.pitch-night-vinyl-gesture[data-hidden] {
+  opacity: 0;
+}
+
+.pitch-night-vinyl-gesture svg {
+  width: 100%;
+  overflow: visible;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2;
+}
+
+.pitch-night-vinyl-help {
+  position: absolute;
+  right: 0;
+  bottom: 4%;
+  left: 0;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.45rem 0.8rem;
+  font-family: var(--font-mono);
+  font-size: 0.61rem;
+  letter-spacing: 0.08em;
+  opacity: 0.62;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+.pitch-night-vinyl-help span {
+  color: var(--pitch-night-gold);
 }
 
 .pitch-night-dj-copy {
@@ -943,6 +1297,47 @@
   );
 }
 
+.pitch-night-supper-scene::before,
+.pitch-night-supper-scene::after {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  content: "";
+}
+
+.pitch-night-supper-scene::before {
+  background:
+    radial-gradient(
+      ellipse at 18% 20%,
+      color-mix(in srgb, var(--pitch-night-gold) 18%, transparent),
+      transparent 22%
+    ),
+    radial-gradient(
+      ellipse at 50% 17%,
+      color-mix(in srgb, var(--pitch-night-gold) 22%, transparent),
+      transparent 25%
+    ),
+    radial-gradient(
+      ellipse at 82% 20%,
+      color-mix(in srgb, var(--pitch-night-gold) 18%, transparent),
+      transparent 22%
+    );
+  filter: blur(14px);
+  mix-blend-mode: screen;
+  opacity: 0.78;
+}
+
+.pitch-night-supper-scene::after {
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--pitch-night-night) 70%, transparent),
+    transparent 35%,
+    color-mix(in srgb, var(--pitch-night-gold) 6%, transparent) 72%,
+    color-mix(in srgb, var(--pitch-night-night) 55%, transparent)
+  );
+}
+
 .pitch-night-lanterns {
   position: absolute;
   inset: 10% 3% auto;
@@ -953,12 +1348,11 @@
 
 .pitch-night-lanterns span {
   position: relative;
-  width: clamp(2rem, 4vw, 3.5rem);
+  display: grid;
+  width: clamp(2.8rem, 5vw, 4.5rem);
   aspect-ratio: 0.72;
-  border: 1px solid color-mix(in srgb, var(--pitch-night-cream) 45%, transparent);
-  border-radius: 45%;
-  background: color-mix(in srgb, var(--pitch-night-gold) 48%, transparent);
-  box-shadow: 0 0 4rem 1.2rem color-mix(in srgb, var(--pitch-night-gold) 17%, transparent);
+  place-items: center;
+  transform-origin: 50% -18vh;
 }
 
 .pitch-night-lanterns span::before {
@@ -969,6 +1363,84 @@
   height: 18vh;
   background: color-mix(in srgb, var(--pitch-night-cream) 24%, transparent);
   content: "";
+}
+
+.pitch-night-lantern-cage {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  overflow: hidden;
+  place-items: center;
+  border: 1px solid color-mix(in srgb, var(--pitch-night-cream) 54%, transparent);
+  border-radius: 42% 42% 48% 48%;
+  background:
+    linear-gradient(
+      90deg,
+      transparent 16%,
+      color-mix(in srgb, var(--pitch-night-night) 36%, transparent) 17% 20%,
+      transparent 21% 79%,
+      color-mix(in srgb, var(--pitch-night-night) 36%, transparent) 80% 83%,
+      transparent 84%
+    ),
+    radial-gradient(
+      circle at 50% 58%,
+      color-mix(in srgb, var(--pitch-night-cream) 82%, var(--pitch-night-gold)),
+      color-mix(in srgb, var(--pitch-night-gold) 64%, transparent) 30%,
+      color-mix(in srgb, var(--pitch-night-gold) 18%, transparent) 68%
+    );
+  box-shadow:
+    inset 0 0 1.3rem color-mix(in srgb, var(--pitch-night-gold) 42%, transparent),
+    0 0 1.2rem color-mix(in srgb, var(--pitch-night-gold) 28%, transparent);
+}
+
+.pitch-night-lantern-cage::before,
+.pitch-night-lantern-cage::after {
+  position: absolute;
+  right: 8%;
+  left: 8%;
+  height: 2px;
+  background: color-mix(in srgb, var(--pitch-night-night) 64%, var(--pitch-night-gold));
+  content: "";
+}
+
+.pitch-night-lantern-cage::before {
+  top: 13%;
+}
+
+.pitch-night-lantern-cage::after {
+  bottom: 13%;
+}
+
+.pitch-night-lantern-flame {
+  width: 24%;
+  aspect-ratio: 0.72;
+  border-radius: 58% 42% 54% 46%;
+  background: var(--pitch-night-cream);
+  box-shadow:
+    0 0 0.7rem var(--pitch-night-cream),
+    0 0 1.5rem var(--pitch-night-gold);
+  animation: pitch-night-lantern-flame 1.2s ease-in-out infinite alternate;
+  animation-delay: calc(var(--lantern-index) * -180ms);
+}
+
+.pitch-night-lantern-aura {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: clamp(11rem, 20vw, 18rem);
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: radial-gradient(
+    circle,
+    color-mix(in srgb, var(--pitch-night-gold) 28%, transparent),
+    color-mix(in srgb, var(--pitch-night-gold) 8%, transparent) 38%,
+    transparent 70%
+  );
+  filter: blur(6px);
+  opacity: 0.72;
+  translate: -50% -50%;
+  animation: pitch-night-lantern-aura 2.8s ease-in-out infinite alternate;
+  animation-delay: calc(var(--lantern-index) * -320ms);
 }
 
 .pitch-night-supper-copy {
@@ -1097,9 +1569,13 @@
   }
 }
 
-@keyframes pitch-night-marquee {
+@keyframes pitch-night-microphone-float {
+  from {
+    transform: translate3d(-4px, 3px, 0) rotate(-2deg);
+  }
+
   to {
-    transform: translateX(-50%);
+    transform: translate3d(5px, -8px, 0) rotate(3deg);
   }
 }
 
@@ -1110,6 +1586,43 @@
 
   to {
     transform: scaleY(1);
+  }
+}
+
+@keyframes pitch-night-vinyl-cue {
+  0%,
+  100% {
+    opacity: 0.58;
+    transform: translate3d(-5px, 4px, 0) rotate(-3deg);
+  }
+
+  50% {
+    opacity: 1;
+    transform: translate3d(7px, -3px, 0) rotate(3deg);
+  }
+}
+
+@keyframes pitch-night-lantern-flame {
+  from {
+    opacity: 0.72;
+    transform: scale(0.82) rotate(-4deg);
+  }
+
+  to {
+    opacity: 1;
+    transform: scale(1.08) rotate(3deg);
+  }
+}
+
+@keyframes pitch-night-lantern-aura {
+  from {
+    opacity: 0.48;
+    transform: scale(0.88);
+  }
+
+  to {
+    opacity: 0.82;
+    transform: scale(1.08);
   }
 }
 
@@ -1176,6 +1689,15 @@
     left: -40%;
   }
 
+  .pitch-night-mountain-mist {
+    right: -60%;
+    left: -60%;
+  }
+
+  .pitch-night-valley-light {
+    width: 110vw;
+  }
+
   .pitch-night-prologue {
     min-height: auto;
     padding: 10rem 1.25rem 14rem;
@@ -1202,9 +1724,10 @@
     right: -1.5rem;
   }
 
-  .pitch-night-paper-note-b {
-    bottom: 5%;
-    left: -1rem;
+  .pitch-night-mic-moment {
+    bottom: 4%;
+    left: -0.6rem;
+    width: 8.5rem;
   }
 
   .pitch-night-pitch-scene {
@@ -1242,6 +1765,17 @@
 
   .pitch-night-slide-card strong {
     font-size: 1.8rem;
+  }
+
+  .pitch-night-breath {
+    min-height: 56svh;
+    padding-inline: 1.25rem;
+  }
+
+  .pitch-night-breath-words {
+    align-items: center;
+    flex-direction: column;
+    font-size: clamp(3rem, 14vw, 5.3rem);
   }
 
   .pitch-night-spelling-scene,
@@ -1310,8 +1844,20 @@
     margin-top: 3rem;
   }
 
-  .pitch-night-vinyl {
+  .pitch-night-vinyl-motion {
     width: min(88vw, 25rem);
+  }
+
+  .pitch-night-vinyl-gesture {
+    top: 5%;
+    right: -0.5rem;
+    width: 6.8rem;
+  }
+
+  .pitch-night-vinyl-help {
+    bottom: -1rem;
+    padding-inline: 1rem;
+    line-height: 1.6;
   }
 
   .pitch-night-equalizer {
@@ -1333,6 +1879,10 @@
 
   .pitch-night-lanterns span:nth-child(even) {
     display: none;
+  }
+
+  .pitch-night-lanterns span {
+    width: 3.4rem;
   }
 
   .pitch-night-supper-copy {
@@ -1366,22 +1916,23 @@
     display: none;
   }
 
-  .pitch-night-breath-track,
   .pitch-night-firefly,
+  .pitch-night-microphone,
   .pitch-night-sound-wave[data-active] span {
     animation: none;
   }
 
-  .pitch-night-breath-track {
-    width: auto;
-    padding-inline: 1.5rem;
-    white-space: normal;
+  .pitch-night-vinyl-gesture,
+  .pitch-night-lantern-aura,
+  .pitch-night-lantern-flame {
+    animation: none;
   }
 
   [data-hero-line],
   [data-copy-line],
   [data-slide-card],
   [data-spelling-letter],
+  [data-breath-word],
   [data-game-token],
   [data-vinyl],
   [data-eq-bar],

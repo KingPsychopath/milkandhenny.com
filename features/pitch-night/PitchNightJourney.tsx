@@ -1,5 +1,7 @@
 import { Link } from "@tanstack/react-router";
+import type { CSSProperties } from "react";
 
+import { PitchNightVinyl } from "./PitchNightVinyl";
 import { RevealLine, SceneNumber } from "./PitchNightTypography";
 
 const SPELLING_WORD = "RHYTHM";
@@ -36,14 +38,31 @@ export function GamesScene() {
     <section className="pitch-night-games-scene" data-games-scene>
       <SceneNumber>03 · THE BOARD GAMES</SceneNumber>
       <div className="pitch-night-games-orbit" aria-hidden="true">
-        <span className="pitch-night-token pitch-night-token-one" data-game-token>
-          6
+        <span
+          className="pitch-night-token pitch-night-token-die pitch-night-token-one"
+          data-game-token
+        >
+          <span className="pitch-night-die-face">
+            <i />
+            <i />
+            <i />
+            <i />
+            <i />
+          </span>
         </span>
-        <span className="pitch-night-token pitch-night-token-two" data-game-token>
+        <span
+          className="pitch-night-token pitch-night-token-star pitch-night-token-two"
+          data-game-token
+        >
           ★
         </span>
-        <span className="pitch-night-token pitch-night-token-three" data-game-token>
-          12
+        <span
+          className="pitch-night-token pitch-night-token-cards pitch-night-token-three"
+          data-game-token
+        >
+          <i>♣</i>
+          <i>♥</i>
+          <i>♠</i>
         </span>
         <span className="pitch-night-meeple" data-game-token />
         <svg className="pitch-night-game-path" viewBox="0 0 800 500">
@@ -72,14 +91,7 @@ export function DjScene() {
   return (
     <section className="pitch-night-dj-scene" data-dj-scene>
       <SceneNumber>04 · APARTMENT LIFE</SceneNumber>
-      <div className="pitch-night-vinyl-wrap" aria-hidden="true">
-        <div className="pitch-night-vinyl" data-vinyl>
-          <div className="pitch-night-vinyl-label">
-            <span>apartment</span>
-            <span>life</span>
-          </div>
-        </div>
-      </div>
+      <PitchNightVinyl />
       <div className="pitch-night-dj-copy">
         <p className="pitch-night-conversation">
           <RevealLine>Eventually, sitting down</RevealLine>
@@ -106,11 +118,14 @@ export function SupperScene() {
   return (
     <section className="pitch-night-supper-scene" data-supper-scene>
       <div className="pitch-night-lanterns" aria-hidden="true">
-        <span data-lantern />
-        <span data-lantern />
-        <span data-lantern />
-        <span data-lantern />
-        <span data-lantern />
+        {Array.from({ length: 5 }, (_, index) => (
+          <span key={index} data-lantern style={{ "--lantern-index": index } as CSSProperties}>
+            <i className="pitch-night-lantern-aura" />
+            <i className="pitch-night-lantern-cage">
+              <i className="pitch-night-lantern-flame" />
+            </i>
+          </span>
+        ))}
       </div>
       <SceneNumber>05 · AROUND THE TABLE</SceneNumber>
       <div className="pitch-night-supper-copy">
