@@ -101,38 +101,12 @@ function restoreJourneyAnchor(anchor: JourneyAnchor) {
   scrollWithoutAnimation(Math.max(0, Math.min(maxScroll, nextScroll)));
 }
 
-function resetReloadedJourney(navigationType: ReturnType<typeof getNavigationType>) {
-  if (navigationType !== "reload" || location.hash) return () => {};
-
+function manageScrollRestoration() {
+  const previousScrollRestoration = history.scrollRestoration;
   history.scrollRestoration = "manual";
-  scrollWithoutAnimation(0);
-
-  let finished = false;
-  let releaseTimer = 0;
-  let resetFrame = 0;
-  const finishReset = () => {
-    if (finished) return;
-    finished = true;
-    cancelAnimationFrame(resetFrame);
-    window.clearTimeout(releaseTimer);
-    window.removeEventListener("pageshow", finishReset);
-    scrollWithoutAnimation(0);
-    history.scrollRestoration = "auto";
-  };
-  const keepAtTop = () => {
-    if (finished) return;
-    if (scrollY !== 0) scrollWithoutAnimation(0);
-    resetFrame = requestAnimationFrame(keepAtTop);
-  };
-  resetFrame = requestAnimationFrame(keepAtTop);
-  window.addEventListener("pageshow", finishReset, { once: true });
-  releaseTimer = window.setTimeout(finishReset, 1_200);
 
   return () => {
-    cancelAnimationFrame(resetFrame);
-    window.clearTimeout(releaseTimer);
-    window.removeEventListener("pageshow", finishReset);
-    history.scrollRestoration = "auto";
+    history.scrollRestoration = previousScrollRestoration;
   };
 }
 
@@ -146,7 +120,7 @@ export function usePitchNightMotion(
     if (!root || !canvas) return;
 
     const navigationType = getNavigationType();
-    const cleanReloadReset = resetReloadedJourney(navigationType);
+    const cleanScrollRestoration = manageScrollRestoration();
     const compactMedia = matchMedia(COMPACT_QUERY);
     const reducedMotionMedia = matchMedia(REDUCED_MOTION_QUERY);
     let cancelled = false;
@@ -285,7 +259,7 @@ export function usePitchNightMotion(
         const ScrollTrigger = scrollModule.ScrollTrigger;
         gsap.registerPlugin(ScrollTrigger);
         modules = { THREE, gsap, ScrollTrigger };
-        buildSession(latestAnchor);
+        buildSession(navigationType === "back_forward" ? latestAnchor : null);
       } catch {
         // The entire story remains readable when WebGL or motion is unavailable.
       }
@@ -305,7 +279,7 @@ export function usePitchNightMotion(
       window.removeEventListener("pageshow", handlePageShow);
       window.removeEventListener("resize", handleResize);
       window.removeEventListener("scroll", handleScroll);
-      cleanReloadReset();
+      cleanScrollRestoration();
       disposeSession();
     };
   }, [canvasRef, rootRef]);

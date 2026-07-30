@@ -4,6 +4,9 @@ import { getEventsIndexFn } from "@/features/events/events.functions";
 import { PitchNightExperience } from "@/features/pitch-night/PitchNightExperience";
 import { SITE_NAME } from "@/lib/shared/config";
 
+const PREPARE_SCROLL_RESTORATION =
+  'if("scrollRestoration" in history){history.scrollRestoration="manual";const n=performance.getEntriesByType("navigation")[0];if(n?.type==="reload"&&!location.hash)scrollTo(0,0)}';
+
 export const Route = createFileRoute("/pitch-night")({
   loader: async () => {
     const events = await getEventsIndexFn();
@@ -21,6 +24,7 @@ export const Route = createFileRoute("/pitch-night")({
       },
       { property: "og:image", content: "/MAHLogo.svg" },
     ],
+    scripts: [{ children: PREPARE_SCROLL_RESTORATION }],
   }),
 });
 
