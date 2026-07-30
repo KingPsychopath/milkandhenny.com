@@ -17,13 +17,23 @@ function normalizedAngleDelta(next: number, previous: number): number {
 }
 
 export function PitchNightVinyl() {
-  const { beginScratch, enabled, endScratch, musicPlaying, seekMusicBy, setMusicPlaying } =
-    usePitchNightAudio();
+  const {
+    beginScratch,
+    enabled,
+    endScratch,
+    musicPlaying,
+    scratching,
+    scratchMusicBy,
+    seekMusicBy,
+    setMusicPlaying,
+  } = usePitchNightAudio();
   const lastAngleRef = useRef(0);
+  const lastMoveTimeRef = useRef(0);
   const rotationRef = useRef(0);
   const draggedRef = useRef(false);
   const scratchingRef = useRef(false);
   const pendingSeekRef = useRef(0);
+  const pendingTimeRef = useRef(0);
   const frameRef = useRef<number | undefined>(undefined);
   const wasPlayingRef = useRef(false);
   const [hasScratched, setHasScratched] = useState(false);
@@ -31,8 +41,10 @@ export function PitchNightVinyl() {
   const flushSeek = () => {
     frameRef.current = undefined;
     const seconds = pendingSeekRef.current;
+    const elapsed = pendingTimeRef.current;
     pendingSeekRef.current = 0;
-    seekMusicBy(seconds);
+    pendingTimeRef.current = 0;
+    scratchMusicBy(seconds, elapsed > 0 ? seconds / elapsed : 0);
   };
 
   useEffect(
@@ -64,8 +76,9 @@ export function PitchNightVinyl() {
           className="pitch-night-vinyl"
           style={{ "--vinyl-scratch-angle": "0deg" } as CSSProperties}
           aria-describedby="pitch-night-vinyl-help"
-          aria-label={`Apartment Life soundtrack ${musicPlaying ? "playing" : "paused"}. Drag the record to seek, or press the arrow keys to rewind and fast-forward.`}
+          aria-label={`Apartment Life soundtrack ${scratching ? "scratching" : musicPlaying ? "playing" : "paused"}. Drag the record and the song follows your hand, or press the arrow keys to rewind and fast-forward.`}
           aria-pressed={musicPlaying}
+          data-scratching={scratching || undefined}
           onClick={(event) => {
             if (draggedRef.current) {
               event.preventDefault();
@@ -88,6 +101,7 @@ export function PitchNightVinyl() {
           onPointerDown={(event) => {
             event.currentTarget.setPointerCapture(event.pointerId);
             lastAngleRef.current = pointerAngle(event.currentTarget, event.clientX, event.clientY);
+            lastMoveTimeRef.current = event.timeStamp;
             draggedRef.current = false;
             scratchingRef.current = true;
             wasPlayingRef.current = musicPlaying;
@@ -97,7 +111,9 @@ export function PitchNightVinyl() {
             if (!scratchingRef.current) return;
             const angle = pointerAngle(event.currentTarget, event.clientX, event.clientY);
             const delta = normalizedAngleDelta(angle, lastAngleRef.current);
+            const elapsed = Math.max(1 / 240, (event.timeStamp - lastMoveTimeRef.current) / 1_000);
             lastAngleRef.current = angle;
+            lastMoveTimeRef.current = event.timeStamp;
             if (Math.abs(delta) < 0.004) return;
             draggedRef.current = true;
             setHasScratched(true);
@@ -107,6 +123,7 @@ export function PitchNightVinyl() {
               `${rotationRef.current}deg`,
             );
             pendingSeekRef.current += (delta / (Math.PI * 2)) * SECONDS_PER_REVOLUTION;
+            pendingTimeRef.current += elapsed;
             frameRef.current ??= window.requestAnimationFrame(flushSeek);
           }}
           onPointerUp={finishScratch}
@@ -131,8 +148,11 @@ export function PitchNightVinyl() {
         <span>drag the record</span>
       </div>
       <p id="pitch-night-vinyl-help" className="pitch-night-vinyl-help">
-        <span>{!enabled ? "sound off" : musicPlaying ? "playing" : "paused"}</span>
-        drag to rewind · tap to {musicPlaying ? "pause" : "play"} · arrows seek 5s
+        <span aria-live="polite">
+          {!enabled ? "sound off" : scratching ? "scratching" : musicPlaying ? "playing" : "paused"}
+        </span>
+        hold + drag — the song follows your hand · tap to {musicPlaying ? "pause" : "play"} · arrows
+        jump 5s
       </p>
     </div>
   );

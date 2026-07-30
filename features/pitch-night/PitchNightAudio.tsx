@@ -20,6 +20,7 @@ interface AmbienceEngine {
   beginScratch: () => void;
   endScratch: () => void;
   playPourAccent: () => void;
+  scratchApartmentLifeBy: (seconds: number, velocity: number) => void;
   seekApartmentLifeBy: (seconds: number) => void;
   setApartmentLifeActive: (active: boolean) => void;
   setApartmentLifePaused: (paused: boolean) => void;
@@ -33,6 +34,8 @@ interface PitchNightAudioValue {
   endScratch: () => void;
   musicActive: boolean;
   musicPlaying: boolean;
+  scratching: boolean;
+  scratchMusicBy: (seconds: number, velocity: number) => void;
   seekMusicBy: (seconds: number) => void;
   setMusicPlaying: (playing: boolean) => void;
   supported: boolean;
@@ -68,12 +71,18 @@ function createAmbienceEngine(): AmbienceEngine {
   const toneGain = context.createGain();
   const drift = context.createOscillator();
   const driftDepth = context.createGain();
+  const scratchNoise = context.createBufferSource();
+  const scratchFilter = context.createBiquadFilter();
+  const scratchNoiseGain = context.createGain();
+  const scratchBus = context.createGain();
+  const scratchCompressor = context.createDynamicsCompressor();
 
   master.gain.setValueAtTime(0, context.currentTime);
   master.gain.linearRampToValueAtTime(AMBIENCE_LEVEL, context.currentTime + 1.8);
   master.connect(context.destination);
 
-  texture.buffer = noiseBuffer(context);
+  const sharedNoise = noiseBuffer(context);
+  texture.buffer = sharedNoise;
   texture.loop = true;
 
   airFilter.type = "lowpass";
@@ -103,10 +112,26 @@ function createAmbienceEngine(): AmbienceEngine {
   driftDepth.gain.value = 0.045;
   drift.connect(driftDepth).connect(air.gain);
 
+  scratchNoise.buffer = sharedNoise;
+  scratchNoise.loop = true;
+  scratchFilter.type = "bandpass";
+  scratchFilter.frequency.value = 1_450;
+  scratchFilter.Q.value = 0.7;
+  scratchNoiseGain.gain.value = 0;
+  scratchBus.gain.value = 0.86;
+  scratchCompressor.threshold.value = -14;
+  scratchCompressor.knee.value = 10;
+  scratchCompressor.ratio.value = 6;
+  scratchCompressor.attack.value = 0.004;
+  scratchCompressor.release.value = 0.12;
+  scratchNoise.connect(scratchFilter).connect(scratchNoiseGain).connect(scratchBus);
+  scratchBus.connect(scratchCompressor).connect(context.destination);
+
   texture.start();
   lowTone.start();
   highTone.start();
   drift.start();
+  scratchNoise.start();
 
   let stopped = false;
   let apartmentLifeActive = false;
@@ -114,6 +139,14 @@ function createAmbienceEngine(): AmbienceEngine {
   let scratching = false;
   let pourPlayed = false;
   let pauseTimer: number | undefined;
+  let lastScratchGrainAt = 0;
+  let scratchAudio:
+    | {
+        forward: AudioBuffer;
+        reverse: AudioBuffer;
+      }
+    | undefined;
+  let scratchAudioPromise: Promise<typeof scratchAudio> | undefined;
   let music:
     | {
         element: HTMLAudioElement;
@@ -126,6 +159,41 @@ function createAmbienceEngine(): AmbienceEngine {
     gain.cancelScheduledValues(now);
     gain.setValueAtTime(gain.value, now);
     gain.linearRampToValueAtTime(value, now + seconds);
+  };
+
+  const wrapTime = (seconds: number, duration: number) =>
+    ((seconds % duration) + duration) % duration;
+
+  const ensureScratchAudio = () => {
+    if (scratchAudio) return Promise.resolve(scratchAudio);
+    scratchAudioPromise ??= fetch(APARTMENT_LIFE_TRACK)
+      .then((response) => {
+        if (!response.ok) throw new Error("Could not load the Apartment Life soundtrack");
+        return response.arrayBuffer();
+      })
+      .then((encoded) => (stopped ? undefined : context.decodeAudioData(encoded)))
+      .then((forward) => {
+        if (!forward || stopped) return undefined;
+        const reverse = context.createBuffer(
+          forward.numberOfChannels,
+          forward.length,
+          forward.sampleRate,
+        );
+        for (let channelIndex = 0; channelIndex < forward.numberOfChannels; channelIndex += 1) {
+          const source = forward.getChannelData(channelIndex);
+          const destination = reverse.getChannelData(channelIndex);
+          for (let index = 0; index < source.length; index += 1) {
+            destination[index] = source[source.length - index - 1] ?? 0;
+          }
+        }
+        scratchAudio = { forward, reverse };
+        return scratchAudio;
+      })
+      .catch(() => {
+        scratchAudioPromise = undefined;
+        return undefined;
+      });
+    return scratchAudioPromise;
   };
 
   const ensureMusic = () => {
@@ -141,7 +209,7 @@ function createAmbienceEngine(): AmbienceEngine {
     return music;
   };
 
-  const playMusic = () => {
+  const playMusic = (fadeSeconds = 0.7) => {
     if (stopped || !apartmentLifeActive || apartmentLifePaused || scratching) return;
     const current = ensureMusic();
     if (pauseTimer !== undefined) {
@@ -152,7 +220,7 @@ function createAmbienceEngine(): AmbienceEngine {
     void current.element.play().catch(() => {
       // A later direct interaction with the record can retry playback.
     });
-    ramp(current.gain.gain, MUSIC_LEVEL, 0.7);
+    ramp(current.gain.gain, MUSIC_LEVEL, fadeSeconds);
   };
 
   const pauseMusic = (seconds = 0.55) => {
@@ -171,23 +239,57 @@ function createAmbienceEngine(): AmbienceEngine {
     );
   };
 
-  const syncMusic = () => {
+  const syncMusic = (resumeSeconds = 0.7) => {
     const audible = apartmentLifeActive && !apartmentLifePaused && !scratching;
     ramp(master.gain, audible ? AMBIENCE_UNDER_MUSIC_LEVEL : AMBIENCE_LEVEL, 0.8);
-    if (audible) playMusic();
+    if (audible) playMusic(resumeSeconds);
     else pauseMusic(scratching ? 0.08 : 0.55);
+  };
+
+  const playScratchGrain = (position: number, velocity: number) => {
+    if (!scratchAudio || context.state !== "running") return;
+    const now = context.currentTime;
+    if (now - lastScratchGrainAt < 0.042) return;
+    lastScratchGrainAt = now;
+
+    const reverse = velocity < 0;
+    const speed = Math.min(4, Math.max(0.42, Math.abs(velocity)));
+    const duration = scratchAudio.forward.duration;
+    const source = context.createBufferSource();
+    const filter = context.createBiquadFilter();
+    const gain = context.createGain();
+    const audibleFor = Math.min(0.16, 0.085 + speed * 0.018);
+
+    source.buffer = reverse ? scratchAudio.reverse : scratchAudio.forward;
+    source.loop = true;
+    source.loopStart = 0;
+    source.loopEnd = duration;
+    source.playbackRate.setValueAtTime(speed, now);
+    filter.type = "lowpass";
+    filter.frequency.setValueAtTime(reverse ? 2_100 : 3_400, now);
+    filter.Q.value = 0.48;
+    gain.gain.setValueAtTime(0.0001, now);
+    gain.gain.exponentialRampToValueAtTime(0.1, now + 0.012);
+    gain.gain.setValueAtTime(0.1, now + Math.max(0.014, audibleFor - 0.025));
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + audibleFor);
+    source.connect(filter).connect(gain).connect(scratchBus);
+    source.start(now, wrapTime(reverse ? duration - position : position, duration));
+    source.stop(now + audibleFor + 0.01);
   };
 
   return {
     context,
     beginScratch: () => {
       scratching = true;
+      void ensureScratchAudio();
       music?.element.pause();
       if (music) ramp(music.gain.gain, 0, 0.06);
+      ramp(scratchNoiseGain.gain, 0.008, 0.025);
     },
     endScratch: () => {
       scratching = false;
-      syncMusic();
+      ramp(scratchNoiseGain.gain, 0, 0.055);
+      syncMusic(0.16);
     },
     playPourAccent: () => {
       if (stopped || pourPlayed || context.state !== "running") return;
@@ -245,8 +347,24 @@ function createAmbienceEngine(): AmbienceEngine {
           ? ((next % duration) + duration) % duration
           : Math.max(0, next);
     },
+    scratchApartmentLifeBy: (seconds, velocity) => {
+      if (!scratching || !Number.isFinite(seconds) || seconds === 0) return;
+      const element = ensureMusic().element;
+      const duration = element.duration;
+      const next = element.currentTime + seconds;
+      element.currentTime =
+        Number.isFinite(duration) && duration > 0 ? wrapTime(next, duration) : Math.max(0, next);
+
+      const speed = Math.min(6, Math.abs(velocity));
+      ramp(scratchNoiseGain.gain, 0.008 + speed * 0.004, 0.018);
+      const now = context.currentTime;
+      scratchFilter.frequency.cancelScheduledValues(now);
+      scratchFilter.frequency.setTargetAtTime(900 + speed * 330, now, 0.018);
+      playScratchGrain(element.currentTime, velocity);
+    },
     setApartmentLifeActive: (active) => {
       apartmentLifeActive = active;
+      if (active) void ensureScratchAudio();
       syncMusic();
     },
     setApartmentLifePaused: (paused) => {
@@ -262,11 +380,17 @@ function createAmbienceEngine(): AmbienceEngine {
       master.gain.cancelScheduledValues(now);
       master.gain.setValueAtTime(master.gain.value, now);
       master.gain.linearRampToValueAtTime(0, now + 0.45);
+      scratchNoiseGain.gain.cancelScheduledValues(now);
+      scratchNoiseGain.gain.setValueAtTime(scratchNoiseGain.gain.value, now);
+      scratchNoiseGain.gain.linearRampToValueAtTime(0, now + 0.04);
       window.setTimeout(() => {
         texture.stop();
         lowTone.stop();
         highTone.stop();
         drift.stop();
+        scratchNoise.stop();
+        scratchAudio = undefined;
+        scratchAudioPromise = undefined;
         void context.close();
       }, 500);
     },
@@ -285,10 +409,12 @@ export function PitchNightAudioProvider({ children }: { children: ReactNode }) {
   const engineRef = useRef<AmbienceEngine | null>(null);
   const musicActiveRef = useRef(false);
   const musicPausedRef = useRef(false);
+  const scratchingRef = useRef(false);
   const [enabled, setEnabled] = useState(true);
   const [activated, setActivated] = useState(false);
   const [musicActive, setMusicActive] = useState(false);
   const [musicPaused, setMusicPaused] = useState(false);
+  const [scratching, setScratching] = useState(false);
   const [supported, setSupported] = useState(true);
 
   const start = useCallback(async () => {
@@ -322,6 +448,8 @@ export function PitchNightAudioProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const stop = useCallback(() => {
+    scratchingRef.current = false;
+    setScratching(false);
     engineRef.current?.stop();
     engineRef.current = null;
     setActivated(false);
@@ -452,15 +580,26 @@ export function PitchNightAudioProvider({ children }: { children: ReactNode }) {
   );
 
   const beginScratch = useCallback(() => {
+    scratchingRef.current = true;
+    setScratching(true);
     void (async () => {
       const running = enabled ? await start() : await enable();
-      if (!running) return;
+      if (!running || !scratchingRef.current) {
+        setScratching(false);
+        return;
+      }
       engineRef.current?.beginScratch();
     })();
   }, [enable, enabled, start]);
 
   const endScratch = useCallback(() => {
+    scratchingRef.current = false;
+    setScratching(false);
     engineRef.current?.endScratch();
+  }, []);
+
+  const scratchMusicBy = useCallback((seconds: number, velocity: number) => {
+    engineRef.current?.scratchApartmentLifeBy(seconds, velocity);
   }, []);
 
   const seekMusicBy = useCallback((seconds: number) => {
@@ -475,6 +614,8 @@ export function PitchNightAudioProvider({ children }: { children: ReactNode }) {
       endScratch,
       musicActive,
       musicPlaying: activated && enabled && musicActive && !musicPaused,
+      scratching,
+      scratchMusicBy,
       seekMusicBy,
       setMusicPlaying,
       supported,
@@ -487,6 +628,8 @@ export function PitchNightAudioProvider({ children }: { children: ReactNode }) {
       endScratch,
       musicActive,
       musicPaused,
+      scratching,
+      scratchMusicBy,
       seekMusicBy,
       setMusicPlaying,
       supported,

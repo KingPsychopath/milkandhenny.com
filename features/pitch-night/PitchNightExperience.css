@@ -1201,6 +1201,12 @@
   transform: rotate(var(--vinyl-scratch-angle)) scale(0.995);
 }
 
+.pitch-night-vinyl[data-scratching] {
+  box-shadow:
+    0 0 8rem color-mix(in srgb, var(--pitch-night-blue) 24%, transparent),
+    0 0 0 1px color-mix(in srgb, var(--pitch-night-gold) 32%, transparent);
+}
+
 .pitch-night-vinyl:focus-visible {
   outline: 2px solid var(--pitch-night-gold);
   outline-offset: 0.75rem;
