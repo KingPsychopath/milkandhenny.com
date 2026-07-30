@@ -185,6 +185,8 @@ function animateWorld({ compact, gsap, root, world }: MotionContext) {
   };
 
   const restoreOpeningWorld = () => {
+    world.bottle.visible = false;
+    world.finaleSystem.visible = false;
     gsap.set(world.group.position, { x: 0, y: 0, z: 0 });
     gsap.set(world.group.scale, { x: 1, y: 1, z: 1 });
     gsap.set(world.bottle.scale, { x: 0.001, y: 0.001, z: 0.001 });
@@ -192,6 +194,9 @@ function animateWorld({ compact, gsap, root, world }: MotionContext) {
     gsap.set(world.celestial.scale, { x: 1, y: 1, z: 1 });
     gsap.set(world.celestial.position, { x: 0, y: 0, z: 0 });
     gsap.set(world.orbitals.scale, { x: 1, y: 1, z: 1 });
+    gsap.set(world.finaleSystem.position, { x: 0, y: 0.08, z: -0.72 });
+    gsap.set(world.finaleSystem.rotation, { x: 0.06, y: -0.08, z: -0.28 });
+    gsap.set(world.finaleSystem.scale, { x: 0.001, y: 0.001, z: 0.001 });
     gsap.set(world.liquid.scale, { x: 1, y: 0.08, z: 1 });
   };
 
@@ -249,6 +254,12 @@ function animateWorld({ compact, gsap, root, world }: MotionContext) {
         start: "top 86%",
         end: "center 42%",
         scrub: 1.15,
+        onEnter: () => {
+          world.bottle.visible = true;
+        },
+        onEnterBack: () => {
+          world.bottle.visible = true;
+        },
         onLeaveBack: restoreOpeningWorld,
       },
     })
@@ -320,6 +331,8 @@ function animateWorld({ compact, gsap, root, world }: MotionContext) {
   });
 
   const restoreSupperWorld = () => {
+    world.bottle.visible = true;
+    world.finaleSystem.visible = false;
     gsap.set(world.group.position, supperWorld.groupPosition);
     gsap.set(world.group.scale, supperWorld.groupScale);
     gsap.set(world.bottle.scale, supperWorld.bottleScale);
@@ -327,6 +340,9 @@ function animateWorld({ compact, gsap, root, world }: MotionContext) {
     gsap.set(world.celestial.scale, supperWorld.celestialScale);
     gsap.set(world.celestial.position, supperWorld.celestialPosition);
     gsap.set(world.orbitals.scale, { x: 1, y: 1, z: 1 });
+    gsap.set(world.finaleSystem.position, { x: 0, y: 0.08, z: -0.72 });
+    gsap.set(world.finaleSystem.rotation, { x: 0.06, y: -0.08, z: -0.28 });
+    gsap.set(world.finaleSystem.scale, { x: 0.001, y: 0.001, z: 0.001 });
   };
 
   const restoreWorldBeforeFinale = () => {
@@ -345,6 +361,12 @@ function animateWorld({ compact, gsap, root, world }: MotionContext) {
         start: "top 62%",
         end: "top -18%",
         scrub: 1.1,
+        onEnter: () => {
+          world.finaleSystem.visible = true;
+        },
+        onEnterBack: () => {
+          world.finaleSystem.visible = true;
+        },
         onLeaveBack: restoreWorldBeforeFinale,
       },
     })
@@ -409,6 +431,39 @@ function animateWorld({ compact, gsap, root, world }: MotionContext) {
         y: 0.32,
         z: 0.32,
         duration: 0.28,
+        ease: "power2.inOut",
+      },
+      0.08,
+    )
+    .to(
+      world.finaleSystem.scale,
+      {
+        x: compact ? 0.82 : 0.9,
+        y: compact ? 0.82 : 0.9,
+        z: compact ? 0.82 : 0.9,
+        duration: 0.46,
+        ease: "back.out(1.1)",
+      },
+      0.08,
+    )
+    .to(
+      world.finaleSystem.position,
+      {
+        x: 0,
+        y: compact ? -0.08 : 0.06,
+        z: -0.72,
+        duration: 0.38,
+        ease: "power2.out",
+      },
+      0.08,
+    )
+    .to(
+      world.finaleSystem.rotation,
+      {
+        x: compact ? 0.1 : 0.04,
+        y: compact ? -0.04 : -0.12,
+        z: compact ? 0.18 : 0.32,
+        duration: 0.7,
         ease: "power2.inOut",
       },
       0.08,

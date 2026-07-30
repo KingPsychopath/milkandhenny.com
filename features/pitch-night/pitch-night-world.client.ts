@@ -6,6 +6,7 @@ export interface PitchNightWorld {
   bottle: Group;
   celestial: Group;
   compact: boolean;
+  finaleSystem: Group;
   group: Group;
   liquid: Group;
   orbitals: Group;
@@ -44,11 +45,197 @@ export function createPitchNightWorld(
   const group = new THREE.Group();
   const celestial = new THREE.Group();
   const bottle = new THREE.Group();
+  const finaleSystem = new THREE.Group();
   const liquid = new THREE.Group();
   const orbitals = new THREE.Group();
   scene.add(group);
+  group.add(finaleSystem);
   group.add(celestial);
   group.add(bottle);
+
+  const finaleResources: Array<{ dispose: () => void }> = [];
+  const finaleOrbitSpinners: Array<{ group: Group; speed: number }> = [];
+  const finaleMoonSpinners: Array<{ group: Group; speed: number }> = [];
+  finaleSystem.position.set(0, 0.08, -0.72);
+  finaleSystem.rotation.set(0.06, -0.08, -0.28);
+  finaleSystem.scale.setScalar(0.001);
+  finaleSystem.visible = false;
+
+  const auraCanvas = document.createElement("canvas");
+  auraCanvas.width = 256;
+  auraCanvas.height = 256;
+  const auraContext = auraCanvas.getContext("2d");
+  if (auraContext) {
+    const gradient = auraContext.createRadialGradient(128, 128, 0, 128, 128, 128);
+    gradient.addColorStop(0, "rgba(255, 255, 255, 0.92)");
+    gradient.addColorStop(0.18, "rgba(255, 255, 255, 0.42)");
+    gradient.addColorStop(0.58, "rgba(255, 255, 255, 0.08)");
+    gradient.addColorStop(1, "rgba(255, 255, 255, 0)");
+    auraContext.fillStyle = gradient;
+    auraContext.fillRect(0, 0, 256, 256);
+  }
+  const auraTexture = new THREE.CanvasTexture(auraCanvas);
+  const auraMaterial = new THREE.SpriteMaterial({
+    map: auraTexture,
+    color: new THREE.Color(amber),
+    transparent: true,
+    opacity: 0.16,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+  });
+  const aura = new THREE.Sprite(auraMaterial);
+  aura.position.z = -0.32;
+  aura.scale.set(7.8, 7.8, 1);
+  finaleSystem.add(aura);
+  finaleResources.push(auraTexture, auraMaterial);
+
+  const finaleOrbitSpecs = [
+    {
+      radius: 1.72,
+      tube: 0.014,
+      tilt: [1.08, 0.18, 0.12] as const,
+      planetSize: 0.12,
+      color: cream,
+      phase: 0.45,
+      speed: 0.0024,
+    },
+    {
+      radius: 2.48,
+      tube: 0.018,
+      tilt: [0.82, -0.12, -0.2] as const,
+      planetSize: 0.17,
+      color: amber,
+      phase: 2.1,
+      speed: -0.00165,
+    },
+    {
+      radius: 3.34,
+      tube: 0.013,
+      tilt: [1.24, 0.28, 0.32] as const,
+      planetSize: 0.14,
+      color: blue,
+      phase: 4.15,
+      speed: 0.00115,
+    },
+    {
+      radius: 4.24,
+      tube: 0.022,
+      tilt: [0.96, -0.2, 0.52] as const,
+      planetSize: 0.2,
+      color: planetGold,
+      phase: 5.35,
+      speed: -0.00082,
+    },
+  ];
+
+  for (const [index, spec] of finaleOrbitSpecs.entries()) {
+    const plane = new THREE.Group();
+    plane.rotation.set(spec.tilt[0], spec.tilt[1], spec.tilt[2]);
+    finaleSystem.add(plane);
+
+    const orbitGeometry = new THREE.TorusGeometry(
+      spec.radius,
+      spec.tube,
+      6,
+      compact ? 96 : 176,
+    );
+    const orbitMaterial = new THREE.MeshBasicMaterial({
+      color: new THREE.Color(index % 2 === 0 ? cream : blue).lerp(
+        new THREE.Color(spec.color),
+        0.42,
+      ),
+      transparent: true,
+      opacity: 0.2 - index * 0.018,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+    });
+    plane.add(new THREE.Mesh(orbitGeometry, orbitMaterial));
+    finaleResources.push(orbitGeometry, orbitMaterial);
+
+    const spinner = new THREE.Group();
+    spinner.rotation.z = spec.phase;
+    plane.add(spinner);
+    finaleOrbitSpinners.push({ group: spinner, speed: spec.speed });
+
+    const planetGeometry = new THREE.SphereGeometry(
+      spec.planetSize,
+      compact ? 12 : 20,
+      compact ? 8 : 14,
+    );
+    const planetMaterial = new THREE.MeshPhysicalMaterial({
+      color: new THREE.Color(spec.color),
+      emissive: new THREE.Color(spec.color),
+      emissiveIntensity: 0.28,
+      metalness: index === 2 ? 0.42 : 0.12,
+      roughness: 0.24,
+      clearcoat: 0.8,
+      clearcoatRoughness: 0.18,
+    });
+    const planet = new THREE.Mesh(planetGeometry, planetMaterial);
+    planet.position.x = spec.radius;
+    spinner.add(planet);
+    finaleResources.push(planetGeometry, planetMaterial);
+
+    const glowGeometry = new THREE.SphereGeometry(spec.planetSize * 1.85, 12, 8);
+    const glowMaterial = new THREE.MeshBasicMaterial({
+      color: new THREE.Color(spec.color),
+      transparent: true,
+      opacity: 0.1,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+    });
+    const glow = new THREE.Mesh(glowGeometry, glowMaterial);
+    glow.position.copy(planet.position);
+    spinner.add(glow);
+    finaleResources.push(glowGeometry, glowMaterial);
+
+    if (index === 1 || index === 3) {
+      const moonSpinner = new THREE.Group();
+      moonSpinner.position.copy(planet.position);
+      spinner.add(moonSpinner);
+      finaleMoonSpinners.push({
+        group: moonSpinner,
+        speed: index === 1 ? 0.006 : -0.0042,
+      });
+
+      const moonGeometry = new THREE.SphereGeometry(spec.planetSize * 0.32, 10, 7);
+      const moonMaterial = new THREE.MeshBasicMaterial({
+        color: new THREE.Color(cream),
+        transparent: true,
+        opacity: 0.82,
+      });
+      const moon = new THREE.Mesh(moonGeometry, moonMaterial);
+      moon.position.x = spec.planetSize * 2.15;
+      moonSpinner.add(moon);
+      finaleResources.push(moonGeometry, moonMaterial);
+    }
+  }
+
+  const dustCount = compact ? 150 : 280;
+  const dustPositions = new Float32Array(dustCount * 3);
+  for (let index = 0; index < dustCount; index += 1) {
+    const radius = 1.35 + Math.random() * 3.7;
+    const angle = Math.random() * Math.PI * 2;
+    dustPositions[index * 3] = Math.cos(angle) * radius;
+    dustPositions[index * 3 + 1] = Math.sin(angle) * radius * (0.58 + Math.random() * 0.22);
+    dustPositions[index * 3 + 2] = (Math.random() - 0.5) * 0.7;
+  }
+  const dustGeometry = new THREE.BufferGeometry().setAttribute(
+    "position",
+    new THREE.BufferAttribute(dustPositions, 3),
+  );
+  const dustMaterial = new THREE.PointsMaterial({
+    color: new THREE.Color(cream).lerp(new THREE.Color(amber), 0.36),
+    size: compact ? 0.035 : 0.028,
+    transparent: true,
+    opacity: 0.42,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+  });
+  const finaleDust = new THREE.Points(dustGeometry, dustMaterial);
+  finaleDust.rotation.set(0.82, 0.1, -0.18);
+  finaleSystem.add(finaleDust);
+  finaleResources.push(dustGeometry, dustMaterial);
 
   const coreMaterial = new THREE.MeshPhysicalMaterial({
     color: planetGold,
@@ -278,6 +465,7 @@ export function createPitchNightWorld(
   bottle.position.set(0, -0.18, 0.08);
   bottle.rotation.y = -0.12;
   bottle.scale.setScalar(0.001);
+  bottle.visible = false;
 
   const starCount = compact ? 520 : 1_200;
   const starPositions = new Float32Array(starCount * 3);
@@ -331,6 +519,12 @@ export function createPitchNightWorld(
       core.rotation.y += 0.0018;
       core.rotation.x += 0.0009;
       wire.rotation.y -= 0.0011;
+      if (finaleSystem.visible) {
+        finaleSystem.rotation.z += 0.00016;
+        finaleDust.rotation.z -= 0.00032;
+        for (const orbiter of finaleOrbitSpinners) orbiter.group.rotation.z += orbiter.speed;
+        for (const moon of finaleMoonSpinners) moon.group.rotation.z += moon.speed;
+      }
       stars.rotation.y += 0.00012;
       group.rotation.y += (pointer.x * 0.25 - group.rotation.y) * 0.035;
       group.rotation.x += (-pointer.y * 0.18 - group.rotation.x) * 0.035;
@@ -348,6 +542,7 @@ export function createPitchNightWorld(
     bottle,
     celestial,
     compact,
+    finaleSystem,
     group,
     liquid,
     orbitals,
@@ -383,6 +578,7 @@ export function createPitchNightWorld(
       label.geometry.dispose();
       labelMaterial.dispose();
       labelTexture.dispose();
+      for (const resource of finaleResources) resource.dispose();
       stars.geometry.dispose();
       stars.material.dispose();
     },
