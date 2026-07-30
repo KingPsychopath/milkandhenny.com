@@ -321,6 +321,15 @@ function animateWorld({ compact, gsap, root, world }: MotionContext) {
     gsap.set(world.orbitals.scale, { x: 1, y: 1, z: 1 });
   };
 
+  const restoreWorldBeforeFinale = () => {
+    const supperScene = root.querySelector<HTMLElement>("[data-supper-scene]");
+    if (!supperScene || supperScene.getBoundingClientRect().top > innerHeight * 0.86) {
+      restoreOpeningWorld();
+      return;
+    }
+    restoreSupperWorld();
+  };
+
   gsap
     .timeline({
       scrollTrigger: {
@@ -328,7 +337,7 @@ function animateWorld({ compact, gsap, root, world }: MotionContext) {
         start: "top 62%",
         end: "top -18%",
         scrub: 1.1,
-        onLeaveBack: restoreSupperWorld,
+        onLeaveBack: restoreWorldBeforeFinale,
       },
     })
     .to(
