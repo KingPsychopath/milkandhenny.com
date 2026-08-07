@@ -578,3 +578,153 @@ describe("liars rooms — robustness", () => {
     expect(result).toMatchObject({ ok: false, errorCode: "room_unavailable", snapshot: null });
   });
 });
+
+describe("liars rooms — imposter", () => {
+  async function imposterGame(names = NAMES.slice(0, 8)) {
+    const created = await room("imposter", names);
+    await host(created.roomId, created.hostToken, { type: "game.start" });
+    return created;
+  }
+
+  it("runs the clue round by turn, on every device at once", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-09T08:00:00Z"));
+    const created = await imposterGame();
+    const deal = await view(created.roomId, created.seats[0]);
+    await runTo(created.roomId, created.seats, deal.phaseEndsAt + 1);
+
+    const clue = await view(created.roomId, created.seats[0]);
+    expect(clue.phase).toBe("clue");
+    expect(clue.clue!.order).toHaveLength(8);
+    expect(clue.clue!.currentPlayerId).toBe(clue.clue!.order[0]);
+
+    // Whose turn it is reads the same on every phone — that is the entire job of the screen.
+    for (const seat of created.seats) {
+      const snapshot = await view(created.roomId, seat);
+      expect(snapshot.clue!.currentPlayerId).toBe(clue.clue!.currentPlayerId);
+    }
+
+    const first = created.seats.find(({ playerId }) => playerId === clue.clue!.currentPlayerId)!;
+    const outOfTurn = created.seats.find(({ playerId }) => playerId !== first.playerId)!;
+    expect(await act(created.roomId, outOfTurn, { type: "clue.said", round: clue.round })).toMatchObject(
+      { accepted: false, errorCode: "not_your_turn" },
+    );
+
+    const said = await act(created.roomId, first, { type: "clue.said", round: clue.round });
+    expect(said.accepted).toBe(true);
+    expect(said.snapshot!.clue!.currentPlayerId).toBe(clue.clue!.order[1]);
+    expect(said.snapshot!.clue!.doneIds).toEqual([first.playerId]);
+  });
+
+  it("moves to deliberation once everyone has spoken", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-09T09:00:00Z"));
+    const created = await imposterGame();
+    const deal = await view(created.roomId, created.seats[0]);
+    await runTo(created.roomId, created.seats, deal.phaseEndsAt + 1);
+
+    let snapshot = await view(created.roomId, created.seats[0]);
+    for (let turn = 0; turn < created.seats.length; turn += 1) {
+      const current = created.seats.find(
+        ({ playerId }) => playerId === snapshot.clue!.currentPlayerId,
+      )!;
+      const result = await act(created.roomId, current, {
+        type: "clue.said",
+        round: snapshot.round,
+      });
+      snapshot = result.snapshot!;
+    }
+    expect(snapshot.phase).toBe("deliberation");
+  });
+
+  it("gives the last imposter out one shot at the word, and it can take the game", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-09T10:00:00Z"));
+    const created = await imposterGame(NAMES.slice(0, 6));
+    const imposterSeat = (await seatWithRole(created.roomId, created.seats, "imposter"))!;
+    const crewSeat = created.seats.find(({ playerId }) => playerId !== imposterSeat.playerId)!;
+    const word = (await view(created.roomId, crewSeat)).player!.word!;
+
+    const deal = await view(created.roomId, created.seats[0]);
+    await runTo(created.roomId, created.seats, deal.phaseEndsAt + 1);
+
+    let snapshot = await view(created.roomId, created.seats[0]);
+    while (snapshot.phase === "clue") {
+      const current = created.seats.find(
+        ({ playerId }) => playerId === snapshot.clue!.currentPlayerId,
+      )!;
+      snapshot = (await act(created.roomId, current, { type: "clue.said", round: snapshot.round }))
+        .snapshot!;
+    }
+
+    await runTo(created.roomId, created.seats, snapshot.phaseEndsAt + 1);
+    const vote = await view(created.roomId, created.seats[0]);
+    expect(vote.phase).toBe("vote");
+    for (const seat of created.seats)
+      await act(created.roomId, seat, {
+        type: "vote.cast",
+        round: vote.round,
+        targetId: imposterSeat.playerId,
+      });
+
+    await runTo(created.roomId, created.seats, vote.phaseEndsAt + 1);
+    const verdict = await view(created.roomId, created.seats[0]);
+    await runTo(created.roomId, created.seats, verdict.phaseEndsAt + 1);
+
+    const guessing = await view(created.roomId, imposterSeat);
+    expect(guessing.phase).toBe("finalGuess");
+    expect(guessing.player!.finalGuessOpen).toBe(true);
+
+    const guessed = await act(created.roomId, imposterSeat, { type: "guess.final", text: word });
+    expect(guessed.accepted).toBe(true);
+    expect(guessed.snapshot!.phase).toBe("ending");
+    // Caught, and still won it.
+    expect(guessed.snapshot!.ending!.winner).toBe("mafia");
+    expect(guessed.snapshot!.ending!.word).toBe(word);
+  });
+
+  it("gives the crew the win when the guess misses", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-09T11:00:00Z"));
+    const created = await imposterGame(NAMES.slice(0, 6));
+    const imposterSeat = (await seatWithRole(created.roomId, created.seats, "imposter"))!;
+    const deal = await view(created.roomId, created.seats[0]);
+    await runTo(created.roomId, created.seats, deal.phaseEndsAt + 1);
+
+    let snapshot = await view(created.roomId, created.seats[0]);
+    while (snapshot.phase === "clue") {
+      const current = created.seats.find(
+        ({ playerId }) => playerId === snapshot.clue!.currentPlayerId,
+      )!;
+      snapshot = (await act(created.roomId, current, { type: "clue.said", round: snapshot.round }))
+        .snapshot!;
+    }
+    await runTo(created.roomId, created.seats, snapshot.phaseEndsAt + 1);
+    const vote = await view(created.roomId, created.seats[0]);
+    for (const seat of created.seats)
+      await act(created.roomId, seat, {
+        type: "vote.cast",
+        round: vote.round,
+        targetId: imposterSeat.playerId,
+      });
+    await runTo(created.roomId, created.seats, vote.phaseEndsAt + 1);
+    const verdict = await view(created.roomId, created.seats[0]);
+    await runTo(created.roomId, created.seats, verdict.phaseEndsAt + 1);
+
+    const guessed = await act(created.roomId, imposterSeat, {
+      type: "guess.final",
+      text: "definitely not the word",
+    });
+    expect(guessed.snapshot!.phase).toBe("ending");
+    expect(guessed.snapshot!.ending!.winner).toBe("town");
+  });
+
+  it("keeps the crew from answering the imposter's question for them", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-09T12:00:00Z"));
+    const created = await imposterGame(NAMES.slice(0, 6));
+    const crewSeat = (await seatWithRole(created.roomId, created.seats, "crew"))!;
+    const rejected = await act(created.roomId, crewSeat, { type: "guess.final", text: "beach" });
+    expect(rejected).toMatchObject({ accepted: false, errorCode: "action_unavailable" });
+  });
+});
