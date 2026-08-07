@@ -4,6 +4,7 @@ import { useWebHaptics } from "web-haptics/react";
 import { customDeckAsGameDeck, formatDeckText, type CustomDeck } from "./customDecks";
 import { CustomDeckBuilder } from "./CustomDeckBuilder";
 import { GAME_DECKS, shuffledCards, type GameDeck } from "./decks";
+import { rememberCards, selectRoundCards } from "./cardRotation.client";
 import { playGameSound, primeGameAudio } from "../shared/game-sound.client";
 import { HeadsUpSetup } from "./HeadsUpSetup";
 import { RoundPlayArea } from "./RoundPlayArea";
@@ -20,6 +21,7 @@ import { GameShell } from "../shared/GameShell";
 import { EndGameDialog } from "../shared/EndGameDialog";
 import { shareOrCopy } from "@/lib/client/share";
 import { useUpdateReloadSafety } from "@/features/offline/update-safety.client";
+import { useWakeLock } from "@/hooks/useWakeLock";
 
 type Phase = "setup" | "builder" | "countdown" | "playing" | "results";
 type Decision = "correct" | "pass";
@@ -56,10 +58,13 @@ function HeadsUpExperience({ fullscreen, remoteSession }: { fullscreen: Fullscre
     name: joinedSetup.deck.name,
     description: "Prepared by your judge.",
     symbol: "↗",
+    category: "mine",
     cards: joinedSetup.deck.cards,
   } : null;
   const [phase, setPhase] = useState<Phase>("setup");
   useUpdateReloadSafety("heads-up-round", phase === "setup" || phase === "results");
+  // The phone spends a whole round on someone's forehead without a single touch.
+  useWakeLock(phase === "playing" || phase === "countdown");
   const [deckId, setDeckId] = useState(joinedDeck?.id ?? GAME_DECKS[0].id);
   const [cards, setCards] = useState(() => shuffledCards(joinedDeck?.cards ?? GAME_DECKS[0].cards));
   const [cardIndex, setCardIndex] = useState(0);
@@ -251,7 +256,7 @@ function HeadsUpExperience({ fullscreen, remoteSession }: { fullscreen: Fullscre
     const orientationLock = fullscreen.lockOrientation(orientation);
     const motionAccess = requestAccess();
     await Promise.all([orientationLock, motionAccess]);
-    setCards(shuffledCards(deck.cards));
+    setCards(selectRoundCards(deck.id, deck.cards));
     setCardIndex(0);
     setResults([]);
     setFeedback(null);
@@ -312,8 +317,10 @@ function HeadsUpExperience({ fullscreen, remoteSession }: { fullscreen: Fullscre
     void haptics.trigger("heavy");
     clearOrientationLock();
     processing.current = false;
+    // Only the cards actually reached count as seen, so a short round does not burn the deck.
+    rememberCards(selectedDeck.id, cards.slice(0, cardIndex + 1), selectedDeck.cards.length);
     setPhase("results");
-  }, [clearDecisionTimeout, clearOrientationLock, haptics, phase, seconds, soundEnabled]);
+  }, [cardIndex, cards, clearDecisionTimeout, clearOrientationLock, haptics, phase, seconds, selectedDeck, soundEnabled]);
 
   useEffect(() => {
     if (phase !== "playing") {
@@ -472,6 +479,7 @@ function HeadsUpExperience({ fullscreen, remoteSession }: { fullscreen: Fullscre
           onCreate={remote.createRoom}
           onCreatePlayerRoom={remote.createJudgeRoom}
           onClose={remote.closeRoom}
+          onDisconnectJudge={remote.disconnectJudge}
           onMessage={remote.setMessage}
           onToggleExclusive={() => setRemoteExclusive((value) => !value)}
         />

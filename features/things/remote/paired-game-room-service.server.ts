@@ -10,6 +10,7 @@ export class PairedGameRoomService extends Context.Service<
     readonly authorizeSocket: typeof authorizeSocket;
     readonly closeRoom: typeof closeRoom;
     readonly createRoom: typeof createRoom;
+    readonly disconnectJudge: typeof disconnectJudge;
     readonly readJudge: typeof readJudge;
     readonly readPlayerSetup: typeof readPlayerSetup;
     readonly sendJudgeCommand: typeof sendJudgeCommand;
@@ -20,6 +21,7 @@ export class PairedGameRoomService extends Context.Service<
     authorizeSocket,
     closeRoom,
     createRoom,
+    disconnectJudge,
     readJudge,
     readPlayerSetup,
     sendJudgeCommand,
@@ -37,6 +39,13 @@ function authorizeSocket(input: Parameters<typeof engine.authorizePairedGameSock
 function createRoom(input: Parameters<typeof engine.createPairedGameRoom>[0]) {
   return multiplayerOperation({ game: "remote", operation: "create_room", timeoutMs: false }, () =>
     engine.createPairedGameRoom(input),
+  );
+}
+
+function disconnectJudge(input: Parameters<typeof engine.disconnectPairedGameJudge>[0]) {
+  return multiplayerOperation(
+    { game: "remote", operation: "disconnect_judge", timeoutMs: 4_000 },
+    () => engine.disconnectPairedGameJudge(input),
   );
 }
 

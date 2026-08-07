@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
-import { closePairedGameRoomFn, createPairedGameRoomFn, syncPairedGamePlayerFn } from "./paired-game-room.functions";
+import { closePairedGameRoomFn, createPairedGameRoomFn, disconnectPairedGameJudgeFn, syncPairedGamePlayerFn } from "./paired-game-room.functions";
 import type {
   RemoteCommand,
   RemoteCommandReceipt,
@@ -170,6 +170,30 @@ export function usePairedGameRoom(
     }
   }, [game, navigate, setup, syncing]);
 
+  // Rotating the judge token on the server is what actually evicts the current judge; keeping the
+  // new one here means the host can hand out a fresh invite straight away.
+  const disconnectJudge = useCallback(async () => {
+    const current = room;
+    if (!current || syncing) return;
+    setSyncing(true);
+    try {
+      const result = await disconnectPairedGameJudgeFn({
+        data: { roomId: current.roomId, playerToken: current.playerToken },
+      });
+      if (!result.ok) {
+        setMessage("Could not disconnect the judge. Try once more.");
+        return;
+      }
+      setRoom({ ...current, judgeToken: result.judgeToken });
+      setJudgeConnected(false);
+      setMessage("Judge disconnected. Share the new invite when you want another.");
+    } catch {
+      setMessage("Could not disconnect the judge. Check your connection.");
+    } finally {
+      setSyncing(false);
+    }
+  }, [room, syncing]);
+
   const closeRoom = useCallback(async () => {
     const current = room;
     if (syncing) return;
@@ -292,6 +316,7 @@ export function usePairedGameRoom(
     createRoom,
     createJudgeRoom,
     closeRoom,
+    disconnectJudge,
     syncNow,
     setMessage,
   };

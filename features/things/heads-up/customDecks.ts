@@ -59,6 +59,7 @@ export function customDeckAsGameDeck(deck: CustomDeck): GameDeck {
     name: deck.name,
     description: "Your deck · saved on this device.",
     symbol: "✎",
+    category: "mine",
     cards: deck.cards,
   };
 }

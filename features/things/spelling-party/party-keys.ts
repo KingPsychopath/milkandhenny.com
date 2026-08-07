@@ -20,4 +20,6 @@ export const partyBrowserKeys = {
   pendingActions: (roomId: string, playerId: string) => gameBrowserKey("spelling-party", 2, "room", roomId, "player", playerId, "pending-actions"),
   draft: (roomId: string, roundId: string) => gameBrowserKey("spelling-party", 2, "room", roomId, "round", roundId, "draft"),
   draftPrefix: (roomId: string) => gameBrowserKey("spelling-party", 2, "room", roomId, "round", ""),
+  /** Device-wide, not per room: whichever phone you mute stays muted for the next party too. */
+  muted: () => gameBrowserKey("spelling-party", 2, "sound-muted"),
 } as const;

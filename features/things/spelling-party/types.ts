@@ -39,7 +39,10 @@ export interface PartyPlayerSummary {
   id: string;
   name: string;
   status: "ready" | "typing" | "locked" | "disconnected";
+  /** This game only. Reset by a rematch. */
   score: number;
+  /** Every game played on this room code, including the one in progress. */
+  sessionScore: number;
   connected: boolean;
   ready: boolean;
   integrityNotices: number;
@@ -101,6 +104,10 @@ export interface PartySnapshot
   phase: PartyPhase;
   serverNow: number;
   answerSeconds: number;
+  /** 1 for the first game on this room code, incremented by every rematch. */
+  gameNumber: number;
+  /** Current room expiry, so a client can keep its stored credentials in step after a rematch. */
+  expiresAt: number;
   players: PartyPlayerSummary[];
   round: PartyRoundSnapshot | null;
   recentClues: PartyClueEvent[];
@@ -150,7 +157,7 @@ export type PartySnapshotResult =
 export type PartyPresenterAction = MultiplayerAction &
   (
     | { type: "round.start"; removePlayerIds?: string[] }
-    | { type: "round.next" | "round.pause" | "round.resume" }
+    | { type: "round.next" | "round.pause" | "round.resume" | "game.replay" | "game.lobby" }
   );
 
 export type PartyPlayerAction = MultiplayerAction &

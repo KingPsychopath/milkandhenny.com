@@ -85,7 +85,9 @@ export function JoinDrawCountryRoom({
                 setName(event.target.value);
                 setMessage(null);
               }}
-              className="min-h-12 w-full rounded-full border border-black/15 bg-white/55 px-5 text-black"
+              /* text-base keeps iOS Safari from zooming the page on focus — this
+                 input autofocuses, so a smaller size zooms the invite link on arrival. */
+              className="min-h-12 w-full rounded-full border border-black/15 bg-white/55 px-5 text-base text-black"
             />
           </label>
           <button

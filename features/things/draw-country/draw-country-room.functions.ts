@@ -65,6 +65,8 @@ export const applyDrawCountryActionFn = createServerFn({ method: "POST" })
       | { type: "game.start"; removePlayerIds?: string[] }
       | { type: "readiness.set"; ready: boolean }
       | { type: "round.next" }
+      | { type: "game.replay" }
+      | { type: "game.lobby" }
       | { type: "drawing.submit"; roundId: string; drawing: CountryDrawing };
     if (rawAction.type === "game.start")
       action = {
@@ -75,7 +77,12 @@ export const applyDrawCountryActionFn = createServerFn({ method: "POST" })
       };
     else if (rawAction.type === "readiness.set" && typeof rawAction.ready === "boolean")
       action = { type: rawAction.type, ready: rawAction.ready };
-    else if (rawAction.type === "round.next") action = { type: rawAction.type };
+    else if (
+      rawAction.type === "round.next" ||
+      rawAction.type === "game.replay" ||
+      rawAction.type === "game.lobby"
+    )
+      action = { type: rawAction.type };
     else if (rawAction.type === "drawing.submit")
       action = {
         type: rawAction.type,

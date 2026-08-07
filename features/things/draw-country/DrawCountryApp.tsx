@@ -147,7 +147,8 @@ export function DrawCountryApp() {
                     setName(event.target.value);
                     setMessage(null);
                   }}
-                  className="min-h-12 w-full rounded-full border border-black/15 bg-white/55 px-4 text-black"
+                  /* text-base keeps iOS Safari from zooming the page on focus. */
+                  className="min-h-12 w-full rounded-full border border-black/15 bg-white/55 px-4 text-base text-black"
                 />
               </label>
               <label className="font-mono text-xs text-black/55">

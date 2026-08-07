@@ -77,6 +77,8 @@ interface PlayerState {
   name: string;
   tokenHash: string;
   score: number;
+  /** Carried across rematches; `score` restarts at zero each game. */
+  sessionScore?: number;
   draft: string;
   draftRevision: number;
   locked: boolean;
@@ -132,6 +134,10 @@ interface PartyRoomState {
   recentClues: PartyClueEvent[];
   processedActions: string[];
   joinReceiptIds: string[];
+  /** 1 for the first game; a rematch on the same room code increments it. */
+  gameNumber?: number;
+  /** Where this game starts in `wordIds`, so a rematch deals words nobody has had yet. */
+  wordCursor?: number;
 }
 
 const memoryRooms = new Map<string, PartyRoomState>();
@@ -342,6 +348,8 @@ function snapshot(
     sequence: room.sequence,
     serverNow: now,
     answerSeconds: room.answerSeconds,
+    gameNumber: room.gameNumber ?? 1,
+    expiresAt: room.expiresAt,
     players: room.players.map((player) => {
       const connected = now - player.lastSeenAt <= CONNECTED_WINDOW_MS;
       return {
@@ -355,6 +363,8 @@ function snapshot(
               : "ready"
           : "disconnected",
         score: player.score,
+        // Games already banked plus whatever this one has earned so far.
+        sessionScore: (player.sessionScore ?? 0) + player.score,
         connected,
         ready: multiplayerPlayerReady(player),
         integrityNotices: player.integrityRoundIds.length,
@@ -425,7 +435,7 @@ function startRound(room: PartyRoomState, now = Date.now()) {
     changed(room);
     return;
   }
-  const wordId = room.wordIds[number - 1];
+  const wordId = room.wordIds[(room.wordCursor ?? 0) + number - 1];
   const word = room.words?.find(({ id }) => id === wordId);
   if (!word) throw new Error("Word unavailable");
   const countdownStartsAt = now + 700;
@@ -460,6 +470,38 @@ function startRound(room: PartyRoomState, now = Date.now()) {
   };
   room.phase = "countdown";
   changed(room);
+}
+
+/**
+ * Banks the finished game onto every player's session total and moves the word cursor on, keeping
+ * the roster, the room code and the presenter token. The deck reshuffles and starts over once it
+ * runs out, so a long night on one room code never dead-ends.
+ */
+function resetPartyForRematch(room: PartyRoomState, now = Date.now()) {
+  const cursor = (room.wordCursor ?? 0) + room.roundTotal;
+  if (cursor + room.roundTotal > room.wordIds.length) {
+    for (let index = room.wordIds.length - 1; index > 0; index -= 1) {
+      const swap = randomInt(index + 1);
+      [room.wordIds[index], room.wordIds[swap]] = [room.wordIds[swap], room.wordIds[index]];
+    }
+    room.wordCursor = 0;
+  } else room.wordCursor = cursor;
+  for (const player of room.players) {
+    player.sessionScore = (player.sessionScore ?? 0) + player.score;
+    player.score = 0;
+    player.draft = "";
+    player.draftRevision = 0;
+    player.locked = false;
+    player.automatic = false;
+    player.lockedAt = null;
+    player.integrityRoundIds = [];
+  }
+  room.gameNumber = (room.gameNumber ?? 1) + 1;
+  room.round = null;
+  room.recentClues = [];
+  room.sentenceCluesRemaining = 3;
+  // Finishing a game clamps the room to a short grace window; a rematch needs its runway back.
+  room.expiresAt = Math.max(room.expiresAt, multiplayerRoomExpiresAt(now));
 }
 
 export async function createPartyRoom(input: {
@@ -712,6 +754,18 @@ export async function applyPresenterAction(input: {
       startRound(room);
     } else if (input.action.type === "round.next" && room.phase === "reveal") startRound(room);
     else if (
+      (input.action.type === "game.replay" || input.action.type === "game.lobby") &&
+      room.phase === "finished"
+    ) {
+      resetPartyForRematch(room);
+      if (input.action.type === "game.replay") startRound(room);
+      else {
+        // Back to the lobby so people can join or drop; everyone re-readies from there.
+        for (const player of room.players) setMultiplayerPlayerReady(player, false);
+        room.phase = "lobby";
+        changed(room);
+      }
+    } else if (
       input.action.type === "round.pause" &&
       room.phase === "reveal" &&
       room.round &&

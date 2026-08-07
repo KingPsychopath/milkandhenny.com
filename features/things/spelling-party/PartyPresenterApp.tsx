@@ -15,6 +15,7 @@ import {
   writeExpiringLocalValue,
 } from "../shared/game-storage.client";
 import { useUpdateReloadSafety } from "@/features/offline/update-safety.client";
+import { useWakeLock } from "@/hooks/useWakeLock";
 import { playPartySpeech, unlockPartyAudio } from "./party-audio.client";
 import { EndGameDialog } from "../shared/EndGameDialog";
 import { GameActionDialog } from "../shared/GameActionDialog";
@@ -91,6 +92,8 @@ export function PartyPresenterApp({ roomId }: { roomId: string }) {
     "spelling-party-presenter",
     snapshot?.phase === "lobby" || snapshot?.phase === "finished",
   );
+  // The shared screen is never touched once a round is under way.
+  useWakeLock(Boolean(snapshot) && snapshot?.phase !== "finished");
   const setMessage = live.setMessage;
   const invite = tokens.joinToken
     ? buildPartyPlayerInviteUrl(location.origin, roomId, tokens.joinToken)
@@ -389,20 +392,37 @@ export function PartyPresenterApp({ roomId }: { roomId: string }) {
         ) : snapshot.phase === "finished" ? (
           <section className="flex flex-1 flex-col justify-center py-10 text-center">
             <p className="font-mono text-micro uppercase tracking-[0.2em] text-white/45">
-              final scores
+              {snapshot.gameNumber > 1 ? `game ${snapshot.gameNumber} scores` : "final scores"}
             </p>
             <h1 className="mt-3 font-serif text-6xl font-semibold">
               {leaderboard[0]?.name ?? "Well played"}
             </h1>
             <Leaderboard players={leaderboard} />
-            <button
-              type="button"
-              onClick={() => void handleEnd()}
-              disabled={closing}
-              className="mx-auto mt-8 min-h-12 rounded-full border border-white/20 px-6 font-mono text-sm disabled:opacity-40"
-            >
-              {closing ? "closing room…" : "new room"}
-            </button>
+            <div className="mx-auto mt-8 flex flex-wrap items-center justify-center gap-3">
+              <button
+                type="button"
+                onClick={() => void send("game.replay")}
+                disabled={!players.length}
+                className="min-h-12 rounded-full bg-[var(--things-amber)] px-7 font-mono text-sm font-bold text-black disabled:opacity-30"
+              >
+                play again · same people
+              </button>
+              <button
+                type="button"
+                onClick={() => void send("game.lobby")}
+                className="min-h-12 rounded-full border border-white/20 px-6 font-mono text-sm"
+              >
+                back to the lobby
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleEnd()}
+                disabled={closing}
+                className="min-h-12 px-4 font-mono text-xs text-white/45 disabled:opacity-40"
+              >
+                {closing ? "closing room…" : "new room"}
+              </button>
+            </div>
           </section>
         ) : (
           <>
