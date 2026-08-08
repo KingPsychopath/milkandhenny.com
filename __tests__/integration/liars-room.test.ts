@@ -18,6 +18,7 @@ import { LIARS_SCENARIOS } from "../../features/things/liars/liars-scenarios";
 import { startLiarsScenario } from "../../features/things/liars/liars-room-engine.server";
 import type {
   LiarsMode,
+  LiarsPhase,
   LiarsRole,
   LiarsSnapshot,
 } from "../../features/things/liars/types";
@@ -862,5 +863,94 @@ describe("liars scenarios", () => {
       deal: { 0: "mafia", 1: "doctor" },
     });
     expect(started.error).toContain("different number of roles");
+  });
+});
+
+describe("liars phase machine", () => {
+  /**
+   * The phase machine is a switch rather than a declared state machine, and transitions are not all
+   * in one place — `advance` owns most, but an all-locked night, a ready-to-vote majority, an
+   * all-locked vote and a final clue can each move it too. This pins the legal edges so a new
+   * shortcut cannot quietly invent one.
+   */
+  const LEGAL: Record<LiarsPhase, LiarsPhase[]> = {
+    lobby: ["deal"],
+    deal: ["night", "clue"],
+    night: ["dawn", "ending"],
+    dawn: ["deliberation"],
+    clue: ["clue", "deliberation"],
+    deliberation: ["vote"],
+    vote: ["verdict"],
+    verdict: ["night", "clue", "finalGuess", "ending"],
+    finalGuess: ["ending"],
+    ending: [],
+  };
+
+  it("never leaves a phase by an edge that is not on the map", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-09T15:00:00Z"));
+    const created = await room("mafia", NAMES.slice(0, 5));
+    await host(created.roomId, created.hostToken, { type: "game.start" });
+
+    // Sampled on every read and every action result, not once per loop: deliberation, vote and
+    // verdict can all pass between two coarse observations, which would read as a phantom jump.
+    let previous = (await view(created.roomId, created.seats[0])).phase;
+    const seen = new Set<LiarsPhase>([previous]);
+    const observe = (phase: LiarsPhase) => {
+      if (phase === previous) return;
+      expect(LEGAL[previous], `illegal transition ${previous} → ${phase}`).toContain(phase);
+      previous = phase;
+      seen.add(phase);
+    };
+    const look = async (seat: Seat) => {
+      const snapshot = await view(created.roomId, seat);
+      observe(snapshot.phase);
+      return snapshot;
+    };
+    const step = async (seat: Seat, action: Record<string, unknown>) => {
+      const result = await act(created.roomId, seat, action);
+      if (result.snapshot) observe(result.snapshot.phase);
+      return result;
+    };
+
+    // Play three whole rounds on the clock, taking every action a table would.
+    for (let pass = 0; pass < 60; pass += 1) {
+      if ((await look(created.seats[0])).phase === "ending") break;
+
+      for (const seat of created.seats) {
+        const own = await look(seat);
+        if (!own.player?.alive) continue;
+        if (own.phase === "night" && !own.player.nightLocked) {
+          const target = own.player.targetableIds[0];
+          if (target)
+            await step(seat, { type: "night.select", round: own.round, targetId: target });
+          await step(seat, { type: "night.lock", round: own.round });
+        }
+        if (own.phase === "deliberation" && !own.player.readyToVote)
+          await step(seat, { type: "day.readyToVote", round: own.round, ready: true });
+        if (own.phase === "vote" && !own.player.voteLocked) {
+          const victim = own.players.find(({ alive, id }) => alive && id !== seat.playerId);
+          await step(seat, {
+            type: "vote.cast",
+            round: own.round,
+            targetId: victim?.id ?? null,
+          });
+          await step(seat, { type: "vote.lock", round: own.round });
+        }
+      }
+
+      const after = await look(created.seats[0]);
+      let cursor = Date.now();
+      while (cursor < after.phaseEndsAt + 1) {
+        cursor = Math.min(after.phaseEndsAt + 1, cursor + 5_000);
+        vi.setSystemTime(cursor);
+        for (const seat of created.seats) await look(seat);
+      }
+    }
+
+    // And it actually went somewhere, rather than passing by never moving.
+    expect(seen.size).toBeGreaterThanOrEqual(5);
+    expect(seen.has("dawn")).toBe(true);
+    expect(seen.has("verdict")).toBe(true);
   });
 });
