@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeAll, beforeEach, afterAll } from "vitest";
+import { it, expect, vi, beforeAll, beforeEach, afterAll } from "vitest";
 
 /**
  * Event guest drops, against real Postgres (the transfer itself uses the
