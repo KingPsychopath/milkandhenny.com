@@ -140,7 +140,9 @@ export function playLiarsSound(sound: LiarsSound, enabled: boolean) {
   }
 }
 
-export function liarsHaptic(kind: "death" | "revive" | "report" | "select" | "lock" | "toll") {
+export function liarsHaptic(
+  kind: "death" | "revive" | "report" | "select" | "lock" | "toll" | "turn",
+) {
   if (typeof navigator === "undefined" || !navigator.vibrate) return;
   switch (kind) {
     case "death":
@@ -151,6 +153,10 @@ export function liarsHaptic(kind: "death" | "revive" | "report" | "select" | "lo
       break;
     case "report":
       navigator.vibrate([15, 40, 15]);
+      break;
+    case "turn":
+      // Long enough to feel through a pocket or a table.
+      navigator.vibrate([220, 90, 220, 90, 320]);
       break;
     case "toll":
       hapticFeedback("reveal");

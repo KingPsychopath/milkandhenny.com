@@ -163,8 +163,15 @@ function playerAction(value: unknown): LiarsPlayerAction {
   const round = sequence(data.round);
   if (data.type === "night.select")
     return { actionId: id, type: data.type, round, targetId: optionalId(data.targetId) };
-  if (data.type === "night.lock" || data.type === "vote.lock" || data.type === "clue.said")
+  if (
+    data.type === "night.lock" ||
+    data.type === "vote.lock" ||
+    data.type === "clue.said" ||
+    data.type === "clue.allSaid"
+  )
     return { actionId: id, type: data.type, round };
+  if (data.type === "clue.skip")
+    return { actionId: id, type: data.type, round, playerId: text(data.playerId, 120) };
   if (data.type === "day.point")
     return { actionId: id, type: data.type, round, targetId: optionalId(data.targetId) };
   if (data.type === "day.readyToVote" && typeof data.ready === "boolean")

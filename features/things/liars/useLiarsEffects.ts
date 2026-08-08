@@ -84,6 +84,19 @@ export function useLiarsEffects(input: {
     }
   }, [showOverlay, snapshot]);
 
+  // Your turn, on a call, where nobody can catch your eye to tell you. Long and unmistakable —
+  // the only friction anybody reported was people not noticing the turn had reached them.
+  useEffect(() => {
+    const clue = snapshot?.clue;
+    if (!clue || snapshot?.phase !== "clue") return;
+    if (clue.handoff !== "each-turn") return;
+    if (clue.currentPlayerId !== snapshot.player?.playerId) return;
+    once(`turn:${clue.round}:${clue.doneIds.length}`, () => {
+      playLiarsSound("report", audibleRef.current);
+      liarsHaptic("turn");
+    });
+  }, [snapshot]);
+
   // The night report card. Its own key, so it lands the same on every device.
   useEffect(() => {
     const report = snapshot?.player?.report;

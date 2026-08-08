@@ -159,6 +159,10 @@ interface LiarsRoomState {
   recentNarrationIds: string[];
   winner: LiarsSide | null;
   lastEjectedName: string | null;
+  /** One runoff per day. A second tie really does mean nobody goes. */
+  revoteUsed: boolean;
+  /** Restricts the runoff to whoever actually tied. */
+  runoffIds: string[];
   narratorPlayerId: string | null;
 }
 
@@ -380,6 +384,10 @@ function clearRoundState(room: LiarsRoomState) {
     player.pointedAt = null;
     player.report = null;
     player.clueDone = false;
+  }
+  room.revoteUsed = false;
+  room.runoffIds = [];
+  {
   }
 }
 
@@ -787,6 +795,17 @@ function graveyardBallot(room: LiarsRoomState): string | null {
   return liarsPlurality(dead.map(({ graveyardVote }) => ({ targetId: graveyardVote })));
 }
 
+/** Everybody level at the top, which is what a tie actually is. */
+function tiedIds(votes: Array<{ targetId: string | null }>) {
+  const tally = new Map<string, number>();
+  for (const { targetId } of votes) {
+    if (!targetId) continue;
+    tally.set(targetId, (tally.get(targetId) ?? 0) + 1);
+  }
+  const best = Math.max(0, ...tally.values());
+  return best === 0 ? [] : [...tally].filter(([, count]) => count === best).map(([id]) => id);
+}
+
 function resolveVote(room: LiarsRoomState, now: number) {
   const ballots = living(room).map(({ vote }) => ({ targetId: vote }));
   const graveyard = graveyardBallot(room);
@@ -798,6 +817,27 @@ function resolveVote(room: LiarsRoomState, now: number) {
   room.ejectedJesterId = null;
 
   if (!ejected) {
+    const tied = tiedIds(ballots);
+    // A tie used to end the day, which is the least satisfying way for a vote to go. One runoff
+    // between whoever tied, then it stands.
+    if (!room.revoteUsed && tied.length > 1) {
+      room.revoteUsed = true;
+      room.runoffIds = tied;
+      for (const player of room.players) {
+        player.vote = null;
+        player.voteLocked = false;
+      }
+      note(
+        room,
+        "day",
+        `Level between ${tied
+          .map((id) => room.players.find(({ id: playerId }) => playerId === id)?.name)
+          .filter(Boolean)
+          .join(" and ")}. Again.`,
+      );
+      enterPhase(room, "vote", now);
+      return;
+    }
     note(room, "day", narrate(room, "tie", {}));
     enterPhase(room, "verdict", now);
     return;
@@ -1006,6 +1046,7 @@ function snapshot(room: LiarsRoomState, viewerId?: string, now = Date.now()): Li
             doneIds: room.clueOrder.slice(0, room.clueIndex),
             round: room.clueRound,
             advancesAt: room.phaseEndsAt,
+            handoff: room.roomMode === "remote" ? "each-turn" : "one-tap",
           }
         : null,
     // The living never receive the graveyard's deliberations, only its ballot at verdict.
@@ -1147,6 +1188,8 @@ export async function createLiarsRoom(input: {
     recentNarrationIds: [],
     winner: null,
     lastEjectedName: null,
+    revoteUsed: false,
+    runoffIds: [],
     narratorPlayerId: null,
   };
   if (!getRedis() && process.env.NODE_ENV === "production")
@@ -1578,11 +1621,22 @@ export async function applyLiarsPlayerAction(input: {
       return remembered();
     }
 
-    if (action.type === "clue.said") {
+    if (action.type === "clue.said" || action.type === "clue.skip") {
       if (room.phase !== "clue") return reject(view(), "phase_ended", "The clues have ended");
-      if (room.clueOrder[room.clueIndex] !== player.id)
+      // Anyone may move a stalled turn on. Somebody who has put their phone down should not be able
+      // to hold up nine other people, and there is nothing to cheat here — the order is public.
+      const isTheirs = room.clueOrder[room.clueIndex] === player.id;
+      if (action.type === "clue.said" && !isTheirs)
         return reject(view(), "not_your_turn", "It is not your turn");
-      player.clueDone = true;
+      player.clueDone = isTheirs || player.clueDone;
+      advanceClue(room, now);
+      return remembered();
+    }
+
+    if (action.type === "clue.allSaid") {
+      if (room.phase !== "clue") return reject(view(), "phase_ended", "The clues have ended");
+      // The whole circle at once, for a table where everybody can already hear each other.
+      room.clueIndex = room.clueOrder.length;
       advanceClue(room, now);
       return remembered();
     }

@@ -21,6 +21,7 @@ import {
   Headline,
   InvitePanel,
   KnowledgeList,
+  MarkLegend,
   LiarsOverlayLayer,
   NotesPad,
   LineupBoard,
@@ -676,35 +677,63 @@ function CluePhase({ snapshot, send }: PhaseProps) {
   const yours = clue.currentPlayerId === you.playerId;
   // Round a table you can hear whose turn it is. On a call you cannot, and two people talking over
   // each other costs the whole round — so the screen has to do the work the room was doing.
-  const remote = snapshot.roomMode === "remote";
+  const oneTap = clue.handoff === "one-tap";
   const nextUp = clue.order[clue.order.indexOf(clue.currentPlayerId ?? "") + 1];
   const nextName = snapshot.players.find(({ id }) => id === nextUp)?.name;
 
   return (
     <>
       <Eyebrow>clues · round {clue.round}</Eyebrow>
-      <Headline>{yours ? "Your turn" : `${current?.name ?? "…"}'s turn`}</Headline>
+      <Headline>
+        {oneTap ? "Go round the circle" : yours ? "Your turn" : `${current?.name ?? "…"}'s turn`}
+      </Headline>
       <p className="mt-4 font-serif text-lg text-white/65">
-        {yours
-          ? remote
+        {oneTap
+          ? "One word each, out loud, in this order. Nobody needs to touch a phone until the end."
+          : yours
             ? "Unmute, say one word, then tap."
-            : "Say one word out loud, then tap."
-          : remote
-            ? `Stay muted until ${current?.name ?? "they"} have finished.`
-            : "Listen. Your turn is coming."}
+            : `Stay muted until ${current?.name ?? "they"} have finished.`}
       </p>
 
-      {yours ? (
+      {oneTap ? (
+        /* Round a table nobody needs to confirm a turn you can hear. One tap when the circle has
+           been all the way round, from whoever is holding their phone. */
+        <div className="mt-8">
+          <ActionButton onClick={() => void send({ type: "clue.allSaid", round: snapshot.round })}>
+            everyone has said theirs →
+          </ActionButton>
+          <p className="mt-3 text-center font-mono text-xs text-white/35">
+            anyone can tap this once you have been round
+          </p>
+        </div>
+      ) : yours ? (
         <div className="mt-8">
           <ActionButton onClick={() => void send({ type: "clue.said", round: snapshot.round })}>
             said it →
           </ActionButton>
         </div>
-      ) : remote && nextName && nextUp === you.playerId ? (
-        <p className="mt-8 font-mono text-xs text-[var(--things-amber)]">
-          you are next — unmute now so there is no gap
-        </p>
-      ) : null}
+      ) : (
+        <div className="mt-8 space-y-3">
+          {nextName && nextUp === you.playerId ? (
+            <p className="font-mono text-xs text-[var(--things-amber)]">
+              you are next — unmute now so there is no gap
+            </p>
+          ) : null}
+          <button
+            type="button"
+            onClick={() =>
+              void send({
+                type: "clue.skip",
+                round: snapshot.round,
+                playerId: clue.currentPlayerId ?? "",
+              })
+            }
+            className="min-h-11 font-mono text-xs text-white/35 hover:text-white/70"
+          >
+            {current?.name} has gone quiet — move on
+          </button>
+        </div>
+      )}
 
       {/* Kept in view all the way through: forgetting your own word mid-round is the one thing
           that cannot be recovered by asking. */}
@@ -729,12 +758,26 @@ function CluePhase({ snapshot, send }: PhaseProps) {
             <li
               key={playerId}
               className={`flex min-h-12 items-center gap-3 border-b border-white/10 ${
-                done ? "opacity-40" : playerId === clue.currentPlayerId ? "" : "opacity-70"
+                oneTap
+                  ? playerId === you.playerId
+                    ? ""
+                    : "opacity-70"
+                  : done
+                    ? "opacity-40"
+                    : playerId === clue.currentPlayerId
+                      ? ""
+                      : "opacity-70"
               }`}
             >
               <span className="w-6 font-mono text-xs text-white/30">{index + 1}</span>
               <span className="font-serif text-lg">{player?.name}</span>
-              {playerId === clue.currentPlayerId ? (
+              {oneTap ? (
+                playerId === you.playerId ? (
+                  <span className="ml-auto font-mono text-micro uppercase tracking-[0.16em] text-[var(--things-amber)]">
+                    you
+                  </span>
+                ) : null
+              ) : playerId === clue.currentPlayerId ? (
                 <span className="ml-auto font-mono text-micro uppercase tracking-[0.16em] text-[var(--things-amber)]">
                   now
                 </span>
@@ -757,7 +800,7 @@ function DeliberationPhase({ snapshot, clockOffset, send, isHost, sendHost }: Ph
     <>
       <Eyebrow>day {snapshot.round}</Eyebrow>
       <Headline>Talk</Headline>
-      <PhaseTimer endsAt={snapshot.phaseEndsAt} clockOffset={clockOffset} label="vote opens in" />
+      <PhaseTimer endsAt={snapshot.phaseEndsAt} clockOffset={clockOffset} label="vote opens in" big />
       <p className="mt-4 font-serif text-lg text-white/65">
         Say who you think it is, and why. Point at someone to put them on the spot — everyone sees
         it, nobody is bound by it. The vote comes next.
@@ -776,6 +819,7 @@ function DeliberationPhase({ snapshot, clockOffset, send, isHost, sendHost }: Ph
             })
           }
         />
+        <MarkLegend marks={snapshot.players.flatMap(({ marks }) => marks)} />
       </div>
 
       {you?.alive ? (
@@ -829,8 +873,8 @@ function VotePhase({ snapshot, clockOffset, send }: PhaseProps) {
   return (
     <>
       <Eyebrow>day {snapshot.round}</Eyebrow>
-      <Headline>Vote</Headline>
-      <PhaseTimer endsAt={snapshot.phaseEndsAt} clockOffset={clockOffset} label="closes in" />
+      <Headline>{snapshot.history.at(-1)?.text.startsWith("Level") ? "Vote again" : "Vote"}</Headline>
+      <PhaseTimer endsAt={snapshot.phaseEndsAt} clockOffset={clockOffset} label="closes in" big />
       <p className="mt-4 font-serif text-lg text-white/65">
         Nobody sees this until everyone has committed.
       </p>

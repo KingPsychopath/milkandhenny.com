@@ -28,7 +28,7 @@ const MARK_GLYPH: Record<LiarsMark, { glyph: string; label: string }> = {
   moved: { glyph: "→", label: "seen moving" },
   saved: { glyph: "✚", label: "saved" },
   attacked: { glyph: "✕", label: "attacked" },
-  pointed: { glyph: "!", label: "pointed at" },
+  pointed: { glyph: "!", label: "somebody is pointing at them" },
 };
 
 export function LiarsOverlayLayer({ overlay }: { overlay: LiarsOverlay }) {
@@ -42,12 +42,15 @@ export function PhaseTimer({
   clockOffset,
   label,
   hidden,
+  big,
 }: {
   endsAt: number;
   clockOffset: number;
   label: string;
   /** The clue phase has a failsafe deadline that must never be shown as a countdown. */
   hidden?: boolean;
+  /** For the phases people pace themselves against, where a 10px timer is no use at all. */
+  big?: boolean;
 }) {
   const [now, setNow] = useState(() => Date.now() + clockOffset);
   useEffect(() => {
@@ -59,11 +62,27 @@ export function PhaseTimer({
   const seconds = Math.ceil(remaining / 1_000);
   if (hidden) return null;
 
+  const clock = `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
+  if (big)
+    return (
+      <p className="mt-2 flex items-baseline gap-3" aria-live="off">
+        <span className="font-mono text-micro uppercase tracking-[0.18em] text-white/45">
+          {label}
+        </span>
+        <span
+          className={`font-mono text-3xl font-bold tabular-nums ${
+            remaining <= 10_000 ? "text-[var(--things-amber)]" : "text-white/70"
+          }`}
+        >
+          {clock}
+        </span>
+      </p>
+    );
+
   return (
     <p className="font-mono text-micro uppercase tracking-[0.18em] text-white/45" aria-live="off">
       <span className="sr-only">{label}: </span>
-      {label} · {String(Math.floor(seconds / 60)).padStart(2, "0")}:
-      {String(seconds % 60).padStart(2, "0")}
+      {label} · {clock}
     </p>
   );
 }
@@ -596,5 +615,22 @@ export function InvitePanel({ roomId, inviteUrl }: { roomId: string; inviteUrl: 
         {shareMessage ?? ""}
       </p>
     </section>
+  );
+}
+
+
+/** What the glyphs beside a name mean. Shown where they appear, not in a manual nobody opens. */
+export function MarkLegend({ marks }: { marks: LiarsMark[] }) {
+  const shown = [...new Set(marks)];
+  if (shown.length === 0) return null;
+  return (
+    <p className="mt-3 font-mono text-micro text-white/30">
+      {shown.map((mark, index) => (
+        <span key={mark}>
+          {index > 0 ? " · " : ""}
+          <span className="text-white/50">{MARK_GLYPH[mark].glyph}</span> {MARK_GLYPH[mark].label}
+        </span>
+      ))}
+    </p>
   );
 }

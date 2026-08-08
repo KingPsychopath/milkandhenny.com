@@ -166,6 +166,13 @@ export interface LiarsClueSnapshot {
   round: number;
   /** Failsafe deadline. Never rendered as a countdown. */
   advancesAt: number;
+  /**
+   * Round a table everyone can see and hear whose turn it is, so tapping per turn is pure overhead
+   * — the thing people had to be reminded to do. There, one person taps once when the circle has
+   * been all the way round. On a call nobody can see anything, so the turn has to be handed over
+   * explicitly and the phone has to shout about it.
+   */
+  handoff: "each-turn" | "one-tap";
 }
 
 export interface LiarsGraveyardSnapshot {
@@ -320,6 +327,8 @@ export type LiarsPlayerAction = MultiplayerAction &
     | { type: "vote.cast"; round: number; targetId: string | null }
     | { type: "vote.lock"; round: number }
     | { type: "clue.said"; round: number }
+    | { type: "clue.skip"; round: number; playerId: string }
+    | { type: "clue.allSaid"; round: number }
     | { type: "words.last"; text: string }
     | { type: "graveyard.vote"; round: number; targetId: string | null }
     | { type: "guess.final"; text: string }

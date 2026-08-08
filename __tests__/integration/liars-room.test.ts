@@ -1092,3 +1092,105 @@ describe("liars readiness", () => {
     if (!forced.accepted && "error" in forced) expect(forced.error).toContain("5");
   });
 });
+
+describe("liars from the playtest", () => {
+  it("makes a tied town vote again, once, between whoever tied", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-09T16:00:00Z"));
+    const created = await room("mafia", NAMES.slice(0, 6));
+    await host(created.roomId, created.hostToken, { type: "game.start" });
+    let snapshot = await view(created.roomId, created.seats[0]);
+    for (let step = 0; step < 8 && snapshot.phase !== "vote"; step += 1) {
+      await runTo(created.roomId, created.seats, snapshot.phaseEndsAt + 1);
+      snapshot = await view(created.roomId, created.seats[0]);
+    }
+    expect(snapshot.phase).toBe("vote");
+
+    // Three each way, dead level.
+    const [a, b] = created.seats;
+    for (const [index, seat] of created.seats.entries())
+      await act(created.roomId, seat, {
+        type: "vote.cast",
+        round: snapshot.round,
+        targetId: index % 2 === 0 ? a.playerId : b.playerId,
+      });
+    for (const seat of created.seats)
+      await act(created.roomId, seat, { type: "vote.lock", round: snapshot.round });
+
+    const again = await view(created.roomId, created.seats[0]);
+    expect(again.phase, "a tie used to end the day").toBe("vote");
+    expect(again.history.at(-1)!.text).toContain("Again");
+    expect(again.player!.vote, "the runoff starts from a clean slate").toBeNull();
+
+    // A second tie stands.
+    for (const [index, seat] of created.seats.entries())
+      await act(created.roomId, seat, {
+        type: "vote.cast",
+        round: again.round,
+        targetId: index % 2 === 0 ? a.playerId : b.playerId,
+      });
+    for (const seat of created.seats)
+      await act(created.roomId, seat, { type: "vote.lock", round: again.round });
+    expect((await view(created.roomId, created.seats[0])).phase).toBe("verdict");
+  });
+
+  it("hands the clue round over differently depending on where everyone is", async () => {
+    const table = await createLiarsRoom({ mode: "imposter", roomMode: "same-room" });
+    const call = await createLiarsRoom({ mode: "imposter", roomMode: "remote" });
+
+    for (const [created, expected] of [
+      [table, "one-tap"],
+      [call, "each-turn"],
+    ] as const) {
+      const seats = [];
+      for (const name of NAMES.slice(0, 6)) {
+        const joined = await joinLiarsRoom({
+          roomId: created.roomId,
+          joinToken: created.joinToken,
+          name,
+          joinId: `${created.roomId}-${name}`,
+        });
+        if (joined.ok) seats.push({ playerId: joined.playerId, playerToken: joined.playerToken, name });
+      }
+      await applyLiarsHostAction({
+        roomId: created.roomId,
+        hostToken: created.hostToken,
+        action: { actionId: `start-${created.roomId}`, type: "game.start" },
+      });
+      const deal = await view(created.roomId, seats[0]);
+      await runTo(created.roomId, seats, deal.phaseEndsAt + 1);
+      const clue = await view(created.roomId, seats[0]);
+      expect(clue.clue?.handoff, expected).toBe(expected);
+    }
+  });
+
+  it("lets anybody move a stalled turn on, and anybody end the round at a table", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-09T17:00:00Z"));
+    const created = await room("imposter", NAMES.slice(0, 6));
+    await host(created.roomId, created.hostToken, { type: "game.start" });
+    const deal = await view(created.roomId, created.seats[0]);
+    await runTo(created.roomId, created.seats, deal.phaseEndsAt + 1);
+
+    const clue = await view(created.roomId, created.seats[0]);
+    const current = clue.clue!.currentPlayerId;
+    const bystander = created.seats.find(({ playerId }) => playerId !== current)!;
+
+    // Somebody has put their phone down; nine other people should not be stuck behind them.
+    const skipped = await act(created.roomId, bystander, {
+      type: "clue.skip",
+      round: clue.round,
+      playerId: current!,
+    });
+    expect(skipped.accepted).toBe(true);
+    expect(skipped.snapshot!.clue!.currentPlayerId).not.toBe(current);
+
+    // And one tap ends the whole circle where everyone can already hear each other.
+    const done = await act(created.roomId, bystander, {
+      type: "clue.allSaid",
+      round: clue.round,
+    });
+    expect(done.accepted).toBe(true);
+    expect(["deliberation", "clue"]).toContain(done.snapshot!.phase);
+  });
+});
