@@ -248,11 +248,20 @@ export function RoomReveal({
 export function FinalRanking({
   snapshot,
   playerId,
+  message,
+  pending,
+  onPlayAgain,
+  onBackToLobby,
 }: {
   snapshot: DrawCountrySnapshot;
   playerId: string;
+  message: string | null;
+  pending: boolean;
+  onPlayAgain: () => void;
+  onBackToLobby: () => void;
 }) {
   const ranking = snapshot.players.toSorted((a, b) => b.score - a.score);
+  const session = snapshot.gameNumber > 1;
   return (
     <div className="things-game things-game--cream text-black">
       <RoomHeader roomId={snapshot.roomId} connection="finished" />
@@ -261,7 +270,7 @@ export function FinalRanking({
         className="mx-auto flex w-full max-w-xl flex-1 flex-col justify-center px-5 pb-16"
       >
         <p className="font-mono text-micro uppercase tracking-[0.18em] text-black/40">
-          final borders
+          {session ? `game ${snapshot.gameNumber} · final borders` : "final borders"}
         </p>
         <h1 className="mt-3 font-serif text-5xl font-semibold">The atlas is settled.</h1>
         <ol className="mt-8 divide-y divide-black/10 border-y border-black/15">
@@ -274,15 +283,49 @@ export function FinalRanking({
                 {player.name}
                 {player.id === playerId ? " · you" : ""}
               </span>
-              <span className="font-mono text-lg font-semibold">{player.score}</span>
+              <span className="text-right">
+                <span className="block font-mono text-lg font-semibold">{player.score}</span>
+                {session ? (
+                  <span className="block font-mono text-micro text-black/40">
+                    {player.sessionScore} total
+                  </span>
+                ) : null}
+              </span>
             </li>
           ))}
         </ol>
+        {snapshot.canControl ? (
+          <>
+            <button
+              type="button"
+              onClick={onPlayAgain}
+              disabled={pending}
+              className="mt-8 inline-flex min-h-12 items-center justify-center rounded-full bg-black px-6 font-mono text-xs font-semibold uppercase tracking-[0.14em] text-white disabled:opacity-40"
+            >
+              {pending ? "dealing new countries…" : "play again · same people"}
+            </button>
+            <button
+              type="button"
+              onClick={onBackToLobby}
+              disabled={pending}
+              className="mt-3 inline-flex min-h-11 items-center justify-center rounded-full border border-black/20 px-6 font-mono text-xs disabled:opacity-40"
+            >
+              back to the lobby to add people
+            </button>
+          </>
+        ) : (
+          <p aria-live="polite" className="mt-8 text-center font-mono text-xs text-black/45">
+            waiting for the host to start another game
+          </p>
+        )}
+        <p aria-live="polite" className="mt-3 min-h-5 text-center font-mono text-xs text-amber-800">
+          {message}
+        </p>
         <Link
           to="/things/draw-country"
-          className="mt-8 inline-flex min-h-12 items-center justify-center rounded-full bg-black px-6 font-mono text-xs font-semibold uppercase tracking-[0.14em] text-white"
+          className="mt-6 inline-flex min-h-11 items-center justify-center font-mono text-xs text-black/45"
         >
-          play again
+          leave the room
         </Link>
       </main>
     </div>

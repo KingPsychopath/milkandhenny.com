@@ -15,6 +15,7 @@ import type {
   PartyPresenterAction,
 } from "./types";
 import { usePartyLiveSnapshot } from "./usePartyLiveSnapshot";
+import { usePartySound } from "./usePartySound";
 import { useSynchronizedPartyStage } from "./useSynchronizedPartyStage";
 import { PartyClosenessBoard } from "./PartyClosenessBoard";
 import { PartyRoundCooldown } from "./PartyRoundCooldown";
@@ -29,6 +30,7 @@ import {
   writeExpiringLocalValue,
 } from "../shared/game-storage.client";
 import { useUpdateReloadSafety } from "@/features/offline/update-safety.client";
+import { useWakeLock } from "@/hooks/useWakeLock";
 import { playPartySpeech, unlockPartyAudio } from "./party-audio.client";
 import { shareOrCopy } from "@/lib/client/share";
 import { useQrCode } from "@/hooks/useQrCode";
@@ -157,6 +159,7 @@ function PartyPlayerGame({ credentials }: { credentials: PartyPlayerCredentials 
     "spelling-party-player",
     live.snapshot?.phase === "lobby" || live.snapshot?.phase === "finished",
   );
+  useWakeLock(live.snapshot?.phase === "countdown" || live.snapshot?.phase === "answer");
   const stage = useSynchronizedPartyStage(live.snapshot, live.clockOffset);
   const [draft, setDraft] = useState(credentials.snapshot.player?.draft ?? "");
   const draftRevision = useRef(credentials.snapshot.player?.draftRevision ?? 0);
@@ -172,6 +175,7 @@ function PartyPlayerGame({ credentials }: { credentials: PartyPlayerCredentials 
   const [requestingSentenceClue, setRequestingSentenceClue] = useState(false);
   const [leaving, setLeaving] = useState(false);
   const haptics = useWebHaptics();
+  const { muted, toggle: toggleSound } = usePartySound();
   const previousStartRequest = useRef<string | null>(null);
   const queueKey = partyBrowserKeys.pendingActions(credentials.roomId, credentials.playerId);
 
@@ -268,8 +272,11 @@ function PartyPlayerGame({ credentials }: { credentials: PartyPlayerCredentials 
     void haptics.trigger("heavy");
   }, [haptics, player?.startRequestId, setLiveMessage]);
 
+  // Recorded audio is safe to play anywhere. `spokenWord` is the answer in plain text and only the
+  // host is ever sent it, so custom decks still speak on the host's device alone.
+  const canHearWord = Boolean(round?.wordAudioUrl) || isHost;
   useEffect(() => {
-    if (!isHost || !round || snapshot?.phase !== "countdown") return;
+    if (muted || !canHearWord || !round || snapshot?.phase !== "countdown") return;
     const audio = round.wordAudioUrl ? new Audio(round.wordAudioUrl) : null;
     if (audio) {
       audio.preload = "auto";
@@ -286,17 +293,18 @@ function PartyPlayerGame({ credentials }: { credentials: PartyPlayerCredentials 
       );
     }, delay);
     return () => window.clearTimeout(timer);
-  }, [isHost, live.clockOffset, round, setLiveMessage, snapshot?.phase]);
+  }, [canHearWord, live.clockOffset, muted, round, setLiveMessage, snapshot?.phase]);
 
   useEffect(() => {
-    if (!isHost) return;
+    if (muted) return;
     const clue = round?.activeClue;
-    if (!clue || playedAudio.current.has(`clue:${clue.id}`)) return;
+    if (!clue || (!clue.audioUrl && !isHost)) return;
+    if (playedAudio.current.has(`clue:${clue.id}`)) return;
     playedAudio.current.add(`clue:${clue.id}`);
     void playPartySpeech(clue.audioUrl, clue.speechText, round?.speechLocale).then((played) => {
       if (!played) setLiveMessage("Tap the clue notice to play it.");
     });
-  }, [isHost, round?.activeClue, round?.speechLocale, setLiveMessage]);
+  }, [isHost, muted, round?.activeClue, round?.speechLocale, setLiveMessage]);
   useEffect(() => {
     if (!round || !player) return;
     const key = partyBrowserKeys.draft(credentials.roomId, round.roundId);
@@ -484,12 +492,19 @@ function PartyPlayerGame({ credentials }: { credentials: PartyPlayerCredentials 
     if (snapshot?.phase !== "finished") return;
     localStorage.removeItem(queueKey);
     removeStoragePrefix(localStorage, partyBrowserKeys.draftPrefix(credentials.roomId));
+  }, [credentials.roomId, queueKey, snapshot?.phase]);
+
+  // The room clamps its own expiry when a game finishes and restores it on a rematch. Tracking that
+  // keeps the stored credentials alive exactly as long as the room, through any number of games.
+  const roomExpiry = snapshot?.expiresAt;
+  useEffect(() => {
+    if (!roomExpiry) return;
     writeExpiringLocalValue(
       playerKey(credentials.roomId),
-      credentials,
-      Math.min(credentials.expiresAt, Date.now() + 15 * 60_000),
+      { ...credentials, expiresAt: roomExpiry },
+      roomExpiry,
     );
-  }, [credentials, queueKey, snapshot?.phase]);
+  }, [credentials, roomExpiry]);
 
   useEffect(() => {
     if (!live.ended) return;
@@ -499,6 +514,9 @@ function PartyPlayerGame({ credentials }: { credentials: PartyPlayerCredentials 
   }, [credentials.playerId, credentials.roomId, live.ended, queueKey]);
 
   const setReady = async (ready: boolean) => {
+    // Readying up is the one tap every player makes before a round, which makes it the place to
+    // buy this device permission to speak later — Safari only allows audio after a real gesture.
+    if (ready) unlockPartyAudio();
     const accepted = await send({
       actionId: crypto.randomUUID(),
       type: "readiness.set",
@@ -551,7 +569,9 @@ function PartyPlayerGame({ credentials }: { credentials: PartyPlayerCredentials 
     }
   };
 
-  const replayHostAudio = () => {
+  // Safari blocks autoplay until a device has had a real tap, so every player needs this escape
+  // hatch — not just the host. It replays locally and never touches the room's clue budget.
+  const replayWordAudio = () => {
     if (round)
       void playPartySpeech(round.wordAudioUrl, round.spokenWord, round.speechLocale).then(
         (played) => {
@@ -608,7 +628,18 @@ function PartyPlayerGame({ credentials }: { credentials: PartyPlayerCredentials 
         <button type="button" onClick={() => setEndConfirmationOpen(true)} className="min-h-11">
           {isHost ? "end party" : "leave game"}
         </button>
-        <span aria-live="polite">{connectionLabel}</span>
+        <span className="flex items-center gap-4">
+          <button
+            type="button"
+            onClick={toggleSound}
+            aria-pressed={!muted}
+            className="min-h-11"
+            title="Sound on this device only"
+          >
+            {muted ? "♪ off" : "♪ on"}
+          </button>
+          <span aria-live="polite">{connectionLabel}</span>
+        </span>
       </header>
       <main
         id="main"
@@ -646,17 +677,39 @@ function PartyPlayerGame({ credentials }: { credentials: PartyPlayerCredentials 
           )
         ) : snapshot.phase === "finished" ? (
           <section className="flex flex-1 flex-col justify-center">
-            <h1 className="font-serif text-5xl font-semibold">Final scores.</h1>
-            <ScoreList players={leaderboard} />
+            <h1 className="font-serif text-5xl font-semibold">
+              {snapshot.gameNumber > 1 ? `Game ${snapshot.gameNumber} scores.` : "Final scores."}
+            </h1>
+            <ScoreList players={leaderboard} showSession={snapshot.gameNumber > 1} />
             {isHost ? (
-              <button
-                type="button"
-                onClick={() => void handleLeave()}
-                className="mt-8 min-h-14 w-full rounded-full border border-white/20 px-6 font-mono text-sm font-semibold"
-              >
-                start a new game
-              </button>
-            ) : null}
+              <>
+                <button
+                  type="button"
+                  onClick={() => void sendHostAction("game.replay")}
+                  className="mt-8 min-h-14 w-full rounded-full bg-[var(--things-amber)] px-6 font-mono text-sm font-bold text-black"
+                >
+                  play again · same people
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void sendHostAction("game.lobby")}
+                  className="mt-3 min-h-12 w-full rounded-full border border-white/20 px-6 font-mono text-xs"
+                >
+                  back to the lobby to add people
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void handleLeave()}
+                  className="mt-3 min-h-11 w-full font-mono text-xs text-white/45"
+                >
+                  end the party
+                </button>
+              </>
+            ) : (
+              <p aria-live="polite" className="mt-8 text-center font-mono text-xs text-white/45">
+                waiting for the host to start another game
+              </p>
+            )}
           </section>
         ) : (
           <>
@@ -754,21 +807,22 @@ function PartyPlayerGame({ credentials }: { credentials: PartyPlayerCredentials 
             ) : null}
           </>
         )}
-        {isHost &&
+        {canHearWord &&
+        !muted &&
         round &&
         snapshot.phase !== "lobby" &&
         snapshot.phase !== "finished" &&
         snapshot.phase !== "reveal" ? (
           <button
             type="button"
-            onClick={replayHostAudio}
+            onClick={replayWordAudio}
             className="party-host-replay mx-auto mt-4 min-h-11 px-4 font-mono text-xs text-white/55"
           >
             play word again
           </button>
         ) : null}
         {snapshot.recentClues.at(-1) ? (
-          isHost ? (
+          (snapshot.recentClues.at(-1)?.audioUrl || isHost) && !muted ? (
             <button
               type="button"
               onClick={() => {
@@ -1029,7 +1083,13 @@ function PartyKeyboard({
     </div>
   );
 }
-function ScoreList({ players }: { players: Array<{ id: string; name: string; score: number }> }) {
+function ScoreList({
+  players,
+  showSession = false,
+}: {
+  players: Array<{ id: string; name: string; score: number; sessionScore?: number }>;
+  showSession?: boolean;
+}) {
   return (
     <ol className="mt-8 border-t border-white/12">
       {players.map((player, index) => (
@@ -1039,7 +1099,14 @@ function ScoreList({ players }: { players: Array<{ id: string; name: string; sco
         >
           <span className="font-mono text-xs text-white/40">{index + 1}</span>
           <span className="font-serif text-xl">{player.name}</span>
-          <span className="font-mono text-sm">{player.score}</span>
+          <span className="text-right">
+            <span className="block font-mono text-sm">{player.score}</span>
+            {showSession ? (
+              <span className="block font-mono text-micro text-white/40">
+                {player.sessionScore} total
+              </span>
+            ) : null}
+          </span>
         </li>
       ))}
     </ol>

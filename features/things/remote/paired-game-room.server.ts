@@ -11,6 +11,10 @@ export function createPairedGameRoom(input: Parameters<typeof engine.createPaire
   return runMultiplayerEffect(PairedGameRoomService.use((service) => service.createRoom(input)));
 }
 
+export function disconnectPairedGameJudge(input: Parameters<typeof engine.disconnectPairedGameJudge>[0]) {
+  return runMultiplayerEffect(PairedGameRoomService.use((service) => service.disconnectJudge(input)));
+}
+
 export function readPairedGamePlayerSetup(input: Parameters<typeof engine.readPairedGamePlayerSetup>[0]) {
   return runMultiplayerEffect(PairedGameRoomService.use((service) => service.readPlayerSetup(input)));
 }

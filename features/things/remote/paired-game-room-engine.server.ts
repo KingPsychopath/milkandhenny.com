@@ -2,6 +2,7 @@ import { getRedis } from "@/lib/platform/redis.server";
 import { log } from "@/lib/platform/logger.server";
 import { pairedGameRoomRedisKeys } from "./remote-keys";
 import {
+  createMemoryRoomStore,
   createAvailableMultiplayerRoomId,
   createMultiplayerCredential,
   hashMultiplayerCredential,
@@ -56,7 +57,7 @@ interface MemoryRoom {
   judgeSeenAt: number;
 }
 
-const memoryRooms = new Map<string, MemoryRoom>();
+const memoryRooms = createMemoryRoomStore<MemoryRoom>("remote");
 
 type RemoteRedisKeys = ReturnType<typeof pairedGameRoomRedisKeys>;
 
@@ -583,6 +584,44 @@ export async function sendPairedGameJudgeCommand(input: {
   await redis.expire(roomKeys.commands, roomTtl);
   await redis.expire(roomKeys.commandSequence, roomTtl);
   return { ok: true, sequence };
+}
+
+/**
+ * Drops whoever is judging and hands the player back a fresh invite. Rotating the token is what
+ * actually severs the old device: its stored session stops matching `judgeHash`, so its very next
+ * poll fails authentication and it lands on the expired-invite screen instead of quietly holding
+ * the lease. Clearing the lease and presence frees the seat immediately for the next judge.
+ */
+export async function disconnectPairedGameJudge(input: {
+  roomId: string;
+  playerToken: string;
+}): Promise<{ ok: true; judgeToken: string } | { ok: false }> {
+  const context = await readRoom(input.roomId);
+  if (!context) return { ok: false };
+  // Only the device running the game may evict a judge, and never in a judge-created room where
+  // the judge is the host.
+  if (
+    context.meta.creatorRole !== "player" ||
+    !multiplayerCredentialsMatch(input.playerToken, context.meta.playerHash, 200)
+  )
+    return { ok: false };
+  const judgeToken = createMultiplayerCredential();
+  const meta: RoomMeta = { ...context.meta, judgeHash: hashMultiplayerCredential(judgeToken) };
+  const redis = getRedis();
+  if (!redis) {
+    const room = memoryRooms.get(input.roomId);
+    if (!room) return { ok: false };
+    room.meta = meta;
+    room.activeJudgeEpoch = null;
+    room.judgeSeenAt = 0;
+  } else {
+    await redis.set(context.keys.meta, meta, {
+      ex: remainingMultiplayerRoomTtlSeconds(meta.expiresAt),
+    });
+    await redis.del(context.keys.judgeEpoch, context.keys.judgePresence);
+  }
+  log.info("things.paired-game-room", "Judge disconnected", { game: meta.game });
+  return { ok: true, judgeToken };
 }
 
 export async function closePairedGameRoom(roomId: string, role: PairedGameRoomRole, token: string) {

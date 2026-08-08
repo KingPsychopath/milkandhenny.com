@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { TextMorph } from "torph/react";
 import { useWebHaptics } from "web-haptics/react";
 import { useUpdateReloadSafety } from "@/features/offline/update-safety.client";
+import { useWakeLock } from "@/hooks/useWakeLock";
 import { CountryRevealAnalysis } from "./CountryReveal";
 import { DrawCountryResultReport } from "./DrawCountryResultReport";
 import { CountryRoundBoard } from "./CountryRoundBoard";
@@ -21,6 +22,7 @@ export function SoloDrawCountry({ onExit }: { onExit: () => void }) {
   const [seconds, setSeconds] = useState(ROUND_SECONDS);
   const haptics = useWebHaptics();
   useUpdateReloadSafety("draw-country-solo", phase === "reveal");
+  useWakeLock(phase === "drawing");
   const evaluation = useMemo(
     () => (phase === "reveal" ? scoreCountryDrawing(country, drawing) : null),
     [country, drawing, phase],

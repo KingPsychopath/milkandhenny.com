@@ -1,7 +1,7 @@
 import { Link } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 import { useWebHaptics } from "web-haptics/react";
-import { readExpiringLocalValue } from "../shared/game-storage.client";
+import { readExpiringLocalValue, writeExpiringLocalValue } from "../shared/game-storage.client";
 import { GameActionDialog } from "../shared/GameActionDialog";
 import { CountryRoundBoard } from "./CountryRoundBoard";
 import { applyDrawCountryActionFn } from "./draw-country-room.functions";
@@ -18,6 +18,7 @@ import { captureDrawCountryInvite } from "./invite.client";
 import { JoinDrawCountryRoom } from "./JoinDrawCountryRoom";
 import type { CountryDrawing, DrawCountryPlayerCredentials } from "./types";
 import { useDrawCountryRoom } from "./useDrawCountryRoom";
+import { useWakeLock } from "@/hooks/useWakeLock";
 
 export function DrawCountryRoomApp({ roomId }: { roomId: string }) {
   const [credentials, setCredentials] = useState<DrawCountryPlayerCredentials | null>(null);
@@ -102,7 +103,22 @@ function DrawCountryRoom({
   const previousStartRequest = useRef<string | null>(null);
   const [removePlayerIds, setRemovePlayerIds] = useState<string[] | null>(null);
   const [confirmingStart, setConfirmingStart] = useState(false);
+  const [restarting, setRestarting] = useState(false);
   const setLiveMessage = live.setMessage;
+  useWakeLock(snapshot?.phase === "drawing" || snapshot?.phase === "reveal");
+
+  // A rematch pushes the room's expiry out; without this the stored credentials would lapse
+  // mid-session and drop the player back onto the join screen.
+  const storedExpiry = credentials.expiresAt;
+  const roomExpiry = snapshot?.expiresAt;
+  useEffect(() => {
+    if (!roomExpiry || roomExpiry <= storedExpiry) return;
+    writeExpiringLocalValue(
+      drawCountryBrowserKeys.playerSession(roomId),
+      { ...credentials, expiresAt: roomExpiry },
+      roomExpiry,
+    );
+  }, [credentials, roomExpiry, roomId, storedExpiry]);
 
   useEffect(() => {
     window.scrollTo({ top: 0 });
@@ -189,6 +205,8 @@ function DrawCountryRoom({
     action:
       | { type: "game.start"; removePlayerIds?: string[] }
       | { type: "round.next" }
+      | { type: "game.replay" }
+      | { type: "game.lobby" }
       | { type: "readiness.set"; ready: boolean },
   ) => {
     try {
@@ -227,6 +245,15 @@ function DrawCountryRoom({
       await control({ type: "game.start", removePlayerIds });
     } finally {
       setConfirmingStart(false);
+    }
+  };
+
+  const rematch = async (type: "game.replay" | "game.lobby") => {
+    setRestarting(true);
+    try {
+      await control({ type });
+    } finally {
+      setRestarting(false);
     }
   };
 
@@ -326,5 +353,14 @@ function DrawCountryRoom({
       />
     );
 
-  return <FinalRanking snapshot={snapshot} playerId={credentials.playerId} />;
+  return (
+    <FinalRanking
+      snapshot={snapshot}
+      playerId={credentials.playerId}
+      message={live.message}
+      pending={restarting}
+      onPlayAgain={() => void rematch("game.replay")}
+      onBackToLobby={() => void rematch("game.lobby")}
+    />
+  );
 }

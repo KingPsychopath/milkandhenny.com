@@ -6,6 +6,7 @@ vi.mock("@/lib/platform/logger.server", () => ({ log: { info: vi.fn(), warn: vi.
 import {
   closePairedGameRoom,
   createPairedGameRoom,
+  disconnectPairedGameJudge,
   readPairedGameJudge,
   readPairedGamePlayerSetup,
   sendPairedGameJudgeCommand,
@@ -204,5 +205,41 @@ describe("remote game rooms", () => {
     expect(takeover.judgeActive).toBe(true);
     const late = await sendPairedGameJudgeCommand({ roomId: room.roomId, judgeToken: room.judgeToken, judgeEpoch: "judge-two", command: { id: "late", type: "correct", createdAt: Date.now(), roundId: expiredSnapshot.roundId!, itemId: expiredSnapshot.itemId! } });
     expect(late).toMatchObject({ ok: false, error: "Decision window closed" });
+  });
+
+  it("cuts off a disconnected judge and issues the host a fresh invite", async () => {
+    const room = await createPairedGameRoom({ creatorRole: "player", setup: headsUpSetup });
+    const seated = await readPairedGameJudge({ roomId: room.roomId, judgeToken: room.judgeToken, ...judgeLease });
+    expect(seated.judgeActive).toBe(true);
+
+    const dropped = await disconnectPairedGameJudge({ roomId: room.roomId, playerToken: room.playerToken });
+    expect(dropped.ok).toBe(true);
+    const nextJudgeToken = dropped.ok ? dropped.judgeToken : "";
+    expect(nextJudgeToken).not.toBe(room.judgeToken);
+
+    // The evicted phone cannot read the room or steer the game any more.
+    const evicted = await readPairedGameJudge({ roomId: room.roomId, judgeToken: room.judgeToken, ...judgeLease });
+    expect(evicted.ok).toBe(false);
+    const blocked = await sendPairedGameJudgeCommand({
+      roomId: room.roomId,
+      judgeToken: room.judgeToken,
+      judgeEpoch: judgeLease.judgeEpoch,
+      command: { id: "after-kick", type: "correct", createdAt: Date.now(), roundId: snapshot.roundId!, itemId: snapshot.itemId! },
+    });
+    expect(blocked.ok).toBe(false);
+
+    // The seat is free, so a new judge can take it with the reissued invite.
+    const replacement = await readPairedGameJudge({ roomId: room.roomId, judgeToken: nextJudgeToken, judgeEpoch: "judge-two", takeover: false });
+    expect(replacement.ok).toBe(true);
+    expect(replacement.judgeActive).toBe(true);
+  });
+
+  it("refuses to disconnect a judge for anyone but the host", async () => {
+    const room = await createPairedGameRoom({ creatorRole: "player", setup: headsUpSetup });
+    expect(await disconnectPairedGameJudge({ roomId: room.roomId, playerToken: room.judgeToken })).toEqual({ ok: false });
+
+    // In a judge-created room the judge is the host, so there is nobody to evict.
+    const judgeRoom = await createPairedGameRoom({ creatorRole: "judge", setup: headsUpSetup });
+    expect(await disconnectPairedGameJudge({ roomId: judgeRoom.roomId, playerToken: judgeRoom.playerToken })).toEqual({ ok: false });
   });
 });

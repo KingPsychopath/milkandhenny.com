@@ -73,7 +73,13 @@ function presenterAction(value: unknown): PartyPresenterAction {
         ? data.removePlayerIds.slice(0, 12).map((playerId) => text(playerId, 120))
         : undefined,
     };
-  if (data.type === "round.next" || data.type === "round.pause" || data.type === "round.resume")
+  if (
+    data.type === "round.next" ||
+    data.type === "round.pause" ||
+    data.type === "round.resume" ||
+    data.type === "game.replay" ||
+    data.type === "game.lobby"
+  )
     return { actionId: id, type: data.type };
   throw new Error("Invalid action");
 }

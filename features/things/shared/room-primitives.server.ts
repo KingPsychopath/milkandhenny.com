@@ -108,6 +108,25 @@ export async function withMultiplayerRoomLock<T>(
   }
 }
 
+/**
+ * The development-only room store.
+ *
+ * Without Redis the games keep rooms in a module-level Map, and in dev that quietly breaks the
+ * realtime sockets: Vite runs server functions and Nitro's websocket handlers in separate module
+ * graphs, so each gets its own empty Map. A room created by a server function is invisible to the
+ * socket, which then rejects every hello as unauthorised. Every multiplayer game here showed
+ * "offline" in dev for that reason while being correct in production.
+ *
+ * Hanging the Map off `globalThis` gives both graphs the same store. Production fails closed
+ * before it ever reaches this — the engines require Redis there.
+ */
+export function createMemoryRoomStore<Value>(namespace: string): Map<string, Value> {
+  const key = `__milkandhenny_memory_rooms__${namespace}`;
+  const holder = globalThis as Record<string, unknown>;
+  holder[key] ??= new Map<string, Value>();
+  return holder[key] as Map<string, Value>;
+}
+
 export function multiplayerActionSeen(processedActionIds: string[], actionId: string) {
   return processedActionIds.includes(actionId);
 }

@@ -1,5 +1,6 @@
 import { getRedis } from "@/lib/platform/redis.server";
 import {
+  createMemoryRoomStore,
   createAvailableMultiplayerRoomId,
   createMultiplayerCredential,
   hashMultiplayerCredential,
@@ -38,6 +39,8 @@ interface PlayerState {
   name: string;
   tokenHash: string;
   score: number;
+  /** Carried across rematches; `score` restarts at zero each game. */
+  sessionScore?: number;
   roundScore: number | null;
   submitted: boolean;
   drawing: CountryDrawing | null;
@@ -69,10 +72,14 @@ interface RoomState {
   hostPlayerId: string;
   players: PlayerState[];
   round: RoundState | null;
+  /** 1 for the first game; a rematch on the same room code increments it. */
+  gameNumber?: number;
+  /** Countries already played on this room code, so rematches draw fresh ones. */
+  playedCountryIds?: string[];
 }
 
 type Keys = ReturnType<typeof drawCountryRoomRedisKeys>;
-const memoryRooms = new Map<string, RoomState>();
+const memoryRooms = createMemoryRoomStore<RoomState>("draw-country");
 
 function changed(room: RoomState) {
   room.revision += 1;
@@ -146,10 +153,14 @@ function snapshot(room: RoomState, playerId: string): DrawCountrySnapshot {
     sequence: room.sequence,
     hostPlayerId: room.hostPlayerId,
     canControl: playerId === room.hostPlayerId || !host || now - host.lastSeenAt > HOST_TAKEOVER_MS,
+    gameNumber: room.gameNumber ?? 1,
+    expiresAt: room.expiresAt,
     players: room.players.map((player) => ({
       id: player.id,
       name: player.name,
       score: player.score,
+      // Games already banked plus whatever this one has earned so far.
+      sessionScore: (player.sessionScore ?? 0) + player.score,
       roundScore: player.roundScore,
       submitted: player.submitted,
       connected: now - player.lastSeenAt <= CONNECTED_WINDOW_MS,
@@ -211,6 +222,31 @@ function reveal(room: RoomState, now = Date.now()) {
   room.round.revealAt = now;
   room.round.nextRoundAt = now + REVEAL_MS;
   changed(room);
+}
+
+/**
+ * Banks the finished game onto every player's session total and deals a fresh set of countries,
+ * keeping the roster, the room code and the host. Returns false when the atlas has nothing left
+ * that this room has not already drawn.
+ */
+function resetForRematch(room: RoomState, now = Date.now()) {
+  const played = [...(room.playedCountryIds ?? []), ...room.countryIds];
+  const countryIds = selectRoomCountries(room.countryIds.length, played);
+  if (countryIds.length === 0) return false;
+  for (const player of room.players) {
+    player.sessionScore = (player.sessionScore ?? 0) + player.score;
+    player.score = 0;
+    player.roundScore = null;
+    player.submitted = false;
+    player.drawing = null;
+  }
+  room.playedCountryIds = played.slice(-64);
+  room.countryIds = countryIds;
+  room.gameNumber = (room.gameNumber ?? 1) + 1;
+  room.round = null;
+  // A room that reached its last round has been alive a while; a rematch needs its own runway.
+  room.expiresAt = Math.max(room.expiresAt, multiplayerRoomExpiresAt(now));
+  return true;
 }
 
 function advance(room: RoomState, now = Date.now()) {
@@ -362,6 +398,8 @@ export async function applyDrawCountryAction(input: {
     | { type: "game.start"; removePlayerIds?: string[] }
     | { type: "readiness.set"; ready: boolean }
     | { type: "round.next" }
+    | { type: "game.replay" }
+    | { type: "game.lobby" }
     | { type: "drawing.submit"; roundId: string; drawing: CountryDrawing };
 }): Promise<DrawCountryActionResult> {
   const result = await withRoom(input.roomId, (room) => {
@@ -444,6 +482,29 @@ export async function applyDrawCountryAction(input: {
     if (input.action.type === "round.next" && room.phase === "reveal" && room.round) {
       room.round.nextRoundAt = Date.now();
       advance(room);
+      return { ok: true, accepted: true, snapshot: current() } as const;
+    }
+    if (
+      (input.action.type === "game.replay" || input.action.type === "game.lobby") &&
+      room.phase === "finished"
+    ) {
+      const now = Date.now();
+      if (!resetForRematch(room, now))
+        return {
+          ok: true,
+          accepted: false,
+          errorCode: "countries_exhausted",
+          error: "This room has drawn every country. Start a new room for more.",
+          snapshot: current(),
+        } as const;
+      if (input.action.type === "game.replay") startRound(room, 0, now);
+      else {
+        // Back to the lobby so people can join or drop; everyone re-readies from there.
+        for (const player of room.players)
+          setMultiplayerPlayerReady(player, player.id === room.hostPlayerId);
+        room.phase = "lobby";
+        changed(room);
+      }
       return { ok: true, accepted: true, snapshot: current() } as const;
     }
     return {

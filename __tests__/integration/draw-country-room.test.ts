@@ -268,6 +268,130 @@ describe("Draw the Country rooms", () => {
     expect(finished.snapshot?.phase).toBe("finished");
   });
 
+  it("replays with the same people, banking the last game into a session total", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-07-15T11:00:00Z"));
+    const room = await hostedRoom(1, 30);
+    const player = await joined(room.roomId, room.joinToken, "Maya");
+    const started = await applyDrawCountryAction({
+      roomId: room.roomId,
+      playerId: room.playerId,
+      playerToken: room.playerToken,
+      action: { type: "game.start" },
+    });
+    const firstRound = started.snapshot!.round!;
+    await applyDrawCountryAction({
+      roomId: room.roomId,
+      playerId: room.playerId,
+      playerToken: room.playerToken,
+      action: {
+        type: "drawing.submit",
+        roundId: firstRound.id,
+        drawing: traceOf(firstRound.countryId),
+      },
+    });
+    vi.setSystemTime(firstRound.endsAt + 1);
+    const revealed = await readDrawCountrySnapshot({
+      roomId: room.roomId,
+      playerId: room.playerId,
+      playerToken: room.playerToken,
+    });
+    vi.setSystemTime(revealed.snapshot!.round!.nextRoundAt! + 1);
+    const finished = await readDrawCountrySnapshot({
+      roomId: room.roomId,
+      playerId: room.playerId,
+      playerToken: room.playerToken,
+    });
+    expect(finished.snapshot?.phase).toBe("finished");
+    const earned = finished.snapshot!.players.find(({ id }) => id === room.playerId)!.score;
+    expect(earned).toBeGreaterThan(0);
+
+    const replay = await applyDrawCountryAction({
+      roomId: room.roomId,
+      playerId: room.playerId,
+      playerToken: room.playerToken,
+      action: { type: "game.replay" },
+    });
+    expect(replay.accepted).toBe(true);
+    const next = replay.snapshot!;
+    expect(next.phase).toBe("drawing");
+    expect(next.gameNumber).toBe(2);
+    // Everyone who was in the room is still in it, under the same room code.
+    expect(next.players.map(({ name }) => name).toSorted()).toEqual(["Abel", "Maya"]);
+    expect(next.roomId).toBe(room.roomId);
+    const host = next.players.find(({ id }) => id === room.playerId)!;
+    expect(host.score).toBe(0);
+    expect(host.sessionScore).toBe(earned);
+    // A fresh country, not the one they just drew.
+    expect(next.round!.countryId).not.toBe(firstRound.countryId);
+
+    // The player's existing credentials still work — nobody has to rejoin.
+    const asPlayer = await readDrawCountrySnapshot({
+      roomId: room.roomId,
+      playerId: player.playerId,
+      playerToken: player.playerToken,
+    });
+    expect(asPlayer.snapshot?.gameNumber).toBe(2);
+  });
+
+  it("sends everyone back to the lobby so latecomers can still join", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-07-15T11:00:00Z"));
+    const room = await hostedRoom(1, 30);
+    const started = await applyDrawCountryAction({
+      roomId: room.roomId,
+      playerId: room.playerId,
+      playerToken: room.playerToken,
+      action: { type: "game.start" },
+    });
+    vi.setSystemTime(started.snapshot!.round!.endsAt + 1);
+    const revealed = await readDrawCountrySnapshot({
+      roomId: room.roomId,
+      playerId: room.playerId,
+      playerToken: room.playerToken,
+    });
+    vi.setSystemTime(revealed.snapshot!.round!.nextRoundAt! + 1);
+    await readDrawCountrySnapshot({
+      roomId: room.roomId,
+      playerId: room.playerId,
+      playerToken: room.playerToken,
+    });
+
+    const lobby = await applyDrawCountryAction({
+      roomId: room.roomId,
+      playerId: room.playerId,
+      playerToken: room.playerToken,
+      action: { type: "game.lobby" },
+    });
+    expect(lobby.accepted).toBe(true);
+    expect(lobby.snapshot?.phase).toBe("lobby");
+
+    // The lobby is open again, which is the whole point of going back to it.
+    const latecomer = await joinDrawCountryRoom({
+      roomId: room.roomId,
+      joinToken: room.joinToken,
+      name: "Sam",
+    });
+    expect(latecomer.ok).toBe(true);
+  });
+
+  it("refuses a rematch while a game is still running", async () => {
+    const room = await hostedRoom(2, 30);
+    await applyDrawCountryAction({
+      roomId: room.roomId,
+      playerId: room.playerId,
+      playerToken: room.playerToken,
+      action: { type: "game.start" },
+    });
+    const replay = await applyDrawCountryAction({
+      roomId: room.roomId,
+      playerId: room.playerId,
+      playerToken: room.playerToken,
+      action: { type: "game.replay" },
+    });
+    expect(replay.accepted).toBe(false);
+  });
+
   it("reports an unknown room rather than inventing one", async () => {
     const result = await readDrawCountrySnapshot({
       roomId: "ZZZZZZZ",

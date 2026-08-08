@@ -3,6 +3,7 @@ import { multiplayerCredential, multiplayerRecord, multiplayerRoomId, multiplaye
 import {
   closePairedGameRoom,
   createPairedGameRoom,
+  disconnectPairedGameJudge,
   readPairedGameJudge,
   readPairedGamePlayerSetup,
   sendPairedGameJudgeCommand,
@@ -202,6 +203,13 @@ export const sendPairedGameJudgeCommandFn = createServerFn({ method: "POST" })
     return { roomId: roomId(data.roomId), judgeToken: token(data.judgeToken), judgeEpoch: shortText(data.judgeEpoch, 80), command: command(data.command) };
   })
   .handler(({ data }) => sendPairedGameJudgeCommand(data));
+
+export const disconnectPairedGameJudgeFn = createServerFn({ method: "POST" })
+  .validator((value: unknown) => {
+    const data = record(value);
+    return { roomId: roomId(data.roomId), playerToken: token(data.playerToken) };
+  })
+  .handler(({ data }) => disconnectPairedGameJudge(data));
 
 export const closePairedGameRoomFn = createServerFn({ method: "POST" })
   .validator((value: unknown) => {
