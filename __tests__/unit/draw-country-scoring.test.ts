@@ -106,6 +106,19 @@ function enclosingBoxDrawing(outline: CountryOutline): CountryDrawing {
   ];
 }
 
+function broadenedSimplification(outline: CountryOutline): CountryDrawing {
+  const mainRing = exactDrawing(outline)[0];
+  const step = Math.max(1, Math.floor(mainRing.length / 24));
+  const simplified = mainRing.filter((_, index) => index % step === 0);
+  const bounds = drawingBounds([simplified]);
+  return [
+    simplified.map((point) => ({
+      x: bounds.centreX + (point.x - bounds.centreX) * 1.45,
+      y: point.y,
+    })),
+  ];
+}
+
 describe("draw-country scoring", () => {
   it("requires a closed area rather than a line with enough sampled points", () => {
     const line = [Array.from({ length: 6 }, (_, index) => ({ x: 100 + index * 20, y: 100 }))];
@@ -423,52 +436,16 @@ describe("draw-country scoring", () => {
     }
   });
 
-  it("rewards a recognisable broad-stroke Chile", () => {
-    const chile = COUNTRIES.find(({ id }) => id === "CL");
-    expect(chile).toBeDefined();
-    if (!chile) throw new Error("Chile fixture is missing");
-
-    // A real player report: the outline is wider and much simpler than the reference, but it
-    // follows Chile's north-south spine and southern hook closely enough to be recognisable.
-    const drawing: CountryDrawing = [
-      [
-        { x: 665, y: 365 },
-        { x: 646, y: 468 },
-        { x: 648, y: 603 },
-        { x: 640, y: 694 },
-        { x: 616, y: 840 },
-        { x: 583, y: 932 },
-        { x: 569, y: 945 },
-        { x: 562, y: 1_042 },
-        { x: 562, y: 1_202 },
-        { x: 572, y: 1_222 },
-        { x: 644, y: 1_246 },
-        { x: 704, y: 1_277 },
-        { x: 837, y: 1_272 },
-        { x: 872, y: 1_239 },
-        { x: 883, y: 1_185 },
-        { x: 845, y: 1_169 },
-        { x: 781, y: 1_153 },
-        { x: 745, y: 1_139 },
-        { x: 706, y: 1_134 },
-        { x: 682, y: 1_119 },
-        { x: 670, y: 1_091 },
-        { x: 660, y: 1_039 },
-        { x: 660, y: 924 },
-        { x: 671, y: 849 },
-        { x: 686, y: 788 },
-        { x: 702, y: 713 },
-        { x: 720, y: 607 },
-        { x: 720, y: 468 },
-        { x: 713, y: 378 },
-      ],
-    ];
-
-    const evaluation = scoreCountryDrawing(chile, drawing);
-    const metrics = countryScoreBreakdown(evaluation, false);
-    expect(evaluation.score).toBeGreaterThanOrEqual(50);
-    expect(metrics.find(({ key }) => key === "outline")?.score).toBeGreaterThanOrEqual(75);
-    expect(metrics.find(({ key }) => key === "coverage")?.score).toBeGreaterThanOrEqual(75);
+  it("keeps width errors recognisable across slender countries", () => {
+    for (const countryId of ["CL", "IL", "TG", "TV"]) {
+      const outline = COUNTRIES.find(({ id }) => id === countryId);
+      expect(outline).toBeDefined();
+      if (!outline) continue;
+      expect(
+        scoreCountryDrawing(outline, broadenedSimplification(outline)).score,
+        countryId,
+      ).toBeGreaterThanOrEqual(55);
+    }
   });
 
   it("does not mistake another recognisable country for the target", () => {
