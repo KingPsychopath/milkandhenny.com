@@ -954,3 +954,79 @@ describe("liars phase machine", () => {
     expect(seen.has("verdict")).toBe(true);
   });
 });
+
+describe("liars at scale", () => {
+  /**
+   * Rooms are independent by construction — one Redis key each, one lock each — but "by
+   * construction" is exactly the kind of claim that stops being true the first time somebody adds
+   * a module-level cache. This runs twenty games at once and checks nothing crossed over.
+   */
+  it("runs twenty concurrent rooms without any of them touching each other", async () => {
+    const rooms = await Promise.all(
+      Array.from({ length: 20 }, async (_, index) => {
+        const mode: LiarsMode = index % 2 === 0 ? "mafia" : "imposter";
+        const names = NAMES.concat(["Otis", "Rue", "Sol", "Vic", "Wren", "Zaid"]).slice(
+          0,
+          mode === "mafia" ? 9 : 8,
+        );
+        const started = await startLiarsScenario({ mode, names });
+        return { index, mode, ...started };
+      }),
+    );
+
+    const ids = rooms.map(({ roomId }) => roomId);
+    expect(new Set(ids).size, "room codes collided").toBe(rooms.length);
+
+    for (const each of rooms) {
+      expect(each.error, `room ${each.index}`).toBeNull();
+
+      const seen = new Set<string>();
+      for (const seat of each.seats) {
+        const snapshot = await view(each.roomId, seat);
+        expect(snapshot.roomId, `room ${each.index}`).toBe(each.roomId);
+        expect(snapshot.mode, `room ${each.index}`).toBe(each.mode);
+        expect(snapshot.players, `room ${each.index}`).toHaveLength(each.seats.length);
+        // Nobody from another table has wandered in.
+        for (const player of snapshot.players)
+          expect(each.seats.some(({ playerId }) => playerId === player.id)).toBe(true);
+        seen.add(snapshot.player!.role);
+      }
+      // And each table got its own deal rather than a shared one.
+      expect(seen.size, `room ${each.index} dealt one role to everyone`).toBeGreaterThan(1);
+    }
+
+    // A credential from one room opens nothing in another.
+    const [first, second] = rooms;
+    const crossed = await readLiarsSnapshot({
+      roomId: second.roomId,
+      credential: first.seats[0].playerToken,
+      playerId: first.seats[0].playerId,
+      lastSequence: 0,
+    });
+    expect(crossed).toMatchObject({ ok: false, snapshot: null });
+  });
+
+  it("keeps concurrent writers to one room from losing each other's actions", async () => {
+    const started = await startLiarsScenario({ mode: "mafia", names: NAMES.slice(0, 9) });
+    expect(started.error).toBeNull();
+
+    // Everyone marks themselves unready at the same moment, on the same room.
+    const results = await Promise.all(
+      started.seats.map((seat, index) =>
+        applyLiarsPlayerAction({
+          roomId: started.roomId,
+          playerId: seat.playerId,
+          playerToken: seat.playerToken,
+          action: { actionId: `race-${index}`, type: "readiness.set", ready: false },
+        }),
+      ),
+    );
+
+    // The deal has started, so readiness is refused — but every one of them must be answered, and
+    // none may corrupt the room.
+    expect(results).toHaveLength(9);
+    const snapshot = await view(started.roomId, started.seats[0]);
+    expect(snapshot.players).toHaveLength(9);
+    expect(snapshot.phase).toBe("deal");
+  });
+});

@@ -680,7 +680,29 @@ history, same phase.
 This is a complete bypass of every secrecy rule in the game, so both server functions refuse
 outright when `NODE_ENV` is production, and the route 404s outside development builds.
 
-### 5.14 Permissions
+### 5.14 Your notebook
+
+Separate from *what you know*, deliberately. That list is what your **role** was told and cannot be
+written in. The notebook is what you **reckon** — forty lines, eighty characters each, and it never
+leaves the device, so nothing written in it can appear in anybody else's snapshot.
+
+**Your epitaph.** When you die, your last words start pre-filled with the last line you wrote. Most
+people die with something half-formed in there, and the line they happened to be looking at makes a
+better epitaph than anything they would compose in thirty seconds. Fully editable — a starting
+point, not a confession.
+
+### 5.15 Sound
+
+Three states, not two: **all** / **no voice** / **muted**. On-and-off is the wrong shape for a game
+with a narrator — somebody who wants the heartbeat and the bells but not a voice reading over the
+top of the room had nowhere to go, and their only option was silence. Device-wide, shared with the
+other games through `useGameSound`.
+
+The narrator prefers the platform's fuller voices over the compact fallbacks, drops the pitch, and
+**speaks in clauses with real pauses between them**. Web Speech offers no control over emphasis, so
+the pause is the only instrument available, and it is the one that makes a line land.
+
+### 5.16 Permissions
 
 Only two things in the whole game need one, and neither may fail silently.
 
@@ -692,7 +714,7 @@ share with this game is that a refused permission and a device that cannot do it
 problems, and only one of them has a way out. Saying "unavailable" to somebody who tapped *don't
 allow* leaves them with no idea they can change their mind.
 
-### 5.15 Accessibility
+### 5.17 Accessibility
 
 The game is unusually timing-dependent, so the baseline rules in `.cursor/rules/accessibility.mdc`
 need active work here:
