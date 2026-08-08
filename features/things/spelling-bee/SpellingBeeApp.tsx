@@ -13,11 +13,6 @@ import { useTiltControl } from "../shared/useTiltControl";
 import { customSpellingDeckAsDeck, type CustomSpellingDeck } from "../spelling/customDecks";
 import { SPELLING_DECKS, shuffledWords, type SpellingDeck } from "../spelling/decks";
 import { cancelLocalSpeech, getLocalVoices, speakWord } from "../spelling/localSpeech";
-import {
-  DEFAULT_SPELLING_PREFERENCES,
-  readSpellingPreferences,
-  writeSpellingPreferences,
-} from "../spelling/spellingPreferences.client";
 import { SpellingDeckBuilder } from "../spelling/SpellingDeckBuilder";
 import { SpellingPlayArea } from "./SpellingPlayArea";
 import { SpellingResults, type SpellingResult } from "./SpellingResults";
@@ -28,12 +23,23 @@ import { rememberSpellingWords, selectSpellingRoundWords } from "../spelling/wor
 import { activeWord, feedbackDurationMs, remainingWordMs, type AloudDecision, type AloudEvaluationReason, type AloudWordState } from "./aloud-word-state";
 import { useUpdateReloadSafety } from "@/features/offline/update-safety.client";
 import { useWakeLock } from "@/hooks/useWakeLock";
+import { useGamePreferences } from "../shared/useGamePreferences";
 import { useFocusTrap } from "@/hooks/useFocusTrap";
 
 type Phase = "setup" | "builder" | "countdown" | "playing" | "results";
 const ROUND_STORAGE_KEY = "spelling-bee:active-round:v1";
 const JUDGE_DECISION_GRACE_MS = 1_000;
 const FINAL_SYNC_BUDGET_MS = 120;
+
+const SPELLING_DEFAULTS = {
+  positionLock: false,
+  tiltEnabled: true,
+  voiceURI: "",
+  timerSeconds: 30,
+  roundTotal: 5,
+  autoSpeak: true,
+  soundEnabled: true,
+};
 
 export function SpellingBeeApp({ remoteSession }: { remoteSession?: RemotePlayerSession } = {}) {
   const fullscreen = useFullscreen();
@@ -64,11 +70,16 @@ function SpellingBeeExperience({ remoteSession }: { remoteSession?: RemotePlayer
   const [feedback, setFeedback] = useState<AloudDecision | null>(null);
   const [wordState, setWordState] = useState<AloudWordState>({ status: "idle" });
   const [autoSpeak, setAutoSpeak] = useState(joinedSetup?.autoSpeak ?? true);
-  const [tiltEnabled, setTiltEnabled] = useState(DEFAULT_SPELLING_PREFERENCES.tiltEnabled);
-  const [positionLock, setPositionLock] = useState(DEFAULT_SPELLING_PREFERENCES.positionLock);
-  const [voiceURI, setVoiceURI] = useState(DEFAULT_SPELLING_PREFERENCES.voiceURI);
+  const [tiltEnabled, setTiltEnabled] = useState(SPELLING_DEFAULTS.tiltEnabled);
+  const [positionLock, setPositionLock] = useState(SPELLING_DEFAULTS.positionLock);
+  const [voiceURI, setVoiceURI] = useState(SPELLING_DEFAULTS.voiceURI);
   const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
   const [soundEnabled, setSoundEnabled] = useState(true);
+  const {
+    preferences,
+    loaded: preferencesReady,
+    set: setPreference,
+  } = useGamePreferences("spelling-bee", SPELLING_DEFAULTS);
   const [remoteExclusive, setRemoteExclusive] = useState(Boolean(remoteSession));
   const [endConfirmationOpen, setEndConfirmationOpen] = useState(false);
   const [editingDeck, setEditingDeck] = useState<CustomSpellingDeck | null>(null);
@@ -112,13 +123,24 @@ function SpellingBeeExperience({ remoteSession }: { remoteSession?: RemotePlayer
     wordStateRef.current = wordState;
   }, [wordState]);
 
+  // Seeds from what this device remembers, the moment storage has actually been read. Doing it on
+  // mount would seed from the defaults, which is the bug that looks like "it never remembers".
   useEffect(() => {
-    const preferences = readSpellingPreferences();
+    if (!preferencesReady || preferencesLoaded) return;
     setTiltEnabled(preferences.tiltEnabled);
     setPositionLock(preferences.positionLock);
     setVoiceURI(preferences.voiceURI);
+    // A joined game brings its own setup; only fall back to this device for a fresh one.
+    if (!joinedSetup) {
+      setTimerSeconds(preferences.timerSeconds);
+      setRoundTotal(preferences.roundTotal);
+      setAutoSpeak(preferences.autoSpeak);
+    }
+    setSoundEnabled(preferences.soundEnabled);
     setPreferencesLoaded(true);
+  }, [joinedSetup, preferences, preferencesLoaded, preferencesReady]);
 
+  useEffect(() => {
     const refreshVoices = () => setVoices(getLocalVoices());
     refreshVoices();
     if (!("speechSynthesis" in window)) return;
@@ -128,8 +150,24 @@ function SpellingBeeExperience({ remoteSession }: { remoteSession?: RemotePlayer
 
   useEffect(() => {
     if (!preferencesLoaded) return;
-    writeSpellingPreferences({ positionLock, tiltEnabled, voiceURI });
-  }, [positionLock, preferencesLoaded, tiltEnabled, voiceURI]);
+    setPreference("positionLock", positionLock);
+    setPreference("tiltEnabled", tiltEnabled);
+    setPreference("voiceURI", voiceURI);
+    setPreference("timerSeconds", timerSeconds);
+    setPreference("roundTotal", roundTotal);
+    setPreference("autoSpeak", autoSpeak);
+    setPreference("soundEnabled", soundEnabled);
+  }, [
+    autoSpeak,
+    positionLock,
+    preferencesLoaded,
+    roundTotal,
+    setPreference,
+    soundEnabled,
+    tiltEnabled,
+    timerSeconds,
+    voiceURI,
+  ]);
 
   const clearTransition = useCallback(() => {
     if (transitionTimeout.current === null) return;

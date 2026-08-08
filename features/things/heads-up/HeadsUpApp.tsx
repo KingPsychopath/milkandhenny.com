@@ -22,6 +22,7 @@ import { EndGameDialog } from "../shared/EndGameDialog";
 import { shareOrCopy } from "@/lib/client/share";
 import { useUpdateReloadSafety } from "@/features/offline/update-safety.client";
 import { useWakeLock } from "@/hooks/useWakeLock";
+import { useGamePreferences } from "../shared/useGamePreferences";
 
 type Phase = "setup" | "builder" | "countdown" | "playing" | "results";
 type Decision = "correct" | "pass";
@@ -69,10 +70,19 @@ function HeadsUpExperience({ fullscreen, remoteSession }: { fullscreen: Fullscre
   const [cards, setCards] = useState(() => shuffledCards(joinedDeck?.cards ?? GAME_DECKS[0].cards));
   const [cardIndex, setCardIndex] = useState(0);
   const [countdown, setCountdown] = useState(3);
+  // Round length is fixed for forehead; sound is the only thing worth remembering.
+  const { preferences, set: setPreference } = useGamePreferences("heads-up", {
+    soundEnabled: true,
+  });
   const [seconds, setSeconds] = useState(ROUND_SECONDS);
   const [results, setResults] = useState<RoundResult[]>([]);
   const [feedback, setFeedback] = useState<Decision | null>(null);
-  const [soundEnabled, setSoundEnabled] = useState(true);
+  const soundEnabled = preferences.soundEnabled;
+  const setSoundEnabled = (next: boolean | ((current: boolean) => boolean)) =>
+    setPreference(
+      "soundEnabled",
+      typeof next === "function" ? next(preferences.soundEnabled) : next,
+    );
   const [orientation, setOrientation] = useState<GameOrientation>(joinedSetup?.orientation ?? "auto");
   const [interrupted, setInterrupted] = useState(false);
   const [remotePaused, setRemotePaused] = useState(false);

@@ -8,6 +8,7 @@ import {
   writeExpiringLocalValue,
 } from "../shared/game-storage.client";
 import { gameNamespace } from "../shared/multiplayer-keys";
+import { useGamePreferences } from "../shared/useGamePreferences";
 import { liarsBrowserKeys } from "./liars-keys";
 import {
   LIARS_MODE_COPY,
@@ -70,18 +71,28 @@ function useLiveLiarsSessions() {
 
 export function LiarsSetupApp() {
   const navigate = useNavigate();
-  const [mode, setMode] = useState<LiarsMode>("mafia");
-  const [roomMode, setRoomMode] = useState<LiarsRoomMode>("same-room");
-  const [firstGame, setFirstGame] = useState(false);
+  // Remembered on this device, so a group's setup is one tap next time rather than eight.
+  const { preferences, set } = useGamePreferences("liars", {
+    mode: "mafia",
+    roomMode: "same-room",
+    players: 9,
+    imposters: 1,
+    wordBoard: true,
+    firstGame: false,
+    blindImposters: false,
+  });
+  const mode = preferences.mode === "imposter" ? "imposter" : ("mafia" as LiarsMode);
+  const roomMode = preferences.roomMode === "remote" ? "remote" : ("same-room" as LiarsRoomMode);
+  const firstGame = preferences.firstGame;
+  const blindImposters = preferences.blindImposters;
+  const expected = preferences.players;
   const [torch, setTorch] = useState(false);
-  const [blindImposters, setBlindImposters] = useState(false);
-  const [expected, setExpected] = useState(9);
   const [creating, setCreating] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [joinCode, setJoinCode] = useState("");
   const [panel, setPanel] = useState<"roles" | "more" | null>(null);
-  const [imposters, setImposters] = useState(1);
-  const [wordBoard, setWordBoard] = useState(true);
+  const imposters = preferences.imposters;
+  const wordBoard = preferences.wordBoard;
   const liveRooms = useLiveLiarsSessions();
 
   const limits = LIARS_PLAYER_LIMITS[mode];
@@ -92,9 +103,10 @@ export function LiarsSetupApp() {
   const lineup = liarsDefaultLineup(mode, players, imposterCount);
 
   const chooseMode = (next: LiarsMode) => {
-    setMode(next);
-    setExpected((current) =>
-      Math.min(LIARS_PLAYER_LIMITS[next].max, Math.max(LIARS_PLAYER_LIMITS[next].min, current)),
+    set("mode", next);
+    set(
+      "players",
+      Math.min(LIARS_PLAYER_LIMITS[next].max, Math.max(LIARS_PLAYER_LIMITS[next].min, expected)),
     );
   };
 
@@ -196,7 +208,7 @@ export function LiarsSetupApp() {
                   min={limits.min}
                   max={limits.max}
                   value={players}
-                  onChange={(event) => setExpected(Number(event.target.value))}
+                  onChange={(event) => set("players", Number(event.target.value))}
                   className="w-full accent-[var(--things-amber)]"
                 />
               </label>
@@ -266,7 +278,7 @@ export function LiarsSetupApp() {
                           key={label}
                           type="button"
                           aria-pressed={wordBoard === value}
-                          onClick={() => setWordBoard(value)}
+                          onClick={() => set("wordBoard", value)}
                           className={`min-h-11 flex-1 rounded-full border px-4 font-mono text-xs ${
                             wordBoard === value
                               ? "border-[var(--things-amber)] text-[var(--things-amber)]"
@@ -296,7 +308,7 @@ export function LiarsSetupApp() {
                             key={count}
                             type="button"
                             aria-pressed={imposterCount === count}
-                            onClick={() => setImposters(count)}
+                            onClick={() => set("imposters", count)}
                             className={`min-h-11 flex-1 rounded-full border px-4 font-mono text-xs ${
                               imposterCount === count
                                 ? "border-[var(--things-amber)] text-[var(--things-amber)]"
@@ -334,7 +346,7 @@ export function LiarsSetupApp() {
                         key={option}
                         type="button"
                         aria-pressed={roomMode === option}
-                        onClick={() => setRoomMode(option)}
+                        onClick={() => set("roomMode", option)}
                         className={`min-h-11 flex-1 rounded-full border px-4 font-mono text-xs ${
                           roomMode === option
                             ? "border-[var(--things-amber)] text-[var(--things-amber)]"
@@ -357,7 +369,7 @@ export function LiarsSetupApp() {
                     <input
                       type="checkbox"
                       checked={firstGame}
-                      onChange={(event) => setFirstGame(event.target.checked)}
+                      onChange={(event) => set("firstGame", event.target.checked)}
                       className="size-4 accent-[var(--things-amber)]"
                     />
                     nobody here has played before
@@ -375,7 +387,7 @@ export function LiarsSetupApp() {
                       <input
                         type="checkbox"
                         checked={blindImposters}
-                        onChange={(event) => setBlindImposters(event.target.checked)}
+                        onChange={(event) => set("blindImposters", event.target.checked)}
                         className="size-4 accent-[var(--things-amber)]"
                       />
                       the imposters don't know each other

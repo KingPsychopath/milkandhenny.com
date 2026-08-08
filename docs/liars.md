@@ -773,7 +773,12 @@ need active work here:
 | Remove player | before the deal |
 | Start | blocked until everyone is ready |
 
-Role presets are saved per device, so a group's house rules are one tap next time.
+**Setup is remembered on the device.** Mode, player count, imposter count, board or no board, room
+mode and the first-game flag all come back next time, through `useGamePreferences` — the same helper
+every other thing uses, so "does it remember?" has one answer across the site rather than five.
+
+Validation is per field against the default's type, so one renamed or retyped setting falls back on
+its own rather than wiping everything beside it.
 
 ### Host, in game
 

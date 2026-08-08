@@ -11,6 +11,7 @@ import { useCustomSpellingDecks } from "../spelling/useCustomSpellingDecks";
 import { readRecentSpellingWordIds, rememberSpellingWords } from "../spelling/wordRotation.client";
 import { partyBrowserKeys } from "./party-keys";
 import { writeExpiringLocalValue } from "../shared/game-storage.client";
+import { useGamePreferences } from "../shared/useGamePreferences";
 import { useUpdateReloadSafety } from "@/features/offline/update-safety.client";
 import { partyPresenterFragment } from "./party-invite";
 import {
@@ -25,8 +26,15 @@ export function PartySetupApp({ decks }: { decks: PartyDeckSummary[] }) {
   const navigate = useNavigate();
   const { customDecks, saveDeck, deleteDeck } = useCustomSpellingDecks();
   const [deckId, setDeckId] = useState(decks[0]?.id ?? "");
-  const [answerSeconds, setAnswerSeconds] = useState(20);
-  const [roundTotal, setRoundTotal] = useState(5);
+  const { preferences, set } = useGamePreferences("spelling-party", {
+    answerSeconds: 20,
+    roundTotal: 5,
+  });
+  const answerSeconds = preferences.answerSeconds;
+  const roundTotal = preferences.roundTotal;
+  const setAnswerSeconds = (value: number) => set("answerSeconds", value);
+  const setRoundTotal = (value: number | ((current: number) => number)) =>
+    set("roundTotal", typeof value === "function" ? value(preferences.roundTotal) : value);
   const [deviceRole, setDeviceRole] = useState<"play" | "screen">("play");
   const [playerName, setPlayerName] = useState("");
   const [creating, setCreating] = useState(false);

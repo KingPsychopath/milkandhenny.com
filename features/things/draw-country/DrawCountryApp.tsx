@@ -1,6 +1,7 @@
 import { AppSelect } from "@/components/AppSelect";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
+import { useGamePreferences } from "../shared/useGamePreferences";
 import { useWebHaptics } from "web-haptics/react";
 import { writeExpiringLocalValue } from "../shared/game-storage.client";
 import { createDrawCountryRoomFn } from "./draw-country-room.functions";
@@ -20,8 +21,14 @@ export function DrawCountryApp() {
   const haptics = useWebHaptics();
   const [solo, setSolo] = useState(false);
   const [name, setName] = useState("");
-  const [roundTotal, setRoundTotal] = useState(5);
-  const [drawSeconds, setDrawSeconds] = useState(30);
+  const { preferences, set } = useGamePreferences("draw-country", {
+    roundTotal: 5,
+    drawSeconds: 30,
+  });
+  const roundTotal = preferences.roundTotal;
+  const drawSeconds = preferences.drawSeconds;
+  const setRoundTotal = (value: number) => set("roundTotal", value);
+  const setDrawSeconds = (value: number) => set("drawSeconds", value);
   const [joinCode, setJoinCode] = useState("");
   const [creating, setCreating] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
