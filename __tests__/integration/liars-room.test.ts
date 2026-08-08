@@ -728,3 +728,83 @@ describe("liars rooms — imposter", () => {
     expect(rejected).toMatchObject({ accepted: false, errorCode: "action_unavailable" });
   });
 });
+
+describe("liars rooms — mafia coordination", () => {
+  it("shows the mafia each other's picks live, and nobody else anything", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-09T13:00:00Z"));
+    const created = await room("mafia", NAMES.slice(0, 9));
+    await host(created.roomId, created.hostToken, { type: "game.start" });
+    const deal = await view(created.roomId, created.seats[0]);
+    await runTo(created.roomId, created.seats, deal.phaseEndsAt + 1);
+
+    const night = await view(created.roomId, created.seats[0]);
+    const godfather = (await seatWithRole(created.roomId, created.seats, "godfather"))!;
+    const mafia = (await seatWithRole(created.roomId, created.seats, "mafia"))!;
+
+    await runTo(created.roomId, created.seats, night.nightOpensAt! + 100);
+    const mafiaView = await view(created.roomId, mafia);
+    const pick = mafiaView.player!.targetableIds[0];
+    await act(created.roomId, mafia, {
+      type: "night.select",
+      round: night.round,
+      targetId: pick,
+    });
+
+    // The godfather sees the disagreement before overruling it.
+    const bossView = await view(created.roomId, godfather);
+    expect(bossView.player!.allyTargets).toContainEqual({
+      playerId: mafia.playerId,
+      targetId: pick,
+      locked: false,
+    });
+    expect(bossView.player!.callerPlayerId).toBe(godfather.playerId);
+
+    // And the town sees no trace of any of it.
+    const doctor = (await seatWithRole(created.roomId, created.seats, "doctor"))!;
+    const townView = await view(created.roomId, doctor);
+    expect(townView.player!.allyTargets).toEqual([]);
+    expect(townView.player!.callerPlayerId).toBeNull();
+    // Player ids are public — the roster needs them. What must never appear is a pairing of
+    // anybody to a target, so the only night target in a town snapshot is that player's own.
+    const targets = JSON.stringify(townView).match(/"(?:target|nightTarget)Id?":"[^"]+"/g) ?? [];
+    expect(targets).toEqual([]);
+    expect(townView.player!.nightTarget).toBeNull();
+  });
+
+  it("resolves a disagreement in the godfather's favour", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-09T14:00:00Z"));
+    const created = await room("mafia", NAMES.slice(0, 9));
+    await host(created.roomId, created.hostToken, { type: "game.start" });
+    const deal = await view(created.roomId, created.seats[0]);
+    await runTo(created.roomId, created.seats, deal.phaseEndsAt + 1);
+
+    const night = await view(created.roomId, created.seats[0]);
+    const godfather = (await seatWithRole(created.roomId, created.seats, "godfather"))!;
+    const mafia = (await seatWithRole(created.roomId, created.seats, "mafia"))!;
+    await runTo(created.roomId, created.seats, night.nightOpensAt! + 100);
+
+    const options = (await view(created.roomId, godfather)).player!.targetableIds;
+    const bossPick = options[0];
+    const otherPick = options[1];
+    expect(bossPick).not.toBe(otherPick);
+
+    await act(created.roomId, godfather, {
+      type: "night.select",
+      round: night.round,
+      targetId: bossPick,
+    });
+    await act(created.roomId, mafia, {
+      type: "night.select",
+      round: night.round,
+      targetId: otherPick,
+    });
+
+    await runTo(created.roomId, created.seats, night.phaseEndsAt + 1);
+    const dawn = await view(created.roomId, created.seats[0]);
+    const died = dawn.dawn!.deaths.map(({ playerId }) => playerId);
+    expect(died).toContain(bossPick);
+    expect(died).not.toContain(otherPick);
+  });
+});

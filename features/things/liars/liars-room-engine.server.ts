@@ -1022,6 +1022,14 @@ function snapshot(room: LiarsRoomState, viewerId?: string, now = Date.now()): Li
           role: viewer.role ?? "villager",
           alive: viewer.alive,
           allyIds,
+          allyTargets: allyIds.map((allyId) => {
+            const ally = room.players.find(({ id }) => id === allyId)!;
+            return { playerId: allyId, targetId: ally.nightTarget, locked: ally.nightLocked };
+          }),
+          callerPlayerId:
+            viewer.role && liarsRoleSide(viewer.role) === "mafia" && room.mode === "mafia"
+              ? (mafiaCaller(room)?.id ?? null)
+              : null,
           word: viewer.word ?? null,
           nightTarget: viewer.nightTarget,
           nightLocked: viewer.nightLocked,

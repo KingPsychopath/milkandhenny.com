@@ -146,6 +146,8 @@
   --things-country-outside: oklch(0.57 0.19 28);
   --things-country-inside: oklch(0.53 0.15 253);
   --things-country-point: oklch(0.2 0.01 56.42);
+  --liars-dead: oklch(0.55 0.21 27);
+  --liars-alive: oklch(0.66 0.17 152);
   --pitch-night-night: #100d0c;
   --pitch-night-cream: #f5eddb;
   --pitch-night-amber: #d99a2b;
@@ -171,6 +173,8 @@
   --prose-pre-fg: oklch(0.856 0.01 70.7);
   --selection-bg: oklch(0.28 0.075 47.6);
   --selection-fg: oklch(0.828 0.165 86.05);
+  --liars-dead: oklch(0.62 0.22 27);
+  --liars-alive: oklch(0.74 0.18 152);
   --pitch-night-night: #0d0b0a;
   --pitch-night-cream: #f4ecda;
   --pitch-night-amber: #e2aa45;
@@ -439,6 +443,127 @@
   .things-game-fullscreen {
     min-height: 100svh;
     background: var(--things-night);
+  }
+
+  /*
+   * Liars: the dawn beats. Deliberately not a strobe — a sustained full-screen flicker in the
+   * 5-30Hz band is the photosensitive seizure range, and this is a game passed round a room. One
+   * hard blowout, a snap to black, then a slow red bleed; the vibration carries the rest.
+   */
+  .liars-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 60;
+    pointer-events: none;
+  }
+
+  .liars-overlay--death {
+    animation: liars-death 2.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  }
+
+  .liars-overlay--revive {
+    animation: liars-revive 1.8s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  }
+
+  .liars-overlay--dusk {
+    animation: liars-dusk 2.5s ease-in-out forwards;
+  }
+
+  .liars-overlay--dawn {
+    animation: liars-dawn 2.5s ease-in-out forwards;
+  }
+
+  @keyframes liars-death {
+    0% {
+      background: oklch(1 0 0);
+      opacity: 1;
+    }
+    5% {
+      background: oklch(1 0 0);
+      opacity: 1;
+    }
+    7% {
+      background: oklch(0 0 0);
+      opacity: 1;
+    }
+    30% {
+      background: color-mix(in oklab, var(--liars-dead) 55%, black);
+      opacity: 0.95;
+    }
+    65% {
+      background: color-mix(in oklab, var(--liars-dead) 30%, black);
+      opacity: 0.85;
+    }
+    100% {
+      background: color-mix(in oklab, var(--liars-dead) 22%, black);
+      opacity: 0.8;
+    }
+  }
+
+  @keyframes liars-revive {
+    0% {
+      background: color-mix(in oklab, var(--liars-dead) 22%, black);
+      opacity: 0.8;
+    }
+    45% {
+      background: color-mix(in oklab, var(--liars-alive) 32%, black);
+      opacity: 0.55;
+    }
+    100% {
+      background: color-mix(in oklab, var(--liars-alive) 20%, black);
+      opacity: 0;
+    }
+  }
+
+  @keyframes liars-dusk {
+    0% {
+      background: var(--things-cream);
+      opacity: 0.9;
+    }
+    100% {
+      background: var(--things-night);
+      opacity: 0;
+    }
+  }
+
+  @keyframes liars-dawn {
+    0% {
+      background: var(--things-night);
+      opacity: 0.9;
+    }
+    100% {
+      background: var(--things-cream);
+      opacity: 0;
+    }
+  }
+
+  /* One slow wash, no blowout and no snap, for anyone who has asked for less motion. */
+  @media (prefers-reduced-motion: reduce) {
+    .liars-overlay--death {
+      animation: liars-death-calm 2.6s ease-out forwards;
+    }
+
+    .liars-overlay--revive,
+    .liars-overlay--dusk,
+    .liars-overlay--dawn {
+      animation: none;
+      opacity: 0;
+    }
+  }
+
+  @keyframes liars-death-calm {
+    0% {
+      background: color-mix(in oklab, var(--liars-dead) 40%, black);
+      opacity: 0;
+    }
+    35% {
+      background: color-mix(in oklab, var(--liars-dead) 40%, black);
+      opacity: 0.85;
+    }
+    100% {
+      background: color-mix(in oklab, var(--liars-dead) 22%, black);
+      opacity: 0.8;
+    }
   }
 
   .things-game-fullscreen:fullscreen,

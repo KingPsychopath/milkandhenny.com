@@ -186,6 +186,13 @@ export interface LiarsPrivateState extends MultiplayerReadiness {
   alive: boolean;
   /** Mafia teammates. Empty for everyone else, and for blind imposters. */
   allyIds: string[];
+  /**
+   * What your teammates have currently picked, live. Coordinating is the fun of being mafia, and
+   * the caller needs to see the disagreement before they overrule it.
+   */
+  allyTargets: Array<{ playerId: string; targetId: string | null; locked: boolean }>;
+  /** Whose pick actually happens if the mafia disagree — godfather, else longest-surviving. */
+  callerPlayerId: string | null;
   /** Imposter mode: your word, or null if you are the imposter. */
   word: string | null;
   nightTarget: string | null;

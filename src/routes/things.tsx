@@ -1,6 +1,8 @@
 import { Link, Outlet, createFileRoute, useMatchRoute } from "@tanstack/react-router";
 import { SITE_BRAND, SITE_NAME } from "@/lib/shared/config";
 import { THINGS } from "@/features/things/catalog";
+import { isOfflineThingSlug } from "@/features/things/offline";
+import type { OfflineThingSlug } from "@/features/things/offline";
 import { useThingOfflineState } from "@/features/offline/client";
 import type { Thing } from "@/features/things/catalog";
 
@@ -86,11 +88,12 @@ function ThingsRoute() {
 }
 
 function ThingOfflineStatus({ thing }: { thing: Thing }) {
-  if (!thing.offline) return null;
+  // Online-only things carry no offline bundle, so there is no state to subscribe to.
+  if (!thing.offline || !isOfflineThingSlug(thing.slug)) return null;
   return <OfflineThingStatus slug={thing.slug} />;
 }
 
-function OfflineThingStatus({ slug }: { slug: Thing["slug"] }) {
+function OfflineThingStatus({ slug }: { slug: OfflineThingSlug }) {
   const state = useThingOfflineState(slug);
   const mode = slug === "spelling-bee" ? "say it aloud · " : "";
   const label =

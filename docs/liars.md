@@ -84,6 +84,7 @@ Checked at dawn and again at verdict.
 | Role | Night action | Rules |
 |---|---|---|
 | **Mafia** | kill one, or **stay in** | Staying in produces no death and no movement — nothing for watchers to see. A real strategic option. |
+| | | *The mafia see each other's picks **live**, including whether each has locked. Coordinating is the fun of the role, and the caller needs to see a disagreement before overruling it. Everyone who picked somebody still counts as having left the house, so being overruled does not hide you.* |
 | **Godfather** | kills; reads **innocent** to the detective | From 7 players. Makes the final call when mafia disagree on a target. Without this the detective solves the game on night two. |
 | | | *Once the godfather is dead, the call passes by **seniority** — longest-surviving mafia, ties broken by join order. Deterministic, so a disagreement can never stall the night.* |
 | **Jammer** | cancels one player's night action | From 12 players. The blocked player **still registers as moved** — they went out and were turned away — and is told their night was interrupted. |
@@ -640,7 +641,23 @@ Where the whole game pays off, and the payoff for the dead who have been watchin
 **Rematch weights the deal against your previous role**, so nobody draws mafia three times running.
 A rematch returns to the lobby, so latecomers can join there.
 
-### 5.13 Accessibility
+### 5.13 The dev harness
+
+`/things/liars/dev`, development builds only.
+
+A game whose entire design is about what each player can and cannot see is close to untestable from
+one device, and five phones and a stopwatch makes a two-minute change a twenty-minute loop. The
+harness opens a real room, joins a table, and mounts the **real player surface** once per seat, side
+by side in phone-sized frames.
+
+Every panel is the same `LiarsRoom` component a phone gets, with its own poll loop, its own wake
+socket and its own redacted snapshot. The harness has no privileged access and does nothing a
+player could not do — which is the point. **If a leak shows up on that screen, it is a real leak.**
+
+A "short phases" switch drops the timings to the validator's floor, keeping the night long enough
+ahead of the T−10s report for a whole table to act.
+
+### 5.14 Accessibility
 
 The game is unusually timing-dependent, so the baseline rules in `.cursor/rules/accessibility.mdc`
 need active work here:
