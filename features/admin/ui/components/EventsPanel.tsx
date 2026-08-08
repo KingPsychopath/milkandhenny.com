@@ -4,6 +4,7 @@ import { useCallback, useEffect, useId, useMemo, useState } from "react";
 
 import { AppSelect } from "@/components/AppSelect";
 import { useActionDialog } from "@/hooks/useActionDialog";
+import { useQrCode } from "@/hooks/useQrCode";
 import {
   EVENT_STATUSES,
   formatEventDateTime,
@@ -13,6 +14,12 @@ import {
   type EventStatus,
   type TicketType,
 } from "@/features/events/types";
+import {
+  scannerPath,
+  type CheckpointRecord,
+  type GuestRequestRecord,
+  type ScannerLinkRecord,
+} from "@/features/tickets/checkpoint-types";
 import type { DoorTicketView } from "@/features/tickets/types";
 
 type AuthFetch = (url: string, options?: RequestInit) => Promise<Response>;
@@ -257,8 +264,1182 @@ function Field({
   );
 }
 
-function EventOperations({ event, summary }: { event: EventRecord; summary: EventTicketSummary }) {
+type StepUpHelpers = {
+  ensureStepUpToken: () => Promise<
+    { ok: true; token: string } | { ok: false; cancelled?: true; error?: string }
+  >;
+  withStepUpHeaders: (token: string, extra?: Record<string, string>) => Record<string, string>;
+};
+
+async function readErrorMessage(response: Response, fallback: string): Promise<string> {
+  const data: unknown = await response.json().catch(() => null);
+  return data && typeof data === "object" && "error" in data && typeof data.error === "string"
+    ? data.error
+    : fallback;
+}
+
+/** Comp a guest onto the list: name, optional email, type, and plus-ones. */
+function AddGuestForm({
+  event,
+  authFetch,
+  onError,
+  onStatus,
+  onIssued,
+}: {
+  event: EventRecord;
+  authFetch: AuthFetch;
+  onError: (message: string) => void;
+  onStatus: (message: string) => void;
+  onIssued: () => Promise<void>;
+}) {
+  const typeId = useId();
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [ticketTypeId, setTicketTypeId] = useState(event.ticketTypes[0]?.id ?? "");
+  const [quantity, setQuantity] = useState("1");
+  const [busy, setBusy] = useState(false);
+
+  const submit = async () => {
+    if (!name.trim()) {
+      onError("The guest needs a name");
+      return;
+    }
+    setBusy(true);
+    onError("");
+    try {
+      const response = await authFetch(`/api/admin/events/${event.slug}/tickets`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "comp",
+          holderName: name.trim(),
+          email: email.trim() || undefined,
+          ticketTypeId,
+          quantity: Number.parseInt(quantity, 10) || 1,
+        }),
+      });
+      if (!response.ok) throw new Error(await readErrorMessage(response, "Failed to add guest"));
+      const data: unknown = await response.json().catch(() => null);
+      const emailed =
+        data && typeof data === "object" && "emailed" in data && data.emailed === true;
+      onStatus(
+        emailed ? `${name.trim()} added — ticket emailed` : `${name.trim()} added to the list`,
+      );
+      setName("");
+      setEmail("");
+      setQuantity("1");
+      await onIssued();
+    } catch (error) {
+      onError(error instanceof Error ? error.message : "Failed to add guest");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <form
+      onSubmit={(formEvent) => {
+        formEvent.preventDefault();
+        void submit();
+      }}
+      className="mt-3 grid gap-2 rounded-lg border theme-border p-3 sm:grid-cols-2"
+    >
+      <Field label="guest name" value={name} onChange={setName} />
+      <Field
+        label="email (optional)"
+        value={email}
+        onChange={setEmail}
+        type="email"
+        hint="given an email, their ticket is sent straight away"
+      />
+      <div>
+        <label htmlFor={typeId} className="font-mono text-micro theme-muted tracking-wide">
+          ticket type
+        </label>
+        <AppSelect
+          id={typeId}
+          value={ticketTypeId}
+          onValueChange={setTicketTypeId}
+          options={event.ticketTypes.map((type) => ({ value: type.id, label: type.name }))}
+          variant="field"
+          className="mt-1 rounded text-sm"
+        />
+      </div>
+      <Field
+        label="how many"
+        value={quantity}
+        onChange={setQuantity}
+        type="number"
+        hint="2+ adds plus-ones under the same name"
+      />
+      <div className="sm:col-span-2">
+        <button
+          type="submit"
+          disabled={busy || !ticketTypeId}
+          className="min-h-10 rounded bg-foreground px-4 font-mono text-xs text-background disabled:opacity-50"
+        >
+          {busy ? "adding…" : "add to guest list (free)"}
+        </button>
+      </div>
+    </form>
+  );
+}
+
+/** Scanners' "can we add this person?" — approve comps them straight on. */
+function GuestRequestsAdmin({
+  event,
+  authFetch,
+  onError,
+  onStatus,
+  onDecided,
+}: {
+  event: EventRecord;
+  authFetch: AuthFetch;
+  onError: (message: string) => void;
+  onStatus: (message: string) => void;
+  onDecided: () => Promise<void>;
+}) {
+  const [requests, setRequests] = useState<GuestRequestRecord[] | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const load = useCallback(async () => {
+    try {
+      const response = await authFetch(`/api/admin/events/${event.slug}/guest-requests`);
+      const data: unknown = await response.json().catch(() => null);
+      if (!response.ok) throw new Error("Failed to load guest requests");
+      setRequests(
+        data && typeof data === "object" && "requests" in data && Array.isArray(data.requests)
+          ? (data.requests as GuestRequestRecord[])
+          : [],
+      );
+    } catch (error) {
+      onError(error instanceof Error ? error.message : "Failed to load guest requests");
+    }
+  }, [authFetch, event.slug, onError]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const decide = async (request: GuestRequestRecord, approve: boolean) => {
+    setBusy(true);
+    onError("");
+    try {
+      const response = await authFetch(`/api/admin/events/${event.slug}/guest-requests`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: request.id, action: approve ? "approve" : "decline" }),
+      });
+      if (!response.ok) throw new Error(await readErrorMessage(response, "Failed to decide"));
+      onStatus(
+        approve ? `${request.name} approved and added to the list` : `${request.name} declined`,
+      );
+      await load();
+      if (approve) await onDecided();
+    } catch (error) {
+      onError(error instanceof Error ? error.message : "Failed to decide");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const pending = (requests ?? []).filter((request) => request.status === "pending");
+  if (requests === null || pending.length === 0) return null;
+
+  return (
+    <div className="mt-4 rounded-lg border border-[var(--things-amber)] p-3">
+      <p className="font-mono text-micro text-foreground">
+        {pending.length} guest request{pending.length === 1 ? "" : "s"} from the door
+      </p>
+      <ul className="mt-2 divide-y theme-border">
+        {pending.map((request) => (
+          <li key={request.id} className="flex items-center justify-between gap-3 py-2">
+            <div className="min-w-0">
+              <p className="truncate font-mono text-sm text-foreground">{request.name}</p>
+              <p className="font-mono text-micro theme-muted">
+                asked by {request.requestedBy} ·{" "}
+                {new Date(request.createdAt).toLocaleTimeString("en-GB", {
+                  hour: "2-digit",
+                  minute: "2-digit",
+                })}
+              </p>
+            </div>
+            <div className="flex shrink-0 gap-2">
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => void decide(request, true)}
+                className="min-h-9 rounded bg-foreground px-3 font-mono text-micro text-background disabled:opacity-50"
+              >
+                approve
+              </button>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => void decide(request, false)}
+                className="min-h-9 rounded border theme-border-strong px-3 font-mono text-micro text-foreground disabled:opacity-50"
+              >
+                decline
+              </button>
+            </div>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+/** Compose, preview, and send a branded update to attendees. */
+function MessageComposer({
+  event,
+  summary,
+  authFetch,
+  onError,
+  onStatus,
+  confirmAction,
+}: {
+  event: EventRecord;
+  summary: EventTicketSummary;
+  authFetch: AuthFetch;
+  onError: (message: string) => void;
+  onStatus: (message: string) => void;
+  confirmAction: (options: {
+    title: string;
+    description: string;
+    confirmLabel: string;
+    intent: "danger" | "default";
+  }) => Promise<boolean>;
+}) {
+  const [open, setOpen] = useState(false);
+  const [subject, setSubject] = useState("");
+  const [body, setBody] = useState("");
+  const [mode, setMode] = useState<"all" | "selected">("all");
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [personQuery, setPersonQuery] = useState("");
+  const [previewHtml, setPreviewHtml] = useState<string | null>(null);
+  const [previewInfo, setPreviewInfo] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const emailable = useMemo(
+    () => summary.tickets.filter((ticket) => ticket.status === "valid" && ticket.email),
+    [summary.tickets],
+  );
+  const personMatches = useMemo(() => {
+    const term = personQuery.trim().toLowerCase();
+    return emailable
+      .filter(
+        (ticket) =>
+          !term ||
+          ticket.holderName.toLowerCase().includes(term) ||
+          ticket.email?.toLowerCase().includes(term),
+      )
+      .slice(0, 8);
+  }, [emailable, personQuery]);
+
+  const post = async (preview: boolean) => {
+    const payload = {
+      subject,
+      body,
+      preview,
+      ...(mode === "selected" ? { recipients: [...selected] } : {}),
+    };
+    const response = await authFetch(`/api/admin/events/${event.slug}/email`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    const data: unknown = await response.json().catch(() => null);
+    if (!response.ok) {
+      const message =
+        data && typeof data === "object" && "error" in data && typeof data.error === "string"
+          ? data.error
+          : "Email failed";
+      throw new Error(message);
+    }
+    return data as Record<string, unknown>;
+  };
+
+  const preview = async () => {
+    setBusy(true);
+    onError("");
+    try {
+      const data = await post(true);
+      const rendered = data.rendered as { html: string } | undefined;
+      const names = Array.isArray(data.recipients) ? (data.recipients as string[]) : [];
+      const count = typeof data.recipientCount === "number" ? data.recipientCount : names.length;
+      setPreviewHtml(rendered?.html ?? null);
+      setPreviewInfo(
+        `${count} recipient${count === 1 ? "" : "s"}${
+          count > 0 ? `: ${names.slice(0, 6).join(", ")}${count > 6 ? "…" : ""}` : ""
+        }${data.emailConfigured === false ? " · email is NOT configured — sending will fail" : ""}`,
+      );
+    } catch (error) {
+      onError(error instanceof Error ? error.message : "Preview failed");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const send = async () => {
+    const confirmed = await confirmAction({
+      title: "Send this email?",
+      description: previewInfo ?? "It goes to the selected attendees from the tickets address.",
+      confirmLabel: "send",
+      intent: "default",
+    });
+    if (!confirmed) return;
+
+    setBusy(true);
+    onError("");
+    try {
+      const data = await post(false);
+      const sent = typeof data.sent === "number" ? data.sent : 0;
+      const failed = typeof data.failed === "number" ? data.failed : 0;
+      onStatus(
+        failed === 0
+          ? `Sent to ${sent} ${sent === 1 ? "person" : "people"}`
+          : `Sent to ${sent}; ${failed} failed — try those again`,
+      );
+      if (failed === 0) {
+        setSubject("");
+        setBody("");
+        setPreviewHtml(null);
+        setPreviewInfo(null);
+        setSelected(new Set());
+        setOpen(false);
+      }
+    } catch (error) {
+      onError(error instanceof Error ? error.message : "Sending failed");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="mt-4">
+      <button
+        type="button"
+        onClick={() => setOpen((current) => !current)}
+        aria-expanded={open}
+        className="font-mono text-xs theme-muted hover:text-foreground transition-colors"
+      >
+        {open ? "− close email" : "✉ email attendees"}
+      </button>
+
+      {open && (
+        <div className="mt-3 space-y-3 rounded-lg border theme-border p-3">
+          <Field label="subject" value={subject} onChange={setSubject} />
+          <label className="block">
+            <span className="font-mono text-micro theme-muted tracking-wide">message</span>
+            <textarea
+              value={body}
+              onChange={(event) => setBody(event.target.value)}
+              rows={6}
+              placeholder="Doors open at 8. Bring ID. The door code is in your ticket."
+              className="mt-1 w-full rounded border theme-border bg-transparent px-3 py-2 font-mono text-sm text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--prose-hashtag)]"
+            />
+            <span className="mt-1 block font-mono text-micro theme-faint">
+              Plain text; blank lines start new paragraphs. Sent in the same style as ticket emails.
+            </span>
+          </label>
+
+          <div className="flex flex-wrap items-center gap-3">
+            <span className="font-mono text-micro theme-muted">to:</span>
+            <button
+              type="button"
+              onClick={() => setMode("all")}
+              aria-pressed={mode === "all"}
+              className={`min-h-9 rounded border px-3 font-mono text-micro ${mode === "all" ? "border-transparent bg-foreground text-background" : "theme-border-strong text-foreground"}`}
+            >
+              everyone with an email ({emailable.length})
+            </button>
+            <button
+              type="button"
+              onClick={() => setMode("selected")}
+              aria-pressed={mode === "selected"}
+              className={`min-h-9 rounded border px-3 font-mono text-micro ${mode === "selected" ? "border-transparent bg-foreground text-background" : "theme-border-strong text-foreground"}`}
+            >
+              pick people{selected.size > 0 ? ` (${selected.size})` : ""}
+            </button>
+          </div>
+
+          {mode === "selected" && (
+            <div>
+              <input
+                type="search"
+                value={personQuery}
+                onChange={(event) => setPersonQuery(event.target.value)}
+                placeholder="find someone…"
+                className="min-h-10 w-full rounded border theme-border bg-transparent px-3 font-mono text-sm text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--prose-hashtag)]"
+              />
+              <ul className="mt-1 divide-y theme-border">
+                {personMatches.map((ticket) => (
+                  <li key={ticket.id}>
+                    <label className="flex min-h-10 cursor-pointer items-center gap-2 py-1">
+                      <input
+                        type="checkbox"
+                        checked={selected.has(ticket.id)}
+                        onChange={(event) => {
+                          setSelected((current) => {
+                            const next = new Set(current);
+                            if (event.target.checked) next.add(ticket.id);
+                            else next.delete(ticket.id);
+                            return next;
+                          });
+                        }}
+                      />
+                      <span className="truncate font-mono text-xs text-foreground">
+                        {ticket.holderName}
+                      </span>
+                      <span className="truncate font-mono text-micro theme-muted">
+                        {ticket.email}
+                      </span>
+                    </label>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              disabled={busy || !subject.trim() || !body.trim()}
+              onClick={() => void preview()}
+              className="min-h-10 rounded border theme-border-strong px-4 font-mono text-xs text-foreground disabled:opacity-50"
+            >
+              preview
+            </button>
+            <button
+              type="button"
+              disabled={
+                busy ||
+                !subject.trim() ||
+                !body.trim() ||
+                previewHtml === null ||
+                (mode === "selected" && selected.size === 0)
+              }
+              onClick={() => void send()}
+              className="min-h-10 rounded bg-foreground px-4 font-mono text-xs text-background disabled:opacity-50"
+            >
+              send
+            </button>
+            {previewHtml === null && (
+              <span className="font-mono text-micro theme-faint">preview before sending</span>
+            )}
+          </div>
+
+          {previewInfo && <p className="font-mono text-micro theme-muted">{previewInfo}</p>}
+          {previewHtml && (
+            <iframe
+              title="Email preview"
+              sandbox=""
+              srcDoc={previewHtml}
+              className="h-80 w-full rounded border theme-border bg-white"
+            />
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * QR of a scanner link, for handing access to someone standing next to you:
+ * they point their camera at your screen instead of waiting on a message.
+ */
+function ScannerLinkQr({ token, label }: { token: string; label: string }) {
+  const [url, setUrl] = useState<string | null>(null);
+  useEffect(() => {
+    setUrl(`${window.location.origin}${scannerPath(token)}`);
+  }, [token]);
+  const { dataUrl, failed } = useQrCode(url, 320);
+
+  return (
+    <div className="mt-2 rounded-lg border theme-border p-3 text-center">
+      {dataUrl ? (
+        <>
+          <img
+            src={dataUrl}
+            alt={`Scanner access QR for ${label}`}
+            className="mx-auto h-40 w-40 rounded bg-white p-1"
+          />
+          <p className="mt-2 font-mono text-micro theme-muted">
+            {label} points their phone camera here — it opens their scanner.
+          </p>
+        </>
+      ) : (
+        <p className="font-mono text-micro theme-muted">
+          {failed ? "QR failed to render — use copy link instead." : "rendering…"}
+        </p>
+      )}
+    </div>
+  );
+}
+
+/** Checkpoints and scanner links: who can scan, and what each scan means. */
+function ScanningSection({
+  event,
+  authFetch,
+  onError,
+  onStatus,
+  confirmAction,
+}: {
+  event: EventRecord;
+  authFetch: AuthFetch;
+  onError: (message: string) => void;
+  onStatus: (message: string) => void;
+  confirmAction: (options: {
+    title: string;
+    description: string;
+    confirmLabel: string;
+    intent: "danger" | "default";
+  }) => Promise<boolean>;
+}) {
+  const stationId = useId();
+  const [checkpoints, setCheckpoints] = useState<CheckpointRecord[]>([]);
+  const [usage, setUsage] = useState<Record<string, { unitsUsed: number; ticketsServed: number }>>(
+    {},
+  );
+  const [links, setLinks] = useState<ScannerLinkRecord[]>([]);
+  const [devices, setDevices] = useState<Record<string, { count: number; lastSeen?: string }>>({});
+  const [loaded, setLoaded] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [newCheckpointName, setNewCheckpointName] = useState("");
+  const [newCheckpointAllowance, setNewCheckpointAllowance] = useState("1");
+  const [newLinkLabel, setNewLinkLabel] = useState("");
+  const [newLinkStation, setNewLinkStation] = useState("door");
+  const [newLinkRole, setNewLinkRole] = useState<"scanner" | "manager">("scanner");
+  const [copiedToken, setCopiedToken] = useState<string | null>(null);
+  const [qrToken, setQrToken] = useState<string | null>(null);
+  const [allowancesOpenFor, setAllowancesOpenFor] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    try {
+      const [checkpointsRes, linksRes] = await Promise.all([
+        authFetch(`/api/admin/events/${event.slug}/checkpoints`),
+        authFetch(`/api/admin/events/${event.slug}/scanner-links`),
+      ]);
+      const checkpointsData: unknown = await checkpointsRes.json().catch(() => null);
+      const linksData: unknown = await linksRes.json().catch(() => null);
+      if (!checkpointsRes.ok || !linksRes.ok) throw new Error("Failed to load scanning setup");
+
+      const nextCheckpoints =
+        checkpointsData &&
+        typeof checkpointsData === "object" &&
+        "checkpoints" in checkpointsData &&
+        Array.isArray(checkpointsData.checkpoints)
+          ? (checkpointsData.checkpoints as CheckpointRecord[])
+          : [];
+      setCheckpoints(nextCheckpoints);
+
+      const summaries =
+        checkpointsData &&
+        typeof checkpointsData === "object" &&
+        "summaries" in checkpointsData &&
+        Array.isArray(checkpointsData.summaries)
+          ? (checkpointsData.summaries as {
+              checkpointId: string;
+              unitsUsed: number;
+              ticketsServed: number;
+            }[])
+          : [];
+      const nextUsage: Record<string, { unitsUsed: number; ticketsServed: number }> = {};
+      for (const entry of summaries) {
+        nextUsage[entry.checkpointId] = {
+          unitsUsed: entry.unitsUsed,
+          ticketsServed: entry.ticketsServed,
+        };
+      }
+      setUsage(nextUsage);
+
+      setLinks(
+        linksData &&
+          typeof linksData === "object" &&
+          "links" in linksData &&
+          Array.isArray(linksData.links)
+          ? (linksData.links as ScannerLinkRecord[])
+          : [],
+      );
+      setDevices(
+        linksData &&
+          typeof linksData === "object" &&
+          "devices" in linksData &&
+          linksData.devices &&
+          typeof linksData.devices === "object"
+          ? (linksData.devices as Record<string, { count: number; lastSeen?: string }>)
+          : {},
+      );
+      setLoaded(true);
+    } catch (error) {
+      onError(error instanceof Error ? error.message : "Failed to load scanning setup");
+    }
+  }, [authFetch, event.slug, onError]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const addCheckpoint = async () => {
+    setBusy(true);
+    onError("");
+    try {
+      const response = await authFetch(`/api/admin/events/${event.slug}/checkpoints`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: newCheckpointName,
+          defaultAllowance: Number.parseInt(newCheckpointAllowance, 10) || 1,
+          allowances: {},
+        }),
+      });
+      if (!response.ok) {
+        throw new Error(await readErrorMessage(response, "Failed to add checkpoint"));
+      }
+      onStatus(`“${newCheckpointName.trim()}” checkpoint added`);
+      setNewCheckpointName("");
+      setNewCheckpointAllowance("1");
+      await load();
+    } catch (error) {
+      onError(error instanceof Error ? error.message : "Failed to add checkpoint");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const saveAllowance = async (checkpoint: CheckpointRecord, ticketTypeId: string, raw: string) => {
+    const value = Number.parseInt(raw, 10);
+    if (!Number.isFinite(value) || value < 0) return;
+    const nextAllowances = { ...checkpoint.allowances, [ticketTypeId]: value };
+    try {
+      const response = await authFetch(`/api/admin/events/${event.slug}/checkpoints`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...checkpoint, allowances: nextAllowances }),
+      });
+      if (!response.ok) {
+        throw new Error(await readErrorMessage(response, "Failed to save allowance"));
+      }
+      setCheckpoints((current) =>
+        current.map((entry) =>
+          entry.id === checkpoint.id ? { ...entry, allowances: nextAllowances } : entry,
+        ),
+      );
+    } catch (error) {
+      onError(error instanceof Error ? error.message : "Failed to save allowance");
+    }
+  };
+
+  const removeCheckpoint = async (checkpoint: CheckpointRecord) => {
+    setBusy(true);
+    onError("");
+    try {
+      const response = await authFetch(`/api/admin/events/${event.slug}/checkpoints`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: checkpoint.id }),
+      });
+      if (!response.ok) {
+        throw new Error(await readErrorMessage(response, "Failed to remove checkpoint"));
+      }
+      onStatus(`“${checkpoint.name}” removed`);
+      await load();
+    } catch (error) {
+      onError(error instanceof Error ? error.message : "Failed to remove checkpoint");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const createLink = async () => {
+    setBusy(true);
+    onError("");
+    try {
+      const response = await authFetch(`/api/admin/events/${event.slug}/scanner-links`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          label: newLinkLabel,
+          checkpointId: newLinkStation === "door" ? null : newLinkStation,
+          role: newLinkStation === "door" ? newLinkRole : "scanner",
+        }),
+      });
+      if (!response.ok) {
+        throw new Error(await readErrorMessage(response, "Failed to create link"));
+      }
+      onStatus(`Scanner link for ${newLinkLabel.trim()} created — copy and send it`);
+      setNewLinkLabel("");
+      await load();
+    } catch (error) {
+      onError(error instanceof Error ? error.message : "Failed to create link");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const revokeLink = async (link: ScannerLinkRecord) => {
+    setBusy(true);
+    onError("");
+    try {
+      const response = await authFetch(`/api/admin/events/${event.slug}/scanner-links`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token: link.token }),
+      });
+      if (!response.ok) {
+        throw new Error(await readErrorMessage(response, "Failed to turn the link off"));
+      }
+      onStatus(`${link.label}'s link turned off`);
+      await load();
+    } catch (error) {
+      onError(error instanceof Error ? error.message : "Failed to turn the link off");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const revokeAllLinks = async () => {
+    const confirmed = await confirmAction({
+      title: "Turn off every scanner link?",
+      description:
+        "Everyone scanning for this event loses access on their next scan. You can make fresh links any time.",
+      confirmLabel: "turn all off",
+      intent: "danger",
+    });
+    if (!confirmed) return;
+
+    setBusy(true);
+    onError("");
+    try {
+      const response = await authFetch(`/api/admin/events/${event.slug}/scanner-links`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ all: true }),
+      });
+      if (!response.ok) {
+        throw new Error(await readErrorMessage(response, "Failed to turn the links off"));
+      }
+      onStatus("All scanner links turned off");
+      await load();
+    } catch (error) {
+      onError(error instanceof Error ? error.message : "Failed to turn the links off");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const copyLink = async (link: ScannerLinkRecord) => {
+    const url = `${window.location.origin}${scannerPath(link.token)}`;
+    try {
+      await navigator.clipboard.writeText(url);
+      setCopiedToken(link.token);
+      setTimeout(
+        () => setCopiedToken((current) => (current === link.token ? null : current)),
+        2000,
+      );
+    } catch {
+      onError("Couldn't copy — long-press the link text instead");
+    }
+  };
+
+  const stationName = (checkpointId: string | null) =>
+    checkpointId === null
+      ? "door"
+      : (checkpoints.find((entry) => entry.id === checkpointId)?.name ?? checkpointId);
+
+  const toggleQr = (token: string) => {
+    setQrToken((current) => (current === token ? null : token));
+  };
+
+  if (!loaded) return <p className="mt-4 font-mono text-xs theme-muted">loading scanning setup…</p>;
+
+  const liveLinks = links.filter((link) => !link.revokedAt);
+  const stationOptions = [
+    { value: "door", label: "door — entry scanning" },
+    ...checkpoints.map((checkpoint) => ({
+      value: checkpoint.id,
+      label: `${checkpoint.name} — counted per ticket`,
+    })),
+  ];
+
+  return (
+    <div className="mt-5 space-y-5 border-t theme-border pt-4">
+      <div>
+        <p className="font-mono text-micro theme-muted tracking-wide">scanner access</p>
+        <p className="mt-1 font-mono text-micro theme-faint">
+          Make a link per helper, send it over chat — they open it and scan. No PIN needed. Turn a
+          link off and it stops working on their next scan.
+        </p>
+
+        {liveLinks.length > 0 && (
+          <ul className="mt-3 divide-y theme-border border-y theme-border">
+            {liveLinks.map((link) => (
+              <li key={link.token} className="py-2">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="truncate font-mono text-sm text-foreground">
+                      {link.label}
+                      {link.role === "manager" && (
+                        <span className="ml-2 rounded border theme-border-strong px-1.5 py-0.5 font-mono text-micro theme-muted">
+                          manager
+                        </span>
+                      )}
+                    </p>
+                    <p className="font-mono text-micro theme-muted">
+                      {stationName(link.checkpointId)}
+                      {(() => {
+                        const info = devices[link.token];
+                        if (!info || info.count === 0) return " · not opened yet";
+                        return ` · ${info.count} phone${info.count === 1 ? "" : "s"}${
+                          info.lastSeen
+                            ? `, active ${new Date(info.lastSeen).toLocaleString("en-GB", { hour: "2-digit", minute: "2-digit", day: "numeric", month: "short" })}`
+                            : ""
+                        }`;
+                      })()}
+                    </p>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => void copyLink(link)}
+                      className="min-h-9 rounded border theme-border-strong px-3 font-mono text-micro text-foreground"
+                    >
+                      {copiedToken === link.token ? "copied ✓" : "copy link"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => toggleQr(link.token)}
+                      aria-expanded={qrToken === link.token}
+                      className="min-h-9 rounded border theme-border-strong px-3 font-mono text-micro text-foreground"
+                    >
+                      qr
+                    </button>
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => void revokeLink(link)}
+                      className="min-h-9 px-2 font-mono text-micro theme-muted hover:text-foreground transition-colors disabled:opacity-50"
+                    >
+                      turn off
+                    </button>
+                  </div>
+                </div>
+                {qrToken === link.token && <ScannerLinkQr token={link.token} label={link.label} />}
+              </li>
+            ))}
+          </ul>
+        )}
+
+        {liveLinks.length > 1 && (
+          <p className="mt-2 text-right">
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => void revokeAllLinks()}
+              className="font-mono text-micro theme-muted underline hover:text-foreground transition-colors disabled:opacity-50"
+            >
+              turn off all {liveLinks.length} links
+            </button>
+          </p>
+        )}
+
+        <form
+          onSubmit={(formEvent) => {
+            formEvent.preventDefault();
+            if (newLinkLabel.trim()) void createLink();
+          }}
+          className="mt-3 grid gap-2 sm:grid-cols-[1fr_1fr_auto] sm:items-end"
+        >
+          <Field label="who is scanning" value={newLinkLabel} onChange={setNewLinkLabel} />
+          <div>
+            <label htmlFor={stationId} className="font-mono text-micro theme-muted tracking-wide">
+              station
+            </label>
+            <AppSelect
+              id={stationId}
+              value={newLinkStation}
+              onValueChange={setNewLinkStation}
+              options={stationOptions}
+              variant="field"
+              className="mt-1 rounded text-sm"
+            />
+          </div>
+          <button
+            type="submit"
+            disabled={busy || !newLinkLabel.trim()}
+            className="min-h-10 rounded bg-foreground px-4 font-mono text-xs text-background disabled:opacity-50"
+          >
+            create link
+          </button>
+        </form>
+
+        {newLinkStation === "door" && (
+          <div className="mt-2 flex flex-wrap items-center gap-3">
+            <span className="font-mono text-micro theme-muted">level:</span>
+            <button
+              type="button"
+              onClick={() => setNewLinkRole("scanner")}
+              aria-pressed={newLinkRole === "scanner"}
+              className={`min-h-9 rounded border px-3 font-mono text-micro ${newLinkRole === "scanner" ? "border-transparent bg-foreground text-background" : "theme-border-strong text-foreground"}`}
+            >
+              scanner — scans, can request guests
+            </button>
+            <button
+              type="button"
+              onClick={() => setNewLinkRole("manager")}
+              aria-pressed={newLinkRole === "manager"}
+              className={`min-h-9 rounded border px-3 font-mono text-micro ${newLinkRole === "manager" ? "border-transparent bg-foreground text-background" : "theme-border-strong text-foreground"}`}
+            >
+              manager — adds guests, approves requests
+            </button>
+          </div>
+        )}
+      </div>
+
+      <div>
+        <p className="font-mono text-micro theme-muted tracking-wide">checkpoints</p>
+        <p className="mt-1 font-mono text-micro theme-faint">
+          Extra scan stations beyond the door — catering, merch, cloakroom. Each ticket carries a
+          counted allowance per checkpoint; scanning ticks it down.
+        </p>
+
+        {checkpoints.length > 0 && (
+          <ul className="mt-3 space-y-3">
+            {checkpoints.map((checkpoint) => {
+              const stats = usage[checkpoint.id];
+              return (
+                <li key={checkpoint.id} className="rounded-lg border theme-border p-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="font-mono text-sm text-foreground">{checkpoint.name}</p>
+                      <p className="font-mono text-micro theme-muted">
+                        {stats
+                          ? `${stats.unitsUsed} given out to ${stats.ticketsServed} ticket${stats.ticketsServed === 1 ? "" : "s"}`
+                          : "nothing given out yet"}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => void removeCheckpoint(checkpoint)}
+                      className="shrink-0 font-mono text-micro theme-muted hover:text-foreground transition-colors disabled:opacity-50"
+                    >
+                      remove
+                    </button>
+                  </div>
+                  <p className="mt-1 font-mono text-micro theme-faint">
+                    {(() => {
+                      const overrides = event.ticketTypes
+                        .filter(
+                          (type) =>
+                            checkpoint.allowances[type.id] !== undefined &&
+                            checkpoint.allowances[type.id] !== checkpoint.defaultAllowance,
+                        )
+                        .map((type) => `${type.name} gets ${checkpoint.allowances[type.id]}`);
+                      return overrides.length > 0
+                        ? `${checkpoint.defaultAllowance} per ticket · ${overrides.join(" · ")}`
+                        : `${checkpoint.defaultAllowance} per ticket, every ticket type`;
+                    })()}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setAllowancesOpenFor((current) =>
+                        current === checkpoint.id ? null : checkpoint.id,
+                      )
+                    }
+                    aria-expanded={allowancesOpenFor === checkpoint.id}
+                    className="mt-2 font-mono text-micro theme-muted underline hover:text-foreground transition-colors"
+                  >
+                    {allowancesOpenFor === checkpoint.id
+                      ? "done adjusting"
+                      : "adjust by ticket type"}
+                  </button>
+                  {allowancesOpenFor === checkpoint.id && (
+                    <>
+                      <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                        {event.ticketTypes.map((type) => (
+                          <label key={type.id} className="flex items-center justify-between gap-2">
+                            <span className="font-mono text-micro theme-muted">{type.name}</span>
+                            <input
+                              type="number"
+                              min={0}
+                              defaultValue={
+                                checkpoint.allowances[type.id] ?? checkpoint.defaultAllowance
+                              }
+                              onBlur={(inputEvent) =>
+                                void saveAllowance(checkpoint, type.id, inputEvent.target.value)
+                              }
+                              className="w-16 min-h-9 rounded border theme-border bg-transparent px-2 text-right font-mono text-sm text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--prose-hashtag)]"
+                            />
+                          </label>
+                        ))}
+                      </div>
+                      <p className="mt-1 font-mono text-micro theme-faint">
+                        how many each ticket type gets · 0 = not included · saves when you tap away
+                      </p>
+                    </>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        )}
+
+        <form
+          onSubmit={(formEvent) => {
+            formEvent.preventDefault();
+            if (newCheckpointName.trim()) void addCheckpoint();
+          }}
+          className="mt-3 grid gap-2 sm:grid-cols-[1fr_auto_auto] sm:items-end"
+        >
+          <Field
+            label="new checkpoint"
+            value={newCheckpointName}
+            onChange={setNewCheckpointName}
+            hint="e.g. Dinner, Welcome drink, Merch"
+          />
+          <Field
+            label="per ticket"
+            value={newCheckpointAllowance}
+            onChange={setNewCheckpointAllowance}
+            type="number"
+          />
+          <button
+            type="submit"
+            disabled={busy || !newCheckpointName.trim()}
+            className="min-h-10 rounded border theme-border-strong px-4 font-mono text-xs text-foreground disabled:opacity-50"
+          >
+            add checkpoint
+          </button>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+function EventOperations({
+  event,
+  summary,
+  authFetch,
+  onError,
+  onStatus,
+  reload,
+  confirmAction,
+  stepUp,
+}: {
+  event: EventRecord;
+  summary: EventTicketSummary;
+  authFetch: AuthFetch;
+  onError: (message: string) => void;
+  onStatus: (message: string) => void;
+  reload: () => Promise<void>;
+  confirmAction: (options: {
+    title: string;
+    description: string;
+    confirmLabel: string;
+    intent: "danger" | "default";
+  }) => Promise<boolean>;
+  stepUp: StepUpHelpers;
+}) {
   const [query, setQuery] = useState("");
+  const [showAddGuest, setShowAddGuest] = useState(false);
+  const [busyTicketId, setBusyTicketId] = useState<string | null>(null);
+  const [editingTicket, setEditingTicket] = useState<{
+    id: string;
+    name: string;
+    email: string;
+  } | null>(null);
+
+  const saveHolder = async () => {
+    const editing = editingTicket;
+    if (!editing) return;
+    setBusyTicketId(editing.id);
+    onError("");
+    try {
+      const response = await authFetch(`/api/admin/events/${event.slug}/tickets`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "update",
+          ticketId: editing.id,
+          holderName: editing.name,
+          email: editing.email.trim(),
+        }),
+      });
+      if (!response.ok) throw new Error(await readErrorMessage(response, "Failed to save"));
+      onStatus("Ticket holder updated");
+      setEditingTicket(null);
+      await reload();
+    } catch (error) {
+      onError(error instanceof Error ? error.message : "Failed to save");
+    } finally {
+      setBusyTicketId(null);
+    }
+  };
+
+  const runTicketAction = async (
+    ticket: AdminTicket,
+    action: "resend" | "refund" | "void" | "unredeem" | "redeem",
+  ) => {
+    if (action === "refund") {
+      const confirmed = await confirmAction({
+        title: `Refund ${ticket.holderName}'s order?`,
+        description:
+          "Money goes back to the original card and every QR on the order stops working. This cannot be undone.",
+        confirmLabel: "refund order",
+        intent: "danger",
+      });
+      if (!confirmed) return;
+    }
+    if (action === "void") {
+      const confirmed = await confirmAction({
+        title: `Cancel ${ticket.holderName}'s ticket?`,
+        description: "The QR stops working at the door. No money moves.",
+        confirmLabel: "cancel ticket",
+        intent: "danger",
+      });
+      if (!confirmed) return;
+    }
+
+    let headers: Record<string, string> = { "Content-Type": "application/json" };
+    if (action === "refund" || action === "void") {
+      const token = await stepUp.ensureStepUpToken();
+      if (!token.ok) {
+        if (!token.cancelled) onError(token.error ?? "Step-up failed");
+        return;
+      }
+      headers = stepUp.withStepUpHeaders(token.token, headers);
+    }
+
+    setBusyTicketId(ticket.id);
+    onError("");
+    try {
+      const response = await authFetch(`/api/admin/events/${event.slug}/tickets`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ action, ticketId: ticket.id }),
+      });
+      if (!response.ok) throw new Error(await readErrorMessage(response, "Action failed"));
+      onStatus(
+        action === "resend"
+          ? `Tickets re-emailed for ${ticket.holderName}'s order`
+          : action === "refund"
+            ? `${ticket.holderName}'s order refunded`
+            : action === "void"
+              ? `${ticket.holderName}'s ticket cancelled`
+              : action === "redeem"
+                ? `${ticket.holderName} checked in`
+                : `${ticket.holderName}'s check-in undone`,
+      );
+      await reload();
+    } catch (error) {
+      onError(error instanceof Error ? error.message : "Action failed");
+    } finally {
+      setBusyTicketId(null);
+    }
+  };
+
   const capacity =
     event.capacity ?? event.ticketTypes.reduce((total, type) => total + type.quantity, 0);
   const remaining = Math.max(0, capacity - summary.valid);
@@ -326,6 +1507,34 @@ function EventOperations({ event, summary }: { event: EventRecord; summary: Even
         </a>
       </div>
 
+      <GuestRequestsAdmin
+        event={event}
+        authFetch={authFetch}
+        onError={onError}
+        onStatus={onStatus}
+        onDecided={reload}
+      />
+
+      <div className="mt-4">
+        <button
+          type="button"
+          onClick={() => setShowAddGuest((current) => !current)}
+          aria-expanded={showAddGuest}
+          className="font-mono text-xs theme-muted hover:text-foreground transition-colors"
+        >
+          {showAddGuest ? "− close guest form" : "+ add guest (comp)"}
+        </button>
+        {showAddGuest && (
+          <AddGuestForm
+            event={event}
+            authFetch={authFetch}
+            onError={onError}
+            onStatus={onStatus}
+            onIssued={reload}
+          />
+        )}
+      </div>
+
       <label className="mt-5 block">
         <span className="font-mono text-micro theme-muted">find attendee, email, or ticket</span>
         <input
@@ -343,36 +1552,165 @@ function EventOperations({ event, summary }: { event: EventRecord; summary: Even
         </p>
       ) : (
         <ul className="mt-2 max-h-96 divide-y theme-border overflow-y-auto border-y theme-border">
-          {tickets.map((ticket) => (
-            <li key={ticket.id} className="py-3">
-              <div className="flex items-start justify-between gap-4">
-                <div className="min-w-0">
-                  <p className="truncate font-mono text-sm text-foreground">{ticket.holderName}</p>
-                  <p className="truncate font-mono text-micro theme-muted">
-                    {ticket.email ?? "no email"} · {ticket.ticketTypeName}
-                  </p>
-                  <p className="mt-0.5 font-mono text-micro theme-faint">
-                    {ticket.id} ·{" "}
-                    {ticket.status !== "valid"
-                      ? ticket.status
-                      : ticket.redeemedAt
-                        ? "checked in"
-                        : "not checked in"}
-                  </p>
+          {tickets.map((ticket) => {
+            const busy = busyTicketId === ticket.id;
+            const isLive = ticket.status === "valid";
+            const paid = (ticket.amountPaidMinor ?? 0) > 0;
+            return (
+              <li key={ticket.id} className="py-3">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="min-w-0">
+                    <p className="truncate font-mono text-sm text-foreground">
+                      {ticket.holderName}
+                    </p>
+                    <p className="truncate font-mono text-micro theme-muted">
+                      {ticket.email ?? "no email"} · {ticket.ticketTypeName}
+                      {ticket.kind === "comp" ? " · comp" : ""}
+                    </p>
+                    <p className="mt-0.5 font-mono text-micro theme-faint">
+                      {ticket.id} ·{" "}
+                      {ticket.status !== "valid"
+                        ? ticket.status
+                        : ticket.redeemedAt
+                          ? "checked in"
+                          : "not checked in"}
+                    </p>
+                  </div>
+                  <a
+                    href={`/ticket/${ticket.id}`}
+                    target="_blank"
+                    rel="noreferrer noopener"
+                    className="shrink-0 font-mono text-micro theme-muted underline hover:text-foreground transition-colors"
+                  >
+                    ticket ↗
+                  </a>
                 </div>
-                <a
-                  href={`/ticket/${ticket.id}`}
-                  target="_blank"
-                  rel="noreferrer noopener"
-                  className="shrink-0 font-mono text-micro theme-muted underline hover:text-foreground transition-colors"
-                >
-                  ticket ↗
-                </a>
-              </div>
-            </li>
-          ))}
+                <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1">
+                  {isLive && !ticket.redeemedAt && (
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => void runTicketAction(ticket, "redeem")}
+                      className="font-mono text-micro theme-muted hover:text-foreground transition-colors disabled:opacity-50"
+                    >
+                      check in
+                    </button>
+                  )}
+                  {isLive && ticket.redeemedAt && (
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => void runTicketAction(ticket, "unredeem")}
+                      className="font-mono text-micro theme-muted hover:text-foreground transition-colors disabled:opacity-50"
+                    >
+                      undo check-in
+                    </button>
+                  )}
+                  {isLive && ticket.email && (
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => void runTicketAction(ticket, "resend")}
+                      className="font-mono text-micro theme-muted hover:text-foreground transition-colors disabled:opacity-50"
+                    >
+                      resend email
+                    </button>
+                  )}
+                  {isLive && paid && (
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => void runTicketAction(ticket, "refund")}
+                      className="font-mono text-micro theme-muted hover:text-foreground transition-colors disabled:opacity-50"
+                    >
+                      refund order
+                    </button>
+                  )}
+                  {isLive && !paid && (
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => void runTicketAction(ticket, "void")}
+                      className="font-mono text-micro theme-muted hover:text-foreground transition-colors disabled:opacity-50"
+                    >
+                      cancel ticket
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() =>
+                      setEditingTicket((current) =>
+                        current?.id === ticket.id
+                          ? null
+                          : { id: ticket.id, name: ticket.holderName, email: ticket.email ?? "" },
+                      )
+                    }
+                    className="font-mono text-micro theme-muted hover:text-foreground transition-colors disabled:opacity-50"
+                  >
+                    edit
+                  </button>
+                  {busy && <span className="font-mono text-micro theme-faint">working…</span>}
+                </div>
+                {editingTicket?.id === ticket.id && (
+                  <form
+                    onSubmit={(formEvent) => {
+                      formEvent.preventDefault();
+                      void saveHolder();
+                    }}
+                    className="mt-2 grid gap-2 rounded border theme-border p-2 sm:grid-cols-[1fr_1fr_auto] sm:items-end"
+                  >
+                    <Field
+                      label="name"
+                      value={editingTicket.name}
+                      onChange={(value) =>
+                        setEditingTicket((current) =>
+                          current ? { ...current, name: value } : current,
+                        )
+                      }
+                    />
+                    <Field
+                      label="email"
+                      type="email"
+                      value={editingTicket.email}
+                      onChange={(value) =>
+                        setEditingTicket((current) =>
+                          current ? { ...current, email: value } : current,
+                        )
+                      }
+                      hint="blank removes the address"
+                    />
+                    <button
+                      type="submit"
+                      disabled={busy || !editingTicket.name.trim()}
+                      className="min-h-10 rounded bg-foreground px-4 font-mono text-xs text-background disabled:opacity-50"
+                    >
+                      save
+                    </button>
+                  </form>
+                )}
+              </li>
+            );
+          })}
         </ul>
       )}
+
+      <MessageComposer
+        event={event}
+        summary={summary}
+        authFetch={authFetch}
+        onError={onError}
+        onStatus={onStatus}
+        confirmAction={confirmAction}
+      />
+
+      <ScanningSection
+        event={event}
+        authFetch={authFetch}
+        onError={onError}
+        onStatus={onStatus}
+        confirmAction={confirmAction}
+      />
     </div>
   );
 }
@@ -426,6 +1764,20 @@ export function EventsPanel({
     void load();
   }, [load]);
 
+  const loadOperations = useCallback(
+    async (slug: string) => {
+      const response = await authFetch(`/api/admin/events/${slug}`);
+      const data: unknown = await response.json().catch(() => null);
+      const summary =
+        data && typeof data === "object" && !Array.isArray(data) && "tickets" in data
+          ? parseEventTicketSummary(data.tickets)
+          : null;
+      if (!response.ok || !summary) throw new Error("Failed to load event operations");
+      setOperations(summary);
+    },
+    [authFetch],
+  );
+
   const toggleOperations = async (slug: string) => {
     if (operationsSlug === slug) {
       setOperationsSlug(null);
@@ -438,16 +1790,7 @@ export function EventsPanel({
     setOperationsLoading(true);
     onError("");
     try {
-      const response = await authFetch(`/api/admin/events/${slug}`);
-      const data: unknown = await response.json().catch(() => null);
-      const summary =
-        data && typeof data === "object" && !Array.isArray(data) && "tickets" in data
-          ? parseEventTicketSummary(data.tickets)
-          : null;
-      if (!response.ok || !summary) {
-        throw new Error("Failed to load event operations");
-      }
-      setOperations(summary);
+      await loadOperations(slug);
     } catch (error) {
       setOperationsSlug(null);
       onError(error instanceof Error ? error.message : "Failed to load event operations");
@@ -598,7 +1941,16 @@ export function EventsPanel({
               (operationsLoading ? (
                 <p className="mt-4 font-mono text-xs theme-muted">loading tickets…</p>
               ) : operations ? (
-                <EventOperations event={event} summary={operations} />
+                <EventOperations
+                  event={event}
+                  summary={operations}
+                  authFetch={authFetch}
+                  onError={onError}
+                  onStatus={onStatus}
+                  reload={() => loadOperations(event.slug)}
+                  confirmAction={confirm}
+                  stepUp={{ ensureStepUpToken, withStepUpHeaders }}
+                />
               ) : null)}
           </li>
         ))}

@@ -823,6 +823,7 @@ export type { AuthRole, RevocableRole };
 
 type ServerContextAuthResult =
   | { ok: true; role: TokenRole; token: string; payload: TokenPayload }
+  | { ok: true; role: "cron"; token: string; payload: null }
   | { ok: false; status: 401 | 503; error: string };
 
 /**
@@ -844,7 +845,7 @@ async function authenticateRequest(
     if (!candidate || !safeCompare(candidate, secret)) {
       return { ok: false, status: 401, error: "Unauthorized" };
     }
-    return { ok: false, status: 401, error: "Unauthorized" };
+    return { ok: true, role: "cron", token: candidate, payload: null };
   }
 
   const acceptedRoles =

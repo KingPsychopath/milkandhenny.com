@@ -6,6 +6,18 @@
       "runtimeExecutable": "pnpm",
       "runtimeArgs": ["dev", "--port", "5199"],
       "port": 5199
+    },
+    {
+      "name": "dev-with-db",
+      "runtimeExecutable": "env",
+      "runtimeArgs": [
+        "DATABASE_URL=postgres://postgres:test@127.0.0.1:55432/mah_dev",
+        "pnpm",
+        "dev",
+        "--port",
+        "5299"
+      ],
+      "port": 5299
     }
   ]
 }

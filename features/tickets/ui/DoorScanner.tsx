@@ -2,7 +2,15 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+import { CameraFeed } from "./CameraFeed";
 import { getDoorDataFn, redeemTicketFn } from "../tickets.functions";
+import {
+  guestRequestCancelFn,
+  guestRequestDecideFn,
+  guestRequestsFn,
+  guestSubmitFn,
+} from "../scanner.functions";
+import type { GuestRequestRecord, ScannerRole } from "../checkpoint-types";
 import {
   EMPTY_DOOR_STATE,
   applyManifest,
@@ -49,6 +57,213 @@ type PendingGroup = {
   tickets: DoorTicketView[];
 };
 
+/**
+ * "(+) add guest" for shared-link doors.
+ *
+ * A scanner raises a request and quietly tracks it — amber count, tap to
+ * see or withdraw. A manager adds instantly and decides everyone else's
+ * requests from the same panel.
+ */
+function GuestRequests({
+  token,
+  role,
+  requests,
+  onRequestsChanged,
+  onGuestAdded,
+}: {
+  token: string;
+  role: ScannerRole;
+  requests: GuestRequestRecord[];
+  onRequestsChanged: (requests: GuestRequestRecord[]) => void;
+  onGuestAdded: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [name, setName] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
+
+  const refresh = useCallback(async () => {
+    try {
+      const result = await guestRequestsFn({ data: { token } });
+      if (result.authorised) onRequestsChanged(result.requests);
+    } catch {
+      // The list refreshes again on the next action.
+    }
+  }, [token, onRequestsChanged]);
+
+  const pending = requests.filter((request) => request.status === "pending");
+  const recentlyDecided = requests
+    .filter((request) => request.status === "approved" || request.status === "declined")
+    .slice(0, 3);
+
+  const submit = async () => {
+    if (!name.trim()) return;
+    setBusy(true);
+    setNotice(null);
+    try {
+      const result = await guestSubmitFn({ data: { token, name: name.trim() } });
+      if (!result.authorised) {
+        setNotice("This link is no longer active.");
+        return;
+      }
+      if (!result.ok) {
+        setNotice(result.error);
+        return;
+      }
+      setName("");
+      if (result.mode === "added") {
+        setNotice(`${result.holderName} is on the list.`);
+        onGuestAdded();
+      } else {
+        setNotice("Sent — the organiser will approve it.");
+      }
+      await refresh();
+    } catch {
+      setNotice("No signal — try again in a moment.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const cancel = async (id: number) => {
+    setBusy(true);
+    try {
+      await guestRequestCancelFn({ data: { token, id } });
+      await refresh();
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const decide = async (id: number, approve: boolean) => {
+    setBusy(true);
+    try {
+      const result = await guestRequestDecideFn({ data: { token, id, approve } });
+      if (result.authorised && result.ok && approve) onGuestAdded();
+      await refresh();
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="mt-3">
+      <div className="flex items-center justify-between gap-3">
+        <button
+          type="button"
+          onClick={() => setOpen((current) => !current)}
+          aria-expanded={open}
+          className="font-mono text-micro theme-muted hover:text-foreground transition-colors"
+        >
+          + add guest
+        </button>
+        {pending.length > 0 && (
+          <button
+            type="button"
+            onClick={() => setOpen(true)}
+            className="font-mono text-micro text-[var(--things-amber)]"
+          >
+            {role === "manager" ? `${pending.length} to approve` : `${pending.length} pending`}
+          </button>
+        )}
+      </div>
+
+      {open && (
+        <div className="mt-2 rounded-2xl border theme-border p-3">
+          <form
+            onSubmit={(event) => {
+              event.preventDefault();
+              void submit();
+            }}
+            className="flex gap-2"
+          >
+            <label htmlFor="guest-name" className="sr-only">
+              Guest name
+            </label>
+            <input
+              id="guest-name"
+              value={name}
+              onChange={(event) => setName(event.target.value)}
+              autoComplete="off"
+              placeholder="guest's name"
+              className="min-h-11 min-w-0 flex-1 rounded-lg border theme-border-strong bg-transparent px-3 font-mono text-sm text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--prose-hashtag)]"
+            />
+            <button
+              type="submit"
+              disabled={busy || !name.trim()}
+              className="min-h-11 shrink-0 rounded-lg bg-foreground px-3 font-mono text-micro text-background disabled:opacity-50"
+            >
+              {role === "manager" ? "add" : "request"}
+            </button>
+          </form>
+          {notice && <p className="mt-2 font-mono text-micro theme-muted">{notice}</p>}
+
+          {pending.length > 0 && (
+            <ul className="mt-3 divide-y theme-border border-t theme-border">
+              {pending.map((request) => (
+                <li key={request.id} className="flex items-center justify-between gap-3 py-2">
+                  <div className="min-w-0">
+                    <p className="truncate font-mono text-xs text-foreground">{request.name}</p>
+                    <p className="font-mono text-micro theme-muted">
+                      {role === "manager" ? `asked by ${request.requestedBy}` : "waiting"}
+                    </p>
+                  </div>
+                  {role === "manager" ? (
+                    <div className="flex shrink-0 gap-2">
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={() => void decide(request.id, true)}
+                        className="min-h-9 rounded-lg bg-foreground px-3 font-mono text-micro text-background disabled:opacity-50"
+                      >
+                        approve
+                      </button>
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={() => void decide(request.id, false)}
+                        className="min-h-9 rounded-lg border theme-border-strong px-3 font-mono text-micro text-foreground disabled:opacity-50"
+                      >
+                        decline
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => void cancel(request.id)}
+                      className="shrink-0 min-h-9 px-2 font-mono text-micro theme-muted hover:text-foreground transition-colors disabled:opacity-50"
+                    >
+                      cancel
+                    </button>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+
+          {role !== "manager" && recentlyDecided.length > 0 && (
+            <ul className="mt-2 border-t theme-border pt-2">
+              {recentlyDecided.map((request) => (
+                <li key={request.id} className="flex justify-between py-1 font-mono text-micro">
+                  <span className="truncate theme-muted">{request.name}</span>
+                  <span
+                    className={
+                      request.status === "approved" ? "text-[var(--things-green)]" : "theme-faint"
+                    }
+                  >
+                    {request.status === "approved" ? "approved ✓" : "declined"}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function verdictStyle(kind: Verdict["kind"]): string {
   switch (kind) {
     case "admitted":
@@ -64,108 +279,25 @@ function verdictStyle(kind: Verdict["kind"]): string {
   }
 }
 
-function CameraFeed({ onCode, paused }: { onCode: (raw: string) => void; paused: boolean }) {
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const onCodeRef = useRef(onCode);
-  const pausedRef = useRef(paused);
-  const [message, setMessage] = useState("asking for camera access…");
-
-  useEffect(() => {
-    onCodeRef.current = onCode;
-  }, [onCode]);
-
-  useEffect(() => {
-    pausedRef.current = paused;
-  }, [paused]);
-
-  useEffect(() => {
-    let active = true;
-    let stream: MediaStream | null = null;
-    let animationFrame = 0;
-
-    const stop = () => {
-      active = false;
-      cancelAnimationFrame(animationFrame);
-      stream?.getTracks().forEach((track) => track.stop());
-      if (videoRef.current) videoRef.current.srcObject = null;
-    };
-
-    const start = async () => {
-      const Detector = window.BarcodeDetector;
-      if (!Detector || !navigator.mediaDevices?.getUserMedia) {
-        setMessage("No camera scanner here — type the ticket reference below.");
-        return;
-      }
-
-      try {
-        stream = await navigator.mediaDevices.getUserMedia({
-          audio: false,
-          video: { facingMode: { ideal: "environment" } },
-        });
-        if (!active || !videoRef.current) return stop();
-        videoRef.current.srcObject = stream;
-        await videoRef.current.play();
-        if (!active) return stop();
-        setMessage("Point at their code.");
-        const detector = new Detector({ formats: ["qr_code"] });
-
-        const scanFrame = async () => {
-          if (!active || !videoRef.current) return;
-          if (!pausedRef.current) {
-            try {
-              const codes = await detector.detect(videoRef.current);
-              const raw = codes[0]?.rawValue;
-              if (raw) onCodeRef.current(raw);
-            } catch {
-              // Detection fails while the video warms up; the next frame retries.
-            }
-          }
-          animationFrame = requestAnimationFrame(() => void scanFrame());
-        };
-        animationFrame = requestAnimationFrame(() => void scanFrame());
-      } catch {
-        setMessage("Camera access was refused — type the ticket reference below.");
-      }
-    };
-
-    void start();
-    return stop;
-  }, []);
-
-  return (
-    <div>
-      <div className="relative aspect-square w-full overflow-hidden rounded-2xl border theme-border-strong bg-black/80">
-        <video
-          ref={videoRef}
-          muted
-          playsInline
-          aria-label="Camera preview for scanning tickets"
-          className="h-full w-full object-cover"
-        />
-        <div
-          aria-hidden="true"
-          className="pointer-events-none absolute inset-[14%] rounded-xl border-2 border-white/70"
-        />
-      </div>
-      <p aria-live="polite" className="mt-2 text-center font-mono text-micro theme-muted">
-        {message}
-      </p>
-    </div>
-  );
-}
-
 export function DoorScanner({
   eventSlug,
   eventTitle,
   initialManifest,
   initialTickets,
   initialSummary,
+  scannerToken,
+  scannerRole = "scanner",
+  initialRequests = [],
 }: {
   eventSlug: string;
   eventTitle: string;
   initialManifest: string[];
   initialTickets: (DoorTicketView & { issuedAt: string })[];
   initialSummary: { total: number; redeemed: number };
+  /** Present when this device is scanning via a shared link, not a staff session. */
+  scannerToken?: string;
+  scannerRole?: ScannerRole;
+  initialRequests?: GuestRequestRecord[];
 }) {
   const [offline, setOffline] = useState<DoorOfflineState>({
     ...EMPTY_DOOR_STATE,
@@ -180,6 +312,8 @@ export function DoorScanner({
   const [busy, setBusy] = useState(false);
   const [bulkBusy, setBulkBusy] = useState(false);
   const [pendingGroup, setPendingGroup] = useState<PendingGroup | null>(null);
+  const [showOccupancy, setShowOccupancy] = useState(false);
+  const [guestRequests, setGuestRequests] = useState<GuestRequestRecord[]>(initialRequests);
 
   const lastScanRef = useRef<{ value: string; at: number } | null>(null);
   const lastRefreshRef = useRef(0);
@@ -207,7 +341,7 @@ export function DoorScanner({
     lastRefreshRef.current = now;
 
     try {
-      const data = await getDoorDataFn({ data: { eventSlug } });
+      const data = await getDoorDataFn({ data: { eventSlug, scannerToken } });
       if (!data.authorised) return;
       setOffline((state) => applyManifest(state, data.manifestHashes));
       setTickets(data.tickets);
@@ -215,7 +349,7 @@ export function DoorScanner({
     } catch {
       // A failed refresh is survivable: the cached manifest still works.
     }
-  }, [eventSlug]);
+  }, [eventSlug, scannerToken]);
 
   // Ref-stable interval — a re-render must never restart this effect.
   const refreshRef = useRef(refresh);
@@ -242,6 +376,7 @@ export function DoorScanner({
             eventSlug,
             redeemedBy: "door-offline",
             offline: true,
+            scannerToken,
           },
         });
         if (result.authorised) synced.push(entry.ticketId);
@@ -256,7 +391,7 @@ export function DoorScanner({
       lastRefreshRef.current = 0;
       void refreshRef.current();
     }
-  }, [eventSlug]);
+  }, [eventSlug, scannerToken]);
 
   useEffect(() => {
     if (online) void syncQueue();
@@ -306,14 +441,16 @@ export function DoorScanner({
       try {
         if (navigator.onLine) {
           const result = await redeemTicketFn({
-            data: { scanned: raw, eventSlug, redeemedBy: "door" },
+            data: { scanned: raw, eventSlug, redeemedBy: "door", scannerToken },
           });
 
           if (!result.authorised) {
             setVerdict({
               kind: "rejected",
-              title: "Signed out",
-              detail: "Staff session expired — sign in again.",
+              title: scannerToken ? "Link no longer active" : "Signed out",
+              detail: scannerToken
+                ? "This scanner link was turned off — ask the organiser for a fresh one."
+                : "Staff session expired — sign in again.",
             });
             return "rejected";
           }
@@ -412,7 +549,7 @@ export function DoorScanner({
         setBusy(false);
       }
     },
-    [eventSlug, tickets],
+    [eventSlug, tickets, scannerToken],
   );
 
   const admitPendingGroup = useCallback(async () => {
@@ -449,8 +586,25 @@ export function DoorScanner({
   const matches = useMemo(() => {
     const term = query.trim().toLowerCase();
     if (term.length < 2) return [];
-    return tickets.filter((ticket) => ticket.holderName.toLowerCase().includes(term)).slice(0, 8);
+    return tickets
+      .filter(
+        (ticket) =>
+          ticket.holderName.toLowerCase().includes(term) ||
+          ticket.id.toLowerCase().startsWith(term),
+      )
+      .slice(0, 8);
   }, [query, tickets]);
+
+  const occupancy = useMemo(() => {
+    const live = tickets.filter((ticket) => ticket.status === "valid");
+    const inside = live
+      .filter((ticket) => ticket.redeemedAt)
+      .sort((a, b) => (b.redeemedAt ?? "").localeCompare(a.redeemedAt ?? ""));
+    const expected = live
+      .filter((ticket) => !ticket.redeemedAt)
+      .sort((a, b) => a.holderName.localeCompare(b.holderName));
+    return { inside, expected };
+  }, [tickets]);
 
   const pending = pendingCount(offline);
 
@@ -459,10 +613,73 @@ export function DoorScanner({
       <main id="main" className="mx-auto max-w-md px-5 pb-16 pt-8">
         <header className="flex items-baseline justify-between gap-3">
           <h1 className="font-mono text-sm text-foreground">{eventTitle}</h1>
-          <p className="font-mono text-micro theme-muted">
-            {summary.redeemed}/{summary.total} in
-          </p>
+          <button
+            type="button"
+            onClick={() => setShowOccupancy((current) => !current)}
+            aria-expanded={showOccupancy}
+            className="font-mono text-micro theme-muted underline decoration-dotted underline-offset-4 hover:text-foreground transition-colors"
+          >
+            {summary.redeemed}/{summary.total} in {showOccupancy ? "▴" : "▾"}
+          </button>
         </header>
+
+        {showOccupancy && (
+          <section aria-label="Who is inside" className="mt-3 rounded-2xl border theme-border p-4">
+            <div className="grid grid-cols-3 gap-2 text-center">
+              <div>
+                <p className="font-mono text-xl text-foreground">{occupancy.inside.length}</p>
+                <p className="font-mono text-micro theme-muted">inside</p>
+              </div>
+              <div>
+                <p className="font-mono text-xl text-foreground">{occupancy.expected.length}</p>
+                <p className="font-mono text-micro theme-muted">still to come</p>
+              </div>
+              <div>
+                <p className="font-mono text-xl text-foreground">{summary.total}</p>
+                <p className="font-mono text-micro theme-muted">expected</p>
+              </div>
+            </div>
+
+            {occupancy.inside.length > 0 && (
+              <>
+                <p className="mt-4 font-mono text-micro theme-muted tracking-wide">
+                  inside · latest first
+                </p>
+                <ul className="mt-1 max-h-40 overflow-y-auto">
+                  {occupancy.inside.map((ticket) => (
+                    <li
+                      key={ticket.id}
+                      className="flex items-baseline justify-between gap-3 py-1 font-mono text-xs"
+                    >
+                      <span className="truncate text-foreground">{ticket.holderName}</span>
+                      <span className="shrink-0 theme-muted">
+                        {ticket.redeemedAt
+                          ? new Date(ticket.redeemedAt).toLocaleTimeString("en-GB", {
+                              hour: "2-digit",
+                              minute: "2-digit",
+                            })
+                          : ""}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </>
+            )}
+
+            {occupancy.expected.length > 0 && (
+              <>
+                <p className="mt-4 font-mono text-micro theme-muted tracking-wide">still to come</p>
+                <ul className="mt-1 max-h-40 overflow-y-auto">
+                  {occupancy.expected.map((ticket) => (
+                    <li key={ticket.id} className="truncate py-1 font-mono text-xs theme-muted">
+                      {ticket.holderName}
+                    </li>
+                  ))}
+                </ul>
+              </>
+            )}
+          </section>
+        )}
 
         {(!online || pending > 0) && (
           <p className="mt-3 rounded-lg border theme-border-strong px-3 py-2 font-mono text-micro text-foreground">
@@ -470,6 +687,19 @@ export function DoorScanner({
               ? `syncing ${pending} offline scan${pending === 1 ? "" : "s"}…`
               : `offline — scanning against the downloaded list${pending > 0 ? `, ${pending} queued` : ""}`}
           </p>
+        )}
+
+        {scannerToken && (
+          <GuestRequests
+            token={scannerToken}
+            role={scannerRole}
+            requests={guestRequests}
+            onRequestsChanged={setGuestRequests}
+            onGuestAdded={() => {
+              lastRefreshRef.current = 0;
+              void refreshRef.current();
+            }}
+          />
         )}
 
         {/* Verdict sits above the camera: it is what staff actually look at. */}
@@ -589,7 +819,7 @@ export function DoorScanner({
 
         <section className="mt-8">
           <label htmlFor="door-search" className="font-mono text-micro theme-muted tracking-wide">
-            search by name
+            search by name or ticket ref
           </label>
           <input
             id="door-search"

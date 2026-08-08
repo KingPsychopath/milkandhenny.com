@@ -27,6 +27,7 @@ import {
 const HANDLED = new Set([
   "checkout.session.completed",
   "checkout.session.async_payment_succeeded",
+  "checkout.session.async_payment_failed",
   "checkout.session.expired",
   "charge.refunded",
   "charge.dispute.created",
@@ -75,10 +76,12 @@ async function handlePOST(request: Request) {
         break;
       }
 
-      case "checkout.session.expired": {
+      case "checkout.session.expired":
+      case "checkout.session.async_payment_failed": {
         const session = event.data.object as { id: string };
         // Nothing was issued, so this is bookkeeping only: it stops abandoned
-        // baskets sitting as `pending` forever.
+        // or failed baskets sitting as `pending` forever. A delayed payment
+        // method (bank debit) that later fails lands here too.
         await expireCheckout(session.id);
         break;
       }

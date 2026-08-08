@@ -11,6 +11,9 @@ export default defineConfig({
     globals: true,
     environment: "node",
     globalSetup: ["./vitest.globalSetup.ts"],
+    // Database suites queue behind a shared advisory lock (see
+    // __tests__/helpers/postgres.ts); the waiting file must not time out.
+    hookTimeout: 120_000,
     include: ["__tests__/unit/**/*.test.ts", "__tests__/integration/**/*.test.ts"],
     coverage: {
       include: ["lib/**/*.ts", "features/**/*.ts"],

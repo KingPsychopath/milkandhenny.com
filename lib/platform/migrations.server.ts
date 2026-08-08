@@ -289,6 +289,109 @@ const MIGRATIONS: Migration[] = [
         on pitch_audit_events (deck_id, created_at desc);
     `,
   },
+  {
+    id: "0005_checkpoints_and_scanner_links",
+    sql: `
+      -- Scan stations beyond the door: catering, merch, cloakroom. The door
+      -- itself stays on tickets.redeemed_at and is not a row here.
+      create table if not exists checkpoints (
+        event_slug         text not null references events (slug) on delete cascade,
+        id                 text not null check (id ~ '^[a-z0-9]+(-[a-z0-9]+)*$'),
+        name               text not null check (char_length(name) between 1 and 60),
+        -- Units a valid ticket may consume here unless its type says otherwise.
+        default_allowance  integer not null default 1 check (default_allowance >= 0),
+        -- Per-ticket-type overrides: { "<ticketTypeId>": units }. 0 = not included.
+        allowances         jsonb not null default '{}'::jsonb,
+        position           integer not null default 0,
+        created_at         timestamptz not null default now(),
+        primary key (event_slug, id)
+      );
+
+      -- Counted consumption per ticket per checkpoint. One row per pair; the
+      -- guarded upsert in the engine is what makes double-scans safe.
+      create table if not exists checkpoint_usage (
+        event_slug    text not null,
+        checkpoint_id text not null,
+        ticket_id     text not null references tickets (id) on delete cascade,
+        used          integer not null default 0 check (used >= 0),
+        updated_at    timestamptz not null default now(),
+        last_used_by  text,
+        primary key (event_slug, checkpoint_id, ticket_id),
+        foreign key (event_slug, checkpoint_id)
+          references checkpoints (event_slug, id) on delete cascade
+      );
+
+      create index if not exists checkpoint_usage_ticket_idx
+        on checkpoint_usage (ticket_id);
+
+      -- Bearer scanner links: one URL hands one named person one station.
+      -- Plaintext like ticket ids (also bearer credentials) so the admin can
+      -- re-copy a link mid-event; revocation is the kill switch.
+      create table if not exists scanner_links (
+        token         text primary key check (token ~ '^scn_[A-Za-z0-9_-]{26,}$'),
+        label         text not null check (char_length(label) between 1 and 60),
+        event_slug    text not null references events (slug) on delete cascade,
+        -- null scans the door; otherwise a checkpoint on the same event.
+        checkpoint_id text,
+        created_at    timestamptz not null default now(),
+        expires_at    timestamptz,
+        revoked_at    timestamptz,
+        last_used_at  timestamptz,
+        foreign key (event_slug, checkpoint_id)
+          references checkpoints (event_slug, id) on delete cascade
+      );
+
+      create index if not exists scanner_links_event_idx
+        on scanner_links (event_slug, created_at desc);
+    `,
+  },
+  {
+    id: "0006_scanner_link_devices",
+    sql: `
+      -- Which phones have opened a scanner link. A link is meant for one
+      -- person; seeing two devices on it tells the organiser it leaked.
+      create table if not exists scanner_link_devices (
+        token       text not null references scanner_links (token) on delete cascade,
+        device_id   text not null,
+        first_seen  timestamptz not null default now(),
+        last_seen   timestamptz not null default now(),
+        primary key (token, device_id)
+      );
+    `,
+  },
+  {
+    id: "0007_scanner_roles_and_guest_requests",
+    sql: `
+      -- A link's level. 'scanner' works a station; 'manager' can also add
+      -- guests directly and decide other scanners' guest requests — an
+      -- on-the-ground orchestrator without admin access.
+      alter table scanner_links
+        add column if not exists role text not null default 'scanner';
+
+      -- A scanner's "can we add this person?" — pending until the organiser
+      -- or a manager decides. Approval issues a comp ticket.
+      create table if not exists guest_requests (
+        id           bigint generated always as identity primary key,
+        event_slug   text not null references events (slug) on delete cascade,
+        -- The link that asked. Kept after revocation so history survives.
+        token        text references scanner_links (token) on delete set null,
+        requested_by text not null,
+        name         text not null check (char_length(name) between 1 and 120),
+        note         text,
+        status       text not null default 'pending'
+                     check (status in ('pending', 'approved', 'declined', 'cancelled')),
+        ticket_id    text,
+        created_at   timestamptz not null default now(),
+        decided_at   timestamptz,
+        decided_by   text
+      );
+
+      create index if not exists guest_requests_event_idx
+        on guest_requests (event_slug, status, created_at desc);
+      create index if not exists guest_requests_token_idx
+        on guest_requests (token, created_at desc);
+    `,
+  },
 ];
 
 export type MigrationResult = { applied: string[]; alreadyApplied: number };

@@ -13,6 +13,7 @@ import { useEffect } from "react";
 import { BackToTop } from "@/components/BackToTop";
 import { LampToggle } from "@/components/LampToggle";
 import { OfflinePlatform } from "@/components/OfflinePlatform";
+import { ScannerReturnPrompt } from "@/components/ScannerReturnPrompt";
 import { BASE_URL, SITE_BRAND, SITE_NAME } from "@/lib/shared/config";
 import { LOCAL_KEYS } from "@/lib/shared/storage-keys";
 import "@/src/styles/globals.css";
@@ -77,6 +78,7 @@ function RootDocument({ children }: Readonly<{ children: ReactNode }>) {
         <LampToggle />
         <BackToTop />
         <OfflinePlatform />
+        <ScannerReturnPrompt />
         {children}
         <Scripts />
       </body>

@@ -229,20 +229,32 @@ export async function fulfilCheckout(sessionId: string, origin: string): Promise
     return { outcome: "failed", error: "Session is not paid" };
   }
 
-  const issued = await issueTickets({
-    eventSlug: claimed.event_slug,
-    ticketTypeId: claimed.ticket_type_id,
-    holderName: claimed.holder_name,
-    email: claimed.email,
-    quantity: claimed.quantity,
-    kind: "paid",
-    paymentRef: session.paymentIntentId ?? undefined,
-    checkoutRef: sessionId,
-    // Per ticket, not the order total: the refund UI shows this figure, and
-    // partial refunds are settled by summing what each ticket actually cost.
-    amountPaidMinor: Math.round(claimed.amount_minor / Math.max(1, claimed.quantity)),
-    currency: claimed.currency,
-  });
+  let issued;
+  try {
+    issued = await issueTickets({
+      eventSlug: claimed.event_slug,
+      ticketTypeId: claimed.ticket_type_id,
+      holderName: claimed.holder_name,
+      email: claimed.email,
+      quantity: claimed.quantity,
+      kind: "paid",
+      paymentRef: session.paymentIntentId ?? undefined,
+      checkoutRef: sessionId,
+      // Per ticket, not the order total: the refund UI shows this figure, and
+      // partial refunds are settled by summing what each ticket actually cost.
+      amountPaidMinor: Math.round(claimed.amount_minor / Math.max(1, claimed.quantity)),
+      currency: claimed.currency,
+    });
+  } catch (error) {
+    // An unexpected throw (not a refusal) must release the claim, or the row
+    // is stuck in `fulfilling` and Stripe's retry would read "already-issued"
+    // — money kept, no tickets, forever.
+    await query(
+      `update checkout_sessions set status = 'pending' where id = $1 and status = 'fulfilling'`,
+      [sessionId],
+    );
+    throw error;
+  }
 
   if (!issued.ok) {
     // Sold out between paying and fulfilling. Give the money back rather than

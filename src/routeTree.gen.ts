@@ -23,6 +23,7 @@ import { Route as DoorRouteImport } from './routes/door'
 import { Route as BestDressedRouteImport } from './routes/best-dressed'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as WordsIndexRouteImport } from './routes/words/index'
+import { Route as ScanIndexRouteImport } from './routes/scan.index'
 import { Route as PicsIndexRouteImport } from './routes/pics/index'
 import { Route as EventsIndexRouteImport } from './routes/events/index'
 import { Route as AdminIndexRouteImport } from './routes/admin/index'
@@ -40,6 +41,7 @@ import { Route as ThingsHeadsUpRouteImport } from './routes/things.heads-up'
 import { Route as ThingsDrawCountryRouteImport } from './routes/things.draw-country'
 import { Route as ThingsCentreRouteImport } from './routes/things.centre'
 import { Route as TIdRouteImport } from './routes/t/$id'
+import { Route as ScanTokenRouteImport } from './routes/scan.$token'
 import { Route as EventsSlugRouteImport } from './routes/events/$slug'
 import { Route as AdminEditorRouteImport } from './routes/admin/editor'
 import { Route as ApiWordsRouteRouteImport } from './routes/api/words/route'
@@ -121,6 +123,11 @@ import { Route as ApiUploadTransferAppendPresignRouteRouteImport } from './route
 import { Route as ApiUploadTransferAppendFinalizeRouteRouteImport } from './routes/api/upload/transfer/append/finalize/route'
 import { Route as ApiTransfersIdFilesFileIdRouteRouteImport } from './routes/api/transfers/$id/files/$fileId/route'
 import { Route as ApiAdminTokensSessionsJtiRouteRouteImport } from './routes/api/admin/tokens/sessions/$jti/route'
+import { Route as ApiAdminEventsSlugTicketsRouteRouteImport } from './routes/api/admin/events/$slug/tickets/route'
+import { Route as ApiAdminEventsSlugScannerLinksRouteRouteImport } from './routes/api/admin/events/$slug/scanner-links/route'
+import { Route as ApiAdminEventsSlugGuestRequestsRouteRouteImport } from './routes/api/admin/events/$slug/guest-requests/route'
+import { Route as ApiAdminEventsSlugEmailRouteRouteImport } from './routes/api/admin/events/$slug/email/route'
+import { Route as ApiAdminEventsSlugCheckpointsRouteRouteImport } from './routes/api/admin/events/$slug/checkpoints/route'
 import { Route as ApiAdminAlbumsSlugCoverRouteRouteImport } from './routes/api/admin/albums/$slug/cover/route'
 import { Route as ApiTransfersIdMediaFileIdVariantRouteRouteImport } from './routes/api/transfers/$id/media/$fileId/$variant/route'
 import { Route as ApiAdminAlbumsSlugPhotosPhotoIdRouteRouteImport } from './routes/api/admin/albums/$slug/photos/$photoId/route'
@@ -193,6 +200,11 @@ const IndexRoute = IndexRouteImport.update({
 const WordsIndexRoute = WordsIndexRouteImport.update({
   id: '/words/',
   path: '/words/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ScanIndexRoute = ScanIndexRouteImport.update({
+  id: '/scan/',
+  path: '/scan/',
   getParentRoute: () => rootRouteImport,
 } as any)
 const PicsIndexRoute = PicsIndexRouteImport.update({
@@ -278,6 +290,11 @@ const ThingsCentreRoute = ThingsCentreRouteImport.update({
 const TIdRoute = TIdRouteImport.update({
   id: '/t/$id',
   path: '/t/$id',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ScanTokenRoute = ScanTokenRouteImport.update({
+  id: '/scan/$token',
+  path: '/scan/$token',
   getParentRoute: () => rootRouteImport,
 } as any)
 const EventsSlugRoute = EventsSlugRouteImport.update({
@@ -722,6 +739,36 @@ const ApiAdminTokensSessionsJtiRouteRoute =
     path: '/$jti',
     getParentRoute: () => ApiAdminTokensSessionsRouteRoute,
   } as any)
+const ApiAdminEventsSlugTicketsRouteRoute =
+  ApiAdminEventsSlugTicketsRouteRouteImport.update({
+    id: '/tickets',
+    path: '/tickets',
+    getParentRoute: () => ApiAdminEventsSlugRouteRoute,
+  } as any)
+const ApiAdminEventsSlugScannerLinksRouteRoute =
+  ApiAdminEventsSlugScannerLinksRouteRouteImport.update({
+    id: '/scanner-links',
+    path: '/scanner-links',
+    getParentRoute: () => ApiAdminEventsSlugRouteRoute,
+  } as any)
+const ApiAdminEventsSlugGuestRequestsRouteRoute =
+  ApiAdminEventsSlugGuestRequestsRouteRouteImport.update({
+    id: '/guest-requests',
+    path: '/guest-requests',
+    getParentRoute: () => ApiAdminEventsSlugRouteRoute,
+  } as any)
+const ApiAdminEventsSlugEmailRouteRoute =
+  ApiAdminEventsSlugEmailRouteRouteImport.update({
+    id: '/email',
+    path: '/email',
+    getParentRoute: () => ApiAdminEventsSlugRouteRoute,
+  } as any)
+const ApiAdminEventsSlugCheckpointsRouteRoute =
+  ApiAdminEventsSlugCheckpointsRouteRouteImport.update({
+    id: '/checkpoints',
+    path: '/checkpoints',
+    getParentRoute: () => ApiAdminEventsSlugRouteRoute,
+  } as any)
 const ApiAdminAlbumsSlugCoverRouteRoute =
   ApiAdminAlbumsSlugCoverRouteRouteImport.update({
     id: '/cover',
@@ -762,6 +809,7 @@ export interface FileRoutesByFullPath {
   '/api/words': typeof ApiWordsRouteRouteWithChildren
   '/admin/editor': typeof AdminEditorRoute
   '/events/$slug': typeof EventsSlugRoute
+  '/scan/$token': typeof ScanTokenRoute
   '/t/$id': typeof TIdRoute
   '/things/centre': typeof ThingsCentreRoute
   '/things/draw-country': typeof ThingsDrawCountryRoute
@@ -779,6 +827,7 @@ export interface FileRoutesByFullPath {
   '/admin/': typeof AdminIndexRoute
   '/events/': typeof EventsIndexRoute
   '/pics/': typeof PicsIndexRoute
+  '/scan/': typeof ScanIndexRoute
   '/words/': typeof WordsIndexRoute
   '/api/admin/albums': typeof ApiAdminAlbumsRouteRouteWithChildren
   '/api/admin/content-audit': typeof ApiAdminContentAuditRouteRoute
@@ -821,7 +870,7 @@ export interface FileRoutesByFullPath {
   '/things/twin/dev': typeof ThingsTwinDevRoute
   '/pics/$album/': typeof PicsAlbumIndexRoute
   '/api/admin/albums/$slug': typeof ApiAdminAlbumsSlugRouteRouteWithChildren
-  '/api/admin/events/$slug': typeof ApiAdminEventsSlugRouteRoute
+  '/api/admin/events/$slug': typeof ApiAdminEventsSlugRouteRouteWithChildren
   '/api/admin/tokens/revoke': typeof ApiAdminTokensRevokeRouteRoute
   '/api/admin/tokens/sessions': typeof ApiAdminTokensSessionsRouteRouteWithChildren
   '/api/admin/transfers/$id': typeof ApiAdminTransfersIdRouteRoute
@@ -849,6 +898,11 @@ export interface FileRoutesByFullPath {
   '/things/pitches/remote/$roomId': typeof ThingsPitchesRemoteRoomIdRoute
   '/things/spelling-party/$roomId/present': typeof ThingsSpellingPartyRoomIdPresentRoute
   '/api/admin/albums/$slug/cover': typeof ApiAdminAlbumsSlugCoverRouteRoute
+  '/api/admin/events/$slug/checkpoints': typeof ApiAdminEventsSlugCheckpointsRouteRoute
+  '/api/admin/events/$slug/email': typeof ApiAdminEventsSlugEmailRouteRoute
+  '/api/admin/events/$slug/guest-requests': typeof ApiAdminEventsSlugGuestRequestsRouteRoute
+  '/api/admin/events/$slug/scanner-links': typeof ApiAdminEventsSlugScannerLinksRouteRoute
+  '/api/admin/events/$slug/tickets': typeof ApiAdminEventsSlugTicketsRouteRoute
   '/api/admin/tokens/sessions/$jti': typeof ApiAdminTokensSessionsJtiRouteRoute
   '/api/transfers/$id/files/$fileId': typeof ApiTransfersIdFilesFileIdRouteRoute
   '/api/upload/transfer/append/finalize': typeof ApiUploadTransferAppendFinalizeRouteRoute
@@ -879,6 +933,7 @@ export interface FileRoutesByTo {
   '/api/words': typeof ApiWordsRouteRouteWithChildren
   '/admin/editor': typeof AdminEditorRoute
   '/events/$slug': typeof EventsSlugRoute
+  '/scan/$token': typeof ScanTokenRoute
   '/t/$id': typeof TIdRoute
   '/things/centre': typeof ThingsCentreRoute
   '/things/draw-country': typeof ThingsDrawCountryRoute
@@ -896,6 +951,7 @@ export interface FileRoutesByTo {
   '/admin': typeof AdminIndexRoute
   '/events': typeof EventsIndexRoute
   '/pics': typeof PicsIndexRoute
+  '/scan': typeof ScanIndexRoute
   '/words': typeof WordsIndexRoute
   '/api/admin/albums': typeof ApiAdminAlbumsRouteRouteWithChildren
   '/api/admin/content-audit': typeof ApiAdminContentAuditRouteRoute
@@ -938,7 +994,7 @@ export interface FileRoutesByTo {
   '/things/twin/dev': typeof ThingsTwinDevRoute
   '/pics/$album': typeof PicsAlbumIndexRoute
   '/api/admin/albums/$slug': typeof ApiAdminAlbumsSlugRouteRouteWithChildren
-  '/api/admin/events/$slug': typeof ApiAdminEventsSlugRouteRoute
+  '/api/admin/events/$slug': typeof ApiAdminEventsSlugRouteRouteWithChildren
   '/api/admin/tokens/revoke': typeof ApiAdminTokensRevokeRouteRoute
   '/api/admin/tokens/sessions': typeof ApiAdminTokensSessionsRouteRouteWithChildren
   '/api/admin/transfers/$id': typeof ApiAdminTransfersIdRouteRoute
@@ -966,6 +1022,11 @@ export interface FileRoutesByTo {
   '/things/pitches/remote/$roomId': typeof ThingsPitchesRemoteRoomIdRoute
   '/things/spelling-party/$roomId/present': typeof ThingsSpellingPartyRoomIdPresentRoute
   '/api/admin/albums/$slug/cover': typeof ApiAdminAlbumsSlugCoverRouteRoute
+  '/api/admin/events/$slug/checkpoints': typeof ApiAdminEventsSlugCheckpointsRouteRoute
+  '/api/admin/events/$slug/email': typeof ApiAdminEventsSlugEmailRouteRoute
+  '/api/admin/events/$slug/guest-requests': typeof ApiAdminEventsSlugGuestRequestsRouteRoute
+  '/api/admin/events/$slug/scanner-links': typeof ApiAdminEventsSlugScannerLinksRouteRoute
+  '/api/admin/events/$slug/tickets': typeof ApiAdminEventsSlugTicketsRouteRoute
   '/api/admin/tokens/sessions/$jti': typeof ApiAdminTokensSessionsJtiRouteRoute
   '/api/transfers/$id/files/$fileId': typeof ApiTransfersIdFilesFileIdRouteRoute
   '/api/upload/transfer/append/finalize': typeof ApiUploadTransferAppendFinalizeRouteRoute
@@ -997,6 +1058,7 @@ export interface FileRoutesById {
   '/api/words': typeof ApiWordsRouteRouteWithChildren
   '/admin/editor': typeof AdminEditorRoute
   '/events/$slug': typeof EventsSlugRoute
+  '/scan/$token': typeof ScanTokenRoute
   '/t/$id': typeof TIdRoute
   '/things/centre': typeof ThingsCentreRoute
   '/things/draw-country': typeof ThingsDrawCountryRoute
@@ -1014,6 +1076,7 @@ export interface FileRoutesById {
   '/admin/': typeof AdminIndexRoute
   '/events/': typeof EventsIndexRoute
   '/pics/': typeof PicsIndexRoute
+  '/scan/': typeof ScanIndexRoute
   '/words/': typeof WordsIndexRoute
   '/api/admin/albums': typeof ApiAdminAlbumsRouteRouteWithChildren
   '/api/admin/content-audit': typeof ApiAdminContentAuditRouteRoute
@@ -1056,7 +1119,7 @@ export interface FileRoutesById {
   '/things/twin_/dev': typeof ThingsTwinDevRoute
   '/pics/$album/': typeof PicsAlbumIndexRoute
   '/api/admin/albums/$slug': typeof ApiAdminAlbumsSlugRouteRouteWithChildren
-  '/api/admin/events/$slug': typeof ApiAdminEventsSlugRouteRoute
+  '/api/admin/events/$slug': typeof ApiAdminEventsSlugRouteRouteWithChildren
   '/api/admin/tokens/revoke': typeof ApiAdminTokensRevokeRouteRoute
   '/api/admin/tokens/sessions': typeof ApiAdminTokensSessionsRouteRouteWithChildren
   '/api/admin/transfers/$id': typeof ApiAdminTransfersIdRouteRoute
@@ -1084,6 +1147,11 @@ export interface FileRoutesById {
   '/things/pitches_/remote_/$roomId': typeof ThingsPitchesRemoteRoomIdRoute
   '/things/spelling-party_/$roomId_/present': typeof ThingsSpellingPartyRoomIdPresentRoute
   '/api/admin/albums/$slug/cover': typeof ApiAdminAlbumsSlugCoverRouteRoute
+  '/api/admin/events/$slug/checkpoints': typeof ApiAdminEventsSlugCheckpointsRouteRoute
+  '/api/admin/events/$slug/email': typeof ApiAdminEventsSlugEmailRouteRoute
+  '/api/admin/events/$slug/guest-requests': typeof ApiAdminEventsSlugGuestRequestsRouteRoute
+  '/api/admin/events/$slug/scanner-links': typeof ApiAdminEventsSlugScannerLinksRouteRoute
+  '/api/admin/events/$slug/tickets': typeof ApiAdminEventsSlugTicketsRouteRoute
   '/api/admin/tokens/sessions/$jti': typeof ApiAdminTokensSessionsJtiRouteRoute
   '/api/transfers/$id/files/$fileId': typeof ApiTransfersIdFilesFileIdRouteRoute
   '/api/upload/transfer/append/finalize': typeof ApiUploadTransferAppendFinalizeRouteRoute
@@ -1116,6 +1184,7 @@ export interface FileRouteTypes {
     | '/api/words'
     | '/admin/editor'
     | '/events/$slug'
+    | '/scan/$token'
     | '/t/$id'
     | '/things/centre'
     | '/things/draw-country'
@@ -1133,6 +1202,7 @@ export interface FileRouteTypes {
     | '/admin/'
     | '/events/'
     | '/pics/'
+    | '/scan/'
     | '/words/'
     | '/api/admin/albums'
     | '/api/admin/content-audit'
@@ -1203,6 +1273,11 @@ export interface FileRouteTypes {
     | '/things/pitches/remote/$roomId'
     | '/things/spelling-party/$roomId/present'
     | '/api/admin/albums/$slug/cover'
+    | '/api/admin/events/$slug/checkpoints'
+    | '/api/admin/events/$slug/email'
+    | '/api/admin/events/$slug/guest-requests'
+    | '/api/admin/events/$slug/scanner-links'
+    | '/api/admin/events/$slug/tickets'
     | '/api/admin/tokens/sessions/$jti'
     | '/api/transfers/$id/files/$fileId'
     | '/api/upload/transfer/append/finalize'
@@ -1233,6 +1308,7 @@ export interface FileRouteTypes {
     | '/api/words'
     | '/admin/editor'
     | '/events/$slug'
+    | '/scan/$token'
     | '/t/$id'
     | '/things/centre'
     | '/things/draw-country'
@@ -1250,6 +1326,7 @@ export interface FileRouteTypes {
     | '/admin'
     | '/events'
     | '/pics'
+    | '/scan'
     | '/words'
     | '/api/admin/albums'
     | '/api/admin/content-audit'
@@ -1320,6 +1397,11 @@ export interface FileRouteTypes {
     | '/things/pitches/remote/$roomId'
     | '/things/spelling-party/$roomId/present'
     | '/api/admin/albums/$slug/cover'
+    | '/api/admin/events/$slug/checkpoints'
+    | '/api/admin/events/$slug/email'
+    | '/api/admin/events/$slug/guest-requests'
+    | '/api/admin/events/$slug/scanner-links'
+    | '/api/admin/events/$slug/tickets'
     | '/api/admin/tokens/sessions/$jti'
     | '/api/transfers/$id/files/$fileId'
     | '/api/upload/transfer/append/finalize'
@@ -1350,6 +1432,7 @@ export interface FileRouteTypes {
     | '/api/words'
     | '/admin/editor'
     | '/events/$slug'
+    | '/scan/$token'
     | '/t/$id'
     | '/things/centre'
     | '/things/draw-country'
@@ -1367,6 +1450,7 @@ export interface FileRouteTypes {
     | '/admin/'
     | '/events/'
     | '/pics/'
+    | '/scan/'
     | '/words/'
     | '/api/admin/albums'
     | '/api/admin/content-audit'
@@ -1437,6 +1521,11 @@ export interface FileRouteTypes {
     | '/things/pitches_/remote_/$roomId'
     | '/things/spelling-party_/$roomId_/present'
     | '/api/admin/albums/$slug/cover'
+    | '/api/admin/events/$slug/checkpoints'
+    | '/api/admin/events/$slug/email'
+    | '/api/admin/events/$slug/guest-requests'
+    | '/api/admin/events/$slug/scanner-links'
+    | '/api/admin/events/$slug/tickets'
     | '/api/admin/tokens/sessions/$jti'
     | '/api/transfers/$id/files/$fileId'
     | '/api/upload/transfer/append/finalize'
@@ -1468,6 +1557,7 @@ export interface RootRouteChildren {
   ApiWordsRouteRoute: typeof ApiWordsRouteRouteWithChildren
   AdminEditorRoute: typeof AdminEditorRoute
   EventsSlugRoute: typeof EventsSlugRoute
+  ScanTokenRoute: typeof ScanTokenRoute
   TIdRoute: typeof TIdRoute
   TicketIdRoute: typeof TicketIdRoute
   VaultSlugRoute: typeof VaultSlugRoute
@@ -1475,6 +1565,7 @@ export interface RootRouteChildren {
   AdminIndexRoute: typeof AdminIndexRoute
   EventsIndexRoute: typeof EventsIndexRoute
   PicsIndexRoute: typeof PicsIndexRoute
+  ScanIndexRoute: typeof ScanIndexRoute
   WordsIndexRoute: typeof WordsIndexRoute
   ApiAdminAlbumsRouteRoute: typeof ApiAdminAlbumsRouteRouteWithChildren
   ApiAdminContentAuditRouteRoute: typeof ApiAdminContentAuditRouteRoute
@@ -1610,6 +1701,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof WordsIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/scan/': {
+      id: '/scan/'
+      path: '/scan'
+      fullPath: '/scan/'
+      preLoaderRoute: typeof ScanIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/pics/': {
       id: '/pics/'
       path: '/pics'
@@ -1727,6 +1825,13 @@ declare module '@tanstack/react-router' {
       path: '/t/$id'
       fullPath: '/t/$id'
       preLoaderRoute: typeof TIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/scan/$token': {
+      id: '/scan/$token'
+      path: '/scan/$token'
+      fullPath: '/scan/$token'
+      preLoaderRoute: typeof ScanTokenRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/events/$slug': {
@@ -2296,6 +2401,41 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiAdminTokensSessionsJtiRouteRouteImport
       parentRoute: typeof ApiAdminTokensSessionsRouteRoute
     }
+    '/api/admin/events/$slug/tickets': {
+      id: '/api/admin/events/$slug/tickets'
+      path: '/tickets'
+      fullPath: '/api/admin/events/$slug/tickets'
+      preLoaderRoute: typeof ApiAdminEventsSlugTicketsRouteRouteImport
+      parentRoute: typeof ApiAdminEventsSlugRouteRoute
+    }
+    '/api/admin/events/$slug/scanner-links': {
+      id: '/api/admin/events/$slug/scanner-links'
+      path: '/scanner-links'
+      fullPath: '/api/admin/events/$slug/scanner-links'
+      preLoaderRoute: typeof ApiAdminEventsSlugScannerLinksRouteRouteImport
+      parentRoute: typeof ApiAdminEventsSlugRouteRoute
+    }
+    '/api/admin/events/$slug/guest-requests': {
+      id: '/api/admin/events/$slug/guest-requests'
+      path: '/guest-requests'
+      fullPath: '/api/admin/events/$slug/guest-requests'
+      preLoaderRoute: typeof ApiAdminEventsSlugGuestRequestsRouteRouteImport
+      parentRoute: typeof ApiAdminEventsSlugRouteRoute
+    }
+    '/api/admin/events/$slug/email': {
+      id: '/api/admin/events/$slug/email'
+      path: '/email'
+      fullPath: '/api/admin/events/$slug/email'
+      preLoaderRoute: typeof ApiAdminEventsSlugEmailRouteRouteImport
+      parentRoute: typeof ApiAdminEventsSlugRouteRoute
+    }
+    '/api/admin/events/$slug/checkpoints': {
+      id: '/api/admin/events/$slug/checkpoints'
+      path: '/checkpoints'
+      fullPath: '/api/admin/events/$slug/checkpoints'
+      preLoaderRoute: typeof ApiAdminEventsSlugCheckpointsRouteRouteImport
+      parentRoute: typeof ApiAdminEventsSlugRouteRoute
+    }
     '/api/admin/albums/$slug/cover': {
       id: '/api/admin/albums/$slug/cover'
       path: '/cover'
@@ -2481,12 +2621,37 @@ const ApiAdminAlbumsRouteRouteChildren: ApiAdminAlbumsRouteRouteChildren = {
 const ApiAdminAlbumsRouteRouteWithChildren =
   ApiAdminAlbumsRouteRoute._addFileChildren(ApiAdminAlbumsRouteRouteChildren)
 
+interface ApiAdminEventsSlugRouteRouteChildren {
+  ApiAdminEventsSlugCheckpointsRouteRoute: typeof ApiAdminEventsSlugCheckpointsRouteRoute
+  ApiAdminEventsSlugEmailRouteRoute: typeof ApiAdminEventsSlugEmailRouteRoute
+  ApiAdminEventsSlugGuestRequestsRouteRoute: typeof ApiAdminEventsSlugGuestRequestsRouteRoute
+  ApiAdminEventsSlugScannerLinksRouteRoute: typeof ApiAdminEventsSlugScannerLinksRouteRoute
+  ApiAdminEventsSlugTicketsRouteRoute: typeof ApiAdminEventsSlugTicketsRouteRoute
+}
+
+const ApiAdminEventsSlugRouteRouteChildren: ApiAdminEventsSlugRouteRouteChildren =
+  {
+    ApiAdminEventsSlugCheckpointsRouteRoute:
+      ApiAdminEventsSlugCheckpointsRouteRoute,
+    ApiAdminEventsSlugEmailRouteRoute: ApiAdminEventsSlugEmailRouteRoute,
+    ApiAdminEventsSlugGuestRequestsRouteRoute:
+      ApiAdminEventsSlugGuestRequestsRouteRoute,
+    ApiAdminEventsSlugScannerLinksRouteRoute:
+      ApiAdminEventsSlugScannerLinksRouteRoute,
+    ApiAdminEventsSlugTicketsRouteRoute: ApiAdminEventsSlugTicketsRouteRoute,
+  }
+
+const ApiAdminEventsSlugRouteRouteWithChildren =
+  ApiAdminEventsSlugRouteRoute._addFileChildren(
+    ApiAdminEventsSlugRouteRouteChildren,
+  )
+
 interface ApiAdminEventsRouteRouteChildren {
-  ApiAdminEventsSlugRouteRoute: typeof ApiAdminEventsSlugRouteRoute
+  ApiAdminEventsSlugRouteRoute: typeof ApiAdminEventsSlugRouteRouteWithChildren
 }
 
 const ApiAdminEventsRouteRouteChildren: ApiAdminEventsRouteRouteChildren = {
-  ApiAdminEventsSlugRouteRoute: ApiAdminEventsSlugRouteRoute,
+  ApiAdminEventsSlugRouteRoute: ApiAdminEventsSlugRouteRouteWithChildren,
 }
 
 const ApiAdminEventsRouteRouteWithChildren =
@@ -2592,6 +2757,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiWordsRouteRoute: ApiWordsRouteRouteWithChildren,
   AdminEditorRoute: AdminEditorRoute,
   EventsSlugRoute: EventsSlugRoute,
+  ScanTokenRoute: ScanTokenRoute,
   TIdRoute: TIdRoute,
   TicketIdRoute: TicketIdRoute,
   VaultSlugRoute: VaultSlugRoute,
@@ -2599,6 +2765,7 @@ const rootRouteChildren: RootRouteChildren = {
   AdminIndexRoute: AdminIndexRoute,
   EventsIndexRoute: EventsIndexRoute,
   PicsIndexRoute: PicsIndexRoute,
+  ScanIndexRoute: ScanIndexRoute,
   WordsIndexRoute: WordsIndexRoute,
   ApiAdminAlbumsRouteRoute: ApiAdminAlbumsRouteRouteWithChildren,
   ApiAdminContentAuditRouteRoute: ApiAdminContentAuditRouteRoute,

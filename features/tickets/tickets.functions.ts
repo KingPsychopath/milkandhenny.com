@@ -13,6 +13,8 @@ import { buildTicketQrPayload } from "./qr.server";
 import { rateLimitClaim } from "./tickets.server";
 import { refundOrder, startCheckout } from "./checkout.server";
 import { rememberTicketHolder } from "./holder-cookie.server";
+import { resolveScannerLink } from "./scanner-links.server";
+import { isValidScannerToken } from "./checkpoint-types";
 import {
   isValidEmail,
   isValidTicketId,
@@ -214,19 +216,49 @@ export const resendTicketsFn = createServerFn({ method: "POST" })
 
 export type DoorRedeemResult = { authorised: false } | { authorised: true; outcome: RedeemOutcome };
 
+/**
+ * A door action is allowed by a staff/admin session, or by a live scanner
+ * link for that event's door. Returns who is scanning, for the audit trail.
+ */
+async function authoriseDoor(
+  request: Request,
+  eventSlug: string,
+  scannerToken: string | undefined,
+): Promise<{ ok: true; redeemedBy?: string } | { ok: false }> {
+  if (scannerToken && isValidScannerToken(scannerToken)) {
+    const link = await resolveScannerLink(scannerToken);
+    if (link && link.eventSlug === eventSlug && link.checkpointId === null) {
+      return { ok: true, redeemedBy: link.label };
+    }
+  }
+  const auth = await authenticateRequest(request, "staff");
+  return auth.ok ? { ok: true } : { ok: false };
+}
+
 export const redeemTicketFn = createServerFn({ method: "POST" })
   .validator(
-    (data: { scanned: string; eventSlug: string; redeemedBy?: string; offline?: boolean }) => data,
+    (data: {
+      scanned: string;
+      eventSlug: string;
+      redeemedBy?: string;
+      offline?: boolean;
+      scannerToken?: string;
+    }) => data,
   )
   .handler(async ({ data }): Promise<DoorRedeemResult> => {
     const request = getRequest();
-    const auth = await authenticateRequest(request, "staff");
+    const auth = await authoriseDoor(request, data.eventSlug, data.scannerToken);
     if (!auth.ok) return { authorised: false };
 
     const result = await runEventsResult(
       Effect.gen(function* () {
         const tickets = yield* TicketsService;
-        return yield* tickets.redeem(data);
+        return yield* tickets.redeem({
+          scanned: data.scanned,
+          eventSlug: data.eventSlug,
+          redeemedBy: auth.redeemedBy ?? data.redeemedBy,
+          offline: data.offline,
+        });
       }),
     );
 
@@ -248,10 +280,10 @@ export type DoorDataResult =
 
 /** Everything a door device needs to keep working when the wifi drops. */
 export const getDoorDataFn = createServerFn({ method: "GET" })
-  .validator((data: { eventSlug: string }) => data)
+  .validator((data: { eventSlug: string; scannerToken?: string }) => data)
   .handler(async ({ data }): Promise<DoorDataResult> => {
     const request = getRequest();
-    const auth = await authenticateRequest(request, "staff");
+    const auth = await authoriseDoor(request, data.eventSlug, data.scannerToken);
     if (!auth.ok) return { authorised: false };
 
     const result = await runEventsResult(

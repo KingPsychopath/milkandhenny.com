@@ -167,6 +167,62 @@ export async function sendTicketEmail(input: {
   return { sent: true };
 }
 
+export type RenderedEmail = { subject: string; text: string; html: string };
+
+/**
+ * An update from the organiser to attendees, in the same clothes as the
+ * ticket email. Plain paragraphs in, branded email out — the admin panel
+ * previews exactly this output before anything sends.
+ */
+export function renderEventMessage(input: {
+  event: EventRecord;
+  subject: string;
+  body: string;
+}): RenderedEmail {
+  const { event, subject, body } = input;
+  const when = formatEventDateTime(event.startsAt, event.timezone);
+
+  const text = [body.trim(), "", `${event.title} · ${when}`, "", "— milk & henny"].join("\n");
+
+  const paragraphs = body
+    .trim()
+    .split(/\n{2,}/)
+    .map(
+      (paragraph) =>
+        `<p style="margin:0 0 14px;line-height:1.6">${escapeHtml(paragraph).replace(/\n/g, "<br>")}</p>`,
+    )
+    .join("");
+
+  const html = `<div style="font-family:ui-monospace,SFMono-Regular,Menlo,monospace;background:#fafaf9;color:#1c1917;padding:24px">
+  <div style="max-width:520px;margin:0 auto">
+    <h1 style="font-family:Georgia,serif;font-size:24px;margin:0 0 4px">${escapeHtml(subject)}</h1>
+    <p style="margin:0 0 20px;color:#78716c">${escapeHtml(event.title)} · ${escapeHtml(when)}</p>
+    ${paragraphs}
+    <p style="margin:24px 0 0;color:#a8a29e;font-size:12px">milk &amp; henny</p>
+  </div>
+</div>`;
+
+  return { subject, text, html };
+}
+
+export async function sendEventMessageEmail(input: {
+  event: EventRecord;
+  subject: string;
+  body: string;
+  to: string;
+}): Promise<TicketEmailResult> {
+  const rendered = renderEventMessage(input);
+  const result = await sendEmail({
+    channel: "tickets",
+    to: input.to,
+    subject: rendered.subject,
+    text: rendered.text,
+    html: rendered.html,
+  });
+  if (!result.ok) return { sent: false, error: result.error };
+  return { sent: true };
+}
+
 function refundAmount(tickets: TicketRecord[]): string | null {
   const currency = tickets.find((ticket) => ticket.currency)?.currency;
   if (!currency) return null;

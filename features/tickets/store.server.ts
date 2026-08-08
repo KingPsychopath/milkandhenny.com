@@ -282,6 +282,33 @@ export async function claimRedemption(
   return { claimed: false, ticket: existing[0] ? toTicket(existing[0]) : null };
 }
 
+/**
+ * Correct a holder's details — a typo'd name, a wrong or changed email.
+ * `email: null` clears the address; `undefined` leaves it alone.
+ */
+export async function updateTicketHolder(
+  id: string,
+  changes: { holderName?: string; email?: string | null },
+): Promise<TicketRecord | null> {
+  if (!isValidTicketId(id)) return null;
+  const { hashEmail } = await import("./qr.server");
+  const { normaliseEmail } = await import("./types");
+
+  const setEmail = changes.email !== undefined;
+  const email = changes.email ? normaliseEmail(changes.email) : null;
+  const rows = await query<TicketRow>(
+    `update tickets
+        set holder_name = coalesce($2, holder_name),
+            email = case when $3 then $4 else email end,
+            email_hash = case when $3 then $5 else email_hash end
+      where id = $1
+      returning *`,
+    [id, changes.holderName ?? null, setEmail, email, email ? hashEmail(email) : null],
+  );
+  if (rows[0]) log.info("tickets.update", "Holder details changed", { id });
+  return rows[0] ? toTicket(rows[0]) : null;
+}
+
 /** Staff correction: someone scanned the wrong phone. */
 export async function releaseRedemption(id: string): Promise<void> {
   if (!isValidTicketId(id)) return;
