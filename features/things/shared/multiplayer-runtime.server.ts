@@ -32,11 +32,39 @@ const multiplayerLayer = Layer.mergeAll(
  * This is the same fix, and the same reason, as `createMemoryRoomStore`: in dev the module graph
  * is not the process, so anything holding a real resource has to outlive the module. Production
  * evaluates once and never notices the difference.
+ *
+ * Caching alone was half a fix, though, and the half it got wrong was the one you notice: a cached
+ * runtime is never rebuilt, so edits to any engine behind these services stopped taking effect
+ * until the dev server was restarted. Trading "leaks connections" for "silently serves stale code"
+ * is not a trade worth making.
+ *
+ * So: replace on re-evaluation. If a runtime is already parked here when this module runs again,
+ * that only happens because something in its graph changed — which is exactly when the old one
+ * should be torn down and a new one built against the new code. One live runtime at a time, no
+ * orphaned sockets, and no stale engine.
+ *
+ * `import.meta.hot.dispose` looks like the tidier hook and does not work here: it is truthy in this
+ * module and never invoked, because Vite's SSR runner re-imports server modules rather than doing
+ * client-style hot replacement. Verified rather than assumed — a probe logged the re-evaluation and
+ * the callback that never came. Module evaluation is the only reliable signal on this side.
  */
 const RUNTIME_KEY = "__milkandhenny_multiplayer_runtime__";
 
 const runtimeHolder = globalThis as Record<string, unknown>;
-runtimeHolder[RUNTIME_KEY] ??= ManagedRuntime.make(multiplayerLayer);
+
+if (import.meta.hot) {
+  const outgoing = runtimeHolder[RUNTIME_KEY] as
+    | ManagedRuntime.ManagedRuntime<MultiplayerServices, never>
+    | undefined;
+  // Fire and forget: nothing is waiting on it, and a failed teardown of a runtime already being
+  // thrown away is not worth taking the dev server down for.
+  if (outgoing) void outgoing.dispose().catch(() => undefined);
+  runtimeHolder[RUNTIME_KEY] = ManagedRuntime.make(multiplayerLayer);
+} else {
+  // Production evaluates once, so this is a plain module-scoped singleton with extra steps.
+  runtimeHolder[RUNTIME_KEY] ??= ManagedRuntime.make(multiplayerLayer);
+}
+
 const multiplayerRuntime = runtimeHolder[RUNTIME_KEY] as ManagedRuntime.ManagedRuntime<
   MultiplayerServices,
   never
