@@ -330,7 +330,7 @@ export type LiarsSnapshotResult =
 
 export type LiarsHostAction = MultiplayerAction &
   (
-    | { type: "game.configure"; lineup?: LiarsLineup; toggles?: Partial<LiarsToggles>; timings?: Partial<LiarsTimings>; roomMode?: LiarsRoomMode }
+    | { type: "game.configure"; lineup?: LiarsLineup; resetLineup?: boolean; toggles?: Partial<LiarsToggles>; timings?: Partial<LiarsTimings>; roomMode?: LiarsRoomMode }
     | { type: "game.start"; force?: boolean }
     | { type: "phase.extend" }
     | { type: "phase.pause" | "phase.resume" }

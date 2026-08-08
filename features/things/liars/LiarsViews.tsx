@@ -7,9 +7,11 @@ import {
   LIARS_PLAYER_LIMITS,
   LIARS_ROLES,
   liarsLineupEntries,
+  liarsLineupTotal,
   liarsRolesForMode,
   liarsSideCounts,
   liarsSideLabel,
+  liarsValidateLineup,
   liarsWrongVoteBudget,
 } from "./liars-rules";
 import type {
@@ -730,3 +732,146 @@ export function WordPanel({
   );
 }
 
+
+
+/**
+ * Add and remove roles on top of the standard lineup.
+ *
+ * It lives in the lobby rather than on the setup screen for one reason: a lineup has to add up to
+ * the people who are actually in the room, and at setup that is a guess. Here it is a fact. A
+ * lineup that no longer fits — because somebody else arrived — reverts to the standard one rather
+ * than sitting there not adding up.
+ *
+ * Everything is refused by the same validator the engine uses, so the reason on screen is the real
+ * reason and not a second opinion.
+ */
+export function LineupEditor({
+  mode,
+  lineup,
+  playerCount,
+  onChange,
+  onReset,
+}: {
+  mode: LiarsMode;
+  lineup: LiarsLineup;
+  playerCount: number;
+  onChange: (next: LiarsLineup) => void;
+  onReset: () => void;
+}) {
+  /**
+   * Edited locally first, and only sent once it adds up.
+   *
+   * Round-tripping every tap made the editor unusable: swapping a villager for a bodyguard has to
+   * pass through ten roles for nine people, the server rightly refuses that, and you could never
+   * reach the valid lineup on the other side of it. The validator is pure and shared, so the draft
+   * is checked here against exactly the rules the engine will apply.
+   */
+  const [draft, setDraft] = useState(lineup);
+  const [dirty, setDirty] = useState(false);
+  useEffect(() => {
+    if (!dirty) setDraft(lineup);
+  }, [dirty, lineup]);
+
+  const roles = liarsRolesForMode(mode);
+  const total = liarsLineupTotal(draft);
+  const check = liarsValidateLineup(mode, draft, playerCount);
+  const spare = playerCount - total;
+
+  const edit = (role: LiarsRole, delta: number) => {
+    const current = draft.roles[role] ?? 0;
+    const next = Math.max(0, Math.min(LIARS_ROLES[role].maxCopies, current + delta));
+    const roleCounts = { ...draft.roles, [role]: next };
+    if (next === 0) delete roleCounts[role];
+    const updated = { roles: roleCounts };
+    setDraft(updated);
+    setDirty(true);
+    // Pushed the moment it is playable, so the board everyone else sees keeps up.
+    if (liarsValidateLineup(mode, updated, playerCount).ok) {
+      onChange(updated);
+      setDirty(false);
+    }
+  };
+
+  return (
+    <section aria-label="change the roles">
+      <ul>
+        {roles.map((role) => {
+          const count = draft.roles[role.id] ?? 0;
+          const tooSmall = playerCount < role.minPlayers;
+          return (
+            <li key={role.id} className="flex min-h-12 items-center gap-3 border-t border-white/10">
+              <span
+                aria-hidden="true"
+                className={`size-1.5 shrink-0 rounded-full ${
+                  role.side === "mafia"
+                    ? "bg-[var(--liars-dead)]"
+                    : role.side === "third"
+                      ? "bg-[var(--things-amber)]"
+                      : "bg-white/30"
+                }`}
+              />
+              <span className={`font-serif text-base ${count > 0 ? "" : "text-white/35"}`}>
+                {role.name}
+              </span>
+              {tooSmall ? (
+                <span className="font-mono text-micro text-white/25">needs {role.minPlayers}</span>
+              ) : null}
+              <span className="ml-auto flex items-center gap-1">
+                <button
+                  type="button"
+                  disabled={count === 0}
+                  onClick={() => edit(role.id, -1)}
+                  className="min-h-11 w-9 font-mono text-base text-white/45 hover:text-white disabled:opacity-20"
+                  aria-label={`one fewer ${role.name}`}
+                >
+                  −
+                </button>
+                <span className="w-5 text-center font-mono text-sm tabular-nums">{count}</span>
+                <button
+                  type="button"
+                  disabled={tooSmall || count >= role.maxCopies}
+                  onClick={() => edit(role.id, 1)}
+                  className="min-h-11 w-9 font-mono text-base text-white/45 hover:text-white disabled:opacity-20"
+                  aria-label={`one more ${role.name}`}
+                >
+                  +
+                </button>
+              </span>
+            </li>
+          );
+        })}
+      </ul>
+
+      <p
+        className={`mt-3 border-t border-white/10 pt-3 font-mono text-xs ${
+          check.ok ? "text-white/45" : "text-[var(--liars-dead)]"
+        }`}
+        role="status"
+      >
+        {!check.ok
+          ? check.problem.message
+          : spare === 0
+            ? `${total} roles for ${playerCount} — ready`
+            : spare > 0
+              ? `${spare} more ${spare === 1 ? "role" : "roles"} to hand out`
+              : `${-spare} too many`}
+      </p>
+      {check.ok && check.warnings.length > 0 ? (
+        <p className="mt-1 font-mono text-xs text-[var(--things-amber)]">
+          {check.warnings[0].message}
+        </p>
+      ) : null}
+
+      <button
+        type="button"
+        onClick={() => {
+          setDirty(false);
+          onReset();
+        }}
+        className="mt-2 min-h-11 font-mono text-xs text-white/40 hover:text-white/80"
+      >
+        back to the standard lineup
+      </button>
+    </section>
+  );
+}

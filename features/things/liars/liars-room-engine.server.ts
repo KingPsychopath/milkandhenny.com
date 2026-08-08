@@ -44,6 +44,7 @@ import {
   liarsDetectWinner,
   liarsFirstGameLineup,
   liarsGraveyardArmsAt,
+  liarsLineupTotal,
   liarsNightDuration,
   liarsPlurality,
   liarsReadsGuilty,
@@ -136,6 +137,8 @@ interface LiarsRoomState {
   /** The last moment any device was heard from. Drives the dormancy pause. */
   lastActiveAt: number;
   lineup: LiarsLineup;
+  /** Set once a host edits it, so joins stop reflowing it back to the standard one. */
+  lineupCustom: boolean;
   toggles: LiarsToggles;
   timings: LiarsTimings;
   players: PlayerState[];
@@ -1180,6 +1183,7 @@ export async function createLiarsRoom(input: {
     pausedAt: null,
     lastActiveAt: Date.now(),
     lineup: liarsDefaultLineup(input.mode, LIARS_PLAYER_LIMITS[input.mode].min),
+    lineupCustom: false,
     toggles,
     timings: { ...liarsDefaultTimings(input.roomMode), ...input.timings },
     players: [],
@@ -1280,10 +1284,14 @@ export async function joinLiarsRoom(input: {
     room.players.push(player);
     if (input.hostToken && safeEqual(input.hostToken, room.hostHash)) room.hostPlayerId = player.id;
     room.hostPlayerId ??= player.id;
-    // The lobby board reflows around the roster, so the lineup follows the count until it starts.
-    room.lineup = room.toggles.firstGame
-      ? liarsFirstGameLineup(room.mode, room.players.length)
-      : liarsDefaultLineup(room.mode, room.players.length);
+    // The board follows the roster until it starts. A host's own lineup is kept while it still adds
+    // up; once another person arrives it cannot, so it reverts rather than silently not fitting.
+    if (!room.lineupCustom || liarsLineupTotal(room.lineup) !== room.players.length) {
+      room.lineup = room.toggles.firstGame
+        ? liarsFirstGameLineup(room.mode, room.players.length)
+        : liarsDefaultLineup(room.mode, room.players.length);
+      room.lineupCustom = false;
+    }
 
     const nextReceipt: JoinReceipt = {
       playerId: player.id,
@@ -1441,10 +1449,18 @@ export async function applyLiarsHostAction(input: {
             : liarsDefaultLineup(room.mode, room.players.length);
       }
       if (action.timings) room.timings = { ...room.timings, ...action.timings };
+      if (action.resetLineup) {
+        room.lineup = room.toggles.firstGame
+          ? liarsFirstGameLineup(room.mode, room.players.length)
+          : liarsDefaultLineup(room.mode, room.players.length);
+        room.lineupCustom = false;
+        changed(room);
+      }
       if (action.lineup) {
         const check = liarsValidateLineup(room.mode, action.lineup, room.players.length);
         if (!check.ok) return reject(view(), "lineup_invalid", check.problem.message);
         room.lineup = action.lineup;
+        room.lineupCustom = true;
       }
       changed(room);
     } else if (action.type === "game.start") {
@@ -1518,6 +1534,7 @@ export async function applyLiarsHostAction(input: {
       room.lineup = room.toggles.firstGame
         ? liarsFirstGameLineup(room.mode, room.players.length)
         : liarsDefaultLineup(room.mode, room.players.length);
+      room.lineupCustom = false;
       if (action.type === "game.replay") dealGame(room, now);
       else {
         for (const player of room.players) setMultiplayerPlayerReady(player, false);

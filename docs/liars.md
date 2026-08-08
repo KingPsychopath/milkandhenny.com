@@ -766,12 +766,25 @@ need active work here:
 |---|---|
 | Mode | mafia or imposter — locked once the game starts. **Mafia is disabled below 5 players**, with the reason shown rather than a greyed-out button. |
 | Room mode | same room or remote (§5.11) |
-| Roles | preset for the player count in one tap, then **customise** for the à la carte checklist |
+| Roles | the standard lineup for the player count, automatically |
 | First game | strips the lineup to doctor / detective / villager at any player count, and lengthens the deal with a three-card explainer. Twelve first-timers handed nine roles is a disaster. |
 | Timings | every phase length, defaults as specified above |
 | Toggles | section 7 |
 | Remove player | before the deal |
 | Start | blocked until everyone is ready |
+
+**Roles are edited in the lobby, not at setup.** A lineup has to add up to the people who are
+actually in the room, and at setup that is a guess — in the lobby it is a fact. "add or remove
+roles" gives the host a stepper per role, gated ones say what they need ("needs 12"), and the
+running total says whether it is playable.
+
+Edits are held locally and only sent once the lineup adds up. Round-tripping every tap made it
+unusable: swapping a villager for a bodyguard has to pass through ten roles for nine people, the
+server rightly refuses that, and the valid lineup on the other side was unreachable. The validator
+is pure and shared, so the draft is checked against exactly the rules the engine applies.
+
+A custom lineup survives until it no longer fits — the moment somebody else joins it cannot add up,
+so it reverts to the standard one rather than sitting there broken.
 
 **Setup is remembered on the device.** Mode, player count, imposter count, board or no board, room
 mode and the first-game flag all come back next time, through `useGamePreferences` — the same helper

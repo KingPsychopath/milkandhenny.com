@@ -123,6 +123,7 @@ function hostAction(value: unknown): LiarsHostAction {
       actionId: id,
       type: data.type,
       ...(data.lineup === undefined ? {} : { lineup: lineup(data.lineup) }),
+      ...(data.resetLineup === true ? { resetLineup: true } : {}),
       ...(data.toggles === undefined ? {} : { toggles: toggles(data.toggles) }),
       ...(data.timings === undefined ? {} : { timings: timings(data.timings) }),
       ...(data.roomMode === undefined ? {} : { roomMode: roomMode(data.roomMode) }),

@@ -21,6 +21,7 @@ import {
   Headline,
   InvitePanel,
   KnowledgeList,
+  LineupEditor,
   MarkLegend,
   LiarsOverlayLayer,
   NotesPad,
@@ -282,6 +283,7 @@ function LobbyPhase({ snapshot, isHost, send, sendHost }: PhaseProps) {
   const you = snapshot.player;
   const short = LIARS_PLAYER_LIMITS[snapshot.mode].min - snapshot.players.length;
   const [startAttempted, setStartAttempted] = useState(false);
+  const [editingRoles, setEditingRoles] = useState(false);
   const notReady = snapshot.players.filter(({ ready }) => !ready);
   const inviteUrl =
     typeof window === "undefined"
@@ -310,12 +312,32 @@ function LobbyPhase({ snapshot, isHost, send, sendHost }: PhaseProps) {
       <div className="mt-10">
         <Eyebrow>roles in this game</Eyebrow>
         <div className="mt-3">
-          <LineupBoard
-            mode={snapshot.mode}
-            lineup={snapshot.lineup}
-            playerCount={snapshot.players.length}
-          />
+          {editingRoles && isHost ? (
+            <LineupEditor
+              mode={snapshot.mode}
+              lineup={snapshot.lineup}
+              playerCount={snapshot.players.length}
+              onChange={(next) => void sendHost({ type: "game.configure", lineup: next })}
+              onReset={() => void sendHost({ type: "game.configure", resetLineup: true })}
+            />
+          ) : (
+            <LineupBoard
+              mode={snapshot.mode}
+              lineup={snapshot.lineup}
+              playerCount={snapshot.players.length}
+            />
+          )}
         </div>
+        {isHost ? (
+          <button
+            type="button"
+            onClick={() => setEditingRoles(!editingRoles)}
+            aria-expanded={editingRoles}
+            className="mt-3 min-h-11 font-mono text-xs text-white/45 hover:text-white/80"
+          >
+            {editingRoles ? "done" : "add or remove roles"}
+          </button>
+        ) : null}
       </div>
 
       <div className="mt-10 space-y-3">

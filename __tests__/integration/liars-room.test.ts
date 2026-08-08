@@ -1232,3 +1232,81 @@ describe("liars board toggle", () => {
     }
   });
 });
+
+describe("liars custom lineups", () => {
+  it("lets a host add a role the default did not reach, and deals it", async () => {
+    const created = await room("mafia", NAMES.slice(0, 9));
+    const standard = (await view(created.roomId, created.seats[0])).lineup;
+    expect(standard.roles.bodyguard, "the nine-player default has no bodyguard").toBeUndefined();
+
+    // One villager becomes a bodyguard.
+    const custom = {
+      roles: { ...standard.roles, villager: (standard.roles.villager ?? 0) - 1, bodyguard: 1 },
+    };
+    const set = await host(created.roomId, created.hostToken, {
+      type: "game.configure",
+      lineup: custom,
+    });
+    expect(set.accepted, "error" in set ? set.error : "").toBe(true);
+    expect(set.snapshot!.lineup.roles.bodyguard).toBe(1);
+
+    const started = await host(created.roomId, created.hostToken, { type: "game.start" });
+    expect(started.accepted).toBe(true);
+    const dealt: string[] = [];
+    for (const seat of created.seats) dealt.push((await view(created.roomId, seat)).player!.role);
+    expect(dealt).toContain("bodyguard");
+  });
+
+  it("refuses a lineup the game cannot run, with the reason", async () => {
+    const created = await room("mafia", NAMES.slice(0, 9));
+    const broken = await host(created.roomId, created.hostToken, {
+      type: "game.configure",
+      lineup: {
+        roles: { godfather: 1, mafia: 3, jammer: 1, doctor: 1, detective: 1, villager: 2 },
+      },
+    });
+    expect(broken).toMatchObject({ accepted: false, errorCode: "lineup_invalid" });
+    if (!broken.accepted && "error" in broken) expect(broken.error).toContain("parity");
+  });
+
+  it("reverts a custom lineup once it no longer fits the room", async () => {
+    const created = await room("mafia", NAMES.slice(0, 9));
+    const standard = (await view(created.roomId, created.seats[0])).lineup;
+    await host(created.roomId, created.hostToken, {
+      type: "game.configure",
+      lineup: {
+        roles: { ...standard.roles, villager: (standard.roles.villager ?? 0) - 1, bodyguard: 1 },
+      },
+    });
+
+    // Somebody else arrives, so nine roles no longer cover ten people.
+    const late = await joinLiarsRoom({
+      roomId: created.roomId,
+      joinToken: created.joinToken,
+      name: "Cleo",
+      joinId: "late-one",
+    });
+    expect(late.ok).toBe(true);
+
+    const after = await view(created.roomId, created.seats[0]);
+    expect(after.players).toHaveLength(10);
+    // Back to something that adds up, rather than sitting there broken.
+    expect(Object.values(after.lineup.roles).reduce((total, count) => total + count, 0)).toBe(10);
+  });
+
+  it("puts a host back on the standard lineup on request", async () => {
+    const created = await room("mafia", NAMES.slice(0, 9));
+    const standard = (await view(created.roomId, created.seats[0])).lineup;
+    await host(created.roomId, created.hostToken, {
+      type: "game.configure",
+      lineup: {
+        roles: { ...standard.roles, villager: (standard.roles.villager ?? 0) - 1, bodyguard: 1 },
+      },
+    });
+    const reset = await host(created.roomId, created.hostToken, {
+      type: "game.configure",
+      resetLineup: true,
+    });
+    expect(reset.snapshot!.lineup).toEqual(standard);
+  });
+});
