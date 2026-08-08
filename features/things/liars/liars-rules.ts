@@ -796,6 +796,17 @@ export function liarsActionMoves(role: LiarsRole, targetId: string | null) {
   return targetId !== null && LIARS_ROLES[role].moves;
 }
 
+/**
+ * The graveyard board holds eight lines and each line holds ninety characters.
+ *
+ * Deliberately small. A scrolling chat is where a dead table solves the whole game and then votes
+ * with perfect information, and it is also a second screen to read during a phase that already has
+ * one. Eight short lines is a corkboard: you pin what survived you, and pinning the ninth means
+ * deciding which of the eight mattered least. That editing pressure is the feature.
+ */
+export const LIARS_GRAVEYARD_BOARD_MAX = 8;
+export const LIARS_GRAVEYARD_NOTE_LENGTH = 90;
+
 /** Once half the table is gone, the graveyard's plurality becomes one extra ballot. */
 export function liarsGraveyardArmsAt(playerCount: number) {
   return Math.ceil(playerCount / 2);

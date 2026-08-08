@@ -10,6 +10,7 @@ import {
   LIARS_MODE_COPY,
   LIARS_PLAYER_LIMITS,
   LIARS_ROLES,
+  LIARS_GRAVEYARD_NOTE_LENGTH,
   liarsGraveyardArmsAt,
 } from "./liars-rules";
 import { applyLiarsHostActionFn, applyLiarsPlayerActionFn } from "./liars-room.functions";
@@ -889,6 +890,13 @@ function DeliberationPhase({ snapshot, clockOffset, send, isHost, sendHost }: Ph
   );
 }
 
+/** Public arithmetic: everyone can already count the dead, so saying it out loud leaks nothing. */
+function graveyardArmedFor(snapshot: LiarsSnapshot) {
+  if (!snapshot.toggles.graveyardVote || snapshot.toggles.liveGodView) return false;
+  const dead = snapshot.players.filter(({ alive }) => !alive).length;
+  return dead >= liarsGraveyardArmsAt(snapshot.players.length);
+}
+
 function VotePhase({ snapshot, clockOffset, send }: PhaseProps) {
   const you = snapshot.player;
   const living = snapshot.players.filter(({ alive }) => alive).map(({ id }) => id);
@@ -910,6 +918,17 @@ function VotePhase({ snapshot, clockOffset, send }: PhaseProps) {
       <p className="mt-4 font-serif text-lg text-white/65">
         Nobody sees this until everyone has committed.
       </p>
+      {/*
+        The living are told the graveyard is armed and never told what it did. Both halves matter.
+        The count of the dead is already on everyone's screen, so this leaks nothing — but knowing
+        an unseen ballot is in the box changes how a table argues, and never seeing it land means a
+        4–3 lynch might have been 3–3 plus the dead, and nobody will ever know which.
+      */}
+      {graveyardArmedFor(snapshot) ? (
+        <p className="mt-2 font-mono text-xs text-[var(--things-amber)]/70">
+          the graveyard is voting too — you will not see which way
+        </p>
+      ) : null}
 
       <div className="mt-6">
         <PlayerList
@@ -1098,11 +1117,24 @@ function Graveyard({
   return (
     <section className="mt-10 border-t border-white/10 pt-5" aria-label="the graveyard">
       <Eyebrow>the graveyard</Eyebrow>
-      <p className="mt-2 font-mono text-xs text-white/45">
-        {graveyard.armed
-          ? "your vote counts as one more ballot"
-          : `the graveyard votes when ${armsAt} are gone · ${graveyard.deadCount} so far`}
-      </p>
+      {graveyard.armed ? (
+        <>
+          <p className="mt-2 font-serif text-lg text-[var(--things-amber)]">
+            You are one ballot now. Together.
+          </p>
+          <p className="mt-1 font-mono text-xs text-white/45">
+            {graveyard.deadlocked
+              ? "split — as it stands the graveyard says nothing"
+              : graveyard.abstaining > 0
+                ? `${graveyard.abstaining} of you ${graveyard.abstaining === 1 ? "has" : "have"} not voted`
+                : "agreed · it goes in with the living's"}
+          </p>
+        </>
+      ) : (
+        <p className="mt-2 font-mono text-xs text-white/45">
+          {`${graveyard.deadCount} of ${armsAt} · vote anyway — it starts counting the moment there are ${armsAt} of you`}
+        </p>
+      )}
       <ul className="mt-4 border-t border-white/10">
         {living.map((player) => {
           const votes = graveyard.tally.find(({ playerId }) => playerId === player.id)?.votes ?? 0;
@@ -1136,6 +1168,81 @@ function Graveyard({
           );
         })}
       </ul>
+      <GraveyardBoard graveyard={graveyard} send={send} />
     </section>
+  );
+}
+
+/**
+ * The board.
+ *
+ * The dead are the only people in this game with nothing to do and everything to say, and left to
+ * themselves they will say it out loud to a living room that can hear them. So give them somewhere
+ * to put it — but a corkboard rather than a chat. Eight lines, pinned, oldest falling off. A
+ * scrolling conversation is where a dead table solves the game completely and then casts a ballot
+ * with perfect information; eight lines make them decide what actually mattered.
+ */
+function GraveyardBoard({
+  graveyard,
+  send,
+}: {
+  graveyard: NonNullable<LiarsSnapshot["graveyard"]>;
+  send: PhaseProps["send"];
+}) {
+  const [draft, setDraft] = useState("");
+
+  const pin = () => {
+    const text = draft.trim();
+    if (!text) return;
+    setDraft("");
+    void send({ type: "graveyard.pin", text });
+  };
+
+  return (
+    <div className="mt-6 border-t border-white/10 pt-4">
+      <p className="font-mono text-micro uppercase tracking-[0.18em] text-white/40">
+        the board · {graveyard.board.length}/{graveyard.boardMax} · only the dead see this
+      </p>
+      {graveyard.board.length > 0 ? (
+        <ul className="mt-2">
+          {graveyard.board.map((note) => (
+            <li key={note.id} className="flex items-baseline gap-3 border-b border-white/10 py-2">
+              <span className="w-16 shrink-0 truncate font-mono text-micro text-white/35">
+                {note.name}
+              </span>
+              <span className="flex-1 font-serif text-base text-white/75">{note.text}</span>
+              <button
+                type="button"
+                aria-label={`unpin ${note.text}`}
+                onClick={() => void send({ type: "graveyard.unpin", noteId: note.id })}
+                className="min-h-11 px-2 font-mono text-xs text-white/25 hover:text-white/60"
+              >
+                ×
+              </button>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+      <div className="mt-2 flex items-center gap-2">
+        <input
+          value={draft}
+          onChange={(event) => setDraft(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") pin();
+          }}
+          maxLength={LIARS_GRAVEYARD_NOTE_LENGTH}
+          placeholder="pin what you worked out"
+          className="min-h-11 flex-1 border-b border-white/15 bg-transparent font-serif text-base text-white outline-none placeholder:text-white/25 focus:border-[var(--things-amber)]"
+        />
+        <button
+          type="button"
+          onClick={pin}
+          disabled={draft.trim().length === 0}
+          className="min-h-11 shrink-0 px-3 font-mono text-xs text-[var(--things-amber)] disabled:text-white/20"
+        >
+          pin
+        </button>
+      </div>
+    </div>
   );
 }

@@ -14,6 +14,8 @@ import {
   readLiarsSnapshot,
 } from "../../features/things/liars/liars-room.server";
 import { liarsRoleSide } from "../../features/things/liars/liars-rules";
+import { LIARS_GRAVEYARD_BOARD_MAX } from "../../features/things/liars/liars-rules";
+import { parseLiarsPlayerAction } from "../../features/things/liars/liars-room.functions";
 import { LIARS_SCENARIOS } from "../../features/things/liars/liars-scenarios";
 import { startLiarsScenario } from "../../features/things/liars/liars-room-engine.server";
 import type {
@@ -840,6 +842,161 @@ describe("liars rooms — mafia coordination", () => {
     const died = dawn.dawn!.deaths.map(({ playerId }) => playerId);
     expect(died).toContain(bossPick);
     expect(died).not.toContain(otherPick);
+  });
+});
+
+describe("liars — what death costs you", () => {
+  /**
+   * Deals a fixed five-hander and kills whoever the caller names, so the tests below can start at
+   * the interesting moment instead of playing a night to reach it.
+   */
+  async function killed(victimIndex: number) {
+    const started = await startLiarsScenario({
+      mode: "mafia",
+      names: NAMES.slice(0, 5),
+      deal: ["mafia", "doctor", "detective", "villager", "villager"],
+    });
+    expect(started.error).toBeNull();
+    const seats = started.seats;
+    const deal = await view(started.roomId, seats[0]);
+    await runTo(started.roomId, seats, deal.phaseEndsAt + 1);
+
+    const night = await view(started.roomId, seats[0]);
+    await runTo(started.roomId, seats, night.nightOpensAt! + 100);
+    // The detective learns something true on their way past.
+    await act(started.roomId, seats[2], {
+      type: "night.select",
+      round: night.round,
+      targetId: seats[0].playerId,
+    });
+    await act(started.roomId, seats[0], {
+      type: "night.select",
+      round: night.round,
+      targetId: seats[victimIndex].playerId,
+    });
+    await runTo(started.roomId, seats, night.phaseEndsAt + 1);
+
+    const dawn = await view(started.roomId, seats[victimIndex]);
+    expect(dawn.players.find(({ id }) => id === seats[victimIndex].playerId)!.alive).toBe(false);
+    return { roomId: started.roomId, seats };
+  }
+
+  /**
+   * The one channel that beats every rule in the game is an unlocked phone. Last words are a single
+   * line and can be a lie; a screen still reading `night 1 · Maya · mafia` is server-issued proof,
+   * and a dead detective can simply hold it up. So the server stops vouching for you when you die.
+   */
+  it("seals a dead player's knowledge once their last words close", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-09T01:00:00Z"));
+    const { roomId, seats } = await killed(2);
+
+    // Dead, but still writing their epitaph — and they need the list to write from.
+    const dying = await view(roomId, seats[2]);
+    expect(dying.player!.lastWordsOpen).toBe(true);
+    expect(dying.player!.knowledge.length).toBeGreaterThan(0);
+    expect(dying.player!.knowledgeSealed).toBe(false);
+
+    await act(roomId, seats[2], { type: "words.last", text: "It was them. I checked." });
+
+    const sealed = await view(roomId, seats[2]);
+    expect(sealed.player!.lastWordsOpen).toBe(false);
+    expect(sealed.player!.knowledge).toEqual([]);
+    // Said out loud, so an emptied list reads as the rule rather than as a bug.
+    expect(sealed.player!.knowledgeSealed).toBe(true);
+  });
+
+  it("gives the graveyard a board only the dead can write to or read", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-09T02:00:00Z"));
+    const { roomId, seats } = await killed(3);
+
+    await act(roomId, seats[3], { type: "graveyard.pin", text: "the doctor is real" });
+    const dead = await view(roomId, seats[3]);
+    expect(dead.graveyard!.board.map(({ text }) => text)).toEqual(["the doctor is real"]);
+
+    // The living never receive the board at all — not the notes, not the fact one exists.
+    const living = await view(roomId, seats[0]);
+    expect(living.graveyard).toBeNull();
+    await act(roomId, seats[0], { type: "graveyard.pin", text: "the doctor is fake" });
+    expect((await view(roomId, seats[3])).graveyard!.board).toHaveLength(1);
+  });
+
+  it("drops the oldest note rather than silently refusing the ninth", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-09T03:00:00Z"));
+    const { roomId, seats } = await killed(3);
+
+    for (let index = 0; index < LIARS_GRAVEYARD_BOARD_MAX + 2; index += 1)
+      await act(roomId, seats[3], { type: "graveyard.pin", text: `note ${index}` });
+
+    const board = (await view(roomId, seats[3])).graveyard!.board;
+    expect(board).toHaveLength(LIARS_GRAVEYARD_BOARD_MAX);
+    // Distinct keys, so unpinning takes the note you actually pointed at.
+    expect(new Set(board.map(({ id }) => id)).size).toBe(board.length);
+    expect(board.at(-1)!.text).toBe(`note ${LIARS_GRAVEYARD_BOARD_MAX + 1}`);
+    expect(board.at(0)!.text).toBe("note 2");
+  });
+
+  it("tells the dead their ballot is split rather than letting them find out at verdict", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-09T04:00:00Z"));
+    const { roomId, seats } = await killed(3);
+
+    const alone = await view(roomId, seats[3]);
+    // One voter cannot be split with anybody, and abstaining is counted honestly.
+    expect(alone.graveyard!.abstaining).toBe(1);
+    expect(alone.graveyard!.deadlocked).toBe(false);
+
+    await act(roomId, seats[3], {
+      type: "graveyard.vote",
+      round: alone.round,
+      targetId: seats[0].playerId,
+    });
+    const voted = await view(roomId, seats[3]);
+    expect(voted.graveyard!.abstaining).toBe(0);
+    expect(voted.graveyard!.deadlocked).toBe(false);
+    expect(voted.graveyard!.tally).toEqual([
+      { playerId: seats[0].playerId, name: seats[0].name, votes: 1 },
+    ]);
+  });
+});
+
+describe("liars — the wire", () => {
+  /**
+   * Every action has to be remembered in two places: the engine's switch and the HTTP validator
+   * that guards it. The engine tests call the engine directly, so an action can pass all of them
+   * and still 500 on a real device — which is exactly how the graveyard board first reached the
+   * browser. This walks the union.
+   */
+  const SAMPLES: Array<Record<string, unknown>> = [
+    { type: "readiness.set", ready: true },
+    { type: "host.claim" },
+    { type: "words.last", text: "it was them" },
+    { type: "guess.final", text: "otter" },
+    { type: "graveyard.pin", text: "the doctor is real" },
+    { type: "graveyard.unpin", noteId: "note-1" },
+    { type: "night.select", round: 1, targetId: null },
+    { type: "night.lock", round: 1 },
+    { type: "vote.lock", round: 1 },
+    { type: "clue.said", round: 1 },
+    { type: "clue.allSaid", round: 1 },
+    { type: "clue.skip", round: 1, playerId: "p1" },
+    { type: "day.point", round: 1, targetId: null },
+    { type: "day.readyToVote", round: 1, ready: true },
+    { type: "vote.cast", round: 1, targetId: null },
+    { type: "graveyard.vote", round: 1, targetId: null },
+  ];
+
+  it("accepts every action the client can send", () => {
+    for (const sample of SAMPLES) {
+      const parsed = parseLiarsPlayerAction({ ...sample, actionId: "a1" });
+      expect(parsed.type, `${String(sample.type)} was rejected by the validator`).toBe(sample.type);
+    }
+  });
+
+  it("still refuses an action it has never heard of", () => {
+    expect(() => parseLiarsPlayerAction({ actionId: "a1", type: "graveyard.burn" })).toThrow();
   });
 });
 

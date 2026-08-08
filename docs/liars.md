@@ -617,12 +617,40 @@ make the graveyard vote a guaranteed-correct ballot. `liveGodView` exists as a t
 want pure spectacle; the engine disables the graveyard vote when it is on, because the two are
 incompatible.
 
+**2a. What death costs you.** Your knowledge list is **sealed the moment your last words close.**
+
+Everything in that list is server-issued and therefore provable, and a dead player who can hand an
+unlocked phone to a living one has a channel that beats every rule in the game — last words are one
+line and can be a lie, a screen reading `night 1 · Maya · mafia` cannot. Death has to cost you the
+ability to prove things, or it costs you nothing at all. Your own notes stay: they are unverifiable,
+which is exactly why they are allowed.
+
+The list stays up while last words are open, because you write your line from it. Then it goes, and
+the screen says so rather than looking broken.
+
 **3. The graveyard.** The caucus opens **the moment you die**. You tap a name, you watch the dead
 tally shift live as others arrive and change their minds. It just does not *count* yet, and the UI
 says so: `the graveyard votes when 5 are gone · 3 so far`.
 
 **Once half the table is dead, the graveyard's plurality becomes one additional ballot** in each
-remaining day's lynch. A tie means the graveyard abstains.
+remaining day's lynch — every day from then on, uncapped. A tie means the graveyard abstains, and
+**the dead are told they are level while they can still fix it**, because a deadlock discovered at
+verdict is a turn spent on a shrug.
+
+The tally shows **counts and never who cast them.** The dead already know everything; a tally with
+names on it is just a list of who is being difficult, and the argument down here should stay about
+the living.
+
+**The board.** Eight pinned lines, ninety characters each, dead-authored and dead-visible, cleared
+with each deal. Deliberately a corkboard rather than a chat: a scrolling conversation is where a
+dead table solves the game completely and then votes with perfect information, and it is a second
+screen to read during a phase that already has one. Pinning the ninth drops the oldest, so the cost
+is visible and you decide what mattered least.
+
+**The living are told the graveyard is armed and never told what it did.** Both halves matter. The
+count of the dead is already on every screen, so saying it leaks nothing — but knowing an unseen
+ballot is in the box changes how a table argues, and never seeing it land means a 4–3 lynch might
+have been 3–3 plus the dead, and nobody will ever know which.
 
 The trigger is what makes it work. It fires late, when only one or two days remain and the mafia are
 usually ahead, so it is an endgame comeback rather than a permanent second town. Nine players, half

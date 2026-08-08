@@ -195,9 +195,28 @@ export interface LiarsGraveyardSnapshot {
   armed: boolean;
   armsWhenDeadReaches: number;
   deadCount: number;
-  /** Tally among the dead, visible to the dead only. */
+  /**
+   * Tally among the dead, visible to the dead only — **counts, never who cast them**.
+   *
+   * The dead are the one group in this game who already know everything, so a tally with names on
+   * it would just be a list of who is being difficult. Counts alone keep the argument about the
+   * living, which is the only argument worth having down here.
+   */
   tally: Array<{ playerId: string; name: string; votes: number }>;
   yourVote: string | null;
+  /**
+   * True when the leaders are level and the ballot would therefore be spent on nothing.
+   *
+   * Told plainly and early rather than discovered at verdict: a deadlock the dead can see is a
+   * countdown they can still act on, and a deadlock they cannot see is a shrug they find out about
+   * too late to fix.
+   */
+  deadlocked: boolean;
+  /** Whether anyone still has to vote for the graveyard to speak at all. */
+  abstaining: number;
+  /** The board. Pinned lines, dead only. */
+  board: LiarsGraveyardNote[];
+  boardMax: number;
   /** Populated at verdict for everyone, so the table sees the graveyard's ballot land. */
   verdictName?: string | null;
 }
@@ -235,12 +254,30 @@ export interface LiarsPrivateState extends MultiplayerReadiness {
   readyToVote: boolean;
   pointedAt: string | null;
   report: LiarsNightReport | null;
+  /**
+   * What your role learned, while the server is still willing to vouch for it.
+   *
+   * It is **sealed the moment your last words close**. Everything here is server-issued and
+   * therefore provable, and a dead detective who can hand their unlocked phone to a living player
+   * has a channel that beats every rule in the game: last words are one line and can be a lie, but
+   * a screen showing `round 2 · Maya · mafia` cannot. Death has to cost you the ability to prove
+   * things, or it costs you nothing at all.
+   */
   knowledge: LiarsKnowledgeEntry[];
+  /** True once the above has been taken away, so the screen can say so rather than look broken. */
+  knowledgeSealed: boolean;
   /** Ids this role may act on right now, already filtered for self and team. */
   targetableIds: string[];
   lastWordsOpen: boolean;
   lastWordsClosesAt: number | null;
   finalGuessOpen: boolean;
+}
+
+/** One line on the graveyard board. Dead-authored, dead-visible, dead-erasable. */
+export interface LiarsGraveyardNote {
+  id: string;
+  name: string;
+  text: string;
 }
 
 export interface LiarsSnapshot
@@ -352,6 +389,8 @@ export type LiarsPlayerAction = MultiplayerAction &
     | { type: "clue.allSaid"; round: number }
     | { type: "words.last"; text: string }
     | { type: "graveyard.vote"; round: number; targetId: string | null }
+    | { type: "graveyard.pin"; text: string }
+    | { type: "graveyard.unpin"; noteId: string }
     | { type: "guess.final"; text: string }
     | { type: "host.claim" }
   );

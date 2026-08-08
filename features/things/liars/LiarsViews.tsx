@@ -471,6 +471,9 @@ export function NightReportCard({ report }: { report: LiarsNightReport }) {
 export function KnowledgeList({ snapshot }: { snapshot: LiarsSnapshot }) {
   const [open, setOpen] = useState(false);
   const entries = snapshot.player?.knowledge ?? [];
+  // The server stops vouching for you when you die. Said out loud, because a list that silently
+  // emptied would read as a bug rather than as the rule it is.
+  const sealed = snapshot.player?.knowledgeSealed ?? false;
 
   return (
     <div>
@@ -484,7 +487,11 @@ export function KnowledgeList({ snapshot }: { snapshot: LiarsSnapshot }) {
       </button>
       {open ? (
         <ul className="mt-2 border-t border-white/10 pt-2 font-mono text-xs text-white/55">
-          {entries.length === 0 ? (
+          {sealed ? (
+            <li className="py-1.5 text-white/35">
+              sealed when you died — say it out loud or it never happened
+            </li>
+          ) : entries.length === 0 ? (
             <li className="py-1.5 text-white/35">nothing yet</li>
           ) : (
             entries.map((entry, index) => (
