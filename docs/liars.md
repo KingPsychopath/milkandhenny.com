@@ -84,6 +84,7 @@ Checked at dawn and again at verdict.
 | Role | Night action | Rules |
 |---|---|---|
 | **Mafia** | kill one, or **stay in** | Staying in produces no death and no movement — nothing for watchers to see. A real strategic option. |
+| | | *The **caller** decides when the mafia disagree: the godfather if there is one, otherwise whoever joined the room first — not seniority in the mafia, which does not exist, but a stable arbitrary tiebreak. Arbitrary is fine because it is never a secret: the night screen names them on every mafia's phone, so nobody has to work out who to defer to.* |
 | | | *The mafia see each other's picks **live**, including whether each has locked. Coordinating is the fun of the role, and the caller needs to see a disagreement before overruling it. Everyone who picked somebody still counts as having left the house, so being overruled does not hide you.* |
 | **Godfather** | kills; reads **innocent** to the detective | From 7 players. Makes the final call when mafia disagree on a target. Without this the detective solves the game on night two. |
 | | | *Once the godfather is dead, the call passes by **seniority** — longest-surviving mafia, ties broken by join order. Deterministic, so a disagreement can never stall the night.* |
@@ -482,11 +483,22 @@ regardless of role.
   were only ever on the deal card, read four minutes before they matter. Villagers are who this
   hurts: `whose door to watch` over a list of names never says that the doctor and detective also
   count as having gone out, which is the whole reason a single sighting proves nothing.
-- **Dusk, 5s:** cream washes down to `--things-night`, a crescent moon rises and eight stars come
-  in behind it. **Dawn, 2.5s:** a sun comes up — not the moon going back down, which is what the
-  first version did and which is both wrong and the opposite of a sunrise. The window already existed — five seconds in which nothing role-specific may
-  be on screen — so giving it something to look at costs nothing and makes the pause read as a scene
-  rather than a stall.
+- **Dusk, 5s — wash, hold, clear.** Cream goes to `--things-night` in the first second, the sky
+  holds while a crescent moon rises and eight stars arrive, and only then does it clear. It used to
+  be a single 2.5s crossfade with a 5s moon animating inside it, so the moon was cut off about
+  halfway up and the back half of the beat played against a bare screen — the cutscene covered less
+  than half the pause it existed to fill. Stretching the crossfade would have been worse: it fades
+  opacity the whole way, so the moon would have been faintest at the exact moment it finished
+  rising. Everything now settles inside the hold.
+- **Dawn, 2.5s:** a sun comes up — not the moon going back down, which is what the first version did
+  and which is both wrong and the opposite of a sunrise. Dawn also had **no sound at all**: the one
+  transition that happens to everybody at once was landing in silence while dusk got a breath and a
+  descending drone. It now runs dusk's shape backwards — the same drone rising, with a chime over
+  it. Not birdsong: synthesised birds either sound like a sample library or like a modem, and both
+  belong to a different game than one set in Lora on warm stone.
+- The window already existed — five seconds in which nothing role-specific may be on screen — so
+  giving it something to look at costs nothing and makes the pause read as a scene rather than a
+  stall.
 - **Nothing role-specific is on screen during dusk.** Every device shows the same words — *"Night
   falls. Turn your screen away from the person next to you."* — so a phone lying face up on the
   table gives nothing away, and there is a real moment to move it. Five seconds rather than two and
