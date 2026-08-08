@@ -32,6 +32,7 @@ import {
 import { buildSameBrainPlayerInviteUrl } from "./same-brain-invite";
 import { useSameBrainRoom } from "./useSameBrainRoom";
 import type { SameBrainPlayerCredentials, SameBrainScoring, SameBrainSnapshot } from "./types";
+import { PlayerReadyControl } from "../shared/PlayerReadyControl";
 
 let actionCounter = 0;
 const nextActionId = () => `sb-${Date.now().toString(36)}-${(actionCounter += 1)}`;
@@ -364,21 +365,11 @@ function LobbyPhase({
       )}
 
       {!snapshot.you?.id ? null : (
-        <div className="mt-6">
-          <ActionButton
-            tone="quiet"
-            onClick={() =>
-              void send({
-                type: "readiness.set",
-                ready: !snapshot.players.find(({ id }) => id === snapshot.you?.id)?.ready,
-              })
-            }
-          >
-            {snapshot.players.find(({ id }) => id === snapshot.you?.id)?.ready
-              ? "step away for a minute"
-              : "I'm back"}
-          </ActionButton>
-        </div>
+        <PlayerReadyControl
+          ready={snapshot.players.find(({ id }) => id === snapshot.you?.id)?.ready ?? true}
+          onChange={(ready) => void send({ type: "readiness.set", ready })}
+          readyHint="You’re all set — wait here while the host sets the game."
+        />
       )}
     </>
   );

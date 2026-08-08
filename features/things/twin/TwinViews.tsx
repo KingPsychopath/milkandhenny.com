@@ -4,6 +4,7 @@ import { TextMorph } from "torph/react";
 import { AppSelect } from "@/components/AppSelect";
 import { useQrCode } from "@/hooks/useQrCode";
 import { shareOrCopy } from "@/lib/client/share";
+import { PlayerReadyControl } from "../shared/PlayerReadyControl";
 import {
   TWIN_MAX_HAND,
   TWIN_MIN_HAND,
@@ -174,14 +175,11 @@ export function TwinLobby({
           </button>
         </div>
 
-        <button
-          type="button"
-          aria-pressed={me?.ready ?? true}
-          onClick={() => onReadyChange(!(me?.ready ?? true))}
-          className="twin-button twin-button--quiet"
-        >
-          {me?.ready ? "ready · tap to wait" : "not ready · tap when ready"}
-        </button>
+        <PlayerReadyControl
+          ready={me?.ready ?? true}
+          onChange={onReadyChange}
+          readyHint="You’re all set — wait here for the host to deal."
+        />
 
         {snapshot.canControl ? (
           <button type="button" onClick={onStart} className="twin-button twin-button--go">

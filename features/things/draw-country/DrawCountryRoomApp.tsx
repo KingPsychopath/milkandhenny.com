@@ -169,7 +169,7 @@ function DrawCountryRoom({
     const requestId = snapshot?.player?.startRequestId ?? null;
     if (!requestId || requestId === previousStartRequest.current) return;
     previousStartRequest.current = requestId;
-    setLiveMessage("The host is ready to start — tap Ready when you are.");
+    setLiveMessage("The host wants to start — tap “I’m ready” if you stepped away.");
     void haptics.trigger("heavy");
   }, [haptics, setLiveMessage, snapshot?.player?.startRequestId]);
 

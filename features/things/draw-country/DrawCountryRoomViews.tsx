@@ -3,6 +3,7 @@ import { useState } from "react";
 import { TextMorph } from "torph/react";
 import { useQrCode } from "@/hooks/useQrCode";
 import { shareOrCopy } from "@/lib/client/share";
+import { PlayerReadyControl } from "../shared/PlayerReadyControl";
 import { CountryRevealAnalysis } from "./CountryReveal";
 import { DrawCountryResultReport } from "./DrawCountryResultReport";
 import { buildDrawCountryPlayerInviteUrl } from "./draw-country-invite";
@@ -124,14 +125,12 @@ export function RoomLobby({
         <p aria-live="polite" className="mt-3 font-mono text-xs text-black/45">
           {readyCount} of {snapshot.players.length} ready
         </p>
-        <button
-          type="button"
-          aria-pressed={currentPlayer?.ready ?? true}
-          onClick={() => onReadyChange(!(currentPlayer?.ready ?? true))}
-          className="mt-4 min-h-12 rounded-full border border-black/20 px-6 font-mono text-xs font-semibold uppercase tracking-[0.12em]"
-        >
-          {currentPlayer?.ready ? "ready · tap to wait" : "not ready · tap when ready"}
-        </button>
+        <PlayerReadyControl
+          ready={currentPlayer?.ready ?? true}
+          onChange={onReadyChange}
+          tone="light"
+          readyHint="You’re all set — wait here for the host to start drawing."
+        />
         {snapshot.canControl ? (
           <button
             type="button"

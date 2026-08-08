@@ -36,6 +36,7 @@ import { shareOrCopy } from "@/lib/client/share";
 import { useQrCode } from "@/hooks/useQrCode";
 import { consumeLocationFragment } from "@/lib/client/url-fragment";
 import { buildPartyPlayerInviteUrl, parsePartyPlayerFragment } from "./party-invite";
+import { PlayerReadyControl } from "../shared/PlayerReadyControl";
 
 function joinToken(roomId: string) {
   const key = partyBrowserKeys.invite(roomId);
@@ -306,7 +307,7 @@ function PartyPlayerGame({ credentials }: { credentials: PartyPlayerCredentials 
     const requestId = player?.startRequestId ?? null;
     if (!requestId || requestId === previousStartRequest.current) return;
     previousStartRequest.current = requestId;
-    setLiveMessage("The host is ready to start — tap Ready when you are.");
+    setLiveMessage("The host wants to start — tap “I’m ready” if you stepped away.");
     void haptics.trigger("heavy");
   }, [haptics, player?.startRequestId, setLiveMessage]);
 
@@ -703,14 +704,11 @@ function PartyPlayerGame({ credentials }: { credentials: PartyPlayerCredentials 
               <p className="mt-4 font-serif text-lg text-white/60">
                 The host will start when everyone is ready.
               </p>
-              <button
-                type="button"
-                aria-pressed={player?.ready ?? true}
-                onClick={() => void setReady(!(player?.ready ?? true))}
-                className="mx-auto mt-6 min-h-12 rounded-full border border-white/20 px-6 font-mono text-xs font-semibold"
-              >
-                {player?.ready ? "ready · tap to wait" : "not ready · tap when ready"}
-              </button>
+              <PlayerReadyControl
+                ready={player?.ready ?? true}
+                onChange={(ready) => void setReady(ready)}
+                readyHint="You’re all set — wait here for the host to begin."
+              />
             </section>
           )
         ) : snapshot.phase === "finished" ? (
@@ -1031,14 +1029,11 @@ function HostPlayerLobby({
           ? "Just you so far"
           : `${players.filter(({ ready }) => ready !== false).length} of ${players.length} ready`}
       </p>
-      <button
-        type="button"
-        aria-pressed={currentPlayer?.ready ?? true}
-        onClick={() => onReadyChange(!(currentPlayer?.ready ?? true))}
-        className="mt-4 min-h-12 rounded-full border border-white/20 px-6 font-mono text-xs font-semibold"
-      >
-        {currentPlayer?.ready ? "ready · tap to wait" : "not ready · tap when ready"}
-      </button>
+      <PlayerReadyControl
+        ready={currentPlayer?.ready ?? true}
+        onChange={onReadyChange}
+        readyHint="You’re all set — start when everyone is here."
+      />
       <button
         type="button"
         onClick={onStart}

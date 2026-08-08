@@ -42,6 +42,7 @@ import { useGameSound } from "../shared/useGameSound";
 import { useLiarsNotes } from "./useLiarsNotes";
 import type { LiarsPlayerCredentials, LiarsSnapshot } from "./types";
 import type { LiarsNote } from "./useLiarsNotes";
+import { PlayerReadyControl } from "../shared/PlayerReadyControl";
 
 let actionCounter = 0;
 const nextActionId = () => `${Date.now().toString(36)}-${(actionCounter += 1)}`;
@@ -349,17 +350,11 @@ function LobbyPhase({ snapshot, isHost, send, sendHost }: PhaseProps) {
       </div>
 
       <div className="mt-10 space-y-3">
-        {/*
-          This used to be labelled with the state rather than the action, so a player who was
-          already ready read "ready", tapped it to confirm, and became unready. Everybody joins
-          ready, so that one tap was enough to stall the whole room.
-        */}
-        <ActionButton
-          tone={you?.ready ? "ghost" : "amber"}
-          onClick={() => void send({ type: "readiness.set", ready: !you?.ready })}
-        >
-          {you?.ready ? "you're ready · tap if you're not" : "i'm ready"}
-        </ActionButton>
+        <PlayerReadyControl
+          ready={you?.ready ?? true}
+          onChange={(ready) => void send({ type: "readiness.set", ready })}
+          readyHint="You’re all set — wait here while the host sets the roles."
+        />
         {isHost && startAttempted && notReady.length > 0 ? (
           <p className="text-center font-mono text-xs text-white/45">
             still waiting on {notReady.map(({ name }) => name).join(", ")} — tap again to go
