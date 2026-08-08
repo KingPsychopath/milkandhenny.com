@@ -57,7 +57,8 @@ export function LampToggle() {
   const savedPref = useRef<string | null>(null);
 
   const hidden = HIDDEN_ROUTES.some((route) => isWithinRoute(pathname, route));
-  const isThings = pathname === "/things" || pathname.startsWith("/things/");
+  const isThingsIndex = pathname === "/things";
+  const isThingsGame = pathname.startsWith("/things/");
   const isPhotoPage = isSinglePhotoPage(pathname);
   const isHome = pathname === "/";
   const cordRest = isHome ? CORD_REST.home : CORD_REST.inner;
@@ -173,16 +174,16 @@ export function LampToggle() {
     setStored("theme", next ? "dark" : "light");
   }, [dark, isPhotoPage]);
 
-  if (!mounted || hidden) return null;
+  if (!mounted || hidden || isThingsGame) return null;
 
-  const shown = isThings || visible;
+  const shown = isThingsIndex || visible;
 
   return (
     <button
       type="button"
       onClick={toggle}
       aria-label={dark ? "Switch to light mode" : "Switch to dark mode"}
-      className={`lamp-toggle group ${isThings ? "lamp-toggle--things" : ""} ${isPhotoPage ? "lamp-toggle--photo" : ""}`}
+      className={`lamp-toggle group ${isThingsIndex ? "lamp-toggle--things" : ""} ${isPhotoPage ? "lamp-toggle--photo" : ""}`}
       style={{
         transform: shown ? "translateY(0)" : "translateY(-90px)",
         opacity: shown ? 1 : 0,

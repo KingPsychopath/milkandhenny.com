@@ -124,6 +124,7 @@ export function MazeBoard({
   const rotation = centreViewRotation(maze, entranceIndex);
   const entrance = useMemo(() => centreEntrancePoint(maze, entranceIndex), [entranceIndex, maze]);
   const visibleEntrance = rotateCentrePoint(entrance, rotation);
+  const routeHead = route.segments.at(-1)?.at(-1);
   routeRef.current = route;
 
   useEffect(() => {
@@ -333,6 +334,14 @@ export function MazeBoard({
               />
             ) : null,
           )}
+          {routeHead ? (
+            <circle
+              cx={svgNumber(routeHead.x)}
+              cy={svgNumber(routeHead.y)}
+              r="0.038"
+              className={`centre-route-head centre-colour-${playerColour}`}
+            />
+          ) : null}
         </g>
         <circle
           cx={svgNumber(visibleEntrance.x)}

@@ -3568,7 +3568,7 @@
   .centre-route {
     fill: none;
     stroke: var(--centre-route, var(--things-amber));
-    stroke-width: 0.027;
+    stroke-width: 5px;
     stroke-linecap: round;
     stroke-linejoin: round;
     vector-effect: non-scaling-stroke;
@@ -3580,7 +3580,15 @@
   }
 
   .centre-route--active {
-    filter: drop-shadow(0 0 0.018rem color-mix(in oklab, var(--centre-route) 60%, transparent));
+    filter: drop-shadow(0 0 2px color-mix(in oklab, var(--centre-route) 70%, transparent));
+  }
+
+  .centre-route-head {
+    fill: var(--centre-route, var(--things-amber));
+    stroke: var(--centre-surface);
+    stroke-width: 2px;
+    vector-effect: non-scaling-stroke;
+    pointer-events: none;
   }
 
   .centre-rival-dot {
