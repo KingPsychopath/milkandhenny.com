@@ -158,7 +158,24 @@ export function createMultiplayerWakeHandler<Session extends MultiplayerWakeSess
           );
           return;
         }
-        const session = await options.authorize(payload).catch(() => null);
+        let session: Session | null;
+        try {
+          session = await options.authorize(payload);
+        } catch (error) {
+          log.warn("things.multiplayer", "Realtime authorization unavailable", {
+            error: error instanceof Error ? error.message : String(error),
+            game: options.game,
+          });
+          // A datastore or runtime blip is not bad credentials. 1013 is deliberately retryable on
+          // the client, while a real null result below remains a terminal policy close.
+          terminate(
+            peer,
+            MULTIPLAYER_SOCKET_CLOSE.serverOverloaded,
+            "authorization_unavailable",
+            "try again later",
+          );
+          return;
+        }
         if (!session) {
           terminate(peer, MULTIPLAYER_SOCKET_CLOSE.policyViolation, "unauthorized", "unauthorized");
           return;

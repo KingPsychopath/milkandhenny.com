@@ -180,6 +180,7 @@ function PartyPlayerGame({ credentials }: { credentials: PartyPlayerCredentials 
   const muted = !sound.effects;
   const toggleSound = sound.cycle;
   const previousStartRequest = useRef<string | null>(null);
+  const flushingActions = useRef(false);
   const queueKey = partyBrowserKeys.pendingActions(credentials.roomId, credentials.playerId);
 
   const queued = useCallback((): PartyPlayerAction[] => {
@@ -188,7 +189,15 @@ function PartyPlayerGame({ credentials }: { credentials: PartyPlayerCredentials 
   const enqueue = useCallback(
     (action: PartyPlayerAction) => {
       const next = [
-        ...queued().filter(({ actionId }) => actionId !== action.actionId),
+        ...queued().filter(
+          (candidate) =>
+            candidate.actionId !== action.actionId &&
+            !(
+              action.type === "draft.update" &&
+              candidate.type === "draft.update" &&
+              candidate.roundId === action.roundId
+            ),
+        ),
         action,
       ].slice(-40);
       writeExpiringLocalValue(queueKey, next, credentials.expiresAt);
@@ -209,10 +218,25 @@ function PartyPlayerGame({ credentials }: { credentials: PartyPlayerCredentials 
         });
         if (result.snapshot && !isHost) live.setSnapshot(result.snapshot);
         if (!result.accepted) {
+          if (!result.retryable) {
+            const remaining = queued().filter(({ actionId }) => actionId !== action.actionId);
+            if (remaining.length)
+              writeExpiringLocalValue(queueKey, remaining, credentials.expiresAt);
+            else localStorage.removeItem(queueKey);
+          }
           live.setMessage(result.error ?? "That action is no longer available.");
           return false;
         }
-        const remaining = queued().filter(({ actionId }) => actionId !== action.actionId);
+        const remaining = queued().filter(
+          (candidate) =>
+            candidate.actionId !== action.actionId &&
+            !(
+              action.type === "draft.update" &&
+              candidate.type === "draft.update" &&
+              candidate.roundId === action.roundId &&
+              candidate.draftRevision <= action.draftRevision
+            ),
+        );
         if (remaining.length) writeExpiringLocalValue(queueKey, remaining, credentials.expiresAt);
         else localStorage.removeItem(queueKey);
         live.notify();
@@ -239,13 +263,24 @@ function PartyPlayerGame({ credentials }: { credentials: PartyPlayerCredentials 
   );
 
   const flush = useCallback(async () => {
-    for (const action of queued()) {
-      const ok = await send(action, false);
-      if (!ok) break;
+    if (flushingActions.current) return;
+    flushingActions.current = true;
+    try {
+      for (const action of queued()) {
+        const ok = await send(action, false);
+        if (!ok && queued().some(({ actionId }) => actionId === action.actionId)) break;
+      }
+    } finally {
+      flushingActions.current = false;
     }
   }, [queued, send]);
   useEffect(() => {
-    if (live.connectionState === "connected") void flush();
+    if (live.connectionState !== "connected") return;
+    void flush();
+    // The socket can remain healthy while one HTTPS request is lost. Keep the durable outbox
+    // moving without waiting for a WebSocket reconnect that may never be necessary.
+    const timer = window.setInterval(() => void flush(), 3_000);
+    return () => window.clearInterval(timer);
   }, [flush, live.connectionState]);
 
   const snapshot = live.snapshot;
@@ -842,7 +877,10 @@ function PartyPlayerGame({ credentials }: { credentials: PartyPlayerCredentials 
             </p>
           )
         ) : null}
-        <p aria-live="polite" className="party-live-message mt-3 min-h-5 font-mono text-xs text-amber-200">
+        <p
+          aria-live="polite"
+          className="party-live-message mt-3 min-h-5 font-mono text-xs text-amber-200"
+        >
           {live.message}
         </p>
       </main>
@@ -1048,7 +1086,10 @@ function PartyKeyboard({
   onBackspace: () => void;
 }) {
   return (
-    <div className="party-keyboard mt-6 grid select-none gap-2 touch-manipulation" aria-label="Spelling keyboard">
+    <div
+      className="party-keyboard mt-6 grid select-none gap-2 touch-manipulation"
+      aria-label="Spelling keyboard"
+    >
       {KEY_ROWS.map((row, rowIndex) => (
         <div
           key={row}

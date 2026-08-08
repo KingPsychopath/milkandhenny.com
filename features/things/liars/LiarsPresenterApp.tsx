@@ -1,14 +1,13 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { GameShell } from "../shared/GameShell";
 import { readExpiringLocalValue } from "../shared/game-storage.client";
 import { liarsBrowserKeys } from "./liars-keys";
 import { LIARS_MODE_COPY, LIARS_ROLES } from "./liars-rules";
-import { readLiarsSnapshotFn } from "./liars-room.functions";
 import { PhaseTimer } from "./LiarsViews";
 import { LiarsVillage } from "./LiarsVillage";
 import { speakLiarsNarration } from "./narration.client";
 import { useGameSound } from "../shared/useGameSound";
-import type { LiarsSnapshot } from "./types";
+import { useLiarsRoom } from "./useLiarsRoom";
 
 const PHASE_LABEL: Record<string, string> = {
   lobby: "waiting",
@@ -31,9 +30,6 @@ const PHASE_LABEL: Record<string, string> = {
  * entire reason the dawn beats are choreographed against a shared clock.
  */
 export function LiarsPresenterApp({ roomId }: { roomId: string }) {
-  const [snapshot, setSnapshot] = useState<LiarsSnapshot | null>(null);
-  const [message, setMessage] = useState<string | null>(null);
-  const [clockOffset, setClockOffset] = useState(0);
   const sound = useGameSound(liarsBrowserKeys.muted());
   const spokenRef = useRef<string | null>(null);
 
@@ -44,40 +40,14 @@ export function LiarsPresenterApp({ roomId }: { roomId: string }) {
         ?.hostToken ?? null
     );
   }, [roomId]);
-
-  useEffect(() => {
-    if (!hostToken) {
-      setMessage("Open this from the device that created the room.");
-      return;
-    }
-    let active = true;
-    // The presenter polls every two seconds, so it gains most from omitting unchanged bodies.
-    let digest: string | null = null;
-    const read = async () => {
-      const startedAt = Date.now();
-      const result = await readLiarsSnapshotFn({
-        data: { roomId, credential: hostToken, lastSequence: 0, lastDigest: digest },
-      }).catch(() => null);
-      if (!active) return;
-      if (!result?.ok) {
-        setMessage("That room has ended.");
-        return;
-      }
-      if (result.unchanged) {
-        setClockOffset(result.serverNow - (startedAt + Date.now()) / 2);
-        return;
-      }
-      digest = result.snapshot.digest ?? null;
-      setClockOffset(result.snapshot.serverNow - (startedAt + Date.now()) / 2);
-      setSnapshot(result.snapshot);
-    };
-    void read();
-    const timer = window.setInterval(() => void read(), 2_000);
-    return () => {
-      active = false;
-      window.clearInterval(timer);
-    };
-  }, [hostToken, roomId]);
+  const live = useLiarsRoom({
+    roomId,
+    playerToken: hostToken ?? "",
+    enabled: Boolean(hostToken),
+  });
+  const snapshot = live.snapshot;
+  const clockOffset = live.clockOffset;
+  const message = hostToken ? live.message : "Open this from the device that created the room.";
 
   // The presenter is the narrator whenever it is attached, so phones stay quiet in a shared room.
   useEffect(() => {

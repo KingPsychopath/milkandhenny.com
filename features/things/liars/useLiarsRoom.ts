@@ -6,10 +6,12 @@ import type { LiarsSnapshot } from "./types";
 
 export function useLiarsRoom(input: {
   roomId: string;
-  playerId: string;
+  playerId?: string;
   playerToken: string;
   initialSnapshot?: LiarsSnapshot;
+  enabled?: boolean;
 }) {
+  const enabled = input.enabled ?? true;
   const read = useCallback(
     (lastSequence: number, lastDigest: string | null) =>
       readLiarsSnapshotFn({
@@ -31,8 +33,9 @@ export function useLiarsRoom(input: {
   );
 
   const room = useLiveRoomSnapshot<LiarsSnapshot>({
+    enabled,
     intervalMs: 6_000,
-    roomKey: `${input.roomId}:${input.playerId}:${input.playerToken}`,
+    roomKey: enabled ? `${input.roomId}:${input.playerId ?? "host"}:${input.playerToken}` : null,
     initialSnapshot: input.initialSnapshot,
     read,
     // Every moment the room changes on its own, so a read lands just after each rather than
@@ -49,9 +52,10 @@ export function useLiarsRoom(input: {
 
   const socket = useMultiplayerWakeSocket({
     path: "/api/things/liars-ws",
-    hello: room.ended
-      ? null
-      : { roomId: input.roomId, credential: input.playerToken, playerId: input.playerId },
+    hello:
+      room.ended || !enabled
+        ? null
+        : { roomId: input.roomId, credential: input.playerToken, playerId: input.playerId },
     onWake: () => void room.refresh(),
   });
 

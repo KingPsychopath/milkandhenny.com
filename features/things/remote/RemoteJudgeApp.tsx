@@ -114,6 +114,7 @@ export function RemoteJudgeApp({ roomId }: { roomId: string }) {
   if (judgeEpoch.current === null) judgeEpoch.current = crypto.randomUUID();
   const takeoverRequested = useRef(false);
   const flushingCommands = useRef(false);
+  const [queuedCommandRevision, setQueuedCommandRevision] = useState(0);
   const roomExpiresAt = useRef(Date.now() + MULTIPLAYER_ROOM_TTL_SECONDS * 1_000);
   const haptics = useWebHaptics();
 
@@ -251,6 +252,7 @@ export function RemoteJudgeApp({ roomId }: { roomId: string }) {
           [...stored.filter(({ id }) => id !== payload.id), payload].slice(-20),
           roomExpiresAt.current,
         );
+        setQueuedCommandRevision((revision) => revision + 1);
         setControlFeedback(null);
         setError("Saved on this phone. Reconnecting…");
       } finally {
@@ -271,18 +273,18 @@ export function RemoteJudgeApp({ roomId }: { roomId: string }) {
   );
 
   useEffect(() => {
-    if (
-      transportState !== "connected" ||
-      !tokens.judgeToken ||
-      !judgeActive ||
-      flushingCommands.current
-    )
-      return;
+    if (transportState !== "connected" || !tokens.judgeToken || !judgeActive) return;
+    let active = true;
+    let retryTimer: number | null = null;
     const queueKey = remoteBrowserKeys.pendingCommands(roomId);
-    const commands = readExpiringLocalValue<RemoteCommandRequest[]>(queueKey) ?? [];
-    if (!commands.length) return;
-    flushingCommands.current = true;
-    void (async () => {
+    const flush = async () => {
+      const commands = readExpiringLocalValue<RemoteCommandRequest[]>(queueKey) ?? [];
+      if (!commands.length) return;
+      if (flushingCommands.current) {
+        retryTimer = window.setTimeout(() => void flush(), 3_000);
+        return;
+      }
+      flushingCommands.current = true;
       const remaining = [...commands];
       for (const command of commands) {
         try {
@@ -314,8 +316,16 @@ export function RemoteJudgeApp({ roomId }: { roomId: string }) {
       if (remaining.length) writeExpiringLocalValue(queueKey, remaining, roomExpiresAt.current);
       else localStorage.removeItem(queueKey);
       flushingCommands.current = false;
-    })();
-  }, [judgeActive, notifySocket, roomId, tokens.judgeToken, transportState]);
+      // A request can fail while the wake socket stays connected. Retry the durable command queue
+      // itself instead of waiting for a socket transition that may never happen.
+      if (active && remaining.length) retryTimer = window.setTimeout(() => void flush(), 3_000);
+    };
+    void flush();
+    return () => {
+      active = false;
+      if (retryTimer !== null) window.clearTimeout(retryTimer);
+    };
+  }, [judgeActive, notifySocket, queuedCommandRevision, roomId, tokens.judgeToken, transportState]);
 
   const handleSharePlayerInvite = async () => {
     if (!playerInviteUrl) return;
