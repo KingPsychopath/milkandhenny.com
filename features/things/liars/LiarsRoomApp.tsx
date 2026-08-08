@@ -24,6 +24,7 @@ import {
   MarkLegend,
   LiarsOverlayLayer,
   NotesPad,
+  PeekWord,
   LineupBoard,
   NightReportCard,
   PhaseTimer,
@@ -678,6 +679,12 @@ function CluePhase({ snapshot, send }: PhaseProps) {
   // Round a table you can hear whose turn it is. On a call you cannot, and two people talking over
   // each other costs the whole round — so the screen has to do the work the room was doing.
   const oneTap = clue.handoff === "one-tap";
+  const confirms = clue.finishedBy.length;
+  const confirmedByYou = clue.finishedBy.includes(you.playerId);
+  const confirmNames = clue.finishedBy
+    .map((id) => snapshot.players.find((player) => player.id === id)?.name)
+    .filter(Boolean)
+    .join(" and ");
   const nextUp = clue.order[clue.order.indexOf(clue.currentPlayerId ?? "") + 1];
   const nextName = snapshot.players.find(({ id }) => id === nextUp)?.name;
 
@@ -699,11 +706,19 @@ function CluePhase({ snapshot, send }: PhaseProps) {
         /* Round a table nobody needs to confirm a turn you can hear. One tap when the circle has
            been all the way round, from whoever is holding their phone. */
         <div className="mt-8">
-          <ActionButton onClick={() => void send({ type: "clue.allSaid", round: snapshot.round })}>
-            everyone has said theirs →
+          <ActionButton
+            tone={confirmedByYou ? "ghost" : "amber"}
+            disabled={confirmedByYou}
+            onClick={() => void send({ type: "clue.allSaid", round: snapshot.round })}
+          >
+            {confirmedByYou ? "waiting for one more" : "everyone has said theirs →"}
           </ActionButton>
           <p className="mt-3 text-center font-mono text-xs text-white/35">
-            anyone can tap this once you have been round
+            {confirms === 0
+              ? "any two of you can end the round"
+              : confirmedByYou
+                ? "somebody else needs to agree"
+                : `${confirmNames} says the circle is done — tap to agree`}
           </p>
         </div>
       ) : yours ? (
@@ -735,20 +750,7 @@ function CluePhase({ snapshot, send }: PhaseProps) {
         </div>
       )}
 
-      {/* Kept in view all the way through: forgetting your own word mid-round is the one thing
-          that cannot be recovered by asking. */}
-      <div className="mt-8 border-y border-white/15 py-4">
-        <p className="font-mono text-micro uppercase tracking-[0.2em] text-white/40">
-          {you.wordCategory ?? "your word"}
-        </p>
-        <p
-          className={`mt-1 font-serif text-3xl font-semibold ${
-            you.word ? "text-[var(--things-amber)]" : "text-[var(--liars-dead)]"
-          }`}
-        >
-          {you.word ?? "you have no word"}
-        </p>
-      </div>
+      <PeekWord word={you.word} category={you.wordCategory} />
 
       <ol className="mt-10 border-t border-white/10">
         {clue.order.map((playerId, index) => {
@@ -906,7 +908,7 @@ function VotePhase({ snapshot, clockOffset, send }: PhaseProps) {
   );
 }
 
-function VerdictPhase({ snapshot }: PhaseProps) {
+function VerdictPhase({ snapshot, clockOffset }: PhaseProps) {
   const ejected = snapshot.players.find(
     ({ deathCause, deathRound }) => deathCause === "ejected" && deathRound === snapshot.round,
   );
@@ -914,16 +916,17 @@ function VerdictPhase({ snapshot }: PhaseProps) {
   return (
     <>
       <Eyebrow>verdict · day {snapshot.round}</Eyebrow>
-      <Headline>
-        {ejected
-          ? `${ejected.name} is out`
-          : "The town could not agree"}
-      </Headline>
-      {ejected?.role ? (
-        <p className="mt-4 font-serif text-xl text-[var(--things-amber)]">
-          {ejected.name} was the {LIARS_ROLES[ejected.role].name}
-        </p>
-      ) : null}
+      <Headline>{ejected ? `${ejected.name} is out` : "Nobody goes"}</Headline>
+      <PhaseTimer
+        endsAt={snapshot.phaseEndsAt}
+        clockOffset={clockOffset}
+        label={snapshot.mode === "mafia" ? "night falls in" : "next round in"}
+      />
+      <p className="mt-4 font-serif text-lg text-white/65">
+        {ejected?.role
+          ? `${ejected.name} was the ${LIARS_ROLES[ejected.role].name}.`
+          : "The vote was level twice. Everybody stays."}
+      </p>
       <div className="mt-8">
         <PlayerList snapshot={snapshot} />
       </div>
@@ -988,7 +991,24 @@ function EndingPhase({ snapshot, isHost, sendHost }: PhaseProps) {
         </p>
       ) : null}
 
-      <ul className="mt-8 border-t border-white/10">
+      <div className="mt-8">
+        <Eyebrow>what happened</Eyebrow>
+        <ol className="mt-3 space-y-2 font-serif text-base leading-relaxed text-white/70">
+          {ending.log.map((entry, index) => (
+            <li key={index} className="flex gap-3">
+              <span className="w-14 shrink-0 pt-1 font-mono text-micro uppercase tracking-[0.14em] text-white/25">
+                {entry.phase} {entry.round}
+              </span>
+              <span>{entry.text}</span>
+            </li>
+          ))}
+        </ol>
+      </div>
+
+      <div className="mt-10">
+        <Eyebrow>who everyone was</Eyebrow>
+      </div>
+      <ul className="mt-3 border-t border-white/10">
         {ending.roles.map(({ playerId, name, role }) => (
           <li
             key={playerId}
@@ -1001,20 +1021,6 @@ function EndingPhase({ snapshot, isHost, sendHost }: PhaseProps) {
           </li>
         ))}
       </ul>
-
-      <div className="mt-10">
-        <Eyebrow>what happened</Eyebrow>
-        <ol className="mt-3 space-y-2 font-mono text-xs leading-relaxed text-white/50">
-          {ending.log.map((entry, index) => (
-            <li key={index}>
-              <span className="text-white/30">
-                {entry.phase} {entry.round}
-              </span>{" "}
-              {entry.text}
-            </li>
-          ))}
-        </ol>
-      </div>
 
       {ending.awards.length > 0 ? (
         <div className="mt-10">

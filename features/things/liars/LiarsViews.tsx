@@ -634,3 +634,48 @@ export function MarkLegend({ marks }: { marks: LiarsMark[] }) {
     </p>
   );
 }
+
+
+/**
+ * Your word, kept off the screen until you ask for it.
+ *
+ * Pinning it in view solved forgetting and created shoulder-surfing, which is the thing the deal
+ * card is hold-to-reveal to avoid. Same bargain here: it is one tap away all round, and it is never
+ * sitting there for the person beside you to read while you are looking at somebody else.
+ */
+export function PeekWord({ word, category }: { word: string | null; category: string | null }) {
+  const [showUntil, setShowUntil] = useState(0);
+  const [, setTick] = useState(0);
+  const showing = showUntil > Date.now();
+
+  useEffect(() => {
+    if (!showing) return;
+    const timer = window.setTimeout(() => setTick((count) => count + 1), showUntil - Date.now());
+    return () => window.clearTimeout(timer);
+  }, [showUntil, showing]);
+
+  return (
+    <div className="mt-8 border-y border-white/15 py-4">
+      <p className="font-mono text-micro uppercase tracking-[0.2em] text-white/40">
+        {category ?? "your word"}
+      </p>
+      {showing ? (
+        <p
+          className={`mt-1 font-serif text-3xl font-semibold ${
+            word ? "text-[var(--things-amber)]" : "text-[var(--liars-dead)]"
+          }`}
+        >
+          {word ?? "you have no word"}
+        </p>
+      ) : (
+        <button
+          type="button"
+          onPointerDown={() => setShowUntil(Date.now() + 2_500)}
+          className="mt-1 min-h-11 font-mono text-sm text-white/45 hover:text-white/80"
+        >
+          hold to see your word again
+        </button>
+      )}
+    </div>
+  );
+}

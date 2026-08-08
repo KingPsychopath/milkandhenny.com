@@ -145,6 +145,8 @@ interface LiarsRoomState {
   clueOrder: string[];
   clueIndex: number;
   clueRound: number;
+  /** Who has confirmed the circle is done. Two different people ends it. */
+  clueFinishedBy: string[];
   processedActions: string[];
   joinReceiptIds: string[];
   ejectedJesterId: string | null;
@@ -411,6 +413,7 @@ function startClueRound(room: LiarsRoomState, now: number) {
   room.clueOrder = order;
   room.clueIndex = 0;
   room.clueRound += 1;
+  room.clueFinishedBy = [];
   enterPhase(room, "clue", now);
 }
 
@@ -1047,6 +1050,7 @@ function snapshot(room: LiarsRoomState, viewerId?: string, now = Date.now()): Li
             round: room.clueRound,
             advancesAt: room.phaseEndsAt,
             handoff: room.roomMode === "remote" ? "each-turn" : "one-tap",
+            finishedBy: room.clueFinishedBy ?? [],
           }
         : null,
     // The living never receive the graveyard's deliberations, only its ballot at verdict.
@@ -1175,6 +1179,7 @@ export async function createLiarsRoom(input: {
     clueOrder: [],
     clueIndex: 0,
     clueRound: 0,
+    clueFinishedBy: [],
     processedActions: [],
     joinReceiptIds: [],
     ejectedJesterId: null,
@@ -1635,7 +1640,13 @@ export async function applyLiarsPlayerAction(input: {
 
     if (action.type === "clue.allSaid") {
       if (room.phase !== "clue") return reject(view(), "phase_ended", "The clues have ended");
-      // The whole circle at once, for a table where everybody can already hear each other.
+      // Two different people, not one person twice: a double-tap is the same thumb making the same
+      // mistake, and skipping somebody's turn is not a thing you want to undo.
+      room.clueFinishedBy = [...new Set([...(room.clueFinishedBy ?? []), player.id])];
+      if (room.clueFinishedBy.length < 2) {
+        changed(room);
+        return remembered();
+      }
       room.clueIndex = room.clueOrder.length;
       advanceClue(room, now);
       return remembered();

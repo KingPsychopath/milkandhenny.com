@@ -28,6 +28,9 @@ const GROUPS: LiarsWordGroup[] = [
   {
     category: "a place you go",
     pairs: [
+      ["petrol station", "car wash"],
+      ["cathedral", "mosque"],
+      ["windmill", "water wheel"],
       ["war memorial", "bandstand"],
       ["beach", "desert"],
       ["library", "museum"],
@@ -110,6 +113,8 @@ const GROUPS: LiarsWordGroup[] = [
   {
     category: "an event",
     pairs: [
+      ["haircut", "tattoo"],
+      ["laundry", "dishwashing"],
       ["wedding", "funeral"],
       ["marathon", "triathlon"],
       ["birthday", "anniversary"],
@@ -143,7 +148,7 @@ const GROUPS: LiarsWordGroup[] = [
       ["stage fright", "writer's block"],
       ["brass band", "marching band"],
       ["karaoke", "open mic"],
-      ["silent disco", "library"],
+      ["silent disco", "speed dating"],
       ["last orders", "closing time"],
       ["market day", "car boot sale"],
       ["sunday roast", "christmas dinner"],
@@ -159,6 +164,9 @@ const GROUPS: LiarsWordGroup[] = [
   {
     category: "an object",
     pairs: [
+      ["wedding cake", "birthday cake"],
+      ["moustache", "beard"],
+      ["coffee", "tea"],
       ["guitar", "piano"],
       ["campfire", "fireplace"],
       ["chess", "poker"],
@@ -180,7 +188,6 @@ const GROUPS: LiarsWordGroup[] = [
       ["postcard", "letter"],
       ["trampoline", "diving board"],
       ["lullaby", "anthem"],
-      ["windmill", "water wheel"],
       ["custard", "gravy"],
       ["scarecrow", "statue"],
       ["chandelier", "campfire"],
@@ -212,7 +219,7 @@ const GROUPS: LiarsWordGroup[] = [
       ["flat pack", "jigsaw puzzle"],
       ["smoke alarm", "car alarm"],
       ["dentist chair", "barber chair"],
-      ["car boot", "attic"],
+      ["car boot", "glovebox"],
       ["camping stove", "kettle"],
       ["sleeping bag", "hammock"],
       ["head torch", "candle"],
@@ -245,6 +252,8 @@ const GROUPS: LiarsWordGroup[] = [
   {
     category: "a person or a job",
     pairs: [
+      ["vampire", "ghost"],
+      ["orchestra", "choir"],
       ["pirate", "viking"],
       ["dentist", "barber"],
       ["detective", "journalist"],
@@ -294,7 +303,6 @@ const GROUPS: LiarsWordGroup[] = [
       ["submarine", "spaceship"],
       ["helicopter", "hot air balloon"],
       ["bicycle", "motorbike"],
-      ["petrol station", "car wash"],
       ["ambulance", "fire engine"],
       ["ferry", "cruise ship"],
       ["map reading", "stargazing"],
@@ -304,19 +312,6 @@ const GROUPS: LiarsWordGroup[] = [
       ["roundabout", "crossroads"],
       ["level crossing", "drawbridge"],
       ["hard shoulder", "lay-by"],
-    ],
-  },
-  {
-    category: "something you do",
-    pairs: [
-      ["coffee", "tea"],
-      ["vampire", "ghost"],
-      ["orchestra", "choir"],
-      ["laundry", "dishwashing"],
-      ["haircut", "tattoo"],
-      ["wedding cake", "birthday cake"],
-      ["moustache", "beard"],
-      ["cathedral", "mosque"],
     ],
   },
 ];

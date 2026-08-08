@@ -173,6 +173,12 @@ export interface LiarsClueSnapshot {
    * explicitly and the phone has to shout about it.
    */
   handoff: "each-turn" | "one-tap";
+  /**
+   * Names who has already said the circle is finished. It takes two different people, so one
+   * misplaced thumb cannot skip somebody's turn — and two is a check a double-tap is not, because
+   * a double-tap is still one person making the same mistake twice.
+   */
+  finishedBy: string[];
 }
 
 export interface LiarsGraveyardSnapshot {

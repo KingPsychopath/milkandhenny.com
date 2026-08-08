@@ -370,7 +370,20 @@ which is how it works at a table. The phone's only job is tracking whose turn it
 ask.
 
 Failsafe only, never shown as a timer: auto-advance after 60s so a locked phone cannot stall the
-room, and the host can advance at any point.
+room, and **anybody** can move a stalled turn on — somebody who put their phone down should not hold
+up nine other people, and the order is public so there is nothing to cheat.
+
+**How the turn is handed over depends on where everyone is**, because the friction is different:
+
+| | Same room | On a call |
+|---|---|---|
+| Handoff | the whole circle on one screen, **one button any two of you press** when it has been round | turn by turn |
+| Why | you can see and hear whose turn it is, so tapping per turn is pure overhead | nobody can see anything, so it has to be explicit |
+| Your turn | obvious | the phone vibrates hard enough to feel through a pocket |
+
+Ending the round takes **two different people**, not one person twice. A double-tap is the same
+thumb making the same mistake; two people is an actual check, and skipping somebody's turn is not
+something you want to undo.
 
 **One clue round before each vote.** Two before the first vote at 7 players or fewer, where a single
 word each is not enough to go on.
@@ -702,6 +715,12 @@ leaves the device, so nothing written in it can appear in anybody else's snapsho
 people die with something half-formed in there, and the line they happened to be looking at makes a
 better epitaph than anything they would compose in thirty seconds. Fully editable — a starting
 point, not a confession.
+
+### 5.14a Seeing your word again
+
+Pinning the word on screen solved forgetting and created shoulder-surfing — the exact thing the deal
+card is hold-to-reveal to avoid. It is behind a hold now: one tap away all round, never sitting
+there for the person beside you to read while you are looking somewhere else.
 
 ### 5.15 Sound
 
