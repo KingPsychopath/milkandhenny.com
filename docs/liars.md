@@ -84,6 +84,8 @@ Checked at dawn and again at verdict.
 | Role | Night action | Rules |
 |---|---|---|
 | **Mafia** | kill one, or **stay in** | Staying in produces no death and no movement — nothing for watchers to see. A real strategic option. |
+| | | *The escort's testimony is **server-written and published to everybody** in the dawn that killed them, alongside the two deaths. It was previously stored on the player and never pushed into the dawn, so the line existed on the corpse and reached nobody — the entire payoff of the role, silently lost.* |
+| | | *The **caller** decides when the mafia disagree: the godfather if there is one, otherwise whoever joined the room first — not seniority in the mafia, which does not exist, but a stable arbitrary tiebreak. Arbitrary is fine because it is never a secret: the night screen names them on every mafia's phone, so nobody has to work out who to defer to.* |
 | | | *The mafia see each other's picks **live**, including whether each has locked. Coordinating is the fun of the role, and the caller needs to see a disagreement before overruling it. Everyone who picked somebody still counts as having left the house, so being overruled does not hide you.* |
 | **Godfather** | kills; reads **innocent** to the detective | From 7 players. Makes the final call when mafia disagree on a target. Without this the detective solves the game on night two. |
 | | | *Once the godfather is dead, the call passes by **seniority** — longest-surviving mafia, ties broken by join order. Deterministic, so a disagreement can never stall the night.* |
@@ -468,8 +470,36 @@ trusted to hide.
 Every device runs the identical transition — same duration, same luminance curve, same animation —
 regardless of role.
 
-- **Dusk, 5s:** cream washes down to `--things-night`, a thin amber horizon line descends and goes
-  out. **Dawn, 2.5s:** reverse, the line rises and warms.
+- **The night headline is the same words for everybody: `Choose someone`.** `who dies tonight` set
+  in forty-point serif is legible from across a table, so the largest type on screen was the most
+  role-revealing string in the game — while the deal card two minutes earlier had been
+  hold-to-reveal precisely to avoid that. The jester already borrowed the villager's label, so the
+  intent existed; it just stopped at the one screen that stays up for forty-five seconds. The label
+  now sits where a form label sits, at a size that needs looking at rather than glancing at.
+- **Screens away, before every night:** its own held screen with a countdown to the moment roles
+  appear. Without the countdown the screen gives no reason to move *now*, so people read it, agree
+  with it, and keep holding the phone flat until their role arrives — the exact moment it is worth
+  something to their neighbour.
+- **The night hint:** one line under the action prompt saying what tonight buys you. The full rules
+  were only ever on the deal card, read four minutes before they matter. Villagers are who this
+  hurts: `whose door to watch` over a list of names never says that the doctor and detective also
+  count as having gone out, which is the whole reason a single sighting proves nothing.
+- **Dusk, 5s — wash, hold, clear.** Cream goes to `--things-night` in the first second, the sky
+  holds while a crescent moon rises and eight stars arrive, and only then does it clear. It used to
+  be a single 2.5s crossfade with a 5s moon animating inside it, so the moon was cut off about
+  halfway up and the back half of the beat played against a bare screen — the cutscene covered less
+  than half the pause it existed to fill. Stretching the crossfade would have been worse: it fades
+  opacity the whole way, so the moon would have been faintest at the exact moment it finished
+  rising. Everything now settles inside the hold.
+- **Dawn, 2.5s:** a sun comes up — not the moon going back down, which is what the first version did
+  and which is both wrong and the opposite of a sunrise. Dawn also had **no sound at all**: the one
+  transition that happens to everybody at once was landing in silence while dusk got a breath and a
+  descending drone. It now runs dusk's shape backwards — the same drone rising, with a chime over
+  it. Not birdsong: synthesised birds either sound like a sample library or like a modem, and both
+  belong to a different game than one set in Lora on warm stone.
+- The window already existed — five seconds in which nothing role-specific may be on screen — so
+  giving it something to look at costs nothing and makes the pause read as a scene rather than a
+  stall.
 - **Nothing role-specific is on screen during dusk.** Every device shows the same words — *"Night
   falls. Turn your screen away from the person next to you."* — so a phone lying face up on the
   table gives nothing away, and there is a real moment to move it. Five seconds rather than two and
@@ -481,11 +511,55 @@ regardless of role.
 - The T−10s night report uses one shared envelope animation. Detective, doctor, watcher, escort,
   mafia: same flash, same size, same beat. Only the words differ.
 
+### 5.3a The village
+
+A row of houses, shown at night and through dawn. It carries **only what is already public**, and
+that is the design rather than a limitation of it.
+
+| Phase | The village |
+|---|---|
+| **Night** | Anonymous. No names, positions reshuffled every round. Lit windows are exactly the public acted-count, at positions that say nothing about whose |
+| **Dawn, before the name** | Untouched — every house lit, including the one about to go out |
+| **Dawn, on the name** | That window goes red, then dark. Amber again if the doctor got there first |
+| **Movement** | A corroborated sighting flickers that window |
+| **Day** | The dead are shuttered |
+
+At dawn the village **replaces** the roster rather than sitting above it. Names under the houses and
+the same names in a list underneath is the same information twice on one screen, and the roster
+comes back at deliberation, where you actually need to point at somebody.
+
+**A village whose windows lit when people actually acted would end the game.** Movement being local
+— one watcher learning one bit about one person they chose — is the only thing holding §3.3 up.
+Every window lighting on every device makes villagers pointless and the mafia visible on night one.
+
+The near miss is worse than the obvious one: **lights that correlate with nothing at all.** People
+read meaning into anything that moves, and a table can lose a whole day to a lamp that meant
+nothing. False signal in a deduction game is damage, not decoration.
+
+### 5.3b Where things sit
+
+Measured rather than asserted. Across a sixteen-player game with every role in the ruleset, in every
+phase, on all sixteen surfaces at once:
+
+| | |
+|---|---|
+| Headline | **113px**, no variants |
+| Timer | **158px**, no variants |
+
+No role, and no lineup, moves the furniture. The one place it used to was the night: the holding
+screen put its countdown 72px below where the action screen put it, so the single element that most
+needs to be nailed down was the one that moved. They now match.
+
 ### 5.4 Effects
 
 Fired from snapshot transitions, never from direct commands, with the fired id held in a ref so a
 re-poll cannot double-fire.
 
+- **The dread**: three heartbeats and every screen reddening in the two seconds before the name lands, and then only one
+  keeps going. Doing this to a random few would be false signal — they flinch, the table reads the
+  flinch, and it means nothing. Doing it to everybody means nothing can be read from it, which is
+  the night report card's rule applied to a feeling. With the attack announcement off, or a cold
+  open, it is also the only thing covering a saved player's reaction.
 - Death: white blowout, snap to black, slow red breathing bleed, long vibration
 - Revive: chime, red drains up, green rises, warm pulse, gentle triple vibration
 - Heartbeat accelerating through the last 10 seconds of night
@@ -589,12 +663,79 @@ make the graveyard vote a guaranteed-correct ballot. `liveGodView` exists as a t
 want pure spectacle; the engine disables the graveyard vote when it is on, because the two are
 incompatible.
 
+**2e. The show of hands.** In the lobby, anyone can tap a role to ask for it. Everyone sees the
+tally; the host sees it again beside the +/− that acts on it.
+
+The lobby is the deadest two minutes in the game and people already spend it reading the role list,
+so this turns that reading into something actionable **without taking the decision off the host** —
+nothing here binds the lineup.
+
+It also fixed a plain gap: the board only ever listed roles that were *in*, so there was no way to
+ask for something you could not see. Every role the mode offers is now listed, benched ones marked
+with the roster size they need (`escort · needs 11`).
+
+Dots up to four, then a number. Four dots is still countable at a glance and eleven is a texture.
+Yours is the filled one, so the row answers "did I tap this?" without a second control. Asking is
+lobby-only — once the game is dealt the lineup is settled and a tally is noise.
+
+**2d. Role coverage.** Every role now has a test that exercises its **power**, not just its deal.
+
+That distinction is the point. Lookout, vigilante and mole previously had no behavioural coverage at
+all, and jammer, bodyguard and understudy appeared only inside lineup lists — while the scenario
+walk happily confirmed all of them were dealt correctly. The escort was broken in exactly that gap:
+dealt right, walked by the scenario test, delivering nothing.
+
+Of the six written afterwards, five passed first time. Only the escort was broken.
+
+**2c. The notebook.** Forty lines of eighty characters, on your phone only, never sent anywhere.
+Kept per round (`n3 · maya went quiet`), deletable, and available **the whole game including after
+you die** — the dead need it more than anyone, since it is where a graveyard note starts.
+
+**Your most recent line is what seeds your epitaph** — not a random one. That rule used to be
+invisible until the single moment it fired, so the notepad now shows the line that would be used.
+It is a starting point and stays fully editable when the time comes.
+
+**2b. What the dead see.** Their own screen, in every phase, not the living's.
+
+They were being handed a headline telling them to talk, an instruction to say who they think it is,
+and a roster they cannot touch. Every word of that invites the one thing a dead player must not do.
+Now: `Not a word` during deliberation, `Say nothing. Cast yours.` at the vote, and the graveyard
+underneath, which already lists everyone they can act on.
+
+**2a. What death costs you.** Your knowledge list is **sealed the moment your last words close.**
+
+Everything in that list is server-issued and therefore provable, and a dead player who can hand an
+unlocked phone to a living one has a channel that beats every rule in the game — last words are one
+line and can be a lie, a screen reading `night 1 · Maya · mafia` cannot. Death has to cost you the
+ability to prove things, or it costs you nothing at all. Your own notes stay: they are unverifiable,
+which is exactly why they are allowed.
+
+The list stays up while last words are open, because you write your line from it. Then it goes, and
+the screen says so rather than looking broken.
+
 **3. The graveyard.** The caucus opens **the moment you die**. You tap a name, you watch the dead
 tally shift live as others arrive and change their minds. It just does not *count* yet, and the UI
 says so: `the graveyard votes when 5 are gone · 3 so far`.
 
 **Once half the table is dead, the graveyard's plurality becomes one additional ballot** in each
-remaining day's lynch. A tie means the graveyard abstains.
+remaining day's lynch — every day from then on, uncapped. A tie means the graveyard abstains, and
+**the dead are told they are level while they can still fix it**, because a deadlock discovered at
+verdict is a turn spent on a shrug.
+
+The tally shows **counts and never who cast them.** The dead already know everything; a tally with
+names on it is just a list of who is being difficult, and the argument down here should stay about
+the living.
+
+**The board.** Eight pinned lines, ninety characters each, dead-authored and dead-visible, cleared
+with each deal. Deliberately a corkboard rather than a chat: a scrolling conversation is where a
+dead table solves the game completely and then votes with perfect information, and it is a second
+screen to read during a phase that already has one. Pinning the ninth drops the oldest, so the cost
+is visible and you decide what mattered least.
+
+**The living are told the graveyard is armed and never told what it did.** Both halves matter. The
+count of the dead is already on every screen, so saying it leaks nothing — but knowing an unseen
+ballot is in the box changes how a table argues, and never seeing it land means a 4–3 lynch might
+have been 3–3 plus the dead, and nobody will ever know which.
 
 The trigger is what makes it work. It fires late, when only one or two days remain and the mafia are
 usually ahead, so it is an endgame comeback rather than a permanent second town. Nine players, half

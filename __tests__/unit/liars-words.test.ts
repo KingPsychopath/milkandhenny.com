@@ -22,9 +22,18 @@ describe("liars word pairs", () => {
       expect(decoy.toLocaleLowerCase(), word).not.toBe(word.toLocaleLowerCase());
   });
 
-  it("has no duplicate words", () => {
-    const words = LIARS_WORD_PAIRS.map(({ word }) => word.toLocaleLowerCase());
-    const duplicates = words.filter((word, index) => words.indexOf(word) !== index);
+  /**
+   * Both sides, across the whole bank — not just `word`, which is what this used to check and is
+   * how `greenhouse` came to appear three times inside one category. The board is drawn from every
+   * sibling in a category regardless of which side of its pair it sat on, so a word repeated
+   * anywhere can be printed twice on the same twelve-word board.
+   */
+  it("has no duplicate words, on either side of any pair", () => {
+    const all = LIARS_WORD_PAIRS.flatMap(({ word, decoy }) => [
+      word.toLocaleLowerCase(),
+      decoy.toLocaleLowerCase(),
+    ]);
+    const duplicates = [...new Set(all.filter((word, index) => all.indexOf(word) !== index))];
     expect(duplicates).toEqual([]);
   });
 

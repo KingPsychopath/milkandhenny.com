@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { liarsHaptic, playLiarsSound } from "./liars-effects.client";
+import { LIARS_DUSK_MS } from "./liars-rules";
 import { liarsTorch } from "./torch.client";
 import { speakLiarsNarration } from "./narration.client";
 import type { LiarsSnapshot } from "./types";
 
-export type LiarsOverlay = "none" | "death" | "revive" | "dusk" | "dawn";
+export type LiarsOverlay = "none" | "death" | "revive" | "dusk" | "dawn" | "dread";
 
 /**
  * Fires from snapshot transitions rather than from commands, so a re-poll, a socket wake and a
@@ -58,11 +59,17 @@ export function useLiarsEffects(input: {
     const key = `${snapshot.phase}:${snapshot.round}:${snapshot.gameNumber}`;
     if (snapshot.phase === "night")
       once(`dusk:${key}`, () => {
-        showOverlay("dusk", 2_500);
+        // The full dusk window. The overlay used to clear at 2.5s while the moon inside it was
+        // animating over 5s, so it was cut off halfway up and the second half of the beat played
+        // against a bare screen.
+        showOverlay("dusk", LIARS_DUSK_MS);
         playLiarsSound("dusk", audibleRef.current);
       });
     if (snapshot.phase === "dawn")
-      once(`dawn:${key}`, () => showOverlay("dawn", 2_500));
+      once(`dawn:${key}`, () => {
+        showOverlay("dawn", 2_500);
+        playLiarsSound("dawn", audibleRef.current);
+      });
     if (snapshot.phase === "verdict")
       once(`toll:${key}`, () => {
         playLiarsSound("toll", audibleRef.current);
@@ -133,6 +140,41 @@ export function useLiarsEffects(input: {
     const yours = dawn.deaths.find(({ playerId }) => playerId === you);
     const timers: number[] = [];
     const at = (moment: number) => moment - clockOffset - Date.now();
+
+    /*
+     * The dread: every screen reddens in the seconds before the name lands, and then only one of
+     * them keeps going.
+     *
+     * Doing this to a random few people would be false signal — they would flinch, everybody would
+     * read the flinch, and it would mean nothing. Doing it to everybody means nothing can be read
+     * from it at all, which is the same rule the night report card follows: identical envelope,
+     * different contents. With the attack announcement off, or a cold open, it is also the only
+     * thing covering a saved player's reaction.
+     */
+    const dread = at(dawn.nameLandsAt - 2_200);
+    if (dread > -800)
+      timers.push(
+        window.setTimeout(
+          () => once(`dread:${dawn.nameLandsAt}`, () => showOverlay("dread", 2_200)),
+          Math.max(0, dread),
+        ),
+      );
+
+    /*
+     * Three beats under the dread, closing up into the name.
+     *
+     * The redden was carrying this moment on its own and a colour shift alone is easy to miss on a
+     * phone lying flat on a table. The night already ends on an accelerating heartbeat, so this is
+     * the same instrument picked back up rather than a new one — and it runs on every device, for
+     * the same reason the redden does.
+     */
+    for (let beat = 0; beat < 3; beat += 1) {
+      const thud = at(dawn.nameLandsAt - (2_000 - beat * 700));
+      if (thud <= 0) continue;
+      timers.push(
+        window.setTimeout(() => playLiarsSound("heartbeat", audibleRef.current), thud),
+      );
+    }
 
     const land = at(dawn.nameLandsAt);
     if (land > -1_500)

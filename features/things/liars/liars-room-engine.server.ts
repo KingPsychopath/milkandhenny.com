@@ -43,12 +43,15 @@ import {
   liarsDefaultTimings,
   liarsDetectWinner,
   liarsFirstGameLineup,
+  LIARS_GRAVEYARD_BOARD_MAX,
+  LIARS_GRAVEYARD_NOTE_LENGTH,
   liarsGraveyardArmsAt,
   liarsLineupTotal,
   liarsNightDuration,
   liarsPlurality,
   liarsReadsGuilty,
   liarsRoleSide,
+  liarsRolesForMode,
   liarsTargetableIds,
   liarsValidateLineup,
   LIARS_DEFAULT_TOGGLES,
@@ -61,6 +64,7 @@ import type {
   LiarsHistoryEntry,
   LiarsHostAction,
   LiarsJoinResult,
+  LiarsGraveyardNote,
   LiarsKnowledgeEntry,
   LiarsLineup,
   LiarsMark,
@@ -107,6 +111,8 @@ interface PlayerState {
   voteLocked: boolean;
   readyToVote: boolean;
   pointedAt: string | null;
+  /** Roles this player has asked for in the lobby. Non-binding; the host still decides. */
+  roleWishes: LiarsRole[];
   graveyardVote: string | null;
   report: LiarsNightReport | null;
   knowledge: LiarsKnowledgeEntry[];
@@ -167,6 +173,12 @@ interface LiarsRoomState {
   winner: LiarsSide | null;
   lastEjectedName: string | null;
   /** One runoff per day. A second tie really does mean nobody goes. */
+  /**
+   * The graveyard board. Lives on the room rather than per player, because it outlives its author:
+   * a note pinned by the first person to die is still the most useful thing on the screen four
+   * rounds later.
+   */
+  graveyardBoard: LiarsGraveyardNote[];
   revoteUsed: boolean;
   /** Restricts the runoff to whoever actually tied. */
   runoffIds: string[];
@@ -646,6 +658,8 @@ function resolveNight(room: LiarsRoomState, now: number) {
     isBlocked(vigilante) || vigilante?.vigilanteUsed ? null : (vigilante?.nightTarget ?? null);
 
   const deaths: LiarsDeathEvent[] = [];
+  /** Last words the server writes rather than a player, published with the dawn that caused them. */
+  const testimony: Array<{ name: string; text: string }> = [];
   const attacks: Array<{ targetId: string; attacker: PlayerState | null; fromMafia: boolean }> = [];
   if (mafiaTargetId && caller) attacks.push({ targetId: mafiaTargetId, attacker: caller, fromMafia: true });
   if (vigilanteTargetId && vigilante) {
@@ -707,8 +721,14 @@ function resolveNight(room: LiarsRoomState, now: number) {
     // The escort saw too much and dies with them — and their report publishes as testimony.
     if (escort && escortTargetId === target.id && escort.alive) {
       kill(room, escort, "killed", now);
-      if (attack.attacker)
+      if (attack.attacker) {
         escort.lastWords = `I was there. It was ${attack.attacker.name}.`;
+        // Collected here and seeded into the dawn below. Setting it on the player alone was not
+        // enough: `room.dawn` at this point is still last night's, and only the `words.last`
+        // action ever pushed into the current one — so the line existed on the corpse and reached
+        // nobody. The whole role is the promise that dying still delivers the name.
+        testimony.push({ name: escort.name, text: escort.lastWords });
+      }
       deaths.push({
         playerId: escort.id,
         name: escort.name,
@@ -768,7 +788,7 @@ function resolveNight(room: LiarsRoomState, now: number) {
       : deaths.filter(({ revived: wasRevived }) => !wasRevived),
     movementSeen,
     witnessCount,
-    lastWords: [],
+    lastWords: testimony,
   };
   note(room, "night", narration);
   for (const name of movementSeen) note(room, "night", `${name} was seen moving.`);
@@ -802,6 +822,28 @@ function corroboratedMovement(room: LiarsRoomState) {
 // ---------------------------------------------------------------------------
 // Day
 // ---------------------------------------------------------------------------
+
+/**
+ * How split the graveyard is right now.
+ *
+ * Extracted rather than inlined because the dead need to be told before verdict, not after. A
+ * graveyard that discovers at the last second that it tied and did nothing has spent its whole
+ * turn on a shrug.
+ */
+function graveyardStanding(room: LiarsRoomState) {
+  const dead = room.players.filter(({ alive }) => !alive);
+  const tally = new Map<string, number>();
+  for (const { graveyardVote } of dead) {
+    if (!graveyardVote) continue;
+    tally.set(graveyardVote, (tally.get(graveyardVote) ?? 0) + 1);
+  }
+  const best = Math.max(0, ...tally.values());
+  const leaders = [...tally].filter(([, count]) => count === best).length;
+  return {
+    deadlocked: best > 0 && leaders > 1,
+    abstaining: dead.filter(({ graveyardVote }) => graveyardVote === null).length,
+  };
+}
 
 function graveyardBallot(room: LiarsRoomState): string | null {
   if (!room.toggles.graveyardVote || room.toggles.liveGodView) return null;
@@ -1022,6 +1064,14 @@ function snapshot(room: LiarsRoomState, viewerId?: string, now = Date.now()): Li
   const alive = living(room);
   const dead = room.players.filter(({ alive: isAlive }) => !isAlive);
   const graveyardArmsAt = liarsGraveyardArmsAt(room.players.length);
+  const standing = graveyardStanding(room);
+  const lastWordsOpen = Boolean(
+    viewer &&
+      room.toggles.lastWords &&
+      !viewer.alive &&
+      viewer.lastWords === null &&
+      viewer.deathRound === room.round,
+  );
 
   const allyIds =
     viewer?.role && liarsRoleSide(viewer.role) === "mafia"
@@ -1081,8 +1131,29 @@ function snapshot(room: LiarsRoomState, viewerId?: string, now = Date.now()): Li
               }))
               .filter(({ votes }) => votes > 0),
             yourVote: viewer.graveyardVote,
+            deadlocked: standing.deadlocked,
+            abstaining: standing.abstaining,
+            board: room.graveyardBoard,
+            boardMax: LIARS_GRAVEYARD_BOARD_MAX,
           }
         : null,
+    /*
+     * Lobby only, and every role the mode offers rather than only the ones already in — "what is
+     * off" was previously not on screen anywhere, so there was no way to ask for something you
+     * could not see. `available` carries the reason a role cannot simply be switched on, which is
+     * almost always that the room is too small for it.
+     */
+    roleWishes:
+      room.phase === "lobby"
+        ? liarsRolesForMode(room.mode).map((definition) => ({
+            role: definition.id,
+            active: (room.lineup.roles[definition.id] ?? 0) > 0,
+            count: room.players.filter(({ roleWishes }) => roleWishes.includes(definition.id))
+              .length,
+            yours: viewer?.roleWishes.includes(definition.id) ?? false,
+            available: room.players.length >= definition.minPlayers,
+          }))
+        : [],
     ending: endingOf(room),
     narratorPlayerId: room.narratorPlayerId,
     hostPlayerId: room.hostPlayerId,
@@ -1118,7 +1189,13 @@ function snapshot(room: LiarsRoomState, viewerId?: string, now = Date.now()): Li
             room.phase === "night" && room.reportAt !== null && now < room.reportAt
               ? null
               : viewer.report,
-          knowledge: viewer.knowledge,
+          // Sealed once your last words close. Everything in here is server-issued and therefore
+          // provable, and a dead player who can hand an unlocked phone to a living one has a
+          // channel that beats every rule in the game — last words are one line and can be a lie,
+          // a screen reading `round 2 · Maya · mafia` cannot. Death has to cost you the ability to
+          // prove things, or it costs you nothing at all.
+          knowledge: viewer.alive || lastWordsOpen ? viewer.knowledge : [],
+          knowledgeSealed: !viewer.alive && !lastWordsOpen && viewer.knowledge.length > 0,
           targetableIds:
             room.phase === "night" && viewer.alive && viewer.role
               ? liarsTargetableIds({
@@ -1130,12 +1207,7 @@ function snapshot(room: LiarsRoomState, viewerId?: string, now = Date.now()): Li
                   toggles: room.toggles,
                 })
               : [],
-          lastWordsOpen: Boolean(
-            room.toggles.lastWords &&
-              !viewer.alive &&
-              viewer.lastWords === null &&
-              viewer.deathRound === room.round,
-          ),
+          lastWordsOpen,
           lastWordsClosesAt:
             room.dawn && !viewer.alive ? room.dawn.settleAt + LIARS_LAST_WORDS_MS : null,
           finalGuessOpen:
@@ -1209,6 +1281,7 @@ export async function createLiarsRoom(input: {
     recentNarrationIds: [],
     winner: null,
     lastEjectedName: null,
+    graveyardBoard: [],
     revoteUsed: false,
     runoffIds: [],
     narratorPlayerId: null,
@@ -1276,6 +1349,7 @@ export async function joinLiarsRoom(input: {
       voteLocked: false,
       readyToVote: false,
       pointedAt: null,
+      roleWishes: [],
       graveyardVote: null,
       report: null,
       knowledge: [],
@@ -1369,6 +1443,9 @@ function dealGame(room: LiarsRoomState, now: number, forcedRoles?: Record<string
       previousRoles: Object.keys(previousRoles).length > 0 ? previousRoles : undefined,
       pick: (bound) => randomInt(bound),
     });
+
+  // The board clears with the deal, not with the round: a note is worth more the longer it lives.
+  room.graveyardBoard = [];
 
   const pair = room.mode === "imposter" ? liarsWordPair(room.recentWords) : null;
   room.word = pair?.word ?? null;
@@ -1607,6 +1684,41 @@ export async function applyLiarsPlayerAction(input: {
         return remembered();
       }
       return reject(view(), "action_unavailable", "Last words have closed");
+    }
+
+    if (action.type === "lineup.wish") {
+      // Lobby only. Once the game is dealt the lineup is settled and a tally would just be noise.
+      if (room.phase !== "lobby") return remembered();
+      const has = player.roleWishes.includes(action.role);
+      if (has === action.wanted) return remembered();
+      player.roleWishes = action.wanted
+        ? [...player.roleWishes, action.role]
+        : player.roleWishes.filter((role) => role !== action.role);
+      changed(room);
+      return remembered();
+    }
+
+    if (action.type === "graveyard.pin") {
+      // The dead only. The living pinning to the dead's board would be a leak in the useful
+      // direction, which is the direction that ends games.
+      if (player.alive) return remembered();
+      const text = action.text.slice(0, LIARS_GRAVEYARD_NOTE_LENGTH).trim();
+      if (!text) return remembered();
+      // The action id, not the sequence: two pins inside one tick share a sequence, and a board
+      // with two identically-keyed notes unpins the wrong one.
+      room.graveyardBoard.push({ id: action.actionId, name: player.name, text });
+      // Oldest falls off rather than the pin being refused: a full board that silently swallows
+      // your note is worse than one that visibly costs you the note you cared about least.
+      while (room.graveyardBoard.length > LIARS_GRAVEYARD_BOARD_MAX) room.graveyardBoard.shift();
+      changed(room);
+      return remembered();
+    }
+
+    if (action.type === "graveyard.unpin") {
+      if (player.alive) return remembered();
+      room.graveyardBoard = room.graveyardBoard.filter(({ id }) => id !== action.noteId);
+      changed(room);
+      return remembered();
     }
 
     if (action.type === "graveyard.vote") {

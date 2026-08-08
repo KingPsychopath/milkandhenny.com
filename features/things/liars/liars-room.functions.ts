@@ -7,7 +7,11 @@ import {
   multiplayerSequence,
   multiplayerText,
 } from "../shared/multiplayer-validation";
-import { LIARS_LAST_WORDS_LENGTH, LIARS_ROLES } from "./liars-rules";
+import {
+  LIARS_GRAVEYARD_NOTE_LENGTH,
+  LIARS_LAST_WORDS_LENGTH,
+  LIARS_ROLES,
+} from "./liars-rules";
 import {
   applyLiarsHostAction,
   applyLiarsPlayerAction,
@@ -144,6 +148,18 @@ function hostAction(value: unknown): LiarsHostAction {
   throw new Error("Invalid action");
 }
 
+/**
+ * Exported for the test that walks every member of the action union through it.
+ *
+ * The engine tests call the engine directly, so a new action can pass all of them and still 500 on
+ * a real device — which is exactly how the graveyard board shipped broken to the browser. The
+ * validator is a second place every action has to be remembered, so something has to check that it
+ * was.
+ */
+export function parseLiarsPlayerAction(value: unknown): LiarsPlayerAction {
+  return playerAction(value);
+}
+
 function playerAction(value: unknown): LiarsPlayerAction {
   const data = record(value);
   const id = actionId(data.actionId);
@@ -156,6 +172,18 @@ function playerAction(value: unknown): LiarsPlayerAction {
       type: data.type,
       text: multiplayerBoundedText(data.text, LIARS_LAST_WORDS_LENGTH, "Invalid last words"),
     };
+  if (data.type === "lineup.wish" && typeof data.wanted === "boolean")
+    return { actionId: id, type: data.type, role: role(data.role), wanted: data.wanted };
+
+  // Roundless: a pin outlives the round it was written in, which is most of its value.
+  if (data.type === "graveyard.pin")
+    return {
+      actionId: id,
+      type: data.type,
+      text: multiplayerBoundedText(data.text, LIARS_GRAVEYARD_NOTE_LENGTH, "Invalid note"),
+    };
+  if (data.type === "graveyard.unpin")
+    return { actionId: id, type: data.type, noteId: text(data.noteId, 120) };
   if (data.type === "guess.final")
     return {
       actionId: id,

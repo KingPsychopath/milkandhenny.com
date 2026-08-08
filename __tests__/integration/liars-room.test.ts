@@ -14,6 +14,9 @@ import {
   readLiarsSnapshot,
 } from "../../features/things/liars/liars-room.server";
 import { liarsRoleSide } from "../../features/things/liars/liars-rules";
+import { LIARS_GRAVEYARD_BOARD_MAX } from "../../features/things/liars/liars-rules";
+import { parseLiarsPlayerAction } from "../../features/things/liars/liars-room.functions";
+import { liarsRolesForMode } from "../../features/things/liars/liars-rules";
 import { LIARS_SCENARIOS } from "../../features/things/liars/liars-scenarios";
 import { startLiarsScenario } from "../../features/things/liars/liars-room-engine.server";
 import type {
@@ -840,6 +843,431 @@ describe("liars rooms — mafia coordination", () => {
     const died = dawn.dawn!.deaths.map(({ playerId }) => playerId);
     expect(died).toContain(bossPick);
     expect(died).not.toContain(otherPick);
+  });
+});
+
+describe("liars — what death costs you", () => {
+  /**
+   * Deals a fixed five-hander and kills whoever the caller names, so the tests below can start at
+   * the interesting moment instead of playing a night to reach it.
+   */
+  async function killed(victimIndex: number) {
+    const started = await startLiarsScenario({
+      mode: "mafia",
+      names: NAMES.slice(0, 5),
+      deal: ["mafia", "doctor", "detective", "villager", "villager"],
+    });
+    expect(started.error).toBeNull();
+    const seats = started.seats;
+    const deal = await view(started.roomId, seats[0]);
+    await runTo(started.roomId, seats, deal.phaseEndsAt + 1);
+
+    const night = await view(started.roomId, seats[0]);
+    await runTo(started.roomId, seats, night.nightOpensAt! + 100);
+    // The detective learns something true on their way past.
+    await act(started.roomId, seats[2], {
+      type: "night.select",
+      round: night.round,
+      targetId: seats[0].playerId,
+    });
+    await act(started.roomId, seats[0], {
+      type: "night.select",
+      round: night.round,
+      targetId: seats[victimIndex].playerId,
+    });
+    await runTo(started.roomId, seats, night.phaseEndsAt + 1);
+
+    const dawn = await view(started.roomId, seats[victimIndex]);
+    expect(dawn.players.find(({ id }) => id === seats[victimIndex].playerId)!.alive).toBe(false);
+    return { roomId: started.roomId, seats };
+  }
+
+  /**
+   * The one channel that beats every rule in the game is an unlocked phone. Last words are a single
+   * line and can be a lie; a screen still reading `night 1 · Maya · mafia` is server-issued proof,
+   * and a dead detective can simply hold it up. So the server stops vouching for you when you die.
+   */
+  it("seals a dead player's knowledge once their last words close", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-09T01:00:00Z"));
+    const { roomId, seats } = await killed(2);
+
+    // Dead, but still writing their epitaph — and they need the list to write from.
+    const dying = await view(roomId, seats[2]);
+    expect(dying.player!.lastWordsOpen).toBe(true);
+    expect(dying.player!.knowledge.length).toBeGreaterThan(0);
+    expect(dying.player!.knowledgeSealed).toBe(false);
+
+    await act(roomId, seats[2], { type: "words.last", text: "It was them. I checked." });
+
+    const sealed = await view(roomId, seats[2]);
+    expect(sealed.player!.lastWordsOpen).toBe(false);
+    expect(sealed.player!.knowledge).toEqual([]);
+    // Said out loud, so an emptied list reads as the rule rather than as a bug.
+    expect(sealed.player!.knowledgeSealed).toBe(true);
+  });
+
+  it("gives the graveyard a board only the dead can write to or read", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-09T02:00:00Z"));
+    const { roomId, seats } = await killed(3);
+
+    await act(roomId, seats[3], { type: "graveyard.pin", text: "the doctor is real" });
+    const dead = await view(roomId, seats[3]);
+    expect(dead.graveyard!.board.map(({ text }) => text)).toEqual(["the doctor is real"]);
+
+    // The living never receive the board at all — not the notes, not the fact one exists.
+    const living = await view(roomId, seats[0]);
+    expect(living.graveyard).toBeNull();
+    await act(roomId, seats[0], { type: "graveyard.pin", text: "the doctor is fake" });
+    expect((await view(roomId, seats[3])).graveyard!.board).toHaveLength(1);
+  });
+
+  it("drops the oldest note rather than silently refusing the ninth", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-09T03:00:00Z"));
+    const { roomId, seats } = await killed(3);
+
+    for (let index = 0; index < LIARS_GRAVEYARD_BOARD_MAX + 2; index += 1)
+      await act(roomId, seats[3], { type: "graveyard.pin", text: `note ${index}` });
+
+    const board = (await view(roomId, seats[3])).graveyard!.board;
+    expect(board).toHaveLength(LIARS_GRAVEYARD_BOARD_MAX);
+    // Distinct keys, so unpinning takes the note you actually pointed at.
+    expect(new Set(board.map(({ id }) => id)).size).toBe(board.length);
+    expect(board.at(-1)!.text).toBe(`note ${LIARS_GRAVEYARD_BOARD_MAX + 1}`);
+    expect(board.at(0)!.text).toBe("note 2");
+  });
+
+  it("tells the dead their ballot is split rather than letting them find out at verdict", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-09T04:00:00Z"));
+    const { roomId, seats } = await killed(3);
+
+    const alone = await view(roomId, seats[3]);
+    // One voter cannot be split with anybody, and abstaining is counted honestly.
+    expect(alone.graveyard!.abstaining).toBe(1);
+    expect(alone.graveyard!.deadlocked).toBe(false);
+
+    await act(roomId, seats[3], {
+      type: "graveyard.vote",
+      round: alone.round,
+      targetId: seats[0].playerId,
+    });
+    const voted = await view(roomId, seats[3]);
+    expect(voted.graveyard!.abstaining).toBe(0);
+    expect(voted.graveyard!.deadlocked).toBe(false);
+    expect(voted.graveyard!.tally).toEqual([
+      { playerId: seats[0].playerId, name: seats[0].name, votes: 1 },
+    ]);
+  });
+});
+
+describe("liars — the roles nothing was testing", () => {
+  /**
+   * Lookout, vigilante and mole had no behavioural coverage at all, and jammer, bodyguard and
+   * understudy only appeared inside lineup lists. The escort turned out to be quietly broken in
+   * exactly that gap — dealt correctly, walked by the scenario test, and delivering nothing — so
+   * these exercise the power rather than the deal.
+   */
+  async function nightOf(deal: LiarsRole[], names = NAMES) {
+    const started = await startLiarsScenario({
+      mode: "mafia",
+      names: names.slice(0, deal.length),
+      deal,
+    });
+    expect(started.error, started.error ?? "").toBeNull();
+    const seats = started.seats;
+    const dealPhase = await view(started.roomId, seats[0]);
+    await runTo(started.roomId, seats, dealPhase.phaseEndsAt + 1);
+    const night = await view(started.roomId, seats[0]);
+    await runTo(started.roomId, seats, night.nightOpensAt! + 100);
+    return { roomId: started.roomId, seats, round: night.round, endsAt: night.phaseEndsAt };
+  }
+
+  it("names every visitor to the lookout, and nobody else", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-09T07:00:00Z"));
+    const { roomId, seats, round, endsAt } = await nightOf([
+      "mafia", "lookout", "doctor", "detective", "villager", "villager", "villager",
+    ]);
+    const [mafia, lookout, doctor, , watched] = seats;
+
+    // Two people go to the same door; the lookout is watching it.
+    await act(roomId, mafia, { type: "night.select", round, targetId: watched.playerId });
+    await act(roomId, doctor, { type: "night.select", round, targetId: watched.playerId });
+    await act(roomId, lookout, { type: "night.select", round, targetId: watched.playerId });
+    await runTo(roomId, seats, endsAt + 1);
+
+    const own = await view(roomId, lookout);
+    const learned = own.player!.knowledge.map(({ text }) => text).join(" ");
+    expect(learned).toContain(mafia.name);
+    expect(learned).toContain(doctor.name);
+
+    // It is the lookout's alone — a plain villager watching the same door learns only that
+    // somebody moved, never who.
+    const bystander = await view(roomId, seats[5]);
+    expect(bystander.player!.knowledge.map(({ text }) => text).join(" ")).not.toContain(mafia.name);
+  });
+
+  it("lets the vigilante shoot, and kills them by guilt when they shoot the town", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-09T08:00:00Z"));
+    const { roomId, seats, round, endsAt } = await nightOf([
+      "mafia", "vigilante", "doctor", "detective", "villager", "villager", "villager",
+    ]);
+    const [, vigilante, , , innocent] = seats;
+
+    await act(roomId, vigilante, { type: "night.select", round, targetId: innocent.playerId });
+    await runTo(roomId, seats, endsAt + 1);
+
+    const dawn = await view(roomId, seats[0]);
+    expect(dawn.players.find(({ id }) => id === innocent.playerId)!.alive).toBe(false);
+    // The vigilante is still standing tonight. The guilt is supposed to land a night later.
+    expect(dawn.players.find(({ id }) => id === vigilante.playerId)!.alive).toBe(true);
+  });
+
+  it("stops the doctor's save when the jammer blocks them", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-09T09:00:00Z"));
+    const { roomId, seats, round, endsAt } = await nightOf([
+      "mafia", "jammer", "doctor", "detective", "villager", "villager", "villager",
+    ]);
+    const [mafia, jammer, doctor, , victim] = seats;
+
+    await act(roomId, mafia, { type: "night.select", round, targetId: victim.playerId });
+    await act(roomId, doctor, { type: "night.select", round, targetId: victim.playerId });
+    await act(roomId, jammer, { type: "night.select", round, targetId: doctor.playerId });
+    await runTo(roomId, seats, endsAt + 1);
+
+    const dawn = await view(roomId, seats[0]);
+    // Without the jammer this is a revive. With it, the save never happened.
+    expect(dawn.players.find(({ id }) => id === victim.playerId)!.alive).toBe(false);
+    expect(dawn.dawn!.deaths.some(({ playerId, revived }) => playerId === victim.playerId && !revived)).toBe(true);
+  });
+
+  it("kills the bodyguard instead of the person they were guarding", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-09T10:00:00Z"));
+    const { roomId, seats, round, endsAt } = await nightOf([
+      "mafia", "bodyguard", "doctor", "detective", "villager", "villager", "villager",
+    ]);
+    const [mafia, bodyguard, , , guarded] = seats;
+
+    await act(roomId, mafia, { type: "night.select", round, targetId: guarded.playerId });
+    await act(roomId, bodyguard, { type: "night.select", round, targetId: guarded.playerId });
+    await runTo(roomId, seats, endsAt + 1);
+
+    const dawn = await view(roomId, seats[0]);
+    expect(dawn.players.find(({ id }) => id === guarded.playerId)!.alive).toBe(true);
+    expect(dawn.players.find(({ id }) => id === bodyguard.playerId)!.alive).toBe(false);
+    expect(dawn.dawn!.deaths.some(({ substituteName }) => substituteName === bodyguard.name)).toBe(true);
+  });
+
+  /**
+   * Whatever the cause, a dead player's role is on the roster for everybody — the toggle is global,
+   * not a property of how you died. Worth pinning: the dawn line carries the role for some causes
+   * and not others, so the roster is the thing making it consistent.
+   */
+  it("reveals a dead player's role on the roster whichever way they died", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-09T11:00:00Z"));
+    const { roomId, seats, round, endsAt } = await nightOf([
+      "mafia", "bodyguard", "doctor", "detective", "villager", "villager", "villager",
+    ]);
+    const [mafia, bodyguard, , , guarded] = seats;
+    await act(roomId, mafia, { type: "night.select", round, targetId: guarded.playerId });
+    await act(roomId, bodyguard, { type: "night.select", round, targetId: guarded.playerId });
+    await runTo(roomId, seats, endsAt + 1);
+
+    // A living villager, with no special sight of anybody, still sees what the bodyguard was.
+    const bystander = await view(roomId, seats[6]);
+    const corpse = bystander.players.find(({ id }) => id === bodyguard.playerId)!;
+    expect(corpse.alive).toBe(false);
+    expect(corpse.role).toBe("bodyguard");
+    // And still sees nothing about any other living player. Their own role is always their own.
+    const othersVisible = bystander.players.filter(
+      ({ alive, role, id }) => alive && role !== undefined && id !== seats[6].playerId,
+    );
+    expect(othersVisible).toEqual([]);
+  });
+});
+
+describe("liars — the show of hands", () => {
+  it("tallies who wants a role, and offers every role the mode has rather than only the ones in", async () => {
+    const created = await room("mafia", NAMES.slice(0, 9));
+    const [first, second] = created.seats;
+
+    const before = await view(created.roomId, first);
+    // Every role, not just the dealt ones — otherwise there is no way to ask for what you cannot see.
+    expect(before.roleWishes.length).toBe(liarsRolesForMode("mafia").length);
+    expect(before.roleWishes.some(({ active }) => active)).toBe(true);
+    expect(before.roleWishes.some(({ active }) => !active)).toBe(true);
+
+    await act(created.roomId, first, { type: "lineup.wish", role: "jester", wanted: true });
+    await act(created.roomId, second, { type: "lineup.wish", role: "jester", wanted: true });
+
+    const mine = await view(created.roomId, first);
+    const jester = mine.roleWishes.find(({ role }) => role === "jester")!;
+    expect(jester.count).toBe(2);
+    expect(jester.yours).toBe(true);
+
+    // Somebody who did not ask sees the same tally but not as theirs.
+    const theirs = await view(created.roomId, created.seats[4]);
+    expect(theirs.roleWishes.find(({ role }) => role === "jester")!).toMatchObject({
+      count: 2,
+      yours: false,
+    });
+
+    // Asking is a toggle, and never binds the lineup.
+    await act(created.roomId, first, { type: "lineup.wish", role: "jester", wanted: false });
+    const after = await view(created.roomId, first);
+    expect(after.roleWishes.find(({ role }) => role === "jester")!.count).toBe(1);
+    expect(after.lineup.roles.jester ?? 0).toBe(before.lineup.roles.jester ?? 0);
+  });
+
+  it("marks a role the room is too small for as unavailable rather than hiding it", async () => {
+    const created = await room("mafia", NAMES.slice(0, 5));
+    const snapshot = await view(created.roomId, created.seats[0]);
+    // The lookout needs seven. It is still listed, with the reason.
+    const lookout = snapshot.roleWishes.find(({ role }) => role === "lookout")!;
+    expect(lookout.available).toBe(false);
+    expect(lookout.active).toBe(false);
+  });
+
+  it("stops tallying once the game has started", async () => {
+    const created = await startedGame();
+    const snapshot = await view(created.roomId, created.seats[0]);
+    expect(snapshot.phase).not.toBe("lobby");
+    expect(snapshot.roleWishes).toEqual([]);
+  });
+});
+
+describe("liars — the mole", () => {
+  /**
+   * The mole is a one-way mirror and both directions matter: they hold the real word and know the
+   * imposter, and the imposter is never told they exist. A leak either way ruins the role — one
+   * makes them a second imposter with no downside, the other hands the imposter a free ally.
+   */
+  it("sees the imposter and the word, while the imposter never learns they exist", async () => {
+    const started = await startLiarsScenario({
+      mode: "imposter",
+      names: NAMES.concat(["Otis", "Rue", "Sol"]).slice(0, 12),
+      deal: [
+        "imposter", "mole", "crew", "crew", "crew", "crew",
+        "crew", "crew", "crew", "crew", "crew", "crew",
+      ],
+    });
+    expect(started.error, started.error ?? "").toBeNull();
+    const [imposter, mole, crew] = started.seats;
+
+    const moleView = await view(started.roomId, mole);
+    expect(moleView.player!.role).toBe("mole");
+    // The word, which is the half that makes them useful rather than just informed.
+    expect(moleView.player!.word).toBeTruthy();
+    expect(moleView.player!.allyIds).toContain(imposter.playerId);
+
+    // One-way. The imposter is holding no word and has never heard of the mole.
+    const imposterView = await view(started.roomId, imposter);
+    expect(imposterView.player!.role).toBe("imposter");
+    expect(imposterView.player!.word).toBeNull();
+    expect(imposterView.player!.allyIds).not.toContain(mole.playerId);
+
+    // And the crew see neither of them.
+    const crewView = await view(started.roomId, crew);
+    expect(crewView.player!.word).toBe(moleView.player!.word);
+    expect(crewView.player!.allyIds).toEqual([]);
+    expect(
+      crewView.players.filter(({ role, id }) => role !== undefined && id !== crew.playerId),
+    ).toEqual([]);
+  });
+});
+
+describe("liars — the escort's testimony", () => {
+  /**
+   * The escort's whole payoff is that dying still delivers the name. If that line does not reach
+   * the table, the role is a coin flip that kills you for nothing.
+   */
+  it("publishes the name to everybody at dawn when the escort dies with their target", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-09T06:00:00Z"));
+    const started = await startLiarsScenario({
+      mode: "mafia",
+      names: NAMES.slice(0, 6),
+      deal: ["mafia", "escort", "doctor", "detective", "villager", "villager"],
+    });
+    expect(started.error).toBeNull();
+    const seats = started.seats;
+    const [mafia, escort, , , victim] = seats;
+
+    const deal = await view(started.roomId, seats[0]);
+    await runTo(started.roomId, seats, deal.phaseEndsAt + 1);
+    const night = await view(started.roomId, seats[0]);
+    await runTo(started.roomId, seats, night.nightOpensAt! + 100);
+
+    // The escort spends the night exactly where the mafia are going.
+    await act(started.roomId, escort, {
+      type: "night.select",
+      round: night.round,
+      targetId: victim.playerId,
+    });
+    await act(started.roomId, mafia, {
+      type: "night.select",
+      round: night.round,
+      targetId: victim.playerId,
+    });
+    await runTo(started.roomId, seats, night.phaseEndsAt + 1);
+
+    const dawn = await view(started.roomId, seats[3]);
+    expect(dawn.phase).toBe("dawn");
+    // Both of them: the target, and the escort who was standing in the room.
+    expect(dawn.dawn!.deaths.map(({ name }) => name).sort()).toEqual(
+      [victim.name, escort.name].sort(),
+    );
+
+    // The testimony has to be on everybody's screen, not just stored on the corpse.
+    const testimony = dawn.dawn!.lastWords.find(({ name }) => name === escort.name);
+    expect(testimony, "the escort's testimony never reached the table").toBeTruthy();
+    expect(testimony!.text).toContain(mafia.name);
+  });
+});
+
+describe("liars — the wire", () => {
+  /**
+   * Every action has to be remembered in two places: the engine's switch and the HTTP validator
+   * that guards it. The engine tests call the engine directly, so an action can pass all of them
+   * and still 500 on a real device — which is exactly how the graveyard board first reached the
+   * browser. This walks the union.
+   */
+  const SAMPLES: Array<Record<string, unknown>> = [
+    { type: "readiness.set", ready: true },
+    { type: "host.claim" },
+    { type: "words.last", text: "it was them" },
+    { type: "guess.final", text: "otter" },
+    { type: "lineup.wish", role: "jester", wanted: true },
+    { type: "graveyard.pin", text: "the doctor is real" },
+    { type: "graveyard.unpin", noteId: "note-1" },
+    { type: "night.select", round: 1, targetId: null },
+    { type: "night.lock", round: 1 },
+    { type: "vote.lock", round: 1 },
+    { type: "clue.said", round: 1 },
+    { type: "clue.allSaid", round: 1 },
+    { type: "clue.skip", round: 1, playerId: "p1" },
+    { type: "day.point", round: 1, targetId: null },
+    { type: "day.readyToVote", round: 1, ready: true },
+    { type: "vote.cast", round: 1, targetId: null },
+    { type: "graveyard.vote", round: 1, targetId: null },
+  ];
+
+  it("accepts every action the client can send", () => {
+    for (const sample of SAMPLES) {
+      const parsed = parseLiarsPlayerAction({ ...sample, actionId: "a1" });
+      expect(parsed.type, `${String(sample.type)} was rejected by the validator`).toBe(sample.type);
+    }
+  });
+
+  it("still refuses an action it has never heard of", () => {
+    expect(() => parseLiarsPlayerAction({ actionId: "a1", type: "graveyard.burn" })).toThrow();
   });
 });
 

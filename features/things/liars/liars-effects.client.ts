@@ -77,6 +77,7 @@ function breath(duration: number, volume = 0.05) {
 
 export type LiarsSound =
   | "dusk"
+  | "dawn"
   | "report"
   | "death"
   | "revive"
@@ -98,6 +99,21 @@ export function playLiarsSound(sound: LiarsSound, enabled: boolean) {
     case "dusk":
       breath(1.6, 0.045);
       tone({ frequency: 130, start: 0.2, duration: 1.4, volume: 0.05, sweepTo: 82 });
+      break;
+    /*
+     * Dawn had no sound at all — the one transition in the game that happens to everybody at once
+     * was landing in silence while dusk got a breath and a descending drone.
+     *
+     * Synthesised birdsong is a trap: it either sounds like a sample library or it sounds like a
+     * modem, and either way it belongs to a different game than one set in Lora on warm stone. So
+     * this is dusk's shape run backwards — the same drone rising instead of falling, with a chime
+     * over the top of it. Restrained on purpose: the thing that comes next is somebody's name.
+     */
+    case "dawn":
+      breath(1.8, 0.03);
+      tone({ frequency: 82, start: 0, duration: 1.5, volume: 0.045, sweepTo: 147 });
+      tone({ frequency: 523, start: 0.55, duration: 0.9, volume: 0.045 });
+      tone({ frequency: 784, start: 0.85, duration: 1.1, volume: 0.035 });
       break;
     case "report":
       tone({ frequency: 880, start: 0, duration: 0.09, volume: 0.05 });

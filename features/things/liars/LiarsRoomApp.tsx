@@ -10,6 +10,8 @@ import {
   LIARS_MODE_COPY,
   LIARS_PLAYER_LIMITS,
   LIARS_ROLES,
+  LIARS_GRAVEYARD_NOTE_LENGTH,
+  liarsActionHint,
   liarsGraveyardArmsAt,
 } from "./liars-rules";
 import { applyLiarsHostActionFn, applyLiarsPlayerActionFn } from "./liars-room.functions";
@@ -34,6 +36,7 @@ import {
 } from "./LiarsViews";
 import { useLiarsEffects } from "./useLiarsEffects";
 import { useLiarsRoom } from "./useLiarsRoom";
+import { LiarsVillage } from "./LiarsVillage";
 import { primeLiarsAudio } from "./liars-effects.client";
 import { useGameSound } from "../shared/useGameSound";
 import { useLiarsNotes } from "./useLiarsNotes";
@@ -180,7 +183,9 @@ export function LiarsRoom({ credentials }: { credentials: LiarsPlayerCredentials
             className="mx-auto w-full max-w-lg px-5 pt-3 font-mono text-micro uppercase tracking-[0.18em] text-[var(--liars-dead)]"
             role="status"
           >
-            you are dead · you can watch, you cannot vote
+            {snapshot.graveyard
+              ? "you are dead · say nothing out loud · the graveyard is yours"
+              : "you are dead · you can watch, you cannot vote"}
           </p>
         ) : null}
 
@@ -317,6 +322,7 @@ function LobbyPhase({ snapshot, isHost, send, sendHost }: PhaseProps) {
               mode={snapshot.mode}
               lineup={snapshot.lineup}
               playerCount={snapshot.players.length}
+              wishes={snapshot.roleWishes}
               onChange={(next) => void sendHost({ type: "game.configure", lineup: next })}
               onReset={() => void sendHost({ type: "game.configure", resetLineup: true })}
             />
@@ -325,6 +331,8 @@ function LobbyPhase({ snapshot, isHost, send, sendHost }: PhaseProps) {
               mode={snapshot.mode}
               lineup={snapshot.lineup}
               playerCount={snapshot.players.length}
+              wishes={snapshot.roleWishes}
+              onWish={(role, wanted) => void send({ type: "lineup.wish", role, wanted })}
             />
           )}
         </div>
@@ -466,6 +474,7 @@ function NightPhase({ snapshot, clockOffset, send }: PhaseProps) {
   const you = snapshot.player;
   if (!you) return null;
   const definition = LIARS_ROLES[you.role];
+  const hint = liarsActionHint(you.role);
   const open = snapshot.nightOpensAt !== null && Date.now() + clockOffset >= snapshot.nightOpensAt;
 
   if (!you.alive)
@@ -473,6 +482,9 @@ function NightPhase({ snapshot, clockOffset, send }: PhaseProps) {
       <>
         <Eyebrow>night {snapshot.round}</Eyebrow>
         <Headline>The town sleeps</Headline>
+        <p className="mt-4 font-serif text-lg text-white/60">
+          Nothing to do but watch and write. The living cannot hear you.
+        </p>
         <Graveyard snapshot={snapshot} send={send} />
       </>
     );
@@ -483,9 +495,29 @@ function NightPhase({ snapshot, clockOffset, send }: PhaseProps) {
     return (
       <>
         <Eyebrow>night {snapshot.round}</Eyebrow>
-        <Headline>Night falls</Headline>
-        <p className="mt-4 font-serif text-lg text-white/65">
-          Turn your screen away from the person next to you.
+        <Headline>Screens away</Headline>
+        {/*
+          A countdown rather than a blank wait. Without one this screen gives no reason to move
+          now, so people read it, agree with it, and keep holding the phone flat until their role
+          appears — which is the exact moment it is worth something to their neighbour.
+
+          It sits directly under the headline because that is where the action screen's timer sits.
+          Measured, the two halves of the night used to put it 72px apart, so the one element that
+          should be nailed down was the one that moved.
+        */}
+        {snapshot.nightOpensAt !== null ? (
+          <PhaseTimer
+            endsAt={snapshot.nightOpensAt}
+            clockOffset={clockOffset}
+            label="your role appears in"
+            big
+          />
+        ) : null}
+        <p className="mt-6 font-serif text-xl text-white/80">
+          Turn your phone away from the person next to you.
+        </p>
+        <p className="mt-3 font-mono text-xs text-white/40">
+          everybody acts at once, so nobody can be timed
         </p>
       </>
     );
@@ -493,7 +525,18 @@ function NightPhase({ snapshot, clockOffset, send }: PhaseProps) {
   return (
     <>
       <Eyebrow>night {snapshot.round}</Eyebrow>
-      <Headline>{definition.actionLabel ?? "wait"}</Headline>
+      {/*
+        The headline is the same words for everybody, and that is the point.
+        `who dies tonight` set in forty-point serif is legible from the other side of a table, so
+        the largest type on the screen was the single most role-revealing string in the game — while
+        the deal card two minutes earlier had been hold-to-reveal precisely to avoid that. The
+        jester already borrowed the villager's label, so the intent existed; it just stopped at the
+        one screen that is up for forty-five seconds.
+
+        The label still has to be readable to act on, so it moves down to where a form label sits,
+        at a size that needs actually looking rather than glancing.
+      */}
+      <Headline>Choose someone</Headline>
       <PhaseTimer
         endsAt={snapshot.phaseEndsAt}
         clockOffset={clockOffset}
@@ -504,6 +547,10 @@ function NightPhase({ snapshot, clockOffset, send }: PhaseProps) {
       {you.report ? <NightReportCard report={you.report} /> : null}
 
       <div className="mt-6">
+        <p className="font-mono text-micro uppercase tracking-[0.18em] text-white/45">
+          {definition.actionLabel ?? "nothing tonight"}
+        </p>
+        {hint ? <p className="mb-3 mt-1 font-serif text-base text-white/50">{hint}</p> : null}
         <PlayerList
           snapshot={snapshot}
           selectedId={you.nightTarget}
@@ -547,6 +594,8 @@ function NightPhase({ snapshot, clockOffset, send }: PhaseProps) {
           </p>
         </div>
       ) : null}
+
+      <LiarsVillage snapshot={snapshot} clockOffset={clockOffset} />
 
       <p className="mt-6 font-mono text-xs text-white/40" aria-live="polite">
         {snapshot.actedCount} of {snapshot.livingCount} have acted
@@ -650,13 +699,11 @@ function DawnPhase({ snapshot, clockOffset, send, notes }: PhaseProps) {
         </div>
       ) : null}
 
+      <LiarsVillage snapshot={snapshot} clockOffset={clockOffset} />
+
       {you && !you.alive && you.lastWordsOpen ? (
         <LastWords send={send} notes={notes} />
       ) : null}
-
-      <div className="mt-8">
-        <PlayerList snapshot={snapshot} />
-      </div>
     </>
   );
 }
@@ -823,6 +870,32 @@ function DeliberationPhase({ snapshot, clockOffset, send, isHost, sendHost }: Ph
   const you = snapshot.player;
   const living = snapshot.players.filter(({ alive }) => alive).map(({ id }) => id);
 
+  /*
+    The dead were being handed the living's screen: a headline telling them to talk, an instruction
+    to say who they think it is, and a roster they cannot touch — then the graveyard underneath it.
+    Every word of that is an invitation to speak out loud, which is the one thing a dead player must
+    not do. So they get their own, shorter, and the roster comes off: the graveyard already lists
+    exactly the people they can act on, and printing the same names twice on one screen was the
+    repetition rather than a second view of anything.
+  */
+  if (you && !you.alive)
+    return (
+      <>
+        <Eyebrow>day {snapshot.round}</Eyebrow>
+        <Headline>Not a word</Headline>
+        <PhaseTimer
+          endsAt={snapshot.phaseEndsAt}
+          clockOffset={clockOffset}
+          label="they vote in"
+        />
+        <p className="mt-4 font-serif text-lg text-white/60">
+          You know things the living do not, and you cannot tell them any of it. Watch them work it
+          out. Everything you have goes on the board.
+        </p>
+        <Graveyard snapshot={snapshot} send={send} />
+      </>
+    );
+
   return (
     <>
       <Eyebrow>day {snapshot.round}</Eyebrow>
@@ -867,9 +940,7 @@ function DeliberationPhase({ snapshot, clockOffset, send, isHost, sendHost }: Ph
             {snapshot.readyToVoteCount} of {snapshot.livingCount} ready
           </p>
         </div>
-      ) : (
-        <Graveyard snapshot={snapshot} send={send} />
-      )}
+      ) : null}
 
       {isHost ? (
         <button
@@ -884,6 +955,13 @@ function DeliberationPhase({ snapshot, clockOffset, send, isHost, sendHost }: Ph
   );
 }
 
+/** Public arithmetic: everyone can already count the dead, so saying it out loud leaks nothing. */
+function graveyardArmedFor(snapshot: LiarsSnapshot) {
+  if (!snapshot.toggles.graveyardVote || snapshot.toggles.liveGodView) return false;
+  const dead = snapshot.players.filter(({ alive }) => !alive).length;
+  return dead >= liarsGraveyardArmsAt(snapshot.players.length);
+}
+
 function VotePhase({ snapshot, clockOffset, send }: PhaseProps) {
   const you = snapshot.player;
   const living = snapshot.players.filter(({ alive }) => alive).map(({ id }) => id);
@@ -893,6 +971,9 @@ function VotePhase({ snapshot, clockOffset, send }: PhaseProps) {
       <>
         <Eyebrow>day {snapshot.round}</Eyebrow>
         <Headline>They are voting</Headline>
+        <p className="mt-4 font-serif text-lg text-white/60">
+          Say nothing. Cast yours.
+        </p>
         <Graveyard snapshot={snapshot} send={send} />
       </>
     );
@@ -905,6 +986,17 @@ function VotePhase({ snapshot, clockOffset, send }: PhaseProps) {
       <p className="mt-4 font-serif text-lg text-white/65">
         Nobody sees this until everyone has committed.
       </p>
+      {/*
+        The living are told the graveyard is armed and never told what it did. Both halves matter.
+        The count of the dead is already on everyone's screen, so this leaks nothing — but knowing
+        an unseen ballot is in the box changes how a table argues, and never seeing it land means a
+        4–3 lynch might have been 3–3 plus the dead, and nobody will ever know which.
+      */}
+      {graveyardArmedFor(snapshot) ? (
+        <p className="mt-2 font-mono text-xs text-[var(--things-amber)]/70">
+          the graveyard is voting too — you will not see which way
+        </p>
+      ) : null}
 
       <div className="mt-6">
         <PlayerList
@@ -1093,11 +1185,24 @@ function Graveyard({
   return (
     <section className="mt-10 border-t border-white/10 pt-5" aria-label="the graveyard">
       <Eyebrow>the graveyard</Eyebrow>
-      <p className="mt-2 font-mono text-xs text-white/45">
-        {graveyard.armed
-          ? "your vote counts as one more ballot"
-          : `the graveyard votes when ${armsAt} are gone · ${graveyard.deadCount} so far`}
-      </p>
+      {graveyard.armed ? (
+        <>
+          <p className="mt-2 font-serif text-lg text-[var(--things-amber)]">
+            You are one ballot now. Together.
+          </p>
+          <p className="mt-1 font-mono text-xs text-white/45">
+            {graveyard.deadlocked
+              ? "split — as it stands the graveyard says nothing"
+              : graveyard.abstaining > 0
+                ? `${graveyard.abstaining} of you ${graveyard.abstaining === 1 ? "has" : "have"} not voted`
+                : "agreed · it goes in with the living's"}
+          </p>
+        </>
+      ) : (
+        <p className="mt-2 font-mono text-xs text-white/45">
+          {`${graveyard.deadCount} of ${armsAt} · vote anyway — it starts counting the moment there are ${armsAt} of you`}
+        </p>
+      )}
       <ul className="mt-4 border-t border-white/10">
         {living.map((player) => {
           const votes = graveyard.tally.find(({ playerId }) => playerId === player.id)?.votes ?? 0;
@@ -1131,6 +1236,81 @@ function Graveyard({
           );
         })}
       </ul>
+      <GraveyardBoard graveyard={graveyard} send={send} />
     </section>
+  );
+}
+
+/**
+ * The board.
+ *
+ * The dead are the only people in this game with nothing to do and everything to say, and left to
+ * themselves they will say it out loud to a living room that can hear them. So give them somewhere
+ * to put it — but a corkboard rather than a chat. Eight lines, pinned, oldest falling off. A
+ * scrolling conversation is where a dead table solves the game completely and then casts a ballot
+ * with perfect information; eight lines make them decide what actually mattered.
+ */
+function GraveyardBoard({
+  graveyard,
+  send,
+}: {
+  graveyard: NonNullable<LiarsSnapshot["graveyard"]>;
+  send: PhaseProps["send"];
+}) {
+  const [draft, setDraft] = useState("");
+
+  const pin = () => {
+    const text = draft.trim();
+    if (!text) return;
+    setDraft("");
+    void send({ type: "graveyard.pin", text });
+  };
+
+  return (
+    <div className="mt-6 border-t border-white/10 pt-4">
+      <p className="font-mono text-micro uppercase tracking-[0.18em] text-white/40">
+        the board · {graveyard.board.length}/{graveyard.boardMax} · only the dead see this
+      </p>
+      {graveyard.board.length > 0 ? (
+        <ul className="mt-2">
+          {graveyard.board.map((note) => (
+            <li key={note.id} className="flex items-baseline gap-3 border-b border-white/10 py-2">
+              <span className="w-16 shrink-0 truncate font-mono text-micro text-white/35">
+                {note.name}
+              </span>
+              <span className="flex-1 font-serif text-base text-white/75">{note.text}</span>
+              <button
+                type="button"
+                aria-label={`unpin ${note.text}`}
+                onClick={() => void send({ type: "graveyard.unpin", noteId: note.id })}
+                className="min-h-11 px-2 font-mono text-xs text-white/25 hover:text-white/60"
+              >
+                ×
+              </button>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+      <div className="mt-2 flex items-center gap-2">
+        <input
+          value={draft}
+          onChange={(event) => setDraft(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") pin();
+          }}
+          maxLength={LIARS_GRAVEYARD_NOTE_LENGTH}
+          placeholder="pin what you worked out"
+          className="min-h-11 flex-1 border-b border-white/15 bg-transparent font-serif text-base text-white outline-none placeholder:text-white/25 focus:border-[var(--things-amber)]"
+        />
+        <button
+          type="button"
+          onClick={pin}
+          disabled={draft.trim().length === 0}
+          className="min-h-11 shrink-0 px-3 font-mono text-xs text-[var(--things-amber)] disabled:text-white/20"
+        >
+          pin
+        </button>
+      </div>
+    </div>
   );
 }

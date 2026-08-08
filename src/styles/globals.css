@@ -148,6 +148,9 @@
   --things-country-point: oklch(0.2 0.01 56.42);
   --liars-dead: oklch(0.55 0.21 27);
   --liars-alive: oklch(0.66 0.17 152);
+  --liars-house-wall: oklch(0.26 0.016 56.42);
+  --liars-house-roof: oklch(0.34 0.018 56.42);
+  --liars-house-dark: oklch(0.2 0.012 56.42);
   --pitch-night-night: #100d0c;
   --pitch-night-cream: #f5eddb;
   --pitch-night-amber: #d99a2b;
@@ -175,6 +178,9 @@
   --selection-fg: oklch(0.828 0.165 86.05);
   --liars-dead: oklch(0.62 0.22 27);
   --liars-alive: oklch(0.74 0.18 152);
+  --liars-house-wall: oklch(0.24 0.016 56.42);
+  --liars-house-roof: oklch(0.32 0.018 56.42);
+  --liars-house-dark: oklch(0.18 0.012 56.42);
   --pitch-night-night: #0d0b0a;
   --pitch-night-cream: #f4ecda;
   --pitch-night-amber: #e2aa45;
@@ -457,6 +463,25 @@
     pointer-events: none;
   }
 
+  .liars-overlay--dread {
+    animation: liars-dread 2.2s ease-in forwards;
+  }
+
+  @keyframes liars-dread {
+    0% {
+      background: color-mix(in oklab, var(--liars-dead) 40%, black);
+      opacity: 0;
+    }
+    70% {
+      background: color-mix(in oklab, var(--liars-dead) 40%, black);
+      opacity: 0.32;
+    }
+    100% {
+      background: color-mix(in oklab, var(--liars-dead) 40%, black);
+      opacity: 0;
+    }
+  }
+
   .liars-overlay--death {
     animation: liars-death 2.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
   }
@@ -465,8 +490,9 @@
     animation: liars-revive 1.8s cubic-bezier(0.16, 1, 0.3, 1) forwards;
   }
 
+  /* Matches LIARS_DUSK_MS, and the 5s moon that rises inside it. */
   .liars-overlay--dusk {
-    animation: liars-dusk 2.5s ease-in-out forwards;
+    animation: liars-dusk 5s ease-in-out forwards;
   }
 
   .liars-overlay--dawn {
@@ -515,10 +541,26 @@
     }
   }
 
+  /*
+   * Wash, hold, clear — rather than one long linear fade.
+   *
+   * Stretching the old two-and-a-half-second crossfade to fill the five-second beat would have left
+   * the layer fading the entire time, so the moon would have been at its faintest exactly as it
+   * finished rising. Instead the cream goes to night quickly, the sky holds while the moon comes up
+   * and the stars arrive, and only then does it clear.
+   */
   @keyframes liars-dusk {
     0% {
       background: var(--things-cream);
-      opacity: 0.9;
+      opacity: 0.95;
+    }
+    22% {
+      background: var(--things-night);
+      opacity: 0.95;
+    }
+    76% {
+      background: var(--things-night);
+      opacity: 0.92;
     }
     100% {
       background: var(--things-night);
@@ -537,15 +579,181 @@
     }
   }
 
+  /*
+   * The moon. A crescent is a second circle in the background colour sitting over a full one, which
+   * is cheaper than a mask and reads the same at this size.
+   */
+  .liars-moon {
+    fill: var(--things-cream);
+  }
+
+  .liars-moon-shadow {
+    fill: var(--things-night);
+  }
+
+  /* Settles at 3.5s, inside the dusk hold, so it is at rest before the layer clears. */
+  .liars-moon--rise {
+    animation: liars-moon-rise 3.5s ease-out forwards;
+  }
+
+  .liars-star {
+    fill: var(--things-cream);
+    opacity: 0;
+    animation: liars-star-in 3.2s ease-out forwards;
+  }
+
+  .liars-sun {
+    fill: var(--things-amber);
+  }
+
+  .liars-sun--rise {
+    animation: liars-sun-rise 2.5s ease-out forwards;
+  }
+
+  @keyframes liars-moon-rise {
+    0% {
+      transform: translateY(28px);
+      opacity: 0;
+    }
+    45% {
+      opacity: 0.9;
+    }
+    100% {
+      transform: translateY(0);
+      opacity: 0.75;
+    }
+  }
+
+  @keyframes liars-star-in {
+    0%,
+    30% {
+      opacity: 0;
+    }
+    100% {
+      opacity: 0.55;
+    }
+  }
+
+  /* Up and over the horizon, which is the direction a sunrise actually goes. */
+  @keyframes liars-sun-rise {
+    0% {
+      transform: translateY(30px);
+      opacity: 0;
+    }
+    40% {
+      opacity: 0.85;
+    }
+    100% {
+      transform: translateY(-4px);
+      opacity: 0.9;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .liars-moon--rise,
+    .liars-sun--rise,
+    .liars-star {
+      animation: none;
+      opacity: 0.6;
+    }
+  }
+
+  /*
+   * Village windows. A light coming on is a soft fade, not a flick — a hard switch reads as an
+   * event, and the only events here are the ones the narration is already announcing.
+   */
+  .liars-window {
+    transition:
+      fill 700ms ease-out,
+      opacity 700ms ease-out;
+  }
+
+  .liars-window--moved {
+    animation: liars-window-seen 1.6s ease-out;
+  }
+
+  .liars-window--dying {
+    animation: liars-window-dying 2.4s ease-out forwards;
+  }
+
+  .liars-window--saved {
+    animation: liars-window-saved 1.6s ease-out forwards;
+  }
+
+  @keyframes liars-window-seen {
+    0%,
+    100% {
+      opacity: 1;
+    }
+    30%,
+    70% {
+      opacity: 0.25;
+    }
+  }
+
+  @keyframes liars-window-dying {
+    0% {
+      fill: var(--things-amber);
+    }
+    18% {
+      fill: var(--liars-dead);
+    }
+    100% {
+      fill: var(--liars-dead);
+      opacity: 0.35;
+    }
+  }
+
+  @keyframes liars-window-saved {
+    0% {
+      fill: var(--liars-dead);
+      opacity: 0.35;
+    }
+    100% {
+      fill: var(--liars-alive);
+      opacity: 1;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .liars-window,
+    .liars-window--moved,
+    .liars-window--dying,
+    .liars-window--saved {
+      animation: none;
+      transition: none;
+    }
+  }
+
   /* One slow wash, no blowout and no snap, for anyone who has asked for less motion. */
   @media (prefers-reduced-motion: reduce) {
-    .liars-overlay--death {
+    .liars-overlay--dread {
+    animation: liars-dread 2.2s ease-in forwards;
+  }
+
+  @keyframes liars-dread {
+    0% {
+      background: color-mix(in oklab, var(--liars-dead) 40%, black);
+      opacity: 0;
+    }
+    70% {
+      background: color-mix(in oklab, var(--liars-dead) 40%, black);
+      opacity: 0.32;
+    }
+    100% {
+      background: color-mix(in oklab, var(--liars-dead) 40%, black);
+      opacity: 0;
+    }
+  }
+
+  .liars-overlay--death {
       animation: liars-death-calm 2.6s ease-out forwards;
     }
 
     .liars-overlay--revive,
     .liars-overlay--dusk,
-    .liars-overlay--dawn {
+    .liars-overlay--dawn,
+    .liars-overlay--dread {
       animation: none;
       opacity: 0;
     }

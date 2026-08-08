@@ -792,9 +792,55 @@ export function liarsTargetableIds(input: LiarsTargetInput): string[] {
 }
 
 /** Watching is not a visit — you stay up watching their door. Everything else leaves the house. */
+/**
+ * One line saying what you get out of tonight, shown on the night screen itself.
+ *
+ * The full rules were only ever on the deal card and behind the rules sheet — read once, four
+ * minutes before the moment they matter. The villagers are the ones this hurts: watching is the
+ * least obvious action in the game, and "whose door to watch" over a list of names does not say
+ * that the doctor and the detective also count as having gone out, which is the whole reason a
+ * single sighting proves nothing.
+ */
+export function liarsActionHint(role: LiarsRole): string | null {
+  switch (role) {
+    case "villager":
+      return "you learn only whether they went out — and the doctor and detective go out too. Two of you watching the same door makes it public.";
+    case "lookout":
+      return "you learn the name of everyone who came to their door tonight.";
+    case "detective":
+      return "you learn which side they are on. Nobody else is told.";
+    case "doctor":
+      return "if they are attacked tonight they live. You may pick yourself.";
+    case "bodyguard":
+      return "if they are attacked, you die instead and they live.";
+    case "escort":
+      return "your own house is empty tonight. If they are attacked you see who did it — even if it kills you.";
+    case "vigilante":
+      return "they die tonight. Kill a townsperson and the guilt kills you the next.";
+    case "jammer":
+      return "whatever they were going to do tonight does not happen.";
+    case "mafia":
+    case "godfather":
+      return "they die at dawn unless somebody saves them.";
+    default:
+      return null;
+  }
+}
+
 export function liarsActionMoves(role: LiarsRole, targetId: string | null) {
   return targetId !== null && LIARS_ROLES[role].moves;
 }
+
+/**
+ * The graveyard board holds eight lines and each line holds ninety characters.
+ *
+ * Deliberately small. A scrolling chat is where a dead table solves the whole game and then votes
+ * with perfect information, and it is also a second screen to read during a phase that already has
+ * one. Eight short lines is a corkboard: you pin what survived you, and pinning the ninth means
+ * deciding which of the eight mattered least. That editing pressure is the feature.
+ */
+export const LIARS_GRAVEYARD_BOARD_MAX = 8;
+export const LIARS_GRAVEYARD_NOTE_LENGTH = 90;
 
 /** Once half the table is gone, the graveyard's plurality becomes one extra ballot. */
 export function liarsGraveyardArmsAt(playerCount: number) {
