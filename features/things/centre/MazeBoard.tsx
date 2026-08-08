@@ -177,7 +177,8 @@ export function MazeBoard({
       finishRef.current
     )
       return;
-    const events = event.nativeEvent.getCoalescedEvents?.() ?? [event.nativeEvent];
+    const coalesced = event.nativeEvent.getCoalescedEvents?.();
+    const events = coalesced?.length ? coalesced : [event.nativeEvent];
     let nextRoute = routeRef.current;
     for (const sample of events) {
       const bounds = svgRef.current?.getBoundingClientRect();
