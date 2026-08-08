@@ -1,7 +1,7 @@
 import { THING_OFFLINE } from "./offline";
 
 export interface Thing {
-  slug: "icebreaker" | "heads-up" | "spelling-bee" | "draw-country" | "pitches" | "liars";
+  slug: "icebreaker" | "heads-up" | "spelling-bee" | "draw-country" | "pitches" | "liars" | "twin";
   name: string;
   description: string;
   eyebrow: string;
@@ -11,13 +11,24 @@ export interface Thing {
     | "/things/spelling-bee"
     | "/things/draw-country"
     | "/things/pitches"
-    | "/things/liars";
+    | "/things/liars"
+    | "/things/twin";
   status: "ready";
   symbol: string;
   offline: (typeof THING_OFFLINE)[keyof typeof THING_OFFLINE] | null;
 }
 
 export const THINGS = [
+  {
+    slug: "twin",
+    name: "twin",
+    description: "Two cards, one shared symbol. Find it first and empty your hand.",
+    eyebrow: "speed matching · 1–10 people",
+    href: "/things/twin",
+    status: "ready",
+    symbol: "◎",
+    offline: THING_OFFLINE.twin,
+  },
   {
     slug: "liars",
     name: "liars",

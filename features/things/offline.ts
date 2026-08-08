@@ -52,6 +52,14 @@ export const THING_OFFLINE = {
     storageVersion: 1,
     requiredAssets: [...SHARED_OFFLINE_ASSETS, "/manifest.json"],
   },
+  /** The duel and the solo board need no network at all — the deck is generated on the device. */
+  twin: {
+    entryPath: "/things/twin",
+    manifestPath: "/manifest.json",
+    catalogueVersion: 1,
+    storageVersion: 1,
+    requiredAssets: [...SHARED_OFFLINE_ASSETS, "/manifest.json"],
+  },
 } as const;
 
 export type OfflineThingSlug = keyof typeof THING_OFFLINE;

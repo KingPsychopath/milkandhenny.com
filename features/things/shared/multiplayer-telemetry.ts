@@ -1,4 +1,10 @@
-export const MULTIPLAYER_GAMES = ["remote", "spelling-party", "draw-country", "liars"] as const;
+export const MULTIPLAYER_GAMES = [
+  "remote",
+  "spelling-party",
+  "draw-country",
+  "liars",
+  "twin",
+] as const;
 
 export type MultiplayerGame = (typeof MULTIPLAYER_GAMES)[number];
 
