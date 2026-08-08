@@ -14,6 +14,8 @@ export type DropPageResult =
       eventTitle: string;
       expiresAt: string;
       fileCount: number;
+      /** The shared album — browsable before uploading anything. */
+      albumPath: string;
     };
 
 export const getDropPageFn = createServerFn({ method: "GET" })
@@ -27,5 +29,6 @@ export const getDropPageFn = createServerFn({ method: "GET" })
       eventTitle: drop.eventTitle,
       expiresAt: drop.expiresAt,
       fileCount: drop.fileCount,
+      albumPath: `/t/${drop.transferId}`,
     };
   });

@@ -30,7 +30,7 @@ function ScanIndexRoute() {
   }, []);
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-dvh bg-background">
       <main id="main" className="mx-auto max-w-md px-6 pt-16 pb-16">
         <p className="font-mono text-micro theme-muted tracking-widest uppercase">scanner</p>
         <h1 className="mt-2 font-serif text-2xl text-foreground">Your scanners</h1>

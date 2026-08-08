@@ -45,16 +45,17 @@ export function DropPage({
   token,
   eventTitle,
   initialFileCount,
+  albumPath,
 }: {
   token: string;
   eventTitle: string;
   initialFileCount: number;
+  albumPath: string;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const nextIdRef = useRef(1);
   const [items, setItems] = useState<UploadItem[]>([]);
   const [busy, setBusy] = useState(false);
-  const [albumUrl, setAlbumUrl] = useState<string | null>(null);
   const [albumCount, setAlbumCount] = useState(initialFileCount);
   const [notice, setNotice] = useState<string | null>(null);
 
@@ -179,7 +180,6 @@ export function DropPage({
         throw new Error(finalizeData.error ?? "Upload finished but saving failed — try again");
       }
 
-      if (finalizeData.shareUrl) setAlbumUrl(finalizeData.shareUrl);
       if (finalizeData.transfer) setAlbumCount(finalizeData.transfer.fileCount);
       setNotice(`${uploaded.length} added — thank you!`);
     } catch (error) {
@@ -190,7 +190,7 @@ export function DropPage({
   };
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-dvh bg-background">
       <main id="main" className="mx-auto max-w-md px-6 pb-16 pt-14">
         <p className="font-mono text-micro theme-muted tracking-widest uppercase">
           share your photos
@@ -198,7 +198,6 @@ export function DropPage({
         <h1 className="mt-2 font-serif text-3xl text-foreground">{eventTitle}</h1>
         <p className="mt-3 font-mono text-xs theme-muted leading-relaxed">
           Everything you add lands in the shared album for everyone who was there.
-          {albumCount > 0 ? ` ${albumCount} in there so far.` : ""}
         </p>
 
         <input
@@ -222,6 +221,17 @@ export function DropPage({
         >
           {busy ? "uploading…" : "add photos & videos"}
         </button>
+
+        {/* The album is browsable before uploading anything — seeing what's
+            already there is half the fun and most of the trust. */}
+        <a
+          href={albumPath}
+          className="mt-3 flex min-h-12 w-full items-center justify-center rounded-2xl border theme-border-strong font-mono text-sm text-foreground"
+        >
+          {albumCount > 0
+            ? `browse the album (${albumCount} so far) →`
+            : "peek at the album (empty so far) →"}
+        </a>
 
         {notice && (
           <p aria-live="polite" className="mt-3 text-center font-mono text-xs text-foreground">
@@ -255,14 +265,6 @@ export function DropPage({
               </li>
             ))}
           </ul>
-        )}
-
-        {albumUrl && (
-          <p className="mt-6 text-center">
-            <a href={albumUrl} className="font-mono text-sm text-foreground underline">
-              open the shared album →
-            </a>
-          </p>
         )}
 
         <p className="mt-10 text-center font-mono text-micro theme-faint leading-relaxed">

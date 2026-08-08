@@ -652,7 +652,7 @@ export function DoorScanner({
   const pending = pendingCount(offline);
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-dvh bg-background">
       <main id="main" className="mx-auto max-w-md px-5 pb-16 pt-8">
         <header className="flex items-baseline justify-between gap-3">
           <h1 className="font-mono text-sm text-foreground">{eventTitle}</h1>

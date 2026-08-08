@@ -257,7 +257,7 @@ export function CheckpointScanner({
   const remaining = activeTicket ? Math.max(0, activeTicket.allowance - activeTicket.used) : 0;
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-dvh bg-background">
       <main id="main" className="mx-auto max-w-md px-5 pb-16 pt-8">
         <header className="flex items-baseline justify-between gap-3">
           <div className="min-w-0">

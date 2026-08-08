@@ -27,12 +27,19 @@ function nativeDecoder(): Decoder | null {
   };
 }
 
-/** Canvas + jsQR. Downscaled: QR finding does not need full sensor frames. */
+/**
+ * Canvas + jsQR. Downscaled, and throttled to ~8 decodes a second — a
+ * full-rate software decode drains an older iPhone and starves the video.
+ */
 async function jsQrDecoder(): Promise<Decoder> {
   const { default: jsQR } = await import("jsqr");
   const canvas = document.createElement("canvas");
   const context = canvas.getContext("2d", { willReadFrequently: true });
+  let lastDecodeAt = 0;
   return async (video) => {
+    const now = Date.now();
+    if (now - lastDecodeAt < 120) return null;
+    lastDecodeAt = now;
     if (!context || video.videoWidth === 0) return null;
     const scale = Math.min(1, 640 / video.videoWidth);
     canvas.width = Math.round(video.videoWidth * scale);

@@ -23,7 +23,7 @@ export const Route = createFileRoute("/drop/$token")({
 
 function DeadDrop() {
   return (
-    <div className="min-h-screen bg-background flex items-center justify-center p-6">
+    <div className="min-h-dvh bg-background flex items-center justify-center p-6">
       <main id="main" className="w-full max-w-xs text-center">
         <p className="font-mono text-micro theme-muted tracking-widest uppercase">uploads</p>
         <h1 className="mt-2 font-serif text-2xl text-foreground">This link isn't active</h1>
@@ -40,6 +40,11 @@ function DropRoute() {
   const data = Route.useLoaderData();
   if (!data.found) return <DeadDrop />;
   return (
-    <DropPage token={data.token} eventTitle={data.eventTitle} initialFileCount={data.fileCount} />
+    <DropPage
+      token={data.token}
+      eventTitle={data.eventTitle}
+      initialFileCount={data.fileCount}
+      albumPath={data.albumPath}
+    />
   );
 }
