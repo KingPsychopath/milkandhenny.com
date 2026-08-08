@@ -284,18 +284,6 @@ export function TwinDuelApp({
                 : `${seats[0]?.hand.length ?? 0} — ${seats[1]?.hand.length ?? 0}`}
             </p>
           )}
-          {flash ? (
-            <TwinRay
-              containerRef={boardRef}
-              from={{ slot: flash.seat === 0 ? "seat-one" : "seat-two", symbolId: flash.symbolId }}
-              to={{
-                slot: players === 1 ? "middle" : flash.seat === 0 ? "seat-two" : "seat-one",
-                symbolId: flash.symbolId,
-              }}
-              token={`${flash.seat}-${flash.symbolId}-${seats[flash.seat]?.hand[0]?.cardId ?? ""}`}
-              durationMs={connectionHoldMs}
-            />
-          ) : null}
         </div>
 
         <DuelSeat
@@ -308,6 +296,19 @@ export function TwinDuelApp({
           onTap={tap}
         />
       </div>
+
+      {flash ? (
+        <TwinRay
+          containerRef={boardRef}
+          from={{ slot: flash.seat === 0 ? "seat-one" : "seat-two", symbolId: flash.symbolId }}
+          to={{
+            slot: players === 1 ? "middle" : flash.seat === 0 ? "seat-two" : "seat-one",
+            symbolId: flash.symbolId,
+          }}
+          token={`${flash.seat}-${flash.symbolId}-${seats[flash.seat]?.hand[0]?.cardId ?? ""}`}
+          durationMs={connectionHoldMs}
+        />
+      ) : null}
 
       {winner !== null ? (
         <div className="twin-duel-over" role="dialog" aria-modal="true">

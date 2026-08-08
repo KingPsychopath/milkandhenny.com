@@ -2473,10 +2473,25 @@
 
   .twin-ray-line {
     fill: none;
-    stroke: var(--twin-accent);
-    stroke-width: 2;
+    stroke-width: 3.5;
     stroke-linecap: round;
-    /* The `from` is the inline dash offset the component measured, so only the end state is declared. */
+    stroke-dasharray: 1;
+    stroke-dashoffset: 1;
+    /* A unit path length lets every curve use the same trace animation. */
+    animation-name: twin-ray-trace;
+    animation-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+    animation-fill-mode: forwards;
+  }
+
+  .twin-ray-glow {
+    fill: none;
+    stroke: var(--twin-accent);
+    stroke-width: 13;
+    stroke-linecap: round;
+    stroke-dasharray: 1;
+    stroke-dashoffset: 1;
+    opacity: 0.14;
+    filter: blur(3px);
     animation-name: twin-ray-trace;
     animation-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
     animation-fill-mode: forwards;
@@ -2927,14 +2942,18 @@
   /* Two cards rather than three, so each one gets half again as much room. */
   .twin-duel {
     --twin-card-size: min(38svh, 80vw, 24rem);
+    position: relative;
     justify-content: space-between;
     gap: 0.5rem;
     padding-block: 0.5rem;
   }
 
-  /* Solo puts a middle card back between the seats, so the cards have to give room up again. */
+  /* Solo has two cards too: the middle and the hand. Keep them together and let both stay generous. */
   .twin-duel:has(.twin-duel-bar) {
-    --twin-card-size: min(27svh, 62vw, 20rem);
+    --twin-card-size: min(34svh, 78vw, 22rem);
+    justify-content: center;
+    gap: 0.75rem;
+    padding-block: 3.5rem 1rem;
   }
 
   .twin-duel-divider {
@@ -3012,14 +3031,28 @@
   }
 
   .twin-duel-bar {
+    position: absolute;
+    inset: 0 0 auto;
+    z-index: 4;
     display: flex;
     align-items: center;
     justify-content: space-between;
     gap: 0.75rem;
     padding-inline: 1.25rem;
+    padding-top: 0.5rem;
     font-family: var(--font-mono), ui-monospace, monospace;
     font-size: 0.75rem;
     color: var(--twin-quiet);
+  }
+
+  @media (min-width: 48rem) and (min-height: 46rem) {
+    .twin-duel,
+    .twin-duel:has(.twin-duel-bar) {
+      --twin-card-size: min(34svh, 28vw, 28rem);
+      justify-content: center;
+      gap: 0.875rem;
+      padding-block: 3.5rem 1.5rem;
+    }
   }
 
   .twin-duel-exit {
@@ -3070,6 +3103,7 @@
       instead of drawing itself.
     */
     .twin-ray-line,
+    .twin-ray-glow,
     .twin-ray-end,
     .twin-chart-node,
     .twin-settle-list li,

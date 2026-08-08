@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useId, useLayoutEffect, useRef, useState } from "react";
 
 /**
  * The line between a symbol and its twin.
@@ -21,11 +21,12 @@ interface TwinRayProps {
   durationMs?: number;
 }
 
-interface Line {
+interface Connection {
   x1: number;
   y1: number;
   x2: number;
   y2: number;
+  path: string;
   width: number;
   height: number;
 }
@@ -45,10 +46,11 @@ function centreOf(container: HTMLElement, slot: string, symbolId: string) {
 }
 
 export function TwinRay({ containerRef, from, to, token, durationMs = 520 }: TwinRayProps) {
-  const [line, setLine] = useState<Line | null>(null);
+  const [connection, setConnection] = useState<Connection | null>(null);
   const frame = useRef<number | null>(null);
+  const gradientId = `twin-ray-${useId().replaceAll(":", "")}`;
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const container = containerRef.current;
     if (!container) return;
 
@@ -57,14 +59,39 @@ export function TwinRay({ containerRef, from, to, token, durationMs = 520 }: Twi
       const end = centreOf(container, to.slot, to.symbolId);
       const origin = container.getBoundingClientRect();
       if (!start || !end) {
-        setLine(null);
+        setConnection(null);
         return;
       }
-      setLine({
-        x1: start.x,
-        y1: start.y,
-        x2: end.x,
-        y2: end.y,
+
+      const dx = end.x - start.x;
+      const dy = end.y - start.y;
+      const distance = Math.hypot(dx, dy);
+      if (distance < 1) {
+        setConnection(null);
+        return;
+      }
+      const ux = dx / distance;
+      const uy = dy / distance;
+      const startInset = Math.min(start.size * 0.52 + 7, distance * 0.28);
+      const endInset = Math.min(end.size * 0.52 + 7, distance * 0.28);
+      const x1 = start.x + ux * startInset;
+      const y1 = start.y + uy * startInset;
+      const x2 = end.x - ux * endInset;
+      const y2 = end.y - uy * endInset;
+      const curve = Math.min(34, Math.max(10, distance * 0.045));
+      const normalX = -uy * curve;
+      const normalY = ux * curve;
+      const controlOneX = x1 + (x2 - x1) * 0.34 + normalX;
+      const controlOneY = y1 + (y2 - y1) * 0.34 + normalY;
+      const controlTwoX = x1 + (x2 - x1) * 0.66 + normalX;
+      const controlTwoY = y1 + (y2 - y1) * 0.66 + normalY;
+
+      setConnection({
+        x1,
+        y1,
+        x2,
+        y2,
+        path: `M ${x1} ${y1} C ${controlOneX} ${controlOneY}, ${controlTwoX} ${controlTwoY}, ${x2} ${y2}`,
         width: origin.width,
         height: origin.height,
       });
@@ -72,45 +99,61 @@ export function TwinRay({ containerRef, from, to, token, durationMs = 520 }: Twi
 
     // One frame's grace so the cards have laid out before anything is measured.
     frame.current = window.requestAnimationFrame(measure);
-    window.addEventListener("resize", measure);
+    const observer = new ResizeObserver(measure);
+    observer.observe(container);
     return () => {
       if (frame.current !== null) window.cancelAnimationFrame(frame.current);
-      window.removeEventListener("resize", measure);
+      observer.disconnect();
     };
   }, [containerRef, from.slot, from.symbolId, to.slot, to.symbolId, token]);
 
-  if (!line) return null;
-  const length = Math.hypot(line.x2 - line.x1, line.y2 - line.y1);
+  if (!connection) return null;
 
   return (
     <svg
       className="twin-ray"
-      viewBox={`0 0 ${line.width} ${line.height}`}
-      width={line.width}
-      height={line.height}
+      viewBox={`0 0 ${connection.width} ${connection.height}`}
+      width={connection.width}
+      height={connection.height}
       aria-hidden="true"
       focusable="false"
     >
-      <line
+      <defs>
+        <linearGradient
+          id={gradientId}
+          gradientUnits="userSpaceOnUse"
+          x1={connection.x1}
+          y1={connection.y1}
+          x2={connection.x2}
+          y2={connection.y2}
+        >
+          <stop offset="0" stopColor="var(--twin-accent)" stopOpacity="0.62" />
+          <stop offset="0.48" stopColor="var(--twin-ink)" />
+          <stop offset="1" stopColor="var(--twin-accent)" />
+        </linearGradient>
+      </defs>
+      <path
+        key={`${token}-glow`}
+        className="twin-ray-glow"
+        d={connection.path}
+        pathLength={1}
+        style={{ animationDuration: `${durationMs}ms` }}
+      />
+      <path
         key={token}
         className="twin-ray-line"
-        x1={line.x1}
-        y1={line.y1}
-        x2={line.x2}
-        y2={line.y2}
-        style={{
-          strokeDasharray: length,
-          strokeDashoffset: length,
-          animationDuration: `${durationMs}ms`,
-        }}
+        d={connection.path}
+        pathLength={1}
+        stroke={`url(#${gradientId})`}
+        style={{ animationDuration: `${durationMs}ms` }}
       />
-      <circle className="twin-ray-end" cx={line.x1} cy={line.y1} r={4} />
+      <circle className="twin-ray-end" cx={connection.x1} cy={connection.y1} r={3.5} />
       <circle
         className="twin-ray-end twin-ray-end--far"
-        cx={line.x2}
-        cy={line.y2}
-        r={4}
-        style={{ animationDelay: `${durationMs * 0.7}ms` }}
+        cx={connection.x2}
+        cy={connection.y2}
+        r={3.5}
+        style={{ animationDelay: `${durationMs * 0.66}ms` }}
       />
     </svg>
   );
