@@ -182,7 +182,9 @@ export function LiarsRoom({ credentials }: { credentials: LiarsPlayerCredentials
             className="mx-auto w-full max-w-lg px-5 pt-3 font-mono text-micro uppercase tracking-[0.18em] text-[var(--liars-dead)]"
             role="status"
           >
-            you are dead · you can watch, you cannot vote
+            {snapshot.graveyard
+              ? "you are dead · say nothing out loud · the graveyard is yours"
+              : "you are dead · you can watch, you cannot vote"}
           </p>
         ) : null}
 
@@ -475,6 +477,9 @@ function NightPhase({ snapshot, clockOffset, send }: PhaseProps) {
       <>
         <Eyebrow>night {snapshot.round}</Eyebrow>
         <Headline>The town sleeps</Headline>
+        <p className="mt-4 font-serif text-lg text-white/60">
+          Nothing to do but watch and write. The living cannot hear you.
+        </p>
         <Graveyard snapshot={snapshot} send={send} />
       </>
     );
@@ -659,10 +664,6 @@ function DawnPhase({ snapshot, clockOffset, send, notes }: PhaseProps) {
       {you && !you.alive && you.lastWordsOpen ? (
         <LastWords send={send} notes={notes} />
       ) : null}
-
-      <div className="mt-8">
-        <PlayerList snapshot={snapshot} />
-      </div>
     </>
   );
 }
@@ -829,6 +830,32 @@ function DeliberationPhase({ snapshot, clockOffset, send, isHost, sendHost }: Ph
   const you = snapshot.player;
   const living = snapshot.players.filter(({ alive }) => alive).map(({ id }) => id);
 
+  /*
+    The dead were being handed the living's screen: a headline telling them to talk, an instruction
+    to say who they think it is, and a roster they cannot touch — then the graveyard underneath it.
+    Every word of that is an invitation to speak out loud, which is the one thing a dead player must
+    not do. So they get their own, shorter, and the roster comes off: the graveyard already lists
+    exactly the people they can act on, and printing the same names twice on one screen was the
+    repetition rather than a second view of anything.
+  */
+  if (you && !you.alive)
+    return (
+      <>
+        <Eyebrow>day {snapshot.round}</Eyebrow>
+        <Headline>Not a word</Headline>
+        <PhaseTimer
+          endsAt={snapshot.phaseEndsAt}
+          clockOffset={clockOffset}
+          label="they vote in"
+        />
+        <p className="mt-4 font-serif text-lg text-white/60">
+          You know things the living do not, and you cannot tell them any of it. Watch them work it
+          out. Everything you have goes on the board.
+        </p>
+        <Graveyard snapshot={snapshot} send={send} />
+      </>
+    );
+
   return (
     <>
       <Eyebrow>day {snapshot.round}</Eyebrow>
@@ -873,9 +900,7 @@ function DeliberationPhase({ snapshot, clockOffset, send, isHost, sendHost }: Ph
             {snapshot.readyToVoteCount} of {snapshot.livingCount} ready
           </p>
         </div>
-      ) : (
-        <Graveyard snapshot={snapshot} send={send} />
-      )}
+      ) : null}
 
       {isHost ? (
         <button
@@ -906,6 +931,9 @@ function VotePhase({ snapshot, clockOffset, send }: PhaseProps) {
       <>
         <Eyebrow>day {snapshot.round}</Eyebrow>
         <Headline>They are voting</Headline>
+        <p className="mt-4 font-serif text-lg text-white/60">
+          Say nothing. Cast yours.
+        </p>
         <Graveyard snapshot={snapshot} send={send} />
       </>
     );

@@ -26,6 +26,13 @@ import type {
 import type { LiarsOverlay } from "./useLiarsEffects";
 import { LIARS_NOTE_LENGTH, LIARS_NOTE_LIMIT, type LiarsNote } from "./useLiarsNotes";
 
+/** Hand-placed rather than random, so the sky is the same one every night. */
+const STARS: Array<[number, number, number, number]> = [
+  [18, 20, 0.5, 0], [72, 14, 0.6, 400], [86, 31, 0.45, 900],
+  [30, 40, 0.4, 1300], [63, 46, 0.5, 700], [12, 52, 0.45, 1800],
+  [90, 58, 0.4, 200], [42, 12, 0.5, 1100],
+];
+
 const MARK_GLYPH: Record<LiarsMark, { glyph: string; label: string }> = {
   moved: { glyph: "→", label: "seen moving" },
   saved: { glyph: "✚", label: "saved" },
@@ -44,15 +51,48 @@ export function LiarsOverlayLayer({ overlay }: { overlay: LiarsOverlay }) {
       */}
       {celestial ? (
         <svg viewBox="0 0 100 100" className="size-full" preserveAspectRatio="xMidYMid slice">
-          <circle
-            cx="50"
-            cy="34"
-            r="9"
-            className={overlay === "dusk" ? "liars-moon liars-moon--rise" : "liars-moon liars-moon--set"}
-          />
           {overlay === "dusk" ? (
-            <circle cx="53.5" cy="31.5" r="9" className="liars-moon-shadow" />
-          ) : null}
+            <>
+              {/*
+                A crescent, cut by a second circle rather than drawn as a path — the shadow shares
+                the moon's animation so the crescent keeps its shape the whole way up.
+              */}
+              <g className="liars-moon--rise">
+                <circle cx="50" cy="34" r="9" className="liars-moon" />
+                <circle cx="53.5" cy="31.5" r="9" className="liars-moon-shadow" />
+              </g>
+              {STARS.map(([cx, cy, r, delay]) => (
+                <circle
+                  key={`${cx}-${cy}`}
+                  cx={cx}
+                  cy={cy}
+                  r={r}
+                  className="liars-star"
+                  style={{ animationDelay: `${delay}ms` }}
+                />
+              ))}
+            </>
+          ) : (
+            // Dawn is a sun coming up, not a moon going down. The old version slid the moon out
+            // through the top of the screen, which is both wrong and the opposite of a sunrise.
+            <>
+              {/*
+                The glow has to be a gradient. A flat disc behind the sun draws its own hard edge
+                and the whole thing reads as a bullseye rather than as light.
+              */}
+              <defs>
+                <radialGradient id="liars-dawn-glow">
+                  <stop offset="0%" stopColor="var(--things-amber)" stopOpacity="0.55" />
+                  <stop offset="45%" stopColor="var(--things-amber)" stopOpacity="0.18" />
+                  <stop offset="100%" stopColor="var(--things-amber)" stopOpacity="0" />
+                </radialGradient>
+              </defs>
+              <g className="liars-sun--rise">
+                <circle cx="50" cy="72" r="46" fill="url(#liars-dawn-glow)" />
+                <circle cx="50" cy="72" r="7" className="liars-sun" />
+              </g>
+            </>
+          )}
         </svg>
       ) : null}
     </div>

@@ -578,8 +578,18 @@
     animation: liars-moon-rise 5s ease-out forwards;
   }
 
-  .liars-moon--set {
-    animation: liars-moon-set 2.5s ease-in forwards;
+  .liars-star {
+    fill: var(--things-cream);
+    opacity: 0;
+    animation: liars-star-in 2.6s ease-out forwards;
+  }
+
+  .liars-sun {
+    fill: var(--things-amber);
+  }
+
+  .liars-sun--rise {
+    animation: liars-sun-rise 2.5s ease-out forwards;
   }
 
   @keyframes liars-moon-rise {
@@ -596,20 +606,35 @@
     }
   }
 
-  @keyframes liars-moon-set {
-    0% {
-      transform: translateY(0);
-      opacity: 0.7;
+  @keyframes liars-star-in {
+    0%,
+    30% {
+      opacity: 0;
     }
     100% {
-      transform: translateY(-26px);
+      opacity: 0.55;
+    }
+  }
+
+  /* Up and over the horizon, which is the direction a sunrise actually goes. */
+  @keyframes liars-sun-rise {
+    0% {
+      transform: translateY(30px);
       opacity: 0;
+    }
+    40% {
+      opacity: 0.85;
+    }
+    100% {
+      transform: translateY(-4px);
+      opacity: 0.9;
     }
   }
 
   @media (prefers-reduced-motion: reduce) {
     .liars-moon--rise,
-    .liars-moon--set {
+    .liars-sun--rise,
+    .liars-star {
       animation: none;
       opacity: 0.6;
     }

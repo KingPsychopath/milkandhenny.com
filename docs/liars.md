@@ -468,8 +468,9 @@ trusted to hide.
 Every device runs the identical transition — same duration, same luminance curve, same animation —
 regardless of role.
 
-- **Dusk, 5s:** cream washes down to `--things-night` and a crescent moon rises. **Dawn, 2.5s:**
-  reverse, and it sets. The window already existed — five seconds in which nothing role-specific may
+- **Dusk, 5s:** cream washes down to `--things-night`, a crescent moon rises and eight stars come
+  in behind it. **Dawn, 2.5s:** a sun comes up — not the moon going back down, which is what the
+  first version did and which is both wrong and the opposite of a sunrise. The window already existed — five seconds in which nothing role-specific may
   be on screen — so giving it something to look at costs nothing and makes the pause read as a scene
   rather than a stall.
 - **Nothing role-specific is on screen during dusk.** Every device shows the same words — *"Night
@@ -495,6 +496,10 @@ that is the design rather than a limitation of it.
 | **Dawn, on the name** | That window goes red, then dark. Amber again if the doctor got there first |
 | **Movement** | A corroborated sighting flickers that window |
 | **Day** | The dead are shuttered |
+
+At dawn the village **replaces** the roster rather than sitting above it. Names under the houses and
+the same names in a list underneath is the same information twice on one screen, and the roster
+comes back at deliberation, where you actually need to point at somebody.
 
 **A village whose windows lit when people actually acted would end the game.** Movement being local
 — one watcher learning one bit about one person they chose — is the only thing holding §3.3 up.
@@ -616,6 +621,13 @@ This is deliberate. Live god view means people in one room cannot keep a straigh
 make the graveyard vote a guaranteed-correct ballot. `liveGodView` exists as a toggle for groups who
 want pure spectacle; the engine disables the graveyard vote when it is on, because the two are
 incompatible.
+
+**2b. What the dead see.** Their own screen, in every phase, not the living's.
+
+They were being handed a headline telling them to talk, an instruction to say who they think it is,
+and a roster they cannot touch. Every word of that invites the one thing a dead player must not do.
+Now: `Not a word` during deliberation, `Say nothing. Cast yours.` at the vote, and the graveyard
+underneath, which already lists everyone they can act on.
 
 **2a. What death costs you.** Your knowledge list is **sealed the moment your last words close.**
 
