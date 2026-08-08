@@ -208,8 +208,14 @@ body:has(.pitch-night) {
   animation: pitch-night-hero-logo-in 680ms cubic-bezier(0.22, 1, 0.36, 1) backwards;
 }
 
-.pitch-night-hero .pitch-night-kicker {
+.pitch-night-event-name {
   margin-top: clamp(1.5rem, 3vw, 2.75rem);
+  color: var(--pitch-night-gold);
+  font-family: var(--font-mono);
+  font-size: clamp(1.35rem, 3vw, 2.5rem);
+  letter-spacing: 0.08em;
+  line-height: 1;
+  text-transform: uppercase;
   animation: pitch-night-hero-item-in 460ms cubic-bezier(0.22, 1, 0.36, 1) 60ms backwards;
 }
 
@@ -3266,7 +3272,7 @@ body:has(.pitch-night) {
 
 @media (prefers-reduced-motion: reduce) {
   .pitch-night-wordmark img,
-  .pitch-night-hero .pitch-night-kicker,
+  .pitch-night-event-name,
   .pitch-night-hero-line > span,
   .pitch-night-hero-copy,
   .pitch-night-hero-actions,

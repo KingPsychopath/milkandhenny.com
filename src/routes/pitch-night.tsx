@@ -16,11 +16,11 @@ export const Route = createFileRoute("/pitch-night")({
   component: PitchNightRoute,
   head: () => ({
     meta: [
-      { title: `The Pitch Night — ${SITE_NAME}` },
+      { title: `After School Club — ${SITE_NAME}` },
       {
         name: "description",
         content:
-          "Pitch night, spelling bee, board games, a live Apartment Life DJ set, catering and free parking.",
+          "Milk & Henny: After School Club. Pitch night, spelling bee, board games, a live Apartment Life DJ set, catering and free parking.",
       },
       { property: "og:image", content: "/MAHLogo.svg" },
     ],

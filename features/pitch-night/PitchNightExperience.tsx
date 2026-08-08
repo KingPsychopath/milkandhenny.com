@@ -29,7 +29,7 @@ function PitchNightStory({ ticketHref }: { ticketHref: string }) {
         <span data-progress />
       </div>
 
-      <nav className="pitch-night-nav" aria-label="Pitch Night">
+      <nav className="pitch-night-nav" aria-label="After School Club">
         <Link to="/" className="pitch-night-nav-home">
           milk & henny
         </Link>
