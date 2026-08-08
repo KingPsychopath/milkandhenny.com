@@ -330,6 +330,7 @@ function DrawCountryRoom({
           seconds={seconds}
           submitting={submitting}
           submitted={me?.submitted}
+          submitLabel="lock in"
           onChange={setDrawing}
           onDone={() => void submit()}
         />

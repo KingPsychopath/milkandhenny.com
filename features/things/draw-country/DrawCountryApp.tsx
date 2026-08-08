@@ -7,7 +7,7 @@ import { writeExpiringLocalValue } from "../shared/game-storage.client";
 import { createDrawCountryRoomFn } from "./draw-country-room.functions";
 import { drawCountryBrowserKeys } from "./draw-country-keys";
 import { recentCountryIds } from "./rotation.client";
-import { SoloDrawCountry } from "./SoloDrawCountry";
+import { SoloDrawCountry, type SoloDrawCountryMode } from "./SoloDrawCountry";
 import {
   GameLaunch,
   GameLaunchButton,
@@ -16,10 +16,49 @@ import {
 } from "../shared/GameLaunch";
 import { RoomJoinControl } from "../shared/RoomJoinControl";
 
+function RoundSettings({
+  roundTotal,
+  drawSeconds,
+  setRoundTotal,
+  setDrawSeconds,
+}: {
+  roundTotal: number;
+  drawSeconds: number;
+  setRoundTotal: (value: number) => void;
+  setDrawSeconds: (value: number) => void;
+}) {
+  return (
+    <>
+      <label className="font-mono text-xs text-black/55">
+        <span className="block pb-2">countries</span>
+        <AppSelect
+          value={roundTotal}
+          onValueChange={(value) => setRoundTotal(Number(value))}
+          ariaLabel="Countries per game"
+          tone="cream"
+          className="min-h-12 w-full"
+          options={[3, 5, 7, 10].map((value) => ({ value, label: `${value} rounds` }))}
+        />
+      </label>
+      <label className="font-mono text-xs text-black/55">
+        <span className="block pb-2">time per country</span>
+        <AppSelect
+          value={drawSeconds}
+          onValueChange={(value) => setDrawSeconds(Number(value))}
+          ariaLabel="Time per country"
+          tone="cream"
+          className="min-h-12 w-full"
+          options={[20, 30, 45, 60].map((value) => ({ value, label: `${value} seconds` }))}
+        />
+      </label>
+    </>
+  );
+}
+
 export function DrawCountryApp() {
   const navigate = useNavigate();
   const haptics = useWebHaptics();
-  const [solo, setSolo] = useState(false);
+  const [soloMode, setSoloMode] = useState<SoloDrawCountryMode | null>(null);
   const [name, setName] = useState("");
   const { preferences, set } = useGamePreferences("draw-country", {
     roundTotal: 5,
@@ -32,9 +71,17 @@ export function DrawCountryApp() {
   const [joinCode, setJoinCode] = useState("");
   const [creating, setCreating] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
-  const [panel, setPanel] = useState<"friends" | "join" | null>(null);
+  const [panel, setPanel] = useState<"solo" | "friends" | "join" | null>(null);
 
-  if (solo) return <SoloDrawCountry onExit={() => setSolo(false)} />;
+  if (soloMode)
+    return (
+      <SoloDrawCountry
+        mode={soloMode}
+        roundTotal={roundTotal}
+        roundSeconds={soloMode === "quick" ? 30 : drawSeconds}
+        onExit={() => setSoloMode(null)}
+      />
+    );
 
   const handleCreate = async () => {
     if (!name.trim() || creating) {
@@ -93,27 +140,35 @@ export function DrawCountryApp() {
         <GameLaunch
           tone="cream"
           eyebrow="from memory"
-          title="How well do you remember a country?"
-          description="Draw its outline in thirty seconds and see how close you get."
+          title="Draw a country. See what you remembered."
+          description="We align your drawing, compare it with the real border, and show exactly where it matched."
         >
           <GameLaunchButton
             accent="ink"
             onClick={() => {
-              setSolo(true);
+              setSoloMode("quick");
               void haptics.trigger("selection");
             }}
           >
-            start
+            quick draw
           </GameLaunchButton>
-          <GameLaunchMeta tone="light">30 seconds · works offline</GameLaunchMeta>
+          <GameLaunchMeta tone="light">one country · 30 seconds · works offline</GameLaunchMeta>
           <GameLaunchChoices tone="light">
+            <button
+              type="button"
+              onClick={() => setPanel(panel === "solo" ? null : "solo")}
+              aria-pressed={panel === "solo"}
+              className="min-h-11"
+            >
+              solo rounds
+            </button>
             <button
               type="button"
               onClick={() => setPanel(panel === "friends" ? null : "friends")}
               aria-pressed={panel === "friends"}
               className="min-h-11"
             >
-              play with friends
+              multiplayer rounds
             </button>
             <button
               type="button"
@@ -126,14 +181,49 @@ export function DrawCountryApp() {
           </GameLaunchChoices>
         </GameLaunch>
 
+        {panel === "solo" ? (
+          <section
+            className="mx-auto mt-10 max-w-lg border-t border-black/15 pt-7"
+            aria-labelledby="solo-rounds-mode"
+          >
+            <h2 id="solo-rounds-mode" className="font-serif text-3xl font-semibold">
+              Solo rounds
+            </h2>
+            <p className="mt-2 font-serif text-black/55">
+              Draw a short set, inspect every map, then compare your scores at the end.
+            </p>
+            <div className="mt-5 grid gap-4 sm:grid-cols-2">
+              <RoundSettings
+                roundTotal={roundTotal}
+                drawSeconds={drawSeconds}
+                setRoundTotal={setRoundTotal}
+                setDrawSeconds={setDrawSeconds}
+              />
+              <button
+                type="button"
+                onClick={() => {
+                  setSoloMode("rounds");
+                  void haptics.trigger("selection");
+                }}
+                className="min-h-12 rounded-full bg-black px-6 font-mono text-xs font-semibold uppercase tracking-[0.14em] text-white sm:col-span-2"
+              >
+                start {roundTotal} solo rounds
+              </button>
+            </div>
+          </section>
+        ) : null}
+
         {panel === "friends" ? (
           <section
             className="mx-auto mt-10 max-w-lg border-t border-black/15 pt-7"
             aria-labelledby="together-mode"
           >
             <h2 id="together-mode" className="font-serif text-3xl font-semibold">
-              Play with friends
+              Multiplayer rounds
             </h2>
+            <p className="mt-2 font-serif text-black/55">
+              Everyone draws the same countries. The closest border wins each round.
+            </p>
             <form
               onSubmit={(event) => {
                 event.preventDefault();
@@ -158,28 +248,12 @@ export function DrawCountryApp() {
                   className="min-h-12 w-full rounded-full border border-black/15 bg-white/55 px-4 text-base text-black"
                 />
               </label>
-              <label className="font-mono text-xs text-black/55">
-                <span className="block pb-2">rounds</span>
-                <AppSelect
-                  value={roundTotal}
-                  onValueChange={(value) => setRoundTotal(Number(value))}
-                  ariaLabel="Rounds"
-                  tone="cream"
-                  className="min-h-12 w-full"
-                  options={[3, 5, 7, 10].map((value) => ({ value, label: String(value) }))}
-                />
-              </label>
-              <label className="font-mono text-xs text-black/55">
-                <span className="block pb-2">draw time</span>
-                <AppSelect
-                  value={drawSeconds}
-                  onValueChange={(value) => setDrawSeconds(Number(value))}
-                  ariaLabel="Draw time"
-                  tone="cream"
-                  className="min-h-12 w-full"
-                  options={[20, 30, 45, 60].map((value) => ({ value, label: `${value} seconds` }))}
-                />
-              </label>
+              <RoundSettings
+                roundTotal={roundTotal}
+                drawSeconds={drawSeconds}
+                setRoundTotal={setRoundTotal}
+                setDrawSeconds={setDrawSeconds}
+              />
               <button
                 type="submit"
                 disabled={creating}

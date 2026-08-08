@@ -1,6 +1,6 @@
 import { useId, useState } from "react";
-import { closestOnBorder, pointInShape, ringLength } from "./geometry";
-import type { CountryEvaluation } from "./scoring";
+import { closestOnBorder, ringLength } from "./geometry";
+import { countryScoreBreakdown, type CountryEvaluation, type CountryFeedbackKey } from "./scoring";
 import type { CountryDrawing, DrawPoint } from "./types";
 
 const SCALE = 820;
@@ -8,30 +8,35 @@ const OFFSET = 90;
 const MAX_GUIDES = 40;
 const MAX_MISSED_GUIDES = 24;
 
-export type ScoreMetricKey =
-  | "average"
-  | "outside"
-  | "inside"
-  | "missed"
-  | "shape"
-  | "mismatch"
-  | "strokes"
-  | "islands";
+const SCORE_EXPLANATIONS: Record<CountryFeedbackKey, string> = {
+  outline: "Amber guides show where your line moved away from the real border.",
+  coverage: "Dashed guides point to coast you shortened, skipped, or placed elsewhere.",
+  shape: "The fills compare the overall silhouettes, after position and size are aligned.",
+  strokes: "A clean, single outline scores best. Extra crossings and repeated tracing lose points.",
+  islands: "Separate land masses are compared by their relative sizes, not tiny island detail.",
+};
 
-const SCORE_EXPLANATIONS: Record<ScoreMetricKey, string> = {
-  average:
-    "The total error used for your score. It combines the checks below and any severe mismatch penalty. Lower is better.",
-  outside: "Red lines measure from your outside points to the reference. Lower is better.",
-  inside: "Blue lines measure from points that cut inside to the reference. Lower is better.",
-  missed: "Dashed lines show reference sections your outline did not reach. Lower is better.",
-  shape:
-    "The filled silhouettes show overall overlap, with extra tolerance for thin or fragmented countries. Lower is better.",
-  mismatch:
-    "An extra penalty when the border, missed sections, and silhouette substantially disagree, or when a generic outline encloses the country. Lower is better.",
-  strokes:
-    "Your black outline is checked for crossings, thin marks, and excessive tracing. 0% means no penalty.",
-  islands:
-    "The separate outlines compare the number and relative sizes of land masses. 0% means no penalty.",
+const SCORE_COACHING: Record<CountryFeedbackKey, { strong: string; improve: string }> = {
+  outline: {
+    strong: "Your line stayed close to the real border.",
+    improve: "Follow the big bends first; small coastline detail matters less.",
+  },
+  coverage: {
+    strong: "You remembered nearly all of the coastline.",
+    improve: "Keep the outline moving around the whole country before adding detail.",
+  },
+  shape: {
+    strong: "The country reads clearly from its silhouette.",
+    improve: "Start with the country's widest and tallest points to lock in its proportions.",
+  },
+  strokes: {
+    strong: "That was a clean, confident outline.",
+    improve: "Use one continuous stroke for the mainland and lift only for islands.",
+  },
+  islands: {
+    strong: "The main land masses are in good balance.",
+    improve: "Draw the largest islands separately; tiny ones are deliberately forgiving.",
+  },
 };
 
 function pathFor(ring: DrawPoint[], scale = 820, offset = 90) {
@@ -73,7 +78,6 @@ function guideLines(drawing: CountryDrawing, reference: CountryDrawing) {
   return guidePoints(drawing).map((point) => ({
     point,
     target: closestOnBorder(point, reference).point,
-    position: pointInShape(point, reference) ? "inside" : "outside",
   }));
 }
 
@@ -90,19 +94,19 @@ export function CountryReveal({
   id,
 }: {
   evaluation: CountryEvaluation;
-  focus: ScoreMetricKey | null;
+  focus: CountryFeedbackKey | null;
   id: string;
 }) {
-  const guides = guideLines(evaluation.drawing, evaluation.reference);
+  const guides = focus === "outline" ? guideLines(evaluation.drawing, evaluation.reference) : [];
   const missedGuides =
-    focus === "missed" ? missedGuideLines(evaluation.reference, evaluation.drawing) : [];
+    focus === "coverage" ? missedGuideLines(evaluation.reference, evaluation.drawing) : [];
   return (
     <svg
       id={id}
       viewBox="0 0 1000 1000"
       role="img"
       data-focus={focus ?? "all"}
-      aria-label={`Reference country border compared with your aligned drawing. Red lines measure gaps from your points outside the reference; blue lines measure gaps from your points inside it. Score ${evaluation.score} out of 100.${focus ? ` ${SCORE_EXPLANATIONS[focus]}` : ""}`}
+      aria-label={`Real country border compared with your drawing after position and size are aligned. Score ${evaluation.score} out of 100.${focus ? ` ${SCORE_EXPLANATIONS[focus]}` : ""}`}
       className="country-reveal-board block aspect-square w-full rounded-[1.75rem] border border-black/15 bg-white/45"
     >
       <title>Reference country border and your aligned drawing</title>
@@ -134,7 +138,7 @@ export function CountryReveal({
           />
         ))}
       </g>
-      {guides.map(({ point, target, position }, index) => (
+      {guides.map(({ point, target }, index) => (
         <line
           key={index}
           x1={OFFSET + point.x * SCALE}
@@ -142,7 +146,7 @@ export function CountryReveal({
           x2={OFFSET + target.x * SCALE}
           y2={OFFSET + target.y * SCALE}
           pathLength="1"
-          className={`country-reveal-guide country-reveal-guide--${position}`}
+          className="country-reveal-guide country-reveal-guide--gap"
           strokeWidth="2"
           style={{ animationDelay: `${760 + index * 22}ms` }}
         />
@@ -173,13 +177,13 @@ export function CountryReveal({
           style={{ animationDelay: `${280 + Math.min(index * 45, 260)}ms` }}
         />
       ))}
-      {guides.map(({ point, position }, index) => (
+      {guides.map(({ point }, index) => (
         <circle
           key={`point-${index}`}
           cx={OFFSET + point.x * SCALE}
           cy={OFFSET + point.y * SCALE}
           r="4"
-          className={`country-reveal-point country-reveal-point--${position}`}
+          className="country-reveal-point"
           style={{ animationDelay: `${880 + index * 22}ms` }}
         />
       ))}
@@ -187,7 +191,7 @@ export function CountryReveal({
   );
 }
 
-export function CountryRevealLegend() {
+export function CountryRevealLegend({ focus }: { focus: CountryFeedbackKey | null }) {
   return (
     <div className="mt-4">
       <ul
@@ -196,20 +200,18 @@ export function CountryRevealLegend() {
       >
         <li className="flex items-center gap-2">
           <span className="country-legend-reference" aria-hidden="true" />
-          reference
+          real border
         </li>
         <li className="flex items-center gap-2">
-          <span className="country-legend-point" aria-hidden="true" />
-          your points
+          <span className="country-legend-drawing" aria-hidden="true" />
+          your drawing
         </li>
-        <li className="flex items-center gap-2">
-          <span className="country-legend-outside" aria-hidden="true" />
-          outside
-        </li>
-        <li className="flex items-center gap-2">
-          <span className="country-legend-inside" aria-hidden="true" />
-          inside
-        </li>
+        {focus === "outline" || focus === "coverage" ? (
+          <li className="flex items-center gap-2">
+            <span className="country-legend-gap" aria-hidden="true" />
+            {focus === "outline" ? "border gap" : "coast missed"}
+          </li>
+        ) : null}
       </ul>
     </div>
   );
@@ -223,86 +225,55 @@ export function CountryScoreDetails({
   explanationId,
 }: {
   evaluation: CountryEvaluation;
-  activeMetric: ScoreMetricKey | null;
-  onMetricChange: (metric: ScoreMetricKey | null) => void;
+  activeMetric: CountryFeedbackKey | null;
+  onMetricChange: (metric: CountryFeedbackKey | null) => void;
   revealId: string;
   explanationId: string;
 }) {
-  const metrics: Array<{
-    key: ScoreMetricKey;
-    label: string;
-    value: number;
-    accessibleLabel: string;
-  }> = [
-    {
-      key: "average",
-      label: "score error",
-      value: evaluation.deviation,
-      accessibleLabel: "Total scoring error",
-    },
-    {
-      key: "outside",
-      label: "outside",
-      value: evaluation.outsideDeviation,
-      accessibleLabel: "Outside deviation contribution",
-    },
-    {
-      key: "inside",
-      label: "inside",
-      value: evaluation.insideDeviation,
-      accessibleLabel: "Inside deviation contribution",
-    },
-    {
-      key: "missed",
-      label: "missed",
-      value: evaluation.coverageDeviation,
-      accessibleLabel: "Missed border contribution",
-    },
-    {
-      key: "shape",
-      label: "shape",
-      value: evaluation.silhouetteDeviation,
-      accessibleLabel: "Shape deviation contribution",
-    },
-    {
-      key: "mismatch",
-      label: "mismatch",
-      value: evaluation.mismatchDeviation,
-      accessibleLabel: "Severe mismatch penalty",
-    },
-    {
-      key: "strokes",
-      label: "strokes",
-      value: evaluation.strokeDeviation,
-      accessibleLabel: "Stroke quality penalty",
-    },
-  ];
-  if (evaluation.reference.length > 1)
-    metrics.push({
-      key: "islands",
-      label: "islands",
-      value: evaluation.islandDeviation,
-      accessibleLabel: "Island balance penalty",
-    });
+  const metrics = countryScoreBreakdown(evaluation, evaluation.reference.length > 1);
+  const strongest = metrics.toSorted((first, second) => second.score - first.score)[0];
+  const next = metrics.toSorted((first, second) => first.score - second.score)[0];
+  const hasDrawing = evaluation.drawing.length > 0;
 
   return (
-    <div className="mt-4">
-      <dl className="flex flex-wrap gap-x-2 gap-y-1 font-mono text-micro text-black/45">
+    <div className="mt-5">
+      <div className="grid gap-2 sm:grid-cols-2">
+        <p className="border-t border-black/10 pt-3 font-serif text-sm leading-relaxed text-black/65">
+          <span className="block font-mono text-micro uppercase tracking-[0.14em] text-black/40">
+            strongest
+          </span>
+          {hasDrawing ? SCORE_COACHING[strongest.key].strong : "No outline was locked in."}
+        </p>
+        <p className="border-t border-black/10 pt-3 font-serif text-sm leading-relaxed text-black/65">
+          <span className="block font-mono text-micro uppercase tracking-[0.14em] text-black/40">
+            next time
+          </span>
+          {!hasDrawing
+            ? "Draw one complete loop, then tap score drawing before time runs out."
+            : next.score >= 95
+              ? "Nothing obvious to fix — try less time or a harder country."
+              : SCORE_COACHING[next.key].improve}
+        </p>
+      </div>
+      <p className="mt-5 font-mono text-micro uppercase tracking-[0.14em] text-black/40">
+        tap a score to inspect the map
+      </p>
+      <dl className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
         {metrics.map((metric) => {
           const isActive = activeMetric === metric.key;
           return (
-            <div key={metric.key}>
-              <dt className="sr-only">{metric.accessibleLabel}</dt>
+            <div key={metric.key} className="min-w-0">
+              <dt className="sr-only">{metric.label}</dt>
               <dd>
                 <button
                   type="button"
-                  aria-expanded={isActive}
                   aria-pressed={isActive}
                   aria-controls={`${revealId}${isActive ? ` ${explanationId}` : ""}`}
                   onClick={() => onMetricChange(isActive ? null : metric.key)}
-                  className={`-my-2 inline-flex min-h-11 items-center rounded px-1 underline decoration-black/25 decoration-dotted underline-offset-4 transition-colors hover:text-black/70 ${isActive ? "bg-black/[0.04] text-black/70" : ""}`}
+                  className={`flex min-h-16 w-full flex-col justify-center rounded-2xl border px-3 text-left font-mono transition-opacity hover:opacity-75 ${isActive ? "border-black/35 bg-white/55" : "border-black/10 bg-white/20"}`}
                 >
-                  {metric.label} {metric.value}%
+                  <span className="text-lg font-semibold text-black">{metric.score}</span>
+                  <span className="mt-0.5 truncate text-micro text-black/45">{metric.label}</span>
                 </button>
               </dd>
             </div>
@@ -313,11 +284,16 @@ export function CountryScoreDetails({
         <p
           id={explanationId}
           aria-live="polite"
-          className="mt-1 max-w-xl font-mono text-micro leading-relaxed text-black/45"
+          className="mt-3 max-w-xl font-mono text-micro leading-relaxed text-black/50"
         >
           {SCORE_EXPLANATIONS[activeMetric]}
         </p>
-      ) : null}
+      ) : (
+        <p className="mt-3 max-w-xl font-mono text-micro leading-relaxed text-black/45">
+          We align position and size, then compare the border, missing coast, overall shape, and
+          stroke quality. Higher is better.
+        </p>
+      )}
     </div>
   );
 }
@@ -325,7 +301,7 @@ export function CountryScoreDetails({
 export function CountryRevealAnalysis({ evaluation }: { evaluation: CountryEvaluation }) {
   const revealId = useId();
   const explanationId = useId();
-  const [activeMetric, setActiveMetric] = useState<ScoreMetricKey | null>(null);
+  const [activeMetric, setActiveMetric] = useState<CountryFeedbackKey | null>(null);
 
   return (
     <>
@@ -337,7 +313,7 @@ export function CountryRevealAnalysis({ evaluation }: { evaluation: CountryEvalu
         revealId={revealId}
         explanationId={explanationId}
       />
-      <CountryRevealLegend />
+      <CountryRevealLegend focus={activeMetric} />
     </>
   );
 }

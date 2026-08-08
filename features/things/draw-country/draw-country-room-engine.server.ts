@@ -155,6 +155,8 @@ function snapshot(room: RoomState, playerId: string): DrawCountrySnapshot {
     hostPlayerId: room.hostPlayerId,
     canControl: playerId === room.hostPlayerId || !host || now - host.lastSeenAt > HOST_TAKEOVER_MS,
     gameNumber: room.gameNumber ?? 1,
+    roundTotal: room.countryIds.length,
+    drawSeconds: room.drawSeconds,
     expiresAt: room.expiresAt,
     players: room.players.map((player) => ({
       id: player.id,

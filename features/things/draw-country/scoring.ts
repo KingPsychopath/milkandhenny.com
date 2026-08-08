@@ -591,6 +591,59 @@ function strokeQualityScore(deviation: number) {
   return Math.round(100 * ((1 - bounded) / 0.8) ** 1.7);
 }
 
+export type CountryFeedbackKey = "outline" | "coverage" | "shape" | "strokes" | "islands";
+
+export interface CountryFeedbackMetric {
+  key: CountryFeedbackKey;
+  label: string;
+  score: number;
+}
+
+/** Player-facing strengths, expressed as matches where higher is always better. */
+export function countryScoreBreakdown(
+  evaluation: CountryEvaluation,
+  includeIslands: boolean,
+): CountryFeedbackMetric[] {
+  const hasDrawing = evaluation.drawing.length > 0;
+  const metrics: CountryFeedbackMetric[] = [
+    {
+      key: "outline",
+      label: "border match",
+      score: hasDrawing ? scoreFromDeviation(evaluation.borderDeviation / 100) : 0,
+    },
+    {
+      key: "coverage",
+      label: "coast remembered",
+      score: hasDrawing
+        ? scoreFromDeviation(evaluation.coverageDeviation / (COVERAGE_WEIGHT * 100))
+        : 0,
+    },
+    {
+      key: "shape",
+      label: "shape match",
+      score: hasDrawing
+        ? scoreFromDeviation(evaluation.silhouetteDeviation / (SILHOUETTE_WEIGHT * 100))
+        : 0,
+    },
+    {
+      key: "strokes",
+      label: "clean outline",
+      score: hasDrawing
+        ? strokeQualityScore(evaluation.strokeDeviation / (STROKE_QUALITY_WEIGHT * 100))
+        : 0,
+    },
+  ];
+  if (includeIslands)
+    metrics.push({
+      key: "islands",
+      label: "island balance",
+      score: hasDrawing
+        ? scoreFromDeviation(evaluation.islandDeviation / (ISLAND_BALANCE_WEIGHT * 100))
+        : 0,
+    });
+  return metrics;
+}
+
 export function scoreCountryDrawing(
   country: CountryOutline,
   input: CountryDrawing,

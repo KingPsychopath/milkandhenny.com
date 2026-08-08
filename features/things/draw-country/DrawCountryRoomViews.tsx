@@ -81,7 +81,10 @@ export function RoomLobby({
         <p className="font-mono text-micro uppercase tracking-[0.18em] text-black/40">room ready</p>
         <h1 className="mt-3 font-serif text-5xl font-semibold">Bring everyone in.</h1>
         <p className="mt-3 max-w-md font-serif text-lg text-black/55">
-          Draw together. Closest border wins.
+          Everyone draws the same {snapshot.roundTotal} countries. Closest border wins each round.
+        </p>
+        <p className="mt-2 font-mono text-micro text-black/40">
+          {snapshot.roundTotal} rounds · {snapshot.drawSeconds} seconds each · 100 points per round
         </p>
         {qr ? (
           <img
@@ -208,7 +211,7 @@ export function RoomReveal({
               id="round-ranking"
               className="font-mono text-micro uppercase tracking-[0.17em] text-black/40"
             >
-              closest this round
+              round {snapshot.round?.number} of {snapshot.roundTotal}
             </h2>
             <ol className="mt-3 divide-y divide-black/10">
               {ranking.map((player, index) => (
@@ -221,7 +224,10 @@ export function RoomReveal({
                     {player.name}
                     {player.id === playerId ? " · you" : ""}
                   </span>
-                  <span>{player.roundScore ?? 0}</span>
+                  <span className="text-right">
+                    <span className="block font-semibold">{player.roundScore ?? 0}</span>
+                    <span className="block text-micro text-black/35">{player.score} total</span>
+                  </span>
                 </li>
               ))}
             </ol>
@@ -272,7 +278,10 @@ export function FinalRanking({
         <p className="font-mono text-micro uppercase tracking-[0.18em] text-black/40">
           {session ? `game ${snapshot.gameNumber} · final borders` : "final borders"}
         </p>
-        <h1 className="mt-3 font-serif text-5xl font-semibold">The atlas is settled.</h1>
+        <h1 className="mt-3 font-serif text-5xl font-semibold">Final scores.</h1>
+        <p className="mt-3 font-serif text-black/55">
+          {snapshot.roundTotal} countries · {snapshot.roundTotal * 100} points available
+        </p>
         <ol className="mt-8 divide-y divide-black/10 border-y border-black/15">
           {ranking.map((player, index) => (
             <li key={player.id} className="flex min-h-16 items-center gap-4 py-3">
@@ -285,6 +294,9 @@ export function FinalRanking({
               </span>
               <span className="text-right">
                 <span className="block font-mono text-lg font-semibold">{player.score}</span>
+                <span className="block font-mono text-micro text-black/40">
+                  {Math.round(player.score / snapshot.roundTotal)} average
+                </span>
                 {session ? (
                   <span className="block font-mono text-micro text-black/40">
                     {player.sessionScore} total

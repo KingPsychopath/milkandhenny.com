@@ -43,6 +43,7 @@ function traceOf(countryId: string): CountryDrawing {
 describe("Draw the Country rooms", () => {
   it("keeps the round's answer available to players but never leaks other drawings", async () => {
     const room = await hostedRoom();
+    expect(room.snapshot).toMatchObject({ roundTotal: 2, drawSeconds: 30 });
     const player = await joined(room.roomId, room.joinToken, "Maya");
     const started = await applyDrawCountryAction({
       roomId: room.roomId,

@@ -74,6 +74,8 @@ export interface DrawCountrySnapshot extends MultiplayerRevision, MultiplayerSeq
   canControl: boolean;
   /** 1 for the first game on this room code, incremented by every rematch. */
   gameNumber: number;
+  roundTotal: number;
+  drawSeconds: number;
   /** Current room expiry, so a client can keep its stored credentials in step after a rematch. */
   expiresAt: number;
   players: DrawCountryPlayer[];

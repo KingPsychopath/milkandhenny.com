@@ -10,6 +10,7 @@ export function CountryRoundBoard({
   roundLabel,
   submitting = false,
   submitted = false,
+  submitLabel = "score drawing",
   onChange,
   onDone,
 }: {
@@ -19,6 +20,7 @@ export function CountryRoundBoard({
   roundLabel?: string;
   submitting?: boolean;
   submitted?: boolean;
+  submitLabel?: string;
   onChange: (drawing: CountryDrawing) => void;
   onDone: () => void;
 }) {
@@ -51,8 +53,8 @@ export function CountryRoundBoard({
         id="draw-country-instructions"
         className="mt-3 px-1 font-mono text-micro leading-relaxed text-black/45"
       >
-        draw anywhere — we align position and size · keep clear of the edge · lift to close; draw
-        again for islands
+        Draw one loop for the mainland; lifting closes it. Start another loop for large islands.
+        Position and size do not affect your score, but keep the drawing clear of the edge.
       </p>
       <div className="mt-4 flex items-center justify-between gap-3">
         <div className="flex gap-2">
@@ -79,7 +81,7 @@ export function CountryRoundBoard({
           onClick={onDone}
           className="min-h-12 rounded-full bg-black px-7 font-mono text-xs font-semibold uppercase tracking-[0.14em] text-white disabled:opacity-30"
         >
-          {submitted ? "locked in" : submitting ? "scoring…" : "done"}
+          {submitted ? "locked in" : submitting ? "scoring…" : submitLabel}
         </button>
       </div>
     </main>

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { COUNTRIES } from "../../features/things/draw-country/countries";
 import {
+  countryScoreBreakdown,
   drawingIsValid,
   scoreCountryDrawing,
   scoreFromDeviation,
@@ -494,5 +495,22 @@ describe("draw-country scoring", () => {
     expect([0, 0.01, 0.02, 0.05, 0.1, 0.15, 0.2, 0.3, 0.45, 0.55].map(scoreFromDeviation)).toEqual([
       100, 94, 87, 70, 50, 35, 24, 12, 3, 0,
     ]);
+  });
+
+  it("presents every scoring dimension as an intuitive higher-is-better match", () => {
+    const outline = country();
+    const exact = scoreCountryDrawing(outline, exactDrawing(outline));
+    const rough = scoreCountryDrawing(outline, enclosingBoxDrawing(outline));
+    const exactBreakdown = countryScoreBreakdown(exact, false);
+    const roughBreakdown = countryScoreBreakdown(rough, false);
+
+    expect(exactBreakdown.map(({ score }) => score)).toEqual([100, 100, 100, 100]);
+    for (const metric of roughBreakdown) {
+      expect(metric.score).toBeGreaterThanOrEqual(0);
+      expect(metric.score).toBeLessThanOrEqual(100);
+      expect(metric.score).toBeLessThanOrEqual(
+        exactBreakdown.find(({ key }) => key === metric.key)!.score,
+      );
+    }
   });
 });
