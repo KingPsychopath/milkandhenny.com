@@ -11,8 +11,8 @@ import type { ErrorComponentProps } from "@tanstack/react-router";
 import type { ReactNode } from "react";
 import { useEffect } from "react";
 import { BackToTop } from "@/components/BackToTop";
-import { LampToggle } from "@/components/LampToggle";
 import { OfflinePlatform } from "@/components/OfflinePlatform";
+import { ThemeToggle } from "@/components/ThemeToggle";
 import { BASE_URL, SITE_BRAND, SITE_NAME } from "@/lib/shared/config";
 import { LOCAL_KEYS } from "@/lib/shared/storage-keys";
 import "@/src/styles/globals.css";
@@ -66,7 +66,7 @@ function RootDocument({ children }: Readonly<{ children: ReactNode }>) {
         <ManifestLink />
         <script
           dangerouslySetInnerHTML={{
-            __html: `(function(){var t=localStorage.getItem("${LOCAL_KEYS.theme}");if(t==="dark")document.documentElement.setAttribute("data-theme","dark");})();`,
+            __html: `(function(){var t=localStorage.getItem("${LOCAL_KEYS.theme}");var d=t==="dark"||t!=="light"&&matchMedia("(prefers-color-scheme: dark)").matches;document.documentElement.setAttribute("data-theme",d?"dark":"light");})();`,
           }}
         />
       </head>
@@ -74,7 +74,7 @@ function RootDocument({ children }: Readonly<{ children: ReactNode }>) {
         <a href="#main" className="skip-link">
           Skip to main content
         </a>
-        <LampToggle />
+        <ThemeToggle />
         <BackToTop />
         <OfflinePlatform />
         {children}

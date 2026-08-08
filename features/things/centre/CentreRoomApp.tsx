@@ -334,7 +334,7 @@ export function CentreRoom({
               {snapshot.phase === "arming"
                 ? "Place your finger."
                 : snapshot.phase === "countdown"
-                  ? "Hold steady."
+                  ? "Get set."
                   : ownFinished
                     ? `${(me.elapsedMs! / 1_000).toFixed(2)}s`
                     : `${(elapsed / 1_000).toFixed(1)}s`}
@@ -503,7 +503,8 @@ function CentreLobby({
         <p className="centre-eyebrow">room ready</p>
         <h1 className="centre-title">Everyone gets an entrance.</h1>
         <p className="centre-lede">
-          Place a finger on your start. The maze stays hidden until everyone is on the line.
+          Hold your start until everyone is on the line. Once the countdown begins, the race is
+          locked.
         </p>
         {qr ? (
           <img src={qr} alt="QR code to join this centre room" className="centre-qr" />

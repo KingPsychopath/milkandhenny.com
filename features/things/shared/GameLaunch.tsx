@@ -1,6 +1,6 @@
 import type { ButtonHTMLAttributes, ReactNode } from "react";
 
-type LaunchTone = "night" | "cream" | "paper";
+type LaunchTone = "night" | "cream" | "paper" | "theme";
 
 interface GameLaunchProps {
   align?: "left" | "center";
@@ -20,6 +20,7 @@ export function GameLaunch({
   tone,
 }: GameLaunchProps) {
   const light = tone === "cream";
+  const themed = tone === "theme";
   const centred = align === "center";
 
   return (
@@ -29,7 +30,7 @@ export function GameLaunch({
     >
       <p
         className={`font-mono text-micro uppercase tracking-[0.2em] ${
-          light ? "text-black/40" : "text-white/45"
+          themed ? "theme-faint" : light ? "text-black/40" : "text-white/45"
         }`}
       >
         {eyebrow}
@@ -43,7 +44,7 @@ export function GameLaunch({
       <p
         className={`mt-5 max-w-md font-serif text-lg leading-relaxed ${
           centred ? "mx-auto" : ""
-        } ${light ? "text-black/60" : "text-white/65"}`}
+        } ${themed ? "theme-muted" : light ? "text-black/60" : "text-white/65"}`}
       >
         {description}
       </p>
@@ -78,12 +79,12 @@ export function GameLaunchMeta({
   tone,
 }: {
   children: ReactNode;
-  tone: "dark" | "light";
+  tone: "dark" | "light" | "theme";
 }) {
   return (
     <p
       className={`mt-3 text-center font-mono text-micro ${
-        tone === "light" ? "text-black/45" : "text-white/45"
+        tone === "theme" ? "theme-faint" : tone === "light" ? "text-black/45" : "text-white/45"
       }`}
     >
       {children}
@@ -96,12 +97,16 @@ export function GameLaunchChoices({
   tone,
 }: {
   children: ReactNode;
-  tone: "dark" | "light";
+  tone: "dark" | "light" | "theme";
 }) {
   return (
     <div
       className={`mt-5 flex min-h-11 flex-wrap items-center justify-center gap-x-5 gap-y-1 border-t pt-4 font-mono text-xs ${
-        tone === "light" ? "border-black/10 text-black/60" : "border-white/10 text-white/60"
+        tone === "theme"
+          ? "theme-border theme-muted"
+          : tone === "light"
+            ? "border-black/10 text-black/60"
+            : "border-white/10 text-white/60"
       }`}
     >
       {children}

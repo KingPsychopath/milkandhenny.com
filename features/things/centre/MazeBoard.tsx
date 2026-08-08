@@ -98,7 +98,6 @@ export function MazeBoard({
   onArmChange,
   onCollision,
   onFinish,
-  cancelCountdownOnRelease = false,
   rivalPoints = [],
 }: {
   maze: CentreMaze;
@@ -112,7 +111,6 @@ export function MazeBoard({
   onArmChange?: (armed: boolean) => void;
   onCollision?: () => void;
   onFinish?: (route: CentreRoute) => void;
-  cancelCountdownOnRelease?: boolean;
   rivalPoints?: Array<{ id: string; x: number; y: number; colour: number }>;
 }) {
   const svgRef = useRef<SVGSVGElement>(null);
@@ -141,7 +139,9 @@ export function MazeBoard({
 
   useEffect(() => {
     if (phase !== "racing" || !heldRef.current || routeRef.current.segments.length > 0) return;
-    onRouteChange?.({ segments: [[entrance]], wallHits: 0 });
+    const started = { ...routeRef.current, segments: [[entrance]] };
+    routeRef.current = started;
+    onRouteChange?.(started);
   }, [entrance, onRouteChange, phase]);
 
   const eventPoint = (event: React.PointerEvent<SVGSVGElement>) => {
@@ -167,6 +167,14 @@ export function MazeBoard({
     pointerRef.current = event.pointerId;
     heldRef.current = true;
     if (phase === "arming") onArmChange?.(true);
+    else if (
+      (phase === "racing" || phase === "finishing") &&
+      routeRef.current.segments.length === 0
+    ) {
+      const started = { ...routeRef.current, segments: [[entrance]] };
+      routeRef.current = started;
+      onRouteChange?.(started);
+    }
   };
 
   const move = (event: React.PointerEvent<SVGSVGElement>) => {
@@ -218,8 +226,7 @@ export function MazeBoard({
     pointerRef.current = null;
     heldRef.current = false;
     collisionRef.current = false;
-    if (phase === "arming" || (phase === "countdown" && cancelCountdownOnRelease))
-      onArmChange?.(false);
+    if (phase === "arming") onArmChange?.(false);
   };
 
   const keyboardMove = (event: React.KeyboardEvent<HTMLDivElement>) => {
@@ -273,7 +280,7 @@ export function MazeBoard({
       className="centre-board-wrap"
       tabIndex={0}
       role="application"
-      aria-label="Circular maze. Press and hold the marked entrance. During the race, trace towards the centre. Keyboard players use the arrow keys."
+      aria-label="Circular maze. Hold the marked entrance until the countdown begins. At GO, trace towards the centre. Keyboard players use the arrow keys."
       onKeyDown={keyboardMove}
     >
       <svg
@@ -360,7 +367,7 @@ export function MazeBoard({
       {hidden ? (
         <div className="centre-start-copy" aria-live="assertive">
           <strong>{phase === "arming" ? "press and hold" : count}</strong>
-          <span>{phase === "arming" ? "on the start circle" : "keep holding"}</span>
+          <span>{phase === "arming" ? "until the countdown" : "start at GO"}</span>
         </div>
       ) : phase === "racing" && startsAt && now - startsAt < 850 ? (
         <div className="centre-go-copy" aria-hidden="true">

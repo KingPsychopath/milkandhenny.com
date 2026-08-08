@@ -283,14 +283,14 @@
   }
 
   /* Active states for mobile */
-  button:active:not(:disabled):not(.lamp-toggle) {
+  button:active:not(:disabled):not(.theme-toggle) {
     transform: scale(0.98);
   }
 
   /* ─── Print ─── */
   @media print {
     .skip-link,
-    .lamp-toggle,
+    .theme-toggle,
     .back-to-top,
     .reading-progress-track {
       display: none;
@@ -1629,80 +1629,55 @@
     outline-offset: 2px;
   }
 
-  /* ─── Lamp toggle ─── */
-  /* Desktop: top-right corner. Mobile: centred. Photo page: offset left of counter. */
-  .lamp-toggle {
+  /* ─── Theme toggle ─── */
+  .theme-toggle {
     position: fixed;
-    top: 0;
-    right: 24px;
+    top: max(0.75rem, env(safe-area-inset-top));
+    right: max(0.75rem, env(safe-area-inset-right));
     z-index: 50;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    cursor: pointer;
-    background: none;
-    border: none;
-    padding: 0;
-    user-select: none;
-    transition:
-      transform 0.3s ease,
-      opacity 0.3s ease;
-    will-change: transform, opacity;
-  }
-
-  .lamp-cord {
-    width: 1.5px;
-    background: var(--stone-300);
-    /* Gentle spring: overshoots just past the target then eases back */
-    transition: height 0.6s cubic-bezier(0.22, 1.15, 0.36, 1);
-  }
-
-  .lamp-bulb {
-    width: 32px;
-    height: 32px;
-    border-radius: 50%;
-    border: 1.5px solid var(--stone-300);
-    background: var(--background);
-    display: flex;
+    display: inline-flex;
+    width: 2.75rem;
+    height: 2.75rem;
     align-items: center;
     justify-content: center;
-    color: var(--stone-400);
-    opacity: 0.45;
+    cursor: pointer;
+    color: var(--stone-500);
+    background: color-mix(in oklab, var(--background) 88%, transparent);
+    border: 1px solid var(--stone-300);
+    border-radius: 999px;
+    user-select: none;
     transition:
-      border-color 0.3s,
-      color 0.3s,
-      transform 0.15s,
-      opacity 0.4s ease;
+      color 180ms ease,
+      border-color 180ms ease,
+      opacity 180ms ease,
+      transform 120ms ease;
+    opacity: 0.82;
+    backdrop-filter: blur(8px);
   }
 
-  .lamp-toggle:hover .lamp-bulb {
-    border-color: var(--foreground);
+  .theme-toggle:hover {
     color: var(--foreground);
+    border-color: var(--stone-500);
     opacity: 1;
   }
 
-  .lamp-toggle:active .lamp-bulb {
-    transform: scale(0.92);
+  .theme-toggle:active {
+    transform: scale(0.94);
   }
 
-  /* Photo page: always left of the counter at all widths */
-  .lamp-toggle--photo {
-    right: 64px;
+  .theme-toggle svg {
+    width: 1.125rem;
+    height: 1.125rem;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.6;
+    stroke-linecap: round;
+    stroke-linejoin: round;
   }
 
-  @media (max-width: 640px) {
-    /* Mobile: centre the lamp */
-    .lamp-toggle {
-      right: auto;
-      left: 50%;
-      translate: -50% 0;
-    }
-    /* Photo page on mobile: keep right-anchored left of counter */
-    .lamp-toggle--photo {
-      left: auto;
-      translate: none;
-      right: 64px;
-    }
+  .theme-toggle .theme-toggle-fill {
+    fill: currentColor;
+    stroke: none;
   }
 
   /* ─── Back to top ─── */
@@ -3257,11 +3232,21 @@
 
   /* Centre — the maze is an instrument, so the frame stays quiet and lets the line do the talking. */
   .centre {
-    --centre-ink: var(--things-cream);
-    --centre-quiet: color-mix(in oklab, var(--things-cream) 58%, transparent);
-    --centre-faint: color-mix(in oklab, var(--things-cream) 36%, transparent);
-    --centre-edge: color-mix(in oklab, var(--things-cream) 16%, transparent);
+    --centre-surface: var(--background);
+    --centre-ink: var(--foreground);
+    --centre-quiet: color-mix(in oklab, var(--foreground) 62%, transparent);
+    --centre-faint: color-mix(in oklab, var(--foreground) 42%, transparent);
+    --centre-edge: color-mix(in oklab, var(--foreground) 18%, transparent);
+    background: var(--centre-surface);
     color: var(--centre-ink);
+  }
+
+  [data-theme="dark"] .centre {
+    --centre-surface: var(--things-night);
+    --centre-ink: var(--things-cream);
+    --centre-quiet: color-mix(in oklab, var(--things-cream) 62%, transparent);
+    --centre-faint: color-mix(in oklab, var(--things-cream) 42%, transparent);
+    --centre-edge: color-mix(in oklab, var(--things-cream) 18%, transparent);
   }
 
   .centre-header {
@@ -3379,7 +3364,7 @@
     min-height: 3.2rem;
     border: 1px solid var(--centre-edge);
     border-radius: 1rem;
-    background: color-mix(in oklab, var(--things-cream) 6%, transparent);
+    background: color-mix(in oklab, var(--centre-ink) 6%, transparent);
     padding: 0 1rem;
     font-size: 1rem;
     color: var(--centre-ink);
@@ -3545,7 +3530,7 @@
 
   .centre-walls {
     fill: none;
-    stroke: color-mix(in oklab, var(--things-cream) 84%, transparent);
+    stroke: color-mix(in oklab, var(--centre-ink) 84%, transparent);
     stroke-width: 0.016;
     stroke-linecap: round;
     vector-effect: non-scaling-stroke;
@@ -3577,14 +3562,14 @@
 
   .centre-rival-dot {
     fill: var(--centre-route, var(--things-amber));
-    stroke: var(--things-night);
+    stroke: var(--centre-surface);
     stroke-width: 0.012;
     opacity: 0.72;
   }
 
   .centre-start {
     fill: var(--centre-route, var(--things-amber));
-    stroke: var(--things-night);
+    stroke: var(--centre-surface);
     stroke-width: 0.014;
   }
 
@@ -3593,7 +3578,7 @@
   }
 
   .centre-countdown-mask {
-    fill: var(--things-night);
+    fill: var(--centre-surface);
   }
 
   .centre-start-ring {

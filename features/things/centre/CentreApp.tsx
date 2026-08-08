@@ -119,10 +119,10 @@ export function CentreApp() {
       </header>
       <main id="main" className="centre-launch">
         <GameLaunch
-          tone="night"
+          tone="theme"
           eyebrow="trace race · 1–8 people"
           title="First to the middle wins."
-          description="Hold the start. The maze appears at GO. Find the route before everyone else."
+          description="Ready at the start. The maze appears at GO. Find the route before everyone else."
         >
           <label className="centre-difficulty">
             <span>difficulty</span>
@@ -146,8 +146,8 @@ export function CentreApp() {
           >
             new solo maze
           </GameLaunchButton>
-          <GameLaunchMeta tone="dark">hold through 3 · 2 · 1 · trace to the centre</GameLaunchMeta>
-          <GameLaunchChoices tone="dark">
+          <GameLaunchMeta tone="theme">ready · 3 · 2 · 1 · trace to the centre</GameLaunchMeta>
+          <GameLaunchChoices tone="theme">
             <button
               type="button"
               onClick={() => setSolo({ seed: dailySeed(), difficulty })}

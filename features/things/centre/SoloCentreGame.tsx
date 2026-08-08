@@ -89,10 +89,6 @@ export function SoloCentreGame({
       setRoute({ segments: [], wallHits: 0 });
       previousCount.current = null;
       setPhase("countdown");
-    } else if (!armed && phase === "countdown") {
-      setStartsAt(null);
-      setRoute({ segments: [], wallHits: 0 });
-      setPhase("arming");
     }
   };
 
@@ -185,7 +181,7 @@ export function SoloCentreGame({
         <div className="centre-race-copy">
           <p className="centre-eyebrow">outside to centre</p>
           <h1 className="centre-race-title">
-            {phase === "arming" ? "Find your line." : phase === "countdown" ? "Hold steady." : "GO"}
+            {phase === "arming" ? "Find your line." : phase === "countdown" ? "Get set." : "GO"}
           </h1>
         </div>
         <MazeBoard
@@ -197,7 +193,6 @@ export function SoloCentreGame({
           routeLayers={ghostLayers}
           onRouteChange={setRoute}
           onArmChange={arm}
-          cancelCountdownOnRelease
           onCollision={() => {
             void haptics.trigger("nudge");
             playCentreSound("wall", sound.effects);
@@ -205,8 +200,8 @@ export function SoloCentreGame({
           onFinish={finish}
         />
         <p id="centre-instructions" className="centre-note centre-note--centre">
-          Hold the start through the countdown. Lift when you need to, then continue from your route
-          head.
+          Hold the start until the countdown begins. At GO, drag towards the centre. Lift when you
+          need to, then continue from your route head.
         </p>
         <div className="centre-race-controls">
           {ghost ? (
