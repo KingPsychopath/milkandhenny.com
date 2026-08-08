@@ -100,6 +100,8 @@ export interface PartyPlayerPrivateState extends MultiplayerReadiness {
 
 export interface PartySnapshot
   extends MultiplayerRoomIdentity, MultiplayerRevision, MultiplayerSequence {
+  /** Hash of this viewer's redacted view, filled in by the read. */
+  digest?: string;
   deckName: string;
   phase: PartyPhase;
   serverNow: number;
@@ -151,7 +153,11 @@ export type PartyJoinResult =
   | MultiplayerFailure<PartyJoinErrorCode>;
 
 export type PartySnapshotResult =
-  | MultiplayerSuccess<{ snapshot: PartySnapshot }>
+  // `unchanged` sits on both success arms so it discriminates them; without it here, narrowing
+  // leaves `snapshot` nullable at every call site.
+  | MultiplayerSuccess<{ unchanged?: false; snapshot: PartySnapshot }>
+  /** The viewer's digest matched, so the body was left off. */
+  | MultiplayerSuccess<{ unchanged: true; serverNow: number; snapshot: null }>
   | (MultiplayerFailure<"room_unavailable"> & { snapshot: null });
 
 export type PartyPresenterAction = MultiplayerAction &

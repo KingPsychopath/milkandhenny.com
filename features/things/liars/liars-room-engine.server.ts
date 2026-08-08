@@ -10,6 +10,7 @@ import {
   multiplayerActionSeen,
   multiplayerCredentialsMatch,
   multiplayerRoomExpiresAt,
+  multiplayerSnapshotDigest,
   rememberMultiplayerAction,
   remainingMultiplayerRoomTtlSeconds,
   withMultiplayerRoomLock,
@@ -245,7 +246,9 @@ async function deleteRoom(room: LiarsRoomState, keys: LiarsRedisKeys) {
   }
 }
 
-async function loadRoom(id: string): Promise<{ room: LiarsRoomState; keys: LiarsRedisKeys } | null> {
+async function loadRoom(
+  id: string,
+): Promise<{ room: LiarsRoomState; keys: LiarsRedisKeys } | null> {
   const keys = liarsRoomRedisKeys(id);
   const redis = getRedis();
   const room = redis ? await redis.get<LiarsRoomState>(keys.state) : (memoryRooms.get(id) ?? null);
@@ -410,8 +413,6 @@ function clearRoundState(room: LiarsRoomState) {
   }
   room.revoteUsed = false;
   room.runoffIds = [];
-  {
-  }
 }
 
 function startRound(room: LiarsRoomState, now: number) {
@@ -594,7 +595,8 @@ function writeNightReports(room: LiarsRoomState) {
       remember(player, room.round, subjectName, line);
     } else if (role === "lookout") {
       const names = visitorsOf(room, target.id).map(({ name }) => name);
-      line = names.length === 0 ? "nobody came to their door" : `${joinNames(names)} came to their door`;
+      line =
+        names.length === 0 ? "nobody came to their door" : `${joinNames(names)} came to their door`;
       remember(player, room.round, subjectName, line);
     } else if (role === "villager" || role === "jester") {
       const moved = liarsActionMoves(target.role ?? "villager", target.nightTarget);
@@ -616,19 +618,13 @@ function joinNames(names: string[]) {
   return `${names.slice(0, -1).join(", ")} and ${names.at(-1)}`;
 }
 
-function kill(
-  room: LiarsRoomState,
-  player: PlayerState,
-  cause: LiarsDeathCause,
-  now: number,
-) {
+function kill(room: LiarsRoomState, player: PlayerState, cause: LiarsDeathCause) {
   player.alive = false;
   player.deathRound = room.round;
   player.deathCause = cause;
   if (room.toggles.lastWords) {
     player.lastWords = null;
   }
-  void now;
 }
 
 function resolveNight(room: LiarsRoomState, now: number) {
@@ -661,7 +657,8 @@ function resolveNight(room: LiarsRoomState, now: number) {
   /** Last words the server writes rather than a player, published with the dawn that caused them. */
   const testimony: Array<{ name: string; text: string }> = [];
   const attacks: Array<{ targetId: string; attacker: PlayerState | null; fromMafia: boolean }> = [];
-  if (mafiaTargetId && caller) attacks.push({ targetId: mafiaTargetId, attacker: caller, fromMafia: true });
+  if (mafiaTargetId && caller)
+    attacks.push({ targetId: mafiaTargetId, attacker: caller, fromMafia: true });
   if (vigilanteTargetId && vigilante) {
     attacks.push({ targetId: vigilanteTargetId, attacker: vigilante, fromMafia: false });
     vigilante.vigilanteUsed = true;
@@ -697,7 +694,7 @@ function resolveNight(room: LiarsRoomState, now: number) {
     }
 
     if (guardedId === target.id && bodyguard && bodyguard.alive) {
-      kill(room, bodyguard, "bodyguard", now);
+      kill(room, bodyguard, "bodyguard");
       deaths.push({
         playerId: target.id,
         name: target.name,
@@ -708,7 +705,7 @@ function resolveNight(room: LiarsRoomState, now: number) {
       continue;
     }
 
-    kill(room, target, "killed", now);
+    kill(room, target, "killed");
     deaths.push({
       playerId: target.id,
       name: target.name,
@@ -720,7 +717,7 @@ function resolveNight(room: LiarsRoomState, now: number) {
 
     // The escort saw too much and dies with them — and their report publishes as testimony.
     if (escort && escortTargetId === target.id && escort.alive) {
-      kill(room, escort, "killed", now);
+      kill(room, escort, "killed");
       if (attack.attacker) {
         escort.lastWords = `I was there. It was ${attack.attacker.name}.`;
         // Collected here and seeded into the dawn below. Setting it on the player alone was not
@@ -746,7 +743,7 @@ function resolveNight(room: LiarsRoomState, now: number) {
   // Guilt lands the night after the mistake.
   const guilty = alive.find((player) => player.guiltPending && player.alive);
   if (guilty && guilty.vigilanteUsed && guilty.deathRound === null && room.round > 1) {
-    kill(room, guilty, "guilt", now);
+    kill(room, guilty, "guilt");
     deaths.push({
       playerId: guilty.id,
       name: guilty.name,
@@ -900,7 +897,7 @@ function resolveVote(room: LiarsRoomState, now: number) {
     return;
   }
 
-  kill(room, ejected, "ejected", now);
+  kill(room, ejected, "ejected");
   const role = ejected.role ?? "villager";
   if (role === "jester") room.ejectedJesterId = ejected.id;
   if (room.mode === "imposter") {
@@ -929,9 +926,7 @@ function afterVerdict(room: LiarsRoomState, now: number) {
 }
 
 function lastImposterJustEjected(room: LiarsRoomState) {
-  const imposterAlive = living(room).some(
-    ({ role }) => role && liarsRoleSide(role) === "mafia",
-  );
+  const imposterAlive = living(room).some(({ role }) => role && liarsRoleSide(role) === "mafia");
   return !imposterAlive && room.imposterEjections > 0 && room.finalGuessCorrect === undefined
     ? true
     : !imposterAlive && room.imposterEjections > 0 && room.finalGuessCorrect === null;
@@ -1067,16 +1062,22 @@ function snapshot(room: LiarsRoomState, viewerId?: string, now = Date.now()): Li
   const standing = graveyardStanding(room);
   const lastWordsOpen = Boolean(
     viewer &&
-      room.toggles.lastWords &&
-      !viewer.alive &&
-      viewer.lastWords === null &&
-      viewer.deathRound === room.round,
+    room.toggles.lastWords &&
+    !viewer.alive &&
+    viewer.lastWords === null &&
+    viewer.deathRound === room.round,
   );
 
   const allyIds =
     viewer?.role && liarsRoleSide(viewer.role) === "mafia"
       ? room.players
-          .filter((other) => other.id !== viewer.id && maySeeRole(room, viewer, other) && other.role && liarsRoleSide(other.role) === "mafia")
+          .filter(
+            (other) =>
+              other.id !== viewer.id &&
+              maySeeRole(room, viewer, other) &&
+              other.role &&
+              liarsRoleSide(other.role) === "mafia",
+          )
           .map(({ id }) => id)
       : [];
 
@@ -1416,6 +1417,8 @@ export async function readLiarsSnapshot(input: {
   credential: string;
   playerId?: string;
   lastSequence: number;
+  /** What this viewer already holds. Matching it means the body can be left off entirely. */
+  lastDigest?: string | null;
 }): Promise<LiarsSnapshotResult> {
   const result = await withRoom(input.roomId, (room) => {
     if (!authenticate(room, input.credential, input.playerId))
@@ -1423,15 +1426,25 @@ export async function readLiarsSnapshot(input: {
     const now = Date.now();
     const idleFor = touch(room, input.playerId, now);
     advance(room, now, idleFor);
-    return { ok: true as const, snapshot: snapshot(room, input.playerId, now) };
+    const view = snapshot(room, input.playerId, now);
+    // Hashed after redaction, so it is a digest of what this viewer sees rather than of the room —
+    // two players in the same room hold different snapshots and must not share a digest.
+    view.digest = multiplayerSnapshotDigest(view);
+    if (input.lastDigest && input.lastDigest === view.digest)
+      return { ok: true as const, unchanged: true as const, serverNow: now, snapshot: null };
+    return { ok: true as const, snapshot: view };
   });
-  return result ?? { ...multiplayerFailure("room_unavailable", "Room unavailable"), snapshot: null };
+  return (
+    result ?? { ...multiplayerFailure("room_unavailable", "Room unavailable"), snapshot: null }
+  );
 }
 
 function dealGame(room: LiarsRoomState, now: number, forcedRoles?: Record<string, LiarsRole>) {
   const playerIds = room.players.map(({ id }) => id);
   const previousRoles = Object.fromEntries(
-    room.players.flatMap((player) => (player.previousRole ? [[player.id, player.previousRole]] : [])),
+    room.players.flatMap((player) =>
+      player.previousRole ? [[player.id, player.previousRole]] : [],
+    ),
   ) as Record<string, LiarsRole>;
   // A scenario may pin the deal so that "the escort walks into the mafia's kill" is a starting
   // position rather than something you wait for. Only reachable from the dev-only entry point.
@@ -1514,7 +1527,11 @@ export async function applyLiarsHostAction(input: {
         return reject(view(), "action_unavailable", "The game has already started");
       if (action.roomMode) {
         room.roomMode = action.roomMode;
-        room.timings = { ...liarsDefaultTimings(action.roomMode), ...room.timings, deliberation: liarsDefaultTimings(action.roomMode).deliberation };
+        room.timings = {
+          ...liarsDefaultTimings(action.roomMode),
+          ...room.timings,
+          deliberation: liarsDefaultTimings(action.roomMode).deliberation,
+        };
       }
       if (action.toggles) {
         room.toggles = { ...room.toggles, ...action.toggles };
@@ -1590,7 +1607,7 @@ export async function applyLiarsHostAction(input: {
         room.lineup = liarsDefaultLineup(room.mode, Math.max(1, room.players.length));
       } else if (target.alive) {
         // Someone actually leaving, not dropping. Removing a player can end the game outright.
-        kill(room, target, "left", now);
+        kill(room, target, "left");
         note(room, "day", narrate(room, "left", { victim: target.name }));
         checkWinner(room, now);
       }
@@ -1729,7 +1746,11 @@ export async function applyLiarsPlayerAction(input: {
     }
 
     if (action.type === "guess.final") {
-      if (room.phase !== "finalGuess" || player.alive || liarsRoleSide(player.role ?? "villager") !== "mafia")
+      if (
+        room.phase !== "finalGuess" ||
+        player.alive ||
+        liarsRoleSide(player.role ?? "villager") !== "mafia"
+      )
         return reject(view(), "action_unavailable", "That is not yours to answer");
       resolveFinalGuess(room, now, action.text);
       return remembered();
@@ -1826,7 +1847,8 @@ export async function applyLiarsPlayerAction(input: {
       }
       if (action.targetId !== null) {
         const target = room.players.find(({ id }) => id === action.targetId);
-        if (!target || !target.alive) return reject(view(), "invalid_target", "They are already out");
+        if (!target || !target.alive)
+          return reject(view(), "invalid_target", "They are already out");
       }
       player.vote = action.targetId;
       changed(room);
@@ -1855,7 +1877,6 @@ export async function closeLiarsRoom(roomId: string, hostToken: string) {
   log.info("things.liars", "Room closed", { phase: loaded.room.phase });
   return { ok: true };
 }
-
 
 // ---------------------------------------------------------------------------
 // Development only
@@ -1946,7 +1967,6 @@ export async function reissueLiarsHostToken(roomId: string) {
   return hostToken;
 }
 
-
 /**
  * Opens a room already populated and dealt, for the harness and for tests. Development only: it
  * mints every player's token at once, which no real client may ever do.
@@ -1998,6 +2018,12 @@ export async function startLiarsScenario(input: {
     return { error: null };
   });
 
-  if (!result || result.error) return { error: result?.error ?? "room unavailable", seats: [], roomId: created.roomId, hostToken: created.hostToken };
+  if (!result || result.error)
+    return {
+      error: result?.error ?? "room unavailable",
+      seats: [],
+      roomId: created.roomId,
+      hostToken: created.hostToken,
+    };
   return { error: null, roomId: created.roomId, hostToken: created.hostToken, seats };
 }

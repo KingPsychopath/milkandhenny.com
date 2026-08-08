@@ -6,6 +6,7 @@ import {
   hashMultiplayerCredential,
   multiplayerCredentialsMatch,
   multiplayerRoomExpiresAt,
+  multiplayerSnapshotDigest,
   remainingMultiplayerRoomTtlSeconds,
   withMultiplayerRoomLock,
 } from "../shared/room-primitives.server";
@@ -374,13 +375,25 @@ export async function readDrawCountrySnapshot(input: {
   roomId: string;
   playerId: string;
   playerToken: string;
+  lastSequence: number;
+  /** What this viewer already holds. Matching it means the body can be left off entirely. */
+  lastDigest?: string | null;
 }): Promise<DrawCountrySnapshotResult> {
   const result = await withRoom(input.roomId, (room) => {
     const player = validPlayer(room, input.playerId, input.playerToken);
     if (!player) return null;
     player.lastSeenAt = Date.now();
     advance(room);
-    return { ok: true, snapshot: snapshot(room, player.id) } as const;
+    const view = snapshot(room, player.id);
+    view.digest = multiplayerSnapshotDigest(view);
+    if (input.lastDigest && input.lastDigest === view.digest)
+      return {
+        ok: true as const,
+        unchanged: true as const,
+        serverNow: view.serverNow,
+        snapshot: null,
+      };
+    return { ok: true as const, snapshot: view };
   });
   return (
     result ?? {

@@ -16,6 +16,7 @@ import {
 import { liarsRoleSide } from "../../features/things/liars/liars-rules";
 import { LIARS_GRAVEYARD_BOARD_MAX } from "../../features/things/liars/liars-rules";
 import { parseLiarsPlayerAction } from "../../features/things/liars/liars-room.functions";
+import { LIARS_CONNECTED_WINDOW_MS } from "../../features/things/liars/liars-rules";
 import { liarsRolesForMode } from "../../features/things/liars/liars-rules";
 import { LIARS_SCENARIOS } from "../../features/things/liars/liars-scenarios";
 import { startLiarsScenario } from "../../features/things/liars/liars-room-engine.server";
@@ -643,9 +644,9 @@ describe("liars rooms — imposter", () => {
 
     const first = created.seats.find(({ playerId }) => playerId === clue.clue!.currentPlayerId)!;
     const outOfTurn = created.seats.find(({ playerId }) => playerId !== first.playerId)!;
-    expect(await act(created.roomId, outOfTurn, { type: "clue.said", round: clue.round })).toMatchObject(
-      { accepted: false, errorCode: "not_your_turn" },
-    );
+    expect(
+      await act(created.roomId, outOfTurn, { type: "clue.said", round: clue.round }),
+    ).toMatchObject({ accepted: false, errorCode: "not_your_turn" });
 
     const said = await act(created.roomId, first, { type: "clue.said", round: clue.round });
     expect(said.accepted).toBe(true);
@@ -989,7 +990,13 @@ describe("liars — the roles nothing was testing", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-08-09T07:00:00Z"));
     const { roomId, seats, round, endsAt } = await nightOf([
-      "mafia", "lookout", "doctor", "detective", "villager", "villager", "villager",
+      "mafia",
+      "lookout",
+      "doctor",
+      "detective",
+      "villager",
+      "villager",
+      "villager",
     ]);
     const [mafia, lookout, doctor, , watched] = seats;
 
@@ -1014,7 +1021,13 @@ describe("liars — the roles nothing was testing", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-08-09T08:00:00Z"));
     const { roomId, seats, round, endsAt } = await nightOf([
-      "mafia", "vigilante", "doctor", "detective", "villager", "villager", "villager",
+      "mafia",
+      "vigilante",
+      "doctor",
+      "detective",
+      "villager",
+      "villager",
+      "villager",
     ]);
     const [, vigilante, , , innocent] = seats;
 
@@ -1031,7 +1044,13 @@ describe("liars — the roles nothing was testing", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-08-09T09:00:00Z"));
     const { roomId, seats, round, endsAt } = await nightOf([
-      "mafia", "jammer", "doctor", "detective", "villager", "villager", "villager",
+      "mafia",
+      "jammer",
+      "doctor",
+      "detective",
+      "villager",
+      "villager",
+      "villager",
     ]);
     const [mafia, jammer, doctor, , victim] = seats;
 
@@ -1043,14 +1062,22 @@ describe("liars — the roles nothing was testing", () => {
     const dawn = await view(roomId, seats[0]);
     // Without the jammer this is a revive. With it, the save never happened.
     expect(dawn.players.find(({ id }) => id === victim.playerId)!.alive).toBe(false);
-    expect(dawn.dawn!.deaths.some(({ playerId, revived }) => playerId === victim.playerId && !revived)).toBe(true);
+    expect(
+      dawn.dawn!.deaths.some(({ playerId, revived }) => playerId === victim.playerId && !revived),
+    ).toBe(true);
   });
 
   it("kills the bodyguard instead of the person they were guarding", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-08-09T10:00:00Z"));
     const { roomId, seats, round, endsAt } = await nightOf([
-      "mafia", "bodyguard", "doctor", "detective", "villager", "villager", "villager",
+      "mafia",
+      "bodyguard",
+      "doctor",
+      "detective",
+      "villager",
+      "villager",
+      "villager",
     ]);
     const [mafia, bodyguard, , , guarded] = seats;
 
@@ -1061,7 +1088,9 @@ describe("liars — the roles nothing was testing", () => {
     const dawn = await view(roomId, seats[0]);
     expect(dawn.players.find(({ id }) => id === guarded.playerId)!.alive).toBe(true);
     expect(dawn.players.find(({ id }) => id === bodyguard.playerId)!.alive).toBe(false);
-    expect(dawn.dawn!.deaths.some(({ substituteName }) => substituteName === bodyguard.name)).toBe(true);
+    expect(dawn.dawn!.deaths.some(({ substituteName }) => substituteName === bodyguard.name)).toBe(
+      true,
+    );
   });
 
   /**
@@ -1073,7 +1102,13 @@ describe("liars — the roles nothing was testing", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-08-09T11:00:00Z"));
     const { roomId, seats, round, endsAt } = await nightOf([
-      "mafia", "bodyguard", "doctor", "detective", "villager", "villager", "villager",
+      "mafia",
+      "bodyguard",
+      "doctor",
+      "detective",
+      "villager",
+      "villager",
+      "villager",
     ]);
     const [mafia, bodyguard, , , guarded] = seats;
     await act(roomId, mafia, { type: "night.select", round, targetId: guarded.playerId });
@@ -1154,8 +1189,18 @@ describe("liars — the mole", () => {
       mode: "imposter",
       names: NAMES.concat(["Otis", "Rue", "Sol"]).slice(0, 12),
       deal: [
-        "imposter", "mole", "crew", "crew", "crew", "crew",
-        "crew", "crew", "crew", "crew", "crew", "crew",
+        "imposter",
+        "mole",
+        "crew",
+        "crew",
+        "crew",
+        "crew",
+        "crew",
+        "crew",
+        "crew",
+        "crew",
+        "crew",
+        "crew",
       ],
     });
     expect(started.error, started.error ?? "").toBeNull();
@@ -1232,6 +1277,78 @@ describe("liars — the escort's testimony", () => {
   });
 });
 
+describe("liars — unchanged reads", () => {
+  it("answers a matching digest with a body a fiftieth of the size", async () => {
+    const created = await startedGame();
+    const seat = created.seats[0];
+    const base = {
+      roomId: created.roomId,
+      credential: seat.playerToken,
+      playerId: seat.playerId,
+      lastSequence: 0,
+    };
+
+    const first = await readLiarsSnapshot(base);
+    expect(first.ok).toBe(true);
+    const digest = first.ok ? first.snapshot?.digest : undefined;
+    expect(digest, "the read must stamp the view it hashed").toBeTruthy();
+
+    const again = await readLiarsSnapshot({ ...base, lastDigest: digest });
+    expect(again.ok && again.unchanged).toBe(true);
+    expect(JSON.stringify(again).length).toBeLessThan(JSON.stringify(first).length / 10);
+  });
+
+  it("gives two players in one room different digests", async () => {
+    const created = await startedGame();
+    const digests = new Set<string>();
+    for (const seat of created.seats) {
+      const read = await readLiarsSnapshot({
+        roomId: created.roomId,
+        credential: seat.playerToken,
+        playerId: seat.playerId,
+        lastSequence: 0,
+      });
+      if (read.ok && read.snapshot) digests.add(read.snapshot.digest!);
+    }
+    // Hashed after redaction. One shared digest would mean one player could be told "unchanged"
+    // against another player's view.
+    expect(digests.size).toBe(created.seats.length);
+  });
+
+  /**
+   * The reason this hashes the view instead of comparing `sequence`. Whether somebody counts as
+   * connected is derived from how long ago they were last seen, not from anything that writes to
+   * the room — so a sequence check would have frozen the presence dots until an unrelated write
+   * happened to bump it.
+   */
+  it("still sends a body when only time has moved, and somebody went quiet", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-09T12:00:00Z"));
+    const created = await startedGame();
+    const watcher = created.seats[0];
+    const base = {
+      roomId: created.roomId,
+      credential: watcher.playerToken,
+      playerId: watcher.playerId,
+      lastSequence: 0,
+    };
+
+    await touchAll(created.roomId, created.seats);
+    const first = await readLiarsSnapshot(base);
+    const digest = first.ok ? first.snapshot!.digest : undefined;
+    expect(first.ok && first.snapshot!.players.every(({ connected }) => connected)).toBe(true);
+
+    // Everybody else stops reading for longer than the connected window; only the watcher polls.
+    vi.setSystemTime(Date.now() + LIARS_CONNECTED_WINDOW_MS + 5_000);
+    const later = await readLiarsSnapshot({ ...base, lastDigest: digest });
+
+    expect(later.ok && later.unchanged, "a dot changed, so this cannot be an unchanged read").toBe(
+      undefined,
+    );
+    expect(later.ok && later.snapshot!.players.some(({ connected }) => !connected)).toBe(true);
+  });
+});
+
 describe("liars — the wire", () => {
   /**
    * Every action has to be remembered in two places: the engine's switch and the HTTP validator
@@ -1274,9 +1391,10 @@ describe("liars — the wire", () => {
 describe("liars scenarios", () => {
   it("every preset opens into a dealt, playable game", async () => {
     for (const scenario of LIARS_SCENARIOS) {
-      const names = NAMES.concat([
-        "Otis", "Rue", "Sol", "Vic", "Wren", "Zaid", "Cleo",
-      ]).slice(0, scenario.players);
+      const names = NAMES.concat(["Otis", "Rue", "Sol", "Vic", "Wren", "Zaid", "Cleo"]).slice(
+        0,
+        scenario.players,
+      );
 
       const started = await startLiarsScenario({
         mode: scenario.mode,
@@ -1593,7 +1711,8 @@ describe("liars from the playtest", () => {
           name,
           joinId: `${created.roomId}-${name}`,
         });
-        if (joined.ok) seats.push({ playerId: joined.playerId, playerToken: joined.playerToken, name });
+        if (joined.ok)
+          seats.push({ playerId: joined.playerId, playerToken: joined.playerToken, name });
       }
       await applyLiarsHostAction({
         roomId: created.roomId,
@@ -1649,7 +1768,8 @@ describe("liars board toggle", () => {
       const seen = await Promise.all(created.seats.map((seat) => view(created.roomId, seat)));
 
       const boards = seen.map((snapshot) => snapshot.player!.wordBoard);
-      for (const board of boards) expect(board.length > 0, `wordBoard=${wordBoard}`).toBe(expectBoard);
+      for (const board of boards)
+        expect(board.length > 0, `wordBoard=${wordBoard}`).toBe(expectBoard);
       // Identical for everyone, or the imposter could tell theirs apart.
       for (const board of boards) expect(board).toEqual(boards[0]);
 

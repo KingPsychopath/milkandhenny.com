@@ -82,6 +82,9 @@ const read = async (roomId: string, seat: Seat) => {
     lastSequence: 0,
   });
   if (!result.ok) throw new Error(result.error);
+  // The helper never sends a digest, so a body is guaranteed. Narrowed once here rather than at
+  // every call site.
+  if (result.unchanged) throw new Error("unexpected unchanged read");
   return result.snapshot;
 };
 
@@ -815,6 +818,8 @@ describe("same brain scenarios", () => {
       lastSequence: 0,
     });
     if (!snapshot.ok) throw new Error(snapshot.error);
+    // No digest was sent, so a body is guaranteed; this narrows it for the compiler.
+    if (snapshot.unchanged) throw new Error("unexpected unchanged read");
     expect(snapshot.snapshot.phase).toBe("reveal");
     expect(snapshot.snapshot.round).toBe(1);
     expect(snapshot.snapshot.result?.question).toBe("Name something in a toolbox");

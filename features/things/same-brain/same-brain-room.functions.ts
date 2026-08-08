@@ -157,6 +157,7 @@ export const readSameBrainSnapshotFn = createServerFn({ method: "POST" })
       credential: credential(data.credential),
       playerId: data.playerId === undefined ? undefined : text(data.playerId, 120),
       lastSequence: sequence(data.lastSequence),
+      lastDigest: typeof data.lastDigest === "string" ? data.lastDigest.slice(0, 24) : null,
     };
   })
   .handler(({ data }) => readSameBrainSnapshot(data));

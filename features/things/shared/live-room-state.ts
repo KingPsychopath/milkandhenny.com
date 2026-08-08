@@ -11,6 +11,12 @@ export const RECONNECTING_MESSAGE = "Reconnecting…";
 
 export type LiveRoomRead<Snapshot> =
   | { ok: true; snapshot: Snapshot }
+  /**
+   * The room answered and the viewer's view is byte-identical to what they already hold, so the
+   * body was left off. Counts as a healthy read: it proves the room is alive just as well as a
+   * full one, and clears the failure count for the same reason.
+   */
+  | { ok: true; unchanged: true; serverNow: number }
   /** The server answered, and the answer was that the room is not available. */
   | { ok: false; error: string }
   /** The request never completed: offline, timed out, or the room was busy. Always transient. */
@@ -32,6 +38,10 @@ export function resolveLiveRoomRead<Snapshot>(
   read: LiveRoomRead<Snapshot>,
   consecutiveFailures: number,
 ): LiveRoomOutcome<Snapshot> {
+  // No `snapshot` key at all, which the hook reads as "keep what you have".
+  if (read.ok && "unchanged" in read)
+    return { consecutiveFailures: 0, ended: false, message: null };
+
   if (read.ok)
     return { consecutiveFailures: 0, ended: false, message: null, snapshot: read.snapshot };
 

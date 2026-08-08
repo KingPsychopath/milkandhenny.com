@@ -65,6 +65,8 @@ export interface DrawCountryRound {
 }
 
 export interface DrawCountrySnapshot extends MultiplayerRevision, MultiplayerSequence {
+  /** Hash of this viewer's redacted view, filled in by the read. */
+  digest?: string;
   roomId: string;
   phase: DrawCountryPhase;
   serverNow: number;
@@ -102,7 +104,11 @@ export type DrawCountryJoinResult =
     >;
 
 export type DrawCountrySnapshotResult =
-  | MultiplayerSuccess<{ snapshot: DrawCountrySnapshot }>
+  // `unchanged` sits on both success arms so it discriminates them; without it here, narrowing
+  // leaves `snapshot` nullable at every call site.
+  | MultiplayerSuccess<{ unchanged?: false; snapshot: DrawCountrySnapshot }>
+  /** The viewer's digest matched, so the body was left off. */
+  | MultiplayerSuccess<{ unchanged: true; serverNow: number; snapshot: null }>
   | (MultiplayerFailure<"room_unavailable"> & { snapshot: null });
 
 export type DrawCountryActionResult =

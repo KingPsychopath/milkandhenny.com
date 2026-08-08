@@ -10,6 +10,7 @@ import {
   multiplayerActionSeen,
   multiplayerCredentialsMatch,
   multiplayerRoomExpiresAt,
+  multiplayerSnapshotDigest,
   rememberMultiplayerAction,
   remainingMultiplayerRoomTtlSeconds,
   withMultiplayerRoomLock,
@@ -673,6 +674,8 @@ export async function readPartySnapshot(input: {
   playerId?: string;
   presenterToken?: string;
   lastSequence: number;
+  /** What this viewer already holds. Matching it means the body can be left off entirely. */
+  lastDigest?: string | null;
 }): Promise<PartySnapshotResult> {
   const result = await withRoom(input.roomId, (room) => {
     if (!authenticate(room, input.role, input.credential, input.playerId))
@@ -689,10 +692,13 @@ export async function readPartySnapshot(input: {
       room.hostPlayerId = input.playerId;
       changed(room);
     }
-    return {
-      ok: true as const,
-      snapshot: snapshot(room, input.role, input.playerId, hostPlayer),
-    };
+    // Hashed after redaction: a presenter and a player hold different views of one room and must
+    // not be able to share a digest.
+    const view = snapshot(room, input.role, input.playerId, hostPlayer);
+    view.digest = multiplayerSnapshotDigest(view);
+    if (input.lastDigest && input.lastDigest === view.digest)
+      return { ok: true as const, unchanged: true as const, serverNow: Date.now(), snapshot: null };
+    return { ok: true as const, snapshot: view };
   });
   return (
     result ?? {

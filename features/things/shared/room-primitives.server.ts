@@ -127,6 +127,33 @@ export function createMemoryRoomStore<Value>(namespace: string): Map<string, Val
   return holder[key] as Map<string, Value>;
 }
 
+/**
+ * A digest of a redacted snapshot, so an unchanged room costs a few bytes instead of a few
+ * kilobytes.
+ *
+ * Every room game already accepted a `lastSequence` on its read and not one of them ever looked at
+ * it, so every poll re-sent a byte-identical snapshot: measured at 4.3 KB for a sixteen-player
+ * liars room, ten times a minute, per phone.
+ *
+ * A digest rather than that sequence, for one specific reason. `connected` is derived from how long
+ * ago somebody was last seen, not from anything that writes to the room, so a sequence comparison
+ * would have frozen the presence dots on every screen until an unrelated write happened to bump it.
+ * Hashing what the viewer would actually receive changes exactly when their view changes, whatever
+ * caused it.
+ *
+ * `serverNow` is stripped before hashing, because it moves on every read by definition and would
+ * make the digest useless. The clock offset it feeds is sent back on its own instead.
+ *
+ * The first 96 bits of SHA-256 keep the token short while making an accidental collision
+ * negligible. This is not a security boundary; it only identifies a view the client already has.
+ */
+export function multiplayerSnapshotDigest(snapshot: unknown): string {
+  const json = JSON.stringify(snapshot, (key, value: unknown) =>
+    key === "serverNow" ? undefined : value,
+  );
+  return createHash("sha256").update(json).digest("base64url").slice(0, 16);
+}
+
 export function multiplayerActionSeen(processedActionIds: string[], actionId: string) {
   return processedActionIds.includes(actionId);
 }

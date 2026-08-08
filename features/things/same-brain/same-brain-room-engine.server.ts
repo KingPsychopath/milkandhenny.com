@@ -10,6 +10,7 @@ import {
   multiplayerActionSeen,
   multiplayerCredentialsMatch,
   multiplayerRoomExpiresAt,
+  multiplayerSnapshotDigest,
   rememberMultiplayerAction,
   remainingMultiplayerRoomTtlSeconds,
   withMultiplayerRoomLock,
@@ -713,6 +714,8 @@ export async function readSameBrainSnapshot(input: {
   credential: string;
   playerId?: string;
   lastSequence: number;
+  /** What this viewer already holds. Matching it means the body can be left off entirely. */
+  lastDigest?: string | null;
 }): Promise<SameBrainSnapshotResult> {
   // A poll is what closes a timed-out submit, so the clock runs before the snapshot is taken.
   await pump(input.roomId);
@@ -721,7 +724,13 @@ export async function readSameBrainSnapshot(input: {
       return { ...multiplayerFailure("room_unavailable", "Room unavailable"), snapshot: null };
     const now = Date.now();
     touch(room, input.playerId, now);
-    return { ok: true as const, snapshot: snapshot(room, input.playerId, now) };
+    // Hashed after redaction: two players in one room hold different views and must not be able
+    // to share a digest.
+    const view = snapshot(room, input.playerId, now);
+    view.digest = multiplayerSnapshotDigest(view);
+    if (input.lastDigest && input.lastDigest === view.digest)
+      return { ok: true as const, unchanged: true as const, serverNow: now, snapshot: null };
+    return { ok: true as const, snapshot: view };
   });
   return (
     result ?? { ...multiplayerFailure("room_unavailable", "Room unavailable"), snapshot: null }

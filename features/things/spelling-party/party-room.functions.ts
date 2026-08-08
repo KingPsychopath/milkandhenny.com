@@ -154,6 +154,7 @@ export const readPartySnapshotFn = createServerFn({ method: "POST" })
       presenterToken:
         data.presenterToken === undefined ? undefined : credential(data.presenterToken),
       lastSequence: sequence(data.lastSequence),
+      lastDigest: typeof data.lastDigest === "string" ? data.lastDigest.slice(0, 24) : null,
     };
   })
   .handler(({ data }) => readPartySnapshot(data));

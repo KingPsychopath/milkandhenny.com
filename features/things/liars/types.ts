@@ -302,6 +302,8 @@ export interface LiarsGraveyardNote {
 
 export interface LiarsSnapshot
   extends MultiplayerRoomIdentity, MultiplayerRevision, MultiplayerSequence {
+  /** Hash of this viewer's redacted view, filled in by the read. */
+  digest?: string;
   mode: LiarsMode;
   roomMode: LiarsRoomMode;
   phase: LiarsPhase;
@@ -384,12 +386,23 @@ export type LiarsJoinResult =
   | MultiplayerFailure<LiarsJoinErrorCode>;
 
 export type LiarsSnapshotResult =
-  | MultiplayerSuccess<{ snapshot: LiarsSnapshot }>
+  // `unchanged` is present on both success arms so it discriminates them; without it on this one,
+  // narrowing leaves `snapshot` as `LiarsSnapshot | null` at every call site.
+  | MultiplayerSuccess<{ unchanged?: false; snapshot: LiarsSnapshot }>
+  /** The viewer's digest matched, so the body was left off. */
+  | MultiplayerSuccess<{ unchanged: true; serverNow: number; snapshot: null }>
   | (MultiplayerFailure<"room_unavailable"> & { snapshot: null });
 
 export type LiarsHostAction = MultiplayerAction &
   (
-    | { type: "game.configure"; lineup?: LiarsLineup; resetLineup?: boolean; toggles?: Partial<LiarsToggles>; timings?: Partial<LiarsTimings>; roomMode?: LiarsRoomMode }
+    | {
+        type: "game.configure";
+        lineup?: LiarsLineup;
+        resetLineup?: boolean;
+        toggles?: Partial<LiarsToggles>;
+        timings?: Partial<LiarsTimings>;
+        roomMode?: LiarsRoomMode;
+      }
     | { type: "game.start"; force?: boolean }
     | { type: "phase.extend" }
     | { type: "phase.pause" | "phase.resume" }

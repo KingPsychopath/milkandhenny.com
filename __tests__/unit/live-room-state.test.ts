@@ -54,6 +54,14 @@ describe("live room recovery", () => {
     expect(afterRecovery.ended).toBe(false);
   });
 
+  it("treats an unchanged response as a healthy read without replacing the snapshot", () => {
+    const outcome = resolveLiveRoomRead(
+      { ok: true, unchanged: true, serverNow: 2_000 },
+      UNAVAILABLE_READS_BEFORE_ENDING - 1,
+    );
+    expect(outcome).toEqual({ consecutiveFailures: 0, ended: false, message: null });
+  });
+
   it("clears the snapshot only when the session actually ends", () => {
     const transient = resolveLiveRoomRead({ ok: false, error: "Room unavailable" }, 0);
     expect(transient.snapshot).toBeUndefined();

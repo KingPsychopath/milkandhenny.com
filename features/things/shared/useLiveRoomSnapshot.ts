@@ -5,10 +5,13 @@ import { useRoomReconciler } from "./useRoomReconciler";
 export interface LiveRoomSnapshotBase {
   sequence: number;
   serverNow: number;
+  /** What the server hashed this view to. Absent on games that have not adopted the digest. */
+  digest?: string;
 }
 
 type LiveRoomSnapshotResult<Snapshot> =
   | { ok: true; snapshot: Snapshot }
+  | { ok: true; unchanged: true; serverNow: number }
   | { ok: false; error: string };
 
 interface LiveRoomSnapshotInput<Snapshot extends LiveRoomSnapshotBase> {
@@ -17,7 +20,15 @@ interface LiveRoomSnapshotInput<Snapshot extends LiveRoomSnapshotBase> {
   /** Identity of the room and viewer; changing it restarts polling from scratch. */
   roomKey: string | null;
   initialSnapshot?: Snapshot;
-  read: (lastSequence: number) => Promise<LiveRoomSnapshotResult<Snapshot>>;
+  /**
+   * `lastDigest` is what the viewer already holds. A room whose read honours it answers unchanged
+   * polls with a few bytes instead of a few kilobytes; one that ignores it simply keeps sending
+   * whole snapshots, so adopting this is per game and never a breaking change.
+   */
+  read: (
+    lastSequence: number,
+    lastDigest: string | null,
+  ) => Promise<LiveRoomSnapshotResult<Snapshot>>;
   /** Scheduled moments the room changes on its own, so the next read lands just after one. */
   boundariesOf?: (snapshot: Snapshot) => Array<number | null | undefined>;
 }
@@ -35,6 +46,7 @@ export function useLiveRoomSnapshot<Snapshot extends LiveRoomSnapshotBase>(
   const [message, setMessage] = useState<string | null>(null);
   const [ended, setEnded] = useState(false);
   const sequenceRef = useRef(input.initialSnapshot?.sequence ?? 0);
+  const digestRef = useRef<string | null>(input.initialSnapshot?.digest ?? null);
   const failuresRef = useRef(0);
   const readRef = useRef(input.read);
   const boundariesRef = useRef(input.boundariesOf);
@@ -47,13 +59,16 @@ export function useLiveRoomSnapshot<Snapshot extends LiveRoomSnapshotBase>(
   // would count towards ending this one.
   useEffect(() => {
     failuresRef.current = 0;
+    // And never carry one room's digest into another, or the first read of the new room could be
+    // answered "unchanged" against a snapshot the viewer does not have.
+    digestRef.current = null;
   }, [input.roomKey]);
 
   const reconcile = useCallback(async (isCurrent: () => boolean) => {
     const startedAt = Date.now();
     let read: Parameters<typeof resolveLiveRoomRead<Snapshot>>[0];
     try {
-      read = await readRef.current(sequenceRef.current);
+      read = await readRef.current(sequenceRef.current, digestRef.current);
     } catch {
       // A request that never landed — offline tab, timeout, busy room — says nothing about whether
       // the room still exists.
@@ -66,12 +81,20 @@ export function useLiveRoomSnapshot<Snapshot extends LiveRoomSnapshotBase>(
     failuresRef.current = outcome.consecutiveFailures;
     setMessage(outcome.message);
     setEnded(outcome.ended);
+    // Nothing to apply, but the clock still gets a free correction out of the round trip.
+    if (read.ok && "unchanged" in read) {
+      setClockOffset(read.serverNow - (startedAt + endedAt) / 2);
+      return;
+    }
+
     if (outcome.snapshot === undefined) return;
     if (outcome.snapshot === null) {
+      digestRef.current = null;
       setSnapshot(null);
       return;
     }
     sequenceRef.current = outcome.snapshot.sequence;
+    digestRef.current = outcome.snapshot.digest ?? null;
     setClockOffset(outcome.snapshot.serverNow - (startedAt + endedAt) / 2);
     setSnapshot(outcome.snapshot);
   }, []);

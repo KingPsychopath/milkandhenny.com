@@ -51,16 +51,23 @@ export function LiarsPresenterApp({ roomId }: { roomId: string }) {
       return;
     }
     let active = true;
+    // The presenter polls every two seconds, so it gains most from omitting unchanged bodies.
+    let digest: string | null = null;
     const read = async () => {
       const startedAt = Date.now();
       const result = await readLiarsSnapshotFn({
-        data: { roomId, credential: hostToken, lastSequence: 0 },
+        data: { roomId, credential: hostToken, lastSequence: 0, lastDigest: digest },
       }).catch(() => null);
       if (!active) return;
       if (!result?.ok) {
         setMessage("That room has ended.");
         return;
       }
+      if (result.unchanged) {
+        setClockOffset(result.serverNow - (startedAt + Date.now()) / 2);
+        return;
+      }
+      digest = result.snapshot.digest ?? null;
       setClockOffset(result.snapshot.serverNow - (startedAt + Date.now()) / 2);
       setSnapshot(result.snapshot);
     };
@@ -119,7 +126,10 @@ export function LiarsPresenterApp({ roomId }: { roomId: string }) {
               ) : null}
               <ul className="mt-[4vh] grid grid-cols-2 gap-x-[4vw] gap-y-[1vh] lg:grid-cols-3">
                 {ending.roles.map(({ playerId, name, role }) => (
-                  <li key={playerId} className="flex items-baseline gap-3 border-t border-white/10 pt-2">
+                  <li
+                    key={playerId}
+                    className="flex items-baseline gap-3 border-t border-white/10 pt-2"
+                  >
                     <span className="font-serif text-[3vh]">{name}</span>
                     <span className="ml-auto font-mono text-[1.6vh] uppercase tracking-[0.14em] text-white/55">
                       {LIARS_ROLES[role].name}

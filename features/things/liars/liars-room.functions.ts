@@ -7,11 +7,7 @@ import {
   multiplayerSequence,
   multiplayerText,
 } from "../shared/multiplayer-validation";
-import {
-  LIARS_GRAVEYARD_NOTE_LENGTH,
-  LIARS_LAST_WORDS_LENGTH,
-  LIARS_ROLES,
-} from "./liars-rules";
+import { LIARS_GRAVEYARD_NOTE_LENGTH, LIARS_LAST_WORDS_LENGTH, LIARS_ROLES } from "./liars-rules";
 import {
   applyLiarsHostAction,
   applyLiarsPlayerAction,
@@ -44,7 +40,8 @@ const roomId = multiplayerRoomId;
 const credential = multiplayerCredential;
 const sequence = multiplayerSequence;
 const actionId = (value: unknown) => text(value, 80);
-const optionalId = (value: unknown) => (value === null || value === undefined ? null : text(value, 120));
+const optionalId = (value: unknown) =>
+  value === null || value === undefined ? null : text(value, 120);
 
 function mode(value: unknown): LiarsMode {
   if (value === "mafia" || value === "imposter") return value;
@@ -246,6 +243,7 @@ export const readLiarsSnapshotFn = createServerFn({ method: "POST" })
       credential: credential(data.credential),
       playerId: data.playerId === undefined ? undefined : text(data.playerId, 120),
       lastSequence: sequence(data.lastSequence),
+      lastDigest: typeof data.lastDigest === "string" ? data.lastDigest.slice(0, 24) : null,
     };
   })
   .handler(({ data }) => readLiarsSnapshot(data));
@@ -281,7 +279,6 @@ export const closeLiarsRoomFn = createServerFn({ method: "POST" })
     return { roomId: roomId(data.roomId), hostToken: credential(data.hostToken) };
   })
   .handler(({ data }) => closeLiarsRoom(data.roomId, data.hostToken));
-
 
 // --- Development only. The engine refuses these outside development; these validate the input. ---
 

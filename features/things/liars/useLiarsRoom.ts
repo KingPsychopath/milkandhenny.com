@@ -11,19 +11,22 @@ export function useLiarsRoom(input: {
   initialSnapshot?: LiarsSnapshot;
 }) {
   const read = useCallback(
-    () =>
+    (lastSequence: number, lastDigest: string | null) =>
       readLiarsSnapshotFn({
         data: {
           roomId: input.roomId,
           credential: input.playerToken,
           playerId: input.playerId,
-          lastSequence: 0,
+          lastSequence,
+          lastDigest,
         },
-      }).then((result) =>
-        result.ok
-          ? ({ ok: true, snapshot: result.snapshot } as const)
-          : ({ ok: false, error: result.error } as const),
-      ),
+      }).then((result) => {
+        if (!result.ok) return { ok: false, error: result.error } as const;
+        // Nothing to apply — the viewer already holds this exact view.
+        if (result.unchanged)
+          return { ok: true, unchanged: true, serverNow: result.serverNow } as const;
+        return { ok: true, snapshot: result.snapshot } as const;
+      }),
     [input.playerId, input.playerToken, input.roomId],
   );
 

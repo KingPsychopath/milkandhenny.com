@@ -53,6 +53,8 @@ export const readDrawCountrySnapshotFn = createServerFn({ method: "POST" })
       roomId: multiplayerRoomId(data.roomId),
       playerId: text(data.playerId, 80),
       playerToken: credential(data.playerToken),
+      lastSequence: sequence(data.lastSequence),
+      lastDigest: typeof data.lastDigest === "string" ? data.lastDigest.slice(0, 24) : null,
     };
   })
   .handler(({ data }) => readDrawCountrySnapshot(data));

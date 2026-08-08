@@ -74,6 +74,7 @@ describe("Draw the Country rooms", () => {
       roomId: room.roomId,
       playerId: room.playerId,
       playerToken: room.playerToken,
+      lastSequence: 0,
     });
     const serialized = JSON.stringify(hostView.snapshot);
     expect(serialized).not.toContain("611.25");
@@ -89,6 +90,7 @@ describe("Draw the Country rooms", () => {
       roomId: room.roomId,
       playerId: room.playerId,
       playerToken: "not-the-right-token",
+      lastSequence: 0,
     });
     expect(result.ok).toBe(false);
     expect(result.snapshot).toBeNull();
@@ -148,6 +150,7 @@ describe("Draw the Country rooms", () => {
       roomId: room.roomId,
       playerId: room.playerId,
       playerToken: room.playerToken,
+      lastSequence: 0,
     });
     expect(revealed.snapshot?.phase).toBe("reveal");
     const scores = new Map(revealed.snapshot?.players.map((p) => [p.id, p.roundScore]));
@@ -185,6 +188,7 @@ describe("Draw the Country rooms", () => {
       roomId: room.roomId,
       playerId: room.playerId,
       playerToken: room.playerToken,
+      lastSequence: 0,
     });
     expect(revealed.snapshot?.players.find(({ id }) => id === room.playerId)?.roundScore).toBe(100);
   });
@@ -256,6 +260,7 @@ describe("Draw the Country rooms", () => {
       roomId: room.roomId,
       playerId: room.playerId,
       playerToken: room.playerToken,
+      lastSequence: 0,
     });
     expect(revealed.snapshot?.phase).toBe("reveal");
 
@@ -264,6 +269,7 @@ describe("Draw the Country rooms", () => {
       roomId: room.roomId,
       playerId: room.playerId,
       playerToken: room.playerToken,
+      lastSequence: 0,
     });
     expect(finished.snapshot?.phase).toBe("finished");
   });
@@ -295,12 +301,14 @@ describe("Draw the Country rooms", () => {
       roomId: room.roomId,
       playerId: room.playerId,
       playerToken: room.playerToken,
+      lastSequence: 0,
     });
     vi.setSystemTime(revealed.snapshot!.round!.nextRoundAt! + 1);
     const finished = await readDrawCountrySnapshot({
       roomId: room.roomId,
       playerId: room.playerId,
       playerToken: room.playerToken,
+      lastSequence: 0,
     });
     expect(finished.snapshot?.phase).toBe("finished");
     const earned = finished.snapshot!.players.find(({ id }) => id === room.playerId)!.score;
@@ -330,6 +338,7 @@ describe("Draw the Country rooms", () => {
       roomId: room.roomId,
       playerId: player.playerId,
       playerToken: player.playerToken,
+      lastSequence: 0,
     });
     expect(asPlayer.snapshot?.gameNumber).toBe(2);
   });
@@ -349,12 +358,14 @@ describe("Draw the Country rooms", () => {
       roomId: room.roomId,
       playerId: room.playerId,
       playerToken: room.playerToken,
+      lastSequence: 0,
     });
     vi.setSystemTime(revealed.snapshot!.round!.nextRoundAt! + 1);
     await readDrawCountrySnapshot({
       roomId: room.roomId,
       playerId: room.playerId,
       playerToken: room.playerToken,
+      lastSequence: 0,
     });
 
     const lobby = await applyDrawCountryAction({
@@ -397,6 +408,7 @@ describe("Draw the Country rooms", () => {
       roomId: "ZZZZZZZ",
       playerId: "nobody",
       playerToken: "nothing",
+      lastSequence: 0,
     });
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.errorCode).toBe("room_unavailable");

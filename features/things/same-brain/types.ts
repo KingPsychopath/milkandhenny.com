@@ -98,6 +98,8 @@ export interface SameBrainRoundResult {
 }
 
 export interface SameBrainSnapshot extends MultiplayerSequence {
+  /** Hash of this viewer's redacted view, filled in by the read. */
+  digest?: string;
   roomId: string;
   phase: SameBrainPhase;
   revision: number;
@@ -204,7 +206,11 @@ export type SameBrainJoinResult =
   | MultiplayerFailure<SameBrainRoomErrorCode>;
 
 export type SameBrainSnapshotResult =
-  | MultiplayerSuccess<{ snapshot: SameBrainSnapshot }>
+  // `unchanged` sits on both success arms so it discriminates them; without it here, narrowing
+  // leaves `snapshot` nullable at every call site.
+  | MultiplayerSuccess<{ unchanged?: false; snapshot: SameBrainSnapshot }>
+  /** The viewer's digest matched, so the body was left off. */
+  | MultiplayerSuccess<{ unchanged: true; serverNow: number; snapshot: null }>
   | (MultiplayerFailure<SameBrainRoomErrorCode> & { snapshot: null });
 
 export type SameBrainActionResult =
