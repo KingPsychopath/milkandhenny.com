@@ -81,6 +81,7 @@ import { Route as ThingsSpellingPartyRoomIdPresentRouteImport } from './routes/t
 import { Route as ThingsPitchesRemoteRoomIdRouteImport } from './routes/things.pitches_.remote_.$roomId'
 import { Route as ThingsPitchesPresentRoomIdRouteImport } from './routes/things.pitches_.present_.$roomId'
 import { Route as ThingsPitchesDeckIdEditRouteImport } from './routes/things.pitches_.$deckId_.edit'
+import { Route as ThingsLiarsRoomIdPresentRouteImport } from './routes/things.liars_.$roomId_.present'
 import { Route as ApiWordsShareVerifyRouteRouteImport } from './routes/api/words/share/verify/route'
 import { Route as ApiWordsSlugSharesRouteRouteImport } from './routes/api/words/$slug/shares/route'
 import { Route as ApiUploadWordsTargetsRouteRouteImport } from './routes/api/upload/words/targets/route'
@@ -485,6 +486,12 @@ const ThingsPitchesDeckIdEditRoute = ThingsPitchesDeckIdEditRouteImport.update({
   path: '/pitches/$deckId/edit',
   getParentRoute: () => ThingsRoute,
 } as any)
+const ThingsLiarsRoomIdPresentRoute =
+  ThingsLiarsRoomIdPresentRouteImport.update({
+    id: '/liars_/$roomId_/present',
+    path: '/liars/$roomId/present',
+    getParentRoute: () => ThingsRoute,
+  } as any)
 const ApiWordsShareVerifyRouteRoute =
   ApiWordsShareVerifyRouteRouteImport.update({
     id: '/share/verify',
@@ -766,6 +773,7 @@ export interface FileRoutesByFullPath {
   '/api/upload/words/targets': typeof ApiUploadWordsTargetsRouteRoute
   '/api/words/$slug/shares': typeof ApiWordsSlugSharesRouteRouteWithChildren
   '/api/words/share/verify': typeof ApiWordsShareVerifyRouteRoute
+  '/things/liars/$roomId/present': typeof ThingsLiarsRoomIdPresentRoute
   '/things/pitches/$deckId/edit': typeof ThingsPitchesDeckIdEditRoute
   '/things/pitches/present/$roomId': typeof ThingsPitchesPresentRoomIdRoute
   '/things/pitches/remote/$roomId': typeof ThingsPitchesRemoteRoomIdRoute
@@ -872,6 +880,7 @@ export interface FileRoutesByTo {
   '/api/upload/words/targets': typeof ApiUploadWordsTargetsRouteRoute
   '/api/words/$slug/shares': typeof ApiWordsSlugSharesRouteRouteWithChildren
   '/api/words/share/verify': typeof ApiWordsShareVerifyRouteRoute
+  '/things/liars/$roomId/present': typeof ThingsLiarsRoomIdPresentRoute
   '/things/pitches/$deckId/edit': typeof ThingsPitchesDeckIdEditRoute
   '/things/pitches/present/$roomId': typeof ThingsPitchesPresentRoomIdRoute
   '/things/pitches/remote/$roomId': typeof ThingsPitchesRemoteRoomIdRoute
@@ -979,6 +988,7 @@ export interface FileRoutesById {
   '/api/upload/words/targets': typeof ApiUploadWordsTargetsRouteRoute
   '/api/words/$slug/shares': typeof ApiWordsSlugSharesRouteRouteWithChildren
   '/api/words/share/verify': typeof ApiWordsShareVerifyRouteRoute
+  '/things/liars_/$roomId_/present': typeof ThingsLiarsRoomIdPresentRoute
   '/things/pitches_/$deckId_/edit': typeof ThingsPitchesDeckIdEditRoute
   '/things/pitches_/present_/$roomId': typeof ThingsPitchesPresentRoomIdRoute
   '/things/pitches_/remote_/$roomId': typeof ThingsPitchesRemoteRoomIdRoute
@@ -1087,6 +1097,7 @@ export interface FileRouteTypes {
     | '/api/upload/words/targets'
     | '/api/words/$slug/shares'
     | '/api/words/share/verify'
+    | '/things/liars/$roomId/present'
     | '/things/pitches/$deckId/edit'
     | '/things/pitches/present/$roomId'
     | '/things/pitches/remote/$roomId'
@@ -1193,6 +1204,7 @@ export interface FileRouteTypes {
     | '/api/upload/words/targets'
     | '/api/words/$slug/shares'
     | '/api/words/share/verify'
+    | '/things/liars/$roomId/present'
     | '/things/pitches/$deckId/edit'
     | '/things/pitches/present/$roomId'
     | '/things/pitches/remote/$roomId'
@@ -1299,6 +1311,7 @@ export interface FileRouteTypes {
     | '/api/upload/words/targets'
     | '/api/words/$slug/shares'
     | '/api/words/share/verify'
+    | '/things/liars_/$roomId_/present'
     | '/things/pitches_/$deckId_/edit'
     | '/things/pitches_/present_/$roomId'
     | '/things/pitches_/remote_/$roomId'
@@ -1883,6 +1896,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ThingsPitchesDeckIdEditRouteImport
       parentRoute: typeof ThingsRoute
     }
+    '/things/liars_/$roomId_/present': {
+      id: '/things/liars_/$roomId_/present'
+      path: '/liars/$roomId/present'
+      fullPath: '/things/liars/$roomId/present'
+      preLoaderRoute: typeof ThingsLiarsRoomIdPresentRouteImport
+      parentRoute: typeof ThingsRoute
+    }
     '/api/words/share/verify': {
       id: '/api/words/share/verify'
       path: '/share/verify'
@@ -2128,6 +2148,7 @@ interface ThingsRouteChildren {
   ThingsPitchesPresentRoute: typeof ThingsPitchesPresentRoute
   ThingsPlayRoomIdRoute: typeof ThingsPlayRoomIdRoute
   ThingsSpellingPartyRoomIdRoute: typeof ThingsSpellingPartyRoomIdRoute
+  ThingsLiarsRoomIdPresentRoute: typeof ThingsLiarsRoomIdPresentRoute
   ThingsPitchesDeckIdEditRoute: typeof ThingsPitchesDeckIdEditRoute
   ThingsPitchesPresentRoomIdRoute: typeof ThingsPitchesPresentRoomIdRoute
   ThingsPitchesRemoteRoomIdRoute: typeof ThingsPitchesRemoteRoomIdRoute
@@ -2152,6 +2173,7 @@ const ThingsRouteChildren: ThingsRouteChildren = {
   ThingsPitchesPresentRoute: ThingsPitchesPresentRoute,
   ThingsPlayRoomIdRoute: ThingsPlayRoomIdRoute,
   ThingsSpellingPartyRoomIdRoute: ThingsSpellingPartyRoomIdRoute,
+  ThingsLiarsRoomIdPresentRoute: ThingsLiarsRoomIdPresentRoute,
   ThingsPitchesDeckIdEditRoute: ThingsPitchesDeckIdEditRoute,
   ThingsPitchesPresentRoomIdRoute: ThingsPitchesPresentRoomIdRoute,
   ThingsPitchesRemoteRoomIdRoute: ThingsPitchesRemoteRoomIdRoute,

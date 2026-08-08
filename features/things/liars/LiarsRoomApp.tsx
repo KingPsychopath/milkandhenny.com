@@ -203,6 +203,16 @@ export function LiarsRoom({ credentials }: { credentials: LiarsPlayerCredentials
                 take over as host
               </button>
             ) : null}
+            {isHost ? (
+              <a
+                href={`/things/liars/${snapshot.roomId}/present`}
+                target="_blank"
+                rel="noreferrer"
+                className="min-h-11 font-mono text-xs text-white/45 hover:text-white/80"
+              >
+                big screen
+              </a>
+            ) : null}
             {room.connectionState !== "connected" ? (
               <span className="font-mono text-xs text-white/30">{room.connectionState}</span>
             ) : null}

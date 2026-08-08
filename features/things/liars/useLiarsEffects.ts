@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { liarsHaptic, liarsTorch, playLiarsSound } from "./liars-effects.client";
+import { speakLiarsNarration } from "./narration.client";
 import type { LiarsSnapshot } from "./types";
 
 export type LiarsOverlay = "none" | "death" | "revive" | "dusk" | "dawn";
@@ -145,6 +146,15 @@ export function useLiarsEffects(input: {
 
     return () => timers.forEach((timer) => window.clearTimeout(timer));
   }, [clockOffset, snapshot]);
+
+  // The story, read aloud by whichever single device the server elected.
+  useEffect(() => {
+    const dawn = snapshot?.dawn;
+    if (!dawn || snapshot?.phase !== "dawn" || !audible) return;
+    // Remote rooms have no shared speaker, so each device reads its own copy.
+    if (snapshot.roomMode === "same-room" && !input.isNarrator) return;
+    once(`narration:${dawn.nameLandsAt}`, () => void speakLiarsNarration(dawn.narration));
+  }, [audible, input.isNarrator, snapshot]);
 
   // A new game starts with a clean slate, or last game's ids would suppress this one's beats.
   const gameNumber = snapshot?.gameNumber;
