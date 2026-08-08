@@ -12,6 +12,8 @@ import { useTwinHeartbeat } from "./useTwinHeartbeat";
 import { useTwinCountdown, useTwinReveal } from "./useTwinReveal";
 import type { TwinSnapshot } from "./types";
 
+const SETTLE_MATCH_MS = 560;
+
 /**
  * The heat: the middle card, your card, and a clock.
  *
@@ -39,6 +41,15 @@ export function TwinBoard({
   const heat = snapshot.heat;
   const player = snapshot.player;
   const top = player?.top ?? null;
+  const completedResult = heat?.results.find(({ playerId }) => playerId === player?.playerId);
+  const [showSettledMatch, setShowSettledMatch] = useState(false);
+  const shownTop =
+    snapshot.phase === "settle" && showSettledMatch && completedResult?.connection
+      ? completedResult.connection.card
+      : top;
+  const shownMiddle =
+    snapshot.phase === "settle" && showSettledMatch ? heat?.playedMiddle : heat?.middle;
+  const pairFaceDown = snapshot.phase === "settle" && !showSettledMatch;
   const revealedAt = useTwinReveal(heat?.id ?? null, heat?.revealAt ?? null, clockOffset);
 
   const live = snapshot.phase === "heat" && heat !== null && revealedAt !== null;
@@ -61,11 +72,11 @@ export function TwinBoard({
    * still rules — this only buys the animation and the haptic, which are what make it feel like a game.
    */
   const answer = useMemo(() => {
-    if (!top || !heat) return null;
+    if (snapshot.phase !== "heat" || !top || !heat) return null;
     const middle = twinCardById(snapshot.order, heat.middle.cardId);
     const mine = twinCardById(snapshot.order, top.cardId);
     return middle && mine ? twinMatch(mine, middle) : null;
-  }, [heat, snapshot.order, top]);
+  }, [heat, snapshot.order, snapshot.phase, top]);
 
   const [shake, setShake] = useState(0);
   const [found, setFound] = useState<string | null>(null);
@@ -84,8 +95,20 @@ export function TwinBoard({
 
   // Reconcile with the server: it is the one that decides whether a tap counted.
   useEffect(() => {
-    if (landed && answer) setFound(answer);
-  }, [answer, landed]);
+    if (snapshot.phase === "heat" && landed && answer) setFound(answer);
+    if (snapshot.phase !== "settle") {
+      setShowSettledMatch(false);
+      return;
+    }
+    const symbolId = completedResult?.connection?.symbolId ?? null;
+    setFound(symbolId);
+    setShowSettledMatch(Boolean(symbolId));
+    const timer = window.setTimeout(() => {
+      setFound(null);
+      setShowSettledMatch(false);
+    }, SETTLE_MATCH_MS);
+    return () => window.clearTimeout(timer);
+  }, [answer, completedResult?.connection?.symbolId, landed, snapshot.phase]);
 
   const handleTap = (symbolId: string) => {
     if (!live || landed || cooling) {
@@ -145,7 +168,7 @@ export function TwinBoard({
           </>
         ) : (
           <p className="twin-clock-read twin-clock-read--idle">
-            {snapshot.phase === "dealing" ? "dealing" : settled ? "next heat" : ""}
+            {snapshot.phase === "dealing" ? "dealing" : settled ? "result" : ""}
           </p>
         )}
         <p className="twin-board-tally" aria-live="polite">
@@ -157,23 +180,50 @@ export function TwinBoard({
         </p>
       </div>
 
-      {heat ? (
+      {snapshot.phase === "dealing" ? (
+        <div className="twin-deal" role="status" aria-label="Shuffling and dealing cards">
+          <div className="twin-deal-pack" aria-hidden="true">
+            {Array.from({ length: 5 }, (_unused, index) => (
+              <span
+                key={index}
+                className="twin-deal-card"
+                style={
+                  {
+                    "--twin-deal-x": `${(index - 2) * 15}px`,
+                    "--twin-deal-y": `${Math.abs(index - 2) * 3}px`,
+                    "--twin-deal-rotate": `${(index - 2) * 5}deg`,
+                    animationDelay: `${index * 65}ms`,
+                  } as React.CSSProperties
+                }
+              />
+            ))}
+          </div>
+          <p className="twin-deal-title">Shuffling your hand</p>
+          <p className="twin-deal-note">{snapshot.handSize} cards · the first match is next</p>
+        </div>
+      ) : heat && shownMiddle ? (
         <div className="twin-board-cards">
           <TwinCard
-            card={heat.middle}
+            card={shownMiddle}
             slot="middle"
             label="The card in the middle"
+            faceDown={pairFaceDown}
             focusSymbolId={found}
             className="twin-card--middle"
           />
 
-          {top ? (
-            <TwinHand top={top} rest={player?.rest ?? []} canFan={snapshot.phase !== "heat"}>
+          {shownTop ? (
+            <TwinHand
+              top={shownTop}
+              rest={player?.rest ?? []}
+              hint={snapshot.phase === "settle" ? "next card stays hidden" : undefined}
+            >
               <TwinCard
-                key={`${heat.id}-${top.cardId}`}
-                card={top}
+                key={`${heat.id}-${shownTop.cardId}`}
+                card={shownTop}
                 slot="hand"
                 label="Your card"
+                faceDown={pairFaceDown}
                 onTap={handleTap}
                 disabled={!live || landed}
                 focusSymbolId={found}
@@ -192,6 +242,7 @@ export function TwinBoard({
               from={{ slot: "hand", symbolId: found }}
               to={{ slot: "middle", symbolId: found }}
               token={`${heat.id}-${found}`}
+              label="match"
             />
           ) : null}
         </div>
@@ -202,9 +253,16 @@ export function TwinBoard({
           <p className="twin-status twin-status--cooling">
             wrong one · {(cooldownMs / 1_000).toFixed(1)}s
           </p>
+        ) : found && snapshot.phase === "settle" ? (
+          <p className="twin-status twin-status--found">
+            match · card down ·{" "}
+            {player?.top
+              ? `${snapshot.players.find(({ id }) => id === player.playerId)?.cardsLeft ?? 0} left`
+              : "hand empty"}
+          </p>
         ) : found ? (
           <p className="twin-status twin-status--found">
-            {twinSymbolName(found)}
+            match · {twinSymbolName(found)}
             {player?.landedMs !== null && player?.landedMs !== undefined
               ? ` · ${(player.landedMs / 1_000).toFixed(2)}s`
               : ""}

@@ -115,13 +115,16 @@ export function TwinFinished({
 
         {snapshot.canControl ? (
           <>
+            <p className="twin-note">
+              A rematch keeps these players and settings, then deals immediately.
+            </p>
             <button
               type="button"
               onClick={onPlayAgain}
               disabled={pending}
               className="twin-button twin-button--go"
             >
-              {pending ? "dealing…" : "play again · same people"}
+              {pending ? "dealing the rematch…" : "rematch now"}
             </button>
             <button
               type="button"
@@ -129,12 +132,12 @@ export function TwinFinished({
               disabled={pending}
               className="twin-button twin-button--quiet"
             >
-              back to the lobby to add people
+              change players or cards
             </button>
           </>
         ) : (
           <p aria-live="polite" className="twin-note">
-            waiting for the host to start another game
+            The host can start an immediate rematch or reopen the lobby.
           </p>
         )}
         <p aria-live="polite" className="twin-message">

@@ -94,6 +94,8 @@ interface PlayerState {
 interface HeatState {
   id: string;
   number: number;
+  /** Frozen for the whole heat so settlement never exposes the next pairing as the last result. */
+  middle: CardState;
   revealAt: number;
   deadlineAt: number;
   graceEndsAt: number | null;
@@ -236,17 +238,20 @@ function playerStats(room: RoomState): TwinPlayerStats[] {
 
 /** The symbol the given player is hunting this heat: their top card against the middle card. */
 function expectedSymbol(room: RoomState, player: PlayerState) {
-  const middle = room.middle && twinCardById(room.order, room.middle.cardId);
+  const middleState = room.heat?.middle ?? room.middle;
+  const middle = middleState && twinCardById(room.order, middleState.cardId);
   const top = player.hand[0] && twinCardById(room.order, player.hand[0].cardId);
   return middle && top ? twinMatch(top, middle) : null;
 }
 
 function startHeat(room: RoomState, now: number) {
+  if (!room.middle) throw new Error("Twin cannot start a heat without a middle card");
   room.heatCount += 1;
   const revealAt = now + 150;
   room.heat = {
     id: crypto.randomUUID(),
     number: room.heatCount,
+    middle: { ...room.middle },
     revealAt,
     deadlineAt: revealAt + room.windowMs,
     graceEndsAt: null,
@@ -285,7 +290,7 @@ function settleHeat(room: RoomState, now: number): TwinLoggedHeat | null {
     misses: player.heatId === heat.id ? player.heatMisses : 0,
   }));
   const outcome = twinHeatOutcome(entries);
-  const playedAgainst = room.middle;
+  const playedAgainst = heat.middle;
   const middle = playedAgainst ? dealtCard(room, playedAgainst) : null;
   const middleCard = playedAgainst ? twinCardById(room.order, playedAgainst.cardId) : null;
 
@@ -347,6 +352,10 @@ function settleHeat(room: RoomState, now: number): TwinLoggedHeat | null {
       misses: player.heatId === heat.id ? player.heatMisses : 0,
       shed: landed,
       won: player.id === outcome.winnerPlayerId,
+      connection: (() => {
+        const match = connections.find(({ playerId }) => playerId === player.id);
+        return match ? { card: match.card, symbolId: match.symbolId } : null;
+      })(),
     });
   }
 
@@ -523,6 +532,11 @@ function snapshot(room: RoomState, playerId: string): TwinSnapshot {
             id: heat.id,
             number: heat.number,
             middle: dealtCard(room, room.middle) ?? { cardId: "", symbolIds: [], seed: 0 },
+            playedMiddle: dealtCard(room, heat.middle) ?? {
+              cardId: "",
+              symbolIds: [],
+              seed: 0,
+            },
             revealAt: heat.revealAt,
             deadlineAt: heat.deadlineAt,
             graceEndsAt: heat.graceEndsAt,

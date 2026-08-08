@@ -43,12 +43,16 @@ export interface TwinHeatResult {
   shed: boolean;
   /** Set the next middle card. */
   won: boolean;
+  /** The card and symbol this player actually connected in the completed heat. */
+  connection: { card: TwinDealtCard; symbolId: string } | null;
 }
 
 export interface TwinHeatSnapshot {
   id: string;
   number: number;
   middle: TwinDealtCard;
+  /** Frozen before payout so the result never uses the next heat's promoted middle card. */
+  playedMiddle: TwinDealtCard;
   /** Absolute and server-owned. Every device animates against these. */
   revealAt: number;
   deadlineAt: number;
@@ -71,8 +75,8 @@ export interface TwinPrivateState extends MultiplayerReadiness {
   playerId: string;
   top: TwinDealtCard | null;
   /**
-   * The rest of your hand, top first. Sent always; the client governs when it may be looked at, and
-   * the fan is shut during a live heat so nobody can pre-scan while a result animates.
+   * The rest of your hand, top first. Sent for the visible stack count but kept face down so nobody
+   * can pre-scan while a result animates.
    */
   rest: TwinDealtCard[];
   /** Your recorded time this heat, once the server accepted it. */

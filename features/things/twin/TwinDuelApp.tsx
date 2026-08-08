@@ -19,7 +19,7 @@ import type { TwinDealtCard } from "./types";
  * One device.
  *
  * **Duel** is a face-off: your card against theirs, no middle card. Find the match, tap it on your own
- * card, and it goes to the bottom of their hand. First to empty wins.
+ * card, and shed it. First to empty wins.
  *
  * **Solo** keeps a middle card, because there is no opponent card to face.
  *
@@ -35,7 +35,7 @@ const ORDER = 4;
 const DUEL_PLAN = { order: ORDER, handSize: 10 } as const;
 const SOLO_PLAN = { order: ORDER, handSize: 20 } as const;
 const SOLO_MISS_PENALTY_MS = 3_000;
-/** Two evenly matched players can pass one card back and forth forever. */
+/** A generous cap keeps an unfinished table from running forever. */
 const DUEL_CAP_MS = 4 * 60_000;
 
 interface Seat {
@@ -100,7 +100,7 @@ export function TwinDuelApp({
   const resolveTimer = useRef<number | null>(null);
   const [raceSummary, setRaceSummary] = useState<string | null>(null);
   const [shake, setShake] = useState<{ seat: number; at: number } | null>(null);
-  const [winner, setWinner] = useState<number | null>(null);
+  const [winner, setWinner] = useState<number | "tie" | null>(null);
   const [startedAt, setStartedAt] = useState(() => Date.now());
   const [penaltyMs, setPenaltyMs] = useState(0);
   const [elapsedMs, setElapsedMs] = useState(0);
@@ -162,8 +162,7 @@ export function TwinDuelApp({
   useEffect(() => {
     if (players !== 2 || winner !== null || elapsedMs < DUEL_CAP_MS) return;
     const [one, two] = seats;
-    if (one.hand.length !== two.hand.length)
-      setWinner(one.hand.length < two.hand.length ? 0 : 1);
+    if (one.hand.length !== two.hand.length) setWinner(one.hand.length < two.hand.length ? 0 : 1);
     else setRaceSummary((current) => current ?? "sudden death · next connection wins");
   }, [elapsedMs, players, seats, winner]);
 
@@ -223,32 +222,27 @@ export function TwinDuelApp({
     // Hold the connection on screen before the card moves. The tap is already locked in.
     const first = { seat: seatIndex, symbolId, tappedAt };
     race.current = { first, second: null };
-    setRaceSummary(null);
+    setRaceSummary(`match · seat ${seatIndex + 1}`);
     setFlash(first);
     void haptics.trigger("success");
     playTwinSound("connection", sound.effects);
     resolveTimer.current = window.setTimeout(() => {
       const result = race.current;
       if (!result) return;
-      const tied = twinDuelFinish(
-        result.first.tappedAt,
-        result.second?.tappedAt ?? null,
-      ).tied;
+      const tied = twinDuelFinish(result.first.tappedAt, result.second?.tappedAt ?? null).tied;
       setSeats((current) =>
         current.map((entry, index) => {
           if (tied && players === 2) {
-            const other = current[index === 0 ? 1 : 0]?.hand[0];
             const chain = entry.chain + 1;
             return {
               ...entry,
-              hand: other ? [...entry.hand.slice(1), other] : entry.hand.slice(1),
+              hand: entry.hand.slice(1),
               connections: entry.connections + 1,
               chain,
               longestChain: Math.max(entry.longestChain, chain),
               cooldownUntil: 0,
             };
           }
-          const given = current[result.first.seat]?.hand[0];
           if (index === result.first.seat) {
             const chain = entry.chain + 1;
             return {
@@ -260,9 +254,7 @@ export function TwinDuelApp({
               cooldownUntil: 0,
             };
           }
-          // The card lands at the *bottom* of their hand. On top it would swap out the card they are
-          // mid-scan on, which reads as the game cheating.
-          return players === 2 && given ? { ...entry, hand: [...entry.hand, given] } : entry;
+          return entry;
         }),
       );
       const given = seats[result.first.seat].hand[0];
@@ -271,7 +263,16 @@ export function TwinDuelApp({
       setSecondFlash(null);
       setSecondClaimed(false);
       race.current = null;
-      if (
+      const tiedRemaining = tied ? seats.map((seat) => Math.max(0, seat.hand.length - 1)) : null;
+      const tiedWinner = tiedRemaining
+        ? tiedRemaining[0] === 0 && tiedRemaining[1] === 0
+          ? "tie"
+          : tiedRemaining.findIndex((count) => count === 0)
+        : null;
+      if (tiedWinner === "tie" || (typeof tiedWinner === "number" && tiedWinner >= 0)) {
+        setWinner(tiedWinner);
+        playTwinSound("win", sound.effects);
+      } else if (
         !tied &&
         (seats[result.first.seat].hand.length === 1 || elapsedMs >= DUEL_CAP_MS)
       ) {
@@ -395,14 +396,17 @@ export function TwinDuelApp({
             }}
             token={`${flash.seat}-${flash.symbolId}-${seats[flash.seat]?.hand[0]?.cardId ?? ""}`}
             durationMs={connectionHoldMs}
+            label="match"
           />
-          <TwinCardTransfer
-            containerRef={boardRef}
-            from={flash.seat === 0 ? "seat-one" : "seat-two"}
-            to={players === 1 ? "middle" : flash.seat === 0 ? "seat-two" : "seat-one"}
-            token={`${flash.seat}-${flash.tappedAt}`}
-            durationMs={connectionHoldMs}
-          />
+          {players === 1 ? (
+            <TwinCardTransfer
+              containerRef={boardRef}
+              from="seat-one"
+              to="middle"
+              token={`${flash.seat}-${flash.tappedAt}`}
+              durationMs={connectionHoldMs}
+            />
+          ) : null}
         </>
       ) : null}
 
@@ -420,14 +424,7 @@ export function TwinDuelApp({
             }}
             token={`tie-${secondFlash.seat}-${secondFlash.tappedAt}`}
             durationMs={connectionHoldMs}
-          />
-          <TwinCardTransfer
-            containerRef={boardRef}
-            from={secondFlash.seat === 0 ? "seat-one" : "seat-two"}
-            to={secondFlash.seat === 0 ? "seat-two" : "seat-one"}
-            token={`tie-${secondFlash.seat}-${secondFlash.tappedAt}`}
-            durationMs={connectionHoldMs}
-            reverse
+            label="match"
           />
         </>
       ) : null}
@@ -435,26 +432,36 @@ export function TwinDuelApp({
       {winner !== null ? (
         <div className="twin-duel-over" role="dialog" aria-modal="true">
           <div className="twin-duel-over-panel">
-            <p className="twin-eyebrow">{seats[winner]?.connections ?? 0} connections</p>
+            <p className="twin-eyebrow">
+              {winner === "tie" ? "dead heat" : `${seats[winner]?.connections ?? 0} connections`}
+            </p>
             <h2 className="twin-title">
-              {players === 1
-                ? `Cleared in ${(soloTotal / 1_000).toFixed(1)}s`
-                : seats[winner]?.hand.length === 0
-                  ? `Seat ${winner + 1} is out of cards.`
-                  : `Time. Seat ${winner + 1} has fewest.`}
+              {winner === "tie"
+                ? "Both seats are out of cards."
+                : players === 1
+                  ? `Cleared in ${(soloTotal / 1_000).toFixed(1)}s`
+                  : seats[winner]?.hand.length === 0
+                    ? `Seat ${winner + 1} is out of cards.`
+                    : `Time. Seat ${winner + 1} has fewest.`}
             </h2>
             <p className="twin-lede">
-              longest chain {seats[winner]?.longestChain ?? 0}
-              {(seats[winner]?.misses ?? 0) > 0
-                ? ` · ${seats[winner]?.misses} wrong`
-                : " · flawless"}
+              {winner === "tie" ? (
+                "Same match. Same moment. One card shed each."
+              ) : (
+                <>
+                  longest chain {seats[winner]?.longestChain ?? 0}
+                  {(seats[winner]?.misses ?? 0) > 0
+                    ? ` · ${seats[winner]?.misses} wrong`
+                    : " · flawless"}
+                </>
+              )}
             </p>
             <button
               type="button"
               className="twin-button twin-button--go"
               onClick={() => setRound((current) => current + 1)}
             >
-              again
+              {players === 2 ? "play again · same two seats" : "play again · solo"}
             </button>
             <button
               type="button"
@@ -523,7 +530,7 @@ function DuelSeat({
             onTap={(symbolId, tappedAt) => onTap(index, symbolId, tappedAt)}
             disabled={locked}
             focusSymbolId={answer}
-            className={`twin-card--mine ${cooling ? "twin-card--cooling" : ""} ${
+            className={`twin-card--mine ${answer ? "twin-card--claimed" : ""} ${cooling ? "twin-card--cooling" : ""} ${
               shaking ? "twin-card--shake" : ""
             }`}
           />

@@ -19,6 +19,7 @@ interface TwinRayProps {
   /** Bumping this re-measures — a new heat, or a new step in the review. */
   token: string;
   durationMs?: number;
+  label?: string;
 }
 
 interface Connection {
@@ -45,7 +46,7 @@ function centreOf(container: HTMLElement, slot: string, symbolId: string) {
   };
 }
 
-export function TwinRay({ containerRef, from, to, token, durationMs = 520 }: TwinRayProps) {
+export function TwinRay({ containerRef, from, to, token, durationMs = 520, label }: TwinRayProps) {
   const [connection, setConnection] = useState<Connection | null>(null);
   const frame = useRef<number | null>(null);
   const gradientId = `twin-ray-${useId().replaceAll(":", "")}`;
@@ -72,26 +73,18 @@ export function TwinRay({ containerRef, from, to, token, durationMs = 520 }: Twi
       }
       const ux = dx / distance;
       const uy = dy / distance;
-      const startInset = Math.min(start.size * 0.52 + 7, distance * 0.28);
-      const endInset = Math.min(end.size * 0.52 + 7, distance * 0.28);
+      const startInset = Math.min(start.size * 0.46 + 2, distance * 0.24);
+      const endInset = Math.min(end.size * 0.46 + 2, distance * 0.24);
       const x1 = start.x + ux * startInset;
       const y1 = start.y + uy * startInset;
       const x2 = end.x - ux * endInset;
       const y2 = end.y - uy * endInset;
-      const curve = Math.min(34, Math.max(10, distance * 0.045));
-      const normalX = -uy * curve;
-      const normalY = ux * curve;
-      const controlOneX = x1 + (x2 - x1) * 0.34 + normalX;
-      const controlOneY = y1 + (y2 - y1) * 0.34 + normalY;
-      const controlTwoX = x1 + (x2 - x1) * 0.66 + normalX;
-      const controlTwoY = y1 + (y2 - y1) * 0.66 + normalY;
-
       setConnection({
         x1,
         y1,
         x2,
         y2,
-        path: `M ${x1} ${y1} C ${controlOneX} ${controlOneY}, ${controlTwoX} ${controlTwoY}, ${x2} ${y2}`,
+        path: `M ${x1} ${y1} L ${x2} ${y2}`,
         width: origin.width,
         height: origin.height,
       });
@@ -155,6 +148,17 @@ export function TwinRay({ containerRef, from, to, token, durationMs = 520 }: Twi
         r={3.5}
         style={{ animationDelay: `${durationMs * 0.66}ms` }}
       />
+      {label ? (
+        <g
+          className="twin-ray-label"
+          transform={`translate(${(connection.x1 + connection.x2) / 2} ${(connection.y1 + connection.y2) / 2})`}
+        >
+          <rect x="-27" y="-11" width="54" height="22" rx="11" />
+          <text textAnchor="middle" dominantBaseline="central">
+            {label}
+          </text>
+        </g>
+      ) : null}
     </svg>
   );
 }

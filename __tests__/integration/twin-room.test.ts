@@ -186,6 +186,7 @@ describe("Twin rooms", () => {
     const { seats } = await openRoom(["Abel", "Maya", "Daniel"], 5);
     await startGame(seats);
     const snapshots = await Promise.all(seats.map(look));
+    const playedMiddle = snapshots[0].heat?.middle.cardId;
     const fastestCard = snapshots[1].player?.top?.cardId;
 
     await answer(seats[1], snapshots[1], 800);
@@ -204,6 +205,11 @@ describe("Twin rooms", () => {
     expect(settled.heat?.results.find(({ name }) => name === "Daniel")?.shed).toBe(false);
     // The fastest player's card is the one everyone now plays against.
     expect(settled.heat?.middle.cardId).toBe(fastestCard);
+    // Result playback stays on the cards that were actually matched, never the next pairing.
+    expect(settled.heat?.playedMiddle.cardId).toBe(playedMiddle);
+    expect(settled.heat?.results.find(({ name }) => name === "Maya")?.connection?.card.cardId).toBe(
+      fastestCard,
+    );
 
     const players = settled.players;
     expect(players.find(({ name }) => name === "Daniel")?.cardsLeft).toBe(settled.handSize);

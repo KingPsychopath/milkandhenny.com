@@ -145,7 +145,7 @@ phone.
 | `lobby` | Roster, hand size, join code, QR |
 | `dealing` | 2.0s. Hands deal, middle card lands face down |
 | `heat` | Cards face up and tappable. Ends per §3.3 |
-| `settle` | Result, shed animation, chain state, hand preview open |
+| `settle` | Result, shed animation, chain state, next card concealed |
 | `finished` | Constellation review, awards, rematch |
 
 Every timestamp is absolute and server-owned — `revealAt`, `deadlineAt`, `graceEndsAt`, `settleAt`,
@@ -280,20 +280,14 @@ enforcement mechanism is that people are in the same room.
 Your top card is full size. The next two peek behind it, offset upward by 6px each, rotated ∓2.5°,
 scaled 0.96 and 0.92, and dimmed — face down during a heat. A count sits beside them: `4 left`.
 
-### 5.2 The fan
+### 5.2 Future cards stay hidden
 
-Drag up on the stack, or tap the peeking edge, and the hand **fans**: cards spread into an arc,
-faces up, and dragging horizontally brings each to the front. Tapping outside, or releasing a drag
-below the threshold, collapses it.
+The stack never opens during a game. Knowing the next card lets a player pre-scan while the previous
+result is still animating, which turns presentation speed into an advantage. The two peeks therefore
+remain face down and the result briefly replays only the pairing that was just solved.
 
-**The fan is only available during `settle` and `lobby`.** At `revealAt` it collapses, forcibly and
-visibly, and the peeked cards flip back down.
-
-That restriction is a balance decision, not a technical one. Knowing your next three cards lets you
-pre-scan while the previous result is still animating, and a player who does that every heat runs
-away with the game against people who do not. Confining it to the gap between heats gives everybody
-the same head start, keeps the interaction you actually want, and the collapse is a good beat for
-"here it comes".
+The dealing phase provides the physical card beat instead: a small face-down pack shuffles and fans
+into place before the first heat, without exposing either player's next answer.
 
 ---
 
@@ -399,37 +393,31 @@ result animates on your phone except your own.
 
 ### 9.1 Duel
 
-Two people facing each other across a phone or tablet. The middle card sits in the centre. Each
-player gets a seat: their own hand at their own edge, controls rounded into the corners nearest
-them, **and their entire seat rotated 180° from the other's** so both read upright from where they
-are sitting.
+Two people facing each other across a phone or tablet. Each player gets a seat: their own hand at
+their own edge, controls rounded into the corners nearest them, **and their entire seat rotated 180°
+from the other's** so both read upright from where they are sitting.
 
     ┌─────────────────────┐
     │   ◗ two   3 left    │  ← rotated 180°
     │  ▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁  │
-    │                     │
-    │      ┌───────┐      │
-    │      │   ◆   │      │  the middle card, upright to nobody
-    │      └───────┘      │
-    │                     │
+    │        MATCH        │
     │  ▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔  │
     │   ◖ one   4 left    │
     └─────────────────────┘
 
-The middle card belongs to neither seat, so it gets a neutral rotation and its symbols are laid out
-with no consistent up — which they already are (§2.3), so this costs nothing. It is also not
-tappable, by §3.2.1, which is the rule that makes one device work at all: **a tap is owned by the
+The match is between the two face-up cards. Only your own card is tappable: **a tap is owned by the
 half of the screen it lands in.** No seat buttons, no claim gesture, nothing to explain.
 
 Rules change in two ways.
 
-**No window, no grace, no heat.** On one device the players can see each other, so the game returns
-to its natural continuous form — first correct tap takes it and the next hunt starts without a
-pause. The round structure exists to solve a problem that only appears on separate devices.
+**No grace, no heat, no standings.** There is no network to be fair to and no hidden information:
+each player can see the other's hand and see their fingers move. The whole one-device game collapses
+to its natural continuous form — first correct tap takes it and the next hunt begins after one short
+connection beat. The round structure exists to solve a problem that only appears on separate devices.
 
 **No middle card either.** Your card faces their card; the match is between the two of them. When
-you find it you **give them your card**, it goes to the bottom of their hand, and you deal your next.
-First to empty wins.
+you find it you **shed your card** and deal your next. First to empty wins. A dead heat sheds one card
+from both hands, so an exact tie always makes equal progress instead of replaying the pairing.
 
 Dropping the middle card here is not a space fix — measured on a 375×812 phone, three cards fit with
 no scrolling at 219px each and tap targets from 60 to 118px, all of which clears the 44px floor
@@ -437,23 +425,14 @@ comfortably. It is a better *game* for two people: two cards instead of three me
 again as large, and you spend the round staring at your opponent's card rather than at a neutral pile,
 which is most of the fun of playing someone across a table.
 
-**Give, not steal.** Taking their card instead — collect the most — is the more obvious idea and it
-is the wrong one, for the same reason longest chain is not the win (§6.1): it is a *second, opposite*
-win condition. A game with both needs a sentence after every result explaining which one counted.
-Giving keeps **one win condition across every mode of twin** — empty your hand — so the goal a player
-learns on a phone is the goal they already know on a tablet.
-
-The given card goes to the **bottom** of their hand, not the top. On top it would replace the card
-they are mid-scan on, which reads as the game cheating; at the bottom only your own card changes, and
-theirs comes back around later against a different opponent card.
-
-Two evenly matched players can pass one card back and forth forever, so the mode carries a **time
-cap**. First to empty wins; if the cap runs out, fewest cards wins.
+Shed, do not pass. Passing the won card to the other hand makes progress reverse direction and can
+repeat forever; removing it makes the stack and the win condition say the same thing. The mode still
+carries a time cap as a backstop. First to empty wins; if the cap runs out, fewest cards wins.
 
 The **middle card stays in solo** (§9.2), where there is no opponent card to face.
 
-Order 4, five symbols a card, hand of 10 — twenty cards plus the middle is exactly the 21-card deck.
-"Fewer icons" was the right instinct: two people, one screen, cards at half the size.
+Order 4, five symbols a card, hand of 10 — twenty of the 21-card deck. "Fewer icons" was the right
+instinct: two people, one screen, cards at half the size.
 
 Wrong taps lock that seat out for 1.5s while the other player keeps hunting, which is a far sharper
 penalty than in multiplayer and is the correct one here.
@@ -508,7 +487,7 @@ features/things/twin/
   JoinTwinRoom.tsx
   TwinCard.tsx                one card: laid-out symbols, tap targets, cooldown state
   TwinSymbol.tsx              one symbol
-  TwinHandFan.tsx             stack, peek, fan, collapse
+  TwinHand.tsx                stack, face-down peeks, count
   TwinRay.tsx                 the connection trace. Used in-heat and in the constellation
   TwinConstellation.tsx       post-game review
   TwinDuelApp.tsx             one device, two seats
@@ -546,7 +525,8 @@ export interface TwinSnapshot extends MultiplayerRoomIdentity, MultiplayerRevisi
 export interface TwinHeatSnapshot {
   id: string;
   number: number;
-  middle: TwinDealtCard;          // { cardId, symbolIds, seed }
+  middle: TwinDealtCard;          // the promoted card for the next heat
+  playedMiddle: TwinDealtCard;    // frozen pairing for this heat's result
   revealAt: number;
   deadlineAt: number;
   graceEndsAt: number | null;
@@ -559,7 +539,7 @@ export interface TwinHeatSnapshot {
 export interface TwinPrivateState extends MultiplayerReadiness {
   playerId: string;
   top: TwinDealtCard | null;
-  /** The rest of your hand. Sent always; the client governs when it may be looked at (§5.2). */
+  /** The rest of your hand. Sent for the stack count and kept face down (§5.2). */
   rest: TwinDealtCard[];
   landedAt: number | null;
   misses: number;
@@ -659,13 +639,13 @@ Each phase is playable at its end. No phase leaves a half-wired surface behind i
 | # | Phase | Contains |
 | --- | --- | --- |
 | **1** | **The deck is real** | `twin-deck.ts`, `twin-layout.ts`, `twin-symbols.ts` with 31 drawn symbols, `TwinSymbol`, `TwinCard`. Tests. Nothing is playable, everything downstream is proven |
-| **2** | **One device, two seats** | `TwinDuelApp`, `TwinHandFan`, `TwinRay`, the shed animation, wake lock, route + catalog + offline entry. **A complete, shippable game with no server at all** |
+| **2** | **One device, two seats** | `TwinDuelApp`, `TwinRay`, the shed animation, wake lock, route + catalog + offline entry. **A complete, shippable game with no server at all** |
 | **3** | **Phones** | `twin-rules.ts`, the engine, service, functions, ws handler, `useTwinRoom`, lobby/heat/settle views, invite + QR. Awards. The full multiplayer game |
 | **4** | **The constellation** | Heat log key, `TwinConstellation`, the review, player filter, autoplay. Solo board |
 | **5** | **57** | The remaining 26 symbols, order 7, 6–12 players |
 
-Phase 2 before phase 3 is deliberate. The duel needs the cards, the fan, the ray and the shed
-animation — every hard visual problem in the game — and it needs none of the room infrastructure. If
+Phase 2 before phase 3 is deliberate. The duel needs the cards, the ray and the shed animation —
+every hard visual problem in the game — and it needs none of the room infrastructure. If
 those are wrong, they are wrong far more cheaply on one device, and the multiplayer board inherits
 them already working.
 

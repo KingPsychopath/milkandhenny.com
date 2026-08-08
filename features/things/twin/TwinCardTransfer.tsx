@@ -14,14 +14,12 @@ export function TwinCardTransfer({
   to,
   token,
   durationMs,
-  reverse = false,
 }: {
   containerRef: React.RefObject<HTMLElement | null>;
   from: string;
   to: string;
   token: string;
   durationMs: number;
-  reverse?: boolean;
 }) {
   const [transfer, setTransfer] = useState<Transfer | null>(null);
   const frame = useRef<number | null>(null);
@@ -52,7 +50,7 @@ export function TwinCardTransfer({
   if (!transfer) return null;
   return (
     <div
-      className={`twin-card-transfer ${reverse ? "twin-card-transfer--reverse" : ""}`}
+      className="twin-card-transfer"
       style={
         {
           left: transfer.x,
