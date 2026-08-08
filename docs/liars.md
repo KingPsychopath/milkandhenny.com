@@ -378,6 +378,7 @@ up nine other people, and the order is public so there is nothing to cheat.
 | | Same room | On a call |
 |---|---|---|
 | Handoff | the whole circle on one screen, **one button any two of you press** when it has been round | turn by turn |
+| Window | one long window for the whole circle | 60s a turn, never shown |
 | Why | you can see and hear whose turn it is, so tapping per turn is pure overhead | nobody can see anything, so it has to be explicit |
 | Your turn | obvious | the phone vibrates hard enough to feel through a pocket |
 

@@ -23,6 +23,7 @@ import {
   setMultiplayerPlayerReady,
 } from "../shared/multiplayer-readiness";
 import { liarsNarration, liarsWordPair } from "./liars-content.server";
+import { liarsBoard } from "./liars-words";
 import {
   LIARS_CONNECTED_WINDOW_MS,
   LIARS_DEATH_HOLD_MS,
@@ -156,6 +157,7 @@ interface LiarsRoomState {
   word: string | null;
   decoyWord: string | null;
   wordCategory: string | null;
+  wordBoard: string[];
   recentWords: string[];
   /** Narration templates already used this game, so a five-round night never repeats itself. */
   recentNarrationIds: string[];
@@ -342,7 +344,11 @@ function phaseDuration(room: LiarsRoomState, phase: LiarsPhase): number {
     case "dawn":
       return dawnDuration(room);
     case "clue":
-      return timings.clueTurn;
+      // One long window at a table, where nothing is tracking individual turns and a per-turn
+      // failsafe would silently eat the round out from under a circle that is still going.
+      return room.roomMode === "remote"
+        ? timings.clueTurn
+        : Math.min(12 * 60_000, Math.max(3, living(room).length) * timings.clueTurn);
     case "deliberation":
       return timings.deliberation;
     case "vote":
@@ -423,7 +429,10 @@ function clueRoundsBeforeVote(room: LiarsRoomState) {
 }
 
 function advanceClue(room: LiarsRoomState, now: number) {
-  room.clueIndex += 1;
+  // At a table the window belongs to the whole circle, so running out ends the round rather than
+  // nudging an index nobody is watching.
+  if (room.roomMode !== "remote" && now >= room.phaseEndsAt) room.clueIndex = room.clueOrder.length;
+  else room.clueIndex += 1;
   if (room.clueIndex < room.clueOrder.length) {
     room.phaseStartedAt = now;
     room.phaseEndsAt = now + room.timings.clueTurn;
@@ -1093,6 +1102,7 @@ function snapshot(room: LiarsRoomState, viewerId?: string, now = Date.now()): Li
               : null,
           word: viewer.word ?? null,
           wordCategory: room.mode === "imposter" ? (room.wordCategory ?? null) : null,
+          wordBoard: room.mode === "imposter" ? (room.wordBoard ?? []) : [],
           nightTarget: viewer.nightTarget,
           nightLocked: viewer.nightLocked,
           vote: viewer.vote,
@@ -1189,6 +1199,7 @@ export async function createLiarsRoom(input: {
     word: null,
     decoyWord: null,
     wordCategory: null,
+    wordBoard: [],
     recentWords: [],
     recentNarrationIds: [],
     winner: null,
@@ -1354,6 +1365,7 @@ function dealGame(room: LiarsRoomState, now: number, forcedRoles?: Record<string
   room.word = pair?.word ?? null;
   room.decoyWord = pair?.decoy ?? null;
   room.wordCategory = pair?.category ?? null;
+  room.wordBoard = pair ? liarsBoard(pair, (bound) => randomInt(bound), pair.decoy) : [];
   if (pair) room.recentWords = [...room.recentWords, pair.word].slice(-40);
 
   for (const player of room.players) {

@@ -25,6 +25,7 @@ import {
   LiarsOverlayLayer,
   NotesPad,
   PeekWord,
+  WordBoard,
   LineupBoard,
   NightReportCard,
   PhaseTimer,
@@ -404,8 +405,20 @@ function DealPhase({ snapshot, clockOffset }: PhaseProps) {
               </div>
             ) : you.wordCategory ? (
               <p className="mt-6 font-serif text-xl text-[var(--liars-dead)]">
-                you don't have the word — bluff within the category
+                you don't have the word — it is one of these
               </p>
+            ) : null}
+            {you.wordBoard.length > 0 ? (
+              <ul className="mx-auto mt-6 grid max-w-sm grid-cols-2 gap-x-4 text-left">
+                {you.wordBoard.map((candidate) => (
+                  <li
+                    key={candidate}
+                    className="border-b border-white/10 py-1.5 font-serif text-sm text-white/60"
+                  >
+                    {candidate}
+                  </li>
+                ))}
+              </ul>
             ) : null}
             {allies.length > 0 ? (
               <p className="mt-6 font-mono text-xs text-white/55">
@@ -464,7 +477,12 @@ function NightPhase({ snapshot, clockOffset, send }: PhaseProps) {
     <>
       <Eyebrow>night {snapshot.round}</Eyebrow>
       <Headline>{definition.actionLabel ?? "wait"}</Headline>
-      <PhaseTimer endsAt={snapshot.phaseEndsAt} clockOffset={clockOffset} label="night ends in" />
+      <PhaseTimer
+        endsAt={snapshot.phaseEndsAt}
+        clockOffset={clockOffset}
+        label="night ends in"
+        big
+      />
 
       {you.report ? <NightReportCard report={you.report} /> : null}
 
@@ -751,6 +769,7 @@ function CluePhase({ snapshot, send }: PhaseProps) {
       )}
 
       <PeekWord word={you.word} category={you.wordCategory} />
+      <WordBoard words={you.wordBoard} category={you.wordCategory} />
 
       <ol className="mt-10 border-t border-white/10">
         {clue.order.map((playerId, index) => {

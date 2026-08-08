@@ -155,9 +155,20 @@ describe("liars rooms — secrecy", () => {
     const imposterView = seen[imposterIndex];
     expect(imposterView.player!.word).toBeNull();
 
-    const crewWord = seen.find((snapshot) => snapshot.player!.role === "crew")!.player!.word!;
+    const crewView = seen.find((snapshot) => snapshot.player!.role === "crew")!;
+    const crewWord = crewView.player!.word!;
     expect(crewWord.length).toBeGreaterThan(0);
-    expect(JSON.stringify(imposterView)).not.toContain(crewWord);
+
+    // The word is on the board, and the board is public — that is the mechanic. What the imposter
+    // must never have is a way to tell which of the twelve it is, so their board has to be exactly
+    // the crew's board, in the same order, with nothing marking the answer.
+    expect(imposterView.player!.wordBoard).toEqual(crewView.player!.wordBoard);
+    expect(imposterView.player!.wordBoard).toContain(crewWord);
+    const marked = JSON.stringify(imposterView.player).replace(
+      JSON.stringify(imposterView.player!.wordBoard),
+      "",
+    );
+    expect(marked, "the answer must not appear outside the board").not.toContain(crewWord);
   });
 
   it("gives the imposter the category, so they open on something rather than nothing", async () => {
@@ -171,9 +182,10 @@ describe("liars rooms — secrecy", () => {
     // Everyone gets it, including the person who has nothing else.
     expect(imposter.player!.wordCategory).toBeTruthy();
     expect(imposter.player!.wordCategory).toBe(crew.player!.wordCategory);
-    // And it still is not the word.
+    // And it still is not the word: the board narrows it to twelve, it does not give it away.
     expect(imposter.player!.word).toBeNull();
-    expect(JSON.stringify(imposter)).not.toContain(crew.player!.word!);
+    expect(imposter.player!.wordBoard).toEqual(crew.player!.wordBoard);
+    expect(imposter.player!.wordBoard.length).toBeGreaterThan(1);
   });
 
   it("gives the understudy a different word without telling them", async () => {
@@ -184,8 +196,11 @@ describe("liars rooms — secrecy", () => {
     const crew = seen.find((snapshot) => snapshot.player!.role === "crew");
     expect(understudy?.player!.word).toBeTruthy();
     expect(understudy?.player!.word).not.toBe(crew?.player!.word);
-    // Nothing in their view says which of the two is the real one.
-    expect(JSON.stringify(understudy)).not.toContain(crew!.player!.word!);
+    // Both words sit on the same board, so nothing in the understudy's view says which of the two
+    // they are holding — which is the entire role.
+    expect(understudy!.player!.wordBoard).toEqual(crew!.player!.wordBoard);
+    expect(understudy!.player!.wordBoard).toContain(crew!.player!.word!);
+    expect(understudy!.player!.wordBoard).toContain(understudy!.player!.word!);
   });
 
   it("hides the night report until the report moment, on every device alike", async () => {

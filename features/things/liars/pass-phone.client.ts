@@ -1,4 +1,4 @@
-import { LIARS_WORD_PAIRS } from "./liars-words";
+import { liarsBoard, LIARS_WORD_PAIRS } from "./liars-words";
 
 export interface LiarsPassPhoneSeat {
   index: number;
@@ -7,6 +7,8 @@ export interface LiarsPassPhoneSeat {
   word: string | null;
   /** Everybody gets this, imposters included. It is the whole difference between bluffing and guessing. */
   category: string;
+  /** A dozen words from the category, one of which is the real one. Everybody sees the same board. */
+  board: string[];
 }
 
 /**
@@ -35,6 +37,7 @@ export function liarsPassPhoneDeal(
   names: string[] = [],
 ): LiarsPassPhoneSeat[] {
   const pair = LIARS_WORD_PAIRS[randomInt(LIARS_WORD_PAIRS.length)];
+  const board = liarsBoard(pair, randomInt);
   const roles: Array<string | null> = [
     ...Array.from({ length: Math.min(imposters, players - 1) }, () => null),
     ...Array.from({ length: players - Math.min(imposters, players - 1) }, () => pair.word),
@@ -49,5 +52,6 @@ export function liarsPassPhoneDeal(
     name: names[index]?.trim() || `player ${index + 1}`,
     word,
     category: pair.category,
+    board,
   }));
 }

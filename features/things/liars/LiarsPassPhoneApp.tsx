@@ -164,6 +164,7 @@ export function LiarsPassPhoneApp() {
         key={seat?.index}
         word={seat?.word ?? null}
         category={seat?.category ?? ""}
+        board={seat?.board ?? []}
         onDone={() => {
           if (index + 1 >= seats.length) setStage("playing");
           else setIndex(index + 1);
@@ -194,10 +195,12 @@ function Shell({ children }: { children: React.ReactNode }) {
 function HoldToSee({
   word,
   category,
+  board,
   onDone,
 }: {
   word: string | null;
   category: string;
+  board: string[];
   onDone: () => void;
 }) {
   const [held, setHeld] = useState(false);
@@ -226,7 +229,7 @@ function HoldToSee({
                   you have no word
                 </p>
                 <p className="mx-auto mt-3 max-w-sm font-serif text-base text-white/70">
-                  Bluff inside the category. Listen hard and work out the rest.
+                  It is one of these. Work out which.
                 </p>
               </>
             ) : (
@@ -239,6 +242,18 @@ function HoldToSee({
                 </p>
               </>
             )}
+            {board.length > 0 ? (
+              <ul className="mx-auto mt-6 grid max-w-xs grid-cols-2 gap-x-4 text-left">
+                {board.map((candidate) => (
+                  <li
+                    key={candidate}
+                    className="border-b border-white/10 py-1.5 font-serif text-sm text-white/60"
+                  >
+                    {candidate}
+                  </li>
+                ))}
+              </ul>
+            ) : null}
           </>
         ) : (
           <p className="pt-10 font-mono text-xs uppercase tracking-[0.2em] text-white/40">

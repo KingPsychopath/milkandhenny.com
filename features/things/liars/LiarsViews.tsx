@@ -399,6 +399,31 @@ export function RulesSheet({ mode, yourRole }: { mode: LiarsMode; yourRole?: Lia
  * room a detective's card and a villager's card are the same object.
  */
 export function NightReportCard({ report }: { report: LiarsNightReport }) {
+  // The single most sensitive thing in the game, and it used to sit on screen for the rest of the
+  // night. It holds for its beat, then hides behind the same peek the word uses.
+  const [openedAt] = useState(() => Date.now());
+  const [peekUntil, setPeekUntil] = useState(0);
+  const [, setTick] = useState(0);
+  const held = Date.now() - openedAt < 10_000 || peekUntil > Date.now();
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setTick((count) => count + 1), 500);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  if (!held)
+    return (
+      <div className="mt-8 border-y border-white/15 py-4">
+        <button
+          type="button"
+          onPointerDown={() => setPeekUntil(Date.now() + 2_500)}
+          className="min-h-11 font-mono text-sm text-white/45 hover:text-white/80"
+        >
+          hold to read your card again
+        </button>
+      </div>
+    );
+
   return (
     <div className="mt-8 border-y border-white/15 py-6" aria-live="assertive">
       <p className="font-mono text-micro uppercase tracking-[0.2em] text-white/35">
@@ -677,5 +702,29 @@ export function PeekWord({ word, category }: { word: string | null; category: st
         </button>
       )}
     </div>
+  );
+}
+
+
+/**
+ * The board, shown to everyone. The crew know which one is theirs; the imposter is looking at the
+ * same twelve words and has to work out which. Marking your own would defeat it, so nothing here is
+ * highlighted — your word lives behind the peek.
+ */
+export function WordBoard({ words, category }: { words: string[]; category: string | null }) {
+  if (words.length === 0) return null;
+  return (
+    <section className="mt-6" aria-label="the words it could be">
+      <p className="font-mono text-micro uppercase tracking-[0.18em] text-white/40">
+        {category ? `${category} · one of these` : "one of these"}
+      </p>
+      <ul className="mt-2 grid grid-cols-2 gap-x-4">
+        {words.map((word) => (
+          <li key={word} className="border-b border-white/10 py-2 font-serif text-base text-white/75">
+            {word}
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }

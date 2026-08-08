@@ -213,6 +213,12 @@ export interface LiarsPrivateState extends MultiplayerReadiness {
    * they open on a random guess and are out on the first turn.
    */
   wordCategory: string | null;
+  /**
+   * A dozen words from the category, one of which was dealt. Everyone sees the same board — it is
+   * what gives the imposter a line of attack instead of open space, and what forces the crew to be
+   * specific enough to prove they know the word without handing it over.
+   */
+  wordBoard: string[];
   nightTarget: string | null;
   nightLocked: boolean;
   vote: string | null;

@@ -321,3 +321,37 @@ export const LIARS_WORD_PAIRS: LiarsWordPair[] = GROUPS.flatMap(({ category, pai
 );
 
 export const LIARS_WORD_CATEGORIES = GROUPS.map(({ category }) => category);
+
+
+/**
+ * The board: a dozen words from one category, one of which was dealt.
+ *
+ * This is the shape the genre settled on. Spyfall gives the spy a list of every possible location;
+ * The Chameleon puts sixteen words on a card and the chameleon sees all of them but not which one
+ * is circled. A category alone leaves the imposter guessing into open space; a visible shortlist
+ * gives them a real line of attack — and, more importantly, gives the crew the tension the game is
+ * actually about: be specific enough to prove you know the word, vague enough not to hand it over.
+ */
+export const LIARS_BOARD_SIZE = 12;
+
+export function liarsBoard(
+  pair: LiarsWordPair,
+  pick: (bound: number) => number,
+  decoy?: string | null,
+) {
+  const siblings = LIARS_WORD_PAIRS.filter(
+    ({ word, category }) => category === pair.category && word !== pair.word && word !== decoy,
+  ).map(({ word }) => word);
+
+  for (let index = siblings.length - 1; index > 0; index -= 1) {
+    const swap = pick(index + 1);
+    [siblings[index], siblings[swap]] = [siblings[swap], siblings[index]];
+  }
+
+  const board = [pair.word, ...(decoy ? [decoy] : []), ...siblings].slice(0, LIARS_BOARD_SIZE);
+  for (let index = board.length - 1; index > 0; index -= 1) {
+    const swap = pick(index + 1);
+    [board[index], board[swap]] = [board[swap], board[index]];
+  }
+  return board.toSorted((left, right) => left.localeCompare(right));
+}
