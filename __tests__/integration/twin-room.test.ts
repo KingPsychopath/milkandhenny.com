@@ -54,8 +54,9 @@ async function openRoom(names: string[], handSize = 4) {
 }
 
 function look(seat: Seat) {
-  return readTwinSnapshot(seat).then((result) => {
+  return readTwinSnapshot({ ...seat, lastSequence: 0, lastDigest: null }).then((result) => {
     if (!result.ok) throw new Error(result.error);
+    if (result.unchanged || !result.snapshot) throw new Error("Expected a full snapshot");
     return result.snapshot;
   });
 }
@@ -169,6 +170,7 @@ describe("Twin rooms", () => {
     const settled = await look(seats[0]);
 
     expect(settled.phase).toBe("settle");
+    expect(settled.heat?.nextHeatAt).toBe(Date.now() + TWIN_TIMING.settleHoldMs);
     expect(settled.heat?.burned).toBe(true);
     expect(settled.heat?.middle.cardId).toBe(middleBefore);
 
@@ -346,7 +348,23 @@ describe("Twin rooms", () => {
       roomId: seats[0].roomId,
       playerId: seats[0].playerId,
       playerToken: "not-the-token",
+      lastSequence: 0,
+      lastDigest: null,
     });
     expect(forged.ok).toBe(false);
+  });
+
+  it("omits an unchanged snapshot when the viewer sends its digest", async () => {
+    const { seats } = await openRoom(["Abel", "Maya"], 4);
+    const first = await readTwinSnapshot({ ...seats[0], lastSequence: 0, lastDigest: null });
+    expect(first.ok && first.snapshot?.digest).toBeTruthy();
+    if (!first.ok || !first.snapshot) return;
+
+    const unchanged = await readTwinSnapshot({
+      ...seats[0],
+      lastSequence: first.snapshot.sequence,
+      lastDigest: first.snapshot.digest,
+    });
+    expect(unchanged).toMatchObject({ ok: true, unchanged: true, snapshot: null });
   });
 });

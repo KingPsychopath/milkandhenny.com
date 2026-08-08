@@ -57,6 +57,8 @@ export interface TwinHeatSnapshot {
   resolvedAt: number | null;
   /** Payouts are computed here, a beat after the close, so a late-delivered tap still counts. */
   settleAt: number | null;
+  /** Set at payout so every client can schedule the next heat without waiting for a safety poll. */
+  nextHeatAt: number | null;
   /** A count while the heat is live — never names, which would say who to watch. */
   landedCount: number;
   /** Empty until `settleAt`. */
@@ -125,6 +127,8 @@ export type TwinLogResult =
 
 export interface TwinSnapshot
   extends MultiplayerRoomIdentity, MultiplayerRevision, MultiplayerSequence {
+  /** Hash of this viewer's redacted view, filled in by the read. */
+  digest?: string;
   phase: TwinPhase;
   serverNow: number;
   expiresAt: number;
@@ -176,7 +180,8 @@ export type TwinJoinResult =
   | MultiplayerFailure<TwinJoinErrorCode>;
 
 export type TwinSnapshotResult =
-  | MultiplayerSuccess<{ snapshot: TwinSnapshot }>
+  | MultiplayerSuccess<{ unchanged?: false; snapshot: TwinSnapshot }>
+  | MultiplayerSuccess<{ unchanged: true; serverNow: number; snapshot: null }>
   | (MultiplayerFailure<"room_unavailable"> & { snapshot: null });
 
 export type TwinHostAction =

@@ -39,9 +39,11 @@ export function useTwinBot(input: {
             roomId: input.roomId,
             playerId: input.playerId,
             playerToken: input.playerToken,
+            lastSequence: 0,
+            lastDigest: null,
           },
         });
-        if (!active || !result.ok) return;
+        if (!active || !result.ok || result.unchanged || !result.snapshot) return;
         const snapshot = result.snapshot;
 
         // Ready up so the host can start, exactly as the lobby button does.

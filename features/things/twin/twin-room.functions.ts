@@ -4,6 +4,7 @@ import {
   multiplayerCredential,
   multiplayerRecord,
   multiplayerRoomId,
+  multiplayerSequence,
   multiplayerText,
 } from "../shared/multiplayer-validation";
 import { TWIN_MAX_HAND, TWIN_MIN_HAND, TWIN_DEFAULT_HAND } from "./twin-deck";
@@ -19,6 +20,7 @@ import {
 const record = multiplayerRecord;
 const text = multiplayerText;
 const credential = multiplayerCredential;
+const sequence = multiplayerSequence;
 
 function clampInteger(value: unknown, min: number, max: number, fallback: number) {
   if (value === undefined || value === null) return fallback;
@@ -72,7 +74,14 @@ export const joinTwinRoomFn = createServerFn({ method: "POST" })
   .handler(({ data }) => joinTwinRoom(data));
 
 export const readTwinSnapshotFn = createServerFn({ method: "POST" })
-  .validator((value: unknown) => identity(record(value)))
+  .validator((value: unknown) => {
+    const data = record(value);
+    return {
+      ...identity(data),
+      lastSequence: sequence(data.lastSequence),
+      lastDigest: typeof data.lastDigest === "string" ? data.lastDigest.slice(0, 24) : null,
+    };
+  })
   .handler(({ data }) => readTwinSnapshot(data));
 
 export const readTwinLogFn = createServerFn({ method: "POST" })

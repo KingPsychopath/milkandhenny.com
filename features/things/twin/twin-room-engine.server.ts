@@ -14,6 +14,7 @@ import {
   hashMultiplayerCredential,
   multiplayerCredentialsMatch,
   multiplayerRoomExpiresAt,
+  multiplayerSnapshotDigest,
   remainingMultiplayerRoomTtlSeconds,
   withMultiplayerRoomLock,
 } from "../shared/room-primitives.server";
@@ -527,6 +528,7 @@ function snapshot(room: RoomState, playerId: string): TwinSnapshot {
             graceEndsAt: heat.graceEndsAt,
             resolvedAt: heat.resolvedAt,
             settleAt: heat.settleAt,
+            nextHeatAt: heat.nextHeatAt,
             // A bare count while the heat is live. A list of names would say who to watch.
             landedCount: room.players.filter(
               (player) => player.heatId === heat.id && player.landedMs !== null,
@@ -704,13 +706,24 @@ export async function readTwinSnapshot(input: {
   roomId: string;
   playerId: string;
   playerToken: string;
+  lastSequence: number;
+  lastDigest?: string | null;
 }): Promise<TwinSnapshotResult> {
   const result = await withRoom(input.roomId, async (room) => {
     const player = validPlayer(room, input.playerId, input.playerToken);
     if (!player) return null;
     player.lastSeenAt = Date.now();
     await appendLog(room, advance(room));
-    return { ok: true, snapshot: snapshot(room, player.id) } as const;
+    const view = snapshot(room, player.id);
+    view.digest = multiplayerSnapshotDigest(view);
+    if (input.lastDigest && input.lastDigest === view.digest)
+      return {
+        ok: true as const,
+        unchanged: true as const,
+        serverNow: view.serverNow,
+        snapshot: null,
+      };
+    return { ok: true as const, snapshot: view };
   });
   return (
     result ?? {
