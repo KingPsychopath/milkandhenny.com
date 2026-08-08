@@ -29,7 +29,6 @@ export function PitchNightHero() {
           <img src="/MAHtext.svg" alt="milk and henny" />
         </div>
         <p data-hero-name className="pitch-night-event-name">
-          <span aria-hidden="true">: </span>
           after school club
         </p>
         <h1 className="pitch-night-hero-title">
