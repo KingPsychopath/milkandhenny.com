@@ -5,6 +5,8 @@
   "type": "module",
   "scripts": {
     "audio:spelling": "tsx scripts/generate-party-spelling-audio.ts",
+    "calibrate:same-brain": "tsx --tsconfig tsconfig.cli.json scripts/same-brain-calibrate.ts",
+    "model:same-brain": "tsx --tsconfig tsconfig.cli.json scripts/fetch-same-brain-model.ts",
     "predev": "node scripts/copy-excalidraw-fonts.mjs",
     "dev": "vite dev",
     "prebuild": "node scripts/copy-excalidraw-fonts.mjs",

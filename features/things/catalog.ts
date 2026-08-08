@@ -1,7 +1,14 @@
 import { THING_OFFLINE } from "./offline";
 
 export interface Thing {
-  slug: "icebreaker" | "heads-up" | "spelling-bee" | "draw-country" | "pitches" | "liars";
+  slug:
+    | "icebreaker"
+    | "heads-up"
+    | "spelling-bee"
+    | "draw-country"
+    | "pitches"
+    | "liars"
+    | "same-brain";
   name: string;
   description: string;
   eyebrow: string;
@@ -11,13 +18,27 @@ export interface Thing {
     | "/things/spelling-bee"
     | "/things/draw-country"
     | "/things/pitches"
-    | "/things/liars";
+    | "/things/liars"
+    | "/things/same-brain";
   status: "ready";
   symbol: string;
   offline: (typeof THING_OFFLINE)[keyof typeof THING_OFFLINE] | null;
 }
 
 export const THINGS = [
+  {
+    slug: "same-brain",
+    name: "same brain",
+    // The name is the goal; the description is the danger. "Odd one out" is how everybody already
+    // describes this game to each other, so the card says it even though nothing is eliminated by
+    // default — it is the phrase that makes the rules obvious without explaining them.
+    description: "Answer like everyone else. Try not to be the odd one out.",
+    eyebrow: "party game · 3–16 people",
+    href: "/things/same-brain",
+    status: "ready",
+    symbol: "◎",
+    offline: null,
+  },
   {
     slug: "liars",
     name: "liars",

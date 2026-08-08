@@ -31,6 +31,7 @@ import { Route as VaultSlugRouteImport } from './routes/vault/$slug'
 import { Route as TicketIdRouteImport } from './routes/ticket.$id'
 import { Route as ThingsSpellingPartyRouteImport } from './routes/things.spelling-party'
 import { Route as ThingsSpellingBeeRouteImport } from './routes/things.spelling-bee'
+import { Route as ThingsSameBrainRouteImport } from './routes/things.same-brain'
 import { Route as ThingsPitchesRouteImport } from './routes/things.pitches'
 import { Route as ThingsLiarsRouteImport } from './routes/things.liars'
 import { Route as ThingsIcebreakerRouteImport } from './routes/things.icebreaker'
@@ -46,6 +47,8 @@ import { Route as ApiDebugRouteRouteImport } from './routes/api/debug/route'
 import { Route as ApiBestDressedRouteRouteImport } from './routes/api/best-dressed/route'
 import { Route as PicsAlbumIndexRouteImport } from './routes/pics/$album/index'
 import { Route as ThingsSpellingPartyRoomIdRouteImport } from './routes/things.spelling-party_.$roomId'
+import { Route as ThingsSameBrainDevRouteImport } from './routes/things.same-brain_.dev'
+import { Route as ThingsSameBrainRoomIdRouteImport } from './routes/things.same-brain_.$roomId'
 import { Route as ThingsPlayRoomIdRouteImport } from './routes/things.play.$roomId'
 import { Route as ThingsPitchesPresentRouteImport } from './routes/things.pitches_.present'
 import { Route as ThingsPitchesNewRouteImport } from './routes/things.pitches_.new'
@@ -226,6 +229,11 @@ const ThingsSpellingBeeRoute = ThingsSpellingBeeRouteImport.update({
   path: '/spelling-bee',
   getParentRoute: () => ThingsRoute,
 } as any)
+const ThingsSameBrainRoute = ThingsSameBrainRouteImport.update({
+  id: '/same-brain',
+  path: '/same-brain',
+  getParentRoute: () => ThingsRoute,
+} as any)
 const ThingsPitchesRoute = ThingsPitchesRouteImport.update({
   id: '/pitches',
   path: '/pitches',
@@ -302,6 +310,16 @@ const ThingsSpellingPartyRoomIdRoute =
     path: '/spelling-party/$roomId',
     getParentRoute: () => ThingsRoute,
   } as any)
+const ThingsSameBrainDevRoute = ThingsSameBrainDevRouteImport.update({
+  id: '/same-brain_/dev',
+  path: '/same-brain/dev',
+  getParentRoute: () => ThingsRoute,
+} as any)
+const ThingsSameBrainRoomIdRoute = ThingsSameBrainRoomIdRouteImport.update({
+  id: '/same-brain_/$roomId',
+  path: '/same-brain/$roomId',
+  getParentRoute: () => ThingsRoute,
+} as any)
 const ThingsPlayRoomIdRoute = ThingsPlayRoomIdRouteImport.update({
   id: '/play/$roomId',
   path: '/play/$roomId',
@@ -714,6 +732,7 @@ export interface FileRoutesByFullPath {
   '/things/icebreaker': typeof ThingsIcebreakerRoute
   '/things/liars': typeof ThingsLiarsRoute
   '/things/pitches': typeof ThingsPitchesRoute
+  '/things/same-brain': typeof ThingsSameBrainRoute
   '/things/spelling-bee': typeof ThingsSpellingBeeRoute
   '/things/spelling-party': typeof ThingsSpellingPartyRoute
   '/ticket/$id': typeof TicketIdRoute
@@ -755,6 +774,8 @@ export interface FileRoutesByFullPath {
   '/things/pitches/new': typeof ThingsPitchesNewRoute
   '/things/pitches/present': typeof ThingsPitchesPresentRoute
   '/things/play/$roomId': typeof ThingsPlayRoomIdRoute
+  '/things/same-brain/$roomId': typeof ThingsSameBrainRoomIdRoute
+  '/things/same-brain/dev': typeof ThingsSameBrainDevRoute
   '/things/spelling-party/$roomId': typeof ThingsSpellingPartyRoomIdRoute
   '/pics/$album/': typeof PicsAlbumIndexRoute
   '/api/admin/albums/$slug': typeof ApiAdminAlbumsSlugRouteRouteWithChildren
@@ -822,6 +843,7 @@ export interface FileRoutesByTo {
   '/things/icebreaker': typeof ThingsIcebreakerRoute
   '/things/liars': typeof ThingsLiarsRoute
   '/things/pitches': typeof ThingsPitchesRoute
+  '/things/same-brain': typeof ThingsSameBrainRoute
   '/things/spelling-bee': typeof ThingsSpellingBeeRoute
   '/things/spelling-party': typeof ThingsSpellingPartyRoute
   '/ticket/$id': typeof TicketIdRoute
@@ -863,6 +885,8 @@ export interface FileRoutesByTo {
   '/things/pitches/new': typeof ThingsPitchesNewRoute
   '/things/pitches/present': typeof ThingsPitchesPresentRoute
   '/things/play/$roomId': typeof ThingsPlayRoomIdRoute
+  '/things/same-brain/$roomId': typeof ThingsSameBrainRoomIdRoute
+  '/things/same-brain/dev': typeof ThingsSameBrainDevRoute
   '/things/spelling-party/$roomId': typeof ThingsSpellingPartyRoomIdRoute
   '/pics/$album': typeof PicsAlbumIndexRoute
   '/api/admin/albums/$slug': typeof ApiAdminAlbumsSlugRouteRouteWithChildren
@@ -931,6 +955,7 @@ export interface FileRoutesById {
   '/things/icebreaker': typeof ThingsIcebreakerRoute
   '/things/liars': typeof ThingsLiarsRoute
   '/things/pitches': typeof ThingsPitchesRoute
+  '/things/same-brain': typeof ThingsSameBrainRoute
   '/things/spelling-bee': typeof ThingsSpellingBeeRoute
   '/things/spelling-party': typeof ThingsSpellingPartyRoute
   '/ticket/$id': typeof TicketIdRoute
@@ -972,6 +997,8 @@ export interface FileRoutesById {
   '/things/pitches_/new': typeof ThingsPitchesNewRoute
   '/things/pitches_/present': typeof ThingsPitchesPresentRoute
   '/things/play/$roomId': typeof ThingsPlayRoomIdRoute
+  '/things/same-brain_/$roomId': typeof ThingsSameBrainRoomIdRoute
+  '/things/same-brain_/dev': typeof ThingsSameBrainDevRoute
   '/things/spelling-party_/$roomId': typeof ThingsSpellingPartyRoomIdRoute
   '/pics/$album/': typeof PicsAlbumIndexRoute
   '/api/admin/albums/$slug': typeof ApiAdminAlbumsSlugRouteRouteWithChildren
@@ -1041,6 +1068,7 @@ export interface FileRouteTypes {
     | '/things/icebreaker'
     | '/things/liars'
     | '/things/pitches'
+    | '/things/same-brain'
     | '/things/spelling-bee'
     | '/things/spelling-party'
     | '/ticket/$id'
@@ -1082,6 +1110,8 @@ export interface FileRouteTypes {
     | '/things/pitches/new'
     | '/things/pitches/present'
     | '/things/play/$roomId'
+    | '/things/same-brain/$roomId'
+    | '/things/same-brain/dev'
     | '/things/spelling-party/$roomId'
     | '/pics/$album/'
     | '/api/admin/albums/$slug'
@@ -1149,6 +1179,7 @@ export interface FileRouteTypes {
     | '/things/icebreaker'
     | '/things/liars'
     | '/things/pitches'
+    | '/things/same-brain'
     | '/things/spelling-bee'
     | '/things/spelling-party'
     | '/ticket/$id'
@@ -1190,6 +1221,8 @@ export interface FileRouteTypes {
     | '/things/pitches/new'
     | '/things/pitches/present'
     | '/things/play/$roomId'
+    | '/things/same-brain/$roomId'
+    | '/things/same-brain/dev'
     | '/things/spelling-party/$roomId'
     | '/pics/$album'
     | '/api/admin/albums/$slug'
@@ -1257,6 +1290,7 @@ export interface FileRouteTypes {
     | '/things/icebreaker'
     | '/things/liars'
     | '/things/pitches'
+    | '/things/same-brain'
     | '/things/spelling-bee'
     | '/things/spelling-party'
     | '/ticket/$id'
@@ -1298,6 +1332,8 @@ export interface FileRouteTypes {
     | '/things/pitches_/new'
     | '/things/pitches_/present'
     | '/things/play/$roomId'
+    | '/things/same-brain_/$roomId'
+    | '/things/same-brain_/dev'
     | '/things/spelling-party_/$roomId'
     | '/pics/$album/'
     | '/api/admin/albums/$slug'
@@ -1558,6 +1594,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ThingsSpellingBeeRouteImport
       parentRoute: typeof ThingsRoute
     }
+    '/things/same-brain': {
+      id: '/things/same-brain'
+      path: '/same-brain'
+      fullPath: '/things/same-brain'
+      preLoaderRoute: typeof ThingsSameBrainRouteImport
+      parentRoute: typeof ThingsRoute
+    }
     '/things/pitches': {
       id: '/things/pitches'
       path: '/pitches'
@@ -1661,6 +1704,20 @@ declare module '@tanstack/react-router' {
       path: '/spelling-party/$roomId'
       fullPath: '/things/spelling-party/$roomId'
       preLoaderRoute: typeof ThingsSpellingPartyRoomIdRouteImport
+      parentRoute: typeof ThingsRoute
+    }
+    '/things/same-brain_/dev': {
+      id: '/things/same-brain_/dev'
+      path: '/same-brain/dev'
+      fullPath: '/things/same-brain/dev'
+      preLoaderRoute: typeof ThingsSameBrainDevRouteImport
+      parentRoute: typeof ThingsRoute
+    }
+    '/things/same-brain_/$roomId': {
+      id: '/things/same-brain_/$roomId'
+      path: '/same-brain/$roomId'
+      fullPath: '/things/same-brain/$roomId'
+      preLoaderRoute: typeof ThingsSameBrainRoomIdRouteImport
       parentRoute: typeof ThingsRoute
     }
     '/things/play/$roomId': {
@@ -2155,6 +2212,7 @@ interface ThingsRouteChildren {
   ThingsIcebreakerRoute: typeof ThingsIcebreakerRoute
   ThingsLiarsRoute: typeof ThingsLiarsRoute
   ThingsPitchesRoute: typeof ThingsPitchesRoute
+  ThingsSameBrainRoute: typeof ThingsSameBrainRoute
   ThingsSpellingBeeRoute: typeof ThingsSpellingBeeRoute
   ThingsSpellingPartyRoute: typeof ThingsSpellingPartyRoute
   ThingsDrawCountryRoomIdRoute: typeof ThingsDrawCountryRoomIdRoute
@@ -2167,6 +2225,8 @@ interface ThingsRouteChildren {
   ThingsPitchesNewRoute: typeof ThingsPitchesNewRoute
   ThingsPitchesPresentRoute: typeof ThingsPitchesPresentRoute
   ThingsPlayRoomIdRoute: typeof ThingsPlayRoomIdRoute
+  ThingsSameBrainRoomIdRoute: typeof ThingsSameBrainRoomIdRoute
+  ThingsSameBrainDevRoute: typeof ThingsSameBrainDevRoute
   ThingsSpellingPartyRoomIdRoute: typeof ThingsSpellingPartyRoomIdRoute
   ThingsLiarsRoomIdPresentRoute: typeof ThingsLiarsRoomIdPresentRoute
   ThingsPitchesDeckIdEditRoute: typeof ThingsPitchesDeckIdEditRoute
@@ -2181,6 +2241,7 @@ const ThingsRouteChildren: ThingsRouteChildren = {
   ThingsIcebreakerRoute: ThingsIcebreakerRoute,
   ThingsLiarsRoute: ThingsLiarsRoute,
   ThingsPitchesRoute: ThingsPitchesRoute,
+  ThingsSameBrainRoute: ThingsSameBrainRoute,
   ThingsSpellingBeeRoute: ThingsSpellingBeeRoute,
   ThingsSpellingPartyRoute: ThingsSpellingPartyRoute,
   ThingsDrawCountryRoomIdRoute: ThingsDrawCountryRoomIdRoute,
@@ -2193,6 +2254,8 @@ const ThingsRouteChildren: ThingsRouteChildren = {
   ThingsPitchesNewRoute: ThingsPitchesNewRoute,
   ThingsPitchesPresentRoute: ThingsPitchesPresentRoute,
   ThingsPlayRoomIdRoute: ThingsPlayRoomIdRoute,
+  ThingsSameBrainRoomIdRoute: ThingsSameBrainRoomIdRoute,
+  ThingsSameBrainDevRoute: ThingsSameBrainDevRoute,
   ThingsSpellingPartyRoomIdRoute: ThingsSpellingPartyRoomIdRoute,
   ThingsLiarsRoomIdPresentRoute: ThingsLiarsRoomIdPresentRoute,
   ThingsPitchesDeckIdEditRoute: ThingsPitchesDeckIdEditRoute,
