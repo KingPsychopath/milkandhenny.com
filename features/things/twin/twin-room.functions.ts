@@ -50,6 +50,12 @@ export const createTwinRoomFn = createServerFn({ method: "POST" })
         TWIN_TIMING.maxGraceMs,
         TWIN_TIMING.defaultGraceMs,
       ),
+      settleHoldMs: clampInteger(
+        data.settleHoldMs,
+        TWIN_TIMING.minSettleHoldMs,
+        TWIN_TIMING.maxSettleHoldMs,
+        TWIN_TIMING.settleHoldMs,
+      ),
     };
   })
   .handler(({ data }) => createTwinRoom(data));
@@ -121,6 +127,16 @@ export const applyTwinActionFn = createServerFn({ method: "POST" })
                 TWIN_TIMING.maxGraceMs,
                 TWIN_TIMING.defaultGraceMs,
               ),
+      };
+    else if (raw.type === "timing.configure")
+      action = {
+        type: raw.type,
+        settleHoldMs: clampInteger(
+          raw.settleHoldMs,
+          TWIN_TIMING.minSettleHoldMs,
+          TWIN_TIMING.maxSettleHoldMs,
+          TWIN_TIMING.settleHoldMs,
+        ),
       };
     else if (raw.type === "game.replay" || raw.type === "game.lobby" || raw.type === "heat.next")
       action = { type: raw.type };

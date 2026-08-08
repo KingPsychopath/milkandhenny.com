@@ -115,6 +115,7 @@ interface RoomState {
   requestedHandSize: number;
   windowMs: number;
   graceMs: number;
+  settleHoldMs: number;
   hostHash: string;
   joinHash: string;
   hostPlayerId: string;
@@ -357,7 +358,7 @@ function settleHeat(room: RoomState, now: number): TwinLoggedHeat | null {
   heat.results = results;
   heat.winnerPlayerId = outcome.winnerPlayerId;
   heat.burned = outcome.burned;
-  heat.nextHeatAt = now + TWIN_TIMING.settleHoldMs;
+  heat.nextHeatAt = now + room.settleHoldMs;
   room.phase = "settle";
   changed(room);
 
@@ -606,6 +607,7 @@ export async function createTwinRoom(input: {
   handSize?: number;
   windowMs?: number;
   graceMs?: number;
+  settleHoldMs?: number;
 }) {
   const roomId = await createAvailableMultiplayerRoomId(async (candidate) =>
     Boolean(await loadRoom(candidate)),
@@ -630,6 +632,7 @@ export async function createTwinRoom(input: {
     requestedHandSize,
     windowMs: input.windowMs ?? TWIN_TIMING.defaultWindowMs,
     graceMs: input.graceMs ?? TWIN_TIMING.defaultGraceMs,
+    settleHoldMs: input.settleHoldMs ?? TWIN_TIMING.settleHoldMs,
     hostHash: hashMultiplayerCredential(hostToken),
     joinHash: hashMultiplayerCredential(joinToken),
     hostPlayerId: host.id,
@@ -742,6 +745,7 @@ export async function applyTwinAction(input: {
     | { type: "answer.tap"; heatId: string; symbolId: string; elapsedMs: number }
     | { type: "game.start"; removePlayerIds?: string[] }
     | { type: "game.configure"; handSize?: number; windowMs?: number; graceMs?: number }
+    | { type: "timing.configure"; settleHoldMs: number }
     | { type: "game.replay" }
     | { type: "game.lobby" }
     | { type: "heat.next" };
@@ -820,6 +824,12 @@ export async function applyTwinAction(input: {
       if (!plan) return reject("deck_too_small", "That is too many cards for this many players");
       room.order = plan.order;
       room.handSize = plan.handSize;
+      changed(room);
+      return { ok: true, accepted: true, snapshot: current() } as const;
+    }
+
+    if (input.action.type === "timing.configure") {
+      room.settleHoldMs = input.action.settleHoldMs;
       changed(room);
       return { ok: true, accepted: true, snapshot: current() } as const;
     }

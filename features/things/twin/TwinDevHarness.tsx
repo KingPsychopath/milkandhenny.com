@@ -2,9 +2,10 @@ import { useState } from "react";
 import type { ReactNode } from "react";
 import { TWIN_MAX_HAND, TWIN_MIN_HAND, twinMaxPlayers } from "./twin-deck";
 import { TWIN_SCENARIOS, type TwinScenario } from "./twin-scenarios";
-import { TWIN_TIMING } from "./twin-rules";
+import { TWIN_HEARTBEAT, TWIN_TIMING, type TwinHeartbeatTiming } from "./twin-rules";
 import { applyTwinActionFn, createTwinRoomFn, joinTwinRoomFn } from "./twin-room.functions";
 import { TwinRoom } from "./TwinRoomApp";
+import { TwinDuelApp } from "./TwinDuelApp";
 import { useTwinBot } from "./useTwinBot";
 import { twinBrowserKeys } from "./twin-keys";
 import { writeExpiringLocalValue } from "../shared/game-storage.client";
@@ -47,6 +48,10 @@ export function TwinDevHarness() {
   const [windowMs, setWindowMs] = useState<number>(TWIN_TIMING.defaultWindowMs);
   const [graceMs, setGraceMs] = useState<number>(TWIN_TIMING.defaultGraceMs);
   const [accuracy, setAccuracy] = useState(0.92);
+  const [settleHoldMs, setSettleHoldMs] = useState<number>(TWIN_TIMING.settleHoldMs);
+  const [connectionHoldMs, setConnectionHoldMs] = useState<number>(TWIN_TIMING.connectionHoldMs);
+  const [heartbeatTiming, setHeartbeatTiming] = useState<TwinHeartbeatTiming>(TWIN_HEARTBEAT);
+  const [duelPreview, setDuelPreview] = useState(false);
   const [bots, setBots] = useState(true);
   const [seats, setSeats] = useState<Seat[] | null>(null);
   const [busy, setBusy] = useState(false);
@@ -74,6 +79,7 @@ export function TwinDevHarness() {
           handSize: hand,
           windowMs: heatWindow,
           graceMs: heatGrace,
+          settleHoldMs,
         },
       });
       // The host's own session, written the same way the real create flow writes it, so panel one
@@ -147,12 +153,101 @@ export function TwinDevHarness() {
     }
   };
 
+  const tuneSettleHold = async (value: number) => {
+    setSettleHoldMs(value);
+    if (!seats) return;
+    const result = await applyTwinActionFn({
+      data: {
+        roomId: seats[0].roomId,
+        playerId: seats[0].playerId,
+        playerToken: seats[0].playerToken,
+        action: { type: "timing.configure", settleHoldMs: value },
+      },
+    });
+    if (!result.ok || !result.accepted) setError(result.error ?? "could not tune the hold");
+  };
+
   return (
     <div className="min-h-svh bg-black p-3">
       <header className="flex flex-wrap items-center gap-3 pb-3 font-mono text-xs text-white/70">
         <span className="font-bold uppercase tracking-[0.2em] text-[var(--things-amber)]">
           twin dev
         </span>
+        <label className="flex items-center gap-2">
+          result hold ms
+          <input
+            type="number"
+            min={TWIN_TIMING.minSettleHoldMs}
+            max={TWIN_TIMING.maxSettleHoldMs}
+            step={100}
+            value={settleHoldMs}
+            onChange={(event) => void tuneSettleHold(Number(event.target.value))}
+            className="w-20 border border-white/20 bg-transparent px-1 py-0.5"
+          />
+        </label>
+        <label className="flex items-center gap-2">
+          connection ms
+          <input
+            type="number"
+            min={100}
+            max={1_500}
+            step={20}
+            value={connectionHoldMs}
+            onChange={(event) => setConnectionHoldMs(Number(event.target.value))}
+            className="w-20 border border-white/20 bg-transparent px-1 py-0.5"
+          />
+        </label>
+        <label className="flex items-center gap-2">
+          heartbeat starts ms
+          <input
+            type="number"
+            min={500}
+            max={8_000}
+            step={100}
+            value={heartbeatTiming.startsAtMs}
+            onChange={(event) =>
+              setHeartbeatTiming((current) => ({
+                ...current,
+                startsAtMs: Number(event.target.value),
+              }))
+            }
+            className="w-20 border border-white/20 bg-transparent px-1 py-0.5"
+          />
+        </label>
+        <label className="flex items-center gap-2">
+          beat slow / fast
+          <input
+            aria-label="Slowest heartbeat gap in milliseconds"
+            type="number"
+            min={200}
+            max={1_200}
+            step={10}
+            value={heartbeatTiming.slowestGapMs}
+            onChange={(event) =>
+              setHeartbeatTiming((current) => ({
+                ...current,
+                slowestGapMs: Number(event.target.value),
+              }))
+            }
+            className="w-16 border border-white/20 bg-transparent px-1 py-0.5"
+          />
+          /
+          <input
+            aria-label="Fastest heartbeat gap in milliseconds"
+            type="number"
+            min={100}
+            max={800}
+            step={10}
+            value={heartbeatTiming.fastestGapMs}
+            onChange={(event) =>
+              setHeartbeatTiming((current) => ({
+                ...current,
+                fastestGapMs: Number(event.target.value),
+              }))
+            }
+            className="w-16 border border-white/20 bg-transparent px-1 py-0.5"
+          />
+        </label>
         {seats ? (
           <>
             <span className="text-white/45">{seats[0]?.roomId}</span>
@@ -231,6 +326,11 @@ export function TwinDevHarness() {
           />
         </label>
         <span className="ml-auto flex gap-2">
+          {!seats ? (
+            <Chip onClick={() => setDuelPreview((current) => !current)}>
+              {duelPreview ? "rooms" : "duel preview"}
+            </Chip>
+          ) : null}
           {seats ? (
             <>
               <Chip onClick={() => void start()} disabled={busy}>
@@ -248,7 +348,11 @@ export function TwinDevHarness() {
 
       {error ? <p className="pb-2 font-mono text-xs text-red-400">{error}</p> : null}
 
-      {seats ? (
+      {duelPreview && !seats ? (
+        <div className="mx-auto h-[780px] w-[375px] overflow-hidden border border-white/15">
+          <TwinDuelApp onExit={() => setDuelPreview(false)} connectionHoldMs={connectionHoldMs} />
+        </div>
+      ) : seats ? (
         <div className="flex gap-3 overflow-x-auto pb-4">
           {seats.map((seat, index) => (
             <div key={seat.playerId} className="shrink-0">
@@ -259,7 +363,11 @@ export function TwinDevHarness() {
               {index > 0 ? <TwinBotSeat seat={seat} enabled={bots} accuracy={accuracy} /> : null}
               {/* Phone-sized and independently scrollable, so each panel behaves like its own device. */}
               <div className="h-[780px] w-[375px] overflow-y-auto border border-white/15">
-                <TwinRoom roomId={seat.roomId} credentials={seat} />
+                <TwinRoom
+                  roomId={seat.roomId}
+                  credentials={seat}
+                  heartbeatTiming={heartbeatTiming}
+                />
               </div>
             </div>
           ))}

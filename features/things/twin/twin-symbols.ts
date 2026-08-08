@@ -155,26 +155,7 @@ export const TWIN_SYMBOLS: readonly TwinSymbolShape[] = [
 
 export const TWIN_SYMBOL_COUNT = TWIN_SYMBOLS.length;
 
-/**
- * How many hues the coloured deck uses.
- *
- * Six, not thirty-one. Colour here is a **second channel, never the answer** — it narrows where your
- * eye goes and nothing more. Every symbol is already unique in silhouette (that is the constraint the
- * set was drawn under), so a player who cannot tell two hues apart loses no information at all. Give
- * each symbol its own colour and that stops being true: the game would become unplayable for the
- * roughly one in twelve men with a colour vision deficiency, and it would also be far too easy.
- *
- * Amber is not in the palette. It belongs to the connection, and a symbol wearing it would blunt the
- * one moment the game is built around.
- */
-export const TWIN_HUE_COUNT = 6;
-
 const BY_ID = new Map(TWIN_SYMBOLS.map((symbol) => [symbol.id, symbol]));
-const HUE_BY_ID = new Map(TWIN_SYMBOLS.map((symbol, index) => [symbol.id, index % TWIN_HUE_COUNT]));
-
-export function twinSymbolHue(id: string) {
-  return HUE_BY_ID.get(id) ?? 0;
-}
 
 export function twinSymbol(id: string) {
   return BY_ID.get(id) ?? null;

@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import { playTwinSound, twinHeartbeatGapMs } from "./twin-sound.client";
+import { TWIN_HEARTBEAT, type TwinHeartbeatTiming } from "./twin-rules";
 
 /**
  * The clock, felt rather than read.
@@ -12,7 +13,11 @@ import { playTwinSound, twinHeartbeatGapMs } from "./twin-sound.client";
  * the tempo tracks the clock continuously instead of stepping. Held in a ref so a re-render every
  * 100ms — which the countdown causes — does not restart the beat and stutter it.
  */
-export function useTwinHeartbeat(remainingMs: number, active: boolean) {
+export function useTwinHeartbeat(
+  remainingMs: number,
+  active: boolean,
+  timing: TwinHeartbeatTiming = TWIN_HEARTBEAT,
+) {
   const remaining = useRef(remainingMs);
   remaining.current = remainingMs;
 
@@ -23,7 +28,7 @@ export function useTwinHeartbeat(remainingMs: number, active: boolean) {
 
     const beat = () => {
       if (stopped) return;
-      const gap = twinHeartbeatGapMs(remaining.current);
+      const gap = twinHeartbeatGapMs(remaining.current, timing);
       if (gap === null) {
         // Not urgent yet. Look again shortly rather than giving up on the heat.
         timer = window.setTimeout(beat, 200);
@@ -38,5 +43,5 @@ export function useTwinHeartbeat(remainingMs: number, active: boolean) {
       stopped = true;
       if (timer !== null) window.clearTimeout(timer);
     };
-  }, [active]);
+  }, [active, timing]);
 }

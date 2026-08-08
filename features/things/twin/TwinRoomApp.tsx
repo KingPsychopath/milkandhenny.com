@@ -14,6 +14,7 @@ import { TwinHeader, TwinLobby, TwinSettle, TwinStandings } from "./TwinViews";
 import { useGameSound } from "../shared/useGameSound";
 import { gameBrowserKey } from "../shared/multiplayer-keys";
 import { playTwinSound, primeTwinAudio } from "./twin-sound.client";
+import type { TwinHeartbeatTiming } from "./twin-rules";
 import { useTwinPalette } from "./useTwinPalette";
 import { useTwinRoom } from "./useTwinRoom";
 import type { TwinAction, TwinPlayerCredentials } from "./types";
@@ -45,9 +46,11 @@ export function TwinRoomApp({ roomId }: { roomId: string }) {
 export function TwinRoom({
   roomId,
   credentials,
+  heartbeatTiming,
 }: {
   roomId: string;
   credentials: TwinPlayerCredentials;
+  heartbeatTiming?: TwinHeartbeatTiming;
 }) {
   const live = useTwinRoom({
     roomId,
@@ -244,6 +247,7 @@ export function TwinRoom({
         snapshot={snapshot}
         clockOffset={live.clockOffset}
         sound={sound.effects}
+        heartbeatTiming={heartbeatTiming}
         onTap={(symbolId, elapsedMs) =>
           void send(
             { type: "answer.tap", heatId: snapshot.heat?.id ?? "", symbolId, elapsedMs },

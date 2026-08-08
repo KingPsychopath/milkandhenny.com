@@ -184,6 +184,7 @@ export type TwinHostAction =
   | { type: "game.configure"; handSize?: number; windowMs?: number; graceMs?: number }
   | { type: "game.replay" }
   | { type: "game.lobby" }
+  | { type: "timing.configure"; settleHoldMs: number }
   | { type: "heat.next" };
 
 export type TwinPlayerAction =

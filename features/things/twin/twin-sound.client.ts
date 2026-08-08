@@ -1,4 +1,5 @@
 import { gameNote, primeGameAudio } from "../shared/game-sound.client";
+import { TWIN_HEARTBEAT, type TwinHeartbeatTiming } from "./twin-rules";
 
 /**
  * Twin's voice. Synthesised, not sampled — a handful of oscillators weighs nothing, needs no network,
@@ -65,18 +66,11 @@ export function playTwinSound(sound: TwinSoundName, enabled: boolean) {
  * Silent until the last few seconds, then the gap closes from a resting beat to a racing one. Pure, so
  * the ramp can be reasoned about — and tested — without an audio device.
  */
-export const TWIN_HEARTBEAT = {
-  /** Nothing at all above this. A heartbeat running the whole heat is just noise. */
-  startsAtMs: 3_600,
-  slowestGapMs: 620,
-  fastestGapMs: 230,
-} as const;
-
-export function twinHeartbeatGapMs(remainingMs: number) {
-  if (remainingMs > TWIN_HEARTBEAT.startsAtMs || remainingMs <= 0) return null;
-  const urgency = 1 - remainingMs / TWIN_HEARTBEAT.startsAtMs;
-  return Math.round(
-    TWIN_HEARTBEAT.slowestGapMs -
-      (TWIN_HEARTBEAT.slowestGapMs - TWIN_HEARTBEAT.fastestGapMs) * urgency,
-  );
+export function twinHeartbeatGapMs(
+  remainingMs: number,
+  timing: TwinHeartbeatTiming = TWIN_HEARTBEAT,
+) {
+  if (remainingMs > timing.startsAtMs || remainingMs <= 0) return null;
+  const urgency = 1 - remainingMs / timing.startsAtMs;
+  return Math.round(timing.slowestGapMs - (timing.slowestGapMs - timing.fastestGapMs) * urgency);
 }

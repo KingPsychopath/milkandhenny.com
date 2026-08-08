@@ -30,6 +30,10 @@ export const TWIN_TIMING = {
    * come back before anyone starts talking.
    */
   settleHoldMs: 2_400,
+  minSettleHoldMs: 500,
+  maxSettleHoldMs: 6_000,
+  /** The connection stays drawn before a one-device card moves. */
+  connectionHoldMs: 460,
   /** Faster than any human nervous system. Rejects prefiring and absurd claims. */
   minReactionMs: 220,
   /**
@@ -38,6 +42,18 @@ export const TWIN_TIMING = {
    */
   latencyAllowanceMs: 900,
 } as const;
+
+export interface TwinHeartbeatTiming {
+  startsAtMs: number;
+  slowestGapMs: number;
+  fastestGapMs: number;
+}
+
+export const TWIN_HEARTBEAT: TwinHeartbeatTiming = {
+  startsAtMs: 3_600,
+  slowestGapMs: 620,
+  fastestGapMs: 230,
+};
 
 /** Escalating within a heat, so spraying is strictly worse than looking. */
 export const TWIN_COOLDOWNS_MS = [1_500, 2_500, 4_000] as const;

@@ -6,7 +6,7 @@ import { useGamePreferences } from "../shared/useGamePreferences";
 import { TwinCard } from "./TwinCard";
 import { TwinRay } from "./TwinRay";
 import { dealTwin, twinCardById, twinMatch } from "./twin-deck";
-import { twinCooldownMs } from "./twin-rules";
+import { TWIN_TIMING, twinCooldownMs } from "./twin-rules";
 import { twinSymbolName } from "./twin-symbols";
 import { gameBrowserKey } from "../shared/multiplayer-keys";
 import { useGameSound } from "../shared/useGameSound";
@@ -33,7 +33,6 @@ import type { TwinDealtCard } from "./types";
 const ORDER = 4;
 const DUEL_PLAN = { order: ORDER, handSize: 10 } as const;
 const SOLO_PLAN = { order: ORDER, handSize: 20 } as const;
-const FLASH_MS = 460;
 const SOLO_MISS_PENALTY_MS = 3_000;
 /** Two evenly matched players can pass one card back and forth forever. */
 const DUEL_CAP_MS = 4 * 60_000;
@@ -58,9 +57,11 @@ function toDealt(cards: readonly { id: string }[], seedFrom: number): TwinDealtC
 export function TwinDuelApp({
   onExit,
   mode = "duel",
+  connectionHoldMs = TWIN_TIMING.connectionHoldMs,
 }: {
   onExit: () => void;
   mode?: "duel" | "solo";
+  connectionHoldMs?: number;
 }) {
   const haptics = useWebHaptics();
   const boardRef = useRef<HTMLDivElement>(null);
@@ -207,7 +208,7 @@ export function TwinDuelApp({
           if (preferences.bestMs === 0 || total < preferences.bestMs) set("bestMs", total);
         }
       }
-    }, FLASH_MS);
+    }, connectionHoldMs);
   };
 
   const soloTotal = elapsedMs + penaltyMs;
@@ -215,96 +216,98 @@ export function TwinDuelApp({
 
   return (
     <div className="things-game things-game--night twin twin-duel" ref={boardRef}>
-      {players === 2 ? (
+      <div className="contents" inert={winner !== null ? true : undefined}>
+        {players === 2 ? (
+          <DuelSeat
+            seat={seats[1]}
+            index={1}
+            slot="seat-two"
+            flipped
+            answer={flash?.seat === 1 ? flash.symbolId : null}
+            shaking={shake?.seat === 1}
+            locked={winner !== null || flash !== null}
+            onTap={tap}
+          />
+        ) : (
+          <header className="twin-duel-bar">
+            <button type="button" className="twin-duel-exit" onClick={onExit}>
+              ← twin
+            </button>
+            <p className="twin-duel-clock">
+              <TextMorph as="span">{(soloTotal / 1_000).toFixed(1)}</TextMorph>s
+              {penaltyMs > 0 ? (
+                <span className="twin-duel-penalty"> +{penaltyMs / 1_000}s</span>
+              ) : null}
+            </p>
+            <p className="twin-duel-best">
+              {preferences.bestMs > 0
+                ? `best ${(preferences.bestMs / 1_000).toFixed(1)}s`
+                : "no best yet"}
+            </p>
+          </header>
+        )}
+
+        <div className="twin-duel-middle">
+          {players === 2 ? (
+            <button type="button" className="twin-duel-quit" onClick={onExit}>
+              ← twin
+            </button>
+          ) : null}
+          <div className="twin-duel-palette">
+            <button type="button" aria-pressed={palette.colour} onClick={palette.toggle}>
+              {palette.colour ? "colour" : "ink"}
+            </button>
+            <button
+              type="button"
+              aria-pressed={sound.effects}
+              onClick={() => {
+                primeTwinAudio();
+                sound.cycle();
+                playTwinSound("connection", !sound.effects);
+              }}
+            >
+              {sound.effects ? "sound" : "muted"}
+            </button>
+          </div>
+          {players === 1 && middle ? (
+            <TwinCard
+              card={middle}
+              slot="middle"
+              label="The card in the middle"
+              focusSymbolId={flash?.symbolId ?? null}
+              className="twin-card--middle"
+            />
+          ) : (
+            <p className="twin-duel-divider">
+              {remainingMs < 60_000
+                ? `${Math.ceil(remainingMs / 1_000)}s left`
+                : `${seats[0]?.hand.length ?? 0} — ${seats[1]?.hand.length ?? 0}`}
+            </p>
+          )}
+          {flash ? (
+            <TwinRay
+              containerRef={boardRef}
+              from={{ slot: flash.seat === 0 ? "seat-one" : "seat-two", symbolId: flash.symbolId }}
+              to={{
+                slot: players === 1 ? "middle" : flash.seat === 0 ? "seat-two" : "seat-one",
+                symbolId: flash.symbolId,
+              }}
+              token={`${flash.seat}-${flash.symbolId}-${seats[flash.seat]?.hand[0]?.cardId ?? ""}`}
+              durationMs={connectionHoldMs}
+            />
+          ) : null}
+        </div>
+
         <DuelSeat
-          seat={seats[1]}
-          index={1}
-          slot="seat-two"
-          flipped
-          answer={flash?.seat === 1 ? flash.symbolId : null}
-          shaking={shake?.seat === 1}
+          seat={seats[0]}
+          index={0}
+          slot="seat-one"
+          answer={flash?.seat === 0 ? flash.symbolId : null}
+          shaking={shake?.seat === 0}
           locked={winner !== null || flash !== null}
           onTap={tap}
         />
-      ) : (
-        <header className="twin-duel-bar">
-          <button type="button" className="twin-duel-exit" onClick={onExit}>
-            ← twin
-          </button>
-          <p className="twin-duel-clock">
-            <TextMorph as="span">{(soloTotal / 1_000).toFixed(1)}</TextMorph>s
-            {penaltyMs > 0 ? (
-              <span className="twin-duel-penalty"> +{penaltyMs / 1_000}s</span>
-            ) : null}
-          </p>
-          <p className="twin-duel-best">
-            {preferences.bestMs > 0
-              ? `best ${(preferences.bestMs / 1_000).toFixed(1)}s`
-              : "no best yet"}
-          </p>
-        </header>
-      )}
-
-      <div className="twin-duel-middle">
-        {players === 2 ? (
-          <button type="button" className="twin-duel-quit" onClick={onExit}>
-            ← twin
-          </button>
-        ) : null}
-        <div className="twin-duel-palette">
-          <button type="button" aria-pressed={palette.colour} onClick={palette.toggle}>
-            {palette.colour ? "colour" : "ink"}
-          </button>
-          <button
-            type="button"
-            aria-pressed={sound.effects}
-            onClick={() => {
-              primeTwinAudio();
-              sound.cycle();
-              playTwinSound("connection", !sound.effects);
-            }}
-          >
-            {sound.effects ? "sound" : "muted"}
-          </button>
-        </div>
-        {players === 1 && middle ? (
-          <TwinCard
-            card={middle}
-            slot="middle"
-            label="The card in the middle"
-            focusSymbolId={flash?.symbolId ?? null}
-            className="twin-card--middle"
-          />
-        ) : (
-          <p className="twin-duel-divider">
-            {remainingMs < 60_000
-              ? `${Math.ceil(remainingMs / 1_000)}s left`
-              : `${seats[0]?.hand.length ?? 0} — ${seats[1]?.hand.length ?? 0}`}
-          </p>
-        )}
-        {flash ? (
-          <TwinRay
-            containerRef={boardRef}
-            from={{ slot: flash.seat === 0 ? "seat-one" : "seat-two", symbolId: flash.symbolId }}
-            to={{
-              slot: players === 1 ? "middle" : flash.seat === 0 ? "seat-two" : "seat-one",
-              symbolId: flash.symbolId,
-            }}
-            token={`${flash.seat}-${flash.symbolId}-${seats[flash.seat]?.hand[0]?.cardId ?? ""}`}
-            durationMs={FLASH_MS}
-          />
-        ) : null}
       </div>
-
-      <DuelSeat
-        seat={seats[0]}
-        index={0}
-        slot="seat-one"
-        answer={flash?.seat === 0 ? flash.symbolId : null}
-        shaking={shake?.seat === 0}
-        locked={winner !== null || flash !== null}
-        onTap={tap}
-      />
 
       {winner !== null ? (
         <div className="twin-duel-over" role="dialog" aria-modal="true">

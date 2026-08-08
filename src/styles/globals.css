@@ -2014,9 +2014,8 @@
     color: var(--twin-ink);
 
     /*
-      The coloured deck. Six hues, deliberately not thirty-one — colour narrows the search, it never
-      answers it, because every symbol is already unique in silhouette. Amber is absent on purpose: it
-      belongs to the connection.
+      Eight perceptually separated hues. The assignment is solved against every deck so a card never
+      carries three symbols in one hue. Amber is absent on purpose: it belongs to the connection.
     */
     --twin-hue-0: oklch(0.76 0.13 20);
     --twin-hue-1: oklch(0.81 0.13 142);
@@ -2024,6 +2023,8 @@
     --twin-hue-3: oklch(0.74 0.13 265);
     --twin-hue-4: oklch(0.76 0.13 325);
     --twin-hue-5: oklch(0.88 0.05 95);
+    --twin-hue-6: oklch(0.8 0.11 175);
+    --twin-hue-7: oklch(0.82 0.1 295);
   }
 
   [data-twin-colour="on"] .twin-symbol {
@@ -3049,13 +3050,18 @@
     z-index: 50;
     display: grid;
     place-items: center;
-    background: color-mix(in oklab, var(--things-night) 88%, transparent);
+    background: var(--things-night);
   }
 
   .twin-duel-over-panel {
     width: min(90vw, 26rem);
     padding: 1.5rem;
     text-align: center;
+  }
+
+  .twin-duel-over-panel .twin-leave {
+    width: 100%;
+    margin-top: 2rem;
   }
 
   @media (prefers-reduced-motion: reduce) {

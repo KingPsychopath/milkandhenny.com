@@ -243,6 +243,9 @@ describe("Twin rooms", () => {
 
     const replayed = await applyTwinAction({ ...seats[0], action: { type: "game.replay" } });
     expect(replayed.accepted).toBe(true);
+    expect(replayed.snapshot?.players.map(({ id }) => id)).toEqual(
+      seats.map(({ playerId }) => playerId),
+    );
     await tick(seats[0], TWIN_TIMING.dealingMs + 200);
 
     const fresh = await look(seats[0]);
@@ -252,6 +255,47 @@ describe("Twin rooms", () => {
       fresh.players.every(({ connections, place }) => connections === 0 && place === null),
     ).toBe(true);
     await everyoneCanPlay(seats);
+  });
+
+  it("returns the same group to the lobby and requires everyone to ready again", async () => {
+    const { seats } = await openRoom(["Abel", "Maya", "Daniel"], 3);
+    await startGame(seats);
+
+    let guard = 0;
+    while (guard < 40) {
+      guard += 1;
+      const snapshots = await Promise.all(seats.map(look));
+      if (snapshots[0].phase === "finished") break;
+      if (snapshots[0].phase === "heat")
+        for (const [index, seat] of seats.entries())
+          if (snapshots[index].player?.top) await answer(seat, snapshots[index], 800 + index * 200);
+      await tick(seats[0], 900);
+    }
+
+    const lobby = await applyTwinAction({ ...seats[0], action: { type: "game.lobby" } });
+    expect(lobby.accepted).toBe(true);
+    expect(lobby.snapshot?.phase).toBe("lobby");
+    expect(lobby.snapshot?.players.map(({ id }) => id)).toEqual(
+      seats.map(({ playerId }) => playerId),
+    );
+    expect(lobby.snapshot?.players.map(({ ready }) => ready)).toEqual([true, false, false]);
+
+    const tooSoon = await applyTwinAction({ ...seats[0], action: { type: "game.start" } });
+    expect(tooSoon.accepted).toBe(false);
+    expect(tooSoon.ok && !tooSoon.accepted ? tooSoon.errorCode : null).toBe("players_not_ready");
+    expect(tooSoon.snapshot?.players.slice(1).every(({ ready }) => !ready)).toBe(true);
+
+    for (const seat of seats.slice(1)) {
+      const ready = await applyTwinAction({
+        ...seat,
+        action: { type: "readiness.set", ready: true },
+      });
+      expect(ready.accepted).toBe(true);
+    }
+    const restarted = await applyTwinAction({ ...seats[0], action: { type: "game.start" } });
+    expect(restarted.accepted).toBe(true);
+    expect(restarted.snapshot?.phase).toBe("dealing");
+    expect(restarted.snapshot?.players.every(({ ready }) => ready)).toBe(true);
   });
 
   it("never shows another player's hand", async () => {

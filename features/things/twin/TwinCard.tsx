@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import { twinLayout } from "./twin-layout";
-import { twinSymbolHue, twinSymbolName } from "./twin-symbols";
+import { twinSymbolHue } from "./twin-hues";
+import { twinSymbolName } from "./twin-symbols";
 import { TwinSymbol } from "./TwinSymbol";
 import type { TwinDealtCard } from "./types";
 

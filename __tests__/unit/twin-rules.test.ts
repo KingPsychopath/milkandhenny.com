@@ -13,7 +13,8 @@ import {
   twinHeatShouldClose,
   type TwinPlayerStats,
 } from "../../features/things/twin/twin-rules";
-import { TWIN_HEARTBEAT, twinHeartbeatGapMs } from "../../features/things/twin/twin-sound.client";
+import { TWIN_HEARTBEAT } from "../../features/things/twin/twin-rules";
+import { twinHeartbeatGapMs } from "../../features/things/twin/twin-sound.client";
 import type { TwinLoggedHeat } from "../../features/things/twin/types";
 
 function stats(overrides: Partial<TwinPlayerStats> & { name: string }): TwinPlayerStats {

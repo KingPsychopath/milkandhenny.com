@@ -7,6 +7,7 @@ import { TwinRay } from "./TwinRay";
 import { twinCardById, twinMatch } from "./twin-deck";
 import { twinSymbolName } from "./twin-symbols";
 import { playTwinSound } from "./twin-sound.client";
+import type { TwinHeartbeatTiming } from "./twin-rules";
 import { useTwinHeartbeat } from "./useTwinHeartbeat";
 import { useTwinCountdown, useTwinReveal } from "./useTwinReveal";
 import type { TwinSnapshot } from "./types";
@@ -24,12 +25,14 @@ export function TwinBoard({
   sound,
   onTap,
   onCooldownWarning,
+  heartbeatTiming,
 }: {
   snapshot: TwinSnapshot;
   clockOffset: number;
   sound: boolean;
   onTap: (symbolId: string, elapsedMs: number) => void;
   onCooldownWarning?: () => void;
+  heartbeatTiming?: TwinHeartbeatTiming;
 }) {
   const boardRef = useRef<HTMLDivElement>(null);
   const haptics = useWebHaptics();
@@ -77,7 +80,7 @@ export function TwinBoard({
   }, [heat?.id]);
 
   // Silent until the last few seconds, and only while you can still do something about it.
-  useTwinHeartbeat(remainingMs, sound && live && !landed && !cooling);
+  useTwinHeartbeat(remainingMs, sound && live && !landed && !cooling, heartbeatTiming);
 
   // Reconcile with the server: it is the one that decides whether a tap counted.
   useEffect(() => {
