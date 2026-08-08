@@ -15,6 +15,8 @@ import {
   type TicketType,
 } from "@/features/events/types";
 import {
+  SCANNER_PERMISSIONS,
+  SCANNER_PERMISSION_LABELS,
   scannerPath,
   type CheckpointRecord,
   type GuestRequestRecord,
@@ -813,6 +815,37 @@ function ScanningSection({
   const [copiedToken, setCopiedToken] = useState<string | null>(null);
   const [qrToken, setQrToken] = useState<string | null>(null);
   const [allowancesOpenFor, setAllowancesOpenFor] = useState<string | null>(null);
+  const [abilitiesOpenFor, setAbilitiesOpenFor] = useState<string | null>(null);
+
+  const saveAbility = async (link: ScannerLinkRecord, permission: string, value: boolean) => {
+    onError("");
+    try {
+      const response = await authFetch(`/api/admin/events/${event.slug}/scanner-links`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          token: link.token,
+          // Send every current value so the stored override set is explicit.
+          permissions: { ...link.permissions, [permission]: value },
+        }),
+      });
+      if (!response.ok) {
+        throw new Error(await readErrorMessage(response, "Failed to save abilities"));
+      }
+      const data: unknown = await response.json().catch(() => null);
+      const updated =
+        data && typeof data === "object" && "link" in data
+          ? (data.link as ScannerLinkRecord)
+          : null;
+      if (updated) {
+        setLinks((current) =>
+          current.map((entry) => (entry.token === updated.token ? updated : entry)),
+        );
+      }
+    } catch (error) {
+      onError(error instanceof Error ? error.message : "Failed to save abilities");
+    }
+  };
 
   const load = useCallback(async () => {
     try {
@@ -1114,6 +1147,20 @@ function ScanningSection({
                     >
                       qr
                     </button>
+                    {link.checkpointId === null && (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setAbilitiesOpenFor((current) =>
+                            current === link.token ? null : link.token,
+                          )
+                        }
+                        aria-expanded={abilitiesOpenFor === link.token}
+                        className="min-h-9 rounded border theme-border-strong px-3 font-mono text-micro text-foreground"
+                      >
+                        abilities
+                      </button>
+                    )}
                     <button
                       type="button"
                       disabled={busy}
@@ -1125,6 +1172,32 @@ function ScanningSection({
                   </div>
                 </div>
                 {qrToken === link.token && <ScannerLinkQr token={link.token} label={link.label} />}
+                {abilitiesOpenFor === link.token && (
+                  <div className="mt-2 rounded-lg border theme-border p-3">
+                    <p className="font-mono text-micro theme-muted">
+                      what {link.label} can do beyond scanning · defaults come from their level
+                    </p>
+                    <div className="mt-2 flex flex-wrap gap-x-5 gap-y-2">
+                      {SCANNER_PERMISSIONS.map((permission) => (
+                        <label
+                          key={permission}
+                          className="flex min-h-9 cursor-pointer items-center gap-2"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={link.permissions[permission]}
+                            onChange={(inputEvent) =>
+                              void saveAbility(link, permission, inputEvent.target.checked)
+                            }
+                          />
+                          <span className="font-mono text-micro text-foreground">
+                            {SCANNER_PERMISSION_LABELS[permission]}
+                          </span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </li>
             ))}
           </ul>
@@ -1241,20 +1314,55 @@ function ScanningSection({
                         : `${checkpoint.defaultAllowance} per ticket, every ticket type`;
                     })()}
                   </p>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setAllowancesOpenFor((current) =>
-                        current === checkpoint.id ? null : checkpoint.id,
-                      )
-                    }
-                    aria-expanded={allowancesOpenFor === checkpoint.id}
-                    className="mt-2 font-mono text-micro theme-muted underline hover:text-foreground transition-colors"
-                  >
-                    {allowancesOpenFor === checkpoint.id
-                      ? "done adjusting"
-                      : "adjust by ticket type"}
-                  </button>
+                  <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setAllowancesOpenFor((current) =>
+                          current === checkpoint.id ? null : checkpoint.id,
+                        )
+                      }
+                      aria-expanded={allowancesOpenFor === checkpoint.id}
+                      className="font-mono text-micro theme-muted underline hover:text-foreground transition-colors"
+                    >
+                      {allowancesOpenFor === checkpoint.id
+                        ? "done adjusting"
+                        : "adjust by ticket type"}
+                    </button>
+                    <label className="flex min-h-9 cursor-pointer items-center gap-2">
+                      <input
+                        type="checkbox"
+                        checked={checkpoint.multiScan}
+                        onChange={(inputEvent) =>
+                          void (async () => {
+                            onError("");
+                            try {
+                              const response = await authFetch(
+                                `/api/admin/events/${event.slug}/checkpoints`,
+                                {
+                                  method: "PUT",
+                                  headers: { "Content-Type": "application/json" },
+                                  body: JSON.stringify({
+                                    ...checkpoint,
+                                    multiScan: inputEvent.target.checked,
+                                  }),
+                                },
+                              );
+                              if (!response.ok) {
+                                throw new Error(await readErrorMessage(response, "Failed to save"));
+                              }
+                              await load();
+                            } catch (error) {
+                              onError(error instanceof Error ? error.message : "Failed to save");
+                            }
+                          })()
+                        }
+                      />
+                      <span className="font-mono text-micro theme-muted">
+                        can hand out several per scan
+                      </span>
+                    </label>
+                  </div>
                   {allowancesOpenFor === checkpoint.id && (
                     <>
                       <div className="mt-2 grid gap-2 sm:grid-cols-2">

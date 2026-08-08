@@ -9,7 +9,43 @@ import { useCallback, useEffect, useRef, useState } from "react";
  * paused flag so a verdict on screen stops further frames being decoded.
  * A refused camera is retryable with a tap — people mis-tap the permission
  * prompt at a busy door, and reloading the page to recover is not obvious.
+ *
+ * Decoding prefers the native BarcodeDetector, but that API does not exist
+ * in Safari — and door helpers are mostly on iPhones — so a pure-JS decoder
+ * (jsQR over a canvas) is the fallback rather than a "type it in" shrug.
  */
+
+type Decoder = (video: HTMLVideoElement) => Promise<string | null>;
+
+function nativeDecoder(): Decoder | null {
+  const Detector = window.BarcodeDetector;
+  if (!Detector) return null;
+  const detector = new Detector({ formats: ["qr_code"] });
+  return async (video) => {
+    const codes = await detector.detect(video);
+    return codes[0]?.rawValue ?? null;
+  };
+}
+
+/** Canvas + jsQR. Downscaled: QR finding does not need full sensor frames. */
+async function jsQrDecoder(): Promise<Decoder> {
+  const { default: jsQR } = await import("jsqr");
+  const canvas = document.createElement("canvas");
+  const context = canvas.getContext("2d", { willReadFrequently: true });
+  return async (video) => {
+    if (!context || video.videoWidth === 0) return null;
+    const scale = Math.min(1, 640 / video.videoWidth);
+    canvas.width = Math.round(video.videoWidth * scale);
+    canvas.height = Math.round(video.videoHeight * scale);
+    context.drawImage(video, 0, 0, canvas.width, canvas.height);
+    const image = context.getImageData(0, 0, canvas.width, canvas.height);
+    const code = jsQR(image.data, image.width, image.height, {
+      inversionAttempts: "dontInvert",
+    });
+    return code?.data ?? null;
+  };
+}
+
 export function CameraFeed({ onCode, paused }: { onCode: (raw: string) => void; paused: boolean }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const onCodeRef = useRef(onCode);
@@ -40,10 +76,18 @@ export function CameraFeed({ onCode, paused }: { onCode: (raw: string) => void; 
     };
 
     const start = async () => {
-      const Detector = window.BarcodeDetector;
-      if (!Detector || !navigator.mediaDevices?.getUserMedia) {
+      if (!navigator.mediaDevices?.getUserMedia) {
         setFailed(true);
-        setMessage("No camera scanner in this browser — type or search below instead.");
+        setMessage("No camera in this browser — type or search below instead.");
+        return;
+      }
+
+      let decode: Decoder;
+      try {
+        decode = nativeDecoder() ?? (await jsQrDecoder());
+      } catch {
+        setFailed(true);
+        setMessage("No QR decoder available — type or search below instead.");
         return;
       }
 
@@ -60,14 +104,12 @@ export function CameraFeed({ onCode, paused }: { onCode: (raw: string) => void; 
         await videoRef.current.play();
         if (!active) return stop();
         setMessage("Point at their code.");
-        const detector = new Detector({ formats: ["qr_code"] });
 
         const scanFrame = async () => {
           if (!active || !videoRef.current) return;
           if (!pausedRef.current) {
             try {
-              const codes = await detector.detect(videoRef.current);
-              const raw = codes[0]?.rawValue;
+              const raw = await decode(videoRef.current);
               if (raw) onCodeRef.current(raw);
             } catch {
               // Detection fails while the video warms up; the next frame retries.

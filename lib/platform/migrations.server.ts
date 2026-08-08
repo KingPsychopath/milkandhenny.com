@@ -392,6 +392,24 @@ const MIGRATIONS: Migration[] = [
         on guest_requests (token, created_at desc);
     `,
   },
+  {
+    id: "0008_scanner_link_permission_overrides",
+    sql: `
+      -- Per-link ability overrides on top of the role's defaults:
+      -- { "addGuests": true, "approveRequests": false, ... }.
+      alter table scanner_links
+        add column if not exists permissions jsonb not null default '{}'::jsonb;
+    `,
+  },
+  {
+    id: "0009_checkpoint_multi_scan",
+    sql: `
+      -- Whether one scan may hand out several units (the +/- control).
+      -- Off forces exactly one per scan, however big the allowance.
+      alter table checkpoints
+        add column if not exists multi_scan boolean not null default true;
+    `,
+  },
 ];
 
 export type MigrationResult = { applied: string[]; alreadyApplied: number };

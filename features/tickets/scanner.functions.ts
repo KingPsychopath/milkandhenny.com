@@ -11,6 +11,7 @@ import {
   type CheckpointScanOutcome,
   type GuestRequestRecord,
   type ScannerLinkRecord,
+  type ScannerPermissionSet,
   type ScannerRole,
 } from "./checkpoint-types";
 import {
@@ -61,7 +62,8 @@ export type ScannerPageResult =
       eventSlug: string;
       eventTitle: string;
       role: ScannerRole;
-      /** Own requests for a scanner; every pending request for a manager. */
+      permissions: ScannerPermissionSet;
+      /** Own requests, or every pending one when this link approves. */
       requests: GuestRequestRecord[];
       door: Extract<DoorDataResult, { authorised: true }>;
     }
@@ -128,7 +130,7 @@ export const getScannerPageFn = createServerFn({ method: "GET" })
     if (link.checkpointId === null) {
       const [door, requests] = await Promise.all([
         getDoorDataFn({ data: { eventSlug: link.eventSlug, scannerToken: link.token } }),
-        link.role === "manager"
+        link.permissions.approveRequests
           ? listGuestRequests(link.eventSlug, "pending")
           : listGuestRequestsForToken(link.token),
       ]);
@@ -141,6 +143,7 @@ export const getScannerPageFn = createServerFn({ method: "GET" })
         eventSlug: link.eventSlug,
         eventTitle: event.title,
         role: link.role,
+        permissions: link.permissions,
         requests,
         door,
       };
@@ -253,7 +256,7 @@ export const guestSubmitFn = createServerFn({ method: "POST" })
     const name = data.name?.trim();
     if (!name) return { authorised: true, ok: false, error: "Who should be added?" };
 
-    if (link.role === "manager") {
+    if (link.permissions.addGuests) {
       const event = await getEvent(link.eventSlug);
       const ticketTypeId =
         event?.ticketTypes.find((type) => !type.hidden)?.id ?? event?.ticketTypes[0]?.id;
@@ -273,6 +276,14 @@ export const guestSubmitFn = createServerFn({ method: "POST" })
       return { authorised: true, ok: true, mode: "added", holderName: name };
     }
 
+    if (!link.permissions.requestGuests) {
+      return {
+        authorised: true,
+        ok: false,
+        error: "This link can't add guests — ask the organiser.",
+      };
+    }
+
     const created = await createGuestRequest({
       eventSlug: link.eventSlug,
       token: link.token,
@@ -288,16 +299,15 @@ export type GuestRequestsResult =
   | { authorised: false }
   | { authorised: true; role: ScannerRole; requests: GuestRequestRecord[] };
 
-/** Refresh the requests view: own for scanners, all pending for managers. */
+/** Refresh the requests view: own, or all pending when this link approves. */
 export const guestRequestsFn = createServerFn({ method: "GET" })
   .validator((data: { token: string }) => data)
   .handler(async ({ data }): Promise<GuestRequestsResult> => {
     const link = await resolveLiveLink(data.token);
     if (!link) return { authorised: false };
-    const requests =
-      link.role === "manager"
-        ? await listGuestRequests(link.eventSlug, "pending")
-        : await listGuestRequestsForToken(link.token);
+    const requests = link.permissions.approveRequests
+      ? await listGuestRequests(link.eventSlug, "pending")
+      : await listGuestRequestsForToken(link.token);
     return { authorised: true, role: link.role, requests };
   });
 
@@ -316,12 +326,12 @@ export const guestRequestCancelFn = createServerFn({ method: "POST" })
     return { authorised: true, ok: true };
   });
 
-/** Managers decide from their phone; the admin panel has its own route. */
+/** Links with the approve ability decide from their phone; admin has its own route. */
 export const guestRequestDecideFn = createServerFn({ method: "POST" })
   .validator((data: { token: string; id: number; approve: boolean }) => data)
   .handler(async ({ data }): Promise<GuestActionResult> => {
     const link = await resolveLiveLink(data.token);
-    if (!link || link.role !== "manager") return { authorised: false };
+    if (!link || !link.permissions.approveRequests) return { authorised: false };
     const result = await decideGuestRequest({
       eventSlug: link.eventSlug,
       id: data.id,

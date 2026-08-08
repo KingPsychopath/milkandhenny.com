@@ -10,7 +10,12 @@ import {
   guestRequestsFn,
   guestSubmitFn,
 } from "../scanner.functions";
-import type { GuestRequestRecord, ScannerRole } from "../checkpoint-types";
+import {
+  ROLE_DEFAULT_PERMISSIONS,
+  type GuestRequestRecord,
+  type ScannerPermissionSet,
+  type ScannerRole,
+} from "../checkpoint-types";
 import {
   EMPTY_DOOR_STATE,
   applyManifest,
@@ -66,17 +71,19 @@ type PendingGroup = {
  */
 function GuestRequests({
   token,
-  role,
+  permissions,
   requests,
   onRequestsChanged,
   onGuestAdded,
 }: {
   token: string;
-  role: ScannerRole;
+  permissions: ScannerPermissionSet;
   requests: GuestRequestRecord[];
   onRequestsChanged: (requests: GuestRequestRecord[]) => void;
   onGuestAdded: () => void;
 }) {
+  const canAdd = permissions.addGuests;
+  const canApprove = permissions.approveRequests;
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
   const [busy, setBusy] = useState(false);
@@ -163,7 +170,7 @@ function GuestRequests({
             onClick={() => setOpen(true)}
             className="font-mono text-micro text-[var(--things-amber)]"
           >
-            {role === "manager" ? `${pending.length} to approve` : `${pending.length} pending`}
+            {canApprove ? `${pending.length} to approve` : `${pending.length} pending`}
           </button>
         )}
       </div>
@@ -193,7 +200,7 @@ function GuestRequests({
               disabled={busy || !name.trim()}
               className="min-h-11 shrink-0 rounded-lg bg-foreground px-3 font-mono text-micro text-background disabled:opacity-50"
             >
-              {role === "manager" ? "add" : "request"}
+              {canAdd ? "add" : "request"}
             </button>
           </form>
           {notice && <p className="mt-2 font-mono text-micro theme-muted">{notice}</p>}
@@ -205,10 +212,10 @@ function GuestRequests({
                   <div className="min-w-0">
                     <p className="truncate font-mono text-xs text-foreground">{request.name}</p>
                     <p className="font-mono text-micro theme-muted">
-                      {role === "manager" ? `asked by ${request.requestedBy}` : "waiting"}
+                      {canApprove ? `asked by ${request.requestedBy}` : "waiting"}
                     </p>
                   </div>
-                  {role === "manager" ? (
+                  {canApprove ? (
                     <div className="flex shrink-0 gap-2">
                       <button
                         type="button"
@@ -242,7 +249,7 @@ function GuestRequests({
             </ul>
           )}
 
-          {role !== "manager" && recentlyDecided.length > 0 && (
+          {!canApprove && recentlyDecided.length > 0 && (
             <ul className="mt-2 border-t theme-border pt-2">
               {recentlyDecided.map((request) => (
                 <li key={request.id} className="flex justify-between py-1 font-mono text-micro">
@@ -287,6 +294,7 @@ export function DoorScanner({
   initialSummary,
   scannerToken,
   scannerRole = "scanner",
+  scannerPermissions,
   initialRequests = [],
 }: {
   eventSlug: string;
@@ -297,8 +305,10 @@ export function DoorScanner({
   /** Present when this device is scanning via a shared link, not a staff session. */
   scannerToken?: string;
   scannerRole?: ScannerRole;
+  scannerPermissions?: ScannerPermissionSet;
   initialRequests?: GuestRequestRecord[];
 }) {
+  const permissions = scannerPermissions ?? ROLE_DEFAULT_PERMISSIONS[scannerRole];
   const [offline, setOffline] = useState<DoorOfflineState>({
     ...EMPTY_DOOR_STATE,
     manifest: initialManifest,
@@ -689,10 +699,10 @@ export function DoorScanner({
           </p>
         )}
 
-        {scannerToken && (
+        {scannerToken && (permissions.addGuests || permissions.requestGuests) && (
           <GuestRequests
             token={scannerToken}
-            role={scannerRole}
+            permissions={permissions}
             requests={guestRequests}
             onRequestsChanged={setGuestRequests}
             onGuestAdded={() => {
@@ -702,15 +712,19 @@ export function DoorScanner({
           />
         )}
 
-        {/* Verdict sits above the camera: it is what staff actually look at. */}
+        {/* Verdict sits above the camera: it is what staff actually look at.
+            Idle keeps almost no height — the box only earns its size once
+            there is a verdict worth reading. */}
         <div
           aria-live="assertive"
-          className={`mt-4 min-h-24 rounded-2xl px-4 py-4 text-center ${
-            verdict.kind === "idle" ? "border theme-border" : verdictStyle(verdict.kind)
-          }`}
+          className={
+            verdict.kind === "idle"
+              ? "mt-3 text-center"
+              : `mt-4 min-h-24 rounded-2xl px-4 py-4 text-center ${verdictStyle(verdict.kind)}`
+          }
         >
           {verdict.kind === "idle" ? (
-            <p className="pt-5 font-mono text-xs theme-muted">ready</p>
+            <p className="font-mono text-micro theme-faint">ready — point at a code</p>
           ) : verdict.kind === "rejected" ? (
             <>
               <p className="font-mono text-lg font-bold">{verdict.title}</p>

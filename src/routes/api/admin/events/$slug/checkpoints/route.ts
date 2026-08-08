@@ -70,6 +70,7 @@ async function handlePUT(request: Request, slug: string) {
       name,
       defaultAllowance: typeof record.defaultAllowance === "number" ? record.defaultAllowance : 1,
       allowances,
+      multiScan: record.multiScan !== false,
       position: typeof record.position === "number" ? record.position : 0,
     });
     if (!result.ok) return Response.json({ error: result.error }, { status: result.status });

@@ -4,10 +4,13 @@ import { log } from "@/lib/platform/logger.server";
 import { query, queryOne } from "@/lib/platform/postgres.server";
 import { isValidEventSlug } from "@/features/events/types";
 import {
+  SCANNER_PERMISSIONS,
+  effectiveScannerPermissions,
   isScannerRole,
   isValidCheckpointId,
   isValidScannerToken,
   type ScannerLinkRecord,
+  type ScannerPermission,
   type ScannerRole,
 } from "./checkpoint-types";
 import { getCheckpoint } from "./checkpoints.server";
@@ -31,6 +34,7 @@ type ScannerLinkRow = {
   event_slug: string;
   checkpoint_id: string | null;
   role: string;
+  permissions: unknown;
   created_at: Date;
   expires_at: Date | null;
   revoked_at: Date | null;
@@ -38,12 +42,18 @@ type ScannerLinkRow = {
 };
 
 function toLink(row: ScannerLinkRow): ScannerLinkRecord {
+  const role: ScannerRole = isScannerRole(row.role) ? row.role : "scanner";
+  const overrides =
+    row.permissions && typeof row.permissions === "object" && !Array.isArray(row.permissions)
+      ? (row.permissions as Partial<Record<ScannerPermission, unknown>>)
+      : undefined;
   return {
     token: row.token,
     label: row.label,
     eventSlug: row.event_slug,
     checkpointId: row.checkpoint_id,
-    role: isScannerRole(row.role) ? row.role : "scanner",
+    role,
+    permissions: effectiveScannerPermissions(role, overrides),
     createdAt: row.created_at.toISOString(),
     expiresAt: row.expires_at?.toISOString(),
     revokedAt: row.revoked_at?.toISOString(),
@@ -151,6 +161,40 @@ export async function recordScannerDevice(token: string, deviceId: string): Prom
      on conflict (token, device_id) do update set last_seen = now()`,
     [token, deviceId],
   );
+}
+
+/**
+ * Change a link's level or ability overrides in place — the URL the helper
+ * already holds keeps working with its new powers on their next action.
+ */
+export async function updateScannerLink(
+  token: string,
+  changes: { role?: ScannerRole; permissions?: Partial<Record<ScannerPermission, boolean>> },
+): Promise<TicketOpResult<ScannerLinkRecord>> {
+  if (!isValidScannerToken(token)) return { ok: false, status: 400, error: "Unknown link" };
+
+  const overrides: Record<string, boolean> = {};
+  for (const permission of SCANNER_PERMISSIONS) {
+    const value = changes.permissions?.[permission];
+    if (typeof value === "boolean") overrides[permission] = value;
+  }
+
+  const row = await queryOne<ScannerLinkRow>(
+    `update scanner_links
+        set role = coalesce($2, role),
+            permissions = case when $3 then $4::jsonb else permissions end
+      where token = $1
+      returning *`,
+    [
+      token,
+      changes.role && isScannerRole(changes.role) ? changes.role : null,
+      changes.permissions !== undefined,
+      JSON.stringify(overrides),
+    ],
+  );
+  if (!row) return { ok: false, status: 404, error: "Unknown link" };
+  log.info("scanner-links.update", "Scanner link updated", {});
+  return { ok: true, value: toLink(row) };
 }
 
 export async function revokeScannerLink(token: string): Promise<TicketOpResult<void>> {

@@ -5,6 +5,7 @@ import { getEvent } from "@/features/events/store.server";
 import {
   checkpointAllowanceFor,
   isValidCheckpointId,
+  type CheckpointGroupView,
   type CheckpointRecord,
   type CheckpointScanOutcome,
   type CheckpointTicketView,
@@ -32,6 +33,7 @@ type CheckpointRow = {
   name: string;
   default_allowance: number;
   allowances: unknown;
+  multi_scan: boolean;
   position: number;
 };
 
@@ -50,6 +52,7 @@ function toCheckpoint(row: CheckpointRow): CheckpointRecord {
     name: row.name,
     defaultAllowance: row.default_allowance,
     allowances,
+    multiScan: row.multi_scan !== false,
     position: row.position,
   };
 }
@@ -57,7 +60,7 @@ function toCheckpoint(row: CheckpointRow): CheckpointRecord {
 export async function listCheckpoints(eventSlug: string): Promise<CheckpointRecord[]> {
   if (!isValidEventSlug(eventSlug)) return [];
   const rows = await query<CheckpointRow>(
-    `select event_slug, id, name, default_allowance, allowances, position
+    `select event_slug, id, name, default_allowance, allowances, multi_scan, position
        from checkpoints where event_slug = $1 order by position, id`,
     [eventSlug],
   );
@@ -70,7 +73,7 @@ export async function getCheckpoint(
 ): Promise<CheckpointRecord | null> {
   if (!isValidEventSlug(eventSlug) || !isValidCheckpointId(checkpointId)) return null;
   const row = await queryOne<CheckpointRow>(
-    `select event_slug, id, name, default_allowance, allowances, position
+    `select event_slug, id, name, default_allowance, allowances, multi_scan, position
        from checkpoints where event_slug = $1 and id = $2`,
     [eventSlug, checkpointId],
   );
@@ -83,6 +86,7 @@ export type UpsertCheckpointInput = {
   name: string;
   defaultAllowance: number;
   allowances: Record<string, number>;
+  multiScan?: boolean;
   position?: number;
 };
 
@@ -112,20 +116,22 @@ export async function upsertCheckpoint(
   }
 
   const row = await queryOne<CheckpointRow>(
-    `insert into checkpoints (event_slug, id, name, default_allowance, allowances, position)
-     values ($1, $2, $3, $4, $5::jsonb, $6)
+    `insert into checkpoints (event_slug, id, name, default_allowance, allowances, multi_scan, position)
+     values ($1, $2, $3, $4, $5::jsonb, $6, $7)
      on conflict (event_slug, id) do update
        set name = excluded.name,
            default_allowance = excluded.default_allowance,
            allowances = excluded.allowances,
+           multi_scan = excluded.multi_scan,
            position = excluded.position
-     returning event_slug, id, name, default_allowance, allowances, position`,
+     returning event_slug, id, name, default_allowance, allowances, multi_scan, position`,
     [
       input.eventSlug,
       input.id,
       name,
       allowance,
       JSON.stringify(allowances),
+      input.multiScan !== false,
       Math.round(input.position ?? 0),
     ],
   );
@@ -180,11 +186,13 @@ export async function checkpointScan(input: CheckpointScanInput): Promise<Checkp
     return { result: "invalid" };
   }
 
-  const consume = Math.round(input.consume ?? 1);
+  let consume = Math.round(input.consume ?? 1);
   if (!Number.isFinite(consume) || consume < 0 || consume > 100) return { result: "invalid" };
 
   const checkpoint = await getCheckpoint(input.eventSlug, input.checkpointId);
   if (!checkpoint) return { result: "unknown-checkpoint" };
+  // A single-scan station hands out exactly one, whatever was asked for.
+  if (!checkpoint.multiScan && consume > 1) consume = 1;
 
   const ticket = await queryOne<{
     id: string;
@@ -192,9 +200,12 @@ export async function checkpointScan(input: CheckpointScanInput): Promise<Checkp
     ticket_type_id: string;
     status: string;
     holder_name: string;
-  }>(`select id, event_slug, ticket_type_id, status, holder_name from tickets where id = $1`, [
-    ticketId,
-  ]);
+    order_id: string;
+  }>(
+    `select id, event_slug, ticket_type_id, status, holder_name, order_id
+       from tickets where id = $1`,
+    [ticketId],
+  );
   if (!ticket) return { result: "not-found" };
   if (ticket.event_slug !== input.eventSlug) return { result: "wrong-event" };
   if (ticket.status !== "valid") return { result: "void" };
@@ -211,6 +222,29 @@ export async function checkpointScan(input: CheckpointScanInput): Promise<Checkp
     allowance,
     used,
   });
+
+  /**
+   * What the rest of the order still has here. A bundle's tickets usually
+   * live on one phone, so a spent QR must point at the sibling that isn't.
+   */
+  const groupView = async (): Promise<CheckpointGroupView | undefined> => {
+    const siblings = await query<{ ticket_type_id: string; used: number }>(
+      `select t.ticket_type_id, coalesce(u.used, 0) as used
+         from tickets t
+         left join checkpoint_usage u
+           on u.ticket_id = t.id and u.event_slug = $1 and u.checkpoint_id = $2
+        where t.order_id = $3 and t.status = 'valid' and t.id <> $4`,
+      [input.eventSlug, input.checkpointId, ticket.order_id, ticket.id],
+    );
+    if (siblings.length === 0) return undefined;
+    const othersLeft = siblings.reduce(
+      (total, sibling) =>
+        total +
+        Math.max(0, checkpointAllowanceFor(checkpoint, sibling.ticket_type_id) - sibling.used),
+      0,
+    );
+    return { otherTickets: siblings.length, othersLeft };
+  };
 
   if (allowance === 0) return { result: "not-included", ticket: view(0) };
 
@@ -255,7 +289,12 @@ export async function checkpointScan(input: CheckpointScanInput): Promise<Checkp
         consumed: consume,
         used: rows[0].used,
       });
-      return { result: "consumed", ticket: view(rows[0].used), consumed: consume };
+      return {
+        result: "consumed" as const,
+        ticket: view(rows[0].used),
+        consumed: consume,
+        group: await groupView(),
+      };
     }
 
     // The guard refused: either fully used, or asking for more than remains.
@@ -267,12 +306,13 @@ export async function checkpointScan(input: CheckpointScanInput): Promise<Checkp
     const used = existing.rows[0]?.used ?? 0;
     if (used >= allowance) {
       return {
-        result: "exhausted",
+        result: "exhausted" as const,
         ticket: view(used),
         lastUsedAt: existing.rows[0]?.updated_at.toISOString(),
+        group: await groupView(),
       };
     }
-    return { result: "over-remaining", ticket: view(used), requested: consume };
+    return { result: "over-remaining" as const, ticket: view(used), requested: consume };
   });
 }
 

@@ -15,6 +15,8 @@ export type CheckpointRecord = {
   defaultAllowance: number;
   /** Per-ticket-type overrides, keyed by ticket type id. 0 = not included. */
   allowances: Record<string, number>;
+  /** Whether one scan may hand out several units. Off = strictly one per scan. */
+  multiScan: boolean;
   position: number;
 };
 
@@ -29,9 +31,31 @@ export type CheckpointTicketView = {
   used: number;
 };
 
+/**
+ * The rest of a scanned ticket's order at this checkpoint. Bundles usually
+ * live on one phone, so "this QR is spent" must not read as "this group is
+ * done" while a sibling ticket still has units.
+ */
+export type CheckpointGroupView = {
+  /** Other valid tickets on the same order. */
+  otherTickets: number;
+  /** Units still unclaimed across those other tickets. */
+  othersLeft: number;
+};
+
 export type CheckpointScanOutcome =
-  | { result: "consumed"; ticket: CheckpointTicketView; consumed: number }
-  | { result: "exhausted"; ticket: CheckpointTicketView; lastUsedAt?: string }
+  | {
+      result: "consumed";
+      ticket: CheckpointTicketView;
+      consumed: number;
+      group?: CheckpointGroupView;
+    }
+  | {
+      result: "exhausted";
+      ticket: CheckpointTicketView;
+      lastUsedAt?: string;
+      group?: CheckpointGroupView;
+    }
   | { result: "not-included"; ticket: CheckpointTicketView }
   | { result: "over-remaining"; ticket: CheckpointTicketView; requested: number }
   | { result: "void" }
@@ -87,6 +111,42 @@ export function isScannerRole(value: unknown): value is ScannerRole {
 }
 
 /**
+ * What a link is allowed to do beyond scanning its station.
+ *
+ * The role picks sensible defaults; each ability can then be toggled per
+ * link, so "a scanner who may also add guests" or "a manager who can't
+ * approve" are one checkbox, not a new role.
+ */
+export const SCANNER_PERMISSIONS = ["requestGuests", "addGuests", "approveRequests"] as const;
+export type ScannerPermission = (typeof SCANNER_PERMISSIONS)[number];
+
+export type ScannerPermissionSet = Record<ScannerPermission, boolean>;
+
+export const SCANNER_PERMISSION_LABELS: Record<ScannerPermission, string> = {
+  requestGuests: "request guest additions",
+  addGuests: "add guests directly",
+  approveRequests: "approve guest requests",
+};
+
+export const ROLE_DEFAULT_PERMISSIONS: Record<ScannerRole, ScannerPermissionSet> = {
+  scanner: { requestGuests: true, addGuests: false, approveRequests: false },
+  manager: { requestGuests: true, addGuests: true, approveRequests: true },
+};
+
+/** Role defaults with any explicit per-link overrides applied on top. */
+export function effectiveScannerPermissions(
+  role: ScannerRole,
+  overrides?: Partial<Record<ScannerPermission, unknown>>,
+): ScannerPermissionSet {
+  const effective = { ...ROLE_DEFAULT_PERMISSIONS[role] };
+  for (const permission of SCANNER_PERMISSIONS) {
+    const override = overrides?.[permission];
+    if (typeof override === "boolean") effective[permission] = override;
+  }
+  return effective;
+}
+
+/**
  * Scanner-link wire shape. `checkpointId: null` means the link works the
  * door; anything else names a checkpoint on the same event.
  */
@@ -96,6 +156,8 @@ export type ScannerLinkRecord = {
   eventSlug: string;
   checkpointId: string | null;
   role: ScannerRole;
+  /** Effective abilities: role defaults with per-link overrides applied. */
+  permissions: ScannerPermissionSet;
   createdAt: string;
   expiresAt?: string;
   revokedAt?: string;

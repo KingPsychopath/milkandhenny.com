@@ -5,7 +5,11 @@ import { useCallback, useMemo, useRef, useState } from "react";
 import { CameraFeed } from "./CameraFeed";
 import { checkpointScanFn, checkpointUndoFn } from "../scanner.functions";
 import type { CheckpointDirectoryTicket } from "../scanner.functions";
-import type { CheckpointRecord, CheckpointTicketView } from "../checkpoint-types";
+import type {
+  CheckpointGroupView,
+  CheckpointRecord,
+  CheckpointTicketView,
+} from "../checkpoint-types";
 
 /**
  * Checkpoint scanner — catering, merch, cloakroom.
@@ -21,8 +25,18 @@ import type { CheckpointRecord, CheckpointTicketView } from "../checkpoint-types
 
 type Verdict =
   | { kind: "idle" }
-  | { kind: "ok"; ticket: CheckpointTicketView; consumed: number }
-  | { kind: "spent"; ticket: CheckpointTicketView; lastUsedAt?: string }
+  | {
+      kind: "ok";
+      ticket: CheckpointTicketView;
+      consumed: number;
+      group?: CheckpointGroupView;
+    }
+  | {
+      kind: "spent";
+      ticket: CheckpointTicketView;
+      lastUsedAt?: string;
+      group?: CheckpointGroupView;
+    }
   | { kind: "not-included"; ticket: CheckpointTicketView }
   | { kind: "rejected"; title: string; detail: string };
 
@@ -63,6 +77,8 @@ export function CheckpointScanner({
   const [tickets, setTickets] = useState(initialTickets);
   const [busy, setBusy] = useState(false);
   const [manualId, setManualId] = useState("");
+  /** How many the next "give" hands out — the scanner's +/- control. */
+  const [giveCount, setGiveCount] = useState(1);
   const lastScanRef = useRef<{ value: string; at: number } | null>(null);
 
   /** Dead phone or unreadable code: find them by name or reference instead. */
@@ -125,7 +141,12 @@ export function CheckpointScanner({
         }
         switch (outcome.result) {
           case "consumed":
-            setVerdict({ kind: "ok", ticket: outcome.ticket, consumed: outcome.consumed });
+            setVerdict({
+              kind: "ok",
+              ticket: outcome.ticket,
+              consumed: outcome.consumed,
+              group: outcome.group,
+            });
             if (outcome.consumed > 0) {
               setSummary((prev) => ({
                 unitsUsed: prev.unitsUsed + outcome.consumed,
@@ -137,7 +158,12 @@ export function CheckpointScanner({
             }
             break;
           case "exhausted":
-            setVerdict({ kind: "spent", ticket: outcome.ticket, lastUsedAt: outcome.lastUsedAt });
+            setVerdict({
+              kind: "spent",
+              ticket: outcome.ticket,
+              lastUsedAt: outcome.lastUsedAt,
+              group: outcome.group,
+            });
             break;
           case "not-included":
             setVerdict({ kind: "not-included", ticket: outcome.ticket });
@@ -243,15 +269,18 @@ export function CheckpointScanner({
           <p className="shrink-0 font-mono text-micro theme-muted">{summary.unitsUsed} given out</p>
         </header>
 
-        {/* Verdict above the camera — it is what the scanner actually reads. */}
+        {/* Verdict above the camera — it is what the scanner actually reads.
+            Idle keeps almost no height until there is a verdict to show. */}
         <div
           aria-live="assertive"
-          className={`mt-4 min-h-28 rounded-2xl px-4 py-4 text-center ${
-            verdict.kind === "idle" ? "border theme-border" : verdictStyle(verdict.kind)
-          }`}
+          className={
+            verdict.kind === "idle"
+              ? "mt-3 text-center"
+              : `mt-4 min-h-28 rounded-2xl px-4 py-4 text-center ${verdictStyle(verdict.kind)}`
+          }
         >
           {verdict.kind === "idle" ? (
-            <p className="pt-7 font-mono text-xs theme-muted">ready</p>
+            <p className="font-mono text-micro theme-faint">ready — point at a code</p>
           ) : verdict.kind === "rejected" ? (
             <>
               <p className="font-mono text-lg font-bold">{verdict.title}</p>
@@ -276,31 +305,76 @@ export function CheckpointScanner({
                 {verdict.kind === "not-included" &&
                   `${verdict.ticket.ticketTypeName} doesn't include this`}
               </p>
+              {(verdict.kind === "ok" || verdict.kind === "spent") &&
+                verdict.group &&
+                verdict.group.otherTickets > 0 && (
+                  <p className="mt-1 font-mono text-xs font-bold">
+                    {verdict.group.othersLeft > 0
+                      ? `their group still has ${verdict.group.othersLeft} left on ${verdict.group.otherTickets === 1 ? "another ticket" : "other tickets"} — scan those`
+                      : "their group's other tickets are all used too"}
+                  </p>
+                )}
             </>
           )}
         </div>
 
-        {/* Follow-up actions for the ticket on screen: one more, or undo. */}
-        {activeTicket && (
-          <div className="mt-3 grid grid-cols-2 gap-2">
-            <button
-              type="button"
-              disabled={busy || remaining === 0}
-              onClick={() => void scan(activeTicket.ticketId, 1, true)}
-              className="min-h-12 rounded-lg bg-foreground px-4 font-mono text-xs text-background disabled:opacity-40"
-            >
-              {remaining === 0 ? "none left" : `give 1 more (${remaining} left)`}
-            </button>
-            <button
-              type="button"
-              disabled={busy || activeTicket.used === 0}
-              onClick={() => void undo(activeTicket.ticketId)}
-              className="min-h-12 rounded-lg border theme-border-strong px-4 font-mono text-xs text-foreground disabled:opacity-40"
-            >
-              undo 1
-            </button>
-          </div>
-        )}
+        {/* Follow-up for the ticket on screen: how many more, and undo. */}
+        {activeTicket &&
+          (() => {
+            const nextGive = Math.max(1, Math.min(giveCount, Math.max(1, remaining)));
+            return (
+              <div className="mt-3 flex items-stretch gap-2">
+                {checkpoint.multiScan && remaining > 1 && (
+                  <div className="flex shrink-0 items-center rounded-lg border theme-border-strong">
+                    <button
+                      type="button"
+                      disabled={busy || nextGive <= 1}
+                      onClick={() => setGiveCount(Math.max(1, nextGive - 1))}
+                      aria-label="Give one fewer"
+                      className="min-h-12 min-w-11 font-mono text-lg text-foreground disabled:opacity-30"
+                    >
+                      −
+                    </button>
+                    <span className="min-w-6 text-center font-mono text-sm text-foreground">
+                      {nextGive}
+                    </span>
+                    <button
+                      type="button"
+                      disabled={busy || nextGive >= remaining}
+                      onClick={() => setGiveCount(Math.min(remaining, nextGive + 1))}
+                      aria-label="Give one more"
+                      className="min-h-12 min-w-11 font-mono text-lg text-foreground disabled:opacity-30"
+                    >
+                      +
+                    </button>
+                  </div>
+                )}
+                <button
+                  type="button"
+                  disabled={busy || remaining === 0}
+                  onClick={() => {
+                    setGiveCount(1);
+                    void scan(activeTicket.ticketId, nextGive, true);
+                  }}
+                  className="min-h-12 flex-1 rounded-lg bg-foreground px-4 font-mono text-xs text-background disabled:opacity-40"
+                >
+                  {remaining === 0
+                    ? "none left on this ticket"
+                    : nextGive === 1
+                      ? `give 1 more (${remaining} left)`
+                      : `give ${nextGive} (${remaining} left)`}
+                </button>
+                <button
+                  type="button"
+                  disabled={busy || activeTicket.used === 0}
+                  onClick={() => void undo(activeTicket.ticketId)}
+                  className="min-h-12 shrink-0 rounded-lg border theme-border-strong px-4 font-mono text-xs text-foreground disabled:opacity-40"
+                >
+                  undo 1
+                </button>
+              </div>
+            );
+          })()}
 
         <div className="mt-4">
           <CameraFeed onCode={(raw) => void scan(raw, 1)} paused={busy} />
@@ -350,16 +424,18 @@ export function CheckpointScanner({
                         : `${left} of ${ticket.allowance} left`}
                     </p>
                   </div>
+                  {/* A spent row stays tappable: the scan verdict is what says
+                      whether the rest of their order still has units. */}
                   <button
                     type="button"
-                    disabled={busy || left === 0}
+                    disabled={busy || ticket.allowance === 0}
                     onClick={() => {
                       setManualId("");
                       void scan(ticket.id, 1, true);
                     }}
                     className="shrink-0 min-h-10 rounded-lg border theme-border-strong px-3 font-mono text-micro text-foreground disabled:opacity-40"
                   >
-                    {ticket.allowance === 0 ? "n/a" : left === 0 ? "all used" : "give 1"}
+                    {ticket.allowance === 0 ? "n/a" : left === 0 ? "check" : "give 1"}
                   </button>
                 </li>
               );

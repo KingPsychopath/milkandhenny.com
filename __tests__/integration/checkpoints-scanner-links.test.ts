@@ -305,6 +305,83 @@ describeWithDatabase("checkpoints (postgres)", () => {
     expect(unknown.result).toBe("unknown-checkpoint");
   });
 
+  it("tells the scanner what the rest of the order still has", async () => {
+    // One buyer, two VIP tickets — the plus-one's QR lives on the same phone.
+    const issued = await issueTickets({
+      eventSlug: SLUG,
+      ticketTypeId: "vip",
+      holderName: "Pair Buyer",
+      quantity: 2,
+      kind: "free",
+    });
+    if (!issued.ok) throw new Error(issued.error);
+    const [first, second] = issued.value.tickets;
+
+    // Drain the first ticket's 3 dinners.
+    const drained = await checkpointScan({
+      scanned: first.id,
+      eventSlug: SLUG,
+      checkpointId: "dinner",
+      consume: 3,
+    });
+    expect(drained.result).toBe("consumed");
+    if (drained.result === "consumed") {
+      expect(drained.group).toEqual({ otherTickets: 1, othersLeft: 3 });
+    }
+
+    // Re-scanning the drained QR must point at the sibling, not say "done".
+    const rescanned = await checkpointScan({
+      scanned: first.id,
+      eventSlug: SLUG,
+      checkpointId: "dinner",
+    });
+    expect(rescanned.result).toBe("exhausted");
+    if (rescanned.result === "exhausted") {
+      expect(rescanned.group).toEqual({ otherTickets: 1, othersLeft: 3 });
+    }
+
+    // Serving off the sibling shrinks what's left for the group.
+    await checkpointScan({ scanned: second.id, eventSlug: SLUG, checkpointId: "dinner" });
+    const after = await checkpointScan({
+      scanned: first.id,
+      eventSlug: SLUG,
+      checkpointId: "dinner",
+    });
+    expect(after.result === "exhausted" && after.group?.othersLeft).toBe(2);
+
+    // A single-ticket order carries no group at all.
+    const solo = await issueOne("entry", "Solo");
+    const soloScan = await checkpointScan({
+      scanned: solo.id,
+      eventSlug: SLUG,
+      checkpointId: "dinner",
+    });
+    expect(soloScan.result === "consumed" && soloScan.group).toBeUndefined();
+  });
+
+  it("a single-scan station clamps every scan to one unit", async () => {
+    await upsertCheckpoint({
+      eventSlug: SLUG,
+      id: "strict-bar",
+      name: "Strict Bar",
+      defaultAllowance: 3,
+      allowances: {},
+      multiScan: false,
+    });
+    const ticket = await issueOne("entry", "Sip");
+    const scan = await checkpointScan({
+      scanned: ticket.id,
+      eventSlug: SLUG,
+      checkpointId: "strict-bar",
+      consume: 3,
+    });
+    expect(scan.result).toBe("consumed");
+    if (scan.result === "consumed") {
+      expect(scan.consumed).toBe(1);
+      expect(scan.ticket.used).toBe(1);
+    }
+  });
+
   it("deleting a checkpoint removes it and its usage", async () => {
     const ticket = await issueOne("entry", "Jo");
     await checkpointScan({ scanned: ticket.id, eventSlug: SLUG, checkpointId: "dinner" });
@@ -400,6 +477,47 @@ describeWithDatabase("scanner links (postgres)", () => {
   it("rejects garbage tokens without touching the database", async () => {
     expect(await resolveScannerLink("not-a-token")).toBeNull();
     expect(await resolveScannerLink("scn_short")).toBeNull();
+  });
+
+  it("applies role defaults and per-link ability overrides", async () => {
+    const { updateScannerLink } = await import("@/features/tickets/scanner-links.server");
+
+    const scanner = await createScannerLink({ eventSlug: SLUG, checkpointId: null, label: "A" });
+    if (!scanner.ok) throw new Error(scanner.error);
+    expect(scanner.value.permissions).toEqual({
+      requestGuests: true,
+      addGuests: false,
+      approveRequests: false,
+    });
+
+    // Promote just one ability without changing the role.
+    const boosted = await updateScannerLink(scanner.value.token, {
+      permissions: { requestGuests: true, addGuests: true, approveRequests: false },
+    });
+    expect(boosted.ok && boosted.value.role).toBe("scanner");
+    expect(boosted.ok && boosted.value.permissions.addGuests).toBe(true);
+    expect(boosted.ok && boosted.value.permissions.approveRequests).toBe(false);
+
+    // A manager stripped of approvals keeps their other defaults.
+    const manager = await createScannerLink({
+      eventSlug: SLUG,
+      checkpointId: null,
+      label: "B",
+      role: "manager",
+    });
+    if (!manager.ok) throw new Error(manager.error);
+    const restricted = await updateScannerLink(manager.value.token, {
+      permissions: { requestGuests: true, addGuests: true, approveRequests: false },
+    });
+    expect(restricted.ok && restricted.value.permissions).toEqual({
+      requestGuests: true,
+      addGuests: true,
+      approveRequests: false,
+    });
+
+    // Resolution carries the effective permissions to the scanner page.
+    const resolved = await resolveScannerLink(manager.value.token);
+    expect(resolved?.permissions.approveRequests).toBe(false);
   });
 
   it("carries a role, defaulting to scanner", async () => {

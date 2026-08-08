@@ -75,6 +75,7 @@ function ScanRoute() {
         initialSummary={data.door.summary}
         scannerToken={data.token}
         scannerRole={data.role}
+        scannerPermissions={data.permissions}
         initialRequests={data.requests}
       />
     );
