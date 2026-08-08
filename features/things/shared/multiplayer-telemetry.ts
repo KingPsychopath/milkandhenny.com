@@ -4,6 +4,7 @@ export const MULTIPLAYER_GAMES = [
   "draw-country",
   "liars",
   "same-brain",
+  "twin",
 ] as const;
 
 export type MultiplayerGame = (typeof MULTIPLAYER_GAMES)[number];

@@ -159,9 +159,21 @@ hand peeking under theirs (§5). A ring around the middle card drains as the win
 scores, no leaderboard, no other players' cards — the heat is a hunt, and anything else on screen is
 a reason to look away from the cards.
 
-**A tap on either card counts.** They are the same symbol; requiring one side would only punish the
-half of players whose eye lands on the other card first. Touching one makes its twin pulse on the
-other card and draws the line between them (§8).
+### 3.2.1 You tap your own card. The middle card is never tappable
+
+In any mode, the tap target is the symbol **on your own card**. The middle card is display only.
+
+Allowing either card is tempting — it is the same symbol, and your eye may land on the middle one
+first. It breaks the duel. Two people sharing one screen both hunt the same middle card, and a touch
+on it has no owner: the device cannot tell whose finger it was. Every fix for that is worse than the
+rule it saves — a seat button before each tap, a claim gesture, a second copy of the middle card per
+seat eating the space the cards need.
+
+Tapping your own card makes **attribution pure geometry**: your card is in your half, so a tap in
+your half is yours, and one device needs no seating logic at all. It is one rule in every mode
+instead of a duel exception, it is the honest physical action — you are playing *your* card, not
+grabbing the pile — and it gives the connection a direction: the ray runs from your card to the
+middle card, which is where the card itself is about to go (§8).
 
 ### 3.3 When a heat ends
 
@@ -405,12 +417,40 @@ are sitting.
     └─────────────────────┘
 
 The middle card belongs to neither seat, so it gets a neutral rotation and its symbols are laid out
-with no consistent up — which they already are (§2.3), so this costs nothing.
+with no consistent up — which they already are (§2.3), so this costs nothing. It is also not
+tappable, by §3.2.1, which is the rule that makes one device work at all: **a tap is owned by the
+half of the screen it lands in.** No seat buttons, no claim gesture, nothing to explain.
 
-Rules are identical, with one change: **no window, no grace, no heat.** On one device the players
-can see each other, so the game returns to its natural continuous form — first correct tap takes it,
-the middle card changes immediately, and the next hunt starts without a pause. The round structure
-exists to solve a problem that only appears when players are on separate devices.
+Rules change in two ways.
+
+**No window, no grace, no heat.** On one device the players can see each other, so the game returns
+to its natural continuous form — first correct tap takes it and the next hunt starts without a
+pause. The round structure exists to solve a problem that only appears on separate devices.
+
+**No middle card either.** Your card faces their card; the match is between the two of them. When
+you find it you **give them your card**, it goes to the bottom of their hand, and you deal your next.
+First to empty wins.
+
+Dropping the middle card here is not a space fix — measured on a 375×812 phone, three cards fit with
+no scrolling at 219px each and tap targets from 60 to 118px, all of which clears the 44px floor
+comfortably. It is a better *game* for two people: two cards instead of three means each is half
+again as large, and you spend the round staring at your opponent's card rather than at a neutral pile,
+which is most of the fun of playing someone across a table.
+
+**Give, not steal.** Taking their card instead — collect the most — is the more obvious idea and it
+is the wrong one, for the same reason longest chain is not the win (§6.1): it is a *second, opposite*
+win condition. A game with both needs a sentence after every result explaining which one counted.
+Giving keeps **one win condition across every mode of twin** — empty your hand — so the goal a player
+learns on a phone is the goal they already know on a tablet.
+
+The given card goes to the **bottom** of their hand, not the top. On top it would replace the card
+they are mid-scan on, which reads as the game cheating; at the bottom only your own card changes, and
+theirs comes back around later against a different opponent card.
+
+Two evenly matched players can pass one card back and forth forever, so the mode carries a **time
+cap**. First to empty wins; if the cap runs out, fewest cards wins.
+
+The **middle card stays in solo** (§9.2), where there is no opponent card to face.
 
 Order 4, five symbols a card, hand of 10 — twenty cards plus the middle is exactly the 21-card deck.
 "Fewer icons" was the right instinct: two people, one screen, cards at half the size.

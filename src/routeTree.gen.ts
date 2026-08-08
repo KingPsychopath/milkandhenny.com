@@ -29,6 +29,7 @@ import { Route as AdminIndexRouteImport } from './routes/admin/index'
 import { Route as WordsSlugRouteImport } from './routes/words/$slug'
 import { Route as VaultSlugRouteImport } from './routes/vault/$slug'
 import { Route as TicketIdRouteImport } from './routes/ticket.$id'
+import { Route as ThingsTwinRouteImport } from './routes/things.twin'
 import { Route as ThingsSpellingPartyRouteImport } from './routes/things.spelling-party'
 import { Route as ThingsSpellingBeeRouteImport } from './routes/things.spelling-bee'
 import { Route as ThingsSameBrainRouteImport } from './routes/things.same-brain'
@@ -46,6 +47,8 @@ import { Route as ApiHealthRouteRouteImport } from './routes/api/health/route'
 import { Route as ApiDebugRouteRouteImport } from './routes/api/debug/route'
 import { Route as ApiBestDressedRouteRouteImport } from './routes/api/best-dressed/route'
 import { Route as PicsAlbumIndexRouteImport } from './routes/pics/$album/index'
+import { Route as ThingsTwinDevRouteImport } from './routes/things.twin_.dev'
+import { Route as ThingsTwinRoomIdRouteImport } from './routes/things.twin_.$roomId'
 import { Route as ThingsSpellingPartyRoomIdRouteImport } from './routes/things.spelling-party_.$roomId'
 import { Route as ThingsSameBrainDevRouteImport } from './routes/things.same-brain_.dev'
 import { Route as ThingsSameBrainRoomIdRouteImport } from './routes/things.same-brain_.$roomId'
@@ -219,6 +222,11 @@ const TicketIdRoute = TicketIdRouteImport.update({
   path: '/ticket/$id',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ThingsTwinRoute = ThingsTwinRouteImport.update({
+  id: '/twin',
+  path: '/twin',
+  getParentRoute: () => ThingsRoute,
+} as any)
 const ThingsSpellingPartyRoute = ThingsSpellingPartyRouteImport.update({
   id: '/spelling-party',
   path: '/spelling-party',
@@ -303,6 +311,16 @@ const PicsAlbumIndexRoute = PicsAlbumIndexRouteImport.update({
   id: '/pics/$album/',
   path: '/pics/$album/',
   getParentRoute: () => rootRouteImport,
+} as any)
+const ThingsTwinDevRoute = ThingsTwinDevRouteImport.update({
+  id: '/twin_/dev',
+  path: '/twin/dev',
+  getParentRoute: () => ThingsRoute,
+} as any)
+const ThingsTwinRoomIdRoute = ThingsTwinRoomIdRouteImport.update({
+  id: '/twin_/$roomId',
+  path: '/twin/$roomId',
+  getParentRoute: () => ThingsRoute,
 } as any)
 const ThingsSpellingPartyRoomIdRoute =
   ThingsSpellingPartyRoomIdRouteImport.update({
@@ -735,6 +753,7 @@ export interface FileRoutesByFullPath {
   '/things/same-brain': typeof ThingsSameBrainRoute
   '/things/spelling-bee': typeof ThingsSpellingBeeRoute
   '/things/spelling-party': typeof ThingsSpellingPartyRoute
+  '/things/twin': typeof ThingsTwinRoute
   '/ticket/$id': typeof TicketIdRoute
   '/vault/$slug': typeof VaultSlugRoute
   '/words/$slug': typeof WordsSlugRoute
@@ -777,6 +796,8 @@ export interface FileRoutesByFullPath {
   '/things/same-brain/$roomId': typeof ThingsSameBrainRoomIdRoute
   '/things/same-brain/dev': typeof ThingsSameBrainDevRoute
   '/things/spelling-party/$roomId': typeof ThingsSpellingPartyRoomIdRoute
+  '/things/twin/$roomId': typeof ThingsTwinRoomIdRoute
+  '/things/twin/dev': typeof ThingsTwinDevRoute
   '/pics/$album/': typeof PicsAlbumIndexRoute
   '/api/admin/albums/$slug': typeof ApiAdminAlbumsSlugRouteRouteWithChildren
   '/api/admin/events/$slug': typeof ApiAdminEventsSlugRouteRoute
@@ -846,6 +867,7 @@ export interface FileRoutesByTo {
   '/things/same-brain': typeof ThingsSameBrainRoute
   '/things/spelling-bee': typeof ThingsSpellingBeeRoute
   '/things/spelling-party': typeof ThingsSpellingPartyRoute
+  '/things/twin': typeof ThingsTwinRoute
   '/ticket/$id': typeof TicketIdRoute
   '/vault/$slug': typeof VaultSlugRoute
   '/words/$slug': typeof WordsSlugRoute
@@ -888,6 +910,8 @@ export interface FileRoutesByTo {
   '/things/same-brain/$roomId': typeof ThingsSameBrainRoomIdRoute
   '/things/same-brain/dev': typeof ThingsSameBrainDevRoute
   '/things/spelling-party/$roomId': typeof ThingsSpellingPartyRoomIdRoute
+  '/things/twin/$roomId': typeof ThingsTwinRoomIdRoute
+  '/things/twin/dev': typeof ThingsTwinDevRoute
   '/pics/$album': typeof PicsAlbumIndexRoute
   '/api/admin/albums/$slug': typeof ApiAdminAlbumsSlugRouteRouteWithChildren
   '/api/admin/events/$slug': typeof ApiAdminEventsSlugRouteRoute
@@ -958,6 +982,7 @@ export interface FileRoutesById {
   '/things/same-brain': typeof ThingsSameBrainRoute
   '/things/spelling-bee': typeof ThingsSpellingBeeRoute
   '/things/spelling-party': typeof ThingsSpellingPartyRoute
+  '/things/twin': typeof ThingsTwinRoute
   '/ticket/$id': typeof TicketIdRoute
   '/vault/$slug': typeof VaultSlugRoute
   '/words/$slug': typeof WordsSlugRoute
@@ -1000,6 +1025,8 @@ export interface FileRoutesById {
   '/things/same-brain_/$roomId': typeof ThingsSameBrainRoomIdRoute
   '/things/same-brain_/dev': typeof ThingsSameBrainDevRoute
   '/things/spelling-party_/$roomId': typeof ThingsSpellingPartyRoomIdRoute
+  '/things/twin_/$roomId': typeof ThingsTwinRoomIdRoute
+  '/things/twin_/dev': typeof ThingsTwinDevRoute
   '/pics/$album/': typeof PicsAlbumIndexRoute
   '/api/admin/albums/$slug': typeof ApiAdminAlbumsSlugRouteRouteWithChildren
   '/api/admin/events/$slug': typeof ApiAdminEventsSlugRouteRoute
@@ -1071,6 +1098,7 @@ export interface FileRouteTypes {
     | '/things/same-brain'
     | '/things/spelling-bee'
     | '/things/spelling-party'
+    | '/things/twin'
     | '/ticket/$id'
     | '/vault/$slug'
     | '/words/$slug'
@@ -1113,6 +1141,8 @@ export interface FileRouteTypes {
     | '/things/same-brain/$roomId'
     | '/things/same-brain/dev'
     | '/things/spelling-party/$roomId'
+    | '/things/twin/$roomId'
+    | '/things/twin/dev'
     | '/pics/$album/'
     | '/api/admin/albums/$slug'
     | '/api/admin/events/$slug'
@@ -1182,6 +1212,7 @@ export interface FileRouteTypes {
     | '/things/same-brain'
     | '/things/spelling-bee'
     | '/things/spelling-party'
+    | '/things/twin'
     | '/ticket/$id'
     | '/vault/$slug'
     | '/words/$slug'
@@ -1224,6 +1255,8 @@ export interface FileRouteTypes {
     | '/things/same-brain/$roomId'
     | '/things/same-brain/dev'
     | '/things/spelling-party/$roomId'
+    | '/things/twin/$roomId'
+    | '/things/twin/dev'
     | '/pics/$album'
     | '/api/admin/albums/$slug'
     | '/api/admin/events/$slug'
@@ -1293,6 +1326,7 @@ export interface FileRouteTypes {
     | '/things/same-brain'
     | '/things/spelling-bee'
     | '/things/spelling-party'
+    | '/things/twin'
     | '/ticket/$id'
     | '/vault/$slug'
     | '/words/$slug'
@@ -1335,6 +1369,8 @@ export interface FileRouteTypes {
     | '/things/same-brain_/$roomId'
     | '/things/same-brain_/dev'
     | '/things/spelling-party_/$roomId'
+    | '/things/twin_/$roomId'
+    | '/things/twin_/dev'
     | '/pics/$album/'
     | '/api/admin/albums/$slug'
     | '/api/admin/events/$slug'
@@ -1580,6 +1616,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof TicketIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/things/twin': {
+      id: '/things/twin'
+      path: '/twin'
+      fullPath: '/things/twin'
+      preLoaderRoute: typeof ThingsTwinRouteImport
+      parentRoute: typeof ThingsRoute
+    }
     '/things/spelling-party': {
       id: '/things/spelling-party'
       path: '/spelling-party'
@@ -1698,6 +1741,20 @@ declare module '@tanstack/react-router' {
       fullPath: '/pics/$album/'
       preLoaderRoute: typeof PicsAlbumIndexRouteImport
       parentRoute: typeof rootRouteImport
+    }
+    '/things/twin_/dev': {
+      id: '/things/twin_/dev'
+      path: '/twin/dev'
+      fullPath: '/things/twin/dev'
+      preLoaderRoute: typeof ThingsTwinDevRouteImport
+      parentRoute: typeof ThingsRoute
+    }
+    '/things/twin_/$roomId': {
+      id: '/things/twin_/$roomId'
+      path: '/twin/$roomId'
+      fullPath: '/things/twin/$roomId'
+      preLoaderRoute: typeof ThingsTwinRoomIdRouteImport
+      parentRoute: typeof ThingsRoute
     }
     '/things/spelling-party_/$roomId': {
       id: '/things/spelling-party_/$roomId'
@@ -2215,6 +2272,7 @@ interface ThingsRouteChildren {
   ThingsSameBrainRoute: typeof ThingsSameBrainRoute
   ThingsSpellingBeeRoute: typeof ThingsSpellingBeeRoute
   ThingsSpellingPartyRoute: typeof ThingsSpellingPartyRoute
+  ThingsTwinRoute: typeof ThingsTwinRoute
   ThingsDrawCountryRoomIdRoute: typeof ThingsDrawCountryRoomIdRoute
   ThingsJudgeRoomIdRoute: typeof ThingsJudgeRoomIdRoute
   ThingsLiarsRoomIdRoute: typeof ThingsLiarsRoomIdRoute
@@ -2228,6 +2286,8 @@ interface ThingsRouteChildren {
   ThingsSameBrainRoomIdRoute: typeof ThingsSameBrainRoomIdRoute
   ThingsSameBrainDevRoute: typeof ThingsSameBrainDevRoute
   ThingsSpellingPartyRoomIdRoute: typeof ThingsSpellingPartyRoomIdRoute
+  ThingsTwinRoomIdRoute: typeof ThingsTwinRoomIdRoute
+  ThingsTwinDevRoute: typeof ThingsTwinDevRoute
   ThingsLiarsRoomIdPresentRoute: typeof ThingsLiarsRoomIdPresentRoute
   ThingsPitchesDeckIdEditRoute: typeof ThingsPitchesDeckIdEditRoute
   ThingsPitchesPresentRoomIdRoute: typeof ThingsPitchesPresentRoomIdRoute
@@ -2244,6 +2304,7 @@ const ThingsRouteChildren: ThingsRouteChildren = {
   ThingsSameBrainRoute: ThingsSameBrainRoute,
   ThingsSpellingBeeRoute: ThingsSpellingBeeRoute,
   ThingsSpellingPartyRoute: ThingsSpellingPartyRoute,
+  ThingsTwinRoute: ThingsTwinRoute,
   ThingsDrawCountryRoomIdRoute: ThingsDrawCountryRoomIdRoute,
   ThingsJudgeRoomIdRoute: ThingsJudgeRoomIdRoute,
   ThingsLiarsRoomIdRoute: ThingsLiarsRoomIdRoute,
@@ -2257,6 +2318,8 @@ const ThingsRouteChildren: ThingsRouteChildren = {
   ThingsSameBrainRoomIdRoute: ThingsSameBrainRoomIdRoute,
   ThingsSameBrainDevRoute: ThingsSameBrainDevRoute,
   ThingsSpellingPartyRoomIdRoute: ThingsSpellingPartyRoomIdRoute,
+  ThingsTwinRoomIdRoute: ThingsTwinRoomIdRoute,
+  ThingsTwinDevRoute: ThingsTwinDevRoute,
   ThingsLiarsRoomIdPresentRoute: ThingsLiarsRoomIdPresentRoute,
   ThingsPitchesDeckIdEditRoute: ThingsPitchesDeckIdEditRoute,
   ThingsPitchesPresentRoomIdRoute: ThingsPitchesPresentRoomIdRoute,

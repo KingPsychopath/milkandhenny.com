@@ -1,5 +1,15 @@
 let context: AudioContext | null = null;
 
+/**
+ * One context for the whole site.
+ *
+ * Browsers cap how many an origin may open, and a second one would also mean a second thing to resume
+ * after a gesture — so games build their own sounds on these primitives rather than their own engine.
+ */
+export function gameAudioContext() {
+  return audioContext();
+}
+
 function audioContext() {
   if (typeof window === "undefined") return null;
   const AudioContextConstructor =
@@ -11,12 +21,28 @@ function audioContext() {
   return context;
 }
 
-function note(frequency: number, start: number, duration: number, volume = 0.09) {
+export function gameNote(
+  frequency: number,
+  start: number,
+  duration: number,
+  volume = 0.09,
+  type: OscillatorType = "sine",
+) {
+  note(frequency, start, duration, volume, type);
+}
+
+function note(
+  frequency: number,
+  start: number,
+  duration: number,
+  volume = 0.09,
+  type: OscillatorType = "sine",
+) {
   const audio = audioContext();
   if (!audio) return;
   const oscillator = audio.createOscillator();
   const gain = audio.createGain();
-  oscillator.type = "sine";
+  oscillator.type = type;
   oscillator.frequency.setValueAtTime(frequency, audio.currentTime + start);
   gain.gain.setValueAtTime(0.001, audio.currentTime + start);
   gain.gain.exponentialRampToValueAtTime(volume, audio.currentTime + start + 0.01);

@@ -8,7 +8,8 @@ export interface Thing {
     | "draw-country"
     | "pitches"
     | "liars"
-    | "same-brain";
+    | "same-brain"
+    | "twin";
   name: string;
   description: string;
   eyebrow: string;
@@ -19,7 +20,8 @@ export interface Thing {
     | "/things/draw-country"
     | "/things/pitches"
     | "/things/liars"
-    | "/things/same-brain";
+    | "/things/same-brain"
+    | "/things/twin";
   status: "ready";
   symbol: string;
   offline: (typeof THING_OFFLINE)[keyof typeof THING_OFFLINE] | null;
@@ -38,6 +40,16 @@ export const THINGS = [
     status: "ready",
     symbol: "◎",
     offline: null,
+  },
+  {
+    slug: "twin",
+    name: "twin",
+    description: "Two cards, one shared symbol. Find it first and empty your hand.",
+    eyebrow: "speed matching · 1–10 people",
+    href: "/things/twin",
+    status: "ready",
+    symbol: "◎",
+    offline: THING_OFFLINE.twin,
   },
   {
     slug: "liars",

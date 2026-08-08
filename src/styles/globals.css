@@ -728,25 +728,25 @@
   /* One slow wash, no blowout and no snap, for anyone who has asked for less motion. */
   @media (prefers-reduced-motion: reduce) {
     .liars-overlay--dread {
-    animation: liars-dread 2.2s ease-in forwards;
-  }
+      animation: liars-dread 2.2s ease-in forwards;
+    }
 
-  @keyframes liars-dread {
-    0% {
-      background: color-mix(in oklab, var(--liars-dead) 40%, black);
-      opacity: 0;
+    @keyframes liars-dread {
+      0% {
+        background: color-mix(in oklab, var(--liars-dead) 40%, black);
+        opacity: 0;
+      }
+      70% {
+        background: color-mix(in oklab, var(--liars-dead) 40%, black);
+        opacity: 0.32;
+      }
+      100% {
+        background: color-mix(in oklab, var(--liars-dead) 40%, black);
+        opacity: 0;
+      }
     }
-    70% {
-      background: color-mix(in oklab, var(--liars-dead) 40%, black);
-      opacity: 0.32;
-    }
-    100% {
-      background: color-mix(in oklab, var(--liars-dead) 40%, black);
-      opacity: 0;
-    }
-  }
 
-  .liars-overlay--death {
+    .liars-overlay--death {
       animation: liars-death-calm 2.6s ease-out forwards;
     }
 
@@ -2005,5 +2005,1153 @@
     box-shadow:
       0.22em 0 0 var(--selection-bg),
       -0.22em 0 0 var(--selection-bg);
+  }
+}
+
+/*
+  twin — see docs/twin.md
+
+  Dark board, cream ink, amber reserved for one thing only: the connection. The card owns the colour
+  and the symbols inherit it, so a card can dim its own contents from a single property.
+*/
+@layer components {
+  .twin {
+    --twin-ink: var(--things-cream);
+    --twin-accent: var(--things-amber);
+    --twin-face: color-mix(in oklab, var(--things-cream) 7%, transparent);
+    --twin-edge: color-mix(in oklab, var(--things-cream) 16%, transparent);
+    --twin-quiet: color-mix(in oklab, var(--things-cream) 55%, transparent);
+    --twin-faint: color-mix(in oklab, var(--things-cream) 32%, transparent);
+    /*
+      Two cards plus the clock, the hand bar and the status line have to fit a phone without
+      scrolling — a game you have to scroll during is not a game you can play fast. Measured against a
+      375×780 panel: 34svh leaves roughly 180px for everything that is not a card. `svh` rather than
+      `vh` so mobile browser chrome is already accounted for.
+    */
+    --twin-card-size: min(34svh, 78vw, 22rem);
+    color: var(--twin-ink);
+
+    /*
+      Eight perceptually separated hues. The assignment is solved against every deck so a card never
+      carries three symbols in one hue. Amber is absent on purpose: it belongs to the connection.
+    */
+    --twin-hue-0: oklch(0.76 0.13 20);
+    --twin-hue-1: oklch(0.81 0.13 142);
+    --twin-hue-2: oklch(0.78 0.11 205);
+    --twin-hue-3: oklch(0.74 0.13 265);
+    --twin-hue-4: oklch(0.76 0.13 325);
+    --twin-hue-5: oklch(0.88 0.05 95);
+    --twin-hue-6: oklch(0.8 0.11 175);
+    --twin-hue-7: oklch(0.82 0.1 295);
+  }
+
+  [data-twin-colour="on"] .twin-symbol {
+    color: var(--twin-symbol-hue, currentColor);
+  }
+
+  /* The connection outranks the deck's colour, in both directions. */
+  [data-twin-colour="on"] .twin-symbol--found {
+    color: var(--twin-accent);
+  }
+
+  .twin-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    padding: 0.75rem 1.25rem 0;
+    font-family: var(--font-mono), ui-monospace, monospace;
+    font-size: 0.75rem;
+    color: var(--twin-quiet);
+  }
+
+  .twin-header-back {
+    display: inline-flex;
+    min-height: 2.75rem;
+    align-items: center;
+  }
+
+  .twin-header-meta {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    text-align: right;
+    letter-spacing: 0.1em;
+  }
+
+  .twin-eyebrow {
+    font-family: var(--font-mono), ui-monospace, monospace;
+    font-size: 0.6875rem;
+    text-transform: uppercase;
+    letter-spacing: 0.18em;
+    color: var(--twin-faint);
+  }
+
+  .twin-eyebrow--tight {
+    margin-top: 0.75rem;
+  }
+
+  .twin-title {
+    margin-top: 0.75rem;
+    font-family: var(--font-serif), Georgia, serif;
+    font-size: clamp(1.9rem, 7vw, 3rem);
+    font-weight: 600;
+    line-height: 1.02;
+    letter-spacing: -0.01em;
+    text-wrap: balance;
+  }
+
+  .twin-lede {
+    margin-top: 0.75rem;
+    max-width: 30rem;
+    font-family: var(--font-serif), Georgia, serif;
+    font-size: 1.05rem;
+    line-height: 1.55;
+    color: var(--twin-quiet);
+  }
+
+  .twin-note,
+  .twin-message {
+    margin-top: 0.75rem;
+    font-family: var(--font-mono), ui-monospace, monospace;
+    font-size: 0.75rem;
+    color: var(--twin-faint);
+  }
+
+  .twin-message {
+    min-height: 1.25rem;
+    color: var(--twin-accent);
+  }
+
+  .twin-launch,
+  .twin-lobby,
+  .twin-join,
+  .twin-finished,
+  .twin-gone {
+    margin-inline: auto;
+    display: flex;
+    flex: 1;
+    width: 100%;
+    max-width: 34rem;
+    flex-direction: column;
+    padding: 0.5rem 1.25rem 4rem;
+  }
+
+  .twin-lobby,
+  .twin-gone {
+    align-items: center;
+    text-align: center;
+  }
+
+  .twin-gone,
+  .twin-join {
+    justify-content: center;
+  }
+
+  .twin-qr {
+    margin-top: 1.5rem;
+    width: 11rem;
+    border-radius: 1.5rem;
+    background: var(--things-cream);
+    padding: 0.75rem;
+  }
+
+  .twin-code {
+    margin-top: 0.25rem;
+    font-family: var(--font-mono), ui-monospace, monospace;
+    font-size: 1.6rem;
+    letter-spacing: 0.22em;
+  }
+
+  .twin-roster {
+    margin-top: 1.25rem;
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 0.5rem;
+    font-family: var(--font-mono), ui-monospace, monospace;
+    font-size: 0.8125rem;
+  }
+
+  .twin-roster li {
+    border: 1px solid var(--twin-edge);
+    border-radius: 999px;
+    padding: 0.5rem 1rem;
+  }
+
+  .twin-roster-waiting {
+    opacity: 0.5;
+  }
+
+  .twin-deck-line {
+    margin-top: 0.5rem;
+    font-family: var(--font-mono), ui-monospace, monospace;
+    font-size: 0.6875rem;
+    letter-spacing: 0.08em;
+    color: var(--twin-faint);
+  }
+
+  .twin-button {
+    margin-top: 1rem;
+    min-height: 3rem;
+    border-radius: 999px;
+    padding-inline: 1.5rem;
+    font-family: var(--font-mono), ui-monospace, monospace;
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.13em;
+    transition: opacity 160ms ease;
+  }
+
+  .twin-button:disabled {
+    opacity: 0.4;
+  }
+
+  .twin-button--go {
+    width: 100%;
+    background: var(--twin-accent);
+    color: var(--things-night);
+  }
+
+  .twin-button--quiet {
+    border: 1px solid var(--twin-edge);
+    color: var(--twin-ink);
+  }
+
+  .twin-button--inline {
+    align-self: center;
+    width: auto;
+    margin-bottom: 1rem;
+  }
+
+  .twin-leave {
+    margin-top: 1.5rem;
+    display: inline-flex;
+    min-height: 2.75rem;
+    align-items: center;
+    justify-content: center;
+    font-family: var(--font-mono), ui-monospace, monospace;
+    font-size: 0.75rem;
+    color: var(--twin-faint);
+  }
+
+  .twin-field {
+    margin-top: 1rem;
+    display: flex;
+    width: 100%;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    font-family: var(--font-mono), ui-monospace, monospace;
+    font-size: 0.75rem;
+    color: var(--twin-quiet);
+  }
+
+  .twin-field--stacked {
+    flex-direction: column;
+    align-items: stretch;
+    text-align: left;
+  }
+
+  .twin-input {
+    min-height: 3rem;
+    width: 100%;
+    border: 1px solid var(--twin-edge);
+    border-radius: 999px;
+    background: var(--twin-face);
+    padding-inline: 1.25rem;
+    /* 1rem keeps iOS Safari from zooming the page when this takes focus. */
+    font-size: 1rem;
+    color: var(--twin-ink);
+  }
+
+  .twin-select {
+    min-height: 3rem;
+    min-width: 6rem;
+  }
+
+  .twin-panel {
+    margin-top: 2.5rem;
+    border-top: 1px solid var(--twin-edge);
+    padding-top: 1.75rem;
+    text-align: left;
+  }
+
+  .twin-panel-title {
+    font-family: var(--font-serif), Georgia, serif;
+    font-size: 1.6rem;
+    font-weight: 600;
+  }
+
+  .twin-panel-form {
+    display: grid;
+    gap: 0.25rem;
+  }
+
+  /* the card */
+
+  .twin-card {
+    position: relative;
+    width: var(--twin-card-size);
+    aspect-ratio: 1;
+    border: 1px solid var(--twin-edge);
+    border-radius: 1.75rem;
+    background: var(--twin-face);
+    color: var(--twin-ink);
+    /* Its own stacking context: the symbols inside animate, the card should not repaint with them. */
+    isolation: isolate;
+  }
+
+  .twin-card--middle {
+    border-color: color-mix(in oklab, var(--things-cream) 30%, transparent);
+    background: color-mix(in oklab, var(--things-cream) 11%, transparent);
+  }
+
+  .twin-card--cooling {
+    border-color: color-mix(in oklab, var(--things-amber) 45%, transparent);
+    opacity: 0.55;
+  }
+
+  .twin-card--shake {
+    animation: twin-shake 320ms ease;
+  }
+
+  .twin-card--down {
+    background: repeating-linear-gradient(
+      45deg,
+      transparent 0 6px,
+      color-mix(in oklab, var(--things-cream) 8%, transparent) 6px 12px
+    );
+  }
+
+  .twin-symbol {
+    position: absolute;
+    left: 0;
+    top: 0;
+    display: grid;
+    place-items: center;
+    transform: translate(-50%, -50%) rotate(var(--twin-symbol-rotation, 0deg));
+    color: inherit;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+    transition:
+      opacity 200ms ease,
+      scale 260ms cubic-bezier(0.16, 1, 0.3, 1),
+      color 200ms ease;
+  }
+
+  .twin-symbol-art {
+    display: block;
+    width: 100%;
+    height: 100%;
+  }
+
+  .twin-symbol--found {
+    color: var(--twin-accent);
+    scale: 1.35;
+    z-index: 2;
+  }
+
+  .twin-symbol--dimmed {
+    opacity: 0.25;
+  }
+
+  /* the heat */
+
+  .twin-board {
+    position: relative;
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 1rem 0;
+  }
+
+  .twin-board-clock {
+    display: flex;
+    width: 100%;
+    max-width: var(--twin-card-size);
+    align-items: center;
+    gap: 0.75rem;
+    font-family: var(--font-mono), ui-monospace, monospace;
+    font-size: 0.75rem;
+    color: var(--twin-quiet);
+  }
+
+  .twin-clock-bar {
+    position: relative;
+    flex: 1;
+    height: 3px;
+    overflow: hidden;
+    border-radius: 999px;
+    background: var(--twin-edge);
+  }
+
+  .twin-clock-bar::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    transform-origin: left;
+    scale: var(--twin-clock-fill, 1) 1;
+    background: var(--twin-ink);
+    transition: scale 120ms linear;
+  }
+
+  .twin-clock-bar[data-urgent="true"]::after {
+    background: var(--twin-accent);
+  }
+
+  .twin-clock-read {
+    min-width: 3.2rem;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+    color: var(--twin-ink);
+  }
+
+  .twin-clock-read--idle,
+  .twin-clock-unit {
+    color: var(--twin-faint);
+  }
+
+  .twin-board-tally {
+    min-width: 5.5rem;
+    text-align: right;
+  }
+
+  .twin-board-cards {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.75rem;
+  }
+
+  .twin-board-empty,
+  .twin-board-status {
+    min-height: 1.5rem;
+    text-align: center;
+    font-family: var(--font-mono), ui-monospace, monospace;
+    font-size: 0.75rem;
+    color: var(--twin-faint);
+  }
+
+  /*
+    A phone on its side.
+    Stacking two cards down a 375px-tall viewport leaves them at 128px with the entire width empty, so
+    the pair turns side by side and takes its size from the height instead. The height query keeps this
+    off desktop, where a wide window is not somebody holding a phone sideways.
+  */
+  @media (orientation: landscape) and (max-height: 34rem) {
+    .twin {
+      --twin-card-size: min(54svh, 38vw, 20rem);
+    }
+
+    .twin-board {
+      justify-content: center;
+      gap: 0.25rem;
+      padding-top: 0.25rem;
+    }
+
+    .twin-hand-bar {
+      margin-top: 0.25rem;
+    }
+
+    .twin-board-cards {
+      flex-direction: row;
+      align-items: center;
+      gap: 1.25rem;
+    }
+
+    /* The clock spans the pair rather than one card's width. */
+    .twin-board-clock {
+      max-width: none;
+      width: min(100%, 34rem);
+    }
+
+    .twin-settle,
+    .twin-standings {
+      max-width: 34rem;
+    }
+  }
+
+  .twin-status--found {
+    color: var(--twin-accent);
+  }
+
+  .twin-status--cooling {
+    font-variant-numeric: tabular-nums;
+    color: color-mix(in oklab, var(--things-amber) 70%, var(--things-cream));
+  }
+
+  /* the ray */
+
+  .twin-ray {
+    position: absolute;
+    inset: 0;
+    z-index: 3;
+    overflow: visible;
+    pointer-events: none;
+  }
+
+  .twin-ray-line {
+    fill: none;
+    stroke: var(--twin-accent);
+    stroke-width: 2;
+    stroke-linecap: round;
+    /* The `from` is the inline dash offset the component measured, so only the end state is declared. */
+    animation-name: twin-ray-trace;
+    animation-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+    animation-fill-mode: forwards;
+  }
+
+  .twin-ray-end {
+    fill: var(--twin-accent);
+    opacity: 0;
+    animation: twin-ray-dot 420ms ease forwards;
+  }
+
+  /* the hand */
+
+  .twin-hand {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+
+  .twin-hand-stack {
+    position: relative;
+    display: grid;
+    place-items: center;
+  }
+
+  .twin-hand-top {
+    position: relative;
+    z-index: 2;
+  }
+
+  .twin-hand-peek {
+    position: absolute;
+    z-index: 1;
+    width: var(--twin-card-size);
+    aspect-ratio: 1;
+    border: 1px solid var(--twin-edge);
+    border-radius: 1.75rem;
+    background: var(--twin-face);
+    transform: translateY(calc(var(--twin-peek-depth) * -0.4rem)) rotate(var(--twin-peek-tilt))
+      scale(calc(1 - var(--twin-peek-depth) * 0.04));
+    opacity: calc(0.75 - var(--twin-peek-depth) * 0.2);
+  }
+
+  .twin-hand-bar {
+    margin-top: 0.5rem;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    font-family: var(--font-mono), ui-monospace, monospace;
+    font-size: 0.75rem;
+    color: var(--twin-faint);
+  }
+
+  .twin-hand-open {
+    min-height: 2.25rem;
+    border: 1px solid var(--twin-edge);
+    border-radius: 999px;
+    padding-inline: 0.875rem;
+    color: var(--twin-ink);
+  }
+
+  .twin-fan {
+    position: fixed;
+    inset: 0;
+    z-index: 40;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+  }
+
+  .twin-fan-backdrop {
+    position: absolute;
+    inset: 0;
+    background: color-mix(in oklab, var(--things-night) 82%, transparent);
+    backdrop-filter: blur(3px);
+  }
+
+  .twin-fan-arc {
+    position: relative;
+    display: grid;
+    place-items: center;
+    height: min(52vh, 24rem);
+    touch-action: pan-y;
+  }
+
+  .twin-fan-slot {
+    --twin-card-size: min(30vh, 60vw, 18rem);
+    position: absolute;
+    transform: translateX(calc(var(--twin-fan-offset) * 4.2rem))
+      translateY(calc(var(--twin-fan-distance) * 0.9rem))
+      rotate(calc(var(--twin-fan-offset) * 6deg)) scale(calc(1 - var(--twin-fan-distance) * 0.07));
+    opacity: calc(1 - var(--twin-fan-distance) * 0.22);
+    transition:
+      transform 320ms cubic-bezier(0.16, 1, 0.3, 1),
+      opacity 320ms ease;
+  }
+
+  .twin-fan-foot {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 1rem;
+    padding-top: 1.5rem;
+    font-family: var(--font-mono), ui-monospace, monospace;
+    font-size: 0.75rem;
+    color: var(--twin-quiet);
+  }
+
+  .twin-fan-close {
+    min-height: 2.75rem;
+    border: 1px solid var(--twin-edge);
+    border-radius: 999px;
+    padding-inline: 1.25rem;
+    color: var(--twin-ink);
+  }
+
+  /* settle, standings, ending */
+
+  .twin-settle,
+  .twin-standings {
+    margin: 0.75rem auto 0;
+    width: 100%;
+    max-width: var(--twin-card-size);
+    font-family: var(--font-mono), ui-monospace, monospace;
+    font-size: 0.8125rem;
+  }
+
+  .twin-settle-list,
+  .twin-standings {
+    display: grid;
+    gap: 0.125rem;
+  }
+
+  .twin-settle-list li,
+  .twin-standings li {
+    display: flex;
+    min-height: 2rem;
+    align-items: center;
+    gap: 0.75rem;
+    border-top: 1px solid var(--twin-edge);
+    padding-block: 0.25rem;
+    color: var(--twin-quiet);
+  }
+
+  .twin-settle-list li[data-you="true"],
+  .twin-standings li[data-you="true"] {
+    color: var(--twin-ink);
+  }
+
+  .twin-settle-list li.twin-settle-won {
+    color: var(--twin-accent);
+  }
+
+  .twin-settle-list li {
+    animation: twin-settle-in 260ms cubic-bezier(0.16, 1, 0.3, 1) backwards;
+  }
+
+  .twin-toggles {
+    margin-top: 1rem;
+    display: flex;
+    justify-content: center;
+    gap: 0.5rem;
+  }
+
+  .twin-toggle {
+    min-height: 2.75rem;
+    border: 1px solid var(--twin-edge);
+    border-radius: 999px;
+    padding-inline: 1.125rem;
+    font-family: var(--font-mono), ui-monospace, monospace;
+    font-size: 0.6875rem;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--twin-faint);
+  }
+
+  .twin-toggle[aria-pressed="true"] {
+    border-color: color-mix(in oklab, var(--things-cream) 34%, transparent);
+    color: var(--twin-ink);
+  }
+
+  .twin-settle-place {
+    width: 1.25rem;
+    color: var(--twin-faint);
+  }
+
+  .twin-settle-name,
+  .twin-standings-name {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .twin-settle-time,
+  .twin-standings-count {
+    font-variant-numeric: tabular-nums;
+  }
+
+  .twin-standings-chain {
+    color: var(--twin-accent);
+  }
+
+  .twin-settle-burn,
+  .twin-settle-missed {
+    padding-top: 0.25rem;
+    text-align: center;
+    color: var(--twin-faint);
+  }
+
+  .twin-awards {
+    margin-top: 1.5rem;
+    display: grid;
+    gap: 0.125rem;
+    font-family: var(--font-mono), ui-monospace, monospace;
+    font-size: 0.8125rem;
+  }
+
+  .twin-awards li {
+    display: flex;
+    align-items: baseline;
+    gap: 0.75rem;
+    border-top: 1px solid var(--twin-edge);
+    padding-block: 0.5rem;
+  }
+
+  .twin-award-label {
+    min-width: 8.5rem;
+    font-size: 0.6875rem;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--twin-accent);
+  }
+
+  .twin-award-name {
+    flex: 1;
+    font-weight: 600;
+  }
+
+  .twin-award-detail {
+    text-align: right;
+    color: var(--twin-faint);
+  }
+
+  .twin-final {
+    margin-top: 1.5rem;
+    display: grid;
+    gap: 0.125rem;
+  }
+
+  .twin-final li {
+    display: flex;
+    min-height: 3.25rem;
+    align-items: center;
+    gap: 1rem;
+    border-top: 1px solid var(--twin-edge);
+    color: var(--twin-quiet);
+  }
+
+  .twin-final li[data-you="true"] {
+    color: var(--twin-ink);
+  }
+
+  .twin-final-place {
+    font-family: var(--font-mono), ui-monospace, monospace;
+    font-size: 1.1rem;
+    color: var(--twin-faint);
+  }
+
+  .twin-final-name {
+    flex: 1;
+    font-family: var(--font-serif), Georgia, serif;
+    font-size: 1.15rem;
+    font-weight: 600;
+  }
+
+  .twin-final-stat {
+    text-align: right;
+    font-family: var(--font-mono), ui-monospace, monospace;
+    font-size: 0.8125rem;
+  }
+
+  .twin-final-sub {
+    display: block;
+    font-size: 0.6875rem;
+    color: var(--twin-faint);
+  }
+
+  /* the constellation */
+
+  .twin-constellation {
+    margin-top: 2rem;
+    border-top: 1px solid var(--twin-edge);
+    padding-top: 1.25rem;
+  }
+
+  .twin-constellation-controls {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+  }
+
+  .twin-filters,
+  .twin-stepper {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.375rem;
+  }
+
+  .twin-filter,
+  .twin-step {
+    min-height: 2.25rem;
+    border: 1px solid var(--twin-edge);
+    border-radius: 999px;
+    padding-inline: 0.75rem;
+    font-family: var(--font-mono), ui-monospace, monospace;
+    font-size: 0.6875rem;
+    color: var(--twin-quiet);
+  }
+
+  .twin-filter[aria-pressed="true"] {
+    border-color: var(--twin-accent);
+    color: var(--twin-accent);
+  }
+
+  .twin-step:disabled {
+    opacity: 0.3;
+  }
+
+  .twin-constellation-body {
+    margin-top: 1rem;
+    display: grid;
+    gap: 1.25rem;
+  }
+
+  @media (min-width: 48rem) {
+    .twin-constellation-body {
+      grid-template-columns: 9rem minmax(0, 1fr);
+      align-items: start;
+    }
+  }
+
+  .twin-chart-scroll {
+    max-height: 26rem;
+    overflow-x: hidden;
+    overflow-y: auto;
+    border: 1px solid var(--twin-edge);
+    border-radius: 1rem;
+    padding-block: 0.5rem;
+  }
+
+  .twin-chart {
+    display: block;
+    overflow: visible;
+  }
+
+  .twin-chart-spine {
+    fill: none;
+    stroke: var(--twin-edge);
+    stroke-width: 0.6;
+  }
+
+  .twin-chart-edge {
+    stroke: var(--twin-faint);
+    stroke-width: 1;
+  }
+
+  .twin-chart-edge--lit {
+    stroke: var(--twin-accent);
+    stroke-width: 1.8;
+  }
+
+  .twin-chart-rib {
+    stroke: var(--twin-edge);
+    stroke-width: 0.7;
+  }
+
+  .twin-chart-rib-dot {
+    fill: var(--twin-faint);
+  }
+
+  .twin-chart-rib--dim {
+    opacity: 0.22;
+  }
+
+  .twin-chart-node {
+    fill: var(--things-night);
+    stroke: var(--twin-quiet);
+    stroke-width: 1.2;
+    animation: twin-node-in 320ms ease backwards;
+  }
+
+  .twin-chart-node--on {
+    fill: var(--twin-accent);
+    stroke: var(--twin-accent);
+  }
+
+  .twin-chart-node--burned {
+    stroke-dasharray: 2 2;
+  }
+
+  .twin-chart-hit {
+    fill: transparent;
+    cursor: pointer;
+  }
+
+  .twin-detail-line {
+    margin-top: 0.5rem;
+    display: flex;
+    align-items: center;
+    gap: 0.625rem;
+    font-family: var(--font-mono), ui-monospace, monospace;
+    font-size: 0.8125rem;
+    color: var(--twin-quiet);
+  }
+
+  .twin-detail-symbol {
+    display: block;
+    width: 1.75rem;
+    height: 1.75rem;
+    flex: none;
+    color: var(--twin-accent);
+  }
+
+  .twin-detail-cards {
+    --twin-card-size: min(36vw, 12rem);
+    position: relative;
+    margin-top: 1rem;
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 1rem;
+  }
+
+  .twin-detail-others {
+    margin-top: 0.75rem;
+    font-family: var(--font-mono), ui-monospace, monospace;
+    font-size: 0.6875rem;
+    color: var(--twin-faint);
+  }
+
+  /* one device */
+
+  /* Two cards rather than three, so each one gets half again as much room. */
+  .twin-duel {
+    --twin-card-size: min(38svh, 80vw, 24rem);
+    justify-content: space-between;
+    gap: 0.5rem;
+    padding-block: 0.5rem;
+  }
+
+  /* Solo puts a middle card back between the seats, so the cards have to give room up again. */
+  .twin-duel:has(.twin-duel-bar) {
+    --twin-card-size: min(27svh, 62vw, 20rem);
+  }
+
+  .twin-duel-divider {
+    font-family: var(--font-mono), ui-monospace, monospace;
+    font-size: 0.8125rem;
+    letter-spacing: 0.16em;
+    font-variant-numeric: tabular-nums;
+    color: var(--twin-faint);
+  }
+
+  .twin-seat {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.375rem;
+  }
+
+  /* Both seats read upright from where their owner is sitting. */
+  .twin-seat--flipped {
+    rotate: 180deg;
+  }
+
+  .twin-seat-meta {
+    display: flex;
+    min-height: 1.25rem;
+    align-items: center;
+    gap: 0.75rem;
+    font-family: var(--font-mono), ui-monospace, monospace;
+    font-size: 0.6875rem;
+    letter-spacing: 0.08em;
+    color: var(--twin-faint);
+  }
+
+  .twin-seat-chain {
+    color: var(--twin-accent);
+  }
+
+  .twin-duel-middle {
+    position: relative;
+    display: grid;
+    place-items: center;
+  }
+
+  .twin-duel-quit,
+  .twin-duel-palette {
+    position: absolute;
+    top: 50%;
+    translate: 0 -50%;
+    font-family: var(--font-mono), ui-monospace, monospace;
+    font-size: 0.6875rem;
+    color: var(--twin-faint);
+  }
+
+  .twin-duel-quit {
+    left: 0.75rem;
+    min-height: 2.75rem;
+    padding-inline: 0.5rem;
+  }
+
+  .twin-duel-palette {
+    right: 0.75rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    text-align: right;
+  }
+
+  .twin-duel-palette button {
+    min-height: 2.25rem;
+    padding-inline: 0.5rem;
+  }
+
+  .twin-duel-palette button[aria-pressed="true"] {
+    color: var(--twin-quiet);
+  }
+
+  .twin-duel-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    padding-inline: 1.25rem;
+    font-family: var(--font-mono), ui-monospace, monospace;
+    font-size: 0.75rem;
+    color: var(--twin-quiet);
+  }
+
+  .twin-duel-exit {
+    min-height: 2.75rem;
+  }
+
+  .twin-duel-clock {
+    font-size: 1.1rem;
+    font-variant-numeric: tabular-nums;
+    color: var(--twin-ink);
+  }
+
+  .twin-duel-penalty {
+    font-size: 0.75rem;
+    color: var(--twin-accent);
+  }
+
+  .twin-duel-over {
+    position: fixed;
+    inset: 0;
+    z-index: 50;
+    display: grid;
+    place-items: center;
+    background: var(--things-night);
+  }
+
+  .twin-duel-over-panel {
+    width: min(90vw, 26rem);
+    padding: 1.5rem;
+    text-align: center;
+  }
+
+  .twin-duel-over-panel .twin-leave {
+    width: 100%;
+    margin-top: 2rem;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .twin-symbol,
+    .twin-fan-slot,
+    .twin-clock-bar::after {
+      transition: none;
+    }
+
+    /*
+      The connection and the constellation are as readable static as animated, which is the test of
+      whether the motion was ever more than decoration. The ray still appears — it just arrives whole
+      instead of drawing itself.
+    */
+    .twin-ray-line,
+    .twin-ray-end,
+    .twin-chart-node,
+    .twin-settle-list li,
+    .twin-card--shake {
+      animation: none;
+      stroke-dashoffset: 0;
+      opacity: 1;
+    }
+  }
+
+  @keyframes twin-ray-trace {
+    to {
+      stroke-dashoffset: 0;
+    }
+  }
+
+  @keyframes twin-ray-dot {
+    to {
+      opacity: 1;
+    }
+  }
+
+  @keyframes twin-shake {
+    0%,
+    100% {
+      translate: 0 0;
+    }
+    20% {
+      translate: -6px 0;
+    }
+    45% {
+      translate: 5px 0;
+    }
+    70% {
+      translate: -3px 0;
+    }
+  }
+
+  @keyframes twin-node-in {
+    from {
+      opacity: 0;
+      scale: 0.4;
+    }
+    to {
+      opacity: 1;
+      scale: 1;
+    }
+  }
+
+  @keyframes twin-settle-in {
+    from {
+      opacity: 0;
+      translate: 0 6px;
+    }
+    to {
+      opacity: 1;
+      translate: 0 0;
+    }
   }
 }
