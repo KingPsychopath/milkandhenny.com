@@ -864,7 +864,9 @@ function marksFor(room: LiarsRoomState, player: PlayerState): LiarsMark[] {
     if (dawn.movementSeen.includes(player.name)) marks.push("moved");
     const death = dawn.deaths.find(({ playerId }) => playerId === player.id);
     if (death?.revived) marks.push("saved");
-    if (death && !death.revived) marks.push("attacked");
+    // Only worth marking on somebody still standing. The dead already carry a strikethrough and a
+    // cross, and a second cross beside it reads as two different things having happened.
+    if (death && !death.revived && player.alive) marks.push("attacked");
   }
   if (room.players.some((other) => other.alive && other.pointedAt === player.id))
     marks.push("pointed");

@@ -18,8 +18,11 @@ export interface LiarsNote {
   text: string;
 }
 
-export function useLiarsNotes(roomId: string, gameNumber: number) {
-  const key = `${liarsBrowserKeys.playerSession(roomId)}:notes:${gameNumber}`;
+export function useLiarsNotes(roomId: string, playerId: string, gameNumber: number) {
+  // Keyed by player as well as room: two people on one device — or the dev harness, which is
+  // exactly that — would otherwise share a single notebook, and one person's suspicions would
+  // arrive pre-filled as another person's epitaph.
+  const key = liarsBrowserKeys.notes(roomId, playerId, gameNumber);
   const [notes, setNotes] = useState<LiarsNote[]>([]);
 
   useEffect(() => {

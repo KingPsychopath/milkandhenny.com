@@ -77,7 +77,7 @@ export function LiarsRoom({ credentials }: { credentials: LiarsPlayerCredentials
   const sound = useGameSound(liarsBrowserKeys.muted());
   const snapshot = room.snapshot;
   const isNarrator = snapshot?.narratorPlayerId === playerId;
-  const notes = useLiarsNotes(roomId, snapshot?.gameNumber ?? 1);
+  const notes = useLiarsNotes(roomId, playerId, snapshot?.gameNumber ?? 1);
   const { overlay } = useLiarsEffects({
     snapshot,
     clockOffset: room.clockOffset,
