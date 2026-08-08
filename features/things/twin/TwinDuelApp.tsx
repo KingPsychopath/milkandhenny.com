@@ -52,11 +52,17 @@ function toDealt(cards: readonly { id: string }[], seedFrom: number): TwinDealtC
   }));
 }
 
-export function TwinDuelApp({ onExit }: { onExit: () => void }) {
+export function TwinDuelApp({
+  onExit,
+  mode = "duel",
+}: {
+  onExit: () => void;
+  mode?: "duel" | "solo";
+}) {
   const haptics = useWebHaptics();
   const boardRef = useRef<HTMLDivElement>(null);
   const palette = useTwinPalette();
-  const [players, setPlayers] = useState<1 | 2>(2);
+  const [players, setPlayers] = useState<1 | 2>(mode === "solo" ? 1 : 2);
   const [round, setRound] = useState(0);
   const { preferences, set } = useGamePreferences("twin-solo", { bestMs: 0 });
 

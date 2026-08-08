@@ -19,7 +19,7 @@ import { TwinDuelApp } from "./TwinDuelApp";
 export function TwinApp() {
   const navigate = useNavigate();
   const haptics = useWebHaptics();
-  const [duel, setDuel] = useState(false);
+  const [board, setBoard] = useState<"duel" | "solo" | null>(null);
   const [name, setName] = useState("");
   const { preferences, set } = useGamePreferences("twin", { handSize: TWIN_DEFAULT_HAND });
   const [joinCode, setJoinCode] = useState("");
@@ -27,7 +27,7 @@ export function TwinApp() {
   const [message, setMessage] = useState<string | null>(null);
   const [panel, setPanel] = useState<"friends" | "join" | null>(null);
 
-  if (duel) return <TwinDuelApp onExit={() => setDuel(false)} />;
+  if (board) return <TwinDuelApp mode={board} onExit={() => setBoard(null)} />;
 
   const handleCreate = async () => {
     if (!name.trim() || creating) {
@@ -84,17 +84,33 @@ export function TwinApp() {
           title="Every two cards share exactly one symbol."
           description="Find it before anyone else, put your card down, and empty your hand."
         >
+          {/*
+            The face-off is the default because it is the best version of the game and needs nothing —
+            no room, no second device, no network. Everything else is one tap away underneath it.
+          */}
           <GameLaunchButton
             accent="amber"
             onClick={() => {
-              setDuel(true);
+              setBoard("duel");
               void haptics.trigger("selection");
             }}
           >
             two of you, one screen
           </GameLaunchButton>
-          <GameLaunchMeta tone="dark">head to head · works offline</GameLaunchMeta>
+          <GameLaunchMeta tone="dark">
+            your card against theirs · nothing to set up · works offline
+          </GameLaunchMeta>
           <GameLaunchChoices tone="dark">
+            <button
+              type="button"
+              onClick={() => {
+                setBoard("solo");
+                void haptics.trigger("selection");
+              }}
+              className="min-h-11"
+            >
+              on your own
+            </button>
             <button
               type="button"
               onClick={() => setPanel(panel === "friends" ? null : "friends")}

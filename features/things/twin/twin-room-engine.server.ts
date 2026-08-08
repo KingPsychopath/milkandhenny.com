@@ -283,16 +283,28 @@ function settleHeat(room: RoomState, now: number): TwinLoggedHeat | null {
     misses: player.heatId === heat.id ? player.heatMisses : 0,
   }));
   const outcome = twinHeatOutcome(entries);
-  const middle = room.middle ? dealtCard(room, room.middle) : null;
+  const playedAgainst = room.middle;
+  const middle = playedAgainst ? dealtCard(room, playedAgainst) : null;
+  const middleCard = playedAgainst ? twinCardById(room.order, playedAgainst.cardId) : null;
 
   const connections: TwinLoggedConnection[] = [];
   const results: TwinHeatResult[] = [];
+  /**
+   * The new middle is held aside rather than assigned as we go.
+   *
+   * The winner is ranked first, so assigning `room.middle` inside this loop would mean every player
+   * after them had their symbol computed against the card they are about to play *next* rather than
+   * the one they just solved — which is silently wrong, and shows up as the constellation drawing the
+   * wrong symbol on every rib.
+   */
+  let nextMiddle = playedAgainst;
 
   for (const playerId of outcome.ranked) {
     const player = room.players.find(({ id }) => id === playerId);
     if (!player) continue;
     const shed = player.hand[0];
-    const symbolId = expectedSymbol(room, player);
+    const shedCard = shed ? twinCardById(room.order, shed.cardId) : null;
+    const symbolId = middleCard && shedCard ? twinMatch(shedCard, middleCard) : null;
     const elapsedMs = player.landedMs ?? 0;
 
     player.connections += 1;
@@ -315,7 +327,7 @@ function settleHeat(room: RoomState, now: number): TwinLoggedHeat | null {
           won: playerId === outcome.winnerPlayerId,
         });
       // The fastest takes the middle; everyone else's card goes to their own pile, out of play.
-      if (playerId === outcome.winnerPlayerId) room.middle = shed;
+      if (playerId === outcome.winnerPlayerId) nextMiddle = shed;
     }
     if (player.hand.length === 0 && player.place === null) {
       player.place = room.nextPlace;
@@ -341,6 +353,7 @@ function settleHeat(room: RoomState, now: number): TwinLoggedHeat | null {
     for (const player of room.players)
       if (player.hand.length > 1) player.hand = [...player.hand.slice(1), player.hand[0]];
 
+  room.middle = nextMiddle;
   heat.results = results;
   heat.winnerPlayerId = outcome.winnerPlayerId;
   heat.burned = outcome.burned;
@@ -395,6 +408,23 @@ function applyDeal(room: RoomState, plan: TwinDeckPlan, now: number) {
     player.cooldownUntil = null;
   });
   room.middle = { cardId: deal.middle.id, seed: (room.seedCounter += 1) };
+
+  /**
+   * The deck's guarantee, checked once per deal rather than trusted.
+   *
+   * It cannot fail — the plane is generated, no card is dealt twice, and a property test walks every
+   * pair at every order. But if it ever did, the symptom would be a heat nobody can win, which reads
+   * as a broken interface rather than a broken deck, and would be miserable to chase from a bug report.
+   * One O(players) check at the only point a bad deal could enter buys a loud failure instead.
+   */
+  for (const player of room.players) {
+    const top = player.hand[0] && twinCardById(room.order, player.hand[0].cardId);
+    if (!top || twinMatch(top, deal.middle) === null)
+      throw new Error(
+        `Twin dealt an unplayable hand at order ${room.order} for ${room.players.length} players`,
+      );
+  }
+
   room.heat = null;
   room.phase = "dealing";
   room.dealingUntil = now + TWIN_TIMING.dealingMs;

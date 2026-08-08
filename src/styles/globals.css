@@ -710,25 +710,25 @@
   /* One slow wash, no blowout and no snap, for anyone who has asked for less motion. */
   @media (prefers-reduced-motion: reduce) {
     .liars-overlay--dread {
-    animation: liars-dread 2.2s ease-in forwards;
-  }
+      animation: liars-dread 2.2s ease-in forwards;
+    }
 
-  @keyframes liars-dread {
-    0% {
-      background: color-mix(in oklab, var(--liars-dead) 40%, black);
-      opacity: 0;
+    @keyframes liars-dread {
+      0% {
+        background: color-mix(in oklab, var(--liars-dead) 40%, black);
+        opacity: 0;
+      }
+      70% {
+        background: color-mix(in oklab, var(--liars-dead) 40%, black);
+        opacity: 0.32;
+      }
+      100% {
+        background: color-mix(in oklab, var(--liars-dead) 40%, black);
+        opacity: 0;
+      }
     }
-    70% {
-      background: color-mix(in oklab, var(--liars-dead) 40%, black);
-      opacity: 0.32;
-    }
-    100% {
-      background: color-mix(in oklab, var(--liars-dead) 40%, black);
-      opacity: 0;
-    }
-  }
 
-  .liars-overlay--death {
+    .liars-overlay--death {
       animation: liars-death-calm 2.6s ease-out forwards;
     }
 
@@ -2419,6 +2419,45 @@
     color: var(--twin-faint);
   }
 
+  /*
+    A phone on its side.
+    Stacking two cards down a 375px-tall viewport leaves them at 128px with the entire width empty, so
+    the pair turns side by side and takes its size from the height instead. The height query keeps this
+    off desktop, where a wide window is not somebody holding a phone sideways.
+  */
+  @media (orientation: landscape) and (max-height: 34rem) {
+    .twin {
+      --twin-card-size: min(54svh, 38vw, 20rem);
+    }
+
+    .twin-board {
+      justify-content: center;
+      gap: 0.25rem;
+      padding-top: 0.25rem;
+    }
+
+    .twin-hand-bar {
+      margin-top: 0.25rem;
+    }
+
+    .twin-board-cards {
+      flex-direction: row;
+      align-items: center;
+      gap: 1.25rem;
+    }
+
+    /* The clock spans the pair rather than one card's width. */
+    .twin-board-clock {
+      max-width: none;
+      width: min(100%, 34rem);
+    }
+
+    .twin-settle,
+    .twin-standings {
+      max-width: 34rem;
+    }
+  }
+
   .twin-status--found {
     color: var(--twin-accent);
   }
@@ -2534,8 +2573,7 @@
     position: absolute;
     transform: translateX(calc(var(--twin-fan-offset) * 4.2rem))
       translateY(calc(var(--twin-fan-distance) * 0.9rem))
-      rotate(calc(var(--twin-fan-offset) * 6deg))
-      scale(calc(1 - var(--twin-fan-distance) * 0.07));
+      rotate(calc(var(--twin-fan-offset) * 6deg)) scale(calc(1 - var(--twin-fan-distance) * 0.07));
     opacity: calc(1 - var(--twin-fan-distance) * 0.22);
     transition:
       transform 320ms cubic-bezier(0.16, 1, 0.3, 1),
