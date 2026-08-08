@@ -8,7 +8,9 @@ function DrawCountryRoute() {
 }
 
 export const Route = createFileRoute("/things/draw-country")({
-  loader: () => selectSoloCountryFn({ data: { recentCountryIds: [] } }),
+  // An online first visit gets an instant first round without downloading the atlas. A prepared
+  // offline visit can recover from its cached atlas inside the app instead of failing the route.
+  loader: () => selectSoloCountryFn({ data: { recentCountryIds: [] } }).catch(() => null),
   component: DrawCountryRoute,
   head: () => ({
     meta: [

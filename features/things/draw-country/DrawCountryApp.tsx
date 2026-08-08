@@ -1,6 +1,6 @@
 import { AppSelect } from "@/components/AppSelect";
 import { Link, useNavigate } from "@tanstack/react-router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useGamePreferences } from "../shared/useGamePreferences";
 import { useWebHaptics } from "web-haptics/react";
 import { writeExpiringLocalValue } from "../shared/game-storage.client";
@@ -16,6 +16,8 @@ import {
   GameLaunchMeta,
 } from "../shared/GameLaunch";
 import { RoomJoinControl } from "../shared/RoomJoinControl";
+import { useNetworkAvailability } from "../shared/useNetworkAvailability";
+import { nextSoloCountry } from "./rotation.client";
 
 function RoundSettings({
   roundTotal,
@@ -56,9 +58,12 @@ function RoundSettings({
   );
 }
 
-export function DrawCountryApp({ initialCountry }: { initialCountry: CountryOutline }) {
+export function DrawCountryApp({ initialCountry }: { initialCountry: CountryOutline | null }) {
   const navigate = useNavigate();
   const haptics = useWebHaptics();
+  const online = useNetworkAvailability();
+  const [country, setCountry] = useState(initialCountry);
+  const [countryLoadFailed, setCountryLoadFailed] = useState(false);
   const [soloMode, setSoloMode] = useState<SoloDrawCountryMode | null>(null);
   const [name, setName] = useState("");
   const { preferences, set } = useGamePreferences("draw-country", {
@@ -74,10 +79,26 @@ export function DrawCountryApp({ initialCountry }: { initialCountry: CountryOutl
   const [message, setMessage] = useState<string | null>(null);
   const [panel, setPanel] = useState<"solo" | "friends" | "join" | null>(null);
 
-  if (soloMode)
+  useEffect(() => {
+    if (country) return;
+    let active = true;
+    setCountryLoadFailed(false);
+    void nextSoloCountry()
+      .then((nextCountry) => {
+        if (active) setCountry(nextCountry);
+      })
+      .catch(() => {
+        if (active) setCountryLoadFailed(true);
+      });
+    return () => {
+      active = false;
+    };
+  }, [country, online]);
+
+  if (soloMode && country)
     return (
       <SoloDrawCountry
-        initialCountry={initialCountry}
+        initialCountry={country}
         mode={soloMode}
         roundTotal={roundTotal}
         roundSeconds={soloMode === "quick" ? 30 : drawSeconds}
@@ -86,6 +107,12 @@ export function DrawCountryApp({ initialCountry }: { initialCountry: CountryOutl
     );
 
   const handleCreate = async () => {
+    if (!online) {
+      setMessage(
+        "Rooms need an internet connection. Quick draw and solo rounds still work offline.",
+      );
+      return;
+    }
     if (!name.trim() || creating) {
       setMessage("Add your name to make a room.");
       return;
@@ -122,6 +149,12 @@ export function DrawCountryApp({ initialCountry }: { initialCountry: CountryOutl
   };
 
   const handleJoin = async (code = joinCode) => {
+    if (!online) {
+      setMessage(
+        "Rooms need an internet connection. Quick draw and solo rounds still work offline.",
+      );
+      return;
+    }
     const roomId = code.trim().toUpperCase();
     if (!/^[A-Z2-9]{7}$/.test(roomId)) {
       setMessage("Enter the 7-character room code.");
@@ -147,14 +180,21 @@ export function DrawCountryApp({ initialCountry }: { initialCountry: CountryOutl
         >
           <GameLaunchButton
             accent="ink"
+            disabled={!country}
             onClick={() => {
               setSoloMode("quick");
               void haptics.trigger("selection");
             }}
           >
-            quick draw
+            {country ? "quick draw" : "opening the atlas…"}
           </GameLaunchButton>
-          <GameLaunchMeta tone="light">one country · 30 seconds · works offline</GameLaunchMeta>
+          <GameLaunchMeta tone="light">
+            {countryLoadFailed
+              ? "reconnect once to save this game for offline play"
+              : online
+                ? "one country · 30 seconds · works offline"
+                : "offline · local play is ready"}
+          </GameLaunchMeta>
           <GameLaunchChoices tone="light">
             <button
               type="button"
@@ -226,44 +266,50 @@ export function DrawCountryApp({ initialCountry }: { initialCountry: CountryOutl
             <p className="mt-2 font-serif text-black/55">
               Everyone draws the same countries. The closest border wins each round.
             </p>
-            <form
-              onSubmit={(event) => {
-                event.preventDefault();
-                void handleCreate();
-              }}
-              className="mt-5 grid gap-4 rounded-[1.75rem] border border-black/15 bg-white/25 p-5 sm:grid-cols-3"
-            >
-              <label className="font-mono text-xs text-black/55">
-                <span className="block pb-2">your name</span>
-                <input
-                  name="playerName"
-                  value={name}
-                  maxLength={32}
-                  required
-                  autoComplete="name"
-                  enterKeyHint="go"
-                  onChange={(event) => {
-                    setName(event.target.value);
-                    setMessage(null);
-                  }}
-                  /* text-base keeps iOS Safari from zooming the page on focus. */
-                  className="min-h-12 w-full rounded-full border border-black/15 bg-white/55 px-4 text-base text-black"
-                />
-              </label>
-              <RoundSettings
-                roundTotal={roundTotal}
-                drawSeconds={drawSeconds}
-                setRoundTotal={setRoundTotal}
-                setDrawSeconds={setDrawSeconds}
-              />
-              <button
-                type="submit"
-                disabled={creating}
-                className="min-h-12 rounded-full bg-black px-6 font-mono text-xs font-semibold uppercase tracking-[0.14em] text-white disabled:opacity-40 sm:col-span-3"
+            {!online ? (
+              <p role="status" className="mt-5 font-mono text-xs text-amber-800">
+                Rooms need an internet connection. Quick draw and solo rounds are still ready here.
+              </p>
+            ) : (
+              <form
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  void handleCreate();
+                }}
+                className="mt-5 grid gap-4 rounded-[1.75rem] border border-black/15 bg-white/25 p-5 sm:grid-cols-3"
               >
-                {creating ? "making room…" : "create room"}
-              </button>
-            </form>
+                <label className="font-mono text-xs text-black/55">
+                  <span className="block pb-2">your name</span>
+                  <input
+                    name="playerName"
+                    value={name}
+                    maxLength={32}
+                    required
+                    autoComplete="name"
+                    enterKeyHint="go"
+                    onChange={(event) => {
+                      setName(event.target.value);
+                      setMessage(null);
+                    }}
+                    /* text-base keeps iOS Safari from zooming the page on focus. */
+                    className="min-h-12 w-full rounded-full border border-black/15 bg-white/55 px-4 text-base text-black"
+                  />
+                </label>
+                <RoundSettings
+                  roundTotal={roundTotal}
+                  drawSeconds={drawSeconds}
+                  setRoundTotal={setRoundTotal}
+                  setDrawSeconds={setDrawSeconds}
+                />
+                <button
+                  type="submit"
+                  disabled={creating}
+                  className="min-h-12 rounded-full bg-black px-6 font-mono text-xs font-semibold uppercase tracking-[0.14em] text-white disabled:opacity-40 sm:col-span-3"
+                >
+                  {creating ? "making room…" : "create room"}
+                </button>
+              </form>
+            )}
             {message ? (
               <p role="status" className="mt-4 font-mono text-xs text-amber-800">
                 {message}
@@ -277,17 +323,23 @@ export function DrawCountryApp({ initialCountry }: { initialCountry: CountryOutl
             className="mx-auto mt-10 max-w-lg border-t border-black/15 pt-7"
             aria-label="Join a room"
           >
-            <RoomJoinControl
-              value={joinCode}
-              gamePath="/things/draw-country"
-              tone="light"
-              message={message}
-              onValueChange={(value) => {
-                setJoinCode(value);
-                setMessage(null);
-              }}
-              onJoin={handleJoin}
-            />
+            {!online ? (
+              <p role="status" className="font-mono text-xs text-amber-800">
+                Rooms need an internet connection. Quick draw and solo rounds are still ready here.
+              </p>
+            ) : (
+              <RoomJoinControl
+                value={joinCode}
+                gamePath="/things/draw-country"
+                tone="light"
+                message={message}
+                onValueChange={(value) => {
+                  setJoinCode(value);
+                  setMessage(null);
+                }}
+                onJoin={handleJoin}
+              />
+            )}
           </section>
         ) : null}
       </main>

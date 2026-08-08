@@ -16,10 +16,12 @@ import { twinBrowserKeys } from "./twin-keys";
 import { createTwinRoomFn } from "./twin-room.functions";
 import { primeTwinAudio } from "./twin-sound.client";
 import { TwinDuelApp } from "./TwinDuelApp";
+import { useNetworkAvailability } from "../shared/useNetworkAvailability";
 
 export function TwinApp() {
   const navigate = useNavigate();
   const haptics = useWebHaptics();
+  const online = useNetworkAvailability();
   const [board, setBoard] = useState<"duel" | "solo" | null>(null);
   const [name, setName] = useState("");
   const { preferences, set } = useGamePreferences("twin", { handSize: TWIN_DEFAULT_HAND });
@@ -31,6 +33,12 @@ export function TwinApp() {
   if (board) return <TwinDuelApp mode={board} onExit={() => setBoard(null)} />;
 
   const handleCreate = async () => {
+    if (!online) {
+      setMessage(
+        "Rooms need an internet connection. The one-screen game and solo board still work offline.",
+      );
+      return;
+    }
     if (!name.trim() || creating) {
       setMessage("Add your name to make a room.");
       return;
@@ -62,6 +70,12 @@ export function TwinApp() {
   };
 
   const handleJoin = async (code = joinCode) => {
+    if (!online) {
+      setMessage(
+        "Rooms need an internet connection. The one-screen game and solo board still work offline.",
+      );
+      return;
+    }
     const roomId = code.trim().toUpperCase();
     if (!/^[A-Z2-9]{7}$/.test(roomId)) {
       setMessage("Enter the 7-character room code.");
@@ -101,7 +115,9 @@ export function TwinApp() {
             two of you, one screen
           </GameLaunchButton>
           <GameLaunchMeta tone="dark">
-            your card against theirs · nothing to set up · works offline
+            {online
+              ? "your card against theirs · nothing to set up · works offline"
+              : "offline · the one-screen game is ready"}
           </GameLaunchMeta>
           <GameLaunchChoices tone="dark">
             <button
@@ -139,53 +155,62 @@ export function TwinApp() {
             <h2 id="twin-friends" className="twin-panel-title">
               Everyone on their own phone
             </h2>
-            <form
-              onSubmit={(event) => {
-                event.preventDefault();
-                void handleCreate();
-              }}
-              className="twin-panel-form"
-            >
-              <label className="twin-field twin-field--stacked">
-                <span>your name</span>
-                <input
-                  name="playerName"
-                  value={name}
-                  maxLength={32}
-                  required
-                  autoComplete="name"
-                  enterKeyHint="go"
-                  onChange={(event) => {
-                    setName(event.target.value);
-                    setMessage(null);
-                  }}
-                  className="twin-input"
-                />
-              </label>
-              <label className="twin-field twin-field--stacked">
-                <span>cards each</span>
-                <AppSelect
-                  value={preferences.handSize}
-                  onValueChange={(value) => set("handSize", Number(value))}
-                  ariaLabel="Cards each"
-                  tone="night"
-                  className="twin-select"
-                  options={Array.from(
-                    { length: TWIN_MAX_HAND - TWIN_MIN_HAND + 1 },
-                    (_unused, index) => {
-                      const value = TWIN_MIN_HAND + index;
-                      return { value, label: String(value) };
-                    },
-                  )}
-                />
-              </label>
-              <button type="submit" disabled={creating} className="twin-button twin-button--go">
-                {creating ? "making room…" : "create room"}
-              </button>
-            </form>
-            <p className="twin-note">
-              The deck grows with the table — more people means more symbols on every card.
-            </p>
+            {!online ? (
+              <p role="status" className="twin-message">
+                Rooms need an internet connection. The one-screen game and solo board are still
+                ready here.
+              </p>
+            ) : (
+              <form
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  void handleCreate();
+                }}
+                className="twin-panel-form"
+              >
+                <label className="twin-field twin-field--stacked">
+                  <span>your name</span>
+                  <input
+                    name="playerName"
+                    value={name}
+                    maxLength={32}
+                    required
+                    autoComplete="name"
+                    enterKeyHint="go"
+                    onChange={(event) => {
+                      setName(event.target.value);
+                      setMessage(null);
+                    }}
+                    className="twin-input"
+                  />
+                </label>
+                <label className="twin-field twin-field--stacked">
+                  <span>cards each</span>
+                  <AppSelect
+                    value={preferences.handSize}
+                    onValueChange={(value) => set("handSize", Number(value))}
+                    ariaLabel="Cards each"
+                    tone="night"
+                    className="twin-select"
+                    options={Array.from(
+                      { length: TWIN_MAX_HAND - TWIN_MIN_HAND + 1 },
+                      (_unused, index) => {
+                        const value = TWIN_MIN_HAND + index;
+                        return { value, label: String(value) };
+                      },
+                    )}
+                  />
+                </label>
+                <button type="submit" disabled={creating} className="twin-button twin-button--go">
+                  {creating ? "making room…" : "create room"}
+                </button>
+              </form>
+            )}
+            {online ? (
+              <p className="twin-note">
+                The deck grows with the table — more people means more symbols on every card.
+              </p>
+            ) : null}
             {message ? (
               <p role="status" className="twin-message">
                 {message}
@@ -196,17 +221,24 @@ export function TwinApp() {
 
         {panel === "join" ? (
           <section className="twin-panel" aria-label="Join a room">
-            <RoomJoinControl
-              value={joinCode}
-              gamePath="/things/twin"
-              tone="dark"
-              message={message}
-              onValueChange={(value) => {
-                setJoinCode(value);
-                setMessage(null);
-              }}
-              onJoin={handleJoin}
-            />
+            {!online ? (
+              <p role="status" className="twin-message">
+                Rooms need an internet connection. The one-screen game and solo board are still
+                ready here.
+              </p>
+            ) : (
+              <RoomJoinControl
+                value={joinCode}
+                gamePath="/things/twin"
+                tone="dark"
+                message={message}
+                onValueChange={(value) => {
+                  setJoinCode(value);
+                  setMessage(null);
+                }}
+                onJoin={handleJoin}
+              />
+            )}
           </section>
         ) : null}
       </main>
