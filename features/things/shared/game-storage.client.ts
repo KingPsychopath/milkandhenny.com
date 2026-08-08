@@ -11,12 +11,20 @@ const GAME_PREFIXES = [
   "things:heads-up:",
   "things:spelling-bee:",
   "things:twin:",
+  "things:centre:",
 ];
 
 export function readExpiringLocalValue<T>(key: string): T | null {
   try {
-    const stored = JSON.parse(localStorage.getItem(key) ?? "null") as Partial<ExpiringValue<T>> | null;
-    if (!stored || typeof stored.expiresAt !== "number" || stored.expiresAt <= Date.now() || !("value" in stored)) {
+    const stored = JSON.parse(localStorage.getItem(key) ?? "null") as Partial<
+      ExpiringValue<T>
+    > | null;
+    if (
+      !stored ||
+      typeof stored.expiresAt !== "number" ||
+      stored.expiresAt <= Date.now() ||
+      !("value" in stored)
+    ) {
       localStorage.removeItem(key);
       return null;
     }

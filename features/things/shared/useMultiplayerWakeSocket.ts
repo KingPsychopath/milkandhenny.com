@@ -14,6 +14,8 @@ interface MultiplayerWakeSocketInput {
   path: string;
   hello: Record<string, string | undefined> | null;
   onWake: () => void;
+  /** Receives feature-owned cosmetic messages after JSON parsing. */
+  onMessage?: (message: unknown) => void;
 }
 
 /** Advisory wake-up transport. Durable commands and snapshots remain authoritative over HTTPS. */
@@ -23,9 +25,13 @@ export function useMultiplayerWakeSocket(input: MultiplayerWakeSocketInput) {
   );
   const socketRef = useRef<WebSocket | null>(null);
   const wakeRef = useRef(input.onWake);
+  const messageRef = useRef(input.onMessage);
   useEffect(() => {
     wakeRef.current = input.onWake;
   }, [input.onWake]);
+  useEffect(() => {
+    messageRef.current = input.onMessage;
+  }, [input.onMessage]);
   const helloJson = input.hello ? JSON.stringify({ type: "hello", ...input.hello }) : "";
 
   useEffect(() => {
@@ -93,6 +99,7 @@ export function useMultiplayerWakeSocket(input: MultiplayerWakeSocketInput) {
         } catch {
           return;
         }
+        messageRef.current?.(message);
         if (!isMultiplayerServerMessage(message)) return;
         if (message.type === "pong" && heartbeatTimeout !== null) {
           window.clearTimeout(heartbeatTimeout);
@@ -140,5 +147,9 @@ export function useMultiplayerWakeSocket(input: MultiplayerWakeSocketInput) {
     if (socket?.readyState === WebSocket.OPEN)
       socket.send(JSON.stringify({ type: "changed" } satisfies MultiplayerClientControlMessage));
   }, []);
-  return { state, notify };
+  const sendEphemeral = useCallback((message: Record<string, unknown>) => {
+    const socket = socketRef.current;
+    if (socket?.readyState === WebSocket.OPEN) socket.send(JSON.stringify(message));
+  }, []);
+  return { state, notify, sendEphemeral };
 }

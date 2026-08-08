@@ -9,7 +9,8 @@ export interface Thing {
     | "pitches"
     | "liars"
     | "same-brain"
-    | "twin";
+    | "twin"
+    | "centre";
   name: string;
   description: string;
   eyebrow: string;
@@ -21,13 +22,24 @@ export interface Thing {
     | "/things/pitches"
     | "/things/liars"
     | "/things/same-brain"
-    | "/things/twin";
+    | "/things/twin"
+    | "/things/centre";
   status: "ready";
   symbol: string;
   offline: (typeof THING_OFFLINE)[keyof typeof THING_OFFLINE] | null;
 }
 
 export const THINGS = [
+  {
+    slug: "centre",
+    name: "centre",
+    description: "Hold the start. Find the route. First to the middle wins.",
+    eyebrow: "maze race · 1–8 people",
+    href: "/things/centre",
+    status: "ready",
+    symbol: "◉",
+    offline: THING_OFFLINE.centre,
+  },
   {
     slug: "same-brain",
     name: "same brain",
