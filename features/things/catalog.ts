@@ -25,7 +25,7 @@ export interface Thing {
     | "/things/twin"
     | "/things/centre";
   status: "ready";
-  mark: { kind: "symbol"; value: string } | { kind: "icon"; value: "brain" | "pair" };
+  mark: { kind: "symbol"; value: string } | { kind: "icon"; value: "brain" | "maze" | "pair" };
   offline: (typeof THING_OFFLINE)[keyof typeof THING_OFFLINE] | null;
 }
 
@@ -37,7 +37,7 @@ export const THINGS = [
     eyebrow: "maze race · 1–8 people",
     href: "/things/centre",
     status: "ready",
-    mark: { kind: "symbol", value: "◉" },
+    mark: { kind: "icon", value: "maze" },
     offline: THING_OFFLINE.centre,
   },
   {

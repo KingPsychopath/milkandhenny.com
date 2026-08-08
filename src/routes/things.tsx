@@ -25,6 +25,19 @@ function ThingMark({ mark }: { mark: Thing["mark"] }) {
     );
   }
 
+  if (mark.value === "maze") {
+    return (
+      <svg viewBox="0 0 28 28" className="size-7 fill-none stroke-current" strokeWidth="1.6">
+        <path
+          d="M10.3 3.4A11.2 11.2 0 1 1 9 24M8.1 8.1A7.9 7.9 0 1 1 20.7 17.8M14 10.2a3.8 3.8 0 1 1-3.5 5.3"
+          strokeLinecap="round"
+        />
+        <path d="M14 25.2v-3.3m7.8-7.9h-3.4M14 6.1v4.1" />
+        <circle cx="14" cy="14" r="0.9" className="fill-current stroke-none" />
+      </svg>
+    );
+  }
+
   return (
     <svg viewBox="0 0 28 28" className="size-7 fill-none stroke-current" strokeWidth="1.6">
       <circle cx="10" cy="9" r="3.25" />
