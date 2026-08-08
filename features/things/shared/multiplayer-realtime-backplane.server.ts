@@ -23,16 +23,36 @@ type BackplaneListener = (channel: string, message: string) => void;
 
 function validChannel(value: string) {
   const match =
-    /^things:(remote:v3|spelling-party:v2|draw-country:v1|liars:v1|same-brain:v1|twin:v1):room:([^:]+):events$/.exec(
+    /^things:(remote:v3|spelling-party:v2|draw-country:v1|liars:v1|same-brain:v1|twin:v1|centre:v1):room:([^:]+):events$/.exec(
       value,
     );
   return Boolean(match?.[2] && MULTIPLAYER_ROOM_ID_PATTERN.test(match[2]));
 }
 
-function validWakeMessage(value: string) {
+function validRealtimeMessage(value: string) {
   try {
     const message: unknown = JSON.parse(value);
-    return isMultiplayerServerMessage(message) && message.type === "wake";
+    if (isMultiplayerServerMessage(message) && message.type === "wake") return true;
+    if (!message || typeof message !== "object" || Array.isArray(message)) return false;
+    const presence = message as Record<string, unknown>;
+    return (
+      presence.type === "presence" &&
+      typeof presence.playerId === "string" &&
+      presence.playerId.length <= 80 &&
+      typeof presence.x === "number" &&
+      Number.isFinite(presence.x) &&
+      Math.abs(presence.x) <= 1.1 &&
+      typeof presence.y === "number" &&
+      Number.isFinite(presence.y) &&
+      Math.abs(presence.y) <= 1.1 &&
+      typeof presence.t === "number" &&
+      Number.isInteger(presence.t) &&
+      presence.t >= 0 &&
+      presence.t <= 300_000 &&
+      typeof presence.sequence === "number" &&
+      Number.isInteger(presence.sequence) &&
+      presence.sequence >= 0
+    );
   } catch {
     return false;
   }
@@ -47,7 +67,7 @@ function envelope(value: string): BackplaneEnvelope | null {
       !validChannel(parsed.channel) ||
       typeof parsed.message !== "string" ||
       parsed.message.length > MAX_MESSAGE_LENGTH ||
-      !validWakeMessage(parsed.message) ||
+      !validRealtimeMessage(parsed.message) ||
       typeof parsed.origin !== "string" ||
       parsed.origin.length === 0 ||
       parsed.origin.length > 120

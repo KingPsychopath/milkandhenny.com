@@ -6,6 +6,7 @@ import { DrawCountryRoomService } from "../draw-country/draw-country-room-servic
 import { LiarsRoomService } from "../liars/liars-room-service.server";
 import { SameBrainRoomService } from "../same-brain/same-brain-room-service.server";
 import { TwinRoomService } from "../twin/twin-room-service.server";
+import { CentreRoomService } from "../centre/centre-room-service.server";
 import { MultiplayerTelemetry } from "./multiplayer-telemetry.server";
 import { MultiplayerRealtimeBackplane } from "./multiplayer-realtime-backplane.server";
 
@@ -17,6 +18,7 @@ const multiplayerLayer = Layer.mergeAll(
   LiarsRoomService.layer.pipe(Layer.provide(MultiplayerTelemetry.layer)),
   SameBrainRoomService.layer.pipe(Layer.provide(MultiplayerTelemetry.layer)),
   TwinRoomService.layer,
+  CentreRoomService.layer,
   MultiplayerRealtimeBackplane.layer.pipe(Layer.provide(MultiplayerTelemetry.layer)),
 );
 
@@ -80,7 +82,8 @@ type MultiplayerServices =
   | DrawCountryRoomService
   | LiarsRoomService
   | SameBrainRoomService
-  | TwinRoomService;
+  | TwinRoomService
+  | CentreRoomService;
 
 export function runMultiplayerEffect<A, E>(
   effect: Effect.Effect<A, E, MultiplayerServices>,

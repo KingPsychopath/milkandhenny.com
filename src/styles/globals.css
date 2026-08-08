@@ -147,6 +147,14 @@
   --things-country-outside: oklch(0.57 0.19 28);
   --things-country-inside: oklch(0.53 0.15 253);
   --things-country-point: oklch(0.2 0.01 56.42);
+  --centre-player-0: oklch(0.83 0.16 79);
+  --centre-player-1: oklch(0.75 0.15 25);
+  --centre-player-2: oklch(0.78 0.13 151);
+  --centre-player-3: oklch(0.78 0.11 215);
+  --centre-player-4: oklch(0.72 0.14 275);
+  --centre-player-5: oklch(0.78 0.13 325);
+  --centre-player-6: oklch(0.86 0.08 105);
+  --centre-player-7: oklch(0.78 0.09 185);
   --liars-dead: oklch(0.55 0.21 27);
   --liars-alive: oklch(0.66 0.17 152);
   --liars-house-wall: oklch(0.26 0.016 56.42);
@@ -3244,6 +3252,557 @@
     to {
       opacity: 1;
       translate: 0 0;
+    }
+  }
+
+  /* Centre — the maze is an instrument, so the frame stays quiet and lets the line do the talking. */
+  .centre {
+    --centre-ink: var(--things-cream);
+    --centre-quiet: color-mix(in oklab, var(--things-cream) 58%, transparent);
+    --centre-faint: color-mix(in oklab, var(--things-cream) 36%, transparent);
+    --centre-edge: color-mix(in oklab, var(--things-cream) 16%, transparent);
+    color: var(--centre-ink);
+  }
+
+  .centre-header {
+    display: flex;
+    min-height: 3.5rem;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: max(0.75rem, env(safe-area-inset-top)) 1.5rem 0;
+    font-family: var(--font-geist-mono);
+    font-size: 0.72rem;
+    color: var(--centre-quiet);
+  }
+
+  .centre-header a,
+  .centre-header button {
+    min-height: 2.75rem;
+  }
+
+  .centre-launch,
+  .centre-lobby,
+  .centre-join,
+  .centre-finished {
+    width: 100%;
+    max-width: 42rem;
+    margin-inline: auto;
+    padding: 1.5rem 1.5rem max(4rem, env(safe-area-inset-bottom));
+  }
+
+  .centre-lobby,
+  .centre-join,
+  .centre-finished {
+    padding-top: 3rem;
+  }
+
+  .centre-eyebrow {
+    font-family: var(--font-geist-mono);
+    font-size: 0.68rem;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--centre-faint);
+  }
+
+  .centre-title,
+  .centre-race-title,
+  .centre-finish-time {
+    margin-top: 0.7rem;
+    font-family: var(--font-lora);
+    font-weight: 600;
+    line-height: 0.98;
+    letter-spacing: -0.035em;
+  }
+
+  .centre-title {
+    max-width: 36rem;
+    font-size: clamp(2.8rem, 9vw, 5.5rem);
+  }
+
+  .centre-title--small {
+    font-size: clamp(2.2rem, 7vw, 4.2rem);
+  }
+
+  .centre-lede {
+    max-width: 34rem;
+    margin-top: 1.25rem;
+    font-family: var(--font-lora);
+    font-size: 1.1rem;
+    line-height: 1.65;
+    color: var(--centre-quiet);
+  }
+
+  .centre-note,
+  .centre-message {
+    margin-top: 1rem;
+    font-family: var(--font-geist-mono);
+    font-size: 0.72rem;
+    line-height: 1.6;
+    color: var(--centre-faint);
+  }
+
+  .centre-message {
+    min-height: 1.2rem;
+    color: var(--things-amber);
+  }
+
+  .centre-note--centre {
+    max-width: 34rem;
+    margin-inline: auto;
+    text-align: center;
+  }
+
+  .centre-panel {
+    max-width: 32rem;
+    margin: 2rem auto 0;
+    padding-top: 1.5rem;
+    border-top: 1px solid var(--centre-edge);
+  }
+
+  .centre-panel h2 {
+    font-family: var(--font-lora);
+    font-size: 1.4rem;
+  }
+
+  .centre-field,
+  .centre-difficulty {
+    display: grid;
+    gap: 0.65rem;
+    margin-top: 1.25rem;
+    font-family: var(--font-geist-mono);
+    font-size: 0.72rem;
+    color: var(--centre-quiet);
+  }
+
+  .centre-field input {
+    min-height: 3.2rem;
+    border: 1px solid var(--centre-edge);
+    border-radius: 1rem;
+    background: color-mix(in oklab, var(--things-cream) 6%, transparent);
+    padding: 0 1rem;
+    font-size: 1rem;
+    color: var(--centre-ink);
+  }
+
+  .centre-difficulty {
+    grid-template-columns: 1fr auto;
+    align-items: center;
+    margin-bottom: 1.5rem;
+    padding: 1rem 0;
+    border-block: 1px solid var(--centre-edge);
+  }
+
+  .centre-difficulty strong {
+    color: var(--things-amber);
+  }
+
+  .centre-difficulty input {
+    grid-column: 1 / -1;
+    width: 100%;
+    accent-color: var(--things-amber);
+  }
+
+  .centre-check {
+    display: flex;
+    min-height: 2.75rem;
+    align-items: center;
+    gap: 0.75rem;
+    margin: 1rem 0;
+    font-family: var(--font-geist-mono);
+    font-size: 0.72rem;
+    color: var(--centre-quiet);
+  }
+
+  .centre-check input {
+    width: 1.1rem;
+    height: 1.1rem;
+    accent-color: var(--things-amber);
+  }
+
+  .centre-dev-controls {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
+    gap: 0.75rem;
+    margin-top: 1.5rem;
+    font-family: var(--font-geist-mono);
+    font-size: 0.7rem;
+    color: var(--centre-quiet);
+  }
+
+  .centre-dev-controls label:not(.centre-check) {
+    display: grid;
+    gap: 0.5rem;
+  }
+
+  .centre-dev-controls input {
+    accent-color: var(--things-amber);
+  }
+
+  .centre-button,
+  .centre-race-controls button,
+  .centre-replay-controls button,
+  .centre-player-chip {
+    min-height: 2.75rem;
+    border: 1px solid var(--centre-edge);
+    border-radius: 999px;
+    padding: 0.65rem 1rem;
+    font-family: var(--font-geist-mono);
+    font-size: 0.72rem;
+    color: var(--centre-ink);
+  }
+
+  .centre-button {
+    display: grid;
+    width: 100%;
+    place-items: center;
+    margin-top: 0.75rem;
+  }
+
+  .centre-button--go {
+    border-color: transparent;
+    background: var(--things-amber);
+    color: var(--things-night);
+    font-weight: 700;
+  }
+
+  .centre-button:disabled,
+  .centre-race-controls button:disabled {
+    opacity: 0.35;
+  }
+
+  .centre-qr {
+    width: min(15rem, 70vw);
+    margin: 2rem auto 0;
+    border-radius: 1rem;
+    background: var(--things-cream);
+    padding: 0.6rem;
+  }
+
+  .centre-code {
+    margin-top: 1.4rem;
+    text-align: center;
+    font-family: var(--font-geist-mono);
+    font-size: clamp(2rem, 9vw, 4rem);
+    letter-spacing: 0.16em;
+  }
+
+  .centre-roster,
+  .centre-live-players,
+  .centre-results {
+    margin-top: 1.5rem;
+    border-top: 1px solid var(--centre-edge);
+    font-family: var(--font-geist-mono);
+    font-size: 0.75rem;
+  }
+
+  .centre-roster li {
+    padding: 0.8rem 0;
+    border-bottom: 1px solid var(--centre-edge);
+    color: var(--centre-quiet);
+  }
+
+  .centre-race {
+    display: flex;
+    width: 100%;
+    flex: 1;
+    flex-direction: column;
+    align-items: center;
+    padding: 0.5rem 0.75rem max(1.25rem, env(safe-area-inset-bottom));
+  }
+
+  .centre-race-copy {
+    min-height: 4.6rem;
+    text-align: center;
+  }
+
+  .centre-race-title {
+    font-size: clamp(1.8rem, 7vw, 3.2rem);
+  }
+
+  .centre-board-wrap {
+    position: relative;
+    width: min(96vw, 68svh, 44rem);
+    aspect-ratio: 1;
+    margin-inline: auto;
+  }
+
+  .centre-board {
+    display: block;
+    width: 100%;
+    height: 100%;
+    overflow: visible;
+    touch-action: none;
+    user-select: none;
+    outline: none;
+  }
+
+  .centre-board-wrap:focus-visible {
+    outline: 2px solid var(--things-amber);
+    outline-offset: 3px;
+    border-radius: 50%;
+  }
+
+  .centre-walls {
+    fill: none;
+    stroke: color-mix(in oklab, var(--things-cream) 84%, transparent);
+    stroke-width: 0.016;
+    stroke-linecap: round;
+    vector-effect: non-scaling-stroke;
+  }
+
+  .centre-goal {
+    fill: color-mix(in oklab, var(--things-amber) 18%, transparent);
+    stroke: var(--things-amber);
+    stroke-width: 0.012;
+  }
+
+  .centre-route {
+    fill: none;
+    stroke: var(--centre-route, var(--things-amber));
+    stroke-width: 0.027;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    vector-effect: non-scaling-stroke;
+  }
+
+  .centre-route--muted {
+    opacity: 0.42;
+    stroke-dasharray: 0.035 0.025;
+  }
+
+  .centre-route--active {
+    filter: drop-shadow(0 0 0.018rem color-mix(in oklab, var(--centre-route) 60%, transparent));
+  }
+
+  .centre-rival-dot {
+    fill: var(--centre-route, var(--things-amber));
+    stroke: var(--things-night);
+    stroke-width: 0.012;
+    opacity: 0.72;
+  }
+
+  .centre-start {
+    fill: var(--centre-route, var(--things-amber));
+    stroke: var(--things-night);
+    stroke-width: 0.014;
+  }
+
+  .centre-maze-hidden {
+    opacity: 0;
+  }
+
+  .centre-countdown-mask {
+    fill: var(--things-night);
+  }
+
+  .centre-start-ring {
+    fill: none;
+    stroke: var(--things-amber);
+    stroke-width: 0.012;
+    opacity: 0.86;
+    transform-box: fill-box;
+    transform-origin: center;
+    animation: centre-ring-breathe 900ms ease-in-out infinite alternate;
+  }
+
+  .centre-start-ring--two {
+    animation-delay: 80ms;
+    opacity: 0.55;
+  }
+
+  .centre-start-ring--three {
+    animation-delay: 160ms;
+    opacity: 0.3;
+  }
+
+  .centre-countdown[data-count="2"] .centre-start-ring--three,
+  .centre-countdown[data-count="1"] .centre-start-ring--three,
+  .centre-countdown[data-count="1"] .centre-start-ring--two {
+    opacity: 0;
+    scale: 0.5;
+  }
+
+  .centre-start-copy {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-content: center;
+    pointer-events: none;
+    text-align: center;
+  }
+
+  .centre-start-copy strong {
+    font-family: var(--font-lora);
+    font-size: clamp(2.3rem, 10vw, 5rem);
+    line-height: 1;
+  }
+
+  .centre-start-copy span {
+    margin-top: 0.5rem;
+    font-family: var(--font-geist-mono);
+    font-size: 0.68rem;
+    color: var(--centre-faint);
+  }
+
+  .centre-go-copy {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    pointer-events: none;
+    font-family: var(--font-geist-mono);
+    font-size: clamp(3rem, 18vw, 8rem);
+    font-weight: 800;
+    color: var(--things-amber);
+    animation: centre-go 800ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  }
+
+  .centre-race-controls,
+  .centre-actions,
+  .centre-replay-controls,
+  .centre-replay-players {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 0.5rem;
+    margin-top: 1rem;
+  }
+
+  .centre-live-players {
+    display: flex;
+    width: min(100%, 42rem);
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 0.5rem 1rem;
+    padding-top: 0.8rem;
+  }
+
+  .centre-live-players li {
+    display: grid;
+    grid-template-columns: 0.6rem auto;
+    align-items: center;
+    gap: 0 0.45rem;
+  }
+
+  .centre-live-players li > span,
+  .centre-player-chip > span {
+    width: 0.55rem;
+    height: 0.55rem;
+    border-radius: 50%;
+    background: var(--centre-route, var(--things-amber));
+  }
+
+  .centre-live-players small {
+    grid-column: 2;
+    color: var(--centre-faint);
+  }
+
+  .centre-finish-time {
+    font-size: clamp(4rem, 20vw, 9rem);
+    color: var(--things-amber);
+  }
+
+  .centre-replay {
+    margin-top: 4rem;
+    padding-top: 2rem;
+    border-top: 1px solid var(--centre-edge);
+  }
+
+  .centre-replay-time {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 0.7rem;
+    font-family: var(--font-geist-mono);
+    font-size: 0.7rem;
+    color: var(--centre-faint);
+  }
+
+  .centre-replay-slider {
+    width: 100%;
+    accent-color: var(--things-amber);
+  }
+
+  .centre-player-chip {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .centre-player-chip[aria-pressed="false"] {
+    opacity: 0.38;
+  }
+
+  .centre-results li {
+    display: grid;
+    grid-template-columns: 2rem minmax(0, 1fr) auto;
+    gap: 0.25rem 0.75rem;
+    padding: 0.9rem 0;
+    border-bottom: 1px solid var(--centre-edge);
+  }
+
+  .centre-results li > :last-child {
+    grid-column: 2 / -1;
+    color: var(--centre-faint);
+  }
+
+  .centre-colour-0 {
+    --centre-route: var(--centre-player-0);
+  }
+  .centre-colour-1 {
+    --centre-route: var(--centre-player-1);
+  }
+  .centre-colour-2 {
+    --centre-route: var(--centre-player-2);
+  }
+  .centre-colour-3 {
+    --centre-route: var(--centre-player-3);
+  }
+  .centre-colour-4 {
+    --centre-route: var(--centre-player-4);
+  }
+  .centre-colour-5 {
+    --centre-route: var(--centre-player-5);
+  }
+  .centre-colour-6 {
+    --centre-route: var(--centre-player-6);
+  }
+  .centre-colour-7 {
+    --centre-route: var(--centre-player-7);
+  }
+
+  @media (min-width: 50rem) and (min-height: 42rem) {
+    .centre-board-wrap {
+      width: min(68svh, 44rem);
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .centre-start-ring,
+    .centre-go-copy {
+      animation: none;
+    }
+  }
+
+  @keyframes centre-ring-breathe {
+    to {
+      scale: 0.94;
+      opacity: 1;
+    }
+  }
+
+  @keyframes centre-go {
+    0% {
+      opacity: 0;
+      scale: 0.45;
+    }
+    35% {
+      opacity: 1;
+      scale: 1;
+    }
+    100% {
+      opacity: 0;
+      scale: 1.6;
     }
   }
 }

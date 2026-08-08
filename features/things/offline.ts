@@ -17,6 +17,13 @@ const SHARED_OFFLINE_ASSETS = [
 ] as const;
 
 export const THING_OFFLINE = {
+  centre: {
+    entryPath: "/things/centre",
+    manifestPath: "/manifest.json",
+    catalogueVersion: 1,
+    storageVersion: 1,
+    requiredAssets: [...SHARED_OFFLINE_ASSETS, "/manifest.json"],
+  },
   pitches: {
     entryPath: "/things/pitches",
     manifestPath: "/manifest.json",

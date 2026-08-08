@@ -21,6 +21,11 @@ interface MultiplayerWakeHandlerOptions<Session extends MultiplayerWakeSession> 
   channel: (roomId: string) => string;
   game: MultiplayerGame;
   wakeMessage?: (session: Session) => Record<string, string>;
+  /** Optional feature-owned cosmetic relay. Durable game commands never use this lane. */
+  relayMessage?: (
+    payload: Record<string, unknown>,
+    session: Session,
+  ) => Record<string, unknown> | null;
 }
 
 interface MultiplayerWakeConnection<Session> {
@@ -81,12 +86,12 @@ export function createMultiplayerWakeHandler<Session extends MultiplayerWakeSess
       });
     return backplaneSubscription;
   };
-  const publishWake = async (
+  const publishMessage = async (
     peer: { publish: (channel: string, message: string) => void },
     session: Session,
+    message: string,
   ) => {
     const channel = channelFor(session);
-    const message = wakeFor(session);
     peer.publish(channel, message);
     await ensureBackplane();
     await runMultiplayerEffect(
@@ -97,6 +102,10 @@ export function createMultiplayerWakeHandler<Session extends MultiplayerWakeSess
       }),
     );
   };
+  const publishWake = (
+    peer: { publish: (channel: string, message: string) => void },
+    session: Session,
+  ) => publishMessage(peer, session, wakeFor(session));
   const terminate = (
     peer: {
       id: string;
@@ -236,21 +245,24 @@ export function createMultiplayerWakeHandler<Session extends MultiplayerWakeSess
         );
         return;
       }
-      if (!isMultiplayerClientControlMessage(payload)) {
-        terminate(
-          peer,
-          MULTIPLAYER_SOCKET_CLOSE.policyViolation,
-          "unsupported_message",
-          "unsupported message",
-        );
-        return;
-      }
-      if (payload.type === "ping") {
+      if (isMultiplayerClientControlMessage(payload) && payload.type === "ping") {
         peer.send(JSON.stringify({ type: "pong" }));
-      } else {
+      } else if (isMultiplayerClientControlMessage(payload) && payload.type === "changed") {
         if (now - connection.lastWakeAt < MULTIPLAYER_REALTIME_LIMITS.minimumWakeIntervalMs) return;
         connection.lastWakeAt = now;
         await publishWake(peer, connection.session);
+      } else {
+        const relay = options.relayMessage?.(payload, connection.session) ?? null;
+        if (!relay) {
+          terminate(
+            peer,
+            MULTIPLAYER_SOCKET_CLOSE.policyViolation,
+            "unsupported_message",
+            "unsupported message",
+          );
+          return;
+        }
+        await publishMessage(peer, connection.session, JSON.stringify(relay));
       }
     },
     close(peer) {

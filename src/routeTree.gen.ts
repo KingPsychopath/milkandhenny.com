@@ -38,6 +38,7 @@ import { Route as ThingsLiarsRouteImport } from './routes/things.liars'
 import { Route as ThingsIcebreakerRouteImport } from './routes/things.icebreaker'
 import { Route as ThingsHeadsUpRouteImport } from './routes/things.heads-up'
 import { Route as ThingsDrawCountryRouteImport } from './routes/things.draw-country'
+import { Route as ThingsCentreRouteImport } from './routes/things.centre'
 import { Route as TIdRouteImport } from './routes/t/$id'
 import { Route as EventsSlugRouteImport } from './routes/events/$slug'
 import { Route as AdminEditorRouteImport } from './routes/admin/editor'
@@ -62,6 +63,8 @@ import { Route as ThingsLiarsDevRouteImport } from './routes/things.liars_.dev'
 import { Route as ThingsLiarsRoomIdRouteImport } from './routes/things.liars_.$roomId'
 import { Route as ThingsJudgeRoomIdRouteImport } from './routes/things.judge.$roomId'
 import { Route as ThingsDrawCountryRoomIdRouteImport } from './routes/things.draw-country_.$roomId'
+import { Route as ThingsCentreDevRouteImport } from './routes/things.centre_.dev'
+import { Route as ThingsCentreRoomIdRouteImport } from './routes/things.centre_.$roomId'
 import { Route as PicsAlbumPhotoRouteImport } from './routes/pics/$album/$photo'
 import { Route as ApiWordsSlugRouteRouteImport } from './routes/api/words/$slug/route'
 import { Route as ApiUploadVerifyPinRouteRouteImport } from './routes/api/upload/verify-pin/route'
@@ -267,6 +270,11 @@ const ThingsDrawCountryRoute = ThingsDrawCountryRouteImport.update({
   path: '/draw-country',
   getParentRoute: () => ThingsRoute,
 } as any)
+const ThingsCentreRoute = ThingsCentreRouteImport.update({
+  id: '/centre',
+  path: '/centre',
+  getParentRoute: () => ThingsRoute,
+} as any)
 const TIdRoute = TIdRouteImport.update({
   id: '/t/$id',
   path: '/t/$id',
@@ -386,6 +394,16 @@ const ThingsJudgeRoomIdRoute = ThingsJudgeRoomIdRouteImport.update({
 const ThingsDrawCountryRoomIdRoute = ThingsDrawCountryRoomIdRouteImport.update({
   id: '/draw-country_/$roomId',
   path: '/draw-country/$roomId',
+  getParentRoute: () => ThingsRoute,
+} as any)
+const ThingsCentreDevRoute = ThingsCentreDevRouteImport.update({
+  id: '/centre_/dev',
+  path: '/centre/dev',
+  getParentRoute: () => ThingsRoute,
+} as any)
+const ThingsCentreRoomIdRoute = ThingsCentreRoomIdRouteImport.update({
+  id: '/centre_/$roomId',
+  path: '/centre/$roomId',
   getParentRoute: () => ThingsRoute,
 } as any)
 const PicsAlbumPhotoRoute = PicsAlbumPhotoRouteImport.update({
@@ -745,6 +763,7 @@ export interface FileRoutesByFullPath {
   '/admin/editor': typeof AdminEditorRoute
   '/events/$slug': typeof EventsSlugRoute
   '/t/$id': typeof TIdRoute
+  '/things/centre': typeof ThingsCentreRoute
   '/things/draw-country': typeof ThingsDrawCountryRoute
   '/things/heads-up': typeof ThingsHeadsUpRoute
   '/things/icebreaker': typeof ThingsIcebreakerRoute
@@ -783,6 +802,8 @@ export interface FileRoutesByFullPath {
   '/api/upload/verify-pin': typeof ApiUploadVerifyPinRouteRoute
   '/api/words/$slug': typeof ApiWordsSlugRouteRouteWithChildren
   '/pics/$album/$photo': typeof PicsAlbumPhotoRoute
+  '/things/centre/$roomId': typeof ThingsCentreRoomIdRoute
+  '/things/centre/dev': typeof ThingsCentreDevRoute
   '/things/draw-country/$roomId': typeof ThingsDrawCountryRoomIdRoute
   '/things/judge/$roomId': typeof ThingsJudgeRoomIdRoute
   '/things/liars/$roomId': typeof ThingsLiarsRoomIdRoute
@@ -859,6 +880,7 @@ export interface FileRoutesByTo {
   '/admin/editor': typeof AdminEditorRoute
   '/events/$slug': typeof EventsSlugRoute
   '/t/$id': typeof TIdRoute
+  '/things/centre': typeof ThingsCentreRoute
   '/things/draw-country': typeof ThingsDrawCountryRoute
   '/things/heads-up': typeof ThingsHeadsUpRoute
   '/things/icebreaker': typeof ThingsIcebreakerRoute
@@ -897,6 +919,8 @@ export interface FileRoutesByTo {
   '/api/upload/verify-pin': typeof ApiUploadVerifyPinRouteRoute
   '/api/words/$slug': typeof ApiWordsSlugRouteRouteWithChildren
   '/pics/$album/$photo': typeof PicsAlbumPhotoRoute
+  '/things/centre/$roomId': typeof ThingsCentreRoomIdRoute
+  '/things/centre/dev': typeof ThingsCentreDevRoute
   '/things/draw-country/$roomId': typeof ThingsDrawCountryRoomIdRoute
   '/things/judge/$roomId': typeof ThingsJudgeRoomIdRoute
   '/things/liars/$roomId': typeof ThingsLiarsRoomIdRoute
@@ -974,6 +998,7 @@ export interface FileRoutesById {
   '/admin/editor': typeof AdminEditorRoute
   '/events/$slug': typeof EventsSlugRoute
   '/t/$id': typeof TIdRoute
+  '/things/centre': typeof ThingsCentreRoute
   '/things/draw-country': typeof ThingsDrawCountryRoute
   '/things/heads-up': typeof ThingsHeadsUpRoute
   '/things/icebreaker': typeof ThingsIcebreakerRoute
@@ -1012,6 +1037,8 @@ export interface FileRoutesById {
   '/api/upload/verify-pin': typeof ApiUploadVerifyPinRouteRoute
   '/api/words/$slug': typeof ApiWordsSlugRouteRouteWithChildren
   '/pics/$album/$photo': typeof PicsAlbumPhotoRoute
+  '/things/centre_/$roomId': typeof ThingsCentreRoomIdRoute
+  '/things/centre_/dev': typeof ThingsCentreDevRoute
   '/things/draw-country_/$roomId': typeof ThingsDrawCountryRoomIdRoute
   '/things/judge/$roomId': typeof ThingsJudgeRoomIdRoute
   '/things/liars_/$roomId': typeof ThingsLiarsRoomIdRoute
@@ -1090,6 +1117,7 @@ export interface FileRouteTypes {
     | '/admin/editor'
     | '/events/$slug'
     | '/t/$id'
+    | '/things/centre'
     | '/things/draw-country'
     | '/things/heads-up'
     | '/things/icebreaker'
@@ -1128,6 +1156,8 @@ export interface FileRouteTypes {
     | '/api/upload/verify-pin'
     | '/api/words/$slug'
     | '/pics/$album/$photo'
+    | '/things/centre/$roomId'
+    | '/things/centre/dev'
     | '/things/draw-country/$roomId'
     | '/things/judge/$roomId'
     | '/things/liars/$roomId'
@@ -1204,6 +1234,7 @@ export interface FileRouteTypes {
     | '/admin/editor'
     | '/events/$slug'
     | '/t/$id'
+    | '/things/centre'
     | '/things/draw-country'
     | '/things/heads-up'
     | '/things/icebreaker'
@@ -1242,6 +1273,8 @@ export interface FileRouteTypes {
     | '/api/upload/verify-pin'
     | '/api/words/$slug'
     | '/pics/$album/$photo'
+    | '/things/centre/$roomId'
+    | '/things/centre/dev'
     | '/things/draw-country/$roomId'
     | '/things/judge/$roomId'
     | '/things/liars/$roomId'
@@ -1318,6 +1351,7 @@ export interface FileRouteTypes {
     | '/admin/editor'
     | '/events/$slug'
     | '/t/$id'
+    | '/things/centre'
     | '/things/draw-country'
     | '/things/heads-up'
     | '/things/icebreaker'
@@ -1356,6 +1390,8 @@ export interface FileRouteTypes {
     | '/api/upload/verify-pin'
     | '/api/words/$slug'
     | '/pics/$album/$photo'
+    | '/things/centre_/$roomId'
+    | '/things/centre_/dev'
     | '/things/draw-country_/$roomId'
     | '/things/judge/$roomId'
     | '/things/liars_/$roomId'
@@ -1679,6 +1715,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ThingsDrawCountryRouteImport
       parentRoute: typeof ThingsRoute
     }
+    '/things/centre': {
+      id: '/things/centre'
+      path: '/centre'
+      fullPath: '/things/centre'
+      preLoaderRoute: typeof ThingsCentreRouteImport
+      parentRoute: typeof ThingsRoute
+    }
     '/t/$id': {
       id: '/t/$id'
       path: '/t/$id'
@@ -1845,6 +1888,20 @@ declare module '@tanstack/react-router' {
       path: '/draw-country/$roomId'
       fullPath: '/things/draw-country/$roomId'
       preLoaderRoute: typeof ThingsDrawCountryRoomIdRouteImport
+      parentRoute: typeof ThingsRoute
+    }
+    '/things/centre_/dev': {
+      id: '/things/centre_/dev'
+      path: '/centre/dev'
+      fullPath: '/things/centre/dev'
+      preLoaderRoute: typeof ThingsCentreDevRouteImport
+      parentRoute: typeof ThingsRoute
+    }
+    '/things/centre_/$roomId': {
+      id: '/things/centre_/$roomId'
+      path: '/centre/$roomId'
+      fullPath: '/things/centre/$roomId'
+      preLoaderRoute: typeof ThingsCentreRoomIdRouteImport
       parentRoute: typeof ThingsRoute
     }
     '/pics/$album/$photo': {
@@ -2264,6 +2321,7 @@ declare module '@tanstack/react-router' {
 }
 
 interface ThingsRouteChildren {
+  ThingsCentreRoute: typeof ThingsCentreRoute
   ThingsDrawCountryRoute: typeof ThingsDrawCountryRoute
   ThingsHeadsUpRoute: typeof ThingsHeadsUpRoute
   ThingsIcebreakerRoute: typeof ThingsIcebreakerRoute
@@ -2273,6 +2331,8 @@ interface ThingsRouteChildren {
   ThingsSpellingBeeRoute: typeof ThingsSpellingBeeRoute
   ThingsSpellingPartyRoute: typeof ThingsSpellingPartyRoute
   ThingsTwinRoute: typeof ThingsTwinRoute
+  ThingsCentreRoomIdRoute: typeof ThingsCentreRoomIdRoute
+  ThingsCentreDevRoute: typeof ThingsCentreDevRoute
   ThingsDrawCountryRoomIdRoute: typeof ThingsDrawCountryRoomIdRoute
   ThingsJudgeRoomIdRoute: typeof ThingsJudgeRoomIdRoute
   ThingsLiarsRoomIdRoute: typeof ThingsLiarsRoomIdRoute
@@ -2296,6 +2356,7 @@ interface ThingsRouteChildren {
 }
 
 const ThingsRouteChildren: ThingsRouteChildren = {
+  ThingsCentreRoute: ThingsCentreRoute,
   ThingsDrawCountryRoute: ThingsDrawCountryRoute,
   ThingsHeadsUpRoute: ThingsHeadsUpRoute,
   ThingsIcebreakerRoute: ThingsIcebreakerRoute,
@@ -2305,6 +2366,8 @@ const ThingsRouteChildren: ThingsRouteChildren = {
   ThingsSpellingBeeRoute: ThingsSpellingBeeRoute,
   ThingsSpellingPartyRoute: ThingsSpellingPartyRoute,
   ThingsTwinRoute: ThingsTwinRoute,
+  ThingsCentreRoomIdRoute: ThingsCentreRoomIdRoute,
+  ThingsCentreDevRoute: ThingsCentreDevRoute,
   ThingsDrawCountryRoomIdRoute: ThingsDrawCountryRoomIdRoute,
   ThingsJudgeRoomIdRoute: ThingsJudgeRoomIdRoute,
   ThingsLiarsRoomIdRoute: ThingsLiarsRoomIdRoute,
