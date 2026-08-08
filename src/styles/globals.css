@@ -283,14 +283,14 @@
   }
 
   /* Active states for mobile */
-  button:active:not(:disabled):not(.theme-toggle) {
+  button:active:not(:disabled):not(.lamp-toggle) {
     transform: scale(0.98);
   }
 
   /* ─── Print ─── */
   @media print {
     .skip-link,
-    .theme-toggle,
+    .lamp-toggle,
     .back-to-top,
     .reading-progress-track {
       display: none;
@@ -1629,55 +1629,78 @@
     outline-offset: 2px;
   }
 
-  /* ─── Theme toggle ─── */
-  .theme-toggle {
+  /* ─── Lamp toggle ─── */
+  /* Desktop: top-right corner. Mobile: centred. Photo page: offset left of counter. */
+  .lamp-toggle {
     position: fixed;
-    top: max(0.75rem, env(safe-area-inset-top));
-    right: max(0.75rem, env(safe-area-inset-right));
+    top: 0;
+    right: 24px;
     z-index: 50;
-    display: inline-flex;
-    width: 2.75rem;
-    height: 2.75rem;
+    display: flex;
+    flex-direction: column;
     align-items: center;
-    justify-content: center;
     cursor: pointer;
-    color: var(--stone-500);
-    background: color-mix(in oklab, var(--background) 88%, transparent);
-    border: 1px solid var(--stone-300);
-    border-radius: 999px;
+    background: none;
+    border: none;
+    padding: 0;
     user-select: none;
     transition:
-      color 180ms ease,
-      border-color 180ms ease,
-      opacity 180ms ease,
-      transform 120ms ease;
-    opacity: 0.82;
-    backdrop-filter: blur(8px);
+      transform 0.3s ease,
+      opacity 0.3s ease;
+    will-change: transform, opacity;
   }
 
-  .theme-toggle:hover {
+  .lamp-cord {
+    width: 1.5px;
+    background: var(--stone-300);
+    transition: height 0.6s cubic-bezier(0.22, 1.15, 0.36, 1);
+  }
+
+  .lamp-bulb {
+    display: flex;
+    width: 32px;
+    height: 32px;
+    align-items: center;
+    justify-content: center;
+    border: 1.5px solid var(--stone-300);
+    border-radius: 50%;
+    background: var(--background);
+    color: var(--stone-400);
+    opacity: 0.58;
+    transition:
+      border-color 0.3s,
+      color 0.3s,
+      transform 0.15s,
+      opacity 0.4s ease;
+  }
+
+  .lamp-toggle:hover .lamp-bulb,
+  .lamp-toggle--things .lamp-bulb {
+    border-color: var(--foreground);
     color: var(--foreground);
-    border-color: var(--stone-500);
     opacity: 1;
   }
 
-  .theme-toggle:active {
-    transform: scale(0.94);
+  .lamp-toggle:active .lamp-bulb {
+    transform: scale(0.92);
   }
 
-  .theme-toggle svg {
-    width: 1.125rem;
-    height: 1.125rem;
-    fill: none;
-    stroke: currentColor;
-    stroke-width: 1.6;
-    stroke-linecap: round;
-    stroke-linejoin: round;
+  .lamp-toggle--photo {
+    right: 64px;
   }
 
-  .theme-toggle .theme-toggle-fill {
-    fill: currentColor;
-    stroke: none;
+  @media (max-width: 640px) {
+    .lamp-toggle {
+      right: auto;
+      left: 50%;
+      translate: -50% 0;
+    }
+
+    .lamp-toggle--photo {
+      right: 64px;
+      left: auto;
+      translate: none;
+    }
   }
 
   /* ─── Back to top ─── */

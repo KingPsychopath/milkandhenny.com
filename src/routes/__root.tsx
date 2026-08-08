@@ -11,8 +11,8 @@ import type { ErrorComponentProps } from "@tanstack/react-router";
 import type { ReactNode } from "react";
 import { useEffect } from "react";
 import { BackToTop } from "@/components/BackToTop";
+import { LampToggle } from "@/components/LampToggle";
 import { OfflinePlatform } from "@/components/OfflinePlatform";
-import { ThemeToggle } from "@/components/ThemeToggle";
 import { BASE_URL, SITE_BRAND, SITE_NAME } from "@/lib/shared/config";
 import { LOCAL_KEYS } from "@/lib/shared/storage-keys";
 import "@/src/styles/globals.css";
@@ -74,7 +74,7 @@ function RootDocument({ children }: Readonly<{ children: ReactNode }>) {
         <a href="#main" className="skip-link">
           Skip to main content
         </a>
-        <ThemeToggle />
+        <LampToggle />
         <BackToTop />
         <OfflinePlatform />
         {children}
