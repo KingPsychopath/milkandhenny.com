@@ -6,6 +6,8 @@ import { TwinHand } from "./TwinHand";
 import { TwinRay } from "./TwinRay";
 import { twinCardById, twinMatch } from "./twin-deck";
 import { twinSymbolName } from "./twin-symbols";
+import { playTwinSound } from "./twin-sound.client";
+import { useTwinHeartbeat } from "./useTwinHeartbeat";
 import { useTwinCountdown, useTwinReveal } from "./useTwinReveal";
 import type { TwinSnapshot } from "./types";
 
@@ -19,11 +21,13 @@ import type { TwinSnapshot } from "./types";
 export function TwinBoard({
   snapshot,
   clockOffset,
+  sound,
   onTap,
   onCooldownWarning,
 }: {
   snapshot: TwinSnapshot;
   clockOffset: number;
+  sound: boolean;
   onTap: (symbolId: string, elapsedMs: number) => void;
   onCooldownWarning?: () => void;
 }) {
@@ -67,7 +71,13 @@ export function TwinBoard({
   useEffect(() => {
     setFound(null);
     setShake(0);
+    if (heat?.id) playTwinSound("heat", sound);
+    // `sound` is read, not depended on: a mid-heat mute must not replay the opening tick.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- the heat id is the event
   }, [heat?.id]);
+
+  // Silent until the last few seconds, and only while you can still do something about it.
+  useTwinHeartbeat(remainingMs, sound && live && !landed && !cooling);
 
   // Reconcile with the server: it is the one that decides whether a tap counted.
   useEffect(() => {
@@ -86,9 +96,11 @@ export function TwinBoard({
     if (symbolId === answer) {
       setFound(symbolId);
       void haptics.trigger("success");
+      playTwinSound("connection", sound);
     } else {
       setShake((count) => count + 1);
       void haptics.trigger("warning");
+      playTwinSound("miss", sound);
     }
     onTap(symbolId, elapsedMs);
   };
@@ -194,7 +206,8 @@ export function TwinBoard({
               ? ` · ${(player.landedMs / 1_000).toFixed(2)}s`
               : ""}
           </p>
-        ) : snapshot.phase === "heat" ? (
+        ) : snapshot.phase === "heat" && heat && heat.number <= 1 ? (
+          // Only on the opening heat. After that it is a line of text where the cards should be.
           <p className="twin-status">find the symbol on both cards</p>
         ) : null}
       </div>

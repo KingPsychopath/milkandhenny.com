@@ -22,8 +22,14 @@ export const TWIN_TIMING = {
    * counts inside it, and the result animation wants the pause anyway.
    */
   settleDelayMs: 600,
-  /** How long the result stays up before the next heat deals. */
-  settleHoldMs: 3_400,
+  /**
+   * How long the result stays up before the next heat deals.
+   *
+   * The hunt itself is often over in two seconds, so this is the number that decides whether the game
+   * feels fast. Long enough to read your own line and see who beat you; short enough that the cards
+   * come back before anyone starts talking.
+   */
+  settleHoldMs: 2_400,
   /** Faster than any human nervous system. Rejects prefiring and absurd claims. */
   minReactionMs: 220,
   /**

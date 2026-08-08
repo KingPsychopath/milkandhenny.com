@@ -13,6 +13,7 @@ import {
   twinHeatShouldClose,
   type TwinPlayerStats,
 } from "../../features/things/twin/twin-rules";
+import { TWIN_HEARTBEAT, twinHeartbeatGapMs } from "../../features/things/twin/twin-sound.client";
 import type { TwinLoggedHeat } from "../../features/things/twin/types";
 
 function stats(overrides: Partial<TwinPlayerStats> & { name: string }): TwinPlayerStats {
@@ -42,6 +43,36 @@ describe("wrong taps", () => {
     // Six symbols sprayed buys more lockout than the whole window is long.
     const sprayed = [1, 2, 3, 4, 5, 6].reduce((total, misses) => total + twinCooldownMs(misses), 0);
     expect(sprayed).toBeGreaterThan(TWIN_TIMING.defaultWindowMs);
+  });
+});
+
+describe("the heartbeat", () => {
+  it("stays silent until the last few seconds", () => {
+    expect(twinHeartbeatGapMs(8_000)).toBeNull();
+    expect(twinHeartbeatGapMs(TWIN_HEARTBEAT.startsAtMs + 1)).toBeNull();
+    expect(twinHeartbeatGapMs(TWIN_HEARTBEAT.startsAtMs)).not.toBeNull();
+  });
+
+  it("stops at zero rather than beating forever", () => {
+    expect(twinHeartbeatGapMs(0)).toBeNull();
+    expect(twinHeartbeatGapMs(-500)).toBeNull();
+  });
+
+  /** The whole point: the gap has to close as the clock runs down, never widen. */
+  it("only ever quickens", () => {
+    let previous = Infinity;
+    for (let remaining = TWIN_HEARTBEAT.startsAtMs; remaining > 0; remaining -= 100) {
+      const gap = twinHeartbeatGapMs(remaining);
+      expect(gap).not.toBeNull();
+      expect(gap!).toBeLessThanOrEqual(previous);
+      previous = gap!;
+    }
+  });
+
+  it("runs between the resting and racing beats", () => {
+    expect(twinHeartbeatGapMs(TWIN_HEARTBEAT.startsAtMs)).toBe(TWIN_HEARTBEAT.slowestGapMs);
+    expect(twinHeartbeatGapMs(1)).toBeGreaterThanOrEqual(TWIN_HEARTBEAT.fastestGapMs);
+    expect(twinHeartbeatGapMs(1)).toBeLessThan(TWIN_HEARTBEAT.slowestGapMs);
   });
 });
 

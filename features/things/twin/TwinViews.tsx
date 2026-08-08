@@ -56,6 +56,8 @@ export function TwinLobby({
   onHandSize,
   colour,
   onColour,
+  sound,
+  onSound,
 }: {
   snapshot: TwinSnapshot;
   playerId: string;
@@ -66,6 +68,8 @@ export function TwinLobby({
   onHandSize: (handSize: number) => void;
   colour: boolean;
   onColour: () => void;
+  sound: boolean;
+  onSound: () => void;
 }) {
   const [shareMessage, setShareMessage] = useState<string | null>(null);
   const token =
@@ -160,15 +164,15 @@ export function TwinLobby({
         ) : null}
         <TwinDeckLine snapshot={snapshot} />
 
-        {/* A device preference, not a room one — everyone picks how their own cards look. */}
-        <button
-          type="button"
-          aria-pressed={colour}
-          onClick={onColour}
-          className="twin-button twin-button--quiet"
-        >
-          {colour ? "colour · tap for ink only" : "ink only · tap for colour"}
-        </button>
+        {/* Device preferences, not room ones — everyone picks how their own game looks and sounds. */}
+        <div className="twin-toggles">
+          <button type="button" aria-pressed={colour} onClick={onColour} className="twin-toggle">
+            {colour ? "colour" : "ink only"}
+          </button>
+          <button type="button" aria-pressed={sound} onClick={onSound} className="twin-toggle">
+            {sound ? "sound" : "muted"}
+          </button>
+        </div>
 
         <button
           type="button"
@@ -212,6 +216,8 @@ export function TwinSettle({ snapshot, playerId }: { snapshot: TwinSnapshot; pla
               key={result.playerId}
               className={result.won ? "twin-settle-won" : ""}
               data-you={result.playerId === playerId ? "true" : "false"}
+              // Staggered in finishing order, so the list reads as a photo finish rather than a table.
+              style={{ animationDelay: `${index * 70}ms` }}
             >
               <span className="twin-settle-place">{index + 1}</span>
               <span className="twin-settle-name">

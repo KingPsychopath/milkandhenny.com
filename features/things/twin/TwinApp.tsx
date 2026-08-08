@@ -14,6 +14,7 @@ import { useGamePreferences } from "../shared/useGamePreferences";
 import { TWIN_MAX_HAND, TWIN_MIN_HAND, TWIN_DEFAULT_HAND } from "./twin-deck";
 import { twinBrowserKeys } from "./twin-keys";
 import { createTwinRoomFn } from "./twin-room.functions";
+import { primeTwinAudio } from "./twin-sound.client";
 import { TwinDuelApp } from "./TwinDuelApp";
 
 export function TwinApp() {
@@ -91,6 +92,8 @@ export function TwinApp() {
           <GameLaunchButton
             accent="amber"
             onClick={() => {
+              // Audio may only start from a gesture, so the context is opened on the way in.
+              primeTwinAudio();
               setBoard("duel");
               void haptics.trigger("selection");
             }}
@@ -104,6 +107,7 @@ export function TwinApp() {
             <button
               type="button"
               onClick={() => {
+                primeTwinAudio();
                 setBoard("solo");
                 void haptics.trigger("selection");
               }}

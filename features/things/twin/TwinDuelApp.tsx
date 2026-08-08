@@ -8,6 +8,9 @@ import { TwinRay } from "./TwinRay";
 import { dealTwin, twinCardById, twinMatch } from "./twin-deck";
 import { twinCooldownMs } from "./twin-rules";
 import { twinSymbolName } from "./twin-symbols";
+import { gameBrowserKey } from "../shared/multiplayer-keys";
+import { useGameSound } from "../shared/useGameSound";
+import { playTwinSound, primeTwinAudio } from "./twin-sound.client";
 import { useTwinPalette } from "./useTwinPalette";
 import type { TwinDealtCard } from "./types";
 
@@ -62,6 +65,7 @@ export function TwinDuelApp({
   const haptics = useWebHaptics();
   const boardRef = useRef<HTMLDivElement>(null);
   const palette = useTwinPalette();
+  const sound = useGameSound(gameBrowserKey("twin", 1, "sound"), ["all", "off"]);
   const [players, setPlayers] = useState<1 | 2>(mode === "solo" ? 1 : 2);
   const [round, setRound] = useState(0);
   const { preferences, set } = useGamePreferences("twin-solo", { bestMs: 0 });
@@ -165,12 +169,14 @@ export function TwinDuelApp({
       if (players === 1) setPenaltyMs((current) => current + SOLO_MISS_PENALTY_MS);
       setShake({ seat: seatIndex, at: now });
       void haptics.trigger("warning");
+      playTwinSound("miss", sound.effects);
       return;
     }
 
     // Hold the connection on screen before the card moves. The tap is already locked in.
     setFlash({ seat: seatIndex, symbolId });
     void haptics.trigger("success");
+    playTwinSound("connection", sound.effects);
     window.setTimeout(() => {
       const given = seats[seatIndex].hand[0];
       setSeats((current) =>
@@ -195,6 +201,7 @@ export function TwinDuelApp({
       setFlash(null);
       if (seats[seatIndex].hand.length === 1) {
         setWinner(seatIndex);
+        playTwinSound("win", sound.effects);
         if (players === 1) {
           const total = Date.now() - startedAt + penaltyMs;
           if (preferences.bestMs === 0 || total < preferences.bestMs) set("bestMs", total);
@@ -244,14 +251,22 @@ export function TwinDuelApp({
             ← twin
           </button>
         ) : null}
-        <button
-          type="button"
-          className="twin-duel-palette"
-          aria-pressed={palette.colour}
-          onClick={palette.toggle}
-        >
-          {palette.colour ? "colour" : "ink"}
-        </button>
+        <div className="twin-duel-palette">
+          <button type="button" aria-pressed={palette.colour} onClick={palette.toggle}>
+            {palette.colour ? "colour" : "ink"}
+          </button>
+          <button
+            type="button"
+            aria-pressed={sound.effects}
+            onClick={() => {
+              primeTwinAudio();
+              sound.cycle();
+              playTwinSound("connection", !sound.effects);
+            }}
+          >
+            {sound.effects ? "sound" : "muted"}
+          </button>
+        </div>
         {players === 1 && middle ? (
           <TwinCard
             card={middle}

@@ -2637,6 +2637,34 @@
     color: var(--twin-accent);
   }
 
+  .twin-settle-list li {
+    animation: twin-settle-in 260ms cubic-bezier(0.16, 1, 0.3, 1) backwards;
+  }
+
+  .twin-toggles {
+    margin-top: 1rem;
+    display: flex;
+    justify-content: center;
+    gap: 0.5rem;
+  }
+
+  .twin-toggle {
+    min-height: 2.75rem;
+    border: 1px solid var(--twin-edge);
+    border-radius: 999px;
+    padding-inline: 1.125rem;
+    font-family: var(--font-mono), ui-monospace, monospace;
+    font-size: 0.6875rem;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--twin-faint);
+  }
+
+  .twin-toggle[aria-pressed="true"] {
+    border-color: color-mix(in oklab, var(--things-cream) 34%, transparent);
+    color: var(--twin-ink);
+  }
+
   .twin-settle-place {
     width: 1.25rem;
     color: var(--twin-faint);
@@ -2961,8 +2989,6 @@
     position: absolute;
     top: 50%;
     translate: 0 -50%;
-    min-height: 2.75rem;
-    padding-inline: 0.5rem;
     font-family: var(--font-mono), ui-monospace, monospace;
     font-size: 0.6875rem;
     color: var(--twin-faint);
@@ -2970,10 +2996,25 @@
 
   .twin-duel-quit {
     left: 0.75rem;
+    min-height: 2.75rem;
+    padding-inline: 0.5rem;
   }
 
   .twin-duel-palette {
     right: 0.75rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    text-align: right;
+  }
+
+  .twin-duel-palette button {
+    min-height: 2.25rem;
+    padding-inline: 0.5rem;
+  }
+
+  .twin-duel-palette button[aria-pressed="true"] {
+    color: var(--twin-quiet);
   }
 
   .twin-duel-bar {
@@ -3032,6 +3073,7 @@
     .twin-ray-line,
     .twin-ray-end,
     .twin-chart-node,
+    .twin-settle-list li,
     .twin-card--shake {
       animation: none;
       stroke-dashoffset: 0;
@@ -3075,6 +3117,17 @@
     to {
       opacity: 1;
       scale: 1;
+    }
+  }
+
+  @keyframes twin-settle-in {
+    from {
+      opacity: 0;
+      translate: 0 6px;
+    }
+    to {
+      opacity: 1;
+      translate: 0 0;
     }
   }
 }

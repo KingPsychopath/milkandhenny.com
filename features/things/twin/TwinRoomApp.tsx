@@ -11,6 +11,9 @@ import { TwinFinished } from "./TwinFinished";
 import { twinBrowserKeys } from "./twin-keys";
 import { applyTwinActionFn } from "./twin-room.functions";
 import { TwinHeader, TwinLobby, TwinSettle, TwinStandings } from "./TwinViews";
+import { useGameSound } from "../shared/useGameSound";
+import { gameBrowserKey } from "../shared/multiplayer-keys";
+import { playTwinSound, primeTwinAudio } from "./twin-sound.client";
 import { useTwinPalette } from "./useTwinPalette";
 import { useTwinRoom } from "./useTwinRoom";
 import type { TwinAction, TwinPlayerCredentials } from "./types";
@@ -55,6 +58,8 @@ export function TwinRoom({
   const snapshot = live.snapshot;
   const haptics = useWebHaptics();
   const palette = useTwinPalette();
+  // Two states, not three: twin has nothing that reads aloud, so "no voice" would be a dead option.
+  const sound = useGameSound(gameBrowserKey("twin", 1, "sound"), ["all", "off"]);
   const [removePlayerIds, setRemovePlayerIds] = useState<string[] | null>(null);
   const [confirmingStart, setConfirmingStart] = useState(false);
   const [restarting, setRestarting] = useState(false);
@@ -81,10 +86,19 @@ export function TwinRoom({
   }, [credentials, roomExpiry, roomId, storedExpiry]);
 
   useEffect(() => {
-    if (previousPhase.current !== "settle" && snapshot?.phase === "settle")
-      void haptics.trigger("selection");
-    previousPhase.current = snapshot?.phase;
-  }, [haptics, snapshot?.phase]);
+    const phase = snapshot?.phase;
+    if (previousPhase.current !== phase) {
+      if (phase === "settle") {
+        void haptics.trigger("selection");
+        playTwinSound("settle", sound.effects);
+      }
+      if (phase === "finished") {
+        void haptics.trigger("success");
+        playTwinSound("win", sound.effects);
+      }
+    }
+    previousPhase.current = phase;
+  }, [haptics, snapshot?.phase, sound.effects]);
 
   useEffect(() => {
     const requestId = snapshot?.player?.startRequestId ?? null;
@@ -152,10 +166,20 @@ export function TwinRoom({
           connection={live.connectionState}
           message={live.message}
           onReadyChange={(ready) => void send({ type: "readiness.set", ready })}
-          onStart={() => void send({ type: "game.start" })}
+          onStart={() => {
+            // The browser only lets audio start from a gesture, and this is the last one before play.
+            primeTwinAudio();
+            void send({ type: "game.start" });
+          }}
           onHandSize={(handSize) => void send({ type: "game.configure", handSize })}
           colour={palette.colour}
           onColour={palette.toggle}
+          sound={sound.effects}
+          onSound={() => {
+            primeTwinAudio();
+            sound.cycle();
+            playTwinSound("connection", !sound.effects);
+          }}
         />
         {removePlayerIds ? (
           <GameActionDialog
@@ -219,6 +243,7 @@ export function TwinRoom({
       <TwinBoard
         snapshot={snapshot}
         clockOffset={live.clockOffset}
+        sound={sound.effects}
         onTap={(symbolId, elapsedMs) =>
           void send(
             { type: "answer.tap", heatId: snapshot.heat?.id ?? "", symbolId, elapsedMs },
