@@ -3,6 +3,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { getRequest } from "@tanstack/react-start/server";
 import { SITE_NAME } from "@/lib/shared/config";
 import { AdminDashboard } from "@/features/admin/ui/AdminDashboard";
+import { isAdminSection, type AdminSection } from "@/features/admin/ui/components/AdminSectionNav";
 import { authenticateRequest } from "@/features/auth/auth.server";
 import { signInAdmin } from "@/features/auth/auth.functions";
 
@@ -11,6 +12,9 @@ const getAdminAccess = createServerFn({ method: "GET" }).handler(() =>
 );
 
 export const Route = createFileRoute("/admin/")({
+  validateSearch: (search: Record<string, unknown>): { view: AdminSection } => ({
+    view: isAdminSection(search.view) ? search.view : "overview",
+  }),
   component: AdminPage,
   loader: () => getAdminAccess(),
   head: () => ({
@@ -20,6 +24,8 @@ export const Route = createFileRoute("/admin/")({
 
 function AdminPage() {
   const auth = Route.useLoaderData();
+  const { view } = Route.useSearch();
+  const navigate = Route.useNavigate();
   const isAuthed = auth.ok;
 
   if (!isAuthed) {
@@ -56,7 +62,12 @@ function AdminPage() {
 
   return (
     <main id="main" className="min-h-dvh">
-      <AdminDashboard />
+      <AdminDashboard
+        view={view}
+        onViewChange={(nextView) =>
+          void navigate({ search: { view: nextView }, replace: true, resetScroll: true })
+        }
+      />
     </main>
   );
 }

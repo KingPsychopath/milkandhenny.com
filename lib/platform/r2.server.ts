@@ -77,7 +77,7 @@ const R2_RETRY_BASE_DELAY_MS = Math.max(
 );
 
 const globalForR2 = globalThis as typeof globalThis & {
-  __partyGuestListR2ClientState__?: R2ClientState;
+  __milkHennyR2ClientState__?: R2ClientState;
 };
 
 function parsePositiveInt(value: string | undefined, fallback: number): number {
@@ -122,7 +122,7 @@ function getRuntimeConfig(): R2RuntimeConfig {
 function getClient(): { client: S3Client; config: R2RuntimeConfig } {
   const config = getRuntimeConfig();
   const configKey = JSON.stringify(config);
-  const cached = globalForR2.__partyGuestListR2ClientState__;
+  const cached = globalForR2.__milkHennyR2ClientState__;
 
   if (cached && cached.configKey === configKey) {
     return { client: cached.client, config };
@@ -145,7 +145,7 @@ function getClient(): { client: S3Client; config: R2RuntimeConfig } {
       socketAcquisitionWarningTimeout: config.socketAcquisitionWarningTimeoutMs,
     }),
   });
-  globalForR2.__partyGuestListR2ClientState__ = {
+  globalForR2.__milkHennyR2ClientState__ = {
     client,
     configKey,
   };

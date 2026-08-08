@@ -9,13 +9,13 @@ const MAX_MINUTES = 120;
 /**
  * GET /api/best-dressed/voting/open
  *
- * Read current voting window state (door staff UI).
- * Requires staff auth (admin JWT also works as staff).
+ * Read current voting window state.
+ * Requires admin auth.
  *
  * Returns: { success: true, isOpen, openUntil, secondsRemaining }
  */
 async function handleGET(request: Request) {
-  const authErr = await requireAuth(request, "staff");
+  const authErr = await requireAuth(request, "admin");
   if (authErr) return authErr;
 
   const redis = getRedis();
@@ -64,14 +64,14 @@ async function handleGET(request: Request) {
 /**
  * POST /api/best-dressed/voting/open
  *
- * Temporarily open voting without codes for N minutes (door staff convenience).
- * Requires staff auth (admin JWT also works as staff).
+ * Temporarily open voting without codes for N minutes.
+ * Requires admin auth.
  *
  * Body: { minutes: number }  (0 closes immediately)
  * Returns: { success: true, isOpen, openUntil, minutes, secondsRemaining }
  */
 async function handlePOST(request: Request) {
-  const authErr = await requireAuth(request, "staff");
+  const authErr = await requireAuth(request, "admin");
   if (authErr) return authErr;
 
   const redis = getRedis();

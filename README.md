@@ -66,7 +66,6 @@ R2_PRIVATE_BUCKET=milkandhenny-private
 
 AUTH_SECRET=
 ADMIN_PASSWORD=
-STAFF_PIN=
 UPLOAD_PIN=
 ```
 

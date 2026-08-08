@@ -1,9 +1,8 @@
 import { randomBytes } from "node:crypto";
 
 import { createServerFn } from "@tanstack/react-start";
-import { getCookie, getRequest, setCookie } from "@tanstack/react-start/server";
+import { getCookie, setCookie } from "@tanstack/react-start/server";
 
-import { authenticateRequest } from "@/features/auth/auth.server";
 import { getEvent } from "@/features/events/store.server";
 import {
   isValidScannerToken,
@@ -186,9 +185,7 @@ export const getScannerPageFn = createServerFn({ method: "GET" })
   });
 
 /**
- * Authorise a checkpoint action: a live link for that exact station, or a
- * staff/admin session (so the organiser can always step in from their own
- * phone).
+ * Authorise a checkpoint action with a live link for that exact station.
  */
 async function authoriseCheckpoint(
   token: string | undefined,
@@ -201,8 +198,6 @@ async function authoriseCheckpoint(
       return { ok: true, scannedBy: link.label };
     }
   }
-  const auth = await authenticateRequest(getRequest(), "staff");
-  if (auth.ok) return { ok: true, scannedBy: "staff" };
   return { ok: false };
 }
 

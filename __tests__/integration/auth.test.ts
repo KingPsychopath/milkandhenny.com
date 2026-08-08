@@ -119,7 +119,6 @@ describe("auth security flows", () => {
       ...ORIGINAL_ENV,
       NODE_ENV: "test",
       AUTH_SECRET: "test-secret-key-for-jwt-signing-1234567890-EXTRA-LENGTH",
-      STAFF_PIN: "1234",
       ADMIN_PASSWORD: "a-very-strong-admin-password",
       UPLOAD_PIN: "9999",
     };
@@ -138,7 +137,7 @@ describe("auth security flows", () => {
     expect(safeCompare("short", "much-longer-string")).toBe(false);
   });
 
-  it("issues role-based TTL tokens (admin shorter than staff)", async () => {
+  it("issues role-based TTL tokens (admin shorter than upload)", async () => {
     vi.doMock("@/lib/platform/redis.server", () => ({ getRedis: () => null }));
     const { handleVerifyRequest } = await import("@/features/auth/auth.server");
 
@@ -146,13 +145,13 @@ describe("auth security flows", () => {
       mockRequest({ jsonBody: { password: process.env.ADMIN_PASSWORD } }) as unknown as NextRequest,
       "admin",
     );
-    const staffRes = await handleVerifyRequest(
-      mockRequest({ jsonBody: { pin: process.env.STAFF_PIN } }) as unknown as NextRequest,
-      "staff",
+    const uploadRes = await handleVerifyRequest(
+      mockRequest({ jsonBody: { pin: process.env.UPLOAD_PIN } }) as unknown as NextRequest,
+      "upload",
     );
 
     const adminJson = (await adminRes.json()) as { token: string };
-    const staffJson = (await staffRes.json()) as { token: string };
+    const uploadJson = (await uploadRes.json()) as { token: string };
 
     const decodePayload = (token: string) => {
       const payloadB64 = token.split(".")[1];
@@ -166,14 +165,14 @@ describe("auth security flows", () => {
     };
 
     const adminPayload = decodePayload(adminJson.token);
-    const staffPayload = decodePayload(staffJson.token);
+    const uploadPayload = decodePayload(uploadJson.token);
 
     expect(adminPayload.role).toBe("admin");
-    expect(staffPayload.role).toBe("staff");
+    expect(uploadPayload.role).toBe("upload");
 
     const adminTtl = adminPayload.exp - adminPayload.iat;
-    const staffTtl = staffPayload.exp - staffPayload.iat;
-    expect(adminTtl).toBeLessThan(staffTtl);
+    const uploadTtl = uploadPayload.exp - uploadPayload.iat;
+    expect(adminTtl).toBeLessThan(uploadTtl);
   });
 
   it("revoking a specific jti makes that token unauthorized", async () => {
@@ -207,24 +206,24 @@ describe("auth security flows", () => {
     expect(err?.status).toBe(401);
   });
 
-  it("accepts staff auth via httpOnly cookie (no Authorization header)", async () => {
+  it("accepts upload auth via httpOnly cookie (no Authorization header)", async () => {
     const redis = createRedisMock();
     vi.doMock("@/lib/platform/redis.server", () => ({ getRedis: () => redis }));
     const { handleVerifyRequest, requireAuth } = await import("@/features/auth/auth.server");
 
-    const staffRes = await handleVerifyRequest(
-      mockRequest({ jsonBody: { pin: process.env.STAFF_PIN } }) as unknown as NextRequest,
-      "staff",
+    const uploadRes = await handleVerifyRequest(
+      mockRequest({ jsonBody: { pin: process.env.UPLOAD_PIN } }) as unknown as NextRequest,
+      "upload",
     );
-    const { token } = (await staffRes.json()) as { token: string };
+    const { token } = (await uploadRes.json()) as { token: string };
 
     const req = new RealNextRequest(
-      new Request("http://localhost/api/guests", {
-        headers: { cookie: `mah-auth-staff=${encodeURIComponent(token)}` },
+      new Request("http://localhost/api/upload/transfer/presign", {
+        headers: { cookie: `mah-auth-upload=${encodeURIComponent(token)}` },
       }),
     );
 
-    const err = await requireAuth(req, "staff");
+    const err = await requireAuth(req, "upload");
     expect(err).toBeNull();
   });
 

@@ -8,7 +8,7 @@
  * Config-driven. Every comparison is timing-safe, every verify endpoint is rate-limited.
  * Cron uses Bearer secret directly (no verify flow).
  *
- * Env: AUTH_SECRET (JWT signing), STAFF_PIN, ADMIN_PASSWORD, UPLOAD_PIN, CRON_SECRET
+ * Env: AUTH_SECRET (JWT signing), ADMIN_PASSWORD, UPLOAD_PIN, CRON_SECRET
  */
 
 import { createHash, createHmac, randomBytes, randomUUID, timingSafeEqual } from "crypto";
@@ -29,15 +29,11 @@ type RoleConfig = {
   verify?: VerifyConfig;
 };
 
-type AuthRole = "staff" | "admin" | "upload" | "cron";
+type AuthRole = "admin" | "upload" | "cron";
 type TokenRole = Exclude<AuthRole, "cron">;
 type RevocableRole = Exclude<AuthRole, "cron">;
 
 const ROLES: Record<AuthRole, RoleConfig> = {
-  staff: {
-    envVar: "STAFF_PIN",
-    verify: { bodyField: "pin", sanitize: (v: string) => v.replace(/\D/g, "") },
-  },
   admin: {
     envVar: "ADMIN_PASSWORD",
     verify: { bodyField: "password", sanitize: (v) => v.trim() },
@@ -49,10 +45,9 @@ const ROLES: Record<AuthRole, RoleConfig> = {
   cron: { envVar: "CRON_SECRET" },
 };
 
-const TOKEN_ROLES: TokenRole[] = ["staff", "admin", "upload"];
-const REVOCABLE_ROLES: readonly RevocableRole[] = ["staff", "admin", "upload"];
+const TOKEN_ROLES: TokenRole[] = ["admin", "upload"];
+const REVOCABLE_ROLES: readonly RevocableRole[] = ["admin", "upload"];
 const TOKEN_EXPIRY_SECONDS_BY_ROLE: Record<TokenRole, number> = {
-  staff: 24 * 60 * 60, // 24h
   admin: 60 * 60, // 1h
   upload: 12 * 60 * 60, // 12h
 };
@@ -438,7 +433,7 @@ async function clearStepUpFailures(parentJti: string): Promise<void> {
 /**
  * Protect an API route. Returns null when authorized, or an error response.
  *
- * For staff/admin/upload: Validates JWT (Authorization: Bearer <token>).
+ * For admin/upload: Validates JWT (Authorization: Bearer <token>).
  * For cron: Validates Bearer secret directly.
  */
 async function requireAuth(request: Request, role: AuthRole): Promise<Response | null> {
@@ -454,12 +449,7 @@ async function requireAuth(request: Request, role: AuthRole): Promise<Response |
     return null;
   }
 
-  const acceptedRoles =
-    role === "staff"
-      ? (["admin", "staff"] as const)
-      : role === "upload"
-        ? (["admin", "upload"] as const)
-        : ([role] as const);
+  const acceptedRoles = role === "upload" ? (["admin", "upload"] as const) : ([role] as const);
 
   const token = extractAuthTokenForAcceptedRoles(request, acceptedRoles);
   if (!token) {
@@ -487,12 +477,7 @@ async function requireAuthWithPayload(
     return { error, payload: null };
   }
 
-  const acceptedRoles =
-    role === "staff"
-      ? (["admin", "staff"] as const)
-      : role === "upload"
-        ? (["admin", "upload"] as const)
-        : ([role] as const);
+  const acceptedRoles = role === "upload" ? (["admin", "upload"] as const) : ([role] as const);
 
   const token = extractAuthTokenForAcceptedRoles(request, acceptedRoles);
   if (!token) {
@@ -848,12 +833,7 @@ async function authenticateRequest(
     return { ok: true, role: "cron", token: candidate, payload: null };
   }
 
-  const acceptedRoles =
-    role === "staff"
-      ? (["admin", "staff"] as const)
-      : role === "upload"
-        ? (["admin", "upload"] as const)
-        : ([role] as const);
+  const acceptedRoles = role === "upload" ? (["admin", "upload"] as const) : ([role] as const);
 
   const rawAuth = request.headers.get("authorization") ?? "";
   const bearer = rawAuth.startsWith("Bearer ") ? rawAuth.slice(7).trim() : "";

@@ -1,9 +1,7 @@
 import { useEffect, useState } from "react";
-import { exportToBlob } from "@excalidraw/excalidraw";
 import type { BinaryFiles } from "@excalidraw/excalidraw/types";
 
 import type { PitchSlide } from "../types";
-import { pitchStageExport } from "./pitch-stage.client";
 
 export function PitchSlideThumbnail({
   slide,
@@ -22,22 +20,24 @@ export function PitchSlideThumbnail({
     let cancelled = false;
     let objectUrl = "";
     const timer = window.setTimeout(() => {
-      const stage = pitchStageExport(slide.id, slide.elements);
       const background = getComputedStyle(document.documentElement)
         .getPropertyValue("--background")
         .trim();
-      void exportToBlob({
-        ...stage,
-        files,
-        appState: {
-          exportBackground: true,
-          viewBackgroundColor: background,
-          frameRendering: { enabled: true, clip: true, name: false, outline: false },
-        },
-        mimeType: "image/png",
-        maxWidthOrHeight: 480,
-        exportPadding: 0,
-      })
+      void Promise.all([import("@excalidraw/excalidraw"), import("./pitch-stage.client")])
+        .then(([{ exportToBlob }, { pitchStageExport }]) =>
+          exportToBlob({
+            ...pitchStageExport(slide.id, slide.elements),
+            files,
+            appState: {
+              exportBackground: true,
+              viewBackgroundColor: background,
+              frameRendering: { enabled: true, clip: true, name: false, outline: false },
+            },
+            mimeType: "image/png",
+            maxWidthOrHeight: 480,
+            exportPadding: 0,
+          }),
+        )
         .then((blob: Blob) => {
           if (cancelled) return;
           objectUrl = URL.createObjectURL(blob);

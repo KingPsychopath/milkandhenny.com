@@ -46,7 +46,7 @@ export type TicketRecord = {
 /** What the door needs to make a decision, and nothing else. */
 export type DoorTicketView = {
   id: string;
-  /** Groups tickets that arrived in one purchase or guest-list add. */
+  /** Groups tickets that arrived in one purchase or comp issuance. */
   orderId: string;
   holderName: string;
   ticketTypeName: string;

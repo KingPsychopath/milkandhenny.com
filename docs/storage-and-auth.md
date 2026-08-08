@@ -26,7 +26,6 @@ It also documents why the old model (client storage + `useEffect` fetch + API ro
 
 ### What cookies are in this app
 
-- `mah-auth-staff` (JWT) - staff access (guestlist)
 - `mah-auth-admin` (JWT) - admin access (admin dashboard + admin-only routes)
 - `mah-auth-upload` (JWT) - upload access (optional; see upload note)
 - `mah-bd-voter` (opaque id) - best-dressed per-device vote identity
@@ -37,11 +36,11 @@ Cookies are sent automatically by the browser on same-site requests, which makes
 
 ## Feature-by-feature: what we store where (and why)
 
-### Door check-in (`/door`)
+### Ticket scanning (`/scan/{token}`)
 
 Replaced `/guestlist`, which was removed along with the standalone guest list.
 
-- **Auth**: JWT in **httpOnly cookie** (`mah-auth-staff` or `mah-auth-admin`)
+- **Auth**: revocable scanner-link token in the URL
 - **Why**: the server page gates access and ships the manifest with the first render, so a phone on bad signal makes one request rather than three
 - **Client storage**: no auth. The offline scan queue and downloaded manifest live in component state; the manifest holds truncated hashes, never ticket ids, so a lost device is not a forgery kit
 

@@ -1384,9 +1384,7 @@ async function cmdAuthListSessions(opts: {
   }
 
   log(
-    dim(
-      `Current token versions: admin=${data.currentTv.admin}, staff=${data.currentTv.staff}, upload=${data.currentTv.upload}`,
-    ),
+    dim(`Current token versions: admin=${data.currentTv.admin}, upload=${data.currentTv.upload}`),
   );
   console.log();
 

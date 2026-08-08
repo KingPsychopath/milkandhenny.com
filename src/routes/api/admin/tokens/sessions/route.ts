@@ -5,7 +5,7 @@ import { apiErrorFromRequest } from "@/lib/platform/api-error";
 
 type SessionRecord = {
   jti: string;
-  role: "admin" | "staff" | "upload";
+  role: "admin" | "upload";
   iat: number;
   exp: number;
   tv: number;
@@ -40,14 +40,12 @@ async function handleGET(request: Request) {
       : DEFAULT_SESSION_PAGE_SIZE;
 
     // Fetch current token versions so we can flag invalidated sessions.
-    const [adminTv, staffTv, uploadTv] = await Promise.all([
+    const [adminTv, uploadTv] = await Promise.all([
       redis.get<number>("auth:token-version:admin"),
-      redis.get<number>("auth:token-version:staff"),
       redis.get<number>("auth:token-version:upload"),
     ]);
     const currentTv = {
       admin: typeof adminTv === "number" ? adminTv : 1,
-      staff: typeof staffTv === "number" ? staffTv : 1,
       upload: typeof uploadTv === "number" ? uploadTv : 1,
     } as const;
 

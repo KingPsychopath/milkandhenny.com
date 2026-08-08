@@ -8,7 +8,6 @@ const HIDDEN_ROUTES = [
   "/things/icebreaker",
   "/things/heads-up",
   "/best-dressed",
-  "/guestlist",
   "/t",
 ] as const;
 
@@ -44,7 +43,8 @@ export function BackToTop() {
   if (hidden) return null;
 
   return (
-    <button type="button"
+    <button
+      type="button"
       onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
       aria-label="Back to top"
       className="back-to-top"

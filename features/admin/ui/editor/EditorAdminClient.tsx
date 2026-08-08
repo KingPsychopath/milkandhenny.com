@@ -759,7 +759,8 @@ export function EditorAdminClient() {
         confirmLabel: "delete word",
         intent: "danger",
       }))
-    ) return;
+    )
+      return;
 
     const stepUp = await ensureStepUpToken();
     if (!stepUp.ok) {
@@ -1020,7 +1021,8 @@ export function EditorAdminClient() {
         confirmLabel: "revoke link",
         intent: "danger",
       }))
-    ) return;
+    )
+      return;
 
     setBusy(true);
     setError("");
@@ -1056,7 +1058,11 @@ export function EditorAdminClient() {
           <p className="font-mono text-xs theme-muted mt-1">write, filter, and share posts</p>
         </div>
         <div className="flex items-center gap-4 font-mono text-xs">
-          <Link to="/admin" className="theme-muted hover:text-foreground transition-colors">
+          <Link
+            to="/admin"
+            search={{ view: "overview" }}
+            className="theme-muted hover:text-foreground transition-colors"
+          >
             admin home
           </Link>
           <Link to="/words" className="theme-muted hover:text-foreground transition-colors">

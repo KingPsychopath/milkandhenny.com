@@ -13,7 +13,6 @@ type EnsureStepUpResult =
  *
  * Used by:
  * - `app/admin/AdminDashboard.tsx`
- * - door check-in (staff actions from `/door`)
  */
 
 export function useAdminAuth() {

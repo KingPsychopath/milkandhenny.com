@@ -128,7 +128,6 @@ function applyCachePolicy(pathname: string, response: Response) {
   if (
     pathname.startsWith("/api/") ||
     pathname.startsWith("/admin") ||
-    pathname.startsWith("/door") ||
     pathname.startsWith("/ticket/") ||
     pathname.startsWith("/upload") ||
     pathname.startsWith("/vault/") ||

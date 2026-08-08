@@ -48,14 +48,12 @@ export function BestDressedClient({ initialSnapshot }: BestDressedClientProps) {
   const [totalVotes, setTotalVotes] = useState(initialSnapshot.totalVotes || 0);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedName, setSelectedName] = useState("");
-  const [loading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [showDropdown, setShowDropdown] = useState(false);
   const [voteError, setVoteError] = useState<string | null>(null);
 
   useEffect(() => {
-    // Deep link: /best-dressed?code=amber-crown auto-fills the code field.
-    // Handy for QR codes printed by door staff.
+    // Deep links from printed or shared QR codes can include the vote code.
     const params = new URLSearchParams(window.location.search);
     const code = params.get("code");
     if (code && typeof code === "string") {
@@ -207,14 +205,6 @@ export function BestDressedClient({ initialSnapshot }: BestDressedClientProps) {
     }
   };
 
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-zinc-950 via-purple-950/30 to-zinc-950 flex items-center justify-center">
-        <div className="w-10 h-10 border-3 border-purple-500 border-t-transparent rounded-full animate-spin" />
-      </div>
-    );
-  }
-
   const maxVotes = leaderboard[0]?.count || 1;
   const showCodeInput = codeRequired || !!voteCode.trim();
   const openUntilLabel =
@@ -223,54 +213,60 @@ export function BestDressedClient({ initialSnapshot }: BestDressedClientProps) {
       : null;
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-zinc-950 via-purple-950/30 to-zinc-950">
-      <div className="max-w-lg mx-auto px-5 py-8">
-        {/* Header */}
-        <header className="text-center mb-8">
-          <div className="text-5xl mb-3">👑</div>
-          <h1 className="text-3xl font-bold text-white mb-2">Best Dressed</h1>
-          <p className="text-purple-300/80">
-            {hasVoted ? "Thanks for voting!" : "Who's serving looks tonight?"}
+    <div className="min-h-dvh bg-[var(--background)] text-[var(--foreground)]">
+      <div className="mx-auto max-w-2xl px-6 pb-20 pt-14 sm:pt-20">
+        <header className="border-b theme-border pb-8">
+          <p className="font-mono text-micro font-bold uppercase tracking-widest theme-muted">
+            {SITE_NAME} presents
+          </p>
+          <h1 className="mt-3 font-serif text-5xl font-semibold tracking-tight sm:text-6xl">
+            Best dressed
+          </h1>
+          <p className="mt-4 max-w-lg font-serif text-lg leading-relaxed theme-subtle">
+            {hasVoted
+              ? "Your vote is in. See how the room voted."
+              : "Choose the person who understood the assignment."}
           </p>
         </header>
 
-        <main id="main">
+        <main id="main" className="py-8">
           {!hasVoted ? (
-            /* Voting UI */
-            <div className="space-y-6">
-              {/* Search */}
+            <section aria-labelledby="cast-vote-heading" className="space-y-7">
+              <h2 id="cast-vote-heading" className="font-mono text-sm font-bold">
+                cast your vote
+              </h2>
               <div className="relative">
+                <label htmlFor="best-dressed-search" className="font-mono text-xs theme-muted">
+                  find a ticket holder
+                </label>
                 <input
-                  type="text"
+                  id="best-dressed-search"
+                  type="search"
                   value={searchQuery}
-                  onChange={(e) => {
-                    setSearchQuery(e.target.value);
+                  onChange={(event) => {
+                    setSearchQuery(event.target.value);
+                    setSelectedName("");
                     setShowDropdown(true);
                   }}
                   onFocus={() => setShowDropdown(true)}
-                  placeholder="Search for a guest..."
+                  placeholder="type at least two letters"
                   role="combobox"
                   aria-expanded={showDropdown && filteredGuests.length > 0}
                   aria-controls="best-dressed-listbox"
                   aria-autocomplete="list"
-                  aria-activedescendant={
-                    selectedName ? `bd-option-${selectedName.replace(/\s+/g, "-")}` : undefined
-                  }
-                  className="w-full px-5 py-4 bg-white/10 border border-white/20 rounded-2xl text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent text-lg"
+                  className="mt-2 min-h-14 w-full border-b theme-border-strong bg-transparent font-serif text-xl outline-none placeholder:font-mono placeholder:text-sm placeholder:text-[var(--stone-400)] focus:border-[var(--foreground)]"
                 />
-
-                {/* Dropdown */}
-                {showDropdown && filteredGuests.length > 0 && (
+                {showDropdown && filteredGuests.length > 0 ? (
                   <div
                     id="best-dressed-listbox"
                     role="listbox"
-                    aria-label="Guest suggestions"
-                    className="absolute z-10 w-full mt-2 bg-zinc-900 border border-white/10 rounded-2xl shadow-2xl overflow-hidden"
+                    aria-label="Ticket holder suggestions"
+                    className="absolute z-10 mt-2 w-full border-y theme-border bg-[var(--background)]"
                   >
                     {filteredGuests.map((name) => (
-                      <button type="button"
+                      <button
+                        type="button"
                         key={name}
-                        id={`bd-option-${name.replace(/\s+/g, "-")}`}
                         role="option"
                         aria-selected={selectedName === name}
                         onClick={() => {
@@ -278,155 +274,128 @@ export function BestDressedClient({ initialSnapshot }: BestDressedClientProps) {
                           setSearchQuery(name);
                           setShowDropdown(false);
                         }}
-                        className={`w-full text-left px-5 py-3.5 transition-colors ${
-                          selectedName === name
-                            ? "bg-purple-600 text-white"
-                            : "text-white/80 hover:bg-white/10"
-                        }`}
+                        className="block min-h-12 w-full border-b theme-border-faint px-1 py-3 text-left font-mono text-sm last:border-0 hover:opacity-60"
                       >
                         {name}
                       </button>
                     ))}
                   </div>
-                )}
+                ) : null}
               </div>
 
-              {/* Selected */}
-              {selectedName && (
-                <div className="bg-gradient-to-r from-pink-500/20 to-purple-600/20 border border-purple-500/30 rounded-2xl p-5 text-center">
-                  <p className="text-purple-300 text-sm mb-1">Your vote</p>
-                  <p className="text-2xl font-bold text-white">{selectedName}</p>
+              {selectedName ? (
+                <div className="border-y theme-border py-5">
+                  <p className="font-mono text-micro uppercase tracking-widest theme-muted">
+                    your choice
+                  </p>
+                  <p className="mt-2 font-serif text-3xl font-semibold">{selectedName}</p>
                 </div>
-              )}
-
-              {/* Error message */}
-              {voteError && (
-                <div className="bg-red-500/20 border border-red-500/30 rounded-2xl p-4 text-center">
-                  <p className="text-red-300 text-sm">{voteError}</p>
-                  <button type="button"
-                    onClick={() => window.location.reload()}
-                    className="mt-2 text-red-400 hover:text-red-300 text-sm underline"
-                  >
-                    Refresh page to try again
-                  </button>
-                </div>
-              )}
+              ) : null}
 
               {showCodeInput ? (
-                <div className="space-y-2">
-                  <p className="text-center text-zinc-500 text-sm">
-                    {codeRequired ? "Ask staff for a vote code" : "Vote code (optional)"}
-                  </p>
+                <label className="block">
+                  <span className="font-mono text-xs theme-muted">
+                    {codeRequired ? "one-use vote code" : "vote code (optional)"}
+                  </span>
                   <input
                     type="text"
                     value={voteCode}
-                    onChange={(e) => setVoteCode(e.target.value.toUpperCase())}
+                    onChange={(event) => setVoteCode(event.target.value.toUpperCase())}
                     placeholder="AMBER-CROWN"
-                    className="w-full px-5 py-4 bg-white/10 border border-white/20 rounded-2xl text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent text-lg font-mono tracking-wider text-center"
-                    inputMode="text"
+                    className="mt-2 min-h-12 w-full border-b theme-border-strong bg-transparent text-center font-mono text-lg tracking-wider outline-none placeholder:text-[var(--stone-400)] focus:border-[var(--foreground)]"
                     autoCapitalize="characters"
                     autoCorrect="off"
                   />
-                </div>
+                  {codeRequired ? (
+                    <span className="mt-2 block font-mono text-micro theme-muted">
+                      Ask the organiser for a code.
+                    </span>
+                  ) : null}
+                </label>
               ) : (
-                <p className="text-center text-zinc-500 text-sm">
-                  Voting is open right now — no code needed
-                  {openUntilLabel ? ` (until ${openUntilLabel})` : ""}
+                <p className="font-mono text-xs theme-muted">
+                  Public voting is open{openUntilLabel ? ` until ${openUntilLabel}` : ""}. No code
+                  is needed.
                 </p>
               )}
 
-              {/* Vote Button */}
-              <button type="button"
-                onClick={handleVote}
+              {voteError ? (
+                <div
+                  role="alert"
+                  className="border-y theme-border py-4 font-mono text-xs text-[var(--prose-hashtag)]"
+                >
+                  <p>{voteError}</p>
+                  <button
+                    type="button"
+                    onClick={() => window.location.reload()}
+                    className="mt-3 min-h-11 underline hover:opacity-70"
+                  >
+                    refresh and try again
+                  </button>
+                </div>
+              ) : null}
+
+              <button
+                type="button"
+                onClick={() => void handleVote()}
                 disabled={!selectedName || !voteToken || submitting}
-                className="w-full py-5 bg-gradient-to-r from-pink-500 to-purple-600 hover:from-pink-400 hover:to-purple-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold text-xl rounded-2xl transition-all shadow-lg shadow-purple-500/30 hover:shadow-purple-500/50 hover-scale-slight"
+                className="min-h-14 w-full rounded bg-[var(--foreground)] px-5 font-mono text-sm font-bold text-[var(--background)] hover:opacity-85 disabled:cursor-not-allowed disabled:opacity-40"
               >
-                {submitting ? (
-                  <span className="inline-flex items-center gap-2">
-                    <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                    Voting...
-                  </span>
-                ) : (
-                  "Cast Your Vote 👑"
-                )}
+                {submitting ? "sending vote..." : "submit one vote"}
               </button>
-
-              <p className="text-center text-zinc-500 text-sm">You can only vote once</p>
-            </div>
+              <p className="text-center font-mono text-micro theme-muted">
+                One vote per person. Your choice cannot be changed.
+              </p>
+            </section>
           ) : (
-            /* Leaderboard */
-            <div className="space-y-6">
-              {/* Your vote badge */}
-              <div className="bg-gradient-to-r from-pink-500/20 to-purple-600/20 border border-purple-500/30 rounded-2xl p-4 text-center">
-                <p className="text-purple-300 text-sm">You voted for</p>
-                <p className="text-xl font-bold text-white">{hasVoted}</p>
+            <section aria-labelledby="leaderboard-heading" className="space-y-7">
+              <div className="border-y theme-border py-5">
+                <p className="font-mono text-micro uppercase tracking-widest theme-muted">
+                  you voted for
+                </p>
+                <p className="mt-2 font-serif text-3xl font-semibold">{hasVoted}</p>
               </div>
-
-              {/* Stats */}
-              <div className="text-center text-zinc-400">{totalVotes} total votes</div>
-
-              {/* Leaderboard */}
-              <div className="space-y-3">
-                <h2 className="text-xl font-bold text-white flex items-center gap-2">
-                  <span>🏆</span> Leaderboard
+              <div className="flex items-baseline justify-between gap-4">
+                <h2 id="leaderboard-heading" className="font-mono text-sm font-bold">
+                  leaderboard
                 </h2>
-
-                {leaderboard.length === 0 ? (
-                  <p className="text-zinc-500 text-center py-8">No votes yet</p>
-                ) : (
-                  <div className="space-y-2">
-                    {leaderboard.map((entry, index) => (
-                      <div
-                        key={`${entry.name}-${index}`}
-                        className="relative bg-white/5 rounded-xl overflow-hidden"
-                      >
-                        {/* Progress bar */}
-                        <div
-                          className="absolute inset-0 bg-gradient-to-r from-pink-500/30 to-purple-600/30"
-                          style={{ width: `${(entry.count / maxVotes) * 100}%` }}
-                        />
-
-                        {/* Content */}
-                        <div className="relative flex items-center justify-between px-4 py-3.5">
-                          <div className="flex items-center gap-3">
-                            <span className="text-xl">
-                              {index === 0
-                                ? "👑"
-                                : index === 1
-                                  ? "🥈"
-                                  : index === 2
-                                    ? "🥉"
-                                    : `${index + 1}.`}
-                            </span>
-                            <span
-                              className={`font-medium ${entry.name === hasVoted ? "text-purple-300" : "text-white"}`}
-                            >
-                              {entry.name}
-                              {entry.name === hasVoted && (
-                                <span className="ml-2 text-xs text-purple-400">(your vote)</span>
-                              )}
-                            </span>
-                          </div>
-                          <span className="text-white font-bold">{entry.count}</span>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
+                <p className="font-mono text-xs theme-muted">{totalVotes} total votes</p>
               </div>
-            </div>
+              {leaderboard.length === 0 ? (
+                <p className="border-y theme-border py-8 text-center font-mono text-xs theme-muted">
+                  No results yet.
+                </p>
+              ) : (
+                <ol className="divide-y theme-border border-y theme-border">
+                  {leaderboard.map((entry, index) => (
+                    <li key={`${entry.name}-${index}`} className="relative overflow-hidden py-4">
+                      <span
+                        aria-hidden="true"
+                        className="absolute inset-y-0 left-0 bg-[var(--selection-bg)]"
+                        style={{ width: `${(entry.count / maxVotes) * 100}%` }}
+                      />
+                      <div className="relative flex min-h-8 items-center gap-4 px-2 font-mono text-sm">
+                        <span className="w-6 theme-muted">{index + 1}</span>
+                        <span className="min-w-0 flex-1 truncate font-bold">
+                          {entry.name}
+                          {entry.name === hasVoted ? (
+                            <span className="ml-2 font-normal theme-muted">your vote</span>
+                          ) : null}
+                        </span>
+                        <span className="font-bold">{entry.count}</span>
+                      </div>
+                    </li>
+                  ))}
+                </ol>
+              )}
+            </section>
           )}
         </main>
 
-        {/* Back link */}
-        <footer className="mt-10 text-center space-y-2">
-          <Link
-            to="/party"
-            className="text-zinc-500 hover:text-purple-400 text-sm transition-colors block"
-          >
-            ← Back to party
+        <footer className="border-t theme-border pt-6 font-mono text-micro theme-muted">
+          <Link to="/events" className="inline-flex min-h-11 items-center hover:opacity-70">
+            ← events
           </Link>
-          <p className="text-zinc-600 text-xs">© 2026 {SITE_NAME}</p>
         </footer>
       </div>
     </div>

@@ -124,7 +124,11 @@ export function TicketPage({
         <div className="mt-6 text-center">
           <p className="font-serif text-xl text-foreground">{ticket.holderName}</p>
           <p className="mt-1 font-mono text-micro theme-muted tracking-widest uppercase">
-            {ticket.kind === "comp" ? "guest list" : ticket.kind === "free" ? "free entry" : "paid"}
+            {ticket.kind === "comp"
+              ? "complimentary"
+              : ticket.kind === "free"
+                ? "free entry"
+                : "paid"}
           </p>
           {/* Readable fallback if the camera or the screen refuses to cooperate. */}
           <p className="mt-3 font-mono text-sm theme-subtle tracking-[0.2em]">{ticket.id}</p>

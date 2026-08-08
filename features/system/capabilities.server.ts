@@ -17,12 +17,7 @@ import { getDirectRedisConfig } from "@/lib/platform/redis-direct.server";
 import { hasMediaPublicUrl } from "@/lib/shared/config";
 import { getRuntimeMetadata } from "@/lib/platform/runtime-metadata.server";
 
-const REQUIRED_AUTH_VARIABLES = [
-  "AUTH_SECRET",
-  "ADMIN_PASSWORD",
-  "STAFF_PIN",
-  "UPLOAD_PIN",
-] as const;
+const REQUIRED_AUTH_VARIABLES = ["AUTH_SECRET", "ADMIN_PASSWORD", "UPLOAD_PIN"] as const;
 
 function isConfigured(name: string): boolean {
   return Boolean(process.env[name]?.trim());

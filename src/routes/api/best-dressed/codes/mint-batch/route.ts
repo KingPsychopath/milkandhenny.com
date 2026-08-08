@@ -33,14 +33,14 @@ function parseWordCount(raw: unknown): 1 | 2 {
 /**
  * POST /api/best-dressed/codes/mint-batch
  *
- * Mint many one-time vote codes for printing (door staff).
- * Requires staff auth (admin JWT also works as staff).
+ * Mint many one-time vote codes for printing or sharing.
+ * Requires admin auth.
  *
  * Body: { count: number, ttlMinutes?: number, words?: 1 | 2 }
  * Returns: { success: true, codes: string[], ttlSeconds, expiresAt }
  */
 async function handlePOST(request: Request) {
-  const authErr = await requireAuth(request, "staff");
+  const authErr = await requireAuth(request, "admin");
   if (authErr) return authErr;
 
   const redis = getRedis();
@@ -109,7 +109,7 @@ async function handlePOST(request: Request) {
       );
     }
 
-    // Track minted codes so staff can revoke all without scanning keys.
+    // Track minted codes so the admin can revoke all without scanning keys.
     const pipeline = redis.pipeline();
     for (const code of codes) pipeline.sadd(CODE_INDEX_KEY, code);
     pipeline.expire(CODE_INDEX_KEY, ttlSeconds + 60 * 60);

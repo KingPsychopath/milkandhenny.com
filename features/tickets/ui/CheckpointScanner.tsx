@@ -63,7 +63,7 @@ export function CheckpointScanner({
   initialSummary,
   initialTickets,
 }: {
-  /** Scanner-link token; absent when staff open this from their own session. */
+  /** Scanner-link token used for all checkpoint actions. */
   token?: string;
   eventSlug: string;
   eventTitle: string;

@@ -13,7 +13,7 @@ type RevokeBody = {
 };
 
 function isRevocableRole(value: unknown): value is RevocableRole {
-  return value === "admin" || value === "staff" || value === "upload";
+  return value === "admin" || value === "upload";
 }
 
 /**
@@ -37,10 +37,7 @@ async function handlePOST(request: Request) {
 
   const role = body.role ?? "admin";
   if (role !== "all" && !isRevocableRole(role)) {
-    return Response.json(
-      { error: "role must be one of: admin, staff, upload, all" },
-      { status: 400 },
-    );
+    return Response.json({ error: "role must be one of: admin, upload, all" }, { status: 400 });
   }
 
   try {

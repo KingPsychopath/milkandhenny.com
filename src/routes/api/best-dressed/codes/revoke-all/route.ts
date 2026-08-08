@@ -17,7 +17,7 @@ function codeKey(code: string): string {
  * POST /api/best-dressed/codes/revoke-all
  *
  * Revoke all currently minted one-time vote codes by deleting all known code keys.
- * Requires staff auth (admin JWT also works as staff).
+ * Requires admin auth.
  *
  * This uses a Redis set index that is maintained when minting codes.
  * For backwards compatibility, it falls back to SCAN+DEL if the index is empty.
@@ -25,7 +25,7 @@ function codeKey(code: string): string {
  * Returns: { success: true, deleted, indexed, scanned }
  */
 async function handlePOST(request: Request) {
-  const authErr = await requireAuth(request, "staff");
+  const authErr = await requireAuth(request, "admin");
   if (authErr) return authErr;
 
   const redis = getRedis();

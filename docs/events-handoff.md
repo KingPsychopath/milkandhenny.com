@@ -18,7 +18,7 @@ But it means **real cards will be charged the moment a paid event is published.*
 
 1. Create the real event but add a throwaway ticket type at **£0.50**, quantity 1, marked `hidden` if you don't want it seen
 2. Buy it yourself with a real card
-3. Verify: ticket row appears, email arrives, QR scans at `/door`, refund works
+3. Verify: ticket row appears, email arrives, QR scans through a `/scan/{token}` link, refund works
 4. Refund yourself and delete the ticket type
 
 Stripe keeps the ~20p fee on the refund. That is the entire cost of knowing your live payment path works.
@@ -35,7 +35,7 @@ Live at `milkandhenny.com`, commit `a942265`. 409 tests passing, lint clean, 0 t
 | ---------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
 | Events: model, `/events`, `/events/$slug`, admin CRUD, nav, `.ics`, JSON-LD, OG, sitemap | ✅ done                                                                  |
 | Tickets: issuance, signed QR, `/ticket/$id`, resend-by-email                             | ✅ done                                                                  |
-| Door: `/door`, scanner-first, offline manifest + queue                                   | ✅ done                                                                  |
+| Revocable `/scan/{token}` links, scanner-first, offline manifest + queue                 | ✅ done                                                                  |
 | Postgres: events, tickets, redemptions, checkout sessions                                | ✅ done, migrations run on boot                                          |
 | Stripe: Checkout, webhook, refunds, disputes                                             | ✅ code done, ✅ live config correct, ⚠️ live path unverified            |
 | Email: provider-neutral adapter, ticket template with inline QR                          | ✅ configured, ✅ Gmail delivery rehearsed, ⚠️ iCloud/Outlook unverified |
@@ -83,7 +83,7 @@ to `R2_ACCOUNT_ID`.
 
 ### 5. Finish rotating the leaked secrets
 
-`ADMIN_PASSWORD`, `STAFF_PIN`, `UPLOAD_PIN`, `AUTH_SECRET`, `R2_SECRET_KEY`, `REDIS_REST_TOKEN` and `CRON_SECRET` were printed into a chat transcript on 29 July by a `railway variables` call that returned values, not just names. Nothing hostile happened; rotate the short human-memorable ones at minimum.
+`ADMIN_PASSWORD`, `UPLOAD_PIN`, `AUTH_SECRET`, `R2_SECRET_KEY`, `REDIS_REST_TOKEN` and `CRON_SECRET` were printed into a chat transcript on 29 July by a `railway variables` call that returned values, not just names. Nothing hostile happened; rotate the short human-memorable ones at minimum.
 
 `AUTH_SECRET` was rotated across web and media-worker before any real event
 tickets were issued. The other listed secrets still need rotation.
@@ -136,7 +136,7 @@ docker run -d --name mah-test-pg -e POSTGRES_PASSWORD=test \
 
 Postgres 18 deliberately — it matches what Railway provisions (18.4). Postgres 19 does not exist.
 
-`.env.local` (gitignored) needs `DATABASE_URL`, `AUTH_SECRET`, `ADMIN_PASSWORD`, `STAFF_PIN`, `UPLOAD_PIN`, and a `STRIPE_SECRET_KEY`.
+`.env.local` (gitignored) needs `DATABASE_URL`, `AUTH_SECRET`, `ADMIN_PASSWORD`, `UPLOAD_PIN`, and a `STRIPE_SECRET_KEY`.
 
 Database-backed test suites **skip** when no Postgres is reachable — check the run output rather than assuming green means everything ran.
 

@@ -1,9 +1,9 @@
-export type RevokeRole = "admin" | "staff" | "upload" | "all";
-export const REVOKE_ROLES: readonly RevokeRole[] = ["admin", "staff", "upload", "all"];
+export type RevokeRole = "admin" | "upload" | "all";
+export const REVOKE_ROLES: readonly RevokeRole[] = ["admin", "upload", "all"];
 
 export type TokenSession = {
   jti: string;
-  role: "admin" | "staff" | "upload";
+  role: "admin" | "upload";
   iat: number;
   exp: number;
   tv: number;
@@ -18,7 +18,7 @@ export type TokenSessionsListResponse =
       count: number;
       sessions: TokenSession[];
       now: number;
-      currentTv: { admin: number; staff: number; upload: number };
+      currentTv: { admin: number; upload: number };
     }
   | { error?: string };
 

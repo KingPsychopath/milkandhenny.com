@@ -30,7 +30,7 @@ function AdminEditorPage() {
       <main id="main" className="min-h-dvh flex items-center justify-center px-6">
         <div className="text-center space-y-3">
           <p className="font-mono text-sm theme-muted">admin session required.</p>
-          <Link to="/admin" className="font-mono text-xs underline">
+          <Link to="/admin" search={{ view: "overview" }} className="font-mono text-xs underline">
             go to admin login
           </Link>
         </div>

@@ -2,7 +2,6 @@ import { Effect } from "effect";
 import { createServerFn } from "@tanstack/react-start";
 import { getRequest, getRequestIP } from "@tanstack/react-start/server";
 
-import { authenticateRequest } from "@/features/auth/auth.server";
 import { getBaseUrlForRequest } from "@/lib/shared/config";
 import { EventsService } from "@/features/events/events-service.server";
 import { runEventsResult } from "@/features/events/events-runtime.server";
@@ -217,11 +216,10 @@ export const resendTicketsFn = createServerFn({ method: "POST" })
 export type DoorRedeemResult = { authorised: false } | { authorised: true; outcome: RedeemOutcome };
 
 /**
- * A door action is allowed by a staff/admin session, or by a live scanner
- * link for that event's door. Returns who is scanning, for the audit trail.
+ * A door action is allowed by a live scanner link for that event's door.
+ * Returns who is scanning, for the audit trail.
  */
 async function authoriseDoor(
-  request: Request,
   eventSlug: string,
   scannerToken: string | undefined,
 ): Promise<{ ok: true; redeemedBy?: string } | { ok: false }> {
@@ -231,8 +229,7 @@ async function authoriseDoor(
       return { ok: true, redeemedBy: link.label };
     }
   }
-  const auth = await authenticateRequest(request, "staff");
-  return auth.ok ? { ok: true } : { ok: false };
+  return { ok: false };
 }
 
 export const redeemTicketFn = createServerFn({ method: "POST" })
@@ -246,8 +243,7 @@ export const redeemTicketFn = createServerFn({ method: "POST" })
     }) => data,
   )
   .handler(async ({ data }): Promise<DoorRedeemResult> => {
-    const request = getRequest();
-    const auth = await authoriseDoor(request, data.eventSlug, data.scannerToken);
+    const auth = await authoriseDoor(data.eventSlug, data.scannerToken);
     if (!auth.ok) return { authorised: false };
 
     const result = await runEventsResult(
@@ -282,8 +278,7 @@ export type DoorDataResult =
 export const getDoorDataFn = createServerFn({ method: "GET" })
   .validator((data: { eventSlug: string; scannerToken?: string }) => data)
   .handler(async ({ data }): Promise<DoorDataResult> => {
-    const request = getRequest();
-    const auth = await authoriseDoor(request, data.eventSlug, data.scannerToken);
+    const auth = await authoriseDoor(data.eventSlug, data.scannerToken);
     if (!auth.ok) return { authorised: false };
 
     const result = await runEventsResult(
@@ -309,47 +304,6 @@ export const getDoorDataFn = createServerFn({ method: "GET" })
       summary: { total: summary.valid, redeemed: summary.redeemed },
       tickets: summary.tickets.map(({ email: _email, ...rest }) => rest),
     };
-  });
-
-export type DoorPageResult =
-  | { isAuthed: false }
-  | {
-      isAuthed: true;
-      events: { slug: string; title: string; startsAt: string }[];
-      door: Extract<DoorDataResult, { authorised: true }> | null;
-    };
-
-/**
- * The door page payload: staff auth, which events can be worked, and the
- * selected event's manifest in one round trip so a phone on bad signal makes
- * one request rather than three.
- */
-export const getDoorPageFn = createServerFn({ method: "GET" })
-  .validator((data: { eventSlug?: string }) => data)
-  .handler(async ({ data }): Promise<DoorPageResult> => {
-    const request = getRequest();
-    const auth = await authenticateRequest(request, "staff");
-    if (!auth.ok) return { isAuthed: false };
-
-    const listed = await runEventsResult(
-      Effect.gen(function* () {
-        const events = yield* EventsService;
-        return yield* events.list({ includeHidden: true });
-      }),
-    );
-
-    // Drafts are included deliberately: a door may open before an event is
-    // public, and staff already hold a privileged session here.
-    const events = (listed.ok ? listed.value : [])
-      .filter((event) => event.status !== "archived")
-      .slice(0, 25)
-      .map((event) => ({ slug: event.slug, title: event.title, startsAt: event.startsAt }));
-
-    const slug = data.eventSlug ?? events[0]?.slug;
-    if (!slug) return { isAuthed: true, events, door: null };
-
-    const door = await getDoorDataFn({ data: { eventSlug: slug } });
-    return { isAuthed: true, events, door: door.authorised ? door : null };
   });
 
 export type StartCheckoutResult =

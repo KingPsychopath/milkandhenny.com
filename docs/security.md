@@ -6,12 +6,11 @@ Authentication, protections, rate limiting, and what to do when credentials leak
 
 ## Authentication
 
-| Gate           | Env var                        | Protects                                                   | Verified by                         |
-| -------------- | ------------------------------ | ---------------------------------------------------------- | ----------------------------------- |
-| Staff PIN      | `STAFF_PIN`                    | Guest list page access (door staff)                        | `POST /api/guests/verify-staff-pin` |
-| Admin password | `ADMIN_PASSWORD`               | Manage (add/remove/import, wipe best-dressed), admin tools | `POST /api/admin/verify`            |
-| Upload PIN     | `UPLOAD_PIN`                   | Web upload page (`/upload`)                                | `POST /api/upload/verify-pin`       |
-| Word share PIN | Per-share link (stored hashed) | Optional second factor for signed word links               | `POST /api/words/share/verify`      |
+| Gate           | Env var                        | Protects                                                   | Verified by                    |
+| -------------- | ------------------------------ | ---------------------------------------------------------- | ------------------------------ |
+| Admin password | `ADMIN_PASSWORD`               | Manage (add/remove/import, wipe best-dressed), admin tools | `POST /api/admin/verify`       |
+| Upload PIN     | `UPLOAD_PIN`                   | Web upload page (`/upload`)                                | `POST /api/upload/verify-pin`  |
+| Word share PIN | Per-share link (stored hashed) | Optional second factor for signed word links               | `POST /api/words/share/verify` |
 
 All role gates are runtime environment variables and never enter the client bundle.
 Words do **not** use a global reader env PIN: PIN is configured per share link and stored as a hash.
@@ -50,7 +49,7 @@ What makes an existing token stop working:
 What does _not_ revoke existing tokens:
 
 - **Deploys / rebuilds** (code changes alone).
-- **Changing `ADMIN_PASSWORD`, `STAFF_PIN`, or `UPLOAD_PIN`**: this only affects _future_ logins. Existing JWTs remain valid until they expire or are revoked/invalidated.
+- **Changing `ADMIN_PASSWORD` or `UPLOAD_PIN`**: this only affects _future_ logins. Existing JWTs remain valid until they expire or are revoked/invalidated.
 
 Notes:
 
@@ -67,7 +66,7 @@ These endpoints are intended for operational control and incident response.
 | Step-up token           | `POST /api/admin/step-up`                 | Requires an admin session (cookie or `Authorization: Bearer <adminJWT>`) + body `{ password }`. Returns short-lived step-up token |
 | List token sessions     | `GET /api/admin/tokens/sessions`          | Redis-backed list of issued sessions by `jti` with status + expiry                                                                |
 | Revoke one session      | `DELETE /api/admin/tokens/sessions/{jti}` | Requires `x-admin-step-up` header                                                                                                 |
-| Revoke many sessions    | `POST /api/admin/tokens/revoke`           | Body `{ role: "admin" \| "staff" \| "upload" \| "all" }` + requires `x-admin-step-up`                                             |
+| Revoke many sessions    | `POST /api/admin/tokens/revoke`           | Body `{ role: "admin" \| "upload" \| "all" }` + requires `x-admin-step-up`                                                        |
 
 ### CLI auth reliability note (learning)
 
@@ -113,7 +112,7 @@ Revoking a session does not delete the session record immediately. We keep a sma
 
 The actual “revoked” enforcement is separate (`auth:revoked-jti:{jti}`) and is checked on every authenticated request. Both keys age out automatically around the token expiry.
 
-Admin tokens act as the master token for normal app gates: an `admin` JWT is accepted anywhere `staff` or `upload` access is required. Dedicated `STAFF_PIN` / `UPLOAD_PIN` flows still exist for role-specific sharing and least-privilege usage.
+Admin tokens act as the master token for normal app gates: an `admin` JWT is accepted anywhere upload access is required. The dedicated `UPLOAD_PIN` flow remains for least-privilege transfer uploads. Event workers use revocable scanner links instead of a shared PIN.
 
 ---
 
@@ -131,20 +130,20 @@ Admin tokens act as the master token for normal app gates: an `admin` JWT is acc
 
 ## Best-Dressed Protections
 
-| Risk                | Mitigation                                                                                                                                                                                                                                         |
-| ------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Vote stuffing       | Default: staff-minted one-time vote codes (single-use). Also uses a one-time vote token (GET issues, POST consumes) + a coarse per-IP rate limit as a backstop. Optional: door staff can temporarily open voting without codes for a fixed window. |
-| Fake names          | Server validates the voted name is in the guest list. Arbitrary names rejected.                                                                                                                                                                    |
-| Anyone wiping votes | `DELETE /api/best-dressed` requires admin token.                                                                                                                                                                                                   |
+| Risk                | Mitigation                                                                                                                                                                                                                              |
+| ------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Vote stuffing       | Default: admin-minted one-time vote codes (single-use). Also uses a one-time vote token (GET issues, POST consumes) + a coarse per-IP rate limit as a backstop. The admin can temporarily open voting without codes for a fixed window. |
+| Fake names          | Server validates the voted name against live ticket holders. Arbitrary names are rejected.                                                                                                                                              |
+| Anyone wiping votes | `DELETE /api/best-dressed` requires admin token.                                                                                                                                                                                        |
 
 Notes:
 
-- Codes are the primary "one vote per person" mechanism. Door staff can choose how long codes last (TTL) when minting single codes or printing a batch sheet.
+- Codes are the primary "one vote per person" mechanism. The admin chooses how long codes last when creating a batch.
 - QR codes are just deep links to `/best-dressed?code=BD-XXXXXXXX` to avoid typing (drunk-friendly).
 - There are two distinct "gates" depending on whether voting is open:
-  - Voting closed (default): requires a staff-minted one-time code (`best-dressed:code:*`). This is the "one vote per person" mechanism.
+  - Voting closed (default): requires an admin-minted one-time code (`best-dressed:code:*`). This is the "one vote per person" mechanism.
   - Voting open (time window): codes are not required; voting is limited to "one vote per device" using a browser cookie (`mah-bd-voter`) and a per-session marker (`best-dressed:voted:<session>`).
-- Staff can use an "event QR" (poster/powerpoint) that links to `/best-dressed` when voting is open.
+- The organiser can use a poster or slide QR that links to `/best-dressed` when voting is open.
 - If Redis is unavailable, best-dressed falls back to in-memory storage (local dev only). In production, configure Redis to keep votes stable.
 
 ---
@@ -155,10 +154,10 @@ Public images are served from `pics.milkandhenny.com` (the public R2 bucket's cu
 
 In **Cloudflare Dashboard → Security → WAF → Rate limiting rules**, create two rules:
 
-| Rule           | Match                   | Per IP | Threshold     | Action | Duration |
-| -------------- | ----------------------- | ------ | ------------- | ------ | -------- |
-| Album images   | URI path `/albums/*`    | Yes    | 100 req / 10s | Block  | 10s      |
-| Transfer media | URI path `/api/transfers/*/media/*` | Yes | 100 req / 10s | Block | 10s |
+| Rule           | Match                               | Per IP | Threshold     | Action | Duration |
+| -------------- | ----------------------------------- | ------ | ------------- | ------ | -------- |
+| Album images   | URI path `/albums/*`                | Yes    | 100 req / 10s | Block  | 10s      |
+| Transfer media | URI path `/api/transfers/*/media/*` | Yes    | 100 req / 10s | Block  | 10s      |
 
 > Free plan limits: 10-second period and 10-second block duration only.
 
@@ -209,13 +208,13 @@ These are the highest-impact credentials — they grant read/write/delete access
 5. **Redeploy**
 6. Test: `pnpm cli transfers list`
 
-**Downtime:** Guest list polling and transfer pages return errors during rotation (~30s). CDN-cached transfer pages keep serving for up to 60s.
+**Downtime:** Transfer pages return errors during rotation (~30s). CDN-cached transfer pages keep serving for up to 60s.
 
-**Data at risk:** KV token grants read/write to guest names, votes, and transfer metadata (not files — those are in R2).
+**Data at risk:** The Redis token grants read/write to vote and transfer metadata (not files — those are in R2).
 
-### Admin password, Upload PIN, or Staff PIN leaked
+### Admin password or Upload PIN leaked
 
-1. **Update production secrets** → `ADMIN_PASSWORD`, `UPLOAD_PIN`, and/or `STAFF_PIN`
+1. **Update production secrets** → `ADMIN_PASSWORD` and/or `UPLOAD_PIN`
 2. **Redeploy**
 3. Update `.env.local` for local dev
 
@@ -231,13 +230,13 @@ These are the highest-impact credentials — they grant read/write/delete access
 
 ### Quick-reference: where each secret lives
 
-| Secret/config                                 | Local development | Production host | Source of truth   |
-| --------------------------------------------- | :---------------: | :-------------: | ----------------- |
-| `R2_ACCESS_KEY` / `R2_SECRET_KEY`             |        Yes        |       Yes       | Cloudflare R2     |
-| `REDIS_REST_URL` / `REDIS_REST_TOKEN`         |        Yes        |       Yes       | Redis provider    |
-| `STAFF_PIN` / `ADMIN_PASSWORD` / `UPLOAD_PIN` |        Yes        |       Yes       | Secret manager    |
-| `CRON_SECRET`                                 |     Optional      |       Yes       | Secret manager    |
-| `VITE_MEDIA_PUBLIC_URL` / `VITE_BASE_URL`     |        Yes        |   Build-time    | Deployment config |
+| Secret/config                             | Local development | Production host | Source of truth   |
+| ----------------------------------------- | :---------------: | :-------------: | ----------------- |
+| `R2_ACCESS_KEY` / `R2_SECRET_KEY`         |        Yes        |       Yes       | Cloudflare R2     |
+| `REDIS_REST_URL` / `REDIS_REST_TOKEN`     |        Yes        |       Yes       | Redis provider    |
+| `ADMIN_PASSWORD` / `UPLOAD_PIN`           |        Yes        |       Yes       | Secret manager    |
+| `CRON_SECRET`                             |     Optional      |       Yes       | Secret manager    |
+| `VITE_MEDIA_PUBLIC_URL` / `VITE_BASE_URL` |        Yes        |   Build-time    | Deployment config |
 
 ### General incident checklist
 

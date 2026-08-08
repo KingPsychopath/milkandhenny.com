@@ -280,7 +280,7 @@ async function readErrorMessage(response: Response, fallback: string): Promise<s
     : fallback;
 }
 
-/** Comp a guest onto the list: name, optional email, type, and plus-ones. */
+/** Issue complimentary tickets: name, optional email, type, and plus-ones. */
 function AddGuestForm({
   event,
   authFetch,
@@ -325,7 +325,7 @@ function AddGuestForm({
       const emailed =
         data && typeof data === "object" && "emailed" in data && data.emailed === true;
       onStatus(
-        emailed ? `${name.trim()} added — ticket emailed` : `${name.trim()} added to the list`,
+        emailed ? `${name.trim()} added — ticket emailed` : `${name.trim()} received a comp ticket`,
       );
       setName("");
       setEmail("");
@@ -380,7 +380,7 @@ function AddGuestForm({
           disabled={busy || !ticketTypeId}
           className="min-h-10 rounded bg-foreground px-4 font-mono text-xs text-background disabled:opacity-50"
         >
-          {busy ? "adding…" : "add to guest list (free)"}
+          {busy ? "issuing…" : "issue comp ticket"}
         </button>
       </div>
     </form>
@@ -1846,12 +1846,6 @@ function EventOperations({
         {summary.grossMinor !== summary.netMinor && summary.currency && (
           <span>{formatMoney(summary.grossMinor, summary.currency)} gross</span>
         )}
-        <a
-          href={`/door?event=${encodeURIComponent(event.slug)}`}
-          className="underline hover:text-foreground transition-colors"
-        >
-          open scanner ↗
-        </a>
       </div>
 
       <GuestRequestsAdmin
@@ -1870,7 +1864,7 @@ function EventOperations({
           aria-expanded={showAddGuest}
           className="font-mono text-xs theme-muted hover:text-foreground transition-colors"
         >
-          {showAddGuest ? "− close guest form" : "+ add guest (comp)"}
+          {showAddGuest ? "− close comp form" : "+ issue comp ticket"}
         </button>
         {showAddGuest && (
           <AddGuestForm
@@ -1933,13 +1927,13 @@ function EventOperations({
                     ticket ↗
                   </a>
                 </div>
-                <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1">
+                <div className="mt-3 flex flex-wrap items-center gap-2">
                   {isLive && !ticket.redeemedAt && (
                     <button
                       type="button"
                       disabled={busy}
                       onClick={() => void runTicketAction(ticket, "redeem")}
-                      className="font-mono text-micro theme-muted hover:text-foreground transition-colors disabled:opacity-50"
+                      className="min-h-11 rounded border theme-border px-3 font-mono text-micro font-bold hover:opacity-70 disabled:opacity-50"
                     >
                       check in
                     </button>
@@ -1949,7 +1943,7 @@ function EventOperations({
                       type="button"
                       disabled={busy}
                       onClick={() => void runTicketAction(ticket, "unredeem")}
-                      className="font-mono text-micro theme-muted hover:text-foreground transition-colors disabled:opacity-50"
+                      className="min-h-11 rounded border theme-border px-3 font-mono text-micro theme-muted hover:opacity-70 disabled:opacity-50"
                     >
                       undo check-in
                     </button>
@@ -1959,7 +1953,7 @@ function EventOperations({
                       type="button"
                       disabled={busy}
                       onClick={() => void runTicketAction(ticket, "resend")}
-                      className="font-mono text-micro theme-muted hover:text-foreground transition-colors disabled:opacity-50"
+                      className="min-h-11 rounded border theme-border px-3 font-mono text-micro font-bold text-[var(--prose-hashtag)] hover:opacity-70 disabled:opacity-50"
                     >
                       resend email
                     </button>
@@ -1969,7 +1963,7 @@ function EventOperations({
                       type="button"
                       disabled={busy}
                       onClick={() => void runTicketAction(ticket, "refund")}
-                      className="font-mono text-micro theme-muted hover:text-foreground transition-colors disabled:opacity-50"
+                      className="min-h-11 rounded border theme-border px-3 font-mono text-micro text-[var(--prose-hashtag)] hover:opacity-70 disabled:opacity-50"
                     >
                       refund order
                     </button>
@@ -1979,7 +1973,7 @@ function EventOperations({
                       type="button"
                       disabled={busy}
                       onClick={() => void runTicketAction(ticket, "void")}
-                      className="font-mono text-micro theme-muted hover:text-foreground transition-colors disabled:opacity-50"
+                      className="min-h-11 rounded border theme-border px-3 font-mono text-micro text-[var(--prose-hashtag)] hover:opacity-70 disabled:opacity-50"
                     >
                       cancel ticket
                     </button>
@@ -1994,7 +1988,7 @@ function EventOperations({
                           : { id: ticket.id, name: ticket.holderName, email: ticket.email ?? "" },
                       )
                     }
-                    className="font-mono text-micro theme-muted hover:text-foreground transition-colors disabled:opacity-50"
+                    className="min-h-11 px-2 font-mono text-micro theme-muted underline hover:opacity-70 disabled:opacity-50"
                   >
                     edit
                   </button>
@@ -2259,10 +2253,10 @@ export function EventsPanel({
                   {event.ticketTypes.length === 1 ? "" : "s"}
                 </p>
               </div>
-              <div className="shrink-0 flex items-center gap-3">
+              <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
                 <a
                   href={`/events/${event.slug}`}
-                  className="font-mono text-micro theme-muted hover:text-foreground transition-colors"
+                  className="inline-flex min-h-11 items-center px-2 font-mono text-micro theme-muted hover:opacity-70"
                 >
                   view
                 </a>
@@ -2270,7 +2264,7 @@ export function EventsPanel({
                   type="button"
                   onClick={() => void toggleOperations(event.slug)}
                   aria-expanded={operationsSlug === event.slug}
-                  className="font-mono text-micro theme-muted hover:text-foreground transition-colors"
+                  className="min-h-11 rounded border theme-border px-3 font-mono text-micro font-bold text-[var(--prose-hashtag)] hover:opacity-70"
                 >
                   {operationsSlug === event.slug ? "close" : "manage"}
                 </button>
@@ -2280,14 +2274,14 @@ export function EventsPanel({
                     setEditing(event.slug);
                     setDraft(toDraft(event));
                   }}
-                  className="font-mono text-micro theme-muted hover:text-foreground transition-colors"
+                  className="min-h-11 px-2 font-mono text-micro theme-muted underline hover:opacity-70"
                 >
                   edit
                 </button>
                 <button
                   type="button"
                   onClick={() => void remove(event)}
-                  className="font-mono text-micro theme-muted hover:text-foreground transition-colors"
+                  className="min-h-11 px-2 font-mono text-micro text-[var(--prose-hashtag)] hover:opacity-70"
                 >
                   delete
                 </button>
@@ -2523,7 +2517,10 @@ export function EventsPanel({
           <div className="space-y-3">
             <p className="font-mono text-micro theme-muted tracking-wide">ticket types</p>
             {draft.ticketTypes.map((type, index) => (
-              <div key={index} className="grid gap-2 sm:grid-cols-4 items-end">
+              <div
+                key={`${type.id}-${index}`}
+                className="grid gap-2 border-t theme-border-faint pt-3 sm:grid-cols-[repeat(4,minmax(0,1fr))_auto] sm:items-end"
+              >
                 <Field
                   label="name"
                   value={type.name}
@@ -2560,6 +2557,26 @@ export function EventsPanel({
                     setDraft({ ...draft, ticketTypes: next });
                   }}
                 />
+                <button
+                  type="button"
+                  disabled={draft.ticketTypes.length === 1}
+                  onClick={() =>
+                    setDraft({
+                      ...draft,
+                      ticketTypes: draft.ticketTypes.filter(
+                        (_, ticketIndex) => ticketIndex !== index,
+                      ),
+                    })
+                  }
+                  className="min-h-11 px-2 font-mono text-micro text-[var(--prose-hashtag)] hover:opacity-70 disabled:cursor-not-allowed disabled:opacity-30"
+                  title={
+                    draft.ticketTypes.length === 1
+                      ? "An event needs at least one ticket type."
+                      : "Remove this ticket type when the event is saved."
+                  }
+                >
+                  remove
+                </button>
               </div>
             ))}
             <button
@@ -2579,7 +2596,7 @@ export function EventsPanel({
                   ],
                 })
               }
-              className="font-mono text-micro theme-muted hover:text-foreground transition-colors"
+              className="min-h-11 rounded border theme-border px-3 font-mono text-micro font-bold hover:opacity-70"
             >
               + add ticket type
             </button>

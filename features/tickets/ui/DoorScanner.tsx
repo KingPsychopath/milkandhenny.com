@@ -316,7 +316,7 @@ export function DoorScanner({
   initialManifest: string[];
   initialTickets: (DoorTicketView & { issuedAt: string })[];
   initialSummary: { total: number; redeemed: number };
-  /** Present when this device is scanning via a shared link, not a staff session. */
+  /** Revocable scanner-link credential for this device. */
   scannerToken?: string;
   scannerRole?: ScannerRole;
   scannerPermissions?: ScannerPermissionSet;

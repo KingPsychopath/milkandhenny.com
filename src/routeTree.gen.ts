@@ -19,7 +19,6 @@ import { Route as HealthRouteImport } from './routes/health'
 import { Route as FontTestRouteImport } from './routes/font-test'
 import { Route as FeedDotxmlRouteImport } from './routes/feed[.]xml'
 import { Route as ExamRouteImport } from './routes/exam'
-import { Route as DoorRouteImport } from './routes/door'
 import { Route as BestDressedRouteImport } from './routes/best-dressed'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as WordsIndexRouteImport } from './routes/words/index'
@@ -109,7 +108,6 @@ import { Route as ApiEventsSlugIcsRouteRouteImport } from './routes/api/events/$
 import { Route as ApiBestDressedVotingOpenRouteRouteImport } from './routes/api/best-dressed/voting/open/route'
 import { Route as ApiBestDressedCodesRevokeAllRouteRouteImport } from './routes/api/best-dressed/codes/revoke-all/route'
 import { Route as ApiBestDressedCodesMintBatchRouteRouteImport } from './routes/api/best-dressed/codes/mint-batch/route'
-import { Route as ApiBestDressedCodesMintRouteRouteImport } from './routes/api/best-dressed/codes/mint/route'
 import { Route as ApiAdminWordSharesCleanupRouteRouteImport } from './routes/api/admin/word-shares/cleanup/route'
 import { Route as ApiAdminWordMediaOrphansRouteRouteImport } from './routes/api/admin/word-media/orphans/route'
 import { Route as ApiAdminTransfersProcessMediaRouteRouteImport } from './routes/api/admin/transfers/process-media/route'
@@ -184,11 +182,6 @@ const FeedDotxmlRoute = FeedDotxmlRouteImport.update({
 const ExamRoute = ExamRouteImport.update({
   id: '/exam',
   path: '/exam',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const DoorRoute = DoorRouteImport.update({
-  id: '/door',
-  path: '/door',
   getParentRoute: () => rootRouteImport,
 } as any)
 const BestDressedRoute = BestDressedRouteImport.update({
@@ -658,12 +651,6 @@ const ApiBestDressedCodesMintBatchRouteRoute =
     path: '/codes/mint-batch',
     getParentRoute: () => ApiBestDressedRouteRoute,
   } as any)
-const ApiBestDressedCodesMintRouteRoute =
-  ApiBestDressedCodesMintRouteRouteImport.update({
-    id: '/codes/mint',
-    path: '/codes/mint',
-    getParentRoute: () => ApiBestDressedRouteRoute,
-  } as any)
 const ApiAdminWordSharesCleanupRouteRoute =
   ApiAdminWordSharesCleanupRouteRouteImport.update({
     id: '/cleanup',
@@ -816,7 +803,6 @@ const ApiAdminAlbumsSlugPhotosPhotoIdRouteRoute =
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/best-dressed': typeof BestDressedRoute
-  '/door': typeof DoorRoute
   '/exam': typeof ExamRoute
   '/feed.xml': typeof FeedDotxmlRoute
   '/font-test': typeof FontTestRoute
@@ -907,7 +893,6 @@ export interface FileRoutesByFullPath {
   '/api/admin/transfers/process-media': typeof ApiAdminTransfersProcessMediaRouteRoute
   '/api/admin/word-media/orphans': typeof ApiAdminWordMediaOrphansRouteRoute
   '/api/admin/word-shares/cleanup': typeof ApiAdminWordSharesCleanupRouteRoute
-  '/api/best-dressed/codes/mint': typeof ApiBestDressedCodesMintRouteRoute
   '/api/best-dressed/codes/mint-batch': typeof ApiBestDressedCodesMintBatchRouteRoute
   '/api/best-dressed/codes/revoke-all': typeof ApiBestDressedCodesRevokeAllRouteRoute
   '/api/best-dressed/voting/open': typeof ApiBestDressedVotingOpenRouteRoute
@@ -944,7 +929,6 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/best-dressed': typeof BestDressedRoute
-  '/door': typeof DoorRoute
   '/exam': typeof ExamRoute
   '/feed.xml': typeof FeedDotxmlRoute
   '/font-test': typeof FontTestRoute
@@ -1035,7 +1019,6 @@ export interface FileRoutesByTo {
   '/api/admin/transfers/process-media': typeof ApiAdminTransfersProcessMediaRouteRoute
   '/api/admin/word-media/orphans': typeof ApiAdminWordMediaOrphansRouteRoute
   '/api/admin/word-shares/cleanup': typeof ApiAdminWordSharesCleanupRouteRoute
-  '/api/best-dressed/codes/mint': typeof ApiBestDressedCodesMintRouteRoute
   '/api/best-dressed/codes/mint-batch': typeof ApiBestDressedCodesMintBatchRouteRoute
   '/api/best-dressed/codes/revoke-all': typeof ApiBestDressedCodesRevokeAllRouteRoute
   '/api/best-dressed/voting/open': typeof ApiBestDressedVotingOpenRouteRoute
@@ -1073,7 +1056,6 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/best-dressed': typeof BestDressedRoute
-  '/door': typeof DoorRoute
   '/exam': typeof ExamRoute
   '/feed.xml': typeof FeedDotxmlRoute
   '/font-test': typeof FontTestRoute
@@ -1164,7 +1146,6 @@ export interface FileRoutesById {
   '/api/admin/transfers/process-media': typeof ApiAdminTransfersProcessMediaRouteRoute
   '/api/admin/word-media/orphans': typeof ApiAdminWordMediaOrphansRouteRoute
   '/api/admin/word-shares/cleanup': typeof ApiAdminWordSharesCleanupRouteRoute
-  '/api/best-dressed/codes/mint': typeof ApiBestDressedCodesMintRouteRoute
   '/api/best-dressed/codes/mint-batch': typeof ApiBestDressedCodesMintBatchRouteRoute
   '/api/best-dressed/codes/revoke-all': typeof ApiBestDressedCodesRevokeAllRouteRoute
   '/api/best-dressed/voting/open': typeof ApiBestDressedVotingOpenRouteRoute
@@ -1203,7 +1184,6 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/best-dressed'
-    | '/door'
     | '/exam'
     | '/feed.xml'
     | '/font-test'
@@ -1294,7 +1274,6 @@ export interface FileRouteTypes {
     | '/api/admin/transfers/process-media'
     | '/api/admin/word-media/orphans'
     | '/api/admin/word-shares/cleanup'
-    | '/api/best-dressed/codes/mint'
     | '/api/best-dressed/codes/mint-batch'
     | '/api/best-dressed/codes/revoke-all'
     | '/api/best-dressed/voting/open'
@@ -1331,7 +1310,6 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/best-dressed'
-    | '/door'
     | '/exam'
     | '/feed.xml'
     | '/font-test'
@@ -1422,7 +1400,6 @@ export interface FileRouteTypes {
     | '/api/admin/transfers/process-media'
     | '/api/admin/word-media/orphans'
     | '/api/admin/word-shares/cleanup'
-    | '/api/best-dressed/codes/mint'
     | '/api/best-dressed/codes/mint-batch'
     | '/api/best-dressed/codes/revoke-all'
     | '/api/best-dressed/voting/open'
@@ -1459,7 +1436,6 @@ export interface FileRouteTypes {
     | '__root__'
     | '/'
     | '/best-dressed'
-    | '/door'
     | '/exam'
     | '/feed.xml'
     | '/font-test'
@@ -1550,7 +1526,6 @@ export interface FileRouteTypes {
     | '/api/admin/transfers/process-media'
     | '/api/admin/word-media/orphans'
     | '/api/admin/word-shares/cleanup'
-    | '/api/best-dressed/codes/mint'
     | '/api/best-dressed/codes/mint-batch'
     | '/api/best-dressed/codes/revoke-all'
     | '/api/best-dressed/voting/open'
@@ -1588,7 +1563,6 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   BestDressedRoute: typeof BestDressedRoute
-  DoorRoute: typeof DoorRoute
   ExamRoute: typeof ExamRoute
   FeedDotxmlRoute: typeof FeedDotxmlRoute
   FontTestRoute: typeof FontTestRoute
@@ -1723,13 +1697,6 @@ declare module '@tanstack/react-router' {
       path: '/exam'
       fullPath: '/exam'
       preLoaderRoute: typeof ExamRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/door': {
-      id: '/door'
-      path: '/door'
-      fullPath: '/door'
-      preLoaderRoute: typeof DoorRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/best-dressed': {
@@ -2355,13 +2322,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiBestDressedCodesMintBatchRouteRouteImport
       parentRoute: typeof ApiBestDressedRouteRoute
     }
-    '/api/best-dressed/codes/mint': {
-      id: '/api/best-dressed/codes/mint'
-      path: '/codes/mint'
-      fullPath: '/api/best-dressed/codes/mint'
-      preLoaderRoute: typeof ApiBestDressedCodesMintRouteRouteImport
-      parentRoute: typeof ApiBestDressedRouteRoute
-    }
     '/api/admin/word-shares/cleanup': {
       id: '/api/admin/word-shares/cleanup'
       path: '/cleanup'
@@ -2614,14 +2574,12 @@ const ThingsRouteWithChildren =
   ThingsRoute._addFileChildren(ThingsRouteChildren)
 
 interface ApiBestDressedRouteRouteChildren {
-  ApiBestDressedCodesMintRouteRoute: typeof ApiBestDressedCodesMintRouteRoute
   ApiBestDressedCodesMintBatchRouteRoute: typeof ApiBestDressedCodesMintBatchRouteRoute
   ApiBestDressedCodesRevokeAllRouteRoute: typeof ApiBestDressedCodesRevokeAllRouteRoute
   ApiBestDressedVotingOpenRouteRoute: typeof ApiBestDressedVotingOpenRouteRoute
 }
 
 const ApiBestDressedRouteRouteChildren: ApiBestDressedRouteRouteChildren = {
-  ApiBestDressedCodesMintRouteRoute: ApiBestDressedCodesMintRouteRoute,
   ApiBestDressedCodesMintBatchRouteRoute:
     ApiBestDressedCodesMintBatchRouteRoute,
   ApiBestDressedCodesRevokeAllRouteRoute:
@@ -2821,7 +2779,6 @@ const ApiAdminTokensSessionsRouteRouteWithChildren =
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   BestDressedRoute: BestDressedRoute,
-  DoorRoute: DoorRoute,
   ExamRoute: ExamRoute,
   FeedDotxmlRoute: FeedDotxmlRoute,
   FontTestRoute: FontTestRoute,

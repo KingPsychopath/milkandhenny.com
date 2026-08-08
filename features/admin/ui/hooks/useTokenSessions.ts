@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 
 export type TokenSession = {
   jti: string;
-  role: "admin" | "staff" | "upload";
+  role: "admin" | "upload";
   iat: number;
   exp: number;
   tv: number;
@@ -18,7 +18,7 @@ type TokenSessionsResponse = {
   count: number;
   sessions: TokenSession[];
   now: number;
-  currentTv: { admin: number; staff: number; upload: number };
+  currentTv: { admin: number; upload: number };
 };
 
 type AuthFetch = (url: string, options?: RequestInit) => Promise<Response>;

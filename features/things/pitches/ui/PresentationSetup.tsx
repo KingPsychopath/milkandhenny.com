@@ -48,6 +48,7 @@ export function PresentationSetup({ authorised }: { authorised: boolean }) {
         </p>
         <Link
           to="/admin"
+          search={{ view: "events" }}
           className="mt-10 inline-flex min-h-12 items-center border-b theme-border-strong font-mono text-sm text-foreground"
         >
           admin sign in →
