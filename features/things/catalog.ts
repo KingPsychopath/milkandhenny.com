@@ -37,7 +37,7 @@ export const THINGS = [
     eyebrow: "maze race · 1–8 people",
     href: "/things/centre",
     status: "ready",
-    symbol: "◉",
+    mark: { kind: "symbol", value: "◉" },
     offline: THING_OFFLINE.centre,
   },
   {
