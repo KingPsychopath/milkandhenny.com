@@ -468,6 +468,12 @@ trusted to hide.
 Every device runs the identical transition — same duration, same luminance curve, same animation —
 regardless of role.
 
+- **The night headline is the same words for everybody: `Choose someone`.** `who dies tonight` set
+  in forty-point serif is legible from across a table, so the largest type on screen was the most
+  role-revealing string in the game — while the deal card two minutes earlier had been
+  hold-to-reveal precisely to avoid that. The jester already borrowed the villager's label, so the
+  intent existed; it just stopped at the one screen that stays up for forty-five seconds. The label
+  now sits where a form label sits, at a size that needs looking at rather than glancing at.
 - **Screens away, before every night:** its own held screen with a countdown to the moment roles
   appear. Without the countdown the screen gives no reason to move *now*, so people read it, agree
   with it, and keep holding the phone flat until their role arrives — the exact moment it is worth
@@ -516,6 +522,20 @@ Every window lighting on every device makes villagers pointless and the mafia vi
 The near miss is worse than the obvious one: **lights that correlate with nothing at all.** People
 read meaning into anything that moves, and a table can lose a whole day to a lamp that meant
 nothing. False signal in a deduction game is damage, not decoration.
+
+### 5.3b Where things sit
+
+Measured rather than asserted. Across a sixteen-player game with every role in the ruleset, in every
+phase, on all sixteen surfaces at once:
+
+| | |
+|---|---|
+| Headline | **113px**, no variants |
+| Timer | **158px**, no variants |
+
+No role, and no lineup, moves the furniture. The one place it used to was the night: the holding
+screen put its countdown 72px below where the action screen put it, so the single element that most
+needs to be nailed down was the one that moved. They now match.
 
 ### 5.4 Effects
 

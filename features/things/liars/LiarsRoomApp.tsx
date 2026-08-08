@@ -493,13 +493,14 @@ function NightPhase({ snapshot, clockOffset, send }: PhaseProps) {
       <>
         <Eyebrow>night {snapshot.round}</Eyebrow>
         <Headline>Screens away</Headline>
-        <p className="mt-4 font-serif text-xl text-white/80">
-          Turn your phone away from the person next to you.
-        </p>
         {/*
           A countdown rather than a blank wait. Without one this screen gives no reason to move
           now, so people read it, agree with it, and keep holding the phone flat until their role
           appears — which is the exact moment it is worth something to their neighbour.
+
+          It sits directly under the headline because that is where the action screen's timer sits.
+          Measured, the two halves of the night used to put it 72px apart, so the one element that
+          should be nailed down was the one that moved.
         */}
         {snapshot.nightOpensAt !== null ? (
           <PhaseTimer
@@ -509,7 +510,10 @@ function NightPhase({ snapshot, clockOffset, send }: PhaseProps) {
             big
           />
         ) : null}
-        <p className="mt-6 font-mono text-xs text-white/40">
+        <p className="mt-6 font-serif text-xl text-white/80">
+          Turn your phone away from the person next to you.
+        </p>
+        <p className="mt-3 font-mono text-xs text-white/40">
           everybody acts at once, so nobody can be timed
         </p>
       </>
@@ -518,18 +522,32 @@ function NightPhase({ snapshot, clockOffset, send }: PhaseProps) {
   return (
     <>
       <Eyebrow>night {snapshot.round}</Eyebrow>
-      <Headline>{definition.actionLabel ?? "wait"}</Headline>
+      {/*
+        The headline is the same words for everybody, and that is the point.
+        `who dies tonight` set in forty-point serif is legible from the other side of a table, so
+        the largest type on the screen was the single most role-revealing string in the game — while
+        the deal card two minutes earlier had been hold-to-reveal precisely to avoid that. The
+        jester already borrowed the villager's label, so the intent existed; it just stopped at the
+        one screen that is up for forty-five seconds.
+
+        The label still has to be readable to act on, so it moves down to where a form label sits,
+        at a size that needs actually looking rather than glancing.
+      */}
+      <Headline>Choose someone</Headline>
       <PhaseTimer
         endsAt={snapshot.phaseEndsAt}
         clockOffset={clockOffset}
         label="night ends in"
         big
       />
-      {hint ? <p className="mt-3 font-serif text-base text-white/55">{hint}</p> : null}
 
       {you.report ? <NightReportCard report={you.report} /> : null}
 
       <div className="mt-6">
+        <p className="font-mono text-micro uppercase tracking-[0.18em] text-white/45">
+          {definition.actionLabel ?? "nothing tonight"}
+        </p>
+        {hint ? <p className="mb-3 mt-1 font-serif text-base text-white/50">{hint}</p> : null}
         <PlayerList
           snapshot={snapshot}
           selectedId={you.nightTarget}
