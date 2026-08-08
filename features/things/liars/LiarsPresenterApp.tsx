@@ -5,6 +5,7 @@ import { liarsBrowserKeys } from "./liars-keys";
 import { LIARS_MODE_COPY, LIARS_ROLES } from "./liars-rules";
 import { readLiarsSnapshotFn } from "./liars-room.functions";
 import { PhaseTimer } from "./LiarsViews";
+import { LiarsVillage } from "./LiarsVillage";
 import { speakLiarsNarration } from "./narration.client";
 import { useGameSound } from "../shared/useGameSound";
 import type { LiarsSnapshot } from "./types";
@@ -132,7 +133,10 @@ export function LiarsPresenterApp({ roomId }: { roomId: string }) {
               <p className="font-serif text-[6vh] leading-[1.1]" aria-live="assertive">
                 {snapshot.dawn.narration}
               </p>
-              <div className="mt-[4vh] space-y-[1vh]">
+              <div className="mx-auto mt-[2vh] w-full max-w-[70vw]">
+                <LiarsVillage snapshot={snapshot} clockOffset={clockOffset} />
+              </div>
+              <div className="mt-[3vh] space-y-[1vh]">
                 {snapshot.dawn.deaths.map((death) => (
                   <p
                     key={death.playerId}
@@ -187,9 +191,14 @@ export function LiarsPresenterApp({ roomId }: { roomId: string }) {
                 </div>
               ) : null}
               {snapshot.phase === "night" ? (
-                <p className="mt-[3vh] font-mono text-[2.4vh] text-white/45">
-                  {snapshot.actedCount} of {snapshot.livingCount} have acted
-                </p>
+                <>
+                  <div className="mx-auto mt-[3vh] w-full max-w-[70vw]">
+                    <LiarsVillage snapshot={snapshot} clockOffset={clockOffset} />
+                  </div>
+                  <p className="mt-[2vh] font-mono text-[2.4vh] text-white/45">
+                    {snapshot.actedCount} of {snapshot.livingCount} have acted
+                  </p>
+                </>
               ) : null}
               {snapshot.phase === "deliberation" ? (
                 <p className="mt-[3vh] font-mono text-[2.4vh] text-white/45">

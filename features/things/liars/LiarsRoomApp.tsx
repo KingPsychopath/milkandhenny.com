@@ -34,6 +34,7 @@ import {
 } from "./LiarsViews";
 import { useLiarsEffects } from "./useLiarsEffects";
 import { useLiarsRoom } from "./useLiarsRoom";
+import { LiarsVillage } from "./LiarsVillage";
 import { primeLiarsAudio } from "./liars-effects.client";
 import { useGameSound } from "../shared/useGameSound";
 import { useLiarsNotes } from "./useLiarsNotes";
@@ -548,6 +549,8 @@ function NightPhase({ snapshot, clockOffset, send }: PhaseProps) {
         </div>
       ) : null}
 
+      <LiarsVillage snapshot={snapshot} clockOffset={clockOffset} />
+
       <p className="mt-6 font-mono text-xs text-white/40" aria-live="polite">
         {snapshot.actedCount} of {snapshot.livingCount} have acted
       </p>
@@ -649,6 +652,8 @@ function DawnPhase({ snapshot, clockOffset, send, notes }: PhaseProps) {
           ))}
         </div>
       ) : null}
+
+      <LiarsVillage snapshot={snapshot} clockOffset={clockOffset} />
 
       {you && !you.alive && you.lastWordsOpen ? (
         <LastWords send={send} notes={notes} />

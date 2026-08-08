@@ -35,7 +35,28 @@ const MARK_GLYPH: Record<LiarsMark, { glyph: string; label: string }> = {
 
 export function LiarsOverlayLayer({ overlay }: { overlay: LiarsOverlay }) {
   if (overlay === "none") return null;
-  return <div className={`liars-overlay liars-overlay--${overlay}`} aria-hidden="true" />;
+  const celestial = overlay === "dusk" || overlay === "dawn";
+  return (
+    <div className={`liars-overlay liars-overlay--${overlay}`} aria-hidden="true">
+      {/*
+        Five seconds of wash was already the window in which nothing role-specific may be on screen.
+        Giving it a moon costs nothing and means the pause reads as a scene rather than a stall.
+      */}
+      {celestial ? (
+        <svg viewBox="0 0 100 100" className="size-full" preserveAspectRatio="xMidYMid slice">
+          <circle
+            cx="50"
+            cy="34"
+            r="9"
+            className={overlay === "dusk" ? "liars-moon liars-moon--rise" : "liars-moon liars-moon--set"}
+          />
+          {overlay === "dusk" ? (
+            <circle cx="53.5" cy="31.5" r="9" className="liars-moon-shadow" />
+          ) : null}
+        </svg>
+      ) : null}
+    </div>
+  );
 }
 
 /** Accessible countdown: the bar is decoration, the text is the information. */

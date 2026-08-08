@@ -4,7 +4,7 @@ import { liarsTorch } from "./torch.client";
 import { speakLiarsNarration } from "./narration.client";
 import type { LiarsSnapshot } from "./types";
 
-export type LiarsOverlay = "none" | "death" | "revive" | "dusk" | "dawn";
+export type LiarsOverlay = "none" | "death" | "revive" | "dusk" | "dawn" | "dread";
 
 /**
  * Fires from snapshot transitions rather than from commands, so a re-poll, a socket wake and a
@@ -133,6 +133,25 @@ export function useLiarsEffects(input: {
     const yours = dawn.deaths.find(({ playerId }) => playerId === you);
     const timers: number[] = [];
     const at = (moment: number) => moment - clockOffset - Date.now();
+
+    /*
+     * The dread: every screen reddens in the seconds before the name lands, and then only one of
+     * them keeps going.
+     *
+     * Doing this to a random few people would be false signal — they would flinch, everybody would
+     * read the flinch, and it would mean nothing. Doing it to everybody means nothing can be read
+     * from it at all, which is the same rule the night report card follows: identical envelope,
+     * different contents. With the attack announcement off, or a cold open, it is also the only
+     * thing covering a saved player's reaction.
+     */
+    const dread = at(dawn.nameLandsAt - 2_200);
+    if (dread > -800)
+      timers.push(
+        window.setTimeout(
+          () => once(`dread:${dawn.nameLandsAt}`, () => showOverlay("dread", 2_200)),
+          Math.max(0, dread),
+        ),
+      );
 
     const land = at(dawn.nameLandsAt);
     if (land > -1_500)

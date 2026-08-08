@@ -468,8 +468,10 @@ trusted to hide.
 Every device runs the identical transition — same duration, same luminance curve, same animation —
 regardless of role.
 
-- **Dusk, 5s:** cream washes down to `--things-night`, a thin amber horizon line descends and goes
-  out. **Dawn, 2.5s:** reverse, the line rises and warms.
+- **Dusk, 5s:** cream washes down to `--things-night` and a crescent moon rises. **Dawn, 2.5s:**
+  reverse, and it sets. The window already existed — five seconds in which nothing role-specific may
+  be on screen — so giving it something to look at costs nothing and makes the pause read as a scene
+  rather than a stall.
 - **Nothing role-specific is on screen during dusk.** Every device shows the same words — *"Night
   falls. Turn your screen away from the person next to you."* — so a phone lying face up on the
   table gives nothing away, and there is a real moment to move it. Five seconds rather than two and
@@ -481,11 +483,37 @@ regardless of role.
 - The T−10s night report uses one shared envelope animation. Detective, doctor, watcher, escort,
   mafia: same flash, same size, same beat. Only the words differ.
 
+### 5.3a The village
+
+A row of houses, shown at night and through dawn. It carries **only what is already public**, and
+that is the design rather than a limitation of it.
+
+| Phase | The village |
+|---|---|
+| **Night** | Anonymous. No names, positions reshuffled every round. Lit windows are exactly the public acted-count, at positions that say nothing about whose |
+| **Dawn, before the name** | Untouched — every house lit, including the one about to go out |
+| **Dawn, on the name** | That window goes red, then dark. Amber again if the doctor got there first |
+| **Movement** | A corroborated sighting flickers that window |
+| **Day** | The dead are shuttered |
+
+**A village whose windows lit when people actually acted would end the game.** Movement being local
+— one watcher learning one bit about one person they chose — is the only thing holding §3.3 up.
+Every window lighting on every device makes villagers pointless and the mafia visible on night one.
+
+The near miss is worse than the obvious one: **lights that correlate with nothing at all.** People
+read meaning into anything that moves, and a table can lose a whole day to a lamp that meant
+nothing. False signal in a deduction game is damage, not decoration.
+
 ### 5.4 Effects
 
 Fired from snapshot transitions, never from direct commands, with the fired id held in a ref so a
 re-poll cannot double-fire.
 
+- **The dread**: every screen reddens in the two seconds before the name lands, and then only one
+  keeps going. Doing this to a random few would be false signal — they flinch, the table reads the
+  flinch, and it means nothing. Doing it to everybody means nothing can be read from it, which is
+  the night report card's rule applied to a feeling. With the attack announcement off, or a cold
+  open, it is also the only thing covering a saved player's reaction.
 - Death: white blowout, snap to black, slow red breathing bleed, long vibration
 - Revive: chime, red drains up, green rises, warm pulse, gentle triple vibration
 - Heartbeat accelerating through the last 10 seconds of night
