@@ -162,30 +162,3 @@ export function liarsHaptic(kind: "death" | "revive" | "report" | "select" | "lo
       hapticFeedback("light");
   }
 }
-
-/**
- * Chrome on Android only, and it needs camera permission, so it is opt-in and never load-bearing.
- * Returns a function that puts the torch back out.
- */
-export async function liarsTorch(durationMs: number) {
-  if (typeof navigator === "undefined" || !navigator.mediaDevices?.getUserMedia) return;
-  try {
-    const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
-    const [track] = stream.getVideoTracks();
-    const capabilities = track.getCapabilities() as MediaTrackCapabilities & { torch?: boolean };
-    if (!capabilities.torch) {
-      track.stop();
-      return;
-    }
-    // `torch` is a Chrome-on-Android extension the DOM lib does not describe.
-    const torch = (on: boolean) =>
-      track.applyConstraints({ advanced: [{ torch: on }] } as unknown as MediaTrackConstraints);
-    await torch(true);
-    window.setTimeout(() => {
-      void torch(false);
-      track.stop();
-    }, durationMs);
-  } catch {
-    // Denied, unsupported, or no camera. The game plays exactly the same.
-  }
-}

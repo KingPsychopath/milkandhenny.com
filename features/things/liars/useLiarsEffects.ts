@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState } from "react";
-import { liarsHaptic, liarsTorch, playLiarsSound } from "./liars-effects.client";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { liarsHaptic, playLiarsSound } from "./liars-effects.client";
+import { liarsTorch } from "./torch.client";
 import { speakLiarsNarration } from "./narration.client";
 import type { LiarsSnapshot } from "./types";
 
@@ -20,7 +21,22 @@ export function useLiarsEffects(input: {
 }) {
   const [overlay, setOverlay] = useState<LiarsOverlay>("none");
   const firedRef = useRef(new Set<string>());
+  const overlayTimerRef = useRef<number | null>(null);
   const { snapshot, clockOffset, muted } = input;
+
+  /**
+   * One clearing timer, held in a ref rather than inside a phase effect. The death overlay is a
+   * near-opaque full-screen layer, and it used to be cleared by a timer owned by the dawn effect —
+   * so a phase change before it fired cancelled the clear and left the screen black for good.
+   */
+  const showOverlay = useCallback((kind: LiarsOverlay, holdMs: number) => {
+    setOverlay(kind);
+    if (overlayTimerRef.current !== null) window.clearTimeout(overlayTimerRef.current);
+    overlayTimerRef.current = window.setTimeout(() => {
+      overlayTimerRef.current = null;
+      setOverlay("none");
+    }, holdMs);
+  }, []);
 
   // A shared room routes sound to one device; on a call every device needs it.
   const audible = !muted && (snapshot?.roomMode === "remote" || input.isNarrator);
@@ -39,15 +55,11 @@ export function useLiarsEffects(input: {
     const key = `${snapshot.phase}:${snapshot.round}:${snapshot.gameNumber}`;
     if (snapshot.phase === "night")
       once(`dusk:${key}`, () => {
-        setOverlay("dusk");
+        showOverlay("dusk", 2_500);
         playLiarsSound("dusk", audibleRef.current);
-        window.setTimeout(() => setOverlay("none"), 2_500);
       });
     if (snapshot.phase === "dawn")
-      once(`dawn:${key}`, () => {
-        setOverlay("dawn");
-        window.setTimeout(() => setOverlay("none"), 2_500);
-      });
+      once(`dawn:${key}`, () => showOverlay("dawn", 2_500));
     if (snapshot.phase === "verdict")
       once(`toll:${key}`, () => {
         playLiarsSound("toll", audibleRef.current);
@@ -67,7 +79,7 @@ export function useLiarsEffects(input: {
         playLiarsSound(won ? "win" : "lose", audibleRef.current),
       );
     }
-  }, [snapshot]);
+  }, [showOverlay, snapshot]);
 
   // The night report card. Its own key, so it lands the same on every device.
   useEffect(() => {
@@ -114,7 +126,8 @@ export function useLiarsEffects(input: {
             once(`death:${dawn.nameLandsAt}`, () => {
               playLiarsSound("death", audibleRef.current);
               if (yours) {
-                setOverlay("death");
+                // Capped, so the layer can never outlive the beat it belongs to.
+                showOverlay("death", Math.max(2_600, dawn.settleAt - dawn.nameLandsAt));
                 liarsHaptic("death");
                 if (snapshot.toggles.cameraTorch) void liarsTorch(600);
               }
@@ -132,20 +145,35 @@ export function useLiarsEffects(input: {
               once(`revive:${dawn.reviveAt}`, () => {
                 playLiarsSound("revive", audibleRef.current);
                 if (yours) {
-                  setOverlay("revive");
+                  showOverlay("revive", 1_800);
                   liarsHaptic("revive");
-                  window.setTimeout(() => setOverlay("none"), 1_800);
                 }
               }),
             Math.max(0, revive),
           ),
         );
-    } else if (yours) {
-      timers.push(window.setTimeout(() => setOverlay("none"), Math.max(0, at(dawn.settleAt))));
     }
 
     return () => timers.forEach((timer) => window.clearTimeout(timer));
-  }, [clockOffset, snapshot]);
+  }, [clockOffset, showOverlay, snapshot]);
+
+  // Belt and braces: nothing survives the phase it belongs to, whatever happened to its timer.
+  const phase = snapshot?.phase;
+  useEffect(() => {
+    if (phase === "dawn" || phase === "night") return;
+    if (overlayTimerRef.current !== null) {
+      window.clearTimeout(overlayTimerRef.current);
+      overlayTimerRef.current = null;
+    }
+    setOverlay("none");
+  }, [phase]);
+
+  useEffect(
+    () => () => {
+      if (overlayTimerRef.current !== null) window.clearTimeout(overlayTimerRef.current);
+    },
+    [],
+  );
 
   // The story, read aloud by whichever single device the server elected.
   useEffect(() => {

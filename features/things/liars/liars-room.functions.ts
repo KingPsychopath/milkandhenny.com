@@ -16,6 +16,12 @@ import {
   joinLiarsRoom,
   readLiarsSnapshot,
 } from "./liars-room.server";
+import {
+  exportLiarsRoom,
+  importLiarsRoom,
+  reissueLiarsHostToken,
+  type LiarsRoomExport,
+} from "./liars-room-engine.server";
 import type {
   LiarsHostAction,
   LiarsLineup,
@@ -236,3 +242,50 @@ export const closeLiarsRoomFn = createServerFn({ method: "POST" })
     return { roomId: roomId(data.roomId), hostToken: credential(data.hostToken) };
   })
   .handler(({ data }) => closeLiarsRoom(data.roomId, data.hostToken));
+
+
+// --- Development only. The engine refuses these outside development; these validate the input. ---
+
+function devSeats(value: unknown) {
+  if (!Array.isArray(value)) return [];
+  return value.slice(0, 16).map((entry) => {
+    const seat = record(entry);
+    return {
+      name: text(seat.name, 40),
+      playerId: text(seat.playerId, 120),
+      playerToken: credential(seat.playerToken),
+    };
+  });
+}
+
+export const exportLiarsRoomFn = createServerFn({ method: "POST" })
+  .validator((value: unknown) => {
+    const data = record(value);
+    return {
+      roomId: roomId(data.roomId),
+      hostToken: credential(data.hostToken),
+      seats: devSeats(data.seats),
+    };
+  })
+  .handler(({ data }) => exportLiarsRoom(data.roomId, data.hostToken, data.seats));
+
+export const importLiarsRoomFn = createServerFn({ method: "POST" })
+  .validator((value: unknown) => {
+    const data = record(value);
+    const snapshot = record(data.snapshot);
+    if (snapshot.version !== 1) throw new Error("Unsupported capture");
+    return {
+      snapshot: {
+        version: 1 as const,
+        capturedAt: sequence(snapshot.capturedAt),
+        room: multiplayerBoundedText(snapshot.room, 400_000, "Capture too large"),
+        seats: devSeats(snapshot.seats),
+      } satisfies LiarsRoomExport,
+    };
+  })
+  .handler(async ({ data }) => {
+    const restored = await importLiarsRoom(data.snapshot);
+    if (!restored) return null;
+    const hostToken = await reissueLiarsHostToken(restored.roomId);
+    return hostToken ? { ...restored, hostToken } : null;
+  });

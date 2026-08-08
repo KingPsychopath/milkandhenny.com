@@ -1,5 +1,5 @@
 import { useNavigate } from "@tanstack/react-router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { GameLaunch, GameLaunchButton, GameLaunchMeta } from "../shared/GameLaunch";
 import { GameShell } from "../shared/GameShell";
 import { RoomJoinControl } from "../shared/RoomJoinControl";
@@ -9,6 +9,12 @@ import { LIARS_MODE_COPY, LIARS_PLAYER_LIMITS, liarsDefaultLineup } from "./liar
 import { createLiarsRoomFn } from "./liars-room.functions";
 import { liarsPlayerPath } from "./liars-invite";
 import { LineupBoard } from "./LiarsViews";
+import {
+  liarsTorchAdvice,
+  liarsTorchState,
+  requestLiarsTorch,
+  type LiarsTorchState,
+} from "./torch.client";
 import type { LiarsMode, LiarsRoomMode, LiarsToggles } from "./types";
 
 const MODES: Array<{ id: LiarsMode; title: string; blurb: string }> = [
@@ -29,6 +35,7 @@ export function LiarsSetupApp() {
   const [mode, setMode] = useState<LiarsMode>("mafia");
   const [roomMode, setRoomMode] = useState<LiarsRoomMode>("same-room");
   const [firstGame, setFirstGame] = useState(false);
+  const [torch, setTorch] = useState(false);
   const [expected, setExpected] = useState(9);
   const [creating, setCreating] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -43,7 +50,7 @@ export function LiarsSetupApp() {
     setCreating(true);
     setMessage(null);
     try {
-      const toggles: Partial<LiarsToggles> = { firstGame };
+      const toggles: Partial<LiarsToggles> = { firstGame, cameraTorch: torch };
       const room = await createLiarsRoomFn({ data: { mode, roomMode, toggles } });
       writeExpiringLocalValue(
         liarsBrowserKeys.hostSession(room.roomId),
@@ -150,6 +157,8 @@ export function LiarsSetupApp() {
               </p>
             ) : null}
 
+            <TorchToggle enabled={torch} onChange={setTorch} />
+
             <div className="border-t border-white/15 pt-5">
               <label className="font-mono text-xs text-white/55">
                 <span className="block pb-2">
@@ -210,5 +219,76 @@ export function LiarsSetupApp() {
         </GameLaunch>
       </div>
     </GameShell>
+  );
+}
+
+/**
+ * The only permission the game asks for. It asks here, on a deliberate tap with the reason on
+ * screen, rather than in the middle of somebody's death — and it says out loud when the browser
+ * has refused, because a browser will not prompt twice and a silently dead toggle is worse than
+ * no toggle at all.
+ */
+function TorchToggle({
+  enabled,
+  onChange,
+}: {
+  enabled: boolean;
+  onChange: (next: boolean) => void;
+}) {
+  const [state, setState] = useState<LiarsTorchState | null>(null);
+  const [asking, setAsking] = useState(false);
+
+  useEffect(() => {
+    void liarsTorchState().then(setState);
+  }, []);
+
+  const ask = async () => {
+    setAsking(true);
+    try {
+      const next = await requestLiarsTorch();
+      setState(next);
+      onChange(next === "granted");
+    } finally {
+      setAsking(false);
+    }
+  };
+
+  if (state === "unsupported") return null;
+
+  return (
+    <div className="border-t border-white/15 pt-5">
+      <label className="flex min-h-11 items-center gap-3 font-mono text-xs text-white/60">
+        <input
+          type="checkbox"
+          checked={enabled}
+          onChange={(event) => {
+            if (!event.target.checked) {
+              onChange(false);
+              return;
+            }
+            if (state === "granted") onChange(true);
+            else void ask();
+          }}
+          className="size-4 accent-[var(--things-amber)]"
+        />
+        flash the camera lamp when someone dies
+      </label>
+      <p
+        className={`mt-1 font-mono text-xs ${
+          state === "denied" ? "text-[var(--liars-dead)]" : "text-white/35"
+        }`}
+      >
+        {asking ? "asking…" : liarsTorchAdvice(state ?? "prompt")}
+      </p>
+      {state === "denied" || state === "no-torch" ? (
+        <button
+          type="button"
+          onClick={() => void ask()}
+          className="mt-1 min-h-11 font-mono text-xs text-[var(--things-amber)]"
+        >
+          try again
+        </button>
+      ) : null}
+    </div>
   );
 }

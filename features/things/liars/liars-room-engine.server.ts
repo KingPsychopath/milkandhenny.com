@@ -153,6 +153,8 @@ interface LiarsRoomState {
   word: string | null;
   decoyWord: string | null;
   recentWords: string[];
+  /** Narration templates already used this game, so a five-round night never repeats itself. */
+  recentNarrationIds: string[];
   winner: LiarsSide | null;
   lastEjectedName: string | null;
   narratorPlayerId: string | null;
@@ -303,6 +305,16 @@ async function writeJoinReceipt(
 const living = (room: LiarsRoomState) => room.players.filter(({ alive }) => alive);
 const connected = (player: PlayerState, now: number) =>
   now - player.lastSeenAt <= LIARS_CONNECTED_WINDOW_MS;
+
+function narrate(
+  room: LiarsRoomState,
+  outcome: Parameters<typeof liarsNarration>[0],
+  slots: Parameters<typeof liarsNarration>[1],
+) {
+  const line = liarsNarration(outcome, slots, room.recentNarrationIds ?? []);
+  room.recentNarrationIds = [...(room.recentNarrationIds ?? []), line.id].slice(-14);
+  return line.text;
+}
 
 function note(room: LiarsRoomState, phase: "night" | "day", text: string) {
   room.history.push({ round: room.round, phase, text });
@@ -706,17 +718,17 @@ function resolveNight(room: LiarsRoomState, now: number) {
   const witnessCount = victim ? visitorsOf(room, victim.playerId).length : null;
 
   const narration = substituted
-    ? liarsNarration("bodyguard", {
+    ? narrate(room, "bodyguard", {
         victim: substituted.name,
         substitute: substituted.substituteName ?? undefined,
       })
     : revived && room.toggles.announceAttackTarget
-      ? liarsNarration("saved", { victim: revived.name })
+      ? narrate(room, "saved", { victim: revived.name })
       : revived
         ? "Somebody was attacked last night, and somebody saved them."
         : victim
-          ? liarsNarration("killed", { victim: victim.name })
-          : liarsNarration("nobody-died", {});
+          ? narrate(room, "killed", { victim: victim.name })
+          : narrate(room, "nobody-died", {});
 
   const nameLandsAt = now + LIARS_DEATH_LANDS_MS;
   room.dawn = {
@@ -784,7 +796,7 @@ function resolveVote(room: LiarsRoomState, now: number) {
   room.ejectedJesterId = null;
 
   if (!ejected) {
-    note(room, "day", liarsNarration("tie", {}));
+    note(room, "day", narrate(room, "tie", {}));
     enterPhase(room, "verdict", now);
     return;
   }
@@ -799,7 +811,7 @@ function resolveVote(room: LiarsRoomState, now: number) {
   note(
     room,
     "day",
-    liarsNarration(liarsRoleSide(role) === "mafia" ? "ejected-guilty" : "ejected-innocent", {
+    narrate(room, liarsRoleSide(role) === "mafia" ? "ejected-guilty" : "ejected-innocent", {
       ejected: ejected.name,
     }),
   );
@@ -1126,6 +1138,7 @@ export async function createLiarsRoom(input: {
     word: null,
     decoyWord: null,
     recentWords: [],
+    recentNarrationIds: [],
     winner: null,
     lastEjectedName: null,
     narratorPlayerId: null,
@@ -1405,7 +1418,7 @@ export async function applyLiarsHostAction(input: {
       } else if (target.alive) {
         // Someone actually leaving, not dropping. Removing a player can end the game outright.
         kill(room, target, "left", now);
-        note(room, "day", liarsNarration("left", { victim: target.name }));
+        note(room, "day", narrate(room, "left", { victim: target.name }));
         checkWinner(room, now);
       }
       changed(room);
@@ -1420,6 +1433,7 @@ export async function applyLiarsHostAction(input: {
       room.history = [];
       room.dawn = null;
       room.winner = null;
+      room.recentNarrationIds = [];
       room.expiresAt = Math.max(room.expiresAt, multiplayerRoomExpiresAt(now));
       room.lineup = room.toggles.firstGame
         ? liarsFirstGameLineup(room.mode, room.players.length)
@@ -1614,4 +1628,94 @@ export async function closeLiarsRoom(roomId: string, hostToken: string) {
   await deleteRoom(loaded.room, loaded.keys);
   log.info("things.liars", "Room closed", { phase: loaded.room.phase });
   return { ok: true };
+}
+
+
+// ---------------------------------------------------------------------------
+// Development only
+// ---------------------------------------------------------------------------
+
+/**
+ * The full room record, plus every player's token, so a scenario can be captured and put back
+ * exactly as it was. This is a complete bypass of every secrecy rule in the game — it exists so a
+ * developer can jump to "night three, doctor already dead, mafia at parity" without playing three
+ * rounds to get there — and it is refused outside development.
+ */
+export interface LiarsRoomExport {
+  version: 1;
+  capturedAt: number;
+  /** JSON, so the capture is a file you can read, diff and check into a fixture folder. */
+  room: string;
+  seats: Array<{ name: string; playerId: string; playerToken: string }>;
+}
+
+function developmentOnly() {
+  if (process.env.NODE_ENV === "production")
+    throw new Error("Liars room export is not available in production");
+}
+
+export async function exportLiarsRoom(
+  roomId: string,
+  hostToken: string,
+  seats: Array<{ name: string; playerId: string; playerToken: string }>,
+): Promise<LiarsRoomExport | null> {
+  developmentOnly();
+  const loaded = await loadRoom(roomId);
+  if (!loaded || !safeEqual(hostToken, loaded.room.hostHash)) return null;
+  return {
+    version: 1,
+    capturedAt: Date.now(),
+    room: JSON.stringify(loaded.room),
+    seats,
+  };
+}
+
+/**
+ * Writes the captured room back under a fresh id, so a scenario can be restored repeatedly without
+ * colliding with the room it came from. Timestamps are rebased onto now, or a room captured an hour
+ * ago would come back already expired and mid-phase.
+ */
+export async function importLiarsRoom(snapshot: LiarsRoomExport): Promise<{
+  roomId: string;
+  seats: LiarsRoomExport["seats"];
+} | null> {
+  developmentOnly();
+  if (snapshot.version !== 1) return null;
+  const room = JSON.parse(snapshot.room) as LiarsRoomState;
+  const now = Date.now();
+  const shift = now - snapshot.capturedAt;
+
+  room.roomId = await createAvailableMultiplayerRoomId(async (candidate) =>
+    Boolean(await loadRoom(candidate)),
+  );
+  room.expiresAt = multiplayerRoomExpiresAt(now);
+  room.phaseStartedAt += shift;
+  room.phaseEndsAt += shift;
+  room.lastActiveAt = now;
+  room.pausedAt = null;
+  if (room.nightOpensAt !== null) room.nightOpensAt += shift;
+  if (room.reportAt !== null) room.reportAt += shift;
+  if (room.dawn) {
+    room.dawn.nameLandsAt += shift;
+    room.dawn.holdUntil += shift;
+    room.dawn.settleAt += shift;
+    if (room.dawn.reviveAt !== null) room.dawn.reviveAt += shift;
+  }
+  for (const player of room.players) player.lastSeenAt = now;
+  // Fresh receipts belong to the room they were minted for; the restored copy has its own id.
+  room.joinReceiptIds = [];
+
+  await saveRoom(room);
+  return { roomId: room.roomId, seats: snapshot.seats };
+}
+
+/** The host token cannot be recovered from its hash, so a restore mints a new one. */
+export async function reissueLiarsHostToken(roomId: string) {
+  developmentOnly();
+  const loaded = await loadRoom(roomId);
+  if (!loaded) return null;
+  const hostToken = token();
+  loaded.room.hostHash = hash(hostToken);
+  await saveRoom(loaded.room, loaded.keys);
+  return hostToken;
 }

@@ -196,63 +196,100 @@ type NarrationOutcome =
   | "left";
 
 /**
- * `{victim}`, `{ejected}`, `{saviour}` and `{substitute}` are filled in by the engine. Templates
- * stay short: the narration plays over a choreographed dawn and has about seven seconds of room.
+ * `{victim}`, `{ejected}` and `{substitute}` are filled in by the engine.
+ *
+ * Kept to one short line each. The narration plays over a choreographed dawn with about seven
+ * seconds of room, and on a phone a long sentence pushes the thing people actually need to read —
+ * who died — off the first screen. There are enough of them that a five-round game should not
+ * hear the same line twice; the engine also remembers the last dozen and avoids them.
  */
 const NARRATION: Record<NarrationOutcome, string[]> = {
   killed: [
-    "It was a beautiful morning, right up until somebody looked in on {victim}.",
-    "The milk was still on the step outside {victim}'s door. Nobody had taken it in.",
-    "{victim} had been telling everyone they slept badly. Last night they slept through it.",
-    "Someone came for {victim} in the dark, and left the door open behind them.",
-    "The town woke up one person short. That person was {victim}.",
-    "There was frost on the windows and {victim} was cold underneath it.",
-    "{victim} never made it to morning, and whoever did it walked home the long way.",
-    "The dogs were quiet all night. In the morning, {victim} was quieter.",
+    "The milk was still on {victim}'s step.",
+    "{victim} did not make it to morning.",
+    "Someone came for {victim} and left the door open.",
+    "The town woke up one short. It was {victim}.",
+    "{victim} slept through it. All of it.",
+    "There was frost on the windows and {victim} underneath it.",
+    "Whoever took {victim} walked home the long way.",
+    "{victim} had been saying they slept badly.",
+    "Nobody heard {victim} go.",
+    "They found {victim} before the kettle boiled.",
+    "{victim}'s light was on all night. {victim} was not.",
+    "It was quick, and it was {victim}.",
+    "The dogs stayed quiet. {victim} did not wake up.",
+    "{victim} is gone, and the street looks the same.",
+    "Somebody knew exactly which door was {victim}'s.",
+    "{victim} never locked it. Nobody here does.",
   ],
   saved: [
     "They came for {victim}. Somebody got there first.",
-    "{victim} should not have seen this morning. Somebody made sure they did.",
-    "There was blood on {victim}'s doorstep and none of it mattered in the end.",
-    "{victim} woke up owing somebody a very large favour.",
+    "{victim} should not have seen this morning.",
+    "There was blood on {victim}'s step and none of it mattered.",
+    "{victim} woke up owing somebody a great deal.",
+    "Someone was already sitting with {victim} when they arrived.",
+    "{victim} was chosen. {victim} is still here.",
+    "It nearly took {victim}. It very nearly did.",
   ],
   "nobody-died": [
-    "Nothing happened last night. That is its own kind of news.",
+    "Nothing happened. That is its own kind of news.",
     "The whole town slept, which nobody quite believes.",
-    "No door opened, no dog barked, nobody screamed. Everyone is still here.",
+    "No door opened. Everyone is still here.",
     "A quiet night. Somebody chose to make it one.",
+    "Morning came and took nobody with it.",
+    "Not a sound. Draw from that what you like.",
   ],
   bodyguard: [
-    "They came for {victim}. {substitute} stepped in front of them.",
-    "{substitute} had been standing outside {victim}'s door all night. That turned out to matter.",
-    "It should have been {victim}. {substitute} made sure it was not.",
+    "They came for {victim}. {substitute} stepped in front.",
+    "{substitute} had been at {victim}'s door all night.",
+    "It should have been {victim}. {substitute} saw to that.",
+    "{substitute} died where {victim} was meant to.",
   ],
   "ejected-guilty": [
-    "The town took {ejected} out to the square, and for once they had the right person.",
-    "{ejected} kept talking the whole way. It did not help.",
-    "They were right about {ejected}. They will not always be.",
+    "They took {ejected} to the square, and they were right.",
+    "{ejected} talked the whole way. It did not help.",
+    "Right about {ejected}. They will not always be.",
+    "{ejected} ran out of story before they ran out of road.",
+    "The town got one. The town got {ejected}.",
   ],
   "ejected-innocent": [
-    "The town took {ejected} out to the square. {ejected} had never hurt anyone.",
-    "{ejected} said they were innocent. {ejected} was innocent.",
+    "They took {ejected}, who had never hurt anyone.",
+    "{ejected} said they were innocent. {ejected} was.",
     "Everyone agreed about {ejected}. Everyone was wrong.",
+    "{ejected} went quietly. That was the worst of it.",
+    "One fewer of you, and none of them.",
   ],
   tie: [
-    "The town argued until dark and could not agree on anything.",
-    "Nobody could get a majority. Everybody goes home.",
-    "The vote split clean down the middle, and the square emptied out.",
+    "The town argued until dark and agreed on nothing.",
+    "No majority. Everybody goes home.",
+    "The vote split clean down the middle.",
+    "Nobody could carry the square today.",
   ],
-  left: ["{victim} left town in the night and did not say goodbye."],
+  left: ["{victim} left town in the night."],
 };
+
+export interface LiarsNarrationLine {
+  /** Stable enough to remember and avoid, without storing the whole sentence. */
+  id: string;
+  text: string;
+}
 
 export function liarsNarration(
   outcome: NarrationOutcome,
   slots: { victim?: string; ejected?: string; substitute?: string },
-) {
+  recentIds: string[] = [],
+): LiarsNarrationLine {
   const templates = NARRATION[outcome];
-  const template = templates[randomInt(templates.length)];
-  return template
-    .replaceAll("{victim}", slots.victim ?? "someone")
-    .replaceAll("{ejected}", slots.ejected ?? "someone")
-    .replaceAll("{substitute}", slots.substitute ?? "someone");
+  const fresh = templates
+    .map((template, index) => ({ template, id: `${outcome}:${index}` }))
+    .filter(({ id }) => !recentIds.includes(id));
+  const pool = fresh.length > 0 ? fresh : templates.map((template, index) => ({ template, id: `${outcome}:${index}` }));
+  const chosen = pool[randomInt(pool.length)];
+  return {
+    id: chosen.id,
+    text: chosen.template
+      .replaceAll("{victim}", slots.victim ?? "someone")
+      .replaceAll("{ejected}", slots.ejected ?? "someone")
+      .replaceAll("{substitute}", slots.substitute ?? "someone"),
+  };
 }

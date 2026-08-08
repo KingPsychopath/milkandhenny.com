@@ -657,6 +657,16 @@ player could not do — which is the point. **If a leak shows up on that screen,
 A "short phases" switch drops the timings to the validator's floor, keeping the night long enough
 ahead of the T−10s report for a whole table to act.
 
+**Captured scenarios.** Reaching "night three, doctor already dead, mafia at parity" by playing
+three rounds is a poor way to look at it twice. **Capture** freezes the room exactly as it stands —
+full state and every player's token — as a JSON file you can keep, download, diff or check in.
+**Restore** writes it back under a fresh room id with the timestamps rebased onto now, so the same
+capture can be reloaded as often as you like and comes back identical every time: same roles, same
+history, same phase.
+
+This is a complete bypass of every secrecy rule in the game, so both server functions refuse
+outright when `NODE_ENV` is production, and the route 404s outside development builds.
+
 ### 5.14 Accessibility
 
 The game is unusually timing-dependent, so the baseline rules in `.cursor/rules/accessibility.mdc`
@@ -741,7 +751,7 @@ tapping *ready to vote* (§3.5).
 | `coldOpen` | off | The victim's phone detonates the moment the mafia lock in, not at dawn |
 | `blindImposters` | off | Two imposters do not know each other |
 | `simultaneousClues` | off | Imposter clue rounds run all at once instead of by turn |
-| `cameraTorch` | off | Chrome on Android only, needs camera permission |
+| `cameraTorch` | off | Chrome on Android only. The camera is asked for **in setup, on the tap that turns it on**, with the reason on screen — never mid-death with no explanation. A refusal is reported rather than swallowed, because a browser will not prompt twice and a silently dead toggle is worse than no toggle. No video is ever rendered; the track exists only to hold the lamp on. |
 | `reducedEffects` | auto | Detected from `prefers-reduced-motion`, manually overridable |
 
 `announceAttackTarget` is the one with a real cost: showing the death before the save partly

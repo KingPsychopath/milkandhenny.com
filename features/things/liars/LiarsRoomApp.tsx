@@ -615,7 +615,8 @@ function DeliberationPhase({ snapshot, clockOffset, send, isHost, sendHost }: Ph
       <Headline>Talk</Headline>
       <PhaseTimer endsAt={snapshot.phaseEndsAt} clockOffset={clockOffset} label="vote opens in" />
       <p className="mt-4 font-serif text-lg text-white/65">
-        Point at someone if you want to. It counts for nothing — that is the point.
+        Say who you think it is, and why. Point at someone to put them on the spot — everyone sees
+        it, nobody is bound by it. The vote comes next.
       </p>
 
       <div className="mt-6">

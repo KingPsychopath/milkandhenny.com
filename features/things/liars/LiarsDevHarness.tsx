@@ -1,7 +1,12 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import { LIARS_MODE_COPY, LIARS_PLAYER_LIMITS } from "./liars-rules";
-import { createLiarsRoomFn, joinLiarsRoomFn } from "./liars-room.functions";
+import {
+  createLiarsRoomFn,
+  exportLiarsRoomFn,
+  importLiarsRoomFn,
+  joinLiarsRoomFn,
+} from "./liars-room.functions";
 import { LiarsRoom } from "./LiarsRoomApp";
 import type { LiarsMode, LiarsPlayerCredentials } from "./types";
 
@@ -19,13 +24,122 @@ const NAMES = [
   "Leo", "Nina", "Otis", "Rue", "Sol", "Vic", "Wren", "Zaid",
 ];
 
+const CAPTURES_KEY = "things:liars:v1:dev-captures";
+
+interface Capture {
+  label: string;
+  savedAt: number;
+  payload: unknown;
+}
+
+function readCaptures(): Capture[] {
+  try {
+    return JSON.parse(localStorage.getItem(CAPTURES_KEY) ?? "[]") as Capture[];
+  } catch {
+    return [];
+  }
+}
+
 export function LiarsDevHarness() {
   const [mode, setMode] = useState<LiarsMode>("mafia");
   const [count, setCount] = useState(9);
   const [fast, setFast] = useState(true);
   const [seats, setSeats] = useState<LiarsPlayerCredentials[] | null>(null);
+  const [hostToken, setHostToken] = useState<string | null>(null);
+  const [names, setNames] = useState<string[]>([]);
+  const [captures, setCaptures] = useState<Capture[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => setCaptures(readCaptures()), []);
+
+  const writeCaptures = (next: Capture[]) => {
+    setCaptures(next);
+    try {
+      localStorage.setItem(CAPTURES_KEY, JSON.stringify(next));
+    } catch {
+      setError("capture too large for local storage — download it instead");
+    }
+  };
+
+  /**
+   * Freezes the room exactly as it stands, tokens and all, so a scenario worth returning to does
+   * not have to be replayed from the lobby every time. Restoring writes it back under a new id, so
+   * the same capture can be reloaded as often as you like.
+   */
+  const capture = async () => {
+    if (!seats || !hostToken) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const payload = await exportLiarsRoomFn({
+        data: {
+          roomId: seats[0].roomId,
+          hostToken,
+          seats: seats.map((seat, index) => ({
+            name: names[index] ?? NAMES[index],
+            playerId: seat.playerId,
+            playerToken: seat.playerToken,
+          })),
+        },
+      });
+      if (!payload) {
+        setError("could not capture that room");
+        return;
+      }
+      const label = window.prompt("name this scenario", `${mode} · ${new Date().toLocaleTimeString()}`);
+      if (!label) return;
+      writeCaptures([{ label, savedAt: Date.now(), payload }, ...captures].slice(0, 24));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const restore = async (entry: Capture) => {
+    setBusy(true);
+    setError(null);
+    try {
+      const restored = await importLiarsRoomFn({ data: { snapshot: entry.payload } });
+      if (!restored) {
+        setError("that capture could not be restored");
+        return;
+      }
+      setHostToken(restored.hostToken);
+      setNames(restored.seats.map(({ name }) => name));
+      setSeats(
+        restored.seats.map((seat) => ({
+          roomId: restored.roomId,
+          playerId: seat.playerId,
+          playerToken: seat.playerToken,
+          expiresAt: Date.now() + 60 * 60_000,
+          snapshot: undefined as never,
+        })),
+      );
+    } catch {
+      setError("that capture could not be restored");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const download = (entry: Capture) => {
+    const blob = new Blob([JSON.stringify(entry, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `liars-${entry.label.replace(/\W+/g, "-")}.json`;
+    anchor.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const upload = async (file: File) => {
+    try {
+      const entry = JSON.parse(await file.text()) as Capture;
+      writeCaptures([entry, ...captures].slice(0, 24));
+    } catch {
+      setError("that file is not a capture");
+    }
+  };
 
   const open = async () => {
     setBusy(true);
@@ -74,6 +188,8 @@ export function LiarsDevHarness() {
         });
       }
       setSeats(joined);
+      setHostToken(created.hostToken);
+      setNames(NAMES.slice(0, count));
     } catch {
       setError("could not open a room");
     } finally {
@@ -139,7 +255,12 @@ export function LiarsDevHarness() {
         )}
         <span className="ml-auto flex gap-2">
           {seats ? (
-            <Chip onClick={() => setSeats(null)}>reset</Chip>
+            <>
+              <Chip onClick={() => void capture()} disabled={busy}>
+                capture
+              </Chip>
+              <Chip onClick={() => setSeats(null)}>reset</Chip>
+            </>
           ) : (
             <Chip onClick={() => void open()} disabled={busy}>
               {busy ? "opening…" : "open room"}
@@ -166,11 +287,66 @@ export function LiarsDevHarness() {
           ))}
         </div>
       ) : (
-        <p className="max-w-xl font-mono text-xs leading-relaxed text-white/45">
-          Opens a real room, joins {count} players, and mounts the real player surface for each of
-          them side by side — same server functions, same polling, same redactions as separate
-          phones. {LIARS_MODE_COPY[mode].tagline}
-        </p>
+        <>
+          <p className="max-w-xl font-mono text-xs leading-relaxed text-white/45">
+            Opens a real room, joins {count} players, and mounts the real player surface for each of
+            them side by side — same server functions, same polling, same redactions as separate
+            phones. {LIARS_MODE_COPY[mode].tagline}
+          </p>
+
+          <section className="mt-6 max-w-xl border-t border-white/15 pt-4">
+            <p className="font-mono text-micro uppercase tracking-[0.18em] text-white/40">
+              saved scenarios
+            </p>
+            <p className="mt-1 font-mono text-xs text-white/35">
+              Capture a room mid-game and come back to it whenever, instead of replaying three
+              rounds to reach the state you wanted to look at.
+            </p>
+            <ul className="mt-3">
+              {captures.length === 0 ? (
+                <li className="py-2 font-mono text-xs text-white/30">nothing saved yet</li>
+              ) : (
+                captures.map((entry) => (
+                  <li
+                    key={`${entry.label}-${entry.savedAt}`}
+                    className="flex items-center gap-3 border-t border-white/10 py-2 font-mono text-xs"
+                  >
+                    <span className="text-white/70">{entry.label}</span>
+                    <span className="text-white/25">
+                      {new Date(entry.savedAt).toLocaleString()}
+                    </span>
+                    <span className="ml-auto flex gap-2">
+                      <Chip onClick={() => void restore(entry)} disabled={busy}>
+                        restore
+                      </Chip>
+                      <Chip onClick={() => download(entry)}>download</Chip>
+                      <Chip
+                        onClick={() =>
+                          writeCaptures(captures.filter((each) => each.savedAt !== entry.savedAt))
+                        }
+                      >
+                        delete
+                      </Chip>
+                    </span>
+                  </li>
+                ))
+              )}
+            </ul>
+            <label className="mt-3 inline-flex min-h-8 cursor-pointer items-center border border-white/25 px-3 font-mono text-xs text-white/80 hover:border-[var(--things-amber)]">
+              load a capture file
+              <input
+                type="file"
+                accept="application/json"
+                className="hidden"
+                onChange={(event) => {
+                  const file = event.target.files?.[0];
+                  if (file) void upload(file);
+                  event.target.value = "";
+                }}
+              />
+            </label>
+          </section>
+        </>
       )}
     </div>
   );
