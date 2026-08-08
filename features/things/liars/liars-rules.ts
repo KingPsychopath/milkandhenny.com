@@ -672,10 +672,6 @@ export function liarsValidateLineup(
   return { ok: true, warnings };
 }
 
-export function liarsSpecialCount(lineup: LiarsLineup) {
-  return liarsLineupEntries(lineup).filter(([role]) => LIARS_ROLES[role].special).length;
-}
-
 /**
  * Deals the lineup across the roster. `pick` returns an integer in `[0, n)` — the engine passes
  * node's `randomInt`, tests pass something deterministic. A rematch weights against your previous

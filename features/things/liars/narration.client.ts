@@ -68,7 +68,3 @@ export function speakLiarsNarration(text: string, locale = "en-GB") {
     });
   });
 }
-
-export function cancelLiarsNarration() {
-  if (typeof window !== "undefined" && "speechSynthesis" in window) speechSynthesis.cancel();
-}

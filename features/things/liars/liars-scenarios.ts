@@ -161,7 +161,3 @@ export const LIARS_SCENARIOS: LiarsScenario[] = [
     toggles: { blindImposters: true },
   },
 ];
-
-export function liarsScenario(id: string) {
-  return LIARS_SCENARIOS.find((scenario) => scenario.id === id) ?? null;
-}

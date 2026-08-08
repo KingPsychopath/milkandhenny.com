@@ -20,8 +20,6 @@ export const liarsBrowserKeys = {
     gameBrowserKey("liars", 1, "room", roomId, "player", playerId, "pending-actions"),
   notes: (roomId: string, playerId: string, gameNumber: number) =>
     gameBrowserKey("liars", 1, "room", roomId, "player", playerId, "notes", String(gameNumber)),
-  /** House rules, kept per device so a group's setup is one tap next time. */
-  setupPreset: (mode: string) => gameBrowserKey("liars", 1, "setup", mode),
   /** Device-wide, not per room: whichever phone you mute stays muted for the next game too. */
   muted: () => gameBrowserKey("liars", 1, "sound-muted"),
 } as const;

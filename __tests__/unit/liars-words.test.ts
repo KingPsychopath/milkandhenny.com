@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  LIARS_BOARD_SIZE,
   LIARS_WORD_CATEGORIES,
   LIARS_WORD_PAIRS,
+  liarsBoard,
 } from "../../features/things/liars/liars-words";
 
 /**
@@ -67,5 +69,54 @@ describe("liars word categories", () => {
       const size = LIARS_WORD_PAIRS.filter((pair) => pair.category === category).length;
       expect(size, category).toBeGreaterThanOrEqual(8);
     }
+  });
+});
+
+describe("the board", () => {
+  const pick = (bound: number) => bound - 1;
+
+  it("draws every word from the dealt word's own category", () => {
+    for (const pair of LIARS_WORD_PAIRS) {
+      const board = liarsBoard(pair, pick, pair.decoy);
+      const categories = new Set(
+        board.map(
+          (word) => LIARS_WORD_PAIRS.find((each) => each.word === word)?.category ?? pair.category,
+        ),
+      );
+      expect(categories, `${pair.word} drew from more than one category`).toEqual(
+        new Set([pair.category]),
+      );
+    }
+  });
+
+  it("always contains the dealt word and the understudy's, so neither stands outside it", () => {
+    for (const pair of LIARS_WORD_PAIRS) {
+      const board = liarsBoard(pair, pick, pair.decoy);
+      expect(board, pair.word).toContain(pair.word);
+      expect(board, pair.decoy).toContain(pair.decoy);
+    }
+  });
+
+  it("never repeats a word, which would narrow the field for free", () => {
+    for (const pair of LIARS_WORD_PAIRS) {
+      const board = liarsBoard(pair, pick, pair.decoy);
+      expect(new Set(board).size, pair.word).toBe(board.length);
+    }
+  });
+
+  it("is small where the category is small rather than padded from elsewhere", () => {
+    for (const pair of LIARS_WORD_PAIRS) {
+      const board = liarsBoard(pair, pick, pair.decoy);
+      expect(board.length).toBeLessThanOrEqual(LIARS_BOARD_SIZE);
+      expect(board.length, pair.word).toBeGreaterThanOrEqual(5);
+    }
+  });
+
+  it("comes back in a stable order, so nothing about the layout hints at the answer", () => {
+    const pair = LIARS_WORD_PAIRS[0];
+    const first = liarsBoard(pair, () => 0, pair.decoy);
+    const second = liarsBoard(pair, (bound) => bound - 1, pair.decoy);
+    expect(first).toEqual(first.toSorted((a, b) => a.localeCompare(b)));
+    expect(second).toEqual(second.toSorted((a, b) => a.localeCompare(b)));
   });
 });
