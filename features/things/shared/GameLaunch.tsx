@@ -1,4 +1,5 @@
 import type { ButtonHTMLAttributes, ReactNode } from "react";
+import { HomeScreenGamePrompt } from "./HomeScreenGamePrompt";
 
 type LaunchTone = "night" | "cream" | "paper" | "theme";
 
@@ -49,6 +50,7 @@ export function GameLaunch({
         {description}
       </p>
       <div className="mt-9">{children}</div>
+      <HomeScreenGamePrompt tone={themed ? "theme" : light ? "light" : "dark"} />
     </section>
   );
 }

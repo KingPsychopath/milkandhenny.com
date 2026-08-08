@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { GameOrientation } from "./orientation";
+import { isStandaloneWebApp } from "./web-app.client";
 
 interface WebkitFullscreenDocument extends Document {
   webkitExitFullscreen?: () => Promise<void> | void;
@@ -16,14 +17,6 @@ interface LockableScreenOrientation {
   unlock?: () => void;
 }
 
-function isStandalone() {
-  const navigatorWithStandalone = navigator as Navigator & { standalone?: boolean };
-  return (
-    navigatorWithStandalone.standalone === true ||
-    window.matchMedia("(display-mode: standalone)").matches
-  );
-}
-
 export function useFullscreen() {
   const targetRef = useRef<HTMLDivElement>(null);
   const [supported, setSupported] = useState(false);
@@ -38,8 +31,9 @@ export function useFullscreen() {
     const displayMode = window.matchMedia("(display-mode: standalone)");
 
     const update = () => {
-      const installed = isStandalone();
-      const fullscreenElement = document.fullscreenElement ?? webkitDocument.webkitFullscreenElement;
+      const installed = isStandaloneWebApp();
+      const fullscreenElement =
+        document.fullscreenElement ?? webkitDocument.webkitFullscreenElement;
       setStandalone(installed);
       setInstallFallback(
         !installed &&
@@ -50,9 +44,8 @@ export function useFullscreen() {
         !installed &&
           Boolean(
             target &&
-              ((document.fullscreenEnabled !== false && target.requestFullscreen) ||
-                (webkitDocument.webkitFullscreenEnabled !== false &&
-                  target.webkitRequestFullscreen)),
+            ((document.fullscreenEnabled !== false && target.requestFullscreen) ||
+              (webkitDocument.webkitFullscreenEnabled !== false && target.webkitRequestFullscreen)),
           ),
       );
     };
@@ -86,7 +79,9 @@ export function useFullscreen() {
       if (target.requestFullscreen) await target.requestFullscreen();
       else await target.webkitRequestFullscreen?.();
     } catch {
-      setMessage("Fullscreen was blocked. Tap the button again, or add the game to your Home Screen.");
+      setMessage(
+        "Fullscreen was blocked. Tap the button again, or add the game to your Home Screen.",
+      );
     }
   }, []);
 
@@ -98,7 +93,9 @@ export function useFullscreen() {
     }
     setMessage(null);
     if (!screenOrientation?.lock) {
-      setMessage(`This browser cannot lock ${orientation}. Turn the phone before the countdown ends.`);
+      setMessage(
+        `This browser cannot lock ${orientation}. Turn the phone before the countdown ends.`,
+      );
       return;
     }
 
@@ -107,20 +104,34 @@ export function useFullscreen() {
     try {
       const fullscreenElement =
         document.fullscreenElement ?? webkitDocument.webkitFullscreenElement;
-      if (!fullscreenElement && !isStandalone() && target) {
+      if (!fullscreenElement && !isStandaloneWebApp() && target) {
         if (target.requestFullscreen) await target.requestFullscreen();
         else await target.webkitRequestFullscreen?.();
       }
       await screenOrientation.lock(orientation);
     } catch {
-      setMessage(`This browser could not lock ${orientation}. Turn the phone before the countdown ends.`);
+      setMessage(
+        `This browser could not lock ${orientation}. Turn the phone before the countdown ends.`,
+      );
     }
   }, []);
 
-  useEffect(() => () => {
-    const screenOrientation = window.screen.orientation as LockableScreenOrientation | undefined;
-    screenOrientation?.unlock?.();
-  }, []);
+  useEffect(
+    () => () => {
+      const screenOrientation = window.screen.orientation as LockableScreenOrientation | undefined;
+      screenOrientation?.unlock?.();
+    },
+    [],
+  );
 
-  return { targetRef, supported, active, standalone, installFallback, message, toggle, lockOrientation };
+  return {
+    targetRef,
+    supported,
+    active,
+    standalone,
+    installFallback,
+    message,
+    toggle,
+    lockOrientation,
+  };
 }
