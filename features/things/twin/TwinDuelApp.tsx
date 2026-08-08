@@ -4,9 +4,10 @@ import { useWebHaptics } from "web-haptics/react";
 import { useWakeLock } from "@/hooks/useWakeLock";
 import { useGamePreferences } from "../shared/useGamePreferences";
 import { TwinCard } from "./TwinCard";
+import { TwinCardTransfer } from "./TwinCardTransfer";
 import { TwinRay } from "./TwinRay";
 import { dealTwin, twinCardById, twinMatch } from "./twin-deck";
-import { TWIN_TIMING, twinCooldownMs } from "./twin-rules";
+import { TWIN_TIMING, twinCooldownMs, twinDuelFinish } from "./twin-rules";
 import { twinSymbolName } from "./twin-symbols";
 import { gameBrowserKey } from "../shared/multiplayer-keys";
 import { useGameSound } from "../shared/useGameSound";
@@ -44,6 +45,12 @@ interface Seat {
   longestChain: number;
   misses: number;
   cooldownUntil: number;
+}
+
+interface DuelClaim {
+  seat: number;
+  symbolId: string;
+  tappedAt: number;
 }
 
 function toDealt(cards: readonly { id: string }[], seedFrom: number): TwinDealtCard[] {
@@ -86,7 +93,12 @@ export function TwinDuelApp({
 
   const [seats, setSeats] = useState<Seat[]>([]);
   const [middle, setMiddle] = useState<TwinDealtCard | null>(null);
-  const [flash, setFlash] = useState<{ seat: number; symbolId: string } | null>(null);
+  const [flash, setFlash] = useState<DuelClaim | null>(null);
+  const [secondFlash, setSecondFlash] = useState<DuelClaim | null>(null);
+  const [secondClaimed, setSecondClaimed] = useState(false);
+  const race = useRef<{ first: DuelClaim; second: DuelClaim | null } | null>(null);
+  const resolveTimer = useRef<number | null>(null);
+  const [raceSummary, setRaceSummary] = useState<string | null>(null);
   const [shake, setShake] = useState<{ seat: number; at: number } | null>(null);
   const [winner, setWinner] = useState<number | null>(null);
   const [startedAt, setStartedAt] = useState(() => Date.now());
@@ -106,10 +118,17 @@ export function TwinDuelApp({
     );
     setMiddle(players === 1 ? deal.middle : null);
     setFlash(null);
+    setSecondFlash(null);
+    setSecondClaimed(false);
+    race.current = null;
+    setRaceSummary(null);
     setWinner(null);
     setPenaltyMs(0);
     setStartedAt(Date.now());
     setElapsedMs(0);
+    return () => {
+      if (resolveTimer.current !== null) window.clearTimeout(resolveTimer.current);
+    };
   }, [deal, players]);
 
   useWakeLock(winner === null);
@@ -143,13 +162,40 @@ export function TwinDuelApp({
   useEffect(() => {
     if (players !== 2 || winner !== null || elapsedMs < DUEL_CAP_MS) return;
     const [one, two] = seats;
-    setWinner(one.hand.length <= two.hand.length ? 0 : 1);
+    if (one.hand.length !== two.hand.length)
+      setWinner(one.hand.length < two.hand.length ? 0 : 1);
+    else setRaceSummary((current) => current ?? "sudden death · next connection wins");
   }, [elapsedMs, players, seats, winner]);
 
-  const tap = (seatIndex: number, symbolId: string) => {
-    if (winner !== null || flash !== null) return;
+  const tap = (seatIndex: number, symbolId: string, tappedAt: number) => {
+    if (winner !== null) return;
     const seat = seats[seatIndex];
     const now = Date.now();
+    const activeRace = race.current;
+    if (activeRace) {
+      if (
+        players !== 2 ||
+        activeRace.first.seat === seatIndex ||
+        activeRace.second ||
+        symbolId !== answerFor(seatIndex)
+      )
+        return;
+      const second = { seat: seatIndex, symbolId, tappedAt };
+      activeRace.second = second;
+      setSecondClaimed(true);
+      const finish = twinDuelFinish(activeRace.first.tappedAt, tappedAt);
+      const margin = finish.marginMs ?? 0;
+      if (finish.tied) {
+        setSecondFlash(second);
+        setRaceSummary(`dead heat · ${Math.round(margin)}ms apart`);
+        void haptics.trigger("success");
+        playTwinSound("connection", sound.effects);
+      } else {
+        setRaceSummary(`seat ${activeRace.first.seat + 1} by ${Math.round(margin)}ms`);
+        void haptics.trigger("selection");
+      }
+      return;
+    }
     if (!seat || seat.cooldownUntil > now) {
       void haptics.trigger("warning");
       return;
@@ -175,14 +221,35 @@ export function TwinDuelApp({
     }
 
     // Hold the connection on screen before the card moves. The tap is already locked in.
-    setFlash({ seat: seatIndex, symbolId });
+    const first = { seat: seatIndex, symbolId, tappedAt };
+    race.current = { first, second: null };
+    setRaceSummary(null);
+    setFlash(first);
     void haptics.trigger("success");
     playTwinSound("connection", sound.effects);
-    window.setTimeout(() => {
-      const given = seats[seatIndex].hand[0];
+    resolveTimer.current = window.setTimeout(() => {
+      const result = race.current;
+      if (!result) return;
+      const tied = twinDuelFinish(
+        result.first.tappedAt,
+        result.second?.tappedAt ?? null,
+      ).tied;
       setSeats((current) =>
         current.map((entry, index) => {
-          if (index === seatIndex) {
+          if (tied && players === 2) {
+            const other = current[index === 0 ? 1 : 0]?.hand[0];
+            const chain = entry.chain + 1;
+            return {
+              ...entry,
+              hand: other ? [...entry.hand.slice(1), other] : entry.hand.slice(1),
+              connections: entry.connections + 1,
+              chain,
+              longestChain: Math.max(entry.longestChain, chain),
+              cooldownUntil: 0,
+            };
+          }
+          const given = current[result.first.seat]?.hand[0];
+          if (index === result.first.seat) {
             const chain = entry.chain + 1;
             return {
               ...entry,
@@ -198,10 +265,17 @@ export function TwinDuelApp({
           return players === 2 && given ? { ...entry, hand: [...entry.hand, given] } : entry;
         }),
       );
+      const given = seats[result.first.seat].hand[0];
       if (players === 1 && given) setMiddle(given);
       setFlash(null);
-      if (seats[seatIndex].hand.length === 1) {
-        setWinner(seatIndex);
+      setSecondFlash(null);
+      setSecondClaimed(false);
+      race.current = null;
+      if (
+        !tied &&
+        (seats[result.first.seat].hand.length === 1 || elapsedMs >= DUEL_CAP_MS)
+      ) {
+        setWinner(result.first.seat);
         playTwinSound("win", sound.effects);
         if (players === 1) {
           const total = Date.now() - startedAt + penaltyMs;
@@ -223,9 +297,15 @@ export function TwinDuelApp({
             index={1}
             slot="seat-two"
             flipped
-            answer={flash?.seat === 1 ? flash.symbolId : null}
+            answer={
+              flash?.seat === 1
+                ? flash.symbolId
+                : secondFlash?.seat === 1
+                  ? secondFlash.symbolId
+                  : null
+            }
             shaking={shake?.seat === 1}
-            locked={winner !== null || flash !== null}
+            locked={winner !== null || flash?.seat === 1 || secondClaimed}
             onTap={tap}
           />
         ) : (
@@ -278,10 +358,11 @@ export function TwinDuelApp({
               className="twin-card--middle"
             />
           ) : (
-            <p className="twin-duel-divider">
-              {remainingMs < 60_000
-                ? `${Math.ceil(remainingMs / 1_000)}s left`
-                : `${seats[0]?.hand.length ?? 0} — ${seats[1]?.hand.length ?? 0}`}
+            <p className="twin-duel-divider" aria-live="polite">
+              {raceSummary ??
+                (remainingMs < 60_000
+                  ? `${Math.ceil(remainingMs / 1_000)}s left`
+                  : `${seats[0]?.hand.length ?? 0} — ${seats[1]?.hand.length ?? 0}`)}
             </p>
           )}
         </div>
@@ -290,24 +371,65 @@ export function TwinDuelApp({
           seat={seats[0]}
           index={0}
           slot="seat-one"
-          answer={flash?.seat === 0 ? flash.symbolId : null}
+          answer={
+            flash?.seat === 0
+              ? flash.symbolId
+              : secondFlash?.seat === 0
+                ? secondFlash.symbolId
+                : null
+          }
           shaking={shake?.seat === 0}
-          locked={winner !== null || flash !== null}
+          locked={winner !== null || flash?.seat === 0 || secondClaimed}
           onTap={tap}
         />
       </div>
 
       {flash ? (
-        <TwinRay
-          containerRef={boardRef}
-          from={{ slot: flash.seat === 0 ? "seat-one" : "seat-two", symbolId: flash.symbolId }}
-          to={{
-            slot: players === 1 ? "middle" : flash.seat === 0 ? "seat-two" : "seat-one",
-            symbolId: flash.symbolId,
-          }}
-          token={`${flash.seat}-${flash.symbolId}-${seats[flash.seat]?.hand[0]?.cardId ?? ""}`}
-          durationMs={connectionHoldMs}
-        />
+        <>
+          <TwinRay
+            containerRef={boardRef}
+            from={{ slot: flash.seat === 0 ? "seat-one" : "seat-two", symbolId: flash.symbolId }}
+            to={{
+              slot: players === 1 ? "middle" : flash.seat === 0 ? "seat-two" : "seat-one",
+              symbolId: flash.symbolId,
+            }}
+            token={`${flash.seat}-${flash.symbolId}-${seats[flash.seat]?.hand[0]?.cardId ?? ""}`}
+            durationMs={connectionHoldMs}
+          />
+          <TwinCardTransfer
+            containerRef={boardRef}
+            from={flash.seat === 0 ? "seat-one" : "seat-two"}
+            to={players === 1 ? "middle" : flash.seat === 0 ? "seat-two" : "seat-one"}
+            token={`${flash.seat}-${flash.tappedAt}`}
+            durationMs={connectionHoldMs}
+          />
+        </>
+      ) : null}
+
+      {secondFlash ? (
+        <>
+          <TwinRay
+            containerRef={boardRef}
+            from={{
+              slot: secondFlash.seat === 0 ? "seat-one" : "seat-two",
+              symbolId: secondFlash.symbolId,
+            }}
+            to={{
+              slot: secondFlash.seat === 0 ? "seat-two" : "seat-one",
+              symbolId: secondFlash.symbolId,
+            }}
+            token={`tie-${secondFlash.seat}-${secondFlash.tappedAt}`}
+            durationMs={connectionHoldMs}
+          />
+          <TwinCardTransfer
+            containerRef={boardRef}
+            from={secondFlash.seat === 0 ? "seat-one" : "seat-two"}
+            to={secondFlash.seat === 0 ? "seat-two" : "seat-one"}
+            token={`tie-${secondFlash.seat}-${secondFlash.tappedAt}`}
+            durationMs={connectionHoldMs}
+            reverse
+          />
+        </>
       ) : null}
 
       {winner !== null ? (
@@ -368,7 +490,7 @@ function DuelSeat({
   answer: string | null;
   shaking?: boolean;
   locked: boolean;
-  onTap: (seat: number, symbolId: string) => void;
+  onTap: (seat: number, symbolId: string, tappedAt: number) => void;
 }) {
   const top = seat?.hand[0];
   const cooling = (seat?.cooldownUntil ?? 0) > Date.now();
@@ -385,17 +507,27 @@ function DuelSeat({
         </span>
       </div>
       {top ? (
-        <TwinCard
-          card={top}
-          slot={slot}
-          label={`Seat ${index + 1} card`}
-          onTap={(symbolId) => onTap(index, symbolId)}
-          disabled={locked}
-          focusSymbolId={answer}
-          className={`twin-card--mine ${cooling ? "twin-card--cooling" : ""} ${
-            shaking ? "twin-card--shake" : ""
-          }`}
-        />
+        <div className="twin-duel-stack">
+          {seat.hand.slice(1).map((card, depth) => (
+            <span
+              key={card.cardId}
+              className="twin-duel-stack-card"
+              style={{ "--twin-duel-depth": depth + 1 } as React.CSSProperties}
+              aria-hidden="true"
+            />
+          ))}
+          <TwinCard
+            card={top}
+            slot={slot}
+            label={`Seat ${index + 1} card`}
+            onTap={(symbolId, tappedAt) => onTap(index, symbolId, tappedAt)}
+            disabled={locked}
+            focusSymbolId={answer}
+            className={`twin-card--mine ${cooling ? "twin-card--cooling" : ""} ${
+              shaking ? "twin-card--shake" : ""
+            }`}
+          />
+        </div>
       ) : (
         <p className="twin-note">out of cards</p>
       )}

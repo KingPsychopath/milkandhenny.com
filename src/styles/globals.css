@@ -2991,6 +2991,44 @@
     color: var(--twin-accent);
   }
 
+  .twin-duel-stack {
+    position: relative;
+    display: grid;
+    place-items: center;
+  }
+
+  .twin-duel-stack-card {
+    position: absolute;
+    width: var(--twin-card-size);
+    aspect-ratio: 1;
+    border: 1px solid var(--twin-edge);
+    border-radius: 1.75rem;
+    background: var(--twin-face);
+    transform: translateY(calc(var(--twin-duel-depth) * 0.12rem))
+      rotate(calc((var(--twin-duel-depth) - 5) * 0.28deg))
+      scale(calc(1 - var(--twin-duel-depth) * 0.006));
+    opacity: calc(0.62 - var(--twin-duel-depth) * 0.022);
+  }
+
+  .twin-card-transfer {
+    position: absolute;
+    z-index: 12;
+    pointer-events: none;
+    border: 1px solid color-mix(in oklab, var(--things-amber) 64%, var(--twin-edge));
+    border-radius: 1.75rem;
+    background: repeating-linear-gradient(
+      45deg,
+      var(--twin-face) 0 7px,
+      color-mix(in oklab, var(--things-cream) 9%, var(--twin-face)) 7px 14px
+    );
+    box-shadow: 0 1rem 3rem color-mix(in oklab, var(--things-night) 72%, transparent);
+    animation: twin-card-transfer cubic-bezier(0.3, 0.7, 0.2, 1) forwards;
+  }
+
+  .twin-card-transfer--reverse {
+    animation-name: twin-card-transfer-reverse;
+  }
+
   .twin-duel-middle {
     position: relative;
     display: grid;
@@ -3091,6 +3129,10 @@
   }
 
   @media (prefers-reduced-motion: reduce) {
+    .twin-card-transfer {
+      display: none;
+    }
+
     .twin-symbol,
     .twin-fan-slot,
     .twin-clock-bar::after {
@@ -3123,6 +3165,44 @@
   @keyframes twin-ray-dot {
     to {
       opacity: 1;
+    }
+  }
+
+  @keyframes twin-card-transfer {
+    0%,
+    24% {
+      opacity: 0;
+      transform: translate3d(0, 0, 0) scale(0.98) rotate(-1deg);
+    }
+    34% {
+      opacity: 0.94;
+    }
+    82% {
+      opacity: 0.9;
+    }
+    100% {
+      opacity: 0;
+      transform: translate3d(var(--twin-transfer-x), var(--twin-transfer-y), 0) scale(0.74)
+        rotate(7deg);
+    }
+  }
+
+  @keyframes twin-card-transfer-reverse {
+    0%,
+    24% {
+      opacity: 0;
+      transform: translate3d(0, 0, 0) scale(0.98) rotate(1deg);
+    }
+    34% {
+      opacity: 0.94;
+    }
+    82% {
+      opacity: 0.9;
+    }
+    100% {
+      opacity: 0;
+      transform: translate3d(var(--twin-transfer-x), var(--twin-transfer-y), 0) scale(0.74)
+        rotate(-7deg);
     }
   }
 

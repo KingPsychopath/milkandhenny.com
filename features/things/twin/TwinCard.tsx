@@ -12,7 +12,7 @@ interface TwinCardProps {
    * middle card has no owner when two people share one screen, so the rule is the same in every mode:
    * you tap your own card.
    */
-  onTap?: (symbolId: string) => void;
+  onTap?: (symbolId: string, tappedAt: number) => void;
   disabled?: boolean;
   faceDown?: boolean;
   /** The connection beat: this symbol holds full strength while the rest of the card drops back. */
@@ -21,7 +21,14 @@ interface TwinCardProps {
    * Marks this card in the DOM so the ray can find a symbol on it without ref plumbing. A union
    * rather than a string because a typo here would silently leave the ray with nothing to measure.
    */
-  slot: "middle" | "hand" | "review" | "review-shed" | "review-middle" | "seat-one" | "seat-two";
+  slot:
+    | "middle"
+    | "hand"
+    | "review"
+    | "review-shed"
+    | "review-middle"
+    | "seat-one"
+    | "seat-two";
   label: string;
   className?: string;
 }
@@ -82,7 +89,7 @@ export function TwinCard({
                   // Claim on press rather than click: this is a race, and a click waits for release.
                   if (event.button !== 0 && event.pointerType === "mouse") return;
                   event.preventDefault();
-                  onTap(placement.symbolId);
+                  onTap(placement.symbolId, performance.now());
                 }}
                 aria-label={twinSymbolName(placement.symbolId)}
               >

@@ -34,6 +34,8 @@ export const TWIN_TIMING = {
   maxSettleHoldMs: 6_000,
   /** The connection stays drawn before a one-device card moves. */
   connectionHoldMs: 460,
+  /** Two touches closer than this are indistinguishable as a shared-screen race. */
+  duelPhotoFinishMs: 75,
   /** Faster than any human nervous system. Rejects prefiring and absurd claims. */
   minReactionMs: 220,
   /**
@@ -42,6 +44,14 @@ export const TWIN_TIMING = {
    */
   latencyAllowanceMs: 900,
 } as const;
+
+export function twinDuelFinish(firstAt: number, secondAt: number | null) {
+  const marginMs = secondAt === null ? null : Math.max(0, Math.round(secondAt - firstAt));
+  return {
+    marginMs,
+    tied: marginMs !== null && marginMs <= TWIN_TIMING.duelPhotoFinishMs,
+  };
+}
 
 export interface TwinHeartbeatTiming {
   startsAtMs: number;

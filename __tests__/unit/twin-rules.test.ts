@@ -7,6 +7,7 @@ import {
   TWIN_TIMING,
   twinAwards,
   twinCooldownMs,
+  twinDuelFinish,
   twinGraceEnd,
   twinHeadline,
   twinHeatOutcome,
@@ -122,6 +123,16 @@ describe("the timing clamps", () => {
     expect(
       recordTwinElapsed({ claimedMs: -5_000, arrivalElapsedMs: 400, windowMs }),
     ).toBeGreaterThanOrEqual(TWIN_TIMING.minReactionMs);
+  });
+});
+
+describe("a shared-screen photo finish", () => {
+  it("calls taps inside the perceptual window a dead heat", () => {
+    expect(twinDuelFinish(1_000, 1_075)).toEqual({ marginMs: 75, tied: true });
+  });
+
+  it("awards a measurable lead outside the window", () => {
+    expect(twinDuelFinish(1_000, 1_076)).toEqual({ marginMs: 76, tied: false });
   });
 });
 
