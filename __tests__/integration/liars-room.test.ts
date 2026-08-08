@@ -16,6 +16,7 @@ import {
 import { liarsRoleSide } from "../../features/things/liars/liars-rules";
 import { LIARS_GRAVEYARD_BOARD_MAX } from "../../features/things/liars/liars-rules";
 import { parseLiarsPlayerAction } from "../../features/things/liars/liars-room.functions";
+import { liarsRolesForMode } from "../../features/things/liars/liars-rules";
 import { LIARS_SCENARIOS } from "../../features/things/liars/liars-scenarios";
 import { startLiarsScenario } from "../../features/things/liars/liars-room-engine.server";
 import type {
@@ -969,7 +970,7 @@ describe("liars — the roles nothing was testing", () => {
    * exactly that gap — dealt correctly, walked by the scenario test, and delivering nothing — so
    * these exercise the power rather than the deal.
    */
-  async function nightOf(deal: string[], names = NAMES) {
+  async function nightOf(deal: LiarsRole[], names = NAMES) {
     const started = await startLiarsScenario({
       mode: "mafia",
       names: names.slice(0, deal.length),
@@ -1092,6 +1093,56 @@ describe("liars — the roles nothing was testing", () => {
   });
 });
 
+describe("liars — the show of hands", () => {
+  it("tallies who wants a role, and offers every role the mode has rather than only the ones in", async () => {
+    const created = await room("mafia", NAMES.slice(0, 9));
+    const [first, second] = created.seats;
+
+    const before = await view(created.roomId, first);
+    // Every role, not just the dealt ones — otherwise there is no way to ask for what you cannot see.
+    expect(before.roleWishes.length).toBe(liarsRolesForMode("mafia").length);
+    expect(before.roleWishes.some(({ active }) => active)).toBe(true);
+    expect(before.roleWishes.some(({ active }) => !active)).toBe(true);
+
+    await act(created.roomId, first, { type: "lineup.wish", role: "jester", wanted: true });
+    await act(created.roomId, second, { type: "lineup.wish", role: "jester", wanted: true });
+
+    const mine = await view(created.roomId, first);
+    const jester = mine.roleWishes.find(({ role }) => role === "jester")!;
+    expect(jester.count).toBe(2);
+    expect(jester.yours).toBe(true);
+
+    // Somebody who did not ask sees the same tally but not as theirs.
+    const theirs = await view(created.roomId, created.seats[4]);
+    expect(theirs.roleWishes.find(({ role }) => role === "jester")!).toMatchObject({
+      count: 2,
+      yours: false,
+    });
+
+    // Asking is a toggle, and never binds the lineup.
+    await act(created.roomId, first, { type: "lineup.wish", role: "jester", wanted: false });
+    const after = await view(created.roomId, first);
+    expect(after.roleWishes.find(({ role }) => role === "jester")!.count).toBe(1);
+    expect(after.lineup.roles.jester ?? 0).toBe(before.lineup.roles.jester ?? 0);
+  });
+
+  it("marks a role the room is too small for as unavailable rather than hiding it", async () => {
+    const created = await room("mafia", NAMES.slice(0, 5));
+    const snapshot = await view(created.roomId, created.seats[0]);
+    // The lookout needs seven. It is still listed, with the reason.
+    const lookout = snapshot.roleWishes.find(({ role }) => role === "lookout")!;
+    expect(lookout.available).toBe(false);
+    expect(lookout.active).toBe(false);
+  });
+
+  it("stops tallying once the game has started", async () => {
+    const created = await startedGame();
+    const snapshot = await view(created.roomId, created.seats[0]);
+    expect(snapshot.phase).not.toBe("lobby");
+    expect(snapshot.roleWishes).toEqual([]);
+  });
+});
+
 describe("liars — the mole", () => {
   /**
    * The mole is a one-way mirror and both directions matter: they hold the real word and know the
@@ -1193,6 +1244,7 @@ describe("liars — the wire", () => {
     { type: "host.claim" },
     { type: "words.last", text: "it was them" },
     { type: "guess.final", text: "otter" },
+    { type: "lineup.wish", role: "jester", wanted: true },
     { type: "graveyard.pin", text: "the doctor is real" },
     { type: "graveyard.unpin", noteId: "note-1" },
     { type: "night.select", round: 1, targetId: null },

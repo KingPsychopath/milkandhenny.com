@@ -273,6 +273,26 @@ export interface LiarsPrivateState extends MultiplayerReadiness {
   finalGuessOpen: boolean;
 }
 
+/**
+ * What the room would like in the game, tallied.
+ *
+ * Non-binding on purpose: the lobby is dead time that people already spend reading the role list,
+ * so this turns that reading into something the host can act on without taking the decision off
+ * them. Everyone sees the tally, because a lobby has no secrets and consensus is easier to reach
+ * when it is visible.
+ */
+export interface LiarsRoleWish {
+  role: LiarsRole;
+  /** Whether the role is in the lineup as it stands. */
+  active: boolean;
+  /** How many people have asked for it. */
+  count: number;
+  /** Whether you are one of them. */
+  yours: boolean;
+  /** False when the roster is too small for this role, which is why it cannot simply be added. */
+  available: boolean;
+}
+
 /** One line on the graveyard board. Dead-authored, dead-visible, dead-erasable. */
 export interface LiarsGraveyardNote {
   id: string;
@@ -306,6 +326,8 @@ export interface LiarsSnapshot
   dawn: LiarsDawnSnapshot | null;
   clue: LiarsClueSnapshot | null;
   graveyard: LiarsGraveyardSnapshot | null;
+  /** Lobby only. Every role the mode offers, whether it is in, and who wants it. */
+  roleWishes: LiarsRoleWish[];
   /** Populated only at `ending`, when everything opens up. */
   ending: LiarsEndingSnapshot | null;
   narratorPlayerId: string | null;
@@ -389,6 +411,7 @@ export type LiarsPlayerAction = MultiplayerAction &
     | { type: "clue.allSaid"; round: number }
     | { type: "words.last"; text: string }
     | { type: "graveyard.vote"; round: number; targetId: string | null }
+    | { type: "lineup.wish"; role: LiarsRole; wanted: boolean }
     | { type: "graveyard.pin"; text: string }
     | { type: "graveyard.unpin"; noteId: string }
     | { type: "guess.final"; text: string }

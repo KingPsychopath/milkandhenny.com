@@ -663,6 +663,21 @@ make the graveyard vote a guaranteed-correct ballot. `liveGodView` exists as a t
 want pure spectacle; the engine disables the graveyard vote when it is on, because the two are
 incompatible.
 
+**2e. The show of hands.** In the lobby, anyone can tap a role to ask for it. Everyone sees the
+tally; the host sees it again beside the +/− that acts on it.
+
+The lobby is the deadest two minutes in the game and people already spend it reading the role list,
+so this turns that reading into something actionable **without taking the decision off the host** —
+nothing here binds the lineup.
+
+It also fixed a plain gap: the board only ever listed roles that were *in*, so there was no way to
+ask for something you could not see. Every role the mode offers is now listed, benched ones marked
+with the roster size they need (`escort · needs 11`).
+
+Dots up to four, then a number. Four dots is still countable at a glance and eleven is a texture.
+Yours is the filled one, so the row answers "did I tap this?" without a second control. Asking is
+lobby-only — once the game is dealt the lineup is settled and a tally is noise.
+
 **2d. Role coverage.** Every role now has a test that exercises its **power**, not just its deal.
 
 That distinction is the point. Lookout, vigilante and mole previously had no behavioural coverage at

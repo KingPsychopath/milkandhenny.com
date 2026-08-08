@@ -322,6 +322,7 @@ function LobbyPhase({ snapshot, isHost, send, sendHost }: PhaseProps) {
               mode={snapshot.mode}
               lineup={snapshot.lineup}
               playerCount={snapshot.players.length}
+              wishes={snapshot.roleWishes}
               onChange={(next) => void sendHost({ type: "game.configure", lineup: next })}
               onReset={() => void sendHost({ type: "game.configure", resetLineup: true })}
             />
@@ -330,6 +331,8 @@ function LobbyPhase({ snapshot, isHost, send, sendHost }: PhaseProps) {
               mode={snapshot.mode}
               lineup={snapshot.lineup}
               playerCount={snapshot.players.length}
+              wishes={snapshot.roleWishes}
+              onWish={(role, wanted) => void send({ type: "lineup.wish", role, wanted })}
             />
           )}
         </div>

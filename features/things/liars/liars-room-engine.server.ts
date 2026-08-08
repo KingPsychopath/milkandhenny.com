@@ -51,6 +51,7 @@ import {
   liarsPlurality,
   liarsReadsGuilty,
   liarsRoleSide,
+  liarsRolesForMode,
   liarsTargetableIds,
   liarsValidateLineup,
   LIARS_DEFAULT_TOGGLES,
@@ -110,6 +111,8 @@ interface PlayerState {
   voteLocked: boolean;
   readyToVote: boolean;
   pointedAt: string | null;
+  /** Roles this player has asked for in the lobby. Non-binding; the host still decides. */
+  roleWishes: LiarsRole[];
   graveyardVote: string | null;
   report: LiarsNightReport | null;
   knowledge: LiarsKnowledgeEntry[];
@@ -1134,6 +1137,23 @@ function snapshot(room: LiarsRoomState, viewerId?: string, now = Date.now()): Li
             boardMax: LIARS_GRAVEYARD_BOARD_MAX,
           }
         : null,
+    /*
+     * Lobby only, and every role the mode offers rather than only the ones already in — "what is
+     * off" was previously not on screen anywhere, so there was no way to ask for something you
+     * could not see. `available` carries the reason a role cannot simply be switched on, which is
+     * almost always that the room is too small for it.
+     */
+    roleWishes:
+      room.phase === "lobby"
+        ? liarsRolesForMode(room.mode).map((definition) => ({
+            role: definition.id,
+            active: (room.lineup.roles[definition.id] ?? 0) > 0,
+            count: room.players.filter(({ roleWishes }) => roleWishes.includes(definition.id))
+              .length,
+            yours: viewer?.roleWishes.includes(definition.id) ?? false,
+            available: room.players.length >= definition.minPlayers,
+          }))
+        : [],
     ending: endingOf(room),
     narratorPlayerId: room.narratorPlayerId,
     hostPlayerId: room.hostPlayerId,
@@ -1329,6 +1349,7 @@ export async function joinLiarsRoom(input: {
       voteLocked: false,
       readyToVote: false,
       pointedAt: null,
+      roleWishes: [],
       graveyardVote: null,
       report: null,
       knowledge: [],
@@ -1663,6 +1684,18 @@ export async function applyLiarsPlayerAction(input: {
         return remembered();
       }
       return reject(view(), "action_unavailable", "Last words have closed");
+    }
+
+    if (action.type === "lineup.wish") {
+      // Lobby only. Once the game is dealt the lineup is settled and a tally would just be noise.
+      if (room.phase !== "lobby") return remembered();
+      const has = player.roleWishes.includes(action.role);
+      if (has === action.wanted) return remembered();
+      player.roleWishes = action.wanted
+        ? [...player.roleWishes, action.role]
+        : player.roleWishes.filter((role) => role !== action.role);
+      changed(room);
+      return remembered();
     }
 
     if (action.type === "graveyard.pin") {

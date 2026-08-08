@@ -21,6 +21,7 @@ import type {
   LiarsNightReport,
   LiarsPlayerSummary,
   LiarsRole,
+  LiarsRoleWish,
   LiarsSnapshot,
 } from "./types";
 import type { LiarsOverlay } from "./useLiarsEffects";
@@ -338,16 +339,24 @@ export function LineupBoard({
   mode,
   lineup,
   playerCount,
+  wishes = [],
+  onWish,
 }: {
   mode: LiarsMode;
   lineup: LiarsLineup;
   /** The real roster size. Below the mode's minimum the board says so rather than implying a deal. */
   playerCount: number;
+  /** Lobby only. Empty everywhere else, which collapses the asking UI back to a plain list. */
+  wishes?: LiarsRoleWish[];
+  onWish?: (role: LiarsRole, wanted: boolean) => void;
 }) {
   const shortBy = LIARS_PLAYER_LIMITS[mode].min - playerCount;
   const [openRole, setOpenRole] = useState<LiarsRole | null>(null);
   const sides = liarsSideCounts(lineup);
   const budget = liarsWrongVoteBudget(lineup);
+  // Only benched roles are askable. Asking for something already in the game is a no-op with a
+  // control attached, and the row would then have two meanings depending on where it sat.
+  const benched = wishes.filter(({ active }) => !active);
   const entries = liarsLineupEntries(lineup).toSorted(
     (left, right) =>
       Number(LIARS_ROLES[right[0]].side === "mafia") - Number(LIARS_ROLES[left[0]].side === "mafia"),
@@ -397,6 +406,49 @@ export function LineupBoard({
           );
         })}
       </ul>
+      {/*
+        Everything the mode offers that is not in. Without this there was nowhere to see what was
+        off, so "can we have the jester?" had to be asked out loud and remembered by the host.
+      */}
+      {benched.length > 0 ? (
+        <div className="mt-5 border-t border-white/10 pt-4">
+          <p className="font-mono text-micro uppercase tracking-[0.18em] text-white/35">
+            not in this game
+          </p>
+          <ul className="mt-1">
+            {benched.map((wish) => {
+              const definition = LIARS_ROLES[wish.role];
+              const open = openRole === wish.role;
+              return (
+                <li key={wish.role} className="border-b border-white/10">
+                  <div className="flex items-center gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setOpenRole(open ? null : wish.role)}
+                      aria-expanded={open}
+                      className="flex min-h-12 flex-1 items-center gap-3 text-left"
+                    >
+                      <span className="font-serif text-base text-white/55">{definition.name}</span>
+                      {!wish.available ? (
+                        <span className="font-mono text-micro text-white/25">
+                          needs {definition.minPlayers}
+                        </span>
+                      ) : null}
+                    </button>
+                    <WishButton wish={wish} onWish={onWish} />
+                  </div>
+                  {open ? (
+                    <div className="pb-4 pr-2">
+                      <p className="font-serif text-sm text-white/60">{definition.summary}</p>
+                    </div>
+                  ) : null}
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      ) : null}
+
       <p className="mt-4 border-t border-white/10 pt-3 font-mono text-xs text-white/50">
         {sides.mafia} {liarsSideLabel(mode, "mafia", sides.mafia)} · {sides.town}{" "}
         {liarsSideLabel(mode, "town", sides.town)}
@@ -413,6 +465,64 @@ export function LineupBoard({
         </p>
       ) : null}
     </section>
+  );
+}
+
+/**
+ * Asking for a role, and seeing who else has.
+ *
+ * Dots up to four, then a number — four dots is still countable at a glance and eleven is just a
+ * texture. Yours is the filled one, so the row answers "did I tap this?" without a second control.
+ *
+ * Nothing here binds the host. It is a show of hands in a room where everyone is already reading
+ * the role list, which is otherwise the deadest two minutes in the game.
+ */
+const WISH_DOTS = 4;
+
+function WishButton({
+  wish,
+  onWish,
+}: {
+  wish: LiarsRoleWish;
+  onWish?: (role: LiarsRole, wanted: boolean) => void;
+}) {
+  if (!onWish)
+    return wish.count > 0 ? (
+      <span className="shrink-0 pr-2 font-mono text-micro text-white/35">{wish.count} want it</span>
+    ) : null;
+
+  return (
+    <button
+      type="button"
+      onClick={() => onWish(wish.role, !wish.yours)}
+      aria-pressed={wish.yours}
+      aria-label={`${wish.yours ? "stop asking for" : "ask for"} the ${LIARS_ROLES[wish.role].name}`}
+      className="flex min-h-11 shrink-0 items-center gap-1.5 pl-2 pr-1"
+    >
+      {wish.count > WISH_DOTS ? (
+        <span
+          className={`font-mono text-xs ${
+            wish.yours ? "text-[var(--things-amber)]" : "text-white/40"
+          }`}
+        >
+          {wish.count}
+        </span>
+      ) : (
+        Array.from({ length: Math.max(1, wish.count) }, (_, index) => (
+          <span
+            key={index}
+            aria-hidden="true"
+            className={`size-1.5 rounded-full ${
+              wish.count === 0
+                ? "border border-white/20"
+                : wish.yours && index === 0
+                  ? "bg-[var(--things-amber)]"
+                  : "bg-white/35"
+            }`}
+          />
+        ))
+      )}
+    </button>
   );
 }
 
@@ -831,12 +941,15 @@ export function LineupEditor({
   mode,
   lineup,
   playerCount,
+  wishes = [],
   onChange,
   onReset,
 }: {
   mode: LiarsMode;
   lineup: LiarsLineup;
   playerCount: number;
+  /** The show of hands, shown right beside the control that acts on it. */
+  wishes?: LiarsRoleWish[];
   onChange: (next: LiarsLineup) => void;
   onReset: () => void;
 }) {
@@ -855,6 +968,7 @@ export function LineupEditor({
   }, [dirty, lineup]);
 
   const roles = liarsRolesForMode(mode);
+  const wanted = new Map(wishes.map(({ role, count }) => [role, count]));
   const total = liarsLineupTotal(draft);
   const check = liarsValidateLineup(mode, draft, playerCount);
   const spare = playerCount - total;
@@ -897,6 +1011,12 @@ export function LineupEditor({
               </span>
               {tooSmall ? (
                 <span className="font-mono text-micro text-white/25">needs {role.minPlayers}</span>
+              ) : null}
+              {/* Beside the +/−, so the host never has to close the editor to remember who asked. */}
+              {(wanted.get(role.id) ?? 0) > 0 ? (
+                <span className="font-mono text-micro text-[var(--things-amber)]/70">
+                  {wanted.get(role.id)} asked
+                </span>
               ) : null}
               <span className="ml-auto flex items-center gap-1">
                 <button

@@ -172,6 +172,9 @@ function playerAction(value: unknown): LiarsPlayerAction {
       type: data.type,
       text: multiplayerBoundedText(data.text, LIARS_LAST_WORDS_LENGTH, "Invalid last words"),
     };
+  if (data.type === "lineup.wish" && typeof data.wanted === "boolean")
+    return { actionId: id, type: data.type, role: role(data.role), wanted: data.wanted };
+
   // Roundless: a pin outlives the round it was written in, which is most of its value.
   if (data.type === "graveyard.pin")
     return {
