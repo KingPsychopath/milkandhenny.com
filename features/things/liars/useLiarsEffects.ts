@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { liarsHaptic, playLiarsSound } from "./liars-effects.client";
+import { LIARS_DUSK_MS } from "./liars-rules";
 import { liarsTorch } from "./torch.client";
 import { speakLiarsNarration } from "./narration.client";
 import type { LiarsSnapshot } from "./types";
@@ -58,11 +59,17 @@ export function useLiarsEffects(input: {
     const key = `${snapshot.phase}:${snapshot.round}:${snapshot.gameNumber}`;
     if (snapshot.phase === "night")
       once(`dusk:${key}`, () => {
-        showOverlay("dusk", 2_500);
+        // The full dusk window. The overlay used to clear at 2.5s while the moon inside it was
+        // animating over 5s, so it was cut off halfway up and the second half of the beat played
+        // against a bare screen.
+        showOverlay("dusk", LIARS_DUSK_MS);
         playLiarsSound("dusk", audibleRef.current);
       });
     if (snapshot.phase === "dawn")
-      once(`dawn:${key}`, () => showOverlay("dawn", 2_500));
+      once(`dawn:${key}`, () => {
+        showOverlay("dawn", 2_500);
+        playLiarsSound("dawn", audibleRef.current);
+      });
     if (snapshot.phase === "verdict")
       once(`toll:${key}`, () => {
         playLiarsSound("toll", audibleRef.current);

@@ -490,8 +490,9 @@
     animation: liars-revive 1.8s cubic-bezier(0.16, 1, 0.3, 1) forwards;
   }
 
+  /* Matches LIARS_DUSK_MS, and the 5s moon that rises inside it. */
   .liars-overlay--dusk {
-    animation: liars-dusk 2.5s ease-in-out forwards;
+    animation: liars-dusk 5s ease-in-out forwards;
   }
 
   .liars-overlay--dawn {
@@ -540,10 +541,26 @@
     }
   }
 
+  /*
+   * Wash, hold, clear — rather than one long linear fade.
+   *
+   * Stretching the old two-and-a-half-second crossfade to fill the five-second beat would have left
+   * the layer fading the entire time, so the moon would have been at its faintest exactly as it
+   * finished rising. Instead the cream goes to night quickly, the sky holds while the moon comes up
+   * and the stars arrive, and only then does it clear.
+   */
   @keyframes liars-dusk {
     0% {
       background: var(--things-cream);
-      opacity: 0.9;
+      opacity: 0.95;
+    }
+    22% {
+      background: var(--things-night);
+      opacity: 0.95;
+    }
+    76% {
+      background: var(--things-night);
+      opacity: 0.92;
     }
     100% {
       background: var(--things-night);
@@ -574,14 +591,15 @@
     fill: var(--things-night);
   }
 
+  /* Settles at 3.5s, inside the dusk hold, so it is at rest before the layer clears. */
   .liars-moon--rise {
-    animation: liars-moon-rise 5s ease-out forwards;
+    animation: liars-moon-rise 3.5s ease-out forwards;
   }
 
   .liars-star {
     fill: var(--things-cream);
     opacity: 0;
-    animation: liars-star-in 2.6s ease-out forwards;
+    animation: liars-star-in 3.2s ease-out forwards;
   }
 
   .liars-sun {
