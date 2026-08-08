@@ -23,7 +23,7 @@ export interface Thing {
     | "/things/same-brain"
     | "/things/twin";
   status: "ready";
-  symbol: string;
+  mark: { kind: "symbol"; value: string } | { kind: "icon"; value: "brain" | "pair" };
   offline: (typeof THING_OFFLINE)[keyof typeof THING_OFFLINE] | null;
 }
 
@@ -38,7 +38,7 @@ export const THINGS = [
     eyebrow: "party game · 3–16 people",
     href: "/things/same-brain",
     status: "ready",
-    symbol: "◎",
+    mark: { kind: "icon", value: "brain" },
     offline: null,
   },
   {
@@ -48,7 +48,7 @@ export const THINGS = [
     eyebrow: "speed matching · 1–10 people",
     href: "/things/twin",
     status: "ready",
-    symbol: "◎",
+    mark: { kind: "icon", value: "pair" },
     offline: THING_OFFLINE.twin,
   },
   {
@@ -58,7 +58,7 @@ export const THINGS = [
     eyebrow: "social deduction · 4–16 people",
     href: "/things/liars",
     status: "ready",
-    symbol: "◑",
+    mark: { kind: "symbol", value: "◑" },
     offline: null,
   },
   {
@@ -68,7 +68,7 @@ export const THINGS = [
     eyebrow: "slides · draw, type, paste",
     href: "/things/pitches",
     status: "ready",
-    symbol: "▱",
+    mark: { kind: "symbol", value: "▱" },
     offline: THING_OFFLINE.pitches,
   },
   {
@@ -78,7 +78,7 @@ export const THINGS = [
     eyebrow: "drawing game · 1–16 people",
     href: "/things/draw-country",
     status: "ready",
-    symbol: "◇",
+    mark: { kind: "symbol", value: "◇" },
     offline: THING_OFFLINE["draw-country"],
   },
   {
@@ -88,7 +88,7 @@ export const THINGS = [
     eyebrow: "word game · 1+ people",
     href: "/things/spelling-bee",
     status: "ready",
-    symbol: "æ",
+    mark: { kind: "symbol", value: "æ" },
     offline: THING_OFFLINE["spelling-bee"],
   },
   {
@@ -98,7 +98,7 @@ export const THINGS = [
     eyebrow: "party game · 2+ people",
     href: "/things/heads-up",
     status: "ready",
-    symbol: "↕",
+    mark: { kind: "symbol", value: "↕" },
     offline: THING_OFFLINE["heads-up"],
   },
   {
@@ -108,7 +108,7 @@ export const THINGS = [
     eyebrow: "social tool · groups",
     href: "/things/icebreaker",
     status: "ready",
-    symbol: "◉",
+    mark: { kind: "symbol", value: "◉" },
     offline: THING_OFFLINE.icebreaker,
   },
 ] satisfies readonly Thing[];

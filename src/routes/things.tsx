@@ -6,6 +6,37 @@ import type { OfflineThingSlug } from "@/features/things/offline";
 import { useThingOfflineState } from "@/features/offline/client";
 import type { Thing } from "@/features/things/catalog";
 
+function ThingMark({ mark }: { mark: Thing["mark"] }) {
+  if (mark.kind === "symbol") return mark.value;
+
+  if (mark.value === "brain") {
+    return (
+      <svg viewBox="0 0 28 28" className="size-7 fill-none stroke-current" strokeWidth="1.6">
+        <path
+          d="M13.8 6.2c-1.1-2.8-5.3-2.2-5.3.9-2.9-.2-4.4 3.4-2.2 5.3-2.5 2.4-.7 6.3 2.6 6.2.5 3.2 4.8 3.7 5.1.3V7.8m.2-1.6c1.1-2.8 5.3-2.2 5.3.9 2.9-.2 4.4 3.4 2.2 5.3 2.5 2.4.7 6.3-2.6 6.2-.5 3.2-4.8 3.7-5.1.3V7.8"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+        <path
+          d="M8.5 7.1c.2 1.5 1 2.4 2.4 2.7m8.6-2.7c-.2 1.5-1 2.4-2.4 2.7M6.3 12.4c1.4-.1 2.5.5 3.1 1.7m12.3-1.7c-1.4-.1-2.5.5-3.1 1.7m-9.7 4.5c.7-1.1 1.7-1.7 3-1.7m7.2 1.7c-.7-1.1-1.7-1.7-3-1.7"
+          strokeLinecap="round"
+        />
+      </svg>
+    );
+  }
+
+  return (
+    <svg viewBox="0 0 28 28" className="size-7 fill-none stroke-current" strokeWidth="1.6">
+      <circle cx="10" cy="9" r="3.25" />
+      <circle cx="19" cy="10" r="2.75" />
+      <path
+        d="M3.8 22c.2-4.4 2.6-7 6.2-7s6 2.6 6.2 7m-.8-5.6c1-.8 2.2-1.2 3.6-1.2 3.2 0 5.2 2.3 5.4 6"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
 export const Route = createFileRoute("/things")({
   component: ThingsRoute,
   head: () => ({
@@ -58,7 +89,7 @@ function ThingsRoute() {
                   aria-hidden="true"
                   className="font-mono text-2xl theme-faint group-hover:text-foreground transition-colors"
                 >
-                  {thing.symbol}
+                  <ThingMark mark={thing.mark} />
                 </span>
                 <span>
                   <span className="block font-mono text-micro uppercase tracking-[0.16em] theme-muted">
