@@ -662,13 +662,22 @@ export function MarkLegend({ marks }: { marks: LiarsMark[] }) {
 
 
 /**
- * Your word, kept off the screen until you ask for it.
+ * Everything about the word, in one block.
  *
- * Pinning it in view solved forgetting and created shoulder-surfing, which is the thing the deal
- * card is hold-to-reveal to avoid. Same bargain here: it is one tap away all round, and it is never
- * sitting there for the person beside you to read while you are looking at somebody else.
+ * The board is public — everybody has the same twelve — so it can sit on screen all game with no
+ * risk. Your word is not, so it lives behind a hold, which is the same bargain the deal card makes.
+ * Printing the category twice and giving the board its own heading was three blocks doing the work
+ * of one.
  */
-export function PeekWord({ word, category }: { word: string | null; category: string | null }) {
+export function WordPanel({
+  word,
+  category,
+  board,
+}: {
+  word: string | null;
+  category: string | null;
+  board: string[];
+}) {
   const [showUntil, setShowUntil] = useState(0);
   const [, setTick] = useState(0);
   const showing = showUntil > Date.now();
@@ -679,14 +688,17 @@ export function PeekWord({ word, category }: { word: string | null; category: st
     return () => window.clearTimeout(timer);
   }, [showUntil, showing]);
 
+  if (!category && board.length === 0) return null;
+
   return (
-    <div className="mt-8 border-y border-white/15 py-4">
-      <p className="font-mono text-micro uppercase tracking-[0.2em] text-white/40">
-        {category ?? "your word"}
+    <section className="mt-8 border-y border-white/15 py-4" aria-label="your word">
+      <p className="font-mono text-micro uppercase tracking-[0.18em] text-white/40">
+        {category ? `${category} · one of these` : "one of these"}
       </p>
+
       {showing ? (
         <p
-          className={`mt-1 font-serif text-3xl font-semibold ${
+          className={`mt-2 font-serif text-3xl font-semibold ${
             word ? "text-[var(--things-amber)]" : "text-[var(--liars-dead)]"
           }`}
         >
@@ -698,33 +710,23 @@ export function PeekWord({ word, category }: { word: string | null; category: st
           onPointerDown={() => setShowUntil(Date.now() + 2_500)}
           className="mt-1 min-h-11 font-mono text-sm text-white/45 hover:text-white/80"
         >
-          hold to see your word again
+          hold to see yours
         </button>
       )}
-    </div>
-  );
-}
 
-
-/**
- * The board, shown to everyone. The crew know which one is theirs; the imposter is looking at the
- * same twelve words and has to work out which. Marking your own would defeat it, so nothing here is
- * highlighted — your word lives behind the peek.
- */
-export function WordBoard({ words, category }: { words: string[]; category: string | null }) {
-  if (words.length === 0) return null;
-  return (
-    <section className="mt-6" aria-label="the words it could be">
-      <p className="font-mono text-micro uppercase tracking-[0.18em] text-white/40">
-        {category ? `${category} · one of these` : "one of these"}
-      </p>
-      <ul className="mt-2 grid grid-cols-2 gap-x-4">
-        {words.map((word) => (
-          <li key={word} className="border-b border-white/10 py-2 font-serif text-base text-white/75">
-            {word}
-          </li>
-        ))}
-      </ul>
+      {board.length > 0 ? (
+        <ul className="mt-3 grid grid-cols-2 gap-x-4">
+          {board.map((candidate) => (
+            <li
+              key={candidate}
+              className="border-t border-white/10 py-1.5 font-serif text-base text-white/70"
+            >
+              {candidate}
+            </li>
+          ))}
+        </ul>
+      ) : null}
     </section>
   );
 }
+

@@ -24,8 +24,7 @@ import {
   MarkLegend,
   LiarsOverlayLayer,
   NotesPad,
-  PeekWord,
-  WordBoard,
+  WordPanel,
   LineupBoard,
   NightReportCard,
   PhaseTimer,
@@ -204,7 +203,7 @@ export function LiarsRoom({ credentials }: { credentials: LiarsPlayerCredentials
             <RulesSheet mode={snapshot.mode} yourRole={you?.role} />
             {snapshot.phase !== "lobby" ? (
               <>
-                <KnowledgeList snapshot={snapshot} />
+                {snapshot.mode === "mafia" ? <KnowledgeList snapshot={snapshot} /> : null}
                 <NotesPad
                   notes={notes.notes}
                   round={snapshot.round}
@@ -409,27 +408,23 @@ function DealPhase({ snapshot, clockOffset }: PhaseProps) {
               </p>
             ) : null}
             {you.wordBoard.length > 0 ? (
-              <ul className="mx-auto mt-6 grid max-w-sm grid-cols-2 gap-x-4 text-left">
-                {you.wordBoard.map((candidate) => (
-                  <li
-                    key={candidate}
-                    className="border-b border-white/10 py-1.5 font-serif text-sm text-white/60"
-                  >
-                    {candidate}
-                  </li>
-                ))}
-              </ul>
+              <p className="mt-5 font-mono text-xs text-white/35">
+                the twelve it could be are on the next screen
+              </p>
             ) : null}
             {allies.length > 0 ? (
               <p className="mt-6 font-mono text-xs text-white/55">
                 with you · {allies.map(({ name }) => name).join(", ")}
               </p>
             ) : null}
-            <ul className="mx-auto mt-8 max-w-sm space-y-1.5 text-left font-mono text-xs text-white/45">
-              {definition.rules.map((rule, index) => (
-                <li key={index}>{rule}</li>
-              ))}
-            </ul>
+            {/* Mafia roles need their rules on the card; an imposter's summary is the whole rule. */}
+            {snapshot.mode === "mafia" ? (
+              <ul className="mx-auto mt-8 max-w-sm space-y-1.5 text-left font-mono text-xs text-white/45">
+                {definition.rules.map((rule, index) => (
+                  <li key={index}>{rule}</li>
+                ))}
+              </ul>
+            ) : null}
           </>
         ) : (
           <p className="pt-16 font-mono text-xs uppercase tracking-[0.2em] text-white/40">
@@ -768,47 +763,36 @@ function CluePhase({ snapshot, send }: PhaseProps) {
         </div>
       )}
 
-      <PeekWord word={you.word} category={you.wordCategory} />
-      <WordBoard words={you.wordBoard} category={you.wordCategory} />
+      <WordPanel word={you.word} category={you.wordCategory} board={you.wordBoard} />
 
-      <ol className="mt-10 border-t border-white/10">
+      {/* One line rather than sixteen bordered rows. The order is randomised so the phone is the
+          only place to read it, but reading it is a glance, not a list to work through. */}
+      <p className="mt-6 font-mono text-xs leading-relaxed text-white/40">
         {clue.order.map((playerId, index) => {
           const player = snapshot.players.find(({ id }) => id === playerId);
           const done = clue.doneIds.includes(playerId);
+          const isYou = playerId === you.playerId;
+          const isNow = !oneTap && playerId === clue.currentPlayerId;
           return (
-            <li
-              key={playerId}
-              className={`flex min-h-12 items-center gap-3 border-b border-white/10 ${
-                oneTap
-                  ? playerId === you.playerId
-                    ? ""
-                    : "opacity-70"
-                  : done
-                    ? "opacity-40"
-                    : playerId === clue.currentPlayerId
-                      ? ""
-                      : "opacity-70"
-              }`}
-            >
-              <span className="w-6 font-mono text-xs text-white/30">{index + 1}</span>
-              <span className="font-serif text-lg">{player?.name}</span>
-              {oneTap ? (
-                playerId === you.playerId ? (
-                  <span className="ml-auto font-mono text-micro uppercase tracking-[0.16em] text-[var(--things-amber)]">
-                    you
-                  </span>
-                ) : null
-              ) : playerId === clue.currentPlayerId ? (
-                <span className="ml-auto font-mono text-micro uppercase tracking-[0.16em] text-[var(--things-amber)]">
-                  now
-                </span>
-              ) : done ? (
-                <span className="ml-auto font-mono text-xs text-white/30">said</span>
-              ) : null}
-            </li>
+            <span key={playerId}>
+              {index > 0 ? " · " : ""}
+              <span
+                className={
+                  isNow
+                    ? "font-bold text-[var(--things-amber)]"
+                    : isYou
+                      ? "text-white/80"
+                      : done
+                        ? "text-white/20"
+                        : ""
+                }
+              >
+                {isYou ? "you" : player?.name}
+              </span>
+            </span>
           );
         })}
-      </ol>
+      </p>
     </>
   );
 }
