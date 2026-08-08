@@ -8,6 +8,8 @@ const GAME_PREFIXES = [
   "things:spelling-party:",
   "things:draw-country:",
   "things:liars:",
+  "things:heads-up:",
+  "things:spelling-bee:",
 ];
 
 export function readExpiringLocalValue<T>(key: string): T | null {
@@ -41,17 +43,32 @@ export function removeStoragePrefix(storage: Storage, prefix: string) {
   removeStorageKeys(storage, matches);
 }
 
+/**
+ * Clears out room sessions whose rooms have expired.
+ *
+ * It removes **only** records that are expiring records and have expired. It used to delete
+ * anything under a game prefix that it could not parse as one, which quietly took everything else
+ * a game keeps with it: preferences, notepads, and the sound setting — the last of which is a bare
+ * string, so parsing it threw and it was removed on sight. Opening one game wiped another's
+ * settings, which reads exactly like "it never remembers anything".
+ */
 export function clearExpiredGameLocalStorage() {
   const expired: string[] = [];
   for (let index = 0; index < localStorage.length; index += 1) {
     const key = localStorage.key(index);
     if (!key || !GAME_PREFIXES.some((prefix) => key.startsWith(prefix))) continue;
+    let stored: unknown;
     try {
-      const stored = JSON.parse(localStorage.getItem(key) ?? "null") as { expiresAt?: unknown } | null;
-      if (!stored || typeof stored.expiresAt !== "number" || stored.expiresAt <= Date.now()) expired.push(key);
+      stored = JSON.parse(localStorage.getItem(key) ?? "null");
     } catch {
-      expired.push(key);
+      // Not JSON, so not one of ours to expire. Leave it alone.
+      continue;
     }
+    if (!stored || typeof stored !== "object" || Array.isArray(stored)) continue;
+    const expiresAt = (stored as { expiresAt?: unknown }).expiresAt;
+    // No expiry means it was never meant to have one.
+    if (typeof expiresAt !== "number") continue;
+    if (expiresAt <= Date.now()) expired.push(key);
   }
   removeStorageKeys(localStorage, expired);
 }

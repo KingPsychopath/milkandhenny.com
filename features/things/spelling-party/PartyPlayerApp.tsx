@@ -15,7 +15,7 @@ import type {
   PartyPresenterAction,
 } from "./types";
 import { usePartyLiveSnapshot } from "./usePartyLiveSnapshot";
-import { usePartySound } from "./usePartySound";
+import { useGameSound } from "../shared/useGameSound";
 import { useSynchronizedPartyStage } from "./useSynchronizedPartyStage";
 import { PartyClosenessBoard } from "./PartyClosenessBoard";
 import { PartyRoundCooldown } from "./PartyRoundCooldown";
@@ -175,7 +175,10 @@ function PartyPlayerGame({ credentials }: { credentials: PartyPlayerCredentials 
   const [requestingSentenceClue, setRequestingSentenceClue] = useState(false);
   const [leaving, setLeaving] = useState(false);
   const haptics = useWebHaptics();
-  const { muted, toggle: toggleSound } = usePartySound();
+  // Everything this game plays is the word itself, so two states is the honest set here.
+  const sound = useGameSound(partyBrowserKeys.muted(), ["all", "off"]);
+  const muted = !sound.effects;
+  const toggleSound = sound.cycle;
   const previousStartRequest = useRef<string | null>(null);
   const queueKey = partyBrowserKeys.pendingActions(credentials.roomId, credentials.playerId);
 

@@ -21,21 +21,26 @@ export const GAME_SOUND_DESCRIPTION: Record<GameSoundMode, string> = {
   off: "silent",
 };
 
-const ORDER: GameSoundMode[] = ["all", "ambient", "off"];
+const ALL_MODES: GameSoundMode[] = ["all", "ambient", "off"];
 
-function parse(value: string | null): GameSoundMode {
-  return value === "all" || value === "ambient" || value === "off" ? value : "all";
+function parse(value: string | null, allowed: GameSoundMode[]): GameSoundMode {
+  return allowed.includes(value as GameSoundMode) ? (value as GameSoundMode) : allowed[0];
 }
 
-export function useGameSound(storageKey: string) {
-  const [mode, setMode] = useState<GameSoundMode>("all");
+export function useGameSound(
+  storageKey: string,
+  /** Which states this game offers. Default is all three. */
+  modes: GameSoundMode[] = ALL_MODES,
+) {
+  const [mode, setMode] = useState<GameSoundMode>(modes[0]);
 
   useEffect(() => {
     try {
-      setMode(parse(localStorage.getItem(storageKey)));
+      setMode(parse(localStorage.getItem(storageKey), modes));
     } catch {
       // A browser refusing storage just means this device always starts at "all".
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- modes is a literal per call site
   }, [storageKey]);
 
   const set = useCallback(
@@ -52,7 +57,8 @@ export function useGameSound(storageKey: string) {
 
   const cycle = useCallback(() => {
     setMode((current) => {
-      const next = ORDER[(ORDER.indexOf(current) + 1) % ORDER.length];
+      const order = modes.length > 0 ? modes : ALL_MODES;
+      const next = order[(order.indexOf(current) + 1) % order.length];
       try {
         localStorage.setItem(storageKey, next);
       } catch {
@@ -60,6 +66,7 @@ export function useGameSound(storageKey: string) {
       }
       return next;
     });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- modes is a literal per call site
   }, [storageKey]);
 
   return {
