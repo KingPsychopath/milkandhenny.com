@@ -14,10 +14,12 @@ import {
 } from "./liars-rules";
 import { applyLiarsHostActionFn, applyLiarsPlayerActionFn } from "./liars-room.functions";
 import { JoinLiarsRoom } from "./JoinLiarsRoom";
+import { buildLiarsPlayerInviteUrl } from "./liars-invite";
 import {
   ActionButton,
   Eyebrow,
   Headline,
+  InvitePanel,
   KnowledgeList,
   LiarsOverlayLayer,
   NotesPad,
@@ -154,13 +156,12 @@ export function LiarsRoom({ credentials }: { credentials: LiarsPlayerCredentials
           <Link to="/things/liars" className="inline-flex min-h-11 items-center">
             ← liars
           </Link>
-          {snapshot.phase === "lobby" ? (
-            <span className="tracking-[0.16em]">{snapshot.roomId}</span>
-          ) : (
-            <span>
-              {snapshot.livingCount} alive · {snapshot.players.length - snapshot.livingCount} gone
-            </span>
-          )}
+          {/* The lobby already shows the code at four times this size; twice is noise. */}
+          <span>
+            {snapshot.phase === "lobby"
+              ? LIARS_MODE_COPY[snapshot.mode].name
+              : `${snapshot.livingCount} alive · ${snapshot.players.length - snapshot.livingCount} gone`}
+          </span>
           <button
             type="button"
             onClick={sound.cycle}
@@ -278,12 +279,30 @@ function PhaseBody(props: PhaseProps) {
 function LobbyPhase({ snapshot, isHost, send, sendHost }: PhaseProps) {
   const you = snapshot.player;
   const short = LIARS_PLAYER_LIMITS[snapshot.mode].min - snapshot.players.length;
+  const [startAttempted, setStartAttempted] = useState(false);
+  const notReady = snapshot.players.filter(({ ready }) => !ready);
+  const inviteUrl =
+    typeof window === "undefined"
+      ? ""
+      : buildLiarsPlayerInviteUrl(
+          window.location.origin,
+          snapshot.roomId,
+          readExpiringLocalValue<string>(liarsBrowserKeys.invite(snapshot.roomId)) ?? undefined,
+        );
   return (
     <>
       <Eyebrow>{LIARS_MODE_COPY[snapshot.mode].name} · lobby</Eyebrow>
-      <Headline>Who is here</Headline>
-      <div className="mt-6">
-        <PlayerList snapshot={snapshot} />
+      <Headline>Bring everyone in</Headline>
+
+      <div className="mt-8">
+        <InvitePanel roomId={snapshot.roomId} inviteUrl={inviteUrl} />
+      </div>
+
+      <div className="mt-10">
+        <Eyebrow>who is here · {snapshot.players.length}</Eyebrow>
+        <div className="mt-3">
+          <PlayerList snapshot={snapshot} />
+        </div>
       </div>
 
       <div className="mt-10">
@@ -298,20 +317,36 @@ function LobbyPhase({ snapshot, isHost, send, sendHost }: PhaseProps) {
       </div>
 
       <div className="mt-10 space-y-3">
+        {/*
+          This used to be labelled with the state rather than the action, so a player who was
+          already ready read "ready", tapped it to confirm, and became unready. Everybody joins
+          ready, so that one tap was enough to stall the whole room.
+        */}
         <ActionButton
           tone={you?.ready ? "ghost" : "amber"}
           onClick={() => void send({ type: "readiness.set", ready: !you?.ready })}
         >
-          {you?.ready ? "ready" : "i'm ready"}
+          {you?.ready ? "you're ready · tap if you're not" : "i'm ready"}
         </ActionButton>
+        {isHost && startAttempted && notReady.length > 0 ? (
+          <p className="text-center font-mono text-xs text-white/45">
+            still waiting on {notReady.map(({ name }) => name).join(", ")} — tap again to go
+            without them
+          </p>
+        ) : null}
         {isHost ? (
           <ActionButton
             disabled={short > 0}
-            onClick={() => void sendHost({ type: "game.start" })}
+            onClick={() => {
+              setStartAttempted(true);
+              void sendHost({ type: "game.start", force: startAttempted });
+            }}
           >
             {short > 0
               ? `${short} more ${short === 1 ? "player" : "players"} needed`
-              : "start the game"}
+              : startAttempted
+                ? "start anyway"
+                : "start the game"}
           </ActionButton>
         ) : null}
       </div>
@@ -330,6 +365,7 @@ function DealPhase({ snapshot, clockOffset }: PhaseProps) {
   return (
     <>
       <Eyebrow>your role</Eyebrow>
+      <Headline>Hold to read it</Headline>
       <PhaseTimer
         endsAt={snapshot.phaseEndsAt}
         clockOffset={clockOffset}
@@ -480,6 +516,27 @@ function NightPhase({ snapshot, clockOffset, send }: PhaseProps) {
   );
 }
 
+/**
+ * The headline slot holds the answer on every screen, so it holds it here too. Until the name
+ * lands it says "Morning"; after, it says who. The story goes underneath as prose — it is the part
+ * you listen to rather than the part you look for.
+ */
+function dawnHeadline(
+  dawn: LiarsSnapshot["dawn"],
+  landed: boolean,
+  revived: boolean,
+): string {
+  if (!dawn || !landed) return "Morning";
+  const substituted = dawn.deaths.find(({ substituteName }) => substituteName);
+  if (substituted) return `${substituted.substituteName} is gone`;
+  const saved = dawn.deaths.find(({ revived: wasRevived }) => wasRevived);
+  if (saved) return revived ? `${saved.name} lives` : `${saved.name} is gone`;
+  const dead = dawn.deaths.filter(({ revived: wasRevived }) => !wasRevived);
+  if (dead.length === 0) return "Nobody died";
+  if (dead.length === 1) return `${dead[0].name} is gone`;
+  return `${dead.map(({ name }) => name).join(" and ")} are gone`;
+}
+
 function DawnPhase({ snapshot, clockOffset, send, notes }: PhaseProps) {
   const dawn = snapshot.dawn;
   const you = snapshot.player;
@@ -490,7 +547,10 @@ function DawnPhase({ snapshot, clockOffset, send, notes }: PhaseProps) {
   return (
     <>
       <Eyebrow>dawn · day {snapshot.round}</Eyebrow>
-      <Headline>{dawn?.narration ?? "Morning"}</Headline>
+      <Headline>{dawnHeadline(dawn, landed, revived)}</Headline>
+      {dawn ? (
+        <p className="mt-4 font-serif text-lg leading-relaxed text-white/65">{dawn.narration}</p>
+      ) : null}
 
       {dawn && landed ? (
         <div className="mt-8 space-y-3" aria-live="assertive">
@@ -597,6 +657,11 @@ function CluePhase({ snapshot, send }: PhaseProps) {
   if (!clue || !you) return null;
   const current = snapshot.players.find(({ id }) => id === clue.currentPlayerId);
   const yours = clue.currentPlayerId === you.playerId;
+  // Round a table you can hear whose turn it is. On a call you cannot, and two people talking over
+  // each other costs the whole round — so the screen has to do the work the room was doing.
+  const remote = snapshot.roomMode === "remote";
+  const nextUp = clue.order[clue.order.indexOf(clue.currentPlayerId ?? "") + 1];
+  const nextName = snapshot.players.find(({ id }) => id === nextUp)?.name;
 
   return (
     <>
@@ -607,8 +672,12 @@ function CluePhase({ snapshot, send }: PhaseProps) {
       <Headline>{yours ? "Your turn" : `${current?.name ?? "…"}'s turn`}</Headline>
       <p className="mt-4 font-serif text-lg text-white/65">
         {yours
-          ? "Say one word out loud, then tap."
-          : "Listen. Your turn is coming."}
+          ? remote
+            ? "Unmute, say one word, then tap."
+            : "Say one word out loud, then tap."
+          : remote
+            ? `Stay muted until ${current?.name ?? "they"} have finished.`
+            : "Listen. Your turn is coming."}
       </p>
 
       {yours ? (
@@ -617,6 +686,10 @@ function CluePhase({ snapshot, send }: PhaseProps) {
             said it →
           </ActionButton>
         </div>
+      ) : remote && nextName && nextUp === you.playerId ? (
+        <p className="mt-8 font-mono text-xs text-[var(--things-amber)]">
+          you are next — unmute now so there is no gap
+        </p>
       ) : null}
 
       <ol className="mt-10 border-t border-white/10">
@@ -794,10 +867,10 @@ function FinalGuessPhase({ snapshot, clockOffset, send }: PhaseProps) {
       <>
         <Eyebrow>caught</Eyebrow>
         <Headline>One guess left</Headline>
+        <PhaseTimer endsAt={snapshot.phaseEndsAt} clockOffset={clockOffset} label="they have" />
         <p className="mt-4 font-serif text-lg text-white/65">
           They have thirty seconds to name the word. If they get it, they take the whole game.
         </p>
-        <PhaseTimer endsAt={snapshot.phaseEndsAt} clockOffset={clockOffset} label="they have" />
       </>
     );
 

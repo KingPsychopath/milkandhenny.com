@@ -1,4 +1,6 @@
 import { useEffect, useId, useState } from "react";
+import { useQrCode } from "@/hooks/useQrCode";
+import { shareOrCopy } from "@/lib/client/share";
 import type { ReactNode } from "react";
 import {
   LIARS_MODE_COPY,
@@ -167,6 +169,11 @@ export function PlayerList({
                 title="with you"
                 aria-label="with you"
               />
+            ) : null}
+            {snapshot.phase === "lobby" && !player.ready ? (
+              <span className="font-mono text-micro uppercase tracking-[0.14em] text-[var(--things-amber)]">
+                not ready
+              </span>
             ) : null}
             {!player.connected && player.alive ? (
               <span
@@ -529,5 +536,65 @@ export function NotesPad({
         </div>
       ) : null}
     </div>
+  );
+}
+
+
+/**
+ * The lobby's whole job: get everyone else into this room.
+ *
+ * A code you have to read out letter by letter across a noisy room is the slowest possible way to
+ * do that, so the QR comes first and is big enough to hold up, the code sits under it at a size you
+ * can read from across a table, and the share sheet handles anybody who is not in the room at all.
+ */
+export function InvitePanel({ roomId, inviteUrl }: { roomId: string; inviteUrl: string }) {
+  const { dataUrl: qr, failed } = useQrCode(inviteUrl || null, 320);
+  const [shareMessage, setShareMessage] = useState<string | null>(null);
+
+  const share = async () => {
+    const result = await shareOrCopy(
+      { title: "Liars", text: `Join room ${roomId}.`, url: inviteUrl },
+      { copyValue: inviteUrl },
+    );
+    setShareMessage(
+      result === "copied"
+        ? "invite copied"
+        : result === "shared"
+          ? "invite shared"
+          : result === "failed"
+            ? "read the code out instead"
+            : null,
+    );
+  };
+
+  return (
+    <section className="flex flex-col items-center text-center" aria-label="invite">
+      {qr ? (
+        <img
+          src={qr}
+          alt={`QR code to join room ${roomId}`}
+          className="w-56 rounded-3xl bg-white p-3"
+        />
+      ) : null}
+      {failed ? (
+        <p className="font-mono text-xs text-white/45">QR unavailable — use the code.</p>
+      ) : null}
+      <p className="mt-5 font-mono text-micro uppercase tracking-[0.18em] text-white/40">
+        room code
+      </p>
+      <p className="mt-1 font-mono text-4xl font-bold tracking-[0.22em] text-[var(--things-amber)]">
+        {roomId}
+      </p>
+      <button
+        type="button"
+        onClick={() => void share()}
+        className="mt-5 min-h-11 rounded-full border border-white/25 px-6 font-mono text-xs text-white/80 hover:border-[var(--things-amber)] hover:text-[var(--things-amber)]"
+      >
+        share the link
+      </button>
+      <p aria-live="polite" className="mt-2 min-h-5 font-mono text-xs text-[var(--things-amber)]">
+        {shareMessage ?? ""}
+      </p>
+    </section>
   );
 }

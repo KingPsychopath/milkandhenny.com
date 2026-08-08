@@ -14,6 +14,7 @@ export const liarsRealtimeChannel = (roomId: string) => gameRealtimeChannel("lia
 export const liarsBrowserKeys = {
   hostSession: (roomId: string) => gameBrowserKey("liars", 1, "room", roomId, "host-session"),
   playerSession: (roomId: string) => gameBrowserKey("liars", 1, "room", roomId, "player-session"),
+  /** localStorage, not session: people close tabs to change wifi and come back. */
   invite: (roomId: string) => gameBrowserKey("liars", 1, "room", roomId, "invite"),
   pendingActions: (roomId: string, playerId: string) =>
     gameBrowserKey("liars", 1, "room", roomId, "player", playerId, "pending-actions"),

@@ -128,8 +128,9 @@ function hostAction(value: unknown): LiarsHostAction {
     };
   if (data.type === "player.remove")
     return { actionId: id, type: data.type, playerId: text(data.playerId, 120) };
+  if (data.type === "game.start")
+    return { actionId: id, type: data.type, force: data.force === true };
   if (
-    data.type === "game.start" ||
     data.type === "phase.extend" ||
     data.type === "phase.pause" ||
     data.type === "phase.resume" ||

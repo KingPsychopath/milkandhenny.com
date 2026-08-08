@@ -3,7 +3,11 @@ import { useEffect, useState } from "react";
 import { GameLaunch, GameLaunchButton, GameLaunchMeta } from "../shared/GameLaunch";
 import { GameShell } from "../shared/GameShell";
 import { RoomJoinControl } from "../shared/RoomJoinControl";
-import { writeExpiringLocalValue } from "../shared/game-storage.client";
+import {
+  readExpiringLocalValue,
+  writeExpiringLocalValue,
+} from "../shared/game-storage.client";
+import { gameNamespace } from "../shared/multiplayer-keys";
 import { liarsBrowserKeys } from "./liars-keys";
 import {
   LIARS_MODE_COPY,
@@ -33,6 +37,37 @@ const MAFIA_BLURB =
  * toggle is not a setting among settings: it is the thing the page is about, and choosing it
  * reflows what is underneath. Everything a group will never touch lives under "more".
  */
+/**
+ * Any liars game this device is still holding credentials for.
+ *
+ * Phones close tabs. People go to settings to change wifi and Safari reaps the page; somebody
+ * follows a link and never finds their way back. Their seat is still in the room and their
+ * credentials are still on the device, so the only thing missing was a door back in.
+ */
+function useLiveLiarsSessions() {
+  const [rooms, setRooms] = useState<string[]>([]);
+
+  useEffect(() => {
+    const prefix = gameNamespace("liars", 1);
+    const found: string[] = [];
+    try {
+      for (let index = 0; index < localStorage.length; index += 1) {
+        const key = localStorage.key(index);
+        if (!key?.startsWith(prefix) || !key.endsWith(":player-session")) continue;
+        const roomId = key.split(":room:")[1]?.split(":")[0];
+        if (!roomId) continue;
+        // Reading it also prunes it: an expired session removes its own key.
+        if (readExpiringLocalValue(key)) found.push(roomId);
+      }
+    } catch {
+      // Storage unavailable; there is simply nothing to resume.
+    }
+    setRooms([...new Set(found)]);
+  }, []);
+
+  return rooms;
+}
+
 export function LiarsSetupApp() {
   const navigate = useNavigate();
   const [mode, setMode] = useState<LiarsMode>("mafia");
@@ -46,6 +81,7 @@ export function LiarsSetupApp() {
   const [joinCode, setJoinCode] = useState("");
   const [panel, setPanel] = useState<"roles" | "more" | null>(null);
   const [imposters, setImposters] = useState(1);
+  const liveRooms = useLiveLiarsSessions();
 
   const limits = LIARS_PLAYER_LIMITS[mode];
   const players = Math.min(limits.max, Math.max(limits.min, expected));
@@ -75,7 +111,11 @@ export function LiarsSetupApp() {
         { hostToken: room.hostToken, joinToken: room.joinToken },
         room.expiresAt,
       );
-      sessionStorage.setItem(liarsBrowserKeys.invite(room.roomId), room.joinToken);
+      writeExpiringLocalValue(
+        liarsBrowserKeys.invite(room.roomId),
+        room.joinToken,
+        room.expiresAt,
+      );
       await navigate({ to: liarsPlayerPath(room.roomId) });
     } catch {
       setMessage("Could not open a room. Check your connection and try again.");
@@ -93,6 +133,27 @@ export function LiarsSetupApp() {
           description="Two games, one room. Everyone has something to do every round, and the phone keeps track of all of it so you can argue."
         >
           <div>
+            {liveRooms.length > 0 ? (
+              <div className="mb-6 border-y border-[var(--things-amber)]/30 py-4">
+                <p className="font-mono text-micro uppercase tracking-[0.18em] text-white/40">
+                  you are still in a game
+                </p>
+                <ul className="mt-2 space-y-2">
+                  {liveRooms.map((roomId) => (
+                    <li key={roomId}>
+                      <button
+                        type="button"
+                        onClick={() => void navigate({ to: liarsPlayerPath(roomId) })}
+                        className="min-h-11 font-mono text-sm text-[var(--things-amber)] hover:underline"
+                      >
+                        rejoin {roomId} →
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+
             <div
               role="radiogroup"
               aria-label="which game"

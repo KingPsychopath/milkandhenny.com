@@ -1030,3 +1030,49 @@ describe("liars at scale", () => {
     expect(snapshot.phase).toBe("deal");
   });
 });
+
+describe("liars readiness", () => {
+  it("names who is holding the room up rather than saying somebody is", async () => {
+    const created = await room("mafia", NAMES.slice(0, 5));
+    await act(created.roomId, created.seats[2], { type: "readiness.set", ready: false });
+
+    const blocked = await host(created.roomId, created.hostToken, { type: "game.start" });
+    expect(blocked.accepted).toBe(false);
+    if (!blocked.accepted && "error" in blocked)
+      expect(blocked.error, "the host cannot chase somebody they cannot name").toContain(
+        created.seats[2].name,
+      );
+
+    // And their state is on the roster, so nobody has to read an error to find out.
+    const view0 = await view(created.roomId, created.seats[0]);
+    expect(view0.players.find(({ id }) => id === created.seats[2].playerId)?.ready).toBe(false);
+    expect(view0.players.filter(({ ready }) => ready)).toHaveLength(4);
+  });
+
+  it("lets the host start without the stragglers", async () => {
+    const created = await room("mafia", NAMES.slice(0, 5));
+    await act(created.roomId, created.seats[3], { type: "readiness.set", ready: false });
+
+    const blocked = await host(created.roomId, created.hostToken, { type: "game.start" });
+    expect(blocked.accepted).toBe(false);
+
+    // Waiting on a phone in somebody's pocket is a worse failure than starting without them.
+    const forced = await host(created.roomId, created.hostToken, {
+      type: "game.start",
+      force: true,
+    });
+    expect(forced.accepted).toBe(true);
+    expect(forced.snapshot!.phase).toBe("deal");
+    expect(forced.snapshot!.players).toHaveLength(5);
+  });
+
+  it("still refuses to start below the minimum, force or not", async () => {
+    const created = await room("mafia", NAMES.slice(0, 4));
+    const forced = await host(created.roomId, created.hostToken, {
+      type: "game.start",
+      force: true,
+    });
+    expect(forced.accepted).toBe(false);
+    if (!forced.accepted && "error" in forced) expect(forced.error).toContain("5");
+  });
+});

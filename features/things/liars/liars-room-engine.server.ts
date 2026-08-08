@@ -1395,9 +1395,17 @@ export async function applyLiarsHostAction(input: {
       const check = liarsValidateLineup(room.mode, room.lineup, room.players.length);
       if (!check.ok) return reject(view(), "lineup_invalid", check.problem.message);
       const unready = multiplayerUnreadyPlayers(room.players);
-      if (unready.length > 0) {
+      // Nudge once, then let the host through. Waiting on a phone in somebody's pocket is a worse
+      // failure than starting without them, and the host is the one who can see the room.
+      if (unready.length > 0 && !action.force) {
         if (requestMultiplayerReadiness(unready, token())) changed(room);
-        return reject(view(), "players_not_ready", "Some players are not ready", true);
+        const names = unready.map(({ name }) => name).join(", ");
+        return reject(
+          view(),
+          "players_not_ready",
+          unready.length === 1 ? `${names} is not ready` : `${names} are not ready`,
+          true,
+        );
       }
       dealGame(room, now);
     } else if (action.type === "phase.extend") {
