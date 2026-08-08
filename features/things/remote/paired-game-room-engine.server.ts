@@ -2,6 +2,7 @@ import { getRedis } from "@/lib/platform/redis.server";
 import { log } from "@/lib/platform/logger.server";
 import { pairedGameRoomRedisKeys } from "./remote-keys";
 import {
+  createMemoryRoomStore,
   createAvailableMultiplayerRoomId,
   createMultiplayerCredential,
   hashMultiplayerCredential,
@@ -56,7 +57,7 @@ interface MemoryRoom {
   judgeSeenAt: number;
 }
 
-const memoryRooms = new Map<string, MemoryRoom>();
+const memoryRooms = createMemoryRoomStore<MemoryRoom>("remote");
 
 type RemoteRedisKeys = ReturnType<typeof pairedGameRoomRedisKeys>;
 

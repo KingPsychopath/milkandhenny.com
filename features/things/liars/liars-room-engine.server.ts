@@ -3,6 +3,7 @@ import { getRedis } from "@/lib/platform/redis.server";
 import { log } from "@/lib/platform/logger.server";
 import { liarsRoomRedisKeys } from "./liars-keys";
 import {
+  createMemoryRoomStore,
   createAvailableMultiplayerRoomId,
   createMultiplayerCredential,
   hashMultiplayerCredential,
@@ -166,8 +167,8 @@ interface JoinReceipt {
   expiresAt: number;
 }
 
-const memoryRooms = new Map<string, LiarsRoomState>();
-const memoryJoinReceipts = new Map<string, JoinReceipt>();
+const memoryRooms = createMemoryRoomStore<LiarsRoomState>("liars");
+const memoryJoinReceipts = createMemoryRoomStore<JoinReceipt>("liars-receipts");
 let lockObserver: ((input: MultiplayerLockAttempt) => void) | null = null;
 
 export function setLiarsRoomLockObserver(observer: typeof lockObserver) {

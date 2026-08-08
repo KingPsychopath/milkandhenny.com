@@ -1,5 +1,6 @@
 import { getRedis } from "@/lib/platform/redis.server";
 import {
+  createMemoryRoomStore,
   createAvailableMultiplayerRoomId,
   createMultiplayerCredential,
   hashMultiplayerCredential,
@@ -78,7 +79,7 @@ interface RoomState {
 }
 
 type Keys = ReturnType<typeof drawCountryRoomRedisKeys>;
-const memoryRooms = new Map<string, RoomState>();
+const memoryRooms = createMemoryRoomStore<RoomState>("draw-country");
 
 function changed(room: RoomState) {
   room.revision += 1;

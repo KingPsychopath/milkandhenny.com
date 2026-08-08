@@ -352,19 +352,37 @@ export function liarsRolesForMode(mode: LiarsMode) {
 
 export const LIARS_MODE_COPY: Record<
   LiarsMode,
-  { name: string; tagline: string; sides: Record<LiarsSide, string> }
+  {
+    name: string;
+    /** "a mafia room" but "an imposter room". */
+    article: string;
+    tagline: string;
+    sides: Record<LiarsSide, string>;
+    /** Singular forms, for the counts that come out as one. */
+    sidesSingular: Record<LiarsSide, string>;
+  }
 > = {
   mafia: {
     name: "mafia",
+    article: "a",
     tagline: "Someone in this room is killing people. Work out who before they run out of people.",
     sides: { town: "town", mafia: "mafia", third: "jester" },
+    sidesSingular: { town: "town", mafia: "mafia", third: "jester" },
   },
   imposter: {
     name: "imposter",
+    article: "an",
     tagline: "Everyone knows the word except one of you. Say a clue. Don't be the one they catch.",
     sides: { town: "crew", mafia: "imposters", third: "third party" },
+    sidesSingular: { town: "crew", mafia: "imposter", third: "third party" },
   },
 };
+
+/** `3 imposters` but `1 imposter`. */
+export function liarsSideLabel(mode: LiarsMode, side: LiarsSide, count: number) {
+  const copy = LIARS_MODE_COPY[mode];
+  return count === 1 ? copy.sidesSingular[side] : copy.sides[side];
+}
 
 export const LIARS_DEFAULT_TOGGLES: LiarsToggles = {
   announceAttackTarget: true,

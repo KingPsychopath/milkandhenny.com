@@ -15,14 +15,17 @@ export type LiarsOverlay = "none" | "death" | "revive" | "dusk" | "dawn";
 export function useLiarsEffects(input: {
   snapshot: LiarsSnapshot | null;
   clockOffset: number;
-  muted: boolean;
+  /** Bells, heartbeats, the death sting. */
+  effects: boolean;
+  /** Anything read aloud. Separate, so a room can keep the atmosphere and lose the voice. */
+  voice: boolean;
   /** Only one device makes noise in a shared room, or eight phones echo a beat apart. */
   isNarrator: boolean;
 }) {
   const [overlay, setOverlay] = useState<LiarsOverlay>("none");
   const firedRef = useRef(new Set<string>());
   const overlayTimerRef = useRef<number | null>(null);
-  const { snapshot, clockOffset, muted } = input;
+  const { snapshot, clockOffset } = input;
 
   /**
    * One clearing timer, held in a ref rather than inside a phase effect. The death overlay is a
@@ -39,7 +42,7 @@ export function useLiarsEffects(input: {
   }, []);
 
   // A shared room routes sound to one device; on a call every device needs it.
-  const audible = !muted && (snapshot?.roomMode === "remote" || input.isNarrator);
+  const audible = input.effects && (snapshot?.roomMode === "remote" || input.isNarrator);
   const audibleRef = useRef(audible);
   audibleRef.current = audible;
 
@@ -178,11 +181,11 @@ export function useLiarsEffects(input: {
   // The story, read aloud by whichever single device the server elected.
   useEffect(() => {
     const dawn = snapshot?.dawn;
-    if (!dawn || snapshot?.phase !== "dawn" || !audible) return;
+    if (!dawn || snapshot?.phase !== "dawn" || !input.voice) return;
     // Remote rooms have no shared speaker, so each device reads its own copy.
     if (snapshot.roomMode === "same-room" && !input.isNarrator) return;
     once(`narration:${dawn.nameLandsAt}`, () => void speakLiarsNarration(dawn.narration));
-  }, [audible, input.isNarrator, snapshot]);
+  }, [input.voice, input.isNarrator, snapshot]);
 
   // A new game starts with a clean slate, or last game's ids would suppress this one's beats.
   const gameNumber = snapshot?.gameNumber;

@@ -30,6 +30,13 @@ const MODES: Array<{ id: LiarsMode; title: string; blurb: string }> = [
   },
 ];
 
+/**
+ * One decision on the surface — which game — and everything else folded away behind it.
+ *
+ * The two modes want different explanations, different player counts and different roles, so the
+ * toggle is not a setting among settings: it is the thing the page is about, and choosing it
+ * reflows what is underneath. Everything a group will never touch lives under "more".
+ */
 export function LiarsSetupApp() {
   const navigate = useNavigate();
   const [mode, setMode] = useState<LiarsMode>("mafia");
@@ -40,10 +47,18 @@ export function LiarsSetupApp() {
   const [creating, setCreating] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [joinCode, setJoinCode] = useState("");
-  const [showRoles, setShowRoles] = useState(false);
+  const [panel, setPanel] = useState<"roles" | "more" | null>(null);
 
   const limits = LIARS_PLAYER_LIMITS[mode];
   const players = Math.min(limits.max, Math.max(limits.min, expected));
+  const selected = MODES.find(({ id }) => id === mode)!;
+
+  const chooseMode = (next: LiarsMode) => {
+    setMode(next);
+    setExpected((current) =>
+      Math.min(LIARS_PLAYER_LIMITS[next].max, Math.max(LIARS_PLAYER_LIMITS[next].min, current)),
+    );
+  };
 
   const handleCreate = async () => {
     if (creating) return;
@@ -72,98 +87,42 @@ export function LiarsSetupApp() {
           tone="night"
           eyebrow="social deduction · 4–16 people"
           title="liars"
-          description="Two games, one room. Everyone gets something to do every single round, and the phone handles all of the bookkeeping so you can argue."
+          description="Two games, one room. Everyone has something to do every round, and the phone keeps track of all of it so you can argue."
         >
-          <div className="space-y-3">
-            {MODES.map((option) => {
-              const selected = mode === option.id;
-              return (
-                <button
-                  key={option.id}
-                  type="button"
-                  aria-pressed={selected}
-                  onClick={() => {
-                    setMode(option.id);
-                    setExpected((current) =>
-                      Math.min(
-                        LIARS_PLAYER_LIMITS[option.id].max,
-                        Math.max(LIARS_PLAYER_LIMITS[option.id].min, current),
-                      ),
-                    );
-                  }}
-                  className={`w-full border-t border-white/15 py-4 text-left transition-opacity ${
-                    selected ? "" : "opacity-45 hover:opacity-75"
-                  }`}
-                >
-                  <span className="flex items-center gap-3">
-                    <span
-                      aria-hidden="true"
-                      className={`h-6 w-0.5 rounded-full ${
-                        selected ? "bg-[var(--things-amber)]" : "bg-transparent"
-                      }`}
-                    />
-                    <span className="font-serif text-2xl">{option.title}</span>
-                    <span className="ml-auto font-mono text-micro uppercase tracking-[0.16em] text-white/40">
-                      {LIARS_PLAYER_LIMITS[option.id].min}–{LIARS_PLAYER_LIMITS[option.id].max}
-                    </span>
-                  </span>
-                  <span className="mt-2 block pl-3.5 font-serif text-sm text-white/60">
-                    {option.blurb}
-                  </span>
-                </button>
-              );
-            })}
-
-            <div className="border-t border-white/15 pt-5">
-              <p className="font-mono text-micro uppercase tracking-[0.18em] text-white/40">
-                where is everyone
-              </p>
-              <div className="mt-3 flex gap-2">
-                {(["same-room", "remote"] as const).map((option) => (
+          <div>
+            <div
+              role="radiogroup"
+              aria-label="which game"
+              className="flex rounded-full border border-white/20 p-1"
+            >
+              {MODES.map((option) => {
+                const active = mode === option.id;
+                return (
                   <button
-                    key={option}
+                    key={option.id}
                     type="button"
-                    aria-pressed={roomMode === option}
-                    onClick={() => setRoomMode(option)}
-                    className={`min-h-11 flex-1 rounded-full border px-4 font-mono text-xs ${
-                      roomMode === option
-                        ? "border-[var(--things-amber)] text-[var(--things-amber)]"
-                        : "border-white/20 text-white/55"
+                    role="radio"
+                    aria-checked={active}
+                    onClick={() => chooseMode(option.id)}
+                    className={`min-h-12 flex-1 rounded-full px-4 font-mono text-sm font-bold transition-colors ${
+                      active
+                        ? "bg-[var(--things-amber)] text-black"
+                        : "text-white/55 hover:text-white/85"
                     }`}
                   >
-                    {option === "same-room" ? "same room" : "on a call"}
+                    {option.title}
                   </button>
-                ))}
-              </div>
-              <p className="mt-2 font-mono text-xs text-white/35">
-                {roomMode === "same-room"
-                  ? "one device narrates, so eight phones don't echo"
-                  : "every device narrates, and the discussion gets longer"}
-              </p>
+                );
+              })}
             </div>
 
-            <label className="flex min-h-11 items-center gap-3 border-t border-white/15 pt-5 font-mono text-xs text-white/60">
-              <input
-                type="checkbox"
-                checked={firstGame}
-                onChange={(event) => setFirstGame(event.target.checked)}
-                className="size-4 accent-[var(--things-amber)]"
-              />
-              nobody here has played before
-            </label>
-            {firstGame ? (
-              <p className="font-mono text-xs text-white/35">
-                doctor, detective and villagers only, and a longer look at your role
-              </p>
-            ) : null}
+            <p className="mt-5 font-serif text-lg leading-relaxed text-white/70">
+              {selected.blurb}
+            </p>
 
-            <TorchToggle enabled={torch} onChange={setTorch} />
-
-            <div className="border-t border-white/15 pt-5">
+            <div className="mt-6">
               <label className="font-mono text-xs text-white/55">
-                <span className="block pb-2">
-                  roughly how many of you · {players}
-                </span>
+                <span className="block pb-2">how many of you · {players}</span>
                 <input
                   type="range"
                   min={limits.min}
@@ -173,39 +132,107 @@ export function LiarsSetupApp() {
                   className="w-full accent-[var(--things-amber)]"
                 />
               </label>
-              <button
-                type="button"
-                onClick={() => setShowRoles(!showRoles)}
-                aria-expanded={showRoles}
-                className="mt-3 min-h-11 font-mono text-xs text-white/45 hover:text-white/80"
-              >
-                {showRoles ? "hide the roles" : "what roles is that"}
-              </button>
-              {showRoles ? (
-                <div className="mt-3">
-                  <LineupBoard
-                    mode={mode}
-                    lineup={liarsDefaultLineup(mode, players)}
-                    playerCount={players}
-                  />
-                  <p className="mt-3 font-mono text-xs text-white/35">
-                    the lineup follows the room as people join, and the host can change it before
-                    the deal
-                  </p>
-                </div>
-              ) : null}
+              <p className="mt-1 font-mono text-micro text-white/30">
+                {limits.min}–{limits.max} for {selected.title}
+              </p>
             </div>
 
-            <div className="pt-2">
-              <GameLaunchButton accent="amber" disabled={creating} onClick={() => void handleCreate()}>
-                {creating ? "opening…" : `open a ${LIARS_MODE_COPY[mode].name} room`}
+            <div className="mt-8">
+              <GameLaunchButton
+                accent="amber"
+                disabled={creating}
+                onClick={() => void handleCreate()}
+              >
+                {creating
+                  ? "opening…"
+                  : `open ${LIARS_MODE_COPY[mode].article} ${LIARS_MODE_COPY[mode].name} room`}
               </GameLaunchButton>
               <GameLaunchMeta tone="dark">
                 you play too · everyone joins with the room code
               </GameLaunchMeta>
             </div>
 
-            <div className="border-t border-white/15 pt-5">
+            <div className="mt-6 flex gap-6 border-t border-white/15 pt-4 font-mono text-xs">
+              {(["roles", "more"] as const).map((tab) => (
+                <button
+                  key={tab}
+                  type="button"
+                  aria-expanded={panel === tab}
+                  onClick={() => setPanel(panel === tab ? null : tab)}
+                  className={`min-h-11 ${
+                    panel === tab ? "text-[var(--things-amber)]" : "text-white/45 hover:text-white/80"
+                  }`}
+                >
+                  {tab === "roles" ? "who's in this game" : "more"}
+                </button>
+              ))}
+            </div>
+
+            {panel === "roles" ? (
+              <div className="mt-3">
+                <LineupBoard
+                  mode={mode}
+                  lineup={liarsDefaultLineup(mode, players)}
+                  playerCount={players}
+                />
+                <p className="mt-3 font-mono text-xs text-white/35">
+                  follows the room as people join · the host can change it before the deal
+                </p>
+              </div>
+            ) : null}
+
+            {panel === "more" ? (
+              <div className="mt-3 space-y-5">
+                <div>
+                  <p className="font-mono text-micro uppercase tracking-[0.18em] text-white/40">
+                    where is everyone
+                  </p>
+                  <div className="mt-2 flex gap-2">
+                    {(["same-room", "remote"] as const).map((option) => (
+                      <button
+                        key={option}
+                        type="button"
+                        aria-pressed={roomMode === option}
+                        onClick={() => setRoomMode(option)}
+                        className={`min-h-11 flex-1 rounded-full border px-4 font-mono text-xs ${
+                          roomMode === option
+                            ? "border-[var(--things-amber)] text-[var(--things-amber)]"
+                            : "border-white/20 text-white/55"
+                        }`}
+                      >
+                        {option === "same-room" ? "same room" : "on a call"}
+                      </button>
+                    ))}
+                  </div>
+                  <p className="mt-2 font-mono text-xs text-white/35">
+                    {roomMode === "same-room"
+                      ? "one device narrates, so eight phones don't echo"
+                      : "every device narrates, and the discussion gets longer"}
+                  </p>
+                </div>
+
+                <div className="border-t border-white/15 pt-4">
+                  <label className="flex min-h-11 items-center gap-3 font-mono text-xs text-white/60">
+                    <input
+                      type="checkbox"
+                      checked={firstGame}
+                      onChange={(event) => setFirstGame(event.target.checked)}
+                      className="size-4 accent-[var(--things-amber)]"
+                    />
+                    nobody here has played before
+                  </label>
+                  <p className="mt-1 font-mono text-xs text-white/35">
+                    {mode === "mafia"
+                      ? "doctor, detective and villagers only, and a longer look at your role"
+                      : "one imposter, no understudy, and a longer look at your word"}
+                  </p>
+                </div>
+
+                <TorchToggle enabled={torch} onChange={setTorch} />
+              </div>
+            ) : null}
+
+            <div className="mt-8 border-t border-white/15 pt-5">
               <RoomJoinControl
                 value={joinCode}
                 gamePath="things/liars"
@@ -256,7 +283,7 @@ function TorchToggle({
   if (state === "unsupported") return null;
 
   return (
-    <div className="border-t border-white/15 pt-5">
+    <div className="border-t border-white/15 pt-4">
       <label className="flex min-h-11 items-center gap-3 font-mono text-xs text-white/60">
         <input
           type="checkbox"

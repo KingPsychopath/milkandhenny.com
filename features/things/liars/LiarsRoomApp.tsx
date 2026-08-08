@@ -19,6 +19,7 @@ import {
   Headline,
   KnowledgeList,
   LiarsOverlayLayer,
+  NotesPad,
   LineupBoard,
   NightReportCard,
   PhaseTimer,
@@ -28,8 +29,10 @@ import {
 import { useLiarsEffects } from "./useLiarsEffects";
 import { useLiarsRoom } from "./useLiarsRoom";
 import { primeLiarsAudio } from "./liars-effects.client";
-import { useLiarsSound } from "./useLiarsSound";
+import { useGameSound } from "../shared/useGameSound";
+import { useLiarsNotes } from "./useLiarsNotes";
 import type { LiarsPlayerCredentials, LiarsSnapshot } from "./types";
+import type { LiarsNote } from "./useLiarsNotes";
 
 let actionCounter = 0;
 const nextActionId = () => `${Date.now().toString(36)}-${(actionCounter += 1)}`;
@@ -71,13 +74,15 @@ export function LiarsRoom({ credentials }: { credentials: LiarsPlayerCredentials
     playerToken,
     initialSnapshot: credentials.snapshot,
   });
-  const sound = useLiarsSound();
+  const sound = useGameSound(liarsBrowserKeys.muted());
   const snapshot = room.snapshot;
   const isNarrator = snapshot?.narratorPlayerId === playerId;
+  const notes = useLiarsNotes(roomId, snapshot?.gameNumber ?? 1);
   const { overlay } = useLiarsEffects({
     snapshot,
     clockOffset: room.clockOffset,
-    muted: sound.muted,
+    effects: sound.effects,
+    voice: sound.voice,
     isNarrator,
   });
 
@@ -152,11 +157,11 @@ export function LiarsRoom({ credentials }: { credentials: LiarsPlayerCredentials
           <span className="flex items-center gap-3">
             <button
               type="button"
-              onClick={sound.toggle}
+              onClick={sound.cycle}
               className="min-h-11 hover:text-white/80"
-              aria-pressed={sound.muted}
+              title={sound.description}
             >
-              {sound.muted ? "muted" : "sound"}
+              {sound.label}
             </button>
             {snapshot.phase !== "lobby" ? (
               <span>
@@ -183,6 +188,7 @@ export function LiarsRoom({ credentials }: { credentials: LiarsPlayerCredentials
             isHost={isHost}
             send={send}
             sendHost={sendHost}
+            notes={notes.notes}
           />
 
           {room.message ? (
@@ -193,7 +199,18 @@ export function LiarsRoom({ credentials }: { credentials: LiarsPlayerCredentials
 
           <div className="mt-10 flex flex-wrap items-center gap-x-6 gap-y-2 border-t border-white/10 pt-4">
             <RulesSheet mode={snapshot.mode} yourRole={you?.role} />
-            {snapshot.phase !== "lobby" ? <KnowledgeList snapshot={snapshot} /> : null}
+            {snapshot.phase !== "lobby" ? (
+              <>
+                <KnowledgeList snapshot={snapshot} />
+                <NotesPad
+                  notes={notes.notes}
+                  round={snapshot.round}
+                  full={notes.full}
+                  onAdd={notes.add}
+                  onRemove={notes.remove}
+                />
+              </>
+            ) : null}
             {snapshot.hostDisconnectedSince !== null && !isHost ? (
               <button
                 type="button"
@@ -229,6 +246,8 @@ interface PhaseProps {
   isHost: boolean;
   send: (action: Record<string, unknown>) => void | Promise<void>;
   sendHost: (action: Record<string, unknown>) => void | Promise<void>;
+  /** Only used to seed the epitaph; the server never sees these. */
+  notes: LiarsNote[];
 }
 
 function PhaseBody(props: PhaseProps) {
@@ -460,7 +479,7 @@ function NightPhase({ snapshot, clockOffset, send }: PhaseProps) {
   );
 }
 
-function DawnPhase({ snapshot, clockOffset, send }: PhaseProps) {
+function DawnPhase({ snapshot, clockOffset, send, notes }: PhaseProps) {
   const dawn = snapshot.dawn;
   const you = snapshot.player;
   const now = Date.now() + clockOffset;
@@ -517,7 +536,7 @@ function DawnPhase({ snapshot, clockOffset, send }: PhaseProps) {
       ) : null}
 
       {you && !you.alive && you.lastWordsOpen ? (
-        <LastWords send={send} />
+        <LastWords send={send} notes={notes} />
       ) : null}
 
       <div className="mt-8">
@@ -527,8 +546,14 @@ function DawnPhase({ snapshot, clockOffset, send }: PhaseProps) {
   );
 }
 
-function LastWords({ send }: { send: PhaseProps["send"] }) {
-  const [text, setText] = useState("");
+/**
+ * Your last words start as the last thing you wrote in your notebook. Most people die with
+ * something half-formed in there, and the line they happened to be looking at when it happened
+ * makes a better epitaph than anything they would compose in thirty seconds. Fully editable — it
+ * is a starting point, not a confession.
+ */
+function LastWords({ send, notes }: { send: PhaseProps["send"]; notes: LiarsNote[] }) {
+  const [text, setText] = useState(() => notes.at(-1)?.text ?? "");
   const [sent, setSent] = useState(false);
   if (sent)
     return <p className="mt-8 font-mono text-xs text-white/45">your words are with them now</p>;
@@ -544,7 +569,10 @@ function LastWords({ send }: { send: PhaseProps["send"] }) {
       }}
     >
       <label className="block font-mono text-xs text-white/55">
-        <span className="block pb-2">last words · one line, and you may lie</span>
+        <span className="block pb-2">
+          last words · one line, and you may lie
+          {notes.length > 0 ? " · your notebook was open at this" : ""}
+        </span>
         <input
           value={text}
           onChange={(event) => setText(event.target.value)}

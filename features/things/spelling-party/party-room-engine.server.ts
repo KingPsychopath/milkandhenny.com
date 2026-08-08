@@ -3,6 +3,7 @@ import { getRedis } from "@/lib/platform/redis.server";
 import { log } from "@/lib/platform/logger.server";
 import { partyRoomRedisKeys } from "./party-keys";
 import {
+  createMemoryRoomStore,
   createAvailableMultiplayerRoomId,
   createMultiplayerCredential,
   hashMultiplayerCredential,
@@ -140,8 +141,8 @@ interface PartyRoomState {
   wordCursor?: number;
 }
 
-const memoryRooms = new Map<string, PartyRoomState>();
-const memoryJoinReceipts = new Map<string, JoinReceipt>();
+const memoryRooms = createMemoryRoomStore<PartyRoomState>("spelling-party");
+const memoryJoinReceipts = createMemoryRoomStore<JoinReceipt>("spelling-party-receipts");
 let lockObserver: ((input: MultiplayerLockAttempt) => void) | null = null;
 
 export function setPartyRoomLockObserver(observer: typeof lockObserver) {

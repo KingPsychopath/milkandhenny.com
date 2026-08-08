@@ -7,6 +7,7 @@ import {
   liarsLineupEntries,
   liarsRolesForMode,
   liarsSideCounts,
+  liarsSideLabel,
   liarsWrongVoteBudget,
 } from "./liars-rules";
 import type {
@@ -19,6 +20,7 @@ import type {
   LiarsSnapshot,
 } from "./types";
 import type { LiarsOverlay } from "./useLiarsEffects";
+import { LIARS_NOTE_LENGTH, LIARS_NOTE_LIMIT, type LiarsNote } from "./useLiarsNotes";
 
 const MARK_GLYPH: Record<LiarsMark, { glyph: string; label: string }> = {
   moved: { glyph: "→", label: "seen moving" },
@@ -255,7 +257,6 @@ export function LineupBoard({
 }) {
   const shortBy = LIARS_PLAYER_LIMITS[mode].min - playerCount;
   const [openRole, setOpenRole] = useState<LiarsRole | null>(null);
-  const copy = LIARS_MODE_COPY[mode];
   const sides = liarsSideCounts(lineup);
   const budget = liarsWrongVoteBudget(lineup);
   const entries = liarsLineupEntries(lineup).toSorted(
@@ -308,8 +309,9 @@ export function LineupBoard({
         })}
       </ul>
       <p className="mt-4 border-t border-white/10 pt-3 font-mono text-xs text-white/50">
-        {sides.mafia} {copy.sides.mafia} · {sides.town} {copy.sides.town}
-        {sides.third > 0 ? ` · ${sides.third} ${copy.sides.third}` : ""} ·{" "}
+        {sides.mafia} {liarsSideLabel(mode, "mafia", sides.mafia)} · {sides.town}{" "}
+        {liarsSideLabel(mode, "town", sides.town)}
+        {sides.third > 0 ? ` · ${sides.third} ${liarsSideLabel(mode, "third", sides.third)}` : ""} ·{" "}
         {playerCount === 1 ? "1 player" : `${playerCount} players`}
       </p>
       {shortBy > 0 ? (
@@ -451,5 +453,81 @@ export function ActionButton({
     >
       {children}
     </button>
+  );
+}
+
+
+/**
+ * The notepad. Deliberately separate from "what you know": that list is what your role was told,
+ * this one is what you reckon. Capped at forty lines because a phone is not a case file, and
+ * because the cap is what makes the last line worth choosing carefully — it becomes your epitaph.
+ */
+export function NotesPad({
+  notes,
+  round,
+  full,
+  onAdd,
+  onRemove,
+}: {
+  notes: LiarsNote[];
+  round: number;
+  full: boolean;
+  onAdd: (text: string, round: number) => void;
+  onRemove: (id: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [draft, setDraft] = useState("");
+
+  return (
+    <div>
+      <button
+        type="button"
+        onClick={() => setOpen(!open)}
+        aria-expanded={open}
+        className="min-h-11 font-mono text-xs text-white/45 hover:text-white/80"
+      >
+        notes{notes.length > 0 ? ` · ${notes.length}` : ""}
+      </button>
+      {open ? (
+        <div className="mt-2 border-t border-white/10 pt-2">
+          <form
+            onSubmit={(event) => {
+              event.preventDefault();
+              onAdd(draft, round);
+              setDraft("");
+            }}
+          >
+            <input
+              value={draft}
+              onChange={(event) => setDraft(event.target.value)}
+              maxLength={LIARS_NOTE_LENGTH}
+              placeholder={full ? "notebook full — delete a line first" : "maya went quiet…"}
+              disabled={full}
+              autoComplete="off"
+              className="min-h-11 w-full border-b border-white/20 bg-transparent font-serif text-base text-white outline-none placeholder:text-white/25 focus-visible:border-[var(--things-amber)] disabled:opacity-40"
+            />
+          </form>
+          <p className="mt-1 font-mono text-micro text-white/25">
+            only on this phone · {notes.length} of {LIARS_NOTE_LIMIT}
+          </p>
+          <ul className="mt-2 font-mono text-xs text-white/55">
+            {notes.toReversed().map((note) => (
+              <li key={note.id} className="flex items-baseline gap-2 py-1">
+                <span className="w-12 shrink-0 text-white/25">n{note.round}</span>
+                <span className="flex-1">{note.text}</span>
+                <button
+                  type="button"
+                  onClick={() => onRemove(note.id)}
+                  className="min-h-8 px-1 text-white/25 hover:text-white/60"
+                  aria-label={`delete note: ${note.text}`}
+                >
+                  ×
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+    </div>
   );
 }

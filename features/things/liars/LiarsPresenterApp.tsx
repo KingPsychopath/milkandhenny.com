@@ -6,7 +6,7 @@ import { LIARS_MODE_COPY, LIARS_ROLES } from "./liars-rules";
 import { readLiarsSnapshotFn } from "./liars-room.functions";
 import { PhaseTimer } from "./LiarsViews";
 import { speakLiarsNarration } from "./narration.client";
-import { useLiarsSound } from "./useLiarsSound";
+import { useGameSound } from "../shared/useGameSound";
 import type { LiarsSnapshot } from "./types";
 
 const PHASE_LABEL: Record<string, string> = {
@@ -33,7 +33,7 @@ export function LiarsPresenterApp({ roomId }: { roomId: string }) {
   const [snapshot, setSnapshot] = useState<LiarsSnapshot | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [clockOffset, setClockOffset] = useState(0);
-  const sound = useLiarsSound();
+  const sound = useGameSound(liarsBrowserKeys.muted());
   const spokenRef = useRef<string | null>(null);
 
   const hostToken = useMemo(() => {
@@ -74,11 +74,11 @@ export function LiarsPresenterApp({ roomId }: { roomId: string }) {
   // The presenter is the narrator whenever it is attached, so phones stay quiet in a shared room.
   useEffect(() => {
     const dawn = snapshot?.dawn;
-    if (!dawn || snapshot?.phase !== "dawn" || sound.muted) return;
+    if (!dawn || snapshot?.phase !== "dawn" || !sound.voice) return;
     if (spokenRef.current === dawn.narration) return;
     spokenRef.current = dawn.narration;
     void speakLiarsNarration(dawn.narration);
-  }, [snapshot, sound.muted]);
+  }, [snapshot, sound.voice]);
 
   if (!snapshot)
     return (
