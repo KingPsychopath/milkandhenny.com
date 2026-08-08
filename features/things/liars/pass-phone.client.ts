@@ -3,8 +3,10 @@ import { LIARS_WORD_PAIRS } from "./liars-words";
 export interface LiarsPassPhoneSeat {
   index: number;
   name: string;
-  /** The word, or null for the imposters, who get nothing. */
+  /** The word, or null for the imposters. */
   word: string | null;
+  /** Everybody gets this, imposters included. It is the whole difference between bluffing and guessing. */
+  category: string;
 }
 
 /**
@@ -46,5 +48,6 @@ export function liarsPassPhoneDeal(
     index,
     name: names[index]?.trim() || `player ${index + 1}`,
     word,
+    category: pair.category,
   }));
 }

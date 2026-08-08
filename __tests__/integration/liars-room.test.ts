@@ -160,6 +160,22 @@ describe("liars rooms — secrecy", () => {
     expect(JSON.stringify(imposterView)).not.toContain(crewWord);
   });
 
+  it("gives the imposter the category, so they open on something rather than nothing", async () => {
+    const created = await room("imposter", NAMES.slice(0, 8));
+    await host(created.roomId, created.hostToken, { type: "game.start" });
+    const seen = await Promise.all(created.seats.map((seat) => view(created.roomId, seat)));
+
+    const imposter = seen.find((snapshot) => snapshot.player!.role === "imposter")!;
+    const crew = seen.find((snapshot) => snapshot.player!.role === "crew")!;
+
+    // Everyone gets it, including the person who has nothing else.
+    expect(imposter.player!.wordCategory).toBeTruthy();
+    expect(imposter.player!.wordCategory).toBe(crew.player!.wordCategory);
+    // And it still is not the word.
+    expect(imposter.player!.word).toBeNull();
+    expect(JSON.stringify(imposter)).not.toContain(crew.player!.word!);
+  });
+
   it("gives the understudy a different word without telling them", async () => {
     const created = await room("imposter", NAMES.slice(0, 8));
     await host(created.roomId, created.hostToken, { type: "game.start" });

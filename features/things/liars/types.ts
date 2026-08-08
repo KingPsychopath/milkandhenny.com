@@ -195,6 +195,11 @@ export interface LiarsPrivateState extends MultiplayerReadiness {
   callerPlayerId: string | null;
   /** Imposter mode: your word, or null if you are the imposter. */
   word: string | null;
+  /**
+   * Imposter mode: shown to everybody, imposter included. It is their only foothold — without it
+   * they open on a random guess and are out on the first turn.
+   */
+  wordCategory: string | null;
   nightTarget: string | null;
   nightLocked: boolean;
   vote: string | null;

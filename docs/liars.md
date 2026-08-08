@@ -344,7 +344,7 @@ vote cannot steal a game the crew were nowhere near losing.
 |---|---|---|
 | **Crew** | the word | crew |
 | **Understudy** | a *close but wrong* word — and does not know it is wrong | crew |
-| **Imposter** | nothing | imposter |
+| **Imposter** | the category, and no word | imposter |
 | **Mole** | the word **and** who the imposter is | imposter |
 
 The **Understudy** gives confident wrong clues and looks exactly like an imposter. It is the best

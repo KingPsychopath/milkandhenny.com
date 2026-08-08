@@ -383,9 +383,26 @@ function DealPhase({ snapshot, clockOffset }: PhaseProps) {
             <p className="mx-auto mt-4 max-w-sm font-serif text-base text-white/70">
               {definition.summary}
             </p>
+            {you.wordCategory ? (
+              <div className="mt-7">
+                <p className="font-mono text-micro uppercase tracking-[0.2em] text-white/40">
+                  the category is
+                </p>
+                <p className="mt-1 font-serif text-2xl text-white/85">{you.wordCategory}</p>
+              </div>
+            ) : null}
             {you.word ? (
-              <p className="mt-6 font-mono text-xs uppercase tracking-[0.2em] text-[var(--things-amber)]">
-                the word is {you.word}
+              <div className="mt-6">
+                <p className="font-mono text-micro uppercase tracking-[0.2em] text-white/40">
+                  the word is
+                </p>
+                <p className="mt-2 font-serif text-5xl font-semibold leading-tight text-[var(--things-amber)] sm:text-6xl">
+                  {you.word}
+                </p>
+              </div>
+            ) : you.wordCategory ? (
+              <p className="mt-6 font-serif text-xl text-[var(--liars-dead)]">
+                you don't have the word — bluff within the category
               </p>
             ) : null}
             {allies.length > 0 ? (
@@ -665,10 +682,7 @@ function CluePhase({ snapshot, send }: PhaseProps) {
 
   return (
     <>
-      <Eyebrow>
-        clues · round {clue.round}
-        {you.word ? ` · your word is ${you.word}` : " · you have no word"}
-      </Eyebrow>
+      <Eyebrow>clues · round {clue.round}</Eyebrow>
       <Headline>{yours ? "Your turn" : `${current?.name ?? "…"}'s turn`}</Headline>
       <p className="mt-4 font-serif text-lg text-white/65">
         {yours
@@ -691,6 +705,21 @@ function CluePhase({ snapshot, send }: PhaseProps) {
           you are next — unmute now so there is no gap
         </p>
       ) : null}
+
+      {/* Kept in view all the way through: forgetting your own word mid-round is the one thing
+          that cannot be recovered by asking. */}
+      <div className="mt-8 border-y border-white/15 py-4">
+        <p className="font-mono text-micro uppercase tracking-[0.2em] text-white/40">
+          {you.wordCategory ?? "your word"}
+        </p>
+        <p
+          className={`mt-1 font-serif text-3xl font-semibold ${
+            you.word ? "text-[var(--things-amber)]" : "text-[var(--liars-dead)]"
+          }`}
+        >
+          {you.word ?? "you have no word"}
+        </p>
+      </div>
 
       <ol className="mt-10 border-t border-white/10">
         {clue.order.map((playerId, index) => {

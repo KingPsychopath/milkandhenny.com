@@ -120,6 +120,12 @@ export function LiarsPassPhoneApp() {
       <Shell>
         <Eyebrow>that game</Eyebrow>
         <Headline>Here is who was lying</Headline>
+        {seats[0] ? (
+          <p className="mt-3 font-mono text-xs text-white/40">
+            {seats[0].category} · the word was{" "}
+            {seats.find(({ word }) => word !== null)?.word ?? "—"}
+          </p>
+        ) : null}
         <ul className="mt-6 border-t border-white/10">
           {seats.map((each) => (
             <li
@@ -157,6 +163,7 @@ export function LiarsPassPhoneApp() {
       <HoldToSee
         key={seat?.index}
         word={seat?.word ?? null}
+        category={seat?.category ?? ""}
         onDone={() => {
           if (index + 1 >= seats.length) setStage("playing");
           else setIndex(index + 1);
@@ -184,7 +191,15 @@ function Shell({ children }: { children: React.ReactNode }) {
   );
 }
 
-function HoldToSee({ word, onDone }: { word: string | null; onDone: () => void }) {
+function HoldToSee({
+  word,
+  category,
+  onDone,
+}: {
+  word: string | null;
+  category: string;
+  onDone: () => void;
+}) {
   const [held, setHeld] = useState(false);
   const [seen, setSeen] = useState(false);
 
@@ -200,23 +215,31 @@ function HoldToSee({ word, onDone }: { word: string | null; onDone: () => void }
         className="mt-8 min-h-56 select-none border-y border-white/15 py-12 text-center"
       >
         {held ? (
-          word === null ? (
-            <>
-              <p className="font-serif text-4xl font-semibold text-[var(--liars-dead)]">
-                you have no word
-              </p>
-              <p className="mx-auto mt-4 max-w-sm font-serif text-base text-white/70">
-                Listen to the clues and work it out. Say one that sounds like you belong.
-              </p>
-            </>
-          ) : (
-            <>
-              <p className="font-mono text-micro uppercase tracking-[0.2em] text-white/40">
-                the word is
-              </p>
-              <p className="mt-3 font-serif text-5xl font-semibold">{word}</p>
-            </>
-          )
+          <>
+            <p className="font-mono text-micro uppercase tracking-[0.2em] text-white/40">
+              the category is
+            </p>
+            <p className="mt-1 font-serif text-2xl text-white/85">{category}</p>
+            {word === null ? (
+              <>
+                <p className="mt-6 font-serif text-4xl font-semibold text-[var(--liars-dead)]">
+                  you have no word
+                </p>
+                <p className="mx-auto mt-3 max-w-sm font-serif text-base text-white/70">
+                  Bluff inside the category. Listen hard and work out the rest.
+                </p>
+              </>
+            ) : (
+              <>
+                <p className="mt-6 font-mono text-micro uppercase tracking-[0.2em] text-white/40">
+                  the word is
+                </p>
+                <p className="mt-2 font-serif text-6xl font-semibold leading-tight text-[var(--things-amber)]">
+                  {word}
+                </p>
+              </>
+            )}
+          </>
         ) : (
           <p className="pt-10 font-mono text-xs uppercase tracking-[0.2em] text-white/40">
             hold to reveal

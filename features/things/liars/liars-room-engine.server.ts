@@ -153,6 +153,7 @@ interface LiarsRoomState {
   finalGuessCorrect: boolean | null;
   word: string | null;
   decoyWord: string | null;
+  wordCategory: string | null;
   recentWords: string[];
   /** Narration templates already used this game, so a five-round night never repeats itself. */
   recentNarrationIds: string[];
@@ -1046,6 +1047,7 @@ function snapshot(room: LiarsRoomState, viewerId?: string, now = Date.now()): Li
               ? (mafiaCaller(room)?.id ?? null)
               : null,
           word: viewer.word ?? null,
+          wordCategory: room.mode === "imposter" ? (room.wordCategory ?? null) : null,
           nightTarget: viewer.nightTarget,
           nightLocked: viewer.nightLocked,
           vote: viewer.vote,
@@ -1140,6 +1142,7 @@ export async function createLiarsRoom(input: {
     finalGuessCorrect: null,
     word: null,
     decoyWord: null,
+    wordCategory: null,
     recentWords: [],
     recentNarrationIds: [],
     winner: null,
@@ -1302,6 +1305,7 @@ function dealGame(room: LiarsRoomState, now: number, forcedRoles?: Record<string
   const pair = room.mode === "imposter" ? liarsWordPair(room.recentWords) : null;
   room.word = pair?.word ?? null;
   room.decoyWord = pair?.decoy ?? null;
+  room.wordCategory = pair?.category ?? null;
   if (pair) room.recentWords = [...room.recentWords, pair.word].slice(-40);
 
   for (const player of room.players) {
