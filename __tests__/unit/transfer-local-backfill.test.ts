@@ -69,7 +69,8 @@ describe("local transfer backfill", () => {
   });
 
   it("leaves a raw file with no embedded preview alone during local backfill", async () => {
-    const { createLocalMediaProcessor } = await import("@/features/transfers/media-backends/local.server");
+    const { createLocalMediaProcessor } =
+      await import("@/features/transfers/media-backends/local.server");
 
     downloadBuffer.mockResolvedValue(Buffer.from("raw"));
 
@@ -114,7 +115,8 @@ describe("local transfer backfill", () => {
   });
 
   it("reclassifies skipped HEIF files and generates previews during backfill", async () => {
-    const { createLocalMediaProcessor } = await import("@/features/transfers/media-backends/local.server");
+    const { createLocalMediaProcessor } =
+      await import("@/features/transfers/media-backends/local.server");
 
     downloadBuffer.mockResolvedValue(Buffer.from("heif"));
     processImageVariants.mockResolvedValue({

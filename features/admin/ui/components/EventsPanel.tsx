@@ -387,6 +387,229 @@ function AddGuestForm({
   );
 }
 
+type DropStatus = {
+  token: string;
+  transferId: string;
+  expiresAt: string;
+  disabledAt?: string;
+  live: boolean;
+  fileCount: number;
+};
+
+/** Guest media uploads: one shared album per event behind a bearer link. */
+function GuestUploadsSection({
+  event,
+  authFetch,
+  onError,
+  onStatus,
+  confirmAction,
+}: {
+  event: EventRecord;
+  authFetch: AuthFetch;
+  onError: (message: string) => void;
+  onStatus: (message: string) => void;
+  confirmAction: (options: {
+    title: string;
+    description: string;
+    confirmLabel: string;
+    intent: "danger" | "default";
+  }) => Promise<boolean>;
+}) {
+  const expiryId = useId();
+  const [drop, setDrop] = useState<DropStatus | null>(null);
+  const [loaded, setLoaded] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [expiry, setExpiry] = useState("7d");
+  const [copied, setCopied] = useState(false);
+  const [showQr, setShowQr] = useState(false);
+  const [dropUrl, setDropUrl] = useState<string | null>(null);
+  const { dataUrl: qrDataUrl } = useQrCode(showQr ? dropUrl : null, 320);
+
+  const load = useCallback(async () => {
+    try {
+      const response = await authFetch(`/api/admin/events/${event.slug}/drop`);
+      const data: unknown = await response.json().catch(() => null);
+      if (!response.ok) throw new Error("Failed to load guest uploads");
+      const status =
+        data && typeof data === "object" && "drop" in data && data.drop
+          ? (data.drop as DropStatus)
+          : null;
+      setDrop(status);
+      setDropUrl(status ? `${window.location.origin}/drop/${status.token}` : null);
+      setLoaded(true);
+    } catch (error) {
+      onError(error instanceof Error ? error.message : "Failed to load guest uploads");
+    }
+  }, [authFetch, event.slug, onError]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const enable = async () => {
+    setBusy(true);
+    onError("");
+    try {
+      const response = await authFetch(`/api/admin/events/${event.slug}/drop`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ expiry }),
+      });
+      if (!response.ok) {
+        throw new Error(await readErrorMessage(response, "Failed to turn uploads on"));
+      }
+      onStatus("Guest uploads are on — share the link or QR");
+      await load();
+    } catch (error) {
+      onError(error instanceof Error ? error.message : "Failed to turn uploads on");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const disable = async () => {
+    const confirmed = await confirmAction({
+      title: "Turn guest uploads off?",
+      description:
+        "The link and QR stop working immediately. What guests already sent stays in the album until it expires.",
+      confirmLabel: "turn off",
+      intent: "danger",
+    });
+    if (!confirmed) return;
+
+    setBusy(true);
+    onError("");
+    try {
+      const response = await authFetch(`/api/admin/events/${event.slug}/drop`, {
+        method: "DELETE",
+      });
+      if (!response.ok) {
+        throw new Error(await readErrorMessage(response, "Failed to turn uploads off"));
+      }
+      onStatus("Guest uploads turned off");
+      await load();
+    } catch (error) {
+      onError(error instanceof Error ? error.message : "Failed to turn uploads off");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const copy = async () => {
+    if (!dropUrl) return;
+    try {
+      await navigator.clipboard.writeText(dropUrl);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      onError("Couldn't copy — long-press the link text instead");
+    }
+  };
+
+  if (!loaded) return null;
+
+  return (
+    <div className="mt-5 border-t theme-border pt-4">
+      <p className="font-mono text-micro theme-muted tracking-wide">guest uploads</p>
+      <p className="mt-1 font-mono text-micro theme-faint">
+        A shared album guests upload photos and videos into — share the link or put the QR on a
+        wall. Previews, video processing, and expiry cleanup are automatic.
+      </p>
+
+      {drop?.live ? (
+        <div className="mt-3 rounded-lg border theme-border p-3">
+          <p className="font-mono text-sm text-foreground">
+            on · {drop.fileCount} file{drop.fileCount === 1 ? "" : "s"} so far
+          </p>
+          <p className="font-mono text-micro theme-muted">
+            closes{" "}
+            {new Date(drop.expiresAt).toLocaleString("en-GB", {
+              day: "numeric",
+              month: "short",
+              hour: "2-digit",
+              minute: "2-digit",
+            })}
+          </p>
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => void copy()}
+              className="min-h-9 rounded border theme-border-strong px-3 font-mono text-micro text-foreground"
+            >
+              {copied ? "copied ✓" : "copy upload link"}
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowQr((current) => !current)}
+              aria-expanded={showQr}
+              className="min-h-9 rounded border theme-border-strong px-3 font-mono text-micro text-foreground"
+            >
+              qr
+            </button>
+            <a
+              href={`/t/${drop.transferId}`}
+              target="_blank"
+              rel="noreferrer noopener"
+              className="min-h-9 rounded border theme-border-strong px-3 py-2 font-mono text-micro text-foreground"
+            >
+              open album ↗
+            </a>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => void disable()}
+              className="min-h-9 px-2 font-mono text-micro theme-muted hover:text-foreground transition-colors disabled:opacity-50"
+            >
+              turn off
+            </button>
+          </div>
+          {showQr && qrDataUrl && (
+            <div className="mt-3 text-center">
+              <img
+                src={qrDataUrl}
+                alt="Guest upload QR"
+                className="mx-auto h-40 w-40 rounded bg-white p-1"
+              />
+              <p className="mt-2 font-mono text-micro theme-muted">
+                guests point their camera here to add photos
+              </p>
+            </div>
+          )}
+        </div>
+      ) : (
+        <div className="mt-3 flex flex-wrap items-end gap-2">
+          <div>
+            <label htmlFor={expiryId} className="font-mono text-micro theme-muted tracking-wide">
+              uploads stay open for
+            </label>
+            <AppSelect
+              id={expiryId}
+              value={expiry}
+              onValueChange={setExpiry}
+              options={[
+                { value: "1d", label: "1 day" },
+                { value: "7d", label: "7 days" },
+                { value: "14d", label: "14 days" },
+                { value: "30d", label: "30 days" },
+              ]}
+              variant="field"
+              className="mt-1 rounded text-sm"
+            />
+          </div>
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => void enable()}
+            className="min-h-10 rounded bg-foreground px-4 font-mono text-xs text-background disabled:opacity-50"
+          >
+            {drop && !drop.live ? "turn uploads back on" : "turn uploads on"}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 /** Scanners' "can we add this person?" — approve comps them straight on. */
 function GuestRequestsAdmin({
   event,
@@ -394,12 +617,19 @@ function GuestRequestsAdmin({
   onError,
   onStatus,
   onDecided,
+  confirmAction,
 }: {
   event: EventRecord;
   authFetch: AuthFetch;
   onError: (message: string) => void;
   onStatus: (message: string) => void;
   onDecided: () => Promise<void>;
+  confirmAction: (options: {
+    title: string;
+    description: string;
+    confirmLabel: string;
+    intent: "danger" | "default";
+  }) => Promise<boolean>;
 }) {
   const [requests, setRequests] = useState<GuestRequestRecord[] | null>(null);
   const [busy, setBusy] = useState(false);
@@ -424,6 +654,15 @@ function GuestRequestsAdmin({
   }, [load]);
 
   const decide = async (request: GuestRequestRecord, approve: boolean) => {
+    if (approve) {
+      const confirmed = await confirmAction({
+        title: `Add ${request.name} to the list?`,
+        description: `Asked from the door by ${request.requestedBy}. Approving issues them a free ticket immediately.`,
+        confirmLabel: "add them",
+        intent: "default",
+      });
+      if (!confirmed) return;
+    }
     setBusy(true);
     onError("");
     try {
@@ -1621,6 +1860,7 @@ function EventOperations({
         onError={onError}
         onStatus={onStatus}
         onDecided={reload}
+        confirmAction={confirmAction}
       />
 
       <div className="mt-4">
@@ -1813,6 +2053,14 @@ function EventOperations({
       />
 
       <ScanningSection
+        event={event}
+        authFetch={authFetch}
+        onError={onError}
+        onStatus={onStatus}
+        confirmAction={confirmAction}
+      />
+
+      <GuestUploadsSection
         event={event}
         authFetch={authFetch}
         onError={onError}

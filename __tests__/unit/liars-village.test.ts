@@ -62,7 +62,6 @@ describe("the village at night", () => {
   });
 });
 
-
 describe("the village at dawn", () => {
   const alive = { id: "p1", name: "Maya", alive: true };
   const dead = { id: "p1", name: "Maya", alive: false };
@@ -98,10 +97,14 @@ describe("the village at dawn", () => {
     });
 
   const killed = dawnWith({
-    deaths: [{ playerId: "p1", name: "Maya", revived: false, substituteName: null, cause: "killed" }],
+    deaths: [
+      { playerId: "p1", name: "Maya", revived: false, substituteName: null, cause: "killed" },
+    ],
   });
   const saved = dawnWith({
-    deaths: [{ playerId: "p1", name: "Maya", revived: true, substituteName: null, cause: "killed" }],
+    deaths: [
+      { playerId: "p1", name: "Maya", revived: true, substituteName: null, cause: "killed" },
+    ],
   });
 
   it("gives nothing away before the name lands", () => {
@@ -139,7 +142,6 @@ describe("the village at dawn", () => {
 
   it("never shows a night state outside the night", () => {
     // "dark" is the anonymous night look; during the day an unlit house would read as a death.
-    for (const landed of [true, false])
-      expect(state({ dawn: killed, landed })).not.toBe("dark");
+    for (const landed of [true, false]) expect(state({ dawn: killed, landed })).not.toBe("dark");
   });
 });

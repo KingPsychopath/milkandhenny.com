@@ -466,9 +466,7 @@ describe("liars night mechanics", () => {
 
 describe("liars voting", () => {
   it("ejects on a plurality", () => {
-    expect(
-      liarsPlurality([{ targetId: "a" }, { targetId: "a" }, { targetId: "b" }]),
-    ).toBe("a");
+    expect(liarsPlurality([{ targetId: "a" }, { targetId: "a" }, { targetId: "b" }])).toBe("a");
   });
 
   it("ejects nobody on a tie", () => {
@@ -476,9 +474,7 @@ describe("liars voting", () => {
   });
 
   it("ignores abstentions rather than counting them against a quorum", () => {
-    expect(
-      liarsPlurality([{ targetId: "a" }, { targetId: null }, { targetId: null }]),
-    ).toBe("a");
+    expect(liarsPlurality([{ targetId: "a" }, { targetId: null }, { targetId: null }])).toBe("a");
   });
 
   it("ejects nobody when everyone abstains", () => {

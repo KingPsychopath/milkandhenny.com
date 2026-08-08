@@ -137,7 +137,8 @@ describe("worker media processing", () => {
   });
 
   it("matches worker jobs by mediaId when filenames collide", async () => {
-    const { runTransferMediaJobs } = await import("@/features/transfers/media-backends/worker.server");
+    const { runTransferMediaJobs } =
+      await import("@/features/transfers/media-backends/worker.server");
 
     dequeueTransferMediaJobs.mockResolvedValue([
       {
@@ -222,7 +223,8 @@ describe("worker media processing", () => {
   });
 
   it("marks stale exhausted files as failed instead of leaving them queued", async () => {
-    const { refreshQueuedTransferState } = await import("@/features/transfers/media-backends/worker.server");
+    const { refreshQueuedTransferState } =
+      await import("@/features/transfers/media-backends/worker.server");
 
     const transfer = {
       id: "transfer-1",

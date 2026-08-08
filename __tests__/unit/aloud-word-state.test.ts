@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { activeWord, feedbackDurationMs, remainingWordMs } from "../../features/things/spelling-bee/aloud-word-state";
+import {
+  activeWord,
+  feedbackDurationMs,
+  remainingWordMs,
+} from "../../features/things/spelling-bee/aloud-word-state";
 
 describe("aloud spelling word timing", () => {
   it("uses an absolute deadline that survives delayed timer callbacks", () => {

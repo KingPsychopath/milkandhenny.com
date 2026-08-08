@@ -60,7 +60,8 @@ describe("hybrid transfer routing", () => {
       uploadedBytes: 4096,
     });
 
-    const { createHybridMediaProcessor } = await import("@/features/transfers/media-backends/hybrid.server");
+    const { createHybridMediaProcessor } =
+      await import("@/features/transfers/media-backends/hybrid.server");
     const processor = createHybridMediaProcessor();
     const result = await processor.processTransferObject(
       {
@@ -104,7 +105,8 @@ describe("hybrid transfer routing", () => {
       uploadedBytes: buffer.byteLength,
     });
 
-    const { createHybridMediaProcessor } = await import("@/features/transfers/media-backends/hybrid.server");
+    const { createHybridMediaProcessor } =
+      await import("@/features/transfers/media-backends/hybrid.server");
     const processor = createHybridMediaProcessor();
     const result = await processor.processTransferBuffer(
       buffer,
@@ -148,7 +150,8 @@ describe("hybrid transfer routing", () => {
       uploadedBytes: 8192,
     });
 
-    const { createHybridMediaProcessor } = await import("@/features/transfers/media-backends/hybrid.server");
+    const { createHybridMediaProcessor } =
+      await import("@/features/transfers/media-backends/hybrid.server");
     const processor = createHybridMediaProcessor();
     const result = await processor.processTransferObject(
       {
@@ -205,7 +208,8 @@ describe("hybrid transfer routing", () => {
       processingRoute: "worker_raw",
     });
 
-    const { createHybridMediaProcessor } = await import("@/features/transfers/media-backends/hybrid.server");
+    const { createHybridMediaProcessor } =
+      await import("@/features/transfers/media-backends/hybrid.server");
     const processor = createHybridMediaProcessor();
     const updated = await processor.backfillTransferMedia(transfer);
 
@@ -241,7 +245,8 @@ describe("hybrid transfer routing", () => {
     inferTransferFileState.mockResolvedValue(transfer.files[0]);
     processTransferObjectLocally.mockRejectedValue(new Error("sharp failed"));
 
-    const { createHybridMediaProcessor } = await import("@/features/transfers/media-backends/hybrid.server");
+    const { createHybridMediaProcessor } =
+      await import("@/features/transfers/media-backends/hybrid.server");
     const processor = createHybridMediaProcessor();
     const updated = await processor.backfillTransferMedia(transfer);
 
@@ -289,9 +294,8 @@ describe("hybrid transfer routing", () => {
       retryCount: 2,
     });
 
-    const { createHybridMediaProcessor } = await import(
-      "@/features/transfers/media-backends/hybrid.server"
-    );
+    const { createHybridMediaProcessor } =
+      await import("@/features/transfers/media-backends/hybrid.server");
     const updated = await createHybridMediaProcessor().backfillTransferMedia(transfer);
 
     expect(requeueTransferFile).toHaveBeenCalledWith(transfer, failedInWorker);

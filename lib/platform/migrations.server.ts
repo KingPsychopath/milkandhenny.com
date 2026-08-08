@@ -410,6 +410,22 @@ const MIGRATIONS: Migration[] = [
         add column if not exists multi_scan boolean not null default true;
     `,
   },
+  {
+    id: "0010_event_drops",
+    sql: `
+      -- Guest media drops: one shared album per event, uploaded into by
+      -- anyone holding the bearer link. The media itself lives in the
+      -- transfer system (Redis + R2); this row is the event's pointer to it.
+      create table if not exists event_drops (
+        event_slug   text primary key references events (slug) on delete cascade,
+        token        text not null unique check (token ~ '^drp_[A-Za-z0-9_-]{26,}$'),
+        transfer_id  text not null,
+        created_at   timestamptz not null default now(),
+        expires_at   timestamptz not null,
+        disabled_at  timestamptz
+      );
+    `,
+  },
 ];
 
 export type MigrationResult = { applied: string[]; alreadyApplied: number };

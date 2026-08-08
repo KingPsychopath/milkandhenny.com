@@ -43,6 +43,7 @@ import { Route as ThingsCentreRouteImport } from './routes/things.centre'
 import { Route as TIdRouteImport } from './routes/t/$id'
 import { Route as ScanTokenRouteImport } from './routes/scan.$token'
 import { Route as EventsSlugRouteImport } from './routes/events/$slug'
+import { Route as DropTokenRouteImport } from './routes/drop.$token'
 import { Route as AdminEditorRouteImport } from './routes/admin/editor'
 import { Route as ApiWordsRouteRouteImport } from './routes/api/words/route'
 import { Route as ApiReportsRouteRouteImport } from './routes/api/reports/route'
@@ -72,6 +73,8 @@ import { Route as ApiWordsSlugRouteRouteImport } from './routes/api/words/$slug/
 import { Route as ApiUploadVerifyPinRouteRouteImport } from './routes/api/upload/verify-pin/route'
 import { Route as ApiTransfersIdRouteRouteImport } from './routes/api/transfers/$id/route'
 import { Route as ApiStripeWebhookRouteRouteImport } from './routes/api/stripe/webhook/route'
+import { Route as ApiDropPresignRouteRouteImport } from './routes/api/drop/presign/route'
+import { Route as ApiDropFinalizeRouteRouteImport } from './routes/api/drop/finalize/route'
 import { Route as ApiDownloadPresignRouteRouteImport } from './routes/api/download/presign/route'
 import { Route as ApiCronProcessTransferMediaRouteRouteImport } from './routes/api/cron/process-transfer-media/route'
 import { Route as ApiCronCleanupWordSharesRouteRouteImport } from './routes/api/cron/cleanup-word-shares/route'
@@ -127,6 +130,7 @@ import { Route as ApiAdminEventsSlugTicketsRouteRouteImport } from './routes/api
 import { Route as ApiAdminEventsSlugScannerLinksRouteRouteImport } from './routes/api/admin/events/$slug/scanner-links/route'
 import { Route as ApiAdminEventsSlugGuestRequestsRouteRouteImport } from './routes/api/admin/events/$slug/guest-requests/route'
 import { Route as ApiAdminEventsSlugEmailRouteRouteImport } from './routes/api/admin/events/$slug/email/route'
+import { Route as ApiAdminEventsSlugDropRouteRouteImport } from './routes/api/admin/events/$slug/drop/route'
 import { Route as ApiAdminEventsSlugCheckpointsRouteRouteImport } from './routes/api/admin/events/$slug/checkpoints/route'
 import { Route as ApiAdminAlbumsSlugCoverRouteRouteImport } from './routes/api/admin/albums/$slug/cover/route'
 import { Route as ApiTransfersIdMediaFileIdVariantRouteRouteImport } from './routes/api/transfers/$id/media/$fileId/$variant/route'
@@ -302,6 +306,11 @@ const EventsSlugRoute = EventsSlugRouteImport.update({
   path: '/events/$slug',
   getParentRoute: () => rootRouteImport,
 } as any)
+const DropTokenRoute = DropTokenRouteImport.update({
+  id: '/drop/$token',
+  path: '/drop/$token',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AdminEditorRoute = AdminEditorRouteImport.update({
   id: '/admin/editor',
   path: '/admin/editor',
@@ -446,6 +455,16 @@ const ApiTransfersIdRouteRoute = ApiTransfersIdRouteRouteImport.update({
 const ApiStripeWebhookRouteRoute = ApiStripeWebhookRouteRouteImport.update({
   id: '/api/stripe/webhook',
   path: '/api/stripe/webhook',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiDropPresignRouteRoute = ApiDropPresignRouteRouteImport.update({
+  id: '/api/drop/presign',
+  path: '/api/drop/presign',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiDropFinalizeRouteRoute = ApiDropFinalizeRouteRouteImport.update({
+  id: '/api/drop/finalize',
+  path: '/api/drop/finalize',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiDownloadPresignRouteRoute = ApiDownloadPresignRouteRouteImport.update({
@@ -763,6 +782,12 @@ const ApiAdminEventsSlugEmailRouteRoute =
     path: '/email',
     getParentRoute: () => ApiAdminEventsSlugRouteRoute,
   } as any)
+const ApiAdminEventsSlugDropRouteRoute =
+  ApiAdminEventsSlugDropRouteRouteImport.update({
+    id: '/drop',
+    path: '/drop',
+    getParentRoute: () => ApiAdminEventsSlugRouteRoute,
+  } as any)
 const ApiAdminEventsSlugCheckpointsRouteRoute =
   ApiAdminEventsSlugCheckpointsRouteRouteImport.update({
     id: '/checkpoints',
@@ -808,6 +833,7 @@ export interface FileRoutesByFullPath {
   '/api/reports': typeof ApiReportsRouteRoute
   '/api/words': typeof ApiWordsRouteRouteWithChildren
   '/admin/editor': typeof AdminEditorRoute
+  '/drop/$token': typeof DropTokenRoute
   '/events/$slug': typeof EventsSlugRoute
   '/scan/$token': typeof ScanTokenRoute
   '/t/$id': typeof TIdRoute
@@ -846,6 +872,8 @@ export interface FileRoutesByFullPath {
   '/api/cron/cleanup-word-shares': typeof ApiCronCleanupWordSharesRouteRoute
   '/api/cron/process-transfer-media': typeof ApiCronProcessTransferMediaRouteRoute
   '/api/download/presign': typeof ApiDownloadPresignRouteRoute
+  '/api/drop/finalize': typeof ApiDropFinalizeRouteRoute
+  '/api/drop/presign': typeof ApiDropPresignRouteRoute
   '/api/stripe/webhook': typeof ApiStripeWebhookRouteRoute
   '/api/transfers/$id': typeof ApiTransfersIdRouteRouteWithChildren
   '/api/upload/verify-pin': typeof ApiUploadVerifyPinRouteRoute
@@ -899,6 +927,7 @@ export interface FileRoutesByFullPath {
   '/things/spelling-party/$roomId/present': typeof ThingsSpellingPartyRoomIdPresentRoute
   '/api/admin/albums/$slug/cover': typeof ApiAdminAlbumsSlugCoverRouteRoute
   '/api/admin/events/$slug/checkpoints': typeof ApiAdminEventsSlugCheckpointsRouteRoute
+  '/api/admin/events/$slug/drop': typeof ApiAdminEventsSlugDropRouteRoute
   '/api/admin/events/$slug/email': typeof ApiAdminEventsSlugEmailRouteRoute
   '/api/admin/events/$slug/guest-requests': typeof ApiAdminEventsSlugGuestRequestsRouteRoute
   '/api/admin/events/$slug/scanner-links': typeof ApiAdminEventsSlugScannerLinksRouteRoute
@@ -932,6 +961,7 @@ export interface FileRoutesByTo {
   '/api/reports': typeof ApiReportsRouteRoute
   '/api/words': typeof ApiWordsRouteRouteWithChildren
   '/admin/editor': typeof AdminEditorRoute
+  '/drop/$token': typeof DropTokenRoute
   '/events/$slug': typeof EventsSlugRoute
   '/scan/$token': typeof ScanTokenRoute
   '/t/$id': typeof TIdRoute
@@ -970,6 +1000,8 @@ export interface FileRoutesByTo {
   '/api/cron/cleanup-word-shares': typeof ApiCronCleanupWordSharesRouteRoute
   '/api/cron/process-transfer-media': typeof ApiCronProcessTransferMediaRouteRoute
   '/api/download/presign': typeof ApiDownloadPresignRouteRoute
+  '/api/drop/finalize': typeof ApiDropFinalizeRouteRoute
+  '/api/drop/presign': typeof ApiDropPresignRouteRoute
   '/api/stripe/webhook': typeof ApiStripeWebhookRouteRoute
   '/api/transfers/$id': typeof ApiTransfersIdRouteRouteWithChildren
   '/api/upload/verify-pin': typeof ApiUploadVerifyPinRouteRoute
@@ -1023,6 +1055,7 @@ export interface FileRoutesByTo {
   '/things/spelling-party/$roomId/present': typeof ThingsSpellingPartyRoomIdPresentRoute
   '/api/admin/albums/$slug/cover': typeof ApiAdminAlbumsSlugCoverRouteRoute
   '/api/admin/events/$slug/checkpoints': typeof ApiAdminEventsSlugCheckpointsRouteRoute
+  '/api/admin/events/$slug/drop': typeof ApiAdminEventsSlugDropRouteRoute
   '/api/admin/events/$slug/email': typeof ApiAdminEventsSlugEmailRouteRoute
   '/api/admin/events/$slug/guest-requests': typeof ApiAdminEventsSlugGuestRequestsRouteRoute
   '/api/admin/events/$slug/scanner-links': typeof ApiAdminEventsSlugScannerLinksRouteRoute
@@ -1057,6 +1090,7 @@ export interface FileRoutesById {
   '/api/reports': typeof ApiReportsRouteRoute
   '/api/words': typeof ApiWordsRouteRouteWithChildren
   '/admin/editor': typeof AdminEditorRoute
+  '/drop/$token': typeof DropTokenRoute
   '/events/$slug': typeof EventsSlugRoute
   '/scan/$token': typeof ScanTokenRoute
   '/t/$id': typeof TIdRoute
@@ -1095,6 +1129,8 @@ export interface FileRoutesById {
   '/api/cron/cleanup-word-shares': typeof ApiCronCleanupWordSharesRouteRoute
   '/api/cron/process-transfer-media': typeof ApiCronProcessTransferMediaRouteRoute
   '/api/download/presign': typeof ApiDownloadPresignRouteRoute
+  '/api/drop/finalize': typeof ApiDropFinalizeRouteRoute
+  '/api/drop/presign': typeof ApiDropPresignRouteRoute
   '/api/stripe/webhook': typeof ApiStripeWebhookRouteRoute
   '/api/transfers/$id': typeof ApiTransfersIdRouteRouteWithChildren
   '/api/upload/verify-pin': typeof ApiUploadVerifyPinRouteRoute
@@ -1148,6 +1184,7 @@ export interface FileRoutesById {
   '/things/spelling-party_/$roomId_/present': typeof ThingsSpellingPartyRoomIdPresentRoute
   '/api/admin/albums/$slug/cover': typeof ApiAdminAlbumsSlugCoverRouteRoute
   '/api/admin/events/$slug/checkpoints': typeof ApiAdminEventsSlugCheckpointsRouteRoute
+  '/api/admin/events/$slug/drop': typeof ApiAdminEventsSlugDropRouteRoute
   '/api/admin/events/$slug/email': typeof ApiAdminEventsSlugEmailRouteRoute
   '/api/admin/events/$slug/guest-requests': typeof ApiAdminEventsSlugGuestRequestsRouteRoute
   '/api/admin/events/$slug/scanner-links': typeof ApiAdminEventsSlugScannerLinksRouteRoute
@@ -1183,6 +1220,7 @@ export interface FileRouteTypes {
     | '/api/reports'
     | '/api/words'
     | '/admin/editor'
+    | '/drop/$token'
     | '/events/$slug'
     | '/scan/$token'
     | '/t/$id'
@@ -1221,6 +1259,8 @@ export interface FileRouteTypes {
     | '/api/cron/cleanup-word-shares'
     | '/api/cron/process-transfer-media'
     | '/api/download/presign'
+    | '/api/drop/finalize'
+    | '/api/drop/presign'
     | '/api/stripe/webhook'
     | '/api/transfers/$id'
     | '/api/upload/verify-pin'
@@ -1274,6 +1314,7 @@ export interface FileRouteTypes {
     | '/things/spelling-party/$roomId/present'
     | '/api/admin/albums/$slug/cover'
     | '/api/admin/events/$slug/checkpoints'
+    | '/api/admin/events/$slug/drop'
     | '/api/admin/events/$slug/email'
     | '/api/admin/events/$slug/guest-requests'
     | '/api/admin/events/$slug/scanner-links'
@@ -1307,6 +1348,7 @@ export interface FileRouteTypes {
     | '/api/reports'
     | '/api/words'
     | '/admin/editor'
+    | '/drop/$token'
     | '/events/$slug'
     | '/scan/$token'
     | '/t/$id'
@@ -1345,6 +1387,8 @@ export interface FileRouteTypes {
     | '/api/cron/cleanup-word-shares'
     | '/api/cron/process-transfer-media'
     | '/api/download/presign'
+    | '/api/drop/finalize'
+    | '/api/drop/presign'
     | '/api/stripe/webhook'
     | '/api/transfers/$id'
     | '/api/upload/verify-pin'
@@ -1398,6 +1442,7 @@ export interface FileRouteTypes {
     | '/things/spelling-party/$roomId/present'
     | '/api/admin/albums/$slug/cover'
     | '/api/admin/events/$slug/checkpoints'
+    | '/api/admin/events/$slug/drop'
     | '/api/admin/events/$slug/email'
     | '/api/admin/events/$slug/guest-requests'
     | '/api/admin/events/$slug/scanner-links'
@@ -1431,6 +1476,7 @@ export interface FileRouteTypes {
     | '/api/reports'
     | '/api/words'
     | '/admin/editor'
+    | '/drop/$token'
     | '/events/$slug'
     | '/scan/$token'
     | '/t/$id'
@@ -1469,6 +1515,8 @@ export interface FileRouteTypes {
     | '/api/cron/cleanup-word-shares'
     | '/api/cron/process-transfer-media'
     | '/api/download/presign'
+    | '/api/drop/finalize'
+    | '/api/drop/presign'
     | '/api/stripe/webhook'
     | '/api/transfers/$id'
     | '/api/upload/verify-pin'
@@ -1522,6 +1570,7 @@ export interface FileRouteTypes {
     | '/things/spelling-party_/$roomId_/present'
     | '/api/admin/albums/$slug/cover'
     | '/api/admin/events/$slug/checkpoints'
+    | '/api/admin/events/$slug/drop'
     | '/api/admin/events/$slug/email'
     | '/api/admin/events/$slug/guest-requests'
     | '/api/admin/events/$slug/scanner-links'
@@ -1556,6 +1605,7 @@ export interface RootRouteChildren {
   ApiReportsRouteRoute: typeof ApiReportsRouteRoute
   ApiWordsRouteRoute: typeof ApiWordsRouteRouteWithChildren
   AdminEditorRoute: typeof AdminEditorRoute
+  DropTokenRoute: typeof DropTokenRoute
   EventsSlugRoute: typeof EventsSlugRoute
   ScanTokenRoute: typeof ScanTokenRoute
   TIdRoute: typeof TIdRoute
@@ -1584,6 +1634,8 @@ export interface RootRouteChildren {
   ApiCronCleanupWordSharesRouteRoute: typeof ApiCronCleanupWordSharesRouteRoute
   ApiCronProcessTransferMediaRouteRoute: typeof ApiCronProcessTransferMediaRouteRoute
   ApiDownloadPresignRouteRoute: typeof ApiDownloadPresignRouteRoute
+  ApiDropFinalizeRouteRoute: typeof ApiDropFinalizeRouteRoute
+  ApiDropPresignRouteRoute: typeof ApiDropPresignRouteRoute
   ApiStripeWebhookRouteRoute: typeof ApiStripeWebhookRouteRoute
   ApiTransfersIdRouteRoute: typeof ApiTransfersIdRouteRouteWithChildren
   ApiUploadVerifyPinRouteRoute: typeof ApiUploadVerifyPinRouteRoute
@@ -1841,6 +1893,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof EventsSlugRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/drop/$token': {
+      id: '/drop/$token'
+      path: '/drop/$token'
+      fullPath: '/drop/$token'
+      preLoaderRoute: typeof DropTokenRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/admin/editor': {
       id: '/admin/editor'
       path: '/admin/editor'
@@ -2042,6 +2101,20 @@ declare module '@tanstack/react-router' {
       path: '/api/stripe/webhook'
       fullPath: '/api/stripe/webhook'
       preLoaderRoute: typeof ApiStripeWebhookRouteRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/drop/presign': {
+      id: '/api/drop/presign'
+      path: '/api/drop/presign'
+      fullPath: '/api/drop/presign'
+      preLoaderRoute: typeof ApiDropPresignRouteRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/drop/finalize': {
+      id: '/api/drop/finalize'
+      path: '/api/drop/finalize'
+      fullPath: '/api/drop/finalize'
+      preLoaderRoute: typeof ApiDropFinalizeRouteRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/download/presign': {
@@ -2429,6 +2502,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiAdminEventsSlugEmailRouteRouteImport
       parentRoute: typeof ApiAdminEventsSlugRouteRoute
     }
+    '/api/admin/events/$slug/drop': {
+      id: '/api/admin/events/$slug/drop'
+      path: '/drop'
+      fullPath: '/api/admin/events/$slug/drop'
+      preLoaderRoute: typeof ApiAdminEventsSlugDropRouteRouteImport
+      parentRoute: typeof ApiAdminEventsSlugRouteRoute
+    }
     '/api/admin/events/$slug/checkpoints': {
       id: '/api/admin/events/$slug/checkpoints'
       path: '/checkpoints'
@@ -2623,6 +2703,7 @@ const ApiAdminAlbumsRouteRouteWithChildren =
 
 interface ApiAdminEventsSlugRouteRouteChildren {
   ApiAdminEventsSlugCheckpointsRouteRoute: typeof ApiAdminEventsSlugCheckpointsRouteRoute
+  ApiAdminEventsSlugDropRouteRoute: typeof ApiAdminEventsSlugDropRouteRoute
   ApiAdminEventsSlugEmailRouteRoute: typeof ApiAdminEventsSlugEmailRouteRoute
   ApiAdminEventsSlugGuestRequestsRouteRoute: typeof ApiAdminEventsSlugGuestRequestsRouteRoute
   ApiAdminEventsSlugScannerLinksRouteRoute: typeof ApiAdminEventsSlugScannerLinksRouteRoute
@@ -2633,6 +2714,7 @@ const ApiAdminEventsSlugRouteRouteChildren: ApiAdminEventsSlugRouteRouteChildren
   {
     ApiAdminEventsSlugCheckpointsRouteRoute:
       ApiAdminEventsSlugCheckpointsRouteRoute,
+    ApiAdminEventsSlugDropRouteRoute: ApiAdminEventsSlugDropRouteRoute,
     ApiAdminEventsSlugEmailRouteRoute: ApiAdminEventsSlugEmailRouteRoute,
     ApiAdminEventsSlugGuestRequestsRouteRoute:
       ApiAdminEventsSlugGuestRequestsRouteRoute,
@@ -2756,6 +2838,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiReportsRouteRoute: ApiReportsRouteRoute,
   ApiWordsRouteRoute: ApiWordsRouteRouteWithChildren,
   AdminEditorRoute: AdminEditorRoute,
+  DropTokenRoute: DropTokenRoute,
   EventsSlugRoute: EventsSlugRoute,
   ScanTokenRoute: ScanTokenRoute,
   TIdRoute: TIdRoute,
@@ -2785,6 +2868,8 @@ const rootRouteChildren: RootRouteChildren = {
   ApiCronCleanupWordSharesRouteRoute: ApiCronCleanupWordSharesRouteRoute,
   ApiCronProcessTransferMediaRouteRoute: ApiCronProcessTransferMediaRouteRoute,
   ApiDownloadPresignRouteRoute: ApiDownloadPresignRouteRoute,
+  ApiDropFinalizeRouteRoute: ApiDropFinalizeRouteRoute,
+  ApiDropPresignRouteRoute: ApiDropPresignRouteRoute,
   ApiStripeWebhookRouteRoute: ApiStripeWebhookRouteRoute,
   ApiTransfersIdRouteRoute: ApiTransfersIdRouteRouteWithChildren,
   ApiUploadVerifyPinRouteRoute: ApiUploadVerifyPinRouteRoute,

@@ -12,6 +12,7 @@
       "runtimeExecutable": "env",
       "runtimeArgs": [
         "DATABASE_URL=postgres://postgres:test@127.0.0.1:55432/mah_dev",
+        "ALLOW_IN_MEMORY_TRANSFER_STORE=1",
         "pnpm",
         "dev",
         "--port",

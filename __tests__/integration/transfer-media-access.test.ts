@@ -38,9 +38,7 @@ describe("protected transfer media", () => {
       presignGetUrl,
     }));
 
-    const { GET } = await import(
-      "@/src/routes/api/transfers/$id/media/$fileId/$variant/route"
-    );
+    const { GET } = await import("@/src/routes/api/transfers/$id/media/$fileId/$variant/route");
     const response = await GET(
       makeRequest("/api/transfers/private-transfer/media/photo/original?download=1"),
       {
@@ -73,9 +71,7 @@ describe("protected transfer media", () => {
       presignGetUrl,
     }));
 
-    const { GET } = await import(
-      "@/src/routes/api/transfers/$id/media/$fileId/$variant/route"
-    );
+    const { GET } = await import("@/src/routes/api/transfers/$id/media/$fileId/$variant/route");
     const response = await GET(
       makeRequest("/api/transfers/private-transfer/media/not-a-file/original"),
       {

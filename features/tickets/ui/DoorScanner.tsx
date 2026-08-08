@@ -88,6 +88,8 @@ function GuestRequests({
   const [name, setName] = useState("");
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
+  /** Approve is two taps: the first arms it, the second commits. */
+  const [confirmingId, setConfirmingId] = useState<number | null>(null);
 
   const refresh = useCallback(async () => {
     try {
@@ -144,6 +146,7 @@ function GuestRequests({
 
   const decide = async (id: number, approve: boolean) => {
     setBusy(true);
+    setConfirmingId(null);
     try {
       const result = await guestRequestDecideFn({ data: { token, id, approve } });
       if (result.authorised && result.ok && approve) onGuestAdded();
@@ -220,10 +223,21 @@ function GuestRequests({
                       <button
                         type="button"
                         disabled={busy}
-                        onClick={() => void decide(request.id, true)}
-                        className="min-h-9 rounded-lg bg-foreground px-3 font-mono text-micro text-background disabled:opacity-50"
+                        onClick={() => {
+                          if (confirmingId === request.id) {
+                            setConfirmingId(null);
+                            void decide(request.id, true);
+                          } else {
+                            setConfirmingId(request.id);
+                          }
+                        }}
+                        className={`min-h-9 rounded-lg px-3 font-mono text-micro disabled:opacity-50 ${
+                          confirmingId === request.id
+                            ? "bg-[var(--things-green)] text-black"
+                            : "bg-foreground text-background"
+                        }`}
                       >
-                        approve
+                        {confirmingId === request.id ? "sure? tap again" : "approve"}
                       </button>
                       <button
                         type="button"
@@ -613,8 +627,27 @@ export function DoorScanner({
     const expected = live
       .filter((ticket) => !ticket.redeemedAt)
       .sort((a, b) => a.holderName.localeCompare(b.holderName));
-    return { inside, expected };
+    // Per-order tallies, so "how many of their lot are in?" reads at a glance.
+    const orders = new Map<string, { inside: number; total: number }>();
+    for (const ticket of live) {
+      const entry = orders.get(ticket.orderId) ?? { inside: 0, total: 0 };
+      entry.total += 1;
+      if (ticket.redeemedAt) entry.inside += 1;
+      orders.set(ticket.orderId, entry);
+    }
+    return { inside, expected, orders };
   }, [tickets]);
+
+  const [occupancyQuery, setOccupancyQuery] = useState("");
+  const occupancyFilter = occupancyQuery.trim().toLowerCase();
+  const filterTickets = (list: (DoorTicketView & { issuedAt: string })[]) =>
+    occupancyFilter
+      ? list.filter((ticket) => ticket.holderName.toLowerCase().includes(occupancyFilter))
+      : list;
+  const groupChip = (ticket: DoorTicketView) => {
+    const stats = occupancy.orders.get(ticket.orderId);
+    return stats && stats.total > 1 ? `${stats.inside}/${stats.total} of group in` : null;
+  };
 
   const pending = pendingCount(offline);
 
@@ -650,44 +683,80 @@ export function DoorScanner({
               </div>
             </div>
 
-            {occupancy.inside.length > 0 && (
-              <>
-                <p className="mt-4 font-mono text-micro theme-muted tracking-wide">
-                  inside · latest first
-                </p>
-                <ul className="mt-1 max-h-40 overflow-y-auto">
-                  {occupancy.inside.map((ticket) => (
-                    <li
-                      key={ticket.id}
-                      className="flex items-baseline justify-between gap-3 py-1 font-mono text-xs"
-                    >
-                      <span className="truncate text-foreground">{ticket.holderName}</span>
-                      <span className="shrink-0 theme-muted">
-                        {ticket.redeemedAt
-                          ? new Date(ticket.redeemedAt).toLocaleTimeString("en-GB", {
-                              hour: "2-digit",
-                              minute: "2-digit",
-                            })
-                          : ""}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              </>
-            )}
+            <label htmlFor="occupancy-filter" className="sr-only">
+              Filter by name
+            </label>
+            <input
+              id="occupancy-filter"
+              type="search"
+              value={occupancyQuery}
+              onChange={(event) => setOccupancyQuery(event.target.value)}
+              placeholder="filter by name…"
+              className="mt-3 min-h-11 w-full rounded-lg border theme-border bg-transparent px-3 font-mono text-sm text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--prose-hashtag)]"
+            />
 
-            {occupancy.expected.length > 0 && (
-              <>
-                <p className="mt-4 font-mono text-micro theme-muted tracking-wide">still to come</p>
-                <ul className="mt-1 max-h-40 overflow-y-auto">
-                  {occupancy.expected.map((ticket) => (
-                    <li key={ticket.id} className="truncate py-1 font-mono text-xs theme-muted">
-                      {ticket.holderName}
-                    </li>
-                  ))}
-                </ul>
-              </>
-            )}
+            {(() => {
+              const insideRows = filterTickets(occupancy.inside);
+              const expectedRows = filterTickets(occupancy.expected);
+              if (insideRows.length === 0 && expectedRows.length === 0) {
+                return (
+                  <p className="mt-3 font-mono text-micro theme-faint">nobody matches that name</p>
+                );
+              }
+              return (
+                <>
+                  {insideRows.length > 0 && (
+                    <>
+                      <p className="mt-4 font-mono text-micro theme-muted tracking-wide">
+                        inside · latest first
+                      </p>
+                      <ul className="mt-1 max-h-40 overflow-y-auto">
+                        {insideRows.map((ticket) => (
+                          <li
+                            key={ticket.id}
+                            className="flex items-baseline justify-between gap-3 py-1 font-mono text-xs"
+                          >
+                            <span className="min-w-0 truncate text-foreground">
+                              {ticket.holderName}
+                              {groupChip(ticket) && (
+                                <span className="ml-2 theme-muted">· {groupChip(ticket)}</span>
+                              )}
+                            </span>
+                            <span className="shrink-0 theme-muted">
+                              {ticket.redeemedAt
+                                ? new Date(ticket.redeemedAt).toLocaleTimeString("en-GB", {
+                                    hour: "2-digit",
+                                    minute: "2-digit",
+                                  })
+                                : ""}
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    </>
+                  )}
+
+                  {expectedRows.length > 0 && (
+                    <>
+                      <p className="mt-4 font-mono text-micro theme-muted tracking-wide">
+                        still to come
+                      </p>
+                      <ul className="mt-1 max-h-40 overflow-y-auto">
+                        {expectedRows.map((ticket) => (
+                          <li
+                            key={ticket.id}
+                            className="truncate py-1 font-mono text-xs theme-muted"
+                          >
+                            {ticket.holderName}
+                            {groupChip(ticket) && <span> · {groupChip(ticket)}</span>}
+                          </li>
+                        ))}
+                      </ul>
+                    </>
+                  )}
+                </>
+              );
+            })()}
           </section>
         )}
 

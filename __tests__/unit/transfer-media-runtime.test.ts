@@ -59,9 +59,7 @@ describe("withProcessingTimeout", () => {
 describe("media role", () => {
   it("defaults to the web role", async () => {
     vi.resetModules();
-    const { getMediaRole, isMediaWorkerRole } = await import(
-      "@/features/system/media-role.server"
-    );
+    const { getMediaRole, isMediaWorkerRole } = await import("@/features/system/media-role.server");
     expect(getMediaRole()).toBe("web");
     expect(isMediaWorkerRole()).toBe(false);
   });
@@ -83,12 +81,15 @@ describe("media role", () => {
 
 describe("terminal processing failures", () => {
   it("never retries a failure the file itself guarantees", async () => {
-    const { canRetryTransferProcessing, isTerminalProcessingFailure } = await import(
-      "@/features/transfers/media-state"
-    );
+    const { canRetryTransferProcessing, isTerminalProcessingFailure } =
+      await import("@/features/transfers/media-state");
 
     for (const code of ["raw_preview_unavailable", "video_too_large_for_poster"]) {
-      const file = { processingStatus: "failed" as const, retryCount: 0, processingErrorCode: code };
+      const file = {
+        processingStatus: "failed" as const,
+        retryCount: 0,
+        processingErrorCode: code,
+      };
       expect(isTerminalProcessingFailure(file)).toBe(true);
       expect(canRetryTransferProcessing(file)).toBe(false);
     }

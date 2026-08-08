@@ -1,42 +1,16 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { formatBytes } from "@/lib/shared/format";
 import { requireAuthWithPayload } from "@/features/auth/auth.server";
-import { getTransfer } from "@/features/transfers/store.server";
-import { isSafeTransferFilename } from "@/features/transfers/upload.server";
-import {
-  HEIF_TRANSFER_UPLOAD_ERROR,
-  isHeifUploadLike,
-  resolveTransferUploadIds,
-} from "@/features/transfers/media-state";
-import { presignPutUrl, isTransferStorageConfigured } from "@/lib/platform/r2.server";
-import { getMimeType } from "@/features/media/processing.server";
-import {
-  buildTransferArchivedOriginalStorageKey,
-  buildTransferPrimaryStorageKey,
-} from "@/features/transfers/storage";
+import { appendPresign } from "@/features/transfers/append.server";
 import type { TransferUploadFileInput } from "@/features/transfers/upload-types";
-import { apiErrorFromRequest } from "@/lib/platform/api-error";
-import {
-  getUploadUrlTtlSeconds,
-  MAX_SINGLE_PUT_BYTES,
-} from "@/features/transfers/upload-window.server";
-
-type FileEntry = TransferUploadFileInput;
 
 export const runtime = "nodejs";
 
+/** Admin append: presign PUT URLs for extra files on an existing transfer. */
 async function handlePOST(request: Request) {
   const { error: authErr } = await requireAuthWithPayload(request, "admin");
   if (authErr) return authErr;
 
-  if (!isTransferStorageConfigured()) {
-    return Response.json(
-      { error: "Private transfer storage is not configured. Set R2_PRIVATE_BUCKET." },
-      { status: 503 },
-    );
-  }
-
-  let body: { transferId?: string; files?: FileEntry[] };
+  let body: { transferId?: string; files?: TransferUploadFileInput[] };
   try {
     body = await request.json();
   } catch {
@@ -44,155 +18,9 @@ async function handlePOST(request: Request) {
   }
 
   const transferId = body.transferId?.trim();
-  const rawFiles = body.files;
-  if (!transferId) {
-    return Response.json({ error: "Missing transferId" }, { status: 400 });
-  }
-  if (!Array.isArray(rawFiles) || rawFiles.length === 0) {
-    return Response.json({ error: "No files provided" }, { status: 400 });
-  }
+  if (!transferId) return Response.json({ error: "Missing transferId" }, { status: 400 });
 
-  const transfer = await getTransfer(transferId);
-  if (!transfer) {
-    return Response.json({ error: "Transfer not found or expired" }, { status: 404 });
-  }
-  const files = resolveTransferUploadIds(
-    rawFiles,
-    transfer.files.map((f) => f.id),
-  );
-
-  const remainingTtlSeconds = Math.floor(
-    (new Date(transfer.expiresAt).getTime() - Date.now()) / 1000,
-  );
-  if (remainingTtlSeconds <= 0) {
-    return Response.json({ error: "Transfer has already expired" }, { status: 400 });
-  }
-
-  const existingNames = new Set(transfer.files.map((f) => f.filename));
-  const existingArchivedNames = new Set(
-    transfer.files.flatMap((f) =>
-      [f.filename, f.originalFilename].filter(
-        (value): value is string => typeof value === "string",
-      ),
-    ),
-  );
-  const seenNames = new Set<string>();
-  const seenArchivedNames = new Set<string>();
-
-  for (const file of files) {
-    if (!file || typeof file.name !== "string" || !isSafeTransferFilename(file.name)) {
-      return Response.json({ error: "Each file must have a safe filename" }, { status: 400 });
-    }
-    if (isHeifUploadLike(file)) {
-      return Response.json({ error: HEIF_TRANSFER_UPLOAD_ERROR }, { status: 400 });
-    }
-    if (!Number.isFinite(file.size) || file.size < 0) {
-      return Response.json(
-        { error: "Each file must include a valid non-negative size" },
-        { status: 400 },
-      );
-    }
-    // This route is admin-only, so the per-transfer quotas are deliberately not
-    // applied — but 5 GiB is the S3/R2 single-PUT limit, not a policy of ours,
-    // and no amount of authority makes an oversized PUT succeed.
-    if (file.size > MAX_SINGLE_PUT_BYTES) {
-      return Response.json(
-        {
-          error: `File too large to upload in one piece. Max ${formatBytes(MAX_SINGLE_PUT_BYTES)} per file.`,
-        },
-        { status: 400 },
-      );
-    }
-    if (
-      file.originalSize !== undefined &&
-      (!Number.isFinite(file.originalSize) || file.originalSize < 0)
-    ) {
-      return Response.json(
-        { error: "Each converted file must include a valid original size" },
-        { status: 400 },
-      );
-    }
-    if (seenNames.has(file.name)) {
-      return Response.json(
-        { error: `Duplicate filename in upload selection: ${file.name}` },
-        { status: 400 },
-      );
-    }
-    if (existingNames.has(file.name)) {
-      return Response.json(
-        { error: `Filename already exists in transfer: ${file.name}` },
-        { status: 400 },
-      );
-    }
-    seenNames.add(file.name);
-    if (file.originalName) {
-      if (!isSafeTransferFilename(file.originalName)) {
-        return Response.json(
-          { error: "Each converted file must include a safe original filename" },
-          { status: 400 },
-        );
-      }
-      if (
-        seenArchivedNames.has(file.originalName) ||
-        existingArchivedNames.has(file.originalName)
-      ) {
-        return Response.json(
-          { error: `Archived filename already exists in transfer: ${file.originalName}` },
-          { status: 400 },
-        );
-      }
-      seenArchivedNames.add(file.originalName);
-    }
-  }
-
-  const uploadUrlTtlSeconds = getUploadUrlTtlSeconds();
-  try {
-    const urls = await Promise.all(
-      files.map(async (file) => {
-        const primaryKey = buildTransferPrimaryStorageKey(transferId, file);
-        const primaryUrl = await presignPutUrl(
-          primaryKey,
-          getMimeType(file.name),
-          uploadUrlTtlSeconds,
-        );
-        const archivedOriginalKey = buildTransferArchivedOriginalStorageKey(transferId, file);
-        const archivedOriginalUrl =
-          archivedOriginalKey && file.originalName
-            ? await presignPutUrl(
-                archivedOriginalKey,
-                getMimeType(file.originalName),
-                uploadUrlTtlSeconds,
-              )
-            : undefined;
-        return {
-          name: file.name,
-          mediaId: file.mediaId,
-          contentType: getMimeType(file.name),
-          primaryUrl,
-          archivedOriginalUrl,
-        };
-      }),
-    );
-
-    return Response.json({
-      transfer: {
-        id: transfer.id,
-        title: transfer.title,
-        fileCount: transfer.files.length,
-        expiresAt: transfer.expiresAt,
-      },
-      urls,
-      remainingTtlSeconds,
-    });
-  } catch (error) {
-    return apiErrorFromRequest(
-      request,
-      "upload.transfer.append.presign",
-      "Failed to generate append upload URLs. Please try again.",
-      error,
-      { transferId, fileCount: files.length },
-    );
-  }
+  return appendPresign(request, transferId, body.files);
 }
 
 export const Route = createFileRoute("/api/upload/transfer/append/presign")({
