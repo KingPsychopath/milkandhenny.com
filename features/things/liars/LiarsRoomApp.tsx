@@ -11,6 +11,7 @@ import {
   LIARS_PLAYER_LIMITS,
   LIARS_ROLES,
   LIARS_GRAVEYARD_NOTE_LENGTH,
+  liarsActionHint,
   liarsGraveyardArmsAt,
 } from "./liars-rules";
 import { applyLiarsHostActionFn, applyLiarsPlayerActionFn } from "./liars-room.functions";
@@ -470,6 +471,7 @@ function NightPhase({ snapshot, clockOffset, send }: PhaseProps) {
   const you = snapshot.player;
   if (!you) return null;
   const definition = LIARS_ROLES[you.role];
+  const hint = liarsActionHint(you.role);
   const open = snapshot.nightOpensAt !== null && Date.now() + clockOffset >= snapshot.nightOpensAt;
 
   if (!you.alive)
@@ -490,9 +492,25 @@ function NightPhase({ snapshot, clockOffset, send }: PhaseProps) {
     return (
       <>
         <Eyebrow>night {snapshot.round}</Eyebrow>
-        <Headline>Night falls</Headline>
-        <p className="mt-4 font-serif text-lg text-white/65">
-          Turn your screen away from the person next to you.
+        <Headline>Screens away</Headline>
+        <p className="mt-4 font-serif text-xl text-white/80">
+          Turn your phone away from the person next to you.
+        </p>
+        {/*
+          A countdown rather than a blank wait. Without one this screen gives no reason to move
+          now, so people read it, agree with it, and keep holding the phone flat until their role
+          appears — which is the exact moment it is worth something to their neighbour.
+        */}
+        {snapshot.nightOpensAt !== null ? (
+          <PhaseTimer
+            endsAt={snapshot.nightOpensAt}
+            clockOffset={clockOffset}
+            label="your role appears in"
+            big
+          />
+        ) : null}
+        <p className="mt-6 font-mono text-xs text-white/40">
+          everybody acts at once, so nobody can be timed
         </p>
       </>
     );
@@ -507,6 +525,7 @@ function NightPhase({ snapshot, clockOffset, send }: PhaseProps) {
         label="night ends in"
         big
       />
+      {hint ? <p className="mt-3 font-serif text-base text-white/55">{hint}</p> : null}
 
       {you.report ? <NightReportCard report={you.report} /> : null}
 

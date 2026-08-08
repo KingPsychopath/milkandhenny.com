@@ -153,6 +153,22 @@ export function useLiarsEffects(input: {
         ),
       );
 
+    /*
+     * Three beats under the dread, closing up into the name.
+     *
+     * The redden was carrying this moment on its own and a colour shift alone is easy to miss on a
+     * phone lying flat on a table. The night already ends on an accelerating heartbeat, so this is
+     * the same instrument picked back up rather than a new one — and it runs on every device, for
+     * the same reason the redden does.
+     */
+    for (let beat = 0; beat < 3; beat += 1) {
+      const thud = at(dawn.nameLandsAt - (2_000 - beat * 700));
+      if (thud <= 0) continue;
+      timers.push(
+        window.setTimeout(() => playLiarsSound("heartbeat", audibleRef.current), thud),
+      );
+    }
+
     const land = at(dawn.nameLandsAt);
     if (land > -1_500)
       timers.push(

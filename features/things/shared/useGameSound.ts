@@ -9,10 +9,27 @@ import { useCallback, useEffect, useState } from "react";
  */
 export type GameSoundMode = "all" | "ambient" | "off";
 
+/**
+ * Labels say what is **on**, not what was turned off.
+ *
+ * `sound → no voice → muted` reads as three unrelated words, and the middle one only makes sense
+ * once you have already been through it. Worse, nothing on the button says a third state exists, so
+ * a table with a narrator they dislike mutes everything rather than discovering the setting that
+ * keeps the effects. `voice · fx → fx only → silent` shows the ladder from any rung.
+ *
+ * A game with no narrator gets the plain pair — calling its two states `voice · fx` and `silent`
+ * would promise a narrator it does not have.
+ */
 export const GAME_SOUND_LABEL: Record<GameSoundMode, string> = {
+  all: "voice · fx",
+  ambient: "fx only",
+  off: "silent",
+};
+
+const GAME_SOUND_LABEL_NO_NARRATOR: Record<GameSoundMode, string> = {
   all: "sound",
-  ambient: "no voice",
-  off: "muted",
+  ambient: "fx only",
+  off: "silent",
 };
 
 export const GAME_SOUND_DESCRIPTION: Record<GameSoundMode, string> = {
@@ -77,7 +94,7 @@ export function useGameSound(
     effects: mode !== "off",
     /** Anything spoken aloud. */
     voice: mode === "all",
-    label: GAME_SOUND_LABEL[mode],
+    label: (modes.includes("ambient") ? GAME_SOUND_LABEL : GAME_SOUND_LABEL_NO_NARRATOR)[mode],
     description: GAME_SOUND_DESCRIPTION[mode],
   };
 }

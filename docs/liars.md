@@ -468,6 +468,14 @@ trusted to hide.
 Every device runs the identical transition — same duration, same luminance curve, same animation —
 regardless of role.
 
+- **Screens away, before every night:** its own held screen with a countdown to the moment roles
+  appear. Without the countdown the screen gives no reason to move *now*, so people read it, agree
+  with it, and keep holding the phone flat until their role arrives — the exact moment it is worth
+  something to their neighbour.
+- **The night hint:** one line under the action prompt saying what tonight buys you. The full rules
+  were only ever on the deal card, read four minutes before they matter. Villagers are who this
+  hurts: `whose door to watch` over a list of names never says that the doctor and detective also
+  count as having gone out, which is the whole reason a single sighting proves nothing.
 - **Dusk, 5s:** cream washes down to `--things-night`, a crescent moon rises and eight stars come
   in behind it. **Dawn, 2.5s:** a sun comes up — not the moon going back down, which is what the
   first version did and which is both wrong and the opposite of a sunrise. The window already existed — five seconds in which nothing role-specific may
@@ -514,7 +522,7 @@ nothing. False signal in a deduction game is damage, not decoration.
 Fired from snapshot transitions, never from direct commands, with the fired id held in a ref so a
 re-poll cannot double-fire.
 
-- **The dread**: every screen reddens in the two seconds before the name lands, and then only one
+- **The dread**: three heartbeats and every screen reddening in the two seconds before the name lands, and then only one
   keeps going. Doing this to a random few would be false signal — they flinch, the table reads the
   flinch, and it means nothing. Doing it to everybody means nothing can be read from it, which is
   the night report card's rule applied to a feeling. With the attack announcement off, or a cold
