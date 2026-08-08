@@ -462,7 +462,8 @@ function HeadsUpExperience({ fullscreen, remoteSession }: { fullscreen: Fullscre
       fullscreenStandalone={fullscreen.standalone}
       fullscreenSupported={fullscreen.supported}
       orientation={orientation}
-      motionUnavailable={motionStatus === "denied" || motionStatus === "unavailable"}
+      motionStatus={motionStatus}
+      onRequestMotion={() => void requestAccess()}
       selectedDeckId={deckId}
       soundEnabled={soundEnabled}
       customDeckIds={new Set(customDecks.map((deck) => deck.id))}

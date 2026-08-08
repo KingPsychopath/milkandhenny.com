@@ -374,6 +374,19 @@ function NightPhase({ snapshot, clockOffset, send }: PhaseProps) {
       </>
     );
 
+  // Until the night opens, every device shows the same thing. Whatever your role is, it is not on
+  // screen yet — so a phone lying face up on the table gives nothing away in the meantime.
+  if (!open)
+    return (
+      <>
+        <Eyebrow>night {snapshot.round}</Eyebrow>
+        <Headline>Night falls</Headline>
+        <p className="mt-4 font-serif text-lg text-white/65">
+          Turn your screen away from the person next to you.
+        </p>
+      </>
+    );
+
   return (
     <>
       <Eyebrow>night {snapshot.round}</Eyebrow>

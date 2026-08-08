@@ -396,8 +396,12 @@ export function liarsDefaultTimings(roomMode: LiarsRoomMode): LiarsTimings {
   };
 }
 
-/** The dusk lead-in, before targets can be chosen. Identical on every device. */
-export const LIARS_DUSK_MS = 2_500;
+/**
+ * The dusk lead-in. Identical on every device, and long enough to actually be useful: nothing
+ * role-specific is on screen until it ends, so there is a real moment to turn your phone away from
+ * whoever is sitting next to you. Two and a half seconds was a transition; five is a warning.
+ */
+export const LIARS_DUSK_MS = 5_000;
 /** How long before the night ends the report card lands. */
 export const LIARS_REPORT_LEAD_MS = 10_000;
 /** Held for its full length and never dismissible — a fast tap would advertise a short card. */

@@ -18,7 +18,8 @@ interface HeadsUpSetupProps {
   fullscreenStandalone: boolean;
   fullscreenSupported: boolean;
   orientation: GameOrientation;
-  motionUnavailable: boolean;
+  motionStatus: "idle" | "enabled" | "denied" | "unavailable";
+  onRequestMotion?: () => void;
   selectedDeckId: string;
   soundEnabled: boolean;
   customDeckIds: Set<string>;
@@ -42,7 +43,8 @@ export function HeadsUpSetup({
   fullscreenStandalone,
   fullscreenSupported,
   orientation,
-  motionUnavailable,
+  motionStatus,
+  onRequestMotion,
   selectedDeckId,
   soundEnabled,
   customDeckIds,
@@ -271,7 +273,8 @@ export function HeadsUpSetup({
               fullscreenStandalone={fullscreenStandalone}
               fullscreenSupported={fullscreenSupported}
               orientation={orientation}
-              motionUnavailable={motionUnavailable}
+              motionStatus={motionStatus}
+              onRequestMotion={onRequestMotion}
               onFullscreen={onFullscreen}
               onOrientationChange={onOrientationChange}
             />

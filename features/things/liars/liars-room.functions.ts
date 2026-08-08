@@ -20,6 +20,7 @@ import {
   exportLiarsRoom,
   importLiarsRoom,
   reissueLiarsHostToken,
+  startLiarsScenario,
   type LiarsRoomExport,
 } from "./liars-room-engine.server";
 import type {
@@ -289,3 +290,23 @@ export const importLiarsRoomFn = createServerFn({ method: "POST" })
     const hostToken = await reissueLiarsHostToken(restored.roomId);
     return hostToken ? { ...restored, hostToken } : null;
   });
+
+export const startLiarsScenarioFn = createServerFn({ method: "POST" })
+  .validator((value: unknown) => {
+    const data = record(value);
+    const names = Array.isArray(data.names) ? data.names.slice(0, 16).map((n) => text(n, 40)) : [];
+    const deal = data.deal === undefined ? undefined : record(data.deal);
+    return {
+      mode: mode(data.mode),
+      names,
+      lineup: data.lineup === undefined ? undefined : lineup(data.lineup),
+      toggles: data.toggles === undefined ? undefined : toggles(data.toggles),
+      timings: data.timings === undefined ? undefined : timings(data.timings),
+      deal: deal
+        ? (Object.fromEntries(
+            Object.entries(deal).map(([index, value]) => [Number(index), role(value)]),
+          ) as Record<number, LiarsRole>)
+        : undefined,
+    };
+  })
+  .handler(({ data }) => startLiarsScenario(data));

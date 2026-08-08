@@ -45,9 +45,11 @@ interface OrientationControlsProps {
   fullscreenStandalone: boolean;
   fullscreenSupported: boolean;
   orientation: GameOrientation;
-  motionUnavailable: boolean;
+  /** "denied" is recoverable and worth offering; "unavailable" is the device and is not. */
+  motionStatus: "idle" | "enabled" | "denied" | "unavailable";
   onFullscreen: () => void;
   onOrientationChange: (orientation: GameOrientation) => void;
+  onRequestMotion?: () => void;
 }
 
 export function OrientationControls({
@@ -57,9 +59,10 @@ export function OrientationControls({
   fullscreenStandalone,
   fullscreenSupported,
   orientation,
-  motionUnavailable,
+  motionStatus,
   onFullscreen,
   onOrientationChange,
+  onRequestMotion,
 }: OrientationControlsProps) {
   return (
     <div className="mx-auto mt-6 max-w-lg">
@@ -109,13 +112,38 @@ export function OrientationControls({
           {fullscreenMessage}
         </p>
       ) : null}
-      <p className="mt-3 text-center font-mono text-micro text-white/45">
-        {motionUnavailable
-          ? "motion unavailable — use the on-screen buttons"
-          : orientation === "auto"
+      {/*
+        A refused permission and a device that simply cannot do it are different problems, and only
+        one of them has a way out. Saying "unavailable" to someone who tapped "don't allow" leaves
+        them with no idea that they can change their mind.
+      */}
+      {motionStatus === "denied" ? (
+        <p className="mt-3 text-center font-mono text-micro text-white/55" role="status">
+          motion is turned off — the buttons still work
+          {onRequestMotion ? (
+            <>
+              {" · "}
+              <button
+                type="button"
+                onClick={onRequestMotion}
+                className="min-h-11 underline underline-offset-4 hover:text-white"
+              >
+                turn it on
+              </button>
+            </>
+          ) : null}
+        </p>
+      ) : motionStatus === "unavailable" ? (
+        <p className="mt-3 text-center font-mono text-micro text-white/45">
+          this device has no motion sensor — use the on-screen buttons
+        </p>
+      ) : (
+        <p className="mt-3 text-center font-mono text-micro text-white/45">
+          {orientation === "auto"
             ? "portrait + landscape · auto-calibrates"
             : `${orientation} · set before play`}
-      </p>
+        </p>
+      )}
     </div>
   );
 }

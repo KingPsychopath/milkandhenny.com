@@ -19,6 +19,7 @@ export function SpellingPlayArea({
   listening,
   followingEnabled,
   followingError,
+  followingStatus,
   inputLevel,
   remoteBadge,
   onReplay,
@@ -44,6 +45,8 @@ export function SpellingPlayArea({
   listening: boolean;
   followingEnabled: boolean;
   followingError: string | null;
+  /** Shown even when following never started, so the feature cannot fail invisibly. */
+  followingStatus?: "checking" | "disabled" | "loading" | "ready" | "listening" | "error";
   inputLevel: number;
   remoteBadge: ReactNode;
   onReplay: (slowLevel?: number) => void;
@@ -80,6 +83,33 @@ export function SpellingPlayArea({
           <p className="font-mono text-micro uppercase tracking-[0.2em] text-black/45">{presenting ? "listen" : awaitingRemoteDecision ? "time’s up · checking judge" : feedback === "timed_out" ? "timed out" : feedback ?? "spell this"}</p>
           <HighlightedWord word={item.word} matchedCount={matchedCount} mismatchAt={mismatchAt} listening={listening} />
           {item.definition || item.partOfSpeech ? <p className="spelling-play-definition mt-5 max-w-lg font-serif text-lg leading-relaxed text-black/60">{item.partOfSpeech ? <em>{item.partOfSpeech}</em> : null}{item.partOfSpeech && item.definition ? " · " : null}{item.definition}</p> : null}
+          {!followingEnabled && followingStatus && followingStatus !== "checking" ? (
+            /*
+              Following never started. Saying nothing at all is the worst option: the player turned
+              it on, nothing happened, and there is no way to tell whether the mic is blocked or the
+              browser simply cannot do it.
+            */
+            <div
+              className="mt-5 flex min-h-11 flex-wrap items-center justify-center gap-x-3 gap-y-1 font-mono text-micro text-black/45"
+              role="status"
+            >
+              <span aria-hidden="true" className="text-black/25">○</span>
+              <span>
+                {followingStatus === "loading"
+                  ? "getting spoken-letter following ready…"
+                  : followingError ?? "following is off — spell out loud and tap the buttons"}
+              </span>
+              {followingStatus === "error" ? (
+                <button
+                  type="button"
+                  onClick={onRetryFollowing}
+                  className="min-h-11 px-2 font-mono text-micro underline underline-offset-4"
+                >
+                  try again
+                </button>
+              ) : null}
+            </div>
+          ) : null}
           {followingEnabled ? (
             <div className="mt-5 flex min-h-11 flex-wrap items-center justify-center gap-x-3 gap-y-1 font-mono text-micro text-black/55" role="status" aria-label={listening ? "Microphone on and listening" : followingError ?? "Spelling follower ready"}>
               <span aria-hidden="true" className={listening ? "text-emerald-800" : "text-black/35"}>●</span>

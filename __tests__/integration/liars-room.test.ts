@@ -14,6 +14,8 @@ import {
   readLiarsSnapshot,
 } from "../../features/things/liars/liars-room.server";
 import { liarsRoleSide } from "../../features/things/liars/liars-rules";
+import { LIARS_SCENARIOS } from "../../features/things/liars/liars-scenarios";
+import { startLiarsScenario } from "../../features/things/liars/liars-room-engine.server";
 import type {
   LiarsMode,
   LiarsRole,
@@ -806,5 +808,59 @@ describe("liars rooms — mafia coordination", () => {
     const died = dawn.dawn!.deaths.map(({ playerId }) => playerId);
     expect(died).toContain(bossPick);
     expect(died).not.toContain(otherPick);
+  });
+});
+
+describe("liars scenarios", () => {
+  it("every preset opens into a dealt, playable game", async () => {
+    for (const scenario of LIARS_SCENARIOS) {
+      const names = NAMES.concat([
+        "Otis", "Rue", "Sol", "Vic", "Wren", "Zaid", "Cleo",
+      ]).slice(0, scenario.players);
+
+      const started = await startLiarsScenario({
+        mode: scenario.mode,
+        names,
+        lineup: scenario.lineup,
+        toggles: scenario.toggles,
+        deal: scenario.deal,
+      });
+
+      expect(started.error, `${scenario.id}: ${started.error}`).toBeNull();
+      expect(started.seats, scenario.id).toHaveLength(scenario.players);
+
+      const seat = started.seats[0];
+      const snapshot = await view(started.roomId, seat);
+      expect(snapshot.phase, scenario.id).toBe("deal");
+      expect(snapshot.players, scenario.id).toHaveLength(scenario.players);
+      // Everybody is holding something, and the deal matches the lineup on the board.
+      for (const each of started.seats) {
+        const own = await view(started.roomId, each);
+        expect(own.player?.role, `${scenario.id}: ${each.name}`).toBeTruthy();
+      }
+    }
+  });
+
+  it("honours a pinned deal exactly", async () => {
+    const scenario = LIARS_SCENARIOS.find(({ id }) => id === "doctor-self-save")!;
+    const started = await startLiarsScenario({
+      mode: scenario.mode,
+      names: NAMES.slice(0, scenario.players),
+      deal: scenario.deal,
+    });
+    expect(started.error).toBeNull();
+
+    const dealt: string[] = [];
+    for (const seat of started.seats) dealt.push((await view(started.roomId, seat)).player!.role);
+    expect(dealt).toEqual(["mafia", "doctor", "detective", "villager", "villager"]);
+  });
+
+  it("refuses a pinned deal that does not fill the table", async () => {
+    const started = await startLiarsScenario({
+      mode: "mafia",
+      names: NAMES.slice(0, 5),
+      deal: { 0: "mafia", 1: "doctor" },
+    });
+    expect(started.error).toContain("different number of roles");
   });
 });

@@ -454,8 +454,12 @@ trusted to hide.
 Every device runs the identical transition — same duration, same luminance curve, same animation —
 regardless of role.
 
-- **Dusk, 2.5s:** cream washes down to `--things-night`, a thin amber horizon line descends and goes
+- **Dusk, 5s:** cream washes down to `--things-night`, a thin amber horizon line descends and goes
   out. **Dawn, 2.5s:** reverse, the line rises and warms.
+- **Nothing role-specific is on screen during dusk.** Every device shows the same words — *"Night
+  falls. Turn your screen away from the person next to you."* — so a phone lying face up on the
+  table gives nothing away, and there is a real moment to move it. Five seconds rather than two and
+  a half: the first was a transition, this is a warning.
 - Role content appears only *after* the transition completes, in an identically sized card in the
   same screen position.
 - **The whole night runs at low luminance.** Every screen equally dark; role text is low-contrast
@@ -657,6 +661,15 @@ player could not do — which is the point. **If a leak shows up on that screen,
 A "short phases" switch drops the timings to the validator's floor, keeping the night long enough
 ahead of the T−10s report for a whole table to act.
 
+**Preset scenarios.** `liars-scenarios.ts` names eighteen starting positions — the bodyguard
+substitution, the escort walking into the kill, two blind imposters, the jester ejection, sixteen
+players with every role at once — each opening straight into a dealt game rather than an empty
+lobby. A few pin the deal exactly, so "the doctor is the mafia's target" is a starting position
+rather than something you wait for.
+
+The same list is walked by the integration tests, so a preset that stops being reachable fails CI
+rather than failing quietly in the harness.
+
 **Captured scenarios.** Reaching "night three, doctor already dead, mafia at parity" by playing
 three rounds is a poor way to look at it twice. **Capture** freezes the room exactly as it stands —
 full state and every player's token — as a JSON file you can keep, download, diff or check in.
@@ -667,7 +680,19 @@ history, same phase.
 This is a complete bypass of every secrecy rule in the game, so both server functions refuse
 outright when `NODE_ENV` is production, and the route 404s outside development builds.
 
-### 5.14 Accessibility
+### 5.14 Permissions
+
+Only two things in the whole game need one, and neither may fail silently.
+
+**Camera** (§7, `cameraTorch`) is asked for in setup on the tap that enables it, reports the answer,
+and offers a retry with the reason when the answer was no.
+
+**Nothing else asks.** Motion and microphone belong to forehead and the spelling bee; the rule those
+share with this game is that a refused permission and a device that cannot do it are different
+problems, and only one of them has a way out. Saying "unavailable" to somebody who tapped *don't
+allow* leaves them with no idea they can change their mind.
+
+### 5.15 Accessibility
 
 The game is unusually timing-dependent, so the baseline rules in `.cursor/rules/accessibility.mdc`
 need active work here:

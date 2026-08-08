@@ -1280,17 +1280,21 @@ export async function readLiarsSnapshot(input: {
   return result ?? { ...multiplayerFailure("room_unavailable", "Room unavailable"), snapshot: null };
 }
 
-function dealGame(room: LiarsRoomState, now: number) {
+function dealGame(room: LiarsRoomState, now: number, forcedRoles?: Record<string, LiarsRole>) {
   const playerIds = room.players.map(({ id }) => id);
   const previousRoles = Object.fromEntries(
     room.players.flatMap((player) => (player.previousRole ? [[player.id, player.previousRole]] : [])),
   ) as Record<string, LiarsRole>;
-  const dealt = liarsDealRoles({
-    lineup: room.lineup,
-    playerIds,
-    previousRoles: Object.keys(previousRoles).length > 0 ? previousRoles : undefined,
-    pick: (bound) => randomInt(bound),
-  });
+  // A scenario may pin the deal so that "the escort walks into the mafia's kill" is a starting
+  // position rather than something you wait for. Only reachable from the dev-only entry point.
+  const dealt =
+    forcedRoles ??
+    liarsDealRoles({
+      lineup: room.lineup,
+      playerIds,
+      previousRoles: Object.keys(previousRoles).length > 0 ? previousRoles : undefined,
+      pick: (bound) => randomInt(bound),
+    });
 
   const pair = room.mode === "imposter" ? liarsWordPair(room.recentWords) : null;
   room.word = pair?.word ?? null;
@@ -1718,4 +1722,60 @@ export async function reissueLiarsHostToken(roomId: string) {
   loaded.room.hostHash = hash(hostToken);
   await saveRoom(loaded.room, loaded.keys);
   return hostToken;
+}
+
+
+/**
+ * Opens a room already populated and dealt, for the harness and for tests. Development only: it
+ * mints every player's token at once, which no real client may ever do.
+ */
+export async function startLiarsScenario(input: {
+  mode: LiarsMode;
+  names: string[];
+  lineup?: LiarsLineup;
+  toggles?: Partial<LiarsToggles>;
+  timings?: Partial<LiarsTimings>;
+  /** Seat index to role. Must still add up to a lineup the validator accepts. */
+  deal?: Record<number, LiarsRole>;
+}) {
+  developmentOnly();
+  const created = await createLiarsRoom({
+    mode: input.mode,
+    roomMode: "same-room",
+    toggles: input.toggles,
+    timings: input.timings,
+  });
+  const seats: Array<{ name: string; playerId: string; playerToken: string }> = [];
+  for (const name of input.names) {
+    const joined = await joinLiarsRoom({
+      roomId: created.roomId,
+      joinToken: created.joinToken,
+      name,
+      joinId: `scenario-${created.roomId}-${name}`,
+    });
+    if (joined.ok) seats.push({ name, playerId: joined.playerId, playerToken: joined.playerToken });
+  }
+
+  const result = await withRoom(created.roomId, (room) => {
+    if (input.lineup) {
+      const check = liarsValidateLineup(room.mode, input.lineup, room.players.length);
+      if (!check.ok) return { error: check.problem.message };
+      room.lineup = input.lineup;
+    }
+    const forced = input.deal
+      ? Object.fromEntries(
+          Object.entries(input.deal).flatMap(([index, role]) => {
+            const player = room.players[Number(index)];
+            return player ? [[player.id, role]] : [];
+          }),
+        )
+      : undefined;
+    if (forced && Object.keys(forced).length !== room.players.length)
+      return { error: "the scenario deals a different number of roles than there are seats" };
+    dealGame(room, Date.now(), forced);
+    return { error: null };
+  });
+
+  if (!result || result.error) return { error: result?.error ?? "room unavailable", seats: [], roomId: created.roomId, hostToken: created.hostToken };
+  return { error: null, roomId: created.roomId, hostToken: created.hostToken, seats };
 }

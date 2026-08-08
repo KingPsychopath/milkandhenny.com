@@ -6,7 +6,9 @@ import {
   exportLiarsRoomFn,
   importLiarsRoomFn,
   joinLiarsRoomFn,
+  startLiarsScenarioFn,
 } from "./liars-room.functions";
+import { LIARS_SCENARIOS, type LiarsScenario } from "./liars-scenarios";
 import { LiarsRoom } from "./LiarsRoomApp";
 import type { LiarsMode, LiarsPlayerCredentials } from "./types";
 
@@ -138,6 +140,55 @@ export function LiarsDevHarness() {
       writeCaptures([entry, ...captures].slice(0, 24));
     } catch {
       setError("that file is not a capture");
+    }
+  };
+
+  /** Opens straight into a named position, already dealt, rather than from an empty lobby. */
+  const openScenario = async (scenario: LiarsScenario) => {
+    setBusy(true);
+    setError(null);
+    try {
+      const started = await startLiarsScenarioFn({
+        data: {
+          mode: scenario.mode,
+          names: NAMES.slice(0, scenario.players),
+          lineup: scenario.lineup,
+          toggles: scenario.toggles,
+          deal: scenario.deal,
+          ...(fast
+            ? {
+                timings: {
+                  deal: 10_000,
+                  night: 45_000,
+                  dawn: 8_000,
+                  deliberation: 20_000,
+                  vote: 10_000,
+                  verdict: 5_000,
+                },
+              }
+            : {}),
+        },
+      });
+      if (started.error) {
+        setError(started.error);
+        return;
+      }
+      setMode(scenario.mode);
+      setHostToken(started.hostToken);
+      setNames(started.seats.map(({ name }) => name));
+      setSeats(
+        started.seats.map((seat) => ({
+          roomId: started.roomId,
+          playerId: seat.playerId,
+          playerToken: seat.playerToken,
+          expiresAt: Date.now() + 60 * 60_000,
+          snapshot: undefined as never,
+        })),
+      );
+    } catch {
+      setError("could not open that scenario");
+    } finally {
+      setBusy(false);
     }
   };
 
@@ -293,6 +344,38 @@ export function LiarsDevHarness() {
             them side by side — same server functions, same polling, same redactions as separate
             phones. {LIARS_MODE_COPY[mode].tagline}
           </p>
+
+          <section className="mt-6 max-w-3xl border-t border-white/15 pt-4">
+            <p className="font-mono text-micro uppercase tracking-[0.18em] text-white/40">
+              start from a position
+            </p>
+            <p className="mt-1 font-mono text-xs text-white/35">
+              Already dealt, so the awkward corners of the rules are one tap rather than a lucky
+              shuffle. The same list is walked by the integration tests.
+            </p>
+            <ul className="mt-3 grid gap-x-6 sm:grid-cols-2">
+              {LIARS_SCENARIOS.map((scenario) => (
+                <li key={scenario.id} className="border-t border-white/10 py-2">
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => void openScenario(scenario)}
+                    className="w-full text-left disabled:opacity-40"
+                  >
+                    <span className="flex items-baseline gap-2 font-mono text-xs">
+                      <span className="text-white/80">{scenario.name}</span>
+                      <span className="ml-auto text-white/25">
+                        {scenario.mode} · {scenario.players}
+                      </span>
+                    </span>
+                    <span className="mt-1 block font-mono text-xs leading-relaxed text-white/35">
+                      {scenario.about}
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </section>
 
           <section className="mt-6 max-w-xl border-t border-white/15 pt-4">
             <p className="font-mono text-micro uppercase tracking-[0.18em] text-white/40">
