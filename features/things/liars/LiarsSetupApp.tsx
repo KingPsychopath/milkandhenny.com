@@ -81,6 +81,7 @@ export function LiarsSetupApp() {
   const [joinCode, setJoinCode] = useState("");
   const [panel, setPanel] = useState<"roles" | "more" | null>(null);
   const [imposters, setImposters] = useState(1);
+  const [wordBoard, setWordBoard] = useState(true);
   const liveRooms = useLiveLiarsSessions();
 
   const limits = LIARS_PLAYER_LIMITS[mode];
@@ -102,7 +103,12 @@ export function LiarsSetupApp() {
     setCreating(true);
     setMessage(null);
     try {
-      const toggles: Partial<LiarsToggles> = { firstGame, cameraTorch: torch, blindImposters };
+      const toggles: Partial<LiarsToggles> = {
+        firstGame,
+        cameraTorch: torch,
+        blindImposters,
+        wordBoard,
+      };
       const room = await createLiarsRoomFn({
         data: { mode, roomMode, toggles, ...(mode === "imposter" ? { lineup } : {}) },
       });
@@ -244,6 +250,40 @@ export function LiarsSetupApp() {
 
             {panel === "roles" ? (
               <div className="mt-3">
+                {mode === "imposter" ? (
+                  <div className="mb-5">
+                    <p className="font-mono text-micro uppercase tracking-[0.18em] text-white/40">
+                      how hard for the imposter
+                    </p>
+                    <div className="mt-2 flex gap-2">
+                      {(
+                        [
+                          [true, "a shortlist"],
+                          [false, "nothing"],
+                        ] as const
+                      ).map(([value, label]) => (
+                        <button
+                          key={label}
+                          type="button"
+                          aria-pressed={wordBoard === value}
+                          onClick={() => setWordBoard(value)}
+                          className={`min-h-11 flex-1 rounded-full border px-4 font-mono text-xs ${
+                            wordBoard === value
+                              ? "border-[var(--things-amber)] text-[var(--things-amber)]"
+                              : "border-white/20 text-white/55"
+                          }`}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                    <p className="mt-2 font-mono text-xs text-white/35">
+                      {wordBoard
+                        ? "everyone sees twelve words from the category, one of them the real one — the imposter has something to work from, and you have to prove you know the word without giving it away"
+                        : "the imposter gets the category and nothing else — faster, crueller, and much harder for them"}
+                    </p>
+                  </div>
+                ) : null}
                 {mode === "imposter" && imposterRange.max > 1 ? (
                   <div className="mb-4">
                     <p className="font-mono text-micro uppercase tracking-[0.18em] text-white/40">

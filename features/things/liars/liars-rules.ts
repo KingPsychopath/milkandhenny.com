@@ -392,6 +392,7 @@ export const LIARS_DEFAULT_TOGGLES: LiarsToggles = {
   doctorRepeatTarget: false,
   coldOpen: false,
   blindImposters: false,
+  wordBoard: true,
   simultaneousClues: false,
   cameraTorch: false,
   lastWords: true,

@@ -22,6 +22,7 @@ type Stage = "setup" | "passing" | "revealed" | "playing";
 export function LiarsPassPhoneApp() {
   const [players, setPlayers] = useState(6);
   const [imposters, setImposters] = useState(1);
+  const [board, setBoard] = useState(true);
   const [names, setNames] = useState<string[]>([]);
   const [seats, setSeats] = useState<LiarsPassPhoneSeat[]>([]);
   const [index, setIndex] = useState(0);
@@ -32,11 +33,11 @@ export function LiarsPassPhoneApp() {
   const imposterCount = Math.min(range.max, Math.max(range.min, imposters));
 
   const start = useCallback(() => {
-    const dealt = liarsPassPhoneDeal(players, imposterCount, names);
+    const dealt = liarsPassPhoneDeal(players, imposterCount, names, board);
     setSeats(dealt);
     setIndex(0);
     setStage("passing");
-  }, [imposterCount, names, players]);
+  }, [board, imposterCount, names, players]);
 
   const seat = seats[index];
 
@@ -88,6 +89,39 @@ export function LiarsPassPhoneApp() {
             </div>
           </div>
         ) : null}
+
+        <div className="mt-6">
+          <p className="font-mono text-micro uppercase tracking-[0.18em] text-white/40">
+            how hard for the imposter
+          </p>
+          <div className="mt-2 flex gap-2">
+            {(
+              [
+                [true, "a shortlist"],
+                [false, "nothing"],
+              ] as const
+            ).map(([value, label]) => (
+              <button
+                key={label}
+                type="button"
+                aria-pressed={board === value}
+                onClick={() => setBoard(value)}
+                className={`min-h-11 flex-1 rounded-full border px-4 font-mono text-xs ${
+                  board === value
+                    ? "border-[var(--things-amber)] text-[var(--things-amber)]"
+                    : "border-white/20 text-white/55"
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          <p className="mt-2 font-mono text-xs text-white/35">
+            {board
+              ? "everyone sees twelve words from the category — the imposter has something to work from"
+              : "the imposter gets the category and nothing else"}
+          </p>
+        </div>
 
         <NameList players={players} names={names} onChange={setNames} />
 
@@ -229,7 +263,9 @@ function HoldToSee({
                   you have no word
                 </p>
                 <p className="mx-auto mt-3 max-w-sm font-serif text-base text-white/70">
-                  It is one of these. Work out which.
+                  {board.length > 0
+                    ? "It is one of these. Work out which."
+                    : "Listen hard and bluff inside the category."}
                 </p>
               </>
             ) : (

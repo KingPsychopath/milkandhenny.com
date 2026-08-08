@@ -1209,3 +1209,26 @@ describe("liars from the playtest", () => {
     expect(["deliberation", "clue"]).toContain(done.snapshot!.phase);
   });
 });
+
+describe("liars board toggle", () => {
+  it("gives everybody the same shortlist, or nobody one at all", async () => {
+    for (const [wordBoard, expectBoard] of [
+      [true, true],
+      [false, false],
+    ] as const) {
+      const created = await room("imposter", NAMES.slice(0, 8), { wordBoard });
+      await host(created.roomId, created.hostToken, { type: "game.start" });
+      const seen = await Promise.all(created.seats.map((seat) => view(created.roomId, seat)));
+
+      const boards = seen.map((snapshot) => snapshot.player!.wordBoard);
+      for (const board of boards) expect(board.length > 0, `wordBoard=${wordBoard}`).toBe(expectBoard);
+      // Identical for everyone, or the imposter could tell theirs apart.
+      for (const board of boards) expect(board).toEqual(boards[0]);
+
+      // Without a board the category is still there — the imposter is never given nothing at all.
+      const imposter = seen.find((snapshot) => snapshot.player!.role === "imposter")!;
+      expect(imposter.player!.wordCategory).toBeTruthy();
+      expect(imposter.player!.word).toBeNull();
+    }
+  });
+});

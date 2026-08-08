@@ -69,6 +69,15 @@ export interface LiarsToggles {
   doctorRepeatTarget: boolean;
   coldOpen: boolean;
   blindImposters: boolean;
+  /**
+   * Whether everyone sees a board of twelve words from the category.
+   *
+   * On, this is The Chameleon: the imposter has a shortlist to work from and the crew have to be
+   * specific enough to prove they know the word without handing it over. Off, it is closer to
+   * Spyfall — the imposter has the category and nothing else, which is faster, crueller, and much
+   * harder for them. Two different games, both worth having.
+   */
+  wordBoard: boolean;
   simultaneousClues: boolean;
   cameraTorch: boolean;
   lastWords: boolean;

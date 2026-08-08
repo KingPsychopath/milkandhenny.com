@@ -76,6 +76,7 @@ const TOGGLE_KEYS: Array<keyof LiarsToggles> = [
   "doctorRepeatTarget",
   "coldOpen",
   "blindImposters",
+  "wordBoard",
   "simultaneousClues",
   "cameraTorch",
   "lastWords",

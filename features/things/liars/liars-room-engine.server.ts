@@ -1102,7 +1102,8 @@ function snapshot(room: LiarsRoomState, viewerId?: string, now = Date.now()): Li
               : null,
           word: viewer.word ?? null,
           wordCategory: room.mode === "imposter" ? (room.wordCategory ?? null) : null,
-          wordBoard: room.mode === "imposter" ? (room.wordBoard ?? []) : [],
+          wordBoard:
+            room.mode === "imposter" && room.toggles.wordBoard ? (room.wordBoard ?? []) : [],
           nightTarget: viewer.nightTarget,
           nightLocked: viewer.nightLocked,
           vote: viewer.vote,

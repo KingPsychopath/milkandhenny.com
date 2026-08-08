@@ -35,9 +35,10 @@ export function liarsPassPhoneDeal(
   players: number,
   imposters: number,
   names: string[] = [],
+  showBoard = true,
 ): LiarsPassPhoneSeat[] {
   const pair = LIARS_WORD_PAIRS[randomInt(LIARS_WORD_PAIRS.length)];
-  const board = liarsBoard(pair, randomInt);
+  const board = showBoard ? liarsBoard(pair, randomInt) : [];
   const roles: Array<string | null> = [
     ...Array.from({ length: Math.min(imposters, players - 1) }, () => null),
     ...Array.from({ length: players - Math.min(imposters, players - 1) }, () => pair.word),
