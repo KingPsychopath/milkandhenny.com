@@ -255,44 +255,50 @@ export function CountryScoreDetails({
               : SCORE_COACHING[next.key].improve}
         </p>
       </div>
-      <p className="mt-5 font-mono text-micro uppercase tracking-[0.14em] text-black/40">
-        tap a score to inspect the map
-      </p>
-      <dl className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
-        {metrics.map((metric) => {
-          const isActive = activeMetric === metric.key;
-          return (
-            <div key={metric.key} className="min-w-0">
-              <dt className="sr-only">{metric.label}</dt>
-              <dd>
-                <button
-                  type="button"
-                  aria-pressed={isActive}
-                  aria-controls={`${revealId}${isActive ? ` ${explanationId}` : ""}`}
-                  onClick={() => onMetricChange(isActive ? null : metric.key)}
-                  className={`flex min-h-16 w-full flex-col justify-center rounded-2xl border px-3 text-left font-mono transition-opacity hover:opacity-75 ${isActive ? "border-black/35 bg-white/55" : "border-black/10 bg-white/20"}`}
-                >
-                  <span className="text-lg font-semibold text-black">{metric.score}</span>
-                  <span className="mt-0.5 truncate text-micro text-black/45">{metric.label}</span>
-                </button>
-              </dd>
-            </div>
-          );
-        })}
-      </dl>
-      {activeMetric ? (
-        <p
-          id={explanationId}
-          aria-live="polite"
-          className="mt-3 max-w-xl font-mono text-micro leading-relaxed text-black/50"
-        >
-          {SCORE_EXPLANATIONS[activeMetric]}
-        </p>
-      ) : (
-        <p className="mt-3 max-w-xl font-mono text-micro leading-relaxed text-black/45">
-          We align position and size, then compare the border, missing coast, overall shape, and
-          stroke quality. Higher is better.
-        </p>
+      {!hasDrawing ? null : (
+        <>
+          <p className="mt-5 font-mono text-micro uppercase tracking-[0.14em] text-black/40">
+            tap a score to inspect the map
+          </p>
+          <dl className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
+            {metrics.map((metric) => {
+              const isActive = activeMetric === metric.key;
+              return (
+                <div key={metric.key} className="min-w-0">
+                  <dt className="sr-only">{metric.label}</dt>
+                  <dd>
+                    <button
+                      type="button"
+                      aria-pressed={isActive}
+                      aria-controls={`${revealId}${isActive ? ` ${explanationId}` : ""}`}
+                      onClick={() => onMetricChange(isActive ? null : metric.key)}
+                      className={`flex min-h-16 w-full flex-col justify-center rounded-2xl border px-3 text-left font-mono transition-opacity hover:opacity-75 ${isActive ? "border-black/35 bg-white/55" : "border-black/10 bg-white/20"}`}
+                    >
+                      <span className="text-lg font-semibold text-black">{metric.score}</span>
+                      <span className="mt-0.5 truncate text-micro text-black/45">
+                        {metric.label}
+                      </span>
+                    </button>
+                  </dd>
+                </div>
+              );
+            })}
+          </dl>
+          {activeMetric ? (
+            <p
+              id={explanationId}
+              aria-live="polite"
+              className="mt-3 max-w-xl font-mono text-micro leading-relaxed text-black/50"
+            >
+              {SCORE_EXPLANATIONS[activeMetric]}
+            </p>
+          ) : (
+            <p className="mt-3 max-w-xl font-mono text-micro leading-relaxed text-black/45">
+              We align position and size, then compare the border, missing coast, overall shape, and
+              stroke quality. Higher is better.
+            </p>
+          )}
+        </>
       )}
     </div>
   );
@@ -313,7 +319,7 @@ export function CountryRevealAnalysis({ evaluation }: { evaluation: CountryEvalu
         revealId={revealId}
         explanationId={explanationId}
       />
-      <CountryRevealLegend focus={activeMetric} />
+      {evaluation.drawing.length ? <CountryRevealLegend focus={activeMetric} /> : null}
     </>
   );
 }

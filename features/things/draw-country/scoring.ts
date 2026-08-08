@@ -21,6 +21,7 @@ const ALIGNMENT_MAXIMUM_ROTATION = (3 * Math.PI) / 180;
 const MINIMUM_DRAWING_EXTENT = 8;
 const MAX_POINT_DEVIATION = 0.5;
 const SILHOUETTE_GRID_SIZE = 48;
+const SILHOUETTE_BORDER_SAMPLES = 480;
 const SILHOUETTE_COMPACTNESS_BASELINE = 0.5;
 const MINIMUM_SILHOUETTE_SENSITIVITY = 0.15;
 // A strong aligned border fit proves that alignment clarified the same shape; a weak fit keeps the
@@ -46,6 +47,9 @@ const ENCLOSURE_MINIMUM_DEVIATION = 0.18;
 const SILHOUETTE_WEIGHT = 0.25;
 const STROKE_QUALITY_WEIGHT = 0.1;
 const ISLAND_BALANCE_WEIGHT = 0.05;
+const BIDIRECTIONAL_RECOGNITION_FLOOR = 0.75;
+const RECOGNITION_MISMATCH_FADE = 0.1;
+const STROKE_ABUSE_FREE_ALLOWANCE = 0.5;
 
 const SCORE_CALIBRATION = [
   { deviation: 0, score: 100 },
@@ -124,7 +128,7 @@ function sampleRing(points: DrawPoint[], count: number) {
   return sampled;
 }
 
-function sampleShape(rings: CountryDrawing, count: number) {
+function sampleRings(rings: CountryDrawing, count: number) {
   if (!rings.length || count <= 0) return [];
   const lengths = rings.map(ringLength);
   const total = lengths.reduce((sum, value) => sum + value, 0);
@@ -140,7 +144,18 @@ function sampleShape(rings: CountryDrawing, count: number) {
     allocations[allocation.index].count += 1;
     assigned += 1;
   }
-  return rings.flatMap((ring, index) => sampleRing(ring, allocations[index].count));
+  return rings.map((ring, index) => sampleRing(ring, allocations[index].count));
+}
+
+function sampleShape(rings: CountryDrawing, count: number) {
+  return sampleRings(rings, count).flat();
+}
+
+function silhouetteRings(rings: CountryDrawing) {
+  const pointCount = rings.reduce((total, ring) => total + ring.length, 0);
+  return pointCount <= SILHOUETTE_BORDER_SAMPLES
+    ? rings
+    : sampleRings(rings, SILHOUETTE_BORDER_SAMPLES);
 }
 
 function quantile(values: number[], position: number) {
@@ -382,6 +397,8 @@ function enclosesReference(fit: ReturnType<typeof borderFit>, silhouette: number
 }
 
 function silhouetteDeviation(reference: CountryDrawing, drawing: CountryDrawing) {
+  const sampledReference = silhouetteRings(reference);
+  const sampledDrawing = silhouetteRings(drawing);
   let intersection = 0;
   let union = 0;
   for (let row = 0; row < SILHOUETTE_GRID_SIZE; row += 1) {
@@ -390,8 +407,8 @@ function silhouetteDeviation(reference: CountryDrawing, drawing: CountryDrawing)
         x: (column + 0.5) / SILHOUETTE_GRID_SIZE,
         y: (row + 0.5) / SILHOUETTE_GRID_SIZE,
       };
-      const inReference = pointInShape(point, reference);
-      const inDrawing = pointInShape(point, drawing);
+      const inReference = pointInShape(point, sampledReference);
+      const inDrawing = pointInShape(point, sampledDrawing);
       if (inReference && inDrawing) intersection += 1;
       if (inReference || inDrawing) union += 1;
     }
@@ -597,6 +614,12 @@ function strokeQualityScore(deviation: number) {
   return Math.round(100 * ((1 - bounded) / 0.8) ** 1.7);
 }
 
+function strokeAbuseScore(abuse: number) {
+  const bounded = Math.max(0, Math.min(1, abuse));
+  if (bounded <= STROKE_ABUSE_FREE_ALLOWANCE) return 100;
+  return Math.round(100 * ((1 - bounded) / (1 - STROKE_ABUSE_FREE_ALLOWANCE)) ** 2.4);
+}
+
 export type CountryFeedbackKey = "outline" | "coverage" | "shape" | "strokes" | "islands";
 
 export interface CountryFeedbackMetric {
@@ -726,7 +749,21 @@ export function scoreCountryDrawing(
     enclosing ? ENCLOSURE_MINIMUM_DEVIATION : 0,
   );
   const mismatchDeviation = deviation - weightedDeviation;
-  const score = Math.min(scoreFromDeviation(deviation), strokeQualityScore(strokeQuality.abuse));
+  // Strong agreement in both directions means the player traced the same coastline: their line
+  // stayed near the reference and the reference stayed near their line. Once the mismatch and
+  // enclosure guards agree, a fragile silhouette raster must not turn that into a failure score.
+  const recognitionFloor =
+    !enclosing && mismatchDeviation < RECOGNITION_MISMATCH_FADE && strokeQuality.deviation < 0.5
+      ? Math.round(
+          Math.min(scoreFromDeviation(fit.border), scoreFromDeviation(coverage)) *
+            BIDIRECTIONAL_RECOGNITION_FLOOR *
+            (1 - mismatchDeviation / RECOGNITION_MISMATCH_FADE),
+        )
+      : 0;
+  const score = Math.min(
+    Math.max(scoreFromDeviation(deviation), recognitionFloor),
+    strokeAbuseScore(strokeQuality.abuse),
+  );
   return {
     score,
     deviation: percentage(deviation),

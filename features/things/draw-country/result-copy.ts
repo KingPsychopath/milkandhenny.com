@@ -33,11 +33,7 @@ const SCORE_REACTIONS = [
   },
   {
     minimum: 0,
-    lines: [
-      "the cartographer has left the chat",
-      "boldly unmapped",
-      "that country is now in witness protection",
-    ],
+    lines: ["one for the rematch", "the atlas kept this one", "uncharted, for now"],
   },
 ] as const;
 
