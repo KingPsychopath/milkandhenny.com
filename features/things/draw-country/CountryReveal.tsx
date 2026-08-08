@@ -249,7 +249,7 @@ export function CountryScoreDetails({
             next time
           </span>
           {!hasDrawing
-            ? "Draw one complete loop, then tap score drawing before time runs out."
+            ? "Draw one complete loop, then tap done before time runs out."
             : next.score >= 95
               ? "Nothing obvious to fix — try less time or a harder country."
               : SCORE_COACHING[next.key].improve}

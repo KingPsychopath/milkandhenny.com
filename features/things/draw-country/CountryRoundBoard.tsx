@@ -10,7 +10,7 @@ export function CountryRoundBoard({
   roundLabel,
   submitting = false,
   submitted = false,
-  submitLabel = "score drawing",
+  submitLabel = "done",
   onChange,
   onDone,
 }: {
