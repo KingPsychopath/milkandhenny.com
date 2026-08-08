@@ -84,6 +84,7 @@ Checked at dawn and again at verdict.
 | Role | Night action | Rules |
 |---|---|---|
 | **Mafia** | kill one, or **stay in** | Staying in produces no death and no movement — nothing for watchers to see. A real strategic option. |
+| | | *The escort's testimony is **server-written and published to everybody** in the dawn that killed them, alongside the two deaths. It was previously stored on the player and never pushed into the dawn, so the line existed on the corpse and reached nobody — the entire payoff of the role, silently lost.* |
 | | | *The **caller** decides when the mafia disagree: the godfather if there is one, otherwise whoever joined the room first — not seniority in the mafia, which does not exist, but a stable arbitrary tiebreak. Arbitrary is fine because it is never a secret: the night screen names them on every mafia's phone, so nobody has to work out who to defer to.* |
 | | | *The mafia see each other's picks **live**, including whether each has locked. Coordinating is the fun of the role, and the caller needs to see a disagreement before overruling it. Everyone who picked somebody still counts as having left the house, so being overruled does not hide you.* |
 | **Godfather** | kills; reads **innocent** to the detective | From 7 players. Makes the final call when mafia disagree on a target. Without this the detective solves the game on night two. |
@@ -661,6 +662,14 @@ This is deliberate. Live god view means people in one room cannot keep a straigh
 make the graveyard vote a guaranteed-correct ballot. `liveGodView` exists as a toggle for groups who
 want pure spectacle; the engine disables the graveyard vote when it is on, because the two are
 incompatible.
+
+**2c. The notebook.** Forty lines of eighty characters, on your phone only, never sent anywhere.
+Kept per round (`n3 · maya went quiet`), deletable, and available **the whole game including after
+you die** — the dead need it more than anyone, since it is where a graveyard note starts.
+
+**Your most recent line is what seeds your epitaph** — not a random one. That rule used to be
+invisible until the single moment it fired, so the notepad now shows the line that would be used.
+It is a starting point and stays fully editable when the time comes.
 
 **2b. What the dead see.** Their own screen, in every phase, not the living's.
 

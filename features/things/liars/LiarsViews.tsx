@@ -631,6 +631,20 @@ export function NotesPad({
           <p className="mt-1 font-mono text-micro text-white/25">
             only on this phone · {notes.length} of {LIARS_NOTE_LIMIT}
           </p>
+          {/*
+            Said out loud, because the rule is otherwise invisible until the one moment it fires.
+            Your epitaph is seeded from your most recent line — not a random one — and knowing that
+            changes what people write down. It is still fully editable when the time comes.
+          */}
+          {notes.length > 0 ? (
+            <p className="mt-1 font-mono text-micro text-white/30">
+              your last line becomes your epitaph · “{notes.at(-1)?.text}”
+            </p>
+          ) : (
+            <p className="mt-1 font-mono text-micro text-white/25">
+              whatever you write last becomes your epitaph if you die
+            </p>
+          )}
           <ul className="mt-2 font-mono text-xs text-white/55">
             {notes.toReversed().map((note) => (
               <li key={note.id} className="flex items-baseline gap-2 py-1">

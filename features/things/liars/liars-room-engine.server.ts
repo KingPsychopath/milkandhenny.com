@@ -655,6 +655,8 @@ function resolveNight(room: LiarsRoomState, now: number) {
     isBlocked(vigilante) || vigilante?.vigilanteUsed ? null : (vigilante?.nightTarget ?? null);
 
   const deaths: LiarsDeathEvent[] = [];
+  /** Last words the server writes rather than a player, published with the dawn that caused them. */
+  const testimony: Array<{ name: string; text: string }> = [];
   const attacks: Array<{ targetId: string; attacker: PlayerState | null; fromMafia: boolean }> = [];
   if (mafiaTargetId && caller) attacks.push({ targetId: mafiaTargetId, attacker: caller, fromMafia: true });
   if (vigilanteTargetId && vigilante) {
@@ -716,8 +718,14 @@ function resolveNight(room: LiarsRoomState, now: number) {
     // The escort saw too much and dies with them — and their report publishes as testimony.
     if (escort && escortTargetId === target.id && escort.alive) {
       kill(room, escort, "killed", now);
-      if (attack.attacker)
+      if (attack.attacker) {
         escort.lastWords = `I was there. It was ${attack.attacker.name}.`;
+        // Collected here and seeded into the dawn below. Setting it on the player alone was not
+        // enough: `room.dawn` at this point is still last night's, and only the `words.last`
+        // action ever pushed into the current one — so the line existed on the corpse and reached
+        // nobody. The whole role is the promise that dying still delivers the name.
+        testimony.push({ name: escort.name, text: escort.lastWords });
+      }
       deaths.push({
         playerId: escort.id,
         name: escort.name,
@@ -777,7 +785,7 @@ function resolveNight(room: LiarsRoomState, now: number) {
       : deaths.filter(({ revived: wasRevived }) => !wasRevived),
     movementSeen,
     witnessCount,
-    lastWords: [],
+    lastWords: testimony,
   };
   note(room, "night", narration);
   for (const name of movementSeen) note(room, "night", `${name} was seen moving.`);

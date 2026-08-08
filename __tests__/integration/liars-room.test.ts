@@ -962,6 +962,55 @@ describe("liars — what death costs you", () => {
   });
 });
 
+describe("liars — the escort's testimony", () => {
+  /**
+   * The escort's whole payoff is that dying still delivers the name. If that line does not reach
+   * the table, the role is a coin flip that kills you for nothing.
+   */
+  it("publishes the name to everybody at dawn when the escort dies with their target", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-09T06:00:00Z"));
+    const started = await startLiarsScenario({
+      mode: "mafia",
+      names: NAMES.slice(0, 6),
+      deal: ["mafia", "escort", "doctor", "detective", "villager", "villager"],
+    });
+    expect(started.error).toBeNull();
+    const seats = started.seats;
+    const [mafia, escort, , , victim] = seats;
+
+    const deal = await view(started.roomId, seats[0]);
+    await runTo(started.roomId, seats, deal.phaseEndsAt + 1);
+    const night = await view(started.roomId, seats[0]);
+    await runTo(started.roomId, seats, night.nightOpensAt! + 100);
+
+    // The escort spends the night exactly where the mafia are going.
+    await act(started.roomId, escort, {
+      type: "night.select",
+      round: night.round,
+      targetId: victim.playerId,
+    });
+    await act(started.roomId, mafia, {
+      type: "night.select",
+      round: night.round,
+      targetId: victim.playerId,
+    });
+    await runTo(started.roomId, seats, night.phaseEndsAt + 1);
+
+    const dawn = await view(started.roomId, seats[3]);
+    expect(dawn.phase).toBe("dawn");
+    // Both of them: the target, and the escort who was standing in the room.
+    expect(dawn.dawn!.deaths.map(({ name }) => name).sort()).toEqual(
+      [victim.name, escort.name].sort(),
+    );
+
+    // The testimony has to be on everybody's screen, not just stored on the corpse.
+    const testimony = dawn.dawn!.lastWords.find(({ name }) => name === escort.name);
+    expect(testimony, "the escort's testimony never reached the table").toBeTruthy();
+    expect(testimony!.text).toContain(mafia.name);
+  });
+});
+
 describe("liars — the wire", () => {
   /**
    * Every action has to be remembered in two places: the engine's switch and the HTTP validator

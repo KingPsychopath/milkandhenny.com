@@ -16,7 +16,29 @@ const multiplayerLayer = Layer.mergeAll(
   MultiplayerRealtimeBackplane.layer.pipe(Layer.provide(MultiplayerTelemetry.layer)),
 );
 
-const multiplayerRuntime = ManagedRuntime.make(multiplayerLayer);
+/**
+ * One runtime per process, held on `globalThis` rather than in module scope.
+ *
+ * The backplane layer opens two live Redis connections when it builds — a publisher and a
+ * subscriber. In dev, Vite evaluates server modules in two graphs and re-evaluates them on every
+ * hot reload, and a module-scoped runtime meant a fresh `ManagedRuntime` each time: two more
+ * sockets opened, and the previous runtime dropped on the floor without ever being disposed. An
+ * afternoon of editing left a long tail of orphaned connections that Upstash eventually closed
+ * from its end, which is what every `Realtime publisher error: read ECONNRESET` in the dev log
+ * actually was — abandoned sockets being cleaned up, not the live one failing.
+ *
+ * This is the same fix, and the same reason, as `createMemoryRoomStore`: in dev the module graph
+ * is not the process, so anything holding a real resource has to outlive the module. Production
+ * evaluates once and never notices the difference.
+ */
+const RUNTIME_KEY = "__milkandhenny_multiplayer_runtime__";
+
+const runtimeHolder = globalThis as Record<string, unknown>;
+runtimeHolder[RUNTIME_KEY] ??= ManagedRuntime.make(multiplayerLayer);
+const multiplayerRuntime = runtimeHolder[RUNTIME_KEY] as ManagedRuntime.ManagedRuntime<
+  MultiplayerServices,
+  never
+>;
 
 type MultiplayerServices =
   | MultiplayerTelemetry
@@ -38,5 +60,8 @@ export function multiplayerTelemetrySnapshot() {
 }
 
 export function disposeMultiplayerRuntime() {
+  // Clear the holder too, or the next call rebuilds against a runtime that has already been torn
+  // down and every effect fails on a closed scope.
+  delete runtimeHolder[RUNTIME_KEY];
   return multiplayerRuntime.dispose();
 }
