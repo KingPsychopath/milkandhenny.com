@@ -22,7 +22,11 @@ const MINIMUM_DRAWING_EXTENT = 8;
 const MAX_POINT_DEVIATION = 0.5;
 const SILHOUETTE_GRID_SIZE = 48;
 const SILHOUETTE_COMPACTNESS_BASELINE = 0.5;
-const MINIMUM_SILHOUETTE_SENSITIVITY = 0.3;
+const MINIMUM_SILHOUETTE_SENSITIVITY = 0.15;
+// A strong aligned border fit proves that alignment clarified the same shape; a weak fit keeps the
+// pre-alignment guard that stops boxes and one recognisable country being accepted as another.
+const ALIGNMENT_GUARD_FIT_FLOOR = 0.06;
+const ALIGNMENT_GUARD_FIT_CEILING = 0.1;
 const PERIMETER_ALLOWANCE = 1.25;
 const DEGENERATE_COMPACTNESS = 0.001;
 const SEPARATE_STROKE_CROSSING_WEIGHT = 0.25;
@@ -422,9 +426,11 @@ function silhouetteSensitivity(reference: CountryDrawing) {
   const boundsArea = (maxX - minX) * (maxY - minY);
   if (!boundsArea) return 1;
   const fillRatio = reference.reduce((total, ring) => total + ringArea(ring), 0) / boundsArea;
+  // Shapes are normalised to a longest side of one. The bounds area therefore also captures how
+  // thin the country is, which matters because a one-pixel width error can erase its grid overlap.
   return Math.max(
     MINIMUM_SILHOUETTE_SENSITIVITY,
-    Math.min(1, fillRatio / SILHOUETTE_COMPACTNESS_BASELINE),
+    Math.min(1, (fillRatio / SILHOUETTE_COMPACTNESS_BASELINE) * Math.sqrt(boundsArea)),
   );
 }
 
@@ -694,9 +700,18 @@ export function scoreCountryDrawing(
       sensitivity,
       baselineFit.border + baselineCoverage,
     );
+    const baselineGuard = mismatchGuardDeviation(baselineFit, baselineCoverage, baselineSilhouette);
+    const guardWeight = Math.max(
+      0,
+      Math.min(
+        1,
+        (fit.border + coverage - ALIGNMENT_GUARD_FIT_FLOOR) /
+          (ALIGNMENT_GUARD_FIT_CEILING - ALIGNMENT_GUARD_FIT_FLOOR),
+      ),
+    );
     guardDeviation = Math.max(
       guardDeviation,
-      mismatchGuardDeviation(baselineFit, baselineCoverage, baselineSilhouette),
+      guardDeviation + (baselineGuard - guardDeviation) * guardWeight,
     );
     enclosing ||= enclosesReference(baselineFit, baselineSilhouette);
   }
