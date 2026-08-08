@@ -5,6 +5,7 @@ import { GameShell } from "../shared/GameShell";
 import { readExpiringLocalValue, writeExpiringLocalValue } from "../shared/game-storage.client";
 import { liarsBrowserKeys } from "./liars-keys";
 import {
+  liarsRoleSide,
   LIARS_LAST_WORDS_LENGTH,
   LIARS_MODE_COPY,
   LIARS_PLAYER_LIMITS,
@@ -153,23 +154,21 @@ export function LiarsRoom({ credentials }: { credentials: LiarsPlayerCredentials
           <Link to="/things/liars" className="inline-flex min-h-11 items-center">
             ← liars
           </Link>
-          <span className="tracking-[0.16em]">{snapshot.roomId}</span>
-          <span className="flex items-center gap-3">
-            <button
-              type="button"
-              onClick={sound.cycle}
-              className="min-h-11 hover:text-white/80"
-              title={sound.description}
-            >
-              {sound.label}
-            </button>
-            {snapshot.phase !== "lobby" ? (
-              <span>
-                {snapshot.livingCount} alive ·{" "}
-                {snapshot.players.length - snapshot.livingCount} gone
-              </span>
-            ) : null}
-          </span>
+          {snapshot.phase === "lobby" ? (
+            <span className="tracking-[0.16em]">{snapshot.roomId}</span>
+          ) : (
+            <span>
+              {snapshot.livingCount} alive · {snapshot.players.length - snapshot.livingCount} gone
+            </span>
+          )}
+          <button
+            type="button"
+            onClick={sound.cycle}
+            className="min-h-11 hover:text-white/80"
+            title={sound.description}
+          >
+            {sound.label}
+          </button>
         </header>
 
         {dead ? (
@@ -472,7 +471,9 @@ function NightPhase({ snapshot, clockOffset, send }: PhaseProps) {
             ? "locked in"
             : you.nightTarget
               ? "lock it in"
-              : "stay in"}
+              : liarsRoleSide(you.role) === "mafia"
+                ? "nobody dies tonight"
+                : "do nothing tonight"}
         </ActionButton>
       </div>
     </>

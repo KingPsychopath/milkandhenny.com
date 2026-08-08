@@ -442,9 +442,17 @@ function lineupOf(entries: Array<[LiarsRole, number]>): LiarsLineup {
   return { roles: Object.fromEntries(entries.filter(([, count]) => count > 0)) };
 }
 
-export function liarsDefaultLineup(mode: LiarsMode, playerCount: number): LiarsLineup {
+export function liarsDefaultLineup(
+  mode: LiarsMode,
+  playerCount: number,
+  imposterCount?: number,
+): LiarsLineup {
   if (mode === "imposter") {
-    const imposters = playerCount >= 16 ? 3 : playerCount >= 10 ? 2 : 1;
+    const range = liarsImposterRange(playerCount);
+    const imposters = Math.min(
+      range.max,
+      Math.max(range.min, imposterCount ?? (playerCount >= 16 ? 3 : playerCount >= 10 ? 2 : 1)),
+    );
     const understudy = playerCount >= 7 ? 1 : 0;
     const mole = playerCount >= 12 ? 1 : 0;
     return lineupOf([
@@ -499,6 +507,18 @@ const MAFIA_LINEUPS: Record<number, Partial<Record<LiarsRole, number>>> = {
     escort: 1, vigilante: 1, villager: 5, jester: 1,
   },
 };
+
+/** How many imposters a table of this size can carry without the crew being hopeless. */
+export function liarsImposterRange(playerCount: number) {
+  return { min: 1, max: playerCount >= 13 ? 3 : playerCount >= 8 ? 2 : 1 };
+}
+
+/** The line on the setup screen, which was wrong the moment a host picked two. */
+export function liarsImposterBlurb(imposters: number) {
+  return imposters === 1
+    ? "Everyone knows the word except one of you. Say a clue. Don't be the one they catch."
+    : `Everyone knows the word except ${imposters === 2 ? "two" : "three"} of you. Say a clue. Don't be one of the ones they catch.`;
+}
 
 /** Doctor, detective and villagers only, at any player count. Twelve first-timers with nine roles is a disaster. */
 export function liarsFirstGameLineup(mode: LiarsMode, playerCount: number): LiarsLineup {

@@ -51,6 +51,7 @@ import { Route as ThingsPitchesPresentRouteImport } from './routes/things.pitche
 import { Route as ThingsPitchesNewRouteImport } from './routes/things.pitches_.new'
 import { Route as ThingsPitchesDemoRouteImport } from './routes/things.pitches_.demo'
 import { Route as ThingsPitchesDeckIdRouteImport } from './routes/things.pitches_.$deckId'
+import { Route as ThingsLiarsPhoneRouteImport } from './routes/things.liars_.phone'
 import { Route as ThingsLiarsDevRouteImport } from './routes/things.liars_.dev'
 import { Route as ThingsLiarsRoomIdRouteImport } from './routes/things.liars_.$roomId'
 import { Route as ThingsJudgeRoomIdRouteImport } from './routes/things.judge.$roomId'
@@ -324,6 +325,11 @@ const ThingsPitchesDemoRoute = ThingsPitchesDemoRouteImport.update({
 const ThingsPitchesDeckIdRoute = ThingsPitchesDeckIdRouteImport.update({
   id: '/pitches_/$deckId',
   path: '/pitches/$deckId',
+  getParentRoute: () => ThingsRoute,
+} as any)
+const ThingsLiarsPhoneRoute = ThingsLiarsPhoneRouteImport.update({
+  id: '/liars_/phone',
+  path: '/liars/phone',
   getParentRoute: () => ThingsRoute,
 } as any)
 const ThingsLiarsDevRoute = ThingsLiarsDevRouteImport.update({
@@ -743,6 +749,7 @@ export interface FileRoutesByFullPath {
   '/things/judge/$roomId': typeof ThingsJudgeRoomIdRoute
   '/things/liars/$roomId': typeof ThingsLiarsRoomIdRoute
   '/things/liars/dev': typeof ThingsLiarsDevRoute
+  '/things/liars/phone': typeof ThingsLiarsPhoneRoute
   '/things/pitches/$deckId': typeof ThingsPitchesDeckIdRoute
   '/things/pitches/demo': typeof ThingsPitchesDemoRoute
   '/things/pitches/new': typeof ThingsPitchesNewRoute
@@ -850,6 +857,7 @@ export interface FileRoutesByTo {
   '/things/judge/$roomId': typeof ThingsJudgeRoomIdRoute
   '/things/liars/$roomId': typeof ThingsLiarsRoomIdRoute
   '/things/liars/dev': typeof ThingsLiarsDevRoute
+  '/things/liars/phone': typeof ThingsLiarsPhoneRoute
   '/things/pitches/$deckId': typeof ThingsPitchesDeckIdRoute
   '/things/pitches/demo': typeof ThingsPitchesDemoRoute
   '/things/pitches/new': typeof ThingsPitchesNewRoute
@@ -958,6 +966,7 @@ export interface FileRoutesById {
   '/things/judge/$roomId': typeof ThingsJudgeRoomIdRoute
   '/things/liars_/$roomId': typeof ThingsLiarsRoomIdRoute
   '/things/liars_/dev': typeof ThingsLiarsDevRoute
+  '/things/liars_/phone': typeof ThingsLiarsPhoneRoute
   '/things/pitches_/$deckId': typeof ThingsPitchesDeckIdRoute
   '/things/pitches_/demo': typeof ThingsPitchesDemoRoute
   '/things/pitches_/new': typeof ThingsPitchesNewRoute
@@ -1067,6 +1076,7 @@ export interface FileRouteTypes {
     | '/things/judge/$roomId'
     | '/things/liars/$roomId'
     | '/things/liars/dev'
+    | '/things/liars/phone'
     | '/things/pitches/$deckId'
     | '/things/pitches/demo'
     | '/things/pitches/new'
@@ -1174,6 +1184,7 @@ export interface FileRouteTypes {
     | '/things/judge/$roomId'
     | '/things/liars/$roomId'
     | '/things/liars/dev'
+    | '/things/liars/phone'
     | '/things/pitches/$deckId'
     | '/things/pitches/demo'
     | '/things/pitches/new'
@@ -1281,6 +1292,7 @@ export interface FileRouteTypes {
     | '/things/judge/$roomId'
     | '/things/liars_/$roomId'
     | '/things/liars_/dev'
+    | '/things/liars_/phone'
     | '/things/pitches_/$deckId'
     | '/things/pitches_/demo'
     | '/things/pitches_/new'
@@ -1684,6 +1696,13 @@ declare module '@tanstack/react-router' {
       path: '/pitches/$deckId'
       fullPath: '/things/pitches/$deckId'
       preLoaderRoute: typeof ThingsPitchesDeckIdRouteImport
+      parentRoute: typeof ThingsRoute
+    }
+    '/things/liars_/phone': {
+      id: '/things/liars_/phone'
+      path: '/liars/phone'
+      fullPath: '/things/liars/phone'
+      preLoaderRoute: typeof ThingsLiarsPhoneRouteImport
       parentRoute: typeof ThingsRoute
     }
     '/things/liars_/dev': {
@@ -2142,6 +2161,7 @@ interface ThingsRouteChildren {
   ThingsJudgeRoomIdRoute: typeof ThingsJudgeRoomIdRoute
   ThingsLiarsRoomIdRoute: typeof ThingsLiarsRoomIdRoute
   ThingsLiarsDevRoute: typeof ThingsLiarsDevRoute
+  ThingsLiarsPhoneRoute: typeof ThingsLiarsPhoneRoute
   ThingsPitchesDeckIdRoute: typeof ThingsPitchesDeckIdRoute
   ThingsPitchesDemoRoute: typeof ThingsPitchesDemoRoute
   ThingsPitchesNewRoute: typeof ThingsPitchesNewRoute
@@ -2167,6 +2187,7 @@ const ThingsRouteChildren: ThingsRouteChildren = {
   ThingsJudgeRoomIdRoute: ThingsJudgeRoomIdRoute,
   ThingsLiarsRoomIdRoute: ThingsLiarsRoomIdRoute,
   ThingsLiarsDevRoute: ThingsLiarsDevRoute,
+  ThingsLiarsPhoneRoute: ThingsLiarsPhoneRoute,
   ThingsPitchesDeckIdRoute: ThingsPitchesDeckIdRoute,
   ThingsPitchesDemoRoute: ThingsPitchesDemoRoute,
   ThingsPitchesNewRoute: ThingsPitchesNewRoute,

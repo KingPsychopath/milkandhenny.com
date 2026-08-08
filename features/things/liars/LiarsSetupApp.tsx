@@ -1,11 +1,17 @@
-import { useNavigate } from "@tanstack/react-router";
+import { Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { GameLaunch, GameLaunchButton, GameLaunchMeta } from "../shared/GameLaunch";
 import { GameShell } from "../shared/GameShell";
 import { RoomJoinControl } from "../shared/RoomJoinControl";
 import { writeExpiringLocalValue } from "../shared/game-storage.client";
 import { liarsBrowserKeys } from "./liars-keys";
-import { LIARS_MODE_COPY, LIARS_PLAYER_LIMITS, liarsDefaultLineup } from "./liars-rules";
+import {
+  LIARS_MODE_COPY,
+  LIARS_PLAYER_LIMITS,
+  liarsDefaultLineup,
+  liarsImposterBlurb,
+  liarsImposterRange,
+} from "./liars-rules";
 import { createLiarsRoomFn } from "./liars-room.functions";
 import { liarsPlayerPath } from "./liars-invite";
 import { LineupBoard } from "./LiarsViews";
@@ -17,18 +23,8 @@ import {
 } from "./torch.client";
 import type { LiarsMode, LiarsRoomMode, LiarsToggles } from "./types";
 
-const MODES: Array<{ id: LiarsMode; title: string; blurb: string }> = [
-  {
-    id: "mafia",
-    title: "mafia",
-    blurb: "Someone here is killing people at night. Find them before they run out of people.",
-  },
-  {
-    id: "imposter",
-    title: "imposter",
-    blurb: "Everyone knows the word except one of you. Say a clue. Don't be the one they catch.",
-  },
-];
+const MAFIA_BLURB =
+  "Someone here is killing people at night. Find them before they run out of people.";
 
 /**
  * One decision on the surface — which game — and everything else folded away behind it.
@@ -43,15 +39,20 @@ export function LiarsSetupApp() {
   const [roomMode, setRoomMode] = useState<LiarsRoomMode>("same-room");
   const [firstGame, setFirstGame] = useState(false);
   const [torch, setTorch] = useState(false);
+  const [blindImposters, setBlindImposters] = useState(false);
   const [expected, setExpected] = useState(9);
   const [creating, setCreating] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [joinCode, setJoinCode] = useState("");
   const [panel, setPanel] = useState<"roles" | "more" | null>(null);
+  const [imposters, setImposters] = useState(1);
 
   const limits = LIARS_PLAYER_LIMITS[mode];
   const players = Math.min(limits.max, Math.max(limits.min, expected));
-  const selected = MODES.find(({ id }) => id === mode)!;
+  const imposterRange = liarsImposterRange(players);
+  const imposterCount = Math.min(imposterRange.max, Math.max(imposterRange.min, imposters));
+  const blurb = mode === "mafia" ? MAFIA_BLURB : liarsImposterBlurb(imposterCount);
+  const lineup = liarsDefaultLineup(mode, players, imposterCount);
 
   const chooseMode = (next: LiarsMode) => {
     setMode(next);
@@ -65,8 +66,10 @@ export function LiarsSetupApp() {
     setCreating(true);
     setMessage(null);
     try {
-      const toggles: Partial<LiarsToggles> = { firstGame, cameraTorch: torch };
-      const room = await createLiarsRoomFn({ data: { mode, roomMode, toggles } });
+      const toggles: Partial<LiarsToggles> = { firstGame, cameraTorch: torch, blindImposters };
+      const room = await createLiarsRoomFn({
+        data: { mode, roomMode, toggles, ...(mode === "imposter" ? { lineup } : {}) },
+      });
       writeExpiringLocalValue(
         liarsBrowserKeys.hostSession(room.roomId),
         { hostToken: room.hostToken, joinToken: room.joinToken },
@@ -95,30 +98,28 @@ export function LiarsSetupApp() {
               aria-label="which game"
               className="flex rounded-full border border-white/20 p-1"
             >
-              {MODES.map((option) => {
-                const active = mode === option.id;
+              {(["mafia", "imposter"] as const).map((id) => {
+                const active = mode === id;
                 return (
                   <button
-                    key={option.id}
+                    key={id}
                     type="button"
                     role="radio"
                     aria-checked={active}
-                    onClick={() => chooseMode(option.id)}
+                    onClick={() => chooseMode(id)}
                     className={`min-h-12 flex-1 rounded-full px-4 font-mono text-sm font-bold transition-colors ${
                       active
                         ? "bg-[var(--things-amber)] text-black"
                         : "text-white/55 hover:text-white/85"
                     }`}
                   >
-                    {option.title}
+                    {id}
                   </button>
                 );
               })}
             </div>
 
-            <p className="mt-5 font-serif text-lg leading-relaxed text-white/70">
-              {selected.blurb}
-            </p>
+            <p className="mt-5 font-serif text-lg leading-relaxed text-white/70">{blurb}</p>
 
             <div className="mt-6">
               <label className="font-mono text-xs text-white/55">
@@ -133,7 +134,7 @@ export function LiarsSetupApp() {
                 />
               </label>
               <p className="mt-1 font-mono text-micro text-white/30">
-                {limits.min}–{limits.max} for {selected.title}
+                {limits.min}–{limits.max} for {mode}
               </p>
             </div>
 
@@ -151,6 +152,18 @@ export function LiarsSetupApp() {
                 you play too · everyone joins with the room code
               </GameLaunchMeta>
             </div>
+
+            {mode === "imposter" ? (
+              <p className="mt-4 font-mono text-xs text-white/40">
+                only got one phone?{" "}
+                <Link
+                  to="/things/liars/phone"
+                  className="underline underline-offset-4 hover:text-white/80"
+                >
+                  pass it round instead
+                </Link>
+              </p>
+            ) : null}
 
             <div className="mt-6 flex gap-6 border-t border-white/15 pt-4 font-mono text-xs">
               {(["roles", "more"] as const).map((tab) => (
@@ -170,11 +183,38 @@ export function LiarsSetupApp() {
 
             {panel === "roles" ? (
               <div className="mt-3">
-                <LineupBoard
-                  mode={mode}
-                  lineup={liarsDefaultLineup(mode, players)}
-                  playerCount={players}
-                />
+                {mode === "imposter" && imposterRange.max > 1 ? (
+                  <div className="mb-4">
+                    <p className="font-mono text-micro uppercase tracking-[0.18em] text-white/40">
+                      how many imposters
+                    </p>
+                    <div className="mt-2 flex gap-2">
+                      {Array.from({ length: imposterRange.max }, (_, index) => index + 1).map(
+                        (count) => (
+                          <button
+                            key={count}
+                            type="button"
+                            aria-pressed={imposterCount === count}
+                            onClick={() => setImposters(count)}
+                            className={`min-h-11 flex-1 rounded-full border px-4 font-mono text-xs ${
+                              imposterCount === count
+                                ? "border-[var(--things-amber)] text-[var(--things-amber)]"
+                                : "border-white/20 text-white/55"
+                            }`}
+                          >
+                            {count}
+                          </button>
+                        ),
+                      )}
+                    </div>
+                    <p className="mt-2 font-mono text-xs text-white/35">
+                      {imposterCount > 1
+                        ? "they know each other, unless you turn that off under more"
+                        : "one liar, and nowhere to hide"}
+                    </p>
+                  </div>
+                ) : null}
+                <LineupBoard mode={mode} lineup={lineup} playerCount={players} />
                 <p className="mt-3 font-mono text-xs text-white/35">
                   follows the room as people join · the host can change it before the deal
                 </p>
@@ -227,6 +267,23 @@ export function LiarsSetupApp() {
                       : "one imposter, no understudy, and a longer look at your word"}
                   </p>
                 </div>
+
+                {mode === "imposter" && imposterCount > 1 ? (
+                  <div className="border-t border-white/15 pt-4">
+                    <label className="flex min-h-11 items-center gap-3 font-mono text-xs text-white/60">
+                      <input
+                        type="checkbox"
+                        checked={blindImposters}
+                        onChange={(event) => setBlindImposters(event.target.checked)}
+                        className="size-4 accent-[var(--things-amber)]"
+                      />
+                      the imposters don't know each other
+                    </label>
+                    <p className="mt-1 font-mono text-xs text-white/35">
+                      brutal, and very funny — each of them assumes the other is crew
+                    </p>
+                  </div>
+                ) : null}
 
                 <TorchToggle enabled={torch} onChange={setTorch} />
               </div>

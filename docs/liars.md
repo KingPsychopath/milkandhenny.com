@@ -680,6 +680,18 @@ history, same phase.
 This is a complete bypass of every secrecy rule in the game, so both server functions refuse
 outright when `NODE_ENV` is production, and the route 404s outside development builds.
 
+### 5.13a Imposter on one phone
+
+`/things/liars/phone`. No room, no code, no server, no network.
+
+Around a table, three minutes of joining is three minutes nobody spends playing. One person holds
+the phone, each player holds the card to see their own word, and then it goes face down and the
+game happens entirely off the screen — which is where it was always better anyway. The deal uses
+`crypto.getRandomValues`, because it is the only secret this mode has.
+
+**Mafia deliberately has no equivalent.** Its secrets have to survive every night, and passing one
+phone round in the dark five times is worse than not playing.
+
 ### 5.14 Your notebook
 
 Separate from *what you know*, deliberately. That list is what your **role** was told and cannot be
