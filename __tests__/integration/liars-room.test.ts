@@ -962,6 +962,176 @@ describe("liars — what death costs you", () => {
   });
 });
 
+describe("liars — the roles nothing was testing", () => {
+  /**
+   * Lookout, vigilante and mole had no behavioural coverage at all, and jammer, bodyguard and
+   * understudy only appeared inside lineup lists. The escort turned out to be quietly broken in
+   * exactly that gap — dealt correctly, walked by the scenario test, and delivering nothing — so
+   * these exercise the power rather than the deal.
+   */
+  async function nightOf(deal: string[], names = NAMES) {
+    const started = await startLiarsScenario({
+      mode: "mafia",
+      names: names.slice(0, deal.length),
+      deal,
+    });
+    expect(started.error, started.error ?? "").toBeNull();
+    const seats = started.seats;
+    const dealPhase = await view(started.roomId, seats[0]);
+    await runTo(started.roomId, seats, dealPhase.phaseEndsAt + 1);
+    const night = await view(started.roomId, seats[0]);
+    await runTo(started.roomId, seats, night.nightOpensAt! + 100);
+    return { roomId: started.roomId, seats, round: night.round, endsAt: night.phaseEndsAt };
+  }
+
+  it("names every visitor to the lookout, and nobody else", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-09T07:00:00Z"));
+    const { roomId, seats, round, endsAt } = await nightOf([
+      "mafia", "lookout", "doctor", "detective", "villager", "villager", "villager",
+    ]);
+    const [mafia, lookout, doctor, , watched] = seats;
+
+    // Two people go to the same door; the lookout is watching it.
+    await act(roomId, mafia, { type: "night.select", round, targetId: watched.playerId });
+    await act(roomId, doctor, { type: "night.select", round, targetId: watched.playerId });
+    await act(roomId, lookout, { type: "night.select", round, targetId: watched.playerId });
+    await runTo(roomId, seats, endsAt + 1);
+
+    const own = await view(roomId, lookout);
+    const learned = own.player!.knowledge.map(({ text }) => text).join(" ");
+    expect(learned).toContain(mafia.name);
+    expect(learned).toContain(doctor.name);
+
+    // It is the lookout's alone — a plain villager watching the same door learns only that
+    // somebody moved, never who.
+    const bystander = await view(roomId, seats[5]);
+    expect(bystander.player!.knowledge.map(({ text }) => text).join(" ")).not.toContain(mafia.name);
+  });
+
+  it("lets the vigilante shoot, and kills them by guilt when they shoot the town", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-09T08:00:00Z"));
+    const { roomId, seats, round, endsAt } = await nightOf([
+      "mafia", "vigilante", "doctor", "detective", "villager", "villager", "villager",
+    ]);
+    const [, vigilante, , , innocent] = seats;
+
+    await act(roomId, vigilante, { type: "night.select", round, targetId: innocent.playerId });
+    await runTo(roomId, seats, endsAt + 1);
+
+    const dawn = await view(roomId, seats[0]);
+    expect(dawn.players.find(({ id }) => id === innocent.playerId)!.alive).toBe(false);
+    // The vigilante is still standing tonight. The guilt is supposed to land a night later.
+    expect(dawn.players.find(({ id }) => id === vigilante.playerId)!.alive).toBe(true);
+  });
+
+  it("stops the doctor's save when the jammer blocks them", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-09T09:00:00Z"));
+    const { roomId, seats, round, endsAt } = await nightOf([
+      "mafia", "jammer", "doctor", "detective", "villager", "villager", "villager",
+    ]);
+    const [mafia, jammer, doctor, , victim] = seats;
+
+    await act(roomId, mafia, { type: "night.select", round, targetId: victim.playerId });
+    await act(roomId, doctor, { type: "night.select", round, targetId: victim.playerId });
+    await act(roomId, jammer, { type: "night.select", round, targetId: doctor.playerId });
+    await runTo(roomId, seats, endsAt + 1);
+
+    const dawn = await view(roomId, seats[0]);
+    // Without the jammer this is a revive. With it, the save never happened.
+    expect(dawn.players.find(({ id }) => id === victim.playerId)!.alive).toBe(false);
+    expect(dawn.dawn!.deaths.some(({ playerId, revived }) => playerId === victim.playerId && !revived)).toBe(true);
+  });
+
+  it("kills the bodyguard instead of the person they were guarding", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-09T10:00:00Z"));
+    const { roomId, seats, round, endsAt } = await nightOf([
+      "mafia", "bodyguard", "doctor", "detective", "villager", "villager", "villager",
+    ]);
+    const [mafia, bodyguard, , , guarded] = seats;
+
+    await act(roomId, mafia, { type: "night.select", round, targetId: guarded.playerId });
+    await act(roomId, bodyguard, { type: "night.select", round, targetId: guarded.playerId });
+    await runTo(roomId, seats, endsAt + 1);
+
+    const dawn = await view(roomId, seats[0]);
+    expect(dawn.players.find(({ id }) => id === guarded.playerId)!.alive).toBe(true);
+    expect(dawn.players.find(({ id }) => id === bodyguard.playerId)!.alive).toBe(false);
+    expect(dawn.dawn!.deaths.some(({ substituteName }) => substituteName === bodyguard.name)).toBe(true);
+  });
+
+  /**
+   * Whatever the cause, a dead player's role is on the roster for everybody — the toggle is global,
+   * not a property of how you died. Worth pinning: the dawn line carries the role for some causes
+   * and not others, so the roster is the thing making it consistent.
+   */
+  it("reveals a dead player's role on the roster whichever way they died", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-09T11:00:00Z"));
+    const { roomId, seats, round, endsAt } = await nightOf([
+      "mafia", "bodyguard", "doctor", "detective", "villager", "villager", "villager",
+    ]);
+    const [mafia, bodyguard, , , guarded] = seats;
+    await act(roomId, mafia, { type: "night.select", round, targetId: guarded.playerId });
+    await act(roomId, bodyguard, { type: "night.select", round, targetId: guarded.playerId });
+    await runTo(roomId, seats, endsAt + 1);
+
+    // A living villager, with no special sight of anybody, still sees what the bodyguard was.
+    const bystander = await view(roomId, seats[6]);
+    const corpse = bystander.players.find(({ id }) => id === bodyguard.playerId)!;
+    expect(corpse.alive).toBe(false);
+    expect(corpse.role).toBe("bodyguard");
+    // And still sees nothing about any other living player. Their own role is always their own.
+    const othersVisible = bystander.players.filter(
+      ({ alive, role, id }) => alive && role !== undefined && id !== seats[6].playerId,
+    );
+    expect(othersVisible).toEqual([]);
+  });
+});
+
+describe("liars — the mole", () => {
+  /**
+   * The mole is a one-way mirror and both directions matter: they hold the real word and know the
+   * imposter, and the imposter is never told they exist. A leak either way ruins the role — one
+   * makes them a second imposter with no downside, the other hands the imposter a free ally.
+   */
+  it("sees the imposter and the word, while the imposter never learns they exist", async () => {
+    const started = await startLiarsScenario({
+      mode: "imposter",
+      names: NAMES.concat(["Otis", "Rue", "Sol"]).slice(0, 12),
+      deal: [
+        "imposter", "mole", "crew", "crew", "crew", "crew",
+        "crew", "crew", "crew", "crew", "crew", "crew",
+      ],
+    });
+    expect(started.error, started.error ?? "").toBeNull();
+    const [imposter, mole, crew] = started.seats;
+
+    const moleView = await view(started.roomId, mole);
+    expect(moleView.player!.role).toBe("mole");
+    // The word, which is the half that makes them useful rather than just informed.
+    expect(moleView.player!.word).toBeTruthy();
+    expect(moleView.player!.allyIds).toContain(imposter.playerId);
+
+    // One-way. The imposter is holding no word and has never heard of the mole.
+    const imposterView = await view(started.roomId, imposter);
+    expect(imposterView.player!.role).toBe("imposter");
+    expect(imposterView.player!.word).toBeNull();
+    expect(imposterView.player!.allyIds).not.toContain(mole.playerId);
+
+    // And the crew see neither of them.
+    const crewView = await view(started.roomId, crew);
+    expect(crewView.player!.word).toBe(moleView.player!.word);
+    expect(crewView.player!.allyIds).toEqual([]);
+    expect(
+      crewView.players.filter(({ role, id }) => role !== undefined && id !== crew.playerId),
+    ).toEqual([]);
+  });
+});
+
 describe("liars — the escort's testimony", () => {
   /**
    * The escort's whole payoff is that dying still delivers the name. If that line does not reach

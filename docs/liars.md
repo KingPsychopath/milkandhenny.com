@@ -663,6 +663,15 @@ make the graveyard vote a guaranteed-correct ballot. `liveGodView` exists as a t
 want pure spectacle; the engine disables the graveyard vote when it is on, because the two are
 incompatible.
 
+**2d. Role coverage.** Every role now has a test that exercises its **power**, not just its deal.
+
+That distinction is the point. Lookout, vigilante and mole previously had no behavioural coverage at
+all, and jammer, bodyguard and understudy appeared only inside lineup lists — while the scenario
+walk happily confirmed all of them were dealt correctly. The escort was broken in exactly that gap:
+dealt right, walked by the scenario test, delivering nothing.
+
+Of the six written afterwards, five passed first time. Only the escort was broken.
+
 **2c. The notebook.** Forty lines of eighty characters, on your phone only, never sent anywhere.
 Kept per round (`n3 · maya went quiet`), deletable, and available **the whole game including after
 you die** — the dead need it more than anyone, since it is where a graveyard note starts.
