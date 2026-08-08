@@ -5,12 +5,11 @@ import { useQrCode } from "@/hooks/useQrCode";
 import { shareOrCopy } from "@/lib/client/share";
 import { CountryRevealAnalysis } from "./CountryReveal";
 import { DrawCountryResultReport } from "./DrawCountryResultReport";
-import { countryById } from "./countries";
 import { buildDrawCountryPlayerInviteUrl } from "./draw-country-invite";
 import { drawCountryBrowserKeys } from "./draw-country-keys";
 import { resultReaction } from "./result-copy";
 import { scoreCountryDrawing } from "./scoring";
-import type { CountryDrawing, DrawCountrySnapshot } from "./types";
+import type { CountryDrawing, CountryOutline, DrawCountrySnapshot } from "./types";
 
 export function RoomHeader({ roomId, connection }: { roomId: string; connection: string }) {
   return (
@@ -155,16 +154,17 @@ export function RoomReveal({
   snapshot,
   playerId,
   drawing,
+  country,
   connection,
   onNext,
 }: {
   snapshot: DrawCountrySnapshot;
   playerId: string;
   drawing: CountryDrawing;
+  country: CountryOutline | null;
   connection: string;
   onNext: () => void;
 }) {
-  const country = countryById(snapshot.round?.countryId ?? "");
   const evaluation = country ? scoreCountryDrawing(country, drawing) : null;
   const me = snapshot.players.find(({ id }) => id === playerId);
   const ranking = snapshot.players.toSorted((a, b) => (b.roundScore ?? 0) - (a.roundScore ?? 0));

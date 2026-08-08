@@ -6,8 +6,9 @@ import { useWebHaptics } from "web-haptics/react";
 import { writeExpiringLocalValue } from "../shared/game-storage.client";
 import { createDrawCountryRoomFn } from "./draw-country-room.functions";
 import { drawCountryBrowserKeys } from "./draw-country-keys";
-import { recentCountryIds } from "./rotation.client";
+import { recentCountryIds } from "./rotation-history.client";
 import { SoloDrawCountry, type SoloDrawCountryMode } from "./SoloDrawCountry";
+import type { CountryOutline } from "./types";
 import {
   GameLaunch,
   GameLaunchButton,
@@ -55,7 +56,7 @@ function RoundSettings({
   );
 }
 
-export function DrawCountryApp() {
+export function DrawCountryApp({ initialCountry }: { initialCountry: CountryOutline }) {
   const navigate = useNavigate();
   const haptics = useWebHaptics();
   const [soloMode, setSoloMode] = useState<SoloDrawCountryMode | null>(null);
@@ -76,6 +77,7 @@ export function DrawCountryApp() {
   if (soloMode)
     return (
       <SoloDrawCountry
+        initialCountry={initialCountry}
         mode={soloMode}
         roundTotal={roundTotal}
         roundSeconds={soloMode === "quick" ? 30 : drawSeconds}

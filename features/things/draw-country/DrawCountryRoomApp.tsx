@@ -17,6 +17,8 @@ import {
 import { captureDrawCountryInvite } from "./invite.client";
 import { JoinDrawCountryRoom } from "./JoinDrawCountryRoom";
 import type { CountryDrawing, DrawCountryPlayerCredentials } from "./types";
+import type { CountryOutline } from "./types";
+import { loadCountryOutline } from "./rotation.client";
 import { useDrawCountryRoom } from "./useDrawCountryRoom";
 import { useWakeLock } from "@/hooks/useWakeLock";
 
@@ -104,6 +106,7 @@ function DrawCountryRoom({
   const [removePlayerIds, setRemovePlayerIds] = useState<string[] | null>(null);
   const [confirmingStart, setConfirmingStart] = useState(false);
   const [restarting, setRestarting] = useState(false);
+  const [country, setCountry] = useState<CountryOutline | null>(null);
   const setLiveMessage = live.setMessage;
   useWakeLock(snapshot?.phase === "drawing" || snapshot?.phase === "reveal");
 
@@ -125,6 +128,19 @@ function DrawCountryRoom({
   }, [snapshot?.phase, snapshot?.round?.id]);
 
   const roundId = snapshot?.round?.id;
+  const countryId = snapshot?.round?.countryId;
+  useEffect(() => {
+    let active = true;
+    setCountry(null);
+    if (countryId)
+      void loadCountryOutline(countryId).then((outline) => {
+        if (active) setCountry(outline);
+      });
+    return () => {
+      active = false;
+    };
+  }, [countryId]);
+
   useEffect(() => {
     if (!roundId) return;
     setDrawingState(readDrawing(roomId, roundId));
@@ -349,6 +365,7 @@ function DrawCountryRoom({
         snapshot={snapshot}
         playerId={credentials.playerId}
         drawing={drawing}
+        country={country}
         connection={live.connectionState}
         onNext={() => void control({ type: "round.next" })}
       />

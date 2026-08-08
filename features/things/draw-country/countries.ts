@@ -1,4 +1,4 @@
-import generatedCountries from "./countries.generated.json";
+import generatedCountries from "../../../public/assets/draw-country-atlas-v1.json";
 import type { CountryOutline } from "./types";
 
 export const COUNTRIES: CountryOutline[] = generatedCountries;

@@ -8,7 +8,7 @@ import { CountryRevealAnalysis } from "./CountryReveal";
 import { DrawCountryResultReport } from "./DrawCountryResultReport";
 import { CountryRoundBoard } from "./CountryRoundBoard";
 import { resultReaction } from "./result-copy";
-import { nextSoloCountry, rememberCountry } from "./rotation.client";
+import { nextSoloCountry, primeCountry, rememberCountry } from "./rotation.client";
 import { scoreCountryDrawing, type CountryEvaluation } from "./scoring";
 import type { CountryDrawing, CountryOutline } from "./types";
 
@@ -21,18 +21,20 @@ interface SoloRoundResult {
 }
 
 export function SoloDrawCountry({
+  initialCountry,
   onExit,
   mode = "quick",
   roundTotal = 5,
   roundSeconds = 30,
 }: {
+  initialCountry: CountryOutline;
   onExit: () => void;
   mode?: SoloDrawCountryMode;
   roundTotal?: number;
   roundSeconds?: number;
 }) {
   const total = mode === "quick" ? 1 : Math.max(1, roundTotal);
-  const [country, setCountry] = useState<CountryOutline>(() => nextSoloCountry());
+  const [country, setCountry] = useState<CountryOutline>(initialCountry);
   const [phase, setPhase] = useState<"drawing" | "reveal" | "finished">("drawing");
   const [drawing, setDrawing] = useState<CountryDrawing>([]);
   const [evaluation, setEvaluation] = useState<CountryEvaluation | null>(null);
@@ -40,9 +42,17 @@ export function SoloDrawCountry({
   const [endsAt, setEndsAt] = useState(() => Date.now() + roundSeconds * 1_000);
   const [seconds, setSeconds] = useState(roundSeconds);
   const finishedRound = useRef(false);
+  const nextCountry = useRef<Promise<CountryOutline> | null>(null);
   const haptics = useWebHaptics();
   useUpdateReloadSafety("draw-country-solo", phase !== "drawing");
   useWakeLock(phase === "drawing");
+
+  useEffect(() => primeCountry(initialCountry), [initialCountry]);
+
+  useEffect(() => {
+    if (phase === "drawing" && !nextCountry.current)
+      nextCountry.current = nextSoloCountry(country.id);
+  }, [country.id, phase]);
 
   useEffect(() => {
     window.scrollTo({ top: 0 });
@@ -74,8 +84,10 @@ export function SoloDrawCountry({
     return () => window.clearInterval(timer);
   }, [endsAt, finish, phase]);
 
-  const startNextRound = () => {
-    setCountry(nextSoloCountry());
+  const startNextRound = async () => {
+    const countryPromise = nextCountry.current ?? nextSoloCountry();
+    nextCountry.current = null;
+    setCountry(await countryPromise);
     setDrawing([]);
     setEvaluation(null);
     setSeconds(roundSeconds);
@@ -87,7 +99,7 @@ export function SoloDrawCountry({
 
   const restartRounds = () => {
     setResults([]);
-    startNextRound();
+    void startNextRound();
   };
 
   if (phase === "drawing") {
@@ -212,7 +224,7 @@ export function SoloDrawCountry({
         <DrawCountryResultReport countryId={country.id} drawing={drawing} mode="solo" />
         <button
           type="button"
-          onClick={roundComplete ? () => setPhase("finished") : startNextRound}
+          onClick={roundComplete ? () => setPhase("finished") : () => void startNextRound()}
           className="mx-auto mt-8 block min-h-12 rounded-full bg-black px-8 font-mono text-xs font-semibold uppercase tracking-[0.15em] text-white"
         >
           {roundComplete ? "see round scores" : mode === "quick" ? "draw another" : "next country"}

@@ -50,7 +50,11 @@ export const THING_OFFLINE = {
     manifestPath: "/manifest.json",
     catalogueVersion: 1,
     storageVersion: 1,
-    requiredAssets: [...SHARED_OFFLINE_ASSETS, "/manifest.json"],
+    requiredAssets: [
+      ...SHARED_OFFLINE_ASSETS,
+      "/manifest.json",
+      "/assets/draw-country-atlas-v1.json",
+    ],
   },
   /** The duel and the solo board need no network at all — the deck is generated on the device. */
   twin: {

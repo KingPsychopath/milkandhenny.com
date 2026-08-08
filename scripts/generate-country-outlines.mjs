@@ -6,7 +6,7 @@ import { dirname, resolve } from "node:path";
 // here and simplified back down to a shared point budget instead.
 const SOURCE =
   "https://raw.githubusercontent.com/nvkelso/natural-earth-vector/v5.1.2/geojson/ne_10m_admin_0_countries.geojson";
-const OUTPUT = resolve("features/things/draw-country/countries.generated.json");
+const OUTPUT = resolve("public/assets/draw-country-atlas-v1.json");
 const COORDINATE_SCALE = 10_000;
 const MAX_RINGS = 32;
 // Islands below a thousandth of the mainland are specks no player could place; at 10m resolution

@@ -15,11 +15,32 @@ import {
 } from "./draw-country-room.server";
 import { parseCountryDrawing } from "./drawing-constraints";
 import type { CountryDrawing } from "./types";
+import { countryById } from "./countries";
+import { selectSoloCountry } from "./rotation.server";
 
 const record = multiplayerRecord;
 const text = multiplayerText;
 const credential = multiplayerCredential;
 const sequence = multiplayerSequence;
+
+export const selectSoloCountryFn = createServerFn({ method: "POST" })
+  .validator((value: unknown) => {
+    const data = record(value);
+    return {
+      recentCountryIds: Array.isArray(data.recentCountryIds)
+        ? data.recentCountryIds.slice(-24).map((id) => text(id, 2))
+        : [],
+    };
+  })
+  .handler(({ data }) => selectSoloCountry(data.recentCountryIds));
+
+export const readCountryOutlineFn = createServerFn({ method: "POST" })
+  .validator((value: unknown) => text(record(value).countryId, 2))
+  .handler(({ data }) => {
+    const country = countryById(data);
+    if (!country) throw new Error("Country not found");
+    return country;
+  });
 
 export const createDrawCountryRoomFn = createServerFn({ method: "POST" })
   .validator((value: unknown) => {

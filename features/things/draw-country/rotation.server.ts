@@ -1,5 +1,5 @@
 import { randomInt } from "node:crypto";
-import { COUNTRIES } from "./countries";
+import { COUNTRIES, countryById } from "./countries";
 
 function shuffle<T>(items: T[]) {
   for (let index = items.length - 1; index > 0; index -= 1) {
@@ -24,4 +24,14 @@ export function selectRoomCountries(total: number, recentIds: string[]) {
     lastContinent = country.continent;
   }
   return selected;
+}
+
+export function selectSoloCountry(recentIds: string[]) {
+  const history = recentIds.slice(-24);
+  const cooldown = new Set(history);
+  const last = countryById(history.at(-1) ?? "");
+  const candidates = COUNTRIES.filter(({ id }) => !cooldown.has(id));
+  const varied = candidates.filter(({ continent }) => continent !== last?.continent);
+  const pool = varied.length > 24 ? varied : candidates.length ? candidates : COUNTRIES;
+  return pool[randomInt(pool.length)] ?? COUNTRIES[0];
 }
