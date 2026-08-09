@@ -1,6 +1,7 @@
 import { Link } from "@tanstack/react-router";
 import { useState } from "react";
 import { TextMorph } from "torph/react";
+import { useNativeShareAvailability } from "@/hooks/useNativeShareAvailability";
 import { useQrCode } from "@/hooks/useQrCode";
 import { shareOrCopy } from "@/lib/client/share";
 import { PlayerReadyControl } from "../shared/PlayerReadyControl";
@@ -32,6 +33,7 @@ export function RoomLobby({
   message,
   onReadyChange,
   onStart,
+  startLabel,
 }: {
   snapshot: DrawCountrySnapshot;
   playerId: string;
@@ -39,6 +41,8 @@ export function RoomLobby({
   message: string | null;
   onReadyChange: (ready: boolean) => void;
   onStart: () => void;
+  /** Overrides the start button label, e.g. after nudging unready players. */
+  startLabel?: string | null;
 }) {
   const [shareMessage, setShareMessage] = useState<string | null>(null);
   const token =
@@ -54,6 +58,7 @@ export function RoomLobby({
           token ?? undefined,
         );
   const { dataUrl: qr, failed: qrFailed } = useQrCode(invite || null, 280);
+  const nativeShare = useNativeShareAvailability({ coarsePointerOnly: true });
   const currentPlayer = snapshot.players.find(({ id }) => id === playerId);
   const readyCount = snapshot.players.filter(({ ready }) => ready !== false).length;
   const share = async () => {
@@ -107,7 +112,7 @@ export function RoomLobby({
           onClick={() => void share()}
           className="mt-4 min-h-11 rounded-full border border-black/20 px-6 font-mono text-xs"
         >
-          share invite
+          {nativeShare ? "share invite" : "copy invite link"}
         </button>
         <p aria-live="polite" className="mt-2 min-h-5 font-mono text-xs text-amber-800">
           {shareMessage ?? message}
@@ -137,9 +142,10 @@ export function RoomLobby({
             onClick={onStart}
             className="mt-7 min-h-14 w-full rounded-full bg-black px-6 font-mono text-xs font-semibold uppercase tracking-[0.14em] text-white"
           >
-            {snapshot.players.length === 1
-              ? "start with just me"
-              : `start ${snapshot.players.length}-player game`}
+            {startLabel ??
+              (snapshot.players.length === 1
+                ? "start with just me"
+                : `start ${snapshot.players.length}-player game`)}
           </button>
         ) : (
           <p className="mt-7 font-mono text-xs text-black/45">waiting for the host to start</p>

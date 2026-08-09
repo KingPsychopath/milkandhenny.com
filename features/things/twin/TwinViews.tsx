@@ -2,6 +2,7 @@ import { Link } from "@tanstack/react-router";
 import { useState } from "react";
 import { TextMorph } from "torph/react";
 import { AppSelect } from "@/components/AppSelect";
+import { useNativeShareAvailability } from "@/hooks/useNativeShareAvailability";
 import { useQrCode } from "@/hooks/useQrCode";
 import { shareOrCopy } from "@/lib/client/share";
 import { PlayerReadyControl } from "../shared/PlayerReadyControl";
@@ -54,6 +55,7 @@ export function TwinLobby({
   message,
   onReadyChange,
   onStart,
+  startLabel,
   onHandSize,
   colour,
   onColour,
@@ -66,6 +68,8 @@ export function TwinLobby({
   message: string | null;
   onReadyChange: (ready: boolean) => void;
   onStart: () => void;
+  /** Overrides the start button label, e.g. after nudging unready players. */
+  startLabel?: string | null;
   onHandSize: (handSize: number) => void;
   colour: boolean;
   onColour: () => void;
@@ -82,6 +86,7 @@ export function TwinLobby({
       ? ""
       : buildTwinPlayerInviteUrl(window.location.origin, snapshot.roomId, token ?? undefined);
   const { dataUrl: qr, failed: qrFailed } = useQrCode(invite || null, 280);
+  const nativeShare = useNativeShareAvailability({ coarsePointerOnly: true });
   const me = snapshot.players.find(({ id }) => id === playerId);
   const readyCount = snapshot.players.filter(({ ready }) => ready).length;
 
@@ -125,7 +130,7 @@ export function TwinLobby({
           onClick={() => void share()}
           className="twin-button twin-button--quiet"
         >
-          share invite
+          {nativeShare ? "share invite" : "copy invite link"}
         </button>
         <p aria-live="polite" className="twin-message">
           {shareMessage ?? message}
@@ -183,9 +188,10 @@ export function TwinLobby({
 
         {snapshot.canControl ? (
           <button type="button" onClick={onStart} className="twin-button twin-button--go">
-            {snapshot.players.length === 1
-              ? "start on your own"
-              : `start · ${snapshot.players.length} playing`}
+            {startLabel ??
+              (snapshot.players.length === 1
+                ? "start on your own"
+                : `start · ${snapshot.players.length} playing`)}
           </button>
         ) : (
           <p className="twin-note">waiting for the host to start</p>

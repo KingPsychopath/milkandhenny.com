@@ -2,7 +2,9 @@ export type ShareOrCopyResult = "shared" | "copied" | "cancelled" | "failed";
 
 export function canUseNativeShare(options: { coarsePointerOnly?: boolean } = {}) {
   if (typeof window === "undefined" || typeof navigator.share !== "function") return false;
-  return !options.coarsePointerOnly || window.matchMedia("(hover: none) and (pointer: coarse)").matches;
+  return (
+    !options.coarsePointerOnly || window.matchMedia("(hover: none) and (pointer: coarse)").matches
+  );
 }
 
 export async function copyText(value: string) {
@@ -27,12 +29,25 @@ export async function copyText(value: string) {
   }
 }
 
+/**
+ * Native share sheet on phones, clipboard everywhere else.
+ *
+ * Desktop browsers expose `navigator.share`, but what it opens there is either nothing at all or an
+ * OS sheet nobody asked for — and once we have awaited it, Safari no longer counts the click as a
+ * user gesture, so the clipboard fallback is refused too. So the share sheet is for coarse pointers
+ * only; on a laptop the link goes straight to the clipboard, which is what someone pressing "share
+ * invite" next to a room code actually wants.
+ */
 export async function shareOrCopy(
   share: ShareData,
   options: { useNativeShare?: boolean; copyValue?: string } = {},
 ): Promise<ShareOrCopyResult> {
   const useNativeShare = options.useNativeShare ?? true;
-  if (useNativeShare && canUseNativeShare() && (!navigator.canShare || navigator.canShare(share))) {
+  if (
+    useNativeShare &&
+    canUseNativeShare({ coarsePointerOnly: true }) &&
+    (!navigator.canShare || navigator.canShare(share))
+  ) {
     try {
       await navigator.share(share);
       return "shared";
