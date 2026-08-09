@@ -24,9 +24,9 @@ const POINT_BUDGET = 500;
 // audit bound is looser than the budget the simplifier aims for.
 const MAX_OUTLINE_POINTS = 4_000;
 const MINIMUM_RING_POINTS = 8;
-const MAX_SIMPLIFY_TOLERANCE = COORDINATE_SCALE / 20;
 const SIMPLIFY_SEARCH_STEPS = 32;
 const SIMPLIFY_BACKOFF_STEPS = 24;
+// A ring that folds at its allowance is retried with proportionally more points kept.
 const SIMPLIFY_BACKOFF_RATIO = 0.7;
 // Warn (don't fail) when a country is inherently low-detail — Vatican City and Nauru really are
 // this simple at every resolution, but a regression elsewhere should be visible in the log.
@@ -106,70 +106,97 @@ function ringCrossesItself(ring) {
   return false;
 }
 
-function perpendicularDistance(point, start, end) {
-  const dx = end[0] - start[0];
-  const dy = end[1] - start[1];
-  const length = Math.hypot(dx, dy);
-  if (!length) return Math.hypot(point[0] - start[0], point[1] - start[1]);
-  return Math.abs(dy * point[0] - dx * point[1] + end[0] * start[1] - end[1] * start[0]) / length;
-}
-
-function simplifyLine(points, tolerance) {
-  if (points.length < 3) return points;
-  let furthest = 0;
-  let index = 0;
-  for (let candidate = 1; candidate < points.length - 1; candidate += 1) {
-    const distance = perpendicularDistance(points[candidate], points[0], points.at(-1));
-    if (distance > furthest) {
-      furthest = distance;
-      index = candidate;
-    }
-  }
-  if (furthest <= tolerance) return [points[0], points.at(-1)];
-  return [
-    ...simplifyLine(points.slice(0, index + 1), tolerance).slice(0, -1),
-    ...simplifyLine(points.slice(index), tolerance),
-  ];
+function triangleArea(first, second, third) {
+  return (
+    Math.abs(
+      (second[0] - first[0]) * (third[1] - first[1]) -
+        (third[0] - first[0]) * (second[1] - first[1]),
+    ) / 2
+  );
 }
 
 /**
- * Simplify a closed ring without letting the arbitrary start vertex anchor the result: the ring is
- * cut at the vertex furthest from its start so both halves are simplified as open polylines.
+ * Simplify a closed ring to a point count by Visvalingam–Whyatt: repeatedly drop the vertex whose
+ * triangle with its surviving neighbours is smallest.
+ *
+ * Douglas–Peucker did this job until it was measured against the source. It keeps whichever vertex
+ * lies furthest from the chord, which is a selection rule *for* spikes: at a 200-point budget it
+ * rendered Iceland as a starburst and Norway as a saw blade, while the 3,000-point source is
+ * neither. Dropping by area instead sheds the noise and keeps the silhouette, so the same budget
+ * reproduces both coastlines recognisably. Area also lets the caller name a point count outright
+ * rather than binary-searching tolerances for one.
+ *
+ * Effective areas are kept non-decreasing as vertices go, so a point can never outlive one that was
+ * more significant than it — without that, a vertex stranded between two removals can be dropped
+ * out of order and take a headland with it.
  */
-function simplifyRing(ring, tolerance) {
-  if (ring.length <= 4 || tolerance <= 0) return ring;
-  let split = 0;
-  let furthest = -1;
-  for (let candidate = 1; candidate < ring.length; candidate += 1) {
-    const distance = Math.hypot(ring[candidate][0] - ring[0][0], ring[candidate][1] - ring[0][1]);
-    if (distance > furthest) {
-      furthest = distance;
-      split = candidate;
-    }
+function simplifyRingToCount(ring, target) {
+  const size = ring.length;
+  if (size <= Math.max(3, target)) return ring;
+  const previous = new Int32Array(size);
+  const next = new Int32Array(size);
+  const alive = new Uint8Array(size).fill(1);
+  const effective = new Float64Array(size);
+  for (let index = 0; index < size; index += 1) {
+    previous[index] = (index - 1 + size) % size;
+    next[index] = (index + 1) % size;
   }
-  const head = simplifyLine(ring.slice(0, split + 1), tolerance);
-  const tail = simplifyLine([...ring.slice(split), ring[0]], tolerance);
-  const merged = [...head.slice(0, -1), ...tail.slice(0, -1)];
-  if (merged.length >= 3) return merged;
+  for (let index = 0; index < size; index += 1)
+    effective[index] = triangleArea(ring[previous[index]], ring[index], ring[next[index]]);
 
-  // A tolerance coarse enough to collapse the ring must still yield a triangle, never the original:
-  // callers binary-search tolerances assuming the point count only falls, and handing back the full
-  // ring at the coarse end hides every finer tolerance from the search.
-  let widest = 0;
-  let apex = -1;
-  for (let candidate = 0; candidate < ring.length; candidate += 1) {
-    if (candidate === 0 || candidate === split) continue;
-    const distance = perpendicularDistance(ring[candidate], ring[0], ring[split]);
-    if (distance > widest) {
-      widest = distance;
-      apex = candidate;
+  // Binary heap over (area, vertex), stale entries skipped on pop rather than removed.
+  const heap = [];
+  const push = (entry) => {
+    heap.push(entry);
+    let child = heap.length - 1;
+    while (child > 0) {
+      const parent = (child - 1) >> 1;
+      if (heap[parent][0] <= heap[child][0]) break;
+      [heap[parent], heap[child]] = [heap[child], heap[parent]];
+      child = parent;
+    }
+  };
+  const pop = () => {
+    const top = heap[0];
+    const last = heap.pop();
+    if (heap.length) {
+      heap[0] = last;
+      let parent = 0;
+      for (;;) {
+        const left = parent * 2 + 1;
+        const right = left + 1;
+        let smallest = parent;
+        if (left < heap.length && heap[left][0] < heap[smallest][0]) smallest = left;
+        if (right < heap.length && heap[right][0] < heap[smallest][0]) smallest = right;
+        if (smallest === parent) break;
+        [heap[smallest], heap[parent]] = [heap[parent], heap[smallest]];
+        parent = smallest;
+      }
+    }
+    return top;
+  };
+  for (let index = 0; index < size; index += 1) push([effective[index], index]);
+
+  let remaining = size;
+  while (remaining > target && heap.length) {
+    const [area, index] = pop();
+    if (!alive[index] || area !== effective[index]) continue;
+    alive[index] = 0;
+    remaining -= 1;
+    const before = previous[index];
+    const after = next[index];
+    next[before] = after;
+    previous[after] = before;
+    for (const neighbour of [before, after]) {
+      if (!alive[neighbour]) continue;
+      effective[neighbour] = Math.max(
+        area,
+        triangleArea(ring[previous[neighbour]], ring[neighbour], ring[next[neighbour]]),
+      );
+      push([effective[neighbour], neighbour]);
     }
   }
-  if (apex < 0) return ring;
-  const triangle = [ring[0], ring[split], ring[apex]].toSorted(
-    (a, b) => ring.indexOf(a) - ring.indexOf(b),
-  );
-  return polygonArea(triangle) > 0 ? triangle : ring;
+  return ring.filter((_, index) => alive[index]);
 }
 
 function countPoints(rings) {
@@ -212,43 +239,20 @@ function ringIsSimple(ring) {
 /**
  * Thin one ring towards its share of the budget without letting it fold onto itself.
  *
- * Douglas–Peucker is not topology-preserving: a coast cut by hairpin inlets — Britain's firths,
- * Germany's North Sea fringe, Senegal wrapping The Gambia — pinches shut well before it reaches its
- * allowance. Such a ring settles for whichever intact simplification it can reach, which leaves the
- * handful of countries listed above either coarser than their share (Britain) or well over it
- * (Germany, Chile). Fixing that properly needs a topology-preserving simplifier; the search below
- * only ever returns rings that are intact, never folded.
+ * Visvalingam is not topology-preserving either — a coast cut by hairpin inlets can still sweep one
+ * bank across another — so the target is relaxed until the ring comes back intact. It folds far
+ * less often than the perpendicular-distance rule did, because the vertices it drops are the ones
+ * enclosing least area rather than the ones nearest their chord.
  */
 function simplifyRingToAllowance(ring, allowance) {
   if (ring.length <= allowance) return ring;
-  // Point count falls monotonically as the tolerance rises, so binary-search the gentlest tolerance
-  // that reaches the allowance. Sampling a fixed ladder of tolerances instead would step straight
-  // over the useful band — it once cut New Zealand's South Island from hundreds of points to twenty.
-  let low = 0;
-  let high = MAX_SIMPLIFY_TOLERANCE;
-  let best = null;
-  for (let step = 0; step < SIMPLIFY_SEARCH_STEPS; step += 1) {
-    const tolerance = (low + high) / 2;
-    const candidate = simplifyRing(ring, tolerance);
-    if (candidate.length > allowance) {
-      low = tolerance;
-      continue;
-    }
-    high = tolerance;
-    // Keep the richest intact candidate that still fits, not merely the last one probed: the search
-    // does not necessarily finish on its tightest tolerance, and intricate coastlines fold shut at
-    // some tolerances but not others.
-    if (ringIsSimple(candidate) && (!best || candidate.length > best.length)) best = candidate;
-  }
-  if (best) return best;
-
-  // Nothing that reaches the allowance survives. Back the tolerance off until the ring holds
-  // together; at zero it is the source ring again, so this always lands somewhere, over budget.
-  let tolerance = high;
+  let target = allowance;
   for (let step = 0; step < SIMPLIFY_BACKOFF_STEPS; step += 1) {
-    tolerance *= SIMPLIFY_BACKOFF_RATIO;
-    const candidate = simplifyRing(ring, tolerance);
+    const candidate = simplifyRingToCount(ring, target);
     if (ringIsSimple(candidate)) return candidate;
+    if (candidate.length >= ring.length) break;
+    target = Math.ceil(target / SIMPLIFY_BACKOFF_RATIO);
+    if (target >= ring.length) break;
   }
   return ring;
 }
@@ -261,8 +265,8 @@ function simplifyRingToAllowance(ring, allowance) {
 function repairRing(ring) {
   if (ringIsSimple(ring)) return ring;
   for (let step = 1; step <= SIMPLIFY_SEARCH_STEPS; step += 1) {
-    const tolerance = MAX_SIMPLIFY_TOLERANCE * (step / SIMPLIFY_SEARCH_STEPS) ** 3;
-    const candidate = simplifyRing(ring, tolerance);
+    const target = Math.max(3, Math.round(ring.length * (1 - step / SIMPLIFY_SEARCH_STEPS)));
+    const candidate = simplifyRingToCount(ring, target);
     if (candidate.length < ring.length && ringIsSimple(candidate)) return candidate;
   }
   return null;

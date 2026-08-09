@@ -435,7 +435,19 @@ describe("draw-country scoring", () => {
       ]),
     ];
 
-    expect(scoreCountryDrawing(australia, scribble).score).toBeLessThanOrEqual(20);
+    // The strokes are absolute canvas coordinates, so what they overlap shifts whenever the atlas
+    // outline does. Pin the property rather than a number tuned to one outline: the scribble
+    // belongs in the failing band, and must lose decisively to a crude but honest attempt at the
+    // same country — which is what "touching much of the border" could otherwise buy it.
+    const step = Math.max(1, Math.floor(australia.rings[0].length / 20));
+    const honest: CountryDrawing = [
+      australia.rings[0]
+        .filter((_, index) => index % step === 0)
+        .map(([x, y]) => ({ x: 137 + x * australia.aspect * 0.083, y: 83 + y * 0.083 })),
+    ];
+    const scribbleScore = scoreCountryDrawing(australia, scribble).score;
+    expect(scribbleScore).toBeLessThanOrEqual(30);
+    expect(scribbleScore).toBeLessThan(scoreCountryDrawing(australia, honest).score - 20);
   });
 
   it("does not reward covering, enclosing, or repeatedly tracing the country", () => {
