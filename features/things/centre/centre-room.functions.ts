@@ -108,7 +108,7 @@ export const applyCentreActionFn = createServerFn({ method: "POST" })
         route: parseCentreRoute(raw.route),
         claimedElapsedMs: Math.max(0, Math.min(300_000, sequence(raw.claimedElapsedMs))),
       };
-    else if (raw.type === "race.retire")
+    else if (raw.type === "race.progress" || raw.type === "race.retire")
       action = {
         type: raw.type,
         courseHash: text(raw.courseHash, 24),

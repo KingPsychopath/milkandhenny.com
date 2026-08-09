@@ -114,6 +114,7 @@ export type CentreAction =
   | { type: "game.start"; removePlayerIds?: string[] }
   | { type: "arming.set"; armed: boolean }
   | { type: "race.finish"; courseHash: string; route: CentreRoute; claimedElapsedMs: number }
+  | { type: "race.progress"; courseHash: string; route: CentreRoute }
   | { type: "race.retire"; courseHash: string; route: CentreRoute }
   | { type: "game.replay" }
   | { type: "game.lobby" };

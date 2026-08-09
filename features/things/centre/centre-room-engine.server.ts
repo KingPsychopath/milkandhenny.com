@@ -497,14 +497,14 @@ export async function applyCentreAction(input: {
       advance(room, now);
       return { ok: true, accepted: true, snapshot: snapshot(room, player.id) } as const;
     }
-    if (action.type === "race.retire") {
-      if (
-        (room.phase !== "finishing" && room.phase !== "finished") ||
-        !room.course?.startsAt ||
-        player.entranceIndex === null
-      )
+    if (action.type === "race.progress" || action.type === "race.retire") {
+      const allowed =
+        action.type === "race.progress"
+          ? room.phase === "racing" || room.phase === "finishing" || room.phase === "finished"
+          : room.phase === "finishing" || room.phase === "finished";
+      if (!allowed || !room.course?.startsAt || player.entranceIndex === null)
         return rejection(room, player.id, "The race is not accepting routes", "action_unavailable");
-      if (await loadReplay(room, player.id))
+      if (player.elapsedMs !== null || (await loadReplay(room, player.id))?.finished)
         return { ok: true, accepted: true, snapshot: snapshot(room, player.id) } as const;
       const maze = generateCentreMaze({
         seed: room.course.seed,
