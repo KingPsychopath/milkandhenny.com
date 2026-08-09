@@ -1,12 +1,17 @@
 import { describe, expect, it } from "vitest";
 import { COUNTRIES } from "../../features/things/draw-country/countries";
+import { MAX_DRAWING_RINGS } from "../../features/things/draw-country/drawing-constraints";
 import {
   countryScoreBreakdown,
   drawingIsValid,
   scoreCountryDrawing,
   scoreFromDeviation,
 } from "../../features/things/draw-country/scoring";
-import type { CountryDrawing, CountryOutline } from "../../features/things/draw-country/types";
+import type {
+  CountryDrawing,
+  CountryOutline,
+  DrawPoint,
+} from "../../features/things/draw-country/types";
 
 const SQUARE = [
   [0, 0],
@@ -104,6 +109,39 @@ function enclosingBoxDrawing(outline: CountryOutline): CountryDrawing {
       { x: bounds.minX - padding, y: bounds.centreY },
     ],
   ];
+}
+
+/** Thin an exact trace to the canvas' minimum stroke spacing, like a real drawn line. */
+function handSpacedDrawing(outline: CountryOutline): CountryDrawing {
+  return exactDrawing(outline).map((ring) => {
+    const kept: DrawPoint[] = [];
+    let last: DrawPoint | null = null;
+    for (const point of ring) {
+      if (!last || Math.hypot(point.x - last.x, point.y - last.y) >= 7) {
+        kept.push(point);
+        last = point;
+      }
+    }
+    return kept.length >= 3 ? kept : ring;
+  });
+}
+
+function zigzagWobble(drawing: CountryDrawing): CountryDrawing {
+  return drawing.map((ring) =>
+    ring.map((point, index) => ({
+      x: point.x + (index % 2 ? 6 : -6),
+      y: point.y + (index % 3 ? 5 : -5),
+    })),
+  );
+}
+
+function ringSignedArea(ring: DrawPoint[]) {
+  let doubled = 0;
+  for (let index = 0; index < ring.length; index += 1) {
+    const next = ring[(index + 1) % ring.length];
+    doubled += ring[index].x * next.y - next.x * ring[index].y;
+  }
+  return Math.abs(doubled / 2);
 }
 
 function broadenedSimplification(outline: CountryOutline): CountryDrawing {
@@ -514,6 +552,74 @@ describe("draw-country scoring", () => {
     );
 
     expect(scoreCountryDrawing(bahamas, smeared).score).toBeGreaterThanOrEqual(55);
+  });
+
+  it("lets every atlas outline be drawn in full within the canvas stroke limit", () => {
+    const mostRings = Math.max(...COUNTRIES.map((country) => country.rings.length));
+    expect(MAX_DRAWING_RINGS).toBeGreaterThanOrEqual(mostRings);
+  });
+
+  it("forgives bank-brushing wobble on hair-thin countries without freeing real loops", () => {
+    // A hand tracing a shape as thin as its own wobble inevitably sweeps one bank across the
+    // other. Those crossings pinch off sliver lobes and the line still tracks the border, so
+    // they must never read as scribbling — while a stroke genuinely looped through the country
+    // encloses fat lobes and stays condemned.
+    const floors = { GM: 70, MH: 80, CL: 35 } as const;
+    for (const [countryId, floor] of Object.entries(floors)) {
+      const outline = COUNTRIES.find(({ id }) => id === countryId);
+      expect(outline).toBeDefined();
+      if (!outline) continue;
+      expect(
+        scoreCountryDrawing(outline, zigzagWobble(handSpacedDrawing(outline))).score,
+        countryId,
+      ).toBeGreaterThanOrEqual(floor);
+    }
+
+    const australia = COUNTRIES.find(({ id }) => id === "AU");
+    expect(australia).toBeDefined();
+    if (!australia) throw new Error("Australia fixture is missing");
+    const figureEight: CountryDrawing = [
+      Array.from({ length: 48 }, (_, index) => {
+        const angle = (index / 48) * 2 * Math.PI;
+        return { x: 500 + Math.sin(2 * angle) * 330, y: 375 + Math.sin(angle) * 240 };
+      }),
+    ];
+    expect(scoreCountryDrawing(australia, figureEight).score).toBeLessThanOrEqual(15);
+  });
+
+  it("recognises an archipelago drawn with every island at the wrong size", () => {
+    // Bounding boxes register a drawing like this beyond what refinement can recover; the moment
+    // registration must step in so an obviously-right archipelago is not scored as a miss.
+    const newZealand = COUNTRIES.find(({ id }) => id === "NZ");
+    expect(newZealand).toBeDefined();
+    if (!newZealand) throw new Error("New Zealand fixture is missing");
+    const misSized = exactDrawing(newZealand).map((ring, index) => {
+      const centreX = ring.reduce((sum, point) => sum + point.x, 0) / ring.length;
+      const centreY = ring.reduce((sum, point) => sum + point.y, 0) / ring.length;
+      const factor = index % 2 ? 1.25 : 0.85;
+      return ring.map((point) => ({
+        x: centreX + (point.x - centreX) * factor,
+        y: centreY + (point.y - centreY) * factor,
+      }));
+    });
+    expect(scoreCountryDrawing(newZealand, misSized).score).toBeGreaterThanOrEqual(60);
+  });
+
+  it("marks a faithful partial archipelago on its missing coast, not as a wrong country", () => {
+    // Five faithfully-traced islands of the Bahamas are recognisably the Bahamas. The missing
+    // cays cost coverage — they must not unlock the wrong-country guard, which once pushed this
+    // drawing to zero, nor score like a finished attempt.
+    const bahamas = COUNTRIES.find(({ id }) => id === "BS");
+    expect(bahamas).toBeDefined();
+    if (!bahamas) throw new Error("Bahamas fixture is missing");
+    const largestFive = exactDrawing(bahamas)
+      .map((ring) => ({ ring, area: ringSignedArea(ring) }))
+      .toSorted((first, second) => second.area - first.area)
+      .slice(0, 5)
+      .map(({ ring }) => ring);
+    const evaluation = scoreCountryDrawing(bahamas, largestFive);
+    expect(evaluation.score).toBeGreaterThanOrEqual(25);
+    expect(evaluation.score).toBeLessThanOrEqual(60);
   });
 
   it("uses explicit, monotonic calibration anchors", () => {

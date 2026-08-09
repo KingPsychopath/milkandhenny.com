@@ -18,6 +18,18 @@ const ALIGNMENT_MAXIMUM_TRANSLATION = 0.05;
 const ALIGNMENT_MINIMUM_SCALE = 0.95;
 const ALIGNMENT_MAXIMUM_SCALE = 1.05;
 const ALIGNMENT_MAXIMUM_ROTATION = (3 * Math.PI) / 180;
+// How many RMS radii from the robust centroid a sampled point may sit before registration treats
+// it as a stray mark rather than part of the shape.
+const OUTLIER_SPREAD_RADII = 3;
+// Below these differences the box and moment registrations describe the same placement, and one
+// local search suffices.
+const SEED_AGREEMENT_SCALE = 0.01;
+const SEED_AGREEMENT_OFFSET = 0.005;
+// The drawn-proportions registration is what the player sees, so it is the default reading; the
+// moment registration takes over only when it fits this much better. Archipelagos drawn with
+// mis-sized islands register two to four times better through moments, while shapes where the
+// two readings merely disagree about which side of the border to straddle sit well above this.
+const MOMENT_PREFERENCE_MARGIN = 0.7;
 const MINIMUM_DRAWING_EXTENT = 8;
 const MAX_POINT_DEVIATION = 0.5;
 const SILHOUETTE_GRID_SIZE = 48;
@@ -26,11 +38,35 @@ const SILHOUETTE_COMPACTNESS_BASELINE = 0.5;
 const MINIMUM_SILHOUETTE_SENSITIVITY = 0.15;
 // A strong aligned border fit proves that alignment clarified the same shape; a weak fit keeps the
 // pre-alignment guard that stops boxes and one recognisable country being accepted as another.
-const ALIGNMENT_GUARD_FIT_FLOOR = 0.06;
-const ALIGNMENT_GUARD_FIT_CEILING = 0.1;
+// Border fit alone drives the fade — never coverage: an archipelago drawn a few islands short has
+// terrible coverage however faithfully those islands track the border, and coverage already
+// charges for the missing coast on its own. Honest strokes track the border within a few
+// hundredths; boxes and wrong countries sit at five hundredths and beyond.
+const ALIGNMENT_GUARD_FIT_FLOOR = 0.02;
+const ALIGNMENT_GUARD_FIT_CEILING = 0.06;
+// Enclosure severity fades over a shorter run of border fit than the mismatch guard: a container
+// cannot hug a real coastline — boxes sit at four hundredths and beyond — while the archipelago
+// drawings the fade protects track their islands well under three.
+const ENCLOSURE_FIT_CEILING = 0.045;
 const PERIMETER_ALLOWANCE = 1.25;
 const DEGENERATE_COMPACTNESS = 0.001;
 const SEPARATE_STROKE_CROSSING_WEIGHT = 0.25;
+// Lobe area, in the unit drawing frame, at which a self-crossing counts as deliberate doubling
+// back rather than hand wobble. Careful traces of fjord coastlines carry crossings whose lobes
+// measure well under a thousandth of the frame; a stroke looped through the shape encloses
+// hundredths of it or more.
+const SIGNIFICANT_LOBE_AREA = 0.004;
+// Compactness (area over squared perimeter) below which a lobe reads as banks brushing rather
+// than a loop. Tracing a hair-thin country — Chile, The Gambia, an atoll chain — inevitably
+// sweeps one bank across the other, pinching off lobes as slender as the country itself; a
+// stroke genuinely doubling back through the shape encloses a fat lobe. A circle sits at 0.08,
+// a square at 0.0625, a ten-to-one sliver near 0.02.
+const LOBE_COMPACTNESS_FLOOR = 0.03;
+// A stroke that provably tracks the real border cannot also be a scribble: on shapes whose width
+// is close to natural hand wobble, self-crossings appear no matter how honestly the player
+// traces, so their charge scales with how far the drawing actually strays from the border and
+// only bites in full once the line wanders this far off it.
+const SELF_CROSSING_FULL_CHARGE_TRACKING = 0.15;
 const SILHOUETTE_FULL_WEIGHT_FIT_ERROR = 0.3;
 const COUNTRY_COORDINATE_SCALE = 10_000;
 const BORDER_FIT_WEIGHT = 0.3;
@@ -44,6 +80,13 @@ const ENCLOSURE_INSIDE_TOLERANCE = 0.005;
 const ENCLOSURE_OUTSIDE_THRESHOLD = 0.05;
 const ENCLOSURE_SILHOUETTE_THRESHOLD = 0.2;
 const ENCLOSURE_MINIMUM_DEVIATION = 0.18;
+// A drawing only counts as a container when it actually holds the country: at least this share
+// of the reference border must sit inside the drawn strokes. Without it, an archipelago drawn
+// with its islands mis-placed looks the same as a box — no drawn point inside the reference,
+// everything far from the border — and honest island attempts were floored as if they were
+// containers. Half, not most: a sloppy container of the wrong proportions still slices off a
+// good part of the country it is boxing in.
+const ENCLOSURE_REFERENCE_SHARE = 0.5;
 const SILHOUETTE_WEIGHT = 0.25;
 const STROKE_QUALITY_WEIGHT = 0.1;
 const ISLAND_BALANCE_WEIGHT = 0.05;
@@ -246,7 +289,8 @@ function optimiseAlignment(rings: CountryDrawing, reference: NormalisedShape, ce
   const identity: AlignmentTransform = { x: 0, y: 0, scale: 1, angle: 0 };
   let best = identity;
   let bestError = symmetricAlignmentError(drawingPoints, referencePoints);
-  if (bestError <= ALIGNMENT_ACCEPTABLE_ERROR) return { rings, preserveBaseline: false };
+  if (bestError <= ALIGNMENT_ACCEPTABLE_ERROR)
+    return { rings, preserveBaseline: false, error: bestError };
   const fullSearch = bestError > ALIGNMENT_FULL_SEARCH_ERROR;
 
   let translationStep = ALIGNMENT_TRANSLATION_STEP;
@@ -299,10 +343,11 @@ function optimiseAlignment(rings: CountryDrawing, reference: NormalisedShape, ce
     rotationStep /= 2;
   }
 
-  if (best === identity) return { rings, preserveBaseline: false };
+  if (best === identity) return { rings, preserveBaseline: false, error: bestError };
   return {
     rings: rings.map((ring) => ring.map((point) => transformPoint(point, centre, best))),
     preserveBaseline: fullSearch,
+    error: bestError,
   };
 }
 
@@ -321,6 +366,84 @@ function normaliseReference(country: CountryOutline): NormalisedShape {
   return { rings, points: sampleShape(rings, REFERENCE_SAMPLES) };
 }
 
+function centroid(points: DrawPoint[]): DrawPoint {
+  const sum = points.reduce((total, point) => ({ x: total.x + point.x, y: total.y + point.y }), {
+    x: 0,
+    y: 0,
+  });
+  return { x: sum.x / points.length, y: sum.y / points.length };
+}
+
+function rmsRadius(points: DrawPoint[], centre: DrawPoint) {
+  return Math.sqrt(
+    points.reduce(
+      (total, point) => total + (point.x - centre.x) ** 2 + (point.y - centre.y) ** 2,
+      0,
+    ) / points.length,
+  );
+}
+
+/**
+ * Perimeter-weighted centroid and RMS spread, with far outliers — a stray dot, an accidental
+ * flick — rejected so they cannot drag the registration. Squaring makes a plain RMS swing on a
+ * single distant stroke harder than the bounding box it replaces ever did.
+ */
+function robustMoments(points: DrawPoint[]) {
+  let centre = centroid(points);
+  let spread = rmsRadius(points, centre);
+  for (let pass = 0; pass < 2 && spread > 0; pass += 1) {
+    const kept = points.filter(
+      (point) =>
+        Math.hypot(point.x - centre.x, point.y - centre.y) <= spread * OUTLIER_SPREAD_RADII,
+    );
+    if (kept.length === points.length || kept.length < 3) break;
+    centre = centroid(kept);
+    spread = rmsRadius(kept, centre);
+  }
+  return { centre, spread };
+}
+
+interface RegistrationSeed {
+  drawingCentre: DrawPoint;
+  referenceCentre: DrawPoint;
+  scale: number;
+}
+
+function registerRings(rings: CountryDrawing, seed: RegistrationSeed): CountryDrawing {
+  return rings.map((ring) =>
+    ring.map(({ x, y }) => ({
+      x: seed.referenceCentre.x + (x - seed.drawingCentre.x) * seed.scale,
+      y: seed.referenceCentre.y + (y - seed.drawingCentre.y) * seed.scale,
+    })),
+  );
+}
+
+function seedsAgree(first: RegistrationSeed, second: RegistrationSeed) {
+  const mappedOffset = Math.hypot(
+    first.referenceCentre.x -
+      second.referenceCentre.x -
+      (first.drawingCentre.x - second.drawingCentre.x) * first.scale,
+    first.referenceCentre.y -
+      second.referenceCentre.y -
+      (first.drawingCentre.y - second.drawingCentre.y) * first.scale,
+  );
+  return (
+    Math.abs(first.scale / second.scale - 1) <= SEED_AGREEMENT_SCALE &&
+    mappedOffset <= SEED_AGREEMENT_OFFSET
+  );
+}
+
+/**
+ * No single similarity registration reads every honest drawing correctly. Matching bounding
+ * boxes keeps the drawing at its drawn proportions — which is how a mainland drawn without its
+ * major islands still lands on the mainland, and how a box around the country stays visibly a
+ * box around the country. Matching robust mass moments degrades gracefully when an archipelago
+ * is drawn with its islands mis-sized or its specks left out, where a box quantile either
+ * ignores a ring entirely or swings on it. So both interpretations are tried, each polished by
+ * the local search, and the better fit is scored — while the guards always get to see the
+ * drawn-proportions view, so a container around the country cannot shrink itself onto the
+ * border and pass as tracing it.
+ */
 function alignDrawing(input: CountryDrawing, reference: NormalisedShape): AlignedShape | null {
   const usable = input.filter((ring) => ring.length >= 3);
   const sampled = sampleShape(usable, DRAWING_SAMPLES);
@@ -332,20 +455,37 @@ function alignDrawing(input: CountryDrawing, reference: NormalisedShape): Aligne
   const referenceExtent = boundsExtent(referenceBounds);
   if (drawingExtent < MINIMUM_DRAWING_EXTENT || referenceExtent <= 0) return null;
 
-  const drawingCentre = boundsCentre(drawingBounds);
-  const referenceCentre = boundsCentre(referenceBounds);
-  const scale = referenceExtent / drawingExtent;
-  const centredRings = usable.map((ring) =>
-    ring.map(({ x, y }) => ({
-      x: referenceCentre.x + (x - drawingCentre.x) * scale,
-      y: referenceCentre.y + (y - drawingCentre.y) * scale,
-    })),
+  const boundsSeed: RegistrationSeed = {
+    drawingCentre: boundsCentre(drawingBounds),
+    referenceCentre: boundsCentre(referenceBounds),
+    scale: referenceExtent / drawingExtent,
+  };
+  const drawingMoments = robustMoments(sampled);
+  const referenceMoments = robustMoments(reference.points);
+  const momentSeed: RegistrationSeed | null =
+    drawingMoments.spread > 0 && referenceMoments.spread > 0
+      ? {
+          drawingCentre: drawingMoments.centre,
+          referenceCentre: referenceMoments.centre,
+          scale: referenceMoments.spread / drawingMoments.spread,
+        }
+      : null;
+
+  const baselineRings = registerRings(usable, boundsSeed);
+  const seeds =
+    momentSeed && !seedsAgree(boundsSeed, momentSeed) ? [boundsSeed, momentSeed] : [boundsSeed];
+  const candidates = seeds.map((seed) => {
+    const centred = seed === boundsSeed ? baselineRings : registerRings(usable, seed);
+    return { centred, alignment: optimiseAlignment(centred, reference, seed.referenceCentre) };
+  });
+  const winner = candidates.reduce((best, candidate) =>
+    candidate.alignment.error < best.alignment.error * MOMENT_PREFERENCE_MARGIN ? candidate : best,
   );
-  const alignment = optimiseAlignment(centredRings, reference, referenceCentre);
+  const preserveBaseline = winner.alignment.preserveBaseline || winner.centred !== baselineRings;
   return {
-    rings: alignment.rings,
-    points: sampleShape(alignment.rings, DRAWING_SAMPLES),
-    baselineRings: alignment.preserveBaseline ? centredRings : alignment.rings,
+    rings: winner.alignment.rings,
+    points: sampleShape(winner.alignment.rings, DRAWING_SAMPLES),
+    baselineRings: preserveBaseline ? baselineRings : winner.alignment.rings,
   };
 }
 
@@ -388,11 +528,23 @@ function mismatchGuardDeviation(
   );
 }
 
-function enclosesReference(fit: ReturnType<typeof borderFit>, silhouette: number) {
+function referenceEnclosedShare(referencePoints: DrawPoint[], drawing: CountryDrawing) {
+  if (!referencePoints.length) return 0;
+  let inside = 0;
+  for (const point of referencePoints) if (pointInShape(point, drawing)) inside += 1;
+  return inside / referencePoints.length;
+}
+
+function enclosesReference(
+  fit: ReturnType<typeof borderFit>,
+  silhouette: number,
+  enclosedShare: number,
+) {
   return (
     fit.inside <= ENCLOSURE_INSIDE_TOLERANCE &&
     fit.outside >= ENCLOSURE_OUTSIDE_THRESHOLD &&
-    silhouette >= ENCLOSURE_SILHOUETTE_THRESHOLD
+    silhouette >= ENCLOSURE_SILHOUETTE_THRESHOLD &&
+    enclosedShare >= ENCLOSURE_REFERENCE_SHARE
   );
 }
 
@@ -488,6 +640,44 @@ function segmentsAreAdjacent(first: DrawingSegment, second: DrawingSegment) {
   return wrappedDifference <= 3;
 }
 
+/** Where two crossing segments meet. Callers must have established that they do cross. */
+function segmentIntersection(
+  firstStart: DrawPoint,
+  firstEnd: DrawPoint,
+  secondStart: DrawPoint,
+  secondEnd: DrawPoint,
+): DrawPoint {
+  const denominator =
+    (firstEnd.x - firstStart.x) * (secondEnd.y - secondStart.y) -
+    (firstEnd.y - firstStart.y) * (secondEnd.x - secondStart.x);
+  const progress =
+    ((secondStart.x - firstStart.x) * (secondEnd.y - secondStart.y) -
+      (secondStart.y - firstStart.y) * (secondEnd.x - secondStart.x)) /
+    denominator;
+  return {
+    x: firstStart.x + (firstEnd.x - firstStart.x) * progress,
+    y: firstStart.y + (firstEnd.y - firstStart.y) * progress,
+  };
+}
+
+/**
+ * How much a self-crossing reads as doubling back, from 0 (hand wobble) to 1 (a stroke looped
+ * through the shape). The crossing pinches off a lobe — the crossing point plus the stretch of
+ * ring between the two segments, or the ring's other half, whichever is smaller — and the
+ * crossing is charged by that lobe's area, discounted when the lobe is itself a sliver.
+ */
+function crossingSeverity(ring: DrawPoint[], first: number, second: number, crossing: DrawPoint) {
+  const inner = [crossing, ...ring.slice(first + 1, second + 1)];
+  const outer = [crossing, ...ring.slice(second + 1), ...ring.slice(0, first + 1)];
+  const lobe = ringArea(inner) <= ringArea(outer) ? inner : outer;
+  const area = ringArea(lobe);
+  const perimeter = ringLength(lobe);
+  const compactness = perimeter ? area / (perimeter * perimeter) : 0;
+  return (
+    Math.min(1, area / SIGNIFICANT_LOBE_AREA) * Math.min(1, compactness / LOBE_COMPACTNESS_FLOOR)
+  );
+}
+
 /**
  * Share of a shape's outline made of slivers too thin to enclose real area. In a drawing that means
  * scribbles; in a reference it means genuine geography, so the two are compared rather than the
@@ -512,7 +702,11 @@ interface StrokeQuality {
   abuse: number;
 }
 
-function strokeQualityDeviation(drawing: CountryDrawing, reference: CountryDrawing): StrokeQuality {
+function strokeQualityDeviation(
+  drawing: CountryDrawing,
+  reference: CountryDrawing,
+  borderTracking: number,
+): StrokeQuality {
   const lengths = drawing.map(ringLength);
   const totalLength = lengths.reduce((total, length) => total + length, 0);
   if (!totalLength) return { deviation: 1, abuse: 1 };
@@ -532,7 +726,10 @@ function strokeQualityDeviation(drawing: CountryDrawing, reference: CountryDrawi
   );
   // A scribble is a stroke that doubles back through itself. Two separate strokes overlapping is
   // ordinary in a country full of islands — drawing the Bahamas by hand means clipping neighbours
-  // constantly — so those count for far less than a stroke crossing itself.
+  // constantly — so those count for far less than a stroke crossing itself. A stroke crossing
+  // itself is charged by how much it encloses, not how often it happens: tracing a fjord coastline
+  // or a hair-thin country leaves the banks brushing across each other in crossings whose lobes
+  // are microscopic, and a hand wobble must never read as doubling back through the shape.
   let selfCrossings = 0;
   let strokeCrossings = 0;
   for (let firstIndex = 0; firstIndex < segments.length; firstIndex += 1) {
@@ -544,13 +741,20 @@ function strokeQualityDeviation(drawing: CountryDrawing, reference: CountryDrawi
         !segmentsCross(first.start, first.end, second.start, second.end)
       )
         continue;
-      if (first.ringIndex === second.ringIndex) selfCrossings += 1;
+      if (first.ringIndex === second.ringIndex)
+        selfCrossings += crossingSeverity(
+          drawing[first.ringIndex],
+          first.segmentIndex,
+          second.segmentIndex,
+          segmentIntersection(first.start, first.end, second.start, second.end),
+        );
       else strokeCrossings += 1;
     }
   }
 
   const threshold = Math.max(3, segments.length * 0.03);
-  const selfCrossingDeviation = Math.min(1, selfCrossings / threshold);
+  const trackingCharge = Math.min(1, borderTracking / SELF_CROSSING_FULL_CHARGE_TRACKING);
+  const selfCrossingDeviation = Math.min(1, (selfCrossings * trackingCharge) / threshold);
   const separateCrossingDeviation = Math.min(
     1,
     (strokeCrossings * SEPARATE_STROKE_CROSSING_WEIGHT) / threshold,
@@ -704,7 +908,11 @@ export function scoreCountryDrawing(
     sensitivity,
     fit.border + coverage,
   );
-  const strokeQuality = strokeQualityDeviation(drawing.rings, reference.rings);
+  const strokeQuality = strokeQualityDeviation(
+    drawing.rings,
+    reference.rings,
+    fit.border + coverage,
+  );
   const islandBalance = islandBalanceDeviation(reference.rings, drawing.rings);
   const weightedDeviation =
     fit.border * BORDER_FIT_WEIGHT +
@@ -713,7 +921,16 @@ export function scoreCountryDrawing(
     strokeQuality.deviation * STROKE_QUALITY_WEIGHT +
     islandBalance * ISLAND_BALANCE_WEIGHT;
   let guardDeviation = mismatchGuardDeviation(fit, coverage, silhouette);
-  let enclosing = enclosesReference(fit, silhouette);
+  // Enclosure fades in like the mismatch guard: seeing it in the drawn-proportions baseline only
+  // counts to the extent the final fit failed to prove the drawing traces the same shape, so an
+  // archipelago whose aligned strokes hug their islands is never floored as a container.
+  let enclosureSeverity = enclosesReference(
+    fit,
+    silhouette,
+    referenceEnclosedShare(reference.points, drawing.rings),
+  )
+    ? 1
+    : 0;
   if (drawing.rings !== drawing.baselineRings) {
     const baselinePoints = sampleShape(drawing.baselineRings, DRAWING_SAMPLES);
     const baselineFit = borderFit(baselinePoints, reference.rings);
@@ -728,7 +945,7 @@ export function scoreCountryDrawing(
       0,
       Math.min(
         1,
-        (fit.border + coverage - ALIGNMENT_GUARD_FIT_FLOOR) /
+        (fit.border - ALIGNMENT_GUARD_FIT_FLOOR) /
           (ALIGNMENT_GUARD_FIT_CEILING - ALIGNMENT_GUARD_FIT_FLOOR),
       ),
     );
@@ -736,7 +953,23 @@ export function scoreCountryDrawing(
       guardDeviation,
       guardDeviation + (baselineGuard - guardDeviation) * guardWeight,
     );
-    enclosing ||= enclosesReference(baselineFit, baselineSilhouette);
+    const enclosureWeight = Math.max(
+      0,
+      Math.min(
+        1,
+        (fit.border - ALIGNMENT_GUARD_FIT_FLOOR) /
+          (ENCLOSURE_FIT_CEILING - ALIGNMENT_GUARD_FIT_FLOOR),
+      ),
+    );
+    if (
+      enclosureSeverity < enclosureWeight &&
+      enclosesReference(
+        baselineFit,
+        baselineSilhouette,
+        referenceEnclosedShare(reference.points, drawing.baselineRings),
+      )
+    )
+      enclosureSeverity = enclosureWeight;
   }
   const mismatchExcessWeight = Math.max(
     MINIMUM_MISMATCH_EXCESS_WEIGHT,
@@ -746,14 +979,16 @@ export function scoreCountryDrawing(
     weightedDeviation + Math.max(0, guardDeviation - weightedDeviation) * mismatchExcessWeight;
   const deviation = Math.max(
     mismatchAdjustedDeviation,
-    enclosing ? ENCLOSURE_MINIMUM_DEVIATION : 0,
+    ENCLOSURE_MINIMUM_DEVIATION * enclosureSeverity,
   );
   const mismatchDeviation = deviation - weightedDeviation;
   // Strong agreement in both directions means the player traced the same coastline: their line
   // stayed near the reference and the reference stayed near their line. Once the mismatch and
   // enclosure guards agree, a fragile silhouette raster must not turn that into a failure score.
   const recognitionFloor =
-    !enclosing && mismatchDeviation < RECOGNITION_MISMATCH_FADE && strokeQuality.deviation < 0.5
+    !enclosureSeverity &&
+    mismatchDeviation < RECOGNITION_MISMATCH_FADE &&
+    strokeQuality.deviation < 0.5
       ? Math.round(
           Math.min(scoreFromDeviation(fit.border), scoreFromDeviation(coverage)) *
             BIDIRECTIONAL_RECOGNITION_FLOOR *

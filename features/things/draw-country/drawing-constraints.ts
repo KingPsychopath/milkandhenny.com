@@ -2,7 +2,10 @@ import type { CountryDrawing, DrawPoint } from "./types";
 
 export const DRAWING_WIDTH = 1_000;
 export const DRAWING_HEIGHT = 750;
-export const MAX_DRAWING_RINGS = 20;
+// The atlas keeps up to 32 rings per country (Philippines, Bahamas, Solomon Islands), so the
+// canvas must allow as many strokes — at 20, a perfect archipelago was capped at 70 points by
+// coast it was forbidden from drawing.
+export const MAX_DRAWING_RINGS = 32;
 export const MAX_POINTS_PER_RING = 500;
 export const MAX_DRAWING_POINTS = 850;
 
