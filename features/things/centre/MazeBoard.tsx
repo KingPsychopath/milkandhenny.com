@@ -99,6 +99,7 @@ export function MazeBoard({
   onCollision,
   onFinish,
   rivalPoints = [],
+  resetNonce = 0,
 }: {
   maze: CentreMaze;
   entranceIndex: number;
@@ -112,6 +113,8 @@ export function MazeBoard({
   onCollision?: () => void;
   onFinish?: (route: CentreRoute) => void;
   rivalPoints?: Array<{ id: string; x: number; y: number; colour: number }>;
+  /** Increment to drop the active drag (e.g. after "restart route") so a stale hold cannot keep tracing. */
+  resetNonce?: number;
 }) {
   const svgRef = useRef<SVGSVGElement>(null);
   const pointerRef = useRef<number | null>(null);
@@ -137,6 +140,13 @@ export function MazeBoard({
     frame = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(frame);
   }, [phase]);
+
+  useEffect(() => {
+    if (resetNonce === 0) return;
+    pointerRef.current = null;
+    heldRef.current = false;
+    collisionRef.current = false;
+  }, [resetNonce]);
 
   useEffect(() => {
     if (phase !== "racing" || !heldRef.current || routeRef.current.segments.length > 0) return;
@@ -201,9 +211,16 @@ export function MazeBoard({
       if (!previous) continue;
       const target: CentrePoint = { ...canonical, t: Math.max(0, Date.now() - startsAt) };
       const result = moveCentreTrace(maze, previous, target);
-      if (Math.hypot(result.point.x - previous.x, result.point.y - previous.y) > 0.003) {
+      const additions = [...result.path];
+      const lastRecorded = additions.at(-1) ?? previous;
+      if (
+        result.finished ||
+        Math.hypot(result.point.x - lastRecorded.x, result.point.y - lastRecorded.y) > 0.003
+      )
+        additions.push(result.point);
+      if (additions.length > 0) {
         const segments = nextRoute.segments.slice();
-        segments[segments.length - 1] = [...segments.at(-1)!, result.point];
+        segments[segments.length - 1] = [...segments.at(-1)!, ...additions];
         nextRoute = { ...nextRoute, segments };
       }
       if (result.collided && !collisionRef.current) {

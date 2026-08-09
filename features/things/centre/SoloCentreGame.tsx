@@ -49,6 +49,7 @@ export function SoloCentreGame({
   const [elapsed, setElapsed] = useState(0);
   const [saved, setSaved] = useState<SoloCentreReplay | null>(null);
   const [ghostVisible, setGhostVisible] = useState(Boolean(ghost));
+  const [resetNonce, setResetNonce] = useState(0);
   const previousCount = useRef<number | null>(null);
 
   useEffect(() => {
@@ -191,6 +192,7 @@ export function SoloCentreGame({
           startsAt={startsAt}
           route={route}
           routeLayers={ghostLayers}
+          resetNonce={resetNonce}
           onRouteChange={setRoute}
           onArmChange={arm}
           onCollision={() => {
@@ -217,6 +219,7 @@ export function SoloCentreGame({
             type="button"
             onClick={() => {
               const point = { ...centreEntrancePoint(maze, 0), t: Math.max(0, elapsed) };
+              setResetNonce((nonce) => nonce + 1);
               setRoute((current) => ({ ...current, segments: [...current.segments, [point]] }));
               void haptics.trigger("medium");
             }}
