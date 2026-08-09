@@ -68,6 +68,17 @@ const LOBE_COMPACTNESS_FLOOR = 0.03;
 // only bites in full once the line wanders this far off it.
 const SELF_CROSSING_FULL_CHARGE_TRACKING = 0.15;
 const SILHOUETTE_FULL_WEIGHT_FIT_ERROR = 0.3;
+// Nobody draws every jag of a Douglas–Peucker coastline, and the atlas keeps its extreme vertices
+// deliberately, so a country's own spikiness taxes an honest smooth line — ten times harder on
+// Gabon or Iceland than on the Solomon Islands. The generalised reference is the border with its
+// fine detail smoothed away: what an ideal player who captures the whole shape but none of the
+// wiggles would draw. Scoring that against the true border prices each country's intrinsic detail,
+// and the player is forgiven up to that allowance — capped there, so tracing the real detail still
+// scores strictly higher, and faded by border fit so a wrong country or a box gains nothing.
+const GENERALISED_SAMPLES = 256;
+const GENERALISED_SMOOTHING_SHARE = 0.04;
+const GENERALISED_MINIMUM_RING_POINTS = 8;
+const DETAIL_FORGIVENESS = 0.8;
 const COUNTRY_COORDINATE_SCALE = 10_000;
 const BORDER_FIT_WEIGHT = 0.3;
 const COVERAGE_WEIGHT = 0.3;
@@ -364,6 +375,73 @@ function normaliseReference(country: CountryOutline): NormalisedShape {
     })),
   );
   return { rings, points: sampleShape(rings, REFERENCE_SAMPLES) };
+}
+
+function smoothClosedRing(ring: DrawPoint[], window: number): DrawPoint[] {
+  return ring.map((_, index) => {
+    let x = 0;
+    let y = 0;
+    for (let offset = -window; offset <= window; offset += 1) {
+      const point = ring[(index + offset + ring.length) % ring.length];
+      x += point.x;
+      y += point.y;
+    }
+    const span = window * 2 + 1;
+    return { x: x / span, y: y / span };
+  });
+}
+
+/** The reference with its fine detail smoothed away; rings too small to smooth stay as they are. */
+function generalisedReference(reference: NormalisedShape): CountryDrawing {
+  const lengths = reference.rings.map(ringLength);
+  const total = lengths.reduce((sum, length) => sum + length, 0);
+  if (!total) return reference.rings;
+  return reference.rings.map((ring, index) => {
+    const count = Math.round((lengths[index] / total) * GENERALISED_SAMPLES);
+    if (count < GENERALISED_MINIMUM_RING_POINTS) return ring;
+    const resampled = sampleRing(ring, count);
+    return smoothClosedRing(
+      resampled,
+      Math.max(1, Math.round(count * GENERALISED_SMOOTHING_SHARE)),
+    );
+  });
+}
+
+interface DetailAllowance {
+  border: number;
+  coverage: number;
+  silhouette: number;
+}
+
+const detailAllowances = new Map<string, DetailAllowance>();
+
+/** What a player who drew the whole shape but none of the wiggles would concede to this border. */
+function detailAllowance(countryId: string, reference: NormalisedShape): DetailAllowance {
+  const cached = detailAllowances.get(countryId);
+  if (cached) return cached;
+  const generalised = generalisedReference(reference);
+  const allowance: DetailAllowance = {
+    border: borderFit(sampleShape(generalised, DRAWING_SAMPLES), reference.rings).border,
+    coverage: averageDistanceToBorder(reference.points, generalised),
+    silhouette: silhouetteDeviation(reference.rings, generalised),
+  };
+  detailAllowances.set(countryId, allowance);
+  return allowance;
+}
+
+/** How strongly the aligned border fit says this is an honest tracing rather than a wrong shape. */
+function honestTrackingWeight(fitBorder: number) {
+  return (
+    1 -
+    Math.max(
+      0,
+      Math.min(
+        1,
+        (fitBorder - ALIGNMENT_GUARD_FIT_FLOOR) /
+          (ALIGNMENT_GUARD_FIT_CEILING - ALIGNMENT_GUARD_FIT_FLOOR),
+      ),
+    )
+  );
 }
 
 function centroid(points: DrawPoint[]): DrawPoint {
@@ -903,11 +981,22 @@ export function scoreCountryDrawing(
   const fit = borderFit(drawing.points, reference.rings);
   const coverage = averageDistanceToBorder(reference.points, drawing.rings);
   const sensitivity = silhouetteSensitivity(reference.rings);
+  const rawSilhouette = silhouetteDeviation(reference.rings, drawing.rings);
+  // Forgive each term up to the country's own detail cost — what even an ideal gestalt drawing
+  // would concede to this border — scaled by how clearly the stroke tracks the border at all.
+  // The guards below keep working from the unforgiven values.
+  const allowance = detailAllowance(country.id, reference);
+  const tracking = honestTrackingWeight(fit.border);
+  const forgiven = (term: number, allowed: number) =>
+    term - DETAIL_FORGIVENESS * tracking * Math.min(term, allowed);
+  const borderTerm = forgiven(fit.border, allowance.border);
+  const coverageTerm = forgiven(coverage, allowance.coverage);
   const silhouette = weightedSilhouette(
-    silhouetteDeviation(reference.rings, drawing.rings),
+    forgiven(rawSilhouette, allowance.silhouette),
     sensitivity,
-    fit.border + coverage,
+    borderTerm + coverageTerm,
   );
+  const guardSilhouette = weightedSilhouette(rawSilhouette, sensitivity, fit.border + coverage);
   const strokeQuality = strokeQualityDeviation(
     drawing.rings,
     reference.rings,
@@ -915,18 +1004,18 @@ export function scoreCountryDrawing(
   );
   const islandBalance = islandBalanceDeviation(reference.rings, drawing.rings);
   const weightedDeviation =
-    fit.border * BORDER_FIT_WEIGHT +
-    coverage * COVERAGE_WEIGHT +
+    borderTerm * BORDER_FIT_WEIGHT +
+    coverageTerm * COVERAGE_WEIGHT +
     silhouette * SILHOUETTE_WEIGHT +
     strokeQuality.deviation * STROKE_QUALITY_WEIGHT +
     islandBalance * ISLAND_BALANCE_WEIGHT;
-  let guardDeviation = mismatchGuardDeviation(fit, coverage, silhouette);
+  let guardDeviation = mismatchGuardDeviation(fit, coverage, guardSilhouette);
   // Enclosure fades in like the mismatch guard: seeing it in the drawn-proportions baseline only
   // counts to the extent the final fit failed to prove the drawing traces the same shape, so an
   // archipelago whose aligned strokes hug their islands is never floored as a container.
   let enclosureSeverity = enclosesReference(
     fit,
-    silhouette,
+    guardSilhouette,
     referenceEnclosedShare(reference.points, drawing.rings),
   )
     ? 1
@@ -990,7 +1079,7 @@ export function scoreCountryDrawing(
     mismatchDeviation < RECOGNITION_MISMATCH_FADE &&
     strokeQuality.deviation < 0.5
       ? Math.round(
-          Math.min(scoreFromDeviation(fit.border), scoreFromDeviation(coverage)) *
+          Math.min(scoreFromDeviation(borderTerm), scoreFromDeviation(coverageTerm)) *
             BIDIRECTIONAL_RECOGNITION_FLOOR *
             (1 - mismatchDeviation / RECOGNITION_MISMATCH_FADE),
         )
@@ -999,14 +1088,17 @@ export function scoreCountryDrawing(
     Math.max(scoreFromDeviation(deviation), recognitionFloor),
     strokeAbuseScore(strokeQuality.abuse),
   );
+  // Reported terms are the forgiven ones the score is built from; inside and outside keep their
+  // original proportions of the border term so the breakdown still sums to the deviation.
+  const borderShare = fit.border > 0 ? borderTerm / fit.border : 1;
   return {
     score,
     deviation: percentage(deviation),
     mismatchDeviation: percentage(mismatchDeviation),
-    borderDeviation: percentage(fit.border),
-    outsideDeviation: percentage(fit.outside * BORDER_FIT_WEIGHT),
-    insideDeviation: percentage(fit.inside * BORDER_FIT_WEIGHT),
-    coverageDeviation: percentage(coverage * COVERAGE_WEIGHT),
+    borderDeviation: percentage(borderTerm),
+    outsideDeviation: percentage(fit.outside * borderShare * BORDER_FIT_WEIGHT),
+    insideDeviation: percentage(fit.inside * borderShare * BORDER_FIT_WEIGHT),
+    coverageDeviation: percentage(coverageTerm * COVERAGE_WEIGHT),
     silhouetteDeviation: percentage(silhouette * SILHOUETTE_WEIGHT),
     strokeDeviation: percentage(strokeQuality.deviation * STROKE_QUALITY_WEIGHT),
     islandDeviation: percentage(islandBalance * ISLAND_BALANCE_WEIGHT),

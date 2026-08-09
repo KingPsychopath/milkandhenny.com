@@ -135,6 +135,62 @@ function zigzagWobble(drawing: CountryDrawing): CountryDrawing {
   );
 }
 
+/** Resample a closed ring to `count` evenly spaced points, then round it off like a quick hand. */
+function gestaltRing(ring: DrawPoint[], count: number, window: number): DrawPoint[] {
+  const segmentLength = (index: number) => {
+    const next = ring[(index + 1) % ring.length];
+    return Math.hypot(next.x - ring[index].x, next.y - ring[index].y);
+  };
+  const total = ring.reduce((sum, _, index) => sum + segmentLength(index), 0);
+  const sampled: DrawPoint[] = [];
+  let segment = 0;
+  let traversed = 0;
+  for (let index = 0; index < count; index += 1) {
+    const target = (index / count) * total;
+    while (segment < ring.length - 1 && traversed + segmentLength(segment) < target) {
+      traversed += segmentLength(segment);
+      segment += 1;
+    }
+    const from = ring[segment];
+    const to = ring[(segment + 1) % ring.length];
+    const length = segmentLength(segment);
+    const progress = length ? (target - traversed) / length : 0;
+    sampled.push({
+      x: from.x + (to.x - from.x) * progress,
+      y: from.y + (to.y - from.y) * progress,
+    });
+  }
+  return sampled.map((_, index) => {
+    let x = 0;
+    let y = 0;
+    for (let offset = -window; offset <= window; offset += 1) {
+      const point = sampled[(index + offset + count) % count];
+      x += point.x;
+      y += point.y;
+    }
+    return { x: x / (window * 2 + 1), y: y / (window * 2 + 1) };
+  });
+}
+
+/** The outer envelope of a ring: radius maxed over a window, i.e. the concavities filled in. */
+function envelopeRing(ring: DrawPoint[], window: number): DrawPoint[] {
+  const centreX = ring.reduce((sum, point) => sum + point.x, 0) / ring.length;
+  const centreY = ring.reduce((sum, point) => sum + point.y, 0) / ring.length;
+  const polar = ring.map((point) => ({
+    angle: Math.atan2(point.y - centreY, point.x - centreX),
+    radius: Math.hypot(point.x - centreX, point.y - centreY),
+  }));
+  return polar.map((point, index) => {
+    let radius = 0;
+    for (let offset = -window; offset <= window; offset += 1)
+      radius = Math.max(radius, polar[(index + offset + polar.length) % polar.length].radius);
+    return {
+      x: centreX + Math.cos(point.angle) * radius,
+      y: centreY + Math.sin(point.angle) * radius,
+    };
+  });
+}
+
 function ringSignedArea(ring: DrawPoint[]) {
   let doubled = 0;
   for (let index = 0; index < ring.length; index += 1) {
@@ -620,6 +676,31 @@ describe("draw-country scoring", () => {
     const evaluation = scoreCountryDrawing(bahamas, largestFive);
     expect(evaluation.score).toBeGreaterThanOrEqual(25);
     expect(evaluation.score).toBeLessThanOrEqual(60);
+  });
+
+  it("prices jagged borders at the country's own detail cost, not the player's", () => {
+    // The atlas keeps extreme vertices deliberately, so nobody draws every jag. A smooth line
+    // that captures the whole shape must land in the strong band on a spiky border, perfection
+    // must still beat it, and a featureless oval must gain nothing from the forgiveness.
+    for (const countryId of ["CN", "IS", "BD"]) {
+      const outline = COUNTRIES.find(({ id }) => id === countryId);
+      expect(outline).toBeDefined();
+      if (!outline) continue;
+      const smooth: CountryDrawing = [gestaltRing(exactDrawing(outline)[0], 60, 2)];
+      const smoothScore = scoreCountryDrawing(outline, smooth).score;
+      expect(smoothScore, countryId).toBeGreaterThanOrEqual(72);
+      expect(smoothScore, countryId).toBeLessThan(
+        scoreCountryDrawing(outline, exactDrawing(outline)).score,
+      );
+    }
+
+    const china = COUNTRIES.find(({ id }) => id === "CN");
+    expect(china).toBeDefined();
+    if (!china) throw new Error("China fixture is missing");
+    const oval: CountryDrawing = [
+      gestaltRing(envelopeRing(gestaltRing(exactDrawing(china)[0], 64, 0), 7), 64, 1),
+    ];
+    expect(scoreCountryDrawing(china, oval).score).toBeLessThanOrEqual(35);
   });
 
   it("uses explicit, monotonic calibration anchors", () => {
