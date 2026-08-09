@@ -12,6 +12,8 @@ const GAME_PREFIXES = [
   "things:spelling-bee:",
   "things:twin:",
   "things:centre:",
+  "things:same-brain:",
+  "pitch-remote:",
 ];
 
 export function readExpiringLocalValue<T>(key: string): T | null {

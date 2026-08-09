@@ -14,7 +14,9 @@ function readCredentials(roomId: string): PitchControllerCredentials | undefined
     const parsed = JSON.parse(
       localStorage.getItem(sessionKey(roomId)) ?? "null",
     ) as PitchControllerCredentials | null;
-    return parsed?.roomId === roomId && parsed.expiresAt > Date.now() ? parsed : undefined;
+    if (parsed?.roomId === roomId && parsed.expiresAt > Date.now()) return parsed;
+    if (parsed) localStorage.removeItem(sessionKey(roomId));
+    return undefined;
   } catch {
     return undefined;
   }

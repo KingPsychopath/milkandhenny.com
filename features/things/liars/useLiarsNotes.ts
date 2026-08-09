@@ -1,5 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
+import { readExpiringLocalValue, writeExpiringLocalValue } from "../shared/game-storage.client";
 import { liarsBrowserKeys } from "./liars-keys";
+
+/** Notes outlive a wifi change, not the weekend — the sweep reclaims them after this. */
+const LIARS_NOTES_TTL_MS = 24 * 60 * 60 * 1_000;
 
 /**
  * Your own notebook, as opposed to "what you know" — which is the server's automatic record of
@@ -27,7 +31,7 @@ export function useLiarsNotes(roomId: string, playerId: string, gameNumber: numb
 
   useEffect(() => {
     try {
-      const stored = JSON.parse(localStorage.getItem(key) ?? "[]") as LiarsNote[];
+      const stored = readExpiringLocalValue<LiarsNote[]>(key);
       setNotes(Array.isArray(stored) ? stored.slice(-LIARS_NOTE_LIMIT) : []);
     } catch {
       setNotes([]);
@@ -38,7 +42,7 @@ export function useLiarsNotes(roomId: string, playerId: string, gameNumber: numb
     (next: LiarsNote[]) => {
       setNotes(next);
       try {
-        localStorage.setItem(key, JSON.stringify(next));
+        writeExpiringLocalValue(key, next, Date.now() + LIARS_NOTES_TTL_MS);
       } catch {
         // Still held for this session.
       }
