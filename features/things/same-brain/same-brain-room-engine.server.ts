@@ -19,6 +19,7 @@ import type { MultiplayerLockAttempt } from "../shared/room-primitives.server";
 import { multiplayerFailure } from "../shared/multiplayer";
 import {
   multiplayerPlayerReady,
+  multiplayerUnreadyPlayers,
   requestMultiplayerReadiness,
   setMultiplayerPlayerReady,
 } from "../shared/multiplayer-readiness";
@@ -543,7 +544,14 @@ function snapshot(
     players: room.players.map((player) => summaryOf(room, player, now)),
     hostPlayerId: room.hostPlayerId,
     hostDisconnected: Boolean(host && !connected(host, now)),
-    you: viewer ? { id: viewer.id, answer: viewer.answer, out: viewer.out } : null,
+    you: viewer
+      ? {
+          id: viewer.id,
+          answer: viewer.answer,
+          out: viewer.out,
+          startRequestId: viewer.startRequestId ?? null,
+        }
+      : null,
     // The question is public — the secrecy in this game is only ever about other people's answers,
     // and those stay server-side until the reveal builds a result.
     question: room.phase === "lobby" ? null : room.question,
@@ -786,10 +794,16 @@ export async function applySameBrainHostAction(input: {
           "not_enough_players",
           `${SAME_BRAIN_PLAYER_LIMITS.min} people is the smallest game`,
         );
-      // A player who has not confirmed gets one nudge rather than being started over.
-      if (requestMultiplayerReadiness(room.players, action.actionId, now)) {
-        changed(room);
-        return remembered();
+      // A player who has not confirmed gets buzzed; the host must explicitly start anyway.
+      const unready = multiplayerUnreadyPlayers(room.players);
+      if (unready.length > 0 && !action.force) {
+        if (requestMultiplayerReadiness(unready, action.actionId, now)) changed(room);
+        const names = unready.map(({ name }) => name).join(", ");
+        return reject(
+          view(),
+          "players_not_ready",
+          unready.length === 1 ? `${names} is not ready` : `${names} are not ready`,
+        );
       }
       room.round = 0;
       room.history = [];

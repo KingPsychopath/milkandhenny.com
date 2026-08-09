@@ -1,8 +1,14 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "@tanstack/react-router";
+import { useWebHaptics } from "web-haptics/react";
 import { useWakeLock } from "@/hooks/useWakeLock";
+import { GameActionDialog } from "../shared/GameActionDialog";
 import { GameShell } from "../shared/GameShell";
-import { readExpiringLocalValue, writeExpiringLocalValue } from "../shared/game-storage.client";
+import {
+  clearExpiredGameLocalStorage,
+  readExpiringLocalValue,
+  writeExpiringLocalValue,
+} from "../shared/game-storage.client";
 import { liarsBrowserKeys } from "./liars-keys";
 import {
   liarsRoleSide,
@@ -53,6 +59,10 @@ export function LiarsRoomApp({ roomId }: { roomId: string }) {
     return readExpiringLocalValue<LiarsPlayerCredentials>(liarsBrowserKeys.playerSession(roomId));
   });
 
+  useEffect(() => {
+    clearExpiredGameLocalStorage();
+  }, []);
+
   if (!credentials)
     return (
       <JoinLiarsRoom
@@ -97,6 +107,17 @@ export function LiarsRoom({ credentials }: { credentials: LiarsPlayerCredentials
   });
 
   useWakeLock(Boolean(snapshot) && snapshot?.phase !== "lobby");
+
+  const haptics = useWebHaptics();
+  const previousStartRequest = useRef<string | null>(null);
+  const startRequestId = snapshot?.player?.startRequestId ?? null;
+  const setMessage = room.setMessage;
+  useEffect(() => {
+    if (!startRequestId || startRequestId === previousStartRequest.current) return;
+    previousStartRequest.current = startRequestId;
+    setMessage("The host wants to start — tap “I’m ready” if you stepped away.");
+    void haptics.trigger("heavy");
+  }, [haptics, setMessage, startRequestId]);
 
   const busyRef = useRef(false);
   const send = useCallback(
@@ -289,6 +310,7 @@ function LobbyPhase({ snapshot, isHost, send, sendHost }: PhaseProps) {
   const you = snapshot.player;
   const short = LIARS_PLAYER_LIMITS[snapshot.mode].min - snapshot.players.length;
   const [startAttempted, setStartAttempted] = useState(false);
+  const [confirmingStart, setConfirmingStart] = useState(false);
   const [editingRoles, setEditingRoles] = useState(false);
   const notReady = snapshot.players.filter(({ ready }) => !ready);
   const inviteUrl =
@@ -357,26 +379,49 @@ function LobbyPhase({ snapshot, isHost, send, sendHost }: PhaseProps) {
         />
         {isHost && startAttempted && notReady.length > 0 ? (
           <p className="text-center font-mono text-xs text-white/45">
-            still waiting on {notReady.map(({ name }) => name).join(", ")} — tap again to go
-            without them
+            buzzed {notReady.map(({ name }) => name).join(", ")} — tap again to deal them in
+            unconfirmed
           </p>
         ) : null}
         {isHost ? (
           <ActionButton
             disabled={short > 0}
             onClick={() => {
+              if (startAttempted && notReady.length > 0) {
+                setConfirmingStart(true);
+                return;
+              }
               setStartAttempted(true);
-              void sendHost({ type: "game.start", force: startAttempted });
+              void sendHost({ type: "game.start" });
             }}
           >
             {short > 0
               ? `${short} more ${short === 1 ? "player" : "players"} needed`
-              : startAttempted
+              : startAttempted && notReady.length > 0
                 ? "start anyway"
                 : "start the game"}
           </ActionButton>
         ) : null}
       </div>
+      {confirmingStart ? (
+        <GameActionDialog
+          tone="dark"
+          eyebrow="players not ready"
+          title="Start anyway?"
+          description={`${notReady.map(({ name }) => name).join(" and ")} ${
+            notReady.length === 1 ? "hasn’t" : "haven’t"
+          } confirmed they’re ready. Everyone still gets dealt a role.`}
+          cancelLabel="keep waiting"
+          confirmLabel="deal everyone in"
+          pending={false}
+          pendingLabel="starting…"
+          onCancel={() => setConfirmingStart(false)}
+          onConfirm={() => {
+            setConfirmingStart(false);
+            void sendHost({ type: "game.start", force: true });
+          }}
+        />
+      ) : null}
     </>
   );
 }

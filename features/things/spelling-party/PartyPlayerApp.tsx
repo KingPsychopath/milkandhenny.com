@@ -33,6 +33,7 @@ import { useUpdateReloadSafety } from "@/features/offline/update-safety.client";
 import { useWakeLock } from "@/hooks/useWakeLock";
 import { playPartySpeech, unlockPartyAudio } from "./party-audio.client";
 import { shareOrCopy } from "@/lib/client/share";
+import { useNativeShareAvailability } from "@/hooks/useNativeShareAvailability";
 import { useQrCode } from "@/hooks/useQrCode";
 import { consumeLocationFragment } from "@/lib/client/url-fragment";
 import { buildPartyPlayerInviteUrl, parsePartyPlayerFragment } from "./party-invite";
@@ -172,6 +173,9 @@ function PartyPlayerGame({ credentials }: { credentials: PartyPlayerCredentials 
   const [endConfirmationOpen, setEndConfirmationOpen] = useState(false);
   const [sentenceClueConfirmationOpen, setSentenceClueConfirmationOpen] = useState(false);
   const [removePlayerIds, setRemovePlayerIds] = useState<string[] | null>(null);
+  const [nudgedIds, setNudgedIds] = useState<string[] | null>(null);
+  const nudgedRef = useRef<string[] | null>(null);
+  nudgedRef.current = nudgedIds;
   const [confirmingStart, setConfirmingStart] = useState(false);
   const [requestingSentenceClue, setRequestingSentenceClue] = useState(false);
   const [leaving, setLeaving] = useState(false);
@@ -310,6 +314,12 @@ function PartyPlayerGame({ credentials }: { credentials: PartyPlayerCredentials 
     setLiveMessage("The host wants to start — tap “I’m ready” if you stepped away.");
     void haptics.trigger("heavy");
   }, [haptics, player?.startRequestId, setLiveMessage]);
+
+  const everyoneReady = live.snapshot?.players.every(({ ready }) => ready) ?? true;
+  const snapshotPhase = live.snapshot?.phase;
+  useEffect(() => {
+    if (snapshotPhase !== "lobby" || everyoneReady) setNudgedIds(null);
+  }, [everyoneReady, snapshotPhase]);
 
   // Recorded audio is safe to play anywhere. `spokenWord` is the answer in plain text and only the
   // host is ever sent it, so custom decks still speak on the host's device alone.
@@ -584,13 +594,23 @@ function PartyPlayerGame({ credentials }: { credentials: PartyPlayerCredentials 
           const removable = result.snapshot.players.filter(
             ({ id, ready }) => !ready && id !== credentials.playerId,
           );
-          if (result.snapshot.player?.ready && removable.length > 0)
-            setRemovePlayerIds(removable.map(({ id }) => id));
+          if (result.snapshot.player?.ready && removable.length > 0) {
+            const ids = removable.map(({ id }) => id);
+            // First attempt buzzes the stragglers; a second attempt offers to go without them.
+            if (nudgedRef.current) setRemovePlayerIds(ids);
+            else {
+              setNudgedIds(ids);
+              live.setMessage(
+                `Buzzed ${removable.map(({ name }) => name).join(" and ")} — start again to go without them.`,
+              );
+            }
+          }
         }
         live.notify();
         return;
       }
       setRemovePlayerIds(null);
+      setNudgedIds(null);
       live.notify();
       await live.refresh();
     } catch {
@@ -697,6 +717,14 @@ function PartyPlayerGame({ credentials }: { credentials: PartyPlayerCredentials 
               currentPlayerId={credentials.playerId}
               onReadyChange={(ready) => void setReady(ready)}
               onStart={() => void sendHostAction("round.start")}
+              startLabel={
+                nudgedIds
+                  ? `start without ${snapshot.players
+                      .filter(({ id, ready }) => !ready && id !== credentials.playerId)
+                      .map(({ name }) => name)
+                      .join(" and ")}`
+                  : null
+              }
             />
           ) : (
             <section className="flex flex-1 flex-col justify-center">
@@ -952,6 +980,7 @@ function HostPlayerLobby({
   currentPlayerId,
   onReadyChange,
   onStart,
+  startLabel,
 }: {
   roomId: string;
   invite: string;
@@ -959,9 +988,12 @@ function HostPlayerLobby({
   currentPlayerId: string;
   onReadyChange: (ready: boolean) => void;
   onStart: () => void;
+  /** Overrides the start button label, e.g. after nudging unready players. */
+  startLabel?: string | null;
 }) {
   const [message, setMessage] = useState<string | null>(null);
   const { dataUrl: qr, failed: qrFailed } = useQrCode(invite, 280);
+  const nativeShare = useNativeShareAvailability({ coarsePointerOnly: true });
   const currentPlayer = players.find(({ id }) => id === currentPlayerId);
   const shareInvite = async () => {
     const share = {
@@ -1009,7 +1041,7 @@ function HostPlayerLobby({
         onClick={() => void shareInvite()}
         className="mt-4 min-h-12 rounded-full border border-white/20 px-6 font-mono text-sm font-semibold"
       >
-        share player invite
+        {nativeShare ? "share player invite" : "copy player link"}
       </button>
       <p aria-live="polite" className="mt-2 min-h-5 font-mono text-xs text-amber-200">
         {message}
@@ -1039,7 +1071,7 @@ function HostPlayerLobby({
         onClick={onStart}
         className="mt-6 min-h-16 w-full rounded-full bg-[var(--things-amber)] px-6 font-mono text-sm font-bold text-black"
       >
-        start game
+        {startLabel ?? "start game"}
       </button>
     </section>
   );

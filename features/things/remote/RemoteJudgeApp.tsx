@@ -26,6 +26,7 @@ import {
 } from "../shared/game-storage.client";
 import { EndGameDialog } from "../shared/EndGameDialog";
 import { shareOrCopy } from "@/lib/client/share";
+import { useNativeShareAvailability } from "@/hooks/useNativeShareAvailability";
 import { useQrCode } from "@/hooks/useQrCode";
 import { useRoomReconciler } from "../shared/useRoomReconciler";
 import { consumeLocationFragment } from "@/lib/client/url-fragment";
@@ -123,6 +124,7 @@ export function RemoteJudgeApp({ roomId }: { roomId: string }) {
       ? buildPairedGamePlayerInviteUrl(location.origin, roomId, tokens.playerToken)
       : null;
   const { dataUrl: qrCode, failed: qrFailed } = useQrCode(playerInviteUrl, 280);
+  const nativeShare = useNativeShareAvailability({ coarsePointerOnly: true });
 
   useEffect(() => {
     clearExpiredGameLocalStorage();
@@ -501,7 +503,7 @@ export function RemoteJudgeApp({ roomId }: { roomId: string }) {
                 onClick={() => void handleSharePlayerInvite()}
                 className="mt-5 min-h-12 rounded-full border border-white/20 px-6 font-mono text-sm"
               >
-                share player invite
+                {nativeShare ? "share player invite" : "copy player link"}
               </button>
               <p className="mt-5 font-mono text-xs text-white/45">
                 {playerConnected

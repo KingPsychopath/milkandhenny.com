@@ -1,4 +1,5 @@
 import { useEffect, useId, useState } from "react";
+import { useNativeShareAvailability } from "@/hooks/useNativeShareAvailability";
 import { useQrCode } from "@/hooks/useQrCode";
 import { shareOrCopy } from "@/lib/client/share";
 import type { ReactNode } from "react";
@@ -787,6 +788,7 @@ export function NotesPad({
  */
 export function InvitePanel({ roomId, inviteUrl }: { roomId: string; inviteUrl: string }) {
   const { dataUrl: qr, failed } = useQrCode(inviteUrl || null, 320);
+  const nativeShare = useNativeShareAvailability({ coarsePointerOnly: true });
   const [shareMessage, setShareMessage] = useState<string | null>(null);
 
   const share = async () => {
@@ -828,7 +830,7 @@ export function InvitePanel({ roomId, inviteUrl }: { roomId: string; inviteUrl: 
         onClick={() => void share()}
         className="mt-5 min-h-11 rounded-full border border-white/25 px-6 font-mono text-xs text-white/80 hover:border-[var(--things-amber)] hover:text-[var(--things-amber)]"
       >
-        share the link
+        {nativeShare ? "share the link" : "copy the link"}
       </button>
       <p aria-live="polite" className="mt-2 min-h-5 font-mono text-xs text-[var(--things-amber)]">
         {shareMessage ?? ""}

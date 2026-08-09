@@ -1,11 +1,16 @@
 import { Link } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useWebHaptics } from "web-haptics/react";
+import { useNativeShareAvailability } from "@/hooks/useNativeShareAvailability";
 import { useQrCode } from "@/hooks/useQrCode";
 import { useWakeLock } from "@/hooks/useWakeLock";
 import { shareOrCopy } from "@/lib/client/share";
 import { GameActionDialog } from "../shared/GameActionDialog";
-import { readExpiringLocalValue, writeExpiringLocalValue } from "../shared/game-storage.client";
+import {
+  clearExpiredGameLocalStorage,
+  readExpiringLocalValue,
+  writeExpiringLocalValue,
+} from "../shared/game-storage.client";
 import { gameBrowserKey } from "../shared/multiplayer-keys";
 import { useGameSound } from "../shared/useGameSound";
 import { buildCentrePlayerInviteUrl } from "./centre-invite";
@@ -32,6 +37,7 @@ export function CentreRoomApp({ roomId }: { roomId: string }) {
   const [credentials, setCredentials] = useState<CentrePlayerCredentials | null>(null);
   const [loaded, setLoaded] = useState(false);
   useEffect(() => {
+    clearExpiredGameLocalStorage();
     setCredentials(
       readExpiringLocalValue<CentrePlayerCredentials>(centreBrowserKeys.playerSession(roomId)),
     );
@@ -63,6 +69,8 @@ export function CentreRoom({
   const [elapsed, setElapsed] = useState(0);
   const [replayPlayers, setReplayPlayers] = useState<CentreReplayPlayer[] | null>(null);
   const [removePlayerIds, setRemovePlayerIds] = useState<string[] | null>(null);
+  const [nudgedIds, setNudgedIds] = useState<string[] | null>(null);
+  const [resetNonce, setResetNonce] = useState(0);
   const [pending, setPending] = useState(false);
   const [shareMessage, setShareMessage] = useState<string | null>(null);
   const previousCount = useRef<number | null>(null);
@@ -70,6 +78,12 @@ export function CentreRoom({
   const presenceSequence = useRef(0);
   const lastPresenceAt = useRef(0);
   const retiredCourseHash = useRef<string | null>(null);
+  const nudgedRef = useRef<string[] | null>(null);
+  nudgedRef.current = nudgedIds;
+  const routeRef = useRef(route);
+  routeRef.current = route;
+  const previousStartRequest = useRef<string | null>(null);
+  const replayAttempts = useRef(0);
   const course = snapshot?.course;
   const me = snapshot?.players.find(({ id }) => id === credentials.playerId);
   const snapshotPhase = snapshot?.phase;
@@ -120,10 +134,21 @@ export function CentreRoom({
             const removable = result.snapshot.players.filter(
               ({ id, ready }) => !ready && id !== credentials.playerId,
             );
-            if (result.snapshot.ready && removable.length > 0)
-              setRemovePlayerIds(removable.map(({ id }) => id));
+            if (result.snapshot.ready && removable.length > 0) {
+              const ids = removable.map(({ id }) => id);
+              if (nudgedRef.current) setRemovePlayerIds(ids);
+              else {
+                setNudgedIds(ids);
+                setMessage(
+                  `Buzzed ${removable.map(({ name }) => name).join(" and ")} — start again to go without them.`,
+                );
+              }
+            }
           }
-        } else setRemovePlayerIds(null);
+        } else {
+          setRemovePlayerIds(null);
+          setNudgedIds(null);
+        }
         notify();
         return result;
       } catch {
@@ -146,6 +171,35 @@ export function CentreRoom({
     retiredCourseHash.current = courseHash;
     void send({ type: "race.retire", courseHash, route }, true);
   }, [courseHash, me?.elapsedMs, route, send, snapshotPhase]);
+
+  const everyoneReady = snapshot?.players.every(({ ready }) => ready) ?? true;
+  useEffect(() => {
+    if (snapshotPhase !== "lobby" || everyoneReady) setNudgedIds(null);
+  }, [everyoneReady, snapshotPhase]);
+
+  const startRequestId = snapshot?.startRequestId ?? null;
+  useEffect(() => {
+    if (!startRequestId || startRequestId === previousStartRequest.current) return;
+    previousStartRequest.current = startRequestId;
+    setMessage("The host wants to start — tap ready when you’re back.");
+    playCentreSound("count", sound.effects);
+    void haptics.trigger("heavy");
+  }, [haptics, setMessage, sound.effects, startRequestId]);
+
+  useEffect(() => {
+    if (
+      (snapshotPhase !== "racing" && snapshotPhase !== "finishing") ||
+      !courseHash ||
+      me?.elapsedMs !== null
+    )
+      return;
+    const timer = window.setInterval(() => {
+      const current = routeRef.current;
+      if (current.segments.length === 0) return;
+      void send({ type: "race.progress", courseHash, route: current }, true);
+    }, 5_000);
+    return () => window.clearInterval(timer);
+  }, [courseHash, me?.elapsedMs, send, snapshotPhase]);
 
   useEffect(() => {
     if (!courseStartsAt || snapshotPhase !== "countdown") return;
@@ -184,22 +238,37 @@ export function CentreRoom({
     previousPhase.current = phase;
   }, [haptics, snapshotPhase, sound.effects]);
 
+  const playerCount = snapshot?.players.length ?? 0;
   useEffect(() => {
-    if (snapshotPhase !== "finished" || replayPlayers) return;
-    const timer = window.setTimeout(() => {
-      void readCentreReplayFn({
-        data: { roomId, playerId: credentials.playerId, playerToken: credentials.playerToken },
-      })
-        .then((result) => {
-          if (result.ok) setReplayPlayers(result.players);
-          else setMessage(result.error);
+    if (snapshotPhase !== "finished") {
+      replayAttempts.current = 0;
+      return;
+    }
+    // Keep refetching briefly so late DNF routes (race.retire from other
+    // devices) still make it into the replay.
+    if (replayPlayers && (replayPlayers.length >= playerCount || replayAttempts.current >= 5))
+      return;
+    const timer = window.setTimeout(
+      () => {
+        replayAttempts.current += 1;
+        void readCentreReplayFn({
+          data: { roomId, playerId: credentials.playerId, playerToken: credentials.playerToken },
         })
-        .catch(() => setMessage("The route replay could not be loaded."));
-    }, 750);
+          .then((result) => {
+            if (result.ok) setReplayPlayers(result.players);
+            else if (!replayPlayers) setMessage(result.error);
+          })
+          .catch(() => {
+            if (!replayPlayers) setMessage("The route replay could not be loaded.");
+          });
+      },
+      replayPlayers ? 2_000 : 750,
+    );
     return () => window.clearTimeout(timer);
   }, [
     credentials.playerId,
     credentials.playerToken,
+    playerCount,
     replayPlayers,
     roomId,
     setMessage,
@@ -238,6 +307,7 @@ export function CentreRoom({
       <CentreLobby
         snapshot={snapshot}
         playerId={credentials.playerId}
+        nudged={nudgedIds !== null}
         invite={invite}
         connection={live.connectionState}
         message={shareMessage ?? live.message}
@@ -348,6 +418,7 @@ export function CentreRoom({
             route={route}
             playerColour={me.colour}
             rivalPoints={rivalPoints}
+            resetNonce={resetNonce}
             onRouteChange={(next) => {
               setRoute(next);
               const point = next.segments.at(-1)?.at(-1);
@@ -413,6 +484,7 @@ export function CentreRoom({
               disabled={snapshot.phase !== "racing" || ownFinished}
               onClick={() => {
                 const point = { ...centreEntrancePoint(maze, me.entranceIndex!), t: elapsed };
+                setResetNonce((nonce) => nonce + 1);
                 setRoute((current) => ({ ...current, segments: [...current.segments, [point]] }));
               }}
             >
@@ -454,6 +526,7 @@ export function CentreRoom({
 function CentreLobby({
   snapshot,
   playerId,
+  nudged,
   invite,
   connection,
   message,
@@ -465,6 +538,7 @@ function CentreLobby({
 }: {
   snapshot: NonNullable<ReturnType<typeof useCentreRoom>["snapshot"]>;
   playerId: string;
+  nudged: boolean;
   invite: string;
   connection: string;
   message: string | null;
@@ -475,6 +549,7 @@ function CentreLobby({
   onStart: () => void;
 }) {
   const { dataUrl: qr, failed } = useQrCode(invite, 280);
+  const nativeShare = useNativeShareAvailability({ coarsePointerOnly: true });
   const me = snapshot.players.find(({ id }) => id === playerId);
   const share = async () => {
     const result = await shareOrCopy(
@@ -513,7 +588,7 @@ function CentreLobby({
         ) : null}
         <p className="centre-code">{snapshot.roomId}</p>
         <button type="button" className="centre-button" onClick={() => void share()}>
-          share invite
+          {nativeShare ? "share invite" : "copy invite link"}
         </button>
         <p aria-live="polite" className="centre-message">
           {message}
@@ -554,14 +629,23 @@ function CentreLobby({
         <button
           type="button"
           aria-pressed={me?.ready ?? true}
-          className="centre-button"
+          className={`centre-button${me?.ready ? "" : " centre-button--go"}`}
           onClick={() => onReady(!(me?.ready ?? true))}
         >
-          {me?.ready ? "ready · tap to wait" : "not ready · tap when ready"}
+          {me?.ready
+            ? "ready · tap to wait"
+            : snapshot.startRequestId
+              ? "the host is waiting — tap when ready"
+              : "not ready · tap when ready"}
         </button>
         {snapshot.canControl ? (
           <button type="button" className="centre-button centre-button--go" onClick={onStart}>
-            start · {snapshot.players.length} racing
+            {nudged
+              ? `start without ${snapshot.players
+                  .filter(({ ready, id }) => !ready && id !== playerId)
+                  .map(({ name }) => name)
+                  .join(" and ")}`
+              : `start · ${snapshot.players.length} racing`}
           </button>
         ) : (
           <p className="centre-note">waiting for the host</p>

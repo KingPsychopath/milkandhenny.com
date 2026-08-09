@@ -121,6 +121,8 @@ export interface SameBrainSnapshot extends MultiplayerSequence {
     /** Your own answer this round, echoed back so a reconnect does not lose it. */
     answer: string | null;
     out: boolean;
+    /** Set when the host tried to start while you were not ready — the buzz. */
+    startRequestId: string | null;
   } | null;
   /** The current question. Null in the lobby. */
   question: string | null;
@@ -147,7 +149,8 @@ export type SameBrainRejectionCode =
   | "invalid_answer"
   | "action_unavailable"
   | "out_of_game"
-  | "not_enough_players";
+  | "not_enough_players"
+  | "players_not_ready";
 
 export type SameBrainHostAction = MultiplayerAction &
   (
@@ -158,7 +161,7 @@ export type SameBrainHostAction = MultiplayerAction &
         toggles?: Partial<SameBrainToggles>;
         timings?: Partial<SameBrainTimings>;
       }
-    | { type: "game.start" }
+    | { type: "game.start"; force?: boolean }
     | { type: "game.skipQuestion" }
     | { type: "phase.extend" }
     | { type: "phase.advance" }

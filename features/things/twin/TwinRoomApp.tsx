@@ -2,7 +2,11 @@ import { Link } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 import { useWebHaptics } from "web-haptics/react";
 import { useWakeLock } from "@/hooks/useWakeLock";
-import { readExpiringLocalValue, writeExpiringLocalValue } from "../shared/game-storage.client";
+import {
+  clearExpiredGameLocalStorage,
+  readExpiringLocalValue,
+  writeExpiringLocalValue,
+} from "../shared/game-storage.client";
 import { GameActionDialog } from "../shared/GameActionDialog";
 import { captureTwinInvite } from "./invite.client";
 import { JoinTwinRoom } from "./JoinTwinRoom";
@@ -24,6 +28,7 @@ export function TwinRoomApp({ roomId }: { roomId: string }) {
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
+    clearExpiredGameLocalStorage();
     setCredentials(
       readExpiringLocalValue<TwinPlayerCredentials>(twinBrowserKeys.playerSession(roomId)),
     );
@@ -64,6 +69,9 @@ export function TwinRoom({
   // Two states, not three: twin has nothing that reads aloud, so "no voice" would be a dead option.
   const sound = useGameSound(gameBrowserKey("twin", 1, "sound"), ["all", "off"]);
   const [removePlayerIds, setRemovePlayerIds] = useState<string[] | null>(null);
+  const [nudgedIds, setNudgedIds] = useState<string[] | null>(null);
+  const nudgedRef = useRef<string[] | null>(null);
+  nudgedRef.current = nudgedIds;
   const [confirmingStart, setConfirmingStart] = useState(false);
   const [restarting, setRestarting] = useState(false);
   const previousPhase = useRef(snapshot?.phase);
@@ -103,6 +111,12 @@ export function TwinRoom({
     previousPhase.current = phase;
   }, [haptics, snapshot?.phase, sound.effects]);
 
+  const everyoneReady = snapshot?.players.every(({ ready }) => ready) ?? true;
+  const snapshotPhase = snapshot?.phase;
+  useEffect(() => {
+    if (snapshotPhase !== "lobby" || everyoneReady) setNudgedIds(null);
+  }, [everyoneReady, snapshotPhase]);
+
   useEffect(() => {
     const requestId = snapshot?.player?.startRequestId ?? null;
     if (!requestId || requestId === previousStartRequest.current) return;
@@ -135,11 +149,21 @@ export function TwinRoom({
           const removable = result.snapshot.players.filter(
             ({ id, ready }) => !ready && id !== credentials.playerId,
           );
-          if (result.snapshot.player?.ready && removable.length > 0)
-            setRemovePlayerIds(removable.map(({ id }) => id));
+          if (result.snapshot.player?.ready && removable.length > 0) {
+            const ids = removable.map(({ id }) => id);
+            // First attempt buzzes the stragglers; a second attempt offers to go without them.
+            if (nudgedRef.current) setRemovePlayerIds(ids);
+            else {
+              setNudgedIds(ids);
+              live.setMessage(
+                `Buzzed ${removable.map(({ name }) => name).join(" and ")} — start again to go without them.`,
+              );
+            }
+          }
         }
       } else {
         setRemovePlayerIds(null);
+        setNudgedIds(null);
       }
       live.notify();
     } catch {
@@ -169,6 +193,14 @@ export function TwinRoom({
           connection={live.connectionState}
           message={live.message}
           onReadyChange={(ready) => void send({ type: "readiness.set", ready })}
+          startLabel={
+            nudgedIds
+              ? `start without ${snapshot.players
+                  .filter(({ id, ready }) => !ready && id !== credentials.playerId)
+                  .map(({ name }) => name)
+                  .join(" and ")}`
+              : null
+          }
           onStart={() => {
             // The browser only lets audio start from a gesture, and this is the last one before play.
             primeTwinAudio();

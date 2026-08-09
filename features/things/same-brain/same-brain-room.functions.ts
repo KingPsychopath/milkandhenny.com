@@ -91,8 +91,9 @@ function hostAction(value: unknown): SameBrainHostAction {
     };
   if (data.type === "result.reset")
     return { actionId: id, type: data.type, round: sequence(data.round) };
+  if (data.type === "game.start")
+    return { actionId: id, type: data.type, force: data.force === true };
   if (
-    data.type === "game.start" ||
     data.type === "game.skipQuestion" ||
     data.type === "phase.extend" ||
     data.type === "phase.advance" ||

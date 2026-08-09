@@ -1,7 +1,10 @@
 import { Link } from "@tanstack/react-router";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useWebHaptics } from "web-haptics/react";
+import { GameActionDialog } from "../shared/GameActionDialog";
 import { GameShell } from "../shared/GameShell";
 import {
+  clearExpiredGameLocalStorage,
   readExpiringLocalValue,
   removeStorageKeys,
   writeExpiringLocalValue,
@@ -45,6 +48,10 @@ export function SameBrainRoomApp({ roomId }: { roomId: string }) {
     );
   });
 
+  useEffect(() => {
+    clearExpiredGameLocalStorage();
+  }, []);
+
   if (!credentials)
     return (
       <JoinSameBrainRoom
@@ -78,6 +85,17 @@ export function SameBrainRoom({ credentials }: { credentials: SameBrainPlayerCre
   });
   const snapshot = room.snapshot;
   useWakeLock(Boolean(snapshot) && snapshot?.phase !== "lobby");
+
+  const haptics = useWebHaptics();
+  const previousStartRequest = useRef<string | null>(null);
+  const startRequestId = snapshot?.you?.startRequestId ?? null;
+  const setMessage = room.setMessage;
+  useEffect(() => {
+    if (!startRequestId || startRequestId === previousStartRequest.current) return;
+    previousStartRequest.current = startRequestId;
+    setMessage("The host wants to start — tap “I’m ready” if you stepped away.");
+    void haptics.trigger("heavy");
+  }, [haptics, setMessage, startRequestId]);
 
   const busyRef = useRef(false);
   const send = useCallback(
@@ -245,6 +263,9 @@ function LobbyPhase({
   sendHost: Send;
 }) {
   const enough = snapshot.players.length >= SAME_BRAIN_PLAYER_LIMITS.min;
+  const [startAttempted, setStartAttempted] = useState(false);
+  const [confirmingStart, setConfirmingStart] = useState(false);
+  const notReady = snapshot.players.filter(({ ready }) => !ready);
   const inviteUrl =
     typeof window === "undefined"
       ? ""
@@ -353,10 +374,49 @@ function LobbyPhase({
           />
 
           <div className="mt-8">
-            <ActionButton onClick={() => void sendHost({ type: "game.start" })} disabled={!enough}>
-              {enough ? "start" : `${SAME_BRAIN_PLAYER_LIMITS.min} people is the smallest game`}
+            {startAttempted && notReady.length > 0 ? (
+              <p className="mb-3 text-center font-mono text-xs text-white/45">
+                buzzed {notReady.map(({ name }) => name).join(", ")} — tap again to start without
+                waiting
+              </p>
+            ) : null}
+            <ActionButton
+              onClick={() => {
+                if (startAttempted && notReady.length > 0) {
+                  setConfirmingStart(true);
+                  return;
+                }
+                setStartAttempted(true);
+                void sendHost({ type: "game.start" });
+              }}
+              disabled={!enough}
+            >
+              {!enough
+                ? `${SAME_BRAIN_PLAYER_LIMITS.min} people is the smallest game`
+                : startAttempted && notReady.length > 0
+                  ? "start anyway"
+                  : "start"}
             </ActionButton>
           </div>
+          {confirmingStart ? (
+            <GameActionDialog
+              tone="dark"
+              eyebrow="players not ready"
+              title="Start anyway?"
+              description={`${notReady.map(({ name }) => name).join(" and ")} ${
+                notReady.length === 1 ? "hasn’t" : "haven’t"
+              } confirmed they’re ready. They stay in the game and can answer when they’re back.`}
+              cancelLabel="keep waiting"
+              confirmLabel="start anyway"
+              pending={false}
+              pendingLabel="starting…"
+              onCancel={() => setConfirmingStart(false)}
+              onConfirm={() => {
+                setConfirmingStart(false);
+                void sendHost({ type: "game.start", force: true });
+              }}
+            />
+          ) : null}
         </section>
       ) : (
         <p className="mt-8 font-mono text-xs text-white/40">

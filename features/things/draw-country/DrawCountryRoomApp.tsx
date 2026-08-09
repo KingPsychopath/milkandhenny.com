@@ -1,7 +1,11 @@
 import { Link } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 import { useWebHaptics } from "web-haptics/react";
-import { readExpiringLocalValue, writeExpiringLocalValue } from "../shared/game-storage.client";
+import {
+  clearExpiredGameLocalStorage,
+  readExpiringLocalValue,
+  writeExpiringLocalValue,
+} from "../shared/game-storage.client";
 import { GameActionDialog } from "../shared/GameActionDialog";
 import { CountryRoundBoard } from "./CountryRoundBoard";
 import { applyDrawCountryActionFn } from "./draw-country-room.functions";
@@ -27,6 +31,7 @@ export function DrawCountryRoomApp({ roomId }: { roomId: string }) {
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
+    clearExpiredGameLocalStorage();
     setCredentials(
       readExpiringLocalValue<DrawCountryPlayerCredentials>(
         drawCountryBrowserKeys.playerSession(roomId),
@@ -104,6 +109,9 @@ function DrawCountryRoom({
   const previousPhase = useRef(snapshot?.phase);
   const previousStartRequest = useRef<string | null>(null);
   const [removePlayerIds, setRemovePlayerIds] = useState<string[] | null>(null);
+  const [nudgedIds, setNudgedIds] = useState<string[] | null>(null);
+  const nudgedRef = useRef<string[] | null>(null);
+  nudgedRef.current = nudgedIds;
   const [confirmingStart, setConfirmingStart] = useState(false);
   const [restarting, setRestarting] = useState(false);
   const [country, setCountry] = useState<CountryOutline | null>(null);
@@ -173,6 +181,12 @@ function DrawCountryRoom({
     void haptics.trigger("heavy");
   }, [haptics, setLiveMessage, snapshot?.player?.startRequestId]);
 
+  const everyoneReady = snapshot?.players.every(({ ready }) => ready) ?? true;
+  const snapshotPhase = snapshot?.phase;
+  useEffect(() => {
+    if (snapshotPhase !== "lobby" || everyoneReady) setNudgedIds(null);
+  }, [everyoneReady, snapshotPhase]);
+
   const setDrawing = (next: CountryDrawing) => {
     setDrawingState(next);
     if (roundId) sessionStorage.setItem(drawingKey(roomId, roundId), JSON.stringify(next));
@@ -241,11 +255,21 @@ function DrawCountryRoom({
           const removable = result.snapshot.players.filter(
             ({ id, ready }) => !ready && id !== credentials.playerId,
           );
-          if (result.snapshot.player.ready && removable.length > 0)
-            setRemovePlayerIds(removable.map(({ id }) => id));
+          if (result.snapshot.player.ready && removable.length > 0) {
+            const ids = removable.map(({ id }) => id);
+            // First attempt buzzes the stragglers; a second attempt offers to go without them.
+            if (nudgedRef.current) setRemovePlayerIds(ids);
+            else {
+              setNudgedIds(ids);
+              live.setMessage(
+                `Buzzed ${removable.map(({ name }) => name).join(" and ")} — start again to go without them.`,
+              );
+            }
+          }
         }
       } else {
         setRemovePlayerIds(null);
+        setNudgedIds(null);
         void haptics.trigger("selection");
       }
       live.notify();
@@ -301,6 +325,14 @@ function DrawCountryRoom({
           message={live.message}
           onReadyChange={(ready) => void control({ type: "readiness.set", ready })}
           onStart={() => void control({ type: "game.start" })}
+          startLabel={
+            nudgedIds
+              ? `start without ${snapshot.players
+                  .filter(({ id, ready }) => !ready && id !== credentials.playerId)
+                  .map(({ name }) => name)
+                  .join(" and ")}`
+              : null
+          }
         />
         {removePlayerIds ? (
           <GameActionDialog
