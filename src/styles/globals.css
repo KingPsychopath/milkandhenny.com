@@ -847,8 +847,12 @@
     animation-duration: 460ms;
   }
 
-  .country-reveal-guide--gap {
-    stroke: var(--things-country-gap);
+  .country-reveal-guide--outside {
+    stroke: var(--things-country-outside);
+  }
+
+  .country-reveal-guide--inside {
+    stroke: var(--things-country-inside);
   }
 
   .country-reveal-guide--missed {
@@ -887,8 +891,14 @@
     filter: opacity(0.42);
   }
 
-  .country-reveal-board[data-focus="outline"] .country-reveal-guide--gap {
+  .country-reveal-board[data-focus="outline"] .country-reveal-guide {
     stroke-width: 3;
+  }
+
+  .country-reveal-board[data-focus="coverage"]
+    .country-reveal-guide:not(.country-reveal-guide--missed),
+  .country-reveal-board[data-focus="coverage"] .country-reveal-point {
+    filter: opacity(0.08);
   }
 
   .country-reveal-board[data-focus="coverage"] .country-reveal-drawing {
@@ -941,6 +951,8 @@
 
   .country-legend-reference,
   .country-legend-drawing,
+  .country-legend-outside,
+  .country-legend-inside,
   .country-legend-gap {
     display: inline-block;
     width: 1.5rem;
@@ -953,6 +965,14 @@
 
   .country-legend-drawing {
     border-color: var(--things-country-point);
+  }
+
+  .country-legend-outside {
+    border-color: var(--things-country-outside);
+  }
+
+  .country-legend-inside {
+    border-color: var(--things-country-inside);
   }
 
   .country-legend-gap {

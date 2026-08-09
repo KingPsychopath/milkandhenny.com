@@ -1,5 +1,5 @@
 import { useId, useState } from "react";
-import { closestOnBorder, ringLength } from "./geometry";
+import { closestOnBorder, pointInShape, ringLength } from "./geometry";
 import { countryScoreBreakdown, type CountryEvaluation, type CountryFeedbackKey } from "./scoring";
 import type { CountryDrawing, DrawPoint } from "./types";
 
@@ -9,7 +9,7 @@ const MAX_GUIDES = 40;
 const MAX_MISSED_GUIDES = 24;
 
 const SCORE_EXPLANATIONS: Record<CountryFeedbackKey, string> = {
-  outline: "Amber guides show where your line moved away from the real border.",
+  outline: "Red guides show points outside the real border. Blue guides show points inside it.",
   coverage: "Dashed guides point to coast you shortened, skipped, or placed elsewhere.",
   shape: "The fills compare the overall silhouettes, after position and size are aligned.",
   strokes: "A clean, single outline scores best. Extra crossings and repeated tracing lose points.",
@@ -78,6 +78,7 @@ function guideLines(drawing: CountryDrawing, reference: CountryDrawing) {
   return guidePoints(drawing).map((point) => ({
     point,
     target: closestOnBorder(point, reference).point,
+    position: pointInShape(point, reference) ? "inside" : "outside",
   }));
 }
 
@@ -97,7 +98,7 @@ export function CountryReveal({
   focus: CountryFeedbackKey | null;
   id: string;
 }) {
-  const guides = focus === "outline" ? guideLines(evaluation.drawing, evaluation.reference) : [];
+  const guides = guideLines(evaluation.drawing, evaluation.reference);
   const missedGuides =
     focus === "coverage" ? missedGuideLines(evaluation.reference, evaluation.drawing) : [];
   return (
@@ -106,7 +107,7 @@ export function CountryReveal({
       viewBox="0 0 1000 1000"
       role="img"
       data-focus={focus ?? "all"}
-      aria-label={`Real country border compared with your drawing after position and size are aligned. Score ${evaluation.score} out of 100.${focus ? ` ${SCORE_EXPLANATIONS[focus]}` : ""}`}
+      aria-label={`Real country border compared with your drawing after position and size are aligned. Red lines connect points outside the border to it. Blue lines connect points inside the border to it. Score ${evaluation.score} out of 100.${focus ? ` ${SCORE_EXPLANATIONS[focus]}` : ""}`}
       className="country-reveal-board block aspect-square w-full rounded-[1.75rem] border border-black/15 bg-white/45"
     >
       <title>Reference country border and your aligned drawing</title>
@@ -138,7 +139,7 @@ export function CountryReveal({
           />
         ))}
       </g>
-      {guides.map(({ point, target }, index) => (
+      {guides.map(({ point, target, position }, index) => (
         <line
           key={index}
           x1={OFFSET + point.x * SCALE}
@@ -146,7 +147,7 @@ export function CountryReveal({
           x2={OFFSET + target.x * SCALE}
           y2={OFFSET + target.y * SCALE}
           pathLength="1"
-          className="country-reveal-guide country-reveal-guide--gap"
+          className={`country-reveal-guide country-reveal-guide--${position}`}
           strokeWidth="2"
           style={{ animationDelay: `${760 + index * 22}ms` }}
         />
@@ -177,13 +178,13 @@ export function CountryReveal({
           style={{ animationDelay: `${280 + Math.min(index * 45, 260)}ms` }}
         />
       ))}
-      {guides.map(({ point }, index) => (
+      {guides.map(({ point, position }, index) => (
         <circle
           key={`point-${index}`}
           cx={OFFSET + point.x * SCALE}
           cy={OFFSET + point.y * SCALE}
           r="4"
-          className="country-reveal-point"
+          className={`country-reveal-point country-reveal-point--${position}`}
           style={{ animationDelay: `${880 + index * 22}ms` }}
         />
       ))}
@@ -206,10 +207,18 @@ export function CountryRevealLegend({ focus }: { focus: CountryFeedbackKey | nul
           <span className="country-legend-drawing" aria-hidden="true" />
           your drawing
         </li>
-        {focus === "outline" || focus === "coverage" ? (
+        <li className="flex items-center gap-2">
+          <span className="country-legend-outside" aria-hidden="true" />
+          outside border
+        </li>
+        <li className="flex items-center gap-2">
+          <span className="country-legend-inside" aria-hidden="true" />
+          inside border
+        </li>
+        {focus === "coverage" ? (
           <li className="flex items-center gap-2">
             <span className="country-legend-gap" aria-hidden="true" />
-            {focus === "outline" ? "border gap" : "coast missed"}
+            coast missed
           </li>
         ) : null}
       </ul>
