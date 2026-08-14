@@ -83,6 +83,9 @@ export function EventDetailPage({
 }) {
   const revealed = isRevealed(event);
   const ticketsExist = hasTickets(event);
+  const doorsAt = event.doorsAt;
+  const doorsDifferFromStart =
+    doorsAt && new Date(doorsAt).getTime() !== new Date(event.startsAt).getTime();
 
   return (
     <div className="min-h-screen bg-background">
@@ -129,7 +132,9 @@ export function EventDetailPage({
             {formatEventDate(event.startsAt, event.timezone)}
             <br />
             <span className="theme-subtle">
-              {event.doorsAt ? `Doors ${formatEventTime(event.doorsAt, event.timezone)} · ` : ""}
+              {doorsDifferFromStart
+                ? `Doors ${formatEventTime(doorsAt, event.timezone)} · `
+                : ""}
               {formatEventTime(event.startsAt, event.timezone)}
               {event.endsAt ? ` – ${formatEventTime(event.endsAt, event.timezone)}` : ""}
             </span>
