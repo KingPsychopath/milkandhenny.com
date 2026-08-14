@@ -2,27 +2,35 @@ type DatabaseBootState =
   | { status: "pending" | "migrating" | "ready" }
   | { status: "failed"; reason: string };
 
-let state: DatabaseBootState = { status: "pending" };
+const STATE_KEY = "__milkandhennyDatabaseBootState";
+
+type RuntimeGlobal = typeof globalThis & {
+  [STATE_KEY]?: DatabaseBootState;
+};
+
+function setState(state: DatabaseBootState): void {
+  (globalThis as RuntimeGlobal)[STATE_KEY] = state;
+}
 
 export function markDatabaseMigrationsStarted(): void {
-  state = { status: "migrating" };
+  setState({ status: "migrating" });
 }
 
 export function markDatabaseReady(): void {
-  state = { status: "ready" };
+  setState({ status: "ready" });
 }
 
 export function markDatabaseFailed(error: unknown): void {
-  state = {
+  setState({
     status: "failed",
     reason: error instanceof Error ? error.name : "MigrationError",
-  };
+  });
 }
 
 export function getDatabaseBootState(): DatabaseBootState {
-  return state;
+  return (globalThis as RuntimeGlobal)[STATE_KEY] ?? { status: "pending" };
 }
 
 export function resetDatabaseBootStateForTests(): void {
-  state = { status: "pending" };
+  setState({ status: "pending" });
 }
