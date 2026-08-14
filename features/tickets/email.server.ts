@@ -7,6 +7,8 @@ import { formatEventDateTime, formatMoney } from "@/features/events/types";
 import type { EventRecord } from "@/features/events/types";
 import { buildTicketQrPayload } from "./qr.server";
 import type { TicketRecord } from "./types";
+import { BASE_URL } from "@/lib/shared/config";
+import { escapeEmailHtml as escapeHtml, renderBrandedEmail } from "@/lib/shared/email-design";
 
 /**
  * Ticket delivery email.
@@ -16,15 +18,6 @@ import type { TicketRecord } from "./types";
  * images are blocked by default in most clients — but the link is what
  * actually gets someone through the door if the image never renders.
  */
-
-function escapeHtml(value: string): string {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
-}
 
 async function renderQrAttachment(payload: string): Promise<EmailAttachment | null> {
   try {
@@ -100,26 +93,26 @@ function buildHtml(
     )
     .join("");
 
-  return `<div style="font-family:ui-monospace,SFMono-Regular,Menlo,monospace;background:#fafaf9;color:#1c1917;padding:24px">
-  <div style="max-width:520px;margin:0 auto">
-    <h1 style="font-family:Georgia,serif;font-size:24px;margin:0 0 4px">${escapeHtml(event.title)}</h1>
-    <p style="margin:0 0 16px;color:#78716c">${when}</p>
-    ${detail.length > 0 ? `<p style="margin:0 0 20px;line-height:1.6">${detail.join("<br>")}</p>` : ""}
+  const contentHtml = `${detail.length > 0 ? `<p style="margin:0 0 20px">${detail.join("<br>")}</p>` : ""}
     ${hasQr ? `<div style="text-align:center;margin:24px 0"><img src="cid:ticketqr" width="240" height="240" alt="Ticket QR code" style="max-width:100%"></div>` : ""}
     <div style="border-top:1px solid #e7e5e4;padding-top:16px">${ticketRows}</div>
-    <p style="margin:20px 0 0;color:#78716c;font-size:13px;line-height:1.6">
+    <p style="margin:20px 0 0;color:#78716c;font:13px/1.6 ui-monospace,SFMono-Regular,Menlo,monospace">
       Open the link at the door and we'll scan it. Screenshots work too.
       ${event.lastEntryAt ? `Last entry ${escapeHtml(formatEventDateTime(event.lastEntryAt, event.timezone))}.` : ""}
       ${event.ageLimit ? escapeHtml(event.ageLimit) + "." : ""}
     </p>
-    <div style="border-top:1px solid #e7e5e4;margin-top:20px;padding-top:16px;color:#78716c;font-size:12px;line-height:1.6">
+    <div style="border-top:1px solid #e7e5e4;margin-top:20px;padding-top:16px;color:#78716c;font:12px/1.6 ui-monospace,SFMono-Regular,Menlo,monospace">
       <strong style="color:#1c1917">Ticket terms</strong><br>
       ${escapeHtml(event.terms ?? "Tickets are for this named, dated event. Entry is subject to the event details and house rules.")}<br><br>
       ${escapeHtml(event.refundPolicy ?? "Self-serve refunds are available before doors open while nobody on the order has checked in. After that, contact us so the door record can be reviewed.")}
-    </div>
-    <p style="margin:24px 0 0;color:#a8a29e;font-size:12px">milk &amp; henny</p>
-  </div>
-</div>`;
+    </div>`;
+  return renderBrandedEmail({
+    origin,
+    label: tickets.length === 1 ? "your ticket" : `your ${tickets.length} tickets`,
+    title: event.title,
+    meta: when,
+    contentHtml,
+  });
 }
 
 export type TicketEmailResult = { queued: boolean; error?: string };
@@ -182,8 +175,9 @@ export function renderEventMessage(input: {
   event: EventRecord;
   subject: string;
   body: string;
+  origin?: string;
 }): RenderedEmail {
-  const { event, subject, body } = input;
+  const { event, subject, body, origin = BASE_URL } = input;
   const when = formatEventDateTime(event.startsAt, event.timezone);
 
   const text = [body.trim(), "", `${event.title} · ${when}`, "", "— milk & henny"].join("\n");
@@ -197,14 +191,13 @@ export function renderEventMessage(input: {
     )
     .join("");
 
-  const html = `<div style="font-family:ui-monospace,SFMono-Regular,Menlo,monospace;background:#fafaf9;color:#1c1917;padding:24px">
-  <div style="max-width:520px;margin:0 auto">
-    <h1 style="font-family:Georgia,serif;font-size:24px;margin:0 0 4px">${escapeHtml(subject)}</h1>
-    <p style="margin:0 0 20px;color:#78716c">${escapeHtml(event.title)} · ${escapeHtml(when)}</p>
-    ${paragraphs}
-    <p style="margin:24px 0 0;color:#a8a29e;font-size:12px">milk &amp; henny</p>
-  </div>
-</div>`;
+  const html = renderBrandedEmail({
+    origin,
+    label: "event update",
+    title: subject,
+    meta: `${event.title} · ${when}`,
+    contentHtml: paragraphs,
+  });
 
   return { subject, text, html };
 }
@@ -249,16 +242,15 @@ export async function sendRefundEmail(input: {
         `<li style="margin:0 0 6px">${escapeHtml(ticket.holderName)} <span style="color:#78716c">${escapeHtml(ticket.id)}</span></li>`,
     )
     .join("");
-  const html = `<div style="font-family:ui-monospace,SFMono-Regular,Menlo,monospace;background:#fafaf9;color:#1c1917;padding:24px">
-  <div style="max-width:520px;margin:0 auto">
-    <h1 style="font-family:Georgia,serif;font-size:24px;margin:0 0 4px">Refund confirmed</h1>
-    <p style="margin:0 0 20px;color:#78716c">${escapeHtml(event.title)} · ${escapeHtml(when)}</p>
-    <p style="margin:0 0 12px;line-height:1.6">${amount ? `${escapeHtml(amount)} for ` : ""}${ticketLabel} is on its way back to the original payment method. It usually arrives within a few working days.</p>
+  const html = renderBrandedEmail({
+    origin: BASE_URL,
+    label: "refund confirmed",
+    title: "Your refund is on its way",
+    meta: `${event.title} · ${when}`,
+    contentHtml: `<p style="margin:0 0 12px">${amount ? `${escapeHtml(amount)} for ` : ""}${ticketLabel} is on its way back to the original payment method. It usually arrives within a few working days.</p>
     <ul style="margin:0 0 20px;padding-left:20px">${rows}</ul>
-    <p style="margin:0;color:#78716c;font-size:13px;line-height:1.6">The ${count === 1 ? "QR code is" : "QR codes are"} cancelled and will no longer work at the door.</p>
-    <p style="margin:24px 0 0;color:#a8a29e;font-size:12px">milk &amp; henny</p>
-  </div>
-</div>`;
+    <p style="margin:0;color:#78716c;font:13px/1.6 ui-monospace,SFMono-Regular,Menlo,monospace">The ${count === 1 ? "QR code is" : "QR codes are"} cancelled and will no longer work at the door.</p>`,
+  });
 
   const refundKey = [...new Set(tickets.map((ticket) => ticket.refundRef ?? "refund"))]
     .sort()
