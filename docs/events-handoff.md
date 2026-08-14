@@ -8,7 +8,9 @@ Delete this file once the first event has run — it is a snapshot, not document
 
 ## ⚠️ Production is in LIVE mode
 
-`STRIPE_SECRET_KEY` is `sk_live_` and the webhook endpoint was created in the **live** account, so the modes match and the configuration is correct. Nothing is broken.
+The live webhook endpoint exists in the **live** account, so its mode is correct.
+`STRIPE_SECRET_KEY` must be a least-privilege `rk_live_` key. Do not deploy the
+account-wide `sk_live_` key.
 
 But it means **real cards will be charged the moment a paid event is published.** Right now nothing is at risk — `/events` is empty and there is nothing to buy — so the window to get this right is before the first event goes up.
 
@@ -160,6 +162,7 @@ Nothing counts until each of these has been observed, not reasoned about.
 - [x] The same webhook event delivered 3× still issues exactly one set
 - [x] `charge.refunded` voids tickets and returns the seats
 - [x] A **partial** refund voids only the tickets it covers _(integration test, not a live payload)_
+- [ ] `refund.failed` raises an operational alert and leaves the affected QRs invalid
 - [ ] `charge.dispute.closed` with status `won` restores tickets _(untested against a real payload)_
 - [ ] `checkout.session.expired` closes the pending session _(untested against a real payload)_
 - [ ] `radar.early_fraud_warning.created` logs _(untested against a real payload)_
@@ -175,6 +178,10 @@ ticket-page access, QR redemption, and health were rehearsed against production
 on 29 July. The three marked Stripe events are covered by tests but have never
 seen a real Stripe payload — close those with `stripe trigger`. A live purchase
 and refund remain unverified.
+
+Stripe Tax is intentionally off and the live account has no tax registration.
+Confirm the business's VAT position before selling tickets. If registration is
+required, add it in Stripe first and only then enable automatic tax.
 
 ---
 

@@ -165,6 +165,30 @@ describeWithDatabase("tickets (postgres)", () => {
       if (!result.ok) expect(result.error).toMatch(/limit/i);
     });
 
+    it("enforces the per-person limit across separate orders", async () => {
+      await seedEvent(50, 2);
+      const first = await issueTickets({
+        eventSlug: SLUG,
+        ticketTypeId: "entry",
+        holderName: "Alice",
+        email: "alice@example.com",
+        quantity: 2,
+        kind: "free",
+      });
+      expect(first.ok).toBe(true);
+
+      const second = await issueTickets({
+        eventSlug: SLUG,
+        ticketTypeId: "entry",
+        holderName: "Alice",
+        email: "alice@example.com",
+        quantity: 1,
+        kind: "free",
+      });
+      expect(second.ok).toBe(false);
+      if (!second.ok) expect(second.error).toMatch(/limit/i);
+    });
+
     it("writes nothing when the email is malformed", async () => {
       await seedEvent();
       const result = await issueTickets({
@@ -467,6 +491,17 @@ describeWithDatabase("tickets (postgres)", () => {
       const voided = await markOrderRefunded("pi_test_123", "re_3", 3000);
       expect(voided).toHaveLength(2);
       expect((await getSoldCounts(SLUG)).entry).toBe(1);
+    });
+
+    it("uses the cumulative total for repeated partial refunds", async () => {
+      await issuePaidOrder();
+      expect(await markOrderRefunded("pi_test_123", "re_1", 1500)).toHaveLength(1);
+      expect(await markOrderRefunded("pi_test_123", "re_2", 3000)).toHaveLength(1);
+
+      const summary = await getEventTickets(SLUG);
+      expect(summary.valid).toBe(1);
+      expect(summary.refunded).toBe(2);
+      expect(summary.netMinor).toBe(1500);
     });
 
     it("treats an unknown amount as a full refund", async () => {

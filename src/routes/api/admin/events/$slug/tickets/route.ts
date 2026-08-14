@@ -140,7 +140,11 @@ async function handlePOST(request: Request, slug: string) {
         }
         const result = await refundOrder({ ticketId, reason: "admin" });
         if (!result.ok) return Response.json({ error: result.error }, { status: result.status });
-        return Response.json({ ok: true, refunded: result.value.refunded });
+        return Response.json({
+          ok: true,
+          state: result.value.state,
+          refunded: result.value.refunded,
+        });
       }
 
       case "void": {

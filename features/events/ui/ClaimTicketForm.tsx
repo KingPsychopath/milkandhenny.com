@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useState } from "react";
+import { useId, useRef, useState } from "react";
 import { Link } from "@tanstack/react-router";
 
 import { AppSelect } from "@/components/AppSelect";
@@ -84,6 +84,7 @@ export function ClaimTicketForm({
   const [email, setEmail] = useState("");
   const [quantity, setQuantity] = useState(1);
   const [acceptedTerms, setAcceptedTerms] = useState(false);
+  const checkoutRequestId = useRef<string | null>(null);
   const [state, setState] = useState<ClaimState>({ status: "idle" });
 
   const unavailable = salesMessage(availability);
@@ -111,6 +112,7 @@ export function ClaimTicketForm({
       // Paid tickets never issue from the browser — Stripe redirects here,
       // and the webhook is what actually creates the ticket after payment.
       if (isPaid) {
+        checkoutRequestId.current ??= globalThis.crypto.randomUUID().replaceAll("-", "");
         const checkout = await startCheckoutFn({
           data: {
             eventSlug,
@@ -119,6 +121,7 @@ export function ClaimTicketForm({
             email,
             quantity: selectedQuantity,
             acceptedTerms,
+            checkoutRequestId: checkoutRequestId.current,
           },
         });
 

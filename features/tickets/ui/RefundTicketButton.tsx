@@ -27,7 +27,9 @@ export function RefundTicketButton({
   /** Set when a refund is not offered, e.g. already scanned or doors open. */
   disabledReason?: string;
 }) {
-  const [state, setState] = useState<"idle" | "confirming" | "working" | "done" | "error">("idle");
+  const [state, setState] = useState<
+    "idle" | "confirming" | "working" | "pending" | "done" | "error"
+  >("idle");
   const [message, setMessage] = useState("");
   const [emailSent, setEmailSent] = useState(false);
 
@@ -53,6 +55,15 @@ export function RefundTicketButton({
     );
   }
 
+  if (state === "pending") {
+    return (
+      <p role="status" className="text-center font-mono text-micro theme-subtle leading-relaxed">
+        Stripe is processing the refund. The tickets are cancelled now. We will email the
+        confirmation after the money has been returned.
+      </p>
+    );
+  }
+
   const amount =
     amountMinor !== undefined && currency ? formatMoney(amountMinor, currency) : "the order";
   const ticketLabel = ticketCount === 1 ? "this ticket" : `all ${ticketCount} tickets`;
@@ -64,6 +75,10 @@ export function RefundTicketButton({
       if (!result.ok) {
         setMessage(result.error);
         setState("error");
+        return;
+      }
+      if (result.state === "pending") {
+        setState("pending");
         return;
       }
       setEmailSent(result.emailed);

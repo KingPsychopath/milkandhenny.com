@@ -119,6 +119,15 @@ export async function listTicketsForOrder(orderId: string): Promise<TicketRecord
   return rows.map(toTicket);
 }
 
+export async function listTicketsForCheckout(checkoutRef: string): Promise<TicketRecord[]> {
+  if (!checkoutRef) return [];
+  const rows = await query<TicketRow>(
+    `select * from tickets where checkout_ref = $1 order by issued_at`,
+    [checkoutRef],
+  );
+  return rows.map(toTicket);
+}
+
 /** Live sold counts per ticket type — a count of rows, not a stored counter. */
 export async function getSoldCounts(slug: string): Promise<Record<string, number>> {
   if (!isValidEventSlug(slug)) return {};
@@ -159,6 +168,7 @@ export type IssueInput = {
 export type IssueOutcome =
   | { ok: true; tickets: TicketRecord[] }
   | { ok: false; reason: "sold-out"; remaining: number }
+  | { ok: false; reason: "per-person-limit"; limit: number }
   | { ok: false; reason: "unknown-type" };
 
 /**
@@ -183,8 +193,8 @@ export async function insertTicketsWithCapacity(
     const event = eventResult.rows[0];
     if (!event) return { ok: false as const, reason: "unknown-type" as const };
 
-    const typeResult = await client.query<{ quantity: number }>(
-      `select quantity from ticket_types
+    const typeResult = await client.query<{ quantity: number; per_person_limit: number }>(
+      `select quantity, per_person_limit from ticket_types
         where event_slug = $1 and id = $2
         for update`,
       [input.eventSlug, input.ticketTypeId],
@@ -193,6 +203,23 @@ export async function insertTicketsWithCapacity(
     if (!ticketType) return { ok: false as const, reason: "unknown-type" as const };
 
     if (!input.ignoreCapacity) {
+      if (input.emailHash) {
+        const heldResult = await client.query<{ held: string }>(
+          `select count(*)::text as held from tickets
+            where event_slug = $1 and ticket_type_id = $2
+              and email_hash = $3 and status = 'valid'`,
+          [input.eventSlug, input.ticketTypeId, input.emailHash],
+        );
+        const held = Number.parseInt(heldResult.rows[0]?.held ?? "0", 10);
+        if (held + newTickets.length > ticketType.per_person_limit) {
+          return {
+            ok: false as const,
+            reason: "per-person-limit" as const,
+            limit: ticketType.per_person_limit,
+          };
+        }
+      }
+
       const soldResult = await client.query<{ sold: string }>(
         `select count(*)::text as sold from tickets
           where event_slug = $1 and ticket_type_id = $2 and status = 'valid'`,
@@ -352,46 +379,73 @@ export async function markOrderRefunded(
   amountRefundedMinor?: number,
 ): Promise<TicketRecord[]> {
   return transaction(async (client) => {
-    const { rows: live } = await client.query<TicketRow>(
+    const { rows: order } = await client.query<TicketRow>(
       `select * from tickets
-        where payment_ref = $1 and status <> 'refunded'
+        where payment_ref = $1
         order by issued_at, id
         for update`,
       [paymentRef],
     );
-    if (live.length === 0) return [];
+    if (order.length === 0) return [];
 
-    // Stripe fires charge.refunded for partial refunds too. Voiding the whole
-    // order on a partial would kill tickets the buyer still paid for, so only
-    // as many tickets as the refunded amount covers are voided — oldest first,
-    // which leaves the lead booker's own ticket alive longest.
-    let toVoid = live;
+    // `charge.amount_refunded` is cumulative. Always calculate its coverage
+    // against the complete order, including tickets handled by an earlier
+    // partial refund. Calculating against only live tickets makes a second
+    // partial refund void too many tickets.
+    let covered = order;
     if (typeof amountRefundedMinor === "number" && amountRefundedMinor > 0) {
-      const total = live.reduce((sum, row) => sum + (row.amount_paid_minor ?? 0), 0);
+      const total = order.reduce((sum, row) => sum + (row.amount_paid_minor ?? 0), 0);
       if (amountRefundedMinor < total) {
-        const covered: TicketRow[] = [];
+        covered = [];
         let remaining = amountRefundedMinor;
-        for (const row of live) {
+        for (const row of order) {
           const price = row.amount_paid_minor ?? 0;
           if (price <= 0 || price > remaining) break;
           remaining -= price;
           covered.push(row);
         }
-        toVoid = covered;
       }
     }
 
-    if (toVoid.length === 0) return [];
+    const toRefund = covered.filter((row) => row.status !== "refunded");
+    if (toRefund.length === 0) return [];
 
     const { rows } = await client.query<TicketRow>(
       `update tickets
           set status = 'refunded', refunded_at = now(), refund_ref = $2
         where id = any($1::text[])
         returning *`,
-      [toVoid.map((row) => row.id), refundRef],
+      [toRefund.map((row) => row.id), refundRef],
     );
     return rows.map(toTicket);
   });
+}
+
+/** Stop an order at the door while Stripe is still processing its refund. */
+export async function markOrderRefundPending(
+  paymentRef: string,
+  refundRef: string,
+): Promise<TicketRecord[]> {
+  const rows = await query<TicketRow>(
+    `update tickets
+        set status = 'void', refund_ref = $2
+      where payment_ref = $1 and status = 'valid'
+      returning *`,
+    [paymentRef, refundRef],
+  );
+  return rows.map(toTicket);
+}
+
+/** Keep failed-refund tickets invalid until staff repays the buyer another way. */
+export async function markRefundFailed(refundRef: string): Promise<TicketRecord[]> {
+  const rows = await query<TicketRow>(
+    `update tickets
+        set status = 'void', refunded_at = null
+      where refund_ref = $1 and status = 'refunded'
+      returning *`,
+    [refundRef],
+  );
+  return rows.map(toTicket);
 }
 
 /**

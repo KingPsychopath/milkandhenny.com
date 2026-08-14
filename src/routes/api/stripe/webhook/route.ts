@@ -2,13 +2,23 @@ import { createFileRoute } from "@tanstack/react-router";
 
 import { log } from "@/lib/platform/logger.server";
 import { getBaseUrlForRequest } from "@/lib/shared/config";
-import { constructWebhookEvent, isPaymentsConfigured } from "@/lib/platform/stripe.server";
-import { expireCheckout, fulfilCheckout } from "@/features/tickets/checkout.server";
-import { getEvent } from "@/features/events/store.server";
-import { sendRefundEmail } from "@/features/tickets/email.server";
+import {
+  constructWebhookEvent,
+  isPaymentsConfigured,
+  retrievePaymentMetadata,
+} from "@/lib/platform/stripe.server";
+import {
+  cancelUnfulfilledCheckout,
+  expireCheckout,
+  fulfilCheckout,
+  markUnfulfilledCheckoutDisputed,
+  reconcilePaymentRefunds,
+  reopenWonDisputeCheckout,
+  updateCheckoutRefundStatus,
+} from "@/features/tickets/checkout.server";
 import {
   markOrderDisputed,
-  markOrderRefunded,
+  markRefundFailed,
   restoreDisputedTickets,
 } from "@/features/tickets/store.server";
 
@@ -30,6 +40,9 @@ const HANDLED = new Set([
   "checkout.session.async_payment_failed",
   "checkout.session.expired",
   "charge.refunded",
+  "refund.created",
+  "refund.updated",
+  "refund.failed",
   "charge.dispute.created",
   "charge.dispute.closed",
   "radar.early_fraud_warning.created",
@@ -73,6 +86,11 @@ async function handlePOST(request: Request) {
           sessionId: session.id,
           outcome: result.outcome,
         });
+        if (result.outcome === "failed" || result.outcome === "unknown-session") {
+          throw new Error(
+            result.outcome === "failed" ? result.error : "Checkout session is not in the ledger",
+          );
+        }
         break;
       }
 
@@ -89,26 +107,53 @@ async function handlePOST(request: Request) {
       case "charge.refunded": {
         const charge = event.data.object as {
           payment_intent: string | null;
-          id: string;
           amount_refunded: number | null;
+          metadata?: Record<string, string>;
         };
         if (charge.payment_intent) {
-          // Fires for partial refunds too, so the amount decides how many
-          // tickets are voided. Covers dashboard-initiated refunds as well as
-          // ours, so a ticket always stops working when the money goes back.
-          const voided = await markOrderRefunded(
+          const reconciled = await reconcilePaymentRefunds(
             charge.payment_intent,
-            charge.id,
-            charge.amount_refunded ?? undefined,
+            charge.amount_refunded ?? 0,
           );
-          if (voided.length > 0) {
-            const refundedEvent = await getEvent(voided[0].eventSlug);
-            if (refundedEvent) await sendRefundEmail({ event: refundedEvent, tickets: voided });
-          }
+          await cancelUnfulfilledCheckout({
+            paymentIntentId: charge.payment_intent,
+            reference: charge.metadata?.checkoutReference,
+            amountRefundedMinor: Math.max(
+              charge.amount_refunded ?? 0,
+              reconciled.amountRefundedMinor,
+            ),
+          });
           log.info("stripe.webhook", "Refund applied", {
             paymentIntent: charge.payment_intent,
             amountRefunded: charge.amount_refunded,
-            tickets: voided.length,
+            tickets: reconciled.tickets.length,
+          });
+        }
+        break;
+      }
+
+      case "refund.created":
+      case "refund.updated":
+      case "refund.failed": {
+        const refund = event.data.object as {
+          id: string;
+          status: string | null;
+          payment_intent: string | { id: string } | null;
+        };
+        const paymentIntentId =
+          typeof refund.payment_intent === "string"
+            ? refund.payment_intent
+            : (refund.payment_intent?.id ?? null);
+        await updateCheckoutRefundStatus(refund.id, refund.status);
+        if (paymentIntentId && refund.status === "succeeded") {
+          await reconcilePaymentRefunds(paymentIntentId);
+        }
+        if (refund.status === "failed") {
+          const affected = await markRefundFailed(refund.id);
+          log.error("stripe.webhook", "Refund failed; manual repayment is required", {
+            refundId: refund.id,
+            paymentIntent: paymentIntentId,
+            tickets: affected.length,
           });
         }
         break;
@@ -128,6 +173,13 @@ async function handlePOST(request: Request) {
             disputeId: dispute.id,
             tickets: restored.length,
           });
+          const sessionId = await reopenWonDisputeCheckout(dispute.payment_intent, dispute.id);
+          if (sessionId) {
+            const result = await fulfilCheckout(sessionId, origin);
+            if (result.outcome === "failed" || result.outcome === "unknown-session") {
+              throw new Error("Could not fulfil checkout after a won dispute");
+            }
+          }
         } else {
           log.info("stripe.webhook", "Dispute closed", {
             disputeId: dispute.id,
@@ -152,6 +204,12 @@ async function handlePOST(request: Request) {
       case "charge.dispute.created": {
         const dispute = event.data.object as { payment_intent: string | null; id: string };
         if (dispute.payment_intent) {
+          const metadata = await retrievePaymentMetadata(dispute.payment_intent);
+          await markUnfulfilledCheckoutDisputed({
+            paymentIntentId: dispute.payment_intent,
+            reference: metadata.checkoutReference,
+            disputeId: dispute.id,
+          });
           const voided = await markOrderDisputed(dispute.payment_intent, dispute.id);
           // Loud on purpose: a dispute needs a human, and the door record is
           // the evidence if it is worth contesting.

@@ -426,6 +426,22 @@ const MIGRATIONS: Migration[] = [
       );
     `,
   },
+  {
+    id: "0011_checkout_payment_state",
+    sql: `
+      alter table checkout_sessions
+        add column if not exists reference text,
+        add column if not exists payment_ref text,
+        add column if not exists refund_ref text,
+        add column if not exists processing_started_at timestamptz,
+        add column if not exists updated_at timestamptz not null default now();
+
+      create unique index if not exists checkout_sessions_reference_idx
+        on checkout_sessions (reference) where reference is not null;
+      create index if not exists checkout_sessions_payment_ref_idx
+        on checkout_sessions (payment_ref) where payment_ref is not null;
+    `,
+  },
 ];
 
 export type MigrationResult = { applied: string[]; alreadyApplied: number };

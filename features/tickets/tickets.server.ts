@@ -193,6 +193,13 @@ export async function issueTickets(
     if (outcome.reason === "unknown-type") {
       return { ok: false, status: 404, error: "Ticket type not found" };
     }
+    if (outcome.reason === "per-person-limit") {
+      return {
+        ok: false,
+        status: 409,
+        error: `Limit of ${outcome.limit} per person for ${ticketType.name}`,
+      };
+    }
     return {
       ok: false,
       status: 409,

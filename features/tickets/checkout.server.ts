@@ -5,13 +5,20 @@ import { query, queryOne, transaction } from "@/lib/platform/postgres.server";
 import {
   createCheckoutSession,
   isPaymentsConfigured,
+  listPaymentRefunds,
   refundPayment,
   retrieveSession,
 } from "@/lib/platform/stripe.server";
 import { getEvent } from "@/features/events/store.server";
 import { formatMoney, ticketTypeSalesState } from "@/features/events/types";
 import { buildEventUrl, ticketPath } from "@/features/events/routes";
-import { getSoldCounts, listTicketsForOrder, markOrderRefunded } from "./store.server";
+import {
+  getSoldCounts,
+  listTicketsForCheckout,
+  listTicketsForOrder,
+  markOrderRefunded,
+  markOrderRefundPending,
+} from "./store.server";
 import { hashEmail, isTicketSigningConfigured } from "./qr.server";
 import { issueTickets, type TicketOpResult } from "./tickets.server";
 import { sendRefundEmail, sendTicketEmail } from "./email.server";
@@ -36,6 +43,7 @@ export type StartCheckoutInput = {
   quantity: number;
   origin: string;
   acceptedTerms: boolean;
+  checkoutRequestId?: string;
 };
 
 export type StartCheckoutResult = TicketOpResult<{ url: string; sessionId: string }>;
@@ -102,7 +110,10 @@ export async function startCheckout(input: StartCheckoutInput): Promise<StartChe
   }
 
   const email = normaliseEmail(input.email);
-  const reference = randomBytes(16).toString("base64url");
+  const reference =
+    input.checkoutRequestId && /^[A-Za-z0-9_-]{16,64}$/.test(input.checkoutRequestId)
+      ? input.checkoutRequestId
+      : randomBytes(16).toString("base64url");
   const amountMinor = ticketType.priceMinor * quantity;
   if (!isCheckoutTotalSupported(ticketType.priceMinor, quantity, ticketType.currency)) {
     const minimum = getCheckoutMinimumMinor(ticketType.currency);
@@ -128,6 +139,7 @@ export async function startCheckout(input: StartCheckoutInput): Promise<StartChe
       cancelUrl: `${buildEventUrl(input.origin, event.slug)}?checkout=cancelled`,
       reference,
       metadata: {
+        checkoutReference: reference,
         eventSlug: event.slug,
         ticketTypeId: ticketType.id,
         holderName,
@@ -142,8 +154,8 @@ export async function startCheckout(input: StartCheckoutInput): Promise<StartChe
   await query(
     `insert into checkout_sessions (
        id, event_slug, ticket_type_id, quantity, holder_name, email, email_hash,
-       amount_minor, currency, status, terms_accepted_at, terms_snapshot
-     ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,'pending',now(),$10::jsonb)
+       amount_minor, currency, reference, status, terms_accepted_at, terms_snapshot
+     ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'pending',now(),$11::jsonb)
      on conflict (id) do nothing`,
     [
       session.id,
@@ -155,6 +167,7 @@ export async function startCheckout(input: StartCheckoutInput): Promise<StartChe
       hashEmail(email),
       amountMinor,
       ticketType.currency,
+      reference,
       JSON.stringify({
         eventTerms: event.terms ?? null,
         refundPolicy: event.refundPolicy ?? null,
@@ -175,12 +188,15 @@ type CheckoutRow = {
   email: string;
   amount_minor: number;
   currency: string;
+  reference: string | null;
 };
 
 export type FulfilResult =
   | { outcome: "issued"; tickets: TicketRecord[] }
   | { outcome: "already-issued" }
   | { outcome: "unknown-session" }
+  | { outcome: "cancelled"; status: string }
+  | { outcome: "awaiting-payment" }
   | { outcome: "refunded-oversold" }
   | { outcome: "failed"; error: string };
 
@@ -194,8 +210,141 @@ export type FulfilResult =
  */
 export async function expireCheckout(sessionId: string): Promise<void> {
   await query(
-    `update checkout_sessions set status = 'expired' where id = $1 and status = 'pending'`,
+    `update checkout_sessions
+        set status = 'expired', updated_at = now()
+      where id = $1 and status = 'pending'`,
     [sessionId],
+  );
+}
+
+type CheckoutPaymentStateRow = {
+  id: string;
+  amount_minor: number;
+  status: string;
+};
+
+async function findCheckoutForPayment(
+  paymentIntentId: string,
+  reference?: string,
+): Promise<CheckoutPaymentStateRow | null> {
+  return queryOne<CheckoutPaymentStateRow>(
+    `select id, amount_minor, status
+       from checkout_sessions
+      where payment_ref = $1
+         or (payment_ref is null and $2::text is not null and reference = $2)
+      order by created_at desc
+      limit 1`,
+    [paymentIntentId, reference ?? null],
+  );
+}
+
+/**
+ * Record a refund that arrived before checkout fulfilment.
+ *
+ * Stripe does not guarantee webhook order. If somebody refunds a payment in
+ * Workbench while the checkout event is delayed, cancel the local checkout
+ * and refund any remainder instead of issuing tickets later.
+ */
+export async function cancelUnfulfilledCheckout(input: {
+  paymentIntentId: string;
+  reference?: string;
+  amountRefundedMinor: number;
+}): Promise<boolean> {
+  const checkout = await findCheckoutForPayment(input.paymentIntentId, input.reference);
+  if (!checkout || checkout.status === "fulfilled") return false;
+
+  const remaining = Math.max(0, checkout.amount_minor - input.amountRefundedMinor);
+  const refund =
+    remaining > 0
+      ? await refundPayment({
+          paymentIntentId: input.paymentIntentId,
+          amountMinor: remaining,
+          reference: `pre-fulfil:${checkout.id}:${remaining}`,
+        })
+      : null;
+  if (refund && !refund.ok) throw new Error(refund.error);
+  if (refund && (refund.status === "failed" || refund.status === "canceled")) {
+    throw new Error("Stripe could not process the remaining refund");
+  }
+
+  const status = remaining === 0 || refund?.status === "succeeded" ? "refunded" : "refund_pending";
+  await query(
+    `update checkout_sessions
+        set payment_ref = $2, status = $3,
+            refund_ref = coalesce($4, refund_ref),
+            processing_started_at = null, updated_at = now()
+      where id = $1 and status <> 'fulfilled'`,
+    [checkout.id, input.paymentIntentId, status, refund?.refundId ?? null],
+  );
+  return true;
+}
+
+export async function markUnfulfilledCheckoutDisputed(input: {
+  paymentIntentId: string;
+  reference?: string;
+  disputeId: string;
+}): Promise<boolean> {
+  const checkout = await findCheckoutForPayment(input.paymentIntentId, input.reference);
+  if (!checkout || checkout.status === "fulfilled") return false;
+  await query(
+    `update checkout_sessions
+        set payment_ref = $2, status = 'disputed', refund_ref = $3,
+            processing_started_at = null, updated_at = now()
+      where id = $1 and status <> 'fulfilled'`,
+    [checkout.id, input.paymentIntentId, input.disputeId],
+  );
+  return true;
+}
+
+export async function reopenWonDisputeCheckout(
+  paymentIntentId: string,
+  disputeId: string,
+): Promise<string | null> {
+  const row = await queryOne<{ id: string }>(
+    `update checkout_sessions
+        set status = 'pending', refund_ref = null, updated_at = now()
+      where payment_ref = $1 and status = 'disputed' and refund_ref = $2
+      returning id`,
+    [paymentIntentId, disputeId],
+  );
+  return row?.id ?? null;
+}
+
+/** Reconcile successful Stripe refunds to tickets from Stripe's full history. */
+export async function reconcilePaymentRefunds(
+  paymentIntentId: string,
+  authoritativeAmountMinor = 0,
+): Promise<{
+  amountRefundedMinor: number;
+  tickets: TicketRecord[];
+}> {
+  const refunds = await listPaymentRefunds(paymentIntentId);
+  const succeeded = refunds.filter((refund) => refund.status === "succeeded");
+  const amountRefundedMinor = Math.max(
+    authoritativeAmountMinor,
+    succeeded.reduce((sum, refund) => sum + refund.amountMinor, 0),
+  );
+  if (amountRefundedMinor === 0) return { amountRefundedMinor, tickets: [] };
+
+  const refundRef = succeeded.at(-1)?.id ?? paymentIntentId;
+  const tickets = await markOrderRefunded(paymentIntentId, refundRef, amountRefundedMinor);
+  if (tickets.length > 0) {
+    const event = await getEvent(tickets[0].eventSlug);
+    if (event) await sendRefundEmail({ event, tickets });
+  }
+  return { amountRefundedMinor, tickets };
+}
+
+export async function updateCheckoutRefundStatus(
+  refundId: string,
+  status: string | null,
+): Promise<void> {
+  if (status !== "succeeded" && status !== "failed" && status !== "canceled") return;
+  await query(
+    `update checkout_sessions
+        set status = $2, updated_at = now()
+      where refund_ref = $1 and status in ('refund_pending', 'refund_failed')`,
+    [refundId, status === "succeeded" ? "refunded" : "refund_failed"],
   );
 }
 
@@ -205,10 +354,14 @@ export async function fulfilCheckout(sessionId: string, origin: string): Promise
   const claimed = await transaction(async (client) => {
     const { rows } = await client.query<CheckoutRow>(
       `update checkout_sessions
-          set status = 'fulfilling'
-        where id = $1 and status = 'pending'
+          set status = 'fulfilling', processing_started_at = now(), updated_at = now()
+        where id = $1
+          and (
+            status = 'pending'
+            or (status = 'fulfilling' and processing_started_at < now() - interval '2 minutes')
+          )
         returning id, event_slug, ticket_type_id, quantity, holder_name, email,
-                  amount_minor, currency`,
+                  amount_minor, currency, reference`,
       [sessionId],
     );
     return rows[0] ?? null;
@@ -220,13 +373,130 @@ export async function fulfilCheckout(sessionId: string, origin: string): Promise
       [sessionId],
     );
     if (!existing) return { outcome: "unknown-session" };
-    return { outcome: "already-issued" };
+    if (existing.status === "fulfilled") return { outcome: "already-issued" };
+    if (["expired", "refunded", "refund_pending", "disputed"].includes(existing.status)) {
+      return { outcome: "cancelled", status: existing.status };
+    }
+    return { outcome: "failed", error: `Checkout is ${existing.status}` };
   }
 
   const session = await retrieveSession(sessionId);
   if (!session?.paid) {
-    await query(`update checkout_sessions set status = 'pending' where id = $1`, [sessionId]);
-    return { outcome: "failed", error: "Session is not paid" };
+    await query(
+      `update checkout_sessions
+          set status = 'pending', processing_started_at = null, updated_at = now()
+        where id = $1`,
+      [sessionId],
+    );
+    return session
+      ? { outcome: "awaiting-payment" }
+      : { outcome: "failed", error: "Session could not be retrieved" };
+  }
+
+  const expectedCurrency = claimed.currency.toLowerCase();
+  if (
+    session.amountMinor !== claimed.amount_minor ||
+    session.currency?.toLowerCase() !== expectedCurrency ||
+    (claimed.reference && session.metadata.checkoutReference !== claimed.reference)
+  ) {
+    await query(
+      `update checkout_sessions
+          set status = 'payment_mismatch', processing_started_at = null, updated_at = now()
+        where id = $1`,
+      [sessionId],
+    );
+    log.error("checkout.fulfil", "Paid session does not match the checkout ledger", {
+      sessionId,
+    });
+    return { outcome: "failed", error: "Paid session values do not match checkout" };
+  }
+
+  if (!session.paymentIntentId) {
+    await query(
+      `update checkout_sessions
+          set status = 'pending', processing_started_at = null, updated_at = now()
+        where id = $1`,
+      [sessionId],
+    );
+    return { outcome: "failed", error: "Paid session has no PaymentIntent" };
+  }
+
+  await query(`update checkout_sessions set payment_ref = $2, updated_at = now() where id = $1`, [
+    sessionId,
+    session.paymentIntentId,
+  ]);
+
+  if (session.disputed) {
+    await query(
+      `update checkout_sessions
+          set status = 'disputed', processing_started_at = null, updated_at = now()
+        where id = $1`,
+      [sessionId],
+    );
+    return { outcome: "cancelled", status: "disputed" };
+  }
+
+  if (session.amountRefundedMinor > 0) {
+    const remaining = Math.max(0, claimed.amount_minor - session.amountRefundedMinor);
+    const refund =
+      remaining > 0
+        ? await refundPayment({
+            paymentIntentId: session.paymentIntentId,
+            amountMinor: remaining,
+            reference: `pre-fulfil:${sessionId}:${remaining}`,
+          })
+        : null;
+    if (refund && !refund.ok) {
+      await query(
+        `update checkout_sessions
+            set status = 'pending', processing_started_at = null, updated_at = now()
+          where id = $1`,
+        [sessionId],
+      );
+      return { outcome: "failed", error: refund.error };
+    }
+    if (refund && (refund.status === "failed" || refund.status === "canceled")) {
+      await query(
+        `update checkout_sessions
+            set status = 'pending', processing_started_at = null, updated_at = now()
+          where id = $1`,
+        [sessionId],
+      );
+      return { outcome: "failed", error: "Stripe could not process the remaining refund" };
+    }
+    const refundRef = refund?.refundId ?? null;
+    const status =
+      refund?.status === "succeeded" || remaining === 0 ? "refunded" : "refund_pending";
+    await query(
+      `update checkout_sessions
+          set status = $2, refund_ref = coalesce($3, refund_ref),
+              processing_started_at = null, updated_at = now()
+        where id = $1`,
+      [sessionId, status, refundRef],
+    );
+    return { outcome: "refunded-oversold" };
+  }
+
+  // A worker can stop after the ticket transaction commits but before the
+  // checkout ledger is updated. Recover that state instead of attempting a
+  // second issuance, which could refund a buyer who already has tickets.
+  const recoveredTickets = await listTicketsForCheckout(sessionId);
+  if (recoveredTickets.length > 0) {
+    const orderId = recoveredTickets[0].orderId;
+    await query(
+      `update checkout_sessions
+          set status = 'fulfilled', fulfilled_at = coalesce(fulfilled_at, now()), order_id = $2,
+              processing_started_at = null, updated_at = now()
+        where id = $1`,
+      [sessionId, orderId],
+    );
+    const event = await getEvent(claimed.event_slug);
+    if (event) await sendTicketEmail({ event, tickets: recoveredTickets, origin });
+    log.info("checkout.fulfil", "Recovered tickets after interrupted fulfilment", {
+      sessionId,
+      count: recoveredTickets.length,
+    });
+    return { outcome: "already-issued" };
   }
 
   let issued;
@@ -250,7 +520,9 @@ export async function fulfilCheckout(sessionId: string, origin: string): Promise
     // is stuck in `fulfilling` and Stripe's retry would read "already-issued"
     // — money kept, no tickets, forever.
     await query(
-      `update checkout_sessions set status = 'pending' where id = $1 and status = 'fulfilling'`,
+      `update checkout_sessions
+          set status = 'pending', processing_started_at = null, updated_at = now()
+        where id = $1 and status = 'fulfilling'`,
       [sessionId],
     );
     throw error;
@@ -264,18 +536,41 @@ export async function fulfilCheckout(sessionId: string, origin: string): Promise
       reason: issued.error,
     });
 
-    if (session.paymentIntentId) {
-      await refundPayment({
-        paymentIntentId: session.paymentIntentId,
-        reference: `oversold:${sessionId}`,
-      });
+    const refund = await refundPayment({
+      paymentIntentId: session.paymentIntentId,
+      reference: `oversold:${sessionId}`,
+    });
+    if (!refund.ok) {
+      await query(
+        `update checkout_sessions
+            set status = 'pending', processing_started_at = null, updated_at = now()
+          where id = $1`,
+        [sessionId],
+      );
+      return { outcome: "failed", error: refund.error };
     }
-    await query(`update checkout_sessions set status = 'refunded' where id = $1`, [sessionId]);
+    if (refund.status === "failed" || refund.status === "canceled") {
+      await query(
+        `update checkout_sessions
+            set status = 'pending', processing_started_at = null, updated_at = now()
+          where id = $1`,
+        [sessionId],
+      );
+      return { outcome: "failed", error: "Stripe could not process the refund" };
+    }
+    await query(
+      `update checkout_sessions
+          set status = $2, refund_ref = $3, processing_started_at = null, updated_at = now()
+        where id = $1`,
+      [sessionId, refund.status === "succeeded" ? "refunded" : "refund_pending", refund.refundId],
+    );
     return { outcome: "refunded-oversold" };
   }
 
   await query(
-    `update checkout_sessions set status = 'fulfilled', fulfilled_at = now(), order_id = $2
+    `update checkout_sessions
+        set status = 'fulfilled', fulfilled_at = now(), order_id = $2,
+            processing_started_at = null, updated_at = now()
       where id = $1`,
     [sessionId, issued.value.orderId],
   );
@@ -293,7 +588,11 @@ export async function fulfilCheckout(sessionId: string, origin: string): Promise
   return { outcome: "issued", tickets: issued.value.tickets };
 }
 
-export type SelfRefundResult = TicketOpResult<{ refunded: number; emailed: boolean }>;
+export type SelfRefundResult = TicketOpResult<{
+  state: "succeeded" | "pending";
+  refunded: number;
+  emailed: boolean;
+}>;
 
 /**
  * Refund an order at the buyer's request.
@@ -326,7 +625,7 @@ export async function refundOrder(input: {
     };
   }
   if (tickets.every((ticket) => ticket.status === "refunded")) {
-    return { ok: true, value: { refunded: 0, emailed: false } };
+    return { ok: true, value: { state: "succeeded", refunded: 0, emailed: false } };
   }
 
   const refund = await refundPayment({
@@ -334,6 +633,23 @@ export async function refundOrder(input: {
     reference: `order:${anchor.order_id}`,
   });
   if (!refund.ok) return { ok: false, status: 502, error: refund.error };
+
+  if (refund.status === "failed" || refund.status === "canceled") {
+    return { ok: false, status: 502, error: "Stripe could not process the refund" };
+  }
+
+  if (refund.status !== "succeeded") {
+    const pending = await markOrderRefundPending(anchor.payment_ref, refund.refundId);
+    log.info("checkout.refund", "Order refund is pending", {
+      orderId: anchor.order_id,
+      count: pending.length,
+      reason: input.reason,
+    });
+    return {
+      ok: true,
+      value: { state: "pending", refunded: pending.length, emailed: false },
+    };
+  }
 
   const updated = await markOrderRefunded(anchor.payment_ref, refund.refundId);
   let emailed = false;
@@ -350,7 +666,10 @@ export async function refundOrder(input: {
     reason: input.reason,
   });
 
-  return { ok: true, value: { refunded: updated.length, emailed } };
+  return {
+    ok: true,
+    value: { state: "succeeded", refunded: updated.length, emailed },
+  };
 }
 
 export { ticketPath };

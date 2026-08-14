@@ -1768,11 +1768,15 @@ function EventOperations({
         body: JSON.stringify({ action, ticketId: ticket.id }),
       });
       if (!response.ok) throw new Error(await readErrorMessage(response, "Action failed"));
+      const refundPending =
+        action === "refund" && ((await response.json()) as { state?: string }).state === "pending";
       onStatus(
         action === "resend"
           ? `Tickets re-emailed for ${ticket.holderName}'s order`
           : action === "refund"
-            ? `${ticket.holderName}'s order refunded`
+            ? refundPending
+              ? `${ticket.holderName}'s refund is processing`
+              : `${ticket.holderName}'s order refunded`
             : action === "void"
               ? `${ticket.holderName}'s ticket cancelled`
               : action === "redeem"

@@ -48,7 +48,7 @@ export function isPaymentsConfigured(): boolean {
 
 /** `true` while pointed at test keys — surfaced in admin so it is obvious. */
 export function isTestMode(): boolean {
-  return getStripeSecretKey()?.startsWith("sk_test_") ?? false;
+  return getStripeSecretKey()?.includes("_test_") ?? false;
 }
 
 export function describePaymentsCapability(): {
@@ -80,6 +80,7 @@ function getClient(): Stripe {
   const key = getStripeSecretKey();
   if (!key) throw new PaymentsUnavailableError();
   client ??= new Stripe(key, {
+    apiVersion: "2026-06-24.dahlia",
     // Bounded so a Stripe incident cannot hold a request open indefinitely.
     timeout: 15_000,
     maxNetworkRetries: 2,
@@ -132,6 +133,7 @@ export async function createCheckoutSession(input: CreateCheckoutInput): Promise
       // dashboard can still be traced back to the order.
       payment_intent_data: { metadata: input.metadata },
       expires_at: Math.floor(Date.now() / 1000) + 30 * 60,
+      integration_identifier: "milkandhenny_tickets_qjrwkzmp",
     },
     { idempotencyKey: `checkout:${input.reference}` },
   );
@@ -140,7 +142,14 @@ export async function createCheckoutSession(input: CreateCheckoutInput): Promise
   return { id: session.id, url: session.url };
 }
 
-export type RefundResult = { ok: true; refundId: string } | { ok: false; error: string };
+export type RefundResult =
+  | {
+      ok: true;
+      refundId: string;
+      status: Stripe.Refund["status"];
+      amountMinor: number;
+    }
+  | { ok: false; error: string };
 
 /**
  * Refund a payment.
@@ -162,14 +171,15 @@ export async function refundPayment(input: {
       },
       { idempotencyKey: `refund:${input.reference}` },
     );
-    return { ok: true, refundId: refund.id };
+    return {
+      ok: true,
+      refundId: refund.id,
+      status: refund.status,
+      amountMinor: refund.amount,
+    };
   } catch (error) {
     log.error("stripe.refund", "Refund failed", { reference: input.reference }, error);
-    const message =
-      error instanceof Stripe.errors.StripeError
-        ? error.message
-        : "Refund failed at the payment provider";
-    return { ok: false, error: message };
+    return { ok: false, error: "Refund failed at the payment provider" };
   }
 }
 
@@ -180,9 +190,19 @@ export async function retrieveSession(sessionId: string): Promise<{
   currency: string | null;
   email: string | null;
   metadata: Record<string, string>;
+  amountRefundedMinor: number;
+  disputed: boolean;
 } | null> {
   try {
-    const session = await getClient().checkout.sessions.retrieve(sessionId);
+    const session = await getClient().checkout.sessions.retrieve(sessionId, {
+      expand: ["payment_intent.latest_charge"],
+    });
+    const paymentIntent =
+      typeof session.payment_intent === "string" ? null : session.payment_intent;
+    const charge =
+      paymentIntent && typeof paymentIntent.latest_charge !== "string"
+        ? paymentIntent.latest_charge
+        : null;
     return {
       paid: session.payment_status === "paid",
       paymentIntentId:
@@ -193,11 +213,46 @@ export async function retrieveSession(sessionId: string): Promise<{
       currency: session.currency,
       email: session.customer_details?.email ?? session.customer_email ?? null,
       metadata: (session.metadata ?? {}) as Record<string, string>,
+      amountRefundedMinor: charge?.amount_refunded ?? 0,
+      disputed: charge?.disputed ?? false,
     };
   } catch (error) {
     log.error("stripe.session", "Failed to retrieve session", { sessionId }, error);
     return null;
   }
+}
+
+export type PaymentRefund = {
+  id: string;
+  amountMinor: number;
+  status: Stripe.Refund["status"];
+  createdAt: number;
+};
+
+/** Current Stripe refund truth for one PaymentIntent, oldest request first. */
+export async function listPaymentRefunds(paymentIntentId: string): Promise<PaymentRefund[]> {
+  const refunds: Stripe.Refund[] = [];
+  for await (const refund of getClient().refunds.list({
+    payment_intent: paymentIntentId,
+    limit: 100,
+  })) {
+    refunds.push(refund);
+  }
+  return refunds
+    .sort((left, right) => left.created - right.created)
+    .map((refund) => ({
+      id: refund.id,
+      amountMinor: refund.amount,
+      status: refund.status,
+      createdAt: refund.created,
+    }));
+}
+
+export async function retrievePaymentMetadata(
+  paymentIntentId: string,
+): Promise<Record<string, string>> {
+  const paymentIntent = await getClient().paymentIntents.retrieve(paymentIntentId);
+  return (paymentIntent.metadata ?? {}) as Record<string, string>;
 }
 
 /**

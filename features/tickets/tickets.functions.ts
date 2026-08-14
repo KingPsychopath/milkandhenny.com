@@ -325,6 +325,7 @@ export const startCheckoutFn = createServerFn({ method: "POST" })
       email: string;
       quantity: number;
       acceptedTerms: boolean;
+      checkoutRequestId?: string;
     }) => data,
   )
   .handler(async ({ data }): Promise<StartCheckoutResult> => {
@@ -340,7 +341,12 @@ export const startCheckoutFn = createServerFn({ method: "POST" })
   });
 
 export type RefundResult =
-  | { ok: true; refunded: number; emailed: boolean }
+  | {
+      ok: true;
+      state: "succeeded" | "pending";
+      refunded: number;
+      emailed: boolean;
+    }
   | { ok: false; error: string };
 
 /**
@@ -360,6 +366,7 @@ export const refundOwnTicketFn = createServerFn({ method: "POST" })
     if (!result.ok) return { ok: false, error: result.error };
     return {
       ok: true,
+      state: result.value.state,
       refunded: result.value.refunded,
       emailed: result.value.emailed,
     };
