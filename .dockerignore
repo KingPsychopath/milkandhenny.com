@@ -10,7 +10,6 @@ deploy
 *.log
 *.env*
 .DS_Store
-__tests__
 docs
 README.md
 LICENSE

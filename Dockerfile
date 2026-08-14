@@ -1,6 +1,14 @@
 # syntax=docker/dockerfile:1.7
 
-FROM node:22-bookworm-slim AS base
+FROM node:22-bookworm-slim AS system
+# ffmpeg powers video poster frames; exiftool recovers previews from RAW files.
+# Tests exercise both tools, and both production roles shell out to them.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+  ffmpeg \
+  libimage-exiftool-perl \
+  && rm -rf /var/lib/apt/lists/*
+
+FROM system AS base
 ENV PNPM_HOME="/pnpm"
 ENV PATH="$PNPM_HOME:$PATH"
 RUN corepack enable && corepack prepare pnpm@11.17.0 --activate
@@ -37,19 +45,12 @@ ENV VITE_MULTI_FILE_ZIP_MODE=$VITE_MULTI_FILE_ZIP_MODE
 COPY . .
 RUN pnpm typecheck && pnpm lint && pnpm test && pnpm build
 
-FROM node:22-bookworm-slim AS runtime
+FROM system AS runtime
 ENV NODE_ENV=production
 ENV HOST=0.0.0.0
 ENV PORT=3000
 WORKDIR /app
 
-# ffmpeg powers video poster frames; exiftool recovers previews from RAW files.
-# Both the web role (inline images, RAW retry) and the worker role (video, RAW)
-# shell out to these, so they belong in the shared runtime image.
-RUN apt-get update && apt-get install -y --no-install-recommends \
-  ffmpeg \
-  libimage-exiftool-perl \
-  && rm -rf /var/lib/apt/lists/*
 COPY --from=build --chown=node:node /app/.output ./.output
 COPY --from=build --chown=node:node /app/content ./content
 # same brain reads these from ./models at runtime; absent, it scores on exact matches.
