@@ -212,8 +212,9 @@ async function materializeVideoFromStorage(params: {
     };
   }
 
-  const video = await processVideoVariantsFromSource(path.extname(filename) || ".mp4", (destination) =>
-    downloadToFile(storageKey, destination),
+  const video = await processVideoVariantsFromSource(
+    path.extname(filename) || ".mp4",
+    (destination) => downloadToFile(storageKey, destination),
   );
 
   await Promise.all([
@@ -695,10 +696,7 @@ async function retryLocalTransferFile(
   }
 }
 
-function withLocalTimeout<T>(
-  route: ProcessingRoute | null,
-  work: () => Promise<T>,
-): Promise<T> {
+function withLocalTimeout<T>(route: ProcessingRoute | null, work: () => Promise<T>): Promise<T> {
   return withProcessingTimeout(route ?? "passthrough", getInlineProcessingTimeoutMs(), work);
 }
 
@@ -758,9 +756,7 @@ function createLocalMediaProcessor() {
 
       let changed = false;
       const nowMs = Date.now();
-      const existingDerivativeKeys = transfer.files.some((file) =>
-        needsStateInference(file),
-      )
+      const existingDerivativeKeys = transfer.files.some((file) => needsStateInference(file))
         ? await listExistingTransferDerivativeKeys(transfer.id)
         : undefined;
       // Bounded, not `Promise.all`: each retry downloads an original and runs a
@@ -769,11 +765,7 @@ function createLocalMediaProcessor() {
         transfer.files,
         TRANSFER_BACKFILL_CONCURRENCY,
         async (file) => {
-          const inferred = await inferTransferFileState(
-            transfer.id,
-            file,
-            existingDerivativeKeys,
-          );
+          const inferred = await inferTransferFileState(transfer.id, file, existingDerivativeKeys);
           if (didTransferFileChange(file, inferred)) {
             changed = true;
           }

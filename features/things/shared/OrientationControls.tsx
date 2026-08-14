@@ -67,7 +67,9 @@ export function OrientationControls({
   return (
     <div className="mx-auto mt-6 max-w-lg">
       <fieldset>
-        <legend className="font-mono text-micro uppercase tracking-[0.18em] text-white/45">screen orientation</legend>
+        <legend className="font-mono text-micro uppercase tracking-[0.18em] text-white/45">
+          screen orientation
+        </legend>
         <div className="mt-3 grid grid-cols-3 gap-2">
           {(["auto", "portrait", "landscape"] as const).map((value) => {
             const selected = orientation === value;
@@ -85,7 +87,9 @@ export function OrientationControls({
           })}
         </div>
         <p className="mt-3 font-mono text-micro leading-relaxed text-white/45">
-          {orientation === "auto" ? "adapts if the phone rotates" : `locks ${orientation} when the round starts`}
+          {orientation === "auto"
+            ? "adapts if the phone rotates"
+            : `locks ${orientation} when the round starts`}
         </p>
       </fieldset>
       {fullscreenSupported ? (

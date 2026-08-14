@@ -30,9 +30,14 @@ import { LIARS_NOTE_LENGTH, LIARS_NOTE_LIMIT, type LiarsNote } from "./useLiarsN
 
 /** Hand-placed rather than random, so the sky is the same one every night. */
 const STARS: Array<[number, number, number, number]> = [
-  [18, 20, 0.5, 0], [72, 14, 0.6, 400], [86, 31, 0.45, 900],
-  [30, 40, 0.4, 1300], [63, 46, 0.5, 700], [12, 52, 0.45, 1800],
-  [90, 58, 0.4, 200], [42, 12, 0.5, 1100],
+  [18, 20, 0.5, 0],
+  [72, 14, 0.6, 400],
+  [86, 31, 0.45, 900],
+  [30, 40, 0.4, 1300],
+  [63, 46, 0.5, 700],
+  [12, 52, 0.45, 1800],
+  [90, 58, 0.4, 200],
+  [42, 12, 0.5, 1100],
 ];
 
 const MARK_GLYPH: Record<LiarsMark, { glyph: string; label: string }> = {
@@ -360,7 +365,8 @@ export function LineupBoard({
   const benched = wishes.filter(({ active }) => !active);
   const entries = liarsLineupEntries(lineup).toSorted(
     (left, right) =>
-      Number(LIARS_ROLES[right[0]].side === "mafia") - Number(LIARS_ROLES[left[0]].side === "mafia"),
+      Number(LIARS_ROLES[right[0]].side === "mafia") -
+      Number(LIARS_ROLES[left[0]].side === "mafia"),
   );
 
   return (
@@ -453,7 +459,9 @@ export function LineupBoard({
       <p className="mt-4 border-t border-white/10 pt-3 font-mono text-xs text-white/50">
         {sides.mafia} {liarsSideLabel(mode, "mafia", sides.mafia)} · {sides.town}{" "}
         {liarsSideLabel(mode, "town", sides.town)}
-        {sides.third > 0 ? ` · ${sides.third} ${liarsSideLabel(mode, "third", sides.third)}` : ""} ·{" "}
+        {sides.third > 0
+          ? ` · ${sides.third} ${liarsSideLabel(mode, "third", sides.third)}`
+          : ""} ·{" "}
         {playerCount === 1 ? "1 player" : `${playerCount} players`}
       </p>
       {shortBy > 0 ? (
@@ -605,10 +613,7 @@ export function NightReportCard({ report }: { report: LiarsNightReport }) {
       </p>
       <p className="mt-2 flex items-center gap-2 font-serif text-2xl">
         {report.glyph ? (
-          <span
-            aria-hidden="true"
-            className="animate-pulse font-mono text-[var(--things-amber)]"
-          >
+          <span aria-hidden="true" className="animate-pulse font-mono text-[var(--things-amber)]">
             {report.glyph === "moved" ? "→" : "·"}
           </span>
         ) : null}
@@ -687,7 +692,6 @@ export function ActionButton({
     </button>
   );
 }
-
 
 /**
  * The notepad. Deliberately separate from "what you know": that list is what your role was told,
@@ -778,7 +782,6 @@ export function NotesPad({
   );
 }
 
-
 /**
  * The lobby's whole job: get everyone else into this room.
  *
@@ -839,7 +842,6 @@ export function InvitePanel({ roomId, inviteUrl }: { roomId: string; inviteUrl: 
   );
 }
 
-
 /** What the glyphs beside a name mean. Shown where they appear, not in a manual nobody opens. */
 export function MarkLegend({ marks }: { marks: LiarsMark[] }) {
   const shown = [...new Set(marks)];
@@ -855,7 +857,6 @@ export function MarkLegend({ marks }: { marks: LiarsMark[] }) {
     </p>
   );
 }
-
 
 /**
  * Everything about the word, in one block.
@@ -925,8 +926,6 @@ export function WordPanel({
     </section>
   );
 }
-
-
 
 /**
  * Add and remove roles on top of the standard lineup.

@@ -50,7 +50,7 @@ The board shows:
   rather than a generic list
 - A totals line: `3 mafia · 8 town · 1 jester · 12 players`
 - The derived number people actually want: **`the town can afford 4 wrong votes`**
-- A quiet log line on every change — *"host added the Escort"* — so nobody misses an edit while
+- A quiet log line on every change — _"host added the Escort"_ — so nobody misses an edit while
   looking down at their phone
 
 At the deal the board **freezes and moves into the header**, available for the rest of the game.
@@ -61,7 +61,7 @@ loud is itself a tell.
 
 25 seconds. One card, **hold to reveal**, so nobody catches it over your shoulder. Shows your role,
 what you do, and your win condition. Mafia see each other here. Every other role sees only itself.
-A *read my role again* affordance stays in the header all game.
+A _read my role again_ affordance stays in the header all game.
 
 ---
 
@@ -69,11 +69,11 @@ A *read my role again* affordance stays in the header all game.
 
 ### Objective
 
-| Side | Wins when |
-|---|---|
-| **Town** | every mafia-side player is dead |
-| **Mafia** | mafia-side players equal or outnumber the town |
-| **Jester** | they are voted out (not killed at night) |
+| Side       | Wins when                                      |
+| ---------- | ---------------------------------------------- |
+| **Town**   | every mafia-side player is dead                |
+| **Mafia**  | mafia-side players equal or outnumber the town |
+| **Jester** | they are voted out (not killed at night)       |
 
 Checked at dawn and again at verdict.
 
@@ -81,43 +81,43 @@ Checked at dawn and again at verdict.
 
 #### Mafia side
 
-| Role | Night action | Rules |
-|---|---|---|
-| **Mafia** | kill one, or **stay in** | Staying in produces no death and no movement — nothing for watchers to see. A real strategic option. |
-| | | *The escort's testimony is **server-written and published to everybody** in the dawn that killed them, alongside the two deaths. It was previously stored on the player and never pushed into the dawn, so the line existed on the corpse and reached nobody — the entire payoff of the role, silently lost.* |
-| | | *The **caller** decides when the mafia disagree: the godfather if there is one, otherwise whoever joined the room first — not seniority in the mafia, which does not exist, but a stable arbitrary tiebreak. Arbitrary is fine because it is never a secret: the night screen names them on every mafia's phone, so nobody has to work out who to defer to.* |
-| | | *The mafia see each other's picks **live**, including whether each has locked. Coordinating is the fun of the role, and the caller needs to see a disagreement before overruling it. Everyone who picked somebody still counts as having left the house, so being overruled does not hide you.* |
-| **Godfather** | kills; reads **innocent** to the detective | From 7 players. Makes the final call when mafia disagree on a target. Without this the detective solves the game on night two. |
-| | | *Once the godfather is dead, the call passes by **seniority** — longest-surviving mafia, ties broken by join order. Deterministic, so a disagreement can never stall the night.* |
-| **Jammer** | cancels one player's night action | From 12 players. The blocked player **still registers as moved** — they went out and were turned away — and is told their night was interrupted. |
+| Role          | Night action                               | Rules                                                                                                                                                                                                                                                                                                                                                        |
+| ------------- | ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Mafia**     | kill one, or **stay in**                   | Staying in produces no death and no movement — nothing for watchers to see. A real strategic option.                                                                                                                                                                                                                                                         |
+|               |                                            | _The escort's testimony is **server-written and published to everybody** in the dawn that killed them, alongside the two deaths. It was previously stored on the player and never pushed into the dawn, so the line existed on the corpse and reached nobody — the entire payoff of the role, silently lost._                                                |
+|               |                                            | _The **caller** decides when the mafia disagree: the godfather if there is one, otherwise whoever joined the room first — not seniority in the mafia, which does not exist, but a stable arbitrary tiebreak. Arbitrary is fine because it is never a secret: the night screen names them on every mafia's phone, so nobody has to work out who to defer to._ |
+|               |                                            | _The mafia see each other's picks **live**, including whether each has locked. Coordinating is the fun of the role, and the caller needs to see a disagreement before overruling it. Everyone who picked somebody still counts as having left the house, so being overruled does not hide you._                                                              |
+| **Godfather** | kills; reads **innocent** to the detective | From 7 players. Makes the final call when mafia disagree on a target. Without this the detective solves the game on night two.                                                                                                                                                                                                                               |
+|               |                                            | _Once the godfather is dead, the call passes by **seniority** — longest-surviving mafia, ties broken by join order. Deterministic, so a disagreement can never stall the night._                                                                                                                                                                             |
+| **Jammer**    | cancels one player's night action          | From 12 players. The blocked player **still registers as moved** — they went out and were turned away — and is told their night was interrupted.                                                                                                                                                                                                             |
 
 #### Town side
 
-| Role | Night action | Rules |
-|---|---|---|
-| **Doctor** | save one, **including themselves** | Cannot protect the same person two nights running, self included. A save cancels the attack outright. |
-| **Detective** | investigate one | Returns guilty / innocent on *apparent* alignment, so the Godfather reads innocent. |
-| **Lookout** | watch one | Learns the **names** of everyone who visited them. From 7 players. |
-| **Bodyguard** | guard one | Dies in their place. From 9 players. Someone still dies, so the night is never a no-op. |
-| **Escort** | spend the night with one | See below. From 11 players. |
-| **Vigilante** | one kill, once per game | From 14 players. Killing a townsperson means the vigilante dies of guilt the following night. |
-| **Villager** | **watch** one | The core mechanic. See section 3.3. Never fewer than 2 in any lineup. |
+| Role          | Night action                       | Rules                                                                                                 |
+| ------------- | ---------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| **Doctor**    | save one, **including themselves** | Cannot protect the same person two nights running, self included. A save cancels the attack outright. |
+| **Detective** | investigate one                    | Returns guilty / innocent on _apparent_ alignment, so the Godfather reads innocent.                   |
+| **Lookout**   | watch one                          | Learns the **names** of everyone who visited them. From 7 players.                                    |
+| **Bodyguard** | guard one                          | Dies in their place. From 9 players. Someone still dies, so the night is never a no-op.               |
+| **Escort**    | spend the night with one           | See below. From 11 players.                                                                           |
+| **Vigilante** | one kill, once per game            | From 14 players. Killing a townsperson means the vigilante dies of guilt the following night.         |
+| **Villager**  | **watch** one                      | The core mechanic. See section 3.3. Never fewer than 2 in any lineup.                                 |
 
 #### Third party
 
-| Role | Action | Wins |
-|---|---|---|
+| Role       | Action                           | Wins                                         |
+| ---------- | -------------------------------- | -------------------------------------------- |
 | **Jester** | watches, exactly like a villager | Alone, if voted out. Ends the game outright. |
 
 #### The Escort in full
 
-| | |
-|---|---|
-| Action | Choose one player. You spend the night at their house. |
-| If they are attacked | You see the **attacker's name**, in the T−10s night report. |
-| If the attack succeeds | You die with them — but **your witness report publishes at dawn as your dying testimony.** |
-| If the doctor saves them | You both live and you keep the name privately. |
-| Your own house | Empty. A kill aimed at you misses; you were not home. |
+|                          |                                                                                            |
+| ------------------------ | ------------------------------------------------------------------------------------------ |
+| Action                   | Choose one player. You spend the night at their house.                                     |
+| If they are attacked     | You see the **attacker's name**, in the T−10s night report.                                |
+| If the attack succeeds   | You die with them — but **your witness report publishes at dawn as your dying testimony.** |
+| If the doctor saves them | You both live and you keep the name privately.                                             |
+| Your own house           | Empty. A kill aimed at you misses; you were not home.                                      |
 
 The dying testimony is the point: the mafia's cleanest night can hand the town the killer's name, so
 every kill has to be weighed against the chance that someone is in the room. It slows the mafia
@@ -142,7 +142,7 @@ learns one bit about the one person they chose. The mafia therefore never harves
 plain villagers" unless a mafia member spends a night watching instead of killing, which costs them
 the kill — a real trade, and a fair one.
 
-So a player who lights up did *something* — could be the killer, could be your own doctor. That
+So a player who lights up did _something_ — could be the killer, could be your own doctor. That
 ambiguity is the mechanic, and it puts a genuine cost on the town's power roles for using their
 powers.
 
@@ -151,8 +151,8 @@ Two rules:
 1. **One watcher — private, true, unprovable.** Your device tells you they moved. You have no public
    record. To use it you have to claim it, the mafia will call you a liar, and claiming paints you as
    a watcher.
-2. **Two or more watchers on the same person — public at dawn.** *"Maya was seen moving last
-   night."* Nobody learns who watched.
+2. **Two or more watchers on the same person — public at dawn.** _"Maya was seen moving last
+   night."_ Nobody learns who watched.
 
 **The public announcement fires only on movement.** Two watchers on someone who moved produces the
 announcement; two watchers on someone who stayed in produces silence. Announcing stillness would
@@ -161,8 +161,8 @@ publicly clear the plain villagers every night, which is a gift to the mafia.
 The corroboration threshold is what stops watch breaking the game. One-eye-reveals would let five
 villagers blanket a nine-player table and solve it by night two.
 
-**If you watched the person who died,** the town publicly learns *how many* people witnessed the
-killing — *"three people saw it happen."* Anonymous. The mafia now know three players are dangerous
+**If you watched the person who died,** the town publicly learns _how many_ people witnessed the
+killing — _"three people saw it happen."_ Anonymous. The mafia now know three players are dangerous
 and have no idea which.
 
 Nobody ever learns who watched whom until the end screen, which dumps the full night-by-night log.
@@ -182,16 +182,16 @@ Fixed, and it matters once ten roles interact:
 
 ### 3.5 The round
 
-| Phase | Length | |
-|---|---|---|
-| Dusk | 2.5s | Identical on every device |
-| **Night** | 45s | +15s per player above 10 |
-| Night report | at T−10s | Same envelope on every device |
-| Dawn | 2.5s | |
-| **Reveal** | 15s, or 18s with a revive or substitution | |
-| **Deliberation** | 60s | Host `+30s` or skip |
-| **Vote** | 30s | |
-| **Verdict** | 15s | |
+| Phase            | Length                                    |                               |
+| ---------------- | ----------------------------------------- | ----------------------------- |
+| Dusk             | 2.5s                                      | Identical on every device     |
+| **Night**        | 45s                                       | +15s per player above 10      |
+| Night report     | at T−10s                                  | Same envelope on every device |
+| Dawn             | 2.5s                                      |                               |
+| **Reveal**       | 15s, or 18s with a revive or substitution |                               |
+| **Deliberation** | 60s                                       | Host `+30s` or skip           |
+| **Vote**         | 30s                                       |                               |
+| **Verdict**      | 15s                                       |                               |
 
 **~3 minutes a round.** Night scales with player count because eleven people picking targets in 45
 seconds is a scramble. Nothing else scales — deliberation is a conversation, and 60 seconds is 60
@@ -201,33 +201,33 @@ seconds whether there are six of you or fourteen.
 
 Same screen, same countdown, same haptics on select. Only the label differs.
 
-| Role | Chooses | Learns at T−10s |
-|---|---|---|
-| Mafia / Godfather | who to kill, or stay in | the target is locked |
-| Jammer | who to block | who you blocked |
-| Doctor | who to save (self allowed) | your protection is set |
-| Detective | who to investigate | **guilty / innocent** |
-| Lookout | who to watch | **every name that visited them** |
-| Bodyguard | who to guard | your guard holds |
-| Escort | who to spend the night with | **the attacker's name**, if anything happened |
-| Vigilante | who to shoot, or hold | the shot is loaded |
-| Villager, Jester | who to watch | whether they **moved**, and whether anyone corroborates |
+| Role              | Chooses                     | Learns at T−10s                                         |
+| ----------------- | --------------------------- | ------------------------------------------------------- |
+| Mafia / Godfather | who to kill, or stay in     | the target is locked                                    |
+| Jammer            | who to block                | who you blocked                                         |
+| Doctor            | who to save (self allowed)  | your protection is set                                  |
+| Detective         | who to investigate          | **guilty / innocent**                                   |
+| Lookout           | who to watch                | **every name that visited them**                        |
+| Bodyguard         | who to guard                | your guard holds                                        |
+| Escort            | who to spend the night with | **the attacker's name**, if anything happened           |
+| Vigilante         | who to shoot, or hold       | the shot is loaded                                      |
+| Villager, Jester  | who to watch                | whether they **moved**, and whether anyone corroborates |
 
 Selection is free and invisible until the phase ends — changing your mind publishes nothing, so
 there is no "he changed his mind" tell. The counter shows `6 of 8 have acted` and **never a name**,
 because "waiting for 1 player" fingers whoever is still deciding.
 
-**Everyone must lock, but *stay in* is a valid lock** — the same option the mafia get. The counter
+**Everyone must lock, but _stay in_ is a valid lock** — the same option the mafia get. The counter
 counts locks, not targets, so choosing to do nothing is a real choice and never a tell.
 
 **Selections persist server-side the moment they are tapped**, not on lock. A player who drops has
 their last selection used. This is fairer, and it closes a leak: if a dropped mafia defaulted to
-*stay in*, "nobody died on the night Maya was offline" would quietly point at Maya.
+_stay in_, "nobody died on the night Maya was offline" would quietly point at Maya.
 
 **An early full lock jumps to the night report, never past it.** The report always fires.
 
 **Every role gets a card every night, even when nothing happened** — a vigilante who held gets
-`—` · *you held*. An empty card beside a full one is a tell.
+`—` · _you held_. An empty card beside a full one is a tell.
 
 **The night report card is fixed-duration and cannot be dismissed.** So is the deal card. The
 mafia's deal card carries teammates and takes longer to read; if cards were dismissible, whoever
@@ -250,13 +250,13 @@ daytime behaviour is pure social read.
 - **Vote** — secret and simultaneous, all revealed at once at verdict. Running public tallies make
   late voters follow the leader; making everyone commit blind means the reveal is a real beat and the
   pointing phase actually mattered.
-- **Ejection is by plurality.** Most votes goes; a tie ejects nobody — *"the town couldn't agree."*
+- **Ejection is by plurality.** Most votes goes; a tie ejects nobody — _"the town couldn't agree."_
   Not majority-of-living: forced abstentions from dropped phones would push ejections out of reach
   and deadlock the town into losing by attrition. Plurality has no denominator, so absent players
   simply do not contribute and nothing breaks.
 - Abstain is a valid vote.
 
-**Deliberation ends early when a majority of connected living players tap *ready to vote*.** This is
+**Deliberation ends early when a majority of connected living players tap _ready to vote_.** This is
 deliberately not a host button — the host is a player, and a mafia host with a skip button would cut
 discussion short the moment it turned against them. Because the deliberation timer fires regardless,
 the early end can never deadlock; worst case the table talks for the full sixty seconds.
@@ -266,40 +266,40 @@ the early end can never deadlock; worst case the table talks for the full sixty 
 Server sets absolute timestamps for every step, so all phones animate against the same clock instead
 of each starting from whenever its poll landed.
 
-| t | |
-|---|---|
-| 0.0s | Dawn transition completes. Every device on the same screen. |
-| 0.5s | Narration starts — *"It was a beautiful morning in…"* |
+| t        |                                                                                                                                                                                                                                   |
+| -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 0.0s     | Dawn transition completes. Every device on the same screen.                                                                                                                                                                       |
+| 0.5s     | Narration starts — _"It was a beautiful morning in…"_                                                                                                                                                                             |
 | **3.0s** | **The name lands.** Card goes red, roster row strikes through, `✕` appears. **Victim's phone:** white blowout, snap to black, red breathing bleed, long vibration. **Everyone else:** their roster row goes red, short vibration. |
-| 3.0–6.0s | **The hold.** Three full seconds of dead. No narration, no motion. |
-| **6.0s** | **If saved:** one soft chime. Red drains upward, green rises from the bottom, the strikethrough lifts, `✚` lands beside the name. **Their phone:** red fades to green, warm pulse, gentle triple vibration. |
-| 7.5s | Narration resumes — *"…but the doctor got there first."* |
-| 10.0s | Roster settles |
-| 15.0s | Deliberation opens |
+| 3.0–6.0s | **The hold.** Three full seconds of dead. No narration, no motion.                                                                                                                                                                |
+| **6.0s** | **If saved:** one soft chime. Red drains upward, green rises from the bottom, the strikethrough lifts, `✚` lands beside the name. **Their phone:** red fades to green, warm pulse, gentle triple vibration.                       |
+| 7.5s     | Narration resumes — _"…but the doctor got there first."_                                                                                                                                                                          |
+| 10.0s    | Roster settles                                                                                                                                                                                                                    |
+| 15.0s    | Deliberation opens                                                                                                                                                                                                                |
 
 The three-second hold is the whole trick. Shorter reads as a rendering glitch; longer and people talk
 over it.
 
 **Bodyguard substitution** runs the same shape with a second stage: the target dies, holds, then
-instead of reviving, the bodyguard's card goes red. *"Maya died. No — Daniel stepped in front of
-her."*
+instead of reviving, the bodyguard's card goes red. _"Maya died. No — Daniel stepped in front of
+her."_
 
 ### 3.7 Default lineups
 
-| Players | Mafia side | Town | Villagers | Third |
-|---|---|---|---|---|
-| **5** | mafia | doctor, detective | 2 | — |
-| **6** | mafia | doctor, detective | 3 | — |
-| **7** | godfather, mafia | doctor, detective | 3 | — |
-| **8** | godfather, mafia | doctor, detective, lookout | 3 | — |
-| **9** | godfather, mafia | doctor, detective, lookout | 3 | jester |
-| **10** | godfather, mafia ×2 | doctor, detective, lookout | 3 | jester |
-| **11** | godfather, mafia ×2 | + bodyguard | 3 | jester |
-| **12** | godfather, mafia, **jammer** | doctor, detective, lookout, bodyguard | 4 | jester |
-| **13** | godfather, mafia ×2, jammer | doctor, detective, lookout, bodyguard | 4 | jester |
-| **14** | godfather, mafia ×2, jammer | + escort | 4 | jester |
-| **15** | godfather, mafia ×2, jammer | 5 specials | 5 | jester |
-| **16** | godfather, mafia ×2, jammer | + vigilante | 5 | jester |
+| Players | Mafia side                   | Town                                  | Villagers | Third  |
+| ------- | ---------------------------- | ------------------------------------- | --------- | ------ |
+| **5**   | mafia                        | doctor, detective                     | 2         | —      |
+| **6**   | mafia                        | doctor, detective                     | 3         | —      |
+| **7**   | godfather, mafia             | doctor, detective                     | 3         | —      |
+| **8**   | godfather, mafia             | doctor, detective, lookout            | 3         | —      |
+| **9**   | godfather, mafia             | doctor, detective, lookout            | 3         | jester |
+| **10**  | godfather, mafia ×2          | doctor, detective, lookout            | 3         | jester |
+| **11**  | godfather, mafia ×2          | + bodyguard                           | 3         | jester |
+| **12**  | godfather, mafia, **jammer** | doctor, detective, lookout, bodyguard | 4         | jester |
+| **13**  | godfather, mafia ×2, jammer  | doctor, detective, lookout, bodyguard | 4         | jester |
+| **14**  | godfather, mafia ×2, jammer  | + escort                              | 4         | jester |
+| **15**  | godfather, mafia ×2, jammer  | 5 specials                            | 5         | jester |
+| **16**  | godfather, mafia ×2, jammer  | + vigilante                           | 5         | jester |
 
 Mafia side sits at roughly **one in four**, the ratio that produces 3–5 round games. Villagers stay
 numerous on purpose: watch needs bodies, and a table where nearly everyone holds a power role stops
@@ -331,23 +331,23 @@ convincingly enough to survive the vote.
 
 ### Objective
 
-| Side | Wins when |
-|---|---|
-| **Crew** | **every** imposter has been ejected, and the last one failed the final guess |
+| Side         | Wins when                                                                                      |
+| ------------ | ---------------------------------------------------------------------------------------------- |
+| **Crew**     | **every** imposter has been ejected, and the last one failed the final guess                   |
 | **Imposter** | they survive two ejections, reach the final three, or the last ejected imposter names the word |
 
 With two imposters, ejecting one does not end the game — the crew must find both. **The final guess
-is offered only when the *last* imposter is ejected**, so an unlucky imposter caught on the first
+is offered only when the _last_ imposter is ejected**, so an unlucky imposter caught on the first
 vote cannot steal a game the crew were nowhere near losing.
 
 ### Roles
 
-| Role | Knows | Wins with |
-|---|---|---|
-| **Crew** | the word | crew |
-| **Understudy** | a *close but wrong* word — and does not know it is wrong | crew |
-| **Imposter** | the category, and no word | imposter |
-| **Mole** | the word **and** who the imposter is | imposter |
+| Role           | Knows                                                    | Wins with |
+| -------------- | -------------------------------------------------------- | --------- |
+| **Crew**       | the word                                                 | crew      |
+| **Understudy** | a _close but wrong_ word — and does not know it is wrong | crew      |
+| **Imposter**   | the category, and no word                                | imposter  |
+| **Mole**       | the word **and** who the imposter is                     | imposter  |
 
 The **Understudy** gives confident wrong clues and looks exactly like an imposter. It is the best
 addition to the game, and publishing the lineup is what makes it work — knowing an understudy exists
@@ -363,7 +363,7 @@ Two imposters know each other by default. Blind mode is a toggle.
 - Turn order re-randomises every round; the full order is shown on every device so people can see
   who is coming
 - Every phone shows whose turn it is in large type
-- On that person's phone: *say your word out loud*, and one button — **said it →**
+- On that person's phone: _say your word out loud_, and one button — **said it →**
 - They speak, they tap, it advances
 - After the last player the round ends and deliberation opens
 
@@ -377,12 +377,12 @@ up nine other people, and the order is public so there is nothing to cheat.
 
 **How the turn is handed over depends on where everyone is**, because the friction is different:
 
-| | Same room | On a call |
-|---|---|---|
-| Handoff | the whole circle on one screen, **one button any two of you press** when it has been round | turn by turn |
-| Window | one long window for the whole circle | 60s a turn, never shown |
-| Why | you can see and hear whose turn it is, so tapping per turn is pure overhead | nobody can see anything, so it has to be explicit |
-| Your turn | obvious | the phone vibrates hard enough to feel through a pocket |
+|           | Same room                                                                                  | On a call                                               |
+| --------- | ------------------------------------------------------------------------------------------ | ------------------------------------------------------- |
+| Handoff   | the whole circle on one screen, **one button any two of you press** when it has been round | turn by turn                                            |
+| Window    | one long window for the whole circle                                                       | 60s a turn, never shown                                 |
+| Why       | you can see and hear whose turn it is, so tapping per turn is pure overhead                | nobody can see anything, so it has to be explicit       |
+| Your turn | obvious                                                                                    | the phone vibrates hard enough to feel through a pocket |
 
 Ending the round takes **two different people**, not one person twice. A double-tap is the same
 thumb making the same mistake; two people is an actual check, and skipping somebody's turn is not
@@ -396,14 +396,14 @@ someone else's.
 
 ### The round
 
-| Phase | Length | |
-|---|---|---|
-| Deal | 25s | |
-| **Clue round** | self-paced | ~90s at nine players |
-| **Deliberation** | 90s | Longer than mafia — discussion *is* the game here |
-| **Vote** | 30s | Secret, simultaneous, same as mafia |
-| **Verdict** | 15s | |
-| **Final guess** | 30s | Only if an imposter was ejected |
+| Phase            | Length     |                                                   |
+| ---------------- | ---------- | ------------------------------------------------- |
+| Deal             | 25s        |                                                   |
+| **Clue round**   | self-paced | ~90s at nine players                              |
+| **Deliberation** | 90s        | Longer than mafia — discussion _is_ the game here |
+| **Vote**         | 30s        | Secret, simultaneous, same as mafia               |
+| **Verdict**      | 15s        |                                                   |
+| **Final guess**  | 30s        | Only if an imposter was ejected                   |
 
 ### The final guess
 
@@ -415,17 +415,17 @@ This is the one place typing is unavoidable, and it is worth it.
 
 ### Default lineups
 
-| Players | Imposters | Crew | Extras |
-|---|---|---|---|
-| **4–6** | 1 | 3–5 | — |
-| **7–9** | 1 | 5–7 | understudy |
-| **10–11** | 2 | 7–8 | understudy |
-| **12–15** | 2 | 8–11 | understudy, mole |
-| **16** | 3 | 11 | understudy, mole |
+| Players   | Imposters | Crew | Extras           |
+| --------- | --------- | ---- | ---------------- |
+| **4–6**   | 1         | 3–5  | —                |
+| **7–9**   | 1         | 5–7  | understudy       |
+| **10–11** | 2         | 7–8  | understudy       |
+| **12–15** | 2         | 8–11 | understudy, mole |
+| **16**    | 3         | 11   | understudy, mole |
 
 ### Game length
 
-**2–3 votes, 8–12 minutes**, then a rematch with a new word and a new imposter. The rematch loop *is*
+**2–3 votes, 8–12 minutes**, then a rematch with a new word and a new imposter. The rematch loop _is_
 the game — that is how the genre plays, and it maps onto the rematch machinery the other room games
 already use.
 
@@ -453,14 +453,14 @@ meaning on its own** — the glyphs and the strikethrough do, and colour reinfor
 
 Beside each name, mono, right-aligned. Tap a name to expand that player's public history.
 
-| Glyph | Meaning |
-|---|---|
-| `✕` | dead |
-| `✚` | saved — superscript count when more than once |
-| `→` | moved (publicly confirmed by two or more watchers) |
-| `◐` | watched — superscript eye count |
-| `◎` | investigated by you |
-| `!` | pointed at this round |
+| Glyph | Meaning                                            |
+| ----- | -------------------------------------------------- |
+| `✕`   | dead                                               |
+| `✚`   | saved — superscript count when more than once      |
+| `→`   | moved (publicly confirmed by two or more watchers) |
+| `◐`   | watched — superscript eye count                    |
+| `◎`   | investigated by you                                |
+| `!`   | pointed at this round                              |
 
 The **server** computes a per-viewer public history. The client is never sent data it then has to be
 trusted to hide.
@@ -477,7 +477,7 @@ regardless of role.
   intent existed; it just stopped at the one screen that stays up for forty-five seconds. The label
   now sits where a form label sits, at a size that needs looking at rather than glancing at.
 - **Screens away, before every night:** its own held screen with a countdown to the moment roles
-  appear. Without the countdown the screen gives no reason to move *now*, so people read it, agree
+  appear. Without the countdown the screen gives no reason to move _now_, so people read it, agree
   with it, and keep holding the phone flat until their role arrives — the exact moment it is worth
   something to their neighbour.
 - **The night hint:** one line under the action prompt saying what tonight buys you. The full rules
@@ -500,11 +500,11 @@ regardless of role.
 - The window already existed — five seconds in which nothing role-specific may be on screen — so
   giving it something to look at costs nothing and makes the pause read as a scene rather than a
   stall.
-- **Nothing role-specific is on screen during dusk.** Every device shows the same words — *"Night
-  falls. Turn your screen away from the person next to you."* — so a phone lying face up on the
+- **Nothing role-specific is on screen during dusk.** Every device shows the same words — _"Night
+  falls. Turn your screen away from the person next to you."_ — so a phone lying face up on the
   table gives nothing away, and there is a real moment to move it. Five seconds rather than two and
   a half: the first was a transition, this is a warning.
-- Role content appears only *after* the transition completes, in an identically sized card in the
+- Role content appears only _after_ the transition completes, in an identically sized card in the
   same screen position.
 - **The whole night runs at low luminance.** Every screen equally dark; role text is low-contrast
   amber on night — readable at arm's length, unreadable from across a room.
@@ -516,13 +516,13 @@ regardless of role.
 A row of houses, shown at night and through dawn. It carries **only what is already public**, and
 that is the design rather than a limitation of it.
 
-| Phase | The village |
-|---|---|
-| **Night** | Anonymous. No names, positions reshuffled every round. Lit windows are exactly the public acted-count, at positions that say nothing about whose |
-| **Dawn, before the name** | Untouched — every house lit, including the one about to go out |
-| **Dawn, on the name** | That window goes red, then dark. Amber again if the doctor got there first |
-| **Movement** | A corroborated sighting flickers that window |
-| **Day** | The dead are shuttered |
+| Phase                     | The village                                                                                                                                      |
+| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Night**                 | Anonymous. No names, positions reshuffled every round. Lit windows are exactly the public acted-count, at positions that say nothing about whose |
+| **Dawn, before the name** | Untouched — every house lit, including the one about to go out                                                                                   |
+| **Dawn, on the name**     | That window goes red, then dark. Amber again if the doctor got there first                                                                       |
+| **Movement**              | A corroborated sighting flickers that window                                                                                                     |
+| **Day**                   | The dead are shuttered                                                                                                                           |
 
 At dawn the village **replaces** the roster rather than sitting above it. Names under the houses and
 the same names in a list underneath is the same information twice on one screen, and the roster
@@ -541,10 +541,10 @@ nothing. False signal in a deduction game is damage, not decoration.
 Measured rather than asserted. Across a sixteen-player game with every role in the ruleset, in every
 phase, on all sixteen surfaces at once:
 
-| | |
-|---|---|
+|          |                        |
+| -------- | ---------------------- |
 | Headline | **113px**, no variants |
-| Timer | **158px**, no variants |
+| Timer    | **158px**, no variants |
 
 No role, and no lineup, moves the furniture. The one place it used to was the night: the holding
 screen put its countdown 72px below where the action screen put it, so the single element that most
@@ -579,7 +579,7 @@ does not reshuffle it.
 
 One device speaks it — the presenter screen if attached, otherwise a stable elected player
 recomputed each dawn from connected and unmuted devices. Eight phones speaking a beat apart is the
-echo problem the party game already documents. Any device can take over with a *read it out* button.
+echo problem the party game already documents. Any device can take over with a _read it out_ button.
 
 ### 5.6 Two new theme tokens
 
@@ -591,16 +591,16 @@ draw-country owning `--things-country-outside` / `--things-country-inside` rathe
 One card, at T−10s. Same size, same position, same animation, same beat on every device. Inside it,
 always the same two lines: **a name, and one line about them.**
 
-| Role | Card |
-|---|---|
-| Detective | `MAYA` · *guilty* |
-| Escort | `DANIEL` · *it was Maya* |
-| Lookout | `MAYA` · *Daniel and Priya came to her door* |
-| Watcher | `MAYA` · *she went out* / *her door didn't open* |
-| Doctor | `MAYA` · *you're watching over her* |
-| Bodyguard | `MAYA` · *you're at her door* |
-| Vigilante | `—` · *you held* |
-| Mafia | `MAYA` · *it's done* |
+| Role      | Card                                             |
+| --------- | ------------------------------------------------ |
+| Detective | `MAYA` · _guilty_                                |
+| Escort    | `DANIEL` · _it was Maya_                         |
+| Lookout   | `MAYA` · _Daniel and Priya came to her door_     |
+| Watcher   | `MAYA` · _she went out_ / _her door didn't open_ |
+| Doctor    | `MAYA` · _you're watching over her_              |
+| Bodyguard | `MAYA` · _you're at her door_                    |
+| Vigilante | `—` · _you held_                                 |
+| Mafia     | `MAYA` · _it's done_                             |
 
 The reveal has a beat in it — the name lands, a pause, then the line, arriving with **a single amber
 pulse on the glyph** (`→` went out, `·` stillness). One pulse, identical on every card regardless of
@@ -636,7 +636,7 @@ Without it, people spend night four trying to recall who they investigated on ni
 it wrong. It is also what feeds last words, and what makes reconnecting instant — a returning player
 needs no recap read out loud, which means reconnection tells the table nothing about them.
 
-Every role's list is populated, including the mafia's (*"night 1 · MAYA · it's done"*), so the list
+Every role's list is populated, including the mafia's (_"night 1 · MAYA · it's done"_), so the list
 itself is never a tell.
 
 ### 5.9 The dead
@@ -652,7 +652,7 @@ killer (unless they were the escort, who saw them). That makes it a role payoff 
 reveal: the detective who died on night two now matters. You may lie, and lynched players get it
 too, so the channel is not pure town-truth.
 
-**Sequencing constraint:** last words must close *before* any spectator view unlocks. Otherwise the
+**Sequencing constraint:** last words must close _before_ any spectator view unlocks. Otherwise the
 dead player reads the full state and publishes the killer's name.
 
 **2. Spectating.** During play the dead see the public board, the narration, the votes, and their own
@@ -670,7 +670,7 @@ The lobby is the deadest two minutes in the game and people already spend it rea
 so this turns that reading into something actionable **without taking the decision off the host** —
 nothing here binds the lineup.
 
-It also fixed a plain gap: the board only ever listed roles that were *in*, so there was no way to
+It also fixed a plain gap: the board only ever listed roles that were _in_, so there was no way to
 ask for something you could not see. Every role the mode offers is now listed, benched ones marked
 with the roster size they need (`escort · needs 11`).
 
@@ -714,7 +714,7 @@ The list stays up while last words are open, because you write your line from it
 the screen says so rather than looking broken.
 
 **3. The graveyard.** The caucus opens **the moment you die**. You tap a name, you watch the dead
-tally shift live as others arrive and change their minds. It just does not *count* yet, and the UI
+tally shift live as others arrive and change their minds. It just does not _count_ yet, and the UI
 says so: `the graveyard votes when 5 are gone · 3 so far`.
 
 **Once half the table is dead, the graveyard's plurality becomes one additional ballot** in each
@@ -770,19 +770,19 @@ That one constraint means no number of dropped phones can stall the room.
   would otherwise fast-forward through several rounds of nobody acting. **The room pauses when
   nobody is connected** and resumes from where it paused on the first read back.
 - **A permanent leaver** — someone actually leaving rather than dropping — is killed off with
-  neutral narration (*"Priya left town"*), and the engine **re-checks win conditions immediately**,
+  neutral narration (_"Priya left town"_), and the engine **re-checks win conditions immediately**,
   because removing one person can end the game on the spot.
 
 ### 5.11 Room mode
 
 Set at creation, because a group in one room and a group on a call want different games.
 
-| | Same room | Remote |
-|---|---|---|
-| Narration | presenter screen, or one elected phone | every device |
-| Sound effects | one device only, or it is cacophony | every device |
-| Deliberation | 60s | **90s** |
-| Dead cannot speak | enforceable socially | a reminder to mute |
+|                   | Same room                              | Remote             |
+| ----------------- | -------------------------------------- | ------------------ |
+| Narration         | presenter screen, or one elected phone | every device       |
+| Sound effects     | one device only, or it is cacophony    | every device       |
+| Deliberation      | 60s                                    | **90s**            |
+| Dead cannot speak | enforceable socially                   | a reminder to mute |
 
 Deliberation length is the one that actually matters: sixty seconds is a real conversation in a room
 and barely two exchanges on a laggy call.
@@ -849,7 +849,7 @@ phone round in the dark five times is worse than not playing.
 
 ### 5.14 Your notebook
 
-Separate from *what you know*, deliberately. That list is what your **role** was told and cannot be
+Separate from _what you know_, deliberately. That list is what your **role** was told and cannot be
 written in. The notebook is what you **reckon** — forty lines, eighty characters each, and it never
 leaves the device, so nothing written in it can appear in anybody else's snapshot.
 
@@ -884,8 +884,8 @@ and offers a retry with the reason when the answer was no.
 
 **Nothing else asks.** Motion and microphone belong to forehead and the spelling bee; the rule those
 share with this game is that a refused permission and a device that cannot do it are different
-problems, and only one of them has a way out. Saying "unavailable" to somebody who tapped *don't
-allow* leaves them with no idea they can change their mind.
+problems, and only one of them has a way out. Saying "unavailable" to somebody who tapped _don't
+allow_ leaves them with no idea they can change their mind.
 
 ### 5.17 Accessibility
 
@@ -903,16 +903,16 @@ need active work here:
 
 ### Host, in the lobby
 
-| Control | |
-|---|---|
-| Mode | mafia or imposter — locked once the game starts. **Mafia is disabled below 5 players**, with the reason shown rather than a greyed-out button. |
-| Room mode | same room or remote (§5.11) |
-| Roles | the standard lineup for the player count, automatically |
-| First game | strips the lineup to doctor / detective / villager at any player count, and lengthens the deal with a three-card explainer. Twelve first-timers handed nine roles is a disaster. |
-| Timings | every phase length, defaults as specified above |
-| Toggles | section 7 |
-| Remove player | before the deal |
-| Start | blocked until everyone is ready |
+| Control       |                                                                                                                                                                                  |
+| ------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Mode          | mafia or imposter — locked once the game starts. **Mafia is disabled below 5 players**, with the reason shown rather than a greyed-out button.                                   |
+| Room mode     | same room or remote (§5.11)                                                                                                                                                      |
+| Roles         | the standard lineup for the player count, automatically                                                                                                                          |
+| First game    | strips the lineup to doctor / detective / villager at any player count, and lengthens the deal with a three-card explainer. Twelve first-timers handed nine roles is a disaster. |
+| Timings       | every phase length, defaults as specified above                                                                                                                                  |
+| Toggles       | section 7                                                                                                                                                                        |
+| Remove player | before the deal                                                                                                                                                                  |
+| Start         | blocked until everyone is ready                                                                                                                                                  |
 
 **Roles are edited in the lobby, not at setup.** A lineup has to add up to the people who are
 actually in the room, and at setup that is a guess — in the lobby it is a fact. "add or remove
@@ -939,61 +939,61 @@ its own rather than wiping everything beside it.
 Deliberately thin. The host is a player, and every control that could change the flow of a round in
 their favour has been moved to the table.
 
-| Control | |
-|---|---|
-| `+30s` | extend the current phase |
-| Pause | freeze between phases |
-| Remove | a permanent leaver (§5.10) |
-| End game | with confirmation |
+| Control  |                            |
+| -------- | -------------------------- |
+| `+30s`   | extend the current phase   |
+| Pause    | freeze between phases      |
+| Remove   | a permanent leaver (§5.10) |
+| End game | with confirmation          |
 
 **Skip is not a host control** — deliberation ends early on a majority of connected living players
-tapping *ready to vote* (§3.5).
+tapping _ready to vote_ (§3.5).
 
 **The host sees nothing extra.** Informationally they are a normal player.
 
 ### Player
 
-| Control | Available |
-|---|---|
-| Ready | lobby |
-| Select target | night — free to change until lock, publishes nothing, persisted on tap |
-| Ready to vote | deliberation — majority of connected living ends it early |
-| Point | deliberation — public, live, non-binding |
-| Vote / abstain | vote — secret until verdict |
-| Said it | your turn, imposter clue round |
-| Last words | 30s after your death |
-| Graveyard vote | from the moment you die; counts once half the table is gone |
-| Final guess | if ejected as the last imposter |
-| Claim host | after 60s of host disconnection |
-| My role | always |
-| What you know | always — your private record (§5.8) |
-| Rules | always — deep-linked to your own role |
-| Mute | always, per device, persists across games |
-| Read it out | dawn, if the elected narrator is muted |
+| Control        | Available                                                              |
+| -------------- | ---------------------------------------------------------------------- |
+| Ready          | lobby                                                                  |
+| Select target  | night — free to change until lock, publishes nothing, persisted on tap |
+| Ready to vote  | deliberation — majority of connected living ends it early              |
+| Point          | deliberation — public, live, non-binding                               |
+| Vote / abstain | vote — secret until verdict                                            |
+| Said it        | your turn, imposter clue round                                         |
+| Last words     | 30s after your death                                                   |
+| Graveyard vote | from the moment you die; counts once half the table is gone            |
+| Final guess    | if ejected as the last imposter                                        |
+| Claim host     | after 60s of host disconnection                                        |
+| My role        | always                                                                 |
+| What you know  | always — your private record (§5.8)                                    |
+| Rules          | always — deep-linked to your own role                                  |
+| Mute           | always, per device, persists across games                              |
+| Read it out    | dawn, if the elected narrator is muted                                 |
 
 ---
 
 ## 7. Toggles
 
-| Toggle | Default | Effect |
-|---|---|---|
-| `announceAttackTarget` | **on** | The death-then-revive names the target. Off: the table only sees *"someone was attacked, and someone saved them"*, and the sequence plays on the victim's phone alone. |
-| `lastWords` | **on** | 30 seconds, one line, on death (§5.9) |
-| `graveyardVote` | **on** | The dead get one collective ballot once half the table is gone (§5.9). Forced off by `liveGodView`. |
-| `liveGodView` | off | The dead see roles and night actions during play, not only at the end. Disables `graveyardVote`. |
-| `firstGame` | off | Doctor / detective / villager only, longer deal, explainer cards |
-| `revealRoleOnDeath` | **on** | Night kills show the dead player's role |
-| `revealEjectedRole` | **on** | Verdict shows the ejected player's role |
-| `jesterEndsGame` | **on** | Voting out the jester ends the game outright |
-| `doctorRepeatTarget` | off | Allow protecting the same person two nights running |
-| `coldOpen` | off | The victim's phone detonates the moment the mafia lock in, not at dawn |
-| `blindImposters` | off | Two imposters do not know each other |
-| `simultaneousClues` | off | Imposter clue rounds run all at once instead of by turn |
-| `cameraTorch` | off | Chrome on Android only. The camera is asked for **in setup, on the tap that turns it on**, with the reason on screen — never mid-death with no explanation. A refusal is reported rather than swallowed, because a browser will not prompt twice and a silently dead toggle is worse than no toggle. No video is ever rendered; the track exists only to hold the lamp on. |
-| `reducedEffects` | auto | Detected from `prefers-reduced-motion`, manually overridable |
+| Toggle                 | Default | Effect                                                                                                                                                                                                                                                                                                                                                                     |
+| ---------------------- | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `announceAttackTarget` | **on**  | The death-then-revive names the target. Off: the table only sees _"someone was attacked, and someone saved them"_, and the sequence plays on the victim's phone alone.                                                                                                                                                                                                     |
+| `lastWords`            | **on**  | 30 seconds, one line, on death (§5.9)                                                                                                                                                                                                                                                                                                                                      |
+| `graveyardVote`        | **on**  | The dead get one collective ballot once half the table is gone (§5.9). Forced off by `liveGodView`.                                                                                                                                                                                                                                                                        |
+| `liveGodView`          | off     | The dead see roles and night actions during play, not only at the end. Disables `graveyardVote`.                                                                                                                                                                                                                                                                           |
+| `firstGame`            | off     | Doctor / detective / villager only, longer deal, explainer cards                                                                                                                                                                                                                                                                                                           |
+| `revealRoleOnDeath`    | **on**  | Night kills show the dead player's role                                                                                                                                                                                                                                                                                                                                    |
+| `revealEjectedRole`    | **on**  | Verdict shows the ejected player's role                                                                                                                                                                                                                                                                                                                                    |
+| `jesterEndsGame`       | **on**  | Voting out the jester ends the game outright                                                                                                                                                                                                                                                                                                                               |
+| `doctorRepeatTarget`   | off     | Allow protecting the same person two nights running                                                                                                                                                                                                                                                                                                                        |
+| `coldOpen`             | off     | The victim's phone detonates the moment the mafia lock in, not at dawn                                                                                                                                                                                                                                                                                                     |
+| `blindImposters`       | off     | Two imposters do not know each other                                                                                                                                                                                                                                                                                                                                       |
+| `simultaneousClues`    | off     | Imposter clue rounds run all at once instead of by turn                                                                                                                                                                                                                                                                                                                    |
+| `cameraTorch`          | off     | Chrome on Android only. The camera is asked for **in setup, on the tap that turns it on**, with the reason on screen — never mid-death with no explanation. A refusal is reported rather than swallowed, because a browser will not prompt twice and a silently dead toggle is worse than no toggle. No video is ever rendered; the track exists only to hold the lamp on. |
+| `reducedEffects`       | auto    | Detected from `prefers-reduced-motion`, manually overridable                                                                                                                                                                                                                                                                                                               |
 
 `announceAttackTarget` is the one with a real cost: showing the death before the save partly
-undercuts the mafia's *stay in* option, because a quiet night and a saved night become
+undercuts the mafia's _stay in_ option, because a quiet night and a saved night become
 distinguishable. The drama is worth it as a default; the toggle is there for groups who want the
 tighter game.
 
@@ -1013,7 +1013,7 @@ hear about one role's minimum:
 4. **At least 2 plain villagers, always** — watch needs bodies to work
 5. Every role's minimum player count
 6. Hard ceiling of 9 distinct special roles
-7. *Warning only:* specials above `⌈players ÷ 2⌉ + 1`
+7. _Warning only:_ specials above `⌈players ÷ 2⌉ + 1`
 
 Sample rejections:
 

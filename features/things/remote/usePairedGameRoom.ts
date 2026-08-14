@@ -1,6 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
-import { closePairedGameRoomFn, createPairedGameRoomFn, disconnectPairedGameJudgeFn, syncPairedGamePlayerFn } from "./paired-game-room.functions";
+import {
+  closePairedGameRoomFn,
+  createPairedGameRoomFn,
+  disconnectPairedGameJudgeFn,
+  syncPairedGamePlayerFn,
+} from "./paired-game-room.functions";
 import type {
   RemoteCommand,
   RemoteCommandReceipt,
@@ -47,7 +52,9 @@ export function usePairedGameRoom(
   initialSession?: RemotePlayerSession,
 ) {
   const navigate = useNavigate();
-  const [room, setRoom] = useState<PlayerRoom | null>(() => initialSession ? playerRoom(initialSession) : null);
+  const [room, setRoom] = useState<PlayerRoom | null>(() =>
+    initialSession ? playerRoom(initialSession) : null,
+  );
   const [judgeConnected, setJudgeConnected] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -71,14 +78,18 @@ export function usePairedGameRoom(
   const syncedSnapshot = useCallback((): RemoteSyncedSnapshot => {
     const current = snapshotRef.current;
     if (current.phase === "setup") roundIdRef.current = null;
-    else if (!roundIdRef.current || (current.phase === "countdown" && lastSyncedPhaseRef.current !== "countdown")) {
+    else if (
+      !roundIdRef.current ||
+      (current.phase === "countdown" && lastSyncedPhaseRef.current !== "countdown")
+    ) {
       roundIdRef.current = crypto.randomUUID();
       decidedItemsRef.current.clear();
     }
     lastSyncedPhaseRef.current = current.phase;
-    const itemId = current.phase === "playing" && current.itemKey && roundIdRef.current
-      ? `${roundIdRef.current}:${current.itemKey}`
-      : null;
+    const itemId =
+      current.phase === "playing" && current.itemKey && roundIdRef.current
+        ? `${roundIdRef.current}:${current.itemKey}`
+        : null;
     const signature = JSON.stringify({
       ...current,
       updatedAt: 0,
@@ -104,7 +115,9 @@ export function usePairedGameRoom(
     roomId: room?.roomId ?? null,
     role: "player",
     token: room?.playerToken ?? null,
-    onWake: () => { void syncNowRef.current?.(); },
+    onWake: () => {
+      void syncNowRef.current?.();
+    },
   });
 
   useEffect(() => {
@@ -114,7 +127,12 @@ export function usePairedGameRoom(
       const stored: unknown = JSON.parse(raw ?? "null");
       if (!stored || typeof stored !== "object") return;
       const value = stored as Partial<PlayerRoom>;
-      if (typeof value.roomId === "string" && typeof value.playerToken === "string" && typeof value.expiresAt === "number" && value.expiresAt > Date.now()) {
+      if (
+        typeof value.roomId === "string" &&
+        typeof value.playerToken === "string" &&
+        typeof value.expiresAt === "number" &&
+        value.expiresAt > Date.now()
+      ) {
         if (typeof value.connectionEpoch !== "string") value.connectionEpoch = crypto.randomUUID();
         setRoom(value as PlayerRoom);
       }
@@ -210,9 +228,14 @@ export function usePairedGameRoom(
     } else {
       sessionStorage.removeItem(storageKey(game));
     }
-    if (!current) { setSyncing(false); return; }
+    if (!current) {
+      setSyncing(false);
+      return;
+    }
     try {
-      await closePairedGameRoomFn({ data: { roomId: current.roomId, role: "player", token: current.playerToken } });
+      await closePairedGameRoomFn({
+        data: { roomId: current.roomId, role: "player", token: current.playerToken },
+      });
       setMessage("Remote judging ended. Your game stays on this phone.");
     } catch {
       // Rooms expire automatically; local play must not depend on cleanup.
@@ -221,7 +244,8 @@ export function usePairedGameRoom(
     }
   }, [game, initialSession, room, syncing]);
 
-  const reconcile = useCallback(async (isCurrent: () => boolean) => {
+  const reconcile = useCallback(
+    async (isCurrent: () => boolean) => {
       if (!room) return;
       try {
         const currentSnapshot = syncedSnapshot();
@@ -244,28 +268,72 @@ export function usePairedGameRoom(
         setJudgeConnected(result.judgeConnected);
         let received = false;
         for (const command of result.commands) {
-          lastCommandSequenceRef.current = Math.max(lastCommandSequenceRef.current, command.sequence);
+          lastCommandSequenceRef.current = Math.max(
+            lastCommandSequenceRef.current,
+            command.sequence,
+          );
           if (processedCommands.current.has(command.id)) continue;
           processedCommands.current.add(command.id);
           const latest = syncedSnapshot();
-          const isDecision = command.type === "correct" || command.type === "incorrect" || command.type === "pass" || command.type === "skip";
+          const isDecision =
+            command.type === "correct" ||
+            command.type === "incorrect" ||
+            command.type === "pass" ||
+            command.type === "skip";
           let receipt: RemoteCommandReceipt;
           if (latest.roundId !== command.roundId) {
-            receipt = { commandId: command.id, sequence: command.sequence, status: "rejected", reason: "stale_round" };
-          } else if ((command.type !== "amend" && command.type !== "play_again" && latest.itemId !== command.itemId) || (isDecision && latest.transitioning)) {
-            receipt = { commandId: command.id, sequence: command.sequence, status: "rejected", reason: "stale_item" };
+            receipt = {
+              commandId: command.id,
+              sequence: command.sequence,
+              status: "rejected",
+              reason: "stale_round",
+            };
+          } else if (
+            (command.type !== "amend" &&
+              command.type !== "play_again" &&
+              latest.itemId !== command.itemId) ||
+            (isDecision && latest.transitioning)
+          ) {
+            receipt = {
+              commandId: command.id,
+              sequence: command.sequence,
+              status: "rejected",
+              reason: "stale_item",
+            };
           } else if (command.type === "play_again" && latest.phase !== "results") {
-            receipt = { commandId: command.id, sequence: command.sequence, status: "rejected", reason: "round_not_complete" };
-          } else if (isDecision && (latest.decisionGraceEndsAt ?? latest.decisionClosesAt) && command.receivedAt > (latest.decisionGraceEndsAt ?? latest.decisionClosesAt)!) {
-            receipt = { commandId: command.id, sequence: command.sequence, status: "rejected", reason: "decision_closed" };
+            receipt = {
+              commandId: command.id,
+              sequence: command.sequence,
+              status: "rejected",
+              reason: "round_not_complete",
+            };
+          } else if (
+            isDecision &&
+            (latest.decisionGraceEndsAt ?? latest.decisionClosesAt) &&
+            command.receivedAt > (latest.decisionGraceEndsAt ?? latest.decisionClosesAt)!
+          ) {
+            receipt = {
+              commandId: command.id,
+              sequence: command.sequence,
+              status: "rejected",
+              reason: "decision_closed",
+            };
           } else if (isDecision && decidedItemsRef.current.has(command.itemId)) {
-            receipt = { commandId: command.id, sequence: command.sequence, status: "rejected", reason: "already_decided" };
+            receipt = {
+              commandId: command.id,
+              sequence: command.sequence,
+              status: "rejected",
+              reason: "already_decided",
+            };
           } else {
             commandRef.current(command);
             if (isDecision) decidedItemsRef.current.add(command.itemId);
             receipt = { commandId: command.id, sequence: command.sequence, status: "applied" };
           }
-          receiptsRef.current = [...receiptsRef.current.filter(({ commandId }) => commandId !== command.id), receipt].slice(-20);
+          receiptsRef.current = [
+            ...receiptsRef.current.filter(({ commandId }) => commandId !== command.id),
+            receipt,
+          ].slice(-20);
           received = true;
         }
         if (processedCommands.current.size > 500) {
@@ -279,7 +347,9 @@ export function usePairedGameRoom(
           setMessage("Judge reconnecting. Your game keeps working.");
         }
       }
-  }, [game, initialSession, notifySocket, room, syncedSnapshot]);
+    },
+    [game, initialSession, notifySocket, room, syncedSnapshot],
+  );
 
   const reconcileNow = useRoomReconciler({
     enabled: Boolean(room),
@@ -299,11 +369,12 @@ export function usePairedGameRoom(
     if (room) void syncNowRef.current?.();
   }, [room, snapshotSignature]);
 
-  const inviteUrl = room?.judgeToken && typeof window !== "undefined"
-    ? buildPairedGameJudgeInviteUrl(window.location.origin, room.roomId, {
-        judgeToken: room.judgeToken,
-      })
-    : null;
+  const inviteUrl =
+    room?.judgeToken && typeof window !== "undefined"
+      ? buildPairedGameJudgeInviteUrl(window.location.origin, room.roomId, {
+          judgeToken: room.judgeToken,
+        })
+      : null;
   const syncNow = useCallback(() => syncNowRef.current?.() ?? Promise.resolve(), []);
 
   return {

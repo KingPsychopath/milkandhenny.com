@@ -73,17 +73,28 @@ export function PairedGameHostPanel({
     setConfirmingDisconnect(false);
     setDisconnecting(true);
     setManualCopyUrl(null);
-    try { await onDisconnectJudge(); } finally { setDisconnecting(false); }
+    try {
+      await onDisconnectJudge();
+    } finally {
+      setDisconnecting(false);
+    }
   };
 
   const handleEnd = async () => {
     setConfirmingEnd(false);
     setEnding(true);
-    try { await onClose(); } finally { setEnding(false); }
+    try {
+      await onClose();
+    } finally {
+      setEnding(false);
+    }
   };
 
   return (
-    <section className="mt-9 rounded-3xl border border-white/12 bg-white/[0.04] p-5" aria-labelledby="remote-judge-title">
+    <section
+      className="mt-9 rounded-3xl border border-white/12 bg-white/[0.04] p-5"
+      aria-labelledby="remote-judge-title"
+    >
       <div>
         <h2 id="remote-judge-title" className="font-serif text-2xl font-semibold">
           Remote judge
@@ -92,7 +103,10 @@ export function PairedGameHostPanel({
           Let someone score from their phone.
         </p>
         {roomId ? (
-          <p className={`mt-3 font-mono text-xs ${connected ? "text-emerald-200" : "text-white/45"}`} aria-live="polite">
+          <p
+            className={`mt-3 font-mono text-xs ${connected ? "text-emerald-200" : "text-white/45"}`}
+            aria-live="polite"
+          >
             {connected ? "● judge connected" : "waiting for your judge to join…"}
           </p>
         ) : null}
@@ -104,7 +118,13 @@ export function PairedGameHostPanel({
         disabled={syncing || ending}
         className="mt-5 min-h-12 w-full rounded-full border border-white/20 px-5 font-mono text-sm font-semibold text-white disabled:opacity-40"
       >
-        {syncing ? "making invite…" : nativeShare ? "share judge invite" : roomId ? "copy judge link" : "invite a judge"}
+        {syncing
+          ? "making invite…"
+          : nativeShare
+            ? "share judge invite"
+            : roomId
+              ? "copy judge link"
+              : "invite a judge"}
       </button>
 
       {manualCopyUrl ? (
@@ -137,43 +157,99 @@ export function PairedGameHostPanel({
       {roomId ? (
         <div className="mt-5 grid gap-5 sm:grid-cols-[9rem_1fr] sm:items-center">
           {qrCode ? (
-            <img src={qrCode} alt="QR code for the remote judge invite" className="mx-auto w-36 rounded-2xl bg-white p-2" />
+            <img
+              src={qrCode}
+              alt="QR code for the remote judge invite"
+              className="mx-auto w-36 rounded-2xl bg-white p-2"
+            />
           ) : qrFailed ? (
-            <p className="font-mono text-xs text-white/50">QR unavailable—share the link instead.</p>
+            <p className="font-mono text-xs text-white/50">
+              QR unavailable—share the link instead.
+            </p>
           ) : null}
           <div className="text-center sm:text-left">
             <p className="font-mono text-micro uppercase tracking-[0.15em] text-white/40">room</p>
             <p className="mt-1 font-mono text-2xl tracking-[0.18em] text-white/80">{roomId}</p>
             <div className="mt-3 flex flex-wrap items-center justify-center gap-x-4 sm:justify-start">
-              <a href={inviteUrl ?? undefined} target="_blank" rel="noreferrer" className="inline-flex min-h-11 items-center font-mono text-xs text-white/60 hover:text-white">
+              <a
+                href={inviteUrl ?? undefined}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex min-h-11 items-center font-mono text-xs text-white/60 hover:text-white"
+              >
                 open judge view
               </a>
               {connected ? (
-                <button type="button" onClick={() => setConfirmingDisconnect(true)} disabled={disconnecting || ending} className="inline-flex min-h-11 items-center font-mono text-xs text-white/60 hover:text-white disabled:opacity-40">
+                <button
+                  type="button"
+                  onClick={() => setConfirmingDisconnect(true)}
+                  disabled={disconnecting || ending}
+                  className="inline-flex min-h-11 items-center font-mono text-xs text-white/60 hover:text-white disabled:opacity-40"
+                >
                   {disconnecting ? "disconnecting…" : "disconnect judge"}
                 </button>
               ) : null}
-              <button type="button" onClick={() => connected ? setConfirmingEnd(true) : void handleEnd()} disabled={ending || disconnecting} className="inline-flex min-h-11 items-center font-mono text-xs text-white/45 hover:text-white disabled:opacity-40">
+              <button
+                type="button"
+                onClick={() => (connected ? setConfirmingEnd(true) : void handleEnd())}
+                disabled={ending || disconnecting}
+                className="inline-flex min-h-11 items-center font-mono text-xs text-white/45 hover:text-white disabled:opacity-40"
+              >
                 {ending ? "ending…" : connected ? "end remote judging" : "cancel invite"}
               </button>
             </div>
           </div>
         </div>
       ) : null}
-      {confirmingDisconnect ? <EndGameDialog tone="dark" eyebrow="remote judge" title="Disconnect this judge?" description="Their phone loses control straight away. You get a fresh invite to share with someone else." confirmLabel="disconnect" cancelLabel="keep judge" pending={disconnecting} onCancel={() => setConfirmingDisconnect(false)} onConfirm={() => void handleDisconnect()} /> : null}
-      {confirmingEnd ? <EndGameDialog tone="dark" eyebrow="remote judge" title="End remote judging?" description="The game keeps working on this phone." confirmLabel="end judging" cancelLabel="keep judge" pending={ending} onCancel={() => setConfirmingEnd(false)} onConfirm={() => void handleEnd()} /> : null}
+      {confirmingDisconnect ? (
+        <EndGameDialog
+          tone="dark"
+          eyebrow="remote judge"
+          title="Disconnect this judge?"
+          description="Their phone loses control straight away. You get a fresh invite to share with someone else."
+          confirmLabel="disconnect"
+          cancelLabel="keep judge"
+          pending={disconnecting}
+          onCancel={() => setConfirmingDisconnect(false)}
+          onConfirm={() => void handleDisconnect()}
+        />
+      ) : null}
+      {confirmingEnd ? (
+        <EndGameDialog
+          tone="dark"
+          eyebrow="remote judge"
+          title="End remote judging?"
+          description="The game keeps working on this phone."
+          confirmLabel="end judging"
+          cancelLabel="keep judge"
+          pending={ending}
+          onCancel={() => setConfirmingEnd(false)}
+          onConfirm={() => void handleEnd()}
+        />
+      ) : null}
       {roomId ? (
         <label className="mt-4 flex min-h-11 cursor-pointer items-center justify-between gap-4 border-t border-white/10 pt-4 font-mono text-xs text-white/60">
           <span>judge-only controls</span>
-          <input type="checkbox" checked={exclusive} onChange={onToggleExclusive} className="h-5 w-5 accent-[var(--things-amber)]" />
+          <input
+            type="checkbox"
+            checked={exclusive}
+            onChange={onToggleExclusive}
+            className="h-5 w-5 accent-[var(--things-amber)]"
+          />
         </label>
       ) : null}
-      <p aria-live="polite" className="mt-3 min-h-4 font-mono text-xs text-white/50">{message}</p>
+      <p aria-live="polite" className="mt-3 min-h-4 font-mono text-xs text-white/50">
+        {message}
+      </p>
     </section>
   );
 }
 
 export function RemoteConnectionBadge({ connected }: { connected: boolean }) {
   if (!connected) return null;
-  return <span className="font-mono text-micro text-black/55" aria-label="Remote judge connected">● judge connected</span>;
+  return (
+    <span className="font-mono text-micro text-black/55" aria-label="Remote judge connected">
+      ● judge connected
+    </span>
+  );
 }

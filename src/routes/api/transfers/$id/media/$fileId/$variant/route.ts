@@ -1,17 +1,12 @@
 import { createFileRoute } from "@tanstack/react-router";
-import {
-  buildAttachmentContentDisposition,
-} from "@/features/downloads/presign";
+import { buildAttachmentContentDisposition } from "@/features/downloads/presign";
 import {
   getTransferMediaUrlTtlSeconds,
   isTransferMediaVariant,
   resolveTransferMediaTarget,
 } from "@/features/transfers/media-access";
 import { getTransfer } from "@/features/transfers/store.server";
-import {
-  isTransferStorageConfigured,
-  presignGetUrl,
-} from "@/lib/platform/r2.server";
+import { isTransferStorageConfigured, presignGetUrl } from "@/lib/platform/r2.server";
 import { apiErrorFromRequest } from "@/lib/platform/api-error";
 
 type RouteContext = {

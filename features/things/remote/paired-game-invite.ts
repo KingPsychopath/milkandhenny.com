@@ -52,7 +52,11 @@ export function buildPairedGameJudgeInviteUrl(
   });
 }
 
-export function buildPairedGamePlayerInviteUrl(origin: string, roomId: string, playerToken: string) {
+export function buildPairedGamePlayerInviteUrl(
+  origin: string,
+  roomId: string,
+  playerToken: string,
+) {
   return buildAppUrl(origin, pairedGamePlayerPath(roomId), {
     fragment: { player: playerToken },
   });

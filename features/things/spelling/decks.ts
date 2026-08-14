@@ -171,5 +171,7 @@ export function shuffledWords(words: readonly SpellingWord[]) {
 }
 
 export function spellingRoundOptions(wordCount: number) {
-  return [...new Set([5, 10, 15, 20, wordCount])].filter((count) => count > 0 && count <= wordCount).sort((left, right) => left - right);
+  return [...new Set([5, 10, 15, 20, wordCount])]
+    .filter((count) => count > 0 && count <= wordCount)
+    .sort((left, right) => left - right);
 }

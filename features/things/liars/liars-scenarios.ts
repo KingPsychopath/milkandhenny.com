@@ -111,7 +111,8 @@ export const LIARS_SCENARIOS: LiarsScenario[] = [
   {
     id: "first-game",
     name: "nobody has played before",
-    about: "Doctor, detective and villagers only, with the longer deal. What a new group actually sees.",
+    about:
+      "Doctor, detective and villagers only, with the longer deal. What a new group actually sees.",
     mode: "mafia",
     players: 9,
     toggles: { firstGame: true },
@@ -119,7 +120,8 @@ export const LIARS_SCENARIOS: LiarsScenario[] = [
   {
     id: "quiet-night",
     name: "the mafia stay in",
-    about: "Nobody dies and nobody moves. Checks that a silent night reads as ambiguous rather than broken.",
+    about:
+      "Nobody dies and nobody moves. Checks that a silent night reads as ambiguous rather than broken.",
     mode: "mafia",
     players: 9,
   },
@@ -141,14 +143,16 @@ export const LIARS_SCENARIOS: LiarsScenario[] = [
   {
     id: "imposter-final-guess",
     name: "caught, and guesses right",
-    about: "The crew vote correctly and lose anyway. The beat that makes the vote worth being tense about.",
+    about:
+      "The crew vote correctly and lose anyway. The beat that makes the vote worth being tense about.",
     mode: "imposter",
     players: 6,
   },
   {
     id: "imposter-mole",
     name: "imposter and mole",
-    about: "A crew member with the real word playing for the other side, whom the imposter cannot see.",
+    about:
+      "A crew member with the real word playing for the other side, whom the imposter cannot see.",
     mode: "imposter",
     players: 12,
   },

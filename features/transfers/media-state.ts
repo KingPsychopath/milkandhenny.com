@@ -183,7 +183,9 @@ const TERMINAL_PROCESSING_ERROR_CODES = new Set([
 ]);
 
 function isTerminalProcessingFailure(file: { processingErrorCode?: string }): boolean {
-  return Boolean(file.processingErrorCode && TERMINAL_PROCESSING_ERROR_CODES.has(file.processingErrorCode));
+  return Boolean(
+    file.processingErrorCode && TERMINAL_PROCESSING_ERROR_CODES.has(file.processingErrorCode),
+  );
 }
 
 function canRetryTransferProcessing(

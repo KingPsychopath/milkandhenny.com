@@ -9,5 +9,11 @@ export default defineHandler(async (event) => {
   if (!key) return new Response("Not found", { status: 404 });
   const bytes = await getStorage("assets:party-audio").getItemRaw<Uint8Array>(key);
   if (!bytes) return new Response("Not found", { status: 404 });
-  return new Response(new Uint8Array(bytes).buffer, { headers: { "Content-Type": "audio/mpeg", "Cache-Control": "private, max-age=300", "X-Content-Type-Options": "nosniff" } });
+  return new Response(new Uint8Array(bytes).buffer, {
+    headers: {
+      "Content-Type": "audio/mpeg",
+      "Cache-Control": "private, max-age=300",
+      "X-Content-Type-Options": "nosniff",
+    },
+  });
 });

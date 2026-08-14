@@ -6,15 +6,15 @@ How images are processed, how OG images are generated, and how focal points work
 
 ## File Type Support
 
-| Type                                      | In the gallery                         | Processing                                                     |
-| ----------------------------------------- | -------------------------------------- | -------------------------------------------------------------- |
-| Images (JPEG, PNG, WebP, TIFF)            | Masonry grid + lightbox                | Thumb (600px) + full (1600px) + original + og (1200×630)        |
-| HEIC / HIF                                | Same as images, once converted         | Converted to JPEG **in the browser** before upload              |
-| RAW (DNG, ARW, CR2/CR3, NEF, ORF, RAF, RW2) | Grid card + lightbox                 | Embedded camera preview → thumb + full, **queued to the worker** |
-| GIFs                                      | Grid card + animated lightbox          | Static first-frame thumb + original                             |
-| Videos (MP4, MOV, WebM, AVI, MKV, …)      | Poster card with play overlay, lightbox player | Poster frame → thumb + full, **queued**; the video itself is stored as-is, never transcoded |
-| Audio (MP3, WAV, FLAC, …)                 | Inline audio player card               | Stored as-is                                                    |
-| Documents / archives / everything else    | File card + download button            | Stored as-is                                                    |
+| Type                                        | In the gallery                                 | Processing                                                                                  |
+| ------------------------------------------- | ---------------------------------------------- | ------------------------------------------------------------------------------------------- |
+| Images (JPEG, PNG, WebP, TIFF)              | Masonry grid + lightbox                        | Thumb (600px) + full (1600px) + original + og (1200×630)                                    |
+| HEIC / HIF                                  | Same as images, once converted                 | Converted to JPEG **in the browser** before upload                                          |
+| RAW (DNG, ARW, CR2/CR3, NEF, ORF, RAF, RW2) | Grid card + lightbox                           | Embedded camera preview → thumb + full, **queued to the worker**                            |
+| GIFs                                        | Grid card + animated lightbox                  | Static first-frame thumb + original                                                         |
+| Videos (MP4, MOV, WebM, AVI, MKV, …)        | Poster card with play overlay, lightbox player | Poster frame → thumb + full, **queued**; the video itself is stored as-is, never transcoded |
+| Audio (MP3, WAV, FLAC, …)                   | Inline audio player card                       | Stored as-is                                                                                |
+| Documents / archives / everything else      | File card + download button                    | Stored as-is                                                                                |
 
 ---
 

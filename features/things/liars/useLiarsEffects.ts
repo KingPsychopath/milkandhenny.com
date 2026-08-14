@@ -82,7 +82,11 @@ export function useLiarsEffects(input: {
           (snapshot.ending!.winner === "third"
             ? role === "jester"
             : snapshot.ending!.winner === "mafia"
-              ? role === "mafia" || role === "godfather" || role === "jammer" || role === "imposter" || role === "mole"
+              ? role === "mafia" ||
+                role === "godfather" ||
+                role === "jammer" ||
+                role === "imposter" ||
+                role === "mole"
               : true),
       );
       once(`end:${snapshot.gameNumber}`, () =>
@@ -171,9 +175,7 @@ export function useLiarsEffects(input: {
     for (let beat = 0; beat < 3; beat += 1) {
       const thud = at(dawn.nameLandsAt - (2_000 - beat * 700));
       if (thud <= 0) continue;
-      timers.push(
-        window.setTimeout(() => playLiarsSound("heartbeat", audibleRef.current), thud),
-      );
+      timers.push(window.setTimeout(() => playLiarsSound("heartbeat", audibleRef.current), thud));
     }
 
     const land = at(dawn.nameLandsAt);

@@ -1,11 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { canReadWordInServerContext } from "@/features/words/reader.server";
 import { getWordMeta } from "@/features/words/store.server";
-import {
-  deleteObject,
-  headObject,
-  presignGetUrl,
-} from "@/lib/platform/r2.server";
+import { deleteObject, headObject, presignGetUrl } from "@/lib/platform/r2.server";
 
 const SAFE_SLUG = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const SAFE_FILENAME = /^[a-z0-9-]+\.[a-z0-9]{1,8}$/i;

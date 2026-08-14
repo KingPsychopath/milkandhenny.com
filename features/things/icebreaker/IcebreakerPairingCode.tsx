@@ -14,7 +14,8 @@ export function IcebreakerPairingCode({
   onScan,
   onBack,
 }: IcebreakerPairingCodeProps) {
-  const pairingLink = typeof window === "undefined" ? null : pairingUrl(window.location.origin, player);
+  const pairingLink =
+    typeof window === "undefined" ? null : pairingUrl(window.location.origin, player);
   const { dataUrl: qrCode, failed: qrFailed } = useQrCode(pairingLink, 320);
 
   return (

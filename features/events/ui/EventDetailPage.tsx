@@ -132,9 +132,7 @@ export function EventDetailPage({
             {formatEventDate(event.startsAt, event.timezone)}
             <br />
             <span className="theme-subtle">
-              {doorsDifferFromStart
-                ? `Doors ${formatEventTime(doorsAt, event.timezone)} · `
-                : ""}
+              {doorsDifferFromStart ? `Doors ${formatEventTime(doorsAt, event.timezone)} · ` : ""}
               {formatEventTime(event.startsAt, event.timezone)}
               {event.endsAt ? ` – ${formatEventTime(event.endsAt, event.timezone)}` : ""}
             </span>

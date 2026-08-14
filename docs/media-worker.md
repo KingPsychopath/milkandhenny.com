@@ -21,29 +21,29 @@ alongside the normal server. The worker still answers `/api/health` so Railway
 can supervise it.
 
 There is no second build, no separate worker bundle, and no way for the
-worker's copy of the processing code to drift from the app's — it *is* the
+worker's copy of the processing code to drift from the app's — it _is_ the
 app's.
 
-| | web | media-worker |
-| --- | --- | --- |
-| `MEDIA_WORKER_ROLE` | `web` (default) | `worker` |
-| `MEDIA_PROCESSOR_MODE` | `hybrid` | `hybrid` |
-| Serves traffic | yes | health checks only |
-| Drains the queue | no | yes |
-| Public domain | yes | none |
+|                        | web             | media-worker       |
+| ---------------------- | --------------- | ------------------ |
+| `MEDIA_WORKER_ROLE`    | `web` (default) | `worker`           |
+| `MEDIA_PROCESSOR_MODE` | `hybrid`        | `hybrid`           |
+| Serves traffic         | yes             | health checks only |
+| Drains the queue       | no              | yes                |
+| Public domain          | yes             | none               |
 
 ## What goes where
 
-| Route | Where it runs | Why |
-| --- | --- | --- |
-| `local_image` (JPEG, PNG, WebP, TIFF, HEIF) | inline, web | sub-second in Sharp |
-| `local_gif` | inline, web | one frame, then Sharp |
-| `raw_try_local` (DNG, ARW, CR2/CR3, NEF, ORF, RAF, RW2) | queued | exiftool + Sharp, large sources |
-| `local_video` (MP4, MOV, WebM, AVI, MKV, M4V, WMV, FLV) | queued | ffmpeg, sources up to gigabytes |
-| everything else | passthrough | stored as-is, no derivatives |
+| Route                                                   | Where it runs | Why                             |
+| ------------------------------------------------------- | ------------- | ------------------------------- |
+| `local_image` (JPEG, PNG, WebP, TIFF, HEIF)             | inline, web   | sub-second in Sharp             |
+| `local_gif`                                             | inline, web   | one frame, then Sharp           |
+| `raw_try_local` (DNG, ARW, CR2/CR3, NEF, ORF, RAF, RW2) | queued        | exiftool + Sharp, large sources |
+| `local_video` (MP4, MOV, WebM, AVI, MKV, M4V, WMV, FLV) | queued        | ffmpeg, sources up to gigabytes |
+| everything else                                         | passthrough   | stored as-is, no derivatives    |
 
 Both roles have `ffmpeg` and `exiftool` in the image, so the split is about
-*resources*, not capability.
+_resources_, not capability.
 
 ## Modes
 
@@ -130,18 +130,18 @@ re-decoding them forever would be the worst possible version of this.
 
 ## Configuration
 
-| Variable | Default | Applies to | Meaning |
-| --- | --- | --- | --- |
-| `MEDIA_PROCESSOR_MODE` | `local` | both | `local` or `hybrid` |
-| `MEDIA_WORKER_ROLE` | `web` | both | `web` or `worker` |
-| `MEDIA_WORKER_CONCURRENCY` | `1` | worker | jobs in flight per instance |
-| `MEDIA_WORKER_JOB_TIMEOUT_MS` | `600000` | worker | per-job ceiling |
-| `MEDIA_WORKER_ERROR_BACKOFF_MS` | `15000` | worker | pause after a claim error |
-| `MEDIA_RECONCILE_INTERVAL_MS` | `900000` | worker | idle sweep for stranded files; `0` disables |
-| `MEDIA_INLINE_PROCESSING_TIMEOUT_MS` | `120000` | web | ceiling for work the request path still does |
-| `MEDIA_VIDEO_POSTER_MAX_BYTES` | `2147483648` | worker | above this, skip the poster; `0` disables the cap |
-| `REDIS_URL` | — | both | direct connection; required for the queue and for SSE |
-| `TRANSFER_UPLOAD_URL_TTL_SECONDS` | `21600` | web | how long a batch has to finish uploading |
+| Variable                             | Default      | Applies to | Meaning                                               |
+| ------------------------------------ | ------------ | ---------- | ----------------------------------------------------- |
+| `MEDIA_PROCESSOR_MODE`               | `local`      | both       | `local` or `hybrid`                                   |
+| `MEDIA_WORKER_ROLE`                  | `web`        | both       | `web` or `worker`                                     |
+| `MEDIA_WORKER_CONCURRENCY`           | `1`          | worker     | jobs in flight per instance                           |
+| `MEDIA_WORKER_JOB_TIMEOUT_MS`        | `600000`     | worker     | per-job ceiling                                       |
+| `MEDIA_WORKER_ERROR_BACKOFF_MS`      | `15000`      | worker     | pause after a claim error                             |
+| `MEDIA_RECONCILE_INTERVAL_MS`        | `900000`     | worker     | idle sweep for stranded files; `0` disables           |
+| `MEDIA_INLINE_PROCESSING_TIMEOUT_MS` | `120000`     | web        | ceiling for work the request path still does          |
+| `MEDIA_VIDEO_POSTER_MAX_BYTES`       | `2147483648` | worker     | above this, skip the poster; `0` disables the cap     |
+| `REDIS_URL`                          | —            | both       | direct connection; required for the queue and for SSE |
+| `TRANSFER_UPLOAD_URL_TTL_SECONDS`    | `21600`      | web        | how long a batch has to finish uploading              |
 
 ## Operating it
 

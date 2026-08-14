@@ -15,7 +15,12 @@ import { useTiltControl } from "../shared/useTiltControl";
 import { RemoteConnectionBadge, PairedGameHostPanel } from "../remote/PairedGameHostPanel";
 import { PairedGamePlayerReady } from "../remote/PairedGamePlayerReady";
 import { usePairedGameRoom } from "../remote/usePairedGameRoom";
-import type { RemoteCommand, RemoteGameSnapshot, RemoteHeadsUpSetup, RemotePlayerSession } from "../remote/types";
+import type {
+  RemoteCommand,
+  RemoteGameSnapshot,
+  RemoteHeadsUpSetup,
+  RemotePlayerSession,
+} from "../remote/types";
 import type { GameOrientation } from "../shared/orientation";
 import { GameShell } from "../shared/GameShell";
 import { EndGameDialog } from "../shared/EndGameDialog";
@@ -51,17 +56,27 @@ interface FullscreenControls {
   lockOrientation: (orientation: GameOrientation) => Promise<void>;
 }
 
-function HeadsUpExperience({ fullscreen, remoteSession }: { fullscreen: FullscreenControls; remoteSession?: RemotePlayerSession }) {
-  const roundStorageKey = remoteSession ? `${ROUND_STORAGE_KEY}:${remoteSession.roomId}` : ROUND_STORAGE_KEY;
+function HeadsUpExperience({
+  fullscreen,
+  remoteSession,
+}: {
+  fullscreen: FullscreenControls;
+  remoteSession?: RemotePlayerSession;
+}) {
+  const roundStorageKey = remoteSession
+    ? `${ROUND_STORAGE_KEY}:${remoteSession.roomId}`
+    : ROUND_STORAGE_KEY;
   const joinedSetup = remoteSession?.setup.game === "heads-up" ? remoteSession.setup : null;
-  const joinedDeck: GameDeck | null = joinedSetup ? {
-    id: `remote-${remoteSession?.roomId ?? "player"}`,
-    name: joinedSetup.deck.name,
-    description: "Prepared by your judge.",
-    symbol: "↗",
-    category: "mine",
-    cards: joinedSetup.deck.cards,
-  } : null;
+  const joinedDeck: GameDeck | null = joinedSetup
+    ? {
+        id: `remote-${remoteSession?.roomId ?? "player"}`,
+        name: joinedSetup.deck.name,
+        description: "Prepared by your judge.",
+        symbol: "↗",
+        category: "mine",
+        cards: joinedSetup.deck.cards,
+      }
+    : null;
   const [phase, setPhase] = useState<Phase>("setup");
   useUpdateReloadSafety("heads-up-round", phase === "setup" || phase === "results");
   // The phone spends a whole round on someone's forehead without a single touch.
@@ -83,7 +98,9 @@ function HeadsUpExperience({ fullscreen, remoteSession }: { fullscreen: Fullscre
       "soundEnabled",
       typeof next === "function" ? next(preferences.soundEnabled) : next,
     );
-  const [orientation, setOrientation] = useState<GameOrientation>(joinedSetup?.orientation ?? "auto");
+  const [orientation, setOrientation] = useState<GameOrientation>(
+    joinedSetup?.orientation ?? "auto",
+  );
   const [interrupted, setInterrupted] = useState(false);
   const [remotePaused, setRemotePaused] = useState(false);
   const [remoteExclusive, setRemoteExclusive] = useState(false);
@@ -98,7 +115,9 @@ function HeadsUpExperience({ fullscreen, remoteSession }: { fullscreen: Fullscre
   const replayRound = useRef<() => void>(() => undefined);
   const haptics = useWebHaptics();
   const { customDecks, saveDeck, deleteDeck } = useCustomDecks();
-  const allDecks = joinedDeck ? [joinedDeck] : [...GAME_DECKS, ...customDecks.map(customDeckAsGameDeck)];
+  const allDecks = joinedDeck
+    ? [joinedDeck]
+    : [...GAME_DECKS, ...customDecks.map(customDeckAsGameDeck)];
 
   const selectedDeck = allDecks.find((deck) => deck.id === deckId) ?? GAME_DECKS[0];
   const card = cards[cardIndex] ?? selectedDeck.cards[0];
@@ -195,7 +214,7 @@ function HeadsUpExperience({ fullscreen, remoteSession }: { fullscreen: Fullscre
     phase: phase === "builder" ? "setup" : phase,
     deckName: selectedDeck.name,
     currentLabel: phase === "playing" ? card : null,
-    nextLabel: phase === "playing" ? cards[(cardIndex + 1) % cards.length] ?? null : null,
+    nextLabel: phase === "playing" ? (cards[(cardIndex + 1) % cards.length] ?? null) : null,
     secondsRemaining: phase === "playing" ? seconds : null,
     paused: pauseReason !== null,
     transitioning: feedback !== null,
@@ -214,7 +233,13 @@ function HeadsUpExperience({ fullscreen, remoteSession }: { fullscreen: Fullscre
     deck: { name: selectedDeck.name, cards: [...selectedDeck.cards] },
     orientation,
   };
-  const remote = usePairedGameRoom("heads-up", remoteSetup, remoteSnapshot, handleRemoteCommand, remoteSession);
+  const remote = usePairedGameRoom(
+    "heads-up",
+    remoteSetup,
+    remoteSnapshot,
+    handleRemoteCommand,
+    remoteSession,
+  );
 
   useEffect(() => {
     try {
@@ -230,17 +255,31 @@ function HeadsUpExperience({ fullscreen, remoteSession }: { fullscreen: Fullscre
         savedAt?: number;
       };
       if (!value.savedAt || Date.now() - value.savedAt > 2 * 60 * 60 * 1000) return;
-      if (!Array.isArray(value.cards) || value.cards.length === 0 || !value.cards.every((card) => typeof card === "string")) return;
+      if (
+        !Array.isArray(value.cards) ||
+        value.cards.length === 0 ||
+        !value.cards.every((card) => typeof card === "string")
+      )
+        return;
       if (!Array.isArray(value.results)) return;
       const restoredResults = value.results.filter((result): result is RoundResult => {
         if (!result || typeof result !== "object") return false;
         const entry = result as Partial<RoundResult>;
-        return typeof entry.id === "string" && typeof entry.card === "string" && (entry.decision === "correct" || entry.decision === "pass");
+        return (
+          typeof entry.id === "string" &&
+          typeof entry.card === "string" &&
+          (entry.decision === "correct" || entry.decision === "pass")
+        );
       });
-      if (value.phase !== "playing" && value.phase !== "countdown" && value.phase !== "results") return;
+      if (value.phase !== "playing" && value.phase !== "countdown" && value.phase !== "results")
+        return;
       setDeckId(typeof value.deckId === "string" ? value.deckId : GAME_DECKS[0].id);
       setCards(value.cards);
-      setCardIndex(typeof value.cardIndex === "number" ? Math.max(0, Math.min(value.cardIndex, value.cards.length - 1)) : 0);
+      setCardIndex(
+        typeof value.cardIndex === "number"
+          ? Math.max(0, Math.min(value.cardIndex, value.cards.length - 1))
+          : 0,
+      );
       setSeconds(typeof value.seconds === "number" ? Math.max(0, value.seconds) : ROUND_SECONDS);
       setResults(restoredResults);
       setPhase(value.phase === "countdown" ? "playing" : value.phase);
@@ -256,7 +295,10 @@ function HeadsUpExperience({ fullscreen, remoteSession }: { fullscreen: Fullscre
       if (restoredRound.current) sessionStorage.removeItem(roundStorageKey);
       return;
     }
-    sessionStorage.setItem(roundStorageKey, JSON.stringify({ phase, deckId, cards, cardIndex, seconds, results, savedAt: Date.now() }));
+    sessionStorage.setItem(
+      roundStorageKey,
+      JSON.stringify({ phase, deckId, cards, cardIndex, seconds, results, savedAt: Date.now() }),
+    );
     restoredRound.current = true;
   }, [cardIndex, cards, deckId, phase, results, roundStorageKey, seconds]);
 
@@ -330,7 +372,17 @@ function HeadsUpExperience({ fullscreen, remoteSession }: { fullscreen: Fullscre
     // Only the cards actually reached count as seen, so a short round does not burn the deck.
     rememberCards(selectedDeck.id, cards.slice(0, cardIndex + 1), selectedDeck.cards.length);
     setPhase("results");
-  }, [cardIndex, cards, clearDecisionTimeout, clearOrientationLock, haptics, phase, seconds, selectedDeck, soundEnabled]);
+  }, [
+    cardIndex,
+    cards,
+    clearDecisionTimeout,
+    clearOrientationLock,
+    haptics,
+    phase,
+    seconds,
+    selectedDeck,
+    soundEnabled,
+  ]);
 
   useEffect(() => {
     if (phase !== "playing") {
@@ -387,7 +439,15 @@ function HeadsUpExperience({ fullscreen, remoteSession }: { fullscreen: Fullscre
   if (phase === "countdown") {
     return (
       <GameShell tone="amber">
-        <header className="p-5"><button type="button" onClick={() => setEndConfirmationOpen(true)} className="min-h-11 font-mono text-xs text-black/60">← cancel round</button></header>
+        <header className="p-5">
+          <button
+            type="button"
+            onClick={() => setEndConfirmationOpen(true)}
+            className="min-h-11 font-mono text-xs text-black/60"
+          >
+            ← cancel round
+          </button>
+        </header>
         <main id="main" className="flex flex-1 flex-col items-center justify-center text-center">
           <p className="font-mono text-xs uppercase tracking-[0.2em] text-black/55">get ready</p>
           <TextMorph
@@ -403,9 +463,27 @@ function HeadsUpExperience({ fullscreen, remoteSession }: { fullscreen: Fullscre
               ? "Hold the phone against your forehead in portrait or landscape, screen facing your friends."
               : `Hold the phone ${orientation}, screen facing your friends.`}
           </p>
-          {fullscreen.message ? <p role="status" className="mt-4 max-w-sm px-6 font-mono text-xs leading-relaxed text-black/55">{fullscreen.message}</p> : null}
+          {fullscreen.message ? (
+            <p
+              role="status"
+              className="mt-4 max-w-sm px-6 font-mono text-xs leading-relaxed text-black/55"
+            >
+              {fullscreen.message}
+            </p>
+          ) : null}
         </main>
-        {endConfirmationOpen ? <EndGameDialog tone="light" eyebrow="cancel round" title="Cancel this round?" description="The round will return to setup before play begins." cancelLabel="keep counting" confirmLabel="cancel round" onCancel={() => setEndConfirmationOpen(false)} onConfirm={endRound} /> : null}
+        {endConfirmationOpen ? (
+          <EndGameDialog
+            tone="light"
+            eyebrow="cancel round"
+            title="Cancel this round?"
+            description="The round will return to setup before play begins."
+            cancelLabel="keep counting"
+            confirmLabel="cancel round"
+            onCancel={() => setEndConfirmationOpen(false)}
+            onConfirm={endRound}
+          />
+        ) : null}
       </GameShell>
     );
   }
@@ -414,7 +492,13 @@ function HeadsUpExperience({ fullscreen, remoteSession }: { fullscreen: Fullscre
     return (
       <GameShell tone={feedback === "correct" ? "green" : feedback === "pass" ? "stone" : "amber"}>
         <header className="grid grid-cols-3 items-center px-5 py-4 text-black">
-          <button type="button" onClick={() => setEndConfirmationOpen(true)} className="min-h-11 justify-self-start rounded-full border border-black/20 px-3 font-mono text-xs">end round</button>
+          <button
+            type="button"
+            onClick={() => setEndConfirmationOpen(true)}
+            className="min-h-11 justify-self-start rounded-full border border-black/20 px-3 font-mono text-xs"
+          >
+            end round
+          </button>
           <span
             className="justify-self-center rounded-full border border-black/15 px-4 py-2 font-mono text-lg font-semibold tabular-nums"
             aria-label={`${seconds} seconds remaining`}
@@ -443,7 +527,17 @@ function HeadsUpExperience({ fullscreen, remoteSession }: { fullscreen: Fullscre
             settle();
           }}
         />
-        {endConfirmationOpen ? <EndGameDialog tone="light" eyebrow="end round" title="Leave this game?" description="Your cards and score from this round will be cleared." confirmLabel="end round" onCancel={() => setEndConfirmationOpen(false)} onConfirm={endRound} /> : null}
+        {endConfirmationOpen ? (
+          <EndGameDialog
+            tone="light"
+            eyebrow="end round"
+            title="Leave this game?"
+            description="Your cards and score from this round will be cleared."
+            confirmLabel="end round"
+            onCancel={() => setEndConfirmationOpen(false)}
+            onConfirm={endRound}
+          />
+        ) : null}
       </GameShell>
     );
   }
@@ -460,7 +554,17 @@ function HeadsUpExperience({ fullscreen, remoteSession }: { fullscreen: Fullscre
   }
 
   if (joinedDeck) {
-    return <PairedGamePlayerReady gameName="Forehead" deckName={joinedDeck.name} detail="Hold it to your forehead." judgeConnected={remote.judgeConnected} onFullscreen={() => void fullscreen.toggle()} onLeave={remote.closeRoom} onStart={() => void startRound(joinedDeck)} />;
+    return (
+      <PairedGamePlayerReady
+        gameName="Forehead"
+        deckName={joinedDeck.name}
+        detail="Hold it to your forehead."
+        judgeConnected={remote.judgeConnected}
+        onFullscreen={() => void fullscreen.toggle()}
+        onLeave={remote.closeRoom}
+        onStart={() => void startRound(joinedDeck)}
+      />
+    );
   }
 
   return (

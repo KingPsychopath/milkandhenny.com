@@ -13,11 +13,18 @@ export type AloudWordState =
   | { status: "feedback"; decision: AloudDecision };
 
 export function activeWord(timerSeconds: number, now = Date.now()): AloudWordState {
-  return { status: "active", decisionClosesAt: timerSeconds > 0 ? now + timerSeconds * 1_000 : undefined, assistantSignal: false };
+  return {
+    status: "active",
+    decisionClosesAt: timerSeconds > 0 ? now + timerSeconds * 1_000 : undefined,
+    assistantSignal: false,
+  };
 }
 
 export function remainingWordMs(state: AloudWordState, now = Date.now()) {
-  if (state.status === "active") return state.decisionClosesAt === undefined ? undefined : Math.max(0, state.decisionClosesAt - now);
+  if (state.status === "active")
+    return state.decisionClosesAt === undefined
+      ? undefined
+      : Math.max(0, state.decisionClosesAt - now);
   if (state.status === "paused" || state.status === "local-evaluation") return state.remainingMs;
   return undefined;
 }

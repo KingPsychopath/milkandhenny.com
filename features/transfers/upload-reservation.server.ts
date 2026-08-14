@@ -63,7 +63,10 @@ async function createTransferUploadReservation(
   const key = reservationKey(reservation.transferId);
   if (memoryReservations.has(key)) return false;
   memoryReservations.set(key, reservation);
-  setTimeout(() => memoryReservations.delete(key), getUploadReservationTtlSeconds() * 1000).unref?.();
+  setTimeout(
+    () => memoryReservations.delete(key),
+    getUploadReservationTtlSeconds() * 1000,
+  ).unref?.();
   return true;
 }
 

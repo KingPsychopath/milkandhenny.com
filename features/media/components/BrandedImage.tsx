@@ -225,7 +225,8 @@ export function BrandedImage({
             {error && (
               <div className="max-w-xs text-center">
                 <p className="font-mono text-micro text-red-400 tracking-wide">{error}</p>
-                <button type="button"
+                <button
+                  type="button"
                   onClick={handleClose}
                   className="mt-4 font-mono text-micro text-white/50 hover:text-white transition-colors tracking-wide"
                 >
@@ -256,27 +257,31 @@ export function BrandedImage({
                     Desktop: copy image + download + close */}
                 <div className="flex items-center gap-6 font-mono text-micro tracking-wide">
                   {isMobile ? (
-                    <button type="button"
+                    <button
+                      type="button"
                       onClick={handleShare}
                       className="text-white hover:text-amber-400 transition-colors"
                     >
                       share
                     </button>
                   ) : (
-                    <button type="button"
+                    <button
+                      type="button"
                       onClick={handleCopy}
                       className="text-white hover:text-amber-400 transition-colors"
                     >
                       {copied ? "copied" : "copy image"}
                     </button>
                   )}
-                  <button type="button"
+                  <button
+                    type="button"
                     onClick={handleDownload}
                     className="text-white hover:text-amber-400 transition-colors"
                   >
                     download ↓
                   </button>
-                  <button type="button"
+                  <button
+                    type="button"
                     onClick={handleClose}
                     className="text-white/50 hover:text-white transition-colors"
                   >

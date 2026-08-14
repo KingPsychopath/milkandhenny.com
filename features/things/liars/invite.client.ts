@@ -1,10 +1,7 @@
 import { consumeLocationFragment } from "@/lib/client/url-fragment";
 import { parseLiarsPlayerFragment } from "./liars-invite";
 import { liarsBrowserKeys } from "./liars-keys";
-import {
-  readExpiringLocalValue,
-  writeExpiringLocalValue,
-} from "../shared/game-storage.client";
+import { readExpiringLocalValue, writeExpiringLocalValue } from "../shared/game-storage.client";
 import { MULTIPLAYER_ROOM_TTL_SECONDS } from "../shared/multiplayer";
 
 export function captureLiarsInvite(roomId: string) {

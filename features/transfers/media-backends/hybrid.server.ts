@@ -171,9 +171,7 @@ async function repairOrQueueIncompleteFile(
   }
 }
 
-async function backfillTransferMedia(
-  transfer: TransferData,
-): Promise<TransferData> {
+async function backfillTransferMedia(transfer: TransferData): Promise<TransferData> {
   const remainingSeconds = Math.ceil((new Date(transfer.expiresAt).getTime() - Date.now()) / 1000);
   if (remainingSeconds <= 0) return transfer;
 
@@ -187,11 +185,7 @@ async function backfillTransferMedia(
     refreshed.files,
     TRANSFER_BACKFILL_CONCURRENCY,
     async (file) => {
-      const inferred = await inferTransferFileState(
-        refreshed.id,
-        file,
-        existingDerivativeKeys,
-      );
+      const inferred = await inferTransferFileState(refreshed.id, file, existingDerivativeKeys);
       const stateIncomplete =
         !file.previewStatus ||
         !file.processingStatus ||

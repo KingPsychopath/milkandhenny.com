@@ -46,9 +46,8 @@ function coerce<T extends Preferences>(stored: unknown, defaults: T): Widen<T> {
     // Same type as the default, or the default. A renamed or retyped setting is not a corruption.
     if (typeof value !== typeof defaults[key]) continue;
     // Strings get a ceiling. Nothing here is prose, and storage should not carry a novel.
-    result[key] = (typeof value === "string" ? value.slice(0, 300) : value) as Widen<
-      T
-    >[keyof T & string];
+    result[key] = (typeof value === "string" ? value.slice(0, 300) : value) as Widen<T>[keyof T &
+      string];
   }
   return result;
 }

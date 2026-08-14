@@ -21,14 +21,7 @@ interface TwinCardProps {
    * Marks this card in the DOM so the ray can find a symbol on it without ref plumbing. A union
    * rather than a string because a typo here would silently leave the ray with nothing to measure.
    */
-  slot:
-    | "middle"
-    | "hand"
-    | "review"
-    | "review-shed"
-    | "review-middle"
-    | "seat-one"
-    | "seat-two";
+  slot: "middle" | "hand" | "review" | "review-shed" | "review-middle" | "seat-one" | "seat-two";
   label: string;
   className?: string;
 }

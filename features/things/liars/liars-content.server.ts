@@ -117,7 +117,10 @@ export function liarsNarration(
   const fresh = templates
     .map((template, index) => ({ template, id: `${outcome}:${index}` }))
     .filter(({ id }) => !recentIds.includes(id));
-  const pool = fresh.length > 0 ? fresh : templates.map((template, index) => ({ template, id: `${outcome}:${index}` }));
+  const pool =
+    fresh.length > 0
+      ? fresh
+      : templates.map((template, index) => ({ template, id: `${outcome}:${index}` }));
   const chosen = pool[randomInt(pool.length)];
   return {
     id: chosen.id,

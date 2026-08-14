@@ -76,7 +76,11 @@ export interface RemoteCommandTarget {
 }
 
 export type RemoteCommandRequest = (
-  | { id: string; type: "correct" | "incorrect" | "pass" | "skip" | "pause" | "resume" | "undo" | "play_again"; createdAt: number }
+  | {
+      id: string;
+      type: "correct" | "incorrect" | "pass" | "skip" | "pause" | "resume" | "undo" | "play_again";
+      createdAt: number;
+    }
   | {
       id: string;
       type: "amend";
@@ -84,7 +88,8 @@ export type RemoteCommandRequest = (
       decision: RemoteResultDecision;
       createdAt: number;
     }
-) & RemoteCommandTarget;
+) &
+  RemoteCommandTarget;
 
 export type RemoteCommand = RemoteCommandRequest & { sequence: number; receivedAt: number };
 

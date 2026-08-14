@@ -402,7 +402,6 @@ export const LIARS_WORD_PAIRS: LiarsWordPair[] = GROUPS.flatMap(({ category, pai
 
 export const LIARS_WORD_CATEGORIES = GROUPS.map(({ category }) => category);
 
-
 /**
  * The board: a dozen words from one category, one of which was dealt.
  *

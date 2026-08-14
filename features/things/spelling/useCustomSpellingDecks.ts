@@ -1,12 +1,20 @@
 import { useCallback, useEffect, useState } from "react";
-import { loadCustomSpellingDecks, storeCustomSpellingDecks, type CustomSpellingDeck } from "./customDecks";
+import {
+  loadCustomSpellingDecks,
+  storeCustomSpellingDecks,
+  type CustomSpellingDeck,
+} from "./customDecks";
 
 export function useCustomSpellingDecks() {
   const [decks, setDecks] = useState<CustomSpellingDeck[]>([]);
   useEffect(() => {
     let active = true;
-    void loadCustomSpellingDecks().then((value) => { if (active) setDecks(value); });
-    return () => { active = false; };
+    void loadCustomSpellingDecks().then((value) => {
+      if (active) setDecks(value);
+    });
+    return () => {
+      active = false;
+    };
   }, []);
   const saveDeck = useCallback((deck: CustomSpellingDeck) => {
     setDecks((current) => {

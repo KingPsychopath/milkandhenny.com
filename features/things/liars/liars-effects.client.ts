@@ -120,7 +120,14 @@ export function playLiarsSound(sound: LiarsSound, enabled: boolean) {
       tone({ frequency: 1_170, start: 0.07, duration: 0.12, volume: 0.04 });
       break;
     case "death":
-      tone({ frequency: 210, start: 0, duration: 0.5, volume: 0.14, sweepTo: 48, type: "sawtooth" });
+      tone({
+        frequency: 210,
+        start: 0,
+        duration: 0.5,
+        volume: 0.14,
+        sweepTo: 48,
+        type: "sawtooth",
+      });
       tone({ frequency: 62, start: 0.1, duration: 1.8, volume: 0.1 });
       break;
     case "revive":

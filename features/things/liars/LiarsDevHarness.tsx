@@ -22,8 +22,22 @@ import type { LiarsMode, LiarsPlayerCredentials } from "./types";
  * this screen, it is a real leak.
  */
 const NAMES = [
-  "Abel", "Maya", "Daniel", "Priya", "Tom", "Ana", "Sam", "Ivy",
-  "Leo", "Nina", "Otis", "Rue", "Sol", "Vic", "Wren", "Zaid",
+  "Abel",
+  "Maya",
+  "Daniel",
+  "Priya",
+  "Tom",
+  "Ana",
+  "Sam",
+  "Ivy",
+  "Leo",
+  "Nina",
+  "Otis",
+  "Rue",
+  "Sol",
+  "Vic",
+  "Wren",
+  "Zaid",
 ];
 
 const CAPTURES_KEY = "things:liars:v1:dev-captures";
@@ -89,7 +103,10 @@ export function LiarsDevHarness() {
         setError("could not capture that room");
         return;
       }
-      const label = window.prompt("name this scenario", `${mode} · ${new Date().toLocaleTimeString()}`);
+      const label = window.prompt(
+        "name this scenario",
+        `${mode} · ${new Date().toLocaleTimeString()}`,
+      );
       if (!label) return;
       writeCaptures([{ label, savedAt: Date.now(), payload }, ...captures].slice(0, 24));
     } finally {

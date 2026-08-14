@@ -3,7 +3,10 @@ import { existsSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { SPELLING_DECKS } from "../features/things/spelling/decks";
-import { partyAudioAssetKey, partyDeck } from "../features/things/spelling-party/party-content.server";
+import {
+  partyAudioAssetKey,
+  partyDeck,
+} from "../features/things/spelling-party/party-content.server";
 
 const outputDirectory = join(process.cwd(), "assets/party-spelling-audio");
 const force = process.argv.includes("--force");
@@ -27,7 +30,20 @@ for (const summary of SPELLING_DECKS) {
         if (!force && existsSync(output)) continue;
         const source = join(workDirectory, `${word.id}-${kind}.aiff`);
         execFileSync("say", ["-v", voice, "-r", "175", "-o", source, "--", text]);
-        execFileSync("ffmpeg", ["-loglevel", "error", "-y", "-i", source, "-ar", "24000", "-ac", "1", "-b:a", "48k", output]);
+        execFileSync("ffmpeg", [
+          "-loglevel",
+          "error",
+          "-y",
+          "-i",
+          source,
+          "-ar",
+          "24000",
+          "-ac",
+          "1",
+          "-b:a",
+          "48k",
+          output,
+        ]);
         generated += 1;
       }
     }

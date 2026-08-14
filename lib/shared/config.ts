@@ -19,10 +19,7 @@ const BASE_URL = (viteEnv?.VITE_BASE_URL || runtimeEnv?.VITE_BASE_URL || "https:
   .trim();
 
 /** Public media/CDN origin. */
-const MEDIA_PUBLIC_URL =
-  viteEnv?.VITE_MEDIA_PUBLIC_URL ??
-  runtimeEnv?.VITE_MEDIA_PUBLIC_URL ??
-  "";
+const MEDIA_PUBLIC_URL = viteEnv?.VITE_MEDIA_PUBLIC_URL ?? runtimeEnv?.VITE_MEDIA_PUBLIC_URL ?? "";
 
 /** Base URL for share links — uses request origin when available (e.g. localhost in dev), else BASE_URL */
 function getBaseUrlForRequest(request: { url: string }): string {

@@ -68,11 +68,7 @@ export function LiarsRoomApp({ roomId }: { roomId: string }) {
       <JoinLiarsRoom
         roomId={roomId}
         onJoined={(joined) => {
-          writeExpiringLocalValue(
-            liarsBrowserKeys.playerSession(roomId),
-            joined,
-            joined.expiresAt,
-          );
+          writeExpiringLocalValue(liarsBrowserKeys.playerSession(roomId), joined, joined.expiresAt);
           setCredentials(joined);
         }}
       />
@@ -607,9 +603,7 @@ function NightPhase({ snapshot, clockOffset, send }: PhaseProps) {
 
       {you.allyTargets.length > 0 ? (
         <div className="mt-6 border-t border-white/10 pt-3">
-          <p className="font-mono text-micro uppercase tracking-[0.18em] text-white/35">
-            with you
-          </p>
+          <p className="font-mono text-micro uppercase tracking-[0.18em] text-white/35">with you</p>
           <ul className="mt-2 font-mono text-xs text-white/55">
             {you.allyTargets.map((ally) => {
               const name = snapshot.players.find(({ id }) => id === ally.playerId)?.name;
@@ -664,11 +658,7 @@ function NightPhase({ snapshot, clockOffset, send }: PhaseProps) {
  * lands it says "Morning"; after, it says who. The story goes underneath as prose — it is the part
  * you listen to rather than the part you look for.
  */
-function dawnHeadline(
-  dawn: LiarsSnapshot["dawn"],
-  landed: boolean,
-  revived: boolean,
-): string {
+function dawnHeadline(dawn: LiarsSnapshot["dawn"], landed: boolean, revived: boolean): string {
   if (!dawn || !landed) return "Morning";
   const substituted = dawn.deaths.find(({ substituteName }) => substituteName);
   if (substituted) return `${substituted.substituteName} is gone`;
@@ -701,9 +691,7 @@ function DawnPhase({ snapshot, clockOffset, send, notes }: PhaseProps) {
             <p
               key={death.playerId}
               className={`font-serif text-2xl ${
-                death.revived && revived
-                  ? "text-[var(--liars-alive)]"
-                  : "text-[var(--liars-dead)]"
+                death.revived && revived ? "text-[var(--liars-alive)]" : "text-[var(--liars-dead)]"
               }`}
             >
               {death.name}
@@ -741,9 +729,7 @@ function DawnPhase({ snapshot, clockOffset, send, notes }: PhaseProps) {
 
       <LiarsVillage snapshot={snapshot} clockOffset={clockOffset} />
 
-      {you && !you.alive && you.lastWordsOpen ? (
-        <LastWords send={send} notes={notes} />
-      ) : null}
+      {you && !you.alive && you.lastWordsOpen ? <LastWords send={send} notes={notes} /> : null}
     </>
   );
 }
@@ -923,11 +909,7 @@ function DeliberationPhase({ snapshot, clockOffset, send, isHost, sendHost }: Ph
       <>
         <Eyebrow>day {snapshot.round}</Eyebrow>
         <Headline>Not a word</Headline>
-        <PhaseTimer
-          endsAt={snapshot.phaseEndsAt}
-          clockOffset={clockOffset}
-          label="they vote in"
-        />
+        <PhaseTimer endsAt={snapshot.phaseEndsAt} clockOffset={clockOffset} label="they vote in" />
         <p className="mt-4 font-serif text-lg text-white/60">
           You know things the living do not, and you cannot tell them any of it. Watch them work it
           out. Everything you have goes on the board.
@@ -940,7 +922,12 @@ function DeliberationPhase({ snapshot, clockOffset, send, isHost, sendHost }: Ph
     <>
       <Eyebrow>day {snapshot.round}</Eyebrow>
       <Headline>Talk</Headline>
-      <PhaseTimer endsAt={snapshot.phaseEndsAt} clockOffset={clockOffset} label="vote opens in" big />
+      <PhaseTimer
+        endsAt={snapshot.phaseEndsAt}
+        clockOffset={clockOffset}
+        label="vote opens in"
+        big
+      />
       <p className="mt-4 font-serif text-lg text-white/65">
         Say who you think it is, and why. Point at someone to put them on the spot — everyone sees
         it, nobody is bound by it. The vote comes next.
@@ -1011,9 +998,7 @@ function VotePhase({ snapshot, clockOffset, send }: PhaseProps) {
       <>
         <Eyebrow>day {snapshot.round}</Eyebrow>
         <Headline>They are voting</Headline>
-        <p className="mt-4 font-serif text-lg text-white/60">
-          Say nothing. Cast yours.
-        </p>
+        <p className="mt-4 font-serif text-lg text-white/60">Say nothing. Cast yours.</p>
         <Graveyard snapshot={snapshot} send={send} />
       </>
     );
@@ -1021,7 +1006,9 @@ function VotePhase({ snapshot, clockOffset, send }: PhaseProps) {
   return (
     <>
       <Eyebrow>day {snapshot.round}</Eyebrow>
-      <Headline>{snapshot.history.at(-1)?.text.startsWith("Level") ? "Vote again" : "Vote"}</Headline>
+      <Headline>
+        {snapshot.history.at(-1)?.text.startsWith("Level") ? "Vote again" : "Vote"}
+      </Headline>
       <PhaseTimer endsAt={snapshot.phaseEndsAt} clockOffset={clockOffset} label="closes in" big />
       <p className="mt-4 font-serif text-lg text-white/65">
         Nobody sees this until everyone has committed.
@@ -1167,10 +1154,7 @@ function EndingPhase({ snapshot, isHost, sendHost }: PhaseProps) {
       </div>
       <ul className="mt-3 border-t border-white/10">
         {ending.roles.map(({ playerId, name, role }) => (
-          <li
-            key={playerId}
-            className="flex min-h-12 items-center gap-3 border-b border-white/10"
-          >
+          <li key={playerId} className="flex min-h-12 items-center gap-3 border-b border-white/10">
             <span className="font-serif text-lg">{name}</span>
             <span className="ml-auto font-mono text-xs uppercase tracking-[0.14em] text-white/55">
               {LIARS_ROLES[role].name}
@@ -1210,13 +1194,7 @@ function EndingPhase({ snapshot, isHost, sendHost }: PhaseProps) {
 }
 
 /** Opens the moment you die. It just does not count until half the table is gone. */
-function Graveyard({
-  snapshot,
-  send,
-}: {
-  snapshot: LiarsSnapshot;
-  send: PhaseProps["send"];
-}) {
+function Graveyard({ snapshot, send }: { snapshot: LiarsSnapshot; send: PhaseProps["send"] }) {
   const graveyard = snapshot.graveyard;
   if (!graveyard) return null;
   const living = snapshot.players.filter(({ alive }) => alive);
@@ -1262,9 +1240,7 @@ function Graveyard({
                 <span
                   aria-hidden="true"
                   className={`h-7 w-0.5 rounded-full ${
-                    graveyard.yourVote === player.id
-                      ? "bg-[var(--things-amber)]"
-                      : "bg-transparent"
+                    graveyard.yourVote === player.id ? "bg-[var(--things-amber)]" : "bg-transparent"
                   }`}
                 />
                 <span className="font-serif text-lg">{player.name}</span>

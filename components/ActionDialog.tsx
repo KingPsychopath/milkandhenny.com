@@ -54,11 +54,7 @@ export function ActionDialog({
   const muted =
     tone === "light" ? "text-black/55" : tone === "dark" ? "text-white/55" : "theme-muted";
   const cancel =
-    tone === "light"
-      ? "border-black/20"
-      : tone === "dark"
-        ? "border-white/20"
-        : "theme-border";
+    tone === "light" ? "border-black/20" : tone === "dark" ? "border-white/20" : "theme-border";
   const confirm =
     intent === "danger"
       ? "bg-red-700 text-white"
@@ -87,9 +83,7 @@ export function ActionDialog({
         }}
       >
         {eyebrow ? (
-          <p className={`font-mono text-micro uppercase tracking-[0.18em] ${muted}`}>
-            {eyebrow}
-          </p>
+          <p className={`font-mono text-micro uppercase tracking-[0.18em] ${muted}`}>{eyebrow}</p>
         ) : null}
         <h2 id={titleId} className={`${eyebrow ? "mt-3" : ""} font-serif text-4xl font-semibold`}>
           {title}

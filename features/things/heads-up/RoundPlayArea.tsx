@@ -48,19 +48,19 @@ export function RoundPlayArea({
               {pauseReason === "remote"
                 ? "Judge paused the round."
                 : pauseReason === "wrong-orientation"
-                ? "Turn the phone back."
-                : pauseReason === "settling"
-                  ? "Hold steady…"
-                  : "Welcome back."}
+                  ? "Turn the phone back."
+                  : pauseReason === "settling"
+                    ? "Hold steady…"
+                    : "Welcome back."}
             </h1>
             <p className="mt-5 font-serif text-lg text-black/65">
               {pauseReason === "remote"
                 ? "Resume here or from the judge’s phone when everyone is ready."
                 : pauseReason === "wrong-orientation"
-                ? "This round is locked to the position you started in."
-                : pauseReason === "settling"
-                  ? "Recalibrating so your next movement is deliberate."
-                  : "The round stayed paused while the app was away."}
+                  ? "This round is locked to the position you started in."
+                  : pauseReason === "settling"
+                    ? "Recalibrating so your next movement is deliberate."
+                    : "The round stayed paused while the app was away."}
             </p>
             {pauseReason === "interrupted" || pauseReason === "remote" ? (
               <button
@@ -71,7 +71,11 @@ export function RoundPlayArea({
                 resume round
               </button>
             ) : null}
-            <button type="button" onClick={onEnd} className="mt-2 min-h-11 px-4 font-mono text-xs text-black/55 underline underline-offset-4">
+            <button
+              type="button"
+              onClick={onEnd}
+              className="mt-2 min-h-11 px-4 font-mono text-xs text-black/55 underline underline-offset-4"
+            >
               end round
             </button>
           </div>

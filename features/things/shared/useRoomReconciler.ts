@@ -8,7 +8,12 @@ interface RoomReconcilerOptions {
 }
 
 /** Coalesces socket wakes, safety polling, online events, and tab resumes into one request. */
-export function useRoomReconciler({ enabled, intervalMs, roomKey, reconcile }: RoomReconcilerOptions) {
+export function useRoomReconciler({
+  enabled,
+  intervalMs,
+  roomKey,
+  reconcile,
+}: RoomReconcilerOptions) {
   const reconcileRef = useRef(reconcile);
   const runRef = useRef<(() => Promise<void>) | null>(null);
   useEffect(() => {

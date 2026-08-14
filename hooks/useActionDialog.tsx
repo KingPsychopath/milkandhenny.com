@@ -101,7 +101,7 @@ export function useActionDialog() {
     const error =
       request.required && !normalized
         ? `${request.label} is required.`
-        : request.validate?.(value) ?? null;
+        : (request.validate?.(value) ?? null);
     if (error) {
       setValidationError(error);
       return;

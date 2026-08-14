@@ -23,7 +23,7 @@ of that appears here.
 The obvious implementation — first tap to reach the server wins — is a game about broadband. A
 player on a hotel wifi loses every heat to the person sitting next to them on fibre, and no amount
 of polish covers that. So the server publishes an absolute reveal time, every device renders on that
-clock, and the number that gets ranked is how long *that player* took from seeing the card to
+clock, and the number that gets ranked is how long _that player_ took from seeing the card to
 touching it. §4 covers what this costs and what it buys.
 
 The second rule:
@@ -51,25 +51,25 @@ be the dominant strategy and the game would be over. §3.4.
 
 The deck is a **finite projective plane of order n**. Symbols are points, cards are lines.
 
-| Property | Count |
-| --- | --- |
-| Cards in the deck | n² + n + 1 |
-| Symbols in the deck | n² + n + 1 |
-| Symbols on each card | n + 1 |
-| Cards carrying any given symbol | n + 1 |
-| Symbols shared by any two cards | **exactly 1** |
-| Cards carrying any two given symbols | exactly 1 |
+| Property                             | Count         |
+| ------------------------------------ | ------------- |
+| Cards in the deck                    | n² + n + 1    |
+| Symbols in the deck                  | n² + n + 1    |
+| Symbols on each card                 | n + 1         |
+| Cards carrying any given symbol      | n + 1         |
+| Symbols shared by any two cards      | **exactly 1** |
+| Cards carrying any two given symbols | exactly 1     |
 
 `n` must be a prime power, which is why the ladder below skips 6 — a projective plane of order 6
 does not exist, which is Euler's thirty-six officers problem and took until 1901 to settle.
 
-| n | Cards | Symbols per card | Symbols needed |
-| --- | --- | --- | --- |
-| 3 | 13 | 4 | 13 |
-| 4 | 21 | 5 | 21 |
-| 5 | 31 | 6 | 31 |
-| 7 | 57 | 8 | 57 |
-| 8 | 73 | 9 | 73 |
+| n   | Cards | Symbols per card | Symbols needed |
+| --- | ----- | ---------------- | -------------- |
+| 3   | 13    | 4                | 13             |
+| 4   | 21    | 5                | 21             |
+| 5   | 31    | 6                | 31             |
+| 7   | 57    | 8                | 57             |
+| 8   | 73    | 9                | 73             |
 
 `twin-deck.ts` generates the plane from `n` — no hand-authored card lists, and a property test
 asserts the defining rule over every pair in the generated deck (§12).
@@ -95,14 +95,14 @@ checkable.** That makes deck size a hard cap rather than a preference: nothing m
 The host picks the **hand size** (4–10, default 6). The engine picks the smallest order whose deck
 covers it, and shrinks the hand rather than exceeding the ceiling.
 
-| Players | Hand 6 needs | Order | Symbols per card |
-| --- | --- | --- | --- |
-| 2 | 13 | 4 | 5 |
-| 3 | 19 | 4 | 5 |
-| 4 | 25 | 5 | 6 |
-| 5 | 31 | 5 | 6 |
-| 6–9 | 37–55 | 7 | 8 |
-| 10–12 | hand shrinks to 5, then 4 | 7 | 8 |
+| Players | Hand 6 needs              | Order | Symbols per card |
+| ------- | ------------------------- | ----- | ---------------- |
+| 2       | 13                        | 4     | 5                |
+| 3       | 19                        | 4     | 5                |
+| 4       | 25                        | 5     | 6                |
+| 5       | 31                        | 5     | 6                |
+| 6–9     | 37–55                     | 7     | 8                |
+| 10–12   | hand shrinks to 5, then 4 | 7     | 8                |
 
 **Order 7 is the ceiling.** Nine symbols on a phone card is not a harder game, it is a smaller game
 — everything shrinks past the point of being readable at arm's length. Above nine players the hand
@@ -140,13 +140,13 @@ phone.
 
 ### 3.1 Shape
 
-| Phase | What it is |
-| --- | --- |
-| `lobby` | Roster, hand size, join code, QR |
-| `dealing` | 2.0s. Hands deal, middle card lands face down |
-| `heat` | Cards face up and tappable. Ends per §3.3 |
-| `settle` | Result, shed animation, chain state, next card concealed |
-| `finished` | Constellation review, awards, rematch |
+| Phase      | What it is                                               |
+| ---------- | -------------------------------------------------------- |
+| `lobby`    | Roster, hand size, join code, QR                         |
+| `dealing`  | 2.0s. Hands deal, middle card lands face down            |
+| `heat`     | Cards face up and tappable. Ends per §3.3                |
+| `settle`   | Result, shed animation, chain state, next card concealed |
+| `finished` | Constellation review, awards, rematch                    |
 
 Every timestamp is absolute and server-owned — `revealAt`, `deadlineAt`, `graceEndsAt`, `settleAt`,
 `nextHeatAt` — and every device animates against them through the existing `clockOffset` in
@@ -171,7 +171,7 @@ seat eating the space the cards need.
 
 Tapping your own card makes **attribution pure geometry**: your card is in your half, so a tap in
 your half is yours, and one device needs no seating logic at all. It is one rule in every mode
-instead of a duel exception, it is the honest physical action — you are playing *your* card, not
+instead of a duel exception, it is the honest physical action — you are playing _your_ card, not
 grabbing the pile — and it gives the connection a direction: the ray runs from your card to the
 middle card, which is where the card itself is about to go (§8).
 
@@ -179,14 +179,14 @@ middle card, which is where the card itself is about to go (§8).
 
 Whichever of these comes first:
 
-| Trigger | Rule |
-| --- | --- |
+| Trigger         | Rule                                                                                                                    |
+| --------------- | ----------------------------------------------------------------------------------------------------------------------- |
 | **First blood** | The moment someone lands it, everyone else has `graceMs` (default 2500) or the rest of the window, whichever is shorter |
-| **Window** | `deadlineAt`, `revealAt + windowMs` (default 8000). The backstop |
-| **All in** | Every connected player has landed it |
+| **Window**      | `deadlineAt`, `revealAt + windowMs` (default 8000). The backstop                                                        |
+| **All in**      | Every connected player has landed it                                                                                    |
 
 The grace is the interesting one and it is what makes the round-based version feel like a race
-rather than a quiz. *"Someone's got it — two and a half seconds"* is a real pressure and it keeps
+rather than a quiz. _"Someone's got it — two and a half seconds"_ is a real pressure and it keeps
 tempo high without ever guillotining somebody who is a beat behind.
 
 **A majority threshold was considered and rejected.** It fires at an arbitrary moment unrelated to
@@ -214,12 +214,12 @@ needs no separate arithmetic.
 
 At `settleAt`, players who landed it are ranked by recorded elapsed, ascending.
 
-| Who | Gets |
-| --- | --- |
-| Everyone who landed it | Sheds their top card. Chain +1. Connection recorded |
-| **Fastest** | Their shed card becomes the new middle card |
-| Everyone who missed | Keeps their card. Chain resets to 0 |
-| **Nobody landed it** | Middle card stays; **every player rotates their top card to the back of their hand** |
+| Who                    | Gets                                                                                 |
+| ---------------------- | ------------------------------------------------------------------------------------ |
+| Everyone who landed it | Sheds their top card. Chain +1. Connection recorded                                  |
+| **Fastest**            | Their shed card becomes the new middle card                                          |
+| Everyone who missed    | Keeps their card. Chain resets to 0                                                  |
+| **Nobody landed it**   | Middle card stays; **every player rotates their top card to the back of their hand** |
 
 That last row is the deadlock rule. Without it a pairing nobody can solve repeats forever. Rotating
 guarantees a different pairing next heat, keeps every card in play, and quietly gives a card you
@@ -240,7 +240,7 @@ correct tap, and submits the difference. Not the server's arrival time.
 
 This is the right trade and it is worth being explicit about why: server-arrival ranking makes
 network quality a skill, and network quality is the one thing in this game that nobody in the room
-can do anything about. Client timing makes *forgery* possible instead — and forgery is a thing a
+can do anything about. Client timing makes _forgery_ possible instead — and forgery is a thing a
 friend does on purpose, which is a social problem with a social fix.
 
 ### 4.2 The clamps
@@ -317,14 +317,14 @@ longest chain.
 
 Presented after the winner, as a short list of named cards. Precedent: `LiarsEndingSnapshot.awards`.
 
-| Award | Given for |
-| --- | --- |
-| **the win** | Emptied first |
-| **longest chain** | Most consecutive heats landed |
-| **quickest eye** | Lowest recorded elapsed on any single heat |
-| **most connections** | Most heats landed overall |
-| **never flinched** | Landed every heat they were present for |
-| **the scattergun** | Most wrong taps. Worded warmly, and suppressed below three |
+| Award                | Given for                                                  |
+| -------------------- | ---------------------------------------------------------- |
+| **the win**          | Emptied first                                              |
+| **longest chain**    | Most consecutive heats landed                              |
+| **quickest eye**     | Lowest recorded elapsed on any single heat                 |
+| **most connections** | Most heats landed overall                                  |
+| **never flinched**   | Landed every heat they were present for                    |
+| **the scattergun**   | Most wrong taps. Worded warmly, and suppressed below three |
 
 An award is only shown when it was actually earned — no "0 connections" trophies — and a player who
 sweeps several gets them all on one line rather than six separate cards.
@@ -349,7 +349,7 @@ each line.
 - **The spine** is the middle-card sequence, drawn as a gentle arc of nodes across the view. Each
   edge carries the symbol that made it and the name of whoever found it first.
 - **The ribs** are the cards other players shed on the same heat, hanging off the spine node they
-  were played against, joined by the symbol *that* player found.
+  were played against, joined by the symbol _that_ player found.
 - **A player's chain** is a run of consecutive spine positions where they have a rib. The longest
   one lights as a continuous bright path — which is exactly the shape the award names.
 
@@ -421,7 +421,7 @@ from both hands, so an exact tie always makes equal progress instead of replayin
 
 Dropping the middle card here is not a space fix — measured on a 375×812 phone, three cards fit with
 no scrolling at 219px each and tap targets from 60 to 118px, all of which clears the 44px floor
-comfortably. It is a better *game* for two people: two cards instead of three means each is half
+comfortably. It is a better _game_ for two people: two cards instead of three means each is half
 again as large, and you spend the round staring at your opponent's card rather than at a neutral pile,
 which is most of the fun of playing someone across a table.
 
@@ -507,7 +507,8 @@ Plus: a `THINGS` entry in `features/things/catalog.ts`, a `THING_OFFLINE` entry 
 ### 10.2 Snapshot
 
 ```ts
-export interface TwinSnapshot extends MultiplayerRoomIdentity, MultiplayerRevision, MultiplayerSequence {
+export interface TwinSnapshot
+  extends MultiplayerRoomIdentity, MultiplayerRevision, MultiplayerSequence {
   phase: TwinPhase;
   serverNow: number;
   expiresAt: number;
@@ -516,24 +517,24 @@ export interface TwinSnapshot extends MultiplayerRoomIdentity, MultiplayerRevisi
   canControl: boolean;
   order: 4 | 5 | 7;
   handSize: number;
-  players: TwinPlayerSummary[];   // name, cardsLeft, chain, connections, connected, ready, place
+  players: TwinPlayerSummary[]; // name, cardsLeft, chain, connections, connected, ready, place
   heat: TwinHeatSnapshot | null;
   player: TwinPrivateState | null;
-  ending: TwinEndingSnapshot | null;   // populated at `finished` only
+  ending: TwinEndingSnapshot | null; // populated at `finished` only
 }
 
 export interface TwinHeatSnapshot {
   id: string;
   number: number;
-  middle: TwinDealtCard;          // the promoted card for the next heat
-  playedMiddle: TwinDealtCard;    // frozen pairing for this heat's result
+  middle: TwinDealtCard; // the promoted card for the next heat
+  playedMiddle: TwinDealtCard; // frozen pairing for this heat's result
   revealAt: number;
   deadlineAt: number;
   graceEndsAt: number | null;
   resolvedAt: number | null;
   settleAt: number | null;
-  landedCount: number;            // a count, never names, while the heat is live
-  results: TwinHeatResult[];      // empty until settleAt
+  landedCount: number; // a count, never names, while the heat is live
+  results: TwinHeatResult[]; // empty until settleAt
 }
 
 export interface TwinPrivateState extends MultiplayerReadiness {
@@ -572,12 +573,15 @@ is `createMemoryRoomStore("twin")` and dev-only, never retry 4xx, ref-stable cal
 ### 10.4 Actions
 
 ```ts
-type TwinHostAction  = { type: "game.start"; removePlayerIds?: string[] }
-                     | { type: "game.replay" } | { type: "game.lobby" }
-                     | { type: "game.configure"; handSize?: number; windowMs?: number; graceMs?: number }
-                     | { type: "heat.next" };
-type TwinPlayerAction = { type: "readiness.set"; ready: boolean }
-                      | { type: "answer.tap"; heatId: string; symbolId: string; elapsedMs: number };
+type TwinHostAction =
+  | { type: "game.start"; removePlayerIds?: string[] }
+  | { type: "game.replay" }
+  | { type: "game.lobby" }
+  | { type: "game.configure"; handSize?: number; windowMs?: number; graceMs?: number }
+  | { type: "heat.next" };
+type TwinPlayerAction =
+  | { type: "readiness.set"; ready: boolean }
+  | { type: "answer.tap"; heatId: string; symbolId: string; elapsedMs: number };
 ```
 
 `answer.tap` is the whole game. The server owns hands, so it does not take the player's word for
@@ -616,15 +620,15 @@ the obvious first thing anyone will ask for.
 
 Per `.cursor/rules/testing.mdc`, the pure modules carry the weight.
 
-| Test | Asserts |
-| --- | --- |
-| `twin-deck.test.ts` | **Property test**: for every order in {3,4,5,7}, every pair of cards in the generated deck shares exactly one symbol. Card count, symbol count, symbols per card, symbol frequency all match n²+n+1 / n+1 |
-| `twin-deck.test.ts` | Deck sizing never deals a duplicate for any player count 2–12 at any hand size 4–10; order and hand fall out as the table in §2.2 |
-| `twin-layout.test.ts` | Same seed → identical layout. Different seeds → different. No two symbols overlap. Everything stays inside the card |
-| `twin-rules.test.ts` | Ranking by recorded elapsed. The three end conditions and their precedence. Grace never extends past the deadline. The clamps in §4.2, including that the allowance can only raise a claim |
-| `twin-rules.test.ts` | Payout: every lander sheds, fastest takes the middle, nobody lands → everyone rotates. Chains extend and reset. Awards are only issued when earned |
-| `twin-rules.test.ts` | Ties on emptying resolve by misses → elapsed → chain |
-| `twin-engine` integration | A full game over a fake clock: deal, heats, disconnect mid-heat, rematch keeps the roster and re-deals |
+| Test                      | Asserts                                                                                                                                                                                                   |
+| ------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `twin-deck.test.ts`       | **Property test**: for every order in {3,4,5,7}, every pair of cards in the generated deck shares exactly one symbol. Card count, symbol count, symbols per card, symbol frequency all match n²+n+1 / n+1 |
+| `twin-deck.test.ts`       | Deck sizing never deals a duplicate for any player count 2–12 at any hand size 4–10; order and hand fall out as the table in §2.2                                                                         |
+| `twin-layout.test.ts`     | Same seed → identical layout. Different seeds → different. No two symbols overlap. Everything stays inside the card                                                                                       |
+| `twin-rules.test.ts`      | Ranking by recorded elapsed. The three end conditions and their precedence. Grace never extends past the deadline. The clamps in §4.2, including that the allowance can only raise a claim                |
+| `twin-rules.test.ts`      | Payout: every lander sheds, fastest takes the middle, nobody lands → everyone rotates. Chains extend and reset. Awards are only issued when earned                                                        |
+| `twin-rules.test.ts`      | Ties on emptying resolve by misses → elapsed → chain                                                                                                                                                      |
+| `twin-engine` integration | A full game over a fake clock: deal, heats, disconnect mid-heat, rematch keeps the roster and re-deals                                                                                                    |
 
 The deck property test is the one that matters. Every other rule in this document is downstream of
 "any two cards share exactly one symbol", and if that ever fails the game does not degrade, it
@@ -636,13 +640,13 @@ becomes unplayable in a way that looks like a UI bug.
 
 Each phase is playable at its end. No phase leaves a half-wired surface behind it.
 
-| # | Phase | Contains |
-| --- | --- | --- |
-| **1** | **The deck is real** | `twin-deck.ts`, `twin-layout.ts`, `twin-symbols.ts` with 31 drawn symbols, `TwinSymbol`, `TwinCard`. Tests. Nothing is playable, everything downstream is proven |
-| **2** | **One device, two seats** | `TwinDuelApp`, `TwinRay`, the shed animation, wake lock, route + catalog + offline entry. **A complete, shippable game with no server at all** |
-| **3** | **Phones** | `twin-rules.ts`, the engine, service, functions, ws handler, `useTwinRoom`, lobby/heat/settle views, invite + QR. Awards. The full multiplayer game |
-| **4** | **The constellation** | Heat log key, `TwinConstellation`, the review, player filter, autoplay. Solo board |
-| **5** | **57** | The remaining 26 symbols, order 7, 6–12 players |
+| #     | Phase                     | Contains                                                                                                                                                         |
+| ----- | ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **1** | **The deck is real**      | `twin-deck.ts`, `twin-layout.ts`, `twin-symbols.ts` with 31 drawn symbols, `TwinSymbol`, `TwinCard`. Tests. Nothing is playable, everything downstream is proven |
+| **2** | **One device, two seats** | `TwinDuelApp`, `TwinRay`, the shed animation, wake lock, route + catalog + offline entry. **A complete, shippable game with no server at all**                   |
+| **3** | **Phones**                | `twin-rules.ts`, the engine, service, functions, ws handler, `useTwinRoom`, lobby/heat/settle views, invite + QR. Awards. The full multiplayer game              |
+| **4** | **The constellation**     | Heat log key, `TwinConstellation`, the review, player filter, autoplay. Solo board                                                                               |
+| **5** | **57**                    | The remaining 26 symbols, order 7, 6–12 players                                                                                                                  |
 
 Phase 2 before phase 3 is deliberate. The duel needs the cards, the ray and the shed animation —
 every hard visual problem in the game — and it needs none of the room infrastructure. If

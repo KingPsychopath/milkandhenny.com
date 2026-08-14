@@ -6,11 +6,7 @@ export function multiplayerRecord(value: unknown): Record<string, unknown> {
   return Object.fromEntries(Object.entries(value));
 }
 
-export function multiplayerBoundedText(
-  value: unknown,
-  max: number,
-  error = "Invalid text",
-) {
+export function multiplayerBoundedText(value: unknown, max: number, error = "Invalid text") {
   if (typeof value !== "string" || value.length > max) throw new Error(error);
   return value;
 }

@@ -3,10 +3,7 @@ import { useEffect, useState } from "react";
 import { GameLaunch, GameLaunchButton, GameLaunchMeta } from "../shared/GameLaunch";
 import { GameShell } from "../shared/GameShell";
 import { RoomJoinControl } from "../shared/RoomJoinControl";
-import {
-  readExpiringLocalValue,
-  writeExpiringLocalValue,
-} from "../shared/game-storage.client";
+import { readExpiringLocalValue, writeExpiringLocalValue } from "../shared/game-storage.client";
 import { gameNamespace } from "../shared/multiplayer-keys";
 import { useGamePreferences } from "../shared/useGamePreferences";
 import { liarsBrowserKeys } from "./liars-keys";
@@ -129,11 +126,7 @@ export function LiarsSetupApp() {
         { hostToken: room.hostToken, joinToken: room.joinToken },
         room.expiresAt,
       );
-      writeExpiringLocalValue(
-        liarsBrowserKeys.invite(room.roomId),
-        room.joinToken,
-        room.expiresAt,
-      );
+      writeExpiringLocalValue(liarsBrowserKeys.invite(room.roomId), room.joinToken, room.expiresAt);
       await navigate({ to: liarsPlayerPath(room.roomId) });
     } catch {
       setMessage("Could not open a room. Check your connection and try again.");
@@ -252,7 +245,9 @@ export function LiarsSetupApp() {
                   aria-expanded={panel === tab}
                   onClick={() => setPanel(panel === tab ? null : tab)}
                   className={`min-h-11 ${
-                    panel === tab ? "text-[var(--things-amber)]" : "text-white/45 hover:text-white/80"
+                    panel === tab
+                      ? "text-[var(--things-amber)]"
+                      : "text-white/45 hover:text-white/80"
                   }`}
                 >
                   {tab === "roles" ? "who's in this game" : "more"}

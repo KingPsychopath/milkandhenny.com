@@ -43,13 +43,20 @@ export function TokenSessionsPanel(props: {
   } = useTokenSessions({ isAuthed, authFetch });
 
   const handleRevokeSingleSession = async (jti: string) => {
-    if (!(await confirmAction({
-      eyebrow: "session security",
-      title: "Revoke this session?",
-      description: <>Token <span className="font-mono text-xs break-all">{jti}</span> will immediately stop working.</>,
-      confirmLabel: "revoke session",
-      intent: "danger",
-    }))) {
+    if (
+      !(await confirmAction({
+        eyebrow: "session security",
+        title: "Revoke this session?",
+        description: (
+          <>
+            Token <span className="font-mono text-xs break-all">{jti}</span> will immediately stop
+            working.
+          </>
+        ),
+        confirmLabel: "revoke session",
+        intent: "danger",
+      }))
+    ) {
       return;
     }
     setRevokeLoading(jti);

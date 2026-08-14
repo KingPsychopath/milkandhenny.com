@@ -321,7 +321,8 @@ export function AlbumGallery({ albumSlug, photos }: AlbumGalleryProps) {
         description: "A download this large may use significant memory and storage on this device.",
         confirmLabel: "download photos",
       }))
-    ) return;
+    )
+      return;
 
     const ids = Array.from(selected);
     if (ids.length === 1) {
@@ -427,7 +428,8 @@ export function AlbumGallery({ albumSlug, photos }: AlbumGalleryProps) {
     <div>
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-4">
-          <button type="button"
+          <button
+            type="button"
             onClick={toggleSelectMode}
             className="font-mono text-micro theme-muted hover:text-foreground transition-colors tracking-wide"
           >
@@ -435,7 +437,8 @@ export function AlbumGallery({ albumSlug, photos }: AlbumGalleryProps) {
           </button>
           {selectable && selected.size > 0 && (
             <>
-              <button type="button"
+              <button
+                type="button"
                 onClick={downloadSelected}
                 disabled={busy}
                 className="font-mono text-micro text-amber-600 hover:text-amber-500 transition-colors tracking-wide disabled:opacity-50"
@@ -443,7 +446,8 @@ export function AlbumGallery({ albumSlug, photos }: AlbumGalleryProps) {
                 {busy ? progressLabel : `[ download ${selected.size} ]`}
               </button>
               {downloading && downloadProgress ? (
-                <button type="button"
+                <button
+                  type="button"
                   onClick={cancelDownload}
                   className="font-mono text-micro theme-muted hover:text-foreground transition-colors tracking-wide"
                 >
@@ -482,14 +486,16 @@ export function AlbumGallery({ albumSlug, photos }: AlbumGalleryProps) {
             </p>
           ) : null}
           <div className="mt-3 flex items-center gap-3 font-mono text-micro tracking-wide">
-            <button type="button"
+            <button
+              type="button"
               onClick={startMultipartDownload}
               disabled={busy}
               className="text-amber-600 hover:text-amber-500 transition-colors disabled:opacity-50"
             >
               [ download in {pendingMultipartDownload.plan.partCount} parts ]
             </button>
-            <button type="button"
+            <button
+              type="button"
               onClick={() => setPendingMultipartDownload(null)}
               disabled={busy}
               className="theme-muted hover:text-foreground transition-colors disabled:opacity-50"

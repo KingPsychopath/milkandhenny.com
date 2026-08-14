@@ -26,5 +26,6 @@ export const remoteBrowserKeys = {
   hostSession: (game: RemoteGameKind) => gameBrowserKey("remote", 3, "host", game, "session"),
   judgeSession: (roomId: string) => gameBrowserKey("remote", 3, "room", roomId, "judge-session"),
   playerSession: (roomId: string) => gameBrowserKey("remote", 3, "room", roomId, "player-session"),
-  pendingCommands: (roomId: string) => gameBrowserKey("remote", 3, "room", roomId, "pending-commands"),
+  pendingCommands: (roomId: string) =>
+    gameBrowserKey("remote", 3, "room", roomId, "pending-commands"),
 } as const;

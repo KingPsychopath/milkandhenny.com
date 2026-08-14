@@ -19,9 +19,13 @@ function playerTokenForRoom(roomId: string) {
     return hashToken;
   }
   try {
-    const current = JSON.parse(sessionStorage.getItem(sessionKey(roomId)) ?? "null") as { playerToken?: unknown } | null;
+    const current = JSON.parse(sessionStorage.getItem(sessionKey(roomId)) ?? "null") as {
+      playerToken?: unknown;
+    } | null;
     if (typeof current?.playerToken === "string") return current.playerToken;
-  } catch { sessionStorage.removeItem(sessionKey(roomId)); }
+  } catch {
+    sessionStorage.removeItem(sessionKey(roomId));
+  }
   return "";
 }
 
@@ -31,8 +35,15 @@ function cachedSession(roomId: string): RemotePlayerSession | null {
     const value: unknown = JSON.parse(raw ?? "null");
     if (!value || typeof value !== "object") return null;
     const session = value as Partial<RemotePlayerSession>;
-    if (session.roomId !== roomId || typeof session.playerToken !== "string" || typeof session.expiresAt !== "number" || session.expiresAt <= Date.now() || !session.setup) {
-      if (typeof session.expiresAt === "number" && session.expiresAt <= Date.now()) sessionStorage.removeItem(sessionKey(roomId));
+    if (
+      session.roomId !== roomId ||
+      typeof session.playerToken !== "string" ||
+      typeof session.expiresAt !== "number" ||
+      session.expiresAt <= Date.now() ||
+      !session.setup
+    ) {
+      if (typeof session.expiresAt === "number" && session.expiresAt <= Date.now())
+        sessionStorage.removeItem(sessionKey(roomId));
       return null;
     }
     if (typeof session.connectionEpoch !== "string") session.connectionEpoch = crypto.randomUUID();
@@ -69,7 +80,13 @@ export function RemotePlayerJoinApp({ roomId }: { roomId: string }) {
           sessionStorage.removeItem(sessionKey(roomId));
           return;
         }
-        const next: RemotePlayerSession = { roomId, playerToken: token, connectionEpoch: crypto.randomUUID(), expiresAt: result.expiresAt, setup: result.setup };
+        const next: RemotePlayerSession = {
+          roomId,
+          playerToken: token,
+          connectionEpoch: crypto.randomUUID(),
+          expiresAt: result.expiresAt,
+          setup: result.setup,
+        };
         sessionStorage.setItem(sessionKey(roomId), JSON.stringify(next));
         setSession(next);
       } catch {
@@ -77,7 +94,9 @@ export function RemotePlayerJoinApp({ roomId }: { roomId: string }) {
       }
     };
     void load();
-    return () => { active = false; };
+    return () => {
+      active = false;
+    };
   }, [attempt, roomId, session, token]);
 
   useEffect(() => {
@@ -87,15 +106,40 @@ export function RemotePlayerJoinApp({ roomId }: { roomId: string }) {
   if (session?.setup.game === "heads-up") return <HeadsUpApp remoteSession={session} />;
   if (session?.setup.game === "spelling-bee") return <SpellingBeeApp remoteSession={session} />;
   if (sessionReadyForRoom !== roomId)
-    return <PlayerInviteMessage title="Opening your game…" detail="Keep this screen open for a moment." />;
+    return (
+      <PlayerInviteMessage
+        title="Opening your game…"
+        detail="Keep this screen open for a moment."
+      />
+    );
 
   return (
-    <main id="main" className="things-game things-game--night flex items-center justify-center px-6 text-center text-white">
+    <main
+      id="main"
+      className="things-game things-game--night flex items-center justify-center px-6 text-center text-white"
+    >
       <div className="max-w-sm">
-        <p className="font-mono text-micro uppercase tracking-[0.2em] text-white/45">player phone</p>
-        <h1 className="mt-3 font-serif text-5xl font-semibold">{token ? "Loading your game…" : "Invite missing"}</h1>
-        <p className="mt-4 font-serif text-lg text-white/60">{error ?? (token ? "Keep this screen open for a moment." : "Ask the judge to share the player link again.")}</p>
-        {error ? <button type="button" onClick={() => setAttempt((value) => value + 1)} className="mt-6 min-h-12 rounded-full bg-[var(--things-amber)] px-6 font-mono text-sm font-semibold text-black">try again</button> : null}
+        <p className="font-mono text-micro uppercase tracking-[0.2em] text-white/45">
+          player phone
+        </p>
+        <h1 className="mt-3 font-serif text-5xl font-semibold">
+          {token ? "Loading your game…" : "Invite missing"}
+        </h1>
+        <p className="mt-4 font-serif text-lg text-white/60">
+          {error ??
+            (token
+              ? "Keep this screen open for a moment."
+              : "Ask the judge to share the player link again.")}
+        </p>
+        {error ? (
+          <button
+            type="button"
+            onClick={() => setAttempt((value) => value + 1)}
+            className="mt-6 min-h-12 rounded-full bg-[var(--things-amber)] px-6 font-mono text-sm font-semibold text-black"
+          >
+            try again
+          </button>
+        ) : null}
       </div>
     </main>
   );
@@ -103,9 +147,14 @@ export function RemotePlayerJoinApp({ roomId }: { roomId: string }) {
 
 function PlayerInviteMessage({ title, detail }: { title: string; detail: string }) {
   return (
-    <main id="main" className="things-game things-game--night flex items-center justify-center px-6 text-center text-white">
+    <main
+      id="main"
+      className="things-game things-game--night flex items-center justify-center px-6 text-center text-white"
+    >
       <div className="max-w-sm">
-        <p className="font-mono text-micro uppercase tracking-[0.2em] text-white/45">player phone</p>
+        <p className="font-mono text-micro uppercase tracking-[0.2em] text-white/45">
+          player phone
+        </p>
         <h1 className="mt-3 font-serif text-5xl font-semibold">{title}</h1>
         <p className="mt-4 font-serif text-lg text-white/60">{detail}</p>
       </div>
