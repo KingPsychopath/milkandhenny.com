@@ -20,7 +20,7 @@ export const Route = createFileRoute("/pitch-night")({
       {
         name: "description",
         content:
-          "Milk & Henny: After School Club. Pitch night, spelling bee, board games, a live Apartment Life DJ set, catering and on-site parking.",
+          "Milk & Henny: After School Club. Pitch night, spelling bee, board games, a live Apartment Life DJ set, catering and free parking.",
       },
       { property: "og:image", content: "/MAHLogo.svg" },
     ],

@@ -248,7 +248,7 @@ export function Finale({ ticketHref }: { ticketHref: string }) {
           </a>
         </div>
         <p className="pitch-night-parking" data-soft-reveal>
-          And yes, parking is available on site.
+          And yes, parking is free.
         </p>
       </div>
     </section>
