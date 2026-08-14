@@ -56,7 +56,7 @@ function requestOriginAllowed(origin: string, request: Request) {
  * also send no Origin at all, so leaving the CSRF check in place rejects
  * every genuine delivery with a 403.
  */
-const ORIGIN_CHECK_EXEMPT_PATHS = new Set(["/api/stripe/webhook"]);
+const ORIGIN_CHECK_EXEMPT_PATHS = new Set(["/api/email/events/cloudflare", "/api/stripe/webhook"]);
 
 export function isOriginCheckExempt(request: Request): boolean {
   try {

@@ -1,16 +1,16 @@
 import { describe, it, expect } from "vitest";
 
 /**
- * Regression test for the Stripe webhook origin-check exemption.
+ * Regression tests for authenticated server-to-server origin-check exemptions.
  *
  * The CSRF middleware runs with `allowRequestsWithoutOriginCheck: false`, so
  * any POST arriving without a same-origin `Origin` or `Referer` is rejected
  * with 403. Stripe's servers send neither — every genuine webhook delivery
  * was being rejected, which meant paid tickets were never issued.
  *
- * The webhook authenticates itself with an HMAC over the raw body, which is
- * strictly stronger than an origin header. This test exists so nobody
- * "tidies away" the exemption and silently breaks paid ticketing again.
+ * Stripe authenticates with an HMAC over the raw body. The Cloudflare email
+ * relay authenticates with a shared bearer secret. Both checks are stronger
+ * than an origin header.
  */
 
 import { isOriginCheckExempt } from "@/src/start";
@@ -24,6 +24,10 @@ describe("origin-check exemption", () => {
     expect(isOriginCheckExempt(post("/api/stripe/webhook"))).toBe(true);
   });
 
+  it("exempts the Cloudflare email relay, which has no Origin header to check", () => {
+    expect(isOriginCheckExempt(post("/api/email/events/cloudflare"))).toBe(true);
+  });
+
   it("does not exempt anything else under /api", () => {
     for (const path of [
       "/api/guests",
@@ -31,6 +35,7 @@ describe("origin-check exemption", () => {
       "/api/tickets/redeem",
       "/api/stripe",
       "/api/stripe/webhook/extra",
+      "/api/email/events/cloudflare/extra",
     ]) {
       expect(isOriginCheckExempt(post(path))).toBe(false);
     }
