@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, beforeEach, expect, it, vi } from "vitest";
 
 import { drainEmailOutbox, enqueueEmail } from "@/lib/platform/email-outbox.server";
+import { recordEmailFeedback } from "@/lib/platform/email-feedback.server";
 import { query } from "@/lib/platform/postgres.server";
 import { applySchema, closeDatabase, describeWithDatabase, truncateAll } from "../helpers/postgres";
 
@@ -66,6 +67,25 @@ describeWithDatabase("email outbox (postgres)", () => {
       status: "accepted",
       message: null,
       provider_message_id: "provider-1",
+    });
+
+    await recordEmailFeedback({
+      eventId: "feedback-1",
+      type: "email.bounced",
+      occurredAt: new Date("2026-08-14T12:00:00.000Z"),
+      providerMessageId: "provider-1",
+      recipients: ["PERSON@example.com"],
+    });
+    const bounced = await query<{ status: string; provider_status: number }>(
+      `select status, provider_status from email_outbox`,
+    );
+    expect(bounced[0]).toEqual({ status: "failed", provider_status: 422 });
+    await expect(
+      enqueueEmail(message, { idempotencyKey: "tickets:issued:order-2", deliverNow: false }),
+    ).resolves.toEqual({
+      ok: false,
+      status: 422,
+      error: "Recipient address is suppressed after a delivery failure",
     });
   });
 });

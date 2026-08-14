@@ -24,12 +24,16 @@ function readCredentials(roomId: string): PitchControllerCredentials | undefined
 
 export function PresentationRemote({ roomId }: { roomId: string }) {
   const [credentials, setCredentials] = useState<PitchControllerCredentials>();
+  const [hydrated, setHydrated] = useState(false);
   const [name, setName] = useState("");
   const [joining, setJoining] = useState(false);
   const [query, setQuery] = useState("");
   const [pitches, setPitches] = useState<PublicPitchDeck[]>([]);
   const [message, setMessage] = useState("");
-  useEffect(() => setCredentials(readCredentials(roomId)), [roomId]);
+  useEffect(() => {
+    setHydrated(true);
+    setCredentials(readCredentials(roomId));
+  }, [roomId]);
   const pollCredentials = useMemo(
     () =>
       credentials
@@ -107,6 +111,7 @@ export function PresentationRemote({ roomId }: { roomId: string }) {
             your name
             <input
               required
+              disabled={!hydrated}
               autoComplete="name"
               maxLength={80}
               value={name}
@@ -116,7 +121,7 @@ export function PresentationRemote({ roomId }: { roomId: string }) {
           </label>
           <button
             type="submit"
-            disabled={joining}
+            disabled={!hydrated || joining}
             className="mt-8 min-h-12 w-full bg-foreground px-5 font-mono text-sm text-background disabled:opacity-40"
           >
             {joining ? "asking…" : "request control →"}

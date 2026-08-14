@@ -16,7 +16,7 @@
 
 ## Health semantics
 
-`/api/health` is configuration-only. It performs no Redis or object-storage operations, returns `Cache-Control: no-store`, and uses status 503 only when a required capability is unavailable. Optional maintenance or worker degradation remains visible without failing platform readiness.
+`/api/health` checks the live required dependencies, returns `Cache-Control: no-store`, and uses status 503 when a required capability is unavailable. Its probes are bounded and do not expose credentials, hostnames, or raw provider errors. Optional maintenance or worker degradation remains visible without failing platform readiness.
 
 `/health` uses the same model and exposes no credentials, provider account identifiers, hostnames, or raw errors.
 

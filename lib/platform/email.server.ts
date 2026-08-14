@@ -90,6 +90,7 @@ function getEmailConfig(channel: EmailChannel): EmailConfig | null {
 /** Surfaced on `/health` alongside the other optional capabilities. */
 export function describeEmailCapability(): {
   configured: boolean;
+  feedbackConfigured: boolean;
   provider: EmailProvider | null;
   senders: Record<EmailChannel, string | null>;
   replyTo: string | null;
@@ -98,6 +99,9 @@ export function describeEmailCapability(): {
   const studio = getEmailConfig("studio");
   return {
     configured: tickets !== null && studio !== null,
+    feedbackConfigured:
+      (tickets?.provider ?? studio?.provider) !== "resend" ||
+      Boolean(process.env.RESEND_WEBHOOK_SECRET?.trim()),
     provider: tickets?.provider ?? studio?.provider ?? null,
     senders: {
       tickets: tickets?.sender.address ?? null,

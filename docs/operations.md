@@ -21,6 +21,10 @@ curl -fsS https://milkandhenny.com/api/health
 
 Use `/health` for the safe human view. Use the admin-protected `/api/debug` only when diagnosing dependencies; it deliberately spends one Redis and one object-storage operation.
 
+## Backups and restore
+
+Follow [disaster-recovery.md](./disaster-recovery.md). Run the PostgreSQL archive daily and a restore drill before launch and every quarter. Keep the archive outside the deployment account. Configure a separate copy of permanent object storage; private transfers and live rooms expire and are not restored.
+
 ## Runtime limits
 
 - Start the web process at 512 MB–1 GB RAM and 0.5–1 vCPU.

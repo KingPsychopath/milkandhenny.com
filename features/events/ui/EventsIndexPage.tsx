@@ -146,9 +146,17 @@ export function EventsIndexPage({ upcoming, past }: EventsIndexData) {
             <span>
               © {new Date().getFullYear()} {SITE_BRAND}
             </span>
-            <Link to="/" className="hover:text-foreground transition-colors">
-              ← home
-            </Link>
+            <div className="flex items-center gap-4">
+              <Link to="/privacy" className="hover:text-foreground transition-colors">
+                privacy
+              </Link>
+              <Link to="/contact" className="hover:text-foreground transition-colors">
+                contact
+              </Link>
+              <Link to="/" className="hover:text-foreground transition-colors">
+                ← home
+              </Link>
+            </div>
           </div>
         </div>
       </footer>

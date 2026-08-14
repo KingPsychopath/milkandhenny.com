@@ -1,5 +1,5 @@
 import { Link, useNavigate } from "@tanstack/react-router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { createPresentationRoomFn } from "../presentation.functions";
 
@@ -7,7 +7,10 @@ export function PresentationSetup({ authorised }: { authorised: boolean }) {
   const navigate = useNavigate();
   const [title, setTitle] = useState("The Pitch Night");
   const [creating, setCreating] = useState(false);
+  const [hydrated, setHydrated] = useState(false);
   const [message, setMessage] = useState("");
+
+  useEffect(() => setHydrated(true), []);
 
   async function create() {
     setCreating(true);
@@ -83,7 +86,7 @@ export function PresentationSetup({ authorised }: { authorised: boolean }) {
       </label>
       <button
         type="button"
-        disabled={creating}
+        disabled={!hydrated || creating}
         onClick={() => void create()}
         className="mt-10 min-h-13 w-full bg-foreground px-6 font-mono text-sm text-background hover:opacity-80 disabled:opacity-40"
       >

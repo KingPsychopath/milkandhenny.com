@@ -335,7 +335,6 @@ export function PitchEditor({
         setDocumentState(local.document);
         setFiles(local.files);
         setActiveSlideId(local.document.slides.find((slide) => !slide.deletedAt)?.id ?? "");
-        setPhase("ready");
         setSyncState("local");
         if (local.pendingSync) {
           setRevision(1);
@@ -352,7 +351,7 @@ export function PitchEditor({
           data: { deckId, ownerToken: remembered.token },
         });
         if (!result.ok) {
-          if (!local) setPhase("missing");
+          setPhase(local ? "ready" : "missing");
           return;
         }
         const remote = result.value;
@@ -389,7 +388,7 @@ export function PitchEditor({
         }
         setPhase("ready");
       } catch {
-        if (!local) setPhase("error");
+        setPhase(local ? "ready" : "error");
       }
     })();
     return () => {
@@ -467,7 +466,20 @@ export function PitchEditor({
         setSyncState("merged");
         setMessage("Two saved copies were consolidated. Nothing was discarded.");
       } else {
-        setSyncState(revisionRef.current === sentRevision ? "saved" : "local");
+        const fullySynced = revisionRef.current === sentRevision;
+        if (fullySynced) {
+          await saveLocalPitchDraft({
+            deckId,
+            title,
+            document: documentState,
+            files,
+            pendingSync: false,
+            updatedAt: result.value.deck.updatedAt,
+          });
+          setLocalSavedRevision((current) => Math.max(current, sentRevision));
+          setLocalSaveFailed(false);
+        }
+        setSyncState(fullySynced ? "saved" : "local");
       }
       await rememberPitchCredential({
         ...credential,
@@ -490,7 +502,7 @@ export function PitchEditor({
       syncing.current = false;
       if (revisionRef.current > sentRevision) setSyncWake((value) => value + 1);
     }
-  }, [credential, deck, deckId, documentState, isDemo, title, updateState]);
+  }, [credential, deck, deckId, documentState, files, isDemo, title, updateState]);
 
   useEffect(() => {
     if (isDemo || revision <= lastSyncedRevision.current) return;

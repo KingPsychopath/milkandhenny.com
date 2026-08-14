@@ -478,6 +478,34 @@ const MIGRATIONS: Migration[] = [
       create index email_outbox_status_idx on email_outbox (status, created_at desc);
     `,
   },
+  {
+    id: "0013_email_delivery_feedback",
+    sql: `
+      create table email_feedback_events (
+        event_id            text not null,
+        event_type          text not null
+                            check (event_type in ('email.bounced', 'email.complained', 'email.suppressed')),
+        provider_message_id text not null,
+        recipient_hash      text not null check (char_length(recipient_hash) = 64),
+        occurred_at         timestamptz not null,
+        received_at         timestamptz not null default now(),
+        primary key (event_id, recipient_hash)
+      );
+
+      create table email_suppressions (
+        recipient_hash      text primary key check (char_length(recipient_hash) = 64),
+        reason              text not null
+                            check (reason in ('bounced', 'complained', 'provider_suppressed')),
+        provider_message_id text not null,
+        first_occurred_at   timestamptz not null,
+        last_occurred_at    timestamptz not null,
+        updated_at          timestamptz not null default now()
+      );
+
+      create index email_feedback_message_idx
+        on email_feedback_events (provider_message_id, occurred_at desc);
+    `,
+  },
 ];
 
 export type MigrationResult = { applied: string[]; alreadyApplied: number };

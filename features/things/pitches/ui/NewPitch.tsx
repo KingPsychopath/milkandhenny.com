@@ -1,5 +1,5 @@
 import { Link, useNavigate } from "@tanstack/react-router";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { createPitchFn } from "../pitches.functions";
 import { rememberPitchCredential, saveLocalPitchDraft } from "../browser-store.client";
@@ -17,10 +17,13 @@ export function NewPitch({ maximumSlides }: { maximumSlides: number }) {
   const [title, setTitle] = useState("");
   const [state, setState] = useState<"idle" | "saving" | "error">("idle");
   const [error, setError] = useState("");
+  const [hydrated, setHydrated] = useState(false);
   const createRequest = useRef<{ id: string; ownerToken: string } | undefined>(undefined);
 
-  async function submit(event: React.FormEvent) {
-    event.preventDefault();
+  useEffect(() => setHydrated(true), []);
+
+  async function createPitch() {
+    if (state === "saving") return;
     setState("saving");
     createRequest.current ??= { id: randomId("c_"), ownerToken: randomId("k_") };
     const { id: createRequestId, ownerToken } = createRequest.current;
@@ -88,11 +91,18 @@ export function NewPitch({ maximumSlides }: { maximumSlides: number }) {
         email is only there to recover it.
       </p>
 
-      <form onSubmit={submit} className="mt-12 space-y-8">
+      <form
+        onSubmit={(event) => {
+          event.preventDefault();
+          void createPitch();
+        }}
+        className="mt-12 space-y-8"
+      >
         <label className="block font-mono text-xs uppercase tracking-[0.12em] theme-muted">
           pitch title
           <input
             required
+            disabled={!hydrated || state === "saving"}
             maxLength={120}
             value={title}
             onChange={(event) => setTitle(event.target.value)}
@@ -105,6 +115,7 @@ export function NewPitch({ maximumSlides }: { maximumSlides: number }) {
             your name
             <input
               required
+              disabled={!hydrated || state === "saving"}
               maxLength={120}
               autoComplete="name"
               value={name}
@@ -116,6 +127,7 @@ export function NewPitch({ maximumSlides }: { maximumSlides: number }) {
             recovery email
             <input
               required
+              disabled={!hydrated || state === "saving"}
               type="email"
               autoComplete="email"
               value={email}
@@ -125,8 +137,9 @@ export function NewPitch({ maximumSlides }: { maximumSlides: number }) {
           </label>
         </div>
         <button
-          type="submit"
-          disabled={state === "saving"}
+          type="button"
+          disabled={!hydrated || state === "saving"}
+          onClick={() => void createPitch()}
           className="min-h-13 w-full bg-foreground px-7 font-mono text-sm text-background hover:opacity-80 disabled:opacity-40"
         >
           {state === "saving" ? "opening the studio…" : "open the studio →"}

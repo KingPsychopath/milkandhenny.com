@@ -85,6 +85,15 @@ async function insertEmail(
   message: EmailMessage,
   idempotencyKey: string,
 ): Promise<{ id: string; status: string }> {
+  const recipientHash = hash(message.to.trim().toLowerCase());
+  const suppression = await client.query(
+    `select 1 from email_suppressions where recipient_hash = $1 limit 1`,
+    [recipientHash],
+  );
+  if (suppression.rowCount) {
+    throw new SuppressedRecipientError();
+  }
+
   const id = randomUUID();
   const result = await client.query<{ id: string; status: string }>(
     `insert into email_outbox (
@@ -93,17 +102,18 @@ async function insertEmail(
      on conflict (idempotency_key) do update
        set idempotency_key = excluded.idempotency_key
      returning id, status`,
-    [
-      id,
-      idempotencyKey,
-      message.channel,
-      hash(message.to.trim().toLowerCase()),
-      JSON.stringify(message),
-    ],
+    [id, idempotencyKey, message.channel, recipientHash, JSON.stringify(message)],
   );
   const row = result.rows[0];
   if (!row) throw new Error("Email outbox did not return the queued message");
   return row;
+}
+
+class SuppressedRecipientError extends Error {
+  constructor() {
+    super("Recipient address is suppressed after a delivery failure");
+    this.name = "SuppressedRecipientError";
+  }
 }
 
 export async function enqueueEmail(
@@ -122,6 +132,12 @@ export async function enqueueEmail(
     }
     return { ok: true, id: queued.id };
   } catch (error) {
+    if (error instanceof SuppressedRecipientError) {
+      log.warn("email.outbox", "Suppressed recipient was not queued", {
+        channel: message.channel,
+      });
+      return { ok: false, status: 422, error: error.message };
+    }
     log.error("email.outbox", "Could not queue email", { channel: message.channel }, error);
     return { ok: false, status: 503, error: "Email could not be queued" };
   }
@@ -132,8 +148,15 @@ export async function enqueueEmails(messages: readonly QueuedEmail[]): Promise<n
   const queued = await transaction(async (client) => {
     let queued = 0;
     for (const item of messages) {
-      const result = await insertEmail(client, item.message, item.idempotencyKey);
-      if (result.status === "pending") queued += 1;
+      try {
+        const result = await insertEmail(client, item.message, item.idempotencyKey);
+        if (result.status === "pending") queued += 1;
+      } catch (error) {
+        if (!(error instanceof SuppressedRecipientError)) throw error;
+        log.warn("email.outbox", "Suppressed recipient was omitted from batch", {
+          channel: item.message.channel,
+        });
+      }
     }
     return queued;
   });

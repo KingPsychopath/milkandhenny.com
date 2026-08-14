@@ -18,6 +18,12 @@ export default defineConfig({
     coverage: {
       include: ["lib/**/*.ts", "features/**/*.ts"],
       exclude: ["lib/platform/redis.ts", "lib/platform/r2.ts", "lib/platform/logger.ts"],
+      thresholds: {
+        statements: 44,
+        branches: 42,
+        functions: 44,
+        lines: 45,
+      },
     },
   },
 });

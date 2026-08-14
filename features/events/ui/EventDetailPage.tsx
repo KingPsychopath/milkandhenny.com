@@ -308,9 +308,17 @@ export function EventDetailPage({
           <span>
             © {new Date().getFullYear()} {SITE_BRAND}
           </span>
-          <Link to="/events" className="hover:text-foreground transition-colors">
-            all events
-          </Link>
+          <div className="flex items-center gap-4">
+            <Link to="/privacy" className="hover:text-foreground transition-colors">
+              privacy
+            </Link>
+            <Link to="/contact" className="hover:text-foreground transition-colors">
+              contact
+            </Link>
+            <Link to="/events" className="hover:text-foreground transition-colors">
+              all events
+            </Link>
+          </div>
         </div>
       </footer>
     </div>

@@ -132,6 +132,12 @@ function Home() {
               <Link to="/health" className="hover:text-foreground transition-colors">
                 health
               </Link>
+              <Link to="/privacy" className="hover:text-foreground transition-colors">
+                privacy
+              </Link>
+              <Link to="/contact" className="hover:text-foreground transition-colors">
+                contact
+              </Link>
               <Link to="/party" className="hover:text-foreground transition-colors">
                 the party ↗
               </Link>

@@ -49,6 +49,7 @@ type RetryableR2Error = {
 
 type R2RuntimeConfig = {
   accountId: string;
+  endpoint?: string;
   accessKey: string;
   secretKey: string;
   publicBucket: string;
@@ -94,6 +95,7 @@ function getDefaultMaxSockets(): number {
 
 function getRuntimeConfig(): R2RuntimeConfig {
   const accountId = process.env.R2_ACCOUNT_ID;
+  const endpoint = process.env.S3_ENDPOINT?.trim() || undefined;
   const accessKey = process.env.R2_ACCESS_KEY;
   const secretKey = process.env.R2_SECRET_KEY;
   const publicBucket = process.env.R2_PUBLIC_BUCKET?.trim() || process.env.R2_BUCKET;
@@ -107,6 +109,7 @@ function getRuntimeConfig(): R2RuntimeConfig {
 
   return {
     accountId,
+    endpoint,
     accessKey,
     secretKey,
     publicBucket,
@@ -132,7 +135,8 @@ function getClient(): { client: S3Client; config: R2RuntimeConfig } {
 
   const client = new S3Client({
     region: "auto",
-    endpoint: `https://${config.accountId}.r2.cloudflarestorage.com`,
+    endpoint: config.endpoint ?? `https://${config.accountId}.r2.cloudflarestorage.com`,
+    forcePathStyle: Boolean(config.endpoint),
     credentials: {
       accessKeyId: config.accessKey,
       secretAccessKey: config.secretKey,

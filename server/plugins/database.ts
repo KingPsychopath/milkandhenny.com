@@ -4,6 +4,11 @@ import { log } from "@/lib/platform/logger.server";
 import { closePool, isDatabaseConfigured } from "@/lib/platform/postgres.server";
 import { runMigrations } from "@/lib/platform/migrations.server";
 import { startEmailOutboxWorker, stopEmailOutboxWorker } from "@/lib/platform/email-outbox.server";
+import {
+  markDatabaseFailed,
+  markDatabaseMigrationsStarted,
+  markDatabaseReady,
+} from "@/lib/platform/database-readiness.server";
 
 /**
  * Apply migrations on boot, close the pool on shutdown.
@@ -20,6 +25,7 @@ import { startEmailOutboxWorker, stopEmailOutboxWorker } from "@/lib/platform/em
  */
 export default definePlugin(async (nitroApp) => {
   if (isDatabaseConfigured()) {
+    markDatabaseMigrationsStarted();
     try {
       const result = await runMigrations();
       if (result.applied.length > 0) {
@@ -28,8 +34,10 @@ export default definePlugin(async (nitroApp) => {
           alreadyApplied: result.alreadyApplied,
         });
       }
+      markDatabaseReady();
       startEmailOutboxWorker();
     } catch (error) {
+      markDatabaseFailed(error);
       log.error("postgres.migrate", "Migrations failed on boot", {}, error);
     }
   } else {

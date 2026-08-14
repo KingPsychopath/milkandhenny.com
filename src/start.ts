@@ -15,7 +15,9 @@ const CONTENT_SECURITY_POLICY = [
   "font-src 'self'",
   "img-src 'self' data: blob: https:",
   "media-src 'self' blob: https:",
-  "connect-src 'self' blob: https: ws: wss:",
+  process.env.NODE_ENV === "production"
+    ? "connect-src 'self' blob: https: ws: wss:"
+    : "connect-src 'self' blob: http://127.0.0.1:* http://localhost:* https: ws: wss:",
   "worker-src 'self' blob:",
   "manifest-src 'self'",
   ...(process.env.NODE_ENV === "production" ? ["upgrade-insecure-requests"] : []),
@@ -54,7 +56,7 @@ function requestOriginAllowed(origin: string, request: Request) {
  * also send no Origin at all, so leaving the CSRF check in place rejects
  * every genuine delivery with a 403.
  */
-const ORIGIN_CHECK_EXEMPT_PATHS = new Set(["/api/stripe/webhook"]);
+const ORIGIN_CHECK_EXEMPT_PATHS = new Set(["/api/stripe/webhook", "/api/email/webhook/resend"]);
 
 export function isOriginCheckExempt(request: Request): boolean {
   try {

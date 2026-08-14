@@ -1,0 +1,54 @@
+# Disaster recovery
+
+## Recovery targets
+
+- PostgreSQL ticket, checkout, event, and email records: 24-hour recovery point; 4-hour recovery time.
+- Permanent object-storage media: 24-hour recovery point; 8-hour recovery time.
+- Redis sessions, live games, Pitch Night rooms, and private transfers: no restore guarantee. These records are short-lived by design. Recreate them after an incident.
+- Published writing and application configuration: restore from the git repository and deployment environment.
+
+These are operating targets, not provider guarantees. Confirm that the selected database and object-storage plans can meet them before launch.
+
+## PostgreSQL backup
+
+Run this from a trusted maintenance host with PostgreSQL client tools. The command refuses to overwrite an archive. It also verifies the archive catalogue and writes a SHA-256 metadata file.
+
+```bash
+DATABASE_URL=… pnpm backup:postgres -- /absolute/secure/path/milkandhenny-YYYY-MM-DD.dump
+```
+
+Encrypt the archive at rest and copy it to a different account or failure domain. Keep at least 7 daily and 4 weekly archives. Never put an archive or database URL in git.
+
+## PostgreSQL restore drill
+
+Create a separate empty database. Never use the live database for a drill. The restore command checks that the public schema has no tables and uses one transaction.
+
+```bash
+DATABASE_URL=… pnpm restore:postgres -- /absolute/secure/path/milkandhenny-YYYY-MM-DD.dump --confirm-empty-target
+```
+
+After restore:
+
+1. Start the application against the restored database and isolated Redis and object storage.
+2. Check `/api/health`.
+3. Verify one event, ticket, checkout, and email-outbox record.
+4. Record the archive date, restore duration, operator, and result outside the repository.
+5. Delete the drill environment and its credentials.
+
+Run this drill before launch and every quarter.
+
+## Object storage
+
+Enable the provider's object versioning or scheduled replication if the selected S3-compatible provider supports it. Otherwise, run a daily `rclone sync` from the production bucket to an encrypted bucket in a separate account. Use a read-only source credential and a write-only backup credential. Include all permanent media prefixes. Private transfers can be excluded because they expire and are not a system of record.
+
+Test a restore of one image, one video, and one document every quarter. Verify the object key, content type, byte size, and checksum before replacing any production object.
+
+## Incident restore order
+
+1. Stop writes or direct traffic to a maintenance response.
+2. Preserve logs and the failed system for investigation.
+3. Create new database and storage resources. Do not restore over the failed resources.
+4. Restore PostgreSQL, then permanent objects, then deploy the recorded application commit.
+5. rotate credentials if exposure caused the incident.
+6. Check health, sign-in, an event, a ticket, an upload, email queue state, and Pitch Night.
+7. Move traffic only after the checks pass. Keep the failed environment until the incident review is complete.

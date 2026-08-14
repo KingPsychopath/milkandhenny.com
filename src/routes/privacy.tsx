@@ -1,0 +1,99 @@
+import { Link, createFileRoute } from "@tanstack/react-router";
+
+import { SITE_BRAND } from "@/lib/shared/config";
+
+export const Route = createFileRoute("/privacy")({
+  head: () => ({
+    meta: [
+      { title: `Privacy — ${SITE_BRAND}` },
+      { name: "description", content: "How milk & henny handles personal information." },
+    ],
+  }),
+  component: PrivacyPage,
+});
+
+function PrivacyPage() {
+  return (
+    <div className="min-h-screen bg-background text-foreground">
+      <header className="max-w-2xl mx-auto px-6 pt-12 pb-8">
+        <Link
+          to="/"
+          className="font-mono text-sm font-bold tracking-tighter hover:opacity-70 transition-opacity"
+        >
+          {SITE_BRAND}
+        </Link>
+      </header>
+
+      <main id="main" className="max-w-2xl mx-auto px-6 pb-20">
+        <p className="font-mono text-micro theme-muted tracking-widest uppercase">
+          Last updated 14 August 2026
+        </p>
+        <h1 className="mt-3 font-serif text-4xl leading-tight">Privacy</h1>
+        <div className="mt-10 space-y-10 font-serif text-lg leading-relaxed">
+          <section>
+            <h2 className="font-mono text-sm font-bold tracking-tight">What we collect</h2>
+            <p className="mt-3 theme-muted">
+              We collect the details that you give us when you buy or receive a ticket, submit a
+              pitch, upload media, send a report, or use a private transfer. These details can
+              include your name, email address, content, and files. We also process basic security
+              and service data, such as an IP address, request time, browser details, and error
+              records.
+            </p>
+          </section>
+
+          <section>
+            <h2 className="font-mono text-sm font-bold tracking-tight">Why we use it</h2>
+            <p className="mt-3 theme-muted">
+              We use this information to provide the service you asked for, deliver tickets and
+              messages, run events, prevent abuse, keep the site reliable, answer you, and meet our
+              legal duties. We do not sell personal information.
+            </p>
+          </section>
+
+          <section>
+            <h2 className="font-mono text-sm font-bold tracking-tight">Payments and providers</h2>
+            <p className="mt-3 theme-muted">
+              Stripe processes payment card details. We do not store full card details. We use
+              service providers for hosting, storage, database, email, payments, and error
+              monitoring. They process only the information needed to provide those services.
+            </p>
+          </section>
+
+          <section>
+            <h2 className="font-mono text-sm font-bold tracking-tight">Storage and retention</h2>
+            <p className="mt-3 theme-muted">
+              The site uses cookies and local browser storage for sign-in, preferences, saved work,
+              and offline features. Private transfers and temporary event data expire on the dates
+              shown in the service. We keep transaction and security records for as long as needed
+              for accounting, disputes, safety, and legal duties. We then delete or anonymise them.
+            </p>
+          </section>
+
+          <section>
+            <h2 className="font-mono text-sm font-bold tracking-tight">Your choices</h2>
+            <p className="mt-3 theme-muted">
+              You can ask for access, correction, deletion, restriction, or a copy of your personal
+              information. Some rights depend on the reason we hold the data and the law that
+              applies. You can also object or complain to your local data protection authority.
+            </p>
+          </section>
+
+          <section>
+            <h2 className="font-mono text-sm font-bold tracking-tight">Contact</h2>
+            <p className="mt-3 theme-muted">
+              Email{" "}
+              <a
+                href="mailto:hello@milkandhenny.com"
+                className="text-foreground underline underline-offset-4 hover:opacity-70"
+              >
+                hello@milkandhenny.com
+              </a>{" "}
+              with a privacy request or question. Include enough detail for us to find the relevant
+              record, but do not send sensitive identity documents unless we ask for them.
+            </p>
+          </section>
+        </div>
+      </main>
+    </div>
+  );
+}

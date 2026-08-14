@@ -1,13 +1,13 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { getSystemCapabilities } from "@/features/system/capabilities.server";
+import { probeSystemCapabilities } from "@/features/system/capabilities.server";
 
 /**
- * Cheap provider-neutral readiness endpoint for Railway, Docker, a VPS, or an
- * external uptime monitor. It validates configuration without spending Redis
- * or object-storage operations.
+ * Provider-neutral readiness endpoint for Railway, Docker, a VPS, or an
+ * external uptime monitor. It checks every required dependency and refuses
+ * traffic when boot migrations did not complete.
  */
-function handleGET() {
-  const health = getSystemCapabilities();
+async function handleGET() {
+  const health = await probeSystemCapabilities();
   return Response.json(
     {
       ok: health.status !== "unhealthy",

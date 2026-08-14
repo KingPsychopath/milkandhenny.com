@@ -18,10 +18,13 @@
     "format:check": "oxfmt --check .",
     "cli": "tsx --tsconfig tsconfig.cli.json scripts/cli.ts",
     "maintenance": "node ops/run-maintenance.mjs",
+    "backup:postgres": "node ops/postgres-archive.mjs backup",
+    "restore:postgres": "node ops/postgres-archive.mjs restore",
     "worker:media": "tsx --tsconfig tsconfig.cli.json scripts/media-worker.ts",
     "typecheck": "tsgo --noEmit",
     "typecheck:ci": "tsgo --noEmit",
     "test": "vitest run",
+    "test:e2e": "playwright test",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage"
   },
@@ -54,11 +57,13 @@
     "react-markdown": "^10.1.0",
     "remark-gfm": "^4.0.1",
     "stripe": "^22.5.0",
+    "svix": "^1.99.1",
     "three": "0.185.1",
     "torph": "0.0.9",
     "web-haptics": "0.0.6"
   },
   "devDependencies": {
+    "@playwright/test": "^1.62.1",
     "@tailwindcss/postcss": "^4.3.3",
     "@types/node": "^20.19.43",
     "@types/papaparse": "^5.5.2",

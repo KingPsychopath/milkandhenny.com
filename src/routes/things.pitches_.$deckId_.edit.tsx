@@ -11,6 +11,7 @@ const PitchEditor = lazy(() =>
 );
 
 export const Route = createFileRoute("/things/pitches_/$deckId_/edit")({
+  ssr: false,
   loader: () => listPublishedPitchesFn(),
   component: PitchEditorRoute,
   head: () => ({ meta: [{ title: `Pitch studio — ${SITE_NAME}` }] }),

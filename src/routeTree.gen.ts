@@ -9,180 +9,138 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
-import { Route as UploadRouteImport } from './routes/upload'
-import { Route as ThingsRouteImport } from './routes/things'
-import { Route as SitemapDotxmlRouteImport } from './routes/sitemap[.]xml'
-import { Route as PitchNightRouteImport } from './routes/pitch-night'
-import { Route as PartyRouteImport } from './routes/party'
-import { Route as IcebreakerRouteImport } from './routes/icebreaker'
-import { Route as HealthRouteImport } from './routes/health'
-import { Route as FontTestRouteImport } from './routes/font-test'
-import { Route as FeedDotxmlRouteImport } from './routes/feed[.]xml'
-import { Route as ExamRouteImport } from './routes/exam'
-import { Route as BestDressedRouteImport } from './routes/best-dressed'
 import { Route as IndexRouteImport } from './routes/index'
-import { Route as WordsIndexRouteImport } from './routes/words/index'
-import { Route as ScanIndexRouteImport } from './routes/scan.index'
-import { Route as PicsIndexRouteImport } from './routes/pics/index'
-import { Route as EventsIndexRouteImport } from './routes/events/index'
+import { Route as BestDressedRouteImport } from './routes/best-dressed'
+import { Route as ContactRouteImport } from './routes/contact'
+import { Route as ExamRouteImport } from './routes/exam'
+import { Route as FeedDotxmlRouteImport } from './routes/feed[.]xml'
+import { Route as FontTestRouteImport } from './routes/font-test'
+import { Route as HealthRouteImport } from './routes/health'
+import { Route as IcebreakerRouteImport } from './routes/icebreaker'
+import { Route as PartyRouteImport } from './routes/party'
+import { Route as PitchNightRouteImport } from './routes/pitch-night'
+import { Route as PrivacyRouteImport } from './routes/privacy'
+import { Route as SitemapDotxmlRouteImport } from './routes/sitemap[.]xml'
+import { Route as ThingsRouteImport } from './routes/things'
+import { Route as UploadRouteImport } from './routes/upload'
 import { Route as AdminIndexRouteImport } from './routes/admin/index'
-import { Route as WordsSlugRouteImport } from './routes/words/$slug'
-import { Route as VaultSlugRouteImport } from './routes/vault/$slug'
-import { Route as TicketIdRouteImport } from './routes/ticket.$id'
-import { Route as ThingsTwinRouteImport } from './routes/things.twin'
-import { Route as ThingsSpellingPartyRouteImport } from './routes/things.spelling-party'
-import { Route as ThingsSpellingBeeRouteImport } from './routes/things.spelling-bee'
-import { Route as ThingsSameBrainRouteImport } from './routes/things.same-brain'
-import { Route as ThingsPitchesRouteImport } from './routes/things.pitches'
-import { Route as ThingsLiarsRouteImport } from './routes/things.liars'
-import { Route as ThingsIcebreakerRouteImport } from './routes/things.icebreaker'
-import { Route as ThingsHeadsUpRouteImport } from './routes/things.heads-up'
-import { Route as ThingsDrawCountryRouteImport } from './routes/things.draw-country'
-import { Route as ThingsCentreRouteImport } from './routes/things.centre'
-import { Route as TIdRouteImport } from './routes/t/$id'
-import { Route as ScanTokenRouteImport } from './routes/scan.$token'
-import { Route as EventsSlugRouteImport } from './routes/events/$slug'
-import { Route as DropTokenRouteImport } from './routes/drop.$token'
 import { Route as AdminEditorRouteImport } from './routes/admin/editor'
-import { Route as ApiWordsRouteRouteImport } from './routes/api/words/route'
-import { Route as ApiReportsRouteRouteImport } from './routes/api/reports/route'
-import { Route as ApiHealthRouteRouteImport } from './routes/api/health/route'
-import { Route as ApiDebugRouteRouteImport } from './routes/api/debug/route'
 import { Route as ApiBestDressedRouteRouteImport } from './routes/api/best-dressed/route'
-import { Route as PicsAlbumIndexRouteImport } from './routes/pics/$album/index'
-import { Route as ThingsTwinDevRouteImport } from './routes/things.twin_.dev'
-import { Route as ThingsTwinRoomIdRouteImport } from './routes/things.twin_.$roomId'
-import { Route as ThingsSpellingPartyRoomIdRouteImport } from './routes/things.spelling-party_.$roomId'
-import { Route as ThingsSameBrainDevRouteImport } from './routes/things.same-brain_.dev'
-import { Route as ThingsSameBrainRoomIdRouteImport } from './routes/things.same-brain_.$roomId'
-import { Route as ThingsPlayRoomIdRouteImport } from './routes/things.play.$roomId'
-import { Route as ThingsPitchesPresentRouteImport } from './routes/things.pitches_.present'
-import { Route as ThingsPitchesNewRouteImport } from './routes/things.pitches_.new'
-import { Route as ThingsPitchesDemoRouteImport } from './routes/things.pitches_.demo'
-import { Route as ThingsPitchesDeckIdRouteImport } from './routes/things.pitches_.$deckId'
-import { Route as ThingsLiarsPhoneRouteImport } from './routes/things.liars_.phone'
-import { Route as ThingsLiarsDevRouteImport } from './routes/things.liars_.dev'
-import { Route as ThingsLiarsRoomIdRouteImport } from './routes/things.liars_.$roomId'
-import { Route as ThingsJudgeRoomIdRouteImport } from './routes/things.judge.$roomId'
-import { Route as ThingsDrawCountryRoomIdRouteImport } from './routes/things.draw-country_.$roomId'
-import { Route as ThingsCentreDevRouteImport } from './routes/things.centre_.dev'
-import { Route as ThingsCentreRoomIdRouteImport } from './routes/things.centre_.$roomId'
-import { Route as PicsAlbumPhotoRouteImport } from './routes/pics/$album/$photo'
-import { Route as ApiWordsSlugRouteRouteImport } from './routes/api/words/$slug/route'
-import { Route as ApiUploadVerifyPinRouteRouteImport } from './routes/api/upload/verify-pin/route'
-import { Route as ApiTransfersIdRouteRouteImport } from './routes/api/transfers/$id/route'
-import { Route as ApiStripeWebhookRouteRouteImport } from './routes/api/stripe/webhook/route'
-import { Route as ApiDropPresignRouteRouteImport } from './routes/api/drop/presign/route'
-import { Route as ApiDropFinalizeRouteRouteImport } from './routes/api/drop/finalize/route'
-import { Route as ApiDownloadPresignRouteRouteImport } from './routes/api/download/presign/route'
-import { Route as ApiCronProcessTransferMediaRouteRouteImport } from './routes/api/cron/process-transfer-media/route'
-import { Route as ApiCronDeliverEmailRouteRouteImport } from './routes/api/cron/deliver-email/route'
-import { Route as ApiCronCleanupWordSharesRouteRouteImport } from './routes/api/cron/cleanup-word-shares/route'
-import { Route as ApiCronCleanupWordMediaOrphansRouteRouteImport } from './routes/api/cron/cleanup-word-media-orphans/route'
-import { Route as ApiCronCleanupTransfersRouteRouteImport } from './routes/api/cron/cleanup-transfers/route'
-import { Route as ApiCronCleanupPitchesRouteRouteImport } from './routes/api/cron/cleanup-pitches/route'
-import { Route as ApiAdminWordSharesRouteRouteImport } from './routes/api/admin/word-shares/route'
-import { Route as ApiAdminWordMediaRouteRouteImport } from './routes/api/admin/word-media/route'
-import { Route as ApiAdminVerifyRouteRouteImport } from './routes/api/admin/verify/route'
-import { Route as ApiAdminTransfersRouteRouteImport } from './routes/api/admin/transfers/route'
-import { Route as ApiAdminStepUpRouteRouteImport } from './routes/api/admin/step-up/route'
-import { Route as ApiAdminReportsRouteRouteImport } from './routes/api/admin/reports/route'
-import { Route as ApiAdminPitchesRouteRouteImport } from './routes/api/admin/pitches/route'
-import { Route as ApiAdminEventsRouteRouteImport } from './routes/api/admin/events/route'
-import { Route as ApiAdminContentSummaryRouteRouteImport } from './routes/api/admin/content-summary/route'
-import { Route as ApiAdminContentAuditRouteRouteImport } from './routes/api/admin/content-audit/route'
+import { Route as ApiDebugRouteRouteImport } from './routes/api/debug/route'
+import { Route as ApiHealthRouteRouteImport } from './routes/api/health/route'
+import { Route as ApiReportsRouteRouteImport } from './routes/api/reports/route'
+import { Route as ApiWordsRouteRouteImport } from './routes/api/words/route'
+import { Route as DropTokenRouteImport } from './routes/drop.$token'
+import { Route as EventsIndexRouteImport } from './routes/events/index'
+import { Route as EventsSlugRouteImport } from './routes/events/$slug'
+import { Route as PicsIndexRouteImport } from './routes/pics/index'
+import { Route as ScanIndexRouteImport } from './routes/scan.index'
+import { Route as ScanTokenRouteImport } from './routes/scan.$token'
+import { Route as TIdRouteImport } from './routes/t/$id'
+import { Route as ThingsCentreRouteImport } from './routes/things.centre'
+import { Route as ThingsDrawCountryRouteImport } from './routes/things.draw-country'
+import { Route as ThingsHeadsUpRouteImport } from './routes/things.heads-up'
+import { Route as ThingsIcebreakerRouteImport } from './routes/things.icebreaker'
+import { Route as ThingsLiarsRouteImport } from './routes/things.liars'
+import { Route as ThingsPitchesRouteImport } from './routes/things.pitches'
+import { Route as ThingsSameBrainRouteImport } from './routes/things.same-brain'
+import { Route as ThingsSpellingBeeRouteImport } from './routes/things.spelling-bee'
+import { Route as ThingsSpellingPartyRouteImport } from './routes/things.spelling-party'
+import { Route as ThingsTwinRouteImport } from './routes/things.twin'
+import { Route as TicketIdRouteImport } from './routes/ticket.$id'
+import { Route as VaultSlugRouteImport } from './routes/vault/$slug'
+import { Route as WordsIndexRouteImport } from './routes/words/index'
+import { Route as WordsSlugRouteImport } from './routes/words/$slug'
 import { Route as ApiAdminAlbumsRouteRouteImport } from './routes/api/admin/albums/route'
-import { Route as ThingsSpellingPartyRoomIdPresentRouteImport } from './routes/things.spelling-party_.$roomId_.present'
-import { Route as ThingsPitchesRemoteRoomIdRouteImport } from './routes/things.pitches_.remote_.$roomId'
-import { Route as ThingsPitchesPresentRoomIdRouteImport } from './routes/things.pitches_.present_.$roomId'
-import { Route as ThingsPitchesDeckIdEditRouteImport } from './routes/things.pitches_.$deckId_.edit'
-import { Route as ThingsLiarsRoomIdPresentRouteImport } from './routes/things.liars_.$roomId_.present'
-import { Route as ApiWordsShareVerifyRouteRouteImport } from './routes/api/words/share/verify/route'
-import { Route as ApiWordsSlugSharesRouteRouteImport } from './routes/api/words/$slug/shares/route'
-import { Route as ApiUploadWordsTargetsRouteRouteImport } from './routes/api/upload/words/targets/route'
-import { Route as ApiUploadWordsPresignRouteRouteImport } from './routes/api/upload/words/presign/route'
-import { Route as ApiUploadWordsFinalizeRouteRouteImport } from './routes/api/upload/words/finalize/route'
-import { Route as ApiUploadTransferPresignRouteRouteImport } from './routes/api/upload/transfer/presign/route'
-import { Route as ApiUploadTransferFinalizeRouteRouteImport } from './routes/api/upload/transfer/finalize/route'
-import { Route as ApiTransfersIdEventsRouteRouteImport } from './routes/api/transfers/$id/events/route'
-import { Route as ApiEventsSlugIcsRouteRouteImport } from './routes/api/events/$slug/ics/route'
-import { Route as ApiBestDressedVotingOpenRouteRouteImport } from './routes/api/best-dressed/voting/open/route'
-import { Route as ApiBestDressedCodesRevokeAllRouteRouteImport } from './routes/api/best-dressed/codes/revoke-all/route'
-import { Route as ApiBestDressedCodesMintBatchRouteRouteImport } from './routes/api/best-dressed/codes/mint-batch/route'
-import { Route as ApiAdminWordSharesCleanupRouteRouteImport } from './routes/api/admin/word-shares/cleanup/route'
-import { Route as ApiAdminWordMediaOrphansRouteRouteImport } from './routes/api/admin/word-media/orphans/route'
-import { Route as ApiAdminTransfersProcessMediaRouteRouteImport } from './routes/api/admin/transfers/process-media/route'
-import { Route as ApiAdminTransfersNukeRouteRouteImport } from './routes/api/admin/transfers/nuke/route'
-import { Route as ApiAdminTransfersCleanupRouteRouteImport } from './routes/api/admin/transfers/cleanup/route'
-import { Route as ApiAdminTransfersIdRouteRouteImport } from './routes/api/admin/transfers/$id/route'
-import { Route as ApiAdminTokensSessionsRouteRouteImport } from './routes/api/admin/tokens/sessions/route'
-import { Route as ApiAdminTokensRevokeRouteRouteImport } from './routes/api/admin/tokens/revoke/route'
-import { Route as ApiAdminEventsSlugRouteRouteImport } from './routes/api/admin/events/$slug/route'
+import { Route as ApiAdminContentAuditRouteRouteImport } from './routes/api/admin/content-audit/route'
+import { Route as ApiAdminContentSummaryRouteRouteImport } from './routes/api/admin/content-summary/route'
+import { Route as ApiAdminEventsRouteRouteImport } from './routes/api/admin/events/route'
+import { Route as ApiAdminPitchesRouteRouteImport } from './routes/api/admin/pitches/route'
+import { Route as ApiAdminReportsRouteRouteImport } from './routes/api/admin/reports/route'
+import { Route as ApiAdminStepUpRouteRouteImport } from './routes/api/admin/step-up/route'
+import { Route as ApiAdminTransfersRouteRouteImport } from './routes/api/admin/transfers/route'
+import { Route as ApiAdminVerifyRouteRouteImport } from './routes/api/admin/verify/route'
+import { Route as ApiAdminWordMediaRouteRouteImport } from './routes/api/admin/word-media/route'
+import { Route as ApiAdminWordSharesRouteRouteImport } from './routes/api/admin/word-shares/route'
+import { Route as ApiCronCleanupPitchesRouteRouteImport } from './routes/api/cron/cleanup-pitches/route'
+import { Route as ApiCronCleanupTransfersRouteRouteImport } from './routes/api/cron/cleanup-transfers/route'
+import { Route as ApiCronCleanupWordMediaOrphansRouteRouteImport } from './routes/api/cron/cleanup-word-media-orphans/route'
+import { Route as ApiCronCleanupWordSharesRouteRouteImport } from './routes/api/cron/cleanup-word-shares/route'
+import { Route as ApiCronDeliverEmailRouteRouteImport } from './routes/api/cron/deliver-email/route'
+import { Route as ApiCronProcessTransferMediaRouteRouteImport } from './routes/api/cron/process-transfer-media/route'
+import { Route as ApiDownloadPresignRouteRouteImport } from './routes/api/download/presign/route'
+import { Route as ApiDropFinalizeRouteRouteImport } from './routes/api/drop/finalize/route'
+import { Route as ApiDropPresignRouteRouteImport } from './routes/api/drop/presign/route'
+import { Route as ApiStripeWebhookRouteRouteImport } from './routes/api/stripe/webhook/route'
+import { Route as ApiTransfersIdRouteRouteImport } from './routes/api/transfers/$id/route'
+import { Route as ApiUploadVerifyPinRouteRouteImport } from './routes/api/upload/verify-pin/route'
+import { Route as ApiWordsSlugRouteRouteImport } from './routes/api/words/$slug/route'
+import { Route as PicsAlbumIndexRouteImport } from './routes/pics/$album/index'
+import { Route as PicsAlbumPhotoRouteImport } from './routes/pics/$album/$photo'
+import { Route as ThingsCentreRoomIdRouteImport } from './routes/things.centre_.$roomId'
+import { Route as ThingsCentreDevRouteImport } from './routes/things.centre_.dev'
+import { Route as ThingsDrawCountryRoomIdRouteImport } from './routes/things.draw-country_.$roomId'
+import { Route as ThingsJudgeRoomIdRouteImport } from './routes/things.judge.$roomId'
+import { Route as ThingsLiarsRoomIdRouteImport } from './routes/things.liars_.$roomId'
+import { Route as ThingsLiarsDevRouteImport } from './routes/things.liars_.dev'
+import { Route as ThingsLiarsPhoneRouteImport } from './routes/things.liars_.phone'
+import { Route as ThingsPitchesDeckIdRouteImport } from './routes/things.pitches_.$deckId'
+import { Route as ThingsPitchesDemoRouteImport } from './routes/things.pitches_.demo'
+import { Route as ThingsPitchesNewRouteImport } from './routes/things.pitches_.new'
+import { Route as ThingsPitchesPresentRouteImport } from './routes/things.pitches_.present'
+import { Route as ThingsPlayRoomIdRouteImport } from './routes/things.play.$roomId'
+import { Route as ThingsSameBrainRoomIdRouteImport } from './routes/things.same-brain_.$roomId'
+import { Route as ThingsSameBrainDevRouteImport } from './routes/things.same-brain_.dev'
+import { Route as ThingsSpellingPartyRoomIdRouteImport } from './routes/things.spelling-party_.$roomId'
+import { Route as ThingsTwinRoomIdRouteImport } from './routes/things.twin_.$roomId'
+import { Route as ThingsTwinDevRouteImport } from './routes/things.twin_.dev'
 import { Route as ApiAdminAlbumsSlugRouteRouteImport } from './routes/api/admin/albums/$slug/route'
-import { Route as ApiWordsSlugSharesIdRouteRouteImport } from './routes/api/words/$slug/shares/$id/route'
-import { Route as ApiWordsSlugMediaFilenameRouteRouteImport } from './routes/api/words/$slug/media/$filename/route'
-import { Route as ApiUploadTransferAppendPresignRouteRouteImport } from './routes/api/upload/transfer/append/presign/route'
-import { Route as ApiUploadTransferAppendFinalizeRouteRouteImport } from './routes/api/upload/transfer/append/finalize/route'
-import { Route as ApiTransfersIdFilesFileIdRouteRouteImport } from './routes/api/transfers/$id/files/$fileId/route'
-import { Route as ApiAdminTokensSessionsJtiRouteRouteImport } from './routes/api/admin/tokens/sessions/$jti/route'
-import { Route as ApiAdminEventsSlugTicketsRouteRouteImport } from './routes/api/admin/events/$slug/tickets/route'
-import { Route as ApiAdminEventsSlugScannerLinksRouteRouteImport } from './routes/api/admin/events/$slug/scanner-links/route'
-import { Route as ApiAdminEventsSlugGuestRequestsRouteRouteImport } from './routes/api/admin/events/$slug/guest-requests/route'
-import { Route as ApiAdminEventsSlugEmailRouteRouteImport } from './routes/api/admin/events/$slug/email/route'
-import { Route as ApiAdminEventsSlugDropRouteRouteImport } from './routes/api/admin/events/$slug/drop/route'
-import { Route as ApiAdminEventsSlugCheckpointsRouteRouteImport } from './routes/api/admin/events/$slug/checkpoints/route'
+import { Route as ApiAdminEventsSlugRouteRouteImport } from './routes/api/admin/events/$slug/route'
+import { Route as ApiAdminTokensRevokeRouteRouteImport } from './routes/api/admin/tokens/revoke/route'
+import { Route as ApiAdminTokensSessionsRouteRouteImport } from './routes/api/admin/tokens/sessions/route'
+import { Route as ApiAdminTransfersIdRouteRouteImport } from './routes/api/admin/transfers/$id/route'
+import { Route as ApiAdminTransfersCleanupRouteRouteImport } from './routes/api/admin/transfers/cleanup/route'
+import { Route as ApiAdminTransfersNukeRouteRouteImport } from './routes/api/admin/transfers/nuke/route'
+import { Route as ApiAdminTransfersProcessMediaRouteRouteImport } from './routes/api/admin/transfers/process-media/route'
+import { Route as ApiAdminWordMediaOrphansRouteRouteImport } from './routes/api/admin/word-media/orphans/route'
+import { Route as ApiAdminWordSharesCleanupRouteRouteImport } from './routes/api/admin/word-shares/cleanup/route'
+import { Route as ApiBestDressedCodesMintBatchRouteRouteImport } from './routes/api/best-dressed/codes/mint-batch/route'
+import { Route as ApiBestDressedCodesRevokeAllRouteRouteImport } from './routes/api/best-dressed/codes/revoke-all/route'
+import { Route as ApiBestDressedVotingOpenRouteRouteImport } from './routes/api/best-dressed/voting/open/route'
+import { Route as ApiEmailWebhookResendRouteRouteImport } from './routes/api/email/webhook/resend/route'
+import { Route as ApiEventsSlugIcsRouteRouteImport } from './routes/api/events/$slug/ics/route'
+import { Route as ApiTransfersIdEventsRouteRouteImport } from './routes/api/transfers/$id/events/route'
+import { Route as ApiUploadTransferFinalizeRouteRouteImport } from './routes/api/upload/transfer/finalize/route'
+import { Route as ApiUploadTransferPresignRouteRouteImport } from './routes/api/upload/transfer/presign/route'
+import { Route as ApiUploadWordsFinalizeRouteRouteImport } from './routes/api/upload/words/finalize/route'
+import { Route as ApiUploadWordsPresignRouteRouteImport } from './routes/api/upload/words/presign/route'
+import { Route as ApiUploadWordsTargetsRouteRouteImport } from './routes/api/upload/words/targets/route'
+import { Route as ApiWordsSlugSharesRouteRouteImport } from './routes/api/words/$slug/shares/route'
+import { Route as ApiWordsShareVerifyRouteRouteImport } from './routes/api/words/share/verify/route'
+import { Route as ThingsLiarsRoomIdPresentRouteImport } from './routes/things.liars_.$roomId_.present'
+import { Route as ThingsPitchesDeckIdEditRouteImport } from './routes/things.pitches_.$deckId_.edit'
+import { Route as ThingsPitchesPresentRoomIdRouteImport } from './routes/things.pitches_.present_.$roomId'
+import { Route as ThingsPitchesRemoteRoomIdRouteImport } from './routes/things.pitches_.remote_.$roomId'
+import { Route as ThingsSpellingPartyRoomIdPresentRouteImport } from './routes/things.spelling-party_.$roomId_.present'
 import { Route as ApiAdminAlbumsSlugCoverRouteRouteImport } from './routes/api/admin/albums/$slug/cover/route'
-import { Route as ApiTransfersIdMediaFileIdVariantRouteRouteImport } from './routes/api/transfers/$id/media/$fileId/$variant/route'
+import { Route as ApiAdminEventsSlugCheckpointsRouteRouteImport } from './routes/api/admin/events/$slug/checkpoints/route'
+import { Route as ApiAdminEventsSlugDropRouteRouteImport } from './routes/api/admin/events/$slug/drop/route'
+import { Route as ApiAdminEventsSlugEmailRouteRouteImport } from './routes/api/admin/events/$slug/email/route'
+import { Route as ApiAdminEventsSlugGuestRequestsRouteRouteImport } from './routes/api/admin/events/$slug/guest-requests/route'
+import { Route as ApiAdminEventsSlugScannerLinksRouteRouteImport } from './routes/api/admin/events/$slug/scanner-links/route'
+import { Route as ApiAdminEventsSlugTicketsRouteRouteImport } from './routes/api/admin/events/$slug/tickets/route'
+import { Route as ApiAdminTokensSessionsJtiRouteRouteImport } from './routes/api/admin/tokens/sessions/$jti/route'
+import { Route as ApiTransfersIdFilesFileIdRouteRouteImport } from './routes/api/transfers/$id/files/$fileId/route'
+import { Route as ApiUploadTransferAppendFinalizeRouteRouteImport } from './routes/api/upload/transfer/append/finalize/route'
+import { Route as ApiUploadTransferAppendPresignRouteRouteImport } from './routes/api/upload/transfer/append/presign/route'
+import { Route as ApiWordsSlugMediaFilenameRouteRouteImport } from './routes/api/words/$slug/media/$filename/route'
+import { Route as ApiWordsSlugSharesIdRouteRouteImport } from './routes/api/words/$slug/shares/$id/route'
 import { Route as ApiAdminAlbumsSlugPhotosPhotoIdRouteRouteImport } from './routes/api/admin/albums/$slug/photos/$photoId/route'
+import { Route as ApiTransfersIdMediaFileIdVariantRouteRouteImport } from './routes/api/transfers/$id/media/$fileId/$variant/route'
 
-const UploadRoute = UploadRouteImport.update({
-  id: '/upload',
-  path: '/upload',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ThingsRoute = ThingsRouteImport.update({
-  id: '/things',
-  path: '/things',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const SitemapDotxmlRoute = SitemapDotxmlRouteImport.update({
-  id: '/sitemap.xml',
-  path: '/sitemap.xml',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const PitchNightRoute = PitchNightRouteImport.update({
-  id: '/pitch-night',
-  path: '/pitch-night',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const PartyRoute = PartyRouteImport.update({
-  id: '/party',
-  path: '/party',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const IcebreakerRoute = IcebreakerRouteImport.update({
-  id: '/icebreaker',
-  path: '/icebreaker',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const HealthRoute = HealthRouteImport.update({
-  id: '/health',
-  path: '/health',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const FontTestRoute = FontTestRouteImport.update({
-  id: '/font-test',
-  path: '/font-test',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const FeedDotxmlRoute = FeedDotxmlRouteImport.update({
-  id: '/feed.xml',
-  path: '/feed.xml',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ExamRoute = ExamRouteImport.update({
-  id: '/exam',
-  path: '/exam',
+const IndexRoute = IndexRouteImport.update({
+  id: '/',
+  path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
 const BestDressedRoute = BestDressedRouteImport.update({
@@ -190,29 +148,64 @@ const BestDressedRoute = BestDressedRouteImport.update({
   path: '/best-dressed',
   getParentRoute: () => rootRouteImport,
 } as any)
-const IndexRoute = IndexRouteImport.update({
-  id: '/',
-  path: '/',
+const ContactRoute = ContactRouteImport.update({
+  id: '/contact',
+  path: '/contact',
   getParentRoute: () => rootRouteImport,
 } as any)
-const WordsIndexRoute = WordsIndexRouteImport.update({
-  id: '/words/',
-  path: '/words/',
+const ExamRoute = ExamRouteImport.update({
+  id: '/exam',
+  path: '/exam',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ScanIndexRoute = ScanIndexRouteImport.update({
-  id: '/scan/',
-  path: '/scan/',
+const FeedDotxmlRoute = FeedDotxmlRouteImport.update({
+  id: '/feed.xml',
+  path: '/feed.xml',
   getParentRoute: () => rootRouteImport,
 } as any)
-const PicsIndexRoute = PicsIndexRouteImport.update({
-  id: '/pics/',
-  path: '/pics/',
+const FontTestRoute = FontTestRouteImport.update({
+  id: '/font-test',
+  path: '/font-test',
   getParentRoute: () => rootRouteImport,
 } as any)
-const EventsIndexRoute = EventsIndexRouteImport.update({
-  id: '/events/',
-  path: '/events/',
+const HealthRoute = HealthRouteImport.update({
+  id: '/health',
+  path: '/health',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const IcebreakerRoute = IcebreakerRouteImport.update({
+  id: '/icebreaker',
+  path: '/icebreaker',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PartyRoute = PartyRouteImport.update({
+  id: '/party',
+  path: '/party',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PitchNightRoute = PitchNightRouteImport.update({
+  id: '/pitch-night',
+  path: '/pitch-night',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PrivacyRoute = PrivacyRouteImport.update({
+  id: '/privacy',
+  path: '/privacy',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SitemapDotxmlRoute = SitemapDotxmlRouteImport.update({
+  id: '/sitemap.xml',
+  path: '/sitemap.xml',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ThingsRoute = ThingsRouteImport.update({
+  id: '/things',
+  path: '/things',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const UploadRoute = UploadRouteImport.update({
+  id: '/upload',
+  path: '/upload',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AdminIndexRoute = AdminIndexRouteImport.update({
@@ -220,114 +213,9 @@ const AdminIndexRoute = AdminIndexRouteImport.update({
   path: '/admin/',
   getParentRoute: () => rootRouteImport,
 } as any)
-const WordsSlugRoute = WordsSlugRouteImport.update({
-  id: '/words/$slug',
-  path: '/words/$slug',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const VaultSlugRoute = VaultSlugRouteImport.update({
-  id: '/vault/$slug',
-  path: '/vault/$slug',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const TicketIdRoute = TicketIdRouteImport.update({
-  id: '/ticket/$id',
-  path: '/ticket/$id',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ThingsTwinRoute = ThingsTwinRouteImport.update({
-  id: '/twin',
-  path: '/twin',
-  getParentRoute: () => ThingsRoute,
-} as any)
-const ThingsSpellingPartyRoute = ThingsSpellingPartyRouteImport.update({
-  id: '/spelling-party',
-  path: '/spelling-party',
-  getParentRoute: () => ThingsRoute,
-} as any)
-const ThingsSpellingBeeRoute = ThingsSpellingBeeRouteImport.update({
-  id: '/spelling-bee',
-  path: '/spelling-bee',
-  getParentRoute: () => ThingsRoute,
-} as any)
-const ThingsSameBrainRoute = ThingsSameBrainRouteImport.update({
-  id: '/same-brain',
-  path: '/same-brain',
-  getParentRoute: () => ThingsRoute,
-} as any)
-const ThingsPitchesRoute = ThingsPitchesRouteImport.update({
-  id: '/pitches',
-  path: '/pitches',
-  getParentRoute: () => ThingsRoute,
-} as any)
-const ThingsLiarsRoute = ThingsLiarsRouteImport.update({
-  id: '/liars',
-  path: '/liars',
-  getParentRoute: () => ThingsRoute,
-} as any)
-const ThingsIcebreakerRoute = ThingsIcebreakerRouteImport.update({
-  id: '/icebreaker',
-  path: '/icebreaker',
-  getParentRoute: () => ThingsRoute,
-} as any)
-const ThingsHeadsUpRoute = ThingsHeadsUpRouteImport.update({
-  id: '/heads-up',
-  path: '/heads-up',
-  getParentRoute: () => ThingsRoute,
-} as any)
-const ThingsDrawCountryRoute = ThingsDrawCountryRouteImport.update({
-  id: '/draw-country',
-  path: '/draw-country',
-  getParentRoute: () => ThingsRoute,
-} as any)
-const ThingsCentreRoute = ThingsCentreRouteImport.update({
-  id: '/centre',
-  path: '/centre',
-  getParentRoute: () => ThingsRoute,
-} as any)
-const TIdRoute = TIdRouteImport.update({
-  id: '/t/$id',
-  path: '/t/$id',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ScanTokenRoute = ScanTokenRouteImport.update({
-  id: '/scan/$token',
-  path: '/scan/$token',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const EventsSlugRoute = EventsSlugRouteImport.update({
-  id: '/events/$slug',
-  path: '/events/$slug',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const DropTokenRoute = DropTokenRouteImport.update({
-  id: '/drop/$token',
-  path: '/drop/$token',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const AdminEditorRoute = AdminEditorRouteImport.update({
   id: '/admin/editor',
   path: '/admin/editor',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ApiWordsRouteRoute = ApiWordsRouteRouteImport.update({
-  id: '/api/words',
-  path: '/api/words',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ApiReportsRouteRoute = ApiReportsRouteRouteImport.update({
-  id: '/api/reports',
-  path: '/api/reports',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ApiHealthRouteRoute = ApiHealthRouteRouteImport.update({
-  id: '/api/health',
-  path: '/api/health',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ApiDebugRouteRoute = ApiDebugRouteRouteImport.update({
-  id: '/api/debug',
-  path: '/api/debug',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiBestDressedRouteRoute = ApiBestDressedRouteRouteImport.update({
@@ -335,159 +223,192 @@ const ApiBestDressedRouteRoute = ApiBestDressedRouteRouteImport.update({
   path: '/api/best-dressed',
   getParentRoute: () => rootRouteImport,
 } as any)
-const PicsAlbumIndexRoute = PicsAlbumIndexRouteImport.update({
-  id: '/pics/$album/',
-  path: '/pics/$album/',
+const ApiDebugRouteRoute = ApiDebugRouteRouteImport.update({
+  id: '/api/debug',
+  path: '/api/debug',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ThingsTwinDevRoute = ThingsTwinDevRouteImport.update({
-  id: '/twin_/dev',
-  path: '/twin/dev',
-  getParentRoute: () => ThingsRoute,
-} as any)
-const ThingsTwinRoomIdRoute = ThingsTwinRoomIdRouteImport.update({
-  id: '/twin_/$roomId',
-  path: '/twin/$roomId',
-  getParentRoute: () => ThingsRoute,
-} as any)
-const ThingsSpellingPartyRoomIdRoute =
-  ThingsSpellingPartyRoomIdRouteImport.update({
-    id: '/spelling-party_/$roomId',
-    path: '/spelling-party/$roomId',
-    getParentRoute: () => ThingsRoute,
-  } as any)
-const ThingsSameBrainDevRoute = ThingsSameBrainDevRouteImport.update({
-  id: '/same-brain_/dev',
-  path: '/same-brain/dev',
-  getParentRoute: () => ThingsRoute,
-} as any)
-const ThingsSameBrainRoomIdRoute = ThingsSameBrainRoomIdRouteImport.update({
-  id: '/same-brain_/$roomId',
-  path: '/same-brain/$roomId',
-  getParentRoute: () => ThingsRoute,
-} as any)
-const ThingsPlayRoomIdRoute = ThingsPlayRoomIdRouteImport.update({
-  id: '/play/$roomId',
-  path: '/play/$roomId',
-  getParentRoute: () => ThingsRoute,
-} as any)
-const ThingsPitchesPresentRoute = ThingsPitchesPresentRouteImport.update({
-  id: '/pitches_/present',
-  path: '/pitches/present',
-  getParentRoute: () => ThingsRoute,
-} as any)
-const ThingsPitchesNewRoute = ThingsPitchesNewRouteImport.update({
-  id: '/pitches_/new',
-  path: '/pitches/new',
-  getParentRoute: () => ThingsRoute,
-} as any)
-const ThingsPitchesDemoRoute = ThingsPitchesDemoRouteImport.update({
-  id: '/pitches_/demo',
-  path: '/pitches/demo',
-  getParentRoute: () => ThingsRoute,
-} as any)
-const ThingsPitchesDeckIdRoute = ThingsPitchesDeckIdRouteImport.update({
-  id: '/pitches_/$deckId',
-  path: '/pitches/$deckId',
-  getParentRoute: () => ThingsRoute,
-} as any)
-const ThingsLiarsPhoneRoute = ThingsLiarsPhoneRouteImport.update({
-  id: '/liars_/phone',
-  path: '/liars/phone',
-  getParentRoute: () => ThingsRoute,
-} as any)
-const ThingsLiarsDevRoute = ThingsLiarsDevRouteImport.update({
-  id: '/liars_/dev',
-  path: '/liars/dev',
-  getParentRoute: () => ThingsRoute,
-} as any)
-const ThingsLiarsRoomIdRoute = ThingsLiarsRoomIdRouteImport.update({
-  id: '/liars_/$roomId',
-  path: '/liars/$roomId',
-  getParentRoute: () => ThingsRoute,
-} as any)
-const ThingsJudgeRoomIdRoute = ThingsJudgeRoomIdRouteImport.update({
-  id: '/judge/$roomId',
-  path: '/judge/$roomId',
-  getParentRoute: () => ThingsRoute,
-} as any)
-const ThingsDrawCountryRoomIdRoute = ThingsDrawCountryRoomIdRouteImport.update({
-  id: '/draw-country_/$roomId',
-  path: '/draw-country/$roomId',
-  getParentRoute: () => ThingsRoute,
-} as any)
-const ThingsCentreDevRoute = ThingsCentreDevRouteImport.update({
-  id: '/centre_/dev',
-  path: '/centre/dev',
-  getParentRoute: () => ThingsRoute,
-} as any)
-const ThingsCentreRoomIdRoute = ThingsCentreRoomIdRouteImport.update({
-  id: '/centre_/$roomId',
-  path: '/centre/$roomId',
-  getParentRoute: () => ThingsRoute,
-} as any)
-const PicsAlbumPhotoRoute = PicsAlbumPhotoRouteImport.update({
-  id: '/pics/$album/$photo',
-  path: '/pics/$album/$photo',
+const ApiHealthRouteRoute = ApiHealthRouteRouteImport.update({
+  id: '/api/health',
+  path: '/api/health',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ApiWordsSlugRouteRoute = ApiWordsSlugRouteRouteImport.update({
-  id: '/$slug',
-  path: '/$slug',
-  getParentRoute: () => ApiWordsRouteRoute,
-} as any)
-const ApiUploadVerifyPinRouteRoute = ApiUploadVerifyPinRouteRouteImport.update({
-  id: '/api/upload/verify-pin',
-  path: '/api/upload/verify-pin',
+const ApiReportsRouteRoute = ApiReportsRouteRouteImport.update({
+  id: '/api/reports',
+  path: '/api/reports',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ApiTransfersIdRouteRoute = ApiTransfersIdRouteRouteImport.update({
-  id: '/api/transfers/$id',
-  path: '/api/transfers/$id',
+const ApiWordsRouteRoute = ApiWordsRouteRouteImport.update({
+  id: '/api/words',
+  path: '/api/words',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ApiStripeWebhookRouteRoute = ApiStripeWebhookRouteRouteImport.update({
-  id: '/api/stripe/webhook',
-  path: '/api/stripe/webhook',
+const DropTokenRoute = DropTokenRouteImport.update({
+  id: '/drop/$token',
+  path: '/drop/$token',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ApiDropPresignRouteRoute = ApiDropPresignRouteRouteImport.update({
-  id: '/api/drop/presign',
-  path: '/api/drop/presign',
+const EventsIndexRoute = EventsIndexRouteImport.update({
+  id: '/events/',
+  path: '/events/',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ApiDropFinalizeRouteRoute = ApiDropFinalizeRouteRouteImport.update({
-  id: '/api/drop/finalize',
-  path: '/api/drop/finalize',
+const EventsSlugRoute = EventsSlugRouteImport.update({
+  id: '/events/$slug',
+  path: '/events/$slug',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ApiDownloadPresignRouteRoute = ApiDownloadPresignRouteRouteImport.update({
-  id: '/api/download/presign',
-  path: '/api/download/presign',
+const PicsIndexRoute = PicsIndexRouteImport.update({
+  id: '/pics/',
+  path: '/pics/',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ApiCronProcessTransferMediaRouteRoute =
-  ApiCronProcessTransferMediaRouteRouteImport.update({
-    id: '/api/cron/process-transfer-media',
-    path: '/api/cron/process-transfer-media',
+const ScanIndexRoute = ScanIndexRouteImport.update({
+  id: '/scan/',
+  path: '/scan/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ScanTokenRoute = ScanTokenRouteImport.update({
+  id: '/scan/$token',
+  path: '/scan/$token',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const TIdRoute = TIdRouteImport.update({
+  id: '/t/$id',
+  path: '/t/$id',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ThingsCentreRoute = ThingsCentreRouteImport.update({
+  id: '/centre',
+  path: '/centre',
+  getParentRoute: () => ThingsRoute,
+} as any)
+const ThingsDrawCountryRoute = ThingsDrawCountryRouteImport.update({
+  id: '/draw-country',
+  path: '/draw-country',
+  getParentRoute: () => ThingsRoute,
+} as any)
+const ThingsHeadsUpRoute = ThingsHeadsUpRouteImport.update({
+  id: '/heads-up',
+  path: '/heads-up',
+  getParentRoute: () => ThingsRoute,
+} as any)
+const ThingsIcebreakerRoute = ThingsIcebreakerRouteImport.update({
+  id: '/icebreaker',
+  path: '/icebreaker',
+  getParentRoute: () => ThingsRoute,
+} as any)
+const ThingsLiarsRoute = ThingsLiarsRouteImport.update({
+  id: '/liars',
+  path: '/liars',
+  getParentRoute: () => ThingsRoute,
+} as any)
+const ThingsPitchesRoute = ThingsPitchesRouteImport.update({
+  id: '/pitches',
+  path: '/pitches',
+  getParentRoute: () => ThingsRoute,
+} as any)
+const ThingsSameBrainRoute = ThingsSameBrainRouteImport.update({
+  id: '/same-brain',
+  path: '/same-brain',
+  getParentRoute: () => ThingsRoute,
+} as any)
+const ThingsSpellingBeeRoute = ThingsSpellingBeeRouteImport.update({
+  id: '/spelling-bee',
+  path: '/spelling-bee',
+  getParentRoute: () => ThingsRoute,
+} as any)
+const ThingsSpellingPartyRoute = ThingsSpellingPartyRouteImport.update({
+  id: '/spelling-party',
+  path: '/spelling-party',
+  getParentRoute: () => ThingsRoute,
+} as any)
+const ThingsTwinRoute = ThingsTwinRouteImport.update({
+  id: '/twin',
+  path: '/twin',
+  getParentRoute: () => ThingsRoute,
+} as any)
+const TicketIdRoute = TicketIdRouteImport.update({
+  id: '/ticket/$id',
+  path: '/ticket/$id',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const VaultSlugRoute = VaultSlugRouteImport.update({
+  id: '/vault/$slug',
+  path: '/vault/$slug',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const WordsIndexRoute = WordsIndexRouteImport.update({
+  id: '/words/',
+  path: '/words/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const WordsSlugRoute = WordsSlugRouteImport.update({
+  id: '/words/$slug',
+  path: '/words/$slug',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiAdminAlbumsRouteRoute = ApiAdminAlbumsRouteRouteImport.update({
+  id: '/api/admin/albums',
+  path: '/api/admin/albums',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiAdminContentAuditRouteRoute =
+  ApiAdminContentAuditRouteRouteImport.update({
+    id: '/api/admin/content-audit',
+    path: '/api/admin/content-audit',
     getParentRoute: () => rootRouteImport,
   } as any)
-const ApiCronDeliverEmailRouteRoute =
-  ApiCronDeliverEmailRouteRouteImport.update({
-    id: '/api/cron/deliver-email',
-    path: '/api/cron/deliver-email',
+const ApiAdminContentSummaryRouteRoute =
+  ApiAdminContentSummaryRouteRouteImport.update({
+    id: '/api/admin/content-summary',
+    path: '/api/admin/content-summary',
     getParentRoute: () => rootRouteImport,
   } as any)
-const ApiCronCleanupWordSharesRouteRoute =
-  ApiCronCleanupWordSharesRouteRouteImport.update({
-    id: '/api/cron/cleanup-word-shares',
-    path: '/api/cron/cleanup-word-shares',
-    getParentRoute: () => rootRouteImport,
-  } as any)
-const ApiCronCleanupWordMediaOrphansRouteRoute =
-  ApiCronCleanupWordMediaOrphansRouteRouteImport.update({
-    id: '/api/cron/cleanup-word-media-orphans',
-    path: '/api/cron/cleanup-word-media-orphans',
+const ApiAdminEventsRouteRoute = ApiAdminEventsRouteRouteImport.update({
+  id: '/api/admin/events',
+  path: '/api/admin/events',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiAdminPitchesRouteRoute = ApiAdminPitchesRouteRouteImport.update({
+  id: '/api/admin/pitches',
+  path: '/api/admin/pitches',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiAdminReportsRouteRoute = ApiAdminReportsRouteRouteImport.update({
+  id: '/api/admin/reports',
+  path: '/api/admin/reports',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiAdminStepUpRouteRoute = ApiAdminStepUpRouteRouteImport.update({
+  id: '/api/admin/step-up',
+  path: '/api/admin/step-up',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiAdminTransfersRouteRoute = ApiAdminTransfersRouteRouteImport.update({
+  id: '/api/admin/transfers',
+  path: '/api/admin/transfers',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiAdminVerifyRouteRoute = ApiAdminVerifyRouteRouteImport.update({
+  id: '/api/admin/verify',
+  path: '/api/admin/verify',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiAdminWordMediaRouteRoute = ApiAdminWordMediaRouteRouteImport.update({
+  id: '/api/admin/word-media',
+  path: '/api/admin/word-media',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiAdminWordSharesRouteRoute = ApiAdminWordSharesRouteRouteImport.update({
+  id: '/api/admin/word-shares',
+  path: '/api/admin/word-shares',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiCronCleanupPitchesRouteRoute =
+  ApiCronCleanupPitchesRouteRouteImport.update({
+    id: '/api/cron/cleanup-pitches',
+    path: '/api/cron/cleanup-pitches',
     getParentRoute: () => rootRouteImport,
   } as any)
 const ApiCronCleanupTransfersRouteRoute =
@@ -496,190 +417,187 @@ const ApiCronCleanupTransfersRouteRoute =
     path: '/api/cron/cleanup-transfers',
     getParentRoute: () => rootRouteImport,
   } as any)
-const ApiCronCleanupPitchesRouteRoute =
-  ApiCronCleanupPitchesRouteRouteImport.update({
-    id: '/api/cron/cleanup-pitches',
-    path: '/api/cron/cleanup-pitches',
+const ApiCronCleanupWordMediaOrphansRouteRoute =
+  ApiCronCleanupWordMediaOrphansRouteRouteImport.update({
+    id: '/api/cron/cleanup-word-media-orphans',
+    path: '/api/cron/cleanup-word-media-orphans',
     getParentRoute: () => rootRouteImport,
   } as any)
-const ApiAdminWordSharesRouteRoute = ApiAdminWordSharesRouteRouteImport.update({
-  id: '/api/admin/word-shares',
-  path: '/api/admin/word-shares',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ApiAdminWordMediaRouteRoute = ApiAdminWordMediaRouteRouteImport.update({
-  id: '/api/admin/word-media',
-  path: '/api/admin/word-media',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ApiAdminVerifyRouteRoute = ApiAdminVerifyRouteRouteImport.update({
-  id: '/api/admin/verify',
-  path: '/api/admin/verify',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ApiAdminTransfersRouteRoute = ApiAdminTransfersRouteRouteImport.update({
-  id: '/api/admin/transfers',
-  path: '/api/admin/transfers',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ApiAdminStepUpRouteRoute = ApiAdminStepUpRouteRouteImport.update({
-  id: '/api/admin/step-up',
-  path: '/api/admin/step-up',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ApiAdminReportsRouteRoute = ApiAdminReportsRouteRouteImport.update({
-  id: '/api/admin/reports',
-  path: '/api/admin/reports',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ApiAdminPitchesRouteRoute = ApiAdminPitchesRouteRouteImport.update({
-  id: '/api/admin/pitches',
-  path: '/api/admin/pitches',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ApiAdminEventsRouteRoute = ApiAdminEventsRouteRouteImport.update({
-  id: '/api/admin/events',
-  path: '/api/admin/events',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ApiAdminContentSummaryRouteRoute =
-  ApiAdminContentSummaryRouteRouteImport.update({
-    id: '/api/admin/content-summary',
-    path: '/api/admin/content-summary',
+const ApiCronCleanupWordSharesRouteRoute =
+  ApiCronCleanupWordSharesRouteRouteImport.update({
+    id: '/api/cron/cleanup-word-shares',
+    path: '/api/cron/cleanup-word-shares',
     getParentRoute: () => rootRouteImport,
   } as any)
-const ApiAdminContentAuditRouteRoute =
-  ApiAdminContentAuditRouteRouteImport.update({
-    id: '/api/admin/content-audit',
-    path: '/api/admin/content-audit',
+const ApiCronDeliverEmailRouteRoute =
+  ApiCronDeliverEmailRouteRouteImport.update({
+    id: '/api/cron/deliver-email',
+    path: '/api/cron/deliver-email',
     getParentRoute: () => rootRouteImport,
   } as any)
-const ApiAdminAlbumsRouteRoute = ApiAdminAlbumsRouteRouteImport.update({
-  id: '/api/admin/albums',
-  path: '/api/admin/albums',
+const ApiCronProcessTransferMediaRouteRoute =
+  ApiCronProcessTransferMediaRouteRouteImport.update({
+    id: '/api/cron/process-transfer-media',
+    path: '/api/cron/process-transfer-media',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ApiDownloadPresignRouteRoute = ApiDownloadPresignRouteRouteImport.update({
+  id: '/api/download/presign',
+  path: '/api/download/presign',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ThingsSpellingPartyRoomIdPresentRoute =
-  ThingsSpellingPartyRoomIdPresentRouteImport.update({
-    id: '/spelling-party_/$roomId_/present',
-    path: '/spelling-party/$roomId/present',
-    getParentRoute: () => ThingsRoute,
-  } as any)
-const ThingsPitchesRemoteRoomIdRoute =
-  ThingsPitchesRemoteRoomIdRouteImport.update({
-    id: '/pitches_/remote_/$roomId',
-    path: '/pitches/remote/$roomId',
-    getParentRoute: () => ThingsRoute,
-  } as any)
-const ThingsPitchesPresentRoomIdRoute =
-  ThingsPitchesPresentRoomIdRouteImport.update({
-    id: '/pitches_/present_/$roomId',
-    path: '/pitches/present/$roomId',
-    getParentRoute: () => ThingsRoute,
-  } as any)
-const ThingsPitchesDeckIdEditRoute = ThingsPitchesDeckIdEditRouteImport.update({
-  id: '/pitches_/$deckId_/edit',
-  path: '/pitches/$deckId/edit',
+const ApiDropFinalizeRouteRoute = ApiDropFinalizeRouteRouteImport.update({
+  id: '/api/drop/finalize',
+  path: '/api/drop/finalize',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiDropPresignRouteRoute = ApiDropPresignRouteRouteImport.update({
+  id: '/api/drop/presign',
+  path: '/api/drop/presign',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiStripeWebhookRouteRoute = ApiStripeWebhookRouteRouteImport.update({
+  id: '/api/stripe/webhook',
+  path: '/api/stripe/webhook',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiTransfersIdRouteRoute = ApiTransfersIdRouteRouteImport.update({
+  id: '/api/transfers/$id',
+  path: '/api/transfers/$id',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiUploadVerifyPinRouteRoute = ApiUploadVerifyPinRouteRouteImport.update({
+  id: '/api/upload/verify-pin',
+  path: '/api/upload/verify-pin',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiWordsSlugRouteRoute = ApiWordsSlugRouteRouteImport.update({
+  id: '/$slug',
+  path: '/$slug',
+  getParentRoute: () => ApiWordsRouteRoute,
+} as any)
+const PicsAlbumIndexRoute = PicsAlbumIndexRouteImport.update({
+  id: '/pics/$album/',
+  path: '/pics/$album/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PicsAlbumPhotoRoute = PicsAlbumPhotoRouteImport.update({
+  id: '/pics/$album/$photo',
+  path: '/pics/$album/$photo',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ThingsCentreRoomIdRoute = ThingsCentreRoomIdRouteImport.update({
+  id: '/centre_/$roomId',
+  path: '/centre/$roomId',
   getParentRoute: () => ThingsRoute,
 } as any)
-const ThingsLiarsRoomIdPresentRoute =
-  ThingsLiarsRoomIdPresentRouteImport.update({
-    id: '/liars_/$roomId_/present',
-    path: '/liars/$roomId/present',
+const ThingsCentreDevRoute = ThingsCentreDevRouteImport.update({
+  id: '/centre_/dev',
+  path: '/centre/dev',
+  getParentRoute: () => ThingsRoute,
+} as any)
+const ThingsDrawCountryRoomIdRoute = ThingsDrawCountryRoomIdRouteImport.update({
+  id: '/draw-country_/$roomId',
+  path: '/draw-country/$roomId',
+  getParentRoute: () => ThingsRoute,
+} as any)
+const ThingsJudgeRoomIdRoute = ThingsJudgeRoomIdRouteImport.update({
+  id: '/judge/$roomId',
+  path: '/judge/$roomId',
+  getParentRoute: () => ThingsRoute,
+} as any)
+const ThingsLiarsRoomIdRoute = ThingsLiarsRoomIdRouteImport.update({
+  id: '/liars_/$roomId',
+  path: '/liars/$roomId',
+  getParentRoute: () => ThingsRoute,
+} as any)
+const ThingsLiarsDevRoute = ThingsLiarsDevRouteImport.update({
+  id: '/liars_/dev',
+  path: '/liars/dev',
+  getParentRoute: () => ThingsRoute,
+} as any)
+const ThingsLiarsPhoneRoute = ThingsLiarsPhoneRouteImport.update({
+  id: '/liars_/phone',
+  path: '/liars/phone',
+  getParentRoute: () => ThingsRoute,
+} as any)
+const ThingsPitchesDeckIdRoute = ThingsPitchesDeckIdRouteImport.update({
+  id: '/pitches_/$deckId',
+  path: '/pitches/$deckId',
+  getParentRoute: () => ThingsRoute,
+} as any)
+const ThingsPitchesDemoRoute = ThingsPitchesDemoRouteImport.update({
+  id: '/pitches_/demo',
+  path: '/pitches/demo',
+  getParentRoute: () => ThingsRoute,
+} as any)
+const ThingsPitchesNewRoute = ThingsPitchesNewRouteImport.update({
+  id: '/pitches_/new',
+  path: '/pitches/new',
+  getParentRoute: () => ThingsRoute,
+} as any)
+const ThingsPitchesPresentRoute = ThingsPitchesPresentRouteImport.update({
+  id: '/pitches_/present',
+  path: '/pitches/present',
+  getParentRoute: () => ThingsRoute,
+} as any)
+const ThingsPlayRoomIdRoute = ThingsPlayRoomIdRouteImport.update({
+  id: '/play/$roomId',
+  path: '/play/$roomId',
+  getParentRoute: () => ThingsRoute,
+} as any)
+const ThingsSameBrainRoomIdRoute = ThingsSameBrainRoomIdRouteImport.update({
+  id: '/same-brain_/$roomId',
+  path: '/same-brain/$roomId',
+  getParentRoute: () => ThingsRoute,
+} as any)
+const ThingsSameBrainDevRoute = ThingsSameBrainDevRouteImport.update({
+  id: '/same-brain_/dev',
+  path: '/same-brain/dev',
+  getParentRoute: () => ThingsRoute,
+} as any)
+const ThingsSpellingPartyRoomIdRoute =
+  ThingsSpellingPartyRoomIdRouteImport.update({
+    id: '/spelling-party_/$roomId',
+    path: '/spelling-party/$roomId',
     getParentRoute: () => ThingsRoute,
   } as any)
-const ApiWordsShareVerifyRouteRoute =
-  ApiWordsShareVerifyRouteRouteImport.update({
-    id: '/share/verify',
-    path: '/share/verify',
-    getParentRoute: () => ApiWordsRouteRoute,
-  } as any)
-const ApiWordsSlugSharesRouteRoute = ApiWordsSlugSharesRouteRouteImport.update({
-  id: '/shares',
-  path: '/shares',
-  getParentRoute: () => ApiWordsSlugRouteRoute,
+const ThingsTwinRoomIdRoute = ThingsTwinRoomIdRouteImport.update({
+  id: '/twin_/$roomId',
+  path: '/twin/$roomId',
+  getParentRoute: () => ThingsRoute,
 } as any)
-const ApiUploadWordsTargetsRouteRoute =
-  ApiUploadWordsTargetsRouteRouteImport.update({
-    id: '/api/upload/words/targets',
-    path: '/api/upload/words/targets',
-    getParentRoute: () => rootRouteImport,
-  } as any)
-const ApiUploadWordsPresignRouteRoute =
-  ApiUploadWordsPresignRouteRouteImport.update({
-    id: '/api/upload/words/presign',
-    path: '/api/upload/words/presign',
-    getParentRoute: () => rootRouteImport,
-  } as any)
-const ApiUploadWordsFinalizeRouteRoute =
-  ApiUploadWordsFinalizeRouteRouteImport.update({
-    id: '/api/upload/words/finalize',
-    path: '/api/upload/words/finalize',
-    getParentRoute: () => rootRouteImport,
-  } as any)
-const ApiUploadTransferPresignRouteRoute =
-  ApiUploadTransferPresignRouteRouteImport.update({
-    id: '/api/upload/transfer/presign',
-    path: '/api/upload/transfer/presign',
-    getParentRoute: () => rootRouteImport,
-  } as any)
-const ApiUploadTransferFinalizeRouteRoute =
-  ApiUploadTransferFinalizeRouteRouteImport.update({
-    id: '/api/upload/transfer/finalize',
-    path: '/api/upload/transfer/finalize',
-    getParentRoute: () => rootRouteImport,
-  } as any)
-const ApiTransfersIdEventsRouteRoute =
-  ApiTransfersIdEventsRouteRouteImport.update({
-    id: '/events',
-    path: '/events',
-    getParentRoute: () => ApiTransfersIdRouteRoute,
-  } as any)
-const ApiEventsSlugIcsRouteRoute = ApiEventsSlugIcsRouteRouteImport.update({
-  id: '/api/events/$slug/ics',
-  path: '/api/events/$slug/ics',
-  getParentRoute: () => rootRouteImport,
+const ThingsTwinDevRoute = ThingsTwinDevRouteImport.update({
+  id: '/twin_/dev',
+  path: '/twin/dev',
+  getParentRoute: () => ThingsRoute,
 } as any)
-const ApiBestDressedVotingOpenRouteRoute =
-  ApiBestDressedVotingOpenRouteRouteImport.update({
-    id: '/voting/open',
-    path: '/voting/open',
-    getParentRoute: () => ApiBestDressedRouteRoute,
+const ApiAdminAlbumsSlugRouteRoute = ApiAdminAlbumsSlugRouteRouteImport.update({
+  id: '/$slug',
+  path: '/$slug',
+  getParentRoute: () => ApiAdminAlbumsRouteRoute,
+} as any)
+const ApiAdminEventsSlugRouteRoute = ApiAdminEventsSlugRouteRouteImport.update({
+  id: '/$slug',
+  path: '/$slug',
+  getParentRoute: () => ApiAdminEventsRouteRoute,
+} as any)
+const ApiAdminTokensRevokeRouteRoute =
+  ApiAdminTokensRevokeRouteRouteImport.update({
+    id: '/api/admin/tokens/revoke',
+    path: '/api/admin/tokens/revoke',
+    getParentRoute: () => rootRouteImport,
   } as any)
-const ApiBestDressedCodesRevokeAllRouteRoute =
-  ApiBestDressedCodesRevokeAllRouteRouteImport.update({
-    id: '/codes/revoke-all',
-    path: '/codes/revoke-all',
-    getParentRoute: () => ApiBestDressedRouteRoute,
+const ApiAdminTokensSessionsRouteRoute =
+  ApiAdminTokensSessionsRouteRouteImport.update({
+    id: '/api/admin/tokens/sessions',
+    path: '/api/admin/tokens/sessions',
+    getParentRoute: () => rootRouteImport,
   } as any)
-const ApiBestDressedCodesMintBatchRouteRoute =
-  ApiBestDressedCodesMintBatchRouteRouteImport.update({
-    id: '/codes/mint-batch',
-    path: '/codes/mint-batch',
-    getParentRoute: () => ApiBestDressedRouteRoute,
-  } as any)
-const ApiAdminWordSharesCleanupRouteRoute =
-  ApiAdminWordSharesCleanupRouteRouteImport.update({
-    id: '/cleanup',
-    path: '/cleanup',
-    getParentRoute: () => ApiAdminWordSharesRouteRoute,
-  } as any)
-const ApiAdminWordMediaOrphansRouteRoute =
-  ApiAdminWordMediaOrphansRouteRouteImport.update({
-    id: '/orphans',
-    path: '/orphans',
-    getParentRoute: () => ApiAdminWordMediaRouteRoute,
-  } as any)
-const ApiAdminTransfersProcessMediaRouteRoute =
-  ApiAdminTransfersProcessMediaRouteRouteImport.update({
-    id: '/process-media',
-    path: '/process-media',
-    getParentRoute: () => ApiAdminTransfersRouteRoute,
-  } as any)
-const ApiAdminTransfersNukeRouteRoute =
-  ApiAdminTransfersNukeRouteRouteImport.update({
-    id: '/nuke',
-    path: '/nuke',
+const ApiAdminTransfersIdRouteRoute =
+  ApiAdminTransfersIdRouteRouteImport.update({
+    id: '/$id',
+    path: '/$id',
     getParentRoute: () => ApiAdminTransfersRouteRoute,
   } as any)
 const ApiAdminTransfersCleanupRouteRoute =
@@ -688,92 +606,145 @@ const ApiAdminTransfersCleanupRouteRoute =
     path: '/cleanup',
     getParentRoute: () => ApiAdminTransfersRouteRoute,
   } as any)
-const ApiAdminTransfersIdRouteRoute =
-  ApiAdminTransfersIdRouteRouteImport.update({
-    id: '/$id',
-    path: '/$id',
+const ApiAdminTransfersNukeRouteRoute =
+  ApiAdminTransfersNukeRouteRouteImport.update({
+    id: '/nuke',
+    path: '/nuke',
     getParentRoute: () => ApiAdminTransfersRouteRoute,
   } as any)
-const ApiAdminTokensSessionsRouteRoute =
-  ApiAdminTokensSessionsRouteRouteImport.update({
-    id: '/api/admin/tokens/sessions',
-    path: '/api/admin/tokens/sessions',
+const ApiAdminTransfersProcessMediaRouteRoute =
+  ApiAdminTransfersProcessMediaRouteRouteImport.update({
+    id: '/process-media',
+    path: '/process-media',
+    getParentRoute: () => ApiAdminTransfersRouteRoute,
+  } as any)
+const ApiAdminWordMediaOrphansRouteRoute =
+  ApiAdminWordMediaOrphansRouteRouteImport.update({
+    id: '/orphans',
+    path: '/orphans',
+    getParentRoute: () => ApiAdminWordMediaRouteRoute,
+  } as any)
+const ApiAdminWordSharesCleanupRouteRoute =
+  ApiAdminWordSharesCleanupRouteRouteImport.update({
+    id: '/cleanup',
+    path: '/cleanup',
+    getParentRoute: () => ApiAdminWordSharesRouteRoute,
+  } as any)
+const ApiBestDressedCodesMintBatchRouteRoute =
+  ApiBestDressedCodesMintBatchRouteRouteImport.update({
+    id: '/codes/mint-batch',
+    path: '/codes/mint-batch',
+    getParentRoute: () => ApiBestDressedRouteRoute,
+  } as any)
+const ApiBestDressedCodesRevokeAllRouteRoute =
+  ApiBestDressedCodesRevokeAllRouteRouteImport.update({
+    id: '/codes/revoke-all',
+    path: '/codes/revoke-all',
+    getParentRoute: () => ApiBestDressedRouteRoute,
+  } as any)
+const ApiBestDressedVotingOpenRouteRoute =
+  ApiBestDressedVotingOpenRouteRouteImport.update({
+    id: '/voting/open',
+    path: '/voting/open',
+    getParentRoute: () => ApiBestDressedRouteRoute,
+  } as any)
+const ApiEmailWebhookResendRouteRoute =
+  ApiEmailWebhookResendRouteRouteImport.update({
+    id: '/api/email/webhook/resend',
+    path: '/api/email/webhook/resend',
     getParentRoute: () => rootRouteImport,
   } as any)
-const ApiAdminTokensRevokeRouteRoute =
-  ApiAdminTokensRevokeRouteRouteImport.update({
-    id: '/api/admin/tokens/revoke',
-    path: '/api/admin/tokens/revoke',
-    getParentRoute: () => rootRouteImport,
-  } as any)
-const ApiAdminEventsSlugRouteRoute = ApiAdminEventsSlugRouteRouteImport.update({
-  id: '/$slug',
-  path: '/$slug',
-  getParentRoute: () => ApiAdminEventsRouteRoute,
+const ApiEventsSlugIcsRouteRoute = ApiEventsSlugIcsRouteRouteImport.update({
+  id: '/api/events/$slug/ics',
+  path: '/api/events/$slug/ics',
+  getParentRoute: () => rootRouteImport,
 } as any)
-const ApiAdminAlbumsSlugRouteRoute = ApiAdminAlbumsSlugRouteRouteImport.update({
-  id: '/$slug',
-  path: '/$slug',
-  getParentRoute: () => ApiAdminAlbumsRouteRoute,
-} as any)
-const ApiWordsSlugSharesIdRouteRoute =
-  ApiWordsSlugSharesIdRouteRouteImport.update({
-    id: '/$id',
-    path: '/$id',
-    getParentRoute: () => ApiWordsSlugSharesRouteRoute,
-  } as any)
-const ApiWordsSlugMediaFilenameRouteRoute =
-  ApiWordsSlugMediaFilenameRouteRouteImport.update({
-    id: '/media/$filename',
-    path: '/media/$filename',
-    getParentRoute: () => ApiWordsSlugRouteRoute,
-  } as any)
-const ApiUploadTransferAppendPresignRouteRoute =
-  ApiUploadTransferAppendPresignRouteRouteImport.update({
-    id: '/api/upload/transfer/append/presign',
-    path: '/api/upload/transfer/append/presign',
-    getParentRoute: () => rootRouteImport,
-  } as any)
-const ApiUploadTransferAppendFinalizeRouteRoute =
-  ApiUploadTransferAppendFinalizeRouteRouteImport.update({
-    id: '/api/upload/transfer/append/finalize',
-    path: '/api/upload/transfer/append/finalize',
-    getParentRoute: () => rootRouteImport,
-  } as any)
-const ApiTransfersIdFilesFileIdRouteRoute =
-  ApiTransfersIdFilesFileIdRouteRouteImport.update({
-    id: '/files/$fileId',
-    path: '/files/$fileId',
+const ApiTransfersIdEventsRouteRoute =
+  ApiTransfersIdEventsRouteRouteImport.update({
+    id: '/events',
+    path: '/events',
     getParentRoute: () => ApiTransfersIdRouteRoute,
   } as any)
-const ApiAdminTokensSessionsJtiRouteRoute =
-  ApiAdminTokensSessionsJtiRouteRouteImport.update({
-    id: '/$jti',
-    path: '/$jti',
-    getParentRoute: () => ApiAdminTokensSessionsRouteRoute,
+const ApiUploadTransferFinalizeRouteRoute =
+  ApiUploadTransferFinalizeRouteRouteImport.update({
+    id: '/api/upload/transfer/finalize',
+    path: '/api/upload/transfer/finalize',
+    getParentRoute: () => rootRouteImport,
   } as any)
-const ApiAdminEventsSlugTicketsRouteRoute =
-  ApiAdminEventsSlugTicketsRouteRouteImport.update({
-    id: '/tickets',
-    path: '/tickets',
-    getParentRoute: () => ApiAdminEventsSlugRouteRoute,
+const ApiUploadTransferPresignRouteRoute =
+  ApiUploadTransferPresignRouteRouteImport.update({
+    id: '/api/upload/transfer/presign',
+    path: '/api/upload/transfer/presign',
+    getParentRoute: () => rootRouteImport,
   } as any)
-const ApiAdminEventsSlugScannerLinksRouteRoute =
-  ApiAdminEventsSlugScannerLinksRouteRouteImport.update({
-    id: '/scanner-links',
-    path: '/scanner-links',
-    getParentRoute: () => ApiAdminEventsSlugRouteRoute,
+const ApiUploadWordsFinalizeRouteRoute =
+  ApiUploadWordsFinalizeRouteRouteImport.update({
+    id: '/api/upload/words/finalize',
+    path: '/api/upload/words/finalize',
+    getParentRoute: () => rootRouteImport,
   } as any)
-const ApiAdminEventsSlugGuestRequestsRouteRoute =
-  ApiAdminEventsSlugGuestRequestsRouteRouteImport.update({
-    id: '/guest-requests',
-    path: '/guest-requests',
-    getParentRoute: () => ApiAdminEventsSlugRouteRoute,
+const ApiUploadWordsPresignRouteRoute =
+  ApiUploadWordsPresignRouteRouteImport.update({
+    id: '/api/upload/words/presign',
+    path: '/api/upload/words/presign',
+    getParentRoute: () => rootRouteImport,
   } as any)
-const ApiAdminEventsSlugEmailRouteRoute =
-  ApiAdminEventsSlugEmailRouteRouteImport.update({
-    id: '/email',
-    path: '/email',
+const ApiUploadWordsTargetsRouteRoute =
+  ApiUploadWordsTargetsRouteRouteImport.update({
+    id: '/api/upload/words/targets',
+    path: '/api/upload/words/targets',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ApiWordsSlugSharesRouteRoute = ApiWordsSlugSharesRouteRouteImport.update({
+  id: '/shares',
+  path: '/shares',
+  getParentRoute: () => ApiWordsSlugRouteRoute,
+} as any)
+const ApiWordsShareVerifyRouteRoute =
+  ApiWordsShareVerifyRouteRouteImport.update({
+    id: '/share/verify',
+    path: '/share/verify',
+    getParentRoute: () => ApiWordsRouteRoute,
+  } as any)
+const ThingsLiarsRoomIdPresentRoute =
+  ThingsLiarsRoomIdPresentRouteImport.update({
+    id: '/liars_/$roomId_/present',
+    path: '/liars/$roomId/present',
+    getParentRoute: () => ThingsRoute,
+  } as any)
+const ThingsPitchesDeckIdEditRoute = ThingsPitchesDeckIdEditRouteImport.update({
+  id: '/pitches_/$deckId_/edit',
+  path: '/pitches/$deckId/edit',
+  getParentRoute: () => ThingsRoute,
+} as any)
+const ThingsPitchesPresentRoomIdRoute =
+  ThingsPitchesPresentRoomIdRouteImport.update({
+    id: '/pitches_/present_/$roomId',
+    path: '/pitches/present/$roomId',
+    getParentRoute: () => ThingsRoute,
+  } as any)
+const ThingsPitchesRemoteRoomIdRoute =
+  ThingsPitchesRemoteRoomIdRouteImport.update({
+    id: '/pitches_/remote_/$roomId',
+    path: '/pitches/remote/$roomId',
+    getParentRoute: () => ThingsRoute,
+  } as any)
+const ThingsSpellingPartyRoomIdPresentRoute =
+  ThingsSpellingPartyRoomIdPresentRouteImport.update({
+    id: '/spelling-party_/$roomId_/present',
+    path: '/spelling-party/$roomId/present',
+    getParentRoute: () => ThingsRoute,
+  } as any)
+const ApiAdminAlbumsSlugCoverRouteRoute =
+  ApiAdminAlbumsSlugCoverRouteRouteImport.update({
+    id: '/cover',
+    path: '/cover',
+    getParentRoute: () => ApiAdminAlbumsSlugRouteRoute,
+  } as any)
+const ApiAdminEventsSlugCheckpointsRouteRoute =
+  ApiAdminEventsSlugCheckpointsRouteRouteImport.update({
+    id: '/checkpoints',
+    path: '/checkpoints',
     getParentRoute: () => ApiAdminEventsSlugRouteRoute,
   } as any)
 const ApiAdminEventsSlugDropRouteRoute =
@@ -782,16 +753,70 @@ const ApiAdminEventsSlugDropRouteRoute =
     path: '/drop',
     getParentRoute: () => ApiAdminEventsSlugRouteRoute,
   } as any)
-const ApiAdminEventsSlugCheckpointsRouteRoute =
-  ApiAdminEventsSlugCheckpointsRouteRouteImport.update({
-    id: '/checkpoints',
-    path: '/checkpoints',
+const ApiAdminEventsSlugEmailRouteRoute =
+  ApiAdminEventsSlugEmailRouteRouteImport.update({
+    id: '/email',
+    path: '/email',
     getParentRoute: () => ApiAdminEventsSlugRouteRoute,
   } as any)
-const ApiAdminAlbumsSlugCoverRouteRoute =
-  ApiAdminAlbumsSlugCoverRouteRouteImport.update({
-    id: '/cover',
-    path: '/cover',
+const ApiAdminEventsSlugGuestRequestsRouteRoute =
+  ApiAdminEventsSlugGuestRequestsRouteRouteImport.update({
+    id: '/guest-requests',
+    path: '/guest-requests',
+    getParentRoute: () => ApiAdminEventsSlugRouteRoute,
+  } as any)
+const ApiAdminEventsSlugScannerLinksRouteRoute =
+  ApiAdminEventsSlugScannerLinksRouteRouteImport.update({
+    id: '/scanner-links',
+    path: '/scanner-links',
+    getParentRoute: () => ApiAdminEventsSlugRouteRoute,
+  } as any)
+const ApiAdminEventsSlugTicketsRouteRoute =
+  ApiAdminEventsSlugTicketsRouteRouteImport.update({
+    id: '/tickets',
+    path: '/tickets',
+    getParentRoute: () => ApiAdminEventsSlugRouteRoute,
+  } as any)
+const ApiAdminTokensSessionsJtiRouteRoute =
+  ApiAdminTokensSessionsJtiRouteRouteImport.update({
+    id: '/$jti',
+    path: '/$jti',
+    getParentRoute: () => ApiAdminTokensSessionsRouteRoute,
+  } as any)
+const ApiTransfersIdFilesFileIdRouteRoute =
+  ApiTransfersIdFilesFileIdRouteRouteImport.update({
+    id: '/files/$fileId',
+    path: '/files/$fileId',
+    getParentRoute: () => ApiTransfersIdRouteRoute,
+  } as any)
+const ApiUploadTransferAppendFinalizeRouteRoute =
+  ApiUploadTransferAppendFinalizeRouteRouteImport.update({
+    id: '/api/upload/transfer/append/finalize',
+    path: '/api/upload/transfer/append/finalize',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ApiUploadTransferAppendPresignRouteRoute =
+  ApiUploadTransferAppendPresignRouteRouteImport.update({
+    id: '/api/upload/transfer/append/presign',
+    path: '/api/upload/transfer/append/presign',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ApiWordsSlugMediaFilenameRouteRoute =
+  ApiWordsSlugMediaFilenameRouteRouteImport.update({
+    id: '/media/$filename',
+    path: '/media/$filename',
+    getParentRoute: () => ApiWordsSlugRouteRoute,
+  } as any)
+const ApiWordsSlugSharesIdRouteRoute =
+  ApiWordsSlugSharesIdRouteRouteImport.update({
+    id: '/$id',
+    path: '/$id',
+    getParentRoute: () => ApiWordsSlugSharesRouteRoute,
+  } as any)
+const ApiAdminAlbumsSlugPhotosPhotoIdRouteRoute =
+  ApiAdminAlbumsSlugPhotosPhotoIdRouteRouteImport.update({
+    id: '/photos/$photoId',
+    path: '/photos/$photoId',
     getParentRoute: () => ApiAdminAlbumsSlugRouteRoute,
   } as any)
 const ApiTransfersIdMediaFileIdVariantRouteRoute =
@@ -800,16 +825,11 @@ const ApiTransfersIdMediaFileIdVariantRouteRoute =
     path: '/media/$fileId/$variant',
     getParentRoute: () => ApiTransfersIdRouteRoute,
   } as any)
-const ApiAdminAlbumsSlugPhotosPhotoIdRouteRoute =
-  ApiAdminAlbumsSlugPhotosPhotoIdRouteRouteImport.update({
-    id: '/photos/$photoId',
-    path: '/photos/$photoId',
-    getParentRoute: () => ApiAdminAlbumsSlugRouteRoute,
-  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/best-dressed': typeof BestDressedRoute
+  '/contact': typeof ContactRoute
   '/exam': typeof ExamRoute
   '/feed.xml': typeof FeedDotxmlRoute
   '/font-test': typeof FontTestRoute
@@ -817,6 +837,7 @@ export interface FileRoutesByFullPath {
   '/icebreaker': typeof IcebreakerRoute
   '/party': typeof PartyRoute
   '/pitch-night': typeof PitchNightRoute
+  '/privacy': typeof PrivacyRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/things': typeof ThingsRouteWithChildren
   '/upload': typeof UploadRoute
@@ -904,6 +925,7 @@ export interface FileRoutesByFullPath {
   '/api/best-dressed/codes/mint-batch': typeof ApiBestDressedCodesMintBatchRouteRoute
   '/api/best-dressed/codes/revoke-all': typeof ApiBestDressedCodesRevokeAllRouteRoute
   '/api/best-dressed/voting/open': typeof ApiBestDressedVotingOpenRouteRoute
+  '/api/email/webhook/resend': typeof ApiEmailWebhookResendRouteRoute
   '/api/events/$slug/ics': typeof ApiEventsSlugIcsRouteRoute
   '/api/transfers/$id/events': typeof ApiTransfersIdEventsRouteRoute
   '/api/upload/transfer/finalize': typeof ApiUploadTransferFinalizeRouteRoute
@@ -937,6 +959,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/best-dressed': typeof BestDressedRoute
+  '/contact': typeof ContactRoute
   '/exam': typeof ExamRoute
   '/feed.xml': typeof FeedDotxmlRoute
   '/font-test': typeof FontTestRoute
@@ -944,6 +967,7 @@ export interface FileRoutesByTo {
   '/icebreaker': typeof IcebreakerRoute
   '/party': typeof PartyRoute
   '/pitch-night': typeof PitchNightRoute
+  '/privacy': typeof PrivacyRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/things': typeof ThingsRouteWithChildren
   '/upload': typeof UploadRoute
@@ -1031,6 +1055,7 @@ export interface FileRoutesByTo {
   '/api/best-dressed/codes/mint-batch': typeof ApiBestDressedCodesMintBatchRouteRoute
   '/api/best-dressed/codes/revoke-all': typeof ApiBestDressedCodesRevokeAllRouteRoute
   '/api/best-dressed/voting/open': typeof ApiBestDressedVotingOpenRouteRoute
+  '/api/email/webhook/resend': typeof ApiEmailWebhookResendRouteRoute
   '/api/events/$slug/ics': typeof ApiEventsSlugIcsRouteRoute
   '/api/transfers/$id/events': typeof ApiTransfersIdEventsRouteRoute
   '/api/upload/transfer/finalize': typeof ApiUploadTransferFinalizeRouteRoute
@@ -1065,6 +1090,7 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/best-dressed': typeof BestDressedRoute
+  '/contact': typeof ContactRoute
   '/exam': typeof ExamRoute
   '/feed.xml': typeof FeedDotxmlRoute
   '/font-test': typeof FontTestRoute
@@ -1072,6 +1098,7 @@ export interface FileRoutesById {
   '/icebreaker': typeof IcebreakerRoute
   '/party': typeof PartyRoute
   '/pitch-night': typeof PitchNightRoute
+  '/privacy': typeof PrivacyRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/things': typeof ThingsRouteWithChildren
   '/upload': typeof UploadRoute
@@ -1159,6 +1186,7 @@ export interface FileRoutesById {
   '/api/best-dressed/codes/mint-batch': typeof ApiBestDressedCodesMintBatchRouteRoute
   '/api/best-dressed/codes/revoke-all': typeof ApiBestDressedCodesRevokeAllRouteRoute
   '/api/best-dressed/voting/open': typeof ApiBestDressedVotingOpenRouteRoute
+  '/api/email/webhook/resend': typeof ApiEmailWebhookResendRouteRoute
   '/api/events/$slug/ics': typeof ApiEventsSlugIcsRouteRoute
   '/api/transfers/$id/events': typeof ApiTransfersIdEventsRouteRoute
   '/api/upload/transfer/finalize': typeof ApiUploadTransferFinalizeRouteRoute
@@ -1194,6 +1222,7 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/best-dressed'
+    | '/contact'
     | '/exam'
     | '/feed.xml'
     | '/font-test'
@@ -1201,6 +1230,7 @@ export interface FileRouteTypes {
     | '/icebreaker'
     | '/party'
     | '/pitch-night'
+    | '/privacy'
     | '/sitemap.xml'
     | '/things'
     | '/upload'
@@ -1288,6 +1318,7 @@ export interface FileRouteTypes {
     | '/api/best-dressed/codes/mint-batch'
     | '/api/best-dressed/codes/revoke-all'
     | '/api/best-dressed/voting/open'
+    | '/api/email/webhook/resend'
     | '/api/events/$slug/ics'
     | '/api/transfers/$id/events'
     | '/api/upload/transfer/finalize'
@@ -1321,6 +1352,7 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/best-dressed'
+    | '/contact'
     | '/exam'
     | '/feed.xml'
     | '/font-test'
@@ -1328,6 +1360,7 @@ export interface FileRouteTypes {
     | '/icebreaker'
     | '/party'
     | '/pitch-night'
+    | '/privacy'
     | '/sitemap.xml'
     | '/things'
     | '/upload'
@@ -1415,6 +1448,7 @@ export interface FileRouteTypes {
     | '/api/best-dressed/codes/mint-batch'
     | '/api/best-dressed/codes/revoke-all'
     | '/api/best-dressed/voting/open'
+    | '/api/email/webhook/resend'
     | '/api/events/$slug/ics'
     | '/api/transfers/$id/events'
     | '/api/upload/transfer/finalize'
@@ -1448,6 +1482,7 @@ export interface FileRouteTypes {
     | '__root__'
     | '/'
     | '/best-dressed'
+    | '/contact'
     | '/exam'
     | '/feed.xml'
     | '/font-test'
@@ -1455,6 +1490,7 @@ export interface FileRouteTypes {
     | '/icebreaker'
     | '/party'
     | '/pitch-night'
+    | '/privacy'
     | '/sitemap.xml'
     | '/things'
     | '/upload'
@@ -1542,6 +1578,7 @@ export interface FileRouteTypes {
     | '/api/best-dressed/codes/mint-batch'
     | '/api/best-dressed/codes/revoke-all'
     | '/api/best-dressed/voting/open'
+    | '/api/email/webhook/resend'
     | '/api/events/$slug/ics'
     | '/api/transfers/$id/events'
     | '/api/upload/transfer/finalize'
@@ -1576,6 +1613,7 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   BestDressedRoute: typeof BestDressedRoute
+  ContactRoute: typeof ContactRoute
   ExamRoute: typeof ExamRoute
   FeedDotxmlRoute: typeof FeedDotxmlRoute
   FontTestRoute: typeof FontTestRoute
@@ -1583,6 +1621,7 @@ export interface RootRouteChildren {
   IcebreakerRoute: typeof IcebreakerRoute
   PartyRoute: typeof PartyRoute
   PitchNightRoute: typeof PitchNightRoute
+  PrivacyRoute: typeof PrivacyRoute
   SitemapDotxmlRoute: typeof SitemapDotxmlRoute
   ThingsRoute: typeof ThingsRouteWithChildren
   UploadRoute: typeof UploadRoute
@@ -1631,6 +1670,7 @@ export interface RootRouteChildren {
   PicsAlbumIndexRoute: typeof PicsAlbumIndexRoute
   ApiAdminTokensRevokeRouteRoute: typeof ApiAdminTokensRevokeRouteRoute
   ApiAdminTokensSessionsRouteRoute: typeof ApiAdminTokensSessionsRouteRouteWithChildren
+  ApiEmailWebhookResendRouteRoute: typeof ApiEmailWebhookResendRouteRoute
   ApiEventsSlugIcsRouteRoute: typeof ApiEventsSlugIcsRouteRoute
   ApiUploadTransferFinalizeRouteRoute: typeof ApiUploadTransferFinalizeRouteRoute
   ApiUploadTransferPresignRouteRoute: typeof ApiUploadTransferPresignRouteRoute
@@ -1643,74 +1683,11 @@ export interface RootRouteChildren {
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
-    '/upload': {
-      id: '/upload'
-      path: '/upload'
-      fullPath: '/upload'
-      preLoaderRoute: typeof UploadRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/things': {
-      id: '/things'
-      path: '/things'
-      fullPath: '/things'
-      preLoaderRoute: typeof ThingsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/sitemap.xml': {
-      id: '/sitemap.xml'
-      path: '/sitemap.xml'
-      fullPath: '/sitemap.xml'
-      preLoaderRoute: typeof SitemapDotxmlRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/pitch-night': {
-      id: '/pitch-night'
-      path: '/pitch-night'
-      fullPath: '/pitch-night'
-      preLoaderRoute: typeof PitchNightRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/party': {
-      id: '/party'
-      path: '/party'
-      fullPath: '/party'
-      preLoaderRoute: typeof PartyRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/icebreaker': {
-      id: '/icebreaker'
-      path: '/icebreaker'
-      fullPath: '/icebreaker'
-      preLoaderRoute: typeof IcebreakerRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/health': {
-      id: '/health'
-      path: '/health'
-      fullPath: '/health'
-      preLoaderRoute: typeof HealthRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/font-test': {
-      id: '/font-test'
-      path: '/font-test'
-      fullPath: '/font-test'
-      preLoaderRoute: typeof FontTestRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/feed.xml': {
-      id: '/feed.xml'
-      path: '/feed.xml'
-      fullPath: '/feed.xml'
-      preLoaderRoute: typeof FeedDotxmlRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/exam': {
-      id: '/exam'
-      path: '/exam'
-      fullPath: '/exam'
-      preLoaderRoute: typeof ExamRouteImport
+    '/': {
+      id: '/'
+      path: '/'
+      fullPath: '/'
+      preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/best-dressed': {
@@ -1720,39 +1697,88 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof BestDressedRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/': {
-      id: '/'
-      path: '/'
-      fullPath: '/'
-      preLoaderRoute: typeof IndexRouteImport
+    '/contact': {
+      id: '/contact'
+      path: '/contact'
+      fullPath: '/contact'
+      preLoaderRoute: typeof ContactRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/words/': {
-      id: '/words/'
-      path: '/words'
-      fullPath: '/words/'
-      preLoaderRoute: typeof WordsIndexRouteImport
+    '/exam': {
+      id: '/exam'
+      path: '/exam'
+      fullPath: '/exam'
+      preLoaderRoute: typeof ExamRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/scan/': {
-      id: '/scan/'
-      path: '/scan'
-      fullPath: '/scan/'
-      preLoaderRoute: typeof ScanIndexRouteImport
+    '/feed.xml': {
+      id: '/feed.xml'
+      path: '/feed.xml'
+      fullPath: '/feed.xml'
+      preLoaderRoute: typeof FeedDotxmlRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/pics/': {
-      id: '/pics/'
-      path: '/pics'
-      fullPath: '/pics/'
-      preLoaderRoute: typeof PicsIndexRouteImport
+    '/font-test': {
+      id: '/font-test'
+      path: '/font-test'
+      fullPath: '/font-test'
+      preLoaderRoute: typeof FontTestRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/events/': {
-      id: '/events/'
-      path: '/events'
-      fullPath: '/events/'
-      preLoaderRoute: typeof EventsIndexRouteImport
+    '/health': {
+      id: '/health'
+      path: '/health'
+      fullPath: '/health'
+      preLoaderRoute: typeof HealthRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/icebreaker': {
+      id: '/icebreaker'
+      path: '/icebreaker'
+      fullPath: '/icebreaker'
+      preLoaderRoute: typeof IcebreakerRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/party': {
+      id: '/party'
+      path: '/party'
+      fullPath: '/party'
+      preLoaderRoute: typeof PartyRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/pitch-night': {
+      id: '/pitch-night'
+      path: '/pitch-night'
+      fullPath: '/pitch-night'
+      preLoaderRoute: typeof PitchNightRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/privacy': {
+      id: '/privacy'
+      path: '/privacy'
+      fullPath: '/privacy'
+      preLoaderRoute: typeof PrivacyRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/sitemap.xml': {
+      id: '/sitemap.xml'
+      path: '/sitemap.xml'
+      fullPath: '/sitemap.xml'
+      preLoaderRoute: typeof SitemapDotxmlRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/things': {
+      id: '/things'
+      path: '/things'
+      fullPath: '/things'
+      preLoaderRoute: typeof ThingsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/upload': {
+      id: '/upload'
+      path: '/upload'
+      fullPath: '/upload'
+      preLoaderRoute: typeof UploadRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/admin/': {
@@ -1762,158 +1788,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/words/$slug': {
-      id: '/words/$slug'
-      path: '/words/$slug'
-      fullPath: '/words/$slug'
-      preLoaderRoute: typeof WordsSlugRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/vault/$slug': {
-      id: '/vault/$slug'
-      path: '/vault/$slug'
-      fullPath: '/vault/$slug'
-      preLoaderRoute: typeof VaultSlugRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/ticket/$id': {
-      id: '/ticket/$id'
-      path: '/ticket/$id'
-      fullPath: '/ticket/$id'
-      preLoaderRoute: typeof TicketIdRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/things/twin': {
-      id: '/things/twin'
-      path: '/twin'
-      fullPath: '/things/twin'
-      preLoaderRoute: typeof ThingsTwinRouteImport
-      parentRoute: typeof ThingsRoute
-    }
-    '/things/spelling-party': {
-      id: '/things/spelling-party'
-      path: '/spelling-party'
-      fullPath: '/things/spelling-party'
-      preLoaderRoute: typeof ThingsSpellingPartyRouteImport
-      parentRoute: typeof ThingsRoute
-    }
-    '/things/spelling-bee': {
-      id: '/things/spelling-bee'
-      path: '/spelling-bee'
-      fullPath: '/things/spelling-bee'
-      preLoaderRoute: typeof ThingsSpellingBeeRouteImport
-      parentRoute: typeof ThingsRoute
-    }
-    '/things/same-brain': {
-      id: '/things/same-brain'
-      path: '/same-brain'
-      fullPath: '/things/same-brain'
-      preLoaderRoute: typeof ThingsSameBrainRouteImport
-      parentRoute: typeof ThingsRoute
-    }
-    '/things/pitches': {
-      id: '/things/pitches'
-      path: '/pitches'
-      fullPath: '/things/pitches'
-      preLoaderRoute: typeof ThingsPitchesRouteImport
-      parentRoute: typeof ThingsRoute
-    }
-    '/things/liars': {
-      id: '/things/liars'
-      path: '/liars'
-      fullPath: '/things/liars'
-      preLoaderRoute: typeof ThingsLiarsRouteImport
-      parentRoute: typeof ThingsRoute
-    }
-    '/things/icebreaker': {
-      id: '/things/icebreaker'
-      path: '/icebreaker'
-      fullPath: '/things/icebreaker'
-      preLoaderRoute: typeof ThingsIcebreakerRouteImport
-      parentRoute: typeof ThingsRoute
-    }
-    '/things/heads-up': {
-      id: '/things/heads-up'
-      path: '/heads-up'
-      fullPath: '/things/heads-up'
-      preLoaderRoute: typeof ThingsHeadsUpRouteImport
-      parentRoute: typeof ThingsRoute
-    }
-    '/things/draw-country': {
-      id: '/things/draw-country'
-      path: '/draw-country'
-      fullPath: '/things/draw-country'
-      preLoaderRoute: typeof ThingsDrawCountryRouteImport
-      parentRoute: typeof ThingsRoute
-    }
-    '/things/centre': {
-      id: '/things/centre'
-      path: '/centre'
-      fullPath: '/things/centre'
-      preLoaderRoute: typeof ThingsCentreRouteImport
-      parentRoute: typeof ThingsRoute
-    }
-    '/t/$id': {
-      id: '/t/$id'
-      path: '/t/$id'
-      fullPath: '/t/$id'
-      preLoaderRoute: typeof TIdRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/scan/$token': {
-      id: '/scan/$token'
-      path: '/scan/$token'
-      fullPath: '/scan/$token'
-      preLoaderRoute: typeof ScanTokenRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/events/$slug': {
-      id: '/events/$slug'
-      path: '/events/$slug'
-      fullPath: '/events/$slug'
-      preLoaderRoute: typeof EventsSlugRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/drop/$token': {
-      id: '/drop/$token'
-      path: '/drop/$token'
-      fullPath: '/drop/$token'
-      preLoaderRoute: typeof DropTokenRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/admin/editor': {
       id: '/admin/editor'
       path: '/admin/editor'
       fullPath: '/admin/editor'
       preLoaderRoute: typeof AdminEditorRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/words': {
-      id: '/api/words'
-      path: '/api/words'
-      fullPath: '/api/words'
-      preLoaderRoute: typeof ApiWordsRouteRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/reports': {
-      id: '/api/reports'
-      path: '/api/reports'
-      fullPath: '/api/reports'
-      preLoaderRoute: typeof ApiReportsRouteRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/health': {
-      id: '/api/health'
-      path: '/api/health'
-      fullPath: '/api/health'
-      preLoaderRoute: typeof ApiHealthRouteRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/debug': {
-      id: '/api/debug'
-      path: '/api/debug'
-      fullPath: '/api/debug'
-      preLoaderRoute: typeof ApiDebugRouteRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/best-dressed': {
@@ -1923,298 +1802,179 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiBestDressedRouteRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/pics/$album/': {
-      id: '/pics/$album/'
-      path: '/pics/$album'
-      fullPath: '/pics/$album/'
-      preLoaderRoute: typeof PicsAlbumIndexRouteImport
+    '/api/debug': {
+      id: '/api/debug'
+      path: '/api/debug'
+      fullPath: '/api/debug'
+      preLoaderRoute: typeof ApiDebugRouteRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/things/twin_/dev': {
-      id: '/things/twin_/dev'
-      path: '/twin/dev'
-      fullPath: '/things/twin/dev'
-      preLoaderRoute: typeof ThingsTwinDevRouteImport
+    '/api/health': {
+      id: '/api/health'
+      path: '/api/health'
+      fullPath: '/api/health'
+      preLoaderRoute: typeof ApiHealthRouteRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/reports': {
+      id: '/api/reports'
+      path: '/api/reports'
+      fullPath: '/api/reports'
+      preLoaderRoute: typeof ApiReportsRouteRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/words': {
+      id: '/api/words'
+      path: '/api/words'
+      fullPath: '/api/words'
+      preLoaderRoute: typeof ApiWordsRouteRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/drop/$token': {
+      id: '/drop/$token'
+      path: '/drop/$token'
+      fullPath: '/drop/$token'
+      preLoaderRoute: typeof DropTokenRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/events/': {
+      id: '/events/'
+      path: '/events'
+      fullPath: '/events/'
+      preLoaderRoute: typeof EventsIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/events/$slug': {
+      id: '/events/$slug'
+      path: '/events/$slug'
+      fullPath: '/events/$slug'
+      preLoaderRoute: typeof EventsSlugRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/pics/': {
+      id: '/pics/'
+      path: '/pics'
+      fullPath: '/pics/'
+      preLoaderRoute: typeof PicsIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/scan/': {
+      id: '/scan/'
+      path: '/scan'
+      fullPath: '/scan/'
+      preLoaderRoute: typeof ScanIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/scan/$token': {
+      id: '/scan/$token'
+      path: '/scan/$token'
+      fullPath: '/scan/$token'
+      preLoaderRoute: typeof ScanTokenRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/t/$id': {
+      id: '/t/$id'
+      path: '/t/$id'
+      fullPath: '/t/$id'
+      preLoaderRoute: typeof TIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/things/centre': {
+      id: '/things/centre'
+      path: '/centre'
+      fullPath: '/things/centre'
+      preLoaderRoute: typeof ThingsCentreRouteImport
       parentRoute: typeof ThingsRoute
     }
-    '/things/twin_/$roomId': {
-      id: '/things/twin_/$roomId'
-      path: '/twin/$roomId'
-      fullPath: '/things/twin/$roomId'
-      preLoaderRoute: typeof ThingsTwinRoomIdRouteImport
+    '/things/draw-country': {
+      id: '/things/draw-country'
+      path: '/draw-country'
+      fullPath: '/things/draw-country'
+      preLoaderRoute: typeof ThingsDrawCountryRouteImport
       parentRoute: typeof ThingsRoute
     }
-    '/things/spelling-party_/$roomId': {
-      id: '/things/spelling-party_/$roomId'
-      path: '/spelling-party/$roomId'
-      fullPath: '/things/spelling-party/$roomId'
-      preLoaderRoute: typeof ThingsSpellingPartyRoomIdRouteImport
+    '/things/heads-up': {
+      id: '/things/heads-up'
+      path: '/heads-up'
+      fullPath: '/things/heads-up'
+      preLoaderRoute: typeof ThingsHeadsUpRouteImport
       parentRoute: typeof ThingsRoute
     }
-    '/things/same-brain_/dev': {
-      id: '/things/same-brain_/dev'
-      path: '/same-brain/dev'
-      fullPath: '/things/same-brain/dev'
-      preLoaderRoute: typeof ThingsSameBrainDevRouteImport
+    '/things/icebreaker': {
+      id: '/things/icebreaker'
+      path: '/icebreaker'
+      fullPath: '/things/icebreaker'
+      preLoaderRoute: typeof ThingsIcebreakerRouteImport
       parentRoute: typeof ThingsRoute
     }
-    '/things/same-brain_/$roomId': {
-      id: '/things/same-brain_/$roomId'
-      path: '/same-brain/$roomId'
-      fullPath: '/things/same-brain/$roomId'
-      preLoaderRoute: typeof ThingsSameBrainRoomIdRouteImport
+    '/things/liars': {
+      id: '/things/liars'
+      path: '/liars'
+      fullPath: '/things/liars'
+      preLoaderRoute: typeof ThingsLiarsRouteImport
       parentRoute: typeof ThingsRoute
     }
-    '/things/play/$roomId': {
-      id: '/things/play/$roomId'
-      path: '/play/$roomId'
-      fullPath: '/things/play/$roomId'
-      preLoaderRoute: typeof ThingsPlayRoomIdRouteImport
+    '/things/pitches': {
+      id: '/things/pitches'
+      path: '/pitches'
+      fullPath: '/things/pitches'
+      preLoaderRoute: typeof ThingsPitchesRouteImport
       parentRoute: typeof ThingsRoute
     }
-    '/things/pitches_/present': {
-      id: '/things/pitches_/present'
-      path: '/pitches/present'
-      fullPath: '/things/pitches/present'
-      preLoaderRoute: typeof ThingsPitchesPresentRouteImport
+    '/things/same-brain': {
+      id: '/things/same-brain'
+      path: '/same-brain'
+      fullPath: '/things/same-brain'
+      preLoaderRoute: typeof ThingsSameBrainRouteImport
       parentRoute: typeof ThingsRoute
     }
-    '/things/pitches_/new': {
-      id: '/things/pitches_/new'
-      path: '/pitches/new'
-      fullPath: '/things/pitches/new'
-      preLoaderRoute: typeof ThingsPitchesNewRouteImport
+    '/things/spelling-bee': {
+      id: '/things/spelling-bee'
+      path: '/spelling-bee'
+      fullPath: '/things/spelling-bee'
+      preLoaderRoute: typeof ThingsSpellingBeeRouteImport
       parentRoute: typeof ThingsRoute
     }
-    '/things/pitches_/demo': {
-      id: '/things/pitches_/demo'
-      path: '/pitches/demo'
-      fullPath: '/things/pitches/demo'
-      preLoaderRoute: typeof ThingsPitchesDemoRouteImport
+    '/things/spelling-party': {
+      id: '/things/spelling-party'
+      path: '/spelling-party'
+      fullPath: '/things/spelling-party'
+      preLoaderRoute: typeof ThingsSpellingPartyRouteImport
       parentRoute: typeof ThingsRoute
     }
-    '/things/pitches_/$deckId': {
-      id: '/things/pitches_/$deckId'
-      path: '/pitches/$deckId'
-      fullPath: '/things/pitches/$deckId'
-      preLoaderRoute: typeof ThingsPitchesDeckIdRouteImport
+    '/things/twin': {
+      id: '/things/twin'
+      path: '/twin'
+      fullPath: '/things/twin'
+      preLoaderRoute: typeof ThingsTwinRouteImport
       parentRoute: typeof ThingsRoute
     }
-    '/things/liars_/phone': {
-      id: '/things/liars_/phone'
-      path: '/liars/phone'
-      fullPath: '/things/liars/phone'
-      preLoaderRoute: typeof ThingsLiarsPhoneRouteImport
-      parentRoute: typeof ThingsRoute
-    }
-    '/things/liars_/dev': {
-      id: '/things/liars_/dev'
-      path: '/liars/dev'
-      fullPath: '/things/liars/dev'
-      preLoaderRoute: typeof ThingsLiarsDevRouteImport
-      parentRoute: typeof ThingsRoute
-    }
-    '/things/liars_/$roomId': {
-      id: '/things/liars_/$roomId'
-      path: '/liars/$roomId'
-      fullPath: '/things/liars/$roomId'
-      preLoaderRoute: typeof ThingsLiarsRoomIdRouteImport
-      parentRoute: typeof ThingsRoute
-    }
-    '/things/judge/$roomId': {
-      id: '/things/judge/$roomId'
-      path: '/judge/$roomId'
-      fullPath: '/things/judge/$roomId'
-      preLoaderRoute: typeof ThingsJudgeRoomIdRouteImport
-      parentRoute: typeof ThingsRoute
-    }
-    '/things/draw-country_/$roomId': {
-      id: '/things/draw-country_/$roomId'
-      path: '/draw-country/$roomId'
-      fullPath: '/things/draw-country/$roomId'
-      preLoaderRoute: typeof ThingsDrawCountryRoomIdRouteImport
-      parentRoute: typeof ThingsRoute
-    }
-    '/things/centre_/dev': {
-      id: '/things/centre_/dev'
-      path: '/centre/dev'
-      fullPath: '/things/centre/dev'
-      preLoaderRoute: typeof ThingsCentreDevRouteImport
-      parentRoute: typeof ThingsRoute
-    }
-    '/things/centre_/$roomId': {
-      id: '/things/centre_/$roomId'
-      path: '/centre/$roomId'
-      fullPath: '/things/centre/$roomId'
-      preLoaderRoute: typeof ThingsCentreRoomIdRouteImport
-      parentRoute: typeof ThingsRoute
-    }
-    '/pics/$album/$photo': {
-      id: '/pics/$album/$photo'
-      path: '/pics/$album/$photo'
-      fullPath: '/pics/$album/$photo'
-      preLoaderRoute: typeof PicsAlbumPhotoRouteImport
+    '/ticket/$id': {
+      id: '/ticket/$id'
+      path: '/ticket/$id'
+      fullPath: '/ticket/$id'
+      preLoaderRoute: typeof TicketIdRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/api/words/$slug': {
-      id: '/api/words/$slug'
-      path: '/$slug'
-      fullPath: '/api/words/$slug'
-      preLoaderRoute: typeof ApiWordsSlugRouteRouteImport
-      parentRoute: typeof ApiWordsRouteRoute
-    }
-    '/api/upload/verify-pin': {
-      id: '/api/upload/verify-pin'
-      path: '/api/upload/verify-pin'
-      fullPath: '/api/upload/verify-pin'
-      preLoaderRoute: typeof ApiUploadVerifyPinRouteRouteImport
+    '/vault/$slug': {
+      id: '/vault/$slug'
+      path: '/vault/$slug'
+      fullPath: '/vault/$slug'
+      preLoaderRoute: typeof VaultSlugRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/api/transfers/$id': {
-      id: '/api/transfers/$id'
-      path: '/api/transfers/$id'
-      fullPath: '/api/transfers/$id'
-      preLoaderRoute: typeof ApiTransfersIdRouteRouteImport
+    '/words/': {
+      id: '/words/'
+      path: '/words'
+      fullPath: '/words/'
+      preLoaderRoute: typeof WordsIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/api/stripe/webhook': {
-      id: '/api/stripe/webhook'
-      path: '/api/stripe/webhook'
-      fullPath: '/api/stripe/webhook'
-      preLoaderRoute: typeof ApiStripeWebhookRouteRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/drop/presign': {
-      id: '/api/drop/presign'
-      path: '/api/drop/presign'
-      fullPath: '/api/drop/presign'
-      preLoaderRoute: typeof ApiDropPresignRouteRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/drop/finalize': {
-      id: '/api/drop/finalize'
-      path: '/api/drop/finalize'
-      fullPath: '/api/drop/finalize'
-      preLoaderRoute: typeof ApiDropFinalizeRouteRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/download/presign': {
-      id: '/api/download/presign'
-      path: '/api/download/presign'
-      fullPath: '/api/download/presign'
-      preLoaderRoute: typeof ApiDownloadPresignRouteRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/cron/process-transfer-media': {
-      id: '/api/cron/process-transfer-media'
-      path: '/api/cron/process-transfer-media'
-      fullPath: '/api/cron/process-transfer-media'
-      preLoaderRoute: typeof ApiCronProcessTransferMediaRouteRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/cron/deliver-email': {
-      id: '/api/cron/deliver-email'
-      path: '/api/cron/deliver-email'
-      fullPath: '/api/cron/deliver-email'
-      preLoaderRoute: typeof ApiCronDeliverEmailRouteRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/cron/cleanup-word-shares': {
-      id: '/api/cron/cleanup-word-shares'
-      path: '/api/cron/cleanup-word-shares'
-      fullPath: '/api/cron/cleanup-word-shares'
-      preLoaderRoute: typeof ApiCronCleanupWordSharesRouteRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/cron/cleanup-word-media-orphans': {
-      id: '/api/cron/cleanup-word-media-orphans'
-      path: '/api/cron/cleanup-word-media-orphans'
-      fullPath: '/api/cron/cleanup-word-media-orphans'
-      preLoaderRoute: typeof ApiCronCleanupWordMediaOrphansRouteRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/cron/cleanup-transfers': {
-      id: '/api/cron/cleanup-transfers'
-      path: '/api/cron/cleanup-transfers'
-      fullPath: '/api/cron/cleanup-transfers'
-      preLoaderRoute: typeof ApiCronCleanupTransfersRouteRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/cron/cleanup-pitches': {
-      id: '/api/cron/cleanup-pitches'
-      path: '/api/cron/cleanup-pitches'
-      fullPath: '/api/cron/cleanup-pitches'
-      preLoaderRoute: typeof ApiCronCleanupPitchesRouteRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/admin/word-shares': {
-      id: '/api/admin/word-shares'
-      path: '/api/admin/word-shares'
-      fullPath: '/api/admin/word-shares'
-      preLoaderRoute: typeof ApiAdminWordSharesRouteRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/admin/word-media': {
-      id: '/api/admin/word-media'
-      path: '/api/admin/word-media'
-      fullPath: '/api/admin/word-media'
-      preLoaderRoute: typeof ApiAdminWordMediaRouteRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/admin/verify': {
-      id: '/api/admin/verify'
-      path: '/api/admin/verify'
-      fullPath: '/api/admin/verify'
-      preLoaderRoute: typeof ApiAdminVerifyRouteRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/admin/transfers': {
-      id: '/api/admin/transfers'
-      path: '/api/admin/transfers'
-      fullPath: '/api/admin/transfers'
-      preLoaderRoute: typeof ApiAdminTransfersRouteRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/admin/step-up': {
-      id: '/api/admin/step-up'
-      path: '/api/admin/step-up'
-      fullPath: '/api/admin/step-up'
-      preLoaderRoute: typeof ApiAdminStepUpRouteRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/admin/reports': {
-      id: '/api/admin/reports'
-      path: '/api/admin/reports'
-      fullPath: '/api/admin/reports'
-      preLoaderRoute: typeof ApiAdminReportsRouteRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/admin/pitches': {
-      id: '/api/admin/pitches'
-      path: '/api/admin/pitches'
-      fullPath: '/api/admin/pitches'
-      preLoaderRoute: typeof ApiAdminPitchesRouteRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/admin/events': {
-      id: '/api/admin/events'
-      path: '/api/admin/events'
-      fullPath: '/api/admin/events'
-      preLoaderRoute: typeof ApiAdminEventsRouteRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/admin/content-summary': {
-      id: '/api/admin/content-summary'
-      path: '/api/admin/content-summary'
-      fullPath: '/api/admin/content-summary'
-      preLoaderRoute: typeof ApiAdminContentSummaryRouteRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/admin/content-audit': {
-      id: '/api/admin/content-audit'
-      path: '/api/admin/content-audit'
-      fullPath: '/api/admin/content-audit'
-      preLoaderRoute: typeof ApiAdminContentAuditRouteRouteImport
+    '/words/$slug': {
+      id: '/words/$slug'
+      path: '/words/$slug'
+      fullPath: '/words/$slug'
+      preLoaderRoute: typeof WordsSlugRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/admin/albums': {
@@ -2224,151 +1984,333 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiAdminAlbumsRouteRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/things/spelling-party_/$roomId_/present': {
-      id: '/things/spelling-party_/$roomId_/present'
-      path: '/spelling-party/$roomId/present'
-      fullPath: '/things/spelling-party/$roomId/present'
-      preLoaderRoute: typeof ThingsSpellingPartyRoomIdPresentRouteImport
-      parentRoute: typeof ThingsRoute
+    '/api/admin/content-audit': {
+      id: '/api/admin/content-audit'
+      path: '/api/admin/content-audit'
+      fullPath: '/api/admin/content-audit'
+      preLoaderRoute: typeof ApiAdminContentAuditRouteRouteImport
+      parentRoute: typeof rootRouteImport
     }
-    '/things/pitches_/remote_/$roomId': {
-      id: '/things/pitches_/remote_/$roomId'
-      path: '/pitches/remote/$roomId'
-      fullPath: '/things/pitches/remote/$roomId'
-      preLoaderRoute: typeof ThingsPitchesRemoteRoomIdRouteImport
-      parentRoute: typeof ThingsRoute
+    '/api/admin/content-summary': {
+      id: '/api/admin/content-summary'
+      path: '/api/admin/content-summary'
+      fullPath: '/api/admin/content-summary'
+      preLoaderRoute: typeof ApiAdminContentSummaryRouteRouteImport
+      parentRoute: typeof rootRouteImport
     }
-    '/things/pitches_/present_/$roomId': {
-      id: '/things/pitches_/present_/$roomId'
-      path: '/pitches/present/$roomId'
-      fullPath: '/things/pitches/present/$roomId'
-      preLoaderRoute: typeof ThingsPitchesPresentRoomIdRouteImport
-      parentRoute: typeof ThingsRoute
+    '/api/admin/events': {
+      id: '/api/admin/events'
+      path: '/api/admin/events'
+      fullPath: '/api/admin/events'
+      preLoaderRoute: typeof ApiAdminEventsRouteRouteImport
+      parentRoute: typeof rootRouteImport
     }
-    '/things/pitches_/$deckId_/edit': {
-      id: '/things/pitches_/$deckId_/edit'
-      path: '/pitches/$deckId/edit'
-      fullPath: '/things/pitches/$deckId/edit'
-      preLoaderRoute: typeof ThingsPitchesDeckIdEditRouteImport
-      parentRoute: typeof ThingsRoute
+    '/api/admin/pitches': {
+      id: '/api/admin/pitches'
+      path: '/api/admin/pitches'
+      fullPath: '/api/admin/pitches'
+      preLoaderRoute: typeof ApiAdminPitchesRouteRouteImport
+      parentRoute: typeof rootRouteImport
     }
-    '/things/liars_/$roomId_/present': {
-      id: '/things/liars_/$roomId_/present'
-      path: '/liars/$roomId/present'
-      fullPath: '/things/liars/$roomId/present'
-      preLoaderRoute: typeof ThingsLiarsRoomIdPresentRouteImport
-      parentRoute: typeof ThingsRoute
+    '/api/admin/reports': {
+      id: '/api/admin/reports'
+      path: '/api/admin/reports'
+      fullPath: '/api/admin/reports'
+      preLoaderRoute: typeof ApiAdminReportsRouteRouteImport
+      parentRoute: typeof rootRouteImport
     }
-    '/api/words/share/verify': {
-      id: '/api/words/share/verify'
-      path: '/share/verify'
-      fullPath: '/api/words/share/verify'
-      preLoaderRoute: typeof ApiWordsShareVerifyRouteRouteImport
+    '/api/admin/step-up': {
+      id: '/api/admin/step-up'
+      path: '/api/admin/step-up'
+      fullPath: '/api/admin/step-up'
+      preLoaderRoute: typeof ApiAdminStepUpRouteRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/admin/transfers': {
+      id: '/api/admin/transfers'
+      path: '/api/admin/transfers'
+      fullPath: '/api/admin/transfers'
+      preLoaderRoute: typeof ApiAdminTransfersRouteRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/admin/verify': {
+      id: '/api/admin/verify'
+      path: '/api/admin/verify'
+      fullPath: '/api/admin/verify'
+      preLoaderRoute: typeof ApiAdminVerifyRouteRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/admin/word-media': {
+      id: '/api/admin/word-media'
+      path: '/api/admin/word-media'
+      fullPath: '/api/admin/word-media'
+      preLoaderRoute: typeof ApiAdminWordMediaRouteRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/admin/word-shares': {
+      id: '/api/admin/word-shares'
+      path: '/api/admin/word-shares'
+      fullPath: '/api/admin/word-shares'
+      preLoaderRoute: typeof ApiAdminWordSharesRouteRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/cron/cleanup-pitches': {
+      id: '/api/cron/cleanup-pitches'
+      path: '/api/cron/cleanup-pitches'
+      fullPath: '/api/cron/cleanup-pitches'
+      preLoaderRoute: typeof ApiCronCleanupPitchesRouteRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/cron/cleanup-transfers': {
+      id: '/api/cron/cleanup-transfers'
+      path: '/api/cron/cleanup-transfers'
+      fullPath: '/api/cron/cleanup-transfers'
+      preLoaderRoute: typeof ApiCronCleanupTransfersRouteRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/cron/cleanup-word-media-orphans': {
+      id: '/api/cron/cleanup-word-media-orphans'
+      path: '/api/cron/cleanup-word-media-orphans'
+      fullPath: '/api/cron/cleanup-word-media-orphans'
+      preLoaderRoute: typeof ApiCronCleanupWordMediaOrphansRouteRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/cron/cleanup-word-shares': {
+      id: '/api/cron/cleanup-word-shares'
+      path: '/api/cron/cleanup-word-shares'
+      fullPath: '/api/cron/cleanup-word-shares'
+      preLoaderRoute: typeof ApiCronCleanupWordSharesRouteRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/cron/deliver-email': {
+      id: '/api/cron/deliver-email'
+      path: '/api/cron/deliver-email'
+      fullPath: '/api/cron/deliver-email'
+      preLoaderRoute: typeof ApiCronDeliverEmailRouteRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/cron/process-transfer-media': {
+      id: '/api/cron/process-transfer-media'
+      path: '/api/cron/process-transfer-media'
+      fullPath: '/api/cron/process-transfer-media'
+      preLoaderRoute: typeof ApiCronProcessTransferMediaRouteRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/download/presign': {
+      id: '/api/download/presign'
+      path: '/api/download/presign'
+      fullPath: '/api/download/presign'
+      preLoaderRoute: typeof ApiDownloadPresignRouteRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/drop/finalize': {
+      id: '/api/drop/finalize'
+      path: '/api/drop/finalize'
+      fullPath: '/api/drop/finalize'
+      preLoaderRoute: typeof ApiDropFinalizeRouteRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/drop/presign': {
+      id: '/api/drop/presign'
+      path: '/api/drop/presign'
+      fullPath: '/api/drop/presign'
+      preLoaderRoute: typeof ApiDropPresignRouteRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/stripe/webhook': {
+      id: '/api/stripe/webhook'
+      path: '/api/stripe/webhook'
+      fullPath: '/api/stripe/webhook'
+      preLoaderRoute: typeof ApiStripeWebhookRouteRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/transfers/$id': {
+      id: '/api/transfers/$id'
+      path: '/api/transfers/$id'
+      fullPath: '/api/transfers/$id'
+      preLoaderRoute: typeof ApiTransfersIdRouteRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/upload/verify-pin': {
+      id: '/api/upload/verify-pin'
+      path: '/api/upload/verify-pin'
+      fullPath: '/api/upload/verify-pin'
+      preLoaderRoute: typeof ApiUploadVerifyPinRouteRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/words/$slug': {
+      id: '/api/words/$slug'
+      path: '/$slug'
+      fullPath: '/api/words/$slug'
+      preLoaderRoute: typeof ApiWordsSlugRouteRouteImport
       parentRoute: typeof ApiWordsRouteRoute
     }
-    '/api/words/$slug/shares': {
-      id: '/api/words/$slug/shares'
-      path: '/shares'
-      fullPath: '/api/words/$slug/shares'
-      preLoaderRoute: typeof ApiWordsSlugSharesRouteRouteImport
-      parentRoute: typeof ApiWordsSlugRouteRoute
-    }
-    '/api/upload/words/targets': {
-      id: '/api/upload/words/targets'
-      path: '/api/upload/words/targets'
-      fullPath: '/api/upload/words/targets'
-      preLoaderRoute: typeof ApiUploadWordsTargetsRouteRouteImport
+    '/pics/$album/': {
+      id: '/pics/$album/'
+      path: '/pics/$album'
+      fullPath: '/pics/$album/'
+      preLoaderRoute: typeof PicsAlbumIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/api/upload/words/presign': {
-      id: '/api/upload/words/presign'
-      path: '/api/upload/words/presign'
-      fullPath: '/api/upload/words/presign'
-      preLoaderRoute: typeof ApiUploadWordsPresignRouteRouteImport
+    '/pics/$album/$photo': {
+      id: '/pics/$album/$photo'
+      path: '/pics/$album/$photo'
+      fullPath: '/pics/$album/$photo'
+      preLoaderRoute: typeof PicsAlbumPhotoRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/api/upload/words/finalize': {
-      id: '/api/upload/words/finalize'
-      path: '/api/upload/words/finalize'
-      fullPath: '/api/upload/words/finalize'
-      preLoaderRoute: typeof ApiUploadWordsFinalizeRouteRouteImport
+    '/things/centre_/$roomId': {
+      id: '/things/centre_/$roomId'
+      path: '/centre/$roomId'
+      fullPath: '/things/centre/$roomId'
+      preLoaderRoute: typeof ThingsCentreRoomIdRouteImport
+      parentRoute: typeof ThingsRoute
+    }
+    '/things/centre_/dev': {
+      id: '/things/centre_/dev'
+      path: '/centre/dev'
+      fullPath: '/things/centre/dev'
+      preLoaderRoute: typeof ThingsCentreDevRouteImport
+      parentRoute: typeof ThingsRoute
+    }
+    '/things/draw-country_/$roomId': {
+      id: '/things/draw-country_/$roomId'
+      path: '/draw-country/$roomId'
+      fullPath: '/things/draw-country/$roomId'
+      preLoaderRoute: typeof ThingsDrawCountryRoomIdRouteImport
+      parentRoute: typeof ThingsRoute
+    }
+    '/things/judge/$roomId': {
+      id: '/things/judge/$roomId'
+      path: '/judge/$roomId'
+      fullPath: '/things/judge/$roomId'
+      preLoaderRoute: typeof ThingsJudgeRoomIdRouteImport
+      parentRoute: typeof ThingsRoute
+    }
+    '/things/liars_/$roomId': {
+      id: '/things/liars_/$roomId'
+      path: '/liars/$roomId'
+      fullPath: '/things/liars/$roomId'
+      preLoaderRoute: typeof ThingsLiarsRoomIdRouteImport
+      parentRoute: typeof ThingsRoute
+    }
+    '/things/liars_/dev': {
+      id: '/things/liars_/dev'
+      path: '/liars/dev'
+      fullPath: '/things/liars/dev'
+      preLoaderRoute: typeof ThingsLiarsDevRouteImport
+      parentRoute: typeof ThingsRoute
+    }
+    '/things/liars_/phone': {
+      id: '/things/liars_/phone'
+      path: '/liars/phone'
+      fullPath: '/things/liars/phone'
+      preLoaderRoute: typeof ThingsLiarsPhoneRouteImport
+      parentRoute: typeof ThingsRoute
+    }
+    '/things/pitches_/$deckId': {
+      id: '/things/pitches_/$deckId'
+      path: '/pitches/$deckId'
+      fullPath: '/things/pitches/$deckId'
+      preLoaderRoute: typeof ThingsPitchesDeckIdRouteImport
+      parentRoute: typeof ThingsRoute
+    }
+    '/things/pitches_/demo': {
+      id: '/things/pitches_/demo'
+      path: '/pitches/demo'
+      fullPath: '/things/pitches/demo'
+      preLoaderRoute: typeof ThingsPitchesDemoRouteImport
+      parentRoute: typeof ThingsRoute
+    }
+    '/things/pitches_/new': {
+      id: '/things/pitches_/new'
+      path: '/pitches/new'
+      fullPath: '/things/pitches/new'
+      preLoaderRoute: typeof ThingsPitchesNewRouteImport
+      parentRoute: typeof ThingsRoute
+    }
+    '/things/pitches_/present': {
+      id: '/things/pitches_/present'
+      path: '/pitches/present'
+      fullPath: '/things/pitches/present'
+      preLoaderRoute: typeof ThingsPitchesPresentRouteImport
+      parentRoute: typeof ThingsRoute
+    }
+    '/things/play/$roomId': {
+      id: '/things/play/$roomId'
+      path: '/play/$roomId'
+      fullPath: '/things/play/$roomId'
+      preLoaderRoute: typeof ThingsPlayRoomIdRouteImport
+      parentRoute: typeof ThingsRoute
+    }
+    '/things/same-brain_/$roomId': {
+      id: '/things/same-brain_/$roomId'
+      path: '/same-brain/$roomId'
+      fullPath: '/things/same-brain/$roomId'
+      preLoaderRoute: typeof ThingsSameBrainRoomIdRouteImport
+      parentRoute: typeof ThingsRoute
+    }
+    '/things/same-brain_/dev': {
+      id: '/things/same-brain_/dev'
+      path: '/same-brain/dev'
+      fullPath: '/things/same-brain/dev'
+      preLoaderRoute: typeof ThingsSameBrainDevRouteImport
+      parentRoute: typeof ThingsRoute
+    }
+    '/things/spelling-party_/$roomId': {
+      id: '/things/spelling-party_/$roomId'
+      path: '/spelling-party/$roomId'
+      fullPath: '/things/spelling-party/$roomId'
+      preLoaderRoute: typeof ThingsSpellingPartyRoomIdRouteImport
+      parentRoute: typeof ThingsRoute
+    }
+    '/things/twin_/$roomId': {
+      id: '/things/twin_/$roomId'
+      path: '/twin/$roomId'
+      fullPath: '/things/twin/$roomId'
+      preLoaderRoute: typeof ThingsTwinRoomIdRouteImport
+      parentRoute: typeof ThingsRoute
+    }
+    '/things/twin_/dev': {
+      id: '/things/twin_/dev'
+      path: '/twin/dev'
+      fullPath: '/things/twin/dev'
+      preLoaderRoute: typeof ThingsTwinDevRouteImport
+      parentRoute: typeof ThingsRoute
+    }
+    '/api/admin/albums/$slug': {
+      id: '/api/admin/albums/$slug'
+      path: '/$slug'
+      fullPath: '/api/admin/albums/$slug'
+      preLoaderRoute: typeof ApiAdminAlbumsSlugRouteRouteImport
+      parentRoute: typeof ApiAdminAlbumsRouteRoute
+    }
+    '/api/admin/events/$slug': {
+      id: '/api/admin/events/$slug'
+      path: '/$slug'
+      fullPath: '/api/admin/events/$slug'
+      preLoaderRoute: typeof ApiAdminEventsSlugRouteRouteImport
+      parentRoute: typeof ApiAdminEventsRouteRoute
+    }
+    '/api/admin/tokens/revoke': {
+      id: '/api/admin/tokens/revoke'
+      path: '/api/admin/tokens/revoke'
+      fullPath: '/api/admin/tokens/revoke'
+      preLoaderRoute: typeof ApiAdminTokensRevokeRouteRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/api/upload/transfer/presign': {
-      id: '/api/upload/transfer/presign'
-      path: '/api/upload/transfer/presign'
-      fullPath: '/api/upload/transfer/presign'
-      preLoaderRoute: typeof ApiUploadTransferPresignRouteRouteImport
+    '/api/admin/tokens/sessions': {
+      id: '/api/admin/tokens/sessions'
+      path: '/api/admin/tokens/sessions'
+      fullPath: '/api/admin/tokens/sessions'
+      preLoaderRoute: typeof ApiAdminTokensSessionsRouteRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/api/upload/transfer/finalize': {
-      id: '/api/upload/transfer/finalize'
-      path: '/api/upload/transfer/finalize'
-      fullPath: '/api/upload/transfer/finalize'
-      preLoaderRoute: typeof ApiUploadTransferFinalizeRouteRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/transfers/$id/events': {
-      id: '/api/transfers/$id/events'
-      path: '/events'
-      fullPath: '/api/transfers/$id/events'
-      preLoaderRoute: typeof ApiTransfersIdEventsRouteRouteImport
-      parentRoute: typeof ApiTransfersIdRouteRoute
-    }
-    '/api/events/$slug/ics': {
-      id: '/api/events/$slug/ics'
-      path: '/api/events/$slug/ics'
-      fullPath: '/api/events/$slug/ics'
-      preLoaderRoute: typeof ApiEventsSlugIcsRouteRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/best-dressed/voting/open': {
-      id: '/api/best-dressed/voting/open'
-      path: '/voting/open'
-      fullPath: '/api/best-dressed/voting/open'
-      preLoaderRoute: typeof ApiBestDressedVotingOpenRouteRouteImport
-      parentRoute: typeof ApiBestDressedRouteRoute
-    }
-    '/api/best-dressed/codes/revoke-all': {
-      id: '/api/best-dressed/codes/revoke-all'
-      path: '/codes/revoke-all'
-      fullPath: '/api/best-dressed/codes/revoke-all'
-      preLoaderRoute: typeof ApiBestDressedCodesRevokeAllRouteRouteImport
-      parentRoute: typeof ApiBestDressedRouteRoute
-    }
-    '/api/best-dressed/codes/mint-batch': {
-      id: '/api/best-dressed/codes/mint-batch'
-      path: '/codes/mint-batch'
-      fullPath: '/api/best-dressed/codes/mint-batch'
-      preLoaderRoute: typeof ApiBestDressedCodesMintBatchRouteRouteImport
-      parentRoute: typeof ApiBestDressedRouteRoute
-    }
-    '/api/admin/word-shares/cleanup': {
-      id: '/api/admin/word-shares/cleanup'
-      path: '/cleanup'
-      fullPath: '/api/admin/word-shares/cleanup'
-      preLoaderRoute: typeof ApiAdminWordSharesCleanupRouteRouteImport
-      parentRoute: typeof ApiAdminWordSharesRouteRoute
-    }
-    '/api/admin/word-media/orphans': {
-      id: '/api/admin/word-media/orphans'
-      path: '/orphans'
-      fullPath: '/api/admin/word-media/orphans'
-      preLoaderRoute: typeof ApiAdminWordMediaOrphansRouteRouteImport
-      parentRoute: typeof ApiAdminWordMediaRouteRoute
-    }
-    '/api/admin/transfers/process-media': {
-      id: '/api/admin/transfers/process-media'
-      path: '/process-media'
-      fullPath: '/api/admin/transfers/process-media'
-      preLoaderRoute: typeof ApiAdminTransfersProcessMediaRouteRouteImport
-      parentRoute: typeof ApiAdminTransfersRouteRoute
-    }
-    '/api/admin/transfers/nuke': {
-      id: '/api/admin/transfers/nuke'
-      path: '/nuke'
-      fullPath: '/api/admin/transfers/nuke'
-      preLoaderRoute: typeof ApiAdminTransfersNukeRouteRouteImport
+    '/api/admin/transfers/$id': {
+      id: '/api/admin/transfers/$id'
+      path: '/$id'
+      fullPath: '/api/admin/transfers/$id'
+      preLoaderRoute: typeof ApiAdminTransfersIdRouteRouteImport
       parentRoute: typeof ApiAdminTransfersRouteRoute
     }
     '/api/admin/transfers/cleanup': {
@@ -2378,109 +2320,172 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiAdminTransfersCleanupRouteRouteImport
       parentRoute: typeof ApiAdminTransfersRouteRoute
     }
-    '/api/admin/transfers/$id': {
-      id: '/api/admin/transfers/$id'
-      path: '/$id'
-      fullPath: '/api/admin/transfers/$id'
-      preLoaderRoute: typeof ApiAdminTransfersIdRouteRouteImport
+    '/api/admin/transfers/nuke': {
+      id: '/api/admin/transfers/nuke'
+      path: '/nuke'
+      fullPath: '/api/admin/transfers/nuke'
+      preLoaderRoute: typeof ApiAdminTransfersNukeRouteRouteImport
       parentRoute: typeof ApiAdminTransfersRouteRoute
     }
-    '/api/admin/tokens/sessions': {
-      id: '/api/admin/tokens/sessions'
-      path: '/api/admin/tokens/sessions'
-      fullPath: '/api/admin/tokens/sessions'
-      preLoaderRoute: typeof ApiAdminTokensSessionsRouteRouteImport
+    '/api/admin/transfers/process-media': {
+      id: '/api/admin/transfers/process-media'
+      path: '/process-media'
+      fullPath: '/api/admin/transfers/process-media'
+      preLoaderRoute: typeof ApiAdminTransfersProcessMediaRouteRouteImport
+      parentRoute: typeof ApiAdminTransfersRouteRoute
+    }
+    '/api/admin/word-media/orphans': {
+      id: '/api/admin/word-media/orphans'
+      path: '/orphans'
+      fullPath: '/api/admin/word-media/orphans'
+      preLoaderRoute: typeof ApiAdminWordMediaOrphansRouteRouteImport
+      parentRoute: typeof ApiAdminWordMediaRouteRoute
+    }
+    '/api/admin/word-shares/cleanup': {
+      id: '/api/admin/word-shares/cleanup'
+      path: '/cleanup'
+      fullPath: '/api/admin/word-shares/cleanup'
+      preLoaderRoute: typeof ApiAdminWordSharesCleanupRouteRouteImport
+      parentRoute: typeof ApiAdminWordSharesRouteRoute
+    }
+    '/api/best-dressed/codes/mint-batch': {
+      id: '/api/best-dressed/codes/mint-batch'
+      path: '/codes/mint-batch'
+      fullPath: '/api/best-dressed/codes/mint-batch'
+      preLoaderRoute: typeof ApiBestDressedCodesMintBatchRouteRouteImport
+      parentRoute: typeof ApiBestDressedRouteRoute
+    }
+    '/api/best-dressed/codes/revoke-all': {
+      id: '/api/best-dressed/codes/revoke-all'
+      path: '/codes/revoke-all'
+      fullPath: '/api/best-dressed/codes/revoke-all'
+      preLoaderRoute: typeof ApiBestDressedCodesRevokeAllRouteRouteImport
+      parentRoute: typeof ApiBestDressedRouteRoute
+    }
+    '/api/best-dressed/voting/open': {
+      id: '/api/best-dressed/voting/open'
+      path: '/voting/open'
+      fullPath: '/api/best-dressed/voting/open'
+      preLoaderRoute: typeof ApiBestDressedVotingOpenRouteRouteImport
+      parentRoute: typeof ApiBestDressedRouteRoute
+    }
+    '/api/email/webhook/resend': {
+      id: '/api/email/webhook/resend'
+      path: '/api/email/webhook/resend'
+      fullPath: '/api/email/webhook/resend'
+      preLoaderRoute: typeof ApiEmailWebhookResendRouteRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/api/admin/tokens/revoke': {
-      id: '/api/admin/tokens/revoke'
-      path: '/api/admin/tokens/revoke'
-      fullPath: '/api/admin/tokens/revoke'
-      preLoaderRoute: typeof ApiAdminTokensRevokeRouteRouteImport
+    '/api/events/$slug/ics': {
+      id: '/api/events/$slug/ics'
+      path: '/api/events/$slug/ics'
+      fullPath: '/api/events/$slug/ics'
+      preLoaderRoute: typeof ApiEventsSlugIcsRouteRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/api/admin/events/$slug': {
-      id: '/api/admin/events/$slug'
-      path: '/$slug'
-      fullPath: '/api/admin/events/$slug'
-      preLoaderRoute: typeof ApiAdminEventsSlugRouteRouteImport
-      parentRoute: typeof ApiAdminEventsRouteRoute
-    }
-    '/api/admin/albums/$slug': {
-      id: '/api/admin/albums/$slug'
-      path: '/$slug'
-      fullPath: '/api/admin/albums/$slug'
-      preLoaderRoute: typeof ApiAdminAlbumsSlugRouteRouteImport
-      parentRoute: typeof ApiAdminAlbumsRouteRoute
-    }
-    '/api/words/$slug/shares/$id': {
-      id: '/api/words/$slug/shares/$id'
-      path: '/$id'
-      fullPath: '/api/words/$slug/shares/$id'
-      preLoaderRoute: typeof ApiWordsSlugSharesIdRouteRouteImport
-      parentRoute: typeof ApiWordsSlugSharesRouteRoute
-    }
-    '/api/words/$slug/media/$filename': {
-      id: '/api/words/$slug/media/$filename'
-      path: '/media/$filename'
-      fullPath: '/api/words/$slug/media/$filename'
-      preLoaderRoute: typeof ApiWordsSlugMediaFilenameRouteRouteImport
-      parentRoute: typeof ApiWordsSlugRouteRoute
-    }
-    '/api/upload/transfer/append/presign': {
-      id: '/api/upload/transfer/append/presign'
-      path: '/api/upload/transfer/append/presign'
-      fullPath: '/api/upload/transfer/append/presign'
-      preLoaderRoute: typeof ApiUploadTransferAppendPresignRouteRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/upload/transfer/append/finalize': {
-      id: '/api/upload/transfer/append/finalize'
-      path: '/api/upload/transfer/append/finalize'
-      fullPath: '/api/upload/transfer/append/finalize'
-      preLoaderRoute: typeof ApiUploadTransferAppendFinalizeRouteRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/transfers/$id/files/$fileId': {
-      id: '/api/transfers/$id/files/$fileId'
-      path: '/files/$fileId'
-      fullPath: '/api/transfers/$id/files/$fileId'
-      preLoaderRoute: typeof ApiTransfersIdFilesFileIdRouteRouteImport
+    '/api/transfers/$id/events': {
+      id: '/api/transfers/$id/events'
+      path: '/events'
+      fullPath: '/api/transfers/$id/events'
+      preLoaderRoute: typeof ApiTransfersIdEventsRouteRouteImport
       parentRoute: typeof ApiTransfersIdRouteRoute
     }
-    '/api/admin/tokens/sessions/$jti': {
-      id: '/api/admin/tokens/sessions/$jti'
-      path: '/$jti'
-      fullPath: '/api/admin/tokens/sessions/$jti'
-      preLoaderRoute: typeof ApiAdminTokensSessionsJtiRouteRouteImport
-      parentRoute: typeof ApiAdminTokensSessionsRouteRoute
+    '/api/upload/transfer/finalize': {
+      id: '/api/upload/transfer/finalize'
+      path: '/api/upload/transfer/finalize'
+      fullPath: '/api/upload/transfer/finalize'
+      preLoaderRoute: typeof ApiUploadTransferFinalizeRouteRouteImport
+      parentRoute: typeof rootRouteImport
     }
-    '/api/admin/events/$slug/tickets': {
-      id: '/api/admin/events/$slug/tickets'
-      path: '/tickets'
-      fullPath: '/api/admin/events/$slug/tickets'
-      preLoaderRoute: typeof ApiAdminEventsSlugTicketsRouteRouteImport
-      parentRoute: typeof ApiAdminEventsSlugRouteRoute
+    '/api/upload/transfer/presign': {
+      id: '/api/upload/transfer/presign'
+      path: '/api/upload/transfer/presign'
+      fullPath: '/api/upload/transfer/presign'
+      preLoaderRoute: typeof ApiUploadTransferPresignRouteRouteImport
+      parentRoute: typeof rootRouteImport
     }
-    '/api/admin/events/$slug/scanner-links': {
-      id: '/api/admin/events/$slug/scanner-links'
-      path: '/scanner-links'
-      fullPath: '/api/admin/events/$slug/scanner-links'
-      preLoaderRoute: typeof ApiAdminEventsSlugScannerLinksRouteRouteImport
-      parentRoute: typeof ApiAdminEventsSlugRouteRoute
+    '/api/upload/words/finalize': {
+      id: '/api/upload/words/finalize'
+      path: '/api/upload/words/finalize'
+      fullPath: '/api/upload/words/finalize'
+      preLoaderRoute: typeof ApiUploadWordsFinalizeRouteRouteImport
+      parentRoute: typeof rootRouteImport
     }
-    '/api/admin/events/$slug/guest-requests': {
-      id: '/api/admin/events/$slug/guest-requests'
-      path: '/guest-requests'
-      fullPath: '/api/admin/events/$slug/guest-requests'
-      preLoaderRoute: typeof ApiAdminEventsSlugGuestRequestsRouteRouteImport
-      parentRoute: typeof ApiAdminEventsSlugRouteRoute
+    '/api/upload/words/presign': {
+      id: '/api/upload/words/presign'
+      path: '/api/upload/words/presign'
+      fullPath: '/api/upload/words/presign'
+      preLoaderRoute: typeof ApiUploadWordsPresignRouteRouteImport
+      parentRoute: typeof rootRouteImport
     }
-    '/api/admin/events/$slug/email': {
-      id: '/api/admin/events/$slug/email'
-      path: '/email'
-      fullPath: '/api/admin/events/$slug/email'
-      preLoaderRoute: typeof ApiAdminEventsSlugEmailRouteRouteImport
+    '/api/upload/words/targets': {
+      id: '/api/upload/words/targets'
+      path: '/api/upload/words/targets'
+      fullPath: '/api/upload/words/targets'
+      preLoaderRoute: typeof ApiUploadWordsTargetsRouteRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/words/$slug/shares': {
+      id: '/api/words/$slug/shares'
+      path: '/shares'
+      fullPath: '/api/words/$slug/shares'
+      preLoaderRoute: typeof ApiWordsSlugSharesRouteRouteImport
+      parentRoute: typeof ApiWordsSlugRouteRoute
+    }
+    '/api/words/share/verify': {
+      id: '/api/words/share/verify'
+      path: '/share/verify'
+      fullPath: '/api/words/share/verify'
+      preLoaderRoute: typeof ApiWordsShareVerifyRouteRouteImport
+      parentRoute: typeof ApiWordsRouteRoute
+    }
+    '/things/liars_/$roomId_/present': {
+      id: '/things/liars_/$roomId_/present'
+      path: '/liars/$roomId/present'
+      fullPath: '/things/liars/$roomId/present'
+      preLoaderRoute: typeof ThingsLiarsRoomIdPresentRouteImport
+      parentRoute: typeof ThingsRoute
+    }
+    '/things/pitches_/$deckId_/edit': {
+      id: '/things/pitches_/$deckId_/edit'
+      path: '/pitches/$deckId/edit'
+      fullPath: '/things/pitches/$deckId/edit'
+      preLoaderRoute: typeof ThingsPitchesDeckIdEditRouteImport
+      parentRoute: typeof ThingsRoute
+    }
+    '/things/pitches_/present_/$roomId': {
+      id: '/things/pitches_/present_/$roomId'
+      path: '/pitches/present/$roomId'
+      fullPath: '/things/pitches/present/$roomId'
+      preLoaderRoute: typeof ThingsPitchesPresentRoomIdRouteImport
+      parentRoute: typeof ThingsRoute
+    }
+    '/things/pitches_/remote_/$roomId': {
+      id: '/things/pitches_/remote_/$roomId'
+      path: '/pitches/remote/$roomId'
+      fullPath: '/things/pitches/remote/$roomId'
+      preLoaderRoute: typeof ThingsPitchesRemoteRoomIdRouteImport
+      parentRoute: typeof ThingsRoute
+    }
+    '/things/spelling-party_/$roomId_/present': {
+      id: '/things/spelling-party_/$roomId_/present'
+      path: '/spelling-party/$roomId/present'
+      fullPath: '/things/spelling-party/$roomId/present'
+      preLoaderRoute: typeof ThingsSpellingPartyRoomIdPresentRouteImport
+      parentRoute: typeof ThingsRoute
+    }
+    '/api/admin/albums/$slug/cover': {
+      id: '/api/admin/albums/$slug/cover'
+      path: '/cover'
+      fullPath: '/api/admin/albums/$slug/cover'
+      preLoaderRoute: typeof ApiAdminAlbumsSlugCoverRouteRouteImport
+      parentRoute: typeof ApiAdminAlbumsSlugRouteRoute
+    }
+    '/api/admin/events/$slug/checkpoints': {
+      id: '/api/admin/events/$slug/checkpoints'
+      path: '/checkpoints'
+      fullPath: '/api/admin/events/$slug/checkpoints'
+      preLoaderRoute: typeof ApiAdminEventsSlugCheckpointsRouteRouteImport
       parentRoute: typeof ApiAdminEventsSlugRouteRoute
     }
     '/api/admin/events/$slug/drop': {
@@ -2490,18 +2495,81 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiAdminEventsSlugDropRouteRouteImport
       parentRoute: typeof ApiAdminEventsSlugRouteRoute
     }
-    '/api/admin/events/$slug/checkpoints': {
-      id: '/api/admin/events/$slug/checkpoints'
-      path: '/checkpoints'
-      fullPath: '/api/admin/events/$slug/checkpoints'
-      preLoaderRoute: typeof ApiAdminEventsSlugCheckpointsRouteRouteImport
+    '/api/admin/events/$slug/email': {
+      id: '/api/admin/events/$slug/email'
+      path: '/email'
+      fullPath: '/api/admin/events/$slug/email'
+      preLoaderRoute: typeof ApiAdminEventsSlugEmailRouteRouteImport
       parentRoute: typeof ApiAdminEventsSlugRouteRoute
     }
-    '/api/admin/albums/$slug/cover': {
-      id: '/api/admin/albums/$slug/cover'
-      path: '/cover'
-      fullPath: '/api/admin/albums/$slug/cover'
-      preLoaderRoute: typeof ApiAdminAlbumsSlugCoverRouteRouteImport
+    '/api/admin/events/$slug/guest-requests': {
+      id: '/api/admin/events/$slug/guest-requests'
+      path: '/guest-requests'
+      fullPath: '/api/admin/events/$slug/guest-requests'
+      preLoaderRoute: typeof ApiAdminEventsSlugGuestRequestsRouteRouteImport
+      parentRoute: typeof ApiAdminEventsSlugRouteRoute
+    }
+    '/api/admin/events/$slug/scanner-links': {
+      id: '/api/admin/events/$slug/scanner-links'
+      path: '/scanner-links'
+      fullPath: '/api/admin/events/$slug/scanner-links'
+      preLoaderRoute: typeof ApiAdminEventsSlugScannerLinksRouteRouteImport
+      parentRoute: typeof ApiAdminEventsSlugRouteRoute
+    }
+    '/api/admin/events/$slug/tickets': {
+      id: '/api/admin/events/$slug/tickets'
+      path: '/tickets'
+      fullPath: '/api/admin/events/$slug/tickets'
+      preLoaderRoute: typeof ApiAdminEventsSlugTicketsRouteRouteImport
+      parentRoute: typeof ApiAdminEventsSlugRouteRoute
+    }
+    '/api/admin/tokens/sessions/$jti': {
+      id: '/api/admin/tokens/sessions/$jti'
+      path: '/$jti'
+      fullPath: '/api/admin/tokens/sessions/$jti'
+      preLoaderRoute: typeof ApiAdminTokensSessionsJtiRouteRouteImport
+      parentRoute: typeof ApiAdminTokensSessionsRouteRoute
+    }
+    '/api/transfers/$id/files/$fileId': {
+      id: '/api/transfers/$id/files/$fileId'
+      path: '/files/$fileId'
+      fullPath: '/api/transfers/$id/files/$fileId'
+      preLoaderRoute: typeof ApiTransfersIdFilesFileIdRouteRouteImport
+      parentRoute: typeof ApiTransfersIdRouteRoute
+    }
+    '/api/upload/transfer/append/finalize': {
+      id: '/api/upload/transfer/append/finalize'
+      path: '/api/upload/transfer/append/finalize'
+      fullPath: '/api/upload/transfer/append/finalize'
+      preLoaderRoute: typeof ApiUploadTransferAppendFinalizeRouteRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/upload/transfer/append/presign': {
+      id: '/api/upload/transfer/append/presign'
+      path: '/api/upload/transfer/append/presign'
+      fullPath: '/api/upload/transfer/append/presign'
+      preLoaderRoute: typeof ApiUploadTransferAppendPresignRouteRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/words/$slug/media/$filename': {
+      id: '/api/words/$slug/media/$filename'
+      path: '/media/$filename'
+      fullPath: '/api/words/$slug/media/$filename'
+      preLoaderRoute: typeof ApiWordsSlugMediaFilenameRouteRouteImport
+      parentRoute: typeof ApiWordsSlugRouteRoute
+    }
+    '/api/words/$slug/shares/$id': {
+      id: '/api/words/$slug/shares/$id'
+      path: '/$id'
+      fullPath: '/api/words/$slug/shares/$id'
+      preLoaderRoute: typeof ApiWordsSlugSharesIdRouteRouteImport
+      parentRoute: typeof ApiWordsSlugSharesRouteRoute
+    }
+    '/api/admin/albums/$slug/photos/$photoId': {
+      id: '/api/admin/albums/$slug/photos/$photoId'
+      path: '/photos/$photoId'
+      fullPath: '/api/admin/albums/$slug/photos/$photoId'
+      preLoaderRoute: typeof ApiAdminAlbumsSlugPhotosPhotoIdRouteRouteImport
       parentRoute: typeof ApiAdminAlbumsSlugRouteRoute
     }
     '/api/transfers/$id/media/$fileId/$variant': {
@@ -2510,13 +2578,6 @@ declare module '@tanstack/react-router' {
       fullPath: '/api/transfers/$id/media/$fileId/$variant'
       preLoaderRoute: typeof ApiTransfersIdMediaFileIdVariantRouteRouteImport
       parentRoute: typeof ApiTransfersIdRouteRoute
-    }
-    '/api/admin/albums/$slug/photos/$photoId': {
-      id: '/api/admin/albums/$slug/photos/$photoId'
-      path: '/photos/$photoId'
-      fullPath: '/api/admin/albums/$slug/photos/$photoId'
-      preLoaderRoute: typeof ApiAdminAlbumsSlugPhotosPhotoIdRouteRouteImport
-      parentRoute: typeof ApiAdminAlbumsSlugRouteRoute
     }
   }
 }
@@ -2800,6 +2861,7 @@ const ApiAdminTokensSessionsRouteRouteWithChildren =
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   BestDressedRoute: BestDressedRoute,
+  ContactRoute: ContactRoute,
   ExamRoute: ExamRoute,
   FeedDotxmlRoute: FeedDotxmlRoute,
   FontTestRoute: FontTestRoute,
@@ -2807,6 +2869,7 @@ const rootRouteChildren: RootRouteChildren = {
   IcebreakerRoute: IcebreakerRoute,
   PartyRoute: PartyRoute,
   PitchNightRoute: PitchNightRoute,
+  PrivacyRoute: PrivacyRoute,
   SitemapDotxmlRoute: SitemapDotxmlRoute,
   ThingsRoute: ThingsRouteWithChildren,
   UploadRoute: UploadRoute,
@@ -2857,6 +2920,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiAdminTokensRevokeRouteRoute: ApiAdminTokensRevokeRouteRoute,
   ApiAdminTokensSessionsRouteRoute:
     ApiAdminTokensSessionsRouteRouteWithChildren,
+  ApiEmailWebhookResendRouteRoute: ApiEmailWebhookResendRouteRoute,
   ApiEventsSlugIcsRouteRoute: ApiEventsSlugIcsRouteRoute,
   ApiUploadTransferFinalizeRouteRoute: ApiUploadTransferFinalizeRouteRoute,
   ApiUploadTransferPresignRouteRoute: ApiUploadTransferPresignRouteRoute,

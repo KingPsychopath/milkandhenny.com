@@ -16,6 +16,7 @@ import { checkDatabase, isDatabaseConfigured } from "@/lib/platform/postgres.ser
 import { getDirectRedisConfig } from "@/lib/platform/redis-direct.server";
 import { hasMediaPublicUrl } from "@/lib/shared/config";
 import { getRuntimeMetadata } from "@/lib/platform/runtime-metadata.server";
+import { getDatabaseBootState } from "@/lib/platform/database-readiness.server";
 
 const REQUIRED_AUTH_VARIABLES = ["AUTH_SECRET", "ADMIN_PASSWORD", "UPLOAD_PIN"] as const;
 
@@ -33,6 +34,7 @@ function getConfiguredCapabilities(): Capability[] {
   const emailCapability = describeEmailCapability();
   const paymentsCapability = describePaymentsCapability();
   const databaseConfigured = isDatabaseConfigured();
+  const databaseBoot = getDatabaseBootState();
   const mediaMode = getMediaProcessorMode();
   const mediaRole = getMediaRole();
   // The worker claims jobs over the direct Redis connection, so that is the
@@ -97,11 +99,15 @@ function getConfiguredCapabilities(): Capability[] {
     {
       id: "events-database",
       label: "events and ticketing",
-      status: databaseConfigured ? "available" : "unavailable",
+      status: databaseConfigured && databaseBoot.status === "ready" ? "available" : "unavailable",
       required: mediaRole === "web",
-      detail: databaseConfigured
-        ? "Events, tickets and redemptions are configured."
-        : "DATABASE_URL is not set; events and ticketing cannot run.",
+      detail: !databaseConfigured
+        ? "DATABASE_URL is not set; events and ticketing cannot run."
+        : databaseBoot.status === "failed"
+          ? `Database migrations failed (${databaseBoot.reason}).`
+          : databaseBoot.status === "ready"
+            ? "Events, tickets and redemptions are configured."
+            : "Database migrations have not completed.",
     },
     {
       id: "payments",
@@ -124,11 +130,14 @@ function getConfiguredCapabilities(): Capability[] {
     {
       id: "ticket-email",
       label: "transactional email",
-      status: emailCapability.configured ? "available" : "degraded",
+      status:
+        emailCapability.configured && emailCapability.feedbackConfigured ? "available" : "degraded",
       required: false,
-      detail: emailCapability.configured
-        ? `Ticket and studio emails send via ${emailCapability.provider} from ${emailCapability.senders.tickets} and ${emailCapability.senders.studio}; replies go to ${emailCapability.replyTo}.`
-        : "Ticket and studio email channels are not fully configured.",
+      detail: !emailCapability.configured
+        ? "Ticket and studio email channels are not fully configured."
+        : !emailCapability.feedbackConfigured
+          ? "Resend can send, but signed bounce and complaint feedback is not configured."
+          : `Ticket and studio emails send via ${emailCapability.provider} from ${emailCapability.senders.tickets} and ${emailCapability.senders.studio}; replies go to ${emailCapability.replyTo}.`,
     },
     {
       id: "multiplayer-realtime",

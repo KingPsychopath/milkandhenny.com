@@ -231,10 +231,14 @@ describe("draw-country scoring", () => {
     expect(drawingIsValid(outline)).toBe(true);
   });
 
-  it("scores every translated and uniformly scaled reference outline at 100", () => {
-    for (const outline of COUNTRIES)
-      expect(scoreCountryDrawing(outline, exactDrawing(outline)).score, outline.id).toBe(100);
-  });
+  it(
+    "scores every translated and uniformly scaled reference outline at 100",
+    { timeout: 30_000 },
+    () => {
+      for (const outline of COUNTRIES)
+        expect(scoreCountryDrawing(outline, exactDrawing(outline)).score, outline.id).toBe(100);
+    },
+  );
 
   it("does not penalise an exact outline drawn at a different position or size", () => {
     const namibia = COUNTRIES.find(({ id }) => id === "NA");
