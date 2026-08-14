@@ -1,12 +1,14 @@
-import { createHash } from "node:crypto";
-import { Webhook } from "svix";
+import { createHash, timingSafeEqual } from "node:crypto";
 
 import { log } from "./logger.server";
 import { isDatabaseConfigured, transaction } from "./postgres.server";
 
-const HANDLED_EVENTS = new Set(["email.bounced", "email.complained", "email.suppressed"] as const);
+const HANDLED_EVENTS = new Set([
+  "cf.email.sending.message.bounced",
+  "cf.email.sending.message.complained",
+] as const);
 
-type FeedbackType = "email.bounced" | "email.complained" | "email.suppressed";
+type FeedbackType = "cf.email.sending.message.bounced" | "cf.email.sending.message.complained";
 
 export type EmailFeedbackEvent = {
   eventId: string;
@@ -26,52 +28,48 @@ function asRecord(value: unknown): Record<string, unknown> | null {
     : null;
 }
 
-function parseVerifiedEvent(value: unknown, eventId: string): EmailFeedbackEvent | null {
+export function authenticateCloudflareEmailRelay(request: Request): boolean {
+  const secret = process.env.EMAIL_EVENT_SECRET?.trim();
+  const authorization = request.headers.get("authorization");
+  if (!secret || !authorization?.startsWith("Bearer ")) return false;
+  const supplied = authorization.slice("Bearer ".length).trim();
+  const expectedDigest = createHash("sha256").update(secret).digest();
+  const suppliedDigest = createHash("sha256").update(supplied).digest();
+  return timingSafeEqual(expectedDigest, suppliedDigest);
+}
+
+export function parseCloudflareEmailFeedback(
+  value: unknown,
+  eventId: string,
+  occurredAt: Date,
+): EmailFeedbackEvent | null {
   const event = asRecord(value);
   const type = event?.type;
   if (typeof type !== "string" || !HANDLED_EVENTS.has(type as FeedbackType)) return null;
 
-  const data = asRecord(event?.data);
-  const occurredAt = typeof event?.created_at === "string" ? new Date(event.created_at) : null;
-  const recipients = Array.isArray(data?.to)
-    ? data.to.filter((recipient): recipient is string => typeof recipient === "string")
-    : [];
+  const source = asRecord(event?.source);
+  const payload = asRecord(event?.payload);
   if (
-    !occurredAt ||
-    Number.isNaN(occurredAt.valueOf()) ||
-    typeof data?.email_id !== "string" ||
-    recipients.length === 0
+    !eventId ||
+    source?.type !== "email.sending" ||
+    !Number.isFinite(occurredAt.valueOf()) ||
+    typeof payload?.messageId !== "string" ||
+    typeof payload?.recipient !== "string"
   ) {
-    throw new Error("Email feedback payload is invalid");
+    throw new Error("Cloudflare email feedback payload is invalid");
   }
 
   return {
     eventId,
     type: type as FeedbackType,
     occurredAt,
-    providerMessageId: data.email_id,
-    recipients,
+    providerMessageId: payload.messageId,
+    recipients: [payload.recipient],
   };
 }
 
-export function verifyResendFeedback(
-  payload: string,
-  headers: { id: string; timestamp: string; signature: string },
-): EmailFeedbackEvent | null {
-  const secret = process.env.RESEND_WEBHOOK_SECRET?.trim();
-  if (!secret) throw new Error("Resend webhook signing secret is not configured");
-  const verified = new Webhook(secret).verify(payload, {
-    "svix-id": headers.id,
-    "svix-timestamp": headers.timestamp,
-    "svix-signature": headers.signature,
-  });
-  return parseVerifiedEvent(verified, headers.id);
-}
-
 function suppressionReason(type: FeedbackType): string {
-  if (type === "email.bounced") return "bounced";
-  if (type === "email.complained") return "complained";
-  return "provider_suppressed";
+  return type === "cf.email.sending.message.bounced" ? "bounced" : "complained";
 }
 
 export async function recordEmailFeedback(event: EmailFeedbackEvent): Promise<void> {
@@ -110,11 +108,11 @@ export async function recordEmailFeedback(event: EmailFeedbackEvent): Promise<vo
           set status = 'failed', provider_status = 422,
               last_error = $2, failed_at = $3, updated_at = now()
         where provider_message_id = $1 and status = 'accepted'`,
-      [event.providerMessageId, `Provider reported ${event.type}`, event.occurredAt],
+      [event.providerMessageId, `Cloudflare reported ${event.type}`, event.occurredAt],
     );
   });
 
-  log.warn("email.feedback", "Email recipient suppressed", {
+  log.warn("email.feedback", "Cloudflare email recipient suppressed", {
     eventId: event.eventId,
     type: event.type,
     providerMessageId: event.providerMessageId,
@@ -122,4 +120,4 @@ export async function recordEmailFeedback(event: EmailFeedbackEvent): Promise<vo
   });
 }
 
-export const __emailFeedbackTesting = { hashRecipient, parseVerifiedEvent };
+export const __emailFeedbackTesting = { hashRecipient };

@@ -38,7 +38,6 @@ describeWithDatabase("email outbox (postgres)", () => {
     expect(pending[0]?.count).toBe("1");
     expect(pending[0]?.message).toMatchObject({ to: "person@example.com" });
 
-    vi.stubEnv("EMAIL_PROVIDER", "cloudflare");
     vi.stubEnv("EMAIL_API_KEY", "test-key");
     vi.stubEnv("EMAIL_ACCOUNT_ID", "test-account");
     vi.stubEnv("EMAIL_TICKETS_FROM", "tickets@example.com");
@@ -71,7 +70,7 @@ describeWithDatabase("email outbox (postgres)", () => {
 
     await recordEmailFeedback({
       eventId: "feedback-1",
-      type: "email.bounced",
+      type: "cf.email.sending.message.bounced",
       occurredAt: new Date("2026-08-14T12:00:00.000Z"),
       providerMessageId: "provider-1",
       recipients: ["PERSON@example.com"],

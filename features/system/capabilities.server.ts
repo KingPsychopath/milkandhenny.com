@@ -136,7 +136,7 @@ function getConfiguredCapabilities(): Capability[] {
       detail: !emailCapability.configured
         ? "Ticket and studio email channels are not fully configured."
         : !emailCapability.feedbackConfigured
-          ? "Resend can send, but signed bounce and complaint feedback is not configured."
+          ? "Cloudflare can send, but its delivery-event relay is not configured."
           : `Ticket and studio emails send via ${emailCapability.provider} from ${emailCapability.senders.tickets} and ${emailCapability.senders.studio}; replies go to ${emailCapability.replyTo}.`,
     },
     {

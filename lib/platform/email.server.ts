@@ -1,28 +1,24 @@
 import { log } from "./logger.server";
 
 /**
- * Provider-neutral transactional email.
+ * Cloudflare transactional email.
  *
  * Mirrors the posture of `redis.server.ts` and `r2.server.ts`: the
- * application contract is `EMAIL_*`, and the provider behind it is a
- * deployment detail. Cloudflare Email Service is the default; Resend is a
- * drop-in alternative selected by `EMAIL_PROVIDER`.
+ * application contract is `EMAIL_*`, while Cloudflare account details stay
+ * inside this platform adapter.
  *
  * Ticket delivery should be sent from a dedicated subdomain so bulk or
  * announcement mail can never damage the reputation of the domain carrying
  * someone's entry to an event.
  */
 
-export type EmailProvider = "cloudflare" | "resend";
 export type EmailChannel = "tickets" | "studio";
 
 export type EmailConfig = {
-  provider: EmailProvider;
   apiKey: string;
   sender: { address: string; name: string };
   replyTo: string;
-  /** Cloudflare only: the account that owns the sending domain. */
-  accountId?: string;
+  accountId: string;
 };
 
 /** Inline image, referenced from HTML as `cid:<contentId>`. */
@@ -49,11 +45,6 @@ export type SendEmailResult =
   | { ok: true; id: string | null }
   | { ok: false; status: number; error: string };
 
-function readProvider(): EmailProvider {
-  const raw = process.env.EMAIL_PROVIDER?.trim().toLowerCase();
-  return raw === "resend" ? "resend" : "cloudflare";
-}
-
 const CHANNEL_SENDERS: Record<EmailChannel, { environmentVariable: string; name: string }> = {
   tickets: {
     environmentVariable: "EMAIL_TICKETS_FROM",
@@ -72,14 +63,12 @@ function getEmailConfig(channel: EmailChannel): EmailConfig | null {
   const address = process.env[sender.environmentVariable]?.trim();
   if (!apiKey || !address || !replyTo) return null;
 
-  const provider = readProvider();
   // Falls back to the R2 account only as a convenience; a dedicated,
   // email-scoped token and account id remain the recommended setup.
   const accountId = process.env.EMAIL_ACCOUNT_ID?.trim() || process.env.R2_ACCOUNT_ID?.trim();
-  if (provider === "cloudflare" && !accountId) return null;
+  if (!accountId) return null;
 
   return {
-    provider,
     apiKey,
     sender: { address, name: sender.name },
     replyTo,
@@ -91,7 +80,7 @@ function getEmailConfig(channel: EmailChannel): EmailConfig | null {
 export function describeEmailCapability(): {
   configured: boolean;
   feedbackConfigured: boolean;
-  provider: EmailProvider | null;
+  provider: "cloudflare" | null;
   senders: Record<EmailChannel, string | null>;
   replyTo: string | null;
 } {
@@ -99,10 +88,8 @@ export function describeEmailCapability(): {
   const studio = getEmailConfig("studio");
   return {
     configured: tickets !== null && studio !== null,
-    feedbackConfigured:
-      (tickets?.provider ?? studio?.provider) !== "resend" ||
-      Boolean(process.env.RESEND_WEBHOOK_SECRET?.trim()),
-    provider: tickets?.provider ?? studio?.provider ?? null,
+    feedbackConfigured: Boolean(process.env.EMAIL_EVENT_SECRET?.trim()),
+    provider: tickets || studio ? "cloudflare" : null,
     senders: {
       tickets: tickets?.sender.address ?? null,
       studio: studio?.sender.address ?? null,
@@ -210,46 +197,6 @@ async function sendViaCloudflare(
   return interpretCloudflareResponse(status, payload, message.to);
 }
 
-async function sendViaResend(
-  config: EmailConfig,
-  message: EmailMessage,
-  deliveryKey?: string,
-): Promise<SendEmailResult> {
-  const { status, payload } = await postJson(
-    "https://api.resend.com/emails",
-    config.apiKey,
-    {
-      from: `${config.sender.name} <${config.sender.address}>`,
-      to: [message.to],
-      subject: message.subject,
-      text: message.text,
-      ...(message.html ? { html: message.html } : {}),
-      reply_to: config.replyTo,
-      ...(message.attachments?.length
-        ? {
-            attachments: message.attachments.map((attachment) => ({
-              content: attachment.content,
-              filename: attachment.filename,
-              content_type: attachment.type,
-              ...(attachment.contentId ? { content_id: attachment.contentId } : {}),
-            })),
-          }
-        : {}),
-    },
-    deliveryKey ? { "Idempotency-Key": deliveryKey.slice(0, 256) } : {},
-  );
-
-  if (status >= 200 && status < 300) {
-    const record = asRecord(payload);
-    return { ok: true, id: typeof record?.id === "string" ? record.id : null };
-  }
-
-  const record = asRecord(payload);
-  const message_ =
-    typeof record?.message === "string" ? record.message : "Email provider rejected the message";
-  return { ok: false, status, error: message_ };
-}
-
 /**
  * Send one transactional message.
  *
@@ -272,14 +219,11 @@ export async function deliverEmailNow(
   }
 
   try {
-    const result =
-      config.provider === "resend"
-        ? await sendViaResend(config, message, deliveryKey)
-        : await sendViaCloudflare(config, message, deliveryKey);
+    const result = await sendViaCloudflare(config, message, deliveryKey);
 
     if (!result.ok) {
       log.error("email.send", "Email provider rejected the message", {
-        provider: config.provider,
+        provider: "cloudflare",
         channel: message.channel,
         status: result.status,
         error: result.error,
@@ -290,7 +234,7 @@ export async function deliverEmailNow(
     log.error(
       "email.send",
       "Email delivery threw",
-      { provider: config.provider, channel: message.channel },
+      { provider: "cloudflare", channel: message.channel },
       error,
     );
     return { ok: false, status: 502, error: "Email delivery failed" };

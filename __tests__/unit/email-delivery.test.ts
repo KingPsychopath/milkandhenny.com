@@ -9,7 +9,6 @@ afterEach(() => {
 });
 
 function configureCloudflare() {
-  vi.stubEnv("EMAIL_PROVIDER", "cloudflare");
   vi.stubEnv("EMAIL_API_KEY", "test-key");
   vi.stubEnv("EMAIL_ACCOUNT_ID", "test-account");
   vi.stubEnv("EMAIL_TICKETS_FROM", "tickets@example.com");
@@ -97,33 +96,6 @@ describe("email provider delivery", () => {
       ok: false,
       status: 422,
       error: "Recipient address permanently bounced",
-    });
-  });
-
-  it("gives Resend the outbox idempotency key", async () => {
-    vi.stubEnv("EMAIL_PROVIDER", "resend");
-    vi.stubEnv("EMAIL_API_KEY", "test-key");
-    vi.stubEnv("EMAIL_STUDIO_FROM", "studio@example.com");
-    vi.stubEnv("EMAIL_REPLY_TO", "reply@example.com");
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValue(new Response(JSON.stringify({ id: "resend-1" }), { status: 200 }));
-    vi.stubGlobal("fetch", fetchMock);
-
-    await expect(
-      deliverEmailNow(
-        {
-          channel: "studio",
-          to: "person@example.com",
-          subject: "Your pitch",
-          text: "Open your pitch.",
-        },
-        "pitches:welcome:p_123",
-      ),
-    ).resolves.toEqual({ ok: true, id: "resend-1" });
-
-    expect(fetchMock.mock.calls[0]?.[1]).toMatchObject({
-      headers: expect.objectContaining({ "Idempotency-Key": "pitches:welcome:p_123" }),
     });
   });
 });

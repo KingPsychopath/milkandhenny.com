@@ -107,7 +107,7 @@ import { Route as ApiAdminWordSharesCleanupRouteRouteImport } from './routes/api
 import { Route as ApiBestDressedCodesMintBatchRouteRouteImport } from './routes/api/best-dressed/codes/mint-batch/route'
 import { Route as ApiBestDressedCodesRevokeAllRouteRouteImport } from './routes/api/best-dressed/codes/revoke-all/route'
 import { Route as ApiBestDressedVotingOpenRouteRouteImport } from './routes/api/best-dressed/voting/open/route'
-import { Route as ApiEmailWebhookResendRouteRouteImport } from './routes/api/email/webhook/resend/route'
+import { Route as ApiEmailEventsCloudflareRouteRouteImport } from './routes/api/email/events/cloudflare/route'
 import { Route as ApiEventsSlugIcsRouteRouteImport } from './routes/api/events/$slug/ics/route'
 import { Route as ApiTransfersIdEventsRouteRouteImport } from './routes/api/transfers/$id/events/route'
 import { Route as ApiUploadTransferFinalizeRouteRouteImport } from './routes/api/upload/transfer/finalize/route'
@@ -648,10 +648,10 @@ const ApiBestDressedVotingOpenRouteRoute =
     path: '/voting/open',
     getParentRoute: () => ApiBestDressedRouteRoute,
   } as any)
-const ApiEmailWebhookResendRouteRoute =
-  ApiEmailWebhookResendRouteRouteImport.update({
-    id: '/api/email/webhook/resend',
-    path: '/api/email/webhook/resend',
+const ApiEmailEventsCloudflareRouteRoute =
+  ApiEmailEventsCloudflareRouteRouteImport.update({
+    id: '/api/email/events/cloudflare',
+    path: '/api/email/events/cloudflare',
     getParentRoute: () => rootRouteImport,
   } as any)
 const ApiEventsSlugIcsRouteRoute = ApiEventsSlugIcsRouteRouteImport.update({
@@ -925,7 +925,7 @@ export interface FileRoutesByFullPath {
   '/api/best-dressed/codes/mint-batch': typeof ApiBestDressedCodesMintBatchRouteRoute
   '/api/best-dressed/codes/revoke-all': typeof ApiBestDressedCodesRevokeAllRouteRoute
   '/api/best-dressed/voting/open': typeof ApiBestDressedVotingOpenRouteRoute
-  '/api/email/webhook/resend': typeof ApiEmailWebhookResendRouteRoute
+  '/api/email/events/cloudflare': typeof ApiEmailEventsCloudflareRouteRoute
   '/api/events/$slug/ics': typeof ApiEventsSlugIcsRouteRoute
   '/api/transfers/$id/events': typeof ApiTransfersIdEventsRouteRoute
   '/api/upload/transfer/finalize': typeof ApiUploadTransferFinalizeRouteRoute
@@ -1055,7 +1055,7 @@ export interface FileRoutesByTo {
   '/api/best-dressed/codes/mint-batch': typeof ApiBestDressedCodesMintBatchRouteRoute
   '/api/best-dressed/codes/revoke-all': typeof ApiBestDressedCodesRevokeAllRouteRoute
   '/api/best-dressed/voting/open': typeof ApiBestDressedVotingOpenRouteRoute
-  '/api/email/webhook/resend': typeof ApiEmailWebhookResendRouteRoute
+  '/api/email/events/cloudflare': typeof ApiEmailEventsCloudflareRouteRoute
   '/api/events/$slug/ics': typeof ApiEventsSlugIcsRouteRoute
   '/api/transfers/$id/events': typeof ApiTransfersIdEventsRouteRoute
   '/api/upload/transfer/finalize': typeof ApiUploadTransferFinalizeRouteRoute
@@ -1186,7 +1186,7 @@ export interface FileRoutesById {
   '/api/best-dressed/codes/mint-batch': typeof ApiBestDressedCodesMintBatchRouteRoute
   '/api/best-dressed/codes/revoke-all': typeof ApiBestDressedCodesRevokeAllRouteRoute
   '/api/best-dressed/voting/open': typeof ApiBestDressedVotingOpenRouteRoute
-  '/api/email/webhook/resend': typeof ApiEmailWebhookResendRouteRoute
+  '/api/email/events/cloudflare': typeof ApiEmailEventsCloudflareRouteRoute
   '/api/events/$slug/ics': typeof ApiEventsSlugIcsRouteRoute
   '/api/transfers/$id/events': typeof ApiTransfersIdEventsRouteRoute
   '/api/upload/transfer/finalize': typeof ApiUploadTransferFinalizeRouteRoute
@@ -1318,7 +1318,7 @@ export interface FileRouteTypes {
     | '/api/best-dressed/codes/mint-batch'
     | '/api/best-dressed/codes/revoke-all'
     | '/api/best-dressed/voting/open'
-    | '/api/email/webhook/resend'
+    | '/api/email/events/cloudflare'
     | '/api/events/$slug/ics'
     | '/api/transfers/$id/events'
     | '/api/upload/transfer/finalize'
@@ -1448,7 +1448,7 @@ export interface FileRouteTypes {
     | '/api/best-dressed/codes/mint-batch'
     | '/api/best-dressed/codes/revoke-all'
     | '/api/best-dressed/voting/open'
-    | '/api/email/webhook/resend'
+    | '/api/email/events/cloudflare'
     | '/api/events/$slug/ics'
     | '/api/transfers/$id/events'
     | '/api/upload/transfer/finalize'
@@ -1578,7 +1578,7 @@ export interface FileRouteTypes {
     | '/api/best-dressed/codes/mint-batch'
     | '/api/best-dressed/codes/revoke-all'
     | '/api/best-dressed/voting/open'
-    | '/api/email/webhook/resend'
+    | '/api/email/events/cloudflare'
     | '/api/events/$slug/ics'
     | '/api/transfers/$id/events'
     | '/api/upload/transfer/finalize'
@@ -1670,7 +1670,7 @@ export interface RootRouteChildren {
   PicsAlbumIndexRoute: typeof PicsAlbumIndexRoute
   ApiAdminTokensRevokeRouteRoute: typeof ApiAdminTokensRevokeRouteRoute
   ApiAdminTokensSessionsRouteRoute: typeof ApiAdminTokensSessionsRouteRouteWithChildren
-  ApiEmailWebhookResendRouteRoute: typeof ApiEmailWebhookResendRouteRoute
+  ApiEmailEventsCloudflareRouteRoute: typeof ApiEmailEventsCloudflareRouteRoute
   ApiEventsSlugIcsRouteRoute: typeof ApiEventsSlugIcsRouteRoute
   ApiUploadTransferFinalizeRouteRoute: typeof ApiUploadTransferFinalizeRouteRoute
   ApiUploadTransferPresignRouteRoute: typeof ApiUploadTransferPresignRouteRoute
@@ -2369,11 +2369,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiBestDressedVotingOpenRouteRouteImport
       parentRoute: typeof ApiBestDressedRouteRoute
     }
-    '/api/email/webhook/resend': {
-      id: '/api/email/webhook/resend'
-      path: '/api/email/webhook/resend'
-      fullPath: '/api/email/webhook/resend'
-      preLoaderRoute: typeof ApiEmailWebhookResendRouteRouteImport
+    '/api/email/events/cloudflare': {
+      id: '/api/email/events/cloudflare'
+      path: '/api/email/events/cloudflare'
+      fullPath: '/api/email/events/cloudflare'
+      preLoaderRoute: typeof ApiEmailEventsCloudflareRouteRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/events/$slug/ics': {
@@ -2920,7 +2920,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiAdminTokensRevokeRouteRoute: ApiAdminTokensRevokeRouteRoute,
   ApiAdminTokensSessionsRouteRoute:
     ApiAdminTokensSessionsRouteRouteWithChildren,
-  ApiEmailWebhookResendRouteRoute: ApiEmailWebhookResendRouteRoute,
+  ApiEmailEventsCloudflareRouteRoute: ApiEmailEventsCloudflareRouteRoute,
   ApiEventsSlugIcsRouteRoute: ApiEventsSlugIcsRouteRoute,
   ApiUploadTransferFinalizeRouteRoute: ApiUploadTransferFinalizeRouteRoute,
   ApiUploadTransferPresignRouteRoute: ApiUploadTransferPresignRouteRoute,

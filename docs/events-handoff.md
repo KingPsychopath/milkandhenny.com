@@ -83,6 +83,10 @@ Two, with different blast radii:
 `EMAIL_REPLY_TO=hello@milkandhenny.com` are set. `EMAIL_ACCOUNT_ID` falls back
 to `R2_ACCOUNT_ID`.
 
+Before launch, configure the Cloudflare Queue relay in
+[`cloudflare-email-events.md`](./cloudflare-email-events.md) and set
+`EMAIL_EVENT_SECRET` on Railway and the consumer Worker.
+
 ### 5. Finish rotating the leaked secrets
 
 `ADMIN_PASSWORD`, `UPLOAD_PIN`, `AUTH_SECRET`, `R2_SECRET_KEY`, `REDIS_REST_TOKEN` and `CRON_SECRET` were printed into a chat transcript on 29 July by a `railway variables` call that returned values, not just names. Nothing hostile happened; rotate the short human-memorable ones at minimum.

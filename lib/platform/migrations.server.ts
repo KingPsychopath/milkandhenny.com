@@ -484,7 +484,10 @@ const MIGRATIONS: Migration[] = [
       create table email_feedback_events (
         event_id            text not null,
         event_type          text not null
-                            check (event_type in ('email.bounced', 'email.complained', 'email.suppressed')),
+                            check (event_type in (
+                              'cf.email.sending.message.bounced',
+                              'cf.email.sending.message.complained'
+                            )),
         provider_message_id text not null,
         recipient_hash      text not null check (char_length(recipient_hash) = 64),
         occurred_at         timestamptz not null,
@@ -495,7 +498,7 @@ const MIGRATIONS: Migration[] = [
       create table email_suppressions (
         recipient_hash      text primary key check (char_length(recipient_hash) = 64),
         reason              text not null
-                            check (reason in ('bounced', 'complained', 'provider_suppressed')),
+                            check (reason in ('bounced', 'complained')),
         provider_message_id text not null,
         first_occurred_at   timestamptz not null,
         last_occurred_at    timestamptz not null,

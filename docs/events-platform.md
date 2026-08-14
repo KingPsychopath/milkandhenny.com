@@ -110,7 +110,7 @@ Stripe sends the payment receipt. We send only the ticket. That halves send volu
 
 ## Email
 
-Provider-neutral adapter, same pattern as the Redis and S3 adapters. Cloudflare Email Service first — already on their DNS and R2, auto-configures SPF/DKIM/DMARC, $5/mo Workers Paid with 3,000 included. Resend is the fallback.
+Cloudflare Email Service, behind the same platform-adapter boundary as Redis and S3. It is already on the project's DNS and R2 account and configures SPF, DKIM, and DMARC.
 
 Two Cloudflare specifics:
 

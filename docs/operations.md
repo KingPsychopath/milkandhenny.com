@@ -25,6 +25,10 @@ Use `/health` for the safe human view. Use the admin-protected `/api/debug` only
 
 Follow [disaster-recovery.md](./disaster-recovery.md). Run the PostgreSQL archive daily and a restore drill before launch and every quarter. Keep the archive outside the deployment account. Configure a separate copy of permanent object storage; private transfers and live rooms expire and are not restored.
 
+## Email delivery events
+
+Follow [cloudflare-email-events.md](./cloudflare-email-events.md). Cloudflare Queue events are the authoritative path for bounce and complaint suppression. The initial REST response proves only that Cloudflare accepted the message.
+
 ## Runtime limits
 
 - Start the web process at 512 MB–1 GB RAM and 0.5–1 vCPU.
