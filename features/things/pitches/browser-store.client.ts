@@ -1,6 +1,12 @@
 import type { BinaryFiles } from "@excalidraw/excalidraw/types";
 
-import { PITCH_SLIDE_LIMIT_RANGE, type PitchDocument, type PitchOwnerCredential } from "./types";
+import { mergePitchDocuments } from "./merge";
+import {
+  PITCH_SLIDE_LIMIT_RANGE,
+  type OwnedPitchDeck,
+  type PitchDocument,
+  type PitchOwnerCredential,
+} from "./types";
 import { parsePitchDocument } from "./validation";
 
 const DATABASE = "milk-and-henny-pitches";
@@ -13,8 +19,25 @@ export interface LocalPitchDraft {
   title: string;
   document: PitchDocument;
   files: BinaryFiles;
-  serverVersion: number;
+  pendingSync: boolean;
   updatedAt: string;
+}
+
+export function reconcileLocalPitchDraft(
+  remote: OwnedPitchDeck,
+  local: LocalPitchDraft | undefined,
+): { title: string; document: PitchDocument; pendingSync: boolean } {
+  if (!local?.pendingSync) {
+    return { title: remote.title, document: remote.document, pendingSync: false };
+  }
+  const document = mergePitchDocuments(remote.document, local.document);
+  const pendingSync =
+    local.title !== remote.title || JSON.stringify(document) !== JSON.stringify(remote.document);
+  return {
+    title: pendingSync ? local.title : remote.title,
+    document: pendingSync ? document : remote.document,
+    pendingSync,
+  };
 }
 
 function openDatabase(): Promise<IDBDatabase> {
@@ -104,8 +127,7 @@ export async function readLocalPitchDraft(deckId: string): Promise<LocalPitchDra
   if (
     source.deckId !== deckId ||
     typeof source.title !== "string" ||
-    typeof source.serverVersion !== "number" ||
-    !Number.isInteger(source.serverVersion) ||
+    typeof source.pendingSync !== "boolean" ||
     typeof source.updatedAt !== "string" ||
     !document.ok ||
     !source.files ||
@@ -119,7 +141,7 @@ export async function readLocalPitchDraft(deckId: string): Promise<LocalPitchDra
     title: source.title,
     document: document.document,
     files: source.files as BinaryFiles,
-    serverVersion: source.serverVersion,
+    pendingSync: source.pendingSync,
     updatedAt: source.updatedAt,
   };
 }
@@ -141,7 +163,12 @@ export async function rememberTokenFromHash(
     ownerName: existing?.ownerName ?? fallbackName,
     updatedAt: new Date().toISOString(),
   };
-  await rememberPitchCredential(credential);
-  history.replaceState(null, "", `${window.location.pathname}${window.location.search}`);
+  const remembered = await rememberPitchCredential(credential).then(
+    () => true,
+    () => false,
+  );
+  if (remembered) {
+    history.replaceState(null, "", `${window.location.pathname}${window.location.search}`);
+  }
   return credential;
 }

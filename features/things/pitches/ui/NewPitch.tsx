@@ -1,5 +1,5 @@
 import { Link, useNavigate } from "@tanstack/react-router";
-import { useState } from "react";
+import { useRef, useState } from "react";
 
 import { createPitchFn } from "../pitches.functions";
 import { rememberPitchCredential, saveLocalPitchDraft } from "../browser-store.client";
@@ -17,12 +17,13 @@ export function NewPitch({ maximumSlides }: { maximumSlides: number }) {
   const [title, setTitle] = useState("");
   const [state, setState] = useState<"idle" | "saving" | "error">("idle");
   const [error, setError] = useState("");
+  const createRequest = useRef<{ id: string; ownerToken: string } | undefined>(undefined);
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
     setState("saving");
-    const ownerToken = randomId("k_");
-    const createRequestId = randomId("c_");
+    createRequest.current ??= { id: randomId("c_"), ownerToken: randomId("k_") };
+    const { id: createRequestId, ownerToken } = createRequest.current;
     const document = createEmptyPitchDocument();
     try {
       const result = await createPitchFn({
@@ -53,7 +54,7 @@ export function NewPitch({ maximumSlides }: { maximumSlides: number }) {
           title: result.value.deck.title,
           document,
           files: {},
-          serverVersion: result.value.deck.version,
+          pendingSync: false,
           updatedAt: result.value.deck.updatedAt,
         }),
       ]);

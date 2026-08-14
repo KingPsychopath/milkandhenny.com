@@ -55,6 +55,12 @@ export async function applySchema(): Promise<void> {
   }
 
   await query(`
+    drop table if exists pitch_audit_events cascade;
+    drop table if exists pitch_mutations cascade;
+    drop table if exists pitch_deck_backups cascade;
+    drop table if exists pitch_assets cascade;
+    drop table if exists pitch_access_tokens cascade;
+    drop table if exists pitch_decks cascade;
     drop table if exists event_drops cascade;
     drop table if exists guest_requests cascade;
     drop table if exists scanner_link_devices cascade;
@@ -73,7 +79,9 @@ export async function applySchema(): Promise<void> {
 /** Fast per-test cleanup that keeps the schema in place. */
 export async function truncateAll(): Promise<void> {
   const { query } = await import("@/lib/platform/postgres.server");
-  await query(`truncate checkout_sessions, tickets, ticket_types, events restart identity cascade`);
+  await query(
+    `truncate pitch_decks, checkout_sessions, tickets, ticket_types, events restart identity cascade`,
+  );
   // New tables land via cascade from events/tickets, but be explicit so a
   // future FK loosening cannot quietly leak state between tests.
   await query(

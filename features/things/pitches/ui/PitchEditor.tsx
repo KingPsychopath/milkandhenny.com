@@ -13,6 +13,7 @@ import { activateSiteUpdate, useSiteUpdateState } from "@/features/offline/clien
 import { useUpdateReloadSafety } from "@/features/offline/update-safety.client";
 import {
   readLocalPitchDraft,
+  reconcileLocalPitchDraft,
   rememberPitchCredential,
   rememberTokenFromHash,
   saveLocalPitchDraft,
@@ -336,11 +337,16 @@ export function PitchEditor({
         setActiveSlideId(local.document.slides.find((slide) => !slide.deletedAt)?.id ?? "");
         setPhase("ready");
         setSyncState("local");
+        if (local.pendingSync) {
+          setRevision(1);
+          revisionRef.current = 1;
+        }
       }
       if (!remembered) {
         if (!local) setPhase("missing");
         return;
       }
+      const loadedRevision = revisionRef.current;
       try {
         const result = await readOwnedPitchFn({
           data: { deckId, ownerToken: remembered.token },
@@ -351,24 +357,35 @@ export function PitchEditor({
         }
         const remote = result.value;
         const remoteFiles = await loadPitchFiles(remote.assets);
-        const localIsAhead =
-          local &&
-          (local.serverVersion > remote.version ||
-            (local.serverVersion === remote.version &&
-              (local.title !== remote.title ||
-                JSON.stringify(local.document) !== JSON.stringify(remote.document))));
+        if (revisionRef.current !== loadedRevision) {
+          setDeck(remote);
+          setDocumentState((current) =>
+            current ? mergePitchDocuments(remote.document, current) : remote.document,
+          );
+          setFiles((current) => ({ ...remoteFiles, ...current }));
+          setSceneEpoch((value) => value + 1);
+          setSyncState("local");
+          setPhase("ready");
+          return;
+        }
+        const workingCopy = reconcileLocalPitchDraft(remote, local);
         setDeck(remote);
-        if (!localIsAhead) {
-          setTitle(remote.title);
-          setDocumentState(remote.document);
+        if (!workingCopy.pendingSync) {
+          setTitle(workingCopy.title);
+          setDocumentState(workingCopy.document);
           setFiles({ ...remoteFiles, ...(local?.files ?? {}) });
-          setActiveSlideId(remote.document.slides.find((slide) => !slide.deletedAt)?.id ?? "");
+          setActiveSlideId(workingCopy.document.slides.find((slide) => !slide.deletedAt)?.id ?? "");
           setSyncState("saved");
         } else {
-          setFiles({ ...remoteFiles, ...local.files });
+          setTitle(workingCopy.title);
+          setDocumentState(workingCopy.document);
+          setFiles({ ...remoteFiles, ...(local?.files ?? {}) });
+          setActiveSlideId(workingCopy.document.slides.find((slide) => !slide.deletedAt)?.id ?? "");
           setSyncState("local");
-          setRevision(1);
-          revisionRef.current = 1;
+          if (revisionRef.current === 0) {
+            setRevision(1);
+            revisionRef.current = 1;
+          }
         }
         setPhase("ready");
       } catch {
@@ -395,7 +412,7 @@ export function PitchEditor({
         title,
         document: documentState,
         files,
-        serverVersion: deck?.version ?? 1,
+        pendingSync: revision > lastSyncedRevision.current,
         updatedAt: new Date().toISOString(),
       })
         .then(() => {

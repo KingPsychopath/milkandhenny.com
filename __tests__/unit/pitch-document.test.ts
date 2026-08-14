@@ -3,6 +3,10 @@ import type { ExcalidrawElement } from "@excalidraw/excalidraw/element/types";
 
 import { mergePitchDocuments } from "@/features/things/pitches/merge";
 import {
+  reconcileLocalPitchDraft,
+  type LocalPitchDraft,
+} from "@/features/things/pitches/browser-store.client";
+import {
   PITCH_DOCUMENT_SCHEMA_VERSION,
   PITCH_SLIDE_DEFAULT_DURATION_MS,
   type PitchDocument,
@@ -135,5 +139,69 @@ describe("pitch documents", () => {
     expect(parsePitchDocument(document, 6).ok).toBe(true);
     document.slides[0].audioCues[0].playForMs = 7_500;
     expect(parsePitchDocument(document, 6).ok).toBe(false);
+  });
+
+  it("recovers unsynced local edits after another device advances the server", () => {
+    const remoteDocument = documentWith([element("remote_object", 1, 20)]);
+    const localDocument = documentWith([element("local_object", 1, 10)]);
+    const remote = {
+      id: "p_1234567890123456789012",
+      title: "Remote title",
+      ownerName: "Alice",
+      ownerEmail: "alice@example.com",
+      lifecycle: "active" as const,
+      document: remoteDocument,
+      version: 3,
+      updatedAt: new Date().toISOString(),
+      draftExpiresAt: new Date().toISOString(),
+      assets: [],
+    };
+    const local: LocalPitchDraft = {
+      deckId: remote.id,
+      title: "Local title",
+      document: localDocument,
+      files: {},
+      pendingSync: true,
+      updatedAt: new Date().toISOString(),
+    };
+
+    const recovered = reconcileLocalPitchDraft(remote, local);
+
+    expect(recovered.pendingSync).toBe(true);
+    expect(recovered.title).toBe("Local title");
+    expect(recovered.document.slides[0].elements.map(({ id }) => id)).toEqual([
+      "local_object",
+      "remote_object",
+    ]);
+  });
+
+  it("uses the server copy when the local draft has no pending work", () => {
+    const remoteDocument = documentWith([element("remote_object", 1, 20)]);
+    const remote = {
+      id: "p_1234567890123456789012",
+      title: "Remote title",
+      ownerName: "Alice",
+      ownerEmail: "alice@example.com",
+      lifecycle: "active" as const,
+      document: remoteDocument,
+      version: 3,
+      updatedAt: new Date().toISOString(),
+      draftExpiresAt: new Date().toISOString(),
+      assets: [],
+    };
+    const local: LocalPitchDraft = {
+      deckId: remote.id,
+      title: "Stale title",
+      document: documentWith([element("stale_object", 1, 10)]),
+      files: {},
+      pendingSync: false,
+      updatedAt: new Date().toISOString(),
+    };
+
+    expect(reconcileLocalPitchDraft(remote, local)).toEqual({
+      title: remote.title,
+      document: remote.document,
+      pendingSync: false,
+    });
   });
 });

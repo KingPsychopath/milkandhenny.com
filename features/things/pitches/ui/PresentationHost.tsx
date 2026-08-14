@@ -41,14 +41,19 @@ export function PresentationHost({ roomId }: { roomId: string }) {
   useEffect(() => {
     if (!snapshot?.selectedDeckId) {
       setPitch(undefined);
+      setFiles({});
       return;
     }
     let cancelled = false;
+    setPitch(undefined);
+    setFiles({});
     void readPublishedPitchFn({ data: { deckId: snapshot.selectedDeckId } }).then(
       async (loaded) => {
         if (!loaded || cancelled) return;
+        const loadedFiles = await loadPitchFiles(loaded.assets);
+        if (cancelled) return;
         setPitch(loaded);
-        setFiles(await loadPitchFiles(loaded.assets));
+        setFiles(loadedFiles);
       },
     );
     return () => {

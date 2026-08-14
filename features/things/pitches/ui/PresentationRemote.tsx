@@ -47,12 +47,16 @@ export function PresentationRemote({ roomId }: { roomId: string }) {
 
   useEffect(() => {
     if (self?.status !== "approved") return;
+    let cancelled = false;
     const timer = window.setTimeout(() => {
-      void listPublishedPitchesFn({ data: { search: query } }).then((result) =>
-        setPitches(result.pitches),
-      );
+      void listPublishedPitchesFn({ data: { search: query } }).then((result) => {
+        if (!cancelled) setPitches(result.pitches);
+      });
     }, 220);
-    return () => window.clearTimeout(timer);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
   }, [query, self?.status]);
 
   async function join(event: React.FormEvent) {
