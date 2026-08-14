@@ -220,7 +220,7 @@ export const finalisePitchAssetFn = createServerFn({ method: "POST" })
 
 export const recoverPitchAccessFn = createServerFn({ method: "POST" })
   .validator((data: { email: string }) => data)
-  .handler(async ({ data }): Promise<OperationResult<{ sent: boolean }>> => {
+  .handler(async ({ data }): Promise<OperationResult<{ queued: boolean }>> => {
     const email = data.email.trim().toLowerCase();
     if (!validEmail(email)) return invalid("That email address doesn't look right");
     const allowed = await runPitchesResult(

@@ -25,7 +25,7 @@ ticketing marketplace. This roadmap orders work by what can lose money or hold u
 - Undo an accidental check-in from the attendee row.
 - Configurable location visibility: `holders only` by default, or `public`, applied consistently to
   the page, calendar file, email, metadata, and maps.
-- Durable transactional-email outbox with retries and delivery state.
+- Durable transactional-email outbox with retries and provider-acceptance state. Completed.
 - CSV export for door backup, reconciliation, and attendee support.
 
 ## Phase 3 — discovery and ownership

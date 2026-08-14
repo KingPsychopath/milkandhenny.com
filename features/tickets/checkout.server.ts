@@ -14,6 +14,7 @@ import { formatMoney, ticketTypeSalesState } from "@/features/events/types";
 import { buildEventUrl, ticketPath } from "@/features/events/routes";
 import {
   getSoldCounts,
+  listRefundedTicketsForPayment,
   listTicketsForCheckout,
   listTicketsForOrder,
   markOrderRefunded,
@@ -328,9 +329,11 @@ export async function reconcilePaymentRefunds(
 
   const refundRef = succeeded.at(-1)?.id ?? paymentIntentId;
   const tickets = await markOrderRefunded(paymentIntentId, refundRef, amountRefundedMinor);
-  if (tickets.length > 0) {
-    const event = await getEvent(tickets[0].eventSlug);
-    if (event) await sendRefundEmail({ event, tickets });
+  const confirmationTickets =
+    tickets.length > 0 ? tickets : await listRefundedTicketsForPayment(paymentIntentId, refundRef);
+  if (confirmationTickets.length > 0) {
+    const event = await getEvent(confirmationTickets[0].eventSlug);
+    if (event) await sendRefundEmail({ event, tickets: confirmationTickets });
   }
   return { amountRefundedMinor, tickets };
 }
@@ -373,7 +376,20 @@ export async function fulfilCheckout(sessionId: string, origin: string): Promise
       [sessionId],
     );
     if (!existing) return { outcome: "unknown-session" };
-    if (existing.status === "fulfilled") return { outcome: "already-issued" };
+    if (existing.status === "fulfilled") {
+      const tickets = await listTicketsForCheckout(sessionId);
+      if (tickets.length > 0) {
+        const event = await getEvent(tickets[0].eventSlug);
+        if (event)
+          await sendTicketEmail({
+            event,
+            tickets,
+            origin,
+            idempotencyKey: `tickets:issued:${tickets[0].orderId}`,
+          });
+      }
+      return { outcome: "already-issued" };
+    }
     if (["expired", "refunded", "refund_pending", "disputed"].includes(existing.status)) {
       return { outcome: "cancelled", status: existing.status };
     }
@@ -491,7 +507,13 @@ export async function fulfilCheckout(sessionId: string, origin: string): Promise
       [sessionId, orderId],
     );
     const event = await getEvent(claimed.event_slug);
-    if (event) await sendTicketEmail({ event, tickets: recoveredTickets, origin });
+    if (event)
+      await sendTicketEmail({
+        event,
+        tickets: recoveredTickets,
+        origin,
+        idempotencyKey: `tickets:issued:${orderId}`,
+      });
     log.info("checkout.fulfil", "Recovered tickets after interrupted fulfilment", {
       sessionId,
       count: recoveredTickets.length,
@@ -577,7 +599,12 @@ export async function fulfilCheckout(sessionId: string, origin: string): Promise
 
   // Delivery failure must not fail fulfilment — the tickets exist and the
   // resend flow can recover them.
-  await sendTicketEmail({ event: issued.value.event, tickets: issued.value.tickets, origin });
+  await sendTicketEmail({
+    event: issued.value.event,
+    tickets: issued.value.tickets,
+    origin,
+    idempotencyKey: `tickets:issued:${issued.value.orderId}`,
+  });
 
   log.info("checkout.fulfil", "Paid tickets issued", {
     sessionId,
@@ -591,7 +618,7 @@ export async function fulfilCheckout(sessionId: string, origin: string): Promise
 export type SelfRefundResult = TicketOpResult<{
   state: "succeeded" | "pending";
   refunded: number;
-  emailed: boolean;
+  emailQueued: boolean;
 }>;
 
 /**
@@ -625,7 +652,12 @@ export async function refundOrder(input: {
     };
   }
   if (tickets.every((ticket) => ticket.status === "refunded")) {
-    return { ok: true, value: { state: "succeeded", refunded: 0, emailed: false } };
+    const event = await getEvent(anchor.event_slug);
+    const delivery = event ? await sendRefundEmail({ event, tickets }) : null;
+    return {
+      ok: true,
+      value: { state: "succeeded", refunded: 0, emailQueued: delivery?.queued ?? false },
+    };
   }
 
   const refund = await refundPayment({
@@ -647,17 +679,17 @@ export async function refundOrder(input: {
     });
     return {
       ok: true,
-      value: { state: "pending", refunded: pending.length, emailed: false },
+      value: { state: "pending", refunded: pending.length, emailQueued: false },
     };
   }
 
   const updated = await markOrderRefunded(anchor.payment_ref, refund.refundId);
-  let emailed = false;
+  let emailQueued = false;
   if (updated.length > 0) {
     const event = await getEvent(anchor.event_slug);
     if (event) {
       const delivery = await sendRefundEmail({ event, tickets: updated });
-      emailed = delivery.sent;
+      emailQueued = delivery.queued;
     }
   }
   log.info("checkout.refund", "Order refunded", {
@@ -668,7 +700,7 @@ export async function refundOrder(input: {
 
   return {
     ok: true,
-    value: { state: "succeeded", refunded: updated.length, emailed },
+    value: { state: "succeeded", refunded: updated.length, emailQueued },
   };
 }
 

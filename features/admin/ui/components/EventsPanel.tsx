@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useId, useMemo, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 
 import { AppSelect } from "@/components/AppSelect";
 import { useActionDialog } from "@/hooks/useActionDialog";
@@ -322,10 +322,12 @@ function AddGuestForm({
       });
       if (!response.ok) throw new Error(await readErrorMessage(response, "Failed to add guest"));
       const data: unknown = await response.json().catch(() => null);
-      const emailed =
-        data && typeof data === "object" && "emailed" in data && data.emailed === true;
+      const emailQueued =
+        data && typeof data === "object" && "emailQueued" in data && data.emailQueued === true;
       onStatus(
-        emailed ? `${name.trim()} added — ticket emailed` : `${name.trim()} received a comp ticket`,
+        emailQueued
+          ? `${name.trim()} added — ticket email queued`
+          : `${name.trim()} received a comp ticket`,
       );
       setName("");
       setEmail("");
@@ -760,6 +762,7 @@ function MessageComposer({
   const [previewHtml, setPreviewHtml] = useState<string | null>(null);
   const [previewInfo, setPreviewInfo] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const campaignId = useRef(crypto.randomUUID().replaceAll("-", ""));
 
   const emailable = useMemo(
     () => summary.tickets.filter((ticket) => ticket.status === "valid" && ticket.email),
@@ -782,6 +785,7 @@ function MessageComposer({
       subject,
       body,
       preview,
+      requestId: campaignId.current,
       ...(mode === "selected" ? { recipients: [...selected] } : {}),
     };
     const response = await authFetch(`/api/admin/events/${event.slug}/email`, {
@@ -834,21 +838,15 @@ function MessageComposer({
     onError("");
     try {
       const data = await post(false);
-      const sent = typeof data.sent === "number" ? data.sent : 0;
-      const failed = typeof data.failed === "number" ? data.failed : 0;
-      onStatus(
-        failed === 0
-          ? `Sent to ${sent} ${sent === 1 ? "person" : "people"}`
-          : `Sent to ${sent}; ${failed} failed — try those again`,
-      );
-      if (failed === 0) {
-        setSubject("");
-        setBody("");
-        setPreviewHtml(null);
-        setPreviewInfo(null);
-        setSelected(new Set());
-        setOpen(false);
-      }
+      const queued = typeof data.queued === "number" ? data.queued : 0;
+      onStatus(`Queued for ${queued} ${queued === 1 ? "person" : "people"}`);
+      campaignId.current = crypto.randomUUID().replaceAll("-", "");
+      setSubject("");
+      setBody("");
+      setPreviewHtml(null);
+      setPreviewInfo(null);
+      setSelected(new Set());
+      setOpen(false);
     } catch (error) {
       onError(error instanceof Error ? error.message : "Sending failed");
     } finally {
@@ -1772,7 +1770,7 @@ function EventOperations({
         action === "refund" && ((await response.json()) as { state?: string }).state === "pending";
       onStatus(
         action === "resend"
-          ? `Tickets re-emailed for ${ticket.holderName}'s order`
+          ? `Ticket email queued for ${ticket.holderName}'s order`
           : action === "refund"
             ? refundPending
               ? `${ticket.holderName}'s refund is processing`

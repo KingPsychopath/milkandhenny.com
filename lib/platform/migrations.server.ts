@@ -442,6 +442,42 @@ const MIGRATIONS: Migration[] = [
         on checkout_sessions (payment_ref) where payment_ref is not null;
     `,
   },
+  {
+    id: "0012_email_outbox",
+    sql: `
+      create table email_outbox (
+        id                  uuid primary key,
+        idempotency_key     text not null unique,
+        channel             text not null check (channel in ('tickets', 'studio')),
+        recipient_hash      text not null check (char_length(recipient_hash) = 64),
+        message             jsonb,
+        status              text not null default 'pending'
+                            check (status in ('pending', 'processing', 'accepted', 'failed')),
+        attempts            integer not null default 0 check (attempts >= 0),
+        next_attempt_at     timestamptz not null default now(),
+        locked_until        timestamptz,
+        provider_message_id text,
+        provider_status     integer,
+        last_error          text,
+        created_at          timestamptz not null default now(),
+        updated_at          timestamptz not null default now(),
+        accepted_at         timestamptz,
+        failed_at           timestamptz,
+        constraint email_outbox_message_state check (
+          (status in ('pending', 'processing') and message is not null)
+          or (status in ('accepted', 'failed') and message is null)
+        ),
+        constraint email_outbox_message_size check (
+          message is null or octet_length(message::text) <= 6291456
+        )
+      );
+
+      create index email_outbox_delivery_idx
+        on email_outbox (next_attempt_at, created_at)
+        where status in ('pending', 'processing');
+      create index email_outbox_status_idx on email_outbox (status, created_at desc);
+    `,
+  },
 ];
 
 export type MigrationResult = { applied: string[]; alreadyApplied: number };

@@ -76,6 +76,7 @@ import { Route as ApiDropPresignRouteRouteImport } from './routes/api/drop/presi
 import { Route as ApiDropFinalizeRouteRouteImport } from './routes/api/drop/finalize/route'
 import { Route as ApiDownloadPresignRouteRouteImport } from './routes/api/download/presign/route'
 import { Route as ApiCronProcessTransferMediaRouteRouteImport } from './routes/api/cron/process-transfer-media/route'
+import { Route as ApiCronDeliverEmailRouteRouteImport } from './routes/api/cron/deliver-email/route'
 import { Route as ApiCronCleanupWordSharesRouteRouteImport } from './routes/api/cron/cleanup-word-shares/route'
 import { Route as ApiCronCleanupWordMediaOrphansRouteRouteImport } from './routes/api/cron/cleanup-word-media-orphans/route'
 import { Route as ApiCronCleanupTransfersRouteRouteImport } from './routes/api/cron/cleanup-transfers/route'
@@ -471,6 +472,12 @@ const ApiCronProcessTransferMediaRouteRoute =
     path: '/api/cron/process-transfer-media',
     getParentRoute: () => rootRouteImport,
   } as any)
+const ApiCronDeliverEmailRouteRoute =
+  ApiCronDeliverEmailRouteRouteImport.update({
+    id: '/api/cron/deliver-email',
+    path: '/api/cron/deliver-email',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ApiCronCleanupWordSharesRouteRoute =
   ApiCronCleanupWordSharesRouteRouteImport.update({
     id: '/api/cron/cleanup-word-shares',
@@ -856,6 +863,7 @@ export interface FileRoutesByFullPath {
   '/api/cron/cleanup-transfers': typeof ApiCronCleanupTransfersRouteRoute
   '/api/cron/cleanup-word-media-orphans': typeof ApiCronCleanupWordMediaOrphansRouteRoute
   '/api/cron/cleanup-word-shares': typeof ApiCronCleanupWordSharesRouteRoute
+  '/api/cron/deliver-email': typeof ApiCronDeliverEmailRouteRoute
   '/api/cron/process-transfer-media': typeof ApiCronProcessTransferMediaRouteRoute
   '/api/download/presign': typeof ApiDownloadPresignRouteRoute
   '/api/drop/finalize': typeof ApiDropFinalizeRouteRoute
@@ -982,6 +990,7 @@ export interface FileRoutesByTo {
   '/api/cron/cleanup-transfers': typeof ApiCronCleanupTransfersRouteRoute
   '/api/cron/cleanup-word-media-orphans': typeof ApiCronCleanupWordMediaOrphansRouteRoute
   '/api/cron/cleanup-word-shares': typeof ApiCronCleanupWordSharesRouteRoute
+  '/api/cron/deliver-email': typeof ApiCronDeliverEmailRouteRoute
   '/api/cron/process-transfer-media': typeof ApiCronProcessTransferMediaRouteRoute
   '/api/download/presign': typeof ApiDownloadPresignRouteRoute
   '/api/drop/finalize': typeof ApiDropFinalizeRouteRoute
@@ -1109,6 +1118,7 @@ export interface FileRoutesById {
   '/api/cron/cleanup-transfers': typeof ApiCronCleanupTransfersRouteRoute
   '/api/cron/cleanup-word-media-orphans': typeof ApiCronCleanupWordMediaOrphansRouteRoute
   '/api/cron/cleanup-word-shares': typeof ApiCronCleanupWordSharesRouteRoute
+  '/api/cron/deliver-email': typeof ApiCronDeliverEmailRouteRoute
   '/api/cron/process-transfer-media': typeof ApiCronProcessTransferMediaRouteRoute
   '/api/download/presign': typeof ApiDownloadPresignRouteRoute
   '/api/drop/finalize': typeof ApiDropFinalizeRouteRoute
@@ -1237,6 +1247,7 @@ export interface FileRouteTypes {
     | '/api/cron/cleanup-transfers'
     | '/api/cron/cleanup-word-media-orphans'
     | '/api/cron/cleanup-word-shares'
+    | '/api/cron/deliver-email'
     | '/api/cron/process-transfer-media'
     | '/api/download/presign'
     | '/api/drop/finalize'
@@ -1363,6 +1374,7 @@ export interface FileRouteTypes {
     | '/api/cron/cleanup-transfers'
     | '/api/cron/cleanup-word-media-orphans'
     | '/api/cron/cleanup-word-shares'
+    | '/api/cron/deliver-email'
     | '/api/cron/process-transfer-media'
     | '/api/download/presign'
     | '/api/drop/finalize'
@@ -1489,6 +1501,7 @@ export interface FileRouteTypes {
     | '/api/cron/cleanup-transfers'
     | '/api/cron/cleanup-word-media-orphans'
     | '/api/cron/cleanup-word-shares'
+    | '/api/cron/deliver-email'
     | '/api/cron/process-transfer-media'
     | '/api/download/presign'
     | '/api/drop/finalize'
@@ -1606,6 +1619,7 @@ export interface RootRouteChildren {
   ApiCronCleanupTransfersRouteRoute: typeof ApiCronCleanupTransfersRouteRoute
   ApiCronCleanupWordMediaOrphansRouteRoute: typeof ApiCronCleanupWordMediaOrphansRouteRoute
   ApiCronCleanupWordSharesRouteRoute: typeof ApiCronCleanupWordSharesRouteRoute
+  ApiCronDeliverEmailRouteRoute: typeof ApiCronDeliverEmailRouteRoute
   ApiCronProcessTransferMediaRouteRoute: typeof ApiCronProcessTransferMediaRouteRoute
   ApiDownloadPresignRouteRoute: typeof ApiDownloadPresignRouteRoute
   ApiDropFinalizeRouteRoute: typeof ApiDropFinalizeRouteRoute
@@ -2096,6 +2110,13 @@ declare module '@tanstack/react-router' {
       path: '/api/cron/process-transfer-media'
       fullPath: '/api/cron/process-transfer-media'
       preLoaderRoute: typeof ApiCronProcessTransferMediaRouteRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/cron/deliver-email': {
+      id: '/api/cron/deliver-email'
+      path: '/api/cron/deliver-email'
+      fullPath: '/api/cron/deliver-email'
+      preLoaderRoute: typeof ApiCronDeliverEmailRouteRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/cron/cleanup-word-shares': {
@@ -2823,6 +2844,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiCronCleanupWordMediaOrphansRouteRoute:
     ApiCronCleanupWordMediaOrphansRouteRoute,
   ApiCronCleanupWordSharesRouteRoute: ApiCronCleanupWordSharesRouteRoute,
+  ApiCronDeliverEmailRouteRoute: ApiCronDeliverEmailRouteRoute,
   ApiCronProcessTransferMediaRouteRoute: ApiCronProcessTransferMediaRouteRoute,
   ApiDownloadPresignRouteRoute: ApiDownloadPresignRouteRoute,
   ApiDropFinalizeRouteRoute: ApiDropFinalizeRouteRoute,

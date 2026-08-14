@@ -36,7 +36,7 @@ export type ClaimTicketInput = {
 };
 
 export type ClaimTicketResult =
-  | { ok: true; ticketIds: string[]; emailed: boolean; emailError?: string }
+  | { ok: true; ticketIds: string[]; emailQueued: boolean; emailError?: string }
   | { ok: false; status: number; error: string };
 
 /**
@@ -98,14 +98,19 @@ export const claimFreeTicketsFn = createServerFn({ method: "POST" })
 
     // Delivery failure must not fail issuance — the tickets exist and the
     // resend flow can recover them.
-    const delivery = await sendTicketEmail({ event, tickets, origin });
+    const delivery = await sendTicketEmail({
+      event,
+      tickets,
+      origin,
+      idempotencyKey: `tickets:issued:${tickets[0].orderId}`,
+    });
 
     rememberTicketHolder(event.slug);
 
     return {
       ok: true,
       ticketIds: tickets.map((ticket) => ticket.id),
-      emailed: delivery.sent,
+      emailQueued: delivery.queued,
       emailError: delivery.error,
     };
   });
@@ -207,7 +212,14 @@ export const resendTicketsFn = createServerFn({ method: "POST" })
 
     const { tickets, event } = found.value.value;
     if (event && tickets.length > 0) {
-      await sendTicketEmail({ event, tickets, origin });
+      const resendWindow = Math.floor(Date.now() / 60_000);
+      const orders = [...new Set(tickets.map((ticket) => ticket.orderId))].sort().join(":");
+      await sendTicketEmail({
+        event,
+        tickets,
+        origin,
+        idempotencyKey: `tickets:resend:${orders}:${resendWindow}`,
+      });
     }
 
     return { ok: true };
@@ -345,7 +357,7 @@ export type RefundResult =
       ok: true;
       state: "succeeded" | "pending";
       refunded: number;
-      emailed: boolean;
+      emailQueued: boolean;
     }
   | { ok: false; error: string };
 
@@ -368,6 +380,6 @@ export const refundOwnTicketFn = createServerFn({ method: "POST" })
       ok: true,
       state: result.value.state,
       refunded: result.value.refunded,
-      emailed: result.value.emailed,
+      emailQueued: result.value.emailQueued,
     };
   });

@@ -90,7 +90,7 @@ function readPublished(deckId: string) {
 }
 
 function recover(input: Parameters<typeof engine.recoverPitchAccess>[0]) {
-  return pitchesOperation("recover_access", () => engine.recoverPitchAccess(input));
+  return pitchesOperation("recover_access", () => engine.recoverPitchAccess(input), false);
 }
 
 function allowRecovery(ip: string, email: string) {

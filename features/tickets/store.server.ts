@@ -67,6 +67,8 @@ function toTicket(row: TicketRow): TicketRecord {
     paymentRef: optional(row.payment_ref),
     amountPaidMinor: row.amount_paid_minor ?? undefined,
     currency: optional(row.currency),
+    refundedAt: row.refunded_at?.toISOString(),
+    refundRef: optional(row.refund_ref),
     notes: optional(row.notes),
   };
 }
@@ -124,6 +126,19 @@ export async function listTicketsForCheckout(checkoutRef: string): Promise<Ticke
   const rows = await query<TicketRow>(
     `select * from tickets where checkout_ref = $1 order by issued_at`,
     [checkoutRef],
+  );
+  return rows.map(toTicket);
+}
+
+export async function listRefundedTicketsForPayment(
+  paymentRef: string,
+  refundRef: string,
+): Promise<TicketRecord[]> {
+  const rows = await query<TicketRow>(
+    `select * from tickets
+      where payment_ref = $1 and status = 'refunded' and refund_ref = $2
+      order by issued_at, id`,
+    [paymentRef, refundRef],
   );
   return rows.map(toTicket);
 }

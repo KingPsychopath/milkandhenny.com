@@ -3,6 +3,7 @@ import { definePlugin } from "nitro";
 import { log } from "@/lib/platform/logger.server";
 import { closePool, isDatabaseConfigured } from "@/lib/platform/postgres.server";
 import { runMigrations } from "@/lib/platform/migrations.server";
+import { startEmailOutboxWorker, stopEmailOutboxWorker } from "@/lib/platform/email-outbox.server";
 
 /**
  * Apply migrations on boot, close the pool on shutdown.
@@ -27,6 +28,7 @@ export default definePlugin(async (nitroApp) => {
           alreadyApplied: result.alreadyApplied,
         });
       }
+      startEmailOutboxWorker();
     } catch (error) {
       log.error("postgres.migrate", "Migrations failed on boot", {}, error);
     }
@@ -35,6 +37,7 @@ export default definePlugin(async (nitroApp) => {
   }
 
   nitroApp.hooks.hook("close", async () => {
+    await stopEmailOutboxWorker();
     await closePool();
     log.info("postgres", "Connection pool closed");
   });

@@ -80,16 +80,16 @@ export async function createPitch(input: {
 }): Promise<PitchStoreResult<{ deck: OwnedPitchDeck; duplicate: boolean }>> {
   const created = await createPitchDeck(input);
   if (!created.ok) return created;
+  const delivery = await sendPitchWelcomeEmail({
+    email: created.value.deck.ownerEmail,
+    origin: input.origin,
+    deck: created.value.deck,
+    token: input.ownerToken,
+  });
   if (!created.value.duplicate) {
-    const delivery = await sendPitchWelcomeEmail({
-      email: created.value.deck.ownerEmail,
-      origin: input.origin,
-      deck: created.value.deck,
-      token: input.ownerToken,
-    });
     await recordPitchAudit({
       deckId: created.value.deck.id,
-      action: delivery.ok ? "email.welcome.sent" : "email.welcome.failed",
+      action: delivery.ok ? "email.welcome.queued" : "email.welcome.failed",
       actor: "system",
       metadata: delivery.ok
         ? { messageId: delivery.id }
@@ -154,7 +154,7 @@ export async function publishPitch(input: {
   });
   await recordPitchAudit({
     deckId: published.value.id,
-    action: delivery.ok ? "email.published.sent" : "email.published.failed",
+    action: delivery.ok ? "email.published.queued" : "email.published.failed",
     actor: "system",
     metadata: delivery.ok
       ? { messageId: delivery.id }
@@ -229,9 +229,9 @@ export async function allowPitchRecovery(ip: string, email: string): Promise<boo
 export async function recoverPitchAccess(input: {
   email: string;
   origin: string;
-}): Promise<{ sent: boolean }> {
+}): Promise<{ queued: boolean }> {
   const decks = await listPitchDecksForRecovery(input.email);
-  if (decks.length === 0) return { sent: true };
+  if (decks.length === 0) return { queued: true };
 
   const issued = decks.map((deck) => ({
     deckId: deck.id,
@@ -250,7 +250,7 @@ export async function recoverPitchAccess(input: {
     issued.map(({ deckId }) =>
       recordPitchAudit({
         deckId,
-        action: delivery.ok ? "email.recovery.sent" : "email.recovery.failed",
+        action: delivery.ok ? "email.recovery.queued" : "email.recovery.failed",
         actor: "system",
         metadata: delivery.ok
           ? { messageId: delivery.id }
@@ -260,9 +260,9 @@ export async function recoverPitchAccess(input: {
   );
   if (!delivery.ok) {
     await removePitchAccessTokens(issued.map(({ token }) => token));
-    return { sent: false };
+    return { queued: false };
   }
-  return { sent: true };
+  return { queued: true };
 }
 
 export { createPitchAssetUpload, finalisePitchAsset };
@@ -327,7 +327,7 @@ export async function restorePitchForAdmin(
 export async function resendPitchAccessForAdmin(input: {
   deckId: string;
   origin: string;
-}): Promise<PitchStoreResult<{ sent: true }>> {
+}): Promise<PitchStoreResult<{ queued: true }>> {
   const deck = await readPitchDeckForAdmin(input.deckId);
   if (!deck) return { ok: false, status: 404, error: "Pitch not found" };
   const token = createPitchOwnerToken();
@@ -339,7 +339,7 @@ export async function resendPitchAccessForAdmin(input: {
   });
   await recordPitchAudit({
     deckId: deck.id,
-    action: delivery.ok ? "email.recovery.sent" : "email.recovery.failed",
+    action: delivery.ok ? "email.recovery.queued" : "email.recovery.failed",
     actor: "admin",
     metadata: delivery.ok
       ? { messageId: delivery.id }
@@ -349,7 +349,7 @@ export async function resendPitchAccessForAdmin(input: {
     await removePitchAccessTokens([token]);
     return { ok: false, status: 502, error: "The recovery email could not be sent" };
   }
-  return { ok: true, value: { sent: true } };
+  return { ok: true, value: { queued: true } };
 }
 
 export async function deletePitchForAdmin(

@@ -8,7 +8,10 @@ Run once per day:
 APP_BASE_URL=https://milkandhenny.com CRON_SECRET=… pnpm maintenance
 ```
 
-The runner calls transfer cleanup, expired word-share cleanup, and orphaned word-media cleanup. It emits one structured result per job and exits non-zero if any job fails.
+The runner drains the transactional-email outbox, then calls transfer cleanup, Pitch Night cleanup,
+expired word-share cleanup, orphaned word-media cleanup, and media reconciliation. The web process
+also drains email every five seconds; maintenance is its independent backstop. Each job emits one
+structured result, and the runner exits non-zero if any job fails.
 
 ## Capability checks
 

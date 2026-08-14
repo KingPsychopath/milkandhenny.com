@@ -39,6 +39,8 @@ export type TicketRecord = {
   paymentRef?: string;
   amountPaidMinor?: number;
   currency?: string;
+  refundedAt?: string;
+  refundRef?: string;
 
   notes?: string;
 };

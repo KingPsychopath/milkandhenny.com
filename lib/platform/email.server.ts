@@ -113,10 +113,11 @@ async function postJson(
   url: string,
   apiKey: string,
   body: unknown,
+  headers: Record<string, string> = {},
 ): Promise<{ status: number; payload: unknown }> {
   const response = await fetch(url, {
     method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}`, ...headers },
     body: JSON.stringify(body),
     signal: AbortSignal.timeout(SEND_TIMEOUT_MS),
   });
@@ -173,6 +174,7 @@ function interpretCloudflareResponse(
 async function sendViaCloudflare(
   config: EmailConfig,
   message: EmailMessage,
+  deliveryKey?: string,
 ): Promise<SendEmailResult> {
   const { status, payload } = await postJson(
     `https://api.cloudflare.com/client/v4/accounts/${config.accountId}/email/sending/send`,
@@ -186,6 +188,7 @@ async function sendViaCloudflare(
       ...(message.html ? { html: message.html } : {}),
       // snake_case on REST, unlike the binding's `replyTo`.
       reply_to: config.replyTo,
+      ...(deliveryKey ? { headers: { "X-Milk-Henny-Delivery": deliveryKey } } : {}),
       ...(message.attachments?.length
         ? {
             attachments: message.attachments.map((attachment) => ({
@@ -203,25 +206,34 @@ async function sendViaCloudflare(
   return interpretCloudflareResponse(status, payload, message.to);
 }
 
-async function sendViaResend(config: EmailConfig, message: EmailMessage): Promise<SendEmailResult> {
-  const { status, payload } = await postJson("https://api.resend.com/emails", config.apiKey, {
-    from: `${config.sender.name} <${config.sender.address}>`,
-    to: [message.to],
-    subject: message.subject,
-    text: message.text,
-    ...(message.html ? { html: message.html } : {}),
-    reply_to: config.replyTo,
-    ...(message.attachments?.length
-      ? {
-          attachments: message.attachments.map((attachment) => ({
-            content: attachment.content,
-            filename: attachment.filename,
-            content_type: attachment.type,
-            ...(attachment.contentId ? { content_id: attachment.contentId } : {}),
-          })),
-        }
-      : {}),
-  });
+async function sendViaResend(
+  config: EmailConfig,
+  message: EmailMessage,
+  deliveryKey?: string,
+): Promise<SendEmailResult> {
+  const { status, payload } = await postJson(
+    "https://api.resend.com/emails",
+    config.apiKey,
+    {
+      from: `${config.sender.name} <${config.sender.address}>`,
+      to: [message.to],
+      subject: message.subject,
+      text: message.text,
+      ...(message.html ? { html: message.html } : {}),
+      reply_to: config.replyTo,
+      ...(message.attachments?.length
+        ? {
+            attachments: message.attachments.map((attachment) => ({
+              content: attachment.content,
+              filename: attachment.filename,
+              content_type: attachment.type,
+              ...(attachment.contentId ? { content_id: attachment.contentId } : {}),
+            })),
+          }
+        : {}),
+    },
+    deliveryKey ? { "Idempotency-Key": deliveryKey.slice(0, 256) } : {},
+  );
 
   if (status >= 200 && status < 300) {
     const record = asRecord(payload);
@@ -242,10 +254,13 @@ async function sendViaResend(config: EmailConfig, message: EmailMessage): Promis
  * exists but was not emailed is recoverable, whereas a payment taken with no
  * ticket issued is not.
  */
-export async function sendEmail(message: EmailMessage): Promise<SendEmailResult> {
+export async function deliverEmailNow(
+  message: EmailMessage,
+  deliveryKey?: string,
+): Promise<SendEmailResult> {
   const config = getEmailConfig(message.channel);
   if (!config) {
-    log.warn("email.send", "Email is not configured; message dropped", {
+    log.warn("email.send", "Email is not configured; delivery deferred", {
       channel: message.channel,
       subject: message.subject,
     });
@@ -255,8 +270,8 @@ export async function sendEmail(message: EmailMessage): Promise<SendEmailResult>
   try {
     const result =
       config.provider === "resend"
-        ? await sendViaResend(config, message)
-        : await sendViaCloudflare(config, message);
+        ? await sendViaResend(config, message, deliveryKey)
+        : await sendViaCloudflare(config, message, deliveryKey);
 
     if (!result.ok) {
       log.error("email.send", "Email provider rejected the message", {
@@ -276,4 +291,16 @@ export async function sendEmail(message: EmailMessage): Promise<SendEmailResult>
     );
     return { ok: false, status: 502, error: "Email delivery failed" };
   }
+}
+
+/** Queue a message durably; the outbox owns delivery and retries. */
+export async function sendEmail(
+  message: EmailMessage,
+  options: { idempotencyKey: string; deliverNow?: boolean },
+): Promise<SendEmailResult> {
+  const { enqueueEmail } = await import("./email-outbox.server");
+  return enqueueEmail(message, {
+    idempotencyKey: options.idempotencyKey,
+    deliverNow: options.deliverNow,
+  });
 }

@@ -77,19 +77,20 @@ async function handlePOST(request: Request, slug: string) {
         });
         if (!issued.ok) return Response.json({ error: issued.error }, { status: issued.status });
 
-        let emailed = false;
+        let emailQueued = false;
         if (body.sendEmail !== false && issued.value.tickets.some((ticket) => ticket.email)) {
           const delivery = await sendTicketEmail({
             event: issued.value.event,
             tickets: issued.value.tickets,
             origin: getBaseUrlForRequest(request),
+            idempotencyKey: `tickets:issued:${issued.value.orderId}`,
           });
-          emailed = delivery.sent;
+          emailQueued = delivery.queued;
         }
         return Response.json({
           ok: true,
           ticketIds: issued.value.tickets.map((ticket) => ticket.id),
-          emailed,
+          emailQueued,
         });
       }
 
@@ -116,14 +117,15 @@ async function handlePOST(request: Request, slug: string) {
           event,
           tickets: live,
           origin: getBaseUrlForRequest(request),
+          idempotencyKey: `tickets:admin-resend:${ticket.orderId}:${Math.floor(Date.now() / 60_000)}`,
         });
-        if (!delivery.sent) {
+        if (!delivery.queued) {
           return Response.json(
             { error: delivery.error ?? "Email failed to send" },
             { status: 502 },
           );
         }
-        return Response.json({ ok: true, sent: live.length });
+        return Response.json({ ok: true, queued: live.length });
       }
 
       case "refund": {

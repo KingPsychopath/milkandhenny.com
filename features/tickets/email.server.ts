@@ -122,37 +122,41 @@ function buildHtml(
 </div>`;
 }
 
-export type TicketEmailResult = { sent: boolean; error?: string };
+export type TicketEmailResult = { queued: boolean; error?: string };
 
 /**
  * Send one order's tickets.
  *
- * Returns rather than throws: a ticket that exists but was not emailed is
- * recoverable through the resend flow, so delivery failure must never fail
+ * Returns rather than throws: a ticket that exists but was not queued is
+ * recoverable through the resend flow, so queue failure must never fail
  * the issuance that already took someone's money.
  */
 export async function sendTicketEmail(input: {
   event: EventRecord;
   tickets: TicketRecord[];
   origin: string;
+  idempotencyKey: string;
 }): Promise<TicketEmailResult> {
   const { event, tickets, origin } = input;
   const recipient = tickets.find((ticket) => ticket.email)?.email;
-  if (!recipient) return { sent: false, error: "No email address on this order" };
-  if (tickets.length === 0) return { sent: false, error: "No tickets to send" };
+  if (!recipient) return { queued: false, error: "No email address on this order" };
+  if (tickets.length === 0) return { queued: false, error: "No tickets to send" };
 
   // One QR per email: the first ticket. Plus-ones each have their own link,
   // and the door can scan any of them from the ticket page.
   const attachment = await renderQrAttachment(buildTicketQrPayload(tickets[0].id));
 
-  const result = await sendEmail({
-    channel: "tickets",
-    to: recipient,
-    subject: `You're in — ${event.title}`,
-    text: buildText(event, tickets, origin),
-    html: buildHtml(event, tickets, origin, attachment !== null),
-    attachments: attachment ? [attachment] : undefined,
-  });
+  const result = await sendEmail(
+    {
+      channel: "tickets",
+      to: recipient,
+      subject: `You're in — ${event.title}`,
+      text: buildText(event, tickets, origin),
+      html: buildHtml(event, tickets, origin, attachment !== null),
+      attachments: attachment ? [attachment] : undefined,
+    },
+    { idempotencyKey: input.idempotencyKey },
+  );
 
   if (!result.ok) {
     log.error("tickets.email", "Ticket email failed", {
@@ -160,11 +164,11 @@ export async function sendTicketEmail(input: {
       count: tickets.length,
       status: result.status,
     });
-    return { sent: false, error: result.error };
+    return { queued: false, error: result.error };
   }
 
-  log.info("tickets.email", "Ticket email sent", { slug: event.slug, count: tickets.length });
-  return { sent: true };
+  log.info("tickets.email", "Ticket email queued", { slug: event.slug, count: tickets.length });
+  return { queued: true };
 }
 
 export type RenderedEmail = { subject: string; text: string; html: string };
@@ -205,24 +209,6 @@ export function renderEventMessage(input: {
   return { subject, text, html };
 }
 
-export async function sendEventMessageEmail(input: {
-  event: EventRecord;
-  subject: string;
-  body: string;
-  to: string;
-}): Promise<TicketEmailResult> {
-  const rendered = renderEventMessage(input);
-  const result = await sendEmail({
-    channel: "tickets",
-    to: input.to,
-    subject: rendered.subject,
-    text: rendered.text,
-    html: rendered.html,
-  });
-  if (!result.ok) return { sent: false, error: result.error };
-  return { sent: true };
-}
-
 function refundAmount(tickets: TicketRecord[]): string | null {
   const currency = tickets.find((ticket) => ticket.currency)?.currency;
   if (!currency) return null;
@@ -237,8 +223,8 @@ export async function sendRefundEmail(input: {
 }): Promise<TicketEmailResult> {
   const { event, tickets } = input;
   const recipient = tickets.find((ticket) => ticket.email)?.email;
-  if (!recipient) return { sent: false, error: "No email address on this order" };
-  if (tickets.length === 0) return { sent: false, error: "No refunded tickets to confirm" };
+  if (!recipient) return { queued: false, error: "No email address on this order" };
+  if (tickets.length === 0) return { queued: false, error: "No refunded tickets to confirm" };
 
   const amount = refundAmount(tickets);
   const count = tickets.length;
@@ -274,13 +260,19 @@ export async function sendRefundEmail(input: {
   </div>
 </div>`;
 
-  const result = await sendEmail({
-    channel: "tickets",
-    to: recipient,
-    subject: `Refund confirmed — ${event.title}`,
-    text,
-    html,
-  });
+  const refundKey = [...new Set(tickets.map((ticket) => ticket.refundRef ?? "refund"))]
+    .sort()
+    .join(":");
+  const result = await sendEmail(
+    {
+      channel: "tickets",
+      to: recipient,
+      subject: `Refund confirmed — ${event.title}`,
+      text,
+      html,
+    },
+    { idempotencyKey: `tickets:refund:${tickets[0].orderId}:${refundKey}` },
+  );
 
   if (!result.ok) {
     log.error("tickets.email", "Refund email failed", {
@@ -288,9 +280,9 @@ export async function sendRefundEmail(input: {
       count,
       status: result.status,
     });
-    return { sent: false, error: result.error };
+    return { queued: false, error: result.error };
   }
 
-  log.info("tickets.email", "Refund email sent", { slug: event.slug, count });
-  return { sent: true };
+  log.info("tickets.email", "Refund email queued", { slug: event.slug, count });
+  return { queued: true };
 }

@@ -31,7 +31,7 @@ export function RefundTicketButton({
     "idle" | "confirming" | "working" | "pending" | "done" | "error"
   >("idle");
   const [message, setMessage] = useState("");
-  const [emailSent, setEmailSent] = useState(false);
+  const [emailQueued, setEmailQueued] = useState(false);
 
   if (disabledReason) {
     return (
@@ -45,9 +45,9 @@ export function RefundTicketButton({
     return (
       <p className="text-center font-mono text-micro theme-subtle leading-relaxed">
         Refunded.{" "}
-        {emailSent
-          ? "We've emailed confirmation."
-          : "The confirmation email could not be sent, so keep this page as your record."}{" "}
+        {emailQueued
+          ? "Your confirmation email is queued."
+          : "The confirmation email could not be queued, so keep this page as your record."}{" "}
         It usually lands back within a few working days, and{" "}
         {ticketCount === 1 ? " this QR no longer works" : " all QRs in this order no longer work"}{" "}
         at the door.
@@ -81,7 +81,7 @@ export function RefundTicketButton({
         setState("pending");
         return;
       }
-      setEmailSent(result.emailed);
+      setEmailQueued(result.emailQueued);
       setState("done");
     } catch {
       setMessage("That didn't work. Try again, or message us.");

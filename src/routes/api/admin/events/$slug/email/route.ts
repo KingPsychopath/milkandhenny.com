@@ -3,8 +3,9 @@ import { createFileRoute } from "@tanstack/react-router";
 import { requireAuth } from "@/features/auth/auth.server";
 import { apiErrorFromRequest } from "@/lib/platform/api-error";
 import { describeEmailCapability } from "@/lib/platform/email.server";
+import { enqueueEmails } from "@/lib/platform/email-outbox.server";
 import { getEvent } from "@/features/events/store.server";
-import { renderEventMessage, sendEventMessageEmail } from "@/features/tickets/email.server";
+import { renderEventMessage } from "@/features/tickets/email.server";
 import { listTicketsForEvent } from "@/features/tickets/store.server";
 import { isValidTicketId } from "@/features/tickets/types";
 
@@ -26,6 +27,7 @@ type EmailBody = {
   /** "all", or an array of ticket ids to target specific people. */
   recipients?: unknown;
   preview?: unknown;
+  requestId?: unknown;
 };
 
 async function handlePOST(request: Request, slug: string) {
@@ -60,8 +62,9 @@ async function handlePOST(request: Request, slug: string) {
     // One email per address, however many tickets it bought.
     const byEmail = new Map<string, string>();
     for (const ticket of targeted) {
-      if (ticket.email && !byEmail.has(ticket.email)) {
-        byEmail.set(ticket.email, ticket.holderName);
+      const email = ticket.email?.trim().toLowerCase();
+      if (email && !byEmail.has(email)) {
+        byEmail.set(email, ticket.holderName);
       }
     }
 
@@ -88,24 +91,31 @@ async function handlePOST(request: Request, slug: string) {
       );
     }
 
-    let sent = 0;
-    const failures: string[] = [];
-    for (const recipient of recipients) {
-      const delivery = await sendEventMessageEmail({
-        event,
-        subject,
-        body,
-        to: recipient.email,
-      });
-      if (delivery.sent) sent += 1;
-      else failures.push(recipient.name);
+    const requestId = typeof parsed.requestId === "string" ? parsed.requestId : "";
+    if (!/^[A-Za-z0-9_-]{16,80}$/.test(requestId)) {
+      return Response.json(
+        { error: "The email request is missing its delivery id" },
+        { status: 400 },
+      );
     }
 
+    await enqueueEmails(
+      recipients.map((recipient, index) => ({
+        idempotencyKey: `events:broadcast:${slug}:${requestId}:${index}`,
+        message: {
+          channel: "tickets" as const,
+          to: recipient.email,
+          subject: rendered.subject,
+          text: rendered.text,
+          html: rendered.html,
+        },
+      })),
+    );
+
     return Response.json({
-      ok: failures.length === 0,
-      sent,
-      failed: failures.length,
-      failures: failures.slice(0, 10),
+      ok: true,
+      queued: recipients.length,
+      requestId,
     });
   } catch (error) {
     return apiErrorFromRequest(request, "events.admin.email", "Failed to send the email", error);

@@ -106,6 +106,11 @@ The production app fails closed when required persistence is unavailable. In-mem
 
 **One key per record** remains the rule for anything still in Redis. A single-key collection plus a re-rendering poll loop is what caused [the guest-list KV read spike](./postmortem-guestlist-kv-read-spike.md).
 
+Transactional email uses a Postgres outbox. Product workflows add idempotent messages, the web
+process drains them in bounded batches, and daily maintenance is an independent backstop. Temporary
+provider failures retry with backoff. Accepted and permanently failed rows keep delivery metadata
+but remove the message body and recipient address.
+
 ## Media
 
 R2 is currently the S3-compatible object store. `R2_PUBLIC_BUCKET` contains albums and editorial media and is delivered through `VITE_MEDIA_PUBLIC_URL`. `R2_PRIVATE_BUCKET` contains transfers, has no public domain or `r2.dev` access, and is read only through short-lived URLs issued after the application validates the transfer capability ID. Browser uploads use presigned URLs, so large file bodies bypass the web service.

@@ -23,7 +23,7 @@ import type { TicketTypeAvailability } from "../events.server";
 type ClaimState =
   | { status: "idle" }
   | { status: "submitting" }
-  | { status: "done"; ticketIds: string[]; emailed: boolean; emailError?: string }
+  | { status: "done"; ticketIds: string[]; emailQueued: boolean; emailError?: string }
   | { status: "error"; message: string };
 
 function salesMessage(availability: TicketTypeAvailability): string | null {
@@ -152,7 +152,7 @@ export function ClaimTicketForm({
       setState({
         status: "done",
         ticketIds: result.ticketIds,
-        emailed: result.emailed,
+        emailQueued: result.emailQueued,
         emailError: result.emailError,
       });
     } catch {
@@ -183,9 +183,9 @@ export function ClaimTicketForm({
             ))}
           </div>
           <p className="font-mono text-micro theme-muted leading-relaxed">
-            {state.emailed
-              ? "We've emailed it to you as well. Check spam if it's not there in a minute."
-              : "We couldn't email it — save this link or screenshot the QR on the next page."}
+            {state.emailQueued
+              ? "Your email is queued. Check spam if it is not there in a minute."
+              : "We could not queue the email. Save this link or screenshot the QR on the next page."}
           </p>
         </div>
       </div>
