@@ -1,0 +1,27 @@
+{
+  "name": "milkandhenny-email-event-relay",
+  "main": "worker.ts",
+  "compatibility_date": "2026-08-14",
+  "workers_dev": false,
+  "vars": {
+    "APP_BASE_URL": "https://milkandhenny.com",
+  },
+  "secrets": {
+    "required": ["EMAIL_EVENT_SECRET"],
+  },
+  "queues": {
+    "consumers": [
+      {
+        "queue": "milkandhenny-email-events",
+        "max_batch_size": 10,
+        "max_batch_timeout": 5,
+        "max_retries": 10,
+        "dead_letter_queue": "milkandhenny-email-events-dlq",
+        "retry_delay": 30,
+      },
+    ],
+  },
+  "observability": {
+    "enabled": true,
+  },
+}
