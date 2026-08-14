@@ -1,5 +1,5 @@
 import { Link } from "@tanstack/react-router";
-import ReactMarkdown from "react-markdown";
+import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 
 import { SITE_BRAND } from "@/lib/shared/config";
@@ -14,6 +14,13 @@ import {
 import type { TicketTypeAvailability } from "../events.server";
 import { ClaimTicketForm } from "./ClaimTicketForm";
 import { ResendTicketForm } from "./ResendTicketForm";
+
+const POLICY_MARKDOWN_COMPONENTS: Components = {
+  p: ({ children }) => <p>{children}</p>,
+  ul: ({ children }) => <ul className="list-disc space-y-2 pl-5">{children}</ul>,
+  ol: ({ children }) => <ol className="list-decimal space-y-2 pl-5">{children}</ol>,
+  li: ({ children }) => <li className="pl-1">{children}</li>,
+};
 
 /**
  * The event page.
@@ -56,6 +63,14 @@ function StatusBanner({ status }: { status: ViewableEvent["status"] }) {
     <p className="mb-6 px-4 py-3 border theme-border-strong rounded-lg font-mono text-xs text-foreground">
       {copy}
     </p>
+  );
+}
+
+function PolicyMarkdown({ children }: { children: string }) {
+  return (
+    <ReactMarkdown remarkPlugins={[remarkGfm]} components={POLICY_MARKDOWN_COMPONENTS}>
+      {children}
+    </ReactMarkdown>
   );
 }
 
@@ -232,7 +247,13 @@ export function EventDetailPage({
                     : "There are stairs and no step-free access — ask us if that's a problem and we'll sort something."}
                 </Fact>
               )}
-              {event.houseRules && <Fact label="House">{event.houseRules}</Fact>}
+              {event.houseRules && (
+                <Fact label="House">
+                  <div className="space-y-3">
+                    <PolicyMarkdown>{event.houseRules}</PolicyMarkdown>
+                  </div>
+                </Fact>
+              )}
             </dl>
           </section>
         )}
@@ -250,17 +271,25 @@ export function EventDetailPage({
           <h2 className="font-mono text-micro theme-muted tracking-widest uppercase">
             Ticket terms
           </h2>
-          <div className="mt-3 space-y-3 font-mono text-micro theme-muted leading-relaxed">
+          <div className="mt-3 space-y-4 font-mono text-micro theme-muted leading-relaxed">
             {event.terms ? (
-              <p>{event.terms}</p>
+              <PolicyMarkdown>{event.terms}</PolicyMarkdown>
             ) : (
               <p>
                 Tickets are for this named, dated event. Entry is subject to the event details and
                 house rules shown above.
               </p>
             )}
+          </div>
+        </section>
+
+        <section id="refund-terms" className="mt-8 scroll-mt-6 border-t theme-border pt-6">
+          <h2 className="font-mono text-micro theme-muted tracking-widest uppercase">
+            Refund terms
+          </h2>
+          <div className="mt-3 space-y-4 font-mono text-micro theme-muted leading-relaxed">
             {event.refundPolicy ? (
-              <p>{event.refundPolicy}</p>
+              <PolicyMarkdown>{event.refundPolicy}</PolicyMarkdown>
             ) : (
               <p>
                 Self-serve refunds are available before doors open while nobody on the order has
