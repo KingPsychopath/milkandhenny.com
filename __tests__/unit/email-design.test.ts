@@ -15,7 +15,7 @@ describe("branded email design", () => {
     });
 
     expect(html).toContain('role="presentation"');
-    expect(html).toContain('src="https://milkandhenny.com/email-logo.png"');
+    expect(html).toContain('src="https://milkandhenny.com/email-logo.png?v=2"');
     expect(html).toContain('width="112" height="112"');
     expect(html).toContain('alt="milk &amp; henny"');
     expect(html).toContain("open your pitch →");

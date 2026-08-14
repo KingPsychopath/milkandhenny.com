@@ -29,7 +29,7 @@ export function renderBrandedEmail(input: {
           <tr>
             <td>
               <a href="${escapeEmailHtml(origin)}" style="display:inline-block;text-decoration:none">
-                <img src="${escapeEmailHtml(`${origin}/email-logo.png`)}" width="112" height="112" alt="milk &amp; henny" style="display:block;border:0;width:112px;height:112px">
+                <img src="${escapeEmailHtml(`${origin}/email-logo.png?v=2`)}" width="112" height="112" alt="milk &amp; henny" style="display:block;border:0;width:112px;height:112px">
               </a>
               <p style="margin:24px 0 8px;color:#78716c;font:12px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.08em;text-transform:lowercase">${escapeEmailHtml(input.label)}</p>
               <h1 style="margin:0;color:#1c1917;font:400 30px/1.15 Georgia,serif">${escapeEmailHtml(input.title)}</h1>
