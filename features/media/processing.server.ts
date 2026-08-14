@@ -24,6 +24,7 @@ import { SITE_BRAND } from "@/lib/shared/config";
 
 type ExecFileAsyncOptions = NonNullable<Parameters<typeof execFile>[2]>;
 type ExecFileAsyncOutput = Buffer | string;
+type SharpPipeline = ReturnType<typeof sharp>;
 type ExifrModule = (typeof import("exifr"))["default"];
 type ExifrParsedTags = Awaited<ReturnType<ExifrModule["parse"]>>;
 
@@ -329,7 +330,7 @@ async function processRawWithExiftool(
   return { buffer, width, height };
 }
 
-function applyHeifOrientation(pipeline: sharp.Sharp, orientation: number): sharp.Sharp {
+function applyHeifOrientation(pipeline: SharpPipeline, orientation: number): SharpPipeline {
   switch (orientation) {
     case 2:
       return pipeline.flop();
@@ -450,7 +451,7 @@ async function resolveImageProcessingSource(
 async function cropToOg(
   raw: Buffer,
   focal: { x: number; y: number } = { x: 50, y: 50 },
-): Promise<sharp.Sharp> {
+): Promise<SharpPipeline> {
   const meta = await sharp(raw).metadata();
   const srcW = meta.width ?? 4032;
   const srcH = meta.height ?? 3024;

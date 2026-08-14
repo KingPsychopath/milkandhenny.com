@@ -14,4 +14,8 @@ minimumReleaseAgeExclude:
 # Excalidraw's diagram parser still asks for the pre-patch range, but the
 # patched release is API compatible and removes the avoidable audit finding.
 overrides:
+  adm-zip@<0.6.0: 0.6.0
   lodash-es: 4.18.1
+  nanoid@<3.3.18: 3.3.18
+  nanoid@>=4.0.0 <5.1.16: 5.1.16
+  sharp@<0.35.0: 0.35.3

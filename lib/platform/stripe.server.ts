@@ -80,7 +80,7 @@ function getClient(): Stripe {
   const key = getStripeSecretKey();
   if (!key) throw new PaymentsUnavailableError();
   client ??= new Stripe(key, {
-    apiVersion: "2026-06-24.dahlia",
+    apiVersion: "2026-07-29.dahlia",
     // Bounded so a Stripe incident cannot hold a request open indefinitely.
     timeout: 15_000,
     maxNetworkRetries: 2,
