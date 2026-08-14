@@ -1023,6 +1023,19 @@
     margin-bottom: 1.5em;
   }
 
+  /* Event copy is short and scannable. Give every markdown block an explicit gap. */
+  .event-description > * {
+    margin-bottom: 0;
+  }
+
+  .event-description > * + * {
+    margin-top: 1.5rem;
+  }
+
+  .event-description > h2 + * {
+    margin-top: 0.75rem;
+  }
+
   .prose-blog h2 {
     font-family: var(--font-serif), Georgia, "Times New Roman", serif;
     font-size: 1.5rem;

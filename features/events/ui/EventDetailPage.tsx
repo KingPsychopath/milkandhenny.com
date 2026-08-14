@@ -209,7 +209,7 @@ export function EventDetailPage({
         )}
 
         {event.description && (
-          <section className="mt-12 prose-blog">
+          <section className="event-description mt-12 prose-blog">
             <ReactMarkdown remarkPlugins={[remarkGfm]}>{event.description}</ReactMarkdown>
           </section>
         )}
