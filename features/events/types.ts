@@ -102,6 +102,24 @@ export type TicketHolderEvent = Omit<EventRecord, "staffNotes"> & {
 
 export type ViewableEvent = PublicEvent | TicketHolderEvent;
 
+/**
+ * The event's shared photo album, as a ticket holder sees it.
+ *
+ * `pending` is a real state, not an absence: someone opening their ticket the
+ * week before should be told the album exists and is not open yet, rather than
+ * finding a blank space where photos will later appear.
+ */
+export type EventAlbumView = {
+  state: "pending" | "open" | "closed";
+  /** Browsable album, whenever there is one left to browse. */
+  albumPath?: string;
+  /** Upload link, only while the drop is live. */
+  uploadPath?: string;
+  fileCount: number;
+  /** The album is a transfer, so it genuinely does disappear. */
+  expiresAt?: string;
+};
+
 export const SAFE_EVENT_SLUG = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
 export function isValidEventSlug(slug: string): boolean {

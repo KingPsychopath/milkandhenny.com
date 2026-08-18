@@ -9,7 +9,7 @@ import {
   generateTransferId,
   getTransfer,
 } from "@/features/transfers/store.server";
-import { isValidEventSlug } from "./types";
+import { isValidEventSlug, type EventAlbumView } from "./types";
 import { getEvent } from "./store.server";
 import type { TicketOpResult } from "@/features/tickets/tickets.server";
 
@@ -83,6 +83,37 @@ export async function getEventDrop(eventSlug: string): Promise<EventDropStatus |
     ...record,
     live: !record.disabledAt && transfer !== null && Date.parse(record.expiresAt) > Date.now(),
     fileCount: transfer?.files.length ?? 0,
+  };
+}
+
+/**
+ * The album as a ticket holder sees it.
+ *
+ * Deliberately hands back no drop token when uploads are closed: the token is
+ * the write capability, and a holder reading old photos has no use for it.
+ */
+export async function getEventAlbumView(eventSlug: string): Promise<EventAlbumView> {
+  if (!isValidEventSlug(eventSlug)) return { state: "pending", fileCount: 0 };
+
+  const row = await queryOne<EventDropRow>(`select * from event_drops where event_slug = $1`, [
+    eventSlug,
+  ]);
+  if (!row) return { state: "pending", fileCount: 0 };
+
+  const record = toDrop(row);
+  const transfer = await getTransfer(record.transferId);
+  // The transfer's own TTL is the real lifetime; once it lapses there is
+  // nothing left to link to.
+  if (!transfer) return { state: "closed", fileCount: 0 };
+
+  const live = !record.disabledAt && Date.parse(record.expiresAt) > Date.now();
+
+  return {
+    state: live ? "open" : "closed",
+    albumPath: `/t/${record.transferId}`,
+    uploadPath: live ? dropPath(record.token) : undefined,
+    fileCount: transfer.files.length,
+    expiresAt: record.expiresAt,
   };
 }
 

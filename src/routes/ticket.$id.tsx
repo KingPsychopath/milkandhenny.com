@@ -30,6 +30,7 @@ function TicketRoute() {
       event={data.event}
       qrPayload={data.qrPayload}
       orderTickets={data.orderTickets}
+      album={data.album}
     />
   );
 }

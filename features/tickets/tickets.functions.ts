@@ -5,7 +5,12 @@ import { getRequest, getRequestIP } from "@tanstack/react-start/server";
 import { getBaseUrlForRequest } from "@/lib/shared/config";
 import { EventsService } from "@/features/events/events-service.server";
 import { runEventsResult } from "@/features/events/events-runtime.server";
-import { toTicketHolderEvent, type EventRecord } from "@/features/events/types";
+import {
+  toTicketHolderEvent,
+  type EventAlbumView,
+  type EventRecord,
+} from "@/features/events/types";
+import { getEventAlbumView } from "@/features/events/drop.server";
 import { TicketsService } from "./tickets-service.server";
 import { sendTicketEmail } from "./email.server";
 import { buildTicketQrPayload } from "./qr.server";
@@ -124,6 +129,8 @@ export type TicketPageResult =
       event: ReturnType<typeof toTicketHolderEvent>;
       /** Tickets bought together, so one delivery link opens the whole order. */
       orderTickets: OrderTicketView[];
+      /** The shared album — the reason to come back to this page afterwards. */
+      album: EventAlbumView;
     };
 
 export const getTicketPageFn = createServerFn({ method: "GET" })
@@ -154,6 +161,8 @@ export const getTicketPageFn = createServerFn({ method: "GET" })
     // Holding a ticket is what earns the address.
     rememberTicketHolder(event.slug);
 
+    const album = await getEventAlbumView(event.slug);
+
     return {
       found: true,
       ticket: {
@@ -177,6 +186,7 @@ export const getTicketPageFn = createServerFn({ method: "GET" })
           currency,
         }),
       ),
+      album,
     };
   });
 

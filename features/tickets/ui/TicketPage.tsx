@@ -5,7 +5,12 @@ import { Link } from "@tanstack/react-router";
 import { SITE_BRAND } from "@/lib/shared/config";
 import { useQrCode } from "@/hooks/useQrCode";
 import { ticketIcsPath } from "@/features/events/routes";
-import { formatEventDate, formatEventTime, type TicketHolderEvent } from "@/features/events/types";
+import {
+  formatEventDate,
+  formatEventTime,
+  type EventAlbumView,
+  type TicketHolderEvent,
+} from "@/features/events/types";
 import type { OrderTicketView, TicketPageTicket } from "../types";
 import { RefundTicketButton } from "./RefundTicketButton";
 
@@ -17,16 +22,20 @@ import { RefundTicketButton } from "./RefundTicketButton";
  * is directly under it, and the address is right there without scrolling
  * into prose.
  */
+const LINK_CLASS = "font-mono text-xs underline hover:opacity-70 transition-opacity";
+
 export function TicketPage({
   ticket,
   event,
   qrPayload,
   orderTickets,
+  album,
 }: {
   ticket: TicketPageTicket;
   event: TicketHolderEvent;
   qrPayload: string;
   orderTickets: OrderTicketView[];
+  album: EventAlbumView;
 }) {
   const { dataUrl: qr, failed } = useQrCode(qrPayload, 512);
   const redeemed = Boolean(ticket.redeemedAt);
@@ -177,6 +186,59 @@ export function TicketPage({
                 >
                   open in maps ↗
                 </a>
+              )}
+            </dd>
+          </div>
+
+          {/* The reason to open this page again after the night. */}
+          <div className="flex gap-4 py-2">
+            <dt className="shrink-0 w-16 font-mono text-micro theme-muted tracking-widest uppercase pt-0.5">
+              Photos
+            </dt>
+            <dd className="font-serif text-sm text-foreground leading-relaxed">
+              {album.state === "pending" && (
+                <span className="block theme-subtle">The shared album opens on the night.</span>
+              )}
+
+              {album.state === "open" && (
+                <>
+                  <span className="block">
+                    {album.fileCount > 0
+                      ? `${album.fileCount} ${album.fileCount === 1 ? "photo" : "photos"} so far`
+                      : "Nothing in it yet"}
+                  </span>
+                  <span className="mt-2 flex flex-wrap gap-x-4 gap-y-1">
+                    {album.uploadPath && (
+                      <a href={album.uploadPath} className={LINK_CLASS}>
+                        add yours
+                      </a>
+                    )}
+                    {album.albumPath && (
+                      <a href={album.albumPath} className={LINK_CLASS}>
+                        see the album
+                      </a>
+                    )}
+                  </span>
+                </>
+              )}
+
+              {album.state === "closed" &&
+                (album.albumPath ? (
+                  <>
+                    <span className="block theme-subtle">Uploads have closed.</span>
+                    <a href={album.albumPath} className={`inline-block mt-2 ${LINK_CLASS}`}>
+                      see the album
+                    </a>
+                  </>
+                ) : (
+                  <span className="block theme-subtle">The album has expired.</span>
+                ))}
+
+              {/* An album is a transfer: saying when it goes is not a detail. */}
+              {album.albumPath && album.expiresAt && (
+                <span className="block font-mono text-micro theme-muted mt-2">
+                  saved until {formatEventDate(album.expiresAt, event.timezone)}
+                </span>
               )}
             </dd>
           </div>
