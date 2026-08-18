@@ -21,10 +21,30 @@ const BASE_URL = (viteEnv?.VITE_BASE_URL || runtimeEnv?.VITE_BASE_URL || "https:
 /** Public media/CDN origin. */
 const MEDIA_PUBLIC_URL = viteEnv?.VITE_MEDIA_PUBLIC_URL ?? runtimeEnv?.VITE_MEDIA_PUBLIC_URL ?? "";
 
-/** Base URL for share links — uses request origin when available (e.g. localhost in dev), else BASE_URL */
+function isLoopbackHost(hostname: string): boolean {
+  return (
+    hostname === "localhost" ||
+    hostname === "127.0.0.1" ||
+    hostname === "[::1]" ||
+    hostname === "::1" ||
+    hostname.endsWith(".localhost")
+  );
+}
+
+/**
+ * Base URL for share links.
+ *
+ * Development answers on whatever host the browser asked for, so the request
+ * origin is the only correct answer there. Everywhere else it is the wrong
+ * one: TLS terminates at the proxy and Nitro sees a plain `http://` URL, which
+ * would otherwise put `http://` links into ticket emails, calendar files and
+ * Stripe return URLs. `BASE_URL` is the canonical origin for each deployment
+ * (supplied as a build argument), so it is what those links must use.
+ */
 function getBaseUrlForRequest(request: { url: string }): string {
   try {
-    return new URL(request.url).origin;
+    const url = new URL(request.url);
+    return isLoopbackHost(url.hostname) ? url.origin : BASE_URL;
   } catch {
     return BASE_URL;
   }
