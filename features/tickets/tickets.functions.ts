@@ -15,10 +15,16 @@ import { TicketsService } from "./tickets-service.server";
 import { sendTicketEmail } from "./email.server";
 import { buildTicketQrPayload } from "./qr.server";
 import { rateLimitClaim } from "./tickets.server";
-import { refundOrder, startCheckout } from "./checkout.server";
+import {
+  isCheckoutSessionId,
+  refundOrder,
+  resolveCheckoutOutcome,
+  startCheckout,
+} from "./checkout.server";
 import { rememberTicketHolder } from "./holder-cookie.server";
 import { readManagedTicketOrders, rememberManagedTicketOrder } from "./order-cookie.server";
 import { resolveTicketOrderAccess } from "./order-access";
+import { listCheckpoints } from "./checkpoints.server";
 import { resolveScannerLink } from "./scanner-links.server";
 import { isValidScannerToken } from "./checkpoint-types";
 import {
@@ -28,6 +34,7 @@ import {
   type OrderTicketView,
   type TicketPageTicket,
   type RedeemOutcome,
+  type TicketStatus,
 } from "./types";
 
 /**
@@ -135,6 +142,11 @@ export type TicketPageResult =
       orderPosition: number;
       canManageOrder: boolean;
       managerTicketId?: string;
+      /**
+       * Scan points beyond the door. A redeemed ticket is not a spent one, and
+       * the page has to be able to say so in the event's own words.
+       */
+      checkpointNames: string[];
       /** The shared album — the reason to come back to this page afterwards. */
       album: EventAlbumView;
     };
@@ -171,7 +183,10 @@ export const getTicketPageFn = createServerFn({ method: "GET" })
     rememberTicketHolder(event.slug);
     if (isPrimaryTicket) rememberManagedTicketOrder(ticket.orderId);
 
-    const album = await getEventAlbumView(event.slug);
+    const [album, checkpoints] = await Promise.all([
+      getEventAlbumView(event.slug),
+      listCheckpoints(event.slug),
+    ]);
 
     return {
       found: true,
@@ -200,6 +215,7 @@ export const getTicketPageFn = createServerFn({ method: "GET" })
       orderPosition: access.orderPosition,
       canManageOrder: access.canManageOrder,
       managerTicketId: access.managerTicketId,
+      checkpointNames: checkpoints.map((checkpoint) => checkpoint.name),
       album,
     };
   });
@@ -374,6 +390,73 @@ export const startCheckoutFn = createServerFn({ method: "POST" })
     const result = await startCheckout({ ...data, origin: getBaseUrlForRequest(request) });
     if (!result.ok) return { ok: false, status: result.status, error: result.error };
     return { ok: true, url: result.value.url };
+  });
+
+export type CheckoutOutcomeTicket = {
+  id: string;
+  holderName: string;
+  qrPayload: string;
+  /** This link is permanent, so it must not still show a live QR after a refund. */
+  status: TicketStatus;
+  redeemedAt?: string;
+};
+
+export type CheckoutOutcomeResult =
+  | { state: "unknown" }
+  | { state: "pending" }
+  | { state: "problem"; message: string }
+  | {
+      state: "complete";
+      event: ReturnType<typeof toTicketHolderEvent>;
+      tickets: CheckoutOutcomeTicket[];
+      /** The purchaser ticket, which is the link that manages the whole order. */
+      managerTicketId: string;
+      /** Where the tickets were emailed, so a typo is visible before the night. */
+      email: string;
+      amountMinor: number;
+      currency: string;
+    };
+
+/**
+ * The confirmation page's whole data source.
+ *
+ * The Stripe session id in the URL is the credential, exactly as a ticket id
+ * is on the ticket page: it is known only to the person Stripe just redirected
+ * and to us. Everything it unlocks — the QRs, the address — that person is
+ * already entitled to.
+ */
+export const getCheckoutOutcomeFn = createServerFn({ method: "GET" })
+  .validator((data: { sessionId: string }) => data)
+  .handler(async ({ data }): Promise<CheckoutOutcomeResult> => {
+    if (!isCheckoutSessionId(data.sessionId)) return { state: "unknown" };
+
+    const request = getRequest();
+    const outcome = await resolveCheckoutOutcome(data.sessionId, getBaseUrlForRequest(request));
+    if (outcome.state !== "complete") return outcome;
+
+    const { event, tickets, orderId } = outcome;
+    const primary = tickets.find((ticket) => !ticket.parentTicketId) ?? tickets[0];
+
+    // Paying is what earns the address, and this browser is the purchaser's,
+    // so it also earns the rest of the order from any one of its ticket links.
+    rememberTicketHolder(event.slug);
+    rememberManagedTicketOrder(orderId);
+
+    return {
+      state: "complete",
+      event: toTicketHolderEvent(event),
+      tickets: tickets.map((ticket) => ({
+        id: ticket.id,
+        holderName: ticket.holderName,
+        qrPayload: buildTicketQrPayload(ticket.id),
+        status: ticket.status,
+        redeemedAt: ticket.redeemedAt,
+      })),
+      managerTicketId: primary.id,
+      email: outcome.email,
+      amountMinor: outcome.amountMinor,
+      currency: outcome.currency,
+    };
   });
 
 export type RefundResult =

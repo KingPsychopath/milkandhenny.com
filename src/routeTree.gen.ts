@@ -75,6 +75,7 @@ import { Route as ApiStripeWebhookRouteRouteImport } from './routes/api/stripe/w
 import { Route as ApiTransfersIdRouteRouteImport } from './routes/api/transfers/$id/route'
 import { Route as ApiUploadVerifyPinRouteRouteImport } from './routes/api/upload/verify-pin/route'
 import { Route as ApiWordsSlugRouteRouteImport } from './routes/api/words/$slug/route'
+import { Route as EventsSlugBoughtRouteImport } from './routes/events/$slug_.bought'
 import { Route as PicsAlbumIndexRouteImport } from './routes/pics/$album/index'
 import { Route as PicsAlbumPhotoRouteImport } from './routes/pics/$album/$photo'
 import { Route as ThingsCentreRoomIdRouteImport } from './routes/things.centre_.$roomId'
@@ -476,6 +477,11 @@ const ApiWordsSlugRouteRoute = ApiWordsSlugRouteRouteImport.update({
   id: '/$slug',
   path: '/$slug',
   getParentRoute: () => ApiWordsRouteRoute,
+} as any)
+const EventsSlugBoughtRoute = EventsSlugBoughtRouteImport.update({
+  id: '/events/$slug_/bought',
+  path: '/events/$slug/bought',
+  getParentRoute: () => rootRouteImport,
 } as any)
 const PicsAlbumIndexRoute = PicsAlbumIndexRouteImport.update({
   id: '/pics/$album/',
@@ -899,6 +905,7 @@ export interface FileRoutesByFullPath {
   '/api/transfers/$id': typeof ApiTransfersIdRouteRouteWithChildren
   '/api/upload/verify-pin': typeof ApiUploadVerifyPinRouteRoute
   '/api/words/$slug': typeof ApiWordsSlugRouteRouteWithChildren
+  '/events/$slug/bought': typeof EventsSlugBoughtRoute
   '/pics/$album/$photo': typeof PicsAlbumPhotoRoute
   '/things/centre/$roomId': typeof ThingsCentreRoomIdRoute
   '/things/centre/dev': typeof ThingsCentreDevRoute
@@ -1030,6 +1037,7 @@ export interface FileRoutesByTo {
   '/api/transfers/$id': typeof ApiTransfersIdRouteRouteWithChildren
   '/api/upload/verify-pin': typeof ApiUploadVerifyPinRouteRoute
   '/api/words/$slug': typeof ApiWordsSlugRouteRouteWithChildren
+  '/events/$slug/bought': typeof EventsSlugBoughtRoute
   '/pics/$album/$photo': typeof PicsAlbumPhotoRoute
   '/things/centre/$roomId': typeof ThingsCentreRoomIdRoute
   '/things/centre/dev': typeof ThingsCentreDevRoute
@@ -1162,6 +1170,7 @@ export interface FileRoutesById {
   '/api/transfers/$id': typeof ApiTransfersIdRouteRouteWithChildren
   '/api/upload/verify-pin': typeof ApiUploadVerifyPinRouteRoute
   '/api/words/$slug': typeof ApiWordsSlugRouteRouteWithChildren
+  '/events/$slug_/bought': typeof EventsSlugBoughtRoute
   '/pics/$album/$photo': typeof PicsAlbumPhotoRoute
   '/things/centre_/$roomId': typeof ThingsCentreRoomIdRoute
   '/things/centre_/dev': typeof ThingsCentreDevRoute
@@ -1295,6 +1304,7 @@ export interface FileRouteTypes {
     | '/api/transfers/$id'
     | '/api/upload/verify-pin'
     | '/api/words/$slug'
+    | '/events/$slug/bought'
     | '/pics/$album/$photo'
     | '/things/centre/$roomId'
     | '/things/centre/dev'
@@ -1426,6 +1436,7 @@ export interface FileRouteTypes {
     | '/api/transfers/$id'
     | '/api/upload/verify-pin'
     | '/api/words/$slug'
+    | '/events/$slug/bought'
     | '/pics/$album/$photo'
     | '/things/centre/$roomId'
     | '/things/centre/dev'
@@ -1557,6 +1568,7 @@ export interface FileRouteTypes {
     | '/api/transfers/$id'
     | '/api/upload/verify-pin'
     | '/api/words/$slug'
+    | '/events/$slug_/bought'
     | '/pics/$album/$photo'
     | '/things/centre_/$roomId'
     | '/things/centre_/dev'
@@ -1678,6 +1690,7 @@ export interface RootRouteChildren {
   ApiStripeWebhookRouteRoute: typeof ApiStripeWebhookRouteRoute
   ApiTransfersIdRouteRoute: typeof ApiTransfersIdRouteRouteWithChildren
   ApiUploadVerifyPinRouteRoute: typeof ApiUploadVerifyPinRouteRoute
+  EventsSlugBoughtRoute: typeof EventsSlugBoughtRoute
   PicsAlbumPhotoRoute: typeof PicsAlbumPhotoRoute
   PicsAlbumIndexRoute: typeof PicsAlbumIndexRoute
   ApiAdminTokensRevokeRouteRoute: typeof ApiAdminTokensRevokeRouteRoute
@@ -2157,6 +2170,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/api/words/$slug'
       preLoaderRoute: typeof ApiWordsSlugRouteRouteImport
       parentRoute: typeof ApiWordsRouteRoute
+    }
+    '/events/$slug_/bought': {
+      id: '/events/$slug_/bought'
+      path: '/events/$slug/bought'
+      fullPath: '/events/$slug/bought'
+      preLoaderRoute: typeof EventsSlugBoughtRouteImport
+      parentRoute: typeof rootRouteImport
     }
     '/pics/$album/': {
       id: '/pics/$album/'
@@ -2935,6 +2955,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiStripeWebhookRouteRoute: ApiStripeWebhookRouteRoute,
   ApiTransfersIdRouteRoute: ApiTransfersIdRouteRouteWithChildren,
   ApiUploadVerifyPinRouteRoute: ApiUploadVerifyPinRouteRoute,
+  EventsSlugBoughtRoute: EventsSlugBoughtRoute,
   PicsAlbumPhotoRoute: PicsAlbumPhotoRoute,
   PicsAlbumIndexRoute: PicsAlbumIndexRoute,
   ApiAdminTokensRevokeRouteRoute: ApiAdminTokensRevokeRouteRoute,

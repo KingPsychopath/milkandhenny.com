@@ -32,6 +32,39 @@ export type TicketType = {
   hidden: boolean;
 };
 
+/**
+ * How tall the hero image is allowed to be on the event page.
+ *
+ * `natural` is the image's own aspect ratio, which is what a tall poster
+ * wants and what a wide photo does not: an unconstrained hero can eat the
+ * entire first screen, pushing the date, the address and the buy button
+ * below the fold. The presets crop to a band instead of resizing the page
+ * around the artwork.
+ */
+export const EVENT_HERO_HEIGHTS = ["natural", "tall", "medium", "short"] as const;
+
+export type EventHeroHeight = (typeof EVENT_HERO_HEIGHTS)[number];
+
+export function isEventHeroHeight(value: unknown): value is EventHeroHeight {
+  return typeof value === "string" && (EVENT_HERO_HEIGHTS as readonly string[]).includes(value);
+}
+
+/**
+ * Small viewport units, not `vh`: on a phone `vh` is measured against the
+ * browser chrome being hidden, so a "45vh" hero is taller than 45% of what
+ * the reader can actually see when they land.
+ */
+const HERO_HEIGHT_CLASS: Record<EventHeroHeight, string> = {
+  natural: "",
+  tall: "max-h-[70svh] object-cover",
+  medium: "max-h-[45svh] object-cover",
+  short: "max-h-[28svh] object-cover",
+};
+
+export function heroImageHeightClass(height: EventHeroHeight | undefined): string {
+  return HERO_HEIGHT_CLASS[height ?? "natural"];
+}
+
 export type EventRecord = {
   slug: string;
   title: string;
@@ -63,6 +96,8 @@ export type EventRecord = {
   houseRules?: string;
 
   heroImage?: string;
+  /** How much vertical space the hero may take. Absent means its natural height. */
+  heroHeight?: EventHeroHeight;
   ogImage?: string;
   /** Optional same-origin story page that leads into this event's checkout. */
   marketingPath?: string;

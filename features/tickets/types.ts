@@ -58,6 +58,22 @@ export type DoorTicketView = {
   isPlusOne: boolean;
 };
 
+/**
+ * Name the scan points a ticket is still needed at after the door.
+ *
+ * Door redemption is one-shot; checkpoints draw down a separate counted
+ * allowance from the same QR. So "already scanned in" must never read as
+ * "spent" — a guest who screenshots and closes the page still has to produce
+ * this code at the bar.
+ */
+export function describeCheckpoints(names: readonly string[]): string | null {
+  const clean = names.map((name) => name.trim()).filter(Boolean);
+  if (clean.length === 0) return null;
+  if (clean.length === 1) return clean[0];
+  if (clean.length === 2) return `${clean[0]} and ${clean[1]}`;
+  return `${clean[0]}, ${clean[1]} and other points`;
+}
+
 /** Safe sibling-ticket detail exposed to someone holding one ticket in the order. */
 export type OrderTicketView = {
   id: string;

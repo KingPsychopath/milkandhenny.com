@@ -23,6 +23,7 @@ export const LOCAL_KEYS = {
   icebreakerLedger: "mah-icebreaker-ledger",
   icebreakerPlayerId: "mah-icebreaker-player-id",
   swipeHintCount: "mah-swipe-hint-count",
+  mapProvider: "mah-map-provider",
 } as const;
 
 export type StorageKeyName = keyof typeof SESSION_KEYS | keyof typeof LOCAL_KEYS;

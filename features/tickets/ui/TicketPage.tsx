@@ -5,6 +5,7 @@ import { Link } from "@tanstack/react-router";
 import { SITE_BRAND } from "@/lib/shared/config";
 import { useQrCode } from "@/hooks/useQrCode";
 import { ticketIcsPath } from "@/features/events/routes";
+import { AddressLink } from "@/features/events/ui/AddressLink";
 import {
   formatEventDate,
   formatEventTime,
@@ -12,8 +13,9 @@ import {
   type EventAlbumView,
   type TicketHolderEvent,
 } from "@/features/events/types";
-import type { OrderTicketView, TicketPageTicket } from "../types";
+import { describeCheckpoints, type OrderTicketView, type TicketPageTicket } from "../types";
 import { RefundTicketButton } from "./RefundTicketButton";
+import { ShareTicketButton } from "./ShareTicketButton";
 
 /**
  * The ticket itself.
@@ -34,6 +36,7 @@ export function TicketPage({
   orderPosition,
   canManageOrder,
   managerTicketId,
+  checkpointNames,
   album,
 }: {
   ticket: TicketPageTicket;
@@ -44,6 +47,7 @@ export function TicketPage({
   orderPosition: number;
   canManageOrder: boolean;
   managerTicketId?: string;
+  checkpointNames: string[];
   album: EventAlbumView;
 }) {
   const { dataUrl: qr, failed } = useQrCode(qrPayload, 512);
@@ -59,6 +63,11 @@ export function TicketPage({
   );
   const orderCurrency = orderTickets.find((entry) => entry.currency)?.currency;
   const threeWordUrl = threeWordMapUrl(event.threeWordHint);
+  const checkpoints = describeCheckpoints(checkpointNames);
+  // The purchaser ticket is the order's credential — see `resolveTicketOrderAccess`.
+  // Whoever holds this id gets every sibling QR and the refund button, so it is
+  // the one ticket in the order that must not have a "share" next to it.
+  const isManagerTicket = ticket.id === managerTicketId;
 
   return (
     <div className="min-h-screen bg-background">
@@ -74,29 +83,65 @@ export function TicketPage({
         {orderSize > 1 && canManageOrder && (
           <nav aria-label="Tickets in this order" className="mt-6 border-y theme-border py-3">
             <p className="font-mono text-micro theme-muted">
-              {orderSize} tickets in this order · choose a QR
+              {orderSize} tickets in this order · choose a QR, or send each guest their own
             </p>
-            <div className="mt-2 flex gap-2 overflow-x-auto pb-1">
+            {/* A list rather than the old pill row, because every guest needs a
+                share control beside their name and a button cannot live inside a
+                link. Tapping the name still switches which QR this page shows —
+                that stays the fast path; "send" is for handing over the link.
+
+                The action column is a fixed width so the pills all end on the
+                same edge: sizing it to its contents made every row a different
+                length, since "send", "yours" and nothing are three widths. */}
+            <ul className="mt-2 space-y-1">
               {orderTickets.map((entry, index) => {
                 const current = entry.id === ticket.id;
+                const entryStatus =
+                  entry.status === "refunded"
+                    ? "refunded"
+                    : entry.status !== "valid"
+                      ? "void"
+                      : entry.redeemedAt
+                        ? `in ${formatEventTime(entry.redeemedAt, event.timezone)}`
+                        : null;
                 return (
-                  <Link
-                    key={entry.id}
-                    to="/ticket/$id"
-                    params={{ id: entry.id }}
-                    aria-current={current ? "page" : undefined}
-                    className={`shrink-0 rounded-full border px-3 py-2 font-mono text-micro transition-opacity hover:opacity-70 ${
-                      current
-                        ? "border-foreground bg-foreground text-background"
-                        : "theme-border-strong text-foreground"
-                    }`}
-                  >
-                    {index + 1} · {entry.holderName}
-                    {entry.redeemedAt ? " · in" : entry.status !== "valid" ? " · void" : ""}
-                  </Link>
+                  <li key={entry.id} className="grid grid-cols-[1fr_2.5rem] items-center gap-2">
+                    <Link
+                      to="/ticket/$id"
+                      params={{ id: entry.id }}
+                      aria-current={current ? "page" : undefined}
+                      className={`flex min-w-0 items-baseline gap-2 rounded-lg border px-3 py-2 font-mono text-micro transition-opacity hover:opacity-70 ${
+                        current
+                          ? "border-foreground bg-foreground text-background"
+                          : "theme-border-strong text-foreground"
+                      }`}
+                    >
+                      <span className="truncate">
+                        {index + 1} · {entry.holderName}
+                      </span>
+                      {entryStatus && (
+                        <span className="ml-auto shrink-0 opacity-60">{entryStatus}</span>
+                      )}
+                    </Link>
+                    <span className="text-right">
+                      {entry.id === managerTicketId ? (
+                        <span className="font-mono text-micro theme-faint">yours</span>
+                      ) : entry.status === "valid" ? (
+                        <ShareTicketButton
+                          ticketId={entry.id}
+                          holderName={entry.holderName}
+                          eventTitle={event.title}
+                          label="send"
+                        />
+                      ) : null}
+                    </span>
+                  </li>
                 );
               })}
-            </div>
+            </ul>
+            <p className="mt-2 font-mono text-micro theme-faint leading-relaxed">
+              Send each guest their own link. Keep yours — it&apos;s the one that manages the order.
+            </p>
           </nav>
         )}
 
@@ -113,10 +158,18 @@ export function TicketPage({
           </p>
         )}
 
+        {/* Quiet, and never over the QR: the door is done with this code but a
+            checkpoint is not, so this has to inform without reading as spent. */}
         {redeemed && !invalid && (
           <p className="mt-6 px-4 py-3 border theme-border rounded-lg font-mono text-xs theme-subtle">
-            Already scanned in
-            {ticket.redeemedAt ? ` at ${formatEventTime(ticket.redeemedAt, event.timezone)}` : ""}.
+            Scanned in
+            {ticket.redeemedAt
+              ? ` at ${formatEventTime(ticket.redeemedAt, event.timezone)}`
+              : ""} —
+            you&apos;re through.{" "}
+            {checkpoints
+              ? `Keep this open: ${checkpoints} scan the same code.`
+              : "This code still works if anyone needs to check it again."}
           </p>
         )}
 
@@ -147,13 +200,14 @@ export function TicketPage({
 
         <div className="mt-6 text-center">
           <p className="font-serif text-xl text-foreground">{ticket.holderName}</p>
-          <p className="mt-1 font-mono text-micro theme-muted tracking-widest uppercase">
-            {ticket.kind === "comp"
-              ? "complimentary"
-              : ticket.kind === "free"
-                ? "free entry"
-                : "paid"}
-          </p>
+          {/* Only the kinds that tell the holder something. A paid ticket
+              being paid is the unremarkable case, and labelling it invites
+              the reader to wonder what it would mean if it were missing. */}
+          {ticket.kind !== "paid" && (
+            <p className="mt-1 font-mono text-micro theme-muted tracking-widest uppercase">
+              {ticket.kind === "comp" ? "complimentary" : "free entry"}
+            </p>
+          )}
           {/* Readable fallback if the camera or the screen refuses to cooperate. */}
           <p className="mt-3 font-mono text-sm theme-subtle tracking-[0.2em]">{ticket.id}</p>
           <p className="mt-2 font-mono text-micro theme-muted">this QR is your entry ticket</p>
@@ -182,7 +236,11 @@ export function TicketPage({
             </dt>
             <dd className="font-serif text-sm text-foreground leading-relaxed">
               {event.venueName && <span className="block">{event.venueName}</span>}
-              {event.address && <span className="block theme-subtle">{event.address}</span>}
+              <AddressLink
+                address={event.address}
+                venueName={event.venueName}
+                className="theme-subtle"
+              />
               {event.doorCode && (
                 <span className="block font-mono text-xs mt-1">
                   venue door code <strong>{event.doorCode}</strong>
@@ -270,13 +328,22 @@ export function TicketPage({
           </div>
         </dl>
 
-        <div className="mt-6 flex flex-wrap justify-center gap-5">
+        <div className="mt-6 flex flex-wrap items-center justify-center gap-5">
           <a
             href={ticketIcsPath(ticket.id)}
             className="font-mono text-xs theme-muted hover:text-foreground transition-colors underline"
           >
             add to calendar
           </a>
+          {!isManagerTicket && (
+            <ShareTicketButton
+              ticketId={ticket.id}
+              holderName={ticket.holderName}
+              eventTitle={event.title}
+              className="text-xs"
+              label="share this ticket"
+            />
+          )}
         </div>
 
         {ticket.kind === "paid" && canManageOrder && managerTicketId && (

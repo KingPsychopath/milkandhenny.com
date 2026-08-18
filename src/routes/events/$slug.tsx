@@ -8,6 +8,15 @@ import { EventDetailPage } from "@/features/events/ui/EventDetailPage";
 import { serializeJsonForHtml } from "@/lib/shared/serialize-json-for-html";
 
 export const Route = createFileRoute("/events/$slug")({
+  // Stripe's cancel URL lands here. Reading it is the difference between
+  // "I backed out of checkout" and "did that just take my money?"
+  // Stripe's cancel URL lands here. Reading it is the difference between
+  // "I backed out of checkout" and "did that just take my money?"
+  //
+  // Optional key, not a key holding `undefined`: the latter would make
+  // `search` a required prop on every existing link to an event page.
+  validateSearch: (search: Record<string, unknown>): { checkout?: "cancelled" } =>
+    search.checkout === "cancelled" ? { checkout: "cancelled" } : {},
   loader: async ({ params }) => {
     const result = await getEventPageFn({ data: { slug: params.slug } });
     if (!result.found) throw notFound();
@@ -38,6 +47,7 @@ export const Route = createFileRoute("/events/$slug")({
 
 function EventDetailRoute() {
   const { data, origin } = Route.useLoaderData();
+  const { checkout } = Route.useSearch();
   const { event, availability } = data;
 
   // Built from public fields only, so a gated address cannot leak into
@@ -53,7 +63,11 @@ function EventDetailRoute() {
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: serializeJsonForHtml(jsonLd) }}
       />
-      <EventDetailPage event={event} availability={availability} />
+      <EventDetailPage
+        event={event}
+        availability={availability}
+        checkoutCancelled={checkout === "cancelled"}
+      />
     </>
   );
 }

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { resolveTicketOrderAccess } from "@/features/tickets/order-access";
-import type { TicketRecord } from "@/features/tickets/types";
+import { describeCheckpoints, type TicketRecord } from "@/features/tickets/types";
 
 const ORDER_ID = "ord_1234567890abcdef";
 
@@ -52,5 +52,42 @@ describe("ticket order access", () => {
     expect(access.managerTicketId).toBe(primary.id);
     expect(access.tickets).toHaveLength(3);
     expect(access.orderPosition).toBe(3);
+  });
+});
+
+describe("shareable tickets", () => {
+  /**
+   * The purchaser ticket is the order's credential: whoever holds that id gets
+   * every sibling QR and the self-serve refund. So the share control belongs on
+   * the plus-ones and nowhere else — handing the manager link to a guest would
+   * hand them the refund button too.
+   */
+  it("marks only the plus-ones as safe to send on", () => {
+    const access = resolveTicketOrderAccess(primary, unsortedOrder, []);
+    const shareable = access.tickets.filter((entry) => entry.id !== access.managerTicketId);
+
+    expect(shareable.map((entry) => entry.id)).toEqual([second.id, third.id]);
+    expect(shareable).not.toContainEqual(primary);
+  });
+
+  it("gives a guest nothing to leak beyond their own ticket", () => {
+    const access = resolveTicketOrderAccess(second, unsortedOrder, []);
+
+    // No manager id reaches this browser, so the page has no order controls to
+    // render and nothing but this one ticket to offer.
+    expect(access.managerTicketId).toBeUndefined();
+    expect(access.tickets).toEqual([second]);
+  });
+});
+
+describe("describeCheckpoints", () => {
+  it("names the points a scanned-in ticket is still needed at", () => {
+    expect(describeCheckpoints([])).toBeNull();
+    expect(describeCheckpoints(["  "])).toBeNull();
+    expect(describeCheckpoints(["the bar"])).toBe("the bar");
+    expect(describeCheckpoints(["the bar", "dinner"])).toBe("the bar and dinner");
+    expect(describeCheckpoints(["the bar", "dinner", "merch", "coats"])).toBe(
+      "the bar, dinner and other points",
+    );
   });
 });

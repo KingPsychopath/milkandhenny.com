@@ -9,6 +9,8 @@ import { describe, it, expect } from "vitest";
 
 import { buildAvailability, normaliseEventInput } from "@/features/events/events.server";
 import {
+  heroImageHeightClass,
+  isEventHeroHeight,
   isPubliclyVisible,
   isUpcoming,
   isValidEventSlug,
@@ -207,6 +209,42 @@ describe("normaliseEventInput", () => {
       validInput({ marketingPath: "https://tickets.example.com/phish" }),
     );
     expect(result.ok).toBe(false);
+  });
+});
+
+describe("hero height", () => {
+  it("keeps a valid preset and rejects anything else", () => {
+    const result = normaliseEventInput(validInput({ heroHeight: "medium" }));
+    expect(result.ok && result.value.heroHeight).toBe("medium");
+
+    const junk = normaliseEventInput(validInput({ heroHeight: "enormous" }));
+    expect(junk.ok && junk.value.heroHeight).toBeUndefined();
+  });
+
+  it("keeps the existing height when an update omits it", () => {
+    const existing = normaliseEventInput(validInput({ heroHeight: "short" }));
+    expect(existing.ok).toBe(true);
+    if (!existing.ok) return;
+
+    const updated = normaliseEventInput(validInput(), existing.value);
+    expect(updated.ok && updated.value.heroHeight).toBe("short");
+  });
+
+  it("constrains every preset but natural", () => {
+    expect(heroImageHeightClass("natural")).toBe("");
+    // An unset height must behave exactly as `natural` did before the field
+    // existed, or publishing this would silently crop every current event.
+    expect(heroImageHeightClass(undefined)).toBe("");
+    for (const height of ["tall", "medium", "short"] as const) {
+      expect(heroImageHeightClass(height)).toContain("object-cover");
+      expect(heroImageHeightClass(height)).toMatch(/max-h-\[\d+svh\]/);
+    }
+  });
+
+  it("guards the stored value", () => {
+    expect(isEventHeroHeight("tall")).toBe(true);
+    expect(isEventHeroHeight("TALL")).toBe(false);
+    expect(isEventHeroHeight(null)).toBe(false);
   });
 });
 

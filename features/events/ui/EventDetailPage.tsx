@@ -8,11 +8,13 @@ import {
   formatEventDate,
   formatEventTime,
   hasTickets,
+  heroImageHeightClass,
   threeWordMapUrl,
   type TicketHolderEvent,
   type ViewableEvent,
 } from "../types";
 import type { TicketTypeAvailability } from "../events.server";
+import { AddressLink } from "./AddressLink";
 import { ClaimTicketForm } from "./ClaimTicketForm";
 import { ResendTicketForm } from "./ResendTicketForm";
 
@@ -78,9 +80,12 @@ function PolicyMarkdown({ children }: { children: string }) {
 export function EventDetailPage({
   event,
   availability,
+  checkoutCancelled = false,
 }: {
   event: ViewableEvent;
   availability: TicketTypeAvailability[];
+  /** Set when Stripe sent them back without taking payment. */
+  checkoutCancelled?: boolean;
 }) {
   const revealed = isRevealed(event);
   const threeWordUrl = revealed ? threeWordMapUrl(event.threeWordHint) : null;
@@ -103,6 +108,12 @@ export function EventDetailPage({
       <main id="main" className="max-w-2xl mx-auto px-6 pb-24">
         <StatusBanner status={event.status} />
 
+        {checkoutCancelled && (
+          <p className="mb-6 px-4 py-3 border theme-border rounded-lg font-mono text-xs theme-subtle">
+            Checkout was cancelled — you haven&apos;t been charged, and no tickets were issued.
+          </p>
+        )}
+
         {event.marketingPath ? (
           <a
             href={event.marketingPath}
@@ -116,7 +127,7 @@ export function EventDetailPage({
           <img
             src={event.heroImage}
             alt=""
-            className="w-full h-auto rounded-lg mb-8"
+            className={`w-full h-auto rounded-lg mb-8 ${heroImageHeightClass(event.heroHeight)}`}
             loading="eager"
           />
         )}
@@ -152,7 +163,11 @@ export function EventDetailPage({
             {revealed ? (
               <>
                 {event.venueName && <span className="block">{event.venueName}</span>}
-                {event.address && <span className="block theme-subtle">{event.address}</span>}
+                <AddressLink
+                  address={event.address}
+                  venueName={event.venueName}
+                  className="theme-subtle"
+                />
                 {event.doorCode && (
                   <span className="block font-mono text-xs mt-1">
                     venue door code <strong>{event.doorCode}</strong>

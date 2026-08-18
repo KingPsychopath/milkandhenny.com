@@ -10,8 +10,8 @@ import {
   retrieveSession,
 } from "@/lib/platform/stripe.server";
 import { getEvent } from "@/features/events/store.server";
-import { formatMoney, ticketTypeSalesState } from "@/features/events/types";
-import { buildEventUrl, ticketPath } from "@/features/events/routes";
+import { formatMoney, ticketTypeSalesState, type EventRecord } from "@/features/events/types";
+import { buildEventBoughtUrl, buildEventUrl, ticketPath } from "@/features/events/routes";
 import {
   getSoldCounts,
   listRefundedTicketsForPayment,
@@ -136,7 +136,10 @@ export async function startCheckout(input: StartCheckoutInput): Promise<StartChe
       currency: ticketType.currency,
       quantity,
       email,
-      successUrl: `${buildEventUrl(input.origin, event.slug)}?checkout=success`,
+      // The brace template is Stripe's, substituted on the redirect. Built by
+      // concatenation rather than URLSearchParams, which would percent-encode
+      // the braces and hand back a literal `{CHECKOUT_SESSION_ID}`.
+      successUrl: `${buildEventBoughtUrl(input.origin, event.slug)}?session={CHECKOUT_SESSION_ID}`,
       cancelUrl: `${buildEventUrl(input.origin, event.slug)}?checkout=cancelled`,
       reference,
       metadata: {
@@ -715,3 +718,116 @@ export async function refundOrder(input: {
 }
 
 export { ticketPath };
+
+/**
+ * What the buyer sees when Stripe sends them back.
+ *
+ * `pending` is a first-class answer, not an error: the tickets are issued by
+ * the webhook, and a redirect can beat a webhook. Somebody standing on the
+ * confirmation page needs to be told that their money arrived and their
+ * tickets are seconds away, rather than being shown an empty page or a
+ * "ticket not found".
+ */
+export type CheckoutOutcome =
+  | { state: "unknown" }
+  | { state: "pending" }
+  | { state: "problem"; message: string }
+  | {
+      state: "complete";
+      event: EventRecord;
+      orderId: string;
+      tickets: TicketRecord[];
+      email: string;
+      amountMinor: number;
+      currency: string;
+    };
+
+/** Stripe Checkout session ids. Cheap rejection before touching the database. */
+const CHECKOUT_SESSION_ID = /^cs_[A-Za-z0-9_]{10,120}$/;
+
+export function isCheckoutSessionId(value: unknown): value is string {
+  return typeof value === "string" && CHECKOUT_SESSION_ID.test(value);
+}
+
+type CheckoutOutcomeRow = {
+  status: string;
+  event_slug: string;
+  order_id: string | null;
+  email: string;
+  amount_minor: number;
+  currency: string;
+  fulfil_ready: boolean;
+};
+
+function readCheckoutOutcomeRow(sessionId: string) {
+  return queryOne<CheckoutOutcomeRow>(
+    `select status, event_slug, order_id, email, amount_minor, currency,
+            (updated_at < now() - interval '3 seconds') as fulfil_ready
+       from checkout_sessions
+      where id = $1`,
+    [sessionId],
+  );
+}
+
+const PROBLEM_MESSAGES: Record<string, string> = {
+  expired: "This checkout expired before it was paid, so no tickets were issued.",
+  refunded: "This payment was refunded, so the tickets it paid for are no longer valid.",
+  refund_pending: "This payment is being refunded. The money is on its way back to you.",
+  refund_failed: "A refund on this payment could not be completed. Message us and we'll sort it.",
+  disputed: "This payment is disputed, so its tickets are on hold until that is resolved.",
+  payment_mismatch: "Something about this payment doesn't add up. Message us before the night.",
+};
+
+/**
+ * Resolve a checkout for its buyer, nudging fulfilment along if the webhook
+ * has not landed.
+ *
+ * The nudge is the same `fulfilCheckout` the webhook calls, so it cannot
+ * issue a second set of tickets and cannot issue any without asking Stripe
+ * whether the session was actually paid. It exists because the alternative —
+ * telling a paying customer to wait on infrastructure they cannot see — is
+ * how a purchase turns into a support message. `fulfil_ready` throttles it to
+ * roughly one attempt every few seconds however often the page polls.
+ */
+export async function resolveCheckoutOutcome(
+  sessionId: string,
+  origin: string,
+): Promise<CheckoutOutcome> {
+  if (!isCheckoutSessionId(sessionId)) return { state: "unknown" };
+
+  let row = await readCheckoutOutcomeRow(sessionId);
+  if (!row) return { state: "unknown" };
+
+  if (row.status === "pending" && row.fulfil_ready) {
+    try {
+      await fulfilCheckout(sessionId, origin);
+    } catch (error) {
+      // A failed nudge is not the buyer's problem — the webhook still owns
+      // this, and the page will keep reporting `pending`.
+      log.error("checkout.outcome", "Fulfilment nudge failed", { sessionId }, error);
+    }
+    row = (await readCheckoutOutcomeRow(sessionId)) ?? row;
+  }
+
+  if (row.status === "fulfilled" && row.order_id) {
+    const [event, tickets] = await Promise.all([
+      getEvent(row.event_slug),
+      listTicketsForOrder(row.order_id),
+    ]);
+    if (!event || tickets.length === 0) return { state: "pending" };
+    return {
+      state: "complete",
+      event,
+      orderId: row.order_id,
+      tickets,
+      email: row.email,
+      amountMinor: row.amount_minor,
+      currency: row.currency,
+    };
+  }
+
+  const problem = PROBLEM_MESSAGES[row.status];
+  if (problem) return { state: "problem", message: problem };
+
+  return { state: "pending" };
+}

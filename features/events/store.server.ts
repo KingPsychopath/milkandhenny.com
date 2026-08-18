@@ -2,7 +2,13 @@ import type { PoolClient } from "pg";
 
 import { log } from "@/lib/platform/logger.server";
 import { query, transaction } from "@/lib/platform/postgres.server";
-import { isPubliclyVisible, isValidEventSlug, type EventRecord, type TicketType } from "./types";
+import {
+  isEventHeroHeight,
+  isPubliclyVisible,
+  isValidEventSlug,
+  type EventRecord,
+  type TicketType,
+} from "./types";
 
 /**
  * Event persistence.
@@ -36,6 +42,7 @@ type EventRow = {
   age_limit: string | null;
   house_rules: string | null;
   hero_image: string | null;
+  hero_height: string | null;
   og_image: string | null;
   marketing_path: string | null;
   capacity: number | null;
@@ -68,7 +75,7 @@ const EVENT_COLUMNS = `
   slug, title, tagline, status, starts_at, ends_at, doors_at, last_entry_at, timezone,
   area, venue_name, address, door_code, three_word_hint, map_url, step_free_access,
   transport_note, description, lineup, dress_code, age_limit, house_rules, hero_image,
-  og_image, marketing_path, capacity, waitlist_enabled, refund_policy, transferable, terms,
+  hero_height, og_image, marketing_path, capacity, waitlist_enabled, refund_policy, transferable, terms,
   check_in_opens_at, staff_notes, created_at, updated_at
 `;
 
@@ -120,6 +127,7 @@ function toEvent(row: EventRow, ticketTypes: TicketType[]): EventRecord {
     ageLimit: optional(row.age_limit),
     houseRules: optional(row.house_rules),
     heroImage: optional(row.hero_image),
+    heroHeight: isEventHeroHeight(row.hero_height) ? row.hero_height : undefined,
     ogImage: optional(row.og_image),
     marketingPath: optional(row.marketing_path),
     ticketTypes,
@@ -249,11 +257,11 @@ export async function putEvent(event: EventRecord): Promise<void> {
          slug, title, tagline, status, starts_at, ends_at, doors_at, last_entry_at, timezone,
          area, venue_name, address, door_code, three_word_hint, map_url, step_free_access,
          transport_note, description, lineup, dress_code, age_limit, house_rules, hero_image,
-         og_image, marketing_path, capacity, waitlist_enabled, refund_policy, transferable, terms,
-         check_in_opens_at, staff_notes, created_at, updated_at
+         hero_height, og_image, marketing_path, capacity, waitlist_enabled, refund_policy,
+         transferable, terms, check_in_opens_at, staff_notes, created_at, updated_at
        ) values (
          $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19::jsonb,$20,$21,$22,
-         $23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34
+         $23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35
        )
        on conflict (slug) do update set
          title = excluded.title, tagline = excluded.tagline, status = excluded.status,
@@ -265,7 +273,8 @@ export async function putEvent(event: EventRecord): Promise<void> {
          transport_note = excluded.transport_note, description = excluded.description,
          lineup = excluded.lineup, dress_code = excluded.dress_code,
          age_limit = excluded.age_limit, house_rules = excluded.house_rules,
-         hero_image = excluded.hero_image, og_image = excluded.og_image,
+         hero_image = excluded.hero_image, hero_height = excluded.hero_height,
+         og_image = excluded.og_image,
          marketing_path = excluded.marketing_path,
          capacity = excluded.capacity, waitlist_enabled = excluded.waitlist_enabled,
          refund_policy = excluded.refund_policy, transferable = excluded.transferable,
@@ -295,6 +304,7 @@ export async function putEvent(event: EventRecord): Promise<void> {
         event.ageLimit ?? null,
         event.houseRules ?? null,
         event.heroImage ?? null,
+        event.heroHeight ?? null,
         event.ogImage ?? null,
         event.marketingPath ?? null,
         event.capacity ?? null,

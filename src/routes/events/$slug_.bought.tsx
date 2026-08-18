@@ -1,0 +1,37 @@
+import { createFileRoute } from "@tanstack/react-router";
+
+import { SITE_NAME } from "@/lib/shared/config";
+import { getCheckoutOutcomeFn } from "@/features/tickets/tickets.functions";
+import { PurchaseCompletePage } from "@/features/tickets/ui/PurchaseCompletePage";
+
+/**
+ * Where Stripe returns a buyer. The session id in the query is the
+ * credential, so this page is treated like a ticket: out of search results,
+ * and no referrer carried to whatever they click next.
+ */
+export const Route = createFileRoute("/events/$slug_/bought")({
+  validateSearch: (search: Record<string, unknown>) => ({
+    session: typeof search.session === "string" ? search.session : "",
+  }),
+  loaderDeps: ({ search }) => ({ session: search.session }),
+  loader: async ({ deps }) => {
+    if (!deps.session) return { outcome: { state: "unknown" as const } };
+    return { outcome: await getCheckoutOutcomeFn({ data: { sessionId: deps.session } }) };
+  },
+  component: PurchaseCompleteRoute,
+  head: () => ({
+    meta: [
+      { title: `Tickets confirmed — ${SITE_NAME}` },
+      { name: "robots", content: "noindex, nofollow" },
+      { name: "referrer", content: "no-referrer" },
+    ],
+  }),
+});
+
+function PurchaseCompleteRoute() {
+  const { slug } = Route.useParams();
+  const { session } = Route.useSearch();
+  const { outcome } = Route.useLoaderData();
+
+  return <PurchaseCompletePage slug={slug} sessionId={session} initialOutcome={outcome} />;
+}

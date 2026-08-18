@@ -509,6 +509,16 @@ const MIGRATIONS: Migration[] = [
         on email_feedback_events (provider_message_id, occurred_at desc);
     `,
   },
+  {
+    id: "0014_event_hero_height",
+    sql: `
+      -- How much of the first screen the hero image may claim. Null keeps the
+      -- image's natural height, which is what every existing event already had.
+      alter table events
+        add column if not exists hero_height text
+          check (hero_height is null or hero_height in ('natural', 'tall', 'medium', 'short'));
+    `,
+  },
 ];
 
 export type MigrationResult = { applied: string[]; alreadyApplied: number };

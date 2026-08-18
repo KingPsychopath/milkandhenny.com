@@ -6,10 +6,14 @@ import { AppSelect } from "@/components/AppSelect";
 import { useActionDialog } from "@/hooks/useActionDialog";
 import { useQrCode } from "@/hooks/useQrCode";
 import {
+  EVENT_HERO_HEIGHTS,
   EVENT_STATUSES,
   formatEventDateTime,
   formatMoney,
+  heroImageHeightClass,
+  isEventHeroHeight,
   isEventStatus,
+  type EventHeroHeight,
   type EventRecord,
   type EventStatus,
   type TicketType,
@@ -23,6 +27,13 @@ import {
   type ScannerLinkRecord,
 } from "@/features/tickets/checkpoint-types";
 import type { DoorTicketView } from "@/features/tickets/types";
+
+const HERO_HEIGHT_LABELS: Record<EventHeroHeight, string> = {
+  natural: "natural — the image's own height",
+  tall: "tall — 70% of the screen",
+  medium: "medium — 45% of the screen",
+  short: "short — 28% of the screen",
+};
 
 type AuthFetch = (url: string, options?: RequestInit) => Promise<Response>;
 
@@ -68,6 +79,7 @@ type Draft = {
   refundPolicy: string;
   terms: string;
   heroImage: string;
+  heroHeight: EventHeroHeight;
   ogImage: string;
   marketingPath: string;
   ticketTypes: DraftTicketType[];
@@ -127,6 +139,7 @@ const EMPTY_DRAFT: Draft = {
   refundPolicy: "",
   terms: "",
   heroImage: "",
+  heroHeight: "natural",
   ogImage: "",
   marketingPath: "",
   ticketTypes: [{ id: "standard", name: "Entry", price: "0", quantity: "50", perPersonLimit: "2" }],
@@ -174,6 +187,7 @@ function toDraft(event: EventRecord): Draft {
     refundPolicy: event.refundPolicy ?? "",
     terms: event.terms ?? "",
     heroImage: event.heroImage ?? "",
+    heroHeight: event.heroHeight ?? "natural",
     ogImage: event.ogImage ?? "",
     marketingPath: event.marketingPath ?? "",
     ticketTypes: event.ticketTypes.map((type) => ({
@@ -233,6 +247,7 @@ function draftToPayload(draft: Draft): Record<string, unknown> {
     refundPolicy: draft.refundPolicy.trim() || undefined,
     terms: draft.terms.trim() || undefined,
     heroImage: draft.heroImage.trim() || undefined,
+    heroHeight: draft.heroHeight,
     ogImage: draft.ogImage.trim() || undefined,
     marketingPath: draft.marketingPath.trim() || undefined,
     ticketTypes,
@@ -2083,6 +2098,7 @@ export function EventsPanel({
   withStepUpHeaders: (token: string, extra?: Record<string, string>) => Record<string, string>;
 }) {
   const statusId = useId();
+  const heroHeightId = useId();
   const [events, setEvents] = useState<EventRecord[]>([]);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -2440,6 +2456,30 @@ export function EventsPanel({
               onChange={(value) => setDraft({ ...draft, heroImage: value })}
               hint="shown at the top of the event page"
             />
+            <div>
+              <label
+                htmlFor={heroHeightId}
+                className="font-mono text-micro theme-muted tracking-wide"
+              >
+                hero height
+              </label>
+              <AppSelect
+                id={heroHeightId}
+                value={draft.heroHeight}
+                onValueChange={(value) =>
+                  isEventHeroHeight(value) && setDraft({ ...draft, heroHeight: value })
+                }
+                options={EVENT_HERO_HEIGHTS.map((height) => ({
+                  value: height,
+                  label: HERO_HEIGHT_LABELS[height],
+                }))}
+                variant="field"
+                className="mt-1 rounded text-sm"
+              />
+              <p className="mt-1 font-mono text-micro theme-faint">
+                anything but natural crops to a band, so the date and buy button stay above the fold
+              </p>
+            </div>
             <Field
               label="social image URL"
               value={draft.ogImage}
@@ -2458,7 +2498,11 @@ export function EventsPanel({
             <img
               src={draft.heroImage}
               alt="Event hero preview"
-              className="max-h-64 w-full rounded-lg object-cover"
+              className={`w-full h-auto rounded-lg ${
+                draft.heroHeight === "natural"
+                  ? "max-h-64 object-cover"
+                  : heroImageHeightClass(draft.heroHeight)
+              }`}
             />
           )}
 

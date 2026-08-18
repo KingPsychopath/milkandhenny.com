@@ -35,6 +35,7 @@ function TicketRoute() {
       orderPosition={data.orderPosition}
       canManageOrder={data.canManageOrder}
       managerTicketId={data.managerTicketId}
+      checkpointNames={data.checkpointNames}
       album={data.album}
     />
   );

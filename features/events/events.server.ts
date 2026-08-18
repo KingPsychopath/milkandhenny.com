@@ -2,6 +2,7 @@ import { log } from "@/lib/platform/logger.server";
 import { getSoldCounts } from "@/features/tickets/store.server";
 import { deleteEvent, getEvent, listEvents, putEvent } from "./store.server";
 import {
+  isEventHeroHeight,
   isEventStatus,
   isPubliclyVisible,
   isUpcoming,
@@ -268,6 +269,7 @@ export function normaliseEventInput(
       ageLimit: trimmed(input.ageLimit, 60) ?? existing?.ageLimit,
       houseRules: trimmed(input.houseRules, MAX_TEXT) ?? existing?.houseRules,
       heroImage: trimmed(input.heroImage, 500) ?? existing?.heroImage,
+      heroHeight: isEventHeroHeight(input.heroHeight) ? input.heroHeight : existing?.heroHeight,
       ogImage: trimmed(input.ogImage, 500) ?? existing?.ogImage,
       marketingPath: marketingPath(input.marketingPath) ?? existing?.marketingPath,
       ticketTypes,
