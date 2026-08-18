@@ -1,6 +1,6 @@
 import { Link, createFileRoute } from "@tanstack/react-router";
 
-import { SITE_BRAND } from "@/lib/shared/config";
+import { CONTACT_EMAIL, SITE_BRAND } from "@/lib/shared/config";
 
 export const Route = createFileRoute("/privacy")({
   head: () => ({
@@ -83,10 +83,10 @@ function PrivacyPage() {
             <p className="mt-3 theme-muted">
               Email{" "}
               <a
-                href="mailto:hello@milkandhenny.com"
+                href={`mailto:${CONTACT_EMAIL}`}
                 className="text-foreground underline underline-offset-4 hover:opacity-70"
               >
-                hello@milkandhenny.com
+                {CONTACT_EMAIL}
               </a>{" "}
               with a privacy request or question. Include enough detail for us to find the relevant
               record, but do not send sensitive identity documents unless we ask for them.

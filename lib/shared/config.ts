@@ -9,6 +9,9 @@ const SITE_NAME = "Milk & Henny";
 /** Lowercase brand for editorial UI, nav headers, OG alt text, RSS title */
 const SITE_BRAND = "milk & henny";
 
+/** Where a guest reaches a human — door trouble, access needs, refunds after doors. */
+const CONTACT_EMAIL = "hello@milkandhenny.com";
+
 const viteEnv = import.meta.env as Record<string, string | undefined> | undefined;
 const runtimeEnv = typeof process === "undefined" ? undefined : process.env;
 
@@ -57,6 +60,7 @@ function hasMediaPublicUrl(): boolean {
 export {
   SITE_NAME,
   SITE_BRAND,
+  CONTACT_EMAIL,
   BASE_URL,
   MEDIA_PUBLIC_URL,
   hasMediaPublicUrl,

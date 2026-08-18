@@ -1,6 +1,6 @@
 import { Link, createFileRoute } from "@tanstack/react-router";
 
-import { SITE_BRAND } from "@/lib/shared/config";
+import { CONTACT_EMAIL, SITE_BRAND } from "@/lib/shared/config";
 
 export const Route = createFileRoute("/contact")({
   head: () => ({
@@ -31,10 +31,10 @@ function ContactPage() {
           <p>
             For event, ticket, pitch, transfer, privacy, or site questions, email{" "}
             <a
-              href="mailto:hello@milkandhenny.com"
+              href={`mailto:${CONTACT_EMAIL}`}
               className="text-foreground underline underline-offset-4 hover:opacity-70"
             >
-              hello@milkandhenny.com
+              {CONTACT_EMAIL}
             </a>
             .
           </p>

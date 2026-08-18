@@ -9,12 +9,12 @@ import {
   formatEventTime,
   hasTickets,
   heroImageHeightClass,
-  threeWordMapUrl,
   type TicketHolderEvent,
   type ViewableEvent,
 } from "../types";
 import type { TicketTypeAvailability } from "../events.server";
 import { AddressLink } from "./AddressLink";
+import { ThreeWordHint } from "./ThreeWordHint";
 import { ClaimTicketForm } from "./ClaimTicketForm";
 import { ResendTicketForm } from "./ResendTicketForm";
 
@@ -88,7 +88,6 @@ export function EventDetailPage({
   checkoutCancelled?: boolean;
 }) {
   const revealed = isRevealed(event);
-  const threeWordUrl = revealed ? threeWordMapUrl(event.threeWordHint) : null;
   const ticketsExist = hasTickets(event);
   const doorsAt = event.doorsAt;
   const doorsDifferFromStart =
@@ -173,21 +172,7 @@ export function EventDetailPage({
                     venue door code <strong>{event.doorCode}</strong>
                   </span>
                 )}
-                {event.threeWordHint &&
-                  (threeWordUrl ? (
-                    <a
-                      href={threeWordUrl}
-                      target="_blank"
-                      rel="noreferrer noopener"
-                      className="block font-mono text-xs theme-muted mt-1 underline hover:opacity-70 transition-opacity"
-                    >
-                      {event.threeWordHint}
-                    </a>
-                  ) : (
-                    <span className="block font-mono text-xs theme-muted mt-1">
-                      {event.threeWordHint}
-                    </span>
-                  ))}
+                {event.threeWordHint && <ThreeWordHint hint={event.threeWordHint} />}
                 {event.mapUrl && (
                   <a
                     href={event.mapUrl}

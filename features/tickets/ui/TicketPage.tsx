@@ -2,14 +2,14 @@
 
 import { Link } from "@tanstack/react-router";
 
-import { SITE_BRAND } from "@/lib/shared/config";
+import { CONTACT_EMAIL, SITE_BRAND } from "@/lib/shared/config";
 import { useQrCode } from "@/hooks/useQrCode";
 import { ticketIcsPath } from "@/features/events/routes";
 import { AddressLink } from "@/features/events/ui/AddressLink";
+import { ThreeWordHint } from "@/features/events/ui/ThreeWordHint";
 import {
   formatEventDate,
   formatEventTime,
-  threeWordMapUrl,
   type EventAlbumView,
   type TicketHolderEvent,
 } from "@/features/events/types";
@@ -62,7 +62,6 @@ export function TicketPage({
     0,
   );
   const orderCurrency = orderTickets.find((entry) => entry.currency)?.currency;
-  const threeWordUrl = threeWordMapUrl(event.threeWordHint);
   const checkpoints = describeCheckpoints(checkpointNames);
   // The purchaser ticket is the order's credential — see `resolveTicketOrderAccess`.
   // Whoever holds this id gets every sibling QR and the refund button, so it is
@@ -140,7 +139,8 @@ export function TicketPage({
               })}
             </ul>
             <p className="mt-2 font-mono text-micro theme-faint leading-relaxed">
-              Send each guest their own link. Keep yours — it&apos;s the one that manages the order.
+              Send each guest their own link. Keep yours — it&apos;s the only one that can refund
+              the order.
             </p>
           </nav>
         )}
@@ -246,21 +246,7 @@ export function TicketPage({
                   venue door code <strong>{event.doorCode}</strong>
                 </span>
               )}
-              {event.threeWordHint &&
-                (threeWordUrl ? (
-                  <a
-                    href={threeWordUrl}
-                    target="_blank"
-                    rel="noreferrer noopener"
-                    className="block font-mono text-xs theme-muted mt-1 underline hover:opacity-70 transition-opacity"
-                  >
-                    {event.threeWordHint}
-                  </a>
-                ) : (
-                  <span className="block font-mono text-xs theme-muted mt-1">
-                    {event.threeWordHint}
-                  </span>
-                ))}
+              {event.threeWordHint && <ThreeWordHint hint={event.threeWordHint} />}
               {event.mapUrl && (
                 <a
                   href={event.mapUrl}
@@ -345,6 +331,24 @@ export function TicketPage({
             />
           )}
         </div>
+
+        {/* A way to reach a human, on the page they will actually have open.
+            Step-free access, a name that needs changing, a QR the door cannot
+            read — all of it is a message to us, and none of it should require
+            finding the contact page from a phone in a queue. The subject line
+            carries the ticket reference so the reply does not start with
+            "which ticket?". */}
+        <p className="mt-6 text-center font-mono text-micro theme-muted leading-relaxed">
+          Trouble getting in, or need access help?{" "}
+          <a
+            href={`mailto:${CONTACT_EMAIL}?subject=${encodeURIComponent(
+              `${event.title} — ticket ${ticket.id}`,
+            )}`}
+            className="underline hover:text-foreground transition-colors"
+          >
+            {CONTACT_EMAIL}
+          </a>
+        </p>
 
         {ticket.kind === "paid" && canManageOrder && managerTicketId && (
           <div className="mt-8 border-t theme-border pt-6">

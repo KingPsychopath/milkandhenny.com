@@ -1,3 +1,5 @@
+import { CONTACT_EMAIL } from "./config";
+
 export function escapeEmailHtml(value: string): string {
   return value
     .replace(/&/g, "&amp;")
@@ -40,7 +42,7 @@ export function renderBrandedEmail(input: {
                 ${input.note ? `<p style="margin:18px 0 0;color:#78716c;font:13px/1.6 ui-monospace,SFMono-Regular,Menlo,monospace">${escapeEmailHtml(input.note)}</p>` : ""}
               </div>
               <div style="margin-top:28px;border-top:1px solid #e7e5e4;padding-top:16px;color:#a8a29e;font:12px/1.6 ui-monospace,SFMono-Regular,Menlo,monospace">
-                milk &amp; henny · <a href="mailto:hello@milkandhenny.com" style="color:#78716c">hello@milkandhenny.com</a>
+                milk &amp; henny · <a href="mailto:${CONTACT_EMAIL}" style="color:#78716c">${CONTACT_EMAIL}</a>
               </div>
             </td>
           </tr>

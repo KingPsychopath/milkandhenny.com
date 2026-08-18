@@ -7,12 +7,8 @@ import { SITE_BRAND } from "@/lib/shared/config";
 import { useQrCode } from "@/hooks/useQrCode";
 import { eventIcsPath, ticketIcsPath } from "@/features/events/routes";
 import { AddressLink } from "@/features/events/ui/AddressLink";
-import {
-  formatEventDate,
-  formatEventTime,
-  formatMoney,
-  threeWordMapUrl,
-} from "@/features/events/types";
+import { ThreeWordHint } from "@/features/events/ui/ThreeWordHint";
+import { formatEventDate, formatEventTime, formatMoney } from "@/features/events/types";
 import type { TicketStatus } from "../types";
 import {
   getCheckoutOutcomeFn,
@@ -44,16 +40,269 @@ const LINK_CLASS =
 /**
  * How wide each ticket sits in the swipe track.
  *
- * Under 100% so the next ticket peeks, which is the whole affordance — it
- * says "there are more" without a caption. The count in the summary line
- * above says how many, so nothing is hidden by scrolling sideways.
- *
- * This beats stacking vertically on the axis that matters: a QR has to be
- * big to scan, and one card at 82% of the column is a larger code than three
- * shrunk to fit down the page, with every ticket still one swipe away rather
- * than behind a "show more".
+ * Near-full, so one ticket is the thing on screen and the QR is as big as the
+ * column allows — this page gets held up to a scanner. The few percent held
+ * back leave a sliver of the next card, which is what says "there are more"
+ * without a caption; the counter below says how many.
  */
-const TICKET_TRACK_WIDTH = "82%";
+const TICKET_TRACK_WIDTH = "92%";
+
+/** Pixels of movement that turn a click into a drag. */
+const DRAG_SLOP = 6;
+
+/** How long the glide to the nearest ticket takes. */
+const GLIDE_MS = 320;
+
+type TrackPhase = "idle" | "dragging" | "settling";
+
+/**
+ * Which card the track has settled on.
+ *
+ * Measured from scroll position rather than tracked as state the buttons own,
+ * so a swipe and a tap on the dots cannot disagree about where we are.
+ */
+/**
+ * Which card sits nearest the middle of the track.
+ *
+ * Measured with getBoundingClientRect so the card and the track are in the
+ * same coordinate space. `offsetLeft` is relative to the nearest positioned
+ * ancestor rather than the scroll container, so comparing it against
+ * `scrollLeft` reads correctly only while the column happens to sit flush
+ * left — it drifts by a whole card once `max-w-md` starts centring it.
+ */
+function measureNearest(track: HTMLElement): { index: number; offset: number } {
+  const trackBox = track.getBoundingClientRect();
+  const centre = trackBox.left + trackBox.width / 2;
+  let index = 0;
+  let offset = 0;
+  let shortest = Number.POSITIVE_INFINITY;
+  for (const [candidate, card] of [...track.children].entries()) {
+    const box = card.getBoundingClientRect();
+    const delta = box.left + box.width / 2 - centre;
+    if (Math.abs(delta) < shortest) {
+      shortest = Math.abs(delta);
+      index = candidate;
+      offset = delta;
+    }
+  }
+  return { index, offset };
+}
+
+/**
+ * Suspend and restore CSS snapping on the track itself.
+ *
+ * Inline style rather than a class, so it lands in the same tick as the scroll
+ * writes that depend on it. Touch never routes through here, so a finger keeps
+ * native snapping throughout.
+ */
+function suspendSnap(track: HTMLElement) {
+  track.style.scrollSnapType = "none";
+}
+
+function restoreSnap(track: HTMLElement) {
+  track.style.removeProperty("scroll-snap-type");
+}
+
+function useActiveCard(count: number) {
+  const trackRef = useRef<HTMLDivElement>(null);
+  const [active, setActive] = useState(0);
+  // "settling" is its own phase because CSS snap cannot do this part: turning
+  // `scroll-snap-type` back on makes the browser jump to the nearest point
+  // instantly, so it has to stay off until our own smooth scroll has finished.
+  const [phase, setPhase] = useState<TrackPhase>("idle");
+  const phaseRef = useRef<TrackPhase>("idle");
+  const frame = useRef<number | null>(null);
+  /** Where an in-flight glide is heading, so it can be completed instantly. */
+  const glideTarget = useRef<number | null>(null);
+
+  const enterPhase = useCallback((next: TrackPhase) => {
+    phaseRef.current = next;
+    setPhase(next);
+  }, []);
+
+  const sync = useCallback(() => {
+    const track = trackRef.current;
+    if (!track) return;
+    setActive(measureNearest(track).index);
+  }, []);
+
+  /**
+   * Glide the track by `delta`, then hand snapping back.
+   *
+   * Hand-animated rather than `scrollBy({ behavior: "smooth" })`, because a
+   * mandatory snap container cancels a programmatic smooth scroll the moment
+   * it targets anything that is not a snap point — the scroll silently does
+   * nothing and the card arrives by an instant snap instead, which is the jump
+   * this is meant to replace. Driving the frames means snapping stays off for
+   * exactly as long as the animation lasts, with no timer guessing at it.
+   */
+  const glideBy = useCallback(
+    (delta: number) => {
+      const track = trackRef.current;
+      if (!track) return;
+      if (frame.current) cancelAnimationFrame(frame.current);
+
+      // Snap is suspended on the element, not via a class. Each frame writes
+      // `scrollLeft`, and a mandatory snap container re-snaps every such write
+      // the instant it lands — so waiting for React to re-render a `snap-none`
+      // class is a race the first frame loses, and the glide collapses into
+      // the jump it was meant to replace.
+      suspendSnap(track);
+
+      const reduceMotion =
+        typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+      if (Math.abs(delta) < 1 || reduceMotion) {
+        track.scrollLeft += delta;
+        glideTarget.current = null;
+        restoreSnap(track);
+        enterPhase("idle");
+        return;
+      }
+
+      const from = track.scrollLeft;
+      glideTarget.current = from + delta;
+      const startedAt = performance.now();
+      const step = (now: number) => {
+        const progress = Math.min(1, (now - startedAt) / GLIDE_MS);
+        const eased = 1 - (1 - progress) ** 3;
+        track.scrollLeft = from + delta * eased;
+        if (progress < 1) {
+          frame.current = requestAnimationFrame(step);
+        } else {
+          frame.current = null;
+          glideTarget.current = null;
+          restoreSnap(track);
+          enterPhase("idle");
+        }
+      };
+      frame.current = requestAnimationFrame(step);
+    },
+    [enterPhase],
+  );
+
+  /** Let go of a free drag and glide to whichever ticket is closest. */
+  const settle = useCallback(() => {
+    const track = trackRef.current;
+    if (!track) return;
+    const { index, offset } = measureNearest(track);
+    setActive(index);
+    enterPhase("settling");
+    glideBy(offset);
+  }, [enterPhase, glideBy]);
+
+  const goTo = useCallback(
+    (index: number) => {
+      const track = trackRef.current;
+      const card = track?.children[index];
+      if (!track || !card) return;
+      const trackBox = track.getBoundingClientRect();
+      const box = card.getBoundingClientRect();
+      setActive(index);
+      enterPhase("settling");
+      glideBy(box.left + box.width / 2 - (trackBox.left + trackBox.width / 2));
+    },
+    [enterPhase, glideBy],
+  );
+
+  // A trimmed order must not leave the counter pointing past the last ticket.
+  useEffect(() => {
+    setActive((current) => Math.min(current, Math.max(0, count - 1)));
+  }, [count]);
+
+  /**
+   * Land the glide immediately instead of animating it.
+   *
+   * Browsers pause requestAnimationFrame in a background tab, so a glide that
+   * is interrupted by the reader switching away would never reach its last
+   * frame — leaving snapping suspended and the track parked between two
+   * tickets until something else scrolled it.
+   */
+  const finishGlide = useCallback(() => {
+    const track = trackRef.current;
+    if (frame.current) {
+      cancelAnimationFrame(frame.current);
+      frame.current = null;
+    }
+    if (track) {
+      if (glideTarget.current !== null) track.scrollLeft = glideTarget.current;
+      restoreSnap(track);
+    }
+    glideTarget.current = null;
+    enterPhase("idle");
+  }, [enterPhase]);
+
+  useEffect(() => {
+    const onVisibilityChange = () => {
+      if (document.hidden && frame.current !== null) finishGlide();
+    };
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+      if (frame.current) cancelAnimationFrame(frame.current);
+    };
+  }, [finishGlide]);
+
+  // Click-and-drag, for the mouse.
+  //
+  // A touch screen and a trackpad both scroll this track natively; a mouse
+  // does not, and on a desktop the cards look grabbable, so they should be.
+  // Only `mouse` pointers are intercepted — hijacking touch would replace a
+  // good native scroll with a worse imitation of it.
+  const drag = useRef({ startX: 0, startScroll: 0, travelled: 0 });
+
+  const onPointerDown = useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      const track = trackRef.current;
+      if (!track || event.pointerType !== "mouse" || event.button !== 0) return;
+      // Grabbing again mid-glide takes over from it rather than fighting it.
+      if (frame.current) cancelAnimationFrame(frame.current);
+      suspendSnap(track);
+      drag.current = { startX: event.clientX, startScroll: track.scrollLeft, travelled: 0 };
+      enterPhase("dragging");
+    },
+    [enterPhase],
+  );
+
+  const onPointerMove = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    const track = trackRef.current;
+    if (phaseRef.current !== "dragging" || !track) return;
+    const moved = event.clientX - drag.current.startX;
+    drag.current.travelled = Math.max(drag.current.travelled, Math.abs(moved));
+    // Follows the cursor exactly — no snap resistance while the button is down.
+    track.scrollLeft = drag.current.startScroll - moved;
+  }, []);
+
+  const endDrag = useCallback(() => {
+    if (phaseRef.current !== "dragging") return;
+    settle();
+  }, [settle]);
+
+  // A drag that crossed the slop threshold was a scroll, not a tap, so swallow
+  // the click it would otherwise land on whichever link sat under the cursor.
+  const onClickCapture = useCallback((event: React.MouseEvent) => {
+    if (drag.current.travelled <= DRAG_SLOP) return;
+    event.preventDefault();
+    event.stopPropagation();
+    drag.current.travelled = 0;
+  }, []);
+
+  return {
+    trackRef,
+    active,
+    sync,
+    goTo,
+    phase,
+    dragHandlers: {
+      onPointerDown,
+      onPointerMove,
+      onPointerUp: endDrag,
+      onPointerLeave: endDrag,
+      onPointerCancel: endDrag,
+      onClickCapture,
+    },
+  };
+}
 
 type PollState = "waiting" | "settled" | "timed-out";
 
@@ -187,8 +436,11 @@ function TicketQr({
         </p>
       ) : null}
       <div className="mt-3 flex flex-wrap items-center justify-center gap-4">
+        {/* The same route either way — a ticket page. It just carries the
+            order controls when the ticket is the purchaser's, so the label
+            should not imply a separate "manage" screen that does not exist. */}
         <Link to="/ticket/$id" params={{ id: ticketId }} className={LINK_CLASS}>
-          {isBuyer ? "manage this order" : "open full ticket"}
+          {isBuyer ? "open your ticket" : "open full ticket"}
         </Link>
         {/* Nothing to send once a ticket is void — it would not admit anyone. */}
         {!isBuyer && !invalid && (
@@ -273,6 +525,8 @@ export function PurchaseCompletePage({
   initialOutcome: CheckoutOutcomeResult;
 }) {
   const { outcome, poll, retry } = useCheckoutOutcome(sessionId, initialOutcome);
+  const ticketCount = outcome.state === "complete" ? outcome.tickets.length : 0;
+  const { trackRef, active, sync, goTo, phase, dragHandlers } = useActiveCard(ticketCount);
 
   if (outcome.state === "unknown") {
     return (
@@ -333,7 +587,6 @@ export function PurchaseCompletePage({
   }
 
   const { event, tickets, managerTicketId, email, amountMinor, currency } = outcome;
-  const threeWordUrl = threeWordMapUrl(event.threeWordHint);
   const single = tickets.length === 1;
 
   return (
@@ -368,37 +621,89 @@ export function PurchaseCompletePage({
         // button, so tabbing through the order scrolls it into view anyway.
         // A scroll container only needs to be focusable when nothing inside it
         // is, which would strand a keyboard entirely.
-        <div
-          role="group"
-          aria-label={`${tickets.length} tickets in this order`}
-          className="mt-6 -mx-6 flex snap-x snap-mandatory gap-3 overflow-x-auto px-6 pb-2"
-        >
-          {tickets.map((ticket) => (
-            <div
-              key={ticket.id}
-              style={{ width: TICKET_TRACK_WIDTH }}
-              className="shrink-0 snap-center rounded-xl border theme-border"
+        <>
+          <div
+            ref={trackRef}
+            onScroll={sync}
+            {...dragHandlers}
+            role="group"
+            aria-label={`${tickets.length} tickets in this order`}
+            // Snapping is declared here but suspended imperatively whenever a
+            // drag or a glide is in flight — see `suspendSnap`. This class only
+            // carries the cursor and text-selection state.
+            className={`mt-6 -mx-6 flex snap-x snap-mandatory gap-3 overflow-x-auto px-6 pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden ${
+              phase === "dragging" ? "cursor-grabbing select-none" : "cursor-grab"
+            }`}
+          >
+            {tickets.map((ticket) => (
+              <div
+                key={ticket.id}
+                style={{ width: TICKET_TRACK_WIDTH }}
+                className="shrink-0 snap-center rounded-xl border theme-border"
+              >
+                <TicketQr
+                  qrPayload={ticket.qrPayload}
+                  holderName={ticket.holderName}
+                  ticketId={ticket.id}
+                  eventTitle={event.title}
+                  timezone={event.timezone}
+                  status={ticket.status}
+                  redeemedAt={ticket.redeemedAt}
+                  large
+                  isBuyer={ticket.id === managerTicketId}
+                />
+              </div>
+            ))}
+          </div>
+
+          {/* Position and stepper. Amber is the one accent this palette
+              spends, and a "which of these am I looking at" marker is
+              exactly the kind of small orienting thing worth spending it on. */}
+          <div className="mt-3 flex items-center justify-between gap-4">
+            <p
+              className="font-mono text-micro tracking-wide"
+              style={{ color: "var(--prose-hashtag)" }}
+              aria-live="polite"
             >
-              <TicketQr
-                qrPayload={ticket.qrPayload}
-                holderName={ticket.holderName}
-                ticketId={ticket.id}
-                eventTitle={event.title}
-                timezone={event.timezone}
-                status={ticket.status}
-                redeemedAt={ticket.redeemedAt}
-                large
-                isBuyer={ticket.id === managerTicketId}
-              />
+              ticket {active + 1} of {tickets.length}
+            </p>
+            <div className="flex items-center gap-1">
+              {tickets.map((ticket, index) => {
+                const current = index === active;
+                return (
+                  <button
+                    key={ticket.id}
+                    type="button"
+                    onClick={() => goTo(index)}
+                    aria-label={`Show ${ticket.holderName}'s ticket`}
+                    aria-current={current ? "true" : undefined}
+                    className="group grid size-7 place-items-center rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--prose-hashtag)]"
+                  >
+                    {/* Grows on hover and dips on press, so the dot answers the
+                        tap before the track has finished sliding. The active one
+                        is already at full size — it should not flinch. */}
+                    <span
+                      className={`block rounded-full transition-[transform,opacity,background-color] duration-150 ease-out ${
+                        current
+                          ? "size-2 opacity-100"
+                          : "size-1.5 opacity-30 group-hover:scale-150 group-hover:opacity-70 group-active:scale-90"
+                      }`}
+                      style={{
+                        backgroundColor: current ? "var(--prose-hashtag)" : "var(--foreground)",
+                      }}
+                    />
+                  </button>
+                );
+              })}
             </div>
-          ))}
-        </div>
+          </div>
+        </>
       )}
 
       {!single && (
         <p className="mt-3 font-mono text-micro theme-muted leading-relaxed">
           Swipe for each guest&apos;s QR. Send them theirs and they can be scanned in without you —
-          keep the first one, it&apos;s yours and it&apos;s the link that manages the order.
+          keep the first one, it&apos;s yours and it&apos;s the only one that can refund the order.
         </p>
       )}
 
@@ -436,21 +741,7 @@ export function PurchaseCompletePage({
                 venue door code <strong>{event.doorCode}</strong>
               </span>
             )}
-            {event.threeWordHint &&
-              (threeWordUrl ? (
-                <a
-                  href={threeWordUrl}
-                  target="_blank"
-                  rel="noreferrer noopener"
-                  className="block font-mono text-xs theme-muted mt-1 underline hover:opacity-70 transition-opacity"
-                >
-                  {event.threeWordHint}
-                </a>
-              ) : (
-                <span className="block font-mono text-xs theme-muted mt-1">
-                  {event.threeWordHint}
-                </span>
-              ))}
+            {event.threeWordHint && <ThreeWordHint hint={event.threeWordHint} />}
             {event.mapUrl && (
               <a
                 href={event.mapUrl}
