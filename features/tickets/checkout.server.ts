@@ -636,9 +636,19 @@ export async function refundOrder(input: {
     order_id: string;
     payment_ref: string | null;
     event_slug: string;
-  }>(`select order_id, payment_ref, event_slug from tickets where id = $1`, [input.ticketId]);
+    parent_ticket_id: string | null;
+  }>(`select order_id, payment_ref, event_slug, parent_ticket_id from tickets where id = $1`, [
+    input.ticketId,
+  ]);
 
   if (!anchor) return { ok: false, status: 404, error: "Ticket not found" };
+  if (input.reason === "self-serve" && anchor.parent_ticket_id) {
+    return {
+      ok: false,
+      status: 403,
+      error: "Only the purchaser ticket can refund this order",
+    };
+  }
   if (!anchor.payment_ref) {
     return { ok: false, status: 400, error: "This ticket was not paid for" };
   }

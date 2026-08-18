@@ -120,6 +120,28 @@ export type EventAlbumView = {
   expiresAt?: string;
 };
 
+/**
+ * what3words addresses, when the hint happens to be one.
+ *
+ * The field is free text — "the blue door past the chippy" is just as valid a
+ * hint — so this only recognises the three-word form and leaves everything
+ * else as prose. Leading slashes are optional; what3words writes `///a.b.c`
+ * but people paste it both ways.
+ */
+const THREE_WORD_ADDRESS = /^\/{0,3}([\p{L}']+)\.([\p{L}']+)\.([\p{L}']+)$/u;
+
+export function parseThreeWordAddress(hint: string | undefined): string | null {
+  if (!hint) return null;
+  const match = THREE_WORD_ADDRESS.exec(hint.trim());
+  return match ? `${match[1]}.${match[2]}.${match[3]}` : null;
+}
+
+/** A tappable link to the exact three metres, when the hint is one. */
+export function threeWordMapUrl(hint: string | undefined): string | null {
+  const address = parseThreeWordAddress(hint);
+  return address ? `https://what3words.com/${address}` : null;
+}
+
 export const SAFE_EVENT_SLUG = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
 export function isValidEventSlug(slug: string): boolean {

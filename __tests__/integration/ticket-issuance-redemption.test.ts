@@ -38,6 +38,7 @@ import {
   insertTicketsWithCapacity,
 } from "@/features/tickets/store.server";
 import { buildTicketQrPayload, hashTicketId, signTicketId } from "@/features/tickets/qr.server";
+import { refundOrder } from "@/features/tickets/checkout.server";
 import type { EventRecord } from "@/features/events/types";
 
 const SLUG = "apartment-life";
@@ -123,6 +124,34 @@ describeWithDatabase("tickets (postgres)", () => {
       expect(first.parentTicketId).toBeUndefined();
       for (const ticket of rest) expect(ticket.parentTicketId).toBe(first.id);
       expect(new Set(result.value.tickets.map((t) => t.orderId)).size).toBe(1);
+    });
+
+    it("does not let a shared child ticket refund the purchaser's order", async () => {
+      await seedEvent();
+      const result = await issueTickets({
+        eventSlug: SLUG,
+        ticketTypeId: "entry",
+        holderName: "Alice",
+        email: "alice@example.com",
+        quantity: 2,
+        kind: "paid",
+        paymentRef: "pi_shared_child",
+        amountPaidMinor: 1000,
+        currency: "GBP",
+      });
+
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      const outcome = await refundOrder({
+        ticketId: result.value.tickets[1].id,
+        reason: "self-serve",
+      });
+
+      expect(outcome).toEqual({
+        ok: false,
+        status: 403,
+        error: "Only the purchaser ticket can refund this order",
+      });
     });
 
     it("rejects an unknown event or ticket type", async () => {

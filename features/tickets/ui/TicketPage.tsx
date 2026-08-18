@@ -8,6 +8,7 @@ import { ticketIcsPath } from "@/features/events/routes";
 import {
   formatEventDate,
   formatEventTime,
+  threeWordMapUrl,
   type EventAlbumView,
   type TicketHolderEvent,
 } from "@/features/events/types";
@@ -29,12 +30,20 @@ export function TicketPage({
   event,
   qrPayload,
   orderTickets,
+  orderSize,
+  orderPosition,
+  canManageOrder,
+  managerTicketId,
   album,
 }: {
   ticket: TicketPageTicket;
   event: TicketHolderEvent;
   qrPayload: string;
   orderTickets: OrderTicketView[];
+  orderSize: number;
+  orderPosition: number;
+  canManageOrder: boolean;
+  managerTicketId?: string;
   album: EventAlbumView;
 }) {
   const { dataUrl: qr, failed } = useQrCode(qrPayload, 512);
@@ -42,7 +51,6 @@ export function TicketPage({
   const invalid = ticket.status !== "valid";
   // Self-serve refunds close when doors open; after that it is a conversation.
   const doorsOpen = Date.now() >= Date.parse(event.doorsAt ?? event.startsAt);
-  const orderSize = orderTickets.length;
   const anyOrderTicketRedeemed = orderTickets.some((entry) => Boolean(entry.redeemedAt));
   const anyOrderTicketInvalid = orderTickets.some((entry) => entry.status !== "valid");
   const orderAmountMinor = orderTickets.reduce(
@@ -50,6 +58,7 @@ export function TicketPage({
     0,
   );
   const orderCurrency = orderTickets.find((entry) => entry.currency)?.currency;
+  const threeWordUrl = threeWordMapUrl(event.threeWordHint);
 
   return (
     <div className="min-h-screen bg-background">
@@ -62,7 +71,7 @@ export function TicketPage({
           ← {event.title}
         </Link>
 
-        {orderSize > 1 && (
+        {orderSize > 1 && canManageOrder && (
           <nav aria-label="Tickets in this order" className="mt-6 border-y theme-border py-3">
             <p className="font-mono text-micro theme-muted">
               {orderSize} tickets in this order · choose a QR
@@ -89,6 +98,12 @@ export function TicketPage({
               })}
             </div>
           </nav>
+        )}
+
+        {orderSize > 1 && !canManageOrder && (
+          <p className="mt-6 border-y theme-border py-3 font-mono text-micro theme-muted">
+            ticket {orderPosition} of {orderSize} in this order · this link opens only this ticket
+          </p>
         )}
 
         {invalid && (
@@ -141,6 +156,7 @@ export function TicketPage({
           </p>
           {/* Readable fallback if the camera or the screen refuses to cooperate. */}
           <p className="mt-3 font-mono text-sm theme-subtle tracking-[0.2em]">{ticket.id}</p>
+          <p className="mt-2 font-mono text-micro theme-muted">this QR is your entry ticket</p>
         </div>
 
         <dl className="mt-8 divide-y theme-border border-y theme-border py-2">
@@ -169,14 +185,24 @@ export function TicketPage({
               {event.address && <span className="block theme-subtle">{event.address}</span>}
               {event.doorCode && (
                 <span className="block font-mono text-xs mt-1">
-                  door code <strong>{event.doorCode}</strong>
+                  venue door code <strong>{event.doorCode}</strong>
                 </span>
               )}
-              {event.threeWordHint && (
-                <span className="block font-mono text-xs theme-muted mt-1">
-                  {event.threeWordHint}
-                </span>
-              )}
+              {event.threeWordHint &&
+                (threeWordUrl ? (
+                  <a
+                    href={threeWordUrl}
+                    target="_blank"
+                    rel="noreferrer noopener"
+                    className="block font-mono text-xs theme-muted mt-1 underline hover:opacity-70 transition-opacity"
+                  >
+                    {event.threeWordHint}
+                  </a>
+                ) : (
+                  <span className="block font-mono text-xs theme-muted mt-1">
+                    {event.threeWordHint}
+                  </span>
+                ))}
               {event.mapUrl && (
                 <a
                   href={event.mapUrl}
@@ -253,10 +279,10 @@ export function TicketPage({
           </a>
         </div>
 
-        {ticket.kind === "paid" && (
+        {ticket.kind === "paid" && canManageOrder && managerTicketId && (
           <div className="mt-8 border-t theme-border pt-6">
             <RefundTicketButton
-              ticketId={ticket.id}
+              ticketId={managerTicketId}
               ticketCount={orderSize}
               amountMinor={orderAmountMinor || ticket.amountPaidMinor}
               currency={orderCurrency ?? ticket.currency}

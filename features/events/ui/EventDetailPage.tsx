@@ -8,6 +8,7 @@ import {
   formatEventDate,
   formatEventTime,
   hasTickets,
+  threeWordMapUrl,
   type TicketHolderEvent,
   type ViewableEvent,
 } from "../types";
@@ -82,6 +83,7 @@ export function EventDetailPage({
   availability: TicketTypeAvailability[];
 }) {
   const revealed = isRevealed(event);
+  const threeWordUrl = revealed ? threeWordMapUrl(event.threeWordHint) : null;
   const ticketsExist = hasTickets(event);
   const doorsAt = event.doorsAt;
   const doorsDifferFromStart =
@@ -153,14 +155,24 @@ export function EventDetailPage({
                 {event.address && <span className="block theme-subtle">{event.address}</span>}
                 {event.doorCode && (
                   <span className="block font-mono text-xs mt-1">
-                    door code <strong>{event.doorCode}</strong>
+                    venue door code <strong>{event.doorCode}</strong>
                   </span>
                 )}
-                {event.threeWordHint && (
-                  <span className="block font-mono text-xs theme-muted mt-1">
-                    {event.threeWordHint}
-                  </span>
-                )}
+                {event.threeWordHint &&
+                  (threeWordUrl ? (
+                    <a
+                      href={threeWordUrl}
+                      target="_blank"
+                      rel="noreferrer noopener"
+                      className="block font-mono text-xs theme-muted mt-1 underline hover:opacity-70 transition-opacity"
+                    >
+                      {event.threeWordHint}
+                    </a>
+                  ) : (
+                    <span className="block font-mono text-xs theme-muted mt-1">
+                      {event.threeWordHint}
+                    </span>
+                  ))}
                 {event.mapUrl && (
                   <a
                     href={event.mapUrl}

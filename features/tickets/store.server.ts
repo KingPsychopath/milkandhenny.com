@@ -115,7 +115,9 @@ export async function listTicketsForEmail(
 export async function listTicketsForOrder(orderId: string): Promise<TicketRecord[]> {
   if (!orderId) return [];
   const rows = await query<TicketRow>(
-    `select * from tickets where order_id = $1 order by issued_at`,
+    `select * from tickets
+      where order_id = $1
+      order by (parent_ticket_id is not null), issued_at, id`,
     [orderId],
   );
   return rows.map(toTicket);

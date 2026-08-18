@@ -18,6 +18,7 @@ export const Route = createFileRoute("/ticket/$id")({
       },
       // A ticket is a bearer token in a URL. Keep it out of search results.
       { name: "robots", content: "noindex, nofollow" },
+      { name: "referrer", content: "no-referrer" },
     ],
   }),
 });
@@ -30,6 +31,10 @@ function TicketRoute() {
       event={data.event}
       qrPayload={data.qrPayload}
       orderTickets={data.orderTickets}
+      orderSize={data.orderSize}
+      orderPosition={data.orderPosition}
+      canManageOrder={data.canManageOrder}
+      managerTicketId={data.managerTicketId}
       album={data.album}
     />
   );

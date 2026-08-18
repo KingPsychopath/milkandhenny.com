@@ -1,4 +1,4 @@
-import { formatEventDateTime, type EventRecord } from "./types";
+import { formatEventDateTime, threeWordMapUrl, type EventRecord } from "./types";
 
 /**
  * Minimal RFC 5545 calendar generation.
@@ -135,14 +135,17 @@ export function buildTicketHolderIcsOptions(
   options: { eventUrl: string; ticketUrl?: string },
 ): IcsOptions {
   const location = [event.venueName, event.address].filter(Boolean).join(", ");
+  const threeWordUrl = threeWordMapUrl(event.threeWordHint);
 
   const details = [
     event.doorsAt ? `Doors ${formatEventDateTime(event.doorsAt, event.timezone)}` : null,
     event.lastEntryAt
       ? `Last entry ${formatEventDateTime(event.lastEntryAt, event.timezone)}`
       : null,
-    event.doorCode ? `Door code: ${event.doorCode}` : null,
-    event.threeWordHint ? `Find it: ${event.threeWordHint}` : null,
+    event.doorCode ? `Venue door code: ${event.doorCode}` : null,
+    event.threeWordHint
+      ? `Find it: ${event.threeWordHint}${threeWordUrl ? ` — ${threeWordUrl}` : ""}`
+      : null,
     event.transportNote ?? null,
     event.ageLimit ?? null,
     options.ticketUrl ? `Your ticket: ${options.ticketUrl}` : null,

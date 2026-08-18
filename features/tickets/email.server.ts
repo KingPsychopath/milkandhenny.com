@@ -4,7 +4,7 @@ import { sendEmail, type EmailAttachment } from "@/lib/platform/email.server";
 import { log } from "@/lib/platform/logger.server";
 import { buildEventUrl, buildTicketIcsUrl, buildTicketUrl } from "@/features/events/routes";
 import { buildEventIcs, buildTicketHolderIcsOptions } from "@/features/events/ics";
-import { formatEventDateTime, formatMoney } from "@/features/events/types";
+import { formatEventDateTime, formatMoney, threeWordMapUrl } from "@/features/events/types";
 import type { EventRecord } from "@/features/events/types";
 import { buildTicketQrPayload } from "./qr.server";
 import type { TicketRecord } from "./types";
@@ -30,7 +30,12 @@ import { escapeEmailHtml as escapeHtml, renderBrandedEmail } from "@/lib/shared/
  */
 const MAX_EMAILED_QRS = 6;
 
-type TicketQr = { ticketId: string; holderName: string; contentId: string };
+type TicketQr = {
+  ticketId: string;
+  holderName: string;
+  contentId: string;
+  managesOrder: boolean;
+};
 
 async function renderQrAttachment(
   ticket: TicketRecord,
@@ -52,7 +57,12 @@ async function renderQrAttachment(
         disposition: "inline",
         contentId,
       },
-      qr: { ticketId: ticket.id, holderName: ticket.holderName, contentId },
+      qr: {
+        ticketId: ticket.id,
+        holderName: ticket.holderName,
+        contentId,
+        managesOrder: !ticket.parentTicketId,
+      },
     };
   } catch (error) {
     log.error("tickets.email", "QR render failed; sending link-only", {}, error);
@@ -96,6 +106,7 @@ function renderCalendarAttachment(
 function buildText(event: EventRecord, tickets: TicketRecord[], origin: string): string {
   const calendarUrl = buildTicketIcsUrl(origin, tickets[0].id);
   const when = formatEventDateTime(event.startsAt, event.timezone);
+  const threeWordUrl = threeWordMapUrl(event.threeWordHint);
   const lines = [
     `You're in — ${event.title}`,
     "",
@@ -103,12 +114,20 @@ function buildText(event: EventRecord, tickets: TicketRecord[], origin: string):
     event.doorsAt ? `Doors ${formatEventDateTime(event.doorsAt, event.timezone)}` : null,
     event.venueName ? event.venueName : null,
     event.address ? event.address : null,
-    event.doorCode ? `Door code: ${event.doorCode}` : null,
-    event.threeWordHint ? `Find it: ${event.threeWordHint}` : null,
+    event.doorCode ? `Venue door code: ${event.doorCode}` : null,
+    event.threeWordHint
+      ? `Find it: ${event.threeWordHint}${threeWordUrl ? ` — ${threeWordUrl}` : ""}`
+      : null,
     "",
     tickets.length === 1 ? "Your ticket:" : `Your ${tickets.length} tickets:`,
-    ...tickets.map((ticket) => `  ${ticket.holderName} — ${buildTicketUrl(origin, ticket.id)}`),
+    ...tickets.map(
+      (ticket) =>
+        `  ${ticket.holderName} — ${buildTicketUrl(origin, ticket.id)}${tickets.length > 1 && !ticket.parentTicketId ? " (manages the full order)" : ""}`,
+    ),
     tickets.length > 1 ? "Everyone scans their own code — one per person at the door." : null,
+    tickets.length > 1
+      ? "Share each guest's own link. A shared link opens only that ticket."
+      : null,
     "",
     `Add to calendar: ${calendarUrl}`,
     "The .ics attached to this email does the same thing offline.",
@@ -138,48 +157,65 @@ function buildHtml(
 ): string {
   const when = escapeHtml(formatEventDateTime(event.startsAt, event.timezone));
   const calendarUrl = escapeHtml(buildTicketIcsUrl(origin, tickets[0].id));
+  const threeWordUrl = threeWordMapUrl(event.threeWordHint);
   const detail = [
     event.doorsAt
       ? `Doors ${escapeHtml(formatEventDateTime(event.doorsAt, event.timezone))}`
       : null,
     event.venueName ? escapeHtml(event.venueName) : null,
     event.address ? escapeHtml(event.address) : null,
-    event.doorCode ? `Door code: <strong>${escapeHtml(event.doorCode)}</strong>` : null,
-    event.threeWordHint ? `Find it: ${escapeHtml(event.threeWordHint)}` : null,
+    event.doorCode ? `Venue door code: <strong>${escapeHtml(event.doorCode)}</strong>` : null,
+    event.threeWordHint
+      ? `Find it: ${
+          threeWordUrl
+            ? `<a href="${escapeHtml(threeWordUrl)}" style="color:#b45309">${escapeHtml(event.threeWordHint)}</a>`
+            : escapeHtml(event.threeWordHint)
+        }`
+      : null,
   ].filter((line): line is string => line !== null);
 
-  const ticketRows = tickets
-    .map(
-      (ticket) =>
-        `<p style="margin:0 0 8px"><a href="${escapeHtml(buildTicketUrl(origin, ticket.id))}" style="color:#b45309">${escapeHtml(ticket.holderName)} — open ticket</a></p>`,
-    )
-    .join("");
+  // Every guest is named exactly once, under their own code, and that name is
+  // the way into their ticket — a second list of the same names underneath
+  // taught nobody anything.
+  const covered = new Set(qrs.map((qr) => qr.ticketId));
+  const withoutQr = tickets.filter((ticket) => !covered.has(ticket.id));
 
-  // One QR per guest, captioned, because the door admits one person per scan
-  // and a group standing in a doorway should not have to work out whose is
-  // whose. A single ticket needs no caption — the name is directly below.
-  const qrBlocks = qrs
-    .map((qr) => {
-      const caption =
-        qrs.length > 1
-          ? `<p style="margin:6px 0 0;color:#1c1917;font:13px/1.6 ui-monospace,SFMono-Regular,Menlo,monospace">${escapeHtml(qr.holderName)}</p>`
-          : "";
-      const size = qrs.length > 1 ? 200 : 240;
-      return `<div style="margin:0 0 20px"><img src="cid:${qr.contentId}" width="${size}" height="${size}" alt="Ticket QR code for ${escapeHtml(qr.holderName)}" style="max-width:100%">${caption}</div>`;
+  const ticketRows = withoutQr
+    .map((ticket) => {
+      const label =
+        tickets.length > 1 && !ticket.parentTicketId ? "open ticket · manage order" : "open ticket";
+      return `<p style="margin:0 0 8px"><a href="${escapeHtml(buildTicketUrl(origin, ticket.id))}" style="color:#b45309">${escapeHtml(ticket.holderName)} — ${label}</a></p>`;
     })
     .join("");
 
-  const missingQrs = tickets.length - qrs.length;
+  // One QR per guest, because the door admits one person per scan and a group
+  // standing in a doorway should not have to work out whose is whose.
+  const qrBlocks = qrs
+    .map((qr) => {
+      const size = qrs.length > 1 ? 200 : 240;
+      const ticketUrl = escapeHtml(buildTicketUrl(origin, qr.ticketId));
+      const label =
+        qrs.length > 1 && qr.managesOrder ? "open ticket · manage order" : "open ticket";
+      return `<div style="margin:0 0 24px"><img src="cid:${qr.contentId}" width="${size}" height="${size}" alt="Ticket QR code for ${escapeHtml(qr.holderName)}" style="max-width:100%">
+      <p style="margin:8px 0 0"><a href="${ticketUrl}" style="color:#b45309;font:14px/1.6 ui-monospace,SFMono-Regular,Menlo,monospace">${escapeHtml(qr.holderName)} — ${label}</a></p></div>`;
+    })
+    .join("");
 
+  const missingQrs = withoutQr.length;
+
+  const calendarDetail = event.doorCode
+    ? "address, venue door code and your ticket"
+    : "address and your ticket";
   const contentHtml = `${detail.length > 0 ? `<p style="margin:0 0 20px">${detail.join("<br>")}</p>` : ""}
     ${qrs.length > 0 ? `<div style="text-align:center;margin:24px 0">${qrBlocks}</div>` : ""}
-    ${missingQrs > 0 ? `<p style="margin:0 0 20px;text-align:center;color:#78716c;font:13px/1.6 ui-monospace,SFMono-Regular,Menlo,monospace">The other ${missingQrs} ${missingQrs === 1 ? "ticket is" : "tickets are"} on the links below.</p>` : ""}
+    ${missingQrs > 0 ? `<p style="margin:0 0 12px;text-align:center;color:#78716c;font:13px/1.6 ui-monospace,SFMono-Regular,Menlo,monospace">The other ${missingQrs} ${missingQrs === 1 ? "ticket is" : "tickets are"} on the links below.</p>` : ""}
     <div style="border-top:1px solid #e7e5e4;padding-top:16px">${ticketRows}
-      <p style="margin:14px 0 0"><a href="${calendarUrl}" style="color:#b45309">add to calendar</a>
-      <span style="color:#78716c;font:13px/1.6 ui-monospace,SFMono-Regular,Menlo,monospace">— address, door code and your ticket, saved to your phone</span></p>
+      <p style="margin:0"><a href="${calendarUrl}" style="color:#b45309">add to calendar</a>
+      <span style="color:#78716c;font:13px/1.6 ui-monospace,SFMono-Regular,Menlo,monospace">— ${calendarDetail}, saved to your phone</span></p>
     </div>
     <p style="margin:20px 0 0;color:#78716c;font:13px/1.6 ui-monospace,SFMono-Regular,Menlo,monospace">
       Open the link at the door and we'll scan it. Screenshots work too.
+      ${tickets.length > 1 ? "Share each guest's own link; it opens only that ticket." : ""}
       ${event.lastEntryAt ? `Last entry ${escapeHtml(formatEventDateTime(event.lastEntryAt, event.timezone))}.` : ""}
       ${event.ageLimit ? escapeHtml(event.ageLimit) + "." : ""}
     </p>

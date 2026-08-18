@@ -30,6 +30,7 @@ const EVENT: EventRecord = {
   venueName: "The Front Room",
   address: "14 Example Road, London E8 1AA",
   doorCode: "4821",
+  threeWordHint: "///plant.window.stairs",
   lineup: [],
   ticketTypes: [],
   waitlistEnabled: false,
@@ -41,7 +42,7 @@ const EVENT: EventRecord = {
 const NAMES = ["Ada", "Bram", "Cleo", "Dara", "Esme", "Fionn", "Gus", "Hana"];
 
 function order(count: number): TicketRecord[] {
-  return Array.from({ length: count }, (_, index) => ({
+  const tickets = Array.from({ length: count }, (_, index) => ({
     id: `TKT${String(index).padStart(13, "0")}`,
     eventSlug: EVENT.slug,
     ticketTypeId: "entry",
@@ -52,6 +53,8 @@ function order(count: number): TicketRecord[] {
     orderId: "ord_1",
     issuedAt: "2026-08-02T00:00:00.000Z",
   })) as TicketRecord[];
+  for (const ticket of tickets.slice(1)) ticket.parentTicketId = tickets[0].id;
+  return tickets;
 }
 
 async function send(count: number) {
@@ -92,6 +95,32 @@ describe("ticket email", () => {
     expect(message.text).toContain("Everyone scans their own code");
   });
 
+  it("names each guest once, under their own code, as the way into it", async () => {
+    const message = await send(3);
+
+    // One "open ticket" per guest — the caption is the link, so there is no
+    // second list of the same names underneath.
+    expect(message.html.match(/open ticket/g) ?? []).toHaveLength(3);
+    expect(message.html).toContain('href="https://milkandhenny.com/ticket/TKT0000000000000"');
+    expect(message.html).toContain('href="https://milkandhenny.com/ticket/TKT0000000000002"');
+    expect(message.html).toContain("Ada — open ticket · manage order");
+    expect(message.text).toContain("Share each guest's own link");
+  });
+
+  it("still lists the tickets that have no QR of their own", async () => {
+    const message = await send(8);
+    // Six captions plus a row each for the two beyond the cap.
+    expect(message.html.match(/open ticket/g) ?? []).toHaveLength(8);
+  });
+
+  it("makes a three-word hint tappable", async () => {
+    const message = await send(1);
+    expect(message.html).toContain('href="https://what3words.com/plant.window.stairs"');
+    expect(message.text).toContain(
+      "Find it: ///plant.window.stairs — https://what3words.com/plant.window.stairs",
+    );
+  });
+
   it("keeps a single ticket to one QR and no roll call", async () => {
     const message = await send(1);
     const qrs = message.attachments?.filter((item) => item.type === "image/png") ?? [];
@@ -119,8 +148,20 @@ describe("ticket email", () => {
     const ics = Buffer.from(calendar!.content, "base64").toString("utf8").replace(/\r\n /g, "");
     expect(ics).toContain("BEGIN:VCALENDAR");
     expect(ics).toContain("LOCATION:The Front Room\\, 14 Example Road\\, London E8 1AA");
-    expect(ics).toContain("Door code: 4821");
+    expect(ics).toContain("Venue door code: 4821");
     expect(ics).toContain("TRIGGER:-PT120M");
+  });
+
+  it("does not mention a venue code when the event has none", async () => {
+    const doorCode = EVENT.doorCode;
+    delete EVENT.doorCode;
+    try {
+      const message = await send(1);
+      expect(message.text).not.toContain("door code");
+      expect(message.html).not.toContain("door code");
+    } finally {
+      EVENT.doorCode = doorCode;
+    }
   });
 
   it("links the per-ticket calendar route for clients that strip attachments", async () => {

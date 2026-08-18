@@ -13,6 +13,7 @@ import {
   buildPublicIcsOptions,
   buildTicketHolderIcsOptions,
 } from "@/features/events/ics";
+import { threeWordMapUrl } from "@/features/events/types";
 import type { EventRecord } from "@/features/events/types";
 
 const EVENT: EventRecord = {
@@ -79,7 +80,7 @@ describe("ticket holder calendar entry", () => {
   });
 
   it("carries what the door actually needs", () => {
-    expect(ics).toContain("Door code: 4821");
+    expect(ics).toContain("Venue door code: 4821");
     expect(ics).toContain("Find it: ///plant.window.stairs");
     expect(ics).toContain("Last entry");
   });
@@ -110,7 +111,7 @@ describe("holder entry without a ticket link", () => {
       buildEventIcs(EVENT, buildTicketHolderIcsOptions(EVENT, { eventUrl: EVENT_URL })),
     );
     expect(ics).toContain(`URL:${EVENT_URL}`);
-    expect(ics).toContain("Door code: 4821");
+    expect(ics).toContain("Venue door code: 4821");
   });
 });
 
@@ -129,5 +130,34 @@ describe("an event with no private detail", () => {
     expect(ics).toContain("LOCATION:East London");
     expect(ics).toContain("BEGIN:VEVENT");
     expect(ics).toContain("END:VCALENDAR");
+    expect(ics).not.toContain("door code");
+  });
+});
+
+describe("three-word hints", () => {
+  it("recognises an address with or without slashes", () => {
+    expect(threeWordMapUrl("///plant.window.stairs")).toBe(
+      "https://what3words.com/plant.window.stairs",
+    );
+    expect(threeWordMapUrl("plant.window.stairs")).toBe(
+      "https://what3words.com/plant.window.stairs",
+    );
+    expect(threeWordMapUrl("  ///plant.window.stairs  ")).toBe(
+      "https://what3words.com/plant.window.stairs",
+    );
+  });
+
+  it("leaves a prose hint alone", () => {
+    expect(threeWordMapUrl("the blue door past the chippy")).toBeNull();
+    expect(threeWordMapUrl("plant.window")).toBeNull();
+    expect(threeWordMapUrl("plant.window.stairs.extra")).toBeNull();
+    expect(threeWordMapUrl(undefined)).toBeNull();
+  });
+
+  it("carries the link into a holder's calendar entry", () => {
+    const ics = unfold(
+      buildEventIcs(EVENT, buildTicketHolderIcsOptions(EVENT, { eventUrl: EVENT_URL })),
+    );
+    expect(ics).toContain("https://what3words.com/plant.window.stairs");
   });
 });

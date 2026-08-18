@@ -17,6 +17,8 @@ import { buildTicketQrPayload } from "./qr.server";
 import { rateLimitClaim } from "./tickets.server";
 import { refundOrder, startCheckout } from "./checkout.server";
 import { rememberTicketHolder } from "./holder-cookie.server";
+import { readManagedTicketOrders, rememberManagedTicketOrder } from "./order-cookie.server";
+import { resolveTicketOrderAccess } from "./order-access";
 import { resolveScannerLink } from "./scanner-links.server";
 import { isValidScannerToken } from "./checkpoint-types";
 import {
@@ -129,6 +131,10 @@ export type TicketPageResult =
       event: ReturnType<typeof toTicketHolderEvent>;
       /** Tickets bought together, so one delivery link opens the whole order. */
       orderTickets: OrderTicketView[];
+      orderSize: number;
+      orderPosition: number;
+      canManageOrder: boolean;
+      managerTicketId?: string;
       /** The shared album — the reason to come back to this page afterwards. */
       album: EventAlbumView;
     };
@@ -157,9 +163,13 @@ export const getTicketPageFn = createServerFn({ method: "GET" })
     if (!detailResult.ok || !detailResult.value.event) return { found: false };
 
     const event: EventRecord = detailResult.value.event;
+    const orderTickets = detailResult.value.orderTickets;
+    const access = resolveTicketOrderAccess(ticket, orderTickets, readManagedTicketOrders());
+    const isPrimaryTicket = access.managerTicketId === ticket.id;
 
     // Holding a ticket is what earns the address.
     rememberTicketHolder(event.slug);
+    if (isPrimaryTicket) rememberManagedTicketOrder(ticket.orderId);
 
     const album = await getEventAlbumView(event.slug);
 
@@ -176,7 +186,7 @@ export const getTicketPageFn = createServerFn({ method: "GET" })
       },
       qrPayload: buildTicketQrPayload(ticket.id),
       event: toTicketHolderEvent(event),
-      orderTickets: detailResult.value.orderTickets.map(
+      orderTickets: access.tickets.map(
         ({ id, holderName, status, redeemedAt, amountPaidMinor, currency }) => ({
           id,
           holderName,
@@ -186,6 +196,10 @@ export const getTicketPageFn = createServerFn({ method: "GET" })
           currency,
         }),
       ),
+      orderSize: access.orderSize,
+      orderPosition: access.orderPosition,
+      canManageOrder: access.canManageOrder,
+      managerTicketId: access.managerTicketId,
       album,
     };
   });
@@ -374,9 +388,8 @@ export type RefundResult =
 /**
  * Self-serve refund from the ticket page.
  *
- * The ticket id in the URL is the bearer credential — the same thing that
- * gets someone through the door. Refusing after check-in is enforced in
- * `refundOrder`, not here.
+ * The primary ticket id is the purchaser credential. Child ticket ids are
+ * rejected by `refundOrder`, as are refunds after anyone checks in.
  */
 export const refundOwnTicketFn = createServerFn({ method: "POST" })
   .validator((data: { ticketId: string }) => data)
