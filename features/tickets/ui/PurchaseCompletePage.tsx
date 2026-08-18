@@ -18,7 +18,6 @@ import {
   getCheckoutOutcomeFn,
   resendTicketsFn,
   type CheckoutOutcomeResult,
-  type CheckoutOutcomeTicket,
 } from "../tickets.functions";
 import { ShareTicketButton } from "./ShareTicketButton";
 
@@ -43,16 +42,18 @@ const LINK_CLASS =
   "font-mono text-xs theme-muted hover:text-foreground transition-colors underline";
 
 /**
- * How many QRs to draw before the rest collapse into rows.
+ * How wide each ticket sits in the swipe track.
  *
- * Three is roughly a screen and a half on a phone — still scannable. Past
- * that it is a wall of near-identical squares, and what someone actually
- * needs from this page is their own code plus a way to send the others on.
- * Vertical rather than a sideways carousel deliberately: a QR has to be big
- * to scan, and a carousel at phone width either crops it or shrinks it, while
- * also hiding how many there are.
+ * Under 100% so the next ticket peeks, which is the whole affordance — it
+ * says "there are more" without a caption. The count in the summary line
+ * above says how many, so nothing is hidden by scrolling sideways.
+ *
+ * This beats stacking vertically on the axis that matters: a QR has to be
+ * big to scan, and one card at 82% of the column is a larger code than three
+ * shrunk to fit down the page, with every ticket still one swipe away rather
+ * than behind a "show more".
  */
-const MAX_QRS_SHOWN = 3;
+const TICKET_TRACK_WIDTH = "82%";
 
 type PollState = "waiting" | "settled" | "timed-out";
 
@@ -272,7 +273,6 @@ export function PurchaseCompletePage({
   initialOutcome: CheckoutOutcomeResult;
 }) {
   const { outcome, poll, retry } = useCheckoutOutcome(sessionId, initialOutcome);
-  const [expanded, setExpanded] = useState(false);
 
   if (outcome.state === "unknown") {
     return (
@@ -335,8 +335,6 @@ export function PurchaseCompletePage({
   const { event, tickets, managerTicketId, email, amountMinor, currency } = outcome;
   const threeWordUrl = threeWordMapUrl(event.threeWordHint);
   const single = tickets.length === 1;
-  const shownAsQr: CheckoutOutcomeTicket[] = tickets.slice(0, MAX_QRS_SHOWN);
-  const collapsed: CheckoutOutcomeTicket[] = tickets.slice(MAX_QRS_SHOWN);
 
   return (
     <Shell slug={slug}>
@@ -351,84 +349,56 @@ export function PurchaseCompletePage({
 
       {/* The QR first. Everything else on this page is secondary to being
           able to show the door something. */}
-      <div className="mt-6 divide-y theme-border border-y theme-border">
-        {shownAsQr.map((ticket) => (
+      {single ? (
+        <div className="mt-6 border-y theme-border">
           <TicketQr
-            key={ticket.id}
-            qrPayload={ticket.qrPayload}
-            holderName={ticket.holderName}
-            ticketId={ticket.id}
+            qrPayload={tickets[0].qrPayload}
+            holderName={tickets[0].holderName}
+            ticketId={tickets[0].id}
             eventTitle={event.title}
             timezone={event.timezone}
-            status={ticket.status}
-            redeemedAt={ticket.redeemedAt}
-            large={single}
-            isBuyer={ticket.id === managerTicketId}
+            status={tickets[0].status}
+            redeemedAt={tickets[0].redeemedAt}
+            large
+            isBuyer={tickets[0].id === managerTicketId}
           />
-        ))}
-
-        {collapsed.length > 0 && !expanded && (
-          <div className="py-3">
-            <p className="font-mono text-micro theme-muted">
-              {collapsed.length} more {collapsed.length === 1 ? "ticket" : "tickets"} in this order
-            </p>
-            <ul className="mt-2 space-y-1">
-              {collapsed.map((ticket) => (
-                <li
-                  key={ticket.id}
-                  className="grid grid-cols-[1fr_2.5rem] items-center gap-2 font-mono text-micro"
-                >
-                  <Link
-                    to="/ticket/$id"
-                    params={{ id: ticket.id }}
-                    className="min-w-0 truncate rounded-lg border theme-border-strong px-3 py-2 text-foreground transition-opacity hover:opacity-70"
-                  >
-                    {ticket.holderName}
-                  </Link>
-                  <span className="text-right">
-                    {ticket.status === "valid" && (
-                      <ShareTicketButton
-                        ticketId={ticket.id}
-                        holderName={ticket.holderName}
-                        eventTitle={event.title}
-                        label="send"
-                      />
-                    )}
-                  </span>
-                </li>
-              ))}
-            </ul>
-            <button
-              type="button"
-              onClick={() => setExpanded(true)}
-              className={`mt-3 ${LINK_CLASS}`}
-            >
-              show {collapsed.length === 1 ? "its QR" : `all ${tickets.length} QRs`}
-            </button>
-          </div>
-        )}
-
-        {expanded &&
-          collapsed.map((ticket) => (
-            <TicketQr
+        </div>
+      ) : (
+        // No tabIndex on the track itself: every card holds a link and a send
+        // button, so tabbing through the order scrolls it into view anyway.
+        // A scroll container only needs to be focusable when nothing inside it
+        // is, which would strand a keyboard entirely.
+        <div
+          role="group"
+          aria-label={`${tickets.length} tickets in this order`}
+          className="mt-6 -mx-6 flex snap-x snap-mandatory gap-3 overflow-x-auto px-6 pb-2"
+        >
+          {tickets.map((ticket) => (
+            <div
               key={ticket.id}
-              qrPayload={ticket.qrPayload}
-              holderName={ticket.holderName}
-              ticketId={ticket.id}
-              eventTitle={event.title}
-              timezone={event.timezone}
-              status={ticket.status}
-              redeemedAt={ticket.redeemedAt}
-              large={false}
-              isBuyer={ticket.id === managerTicketId}
-            />
+              style={{ width: TICKET_TRACK_WIDTH }}
+              className="shrink-0 snap-center rounded-xl border theme-border"
+            >
+              <TicketQr
+                qrPayload={ticket.qrPayload}
+                holderName={ticket.holderName}
+                ticketId={ticket.id}
+                eventTitle={event.title}
+                timezone={event.timezone}
+                status={ticket.status}
+                redeemedAt={ticket.redeemedAt}
+                large
+                isBuyer={ticket.id === managerTicketId}
+              />
+            </div>
           ))}
-      </div>
+        </div>
+      )}
 
       {!single && (
         <p className="mt-3 font-mono text-micro theme-muted leading-relaxed">
-          Each guest gets their own QR — send them theirs and they can be scanned in without you.
-          Keep the first one: it&apos;s yours, and it&apos;s the link that manages the order.
+          Swipe for each guest&apos;s QR. Send them theirs and they can be scanned in without you —
+          keep the first one, it&apos;s yours and it&apos;s the link that manages the order.
         </p>
       )}
 
