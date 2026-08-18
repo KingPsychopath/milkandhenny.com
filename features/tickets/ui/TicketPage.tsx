@@ -4,7 +4,7 @@ import { Link } from "@tanstack/react-router";
 
 import { SITE_BRAND } from "@/lib/shared/config";
 import { useQrCode } from "@/hooks/useQrCode";
-import { eventIcsPath } from "@/features/events/routes";
+import { ticketIcsPath } from "@/features/events/routes";
 import { formatEventDate, formatEventTime, type TicketHolderEvent } from "@/features/events/types";
 import type { OrderTicketView, TicketPageTicket } from "../types";
 import { RefundTicketButton } from "./RefundTicketButton";
@@ -184,7 +184,7 @@ export function TicketPage({
 
         <div className="mt-6 flex flex-wrap justify-center gap-5">
           <a
-            href={eventIcsPath(event.slug)}
+            href={ticketIcsPath(ticket.id)}
             className="font-mono text-xs theme-muted hover:text-foreground transition-colors underline"
           >
             add to calendar

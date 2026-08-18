@@ -2,7 +2,8 @@ import QRCode from "qrcode";
 
 import { sendEmail, type EmailAttachment } from "@/lib/platform/email.server";
 import { log } from "@/lib/platform/logger.server";
-import { buildTicketUrl } from "@/features/events/routes";
+import { buildEventUrl, buildTicketIcsUrl, buildTicketUrl } from "@/features/events/routes";
+import { buildEventIcs, buildTicketHolderIcsOptions } from "@/features/events/ics";
 import { formatEventDateTime, formatMoney } from "@/features/events/types";
 import type { EventRecord } from "@/features/events/types";
 import { buildTicketQrPayload } from "./qr.server";
@@ -37,7 +38,41 @@ async function renderQrAttachment(payload: string): Promise<EmailAttachment | nu
   }
 }
 
+/**
+ * The night, as a calendar entry.
+ *
+ * Attached rather than linked because an attachment needs no cookie, no
+ * network and no second device: one tap in Mail or Gmail and the address,
+ * door code and ticket link are in their calendar for good. The link in the
+ * body is the fallback for clients that strip attachments.
+ */
+function renderCalendarAttachment(
+  event: EventRecord,
+  ticket: TicketRecord,
+  origin: string,
+): EmailAttachment | null {
+  try {
+    const ics = buildEventIcs(
+      event,
+      buildTicketHolderIcsOptions(event, {
+        eventUrl: buildEventUrl(origin, event.slug),
+        ticketUrl: buildTicketUrl(origin, ticket.id),
+      }),
+    );
+    return {
+      content: Buffer.from(ics, "utf8").toString("base64"),
+      filename: `${event.slug}.ics`,
+      type: "text/calendar",
+      disposition: "attachment",
+    };
+  } catch (error) {
+    log.error("tickets.email", "Calendar render failed; sending without it", {}, error);
+    return null;
+  }
+}
+
 function buildText(event: EventRecord, tickets: TicketRecord[], origin: string): string {
+  const calendarUrl = buildTicketIcsUrl(origin, tickets[0].id);
   const when = formatEventDateTime(event.startsAt, event.timezone);
   const lines = [
     `You're in — ${event.title}`,
@@ -51,6 +86,9 @@ function buildText(event: EventRecord, tickets: TicketRecord[], origin: string):
     "",
     tickets.length === 1 ? "Your ticket:" : `Your ${tickets.length} tickets:`,
     ...tickets.map((ticket) => `  ${ticket.holderName} — ${buildTicketUrl(origin, ticket.id)}`),
+    "",
+    `Add to calendar: ${calendarUrl}`,
+    "The .ics attached to this email does the same thing offline.",
     "",
     "Open the link at the door and we'll scan it. Screenshots work too.",
     event.lastEntryAt
@@ -76,6 +114,7 @@ function buildHtml(
   hasQr: boolean,
 ): string {
   const when = escapeHtml(formatEventDateTime(event.startsAt, event.timezone));
+  const calendarUrl = escapeHtml(buildTicketIcsUrl(origin, tickets[0].id));
   const detail = [
     event.doorsAt
       ? `Doors ${escapeHtml(formatEventDateTime(event.doorsAt, event.timezone))}`
@@ -95,7 +134,10 @@ function buildHtml(
 
   const contentHtml = `${detail.length > 0 ? `<p style="margin:0 0 20px">${detail.join("<br>")}</p>` : ""}
     ${hasQr ? `<div style="text-align:center;margin:24px 0"><img src="cid:ticketqr" width="240" height="240" alt="Ticket QR code" style="max-width:100%"></div>` : ""}
-    <div style="border-top:1px solid #e7e5e4;padding-top:16px">${ticketRows}</div>
+    <div style="border-top:1px solid #e7e5e4;padding-top:16px">${ticketRows}
+      <p style="margin:14px 0 0"><a href="${calendarUrl}" style="color:#b45309">add to calendar</a>
+      <span style="color:#78716c;font:13px/1.6 ui-monospace,SFMono-Regular,Menlo,monospace">— address, door code and your ticket, saved to your phone</span></p>
+    </div>
     <p style="margin:20px 0 0;color:#78716c;font:13px/1.6 ui-monospace,SFMono-Regular,Menlo,monospace">
       Open the link at the door and we'll scan it. Screenshots work too.
       ${event.lastEntryAt ? `Last entry ${escapeHtml(formatEventDateTime(event.lastEntryAt, event.timezone))}.` : ""}
@@ -138,6 +180,10 @@ export async function sendTicketEmail(input: {
   // One QR per email: the first ticket. Plus-ones each have their own link,
   // and the door can scan any of them from the ticket page.
   const attachment = await renderQrAttachment(buildTicketQrPayload(tickets[0].id));
+  const calendar = renderCalendarAttachment(event, tickets[0], origin);
+  const attachments = [attachment, calendar].filter(
+    (item): item is EmailAttachment => item !== null,
+  );
 
   const result = await sendEmail(
     {
@@ -146,7 +192,7 @@ export async function sendTicketEmail(input: {
       subject: `You're in — ${event.title}`,
       text: buildText(event, tickets, origin),
       html: buildHtml(event, tickets, origin, attachment !== null),
-      attachments: attachment ? [attachment] : undefined,
+      attachments: attachments.length > 0 ? attachments : undefined,
     },
     { idempotencyKey: input.idempotencyKey },
   );

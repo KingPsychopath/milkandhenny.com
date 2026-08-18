@@ -1,7 +1,11 @@
 import { createFileRoute } from "@tanstack/react-router";
 
 import { getEvent } from "@/features/events/store.server";
-import { buildEventIcs } from "@/features/events/ics";
+import {
+  buildEventIcs,
+  buildPublicIcsOptions,
+  buildTicketHolderIcsOptions,
+} from "@/features/events/ics";
 import { buildEventUrl } from "@/features/events/routes";
 import { isPubliclyVisible } from "@/features/events/types";
 import { readTicketHolderSlugs } from "@/features/tickets/holder-cookie.server";
@@ -21,15 +25,15 @@ async function handleGET(request: Request, slug: string) {
       return new Response("Not found", { status: 404 });
     }
 
+    const eventUrl = buildEventUrl(getBaseUrlForRequest(request), slug);
     const revealed = readTicketHolderSlugs().includes(slug);
-    const location = revealed
-      ? [event.venueName, event.address].filter(Boolean).join(", ") || event.area
-      : event.area;
 
-    const ics = buildEventIcs(event, {
-      url: buildEventUrl(getBaseUrlForRequest(request), slug),
-      location: location || undefined,
-    });
+    const ics = buildEventIcs(
+      event,
+      revealed
+        ? buildTicketHolderIcsOptions(event, { eventUrl })
+        : buildPublicIcsOptions(event, eventUrl),
+    );
 
     return new Response(ics, {
       headers: {

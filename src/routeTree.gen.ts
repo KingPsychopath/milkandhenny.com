@@ -109,6 +109,7 @@ import { Route as ApiBestDressedCodesRevokeAllRouteRouteImport } from './routes/
 import { Route as ApiBestDressedVotingOpenRouteRouteImport } from './routes/api/best-dressed/voting/open/route'
 import { Route as ApiEmailEventsCloudflareRouteRouteImport } from './routes/api/email/events/cloudflare/route'
 import { Route as ApiEventsSlugIcsRouteRouteImport } from './routes/api/events/$slug/ics/route'
+import { Route as ApiTicketsIdIcsRouteRouteImport } from './routes/api/tickets/$id/ics/route'
 import { Route as ApiTransfersIdEventsRouteRouteImport } from './routes/api/transfers/$id/events/route'
 import { Route as ApiUploadTransferFinalizeRouteRouteImport } from './routes/api/upload/transfer/finalize/route'
 import { Route as ApiUploadTransferPresignRouteRouteImport } from './routes/api/upload/transfer/presign/route'
@@ -659,6 +660,11 @@ const ApiEventsSlugIcsRouteRoute = ApiEventsSlugIcsRouteRouteImport.update({
   path: '/api/events/$slug/ics',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiTicketsIdIcsRouteRoute = ApiTicketsIdIcsRouteRouteImport.update({
+  id: '/api/tickets/$id/ics',
+  path: '/api/tickets/$id/ics',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiTransfersIdEventsRouteRoute =
   ApiTransfersIdEventsRouteRouteImport.update({
     id: '/events',
@@ -927,6 +933,7 @@ export interface FileRoutesByFullPath {
   '/api/best-dressed/voting/open': typeof ApiBestDressedVotingOpenRouteRoute
   '/api/email/events/cloudflare': typeof ApiEmailEventsCloudflareRouteRoute
   '/api/events/$slug/ics': typeof ApiEventsSlugIcsRouteRoute
+  '/api/tickets/$id/ics': typeof ApiTicketsIdIcsRouteRoute
   '/api/transfers/$id/events': typeof ApiTransfersIdEventsRouteRoute
   '/api/upload/transfer/finalize': typeof ApiUploadTransferFinalizeRouteRoute
   '/api/upload/transfer/presign': typeof ApiUploadTransferPresignRouteRoute
@@ -1057,6 +1064,7 @@ export interface FileRoutesByTo {
   '/api/best-dressed/voting/open': typeof ApiBestDressedVotingOpenRouteRoute
   '/api/email/events/cloudflare': typeof ApiEmailEventsCloudflareRouteRoute
   '/api/events/$slug/ics': typeof ApiEventsSlugIcsRouteRoute
+  '/api/tickets/$id/ics': typeof ApiTicketsIdIcsRouteRoute
   '/api/transfers/$id/events': typeof ApiTransfersIdEventsRouteRoute
   '/api/upload/transfer/finalize': typeof ApiUploadTransferFinalizeRouteRoute
   '/api/upload/transfer/presign': typeof ApiUploadTransferPresignRouteRoute
@@ -1188,6 +1196,7 @@ export interface FileRoutesById {
   '/api/best-dressed/voting/open': typeof ApiBestDressedVotingOpenRouteRoute
   '/api/email/events/cloudflare': typeof ApiEmailEventsCloudflareRouteRoute
   '/api/events/$slug/ics': typeof ApiEventsSlugIcsRouteRoute
+  '/api/tickets/$id/ics': typeof ApiTicketsIdIcsRouteRoute
   '/api/transfers/$id/events': typeof ApiTransfersIdEventsRouteRoute
   '/api/upload/transfer/finalize': typeof ApiUploadTransferFinalizeRouteRoute
   '/api/upload/transfer/presign': typeof ApiUploadTransferPresignRouteRoute
@@ -1320,6 +1329,7 @@ export interface FileRouteTypes {
     | '/api/best-dressed/voting/open'
     | '/api/email/events/cloudflare'
     | '/api/events/$slug/ics'
+    | '/api/tickets/$id/ics'
     | '/api/transfers/$id/events'
     | '/api/upload/transfer/finalize'
     | '/api/upload/transfer/presign'
@@ -1450,6 +1460,7 @@ export interface FileRouteTypes {
     | '/api/best-dressed/voting/open'
     | '/api/email/events/cloudflare'
     | '/api/events/$slug/ics'
+    | '/api/tickets/$id/ics'
     | '/api/transfers/$id/events'
     | '/api/upload/transfer/finalize'
     | '/api/upload/transfer/presign'
@@ -1580,6 +1591,7 @@ export interface FileRouteTypes {
     | '/api/best-dressed/voting/open'
     | '/api/email/events/cloudflare'
     | '/api/events/$slug/ics'
+    | '/api/tickets/$id/ics'
     | '/api/transfers/$id/events'
     | '/api/upload/transfer/finalize'
     | '/api/upload/transfer/presign'
@@ -1672,6 +1684,7 @@ export interface RootRouteChildren {
   ApiAdminTokensSessionsRouteRoute: typeof ApiAdminTokensSessionsRouteRouteWithChildren
   ApiEmailEventsCloudflareRouteRoute: typeof ApiEmailEventsCloudflareRouteRoute
   ApiEventsSlugIcsRouteRoute: typeof ApiEventsSlugIcsRouteRoute
+  ApiTicketsIdIcsRouteRoute: typeof ApiTicketsIdIcsRouteRoute
   ApiUploadTransferFinalizeRouteRoute: typeof ApiUploadTransferFinalizeRouteRoute
   ApiUploadTransferPresignRouteRoute: typeof ApiUploadTransferPresignRouteRoute
   ApiUploadWordsFinalizeRouteRoute: typeof ApiUploadWordsFinalizeRouteRoute
@@ -2383,6 +2396,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiEventsSlugIcsRouteRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/tickets/$id/ics': {
+      id: '/api/tickets/$id/ics'
+      path: '/api/tickets/$id/ics'
+      fullPath: '/api/tickets/$id/ics'
+      preLoaderRoute: typeof ApiTicketsIdIcsRouteRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/transfers/$id/events': {
       id: '/api/transfers/$id/events'
       path: '/events'
@@ -2922,6 +2942,7 @@ const rootRouteChildren: RootRouteChildren = {
     ApiAdminTokensSessionsRouteRouteWithChildren,
   ApiEmailEventsCloudflareRouteRoute: ApiEmailEventsCloudflareRouteRoute,
   ApiEventsSlugIcsRouteRoute: ApiEventsSlugIcsRouteRoute,
+  ApiTicketsIdIcsRouteRoute: ApiTicketsIdIcsRouteRoute,
   ApiUploadTransferFinalizeRouteRoute: ApiUploadTransferFinalizeRouteRoute,
   ApiUploadTransferPresignRouteRoute: ApiUploadTransferPresignRouteRoute,
   ApiUploadWordsFinalizeRouteRoute: ApiUploadWordsFinalizeRouteRoute,

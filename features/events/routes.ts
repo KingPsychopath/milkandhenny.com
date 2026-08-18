@@ -16,10 +16,19 @@ export function eventIcsPath(slug: string) {
   return `/api/events/${slug}/ics`;
 }
 
+/** Calendar entry with the address, door code and a link back to the ticket. */
+export function ticketIcsPath(id: string) {
+  return `/api/tickets/${id}/ics`;
+}
+
 export function buildEventUrl(origin: string, slug: string) {
   return buildAppUrl(origin, eventPath(slug));
 }
 
 export function buildTicketUrl(origin: string, id: string) {
   return buildAppUrl(origin, ticketPath(id));
+}
+
+export function buildTicketIcsUrl(origin: string, id: string) {
+  return buildAppUrl(origin, ticketIcsPath(id));
 }

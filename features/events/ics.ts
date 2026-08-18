@@ -1,4 +1,4 @@
-import type { EventRecord } from "./types";
+import { formatEventDateTime, type EventRecord } from "./types";
 
 /**
  * Minimal RFC 5545 calendar generation.
@@ -37,10 +37,14 @@ function toIcsInstant(iso: string): string {
 }
 
 export type IcsOptions = {
-  /** Absolute URL of the event page. */
+  /** The link the entry points at, and the last line of its description. */
   url: string;
   /** Ticket holders get the real address; everyone else gets the public area. */
   location?: string;
+  /** Extra description lines. Door code and hint belong to holders only. */
+  details?: string[];
+  /** Adds a display reminder this many minutes before the start. */
+  alarmMinutesBefore?: number;
   /** Stable across regenerations so calendar clients update rather than duplicate. */
   uidDomain?: string;
 };
@@ -55,9 +59,30 @@ export function buildEventIcs(event: EventRecord, options: IcsOptions): string {
     event.endsAt ?? new Date(Date.parse(event.startsAt) + 3 * 60 * 60 * 1000).toISOString();
   const end = toIcsInstant(endSource);
 
-  const descriptionParts = [event.tagline, event.description, options.url].filter(
-    (part): part is string => Boolean(part && part.trim()),
-  );
+  // Prose blocks are separated by a blank line; the practical detail is a
+  // tight list, because a calendar preview only shows the first few lines.
+  const detailBlock = (options.details ?? []).filter((line) => line.trim()).join("\n");
+
+  const descriptionParts = [
+    event.tagline,
+    event.description,
+    detailBlock || null,
+    // A holder entry labels its own links inside `details`.
+    options.details ? null : options.url,
+  ].filter((part): part is string => Boolean(part && part.trim()));
+
+  // Apple, Google and Outlook all honour a DISPLAY alarm on import, which is
+  // the only reminder a holder gets if they never open the email again.
+  const alarm =
+    options.alarmMinutesBefore && options.alarmMinutesBefore > 0
+      ? [
+          "BEGIN:VALARM",
+          "ACTION:DISPLAY",
+          `DESCRIPTION:${escapeText(event.title)}`,
+          `TRIGGER:-PT${Math.round(options.alarmMinutesBefore)}M`,
+          "END:VALARM",
+        ]
+      : [];
 
   const lines = [
     "BEGIN:VCALENDAR",
@@ -75,11 +100,63 @@ export function buildEventIcs(event: EventRecord, options: IcsOptions): string {
     `URL:${escapeText(options.url)}`,
     options.location ? `LOCATION:${escapeText(options.location)}` : null,
     event.status === "cancelled" ? "STATUS:CANCELLED" : "STATUS:CONFIRMED",
+    ...alarm,
     "END:VEVENT",
     "END:VCALENDAR",
   ].filter((line): line is string => line !== null);
 
   return `${lines.map(foldLine).join("\r\n")}\r\n`;
+}
+
+/**
+ * Two hours' notice: enough to leave the house, not so early it gets swiped
+ * away and forgotten.
+ */
+const HOLDER_ALARM_MINUTES = 120;
+
+/** The entry for someone who has not bought yet: area only, no reminder. */
+export function buildPublicIcsOptions(event: EventRecord, eventUrl: string): IcsOptions {
+  return {
+    url: eventUrl,
+    location: event.area ?? undefined,
+  };
+}
+
+/**
+ * The entry for someone holding a ticket.
+ *
+ * Everything they will want at 7pm on the night, in the one place they are
+ * guaranteed to look: real address in LOCATION, door code and hint in the
+ * description, and the entry itself pointing at the ticket so the QR is one
+ * tap from the calendar.
+ */
+export function buildTicketHolderIcsOptions(
+  event: EventRecord,
+  options: { eventUrl: string; ticketUrl?: string },
+): IcsOptions {
+  const location = [event.venueName, event.address].filter(Boolean).join(", ");
+
+  const details = [
+    event.doorsAt ? `Doors ${formatEventDateTime(event.doorsAt, event.timezone)}` : null,
+    event.lastEntryAt
+      ? `Last entry ${formatEventDateTime(event.lastEntryAt, event.timezone)}`
+      : null,
+    event.doorCode ? `Door code: ${event.doorCode}` : null,
+    event.threeWordHint ? `Find it: ${event.threeWordHint}` : null,
+    event.transportNote ?? null,
+    event.ageLimit ?? null,
+    options.ticketUrl ? `Your ticket: ${options.ticketUrl}` : null,
+    `Event page: ${options.eventUrl}`,
+  ].filter((line): line is string => Boolean(line && line.trim()));
+
+  return {
+    // The ticket link when we have one: tapping the calendar entry should put
+    // the QR on screen, not a marketing page.
+    url: options.ticketUrl ?? options.eventUrl,
+    location: location || event.area || undefined,
+    details,
+    alarmMinutesBefore: HOLDER_ALARM_MINUTES,
+  };
 }
 
 /**
