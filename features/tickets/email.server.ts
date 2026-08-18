@@ -20,17 +20,39 @@ import { escapeEmailHtml as escapeHtml, renderBrandedEmail } from "@/lib/shared/
  * actually gets someone through the door if the image never renders.
  */
 
-async function renderQrAttachment(payload: string): Promise<EmailAttachment | null> {
+/**
+ * How many QRs ride along in the email.
+ *
+ * A group arriving together at a flat with no signal cannot load three ticket
+ * pages, and redemption is per person — so every guest needs their own code in
+ * the one thing that works offline. Beyond a small group the email becomes a
+ * scroll, and the links carry the rest.
+ */
+const MAX_EMAILED_QRS = 6;
+
+type TicketQr = { ticketId: string; holderName: string; contentId: string };
+
+async function renderQrAttachment(
+  ticket: TicketRecord,
+  index: number,
+): Promise<{ attachment: EmailAttachment; qr: TicketQr } | null> {
   try {
-    const dataUrl = await QRCode.toDataURL(payload, { margin: 1, width: 480 });
+    const dataUrl = await QRCode.toDataURL(buildTicketQrPayload(ticket.id), {
+      margin: 1,
+      width: 480,
+    });
     const base64 = dataUrl.split(",")[1];
     if (!base64) return null;
+    const contentId = `ticketqr${index}`;
     return {
-      content: base64,
-      filename: "ticket-qr.png",
-      type: "image/png",
-      disposition: "inline",
-      contentId: "ticketqr",
+      attachment: {
+        content: base64,
+        filename: `ticket-${index + 1}-qr.png`,
+        type: "image/png",
+        disposition: "inline",
+        contentId,
+      },
+      qr: { ticketId: ticket.id, holderName: ticket.holderName, contentId },
     };
   } catch (error) {
     log.error("tickets.email", "QR render failed; sending link-only", {}, error);
@@ -86,6 +108,7 @@ function buildText(event: EventRecord, tickets: TicketRecord[], origin: string):
     "",
     tickets.length === 1 ? "Your ticket:" : `Your ${tickets.length} tickets:`,
     ...tickets.map((ticket) => `  ${ticket.holderName} — ${buildTicketUrl(origin, ticket.id)}`),
+    tickets.length > 1 ? "Everyone scans their own code — one per person at the door." : null,
     "",
     `Add to calendar: ${calendarUrl}`,
     "The .ics attached to this email does the same thing offline.",
@@ -111,7 +134,7 @@ function buildHtml(
   event: EventRecord,
   tickets: TicketRecord[],
   origin: string,
-  hasQr: boolean,
+  qrs: TicketQr[],
 ): string {
   const when = escapeHtml(formatEventDateTime(event.startsAt, event.timezone));
   const calendarUrl = escapeHtml(buildTicketIcsUrl(origin, tickets[0].id));
@@ -132,8 +155,25 @@ function buildHtml(
     )
     .join("");
 
+  // One QR per guest, captioned, because the door admits one person per scan
+  // and a group standing in a doorway should not have to work out whose is
+  // whose. A single ticket needs no caption — the name is directly below.
+  const qrBlocks = qrs
+    .map((qr) => {
+      const caption =
+        qrs.length > 1
+          ? `<p style="margin:6px 0 0;color:#1c1917;font:13px/1.6 ui-monospace,SFMono-Regular,Menlo,monospace">${escapeHtml(qr.holderName)}</p>`
+          : "";
+      const size = qrs.length > 1 ? 200 : 240;
+      return `<div style="margin:0 0 20px"><img src="cid:${qr.contentId}" width="${size}" height="${size}" alt="Ticket QR code for ${escapeHtml(qr.holderName)}" style="max-width:100%">${caption}</div>`;
+    })
+    .join("");
+
+  const missingQrs = tickets.length - qrs.length;
+
   const contentHtml = `${detail.length > 0 ? `<p style="margin:0 0 20px">${detail.join("<br>")}</p>` : ""}
-    ${hasQr ? `<div style="text-align:center;margin:24px 0"><img src="cid:ticketqr" width="240" height="240" alt="Ticket QR code" style="max-width:100%"></div>` : ""}
+    ${qrs.length > 0 ? `<div style="text-align:center;margin:24px 0">${qrBlocks}</div>` : ""}
+    ${missingQrs > 0 ? `<p style="margin:0 0 20px;text-align:center;color:#78716c;font:13px/1.6 ui-monospace,SFMono-Regular,Menlo,monospace">The other ${missingQrs} ${missingQrs === 1 ? "ticket is" : "tickets are"} on the links below.</p>` : ""}
     <div style="border-top:1px solid #e7e5e4;padding-top:16px">${ticketRows}
       <p style="margin:14px 0 0"><a href="${calendarUrl}" style="color:#b45309">add to calendar</a>
       <span style="color:#78716c;font:13px/1.6 ui-monospace,SFMono-Regular,Menlo,monospace">— address, door code and your ticket, saved to your phone</span></p>
@@ -177,11 +217,15 @@ export async function sendTicketEmail(input: {
   if (!recipient) return { queued: false, error: "No email address on this order" };
   if (tickets.length === 0) return { queued: false, error: "No tickets to send" };
 
-  // One QR per email: the first ticket. Plus-ones each have their own link,
-  // and the door can scan any of them from the ticket page.
-  const attachment = await renderQrAttachment(buildTicketQrPayload(tickets[0].id));
+  const rendered = (
+    await Promise.all(
+      tickets.slice(0, MAX_EMAILED_QRS).map((ticket, index) => renderQrAttachment(ticket, index)),
+    )
+  ).filter((item): item is { attachment: EmailAttachment; qr: TicketQr } => item !== null);
+
+  const qrs = rendered.map((item) => item.qr);
   const calendar = renderCalendarAttachment(event, tickets[0], origin);
-  const attachments = [attachment, calendar].filter(
+  const attachments = [...rendered.map((item) => item.attachment), calendar].filter(
     (item): item is EmailAttachment => item !== null,
   );
 
@@ -191,7 +235,7 @@ export async function sendTicketEmail(input: {
       to: recipient,
       subject: `You're in — ${event.title}`,
       text: buildText(event, tickets, origin),
-      html: buildHtml(event, tickets, origin, attachment !== null),
+      html: buildHtml(event, tickets, origin, qrs),
       attachments: attachments.length > 0 ? attachments : undefined,
     },
     { idempotencyKey: input.idempotencyKey },
