@@ -103,7 +103,7 @@ export function GameLaunchChoices({
 }) {
   return (
     <div
-      className={`mt-5 flex min-h-11 flex-wrap items-center justify-center gap-x-5 gap-y-1 border-t pt-4 font-mono text-xs ${
+      className={`mt-5 flex min-h-11 flex-wrap items-center justify-center gap-x-4 gap-y-2 border-t pt-4 font-mono text-xs ${
         tone === "theme"
           ? "theme-border theme-muted"
           : tone === "light"

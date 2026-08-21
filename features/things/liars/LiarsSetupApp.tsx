@@ -202,7 +202,7 @@ export function LiarsSetupApp() {
                 onClick={() => setPanel(panel === "roles" ? null : "roles")}
                 className="min-h-11"
               >
-                game settings
+                choose the game
               </button>
               <button
                 type="button"
@@ -210,7 +210,7 @@ export function LiarsSetupApp() {
                 onClick={() => setPanel(panel === "more" ? null : "more")}
                 className="min-h-11"
               >
-                more
+                advanced settings
               </button>
               <button
                 type="button"
@@ -326,7 +326,7 @@ export function LiarsSetupApp() {
                     </div>
                     <p className="mt-2 font-mono text-xs text-white/35">
                       {imposterCount > 1
-                        ? "they know each other, unless you turn that off under more"
+                        ? "they know each other, unless you turn that off under advanced settings"
                         : "one liar, and nowhere to hide"}
                     </p>
                   </div>

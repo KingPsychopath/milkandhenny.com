@@ -141,7 +141,7 @@ export function CentreApp() {
               onClick={() => setSolo({ seed: dailySeed(), difficulty })}
               className="min-h-11"
             >
-              today’s maze
+              play today’s maze
             </button>
             {recent[0] ? (
               <button
@@ -172,7 +172,7 @@ export function CentreApp() {
               aria-pressed={panel === "options"}
               className="min-h-11"
             >
-              options
+              change difficulty
             </button>
             <button
               type="button"

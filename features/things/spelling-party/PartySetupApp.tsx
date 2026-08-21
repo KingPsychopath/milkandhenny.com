@@ -205,7 +205,7 @@ export function PartySetupApp({ decks }: { decks: PartyDeckSummary[] }) {
               aria-pressed={panel === "options"}
               className="min-h-11"
             >
-              options
+              game options
             </button>
             <Link to="/things/spelling-bee" className="inline-flex min-h-11 items-center">
               say it aloud →

@@ -132,7 +132,7 @@ export function HeadsUpSetup({
               aria-pressed={panel === "options"}
               className="min-h-11"
             >
-              options
+              game options
             </button>
             <button
               type="button"
@@ -140,7 +140,7 @@ export function HeadsUpSetup({
               aria-pressed={panel === "judge"}
               className="min-h-11"
             >
-              remote judge
+              play with a remote judge
             </button>
           </GameLaunchChoices>
         </GameLaunch>

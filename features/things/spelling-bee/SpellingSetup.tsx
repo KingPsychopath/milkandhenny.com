@@ -142,7 +142,7 @@ export function SpellingSetup({
               aria-pressed={panel === "options"}
               className="min-h-11"
             >
-              options
+              game options
             </button>
             <button
               type="button"
@@ -150,7 +150,7 @@ export function SpellingSetup({
               aria-pressed={panel === "judge"}
               className="min-h-11"
             >
-              remote judge
+              play with a remote judge
             </button>
             <Link to="/things/spelling-party" className="inline-flex min-h-11 items-center">
               type together →
