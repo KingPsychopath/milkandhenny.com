@@ -1,6 +1,11 @@
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { GameLaunch, GameLaunchButton, GameLaunchMeta } from "../shared/GameLaunch";
+import {
+  GameLaunch,
+  GameLaunchButton,
+  GameLaunchChoices,
+  GameLaunchMeta,
+} from "../shared/GameLaunch";
 import { GameShell } from "../shared/GameShell";
 import { RoomJoinControl } from "../shared/RoomJoinControl";
 import { readExpiringLocalValue, writeExpiringLocalValue } from "../shared/game-storage.client";
@@ -68,7 +73,7 @@ export function SameBrainSetupApp() {
   );
 
   const [solo, setSolo] = useState(false);
-  const [panel, setPanel] = useState<"more" | null>(null);
+  const [panel, setPanel] = useState<"join" | "more" | "solo" | null>(null);
   const [roomCode, setRoomCode] = useState("");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -149,20 +154,45 @@ export function SameBrainSetupApp() {
               </p>
             ) : null}
 
-            <div className="mt-6 flex gap-6 border-t border-white/15 pt-4 font-mono text-xs">
+            <GameLaunchChoices tone="dark">
               <button
                 type="button"
-                aria-expanded={panel === "more"}
+                aria-pressed={panel === "join"}
+                onClick={() => setPanel(panel === "join" ? null : "join")}
+                className="min-h-11"
+              >
+                join a room
+              </button>
+              <button
+                type="button"
+                aria-pressed={panel === "solo"}
+                onClick={() => setPanel(panel === "solo" ? null : "solo")}
+                className="min-h-11"
+              >
+                one phone
+              </button>
+              <button
+                type="button"
+                aria-pressed={panel === "more"}
                 onClick={() => setPanel(panel === "more" ? null : "more")}
-                className={`min-h-11 ${
-                  panel === "more"
-                    ? "text-[var(--things-amber)]"
-                    : "text-white/45 hover:text-white/80"
-                }`}
+                className="min-h-11"
               >
                 house rules
               </button>
-            </div>
+            </GameLaunchChoices>
+
+            {panel === "join" ? (
+              <div className="mt-6 border-t border-white/15 pt-5">
+                <RoomJoinControl
+                  value={roomCode}
+                  gamePath="/things/same-brain"
+                  tone="dark"
+                  message={message}
+                  onValueChange={setRoomCode}
+                  onJoin={(code) => void navigate({ to: sameBrainPlayerPath(code) })}
+                />
+              </div>
+            ) : null}
 
             {panel === "more" ? (
               <div className="mt-3">
@@ -202,33 +232,24 @@ export function SameBrainSetupApp() {
               </div>
             ) : null}
 
-            <div className="mt-8">
-              <RoomJoinControl
-                value={roomCode}
-                gamePath="/things/same-brain"
-                tone="dark"
-                message={message}
-                onValueChange={setRoomCode}
-                onJoin={(code) => void navigate({ to: sameBrainPlayerPath(code) })}
-              />
-            </div>
-
-            <div className="mt-10 border-t border-white/15 pt-6">
-              <p className="font-mono text-micro uppercase tracking-[0.18em] text-white/40">
-                one phone
-              </p>
-              <p className="mt-2 font-serif text-lg leading-relaxed text-white/70">
-                Reads the question out and gets out of the way. You argue about who agreed and keep
-                score yourselves.
-              </p>
-              <button
-                type="button"
-                onClick={() => setSolo(true)}
-                className="mt-4 min-h-12 rounded-full border border-white/25 px-6 font-mono text-xs text-white/80 hover:border-[var(--things-amber)] hover:text-[var(--things-amber)]"
-              >
-                just the questions
-              </button>
-            </div>
+            {panel === "solo" ? (
+              <div className="mt-6 border-t border-white/15 pt-6">
+                <p className="font-mono text-micro uppercase tracking-[0.18em] text-white/40">
+                  one phone
+                </p>
+                <p className="mt-2 font-serif text-lg leading-relaxed text-white/70">
+                  Reads the question out and gets out of the way. You argue about who agreed and
+                  keep score yourselves.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setSolo(true)}
+                  className="mt-4 min-h-12 rounded-full border border-white/25 px-6 font-mono text-xs text-white/80 hover:border-[var(--things-amber)] hover:text-[var(--things-amber)]"
+                >
+                  just the questions
+                </button>
+              </div>
+            ) : null}
           </GameLaunch>
         </main>
       </div>

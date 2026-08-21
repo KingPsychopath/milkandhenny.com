@@ -47,7 +47,7 @@ export function CentreApp() {
   const [recent, setRecent] = useState<SoloCentreReplay[]>([]);
   const [name, setName] = useState("");
   const [joinCode, setJoinCode] = useState("");
-  const [panel, setPanel] = useState<"friends" | "join" | null>(null);
+  const [panel, setPanel] = useState<"friends" | "join" | "options" | null>(null);
   const [creating, setCreating] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
 
@@ -124,18 +124,6 @@ export function CentreApp() {
           title="First to the middle wins."
           description="Ready at the start. The maze appears at GO. Find the route before everyone else."
         >
-          <label className="centre-difficulty">
-            <span>difficulty</span>
-            <strong>{DIFFICULTY_LABELS[difficulty - 1]}</strong>
-            <input
-              type="range"
-              min={1}
-              max={5}
-              step={1}
-              value={difficulty}
-              onChange={(event) => set("difficulty", Number(event.target.value))}
-            />
-          </label>
           <GameLaunchButton
             accent="amber"
             onClick={() => {
@@ -177,6 +165,14 @@ export function CentreApp() {
               className="min-h-11"
             >
               race friends
+            </button>
+            <button
+              type="button"
+              onClick={() => setPanel(panel === "options" ? null : "options")}
+              aria-pressed={panel === "options"}
+              className="min-h-11"
+            >
+              options
             </button>
             <button
               type="button"
@@ -237,6 +233,23 @@ export function CentreApp() {
               }}
               onJoin={join}
             />
+          </section>
+        ) : null}
+        {panel === "options" ? (
+          <section className="centre-panel" aria-labelledby="centre-options-title">
+            <h2 id="centre-options-title">Options</h2>
+            <label className="centre-difficulty">
+              <span>difficulty</span>
+              <strong>{DIFFICULTY_LABELS[difficulty - 1]}</strong>
+              <input
+                type="range"
+                min={1}
+                max={5}
+                step={1}
+                value={difficulty}
+                onChange={(event) => set("difficulty", Number(event.target.value))}
+              />
+            </label>
           </section>
         ) : null}
         {message && panel !== "join" ? (

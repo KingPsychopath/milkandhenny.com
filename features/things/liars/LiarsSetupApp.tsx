@@ -1,6 +1,11 @@
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { GameLaunch, GameLaunchButton, GameLaunchMeta } from "../shared/GameLaunch";
+import {
+  GameLaunch,
+  GameLaunchButton,
+  GameLaunchChoices,
+  GameLaunchMeta,
+} from "../shared/GameLaunch";
 import { GameShell } from "../shared/GameShell";
 import { RoomJoinControl } from "../shared/RoomJoinControl";
 import { readExpiringLocalValue, writeExpiringLocalValue } from "../shared/game-storage.client";
@@ -87,7 +92,7 @@ export function LiarsSetupApp() {
   const [creating, setCreating] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [joinCode, setJoinCode] = useState("");
-  const [panel, setPanel] = useState<"roles" | "more" | null>(null);
+  const [panel, setPanel] = useState<"roles" | "more" | "join" | null>(null);
   const imposters = preferences.imposters;
   const wordBoard = preferences.wordBoard;
   const liveRooms = useLiveLiarsSessions();
@@ -165,65 +170,18 @@ export function LiarsSetupApp() {
               </div>
             ) : null}
 
-            <div
-              role="radiogroup"
-              aria-label="which game"
-              className="flex rounded-full border border-white/20 p-1"
+            <GameLaunchButton
+              accent="amber"
+              disabled={creating}
+              onClick={() => void handleCreate()}
             >
-              {(["mafia", "imposter"] as const).map((id) => {
-                const active = mode === id;
-                return (
-                  <button
-                    key={id}
-                    type="button"
-                    role="radio"
-                    aria-checked={active}
-                    onClick={() => chooseMode(id)}
-                    className={`min-h-12 flex-1 rounded-full px-4 font-mono text-sm font-bold transition-colors ${
-                      active
-                        ? "bg-[var(--things-amber)] text-black"
-                        : "text-white/55 hover:text-white/85"
-                    }`}
-                  >
-                    {id}
-                  </button>
-                );
-              })}
-            </div>
-
-            <p className="mt-5 font-serif text-lg leading-relaxed text-white/70">{blurb}</p>
-
-            <div className="mt-6">
-              <label className="font-mono text-xs text-white/55">
-                <span className="block pb-2">how many of you · {players}</span>
-                <input
-                  type="range"
-                  min={limits.min}
-                  max={limits.max}
-                  value={players}
-                  onChange={(event) => set("players", Number(event.target.value))}
-                  className="w-full accent-[var(--things-amber)]"
-                />
-              </label>
-              <p className="mt-1 font-mono text-micro text-white/30">
-                {limits.min}–{limits.max} for {mode}
-              </p>
-            </div>
-
-            <div className="mt-8">
-              <GameLaunchButton
-                accent="amber"
-                disabled={creating}
-                onClick={() => void handleCreate()}
-              >
-                {creating
-                  ? "opening…"
-                  : `open ${LIARS_MODE_COPY[mode].article} ${LIARS_MODE_COPY[mode].name} room`}
-              </GameLaunchButton>
-              <GameLaunchMeta tone="dark">
-                you play too · everyone joins with the room code
-              </GameLaunchMeta>
-            </div>
+              {creating
+                ? "opening…"
+                : `open ${LIARS_MODE_COPY[mode].article} ${LIARS_MODE_COPY[mode].name} room`}
+            </GameLaunchButton>
+            <GameLaunchMeta tone="dark">
+              you play too · everyone joins with the room code
+            </GameLaunchMeta>
 
             {mode === "imposter" ? (
               <p className="mt-4 font-mono text-xs text-white/40">
@@ -237,26 +195,77 @@ export function LiarsSetupApp() {
               </p>
             ) : null}
 
-            <div className="mt-6 flex gap-6 border-t border-white/15 pt-4 font-mono text-xs">
-              {(["roles", "more"] as const).map((tab) => (
-                <button
-                  key={tab}
-                  type="button"
-                  aria-expanded={panel === tab}
-                  onClick={() => setPanel(panel === tab ? null : tab)}
-                  className={`min-h-11 ${
-                    panel === tab
-                      ? "text-[var(--things-amber)]"
-                      : "text-white/45 hover:text-white/80"
-                  }`}
-                >
-                  {tab === "roles" ? "who's in this game" : "more"}
-                </button>
-              ))}
-            </div>
+            <GameLaunchChoices tone="dark">
+              <button
+                type="button"
+                aria-pressed={panel === "roles"}
+                onClick={() => setPanel(panel === "roles" ? null : "roles")}
+                className="min-h-11"
+              >
+                game settings
+              </button>
+              <button
+                type="button"
+                aria-pressed={panel === "more"}
+                onClick={() => setPanel(panel === "more" ? null : "more")}
+                className="min-h-11"
+              >
+                more
+              </button>
+              <button
+                type="button"
+                aria-pressed={panel === "join"}
+                onClick={() => setPanel(panel === "join" ? null : "join")}
+                className="min-h-11"
+              >
+                join a room
+              </button>
+            </GameLaunchChoices>
 
             {panel === "roles" ? (
               <div className="mt-3">
+                <div
+                  role="radiogroup"
+                  aria-label="which game"
+                  className="flex rounded-full border border-white/20 p-1"
+                >
+                  {(["mafia", "imposter"] as const).map((id) => {
+                    const active = mode === id;
+                    return (
+                      <button
+                        key={id}
+                        type="button"
+                        role="radio"
+                        aria-checked={active}
+                        onClick={() => chooseMode(id)}
+                        className={`min-h-12 flex-1 rounded-full px-4 font-mono text-sm font-bold transition-colors ${
+                          active
+                            ? "bg-[var(--things-amber)] text-black"
+                            : "text-white/55 hover:text-white/85"
+                        }`}
+                      >
+                        {id}
+                      </button>
+                    );
+                  })}
+                </div>
+                <p className="mt-5 font-serif text-lg leading-relaxed text-white/70">{blurb}</p>
+                <div className="mt-6">
+                  <label className="font-mono text-xs text-white/55">
+                    <span className="block pb-2">how many of you · {players}</span>
+                    <input
+                      type="range"
+                      min={limits.min}
+                      max={limits.max}
+                      value={players}
+                      onChange={(event) => set("players", Number(event.target.value))}
+                      className="w-full accent-[var(--things-amber)]"
+                    />
+                  </label>
+                  <p className="mt-1 font-mono text-micro text-white/30">
+                    {limits.min}–{limits.max} for {mode}
+                  </p>
+                </div>
                 {mode === "imposter" ? (
                   <div className="mb-5">
                     <p className="font-mono text-micro uppercase tracking-[0.18em] text-white/40">
@@ -397,16 +406,18 @@ export function LiarsSetupApp() {
               </div>
             ) : null}
 
-            <div className="mt-8 border-t border-white/15 pt-5">
-              <RoomJoinControl
-                value={joinCode}
-                gamePath="things/liars"
-                tone="dark"
-                message={message}
-                onValueChange={setJoinCode}
-                onJoin={(code) => navigate({ to: liarsPlayerPath(code) })}
-              />
-            </div>
+            {panel === "join" ? (
+              <div className="mt-8 border-t border-white/15 pt-5">
+                <RoomJoinControl
+                  value={joinCode}
+                  gamePath="things/liars"
+                  tone="dark"
+                  message={message}
+                  onValueChange={setJoinCode}
+                  onJoin={(code) => navigate({ to: liarsPlayerPath(code) })}
+                />
+              </div>
+            ) : null}
           </div>
         </GameLaunch>
       </div>
