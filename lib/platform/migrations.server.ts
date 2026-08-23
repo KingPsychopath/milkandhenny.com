@@ -672,6 +672,83 @@ const MIGRATIONS: Migration[] = [
         where name_visibility = 'first-names';
     `,
   },
+  {
+    id: "0019_pitch_command_journal_editions_and_trash",
+    sql: `
+      alter table pitch_decks drop constraint if exists pitch_decks_lifecycle_check;
+      alter table pitch_decks
+        add constraint pitch_decks_lifecycle_check
+        check (lifecycle in ('active', 'archived', 'trashed', 'deleting'));
+      alter table pitch_decks
+        add column if not exists trashed_at timestamptz,
+        add column if not exists purge_after timestamptz,
+        add column if not exists current_edition_number integer;
+      alter table pitch_decks drop column if exists last_mutation_id;
+      create index if not exists pitch_decks_purge_idx
+        on pitch_decks (purge_after, id)
+        where lifecycle = 'trashed';
+
+      alter table pitch_deck_backups
+        add column if not exists title text,
+        add column if not exists metadata jsonb not null default '{}'::jsonb;
+      update pitch_deck_backups backup
+        set title = deck.title
+        from pitch_decks deck
+        where backup.deck_id = deck.id and backup.title is null;
+      alter table pitch_deck_backups alter column title set not null;
+
+      create table if not exists pitch_editions (
+        deck_id             text not null references pitch_decks (id) on delete cascade,
+        edition_number      integer not null check (edition_number >= 1),
+        draft_version       bigint not null check (draft_version >= 1),
+        title               text not null check (char_length(title) between 1 and 120),
+        owner_name          text not null check (char_length(owner_name) between 1 and 120),
+        document            jsonb not null,
+        thumbnail_asset_id  text,
+        published_at        timestamptz not null default now(),
+        primary key (deck_id, edition_number),
+        constraint pitch_editions_document_size
+          check (octet_length(document::text) <= 3145728)
+      );
+      create index if not exists pitch_editions_published_idx
+        on pitch_editions (published_at desc, deck_id, edition_number desc);
+
+      insert into pitch_editions (
+        deck_id, edition_number, draft_version, title, owner_name, document,
+        thumbnail_asset_id, published_at
+      )
+      select id, 1, published_version, published_title, owner_name, published_document,
+             thumbnail_asset_id, published_at
+        from pitch_decks
+       where published_at is not null
+      on conflict (deck_id, edition_number) do nothing;
+      update pitch_decks
+        set current_edition_number = 1
+        where published_at is not null and current_edition_number is null;
+
+      create table if not exists pitch_commands (
+        deck_id          text not null references pitch_decks (id) on delete cascade,
+        command_id       text not null,
+        device_id        text not null,
+        first_sequence   bigint not null check (first_sequence >= 1),
+        last_sequence    bigint not null check (last_sequence >= first_sequence),
+        base_version     bigint not null check (base_version >= 1),
+        result_version   bigint not null check (result_version >= 1),
+        operations       jsonb not null,
+        result_title     text not null,
+        result_document  jsonb not null,
+        created_at       timestamptz not null default now(),
+        primary key (deck_id, command_id),
+        unique (deck_id, device_id, first_sequence, last_sequence),
+        constraint pitch_commands_result_document_size
+          check (octet_length(result_document::text) <= 3145728)
+      );
+      create index if not exists pitch_commands_created_idx
+        on pitch_commands (created_at, deck_id);
+
+      drop table if exists pitch_mutations;
+    `,
+  },
 ];
 
 export type MigrationResult = { applied: string[]; alreadyApplied: number };

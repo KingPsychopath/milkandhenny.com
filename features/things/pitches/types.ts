@@ -5,6 +5,11 @@ export const PITCH_DEFAULT_MAX_SLIDES = 6;
 export const PITCH_SLIDE_LIMIT_RANGE = { min: 1, max: 12 } as const;
 export const PITCH_DOCUMENT_MAX_BYTES = 3 * 1024 * 1024;
 export const PITCH_MAX_ELEMENTS = 1_500;
+export const PITCH_IMAGE_MAX_BYTES = 10 * 1024 * 1024;
+export const PITCH_AUDIO_MAX_BYTES = 15 * 1024 * 1024;
+export const PITCH_THUMBNAIL_MAX_BYTES = 2 * 1024 * 1024;
+export const PITCH_IMPORT_MAX_BYTES = 30 * 1024 * 1024;
+export const PITCH_DECK_ASSET_MAX_BYTES = 50 * 1024 * 1024;
 export const PITCH_AUDIO_MAX_SECONDS = 120;
 export const PITCH_AUDIO_CUE_LIMIT = 4;
 export const PITCH_SLIDE_STAGE = { width: 960, height: 540 } as const;
@@ -12,7 +17,7 @@ export const PITCH_SLIDE_DEFAULT_DURATION_MS = 15_000;
 export const PITCH_SLIDE_DURATION_RANGE_MS = { min: 5_000, max: 120_000 } as const;
 export const PITCH_SHOWCASE_MARKDOWN_HREF = "/things/pitches#showcase" as const;
 
-export type PitchDeckLifecycle = "active" | "archived" | "deleting";
+export type PitchDeckLifecycle = "active" | "archived" | "trashed" | "deleting";
 export type PitchAssetKind = "image" | "audio" | "thumbnail" | "import";
 export type PitchAssetState = "pending" | "ready";
 
@@ -107,6 +112,7 @@ export interface PublicPitchDeck {
 export interface PublicPitchDeckDetail extends PublicPitchDeck {
   document: PitchDocument;
   assets: PitchAsset[];
+  editionNumber: number;
 }
 
 export interface OwnedPitchDeck {
@@ -119,6 +125,7 @@ export interface OwnedPitchDeck {
   version: number;
   publishedVersion?: number;
   publishedAt?: string;
+  currentEditionNumber?: number;
   updatedAt: string;
   draftExpiresAt: string;
   thumbnailAssetId?: string;
@@ -134,7 +141,56 @@ export interface PitchVersionHistoryItem {
   createdAt: string;
   slideCount: number;
   contentCount: number;
+  title: string;
+  metadata: Record<string, string | number | boolean | null>;
 }
+
+export interface PitchVersionPreview {
+  item: PitchVersionHistoryItem;
+  document: PitchDocument;
+}
+
+export type PitchCommandKind =
+  | "deck.rename"
+  | "deck.replace"
+  | "slide.add"
+  | "slide.remove"
+  | "slide.rename"
+  | "slide.reorder"
+  | "slide.timing"
+  | "element.change"
+  | "image.add"
+  | "ink.add"
+  | "audio.add"
+  | "audio.change"
+  | "audio.remove"
+  | "history.restore"
+  | "history.undo";
+
+export interface PitchCommandOperation {
+  id: string;
+  deviceId: string;
+  sequence: number;
+  kind: PitchCommandKind;
+  payload: Record<string, string | number | boolean | null>;
+  occurredAt: string;
+}
+
+export interface PitchEdition {
+  deckId: string;
+  editionNumber: number;
+  draftVersion: number;
+  title: string;
+  ownerName: string;
+  document: PitchDocument;
+  thumbnailAssetId?: string;
+  publishedAt: string;
+}
+
+export type PitchEditionSummary = Omit<PitchEdition, "document"> & {
+  slideCount: number;
+  contentCount: number;
+};
 
 export interface PitchDeckAdminSummary {
   id: string;
@@ -152,6 +208,8 @@ export interface PitchDeckAdminSummary {
   updatedAt: string;
   publishedAt?: string;
   draftExpiresAt: string;
+  trashedAt?: string;
+  purgeAfter?: string;
 }
 
 export interface PitchOwnerCredential {

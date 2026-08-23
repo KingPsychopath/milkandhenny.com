@@ -10,8 +10,9 @@ import {
   getPitchMaxSlides,
   PITCH_BACKUP_INTERVAL_MS,
   PITCH_BACKUP_KEEP_COUNT,
+  PITCH_COMMAND_RETENTION_DAYS,
   PITCH_PUBLISHED_BACKUP_KEEP_COUNT,
-  PITCH_MUTATION_RETENTION_DAYS,
+  PITCH_TRASH_RETENTION_DAYS,
 } from "./config.server";
 import { mergePitchDocuments } from "./merge";
 import type {
@@ -20,7 +21,9 @@ import type {
   PitchAssetState,
   PitchDeckAdminSummary,
   PitchDeckLifecycle,
+  PitchCommandOperation,
   PitchDocument,
+  PitchEdition,
   PitchVersionHistoryItem,
   PitchVersionPreview,
   PitchVersionReason,
@@ -41,14 +44,16 @@ interface PitchDeckRow extends QueryResultRow {
   published_document: unknown | null;
   published_version: string | number | null;
   published_title: string | null;
+  current_edition_number: string | number | null;
   thumbnail_asset_id: string | null;
-  last_mutation_id: string | null;
   last_backup_at: Date | string | null;
   draft_expires_at: Date | string;
   created_at: Date | string;
   updated_at: Date | string;
   published_at: Date | string | null;
   archived_at: Date | string | null;
+  trashed_at: Date | string | null;
+  purge_after: Date | string | null;
 }
 
 export interface PitchAssetRow extends QueryResultRow {
@@ -76,12 +81,15 @@ export interface StoredPitchDeck {
   draftVersion: number;
   publishedDocument?: PitchDocument;
   publishedVersion?: number;
+  currentEditionNumber?: number;
   thumbnailAssetId?: string;
   draftExpiresAt: string;
   createdAt: string;
   updatedAt: string;
   publishedAt?: string;
   archivedAt?: string;
+  trashedAt?: string;
+  purgeAfter?: string;
 }
 
 export type PitchDeckBackup = PitchVersionHistoryItem;
@@ -91,7 +99,20 @@ interface PitchBackupRow extends QueryResultRow {
   version: string | number;
   reason: PitchVersionReason;
   document: unknown;
+  title: string;
+  metadata: unknown;
   created_at: Date | string;
+}
+
+interface PitchEditionRow extends QueryResultRow {
+  deck_id: string;
+  edition_number: string | number;
+  draft_version: string | number;
+  title: string;
+  owner_name: string;
+  document: unknown;
+  thumbnail_asset_id: string | null;
+  published_at: Date | string;
 }
 
 export interface PitchAuditEvent {
@@ -146,6 +167,16 @@ function parseStoredDocument(value: unknown): PitchDocument {
 
 function toPitchVersionHistoryItem(row: PitchBackupRow): PitchVersionHistoryItem {
   const document = parseStoredDocument(row.document);
+  const metadataSource =
+    row.metadata && typeof row.metadata === "object" && !Array.isArray(row.metadata)
+      ? (row.metadata as Record<string, unknown>)
+      : {};
+  const metadata = Object.fromEntries(
+    Object.entries(metadataSource).filter(
+      (entry): entry is [string, string | number | boolean | null] =>
+        entry[1] === null || ["string", "number", "boolean"].includes(typeof entry[1]),
+    ),
+  );
   return {
     id: String(row.id),
     version: integer(row.version),
@@ -153,6 +184,21 @@ function toPitchVersionHistoryItem(row: PitchBackupRow): PitchVersionHistoryItem
     createdAt: iso(row.created_at),
     slideCount: document.slides.filter((slide) => !slide.deletedAt).length,
     contentCount: pitchDocumentContentCount(document),
+    title: row.title,
+    metadata,
+  };
+}
+
+function toPitchEdition(row: PitchEditionRow): PitchEdition {
+  return {
+    deckId: row.deck_id,
+    editionNumber: integer(row.edition_number),
+    draftVersion: integer(row.draft_version),
+    title: row.title,
+    ownerName: row.owner_name,
+    document: parseStoredDocument(row.document),
+    thumbnailAssetId: row.thumbnail_asset_id ?? undefined,
+    publishedAt: iso(row.published_at),
   };
 }
 
@@ -169,12 +215,16 @@ function toStoredDeck(row: PitchDeckRow): StoredPitchDeck {
       ? parseStoredDocument(row.published_document)
       : undefined,
     publishedVersion: row.published_version === null ? undefined : integer(row.published_version),
+    currentEditionNumber:
+      row.current_edition_number === null ? undefined : integer(row.current_edition_number),
     thumbnailAssetId: row.thumbnail_asset_id ?? undefined,
     draftExpiresAt: iso(row.draft_expires_at),
     createdAt: iso(row.created_at),
     updatedAt: iso(row.updated_at),
     publishedAt: optionalIso(row.published_at),
     archivedAt: optionalIso(row.archived_at),
+    trashedAt: optionalIso(row.trashed_at),
+    purgeAfter: optionalIso(row.purge_after),
   };
 }
 
@@ -327,7 +377,7 @@ export async function readOwnedPitchDeck(
       return { ok: false, status: 404, error: "Pitch not found" };
     }
     const row = await clientDeck(client, deckId);
-    if (!row || row.lifecycle === "deleting") {
+    if (!row || ["trashed", "deleting"].includes(row.lifecycle)) {
       return { ok: false, status: 404, error: "Pitch not found" };
     }
     return { ok: true, value: toStoredDeck(row) };
@@ -339,12 +389,19 @@ async function maybeBackup(client: PoolClient, row: PitchDeckRow, reason: PitchV
   const due = Date.now() - lastBackupAt >= PITCH_BACKUP_INTERVAL_MS;
   if (reason === "autosave" && !due) return;
   await client.query(
-    `insert into pitch_deck_backups (deck_id, version, reason, document)
-      select $1,$2,$3,$4::jsonb
+    `insert into pitch_deck_backups (deck_id, version, reason, document, title, metadata)
+      select $1,$2,$3,$4::jsonb,$5,$6::jsonb
       where not exists (
         select 1 from pitch_deck_backups where deck_id = $1 and version = $2
       )`,
-    [row.id, integer(row.draft_version), reason, JSON.stringify(row.draft_document)],
+    [
+      row.id,
+      integer(row.draft_version),
+      reason,
+      JSON.stringify(row.draft_document),
+      row.title,
+      JSON.stringify({ publishedEdition: row.current_edition_number }),
+    ],
   );
   await client.query(
     `update pitch_deck_backups
@@ -392,24 +449,52 @@ async function restorePitchBackup(
   actor: "owner" | "admin",
 ): Promise<StoredPitchDeck | null> {
   const backup = await client.query<PitchBackupRow>(
-    `select id, version, reason, document, created_at
+    `select id, version, reason, document, title, metadata, created_at
       from pitch_deck_backups where id = $1 and deck_id = $2`,
     [backupId, row.id],
   );
   if (!backup.rows[0]) return null;
   const document = parseStoredDocument(backup.rows[0].document);
+  const title = backup.rows[0].title;
   await maybeBackup(client, row, "restore");
   const updated = await client.query<PitchDeckRow>(
     `update pitch_decks
       set draft_document = $2::jsonb,
+          title = $3,
           draft_version = draft_version + 1,
-          last_mutation_id = null,
           last_backup_at = now(),
-          draft_expires_at = $3,
+          draft_expires_at = $4,
           updated_at = now()
       where id = $1
       returning *`,
-    [row.id, JSON.stringify(document), getPitchDraftExpiresAt()],
+    [row.id, JSON.stringify(document), title, getPitchDraftExpiresAt()],
+  );
+  const commandId = `m_${randomBytes(16).toString("base64url")}`;
+  const sequence = integer(updated.rows[0].draft_version);
+  await client.query(
+    `insert into pitch_commands (
+       deck_id, command_id, device_id, first_sequence, last_sequence,
+       base_version, result_version, operations, result_title, result_document
+     ) values ($1,$2,'device_server_restore',$3,$3,$4,$5,$6::jsonb,$7,$8::jsonb)`,
+    [
+      row.id,
+      commandId,
+      sequence,
+      integer(row.draft_version),
+      integer(updated.rows[0].draft_version),
+      JSON.stringify([
+        {
+          id: commandId,
+          deviceId: "device_server_restore",
+          sequence,
+          kind: "history.restore",
+          payload: { backupId },
+          occurredAt: new Date().toISOString(),
+        },
+      ]),
+      title,
+      JSON.stringify(document),
+    ],
   );
   await insertAudit(client, {
     deckId: row.id,
@@ -431,7 +516,20 @@ export async function syncPitchDeck(input: {
   mutationId: string;
   title: string;
   document: PitchDocument;
+  operations: PitchCommandOperation[];
 }): Promise<PitchStoreResult<{ deck: StoredPitchDeck; merged: boolean; duplicate: boolean }>> {
+  const firstOperation = input.operations[0];
+  const validJournal =
+    firstOperation &&
+    input.mutationId === firstOperation.id &&
+    input.operations.every(
+      (operation, index) =>
+        operation.deviceId === firstOperation.deviceId &&
+        operation.sequence === firstOperation.sequence + index,
+    );
+  if (!validJournal) {
+    return { ok: false, status: 400, error: "The local command journal is incomplete" };
+  }
   return transaction(async (client) => {
     if (!(await clientOwnsDeck(client, input.deckId, input.ownerToken))) {
       return { ok: false, status: 404, error: "Pitch not found" };
@@ -441,14 +539,18 @@ export async function syncPitchDeck(input: {
       return { ok: false, status: 409, error: "This pitch can no longer be edited" };
     }
 
-    const seen = await client.query<{ version: string | number }>(
-      `select version from pitch_mutations where deck_id = $1 and mutation_id = $2`,
+    const seen = await client.query<{ result_version: string | number }>(
+      `select result_version from pitch_commands where deck_id = $1 and command_id = $2`,
       [input.deckId, input.mutationId],
     );
     if (seen.rows[0]) {
       return {
         ok: true,
-        value: { deck: toStoredDeck(row), merged: false, duplicate: true },
+        value: {
+          deck: toStoredDeck(row),
+          merged: integer(row.draft_version) !== integer(seen.rows[0].result_version),
+          duplicate: true,
+        },
       };
     }
 
@@ -461,20 +563,26 @@ export async function syncPitchDeck(input: {
 
     const losesContent =
       pitchDocumentContentCount(parsed.document) < pitchDocumentContentCount(currentDocument);
-    await maybeBackup(client, row, merged ? "conflict" : losesContent ? "safety" : "autosave");
+    const destructive = input.operations.some((operation) =>
+      ["deck.replace", "slide.remove", "audio.remove"].includes(operation.kind),
+    );
+    await maybeBackup(
+      client,
+      row,
+      merged ? "conflict" : losesContent || destructive ? "safety" : "autosave",
+    );
     const nextVersion = currentVersion + 1;
     const updated = await client.query<PitchDeckRow>(
       `update pitch_decks
         set title = $2,
             draft_document = $3::jsonb,
             draft_version = $4,
-            last_mutation_id = $5,
             last_backup_at = case
               when last_backup_at is null or last_backup_at < now() - interval '5 minutes'
                 then now()
               else last_backup_at
             end,
-            draft_expires_at = $6,
+            draft_expires_at = $5,
             updated_at = now()
         where id = $1
         returning *`,
@@ -483,13 +591,27 @@ export async function syncPitchDeck(input: {
         input.title,
         JSON.stringify(parsed.document),
         nextVersion,
-        input.mutationId,
         getPitchDraftExpiresAt(),
       ],
     );
+    const lastOperation = input.operations[input.operations.length - 1];
     await client.query(
-      `insert into pitch_mutations (deck_id, mutation_id, version) values ($1,$2,$3)`,
-      [input.deckId, input.mutationId, nextVersion],
+      `insert into pitch_commands (
+         deck_id, command_id, device_id, first_sequence, last_sequence,
+         base_version, result_version, operations, result_title, result_document
+       ) values ($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9,$10::jsonb)`,
+      [
+        input.deckId,
+        input.mutationId,
+        firstOperation.deviceId,
+        firstOperation.sequence,
+        lastOperation.sequence,
+        input.baseVersion,
+        nextVersion,
+        JSON.stringify(input.operations),
+        input.title,
+        JSON.stringify(parsed.document),
+      ],
     );
     if (merged) {
       await insertAudit(client, {
@@ -556,19 +678,42 @@ export async function publishPitchDeck(input: {
     }
 
     await maybeBackup(client, row, "publish");
+    const editionNumber = integer(row.current_edition_number) + 1;
+    await client.query(
+      `insert into pitch_editions (
+         deck_id, edition_number, draft_version, title, owner_name, document,
+         thumbnail_asset_id, published_at
+       ) values ($1,$2,$3,$4,$5,$6::jsonb,$7,now())`,
+      [
+        input.deckId,
+        editionNumber,
+        integer(row.draft_version),
+        row.title,
+        row.owner_name,
+        JSON.stringify(document),
+        input.thumbnailAssetId ?? row.thumbnail_asset_id,
+      ],
+    );
+    await client.query(
+      `update pitch_deck_backups
+          set metadata = metadata || jsonb_build_object('editionNumber', $3::integer)
+        where deck_id = $1 and version = $2`,
+      [input.deckId, integer(row.draft_version), editionNumber],
+    );
     const updated = await client.query<PitchDeckRow>(
       `update pitch_decks
         set published_document = draft_document,
             published_version = draft_version,
             published_title = title,
             published_at = now(),
+            current_edition_number = $4,
             thumbnail_asset_id = coalesce($2, thumbnail_asset_id),
             draft_expires_at = $3,
             last_backup_at = now(),
             updated_at = now()
         where id = $1
         returning *`,
-      [input.deckId, input.thumbnailAssetId ?? null, getPitchDraftExpiresAt()],
+      [input.deckId, input.thumbnailAssetId ?? null, getPitchDraftExpiresAt(), editionNumber],
     );
     await client.query(
       `update pitch_assets set published_at = coalesce(published_at, now())
@@ -582,7 +727,7 @@ export async function publishPitchDeck(input: {
       deckId: input.deckId,
       action: "deck.published",
       actor: "owner",
-      metadata: { version: integer(row.draft_version) },
+      metadata: { version: integer(row.draft_version), editionNumber },
     });
     return { ok: true, value: toStoredDeck(updated.rows[0]) };
   });
@@ -643,21 +788,23 @@ export async function listPublicPitchDecks(
       owner_name: string;
       published_at: Date | string;
       updated_at: Date | string;
-      published_document: unknown;
+      document: unknown;
       thumbnail_asset_id: string | null;
     }
   >(
-    `select id, coalesce(published_title, title) as title, owner_name, published_at, updated_at,
-            published_document, thumbnail_asset_id
-      from pitch_decks
-      where published_at is not null
-        and lifecycle = 'active'
+    `select deck.id, edition.title, edition.owner_name, edition.published_at,
+            edition.published_at as updated_at, edition.document, edition.thumbnail_asset_id
+      from pitch_decks deck
+      join pitch_editions edition
+        on edition.deck_id = deck.id
+       and edition.edition_number = deck.current_edition_number
+      where deck.lifecycle = 'active'
         and (
           $1::text is null
-          or coalesce(published_title, title) ilike $1
-          or owner_name ilike $1
+          or edition.title ilike $1
+          or edition.owner_name ilike $1
         )
-      order by published_at desc, id
+      order by edition.published_at desc, deck.id
       limit $2`,
     [term, Math.min(100, Math.max(1, limit))],
   );
@@ -667,9 +814,7 @@ export async function listPublicPitchDecks(
     ownerName: row.owner_name,
     publishedAt: iso(row.published_at),
     updatedAt: iso(row.published_at),
-    slideCount: parseStoredDocument(row.published_document).slides.filter(
-      (slide) => !slide.deletedAt,
-    ).length,
+    slideCount: parseStoredDocument(row.document).slides.filter((slide) => !slide.deletedAt).length,
     thumbnailUrl: row.thumbnail_asset_id ?? undefined,
   }));
 }
@@ -680,12 +825,47 @@ export async function readPublicPitchDeck(deckId: string): Promise<StoredPitchDe
       where id = $1 and lifecycle = 'active' and published_at is not null`,
     [deckId],
   );
-  return row
-    ? {
-        ...toStoredDeck(row),
-        title: row.published_title ?? row.title,
-      }
-    : null;
+  if (!row?.current_edition_number) return null;
+  const edition = await readPitchEdition(deckId, integer(row.current_edition_number));
+  if (!edition) return null;
+  return {
+    ...toStoredDeck(row),
+    title: edition.title,
+    ownerName: edition.ownerName,
+    publishedDocument: edition.document,
+    publishedVersion: edition.draftVersion,
+    thumbnailAssetId: edition.thumbnailAssetId,
+    publishedAt: edition.publishedAt,
+  };
+}
+
+export async function listPitchEditions(deckId: string): Promise<PitchEdition[]> {
+  const rows = await query<PitchEditionRow>(
+    `select deck_id, edition_number, draft_version, title, owner_name, document,
+            thumbnail_asset_id, published_at
+       from pitch_editions
+      where deck_id = $1
+      order by edition_number desc`,
+    [deckId],
+  );
+  return rows.map(toPitchEdition);
+}
+
+export async function readPitchEdition(
+  deckId: string,
+  editionNumber: number,
+): Promise<PitchEdition | null> {
+  const row = await queryOne<PitchEditionRow>(
+    `select edition.deck_id, edition.edition_number, edition.draft_version,
+            edition.title, edition.owner_name, edition.document, edition.thumbnail_asset_id,
+            edition.published_at
+       from pitch_editions edition
+       join pitch_decks deck on deck.id = edition.deck_id
+      where edition.deck_id = $1 and edition.edition_number = $2
+        and deck.lifecycle = 'active'`,
+    [deckId, editionNumber],
+  );
+  return row ? toPitchEdition(row) : null;
 }
 
 export async function insertPitchAsset(input: {
@@ -822,6 +1002,8 @@ export async function listPitchDecksForAdmin(): Promise<PitchDeckAdminSummary[]>
       updated_at: Date | string;
       published_at: Date | string | null;
       draft_expires_at: Date | string;
+      trashed_at: Date | string | null;
+      purge_after: Date | string | null;
     }
   >(
     `select d.*,
@@ -854,6 +1036,8 @@ export async function listPitchDecksForAdmin(): Promise<PitchDeckAdminSummary[]>
     updatedAt: iso(row.updated_at),
     publishedAt: optionalIso(row.published_at),
     draftExpiresAt: iso(row.draft_expires_at),
+    trashedAt: optionalIso(row.trashed_at),
+    purgeAfter: optionalIso(row.purge_after),
   }));
 }
 
@@ -867,7 +1051,7 @@ export async function readPitchDeckForAdmin(deckId: string): Promise<StoredPitch
 
 export async function listPitchBackupsForAdmin(deckId: string): Promise<PitchDeckBackup[]> {
   const rows = await query<PitchBackupRow>(
-    `select id, version, reason, document, created_at
+    `select id, version, reason, document, title, metadata, created_at
       from pitch_deck_backups
       where deck_id = $1
       order by created_at desc, id desc
@@ -886,7 +1070,7 @@ export async function listPitchBackupsForOwner(
       return { ok: false, status: 404, error: "Pitch not found" };
     }
     const rows = await client.query<PitchBackupRow>(
-      `select id, version, reason, document, created_at
+      `select id, version, reason, document, title, metadata, created_at
         from pitch_deck_backups
         where deck_id = $1
         order by created_at desc, id desc
@@ -907,7 +1091,7 @@ export async function readPitchBackupForOwner(
       return { ok: false, status: 404, error: "Pitch not found" };
     }
     const backup = await client.query<PitchBackupRow>(
-      `select id, version, reason, document, created_at
+      `select id, version, reason, document, title, metadata, created_at
          from pitch_deck_backups
         where id = $1 and deck_id = $2`,
       [backupId, deckId],
@@ -959,17 +1143,16 @@ export async function updatePitchDeckForAdmin(input: {
   return transaction(async (client) => {
     const email = normalisePitchEmail(input.ownerEmail);
     const current = await clientDeck(client, input.deckId, true);
-    if (!current || current.lifecycle === "deleting") return null;
+    if (!current || !["active", "archived"].includes(current.lifecycle)) return null;
     const ownerChanged = current.owner_email_hash !== hashPitchValue(email);
     const rows = await client.query<PitchDeckRow>(
       `update pitch_decks
         set title = $2,
-            published_title = case when published_at is null then null else $2 end,
             owner_name = $3,
             owner_email = $4,
             owner_email_hash = $5,
             updated_at = now()
-        where id = $1 and lifecycle <> 'deleting'
+        where id = $1 and lifecycle in ('active', 'archived')
         returning *`,
       [input.deckId, input.title, input.ownerName, email, hashPitchValue(email)],
     );
@@ -997,7 +1180,7 @@ export async function restorePitchBackupForAdmin(
 ): Promise<StoredPitchDeck | null> {
   return transaction(async (client) => {
     const row = await clientDeck(client, deckId, true);
-    if (!row || row.lifecycle === "deleting") return null;
+    if (!row || !["active", "archived"].includes(row.lifecycle)) return null;
     return restorePitchBackup(client, row, backupId, "admin");
   });
 }
@@ -1028,7 +1211,7 @@ export async function markPitchDeckDeletingForAdmin(
 ): Promise<PitchStoreResult<StoredPitchDeck>> {
   return transaction(async (client) => {
     const current = await clientDeck(client, deckId, true);
-    if (!current || current.lifecycle === "deleting") {
+    if (!current || !["active", "archived"].includes(current.lifecycle)) {
       return { ok: false, status: 404, error: "Pitch not found" };
     }
     if (confirmation !== current.title) {
@@ -1036,14 +1219,17 @@ export async function markPitchDeckDeletingForAdmin(
     }
     const rows = await client.query<PitchDeckRow>(
       `update pitch_decks
-        set lifecycle = 'deleting', updated_at = now()
+        set lifecycle = 'trashed',
+            trashed_at = now(),
+            purge_after = now() + ($2 * interval '1 day'),
+            updated_at = now()
         where id = $1
         returning *`,
-      [deckId],
+      [deckId, PITCH_TRASH_RETENTION_DAYS],
     );
     await insertAudit(client, {
       deckId,
-      action: "deck.delete.requested",
+      action: "deck.trashed",
       actor: "admin",
     });
     return { ok: true, value: toStoredDeck(rows.rows[0]) };
@@ -1060,7 +1246,7 @@ export async function setPitchDeckArchived(
         set lifecycle = $2,
             archived_at = case when $2 = 'archived' then now() else null end,
             updated_at = now()
-        where id = $1 and lifecycle <> 'deleting'
+        where id = $1 and lifecycle in ('active', 'archived')
         returning *`,
       [deckId, archived ? "archived" : "active"],
     );
@@ -1074,20 +1260,49 @@ export async function setPitchDeckArchived(
   });
 }
 
+export async function restorePitchDeckFromTrash(deckId: string): Promise<StoredPitchDeck | null> {
+  return transaction(async (client) => {
+    const rows = await client.query<PitchDeckRow>(
+      `update pitch_decks
+          set lifecycle = 'active', trashed_at = null, purge_after = null, updated_at = now()
+        where id = $1 and lifecycle = 'trashed'
+        returning *`,
+      [deckId],
+    );
+    if (!rows.rows[0]) return null;
+    await insertAudit(client, {
+      deckId,
+      action: "deck.trash.restored",
+      actor: "admin",
+    });
+    return toStoredDeck(rows.rows[0]);
+  });
+}
+
 export async function markExpiredPitchDecksDeleting(limit = 100): Promise<StoredPitchDeck[]> {
   return transaction(async (client) => {
+    await client.query(
+      `update pitch_decks
+          set lifecycle = 'trashed',
+              trashed_at = now(),
+              purge_after = now() + ($2 * interval '1 day'),
+              updated_at = now()
+        where id in (
+          select id from pitch_decks
+           where lifecycle = 'active'
+             and published_at is null
+             and draft_expires_at <= now()
+           order by draft_expires_at, id
+           for update skip locked
+           limit $1
+        )`,
+      [Math.min(500, Math.max(1, limit)), PITCH_TRASH_RETENTION_DAYS],
+    );
     const rows = await client.query<PitchDeckRow>(
       `with candidates as (
          select id from pitch_decks
-          where (
-            lifecycle = 'deleting'
-            or (
-              lifecycle = 'active'
-              and published_at is null
-              and draft_expires_at <= now()
-            )
-          )
-          order by draft_expires_at, id
+          where lifecycle = 'trashed' and purge_after <= now()
+          order by purge_after, id
           for update skip locked
           limit $1
        )
@@ -1113,21 +1328,21 @@ export async function hardDeletePitchDeck(deckId: string): Promise<boolean> {
   return Boolean(rows[0]);
 }
 
-export async function prunePitchMutations(limit = 1_000): Promise<number> {
-  const rows = await query<{ mutation_id: string }>(
+export async function prunePitchCommands(limit = 1_000): Promise<number> {
+  const rows = await query<{ command_id: string }>(
     `with expired as (
-       select deck_id, mutation_id
-         from pitch_mutations
+       select deck_id, command_id
+         from pitch_commands
         where created_at < now() - ($1 * interval '1 day')
-        order by created_at, deck_id, mutation_id
+        order by created_at, deck_id, command_id
         limit $2
      )
-     delete from pitch_mutations mutation
+     delete from pitch_commands command
       using expired
-      where mutation.deck_id = expired.deck_id
-        and mutation.mutation_id = expired.mutation_id
-      returning mutation.mutation_id`,
-    [PITCH_MUTATION_RETENTION_DAYS, Math.min(5_000, Math.max(1, limit))],
+      where command.deck_id = expired.deck_id
+        and command.command_id = expired.command_id
+      returning command.command_id`,
+    [PITCH_COMMAND_RETENTION_DAYS, Math.min(5_000, Math.max(1, limit))],
   );
   return rows.length;
 }

@@ -27,8 +27,8 @@ export function PitchShowcase({
             {title}
           </h3>
           <p className="mt-2 max-w-lg font-serif text-base leading-relaxed theme-subtle">
-            A few pitches from people who want to make the room believe them, and people who
-            already have.
+            A few pitches from people who want to make the room believe them, and people who already
+            have.
           </p>
         </div>
         <Link
@@ -46,6 +46,7 @@ export function PitchShowcase({
               key={pitch.id}
               to="/things/pitches/$deckId"
               params={{ deckId: pitch.id }}
+              search={{ edition: undefined }}
               className="group block min-w-0 border-b theme-border pb-3 hover:opacity-70"
             >
               <div className="aspect-video overflow-hidden bg-surface">
@@ -65,9 +66,7 @@ export function PitchShowcase({
                 )}
               </div>
               <h4 className="mt-3 truncate font-serif text-lg text-foreground">{pitch.title}</h4>
-              <p className="mt-1 font-mono text-micro theme-muted">
-                {pitch.ownerName}
-              </p>
+              <p className="mt-1 font-mono text-micro theme-muted">{pitch.ownerName}</p>
             </Link>
           ))}
         </div>

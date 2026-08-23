@@ -88,6 +88,9 @@ async function handlePATCH(request: Request) {
         if (action === "restore-backup" && typeof body.backupId === "string") {
           return yield* pitches.restoreAdmin(body.deckId as string, body.backupId);
         }
+        if (action === "restore-trash") {
+          return yield* pitches.restoreTrashAdmin(body.deckId as string);
+        }
         if (action === "resend-access") {
           return yield* pitches.resendAdmin({
             deckId: body.deckId as string,

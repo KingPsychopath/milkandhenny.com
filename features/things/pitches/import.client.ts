@@ -256,5 +256,7 @@ export async function importPresentation(
   ) {
     return importPptx(file, maximumSlides);
   }
-  throw new Error("Use a PDF or .pptx PowerPoint file");
+  throw new Error(
+    "Choose a PowerPoint (.pptx) or PDF file. For Google Slides, download the presentation as a PowerPoint file first.",
+  );
 }

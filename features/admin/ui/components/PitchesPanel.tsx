@@ -19,7 +19,7 @@ type PitchDetail = {
     title: string;
     ownerName: string;
     ownerEmail: string;
-    lifecycle: "active" | "archived" | "deleting";
+    lifecycle: "active" | "archived" | "trashed" | "deleting";
     draftDocument: PitchDocument;
     draftVersion: number;
     draftExpiresAt: string;
@@ -30,8 +30,15 @@ type PitchDetail = {
   backups: Array<{
     id: string;
     version: number;
-    reason: "periodic" | "conflict" | "publish" | "admin";
+    reason: "autosave" | "safety" | "conflict" | "publish" | "restore";
     createdAt: string;
+    title: string;
+  }>;
+  editions: Array<{
+    editionNumber: number;
+    draftVersion: number;
+    title: string;
+    publishedAt: string;
   }>;
   audit: Array<{
     id: string;
@@ -69,7 +76,7 @@ export function PitchesPanel({
   const [pitches, setPitches] = useState<PitchDeckAdminSummary[]>([]);
   const [detail, setDetail] = useState<PitchDetail>();
   const [query, setQuery] = useState("");
-  const [filter, setFilter] = useState<"all" | "draft" | "published" | "archived">("all");
+  const [filter, setFilter] = useState<"all" | "draft" | "published" | "archived" | "trash">("all");
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState("");
   const [detailFiles, setDetailFiles] = useState<BinaryFiles>({});
@@ -100,6 +107,8 @@ export function PitchesPanel({
       if (filter === "draft" && pitch.publishedAt) return false;
       if (filter === "published" && !pitch.publishedAt) return false;
       if (filter === "archived" && pitch.lifecycle !== "archived") return false;
+      if (filter === "trash" && pitch.lifecycle !== "trashed") return false;
+      if (filter !== "trash" && pitch.lifecycle === "trashed") return false;
       if (filter !== "archived" && filter !== "all" && pitch.lifecycle === "archived") return false;
       return (
         !term ||
@@ -149,6 +158,25 @@ export function PitchesPanel({
       await refresh();
     } catch (error) {
       onError(error instanceof Error ? error.message : "Could not update pitch");
+    } finally {
+      setBusy("");
+    }
+  }
+
+  async function restoreTrash(pitch: PitchDeckAdminSummary) {
+    setBusy(pitch.id);
+    try {
+      const response = await authFetch("/api/admin/pitches", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "restore-trash", deckId: pitch.id }),
+      });
+      if (!response.ok) throw new Error("Could not restore pitch from Trash");
+      onStatus("Pitch restored from Trash.");
+      setDetail(undefined);
+      await refresh();
+    } catch (error) {
+      onError(error instanceof Error ? error.message : "Could not restore pitch from Trash");
     } finally {
       setBusy("");
     }
@@ -205,7 +233,7 @@ export function PitchesPanel({
       if (!response.ok) throw new Error(body.error ?? "Could not delete pitch");
       setDetail(undefined);
       setDeleteConfirmation("");
-      onStatus("Pitch and its stored media were deleted.");
+      onStatus("Pitch moved to Trash. It can be restored for 30 days.");
       await refresh();
     } catch (error) {
       onError(error instanceof Error ? error.message : "Could not delete pitch");
@@ -246,7 +274,7 @@ export function PitchesPanel({
       </div>
 
       <div className="mt-6 flex flex-wrap gap-2">
-        {(["all", "draft", "published", "archived"] as const).map((value) => (
+        {(["all", "draft", "published", "archived", "trash"] as const).map((value) => (
           <button
             key={value}
             type="button"
@@ -287,20 +315,33 @@ export function PitchesPanel({
               </button>
               <div className="flex items-center gap-3 font-mono text-xs">
                 <span className={pitch.publishedAt ? "text-foreground" : "theme-muted"}>
-                  {pitch.lifecycle === "archived"
-                    ? "archived"
-                    : pitch.publishedAt
-                      ? "published"
-                      : "draft"}
+                  {pitch.lifecycle === "trashed"
+                    ? `trash · purges ${pitch.purgeAfter ? when(pitch.purgeAfter) : "later"}`
+                    : pitch.lifecycle === "archived"
+                      ? "archived"
+                      : pitch.publishedAt
+                        ? "published"
+                        : "draft"}
                 </span>
-                <button
-                  type="button"
-                  disabled={busy === pitch.id}
-                  onClick={() => void archive(pitch)}
-                  className="theme-muted underline underline-offset-4 hover:text-foreground disabled:opacity-40"
-                >
-                  {pitch.lifecycle === "archived" ? "restore" : "archive"}
-                </button>
+                {pitch.lifecycle === "trashed" ? (
+                  <button
+                    type="button"
+                    disabled={busy === pitch.id}
+                    onClick={() => void restoreTrash(pitch)}
+                    className="theme-muted underline underline-offset-4 hover:text-foreground disabled:opacity-40"
+                  >
+                    restore
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    disabled={busy === pitch.id}
+                    onClick={() => void archive(pitch)}
+                    className="theme-muted underline underline-offset-4 hover:text-foreground disabled:opacity-40"
+                  >
+                    {pitch.lifecycle === "archived" ? "restore" : "archive"}
+                  </button>
+                )}
               </div>
             </div>
           </article>
@@ -480,6 +521,26 @@ export function PitchesPanel({
               </div>
               <div>
                 <p className="font-mono text-micro uppercase tracking-[0.12em] theme-muted">
+                  sealed editions
+                </p>
+                <ul className="mt-2 divide-y theme-border">
+                  {detail.editions.map((edition) => (
+                    <li key={edition.editionNumber} className="flex gap-3 py-3">
+                      <a
+                        href={`/things/pitches/${detail.pitch.id}?edition=${edition.editionNumber}`}
+                        className="font-mono text-xs text-foreground underline underline-offset-4"
+                      >
+                        edition {edition.editionNumber}
+                      </a>
+                      <span className="font-mono text-micro theme-muted">
+                        v{edition.draftVersion} · {edition.title} · {when(edition.publishedAt)}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+              <div>
+                <p className="font-mono text-micro uppercase tracking-[0.12em] theme-muted">
                   recent activity
                 </p>
                 <ul className="mt-2 max-h-72 divide-y theme-border overflow-y-auto">
@@ -498,14 +559,14 @@ export function PitchesPanel({
 
           <details className="group mt-4 border-t theme-border pt-4">
             <summary className="cursor-pointer list-none font-mono text-xs text-foreground">
-              delete this pitch
+              move this pitch to Trash
               <span className="float-right theme-muted group-open:hidden">open</span>
               <span className="float-right hidden theme-muted group-open:inline">close</span>
             </summary>
             <div className="mt-4 max-w-xl">
               <p className="font-serif text-base theme-muted">
-                This removes the working copy, every sealed edition, recovery links, backups and all
-                R2 media. Type the exact title to continue.
+                This hides the pitch and blocks editing now. The working copy, sealed editions,
+                backups and media remain recoverable for 30 days. Type the exact title to continue.
               </p>
               <input
                 value={deleteConfirmation}
@@ -520,7 +581,7 @@ export function PitchesPanel({
                 onClick={() => void deletePitch()}
                 className="mt-4 min-h-10 border px-4 font-mono text-xs text-foreground theme-border-strong disabled:opacity-30"
               >
-                delete pitch and media
+                move pitch to Trash
               </button>
             </div>
           </details>

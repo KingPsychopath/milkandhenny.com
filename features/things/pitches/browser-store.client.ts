@@ -4,6 +4,7 @@ import { mergePitchDocuments } from "./merge";
 import {
   PITCH_SLIDE_LIMIT_RANGE,
   type OwnedPitchDeck,
+  type PitchCommandOperation,
   type PitchDocument,
   type PitchOwnerCredential,
 } from "./types";
@@ -21,6 +22,17 @@ export interface LocalPitchDraft {
   files: BinaryFiles;
   pendingSync: boolean;
   updatedAt: string;
+  pendingOperations?: PitchCommandOperation[];
+  nextSequence?: number;
+}
+
+export function pitchDeviceId(): string {
+  const key = "milkandhenny:pitch-device-id";
+  const existing = localStorage.getItem(key);
+  if (existing && /^device_[A-Za-z0-9_-]{12,64}$/.test(existing)) return existing;
+  const created = `device_${crypto.randomUUID().replaceAll("-", "")}`;
+  localStorage.setItem(key, created);
+  return created;
 }
 
 export function reconcileLocalPitchDraft(
@@ -143,6 +155,13 @@ export async function readLocalPitchDraft(deckId: string): Promise<LocalPitchDra
     files: source.files as BinaryFiles,
     pendingSync: source.pendingSync,
     updatedAt: source.updatedAt,
+    pendingOperations: Array.isArray(source.pendingOperations)
+      ? (source.pendingOperations as PitchCommandOperation[])
+      : [],
+    nextSequence:
+      typeof source.nextSequence === "number" && Number.isInteger(source.nextSequence)
+        ? source.nextSequence
+        : 1,
   };
 }
 

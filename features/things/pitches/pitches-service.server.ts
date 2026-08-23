@@ -32,6 +32,7 @@ export class PitchesService extends Context.Service<
     readonly restoreAdmin: typeof restoreAdmin;
     readonly resendAdmin: typeof resendAdmin;
     readonly deleteAdmin: typeof deleteAdmin;
+    readonly restoreTrashAdmin: typeof restoreTrashAdmin;
     readonly createPresentation: typeof createPresentation;
     readonly joinPresentation: typeof joinPresentation;
     readonly readPresentation: typeof readPresentation;
@@ -63,6 +64,7 @@ export class PitchesService extends Context.Service<
     restoreAdmin,
     resendAdmin,
     deleteAdmin,
+    restoreTrashAdmin,
     createPresentation,
     joinPresentation,
     readPresentation,
@@ -103,8 +105,8 @@ function listPublished(search?: string) {
   return pitchesOperation("list_published", () => engine.listPublishedPitches(search));
 }
 
-function readPublished(deckId: string) {
-  return pitchesOperation("read_published", () => engine.readPublishedPitch(deckId));
+function readPublished(deckId: string, editionNumber?: number) {
+  return pitchesOperation("read_published", () => engine.readPublishedPitch(deckId, editionNumber));
 }
 
 function recover(input: Parameters<typeof engine.recoverPitchAccess>[0]) {
@@ -161,6 +163,12 @@ function resendAdmin(input: Parameters<typeof engine.resendPitchAccessForAdmin>[
 
 function deleteAdmin(...input: Parameters<typeof engine.deletePitchForAdmin>) {
   return pitchesOperation("admin_delete", () => engine.deletePitchForAdmin(...input), false);
+}
+
+function restoreTrashAdmin(...input: Parameters<typeof engine.restorePitchFromTrashForAdmin>) {
+  return pitchesOperation("admin_restore_trash", () =>
+    engine.restorePitchFromTrashForAdmin(...input),
+  );
 }
 
 function createPresentation(eventTitle?: string) {

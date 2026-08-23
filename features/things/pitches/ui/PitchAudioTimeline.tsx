@@ -1,3 +1,5 @@
+import { useState } from "react";
+
 import { AppSelect } from "@/components/AppSelect";
 import type { PitchAsset, PitchAudioCue, PitchSlide } from "../types";
 import { PITCH_AUDIO_CUE_LIMIT, PITCH_SLIDE_DURATION_RANGE_MS } from "../types";
@@ -15,21 +17,27 @@ export function PitchAudioTimeline({
   assets,
   onChange,
   onAddSound,
+  onDropFile,
   soundDisabledReason,
 }: {
   slide: PitchSlide;
   assets: PitchAsset[];
-  onChange: (slide: PitchSlide) => void;
-  onAddSound: (event: React.ChangeEvent<HTMLInputElement>) => void;
+  onChange: (slide: PitchSlide, kind?: "audio.change" | "audio.remove" | "slide.timing") => void;
+  onAddSound: (file: File) => void;
+  onDropFile?: (file: File) => void;
   soundDisabledReason?: string;
 }) {
+  const [dropActive, setDropActive] = useState(false);
   const updateCue = (cueId: string, update: (cue: PitchAudioCue) => PitchAudioCue) => {
-    onChange({
-      ...slide,
-      audioCues: slide.audioCues.map((cue) => (cue.id === cueId ? update(cue) : cue)),
-      version: slide.version + 1,
-      updatedAt: Date.now(),
-    });
+    onChange(
+      {
+        ...slide,
+        audioCues: slide.audioCues.map((cue) => (cue.id === cueId ? update(cue) : cue)),
+        version: slide.version + 1,
+        updatedAt: Date.now(),
+      },
+      "audio.change",
+    );
   };
 
   const setDuration = (durationMs: number) => {
@@ -37,22 +45,38 @@ export function PitchAudioTimeline({
       PITCH_SLIDE_DURATION_RANGE_MS.max,
       Math.max(PITCH_SLIDE_DURATION_RANGE_MS.min, durationMs),
     );
-    onChange({
-      ...slide,
-      durationMs: next,
-      audioCues: slide.audioCues.map((cue) =>
-        cue.trigger === "enter" && cue.delayMs > next ? { ...cue, delayMs: next } : cue,
-      ),
-      version: slide.version + 1,
-      updatedAt: Date.now(),
-    });
+    onChange(
+      {
+        ...slide,
+        durationMs: next,
+        audioCues: slide.audioCues.map((cue) =>
+          cue.trigger === "enter" && cue.delayMs > next ? { ...cue, delayMs: next } : cue,
+        ),
+        version: slide.version + 1,
+        updatedAt: Date.now(),
+      },
+      "slide.timing",
+    );
   };
 
   return (
     <section
       data-tour="sound"
-      className="border-t theme-border bg-background px-3 py-3"
+      data-pitch-drop-target="timeline"
+      className={`border-t theme-border bg-background px-3 py-3 ${dropActive ? "ring-2 ring-inset ring-[var(--things-amber)]" : ""}`}
       aria-labelledby="pitch-sound-title"
+      onDragOver={(event) => {
+        event.preventDefault();
+        setDropActive(true);
+      }}
+      onDragLeave={() => setDropActive(false)}
+      onDrop={(event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        setDropActive(false);
+        const file = event.dataTransfer.files[0];
+        if (file) onDropFile?.(file);
+      }}
     >
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
         <div className="min-w-0 flex-1">
@@ -96,7 +120,11 @@ export function PitchAudioTimeline({
             disabled={
               Boolean(soundDisabledReason) || slide.audioCues.length >= PITCH_AUDIO_CUE_LIMIT
             }
-            onChange={onAddSound}
+            onChange={(event) => {
+              const file = event.target.files?.[0];
+              event.target.value = "";
+              if (file) onAddSound(file);
+            }}
           />
         </label>
       </div>
@@ -130,7 +158,7 @@ export function PitchAudioTimeline({
       {slide.audioCues.length === 0 ? (
         <p className="mt-3 font-mono text-micro theme-muted">
           {soundDisabledReason ??
-            "Add a sting, song or sound effect. Nothing plays until a person presses preview or arms sound on the presentation screen."}
+            "Add a sting, song or sound effect, or drop one here. Nothing plays until a person presses preview or arms sound on the presentation screen."}
         </p>
       ) : (
         <div className="mt-3 space-y-3">
@@ -179,12 +207,15 @@ export function PitchAudioTimeline({
                   <button
                     type="button"
                     onClick={() =>
-                      onChange({
-                        ...slide,
-                        audioCues: slide.audioCues.filter((item) => item.id !== cue.id),
-                        version: slide.version + 1,
-                        updatedAt: Date.now(),
-                      })
+                      onChange(
+                        {
+                          ...slide,
+                          audioCues: slide.audioCues.filter((item) => item.id !== cue.id),
+                          version: slide.version + 1,
+                          updatedAt: Date.now(),
+                        },
+                        "audio.remove",
+                      )
                     }
                     className="min-h-10 px-2 font-mono text-xs theme-muted underline underline-offset-4"
                   >

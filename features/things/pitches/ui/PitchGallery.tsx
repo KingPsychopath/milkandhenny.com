@@ -112,6 +112,7 @@ export function PitchGallery({ initialPitches }: { initialPitches: PublicPitchDe
                 key={pitch.id}
                 to="/things/pitches/$deckId"
                 params={{ deckId: pitch.id }}
+                search={{ edition: undefined }}
                 className="group mb-6 block break-inside-avoid border-b theme-border pb-5"
               >
                 <div className="relative aspect-square overflow-hidden bg-surface p-4">

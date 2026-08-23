@@ -7,7 +7,7 @@ import { getBaseUrlForRequest } from "@/lib/shared/config";
 import { pitchEditorConfig, type PitchAssetUploadInput } from "./pitches.server";
 import { runPitchesResult } from "./pitches-runtime.server";
 import { PitchesService } from "./pitches-service.server";
-import type { PitchDocument } from "./types";
+import type { PitchCommandKind, PitchCommandOperation, PitchDocument } from "./types";
 import {
   isPitchAssetId,
   isPitchAssetKind,
@@ -22,7 +22,7 @@ import {
 
 type OperationResult<T> = { ok: true; value: T } | { ok: false; status: number; error: string };
 
-function invalid(error = "That request could not be read") {
+function invalid(error = "Some details were missing or invalid. Check them and try again.") {
   return { ok: false as const, status: 400, error };
 }
 
@@ -53,13 +53,18 @@ export const listPublishedPitchesFn = createServerFn({ method: "GET" })
   });
 
 export const readPublishedPitchFn = createServerFn({ method: "GET" })
-  .validator((data: { deckId: string }) => data)
+  .validator((data: { deckId: string; editionNumber?: number }) => data)
   .handler(async ({ data }) => {
-    if (!isPitchDeckId(data.deckId)) return null;
+    if (
+      !isPitchDeckId(data.deckId) ||
+      (data.editionNumber !== undefined &&
+        (!Number.isInteger(data.editionNumber) || data.editionNumber < 1))
+    )
+      return null;
     const result = await runPitchesResult(
       Effect.gen(function* () {
         const pitches = yield* PitchesService;
-        return yield* pitches.readPublished(data.deckId);
+        return yield* pitches.readPublished(data.deckId, data.editionNumber);
       }),
     );
     return result.ok ? result.value : null;
@@ -80,15 +85,20 @@ export const createPitchFn = createServerFn({ method: "POST" })
     const ownerName = parsePitchOwnerName(data.ownerName);
     const title = parsePitchTitle(data.title);
     const document = parsePitchDocument(data.document, pitchEditorConfig().maximumSlides);
-    if (
-      !ownerName ||
-      !title ||
-      !validEmail(data.ownerEmail) ||
-      !isPitchCreateRequestId(data.createRequestId) ||
-      !isPitchOwnerToken(data.ownerToken) ||
-      !document.ok
-    ) {
-      return invalid(document.ok ? undefined : document.error);
+    if (!ownerName) {
+      return invalid("Add your name so we know who owns this pitch.");
+    }
+    if (!title) {
+      return invalid("Add a pitch title before opening the studio.");
+    }
+    if (!validEmail(data.ownerEmail)) {
+      return invalid("Enter a valid recovery email so you can get back to this pitch.");
+    }
+    if (!isPitchCreateRequestId(data.createRequestId) || !isPitchOwnerToken(data.ownerToken)) {
+      return invalid("This studio request expired. Try opening the studio again.");
+    }
+    if (!document.ok) {
+      return invalid(document.error);
     }
     return runOperation(
       Effect.gen(function* () {
@@ -132,6 +142,24 @@ export const listPitchHistoryFn = createServerFn({ method: "POST" })
     );
   });
 
+export const readPitchVersionFn = createServerFn({ method: "POST" })
+  .validator((data: { deckId: string; ownerToken: string; backupId: string }) => data)
+  .handler(async ({ data }) => {
+    if (
+      !isPitchDeckId(data.deckId) ||
+      !isPitchOwnerToken(data.ownerToken) ||
+      !/^\d{1,20}$/.test(data.backupId)
+    ) {
+      return invalid();
+    }
+    return runOperation(
+      Effect.gen(function* () {
+        const pitches = yield* PitchesService;
+        return yield* pitches.readVersion(data.deckId, data.ownerToken, data.backupId);
+      }),
+    );
+  });
+
 export const restorePitchVersionFn = createServerFn({ method: "POST" })
   .validator((data: { deckId: string; ownerToken: string; backupId: string }) => data)
   .handler(async ({ data }) => {
@@ -157,13 +185,61 @@ type SyncInput = {
   mutationId: string;
   title: string;
   document: unknown;
+  operations: unknown;
 };
+
+const PITCH_COMMAND_KINDS = new Set<PitchCommandKind>([
+  "deck.rename",
+  "deck.replace",
+  "slide.add",
+  "slide.remove",
+  "slide.rename",
+  "slide.reorder",
+  "slide.timing",
+  "element.change",
+  "image.add",
+  "ink.add",
+  "audio.add",
+  "audio.change",
+  "audio.remove",
+  "history.restore",
+  "history.undo",
+]);
+
+function parsePitchOperations(value: unknown): PitchCommandOperation[] | null {
+  if (!Array.isArray(value) || value.length < 1 || value.length > 500) return null;
+  const operations: PitchCommandOperation[] = [];
+  for (const entry of value) {
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)) return null;
+    const operation = entry as Record<string, unknown>;
+    if (
+      typeof operation.id !== "string" ||
+      !isPitchMutationId(operation.id) ||
+      typeof operation.deviceId !== "string" ||
+      !/^device_[A-Za-z0-9_-]{12,64}$/.test(operation.deviceId) ||
+      !Number.isInteger(operation.sequence) ||
+      Number(operation.sequence) < 1 ||
+      typeof operation.kind !== "string" ||
+      !PITCH_COMMAND_KINDS.has(operation.kind as PitchCommandKind) ||
+      !operation.payload ||
+      typeof operation.payload !== "object" ||
+      Array.isArray(operation.payload) ||
+      typeof operation.occurredAt !== "string" ||
+      !Number.isFinite(Date.parse(operation.occurredAt))
+    ) {
+      return null;
+    }
+    operations.push(operation as unknown as PitchCommandOperation);
+  }
+  return JSON.stringify(operations).length <= 64 * 1024 ? operations : null;
+}
 
 export const syncPitchFn = createServerFn({ method: "POST" })
   .validator((data: SyncInput) => data)
   .handler(async ({ data }) => {
     const title = parsePitchTitle(data.title);
     const document = parsePitchDocument(data.document, pitchEditorConfig().maximumSlides);
+    const operations = parsePitchOperations(data.operations);
     if (
       !isPitchDeckId(data.deckId) ||
       !isPitchOwnerToken(data.ownerToken) ||
@@ -171,7 +247,9 @@ export const syncPitchFn = createServerFn({ method: "POST" })
       !Number.isInteger(data.baseVersion) ||
       data.baseVersion < 1 ||
       !title ||
-      !document.ok
+      !document.ok ||
+      !operations ||
+      operations[0]?.id !== data.mutationId
     ) {
       return invalid(document.ok ? undefined : document.error);
     }
@@ -182,6 +260,7 @@ export const syncPitchFn = createServerFn({ method: "POST" })
           ...data,
           title,
           document: document.document,
+          operations,
         });
       }),
     );

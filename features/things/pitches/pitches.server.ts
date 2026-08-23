@@ -24,19 +24,22 @@ import {
   listPitchDecksForRecovery,
   listPitchAuditForAdmin,
   listPitchBackupsForAdmin,
+  listPitchEditions,
   listPublicPitchDecks,
   markPitchDeckDeletingForAdmin,
   markExpiredPitchDecksDeleting,
   publishPitchDeck,
   readPitchBackupForOwner,
-  prunePitchMutations,
+  prunePitchCommands,
   readOwnedPitchDeck,
   readPitchDeckForAdmin,
   readPublicPitchDeck,
+  readPitchEdition,
   recordPitchAudit,
   removePitchAccessTokens,
   restorePitchBackupForAdmin,
   restorePitchBackupForOwner,
+  restorePitchDeckFromTrash,
   syncPitchDeck,
   updatePitchDeckForAdmin,
   type PitchStoreResult,
@@ -45,6 +48,7 @@ import {
 import type {
   OwnedPitchDeck,
   PitchAssetKind,
+  PitchCommandOperation,
   PitchDocument,
   PublicPitchDeck,
   PublicPitchDeckDetail,
@@ -61,6 +65,7 @@ async function ownerView(deck: StoredPitchDeck): Promise<OwnedPitchDeck> {
     version: deck.draftVersion,
     publishedVersion: deck.publishedVersion,
     publishedAt: deck.publishedAt,
+    currentEditionNumber: deck.currentEditionNumber,
     updatedAt: deck.updatedAt,
     draftExpiresAt: deck.draftExpiresAt,
     thumbnailAssetId: deck.thumbnailAssetId,
@@ -145,6 +150,7 @@ export async function syncPitch(input: {
   mutationId: string;
   title: string;
   document: PitchDocument;
+  operations: PitchCommandOperation[];
 }): Promise<PitchStoreResult<{ deck: OwnedPitchDeck; merged: boolean; duplicate: boolean }>> {
   const synced = await syncPitchDeck(input);
   if (!synced.ok) return synced;
@@ -200,33 +206,43 @@ export async function listPublishedPitches(search?: string): Promise<PublicPitch
   );
 }
 
-export async function readPublishedPitch(deckId: string): Promise<PublicPitchDeckDetail | null> {
+export async function readPublishedPitch(
+  deckId: string,
+  editionNumber?: number,
+): Promise<PublicPitchDeckDetail | null> {
   const deck = await readPublicPitchDeck(deckId);
   if (!deck?.publishedDocument || !deck.publishedAt) return null;
+  const edition = editionNumber ? await readPitchEdition(deckId, editionNumber) : null;
+  const document = edition?.document ?? deck.publishedDocument;
+  const title = edition?.title ?? deck.title;
+  const ownerName = edition?.ownerName ?? deck.ownerName;
+  const publishedAt = edition?.publishedAt ?? deck.publishedAt;
+  const thumbnailAssetId = edition?.thumbnailAssetId ?? deck.thumbnailAssetId;
   const referenced = new Set(
-    deck.publishedDocument.slides.flatMap((slide) => [
+    document.slides.flatMap((slide) => [
       ...Object.values(slide.assetIds),
       ...slide.audioCues.map((cue) => cue.assetId),
     ]),
   );
-  if (deck.thumbnailAssetId) referenced.add(deck.thumbnailAssetId);
+  if (thumbnailAssetId) referenced.add(thumbnailAssetId);
   const assets = await signedPitchAssets(deck.id, {
     assetIds: referenced,
     includeImports: false,
   });
-  const thumbnail = deck.thumbnailAssetId
-    ? assets.find((asset) => asset.id === deck.thumbnailAssetId)
+  const thumbnail = thumbnailAssetId
+    ? assets.find((asset) => asset.id === thumbnailAssetId)
     : undefined;
   return {
     id: deck.id,
-    title: deck.title,
-    ownerName: deck.ownerName,
-    publishedAt: deck.publishedAt,
-    updatedAt: deck.publishedAt,
-    slideCount: deck.publishedDocument.slides.filter((slide) => !slide.deletedAt).length,
+    title,
+    ownerName,
+    publishedAt,
+    updatedAt: publishedAt,
+    slideCount: document.slides.filter((slide) => !slide.deletedAt).length,
     thumbnailUrl: thumbnail?.url,
-    document: deck.publishedDocument,
+    document,
     assets,
+    editionNumber: edition?.editionNumber ?? deck.currentEditionNumber ?? 1,
   };
 }
 
@@ -291,12 +307,12 @@ export async function cleanupExpiredPitches(limit = 100): Promise<{
   attempted: number;
   deleted: number;
   failed: number;
-  mutationsDeleted: number;
+  commandsDeleted: number;
   staleAssets: { attempted: number; deleted: number; failed: number };
 }> {
-  const [staleAssets, mutationsDeleted] = await Promise.all([
+  const [staleAssets, commandsDeleted] = await Promise.all([
     cleanupStalePitchAssets(limit),
-    prunePitchMutations(limit * 10),
+    prunePitchCommands(limit * 10),
   ]);
   const decks = await markExpiredPitchDecksDeleting(limit);
   let deleted = 0;
@@ -310,18 +326,19 @@ export async function cleanupExpiredPitches(limit = 100): Promise<{
       log.error("pitches.cleanup", "Could not delete abandoned pitch", { deckId: deck.id }, error);
     }
   }
-  return { attempted: decks.length, deleted, failed, mutationsDeleted, staleAssets };
+  return { attempted: decks.length, deleted, failed, commandsDeleted, staleAssets };
 }
 
 export async function readPitchForAdmin(deckId: string) {
   const pitch = await readPitchDeckForAdmin(deckId);
   if (!pitch) return null;
-  const [assets, backups, audit] = await Promise.all([
+  const [assets, backups, audit, editions] = await Promise.all([
     adminPitchAssets(deckId),
     listPitchBackupsForAdmin(deckId),
     listPitchAuditForAdmin(deckId),
+    listPitchEditions(deckId),
   ]);
-  return { pitch, assets, backups, audit };
+  return { pitch, assets, backups, audit, editions };
 }
 
 export async function updatePitchForAdmin(input: {
@@ -375,23 +392,19 @@ export async function resendPitchAccessForAdmin(input: {
 export async function deletePitchForAdmin(
   deckId: string,
   confirmation: string,
-): Promise<PitchStoreResult<{ deleted: true }>> {
+): Promise<PitchStoreResult<{ trashed: true; purgeAfter: string }>> {
   const marked = await markPitchDeckDeletingForAdmin(deckId, confirmation);
   if (!marked.ok) return marked;
-  try {
-    await deleteAllPitchAssets(deckId);
-    if (!(await hardDeletePitchDeck(deckId))) {
-      return { ok: false, status: 409, error: "Pitch deletion is already in progress" };
-    }
-    return { ok: true, value: { deleted: true } };
-  } catch (error) {
-    log.error("pitches.admin", "Could not finish pitch deletion", { deckId }, error);
-    return {
-      ok: false,
-      status: 503,
-      error: "Pitch deletion will be retried by storage cleanup",
-    };
-  }
+  return { ok: true, value: { trashed: true, purgeAfter: marked.value.purgeAfter! } };
+}
+
+export async function restorePitchFromTrashForAdmin(
+  deckId: string,
+): Promise<PitchStoreResult<{ restored: true }>> {
+  const restored = await restorePitchDeckFromTrash(deckId);
+  return restored
+    ? { ok: true, value: { restored: true } }
+    : { ok: false, status: 404, error: "Pitch is not in Trash" };
 }
 
 export type PitchAssetUploadInput = {

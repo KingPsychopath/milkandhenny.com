@@ -6,18 +6,23 @@ import {
   createPitchOwnerToken,
   insertPitchAsset,
   listPitchBackupsForOwner,
+  listPitchEditions,
+  markPitchDeckDeletingForAdmin,
   readPitchBackupForOwner,
+  readPitchEdition,
   markPitchAssetReady,
   publishPitchDeck,
   readOwnedPitchDeck,
   readPublicPitchDeck,
   restorePitchBackupForOwner,
+  restorePitchDeckFromTrash,
   syncPitchDeck,
 } from "@/features/things/pitches/store.server";
 import {
   PITCH_DOCUMENT_SCHEMA_VERSION,
   PITCH_SLIDE_DEFAULT_DURATION_MS,
   type PitchDocument,
+  type PitchCommandOperation,
 } from "@/features/things/pitches/types";
 import { query } from "@/lib/platform/postgres.server";
 import { applySchema, closeDatabase, describeWithDatabase } from "../helpers/postgres";
@@ -49,6 +54,19 @@ function documentWith(elements: readonly ExcalidrawElement[]): PitchDocument {
       },
     ],
   };
+}
+
+function operations(id: string, sequence: number): PitchCommandOperation[] {
+  return [
+    {
+      id,
+      deviceId: "device_integration_test",
+      sequence,
+      kind: "element.change",
+      payload: { source: "integration test" },
+      occurredAt: "2026-08-23T12:00:00.000Z",
+    },
+  ];
 }
 
 describeWithDatabase("pitch storage (postgres)", () => {
@@ -105,16 +123,28 @@ describeWithDatabase("pitch storage (postgres)", () => {
       ownerToken,
       baseVersion: 1,
       mutationId: "mutation_first",
+      operations: operations("mutation_first", 1),
       title: "First edition",
       document: documentWith([element("first_object", 10)]),
     });
     expect(firstSave.ok && firstSave.value.deck.draftVersion).toBe(2);
+    const journal = await query<{
+      operations: Array<{ kind: string }>;
+      result_document: PitchDocument;
+    }>(
+      `select operations, result_document from pitch_commands
+        where deck_id = $1 and command_id = $2`,
+      [created.value.deck.id, "mutation_first"],
+    );
+    expect(journal[0].operations).toMatchObject([{ kind: "element.change" }]);
+    expect(journal[0].result_document.slides[0].elements[0]?.id).toBe("first_object");
 
     const repeatedSave = await syncPitchDeck({
       deckId: created.value.deck.id,
       ownerToken,
       baseVersion: 1,
       mutationId: "mutation_first",
+      operations: operations("mutation_first", 1),
       title: "First edition",
       document: documentWith([element("first_object", 10)]),
     });
@@ -126,6 +156,7 @@ describeWithDatabase("pitch storage (postgres)", () => {
       ownerToken,
       baseVersion: 1,
       mutationId: "mutation_stale",
+      operations: operations("mutation_stale", 2),
       title: "Merged edition",
       document: documentWith([element("second_object", 20)]),
     });
@@ -152,6 +183,7 @@ describeWithDatabase("pitch storage (postgres)", () => {
       ownerToken,
       baseVersion: 3,
       mutationId: "mutation_later",
+      operations: operations("mutation_later", 3),
       title: "Later draft",
       document: laterDraft,
     });
@@ -165,6 +197,45 @@ describeWithDatabase("pitch storage (postgres)", () => {
       "second_object",
       "first_object",
     ]);
+
+    const republished = await publishPitchDeck({
+      deckId: created.value.deck.id,
+      ownerToken,
+    });
+    expect(republished.ok && republished.value.currentEditionNumber).toBe(2);
+    const editions = await listPitchEditions(created.value.deck.id);
+    expect(editions.map((edition) => edition.editionNumber)).toEqual([2, 1]);
+    expect(editions[0].document.slides[0].elements.at(-1)?.id).toBe("draft_only_object");
+    const firstEdition = await readPitchEdition(created.value.deck.id, 1);
+    expect(firstEdition?.document.slides[0].elements.map(({ id }) => id)).toEqual([
+      "second_object",
+      "first_object",
+    ]);
+  });
+
+  it("moves a pitch to recoverable Trash before purge", async () => {
+    const ownerToken = createPitchOwnerToken();
+    const created = await createPitchDeck({
+      createRequestId: "create_trash_1234",
+      ownerName: "Alice",
+      ownerEmail: "alice@example.com",
+      ownerToken,
+      title: "Recoverable pitch",
+      document: documentWith([]),
+    });
+    expect(created.ok).toBe(true);
+    if (!created.ok) return;
+
+    const trashed = await markPitchDeckDeletingForAdmin(created.value.deck.id, "Recoverable pitch");
+    expect(trashed.ok && trashed.value.lifecycle).toBe("trashed");
+    expect(trashed.ok && trashed.value.purgeAfter).toBeTruthy();
+    const blocked = await readOwnedPitchDeck(created.value.deck.id, ownerToken);
+    expect(blocked.ok).toBe(false);
+
+    const restored = await restorePitchDeckFromTrash(created.value.deck.id);
+    expect(restored?.lifecycle).toBe("active");
+    expect(restored?.purgeAfter).toBeUndefined();
+    expect((await readOwnedPitchDeck(created.value.deck.id, ownerToken)).ok).toBe(true);
   });
 
   it("checkpoints destructive saves and lets the owner move backward and forward", async () => {
@@ -195,6 +266,7 @@ describeWithDatabase("pitch storage (postgres)", () => {
       ownerToken,
       baseVersion: 1,
       mutationId: "mutation_contentful",
+      operations: operations("mutation_contentful", 1),
       title: "Versioned pitch",
       document: documentWith([element("kept_object", 10)]),
     });
@@ -206,6 +278,7 @@ describeWithDatabase("pitch storage (postgres)", () => {
       ownerToken,
       baseVersion: 2,
       mutationId: "mutation_empty",
+      operations: operations("mutation_empty", 2),
       title: "Versioned pitch",
       document: documentWith([]),
     });

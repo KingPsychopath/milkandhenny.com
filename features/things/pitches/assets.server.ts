@@ -13,7 +13,7 @@ import {
   PITCH_IMAGE_MAX_BYTES,
   PITCH_IMPORT_MAX_BYTES,
   PITCH_THUMBNAIL_MAX_BYTES,
-} from "./config.server";
+} from "./types";
 import {
   createPitchAssetId,
   deletePitchAssetRecord,

@@ -50,6 +50,7 @@ export function PitchVersionHistory({
   previewLoading,
   previewError,
   files,
+  deckId,
   restoringId,
   onClose,
   onSelect,
@@ -63,6 +64,7 @@ export function PitchVersionHistory({
   previewLoading: boolean;
   previewError: string;
   files: BinaryFiles;
+  deckId: string;
   restoringId?: string;
   onClose: () => void;
   onSelect: (item?: PitchVersionHistoryItem) => void;
@@ -240,16 +242,29 @@ export function PitchVersionHistory({
                   <p className="mt-1 font-mono text-xs theme-muted">
                     {when(selectedItem?.createdAt ?? current.createdAt)}
                   </p>
+                  <p className="mt-1 font-serif text-base theme-muted">
+                    {selectedItem?.title ?? current.title}
+                  </p>
                 </div>
                 {selectedItem ? (
-                  <button
-                    type="button"
-                    disabled={Boolean(restoringId) || previewLoading || !selectedDocument}
-                    onClick={() => onRestore(selectedItem)}
-                    className="min-h-11 bg-foreground px-4 font-mono text-xs text-background hover:opacity-80 disabled:cursor-not-allowed disabled:opacity-35"
-                  >
-                    {restoringId === selectedItem.id ? "restoring…" : "restore as current"}
-                  </button>
+                  <div className="flex flex-wrap gap-3">
+                    {typeof selectedItem.metadata.editionNumber === "number" ? (
+                      <a
+                        href={`/things/pitches/${deckId}?edition=${selectedItem.metadata.editionNumber}`}
+                        className="inline-flex min-h-11 items-center border theme-border-strong px-4 font-mono text-xs text-foreground hover:opacity-70"
+                      >
+                        open sealed edition {selectedItem.metadata.editionNumber}
+                      </a>
+                    ) : null}
+                    <button
+                      type="button"
+                      disabled={Boolean(restoringId) || previewLoading || !selectedDocument}
+                      onClick={() => onRestore(selectedItem)}
+                      className="min-h-11 bg-foreground px-4 font-mono text-xs text-background hover:opacity-80 disabled:cursor-not-allowed disabled:opacity-35"
+                    >
+                      {restoringId === selectedItem.id ? "restoring…" : "restore as current"}
+                    </button>
+                  </div>
                 ) : (
                   <span className="border theme-border-strong px-3 py-2 font-mono text-micro text-foreground">
                     current

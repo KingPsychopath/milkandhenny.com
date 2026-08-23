@@ -50,7 +50,7 @@ export function PitchViewer({ pitch }: { pitch: PublicPitchDeckDetail }) {
         <div className="min-w-0 flex-1">
           <h1 className="truncate font-serif text-xl text-foreground">{pitch.title}</h1>
           <p className="font-mono text-micro uppercase tracking-[0.12em] theme-muted">
-            by {pitch.ownerName} · sealed edition
+            by {pitch.ownerName} · sealed edition {pitch.editionNumber}
           </p>
         </div>
         <Link

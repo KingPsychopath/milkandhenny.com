@@ -24,6 +24,21 @@ export function NewPitch({ maximumSlides }: { maximumSlides: number }) {
 
   async function createPitch() {
     if (state === "saving") return;
+    if (!title.trim()) {
+      setState("error");
+      setError("Add a pitch title before opening the studio.");
+      return;
+    }
+    if (!name.trim()) {
+      setState("error");
+      setError("Add your name so we know who owns this pitch.");
+      return;
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
+      setState("error");
+      setError("Enter a valid recovery email so you can get back to this pitch.");
+      return;
+    }
     setState("saving");
     createRequest.current ??= { id: randomId("c_"), ownerToken: randomId("k_") };
     const { id: createRequestId, ownerToken } = createRequest.current;
@@ -59,6 +74,8 @@ export function NewPitch({ maximumSlides }: { maximumSlides: number }) {
           files: {},
           pendingSync: false,
           updatedAt: result.value.deck.updatedAt,
+          pendingOperations: [],
+          nextSequence: 1,
         }),
       ]);
       await navigate({
@@ -96,6 +113,7 @@ export function NewPitch({ maximumSlides }: { maximumSlides: number }) {
           event.preventDefault();
           void createPitch();
         }}
+        noValidate
         className="mt-12 space-y-8"
       >
         <label className="block font-mono text-xs uppercase tracking-[0.12em] theme-muted">
@@ -105,7 +123,13 @@ export function NewPitch({ maximumSlides }: { maximumSlides: number }) {
             disabled={!hydrated || state === "saving"}
             maxLength={120}
             value={title}
-            onChange={(event) => setTitle(event.target.value)}
+            aria-invalid={state === "error" && !title.trim()}
+            aria-describedby="new-pitch-error"
+            onChange={(event) => {
+              setTitle(event.target.value);
+              setError("");
+              setState("idle");
+            }}
             className="mt-3 block min-h-14 w-full border-b theme-border-strong bg-transparent font-serif text-3xl normal-case tracking-normal text-foreground outline-none focus:border-foreground"
             autoFocus
           />
@@ -119,7 +143,13 @@ export function NewPitch({ maximumSlides }: { maximumSlides: number }) {
               maxLength={120}
               autoComplete="name"
               value={name}
-              onChange={(event) => setName(event.target.value)}
+              aria-invalid={state === "error" && !name.trim()}
+              aria-describedby="new-pitch-error"
+              onChange={(event) => {
+                setName(event.target.value);
+                setError("");
+                setState("idle");
+              }}
               className="mt-3 block min-h-12 w-full border-b theme-border-strong bg-transparent font-mono text-base normal-case tracking-normal text-foreground outline-none focus:border-foreground"
             />
           </label>
@@ -131,21 +161,30 @@ export function NewPitch({ maximumSlides }: { maximumSlides: number }) {
               type="email"
               autoComplete="email"
               value={email}
-              onChange={(event) => setEmail(event.target.value)}
+              aria-invalid={state === "error" && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())}
+              aria-describedby="new-pitch-error"
+              onChange={(event) => {
+                setEmail(event.target.value);
+                setError("");
+                setState("idle");
+              }}
               className="mt-3 block min-h-12 w-full border-b theme-border-strong bg-transparent font-mono text-base normal-case tracking-normal text-foreground outline-none focus:border-foreground"
             />
           </label>
         </div>
         <button
-          type="button"
+          type="submit"
           disabled={!hydrated || state === "saving"}
-          onClick={() => void createPitch()}
           className="min-h-13 w-full bg-foreground px-7 font-mono text-sm text-background hover:opacity-80 disabled:opacity-40"
         >
           {state === "saving" ? "opening the studio…" : "open the studio →"}
         </button>
         {state === "error" ? (
-          <p className="font-mono text-sm text-red-700 dark:text-red-300" role="alert">
+          <p
+            id="new-pitch-error"
+            className="font-mono text-sm text-red-700 dark:text-red-300"
+            role="alert"
+          >
             {error}
           </p>
         ) : null}
