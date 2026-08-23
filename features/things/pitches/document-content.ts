@@ -18,9 +18,9 @@ export function pitchDocumentContentCount(document: PitchDocument): number {
   return document.slides.reduce((total, slide) => {
     if (slide.deletedAt) return total;
     const elements = slide.elements.filter(isMeaningfulElement).length;
-    const audio = slide.audioCues.length;
+    const media = slide.mediaClips.length;
     const ink = (slide.inkLayers ?? []).filter((layer) => layer.strokes.length > 0).length;
-    return total + elements + audio + ink;
+    return total + elements + media + ink;
   }, 0);
 }
 

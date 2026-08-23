@@ -32,6 +32,7 @@ RUN mkdir -p models && \
   echo "same brain: continuing without embedding weights")
 
 FROM dependencies AS build
+ENV NODE_OPTIONS="--max-old-space-size=6144"
 ARG VITE_BASE_URL
 ARG VITE_MEDIA_PUBLIC_URL
 ARG VITE_TRANSFER_MEDIA_BROWSER_PREP=auto

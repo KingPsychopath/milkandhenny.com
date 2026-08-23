@@ -21,7 +21,7 @@ export function createEmptyPitchDocument(): PitchDocument {
         durationMs: PITCH_SLIDE_DEFAULT_DURATION_MS,
         elements: [],
         assetIds: {},
-        audioCues: [],
+        mediaClips: [],
       },
     ],
   };

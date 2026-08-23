@@ -1,4 +1,9 @@
-import { PITCH_DEFAULT_MAX_SLIDES, PITCH_SLIDE_LIMIT_RANGE } from "./types";
+import {
+  isPitchOperationalMode,
+  PITCH_DEFAULT_MAX_SLIDES,
+  PITCH_SLIDE_LIMIT_RANGE,
+  type PitchOperationalMode,
+} from "./types";
 
 function boundedInteger(
   value: string | undefined,
@@ -30,6 +35,16 @@ export function getPitchDraftTtlHours(): number {
 
 export function getPitchDraftExpiresAt(now = Date.now()): string {
   return new Date(now + getPitchDraftTtlHours() * 60 * 60 * 1_000).toISOString();
+}
+
+export function getPitchEnvironmentMode(): {
+  mode: PitchOperationalMode;
+  valid: boolean;
+} {
+  const value = process.env.PITCHES_MODE?.trim().toLowerCase() || "enabled";
+  return isPitchOperationalMode(value)
+    ? { mode: value, valid: true }
+    : { mode: "off", valid: false };
 }
 
 export const PITCH_BACKUP_INTERVAL_MS = 5 * 60 * 1_000;

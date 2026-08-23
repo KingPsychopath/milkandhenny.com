@@ -1,5 +1,7 @@
 .git
 .gitignore
+.claude
+.codex
 node_modules
 .output
 .tanstack

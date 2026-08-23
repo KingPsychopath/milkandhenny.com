@@ -11,8 +11,8 @@ import {
   PITCH_AUDIO_MAX_BYTES,
   PITCH_DECK_ASSET_MAX_BYTES,
   PITCH_IMAGE_MAX_BYTES,
-  PITCH_IMPORT_MAX_BYTES,
   PITCH_THUMBNAIL_MAX_BYTES,
+  PITCH_VIDEO_MAX_BYTES,
 } from "./types";
 import {
   createPitchAssetId,
@@ -23,6 +23,7 @@ import {
   listPitchAssets,
   listReadyPitchAssets,
   listStalePendingPitchAssets,
+  listUnreferencedPitchAssets,
   markPitchAssetReady,
   ownerCanAccessPitch,
   pitchAssetBytes,
@@ -43,11 +44,7 @@ const MIME_BY_KIND: Record<PitchAssetKind, ReadonlySet<string>> = {
     "audio/webm",
     "audio/x-m4a",
   ]),
-  import: new Set([
-    "application/pdf",
-    "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-    "application/vnd.ms-powerpoint",
-  ]),
+  video: new Set(["video/mp4", "video/webm", "video/quicktime"]),
 };
 
 function maxBytes(kind: PitchAssetKind): number {
@@ -56,10 +53,10 @@ function maxBytes(kind: PitchAssetKind): number {
       return PITCH_IMAGE_MAX_BYTES;
     case "audio":
       return PITCH_AUDIO_MAX_BYTES;
+    case "video":
+      return PITCH_VIDEO_MAX_BYTES;
     case "thumbnail":
       return PITCH_THUMBNAIL_MAX_BYTES;
-    case "import":
-      return PITCH_IMPORT_MAX_BYTES;
   }
 }
 
@@ -78,19 +75,12 @@ function safeFileName(value: string): string {
   return `${stem || "asset"}${extension || ".bin"}`;
 }
 
-function assetUrlFileName(value: string): string {
-  return value.replace(/["\\\r\n]/g, "").slice(0, 120);
-}
-
 async function withSignedUrl(row: PitchAssetRow): Promise<PitchAsset> {
   const url = await presignGetUrl(row.object_key, {
-    expiresIn: 15 * 60,
+    expiresIn: row.kind === "audio" || row.kind === "video" ? 6 * 60 * 60 : 15 * 60,
     scope: "private",
     responseContentType: row.mime_type,
-    responseContentDisposition:
-      row.kind === "import"
-        ? `attachment; filename="${assetUrlFileName(row.file_name)}"`
-        : "inline",
+    responseContentDisposition: "inline",
   });
   return { ...toPitchAsset(row), url };
 }
@@ -145,7 +135,7 @@ export async function createPitchAssetUpload(input: {
     bytes: input.bytes,
   });
   try {
-    const uploadUrl = await presignPutUrl(objectKey, input.mimeType, 15 * 60, {
+    const uploadUrl = await presignPutUrl(objectKey, input.mimeType, 5 * 60, {
       scope: "private",
     });
     return { ok: true, value: { asset: toPitchAsset(row), uploadUrl } };
@@ -194,14 +184,10 @@ export async function finalisePitchAsset(input: {
 
 export async function signedPitchAssets(
   deckId: string,
-  options?: { assetIds?: ReadonlySet<string>; includeImports?: boolean },
+  options?: { assetIds?: ReadonlySet<string> },
 ): Promise<PitchAsset[]> {
   const rows = await listReadyPitchAssets(deckId);
-  const visible = rows.filter(
-    (row) =>
-      (options?.includeImports !== false || row.kind !== "import") &&
-      (!options?.assetIds || options.assetIds.has(row.id)),
-  );
+  const visible = rows.filter((row) => !options?.assetIds || options.assetIds.has(row.id));
   return Promise.all(visible.map(withSignedUrl));
 }
 
@@ -228,6 +214,26 @@ export async function cleanupStalePitchAssets(limit = 100): Promise<{
   failed: number;
 }> {
   const rows = await listStalePendingPitchAssets(limit);
+  let deleted = 0;
+  let failed = 0;
+  for (const row of rows) {
+    try {
+      await deleteObject(row.object_key, { scope: "private" });
+      await deletePitchAssetRecord(row.id);
+      deleted += 1;
+    } catch {
+      failed += 1;
+    }
+  }
+  return { attempted: rows.length, deleted, failed };
+}
+
+export async function cleanupUnreferencedPitchAssets(limit = 100): Promise<{
+  attempted: number;
+  deleted: number;
+  failed: number;
+}> {
+  const rows = await listUnreferencedPitchAssets(limit);
   let deleted = 0;
   let failed = 0;
   for (const row of rows) {

@@ -4,13 +4,20 @@ import { useEffect, useRef, useState } from "react";
 import { createPitchFn } from "../pitches.functions";
 import { rememberPitchCredential, saveLocalPitchDraft } from "../browser-store.client";
 import { createEmptyPitchDocument } from "../new-document.client";
+import type { PitchOperationalStatus } from "../types";
 import { PitchDemoEntry } from "./PitchDemoEntry";
 
 function randomId(prefix = ""): string {
   return `${prefix}${crypto.randomUUID().replaceAll("-", "")}`;
 }
 
-export function NewPitch({ maximumSlides }: { maximumSlides: number }) {
+export function NewPitch({
+  maximumSlides,
+  operationalStatus,
+}: {
+  maximumSlides: number;
+  operationalStatus: PitchOperationalStatus;
+}) {
   const navigate = useNavigate();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -24,6 +31,11 @@ export function NewPitch({ maximumSlides }: { maximumSlides: number }) {
 
   async function createPitch() {
     if (state === "saving") return;
+    if (!operationalStatus.canWrite) {
+      setState("error");
+      setError(operationalStatus.message);
+      return;
+    }
     if (!title.trim()) {
       setState("error");
       setError("Add a pitch title before opening the studio.");
@@ -108,6 +120,15 @@ export function NewPitch({ maximumSlides }: { maximumSlides: number }) {
         email is only there to recover it.
       </p>
 
+      {!operationalStatus.canWrite ? (
+        <p
+          className="mt-8 border-y border-[var(--things-amber)] bg-[var(--selection-bg)] px-4 py-3 font-mono text-xs text-[var(--selection-fg)]"
+          role="status"
+        >
+          {operationalStatus.message} You can still use the private rehearsal below.
+        </p>
+      ) : null}
+
       <form
         onSubmit={(event) => {
           event.preventDefault();
@@ -120,7 +141,7 @@ export function NewPitch({ maximumSlides }: { maximumSlides: number }) {
           pitch title
           <input
             required
-            disabled={!hydrated || state === "saving"}
+            disabled={!hydrated || state === "saving" || !operationalStatus.canWrite}
             maxLength={120}
             value={title}
             aria-invalid={state === "error" && !title.trim()}
@@ -139,7 +160,7 @@ export function NewPitch({ maximumSlides }: { maximumSlides: number }) {
             your name
             <input
               required
-              disabled={!hydrated || state === "saving"}
+              disabled={!hydrated || state === "saving" || !operationalStatus.canWrite}
               maxLength={120}
               autoComplete="name"
               value={name}
@@ -157,7 +178,7 @@ export function NewPitch({ maximumSlides }: { maximumSlides: number }) {
             recovery email
             <input
               required
-              disabled={!hydrated || state === "saving"}
+              disabled={!hydrated || state === "saving" || !operationalStatus.canWrite}
               type="email"
               autoComplete="email"
               value={email}
@@ -174,7 +195,7 @@ export function NewPitch({ maximumSlides }: { maximumSlides: number }) {
         </div>
         <button
           type="submit"
-          disabled={!hydrated || state === "saving"}
+          disabled={!hydrated || state === "saving" || !operationalStatus.canWrite}
           className="min-h-13 w-full bg-foreground px-7 font-mono text-sm text-background hover:opacity-80 disabled:opacity-40"
         >
           {state === "saving" ? "opening the studio…" : "open the studio →"}

@@ -25,12 +25,12 @@ counts as a slide.
 ## Domain language
 
 - **Deck** — the owner, public metadata, lifecycle, current draft and published snapshot.
-- **Slide** — one editor-neutral scene, a fixed duration, file-to-asset references and bounded
-  audio cues.
-- **Audio cue** — a slide entry or exit trigger with source trim, delay, volume and an explicit
-  stop-at-slide-exit or continue-to-clip-end rule.
+- **Slide** — one editor-neutral scene, a 5–120 second timeline, file-to-asset references and
+  bounded media clips.
+- **Media clip** — video or sound with a timeline start, source trim, duration, volume, lock state
+  and optional picture/sound link.
 - **Access token** — a high-entropy capability for one owner device. Only its hash is stored.
-- **Asset** — an image, audio file, thumbnail or import source stored in private R2.
+- **Asset** — an image, optimized video or sound, or thumbnail stored in private R2.
 - **Backup** — a bounded server snapshot made independently of the current draft.
 - **Publish** — atomically copies the current draft into the public snapshot. Public readers never
   see half-edited work.
@@ -76,7 +76,7 @@ address.
 
 `/things/pitches/demo` runs the production editor with an explicit local-only session. It creates no
 pitch, credential, browser draft, upload reservation, email or server mutation. Pasted images and
-imports live only in the current tab; sound upload and publishing are disabled. A person can still
+imports live only in the current tab; media upload and publishing are disabled. A person can still
 preview and explicitly download PNG, SVG, ZIP or native backup files before leaving.
 
 ## Limits
@@ -86,25 +86,81 @@ Defaults are configuration, not scattered constants:
 - 6 slides per deck (`PITCH_MAX_SLIDES`, allowed range 1–12).
 - 3 active decks per email (`PITCH_MAX_DECKS_PER_EMAIL`, allowed range 1–10).
 - 48 hours for an unpublished, inactive server draft (`PITCH_DRAFT_TTL_HOURS`).
-- 10 MB per image, 15 MB per audio file, 30 MB per import and 50 MB total per deck.
-- 4 audio cues per slide; 5–120 seconds per slide and 120 seconds per source clip.
-- Short audio is presentation accompaniment, not a media-hosting product.
+- 10 MB per image, 15 MB per optimized audio file, 60 MB per optimized video, 30 MB per presentation
+  import and 300 MB total per deck.
+- 250 MB maximum source upload, 12 media clips per slide, 5–120 seconds per slide and a maximum
+  120-second selected section from each source.
+- 450 MB maximum `.mahdeck` backup. Upload reservations expire after five minutes, and unfinished
+  reservations are removed by maintenance after one hour.
+- Long media opens a browser trim step before MediaBunny remuxes or transcodes the selected section.
 
 Published decks do not expire automatically. A cleanup job first marks abandoned drafts as
 deleting, then removes R2 objects, then hard-deletes the relational records. A concurrent save
 cannot lose media between the database check and object deletion. The same maintenance pass removes
-upload reservations that never reached finalisation after one hour and prunes sync idempotency rows
-after seven days. Local browser drafts are deliberately not erased by server cleanup: they are the
+upload reservations that never reached finalisation after one hour, removes ready assets that have
+not been referenced by a draft, edition or backup for 24 hours, and prunes sync idempotency rows
+after 30 days. Local browser drafts are deliberately not erased by server cleanup: they are the
 offline recovery copy and remain under the control of that browser.
 
 ## Formats
 
-- Native `.mahdeck.json` for a lossless editable backup.
+- Native `.mahdeck` compressed bundles for a lossless editable backup with images, video and sound.
 - PNG/SVG for a slide and a ZIP of PNGs for the full deck.
-- PDF pages become editable slide backgrounds in the browser.
-- PPTX is parsed in the browser with the existing JSZip dependency. Common text and image content
-  becomes editable elements; unsupported PowerPoint effects degrade to a clean imported slide
-  rather than blocking the deck. Both formats are scaled and centred into the product stage.
+- PDF pages become high-fidelity static slide images in the browser.
+- PPTX is parsed in the browser with JSZip. Common text and image content becomes editable elements,
+  while embedded video and sound is optimized and placed on the slide timeline. Unsupported
+  PowerPoint transitions and object animations become static instead of blocking the deck. Both
+  presentation formats are scaled and centred into the product stage.
+
+`.mahdeck` is the product's native file type. It is a versioned ZIP bundle with a `manifest.json`,
+the complete editable document, embedded images, and every referenced optimized media file. The
+importer rejects unknown versions, oversized entries, malformed manifests and media outside the
+supported web formats. A backup exported by the studio is within the matching import limit.
+
+Use these source choices:
+
+- Google Slides: **File → Download → Microsoft PowerPoint (.pptx)** when movable text and pictures
+  matter. Use **File → Download → PDF** when exact appearance matters more than editability.
+- PowerPoint: save as `.pptx`. Use PDF for complex charts, SmartArt, unusual fonts, transitions or
+  layout effects that must look exact.
+- Canva: download PowerPoint for basic editable content, or PDF for exact visual placement.
+
+PPTX import preserves the useful minimum: slide order, common text boxes, common pictures, slide
+aspect ratio, and embedded video or sound that the browser can decode. Theme masters, unusual
+fonts, charts, SmartArt, transitions and object animations are flattened or omitted. Import always
+shows the slide count and asks whether to append or replace before it changes the deck.
+
+Export `.mahdeck` when another person needs to continue editing in this studio. Export PNG or SVG
+for one static slide. Export the full ZIP for static PNGs plus the editable `.mahdeck` backup.
+There is no PowerPoint export because converting the freeform canvas and timed media back into an
+editable PPTX would imply fidelity that the product cannot guarantee.
+
+Direct Google, Microsoft and Canva connections are not required for the first release. Their
+download flows produce the same files, avoid account-permission prompts, and keep the import result
+explicit. Add a provider connection only when measured use shows that the file handoff is a real
+source of failed imports.
+
+The original PPTX or PDF is parsed in the browser and is not uploaded. Storage contains only the
+images and optimized media that the resulting deck uses.
+
+## Operating modes
+
+The Pitches admin panel owns one persisted operating mode:
+
+- `enabled` allows reads, server saves, uploads, recovery email, publishing and live presentation.
+- `read-only` keeps published decks, owner reads, local browser safety copies, imports and exports
+  available. Bundled `.mahdeck` media remains playable and re-exportable in the current tab without
+  an upload. It blocks server saves, uploads, recovery email and publishing.
+- `off` blocks public, owner and live presentation operations. Admin inspection and maintenance
+  remain available so the mode can be changed and abandoned storage can still be cleaned.
+
+`PITCHES_MODE=enabled|read-only|off` is the deployment safety ceiling. The effective mode is always
+the more restrictive environment or admin value. An invalid environment value fails closed to
+`off`. Each server process caches the persisted mode for at most five seconds. The editor checks
+again when its tab becomes visible and every 30 seconds. A stale tab cannot bypass the server gate.
+
+An upload URL issued before a mode change can remain valid for at most five minutes. Finalisation
+is still blocked, and maintenance removes the unfinalised object after one hour.
 
 ## Presentation model
 
@@ -124,9 +180,9 @@ while retaining the private editing link. Recovery and admin resend issue a new 
 Provider outcomes are recorded in the pitch audit log without turning a recoverable email failure
 into a lost deck.
 
-The admin control room can correct metadata, reassign ownership, resend access, inspect slide
+The admin control room can change the operating mode, correct metadata, reassign ownership, resend access, inspect slide
 previews and media state, restore a bounded backup, review audit history, archive, or delete a deck
-and all of its R2 objects.
+to recoverable Trash. Maintenance permanently removes expired Trash records and their R2 objects.
 
 ## Marketing and tickets
 
@@ -160,7 +216,8 @@ PPTX/PDF imports, and audit events.
 
 ### Phase 3 — present
 
-Display mode, approved phone control, deck search, adjacent-slide preloading, and short slide audio.
+Display mode, approved phone control, deck search, linked video and sound tracks, slide-clock
+scrubbing and media playback.
 
 ### Phase 4 — invite
 

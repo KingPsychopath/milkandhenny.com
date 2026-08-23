@@ -2,6 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 
 import { listPublishedPitchesFn } from "@/features/things/pitches/pitches.functions";
 import { PitchGallery } from "@/features/things/pitches/ui/PitchGallery";
+import { PitchOperationalNotice } from "@/features/things/pitches/ui/PitchOperationalNotice";
 import { SITE_NAME } from "@/lib/shared/config";
 import { OG_IMAGES, buildSeoHead } from "@/lib/shared/seo";
 
@@ -20,5 +21,9 @@ export const Route = createFileRoute("/things/pitches")({
 
 function PitchGalleryRoute() {
   const data = Route.useLoaderData();
-  return <PitchGallery initialPitches={data.pitches} />;
+  return data.operationalStatus.canRead ? (
+    <PitchGallery initialPitches={data.pitches} operationalStatus={data.operationalStatus} />
+  ) : (
+    <PitchOperationalNotice status={data.operationalStatus} />
+  );
 }

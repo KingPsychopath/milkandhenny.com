@@ -64,6 +64,7 @@ export async function applySchema(): Promise<void> {
     drop table if exists email_suppressions cascade;
     drop table if exists email_outbox cascade;
     drop table if exists pitch_audit_events cascade;
+    drop table if exists pitch_platform_settings cascade;
     drop table if exists pitch_commands cascade;
     drop table if exists pitch_editions cascade;
     drop table if exists pitch_mutations cascade;
@@ -98,6 +99,9 @@ export async function truncateAll(): Promise<void> {
   await query(
     `truncate event_drops, guest_requests, scanner_link_devices, scanner_links,
               checkpoint_usage, checkpoints cascade`,
+  ).catch(() => {});
+  await query(
+    `update pitch_platform_settings set mode = 'enabled', updated_at = now() where singleton = true`,
   ).catch(() => {});
 }
 

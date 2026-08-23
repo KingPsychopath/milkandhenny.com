@@ -1,4 +1,5 @@
 import { getMediaProcessorMode } from "@/features/media/config.server";
+import { getPitchEnvironmentMode } from "@/features/things/pitches/config.server";
 import type { Capability, SystemCapabilities } from "@/features/system/capabilities";
 import { getMediaRole } from "@/features/system/media-role.server";
 import { multiplayerTelemetrySnapshot } from "@/features/things/shared/multiplayer-runtime.server";
@@ -37,6 +38,7 @@ function getConfiguredCapabilities(): Capability[] {
   const databaseBoot = getDatabaseBootState();
   const mediaMode = getMediaProcessorMode();
   const mediaRole = getMediaRole();
+  const pitchEnvironment = getPitchEnvironmentMode();
   // The worker claims jobs over the direct Redis connection, so that is the
   // only thing it needs configured beyond a non-local mode.
   const workerConfigured = mediaMode !== "local" && realtimeBackplaneConfigured;
@@ -97,16 +99,16 @@ function getConfiguredCapabilities(): Capability[] {
         : "The app works, but automated cleanup is not configured.",
     },
     {
-      id: "events-database",
-      label: "events and ticketing",
+      id: "application-database",
+      label: "events, tickets and pitches",
       status: databaseConfigured && databaseBoot.status === "ready" ? "available" : "unavailable",
       required: mediaRole === "web",
       detail: !databaseConfigured
-        ? "DATABASE_URL is not set; events and ticketing cannot run."
+        ? "DATABASE_URL is not set; events, ticketing and pitches cannot run."
         : databaseBoot.status === "failed"
           ? `Database migrations failed (${databaseBoot.reason}).`
           : databaseBoot.status === "ready"
-            ? "Events, tickets and redemptions are configured."
+            ? "Events, tickets, pitches and redemptions are configured."
             : "Database migrations have not completed.",
     },
     {
@@ -147,6 +149,24 @@ function getConfiguredCapabilities(): Capability[] {
       detail: realtimeBackplaneConfigured
         ? "Cross-replica multiplayer wake delivery is configured."
         : "Multiplayer wake delivery is local to one replica; set REDIS_URL before scaling replicas.",
+    },
+    {
+      id: "pitch-studio",
+      label: "Pitch Night Studio",
+      status:
+        !pitchEnvironment.valid || pitchEnvironment.mode === "off"
+          ? "disabled"
+          : pitchEnvironment.mode === "read-only"
+            ? "degraded"
+            : "available",
+      required: false,
+      detail: !pitchEnvironment.valid
+        ? "PITCHES_MODE is invalid, so the studio fails closed."
+        : pitchEnvironment.mode === "off"
+          ? "The environment safety switch stops the studio."
+          : pitchEnvironment.mode === "read-only"
+            ? "The environment safety switch allows reads but blocks server saves and uploads."
+            : "The environment allows the admin operating mode to control the studio.",
     },
     {
       id: "media-worker",
@@ -251,7 +271,7 @@ async function probeSystemCapabilities(): Promise<
     }
   }
 
-  const databaseIndex = capabilities.findIndex(({ id }) => id === "events-database");
+  const databaseIndex = capabilities.findIndex(({ id }) => id === "application-database");
   if (databaseIndex >= 0 && capabilities[databaseIndex]?.status === "available") {
     const probe = await checkDatabase();
     capabilities[databaseIndex] = {

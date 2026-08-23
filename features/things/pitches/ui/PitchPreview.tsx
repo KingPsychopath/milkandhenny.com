@@ -3,7 +3,8 @@ import type { BinaryFiles } from "@excalidraw/excalidraw/types";
 
 import type { PitchAsset, PitchDocument } from "../types";
 import { ExcalidrawSurface } from "./ExcalidrawSurface";
-import { usePitchAudioPlayback } from "./usePitchAudioPlayback";
+import { PitchVideoLayer, usePitchMediaPlayback } from "./PitchMediaPlayback";
+import { usePitchMediaClock } from "./usePitchMediaClock";
 
 export function PitchPreview({
   title,
@@ -31,7 +32,14 @@ export function PitchPreview({
   const [index, setIndex] = useState(initialIndex);
   const [sound, setSound] = useState(true);
   const slide = slides[index] ?? slides[0];
-  const audio = usePitchAudioPlayback({ slide, assets, armed: sound });
+  const clock = usePitchMediaClock({ slideId: slide.id, durationMs: slide.durationMs });
+  usePitchMediaPlayback({
+    slide,
+    assets,
+    playheadMs: clock.playheadMs,
+    playing: clock.playing,
+    soundEnabled: sound,
+  });
 
   useEffect(() => {
     const keydown = (event: KeyboardEvent) => {
@@ -76,7 +84,7 @@ export function PitchPreview({
           type="button"
           onClick={() => {
             setSound(true);
-            audio.replay();
+            clock.replay();
           }}
           className="min-h-10 border-b theme-border px-3 font-mono text-xs"
         >
@@ -98,13 +106,24 @@ export function PitchPreview({
         </button>
       </header>
       <section className="relative min-h-0 flex-1">
-        <ExcalidrawSurface
-          key={slide.id}
-          slideId={slide.id}
-          elements={slide.elements}
-          files={files}
-          readOnly
-        />
+        <div className="absolute inset-0 z-20">
+          <ExcalidrawSurface
+            key={slide.id}
+            slideId={slide.id}
+            elements={slide.elements}
+            files={files}
+            readOnly
+            transparentBackground={slide.mediaClips.some((clip) => clip.kind === "video")}
+            stageUnderlay={
+              <PitchVideoLayer
+                slide={slide}
+                assets={assets}
+                playheadMs={clock.playheadMs}
+                playing={clock.playing}
+              />
+            }
+          />
+        </div>
       </section>
       <footer className="flex items-center justify-center gap-3 border-t theme-border px-4 py-3">
         <button

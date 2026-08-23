@@ -9,12 +9,12 @@ const publishedDeck = {
   title: "A public pitch",
   lifecycle: "active" as const,
   draftDocument: {
-    schemaVersion: 1 as const,
+    schemaVersion: 2 as const,
     slides: [],
   },
   draftVersion: 1,
   publishedDocument: {
-    schemaVersion: 1 as const,
+    schemaVersion: 2 as const,
     slides: [
       {
         id: "slide_123456",
@@ -24,7 +24,7 @@ const publishedDeck = {
         durationMs: 15_000,
         elements: [],
         assetIds: {},
-        audioCues: [],
+        mediaClips: [],
       },
       {
         id: "slide_234567",
@@ -34,7 +34,7 @@ const publishedDeck = {
         durationMs: 15_000,
         elements: [],
         assetIds: {},
-        audioCues: [],
+        mediaClips: [],
       },
     ],
   },

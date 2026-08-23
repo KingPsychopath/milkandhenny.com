@@ -3,6 +3,7 @@ import { listEvents } from "@/features/events/store.server";
 import { getAllAlbums } from "@/features/media/albums.server";
 import { getOgUrl, resolveWordContentRef } from "@/features/media/storage";
 import { listPublicPitchDecks } from "@/features/things/pitches/store.server";
+import { getPitchOperationalStatus } from "@/features/things/pitches/operational.server";
 import { isWordsEnabled } from "@/features/words/reader.server";
 import { listWords } from "@/features/words/store.server";
 import { hasMediaPublicUrl } from "@/lib/shared/config";
@@ -113,7 +114,10 @@ export const Route = createFileRoute("/sitemap.xml")({
 
         // An events outage should degrade the sitemap, not fail it.
         const publicEvents = await listEvents({ limit: 500 }).catch(() => []);
-        const publicPitches = await listPublicPitchDecks(undefined, 100).catch(() => []);
+        const pitchStatus = await getPitchOperationalStatus();
+        const publicPitches = pitchStatus.canRead
+          ? await listPublicPitchDecks(undefined, 100).catch(() => [])
+          : [];
         const albums = getAllAlbums();
         const includeMediaImages = hasMediaPublicUrl();
 

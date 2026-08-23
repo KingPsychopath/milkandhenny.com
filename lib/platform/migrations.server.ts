@@ -235,7 +235,7 @@ const MIGRATIONS: Migration[] = [
         object_key    text not null unique,
         file_id       text,
         kind          text not null
-                      check (kind in ('image', 'audio', 'thumbnail', 'import')),
+                      check (kind in ('image', 'audio', 'thumbnail')),
         state         text not null default 'pending'
                       check (state in ('pending', 'ready')),
         file_name     text not null,
@@ -763,6 +763,29 @@ const MIGRATIONS: Migration[] = [
       create unique index if not exists game_pool_entrances_one_default_idx
         on game_pool_entrances (game)
         where is_default = true and retired_at is null;
+    `,
+  },
+  {
+    id: "0021_pitch_media_assets",
+    sql: `
+      alter table pitch_assets drop constraint if exists pitch_assets_kind_check;
+      alter table pitch_assets
+        add constraint pitch_assets_kind_check
+        check (kind in ('image', 'audio', 'video', 'thumbnail'));
+    `,
+  },
+  {
+    id: "0022_pitch_operational_mode",
+    sql: `
+      create table if not exists pitch_platform_settings (
+        singleton  boolean primary key default true check (singleton = true),
+        mode       text not null default 'enabled'
+          check (mode in ('enabled', 'read-only', 'off')),
+        updated_at timestamptz not null default now()
+      );
+      insert into pitch_platform_settings (singleton, mode)
+        values (true, 'enabled')
+        on conflict (singleton) do nothing;
     `,
   },
 ];

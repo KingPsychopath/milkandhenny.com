@@ -4,6 +4,8 @@ export class PitchesOperationError extends Data.TaggedError("PitchesOperationErr
   readonly cause: unknown;
   readonly operation: string;
   readonly retryable: boolean;
+  readonly status?: number;
+  readonly publicMessage?: string;
 }> {
   override get message() {
     return `pitches.${this.operation} failed`;

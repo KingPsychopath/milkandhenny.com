@@ -3,6 +3,7 @@ import { log } from "@/lib/platform/logger.server";
 import {
   adminPitchAssets,
   cleanupStalePitchAssets,
+  cleanupUnreferencedPitchAssets,
   createPitchAssetUpload,
   deleteAllPitchAssets,
   finalisePitchAsset,
@@ -221,13 +222,12 @@ export async function readPublishedPitch(
   const referenced = new Set(
     document.slides.flatMap((slide) => [
       ...Object.values(slide.assetIds),
-      ...slide.audioCues.map((cue) => cue.assetId),
+      ...slide.mediaClips.map((clip) => clip.assetId),
     ]),
   );
   if (thumbnailAssetId) referenced.add(thumbnailAssetId);
   const assets = await signedPitchAssets(deck.id, {
     assetIds: referenced,
-    includeImports: false,
   });
   const thumbnail = thumbnailAssetId
     ? assets.find((asset) => asset.id === thumbnailAssetId)
@@ -309,9 +309,11 @@ export async function cleanupExpiredPitches(limit = 100): Promise<{
   failed: number;
   commandsDeleted: number;
   staleAssets: { attempted: number; deleted: number; failed: number };
+  orphanAssets: { attempted: number; deleted: number; failed: number };
 }> {
-  const [staleAssets, commandsDeleted] = await Promise.all([
+  const [staleAssets, orphanAssets, commandsDeleted] = await Promise.all([
     cleanupStalePitchAssets(limit),
+    cleanupUnreferencedPitchAssets(limit),
     prunePitchCommands(limit * 10),
   ]);
   const decks = await markExpiredPitchDecksDeleting(limit);
@@ -326,7 +328,14 @@ export async function cleanupExpiredPitches(limit = 100): Promise<{
       log.error("pitches.cleanup", "Could not delete abandoned pitch", { deckId: deck.id }, error);
     }
   }
-  return { attempted: decks.length, deleted, failed, commandsDeleted, staleAssets };
+  return {
+    attempted: decks.length,
+    deleted,
+    failed,
+    commandsDeleted,
+    staleAssets,
+    orphanAssets,
+  };
 }
 
 export async function readPitchForAdmin(deckId: string) {

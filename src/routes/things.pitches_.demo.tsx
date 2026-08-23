@@ -3,6 +3,7 @@ import { lazy, Suspense } from "react";
 
 import { listPublishedPitchesFn } from "@/features/things/pitches/pitches.functions";
 import { SITE_NAME } from "@/lib/shared/config";
+import { PitchOperationalNotice } from "@/features/things/pitches/ui/PitchOperationalNotice";
 import { OG_IMAGES, buildSeoHead } from "@/lib/shared/seo";
 
 const PitchEditor = lazy(() =>
@@ -26,6 +27,10 @@ export const Route = createFileRoute("/things/pitches_/demo")({
 });
 
 function PitchDemoRoute() {
+  const data = Route.useLoaderData();
+  if (!data.operationalStatus.canRead) {
+    return <PitchOperationalNotice status={data.operationalStatus} />;
+  }
   const fallback = (
     <main id="main" className="p-8 font-mono text-sm theme-muted">
       opening the rehearsal studio…
@@ -36,7 +41,8 @@ function PitchDemoRoute() {
       <Suspense fallback={fallback}>
         <PitchEditor
           session={{ kind: "demo" }}
-          maximumSlides={Route.useLoaderData().maximumSlides}
+          maximumSlides={data.maximumSlides}
+          operationalStatus={data.operationalStatus}
         />
       </Suspense>
     </ClientOnly>

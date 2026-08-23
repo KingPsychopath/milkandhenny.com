@@ -91,6 +91,8 @@ function ExcalidrawSurfaceCanvas({
   elements,
   files,
   readOnly = false,
+  transparentBackground = false,
+  stageUnderlay,
   onChange,
   onApi,
 }: {
@@ -98,16 +100,19 @@ function ExcalidrawSurfaceCanvas({
   elements: readonly ExcalidrawElement[];
   files: BinaryFiles;
   readOnly?: boolean;
-  onChange?: (
-    slideId: string,
-    elements: readonly ExcalidrawElement[],
-    files: BinaryFiles,
-  ) => void;
+  transparentBackground?: boolean;
+  stageUnderlay?: ReactNode;
+  onChange?: (slideId: string, elements: readonly ExcalidrawElement[], files: BinaryFiles) => void;
   onApi?: (api: ExcalidrawImperativeAPI) => void;
 }) {
   const initialised = useRef(false);
   const apiRef = useRef<ExcalidrawImperativeAPI | null>(null);
   const [api, setApi] = useState<ExcalidrawImperativeAPI | null>(null);
+  const [viewport, setViewport] = useState<{
+    scrollX: number;
+    scrollY: number;
+    zoom: number;
+  }>();
   const [Canvas, setCanvas] = useState<(typeof import("@excalidraw/excalidraw"))["Excalidraw"]>();
   const onApiRef = useRef(onApi);
   const onChangeRef = useRef(onChange);
@@ -118,6 +123,7 @@ function ExcalidrawSurfaceCanvas({
     elements: initialStage.elements,
     files,
     appState: {
+      ...(transparentBackground ? { viewBackgroundColor: "transparent" } : {}),
       currentItemFontFamily: 3 as const,
       frameRendering: {
         enabled: true,
@@ -150,6 +156,13 @@ function ExcalidrawSurfaceCanvas({
     [slideId],
   );
 
+  const handleScrollChange = useCallback(
+    (scrollX: number, scrollY: number, zoom: { value: number }) => {
+      setViewport({ scrollX, scrollY, zoom: zoom.value });
+    },
+    [],
+  );
+
   useEffect(() => {
     let cancelled = false;
     (
@@ -172,6 +185,12 @@ function ExcalidrawSurfaceCanvas({
       api.scrollToContent([initialStage.frame], {
         fitToViewport: true,
         viewportZoomFactor: readOnly ? 0.94 : 0.84,
+      });
+      const appState = api.getAppState();
+      setViewport({
+        scrollX: appState.scrollX,
+        scrollY: appState.scrollY,
+        zoom: appState.zoom.value,
       });
     }, 0);
     return () => window.clearTimeout(timer);
@@ -212,19 +231,35 @@ function ExcalidrawSurfaceCanvas({
           screen boundary · 16:9
         </span>
       ) : null}
-      <Canvas
-        excalidrawAPI={handleApi}
-        initialData={initialDataRef.current}
-        viewModeEnabled={readOnly}
-        zenModeEnabled={readOnly}
-        validateEmbeddable={false}
-        onChange={
-          onChange
-            ? (nextElements, _appState, nextFiles) => handleChange(nextElements, nextFiles)
-            : undefined
-        }
-        UIOptions={UI_OPTIONS}
-      />
+      {stageUnderlay && viewport ? (
+        <div
+          className="pointer-events-none absolute z-0 overflow-hidden"
+          style={{
+            left: viewport.scrollX * viewport.zoom,
+            top: viewport.scrollY * viewport.zoom,
+            width: 960 * viewport.zoom,
+            height: 540 * viewport.zoom,
+          }}
+        >
+          {stageUnderlay}
+        </div>
+      ) : null}
+      <div className="relative z-10 h-full">
+        <Canvas
+          excalidrawAPI={handleApi}
+          initialData={initialDataRef.current}
+          viewModeEnabled={readOnly}
+          zenModeEnabled={readOnly}
+          validateEmbeddable={false}
+          onScrollChange={handleScrollChange}
+          onChange={
+            onChange
+              ? (nextElements, _appState, nextFiles) => handleChange(nextElements, nextFiles)
+              : undefined
+          }
+          UIOptions={UI_OPTIONS}
+        />
+      </div>
     </div>
   );
 }

@@ -3,11 +3,11 @@ import type { ExcalidrawElement } from "@excalidraw/excalidraw/element/types";
 import {
   PITCH_DOCUMENT_MAX_BYTES,
   PITCH_DOCUMENT_SCHEMA_VERSION,
-  PITCH_AUDIO_CUE_LIMIT,
+  PITCH_MEDIA_CLIP_LIMIT,
   PITCH_MAX_ELEMENTS,
   PITCH_SLIDE_DEFAULT_DURATION_MS,
   PITCH_SLIDE_DURATION_RANGE_MS,
-  type PitchAudioCue,
+  type PitchMediaClip,
   type PitchAssetKind,
   type PitchDocument,
   type PitchInkLayer,
@@ -32,7 +32,7 @@ const ELEMENT_TYPES = new Set([
   "text",
   "image",
 ]);
-const ASSET_KINDS = new Set<PitchAssetKind>(["image", "audio", "thumbnail", "import"]);
+const ASSET_KINDS = new Set<PitchAssetKind>(["image", "audio", "video", "thumbnail"]);
 const INK_PENS = new Set<PitchInkStroke["pen"]>([
   "pencil",
   "pen",
@@ -210,62 +210,81 @@ function parseInkLayers(value: unknown): PitchInkLayer[] | null {
   return layers;
 }
 
-function parseAudioCues(value: unknown, slideDurationMs: number): PitchAudioCue[] | null {
+function parseMediaClips(value: unknown, slideDurationMs: number): PitchMediaClip[] | null {
   if (value === undefined) return [];
-  if (!Array.isArray(value) || value.length > PITCH_AUDIO_CUE_LIMIT) return null;
+  if (!Array.isArray(value) || value.length > PITCH_MEDIA_CLIP_LIMIT) return null;
   const ids = new Set<string>();
-  const cues: PitchAudioCue[] = [];
+  const clips: PitchMediaClip[] = [];
   for (const candidate of value) {
-    const cue = record(candidate);
+    const clip = record(candidate);
     const id =
-      typeof cue?.id === "string" && SLIDE_ID_PATTERN.test(cue.id) && !ids.has(cue.id)
-        ? cue.id
+      typeof clip?.id === "string" && SLIDE_ID_PATTERN.test(clip.id) && !ids.has(clip.id)
+        ? clip.id
         : null;
     const assetId =
-      typeof cue?.assetId === "string" && ASSET_ID_PATTERN.test(cue.assetId) ? cue.assetId : null;
-    const trigger = cue?.trigger === "enter" || cue?.trigger === "exit" ? cue.trigger : null;
-    const delayMs = finiteInteger(cue?.delayMs, 0);
-    const sourceDurationMs = finiteInteger(cue?.sourceDurationMs, 1);
-    const startAtMs = finiteInteger(cue?.startAtMs, 0);
-    const playForMs = finiteInteger(cue?.playForMs, 1);
+      typeof clip?.assetId === "string" && ASSET_ID_PATTERN.test(clip.assetId)
+        ? clip.assetId
+        : null;
+    const kind = clip?.kind === "audio" || clip?.kind === "video" ? clip.kind : null;
+    const timelineStartMs = finiteInteger(clip?.timelineStartMs, 0);
+    const sourceDurationMs = finiteInteger(clip?.sourceDurationMs, 1);
+    const sourceStartMs = finiteInteger(clip?.sourceStartMs, 0);
+    const durationMs = finiteInteger(clip?.durationMs, 1);
     const volume =
-      typeof cue?.volume === "number" && Number.isFinite(cue.volume) ? cue.volume : null;
-    const end = cue?.end === "slide-exit" || cue?.end === "clip-end" ? cue.end : null;
+      typeof clip?.volume === "number" && Number.isFinite(clip.volume) ? clip.volume : null;
+    const linkedGroupId =
+      clip?.linkedGroupId === undefined
+        ? undefined
+        : typeof clip.linkedGroupId === "string" && SLIDE_ID_PATTERN.test(clip.linkedGroupId)
+          ? clip.linkedGroupId
+          : null;
+    const fit =
+      clip?.fit === undefined
+        ? undefined
+        : clip.fit === "contain" || clip.fit === "cover"
+          ? clip.fit
+          : null;
     if (
       !id ||
       !assetId ||
-      !trigger ||
-      delayMs === null ||
-      delayMs > PITCH_SLIDE_DURATION_RANGE_MS.max ||
-      (trigger === "enter" && delayMs > slideDurationMs) ||
+      !kind ||
+      timelineStartMs === null ||
+      timelineStartMs >= slideDurationMs ||
       sourceDurationMs === null ||
       sourceDurationMs > PITCH_SLIDE_DURATION_RANGE_MS.max ||
-      startAtMs === null ||
-      startAtMs >= sourceDurationMs ||
-      playForMs === null ||
-      playForMs > sourceDurationMs - startAtMs ||
+      sourceStartMs === null ||
+      sourceStartMs >= sourceDurationMs ||
+      durationMs === null ||
+      durationMs > sourceDurationMs - sourceStartMs ||
+      timelineStartMs + durationMs > slideDurationMs ||
       volume === null ||
       volume < 0 ||
       volume > 1 ||
-      !end ||
-      (trigger === "exit" && end !== "clip-end")
+      typeof clip?.muted !== "boolean" ||
+      typeof clip.locked !== "boolean" ||
+      linkedGroupId === null ||
+      fit === null ||
+      (kind === "audio" && fit !== undefined)
     ) {
       return null;
     }
     ids.add(id);
-    cues.push({
+    clips.push({
       id,
       assetId,
-      trigger,
-      delayMs,
+      kind,
+      timelineStartMs,
       sourceDurationMs,
-      startAtMs,
-      playForMs,
+      sourceStartMs,
+      durationMs,
       volume,
-      end,
+      muted: clip.muted,
+      locked: clip.locked,
+      linkedGroupId,
+      fit: kind === "video" ? (fit ?? "contain") : undefined,
     });
   }
-  return cues;
+  return clips;
 }
 
 function parseSlide(value: unknown): PitchSlide | null {
@@ -294,10 +313,10 @@ function parseSlide(value: unknown): PitchSlide | null {
         : null;
   const elements = parseElements(source.elements);
   const assetIds = parseAssetIds(source.assetIds);
-  const audioCues =
+  const mediaClips =
     durationMs === null || durationMs > PITCH_SLIDE_DURATION_RANGE_MS.max
       ? null
-      : parseAudioCues(source.audioCues, durationMs);
+      : parseMediaClips(source.mediaClips, durationMs);
   const inkLayers = parseInkLayers(source.inkLayers);
   if (
     !id ||
@@ -309,7 +328,7 @@ function parseSlide(value: unknown): PitchSlide | null {
     deletedAt === null ||
     !elements ||
     !assetIds ||
-    !audioCues ||
+    !mediaClips ||
     !inkLayers
   ) {
     return null;
@@ -323,7 +342,7 @@ function parseSlide(value: unknown): PitchSlide | null {
     deletedAt,
     elements,
     assetIds,
-    audioCues,
+    mediaClips,
     inkLayers: inkLayers.length > 0 ? inkLayers : undefined,
   };
 }
@@ -336,7 +355,7 @@ export function parsePitchDocument(
   try {
     serialised = JSON.stringify(value);
   } catch {
-    return { ok: false, error: "The deck could not be read" };
+    return { ok: false, error: "This deck contains data the studio cannot save" };
   }
   if (new TextEncoder().encode(serialised).byteLength > PITCH_DOCUMENT_MAX_BYTES) {
     return { ok: false, error: "This deck is too large to sync" };
@@ -344,7 +363,7 @@ export function parsePitchDocument(
 
   const source = record(value);
   if (source?.schemaVersion !== PITCH_DOCUMENT_SCHEMA_VERSION || !Array.isArray(source.slides)) {
-    return { ok: false, error: "Unsupported deck format" };
+    return { ok: false, error: "This deck was made by an unsupported studio version" };
   }
   if (source.slides.length === 0 || source.slides.length > maximumSlides * 2) {
     return { ok: false, error: `A deck can contain up to ${maximumSlides} slides` };

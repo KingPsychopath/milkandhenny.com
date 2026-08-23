@@ -3,13 +3,16 @@ import { createServerFn } from "@tanstack/react-start";
 import { getRequest } from "@tanstack/react-start/server";
 
 import { authenticateRequest } from "@/features/auth/auth.server";
+import { getPitchOperationalStatus } from "@/features/things/pitches/operational.server";
 import { PresentationSetup } from "@/features/things/pitches/ui/PresentationSetup";
+import { PitchOperationalNotice } from "@/features/things/pitches/ui/PitchOperationalNotice";
 import { SITE_NAME } from "@/lib/shared/config";
 import { OG_IMAGES, buildSeoHead } from "@/lib/shared/seo";
 
-const getPresentationAccess = createServerFn({ method: "GET" }).handler(() =>
-  authenticateRequest(getRequest(), "admin"),
-);
+const getPresentationAccess = createServerFn({ method: "GET" }).handler(async () => ({
+  auth: await authenticateRequest(getRequest(), "admin"),
+  operationalStatus: await getPitchOperationalStatus(),
+}));
 
 export const Route = createFileRoute("/things/pitches_/present")({
   loader: () => getPresentationAccess(),
@@ -25,5 +28,10 @@ export const Route = createFileRoute("/things/pitches_/present")({
 });
 
 function PresentationSetupRoute() {
-  return <PresentationSetup authorised={Route.useLoaderData().ok} />;
+  const data = Route.useLoaderData();
+  return data.operationalStatus.canPresent ? (
+    <PresentationSetup authorised={data.auth.ok} />
+  ) : (
+    <PitchOperationalNotice status={data.operationalStatus} />
+  );
 }

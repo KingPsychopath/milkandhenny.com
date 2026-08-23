@@ -36,7 +36,7 @@ function documentWith(elements: readonly ExcalidrawElement[]): PitchDocument {
         durationMs: PITCH_SLIDE_DEFAULT_DURATION_MS,
         elements,
         assetIds: {},
-        audioCues: [],
+        mediaClips: [],
       },
     ],
   };
@@ -86,7 +86,7 @@ describe("pitch documents", () => {
       durationMs: PITCH_SLIDE_DEFAULT_DURATION_MS,
       elements: [],
       assetIds: {},
-      audioCues: [],
+      mediaClips: [],
     });
     incoming.slides.push(server.slides[1]);
     expect(mergePitchDocuments(server, incoming).slides[0].deletedAt).toBe(300);
@@ -121,23 +121,24 @@ describe("pitch documents", () => {
     expect(parsePitchDocument(document, 6).ok).toBe(false);
   });
 
-  it("keeps sound cues inside the slide and source timing boundaries", () => {
+  it("keeps media clips inside the slide and source timing boundaries", () => {
     const document = documentWith([]);
-    document.slides[0].audioCues = [
+    document.slides[0].mediaClips = [
       {
-        id: "cue_12345678",
+        id: "audio_12345678",
         assetId: "pa_1234567890123456789012",
-        trigger: "enter",
-        delayMs: 2_000,
+        kind: "audio",
+        timelineStartMs: 2_000,
         sourceDurationMs: 8_000,
-        startAtMs: 1_000,
-        playForMs: 4_000,
+        sourceStartMs: 1_000,
+        durationMs: 4_000,
         volume: 0.8,
-        end: "slide-exit",
+        muted: false,
+        locked: false,
       },
     ];
     expect(parsePitchDocument(document, 6).ok).toBe(true);
-    document.slides[0].audioCues[0].playForMs = 7_500;
+    document.slides[0].mediaClips[0].durationMs = 7_500;
     expect(parsePitchDocument(document, 6).ok).toBe(false);
   });
 

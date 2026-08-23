@@ -3,11 +3,17 @@ import { useEffect, useState } from "react";
 
 import { listPitchCredentials } from "../browser-store.client";
 import { listPublishedPitchesFn } from "../pitches.functions";
-import type { PitchOwnerCredential, PublicPitchDeck } from "../types";
+import type { PitchOperationalStatus, PitchOwnerCredential, PublicPitchDeck } from "../types";
 import { PitchDemoEntry } from "./PitchDemoEntry";
 import { PitchRecovery } from "./PitchRecovery";
 
-export function PitchGallery({ initialPitches }: { initialPitches: PublicPitchDeck[] }) {
+export function PitchGallery({
+  initialPitches,
+  operationalStatus,
+}: {
+  initialPitches: PublicPitchDeck[];
+  operationalStatus: PitchOperationalStatus;
+}) {
   const [query, setQuery] = useState("");
   const [pitches, setPitches] = useState(initialPitches);
   const [mine, setMine] = useState<PitchOwnerCredential[]>([]);
@@ -49,12 +55,18 @@ export function PitchGallery({ initialPitches }: { initialPitches: PublicPitchDe
             </p>
           </div>
           <div className="grid min-w-56 gap-3">
-            <Link
-              to="/things/pitches/new"
-              className="inline-flex min-h-12 items-center justify-center bg-foreground px-7 font-mono text-sm text-background hover:opacity-80"
-            >
-              start a pitch →
-            </Link>
+            {operationalStatus.canWrite ? (
+              <Link
+                to="/things/pitches/new"
+                className="inline-flex min-h-12 items-center justify-center bg-foreground px-7 font-mono text-sm text-background hover:opacity-80"
+              >
+                start a pitch →
+              </Link>
+            ) : (
+              <div className="flex min-h-12 items-center justify-center border border-[var(--things-amber)] px-5 text-center font-mono text-xs text-foreground">
+                new pitches are paused
+              </div>
+            )}
             <PitchDemoEntry />
             <Link
               to="/things/pitches/present"
@@ -65,6 +77,15 @@ export function PitchGallery({ initialPitches }: { initialPitches: PublicPitchDe
           </div>
         </div>
       </header>
+
+      {!operationalStatus.canWrite ? (
+        <div
+          className="border-y border-[var(--things-amber)] bg-[var(--selection-bg)] px-6 py-3 text-center font-mono text-xs text-[var(--selection-fg)]"
+          role="status"
+        >
+          {operationalStatus.message}
+        </div>
+      ) : null}
 
       <section className="mx-auto max-w-5xl px-6 pb-24">
         {mine.length > 0 ? (
@@ -149,9 +170,11 @@ export function PitchGallery({ initialPitches }: { initialPitches: PublicPitchDe
           </p>
         )}
 
-        <div className="mx-auto mt-12 max-w-xl">
-          <PitchRecovery />
-        </div>
+        {operationalStatus.canWrite ? (
+          <div className="mx-auto mt-12 max-w-xl">
+            <PitchRecovery />
+          </div>
+        ) : null}
       </section>
     </main>
   );

@@ -5,7 +5,8 @@ import type { BinaryFiles } from "@excalidraw/excalidraw/types";
 import type { PublicPitchDeckDetail } from "../types";
 import { ExcalidrawSurface } from "./ExcalidrawSurface";
 import { loadPitchFiles } from "./files.client";
-import { usePitchAudioPlayback } from "./usePitchAudioPlayback";
+import { PitchVideoLayer, usePitchMediaPlayback } from "./PitchMediaPlayback";
+import { usePitchMediaClock } from "./usePitchMediaClock";
 
 export function PitchViewer({ pitch }: { pitch: PublicPitchDeckDetail }) {
   const slides = useMemo(
@@ -16,7 +17,18 @@ export function PitchViewer({ pitch }: { pitch: PublicPitchDeckDetail }) {
   const [files, setFiles] = useState<BinaryFiles>({});
   const [sound, setSound] = useState(false);
   const slide = slides[index] ?? slides[0];
-  const audio = usePitchAudioPlayback({ slide, assets: pitch.assets, armed: sound });
+  const clock = usePitchMediaClock({
+    slideId: slide.id,
+    durationMs: slide.durationMs,
+    autoPlay: true,
+  });
+  usePitchMediaPlayback({
+    slide,
+    assets: pitch.assets,
+    playheadMs: clock.playheadMs,
+    playing: clock.playing,
+    soundEnabled: sound,
+  });
 
   useEffect(() => {
     void loadPitchFiles(pitch.assets).then(setFiles);
@@ -61,13 +73,22 @@ export function PitchViewer({ pitch }: { pitch: PublicPitchDeckDetail }) {
         </Link>
       </header>
       <section className="relative min-h-[60vh] flex-1">
-        <div className="absolute inset-0">
+        <div className="absolute inset-0 z-20">
           <ExcalidrawSurface
             key={slide.id}
             slideId={slide.id}
             elements={slide.elements}
             files={files}
             readOnly
+            transparentBackground={slide.mediaClips.some((clip) => clip.kind === "video")}
+            stageUnderlay={
+              <PitchVideoLayer
+                slide={slide}
+                assets={pitch.assets}
+                playheadMs={clock.playheadMs}
+                playing={clock.playing}
+              />
+            }
           />
         </div>
       </section>
@@ -104,7 +125,7 @@ export function PitchViewer({ pitch }: { pitch: PublicPitchDeckDetail }) {
           type="button"
           onClick={() => {
             setSound(true);
-            audio.replay();
+            clock.replay();
           }}
           className="min-h-10 px-3 font-mono text-xs theme-muted"
         >

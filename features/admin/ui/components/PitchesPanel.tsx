@@ -7,7 +7,10 @@ import type {
   PitchAsset,
   PitchDeckAdminSummary,
   PitchDocument,
+  PitchOperationalMode,
+  PitchOperationalStatus,
 } from "@/features/things/pitches/types";
+import { isPitchOperationalMode } from "@/features/things/pitches/types";
 import { loadPitchFiles } from "@/features/things/pitches/ui/files.client";
 import { PitchSlideThumbnail } from "@/features/things/pitches/ui/PitchSlideThumbnail";
 
@@ -82,14 +85,23 @@ export function PitchesPanel({
   const [detailFiles, setDetailFiles] = useState<BinaryFiles>({});
   const [form, setForm] = useState({ title: "", ownerName: "", ownerEmail: "" });
   const [deleteConfirmation, setDeleteConfirmation] = useState("");
+  const [operationalStatus, setOperationalStatus] = useState<PitchOperationalStatus>();
+  const [modeDraft, setModeDraft] = useState<PitchOperationalMode>("enabled");
 
   const refresh = useCallback(async () => {
     setLoading(true);
     try {
       const response = await authFetch("/api/admin/pitches");
       if (!response.ok) throw new Error("Could not load pitches");
-      const body = (await response.json()) as { pitches?: PitchDeckAdminSummary[] };
+      const body = (await response.json()) as {
+        pitches?: PitchDeckAdminSummary[];
+        operationalStatus?: PitchOperationalStatus;
+      };
       setPitches(body.pitches ?? []);
+      if (body.operationalStatus) {
+        setOperationalStatus(body.operationalStatus);
+        setModeDraft(body.operationalStatus.adminMode);
+      }
     } catch (error) {
       onError(error instanceof Error ? error.message : "Could not load pitches");
     } finally {
@@ -242,6 +254,46 @@ export function PitchesPanel({
     }
   }
 
+  async function updateOperationalMode() {
+    if (
+      modeDraft === "off" &&
+      operationalStatus?.effectiveMode !== "off" &&
+      !window.confirm(
+        "Turn Pitch Night Studio off? Public decks and live presentation controls will stop until you enable it again.",
+      )
+    ) {
+      return;
+    }
+    setBusy("operational-mode");
+    try {
+      const response = await authFetch("/api/admin/pitches", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "set-operational-mode", mode: modeDraft }),
+      });
+      const body = (await response.json().catch(() => ({}))) as {
+        error?: string;
+        operationalStatus?: PitchOperationalStatus;
+      };
+      if (!response.ok || !body.operationalStatus) {
+        throw new Error(body.error ?? "Could not change the studio mode");
+      }
+      setOperationalStatus(body.operationalStatus);
+      setModeDraft(body.operationalStatus.adminMode);
+      onStatus(
+        body.operationalStatus.effectiveMode === "enabled"
+          ? "Pitch Night Studio is fully enabled."
+          : body.operationalStatus.effectiveMode === "read-only"
+            ? "Pitch Night Studio is read-only. Server saving and uploads are paused."
+            : "Pitch Night Studio is off. Public and live access are paused.",
+      );
+    } catch (error) {
+      onError(error instanceof Error ? error.message : "Could not change the studio mode");
+    } finally {
+      setBusy("");
+    }
+  }
+
   const totals = pitches.reduce(
     (summary, pitch) => ({
       drafts: summary.drafts + (pitch.publishedAt ? 0 : 1),
@@ -271,6 +323,50 @@ export function PitchesPanel({
         >
           {loading ? "refreshing…" : "refresh"}
         </button>
+      </div>
+
+      <div className="mt-6 border-y border-[var(--things-amber)] py-5">
+        <div className="grid gap-4 md:grid-cols-[1fr_auto] md:items-end">
+          <div>
+            <label
+              htmlFor="pitch-operational-mode"
+              className="font-mono text-micro uppercase tracking-[0.14em] theme-muted"
+            >
+              studio operating mode
+            </label>
+            <select
+              id="pitch-operational-mode"
+              value={modeDraft}
+              onChange={(event) => {
+                if (isPitchOperationalMode(event.target.value)) setModeDraft(event.target.value);
+              }}
+              disabled={!operationalStatus || busy === "operational-mode"}
+              className="mt-2 min-h-11 w-full border theme-border-strong bg-background px-3 font-mono text-sm text-foreground md:max-w-xs"
+            >
+              <option value="enabled">enabled · all features</option>
+              <option value="read-only">read-only · no server saves</option>
+              <option value="off">off · stop public and live access</option>
+            </select>
+            <p className="mt-2 max-w-2xl font-mono text-micro leading-relaxed theme-muted">
+              {operationalStatus?.message ?? "Loading the current mode…"}
+              {operationalStatus && operationalStatus.environmentMode !== "enabled"
+                ? ` The PITCHES_MODE environment value is ${operationalStatus.environmentMode} and is the hard ceiling.`
+                : " Local editor safety copies and downloads still work in read-only mode."}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => void updateOperationalMode()}
+            disabled={
+              !operationalStatus ||
+              busy === "operational-mode" ||
+              modeDraft === operationalStatus.adminMode
+            }
+            className="min-h-11 bg-foreground px-5 font-mono text-xs text-background hover:opacity-80 disabled:opacity-40"
+          >
+            {busy === "operational-mode" ? "applying…" : "apply mode"}
+          </button>
+        </div>
       </div>
 
       <div className="mt-6 flex flex-wrap gap-2">
@@ -450,8 +546,8 @@ export function PitchesPanel({
                     <p className="mt-1 font-serif text-lg text-foreground">{slide.name}</p>
                     <p className="mt-2 font-mono text-micro theme-muted">
                       {slide.elements.filter((element) => !element.isDeleted).length} objects
-                      {slide.audioCues.length
-                        ? ` · ${slide.audioCues.length} sound${slide.audioCues.length === 1 ? "" : "s"}`
+                      {slide.mediaClips.length
+                        ? ` · ${slide.mediaClips.length} media clip${slide.mediaClips.length === 1 ? "" : "s"}`
                         : ""}
                       {slide.inkLayers?.length ? ` · ${slide.inkLayers.length} ink` : ""}
                     </p>

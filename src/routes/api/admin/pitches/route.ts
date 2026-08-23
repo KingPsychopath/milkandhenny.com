@@ -5,6 +5,11 @@ import { requireAuth } from "@/features/auth/auth.server";
 import { runPitchesResult } from "@/features/things/pitches/pitches-runtime.server";
 import { PitchesService } from "@/features/things/pitches/pitches-service.server";
 import {
+  getPitchOperationalStatus,
+  setPitchAdminMode,
+} from "@/features/things/pitches/operational.server";
+import { isPitchOperationalMode } from "@/features/things/pitches/types";
+import {
   isPitchDeckId,
   parsePitchOwnerName,
   parsePitchTitle,
@@ -23,14 +28,17 @@ async function handleGET(request: Request) {
     const url = new URL(request.url);
     const deckId = url.searchParams.get("deckId");
     if (!deckId) {
-      const result = await runPitchesResult(
-        Effect.gen(function* () {
-          const pitches = yield* PitchesService;
-          return yield* pitches.listAdmin();
-        }),
-      );
+      const [result, operationalStatus] = await Promise.all([
+        runPitchesResult(
+          Effect.gen(function* () {
+            const pitches = yield* PitchesService;
+            return yield* pitches.listAdmin();
+          }),
+        ),
+        getPitchOperationalStatus({ includeConfiguredMode: true }),
+      ]);
       return result.ok
-        ? Response.json({ pitches: result.value })
+        ? Response.json({ pitches: result.value, operationalStatus })
         : Response.json({ error: result.error }, { status: result.status });
     }
     if (!isPitchDeckId(deckId)) return Response.json({ error: "Pitch not found" }, { status: 404 });
@@ -56,8 +64,14 @@ async function handlePATCH(request: Request) {
   if (authError) return authError;
   try {
     const body = (await request.json()) as Record<string, unknown>;
+    if (body.action === "set-operational-mode") {
+      if (!isPitchOperationalMode(body.mode)) {
+        return Response.json({ error: "Choose enabled, read-only, or off" }, { status: 400 });
+      }
+      return Response.json({ operationalStatus: await setPitchAdminMode(body.mode) });
+    }
     if (typeof body.deckId !== "string" || !isPitchDeckId(body.deckId)) {
-      return Response.json({ error: "Invalid request" }, { status: 400 });
+      return Response.json({ error: "Choose a pitch and try again" }, { status: 400 });
     }
     const action = body.action;
     const result = await runPitchesResult(
@@ -97,7 +111,7 @@ async function handlePATCH(request: Request) {
             origin: getBaseUrlForRequest(request),
           });
         }
-        return { ok: false as const, status: 400, error: "Invalid request" };
+        return { ok: false as const, status: 400, error: "That pitch action is not available" };
       }),
     );
     if (!result.ok) {
@@ -121,7 +135,10 @@ async function handleDELETE(request: Request) {
       !isPitchDeckId(body.deckId) ||
       typeof body.confirmation !== "string"
     ) {
-      return Response.json({ error: "Invalid request" }, { status: 400 });
+      return Response.json(
+        { error: "Choose a pitch and type its exact title to move it to Trash" },
+        { status: 400 },
+      );
     }
     const result = await runPitchesResult(
       Effect.gen(function* () {

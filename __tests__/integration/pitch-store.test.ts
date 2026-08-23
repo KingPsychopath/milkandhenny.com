@@ -50,7 +50,7 @@ function documentWith(elements: readonly ExcalidrawElement[]): PitchDocument {
         durationMs: PITCH_SLIDE_DEFAULT_DURATION_MS,
         elements,
         assetIds: {},
-        audioCues: [],
+        mediaClips: [],
       },
     ],
   };

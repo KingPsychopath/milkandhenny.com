@@ -6,6 +6,7 @@ export type PitchImportSummary = {
   importedSlides: number;
   currentSlides: number;
   maximumSlides: number;
+  embeddedMedia?: number;
 };
 
 export function PitchImportDialog({
@@ -55,16 +56,21 @@ export function PitchImportDialog({
         {summary.kind === "backup" ? (
           <p className="font-mono text-xs leading-relaxed theme-muted">
             This studio backup contains {summary.importedSlides} slide
-            {summary.importedSlides === 1 ? "" : "s"}. Opening it will replace the slides and
-            pictures currently in this studio. If you need to keep the current deck, cancel and
-            export a .mahdeck copy first.
+            {summary.importedSlides === 1 ? "" : "s"}. Opening it will replace the slides and media
+            currently in this studio. If you need to keep the current deck, cancel and export a
+            .mahdeck copy first.
           </p>
         ) : (
           <>
             <p className="font-mono text-xs leading-relaxed theme-muted">
               We found {summary.importedSlides} slide
               {summary.importedSlides === 1 ? "" : "s"}. Text and pictures will keep their positions
-              and can be moved after they arrive.
+              and can be moved after they arrive. Embedded video and sound will go on each slide's
+              timeline{summary.embeddedMedia ? ` (${summary.embeddedMedia} found)` : ""}.
+            </p>
+            <p className="font-mono text-xs leading-relaxed theme-muted">
+              PowerPoint transitions and object animations become static. If an exact animation is
+              important, export that part as an MP4 and drop it on the timeline.
             </p>
             <p className="font-mono text-xs leading-relaxed theme-muted">
               The current studio has {summary.currentSlides} slide

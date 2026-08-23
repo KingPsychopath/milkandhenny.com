@@ -10,6 +10,7 @@ export interface ImportedPitchSlide {
   name: string;
   elements: readonly ExcalidrawElement[];
   files: BinaryFiles;
+  mediaFiles: File[];
 }
 
 function randomId(prefix: string): string {
@@ -92,6 +93,7 @@ export async function importPdf(file: File, maximumSlides = 12): Promise<Importe
       name: `PDF ${pageNumber}`,
       elements: [image],
       files: { [fileId]: binaryFile(fileId, blob, dataURL) },
+      mediaFiles: [],
     });
     page.cleanup();
   }
@@ -104,6 +106,10 @@ function emu(value: string | null, fallback: number): number {
   return Number.isFinite(parsed) ? parsed / 9_525 : fallback;
 }
 
+function parseXml(xml: string): XMLDocument {
+  return new DOMParser().parseFromString(xml.replace(/^\uFEFF/, ""), "application/xml");
+}
+
 function pptxStageTransform(zip: JSZip) {
   const fallback = {
     scale: 1,
@@ -113,7 +119,7 @@ function pptxStageTransform(zip: JSZip) {
   const presentation = zip.file("ppt/presentation.xml");
   if (!presentation) return Promise.resolve(fallback);
   return presentation.async("text").then((xml) => {
-    const parsed = new DOMParser().parseFromString(xml, "application/xml");
+    const parsed = parseXml(xml);
     const size = parsed.getElementsByTagName("p:sldSz")[0];
     const width = emu(size?.getAttribute("cx") ?? null, PITCH_SLIDE_STAGE.width);
     const height = emu(size?.getAttribute("cy") ?? null, PITCH_SLIDE_STAGE.height);
@@ -128,7 +134,7 @@ function pptxStageTransform(zip: JSZip) {
 }
 
 function relationshipMap(xml: string): Map<string, string> {
-  const document = new DOMParser().parseFromString(xml, "application/xml");
+  const document = parseXml(xml);
   const map = new Map<string, string>();
   for (const node of Array.from(document.getElementsByTagName("Relationship"))) {
     const id = node.getAttribute("Id");
@@ -166,13 +172,14 @@ export async function importPptx(file: File, maximumSlides = 12): Promise<Import
   const result: ImportedPitchSlide[] = [];
   for (const [slideIndex, slidePath] of slidePaths.slice(0, maximumSlides).entries()) {
     const slideXml = await zip.file(slidePath)!.async("text");
-    const slide = new DOMParser().parseFromString(slideXml, "application/xml");
+    const slide = parseXml(slideXml);
     const relationPath = slidePath.replace("slides/", "slides/_rels/") + ".rels";
     const relations = zip.file(relationPath)
       ? relationshipMap(await zip.file(relationPath)!.async("text"))
       : new Map<string, string>();
     const skeletons: Parameters<typeof convertToExcalidrawElements>[0] = [];
     const files: BinaryFiles = {};
+    const mediaFiles: File[] = [];
 
     for (const [shapeIndex, shape] of Array.from(slide.getElementsByTagName("p:sp")).entries()) {
       const text = Array.from(shape.getElementsByTagName("a:t"))
@@ -210,6 +217,7 @@ export async function importPptx(file: File, maximumSlides = 12): Promise<Import
       const media = mediaPath ? zip.file(mediaPath) : null;
       if (!media) continue;
       const extension = mediaPath!.split(".").pop()?.toLowerCase();
+      if (!extension || !["png", "jpg", "jpeg", "webp", "gif"].includes(extension)) continue;
       const mime =
         extension === "jpg" || extension === "jpeg"
           ? "image/jpeg"
@@ -234,10 +242,45 @@ export async function importPptx(file: File, maximumSlides = 12): Promise<Import
       files[fileId] = binaryFile(fileId, blob, await blobToDataUrl(blob));
     }
 
+    const importedMediaPaths = new Set(
+      [...relations.values()]
+        .map(normalisePptxTarget)
+        .filter((path) => /\.(?:mp3|m4a|aac|wav|ogg|mp4|m4v|mov|webm)$/i.test(path)),
+    );
+    for (const mediaPath of importedMediaPaths) {
+      const media = zip.file(mediaPath);
+      if (!media) continue;
+      const extension = mediaPath.split(".").pop()?.toLowerCase() ?? "";
+      const mimeType =
+        extension === "mp3"
+          ? "audio/mpeg"
+          : extension === "m4a" || extension === "aac"
+            ? "audio/mp4"
+            : extension === "wav"
+              ? "audio/wav"
+              : extension === "ogg"
+                ? "audio/ogg"
+                : extension === "webm"
+                  ? "video/webm"
+                  : extension === "mov"
+                    ? "video/quicktime"
+                    : "video/mp4";
+      mediaFiles.push(
+        new File(
+          [await media.async("arraybuffer")],
+          mediaPath.split("/").at(-1) ?? `media.${extension}`,
+          {
+            type: mimeType,
+          },
+        ),
+      );
+    }
+
     result.push({
       name: `PowerPoint ${slideIndex + 1}`,
       elements: convertToExcalidrawElements(skeletons, { regenerateIds: true }),
       files,
+      mediaFiles,
     });
   }
   return result;

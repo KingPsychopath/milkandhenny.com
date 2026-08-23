@@ -74,125 +74,187 @@ export class PitchesService extends Context.Service<
 }
 
 function create(input: Parameters<typeof engine.createPitch>[0]) {
-  return pitchesOperation("create", () => engine.createPitch(input), false);
+  return pitchesOperation("create", () => engine.createPitch(input), {
+    access: "write",
+    timeoutMs: false,
+  });
 }
 
 function readOwned(...input: Parameters<typeof engine.readOwnedPitch>) {
-  return pitchesOperation("read_owned", () => engine.readOwnedPitch(...input));
+  return pitchesOperation("read_owned", () => engine.readOwnedPitch(...input), { access: "read" });
 }
 
 function listHistory(...input: Parameters<typeof engine.listPitchHistory>) {
-  return pitchesOperation("list_history", () => engine.listPitchHistory(...input));
+  return pitchesOperation("list_history", () => engine.listPitchHistory(...input), {
+    access: "read",
+  });
 }
 
 function readVersion(...input: Parameters<typeof engine.readPitchVersion>) {
-  return pitchesOperation("read_version", () => engine.readPitchVersion(...input));
+  return pitchesOperation("read_version", () => engine.readPitchVersion(...input), {
+    access: "read",
+  });
 }
 
 function restoreVersion(...input: Parameters<typeof engine.restorePitchVersion>) {
-  return pitchesOperation("restore_version", () => engine.restorePitchVersion(...input));
+  return pitchesOperation("restore_version", () => engine.restorePitchVersion(...input), {
+    access: "write",
+  });
 }
 
 function sync(input: Parameters<typeof engine.syncPitch>[0]) {
-  return pitchesOperation("sync", () => engine.syncPitch(input));
+  return pitchesOperation("sync", () => engine.syncPitch(input), { access: "write" });
 }
 
 function publish(input: Parameters<typeof engine.publishPitch>[0]) {
-  return pitchesOperation("publish", () => engine.publishPitch(input), false);
+  return pitchesOperation("publish", () => engine.publishPitch(input), {
+    access: "write",
+    timeoutMs: false,
+  });
 }
 
 function listPublished(search?: string) {
-  return pitchesOperation("list_published", () => engine.listPublishedPitches(search));
+  return pitchesOperation("list_published", () => engine.listPublishedPitches(search), {
+    access: "read",
+  });
 }
 
 function readPublished(deckId: string, editionNumber?: number) {
-  return pitchesOperation("read_published", () => engine.readPublishedPitch(deckId, editionNumber));
+  return pitchesOperation(
+    "read_published",
+    () => engine.readPublishedPitch(deckId, editionNumber),
+    {
+      access: "read",
+    },
+  );
 }
 
 function recover(input: Parameters<typeof engine.recoverPitchAccess>[0]) {
-  return pitchesOperation("recover_access", () => engine.recoverPitchAccess(input), false);
+  return pitchesOperation("recover_access", () => engine.recoverPitchAccess(input), {
+    access: "write",
+    timeoutMs: false,
+  });
 }
 
 function allowRecovery(ip: string, email: string) {
-  return pitchesOperation("allow_recovery", () => engine.allowPitchRecovery(ip, email));
+  return pitchesOperation("allow_recovery", () => engine.allowPitchRecovery(ip, email), {
+    access: "write",
+  });
 }
 
 function createAssetUpload(input: Parameters<typeof engine.createPitchAssetUpload>[0]) {
-  return pitchesOperation("create_asset_upload", () => engine.createPitchAssetUpload(input));
+  return pitchesOperation("create_asset_upload", () => engine.createPitchAssetUpload(input), {
+    access: "write",
+  });
 }
 
 function finaliseAsset(input: Parameters<typeof engine.finalisePitchAsset>[0]) {
-  return pitchesOperation("finalise_asset", () => engine.finalisePitchAsset(input));
+  return pitchesOperation("finalise_asset", () => engine.finalisePitchAsset(input), {
+    access: "write",
+  });
 }
 
 function cleanup(limit?: number) {
-  return pitchesOperation("cleanup", () => engine.cleanupExpiredPitches(limit), false);
+  return pitchesOperation("cleanup", () => engine.cleanupExpiredPitches(limit), {
+    access: "maintenance",
+    timeoutMs: false,
+  });
 }
 
 function listAdmin() {
-  return pitchesOperation("admin_list", () => store.listPitchDecksForAdmin());
+  return pitchesOperation("admin_list", () => store.listPitchDecksForAdmin(), { access: "admin" });
 }
 
 function readAdmin(deckId: string) {
-  return pitchesOperation("admin_read", () => store.readPitchDeckForAdmin(deckId));
+  return pitchesOperation("admin_read", () => store.readPitchDeckForAdmin(deckId), {
+    access: "admin",
+  });
 }
 
 function adminDetail(deckId: string) {
-  return pitchesOperation("admin_detail", () => engine.readPitchForAdmin(deckId));
+  return pitchesOperation("admin_detail", () => engine.readPitchForAdmin(deckId), {
+    access: "admin",
+  });
 }
 
 function archive(deckId: string, archived: boolean) {
-  return pitchesOperation("admin_archive", () => store.setPitchDeckArchived(deckId, archived));
+  return pitchesOperation("admin_archive", () => store.setPitchDeckArchived(deckId, archived), {
+    access: "write",
+  });
 }
 
 function adminAssets(deckId: string) {
-  return pitchesOperation("admin_assets", () => assets.signedPitchAssets(deckId));
+  return pitchesOperation("admin_assets", () => assets.signedPitchAssets(deckId), {
+    access: "admin",
+  });
 }
 
 function updateAdmin(input: Parameters<typeof engine.updatePitchForAdmin>[0]) {
-  return pitchesOperation("admin_update", () => engine.updatePitchForAdmin(input));
+  return pitchesOperation("admin_update", () => engine.updatePitchForAdmin(input), {
+    access: "write",
+  });
 }
 
 function restoreAdmin(...input: Parameters<typeof engine.restorePitchForAdmin>) {
-  return pitchesOperation("admin_restore_backup", () => engine.restorePitchForAdmin(...input));
+  return pitchesOperation("admin_restore_backup", () => engine.restorePitchForAdmin(...input), {
+    access: "write",
+  });
 }
 
 function resendAdmin(input: Parameters<typeof engine.resendPitchAccessForAdmin>[0]) {
-  return pitchesOperation("admin_resend", () => engine.resendPitchAccessForAdmin(input), false);
+  return pitchesOperation("admin_resend", () => engine.resendPitchAccessForAdmin(input), {
+    access: "write",
+    timeoutMs: false,
+  });
 }
 
 function deleteAdmin(...input: Parameters<typeof engine.deletePitchForAdmin>) {
-  return pitchesOperation("admin_delete", () => engine.deletePitchForAdmin(...input), false);
+  return pitchesOperation("admin_delete", () => engine.deletePitchForAdmin(...input), {
+    access: "admin",
+    timeoutMs: false,
+  });
 }
 
 function restoreTrashAdmin(...input: Parameters<typeof engine.restorePitchFromTrashForAdmin>) {
-  return pitchesOperation("admin_restore_trash", () =>
-    engine.restorePitchFromTrashForAdmin(...input),
+  return pitchesOperation(
+    "admin_restore_trash",
+    () => engine.restorePitchFromTrashForAdmin(...input),
+    { access: "write" },
   );
 }
 
 function createPresentation(eventTitle?: string) {
-  return pitchesOperation("presentation_create", () =>
-    presentation.createPresentationRoom(eventTitle),
+  return pitchesOperation(
+    "presentation_create",
+    () => presentation.createPresentationRoom(eventTitle),
+    { access: "live" },
   );
 }
 
 function joinPresentation(roomId: string, name: string) {
-  return pitchesOperation("presentation_join", () => presentation.joinPresentation(roomId, name));
+  return pitchesOperation("presentation_join", () => presentation.joinPresentation(roomId, name), {
+    access: "live",
+  });
 }
 
 function readPresentation(...input: Parameters<typeof presentation.readPresentation>) {
-  return pitchesOperation("presentation_read", () => presentation.readPresentation(...input));
+  return pitchesOperation("presentation_read", () => presentation.readPresentation(...input), {
+    access: "live",
+  });
 }
 
 function approveController(
   input: Parameters<typeof presentation.approvePresentationController>[0],
 ) {
-  return pitchesOperation("presentation_approve", () =>
-    presentation.approvePresentationController(input),
+  return pitchesOperation(
+    "presentation_approve",
+    () => presentation.approvePresentationController(input),
+    { access: "live" },
   );
 }
 
 function controlPresentation(input: Parameters<typeof presentation.controlPresentation>[0]) {
-  return pitchesOperation("presentation_control", () => presentation.controlPresentation(input));
+  return pitchesOperation("presentation_control", () => presentation.controlPresentation(input), {
+    access: "live",
+  });
 }

@@ -24,12 +24,14 @@ import {
 import { pitchDocumentContentCount } from "../document-content";
 import { importPresentation, type ImportedPitchSlide } from "../import.client";
 import { mergePitchDocuments } from "../merge";
+import { PitchMediaNeedsTrimError, preparePitchMedia } from "../media.client";
 import { createEmptyPitchDocument } from "../new-document.client";
 import {
   createPitchAssetUploadFn,
   finalisePitchAssetFn,
   listPitchHistoryFn,
   publishPitchFn,
+  readPitchOperationalStatusFn,
   readOwnedPitchFn,
   readPitchVersionFn,
   restorePitchVersionFn,
@@ -38,13 +40,21 @@ import {
 import {
   type OwnedPitchDeck,
   PITCH_AUDIO_MAX_BYTES,
-  PITCH_AUDIO_MAX_SECONDS,
+  PITCH_BACKUP_MAX_BYTES,
+  PITCH_DECK_ASSET_MAX_BYTES,
   PITCH_IMAGE_MAX_BYTES,
+  PITCH_PRESENTATION_IMPORT_MAX_BYTES,
+  PITCH_MEDIA_CLIP_LIMIT,
   PITCH_SLIDE_DEFAULT_DURATION_MS,
+  PITCH_SLIDE_DURATION_RANGE_MS,
+  PITCH_VIDEO_MAX_BYTES,
+  type PitchAsset,
   type PitchDocument,
   type PitchCommandKind,
   type PitchCommandOperation,
   type PitchInkLayer,
+  type PitchMediaClip,
+  type PitchOperationalStatus,
   type PitchOwnerCredential,
   type PitchSlide,
   type PitchVersionHistoryItem,
@@ -54,13 +64,17 @@ import { parsePitchDocument } from "../validation";
 import { ExcalidrawSurface } from "./ExcalidrawSurface";
 import { blobToDataUrl, dataUrlToBlob, loadPitchFiles } from "./files.client";
 import { DrawesomeInk } from "./DrawesomeInk";
-import { PitchAudioTimeline } from "./PitchAudioTimeline";
+import { PitchMediaTimeline } from "./PitchMediaTimeline";
+import { PitchVideoLayer, usePitchMediaPlayback } from "./PitchMediaPlayback";
+import { PitchMediaTrimDialog } from "./PitchMediaTrimDialog";
+import { PitchOperationalNotice } from "./PitchOperationalNotice";
 import { PitchDeviceSwitcher } from "./PitchDeviceSwitcher";
 import { PitchImportDialog, type PitchImportSummary } from "./PitchImportDialog";
 import { PitchPreview } from "./PitchPreview";
 import { PitchRecovery } from "./PitchRecovery";
 import { PitchSlideThumbnail } from "./PitchSlideThumbnail";
 import { PitchVersionHistory } from "./PitchVersionHistory";
+import { usePitchMediaClock } from "./usePitchMediaClock";
 import { fromPitchStageScene, pitchStageExport, toPitchStageScene } from "./pitch-stage.client";
 
 const PITCH_STUDIO_TOUR_KEY = "milkandhenny:pitch-studio-tour:v1";
@@ -85,15 +99,15 @@ const TOUR_STEPS: readonly GuidedTourStep[] = [
   {
     id: "sound",
     selector: "[data-tour='sound']",
-    title: "Give the moment a sound",
-    body: "Drop in up to four cues. Choose entry or exit, add a delay, and decide whether the sound stops with the slide or carries into the next one.",
+    title: "Time video and sound",
+    body: "Drop video or sound here. Move clips, trim either edge, split at the playhead, and unlink picture from sound only when you need separate timing.",
     side: "top",
   },
   {
     id: "preview",
     selector: "[data-tour='preview']",
     title: "Watch it before the room does",
-    body: "Preview uses the exact same slide bounds and sound rules as the audience screen. Slides only move when you press next, use an arrow key or hand over the remote.",
+    body: "Preview uses the same slide clock, video and sound as the audience screen. Slides move when you press next, use an arrow key or hand over the remote.",
     side: "bottom",
   },
   {
@@ -110,14 +124,14 @@ const DEMO_TOUR_STEPS: readonly GuidedTourStep[] = TOUR_STEPS.map((step) => {
     return {
       ...step,
       title: "See how timing works",
-      body: "Adjust the sound timeline and see where a cue would land. It never advances the slide. Sound uploads are switched off in this no-save rehearsal.",
+      body: "Try the slide clock and timeline controls. Media uploads are switched off in this no-save rehearsal.",
     };
   }
   if (step.id === "publish") {
     return {
       ...step,
       title: "Create when it feels right",
-      body: "Publishing is switched off here. Download anything you want to keep, then start a real pitch when you want saving, sound and a place on the wall.",
+      body: "Publishing is switched off here. Download anything you want to keep, then start a real pitch when you want saving, media and a place on the wall.",
     };
   }
   return step;
@@ -143,6 +157,36 @@ function rememberPitchStudioTour(): void {
 
 function randomId(prefix: string): string {
   return `${prefix}${crypto.randomUUID().replaceAll("-", "")}`;
+}
+
+function randomPitchAssetId(): string {
+  const bytes = crypto.getRandomValues(new Uint8Array(16));
+  const encoded = btoa(String.fromCharCode(...bytes))
+    .replaceAll("+", "-")
+    .replaceAll("/", "_")
+    .replaceAll("=", "");
+  return `pa_${encoded}`;
+}
+
+function localMediaAsset(
+  file: File,
+  kind: "audio" | "video",
+  deckId: string,
+  id = randomPitchAssetId(),
+): PitchAsset {
+  const now = new Date().toISOString();
+  return {
+    id,
+    deckId,
+    kind,
+    state: "ready",
+    fileName: file.name,
+    mimeType: file.type,
+    bytes: file.size,
+    createdAt: now,
+    readyAt: now,
+    url: URL.createObjectURL(file),
+  };
 }
 
 function updateSlide(
@@ -186,6 +230,7 @@ function friendlyImportError(error: unknown, fileName: string): string {
     detail.startsWith("This deck") ||
     detail.startsWith("That PowerPoint") ||
     detail.startsWith("That presentation") ||
+    detail.startsWith("This presentation") ||
     detail.startsWith("Choose a PowerPoint") ||
     detail.includes("too large") ||
     detail.includes("allowance")
@@ -201,7 +246,9 @@ function friendlyImportError(error: unknown, fileName: string): string {
 function readBackupFiles(value: unknown): BinaryFiles {
   if (!value || typeof value !== "object" || Array.isArray(value)) return {};
   const result: BinaryFiles = {};
+  let encodedBytes = 0;
   for (const [id, candidate] of Object.entries(value)) {
+    if (Object.keys(result).length >= 200) break;
     if (
       !/^[A-Za-z0-9_-]{1,120}$/.test(id) ||
       !candidate ||
@@ -219,6 +266,8 @@ function readBackupFiles(value: unknown): BinaryFiles {
     ) {
       continue;
     }
+    encodedBytes += file.dataURL.length;
+    if (encodedBytes > 120 * 1024 * 1024) break;
     result[id] = {
       id: id as FileId,
       dataURL: file.dataURL as BinaryFileData["dataURL"],
@@ -227,6 +276,11 @@ function readBackupFiles(value: unknown): BinaryFiles {
     };
   }
   return result;
+}
+
+function zipEntrySize(value: unknown): number | undefined {
+  const data = (value as { _data?: { uncompressedSize?: unknown } })?._data;
+  return typeof data?.uncompressedSize === "number" ? data.uncompressedSize : undefined;
 }
 
 function rekeyBackup(
@@ -252,7 +306,7 @@ function rekeyBackup(
             : element,
         ),
         assetIds: {},
-        audioCues: [],
+        mediaClips: slide.mediaClips,
         inkLayers: slide.inkLayers?.map((layer) => ({
           ...layer,
           fileId: fileIds.get(layer.fileId) ?? layer.fileId,
@@ -262,52 +316,43 @@ function rekeyBackup(
   };
 }
 
-function audioDuration(file: File): Promise<number> {
-  return new Promise((resolve, reject) => {
-    const audio = new Audio();
-    const url = URL.createObjectURL(file);
-    const release = () => URL.revokeObjectURL(url);
-    audio.preload = "metadata";
-    audio.onloadedmetadata = () => {
-      const duration = audio.duration;
-      release();
-      resolve(duration);
-    };
-    audio.onerror = () => {
-      release();
-      reject(new Error("That sound file could not be read"));
-    };
-    audio.src = url;
-  });
-}
-
 type DropFileKind = "image" | "audio" | "video" | "presentation" | "backup" | "other";
 
 function dropFileKind(file: File): DropFileKind {
   const name = file.name.toLowerCase();
   if (name.endsWith(".mahdeck")) return "backup";
   if (
-    file.type.startsWith("image/") ||
+    ["image/png", "image/jpeg", "image/webp", "image/gif"].includes(file.type) ||
     [".png", ".jpg", ".jpeg", ".webp", ".gif"].some((extension) => name.endsWith(extension))
   ) {
     return "image";
   }
+  if (file.type.startsWith("audio/")) return "audio";
+  if (file.type.startsWith("video/")) return "video";
   if (
-    file.type.startsWith("audio/") ||
-    [".mp3", ".m4a", ".aac", ".ogg", ".wav", ".webm"].some((extension) => name.endsWith(extension))
-  ) {
+    [".mp3", ".m4a", ".aac", ".ogg", ".wav", ".flac"].some((extension) => name.endsWith(extension))
+  )
     return "audio";
-  }
-  if (
-    file.type.startsWith("video/") ||
-    [".mp4", ".mov", ".m4v", ".webm", ".avi"].some((extension) => name.endsWith(extension))
-  ) {
+  if ([".mp4", ".mov", ".m4v", ".webm", ".avi"].some((extension) => name.endsWith(extension)))
     return "video";
-  }
   if (file.type === "application/pdf" || name.endsWith(".pdf") || name.endsWith(".pptx")) {
     return "presentation";
   }
   return "other";
+}
+
+function normalisedImageFile(file: File): File {
+  if (["image/png", "image/jpeg", "image/webp", "image/gif"].includes(file.type)) return file;
+  const name = file.name.toLowerCase();
+  const type =
+    name.endsWith(".jpg") || name.endsWith(".jpeg")
+      ? "image/jpeg"
+      : name.endsWith(".webp")
+        ? "image/webp"
+        : name.endsWith(".gif")
+          ? "image/gif"
+          : "image/png";
+  return new File([file], file.name, { type, lastModified: file.lastModified });
 }
 
 function imageSize(file: File): Promise<{ width: number; height: number }> {
@@ -333,15 +378,20 @@ export type PitchEditorSession = { kind: "owned"; deckId: string } | { kind: "de
 export function PitchEditor({
   session,
   maximumSlides,
+  operationalStatus,
 }: {
   session: PitchEditorSession;
   maximumSlides: number;
+  operationalStatus: PitchOperationalStatus;
 }) {
   const isDemo = session.kind === "demo";
   const deckId = session.kind === "owned" ? session.deckId : "demo";
+  const [operational, setOperational] = useState(operationalStatus);
+  const serverSavingPaused = !isDemo && !operational.canWrite;
   const [demoDocument] = useState(() => (isDemo ? createEmptyPitchDocument() : undefined));
   const [credential, setCredential] = useState<PitchOwnerCredential>();
   const [deck, setDeck] = useState<OwnedPitchDeck>();
+  const [localMediaAssets, setLocalMediaAssets] = useState<PitchAsset[]>([]);
   const [documentState, setDocumentState] = useState<PitchDocument | undefined>(demoDocument);
   const [files, setFiles] = useState<BinaryFiles>({});
   const [title, setTitle] = useState(isDemo ? "A pitch worth trying" : "");
@@ -382,8 +432,15 @@ export function PitchEditor({
     imported?: ImportedPitchSlide[];
     restored?: { document: PitchDocument; files: BinaryFiles };
     restoredTitle?: string;
+    bundledMedia?: Array<{ assetId: string; kind: "audio" | "video"; file: File }>;
   }>();
   const [dragKind, setDragKind] = useState<DropFileKind>();
+  const [mediaProgress, setMediaProgress] = useState<{ name: string; progress: number }>();
+  const [pendingMediaTrim, setPendingMediaTrim] = useState<{
+    file: File;
+    sourceDurationMs: number;
+    kind: "audio" | "video";
+  }>();
   const [sceneEpoch, setSceneEpoch] = useState(0);
   const [revision, setRevision] = useState(0);
   const [localSavedRevision, setLocalSavedRevision] = useState(0);
@@ -403,6 +460,7 @@ export function PitchEditor({
   const historyPreviewRequest = useRef(0);
   const documentRef = useRef(documentState);
   const deckRef = useRef(deck);
+  const localMediaAssetsRef = useRef(localMediaAssets);
   const filesRef = useRef(files);
   const titleRef = useRef(title);
   const toolbarRef = useRef<HTMLDivElement>(null);
@@ -411,8 +469,44 @@ export function PitchEditor({
 
   documentRef.current = documentState;
   deckRef.current = deck;
+  localMediaAssetsRef.current = localMediaAssets;
   filesRef.current = files;
   titleRef.current = title;
+
+  useEffect(
+    () => () => {
+      for (const asset of localMediaAssetsRef.current) {
+        if (asset.url?.startsWith("blob:")) URL.revokeObjectURL(asset.url);
+      }
+    },
+    [],
+  );
+
+  useEffect(() => {
+    setOperational(operationalStatus);
+  }, [operationalStatus]);
+
+  useEffect(() => {
+    if (isDemo) return;
+    let cancelled = false;
+    const refresh = () => {
+      void readPitchOperationalStatusFn()
+        .then((status) => {
+          if (!cancelled) setOperational(status);
+        })
+        .catch(() => undefined);
+    };
+    const timer = window.setInterval(refresh, 30_000);
+    const visible = () => {
+      if (document.visibilityState === "visible") refresh();
+    };
+    document.addEventListener("visibilitychange", visible);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", visible);
+    };
+  }, [isDemo]);
 
   const reloadSafe = isDemo
     ? revision === 0
@@ -669,7 +763,14 @@ export function PitchEditor({
     const currentDeck = deckRef.current;
     const currentDocument = documentRef.current;
     const currentTitle = titleRef.current;
-    if (isDemo || !credential || !currentDeck || !currentDocument || !navigator.onLine) {
+    if (
+      isDemo ||
+      serverSavingPaused ||
+      !credential ||
+      !currentDeck ||
+      !currentDocument ||
+      !navigator.onLine
+    ) {
       return false;
     }
     if (syncing.current) return false;
@@ -717,7 +818,7 @@ export function PitchEditor({
         setSceneEpoch((value) => value + 1);
         setSyncState("merged");
         setMessage(
-          "Two saved copies were consolidated. Review slide order, timing and sound where both devices changed the same slide.",
+          "Two saved copies were consolidated. Review slide order and media timing where both devices changed the same slide.",
         );
       } else {
         const fullySynced = revisionRef.current === sentRevision;
@@ -758,23 +859,23 @@ export function PitchEditor({
       syncing.current = false;
       if (revisionRef.current > sentRevision) setSyncWake((value) => value + 1);
     }
-  }, [credential, deckId, isDemo, markChanged, updateState]);
+  }, [credential, deckId, isDemo, markChanged, serverSavingPaused, updateState]);
 
   useEffect(() => {
-    if (isDemo || revision <= lastSyncedRevision.current) return;
+    if (isDemo || serverSavingPaused || revision <= lastSyncedRevision.current) return;
     const timer = window.setTimeout(() => void performSync(), 1_800);
     return () => window.clearTimeout(timer);
-  }, [isDemo, performSync, revision, syncWake]);
+  }, [isDemo, performSync, revision, serverSavingPaused, syncWake]);
 
   useEffect(() => {
-    if (isDemo) return;
+    if (isDemo || serverSavingPaused) return;
     const online = () => {
       setSyncWake((value) => value + 1);
       void performSync();
     };
     window.addEventListener("online", online);
     return () => window.removeEventListener("online", online);
-  }, [isDemo, performSync]);
+  }, [isDemo, performSync, serverSavingPaused]);
 
   useEffect(() => {
     const hasUnwrittenChanges = isDemo ? revision > 0 : localSavedRevision < revision;
@@ -795,6 +896,22 @@ export function PitchEditor({
     () => documentState?.slides.filter((slide) => !slide.deletedAt) ?? [],
     [documentState],
   );
+  const assets = useMemo(() => {
+    const byId = new Map((deck?.assets ?? []).map((asset) => [asset.id, asset]));
+    for (const asset of localMediaAssets) byId.set(asset.id, asset);
+    return [...byId.values()];
+  }, [deck?.assets, localMediaAssets]);
+  const mediaClock = usePitchMediaClock({
+    slideId: currentSlide?.id,
+    durationMs: currentSlide?.durationMs ?? PITCH_SLIDE_DEFAULT_DURATION_MS,
+  });
+  usePitchMediaPlayback({
+    slide: currentSlide,
+    assets,
+    playheadMs: mediaClock.playheadMs,
+    playing: mediaClock.playing,
+    soundEnabled: true,
+  });
   const hasUnsecuredMedia = useMemo(
     () =>
       !isDemo &&
@@ -811,11 +928,12 @@ export function PitchEditor({
     async (
       blob: Blob,
       input: {
-        kind: "image" | "audio" | "thumbnail" | "import";
+        kind: "image" | "audio" | "video" | "thumbnail";
         fileName: string;
         fileId?: string;
       },
     ) => {
+      if (serverSavingPaused) throw new Error(operational.message);
       if (!credential) throw new Error("Editing key missing");
       const reserved = await createPitchAssetUploadFn({
         data: {
@@ -845,14 +963,55 @@ export function PitchEditor({
       if (!finalised.ok) throw new Error(finalised.error);
       return finalised.value;
     },
-    [credential, deckId],
+    [credential, deckId, operational.message, serverSavingPaused],
   );
 
   useEffect(() => {
-    if (!documentState || !currentSlide || !credential) return;
+    if (!documentState || !credential || serverSavingPaused) return;
     for (const [fileId, file] of Object.entries(files)) {
-      const known = documentState.slides.some((slide) => Boolean(slide.assetIds[fileId]));
-      if (known || uploading.current.has(fileId)) continue;
+      const ownerIds = new Set(
+        documentState.slides
+          .filter(
+            (slide) =>
+              !slide.deletedAt &&
+              (slide.elements.some(
+                (element) => element.type === "image" && element.fileId === fileId,
+              ) ||
+                slide.inkLayers?.some((layer) => layer.fileId === fileId)),
+          )
+          .map((slide) => slide.id),
+      );
+      if (ownerIds.size === 0) continue;
+      const knownAssetId = documentState.slides.find((slide) => slide.assetIds[fileId])?.assetIds[
+        fileId
+      ];
+      if (knownAssetId) {
+        if (
+          documentState.slides.every(
+            (slide) => !ownerIds.has(slide.id) || slide.assetIds[fileId] === knownAssetId,
+          )
+        ) {
+          continue;
+        }
+        const nextDocument = {
+          ...documentState,
+          slides: documentState.slides.map((slide) =>
+            ownerIds.has(slide.id)
+              ? {
+                  ...slide,
+                  assetIds: { ...slide.assetIds, [fileId]: knownAssetId },
+                  version: slide.version + 1,
+                  updatedAt: Date.now(),
+                }
+              : slide,
+          ),
+        };
+        documentRef.current = nextDocument;
+        setDocumentState(nextDocument);
+        markChanged("element.change", { assetLinked: fileId });
+        continue;
+      }
+      if (uploading.current.has(fileId)) continue;
       uploading.current.add(fileId);
       void dataUrlToBlob(file.dataURL)
         .then((blob) =>
@@ -863,17 +1022,24 @@ export function PitchEditor({
           }),
         )
         .then((asset) => {
-          setDocumentState((current) =>
-            current
-              ? updateSlide(current, currentSlide.id, (slide) => ({
-                  ...slide,
-                  assetIds: { ...slide.assetIds, [fileId]: asset.id },
-                  version: slide.version + 1,
-                  updatedAt: Date.now(),
-                }))
-              : current,
-          );
-          markChanged("element.change", { slideId: currentSlide.id, assetLinked: fileId });
+          const current = documentRef.current;
+          if (!current) return;
+          const nextDocument = {
+            ...current,
+            slides: current.slides.map((slide) =>
+              ownerIds.has(slide.id)
+                ? {
+                    ...slide,
+                    assetIds: { ...slide.assetIds, [fileId]: asset.id },
+                    version: slide.version + 1,
+                    updatedAt: Date.now(),
+                  }
+                : slide,
+            ),
+          };
+          documentRef.current = nextDocument;
+          setDocumentState(nextDocument);
+          markChanged("element.change", { assetLinked: fileId });
         })
         .catch(() => {
           setSyncState("error");
@@ -889,10 +1055,10 @@ export function PitchEditor({
     }
   }, [
     credential,
-    currentSlide,
     documentState,
     files,
     markChanged,
+    serverSavingPaused,
     updateState,
     uploadBlob,
     uploadWake,
@@ -957,7 +1123,7 @@ export function PitchEditor({
           durationMs: PITCH_SLIDE_DEFAULT_DURATION_MS,
           elements: [],
           assetIds: {},
-          audioCues: [],
+          mediaClips: [],
         },
       ],
     });
@@ -1009,54 +1175,111 @@ export function PitchEditor({
     setMessage(`Removed “${currentSlide.name}”. You can undo this action.`);
   }
 
-  async function attachAudio(file: File) {
+  async function attachMedia(file: File, selection?: { startMs: number; durationMs: number }) {
     if (isDemo) {
-      setMessage("Sound uploads are available once you start a saved pitch.");
+      setMessage("Media uploads are available once you start a saved pitch.");
+      return;
+    }
+    if (serverSavingPaused) {
+      setMessage(operational.message);
       return;
     }
     if (!file || !currentSlide) return;
-    if (file.size > PITCH_AUDIO_MAX_BYTES) {
-      setMessage("That sound is too large. Choose a sound file under 15 MB.");
+    if (mediaProgress) return;
+    if (currentSlide.mediaClips.length >= PITCH_MEDIA_CLIP_LIMIT) {
+      setMessage(`This slide can have up to ${PITCH_MEDIA_CLIP_LIMIT} media tracks.`);
       return;
     }
     try {
-      const durationSeconds = await audioDuration(file);
-      if (!Number.isFinite(durationSeconds) || durationSeconds > PITCH_AUDIO_MAX_SECONDS) {
-        throw new Error(`Keep slide sounds under ${PITCH_AUDIO_MAX_SECONDS / 60} minutes`);
-      }
-      const asset = await uploadBlob(file, { kind: "audio", fileName: file.name });
-      const durationMs = Math.max(1, Math.round(durationSeconds * 1_000));
-      setDocumentState((current) =>
-        current
-          ? updateSlide(current, currentSlide.id, (slide) => ({
-              ...slide,
-              audioCues: [
-                ...slide.audioCues,
-                {
-                  id: randomId("cue_"),
-                  assetId: asset.id,
-                  trigger: "enter",
-                  delayMs: 0,
-                  sourceDurationMs: durationMs,
-                  startAtMs: 0,
-                  playForMs: durationMs,
-                  volume: 0.85,
-                  end: "slide-exit",
-                },
-              ],
-              version: slide.version + 1,
-              updatedAt: Date.now(),
-            }))
-          : current,
+      setMediaProgress({ name: file.name, progress: 0 });
+      const prepared = await preparePitchMedia(
+        file,
+        (progress) => setMediaProgress({ name: file.name, progress }),
+        selection,
       );
+      const actualNeededClips = prepared.kind === "video" && prepared.hasAudio ? 2 : 1;
+      if (currentSlide.mediaClips.length + actualNeededClips > PITCH_MEDIA_CLIP_LIMIT) {
+        throw new Error(`This slide can have up to ${PITCH_MEDIA_CLIP_LIMIT} media tracks`);
+      }
+      setMediaProgress({ name: `uploading ${file.name}`, progress: 1 });
+      const asset = await uploadBlob(prepared.file, {
+        kind: prepared.kind,
+        fileName: prepared.file.name,
+      });
+      const maximumDuration = PITCH_SLIDE_DURATION_RANGE_MS.max;
+      const desiredStart = Math.min(mediaClock.playheadMs, maximumDuration - 1);
+      const timelineStartMs = Math.max(
+        0,
+        Math.min(desiredStart, maximumDuration - prepared.durationMs),
+      );
+      const durationMs = Math.min(prepared.durationMs, maximumDuration - timelineStartMs);
+      const linkedGroupId =
+        prepared.kind === "video" && prepared.hasAudio ? randomId("link_") : undefined;
+      const common = {
+        assetId: asset.id,
+        timelineStartMs,
+        sourceDurationMs: prepared.durationMs,
+        sourceStartMs: 0,
+        durationMs,
+        volume: 0.85,
+        locked: false,
+        linkedGroupId,
+      };
+      const mediaClips = [
+        ...(prepared.kind === "video"
+          ? [
+              {
+                ...common,
+                id: randomId("video_"),
+                kind: "video" as const,
+                muted: true,
+                fit: "contain" as const,
+              },
+            ]
+          : []),
+        ...(prepared.hasAudio
+          ? [
+              {
+                ...common,
+                id: randomId("audio_"),
+                kind: "audio" as const,
+                muted: false,
+              },
+            ]
+          : []),
+      ];
+      const nextDocument = documentRef.current
+        ? updateSlide(documentRef.current, currentSlide.id, (slide) => ({
+            ...slide,
+            durationMs: Math.min(
+              maximumDuration,
+              Math.max(slide.durationMs, timelineStartMs + durationMs),
+            ),
+            mediaClips: [...slide.mediaClips, ...mediaClips],
+            version: slide.version + 1,
+            updatedAt: Date.now(),
+          }))
+        : undefined;
+      if (!nextDocument) throw new Error("This slide is no longer available");
+      documentRef.current = nextDocument;
+      setDocumentState(nextDocument);
       setDeck((current) =>
         current ? { ...current, assets: [...current.assets, asset] } : current,
       );
-      markChanged("audio.add", { slideId: currentSlide.id, assetId: asset.id });
-      setMessage("Sound added. Set its timing below, then test it in preview.");
+      markChanged("media.add", { slideId: currentSlide.id, assetId: asset.id });
+      setMessage(
+        `${prepared.kind === "video" ? "Video" : "Sound"} added${prepared.kind === "video" && prepared.hasAudio ? " with linked sound" : ""}. Drag it to move it, or pull an edge to trim it.`,
+      );
     } catch (error) {
+      if (error instanceof PitchMediaNeedsTrimError) {
+        setPendingMediaTrim({ file, sourceDurationMs: error.durationMs, kind: error.kind });
+        setMessage("Choose the part of this media file to use.");
+        return;
+      }
       setSyncState("error");
-      setMessage(error instanceof Error ? error.message : "Sound upload failed");
+      setMessage(error instanceof Error ? error.message : "Media upload failed");
+    } finally {
+      setMediaProgress(undefined);
     }
   }
 
@@ -1067,7 +1290,11 @@ export function PitchEditor({
       return;
     }
     try {
-      const [size, dataURL] = await Promise.all([imageSize(file), blobToDataUrl(file)]);
+      const imageFileSource = normalisedImageFile(file);
+      const [size, dataURL] = await Promise.all([
+        imageSize(imageFileSource),
+        blobToDataUrl(imageFileSource),
+      ]);
       const scale = Math.min(1, 720 / Math.max(1, size.width), 400 / Math.max(1, size.height));
       const width = Math.max(1, size.width * scale);
       const height = Math.max(1, size.height * scale);
@@ -1075,7 +1302,7 @@ export function PitchEditor({
       const imageFile: BinaryFileData = {
         id: fileId,
         dataURL,
-        mimeType: (file.type || "image/png") as BinaryFileData["mimeType"],
+        mimeType: imageFileSource.type as BinaryFileData["mimeType"],
         created: Date.now(),
       };
       const [image] = convertToExcalidrawElements(
@@ -1092,7 +1319,8 @@ export function PitchEditor({
         ],
         { regenerateIds: true },
       );
-      const nextElements = [...currentSlide.elements, image];
+      const latestSlide = documentRef.current?.slides.find((slide) => slide.id === currentSlide.id);
+      const nextElements = [...(latestSlide?.elements ?? currentSlide.elements), image];
       const nextFiles = { ...filesRef.current, [fileId]: imageFile };
       const nextDocument = documentRef.current
         ? updateSlide(documentRef.current, currentSlide.id, (slide) => ({
@@ -1184,23 +1412,79 @@ export function PitchEditor({
     setMessage(`Reading ${file.name}…`);
     try {
       if (file.name.toLowerCase().endsWith(".mahdeck")) {
-        const raw = JSON.parse(await file.text()) as unknown;
+        if (file.size > PITCH_BACKUP_MAX_BYTES) {
+          throw new Error("This deck backup is over 450 MB");
+        }
+        const { default: JSZip } = await import("jszip");
+        const bundle = await JSZip.loadAsync(file);
+        const manifestFile = bundle.file("manifest.json");
+        if (!manifestFile) throw new Error("This deck backup has no manifest");
+        if ((zipEntrySize(manifestFile) ?? 0) > 120 * 1024 * 1024) {
+          throw new Error("This deck backup has too much embedded slide data");
+        }
+        const manifestText = await manifestFile.async("text");
+        if (manifestText.length > 120 * 1024 * 1024) {
+          throw new Error("This deck backup has too much embedded slide data");
+        }
+        const raw = JSON.parse(manifestText) as unknown;
         const backup =
           raw && typeof raw === "object" && !Array.isArray(raw)
             ? (raw as Record<string, unknown>)
             : null;
+        if (backup?.format !== "mahdeck" || backup.formatVersion !== 1) {
+          throw new Error("This deck backup format is not supported");
+        }
         const source = backup?.document ?? raw;
         const parsed = parsePitchDocument(source, maximumSlides);
         if (!parsed.ok) throw new Error(parsed.error);
         const backupFiles = readBackupFiles(backup?.files);
-        const sameDeck = !isDemo && backup?.deckId === deckId;
-        const restored = sameDeck
-          ? { document: parsed.document, files: backupFiles }
-          : rekeyBackup(parsed.document, backupFiles);
+        const bundledMedia: Array<{
+          assetId: string;
+          kind: "audio" | "video";
+          file: File;
+        }> = [];
+        let bundledMediaBytes = 0;
+        if (Array.isArray(backup?.media) && backup.media.length <= 100) {
+          for (const candidate of backup.media) {
+            if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) continue;
+            const entry = candidate as Record<string, unknown>;
+            if (
+              typeof entry.assetId !== "string" ||
+              (entry.kind !== "audio" && entry.kind !== "video") ||
+              typeof entry.path !== "string" ||
+              !/^media\/[A-Za-z0-9_.-]{1,180}$/.test(entry.path) ||
+              typeof entry.fileName !== "string" ||
+              (entry.kind === "video"
+                ? entry.mimeType !== "video/mp4"
+                : entry.mimeType !== "audio/mp4")
+            ) {
+              continue;
+            }
+            const mediaEntry = bundle.file(entry.path);
+            if (!mediaEntry) continue;
+            const maximumBytes =
+              entry.kind === "video" ? PITCH_VIDEO_MAX_BYTES : PITCH_AUDIO_MAX_BYTES;
+            if ((zipEntrySize(mediaEntry) ?? 0) > maximumBytes) continue;
+            const bytes = await mediaEntry.async("arraybuffer");
+            bundledMediaBytes += bytes.byteLength;
+            if (bytes.byteLength > maximumBytes || bundledMediaBytes > PITCH_DECK_ASSET_MAX_BYTES) {
+              continue;
+            }
+            bundledMedia.push({
+              assetId: entry.assetId,
+              kind: entry.kind,
+              file: new File([bytes], entry.fileName, {
+                type: entry.kind === "video" ? "video/mp4" : "audio/mp4",
+              }),
+            });
+          }
+        }
+        const restored = rekeyBackup(parsed.document, backupFiles);
         setPendingImport({
           file,
           restored,
           restoredTitle: typeof backup?.title === "string" ? backup.title : undefined,
+          bundledMedia,
           summary: {
             fileName: file.name,
             kind: "backup",
@@ -1210,6 +1494,10 @@ export function PitchEditor({
           },
         });
         return;
+      }
+
+      if (file.size > PITCH_PRESENTATION_IMPORT_MAX_BYTES) {
+        throw new Error("This presentation is over 30 MB. Export a smaller PPTX or PDF.");
       }
 
       const allImported = await importPresentation(file, maximumSlides);
@@ -1223,6 +1511,7 @@ export function PitchEditor({
           importedSlides: allImported.length,
           currentSlides: visibleSlides.length,
           maximumSlides,
+          embeddedMedia: allImported.reduce((count, slide) => count + slide.mediaFiles.length, 0),
         },
       });
     } catch (error) {
@@ -1240,19 +1529,58 @@ export function PitchEditor({
     try {
       if (pendingImport.restored) {
         rememberUndo("replacing the deck from a backup");
-        const restoredDocument = pendingImport.restored.document;
+        const remappedAssets = new Map<string, string>();
+        const restoredAssets: PitchAsset[] = [];
+        const localRestoredAssets: PitchAsset[] = [];
+        if (!isDemo && !serverSavingPaused) {
+          for (const media of pendingImport.bundledMedia ?? []) {
+            setMediaProgress({ name: `restoring ${media.file.name}`, progress: 1 });
+            const asset = await uploadBlob(media.file, {
+              kind: media.kind,
+              fileName: media.file.name,
+            });
+            remappedAssets.set(media.assetId, asset.id);
+            restoredAssets.push(asset);
+          }
+        } else {
+          for (const media of pendingImport.bundledMedia ?? []) {
+            const asset = localMediaAsset(media.file, media.kind, deckId, media.assetId);
+            remappedAssets.set(media.assetId, asset.id);
+            localRestoredAssets.push(asset);
+          }
+        }
+        const restoredDocument: PitchDocument = {
+          ...pendingImport.restored.document,
+          slides: pendingImport.restored.document.slides.map((slide) => ({
+            ...slide,
+            mediaClips: slide.mediaClips
+              .filter((clip) => remappedAssets.has(clip.assetId))
+              .map((clip) => ({ ...clip, assetId: remappedAssets.get(clip.assetId)! })),
+          })),
+        };
         documentRef.current = restoredDocument;
         setDocumentState(restoredDocument);
         setSceneEpoch((value) => value + 1);
         setActiveSlideId(restoredDocument.slides.find((slide) => !slide.deletedAt)?.id ?? "");
         setFiles(pendingImport.restored.files);
+        setLocalMediaAssets((current) => {
+          for (const asset of current) {
+            if (asset.url?.startsWith("blob:")) URL.revokeObjectURL(asset.url);
+          }
+          return localRestoredAssets;
+        });
+        if (restoredAssets.length > 0) {
+          setDeck((current) =>
+            current ? { ...current, assets: [...current.assets, ...restoredAssets] } : current,
+          );
+        }
         if (pendingImport.restoredTitle) setTitle(pendingImport.restoredTitle);
         markChanged("deck.replace", { source: "native backup" });
         setMessage(
-          isDemo
-            ? "Native backup opened for this rehearsal. Download it again if you want to keep your changes."
+          isDemo || serverSavingPaused
+            ? "Native backup opened with its media for this tab. Download it again before closing if you want to keep your changes."
             : Object.keys(pendingImport.restored.files).length > 0
-              ? "Native backup restored. Its images are being secured to this pitch."
+              ? `Native backup restored. Its images are being secured to this pitch.${restoredAssets.length ? ` ${restoredAssets.length} media file${restoredAssets.length === 1 ? " was" : "s were"} restored.` : ""}`
               : "Native backup restored.",
         );
         return;
@@ -1265,25 +1593,93 @@ export function PitchEditor({
           : allImported;
       if (imported.length === 0)
         throw new Error(`This deck already has all ${maximumSlides} slides`);
-      if (!isDemo) {
-        const importedAsset = await uploadBlob(pendingImport.file, {
-          kind: "import",
-          fileName: pendingImport.file.name,
+      const uploadedAssets: PitchAsset[] = [];
+      const localImportedAssets: PitchAsset[] = [];
+      const created: PitchSlide[] = [];
+      let mediaImported = 0;
+      let mediaSkipped = 0;
+      for (const importedSlide of imported) {
+        const mediaClips: PitchMediaClip[] = [];
+        let durationMs = PITCH_SLIDE_DEFAULT_DURATION_MS;
+        for (const mediaFile of importedSlide.mediaFiles) {
+          try {
+            setMediaProgress({ name: `preparing ${mediaFile.name}`, progress: 0 });
+            const prepared = await preparePitchMedia(mediaFile, (progress) =>
+              setMediaProgress({ name: `preparing ${mediaFile.name}`, progress }),
+            );
+            const needed = prepared.kind === "video" && prepared.hasAudio ? 2 : 1;
+            if (mediaClips.length + needed > PITCH_MEDIA_CLIP_LIMIT) {
+              mediaSkipped += 1;
+              continue;
+            }
+            let asset: PitchAsset;
+            if (isDemo || serverSavingPaused) {
+              asset = localMediaAsset(prepared.file, prepared.kind, deckId);
+              localImportedAssets.push(asset);
+            } else {
+              setMediaProgress({ name: `uploading ${mediaFile.name}`, progress: 1 });
+              asset = await uploadBlob(prepared.file, {
+                kind: prepared.kind,
+                fileName: prepared.file.name,
+              });
+              uploadedAssets.push(asset);
+            }
+            const clipDurationMs = Math.min(prepared.durationMs, PITCH_SLIDE_DURATION_RANGE_MS.max);
+            const linkedGroupId =
+              prepared.kind === "video" && prepared.hasAudio ? randomId("link_") : undefined;
+            const common = {
+              assetId: asset.id,
+              timelineStartMs: 0,
+              sourceDurationMs: prepared.durationMs,
+              sourceStartMs: 0,
+              durationMs: clipDurationMs,
+              volume: 0.85,
+              muted: false,
+              locked: false,
+              linkedGroupId,
+            };
+            if (prepared.kind === "video") {
+              mediaClips.push({
+                ...common,
+                id: randomId("video_"),
+                kind: "video",
+                muted: true,
+                fit: "contain",
+              });
+            }
+            if (prepared.hasAudio) {
+              mediaClips.push({ ...common, id: randomId("audio_"), kind: "audio" });
+            }
+            durationMs = Math.max(durationMs, clipDurationMs);
+            mediaImported += 1;
+          } catch {
+            mediaSkipped += 1;
+          }
+        }
+        created.push({
+          id: randomId("s_"),
+          name: importedSlide.name,
+          version: 1,
+          updatedAt: Date.now(),
+          durationMs,
+          elements: importedSlide.elements,
+          assetIds: {},
+          mediaClips,
         });
+      }
+      setMediaProgress(undefined);
+      if (uploadedAssets.length > 0) {
         setDeck((current) =>
-          current ? { ...current, assets: [...current.assets, importedAsset] } : current,
+          current ? { ...current, assets: [...current.assets, ...uploadedAssets] } : current,
         );
       }
-      const created = imported.map((slide) => ({
-        id: randomId("s_"),
-        name: slide.name,
-        version: 1,
-        updatedAt: Date.now(),
-        durationMs: PITCH_SLIDE_DEFAULT_DURATION_MS,
-        elements: slide.elements,
-        assetIds: {},
-        audioCues: [],
-      }));
+      setLocalMediaAssets((current) => {
+        if (mode === "append") return [...current, ...localImportedAssets];
+        for (const asset of current) {
+          if (asset.url?.startsWith("blob:")) URL.revokeObjectURL(asset.url);
+        }
+        return localImportedAssets;
+      });
       const importedFiles = imported.reduce(
         (all, slide) => ({ ...all, ...slide.files }),
         {} as BinaryFiles,
@@ -1308,13 +1704,14 @@ export function PitchEditor({
           ? `Replaced the current slides with ${created.length} imported slide${created.length === 1 ? "" : "s"}.`
           : created.length < allImported.length
             ? `Added ${created.length} slides; the deck limit is ${maximumSlides}.`
-            : `Added ${created.length} slides. Text and pictures are movable.`,
+            : `Added ${created.length} slides. Text and pictures are movable.${mediaImported ? ` ${mediaImported} embedded media file${mediaImported === 1 ? "" : "s"} added to the timeline.` : ""}${mediaSkipped ? ` ${mediaSkipped} unsupported media file${mediaSkipped === 1 ? " was" : "s were"} skipped.` : ""}`,
       );
     } catch (error) {
       setSyncState("error");
       setMessage(friendlyImportError(error, pendingImport.file.name));
     } finally {
       setImporting(false);
+      setMediaProgress(undefined);
     }
   }
 
@@ -1324,32 +1721,19 @@ export function PitchEditor({
     if (file) void importFile(file);
   }
 
-  function handleDroppedFile(file: File, target: "stage" | "timeline" | "page") {
+  async function handleDroppedFile(file: File, target: "stage" | "timeline" | "page") {
     setDragKind(undefined);
     const kind = dropFileKind(file);
-    if (target === "stage" && kind === "image") {
-      void placeImage(file);
+    if (target !== "timeline" && kind === "image") {
+      await placeImage(file);
       return;
     }
-    if (target === "timeline" && kind === "audio") {
-      void attachAudio(file);
+    if (kind === "audio" || kind === "video") {
+      await attachMedia(file);
       return;
     }
-    if (
-      (target === "page" || target === "stage") &&
-      (kind === "presentation" || kind === "backup")
-    ) {
-      void importFile(file);
-      return;
-    }
-    if (kind === "video") {
-      setMessage(
-        "Video drops are not available yet. The video timeline will come later; nothing was uploaded.",
-      );
-      return;
-    }
-    if (kind === "audio") {
-      setMessage("Drop sound on the sound + timing timeline at the bottom of the studio.");
+    if (kind === "presentation" || kind === "backup") {
+      await importFile(file);
       return;
     }
     if (kind === "image") {
@@ -1357,12 +1741,37 @@ export function PitchEditor({
       return;
     }
     setMessage(
-      "We could not identify that file. Choose a .pptx, PDF, .mahdeck backup, image or sound file.",
+      "We could not identify that file. Choose a .pptx, PDF, .mahdeck backup, image, video or sound file.",
     );
+  }
+
+  async function handleDroppedFiles(
+    files: FileList | readonly File[],
+    target: "stage" | "timeline" | "page",
+  ) {
+    const selected = Array.from(files).slice(0, 20);
+    const deckFiles = selected.filter((file) => {
+      const kind = dropFileKind(file);
+      return kind === "presentation" || kind === "backup";
+    });
+    if (deckFiles.length > 0) {
+      if (selected.length > 1) {
+        setMessage("Bring in one presentation or studio backup at a time.");
+        return;
+      }
+      await handleDroppedFile(deckFiles[0], target);
+      return;
+    }
+    for (const file of selected) await handleDroppedFile(file, target);
+    if (selected.length < files.length) setMessage("Added the first 20 files from that drop.");
   }
 
   async function publish() {
     if (isDemo || !credential || !currentSlide || !documentState) return;
+    if (serverSavingPaused) {
+      setMessage(operational.message);
+      return;
+    }
     if (!navigator.onLine) {
       setMessage("Reconnect before publishing. Your working copy is safe on this device.");
       return;
@@ -1528,14 +1937,75 @@ export function PitchEditor({
     }
   }
 
-  function exportDeck() {
-    if (!documentState) return;
-    download(
-      new Blob([JSON.stringify({ deckId, title, document: documentState, files }, null, 2)], {
-        type: "application/json",
-      }),
-      `${safeName(title)}.mahdeck`,
+  async function createMahdeckBlob(): Promise<Blob> {
+    flushCanvasState();
+    const currentDocument = documentRef.current;
+    if (!currentDocument) throw new Error("This deck is not ready to export");
+    const { default: JSZip } = await import("jszip");
+    const zip = new JSZip();
+    let availableAssets = assets;
+    if (credential) {
+      const refreshed = await readOwnedPitchFn({
+        data: { deckId, ownerToken: credential.token },
+      });
+      if (refreshed.ok) {
+        const byId = new Map(refreshed.value.assets.map((asset) => [asset.id, asset]));
+        for (const asset of localMediaAssetsRef.current) byId.set(asset.id, asset);
+        availableAssets = [...byId.values()];
+      }
+    }
+    const referencedMedia = new Set(
+      currentDocument.slides.flatMap((slide) => slide.mediaClips.map((clip) => clip.assetId)),
     );
+    const media: Array<{
+      assetId: string;
+      kind: "audio" | "video";
+      fileName: string;
+      mimeType: string;
+      path: string;
+    }> = [];
+    for (const assetId of referencedMedia) {
+      const asset = availableAssets.find((candidate) => candidate.id === assetId);
+      if (!asset?.url || (asset.kind !== "audio" && asset.kind !== "video")) {
+        throw new Error("One media file is not ready for export");
+      }
+      const response = await fetch(asset.url);
+      if (!response.ok) throw new Error(`Could not download ${asset.fileName} for the backup`);
+      const path = `media/${asset.id}.${asset.kind === "video" ? "mp4" : "m4a"}`;
+      zip.file(path, await response.blob());
+      media.push({
+        assetId: asset.id,
+        kind: asset.kind,
+        fileName: asset.fileName,
+        mimeType: asset.mimeType,
+        path,
+      });
+    }
+    zip.file(
+      "manifest.json",
+      JSON.stringify(
+        {
+          format: "mahdeck",
+          formatVersion: 1,
+          title: titleRef.current,
+          document: currentDocument,
+          files: filesRef.current,
+          media,
+        },
+        null,
+        2,
+      ),
+    );
+    return zip.generateAsync({
+      type: "blob",
+      compression: "DEFLATE",
+      compressionOptions: { level: 6 },
+      mimeType: "application/vnd.milkandhenny.deck+zip",
+    });
+  }
+
+  async function exportDeck() {
+    download(await createMahdeckBlob(), `${safeName(titleRef.current)}.mahdeck`);
   }
 
   async function exportCurrentPng() {
@@ -1552,7 +2022,7 @@ export function PitchEditor({
       maxWidthOrHeight: 2_400,
       exportPadding: 0,
     });
-    download(blob, `${safeName(title)}-${currentSlide.name}.png`);
+    download(blob, `${safeName(title)}-${safeName(currentSlide.name)}.png`);
   }
 
   async function exportCurrentSvg() {
@@ -1570,11 +2040,12 @@ export function PitchEditor({
     });
     download(
       new Blob([new XMLSerializer().serializeToString(svg)], { type: "image/svg+xml" }),
-      `${safeName(title)}-${currentSlide.name}.svg`,
+      `${safeName(title)}-${safeName(currentSlide.name)}.svg`,
     );
   }
 
   async function exportDeckZip() {
+    flushCanvasState();
     const { default: JSZip } = await import("jszip");
     const zip = new JSZip();
     for (const [index, slide] of visibleSlides.entries()) {
@@ -1591,10 +2062,7 @@ export function PitchEditor({
       });
       zip.file(`${String(index + 1).padStart(2, "0")}-${safeName(slide.name)}.png`, blob);
     }
-    zip.file(
-      `${safeName(title)}.mahdeck`,
-      JSON.stringify({ deckId, title, document: documentState, files }, null, 2),
-    );
+    zip.file(`${safeName(title)}.mahdeck`, await createMahdeckBlob());
     download(await zip.generateAsync({ type: "blob" }), `${safeName(title)}.zip`);
   }
 
@@ -1614,6 +2082,7 @@ export function PitchEditor({
       </main>
     );
   }
+  if (!operational.canRead) return <PitchOperationalNotice status={operational} />;
   if (phase === "missing") {
     return (
       <main id="main" className="mx-auto max-w-xl px-6 py-20">
@@ -1658,20 +2127,22 @@ export function PitchEditor({
       className="relative flex min-h-screen flex-col bg-background"
       onDragOver={(event) => event.preventDefault()}
       onPaste={(event) => {
-        const file = event.clipboardData.files[0];
+        const pastedFiles = event.clipboardData.files;
+        const file = pastedFiles[0];
         if (!file) return;
         const target = event.target instanceof Element ? event.target : null;
-        if (target?.closest(".pitch-excalidraw")) return;
+        if (target?.closest(".pitch-excalidraw") && dropFileKind(file) === "image") return;
         event.preventDefault();
-        handleDroppedFile(
-          file,
+        void handleDroppedFiles(
+          pastedFiles,
           target?.closest("[data-pitch-drop-target='timeline']") ? "timeline" : "stage",
         );
       }}
       onDrop={(event) => {
         event.preventDefault();
-        const file = event.dataTransfer.files[0];
-        if (file) handleDroppedFile(file, "page");
+        if (event.dataTransfer.files.length > 0) {
+          void handleDroppedFiles(event.dataTransfer.files, "page");
+        }
       }}
     >
       {dragKind ? (
@@ -1684,9 +2155,9 @@ export function PitchEditor({
               {dragKind === "image"
                 ? "Drop the image on the slide"
                 : dragKind === "audio"
-                  ? "Drop sound on the sound + timing timeline"
+                  ? "Drop sound on the media timeline"
                   : dragKind === "video"
-                    ? "Video timeline is coming soon"
+                    ? "Drop video on the media timeline"
                     : "Drop to bring this file into the studio"}
             </p>
             <p className="mt-1 font-mono text-micro theme-muted">
@@ -1716,25 +2187,27 @@ export function PitchEditor({
         <span className="font-mono text-micro uppercase tracking-[0.12em] theme-muted">
           {isDemo
             ? "demo · not saved"
-            : localSaveFailed
-              ? "local backup needs attention"
-              : syncState === "saved"
-                ? "saved"
-                : syncState === "syncing"
-                  ? "syncing…"
-                  : syncState === "merged"
-                    ? "recovered + merged"
-                    : syncState === "error"
-                      ? "needs attention"
-                      : navigator.onLine
-                        ? "saved on this device"
-                        : "offline · safe here"}
+            : serverSavingPaused
+              ? "server saving paused · safe here"
+              : localSaveFailed
+                ? "local backup needs attention"
+                : syncState === "saved"
+                  ? "saved"
+                  : syncState === "syncing"
+                    ? "syncing…"
+                    : syncState === "merged"
+                      ? "recovered + merged"
+                      : syncState === "error"
+                        ? "needs attention"
+                        : navigator.onLine
+                          ? "saved on this device"
+                          : "offline · safe here"}
         </span>
         <button
           type="button"
           data-tour="publish"
           onClick={() => void publish()}
-          disabled={isDemo || syncState === "syncing" || hasUnsecuredMedia}
+          disabled={isDemo || serverSavingPaused || syncState === "syncing" || hasUnsecuredMedia}
           className="min-h-10 bg-foreground px-5 font-mono text-xs text-background hover:opacity-80 disabled:cursor-not-allowed disabled:opacity-45"
         >
           {isDemo
@@ -1753,7 +2226,8 @@ export function PitchEditor({
           role="status"
         >
           <span>
-            Rehearsal mode · this tab is the only copy. Sound, saving and publishing are off.
+            Rehearsal mode · this tab is the only copy. Media uploads, saving and publishing are
+            off.
           </span>
           <Link
             to="/things/pitches/new"
@@ -1761,6 +2235,22 @@ export function PitchEditor({
           >
             start one for real
           </Link>
+        </div>
+      ) : null}
+
+      {serverSavingPaused ? (
+        <div
+          className="flex flex-wrap items-center justify-center gap-x-4 gap-y-2 border-b border-[var(--things-amber)] bg-[var(--selection-bg)] px-4 py-2 text-center font-mono text-xs text-[var(--selection-fg)]"
+          role="status"
+        >
+          <span>{operational.message} This browser still keeps a local safety copy.</span>
+          <button
+            type="button"
+            onClick={() => setExportOpen(true)}
+            className="min-h-11 underline decoration-current underline-offset-4 hover:opacity-60"
+          >
+            download a copy
+          </button>
         </div>
       ) : null}
 
@@ -2086,8 +2576,9 @@ export function PitchEditor({
                     </button>
                   </div>
                   <p className="mt-3 font-mono text-micro leading-relaxed theme-muted">
-                    PNG and SVG are single-slide images. ZIP contains every slide as a PNG plus a
-                    .mahdeck studio backup. The backup opens here; it is not an editable PowerPoint
+                    PNG and SVG are static single-slide images and do not include playing media. ZIP
+                    contains every slide as a PNG plus a self-contained .mahdeck studio backup with
+                    its video and sound. The backup opens here; it is not an editable PowerPoint
                     file.
                   </p>
                 </div>
@@ -2101,8 +2592,9 @@ export function PitchEditor({
             onDrop={(event) => {
               event.preventDefault();
               event.stopPropagation();
-              const file = event.dataTransfer.files[0];
-              if (file) handleDroppedFile(file, "stage");
+              if (event.dataTransfer.files.length > 0) {
+                void handleDroppedFiles(event.dataTransfer.files, "stage");
+              }
             }}
           >
             {currentSlide.elements.length === 0 ? (
@@ -2116,27 +2608,55 @@ export function PitchEditor({
                 </div>
               </div>
             ) : null}
-            <ExcalidrawSurface
-              key={`${currentSlide.id}:${sceneEpoch}`}
-              slideId={currentSlide.id}
-              elements={currentSlide.elements}
-              files={files}
-              onApi={(api) => {
-                apiRef.current = api;
-              }}
-              onChange={onCanvasChange}
-            />
+            <div className="relative z-20 h-full">
+              <ExcalidrawSurface
+                key={`${currentSlide.id}:${sceneEpoch}`}
+                slideId={currentSlide.id}
+                elements={currentSlide.elements}
+                files={files}
+                transparentBackground={currentSlide.mediaClips.some(
+                  (clip) => clip.kind === "video",
+                )}
+                stageUnderlay={
+                  <PitchVideoLayer
+                    slide={currentSlide}
+                    assets={assets}
+                    playheadMs={mediaClock.playheadMs}
+                    playing={mediaClock.playing}
+                  />
+                }
+                onApi={(api) => {
+                  apiRef.current = api;
+                }}
+                onChange={onCanvasChange}
+              />
+            </div>
           </div>
-          <PitchAudioTimeline
+          <PitchMediaTimeline
             slide={currentSlide}
-            assets={deck?.assets ?? []}
-            soundDisabledReason={
-              isDemo ? "Sound uploads are available once you start a saved pitch." : undefined
+            assets={assets}
+            playheadMs={mediaClock.playheadMs}
+            playing={mediaClock.playing}
+            disabledReason={
+              isDemo
+                ? "Media uploads are available once you start a saved pitch."
+                : serverSavingPaused
+                  ? "Media uploads are paused."
+                  : undefined
             }
-            onAddSound={(file) => void attachAudio(file)}
-            onDropFile={(file) => handleDroppedFile(file, "timeline")}
-            onChange={(nextSlide, kind = "audio.change") => {
-              if (kind === "audio.remove") rememberUndo("removing a sound");
+            processingLabel={
+              mediaProgress
+                ? mediaProgress.name.startsWith("uploading ")
+                  ? mediaProgress.name
+                  : `${mediaProgress.name} · ${Math.round(mediaProgress.progress * 100)}%`
+                : undefined
+            }
+            onAddMedia={(file) => void attachMedia(file)}
+            onDropFiles={(droppedFiles) => void handleDroppedFiles(droppedFiles, "timeline")}
+            onScrub={mediaClock.setPlayheadMs}
+            onTogglePlayback={mediaClock.toggle}
+            onChange={(nextSlide, kind = "media.change") => {
+              if (kind === "media.remove") rememberUndo("removing media");
               setDocumentState((current) =>
                 current ? updateSlide(current, nextSlide.id, () => nextSlide) : current,
               );
@@ -2144,8 +2664,8 @@ export function PitchEditor({
                 ? updateSlide(documentRef.current, nextSlide.id, () => nextSlide)
                 : documentRef.current;
               markChanged(kind, { slideId: nextSlide.id });
-              if (kind === "audio.remove") {
-                setMessage("Sound removed. You can undo this action.");
+              if (kind === "media.remove") {
+                setMessage("Media removed. You can undo this action.");
               }
             }}
           />
@@ -2157,9 +2677,22 @@ export function PitchEditor({
           title={title}
           document={documentState}
           files={files}
-          assets={deck?.assets ?? []}
+          assets={assets}
           initialSlideId={currentSlide.id}
           onClose={() => setPreviewOpen(false)}
+        />
+      ) : null}
+      {pendingMediaTrim ? (
+        <PitchMediaTrimDialog
+          file={pendingMediaTrim.file}
+          sourceDurationMs={pendingMediaTrim.sourceDurationMs}
+          kind={pendingMediaTrim.kind}
+          onCancel={() => setPendingMediaTrim(undefined)}
+          onConfirm={(selection) => {
+            const file = pendingMediaTrim.file;
+            setPendingMediaTrim(undefined);
+            void attachMedia(file, selection);
+          }}
         />
       ) : null}
       {historyOpen ? (

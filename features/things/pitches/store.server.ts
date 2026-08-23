@@ -564,7 +564,7 @@ export async function syncPitchDeck(input: {
     const losesContent =
       pitchDocumentContentCount(parsed.document) < pitchDocumentContentCount(currentDocument);
     const destructive = input.operations.some((operation) =>
-      ["deck.replace", "slide.remove", "audio.remove"].includes(operation.kind),
+      ["deck.replace", "slide.remove", "media.remove"].includes(operation.kind),
     );
     await maybeBackup(
       client,
@@ -659,7 +659,7 @@ export async function publishPitchDeck(input: {
     const referencedAssets = new Set(
       document.slides.flatMap((slide) => [
         ...Object.values(slide.assetIds),
-        ...slide.audioCues.map((cue) => cue.assetId),
+        ...slide.mediaClips.map((clip) => clip.assetId),
       ]),
     );
     if (referencedAssets.size > 0) {
@@ -672,7 +672,7 @@ export async function publishPitchDeck(input: {
         return {
           ok: false,
           status: 409,
-          error: "Wait for every image and sound to finish uploading",
+          error: "Wait for every image, sound and video to finish uploading",
         };
       }
     }
@@ -771,6 +771,31 @@ export async function listStalePendingPitchAssets(limit = 100): Promise<PitchAss
     `select * from pitch_assets
       where state = 'pending' and created_at < now() - interval '1 hour'
       order by created_at, id
+      limit $1`,
+    [Math.min(500, Math.max(1, limit))],
+  );
+}
+
+export async function listUnreferencedPitchAssets(limit = 100): Promise<PitchAssetRow[]> {
+  return query<PitchAssetRow>(
+    `select a.* from pitch_assets a
+      join pitch_decks d on d.id = a.deck_id
+      where a.state = 'ready'
+        and a.created_at < now() - interval '24 hours'
+        and a.id is distinct from d.thumbnail_asset_id
+        and position(a.id in d.draft_document::text) = 0
+        and position(a.id in coalesce(d.published_document, '{}'::jsonb)::text) = 0
+        and not exists (
+          select 1 from pitch_editions e
+          where e.deck_id = a.deck_id
+            and (e.thumbnail_asset_id = a.id or position(a.id in e.document::text) > 0)
+        )
+        and not exists (
+          select 1 from pitch_deck_backups b
+          where b.deck_id = a.deck_id
+            and position(a.id in b.document::text) > 0
+        )
+      order by a.created_at, a.id
       limit $1`,
     [Math.min(500, Math.max(1, limit))],
   );

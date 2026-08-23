@@ -8,7 +8,8 @@ import { readPublishedPitchFn } from "../pitches.functions";
 import type { PublicPitchDeckDetail } from "../types";
 import { ExcalidrawSurface } from "./ExcalidrawSurface";
 import { loadPitchFiles } from "./files.client";
-import { usePitchAudioPlayback } from "./usePitchAudioPlayback";
+import { PitchVideoLayer, usePitchMediaPlayback } from "./PitchMediaPlayback";
+import { usePitchMediaClock } from "./usePitchMediaClock";
 import { usePresentationPoll } from "./usePresentationPoll";
 
 function hostToken(roomId: string): string {
@@ -49,10 +50,10 @@ export function PresentationHost({ roomId }: { roomId: string }) {
     setFiles({});
     void readPublishedPitchFn({ data: { deckId: snapshot.selectedDeckId } }).then(
       async (loaded) => {
-        if (!loaded || cancelled) return;
-        const loadedFiles = await loadPitchFiles(loaded.assets);
+        if (!loaded.pitch || cancelled) return;
+        const loadedFiles = await loadPitchFiles(loaded.pitch.assets);
         if (cancelled) return;
-        setPitch(loaded);
+        setPitch(loaded.pitch);
         setFiles(loadedFiles);
       },
     );
@@ -63,7 +64,18 @@ export function PresentationHost({ roomId }: { roomId: string }) {
 
   const slides = pitch?.document.slides.filter((slide) => !slide.deletedAt) ?? [];
   const slide = slides[snapshot?.slideIndex ?? 0];
-  usePitchAudioPlayback({ slide, assets: pitch?.assets ?? [], armed: audioArmed });
+  const clock = usePitchMediaClock({
+    slideId: slide?.id,
+    durationMs: slide?.durationMs ?? 1,
+    autoPlay: true,
+  });
+  usePitchMediaPlayback({
+    slide,
+    assets: pitch?.assets ?? [],
+    playheadMs: clock.playheadMs,
+    playing: clock.playing,
+    soundEnabled: audioArmed,
+  });
 
   function toggleAudio() {
     setAudioArmed((current) => !current);
@@ -109,13 +121,26 @@ export function PresentationHost({ roomId }: { roomId: string }) {
   return (
     <main id="main" className="relative h-screen overflow-hidden bg-background">
       {slide ? (
-        <ExcalidrawSurface
-          key={`${pitch?.id}:${slide.id}`}
-          slideId={slide.id}
-          elements={slide.elements}
-          files={files}
-          readOnly
-        />
+        <>
+          <div className="absolute inset-0 z-10">
+            <ExcalidrawSurface
+              key={`${pitch?.id}:${slide.id}`}
+              slideId={slide.id}
+              elements={slide.elements}
+              files={files}
+              readOnly
+              transparentBackground={slide.mediaClips.some((clip) => clip.kind === "video")}
+              stageUnderlay={
+                <PitchVideoLayer
+                  slide={slide}
+                  assets={pitch?.assets ?? []}
+                  playheadMs={clock.playheadMs}
+                  playing={clock.playing}
+                />
+              }
+            />
+          </div>
+        </>
       ) : (
         <div className="flex h-full items-center justify-center px-8 text-center">
           <div>

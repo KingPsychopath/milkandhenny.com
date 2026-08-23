@@ -29,10 +29,28 @@ export async function runPitchesResult<A, E>(
       error !== null &&
       "retryable" in error &&
       (error as { retryable: unknown }).retryable === true;
+    const status =
+      typeof error === "object" &&
+      error !== null &&
+      "status" in error &&
+      typeof (error as { status?: unknown }).status === "number"
+        ? (error as { status: number }).status
+        : retryable
+          ? 503
+          : 500;
+    const publicMessage =
+      typeof error === "object" &&
+      error !== null &&
+      "publicMessage" in error &&
+      typeof (error as { publicMessage?: unknown }).publicMessage === "string"
+        ? (error as { publicMessage: string }).publicMessage
+        : retryable
+          ? "That took too long. Try again."
+          : "The studio could not complete that action. Try again.";
     return {
       ok: false,
-      status: retryable ? 503 : 500,
-      error: retryable ? "That took too long. Try again." : "Something went wrong.",
+      status,
+      error: publicMessage,
       retryable,
     };
   }

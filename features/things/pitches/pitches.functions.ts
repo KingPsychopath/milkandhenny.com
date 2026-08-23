@@ -5,6 +5,7 @@ import { Effect } from "effect";
 import { authenticateRequest } from "@/features/auth/auth.server";
 import { getBaseUrlForRequest } from "@/lib/shared/config";
 import { pitchEditorConfig, type PitchAssetUploadInput } from "./pitches.server";
+import { getPitchOperationalStatus } from "./operational.server";
 import { runPitchesResult } from "./pitches-runtime.server";
 import { PitchesService } from "./pitches-service.server";
 import type { PitchCommandKind, PitchCommandOperation, PitchDocument } from "./types";
@@ -40,6 +41,10 @@ function validEmail(value: string): boolean {
 export const listPublishedPitchesFn = createServerFn({ method: "GET" })
   .validator((data?: { search?: string }) => data)
   .handler(async ({ data }) => {
+    const operationalStatus = await getPitchOperationalStatus();
+    if (!operationalStatus.canRead) {
+      return { pitches: [], operationalStatus, ...pitchEditorConfig() };
+    }
     const result = await runPitchesResult(
       Effect.gen(function* () {
         const pitches = yield* PitchesService;
@@ -48,26 +53,33 @@ export const listPublishedPitchesFn = createServerFn({ method: "GET" })
     );
     return {
       pitches: result.ok ? result.value : [],
+      operationalStatus,
       ...pitchEditorConfig(),
     };
   });
 
+export const readPitchOperationalStatusFn = createServerFn({ method: "GET" }).handler(() =>
+  getPitchOperationalStatus(),
+);
+
 export const readPublishedPitchFn = createServerFn({ method: "GET" })
   .validator((data: { deckId: string; editionNumber?: number }) => data)
   .handler(async ({ data }) => {
+    const operationalStatus = await getPitchOperationalStatus();
+    if (!operationalStatus.canRead) return { pitch: null, operationalStatus };
     if (
       !isPitchDeckId(data.deckId) ||
       (data.editionNumber !== undefined &&
         (!Number.isInteger(data.editionNumber) || data.editionNumber < 1))
     )
-      return null;
+      return { pitch: null, operationalStatus };
     const result = await runPitchesResult(
       Effect.gen(function* () {
         const pitches = yield* PitchesService;
         return yield* pitches.readPublished(data.deckId, data.editionNumber);
       }),
     );
-    return result.ok ? result.value : null;
+    return { pitch: result.ok ? result.value : null, operationalStatus };
   });
 
 type CreateInput = {
@@ -199,9 +211,9 @@ const PITCH_COMMAND_KINDS = new Set<PitchCommandKind>([
   "element.change",
   "image.add",
   "ink.add",
-  "audio.add",
-  "audio.change",
-  "audio.remove",
+  "media.add",
+  "media.change",
+  "media.remove",
   "history.restore",
   "history.undo",
 ]);

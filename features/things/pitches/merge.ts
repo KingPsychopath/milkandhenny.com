@@ -49,7 +49,7 @@ function mergeSlide(serverSlide: PitchSlide, incomingSlide: PitchSlide): PitchSl
     elements: mergeElements(serverSlide.elements, incomingSlide.elements),
     assetIds: { ...serverSlide.assetIds, ...incomingSlide.assetIds },
     durationMs: incomingWins ? incomingSlide.durationMs : serverSlide.durationMs,
-    audioCues: incomingWins ? incomingSlide.audioCues : serverSlide.audioCues,
+    mediaClips: incomingWins ? incomingSlide.mediaClips : serverSlide.mediaClips,
     inkLayers: incomingWins ? incomingSlide.inkLayers : serverSlide.inkLayers,
   };
 }
@@ -71,5 +71,5 @@ export function mergePitchDocuments(
   for (const serverOnly of serverDocument.slides) {
     if (serverById.has(serverOnly.id)) merged.push(serverOnly);
   }
-  return { schemaVersion: 1, slides: merged };
+  return { schemaVersion: 2, slides: merged };
 }

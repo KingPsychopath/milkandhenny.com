@@ -1,24 +1,48 @@
 import type { ExcalidrawElement } from "@excalidraw/excalidraw/element/types";
 
-export const PITCH_DOCUMENT_SCHEMA_VERSION = 1 as const;
+export const PITCH_DOCUMENT_SCHEMA_VERSION = 2 as const;
 export const PITCH_DEFAULT_MAX_SLIDES = 6;
 export const PITCH_SLIDE_LIMIT_RANGE = { min: 1, max: 12 } as const;
 export const PITCH_DOCUMENT_MAX_BYTES = 3 * 1024 * 1024;
 export const PITCH_MAX_ELEMENTS = 1_500;
 export const PITCH_IMAGE_MAX_BYTES = 10 * 1024 * 1024;
 export const PITCH_AUDIO_MAX_BYTES = 15 * 1024 * 1024;
+export const PITCH_VIDEO_MAX_BYTES = 60 * 1024 * 1024;
 export const PITCH_THUMBNAIL_MAX_BYTES = 2 * 1024 * 1024;
-export const PITCH_IMPORT_MAX_BYTES = 30 * 1024 * 1024;
-export const PITCH_DECK_ASSET_MAX_BYTES = 50 * 1024 * 1024;
-export const PITCH_AUDIO_MAX_SECONDS = 120;
-export const PITCH_AUDIO_CUE_LIMIT = 4;
+export const PITCH_PRESENTATION_IMPORT_MAX_BYTES = 30 * 1024 * 1024;
+export const PITCH_DECK_ASSET_MAX_BYTES = 300 * 1024 * 1024;
+export const PITCH_BACKUP_MAX_BYTES = 450 * 1024 * 1024;
+export const PITCH_MEDIA_INPUT_MAX_BYTES = 250 * 1024 * 1024;
+export const PITCH_MEDIA_MAX_SECONDS = 120;
+export const PITCH_MEDIA_CLIP_LIMIT = 12;
 export const PITCH_SLIDE_STAGE = { width: 960, height: 540 } as const;
 export const PITCH_SLIDE_DEFAULT_DURATION_MS = 15_000;
 export const PITCH_SLIDE_DURATION_RANGE_MS = { min: 5_000, max: 120_000 } as const;
 export const PITCH_SHOWCASE_MARKDOWN_HREF = "/things/pitches#showcase" as const;
 
+export const PITCH_OPERATIONAL_MODES = ["enabled", "read-only", "off"] as const;
+export type PitchOperationalMode = (typeof PITCH_OPERATIONAL_MODES)[number];
+
+export interface PitchOperationalStatus {
+  environmentMode: PitchOperationalMode;
+  adminMode: PitchOperationalMode;
+  effectiveMode: PitchOperationalMode;
+  canRead: boolean;
+  canWrite: boolean;
+  canPresent: boolean;
+  source: "configured" | "environment" | "storage-unavailable" | "invalid-environment";
+  message: string;
+  updatedAt?: string;
+}
+
+export function isPitchOperationalMode(value: unknown): value is PitchOperationalMode {
+  return (
+    typeof value === "string" && PITCH_OPERATIONAL_MODES.includes(value as PitchOperationalMode)
+  );
+}
+
 export type PitchDeckLifecycle = "active" | "archived" | "trashed" | "deleting";
-export type PitchAssetKind = "image" | "audio" | "thumbnail" | "import";
+export type PitchAssetKind = "image" | "audio" | "video" | "thumbnail";
 export type PitchAssetState = "pending" | "ready";
 
 /** Editor-neutral ink data. Drawesome is one adapter that reads/writes it. */
@@ -46,24 +70,26 @@ export interface PitchInkLayer {
   updatedAt: number;
 }
 
-export type PitchAudioCueTrigger = "enter" | "exit";
-export type PitchAudioCueEnd = "slide-exit" | "clip-end";
+export type PitchMediaKind = "audio" | "video";
+export type PitchVideoFit = "contain" | "cover";
 
-export interface PitchAudioCue {
+export interface PitchMediaClip {
   id: string;
   assetId: string;
-  trigger: PitchAudioCueTrigger;
-  /** Delay after the trigger. */
-  delayMs: number;
-  /** The source file duration captured by the browser before upload. */
+  kind: PitchMediaKind;
+  /** Position on the slide timeline. */
+  timelineStartMs: number;
+  /** Source file duration captured by MediaBunny before upload. */
   sourceDurationMs: number;
-  /** Trim from the beginning of the source file. */
-  startAtMs: number;
-  /** Maximum playback time after the trim point. */
-  playForMs: number;
+  /** Trim point inside the source file. */
+  sourceStartMs: number;
+  durationMs: number;
   volume: number;
-  /** Whether changing slides stops the cue or lets it finish naturally. */
-  end: PitchAudioCueEnd;
+  muted: boolean;
+  locked: boolean;
+  /** Linked clips move and trim together until the user unlinks them. */
+  linkedGroupId?: string;
+  fit?: PitchVideoFit;
 }
 
 export interface PitchSlide {
@@ -76,7 +102,7 @@ export interface PitchSlide {
   elements: readonly ExcalidrawElement[];
   /** Excalidraw file id -> durable pitch asset id. */
   assetIds: Record<string, string>;
-  audioCues: PitchAudioCue[];
+  mediaClips: PitchMediaClip[];
   inkLayers?: PitchInkLayer[];
 }
 
@@ -161,9 +187,9 @@ export type PitchCommandKind =
   | "element.change"
   | "image.add"
   | "ink.add"
-  | "audio.add"
-  | "audio.change"
-  | "audio.remove"
+  | "media.add"
+  | "media.change"
+  | "media.remove"
   | "history.restore"
   | "history.undo";
 
