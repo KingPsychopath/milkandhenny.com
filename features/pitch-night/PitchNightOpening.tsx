@@ -29,22 +29,23 @@ export function PitchNightHero() {
           <img src="/MAHtext.svg" alt="milk and henny" />
         </div>
         <p data-hero-name className="pitch-night-event-name">
-          after school club
+          after school club · take the mic
         </p>
         <h1 className="pitch-night-hero-title">
           <span className="pitch-night-hero-line">
-            <span data-hero-line>Bring the idea</span>
+            <span data-hero-line>Bad ideas.</span>
           </span>
           <span className="pitch-night-hero-line">
-            <span data-hero-line>you almost talked</span>
+            <span data-hero-line>Strong opinions.</span>
           </span>
           <span className="pitch-night-hero-line">
-            <span data-hero-line>yourself out of.</span>
+            <span data-hero-line>Wild theories.</span>
           </span>
         </h1>
         <p className="pitch-night-hero-copy">
-          We’ll give it a projector. Then we’ll spell something impossible, play too seriously, eat
-          well, and dance until the room forgets it had chairs.
+          Bring a pitch, an unpopular opinion, or a conspiracy theory. We’ll give it a mic, a
+          projector, and a room ready to be convinced. Then we’ll spell something impossible, play
+          too seriously, eat well, and dance until the room forgets it had chairs.
         </p>
         <div data-hero-actions className="pitch-night-hero-actions">
           <Link to="/things/pitches/new" className="pitch-night-button pitch-night-button-light">
@@ -77,8 +78,9 @@ export function PitchNightPrologue() {
           <RevealLine>be a brilliant story.</RevealLine>
         </h2>
         <p className="pitch-night-prologue-copy" data-soft-reveal>
-          Here’s the plan. You arrive. Somebody hands you food. Somebody else has a terrible idea.
-          By the end of the night, you’re defending it to a room full of people you met an hour ago.
+          Here’s the plan. You arrive. Somebody hands you food. Then you take the mic to pitch a
+          bad idea, defend an unpopular opinion, or explain the conspiracy you cannot let go of. By
+          the end of the night, you’re convincing a room full of people you met an hour ago.
         </p>
       </div>
       <div className="pitch-night-paper-note pitch-night-paper-note-a" aria-hidden="true">
@@ -115,9 +117,8 @@ export function PitchScene() {
               ))}
           </p>
           <p className="pitch-night-body-copy" data-soft-reveal>
-            A business. A conspiracy. A tiny revolution. The ranking system you’ve been carrying
-            around in your head for years. If you care enough to put it on a slide, we care enough
-            to listen.
+            Pitch a business. Defend an unpopular opinion. Make the case for a conspiracy. Six
+            slides are welcome, but conviction is the only requirement.
           </p>
           <Link to="/things/pitches/new" className="pitch-night-text-link" data-soft-reveal>
             open the slide studio
