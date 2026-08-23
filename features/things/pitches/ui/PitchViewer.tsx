@@ -61,13 +61,15 @@ export function PitchViewer({ pitch }: { pitch: PublicPitchDeckDetail }) {
         </Link>
       </header>
       <section className="relative min-h-[60vh] flex-1">
-        <ExcalidrawSurface
-          key={slide.id}
-          slideId={slide.id}
-          elements={slide.elements}
-          files={files}
-          readOnly
-        />
+        <div className="absolute inset-0">
+          <ExcalidrawSurface
+            key={slide.id}
+            slideId={slide.id}
+            elements={slide.elements}
+            files={files}
+            readOnly
+          />
+        </div>
       </section>
       <footer className="flex flex-wrap items-center justify-center gap-4 border-t theme-border px-4 py-3">
         <button
