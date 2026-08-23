@@ -10,6 +10,7 @@ export const PITCH_AUDIO_CUE_LIMIT = 4;
 export const PITCH_SLIDE_STAGE = { width: 960, height: 540 } as const;
 export const PITCH_SLIDE_DEFAULT_DURATION_MS = 15_000;
 export const PITCH_SLIDE_DURATION_RANGE_MS = { min: 5_000, max: 120_000 } as const;
+export const PITCH_SHOWCASE_MARKDOWN_HREF = "/things/pitches#showcase" as const;
 
 export type PitchDeckLifecycle = "active" | "archived" | "deleting";
 export type PitchAssetKind = "image" | "audio" | "thumbnail" | "import";

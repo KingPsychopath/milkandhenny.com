@@ -1036,6 +1036,16 @@
     margin-top: 0.75rem;
   }
 
+  .event-pitch-showcase {
+    margin: 0;
+  }
+
+  .event-pitch-showcase h3,
+  .event-pitch-showcase h4,
+  .event-pitch-showcase p {
+    margin: 0;
+  }
+
   .prose-blog h2 {
     font-family: var(--font-serif), Georgia, "Times New Roman", serif;
     font-size: 1.5rem;

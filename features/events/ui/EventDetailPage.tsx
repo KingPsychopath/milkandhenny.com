@@ -3,6 +3,7 @@ import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 
 import { SITE_BRAND } from "@/lib/shared/config";
+import type { PublicPitchDeck } from "@/features/things/pitches/types";
 import { eventIcsPath } from "../routes";
 import {
   formatEventDate,
@@ -17,6 +18,7 @@ import { AddressLink } from "./AddressLink";
 import { ThreeWordHint } from "./ThreeWordHint";
 import { ClaimTicketForm } from "./ClaimTicketForm";
 import { ResendTicketForm } from "./ResendTicketForm";
+import { EventDescription } from "./EventDescription";
 
 const POLICY_MARKDOWN_COMPONENTS: Components = {
   p: ({ children }) => <p>{children}</p>,
@@ -80,10 +82,12 @@ function PolicyMarkdown({ children }: { children: string }) {
 export function EventDetailPage({
   event,
   availability,
+  pitchShowcase,
   checkoutCancelled = false,
 }: {
   event: ViewableEvent;
   availability: TicketTypeAvailability[];
+  pitchShowcase?: PublicPitchDeck[];
   /** Set when Stripe sent them back without taking payment. */
   checkoutCancelled?: boolean;
 }) {
@@ -239,9 +243,7 @@ export function EventDetailPage({
         )}
 
         {event.description && (
-          <section className="event-description mt-12 prose-blog">
-            <ReactMarkdown remarkPlugins={[remarkGfm]}>{event.description}</ReactMarkdown>
-          </section>
+          <EventDescription content={event.description} pitchShowcase={pitchShowcase} />
         )}
 
         {(event.dressCode ||

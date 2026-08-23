@@ -1,5 +1,10 @@
 import { log } from "@/lib/platform/logger.server";
 import { getSoldCounts } from "@/features/tickets/store.server";
+import { listPublishedPitches } from "@/features/things/pitches/pitches.server";
+import {
+  PITCH_SHOWCASE_MARKDOWN_HREF,
+  type PublicPitchDeck,
+} from "@/features/things/pitches/types";
 import { deleteEvent, getEvent, listEvents, putEvent } from "./store.server";
 import {
   isEventHeroHeight,
@@ -387,7 +392,21 @@ export function buildAvailability(
 export type EventPageData = {
   event: ViewableEvent;
   availability: TicketTypeAvailability[];
+  pitchShowcase?: PublicPitchDeck[];
 };
+
+async function resolvePitchShowcase(description: string | undefined) {
+  if (!description?.includes(`](${PITCH_SHOWCASE_MARKDOWN_HREF})`)) return undefined;
+
+  try {
+    return await listPublishedPitches();
+  } catch (error) {
+    log.warn("events.pitch_showcase", "Could not load published pitches", {
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return [];
+  }
+}
 
 /**
  * The public event page payload.
@@ -403,10 +422,14 @@ export async function getEventPage(
   if (!event) return null;
   if (!options.includeHidden && !isPubliclyVisible(event)) return null;
 
-  const sold = await getSoldCounts(slug);
+  const [sold, pitchShowcase] = await Promise.all([
+    getSoldCounts(slug),
+    resolvePitchShowcase(event.description),
+  ]);
   return {
     event: options.revealLocation ? toTicketHolderEvent(event) : toPublicEvent(event),
     availability: buildAvailability(event, sold),
+    pitchShowcase,
   };
 }
 

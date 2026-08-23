@@ -66,6 +66,7 @@ function EventDetailRoute() {
       <EventDetailPage
         event={event}
         availability={availability}
+        pitchShowcase={data.pitchShowcase}
         checkoutCancelled={checkout === "cancelled"}
       />
     </>
