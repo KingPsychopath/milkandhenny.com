@@ -131,12 +131,7 @@ function entranceFromRow(row: EntranceRow): GamePoolEntrance {
   };
 }
 
-/**
- * Resolve the admin-selected public entrance only while its game night is
- * accepting players. The token is returned as a path because it is the
- * public capability; no preset or operator data crosses this boundary.
- */
-export async function getDefaultGamePoolPublicLink(
+async function readDefaultGamePoolPublicLink(
   game: GamePoolGame,
 ): Promise<GamePoolDefaultLaunch | null> {
   const row = await queryOne<{ label: string; game: GamePoolGame; token: string }>(
@@ -153,6 +148,77 @@ export async function getDefaultGamePoolPublicLink(
     [game],
   );
   return row ? { label: row.label, game: row.game, path: `/play/${row.token}` } : null;
+}
+
+async function bootstrapRecommendedGamePool(game: GamePoolGame) {
+  const defaults = GAME_POOL_DEFAULTS[game];
+  const entranceId = opaqueId("gpe");
+  const runId = opaqueId("gpr");
+  const actionId = `system-default:${game}:v1`;
+
+  await transaction(async (client) => {
+    await client.query("select pg_advisory_xact_lock(hashtext($1))", [
+      `game-pool-bootstrap:${game}`,
+    ]);
+    const configured = await client.query<{ id: string }>(
+      "select id from game_pool_entrances where game = $1 limit 1",
+      [game],
+    );
+    // Any existing entrance means an administrator has already made a choice.
+    // A closed, paused, or retired pool must stay off until they reopen it.
+    if (configured.rows[0]) return;
+
+    await client.query(
+      `insert into game_pool_entrances (
+        id, token, label, game, is_default, preset, target_size, auto_join,
+        allow_room_choice, allow_new_rooms, name_visibility, create_action_id
+      ) values ($1, $2, $3, $4, true, $5::jsonb, $6, $7, $8, $9, $10, $11)`,
+      [
+        entranceId,
+        publicToken(),
+        defaults.label,
+        game,
+        JSON.stringify(defaults.preset),
+        defaults.targetSize,
+        GAME_POOL_ADMISSION_DEFAULTS.autoJoin,
+        GAME_POOL_ADMISSION_DEFAULTS.allowRoomChoice,
+        GAME_POOL_ADMISSION_DEFAULTS.allowNewRooms,
+        GAME_POOL_ADMISSION_DEFAULTS.nameVisibility,
+        actionId,
+      ],
+    );
+    await client.query(
+      `insert into game_pool_runs (
+        id, entrance_id, preset, target_size, auto_join, allow_room_choice,
+        allow_new_rooms, name_visibility, opening_action_id
+      ) values ($1, $2, $3::jsonb, $4, $5, $6, $7, $8, $9)`,
+      [
+        runId,
+        entranceId,
+        JSON.stringify(defaults.preset),
+        defaults.targetSize,
+        GAME_POOL_ADMISSION_DEFAULTS.autoJoin,
+        GAME_POOL_ADMISSION_DEFAULTS.allowRoomChoice,
+        GAME_POOL_ADMISSION_DEFAULTS.allowNewRooms,
+        GAME_POOL_ADMISSION_DEFAULTS.nameVisibility,
+        actionId,
+      ],
+    );
+  });
+}
+
+/**
+ * Resolve the currently open default entrance. A game's first public visit
+ * creates its recommended permanent entrance and open run. After that first
+ * choice, closing, pausing, or retiring it remains an explicit admin control.
+ */
+export async function getDefaultGamePoolPublicLink(
+  game: GamePoolGame,
+): Promise<GamePoolDefaultLaunch | null> {
+  const current = await readDefaultGamePoolPublicLink(game);
+  if (current) return current;
+  await bootstrapRecommendedGamePool(game);
+  return readDefaultGamePoolPublicLink(game);
 }
 
 export async function listGamePoolEntrances() {
