@@ -21,13 +21,14 @@ export function PitchShowcase({
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <p className="font-mono text-micro uppercase tracking-[0.16em] theme-muted">
-            already made
+            from the pitch wall
           </p>
           <h3 id="pitch-showcase-title" className="mt-2 font-serif text-2xl text-foreground">
             {title}
           </h3>
           <p className="mt-2 max-w-lg font-serif text-base leading-relaxed theme-subtle">
-            A few six-slide cases from people who have already made the room believe them.
+            A few pitches from people who want to make the room believe them, and people who
+            already have.
           </p>
         </div>
         <Link
@@ -65,7 +66,7 @@ export function PitchShowcase({
               </div>
               <h4 className="mt-3 truncate font-serif text-lg text-foreground">{pitch.title}</h4>
               <p className="mt-1 font-mono text-micro theme-muted">
-                {pitch.ownerName} · {pitch.slideCount} slides
+                {pitch.ownerName}
               </p>
             </Link>
           ))}
@@ -82,7 +83,7 @@ export function PitchShowcase({
           to="/things/pitches/new"
           className="font-mono text-xs text-foreground underline underline-offset-4 hover:opacity-60"
         >
-          make your six slides →
+          make your own pitch →
         </Link>
       </div>
     </section>
