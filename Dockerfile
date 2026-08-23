@@ -43,7 +43,9 @@ ENV VITE_TRANSFER_MEDIA_BROWSER_PREP=$VITE_TRANSFER_MEDIA_BROWSER_PREP
 ENV VITE_MULTI_FILE_ZIP_URL=$VITE_MULTI_FILE_ZIP_URL
 ENV VITE_MULTI_FILE_ZIP_MODE=$VITE_MULTI_FILE_ZIP_MODE
 COPY . .
-RUN pnpm typecheck && pnpm lint && pnpm test && pnpm build
+# CI owns the full quality gate. The release image only compiles the verified source so
+# one Docker layer does not retain the test runner and production bundler heaps together.
+RUN pnpm build
 
 FROM system AS runtime
 ENV NODE_ENV=production
