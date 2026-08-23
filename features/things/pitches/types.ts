@@ -103,6 +103,8 @@ interface PitchMediaClipBase {
   durationMs: number;
   volume: number;
   muted: boolean;
+  /** Repeats the trimmed source only when the editor explicitly enables it. */
+  loop: boolean;
   locked: boolean;
   /** Linked clips move and trim together until the user unlinks them. */
   linkedGroupId?: string;

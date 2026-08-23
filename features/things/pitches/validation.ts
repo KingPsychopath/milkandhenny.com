@@ -258,6 +258,8 @@ function parseMediaClips(value: unknown, slideDurationMs: number): PitchMediaCli
     const durationMs = finiteInteger(clip?.durationMs, 1);
     const volume =
       typeof clip?.volume === "number" && Number.isFinite(clip.volume) ? clip.volume : null;
+    const loop =
+      clip?.loop === undefined ? false : typeof clip.loop === "boolean" ? clip.loop : null;
     const linkedGroupId =
       clip?.linkedGroupId === undefined
         ? undefined
@@ -288,12 +290,13 @@ function parseMediaClips(value: unknown, slideDurationMs: number): PitchMediaCli
       sourceStartMs === null ||
       sourceStartMs >= sourceDurationMs ||
       durationMs === null ||
-      durationMs > sourceDurationMs - sourceStartMs ||
+      (loop !== true && durationMs > sourceDurationMs - sourceStartMs) ||
       timelineStartMs + durationMs > slideDurationMs ||
       volume === null ||
       volume < 0 ||
       volume > 1 ||
       typeof clip?.muted !== "boolean" ||
+      loop === null ||
       typeof clip.locked !== "boolean" ||
       linkedGroupId === null ||
       fit === null ||
@@ -312,6 +315,7 @@ function parseMediaClips(value: unknown, slideDurationMs: number): PitchMediaCli
       durationMs,
       volume,
       muted: clip.muted,
+      loop,
       locked: clip.locked,
       linkedGroupId,
     };

@@ -134,12 +134,15 @@ describe("pitch documents", () => {
         durationMs: 4_000,
         volume: 0.8,
         muted: false,
+        loop: false,
         locked: false,
       },
     ];
     expect(parsePitchDocument(document, 6).ok).toBe(true);
     document.slides[0].mediaClips[0].durationMs = 7_500;
     expect(parsePitchDocument(document, 6).ok).toBe(false);
+    document.slides[0].mediaClips[0].loop = true;
+    expect(parsePitchDocument(document, 6).ok).toBe(true);
   });
 
   it("keeps video placement inside the fixed slide stage", () => {
@@ -155,6 +158,7 @@ describe("pitch documents", () => {
         durationMs: 8_000,
         volume: 0.8,
         muted: true,
+        loop: false,
         locked: false,
         fit: "cover",
         videoPlacement: { x: 80, y: 45, width: 800, height: 450, layer: 0 },

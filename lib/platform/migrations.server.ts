@@ -853,6 +853,52 @@ const MIGRATIONS: Migration[] = [
       drop function pitch_upgrade_document_media_frames(jsonb);
     `,
   },
+  {
+    id: "0024_pitch_media_looping",
+    sql: `
+      create function pitch_add_media_loop_setting(input_document jsonb)
+      returns jsonb
+      language plpgsql
+      immutable
+      as $migration$
+      declare
+        slide jsonb;
+        clip jsonb;
+        upgraded_slides jsonb := '[]'::jsonb;
+        upgraded_clips jsonb;
+      begin
+        if input_document is null then return null; end if;
+        for slide in select value from jsonb_array_elements(input_document->'slides') loop
+          upgraded_clips := '[]'::jsonb;
+          for clip in
+            select value from jsonb_array_elements(coalesce(slide->'mediaClips', '[]'::jsonb))
+          loop
+            if not clip ? 'loop' then clip := clip || jsonb_build_object('loop', false); end if;
+            upgraded_clips := upgraded_clips || jsonb_build_array(clip);
+          end loop;
+          slide := jsonb_set(slide, '{mediaClips}', upgraded_clips, true);
+          upgraded_slides := upgraded_slides || jsonb_build_array(slide);
+        end loop;
+        return jsonb_set(input_document, '{slides}', upgraded_slides, true);
+      end;
+      $migration$;
+
+      update pitch_decks
+        set draft_document = pitch_add_media_loop_setting(draft_document),
+            published_document = case
+              when published_document is null then null
+              else pitch_add_media_loop_setting(published_document)
+            end;
+      update pitch_deck_backups
+        set document = pitch_add_media_loop_setting(document);
+      update pitch_editions
+        set document = pitch_add_media_loop_setting(document);
+      update pitch_commands
+        set result_document = pitch_add_media_loop_setting(result_document);
+
+      drop function pitch_add_media_loop_setting(jsonb);
+    `,
+  },
 ];
 
 export type MigrationResult = { applied: string[]; alreadyApplied: number };

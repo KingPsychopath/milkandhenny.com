@@ -120,6 +120,10 @@ function ExcalidrawSurfaceCanvas({
   const onChangeRef = useRef(onChange);
   const elementsRef = useRef(elements);
   const filesRef = useRef(files);
+  const hasAnimatedGif = elements.some(
+    (element) =>
+      element.type === "image" && element.fileId && files[element.fileId]?.mimeType === "image/gif",
+  );
   const [initialStage] = useState(() => toPitchStageScene(slideId, elements));
   const initialDataRef = useRef({
     elements: initialStage.elements,
@@ -210,6 +214,13 @@ function ExcalidrawSurfaceCanvas({
       if (changedFiles.length > 0) api.addFiles(changedFiles);
     }
   }, [api, elements, files, slideId]);
+
+  useEffect(() => {
+    if (!api || !hasAnimatedGif) return;
+    // Excalidraw draws images onto a canvas, so it needs a redraw to show each GIF frame.
+    const timer = window.setInterval(() => api.refresh(), 50);
+    return () => window.clearInterval(timer);
+  }, [api, hasAnimatedGif]);
 
   if (!Canvas) {
     return (

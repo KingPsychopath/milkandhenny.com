@@ -14,6 +14,12 @@ function assetUrl(clip: PitchMediaClip, assets: PitchAsset[]): string | undefine
   return assets.find((asset) => asset.id === clip.assetId && asset.state === "ready")?.url;
 }
 
+function sourceTimeMs(clip: PitchMediaClip, playheadMs: number): number {
+  const elapsedMs = Math.max(0, playheadMs - clip.timelineStartMs);
+  const sourceRemainingMs = Math.max(1, clip.sourceDurationMs - clip.sourceStartMs);
+  return clip.sourceStartMs + (clip.loop ? elapsedMs % sourceRemainingMs : elapsedMs);
+}
+
 export function usePitchMediaPlayback({
   slide,
   assets,
@@ -60,7 +66,7 @@ export function usePitchMediaPlayback({
         audio.pause();
         continue;
       }
-      const wantedSeconds = (clip.sourceStartMs + playheadMs - start) / 1_000;
+      const wantedSeconds = sourceTimeMs(clip, playheadMs) / 1_000;
       if (Math.abs(audio.currentTime - wantedSeconds) > 0.2) {
         try {
           audio.currentTime = wantedSeconds;
@@ -157,7 +163,7 @@ function PitchVideoPlaybackClip({
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
-    const wantedSeconds = (clip.sourceStartMs + playheadMs - clip.timelineStartMs) / 1_000;
+    const wantedSeconds = sourceTimeMs(clip, playheadMs) / 1_000;
     if (Math.abs(video.currentTime - wantedSeconds) > 0.2) {
       try {
         video.currentTime = wantedSeconds;

@@ -73,7 +73,12 @@ function updateGestureClips(
 
   if (gesture.mode === "trim-start") {
     const maximumDelta = Math.min(
-      ...group.map((clip) => Math.min(clip.durationMs - MIN_CLIP_MS, clip.sourceDurationMs)),
+      ...group.map((clip) =>
+        Math.min(
+          clip.durationMs - MIN_CLIP_MS,
+          clip.sourceDurationMs - clip.sourceStartMs - MIN_CLIP_MS,
+        ),
+      ),
     );
     const minimumDelta = -Math.min(
       ...group.map((clip) => Math.min(clip.timelineStartMs, clip.sourceStartMs)),
@@ -93,10 +98,12 @@ function updateGestureClips(
 
   const maximumDelta = Math.min(
     ...group.map((clip) =>
-      Math.min(
-        clip.sourceDurationMs - clip.sourceStartMs - clip.durationMs,
-        slideDurationMs - clip.timelineStartMs - clip.durationMs,
-      ),
+      clip.loop
+        ? slideDurationMs - clip.timelineStartMs - clip.durationMs
+        : Math.min(
+            clip.sourceDurationMs - clip.sourceStartMs - clip.durationMs,
+            slideDurationMs - clip.timelineStartMs - clip.durationMs,
+          ),
     ),
   );
   const minimumDelta = -Math.min(...group.map((clip) => clip.durationMs - MIN_CLIP_MS));
@@ -146,6 +153,7 @@ export function PitchMediaTimeline({
   const timelineRef = useRef<HTMLDivElement>(null);
   const clips = draftClips ?? slide.mediaClips;
   const selected = clips.find((clip) => clip.id === selectedClipId);
+  const selectedGroup = selected ? timingGroup(slide.mediaClips, selected) : [];
   const tracks = useMemo(
     () => ({
       video: clips.filter((clip) => clip.kind === "video"),
@@ -190,7 +198,8 @@ export function PitchMediaTimeline({
         sourceStartMs: nextSource.sourceStartMs,
         durationMs: Math.min(
           nextSource.durationMs,
-          clip.sourceDurationMs - nextSource.sourceStartMs,
+          slide.durationMs - nextSource.timelineStartMs,
+          clip.loop ? Number.POSITIVE_INFINITY : clip.sourceDurationMs - nextSource.sourceStartMs,
         ),
       };
     });
@@ -257,10 +266,12 @@ export function PitchMediaTimeline({
     );
     if (!sibling || sibling.locked) return;
     const linkedGroupId = `link_${crypto.randomUUID().replaceAll("-", "")}`;
+    const nextLoop = clip.loop;
     const sharedDuration = Math.min(
       clip.durationMs,
-      sibling.sourceDurationMs - clip.sourceStartMs,
       slide.durationMs - clip.timelineStartMs,
+      nextLoop ? Number.POSITIVE_INFINITY : clip.sourceDurationMs - clip.sourceStartMs,
+      nextLoop ? Number.POSITIVE_INFINITY : sibling.sourceDurationMs - clip.sourceStartMs,
     );
     commit(
       slide.mediaClips.map((candidate) =>
@@ -271,8 +282,27 @@ export function PitchMediaTimeline({
               timelineStartMs: clip.timelineStartMs,
               sourceStartMs: clip.sourceStartMs,
               durationMs: sharedDuration,
+              loop: nextLoop,
             }
           : candidate,
+      ),
+    );
+  };
+
+  const toggleLoop = (clip: PitchMediaClip) => {
+    const group = timingGroup(slide.mediaClips, clip);
+    if (group.some((candidate) => candidate.locked)) return;
+    const groupIds = new Set(group.map((candidate) => candidate.id));
+    const loop = !clip.loop;
+    const sharedDuration = loop
+      ? clip.durationMs
+      : Math.min(
+          clip.durationMs,
+          ...group.map((candidate) => candidate.sourceDurationMs - candidate.sourceStartMs),
+        );
+    commit(
+      slide.mediaClips.map((candidate) =>
+        groupIds.has(candidate.id) ? { ...candidate, loop, durationMs: sharedDuration } : candidate,
       ),
     );
   };
@@ -282,7 +312,7 @@ export function PitchMediaTimeline({
     if (offset < MIN_CLIP_MS || clip.durationMs - offset < MIN_CLIP_MS) return;
     const group = timingGroup(slide.mediaClips, clip);
     if (slide.mediaClips.length + group.length > PITCH_MEDIA_CLIP_LIMIT) return;
-    if (group.some((candidate) => candidate.locked)) return;
+    if (group.some((candidate) => candidate.locked || candidate.loop)) return;
     const groupIds = new Set(group.map((candidate) => candidate.id));
     const secondLinkedGroupId = clip.linkedGroupId
       ? `link_${crypto.randomUUID().replaceAll("-", "")}`
@@ -329,7 +359,7 @@ export function PitchMediaTimeline({
             media timeline
           </h2>
           <p className="font-mono text-micro theme-muted">
-            {seconds(slide.durationMs)} · video and sound stop when you leave this slide
+            {seconds(slide.durationMs)} · the clock stops here · next slide is manual
           </p>
         </div>
         <button
@@ -521,14 +551,30 @@ export function PitchMediaTimeline({
             ) : null}
             <button
               type="button"
+              aria-pressed={selected.loop}
+              aria-label={`${selected.loop ? "Stop" : "Start"} repeating this clip`}
+              disabled={selectedGroup.some((clip) => clip.locked)}
+              onClick={() => toggleLoop(selected)}
+              className="min-h-11 border-b theme-border px-2 font-mono text-xs hover:opacity-60 disabled:opacity-35"
+            >
+              {selected.loop ? "repeat on" : "repeat off"}
+            </button>
+            <button
+              type="button"
               disabled={
                 selected.locked ||
+                selectedGroup.some((clip) => clip.loop) ||
                 slide.mediaClips.length + timingGroup(slide.mediaClips, selected).length >
                   PITCH_MEDIA_CLIP_LIMIT ||
                 playheadMs - selected.timelineStartMs < MIN_CLIP_MS ||
                 selected.timelineStartMs + selected.durationMs - playheadMs < MIN_CLIP_MS
               }
               onClick={() => splitAtPlayhead(selected)}
+              title={
+                selectedGroup.some((clip) => clip.loop)
+                  ? "Turn repeat off before splitting"
+                  : undefined
+              }
               className="min-h-11 border-b theme-border px-2 font-mono text-xs hover:opacity-60 disabled:opacity-35"
             >
               split at playhead
@@ -575,7 +621,12 @@ export function PitchMediaTimeline({
               <input
                 type="range"
                 min={0}
-                max={Math.max(0, selected.sourceDurationMs - selected.durationMs)}
+                max={Math.max(
+                  0,
+                  selected.loop
+                    ? selected.sourceDurationMs - MIN_CLIP_MS
+                    : selected.sourceDurationMs - selected.durationMs,
+                )}
                 step={SNAP_MS}
                 value={selected.sourceStartMs}
                 disabled={selected.locked}
@@ -595,11 +646,15 @@ export function PitchMediaTimeline({
                 type="range"
                 min={Math.min(
                   MIN_CLIP_MS,
-                  selected.sourceDurationMs - selected.sourceStartMs,
+                  selected.loop
+                    ? Number.POSITIVE_INFINITY
+                    : selected.sourceDurationMs - selected.sourceStartMs,
                   slide.durationMs - selected.timelineStartMs,
                 )}
                 max={Math.min(
-                  selected.sourceDurationMs - selected.sourceStartMs,
+                  selected.loop
+                    ? Number.POSITIVE_INFINITY
+                    : selected.sourceDurationMs - selected.sourceStartMs,
                   slide.durationMs - selected.timelineStartMs,
                 )}
                 step={SNAP_MS}
@@ -638,10 +693,14 @@ export function PitchMediaTimeline({
             ) : null}
             <p className="self-end pb-2 font-mono text-micro theme-muted">
               {selected.kind === "video"
-                ? "Position and resize this video on the slide above."
-                : selected.linkedGroupId
-                  ? "video + sound synced"
-                  : `${selected.kind} independent`}
+                ? selected.loop
+                  ? "Loop on. Position and resize this video on the slide above."
+                  : "Position and resize this video on the slide above."
+                : selected.loop
+                  ? "Loop on. Extend the clip to repeat it."
+                  : selected.linkedGroupId
+                    ? "video + sound synced"
+                    : `${selected.kind} independent`}
             </p>
           </div>
         </div>

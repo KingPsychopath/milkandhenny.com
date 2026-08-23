@@ -1232,6 +1232,7 @@ export function PitchEditor({
         sourceStartMs: 0,
         durationMs,
         volume: 0.85,
+        loop: false,
         locked: false,
         linkedGroupId,
       };
@@ -1649,6 +1650,7 @@ export function PitchEditor({
               durationMs: clipDurationMs,
               volume: 0.85,
               muted: false,
+              loop: false,
               locked: false,
               linkedGroupId,
             };
