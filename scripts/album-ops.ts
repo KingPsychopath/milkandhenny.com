@@ -7,10 +7,22 @@
 
 import fs from "fs";
 import path from "path";
-import { uploadBuffer, downloadBuffer, deleteObjects, listObjects, headObject } from "./r2-client";
+import {
+  uploadBuffer,
+  downloadBuffer,
+  deleteObjects,
+  listObjects,
+  headObject,
+  setObjectHttpMetadata,
+} from "./r2-client";
+import {
+  MUTABLE_PUBLIC_MEDIA_CACHE_CONTROL,
+  VERSIONED_PUBLIC_MEDIA_CACHE_CONTROL,
+} from "../lib/shared/media-cache";
 import {
   PROCESSABLE_EXTENSIONS,
   processImageVariants,
+  processResponsiveImage,
   processToOg,
   mapConcurrent,
   type OgOverlay,
@@ -21,6 +33,7 @@ import {
   isValidFocalPreset,
   focalPresetToPercent,
 } from "../features/media/focal";
+import type { ResponsiveImageMetadata } from "../features/media/image";
 import { detectFocal, type DetectionStrategy } from "./face-detect";
 
 /* ─── Constants ─── */
@@ -32,13 +45,9 @@ const ALBUM_UPLOAD_CHECKPOINT_SUFFIX = ".checkpoint.json";
 
 /* ─── Types ─── */
 
-type PhotoMeta = {
+type PhotoMeta = ResponsiveImageMetadata & {
   id: string;
-  width: number;
-  height: number;
   size?: number;
-  /** Tiny base64 data URI for blur-up placeholder */
-  blur?: string;
   takenAt?: string; // ISO date from EXIF DateTimeOriginal
   /** Manual crop focal point override (preset name). Takes priority over autoFocal. */
   focalPoint?: FocalPreset;
@@ -82,8 +91,7 @@ type UpdateAlbumOpts = {
 
 type ProcessResult = {
   photo: PhotoMeta;
-  thumbSize: number;
-  fullSize: number;
+  responsiveSize: number;
   originalSize: number;
   ogSize: number;
 };
@@ -284,13 +292,10 @@ async function processAndUploadPhoto(
   // Auto-detect focal point (face or saliency)
   const autoFocal = await detectFocal(raw).catch(() => null);
 
-  const processed = await processImageVariants(
-    raw,
-    ext,
-    autoFocal ?? undefined,
-    ogOverlay,
-    rotationOverride,
-  );
+  const [processed, responsive] = await Promise.all([
+    processImageVariants(raw, ext, autoFocal ?? undefined, ogOverlay, rotationOverride),
+    processResponsiveImage(raw, ext, rotationOverride),
+  ]);
 
   const faceTag = autoFocal ? ` 🎯 face(${autoFocal.x}%,${autoFocal.y}%)` : "";
   onProgress?.(
@@ -299,17 +304,29 @@ async function processAndUploadPhoto(
     }${faceTag}...`,
   );
 
-  /* Upload all 4 versions */
+  /* Upload responsive display formats, the download original, and the social crop. */
   const prefix = `albums/${albumSlug}`;
+  const responsiveUploads = responsive.variants.flatMap((variant) =>
+    Object.values(variant.formats).map((format) =>
+      uploadBuffer(
+        `${prefix}/images/${id}/${variant.width}${format.ext}`,
+        format.buffer,
+        format.contentType,
+        { cacheControl: VERSIONED_PUBLIC_MEDIA_CACHE_CONTROL },
+      ),
+    ),
+  );
   await Promise.all([
-    uploadBuffer(`${prefix}/thumb/${id}.webp`, processed.thumb.buffer, processed.thumb.contentType),
-    uploadBuffer(`${prefix}/full/${id}.webp`, processed.full.buffer, processed.full.contentType),
+    ...responsiveUploads,
     uploadBuffer(
       `${prefix}/original/${id}.jpg`,
       processed.original.buffer,
       processed.original.contentType,
+      { cacheControl: VERSIONED_PUBLIC_MEDIA_CACHE_CONTROL },
     ),
-    uploadBuffer(`${prefix}/og/${id}.jpg`, processed.og.buffer, processed.og.contentType),
+    uploadBuffer(`${prefix}/og/${id}.jpg`, processed.og.buffer, processed.og.contentType, {
+      cacheControl: MUTABLE_PUBLIC_MEDIA_CACHE_CONTROL,
+    }),
   ]);
 
   onProgress?.(`Uploaded ${id}`);
@@ -317,15 +334,20 @@ async function processAndUploadPhoto(
   return {
     photo: {
       id,
-      width: processed.width,
-      height: processed.height,
+      width: responsive.width,
+      height: responsive.height,
+      version: responsive.version,
+      widths: responsive.variants.map((variant) => variant.width),
+      placeholder: responsive.placeholder,
       size: processed.original.buffer.byteLength,
-      blur: processed.blur,
       ...(processed.takenAt ? { takenAt: processed.takenAt } : {}),
       ...(autoFocal ? { autoFocal } : {}),
     },
-    thumbSize: processed.thumb.buffer.byteLength,
-    fullSize: processed.full.buffer.byteLength,
+    responsiveSize: responsive.variants.reduce(
+      (total, variant) =>
+        total + variant.formats.avif.buffer.byteLength + variant.formats.webp.buffer.byteLength,
+      0,
+    ),
     originalSize: processed.original.buffer.byteLength,
     ogSize: processed.og.buffer.byteLength,
   };
@@ -596,11 +618,13 @@ async function deletePhoto(
 
   /* Delete from R2 */
   const prefix = `albums/${slug}`;
+  const responsiveObjects = await listObjects(`${prefix}/images/${photoId}/`);
   const keys = [
     `${prefix}/thumb/${photoId}.webp`,
     `${prefix}/full/${photoId}.webp`,
     `${prefix}/original/${photoId}.jpg`,
     `${prefix}/og/${photoId}.jpg`,
+    ...responsiveObjects.map((object) => object.key),
   ];
 
   onProgress?.(`Deleting ${photoId} from R2...`);
@@ -633,14 +657,106 @@ function setCover(slug: string, photoId: string): AlbumData {
 }
 
 /** Get the R2 keys for a photo (for display/debugging) */
-function getPhotoKeys(albumSlug: string, photoId: string): string[] {
+function getPhotoKeys(albumSlug: string, photo: PhotoMeta): string[] {
   const prefix = `albums/${albumSlug}`;
   return [
-    `${prefix}/thumb/${photoId}.webp`,
-    `${prefix}/full/${photoId}.webp`,
-    `${prefix}/original/${photoId}.jpg`,
-    `${prefix}/og/${photoId}.jpg`,
+    ...photo.widths.flatMap((width) =>
+      (["avif", "webp"] as const).map(
+        (format) => `${prefix}/images/${photo.id}/${width}.${format}`,
+      ),
+    ),
+    `${prefix}/original/${photo.id}.jpg`,
+    `${prefix}/og/${photo.id}.jpg`,
   ];
+}
+
+/** Generate responsive display variants and metadata for every existing album photo. */
+async function backfillResponsiveVariants(
+  onProgress?: (msg: string) => void,
+  options?: { force?: boolean },
+): Promise<{ processed: number; skipped: number; failed: number; removedLegacy: number }> {
+  let processed = 0;
+  let skipped = 0;
+  let failed = 0;
+  let removedLegacy = 0;
+
+  for (const album of listAlbums()) {
+    const data = readAlbum(album.slug);
+    if (!data) continue;
+    const migratedPhotoIds: string[] = [];
+    onProgress?.(`Album: ${data.title} (${data.photos.length} photos)`);
+
+    for (const photo of data.photos) {
+      const completeMetadata =
+        typeof photo.version === "string" &&
+        Array.isArray(photo.widths) &&
+        photo.widths.length > 0 &&
+        typeof photo.placeholder?.color === "string";
+      if (completeMetadata && !options?.force) {
+        await Promise.all([
+          setObjectHttpMetadata(`albums/${album.slug}/original/${photo.id}.jpg`, {
+            cacheControl: VERSIONED_PUBLIC_MEDIA_CACHE_CONTROL,
+          }),
+          setObjectHttpMetadata(`albums/${album.slug}/og/${photo.id}.jpg`, {
+            cacheControl: MUTABLE_PUBLIC_MEDIA_CACHE_CONTROL,
+          }),
+        ]);
+        skipped++;
+        continue;
+      }
+
+      try {
+        const originalKey = `albums/${album.slug}/original/${photo.id}.jpg`;
+        const raw = await downloadBuffer(originalKey);
+        const image = await processResponsiveImage(raw, ".jpg");
+        await Promise.all(
+          image.variants.flatMap((variant) =>
+            (["avif", "webp"] as const).map((format) => {
+              const output = variant.formats[format];
+              return uploadBuffer(
+                `albums/${album.slug}/images/${photo.id}/${variant.width}.${format}`,
+                output.buffer,
+                output.contentType,
+                { cacheControl: VERSIONED_PUBLIC_MEDIA_CACHE_CONTROL },
+              );
+            }),
+          ),
+        );
+        await Promise.all([
+          setObjectHttpMetadata(originalKey, {
+            cacheControl: VERSIONED_PUBLIC_MEDIA_CACHE_CONTROL,
+          }),
+          setObjectHttpMetadata(`albums/${album.slug}/og/${photo.id}.jpg`, {
+            cacheControl: MUTABLE_PUBLIC_MEDIA_CACHE_CONTROL,
+          }),
+        ]);
+
+        photo.width = image.width;
+        photo.height = image.height;
+        photo.version = image.version;
+        photo.widths = image.variants.map((variant) => variant.width);
+        photo.placeholder = image.placeholder;
+        delete (photo as PhotoMeta & { blur?: string }).blur;
+        migratedPhotoIds.push(photo.id);
+        processed++;
+        onProgress?.(`  ✓ ${photo.id} (${photo.widths.join(", ")}px)`);
+      } catch (error) {
+        failed++;
+        onProgress?.(`  ✗ ${photo.id}: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    }
+
+    if (migratedPhotoIds.length > 0) {
+      writeAlbum(album.slug, data);
+      const legacyKeys = migratedPhotoIds.flatMap((photoId) => [
+        `albums/${album.slug}/thumb/${photoId}.webp`,
+        `albums/${album.slug}/full/${photoId}.webp`,
+      ]);
+      removedLegacy += await deleteObjects(legacyKeys);
+    }
+  }
+
+  return { processed, skipped, failed, removedLegacy };
 }
 
 /** Backfill OG variants for existing albums. Downloads original from R2, processes to og, uploads. */
@@ -688,7 +804,9 @@ async function backfillOgVariants(
         const focal = resolveEffectiveFocal(photo);
         const overlay: OgOverlay = { title: data.title, photoId: photo.id };
         const og = await processToOg(raw, focal, overlay);
-        await uploadBuffer(ogKey, og.buffer, og.contentType);
+        await uploadBuffer(ogKey, og.buffer, og.contentType, {
+          cacheControl: MUTABLE_PUBLIC_MEDIA_CACHE_CONTROL,
+        });
         processed++;
         onProgress?.(`  ✓ ${photo.id} (${(og.buffer.byteLength / 1024).toFixed(1)} KB)`);
       } catch (err) {
@@ -736,7 +854,9 @@ async function setPhotoFocal(
   const focal = resolveEffectiveFocal(photo);
   const overlay: OgOverlay = { title: data.title, photoId };
   const og = await processToOg(raw, focal, overlay);
-  await uploadBuffer(ogKey, og.buffer, og.contentType);
+  await uploadBuffer(ogKey, og.buffer, og.contentType, {
+    cacheControl: MUTABLE_PUBLIC_MEDIA_CACHE_CONTROL,
+  });
   onProgress?.(`✓ OG updated (${(og.buffer.byteLength / 1024).toFixed(1)} KB)`);
 
   return data;
@@ -785,7 +905,9 @@ async function resetPhotoFocal(
     const focal = resolveEffectiveFocal(photo);
     const overlay: OgOverlay = { title: data.title, photoId: photo.id };
     const og = await processToOg(raw, focal, overlay);
-    await uploadBuffer(ogKey, og.buffer, og.contentType);
+    await uploadBuffer(ogKey, og.buffer, og.contentType, {
+      cacheControl: MUTABLE_PUBLIC_MEDIA_CACHE_CONTROL,
+    });
     onProgress?.(`  ✓ ${photo.id} OG updated (${(og.buffer.byteLength / 1024).toFixed(1)} KB)`);
   }
 
@@ -807,6 +929,7 @@ export {
   resetPhotoFocal,
   getPhotoKeys,
   backfillOgVariants,
+  backfillResponsiveVariants,
 };
 
 export type { PhotoMeta, AlbumData, AlbumSummary, CreateAlbumOpts, UpdateAlbumOpts, ProcessResult };

@@ -16,6 +16,7 @@ import {
   ListObjectsV2Command,
   DeleteObjectCommand,
   DeleteObjectsCommand,
+  CopyObjectCommand,
   PutObjectCommand,
   HeadObjectCommand,
   HeadBucketCommand,
@@ -67,6 +68,11 @@ type StorageScope = "public" | "private";
 
 type R2OperationOptions = {
   scope?: StorageScope;
+};
+
+type R2UploadOptions = R2OperationOptions & {
+  cacheControl?: string;
+  contentDisposition?: string;
 };
 
 /* ─── Client singleton ─── */
@@ -347,7 +353,7 @@ async function listPrefixes(prefix: string, options?: R2OperationOptions): Promi
 async function headObject(
   key: string,
   options?: R2OperationOptions,
-): Promise<{ exists: boolean; size?: number; contentType?: string }> {
+): Promise<{ exists: boolean; size?: number; contentType?: string; cacheControl?: string }> {
   const { client } = getClient();
   const bucket = getBucketForKey(key, options);
 
@@ -359,6 +365,7 @@ async function headObject(
       exists: true,
       size: res.ContentLength,
       contentType: res.ContentType,
+      cacheControl: res.CacheControl,
     };
   } catch (error) {
     if (!isNotFoundR2Error(error)) throw error;
@@ -424,7 +431,7 @@ async function uploadBuffer(
   key: string,
   buffer: Buffer,
   contentType: string,
-  options?: R2OperationOptions,
+  options?: R2UploadOptions,
 ): Promise<void> {
   const { client } = getClient();
   const bucket = getBucketForKey(key, options);
@@ -436,6 +443,39 @@ async function uploadBuffer(
         Key: key,
         Body: buffer,
         ContentType: contentType,
+        CacheControl: options?.cacheControl,
+        ContentDisposition: options?.contentDisposition,
+      }),
+    ),
+  );
+}
+
+/** Replace an object's HTTP metadata without downloading and re-uploading its body. */
+async function setObjectHttpMetadata(
+  key: string,
+  metadata: { cacheControl: string },
+  options?: R2OperationOptions,
+): Promise<void> {
+  const { client } = getClient();
+  const bucket = getBucketForKey(key, options);
+  const current = await sendWithRetry("headObjectForMetadata", () =>
+    client.send(new HeadObjectCommand({ Bucket: bucket, Key: key })),
+  );
+
+  await sendWithRetry("setObjectHttpMetadata", () =>
+    client.send(
+      new CopyObjectCommand({
+        Bucket: bucket,
+        Key: key,
+        CopySource: `${bucket}/${key}`,
+        MetadataDirective: "REPLACE",
+        CacheControl: metadata.cacheControl,
+        ContentType: current.ContentType,
+        ContentDisposition: current.ContentDisposition,
+        ContentEncoding: current.ContentEncoding,
+        ContentLanguage: current.ContentLanguage,
+        Expires: current.Expires,
+        Metadata: current.Metadata,
       }),
     ),
   );
@@ -521,7 +561,7 @@ async function presignPutUrl(
   key: string,
   contentType: string,
   expiresIn = 900,
-  options?: R2OperationOptions,
+  options?: R2UploadOptions,
 ): Promise<string> {
   const { client } = getClient();
   const bucket = getBucketForKey(key, options);
@@ -530,6 +570,8 @@ async function presignPutUrl(
     Bucket: bucket,
     Key: key,
     ContentType: contentType,
+    CacheControl: options?.cacheControl,
+    ContentDisposition: options?.contentDisposition,
   });
 
   return getSignedUrl(client, command, { expiresIn });
@@ -567,6 +609,7 @@ export {
   downloadBuffer,
   downloadToFile,
   uploadBuffer,
+  setObjectHttpMetadata,
   deleteObject,
   deleteObjects,
   getBucketInfo,
@@ -574,4 +617,4 @@ export {
   presignPutUrl,
 };
 
-export type { R2Object, BucketInfo, R2OperationOptions, StorageScope };
+export type { R2Object, BucketInfo, R2OperationOptions, R2UploadOptions, StorageScope };

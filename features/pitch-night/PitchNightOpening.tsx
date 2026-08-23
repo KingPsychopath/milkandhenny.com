@@ -1,5 +1,6 @@
 import { Link } from "@tanstack/react-router";
 
+import { AppImage } from "@/components/AppImage";
 import { RevealLine, SceneNumber } from "./PitchNightTypography";
 
 const FIREFLIES = Array.from({ length: 18 }, (_, index) => index);
@@ -26,7 +27,7 @@ export function PitchNightHero() {
 
       <div className="pitch-night-hero-inner">
         <div data-pitch-logo className="pitch-night-wordmark">
-          <img src="/MAHtext.svg" alt="milk and henny" />
+          <AppImage src="/MAHtext.svg" alt="milk and henny" width={1693} height={1100} priority />
         </div>
         <p data-hero-name className="pitch-night-event-name">
           after school club · take the mic
@@ -78,9 +79,9 @@ export function PitchNightPrologue() {
           <RevealLine>be a brilliant story.</RevealLine>
         </h2>
         <p className="pitch-night-prologue-copy" data-soft-reveal>
-          Here’s the plan. You arrive. Somebody hands you food. Then you take the mic to pitch a
-          bad idea, defend an unpopular opinion, or explain the conspiracy you cannot let go of. By
-          the end of the night, you’re convincing a room full of people you met an hour ago.
+          Here’s the plan. You arrive. Somebody hands you food. Then you take the mic to pitch a bad
+          idea, defend an unpopular opinion, or explain the conspiracy you cannot let go of. By the
+          end of the night, you’re convincing a room full of people you met an hour ago.
         </p>
       </div>
       <div className="pitch-night-paper-note pitch-night-paper-note-a" aria-hidden="true">

@@ -1,12 +1,18 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { requireAuthWithPayload } from "@/features/auth/auth.server";
 import { apiErrorFromRequest } from "@/lib/platform/api-error";
-import { deleteObject, downloadBuffer, isConfigured, uploadBuffer } from "@/lib/platform/r2.server";
+import {
+  deleteObject,
+  downloadBuffer,
+  isConfigured,
+  setObjectHttpMetadata,
+  uploadBuffer,
+} from "@/lib/platform/r2.server";
 import {
   RawPreviewUnavailableError,
   getMimeType,
   isProcessableImage,
-  processToWebP,
+  processResponsiveImage,
 } from "@/features/media/processing.server";
 import {
   isRawWordUpload,
@@ -20,6 +26,14 @@ import { getFileKind } from "@/features/media/processing.server";
 import type { FileKind } from "@/features/media/file-kinds";
 import { mapWithConcurrency } from "@/lib/shared/map-with-concurrency";
 import { getWordMediaStorageScope } from "@/features/words/media-storage.server";
+import { wordImageVariantKey } from "@/features/words/image";
+import { mergeWordImageMetadata, pruneWordImageVariants } from "@/features/words/image.server";
+import type { ResponsiveImageMetadata } from "@/features/media/image";
+import {
+  MUTABLE_PUBLIC_MEDIA_CACHE_CONTROL,
+  PRIVATE_MEDIA_CACHE_CONTROL,
+  VERSIONED_PUBLIC_MEDIA_CACHE_CONTROL,
+} from "@/lib/shared/media-cache";
 export const maxDuration = 15;
 const FINALIZE_CONCURRENCY = 2;
 
@@ -137,7 +151,7 @@ async function handlePOST(request: Request) {
   }
 
   try {
-    const uploaded = await mapWithConcurrency(files, FINALIZE_CONCURRENCY, async (file) => {
+    const processed = await mapWithConcurrency(files, FINALIZE_CONCURRENCY, async (file) => {
       const original = file.original.trim();
 
       if (isProcessableImage(original)) {
@@ -147,8 +161,41 @@ async function handlePOST(request: Request) {
         const webpKey = mediaPathForTarget(target, webpFilename);
 
         try {
-          const { buffer: webpBuffer, width, height } = await processToWebP(raw, original);
-          await uploadBuffer(webpKey, webpBuffer, "image/webp", { scope: storageScope });
+          const image = await processResponsiveImage(raw, original);
+          const largest = image.variants.at(-1);
+          if (!largest) throw new Error(`No responsive variants generated for ${original}`);
+          await Promise.all([
+            uploadBuffer(webpKey, largest.formats.webp.buffer, "image/webp", {
+              scope: storageScope,
+              cacheControl:
+                storageScope === "public"
+                  ? MUTABLE_PUBLIC_MEDIA_CACHE_CONTROL
+                  : PRIVATE_MEDIA_CACHE_CONTROL,
+            }),
+            ...image.variants.flatMap((variant) =>
+              (["avif", "webp"] as const).map((format) => {
+                const output = variant.formats[format];
+                return uploadBuffer(
+                  wordImageVariantKey(target, webpFilename, variant.width, format),
+                  output.buffer,
+                  output.contentType,
+                  {
+                    scope: storageScope,
+                    cacheControl:
+                      storageScope === "public"
+                        ? VERSIONED_PUBLIC_MEDIA_CACHE_CONTROL
+                        : PRIVATE_MEDIA_CACHE_CONTROL,
+                  },
+                );
+              }),
+            ),
+          ]);
+          await pruneWordImageVariants(
+            target,
+            webpFilename,
+            image.variants.map((variant) => variant.width),
+            storageScope,
+          );
 
           try {
             await deleteObject(file.uploadKey, { scope: storageScope });
@@ -160,11 +207,18 @@ async function handlePOST(request: Request) {
             original,
             filename: webpFilename,
             kind: "image" as const,
-            width,
-            height,
-            size: webpBuffer.byteLength,
+            width: image.width,
+            height: image.height,
+            size: largest.formats.webp.buffer.byteLength,
             markdown: toMarkdownSnippetForTarget(target, webpFilename, "image"),
             overwrote: !!file.overwrote,
+            image: {
+              width: image.width,
+              height: image.height,
+              version: image.version,
+              widths: image.variants.map((variant) => variant.width),
+              placeholder: image.placeholder,
+            } satisfies ResponsiveImageMetadata,
           };
         } catch (error) {
           if (!(error instanceof RawPreviewUnavailableError) || !isRawWordUpload(original)) {
@@ -174,7 +228,13 @@ async function handlePOST(request: Request) {
           const fallbackFilename = toR2Filename(original, { preserveRawExtension: true });
           const fallbackKey = mediaPathForTarget(target, fallbackFilename);
           const fallbackKind: FileKind = "file";
-          await uploadBuffer(fallbackKey, raw, getMimeType(original), { scope: storageScope });
+          await uploadBuffer(fallbackKey, raw, getMimeType(original), {
+            scope: storageScope,
+            cacheControl:
+              storageScope === "public"
+                ? MUTABLE_PUBLIC_MEDIA_CACHE_CONTROL
+                : PRIVATE_MEDIA_CACHE_CONTROL,
+          });
 
           try {
             await deleteObject(file.uploadKey, { scope: storageScope });
@@ -195,6 +255,16 @@ async function handlePOST(request: Request) {
 
       // Already uploaded directly to finalKey.
       const kind = file.kind ?? getFileKind(original);
+      await setObjectHttpMetadata(
+        file.uploadKey,
+        {
+          cacheControl:
+            storageScope === "public"
+              ? MUTABLE_PUBLIC_MEDIA_CACHE_CONTROL
+              : PRIVATE_MEDIA_CACHE_CONTROL,
+        },
+        { scope: storageScope },
+      );
       return {
         original,
         filename: file.filename,
@@ -203,6 +273,20 @@ async function handlePOST(request: Request) {
         markdown: toMarkdownSnippetForTarget(target, file.filename, kind),
         overwrote: !!file.overwrote,
       };
+    });
+
+    const imageEntries = Object.fromEntries(
+      processed.flatMap((file) =>
+        "image" in file && file.image ? [[file.filename, file.image]] : [],
+      ),
+    );
+    if (Object.keys(imageEntries).length > 0) {
+      await mergeWordImageMetadata(target, imageEntries, storageScope);
+    }
+    const uploaded = processed.map((file) => {
+      if (!("image" in file)) return file;
+      const { image: _image, ...result } = file;
+      return result;
     });
 
     const payload: FinalizeSuccess = { uploaded, skipped, queuedCount: 0 };

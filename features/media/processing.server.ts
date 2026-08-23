@@ -13,13 +13,19 @@
  */
 
 import { execFile } from "child_process";
-import { randomUUID } from "crypto";
+import { createHash, randomUUID } from "crypto";
 import { promises as fs } from "fs";
 import os from "os";
 import path from "path";
 import sharp from "sharp";
 import exifReader from "exif-reader";
 import type { FileKind } from "./file-kinds";
+import {
+  RESPONSIVE_IMAGE_WIDTHS,
+  normaliseResponsiveWidths,
+  type ImagePlaceholder,
+  type ResponsiveImageFormat,
+} from "./image";
 import { SITE_BRAND } from "@/lib/shared/config";
 
 type ExecFileAsyncOptions = NonNullable<Parameters<typeof execFile>[2]>;
@@ -532,6 +538,20 @@ type ImageVariant = {
   ext: string;
 };
 
+type ResponsiveImageVariant = {
+  width: number;
+  formats: Record<ResponsiveImageFormat, ImageVariant>;
+};
+
+type ProcessedResponsiveImage = {
+  variants: ResponsiveImageVariant[];
+  width: number;
+  height: number;
+  version: string;
+  placeholder: ImagePlaceholder;
+  takenAt: string | null;
+};
+
 type ProcessedImage = {
   /** WebP thumbnail at THUMB_WIDTH */
   thumb: ImageVariant;
@@ -665,6 +685,79 @@ async function generateBlurDataUri(imageBuffer: Buffer): Promise<string> {
     .jpeg({ quality: 40 })
     .toBuffer();
   return `data:image/jpeg;base64,${blurBuffer.toString("base64")}`;
+}
+
+function rgbToHex(red: number, green: number, blue: number): string {
+  return `#${[red, green, blue]
+    .map((channel) =>
+      Math.max(0, Math.min(255, Math.round(channel)))
+        .toString(16)
+        .padStart(2, "0"),
+    )
+    .join("")}`;
+}
+
+async function generateImagePlaceholder(imageBuffer: Buffer): Promise<ImagePlaceholder> {
+  const [blurDataUrl, stats] = await Promise.all([
+    generateBlurDataUri(imageBuffer),
+    sharp(imageBuffer).stats(),
+  ]);
+  return {
+    color: rgbToHex(stats.dominant.r, stats.dominant.g, stats.dominant.b),
+    blurDataUrl,
+  };
+}
+
+async function processResponsiveImage(
+  raw: Buffer,
+  sourceExtOrFilename = ".jpg",
+  rotationOverride?: RotationOverride,
+): Promise<ProcessedResponsiveImage> {
+  const sourceExt =
+    path.extname(sourceExtOrFilename).toLowerCase() || sourceExtOrFilename.toLowerCase();
+  const { buffer: processingSource, takenAt } = await resolveImageProcessingSource(raw, sourceExt);
+  const {
+    buffer: rotated,
+    width: sourceWidth,
+    height: sourceHeight,
+  } = await autoRotate(processingSource, rotationOverride);
+  const outputWidth = Math.min(sourceWidth, FULL_WIDTH);
+  const outputHeight = Math.round(sourceHeight * (outputWidth / sourceWidth));
+  const widths = normaliseResponsiveWidths(RESPONSIVE_IMAGE_WIDTHS, outputWidth);
+
+  const [placeholder, variants] = await Promise.all([
+    generateImagePlaceholder(rotated),
+    Promise.all(
+      widths.map(async (width): Promise<ResponsiveImageVariant> => {
+        const [avif, webp] = await Promise.all([
+          sharp(rotated)
+            .resize({ width, withoutEnlargement: true })
+            .avif({ quality: 55 })
+            .toBuffer(),
+          sharp(rotated)
+            .resize({ width, withoutEnlargement: true })
+            .webp({ quality: 82 })
+            .toBuffer(),
+        ]);
+        return {
+          width,
+          formats: {
+            avif: { buffer: avif, contentType: "image/avif", ext: ".avif" },
+            webp: { buffer: webp, contentType: "image/webp", ext: ".webp" },
+          },
+        };
+      }),
+    ),
+  ]);
+
+  return {
+    variants,
+    width: outputWidth,
+    height: outputHeight,
+    version: createHash("sha256").update(rotated).digest("hex").slice(0, 16),
+    placeholder,
+    takenAt,
+  };
 }
 
 /* ─── Processing ─── */
@@ -1057,6 +1150,7 @@ export {
   extractExifDate,
   generateBlurDataUri,
   processImageVariants,
+  processResponsiveImage,
   processToOg,
   processGifThumb,
   processRawWithExiftool,
@@ -1073,6 +1167,8 @@ export {
 export type {
   ImageVariant,
   ProcessedImage,
+  ProcessedResponsiveImage,
+  ResponsiveImageVariant,
   ProcessedGif,
   ProcessedVideo,
   DecodedRawImage,

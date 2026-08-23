@@ -7,6 +7,7 @@ import { useEscapeKey } from "@/hooks/useEscapeKey";
 import { useFocusTrap } from "@/hooks/useFocusTrap";
 import type { FocalPreset } from "@/features/media/focal";
 import { useNativeShareAvailability } from "@/hooks/useNativeShareAvailability";
+import { AppImage } from "@/components/AppImage";
 
 type BrandedImageProps = {
   /** Full-size image URL (WebP from R2) */
@@ -245,9 +246,11 @@ export function BrandedImage({
                       : "max-w-[90vw] sm:max-w-2xl aspect-[1.91/1]"
                   }`}
                 >
-                  <img
+                  <AppImage
                     src={previewUrl}
                     alt="Milk & Henny branded frame preview"
+                    width={activeFormat === "portrait" ? 1080 : 1200}
+                    height={activeFormat === "portrait" ? 1920 : 630}
                     className="h-full w-full object-contain"
                   />
                 </div>

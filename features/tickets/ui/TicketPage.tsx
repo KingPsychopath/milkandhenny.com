@@ -2,6 +2,7 @@
 
 import { Link } from "@tanstack/react-router";
 
+import { AppImage } from "@/components/AppImage";
 import { CONTACT_EMAIL, SITE_BRAND } from "@/lib/shared/config";
 import { useQrCode } from "@/hooks/useQrCode";
 import { ticketIcsPath } from "@/features/events/routes";
@@ -181,9 +182,11 @@ export function TicketPage({
             }`}
           >
             {qr ? (
-              <img
+              <AppImage
                 src={qr}
                 alt="Your ticket QR code. Show this at the door."
+                width={512}
+                height={512}
                 className="w-full h-full"
               />
             ) : failed ? (

@@ -72,6 +72,12 @@ function normaliseInstant(value: unknown): string | undefined {
   return new Date(value).toISOString();
 }
 
+function positiveInteger(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) && value > 0
+    ? Math.round(value)
+    : undefined;
+}
+
 function marketingPath(value: unknown): string | undefined {
   const path = trimmed(value, 200);
   return path && path.startsWith("/") && !path.startsWith("//") && !path.includes("\\")
@@ -246,6 +252,8 @@ export function normaliseEventInput(
   }
 
   const now = new Date().toISOString();
+  const heroImage = trimmed(input.heroImage, 500) ?? existing?.heroImage;
+  const keepHeroDimensions = heroImage === existing?.heroImage;
 
   return {
     ok: true,
@@ -273,7 +281,13 @@ export function normaliseEventInput(
       dressCode: trimmed(input.dressCode, 140) ?? existing?.dressCode,
       ageLimit: trimmed(input.ageLimit, 60) ?? existing?.ageLimit,
       houseRules: trimmed(input.houseRules, MAX_TEXT) ?? existing?.houseRules,
-      heroImage: trimmed(input.heroImage, 500) ?? existing?.heroImage,
+      heroImage,
+      heroImageWidth:
+        positiveInteger(input.heroImageWidth) ??
+        (keepHeroDimensions ? existing?.heroImageWidth : undefined),
+      heroImageHeight:
+        positiveInteger(input.heroImageHeight) ??
+        (keepHeroDimensions ? existing?.heroImageHeight : undefined),
       heroHeight: isEventHeroHeight(input.heroHeight) ? input.heroHeight : existing?.heroHeight,
       ogImage: trimmed(input.ogImage, 500) ?? existing?.ogImage,
       marketingPath: marketingPath(input.marketingPath) ?? existing?.marketingPath,

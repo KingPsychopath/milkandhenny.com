@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { TextMorph } from "torph/react";
 import { useWebHaptics } from "web-haptics/react";
+import { AppImage } from "@/components/AppImage";
 import {
   applyPlayerActionFn,
   applyPresenterActionFn,
@@ -1084,9 +1085,11 @@ function HostPlayerLobby({
         They can scan this code. You’ll compete from this phone and control when each word starts.
       </p>
       {qr ? (
-        <img
+        <AppImage
           src={qr}
           alt="QR code for players to join this spelling room"
+          width={280}
+          height={280}
           className="mt-6 w-52 rounded-3xl bg-white p-3"
         />
       ) : qrFailed ? (

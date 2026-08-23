@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { AppImage } from "@/components/AppImage";
 import { useQrCode } from "@/hooks/useQrCode";
 import { GAME_POOL_DEFAULTS } from "@/features/things/pool/presets";
 import {
@@ -23,7 +24,13 @@ function EntranceQr({ entrance }: { entrance: GamePoolEntrance }) {
   return (
     <div className="mt-4 border-t theme-border pt-4">
       {dataUrl ? (
-        <img src={dataUrl} alt={`QR code for ${entrance.label}`} className="size-48" />
+        <AppImage
+          src={dataUrl}
+          alt={`QR code for ${entrance.label}`}
+          width={320}
+          height={320}
+          className="size-48"
+        />
       ) : null}
       {failed ? (
         <p className="font-mono text-xs theme-muted">

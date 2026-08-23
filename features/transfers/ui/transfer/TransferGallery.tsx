@@ -5,6 +5,7 @@ import {
   getTransferFullUrl,
   getTransferOriginalUrl,
   getTransferPrimaryUrl,
+  getTransferImageSrcSet,
 } from "@/features/media/storage";
 import { buildTransferVisualItems, type TransferVisualItem } from "@/features/transfers/live-photo";
 import { useTransferMediaEvents } from "@/features/transfers/ui/transfer/useTransferMediaEvents";
@@ -27,10 +28,10 @@ import {
 } from "@/lib/client/zip-planner";
 import { formatBytes } from "@/lib/shared/format";
 import { getResponseErrorMessage, readResponsePayload } from "@/lib/client/response";
-import { useLazyImage } from "@/hooks/useLazyImage";
 import { useSwipe } from "@/hooks/useSwipe";
 import { useFocusTrap } from "@/hooks/useFocusTrap";
 import { SelectionToggle } from "@/components/SelectionToggle";
+import { AppImage } from "@/components/AppImage";
 import { useActionDialog } from "@/hooks/useActionDialog";
 import type { AssetGroup, FileKind } from "@/features/transfers/types";
 import {
@@ -485,8 +486,6 @@ function SingleVisualContent({
   onError: () => void;
   maxHeightClass?: string;
 }) {
-  const { loaded, handleLoad, imgRef } = useLazyImage();
-
   if (file.kind === "video") {
     return (
       <video
@@ -496,7 +495,7 @@ function SingleVisualContent({
         }
         controls
         autoPlay
-        className={`max-w-full ${maxHeightClass} photo-page-fade-in`}
+        className={`max-w-full ${maxHeightClass}`}
         style={{ objectFit: "contain" }}
         onClick={(e) => e.stopPropagation()}
         onError={onError}
@@ -542,20 +541,19 @@ function SingleVisualContent({
         : getTransferPrimaryUrl(transferId, file.id);
 
   return (
-    <div className="relative" onClick={(e) => e.stopPropagation()}>
-      {!loaded && (
-        <div className="absolute inset-0 flex items-center justify-center">
-          <span className="font-mono text-micro text-white/50 tracking-wide animate-pulse">
-            loading...
-          </span>
-        </div>
-      )}
-      <img
-        ref={imgRef}
+    <div onClick={(e) => e.stopPropagation()}>
+      <AppImage
         src={imgSrc}
+        srcSet={
+          file.kind === "image" && hasProcessedImageVariants(file) && file.width
+            ? getTransferImageSrcSet(transferId, file.id, file.width)
+            : undefined
+        }
         alt={file.filename}
-        className={`max-w-full ${maxHeightClass} object-contain transition-opacity duration-300 ${loaded ? "opacity-100" : "opacity-0"}`}
-        onLoad={handleLoad}
+        width={file.width}
+        height={file.height}
+        sizes="calc(100vw - 2rem)"
+        className={`max-w-full ${maxHeightClass} object-contain`}
         onError={onError}
       />
     </div>
@@ -2294,7 +2292,7 @@ const VisualCard = memo(function VisualCard({
   const [thumbUrl, setThumbUrl] = useState(primaryThumbUrl);
   const aspectRatio = file.width && file.height ? file.height / file.width : 9 / 16;
 
-  const { loaded, errored, handleLoad, handleError, imgRef } = useLazyImage();
+  const [errored, setErrored] = useState(false);
 
   useEffect(() => {
     setThumbUrl(primaryThumbUrl);
@@ -2311,8 +2309,8 @@ const VisualCard = memo(function VisualCard({
       setThumbUrl(originalUrl);
       return;
     }
-    handleError();
-  }, [file, handleError, thumbUrl, transferId]);
+    setErrored(true);
+  }, [file, thumbUrl, transferId]);
 
   return (
     <div className="gallery-card group">
@@ -2347,17 +2345,22 @@ const VisualCard = memo(function VisualCard({
         <div className="absolute inset-0 gallery-placeholder" />
 
         {hasThumbnail && !errored ? (
-          <img
-            ref={imgRef}
+          <AppImage
             src={thumbUrl}
+            srcSet={
+              thumbUrl === primaryThumbUrl &&
+              file.kind === "image" &&
+              hasProcessedImageVariants(file) &&
+              file.width
+                ? getTransferImageSrcSet(transferId, file.id, file.width)
+                : undefined
+            }
             alt={file.filename}
             width={file.width}
             height={file.height}
-            loading="lazy"
-            decoding="async"
-            onLoad={handleLoad}
+            sizes="(min-width: 768px) 33vw, 50vw"
             onError={handleVisualError}
-            className={`absolute inset-0 w-full h-full object-cover transition-opacity duration-300 ${loaded ? "opacity-100" : "opacity-0"}`}
+            className="absolute inset-0 h-full w-full object-cover"
           />
         ) : errored ? (
           <BrokenImageFallback filename={file.filename} />

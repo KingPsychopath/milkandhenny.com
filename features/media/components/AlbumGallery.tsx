@@ -4,7 +4,7 @@ import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import { MasonryGrid } from "./MasonryGrid";
 import { PhotoCard } from "./PhotoCard";
 import type { Photo } from "@/features/media/albums";
-import { getThumbUrl, getOriginalStorageKey, getOriginalUrl } from "@/features/media/storage";
+import { getOriginalStorageKey, getOriginalUrl } from "@/features/media/storage";
 import {
   BLOB_ZIP_DOWNLOAD_LIMIT_BYTES,
   LARGE_STREAMING_ZIP_NOTICE_BYTES,
@@ -31,6 +31,7 @@ import { useActionDialog } from "@/hooks/useActionDialog";
 
 type AlbumGalleryProps = {
   albumSlug: string;
+  albumTitle: string;
   photos: Photo[];
 };
 
@@ -60,7 +61,7 @@ function formatTotalBytes(total: ZipPlanTotalBytes): string | null {
   return total.known ? formatBytes(total.bytes) : null;
 }
 
-export function AlbumGallery({ albumSlug, photos }: AlbumGalleryProps) {
+export function AlbumGallery({ albumSlug, albumTitle, photos }: AlbumGalleryProps) {
   const { confirm: confirmAction, dialog: actionDialog } = useActionDialog();
   const [selectable, setSelectable] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -516,15 +517,13 @@ export function AlbumGallery({ albumSlug, photos }: AlbumGalleryProps) {
       ) : null}
 
       <MasonryGrid>
-        {photos.map((photo) => (
+        {photos.map((photo, index) => (
           <PhotoCard
             key={photo.id}
             albumSlug={albumSlug}
-            photoId={photo.id}
-            thumbUrl={getThumbUrl(albumSlug, photo.id)}
-            width={photo.width}
-            height={photo.height}
-            blur={photo.blur}
+            photo={photo}
+            alt={`Photo ${index + 1} from ${albumTitle}`}
+            priority={index === 0}
             selectable={selectable}
             selected={selected.has(photo.id)}
             onSelect={toggleSelect}

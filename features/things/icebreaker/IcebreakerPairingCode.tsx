@@ -1,5 +1,6 @@
 import { pairingCode, pairingUrl, type IcebreakerPlayer } from "./icebreaker-pairing";
 import { useQrCode } from "@/hooks/useQrCode";
+import { AppImage } from "@/components/AppImage";
 
 interface IcebreakerPairingCodeProps {
   player: IcebreakerPlayer;
@@ -31,7 +32,13 @@ export function IcebreakerPairingCode({
       </p>
       <div className="mx-auto mt-7 aspect-square w-full max-w-72 rounded-3xl bg-white p-4 shadow-2xl">
         {qrCode ? (
-          <img src={qrCode} alt="Your Icebreaker pairing QR code" className="h-full w-full" />
+          <AppImage
+            src={qrCode}
+            alt="Your Icebreaker pairing QR code"
+            width={320}
+            height={320}
+            className="h-full w-full"
+          />
         ) : (
           <div className="grid h-full place-items-center font-mono text-xs text-black/55">
             {qrFailed ? "QR unavailable — use the short code" : "making code…"}

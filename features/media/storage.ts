@@ -5,6 +5,8 @@
  */
 
 import { MEDIA_PUBLIC_URL } from "@/lib/shared/config";
+import type { Photo } from "./albums";
+import type { ResponsiveImageData, ResponsiveImageFormat, ResponsiveImageSource } from "./image";
 
 /** Build the public URL for a file in the bucket */
 function getImageUrl(path: string): string {
@@ -30,14 +32,42 @@ const TYPED_SLUG_MEDIA_REF = /^(blog|note|recipe|review)\/([a-z0-9]+(?:-[a-z0-9]
 
 /* ─── Album URLs ─── */
 
-/** Get the thumbnail URL for an album photo (WebP for fast loading) */
-function getThumbUrl(album: string, photoId: string): string {
-  return getImageUrl(`albums/${album}/thumb/${photoId}.webp`);
+function versionedUrl(url: string, version: string): string {
+  const separator = url.includes("?") ? "&" : "?";
+  return `${url}${separator}v=${encodeURIComponent(version)}`;
 }
 
-/** Get the full-size viewing URL for an album photo (WebP for fast loading) */
-function getFullUrl(album: string, photoId: string): string {
-  return getImageUrl(`albums/${album}/full/${photoId}.webp`);
+function getAlbumImageUrl(
+  album: string,
+  photoId: string,
+  width: number,
+  format: ResponsiveImageFormat,
+  version: string,
+): string {
+  return versionedUrl(
+    getImageUrl(
+      `albums/${encodeStoragePathSegment(album)}/images/${encodeStoragePathSegment(photoId)}/${width}.${format}`,
+    ),
+    version,
+  );
+}
+
+function getAlbumImageData(album: string, photo: Photo): ResponsiveImageData {
+  const srcSetFor = (format: ResponsiveImageFormat) =>
+    photo.widths
+      .map(
+        (width) => `${getAlbumImageUrl(album, photo.id, width, format, photo.version)} ${width}w`,
+      )
+      .join(", ");
+  const largestWidth = photo.widths.at(-1) ?? photo.width;
+  const sources: ResponsiveImageSource[] = [{ type: "image/avif", srcSet: srcSetFor("avif") }];
+
+  return {
+    ...photo,
+    src: getAlbumImageUrl(album, photo.id, largestWidth, "webp", photo.version),
+    srcSet: srcSetFor("webp"),
+    sources,
+  };
 }
 
 /** Get the original (download) URL for an album photo */
@@ -50,8 +80,9 @@ function getOriginalStorageKey(album: string, photoId: string): string {
 }
 
 /** Get the OG-sized JPEG URL for Open Graph / social sharing */
-function getOgUrl(album: string, photoId: string): string {
-  return getImageUrl(`albums/${album}/og/${photoId}.jpg`);
+function getOgUrl(album: string, photoId: string, version?: string): string {
+  const url = getImageUrl(`albums/${album}/og/${photoId}.jpg`);
+  return version ? versionedUrl(url, version) : url;
 }
 
 /* ─── Word media URLs ─── */
@@ -61,11 +92,6 @@ function getWordMediaUrl(slug: string, filename: string): string {
   return getImageUrl(
     `words/media/${encodeStoragePathSegment(slug)}/${encodeStoragePathSegment(filename)}`,
   );
-}
-
-/** @deprecated Prefer getWordMediaUrl for type-agnostic naming. */
-function getBlogImageUrl(slug: string, filename: string): string {
-  return getWordMediaUrl(slug, filename);
 }
 
 /** Get the URL for a shared reusable asset (stored at words/assets/{assetId}/{filename}) */
@@ -211,15 +237,23 @@ function getTransferOriginalUrl(transferId: string, fileId: string, download = f
   return getTransferMediaUrl(transferId, fileId, "original", download);
 }
 
+function getTransferImageSrcSet(transferId: string, fileId: string, sourceWidth: number): string {
+  const thumbWidth = Math.min(600, sourceWidth);
+  const fullWidth = Math.min(1600, sourceWidth);
+  if (thumbWidth === fullWidth) {
+    return `${getTransferFullUrl(transferId, fileId)} ${fullWidth}w`;
+  }
+  return `${getTransferThumbUrl(transferId, fileId)} ${thumbWidth}w, ${getTransferFullUrl(transferId, fileId)} ${fullWidth}w`;
+}
+
 export {
   getImageUrl,
-  getThumbUrl,
-  getFullUrl,
+  getAlbumImageData,
+  getAlbumImageUrl,
   getOriginalUrl,
   getOriginalStorageKey,
   getOgUrl,
   getWordMediaUrl,
-  getBlogImageUrl,
   getSharedAssetUrl,
   resolveImageSrc,
   resolveWordContentRef,
@@ -227,4 +261,5 @@ export {
   getTransferFullUrl,
   getTransferPrimaryUrl,
   getTransferOriginalUrl,
+  getTransferImageSrcSet,
 };

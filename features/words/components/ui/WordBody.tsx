@@ -8,6 +8,8 @@ import { rehypeSlug } from "@/lib/markdown/rehype-slug";
 import { AlbumEmbed, type EmbeddedAlbum, type EmbedVariant } from "./AlbumEmbed";
 import { WordBodyTable, WordBodyTableCell, WordBodyTableRow } from "./WordBodyTable";
 import { resolveWordContentRef } from "@/features/media/storage";
+import { AppImage } from "@/components/AppImage";
+import { imagePlaceholderStyle, type ResponsiveImageData } from "@/features/media/image";
 
 type WordBodyProps = {
   content: string;
@@ -19,6 +21,7 @@ type WordBodyProps = {
    */
   albums?: Record<string, EmbeddedAlbum>;
   privateMedia?: boolean;
+  images?: Record<string, ResponsiveImageData>;
 };
 
 type MarkdownNode = {
@@ -73,7 +76,11 @@ function isImageOnlyParagraph(node: MarkdownNode | undefined): boolean {
 
 /* ─── Base components (always active) ─── */
 
-function getBaseComponents(wordSlug?: string, privateMedia = false): Components {
+function getBaseComponents(
+  wordSlug?: string,
+  privateMedia = false,
+  images: Record<string, ResponsiveImageData> = {},
+): Components {
   return {
     table: ({ children, node, ...props }) => (
       <WordBodyTable {...props} node={node}>
@@ -100,9 +107,12 @@ function getBaseComponents(wordSlug?: string, privateMedia = false): Components 
      */
     img: ({ src, alt }) => {
       if (!src || typeof src !== "string") return null;
-      const resolved = resolveWordContentRef(src, wordSlug, {
-        privacy: privateMedia ? "private" : "public",
-      });
+      const image = images[src];
+      const resolved =
+        image?.src ??
+        resolveWordContentRef(src, wordSlug, {
+          privacy: privateMedia ? "private" : "public",
+        });
       if (!resolved) return null;
 
       /** Hide the image (or figure) if it fails to load */
@@ -118,14 +128,35 @@ function getBaseComponents(wordSlug?: string, privateMedia = false): Components 
 
       if (alt) {
         return (
-          <figure className="image-figure">
-            <img src={resolved} alt={alt} loading="lazy" onError={handleError} />
+          <figure className="image-figure" style={imagePlaceholderStyle(image?.placeholder)}>
+            <AppImage
+              src={resolved}
+              srcSet={image?.srcSet}
+              sources={image?.sources}
+              alt={alt}
+              width={image?.width}
+              height={image?.height}
+              sizes="(min-width: 672px) 624px, calc(100vw - 3rem)"
+              onError={handleError}
+            />
             <figcaption className="image-caption">{alt}</figcaption>
           </figure>
         );
       }
 
-      return <img src={resolved} alt="" loading="lazy" onError={handleError} />;
+      return (
+        <AppImage
+          src={resolved}
+          srcSet={image?.srcSet}
+          sources={image?.sources}
+          alt=""
+          width={image?.width}
+          height={image?.height}
+          sizes="(min-width: 672px) 624px, calc(100vw - 3rem)"
+          style={imagePlaceholderStyle(image?.placeholder)}
+          onError={handleError}
+        />
+      );
     },
 
     /**
@@ -170,8 +201,9 @@ function withAlbumEmbeds(
   albums: Record<string, EmbeddedAlbum>,
   wordSlug?: string,
   privateMedia = false,
+  images: Record<string, ResponsiveImageData> = {},
 ): Components {
-  const baseComponents = getBaseComponents(wordSlug, privateMedia);
+  const baseComponents = getBaseComponents(wordSlug, privateMedia, images);
   return {
     ...baseComponents,
 
@@ -220,15 +252,16 @@ export function WordBody({
   wordSlug,
   albums = EMPTY_ALBUMS,
   privateMedia = false,
+  images = {},
 }: WordBodyProps) {
   const hasAlbums = Object.keys(albums).length > 0;
 
   const components = React.useMemo(
     () =>
       hasAlbums
-        ? withAlbumEmbeds(albums, wordSlug, privateMedia)
-        : getBaseComponents(wordSlug, privateMedia),
-    [albums, hasAlbums, privateMedia, wordSlug],
+        ? withAlbumEmbeds(albums, wordSlug, privateMedia, images)
+        : getBaseComponents(wordSlug, privateMedia, images),
+    [albums, hasAlbums, images, privateMedia, wordSlug],
   );
 
   return (

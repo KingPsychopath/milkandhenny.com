@@ -2,6 +2,7 @@ import { useNavigate } from "@tanstack/react-router";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { TextMorph } from "torph/react";
 import { useWebHaptics } from "web-haptics/react";
+import { AppImage } from "@/components/AppImage";
 import { applyPresenterActionFn, closePartyRoomFn } from "./party-room.functions";
 import { usePartyLiveSnapshot } from "./usePartyLiveSnapshot";
 import { useSynchronizedPartyStage } from "./useSynchronizedPartyStage";
@@ -326,9 +327,11 @@ export function PartyPresenterApp({ roomId }: { roomId: string }) {
               Join the room.
             </h1>
             {qr ? (
-              <img
+              <AppImage
                 src={qr}
                 alt="QR code for players to join this spelling room"
+                width={320}
+                height={320}
                 className="mt-7 w-60 rounded-3xl bg-white p-3"
               />
             ) : qrFailed ? (

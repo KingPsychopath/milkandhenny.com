@@ -17,10 +17,12 @@ function resolveAlbumsFromWordContent(content: string): Record<string, EmbeddedA
       const album = getAlbumBySlug(albumSlug);
       if (!album?.photos?.length) continue;
 
-      const previewIds = [album.cover];
+      const previewPhotos = [album.photos.find((photo) => photo.id === album.cover)].filter(
+        (photo): photo is (typeof album.photos)[number] => Boolean(photo),
+      );
       for (const photo of album.photos) {
-        if (previewIds.length >= 6) break;
-        if (photo.id !== album.cover) previewIds.push(photo.id);
+        if (previewPhotos.length >= 6) break;
+        if (photo.id !== album.cover) previewPhotos.push(photo);
       }
 
       const focalPoints: Record<string, string> = {};
@@ -38,7 +40,7 @@ function resolveAlbumsFromWordContent(content: string): Record<string, EmbeddedA
         date: album.date,
         cover: album.cover,
         photoCount: album.photos.length,
-        previewIds,
+        previewPhotos,
         focalPoints: Object.keys(focalPoints).length > 0 ? focalPoints : undefined,
       };
     }

@@ -36,6 +36,7 @@ export {
   headObject,
   downloadBuffer,
   uploadBuffer,
+  setObjectHttpMetadata,
   deleteObject,
   deleteObjects,
   getBucketInfo,

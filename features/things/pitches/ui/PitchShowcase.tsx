@@ -1,5 +1,6 @@
 import { Link } from "@tanstack/react-router";
 
+import { AppImage } from "@/components/AppImage";
 import type { PublicPitchDeck } from "../types";
 
 const PREVIEW_LIMIT = 4;
@@ -51,11 +52,12 @@ export function PitchShowcase({
             >
               <div className="aspect-video overflow-hidden bg-surface">
                 {pitch.thumbnailUrl ? (
-                  <img
+                  <AppImage
                     src={pitch.thumbnailUrl}
                     alt=""
+                    width={960}
+                    height={540}
                     className="h-full w-full object-contain transition-transform duration-500 group-hover:scale-[1.02]"
-                    loading="lazy"
                   />
                 ) : (
                   <div className="flex h-full items-center justify-center px-4 text-center">

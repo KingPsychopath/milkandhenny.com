@@ -26,6 +26,7 @@ import {
   resetPhotoFocal,
   getPhotoKeys,
   backfillOgVariants,
+  backfillResponsiveVariants,
 } from "./album-ops";
 import { validateAllAlbums } from "@/features/media/albums.server";
 import { BASE_URL } from "@/lib/shared/config";
@@ -57,6 +58,7 @@ import {
   listWordMediaFiles,
   deleteWordMediaFile,
   deleteAllWordMediaFiles,
+  backfillWordImageVariants,
   scanOrphanWordMediaFolders,
   cleanupOrphanWordMediaFolders,
   type WordMediaTarget,
@@ -501,16 +503,14 @@ async function cmdAlbumsUpload(opts: {
   log(green(`✓ ${results.length} photos uploaded`));
   log(green(`✓ JSON written to ${jsonPath}`));
 
-  const totalThumb = results.reduce((s, r) => s + r.thumbSize, 0);
-  const totalFull = results.reduce((s, r) => s + r.fullSize, 0);
+  const totalResponsive = results.reduce((s, r) => s + r.responsiveSize, 0);
   const totalOrig = results.reduce((s, r) => s + r.originalSize, 0);
 
   console.log();
   log(dim("Size breakdown:"));
-  log(`  Thumbnails:  ${formatBytes(totalThumb)}`);
-  log(`  Full-size:   ${formatBytes(totalFull)}`);
+  log(`  Responsive:  ${formatBytes(totalResponsive)}`);
   log(`  Originals:   ${formatBytes(totalOrig)}`);
-  log(`  ${bold("Total:")}       ${formatBytes(totalThumb + totalFull + totalOrig)}`);
+  log(`  ${bold("Total:")}       ${formatBytes(totalResponsive + totalOrig)}`);
   console.log();
   log(dim("Next: commit the JSON and deploy."));
   console.log();
@@ -576,6 +576,25 @@ async function cmdAlbumsBackfillOg(
   if (result.failed > 0) log(red(`  Failed: ${result.failed}`));
   log(dim("Next: run `pnpm build` — OG image generation will be faster."));
   console.log();
+}
+
+async function cmdAlbumsBackfillImages(skipConfirm = false, force = false) {
+  heading("Backfill responsive album images");
+  log(dim("Generates AVIF and WebP source sets, dimensions, blur data, and dominant colours."));
+  console.log();
+  if (
+    !skipConfirm &&
+    !(await confirm("Process all album photos and replace old display variants?"))
+  ) {
+    log(dim("Cancelled."));
+    return;
+  }
+  const result = await backfillResponsiveVariants((msg) => progress(msg), { force });
+  console.log();
+  log(green(`✓ Processed: ${result.processed}`));
+  if (result.skipped) log(dim(`  Skipped: ${result.skipped}`));
+  if (result.removedLegacy) log(dim(`  Removed old display objects: ${result.removedLegacy}`));
+  if (result.failed) log(red(`  Failed: ${result.failed}`));
 }
 
 async function cmdAlbumsDelete(slug: string) {
@@ -644,7 +663,7 @@ async function cmdPhotosList(slug: string) {
 
   for (const p of album.photos) {
     const coverTag = p.id === album.cover ? yellow(" ★ cover") : "";
-    const keys = getPhotoKeys(slug, p.id);
+    const keys = getPhotoKeys(slug, p);
     log(
       `${cyan(p.id.padEnd(maxId + 2))} ${dim(`${p.width} × ${p.height}`)}${coverTag}${formatFocalDisplay(p, "tag")}`,
     );
@@ -1993,6 +2012,15 @@ async function cmdWordsMediaDelete(target: WordMediaTarget, filename?: string) {
   console.log();
 }
 
+async function cmdWordsMediaBackfillImages(force = false) {
+  heading("Backfill responsive word images");
+  const result = await backfillWordImageVariants((msg) => progress(msg), { force });
+  console.log();
+  log(green(`✓ Processed: ${result.processed}`));
+  if (result.skipped) log(dim(`  Skipped: ${result.skipped}`));
+  if (result.failed) log(red(`  Failed: ${result.failed}`));
+}
+
 async function cmdWordsMediaOrphans(limitRaw?: string) {
   const parsed = Number(limitRaw ?? "50");
   const limit = Number.isFinite(parsed) && parsed > 0 ? Math.min(Math.floor(parsed), 500) : 50;
@@ -2926,6 +2954,7 @@ function showHelp() {
       --yes            ${dim("Skip confirmation prompt")}
       --force          ${dim("Regenerate all (even existing og/) — use after changing focal points")}
       ${dim("Downloads originals from R2, generates 1200×630 JPGs, uploads to og/)")}
+    albums backfill-images ${dim("[--yes] [--force]")} Backfill AVIF/WebP and placeholders
     albums validate                           Validate album JSON (focal presets, autoFocal 0–100)
       ${dim("Exits 1 if any album has invalid data. Use in CI.)")}
 
@@ -2975,6 +3004,7 @@ function showHelp() {
     media list --asset ${dim("<asset-id>")}                     List files in words/assets/<asset-id>/
     media delete --slug ${dim("<word-slug>")} ${dim("[--file <name>]")}     Delete one/all files in words/media/<slug>/
     media delete --asset ${dim("<asset-id>")} ${dim("[--file <name>]")}      Delete one/all files in words/assets/<asset-id>/
+    media backfill-images ${dim("[--force]")}                    Backfill AVIF/WebP and placeholders
     media orphans ${dim("[--limit <n>]")}                      Scan orphan words/media folders
     media purge-stale ${dim("[--yes]")}                        Delete orphan words/media folders
 
@@ -4809,6 +4839,8 @@ async function direct() {
               }
               return cmdAlbumsBackfillOg(hasYes, hasForce, strategyArg);
             }
+            case "backfill-images":
+              return cmdAlbumsBackfillImages(args.includes("--yes"), args.includes("--force"));
             case "validate":
               return cmdAlbumsValidate();
             default:
@@ -5010,6 +5042,8 @@ async function direct() {
               });
               return cmdWordsMediaDelete(target, file);
             }
+            case "backfill-images":
+              return cmdWordsMediaBackfillImages(hasFlag("force"));
             case "orphans":
               return cmdWordsMediaOrphans(getArg("limit"));
             case "purge-stale":

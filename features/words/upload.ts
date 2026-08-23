@@ -120,17 +120,11 @@ function toMarkdownSnippetForTarget(
   }
 }
 
-/** Backward-compatible helper for word-scoped media snippets. */
-function toMarkdownSnippet(slug: string, filename: string, kind: FileKind): string {
-  return toMarkdownSnippetForTarget({ scope: "word", slug }, filename, kind);
-}
-
 export {
   getWordUploadFilenameCandidates,
   isRawWordUpload,
   sanitiseStem,
   toR2Filename,
-  toMarkdownSnippet,
   isValidWordMediaTargetId,
   parseWordMediaTarget,
   mediaPrefixForTarget,

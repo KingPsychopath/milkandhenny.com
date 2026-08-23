@@ -1,11 +1,9 @@
 import type { FocalPreset } from "./focal";
+import type { ResponsiveImageMetadata } from "./image";
 
-export interface Photo {
+export interface Photo extends ResponsiveImageMetadata {
   id: string;
-  width: number;
-  height: number;
   size?: number;
-  blur?: string;
   takenAt?: string;
   focalPoint?: FocalPreset;
   autoFocal?: { x: number; y: number };

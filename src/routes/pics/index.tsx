@@ -2,11 +2,13 @@ import { Link, createFileRoute } from "@tanstack/react-router";
 import { createServerFn } from "@tanstack/react-start";
 import type { Album } from "@/features/media/albums";
 import { getAllAlbums } from "@/features/media/albums.server";
-import { getThumbUrl } from "@/features/media/storage";
+import { getAlbumImageData } from "@/features/media/storage";
+import { imagePlaceholderStyle } from "@/features/media/image";
 import { focalPresetToObjectPosition } from "@/features/media/focal";
 import { SITE_NAME, SITE_BRAND } from "@/lib/shared/config";
 import { OG_IMAGES, buildSeoHead } from "@/lib/shared/seo";
 import { Breadcrumbs } from "@/components/Breadcrumbs";
+import { AppImage } from "@/components/AppImage";
 
 export const Route = createFileRoute("/pics/")({
   component: PicsPage,
@@ -83,8 +85,11 @@ function PicsPage() {
             </p>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              {albums.map((album) => {
+              {albums.map((album, albumIndex) => {
                 const coverPos = getCoverPosition(album);
+                const cover = album.photos.find((photo) => photo.id === album.cover);
+                if (!cover) return null;
+                const coverImage = getAlbumImageData(album.slug, cover);
                 return (
                   <Link
                     key={album.slug}
@@ -92,14 +97,21 @@ function PicsPage() {
                     params={{ album: album.slug }}
                     className="group block relative overflow-hidden rounded-sm aspect-[4/3]"
                   >
-                    {/* Cover image — placeholder shows until image paints */}
-                    <div className="absolute inset-0 gallery-placeholder overflow-hidden">
-                      <img
-                        src={getThumbUrl(album.slug, album.cover)}
-                        alt={album.title}
-                        className="w-full h-full object-cover album-cover-zoom group-hover-scale-slight"
+                    <div
+                      className="absolute inset-0 gallery-placeholder overflow-hidden"
+                      style={imagePlaceholderStyle(cover.placeholder)}
+                    >
+                      <AppImage
+                        src={coverImage.src}
+                        srcSet={coverImage.srcSet}
+                        sources={coverImage.sources}
+                        alt=""
+                        width={cover.width}
+                        height={cover.height}
+                        priority={albumIndex === 0}
+                        sizes="(min-width: 640px) 50vw, 100vw"
+                        className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.02]"
                         style={coverPos ? { objectPosition: coverPos } : undefined}
-                        loading="lazy"
                       />
                     </div>
 

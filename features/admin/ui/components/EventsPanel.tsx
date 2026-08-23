@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 
 import { AppSelect } from "@/components/AppSelect";
+import { AppImage } from "@/components/AppImage";
 import { useActionDialog } from "@/hooks/useActionDialog";
 import { useQrCode } from "@/hooks/useQrCode";
 import {
@@ -79,6 +80,8 @@ type Draft = {
   refundPolicy: string;
   terms: string;
   heroImage: string;
+  heroImageWidth: number | undefined;
+  heroImageHeight: number | undefined;
   heroHeight: EventHeroHeight;
   ogImage: string;
   marketingPath: string;
@@ -139,6 +142,8 @@ const EMPTY_DRAFT: Draft = {
   refundPolicy: "",
   terms: "",
   heroImage: "",
+  heroImageWidth: undefined,
+  heroImageHeight: undefined,
   heroHeight: "natural",
   ogImage: "",
   marketingPath: "",
@@ -187,6 +192,8 @@ function toDraft(event: EventRecord): Draft {
     refundPolicy: event.refundPolicy ?? "",
     terms: event.terms ?? "",
     heroImage: event.heroImage ?? "",
+    heroImageWidth: event.heroImageWidth,
+    heroImageHeight: event.heroImageHeight,
     heroHeight: event.heroHeight ?? "natural",
     ogImage: event.ogImage ?? "",
     marketingPath: event.marketingPath ?? "",
@@ -247,6 +254,8 @@ function draftToPayload(draft: Draft): Record<string, unknown> {
     refundPolicy: draft.refundPolicy.trim() || undefined,
     terms: draft.terms.trim() || undefined,
     heroImage: draft.heroImage.trim() || undefined,
+    heroImageWidth: draft.heroImageWidth,
+    heroImageHeight: draft.heroImageHeight,
     heroHeight: draft.heroHeight,
     ogImage: draft.ogImage.trim() || undefined,
     marketingPath: draft.marketingPath.trim() || undefined,
@@ -582,9 +591,11 @@ function GuestUploadsSection({
           </div>
           {showQr && qrDataUrl && (
             <div className="mt-3 text-center">
-              <img
+              <AppImage
                 src={qrDataUrl}
                 alt="Guest upload QR"
+                width={320}
+                height={320}
                 className="mx-auto h-40 w-40 rounded bg-white p-1"
               />
               <p className="mt-2 font-mono text-micro theme-muted">
@@ -1013,9 +1024,11 @@ function ScannerLinkQr({ token, label }: { token: string; label: string }) {
     <div className="mt-2 rounded-lg border theme-border p-3 text-center">
       {dataUrl ? (
         <>
-          <img
+          <AppImage
             src={dataUrl}
             alt={`Scanner access QR for ${label}`}
+            width={320}
+            height={320}
             className="mx-auto h-40 w-40 rounded bg-white p-1"
           />
           <p className="mt-2 font-mono text-micro theme-muted">
@@ -2453,7 +2466,14 @@ export function EventsPanel({
             <Field
               label="hero image URL"
               value={draft.heroImage}
-              onChange={(value) => setDraft({ ...draft, heroImage: value })}
+              onChange={(value) =>
+                setDraft({
+                  ...draft,
+                  heroImage: value,
+                  heroImageWidth: undefined,
+                  heroImageHeight: undefined,
+                })
+              }
               hint="shown at the top of the event page"
             />
             <div>
@@ -2495,9 +2515,27 @@ export function EventsPanel({
           </div>
 
           {draft.heroImage && (
-            <img
+            <AppImage
               src={draft.heroImage}
               alt="Event hero preview"
+              width={draft.heroImageWidth}
+              height={draft.heroImageHeight}
+              onLoad={(event) => {
+                const { naturalWidth, naturalHeight } = event.currentTarget;
+                if (naturalWidth <= 0 || naturalHeight <= 0) return;
+                setDraft((current) =>
+                  current &&
+                  current.heroImage === draft.heroImage &&
+                  (current.heroImageWidth !== naturalWidth ||
+                    current.heroImageHeight !== naturalHeight)
+                    ? {
+                        ...current,
+                        heroImageWidth: naturalWidth,
+                        heroImageHeight: naturalHeight,
+                      }
+                    : current,
+                );
+              }}
               className={`w-full h-auto rounded-lg ${
                 draft.heroHeight === "natural"
                   ? "max-h-64 object-cover"

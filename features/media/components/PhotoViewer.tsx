@@ -4,58 +4,43 @@ import { getStored, setStored } from "@/lib/client/storage";
 import { useSwipe } from "@/hooks/useSwipe";
 import { downloadFile, type SingleFileDownloadProgress } from "@/lib/client/media-download";
 import { formatBytes } from "@/lib/shared/format";
+import { AppImage } from "@/components/AppImage";
+import { imagePlaceholderStyle, type ResponsiveImageData } from "@/features/media/image";
 
 type PhotoViewerProps = {
-  src: string;
+  image: ResponsiveImageData;
+  alt: string;
   downloadStorageKey: string;
   downloadUrl: string;
   filename: string;
-  width: number;
-  height: number;
   albumSlug: string;
   prevPhotoId?: string;
   nextPhotoId?: string;
-  /** URL of the next photo to preload (WebP full-size) */
-  preloadNext?: string;
-  /** URL of the previous photo to preload (WebP full-size) */
-  preloadPrev?: string;
-  /** Optional blur data URI for instant placeholder while full image loads */
-  blur?: string;
+  /** Responsive data for the next photo, loaded at low priority after hydration. */
+  preloadNext?: ResponsiveImageData;
   /** Extra actions rendered next to the download button */
   actions?: React.ReactNode;
 };
 
-/**
- * Full photo viewer with keyboard navigation, swipe support, loading state,
- * blur placeholder, and adjacent image preloading.
- */
+/** Full photo viewer with keyboard navigation, swipe support, and forward prefetching. */
 export function PhotoViewer({
-  src,
+  image,
+  alt,
   downloadStorageKey,
   downloadUrl,
   filename,
-  width,
-  height,
   albumSlug,
   prevPhotoId,
   nextPhotoId,
   preloadNext,
-  preloadPrev,
-  blur,
   actions,
 }: PhotoViewerProps) {
   const router = useRouter();
   const navigate = useNavigate();
   const [saving, setSaving] = useState(false);
   const [showHint, setShowHint] = useState(false);
-  const [imageLoaded, setImageLoaded] = useState(false);
-  const [showSkeleton, setShowSkeleton] = useState(false);
-  const [showLoadingText, setShowLoadingText] = useState(false);
   const [downloadProgress, setDownloadProgress] = useState<SingleFileDownloadProgress | null>(null);
   const savingRef = useRef(false);
-  const imgRef = useRef<HTMLImageElement>(null);
-  const skeletonTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const loadingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   /* ── Keyboard navigation ── */
   const handleKeyDown = useCallback(
@@ -116,73 +101,32 @@ export function PhotoViewer({
       : undefined,
   });
 
-  /* ── Preload adjacent images (foolproof: prefetch link + Image() so cache is warm) ── */
+  /* Prefetch one forward image after hydration when the connection allows it. */
   useEffect(() => {
     if (!preloadNext) return;
+    const connection = (
+      navigator as Navigator & {
+        connection?: { effectiveType?: string; saveData?: boolean };
+      }
+    ).connection;
+    if (connection?.saveData || connection?.effectiveType?.includes("2g")) return;
 
+    const preferredSource = preloadNext.sources[0];
+    const preferredFallback = preferredSource?.srcSet.split(",").at(-1)?.trim().split(/\s+/)[0];
     const link = document.createElement("link");
-    link.rel = "prefetch";
+    link.rel = "preload";
     link.as = "image";
-    link.href = preloadNext;
+    link.href = preferredFallback ?? preloadNext.src;
+    link.imageSrcset = preferredSource?.srcSet ?? preloadNext.srcSet;
+    link.imageSizes = "(min-width: 768px) 80vw, calc(100vw - 2rem)";
+    link.type = preferredSource?.type ?? "image/webp";
+    link.fetchPriority = "low";
     document.head.appendChild(link);
-
-    new Image().src = preloadNext;
 
     return () => {
       if (link.parentNode) link.parentNode.removeChild(link);
     };
   }, [preloadNext]);
-
-  useEffect(() => {
-    if (!preloadPrev) return;
-
-    const link = document.createElement("link");
-    link.rel = "prefetch";
-    link.as = "image";
-    link.href = preloadPrev;
-    document.head.appendChild(link);
-
-    new Image().src = preloadPrev;
-
-    return () => {
-      if (link.parentNode) link.parentNode.removeChild(link);
-    };
-  }, [preloadPrev]);
-
-  /** Mark the image as loaded and kill pending skeleton timers */
-  const markLoaded = useCallback(() => {
-    setImageLoaded(true);
-    setShowSkeleton(false);
-    setShowLoadingText(false);
-    if (skeletonTimerRef.current) clearTimeout(skeletonTimerRef.current);
-    if (loadingTimerRef.current) clearTimeout(loadingTimerRef.current);
-  }, []);
-
-  /* ── Reset loaded state when src changes ── */
-  useEffect(() => {
-    // If the image is already complete (cached / fast hydration), skip skeleton entirely
-    const img = imgRef.current;
-    if (img?.complete && img.naturalWidth > 0) {
-      markLoaded();
-      return;
-    }
-
-    setImageLoaded(false);
-    setShowSkeleton(false);
-    setShowLoadingText(false);
-
-    // Staggered reveal: skeleton after 150ms, loading text after 400ms.
-    // Cached/prefetched images load in <100ms so neither ever appears.
-    if (skeletonTimerRef.current) clearTimeout(skeletonTimerRef.current);
-    if (loadingTimerRef.current) clearTimeout(loadingTimerRef.current);
-    skeletonTimerRef.current = setTimeout(() => setShowSkeleton(true), 150);
-    loadingTimerRef.current = setTimeout(() => setShowLoadingText(true), 400);
-
-    return () => {
-      if (skeletonTimerRef.current) clearTimeout(skeletonTimerRef.current);
-      if (loadingTimerRef.current) clearTimeout(loadingTimerRef.current);
-    };
-  }, [src, markLoaded]);
 
   /** Request a direct download URL and hand off to the browser */
   const handleDownload = useCallback(async () => {
@@ -215,7 +159,7 @@ export function PhotoViewer({
         ? "saving..."
         : "download ↓";
 
-  const isPortrait = height > width;
+  const isPortrait = image.height > image.width;
 
   return (
     <div className="flex flex-col items-center gap-4">
@@ -231,47 +175,22 @@ export function PhotoViewer({
         <div
           className="relative mx-auto rounded-sm overflow-hidden"
           style={{
-            aspectRatio: `${width} / ${height}`,
+            aspectRatio: `${image.width} / ${image.height}`,
             maxHeight: "80vh",
-            width: `min(100%, calc(80vh * ${width} / ${height}))`,
+            width: `min(100%, calc(80vh * ${image.width} / ${image.height}))`,
+            ...imagePlaceholderStyle(image.placeholder),
           }}
         >
-          {/* Skeleton frame — delayed 150ms so cached images never flash it */}
-          {!imageLoaded && showSkeleton && (
-            <div
-              className={`absolute inset-0 flex items-center justify-center ${showLoadingText ? "animate-pulse" : ""}`}
-            >
-              {blur ? (
-                <div
-                  className="absolute inset-0"
-                  style={{
-                    backgroundImage: `url(${blur})`,
-                    backgroundSize: "cover",
-                    backgroundPosition: "center",
-                    filter: "blur(20px)",
-                    transform: "scale(1.1)",
-                  }}
-                />
-              ) : (
-                <div className="absolute inset-0 border theme-border rounded-sm" />
-              )}
-
-              {showLoadingText && (
-                <span className="relative z-10 font-mono text-micro theme-muted tracking-wide">
-                  loading...
-                </span>
-              )}
-            </div>
-          )}
-
-          <img
-            ref={imgRef}
-            src={src}
-            alt={filename}
-            width={width}
-            height={height}
-            onLoad={markLoaded}
-            className={`w-full h-full object-contain rounded-sm ${imageLoaded ? "photo-page-fade-in" : "opacity-0"}`}
+          <AppImage
+            src={image.src}
+            srcSet={image.srcSet}
+            sources={image.sources}
+            alt={alt}
+            width={image.width}
+            height={image.height}
+            priority
+            sizes="(min-width: 768px) 80vw, calc(100vw - 2rem)"
+            className="h-full w-full rounded-sm object-contain"
           />
         </div>
 

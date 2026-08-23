@@ -1,6 +1,7 @@
 import { Link } from "@tanstack/react-router";
 import type { CSSProperties } from "react";
 
+import { AppImage } from "@/components/AppImage";
 import { PitchNightVinyl } from "./PitchNightVinyl";
 import { RevealLine, SceneNumber } from "./PitchNightTypography";
 
@@ -227,7 +228,14 @@ export function Finale({ ticketHref }: { ticketHref: string }) {
         <i className="pitch-night-band-note pitch-night-band-note-b">♫</i>
       </div>
       <div className="pitch-night-finale-inner">
-        <img data-final-logo src="/MAHLogo.svg" alt="" className="pitch-night-final-logo" />
+        <AppImage
+          data-final-logo
+          src="/MAHLogo.svg"
+          alt=""
+          width={1693}
+          height={1100}
+          className="pitch-night-final-logo"
+        />
         <p className="pitch-night-kicker" data-soft-reveal>
           your turn
         </p>

@@ -28,11 +28,12 @@ export const Route = createFileRoute("/pics/$album/")({
       });
     }
     const description = album.description ?? `${album.photos.length} photos from ${album.title}`;
+    const coverPhoto = album.photos.find((photo) => photo.id === album.cover);
     return buildSeoHead({
       title: `${album.title} — Pics — ${SITE_NAME}`,
       description,
       path: `/pics/${album.slug}`,
-      image: getOgUrl(album.slug, album.cover),
+      image: getOgUrl(album.slug, album.cover, coverPhoto?.version),
       imageAlt: `${album.title} — Milk & Henny photos`,
     });
   },
@@ -94,7 +95,7 @@ function AlbumPage() {
         </section>
 
         <section className="max-w-4xl mx-auto px-6 pb-24" aria-label="Gallery">
-          <AlbumGallery albumSlug={album.slug} photos={album.photos} />
+          <AlbumGallery albumSlug={album.slug} albumTitle={album.title} photos={album.photos} />
         </section>
       </main>
 

@@ -2,8 +2,10 @@
 
 import { Link } from "@tanstack/react-router";
 import { memo } from "react";
-import { getThumbUrl } from "@/features/media/storage";
-import { useLazyImage } from "@/hooks/useLazyImage";
+import { AppImage } from "@/components/AppImage";
+import { getAlbumImageData } from "@/features/media/storage";
+import { imagePlaceholderStyle } from "@/features/media/image";
+import type { Photo } from "@/features/media/albums";
 
 /** Serializable album data passed from the server page */
 type EmbeddedAlbum = {
@@ -12,8 +14,8 @@ type EmbeddedAlbum = {
   date: string;
   cover: string;
   photoCount: number;
-  /** First 6 photo IDs (cover first, then others) — compact uses 4, masonry uses 6 */
-  previewIds: string[];
+  /** First 6 photos (cover first, then others) — compact uses 4, masonry uses 6 */
+  previewPhotos: Photo[];
   /** Pre-resolved CSS object-position per photo ID (from manual preset or auto-detected face) */
   focalPoints?: Record<string, string>;
 };
@@ -35,30 +37,25 @@ function formatDate(dateStr: string) {
 
 const FillThumb = memo(function FillThumb({
   slug,
-  photoId,
+  photo,
   objectPosition,
 }: {
   slug: string;
-  photoId: string;
+  photo: Photo;
   objectPosition?: string;
 }) {
-  const thumbUrl = getThumbUrl(slug, photoId);
-  const { loaded, errored, handleLoad, handleError, imgRef } = useLazyImage();
-
-  if (errored) return null;
+  const image = getAlbumImageData(slug, photo);
 
   return (
-    <img
-      ref={imgRef}
-      src={thumbUrl}
+    <AppImage
+      src={image.src}
+      srcSet={image.srcSet}
+      sources={image.sources}
       alt=""
-      loading="lazy"
-      decoding="async"
-      onLoad={handleLoad}
-      onError={handleError}
-      className={["album-embed-thumb-img", loaded ? "album-embed-thumb-img--loaded" : ""]
-        .filter(Boolean)
-        .join(" ")}
+      width={photo.width}
+      height={photo.height}
+      sizes="(min-width: 672px) 156px, 25vw"
+      className="album-embed-thumb-img"
       style={{
         position: "absolute",
         top: 0,
@@ -76,30 +73,25 @@ const FillThumb = memo(function FillThumb({
 
 const MasonryThumb = memo(function MasonryThumb({
   slug,
-  photoId,
+  photo,
   objectPosition,
 }: {
   slug: string;
-  photoId: string;
+  photo: Photo;
   objectPosition?: string;
 }) {
-  const thumbUrl = getThumbUrl(slug, photoId);
-  const { loaded, errored, handleLoad, handleError, imgRef } = useLazyImage();
-
-  if (errored) return null;
+  const image = getAlbumImageData(slug, photo);
 
   return (
-    <img
-      ref={imgRef}
-      src={thumbUrl}
+    <AppImage
+      src={image.src}
+      srcSet={image.srcSet}
+      sources={image.sources}
       alt=""
-      loading="lazy"
-      decoding="async"
-      onLoad={handleLoad}
-      onError={handleError}
-      className={["album-embed-masonry-img", loaded ? "album-embed-masonry-img--loaded" : ""]
-        .filter(Boolean)
-        .join(" ")}
+      width={photo.width}
+      height={photo.height}
+      sizes="(min-width: 672px) 306px, 50vw"
+      className="album-embed-masonry-img"
       style={{
         objectFit: "cover",
         objectPosition: objectPosition ?? "center",
@@ -116,10 +108,10 @@ const MASONRY_PREVIEW_LIMIT = 6;
  * ════════════════════════════════════════════════════════════════════ */
 
 function AlbumEmbedCompact({ album }: { album: EmbeddedAlbum }) {
-  if (!album?.slug || !album?.title || !album?.previewIds?.length) return null;
+  if (!album?.slug || !album?.title || !album?.previewPhotos?.length) return null;
 
-  const ids = album.previewIds.slice(0, COMPACT_PREVIEW_LIMIT);
-  const remaining = album.photoCount - ids.length;
+  const photos = album.previewPhotos.slice(0, COMPACT_PREVIEW_LIMIT);
+  const remaining = album.photoCount - photos.length;
   const showOverlay = remaining > 0;
 
   return (
@@ -130,10 +122,18 @@ function AlbumEmbedCompact({ album }: { album: EmbeddedAlbum }) {
       aria-label={`View album: ${album.title}`}
     >
       <div className="album-embed-strip">
-        {ids.map((id, i) => (
-          <div key={id} className="album-embed-thumb">
-            <FillThumb slug={album.slug} photoId={id} objectPosition={album.focalPoints?.[id]} />
-            {showOverlay && i === ids.length - 1 && (
+        {photos.map((photo, i) => (
+          <div
+            key={photo.id}
+            className="album-embed-thumb"
+            style={imagePlaceholderStyle(photo.placeholder)}
+          >
+            <FillThumb
+              slug={album.slug}
+              photo={photo}
+              objectPosition={album.focalPoints?.[photo.id]}
+            />
+            {showOverlay && i === photos.length - 1 && (
               <div className="album-embed-thumb-overlay">
                 <span className="font-mono text-xs text-white/90 tracking-wide">+{remaining}</span>
               </div>
@@ -158,10 +158,10 @@ function AlbumEmbedCompact({ album }: { album: EmbeddedAlbum }) {
  * ════════════════════════════════════════════════════════════════════ */
 
 function AlbumEmbedMasonry({ album }: { album: EmbeddedAlbum }) {
-  if (!album?.slug || !album?.title || !album?.previewIds?.length) return null;
+  if (!album?.slug || !album?.title || !album?.previewPhotos?.length) return null;
 
-  const ids = album.previewIds.slice(0, MASONRY_PREVIEW_LIMIT);
-  const remaining = album.photoCount - ids.length;
+  const photos = album.previewPhotos.slice(0, MASONRY_PREVIEW_LIMIT);
+  const remaining = album.photoCount - photos.length;
   const showOverlay = remaining > 0;
 
   return (
@@ -172,12 +172,16 @@ function AlbumEmbedMasonry({ album }: { album: EmbeddedAlbum }) {
         className="album-embed-masonry-grid"
         aria-label={`View album: ${album.title}`}
       >
-        {ids.map((id, i) => {
-          const isLast = i === ids.length - 1;
-          const objectPosition = album.focalPoints?.[id];
+        {photos.map((photo, i) => {
+          const isLast = i === photos.length - 1;
+          const objectPosition = album.focalPoints?.[photo.id];
           return (
-            <div key={id} className="album-embed-masonry-tile">
-              <MasonryThumb slug={album.slug} photoId={id} objectPosition={objectPosition} />
+            <div
+              key={photo.id}
+              className="album-embed-masonry-tile"
+              style={imagePlaceholderStyle(photo.placeholder)}
+            >
+              <MasonryThumb slug={album.slug} photo={photo} objectPosition={objectPosition} />
               {showOverlay && isLast && (
                 <div className="album-embed-masonry-overlay">
                   <span className="font-mono text-xs text-white/90 tracking-wide">

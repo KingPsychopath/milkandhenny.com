@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "@tanstack/react-router";
 
+import { AppImage } from "@/components/AppImage";
 import { SITE_BRAND } from "@/lib/shared/config";
 import { useQrCode } from "@/hooks/useQrCode";
 import { eventIcsPath, ticketIcsPath } from "@/features/events/routes";
@@ -405,9 +406,11 @@ function TicketQr({
           } ${invalid ? "opacity-30" : ""}`}
         >
           {qr ? (
-            <img
+            <AppImage
               src={qr}
               alt={`Ticket QR code for ${holderName}. Show this at the door.`}
+              width={large ? 512 : 320}
+              height={large ? 512 : 320}
               className="w-full h-full"
             />
           ) : failed ? (

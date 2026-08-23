@@ -1,15 +1,16 @@
 import { memo, useCallback } from "react";
 import { Link } from "@tanstack/react-router";
-import { useLazyImage } from "@/hooks/useLazyImage";
 import { SelectionToggle } from "@/components/SelectionToggle";
+import { AppImage } from "@/components/AppImage";
+import { getAlbumImageData } from "@/features/media/storage";
+import { imagePlaceholderStyle } from "@/features/media/image";
+import type { Photo } from "@/features/media/albums";
 
 type PhotoCardProps = {
   albumSlug: string;
-  photoId: string;
-  thumbUrl: string;
-  width: number;
-  height: number;
-  blur?: string;
+  photo: Photo;
+  alt: string;
+  priority?: boolean;
   /** Whether multi-select mode is active */
   selectable?: boolean;
   selected?: boolean;
@@ -26,62 +27,50 @@ type PhotoCardProps = {
  */
 export const PhotoCard = memo(function PhotoCard({
   albumSlug,
-  photoId,
-  thumbUrl,
-  width,
-  height,
-  blur,
+  photo,
+  alt,
+  priority,
   selectable,
   selected,
   onSelect,
 }: PhotoCardProps) {
-  const { loaded, errored, handleLoad, handleError, imgRef } = useLazyImage();
+  const image = getAlbumImageData(albumSlug, photo);
 
   const handleSelect = useCallback(
     (e: React.MouseEvent) => {
       if (selectable) {
         e.preventDefault();
-        onSelect?.(photoId);
+        onSelect?.(photo.id);
       }
     },
-    [selectable, onSelect, photoId],
+    [selectable, onSelect, photo.id],
   );
 
-  const aspectRatio = height / width;
+  const aspectRatio = photo.height / photo.width;
 
   return (
     <div className="gallery-card group">
       <Link
         to="/pics/$album/$photo"
-        params={{ album: albumSlug, photo: photoId }}
+        params={{ album: albumSlug, photo: photo.id }}
         className="block relative overflow-hidden rounded-sm"
-        style={{ paddingBottom: `${aspectRatio * 100}%` }}
+        style={{
+          paddingBottom: `${aspectRatio * 100}%`,
+          ...imagePlaceholderStyle(photo.placeholder),
+        }}
         onClick={handleSelect}
       >
-        {/* Placeholder — uses blur data URI when available */}
-        <div
-          className="absolute inset-0 gallery-placeholder"
-          style={blur ? { backgroundImage: `url(${blur})`, backgroundSize: "cover" } : undefined}
+        <AppImage
+          src={image.src}
+          srcSet={image.srcSet}
+          sources={image.sources}
+          alt={alt}
+          width={photo.width}
+          height={photo.height}
+          priority={priority}
+          sizes="(min-width: 768px) 33vw, 50vw"
+          className="absolute inset-0 h-full w-full object-cover"
         />
-
-        {/* Image — hidden if it fails to load, leaving the placeholder visible */}
-        {!errored && (
-          <img
-            ref={imgRef}
-            src={thumbUrl}
-            alt={`${photoId} from album`}
-            width={width}
-            height={height}
-            loading="lazy"
-            decoding="async"
-            sizes="(min-width: 768px) 33vw, 50vw"
-            onLoad={handleLoad}
-            onError={handleError}
-            className={`absolute inset-0 w-full h-full object-cover transition-opacity duration-300 ${
-              loaded ? "opacity-100" : "opacity-0"
-            }`}
-          />
-        )}
 
         {/* Hover overlay */}
         <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors duration-200" />
@@ -91,7 +80,7 @@ export const PhotoCard = memo(function PhotoCard({
           <div className="absolute top-2 right-2 z-10">
             <SelectionToggle
               selected={!!selected}
-              onToggle={() => onSelect?.(photoId)}
+              onToggle={() => onSelect?.(photo.id)}
               variant="overlay"
             />
           </div>

@@ -2,7 +2,7 @@ import { Link, createFileRoute, notFound } from "@tanstack/react-router";
 import { createServerFn } from "@tanstack/react-start";
 import { getAlbumBySlug } from "@/features/media/albums.server";
 import {
-  getFullUrl,
+  getAlbumImageData,
   getOgUrl,
   getOriginalStorageKey,
   getOriginalUrl,
@@ -43,7 +43,7 @@ export const Route = createFileRoute("/pics/$album/$photo")({
       title: `${photo.id} — ${album.title} — ${SITE_NAME}`,
       description,
       path: `/pics/${album.slug}/${photo.id}`,
-      image: getOgUrl(album.slug, photo.id),
+      image: getOgUrl(album.slug, photo.id, photo.version),
       imageAlt: `${album.title}, photo ${photoIndex + 1} — Milk & Henny photos`,
     });
   },
@@ -56,6 +56,9 @@ function PhotoPage() {
   const photoId = photo.id;
   const prevPhoto = photoIndex > 0 ? album.photos[photoIndex - 1] : null;
   const nextPhoto = photoIndex < album.photos.length - 1 ? album.photos[photoIndex + 1] : null;
+  const image = getAlbumImageData(albumSlug, photo);
+  const nextImage = nextPhoto ? getAlbumImageData(albumSlug, nextPhoto) : undefined;
+  const alt = `Photo ${photoIndex + 1} of ${album.photos.length} from ${album.title}`;
 
   return (
     <div className="min-h-screen bg-background">
@@ -92,21 +95,18 @@ function PhotoPage() {
       <main id="main">
         <section className="max-w-5xl mx-auto px-4 pb-8" aria-label="Photo">
           <PhotoViewer
-            src={getFullUrl(albumSlug, photoId)}
+            image={image}
+            alt={alt}
             downloadStorageKey={getOriginalStorageKey(albumSlug, photoId)}
             downloadUrl={getOriginalUrl(albumSlug, photoId)}
             filename={`${photoId}.jpg`}
-            width={photo.width}
-            height={photo.height}
             albumSlug={albumSlug}
             prevPhotoId={prevPhoto?.id}
             nextPhotoId={nextPhoto?.id}
-            preloadNext={nextPhoto ? getFullUrl(albumSlug, nextPhoto.id) : undefined}
-            preloadPrev={prevPhoto ? getFullUrl(albumSlug, prevPhoto.id) : undefined}
-            blur={photo.blur}
+            preloadNext={nextImage}
             actions={
               <BrandedImage
-                imageUrl={getFullUrl(albumSlug, photoId)}
+                imageUrl={image.src}
                 albumTitle={album.title}
                 photoId={photoId}
                 focalPoint={photo.focalPoint}

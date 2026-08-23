@@ -15,6 +15,10 @@ describe("words raw upload handling", () => {
     vi.doMock("@/features/words/media-storage.server", () => ({
       getWordMediaStorageScope: vi.fn().mockResolvedValue("public"),
     }));
+    vi.doMock("@/features/words/image.server", () => ({
+      mergeWordImageMetadata: vi.fn().mockResolvedValue(undefined),
+      pruneWordImageVariants: vi.fn().mockResolvedValue(0),
+    }));
   });
 
   it("processes non-raw image uploads inline", async () => {
@@ -37,10 +41,20 @@ describe("words raw upload handling", () => {
       );
       return {
         ...actual,
-        processToWebP: vi.fn().mockResolvedValue({
-          buffer: Buffer.from("webp"),
+        processResponsiveImage: vi.fn().mockResolvedValue({
+          variants: [
+            {
+              width: 1600,
+              formats: {
+                avif: { buffer: Buffer.from("avif"), contentType: "image/avif", ext: ".avif" },
+                webp: { buffer: Buffer.from("webp"), contentType: "image/webp", ext: ".webp" },
+              },
+            },
+          ],
           width: 1600,
           height: 1067,
+          version: "test-version",
+          placeholder: { color: "#123456", blurDataUrl: "data:image/jpeg;base64,test" },
           takenAt: null,
         }),
       };
@@ -81,7 +95,7 @@ describe("words raw upload handling", () => {
       "words/media/launch-notes/hero.webp",
       Buffer.from("webp"),
       "image/webp",
-      { scope: "public" },
+      { cacheControl: "public, max-age=3600, stale-while-revalidate=86400", scope: "public" },
     );
     expect(deleteObject).toHaveBeenCalledWith("words/media/launch-notes/incoming/tmp-hero.jpg", {
       scope: "public",
@@ -108,10 +122,20 @@ describe("words raw upload handling", () => {
       );
       return {
         ...actual,
-        processToWebP: vi.fn().mockResolvedValue({
-          buffer: Buffer.from("webp"),
+        processResponsiveImage: vi.fn().mockResolvedValue({
+          variants: [
+            {
+              width: 1600,
+              formats: {
+                avif: { buffer: Buffer.from("avif"), contentType: "image/avif", ext: ".avif" },
+                webp: { buffer: Buffer.from("webp"), contentType: "image/webp", ext: ".webp" },
+              },
+            },
+          ],
           width: 1600,
           height: 1067,
+          version: "test-version",
+          placeholder: { color: "#123456", blurDataUrl: "data:image/jpeg;base64,test" },
           takenAt: null,
         }),
       };
@@ -148,7 +172,7 @@ describe("words raw upload handling", () => {
       "words/media/launch-notes/capture.webp",
       Buffer.from("webp"),
       "image/webp",
-      { scope: "public" },
+      { cacheControl: "public, max-age=3600, stale-while-revalidate=86400", scope: "public" },
     );
     expect(deleteObject).toHaveBeenCalledWith("words/media/launch-notes/incoming/tmp-capture.dng", {
       scope: "public",
@@ -175,7 +199,7 @@ describe("words raw upload handling", () => {
       );
       return {
         ...actual,
-        processToWebP: vi
+        processResponsiveImage: vi
           .fn()
           .mockRejectedValue(new actual.RawPreviewUnavailableError(".dng", "missing")),
       };
@@ -212,7 +236,7 @@ describe("words raw upload handling", () => {
       "words/media/launch-notes/capture.dng",
       Buffer.from("raw"),
       "image/x-adobe-dng",
-      { scope: "public" },
+      { cacheControl: "public, max-age=3600, stale-while-revalidate=86400", scope: "public" },
     );
     expect(deleteObject).toHaveBeenCalledWith("words/media/launch-notes/incoming/tmp-capture.dng", {
       scope: "public",

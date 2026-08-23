@@ -2,6 +2,7 @@ import { Link } from "@tanstack/react-router";
 import { useState } from "react";
 import { TextMorph } from "torph/react";
 import { AppSelect } from "@/components/AppSelect";
+import { AppImage } from "@/components/AppImage";
 import { useNativeShareAvailability } from "@/hooks/useNativeShareAvailability";
 import { useQrCode } from "@/hooks/useQrCode";
 import { shareOrCopy } from "@/lib/client/share";
@@ -135,7 +136,13 @@ export function TwinLobby({
         {invite ? (
           <>
             {qr ? (
-              <img src={qr} alt="QR code to join this twin room" className="twin-qr" />
+              <AppImage
+                src={qr}
+                alt="QR code to join this twin room"
+                width={280}
+                height={280}
+                className="twin-qr"
+              />
             ) : qrFailed ? (
               <p className="twin-note">
                 {snapshot.managed

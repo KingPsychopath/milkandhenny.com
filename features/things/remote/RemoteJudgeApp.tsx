@@ -1,4 +1,5 @@
 import { AppSelect } from "@/components/AppSelect";
+import { AppImage } from "@/components/AppImage";
 import { MULTIPLAYER_ROOM_TTL_SECONDS } from "../shared/multiplayer";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
@@ -489,9 +490,11 @@ export function RemoteJudgeApp({ roomId }: { roomId: string }) {
                 microphone access.
               </p>
               {qrCode ? (
-                <img
+                <AppImage
                   src={qrCode}
                   alt="QR code to open the game on the player’s phone"
+                  width={280}
+                  height={280}
                   className="mt-7 w-56 rounded-3xl bg-white p-3"
                 />
               ) : qrFailed ? (

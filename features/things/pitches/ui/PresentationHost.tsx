@@ -2,6 +2,7 @@ import { Link } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { BinaryFiles } from "@excalidraw/excalidraw/types";
 
+import { AppImage } from "@/components/AppImage";
 import { useQrCode } from "@/hooks/useQrCode";
 import { approvePresentationControllerFn, controlPresentationFn } from "../presentation.functions";
 import { readPublishedPitchFn } from "../pitches.functions";
@@ -165,7 +166,15 @@ export function PresentationHost({ roomId }: { roomId: string }) {
       {dockOpen ? (
         <aside className="absolute bottom-4 left-4 right-4 z-20 max-h-[65vh] overflow-auto bg-background/95 p-4 shadow-xl backdrop-blur sm:left-auto sm:w-96">
           <div className="flex items-center gap-4">
-            {qr ? <img src={qr} alt={`Join presentation ${roomId}`} className="h-24 w-24" /> : null}
+            {qr ? (
+              <AppImage
+                src={qr}
+                alt={`Join presentation ${roomId}`}
+                width={300}
+                height={300}
+                className="h-24 w-24"
+              />
+            ) : null}
             <div>
               <p className="font-mono text-micro uppercase tracking-[0.14em] theme-muted">
                 remote code

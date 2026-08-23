@@ -7,7 +7,11 @@ import { formatWordDate, highlightWordTitle } from "@/features/words/components/
 import { Breadcrumbs } from "@/components/Breadcrumbs";
 import { JumpRail } from "@/components/JumpRail";
 import { ReadingProgress } from "@/components/ReadingProgress";
+import { AppImage } from "@/components/AppImage";
 import { resolveWordContentRef } from "@/features/media/storage";
+import { imagePlaceholderStyle } from "@/features/media/image";
+import { extractMarkdownImageRefs } from "@/features/words/image";
+import { loadWordImageData } from "@/features/words/image.server";
 import { canReadWordInServerContext, isWordsEnabled } from "@/features/words/reader.server";
 import { getWord, getWordMeta } from "@/features/words/store.server";
 import { SITE_BRAND, SITE_NAME } from "@/lib/shared/config";
@@ -33,10 +37,28 @@ const getPrivateWord = createServerFn({ method: "GET" })
     const renderData = note ? getWordRenderData(slug, note.meta.updatedAt, note.markdown) : null;
     const headings = renderData?.headings ?? [];
     const albums = renderData?.albums ?? {};
+    const imageRefs = note
+      ? [...extractMarkdownImageRefs(note.markdown), ...(meta.image ? [meta.image] : [])]
+      : [];
+    const images = note
+      ? await loadWordImageData({ refs: imageRefs, wordSlug: slug, privacy: "private" })
+      : {};
+    const heroImageData = meta.image ? images[meta.image] : undefined;
     const heroImage =
-      note && meta.image ? resolveWordContentRef(meta.image, slug, { privacy: "private" }) : "";
+      heroImageData?.src ??
+      (note && meta.image ? resolveWordContentRef(meta.image, slug, { privacy: "private" }) : "");
 
-    return { meta, note, published, readingTime, headings, albums, heroImage };
+    return {
+      meta,
+      note,
+      published,
+      readingTime,
+      headings,
+      albums,
+      heroImage,
+      heroImageData,
+      images,
+    };
   });
 
 export const Route = createFileRoute("/vault/$slug")({
@@ -57,7 +79,8 @@ export const Route = createFileRoute("/vault/$slug")({
 });
 
 function WordPrivatePage() {
-  const { meta, note, published, readingTime, headings, albums, heroImage } = Route.useLoaderData();
+  const { meta, note, published, readingTime, headings, albums, heroImage, heroImageData, images } =
+    Route.useLoaderData();
   const slug = meta.slug;
 
   return (
@@ -122,18 +145,29 @@ function WordPrivatePage() {
           </header>
 
           {heroImage ? (
-            <figure className="mb-10">
-              <img
+            <figure className="mb-10" style={imagePlaceholderStyle(heroImageData?.placeholder)}>
+              <AppImage
                 src={heroImage}
+                srcSet={heroImageData?.srcSet}
+                sources={heroImageData?.sources}
                 alt={meta.title}
+                width={heroImageData?.width}
+                height={heroImageData?.height}
                 className="w-full rounded-md border theme-border"
-                loading="eager"
+                sizes="(min-width: 672px) 624px, calc(100vw - 3rem)"
+                priority
               />
             </figure>
           ) : null}
 
           {note ? (
-            <WordBody content={note.markdown} wordSlug={slug} albums={albums} privateMedia />
+            <WordBody
+              content={note.markdown}
+              wordSlug={slug}
+              albums={albums}
+              images={images}
+              privateMedia
+            />
           ) : (
             <UnlockWordClient slug={slug} />
           )}

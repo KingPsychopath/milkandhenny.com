@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import { useNativeShareAvailability } from "@/hooks/useNativeShareAvailability";
 import { useQrCode } from "@/hooks/useQrCode";
 import { shareOrCopy } from "@/lib/client/share";
+import { AppImage } from "@/components/AppImage";
 import type { SameBrainRoundResult, SameBrainSnapshot } from "./types";
 
 export function InvitePanel({
@@ -39,9 +40,11 @@ export function InvitePanel({
   return (
     <section className="flex flex-col items-center text-center" aria-label="invite">
       {qr ? (
-        <img
+        <AppImage
           src={qr}
           alt={`QR code to join room ${roomId}`}
+          width={320}
+          height={320}
           className="w-56 rounded-3xl bg-white p-3"
         />
       ) : null}

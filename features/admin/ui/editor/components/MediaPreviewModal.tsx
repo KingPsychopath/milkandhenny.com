@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSwipe } from "@/hooks/useSwipe";
+import { AppImage } from "@/components/AppImage";
 import type { MediaPreviewItem } from "../types";
 
 type MediaPreviewModalProps = {
@@ -13,7 +14,6 @@ type MediaPreviewModalProps = {
 
 function ImagePreview({ current }: { current: MediaPreviewItem }) {
   const [previewError, setPreviewError] = useState(false);
-  const [previewLoaded, setPreviewLoaded] = useState(false);
 
   if (previewError) {
     return (
@@ -32,19 +32,11 @@ function ImagePreview({ current }: { current: MediaPreviewItem }) {
   }
 
   return (
-    <div className="relative">
-      {!previewLoaded ? (
-        <div className="absolute inset-0 flex items-center justify-center">
-          <span className="font-mono text-micro text-white/50 animate-pulse">loading...</span>
-        </div>
-      ) : null}
-      <img
+    <div>
+      <AppImage
         src={current.url}
         alt={current.filename}
-        className={`max-w-full max-h-[78vh] rounded-sm object-contain transition-opacity ${
-          previewLoaded ? "opacity-100" : "opacity-0"
-        }`}
-        onLoad={() => setPreviewLoaded(true)}
+        className="max-h-[78vh] max-w-full rounded-sm object-contain"
         onError={() => setPreviewError(true)}
       />
     </div>

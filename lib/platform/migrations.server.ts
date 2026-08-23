@@ -45,6 +45,8 @@ const MIGRATIONS: Migration[] = [
         age_limit         text,
         house_rules       text,
         hero_image        text,
+        hero_image_width  integer check (hero_image_width > 0),
+        hero_image_height integer check (hero_image_height > 0),
         og_image          text,
         capacity          integer,
         waitlist_enabled  boolean not null default false,
@@ -897,6 +899,14 @@ const MIGRATIONS: Migration[] = [
         set result_document = pitch_add_media_loop_setting(result_document);
 
       drop function pitch_add_media_loop_setting(jsonb);
+    `,
+  },
+  {
+    id: "0025_event_hero_dimensions",
+    sql: `
+      alter table events
+        add column if not exists hero_image_width integer check (hero_image_width > 0),
+        add column if not exists hero_image_height integer check (hero_image_height > 0);
     `,
   },
 ];

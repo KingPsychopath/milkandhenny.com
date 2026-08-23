@@ -1,6 +1,7 @@
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useWebHaptics } from "web-haptics/react";
+import { AppImage } from "@/components/AppImage";
 import { useNativeShareAvailability } from "@/hooks/useNativeShareAvailability";
 import { useQrCode } from "@/hooks/useQrCode";
 import { useWakeLock } from "@/hooks/useWakeLock";
@@ -662,7 +663,13 @@ function CentreLobby({
         {invite ? (
           <>
             {qr ? (
-              <img src={qr} alt="QR code to join this centre room" className="centre-qr" />
+              <AppImage
+                src={qr}
+                alt="QR code to join this centre room"
+                width={280}
+                height={280}
+                className="centre-qr"
+              />
             ) : failed ? (
               <p className="centre-note">
                 {snapshot.managed

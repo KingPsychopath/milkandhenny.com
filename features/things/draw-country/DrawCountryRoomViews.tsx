@@ -1,6 +1,7 @@
 import { Link } from "@tanstack/react-router";
 import { useState } from "react";
 import { TextMorph } from "torph/react";
+import { AppImage } from "@/components/AppImage";
 import { useNativeShareAvailability } from "@/hooks/useNativeShareAvailability";
 import { useQrCode } from "@/hooks/useQrCode";
 import { shareOrCopy } from "@/lib/client/share";
@@ -115,9 +116,11 @@ export function RoomLobby({
         {invite ? (
           <>
             {qr ? (
-              <img
+              <AppImage
                 src={qr}
                 alt="QR code to join the draw the country room"
+                width={280}
+                height={280}
                 className="mt-6 w-48 rounded-3xl bg-white p-3"
               />
             ) : null}

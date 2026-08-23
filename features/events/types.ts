@@ -96,6 +96,8 @@ export type EventRecord = {
   houseRules?: string;
 
   heroImage?: string;
+  heroImageWidth?: number;
+  heroImageHeight?: number;
   /** How much vertical space the hero may take. Absent means its natural height. */
   heroHeight?: EventHeroHeight;
   ogImage?: string;

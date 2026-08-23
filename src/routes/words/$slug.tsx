@@ -8,7 +8,11 @@ import { Breadcrumbs } from "@/components/Breadcrumbs";
 import { JumpRail } from "@/components/JumpRail";
 import { ReadingProgress } from "@/components/ReadingProgress";
 import { Share } from "@/components/Share";
+import { AppImage } from "@/components/AppImage";
 import { resolveWordContentRef } from "@/features/media/storage";
+import { imagePlaceholderStyle } from "@/features/media/image";
+import { extractMarkdownImageRefs } from "@/features/words/image";
+import { loadWordImageData } from "@/features/words/image.server";
 import { isWordsEnabled } from "@/features/words/reader.server";
 import { getWord, getWordMeta } from "@/features/words/store.server";
 import { BASE_URL, SITE_BRAND, SITE_NAME } from "@/lib/shared/config";
@@ -31,8 +35,25 @@ const getWordPage = createServerFn({ method: "GET" })
 
     const published = meta.publishedAt ?? meta.updatedAt;
     const { headings, albums } = getWordRenderData(slug, note.meta.updatedAt, note.markdown);
-    const heroImage = meta.image ? resolveWordContentRef(meta.image, slug) : "";
-    return { kind: "word" as const, meta, note, published, headings, albums, heroImage };
+    const imageRefs = [
+      ...extractMarkdownImageRefs(note.markdown),
+      ...(meta.image ? [meta.image] : []),
+    ];
+    const images = await loadWordImageData({ refs: imageRefs, wordSlug: slug, privacy: "public" });
+    const heroImageData = meta.image ? images[meta.image] : undefined;
+    const heroImage =
+      heroImageData?.src ?? (meta.image ? resolveWordContentRef(meta.image, slug) : "");
+    return {
+      kind: "word" as const,
+      meta,
+      note,
+      published,
+      headings,
+      albums,
+      heroImage,
+      heroImageData,
+      images,
+    };
   });
 
 export const Route = createFileRoute("/words/$slug")({
@@ -115,7 +136,7 @@ function WordSlugPage() {
     );
   }
 
-  const { note, published, headings, albums, heroImage } = data;
+  const { note, published, headings, albums, heroImage, heroImageData, images } = data;
   const readingTime = note.meta.readingTime;
   const pageTitle = meta.title;
   const pageSubtitle = meta.subtitle;
@@ -206,17 +227,22 @@ function WordSlugPage() {
           </header>
 
           {heroImage ? (
-            <figure className="mb-10">
-              <img
+            <figure className="mb-10" style={imagePlaceholderStyle(heroImageData?.placeholder)}>
+              <AppImage
                 src={heroImage}
+                srcSet={heroImageData?.srcSet}
+                sources={heroImageData?.sources}
                 alt={meta.title}
+                width={heroImageData?.width}
+                height={heroImageData?.height}
                 className="w-full rounded-md border theme-border"
-                loading="eager"
+                sizes="(min-width: 672px) 624px, calc(100vw - 3rem)"
+                priority
               />
             </figure>
           ) : null}
 
-          <WordBody content={note.markdown} wordSlug={slug} albums={albums} />
+          <WordBody content={note.markdown} wordSlug={slug} albums={albums} images={images} />
         </article>
       </main>
     </div>

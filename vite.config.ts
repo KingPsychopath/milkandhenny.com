@@ -6,6 +6,7 @@ import { defineConfig } from "vite";
 import { VitePWA } from "vite-plugin-pwa";
 
 import { getRuntimeCommitSha } from "./lib/platform/runtime-metadata.server";
+import { STATIC_IMAGE_CACHE_CONTROL, STATIC_ROOT_IMAGE_PATHS } from "./lib/shared/media-cache";
 
 const buildId = getRuntimeCommitSha() ?? `local-${new Date().toISOString()}`;
 
@@ -65,6 +66,12 @@ export default defineConfig({
             "X-Content-Type-Options": "nosniff",
           },
         },
+        ...Object.fromEntries(
+          STATIC_ROOT_IMAGE_PATHS.map((path) => [
+            path,
+            { headers: { "Cache-Control": STATIC_IMAGE_CACHE_CONTROL } },
+          ]),
+        ),
         "/manifest.json": {
           headers: {
             "Cache-Control": "public, max-age=3600, must-revalidate",

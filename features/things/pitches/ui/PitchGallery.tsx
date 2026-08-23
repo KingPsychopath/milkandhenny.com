@@ -1,6 +1,7 @@
 import { Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 
+import { AppImage } from "@/components/AppImage";
 import { listPitchCredentials } from "../browser-store.client";
 import { listPublishedPitchesFn } from "../pitches.functions";
 import type { PitchOperationalStatus, PitchOwnerCredential, PublicPitchDeck } from "../types";
@@ -161,16 +162,20 @@ export function PitchGallery({
               >
                 <div className="relative aspect-square overflow-hidden bg-surface p-4">
                   {pitch.thumbnailUrl ? (
-                    <img
+                    <AppImage
                       src={pitch.thumbnailUrl}
                       alt=""
+                      width={960}
+                      height={540}
                       className="h-full w-full object-contain transition-transform duration-500 group-hover:scale-[1.02]"
                     />
                   ) : (
                     <div className="flex h-full flex-col items-center justify-center gap-5 px-6 text-center">
-                      <img
+                      <AppImage
                         src="/icon-192.png"
                         alt=""
+                        width={192}
+                        height={192}
                         className="h-16 w-16 rounded-2xl opacity-70"
                       />
                       <span className="font-serif text-2xl theme-subtle">{pitch.title}</span>

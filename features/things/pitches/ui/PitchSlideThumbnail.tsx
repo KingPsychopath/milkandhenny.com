@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import type { BinaryFiles } from "@excalidraw/excalidraw/types";
 
+import { AppImage } from "@/components/AppImage";
 import type { PitchSlide } from "../types";
 
 export function PitchSlideThumbnail({
@@ -53,7 +54,7 @@ export function PitchSlideThumbnail({
   }, [files, slide.elements, slide.id, slide.version]);
 
   return url ? (
-    <img src={url} alt={alt} className={className} />
+    <AppImage src={url} alt={alt} width={480} height={270} className={className} />
   ) : (
     <span
       aria-hidden="true"

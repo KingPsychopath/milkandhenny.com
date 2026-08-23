@@ -8,12 +8,19 @@
 
 import fs from "fs";
 import path from "path";
-import { uploadBuffer, deleteObjects, listObjects, isConfigured } from "./r2-client";
+import {
+  uploadBuffer,
+  deleteObjects,
+  listObjects,
+  isConfigured,
+  downloadBuffer,
+  setObjectHttpMetadata,
+} from "./r2-client";
 import {
   isProcessableImage,
   getFileKind,
   getMimeType,
-  processToWebP,
+  processResponsiveImage,
   mapConcurrent,
 } from "../features/media/processing.server";
 import {
@@ -23,6 +30,24 @@ import {
   toR2Filename,
   type WordMediaTarget,
 } from "../features/words/upload";
+import {
+  mergeWordImageMetadata,
+  pruneWordImageVariants,
+  readWordImageManifest,
+  writeWordImageManifest,
+} from "../features/words/image.server";
+import {
+  isWordImageInternalKey,
+  parseWordImageLocation,
+  wordImageVariantKey,
+} from "../features/words/image";
+import { getWordMediaStorageScope } from "../features/words/media-storage.server";
+import type { ResponsiveImageMetadata } from "../features/media/image";
+import {
+  MUTABLE_PUBLIC_MEDIA_CACHE_CONTROL,
+  PRIVATE_MEDIA_CACHE_CONTROL,
+  VERSIONED_PUBLIC_MEDIA_CACHE_CONTROL,
+} from "../lib/shared/media-cache";
 import {
   cleanupOrphanWordMediaFolders,
   scanOrphanWordMediaFolders,
@@ -52,6 +77,7 @@ type UploadedWordMediaFile = {
   size: number;
   markdown: string;
   overwrote: boolean;
+  image?: ResponsiveImageMetadata;
 };
 
 type UploadWordMediaResult = {
@@ -211,6 +237,9 @@ async function uploadWordMediaFiles(
 
   const force = opts?.force ?? false;
   const onProgress = opts?.onProgress;
+  const storageScope = await getWordMediaStorageScope(target);
+  const mutableCacheControl =
+    storageScope === "public" ? MUTABLE_PUBLIC_MEDIA_CACHE_CONTROL : PRIVATE_MEDIA_CACHE_CONTROL;
 
   const absDir = path.resolve(dir.replace(/^~/, process.env.HOME ?? "~"));
   if (!fs.existsSync(absDir)) {
@@ -249,13 +278,15 @@ async function uploadWordMediaFiles(
     );
   }
 
-  const existingObjects = await listObjects(mediaPrefixForTarget(target));
-  const existingInfo: WordMediaFileInfo[] = existingObjects.map((o) => ({
-    key: o.key,
-    filename: path.basename(o.key),
-    size: o.size,
-    lastModified: o.lastModified,
-  }));
+  const existingObjects = await listObjects(mediaPrefixForTarget(target), { scope: storageScope });
+  const existingInfo: WordMediaFileInfo[] = existingObjects
+    .filter((object) => !isWordImageInternalKey(object.key) && !object.key.includes("/incoming/"))
+    .map((o) => ({
+      key: o.key,
+      filename: path.basename(o.key),
+      size: o.size,
+      lastModified: o.lastModified,
+    }));
   const existingNames = new Set(existingInfo.map((i) => i.filename));
 
   if (existingInfo.length > 0) {
@@ -382,21 +413,58 @@ async function uploadWordMediaFiles(
           overwrites ? `Re-uploading ${r2Filename} (overwrite)...` : `Processing ${file}...`,
         );
 
-        const { buffer, width, height } = await processToWebP(raw, file);
-        await uploadBuffer(r2Key, buffer, "image/webp");
+        const image = await processResponsiveImage(raw, file);
+        const largest = image.variants.at(-1);
+        if (!largest) throw new Error(`No responsive variants generated for ${file}`);
+        await Promise.all([
+          uploadBuffer(r2Key, largest.formats.webp.buffer, "image/webp", {
+            scope: storageScope,
+            cacheControl: mutableCacheControl,
+          }),
+          ...image.variants.flatMap((variant) =>
+            (["avif", "webp"] as const).map((format) => {
+              const output = variant.formats[format];
+              return uploadBuffer(
+                wordImageVariantKey(target, r2Filename, variant.width, format),
+                output.buffer,
+                output.contentType,
+                {
+                  scope: storageScope,
+                  cacheControl:
+                    storageScope === "public"
+                      ? VERSIONED_PUBLIC_MEDIA_CACHE_CONTROL
+                      : PRIVATE_MEDIA_CACHE_CONTROL,
+                },
+              );
+            }),
+          ),
+        ]);
+        await pruneWordImageVariants(
+          target,
+          r2Filename,
+          image.variants.map((variant) => variant.width),
+          storageScope,
+        );
         const uploaded: UploadedWordMediaFile = {
           original: file,
           filename: r2Filename,
           kind: "image",
-          width,
-          height,
-          size: buffer.byteLength,
+          width: image.width,
+          height: image.height,
+          size: largest.formats.webp.buffer.byteLength,
           markdown: toMarkdownSnippetForTarget(target, r2Filename, "image"),
           overwrote: overwrites,
+          image: {
+            width: image.width,
+            height: image.height,
+            version: image.version,
+            widths: image.variants.map((variant) => variant.width),
+            placeholder: image.placeholder,
+          },
         };
         completed[file] = uploaded;
         await queueCheckpointWrite();
-        onProgress?.(`Uploaded ${r2Filename} (${width}×${height})`);
+        onProgress?.(`Uploaded ${r2Filename} (${image.width}×${image.height})`);
 
         return uploaded;
       },
@@ -417,7 +485,10 @@ async function uploadWordMediaFiles(
             : `Uploading ${file} (${formatBytes(raw.byteLength)}, ${kind})...`,
         );
 
-        await uploadBuffer(r2Key, raw, mimeType);
+        await uploadBuffer(r2Key, raw, mimeType, {
+          scope: storageScope,
+          cacheControl: mutableCacheControl,
+        });
         const uploaded: UploadedWordMediaFile = {
           original: file,
           filename: r2Filename,
@@ -447,6 +518,13 @@ async function uploadWordMediaFiles(
     );
   }
 
+  const imageEntries = Object.fromEntries(
+    uploadedOrdered.flatMap((file) => (file.image ? [[file.filename, file.image]] : [])),
+  );
+  if (Object.keys(imageEntries).length > 0) {
+    await mergeWordImageMetadata(target, imageEntries, storageScope);
+  }
+
   try {
     deleteWordMediaUploadCheckpoint(absDir, target);
   } catch {
@@ -463,8 +541,10 @@ async function uploadWordMediaFiles(
 async function listWordMediaFiles(target: WordMediaTarget): Promise<WordMediaFileInfo[]> {
   requireR2();
 
-  const objects = await listObjects(mediaPrefixForTarget(target));
+  const scope = await getWordMediaStorageScope(target);
+  const objects = await listObjects(mediaPrefixForTarget(target), { scope });
   return objects
+    .filter((object) => !isWordImageInternalKey(object.key) && !object.key.includes("/incoming/"))
     .map((obj) => ({
       key: obj.key,
       filename: path.basename(obj.key),
@@ -482,8 +562,18 @@ async function deleteWordMediaFile(
   requireR2();
 
   const key = `${mediaPrefixForTarget(target)}${filename}`;
+  const scope = await getWordMediaStorageScope(target);
   onProgress?.(`Deleting ${key}...`);
-  await deleteObjects([key]);
+  const manifest = await readWordImageManifest(target, scope);
+  const stem = filename.replace(/\.[^.]+$/, "");
+  const variants = await listObjects(`${mediaPrefixForTarget(target)}_responsive/${stem}/`, {
+    scope,
+  });
+  await deleteObjects([key, ...variants.map((variant) => variant.key)], { scope });
+  if (manifest[filename]) {
+    delete manifest[filename];
+    await writeWordImageManifest(target, manifest, scope);
+  }
   onProgress?.("Done.");
 }
 
@@ -493,7 +583,8 @@ async function deleteAllWordMediaFiles(
 ): Promise<number> {
   requireR2();
 
-  const objects = await listObjects(mediaPrefixForTarget(target));
+  const scope = await getWordMediaStorageScope(target);
+  const objects = await listObjects(mediaPrefixForTarget(target), { scope });
   const keys = objects.map((o) => o.key);
 
   if (keys.length === 0) {
@@ -502,9 +593,99 @@ async function deleteAllWordMediaFiles(
   }
 
   onProgress?.(`Deleting ${keys.length} files from ${targetLabel(target)}...`);
-  const deleted = await deleteObjects(keys);
+  const deleted = await deleteObjects(keys, { scope });
   onProgress?.("Done.");
   return deleted;
+}
+
+async function backfillWordImageVariants(
+  onProgress?: (msg: string) => void,
+  options?: { force?: boolean },
+): Promise<{ processed: number; skipped: number; failed: number }> {
+  requireR2();
+  let processed = 0;
+  let skipped = 0;
+  let failed = 0;
+  const locations = [
+    { prefix: "words/media/", scope: "public" as const },
+    { prefix: "words/assets/", scope: "public" as const },
+    { prefix: "words/media/", scope: "private" as const },
+  ];
+
+  for (const source of locations) {
+    const objects = await listObjects(source.prefix, { scope: source.scope });
+    const canonicalImages = objects
+      .map((object) => parseWordImageLocation(object.key))
+      .filter((location): location is NonNullable<typeof location> => !!location)
+      .filter((location) => location.filename.endsWith(".webp"));
+
+    for (const location of canonicalImages) {
+      try {
+        const manifest = await readWordImageManifest(location.target, source.scope);
+        if (manifest[location.filename] && !options?.force) {
+          skipped++;
+          continue;
+        }
+        onProgress?.(`${source.scope}: ${location.canonicalRef}`);
+        const raw = await downloadBuffer(location.canonicalRef, { scope: source.scope });
+        const image = await processResponsiveImage(raw, ".webp");
+        await Promise.all(
+          image.variants.flatMap((variant) =>
+            (["avif", "webp"] as const).map((format) => {
+              const output = variant.formats[format];
+              return uploadBuffer(
+                wordImageVariantKey(location.target, location.filename, variant.width, format),
+                output.buffer,
+                output.contentType,
+                {
+                  scope: source.scope,
+                  cacheControl:
+                    source.scope === "public"
+                      ? VERSIONED_PUBLIC_MEDIA_CACHE_CONTROL
+                      : PRIVATE_MEDIA_CACHE_CONTROL,
+                },
+              );
+            }),
+          ),
+        );
+        await pruneWordImageVariants(
+          location.target,
+          location.filename,
+          image.variants.map((variant) => variant.width),
+          source.scope,
+        );
+        await setObjectHttpMetadata(
+          location.canonicalRef,
+          {
+            cacheControl:
+              source.scope === "public"
+                ? MUTABLE_PUBLIC_MEDIA_CACHE_CONTROL
+                : PRIVATE_MEDIA_CACHE_CONTROL,
+          },
+          { scope: source.scope },
+        );
+        await mergeWordImageMetadata(
+          location.target,
+          {
+            [location.filename]: {
+              width: image.width,
+              height: image.height,
+              version: image.version,
+              widths: image.variants.map((variant) => variant.width),
+              placeholder: image.placeholder,
+            },
+          },
+          source.scope,
+        );
+        processed++;
+      } catch (error) {
+        failed++;
+        onProgress?.(`  failed: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    }
+  }
+
+  return { processed, skipped, failed };
 }
 
 export {
@@ -513,6 +694,7 @@ export {
   listWordMediaFiles,
   deleteWordMediaFile,
   deleteAllWordMediaFiles,
+  backfillWordImageVariants,
   scanOrphanWordMediaFolders,
   cleanupOrphanWordMediaFolders,
 };

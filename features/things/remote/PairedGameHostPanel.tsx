@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { AppImage } from "@/components/AppImage";
 import { EndGameDialog } from "../shared/EndGameDialog";
 import { shareOrCopy } from "@/lib/client/share";
 import { useQrCode } from "@/hooks/useQrCode";
@@ -157,9 +158,11 @@ export function PairedGameHostPanel({
       {roomId ? (
         <div className="mt-5 grid gap-5 sm:grid-cols-[9rem_1fr] sm:items-center">
           {qrCode ? (
-            <img
+            <AppImage
               src={qrCode}
               alt="QR code for the remote judge invite"
+              width={240}
+              height={240}
               className="mx-auto w-36 rounded-2xl bg-white p-2"
             />
           ) : qrFailed ? (

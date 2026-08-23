@@ -77,6 +77,15 @@ function validateAlbum(album: Album): string[] {
     if (typeof photo.width !== "number" || typeof photo.height !== "number") {
       errors.push(`${prefix}: width and height must be numbers`);
     }
+    if (typeof photo.version !== "string" || !photo.version) {
+      errors.push(`${prefix}: version is required`);
+    }
+    if (!Array.isArray(photo.widths) || photo.widths.length === 0) {
+      errors.push(`${prefix}: responsive widths are required`);
+    }
+    if (!photo.placeholder || typeof photo.placeholder.color !== "string") {
+      errors.push(`${prefix}: placeholder colour is required`);
+    }
     if (photo.size !== undefined && typeof photo.size !== "number") {
       errors.push(`${prefix}: size must be a number when provided`);
     }

@@ -1,5 +1,6 @@
 import { createCsrfMiddleware, createMiddleware, createStart } from "@tanstack/react-start";
 import { BASE_URL } from "@/lib/shared/config";
+import { STATIC_IMAGE_CACHE_CONTROL, STATIC_ROOT_IMAGE_PATHS } from "@/lib/shared/media-cache";
 
 const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
 
@@ -121,6 +122,10 @@ function applyCachePolicy(pathname: string, response: Response) {
   }
   if (pathname.startsWith("/og/")) {
     response.headers.set("Cache-Control", "public, max-age=31536000, immutable");
+    return;
+  }
+  if ((STATIC_ROOT_IMAGE_PATHS as readonly string[]).includes(pathname)) {
+    response.headers.set("Cache-Control", STATIC_IMAGE_CACHE_CONTROL);
     return;
   }
   if (pathname === "/manifest.json" || pathname === "/manifest-forehead.webmanifest") {

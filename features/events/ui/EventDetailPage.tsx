@@ -13,6 +13,7 @@ import {
   type TicketHolderEvent,
   type ViewableEvent,
 } from "../types";
+import { AppImage } from "@/components/AppImage";
 import type { TicketTypeAvailability } from "../events.server";
 import { AddressLink } from "./AddressLink";
 import { ThreeWordHint } from "./ThreeWordHint";
@@ -127,11 +128,13 @@ export function EventDetailPage({
         ) : null}
 
         {event.heroImage && (
-          <img
+          <AppImage
             src={event.heroImage}
             alt=""
-            className={`w-full h-auto rounded-lg mb-8 ${heroImageHeightClass(event.heroHeight)}`}
-            loading="eager"
+            width={event.heroImageWidth}
+            height={event.heroImageHeight}
+            className={`mb-8 h-auto w-full rounded-lg bg-surface ${heroImageHeightClass(event.heroHeight)}`}
+            priority
           />
         )}
 

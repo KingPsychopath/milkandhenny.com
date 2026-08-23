@@ -3,6 +3,7 @@ import { requireAuth } from "@/features/auth/auth.server";
 import { getImageUrl } from "@/features/media/storage";
 import { apiErrorFromRequest } from "@/lib/platform/api-error";
 import { isConfigured, listObjects } from "@/lib/platform/r2.server";
+import { isWordImageInternalKey } from "@/features/words/image";
 
 type MediaKind = "image" | "video" | "gif" | "audio" | "file";
 
@@ -46,7 +47,7 @@ function toMarkdown(path: string, filename: string): string {
 function parsePageMediaKey(key: string, slug: string): MediaItem | null {
   const prefix = `words/media/${slug}/`;
   if (!key.startsWith(prefix)) return null;
-  if (key.includes("/incoming/")) return null;
+  if (key.includes("/incoming/") || isWordImageInternalKey(key)) return null;
 
   const filename = key.slice(prefix.length);
   if (!filename || filename.includes("/")) return null;
@@ -63,7 +64,7 @@ function parsePageMediaKey(key: string, slug: string): MediaItem | null {
 
 function parseAssetKey(key: string): MediaItem | null {
   if (!key.startsWith("words/assets/")) return null;
-  if (key.includes("/incoming/")) return null;
+  if (key.includes("/incoming/") || isWordImageInternalKey(key)) return null;
 
   const parts = key.split("/");
   if (parts.length !== 4) return null;
