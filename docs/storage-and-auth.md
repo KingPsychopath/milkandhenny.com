@@ -67,7 +67,7 @@ Replaced `/guestlist`, which was removed along with the standalone guest list.
 
 - **Auth**: JWT in **httpOnly cookie** (`mah-auth-upload` or `mah-auth-admin`)
 - **Why**: admin sessions should satisfy upload access (least privilege + fewer logins). Upload API routes accept cookie auth.
-- **Client storage**: authentication is cookie-based; authorization tokens are not stored in `localStorage`.
+- **Client storage**: none for authentication. Authorization tokens are not stored in browser storage.
 
 Notes:
 
@@ -78,6 +78,19 @@ Notes:
 
 - **Client storage**: theme preference in `localStorage` (non-sensitive)
 - **Why**: this is a pure client preference and we want instant paint without network calls
+
+### Browser profile (site-wide)
+
+- **Client storage**: a name and email address in `localStorage["mah-browser-profile-v1"]`
+- **Why**: editable identity fields can be filled on this browser without an account
+- **Write rule**: remember values only after a successful ticket, pitch, recovery, presentation, or
+  multiplayer action; typing alone does not persist them
+- **Trust rule**: the profile is a convenience default only. It is never submitted automatically,
+  sent with unrelated requests, or used as authentication or authorization
+- **Extension rule**: new reusable fields must be explicit in the typed profile, validated on read
+  and write, and introduced only when a real form needs them
+- **Scope**: feature state, payment details, credentials, room tokens, and private links never belong
+  in this profile
 
 ---
 

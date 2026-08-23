@@ -9,6 +9,7 @@ import {
   minimumCheckoutQuantity,
 } from "@/features/tickets/payment-limits";
 import { claimFreeTicketsFn, startCheckoutFn } from "@/features/tickets/tickets.functions";
+import { useBrowserProfileForm } from "@/lib/client/browser-profile";
 import { formatMoney, type TicketType } from "../types";
 import type { TicketTypeAvailability } from "../events.server";
 
@@ -80,8 +81,7 @@ export function ClaimTicketForm({
   const errorId = useId();
 
   const [open, setOpen] = useState(false);
-  const [name, setName] = useState("");
-  const [email, setEmail] = useState("");
+  const { name, email, setName, setEmail, remember } = useBrowserProfileForm();
   const [quantity, setQuantity] = useState(1);
   const [acceptedTerms, setAcceptedTerms] = useState(false);
   const checkoutRequestId = useRef<string | null>(null);
@@ -130,6 +130,7 @@ export function ClaimTicketForm({
           return;
         }
 
+        remember({ name, email });
         window.location.assign(checkout.url);
         return;
       }
@@ -149,6 +150,7 @@ export function ClaimTicketForm({
         return;
       }
 
+      remember({ name, email });
       setState({
         status: "done",
         ticketIds: result.ticketIds,

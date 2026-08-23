@@ -23,7 +23,7 @@ Verify endpoints issue short-lived JWTs (role-based TTLs). The app stores role J
 Notes:
 
 - API routes still accept `Authorization: Bearer <token>` for CLI/tools and explicit callers.
-- The upload dashboard still uses a client-stored token for presign/finalize calls (client-driven flow).
+- The upload dashboard uses the httpOnly auth cookie for its client-driven presign/finalize calls.
 - Words media upload endpoints (`/api/upload/words/*`) are admin-only; the `UPLOAD_PIN` gate is for transfers.
 
 See also: [storage-and-auth.md](./storage-and-auth.md) for the "cookies vs localStorage" mental model and feature-by-feature mapping.

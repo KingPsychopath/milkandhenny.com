@@ -1,6 +1,7 @@
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 
+import { useBrowserProfileForm } from "@/lib/client/browser-profile";
 import { createPitchFn } from "../pitches.functions";
 import { rememberPitchCredential, saveLocalPitchDraft } from "../browser-store.client";
 import { createEmptyPitchDocument } from "../new-document.client";
@@ -19,8 +20,7 @@ export function NewPitch({
   operationalStatus: PitchOperationalStatus;
 }) {
   const navigate = useNavigate();
-  const [name, setName] = useState("");
-  const [email, setEmail] = useState("");
+  const { name, email, setName, setEmail, remember } = useBrowserProfileForm();
   const [title, setTitle] = useState("");
   const [state, setState] = useState<"idle" | "saving" | "error">("idle");
   const [error, setError] = useState("");
@@ -71,6 +71,7 @@ export function NewPitch({
         setError(result.error);
         return;
       }
+      remember({ name, email });
       await Promise.all([
         rememberPitchCredential({
           deckId: result.value.deck.id,

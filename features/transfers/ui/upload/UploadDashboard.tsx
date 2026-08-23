@@ -4,7 +4,6 @@ import { AppCombobox } from "@/components/AppCombobox";
 import { AppSelect } from "@/components/AppSelect";
 import { useState, useRef, useCallback, useEffect, useDeferredValue } from "react";
 import { Link } from "@tanstack/react-router";
-import { getStored, removeStored } from "@/lib/client/storage";
 import { mapWithConcurrency } from "@/lib/shared/map-with-concurrency";
 import { SITE_BRAND } from "@/lib/shared/config";
 import { getResponseErrorMessage, readResponsePayload } from "@/lib/client/response";
@@ -233,19 +232,6 @@ function getUploadProgressLabel(progress: {
 }
 
 export function UploadDashboard({ isAdmin }: UploadDashboardProps) {
-  const [mounted, setMounted] = useState(false);
-  const [uploadToken, setUploadToken] = useState("");
-  const [adminToken, setAdminToken] = useState("");
-
-  /** Read token after mount only — avoids hydration mismatch (no sessionStorage on server). */
-  useEffect(() => {
-    const storedUpload = getStored("uploadToken") ?? "";
-    const storedAdmin = getStored("adminToken") ?? "";
-    setUploadToken(storedUpload);
-    setAdminToken(storedAdmin);
-    setMounted(true);
-  }, []);
-
   /* Upload state */
   const [mode, setMode] = useState<UploadMode>("transfer");
   const [files, setFiles] = useState<File[]>([]);
@@ -289,66 +275,21 @@ export function UploadDashboard({ isAdmin }: UploadDashboardProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const deferredFiles = useDeferredValue(files);
 
-  const effectiveToken = mode === "words" ? adminToken : adminToken || uploadToken;
-  const effectiveTokenRole =
-    mode === "words"
-      ? adminToken
-        ? "admin"
-        : null
-      : adminToken
-        ? "admin"
-        : uploadToken
-          ? "upload"
-          : null;
+  const authFetch = useCallback(async (url: string, options: RequestInit = {}) => {
+    const res = await fetch(url, options);
+    if (res.status === 401) {
+      window.location.assign("/upload");
+    }
+    return res;
+  }, []);
 
-  const authFetch = useCallback(
-    async (url: string, options: RequestInit = {}) => {
-      const res = await fetch(url, {
-        ...options,
-        headers: {
-          ...(options.headers as Record<string, string>),
-          ...(effectiveToken ? { Authorization: `Bearer ${effectiveToken}` } : {}),
-        },
-      });
-      if (res.status === 401) {
-        // Clear the token that was actually being used so the user can re-auth.
-        if (effectiveTokenRole === "admin") {
-          removeStored("adminToken");
-          setAdminToken("");
-        } else if (effectiveTokenRole === "upload") {
-          removeStored("uploadToken");
-          setUploadToken("");
-        } else {
-          // Cookie session is missing/expired. Force the server auth gate.
-          window.location.assign("/upload");
-        }
-      }
-      return res;
-    },
-    [effectiveToken, effectiveTokenRole],
-  );
-
-  const adminAuthFetch = useCallback(
-    async (url: string, options: RequestInit = {}) => {
-      const res = await fetch(url, {
-        ...options,
-        headers: {
-          ...(options.headers as Record<string, string>),
-          ...(adminToken ? { Authorization: `Bearer ${adminToken}` } : {}),
-        },
-      });
-      if (res.status === 401) {
-        if (adminToken) {
-          removeStored("adminToken");
-          setAdminToken("");
-        } else {
-          window.location.assign("/upload");
-        }
-      }
-      return res;
-    },
-    [adminToken],
-  );
+  const adminAuthFetch = useCallback(async (url: string, options: RequestInit = {}) => {
+    const res = await fetch(url, options);
+    if (res.status === 401) {
+      window.location.assign("/upload");
+    }
+    return res;
+  }, []);
 
   const authFetchWithRetry = useCallback(
     async (url: string, options: RequestInit = {}, retries = API_REQUEST_RETRIES) => {
@@ -1045,19 +986,6 @@ export function UploadDashboard({ isAdmin }: UploadDashboardProps) {
   };
 
   const totalFileSize = files.reduce((sum, f) => sum + f.size, 0);
-  /* ─── Render: wait for mount (avoids hydration mismatch) ─── */
-  if (!mounted) {
-    return (
-      <div
-        className="min-h-dvh flex items-center justify-center px-6"
-        aria-busy="true"
-        aria-label="Loading"
-      >
-        <div className="w-8 h-8 border-2 border-[var(--foreground)] border-t-transparent rounded-full animate-spin" />
-      </div>
-    );
-  }
-
   // The route loader owns the upload authentication gate.
 
   /* ─── Render: Upload dashboard ─── */

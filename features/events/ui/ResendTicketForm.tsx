@@ -3,6 +3,7 @@
 import { useId, useState } from "react";
 
 import { resendTicketsFn } from "@/features/tickets/tickets.functions";
+import { useBrowserProfileForm } from "@/lib/client/browser-profile";
 
 /**
  * "Send my ticket again."
@@ -12,7 +13,7 @@ import { resendTicketsFn } from "@/features/tickets/tickets.functions";
  */
 export function ResendTicketForm({ eventSlug }: { eventSlug: string }) {
   const emailId = useId();
-  const [email, setEmail] = useState("");
+  const { email, setEmail, remember } = useBrowserProfileForm();
   const [state, setState] = useState<"idle" | "sending" | "sent" | "error">("idle");
 
   const submit = async (event: React.FormEvent<HTMLFormElement>) => {
@@ -20,6 +21,7 @@ export function ResendTicketForm({ eventSlug }: { eventSlug: string }) {
     setState("sending");
     try {
       const result = await resendTicketsFn({ data: { eventSlug, email } });
+      if (result.ok) remember({ email });
       setState(result.ok ? "sent" : "error");
     } catch {
       setState("error");

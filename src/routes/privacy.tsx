@@ -64,9 +64,11 @@ function PrivacyPage() {
             <h2 className="font-mono text-sm font-bold tracking-tight">Storage and retention</h2>
             <p className="mt-3 theme-muted">
               The site uses cookies and local browser storage for sign-in, preferences, saved work,
-              and offline features. Private transfers and temporary event data expire on the dates
-              shown in the service. We keep transaction and security records for as long as needed
-              for accounting, disputes, safety, and legal duties. We then delete or anonymise them.
+              offline features, and editable name and email suggestions. These suggestions stay in
+              your browser until you clear its site data. Private transfers and temporary event data
+              expire on the dates shown in the service. We keep transaction and security records for
+              as long as needed for accounting, disputes, safety, and legal duties. We then delete
+              or anonymise them.
             </p>
           </section>
 

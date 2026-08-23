@@ -1,9 +1,10 @@
 import { useState } from "react";
 
+import { useBrowserProfileForm } from "@/lib/client/browser-profile";
 import { recoverPitchAccessFn } from "../pitches.functions";
 
 export function PitchRecovery({ compact = false }: { compact?: boolean }) {
-  const [email, setEmail] = useState("");
+  const { email, setEmail, remember } = useBrowserProfileForm();
   const [status, setStatus] = useState<"idle" | "sending" | "sent" | "error">("idle");
   const [message, setMessage] = useState("");
 
@@ -17,6 +18,7 @@ export function PitchRecovery({ compact = false }: { compact?: boolean }) {
         setMessage(result.error);
         return;
       }
+      remember({ email });
       setStatus("sent");
     } catch {
       setStatus("error");
