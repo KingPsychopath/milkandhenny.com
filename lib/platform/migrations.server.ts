@@ -754,6 +754,17 @@ const MIGRATIONS: Migration[] = [
       drop table if exists pitch_mutations;
     `,
   },
+  {
+    id: "0020_game_pool_default_entrances",
+    sql: `
+      alter table game_pool_entrances
+        add column if not exists is_default boolean not null default false;
+
+      create unique index if not exists game_pool_entrances_one_default_idx
+        on game_pool_entrances (game)
+        where is_default = true and retired_at is null;
+    `,
+  },
 ];
 
 export type MigrationResult = { applied: string[]; alreadyApplied: number };
