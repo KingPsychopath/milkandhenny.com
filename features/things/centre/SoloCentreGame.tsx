@@ -202,8 +202,8 @@ export function SoloCentreGame({
           onFinish={finish}
         />
         <p id="centre-instructions" className="centre-note centre-note--centre">
-          Hold the start until the countdown begins. At GO, drag towards the centre. Lift when you
-          need to, then continue from your route head.
+          Tap the start when you’re ready. At GO, drag towards the centre. Lift when you need to,
+          then continue from your route head.
         </p>
         <div className="centre-race-controls">
           {ghost ? (

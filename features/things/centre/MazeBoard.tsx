@@ -173,15 +173,16 @@ export function MazeBoard({
     const target = phase === "arming" ? entrance : active;
     if (Math.hypot(point.x - target.x, point.y - target.y) > (phase === "arming" ? 0.13 : 0.1))
       return;
+    if (phase === "arming") {
+      event.preventDefault();
+      onArmChange?.(true);
+      return;
+    }
     event.currentTarget.setPointerCapture(event.pointerId);
     event.currentTarget.parentElement?.focus();
     pointerRef.current = event.pointerId;
     heldRef.current = true;
-    if (phase === "arming") onArmChange?.(true);
-    else if (
-      (phase === "racing" || phase === "finishing") &&
-      routeRef.current.segments.length === 0
-    ) {
+    if ((phase === "racing" || phase === "finishing") && routeRef.current.segments.length === 0) {
       const started = { ...routeRef.current, segments: [[entrance]] };
       routeRef.current = started;
       onRouteChange?.(started);
@@ -244,7 +245,6 @@ export function MazeBoard({
     pointerRef.current = null;
     heldRef.current = false;
     collisionRef.current = false;
-    if (phase === "arming") onArmChange?.(false);
   };
 
   const keyboardMove = (event: React.KeyboardEvent<HTMLDivElement>) => {
@@ -298,7 +298,7 @@ export function MazeBoard({
       className="centre-board-wrap"
       tabIndex={0}
       role="application"
-      aria-label="Circular maze. Hold the marked entrance until the countdown begins. At GO, trace towards the centre. Keyboard players use the arrow keys."
+      aria-label="Circular maze. Tap the marked entrance to ready up. At GO, trace towards the centre. Keyboard players use the arrow keys."
       onKeyDown={keyboardMove}
     >
       <svg
@@ -392,8 +392,8 @@ export function MazeBoard({
       </svg>
       {hidden ? (
         <div className="centre-start-copy" aria-live="assertive">
-          <strong>{phase === "arming" ? "press and hold" : count}</strong>
-          <span>{phase === "arming" ? "until the countdown" : "start at GO"}</span>
+          <strong>{phase === "arming" ? "tap to ready" : count}</strong>
+          <span>{phase === "arming" ? "when you’re set" : "start at GO"}</span>
         </div>
       ) : phase === "racing" && startsAt && now - startsAt < 850 ? (
         <div className="centre-go-copy" aria-hidden="true">

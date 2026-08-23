@@ -67,6 +67,7 @@ export function CentreRoom({
   const sound = useGameSound(gameBrowserKey("centre", 1, "sound"), ["all", "off"]);
   const [route, setRoute] = useState<CentreRoute>({ segments: [], wallHits: 0 });
   const [elapsed, setElapsed] = useState(0);
+  const [finishRemaining, setFinishRemaining] = useState<number | null>(null);
   const [replayPlayers, setReplayPlayers] = useState<CentreReplayPlayer[] | null>(null);
   const [removePlayerIds, setRemovePlayerIds] = useState<string[] | null>(null);
   const [nudgedIds, setNudgedIds] = useState<string[] | null>(null);
@@ -287,6 +288,18 @@ export function CentreRoom({
     return () => cancelAnimationFrame(frame);
   }, [clockOffset, courseStartsAt, snapshotPhase]);
 
+  useEffect(() => {
+    const endsAt = course?.endsAt;
+    if (snapshotPhase !== "finishing" || !endsAt) {
+      setFinishRemaining(null);
+      return;
+    }
+    const update = () => setFinishRemaining(Math.max(0, endsAt - (Date.now() + clockOffset)));
+    update();
+    const timer = window.setInterval(update, 1_000);
+    return () => window.clearInterval(timer);
+  }, [clockOffset, course?.endsAt, snapshotPhase]);
+
   if (live.ended || !snapshot)
     return (
       <div className="things-game things-game--night centre">
@@ -397,19 +410,48 @@ export function CentreRoom({
         <main id="main" className="centre-race">
           <div className="centre-race-copy">
             <p className="centre-eyebrow">
-              {snapshot.players.filter(({ armed }) => armed).length} of {snapshot.players.length} on
-              the line
+              {ownFinished
+                ? "your race is done"
+                : `${snapshot.players.filter(({ armed }) => armed).length} of ${snapshot.players.length} on the line`}
             </p>
             <h1 className="centre-race-title">
               {snapshot.phase === "arming"
-                ? "Place your finger."
+                ? "Tap your entrance."
                 : snapshot.phase === "countdown"
                   ? "Get set."
                   : ownFinished
-                    ? `${(me.elapsedMs! / 1_000).toFixed(2)}s`
+                    ? "Finished."
                     : `${(elapsed / 1_000).toFixed(1)}s`}
             </h1>
+            {ownFinished ? (
+              <div className="centre-own-finish" role="status">
+                <strong>{(me.elapsedMs! / 1_000).toFixed(2)}s</strong>
+                <span>your time · watch the others</span>
+              </div>
+            ) : null}
+            {snapshot.phase === "finishing" && finishRemaining !== null ? (
+              <p className="centre-round-timer" role="timer">
+                round ends in {(finishRemaining / 1_000).toFixed(1)}s
+              </p>
+            ) : null}
           </div>
+          <ul className="centre-live-players" aria-label="Race progress">
+            {snapshot.players.map((player) => (
+              <li key={player.id} className={`centre-colour-${player.colour}`}>
+                <span aria-hidden="true" />
+                <strong>{player.name}</strong>
+                <small>
+                  {player.elapsedMs !== null
+                    ? `${player.id === credentials.playerId ? "done · " : ""}${(player.elapsedMs / 1_000).toFixed(2)}s`
+                    : player.armed
+                      ? "ready"
+                      : snapshot.phase === "arming"
+                        ? "tapping in"
+                        : "racing"}
+                </small>
+              </li>
+            ))}
+          </ul>
           <MazeBoard
             maze={maze}
             entranceIndex={me.entranceIndex}
@@ -463,21 +505,6 @@ export function CentreRoom({
               });
             }}
           />
-          <ul className="centre-live-players" aria-label="Race progress">
-            {snapshot.players.map((player) => (
-              <li key={player.id} className={`centre-colour-${player.colour}`}>
-                <span aria-hidden="true" />
-                <strong>{player.name}</strong>
-                <small>
-                  {player.elapsedMs !== null
-                    ? `${(player.elapsedMs / 1_000).toFixed(2)}s`
-                    : player.armed
-                      ? "on the line"
-                      : "placing"}
-                </small>
-              </li>
-            ))}
-          </ul>
           <div className="centre-race-controls">
             <button
               type="button"
@@ -578,8 +605,7 @@ function CentreLobby({
         <p className="centre-eyebrow">room ready</p>
         <h1 className="centre-title">Everyone gets an entrance.</h1>
         <p className="centre-lede">
-          Hold your start until everyone is on the line. Once the countdown begins, the race is
-          locked.
+          Tap your start when you’re set. Once the countdown begins, the race is locked.
         </p>
         {qr ? (
           <img src={qr} alt="QR code to join this centre room" className="centre-qr" />
@@ -596,9 +622,11 @@ function CentreLobby({
         <ul className="centre-roster">
           {snapshot.players.map((player) => (
             <li key={player.id}>
-              {player.name}
-              {player.id === snapshot.hostPlayerId ? " · host" : ""}
-              {player.ready ? "" : " · not ready"}
+              <span>
+                {player.name}
+                {player.id === snapshot.hostPlayerId ? " · host" : ""}
+              </span>
+              <small>{player.ready ? "ready" : "not ready"}</small>
             </li>
           ))}
         </ul>

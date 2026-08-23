@@ -3538,9 +3538,16 @@
   }
 
   .centre-roster li {
+    display: flex;
+    justify-content: space-between;
+    gap: 1rem;
     padding: 0.8rem 0;
     border-bottom: 1px solid var(--centre-edge);
     color: var(--centre-quiet);
+  }
+
+  .centre-roster small {
+    color: var(--centre-faint);
   }
 
   .centre-race {
@@ -3555,6 +3562,32 @@
   .centre-race-copy {
     min-height: 4.6rem;
     text-align: center;
+  }
+
+  .centre-own-finish {
+    display: flex;
+    align-items: baseline;
+    justify-content: center;
+    gap: 0.65rem;
+    margin-top: 0.65rem;
+    font-family: var(--font-geist-mono);
+  }
+
+  .centre-own-finish strong {
+    color: var(--things-amber);
+    font-size: 1.25rem;
+  }
+
+  .centre-own-finish span,
+  .centre-round-timer {
+    color: var(--centre-faint);
+    font-size: 0.68rem;
+  }
+
+  .centre-round-timer {
+    margin-top: 0.45rem;
+    color: var(--things-amber);
+    font-family: var(--font-geist-mono);
   }
 
   .centre-race-title {
@@ -3725,6 +3758,7 @@
     justify-content: center;
     gap: 0.5rem 1rem;
     padding-top: 0.8rem;
+    margin-top: 0.75rem;
   }
 
   .centre-live-players li {
