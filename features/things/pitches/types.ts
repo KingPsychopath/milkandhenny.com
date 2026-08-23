@@ -125,6 +125,17 @@ export interface OwnedPitchDeck {
   assets: PitchAsset[];
 }
 
+export type PitchVersionReason = "autosave" | "safety" | "conflict" | "publish" | "restore";
+
+export interface PitchVersionHistoryItem {
+  id: string;
+  version: number;
+  reason: PitchVersionReason;
+  createdAt: string;
+  slideCount: number;
+  contentCount: number;
+}
+
 export interface PitchDeckAdminSummary {
   id: string;
   title: string;

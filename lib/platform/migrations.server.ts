@@ -602,6 +602,17 @@ const MIGRATIONS: Migration[] = [
         on game_pool_assignments (run_id, room_id, status);
     `,
   },
+  {
+    id: "0017_pitch_version_history",
+    sql: `
+      alter table pitch_deck_backups drop constraint if exists pitch_deck_backups_reason_check;
+      update pitch_deck_backups set reason = 'autosave' where reason = 'periodic';
+      update pitch_deck_backups set reason = 'restore' where reason = 'admin';
+      alter table pitch_deck_backups
+        add constraint pitch_deck_backups_reason_check
+        check (reason in ('autosave', 'safety', 'conflict', 'publish', 'restore'));
+    `,
+  },
 ];
 
 export type MigrationResult = { applied: string[]; alreadyApplied: number };

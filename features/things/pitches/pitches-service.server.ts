@@ -11,6 +11,8 @@ export class PitchesService extends Context.Service<
   {
     readonly create: typeof create;
     readonly readOwned: typeof readOwned;
+    readonly listHistory: typeof listHistory;
+    readonly restoreVersion: typeof restoreVersion;
     readonly sync: typeof sync;
     readonly publish: typeof publish;
     readonly listPublished: typeof listPublished;
@@ -39,6 +41,8 @@ export class PitchesService extends Context.Service<
   static readonly layer = Layer.succeed(this, {
     create,
     readOwned,
+    listHistory,
+    restoreVersion,
     sync,
     publish,
     listPublished,
@@ -71,6 +75,14 @@ function create(input: Parameters<typeof engine.createPitch>[0]) {
 
 function readOwned(...input: Parameters<typeof engine.readOwnedPitch>) {
   return pitchesOperation("read_owned", () => engine.readOwnedPitch(...input));
+}
+
+function listHistory(...input: Parameters<typeof engine.listPitchHistory>) {
+  return pitchesOperation("list_history", () => engine.listPitchHistory(...input));
+}
+
+function restoreVersion(...input: Parameters<typeof engine.restorePitchVersion>) {
+  return pitchesOperation("restore_version", () => engine.restorePitchVersion(...input));
 }
 
 function sync(input: Parameters<typeof engine.syncPitch>[0]) {

@@ -24,8 +24,10 @@ import { createEmptyPitchDocument } from "../new-document.client";
 import {
   createPitchAssetUploadFn,
   finalisePitchAssetFn,
+  listPitchHistoryFn,
   publishPitchFn,
   readOwnedPitchFn,
+  restorePitchVersionFn,
   syncPitchFn,
 } from "../pitches.functions";
 import {
@@ -36,6 +38,7 @@ import {
   type PitchInkLayer,
   type PitchOwnerCredential,
   type PitchSlide,
+  type PitchVersionHistoryItem,
 } from "../types";
 import { parsePitchDocument } from "../validation";
 import { ExcalidrawSurface } from "./ExcalidrawSurface";
@@ -46,6 +49,7 @@ import { PitchDeviceSwitcher } from "./PitchDeviceSwitcher";
 import { PitchPreview } from "./PitchPreview";
 import { PitchRecovery } from "./PitchRecovery";
 import { PitchSlideThumbnail } from "./PitchSlideThumbnail";
+import { PitchVersionHistory } from "./PitchVersionHistory";
 import { fromPitchStageScene, pitchStageExport, toPitchStageScene } from "./pitch-stage.client";
 
 const PITCH_STUDIO_TOUR_KEY = "milkandhenny:pitch-studio-tour:v1";
@@ -270,6 +274,10 @@ export function PitchEditor({
   const [inkOpen, setInkOpen] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [tourOpen, setTourOpen] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyItems, setHistoryItems] = useState<PitchVersionHistoryItem[]>([]);
+  const [restoringHistoryId, setRestoringHistoryId] = useState<string>();
   const [railOpen, setRailOpen] = useState(true);
   const [railPinned, setRailPinned] = useState(true);
   const [sceneEpoch, setSceneEpoch] = useState(0);
@@ -689,10 +697,7 @@ export function PitchEditor({
     const nextFiles = api.getFiles();
     filesRef.current = { ...filesRef.current, ...nextFiles };
     setFiles(filesRef.current);
-    const elements = fromPitchStageScene(
-      currentSlide.id,
-      api.getSceneElementsIncludingDeleted(),
-    );
+    const elements = fromPitchStageScene(currentSlide.id, api.getSceneElementsIncludingDeleted());
     const nextDocument = updateSlide(current, currentSlide.id, (slide) => ({
       ...slide,
       elements,
@@ -984,6 +989,74 @@ export function PitchEditor({
     } catch (error) {
       setSyncState("error");
       setMessage(error instanceof Error ? error.message : "Could not publish this pitch");
+    }
+  }
+
+  async function loadVersionHistory() {
+    if (!credential) return;
+    setHistoryLoading(true);
+    try {
+      const result = await listPitchHistoryFn({
+        data: { deckId, ownerToken: credential.token },
+      });
+      if (!result.ok) throw new Error(result.error);
+      setHistoryItems(result.value);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Could not load version history");
+    } finally {
+      setHistoryLoading(false);
+    }
+  }
+
+  async function restoreVersion(item: PitchVersionHistoryItem) {
+    if (!credential) return;
+    flushCanvasState();
+    setRestoringHistoryId(item.id);
+    setMessage("Saving the current version before restoring…");
+    try {
+      if (!(await performSync())) {
+        throw new Error("The current version is still saving. Try the restore again in a moment.");
+      }
+      const result = await restorePitchVersionFn({
+        data: { deckId, ownerToken: credential.token, backupId: item.id },
+      });
+      if (!result.ok) throw new Error(result.error);
+      const restored = result.value;
+      const restoredFiles = await loadPitchFiles(restored.assets).catch(() => ({}));
+      const nextRevision = revisionRef.current + 1;
+      revisionRef.current = nextRevision;
+      lastSyncedRevision.current = nextRevision;
+      documentRef.current = restored.document;
+      deckRef.current = restored;
+      filesRef.current = restoredFiles;
+      titleRef.current = restored.title;
+      setRevision(nextRevision);
+      setLocalSavedRevision(nextRevision);
+      setDocumentState(restored.document);
+      setDeck(restored);
+      setFiles(restoredFiles);
+      setTitle(restored.title);
+      setActiveSlideId(restored.document.slides.find((slide) => !slide.deletedAt)?.id ?? "");
+      setSceneEpoch((value) => value + 1);
+      setSyncState("saved");
+      await saveLocalPitchDraft({
+        deckId,
+        title: restored.title,
+        document: restored.document,
+        files: restoredFiles,
+        pendingSync: false,
+        updatedAt: restored.updatedAt,
+      }).then(
+        () => setLocalSaveFailed(false),
+        () => setLocalSaveFailed(true),
+      );
+      setMessage(`Restored the version from ${new Date(item.createdAt).toLocaleString()}.`);
+      await loadVersionHistory();
+    } catch (error) {
+      setSyncState("error");
+      setMessage(error instanceof Error ? error.message : "Could not restore that version");
+    } finally {
+      setRestoringHistoryId(undefined);
     }
   }
 
@@ -1337,6 +1410,18 @@ export function PitchEditor({
             >
               backup
             </button>
+            {!isDemo ? (
+              <button
+                type="button"
+                onClick={() => {
+                  setHistoryOpen(true);
+                  void loadVersionHistory();
+                }}
+                className="min-h-10 shrink-0 border-b theme-border-strong px-2 font-mono text-xs hover:opacity-60"
+              >
+                history
+              </button>
+            ) : null}
             <label className="inline-flex min-h-10 shrink-0 cursor-pointer items-center border-b theme-border-strong px-2 font-mono text-xs hover:opacity-60">
               import
               <input
@@ -1400,6 +1485,15 @@ export function PitchEditor({
           assets={deck?.assets ?? []}
           initialSlideId={currentSlide.id}
           onClose={() => setPreviewOpen(false)}
+        />
+      ) : null}
+      {historyOpen ? (
+        <PitchVersionHistory
+          items={historyItems}
+          loading={historyLoading}
+          restoringId={restoringHistoryId}
+          onClose={() => setHistoryOpen(false)}
+          onRestore={(item) => void restoreVersion(item)}
         />
       ) : null}
       <GuidedTour

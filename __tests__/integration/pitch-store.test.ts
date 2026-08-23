@@ -5,10 +5,12 @@ import {
   createPitchDeck,
   createPitchOwnerToken,
   insertPitchAsset,
+  listPitchBackupsForOwner,
   markPitchAssetReady,
   publishPitchDeck,
   readOwnedPitchDeck,
   readPublicPitchDeck,
+  restorePitchBackupForOwner,
   syncPitchDeck,
 } from "@/features/things/pitches/store.server";
 import {
@@ -162,5 +164,75 @@ describeWithDatabase("pitch storage (postgres)", () => {
       "second_object",
       "first_object",
     ]);
+  });
+
+  it("checkpoints destructive saves and lets the owner move backward and forward", async () => {
+    const ownerToken = createPitchOwnerToken();
+    const created = await createPitchDeck({
+      createRequestId: "create_history_123",
+      ownerName: "Alice",
+      ownerEmail: "alice@example.com",
+      ownerToken,
+      title: "Versioned pitch",
+      document: documentWith([]),
+    });
+    expect(created.ok).toBe(true);
+    if (!created.ok) return;
+
+    const blankPublish = await publishPitchDeck({
+      deckId: created.value.deck.id,
+      ownerToken,
+    });
+    expect(blankPublish).toMatchObject({
+      ok: false,
+      status: 409,
+      error: "Add something to a slide before publishing",
+    });
+
+    const contentful = await syncPitchDeck({
+      deckId: created.value.deck.id,
+      ownerToken,
+      baseVersion: 1,
+      mutationId: "mutation_contentful",
+      title: "Versioned pitch",
+      document: documentWith([element("kept_object", 10)]),
+    });
+    expect(contentful.ok).toBe(true);
+    if (!contentful.ok) return;
+
+    const emptied = await syncPitchDeck({
+      deckId: created.value.deck.id,
+      ownerToken,
+      baseVersion: 2,
+      mutationId: "mutation_empty",
+      title: "Versioned pitch",
+      document: documentWith([]),
+    });
+    expect(emptied.ok).toBe(true);
+
+    const history = await listPitchBackupsForOwner(created.value.deck.id, ownerToken);
+    expect(history.ok).toBe(true);
+    if (!history.ok) return;
+    const contentfulVersion = history.value.find((item) => item.version === 2);
+    expect(contentfulVersion).toMatchObject({ reason: "safety", contentCount: 1 });
+    if (!contentfulVersion) return;
+
+    const restored = await restorePitchBackupForOwner(
+      created.value.deck.id,
+      ownerToken,
+      contentfulVersion.id,
+    );
+    expect(
+      restored.ok && restored.value.draftDocument.slides[0].elements.map(({ id }) => id),
+    ).toEqual(["kept_object"]);
+
+    const forwardHistory = await listPitchBackupsForOwner(created.value.deck.id, ownerToken);
+    expect(forwardHistory.ok).toBe(true);
+    expect(
+      forwardHistory.ok &&
+        forwardHistory.value.some(
+          (item) => item.version === 3 && item.reason === "restore" && item.contentCount === 0,
+        ),
+    ).toBe(true);
   });
 });

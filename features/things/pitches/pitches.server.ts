@@ -20,6 +20,7 @@ import {
   createPitchDeck,
   createPitchOwnerToken,
   hardDeletePitchDeck,
+  listPitchBackupsForOwner,
   listPitchDecksForRecovery,
   listPitchAuditForAdmin,
   listPitchBackupsForAdmin,
@@ -34,6 +35,7 @@ import {
   recordPitchAudit,
   removePitchAccessTokens,
   restorePitchBackupForAdmin,
+  restorePitchBackupForOwner,
   syncPitchDeck,
   updatePitchDeckForAdmin,
   type PitchStoreResult,
@@ -116,6 +118,19 @@ export async function readOwnedPitch(
 ): Promise<PitchStoreResult<OwnedPitchDeck>> {
   const loaded = await readOwnedPitchDeck(deckId, ownerToken);
   return loaded.ok ? { ok: true, value: await ownerView(loaded.value) } : loaded;
+}
+
+export async function listPitchHistory(deckId: string, ownerToken: string) {
+  return listPitchBackupsForOwner(deckId, ownerToken);
+}
+
+export async function restorePitchVersion(
+  deckId: string,
+  ownerToken: string,
+  backupId: string,
+): Promise<PitchStoreResult<OwnedPitchDeck>> {
+  const restored = await restorePitchBackupForOwner(deckId, ownerToken, backupId);
+  return restored.ok ? { ok: true, value: await ownerView(restored.value) } : restored;
 }
 
 export async function syncPitch(input: {

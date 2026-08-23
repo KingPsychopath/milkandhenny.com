@@ -118,6 +118,38 @@ export const readOwnedPitchFn = createServerFn({ method: "POST" })
     );
   });
 
+export const listPitchHistoryFn = createServerFn({ method: "POST" })
+  .validator((data: { deckId: string; ownerToken: string }) => data)
+  .handler(async ({ data }) => {
+    if (!isPitchDeckId(data.deckId) || !isPitchOwnerToken(data.ownerToken)) {
+      return invalid();
+    }
+    return runOperation(
+      Effect.gen(function* () {
+        const pitches = yield* PitchesService;
+        return yield* pitches.listHistory(data.deckId, data.ownerToken);
+      }),
+    );
+  });
+
+export const restorePitchVersionFn = createServerFn({ method: "POST" })
+  .validator((data: { deckId: string; ownerToken: string; backupId: string }) => data)
+  .handler(async ({ data }) => {
+    if (
+      !isPitchDeckId(data.deckId) ||
+      !isPitchOwnerToken(data.ownerToken) ||
+      !/^\d{1,20}$/.test(data.backupId)
+    ) {
+      return invalid();
+    }
+    return runOperation(
+      Effect.gen(function* () {
+        const pitches = yield* PitchesService;
+        return yield* pitches.restoreVersion(data.deckId, data.ownerToken, data.backupId);
+      }),
+    );
+  });
+
 type SyncInput = {
   deckId: string;
   ownerToken: string;

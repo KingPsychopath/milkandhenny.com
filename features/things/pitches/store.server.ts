@@ -3,6 +3,7 @@ import type { PoolClient, QueryResultRow } from "pg";
 
 import { query, queryOne, transaction } from "@/lib/platform/postgres.server";
 import { log } from "@/lib/platform/logger.server";
+import { hasPitchDocumentContent, pitchDocumentContentCount } from "./document-content";
 import {
   getPitchDraftExpiresAt,
   getPitchMaxDecksPerEmail,
@@ -19,6 +20,8 @@ import type {
   PitchDeckAdminSummary,
   PitchDeckLifecycle,
   PitchDocument,
+  PitchVersionHistoryItem,
+  PitchVersionReason,
   PublicPitchDeck,
 } from "./types";
 import { parsePitchDocument } from "./validation";
@@ -79,11 +82,14 @@ export interface StoredPitchDeck {
   archivedAt?: string;
 }
 
-export interface PitchDeckBackup {
-  id: string;
-  version: number;
-  reason: "periodic" | "conflict" | "publish" | "admin";
-  createdAt: string;
+export type PitchDeckBackup = PitchVersionHistoryItem;
+
+interface PitchBackupRow extends QueryResultRow {
+  id: string | number;
+  version: string | number;
+  reason: PitchVersionReason;
+  document: unknown;
+  created_at: Date | string;
 }
 
 export interface PitchAuditEvent {
@@ -134,6 +140,18 @@ function parseStoredDocument(value: unknown): PitchDocument {
   const parsed = parsePitchDocument(value, getPitchMaxSlides());
   if (!parsed.ok) throw new Error(`Stored pitch document is invalid: ${parsed.error}`);
   return parsed.document;
+}
+
+function toPitchVersionHistoryItem(row: PitchBackupRow): PitchVersionHistoryItem {
+  const document = parseStoredDocument(row.document);
+  return {
+    id: String(row.id),
+    version: integer(row.version),
+    reason: row.reason,
+    createdAt: iso(row.created_at),
+    slideCount: document.slides.filter((slide) => !slide.deletedAt).length,
+    contentCount: pitchDocumentContentCount(document),
+  };
 }
 
 function toStoredDeck(row: PitchDeckRow): StoredPitchDeck {
@@ -314,17 +332,16 @@ export async function readOwnedPitchDeck(
   });
 }
 
-async function maybeBackup(
-  client: PoolClient,
-  row: PitchDeckRow,
-  reason: "periodic" | "conflict" | "publish" | "admin",
-) {
+async function maybeBackup(client: PoolClient, row: PitchDeckRow, reason: PitchVersionReason) {
   const lastBackupAt = row.last_backup_at ? new Date(row.last_backup_at).getTime() : 0;
   const due = Date.now() - lastBackupAt >= PITCH_BACKUP_INTERVAL_MS;
-  if (reason === "periodic" && !due) return;
+  if (reason === "autosave" && !due) return;
   await client.query(
     `insert into pitch_deck_backups (deck_id, version, reason, document)
-      values ($1,$2,$3,$4::jsonb)`,
+      select $1,$2,$3,$4::jsonb
+      where not exists (
+        select 1 from pitch_deck_backups where deck_id = $1 and version = $2
+      )`,
     [row.id, integer(row.draft_version), reason, JSON.stringify(row.draft_document)],
   );
   await client.query(
@@ -337,6 +354,45 @@ async function maybeBackup(
       )`,
     [row.id, PITCH_BACKUP_KEEP_COUNT],
   );
+}
+
+async function restorePitchBackup(
+  client: PoolClient,
+  row: PitchDeckRow,
+  backupId: string,
+  actor: "owner" | "admin",
+): Promise<StoredPitchDeck | null> {
+  const backup = await client.query<PitchBackupRow>(
+    `select id, version, reason, document, created_at
+      from pitch_deck_backups where id = $1 and deck_id = $2`,
+    [backupId, row.id],
+  );
+  if (!backup.rows[0]) return null;
+  const document = parseStoredDocument(backup.rows[0].document);
+  await maybeBackup(client, row, "restore");
+  const updated = await client.query<PitchDeckRow>(
+    `update pitch_decks
+      set draft_document = $2::jsonb,
+          draft_version = draft_version + 1,
+          last_mutation_id = null,
+          last_backup_at = now(),
+          draft_expires_at = $3,
+          updated_at = now()
+      where id = $1
+      returning *`,
+    [row.id, JSON.stringify(document), getPitchDraftExpiresAt()],
+  );
+  await insertAudit(client, {
+    deckId: row.id,
+    action: "backup.restored",
+    actor,
+    metadata: {
+      backupId,
+      fromVersion: integer(row.draft_version),
+      restoredVersion: integer(backup.rows[0].version),
+    },
+  });
+  return toStoredDeck(updated.rows[0]);
 }
 
 export async function syncPitchDeck(input: {
@@ -369,13 +425,14 @@ export async function syncPitchDeck(input: {
 
     const currentVersion = integer(row.draft_version);
     const merged = input.baseVersion !== currentVersion;
-    const document = merged
-      ? mergePitchDocuments(parseStoredDocument(row.draft_document), input.document)
-      : input.document;
+    const currentDocument = parseStoredDocument(row.draft_document);
+    const document = merged ? mergePitchDocuments(currentDocument, input.document) : input.document;
     const parsed = parsePitchDocument(document, getPitchMaxSlides());
     if (!parsed.ok) return { ok: false, status: 400, error: parsed.error };
 
-    await maybeBackup(client, row, merged ? "conflict" : "periodic");
+    const losesContent =
+      pitchDocumentContentCount(parsed.document) < pitchDocumentContentCount(currentDocument);
+    await maybeBackup(client, row, merged ? "conflict" : losesContent ? "safety" : "autosave");
     const nextVersion = currentVersion + 1;
     const updated = await client.query<PitchDeckRow>(
       `update pitch_decks
@@ -445,6 +502,9 @@ export async function publishPitchDeck(input: {
     }
 
     const document = parseStoredDocument(row.draft_document);
+    if (!hasPitchDocumentContent(document)) {
+      return { ok: false, status: 409, error: "Add something to a slide before publishing" };
+    }
     const referencedAssets = new Set(
       document.slides.flatMap((slide) => [
         ...Object.values(slide.assetIds),
@@ -777,27 +837,35 @@ export async function readPitchDeckForAdmin(deckId: string): Promise<StoredPitch
 }
 
 export async function listPitchBackupsForAdmin(deckId: string): Promise<PitchDeckBackup[]> {
-  const rows = await query<
-    QueryResultRow & {
-      id: string | number;
-      version: string | number;
-      reason: PitchDeckBackup["reason"];
-      created_at: Date | string;
-    }
-  >(
-    `select id, version, reason, created_at
+  const rows = await query<PitchBackupRow>(
+    `select id, version, reason, document, created_at
       from pitch_deck_backups
       where deck_id = $1
       order by created_at desc, id desc
       limit 20`,
     [deckId],
   );
-  return rows.map((row) => ({
-    id: String(row.id),
-    version: integer(row.version),
-    reason: row.reason,
-    createdAt: iso(row.created_at),
-  }));
+  return rows.map(toPitchVersionHistoryItem);
+}
+
+export async function listPitchBackupsForOwner(
+  deckId: string,
+  ownerToken: string,
+): Promise<PitchStoreResult<PitchDeckBackup[]>> {
+  return transaction(async (client) => {
+    if (!(await clientOwnsDeck(client, deckId, ownerToken))) {
+      return { ok: false, status: 404, error: "Pitch not found" };
+    }
+    const rows = await client.query<PitchBackupRow>(
+      `select id, version, reason, document, created_at
+        from pitch_deck_backups
+        where deck_id = $1
+        order by created_at desc, id desc
+        limit 20`,
+      [deckId],
+    );
+    return { ok: true, value: rows.rows.map(toPitchVersionHistoryItem) };
+  });
 }
 
 export async function listPitchAuditForAdmin(deckId: string): Promise<PitchAuditEvent[]> {
@@ -877,32 +945,27 @@ export async function restorePitchBackupForAdmin(
   return transaction(async (client) => {
     const row = await clientDeck(client, deckId, true);
     if (!row || row.lifecycle === "deleting") return null;
-    const backup = await client.query<QueryResultRow & { id: string | number; document: unknown }>(
-      `select id, document from pitch_deck_backups where id = $1 and deck_id = $2`,
-      [backupId, deckId],
-    );
-    if (!backup.rows[0]) return null;
-    const document = parseStoredDocument(backup.rows[0].document);
-    await maybeBackup(client, row, "admin");
-    const updated = await client.query<PitchDeckRow>(
-      `update pitch_decks
-        set draft_document = $2::jsonb,
-            draft_version = draft_version + 1,
-            last_mutation_id = null,
-            last_backup_at = now(),
-            draft_expires_at = $3,
-            updated_at = now()
-        where id = $1
-        returning *`,
-      [deckId, JSON.stringify(document), getPitchDraftExpiresAt()],
-    );
-    await insertAudit(client, {
-      deckId,
-      action: "backup.restored",
-      actor: "admin",
-      metadata: { backupId },
-    });
-    return toStoredDeck(updated.rows[0]);
+    return restorePitchBackup(client, row, backupId, "admin");
+  });
+}
+
+export async function restorePitchBackupForOwner(
+  deckId: string,
+  ownerToken: string,
+  backupId: string,
+): Promise<PitchStoreResult<StoredPitchDeck>> {
+  return transaction(async (client) => {
+    if (!(await clientOwnsDeck(client, deckId, ownerToken))) {
+      return { ok: false, status: 404, error: "Pitch not found" };
+    }
+    const row = await clientDeck(client, deckId, true);
+    if (!row || row.lifecycle !== "active") {
+      return { ok: false, status: 409, error: "This pitch can no longer be edited" };
+    }
+    const restored = await restorePitchBackup(client, row, backupId, "owner");
+    return restored
+      ? { ok: true, value: restored }
+      : { ok: false, status: 404, error: "Pitch version not found" };
   });
 }
 
