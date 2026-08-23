@@ -72,6 +72,7 @@ import {
   runAdminAuthDiagnostics,
   revokeRoleSessions,
 } from "./auth-ops";
+import { requestAdminApi, type AdminHttpMethod } from "./admin-control";
 import {
   cleanupWordShares,
   createWordRecord,
@@ -88,6 +89,7 @@ import {
 } from "./words-ops";
 import { isWordType, WORD_TYPES } from "@/features/words/types";
 import type { WordType } from "@/features/words/types";
+import { formatMoney, type EventRecord, type TicketType } from "@/features/events/types";
 
 /* ─── Formatting ─── */
 
@@ -1356,6 +1358,282 @@ async function withResolvedAdminToken<T>(
   }
 }
 
+/* ─── Deployed admin API control ─── */
+
+function readAdminJsonInput(): unknown | undefined {
+  const inline = getArg("json");
+  const file = getArg("file") ?? getArg("body-file");
+  if (inline && file) throw new Error("Use either --json or --file, not both.");
+  if (!inline && !file) return undefined;
+
+  const source = file ? fs.readFileSync(path.resolve(file), "utf8") : inline;
+  try {
+    return JSON.parse(source ?? "") as unknown;
+  } catch {
+    throw new Error(file ? `Invalid JSON in ${file}` : "Invalid JSON passed to --json");
+  }
+}
+
+function printAdminJson(value: unknown): void {
+  if (typeof value === "string") {
+    console.log(value);
+    return;
+  }
+  console.log(JSON.stringify(value ?? null, null, 2));
+}
+
+function adminBaseUrl(): string {
+  return normalizeBaseUrl(getArg("base-url") || BASE_URL || "http://localhost:3000");
+}
+
+async function resolvedAdminRequest(options: {
+  baseUrl?: string;
+  method: AdminHttpMethod;
+  path: string;
+  body?: unknown;
+}): Promise<unknown> {
+  const requestedBaseUrl = normalizeBaseUrl(options.baseUrl || adminBaseUrl());
+  const baseUrl = await resolveCanonicalBaseUrl(requestedBaseUrl);
+  const adminPassword = getArg("admin-password");
+  const adminToken = getArg("admin-token");
+  let stepUpToken = getArg("step-up-token");
+
+  if (hasFlag("step-up")) {
+    if (!adminPassword) {
+      throw new Error("--step-up requires --admin-password to create a fresh step-up token.");
+    }
+    const token = await resolveAdminTokenForCli({
+      baseUrl,
+      adminToken,
+      adminPassword,
+    });
+    stepUpToken = (await createStepUpToken({ baseUrl, adminToken: token, adminPassword })).token;
+  }
+
+  return withResolvedAdminToken({ baseUrl, adminToken, adminPassword }, (token) =>
+    requestAdminApi({
+      baseUrl,
+      adminToken: token,
+      method: options.method,
+      path: options.path,
+      body: options.body,
+      stepUpToken,
+    }),
+  );
+}
+
+async function confirmAdminMutation(method: AdminHttpMethod, path: string, body: unknown) {
+  if (method === "GET") return true;
+
+  if (hasFlag("dry-run")) {
+    log(yellow("dry run — request not sent"));
+    log(`${method} ${path}`);
+    if (body !== undefined) printAdminJson(body);
+    return false;
+  }
+
+  if (hasFlag("yes")) return true;
+  const summary = body === undefined ? "no body" : JSON.stringify(body).slice(0, 240);
+  return confirm(`${method} ${path} · ${summary}. Send this request?`);
+}
+
+async function cmdAdminRequest(methodRaw: string, requestPath: string) {
+  const method = methodRaw.toUpperCase() as AdminHttpMethod;
+  if (!["GET", "POST", "PUT", "PATCH", "DELETE"].includes(method)) {
+    throw new Error("Method must be GET, POST, PUT, PATCH, or DELETE.");
+  }
+  const body = readAdminJsonInput();
+  if (!(await confirmAdminMutation(method, requestPath, body))) return;
+  const result = await resolvedAdminRequest({ method, path: requestPath, body });
+  printAdminJson(result);
+}
+
+function adminEventPath(slug: string): string {
+  return `/api/admin/events/${encodeURIComponent(slug)}`;
+}
+
+function asAdminEventResponse(value: unknown): { event: EventRecord; tickets?: unknown } {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error("The admin API returned an invalid event response.");
+  }
+  const record = value as { event?: unknown; tickets?: unknown };
+  if (!record.event || typeof record.event !== "object" || Array.isArray(record.event)) {
+    throw new Error("The admin API response did not contain an event.");
+  }
+  return { event: record.event as EventRecord, tickets: record.tickets };
+}
+
+function parseMoneyMinor(value: string): number {
+  const clean = value.trim().replace(/^£/, "");
+  if (!/^\d+(?:\.\d{1,2})?$/.test(clean)) {
+    throw new Error(`Invalid price "${value}". Use pounds, for example 10 or 10.50.`);
+  }
+  return Math.round(Number(clean) * 100);
+}
+
+function parseBooleanFlag(name: string): boolean | undefined {
+  const value = getArg(name);
+  if (value === undefined) return undefined;
+  if (value === "true") return true;
+  if (value === "false") return false;
+  throw new Error(`--${name} must be true or false.`);
+}
+
+function parsePositiveInteger(value: string, label: string): number {
+  const parsed = Number.parseInt(value, 10);
+  if (!Number.isInteger(parsed) || parsed < 1)
+    throw new Error(`${label} must be a positive integer.`);
+  return parsed;
+}
+
+async function loadAdminEvent(slug: string): Promise<{ event: EventRecord; tickets?: unknown }> {
+  return asAdminEventResponse(
+    await resolvedAdminRequest({ method: "GET", path: adminEventPath(slug) }),
+  );
+}
+
+async function cmdEventsList() {
+  const data = await resolvedAdminRequest({ method: "GET", path: "/api/admin/events" });
+  printAdminJson(data);
+}
+
+async function cmdEventsCreate() {
+  const body = readAdminJsonInput();
+  if (!body || typeof body !== "object" || Array.isArray(body)) {
+    throw new Error("events create requires an object in --json or --file.");
+  }
+  if (!(await confirmAdminMutation("POST", "/api/admin/events", body))) return;
+  printAdminJson(await resolvedAdminRequest({ method: "POST", path: "/api/admin/events", body }));
+}
+
+async function cmdEventsShow(slug: string) {
+  printAdminJson(await resolvedAdminRequest({ method: "GET", path: adminEventPath(slug) }));
+}
+
+async function cmdEventsUpdate(slug: string) {
+  const body = readAdminJsonInput();
+  if (!body || typeof body !== "object" || Array.isArray(body)) {
+    throw new Error("events update requires an object in --json or --file.");
+  }
+  if (!(await confirmAdminMutation("PATCH", adminEventPath(slug), body))) return;
+  printAdminJson(await resolvedAdminRequest({ method: "PATCH", path: adminEventPath(slug), body }));
+}
+
+async function cmdEventsDelete(slug: string) {
+  const requestPath = adminEventPath(slug);
+  if (!(await confirmAdminMutation("DELETE", requestPath, undefined))) return;
+  printAdminJson(await resolvedAdminRequest({ method: "DELETE", path: requestPath }));
+}
+
+function updatedTicketType(existing: TicketType): TicketType {
+  const name = getArg("name");
+  const description = getArg("description");
+  const price = getArg("price");
+  const quantity = getArg("quantity");
+  const perPersonLimit = getArg("per-person-limit");
+  const currency = getArg("currency");
+  const hidden = parseBooleanFlag("hidden");
+
+  if (
+    name === undefined &&
+    description === undefined &&
+    price === undefined &&
+    quantity === undefined &&
+    perPersonLimit === undefined &&
+    currency === undefined &&
+    hidden === undefined
+  ) {
+    throw new Error("Provide at least one ticket field to update.");
+  }
+
+  return {
+    ...existing,
+    ...(name !== undefined ? { name: name.trim() } : {}),
+    ...(description !== undefined ? { description: description.trim() || undefined } : {}),
+    ...(price !== undefined ? { priceMinor: parseMoneyMinor(price) } : {}),
+    ...(quantity !== undefined ? { quantity: parsePositiveInteger(quantity, "quantity") } : {}),
+    ...(perPersonLimit !== undefined
+      ? { perPersonLimit: parsePositiveInteger(perPersonLimit, "per-person-limit") }
+      : {}),
+    ...(currency !== undefined ? { currency: currency.trim().toUpperCase() } : {}),
+    ...(hidden !== undefined ? { hidden } : {}),
+  };
+}
+
+async function saveAdminTicketTypes(slug: string, ticketTypes: TicketType[]): Promise<void> {
+  const body = { ticketTypes };
+  if (!(await confirmAdminMutation("PATCH", adminEventPath(slug), body))) return;
+  printAdminJson(await resolvedAdminRequest({ method: "PATCH", path: adminEventPath(slug), body }));
+}
+
+async function cmdEventsTicketList(slug: string) {
+  const response = await loadAdminEvent(slug);
+  const ticketSummary =
+    response.tickets && typeof response.tickets === "object" && !Array.isArray(response.tickets)
+      ? (response.tickets as { tickets?: unknown[] })
+      : undefined;
+  const tickets = Array.isArray(ticketSummary?.tickets) ? ticketSummary.tickets : [];
+  const counts = new Map<string, number>();
+  for (const ticket of tickets) {
+    if (!ticket || typeof ticket !== "object") continue;
+    const record = ticket as { ticketTypeName?: unknown; status?: unknown };
+    if (record.status === "valid" && typeof record.ticketTypeName === "string") {
+      counts.set(record.ticketTypeName, (counts.get(record.ticketTypeName) ?? 0) + 1);
+    }
+  }
+  for (const type of response.event.ticketTypes) {
+    log(
+      `${type.id} · ${type.name} · ${formatMoney(type.priceMinor, type.currency)} · ${counts.get(type.name) ?? 0}/${type.quantity} sold`,
+    );
+    if (type.description) log(`  ${dim(type.description)}`);
+  }
+}
+
+async function cmdEventsTicketAdd(slug: string) {
+  const name = getArg("name")?.trim();
+  if (!name) throw new Error("events ticket add requires --name.");
+  const response = await loadAdminEvent(slug);
+  const id = (getArg("id") || name.toLowerCase().replace(/[^a-z0-9]+/g, "-")).replace(/^-|-$/g, "");
+  if (!/^[a-zA-Z0-9_-]+$/.test(id))
+    throw new Error("Ticket ID may contain only letters, numbers, _ and -.");
+  if (response.event.ticketTypes.some((type) => type.id === id)) {
+    throw new Error(`Ticket type "${id}" already exists.`);
+  }
+  const ticket: TicketType = {
+    id,
+    name,
+    description: getArg("description")?.trim() || undefined,
+    priceMinor: parseMoneyMinor(getArg("price") ?? "0"),
+    currency: (getArg("currency") || "GBP").toUpperCase(),
+    quantity: parsePositiveInteger(getArg("quantity") ?? "1", "quantity"),
+    perPersonLimit: parsePositiveInteger(getArg("per-person-limit") ?? "4", "per-person-limit"),
+    hidden: parseBooleanFlag("hidden") ?? false,
+  };
+  await saveAdminTicketTypes(slug, [...response.event.ticketTypes, ticket]);
+}
+
+async function cmdEventsTicketUpdate(slug: string, ticketId: string) {
+  const response = await loadAdminEvent(slug);
+  const existing = response.event.ticketTypes.find((type) => type.id === ticketId);
+  if (!existing) throw new Error(`Ticket type "${ticketId}" not found.`);
+  const next = updatedTicketType(existing);
+  await saveAdminTicketTypes(
+    slug,
+    response.event.ticketTypes.map((type) => (type.id === ticketId ? next : type)),
+  );
+}
+
+async function cmdEventsTicketRemove(slug: string, ticketId: string) {
+  const response = await loadAdminEvent(slug);
+  if (!response.event.ticketTypes.some((type) => type.id === ticketId)) {
+    throw new Error(`Ticket type "${ticketId}" not found.`);
+  }
+  await saveAdminTicketTypes(
+    slug,
+    response.event.ticketTypes.filter((type) => type.id !== ticketId),
+  );
+}
+
 async function cmdAuthListSessions(opts: {
   baseUrl?: string;
   adminToken?: string;
@@ -2595,12 +2873,41 @@ async function cmdWordsPull(opts: { dir: string; type?: WordType; visibility?: N
 
 function showHelp() {
   console.log(`
-  ${bold("milk & henny")} — Albums, words, transfers, and R2 management CLI
+  ${bold("milk & henny")} — content, events, admin API, and storage CLI
 
   ${bold("Usage")}
     pnpm cli                                  ${dim("Interactive mode (recommended)")}
     pnpm cli help                             ${dim("Show this help")}
     pnpm cli <command> [subcommand] [options] ${dim("Direct command")}
+
+  ${bold("Admin API")}
+    admin request ${dim("<method> <path>")}              Call any deployed admin/control route
+      --base-url ${dim("<url>")}                         App URL (defaults to VITE_BASE_URL)
+      --admin-token ${dim("<jwt>")}                      Use an existing admin JWT
+      --admin-password ${dim("<password>")}              Sign in and cache an admin JWT
+      --json ${dim("<object>")}                           JSON request body
+      --file ${dim("<path>")}                             Read JSON request body from a file
+      --step-up                                      Create and send a step-up token
+      --step-up-token ${dim("<token>")}                   Send an existing step-up token
+      --dry-run                                      Print the mutation without sending it
+      --yes                                          Skip the mutation confirmation prompt
+    ${dim("Supports every /api/admin/* route, system diagnostics, and best-dressed admin controls without SQL.")}
+
+  ${bold("Events and tickets")}
+    events list                                  List events from the deployed app
+    events create --json ${dim("<object>")}                  Create an event
+    events show ${dim("<slug>")}                           Show event and ticket operations
+    events update ${dim("<slug>")} --json ${dim("<object>")}       Patch event settings
+    events delete ${dim("<slug>")} --step-up --yes            Delete an event after step-up auth
+    events ticket list ${dim("<slug>")}                     List ticket types and sold counts
+    events ticket add ${dim("<slug>")}                     Add a ticket type
+      --id, --name, --price, --quantity, --per-person-limit
+      --description, --currency, --hidden
+    events ticket update ${dim("<slug> <ticket-id>")}       Update ticket type fields
+      --name, --price, --quantity, --per-person-limit
+      --description, --currency, --hidden
+    events ticket remove ${dim("<slug> <ticket-id>")}       Remove a ticket type (use --yes)
+    ${dim("Mutations ask for confirmation unless --yes or --dry-run is supplied.")}
 
   ${bold("Albums")}
     albums list                              List all albums
@@ -4360,6 +4667,80 @@ async function direct() {
   try {
     await (async () => {
       switch (command) {
+        case "admin": {
+          if (subcommand !== "request" && subcommand !== "api") {
+            throw new Error(
+              "Usage: pnpm cli admin request <GET|POST|PUT|PATCH|DELETE> <path> [--json <object> | --file <path>]",
+            );
+          }
+          const method = args[2];
+          const requestPath = args[3];
+          if (!method || !requestPath) {
+            throw new Error(
+              "Usage: pnpm cli admin request <GET|POST|PUT|PATCH|DELETE> <path> [options]",
+            );
+          }
+          return cmdAdminRequest(method, requestPath);
+        }
+        case "events":
+          switch (subcommand) {
+            case "list":
+              return cmdEventsList();
+            case "create":
+              return cmdEventsCreate();
+            case "show": {
+              const slug = args[2];
+              if (!slug) throw new Error("Usage: pnpm cli events show <slug>");
+              return cmdEventsShow(slug);
+            }
+            case "update": {
+              const slug = args[2];
+              if (!slug) throw new Error("Usage: pnpm cli events update <slug> --json <object>");
+              return cmdEventsUpdate(slug);
+            }
+            case "delete": {
+              const slug = args[2];
+              if (!slug) throw new Error("Usage: pnpm cli events delete <slug> --step-up --yes");
+              return cmdEventsDelete(slug);
+            }
+            case "ticket": {
+              const action = args[2];
+              const slug = args[3];
+              if (!action || !slug) {
+                throw new Error(
+                  "Usage: pnpm cli events ticket <list|add|update|remove> <slug> [ticket-id] [options]",
+                );
+              }
+              switch (action) {
+                case "list":
+                  return cmdEventsTicketList(slug);
+                case "add":
+                  return cmdEventsTicketAdd(slug);
+                case "update": {
+                  const ticketId = args[4];
+                  if (!ticketId) {
+                    throw new Error(
+                      "Usage: pnpm cli events ticket update <slug> <ticket-id> [options]",
+                    );
+                  }
+                  return cmdEventsTicketUpdate(slug, ticketId);
+                }
+                case "remove": {
+                  const ticketId = args[4];
+                  if (!ticketId) {
+                    throw new Error(
+                      "Usage: pnpm cli events ticket remove <slug> <ticket-id> --yes",
+                    );
+                  }
+                  return cmdEventsTicketRemove(slug, ticketId);
+                }
+                default:
+                  throw new Error(`Unknown ticket action: ${action}`);
+              }
+            }
+            default:
+              throw new Error(`Unknown: events ${subcommand ?? ""}. Run 'pnpm cli help'.`);
+          }
         case "albums":
           switch (subcommand) {
             case "list":
