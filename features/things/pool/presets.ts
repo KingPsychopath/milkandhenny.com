@@ -1,5 +1,14 @@
 import { GAME_POOL_GAMES, type GamePoolGame, type GamePoolPreset } from "./types";
 
+export const GAME_POOL_ADMISSION_DEFAULTS = {
+  autoJoin: true,
+  allowRoomChoice: true,
+  allowNewRooms: true,
+  nameVisibility: "initials",
+} as const;
+
+export const GAME_POOL_ALLOCATION_STRATEGY = "fill-first" as const;
+
 export const GAME_POOL_DEFAULTS: Record<
   GamePoolGame,
   { label: string; targetSize: number; capacity: number; preset: GamePoolPreset }
@@ -24,7 +33,7 @@ export const GAME_POOL_DEFAULTS: Record<
       game: "liars",
       mode: "mafia",
       roomMode: "same-room",
-      firstGame: true,
+      firstGame: false,
       blindImposters: false,
       wordBoard: true,
     },
@@ -39,13 +48,13 @@ export const GAME_POOL_DEFAULTS: Record<
     label: "twin",
     targetSize: 6,
     capacity: 12,
-    preset: { game: "twin", handSize: 8 },
+    preset: { game: "twin", handSize: 6 },
   },
   "draw-country": {
     label: "draw the country",
     targetSize: 8,
     capacity: 16,
-    preset: { game: "draw-country", drawSeconds: 45, roundTotal: 5 },
+    preset: { game: "draw-country", drawSeconds: 30, roundTotal: 5 },
   },
 };
 
@@ -72,7 +81,7 @@ export function gamePoolPreset(value: unknown, game: GamePoolGame): GamePoolPres
       game,
       mode: record.mode === "imposter" ? "imposter" : "mafia",
       roomMode: record.roomMode === "remote" ? "remote" : "same-room",
-      firstGame: record.firstGame !== false,
+      firstGame: record.firstGame === true,
       blindImposters: record.blindImposters === true,
       wordBoard: record.wordBoard !== false,
     };
@@ -82,10 +91,10 @@ export function gamePoolPreset(value: unknown, game: GamePoolGame): GamePoolPres
       difficulty: boundedInteger(record.difficulty, 1, 5, 3) as 1 | 2 | 3 | 4 | 5,
       delayedRivals: record.delayedRivals === true,
     };
-  if (game === "twin") return { game, handSize: boundedInteger(record.handSize, 3, 20, 8) };
+  if (game === "twin") return { game, handSize: boundedInteger(record.handSize, 3, 20, 6) };
   return {
     game,
-    drawSeconds: boundedInteger(record.drawSeconds, 15, 120, 45),
+    drawSeconds: boundedInteger(record.drawSeconds, 15, 90, 30),
     roundTotal: boundedInteger(record.roundTotal, 1, 12, 5),
   };
 }

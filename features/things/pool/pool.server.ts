@@ -234,7 +234,7 @@ export async function assignGamePoolRoom(input: {
 
       const rooms = await client.query<GamePoolRoomRow>(
         `select * from game_pool_rooms where run_id = $1 and status = 'open'
-       order by created_at for update`,
+       order by player_count desc, created_at for update`,
         [run.id],
       );
       let candidates: GamePoolRoomRow[] = [];

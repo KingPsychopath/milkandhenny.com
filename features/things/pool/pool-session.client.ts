@@ -106,5 +106,5 @@ export async function releaseGamePoolMembership(game: GamePoolGame, roomId: stri
   } finally {
     localStorage.removeItem(key);
   }
-  return `/play/${encodeURIComponent(membership.token)}`;
+  return `/play/${encodeURIComponent(membership.token)}?choose=1`;
 }

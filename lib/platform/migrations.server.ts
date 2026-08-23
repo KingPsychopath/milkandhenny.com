@@ -654,6 +654,24 @@ const MIGRATIONS: Migration[] = [
         check (reason in ('autosave', 'safety', 'conflict', 'publish', 'restore'));
     `,
   },
+  {
+    id: "0018_game_pool_portable_settings",
+    sql: `
+      alter table game_pool_entrances
+        add column if not exists auto_join boolean not null default true;
+      alter table game_pool_runs
+        add column if not exists auto_join boolean not null default true;
+
+      alter table game_pool_entrances
+        alter column name_visibility set default 'initials';
+      update game_pool_entrances
+        set name_visibility = 'initials'
+        where name_visibility = 'first-names';
+      update game_pool_runs
+        set name_visibility = 'initials'
+        where name_visibility = 'first-names';
+    `,
+  },
 ];
 
 export type MigrationResult = { applied: string[]; alreadyApplied: number };

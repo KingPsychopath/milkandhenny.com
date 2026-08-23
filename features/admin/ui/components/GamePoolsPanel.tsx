@@ -1,12 +1,17 @@
 import { useCallback, useEffect, useState } from "react";
 import { useQrCode } from "@/hooks/useQrCode";
 import { GAME_POOL_DEFAULTS } from "@/features/things/pool/presets";
+import {
+  recommendedGamePoolPresetBundle,
+  type GamePoolPresetBundle,
+} from "@/features/things/pool/preset-bundle";
 import type {
   GamePoolEntrance,
   GamePoolGame,
   GamePoolNameVisibility,
   GamePoolPreset,
 } from "@/features/things/pool/types";
+import { GamePoolSettingsTransfer } from "./GamePoolSettingsTransfer";
 
 type AuthFetch = (url: string, options?: RequestInit) => Promise<Response>;
 
@@ -165,7 +170,7 @@ function PresetFields({
     );
   return (
     <div className="grid gap-4 sm:grid-cols-2">
-      {numberField("seconds to draw", preset.drawSeconds, 15, 120, (drawSeconds) =>
+      {numberField("seconds to draw", preset.drawSeconds, 15, 90, (drawSeconds) =>
         onChange({ ...preset, drawSeconds }),
       )}
       {numberField("rounds", preset.roundTotal, 1, 12, (roundTotal) =>
@@ -236,19 +241,25 @@ export function GamePoolsPanel({
     void refresh();
   }, [refresh]);
 
-  const create = async () => {
+  const createEntrance = async (bundle: GamePoolPresetBundle, actionScope: string) => {
     setLoading(true);
     onError("");
     try {
-      const actionStorageKey = "game-pool:create:action-id";
+      const actionStorageKey = `game-pool:create:${actionScope}:action-id`;
       const actionId = sessionStorage.getItem(actionStorageKey) ?? crypto.randomUUID();
       sessionStorage.setItem(actionStorageKey, actionId);
       const response = await authFetch("/api/admin/game-pools", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
-          game,
-          label: label || GAME_POOL_DEFAULTS[game].label,
+          game: bundle.game,
+          label: bundle.label,
+          preset: bundle.preset,
+          targetSize: bundle.targetSize,
+          autoJoin: bundle.admission.autoJoin,
+          allowRoomChoice: bundle.admission.allowRoomChoice,
+          allowNewRooms: bundle.admission.allowNewRooms,
+          nameVisibility: bundle.admission.nameVisibility,
           actionId,
         }),
       });
@@ -256,13 +267,42 @@ export function GamePoolsPanel({
       if (!response.ok) throw new Error(data.error || "Failed to create game entrance");
       sessionStorage.removeItem(actionStorageKey);
       setLabel("");
-      onStatus("Game entrance created.");
+      onStatus("Game entrance created with a new permanent QR.");
       await refresh();
     } catch (error) {
       onError(error instanceof Error ? error.message : "Failed to create game entrance");
     } finally {
       setLoading(false);
     }
+  };
+
+  const create = () =>
+    createEntrance(
+      recommendedGamePoolPresetBundle(game, label.trim() || GAME_POOL_DEFAULTS[game].label),
+      "manual",
+    );
+
+  const createFromBundle = (bundle: GamePoolPresetBundle) =>
+    createEntrance(bundle, `bundle:${bundle.game}:${bundle.label}`);
+
+  const applyBundle = (id: string, bundle: GamePoolPresetBundle) => {
+    setDrafts((current) => {
+      const draft = current[id];
+      if (!draft || draft.game !== bundle.game) return current;
+      return {
+        ...current,
+        [id]: {
+          ...draft,
+          label: bundle.label,
+          targetSize: bundle.targetSize,
+          autoJoin: bundle.admission.autoJoin,
+          allowRoomChoice: bundle.admission.allowRoomChoice,
+          allowNewRooms: bundle.admission.allowNewRooms,
+          nameVisibility: bundle.admission.nameVisibility,
+          preset: bundle.preset,
+        },
+      };
+    });
   };
 
   const control = async (
@@ -345,6 +385,10 @@ export function GamePoolsPanel({
 
   return (
     <div>
+      <p className="font-mono text-xs leading-relaxed theme-muted">
+        Pooled entrances are the fast game-night option: one permanent QR fills and creates rooms
+        for you. Use a game’s normal room screen only when you want one QR for one fixed room.
+      </p>
       <div className="grid gap-4 border-b theme-border py-6 sm:grid-cols-[1fr_1fr_auto]">
         <label className="font-mono text-xs theme-muted">
           game
@@ -559,6 +603,16 @@ export function GamePoolsPanel({
                       </label>
                       <div>
                         <PoolCheck
+                          label="automatically continue repeat scans"
+                          checked={draft.autoJoin}
+                          onChange={(autoJoin) =>
+                            setDrafts((current) => ({
+                              ...current,
+                              [entrance.id]: { ...draft, autoJoin },
+                            }))
+                          }
+                        />
+                        <PoolCheck
                           label="let players choose a room"
                           checked={draft.allowRoomChoice}
                           onChange={(allowRoomChoice) =>
@@ -597,6 +651,15 @@ export function GamePoolsPanel({
                     >
                       save defaults
                     </button>
+                    <GamePoolSettingsTransfer
+                      entrance={entrance}
+                      draft={draft}
+                      disabled={loading}
+                      onApply={(bundle) => applyBundle(entrance.id, bundle)}
+                      onCreate={createFromBundle}
+                      onError={onError}
+                      onStatus={onStatus}
+                    />
                     {!entrance.retiredAt ? (
                       <EntranceQr entrance={entrance} />
                     ) : (

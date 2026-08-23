@@ -13,9 +13,11 @@ import { useMultiplayerWakeSocket } from "../shared/useMultiplayerWakeSocket";
 export function GamePoolEntranceApp({
   token,
   initialView,
+  suppressAutoJoin = false,
 }: {
   token: string;
   initialView: GamePoolPublicView;
+  suppressAutoJoin?: boolean;
 }) {
   const nameId = useId();
   const messageId = useId();
@@ -23,7 +25,8 @@ export function GamePoolEntranceApp({
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(initialView.message ?? null);
   const [roomsOpen, setRoomsOpen] = useState(false);
-  const remembered = useRememberedPlayerName(32);
+  const { loaded: nameLoaded, name: playerName, remember, setName } = useRememberedPlayerName(32);
+  const autoJoinChecked = useRef(false);
   const refreshRef = useRef<() => Promise<void>>(async () => undefined);
 
   const refresh = useCallback(async () => {
@@ -56,30 +59,47 @@ export function GamePoolEntranceApp({
     };
   }, []);
 
-  const assign = async (choice: "auto" | "new" | { roomId: string }) => {
-    if (busy) return;
-    const name = remembered.name.trim();
-    if (!name) {
-      setMessage("Add your name first.");
-      document.getElementById(nameId)?.focus();
+  const assign = useCallback(
+    async (choice: "auto" | "new" | { roomId: string }) => {
+      if (busy) return;
+      const name = playerName.trim();
+      if (!name) {
+        setMessage("Add your name first.");
+        document.getElementById(nameId)?.focus();
+        return;
+      }
+      setBusy(true);
+      setMessage(null);
+      const clientId = gamePoolClientId();
+      try {
+        const assignment = await assignGamePoolRoomFn({
+          data: { token, clientId, name, choice },
+        });
+        remember(name);
+        adoptGamePoolAssignment(assignment, { token, clientId });
+        window.location.assign(gamePoolPlayerPath(assignment));
+      } catch (error) {
+        setMessage(error instanceof Error ? error.message : "Could not find a room. Try again.");
+        setBusy(false);
+        await refresh();
+      }
+    },
+    [busy, nameId, playerName, refresh, remember, token],
+  );
+
+  useEffect(() => {
+    if (!nameLoaded || autoJoinChecked.current) return;
+    autoJoinChecked.current = true;
+    if (
+      suppressAutoJoin ||
+      !view.run?.autoJoin ||
+      view.run.status !== "open" ||
+      view.message ||
+      !playerName.trim()
+    )
       return;
-    }
-    setBusy(true);
-    setMessage(null);
-    const clientId = gamePoolClientId();
-    try {
-      const assignment = await assignGamePoolRoomFn({
-        data: { token, clientId, name, choice },
-      });
-      remembered.remember(name);
-      adoptGamePoolAssignment(assignment, { token, clientId });
-      window.location.assign(gamePoolPlayerPath(assignment));
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Could not find a room. Try again.");
-      setBusy(false);
-      await refresh();
-    }
-  };
+    void assign("auto");
+  }, [assign, nameLoaded, playerName, suppressAutoJoin, view.message, view.run]);
 
   if (!view.found)
     return (
@@ -117,7 +137,14 @@ export function GamePoolEntranceApp({
       </header>
 
       {accepting ? (
-        <section className="mt-10 border-t theme-border pt-8" aria-labelledby="join-title">
+        <form
+          className="mt-10 border-t theme-border pt-8"
+          aria-labelledby="join-title"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void assign("auto");
+          }}
+        >
           <h2 id="join-title" className="font-serif text-2xl font-semibold">
             Join the game
           </h2>
@@ -126,24 +153,23 @@ export function GamePoolEntranceApp({
           </label>
           <input
             id={nameId}
-            value={remembered.name}
+            value={playerName}
             maxLength={32}
             autoComplete="name"
             aria-invalid={message === "Add your name first." || undefined}
             aria-describedby={message ? messageId : undefined}
             onChange={(event) => {
-              remembered.setName(event.target.value);
+              setName(event.target.value);
               setMessage(null);
             }}
             className="mt-2 min-h-12 w-full border-b theme-border bg-transparent py-2 font-serif text-2xl outline-none focus:border-[var(--foreground)]"
           />
           <button
-            type="button"
-            disabled={busy || !remembered.loaded}
-            onClick={() => void assign("auto")}
+            type="submit"
+            disabled={busy || !nameLoaded}
             className="mt-8 min-h-14 w-full rounded-full bg-[var(--foreground)] px-6 font-mono text-sm font-semibold text-[var(--background)] transition-opacity hover:opacity-85 disabled:opacity-50"
           >
-            {busy ? "finding a room…" : "find me a room"}
+            {busy ? "finding a room…" : "join now"}
           </button>
           {view.run?.allowNewRooms ? (
             <button
@@ -164,7 +190,11 @@ export function GamePoolEntranceApp({
               {message}
             </p>
           ) : null}
-        </section>
+          <p className="mt-4 font-mono text-micro leading-relaxed theme-faint">
+            We remember your name on this device. Repeat scans can return you to your room
+            immediately.
+          </p>
+        </form>
       ) : (
         <section className="mt-10 border-t theme-border pt-8" aria-live="polite">
           <h2 className="font-serif text-2xl font-semibold">Not open right now</h2>

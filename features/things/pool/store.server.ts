@@ -1,7 +1,12 @@
 import { createHash, createHmac, randomBytes } from "node:crypto";
 import type { PoolClient } from "pg";
 import { query, queryOne, transaction } from "@/lib/platform/postgres.server";
-import { GAME_POOL_DEFAULTS, gamePoolPreset, isGamePoolGame } from "./presets";
+import {
+  GAME_POOL_ADMISSION_DEFAULTS,
+  GAME_POOL_DEFAULTS,
+  gamePoolPreset,
+  isGamePoolGame,
+} from "./presets";
 import type {
   GamePoolEntrance,
   GamePoolGame,
@@ -18,6 +23,7 @@ interface EntranceRow {
   game: string;
   preset: unknown;
   target_size: number;
+  auto_join: boolean;
   allow_room_choice: boolean;
   allow_new_rooms: boolean;
   name_visibility: string;
@@ -28,6 +34,7 @@ interface EntranceRow {
   run_status: string | null;
   run_preset: unknown;
   run_target_size: number | null;
+  run_auto_join: boolean | null;
   run_allow_room_choice: boolean | null;
   run_allow_new_rooms: boolean | null;
   run_name_visibility: string | null;
@@ -43,6 +50,7 @@ const ENTRANCE_SELECT = `
     r.status as run_status,
     r.preset as run_preset,
     r.target_size as run_target_size,
+    r.auto_join as run_auto_join,
     r.allow_room_choice as run_allow_room_choice,
     r.allow_new_rooms as run_allow_new_rooms,
     r.name_visibility as run_name_visibility,
@@ -77,8 +85,8 @@ function tokenHash(token: string) {
 }
 
 function visibility(value: string): GamePoolNameVisibility {
-  if (value === "initials" || value === "counts") return value;
-  return "first-names";
+  if (value === "first-names" || value === "initials" || value === "counts") return value;
+  return GAME_POOL_ADMISSION_DEFAULTS.nameVisibility;
 }
 
 function runFromRow(row: EntranceRow, game: GamePoolGame): GamePoolRun | null {
@@ -90,6 +98,7 @@ function runFromRow(row: EntranceRow, game: GamePoolGame): GamePoolRun | null {
     status,
     preset: gamePoolPreset(row.run_preset, game),
     targetSize: row.run_target_size ?? row.target_size,
+    autoJoin: row.run_auto_join ?? row.auto_join,
     allowRoomChoice: row.run_allow_room_choice ?? row.allow_room_choice,
     allowNewRooms: row.run_allow_new_rooms ?? row.allow_new_rooms,
     nameVisibility: visibility(row.run_name_visibility ?? row.name_visibility),
@@ -108,6 +117,7 @@ function entranceFromRow(row: EntranceRow): GamePoolEntrance {
     game: row.game,
     preset: gamePoolPreset(row.preset, row.game),
     targetSize: row.target_size,
+    autoJoin: row.auto_join,
     allowRoomChoice: row.allow_room_choice,
     allowNewRooms: row.allow_new_rooms,
     nameVisibility: visibility(row.name_visibility),
@@ -140,6 +150,7 @@ export async function createGamePoolEntrance(input: {
   label?: string;
   preset?: unknown;
   targetSize?: number;
+  autoJoin?: boolean;
   allowRoomChoice?: boolean;
   allowNewRooms?: boolean;
   nameVisibility?: GamePoolNameVisibility;
@@ -161,9 +172,9 @@ export async function createGamePoolEntrance(input: {
   }
   await query(
     `insert into game_pool_entrances (
-      id, token, label, game, preset, target_size,
+      id, token, label, game, preset, target_size, auto_join,
       allow_room_choice, allow_new_rooms, name_visibility, create_action_id
-    ) values ($1, $2, $3, $4, $5::jsonb, $6, $7, $8, $9, $10)
+    ) values ($1, $2, $3, $4, $5::jsonb, $6, $7, $8, $9, $10, $11)
     on conflict (create_action_id) where create_action_id is not null do nothing`,
     [
       id,
@@ -172,9 +183,10 @@ export async function createGamePoolEntrance(input: {
       input.game,
       JSON.stringify(gamePoolPreset(input.preset, input.game)),
       targetSize,
-      input.allowRoomChoice ?? true,
-      input.allowNewRooms ?? true,
-      input.nameVisibility ?? "first-names",
+      input.autoJoin ?? GAME_POOL_ADMISSION_DEFAULTS.autoJoin,
+      input.allowRoomChoice ?? GAME_POOL_ADMISSION_DEFAULTS.allowRoomChoice,
+      input.allowNewRooms ?? GAME_POOL_ADMISSION_DEFAULTS.allowNewRooms,
+      input.nameVisibility ?? GAME_POOL_ADMISSION_DEFAULTS.nameVisibility,
       input.actionId ?? null,
     ],
   );
@@ -194,6 +206,7 @@ export async function updateGamePoolEntrance(
     label?: string;
     preset?: unknown;
     targetSize?: number;
+    autoJoin?: boolean;
     allowRoomChoice?: boolean;
     allowNewRooms?: boolean;
     nameVisibility?: GamePoolNameVisibility;
@@ -217,13 +230,14 @@ export async function updateGamePoolEntrance(
       label = $2,
       preset = $3::jsonb,
       target_size = $4,
-      allow_room_choice = $5,
-      allow_new_rooms = $6,
-      name_visibility = $7,
-      token = case when $8 then $9 else token end,
+      auto_join = $5,
+      allow_room_choice = $6,
+      allow_new_rooms = $7,
+      name_visibility = $8,
+      token = case when $9 then $10 else token end,
       retired_at = case
-        when $10::boolean is null then retired_at
-        when $10 then coalesce(retired_at, now())
+        when $11::boolean is null then retired_at
+        when $11 then coalesce(retired_at, now())
         else null
       end,
       updated_at = now()
@@ -233,6 +247,7 @@ export async function updateGamePoolEntrance(
       label,
       JSON.stringify(preset),
       targetSize,
+      input.autoJoin ?? current.autoJoin,
       input.allowRoomChoice ?? current.allowRoomChoice,
       input.allowNewRooms ?? current.allowNewRooms,
       input.nameVisibility ?? current.nameVisibility,
@@ -255,6 +270,7 @@ export async function openGamePoolRun(
     const entrance = await client.query<{
       preset: GamePoolPreset;
       target_size: number;
+      auto_join: boolean;
       allow_room_choice: boolean;
       allow_new_rooms: boolean;
       name_visibility: string;
@@ -280,14 +296,15 @@ export async function openGamePoolRun(
         : null;
     await client.query(
       `insert into game_pool_runs (
-        id, entrance_id, preset, target_size, allow_room_choice,
+        id, entrance_id, preset, target_size, auto_join, allow_room_choice,
         allow_new_rooms, name_visibility, closes_at, operator_token_hash, opening_action_id
-      ) values ($1, $2, $3::jsonb, $4, $5, $6, $7, $8, $9, $10)`,
+      ) values ($1, $2, $3::jsonb, $4, $5, $6, $7, $8, $9, $10, $11)`,
       [
         runId,
         entranceId,
         JSON.stringify(row.preset),
         row.target_size,
+        row.auto_join,
         row.allow_room_choice,
         row.allow_new_rooms,
         row.name_visibility,

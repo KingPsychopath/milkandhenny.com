@@ -52,6 +52,7 @@ export interface GamePoolEntrance {
   game: GamePoolGame;
   preset: GamePoolPreset;
   targetSize: number;
+  autoJoin: boolean;
   allowRoomChoice: boolean;
   allowNewRooms: boolean;
   nameVisibility: GamePoolNameVisibility;
@@ -71,6 +72,7 @@ export interface GamePoolRun {
   status: GamePoolRunStatus;
   preset: GamePoolPreset;
   targetSize: number;
+  autoJoin: boolean;
   allowRoomChoice: boolean;
   allowNewRooms: boolean;
   nameVisibility: GamePoolNameVisibility;
