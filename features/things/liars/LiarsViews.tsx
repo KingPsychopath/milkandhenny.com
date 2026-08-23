@@ -789,7 +789,15 @@ export function NotesPad({
  * do that, so the QR comes first and is big enough to hold up, the code sits under it at a size you
  * can read from across a table, and the share sheet handles anybody who is not in the room at all.
  */
-export function InvitePanel({ roomId, inviteUrl }: { roomId: string; inviteUrl: string }) {
+export function InvitePanel({
+  roomId,
+  inviteUrl,
+  pooled = false,
+}: {
+  roomId: string;
+  inviteUrl: string;
+  pooled?: boolean;
+}) {
   const { dataUrl: qr, failed } = useQrCode(inviteUrl || null, 320);
   const nativeShare = useNativeShareAvailability({ coarsePointerOnly: true });
   const [shareMessage, setShareMessage] = useState<string | null>(null);
@@ -805,7 +813,9 @@ export function InvitePanel({ roomId, inviteUrl }: { roomId: string; inviteUrl: 
         : result === "shared"
           ? "invite shared"
           : result === "failed"
-            ? "read the code out instead"
+            ? pooled
+              ? "copy the invite link instead"
+              : "read the code out instead"
             : null,
     );
   };
@@ -820,10 +830,12 @@ export function InvitePanel({ roomId, inviteUrl }: { roomId: string; inviteUrl: 
         />
       ) : null}
       {failed ? (
-        <p className="font-mono text-xs text-white/45">QR unavailable — use the code.</p>
+        <p className="font-mono text-xs text-white/45">
+          {pooled ? "QR unavailable — copy the invite link." : "QR unavailable — use the code."}
+        </p>
       ) : null}
       <p className="mt-5 font-mono text-micro uppercase tracking-[0.18em] text-white/40">
-        room code
+        {pooled ? "pool room" : "room code"}
       </p>
       <p className="mt-1 font-mono text-4xl font-bold tracking-[0.22em] text-[var(--things-amber)]">
         {roomId}

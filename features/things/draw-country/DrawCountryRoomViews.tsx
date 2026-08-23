@@ -6,6 +6,7 @@ import { useQrCode } from "@/hooks/useQrCode";
 import { shareOrCopy } from "@/lib/client/share";
 import { PlayerReadyControl } from "../shared/PlayerReadyControl";
 import { GameActionDialog } from "../shared/GameActionDialog";
+import { gamePoolRoomInviteUrl } from "../pool/pool-session.client";
 import { CountryRevealAnalysis } from "./CountryReveal";
 import { DrawCountryResultReport } from "./DrawCountryResultReport";
 import { buildDrawCountryPlayerInviteUrl } from "./draw-country-invite";
@@ -68,11 +69,13 @@ export function RoomLobby({
   const invite =
     typeof window === "undefined"
       ? ""
-      : buildDrawCountryPlayerInviteUrl(
-          window.location.origin,
-          snapshot.roomId,
-          token ?? undefined,
-        );
+      : snapshot.managed
+        ? (gamePoolRoomInviteUrl("draw-country", snapshot.roomId) ?? "")
+        : buildDrawCountryPlayerInviteUrl(
+            window.location.origin,
+            snapshot.roomId,
+            token ?? undefined,
+          );
   const { dataUrl: qr, failed: qrFailed } = useQrCode(invite || null, 280);
   const nativeShare = useNativeShareAvailability({ coarsePointerOnly: true });
   const currentPlayer = snapshot.players.find(({ id }) => id === playerId);
@@ -88,7 +91,9 @@ export function RoomLobby({
         : result === "shared"
           ? "Invite shared."
           : result === "failed"
-            ? "Use the room code below."
+            ? snapshot.managed
+              ? "Copy the game-night invite link instead."
+              : "Use the room code below."
             : null,
     );
   };
@@ -107,7 +112,7 @@ export function RoomLobby({
         <p className="mt-2 font-mono text-micro text-black/40">
           {snapshot.roundTotal} rounds · {snapshot.drawSeconds} seconds each · 100 points per round
         </p>
-        {!snapshot.managed ? (
+        {invite ? (
           <>
             {qr ? (
               <img
@@ -118,11 +123,13 @@ export function RoomLobby({
             ) : null}
             {qrFailed ? (
               <p className="mt-4 font-mono text-xs text-black/45">
-                QR unavailable — share the link or room code.
+                {snapshot.managed
+                  ? "QR unavailable — copy the game-night invite link."
+                  : "QR unavailable — share the link or room code."}
               </p>
             ) : null}
             <p className="mt-4 font-mono text-micro uppercase tracking-[0.17em] text-black/40">
-              room code
+              {snapshot.managed ? "pool room" : "room code"}
             </p>
             <p className="mt-1 font-mono text-2xl tracking-[0.2em]">{snapshot.roomId}</p>
             <button

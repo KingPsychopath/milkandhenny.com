@@ -10,7 +10,7 @@ import {
   removeStorageKeys,
   writeExpiringLocalValue,
 } from "../shared/game-storage.client";
-import { releaseGamePoolMembership } from "../pool/pool-session.client";
+import { gamePoolRoomInviteUrl, releaseGamePoolMembership } from "../pool/pool-session.client";
 import { liarsBrowserKeys } from "./liars-keys";
 import {
   liarsRoleSide,
@@ -356,19 +356,21 @@ function LobbyPhase({ snapshot, isHost, send, sendHost }: PhaseProps) {
   const inviteUrl =
     typeof window === "undefined"
       ? ""
-      : buildLiarsPlayerInviteUrl(
-          window.location.origin,
-          snapshot.roomId,
-          readExpiringLocalValue<string>(liarsBrowserKeys.invite(snapshot.roomId)) ?? undefined,
-        );
+      : snapshot.managed
+        ? (gamePoolRoomInviteUrl("liars", snapshot.roomId) ?? "")
+        : buildLiarsPlayerInviteUrl(
+            window.location.origin,
+            snapshot.roomId,
+            readExpiringLocalValue<string>(liarsBrowserKeys.invite(snapshot.roomId)) ?? undefined,
+          );
   return (
     <>
       <Eyebrow>{LIARS_MODE_COPY[snapshot.mode].name} · lobby</Eyebrow>
       <Headline>Bring everyone in</Headline>
 
-      {!snapshot.managed ? (
+      {inviteUrl ? (
         <div className="mt-8">
-          <InvitePanel roomId={snapshot.roomId} inviteUrl={inviteUrl} />
+          <InvitePanel roomId={snapshot.roomId} inviteUrl={inviteUrl} pooled={snapshot.managed} />
         </div>
       ) : null}
 

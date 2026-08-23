@@ -21,6 +21,20 @@ interface GamePoolMembership {
 export const gamePoolMembershipKey = (game: GamePoolGame, roomId: string) =>
   gameBrowserKey("game-pool", 1, game, "room", roomId, "membership");
 
+export function gamePoolRoomInvitePath(token: string, roomId: string) {
+  return `/play/${encodeURIComponent(token)}?room=${encodeURIComponent(roomId)}`;
+}
+
+export function gamePoolRoomInviteUrl(game: GamePoolGame, roomId: string) {
+  if (typeof window === "undefined") return null;
+  const membership = readExpiringLocalValue<GamePoolMembership>(
+    gamePoolMembershipKey(game, roomId),
+  );
+  return membership
+    ? new URL(gamePoolRoomInvitePath(membership.token, roomId), window.location.origin).toString()
+    : null;
+}
+
 export function gamePoolClientId() {
   const key = gameBrowserKey("game-pool", 1, "client-id");
   try {

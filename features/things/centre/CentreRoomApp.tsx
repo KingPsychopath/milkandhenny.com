@@ -31,7 +31,7 @@ import type {
   CentreRoute,
 } from "./types";
 import { useCentreRoom } from "./useCentreRoom";
-import { releaseGamePoolMembership } from "../pool/pool-session.client";
+import { gamePoolRoomInviteUrl, releaseGamePoolMembership } from "../pool/pool-session.client";
 
 const DIFFICULTY_LABELS = ["calm", "easy", "medium", "hard", "brutal"] as const;
 
@@ -345,7 +345,9 @@ export function CentreRoom({
 
   if (snapshot.phase === "lobby") {
     const token = sessionStorage.getItem(centreBrowserKeys.invite(roomId));
-    const invite = buildCentrePlayerInviteUrl(window.location.origin, roomId, token ?? undefined);
+    const invite = snapshot.managed
+      ? (gamePoolRoomInviteUrl("centre", roomId) ?? "")
+      : buildCentrePlayerInviteUrl(window.location.origin, roomId, token ?? undefined);
     return (
       <CentreLobby
         snapshot={snapshot}
@@ -637,7 +639,9 @@ function CentreLobby({
         : result === "shared"
           ? "Invite shared."
           : result === "failed"
-            ? "Use the room code below."
+            ? snapshot.managed
+              ? "Copy the game-night invite link instead."
+              : "Use the room code below."
             : null,
     );
   };
@@ -655,13 +659,18 @@ function CentreLobby({
         <p className="centre-lede">
           Tap your start when you’re set. Once the countdown begins, the race is locked.
         </p>
-        {!snapshot.managed ? (
+        {invite ? (
           <>
             {qr ? (
               <img src={qr} alt="QR code to join this centre room" className="centre-qr" />
             ) : failed ? (
-              <p className="centre-note">QR unavailable. Share the link or room code.</p>
+              <p className="centre-note">
+                {snapshot.managed
+                  ? "QR unavailable. Copy the game-night invite link."
+                  : "QR unavailable. Share the link or room code."}
+              </p>
             ) : null}
+            <p className="centre-eyebrow">{snapshot.managed ? "pool room" : "room code"}</p>
             <p className="centre-code">{snapshot.roomId}</p>
             <button type="button" className="centre-button" onClick={() => void share()}>
               {nativeShare ? "share invite" : "copy invite link"}

@@ -1,12 +1,17 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { GamePoolEntranceApp } from "@/features/things/pool/GamePoolEntranceApp";
 import { getGamePoolPublicViewFn } from "@/features/things/pool/pool.functions";
+import { MULTIPLAYER_ROOM_ID_PATTERN } from "@/features/things/shared/multiplayer";
 import { SITE_NAME } from "@/lib/shared/config";
 import { buildSeoHead } from "@/lib/shared/seo";
 
 export const Route = createFileRoute("/play/$token")({
   validateSearch: (search: Record<string, unknown>) => ({
     choose: search.choose === true || search.choose === "1",
+    room:
+      typeof search.room === "string" && MULTIPLAYER_ROOM_ID_PATTERN.test(search.room.toUpperCase())
+        ? search.room.toUpperCase()
+        : undefined,
   }),
   loader: ({ params }) => getGamePoolPublicViewFn({ data: { token: params.token } }),
   component: GamePoolEntranceRoute,
@@ -23,6 +28,13 @@ export const Route = createFileRoute("/play/$token")({
 function GamePoolEntranceRoute() {
   const view = Route.useLoaderData();
   const { token } = Route.useParams();
-  const { choose } = Route.useSearch();
-  return <GamePoolEntranceApp token={token} initialView={view} suppressAutoJoin={choose} />;
+  const { choose, room } = Route.useSearch();
+  return (
+    <GamePoolEntranceApp
+      token={token}
+      initialView={view}
+      requestedRoomId={room}
+      suppressAutoJoin={choose}
+    />
+  );
 }

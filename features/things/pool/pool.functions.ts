@@ -1,5 +1,9 @@
 import { createServerFn } from "@tanstack/react-start";
-import { multiplayerRecord, multiplayerText } from "../shared/multiplayer-validation";
+import {
+  multiplayerRecord,
+  multiplayerRoomId,
+  multiplayerText,
+} from "../shared/multiplayer-validation";
 import {
   assignGamePoolRoom,
   getGamePoolPublicView,
@@ -34,7 +38,7 @@ export const assignGamePoolRoomFn = createServerFn({ method: "POST" })
         ? rawChoice
         : (() => {
             const record = multiplayerRecord(rawChoice);
-            return { roomId: multiplayerText(record.roomId, 12, "Invalid room") };
+            return { roomId: multiplayerRoomId(record.roomId) };
           })();
     return {
       token: token(data.token),

@@ -1,5 +1,5 @@
 import { Link } from "@tanstack/react-router";
-import { useCallback, useEffect, useId, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { useRememberedPlayerName } from "../shared/useRememberedPlayerName";
 import { assignGamePoolRoomFn, getGamePoolPublicViewFn } from "./pool.functions";
 import {
@@ -13,10 +13,12 @@ import { useMultiplayerWakeSocket } from "../shared/useMultiplayerWakeSocket";
 export function GamePoolEntranceApp({
   token,
   initialView,
+  requestedRoomId,
   suppressAutoJoin = false,
 }: {
   token: string;
   initialView: GamePoolPublicView;
+  requestedRoomId?: string;
   suppressAutoJoin?: boolean;
 }) {
   const nameId = useId();
@@ -25,9 +27,27 @@ export function GamePoolEntranceApp({
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(initialView.message ?? null);
   const [roomsOpen, setRoomsOpen] = useState(false);
+  const [targetRejected, setTargetRejected] = useState(false);
   const { loaded: nameLoaded, name: playerName, remember, setName } = useRememberedPlayerName(32);
   const autoJoinChecked = useRef(false);
   const refreshRef = useRef<() => Promise<void>>(async () => undefined);
+  const rooms = view.rooms ?? [];
+  const openRooms = rooms.filter(({ status }) => status === "open");
+  const requestedRoom = requestedRoomId
+    ? rooms.find(({ roomId }) => roomId === requestedRoomId)
+    : undefined;
+  const requestedRoomAvailable = Boolean(
+    requestedRoom &&
+    requestedRoom.status === "open" &&
+    requestedRoom.playerCount < requestedRoom.capacity,
+  );
+  const requestedChoice = useMemo(
+    () =>
+      requestedRoomId && requestedRoomAvailable && !targetRejected
+        ? ({ roomId: requestedRoomId } as const)
+        : ("auto" as const),
+    [requestedRoomAvailable, requestedRoomId, targetRejected],
+  );
 
   const refresh = useCallback(async () => {
     try {
@@ -79,7 +99,12 @@ export function GamePoolEntranceApp({
         adoptGamePoolAssignment(assignment, { token, clientId });
         window.location.assign(gamePoolPlayerPath(assignment));
       } catch (error) {
-        setMessage(error instanceof Error ? error.message : "Could not find a room. Try again.");
+        const errorMessage =
+          error instanceof Error ? error.message : "Could not find a room. Try again.";
+        if (typeof choice === "object" && errorMessage === "That room is no longer available.") {
+          setTargetRejected(true);
+          setMessage("That room just filled or started. Join the next available room.");
+        } else setMessage(errorMessage);
         setBusy(false);
         await refresh();
       }
@@ -98,8 +123,8 @@ export function GamePoolEntranceApp({
       !playerName.trim()
     )
       return;
-    void assign("auto");
-  }, [assign, nameLoaded, playerName, suppressAutoJoin, view.message, view.run]);
+    void assign(requestedChoice);
+  }, [assign, nameLoaded, playerName, requestedChoice, suppressAutoJoin, view.message, view.run]);
 
   if (!view.found)
     return (
@@ -121,9 +146,6 @@ export function GamePoolEntranceApp({
     );
 
   const accepting = view.run?.status === "open" && !view.message;
-  const rooms = view.rooms ?? [];
-  const openRooms = rooms.filter(({ status }) => status === "open");
-
   return (
     <main id="main" className="mx-auto min-h-dvh w-full max-w-2xl px-6 py-12 sm:py-20">
       <header>
@@ -132,7 +154,11 @@ export function GamePoolEntranceApp({
           {view.entrance?.label ?? "join a game"}
         </h1>
         <p className="mt-4 max-w-lg font-serif text-lg leading-relaxed theme-subtle">
-          Add your name. We will place you in a room that is ready for another player.
+          {requestedRoomAvailable && requestedRoom
+            ? `This invite is for ${requestedRoom.label}. Add your name and go straight in.`
+            : requestedRoomId
+              ? "That room is no longer available. We can place you in the next room."
+              : "Add your name. We will place you in a room that is ready for another player."}
         </p>
       </header>
 
@@ -142,11 +168,15 @@ export function GamePoolEntranceApp({
           aria-labelledby="join-title"
           onSubmit={(event) => {
             event.preventDefault();
-            void assign("auto");
+            void assign(requestedChoice);
           }}
         >
           <h2 id="join-title" className="font-serif text-2xl font-semibold">
-            Join the game
+            {requestedRoomAvailable && requestedRoom
+              ? `Join ${requestedRoom.label}`
+              : requestedRoomId
+                ? "Join the next room"
+                : "Join the game"}
           </h2>
           <label htmlFor={nameId} className="mt-6 block font-mono text-xs theme-muted">
             your name
@@ -169,7 +199,13 @@ export function GamePoolEntranceApp({
             disabled={busy || !nameLoaded}
             className="mt-8 min-h-14 w-full rounded-full bg-[var(--foreground)] px-6 font-mono text-sm font-semibold text-[var(--background)] transition-opacity hover:opacity-85 disabled:opacity-50"
           >
-            {busy ? "finding a room…" : "join now"}
+            {busy
+              ? "finding a room…"
+              : requestedRoomAvailable && requestedRoom
+                ? `join ${requestedRoom.label}`
+                : requestedRoomId
+                  ? "join next available room"
+                  : "join now"}
           </button>
           {view.run?.allowNewRooms ? (
             <button
@@ -191,8 +227,9 @@ export function GamePoolEntranceApp({
             </p>
           ) : null}
           <p className="mt-4 font-mono text-micro leading-relaxed theme-faint">
-            We remember your name on this device. Repeat scans can return you to your room
-            immediately.
+            {requestedRoomAvailable
+              ? "This room QR still uses game-night admission, so seats and rejoining stay safe."
+              : "We remember your name on this device. Repeat scans can return you to your room immediately."}
           </p>
         </form>
       ) : (

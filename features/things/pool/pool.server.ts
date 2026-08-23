@@ -199,12 +199,10 @@ export async function assignGamePoolRoom(input: {
       const lockedRun = await client.query<{
         status: string;
         closes_at: Date | null;
-        allow_room_choice: boolean;
         allow_new_rooms: boolean;
-      }>(
-        "select status, closes_at, allow_room_choice, allow_new_rooms from game_pool_runs where id = $1 for update",
-        [run.id],
-      );
+      }>("select status, closes_at, allow_new_rooms from game_pool_runs where id = $1 for update", [
+        run.id,
+      ]);
       const current = lockedRun.rows[0];
       if (
         !current ||
@@ -239,7 +237,6 @@ export async function assignGamePoolRoom(input: {
       );
       let candidates: GamePoolRoomRow[] = [];
       if (typeof input.choice === "object") {
-        if (!current.allow_room_choice) throw new Error("Room choice is not available.");
         const requestedRoomId = input.choice.roomId;
         candidates = rooms.rows.filter(
           ({ room_id, player_count }) =>

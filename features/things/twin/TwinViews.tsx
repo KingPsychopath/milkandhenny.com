@@ -7,6 +7,7 @@ import { useQrCode } from "@/hooks/useQrCode";
 import { shareOrCopy } from "@/lib/client/share";
 import { PlayerReadyControl } from "../shared/PlayerReadyControl";
 import { GameActionDialog } from "../shared/GameActionDialog";
+import { gamePoolRoomInviteUrl } from "../pool/pool-session.client";
 import {
   TWIN_MAX_HAND,
   TWIN_MIN_HAND,
@@ -94,7 +95,9 @@ export function TwinLobby({
   const invite =
     typeof window === "undefined"
       ? ""
-      : buildTwinPlayerInviteUrl(window.location.origin, snapshot.roomId, token ?? undefined);
+      : snapshot.managed
+        ? (gamePoolRoomInviteUrl("twin", snapshot.roomId) ?? "")
+        : buildTwinPlayerInviteUrl(window.location.origin, snapshot.roomId, token ?? undefined);
   const { dataUrl: qr, failed: qrFailed } = useQrCode(invite || null, 280);
   const nativeShare = useNativeShareAvailability({ coarsePointerOnly: true });
   const me = snapshot.players.find(({ id }) => id === playerId);
@@ -111,7 +114,9 @@ export function TwinLobby({
         : result === "shared"
           ? "Invite shared."
           : result === "failed"
-            ? "Use the room code below."
+            ? snapshot.managed
+              ? "Copy the game-night invite link instead."
+              : "Use the room code below."
             : null,
     );
   };
@@ -127,15 +132,21 @@ export function TwinLobby({
           your hand.
         </p>
 
-        {!snapshot.managed ? (
+        {invite ? (
           <>
             {qr ? (
               <img src={qr} alt="QR code to join this twin room" className="twin-qr" />
             ) : qrFailed ? (
-              <p className="twin-note">QR unavailable — share the link or room code.</p>
+              <p className="twin-note">
+                {snapshot.managed
+                  ? "QR unavailable — copy the game-night invite link."
+                  : "QR unavailable — share the link or room code."}
+              </p>
             ) : null}
 
-            <p className="twin-eyebrow twin-eyebrow--tight">room code</p>
+            <p className="twin-eyebrow twin-eyebrow--tight">
+              {snapshot.managed ? "pool room" : "room code"}
+            </p>
             <p className="twin-code">{snapshot.roomId}</p>
             <button
               type="button"

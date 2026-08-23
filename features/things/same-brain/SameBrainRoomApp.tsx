@@ -36,7 +36,7 @@ import { buildSameBrainPlayerInviteUrl } from "./same-brain-invite";
 import { useSameBrainRoom } from "./useSameBrainRoom";
 import type { SameBrainPlayerCredentials, SameBrainScoring, SameBrainSnapshot } from "./types";
 import { PlayerReadyControl } from "../shared/PlayerReadyControl";
-import { releaseGamePoolMembership } from "../pool/pool-session.client";
+import { gamePoolRoomInviteUrl, releaseGamePoolMembership } from "../pool/pool-session.client";
 
 let actionCounter = 0;
 const nextActionId = () => `sb-${Date.now().toString(36)}-${(actionCounter += 1)}`;
@@ -315,11 +315,14 @@ function LobbyPhase({
   const inviteUrl =
     typeof window === "undefined"
       ? ""
-      : buildSameBrainPlayerInviteUrl(
-          window.location.origin,
-          snapshot.roomId,
-          readExpiringLocalValue<string>(sameBrainBrowserKeys.invite(snapshot.roomId)) ?? undefined,
-        );
+      : snapshot.managed
+        ? (gamePoolRoomInviteUrl("same-brain", snapshot.roomId) ?? "")
+        : buildSameBrainPlayerInviteUrl(
+            window.location.origin,
+            snapshot.roomId,
+            readExpiringLocalValue<string>(sameBrainBrowserKeys.invite(snapshot.roomId)) ??
+              undefined,
+          );
 
   return (
     <>
@@ -331,9 +334,9 @@ function LobbyPhase({
         cheap one.
       </p>
 
-      {!snapshot.managed ? (
+      {inviteUrl ? (
         <div className="mt-8">
-          <InvitePanel roomId={snapshot.roomId} inviteUrl={inviteUrl} />
+          <InvitePanel roomId={snapshot.roomId} inviteUrl={inviteUrl} pooled={snapshot.managed} />
         </div>
       ) : null}
 
