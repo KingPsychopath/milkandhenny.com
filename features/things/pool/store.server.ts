@@ -9,6 +9,7 @@ import {
 } from "./presets";
 import type {
   GamePoolEntrance,
+  GamePoolDefaultLaunch,
   GamePoolGame,
   GamePoolNameVisibility,
   GamePoolPreset,
@@ -21,6 +22,7 @@ interface EntranceRow {
   token: string;
   label: string;
   game: string;
+  is_default: boolean;
   preset: unknown;
   target_size: number;
   auto_join: boolean;
@@ -115,6 +117,7 @@ function entranceFromRow(row: EntranceRow): GamePoolEntrance {
     token: row.token,
     label: row.label,
     game: row.game,
+    isDefault: row.is_default,
     preset: gamePoolPreset(row.preset, row.game),
     targetSize: row.target_size,
     autoJoin: row.auto_join,
@@ -126,6 +129,30 @@ function entranceFromRow(row: EntranceRow): GamePoolEntrance {
     retiredAt: row.retired_at?.toISOString() ?? null,
     run: runFromRow(row, row.game),
   };
+}
+
+/**
+ * Resolve the admin-selected public entrance only while its game night is
+ * accepting players. The token is returned as a path because it is the
+ * public capability; no preset or operator data crosses this boundary.
+ */
+export async function getDefaultGamePoolPublicLink(
+  game: GamePoolGame,
+): Promise<GamePoolDefaultLaunch | null> {
+  const row = await queryOne<{ label: string; game: GamePoolGame; token: string }>(
+    `select e.label, e.game, e.token
+       from game_pool_entrances e
+       join game_pool_runs r on r.entrance_id = e.id
+      where e.game = $1
+        and e.is_default = true
+        and e.retired_at is null
+        and r.status = 'open'
+        and (r.closes_at is null or r.closes_at > now())
+      order by r.opened_at desc
+      limit 1`,
+    [game],
+  );
+  return row ? { label: row.label, game: row.game, path: `/play/${row.token}` } : null;
 }
 
 export async function listGamePoolEntrances() {
@@ -148,6 +175,7 @@ export async function getGamePoolEntrance(id: string) {
 export async function createGamePoolEntrance(input: {
   game: GamePoolGame;
   label?: string;
+  isDefault?: boolean;
   preset?: unknown;
   targetSize?: number;
   autoJoin?: boolean;
@@ -163,39 +191,66 @@ export async function createGamePoolEntrance(input: {
   );
   const id = opaqueId("gpe");
   const token = publicToken();
-  if (input.actionId) {
-    const existing = await queryOne<{ id: string }>(
-      "select id from game_pool_entrances where create_action_id = $1",
-      [input.actionId],
-    );
-    if (existing) return getGamePoolEntrance(existing.id);
-  }
-  await query(
-    `insert into game_pool_entrances (
-      id, token, label, game, preset, target_size, auto_join,
-      allow_room_choice, allow_new_rooms, name_visibility, create_action_id
-    ) values ($1, $2, $3, $4, $5::jsonb, $6, $7, $8, $9, $10, $11)
-    on conflict (create_action_id) where create_action_id is not null do nothing`,
-    [
-      id,
-      token,
-      input.label?.trim().slice(0, 80) || defaults.label,
-      input.game,
-      JSON.stringify(gamePoolPreset(input.preset, input.game)),
-      targetSize,
-      input.autoJoin ?? GAME_POOL_ADMISSION_DEFAULTS.autoJoin,
-      input.allowRoomChoice ?? GAME_POOL_ADMISSION_DEFAULTS.allowRoomChoice,
-      input.allowNewRooms ?? GAME_POOL_ADMISSION_DEFAULTS.allowNewRooms,
-      input.nameVisibility ?? GAME_POOL_ADMISSION_DEFAULTS.nameVisibility,
-      input.actionId ?? null,
-    ],
-  );
-  const entrance = input.actionId
-    ? await queryOne<{ id: string }>(
+  const createdId = await transaction(async (client) => {
+    // Serialise default changes per game. The partial unique index remains
+    // the final guard if a future caller bypasses this workflow.
+    await client.query("select pg_advisory_xact_lock(hashtext($1))", [
+      `game-pool-default:${input.game}`,
+    ]);
+    if (input.actionId) {
+      const existing = await client.query<{ id: string }>(
         "select id from game_pool_entrances where create_action_id = $1",
         [input.actionId],
-      ).then((row) => (row ? getGamePoolEntrance(row.id) : null))
-    : await getGamePoolEntrance(id);
+      );
+      if (existing.rows[0]) return existing.rows[0].id;
+    }
+    const active = await client.query<{ id: string }>(
+      `select id from game_pool_entrances
+        where game = $1 and retired_at is null
+        order by created_at asc, id asc
+        limit 1
+        for update`,
+      [input.game],
+    );
+    const isDefault = input.isDefault === true || active.rows.length === 0;
+    if (isDefault)
+      await client.query(
+        `update game_pool_entrances
+            set is_default = false, updated_at = now()
+          where game = $1 and is_default = true and retired_at is null`,
+        [input.game],
+      );
+    await client.query(
+      `insert into game_pool_entrances (
+        id, token, label, game, is_default, preset, target_size, auto_join,
+        allow_room_choice, allow_new_rooms, name_visibility, create_action_id
+      ) values ($1, $2, $3, $4, $5, $6::jsonb, $7, $8, $9, $10, $11, $12)
+      on conflict (create_action_id) where create_action_id is not null do nothing`,
+      [
+        id,
+        token,
+        input.label?.trim().slice(0, 80) || defaults.label,
+        input.game,
+        isDefault,
+        JSON.stringify(gamePoolPreset(input.preset, input.game)),
+        targetSize,
+        input.autoJoin ?? GAME_POOL_ADMISSION_DEFAULTS.autoJoin,
+        input.allowRoomChoice ?? GAME_POOL_ADMISSION_DEFAULTS.allowRoomChoice,
+        input.allowNewRooms ?? GAME_POOL_ADMISSION_DEFAULTS.allowNewRooms,
+        input.nameVisibility ?? GAME_POOL_ADMISSION_DEFAULTS.nameVisibility,
+        input.actionId ?? null,
+      ],
+    );
+    if (input.actionId) {
+      const existing = await client.query<{ id: string }>(
+        "select id from game_pool_entrances where create_action_id = $1",
+        [input.actionId],
+      );
+      return existing.rows[0]?.id ?? id;
+    }
+    return id;
+  });
+  const entrance = await getGamePoolEntrance(createdId);
   if (!entrance) throw new Error("Game entrance was not created");
   return entrance;
 }
@@ -204,6 +259,7 @@ export async function updateGamePoolEntrance(
   id: string,
   input: {
     label?: string;
+    isDefault?: boolean;
     preset?: unknown;
     targetSize?: number;
     autoJoin?: boolean;
@@ -225,37 +281,62 @@ export async function updateGamePoolEntrance(
     2,
     Math.min(capacity, Math.floor(input.targetSize ?? current.targetSize)),
   );
-  await query(
-    `update game_pool_entrances set
-      label = $2,
-      preset = $3::jsonb,
-      target_size = $4,
-      auto_join = $5,
-      allow_room_choice = $6,
-      allow_new_rooms = $7,
-      name_visibility = $8,
-      token = case when $9 then $10 else token end,
-      retired_at = case
-        when $11::boolean is null then retired_at
-        when $11 then coalesce(retired_at, now())
-        else null
-      end,
-      updated_at = now()
-    where id = $1`,
-    [
+  await transaction(async (client) => {
+    await client.query("select pg_advisory_xact_lock(hashtext($1))", [
+      `game-pool-default:${current.game}`,
+    ]);
+    const locked = await client.query<{
+      game: GamePoolGame;
+      is_default: boolean;
+      retired_at: Date | null;
+    }>("select game, is_default, retired_at from game_pool_entrances where id = $1 for update", [
       id,
-      label,
-      JSON.stringify(preset),
-      targetSize,
-      input.autoJoin ?? current.autoJoin,
-      input.allowRoomChoice ?? current.allowRoomChoice,
-      input.allowNewRooms ?? current.allowNewRooms,
-      input.nameVisibility ?? current.nameVisibility,
-      input.rotateToken === true,
-      publicToken(),
-      input.retire ?? null,
-    ],
-  );
+    ]);
+    const row = locked.rows[0];
+    if (!row) return;
+    const willRetire = input.retire === true || (input.retire !== false && row.retired_at !== null);
+    const isDefault = willRetire ? false : (input.isDefault ?? row.is_default);
+    if (isDefault)
+      await client.query(
+        `update game_pool_entrances
+            set is_default = false, updated_at = now()
+          where game = $1 and id <> $2 and is_default = true and retired_at is null`,
+        [row.game, id],
+      );
+    await client.query(
+      `update game_pool_entrances set
+        label = $2,
+        is_default = $3,
+        preset = $4::jsonb,
+        target_size = $5,
+        auto_join = $6,
+        allow_room_choice = $7,
+        allow_new_rooms = $8,
+        name_visibility = $9,
+        token = case when $10 then $11 else token end,
+        retired_at = case
+          when $12::boolean is null then retired_at
+          when $12 then coalesce(retired_at, now())
+          else null
+        end,
+        updated_at = now()
+      where id = $1`,
+      [
+        id,
+        label,
+        isDefault,
+        JSON.stringify(preset),
+        targetSize,
+        input.autoJoin ?? current.autoJoin,
+        input.allowRoomChoice ?? current.allowRoomChoice,
+        input.allowNewRooms ?? current.allowNewRooms,
+        input.nameVisibility ?? current.nameVisibility,
+        input.rotateToken === true,
+        publicToken(),
+        input.retire ?? null,
+      ],
+    );
+  });
   return getGamePoolEntrance(id);
 }
 

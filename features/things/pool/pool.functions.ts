@@ -9,6 +9,8 @@ import {
   getGamePoolPublicView,
   releaseGamePoolAssignment,
 } from "./pool.server";
+import { getDefaultGamePoolPublicLink } from "./store.server";
+import { isGamePoolGame } from "./presets";
 
 function token(value: unknown) {
   const parsed = multiplayerText(value, 80, "Invalid game-night link");
@@ -28,6 +30,15 @@ export const getGamePoolPublicViewFn = createServerFn({ method: "GET" })
     return { token: token(data.token) };
   })
   .handler(({ data }) => getGamePoolPublicView(data.token));
+
+/** Resolve the admin-selected, currently open public entrance for a game. */
+export const getDefaultGamePoolLaunchFn = createServerFn({ method: "GET" })
+  .validator((value: unknown) => {
+    const data = multiplayerRecord(value);
+    if (!isGamePoolGame(data.game)) throw new Error("Unsupported game");
+    return { game: data.game };
+  })
+  .handler(({ data }) => getDefaultGamePoolPublicLink(data.game));
 
 export const assignGamePoolRoomFn = createServerFn({ method: "POST" })
   .validator((value: unknown) => {

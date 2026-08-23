@@ -48,6 +48,7 @@ export function createGamePoolForAdmin(value: unknown) {
   return createGamePoolEntrance({
     game: input.game,
     label: typeof input.label === "string" ? input.label : GAME_POOL_DEFAULTS[input.game].label,
+    isDefault: optionalBoolean(input.isDefault),
     preset: input.preset,
     targetSize: optionalInteger(input.targetSize),
     autoJoin: optionalBoolean(input.autoJoin),
@@ -62,6 +63,7 @@ export function updateGamePoolForAdmin(id: string, value: unknown) {
   const input = record(value);
   return updateGamePoolEntrance(id, {
     label: typeof input.label === "string" ? input.label : undefined,
+    isDefault: optionalBoolean(input.isDefault),
     preset: input.preset,
     targetSize: optionalInteger(input.targetSize),
     autoJoin: optionalBoolean(input.autoJoin),

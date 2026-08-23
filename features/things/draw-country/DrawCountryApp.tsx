@@ -19,6 +19,8 @@ import {
 import { RoomJoinControl } from "../shared/RoomJoinControl";
 import { useNetworkAvailability } from "../shared/useNetworkAvailability";
 import { nextSoloCountry } from "./rotation.client";
+import { GamePoolDefaultLaunch } from "../pool/GamePoolDefaultLaunch";
+import type { GamePoolDefaultLaunch as GamePoolDefaultLaunchTarget } from "../pool/types";
 
 function RoundSettings({
   roundTotal,
@@ -59,7 +61,13 @@ function RoundSettings({
   );
 }
 
-export function DrawCountryApp({ initialCountry }: { initialCountry: CountryOutline | null }) {
+export function DrawCountryApp({
+  initialCountry,
+  defaultPool,
+}: {
+  initialCountry: CountryOutline | null;
+  defaultPool?: GamePoolDefaultLaunchTarget | null;
+}) {
   const navigate = useNavigate();
   const haptics = useWebHaptics();
   const online = useNetworkAvailability();
@@ -268,6 +276,21 @@ export function DrawCountryApp({ initialCountry }: { initialCountry: CountryOutl
             <p className="mt-2 font-serif text-black/55">
               Everyone draws the same countries. The closest border wins each round.
             </p>
+            {defaultPool ? (
+              <>
+                <p className="mt-4 font-serif text-black/55">
+                  Join the open game night. The room and settings are ready for you.
+                </p>
+                <div className="mt-5">
+                  <GamePoolDefaultLaunch pool={defaultPool} tone="light">
+                    join {defaultPool.label}
+                  </GamePoolDefaultLaunch>
+                </div>
+                <p className="mt-6 border-t border-black/10 pt-5 font-mono text-xs uppercase tracking-[0.14em] text-black/45">
+                  or make a private room
+                </p>
+              </>
+            ) : null}
             {!online ? (
               <p role="status" className="mt-5 font-mono text-xs text-amber-800">
                 Rooms need an internet connection. Quick draw and solo rounds are still ready here.
@@ -308,7 +331,7 @@ export function DrawCountryApp({ initialCountry }: { initialCountry: CountryOutl
                   disabled={creating}
                   className="min-h-12 rounded-full bg-black px-6 font-mono text-xs font-semibold uppercase tracking-[0.14em] text-white disabled:opacity-40 sm:col-span-3"
                 >
-                  {creating ? "making room…" : "create room"}
+                  {creating ? "making room…" : defaultPool ? "create private room" : "create room"}
                 </button>
               </form>
             )}

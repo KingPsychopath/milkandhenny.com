@@ -350,7 +350,15 @@ export function GamePoolsPanel({
       const response = await authFetch(`/api/admin/game-pools/${encodeURIComponent(id)}`, {
         method: "PATCH",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify(draft),
+        body: JSON.stringify({
+          label: draft.label,
+          preset: draft.preset,
+          targetSize: draft.targetSize,
+          autoJoin: draft.autoJoin,
+          allowRoomChoice: draft.allowRoomChoice,
+          allowNewRooms: draft.allowNewRooms,
+          nameVisibility: draft.nameVisibility,
+        }),
       });
       const data = (await response.json().catch(() => ({}))) as { error?: string };
       if (!response.ok) throw new Error(data.error || "Failed to save game entrance");
@@ -358,6 +366,26 @@ export function GamePoolsPanel({
       await refresh();
     } catch (error) {
       onError(error instanceof Error ? error.message : "Failed to save game entrance");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const makeDefault = async (id: string) => {
+    setLoading(true);
+    onError("");
+    try {
+      const response = await authFetch(`/api/admin/game-pools/${encodeURIComponent(id)}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ isDefault: true }),
+      });
+      const data = (await response.json().catch(() => ({}))) as { error?: string };
+      if (!response.ok) throw new Error(data.error || "Failed to change the public default");
+      onStatus("This entrance is now the public default for its game.");
+      await refresh();
+    } catch (error) {
+      onError(error instanceof Error ? error.message : "Failed to change the public default");
     } finally {
       setLoading(false);
     }
@@ -448,7 +476,7 @@ export function GamePoolsPanel({
                   <div>
                     <p className="font-serif text-xl font-semibold">{entrance.label}</p>
                     <p className="mt-1 font-mono text-xs theme-muted">
-                      {entrance.game} ·{" "}
+                      {entrance.game} · {entrance.isDefault ? "public default · " : ""}
                       {entrance.retiredAt
                         ? "retired"
                         : run
@@ -602,6 +630,16 @@ export function GamePoolsPanel({
                         </select>
                       </label>
                       <div>
+                        <label className="flex min-h-11 items-center gap-3 font-mono text-xs theme-muted">
+                          <input
+                            type="radio"
+                            name={`default-pool-${entrance.game}`}
+                            checked={draft.isDefault}
+                            disabled={loading || Boolean(entrance.retiredAt)}
+                            onChange={() => void makeDefault(entrance.id)}
+                          />
+                          use as this game’s public default
+                        </label>
                         <PoolCheck
                           label="automatically continue repeat scans"
                           checked={draft.autoJoin}

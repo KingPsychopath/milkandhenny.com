@@ -50,6 +50,7 @@ export interface GamePoolEntrance {
   token: string;
   label: string;
   game: GamePoolGame;
+  isDefault: boolean;
   preset: GamePoolPreset;
   targetSize: number;
   autoJoin: boolean;
@@ -64,6 +65,13 @@ export interface GamePoolEntrance {
   rooms?: GamePoolRoomSummary[];
   /** Returned only once when an admin opens a run. */
   operatorToken?: string;
+}
+
+/** The only pool data exposed by a public game launcher. */
+export interface GamePoolDefaultLaunch {
+  label: string;
+  game: GamePoolGame;
+  path: string;
 }
 
 export interface GamePoolRun {

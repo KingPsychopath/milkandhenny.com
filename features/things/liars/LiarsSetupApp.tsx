@@ -29,6 +29,8 @@ import {
   type LiarsTorchState,
 } from "./torch.client";
 import type { LiarsMode, LiarsRoomMode, LiarsToggles } from "./types";
+import { GamePoolDefaultLaunch } from "../pool/GamePoolDefaultLaunch";
+import type { GamePoolDefaultLaunch as GamePoolDefaultLaunchTarget } from "../pool/types";
 
 const MAFIA_BLURB =
   "Someone here is killing people at night. Find them before they run out of people.";
@@ -71,7 +73,11 @@ function useLiveLiarsSessions() {
   return rooms;
 }
 
-export function LiarsSetupApp() {
+export function LiarsSetupApp({
+  defaultPool,
+}: {
+  defaultPool?: GamePoolDefaultLaunchTarget | null;
+}) {
   const navigate = useNavigate();
   // Remembered on this device, so a group's setup is one tap next time rather than eight.
   const { preferences, set } = useGamePreferences("liars", {
@@ -170,17 +176,25 @@ export function LiarsSetupApp() {
               </div>
             ) : null}
 
-            <GameLaunchButton
-              accent="amber"
-              disabled={creating}
-              onClick={() => void handleCreate()}
-            >
-              {creating
-                ? "opening…"
-                : `open ${LIARS_MODE_COPY[mode].article} ${LIARS_MODE_COPY[mode].name} room`}
-            </GameLaunchButton>
+            {defaultPool ? (
+              <GamePoolDefaultLaunch pool={defaultPool}>
+                join {defaultPool.label}
+              </GamePoolDefaultLaunch>
+            ) : (
+              <GameLaunchButton
+                accent="amber"
+                disabled={creating}
+                onClick={() => void handleCreate()}
+              >
+                {creating
+                  ? "opening…"
+                  : `open ${LIARS_MODE_COPY[mode].article} ${LIARS_MODE_COPY[mode].name} room`}
+              </GameLaunchButton>
+            )}
             <GameLaunchMeta tone="dark">
-              you play too · everyone joins with the room code
+              {defaultPool
+                ? `${defaultPool.label} · settings ready · everyone joins from their own phone`
+                : "you play too · everyone joins with the room code"}
             </GameLaunchMeta>
 
             {mode === "imposter" ? (
@@ -196,6 +210,16 @@ export function LiarsSetupApp() {
             ) : null}
 
             <GameLaunchChoices tone="dark">
+              {defaultPool ? (
+                <button
+                  type="button"
+                  onClick={() => void handleCreate()}
+                  disabled={creating}
+                  className="min-h-11 disabled:opacity-40"
+                >
+                  {creating ? "opening…" : "private room"}
+                </button>
+              ) : null}
               <button
                 type="button"
                 aria-pressed={panel === "roles"}

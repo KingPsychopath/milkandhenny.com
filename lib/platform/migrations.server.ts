@@ -530,6 +530,7 @@ const MIGRATIONS: Migration[] = [
         label             text not null check (char_length(label) between 1 and 80),
         game              text not null
                           check (game in ('same-brain', 'liars', 'centre', 'twin', 'draw-country')),
+        is_default        boolean not null default false,
         preset            jsonb not null,
         target_size       integer not null check (target_size between 2 and 16),
         allow_room_choice boolean not null default true,
@@ -540,6 +541,10 @@ const MIGRATIONS: Migration[] = [
         updated_at        timestamptz not null default now(),
         retired_at        timestamptz
       );
+
+      create unique index if not exists game_pool_entrances_one_default_idx
+        on game_pool_entrances (game)
+        where is_default = true and retired_at is null;
 
       create table if not exists game_pool_runs (
         id                text primary key

@@ -55,10 +55,17 @@ export async function applySchema(): Promise<void> {
   }
 
   await query(`
+    drop table if exists game_pool_moderation_events cascade;
+    drop table if exists game_pool_assignments cascade;
+    drop table if exists game_pool_rooms cascade;
+    drop table if exists game_pool_runs cascade;
+    drop table if exists game_pool_entrances cascade;
     drop table if exists email_feedback_events cascade;
     drop table if exists email_suppressions cascade;
     drop table if exists email_outbox cascade;
     drop table if exists pitch_audit_events cascade;
+    drop table if exists pitch_commands cascade;
+    drop table if exists pitch_editions cascade;
     drop table if exists pitch_mutations cascade;
     drop table if exists pitch_deck_backups cascade;
     drop table if exists pitch_assets cascade;

@@ -69,6 +69,7 @@ describe("game-pool presets", () => {
       token: "secret-player-token",
       label: "Quick Centre",
       game: "centre",
+      isDefault: false,
       preset: GAME_POOL_DEFAULTS.centre.preset,
       targetSize: 6,
       autoJoin: true,

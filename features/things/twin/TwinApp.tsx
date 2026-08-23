@@ -18,8 +18,10 @@ import { createTwinRoomFn } from "./twin-room.functions";
 import { primeTwinAudio } from "./twin-sound.client";
 import { TwinDuelApp } from "./TwinDuelApp";
 import { useNetworkAvailability } from "../shared/useNetworkAvailability";
+import { GamePoolDefaultLaunch } from "../pool/GamePoolDefaultLaunch";
+import type { GamePoolDefaultLaunch as GamePoolDefaultLaunchTarget } from "../pool/types";
 
-export function TwinApp() {
+export function TwinApp({ defaultPool }: { defaultPool?: GamePoolDefaultLaunchTarget | null }) {
   const navigate = useNavigate();
   const haptics = useWebHaptics();
   const online = useNetworkAvailability();
@@ -157,6 +159,21 @@ export function TwinApp() {
             <h2 id="twin-friends" className="twin-panel-title">
               Everyone on their own phone
             </h2>
+            {defaultPool ? (
+              <>
+                <p className="twin-note">
+                  Join the open game night. The room and settings are ready for you.
+                </p>
+                <div className="mt-5">
+                  <GamePoolDefaultLaunch pool={defaultPool}>
+                    join {defaultPool.label}
+                  </GamePoolDefaultLaunch>
+                </div>
+                <p className="mt-6 border-t border-white/10 pt-5 font-mono text-xs uppercase tracking-[0.14em] text-white/45">
+                  or make a private room
+                </p>
+              </>
+            ) : null}
             {!online ? (
               <p role="status" className="twin-message">
                 Rooms need an internet connection. The one-screen game and solo board are still
@@ -204,7 +221,7 @@ export function TwinApp() {
                   />
                 </label>
                 <button type="submit" disabled={creating} className="twin-button twin-button--go">
-                  {creating ? "making room…" : "create room"}
+                  {creating ? "making room…" : defaultPool ? "create private room" : "create room"}
                 </button>
               </form>
             )}

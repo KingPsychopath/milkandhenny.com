@@ -17,6 +17,8 @@ import { createCentreRoomFn } from "./centre-room.functions";
 import { primeCentreAudio } from "./centre-sound.client";
 import { SoloCentreGame } from "./SoloCentreGame";
 import type { CentreDifficulty, CentrePlayerCredentials } from "./types";
+import { GamePoolDefaultLaunch } from "../pool/GamePoolDefaultLaunch";
+import type { GamePoolDefaultLaunch as GamePoolDefaultLaunchTarget } from "../pool/types";
 
 const DIFFICULTY_LABELS = ["calm", "easy", "medium", "hard", "brutal"] as const;
 
@@ -36,7 +38,7 @@ function dailySeed() {
 
 type SoloChoice = { seed: number; difficulty: CentreDifficulty; ghost?: SoloCentreReplay | null };
 
-export function CentreApp() {
+export function CentreApp({ defaultPool }: { defaultPool?: GamePoolDefaultLaunchTarget | null }) {
   const navigate = useNavigate();
   const haptics = useWebHaptics();
   const { preferences, set } = useGamePreferences("centre", {
@@ -189,6 +191,21 @@ export function CentreApp() {
         {panel === "friends" ? (
           <section className="centre-panel" aria-labelledby="centre-friends-title">
             <h2 id="centre-friends-title">Everyone on their own screen</h2>
+            {defaultPool ? (
+              <>
+                <p className="mt-3 font-serif text-lg text-black/60">
+                  Join the open game night. The room and settings are ready for you.
+                </p>
+                <div className="mt-5">
+                  <GamePoolDefaultLaunch pool={defaultPool} tone="light">
+                    join {defaultPool.label}
+                  </GamePoolDefaultLaunch>
+                </div>
+                <p className="mt-6 border-t border-black/10 pt-5 font-mono text-xs uppercase tracking-[0.14em] text-black/45">
+                  or make a private room
+                </p>
+              </>
+            ) : null}
             <form
               onSubmit={(event) => {
                 event.preventDefault();
@@ -217,7 +234,7 @@ export function CentreApp() {
                 <span>show delayed rival dots</span>
               </label>
               <button type="submit" disabled={creating} className="centre-button centre-button--go">
-                {creating ? "making room…" : "create room"}
+                {creating ? "making room…" : defaultPool ? "create private room" : "create room"}
               </button>
             </form>
           </section>

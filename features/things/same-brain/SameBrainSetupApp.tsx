@@ -17,6 +17,8 @@ import { sameBrainPlayerPath } from "./same-brain-invite";
 import { SAME_BRAIN_PLAYER_LIMITS, SAME_BRAIN_ROUND_LIMITS } from "./same-brain-rules";
 import { SoloSameBrain } from "./SoloSameBrain";
 import type { SameBrainScoring } from "./types";
+import { GamePoolDefaultLaunch } from "../pool/GamePoolDefaultLaunch";
+import type { GamePoolDefaultLaunch as GamePoolDefaultLaunchTarget } from "../pool/types";
 
 /**
  * Any same brain game this device is still holding credentials for.
@@ -57,7 +59,11 @@ function useLiveSameBrainSessions() {
  * the four settings underneath change how the game feels but nobody picks them the first time, and
  * they are remembered per device so the group that does care sets them once.
  */
-export function SameBrainSetupApp() {
+export function SameBrainSetupApp({
+  defaultPool,
+}: {
+  defaultPool?: GamePoolDefaultLaunchTarget | null;
+}) {
   const navigate = useNavigate();
   // Remembered on this device, so a group's setup is one tap next time rather than five.
   const { preferences, set } = useGamePreferences("same-brain", {
@@ -130,11 +136,19 @@ export function SameBrainSetupApp() {
             title="same brain"
             description="Everyone answers the same question. Answer like everyone else and score together — try not to be the odd one out."
           >
-            <GameLaunchButton accent="amber" onClick={() => void open()} disabled={busy}>
-              {busy ? "opening…" : "open a room"}
-            </GameLaunchButton>
+            {defaultPool ? (
+              <GamePoolDefaultLaunch pool={defaultPool}>
+                join {defaultPool.label}
+              </GamePoolDefaultLaunch>
+            ) : (
+              <GameLaunchButton accent="amber" onClick={() => void open()} disabled={busy}>
+                {busy ? "opening…" : "open a room"}
+              </GameLaunchButton>
+            )}
             <GameLaunchMeta tone="dark">
-              {rounds} rounds · everyone plays on their own phone
+              {defaultPool
+                ? `${defaultPool.label} · settings ready · everyone plays on their own phone`
+                : `${rounds} rounds · everyone plays on their own phone`}
             </GameLaunchMeta>
 
             {liveRooms.length > 0 ? (
@@ -155,6 +169,16 @@ export function SameBrainSetupApp() {
             ) : null}
 
             <GameLaunchChoices tone="dark">
+              {defaultPool ? (
+                <button
+                  type="button"
+                  onClick={() => void open()}
+                  disabled={busy}
+                  className="min-h-11 disabled:opacity-40"
+                >
+                  {busy ? "opening…" : "private room"}
+                </button>
+              ) : null}
               <button
                 type="button"
                 aria-pressed={panel === "join"}
