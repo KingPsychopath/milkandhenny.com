@@ -46,7 +46,7 @@ import { PitchDeviceSwitcher } from "./PitchDeviceSwitcher";
 import { PitchPreview } from "./PitchPreview";
 import { PitchRecovery } from "./PitchRecovery";
 import { PitchSlideThumbnail } from "./PitchSlideThumbnail";
-import { pitchStageExport, toPitchStageScene } from "./pitch-stage.client";
+import { fromPitchStageScene, pitchStageExport, toPitchStageScene } from "./pitch-stage.client";
 
 const PITCH_STUDIO_TOUR_KEY = "milkandhenny:pitch-studio-tour:v1";
 const PITCH_RAIL_KEY = "milkandhenny:pitch-studio-rail:v1";
@@ -285,6 +285,15 @@ export function PitchEditor({
   const revisionRef = useRef(0);
   const lastSyncedRevision = useRef(0);
   const syncing = useRef(false);
+  const documentRef = useRef(documentState);
+  const deckRef = useRef(deck);
+  const filesRef = useRef(files);
+  const titleRef = useRef(title);
+
+  documentRef.current = documentState;
+  deckRef.current = deck;
+  filesRef.current = files;
+  titleRef.current = title;
 
   const reloadSafe = isDemo
     ? revision === 0
@@ -432,7 +441,12 @@ export function PitchEditor({
   }, [deck?.version, deckId, documentState, files, isDemo, localSaveWake, phase, revision, title]);
 
   const performSync = useCallback(async () => {
-    if (isDemo || !credential || !deck || !documentState || !navigator.onLine) return false;
+    const currentDeck = deckRef.current;
+    const currentDocument = documentRef.current;
+    const currentTitle = titleRef.current;
+    if (isDemo || !credential || !currentDeck || !currentDocument || !navigator.onLine) {
+      return false;
+    }
     if (syncing.current) return false;
     if (revisionRef.current <= lastSyncedRevision.current) return true;
     syncing.current = true;
@@ -443,10 +457,10 @@ export function PitchEditor({
         data: {
           deckId,
           ownerToken: credential.token,
-          baseVersion: deck.version,
+          baseVersion: currentDeck.version,
           mutationId: randomId("m_"),
-          title,
-          document: documentState,
+          title: currentTitle,
+          document: currentDocument,
         },
       });
       if (!result.ok) {
@@ -455,13 +469,15 @@ export function PitchEditor({
         return false;
       }
       lastSyncedRevision.current = sentRevision;
+      deckRef.current = result.value.deck;
       setDeck(result.value.deck);
       if (result.value.merged) {
-        setDocumentState((current) =>
-          current
-            ? mergePitchDocuments(result.value.deck.document, current)
-            : result.value.deck.document,
+        const mergedDocument = mergePitchDocuments(
+          result.value.deck.document,
+          documentRef.current ?? result.value.deck.document,
         );
+        documentRef.current = mergedDocument;
+        setDocumentState(mergedDocument);
         setSceneEpoch((value) => value + 1);
         setSyncState("merged");
         setMessage("Two saved copies were consolidated. Nothing was discarded.");
@@ -470,9 +486,9 @@ export function PitchEditor({
         if (fullySynced) {
           await saveLocalPitchDraft({
             deckId,
-            title,
-            document: documentState,
-            files,
+            title: currentTitle,
+            document: currentDocument,
+            files: filesRef.current,
             pendingSync: false,
             updatedAt: result.value.deck.updatedAt,
           });
@@ -483,7 +499,7 @@ export function PitchEditor({
       }
       await rememberPitchCredential({
         ...credential,
-        title,
+        title: currentTitle,
         ownerName: result.value.deck.ownerName,
         updatedAt: result.value.deck.updatedAt,
       });
@@ -502,7 +518,7 @@ export function PitchEditor({
       syncing.current = false;
       if (revisionRef.current > sentRevision) setSyncWake((value) => value + 1);
     }
-  }, [credential, deck, deckId, documentState, files, isDemo, title, updateState]);
+  }, [credential, deckId, isDemo, updateState]);
 
   useEffect(() => {
     if (isDemo || revision <= lastSyncedRevision.current) return;
@@ -641,19 +657,50 @@ export function PitchEditor({
     uploadWake,
   ]);
 
-  function onCanvasChange(elements: readonly ExcalidrawElement[], nextFiles: BinaryFiles) {
-    if (!currentSlide) return;
+  function onCanvasChange(
+    slideId: string,
+    elements: readonly ExcalidrawElement[],
+    nextFiles: BinaryFiles,
+  ) {
+    if (!documentRef.current?.slides.some((slide) => slide.id === slideId && !slide.deletedAt)) {
+      return;
+    }
     setFiles((current) => ({ ...current, ...nextFiles }));
-    setDocumentState((current) =>
-      current
-        ? updateSlide(current, currentSlide.id, (slide) => ({
-            ...slide,
-            elements,
-            version: slide.version + 1,
-            updatedAt: Date.now(),
-          }))
-        : current,
+    filesRef.current = { ...filesRef.current, ...nextFiles };
+    const nextDocument = documentRef.current
+      ? updateSlide(documentRef.current, slideId, (slide) => ({
+          ...slide,
+          elements,
+          version: slide.version + 1,
+          updatedAt: Date.now(),
+        }))
+      : undefined;
+    if (!nextDocument) return;
+    documentRef.current = nextDocument;
+    setDocumentState(nextDocument);
+    markChanged();
+  }
+
+  function flushCanvasState() {
+    const api = apiRef.current;
+    const current = documentRef.current;
+    if (!api || !currentSlide || !current) return;
+
+    const nextFiles = api.getFiles();
+    filesRef.current = { ...filesRef.current, ...nextFiles };
+    setFiles(filesRef.current);
+    const elements = fromPitchStageScene(
+      currentSlide.id,
+      api.getSceneElementsIncludingDeleted(),
     );
+    const nextDocument = updateSlide(current, currentSlide.id, (slide) => ({
+      ...slide,
+      elements,
+      version: slide.version + 1,
+      updatedAt: Date.now(),
+    }));
+    documentRef.current = nextDocument;
+    setDocumentState(nextDocument);
     markChanged();
   }
 
@@ -882,7 +929,16 @@ export function PitchEditor({
       setMessage("Reconnect before publishing. Your working copy is safe on this device.");
       return;
     }
-    if (hasUnsecuredMedia) {
+    flushCanvasState();
+    const currentDocument = documentRef.current;
+    const currentVisibleSlides = currentDocument?.slides.filter((slide) => !slide.deletedAt) ?? [];
+    const currentHasUnsecuredMedia = currentVisibleSlides.some((slide) =>
+      slide.elements.some(
+        (element) =>
+          element.type === "image" && Boolean(element.fileId) && !slide.assetIds[element.fileId!],
+      ),
+    );
+    if (currentHasUnsecuredMedia) {
       setMessage("Finishing your image uploads first…");
       return;
     }
@@ -894,7 +950,7 @@ export function PitchEditor({
     try {
       let thumbnailAssetId: string | undefined;
       const api = apiRef.current;
-      const cover = visibleSlides[0];
+      const cover = currentVisibleSlides[0];
       if (api && cover) {
         const stage = pitchStageExport(cover.id, cover.elements);
         const thumbnail = await exportToBlob({

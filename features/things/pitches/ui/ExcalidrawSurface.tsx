@@ -98,7 +98,11 @@ function ExcalidrawSurfaceCanvas({
   elements: readonly ExcalidrawElement[];
   files: BinaryFiles;
   readOnly?: boolean;
-  onChange?: (elements: readonly ExcalidrawElement[], files: BinaryFiles) => void;
+  onChange?: (
+    slideId: string,
+    elements: readonly ExcalidrawElement[],
+    files: BinaryFiles,
+  ) => void;
   onApi?: (api: ExcalidrawImperativeAPI) => void;
 }) {
   const initialised = useRef(false);
@@ -141,7 +145,7 @@ function ExcalidrawSurfaceCanvas({
       }
       elementsRef.current = content;
       filesRef.current = nextFiles;
-      onChangeRef.current?.(content, nextFiles);
+      onChangeRef.current?.(slideId, content, nextFiles);
     },
     [slideId],
   );
@@ -172,6 +176,24 @@ function ExcalidrawSurfaceCanvas({
     }, 0);
     return () => window.clearTimeout(timer);
   }, [api, initialStage.frame, readOnly]);
+
+  useEffect(() => {
+    if (!api) return;
+
+    const scene = toPitchStageScene(slideId, elements);
+    if (!elementsMatch(elementsRef.current, elements)) {
+      elementsRef.current = elements;
+      api.updateScene({ elements: scene.elements });
+    }
+
+    if (!filesMatch(filesRef.current, files)) {
+      const changedFiles = Object.values(files).filter(
+        (file) => filesRef.current[file.id]?.dataURL !== file.dataURL,
+      );
+      filesRef.current = files;
+      if (changedFiles.length > 0) api.addFiles(changedFiles);
+    }
+  }, [api, elements, files, slideId]);
 
   if (!Canvas) {
     return (
