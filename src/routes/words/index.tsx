@@ -2,6 +2,7 @@ import { Link, createFileRoute } from "@tanstack/react-router";
 import { createServerFn } from "@tanstack/react-start";
 import { Breadcrumbs } from "@/components/Breadcrumbs";
 import { SITE_BRAND, SITE_NAME } from "@/lib/shared/config";
+import { OG_IMAGES, buildSeoHead } from "@/lib/shared/seo";
 import { isWordsEnabled } from "@/features/words/reader.server";
 import { listWords } from "@/features/words/store.server";
 import type { WordType } from "@/features/words/types";
@@ -13,12 +14,14 @@ import {
 export const Route = createFileRoute("/words/")({
   component: WordsPage,
   loader: () => getWords(),
-  head: () => ({
-    meta: [
-      { title: `Words — ${SITE_NAME}` },
-      { name: "description", content: "Posts, recipes, and notes in one searchable place." },
-    ],
-  }),
+  head: () =>
+    buildSeoHead({
+      title: `Words — ${SITE_NAME}`,
+      description: "Essays, recipes, reviews, and notes from Milk & Henny.",
+      path: "/words",
+      image: OG_IMAGES.words,
+      imageAlt: "Words — essays, recipes, reviews, and notes from Milk & Henny",
+    }),
 });
 
 function formatDate(isoOrDate: string): string {

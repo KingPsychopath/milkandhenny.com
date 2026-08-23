@@ -3,6 +3,7 @@ import { getAllAlbums } from "@/features/media/albums.server";
 import { listEvents } from "@/features/events/store.server";
 import { isWordsEnabled } from "@/features/words/reader.server";
 import { listWords } from "@/features/words/store.server";
+import { listPublicPitchDecks } from "@/features/things/pitches/store.server";
 import { BASE_URL } from "@/lib/shared/config";
 
 type SitemapEntry = {
@@ -41,6 +42,7 @@ export const Route = createFileRoute("/sitemap.xml")({
 
         // An events outage should degrade the sitemap, not fail it.
         const publicEvents = await listEvents({ limit: 200 }).catch(() => []);
+        const publicPitches = await listPublicPitchDecks(undefined, 100).catch(() => []);
 
         const now = new Date();
         const entries: SitemapEntry[] = [
@@ -48,10 +50,33 @@ export const Route = createFileRoute("/sitemap.xml")({
           { url: `${BASE_URL}/pics`, lastModified: now, changeFrequency: "weekly", priority: 0.9 },
           { url: `${BASE_URL}/words`, lastModified: now, changeFrequency: "weekly", priority: 0.9 },
           {
-            url: `${BASE_URL}/things/draw-country`,
-            lastModified: new Date("2026-07-18"),
+            url: `${BASE_URL}/things`,
+            lastModified: now,
             changeFrequency: "monthly",
+            priority: 0.8,
+          },
+          ...[
+            "centre",
+            "draw-country",
+            "heads-up",
+            "icebreaker",
+            "liars",
+            "pitches",
+            "same-brain",
+            "spelling-bee",
+            "spelling-party",
+            "twin",
+          ].map((slug) => ({
+            url: `${BASE_URL}/things/${slug}`,
+            lastModified: now,
+            changeFrequency: "monthly" as const,
             priority: 0.7,
+          })),
+          {
+            url: `${BASE_URL}/pitch-night`,
+            lastModified: now,
+            changeFrequency: "weekly",
+            priority: 0.8,
           },
           {
             url: `${BASE_URL}/events`,
@@ -65,18 +90,6 @@ export const Route = createFileRoute("/sitemap.xml")({
             changeFrequency: "weekly" as const,
             priority: 0.8,
           })),
-          {
-            url: `${BASE_URL}/icebreaker`,
-            lastModified: new Date("2026-01-16"),
-            changeFrequency: "yearly",
-            priority: 0.4,
-          },
-          {
-            url: `${BASE_URL}/best-dressed`,
-            lastModified: new Date("2026-01-16"),
-            changeFrequency: "yearly",
-            priority: 0.4,
-          },
           ...publicWords.map((word) => ({
             url: `${BASE_URL}/words/${word.slug}`,
             lastModified: new Date(word.updatedAt),
@@ -88,6 +101,12 @@ export const Route = createFileRoute("/sitemap.xml")({
             lastModified: new Date(`${album.date}T00:00:00`),
             changeFrequency: "monthly" as const,
             priority: 0.7,
+          })),
+          ...publicPitches.map((pitch) => ({
+            url: `${BASE_URL}/things/pitches/${pitch.id}`,
+            lastModified: new Date(pitch.publishedAt),
+            changeFrequency: "monthly" as const,
+            priority: 0.6,
           })),
         ];
 

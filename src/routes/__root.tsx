@@ -16,36 +16,32 @@ import { OfflinePlatform } from "@/components/OfflinePlatform";
 import { ScannerReturnPrompt } from "@/components/ScannerReturnPrompt";
 import { BASE_URL, SITE_BRAND, SITE_NAME } from "@/lib/shared/config";
 import { LOCAL_KEYS } from "@/lib/shared/storage-keys";
+import { OG_IMAGES, buildSeoHead } from "@/lib/shared/seo";
 import "@/src/styles/globals.css";
 
 export const Route = createRootRoute({
-  head: () => ({
-    meta: [
-      { charSet: "utf-8" },
-      { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: SITE_NAME },
-      {
-        name: "description",
-        content: "Thoughts, stories, and things worth sharing.",
-      },
-      { property: "og:title", content: SITE_NAME },
-      {
-        property: "og:description",
-        content: "Thoughts, stories, and things worth sharing.",
-      },
-      { property: "og:url", content: BASE_URL },
-      { property: "og:site_name", content: SITE_NAME },
-      { property: "og:type", content: "website" },
-      { property: "og:image", content: `${BASE_URL}/icon.svg` },
-      { name: "twitter:card", content: "summary_large_image" },
-    ],
-    links: [
-      { rel: "icon", href: "/favicon.ico", type: "image/x-icon" },
-      { rel: "icon", href: "/icon.svg", type: "image/svg+xml" },
-      { rel: "apple-touch-icon", href: "/apple-icon.png" },
-      { rel: "alternate", type: "application/rss+xml", href: "/feed.xml" },
-    ],
-  }),
+  head: () => {
+    const seo = buildSeoHead({
+      title: SITE_NAME,
+      description: "Thoughts, stories, and things worth sharing from Milk & Henny.",
+      path: "/",
+      image: OG_IMAGES.default,
+      imageAlt: "Milk & Henny — thoughts, stories, and things worth sharing",
+    });
+    return {
+      meta: [
+        { charSet: "utf-8" },
+        { name: "viewport", content: "width=device-width, initial-scale=1" },
+        ...seo.meta,
+      ],
+      links: [
+        { rel: "icon", href: "/favicon.ico", type: "image/x-icon" },
+        { rel: "icon", href: "/icon.svg", type: "image/svg+xml" },
+        { rel: "apple-touch-icon", href: "/apple-icon.png" },
+        { rel: "alternate", type: "application/rss+xml", href: `${BASE_URL}/feed.xml` },
+      ],
+    };
+  },
   component: RootComponent,
   errorComponent: RootError,
   notFoundComponent: NotFound,

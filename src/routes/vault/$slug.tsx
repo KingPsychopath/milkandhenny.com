@@ -11,6 +11,7 @@ import { resolveWordContentRef } from "@/features/media/storage";
 import { canReadWordInServerContext, isWordsEnabled } from "@/features/words/reader.server";
 import { getWord, getWordMeta } from "@/features/words/store.server";
 import { SITE_BRAND, SITE_NAME } from "@/lib/shared/config";
+import { buildSeoHead } from "@/lib/shared/seo";
 
 const getPrivateWord = createServerFn({ method: "GET" })
   .validator((data: { slug: string }) => data)
@@ -44,20 +45,15 @@ export const Route = createFileRoute("/vault/$slug")({
   }),
   loader: ({ params }) => getPrivateWord({ data: params }),
   component: WordPrivatePage,
-  head: ({ loaderData }) => {
-    if (!loaderData) return {};
-    return {
-      meta: [
-        { title: `${loaderData.meta.title} — ${SITE_NAME}` },
-        {
-          name: "description",
-          content:
-            loaderData.meta.subtitle ?? "This page is private and requires authenticated access.",
-        },
-        { name: "robots", content: "noindex, nofollow" },
-      ],
-    };
-  },
+  head: ({ loaderData, params }) =>
+    buildSeoHead({
+      title: `${loaderData?.meta.title ?? "Private page"} — ${SITE_NAME}`,
+      description:
+        loaderData?.meta.subtitle ?? "This page is private and requires authenticated access.",
+      path: `/vault/${params.slug}`,
+      robots: "noindex, nofollow",
+      referrer: "no-referrer",
+    }),
 });
 
 function WordPrivatePage() {

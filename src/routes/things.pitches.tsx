@@ -3,19 +3,19 @@ import { createFileRoute } from "@tanstack/react-router";
 import { listPublishedPitchesFn } from "@/features/things/pitches/pitches.functions";
 import { PitchGallery } from "@/features/things/pitches/ui/PitchGallery";
 import { SITE_NAME } from "@/lib/shared/config";
+import { OG_IMAGES, buildSeoHead } from "@/lib/shared/seo";
 
 export const Route = createFileRoute("/things/pitches")({
   loader: () => listPublishedPitchesFn(),
   component: PitchGalleryRoute,
-  head: () => ({
-    meta: [
-      { title: `Pitch Night Studio — ${SITE_NAME}` },
-      {
-        name: "description",
-        content: "Make, publish and present a six-slide pitch.",
-      },
-    ],
-  }),
+  head: () =>
+    buildSeoHead({
+      title: `Pitch Night Studio — ${SITE_NAME}`,
+      description: "Make six slides, seal the idea, and take over the big screen.",
+      path: "/things/pitches",
+      image: OG_IMAGES.pitchStudio,
+      imageAlt: "Pitch Night Studio — make six slides and present them on the big screen",
+    }),
 });
 
 function PitchGalleryRoute() {

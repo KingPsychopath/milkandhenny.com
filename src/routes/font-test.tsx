@@ -1,6 +1,7 @@
 import { Link, createFileRoute } from "@tanstack/react-router";
 import { ReadingProgress } from "@/components/ReadingProgress";
 import { JumpRail } from "@/components/JumpRail";
+import { buildSeoHead } from "@/lib/shared/seo";
 
 const SAMPLE_PROSE = `There's a particular hour in the evening — right after the sun dips but before the streetlights decide to care — when everything turns amber. That's the hour I write best. Not because inspiration strikes, but because the world finally shuts up long enough for me to hear my own thoughts.
 
@@ -88,7 +89,12 @@ const fonts = [
 export const Route = createFileRoute("/font-test")({
   component: FontTestPage,
   head: () => ({
-    meta: [{ title: "Font tasting" }],
+    ...buildSeoHead({
+      title: "Font tasting — Milk & Henny",
+      description: "A private design test for the Milk & Henny editorial type system.",
+      path: "/font-test",
+      robots: "noindex, nofollow",
+    }),
     links: [
       {
         rel: "stylesheet",

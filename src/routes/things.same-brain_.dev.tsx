@@ -1,6 +1,7 @@
 import { createFileRoute, notFound } from "@tanstack/react-router";
 import { SameBrainDevHarness } from "@/features/things/same-brain/SameBrainDevHarness";
 import { SITE_NAME } from "@/lib/shared/config";
+import { buildSeoHead } from "@/lib/shared/seo";
 
 /**
  * Development only. The open question in this game is whether the scorer agrees with a human, and
@@ -12,7 +13,13 @@ export const Route = createFileRoute("/things/same-brain_/dev")({
     if (!import.meta.env.DEV) throw notFound();
   },
   component: SameBrainDevRoute,
-  head: () => ({ meta: [{ title: `Same brain dev — ${SITE_NAME}` }] }),
+  head: () =>
+    buildSeoHead({
+      title: `Same Brain dev — ${SITE_NAME}`,
+      description: "Development harness for Same Brain.",
+      path: "/things/same-brain/dev",
+      robots: "noindex, nofollow",
+    }),
 });
 
 function SameBrainDevRoute() {

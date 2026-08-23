@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { Link, createFileRoute } from "@tanstack/react-router";
 
 import { SITE_NAME } from "@/lib/shared/config";
+import { buildSeoHead } from "@/lib/shared/seo";
 import { getScannerPageFn } from "@/features/tickets/scanner.functions";
 import { forgetScanner, rememberScanner } from "@/features/tickets/scanner-memory";
 import { DoorScanner } from "@/features/tickets/ui/DoorScanner";
@@ -17,9 +18,14 @@ import { CheckpointScanner } from "@/features/tickets/ui/CheckpointScanner";
 export const Route = createFileRoute("/scan/$token")({
   loader: ({ params }) => getScannerPageFn({ data: { token: params.token } }),
   component: ScanRoute,
-  head: () => ({
-    meta: [{ title: `Scanner — ${SITE_NAME}` }, { name: "robots", content: "noindex, nofollow" }],
-  }),
+  head: ({ params }) =>
+    buildSeoHead({
+      title: `Scanner — ${SITE_NAME}`,
+      description: "A private Milk & Henny event scanner.",
+      path: `/scan/${params.token}`,
+      robots: "noindex, nofollow",
+      referrer: "no-referrer",
+    }),
 });
 
 function DeadLink({ token }: { token: string }) {

@@ -3,6 +3,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { getAlbumBySlug } from "@/features/media/albums.server";
 import { getOgUrl } from "@/features/media/storage";
 import { SITE_NAME, SITE_BRAND } from "@/lib/shared/config";
+import { buildSeoHead } from "@/lib/shared/seo";
 import { AlbumGallery } from "@/features/media/components/AlbumGallery";
 import { Breadcrumbs } from "@/components/Breadcrumbs";
 
@@ -18,17 +19,22 @@ export const Route = createFileRoute("/pics/$album/")({
   component: AlbumPage,
   loader: ({ params }) => getAlbum({ data: params }),
   head: ({ loaderData: album }) => {
-    if (!album) return {};
+    if (!album) {
+      return buildSeoHead({
+        title: `Album — ${SITE_NAME}`,
+        description: "A Milk & Henny photo album.",
+        path: "/pics",
+        robots: "noindex, nofollow",
+      });
+    }
     const description = album.description ?? `${album.photos.length} photos from ${album.title}`;
-    return {
-      meta: [
-        { title: `${album.title} — Pics — ${SITE_NAME}` },
-        { name: "description", content: description },
-        { property: "og:title", content: album.title },
-        { property: "og:description", content: description },
-        { property: "og:image", content: getOgUrl(album.slug, album.cover) },
-      ],
-    };
+    return buildSeoHead({
+      title: `${album.title} — Pics — ${SITE_NAME}`,
+      description,
+      path: `/pics/${album.slug}`,
+      image: getOgUrl(album.slug, album.cover),
+      imageAlt: `${album.title} — Milk & Henny photos`,
+    });
   },
 });
 

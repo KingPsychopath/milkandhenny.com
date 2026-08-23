@@ -1,6 +1,7 @@
 import { useState, useCallback } from "react";
 import { Link, createFileRoute } from "@tanstack/react-router";
 import { SITE_BRAND } from "@/lib/shared/config";
+import { buildSeoHead } from "@/lib/shared/seo";
 
 /* ------------------------------------------------------------------ */
 /*  Data                                                               */
@@ -103,7 +104,13 @@ const PIN = "2030";
 
 export const Route = createFileRoute("/exam")({
   component: ExamPage,
-  head: () => ({ meta: [{ title: "Exam" }] }),
+  head: () =>
+    buildSeoHead({
+      title: `Exam — ${SITE_BRAND}`,
+      description: "A private practice exam and answer key.",
+      path: "/exam",
+      robots: "noindex, nofollow",
+    }),
 });
 
 function ExamPage() {

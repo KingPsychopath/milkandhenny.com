@@ -5,19 +5,20 @@ import { getAllAlbums } from "@/features/media/albums.server";
 import { getThumbUrl } from "@/features/media/storage";
 import { focalPresetToObjectPosition } from "@/features/media/focal";
 import { SITE_NAME, SITE_BRAND } from "@/lib/shared/config";
+import { OG_IMAGES, buildSeoHead } from "@/lib/shared/seo";
 import { Breadcrumbs } from "@/components/Breadcrumbs";
 
 export const Route = createFileRoute("/pics/")({
   component: PicsPage,
   loader: () => getAlbums(),
-  head: () => ({
-    meta: [
-      { title: `Pics — ${SITE_NAME}` },
-      { name: "description", content: "Photos from the motives." },
-      { property: "og:title", content: "Pics" },
-      { property: "og:description", content: "Photos from the motives." },
-    ],
-  }),
+  head: () =>
+    buildSeoHead({
+      title: `Pics — ${SITE_NAME}`,
+      description: "Browse photo albums from Milk & Henny events, parties, and nights out.",
+      path: "/pics",
+      image: OG_IMAGES.pics,
+      imageAlt: "Pics — photo albums from Milk & Henny events and nights out",
+    }),
 });
 
 /** Resolve cover photo's focal point to CSS object-position */

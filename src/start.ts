@@ -119,6 +119,10 @@ function applyCachePolicy(pathname: string, response: Response) {
     response.headers.set("Cache-Control", "public, max-age=31536000, immutable");
     return;
   }
+  if (pathname.startsWith("/og/")) {
+    response.headers.set("Cache-Control", "public, max-age=31536000, immutable");
+    return;
+  }
   if (pathname === "/manifest.json" || pathname === "/manifest-forehead.webmanifest") {
     response.headers.set("Cache-Control", "public, max-age=3600, must-revalidate");
     return;
@@ -130,10 +134,17 @@ function applyCachePolicy(pathname: string, response: Response) {
   if (
     pathname.startsWith("/api/") ||
     pathname.startsWith("/admin") ||
+    pathname.startsWith("/drop/") ||
+    pathname.startsWith("/organize/") ||
+    pathname.startsWith("/play/") ||
+    pathname.startsWith("/scan") ||
     pathname.startsWith("/ticket/") ||
     pathname.startsWith("/upload") ||
     pathname.startsWith("/vault/") ||
     pathname.startsWith("/t/") ||
+    pathname === "/best-dressed" ||
+    pathname === "/health" ||
+    pathname.endsWith("/bought") ||
     response.headers.has("set-cookie")
   ) {
     response.headers.set("Cache-Control", "private, no-store");

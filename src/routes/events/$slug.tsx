@@ -6,6 +6,7 @@ import { buildEventJsonLd } from "@/features/events/ics";
 import { buildEventUrl } from "@/features/events/routes";
 import { EventDetailPage } from "@/features/events/ui/EventDetailPage";
 import { serializeJsonForHtml } from "@/lib/shared/serialize-json-for-html";
+import { absoluteUrl, OG_IMAGES, buildSeoHead } from "@/lib/shared/seo";
 
 export const Route = createFileRoute("/events/$slug")({
   // Stripe's cancel URL lands here. Reading it is the difference between
@@ -24,24 +25,26 @@ export const Route = createFileRoute("/events/$slug")({
   },
   component: EventDetailRoute,
   head: ({ loaderData }) => {
-    if (!loaderData?.found) return { meta: [{ title: `Event — ${SITE_NAME}` }] };
+    if (!loaderData?.found) {
+      return buildSeoHead({
+        title: `Event — ${SITE_NAME}`,
+        description: "An event from Milk & Henny.",
+        path: "/events",
+        robots: "noindex, nofollow",
+      });
+    }
     const { event } = loaderData.data;
     const url = buildEventUrl(loaderData.origin, event.slug);
     const description = event.tagline ?? `${event.title} — ${event.area ?? "London"}`;
-    const image = event.ogImage ?? event.heroImage;
+    const image = event.ogImage ?? event.heroImage ?? OG_IMAGES.events;
 
-    return {
-      meta: [
-        { title: `${event.title} — ${SITE_NAME}` },
-        { name: "description", content: description },
-        { property: "og:title", content: event.title },
-        { property: "og:description", content: description },
-        { property: "og:type", content: "website" },
-        { property: "og:url", content: url },
-        ...(image ? [{ property: "og:image", content: image }] : []),
-      ],
-      links: [{ rel: "canonical", href: url }],
-    };
+    return buildSeoHead({
+      title: `${event.title} — ${SITE_NAME}`,
+      description,
+      path: url,
+      image,
+      imageAlt: `${event.title} — Milk & Henny event`,
+    });
   },
 });
 
@@ -54,7 +57,7 @@ function EventDetailRoute() {
   // structured data even when the viewer holds a ticket.
   const jsonLd = buildEventJsonLd(event, {
     url: buildEventUrl(origin, event.slug),
-    imageUrl: event.ogImage ?? event.heroImage,
+    imageUrl: absoluteUrl(event.ogImage ?? event.heroImage ?? OG_IMAGES.events),
   });
 
   return (

@@ -3,6 +3,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { getSystemCapabilities } from "@/features/system/capabilities.server";
 import type { CapabilityStatus } from "@/features/system/capabilities";
 import { SITE_BRAND } from "@/lib/shared/config";
+import { buildSeoHead } from "@/lib/shared/seo";
 
 const getCapabilities = createServerFn({ method: "GET" }).handler(() => getSystemCapabilities());
 
@@ -16,15 +17,13 @@ const STATUS_MARK: Record<CapabilityStatus, string> = {
 export const Route = createFileRoute("/health")({
   component: HealthPage,
   loader: () => getCapabilities(),
-  head: () => ({
-    meta: [
-      { title: `system health · ${SITE_BRAND}` },
-      {
-        name: "description",
-        content: "Current availability of the capabilities that power Milk & Henny.",
-      },
-    ],
-  }),
+  head: () =>
+    buildSeoHead({
+      title: `System health · ${SITE_BRAND}`,
+      description: "Current availability of the capabilities that power Milk & Henny.",
+      path: "/health",
+      robots: "noindex, nofollow",
+    }),
 });
 
 function HealthPage() {

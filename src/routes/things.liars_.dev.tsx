@@ -1,6 +1,7 @@
 import { createFileRoute, notFound } from "@tanstack/react-router";
 import { LiarsDevHarness } from "@/features/things/liars/LiarsDevHarness";
 import { SITE_NAME } from "@/lib/shared/config";
+import { buildSeoHead } from "@/lib/shared/seo";
 
 /**
  * Development only. Five phones and a stopwatch is a poor loop for a game whose whole design is
@@ -11,7 +12,13 @@ export const Route = createFileRoute("/things/liars_/dev")({
     if (!import.meta.env.DEV) throw notFound();
   },
   component: LiarsDevRoute,
-  head: () => ({ meta: [{ title: `Liars dev — ${SITE_NAME}` }] }),
+  head: () =>
+    buildSeoHead({
+      title: `Liars dev — ${SITE_NAME}`,
+      description: "Development harness for Liars.",
+      path: "/things/liars/dev",
+      robots: "noindex, nofollow",
+    }),
 });
 
 function LiarsDevRoute() {

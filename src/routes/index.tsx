@@ -1,6 +1,7 @@
 import { Link, createFileRoute } from "@tanstack/react-router";
 import { createServerFn } from "@tanstack/react-start";
-import { SITE_BRAND } from "@/lib/shared/config";
+import { SITE_BRAND, SITE_NAME } from "@/lib/shared/config";
+import { OG_IMAGES, buildSeoHead } from "@/lib/shared/seo";
 import { PostListItem } from "@/features/words/components/PostListItem";
 import { isWordsEnabled } from "@/features/words/reader.server";
 import { listWords } from "@/features/words/store.server";
@@ -41,6 +42,14 @@ const getHomeData = createServerFn({ method: "GET" }).handler(async () => {
 export const Route = createFileRoute("/")({
   component: Home,
   loader: () => getHomeData(),
+  head: () =>
+    buildSeoHead({
+      title: SITE_NAME,
+      description: "Thoughts, stories, and things worth sharing from Milk & Henny.",
+      path: "/",
+      image: OG_IMAGES.default,
+      imageAlt: "Milk & Henny — thoughts, stories, and things worth sharing",
+    }),
 });
 
 function Home() {

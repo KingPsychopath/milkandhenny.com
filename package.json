@@ -10,6 +10,7 @@
     "predev": "node scripts/copy-excalidraw-fonts.mjs",
     "dev": "vite dev",
     "prebuild": "node scripts/copy-excalidraw-fonts.mjs",
+    "og:cards": "node scripts/generate-og-cards.mjs",
     "build": "vite build",
     "start": "node .output/server/index.mjs",
     "lint": "oxlint --deny-warnings .",

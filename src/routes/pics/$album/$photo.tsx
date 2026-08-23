@@ -8,6 +8,7 @@ import {
   getOriginalUrl,
 } from "@/features/media/storage";
 import { BASE_URL, SITE_NAME, SITE_BRAND } from "@/lib/shared/config";
+import { buildSeoHead } from "@/lib/shared/seo";
 import { PhotoViewer } from "@/features/media/components/PhotoViewer";
 import { Breadcrumbs } from "@/components/Breadcrumbs";
 import { Share } from "@/components/Share";
@@ -27,19 +28,24 @@ export const Route = createFileRoute("/pics/$album/$photo")({
   component: PhotoPage,
   loader: ({ params }) => getPhoto({ data: params }),
   head: ({ loaderData }) => {
-    if (!loaderData) return {};
+    if (!loaderData) {
+      return buildSeoHead({
+        title: `Photo — ${SITE_NAME}`,
+        description: "A Milk & Henny photo.",
+        path: "/pics",
+        robots: "noindex, nofollow",
+      });
+    }
     const { album, photoIndex } = loaderData;
     const photo = album.photos[photoIndex];
     const description = `Photo ${photoIndex + 1} of ${album.photos.length} from ${album.title}`;
-    return {
-      meta: [
-        { title: `${photo.id} — ${album.title} — ${SITE_NAME}` },
-        { name: "description", content: description },
-        { property: "og:title", content: `${album.title} — ${photo.id}` },
-        { property: "og:description", content: description },
-        { property: "og:image", content: getOgUrl(album.slug, photo.id) },
-      ],
-    };
+    return buildSeoHead({
+      title: `${photo.id} — ${album.title} — ${SITE_NAME}`,
+      description,
+      path: `/pics/${album.slug}/${photo.id}`,
+      image: getOgUrl(album.slug, photo.id),
+      imageAlt: `${album.title}, photo ${photoIndex + 1} — Milk & Henny photos`,
+    });
   },
 });
 

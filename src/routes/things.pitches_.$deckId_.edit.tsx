@@ -3,6 +3,7 @@ import { lazy, Suspense } from "react";
 
 import { listPublishedPitchesFn } from "@/features/things/pitches/pitches.functions";
 import { SITE_NAME } from "@/lib/shared/config";
+import { buildSeoHead } from "@/lib/shared/seo";
 
 const PitchEditor = lazy(() =>
   import("@/features/things/pitches/ui/PitchEditor").then((module) => ({
@@ -14,7 +15,13 @@ export const Route = createFileRoute("/things/pitches_/$deckId_/edit")({
   ssr: false,
   loader: () => listPublishedPitchesFn(),
   component: PitchEditorRoute,
-  head: () => ({ meta: [{ title: `Pitch studio — ${SITE_NAME}` }] }),
+  head: ({ params }) =>
+    buildSeoHead({
+      title: `Pitch studio — ${SITE_NAME}`,
+      description: "Edit a private Milk & Henny pitch.",
+      path: `/things/pitches/${params.deckId}/edit`,
+      robots: "noindex, nofollow",
+    }),
 });
 
 function PitchEditorRoute() {

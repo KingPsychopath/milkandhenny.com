@@ -1,19 +1,19 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { LiarsSetupApp } from "@/features/things/liars/LiarsSetupApp";
 import { SITE_NAME } from "@/lib/shared/config";
+import { OG_IMAGES, buildSeoHead } from "@/lib/shared/seo";
 
 export const Route = createFileRoute("/things/liars")({
   component: LiarsSetupRoute,
-  head: () => ({
-    meta: [
-      { title: `Liars: Mafia and Imposter — ${SITE_NAME}` },
-      {
-        name: "description",
-        content:
-          "Two social deduction games in one room, for 4 to 16 phones. Everyone acts every night, and nobody has to keep score.",
-      },
-    ],
-  }),
+  head: () =>
+    buildSeoHead({
+      title: `Liars: Mafia and Imposter — ${SITE_NAME}`,
+      description:
+        "Mafia or imposter for 4 to 16 phones. Everyone acts every night, and nobody keeps score.",
+      path: "/things/liars",
+      image: OG_IMAGES.liars,
+      imageAlt: "Liars — Mafia and Imposter social deduction games from Milk & Henny",
+    }),
 });
 
 function LiarsSetupRoute() {

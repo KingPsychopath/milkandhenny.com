@@ -3,6 +3,7 @@ import { createFileRoute, notFound } from "@tanstack/react-router";
 import { readPublishedPitchFn } from "@/features/things/pitches/pitches.functions";
 import { PitchViewer } from "@/features/things/pitches/ui/PitchViewer";
 import { SITE_NAME } from "@/lib/shared/config";
+import { OG_IMAGES, buildSeoHead } from "@/lib/shared/seo";
 
 export const Route = createFileRoute("/things/pitches_/$deckId")({
   loader: async ({ params }) => {
@@ -11,9 +12,17 @@ export const Route = createFileRoute("/things/pitches_/$deckId")({
     return pitch;
   },
   component: PublishedPitchRoute,
-  head: ({ loaderData }) => ({
-    meta: [{ title: `${loaderData?.title ?? "Pitch"} — ${SITE_NAME}` }],
-  }),
+  head: ({ loaderData, params }) => {
+    const title = loaderData?.title ?? "Pitch";
+    const thumbnail = loaderData?.thumbnailUrl;
+    return buildSeoHead({
+      title: `${title} — ${SITE_NAME}`,
+      description: `A sealed six-slide pitch by ${loaderData?.ownerName ?? "a Milk & Henny maker"}.`,
+      path: `/things/pitches/${params.deckId}`,
+      image: thumbnail || OG_IMAGES.pitchStudio,
+      imageAlt: `${title} — a sealed pitch from Milk & Henny`,
+    });
+  },
 });
 
 function PublishedPitchRoute() {

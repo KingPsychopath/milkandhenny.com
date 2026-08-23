@@ -1,16 +1,18 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { CentreRoomApp } from "@/features/things/centre/CentreRoomApp";
 import { SITE_NAME } from "@/lib/shared/config";
+import { OG_IMAGES, buildSeoHead } from "@/lib/shared/seo";
 
 export const Route = createFileRoute("/things/centre_/$roomId")({
   component: CentreRoomRoute,
-  head: () => ({
-    meta: [
-      { title: `Centre room — ${SITE_NAME}` },
-      { name: "description", content: "Join a shared circular maze race." },
-      { name: "robots", content: "noindex,nofollow" },
-    ],
-  }),
+  head: ({ params }) =>
+    buildSeoHead({
+      title: `Centre room — ${SITE_NAME}`,
+      description: "Join a shared circular maze race.",
+      path: `/things/centre/${params.roomId}`,
+      image: OG_IMAGES.centre,
+      robots: "noindex, nofollow",
+    }),
 });
 
 function CentreRoomRoute() {

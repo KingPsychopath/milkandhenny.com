@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 
 import { SITE_NAME } from "@/lib/shared/config";
+import { buildSeoHead } from "@/lib/shared/seo";
 import { getCheckoutOutcomeFn } from "@/features/tickets/tickets.functions";
 import { PurchaseCompletePage } from "@/features/tickets/ui/PurchaseCompletePage";
 
@@ -19,13 +20,14 @@ export const Route = createFileRoute("/events/$slug_/bought")({
     return { outcome: await getCheckoutOutcomeFn({ data: { sessionId: deps.session } }) };
   },
   component: PurchaseCompleteRoute,
-  head: () => ({
-    meta: [
-      { title: `Tickets confirmed — ${SITE_NAME}` },
-      { name: "robots", content: "noindex, nofollow" },
-      { name: "referrer", content: "no-referrer" },
-    ],
-  }),
+  head: ({ params }) =>
+    buildSeoHead({
+      title: `Tickets confirmed — ${SITE_NAME}`,
+      description: "Your Milk & Henny ticket purchase is being confirmed.",
+      path: `/events/${params.slug}/bought`,
+      robots: "noindex, nofollow",
+      referrer: "no-referrer",
+    }),
 });
 
 function PurchaseCompleteRoute() {

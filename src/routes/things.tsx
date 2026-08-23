@@ -5,6 +5,7 @@ import { isOfflineThingSlug } from "@/features/things/offline";
 import type { OfflineThingSlug } from "@/features/things/offline";
 import { useThingOfflineState } from "@/features/offline/client";
 import type { Thing } from "@/features/things/catalog";
+import { OG_IMAGES, buildSeoHead } from "@/lib/shared/seo";
 
 function ThingMark({ mark }: { mark: Thing["mark"] }) {
   if (mark.kind === "symbol") return mark.value;
@@ -52,15 +53,14 @@ function ThingMark({ mark }: { mark: Thing["mark"] }) {
 
 export const Route = createFileRoute("/things")({
   component: ThingsRoute,
-  head: () => ({
-    meta: [
-      { title: `Things — ${SITE_NAME}` },
-      {
-        name: "description",
-        content: "Small, useful tools and games made for people to use together.",
-      },
-    ],
-  }),
+  head: () =>
+    buildSeoHead({
+      title: `Things — ${SITE_NAME}`,
+      description: "Small tools, games, and experiments made for people to use together.",
+      path: "/things",
+      image: OG_IMAGES.things,
+      imageAlt: "Things — small tools, games, and experiments from Milk & Henny",
+    }),
 });
 
 function ThingsRoute() {

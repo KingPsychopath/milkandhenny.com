@@ -13,6 +13,7 @@ import { isWordsEnabled } from "@/features/words/reader.server";
 import { getWord, getWordMeta } from "@/features/words/store.server";
 import { BASE_URL, SITE_BRAND, SITE_NAME } from "@/lib/shared/config";
 import { serializeJsonForHtml } from "@/lib/shared/serialize-json-for-html";
+import { OG_IMAGES, absoluteUrl, buildSeoHead } from "@/lib/shared/seo";
 
 const getWordPage = createServerFn({ method: "GET" })
   .validator((data: { slug: string }) => data)
@@ -38,30 +39,35 @@ export const Route = createFileRoute("/words/$slug")({
   component: WordSlugPage,
   loader: ({ params }) => getWordPage({ data: params }),
   head: ({ loaderData }) => {
-    if (!loaderData) return {};
+    if (!loaderData) {
+      return buildSeoHead({
+        title: `Page — ${SITE_NAME}`,
+        description: "A page from Milk & Henny.",
+        path: "/words",
+        robots: "noindex, nofollow",
+      });
+    }
     const { meta } = loaderData;
     if (loaderData.kind === "private") {
-      return {
-        meta: [
-          { title: `Private Page — ${SITE_NAME}` },
-          { name: "robots", content: "noindex, nofollow" },
-        ],
-      };
+      return buildSeoHead({
+        title: `Private page — ${SITE_NAME}`,
+        description: "This page is private and requires authenticated access.",
+        path: `/words/${meta.slug}`,
+        robots: "noindex, nofollow",
+      });
     }
     const description = meta.subtitle ?? `Read "${meta.title}" on ${SITE_NAME}`;
-    return {
-      meta: [
-        { title: `${meta.title} — ${SITE_NAME}` },
-        { name: "description", content: description },
-        {
-          name: "robots",
-          content: meta.visibility === "public" ? "index, follow" : "noindex, nofollow",
-        },
-        { property: "og:title", content: meta.title },
-        { property: "og:description", content: description },
-        ...(loaderData.heroImage ? [{ property: "og:image", content: loaderData.heroImage }] : []),
-      ],
-    };
+    return buildSeoHead({
+      title: `${meta.title} — ${SITE_NAME}`,
+      description,
+      path: `/words/${meta.slug}`,
+      image: loaderData.heroImage || OG_IMAGES.words,
+      imageAlt: `${meta.title} — Milk & Henny words`,
+      type: "article",
+      robots: meta.visibility === "public" ? "index, follow" : "noindex, nofollow",
+      publishedTime: meta.publishedAt ?? meta.updatedAt,
+      modifiedTime: meta.updatedAt,
+    });
   },
 });
 
@@ -122,6 +128,9 @@ function WordSlugPage() {
     datePublished: published,
     author: { "@type": "Organization", name: SITE_NAME },
     publisher: { "@type": "Organization", name: SITE_NAME },
+    image: [absoluteUrl(heroImage || OG_IMAGES.words)],
+    dateModified: meta.updatedAt,
+    mainEntityOfPage: `${BASE_URL}/words/${slug}`,
     url: `${BASE_URL}/words/${slug}`,
   };
 

@@ -3,6 +3,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { getTransfer, validateDeleteToken } from "@/features/transfers/store.server";
 import { toPublicTransfer } from "@/features/transfers/public";
 import { SITE_NAME, SITE_BRAND } from "@/lib/shared/config";
+import { buildSeoHead } from "@/lib/shared/seo";
 import { TransferGallery } from "@/features/transfers/ui/transfer/TransferGallery";
 import { CountdownTimer } from "@/features/transfers/ui/transfer/CountdownTimer";
 import { TakedownButton } from "@/features/transfers/ui/transfer/TakedownButton";
@@ -31,18 +32,24 @@ export const Route = createFileRoute("/t/$id")({
   loader: ({ params, deps }) => getTransferPage({ data: { id: params.id, token: deps.token } }),
   head: ({ loaderData }) => {
     const transfer = loaderData?.transfer;
-    if (!transfer) return { meta: [{ title: `Transfer Not Found — ${SITE_NAME}` }] };
+    if (!transfer) {
+      return buildSeoHead({
+        title: `Transfer not found — ${SITE_NAME}`,
+        description: "This private transfer has expired or does not exist.",
+        path: "/t/not-found",
+        robots: "noindex, nofollow",
+        referrer: "no-referrer",
+      });
+    }
     const description = `${transfer.files.length} files shared via ${SITE_NAME}`;
-    return {
-      meta: [
-        { title: `${transfer.title} — ${SITE_NAME}` },
-        { name: "description", content: description },
-        { name: "robots", content: "noindex, nofollow" },
-        { name: "referrer", content: "no-referrer" },
-        { property: "og:title", content: `${transfer.title} — ${SITE_NAME}` },
-        { property: "og:description", content: description },
-      ],
-    };
+    return buildSeoHead({
+      title: `${transfer.title} — ${SITE_NAME}`,
+      description,
+      path: `/t/${transfer.id}`,
+      robots: "noindex, nofollow",
+      referrer: "no-referrer",
+      imageAlt: `Private transfer shared via ${SITE_NAME}`,
+    });
   },
 });
 

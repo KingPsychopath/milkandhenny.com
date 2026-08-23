@@ -2,6 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { GamePoolEntranceApp } from "@/features/things/pool/GamePoolEntranceApp";
 import { getGamePoolPublicViewFn } from "@/features/things/pool/pool.functions";
 import { SITE_NAME } from "@/lib/shared/config";
+import { buildSeoHead } from "@/lib/shared/seo";
 
 export const Route = createFileRoute("/play/$token")({
   validateSearch: (search: Record<string, unknown>) => ({
@@ -9,12 +10,14 @@ export const Route = createFileRoute("/play/$token")({
   }),
   loader: ({ params }) => getGamePoolPublicViewFn({ data: { token: params.token } }),
   component: GamePoolEntranceRoute,
-  head: () => ({
-    meta: [
-      { title: `game night · ${SITE_NAME}` },
-      { name: "robots", content: "noindex, nofollow" },
-    ],
-  }),
+  head: ({ params }) =>
+    buildSeoHead({
+      title: `Game night · ${SITE_NAME}`,
+      description: "Join a private Milk & Henny game night.",
+      path: `/play/${params.token}`,
+      robots: "noindex, nofollow",
+      referrer: "no-referrer",
+    }),
 });
 
 function GamePoolEntranceRoute() {

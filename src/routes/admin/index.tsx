@@ -6,6 +6,7 @@ import { AdminDashboard } from "@/features/admin/ui/AdminDashboard";
 import { isAdminSection, type AdminSection } from "@/features/admin/ui/components/AdminSectionNav";
 import { authenticateRequest } from "@/features/auth/auth.server";
 import { signInAdmin } from "@/features/auth/auth.functions";
+import { buildSeoHead } from "@/lib/shared/seo";
 
 const getAdminAccess = createServerFn({ method: "GET" }).handler(() =>
   authenticateRequest(getRequest(), "admin"),
@@ -17,9 +18,14 @@ export const Route = createFileRoute("/admin/")({
   }),
   component: AdminPage,
   loader: () => getAdminAccess(),
-  head: () => ({
-    meta: [{ title: `admin · ${SITE_NAME}` }, { name: "robots", content: "noindex, nofollow" }],
-  }),
+  head: () =>
+    buildSeoHead({
+      title: `Admin — ${SITE_NAME}`,
+      description: "Private Milk & Henny administration.",
+      path: "/admin",
+      robots: "noindex, nofollow",
+      referrer: "no-referrer",
+    }),
 });
 
 function AdminPage() {

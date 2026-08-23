@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link, createFileRoute } from "@tanstack/react-router";
 
 import { SITE_NAME } from "@/lib/shared/config";
+import { buildSeoHead } from "@/lib/shared/seo";
 import {
   forgetScanner,
   readRememberedScanners,
@@ -17,9 +18,14 @@ import {
  */
 export const Route = createFileRoute("/scan/")({
   component: ScanIndexRoute,
-  head: () => ({
-    meta: [{ title: `Scanner — ${SITE_NAME}` }, { name: "robots", content: "noindex, nofollow" }],
-  }),
+  head: () =>
+    buildSeoHead({
+      title: `Scanner — ${SITE_NAME}`,
+      description: "Private event scanner links saved on this phone.",
+      path: "/scan",
+      robots: "noindex, nofollow",
+      referrer: "no-referrer",
+    }),
 });
 
 function ScanIndexRoute() {

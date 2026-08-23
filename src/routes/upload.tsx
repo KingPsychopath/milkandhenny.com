@@ -2,6 +2,7 @@ import { Link, createFileRoute } from "@tanstack/react-router";
 import { createServerFn } from "@tanstack/react-start";
 import { getRequest } from "@tanstack/react-start/server";
 import { SITE_NAME } from "@/lib/shared/config";
+import { buildSeoHead } from "@/lib/shared/seo";
 import { UploadDashboard } from "@/features/transfers/ui/upload/UploadDashboard";
 import { authenticateRequest } from "@/features/auth/auth.server";
 import { signInUpload } from "@/features/auth/auth.functions";
@@ -21,13 +22,14 @@ export const Route = createFileRoute("/upload")({
   }),
   loader: () => getUploadAccess(),
   component: UploadPage,
-  head: () => ({
-    meta: [
-      { title: `upload · ${SITE_NAME}` },
-      { name: "description", content: "Upload files to transfers or words media." },
-      { name: "robots", content: "noindex, nofollow" },
-    ],
-  }),
+  head: () =>
+    buildSeoHead({
+      title: `Upload · ${SITE_NAME}`,
+      description: "Upload files to private transfers or Milk & Henny words media.",
+      path: "/upload",
+      robots: "noindex, nofollow",
+      referrer: "no-referrer",
+    }),
 });
 
 function UploadPage() {

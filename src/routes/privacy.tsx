@@ -1,14 +1,15 @@
 import { Link, createFileRoute } from "@tanstack/react-router";
 
 import { CONTACT_EMAIL, SITE_BRAND } from "@/lib/shared/config";
+import { buildSeoHead } from "@/lib/shared/seo";
 
 export const Route = createFileRoute("/privacy")({
-  head: () => ({
-    meta: [
-      { title: `Privacy — ${SITE_BRAND}` },
-      { name: "description", content: "How milk & henny handles personal information." },
-    ],
-  }),
+  head: () =>
+    buildSeoHead({
+      title: `Privacy — ${SITE_BRAND}`,
+      description: "How Milk & Henny collects, uses, stores, and protects personal information.",
+      path: "/privacy",
+    }),
   component: PrivacyPage,
 });
 

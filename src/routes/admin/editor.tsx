@@ -4,6 +4,7 @@ import { getRequest } from "@tanstack/react-start/server";
 import { SITE_NAME } from "@/lib/shared/config";
 import { authenticateRequest } from "@/features/auth/auth.server";
 import { EditorAdminClient } from "@/features/admin/ui/editor/EditorAdminClient";
+import { buildSeoHead } from "@/lib/shared/seo";
 
 const getEditorAccess = createServerFn({ method: "GET" }).handler(() =>
   authenticateRequest(getRequest(), "admin"),
@@ -15,12 +16,14 @@ export const Route = createFileRoute("/admin/editor")({
   }),
   loader: () => getEditorAccess(),
   component: AdminEditorPage,
-  head: () => ({
-    meta: [
-      { title: `admin editor · ${SITE_NAME}` },
-      { name: "robots", content: "noindex, nofollow" },
-    ],
-  }),
+  head: () =>
+    buildSeoHead({
+      title: `Admin editor — ${SITE_NAME}`,
+      description: "Private Milk & Henny editorial administration.",
+      path: "/admin/editor",
+      robots: "noindex, nofollow",
+      referrer: "no-referrer",
+    }),
 });
 
 function AdminEditorPage() {

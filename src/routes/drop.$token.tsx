@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 
 import { SITE_NAME } from "@/lib/shared/config";
+import { buildSeoHead } from "@/lib/shared/seo";
 import { getDropPageFn } from "@/features/events/drop.functions";
 import { DropPage } from "@/features/events/ui/DropPage";
 
@@ -13,12 +14,14 @@ import { DropPage } from "@/features/events/ui/DropPage";
 export const Route = createFileRoute("/drop/$token")({
   loader: ({ params }) => getDropPageFn({ data: { token: params.token } }),
   component: DropRoute,
-  head: () => ({
-    meta: [
-      { title: `share your photos — ${SITE_NAME}` },
-      { name: "robots", content: "noindex, nofollow" },
-    ],
-  }),
+  head: ({ params }) =>
+    buildSeoHead({
+      title: `Share your photos — ${SITE_NAME}`,
+      description: "Upload photos to a private Milk & Henny event gallery.",
+      path: `/drop/${params.token}`,
+      robots: "noindex, nofollow",
+      referrer: "no-referrer",
+    }),
 });
 
 function DeadDrop() {

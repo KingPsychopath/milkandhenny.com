@@ -1,14 +1,15 @@
 import { Link, createFileRoute } from "@tanstack/react-router";
 
 import { CONTACT_EMAIL, SITE_BRAND } from "@/lib/shared/config";
+import { buildSeoHead } from "@/lib/shared/seo";
 
 export const Route = createFileRoute("/contact")({
-  head: () => ({
-    meta: [
-      { title: `Contact — ${SITE_BRAND}` },
-      { name: "description", content: "Contact milk & henny." },
-    ],
-  }),
+  head: () =>
+    buildSeoHead({
+      title: `Contact — ${SITE_BRAND}`,
+      description: "Contact Milk & Henny about events, tickets, pitches, transfers, or the site.",
+      path: "/contact",
+    }),
   component: ContactPage,
 });
 
