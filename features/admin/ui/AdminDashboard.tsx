@@ -164,6 +164,18 @@ type ContentAuditResponse = {
 
 type DebugResponse = SystemCapabilities & {
   multiplayer: MultiplayerTelemetrySnapshot;
+  gamePools: {
+    activeAssignments: number;
+    openRooms: number;
+    openRuns: number;
+    allocation: {
+      attempts: number;
+      failures: number;
+      contention: number;
+      averageMs: number | null;
+      maxMs: number | null;
+    };
+  };
   securityWarnings: string[];
   help?: {
     forceReload?: string;
@@ -1287,11 +1299,17 @@ export function AdminDashboard({
                       <div key={game} className="border theme-border rounded-md p-3 space-y-1">
                         <div className="flex items-center justify-between gap-3">
                           <p className="theme-muted text-xs">{game}</p>
-                          <p className="text-xs">{metrics.activeSockets} sockets</p>
+                          <p className="text-xs">
+                            {metrics.activeSockets} active · {metrics.unauthenticatedSockets}{" "}
+                            pending
+                          </p>
                         </div>
                         <p className="text-lg">{metrics.operations} operations</p>
                         <p className="theme-faint text-micro">
                           {metrics.operationFailures} failed · {metrics.rateLimited} rate limited
+                        </p>
+                        <p className="theme-faint text-micro">
+                          {metrics.connections} socket connections · {metrics.reconnects} reconnects
                         </p>
                         <p className="theme-faint text-micro">
                           reconciliation {metrics.reconciliation.averageMs ?? "—"}ms avg ·{" "}
@@ -1307,17 +1325,17 @@ export function AdminDashboard({
                     ))
                   : null}
                 <div className="border theme-border rounded-md p-3 space-y-1">
-                  <p className="theme-muted text-xs">spelling-party lock</p>
+                  <p className="theme-muted text-xs">room locks</p>
                   <p className="text-lg">
-                    {debugData?.multiplayer.partyRoomLock.acquisitions ?? "—"} acquisitions
+                    {debugData?.multiplayer.roomLock.acquisitions ?? "—"} acquisitions
                   </p>
                   <p className="theme-faint text-micro">
-                    {debugData?.multiplayer.partyRoomLock.contention ?? "—"} contended ·{" "}
-                    {debugData?.multiplayer.partyRoomLock.failures ?? "—"} failed
+                    {debugData?.multiplayer.roomLock.contention ?? "—"} contended ·{" "}
+                    {debugData?.multiplayer.roomLock.failures ?? "—"} failed
                   </p>
                   <p className="theme-faint text-micro">
-                    wait {debugData?.multiplayer.partyRoomLock.wait.averageMs ?? "—"}ms avg ·{" "}
-                    {debugData?.multiplayer.partyRoomLock.wait.maxMs ?? "—"}ms max
+                    wait {debugData?.multiplayer.roomLock.wait.averageMs ?? "—"}ms avg ·{" "}
+                    {debugData?.multiplayer.roomLock.wait.maxMs ?? "—"}ms max
                   </p>
                 </div>
               </div>
@@ -1326,6 +1344,13 @@ export function AdminDashboard({
                 {debugData?.multiplayer.backplane.received ?? "—"} received ·{" "}
                 {debugData?.multiplayer.backplane.failures ?? "—"} failed. Per-replica counters
                 reset on deploy; Railway logs retain operational history.
+              </p>
+              <p className="font-mono text-micro theme-faint">
+                Pools {debugData?.gamePools.openRuns ?? "—"} open runs ·{" "}
+                {debugData?.gamePools.openRooms ?? "—"} rooms ·{" "}
+                {debugData?.gamePools.activeAssignments ?? "—"} assignments · allocation{" "}
+                {debugData?.gamePools.allocation.averageMs ?? "—"}ms average ·{" "}
+                {debugData?.gamePools.allocation.contention ?? "—"} contended
               </p>
             </div>
 

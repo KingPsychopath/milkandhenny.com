@@ -14,6 +14,7 @@ export function useRemoteSocket(input: {
         ? { roomId: input.roomId, role: input.role, token: input.token }
         : null,
     onWake: input.onWake,
+    onTerminal: input.onWake,
   });
   const state: RemoteTransportState = socket.state === "offline" ? "local" : socket.state;
   return { state, notify: socket.notify };

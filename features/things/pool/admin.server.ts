@@ -1,5 +1,6 @@
 import { GAME_POOL_DEFAULTS, isGamePoolGame } from "./presets";
 import {
+  closeGamePoolRoomForAdmin,
   createGamePoolEntrance,
   listGamePoolEntrances,
   openGamePoolRun,
@@ -7,7 +8,11 @@ import {
   updateGamePoolEntrance,
 } from "./store.server";
 import type { GamePoolNameVisibility } from "./types";
-import { publishMultiplayerRoomWake } from "../shared/multiplayer-runtime.server";
+import {
+  publishMultiplayerRoomTermination,
+  publishMultiplayerRoomWake,
+} from "../shared/multiplayer-runtime.server";
+import { getGamePoolPublicView } from "./pool.server";
 
 function record(value: unknown) {
   if (!value || typeof value !== "object" || Array.isArray(value))
@@ -27,8 +32,14 @@ function nameVisibility(value: unknown): GamePoolNameVisibility | undefined {
   return value === "first-names" || value === "initials" || value === "counts" ? value : undefined;
 }
 
-export function listGamePoolsForAdmin() {
-  return listGamePoolEntrances();
+export async function listGamePoolsForAdmin() {
+  const entrances = await listGamePoolEntrances();
+  return Promise.all(
+    entrances.map(async (entrance) => ({
+      ...entrance,
+      rooms: entrance.run ? ((await getGamePoolPublicView(entrance.token)).rooms ?? []) : [],
+    })),
+  );
 }
 
 export function createGamePoolForAdmin(value: unknown) {
@@ -42,6 +53,7 @@ export function createGamePoolForAdmin(value: unknown) {
     allowRoomChoice: optionalBoolean(input.allowRoomChoice),
     allowNewRooms: optionalBoolean(input.allowNewRooms),
     nameVisibility: nameVisibility(input.nameVisibility),
+    actionId: typeof input.actionId === "string" ? input.actionId.slice(0, 100) : undefined,
   });
 }
 
@@ -66,16 +78,24 @@ export async function controlGamePoolForAdmin(id: string, value: unknown) {
   if (input.action === "open")
     entrance = await openGamePoolRun(id, {
       durationMinutes: optionalInteger(input.durationMinutes),
+      actionId: typeof input.actionId === "string" ? input.actionId.slice(0, 100) : undefined,
     });
   else if (input.action === "pause") entrance = await setGamePoolRunStatus(id, "paused");
   else if (input.action === "resume") entrance = await setGamePoolRunStatus(id, "open");
   else if (input.action === "close") entrance = await setGamePoolRunStatus(id, "closed");
-  else throw new Error("Invalid game-pool action");
+  else if (input.action === "close-room") {
+    if (typeof input.roomId !== "string" || !input.roomId) throw new Error("Choose a room");
+    entrance = await closeGamePoolRoomForAdmin(id, input.roomId.slice(0, 80));
+  } else throw new Error("Invalid game-pool action");
   const runIds = new Set([current?.run?.id, entrance?.run?.id].filter(Boolean) as string[]);
   await Promise.all(
     [...runIds].map((runId) =>
       publishMultiplayerRoomWake("game-pool", runId).catch(() => undefined),
     ),
   );
+  if (input.action === "close" && current?.run?.id)
+    await publishMultiplayerRoomTermination("game-pool", current.run.id, {
+      reason: "session_ended",
+    }).catch(() => undefined);
   return entrance;
 }

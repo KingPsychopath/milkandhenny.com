@@ -59,6 +59,10 @@ export interface GamePoolEntrance {
   updatedAt: string;
   retiredAt: string | null;
   run: GamePoolRun | null;
+  /** Present on protected operator and admin views only. */
+  rooms?: GamePoolRoomSummary[];
+  /** Returned only once when an admin opens a run. */
+  operatorToken?: string;
 }
 
 export interface GamePoolRun {
@@ -78,7 +82,7 @@ export interface GamePoolRun {
 export interface GamePoolRoomSummary {
   roomId: string;
   label: string;
-  status: "open" | "started";
+  status: "open" | "started" | "closed";
   playerCount: number;
   capacity: number;
   players: string[];
@@ -89,6 +93,18 @@ export interface GamePoolPublicView {
   found: boolean;
   entrance?: Pick<GamePoolEntrance, "label" | "game">;
   run?: GamePoolRun | null;
+  rooms?: GamePoolRoomSummary[];
+  message?: string;
+}
+
+export interface GamePoolOperatorView {
+  found: boolean;
+  label?: string;
+  game?: GamePoolGame;
+  runId?: string;
+  status?: GamePoolRunStatus;
+  openedAt?: string;
+  closesAt?: string | null;
   rooms?: GamePoolRoomSummary[];
   message?: string;
 }

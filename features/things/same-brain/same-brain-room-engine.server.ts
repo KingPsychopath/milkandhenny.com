@@ -979,6 +979,14 @@ export async function applySameBrainHostAction(input: {
       return remembered();
     }
 
+    if (action.type === "host.pass") {
+      const target = room.players.find(({ id, leftAt }) => id === action.playerId && !leftAt);
+      if (!target) return reject(view(), "action_unavailable", "They are not here");
+      room.hostPlayerId = target.id;
+      changed(room);
+      return remembered();
+    }
+
     if (action.type === "player.remove") {
       const target = room.players.find(({ id }) => id === action.playerId);
       if (!target) return reject(view(), "action_unavailable", "They are not here");
@@ -1063,6 +1071,22 @@ export async function applySameBrainPlayerAction(input: {
         if (gameOver(room)) finish(room, now);
       }
       if (room.hostPlayerId === player.id) transferHost(room, player.id, now);
+      changed(room);
+      return remembered();
+    }
+
+    if (action.type === "player.rename") {
+      if (room.phase !== "lobby")
+        return reject(view(), "action_unavailable", "Names only change in the lobby");
+      if (
+        room.players.some(
+          (candidate) =>
+            candidate.id !== player.id &&
+            candidate.name.toLocaleLowerCase() === action.name.toLocaleLowerCase(),
+        )
+      )
+        return reject(view(), "action_unavailable", "That name is already here");
+      player.name = action.name;
       changed(room);
       return remembered();
     }

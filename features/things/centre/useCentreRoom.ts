@@ -60,6 +60,7 @@ export function useCentreRoom(input: {
           playerToken: input.playerToken,
         },
     onWake: () => void room.refresh(),
+    onTerminal: () => void room.refresh(),
     onMessage: (message) => {
       if (!message || typeof message !== "object" || Array.isArray(message)) return;
       const value = message as Record<string, unknown>;

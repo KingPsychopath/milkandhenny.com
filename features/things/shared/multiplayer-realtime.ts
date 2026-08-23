@@ -23,6 +23,7 @@ export const MULTIPLAYER_SOCKET_CLOSE = {
   messageTooLarge: 1_009,
   serverOverloaded: 1_013,
   heartbeatTimeout: 4_001,
+  sessionEnded: 4_002,
 } as const;
 
 export type MultiplayerClientControlMessage = { type: "changed" } | { type: "ping" };
@@ -30,7 +31,13 @@ export type MultiplayerClientControlMessage = { type: "changed" } | { type: "pin
 export type MultiplayerServerMessage =
   | { type: "pong" }
   | { type: "ready" }
-  | ({ type: "wake" } & Record<string, unknown>);
+  | ({ type: "wake" } & Record<string, unknown>)
+  | {
+      type: "terminal";
+      reason: "removed" | "room_closed" | "session_ended";
+      playerId?: string;
+      role?: string;
+    };
 
 export function isMultiplayerClientControlMessage(
   value: unknown,
@@ -43,12 +50,13 @@ export function isMultiplayerClientControlMessage(
 export function isMultiplayerServerMessage(value: unknown): value is MultiplayerServerMessage {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
   const type = Reflect.get(value, "type");
-  return type === "pong" || type === "ready" || type === "wake";
+  return type === "pong" || type === "ready" || type === "wake" || type === "terminal";
 }
 
 export function isTerminalMultiplayerSocketClose(code: number) {
   return (
     code === MULTIPLAYER_SOCKET_CLOSE.policyViolation ||
-    code === MULTIPLAYER_SOCKET_CLOSE.messageTooLarge
+    code === MULTIPLAYER_SOCKET_CLOSE.messageTooLarge ||
+    code === MULTIPLAYER_SOCKET_CLOSE.sessionEnded
   );
 }

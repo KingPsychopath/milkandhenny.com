@@ -212,6 +212,7 @@ export function GamePoolsPanel({
   const [duration, setDuration] = useState(240);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [drafts, setDrafts] = useState<Record<string, GamePoolEntrance>>({});
+  const [operatorLinks, setOperatorLinks] = useState<Record<string, string>>({});
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -239,13 +240,21 @@ export function GamePoolsPanel({
     setLoading(true);
     onError("");
     try {
+      const actionStorageKey = "game-pool:create:action-id";
+      const actionId = sessionStorage.getItem(actionStorageKey) ?? crypto.randomUUID();
+      sessionStorage.setItem(actionStorageKey, actionId);
       const response = await authFetch("/api/admin/game-pools", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ game, label: label || GAME_POOL_DEFAULTS[game].label }),
+        body: JSON.stringify({
+          game,
+          label: label || GAME_POOL_DEFAULTS[game].label,
+          actionId,
+        }),
       });
       const data = (await response.json().catch(() => ({}))) as { error?: string };
       if (!response.ok) throw new Error(data.error || "Failed to create game entrance");
+      sessionStorage.removeItem(actionStorageKey);
       setLabel("");
       onStatus("Game entrance created.");
       await refresh();
@@ -256,17 +265,33 @@ export function GamePoolsPanel({
     }
   };
 
-  const control = async (id: string, action: "open" | "pause" | "resume" | "close") => {
+  const control = async (
+    id: string,
+    action: "open" | "pause" | "resume" | "close" | "close-room",
+    roomId?: string,
+  ) => {
     setLoading(true);
     onError("");
     try {
+      const actionStorageKey = `game-pool:${id}:${action}:${roomId ?? "run"}:action-id`;
+      const actionId = sessionStorage.getItem(actionStorageKey) ?? crypto.randomUUID();
+      sessionStorage.setItem(actionStorageKey, actionId);
       const response = await authFetch(`/api/admin/game-pools/${encodeURIComponent(id)}`, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ action, durationMinutes: duration }),
+        body: JSON.stringify({ action, roomId, durationMinutes: duration, actionId }),
       });
-      const data = (await response.json().catch(() => ({}))) as { error?: string };
+      const data = (await response.json().catch(() => ({}))) as {
+        entrance?: GamePoolEntrance;
+        error?: string;
+      };
       if (!response.ok) throw new Error(data.error || "Failed to control game entrance");
+      sessionStorage.removeItem(actionStorageKey);
+      if (action === "open" && data.entrance?.operatorToken)
+        setOperatorLinks((current) => ({
+          ...current,
+          [id]: `${window.location.origin}/organize/${data.entrance?.operatorToken}`,
+        }));
       onStatus(action === "open" ? "Game entrance opened." : `Game entrance ${action}d.`);
       await refresh();
     } catch (error) {
@@ -435,6 +460,53 @@ export function GamePoolsPanel({
                         </button>
                       ) : null}
                     </div>
+                    {operatorLinks[entrance.id] ? (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          void navigator.clipboard.writeText(operatorLinks[entrance.id] ?? "")
+                        }
+                        className="min-h-11 font-mono text-xs underline"
+                      >
+                        copy tonight’s organizer link
+                      </button>
+                    ) : null}
+                    {run ? (
+                      <div className="border-t theme-border pt-4">
+                        <p className="font-mono text-xs theme-muted">current rooms</p>
+                        {entrance.rooms?.length ? (
+                          <ul className="mt-2 divide-y theme-border font-mono text-xs">
+                            {entrance.rooms.map((room) => (
+                              <li
+                                key={room.roomId}
+                                className="flex items-center justify-between gap-3 py-2"
+                              >
+                                <span>
+                                  {room.label} · {room.status}
+                                </span>
+                                <span className="flex items-center gap-3 theme-muted">
+                                  {room.playerCount}/{room.capacity}
+                                  {room.status === "closed" ? null : (
+                                    <button
+                                      type="button"
+                                      disabled={loading}
+                                      onClick={() =>
+                                        void control(entrance.id, "close-room", room.roomId)
+                                      }
+                                      className="min-h-11 underline"
+                                    >
+                                      stop filling
+                                    </button>
+                                  )}
+                                </span>
+                              </li>
+                            ))}
+                          </ul>
+                        ) : (
+                          <p className="mt-2 font-mono text-xs theme-faint">No rooms yet.</p>
+                        )}
+                      </div>
+                    ) : null}
                     <div className="grid gap-4 sm:grid-cols-2">
                       <label className="font-mono text-xs theme-muted">
                         label

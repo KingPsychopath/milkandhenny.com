@@ -16,6 +16,7 @@ interface MultiplayerWakeSocketInput {
   onWake: () => void;
   /** Receives feature-owned cosmetic messages after JSON parsing. */
   onMessage?: (message: unknown) => void;
+  onTerminal?: (reason: "removed" | "room_closed" | "session_ended") => void;
 }
 
 /** Advisory wake-up transport. Durable commands and snapshots remain authoritative over HTTPS. */
@@ -24,12 +25,16 @@ export function useMultiplayerWakeSocket(input: MultiplayerWakeSocketInput) {
   const socketRef = useRef<WebSocket | null>(null);
   const wakeRef = useRef(input.onWake);
   const messageRef = useRef(input.onMessage);
+  const terminalRef = useRef(input.onTerminal);
   useEffect(() => {
     wakeRef.current = input.onWake;
   }, [input.onWake]);
   useEffect(() => {
     messageRef.current = input.onMessage;
   }, [input.onMessage]);
+  useEffect(() => {
+    terminalRef.current = input.onTerminal;
+  }, [input.onTerminal]);
   const helloJson = input.hello ? JSON.stringify({ type: "hello", ...input.hello }) : "";
 
   useEffect(() => {
@@ -72,7 +77,8 @@ export function useMultiplayerWakeSocket(input: MultiplayerWakeSocketInput) {
       socket = nextSocket;
       socketRef.current = nextSocket;
       nextSocket.onopen = () => {
-        nextSocket.send(helloJson);
+        const hello = JSON.parse(helloJson) as Record<string, unknown>;
+        nextSocket.send(JSON.stringify({ ...hello, reconnect: attempt > 0 ? "1" : undefined }));
         heartbeatTimer = window.setInterval(() => {
           if (nextSocket.readyState !== WebSocket.OPEN) return;
           send(nextSocket, { type: "ping" });
@@ -101,6 +107,9 @@ export function useMultiplayerWakeSocket(input: MultiplayerWakeSocketInput) {
           wakeRef.current();
         } else if (message.type === "wake") {
           wakeRef.current();
+        } else if (message.type === "terminal") {
+          setState("offline");
+          terminalRef.current?.(message.reason);
         }
       };
       nextSocket.onclose = (event) => {

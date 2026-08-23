@@ -17,6 +17,7 @@ import { applyTwinActionFn } from "./twin-room.functions";
 import { TwinHeader, TwinLobby, TwinSettle, TwinStandings } from "./TwinViews";
 import { useGameSound } from "../shared/useGameSound";
 import { gameBrowserKey } from "../shared/multiplayer-keys";
+import type { MultiplayerActionInput } from "../shared/multiplayer";
 import { playTwinSound, primeTwinAudio } from "./twin-sound.client";
 import type { TwinHeartbeatTiming } from "./twin-rules";
 import { useTwinPalette } from "./useTwinPalette";
@@ -141,14 +142,14 @@ export function TwinRoom({
     void haptics.trigger("heavy");
   }, [haptics, setLiveMessage, snapshot?.player?.startRequestId]);
 
-  const send = async (action: TwinAction, quiet = false) => {
+  const send = async (action: MultiplayerActionInput<TwinAction>, quiet = false) => {
     try {
       const result = await applyTwinActionFn({
         data: {
           roomId,
           playerId: credentials.playerId,
           playerToken: credentials.playerToken,
-          action,
+          action: { ...action, actionId: crypto.randomUUID() },
         },
       });
       if (result.snapshot) live.setSnapshot(result.snapshot);
@@ -236,6 +237,13 @@ export function TwinRoom({
             // The browser only lets audio start from a gesture, and this is the last one before play.
             primeTwinAudio();
             void send({ type: "game.start" });
+          }}
+          onPassLead={(playerId) => void send({ type: "host.pass", playerId })}
+          onRename={() => {
+            const current =
+              snapshot.players.find(({ id }) => id === credentials.playerId)?.name ?? "";
+            const name = window.prompt("Name in this room", current)?.trim();
+            if (name && name !== current) void send({ type: "player.rename", name });
           }}
           onLeave={leaveRoom}
           onHandSize={(handSize) => void send({ type: "game.configure", handSize })}

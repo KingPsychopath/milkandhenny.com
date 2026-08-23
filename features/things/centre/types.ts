@@ -1,4 +1,5 @@
 import type {
+  MultiplayerAction,
   MultiplayerFailure,
   MultiplayerRevision,
   MultiplayerRoomLifetime,
@@ -117,17 +118,21 @@ export type CentreSnapshotResult =
   | MultiplayerSuccess<{ unchanged: true; serverNow: number; snapshot: null }>
   | (MultiplayerFailure<"room_unavailable"> & { snapshot: null });
 
-export type CentreAction =
-  | { type: "readiness.set"; ready: boolean }
-  | { type: "game.configure"; difficulty?: CentreDifficulty; delayedRivals?: boolean }
-  | { type: "game.start"; removePlayerIds?: string[] }
-  | { type: "arming.set"; armed: boolean }
-  | { type: "race.finish"; courseHash: string; route: CentreRoute; claimedElapsedMs: number }
-  | { type: "race.progress"; courseHash: string; route: CentreRoute }
-  | { type: "race.retire"; courseHash: string; route: CentreRoute }
-  | { type: "game.replay" }
-  | { type: "game.lobby" }
-  | { type: "player.leave" };
+export type CentreAction = Partial<MultiplayerAction> &
+  (
+    | { type: "readiness.set"; ready: boolean }
+    | { type: "game.configure"; difficulty?: CentreDifficulty; delayedRivals?: boolean }
+    | { type: "game.start"; removePlayerIds?: string[] }
+    | { type: "arming.set"; armed: boolean }
+    | { type: "race.finish"; courseHash: string; route: CentreRoute; claimedElapsedMs: number }
+    | { type: "race.progress"; courseHash: string; route: CentreRoute }
+    | { type: "race.retire"; courseHash: string; route: CentreRoute }
+    | { type: "game.replay" }
+    | { type: "game.lobby" }
+    | { type: "player.leave" }
+    | { type: "player.rename"; name: string }
+    | { type: "host.pass"; playerId: string }
+  );
 
 export type CentreActionResult =
   | MultiplayerSuccess<{ accepted: true; snapshot: CentreSnapshot }>

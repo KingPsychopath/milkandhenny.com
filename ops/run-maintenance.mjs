@@ -8,6 +8,7 @@ const jobs = [
   { path: "/api/cron/deliver-email", method: "POST" },
   { path: "/api/cron/cleanup-transfers" },
   { path: "/api/cron/cleanup-pitches" },
+  { path: "/api/cron/cleanup-game-pools" },
   { path: "/api/cron/cleanup-word-shares" },
   { path: "/api/cron/cleanup-word-media-orphans" },
   // Reconcile media the worker never finished. The worker sweeps for this

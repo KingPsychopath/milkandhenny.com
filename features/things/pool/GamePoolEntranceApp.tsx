@@ -41,6 +41,7 @@ export function GamePoolEntranceApp({
     path: "/api/things/game-pool-ws",
     hello: view.run ? { token, runId: view.run.id } : null,
     onWake: () => void refreshRef.current(),
+    onTerminal: () => void refreshRef.current(),
   });
 
   useEffect(() => {

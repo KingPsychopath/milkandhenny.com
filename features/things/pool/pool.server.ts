@@ -22,6 +22,8 @@ import type {
   GamePoolPublicView,
   GamePoolRoomSummary,
 } from "./types";
+import { findGamePoolRunForClient } from "./membership.server";
+import { recordGamePoolAllocation } from "./operations.server";
 
 interface ActiveAssignmentRow {
   room_id: string;
@@ -116,9 +118,19 @@ function validClientId(value: string) {
 
 async function readReceipt(runId: string, clientId: string) {
   const redis = getRedis();
-  return redis
+  const receipt = redis
     ? ((await redis.get<AssignmentReceipt>(gamePoolAssignmentReceiptKey(runId, clientId))) ?? null)
     : null;
+  if (!receipt) return null;
+  const rows = await query<{ active: boolean }>(
+    `select true as active from game_pool_assignments
+     where run_id = $1 and client_id = $2 and room_id = $3 and player_id = $4
+       and status = 'active'`,
+    [runId, clientId, receipt.assignment.roomId, receipt.assignment.playerId],
+  );
+  if (rows[0]?.active) return receipt;
+  await redis?.del(gamePoolAssignmentReceiptKey(runId, clientId));
+  return null;
 }
 
 async function saveRoomSecrets(input: {
@@ -170,160 +182,182 @@ export async function assignGamePoolRoom(input: {
   name: string;
   choice: "auto" | "new" | { roomId: string };
 }) {
-  const entrance = await getGamePoolEntranceByToken(input.token);
-  if (!entrance || entrance.retiredAt || !liveRun(entrance.run))
-    throw new Error("This game is not accepting players right now.");
-  const run = entrance.run;
-  if (!run) throw new Error("This game is not open.");
-  const clientId = validClientId(input.clientId);
-  const name = validName(input.name);
-  const receipt = await readReceipt(run.id, clientId);
-  if (receipt) return receipt.assignment;
-
-  const assignment = await withGamePoolAllocation(run.id, async (client) => {
-    const lockedRun = await client.query<{
-      status: string;
-      closes_at: Date | null;
-      allow_room_choice: boolean;
-      allow_new_rooms: boolean;
-    }>(
-      "select status, closes_at, allow_room_choice, allow_new_rooms from game_pool_runs where id = $1 for update",
-      [run.id],
-    );
-    const current = lockedRun.rows[0];
-    if (
-      !current ||
-      current.status !== "open" ||
-      (current.closes_at && current.closes_at.getTime() <= Date.now())
-    )
+  const startedAt = performance.now();
+  let failed = true;
+  try {
+    const entrance = await getGamePoolEntranceByToken(input.token);
+    if (!entrance || entrance.retiredAt || !liveRun(entrance.run))
       throw new Error("This game is not accepting players right now.");
+    const run = entrance.run;
+    if (!run) throw new Error("This game is not open.");
+    const clientId = validClientId(input.clientId);
+    const name = validName(input.name);
+    const receipt = await readReceipt(run.id, clientId);
+    if (receipt) return receipt.assignment;
 
-    const existing = await client.query<{ room_id: string }>(
-      `select room_id from game_pool_assignments
-       where run_id = $1 and client_id = $2 and status = 'active'`,
-      [run.id, clientId],
-    );
-    if (existing.rows[0]) {
-      const retryReceipt = await readReceipt(run.id, clientId);
-      if (retryReceipt) return retryReceipt.assignment;
-      throw new Error("Your previous room is still active. Open it from your game page.");
-    }
-
-    const rooms = await client.query<GamePoolRoomRow>(
-      `select * from game_pool_rooms where run_id = $1 and status = 'open'
-       order by created_at for update`,
-      [run.id],
-    );
-    let candidates: GamePoolRoomRow[] = [];
-    if (typeof input.choice === "object") {
-      if (!current.allow_room_choice) throw new Error("Room choice is not available.");
-      const requestedRoomId = input.choice.roomId;
-      candidates = rooms.rows.filter(
-        ({ room_id, player_count }) => room_id === requestedRoomId && player_count < run.targetSize,
+    const assignment = await withGamePoolAllocation(run.id, async (client) => {
+      const lockedRun = await client.query<{
+        status: string;
+        closes_at: Date | null;
+        allow_room_choice: boolean;
+        allow_new_rooms: boolean;
+      }>(
+        "select status, closes_at, allow_room_choice, allow_new_rooms from game_pool_runs where id = $1 for update",
+        [run.id],
       );
-      if (candidates.length === 0) throw new Error("That room is no longer available.");
-    } else if (input.choice === "auto") {
-      candidates = rooms.rows.filter(({ player_count }) => player_count < run.targetSize);
-    }
+      const current = lockedRun.rows[0];
+      if (
+        !current ||
+        current.status !== "open" ||
+        (current.closes_at && current.closes_at.getTime() <= Date.now())
+      )
+        throw new Error("This game is not accepting players right now.");
 
-    for (const room of candidates) {
-      try {
-        const joined = await joinRegisteredRoom({
-          runId: run.id,
-          game: entrance.game,
-          room,
-          clientId,
-          name,
-        });
+      const existing = await client.query<{ room_id: string }>(
+        `select room_id from game_pool_assignments
+       where run_id = $1 and client_id = $2 and status = 'active'`,
+        [run.id, clientId],
+      );
+      if (existing.rows[0]) {
+        const retryReceipt = await readReceipt(run.id, clientId);
+        if (retryReceipt) return retryReceipt.assignment;
+        throw new Error("Your previous room is still active. Open it from your game page.");
+      }
+
+      const removed = await client.query<{ room_id: string }>(
+        `select room_id from game_pool_assignments
+       where run_id = $1 and client_id = $2 and status = 'removed'
+       order by ended_at desc nulls last limit 1`,
+        [run.id, clientId],
+      );
+      const excludedRoomId = removed.rows[0]?.room_id ?? null;
+
+      const rooms = await client.query<GamePoolRoomRow>(
+        `select * from game_pool_rooms where run_id = $1 and status = 'open'
+       order by created_at for update`,
+        [run.id],
+      );
+      let candidates: GamePoolRoomRow[] = [];
+      if (typeof input.choice === "object") {
+        if (!current.allow_room_choice) throw new Error("Room choice is not available.");
+        const requestedRoomId = input.choice.roomId;
+        candidates = rooms.rows.filter(
+          ({ room_id, player_count }) =>
+            room_id === requestedRoomId &&
+            room_id !== excludedRoomId &&
+            player_count < run.targetSize,
+        );
+        if (candidates.length === 0) throw new Error("That room is no longer available.");
+      } else if (input.choice === "auto") {
+        candidates = rooms.rows.filter(
+          ({ room_id, player_count }) =>
+            room_id !== excludedRoomId && player_count < run.targetSize,
+        );
+      }
+
+      for (const room of candidates) {
+        try {
+          const joined = await joinRegisteredRoom({
+            runId: run.id,
+            game: entrance.game,
+            room,
+            clientId,
+            name,
+          });
+          await client.query(
+            "update game_pool_rooms set player_count = player_count + 1, updated_at = now() where run_id = $1 and room_id = $2",
+            [run.id, room.room_id],
+          );
+          await client.query(
+            `insert into game_pool_assignments
+           (id, run_id, room_id, client_id, player_id, display_name)
+           values ($1, $2, $3, $4, $5, $6)`,
+            [
+              createGamePoolAssignmentId(),
+              run.id,
+              room.room_id,
+              clientId,
+              joined.assignment.playerId,
+              name,
+            ],
+          );
+          await saveRoomSecrets({
+            runId: run.id,
+            roomId: room.room_id,
+            clientId,
+            joinToken: joined.joinToken,
+            assignment: joined.assignment,
+          });
+          return joined.assignment;
+        } catch (error) {
+          if (
+            error instanceof GamePoolJoinError &&
+            ["game_started", "room_full", "room_unavailable", "invite_expired"].includes(error.code)
+          ) {
+            await client.query(
+              "update game_pool_rooms set status = $3, updated_at = now() where run_id = $1 and room_id = $2",
+              [run.id, room.room_id, error.code === "game_started" ? "started" : "closed"],
+            );
+            continue;
+          }
+          throw error;
+        }
+      }
+
+      if (input.choice === "new" && !current.allow_new_rooms)
+        throw new Error("Starting another room is not available.");
+      if (input.choice === "auto" || input.choice === "new") {
+        const created = await createPoolRoomAndJoin({ preset: run.preset, name, joinId: clientId });
+        const capacity = gamePoolCapacity(entrance.game);
         await client.query(
-          "update game_pool_rooms set player_count = player_count + 1, updated_at = now() where run_id = $1 and room_id = $2",
-          [run.id, room.room_id],
+          `insert into game_pool_rooms (run_id, room_id, player_count, capacity)
+         values ($1, $2, 1, $3)`,
+          [run.id, created.assignment.roomId, capacity],
         );
         await client.query(
           `insert into game_pool_assignments
-           (id, run_id, room_id, client_id, player_id, display_name)
-           values ($1, $2, $3, $4, $5, $6)`,
+         (id, run_id, room_id, client_id, player_id, display_name)
+         values ($1, $2, $3, $4, $5, $6)`,
           [
             createGamePoolAssignmentId(),
             run.id,
-            room.room_id,
+            created.assignment.roomId,
             clientId,
-            joined.assignment.playerId,
+            created.assignment.playerId,
             name,
           ],
         );
         await saveRoomSecrets({
           runId: run.id,
-          roomId: room.room_id,
+          roomId: created.assignment.roomId,
           clientId,
-          joinToken: joined.joinToken,
-          assignment: joined.assignment,
+          joinToken: created.joinToken,
+          assignment: created.assignment,
         });
-        return joined.assignment;
-      } catch (error) {
-        if (
-          error instanceof GamePoolJoinError &&
-          ["game_started", "room_full", "room_unavailable", "invite_expired"].includes(error.code)
-        ) {
-          await client.query(
-            "update game_pool_rooms set status = $3, updated_at = now() where run_id = $1 and room_id = $2",
-            [run.id, room.room_id, error.code === "game_started" ? "started" : "closed"],
-          );
-          continue;
-        }
-        throw error;
+        return created.assignment;
       }
-    }
-
-    if (input.choice === "new" && !current.allow_new_rooms)
-      throw new Error("Starting another room is not available.");
-    if (input.choice === "auto" || input.choice === "new") {
-      const created = await createPoolRoomAndJoin({ preset: run.preset, name, joinId: clientId });
-      const capacity = gamePoolCapacity(entrance.game);
-      await client.query(
-        `insert into game_pool_rooms (run_id, room_id, player_count, capacity)
-         values ($1, $2, 1, $3)`,
-        [run.id, created.assignment.roomId, capacity],
-      );
-      await client.query(
-        `insert into game_pool_assignments
-         (id, run_id, room_id, client_id, player_id, display_name)
-         values ($1, $2, $3, $4, $5, $6)`,
-        [
-          createGamePoolAssignmentId(),
-          run.id,
-          created.assignment.roomId,
-          clientId,
-          created.assignment.playerId,
-          name,
-        ],
-      );
-      await saveRoomSecrets({
-        runId: run.id,
-        roomId: created.assignment.roomId,
-        clientId,
-        joinToken: created.joinToken,
-        assignment: created.assignment,
-      });
-      return created.assignment;
-    }
-    throw new Error("That room is no longer available.");
-  });
-  await publishMultiplayerRoomWake("game-pool", run.id).catch(() => undefined);
-  return assignment;
+      throw new Error("That room is no longer available.");
+    });
+    await publishMultiplayerRoomWake("game-pool", run.id).catch(() => undefined);
+    failed = false;
+    return assignment;
+  } finally {
+    recordGamePoolAllocation({ durationMs: performance.now() - startedAt, failed });
+  }
 }
 
 export async function releaseGamePoolAssignment(input: { token: string; clientId: string }) {
   const entrance = await getGamePoolEntranceByToken(input.token);
-  const run = entrance?.run;
-  if (!run) return { ok: true as const };
   const clientId = validClientId(input.clientId);
-  await withGamePoolAllocation(run.id, async (client) => {
+  const runId =
+    entrance?.run?.id ?? (await findGamePoolRunForClient({ token: input.token, clientId }));
+  if (!runId) return { ok: true as const };
+  await withGamePoolAllocation(runId, async (client) => {
     const assignments = await client.query<{ room_id: string }>(
       `update game_pool_assignments set status = 'left', ended_at = now(), display_name = 'left'
        where run_id = $1 and client_id = $2 and status = 'active'
        returning room_id`,
-      [run.id, clientId],
+      [runId, clientId],
     );
     const roomId = assignments.rows[0]?.room_id;
     if (roomId)
@@ -333,12 +367,12 @@ export async function releaseGamePoolAssignment(input: { token: string; clientId
            status = case when player_count <= 1 then 'closed' else status end,
            updated_at = now()
          where run_id = $1 and room_id = $2`,
-        [run.id, roomId],
+        [runId, roomId],
       );
   });
   const redis = getRedis();
-  if (redis) await redis.del(gamePoolAssignmentReceiptKey(run.id, clientId));
-  await publishMultiplayerRoomWake("game-pool", run.id).catch(() => undefined);
+  if (redis) await redis.del(gamePoolAssignmentReceiptKey(runId, clientId));
+  await publishMultiplayerRoomWake("game-pool", runId).catch(() => undefined);
   return { ok: true as const };
 }
 

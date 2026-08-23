@@ -1,10 +1,12 @@
 import {
+  publishMultiplayerRoomTermination,
   publishMultiplayerRoomWake,
   runMultiplayerEffect,
 } from "../shared/multiplayer-runtime.server";
 import { SameBrainRoomService } from "./same-brain-room-service.server";
 
 import type * as engine from "./same-brain-room-engine.server";
+import { markGamePoolPlayerLeft, markGamePoolPlayersRemoved } from "../pool/membership.server";
 
 export function authorizeSameBrainSocket(
   input: Parameters<typeof engine.authorizeSameBrainSocket>[0],
@@ -38,6 +40,17 @@ export function applySameBrainHostAction(
     SameBrainRoomService.use((service) => service.applyHostAction(input)),
   ).then(async (result) => {
     await publishMultiplayerRoomWake("same-brain", input.roomId).catch(() => undefined);
+    if (result.accepted && input.action.type === "player.remove") {
+      await markGamePoolPlayersRemoved({
+        roomId: input.roomId,
+        playerIds: [input.action.playerId],
+        actionId: input.action.actionId,
+      }).catch(() => undefined);
+      await publishMultiplayerRoomTermination("same-brain", input.roomId, {
+        reason: "removed",
+        playerId: input.action.playerId,
+      }).catch(() => undefined);
+    }
     return result;
   });
 }
@@ -49,10 +62,27 @@ export function applySameBrainPlayerAction(
     SameBrainRoomService.use((service) => service.applyPlayerAction(input)),
   ).then(async (result) => {
     await publishMultiplayerRoomWake("same-brain", input.roomId).catch(() => undefined);
+    if (result.accepted && input.action.type === "room.leave") {
+      await markGamePoolPlayerLeft({ roomId: input.roomId, playerId: input.playerId }).catch(
+        () => undefined,
+      );
+      await publishMultiplayerRoomTermination("same-brain", input.roomId, {
+        reason: "session_ended",
+        playerId: input.playerId,
+      }).catch(() => undefined);
+    }
     return result;
   });
 }
 
 export function closeSameBrainRoom(...input: Parameters<typeof engine.closeSameBrainRoom>) {
-  return runMultiplayerEffect(SameBrainRoomService.use((service) => service.closeRoom(...input)));
+  return runMultiplayerEffect(
+    SameBrainRoomService.use((service) => service.closeRoom(...input)),
+  ).then(async (result) => {
+    if (result.ok)
+      await publishMultiplayerRoomTermination("same-brain", input[0], {
+        reason: "room_closed",
+      }).catch(() => undefined);
+    return result;
+  });
 }

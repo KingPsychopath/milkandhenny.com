@@ -219,7 +219,12 @@ function DrawCountryRoom({
           roomId,
           playerId: credentials.playerId,
           playerToken: credentials.playerToken,
-          action: { type: "drawing.submit", roundId: round.id, drawing },
+          action: {
+            actionId: crypto.randomUUID(),
+            type: "drawing.submit",
+            roundId: round.id,
+            drawing,
+          },
         },
       });
       if (result.snapshot) live.setSnapshot(result.snapshot);
@@ -254,7 +259,9 @@ function DrawCountryRoom({
       | { type: "game.replay" }
       | { type: "game.lobby" }
       | { type: "readiness.set"; ready: boolean }
-      | { type: "player.leave" },
+      | { type: "player.leave" }
+      | { type: "player.rename"; name: string }
+      | { type: "host.pass"; playerId: string },
   ) => {
     try {
       const result = await applyDrawCountryActionFn({
@@ -262,7 +269,7 @@ function DrawCountryRoom({
           roomId,
           playerId: credentials.playerId,
           playerToken: credentials.playerToken,
-          action,
+          action: { ...action, actionId: crypto.randomUUID() },
         },
       });
       if (result.snapshot) live.setSnapshot(result.snapshot);
@@ -357,6 +364,13 @@ function DrawCountryRoom({
           message={live.message}
           onReadyChange={(ready) => void control({ type: "readiness.set", ready })}
           onStart={() => void control({ type: "game.start" })}
+          onPassLead={(playerId) => void control({ type: "host.pass", playerId })}
+          onRename={() => {
+            const current =
+              snapshot.players.find(({ id }) => id === credentials.playerId)?.name ?? "";
+            const name = window.prompt("Name in this room", current)?.trim();
+            if (name && name !== current) void control({ type: "player.rename", name });
+          }}
           onLeave={leaveRoom}
           startLabel={
             nudgedIds

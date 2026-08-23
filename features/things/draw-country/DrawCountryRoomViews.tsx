@@ -43,6 +43,8 @@ export function RoomLobby({
   message,
   onReadyChange,
   onStart,
+  onPassLead,
+  onRename,
   startLabel,
   onLeave,
 }: {
@@ -52,6 +54,8 @@ export function RoomLobby({
   message: string | null;
   onReadyChange: (ready: boolean) => void;
   onStart: () => void;
+  onPassLead: (playerId: string) => void;
+  onRename: () => void;
   /** Overrides the start button label, e.g. after nudging unready players. */
   startLabel?: string | null;
   onLeave: () => Promise<boolean>;
@@ -140,9 +144,25 @@ export function RoomLobby({
               className="rounded-full border border-black/15 bg-white/30 px-4 py-2 font-mono text-sm"
             >
               {player.name} · {player.ready !== false ? "ready" : "not ready"}
+              {snapshot.canControl && player.id !== snapshot.hostPlayerId ? (
+                <button
+                  type="button"
+                  onClick={() => onPassLead(player.id)}
+                  className="ml-2 underline"
+                >
+                  make lead
+                </button>
+              ) : null}
             </li>
           ))}
         </ul>
+        <button
+          type="button"
+          onClick={onRename}
+          className="mt-3 min-h-11 font-mono text-xs underline"
+        >
+          change my name
+        </button>
         <p aria-live="polite" className="mt-3 font-mono text-xs text-black/45">
           {readyCount} of {snapshot.players.length} ready
         </p>

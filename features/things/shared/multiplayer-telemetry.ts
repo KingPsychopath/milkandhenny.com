@@ -24,6 +24,9 @@ export interface MultiplayerLatencySnapshot {
 
 export interface MultiplayerGameTelemetry {
   activeSockets: number;
+  connections: number;
+  reconnects: number;
+  unauthenticatedSockets: number;
   operationFailures: number;
   operations: number;
   rateLimited: number;
@@ -42,7 +45,7 @@ export interface MultiplayerTelemetrySnapshot {
   runtimeStartedAt: string;
   replica: string;
   games: Record<MultiplayerGame, MultiplayerGameTelemetry>;
-  partyRoomLock: {
+  roomLock: {
     acquisitions: number;
     contention: number;
     failures: number;

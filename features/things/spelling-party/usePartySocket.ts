@@ -25,5 +25,6 @@ export function usePartySocket(input: {
           }
         : null,
     onWake: input.onWake,
+    onTerminal: input.onWake,
   });
 }

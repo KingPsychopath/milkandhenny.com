@@ -136,6 +136,8 @@ async function drainMediaQueuesUntilIdle(
         return { processedJobs, succeeded, failed, skipped };
       } catch (error) {
         if (claimedTransfer) {
+          const deliveryAttempt = claimedTransfer.job.deliveryAttempt ?? 0;
+          await sleep(Math.min(120_000, errorBackoffMs * 2 ** deliveryAttempt));
           await requeueTransferMediaJob(claimedTransfer.raw);
         }
         const errorDetail = getErrorDetail(error);
@@ -146,7 +148,7 @@ async function drainMediaQueuesUntilIdle(
           lastErrorMessage: errorDetail,
         });
         console.error(`[media-worker] error\n${errorDetail}`);
-        await sleep(errorBackoffMs);
+        if (!claimedTransfer) await sleep(errorBackoffMs);
       }
     }
   }

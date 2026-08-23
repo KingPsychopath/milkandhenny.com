@@ -178,8 +178,8 @@ describe("remote game rooms", () => {
       ).ok,
     ).toBe(false);
     expect(
-      (await closePairedGameRoom(playerCreated.roomId, "judge", playerCreated.judgeToken)).ok,
-    ).toBe(false);
+      await closePairedGameRoom(playerCreated.roomId, "judge", playerCreated.judgeToken),
+    ).toEqual({ ok: true, closed: false });
     expect(
       (await closePairedGameRoom(playerCreated.roomId, "player", playerCreated.playerToken)).ok,
     ).toBe(true);

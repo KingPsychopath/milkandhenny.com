@@ -151,4 +151,33 @@ describe("game-pool managed admission", () => {
     });
     expect(actionView.snapshot?.hostPlayerId).toBe(centreSecond.playerId);
   });
+
+  it("does not apply the same action ticket twice", async () => {
+    const room = await createCentreRoom({
+      managed: true,
+      hostName: "Ada",
+      difficulty: 3,
+      delayedRivals: false,
+    });
+    const action = {
+      actionId: "same-readiness-action",
+      type: "readiness.set" as const,
+      ready: false,
+    };
+    const first = await applyCentreAction({
+      roomId: room.roomId,
+      playerId: room.playerId,
+      playerToken: room.playerToken,
+      action,
+    });
+    const repeated = await applyCentreAction({
+      roomId: room.roomId,
+      playerId: room.playerId,
+      playerToken: room.playerToken,
+      action,
+    });
+    expect(first).toMatchObject({ ok: true, accepted: true });
+    expect(repeated).toMatchObject({ ok: true, accepted: true });
+    expect(repeated.snapshot?.revision).toBe(first.snapshot?.revision);
+  });
 });

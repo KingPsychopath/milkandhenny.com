@@ -17,6 +17,7 @@ async function readMediaStatus() {
     mode,
     queueEnabled: mode !== "local",
     queueLength: media.queueLength,
+    queue: media.queue,
     heartbeatAgeSeconds: lastHeartbeatAt
       ? Math.max(0, Math.round((Date.now() - new Date(lastHeartbeatAt).getTime()) / 1000))
       : null,

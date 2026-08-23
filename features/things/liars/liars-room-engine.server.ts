@@ -1631,6 +1631,11 @@ export async function applyLiarsHostAction(input: {
         room.pausedAt = null;
         changed(room);
       }
+    } else if (action.type === "host.pass") {
+      const target = room.players.find(({ id, leftAt }) => id === action.playerId && !leftAt);
+      if (!target) return reject(view(), "invalid_target", "No such player");
+      room.hostPlayerId = target.id;
+      changed(room);
     } else if (action.type === "player.remove") {
       const target = room.players.find(({ id }) => id === action.playerId);
       if (!target) return reject(view(), "invalid_target", "No such player");
@@ -1724,6 +1729,22 @@ export async function applyLiarsPlayerAction(input: {
       }
       if (room.hostPlayerId === player.id) transferHost(room, player.id, now);
       else transferNarrator(room, player.id, now);
+      changed(room);
+      return remembered();
+    }
+
+    if (action.type === "player.rename") {
+      if (room.phase !== "lobby")
+        return reject(view(), "action_unavailable", "Names only change in the lobby");
+      if (
+        room.players.some(
+          (candidate) =>
+            candidate.id !== player.id &&
+            candidate.name.toLocaleLowerCase() === action.name.toLocaleLowerCase(),
+        )
+      )
+        return reject(view(), "action_unavailable", "That name is already here");
+      player.name = action.name;
       changed(room);
       return remembered();
     }

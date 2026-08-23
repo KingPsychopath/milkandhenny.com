@@ -91,7 +91,9 @@ export const applyDrawCountryActionFn = createServerFn({ method: "POST" })
       | { type: "game.replay" }
       | { type: "game.lobby" }
       | { type: "drawing.submit"; roundId: string; drawing: CountryDrawing }
-      | { type: "player.leave" };
+      | { type: "player.leave" }
+      | { type: "player.rename"; name: string }
+      | { type: "host.pass"; playerId: string };
     if (rawAction.type === "game.start")
       action = {
         type: rawAction.type,
@@ -114,12 +116,19 @@ export const applyDrawCountryActionFn = createServerFn({ method: "POST" })
         drawing: parseCountryDrawing(rawAction.drawing),
       };
     else if (rawAction.type === "player.leave") action = { type: rawAction.type };
+    else if (rawAction.type === "player.rename")
+      action = {
+        type: rawAction.type,
+        name: multiplayerBoundedText(rawAction.name, 32, "Add your name").trim(),
+      };
+    else if (rawAction.type === "host.pass")
+      action = { type: rawAction.type, playerId: text(rawAction.playerId, 80) };
     else throw new Error("Invalid action");
     return {
       roomId: multiplayerRoomId(data.roomId),
       playerId: text(data.playerId, 80),
       playerToken: credential(data.playerToken),
-      action,
+      action: { ...action, actionId: text(rawAction.actionId, 80) },
     };
   })
   .handler(({ data }) => applyDrawCountryAction(data));

@@ -150,8 +150,15 @@ export const applyTwinActionFn = createServerFn({ method: "POST" })
     else if (raw.type === "game.replay" || raw.type === "game.lobby" || raw.type === "heat.next")
       action = { type: raw.type };
     else if (raw.type === "player.leave") action = { type: raw.type };
+    else if (raw.type === "player.rename")
+      action = {
+        type: raw.type,
+        name: multiplayerBoundedText(raw.name, 32, "Add your name").trim(),
+      };
+    else if (raw.type === "host.pass")
+      action = { type: raw.type, playerId: text(raw.playerId, 80) };
     else throw new Error("Invalid action");
 
-    return { ...identity(data), action };
+    return { ...identity(data), action: { ...action, actionId: text(raw.actionId, 80) } };
   })
   .handler(({ data }) => applyTwinAction(data));

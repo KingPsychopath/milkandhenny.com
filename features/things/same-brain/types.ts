@@ -179,12 +179,14 @@ export type SameBrainHostAction = MultiplayerAction &
     | { type: "result.merge"; round: number; from: number; to: number }
     | { type: "result.reset"; round: number }
     | { type: "player.remove"; playerId: string }
+    | { type: "host.pass"; playerId: string }
     | { type: "game.replay" | "game.lobby" | "game.end" }
   );
 
 export type SameBrainPlayerAction = MultiplayerAction &
   (
     | { type: "room.leave" }
+    | { type: "player.rename"; name: string }
     | { type: "readiness.set"; ready: boolean }
     | { type: "answer.submit"; round: number; text: string }
     | { type: "answer.clear"; round: number }

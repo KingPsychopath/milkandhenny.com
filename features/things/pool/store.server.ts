@@ -1,4 +1,4 @@
-import { randomBytes } from "node:crypto";
+import { createHash, createHmac, randomBytes } from "node:crypto";
 import type { PoolClient } from "pg";
 import { query, queryOne, transaction } from "@/lib/platform/postgres.server";
 import { GAME_POOL_DEFAULTS, gamePoolPreset, isGamePoolGame } from "./presets";
@@ -9,6 +9,7 @@ import type {
   GamePoolPreset,
   GamePoolRun,
 } from "./types";
+import { recordGamePoolAllocationContention } from "./operations.server";
 
 interface EntranceRow {
   id: string;
@@ -58,12 +59,21 @@ const ENTRANCE_SELECT = `
   ) r on true
 `;
 
-function opaqueId(prefix: "gpe" | "gpr" | "gpa") {
+function opaqueId(prefix: "gpe" | "gpr" | "gpa" | "gpm") {
   return `${prefix}_${randomBytes(16).toString("base64url")}`;
 }
 
 function publicToken() {
   return `play_${randomBytes(24).toString("base64url")}`;
+}
+
+function operatorToken(entranceId: string, actionId: string) {
+  const secret = process.env.AUTH_SECRET ?? "local-game-pool-operator-secret";
+  return `operate_${createHmac("sha256", secret).update(`${entranceId}:${actionId}`).digest("base64url")}`;
+}
+
+function tokenHash(token: string) {
+  return createHash("sha256").update(token).digest("hex");
 }
 
 function visibility(value: string): GamePoolNameVisibility {
@@ -133,6 +143,7 @@ export async function createGamePoolEntrance(input: {
   allowRoomChoice?: boolean;
   allowNewRooms?: boolean;
   nameVisibility?: GamePoolNameVisibility;
+  actionId?: string;
 }) {
   const defaults = GAME_POOL_DEFAULTS[input.game];
   const targetSize = Math.max(
@@ -141,11 +152,19 @@ export async function createGamePoolEntrance(input: {
   );
   const id = opaqueId("gpe");
   const token = publicToken();
+  if (input.actionId) {
+    const existing = await queryOne<{ id: string }>(
+      "select id from game_pool_entrances where create_action_id = $1",
+      [input.actionId],
+    );
+    if (existing) return getGamePoolEntrance(existing.id);
+  }
   await query(
     `insert into game_pool_entrances (
       id, token, label, game, preset, target_size,
-      allow_room_choice, allow_new_rooms, name_visibility
-    ) values ($1, $2, $3, $4, $5::jsonb, $6, $7, $8, $9)`,
+      allow_room_choice, allow_new_rooms, name_visibility, create_action_id
+    ) values ($1, $2, $3, $4, $5::jsonb, $6, $7, $8, $9, $10)
+    on conflict (create_action_id) where create_action_id is not null do nothing`,
     [
       id,
       token,
@@ -156,9 +175,15 @@ export async function createGamePoolEntrance(input: {
       input.allowRoomChoice ?? true,
       input.allowNewRooms ?? true,
       input.nameVisibility ?? "first-names",
+      input.actionId ?? null,
     ],
   );
-  const entrance = await getGamePoolEntrance(id);
+  const entrance = input.actionId
+    ? await queryOne<{ id: string }>(
+        "select id from game_pool_entrances where create_action_id = $1",
+        [input.actionId],
+      ).then((row) => (row ? getGamePoolEntrance(row.id) : null))
+    : await getGamePoolEntrance(id);
   if (!entrance) throw new Error("Game entrance was not created");
   return entrance;
 }
@@ -221,9 +246,11 @@ export async function updateGamePoolEntrance(
 
 export async function openGamePoolRun(
   entranceId: string,
-  input: { durationMinutes?: number } = {},
+  input: { durationMinutes?: number; actionId?: string } = {},
 ) {
   const runId = opaqueId("gpr");
+  const openingActionId = input.actionId ?? randomBytes(16).toString("base64url");
+  const rawOperatorToken = operatorToken(entranceId, openingActionId);
   await transaction(async (client) => {
     const entrance = await client.query<{
       preset: GamePoolPreset;
@@ -235,6 +262,11 @@ export async function openGamePoolRun(
     }>("select * from game_pool_entrances where id = $1 for update", [entranceId]);
     const row = entrance.rows[0];
     if (!row || row.retired_at) throw new Error("Game entrance is unavailable");
+    const repeated = await client.query(
+      `select id from game_pool_runs where entrance_id = $1 and opening_action_id = $2`,
+      [entranceId, openingActionId],
+    );
+    if (repeated.rows[0]) return;
     await client.query(
       `update game_pool_runs
        set status = 'closed', closed_at = now(), updated_at = now()
@@ -249,8 +281,8 @@ export async function openGamePoolRun(
     await client.query(
       `insert into game_pool_runs (
         id, entrance_id, preset, target_size, allow_room_choice,
-        allow_new_rooms, name_visibility, closes_at
-      ) values ($1, $2, $3::jsonb, $4, $5, $6, $7, $8)`,
+        allow_new_rooms, name_visibility, closes_at, operator_token_hash, opening_action_id
+      ) values ($1, $2, $3::jsonb, $4, $5, $6, $7, $8, $9, $10)`,
       [
         runId,
         entranceId,
@@ -260,10 +292,13 @@ export async function openGamePoolRun(
         row.allow_new_rooms,
         row.name_visibility,
         closesAt,
+        tokenHash(rawOperatorToken),
+        openingActionId,
       ],
     );
   });
-  return getGamePoolEntrance(entranceId);
+  const entrance = await getGamePoolEntrance(entranceId);
+  return entrance ? { ...entrance, operatorToken: rawOperatorToken } : null;
 }
 
 export async function setGamePoolRunStatus(
@@ -279,6 +314,34 @@ export async function setGamePoolRunStatus(
     [entranceId, status],
   );
   return getGamePoolEntrance(entranceId);
+}
+
+export async function closeGamePoolRoomForAdmin(entranceId: string, roomId: string) {
+  const runId = await transaction(async (client) => {
+    const run = await client.query<{ id: string }>(
+      `select id from game_pool_runs
+       where entrance_id = $1 and status in ('open', 'paused')
+       order by opened_at desc limit 1 for update`,
+      [entranceId],
+    );
+    const activeRunId = run.rows[0]?.id;
+    if (!activeRunId) return null;
+    const room = await client.query(
+      `update game_pool_rooms set status = 'closed', updated_at = now()
+       where run_id = $1 and room_id = $2 and status <> 'closed'`,
+      [activeRunId, roomId],
+    );
+    if ((room.rowCount ?? 0) > 0)
+      await client.query(
+        `insert into game_pool_moderation_events
+         (id, run_id, room_id, action_id, actor, action)
+         values ($1, $2, $3, $4, 'pool_operator', 'room_closed')
+         on conflict (run_id, action_id) do nothing`,
+        [opaqueId("gpm"), activeRunId, roomId, `admin-close-room:${roomId}`],
+      );
+    return activeRunId;
+  });
+  return runId ? getGamePoolEntrance(entranceId) : null;
 }
 
 export interface GamePoolRoomRow {
@@ -300,7 +363,14 @@ export async function listGamePoolRoomRows(runId: string) {
 
 export function withGamePoolAllocation<T>(runId: string, use: (client: PoolClient) => Promise<T>) {
   return transaction(async (client) => {
-    await client.query("select pg_advisory_xact_lock(hashtext($1))", [`game-pool:${runId}`]);
+    const attempted = await client.query<{ acquired: boolean }>(
+      "select pg_try_advisory_xact_lock(hashtext($1)) as acquired",
+      [`game-pool:${runId}`],
+    );
+    if (!attempted.rows[0]?.acquired) {
+      recordGamePoolAllocationContention();
+      await client.query("select pg_advisory_xact_lock(hashtext($1))", [`game-pool:${runId}`]);
+    }
     return use(client);
   });
 }

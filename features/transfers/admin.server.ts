@@ -1,4 +1,4 @@
-import { getTransferMediaQueueLength } from "./media-queue.server";
+import { describeTransferMediaQueue, getTransferMediaQueueLength } from "./media-queue.server";
 import {
   getTransferMediaWorkerStatus,
   type TransferMediaWorkerStatus,
@@ -18,14 +18,16 @@ async function listAdminTransfers() {
 }
 
 async function getAdminTransferMediaStats() {
-  const [queueLength, worker] = await Promise.all([
+  const [queueLength, worker, queue] = await Promise.all([
     getTransferMediaQueueLength().catch(() => 0),
     getTransferMediaWorkerStatus().catch((): TransferMediaWorkerStatus => ({})),
+    describeTransferMediaQueue().catch(() => null),
   ]);
 
   return {
     queueLength,
     worker,
+    queue,
   };
 }
 

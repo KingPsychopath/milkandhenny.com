@@ -59,6 +59,8 @@ export function TwinLobby({
   message,
   onReadyChange,
   onStart,
+  onPassLead,
+  onRename,
   startLabel,
   onHandSize,
   colour,
@@ -73,6 +75,8 @@ export function TwinLobby({
   message: string | null;
   onReadyChange: (ready: boolean) => void;
   onStart: () => void;
+  onPassLead: (playerId: string) => void;
+  onRename: () => void;
   /** Overrides the start button label, e.g. after nudging unready players. */
   startLabel?: string | null;
   onHandSize: (handSize: number) => void;
@@ -152,9 +156,21 @@ export function TwinLobby({
               {player.name}
               {player.withdrawn ? " · left" : player.host ? " · host" : ""}
               {!player.withdrawn && !player.ready ? " · not ready" : ""}
+              {snapshot.canControl && !player.host && !player.withdrawn ? (
+                <button
+                  type="button"
+                  onClick={() => onPassLead(player.id)}
+                  className="twin-button twin-button--quiet"
+                >
+                  make lead
+                </button>
+              ) : null}
             </li>
           ))}
         </ul>
+        <button type="button" onClick={onRename} className="twin-button twin-button--quiet">
+          change my name
+        </button>
         <p aria-live="polite" className="twin-note">
           {readyCount} of {snapshot.players.filter(({ withdrawn }) => !withdrawn).length} ready · up
           to {twinMaxPlayers()} can play

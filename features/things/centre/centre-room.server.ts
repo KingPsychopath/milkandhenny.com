@@ -1,9 +1,11 @@
 import {
+  publishMultiplayerRoomTermination,
   publishMultiplayerRoomWake,
   runMultiplayerEffect,
 } from "../shared/multiplayer-runtime.server";
 import { CentreRoomService } from "./centre-room-service.server";
 import type * as engine from "./centre-room-engine.server";
+import { markGamePoolPlayerLeft, markGamePoolPlayersRemoved } from "../pool/membership.server";
 
 export function createCentreRoom(input: Parameters<typeof engine.createCentreRoom>[0]) {
   return runMultiplayerEffect(CentreRoomService.use((service) => service.createRoom(input)));
@@ -26,6 +28,27 @@ export function applyCentreAction(input: Parameters<typeof engine.applyCentreAct
   return runMultiplayerEffect(CentreRoomService.use((service) => service.applyAction(input))).then(
     async (result) => {
       await publishMultiplayerRoomWake("centre", input.roomId).catch(() => undefined);
+      if (result.ok && result.accepted && input.action.type === "player.leave") {
+        await markGamePoolPlayerLeft({ roomId: input.roomId, playerId: input.playerId }).catch(
+          () => undefined,
+        );
+        await publishMultiplayerRoomTermination("centre", input.roomId, {
+          reason: "session_ended",
+          playerId: input.playerId,
+        }).catch(() => undefined);
+      }
+      if (result.ok && result.accepted && input.action.type === "game.start") {
+        await markGamePoolPlayersRemoved({
+          roomId: input.roomId,
+          playerIds: input.action.removePlayerIds ?? [],
+          actionId: input.action.actionId ?? crypto.randomUUID(),
+        }).catch(() => undefined);
+        for (const playerId of input.action.removePlayerIds ?? [])
+          await publishMultiplayerRoomTermination("centre", input.roomId, {
+            reason: "removed",
+            playerId,
+          }).catch(() => undefined);
+      }
       return result;
     },
   );

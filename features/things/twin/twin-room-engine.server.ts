@@ -13,9 +13,11 @@ import {
   createMultiplayerCredential,
   hashMultiplayerCredential,
   multiplayerCredentialsMatch,
+  multiplayerActionSeen,
   multiplayerRoomExpiresAt,
   multiplayerSnapshotDigest,
   remainingMultiplayerRoomTtlSeconds,
+  rememberMultiplayerAction,
   withMultiplayerRoomLock,
 } from "../shared/room-primitives.server";
 import {
@@ -43,6 +45,7 @@ import {
 } from "./twin-rules";
 import type {
   TwinActionResult,
+  TwinAction,
   TwinDealtCard,
   TwinHeatResult,
   TwinJoinResult,
@@ -126,6 +129,7 @@ interface RoomState {
   hostHash: string;
   joinHash: string;
   hostPlayerId: string;
+  processedActions: string[];
   players: PlayerState[];
   middle: CardState | null;
   heat: HeatState | null;
@@ -682,6 +686,7 @@ export async function createTwinRoom(input: {
     hostHash: hashMultiplayerCredential(hostToken),
     joinHash: hashMultiplayerCredential(joinToken),
     hostPlayerId: host.id,
+    processedActions: [],
     players: [host],
     middle: null,
     heat: null,
@@ -724,7 +729,7 @@ export async function joinTwinRoom(input: {
       return multiplayerFailure("room_full", "This room is full");
     const name = input.name.trim();
     if (name.length < 1) return multiplayerFailure("invalid_name", "Add your name");
-    if (room.players.some((player) => player.name.toLowerCase() === name.toLowerCase()))
+    if (activePlayers(room).some((player) => player.name.toLowerCase() === name.toLowerCase()))
       return multiplayerFailure("name_taken", "That name is already playing");
 
     const playerToken = createMultiplayerCredential();
@@ -800,34 +805,25 @@ export async function applyTwinAction(input: {
   roomId: string;
   playerId: string;
   playerToken: string;
-  action:
-    | { type: "readiness.set"; ready: boolean }
-    | { type: "answer.tap"; heatId: string; symbolId: string; elapsedMs: number }
-    | { type: "game.start"; removePlayerIds?: string[] }
-    | { type: "game.configure"; handSize?: number; windowMs?: number; graceMs?: number }
-    | { type: "timing.configure"; settleHoldMs: number }
-    | { type: "game.replay" }
-    | { type: "game.lobby" }
-    | { type: "heat.next" }
-    | { type: "player.leave" };
+  action: TwinAction;
 }): Promise<TwinActionResult> {
   const result = await withRoom(input.roomId, async (room) => {
     const now = Date.now();
     const authenticated = authenticatedPlayer(room, input.playerId, input.playerToken);
     if (!authenticated) return null;
-    if (input.action.type === "player.leave") {
-      if (authenticated.withdrawn)
-        return { ok: true, accepted: true, snapshot: snapshot(room, authenticated.id) } as const;
-      transferHost(room, authenticated.id, now);
-      if (room.phase === "lobby") {
-        room.players = room.players.filter(({ id }) => id !== authenticated.id);
-        if (room.players.length === 0) room.phase = "closed";
-      } else {
-        authenticated.withdrawn = true;
-        if (activePlayers(room).length === 0) room.phase = "closed";
-      }
-      changed(room);
+    const actionId = input.action.actionId ?? crypto.randomUUID();
+    const accept = () => {
+      room.processedActions = rememberMultiplayerAction(room.processedActions, actionId);
       return { ok: true, accepted: true, snapshot: snapshot(room, authenticated.id) } as const;
+    };
+    if (multiplayerActionSeen(room.processedActions, actionId)) return accept();
+    if (input.action.type === "player.leave") {
+      if (authenticated.withdrawn) return accept();
+      transferHost(room, authenticated.id, now);
+      authenticated.withdrawn = true;
+      if (activePlayers(room).length === 0) room.phase = "closed";
+      changed(room);
+      return accept();
     }
     const player = validPlayer(room, input.playerId, input.playerToken);
     if (!player) return null;
@@ -838,6 +834,23 @@ export async function applyTwinAction(input: {
     const reject = (errorCode: Parameters<typeof rejection>[0], error: string, retryable = false) =>
       rejection(errorCode, error, current(), retryable);
 
+    if (input.action.type === "player.rename") {
+      const nextName = input.action.name;
+      if (room.phase !== "lobby")
+        return reject("action_unavailable", "Names only change in the lobby");
+      if (
+        activePlayers(room).some(
+          (candidate) =>
+            candidate.id !== player.id &&
+            candidate.name.toLocaleLowerCase() === nextName.toLocaleLowerCase(),
+        )
+      )
+        return reject("action_unavailable", "That name is already here");
+      player.name = nextName;
+      changed(room);
+      return accept();
+    }
+
     if (input.action.type === "readiness.set") {
       if (room.phase !== "lobby")
         return reject("action_unavailable", "Readiness can only change in the lobby");
@@ -845,7 +858,7 @@ export async function applyTwinAction(input: {
         setMultiplayerPlayerReady(player, input.action.ready);
         changed(room);
       }
-      return { ok: true, accepted: true, snapshot: current() } as const;
+      return accept();
     }
 
     if (input.action.type === "answer.tap") {
@@ -883,13 +896,22 @@ export async function applyTwinAction(input: {
         heat.graceEndsAt = twinGraceEnd(now, heat.deadlineAt, room.graceMs);
       changed(room);
       await appendLog(room, advance(room, now));
-      return { ok: true, accepted: true, snapshot: current() } as const;
+      return accept();
     }
 
     const host = room.players.find(({ id, withdrawn }) => id === room.hostPlayerId && !withdrawn);
     const canControl =
       player.id === room.hostPlayerId || !host || now - host.lastSeenAt > HOST_TAKEOVER_MS;
     if (!canControl) return reject("not_host", "The host controls the game");
+
+    if (input.action.type === "host.pass") {
+      const targetId = input.action.playerId;
+      const target = activePlayers(room).find(({ id }) => id === targetId);
+      if (!target) return reject("action_unavailable", "That player is not available");
+      room.hostPlayerId = target.id;
+      changed(room);
+      return accept();
+    }
 
     if (input.action.type === "game.configure") {
       if (room.managed) return reject("action_unavailable", "The game-night settings are fixed");
@@ -903,14 +925,14 @@ export async function applyTwinAction(input: {
       room.order = plan.order;
       room.handSize = plan.handSize;
       changed(room);
-      return { ok: true, accepted: true, snapshot: current() } as const;
+      return accept();
     }
 
     if (input.action.type === "timing.configure") {
       if (room.managed) return reject("action_unavailable", "The game-night settings are fixed");
       room.settleHoldMs = input.action.settleHoldMs;
       changed(room);
-      return { ok: true, accepted: true, snapshot: current() } as const;
+      return accept();
     }
 
     if (input.action.type === "game.start" && room.phase === "lobby") {
@@ -941,13 +963,13 @@ export async function applyTwinAction(input: {
       if (!plan) return reject("deck_too_small", "There are too many players for the deck");
       await clearLog(room);
       applyDeal(room, plan, now);
-      return { ok: true, accepted: true, snapshot: current() } as const;
+      return accept();
     }
 
     if (input.action.type === "heat.next" && room.phase === "settle" && room.heat) {
       room.heat.nextHeatAt = now;
       await appendLog(room, advance(room, now));
-      return { ok: true, accepted: true, snapshot: current() } as const;
+      return accept();
     }
 
     if (
@@ -979,7 +1001,7 @@ export async function applyTwinAction(input: {
         room.gameNumber += 1;
         changed(room);
       }
-      return { ok: true, accepted: true, snapshot: current() } as const;
+      return accept();
     }
 
     return reject("action_unavailable", "That action is not available");

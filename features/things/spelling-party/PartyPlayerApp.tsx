@@ -69,7 +69,7 @@ export function PartyPlayerApp({ roomId }: { roomId: string }) {
   const [invite, setInvite] = useState("");
   const [credentials, setCredentials] = useState<PartyPlayerCredentials | null>(null);
   const [sessionReadyForRoom, setSessionReadyForRoom] = useState<string | null>(null);
-  const { loaded: nameLoaded, name, setName, remember } = useRememberedPlayerName(24);
+  const { loaded: nameLoaded, name, setName, remember } = useRememberedPlayerName(32);
   const [joining, setJoining] = useState(false);
   const [editingName, setEditingName] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -160,7 +160,7 @@ export function PartyPlayerApp({ roomId }: { roomId: string }) {
             id="party-name"
             value={name}
             onChange={(event) => setName(event.target.value)}
-            maxLength={24}
+            maxLength={32}
             autoComplete="name"
             enterKeyHint="go"
             placeholder="Your name"
@@ -677,10 +677,17 @@ function PartyPlayerGame({ credentials }: { credentials: PartyPlayerCredentials 
 
   const handleLeave = async () => {
     setLeaving(true);
-    if (isHost && credentials.presenterToken)
+    if (isHost && credentials.presenterToken) {
       await closePartyRoomFn({
         data: { roomId: credentials.roomId, presenterToken: credentials.presenterToken },
       }).catch(() => null);
+    } else {
+      const accepted = await send({ actionId: crypto.randomUUID(), type: "room.leave" });
+      if (!accepted) {
+        setLeaving(false);
+        return;
+      }
+    }
     sessionStorage.removeItem(partyBrowserKeys.invite(credentials.roomId));
     removeStorageKeys(localStorage, [playerKey(credentials.roomId), queueKey]);
     removeStoragePrefix(localStorage, partyBrowserKeys.draftPrefix(credentials.roomId));
@@ -736,6 +743,25 @@ function PartyPlayerGame({ credentials }: { credentials: PartyPlayerCredentials 
           <span aria-live="polite">{connectionLabel}</span>
         </span>
       </header>
+      {snapshot.phase === "lobby" ? (
+        <button
+          type="button"
+          onClick={() => {
+            const current =
+              snapshot.players.find(({ id }) => id === credentials.playerId)?.name ?? "";
+            const nextName = window.prompt("Name in this room", current)?.trim();
+            if (nextName && nextName !== current)
+              void send({
+                actionId: crypto.randomUUID(),
+                type: "player.rename",
+                name: nextName,
+              });
+          }}
+          className="mx-auto min-h-11 font-mono text-xs text-white/55 underline"
+        >
+          change my name
+        </button>
+      ) : null}
       <main
         id="main"
         data-phase={snapshot.phase}

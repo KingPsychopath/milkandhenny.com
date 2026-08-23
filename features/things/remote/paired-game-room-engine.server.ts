@@ -188,15 +188,6 @@ async function readRoom(roomId: string): Promise<RoomContext | null> {
   return { meta, keys: roomKeys };
 }
 
-function roleMatches(meta: RoomMeta, role: PairedGameRoomRole, token: string) {
-  if (role === "judge" && meta.creatorRole !== "judge") return false;
-  return multiplayerCredentialsMatch(
-    token,
-    role === "player" ? meta.playerHash : meta.judgeHash,
-    200,
-  );
-}
-
 export async function authorizePairedGameSocket(input: {
   roomId: string;
   role: PairedGameRoomRole;
@@ -626,14 +617,39 @@ export async function disconnectPairedGameJudge(input: {
 
 export async function closePairedGameRoom(roomId: string, role: PairedGameRoomRole, token: string) {
   const context = await readRoom(roomId);
-  if (!context) return { ok: true };
-  if (!roleMatches(context.meta, role, token)) return { ok: false };
+  if (!context) return { ok: true, closed: true };
+  const valid = multiplayerCredentialsMatch(
+    token,
+    role === "player" ? context.meta.playerHash : context.meta.judgeHash,
+    200,
+  );
+  if (!valid) return { ok: false, closed: false };
   const redis = getRedis();
+  if (role === "judge" && context.meta.creatorRole === "player") {
+    const meta = {
+      ...context.meta,
+      judgeHash: hashMultiplayerCredential(createMultiplayerCredential()),
+    };
+    if (!redis) {
+      const room = memoryRooms.get(roomId);
+      if (!room) return { ok: true, closed: false };
+      room.meta = meta;
+      room.activeJudgeEpoch = null;
+      room.judgeSeenAt = 0;
+    } else {
+      await redis.set(context.keys.meta, meta, {
+        ex: remainingMultiplayerRoomTtlSeconds(meta.expiresAt),
+      });
+      await redis.del(context.keys.judgeEpoch, context.keys.judgePresence);
+    }
+    log.info("things.paired-game-room", "Judge left", { game: context.meta.game });
+    return { ok: true, closed: false };
+  }
   if (!redis) {
     memoryRooms.delete(roomId);
   } else {
     await redis.del(...allPairedGameKeys(roomId));
   }
   log.info("things.paired-game-room", "Room closed", { game: context.meta.game, closedBy: role });
-  return { ok: true };
+  return { ok: true, closed: true };
 }

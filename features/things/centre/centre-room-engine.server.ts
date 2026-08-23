@@ -5,9 +5,11 @@ import {
   createMultiplayerCredential,
   hashMultiplayerCredential,
   multiplayerCredentialsMatch,
+  multiplayerActionSeen,
   multiplayerRoomExpiresAt,
   multiplayerSnapshotDigest,
   remainingMultiplayerRoomTtlSeconds,
+  rememberMultiplayerAction,
   withMultiplayerRoomLock,
 } from "../shared/room-primitives.server";
 import { multiplayerFailure } from "../shared/multiplayer";
@@ -83,6 +85,7 @@ interface RoomState {
   gameNumber: number;
   joinHash: string;
   hostPlayerId: string;
+  processedActions: string[];
   players: PlayerState[];
   course: CourseState | null;
 }
@@ -325,6 +328,7 @@ export async function createCentreRoom(input: {
     gameNumber: 1,
     joinHash: hashMultiplayerCredential(joinToken),
     hostPlayerId: playerId,
+    processedActions: [],
     players: [
       {
         id: playerId,
@@ -374,7 +378,7 @@ export async function joinCentreRoom(input: {
       return multiplayerFailure("room_full", "This room is full");
     const name = input.name.trim();
     if (!name) return multiplayerFailure("invalid_name", "Add your name");
-    if (room.players.some((player) => player.name.toLowerCase() === name.toLowerCase()))
+    if (activePlayers(room).some((player) => player.name.toLowerCase() === name.toLowerCase()))
       return multiplayerFailure("name_taken", "That name is already racing");
     const playerToken = createMultiplayerCredential();
     const player: PlayerState = {
@@ -447,25 +451,40 @@ export async function applyCentreAction(input: {
     const now = Date.now();
     const authenticated = authenticatedPlayer(room, input.playerId, input.playerToken);
     if (!authenticated) return null;
+    const actionId = input.action.actionId ?? crypto.randomUUID();
+    const accept = (playerId = authenticated.id) => {
+      room.processedActions = rememberMultiplayerAction(room.processedActions, actionId);
+      return { ok: true, accepted: true, snapshot: snapshot(room, playerId) } as const;
+    };
+    if (multiplayerActionSeen(room.processedActions, actionId)) return accept();
     if (input.action.type === "player.leave") {
-      if (authenticated.withdrawn)
-        return { ok: true, accepted: true, snapshot: snapshot(room, authenticated.id) } as const;
+      if (authenticated.withdrawn) return accept();
       transferHost(room, authenticated.id, now);
-      if (room.phase === "lobby") {
-        room.players = room.players.filter(({ id }) => id !== authenticated.id);
-        if (room.players.length === 0) room.phase = "closed";
-      } else {
-        authenticated.withdrawn = true;
-        if (activePlayers(room).length === 0) room.phase = "closed";
-      }
+      authenticated.withdrawn = true;
+      if (activePlayers(room).length === 0) room.phase = "closed";
       changed(room);
-      return { ok: true, accepted: true, snapshot: snapshot(room, authenticated.id) } as const;
+      return accept();
     }
     const player = validPlayer(room, input.playerId, input.playerToken);
     if (!player) return null;
     player.lastSeenAt = now;
     advance(room, now);
     const action = input.action;
+    if (action.type === "player.rename") {
+      if (room.phase !== "lobby")
+        return rejection(room, player.id, "Names only change in the lobby", "action_unavailable");
+      if (
+        activePlayers(room).some(
+          (candidate) =>
+            candidate.id !== player.id &&
+            candidate.name.toLocaleLowerCase() === action.name.toLocaleLowerCase(),
+        )
+      )
+        return rejection(room, player.id, "That name is already here", "action_unavailable");
+      player.name = action.name;
+      changed(room);
+      return accept(player.id);
+    }
     if (action.type === "readiness.set") {
       if (room.phase !== "lobby")
         return rejection(
@@ -478,7 +497,7 @@ export async function applyCentreAction(input: {
         setMultiplayerPlayerReady(player, action.ready);
         changed(room);
       }
-      return { ok: true, accepted: true, snapshot: snapshot(room, player.id) } as const;
+      return accept(player.id);
     }
     if (action.type === "arming.set") {
       if (room.phase !== "arming")
@@ -492,7 +511,7 @@ export async function applyCentreAction(input: {
         room.phase = "countdown";
         changed(room);
       }
-      return { ok: true, accepted: true, snapshot: snapshot(room, player.id) } as const;
+      return accept(player.id);
     }
     if (action.type === "race.finish") {
       if (
@@ -506,8 +525,7 @@ export async function applyCentreAction(input: {
           "The race is not accepting finishes",
           "action_unavailable",
         );
-      if (player.elapsedMs !== null)
-        return { ok: true, accepted: true, snapshot: snapshot(room, player.id) } as const;
+      if (player.elapsedMs !== null) return accept(player.id);
       const maze = generateCentreMaze({
         seed: room.course.seed,
         difficulty: room.course.difficulty,
@@ -546,7 +564,7 @@ export async function applyCentreAction(input: {
         route: action.route,
       });
       advance(room, now);
-      return { ok: true, accepted: true, snapshot: snapshot(room, player.id) } as const;
+      return accept(player.id);
     }
     if (action.type === "race.progress" || action.type === "race.retire") {
       const allowed =
@@ -556,7 +574,7 @@ export async function applyCentreAction(input: {
       if (!allowed || !room.course?.startsAt || player.entranceIndex === null)
         return rejection(room, player.id, "The race is not accepting routes", "action_unavailable");
       if (player.elapsedMs !== null || (await loadReplay(room, player.id))?.finished)
-        return { ok: true, accepted: true, snapshot: snapshot(room, player.id) } as const;
+        return accept(player.id);
       const maze = generateCentreMaze({
         seed: room.course.seed,
         difficulty: room.course.difficulty,
@@ -575,13 +593,21 @@ export async function applyCentreAction(input: {
         finished: false,
         route: action.route,
       });
-      return { ok: true, accepted: true, snapshot: snapshot(room, player.id) } as const;
+      return accept(player.id);
     }
     const host = room.players.find(({ id, withdrawn }) => id === room.hostPlayerId && !withdrawn);
     const canControl =
       player.id === room.hostPlayerId || !host || now - host.lastSeenAt > HOST_TAKEOVER_MS;
     if (!canControl)
       return rejection(room, player.id, "The host controls the race", "action_unavailable");
+    if (action.type === "host.pass") {
+      const target = activePlayers(room).find(({ id }) => id === action.playerId);
+      if (!target)
+        return rejection(room, player.id, "That player is not available", "action_unavailable");
+      room.hostPlayerId = target.id;
+      changed(room);
+      return accept(player.id);
+    }
     if (action.type === "game.configure") {
       if (room.managed)
         return rejection(
@@ -595,7 +621,7 @@ export async function applyCentreAction(input: {
       if (action.difficulty !== undefined) room.difficulty = action.difficulty;
       if (action.delayedRivals !== undefined) room.delayedRivals = action.delayedRivals;
       changed(room);
-      return { ok: true, accepted: true, snapshot: snapshot(room, player.id) } as const;
+      return accept(player.id);
     }
     if (action.type === "game.start" && room.phase === "lobby") {
       const confirmed = new Set(action.removePlayerIds ?? []);
@@ -615,7 +641,7 @@ export async function applyCentreAction(input: {
             !confirmed.has(candidate.id),
         );
       startCourse(room, now);
-      return { ok: true, accepted: true, snapshot: snapshot(room, player.id) } as const;
+      return accept(player.id);
     }
     if (
       (action.type === "game.replay" || action.type === "game.lobby") &&
@@ -637,7 +663,7 @@ export async function applyCentreAction(input: {
         }
         changed(room);
       }
-      return { ok: true, accepted: true, snapshot: snapshot(room, player.id) } as const;
+      return accept(player.id);
     }
     return rejection(room, player.id, "That action is not available", "action_unavailable");
   });

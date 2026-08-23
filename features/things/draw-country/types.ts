@@ -1,4 +1,5 @@
 import type {
+  MultiplayerAction,
   MultiplayerFailure,
   MultiplayerRevision,
   MultiplayerRoomLifetime,
@@ -114,6 +115,19 @@ export type DrawCountrySnapshotResult =
   /** The viewer's digest matched, so the body was left off. */
   | MultiplayerSuccess<{ unchanged: true; serverNow: number; snapshot: null }>
   | (MultiplayerFailure<"room_unavailable"> & { snapshot: null });
+
+export type DrawCountryAction = Partial<MultiplayerAction> &
+  (
+    | { type: "game.start"; removePlayerIds?: string[] }
+    | { type: "readiness.set"; ready: boolean }
+    | { type: "round.next" }
+    | { type: "game.replay" }
+    | { type: "game.lobby" }
+    | { type: "drawing.submit"; roundId: string; drawing: CountryDrawing }
+    | { type: "player.leave" }
+    | { type: "player.rename"; name: string }
+    | { type: "host.pass"; playerId: string }
+  );
 
 export type DrawCountryActionResult =
   | MultiplayerSuccess<{ accepted: true; snapshot: DrawCountrySnapshot }>

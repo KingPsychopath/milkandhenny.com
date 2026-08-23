@@ -377,6 +377,42 @@ function LobbyPhase({ snapshot, isHost, send, sendHost }: PhaseProps) {
         <div className="mt-3">
           <PlayerList snapshot={snapshot} />
         </div>
+        <button
+          type="button"
+          onClick={() => {
+            const current =
+              snapshot.players.find(({ id }) => id === snapshot.player?.playerId)?.name ?? "";
+            const name = window.prompt("Name in this room", current)?.trim();
+            if (name && name !== current) void send({ type: "player.rename", name });
+          }}
+          className="mt-3 min-h-11 font-mono text-xs text-white/55 underline"
+        >
+          change my name
+        </button>
+        {isHost && snapshot.players.length > 1 ? (
+          <label className="mt-4 block font-mono text-xs text-white/60">
+            pass room lead
+            <select
+              defaultValue=""
+              onChange={(event) => {
+                if (event.target.value)
+                  void sendHost({ type: "host.pass", playerId: event.target.value });
+              }}
+              className="mt-2 min-h-11 w-full border border-white/20 bg-transparent px-3 text-white"
+            >
+              <option value="" className="text-black">
+                choose a player
+              </option>
+              {snapshot.players
+                .filter(({ host, left }) => !host && !left)
+                .map((player) => (
+                  <option key={player.id} value={player.id} className="text-black">
+                    {player.name}
+                  </option>
+                ))}
+            </select>
+          </label>
+        ) : null}
       </div>
 
       <div className="mt-10">

@@ -7,12 +7,14 @@ import { apiErrorFromRequest } from "@/lib/platform/api-error";
 import { getAdminTransferMediaStats } from "@/features/transfers/admin.server";
 import { getMediaProcessorMode } from "@/features/media/config.server";
 import { forceReprocessTransferFiles } from "@/features/transfers/media-backends/worker.server";
+import { retryDeadTransferMediaJobs } from "@/features/transfers/media-queue.server";
 
 type ProcessMediaBody =
   | { mode?: "drain"; limit?: number }
   | { mode: "retry"; transferId?: string; mediaId?: string; filename?: string; force?: boolean }
   | { mode: "backfill"; transferId?: string }
-  | { mode: "reprocess"; transferId?: string; kind?: string; mediaId?: string; filename?: string };
+  | { mode: "reprocess"; transferId?: string; kind?: string; mediaId?: string; filename?: string }
+  | { mode: "retry-dead"; limit?: number };
 
 async function handlePOST(request: Request) {
   const authErr = await requireAuth(request, "admin");
@@ -41,6 +43,13 @@ async function handlePOST(request: Request) {
         queueLength: media.queueLength,
         worker: media.worker,
       });
+    }
+
+    if (mode === "retry-dead") {
+      const retried = await retryDeadTransferMediaJobs(
+        "limit" in body && typeof body.limit === "number" ? body.limit : 25,
+      );
+      return Response.json({ success: true, mode, retried });
     }
 
     if (mode === "reprocess") {

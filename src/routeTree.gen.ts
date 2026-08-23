@@ -33,6 +33,7 @@ import { Route as ApiWordsRouteRouteImport } from './routes/api/words/route'
 import { Route as DropTokenRouteImport } from './routes/drop.$token'
 import { Route as EventsIndexRouteImport } from './routes/events/index'
 import { Route as EventsSlugRouteImport } from './routes/events/$slug'
+import { Route as OrganizeTokenRouteImport } from './routes/organize.$token'
 import { Route as PicsIndexRouteImport } from './routes/pics/index'
 import { Route as PlayTokenRouteImport } from './routes/play.$token'
 import { Route as ScanIndexRouteImport } from './routes/scan.index'
@@ -64,6 +65,7 @@ import { Route as ApiAdminTransfersRouteRouteImport } from './routes/api/admin/t
 import { Route as ApiAdminVerifyRouteRouteImport } from './routes/api/admin/verify/route'
 import { Route as ApiAdminWordMediaRouteRouteImport } from './routes/api/admin/word-media/route'
 import { Route as ApiAdminWordSharesRouteRouteImport } from './routes/api/admin/word-shares/route'
+import { Route as ApiCronCleanupGamePoolsRouteRouteImport } from './routes/api/cron/cleanup-game-pools/route'
 import { Route as ApiCronCleanupPitchesRouteRouteImport } from './routes/api/cron/cleanup-pitches/route'
 import { Route as ApiCronCleanupTransfersRouteRouteImport } from './routes/api/cron/cleanup-transfers/route'
 import { Route as ApiCronCleanupWordMediaOrphansRouteRouteImport } from './routes/api/cron/cleanup-word-media-orphans/route'
@@ -263,6 +265,11 @@ const EventsSlugRoute = EventsSlugRouteImport.update({
   path: '/events/$slug',
   getParentRoute: () => rootRouteImport,
 } as any)
+const OrganizeTokenRoute = OrganizeTokenRouteImport.update({
+  id: '/organize/$token',
+  path: '/organize/$token',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const PicsIndexRoute = PicsIndexRouteImport.update({
   id: '/pics/',
   path: '/pics/',
@@ -420,6 +427,12 @@ const ApiAdminWordSharesRouteRoute = ApiAdminWordSharesRouteRouteImport.update({
   path: '/api/admin/word-shares',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiCronCleanupGamePoolsRouteRoute =
+  ApiCronCleanupGamePoolsRouteRouteImport.update({
+    id: '/api/cron/cleanup-game-pools',
+    path: '/api/cron/cleanup-game-pools',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ApiCronCleanupPitchesRouteRoute =
   ApiCronCleanupPitchesRouteRouteImport.update({
     id: '/api/cron/cleanup-pitches',
@@ -880,6 +893,7 @@ export interface FileRoutesByFullPath {
   '/admin/editor': typeof AdminEditorRoute
   '/drop/$token': typeof DropTokenRoute
   '/events/$slug': typeof EventsSlugRoute
+  '/organize/$token': typeof OrganizeTokenRoute
   '/play/$token': typeof PlayTokenRoute
   '/scan/$token': typeof ScanTokenRoute
   '/t/$id': typeof TIdRoute
@@ -913,6 +927,7 @@ export interface FileRoutesByFullPath {
   '/api/admin/verify': typeof ApiAdminVerifyRouteRoute
   '/api/admin/word-media': typeof ApiAdminWordMediaRouteRouteWithChildren
   '/api/admin/word-shares': typeof ApiAdminWordSharesRouteRouteWithChildren
+  '/api/cron/cleanup-game-pools': typeof ApiCronCleanupGamePoolsRouteRoute
   '/api/cron/cleanup-pitches': typeof ApiCronCleanupPitchesRouteRoute
   '/api/cron/cleanup-transfers': typeof ApiCronCleanupTransfersRouteRoute
   '/api/cron/cleanup-word-media-orphans': typeof ApiCronCleanupWordMediaOrphansRouteRoute
@@ -1015,6 +1030,7 @@ export interface FileRoutesByTo {
   '/admin/editor': typeof AdminEditorRoute
   '/drop/$token': typeof DropTokenRoute
   '/events/$slug': typeof EventsSlugRoute
+  '/organize/$token': typeof OrganizeTokenRoute
   '/play/$token': typeof PlayTokenRoute
   '/scan/$token': typeof ScanTokenRoute
   '/t/$id': typeof TIdRoute
@@ -1048,6 +1064,7 @@ export interface FileRoutesByTo {
   '/api/admin/verify': typeof ApiAdminVerifyRouteRoute
   '/api/admin/word-media': typeof ApiAdminWordMediaRouteRouteWithChildren
   '/api/admin/word-shares': typeof ApiAdminWordSharesRouteRouteWithChildren
+  '/api/cron/cleanup-game-pools': typeof ApiCronCleanupGamePoolsRouteRoute
   '/api/cron/cleanup-pitches': typeof ApiCronCleanupPitchesRouteRoute
   '/api/cron/cleanup-transfers': typeof ApiCronCleanupTransfersRouteRoute
   '/api/cron/cleanup-word-media-orphans': typeof ApiCronCleanupWordMediaOrphansRouteRoute
@@ -1151,6 +1168,7 @@ export interface FileRoutesById {
   '/admin/editor': typeof AdminEditorRoute
   '/drop/$token': typeof DropTokenRoute
   '/events/$slug': typeof EventsSlugRoute
+  '/organize/$token': typeof OrganizeTokenRoute
   '/play/$token': typeof PlayTokenRoute
   '/scan/$token': typeof ScanTokenRoute
   '/t/$id': typeof TIdRoute
@@ -1184,6 +1202,7 @@ export interface FileRoutesById {
   '/api/admin/verify': typeof ApiAdminVerifyRouteRoute
   '/api/admin/word-media': typeof ApiAdminWordMediaRouteRouteWithChildren
   '/api/admin/word-shares': typeof ApiAdminWordSharesRouteRouteWithChildren
+  '/api/cron/cleanup-game-pools': typeof ApiCronCleanupGamePoolsRouteRoute
   '/api/cron/cleanup-pitches': typeof ApiCronCleanupPitchesRouteRoute
   '/api/cron/cleanup-transfers': typeof ApiCronCleanupTransfersRouteRoute
   '/api/cron/cleanup-word-media-orphans': typeof ApiCronCleanupWordMediaOrphansRouteRoute
@@ -1288,6 +1307,7 @@ export interface FileRouteTypes {
     | '/admin/editor'
     | '/drop/$token'
     | '/events/$slug'
+    | '/organize/$token'
     | '/play/$token'
     | '/scan/$token'
     | '/t/$id'
@@ -1321,6 +1341,7 @@ export interface FileRouteTypes {
     | '/api/admin/verify'
     | '/api/admin/word-media'
     | '/api/admin/word-shares'
+    | '/api/cron/cleanup-game-pools'
     | '/api/cron/cleanup-pitches'
     | '/api/cron/cleanup-transfers'
     | '/api/cron/cleanup-word-media-orphans'
@@ -1423,6 +1444,7 @@ export interface FileRouteTypes {
     | '/admin/editor'
     | '/drop/$token'
     | '/events/$slug'
+    | '/organize/$token'
     | '/play/$token'
     | '/scan/$token'
     | '/t/$id'
@@ -1456,6 +1478,7 @@ export interface FileRouteTypes {
     | '/api/admin/verify'
     | '/api/admin/word-media'
     | '/api/admin/word-shares'
+    | '/api/cron/cleanup-game-pools'
     | '/api/cron/cleanup-pitches'
     | '/api/cron/cleanup-transfers'
     | '/api/cron/cleanup-word-media-orphans'
@@ -1558,6 +1581,7 @@ export interface FileRouteTypes {
     | '/admin/editor'
     | '/drop/$token'
     | '/events/$slug'
+    | '/organize/$token'
     | '/play/$token'
     | '/scan/$token'
     | '/t/$id'
@@ -1591,6 +1615,7 @@ export interface FileRouteTypes {
     | '/api/admin/verify'
     | '/api/admin/word-media'
     | '/api/admin/word-shares'
+    | '/api/cron/cleanup-game-pools'
     | '/api/cron/cleanup-pitches'
     | '/api/cron/cleanup-transfers'
     | '/api/cron/cleanup-word-media-orphans'
@@ -1694,6 +1719,7 @@ export interface RootRouteChildren {
   AdminEditorRoute: typeof AdminEditorRoute
   DropTokenRoute: typeof DropTokenRoute
   EventsSlugRoute: typeof EventsSlugRoute
+  OrganizeTokenRoute: typeof OrganizeTokenRoute
   PlayTokenRoute: typeof PlayTokenRoute
   ScanTokenRoute: typeof ScanTokenRoute
   TIdRoute: typeof TIdRoute
@@ -1717,6 +1743,7 @@ export interface RootRouteChildren {
   ApiAdminVerifyRouteRoute: typeof ApiAdminVerifyRouteRoute
   ApiAdminWordMediaRouteRoute: typeof ApiAdminWordMediaRouteRouteWithChildren
   ApiAdminWordSharesRouteRoute: typeof ApiAdminWordSharesRouteRouteWithChildren
+  ApiCronCleanupGamePoolsRouteRoute: typeof ApiCronCleanupGamePoolsRouteRoute
   ApiCronCleanupPitchesRouteRoute: typeof ApiCronCleanupPitchesRouteRoute
   ApiCronCleanupTransfersRouteRoute: typeof ApiCronCleanupTransfersRouteRoute
   ApiCronCleanupWordMediaOrphansRouteRoute: typeof ApiCronCleanupWordMediaOrphansRouteRoute
@@ -1914,6 +1941,13 @@ declare module '@tanstack/react-router' {
       path: '/events/$slug'
       fullPath: '/events/$slug'
       preLoaderRoute: typeof EventsSlugRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/organize/$token': {
+      id: '/organize/$token'
+      path: '/organize/$token'
+      fullPath: '/organize/$token'
+      preLoaderRoute: typeof OrganizeTokenRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/pics/': {
@@ -2131,6 +2165,13 @@ declare module '@tanstack/react-router' {
       path: '/api/admin/word-shares'
       fullPath: '/api/admin/word-shares'
       preLoaderRoute: typeof ApiAdminWordSharesRouteRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/cron/cleanup-game-pools': {
+      id: '/api/cron/cleanup-game-pools'
+      path: '/api/cron/cleanup-game-pools'
+      fullPath: '/api/cron/cleanup-game-pools'
+      preLoaderRoute: typeof ApiCronCleanupGamePoolsRouteRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/cron/cleanup-pitches': {
@@ -2995,6 +3036,7 @@ const rootRouteChildren: RootRouteChildren = {
   AdminEditorRoute: AdminEditorRoute,
   DropTokenRoute: DropTokenRoute,
   EventsSlugRoute: EventsSlugRoute,
+  OrganizeTokenRoute: OrganizeTokenRoute,
   PlayTokenRoute: PlayTokenRoute,
   ScanTokenRoute: ScanTokenRoute,
   TIdRoute: TIdRoute,
@@ -3018,6 +3060,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiAdminVerifyRouteRoute: ApiAdminVerifyRouteRoute,
   ApiAdminWordMediaRouteRoute: ApiAdminWordMediaRouteRouteWithChildren,
   ApiAdminWordSharesRouteRoute: ApiAdminWordSharesRouteRouteWithChildren,
+  ApiCronCleanupGamePoolsRouteRoute: ApiCronCleanupGamePoolsRouteRoute,
   ApiCronCleanupPitchesRouteRoute: ApiCronCleanupPitchesRouteRoute,
   ApiCronCleanupTransfersRouteRoute: ApiCronCleanupTransfersRouteRoute,
   ApiCronCleanupWordMediaOrphansRouteRoute:

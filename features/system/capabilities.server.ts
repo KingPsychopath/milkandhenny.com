@@ -13,7 +13,7 @@ import { getRedis, getRedisRestConfig } from "@/lib/platform/redis.server";
 import { describeEmailCapability } from "@/lib/platform/email.server";
 import { describePaymentsCapability } from "@/lib/platform/stripe.server";
 import { checkDatabase, isDatabaseConfigured } from "@/lib/platform/postgres.server";
-import { getDirectRedisConfig } from "@/lib/platform/redis-direct.server";
+import { getCommandRedis, getDirectRedisConfig } from "@/lib/platform/redis-direct.server";
 import { hasMediaPublicUrl } from "@/lib/shared/config";
 import { getRuntimeMetadata } from "@/lib/platform/runtime-metadata.server";
 import { getDatabaseBootState } from "@/lib/platform/database-readiness.server";
@@ -211,6 +211,35 @@ async function probeSystemCapabilities(): Promise<
         latencyMs: Date.now() - startedAt,
         detail: "Persistent application state is configured but unreachable.",
       };
+    }
+  }
+
+  if (getDirectRedisConfig()) {
+    try {
+      const response = await (
+        getCommandRedis() as unknown as {
+          config: (command: "GET", key: string) => Promise<unknown>;
+        }
+      ).config("GET", "maxmemory-policy");
+      const policy = Array.isArray(response) ? response.at(-1) : null;
+      capabilities.push({
+        id: "redis-eviction",
+        label: "active room eviction",
+        status: policy === "noeviction" ? "available" : "degraded",
+        required: false,
+        detail:
+          policy === "noeviction"
+            ? "Redis uses noeviction, so active room keys are not silently removed."
+            : `Redis eviction policy is ${String(policy ?? "unknown")}; use noeviction for active rooms.`,
+      });
+    } catch {
+      capabilities.push({
+        id: "redis-eviction",
+        label: "active room eviction",
+        status: "degraded",
+        required: false,
+        detail: "The provider did not allow an eviction-policy check. Confirm noeviction manually.",
+      });
     }
   }
 

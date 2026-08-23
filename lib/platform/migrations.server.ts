@@ -603,6 +603,47 @@ const MIGRATIONS: Migration[] = [
     `,
   },
   {
+    id: "0016_game_night_pool_operations",
+    sql: `
+      alter table game_pool_assignments
+        drop constraint if exists game_pool_assignments_status_check;
+      alter table game_pool_assignments
+        add constraint game_pool_assignments_status_check
+        check (status in ('active', 'left', 'removed', 'session_ended'));
+
+      alter table game_pool_runs
+        add column if not exists operator_token_hash text;
+      alter table game_pool_runs
+        add column if not exists opening_action_id text;
+      alter table game_pool_entrances
+        add column if not exists create_action_id text;
+      create unique index if not exists game_pool_runs_operator_token_idx
+        on game_pool_runs (operator_token_hash)
+        where operator_token_hash is not null;
+      create unique index if not exists game_pool_runs_open_action_idx
+        on game_pool_runs (entrance_id, opening_action_id)
+        where opening_action_id is not null;
+      create unique index if not exists game_pool_entrances_create_action_idx
+        on game_pool_entrances (create_action_id)
+        where create_action_id is not null;
+
+      create table if not exists game_pool_moderation_events (
+        id            text primary key,
+        run_id        text not null references game_pool_runs (id) on delete cascade,
+        room_id       text,
+        assignment_id text references game_pool_assignments (id) on delete set null,
+        action_id     text not null,
+        actor         text not null check (actor in ('server', 'room_lead', 'pool_operator')),
+        action        text not null check (action in ('player_removed', 'room_closed')),
+        created_at    timestamptz not null default now(),
+        unique (run_id, action_id)
+      );
+
+      create index if not exists game_pool_moderation_run_idx
+        on game_pool_moderation_events (run_id, created_at desc);
+    `,
+  },
+  {
     id: "0017_pitch_version_history",
     sql: `
       alter table pitch_deck_backups drop constraint if exists pitch_deck_backups_reason_check;

@@ -50,6 +50,7 @@ export function useDrawCountryRoom(input: {
           playerToken: input.playerToken,
         },
     onWake: () => void room.refresh(),
+    onTerminal: () => void room.refresh(),
   });
 
   return {

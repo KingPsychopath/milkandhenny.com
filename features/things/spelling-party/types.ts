@@ -38,7 +38,7 @@ export interface PartyCustomDeckInput {
 export interface PartyPlayerSummary {
   id: string;
   name: string;
-  status: "ready" | "typing" | "locked" | "disconnected";
+  status: "ready" | "typing" | "locked" | "disconnected" | "left";
   /** This game only. Reset by a rematch. */
   score: number;
   /** Every game played on this room code, including the one in progress. */
@@ -46,6 +46,7 @@ export interface PartyPlayerSummary {
   connected: boolean;
   ready: boolean;
   integrityNotices: number;
+  left: boolean;
 }
 
 export interface PartyRevealAnswer {
@@ -169,6 +170,8 @@ export type PartyPresenterAction = MultiplayerAction &
 export type PartyPlayerAction = MultiplayerAction &
   (
     | { type: "readiness.set"; ready: boolean }
+    | { type: "room.leave" }
+    | { type: "player.rename"; name: string }
     | {
         type: "draft.update";
         roundId: string;

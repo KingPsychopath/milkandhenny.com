@@ -91,6 +91,8 @@ interface PlayerState {
   startRequestId?: string | null;
   startRequestedAt?: number | null;
   integrityRoundIds: string[];
+  joinedAt: number;
+  leftAt?: number;
 }
 interface RoundState {
   roundId: string;
@@ -162,6 +164,18 @@ const safeEqual = multiplayerCredentialsMatch;
 function changed(room: PartyRoomState) {
   room.revision += 1;
   room.sequence += 1;
+}
+function activePlayers(room: PartyRoomState) {
+  return room.players.filter(({ leftAt }) => leftAt === undefined);
+}
+function transferHost(room: PartyRoomState, leavingId: string, now: number) {
+  if (room.hostPlayerId !== leavingId) return;
+  const eligible = activePlayers(room)
+    .filter(({ id }) => id !== leavingId)
+    .toSorted((left, right) => left.joinedAt - right.joinedAt || left.id.localeCompare(right.id));
+  room.hostPlayerId =
+    eligible.find(({ lastSeenAt }) => now - lastSeenAt <= CONNECTED_WINDOW_MS)?.id ??
+    eligible[0]?.id;
 }
 function normalizeAnswer(value: string) {
   return value.normalize("NFKC").trim().toLocaleLowerCase("en-US");
@@ -279,7 +293,7 @@ function wordFor(room: PartyRoomState): PartyWord | null {
 }
 
 function lockAll(room: PartyRoomState, now: number) {
-  for (const player of room.players) {
+  for (const player of activePlayers(room)) {
     if (player.locked) continue;
     player.locked = true;
     player.automatic = true;
@@ -353,23 +367,27 @@ function snapshot(
     gameNumber: room.gameNumber ?? 1,
     expiresAt: room.expiresAt,
     players: room.players.map((player) => {
+      const left = player.leftAt !== undefined;
       const connected = now - player.lastSeenAt <= CONNECTED_WINDOW_MS;
       return {
         id: player.id,
         name: player.name,
-        status: connected
-          ? player.locked
-            ? "locked"
-            : player.draft
-              ? "typing"
-              : "ready"
-          : "disconnected",
+        status: left
+          ? "left"
+          : connected
+            ? player.locked
+              ? "locked"
+              : player.draft
+                ? "typing"
+                : "ready"
+            : "disconnected",
         score: player.score,
         // Games already banked plus whatever this one has earned so far.
         sessionScore: (player.sessionScore ?? 0) + player.score,
-        connected,
-        ready: multiplayerPlayerReady(player),
+        connected: !left && connected,
+        ready: !left && multiplayerPlayerReady(player),
         integrityNotices: player.integrityRoundIds.length,
+        left,
       };
     }),
     round: room.round
@@ -444,7 +462,7 @@ function startRound(room: PartyRoomState, now = Date.now()) {
   const audioPlaysAt = countdownStartsAt + 3_000;
   const answerOpensAt = audioPlaysAt + 1_300;
   const answerLocksAt = answerOpensAt + room.answerSeconds * 1_000;
-  room.players.forEach((player) => {
+  activePlayers(room).forEach((player) => {
     player.draft = "";
     player.draftRevision = 0;
     player.locked = false;
@@ -488,6 +506,7 @@ function resetPartyForRematch(room: PartyRoomState, now = Date.now()) {
     }
     room.wordCursor = 0;
   } else room.wordCursor = cursor;
+  room.players = activePlayers(room);
   for (const player of room.players) {
     player.sessionScore = (player.sessionScore ?? 0) + player.score;
     player.score = 0;
@@ -604,8 +623,8 @@ export async function joinPartyRoom(input: {
       };
     const name = input.name.trim().replace(/\s+/g, " ");
     if (name.length < 1) return { errorCode: "invalid_name", error: "Enter your name" } as const;
-    if (name.length > 24)
-      return { errorCode: "invalid_name", error: "Use 24 characters or fewer" } as const;
+    if (name.length > 32)
+      return { errorCode: "invalid_name", error: "Use 32 characters or fewer" } as const;
     if (room.players.some((player) => player.name.toLocaleLowerCase() === name.toLocaleLowerCase()))
       return { errorCode: "name_taken", error: "That name is already in the room" } as const;
     if (room.players.length >= 12)
@@ -626,6 +645,7 @@ export async function joinPartyRoom(input: {
       startRequestId: null,
       startRequestedAt: null,
       integrityRoundIds: [],
+      joinedAt: Date.now(),
     };
     room.players.push(player);
     if (input.presenterToken && safeEqual(input.presenterToken, room.presenterHash))
@@ -664,7 +684,7 @@ function authenticate(
 ) {
   if (role === "presenter") return safeEqual(credential, room.presenterHash);
   const player = room.players.find(({ id }) => id === playerId);
-  return Boolean(player && safeEqual(credential, player.tokenHash));
+  return Boolean(player && player.leftAt === undefined && safeEqual(credential, player.tokenHash));
 }
 
 export async function readPartySnapshot(input: {
@@ -813,10 +833,63 @@ export async function applyPlayerAction(input: {
     const player = room.players.find(({ id }) => id === input.playerId);
     if (!player || !safeEqual(input.playerToken, player.tokenHash))
       return partyActionFailure("room_unavailable", "Room unavailable");
-    player.lastSeenAt = Date.now();
     advance(room);
     if (multiplayerActionSeen(room.processedActions, input.action.actionId))
       return acceptPartyAction(snapshot(room, "player", player.id));
+    if (player.leftAt !== undefined)
+      return partyActionFailure("room_unavailable", "Your session has ended");
+    player.lastSeenAt = Date.now();
+    if (input.action.type === "room.leave") {
+      const now = Date.now();
+      transferHost(room, player.id, now);
+      if (room.phase === "lobby") room.players = room.players.filter(({ id }) => id !== player.id);
+      else {
+        player.leftAt = now;
+        player.locked = true;
+        player.automatic = true;
+        player.lockedAt ??= now;
+        if (activePlayers(room).length === 0) {
+          room.phase = "finished";
+          room.expiresAt = Math.min(room.expiresAt, now + FINISHED_GRACE_SECONDS * 1_000);
+        } else if (room.phase === "answer" && activePlayers(room).every(({ locked }) => locked)) {
+          lockAll(room, now);
+        }
+      }
+      changed(room);
+      room.processedActions = rememberMultiplayerAction(
+        room.processedActions,
+        input.action.actionId,
+      );
+      return acceptPartyAction(snapshot(room, "player", player.id));
+    }
+    if (input.action.type === "player.rename") {
+      const nextName = input.action.name;
+      if (room.phase !== "lobby")
+        return rejectPartyAction(
+          snapshot(room, "player", player.id),
+          "action_unavailable",
+          "Names only change in the lobby",
+        );
+      if (
+        activePlayers(room).some(
+          (candidate) =>
+            candidate.id !== player.id &&
+            candidate.name.toLocaleLowerCase() === nextName.toLocaleLowerCase(),
+        )
+      )
+        return rejectPartyAction(
+          snapshot(room, "player", player.id),
+          "action_unavailable",
+          "That name is already here",
+        );
+      player.name = nextName;
+      changed(room);
+      room.processedActions = rememberMultiplayerAction(
+        room.processedActions,
+        input.action.actionId,
+      );
+      return acceptPartyAction(snapshot(room, "player", player.id));
+    }
     if (input.action.type === "readiness.set") {
       if (room.phase !== "lobby")
         return rejectPartyAction(
@@ -865,7 +938,7 @@ export async function applyPlayerAction(input: {
       player.automatic = false;
       player.lockedAt = now;
       changed(room);
-      if (room.players.every(({ locked }) => locked)) lockAll(room, now);
+      if (activePlayers(room).every(({ locked }) => locked)) lockAll(room, now);
     } else if (input.action.type === "integrity.notice") {
       if (
         (room.phase === "answer" || room.phase === "locked") &&

@@ -1,8 +1,10 @@
 import { defineWebSocketHandler } from "nitro/h3";
 import type { Effect } from "effect";
 import { log } from "@/lib/platform/logger.server";
+import { BASE_URL } from "@/lib/shared/config";
 import {
   isMultiplayerClientControlMessage,
+  isMultiplayerServerMessage,
   MULTIPLAYER_REALTIME_LIMITS,
   MULTIPLAYER_SOCKET_CLOSE,
 } from "./multiplayer-realtime";
@@ -13,7 +15,9 @@ import type { MultiplayerGame } from "./multiplayer-telemetry";
 import { multiplayerRecord } from "./multiplayer-validation";
 
 interface MultiplayerWakeSession {
+  playerId?: string;
   roomId: string;
+  role?: string;
 }
 
 interface MultiplayerWakeHandlerOptions<Session extends MultiplayerWakeSession> {
@@ -41,6 +45,16 @@ interface MultiplayerWakeConnection<Session> {
   session: Session;
 }
 
+function socketOriginAllowed(request: Request) {
+  const origin = request.headers.get("origin");
+  if (!origin) return false;
+  try {
+    return origin === new URL(request.url).origin || origin === new URL(BASE_URL).origin;
+  } catch {
+    return false;
+  }
+}
+
 /** Shared authenticated wake-up transport. Game state remains authoritative over HTTPS. */
 export function createMultiplayerWakeHandler<Session extends MultiplayerWakeSession>(
   options: MultiplayerWakeHandlerOptions<Session>,
@@ -58,7 +72,7 @@ export function createMultiplayerWakeHandler<Session extends MultiplayerWakeSess
     const helloTimer = helloTimers.get(peer.id);
     if (helloTimer) clearTimeout(helloTimer);
     helloTimers.delete(peer.id);
-    pendingPeers.delete(peer.id);
+    const wasPending = pendingPeers.delete(peer.id);
     helloInFlight.delete(peer.id);
     const connection = connections.get(peer.id);
     if (connection) {
@@ -67,7 +81,7 @@ export function createMultiplayerWakeHandler<Session extends MultiplayerWakeSess
       else roomConnectionCounts.set(connection.session.roomId, count - 1);
     }
     connections.delete(peer.id);
-    return Boolean(connection);
+    return { wasActive: Boolean(connection), wasPending };
   };
   const record = (use: (telemetry: typeof MultiplayerTelemetry.Service) => Effect.Effect<void>) =>
     runMultiplayerEffect(MultiplayerTelemetry.use(use));
@@ -83,8 +97,32 @@ export function createMultiplayerWakeHandler<Session extends MultiplayerWakeSess
     backplaneSubscription ??= runMultiplayerEffect(
       MultiplayerRealtimeBackplane.use((backplane) =>
         backplane.subscribe((channel, message) => {
+          let parsed: unknown;
+          try {
+            parsed = JSON.parse(message);
+          } catch {
+            return;
+          }
+          if (!isMultiplayerServerMessage(parsed)) return;
           for (const connection of connections.values()) {
             if (channelFor(connection.session) !== channel) continue;
+            if (parsed.type === "terminal") {
+              const playerMatches =
+                !parsed.playerId || parsed.playerId === connection.session.playerId;
+              const roleMatches = !parsed.role || parsed.role === connection.session.role;
+              if (!playerMatches || !roleMatches) continue;
+              try {
+                connection.peer.send(message);
+              } finally {
+                terminate(
+                  connection.peer,
+                  MULTIPLAYER_SOCKET_CLOSE.sessionEnded,
+                  parsed.reason,
+                  parsed.reason,
+                );
+              }
+              continue;
+            }
             try {
               connection.peer.send(message);
             } catch (error) {
@@ -127,10 +165,10 @@ export function createMultiplayerWakeHandler<Session extends MultiplayerWakeSess
     reason: string,
     _message: string,
   ) => {
-    const wasActive = forget(peer);
+    const { wasActive, wasPending } = forget(peer);
     terminatedPeers.add(peer.id);
     ignoreTelemetryFailure(
-      record((telemetry) => telemetry.socketClosed(options.game, reason, wasActive)),
+      record((telemetry) => telemetry.socketClosed(options.game, reason, wasActive, wasPending)),
     );
     peer.close(code, reason);
   };
@@ -150,6 +188,7 @@ export function createMultiplayerWakeHandler<Session extends MultiplayerWakeSess
       return false;
     }
     pendingPeers.add(peer.id);
+    ignoreTelemetryFailure(record((telemetry) => telemetry.socketPending(options.game)));
     const timer = setTimeout(() => {
       if (!pendingPeers.has(peer.id) || connections.has(peer.id)) return;
       terminate(peer, MULTIPLAYER_SOCKET_CLOSE.policyViolation, "hello_timeout", "hello_timeout");
@@ -182,9 +221,31 @@ export function createMultiplayerWakeHandler<Session extends MultiplayerWakeSess
 
   return defineWebSocketHandler({
     open(peer) {
+      if (!socketOriginAllowed(peer.request)) {
+        terminate(
+          peer,
+          MULTIPLAYER_SOCKET_CLOSE.policyViolation,
+          "origin_rejected",
+          "origin_rejected",
+        );
+        return;
+      }
       beginPending(peer);
     },
     async message(peer, message) {
+      if (
+        !connections.has(peer.id) &&
+        !pendingPeers.has(peer.id) &&
+        !socketOriginAllowed(peer.request)
+      ) {
+        terminate(
+          peer,
+          MULTIPLAYER_SOCKET_CLOSE.policyViolation,
+          "origin_rejected",
+          "origin_rejected",
+        );
+        return;
+      }
       let payload: Record<string, unknown>;
       try {
         if (message.text().length > MULTIPLAYER_REALTIME_LIMITS.maxMessageCharacters) {
@@ -271,7 +332,7 @@ export function createMultiplayerWakeHandler<Session extends MultiplayerWakeSess
           rateWindowStartedAt: Date.now(),
           session,
         });
-        pendingPeers.delete(peer.id);
+        const wasPending = pendingPeers.delete(peer.id);
         helloInFlight.delete(peer.id);
         const helloTimer = helloTimers.get(peer.id);
         if (helloTimer) clearTimeout(helloTimer);
@@ -280,7 +341,9 @@ export function createMultiplayerWakeHandler<Session extends MultiplayerWakeSess
           session.roomId,
           (roomConnectionCounts.get(session.roomId) ?? 0) + 1,
         );
-        await record((telemetry) => telemetry.socketOpened(options.game));
+        await record((telemetry) =>
+          telemetry.socketOpened(options.game, wasPending, payload.reconnect === "1"),
+        );
         peer.send(JSON.stringify({ type: "ready" }));
         await publishWake(session);
         return;
@@ -335,16 +398,20 @@ export function createMultiplayerWakeHandler<Session extends MultiplayerWakeSess
     },
     close(peer) {
       if (terminatedPeers.delete(peer.id)) return;
-      const wasActive = forget(peer);
+      const { wasActive, wasPending } = forget(peer);
       ignoreTelemetryFailure(
-        record((telemetry) => telemetry.socketClosed(options.game, "client_closed", wasActive)),
+        record((telemetry) =>
+          telemetry.socketClosed(options.game, "client_closed", wasActive, wasPending),
+        ),
       );
     },
     error(peer) {
       if (terminatedPeers.delete(peer.id)) return;
-      const wasActive = forget(peer);
+      const { wasActive, wasPending } = forget(peer);
       ignoreTelemetryFailure(
-        record((telemetry) => telemetry.socketClosed(options.game, "socket_error", wasActive)),
+        record((telemetry) =>
+          telemetry.socketClosed(options.game, "socket_error", wasActive, wasPending),
+        ),
       );
     },
   });

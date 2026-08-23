@@ -346,7 +346,9 @@ export function RemoteJudgeApp({ roomId }: { roomId: string }) {
     if (endingRoom) return;
     setEndingRoom(true);
     await closePairedGameRoomFn({
-      data: { roomId, role: "judge", token: tokens.judgeToken },
+      data: tokens.playerToken
+        ? { roomId, role: "player", token: tokens.playerToken }
+        : { roomId, role: "judge", token: tokens.judgeToken },
     }).catch(() => null);
     sessionStorage.removeItem(remoteBrowserKeys.judgeSession(roomId));
     localStorage.removeItem(remoteBrowserKeys.pendingCommands(roomId));

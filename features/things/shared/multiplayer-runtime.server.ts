@@ -112,6 +112,26 @@ export function publishMultiplayerRoomWake(game: MultiplayerGame, roomId: string
   );
 }
 
+export function publishMultiplayerRoomTermination(
+  game: MultiplayerGame,
+  roomId: string,
+  input: {
+    reason: "removed" | "room_closed" | "session_ended";
+    playerId?: string;
+    role?: string;
+  },
+) {
+  const version = Number(MULTIPLAYER_GAME_REGISTRY[game].channelVersion.slice(1));
+  return runMultiplayerEffect(
+    MultiplayerRealtimeBackplane.use((backplane) =>
+      backplane.publish(
+        gameRealtimeChannel(game, version, roomId),
+        JSON.stringify({ type: "terminal", ...input }),
+      ),
+    ),
+  );
+}
+
 export function disposeMultiplayerRuntime() {
   // Clear the holder too, or the next call rebuilds against a runtime that has already been torn
   // down and every effect fails on a closed scope.

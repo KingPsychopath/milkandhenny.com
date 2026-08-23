@@ -27,6 +27,10 @@ export interface MultiplayerAction {
   actionId: string;
 }
 
+export type MultiplayerActionInput<Action> = Action extends unknown
+  ? Omit<Action, "actionId">
+  : never;
+
 export interface MultiplayerFailure<Code extends string> {
   ok: false;
   errorCode: Code;

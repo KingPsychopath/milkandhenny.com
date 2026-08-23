@@ -79,7 +79,7 @@ function hostAction(value: unknown): SameBrainHostAction {
       ...(data.toggles === undefined ? {} : { toggles: toggles(data.toggles) }),
       ...(data.timings === undefined ? {} : { timings: timings(data.timings) }),
     };
-  if (data.type === "player.remove")
+  if (data.type === "player.remove" || data.type === "host.pass")
     return { actionId: id, type: data.type, playerId: text(data.playerId, 120) };
   if (data.type === "result.merge")
     return {
@@ -111,6 +111,12 @@ function playerAction(value: unknown): SameBrainPlayerAction {
   const data = record(value);
   const id = actionId(data.actionId);
   if (data.type === "room.leave") return { actionId: id, type: data.type };
+  if (data.type === "player.rename")
+    return {
+      actionId: id,
+      type: data.type,
+      name: multiplayerBoundedText(data.name, 32, "Add your name").trim(),
+    };
   if (data.type === "readiness.set" && typeof data.ready === "boolean")
     return { actionId: id, type: data.type, ready: data.ready };
   if (data.type === "host.claim") return { actionId: id, type: data.type };

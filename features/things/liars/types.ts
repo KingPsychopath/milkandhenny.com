@@ -410,12 +410,14 @@ export type LiarsHostAction = MultiplayerAction &
     | { type: "phase.extend" }
     | { type: "phase.pause" | "phase.resume" }
     | { type: "player.remove"; playerId: string }
+    | { type: "host.pass"; playerId: string }
     | { type: "game.replay" | "game.lobby" | "game.end" }
   );
 
 export type LiarsPlayerAction = MultiplayerAction &
   (
     | { type: "room.leave" }
+    | { type: "player.rename"; name: string }
     | { type: "readiness.set"; ready: boolean }
     | { type: "night.select"; round: number; targetId: string | null }
     | { type: "night.lock"; round: number }

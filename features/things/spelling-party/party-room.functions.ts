@@ -94,6 +94,13 @@ function playerAction(value: unknown): PartyPlayerAction {
   const id = actionId(data.actionId);
   if (data.type === "readiness.set" && typeof data.ready === "boolean")
     return { actionId: id, type: data.type, ready: data.ready };
+  if (data.type === "room.leave") return { actionId: id, type: data.type };
+  if (data.type === "player.rename")
+    return {
+      actionId: id,
+      type: data.type,
+      name: multiplayerBoundedText(data.name, 32, "Add your name").trim(),
+    };
   const base = { actionId: id, roundId: text(data.roundId, 120) };
   if (data.type === "draft.update")
     return {

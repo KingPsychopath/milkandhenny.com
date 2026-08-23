@@ -22,6 +22,13 @@ const operationDuration = Metric.histogram("multiplayer_operation_duration_ms", 
 const activeSockets = Metric.gauge("multiplayer_active_sockets", {
   description: "Authenticated multiplayer sockets on this replica",
 });
+const socketConnectionCounter = Metric.counter("multiplayer_socket_connections_total", {
+  description: "Authenticated multiplayer socket connections",
+  incremental: true,
+});
+const unauthenticatedSockets = Metric.gauge("multiplayer_unauthenticated_sockets", {
+  description: "Multiplayer sockets waiting for authentication on this replica",
+});
 const rateLimitCounter = Metric.counter("multiplayer_rate_limit_total", {
   description: "Multiplayer rate limits enforced",
   incremental: true,
@@ -61,6 +68,10 @@ const SOCKET_REASONS = [
   "unauthorized",
   "unsupported_message",
   "heartbeat_timeout",
+  "origin_rejected",
+  "removed",
+  "room_closed",
+  "session_ended",
 ] as const;
 
 type SocketTerminationReason = (typeof SOCKET_REASONS)[number];
@@ -112,8 +123,14 @@ export class MultiplayerTelemetry extends Context.Service<
       game: MultiplayerGame,
       reason: string,
       wasActive: boolean,
+      wasPending: boolean,
     ) => Effect.Effect<void>;
-    readonly socketOpened: (game: MultiplayerGame) => Effect.Effect<void>;
+    readonly socketOpened: (
+      game: MultiplayerGame,
+      wasPending: boolean,
+      reconnect: boolean,
+    ) => Effect.Effect<void>;
+    readonly socketPending: (game: MultiplayerGame) => Effect.Effect<void>;
     readonly setBackplaneMode: (mode: "local" | "redis") => Effect.Effect<void>;
     readonly snapshot: Effect.Effect<MultiplayerTelemetrySnapshot>;
   }
@@ -126,12 +143,12 @@ export class MultiplayerTelemetry extends Context.Service<
     return {
       recordBackplane: (direction, outcome) =>
         Metric.update(Metric.withAttributes(backplaneCounter, { direction, outcome }), 1),
-      recordLock: ({ acquired, contended, waitMs, game = "unknown" }) =>
+      recordLock: ({ acquired, contended, waitMs, game }) =>
         Effect.all(
           [
             Metric.update(
               Metric.withAttributes(lockCounter, {
-                game,
+                game: "all",
                 outcome: acquired ? "acquired" : "failed",
               }),
               1,
@@ -139,9 +156,28 @@ export class MultiplayerTelemetry extends Context.Service<
             ...(contended
               ? [
                   Metric.update(
-                    Metric.withAttributes(lockCounter, { game, outcome: "contended" }),
+                    Metric.withAttributes(lockCounter, { game: "all", outcome: "contended" }),
                     1,
                   ),
+                ]
+              : []),
+            ...(game
+              ? [
+                  Metric.update(
+                    Metric.withAttributes(lockCounter, {
+                      game,
+                      outcome: acquired ? "acquired" : "failed",
+                    }),
+                    1,
+                  ),
+                  ...(contended
+                    ? [
+                        Metric.update(
+                          Metric.withAttributes(lockCounter, { game, outcome: "contended" }),
+                          1,
+                        ),
+                      ]
+                    : []),
                 ]
               : []),
             Metric.update(lockWaitDuration, Math.max(0, waitMs)),
@@ -163,10 +199,11 @@ export class MultiplayerTelemetry extends Context.Service<
         Metric.update(Metric.withAttributes(rateLimitCounter, { game }), 1),
       recordReconciliation: (game, durationMs) =>
         Metric.update(gameMetric(reconciliationDuration, game), Math.max(0, durationMs)),
-      socketClosed: (game, reason, wasActive) =>
+      socketClosed: (game, reason, wasActive, wasPending) =>
         Effect.all(
           [
             ...(wasActive ? [Metric.modify(gameMetric(activeSockets, game), -1)] : []),
+            ...(wasPending ? [Metric.modify(gameMetric(unauthenticatedSockets, game), -1)] : []),
             Metric.update(
               Metric.withAttributes(socketTerminationCounter, {
                 game,
@@ -177,7 +214,22 @@ export class MultiplayerTelemetry extends Context.Service<
           ],
           { discard: true },
         ),
-      socketOpened: (game) => Metric.modify(gameMetric(activeSockets, game), 1),
+      socketOpened: (game, wasPending, reconnect) =>
+        Effect.all(
+          [
+            Metric.modify(gameMetric(activeSockets, game), 1),
+            Metric.update(
+              Metric.withAttributes(socketConnectionCounter, {
+                game,
+                kind: reconnect ? "reconnect" : "initial",
+              }),
+              1,
+            ),
+            ...(wasPending ? [Metric.modify(gameMetric(unauthenticatedSockets, game), -1)] : []),
+          ],
+          { discard: true },
+        ),
+      socketPending: (game) => Metric.modify(gameMetric(unauthenticatedSockets, game), 1),
       setBackplaneMode: (mode) =>
         Effect.sync(() => {
           backplaneMode = mode;
@@ -185,8 +237,22 @@ export class MultiplayerTelemetry extends Context.Service<
       snapshot: Effect.gen(function* () {
         const games = {} as MultiplayerTelemetrySnapshot["games"];
         for (const game of MULTIPLAYER_GAMES) {
-          const [active, success, failure, limited, reconciliation] = yield* Effect.all([
+          const [
+            active,
+            pending,
+            initialConnections,
+            reconnects,
+            success,
+            failure,
+            limited,
+            reconciliation,
+          ] = yield* Effect.all([
             Metric.value(gameMetric(activeSockets, game)),
+            Metric.value(gameMetric(unauthenticatedSockets, game)),
+            Metric.value(Metric.withAttributes(socketConnectionCounter, { game, kind: "initial" })),
+            Metric.value(
+              Metric.withAttributes(socketConnectionCounter, { game, kind: "reconnect" }),
+            ),
             Metric.value(Metric.withAttributes(operationCounter, { game, result: "success" })),
             Metric.value(Metric.withAttributes(operationCounter, { game, result: "failure" })),
             Metric.value(gameMetric(rateLimitCounter, game)),
@@ -201,6 +267,9 @@ export class MultiplayerTelemetry extends Context.Service<
           }
           games[game] = {
             activeSockets: Math.max(0, active.value),
+            connections: initialConnections.count + reconnects.count,
+            reconnects: reconnects.count,
+            unauthenticatedSockets: Math.max(0, pending.value),
             operations: success.count + failure.count,
             operationFailures: failure.count,
             rateLimited: limited.count,
@@ -209,13 +278,9 @@ export class MultiplayerTelemetry extends Context.Service<
           };
         }
         const [lockAcquired, lockContended, lockFailed, lockWait] = yield* Effect.all([
-          Metric.value(
-            Metric.withAttributes(lockCounter, { game: "unknown", outcome: "acquired" }),
-          ),
-          Metric.value(
-            Metric.withAttributes(lockCounter, { game: "unknown", outcome: "contended" }),
-          ),
-          Metric.value(Metric.withAttributes(lockCounter, { game: "unknown", outcome: "failed" })),
+          Metric.value(Metric.withAttributes(lockCounter, { game: "all", outcome: "acquired" })),
+          Metric.value(Metric.withAttributes(lockCounter, { game: "all", outcome: "contended" })),
+          Metric.value(Metric.withAttributes(lockCounter, { game: "all", outcome: "failed" })),
           Metric.value(lockWaitDuration),
         ]);
         const [published, received, publishFailures, receiveFailures] = yield* Effect.all([
@@ -255,7 +320,7 @@ export class MultiplayerTelemetry extends Context.Service<
           runtimeStartedAt,
           replica,
           games,
-          partyRoomLock: {
+          roomLock: {
             acquisitions: lockAcquired.count,
             contention: lockContended.count,
             failures: lockFailed.count,

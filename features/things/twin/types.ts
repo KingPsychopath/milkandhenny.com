@@ -1,4 +1,5 @@
 import type {
+  MultiplayerAction,
   MultiplayerFailure,
   MultiplayerRevision,
   MultiplayerRoomIdentity,
@@ -192,6 +193,7 @@ export type TwinSnapshotResult =
 
 export type TwinHostAction =
   | { type: "game.start"; removePlayerIds?: string[] }
+  | { type: "host.pass"; playerId: string }
   | { type: "game.configure"; handSize?: number; windowMs?: number; graceMs?: number }
   | { type: "game.replay" }
   | { type: "game.lobby" }
@@ -200,10 +202,11 @@ export type TwinHostAction =
 
 export type TwinPlayerAction =
   | { type: "readiness.set"; ready: boolean }
+  | { type: "player.rename"; name: string }
   | { type: "answer.tap"; heatId: string; symbolId: string; elapsedMs: number }
   | { type: "player.leave" };
 
-export type TwinAction = TwinHostAction | TwinPlayerAction;
+export type TwinAction = Partial<MultiplayerAction> & (TwinHostAction | TwinPlayerAction);
 
 export type TwinActionResult =
   | MultiplayerSuccess<{ accepted: true; snapshot: TwinSnapshot }>

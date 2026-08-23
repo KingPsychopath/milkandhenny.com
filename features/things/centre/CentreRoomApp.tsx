@@ -12,6 +12,7 @@ import {
   writeExpiringLocalValue,
 } from "../shared/game-storage.client";
 import { gameBrowserKey } from "../shared/multiplayer-keys";
+import type { MultiplayerActionInput } from "../shared/multiplayer";
 import { useGameSound } from "../shared/useGameSound";
 import { buildCentrePlayerInviteUrl } from "./centre-invite";
 import { centreBrowserKeys } from "./centre-keys";
@@ -134,14 +135,14 @@ export function CentreRoom({
   }, [credentials, roomExpiresAt, roomId]);
 
   const send = useCallback(
-    async (action: CentreAction, quiet = false) => {
+    async (action: MultiplayerActionInput<CentreAction>, quiet = false) => {
       try {
         const result = await applyCentreActionFn({
           data: {
             roomId,
             playerId: credentials.playerId,
             playerToken: credentials.playerToken,
-            action,
+            action: { ...action, actionId: crypto.randomUUID() },
           },
         });
         if (result.snapshot) setSnapshot(result.snapshot);
@@ -357,6 +358,13 @@ export function CentreRoom({
         onReady={(ready) => void send({ type: "readiness.set", ready })}
         onDifficulty={(difficulty) => void send({ type: "game.configure", difficulty })}
         onDelayedRivals={(delayedRivals) => void send({ type: "game.configure", delayedRivals })}
+        onPassLead={(playerId) => void send({ type: "host.pass", playerId })}
+        onRename={() => {
+          const current =
+            snapshot.players.find(({ id }) => id === credentials.playerId)?.name ?? "";
+          const name = window.prompt("Name in this room", current)?.trim();
+          if (name && name !== current) void send({ type: "player.rename", name });
+        }}
         onStart={() => {
           primeCentreAudio();
           void send({ type: "game.start" });
@@ -595,6 +603,8 @@ function CentreLobby({
   onReady,
   onDifficulty,
   onDelayedRivals,
+  onPassLead,
+  onRename,
   onStart,
   onLeave,
 }: {
@@ -608,6 +618,8 @@ function CentreLobby({
   onReady: (ready: boolean) => void;
   onDifficulty: (difficulty: CentreDifficulty) => void;
   onDelayedRivals: (enabled: boolean) => void;
+  onPassLead: (playerId: string) => void;
+  onRename: () => void;
   onStart: () => void;
   onLeave: () => Promise<boolean>;
 }) {
@@ -667,9 +679,17 @@ function CentreLobby({
                 {player.id === snapshot.hostPlayerId ? " · host" : ""}
               </span>
               <small>{player.ready ? "ready" : "not ready"}</small>
+              {snapshot.canControl && player.id !== snapshot.hostPlayerId && !player.withdrawn ? (
+                <button type="button" onClick={() => onPassLead(player.id)}>
+                  make lead
+                </button>
+              ) : null}
             </li>
           ))}
         </ul>
+        <button type="button" className="centre-button" onClick={onRename}>
+          change my name
+        </button>
         {snapshot.canControl && !snapshot.managed ? (
           <>
             <label className="centre-difficulty">

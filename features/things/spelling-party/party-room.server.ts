@@ -1,4 +1,8 @@
-import { runMultiplayerEffect } from "../shared/multiplayer-runtime.server";
+import {
+  publishMultiplayerRoomTermination,
+  publishMultiplayerRoomWake,
+  runMultiplayerEffect,
+} from "../shared/multiplayer-runtime.server";
 import { PartyRoomService } from "./party-room-service.server";
 
 import type * as engine from "./party-room-engine.server";
@@ -12,7 +16,12 @@ export function createPartyRoom(input: Parameters<typeof engine.createPartyRoom>
 }
 
 export function joinPartyRoom(input: Parameters<typeof engine.joinPartyRoom>[0]) {
-  return runMultiplayerEffect(PartyRoomService.use((service) => service.joinRoom(input)));
+  return runMultiplayerEffect(PartyRoomService.use((service) => service.joinRoom(input))).then(
+    async (result) => {
+      await publishMultiplayerRoomWake("spelling-party", input.roomId).catch(() => undefined);
+      return result;
+    },
+  );
 }
 
 export function readPartySnapshot(input: Parameters<typeof engine.readPartySnapshot>[0]) {
@@ -22,11 +31,30 @@ export function readPartySnapshot(input: Parameters<typeof engine.readPartySnaps
 export function applyPresenterAction(input: Parameters<typeof engine.applyPresenterAction>[0]) {
   return runMultiplayerEffect(
     PartyRoomService.use((service) => service.applyPresenterAction(input)),
-  );
+  ).then(async (result) => {
+    await publishMultiplayerRoomWake("spelling-party", input.roomId).catch(() => undefined);
+    if (result.ok && result.accepted && input.action.type === "round.start")
+      for (const playerId of input.action.removePlayerIds ?? [])
+        await publishMultiplayerRoomTermination("spelling-party", input.roomId, {
+          reason: "removed",
+          playerId,
+        }).catch(() => undefined);
+    return result;
+  });
 }
 
 export function applyPlayerAction(input: Parameters<typeof engine.applyPlayerAction>[0]) {
-  return runMultiplayerEffect(PartyRoomService.use((service) => service.applyPlayerAction(input)));
+  return runMultiplayerEffect(
+    PartyRoomService.use((service) => service.applyPlayerAction(input)),
+  ).then(async (result) => {
+    await publishMultiplayerRoomWake("spelling-party", input.roomId).catch(() => undefined);
+    if (result.ok && result.accepted && input.action.type === "room.leave")
+      await publishMultiplayerRoomTermination("spelling-party", input.roomId, {
+        reason: "session_ended",
+        playerId: input.playerId,
+      }).catch(() => undefined);
+    return result;
+  });
 }
 
 export function getPartyAudioAsset(...input: Parameters<typeof engine.getPartyAudioAsset>) {
@@ -34,5 +62,13 @@ export function getPartyAudioAsset(...input: Parameters<typeof engine.getPartyAu
 }
 
 export function closePartyRoom(...input: Parameters<typeof engine.closePartyRoom>) {
-  return runMultiplayerEffect(PartyRoomService.use((service) => service.closeRoom(...input)));
+  return runMultiplayerEffect(PartyRoomService.use((service) => service.closeRoom(...input))).then(
+    async (result) => {
+      if (result.ok)
+        await publishMultiplayerRoomTermination("spelling-party", input[0], {
+          reason: "room_closed",
+        }).catch(() => undefined);
+      return result;
+    },
+  );
 }

@@ -129,7 +129,7 @@ function hostAction(value: unknown): LiarsHostAction {
       ...(data.timings === undefined ? {} : { timings: timings(data.timings) }),
       ...(data.roomMode === undefined ? {} : { roomMode: roomMode(data.roomMode) }),
     };
-  if (data.type === "player.remove")
+  if (data.type === "player.remove" || data.type === "host.pass")
     return { actionId: id, type: data.type, playerId: text(data.playerId, 120) };
   if (data.type === "game.start")
     return { actionId: id, type: data.type, force: data.force === true };
@@ -161,6 +161,12 @@ function playerAction(value: unknown): LiarsPlayerAction {
   const data = record(value);
   const id = actionId(data.actionId);
   if (data.type === "room.leave") return { actionId: id, type: data.type };
+  if (data.type === "player.rename")
+    return {
+      actionId: id,
+      type: data.type,
+      name: multiplayerBoundedText(data.name, 32, "Add your name").trim(),
+    };
   if (data.type === "readiness.set" && typeof data.ready === "boolean")
     return { actionId: id, type: data.type, ready: data.ready };
   if (data.type === "host.claim") return { actionId: id, type: data.type };

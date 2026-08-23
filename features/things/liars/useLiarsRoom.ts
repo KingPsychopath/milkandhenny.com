@@ -57,6 +57,7 @@ export function useLiarsRoom(input: {
         ? null
         : { roomId: input.roomId, credential: input.playerToken, playerId: input.playerId },
     onWake: () => void room.refresh(),
+    onTerminal: () => void room.refresh(),
   });
 
   return {
