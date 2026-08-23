@@ -1,6 +1,5 @@
 import { useMemo, useRef, useState } from "react";
 
-import { AppSelect } from "@/components/AppSelect";
 import {
   PITCH_MEDIA_CLIP_LIMIT,
   PITCH_SLIDE_DURATION_RANGE_MS,
@@ -117,6 +116,8 @@ export function PitchMediaTimeline({
   assets,
   playheadMs,
   playing,
+  selectedClipId,
+  onSelectClip,
   disabledReason,
   processingLabel,
   onAddMedia,
@@ -129,6 +130,8 @@ export function PitchMediaTimeline({
   assets: PitchAsset[];
   playheadMs: number;
   playing: boolean;
+  selectedClipId?: string;
+  onSelectClip: (clipId: string) => void;
   disabledReason?: string;
   processingLabel?: string;
   onAddMedia: (file: File) => void;
@@ -137,7 +140,6 @@ export function PitchMediaTimeline({
   onTogglePlayback: () => void;
   onChange: (slide: PitchSlide, kind?: PitchCommandKind) => void;
 }) {
-  const [selectedClipId, setSelectedClipId] = useState<string>();
   const [dropActive, setDropActive] = useState(false);
   const [gesture, setGesture] = useState<Gesture>();
   const [draftClips, setDraftClips] = useState<PitchMediaClip[]>();
@@ -221,7 +223,7 @@ export function PitchMediaTimeline({
     const width = timelineRef.current?.getBoundingClientRect().width ?? 1;
     event.preventDefault();
     event.currentTarget.setPointerCapture(event.pointerId);
-    setSelectedClipId(clip.id);
+    onSelectClip(clip.id);
     setGesture({
       pointerId: event.pointerId,
       clipId: clip.id,
@@ -449,7 +451,7 @@ export function PitchMediaTimeline({
                   <button
                     type="button"
                     onPointerDown={(event) => beginGesture(event, clip, "move")}
-                    onClick={() => setSelectedClipId(clip.id)}
+                    onClick={() => onSelectClip(clip.id)}
                     className="relative z-10 h-full w-full truncate px-8 text-left font-mono text-micro text-foreground"
                     aria-label={`Move ${clipLabel(clip, assets)}. Starts at ${seconds(clip.timelineStartMs)} and lasts ${seconds(clip.durationMs)}.`}
                   >
@@ -541,7 +543,6 @@ export function PitchMediaTimeline({
                       ? { ...clip, linkedGroupId: undefined }
                       : clip,
                   );
-                setSelectedClipId(undefined);
                 commit(next, "media.remove");
               }}
               className="min-h-11 px-2 font-mono text-xs theme-muted underline underline-offset-4 hover:opacity-60"
@@ -549,7 +550,7 @@ export function PitchMediaTimeline({
               remove
             </button>
           </div>
-          <div className="mt-2 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+          <div className="mt-2 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <label className="font-mono text-micro theme-muted">
               starts on slide · {seconds(selected.timelineStartMs)}
               <input
@@ -634,25 +635,13 @@ export function PitchMediaTimeline({
                   className="mt-1 block min-h-8 w-full accent-[var(--prose-hashtag)] disabled:opacity-35"
                 />
               </label>
-            ) : (
-              <AppSelect
-                value={selected.fit ?? "contain"}
-                disabled={selected.locked}
-                ariaLabel={`How ${clipLabel(selected, assets)} fits the slide`}
-                options={[
-                  { value: "contain", label: "fit whole video" },
-                  { value: "cover", label: "fill the slide" },
-                ]}
-                onValueChange={(value) =>
-                  updateClip(selected.id, (clip) => ({
-                    ...clip,
-                    fit: value === "cover" ? "cover" : "contain",
-                  }))
-                }
-              />
-            )}
+            ) : null}
             <p className="self-end pb-2 font-mono text-micro theme-muted">
-              {selected.linkedGroupId ? "video + sound synced" : `${selected.kind} independent`}
+              {selected.kind === "video"
+                ? "Position and resize this video on the slide above."
+                : selected.linkedGroupId
+                  ? "video + sound synced"
+                  : `${selected.kind} independent`}
             </p>
           </div>
         </div>

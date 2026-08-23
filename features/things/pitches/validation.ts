@@ -7,12 +7,15 @@ import {
   PITCH_MAX_ELEMENTS,
   PITCH_SLIDE_DEFAULT_DURATION_MS,
   PITCH_SLIDE_DURATION_RANGE_MS,
+  PITCH_SLIDE_STAGE,
+  PITCH_VIDEO_DEFAULT_PLACEMENT,
   type PitchMediaClip,
   type PitchAssetKind,
   type PitchDocument,
   type PitchInkLayer,
   type PitchInkStroke,
   type PitchSlide,
+  type PitchVideoPlacement,
 } from "./types";
 
 const DECK_ID_PATTERN = /^p_[A-Za-z0-9_-]{22}$/;
@@ -210,6 +213,29 @@ function parseInkLayers(value: unknown): PitchInkLayer[] | null {
   return layers;
 }
 
+function parseVideoPlacement(value: unknown): PitchVideoPlacement | null {
+  const source = record(value);
+  if (!source) return null;
+  const x = finiteInteger(source.x, 0);
+  const y = finiteInteger(source.y, 0);
+  const width = finiteInteger(source.width, 40);
+  const height = finiteInteger(source.height, 40);
+  const layer = finiteInteger(source.layer, 0);
+  if (
+    x === null ||
+    y === null ||
+    width === null ||
+    height === null ||
+    layer === null ||
+    x + width > PITCH_SLIDE_STAGE.width ||
+    y + height > PITCH_SLIDE_STAGE.height ||
+    layer > PITCH_MEDIA_CLIP_LIMIT
+  ) {
+    return null;
+  }
+  return { x, y, width, height, layer };
+}
+
 function parseMediaClips(value: unknown, slideDurationMs: number): PitchMediaClip[] | null {
   if (value === undefined) return [];
   if (!Array.isArray(value) || value.length > PITCH_MEDIA_CLIP_LIMIT) return null;
@@ -244,6 +270,13 @@ function parseMediaClips(value: unknown, slideDurationMs: number): PitchMediaCli
         : clip.fit === "contain" || clip.fit === "cover"
           ? clip.fit
           : null;
+    const videoPlacement =
+      kind === "video" && clip?.videoPlacement !== undefined
+        ? parseVideoPlacement(clip.videoPlacement)
+        : kind === "video" && clip?.videoPlacement === undefined
+          ? { ...PITCH_VIDEO_DEFAULT_PLACEMENT }
+          : undefined;
+    const validVideoPlacement = kind !== "video" || videoPlacement !== null;
     if (
       !id ||
       !assetId ||
@@ -264,15 +297,15 @@ function parseMediaClips(value: unknown, slideDurationMs: number): PitchMediaCli
       typeof clip.locked !== "boolean" ||
       linkedGroupId === null ||
       fit === null ||
-      (kind === "audio" && fit !== undefined)
+      (kind === "audio" && (fit !== undefined || clip?.videoPlacement !== undefined)) ||
+      !validVideoPlacement
     ) {
       return null;
     }
     ids.add(id);
-    clips.push({
+    const parsedClip = {
       id,
       assetId,
-      kind,
       timelineStartMs,
       sourceDurationMs,
       sourceStartMs,
@@ -281,8 +314,17 @@ function parseMediaClips(value: unknown, slideDurationMs: number): PitchMediaCli
       muted: clip.muted,
       locked: clip.locked,
       linkedGroupId,
-      fit: kind === "video" ? (fit ?? "contain") : undefined,
-    });
+    };
+    clips.push(
+      kind === "video"
+        ? {
+            ...parsedClip,
+            kind,
+            fit: fit ?? "contain",
+            videoPlacement: videoPlacement ?? { ...PITCH_VIDEO_DEFAULT_PLACEMENT },
+          }
+        : { ...parsedClip, kind },
+    );
   }
   return clips;
 }

@@ -142,6 +142,32 @@ describe("pitch documents", () => {
     expect(parsePitchDocument(document, 6).ok).toBe(false);
   });
 
+  it("keeps video placement inside the fixed slide stage", () => {
+    const document = documentWith([]);
+    document.slides[0].mediaClips = [
+      {
+        id: "video_12345678",
+        assetId: "pa_1234567890123456789012",
+        kind: "video",
+        timelineStartMs: 0,
+        sourceDurationMs: 8_000,
+        sourceStartMs: 0,
+        durationMs: 8_000,
+        volume: 0.8,
+        muted: true,
+        locked: false,
+        fit: "cover",
+        videoPlacement: { x: 80, y: 45, width: 800, height: 450, layer: 0 },
+      },
+    ];
+    expect(parsePitchDocument(document, 6).ok).toBe(true);
+    document.slides[0].mediaClips[0].videoPlacement!.width = 900;
+    expect(parsePitchDocument(document, 6)).toEqual({
+      ok: false,
+      error: "The deck contains an invalid slide",
+    });
+  });
+
   it("recovers unsynced local edits after another device advances the server", () => {
     const remoteDocument = documentWith([element("remote_object", 1, 20)]);
     const localDocument = documentWith([element("local_object", 1, 10)]);

@@ -1,6 +1,6 @@
 import type { ExcalidrawElement } from "@excalidraw/excalidraw/element/types";
 
-import type { PitchDocument, PitchSlide } from "./types";
+import { PITCH_DOCUMENT_SCHEMA_VERSION, type PitchDocument, type PitchSlide } from "./types";
 
 function elementWins(left: ExcalidrawElement, right: ExcalidrawElement): ExcalidrawElement {
   if (right.version !== left.version) return right.version > left.version ? right : left;
@@ -71,5 +71,5 @@ export function mergePitchDocuments(
   for (const serverOnly of serverDocument.slides) {
     if (serverById.has(serverOnly.id)) merged.push(serverOnly);
   }
-  return { schemaVersion: 2, slides: merged };
+  return { schemaVersion: PITCH_DOCUMENT_SCHEMA_VERSION, slides: merged };
 }

@@ -93,6 +93,7 @@ function ExcalidrawSurfaceCanvas({
   readOnly = false,
   transparentBackground = false,
   stageUnderlay,
+  stageOverlay,
   onChange,
   onApi,
 }: {
@@ -102,6 +103,7 @@ function ExcalidrawSurfaceCanvas({
   readOnly?: boolean;
   transparentBackground?: boolean;
   stageUnderlay?: ReactNode;
+  stageOverlay?: ReactNode;
   onChange?: (slideId: string, elements: readonly ExcalidrawElement[], files: BinaryFiles) => void;
   onApi?: (api: ExcalidrawImperativeAPI) => void;
 }) {
@@ -255,6 +257,19 @@ function ExcalidrawSurfaceCanvas({
           UIOptions={UI_OPTIONS}
         />
       </div>
+      {stageOverlay && viewport ? (
+        <div
+          className="pointer-events-none absolute z-20 overflow-visible"
+          style={{
+            left: viewport.scrollX * viewport.zoom,
+            top: viewport.scrollY * viewport.zoom,
+            width: 960 * viewport.zoom,
+            height: 540 * viewport.zoom,
+          }}
+        >
+          {stageOverlay}
+        </div>
+      ) : null}
     </div>
   );
 }

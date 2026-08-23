@@ -9,13 +9,17 @@ import { PitchRecovery } from "./PitchRecovery";
 
 export function PitchGallery({
   initialPitches,
+  initialLoadError,
   operationalStatus,
 }: {
   initialPitches: PublicPitchDeck[];
+  initialLoadError?: string;
   operationalStatus: PitchOperationalStatus;
 }) {
   const [query, setQuery] = useState("");
   const [pitches, setPitches] = useState(initialPitches);
+  const [loadError, setLoadError] = useState(initialLoadError ?? "");
+  const [refreshVersion, setRefreshVersion] = useState(0);
   const [mine, setMine] = useState<PitchOwnerCredential[]>([]);
 
   useEffect(() => {
@@ -29,11 +33,16 @@ export function PitchGallery({
   useEffect(() => {
     const timer = window.setTimeout(() => {
       void listPublishedPitchesFn({ data: { search: query } })
-        .then((result) => setPitches(result.pitches))
-        .catch(() => undefined);
+        .then((result) => {
+          setPitches(result.pitches);
+          setLoadError(result.loadError ?? "");
+        })
+        .catch(() =>
+          setLoadError("We could not refresh the wall. Your published pitches are still safe."),
+        );
     }, 250);
     return () => window.clearTimeout(timer);
-  }, [query]);
+  }, [query, refreshVersion]);
 
   return (
     <main id="main" className="min-h-screen bg-background">
@@ -126,7 +135,21 @@ export function PitchGallery({
           </label>
         </div>
 
-        {pitches.length > 0 ? (
+        {loadError ? (
+          <div
+            className="my-10 border-y border-[var(--things-amber)] bg-[var(--selection-bg)] px-5 py-4 text-center"
+            role="alert"
+          >
+            <p className="font-serif text-lg text-[var(--selection-fg)]">{loadError}</p>
+            <button
+              type="button"
+              onClick={() => setRefreshVersion((current) => current + 1)}
+              className="mt-3 min-h-10 border-b border-current px-3 font-mono text-xs text-[var(--selection-fg)] hover:opacity-60"
+            >
+              try again
+            </button>
+          </div>
+        ) : pitches.length > 0 ? (
           <div className="mt-8 columns-1 gap-6 sm:columns-2 lg:columns-3">
             {pitches.map((pitch) => (
               <Link

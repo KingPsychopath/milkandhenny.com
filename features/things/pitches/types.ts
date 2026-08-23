@@ -73,10 +73,27 @@ export interface PitchInkLayer {
 export type PitchMediaKind = "audio" | "video";
 export type PitchVideoFit = "contain" | "cover";
 
-export interface PitchMediaClip {
+export interface PitchVideoPlacement {
+  /** Position and size in the fixed 960 × 540 slide coordinate space. */
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  /** Order among video layers. Excalidraw slide objects remain above video. */
+  layer: number;
+}
+
+export const PITCH_VIDEO_DEFAULT_PLACEMENT: PitchVideoPlacement = {
+  x: 80,
+  y: 45,
+  width: 800,
+  height: 450,
+  layer: 0,
+};
+
+interface PitchMediaClipBase {
   id: string;
   assetId: string;
-  kind: PitchMediaKind;
   /** Position on the slide timeline. */
   timelineStartMs: number;
   /** Source file duration captured by MediaBunny before upload. */
@@ -89,8 +106,21 @@ export interface PitchMediaClip {
   locked: boolean;
   /** Linked clips move and trim together until the user unlinks them. */
   linkedGroupId?: string;
-  fit?: PitchVideoFit;
 }
+
+export interface PitchAudioClip extends PitchMediaClipBase {
+  kind: "audio";
+  fit?: never;
+  videoPlacement?: never;
+}
+
+export interface PitchVideoClip extends PitchMediaClipBase {
+  kind: "video";
+  fit: PitchVideoFit;
+  videoPlacement: PitchVideoPlacement;
+}
+
+export type PitchMediaClip = PitchAudioClip | PitchVideoClip;
 
 export interface PitchSlide {
   id: string;

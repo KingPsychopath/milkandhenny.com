@@ -47,6 +47,7 @@ import {
   PITCH_MEDIA_CLIP_LIMIT,
   PITCH_SLIDE_DEFAULT_DURATION_MS,
   PITCH_SLIDE_DURATION_RANGE_MS,
+  PITCH_VIDEO_DEFAULT_PLACEMENT,
   PITCH_VIDEO_MAX_BYTES,
   type PitchAsset,
   type PitchDocument,
@@ -65,7 +66,11 @@ import { ExcalidrawSurface } from "./ExcalidrawSurface";
 import { blobToDataUrl, dataUrlToBlob, loadPitchFiles } from "./files.client";
 import { DrawesomeInk } from "./DrawesomeInk";
 import { PitchMediaTimeline } from "./PitchMediaTimeline";
-import { PitchVideoLayer, usePitchMediaPlayback } from "./PitchMediaPlayback";
+import {
+  PitchVideoLayer,
+  PitchVideoStageControls,
+  usePitchMediaPlayback,
+} from "./PitchMediaPlayback";
 import { PitchMediaTrimDialog } from "./PitchMediaTrimDialog";
 import { PitchOperationalNotice } from "./PitchOperationalNotice";
 import { PitchDeviceSwitcher } from "./PitchDeviceSwitcher";
@@ -396,6 +401,7 @@ export function PitchEditor({
   const [files, setFiles] = useState<BinaryFiles>({});
   const [title, setTitle] = useState(isDemo ? "A pitch worth trying" : "");
   const [activeSlideId, setActiveSlideId] = useState(demoDocument?.slides[0]?.id ?? "");
+  const [selectedMediaClipId, setSelectedMediaClipId] = useState<string>();
   const [phase, setPhase] = useState<"loading" | "ready" | "missing" | "error">(
     isDemo ? "ready" : "loading",
   );
@@ -485,6 +491,10 @@ export function PitchEditor({
   useEffect(() => {
     setOperational(operationalStatus);
   }, [operationalStatus]);
+
+  useEffect(() => {
+    setSelectedMediaClipId(undefined);
+  }, [activeSlideId]);
 
   useEffect(() => {
     if (isDemo) return;
@@ -1234,6 +1244,10 @@ export function PitchEditor({
                 kind: "video" as const,
                 muted: true,
                 fit: "contain" as const,
+                videoPlacement: {
+                  ...PITCH_VIDEO_DEFAULT_PLACEMENT,
+                  layer: currentSlide.mediaClips.filter((clip) => clip.kind === "video").length,
+                },
               },
             ]
           : []),
@@ -1645,6 +1659,10 @@ export function PitchEditor({
                 kind: "video",
                 muted: true,
                 fit: "contain",
+                videoPlacement: {
+                  ...PITCH_VIDEO_DEFAULT_PLACEMENT,
+                  layer: mediaClips.filter((clip) => clip.kind === "video").length,
+                },
               });
             }
             if (prepared.hasAudio) {
@@ -2625,6 +2643,74 @@ export function PitchEditor({
                     playing={mediaClock.playing}
                   />
                 }
+                stageOverlay={
+                  <PitchVideoStageControls
+                    slide={currentSlide}
+                    playheadMs={mediaClock.playheadMs}
+                    selectedClipId={selectedMediaClipId}
+                    onSelectClip={setSelectedMediaClipId}
+                    onChange={(clipId, update) => {
+                      const nextSlide = {
+                        ...currentSlide,
+                        mediaClips: currentSlide.mediaClips.map((clip) =>
+                          clip.id === clipId && clip.kind === "video" ? update(clip) : clip,
+                        ),
+                        version: currentSlide.version + 1,
+                        updatedAt: Date.now(),
+                      };
+                      setDocumentState((current) =>
+                        current ? updateSlide(current, nextSlide.id, () => nextSlide) : current,
+                      );
+                      documentRef.current = documentRef.current
+                        ? updateSlide(documentRef.current, nextSlide.id, () => nextSlide)
+                        : documentRef.current;
+                      markChanged("media.change", { slideId: nextSlide.id, clipId });
+                    }}
+                    onReorder={(clipId, direction) => {
+                      const ordered = currentSlide.mediaClips
+                        .filter((clip) => clip.kind === "video")
+                        .toSorted(
+                          (left, right) =>
+                            (left.videoPlacement?.layer ?? 0) - (right.videoPlacement?.layer ?? 0),
+                        );
+                      const sourceIndex = ordered.findIndex((clip) => clip.id === clipId);
+                      const targetIndex =
+                        direction === "backward" ? sourceIndex - 1 : sourceIndex + 1;
+                      if (sourceIndex < 0 || targetIndex < 0 || targetIndex >= ordered.length)
+                        return;
+                      [ordered[sourceIndex], ordered[targetIndex]] = [
+                        ordered[targetIndex],
+                        ordered[sourceIndex],
+                      ];
+                      const layerById = new Map(
+                        ordered.map((clip, layer) => [clip.id, layer] as const),
+                      );
+                      const nextSlide = {
+                        ...currentSlide,
+                        mediaClips: currentSlide.mediaClips.map((clip) =>
+                          clip.kind === "video"
+                            ? {
+                                ...clip,
+                                videoPlacement: {
+                                  ...(clip.videoPlacement ?? PITCH_VIDEO_DEFAULT_PLACEMENT),
+                                  layer: layerById.get(clip.id) ?? 0,
+                                },
+                              }
+                            : clip,
+                        ),
+                        version: currentSlide.version + 1,
+                        updatedAt: Date.now(),
+                      };
+                      setDocumentState((current) =>
+                        current ? updateSlide(current, nextSlide.id, () => nextSlide) : current,
+                      );
+                      documentRef.current = documentRef.current
+                        ? updateSlide(documentRef.current, nextSlide.id, () => nextSlide)
+                        : documentRef.current;
+                      markChanged("media.change", { slideId: nextSlide.id, clipId });
+                    }}
+                  />
+                }
                 onApi={(api) => {
                   apiRef.current = api;
                 }}
@@ -2637,6 +2723,12 @@ export function PitchEditor({
             assets={assets}
             playheadMs={mediaClock.playheadMs}
             playing={mediaClock.playing}
+            selectedClipId={selectedMediaClipId}
+            onSelectClip={(clipId) => {
+              setSelectedMediaClipId(clipId);
+              const clip = currentSlide.mediaClips.find((candidate) => candidate.id === clipId);
+              if (clip) mediaClock.setPlayheadMs(clip.timelineStartMs);
+            }}
             disabledReason={
               isDemo
                 ? "Media uploads are available once you start a saved pitch."

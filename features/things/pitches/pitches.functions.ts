@@ -43,7 +43,7 @@ export const listPublishedPitchesFn = createServerFn({ method: "GET" })
   .handler(async ({ data }) => {
     const operationalStatus = await getPitchOperationalStatus();
     if (!operationalStatus.canRead) {
-      return { pitches: [], operationalStatus, ...pitchEditorConfig() };
+      return { pitches: [], loadError: undefined, operationalStatus, ...pitchEditorConfig() };
     }
     const result = await runPitchesResult(
       Effect.gen(function* () {
@@ -53,6 +53,9 @@ export const listPublishedPitchesFn = createServerFn({ method: "GET" })
     );
     return {
       pitches: result.ok ? result.value : [],
+      loadError: result.ok
+        ? undefined
+        : "We could not load the wall. Your published pitches are still safe. Try again.",
       operationalStatus,
       ...pitchEditorConfig(),
     };

@@ -788,6 +788,71 @@ const MIGRATIONS: Migration[] = [
         on conflict (singleton) do nothing;
     `,
   },
+  {
+    id: "0023_pitch_document_media_frames",
+    sql: `
+      create function pitch_upgrade_document_media_frames(input_document jsonb)
+      returns jsonb
+      language plpgsql
+      immutable
+      as $migration$
+      declare
+        slide jsonb;
+        clip jsonb;
+        upgraded_slides jsonb := '[]'::jsonb;
+        upgraded_clips jsonb;
+        video_layer integer;
+      begin
+        if input_document is null then return null; end if;
+        for slide in select value from jsonb_array_elements(input_document->'slides') loop
+          upgraded_clips := '[]'::jsonb;
+          video_layer := 0;
+          for clip in
+            select value from jsonb_array_elements(coalesce(slide->'mediaClips', '[]'::jsonb))
+          loop
+            if clip->>'kind' = 'video' and not clip ? 'videoPlacement' then
+              clip := clip || jsonb_build_object(
+                'videoPlacement',
+                jsonb_build_object(
+                  'x', 80,
+                  'y', 45,
+                  'width', 800,
+                  'height', 450,
+                  'layer', video_layer
+                )
+              );
+            end if;
+            if clip->>'kind' = 'video' then video_layer := video_layer + 1; end if;
+            upgraded_clips := upgraded_clips || jsonb_build_array(clip);
+          end loop;
+          slide := jsonb_set(slide, '{mediaClips}', upgraded_clips, true);
+          upgraded_slides := upgraded_slides || jsonb_build_array(slide);
+        end loop;
+        return jsonb_set(
+          jsonb_set(input_document, '{schemaVersion}', '2'::jsonb, true),
+          '{slides}',
+          upgraded_slides,
+          true
+        );
+      end;
+      $migration$;
+
+      update pitch_decks
+        set draft_document = pitch_upgrade_document_media_frames(draft_document),
+            published_document = case
+              when published_document is null then null
+              else pitch_upgrade_document_media_frames(published_document)
+            end;
+      update pitch_deck_backups
+        set document = pitch_upgrade_document_media_frames(document);
+      update pitch_editions
+        set document = pitch_upgrade_document_media_frames(document);
+      update pitch_commands
+        set result_document = pitch_upgrade_document_media_frames(result_document);
+
+      drop function pitch_upgrade_document_media_frames(jsonb);
+    `,
+  },
 ];
 
 export type MigrationResult = { applied: string[]; alreadyApplied: number };
