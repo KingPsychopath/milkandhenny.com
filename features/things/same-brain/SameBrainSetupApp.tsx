@@ -137,9 +137,7 @@ export function SameBrainSetupApp({
             description="Everyone answers the same question. Answer like everyone else and score together — try not to be the odd one out."
           >
             {defaultPool ? (
-              <GamePoolDefaultLaunch pool={defaultPool}>
-                join {defaultPool.label}
-              </GamePoolDefaultLaunch>
+              <GamePoolDefaultLaunch pool={defaultPool}>find a room</GamePoolDefaultLaunch>
             ) : (
               <GameLaunchButton accent="amber" onClick={() => void open()} disabled={busy}>
                 {busy ? "opening…" : "open a room"}
@@ -185,7 +183,7 @@ export function SameBrainSetupApp({
                 onClick={() => setPanel(panel === "join" ? null : "join")}
                 className="min-h-11"
               >
-                join a room
+                join by code
               </button>
               <button
                 type="button"

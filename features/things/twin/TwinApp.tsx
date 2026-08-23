@@ -107,21 +107,30 @@ export function TwinApp({ defaultPool }: { defaultPool?: GamePoolDefaultLaunchTa
             The face-off is the default because it is the best version of the game and needs nothing —
             no room, no second device, no network. Everything else is one tap away underneath it.
           */}
-          <GameLaunchButton
-            accent="amber"
-            onClick={() => {
-              // Audio may only start from a gesture, so the context is opened on the way in.
-              primeTwinAudio();
-              setBoard("duel");
-              void haptics.trigger("selection");
-            }}
-          >
-            two of you, one screen
-          </GameLaunchButton>
+          <div className={`grid gap-3 ${defaultPool && online ? "sm:grid-cols-2" : ""}`}>
+            <GameLaunchButton
+              accent="amber"
+              onClick={() => {
+                // Audio may only start from a gesture, so the context is opened on the way in.
+                primeTwinAudio();
+                setBoard("duel");
+                void haptics.trigger("selection");
+              }}
+            >
+              two of you, one screen
+            </GameLaunchButton>
+            {defaultPool && online ? (
+              <GamePoolDefaultLaunch pool={defaultPool} emphasis="secondary">
+                find a room
+              </GamePoolDefaultLaunch>
+            ) : null}
+          </div>
           <GameLaunchMeta tone="dark">
-            {online
-              ? "your card against theirs · nothing to set up · works offline"
-              : "offline · the one-screen game is ready"}
+            {defaultPool && online
+              ? "one screen or matched multiplayer · shared settings are ready"
+              : online
+                ? "your card against theirs · nothing to set up · works offline"
+                : "offline · the one-screen game is ready"}
           </GameLaunchMeta>
           <GameLaunchChoices tone="dark">
             <button
@@ -149,7 +158,7 @@ export function TwinApp({ defaultPool }: { defaultPool?: GamePoolDefaultLaunchTa
               aria-pressed={panel === "join"}
               className="min-h-11"
             >
-              join a room
+              join by code
             </button>
           </GameLaunchChoices>
         </GameLaunch>
@@ -159,21 +168,6 @@ export function TwinApp({ defaultPool }: { defaultPool?: GamePoolDefaultLaunchTa
             <h2 id="twin-friends" className="twin-panel-title">
               Everyone on their own phone
             </h2>
-            {defaultPool ? (
-              <>
-                <p className="twin-note">
-                  Join the open game night. The room and settings are ready for you.
-                </p>
-                <div className="mt-5">
-                  <GamePoolDefaultLaunch pool={defaultPool}>
-                    join {defaultPool.label}
-                  </GamePoolDefaultLaunch>
-                </div>
-                <p className="mt-6 border-t border-white/10 pt-5 font-mono text-xs uppercase tracking-[0.14em] text-white/45">
-                  or make a private room
-                </p>
-              </>
-            ) : null}
             {!online ? (
               <p role="status" className="twin-message">
                 Rooms need an internet connection. The one-screen game and solo board are still

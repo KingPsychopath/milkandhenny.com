@@ -188,22 +188,31 @@ export function DrawCountryApp({
           title="Draw a country. See what you remembered."
           description="We align your drawing, compare it with the real border, and show exactly where it matched."
         >
-          <GameLaunchButton
-            accent="ink"
-            disabled={!country}
-            onClick={() => {
-              setSoloMode("quick");
-              void haptics.trigger("selection");
-            }}
-          >
-            {country ? "quick draw" : "opening the atlas…"}
-          </GameLaunchButton>
+          <div className={`grid gap-3 ${defaultPool && online ? "sm:grid-cols-2" : ""}`}>
+            <GameLaunchButton
+              accent="ink"
+              disabled={!country}
+              onClick={() => {
+                setSoloMode("quick");
+                void haptics.trigger("selection");
+              }}
+            >
+              {country ? "quick draw" : "opening the atlas…"}
+            </GameLaunchButton>
+            {defaultPool && online ? (
+              <GamePoolDefaultLaunch pool={defaultPool} tone="light" emphasis="secondary">
+                find a room
+              </GamePoolDefaultLaunch>
+            ) : null}
+          </div>
           <GameLaunchMeta tone="light">
             {countryLoadFailed
               ? "reconnect once to save this game for offline play"
-              : online
-                ? "one country · 30 seconds · works offline"
-                : "offline · local play is ready"}
+              : defaultPool && online
+                ? "quick draw or matched multiplayer · shared settings are ready"
+                : online
+                  ? "one country · 30 seconds · works offline"
+                  : "offline · local play is ready"}
           </GameLaunchMeta>
           <GameLaunchChoices tone="light">
             <button
@@ -228,7 +237,7 @@ export function DrawCountryApp({
               aria-pressed={panel === "join"}
               className="min-h-11"
             >
-              join a room
+              join by code
             </button>
           </GameLaunchChoices>
         </GameLaunch>
@@ -276,21 +285,6 @@ export function DrawCountryApp({
             <p className="mt-2 font-serif text-black/55">
               Everyone draws the same countries. The closest border wins each round.
             </p>
-            {defaultPool ? (
-              <>
-                <p className="mt-4 font-serif text-black/55">
-                  Join the open game night. The room and settings are ready for you.
-                </p>
-                <div className="mt-5">
-                  <GamePoolDefaultLaunch pool={defaultPool} tone="light">
-                    join {defaultPool.label}
-                  </GamePoolDefaultLaunch>
-                </div>
-                <p className="mt-6 border-t border-black/10 pt-5 font-mono text-xs uppercase tracking-[0.14em] text-black/45">
-                  or make a private room
-                </p>
-              </>
-            ) : null}
             {!online ? (
               <p role="status" className="mt-5 font-mono text-xs text-amber-800">
                 Rooms need an internet connection. Quick draw and solo rounds are still ready here.

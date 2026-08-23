@@ -177,9 +177,7 @@ export function LiarsSetupApp({
             ) : null}
 
             {defaultPool ? (
-              <GamePoolDefaultLaunch pool={defaultPool}>
-                join {defaultPool.label}
-              </GamePoolDefaultLaunch>
+              <GamePoolDefaultLaunch pool={defaultPool}>find a room</GamePoolDefaultLaunch>
             ) : (
               <GameLaunchButton
                 accent="amber"
@@ -242,7 +240,7 @@ export function LiarsSetupApp({
                 onClick={() => setPanel(panel === "join" ? null : "join")}
                 className="min-h-11"
               >
-                join a room
+                join by code
               </button>
             </GameLaunchChoices>
 

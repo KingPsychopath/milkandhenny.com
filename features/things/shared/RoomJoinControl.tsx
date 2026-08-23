@@ -9,7 +9,7 @@ const ROOM_CODE_PATTERN = /^[A-Z2-9]{7}$/;
 interface RoomJoinControlProps {
   value: string;
   gamePath: string;
-  tone: "light" | "dark";
+  tone: "light" | "dark" | "theme";
   message?: string | null;
   onValueChange: (value: string) => void;
   onJoin: (roomCode: string) => void | Promise<void>;
@@ -151,12 +151,21 @@ function RoomQrScanner({ gamePath, tone, onCancel, onScan }: RoomQrScannerProps)
   if (!mounted) return null;
 
   const surface =
-    tone === "light"
-      ? "border-black/10 bg-[var(--things-cream)] text-black"
-      : "border-white/12 bg-[var(--things-night)] text-white";
-  const muted = tone === "light" ? "text-black/55" : "text-white/60";
-  const frame = tone === "light" ? "border-black/70" : "border-white/80";
-  const close = tone === "light" ? "border-black/20" : "border-white/20";
+    tone === "theme"
+      ? "theme-border bg-[var(--background)] text-[var(--foreground)]"
+      : tone === "light"
+        ? "border-black/10 bg-[var(--things-cream)] text-black"
+        : "border-white/12 bg-[var(--things-night)] text-white";
+  const muted =
+    tone === "theme" ? "theme-subtle" : tone === "light" ? "text-black/55" : "text-white/60";
+  const frame =
+    tone === "theme"
+      ? "border-[var(--foreground)]"
+      : tone === "light"
+        ? "border-black/70"
+        : "border-white/80";
+  const close =
+    tone === "theme" ? "theme-border" : tone === "light" ? "border-black/20" : "border-white/20";
 
   return createPortal(
     <div className="fixed inset-0 z-[100] flex items-end justify-center bg-black/65 p-3 backdrop-blur-sm sm:items-center sm:p-5">
@@ -228,14 +237,27 @@ export function RoomJoinControl({
   const messageId = useId();
   const [scannerOpen, setScannerOpen] = useState(false);
   const dark = tone === "dark";
-  const input = dark
-    ? "border-white/20 bg-white/[0.06] text-white placeholder:text-white/30"
-    : "border-black/15 bg-white/55 text-black placeholder:text-black/30";
-  const camera = dark
-    ? "border-white/15 bg-white/[0.08] text-white"
-    : "border-black/10 bg-black/[0.06] text-black";
-  const join = dark ? "border-white/20 text-white" : "border-black/25 text-black";
-  const status = dark ? "text-amber-200" : "text-amber-800";
+  const themed = tone === "theme";
+  const input = themed
+    ? "theme-border bg-[var(--stone-100)] text-[var(--foreground)] placeholder:text-[var(--stone-400)]"
+    : dark
+      ? "border-white/20 bg-white/[0.06] text-white placeholder:text-white/30"
+      : "border-black/15 bg-white/55 text-black placeholder:text-black/30";
+  const camera = themed
+    ? "theme-border bg-[var(--stone-100)] text-[var(--foreground)]"
+    : dark
+      ? "border-white/15 bg-white/[0.08] text-white"
+      : "border-black/10 bg-black/[0.06] text-black";
+  const join = themed
+    ? "theme-border text-[var(--foreground)]"
+    : dark
+      ? "border-white/20 text-white"
+      : "border-black/25 text-black";
+  const status = themed
+    ? "text-[var(--prose-hashtag)]"
+    : dark
+      ? "text-amber-200"
+      : "text-amber-800";
 
   return (
     <>

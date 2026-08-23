@@ -128,17 +128,28 @@ export function CentreApp({ defaultPool }: { defaultPool?: GamePoolDefaultLaunch
           title="First to the middle wins."
           description="Ready at the start. The maze appears at GO. Find the route before everyone else."
         >
-          <GameLaunchButton
-            accent="amber"
-            onClick={() => {
-              primeCentreAudio();
-              setSolo({ seed: freshSeed(), difficulty });
-              void haptics.trigger("selection");
-            }}
-          >
-            new solo maze
-          </GameLaunchButton>
-          <GameLaunchMeta tone="theme">ready · 3 · 2 · 1 · trace to the centre</GameLaunchMeta>
+          <div className={`grid gap-3 ${defaultPool ? "sm:grid-cols-2" : ""}`}>
+            <GameLaunchButton
+              accent="amber"
+              onClick={() => {
+                primeCentreAudio();
+                setSolo({ seed: freshSeed(), difficulty });
+                void haptics.trigger("selection");
+              }}
+            >
+              new solo maze
+            </GameLaunchButton>
+            {defaultPool ? (
+              <GamePoolDefaultLaunch pool={defaultPool} tone="theme" emphasis="secondary">
+                find a room
+              </GamePoolDefaultLaunch>
+            ) : null}
+          </div>
+          <GameLaunchMeta tone="theme">
+            {defaultPool
+              ? "solo now · or join multiplayer with shared settings"
+              : "ready · 3 · 2 · 1 · trace to the centre"}
+          </GameLaunchMeta>
           <GameLaunchChoices tone="theme">
             <button
               type="button"
@@ -184,28 +195,13 @@ export function CentreApp({ defaultPool }: { defaultPool?: GamePoolDefaultLaunch
               aria-pressed={panel === "join"}
               className="min-h-11"
             >
-              join a room
+              join by code
             </button>
           </GameLaunchChoices>
         </GameLaunch>
         {panel === "friends" ? (
           <section className="centre-panel" aria-labelledby="centre-friends-title">
             <h2 id="centre-friends-title">Everyone on their own screen</h2>
-            {defaultPool ? (
-              <>
-                <p className="mt-3 font-serif text-lg text-black/60">
-                  Join the open game night. The room and settings are ready for you.
-                </p>
-                <div className="mt-5">
-                  <GamePoolDefaultLaunch pool={defaultPool} tone="light">
-                    join {defaultPool.label}
-                  </GamePoolDefaultLaunch>
-                </div>
-                <p className="mt-6 border-t border-black/10 pt-5 font-mono text-xs uppercase tracking-[0.14em] text-black/45">
-                  or make a private room
-                </p>
-              </>
-            ) : null}
             <form
               onSubmit={(event) => {
                 event.preventDefault();
@@ -244,7 +240,7 @@ export function CentreApp({ defaultPool }: { defaultPool?: GamePoolDefaultLaunch
             <RoomJoinControl
               value={joinCode}
               gamePath="/things/centre"
-              tone="dark"
+              tone="theme"
               message={message}
               onValueChange={(value) => {
                 setJoinCode(value);
