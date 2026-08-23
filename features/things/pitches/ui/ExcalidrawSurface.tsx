@@ -165,11 +165,6 @@ function ExcalidrawSurfaceCanvas({
 
   useEffect(() => {
     let cancelled = false;
-    (
-      window as Window & {
-        EXCALIDRAW_ASSET_PATH?: string;
-      }
-    ).EXCALIDRAW_ASSET_PATH = "/excalidraw/";
     void import("@excalidraw/excalidraw").then((module) => {
       if (!cancelled) setCanvas(() => module.Excalidraw);
     });

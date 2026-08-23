@@ -12,7 +12,7 @@ const CONTENT_SECURITY_POLICY = [
   "script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'",
   "script-src-attr 'none'",
   "style-src 'self' 'unsafe-inline'",
-  "font-src 'self'",
+  "font-src 'self' https://esm.sh",
   "img-src 'self' data: blob: https:",
   "media-src 'self' blob: https:",
   process.env.NODE_ENV === "production"
