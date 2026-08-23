@@ -39,7 +39,7 @@ export function PitchNightHero() {
             <span data-hero-line>Strong opinions.</span>
           </span>
           <span className="pitch-night-hero-line">
-            <span data-hero-line>Wild theories.</span>
+            <span data-hero-line>Conspiracies.</span>
           </span>
         </h1>
         <p className="pitch-night-hero-copy">

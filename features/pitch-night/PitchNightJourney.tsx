@@ -237,7 +237,7 @@ export function Finale({ ticketHref }: { ticketHref: string }) {
         </h2>
         <p className="pitch-night-finale-copy" data-soft-reveal>
           Bring the thought you can’t stop returning to: a pitch, an unpopular opinion, or a wild
-          theory. We’ll save you a seat, pass you the mic, and see where the night goes.
+          conspiracy. We’ll save you a seat, pass you the mic, and see where the night goes.
         </p>
         <div className="pitch-night-finale-actions" data-soft-reveal>
           <Link to="/things/pitches/new" className="pitch-night-button pitch-night-button-light">
