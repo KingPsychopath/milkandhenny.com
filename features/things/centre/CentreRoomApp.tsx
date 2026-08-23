@@ -1,4 +1,4 @@
-import { Link } from "@tanstack/react-router";
+import { Link, useNavigate } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useWebHaptics } from "web-haptics/react";
 import { useNativeShareAvailability } from "@/hooks/useNativeShareAvailability";
@@ -30,10 +30,12 @@ import type {
   CentreRoute,
 } from "./types";
 import { useCentreRoom } from "./useCentreRoom";
+import { releaseGamePoolMembership } from "../pool/pool-session.client";
 
 const DIFFICULTY_LABELS = ["calm", "easy", "medium", "hard", "brutal"] as const;
 
 export function CentreRoomApp({ roomId }: { roomId: string }) {
+  const navigate = useNavigate();
   const [credentials, setCredentials] = useState<CentrePlayerCredentials | null>(null);
   const [loaded, setLoaded] = useState(false);
   useEffect(() => {
@@ -46,15 +48,29 @@ export function CentreRoomApp({ roomId }: { roomId: string }) {
   }, [roomId]);
   if (!loaded) return <div className="things-game things-game--night centre" aria-busy="true" />;
   if (!credentials) return <JoinCentreRoom roomId={roomId} onJoined={setCredentials} />;
-  return <CentreRoom roomId={roomId} credentials={credentials} />;
+  return (
+    <CentreRoom
+      roomId={roomId}
+      credentials={credentials}
+      onLeft={() => {
+        localStorage.removeItem(centreBrowserKeys.playerSession(roomId));
+        void releaseGamePoolMembership("centre", roomId).then((entrance) => {
+          if (entrance) window.location.assign(entrance);
+          else void navigate({ to: "/things/centre" });
+        });
+      }}
+    />
+  );
 }
 
 export function CentreRoom({
   roomId,
   credentials,
+  onLeft,
 }: {
   roomId: string;
   credentials: CentrePlayerCredentials;
+  onLeft: () => void;
 }) {
   const live = useCentreRoom({
     roomId,
@@ -159,6 +175,19 @@ export function CentreRoom({
     },
     [credentials.playerId, credentials.playerToken, notify, roomId, setMessage, setSnapshot],
   );
+
+  const leaveRoom = useCallback(async () => {
+    const result = await send({ type: "player.leave" }, true);
+    if (result?.ok && result.accepted) {
+      onLeft();
+      return true;
+    }
+    if (result && !result.ok && result.errorCode === "room_unavailable") {
+      onLeft();
+      return true;
+    }
+    return false;
+  }, [onLeft, send]);
 
   useEffect(() => {
     if (
@@ -300,7 +329,7 @@ export function CentreRoom({
     return () => window.clearInterval(timer);
   }, [clockOffset, course?.endsAt, snapshotPhase]);
 
-  if (live.ended || !snapshot)
+  if (live.ended || !snapshot || snapshot.phase === "closed")
     return (
       <div className="things-game things-game--night centre">
         <main id="main" className="centre-join">
@@ -332,6 +361,7 @@ export function CentreRoom({
           primeCentreAudio();
           void send({ type: "game.start" });
         }}
+        onLeave={leaveRoom}
       />
     );
   }
@@ -340,7 +370,7 @@ export function CentreRoom({
     return (
       <div className="things-game things-game--night centre">
         <header className="centre-header">
-          <Link to="/things/centre">← leave</Link>
+          <Link to="/things/centre">← back</Link>
           <span>{roomId}</span>
         </header>
         <main id="main" className="centre-finished">
@@ -383,6 +413,7 @@ export function CentreRoom({
           ) : (
             <p className="centre-note">waiting for the host</p>
           )}
+          <CentreLeaveButton onLeave={leaveRoom} tone="dark" />
         </main>
       </div>
     );
@@ -402,7 +433,7 @@ export function CentreRoom({
     <>
       <div className="things-game things-game--night centre">
         <header className="centre-header">
-          <Link to="/things/centre">← leave</Link>
+          <Link to="/things/centre">← back</Link>
           <span>
             {roomId} · {live.connectionState}
           </span>
@@ -412,7 +443,7 @@ export function CentreRoom({
             <p className="centre-eyebrow">
               {ownFinished
                 ? "your race is done"
-                : `${snapshot.players.filter(({ armed }) => armed).length} of ${snapshot.players.length} on the line`}
+                : `${snapshot.players.filter(({ armed, withdrawn }) => armed && !withdrawn).length} of ${snapshot.players.filter(({ withdrawn }) => !withdrawn).length} on the line`}
             </p>
             <h1 className="centre-race-title">
               {snapshot.phase === "arming"
@@ -443,11 +474,13 @@ export function CentreRoom({
                 <small>
                   {player.elapsedMs !== null
                     ? `${player.id === credentials.playerId ? "done · " : ""}${(player.elapsedMs / 1_000).toFixed(2)}s`
-                    : player.armed
-                      ? "ready"
-                      : snapshot.phase === "arming"
-                        ? "tapping in"
-                        : "racing"}
+                    : player.withdrawn
+                      ? "left the race"
+                      : player.armed
+                        ? "ready"
+                        : snapshot.phase === "arming"
+                          ? "tapping in"
+                          : "racing"}
                 </small>
               </li>
             ))}
@@ -524,6 +557,7 @@ export function CentreRoom({
           <p role="status" className="centre-message">
             {live.message}
           </p>
+          <CentreLeaveButton onLeave={leaveRoom} tone="dark" />
         </main>
       </div>
       {removePlayerIds ? (
@@ -562,6 +596,7 @@ function CentreLobby({
   onDifficulty,
   onDelayedRivals,
   onStart,
+  onLeave,
 }: {
   snapshot: NonNullable<ReturnType<typeof useCentreRoom>["snapshot"]>;
   playerId: string;
@@ -574,6 +609,7 @@ function CentreLobby({
   onDifficulty: (difficulty: CentreDifficulty) => void;
   onDelayedRivals: (enabled: boolean) => void;
   onStart: () => void;
+  onLeave: () => Promise<boolean>;
 }) {
   const { dataUrl: qr, failed } = useQrCode(invite, 280);
   const nativeShare = useNativeShareAvailability({ coarsePointerOnly: true });
@@ -596,7 +632,7 @@ function CentreLobby({
   return (
     <div className="things-game things-game--night centre">
       <header className="centre-header">
-        <Link to="/things/centre">← leave</Link>
+        <Link to="/things/centre">← back</Link>
         <span>
           {snapshot.roomId} · {connection}
         </span>
@@ -607,15 +643,19 @@ function CentreLobby({
         <p className="centre-lede">
           Tap your start when you’re set. Once the countdown begins, the race is locked.
         </p>
-        {qr ? (
-          <img src={qr} alt="QR code to join this centre room" className="centre-qr" />
-        ) : failed ? (
-          <p className="centre-note">QR unavailable. Share the link or room code.</p>
+        {!snapshot.managed ? (
+          <>
+            {qr ? (
+              <img src={qr} alt="QR code to join this centre room" className="centre-qr" />
+            ) : failed ? (
+              <p className="centre-note">QR unavailable. Share the link or room code.</p>
+            ) : null}
+            <p className="centre-code">{snapshot.roomId}</p>
+            <button type="button" className="centre-button" onClick={() => void share()}>
+              {nativeShare ? "share invite" : "copy invite link"}
+            </button>
+          </>
         ) : null}
-        <p className="centre-code">{snapshot.roomId}</p>
-        <button type="button" className="centre-button" onClick={() => void share()}>
-          {nativeShare ? "share invite" : "copy invite link"}
-        </button>
         <p aria-live="polite" className="centre-message">
           {message}
         </p>
@@ -630,7 +670,7 @@ function CentreLobby({
             </li>
           ))}
         </ul>
-        {snapshot.canControl ? (
+        {snapshot.canControl && !snapshot.managed ? (
           <>
             <label className="centre-difficulty">
               <span>difficulty</span>
@@ -678,7 +718,51 @@ function CentreLobby({
         ) : (
           <p className="centre-note">waiting for the host</p>
         )}
+        <CentreLeaveButton onLeave={onLeave} tone="dark" />
       </main>
     </div>
+  );
+}
+
+function CentreLeaveButton({
+  onLeave,
+  tone,
+}: {
+  onLeave: () => Promise<boolean>;
+  tone: "dark" | "light";
+}) {
+  const [open, setOpen] = useState(false);
+  const [pending, setPending] = useState(false);
+  return (
+    <>
+      <button
+        type="button"
+        className="centre-button"
+        onClick={() => setOpen(true)}
+        aria-haspopup="dialog"
+      >
+        leave room
+      </button>
+      {open ? (
+        <GameActionDialog
+          tone={tone}
+          eyebrow="leave room"
+          title="Leave this room?"
+          description="You will give up your seat. If you are the host, the oldest connected player will take over."
+          cancelLabel="stay"
+          confirmLabel="leave room"
+          pending={pending}
+          pendingLabel="leaving…"
+          onCancel={() => setOpen(false)}
+          onConfirm={() => {
+            setPending(true);
+            void onLeave().then((left) => {
+              setPending(false);
+              if (left) setOpen(false);
+            });
+          }}
+        />
+      ) : null}
+    </>
   );
 }

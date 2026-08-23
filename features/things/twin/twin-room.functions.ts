@@ -149,6 +149,7 @@ export const applyTwinActionFn = createServerFn({ method: "POST" })
       };
     else if (raw.type === "game.replay" || raw.type === "game.lobby" || raw.type === "heat.next")
       action = { type: raw.type };
+    else if (raw.type === "player.leave") action = { type: raw.type };
     else throw new Error("Invalid action");
 
     return { ...identity(data), action };

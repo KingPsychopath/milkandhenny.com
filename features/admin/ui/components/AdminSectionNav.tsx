@@ -15,6 +15,11 @@ export const ADMIN_SECTIONS = [
     description: "Events, tickets, scanners, and pitches",
   },
   {
+    id: "games",
+    label: "games",
+    description: "Game-night entrances, room pools, and default settings",
+  },
+  {
     id: "transfers",
     label: "transfers",
     description: "Active drops and media processing",
@@ -50,7 +55,7 @@ export function AdminSectionNav({
     <div className="mt-8 border-y theme-border">
       <nav
         aria-label="Admin sections"
-        className="-mx-6 flex overflow-x-auto px-6 sm:mx-0 sm:grid sm:grid-cols-3 sm:px-0"
+        className="-mx-6 flex overflow-x-auto px-6 sm:mx-0 sm:grid sm:grid-cols-4 sm:px-0"
       >
         {ADMIN_SECTIONS.map((section) => {
           const selected = section.id === active;

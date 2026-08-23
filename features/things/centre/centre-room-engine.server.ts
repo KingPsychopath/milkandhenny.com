@@ -45,6 +45,7 @@ interface PlayerState {
   id: string;
   name: string;
   tokenHash: string;
+  joinedAt: number;
   colour: number;
   entranceIndex: number | null;
   lastSeenAt: number;
@@ -56,6 +57,7 @@ interface PlayerState {
   elapsedMs: number | null;
   wallHits: number;
   resets: number;
+  withdrawn?: boolean;
 }
 
 interface CourseState {
@@ -70,10 +72,12 @@ interface CourseState {
 
 interface RoomState {
   roomId: string;
+  /** The game-night pool owns admission and lobby settings for this room. */
+  managed?: boolean;
   expiresAt: number;
   revision: number;
   sequence: number;
-  phase: "lobby" | "arming" | "countdown" | "racing" | "finishing" | "finished";
+  phase: "lobby" | "arming" | "countdown" | "racing" | "finishing" | "finished" | "closed";
   difficulty: CentreDifficulty;
   delayedRivals: boolean;
   gameNumber: number;
@@ -90,6 +94,20 @@ const memoryReplays = createMemoryRoomStore<CentreReplayPlayer>("centre-replay")
 function changed(room: RoomState) {
   room.revision += 1;
   room.sequence += 1;
+}
+
+function activePlayers(room: RoomState) {
+  return room.players.filter((player) => !player.withdrawn);
+}
+
+function transferHost(room: RoomState, leavingId: string, now: number) {
+  if (room.hostPlayerId !== leavingId) return;
+  const remaining = activePlayers(room).filter((player) => player.id !== leavingId);
+  const connected = remaining.filter((player) => now - player.lastSeenAt <= CONNECTED_WINDOW_MS);
+  const successor = (connected.length > 0 ? connected : remaining).toSorted(
+    (left, right) => left.joinedAt - right.joinedAt || left.id.localeCompare(right.id),
+  )[0];
+  room.hostPlayerId = successor?.id ?? "";
 }
 
 async function loadRoom(roomId: string) {
@@ -153,6 +171,13 @@ async function withRoom<T>(roomId: string, use: (room: RoomState) => T | Promise
 
 function validPlayer(room: RoomState, playerId: string, playerToken: string) {
   const player = room.players.find(({ id }) => id === playerId);
+  return player && !player.withdrawn && multiplayerCredentialsMatch(playerToken, player.tokenHash)
+    ? player
+    : null;
+}
+
+function authenticatedPlayer(room: RoomState, playerId: string, playerToken: string) {
+  const player = room.players.find(({ id }) => id === playerId);
   return player && multiplayerCredentialsMatch(playerToken, player.tokenHash) ? player : null;
 }
 
@@ -176,11 +201,12 @@ function rankings(room: RoomState) {
 
 function snapshot(room: RoomState, playerId: string): CentreSnapshot {
   const now = Date.now();
-  const host = room.players.find(({ id }) => id === room.hostPlayerId);
+  const host = room.players.find(({ id, withdrawn }) => id === room.hostPlayerId && !withdrawn);
   const places = rankings(room);
   const player = room.players.find(({ id }) => id === playerId);
   return {
     roomId: room.roomId,
+    managed: room.managed === true,
     phase: room.phase,
     serverNow: now,
     revision: room.revision,
@@ -204,6 +230,7 @@ function snapshot(room: RoomState, playerId: string): CentreSnapshot {
       place: places.get(candidate.id) ?? null,
       wallHits: candidate.wallHits,
       resets: candidate.resets,
+      withdrawn: candidate.withdrawn === true,
     })),
     playerId,
     ready: multiplayerPlayerReady(player ?? { id: playerId }),
@@ -213,14 +240,15 @@ function snapshot(room: RoomState, playerId: string): CentreSnapshot {
 }
 
 function startCourse(room: RoomState, now = Date.now()) {
+  const players = activePlayers(room);
   const seed = randomSeed();
   const maze = generateCentreMaze({
     seed,
     difficulty: room.difficulty,
-    playerCount: room.players.length,
+    playerCount: players.length,
   });
-  for (const [index, player] of room.players.entries()) {
-    player.entranceIndex = (index + room.gameNumber - 1) % room.players.length;
+  for (const [index, player] of players.entries()) {
+    player.entranceIndex = (index + room.gameNumber - 1) % players.length;
     player.armed = false;
     player.finishedAt = null;
     player.elapsedMs = null;
@@ -230,7 +258,7 @@ function startCourse(room: RoomState, now = Date.now()) {
   room.course = {
     seed,
     difficulty: room.difficulty,
-    playerCount: room.players.length,
+    playerCount: players.length,
     hash: maze.hash,
     startsAt: null,
     firstFinishAt: null,
@@ -247,7 +275,7 @@ function advance(room: RoomState, now = Date.now()) {
     changed(room);
   }
   if (room.phase === "finishing" && room.course?.firstFinishAt && room.course.endsAt) {
-    const allFinished = room.players.every(({ elapsedMs }) => elapsedMs !== null);
+    const allFinished = activePlayers(room).every(({ elapsedMs }) => elapsedMs !== null);
     if (
       now >= room.course.endsAt ||
       (allFinished && now >= room.course.firstFinishAt + PHOTO_FINISH_MS)
@@ -277,6 +305,7 @@ export async function createCentreRoom(input: {
   hostName: string;
   difficulty: CentreDifficulty;
   delayedRivals: boolean;
+  managed?: boolean;
 }): Promise<CentreRoomCredentials> {
   const roomId = await createAvailableMultiplayerRoomId(async (candidate) =>
     Boolean(await loadRoom(candidate)),
@@ -286,6 +315,7 @@ export async function createCentreRoom(input: {
   const playerId = crypto.randomUUID();
   const room: RoomState = {
     roomId,
+    managed: input.managed,
     expiresAt: multiplayerRoomExpiresAt(),
     revision: 1,
     sequence: 1,
@@ -300,6 +330,7 @@ export async function createCentreRoom(input: {
         id: playerId,
         name: input.hostName,
         tokenHash: hashMultiplayerCredential(playerToken),
+        joinedAt: Date.now(),
         colour: 0,
         entranceIndex: null,
         lastSeenAt: Date.now(),
@@ -334,9 +365,12 @@ export async function joinCentreRoom(input: {
   const result = await withRoom(input.roomId, (room) => {
     advance(room);
     if (room.phase !== "lobby") return multiplayerFailure("game_started", "This race has started");
-    if (input.joinToken && !multiplayerCredentialsMatch(input.joinToken, room.joinHash))
+    if (
+      (room.managed && !input.joinToken) ||
+      (input.joinToken && !multiplayerCredentialsMatch(input.joinToken, room.joinHash))
+    )
       return multiplayerFailure("invite_expired", "This invite is no longer valid");
-    if (room.players.length >= MAX_PLAYERS)
+    if (activePlayers(room).length >= MAX_PLAYERS)
       return multiplayerFailure("room_full", "This room is full");
     const name = input.name.trim();
     if (!name) return multiplayerFailure("invalid_name", "Add your name");
@@ -347,6 +381,7 @@ export async function joinCentreRoom(input: {
       id: crypto.randomUUID(),
       name,
       tokenHash: hashMultiplayerCredential(playerToken),
+      joinedAt: Date.now(),
       colour: room.players.length % 8,
       entranceIndex: null,
       lastSeenAt: Date.now(),
@@ -409,9 +444,25 @@ export async function applyCentreAction(input: {
   action: CentreAction;
 }): Promise<CentreActionResult> {
   const result = await withRoom(input.roomId, async (room) => {
+    const now = Date.now();
+    const authenticated = authenticatedPlayer(room, input.playerId, input.playerToken);
+    if (!authenticated) return null;
+    if (input.action.type === "player.leave") {
+      if (authenticated.withdrawn)
+        return { ok: true, accepted: true, snapshot: snapshot(room, authenticated.id) } as const;
+      transferHost(room, authenticated.id, now);
+      if (room.phase === "lobby") {
+        room.players = room.players.filter(({ id }) => id !== authenticated.id);
+        if (room.players.length === 0) room.phase = "closed";
+      } else {
+        authenticated.withdrawn = true;
+        if (activePlayers(room).length === 0) room.phase = "closed";
+      }
+      changed(room);
+      return { ok: true, accepted: true, snapshot: snapshot(room, authenticated.id) } as const;
+    }
     const player = validPlayer(room, input.playerId, input.playerToken);
     if (!player) return null;
-    const now = Date.now();
     player.lastSeenAt = now;
     advance(room, now);
     const action = input.action;
@@ -436,7 +487,7 @@ export async function applyCentreAction(input: {
         player.armed = action.armed;
         changed(room);
       }
-      if (room.players.every(({ armed }) => armed) && room.course) {
+      if (activePlayers(room).every(({ armed }) => armed) && room.course) {
         room.course.startsAt = now + COUNTDOWN_MS;
         room.phase = "countdown";
         changed(room);
@@ -526,12 +577,19 @@ export async function applyCentreAction(input: {
       });
       return { ok: true, accepted: true, snapshot: snapshot(room, player.id) } as const;
     }
-    const host = room.players.find(({ id }) => id === room.hostPlayerId);
+    const host = room.players.find(({ id, withdrawn }) => id === room.hostPlayerId && !withdrawn);
     const canControl =
       player.id === room.hostPlayerId || !host || now - host.lastSeenAt > HOST_TAKEOVER_MS;
     if (!canControl)
       return rejection(room, player.id, "The host controls the race", "action_unavailable");
     if (action.type === "game.configure") {
+      if (room.managed)
+        return rejection(
+          room,
+          player.id,
+          "The game-night settings are fixed",
+          "action_unavailable",
+        );
       if (room.phase !== "lobby")
         return rejection(room, player.id, "Settings are locked", "action_unavailable");
       if (action.difficulty !== undefined) room.difficulty = action.difficulty;
@@ -541,7 +599,7 @@ export async function applyCentreAction(input: {
     }
     if (action.type === "game.start" && room.phase === "lobby") {
       const confirmed = new Set(action.removePlayerIds ?? []);
-      const unready = multiplayerUnreadyPlayers(room.players);
+      const unready = multiplayerUnreadyPlayers(activePlayers(room));
       const unconfirmed = unready.filter(
         ({ id, startRequestId }) => id === player.id || !confirmed.has(id) || !startRequestId,
       );

@@ -2,6 +2,7 @@ import { Context, Effect, Layer, Metric } from "effect";
 
 import { getRuntimeInstanceId } from "@/lib/platform/runtime-metadata.server";
 
+import { MULTIPLAYER_GAMES } from "./multiplayer-telemetry";
 import type {
   MultiplayerGame,
   MultiplayerLatencySnapshot,
@@ -33,12 +34,12 @@ const reconciliationDuration = Metric.histogram("multiplayer_reconciliation_dura
   description: "Authoritative multiplayer reconciliation latency",
   boundaries: [5, 10, 20, 40, 80, 160, 320, 640, 1_250, 2_500, 5_000],
 });
-const lockCounter = Metric.counter("multiplayer_party_lock_total", {
-  description: "Spelling Party distributed lock outcomes",
+const lockCounter = Metric.counter("multiplayer_room_lock_total", {
+  description: "Multiplayer distributed room lock outcomes",
   incremental: true,
 });
-const lockWaitDuration = Metric.histogram("multiplayer_party_lock_wait_ms", {
-  description: "Spelling Party distributed lock acquisition latency",
+const lockWaitDuration = Metric.histogram("multiplayer_room_lock_wait_ms", {
+  description: "Multiplayer distributed room lock acquisition latency",
   boundaries: [1, 5, 10, 20, 40, 80, 160, 320, 640],
 });
 const backplaneCounter = Metric.counter("multiplayer_realtime_backplane_total", {
@@ -47,7 +48,9 @@ const backplaneCounter = Metric.counter("multiplayer_realtime_backplane_total", 
 });
 
 const SOCKET_REASONS = [
+  "authorization_unavailable",
   "client_closed",
+  "hello_timeout",
   "hello_repeated",
   "hello_required",
   "invalid_message",
@@ -57,6 +60,7 @@ const SOCKET_REASONS = [
   "socket_error",
   "unauthorized",
   "unsupported_message",
+  "heartbeat_timeout",
 ] as const;
 
 type SocketTerminationReason = (typeof SOCKET_REASONS)[number];
@@ -87,6 +91,7 @@ export class MultiplayerTelemetry extends Context.Service<
       acquired: boolean;
       contended: boolean;
       waitMs: number;
+      game?: MultiplayerGame;
     }) => Effect.Effect<void>;
     readonly recordBackplane: (
       direction: "publish" | "receive",
@@ -121,17 +126,23 @@ export class MultiplayerTelemetry extends Context.Service<
     return {
       recordBackplane: (direction, outcome) =>
         Metric.update(Metric.withAttributes(backplaneCounter, { direction, outcome }), 1),
-      recordLock: ({ acquired, contended, waitMs }) =>
+      recordLock: ({ acquired, contended, waitMs, game = "unknown" }) =>
         Effect.all(
           [
             Metric.update(
               Metric.withAttributes(lockCounter, {
+                game,
                 outcome: acquired ? "acquired" : "failed",
               }),
               1,
             ),
             ...(contended
-              ? [Metric.update(Metric.withAttributes(lockCounter, { outcome: "contended" }), 1)]
+              ? [
+                  Metric.update(
+                    Metric.withAttributes(lockCounter, { game, outcome: "contended" }),
+                    1,
+                  ),
+                ]
               : []),
             Metric.update(lockWaitDuration, Math.max(0, waitMs)),
           ],
@@ -173,7 +184,7 @@ export class MultiplayerTelemetry extends Context.Service<
         }),
       snapshot: Effect.gen(function* () {
         const games = {} as MultiplayerTelemetrySnapshot["games"];
-        for (const game of ["remote", "spelling-party", "draw-country"] as const) {
+        for (const game of MULTIPLAYER_GAMES) {
           const [active, success, failure, limited, reconciliation] = yield* Effect.all([
             Metric.value(gameMetric(activeSockets, game)),
             Metric.value(Metric.withAttributes(operationCounter, { game, result: "success" })),
@@ -198,9 +209,13 @@ export class MultiplayerTelemetry extends Context.Service<
           };
         }
         const [lockAcquired, lockContended, lockFailed, lockWait] = yield* Effect.all([
-          Metric.value(Metric.withAttributes(lockCounter, { outcome: "acquired" })),
-          Metric.value(Metric.withAttributes(lockCounter, { outcome: "contended" })),
-          Metric.value(Metric.withAttributes(lockCounter, { outcome: "failed" })),
+          Metric.value(
+            Metric.withAttributes(lockCounter, { game: "unknown", outcome: "acquired" }),
+          ),
+          Metric.value(
+            Metric.withAttributes(lockCounter, { game: "unknown", outcome: "contended" }),
+          ),
+          Metric.value(Metric.withAttributes(lockCounter, { game: "unknown", outcome: "failed" })),
           Metric.value(lockWaitDuration),
         ]);
         const [published, received, publishFailures, receiveFailures] = yield* Effect.all([

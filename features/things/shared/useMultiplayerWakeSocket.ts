@@ -20,9 +20,7 @@ interface MultiplayerWakeSocketInput {
 
 /** Advisory wake-up transport. Durable commands and snapshots remain authoritative over HTTPS. */
 export function useMultiplayerWakeSocket(input: MultiplayerWakeSocketInput) {
-  const [state, setState] = useState<MultiplayerWakeSocketState>(() =>
-    typeof navigator === "undefined" || navigator.onLine ? "reconnecting" : "offline",
-  );
+  const [state, setState] = useState<MultiplayerWakeSocketState>("reconnecting");
   const socketRef = useRef<WebSocket | null>(null);
   const wakeRef = useRef(input.onWake);
   const messageRef = useRef(input.onMessage);
@@ -55,11 +53,7 @@ export function useMultiplayerWakeSocket(input: MultiplayerWakeSocketInput) {
       if (target.readyState === WebSocket.OPEN) target.send(JSON.stringify(message));
     };
     const scheduleReconnect = (connect: () => void) => {
-      if (!navigator.onLine) {
-        setState("offline");
-        return;
-      }
-      setState("reconnecting");
+      setState(navigator.onLine ? "reconnecting" : "offline");
       const delay = Math.min(
         MULTIPLAYER_REALTIME_LIMITS.maxReconnectDelayMs,
         MULTIPLAYER_REALTIME_LIMITS.initialReconnectDelayMs * 2 ** attempt,
@@ -69,10 +63,7 @@ export function useMultiplayerWakeSocket(input: MultiplayerWakeSocketInput) {
     };
 
     const connect = () => {
-      if (!active || !navigator.onLine) {
-        if (active) setState("offline");
-        return;
-      }
+      if (!active) return;
       if (socket?.readyState === WebSocket.OPEN || socket?.readyState === WebSocket.CONNECTING)
         return;
       setState("reconnecting");

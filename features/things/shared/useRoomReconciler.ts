@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef } from "react";
+import { MULTIPLAYER_REALTIME_LIMITS } from "./multiplayer-realtime";
 
 interface RoomReconcilerOptions {
   enabled: boolean;
@@ -29,6 +30,29 @@ export function useRoomReconciler({
     let inFlight = false;
     let rerun = false;
     let waiters: Array<() => void> = [];
+    let lastCompletedAt = Number.NEGATIVE_INFINITY;
+    let cooldownTimer: number | null = null;
+    let scheduled = false;
+
+    const resolveWaiters = () => {
+      if (inFlight || rerun || scheduled) return;
+      const currentWaiters = waiters;
+      waiters = [];
+      currentWaiters.forEach((resolve) => resolve());
+    };
+
+    const schedule = (delayMs: number) => {
+      if (!active || cooldownTimer !== null) return;
+      scheduled = true;
+      cooldownTimer = window.setTimeout(
+        () => {
+          cooldownTimer = null;
+          scheduled = false;
+          void run().catch(() => undefined);
+        },
+        Math.max(0, delayMs),
+      );
+    };
 
     const run = async () => {
       if (!active) return;
@@ -36,20 +60,24 @@ export function useRoomReconciler({
         rerun = true;
         return new Promise<void>((resolve) => waiters.push(resolve));
       }
+      const remainingGap =
+        MULTIPLAYER_REALTIME_LIMITS.minimumReconciliationGapMs - (Date.now() - lastCompletedAt);
+      if (remainingGap > 0) {
+        rerun = true;
+        schedule(remainingGap);
+        return new Promise<void>((resolve) => waiters.push(resolve));
+      }
       inFlight = true;
       try {
         await reconcileRef.current(() => active);
       } finally {
+        lastCompletedAt = Date.now();
         inFlight = false;
         if (rerun && active) {
           rerun = false;
-          await run();
+          schedule(MULTIPLAYER_REALTIME_LIMITS.minimumReconciliationGapMs);
         }
-        if (!inFlight) {
-          const currentWaiters = waiters;
-          waiters = [];
-          currentWaiters.forEach((resolve) => resolve());
-        }
+        resolveWaiters();
       }
     };
 
@@ -65,6 +93,10 @@ export function useRoomReconciler({
     return () => {
       active = false;
       runRef.current = null;
+      if (cooldownTimer !== null) window.clearTimeout(cooldownTimer);
+      cooldownTimer = null;
+      scheduled = false;
+      rerun = false;
       waiters.forEach((resolve) => resolve());
       waiters = [];
       window.clearInterval(interval);

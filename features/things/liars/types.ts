@@ -105,6 +105,8 @@ export interface LiarsPlayerSummary {
   connected: boolean;
   ready: boolean;
   host: boolean;
+  /** Permanently departed or removed after play started. */
+  left?: boolean;
   /** Present only for yourself, your mafia teammates, and everyone once the game has ended. */
   role?: LiarsRole;
   deathRound: number | null;
@@ -304,6 +306,7 @@ export interface LiarsSnapshot
   extends MultiplayerRoomIdentity, MultiplayerRevision, MultiplayerSequence {
   /** Hash of this viewer's redacted view, filled in by the read. */
   digest?: string;
+  managed?: boolean;
   mode: LiarsMode;
   roomMode: LiarsRoomMode;
   phase: LiarsPhase;
@@ -412,6 +415,7 @@ export type LiarsHostAction = MultiplayerAction &
 
 export type LiarsPlayerAction = MultiplayerAction &
   (
+    | { type: "room.leave" }
     | { type: "readiness.set"; ready: boolean }
     | { type: "night.select"; round: number; targetId: string | null }
     | { type: "night.lock"; round: number }

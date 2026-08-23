@@ -519,6 +519,89 @@ const MIGRATIONS: Migration[] = [
           check (hero_height is null or hero_height in ('natural', 'tall', 'medium', 'short'));
     `,
   },
+  {
+    id: "0015_game_night_pools",
+    sql: `
+      create table if not exists game_pool_entrances (
+        id                text primary key
+                          check (id ~ '^gpe_[A-Za-z0-9_-]{22}$'),
+        token             text not null unique
+                          check (token ~ '^play_[A-Za-z0-9_-]{26,}$'),
+        label             text not null check (char_length(label) between 1 and 80),
+        game              text not null
+                          check (game in ('same-brain', 'liars', 'centre', 'twin', 'draw-country')),
+        preset            jsonb not null,
+        target_size       integer not null check (target_size between 2 and 16),
+        allow_room_choice boolean not null default true,
+        allow_new_rooms   boolean not null default true,
+        name_visibility   text not null default 'first-names'
+                          check (name_visibility in ('first-names', 'initials', 'counts')),
+        created_at        timestamptz not null default now(),
+        updated_at        timestamptz not null default now(),
+        retired_at        timestamptz
+      );
+
+      create table if not exists game_pool_runs (
+        id                text primary key
+                          check (id ~ '^gpr_[A-Za-z0-9_-]{22}$'),
+        entrance_id       text not null references game_pool_entrances (id) on delete cascade,
+        status            text not null default 'open'
+                          check (status in ('open', 'paused', 'closed')),
+        preset            jsonb not null,
+        target_size       integer not null check (target_size between 2 and 16),
+        allow_room_choice boolean not null,
+        allow_new_rooms   boolean not null,
+        name_visibility   text not null
+                          check (name_visibility in ('first-names', 'initials', 'counts')),
+        opened_at         timestamptz not null default now(),
+        closes_at         timestamptz,
+        closed_at         timestamptz,
+        updated_at        timestamptz not null default now()
+      );
+
+      create unique index if not exists game_pool_runs_one_live_idx
+        on game_pool_runs (entrance_id)
+        where status in ('open', 'paused');
+      create index if not exists game_pool_runs_entrance_idx
+        on game_pool_runs (entrance_id, opened_at desc);
+
+      create table if not exists game_pool_rooms (
+        run_id       text not null references game_pool_runs (id) on delete cascade,
+        room_id      text not null,
+        status       text not null default 'open'
+                     check (status in ('open', 'started', 'closed')),
+        player_count integer not null default 0 check (player_count >= 0),
+        capacity     integer not null check (capacity between 1 and 100),
+        created_at   timestamptz not null default now(),
+        updated_at   timestamptz not null default now(),
+        primary key (run_id, room_id)
+      );
+
+      create index if not exists game_pool_rooms_assignment_idx
+        on game_pool_rooms (run_id, status, created_at);
+
+      create table if not exists game_pool_assignments (
+        id          text primary key check (id ~ '^gpa_[A-Za-z0-9_-]{22}$'),
+        run_id      text not null references game_pool_runs (id) on delete cascade,
+        room_id     text not null,
+        client_id   text not null check (char_length(client_id) between 12 and 120),
+        player_id   text not null,
+        display_name text not null check (char_length(display_name) between 1 and 32),
+        status      text not null default 'active'
+                    check (status in ('active', 'left', 'removed')),
+        created_at  timestamptz not null default now(),
+        ended_at    timestamptz,
+        foreign key (run_id, room_id)
+          references game_pool_rooms (run_id, room_id) on delete cascade
+      );
+
+      create unique index if not exists game_pool_assignments_one_active_idx
+        on game_pool_assignments (run_id, client_id)
+        where status = 'active';
+      create index if not exists game_pool_assignments_room_idx
+        on game_pool_assignments (run_id, room_id, status);
+    `,
+  },
 ];
 
 export type MigrationResult = { applied: string[]; alreadyApplied: number };

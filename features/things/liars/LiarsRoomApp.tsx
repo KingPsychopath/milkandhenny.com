@@ -7,8 +7,10 @@ import { GameShell } from "../shared/GameShell";
 import {
   clearExpiredGameLocalStorage,
   readExpiringLocalValue,
+  removeStorageKeys,
   writeExpiringLocalValue,
 } from "../shared/game-storage.client";
+import { releaseGamePoolMembership } from "../pool/pool-session.client";
 import { liarsBrowserKeys } from "./liars-keys";
 import {
   liarsRoleSide,
@@ -54,14 +56,18 @@ let actionCounter = 0;
 const nextActionId = () => `${Date.now().toString(36)}-${(actionCounter += 1)}`;
 
 export function LiarsRoomApp({ roomId }: { roomId: string }) {
-  const [credentials, setCredentials] = useState<LiarsPlayerCredentials | null>(() => {
-    if (typeof window === "undefined") return null;
-    return readExpiringLocalValue<LiarsPlayerCredentials>(liarsBrowserKeys.playerSession(roomId));
-  });
+  const [credentials, setCredentials] = useState<LiarsPlayerCredentials | null>(null);
+  const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
     clearExpiredGameLocalStorage();
-  }, []);
+    setCredentials(
+      readExpiringLocalValue<LiarsPlayerCredentials>(liarsBrowserKeys.playerSession(roomId)),
+    );
+    setLoaded(true);
+  }, [roomId]);
+
+  if (!loaded) return <div className="things-game things-game--night" aria-busy="true" />;
 
   if (!credentials)
     return (
@@ -84,6 +90,7 @@ export function LiarsRoomApp({ roomId }: { roomId: string }) {
  */
 export function LiarsRoom({ credentials }: { credentials: LiarsPlayerCredentials }) {
   const { roomId, playerId, playerToken } = credentials;
+  const [confirmingLeave, setConfirmingLeave] = useState(false);
   const room = useLiarsRoom({
     roomId,
     playerId,
@@ -132,6 +139,16 @@ export function LiarsRoom({ credentials }: { credentials: LiarsPlayerCredentials
         });
         if (result.snapshot) room.setSnapshot(result.snapshot);
         if (!result.accepted && "error" in result) room.setMessage(result.error);
+        if (
+          action.type === "room.leave" &&
+          (result.accepted ||
+            (!result.accepted && "errorCode" in result && result.errorCode === "room_unavailable"))
+        ) {
+          removeStorageKeys(localStorage, [liarsBrowserKeys.playerSession(roomId)]);
+          const entrance = await releaseGamePoolMembership("liars", roomId);
+          window.location.assign(entrance ?? "/things/liars");
+          return;
+        }
       } catch {
         room.setMessage("That did not go through. Try again.");
       } finally {
@@ -259,7 +276,34 @@ export function LiarsRoom({ credentials }: { credentials: LiarsPlayerCredentials
             {room.connectionState !== "connected" ? (
               <span className="font-mono text-xs text-white/30">{room.connectionState}</span>
             ) : null}
+            <button
+              type="button"
+              onClick={() => setConfirmingLeave(true)}
+              className="min-h-11 font-mono text-xs text-white/45 hover:text-white/80"
+            >
+              leave room
+            </button>
           </div>
+          {confirmingLeave ? (
+            <GameActionDialog
+              tone="dark"
+              eyebrow="leave room"
+              title="Leave this game?"
+              description={
+                snapshot.phase === "lobby"
+                  ? "You will give up your seat and return to the game page."
+                  : "You will leave the game permanently. Your completed rounds stay in its history."
+              }
+              cancelLabel="stay"
+              confirmLabel="leave room"
+              pending={false}
+              onCancel={() => setConfirmingLeave(false)}
+              onConfirm={() => {
+                setConfirmingLeave(false);
+                void send({ type: "room.leave" });
+              }}
+            />
+          ) : null}
         </main>
       </div>
     </GameShell>
@@ -322,9 +366,11 @@ function LobbyPhase({ snapshot, isHost, send, sendHost }: PhaseProps) {
       <Eyebrow>{LIARS_MODE_COPY[snapshot.mode].name} · lobby</Eyebrow>
       <Headline>Bring everyone in</Headline>
 
-      <div className="mt-8">
-        <InvitePanel roomId={snapshot.roomId} inviteUrl={inviteUrl} />
-      </div>
+      {!snapshot.managed ? (
+        <div className="mt-8">
+          <InvitePanel roomId={snapshot.roomId} inviteUrl={inviteUrl} />
+        </div>
+      ) : null}
 
       <div className="mt-10">
         <Eyebrow>who is here · {snapshot.players.length}</Eyebrow>
@@ -355,7 +401,7 @@ function LobbyPhase({ snapshot, isHost, send, sendHost }: PhaseProps) {
             />
           )}
         </div>
-        {isHost ? (
+        {isHost && !snapshot.managed ? (
           <button
             type="button"
             onClick={() => setEditingRoles(!editingRoles)}

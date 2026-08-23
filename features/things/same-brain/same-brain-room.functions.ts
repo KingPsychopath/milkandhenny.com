@@ -110,6 +110,7 @@ function hostAction(value: unknown): SameBrainHostAction {
 function playerAction(value: unknown): SameBrainPlayerAction {
   const data = record(value);
   const id = actionId(data.actionId);
+  if (data.type === "room.leave") return { actionId: id, type: data.type };
   if (data.type === "readiness.set" && typeof data.ready === "boolean")
     return { actionId: id, type: data.type, ready: data.ready };
   if (data.type === "host.claim") return { actionId: id, type: data.type };

@@ -8,6 +8,7 @@ import { getRuntimeInstanceId } from "@/lib/platform/runtime-metadata.server";
 import { isMultiplayerServerMessage } from "./multiplayer-realtime";
 import { MULTIPLAYER_ROOM_ID_PATTERN } from "./multiplayer";
 import { MultiplayerTelemetry } from "./multiplayer-telemetry.server";
+import { MULTIPLAYER_GAME_REGISTRY } from "./multiplayer-telemetry";
 
 const BUS_CHANNEL = "things:multiplayer:v1:realtime";
 const MAX_CHANNEL_LENGTH = 180;
@@ -22,11 +23,17 @@ interface BackplaneEnvelope {
 type BackplaneListener = (channel: string, message: string) => void;
 
 function validChannel(value: string) {
-  const match =
-    /^things:(remote:v3|spelling-party:v2|draw-country:v1|liars:v1|same-brain:v1|twin:v1|centre:v1):room:([^:]+):events$/.exec(
-      value,
-    );
-  return Boolean(match?.[2] && MULTIPLAYER_ROOM_ID_PATTERN.test(match[2]));
+  const match = /^things:([^:]+):([^:]+):room:([^:]+):events$/.exec(value);
+  if (!match) return false;
+  const [, game, version, roomId] = match;
+  const validScope =
+    game === "game-pool"
+      ? /^gpr_[A-Za-z0-9_-]{22}$/.test(roomId)
+      : MULTIPLAYER_ROOM_ID_PATTERN.test(roomId);
+  return (
+    MULTIPLAYER_GAME_REGISTRY[game as keyof typeof MULTIPLAYER_GAME_REGISTRY]?.channelVersion ===
+      version && validScope
+  );
 }
 
 function validRealtimeMessage(value: string) {
@@ -91,18 +98,34 @@ export class MultiplayerRealtimeBackplane extends Context.Service<
     this,
     Effect.gen(function* () {
       const telemetry = yield* MultiplayerTelemetry;
+      const listeners = new Set<BackplaneListener>();
+      const notifyLocal = (channel: string, message: string) => {
+        for (const listener of listeners) {
+          try {
+            listener(channel, message);
+          } catch (error) {
+            log.warn("things.multiplayer", "Realtime local listener failed", {
+              error: error instanceof Error ? error.message : String(error),
+            });
+          }
+        }
+      };
       const config = getDirectRedisConfig();
       if (!config) {
         yield* telemetry.setBackplaneMode("local");
         return {
           mode: "local" as const,
-          publish: () => Effect.void,
-          subscribe: () => Effect.succeed(() => undefined),
+          publish: (channel: string, message: string) =>
+            Effect.sync(() => notifyLocal(channel, message)),
+          subscribe: (listener: BackplaneListener) =>
+            Effect.sync(() => {
+              listeners.add(listener);
+              return () => listeners.delete(listener);
+            }),
         };
       }
 
       const origin = getRuntimeInstanceId();
-      const listeners = new Set<BackplaneListener>();
       const { publisher, subscriber: _subscriber } = yield* Effect.acquireRelease(
         Effect.sync(() => {
           const options = {
@@ -169,14 +192,17 @@ export class MultiplayerRealtimeBackplane extends Context.Service<
       return {
         mode: "redis" as const,
         publish: (channel: string, message: string) =>
-          Effect.tryPromise({
-            try: () =>
-              publisher.publish(
-                BUS_CHANNEL,
-                JSON.stringify({ channel, message, origin } satisfies BackplaneEnvelope),
-              ),
-            catch: (cause) => cause,
-          }).pipe(
+          Effect.sync(() => notifyLocal(channel, message)).pipe(
+            Effect.andThen(
+              Effect.tryPromise({
+                try: () =>
+                  publisher.publish(
+                    BUS_CHANNEL,
+                    JSON.stringify({ channel, message, origin } satisfies BackplaneEnvelope),
+                  ),
+                catch: (cause) => cause,
+              }),
+            ),
             Effect.timeout(1_000),
             Effect.retry(retryPolicy),
             Effect.tap(() => telemetry.recordBackplane("publish", "success")),

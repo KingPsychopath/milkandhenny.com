@@ -9,7 +9,7 @@ import type {
 import type { MultiplayerReadiness } from "../shared/multiplayer-readiness";
 import type { TwinOrder } from "./twin-deck";
 
-export type TwinPhase = "lobby" | "dealing" | "heat" | "settle" | "finished";
+export type TwinPhase = "lobby" | "dealing" | "heat" | "settle" | "finished" | "closed";
 
 /** A card as it reaches a client: its symbols, and the seed its layout is derived from. */
 export interface TwinDealtCard {
@@ -32,6 +32,7 @@ export interface TwinPlayerSummary {
   host: boolean;
   /** Finishing position, set when their hand empties. */
   place: number | null;
+  withdrawn: boolean;
 }
 
 export interface TwinHeatResult {
@@ -133,6 +134,7 @@ export interface TwinSnapshot
   extends MultiplayerRoomIdentity, MultiplayerRevision, MultiplayerSequence {
   /** Hash of this viewer's redacted view, filled in by the read. */
   digest?: string;
+  managed?: boolean;
   phase: TwinPhase;
   serverNow: number;
   expiresAt: number;
@@ -198,7 +200,8 @@ export type TwinHostAction =
 
 export type TwinPlayerAction =
   | { type: "readiness.set"; ready: boolean }
-  | { type: "answer.tap"; heatId: string; symbolId: string; elapsedMs: number };
+  | { type: "answer.tap"; heatId: string; symbolId: string; elapsedMs: number }
+  | { type: "player.leave" };
 
 export type TwinAction = TwinHostAction | TwinPlayerAction;
 

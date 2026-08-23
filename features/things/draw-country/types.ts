@@ -36,7 +36,7 @@ export interface CountryScore {
   accuracy: "uncanny" | "close" | "recognisable" | "adventurous";
 }
 
-export type DrawCountryPhase = "lobby" | "drawing" | "reveal" | "finished";
+export type DrawCountryPhase = "lobby" | "drawing" | "reveal" | "finished" | "closed";
 
 export interface DrawCountryPlayer {
   id: string;
@@ -50,6 +50,7 @@ export interface DrawCountryPlayer {
   connected: boolean;
   ready: boolean;
   place: number | null;
+  withdrawn: boolean;
 }
 
 export interface DrawCountryRound {
@@ -72,6 +73,7 @@ export interface DrawCountrySnapshot extends MultiplayerRevision, MultiplayerSeq
   serverNow: number;
   hostPlayerId: string;
   canControl: boolean;
+  managed?: boolean;
   /** 1 for the first game on this room code, incremented by every rematch. */
   gameNumber: number;
   roundTotal: number;

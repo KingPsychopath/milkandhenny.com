@@ -13,6 +13,7 @@ const GAME_PREFIXES = [
   "things:twin:",
   "things:centre:",
   "things:same-brain:",
+  "things:game-pool:",
   "pitch-remote:",
 ];
 

@@ -29,9 +29,14 @@ interface MultiplayerWakeHandlerOptions<Session extends MultiplayerWakeSession> 
 }
 
 interface MultiplayerWakeConnection<Session> {
+  lastActivityAt: number;
   lastWakeAt: number;
   messageCount: number;
-  peer: { send: (message: string) => void };
+  peer: {
+    id: string;
+    close: (code: number, reason: string) => void;
+    send: (message: string) => void;
+  };
   rateWindowStartedAt: number;
   session: Session;
 }
@@ -41,15 +46,22 @@ export function createMultiplayerWakeHandler<Session extends MultiplayerWakeSess
   options: MultiplayerWakeHandlerOptions<Session>,
 ) {
   const connections = new Map<string, MultiplayerWakeConnection<Session>>();
+  const pendingPeers = new Set<string>();
+  const helloInFlight = new Set<string>();
+  const helloTimers = new Map<string, ReturnType<typeof setTimeout>>();
   const roomConnectionCounts = new Map<string, number>();
   const terminatedPeers = new Set<string>();
   const channelFor = (session: Session) => options.channel(session.roomId);
   const wakeFor = (session: Session) =>
     JSON.stringify(options.wakeMessage?.(session) ?? { type: "wake" });
-  const forget = (peer: { id: string; unsubscribe: (channel: string) => void }) => {
+  const forget = (peer: { id: string }) => {
+    const helloTimer = helloTimers.get(peer.id);
+    if (helloTimer) clearTimeout(helloTimer);
+    helloTimers.delete(peer.id);
+    pendingPeers.delete(peer.id);
+    helloInFlight.delete(peer.id);
     const connection = connections.get(peer.id);
     if (connection) {
-      peer.unsubscribe(channelFor(connection.session));
       const count = roomConnectionCounts.get(connection.session.roomId) ?? 1;
       if (count <= 1) roomConnectionCounts.delete(connection.session.roomId);
       else roomConnectionCounts.set(connection.session.roomId, count - 1);
@@ -72,7 +84,15 @@ export function createMultiplayerWakeHandler<Session extends MultiplayerWakeSess
       MultiplayerRealtimeBackplane.use((backplane) =>
         backplane.subscribe((channel, message) => {
           for (const connection of connections.values()) {
-            if (channelFor(connection.session) === channel) connection.peer.send(message);
+            if (channelFor(connection.session) !== channel) continue;
+            try {
+              connection.peer.send(message);
+            } catch (error) {
+              log.warn("things.multiplayer", "Realtime socket wake failed", {
+                error: error instanceof Error ? error.message : String(error),
+                game: options.game,
+              });
+            }
           }
         }),
       ),
@@ -86,13 +106,8 @@ export function createMultiplayerWakeHandler<Session extends MultiplayerWakeSess
       });
     return backplaneSubscription;
   };
-  const publishMessage = async (
-    peer: { publish: (channel: string, message: string) => void },
-    session: Session,
-    message: string,
-  ) => {
+  const publishMessage = async (session: Session, message: string) => {
     const channel = channelFor(session);
-    peer.publish(channel, message);
     await ensureBackplane();
     await runMultiplayerEffect(
       MultiplayerRealtimeBackplane.use((backplane) => backplane.publish(channel, message)),
@@ -102,29 +117,73 @@ export function createMultiplayerWakeHandler<Session extends MultiplayerWakeSess
       }),
     );
   };
-  const publishWake = (
-    peer: { publish: (channel: string, message: string) => void },
-    session: Session,
-  ) => publishMessage(peer, session, wakeFor(session));
+  const publishWake = (session: Session) => publishMessage(session, wakeFor(session));
   const terminate = (
     peer: {
       id: string;
-      unsubscribe: (channel: string) => void;
       close: (code: number, reason: string) => void;
     },
     code: number,
     reason: string,
-    message: string,
+    _message: string,
   ) => {
     const wasActive = forget(peer);
     terminatedPeers.add(peer.id);
     ignoreTelemetryFailure(
       record((telemetry) => telemetry.socketClosed(options.game, reason, wasActive)),
     );
-    peer.close(code, message);
+    peer.close(code, reason);
   };
 
+  const beginPending = (peer: { id: string; close: (code: number, reason: string) => void }) => {
+    if (pendingPeers.has(peer.id) || connections.has(peer.id)) return true;
+    if (
+      connections.size + pendingPeers.size >=
+      MULTIPLAYER_REALTIME_LIMITS.maxConnectionsPerProcess
+    ) {
+      terminate(
+        peer,
+        MULTIPLAYER_SOCKET_CLOSE.serverOverloaded,
+        "server_overloaded",
+        "server_overloaded",
+      );
+      return false;
+    }
+    pendingPeers.add(peer.id);
+    const timer = setTimeout(() => {
+      if (!pendingPeers.has(peer.id) || connections.has(peer.id)) return;
+      terminate(peer, MULTIPLAYER_SOCKET_CLOSE.policyViolation, "hello_timeout", "hello_timeout");
+    }, MULTIPLAYER_REALTIME_LIMITS.preAuthHelloTimeoutMs);
+    helloTimers.set(peer.id, timer);
+    return true;
+  };
+
+  const idleSweepTimer = setInterval(() => {
+    const now = Date.now();
+    for (const connection of connections.values()) {
+      if (now - connection.lastActivityAt <= MULTIPLAYER_REALTIME_LIMITS.socketIdleTimeoutMs)
+        continue;
+      terminate(
+        connection.peer,
+        MULTIPLAYER_SOCKET_CLOSE.heartbeatTimeout,
+        "heartbeat_timeout",
+        "heartbeat_timeout",
+      );
+    }
+    for (const peerId of pendingPeers) {
+      if (helloTimers.has(peerId)) continue;
+      // A test adapter or an unusual deployment may not call `open`; keep its
+      // accounting bounded even in that case.
+      pendingPeers.delete(peerId);
+    }
+  }, MULTIPLAYER_REALTIME_LIMITS.socketIdleSweepIntervalMs);
+  if (typeof idleSweepTimer === "object" && idleSweepTimer !== null && "unref" in idleSweepTimer)
+    (idleSweepTimer as { unref: () => void }).unref();
+
   return defineWebSocketHandler({
+    open(peer) {
+      beginPending(peer);
+    },
     async message(peer, message) {
       let payload: Record<string, unknown>;
       try {
@@ -158,15 +217,17 @@ export function createMultiplayerWakeHandler<Session extends MultiplayerWakeSess
           );
           return;
         }
-        if (connections.size >= MULTIPLAYER_REALTIME_LIMITS.maxConnectionsPerProcess) {
+        if (!beginPending(peer)) return;
+        if (helloInFlight.has(peer.id)) {
           terminate(
             peer,
-            MULTIPLAYER_SOCKET_CLOSE.serverOverloaded,
-            "server_overloaded",
-            "server busy",
+            MULTIPLAYER_SOCKET_CLOSE.policyViolation,
+            "hello_repeated",
+            "hello_repeated",
           );
           return;
         }
+        helloInFlight.add(peer.id);
         let session: Session | null;
         try {
           session = await options.authorize(payload);
@@ -181,10 +242,11 @@ export function createMultiplayerWakeHandler<Session extends MultiplayerWakeSess
             peer,
             MULTIPLAYER_SOCKET_CLOSE.serverOverloaded,
             "authorization_unavailable",
-            "try again later",
+            "authorization_unavailable",
           );
           return;
         }
+        if (terminatedPeers.has(peer.id)) return;
         if (!session) {
           terminate(peer, MULTIPLAYER_SOCKET_CLOSE.policyViolation, "unauthorized", "unauthorized");
           return;
@@ -202,20 +264,25 @@ export function createMultiplayerWakeHandler<Session extends MultiplayerWakeSess
           return;
         }
         connections.set(peer.id, {
+          lastActivityAt: Date.now(),
           lastWakeAt: 0,
           messageCount: 1,
           peer,
           rateWindowStartedAt: Date.now(),
           session,
         });
+        pendingPeers.delete(peer.id);
+        helloInFlight.delete(peer.id);
+        const helloTimer = helloTimers.get(peer.id);
+        if (helloTimer) clearTimeout(helloTimer);
+        helloTimers.delete(peer.id);
         roomConnectionCounts.set(
           session.roomId,
           (roomConnectionCounts.get(session.roomId) ?? 0) + 1,
         );
         await record((telemetry) => telemetry.socketOpened(options.game));
-        peer.subscribe(channelFor(session));
         peer.send(JSON.stringify({ type: "ready" }));
-        await publishWake(peer, session);
+        await publishWake(session);
         return;
       }
 
@@ -230,6 +297,7 @@ export function createMultiplayerWakeHandler<Session extends MultiplayerWakeSess
         return;
       }
       const now = Date.now();
+      connection.lastActivityAt = now;
       if (now - connection.rateWindowStartedAt >= MULTIPLAYER_REALTIME_LIMITS.rateWindowMs) {
         connection.messageCount = 0;
         connection.rateWindowStartedAt = now;
@@ -250,7 +318,7 @@ export function createMultiplayerWakeHandler<Session extends MultiplayerWakeSess
       } else if (isMultiplayerClientControlMessage(payload) && payload.type === "changed") {
         if (now - connection.lastWakeAt < MULTIPLAYER_REALTIME_LIMITS.minimumWakeIntervalMs) return;
         connection.lastWakeAt = now;
-        await publishWake(peer, connection.session);
+        await publishWake(connection.session);
       } else {
         const relay = options.relayMessage?.(payload, connection.session) ?? null;
         if (!relay) {
@@ -262,7 +330,7 @@ export function createMultiplayerWakeHandler<Session extends MultiplayerWakeSess
           );
           return;
         }
-        await publishMessage(peer, connection.session, JSON.stringify(relay));
+        await publishMessage(connection.session, JSON.stringify(relay));
       }
     },
     close(peer) {

@@ -68,6 +68,7 @@ interface PlayerState {
   id: string;
   name: string;
   tokenHash: string;
+  joinedAt: number;
   /** Index 0 is the top card — the one in play. */
   hand: CardState[];
   lastSeenAt: number;
@@ -89,6 +90,7 @@ interface PlayerState {
   bestElapsedMs: number | null;
   /** Finishing position, in the order hands emptied. */
   place: number | null;
+  withdrawn?: boolean;
 }
 
 interface HeatState {
@@ -109,6 +111,8 @@ interface HeatState {
 
 interface RoomState {
   roomId: string;
+  /** The game-night pool owns admission and lobby settings for this room. */
+  managed?: boolean;
   expiresAt: number;
   revision: number;
   sequence: number;
@@ -140,6 +144,20 @@ const memoryLogs = createMemoryRoomStore<TwinLoggedHeat[]>("twin-log");
 function changed(room: RoomState) {
   room.revision += 1;
   room.sequence += 1;
+}
+
+function activePlayers(room: RoomState) {
+  return room.players.filter((player) => !player.withdrawn);
+}
+
+function transferHost(room: RoomState, leavingId: string, now: number) {
+  if (room.hostPlayerId !== leavingId) return;
+  const remaining = activePlayers(room).filter((player) => player.id !== leavingId);
+  const connected = remaining.filter((player) => now - player.lastSeenAt <= CONNECTED_WINDOW_MS);
+  const successor = (connected.length > 0 ? connected : remaining).toSorted(
+    (left, right) => left.joinedAt - right.joinedAt || left.id.localeCompare(right.id),
+  )[0];
+  room.hostPlayerId = successor?.id ?? "";
 }
 
 async function loadRoom(roomId: string) {
@@ -219,7 +237,7 @@ function dealtCard(room: RoomState, card: CardState): TwinDealtCard | null {
 }
 
 function connectedPlayers(room: RoomState, now: number) {
-  return room.players.filter((player) => now - player.lastSeenAt <= CONNECTED_WINDOW_MS);
+  return activePlayers(room).filter((player) => now - player.lastSeenAt <= CONNECTED_WINDOW_MS);
 }
 
 function playerStats(room: RoomState): TwinPlayerStats[] {
@@ -262,7 +280,7 @@ function startHeat(room: RoomState, now: number) {
     winnerPlayerId: null,
     burned: false,
   };
-  for (const player of room.players) {
+  for (const player of activePlayers(room)) {
     player.heatId = room.heat.id;
     player.landedMs = null;
     player.heatMisses = 0;
@@ -284,7 +302,7 @@ function settleHeat(room: RoomState, now: number): TwinLoggedHeat | null {
   const heat = room.heat;
   if (!heat || heat.results.length > 0) return null;
 
-  const entries = room.players.map((player) => ({
+  const entries = activePlayers(room).map((player) => ({
     playerId: player.id,
     elapsedMs: player.heatId === heat.id ? player.landedMs : null,
     misses: player.heatId === heat.id ? player.heatMisses : 0,
@@ -342,7 +360,7 @@ function settleHeat(room: RoomState, now: number): TwinLoggedHeat | null {
     }
   }
 
-  for (const player of room.players) {
+  for (const player of activePlayers(room)) {
     const landed = outcome.ranked.includes(player.id);
     if (!landed) player.chain = 0;
     results.push({
@@ -361,7 +379,7 @@ function settleHeat(room: RoomState, now: number): TwinLoggedHeat | null {
 
   // Nobody found it, so every hand turns over. No card leaves play and the pairing changes.
   if (outcome.burned)
-    for (const player of room.players)
+    for (const player of activePlayers(room))
       if (player.hand.length > 1) player.hand = [...player.hand.slice(1), player.hand[0]];
 
   room.middle = nextMiddle;
@@ -384,13 +402,13 @@ function settleHeat(room: RoomState, now: number): TwinLoggedHeat | null {
 }
 
 function resetForRematch(room: RoomState, now: number) {
-  const plan = planTwinDeck(room.players.length, room.requestedHandSize);
+  const plan = planTwinDeck(activePlayers(room).length, room.requestedHandSize);
   if (!plan) return false;
   applyDeal(room, plan, now);
   room.gameNumber += 1;
   room.heatCount = 0;
   room.nextPlace = 1;
-  for (const player of room.players) {
+  for (const player of activePlayers(room)) {
     player.chain = 0;
     player.longestChain = 0;
     player.connections = 0;
@@ -405,10 +423,10 @@ function resetForRematch(room: RoomState, now: number) {
 }
 
 function applyDeal(room: RoomState, plan: TwinDeckPlan, now: number) {
-  const deal = dealTwin(plan, room.players.length, Math.floor(Math.random() * 2 ** 31));
+  const deal = dealTwin(plan, activePlayers(room).length, Math.floor(Math.random() * 2 ** 31));
   room.order = plan.order;
   room.handSize = plan.handSize;
-  room.players.forEach((player, seat) => {
+  activePlayers(room).forEach((player, seat) => {
     player.hand = deal.hands[seat].map((card) => ({
       cardId: card.id,
       seed: (room.seedCounter += 1),
@@ -428,7 +446,7 @@ function applyDeal(room: RoomState, plan: TwinDeckPlan, now: number) {
    * as a broken interface rather than a broken deck, and would be miserable to chase from a bug report.
    * One O(players) check at the only point a bad deal could enter buys a loud failure instead.
    */
-  for (const player of room.players) {
+  for (const player of activePlayers(room)) {
     const top = player.hand[0] && twinCardById(room.order, player.hand[0].cardId);
     if (!top || twinMatch(top, deal.middle) === null)
       throw new Error(
@@ -482,7 +500,7 @@ function advance(room: RoomState, now = Date.now()): TwinLoggedHeat[] {
 
   if (room.phase === "settle" && room.heat?.nextHeatAt && now >= room.heat.nextHeatAt) {
     // Emptying a hand is the win, so the first one ends the game.
-    if (room.players.some((player) => player.hand.length === 0)) {
+    if (activePlayers(room).some((player) => player.hand.length === 0)) {
       room.phase = "finished";
       changed(room);
     } else startHeat(room, now);
@@ -493,7 +511,7 @@ function advance(room: RoomState, now = Date.now()): TwinLoggedHeat[] {
 
 function snapshot(room: RoomState, playerId: string): TwinSnapshot {
   const now = Date.now();
-  const host = room.players.find(({ id }) => id === room.hostPlayerId);
+  const host = room.players.find(({ id, withdrawn }) => id === room.hostPlayerId && !withdrawn);
   const viewer = room.players.find(({ id }) => id === playerId);
   const heat = room.heat;
   const settled = Boolean(heat && heat.results.length > 0);
@@ -501,6 +519,7 @@ function snapshot(room: RoomState, playerId: string): TwinSnapshot {
 
   return {
     roomId: room.roomId,
+    managed: room.managed === true,
     phase: room.phase,
     serverNow: now,
     revision: room.revision,
@@ -525,6 +544,7 @@ function snapshot(room: RoomState, playerId: string): TwinSnapshot {
       ready: multiplayerPlayerReady(player),
       host: player.id === room.hostPlayerId,
       place: player.place,
+      withdrawn: player.withdrawn === true,
     })),
     heat:
       heat && room.middle
@@ -591,6 +611,13 @@ function snapshot(room: RoomState, playerId: string): TwinSnapshot {
 
 function validPlayer(room: RoomState, playerId: string, playerToken: string) {
   const player = room.players.find(({ id }) => id === playerId);
+  return player && !player.withdrawn && multiplayerCredentialsMatch(playerToken, player.tokenHash)
+    ? player
+    : null;
+}
+
+function authenticatedPlayer(room: RoomState, playerId: string, playerToken: string) {
+  const player = room.players.find(({ id }) => id === playerId);
   return player && multiplayerCredentialsMatch(playerToken, player.tokenHash) ? player : null;
 }
 
@@ -599,6 +626,7 @@ function newPlayer(name: string, tokenHash: string, now: number): PlayerState {
     id: crypto.randomUUID(),
     name,
     tokenHash,
+    joinedAt: now,
     hand: [],
     lastSeenAt: now,
     ready: true,
@@ -624,6 +652,7 @@ export async function createTwinRoom(input: {
   windowMs?: number;
   graceMs?: number;
   settleHoldMs?: number;
+  managed?: boolean;
 }) {
   const roomId = await createAvailableMultiplayerRoomId(async (candidate) =>
     Boolean(await loadRoom(candidate)),
@@ -639,6 +668,7 @@ export async function createTwinRoom(input: {
 
   const room: RoomState = {
     roomId,
+    managed: input.managed,
     expiresAt,
     revision: 1,
     sequence: 1,
@@ -685,9 +715,12 @@ export async function joinTwinRoom(input: {
   const result = await withRoom(input.roomId, async (room) => {
     await appendLog(room, advance(room));
     if (room.phase !== "lobby") return multiplayerFailure("game_started", "This game has started");
-    if (input.joinToken && !multiplayerCredentialsMatch(input.joinToken, room.joinHash))
+    if (
+      (room.managed && !input.joinToken) ||
+      (input.joinToken && !multiplayerCredentialsMatch(input.joinToken, room.joinHash))
+    )
       return multiplayerFailure("invite_expired", "This invite is no longer valid");
-    if (room.players.length >= twinMaxPlayers())
+    if (activePlayers(room).length >= twinMaxPlayers())
       return multiplayerFailure("room_full", "This room is full");
     const name = input.name.trim();
     if (name.length < 1) return multiplayerFailure("invalid_name", "Add your name");
@@ -698,7 +731,7 @@ export async function joinTwinRoom(input: {
     const player = newPlayer(name, hashMultiplayerCredential(playerToken), Date.now());
     room.players.push(player);
     // One more player can mean a bigger deck or a shorter hand; the lobby shows it live.
-    const plan = planTwinDeck(room.players.length, room.requestedHandSize);
+    const plan = planTwinDeck(activePlayers(room).length, room.requestedHandSize);
     if (plan) {
       room.order = plan.order;
       room.handSize = plan.handSize;
@@ -775,12 +808,29 @@ export async function applyTwinAction(input: {
     | { type: "timing.configure"; settleHoldMs: number }
     | { type: "game.replay" }
     | { type: "game.lobby" }
-    | { type: "heat.next" };
+    | { type: "heat.next" }
+    | { type: "player.leave" };
 }): Promise<TwinActionResult> {
   const result = await withRoom(input.roomId, async (room) => {
+    const now = Date.now();
+    const authenticated = authenticatedPlayer(room, input.playerId, input.playerToken);
+    if (!authenticated) return null;
+    if (input.action.type === "player.leave") {
+      if (authenticated.withdrawn)
+        return { ok: true, accepted: true, snapshot: snapshot(room, authenticated.id) } as const;
+      transferHost(room, authenticated.id, now);
+      if (room.phase === "lobby") {
+        room.players = room.players.filter(({ id }) => id !== authenticated.id);
+        if (room.players.length === 0) room.phase = "closed";
+      } else {
+        authenticated.withdrawn = true;
+        if (activePlayers(room).length === 0) room.phase = "closed";
+      }
+      changed(room);
+      return { ok: true, accepted: true, snapshot: snapshot(room, authenticated.id) } as const;
+    }
     const player = validPlayer(room, input.playerId, input.playerToken);
     if (!player) return null;
-    const now = Date.now();
     player.lastSeenAt = now;
     await appendLog(room, advance(room, now));
 
@@ -836,18 +886,19 @@ export async function applyTwinAction(input: {
       return { ok: true, accepted: true, snapshot: current() } as const;
     }
 
-    const host = room.players.find(({ id }) => id === room.hostPlayerId);
+    const host = room.players.find(({ id, withdrawn }) => id === room.hostPlayerId && !withdrawn);
     const canControl =
       player.id === room.hostPlayerId || !host || now - host.lastSeenAt > HOST_TAKEOVER_MS;
     if (!canControl) return reject("not_host", "The host controls the game");
 
     if (input.action.type === "game.configure") {
+      if (room.managed) return reject("action_unavailable", "The game-night settings are fixed");
       if (room.phase !== "lobby")
         return reject("action_unavailable", "Settings only change in the lobby");
       if (input.action.handSize !== undefined) room.requestedHandSize = input.action.handSize;
       if (input.action.windowMs !== undefined) room.windowMs = input.action.windowMs;
       if (input.action.graceMs !== undefined) room.graceMs = input.action.graceMs;
-      const plan = planTwinDeck(room.players.length, room.requestedHandSize);
+      const plan = planTwinDeck(activePlayers(room).length, room.requestedHandSize);
       if (!plan) return reject("deck_too_small", "That is too many cards for this many players");
       room.order = plan.order;
       room.handSize = plan.handSize;
@@ -856,6 +907,7 @@ export async function applyTwinAction(input: {
     }
 
     if (input.action.type === "timing.configure") {
+      if (room.managed) return reject("action_unavailable", "The game-night settings are fixed");
       room.settleHoldMs = input.action.settleHoldMs;
       changed(room);
       return { ok: true, accepted: true, snapshot: current() } as const;
@@ -863,7 +915,7 @@ export async function applyTwinAction(input: {
 
     if (input.action.type === "game.start" && room.phase === "lobby") {
       const confirmed = new Set(input.action.removePlayerIds ?? []);
-      const unready = multiplayerUnreadyPlayers(room.players);
+      const unready = multiplayerUnreadyPlayers(activePlayers(room));
       const unconfirmed = unready.filter(
         ({ id, startRequestId }) => id === player.id || !confirmed.has(id) || !startRequestId,
       );
@@ -885,7 +937,7 @@ export async function applyTwinAction(input: {
         );
         changed(room);
       }
-      const plan = planTwinDeck(room.players.length, room.requestedHandSize);
+      const plan = planTwinDeck(activePlayers(room).length, room.requestedHandSize);
       if (!plan) return reject("deck_too_small", "There are too many players for the deck");
       await clearLog(room);
       applyDeal(room, plan, now);

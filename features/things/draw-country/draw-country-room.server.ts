@@ -1,4 +1,7 @@
-import { runMultiplayerEffect } from "../shared/multiplayer-runtime.server";
+import {
+  publishMultiplayerRoomWake,
+  runMultiplayerEffect,
+} from "../shared/multiplayer-runtime.server";
 import { DrawCountryRoomService } from "./draw-country-room-service.server";
 import type * as engine from "./draw-country-room-engine.server";
 
@@ -7,7 +10,12 @@ export function createDrawCountryRoom(input: Parameters<typeof engine.createDraw
 }
 
 export function joinDrawCountryRoom(input: Parameters<typeof engine.joinDrawCountryRoom>[0]) {
-  return runMultiplayerEffect(DrawCountryRoomService.use((service) => service.joinRoom(input)));
+  return runMultiplayerEffect(
+    DrawCountryRoomService.use((service) => service.joinRoom(input)),
+  ).then(async (result) => {
+    await publishMultiplayerRoomWake("draw-country", input.roomId).catch(() => undefined);
+    return result;
+  });
 }
 
 export function readDrawCountrySnapshot(
@@ -17,7 +25,12 @@ export function readDrawCountrySnapshot(
 }
 
 export function applyDrawCountryAction(input: Parameters<typeof engine.applyDrawCountryAction>[0]) {
-  return runMultiplayerEffect(DrawCountryRoomService.use((service) => service.applyAction(input)));
+  return runMultiplayerEffect(
+    DrawCountryRoomService.use((service) => service.applyAction(input)),
+  ).then(async (result) => {
+    await publishMultiplayerRoomWake("draw-country", input.roomId).catch(() => undefined);
+    return result;
+  });
 }
 
 export function authorizeDrawCountrySocket(

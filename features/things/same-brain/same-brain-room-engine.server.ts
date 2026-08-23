@@ -91,10 +91,14 @@ interface PlayerState {
   aloneCount: number;
   /** This round's answer, exactly as typed. Never leaves the server until the reveal. */
   answer: string | null;
+  /** Set when the player leaves or is removed after play starts; retained for result history. */
+  leftAt?: number;
 }
 
 interface SameBrainRoomState {
   roomId: string;
+  /** The game-night pool owns admission and lobby settings for this room. */
+  managed?: boolean;
   phase: SameBrainPhase;
   revision: number;
   sequence: number;
@@ -278,6 +282,15 @@ async function writeJoinReceipt(
 const playing = (room: SameBrainRoomState) => room.players.filter(({ out }) => !out);
 const connected = (player: PlayerState, now: number) =>
   now - player.lastSeenAt <= SAME_BRAIN_CONNECTED_WINDOW_MS;
+
+function transferHost(room: SameBrainRoomState, leavingId: string, now: number) {
+  const eligible = room.players
+    .filter(({ id, out, leftAt }) => id !== leavingId && !out && leftAt === undefined)
+    .sort((a, b) => a.joinedAt - b.joinedAt || a.id.localeCompare(b.id));
+  const next = eligible.find((candidate) => connected(candidate, now)) ?? eligible[0] ?? null;
+  room.hostPlayerId = next?.id ?? null;
+  room.hostDisconnectedSince = next && !connected(next, now) ? now : null;
+}
 
 function phaseDuration(room: SameBrainRoomState, phase: SameBrainPhase) {
   switch (phase) {
@@ -513,6 +526,7 @@ function summaryOf(
     connected: connected(player, now),
     ready: multiplayerPlayerReady(player),
     host: room.hostPlayerId === player.id,
+    ...(player.leftAt === undefined ? {} : { left: true }),
     score: player.score,
     out: player.out,
     aloneCount: player.aloneCount,
@@ -529,6 +543,7 @@ function snapshot(
   const host = room.players.find(({ id }) => id === room.hostPlayerId);
   return {
     roomId: room.roomId,
+    managed: room.managed === true,
     phase: room.phase,
     revision: room.revision,
     sequence: room.sequence,
@@ -570,6 +585,7 @@ export async function createSameBrainRoom(input: {
   scoring?: SameBrainScoring;
   toggles?: Partial<SameBrainToggles>;
   timings?: Partial<SameBrainTimings>;
+  managed?: boolean;
 }): Promise<SameBrainRoomCredentials> {
   const hostToken = token();
   const joinToken = token();
@@ -580,6 +596,7 @@ export async function createSameBrainRoom(input: {
   const now = Date.now();
   const room: SameBrainRoomState = {
     roomId,
+    managed: input.managed,
     phase: "lobby",
     revision: 1,
     sequence: 1,
@@ -631,7 +648,10 @@ export async function joinSameBrainRoom(input: {
   hostToken?: string;
 }): Promise<SameBrainJoinResult> {
   const result = await withRoom(input.roomId, async (room, keys) => {
-    if (input.joinToken !== undefined && !safeEqual(input.joinToken, room.joinHash))
+    if (
+      (room.managed && input.joinToken === undefined) ||
+      (input.joinToken !== undefined && !safeEqual(input.joinToken, room.joinHash))
+    )
       return { errorCode: "invite_expired" as const, error: "Invite expired" };
     if (room.phase !== "lobby")
       return { errorCode: "game_started" as const, error: "This game has already started" };
@@ -704,7 +724,7 @@ export async function joinSameBrainRoom(input: {
 
 function authenticate(room: SameBrainRoomState, credential: string, playerId?: string) {
   const player = room.players.find(({ id }) => id === playerId);
-  if (player) return safeEqual(credential, player.tokenHash);
+  if (player) return player.leftAt === undefined && safeEqual(credential, player.tokenHash);
   return safeEqual(credential, room.hostHash);
 }
 
@@ -776,6 +796,8 @@ export async function applySameBrainHostAction(input: {
     };
 
     if (action.type === "game.configure") {
+      if (room.managed)
+        return reject(view(), "action_unavailable", "The game-night settings are fixed");
       if (room.phase !== "lobby")
         return reject(view(), "action_unavailable", "House rules are set before the game starts");
       if (action.rounds !== undefined) room.rounds = clampRounds(action.rounds);
@@ -960,13 +982,22 @@ export async function applySameBrainHostAction(input: {
     if (action.type === "player.remove") {
       const target = room.players.find(({ id }) => id === action.playerId);
       if (!target) return reject(view(), "action_unavailable", "They are not here");
-      room.players = room.players.filter(({ id }) => id !== action.playerId);
-      if (room.hostPlayerId === action.playerId) room.hostPlayerId = room.players[0]?.id ?? null;
+      if (room.phase === "lobby") {
+        room.players = room.players.filter(({ id }) => id !== action.playerId);
+        if (room.hostPlayerId === action.playerId) transferHost(room, action.playerId, now);
+      } else {
+        target.out = true;
+        target.answer = null;
+        target.leftAt = now;
+        target.tokenHash = hash(token());
+        if (room.hostPlayerId === action.playerId) transferHost(room, action.playerId, now);
+      }
       changed(room);
       return remembered();
     }
 
     if (action.type === "game.replay" || action.type === "game.lobby") {
+      room.players = room.players.filter(({ leftAt }) => leftAt === undefined);
       room.gameNumber += 1;
       room.round = 0;
       room.result = null;
@@ -1020,6 +1051,21 @@ export async function applySameBrainPlayerAction(input: {
       room.processedActions = rememberMultiplayerAction(room.processedActions, action.actionId);
       return accept(snapshot(room, player.id, now));
     };
+
+    if (action.type === "room.leave") {
+      if (room.phase === "lobby") {
+        room.players = room.players.filter(({ id }) => id !== player.id);
+      } else {
+        player.out = true;
+        player.answer = null;
+        player.leftAt = now;
+        player.tokenHash = hash(token());
+        if (gameOver(room)) finish(room, now);
+      }
+      if (room.hostPlayerId === player.id) transferHost(room, player.id, now);
+      changed(room);
+      return remembered();
+    }
 
     if (action.type === "readiness.set") {
       if (room.phase !== "lobby")

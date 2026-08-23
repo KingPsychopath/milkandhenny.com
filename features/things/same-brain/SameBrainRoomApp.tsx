@@ -36,21 +36,26 @@ import { buildSameBrainPlayerInviteUrl } from "./same-brain-invite";
 import { useSameBrainRoom } from "./useSameBrainRoom";
 import type { SameBrainPlayerCredentials, SameBrainScoring, SameBrainSnapshot } from "./types";
 import { PlayerReadyControl } from "../shared/PlayerReadyControl";
+import { releaseGamePoolMembership } from "../pool/pool-session.client";
 
 let actionCounter = 0;
 const nextActionId = () => `sb-${Date.now().toString(36)}-${(actionCounter += 1)}`;
 
 export function SameBrainRoomApp({ roomId }: { roomId: string }) {
-  const [credentials, setCredentials] = useState<SameBrainPlayerCredentials | null>(() => {
-    if (typeof window === "undefined") return null;
-    return readExpiringLocalValue<SameBrainPlayerCredentials>(
-      sameBrainBrowserKeys.playerSession(roomId),
-    );
-  });
+  const [credentials, setCredentials] = useState<SameBrainPlayerCredentials | null>(null);
+  const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
     clearExpiredGameLocalStorage();
-  }, []);
+    setCredentials(
+      readExpiringLocalValue<SameBrainPlayerCredentials>(
+        sameBrainBrowserKeys.playerSession(roomId),
+      ),
+    );
+    setLoaded(true);
+  }, [roomId]);
+
+  if (!loaded) return <div className="things-game things-game--night" aria-busy="true" />;
 
   if (!credentials)
     return (
@@ -77,6 +82,7 @@ export function SameBrainRoomApp({ roomId }: { roomId: string }) {
  */
 export function SameBrainRoom({ credentials }: { credentials: SameBrainPlayerCredentials }) {
   const { roomId, playerId, playerToken } = credentials;
+  const [confirmingLeave, setConfirmingLeave] = useState(false);
   const room = useSameBrainRoom({
     roomId,
     playerId,
@@ -113,6 +119,16 @@ export function SameBrainRoom({ credentials }: { credentials: SameBrainPlayerCre
         });
         if (result.snapshot) room.setSnapshot(result.snapshot);
         if (!result.accepted && "error" in result) room.setMessage(result.error);
+        if (
+          action.type === "room.leave" &&
+          (result.accepted ||
+            (!result.accepted && "errorCode" in result && result.errorCode === "room_unavailable"))
+        ) {
+          removeStorageKeys(localStorage, [sameBrainBrowserKeys.playerSession(roomId)]);
+          const entrance = await releaseGamePoolMembership("same-brain", roomId);
+          window.location.assign(entrance ?? "/things/same-brain");
+          return;
+        }
         // Everyone else is waiting on a poll to learn the round moved on.
         if (result.accepted) room.notify();
       } catch {
@@ -243,6 +259,36 @@ export function SameBrainRoom({ credentials }: { credentials: SameBrainPlayerCre
               {room.message}
             </p>
           ) : null}
+
+          <div className="mt-10 border-t border-white/10 pt-4">
+            <button
+              type="button"
+              onClick={() => setConfirmingLeave(true)}
+              className="min-h-11 font-mono text-xs text-white/45 hover:text-white/80"
+            >
+              leave room
+            </button>
+          </div>
+          {confirmingLeave ? (
+            <GameActionDialog
+              tone="dark"
+              eyebrow="leave room"
+              title="Leave this game?"
+              description={
+                snapshot.phase === "lobby"
+                  ? "You will give up your seat and return to the game page."
+                  : "You will leave the game permanently. Your completed rounds stay in its history."
+              }
+              cancelLabel="stay"
+              confirmLabel="leave room"
+              pending={false}
+              onCancel={() => setConfirmingLeave(false)}
+              onConfirm={() => {
+                setConfirmingLeave(false);
+                void send({ type: "room.leave" });
+              }}
+            />
+          ) : null}
         </main>
       </div>
     </GameShell>
@@ -285,9 +331,11 @@ function LobbyPhase({
         cheap one.
       </p>
 
-      <div className="mt-8">
-        <InvitePanel roomId={snapshot.roomId} inviteUrl={inviteUrl} />
-      </div>
+      {!snapshot.managed ? (
+        <div className="mt-8">
+          <InvitePanel roomId={snapshot.roomId} inviteUrl={inviteUrl} />
+        </div>
+      ) : null}
 
       <div className="mt-8">
         <Eyebrow>who is here · {snapshot.players.length}</Eyebrow>
@@ -297,81 +345,83 @@ function LobbyPhase({
       {isHost ? (
         <section className="mt-8 border-t border-white/15 pt-5">
           <Eyebrow>house rules</Eyebrow>
-          <label className="mt-4 flex min-h-11 items-center gap-3 font-mono text-xs text-white/60">
-            rounds
-            <input
-              type="number"
-              min={SAME_BRAIN_ROUND_LIMITS.min}
-              max={SAME_BRAIN_ROUND_LIMITS.max}
-              value={snapshot.rounds}
-              onChange={(event) =>
-                void sendHost({ type: "game.configure", rounds: Number(event.target.value) })
+          <fieldset disabled={snapshot.managed}>
+            <label className="mt-4 flex min-h-11 items-center gap-3 font-mono text-xs text-white/60">
+              rounds
+              <input
+                type="number"
+                min={SAME_BRAIN_ROUND_LIMITS.min}
+                max={SAME_BRAIN_ROUND_LIMITS.max}
+                value={snapshot.rounds}
+                onChange={(event) =>
+                  void sendHost({ type: "game.configure", rounds: Number(event.target.value) })
+                }
+                className="w-16 border border-white/20 bg-transparent px-2 py-1 text-white"
+              />
+            </label>
+
+            <fieldset className="mt-4">
+              <legend className="font-mono text-xs text-white/60">
+                when two answers nearly match
+              </legend>
+              {(
+                [
+                  ["embedding", "count them as one", "sea and ocean score together"],
+                  ["exact", "keep them apart", "only identical answers score together"],
+                ] as Array<[SameBrainScoring, string, string]>
+              ).map(([value, label, hint]) => (
+                <label
+                  key={value}
+                  className="mt-2 flex min-h-11 items-start gap-3 font-mono text-xs text-white/70"
+                >
+                  <input
+                    type="radio"
+                    name="scoring"
+                    checked={snapshot.scoring === value}
+                    onChange={() => void sendHost({ type: "game.configure", scoring: value })}
+                    className="mt-1"
+                  />
+                  <span>
+                    {label}
+                    <span className="block text-white/35">{hint}</span>
+                  </span>
+                </label>
+              ))}
+            </fieldset>
+
+            <Toggle
+              label="say the answers out loud"
+              hint="counts everyone down, then shows you your own word — for a room, not a call"
+              checked={snapshot.toggles.sayItAloud}
+              onChange={(next) =>
+                void sendHost({ type: "game.configure", toggles: { sayItAloud: next } })
               }
-              className="w-16 border border-white/20 bg-transparent px-2 py-1 text-white"
             />
-          </label>
-
-          <fieldset className="mt-4">
-            <legend className="font-mono text-xs text-white/60">
-              when two answers nearly match
-            </legend>
-            {(
-              [
-                ["embedding", "count them as one", "sea and ocean score together"],
-                ["exact", "keep them apart", "only identical answers score together"],
-              ] as Array<[SameBrainScoring, string, string]>
-            ).map(([value, label, hint]) => (
-              <label
-                key={value}
-                className="mt-2 flex min-h-11 items-start gap-3 font-mono text-xs text-white/70"
-              >
-                <input
-                  type="radio"
-                  name="scoring"
-                  checked={snapshot.scoring === value}
-                  onChange={() => void sendHost({ type: "game.configure", scoring: value })}
-                  className="mt-1"
-                />
-                <span>
-                  {label}
-                  <span className="block text-white/35">{hint}</span>
-                </span>
-              </label>
-            ))}
+            <Toggle
+              label="the odd one out is eliminated"
+              hint="off, the loner just misses out; on, they leave the game"
+              checked={snapshot.toggles.eliminateOddOne}
+              onChange={(next) =>
+                void sendHost({ type: "game.configure", toggles: { eliminateOddOne: next } })
+              }
+            />
+            <Toggle
+              label="show who wrote what"
+              hint="off makes the reveal anonymous and the argument louder"
+              checked={snapshot.toggles.revealAuthors}
+              onChange={(next) =>
+                void sendHost({ type: "game.configure", toggles: { revealAuthors: next } })
+              }
+            />
+            <Toggle
+              label="say when the machine merged answers"
+              hint="so you can overrule it out loud"
+              checked={snapshot.toggles.showMachineWorking}
+              onChange={(next) =>
+                void sendHost({ type: "game.configure", toggles: { showMachineWorking: next } })
+              }
+            />
           </fieldset>
-
-          <Toggle
-            label="say the answers out loud"
-            hint="counts everyone down, then shows you your own word — for a room, not a call"
-            checked={snapshot.toggles.sayItAloud}
-            onChange={(next) =>
-              void sendHost({ type: "game.configure", toggles: { sayItAloud: next } })
-            }
-          />
-          <Toggle
-            label="the odd one out is eliminated"
-            hint="off, the loner just misses out; on, they leave the game"
-            checked={snapshot.toggles.eliminateOddOne}
-            onChange={(next) =>
-              void sendHost({ type: "game.configure", toggles: { eliminateOddOne: next } })
-            }
-          />
-          <Toggle
-            label="show who wrote what"
-            hint="off makes the reveal anonymous and the argument louder"
-            checked={snapshot.toggles.revealAuthors}
-            onChange={(next) =>
-              void sendHost({ type: "game.configure", toggles: { revealAuthors: next } })
-            }
-          />
-          <Toggle
-            label="say when the machine merged answers"
-            hint="so you can overrule it out loud"
-            checked={snapshot.toggles.showMachineWorking}
-            onChange={(next) =>
-              void sendHost({ type: "game.configure", toggles: { showMachineWorking: next } })
-            }
-          />
 
           <div className="mt-8">
             {startAttempted && notReady.length > 0 ? (

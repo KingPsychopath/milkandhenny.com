@@ -1,4 +1,4 @@
-import { Link } from "@tanstack/react-router";
+import { Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 import { useWebHaptics } from "web-haptics/react";
 import {
@@ -25,8 +25,10 @@ import type { CountryOutline } from "./types";
 import { loadCountryOutline } from "./rotation.client";
 import { useDrawCountryRoom } from "./useDrawCountryRoom";
 import { useWakeLock } from "@/hooks/useWakeLock";
+import { releaseGamePoolMembership } from "../pool/pool-session.client";
 
 export function DrawCountryRoomApp({ roomId }: { roomId: string }) {
+  const navigate = useNavigate();
   const [credentials, setCredentials] = useState<DrawCountryPlayerCredentials | null>(null);
   const [loaded, setLoaded] = useState(false);
 
@@ -43,7 +45,19 @@ export function DrawCountryRoomApp({ roomId }: { roomId: string }) {
 
   if (!loaded) return <div className="things-game things-game--cream" aria-busy="true" />;
   if (!credentials) return <JoinDrawCountryRoom roomId={roomId} onJoined={setCredentials} />;
-  return <DrawCountryRoom roomId={roomId} credentials={credentials} />;
+  return (
+    <DrawCountryRoom
+      roomId={roomId}
+      credentials={credentials}
+      onLeft={() => {
+        localStorage.removeItem(drawCountryBrowserKeys.playerSession(roomId));
+        void releaseGamePoolMembership("draw-country", roomId).then((entrance) => {
+          if (entrance) window.location.assign(entrance);
+          else void navigate({ to: "/things/draw-country" });
+        });
+      }}
+    />
+  );
 }
 
 function drawingKey(roomId: string, roundId: string) {
@@ -89,9 +103,11 @@ function readDrawing(roomId: string, roundId: string): CountryDrawing {
 function DrawCountryRoom({
   roomId,
   credentials,
+  onLeft,
 }: {
   roomId: string;
   credentials: DrawCountryPlayerCredentials;
+  onLeft: () => void;
 }) {
   const live = useDrawCountryRoom({
     roomId,
@@ -237,7 +253,8 @@ function DrawCountryRoom({
       | { type: "round.next" }
       | { type: "game.replay" }
       | { type: "game.lobby" }
-      | { type: "readiness.set"; ready: boolean },
+      | { type: "readiness.set"; ready: boolean }
+      | { type: "player.leave" },
   ) => {
     try {
       const result = await applyDrawCountryActionFn({
@@ -273,9 +290,24 @@ function DrawCountryRoom({
         void haptics.trigger("selection");
       }
       live.notify();
+      return result;
     } catch {
       live.setMessage("That did not reach the room. Try once more.");
+      return null;
     }
+  };
+
+  const leaveRoom = async () => {
+    const result = await control({ type: "player.leave" });
+    if (result?.ok && result.accepted) {
+      onLeft();
+      return true;
+    }
+    if (result && !result.ok && result.errorCode === "room_unavailable") {
+      onLeft();
+      return true;
+    }
+    return false;
   };
 
   const confirmStart = async () => {
@@ -297,7 +329,7 @@ function DrawCountryRoom({
     }
   };
 
-  if (live.ended || !snapshot)
+  if (live.ended || !snapshot || snapshot.phase === "closed")
     return (
       <div className="things-game things-game--cream text-black">
         <main id="main" className="m-auto max-w-md px-6 text-center">
@@ -325,6 +357,7 @@ function DrawCountryRoom({
           message={live.message}
           onReadyChange={(ready) => void control({ type: "readiness.set", ready })}
           onStart={() => void control({ type: "game.start" })}
+          onLeave={leaveRoom}
           startLabel={
             nudgedIds
               ? `start without ${snapshot.players
@@ -370,7 +403,7 @@ function DrawCountryRoom({
     const me = snapshot.players.find(({ id }) => id === credentials.playerId);
     return (
       <div className="things-game things-game--cream text-black">
-        <RoomHeader roomId={roomId} connection={live.connectionState} />
+        <RoomHeader roomId={roomId} connection={live.connectionState} onLeave={leaveRoom} />
         <CountryRoundBoard
           countryName={snapshot.round.countryName}
           roundLabel={`${snapshot.round.number}/${snapshot.round.total}`}
@@ -400,6 +433,7 @@ function DrawCountryRoom({
         country={country}
         connection={live.connectionState}
         onNext={() => void control({ type: "round.next" })}
+        onLeave={leaveRoom}
       />
     );
 
@@ -411,6 +445,7 @@ function DrawCountryRoom({
       pending={restarting}
       onPlayAgain={() => void rematch("game.replay")}
       onBackToLobby={() => void rematch("game.lobby")}
+      onLeave={leaveRoom}
     />
   );
 }

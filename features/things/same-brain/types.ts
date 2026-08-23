@@ -51,6 +51,8 @@ export interface SameBrainPlayerSummary {
   connected: boolean;
   ready: boolean;
   host: boolean;
+  /** Permanently departed or removed after play started. */
+  left?: boolean;
   score: number;
   /** Out of the game under the odd-one-out house rule. */
   out: boolean;
@@ -101,6 +103,7 @@ export interface SameBrainSnapshot extends MultiplayerSequence {
   /** Hash of this viewer's redacted view, filled in by the read. */
   digest?: string;
   roomId: string;
+  managed?: boolean;
   phase: SameBrainPhase;
   revision: number;
   serverNow: number;
@@ -181,6 +184,7 @@ export type SameBrainHostAction = MultiplayerAction &
 
 export type SameBrainPlayerAction = MultiplayerAction &
   (
+    | { type: "room.leave" }
     | { type: "readiness.set"; ready: boolean }
     | { type: "answer.submit"; round: number; text: string }
     | { type: "answer.clear"; round: number }

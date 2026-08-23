@@ -14,6 +14,7 @@ export function TwinFinished({
   pending,
   onPlayAgain,
   onBackToLobby,
+  onLeave,
 }: {
   snapshot: TwinSnapshot;
   playerId: string;
@@ -22,6 +23,7 @@ export function TwinFinished({
   pending: boolean;
   onPlayAgain: () => void;
   onBackToLobby: () => void;
+  onLeave: () => Promise<boolean>;
 }) {
   const [heats, setHeats] = useState<TwinLoggedHeat[] | null>(null);
   const [logFailed, setLogFailed] = useState(false);
@@ -63,10 +65,15 @@ export function TwinFinished({
 
   return (
     <div className="things-game things-game--night twin">
-      <TwinHeader roomId={snapshot.roomId} right={`game ${snapshot.gameNumber} · finished`} />
+      <TwinHeader
+        roomId={snapshot.roomId}
+        right={`game ${snapshot.gameNumber} · finished`}
+        onLeave={onLeave}
+      />
       <main id="main" className="twin-finished">
         <p className="twin-eyebrow">
-          {ending?.heatCount ?? 0} heats · {snapshot.players.length} playing
+          {ending?.heatCount ?? 0} heats ·{" "}
+          {snapshot.players.filter(({ withdrawn }) => !withdrawn).length} playing
         </p>
         <h1 className="twin-title">{ending?.headline ?? "That is the game."}</h1>
 
@@ -88,7 +95,11 @@ export function TwinFinished({
               <span className="twin-final-place">{String(index + 1).padStart(2, "0")}</span>
               <span className="twin-final-name">
                 {player.name}
-                {player.playerId === playerId ? " · you" : ""}
+                {player.playerId === playerId
+                  ? " · you"
+                  : snapshot.players.find(({ id }) => id === player.playerId)?.withdrawn
+                    ? " · left"
+                    : ""}
               </span>
               <span className="twin-final-stat">
                 {player.cardsLeft === 0 ? "out" : `${player.cardsLeft} left`}

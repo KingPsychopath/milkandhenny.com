@@ -39,6 +39,7 @@ interface PlayerState {
   id: string;
   name: string;
   tokenHash: string;
+  joinedAt: number;
   score: number;
   /** Carried across rematches; `score` restarts at zero each game. */
   sessionScore?: number;
@@ -49,6 +50,7 @@ interface PlayerState {
   ready?: boolean;
   startRequestId?: string | null;
   startRequestedAt?: number | null;
+  withdrawn?: boolean;
 }
 
 interface RoundState {
@@ -62,10 +64,12 @@ interface RoundState {
 
 interface RoomState {
   roomId: string;
+  /** The game-night pool owns admission for this room. */
+  managed?: boolean;
   expiresAt: number;
   revision: number;
   sequence: number;
-  phase: "lobby" | "drawing" | "reveal" | "finished";
+  phase: "lobby" | "drawing" | "reveal" | "finished" | "closed";
   drawSeconds: number;
   countryIds: string[];
   hostHash: string;
@@ -85,6 +89,20 @@ const memoryRooms = createMemoryRoomStore<RoomState>("draw-country");
 function changed(room: RoomState) {
   room.revision += 1;
   room.sequence += 1;
+}
+
+function activePlayers(room: RoomState) {
+  return room.players.filter((player) => !player.withdrawn);
+}
+
+function transferHost(room: RoomState, leavingId: string, now: number) {
+  if (room.hostPlayerId !== leavingId) return;
+  const remaining = activePlayers(room).filter((player) => player.id !== leavingId);
+  const connected = remaining.filter((player) => now - player.lastSeenAt <= CONNECTED_WINDOW_MS);
+  const successor = (connected.length > 0 ? connected : remaining).toSorted(
+    (left, right) => left.joinedAt - right.joinedAt || left.id.localeCompare(right.id),
+  )[0];
+  room.hostPlayerId = successor?.id ?? "";
 }
 
 async function loadRoom(roomId: string) {
@@ -143,7 +161,7 @@ function rankPlayers(room: RoomState) {
 
 function snapshot(room: RoomState, playerId: string): DrawCountrySnapshot {
   const now = Date.now();
-  const host = room.players.find(({ id }) => id === room.hostPlayerId);
+  const host = room.players.find(({ id, withdrawn }) => id === room.hostPlayerId && !withdrawn);
   const places = rankPlayers(room);
   const country = currentCountry(room);
   return {
@@ -154,6 +172,7 @@ function snapshot(room: RoomState, playerId: string): DrawCountrySnapshot {
     sequence: room.sequence,
     hostPlayerId: room.hostPlayerId,
     canControl: playerId === room.hostPlayerId || !host || now - host.lastSeenAt > HOST_TAKEOVER_MS,
+    managed: room.managed === true,
     gameNumber: room.gameNumber ?? 1,
     roundTotal: room.countryIds.length,
     drawSeconds: room.drawSeconds,
@@ -169,6 +188,7 @@ function snapshot(room: RoomState, playerId: string): DrawCountrySnapshot {
       connected: now - player.lastSeenAt <= CONNECTED_WINDOW_MS,
       ready: multiplayerPlayerReady(player),
       place: places.get(player.id) ?? null,
+      withdrawn: player.withdrawn === true,
     })),
     player: {
       ready: multiplayerPlayerReady(
@@ -194,7 +214,7 @@ function snapshot(room: RoomState, playerId: string): DrawCountrySnapshot {
 }
 
 function startRound(room: RoomState, index: number, now = Date.now()) {
-  for (const player of room.players) {
+  for (const player of activePlayers(room)) {
     player.roundScore = null;
     player.submitted = false;
     player.drawing = null;
@@ -215,7 +235,7 @@ function reveal(room: RoomState, now = Date.now()) {
   if (!room.round || room.phase !== "drawing") return;
   const country = currentCountry(room);
   if (!country) return;
-  for (const player of room.players) {
+  for (const player of activePlayers(room)) {
     const roundScore = player.drawing ? scoreCountryDrawing(country, player.drawing).score : 0;
     player.roundScore = roundScore;
     player.score += roundScore;
@@ -236,7 +256,7 @@ function resetForRematch(room: RoomState, now = Date.now()) {
   const played = [...(room.playedCountryIds ?? []), ...room.countryIds];
   const countryIds = selectRoomCountries(room.countryIds.length, played);
   if (countryIds.length === 0) return false;
-  for (const player of room.players) {
+  for (const player of activePlayers(room)) {
     player.sessionScore = (player.sessionScore ?? 0) + player.score;
     player.score = 0;
     player.roundScore = null;
@@ -254,7 +274,9 @@ function resetForRematch(room: RoomState, now = Date.now()) {
 
 function advance(room: RoomState, now = Date.now()) {
   if (room.phase === "drawing" && room.round) {
-    const active = room.players.filter((player) => now - player.lastSeenAt <= CONNECTED_WINDOW_MS);
+    const active = activePlayers(room).filter(
+      (player) => now - player.lastSeenAt <= CONNECTED_WINDOW_MS,
+    );
     if (
       now >= room.round.endsAt ||
       (active.length > 0 && active.every(({ submitted }) => submitted))
@@ -272,6 +294,13 @@ function advance(room: RoomState, now = Date.now()) {
 
 function validPlayer(room: RoomState, playerId: string, playerToken: string) {
   const player = room.players.find(({ id }) => id === playerId);
+  return player && !player.withdrawn && multiplayerCredentialsMatch(playerToken, player.tokenHash)
+    ? player
+    : null;
+}
+
+function authenticatedPlayer(room: RoomState, playerId: string, playerToken: string) {
+  const player = room.players.find(({ id }) => id === playerId);
   return player && multiplayerCredentialsMatch(playerToken, player.tokenHash) ? player : null;
 }
 
@@ -280,6 +309,7 @@ export async function createDrawCountryRoom(input: {
   drawSeconds: number;
   roundTotal: number;
   recentCountryIds: string[];
+  managed?: boolean;
 }) {
   const roomId = await createAvailableMultiplayerRoomId(async (candidate) =>
     Boolean(await loadRoom(candidate)),
@@ -291,6 +321,7 @@ export async function createDrawCountryRoom(input: {
   const expiresAt = multiplayerRoomExpiresAt();
   const room: RoomState = {
     roomId,
+    managed: input.managed,
     expiresAt,
     revision: 1,
     sequence: 1,
@@ -305,6 +336,7 @@ export async function createDrawCountryRoom(input: {
         id: playerId,
         name: input.hostName,
         tokenHash: hashMultiplayerCredential(playerToken),
+        joinedAt: Date.now(),
         score: 0,
         roundScore: null,
         submitted: false,
@@ -337,9 +369,12 @@ export async function joinDrawCountryRoom(input: {
   const result = await withRoom(input.roomId, (room) => {
     advance(room);
     if (room.phase !== "lobby") return multiplayerFailure("game_started", "This game has started");
-    if (input.joinToken && !multiplayerCredentialsMatch(input.joinToken, room.joinHash))
+    if (
+      (room.managed && !input.joinToken) ||
+      (input.joinToken && !multiplayerCredentialsMatch(input.joinToken, room.joinHash))
+    )
       return multiplayerFailure("invite_expired", "This invite is no longer valid");
-    if (room.players.length >= MAX_PLAYERS)
+    if (activePlayers(room).length >= MAX_PLAYERS)
       return multiplayerFailure("room_full", "This room is full");
     const name = input.name.trim();
     if (name.length < 1) return multiplayerFailure("invalid_name", "Add your name");
@@ -350,6 +385,7 @@ export async function joinDrawCountryRoom(input: {
       id: crypto.randomUUID(),
       name,
       tokenHash: hashMultiplayerCredential(playerToken),
+      joinedAt: Date.now(),
       score: 0,
       roundScore: null,
       submitted: false,
@@ -415,9 +451,27 @@ export async function applyDrawCountryAction(input: {
     | { type: "round.next" }
     | { type: "game.replay" }
     | { type: "game.lobby" }
-    | { type: "drawing.submit"; roundId: string; drawing: CountryDrawing };
+    | { type: "drawing.submit"; roundId: string; drawing: CountryDrawing }
+    | { type: "player.leave" };
 }): Promise<DrawCountryActionResult> {
   const result = await withRoom(input.roomId, (room) => {
+    const now = Date.now();
+    const authenticated = authenticatedPlayer(room, input.playerId, input.playerToken);
+    if (!authenticated) return null;
+    if (input.action.type === "player.leave") {
+      if (authenticated.withdrawn)
+        return { ok: true, accepted: true, snapshot: snapshot(room, authenticated.id) } as const;
+      transferHost(room, authenticated.id, now);
+      if (room.phase === "lobby") {
+        room.players = room.players.filter(({ id }) => id !== authenticated.id);
+        if (room.players.length === 0) room.phase = "closed";
+      } else {
+        authenticated.withdrawn = true;
+        if (activePlayers(room).length === 0) room.phase = "closed";
+      }
+      changed(room);
+      return { ok: true, accepted: true, snapshot: snapshot(room, authenticated.id) } as const;
+    }
     const player = validPlayer(room, input.playerId, input.playerToken);
     if (!player) return null;
     player.lastSeenAt = Date.now();
@@ -454,7 +508,7 @@ export async function applyDrawCountryAction(input: {
       }
       return { ok: true, accepted: true, snapshot: current() } as const;
     }
-    const host = room.players.find(({ id }) => id === room.hostPlayerId);
+    const host = room.players.find(({ id, withdrawn }) => id === room.hostPlayerId && !withdrawn);
     const canControl =
       player.id === room.hostPlayerId || !host || Date.now() - host.lastSeenAt > HOST_TAKEOVER_MS;
     if (!canControl)
@@ -466,7 +520,7 @@ export async function applyDrawCountryAction(input: {
       } as const;
     if (input.action.type === "game.start" && room.phase === "lobby") {
       const confirmed = new Set(input.action.removePlayerIds ?? []);
-      const unready = multiplayerUnreadyPlayers(room.players);
+      const unready = multiplayerUnreadyPlayers(activePlayers(room));
       const unconfirmed = unready.filter(
         ({ id, startRequestId }) => id === player.id || !confirmed.has(id) || !startRequestId,
       );
@@ -515,7 +569,7 @@ export async function applyDrawCountryAction(input: {
       if (input.action.type === "game.replay") startRound(room, 0, now);
       else {
         // Back to the lobby so people can join or drop; everyone re-readies from there.
-        for (const player of room.players)
+        for (const player of activePlayers(room))
           setMultiplayerPlayerReady(player, player.id === room.hostPlayerId);
         room.phase = "lobby";
         changed(room);

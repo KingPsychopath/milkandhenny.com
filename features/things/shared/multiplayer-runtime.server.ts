@@ -9,6 +9,8 @@ import { TwinRoomService } from "../twin/twin-room-service.server";
 import { CentreRoomService } from "../centre/centre-room-service.server";
 import { MultiplayerTelemetry } from "./multiplayer-telemetry.server";
 import { MultiplayerRealtimeBackplane } from "./multiplayer-realtime-backplane.server";
+import { gameRealtimeChannel } from "./multiplayer-keys";
+import { MULTIPLAYER_GAME_REGISTRY, type MultiplayerGame } from "./multiplayer-telemetry";
 
 const multiplayerLayer = Layer.mergeAll(
   MultiplayerTelemetry.layer,
@@ -69,11 +71,6 @@ if (import.meta.hot) {
   runtimeHolder[RUNTIME_KEY] ??= ManagedRuntime.make(multiplayerLayer);
 }
 
-const multiplayerRuntime = runtimeHolder[RUNTIME_KEY] as ManagedRuntime.ManagedRuntime<
-  MultiplayerServices,
-  never
->;
-
 type MultiplayerServices =
   | MultiplayerTelemetry
   | MultiplayerRealtimeBackplane
@@ -85,20 +82,40 @@ type MultiplayerServices =
   | TwinRoomService
   | CentreRoomService;
 
+function currentMultiplayerRuntime() {
+  return runtimeHolder[RUNTIME_KEY] as ManagedRuntime.ManagedRuntime<MultiplayerServices, never>;
+}
+
 export function runMultiplayerEffect<A, E>(
   effect: Effect.Effect<A, E, MultiplayerServices>,
   signal?: AbortSignal,
 ) {
-  return multiplayerRuntime.runPromise(effect, signal ? { signal } : undefined);
+  // Older Vite module graphs can keep this function after hot replacement. Resolve through the
+  // process holder on every call so they cannot send work to the runtime that replacement closed.
+  return currentMultiplayerRuntime().runPromise(effect, signal ? { signal } : undefined);
 }
 
 export function multiplayerTelemetrySnapshot() {
   return runMultiplayerEffect(MultiplayerTelemetry.use((telemetry) => telemetry.snapshot));
 }
 
+/** Publishes only a wake hint. Every client then reads its authorized snapshot over HTTPS. */
+export function publishMultiplayerRoomWake(game: MultiplayerGame, roomId: string) {
+  const version = Number(MULTIPLAYER_GAME_REGISTRY[game].channelVersion.slice(1));
+  return runMultiplayerEffect(
+    MultiplayerRealtimeBackplane.use((backplane) =>
+      backplane.publish(
+        gameRealtimeChannel(game, version, roomId),
+        JSON.stringify({ type: "wake" }),
+      ),
+    ),
+  );
+}
+
 export function disposeMultiplayerRuntime() {
   // Clear the holder too, or the next call rebuilds against a runtime that has already been torn
   // down and every effect fails on a closed scope.
+  const runtime = currentMultiplayerRuntime();
   delete runtimeHolder[RUNTIME_KEY];
-  return multiplayerRuntime.dispose();
+  return runtime.dispose();
 }

@@ -1,12 +1,18 @@
-export const MULTIPLAYER_GAMES = [
-  "remote",
-  "spelling-party",
-  "draw-country",
-  "liars",
-  "same-brain",
-  "twin",
-  "centre",
-] as const;
+/** Shared source of truth for game channel versions and telemetry coverage. */
+export const MULTIPLAYER_GAME_REGISTRY = {
+  remote: { channelVersion: "v3" },
+  "spelling-party": { channelVersion: "v2" },
+  "draw-country": { channelVersion: "v1" },
+  liars: { channelVersion: "v1" },
+  "same-brain": { channelVersion: "v1" },
+  twin: { channelVersion: "v1" },
+  centre: { channelVersion: "v1" },
+  "game-pool": { channelVersion: "v1" },
+} as const;
+
+export const MULTIPLAYER_GAMES = Object.freeze(
+  Object.keys(MULTIPLAYER_GAME_REGISTRY),
+) as ReadonlyArray<keyof typeof MULTIPLAYER_GAME_REGISTRY>;
 
 export type MultiplayerGame = (typeof MULTIPLAYER_GAMES)[number];
 

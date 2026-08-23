@@ -5,6 +5,7 @@ import { useNativeShareAvailability } from "@/hooks/useNativeShareAvailability";
 import { useQrCode } from "@/hooks/useQrCode";
 import { shareOrCopy } from "@/lib/client/share";
 import { PlayerReadyControl } from "../shared/PlayerReadyControl";
+import { GameActionDialog } from "../shared/GameActionDialog";
 import { CountryRevealAnalysis } from "./CountryReveal";
 import { DrawCountryResultReport } from "./DrawCountryResultReport";
 import { buildDrawCountryPlayerInviteUrl } from "./draw-country-invite";
@@ -13,15 +14,24 @@ import { resultReaction } from "./result-copy";
 import { scoreCountryDrawing } from "./scoring";
 import type { CountryDrawing, CountryOutline, DrawCountrySnapshot } from "./types";
 
-export function RoomHeader({ roomId, connection }: { roomId: string; connection: string }) {
+export function RoomHeader({
+  roomId,
+  connection,
+  onLeave,
+}: {
+  roomId: string;
+  connection: string;
+  onLeave?: () => Promise<boolean>;
+}) {
   return (
     <header className="mx-auto flex w-full max-w-4xl items-center justify-between px-5 pt-3 font-mono text-xs text-black/45">
       <Link to="/things/draw-country" className="inline-flex min-h-11 items-center">
-        ← leave
+        ← back
       </Link>
       <span className="min-w-0 truncate text-right">
         {roomId} · {connection}
       </span>
+      {onLeave ? <DrawCountryLeaveButton onLeave={onLeave} /> : null}
     </header>
   );
 }
@@ -34,6 +44,7 @@ export function RoomLobby({
   onReadyChange,
   onStart,
   startLabel,
+  onLeave,
 }: {
   snapshot: DrawCountrySnapshot;
   playerId: string;
@@ -43,6 +54,7 @@ export function RoomLobby({
   onStart: () => void;
   /** Overrides the start button label, e.g. after nudging unready players. */
   startLabel?: string | null;
+  onLeave: () => Promise<boolean>;
 }) {
   const [shareMessage, setShareMessage] = useState<string | null>(null);
   const token =
@@ -78,7 +90,7 @@ export function RoomLobby({
   };
   return (
     <div className="things-game things-game--cream text-black">
-      <RoomHeader roomId={snapshot.roomId} connection={connection} />
+      <RoomHeader roomId={snapshot.roomId} connection={connection} onLeave={onLeave} />
       <main
         id="main"
         className="mx-auto flex w-full max-w-xl flex-1 flex-col items-center px-5 pb-12 pt-8 text-center"
@@ -91,29 +103,33 @@ export function RoomLobby({
         <p className="mt-2 font-mono text-micro text-black/40">
           {snapshot.roundTotal} rounds · {snapshot.drawSeconds} seconds each · 100 points per round
         </p>
-        {qr ? (
-          <img
-            src={qr}
-            alt="QR code to join the draw the country room"
-            className="mt-6 w-48 rounded-3xl bg-white p-3"
-          />
+        {!snapshot.managed ? (
+          <>
+            {qr ? (
+              <img
+                src={qr}
+                alt="QR code to join the draw the country room"
+                className="mt-6 w-48 rounded-3xl bg-white p-3"
+              />
+            ) : null}
+            {qrFailed ? (
+              <p className="mt-4 font-mono text-xs text-black/45">
+                QR unavailable — share the link or room code.
+              </p>
+            ) : null}
+            <p className="mt-4 font-mono text-micro uppercase tracking-[0.17em] text-black/40">
+              room code
+            </p>
+            <p className="mt-1 font-mono text-2xl tracking-[0.2em]">{snapshot.roomId}</p>
+            <button
+              type="button"
+              onClick={() => void share()}
+              className="mt-4 min-h-11 rounded-full border border-black/20 px-6 font-mono text-xs"
+            >
+              {nativeShare ? "share invite" : "copy invite link"}
+            </button>
+          </>
         ) : null}
-        {qrFailed ? (
-          <p className="mt-4 font-mono text-xs text-black/45">
-            QR unavailable — share the link or room code.
-          </p>
-        ) : null}
-        <p className="mt-4 font-mono text-micro uppercase tracking-[0.17em] text-black/40">
-          room code
-        </p>
-        <p className="mt-1 font-mono text-2xl tracking-[0.2em]">{snapshot.roomId}</p>
-        <button
-          type="button"
-          onClick={() => void share()}
-          className="mt-4 min-h-11 rounded-full border border-black/20 px-6 font-mono text-xs"
-        >
-          {nativeShare ? "share invite" : "copy invite link"}
-        </button>
         <p aria-live="polite" className="mt-2 min-h-5 font-mono text-xs text-amber-800">
           {shareMessage ?? message}
         </p>
@@ -162,6 +178,7 @@ export function RoomReveal({
   country,
   connection,
   onNext,
+  onLeave,
 }: {
   snapshot: DrawCountrySnapshot;
   playerId: string;
@@ -169,13 +186,14 @@ export function RoomReveal({
   country: CountryOutline | null;
   connection: string;
   onNext: () => void;
+  onLeave: () => Promise<boolean>;
 }) {
   const evaluation = country ? scoreCountryDrawing(country, drawing) : null;
   const me = snapshot.players.find(({ id }) => id === playerId);
   const ranking = snapshot.players.toSorted((a, b) => (b.roundScore ?? 0) - (a.roundScore ?? 0));
   return (
     <div className="things-game things-game--cream text-black">
-      <RoomHeader roomId={snapshot.roomId} connection={connection} />
+      <RoomHeader roomId={snapshot.roomId} connection={connection} onLeave={onLeave} />
       <main id="main" className="mx-auto w-full max-w-3xl px-5 pb-12 pt-4">
         <div className="flex items-end justify-between gap-4">
           <div className="min-w-0">
@@ -227,7 +245,7 @@ export function RoomReveal({
                   <span className="w-5 text-black/35">{index + 1}</span>
                   <span className="flex-1 font-semibold">
                     {player.name}
-                    {player.id === playerId ? " · you" : ""}
+                    {player.id === playerId ? " · you" : player.withdrawn ? " · left" : ""}
                   </span>
                   <span className="text-right">
                     <span className="block font-semibold">{player.roundScore ?? 0}</span>
@@ -263,6 +281,7 @@ export function FinalRanking({
   pending,
   onPlayAgain,
   onBackToLobby,
+  onLeave,
 }: {
   snapshot: DrawCountrySnapshot;
   playerId: string;
@@ -270,12 +289,13 @@ export function FinalRanking({
   pending: boolean;
   onPlayAgain: () => void;
   onBackToLobby: () => void;
+  onLeave: () => Promise<boolean>;
 }) {
   const ranking = snapshot.players.toSorted((a, b) => b.score - a.score);
   const session = snapshot.gameNumber > 1;
   return (
     <div className="things-game things-game--cream text-black">
-      <RoomHeader roomId={snapshot.roomId} connection="finished" />
+      <RoomHeader roomId={snapshot.roomId} connection="finished" onLeave={onLeave} />
       <main
         id="main"
         className="mx-auto flex w-full max-w-xl flex-1 flex-col justify-center px-5 pb-16"
@@ -295,7 +315,7 @@ export function FinalRanking({
               </span>
               <span className="flex-1 font-serif text-xl font-semibold">
                 {player.name}
-                {player.id === playerId ? " · you" : ""}
+                {player.id === playerId ? " · you" : player.withdrawn ? " · left" : ""}
               </span>
               <span className="text-right">
                 <span className="block font-mono text-lg font-semibold">{player.score}</span>
@@ -346,5 +366,42 @@ export function FinalRanking({
         </Link>
       </main>
     </div>
+  );
+}
+
+function DrawCountryLeaveButton({ onLeave }: { onLeave: () => Promise<boolean> }) {
+  const [open, setOpen] = useState(false);
+  const [pending, setPending] = useState(false);
+  return (
+    <>
+      <button
+        type="button"
+        className="min-h-11 rounded-full border border-black/20 px-4 font-mono text-xs"
+        onClick={() => setOpen(true)}
+        aria-haspopup="dialog"
+      >
+        leave room
+      </button>
+      {open ? (
+        <GameActionDialog
+          tone="light"
+          eyebrow="leave room"
+          title="Leave this room?"
+          description="You will give up your seat. If you are the host, the oldest connected player will take over."
+          cancelLabel="stay"
+          confirmLabel="leave room"
+          pending={pending}
+          pendingLabel="leaving…"
+          onCancel={() => setOpen(false)}
+          onConfirm={() => {
+            setPending(true);
+            void onLeave().then((left) => {
+              setPending(false);
+              if (left) setOpen(false);
+            });
+          }}
+        />
+      ) : null}
+    </>
   );
 }

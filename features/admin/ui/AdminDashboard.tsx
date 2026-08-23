@@ -9,6 +9,7 @@ import { TokenSessionsPanel } from "./components/TokenSessionsPanel";
 import { ReportsPanel } from "./components/ReportsPanel";
 import { EventsPanel } from "./components/EventsPanel";
 import { PitchesPanel } from "./components/PitchesPanel";
+import { GamePoolsPanel } from "./components/GamePoolsPanel";
 import { BestDressedPanel } from "./components/BestDressedPanel";
 import { AdminSectionNav, type AdminSection } from "./components/AdminSectionNav";
 import { useAdminAuth } from "@/features/auth/useAdminAuth";
@@ -1127,6 +1128,30 @@ export function AdminDashboard({
               onStatus={setStatusMessage}
             />
           </div>
+        </section>
+      ) : null}
+
+      {view === "games" ? (
+        <section aria-labelledby="games-view-heading" className="space-y-10">
+          <div className="border-b theme-border pb-6">
+            <p className="font-mono text-micro font-bold uppercase tracking-widest theme-muted">
+              shared multiplayer
+            </p>
+            <h2
+              id="games-view-heading"
+              className="mt-2 font-serif text-3xl font-semibold tracking-tight"
+            >
+              Game-night entrances
+            </h2>
+            <p className="mt-2 font-mono text-xs leading-relaxed theme-muted">
+              Set the experience once, share one QR code, and let the server fill rooms.
+            </p>
+          </div>
+          <GamePoolsPanel
+            authFetch={authFetch}
+            onError={setErrorMessage}
+            onStatus={setStatusMessage}
+          />
         </section>
       ) : null}
 

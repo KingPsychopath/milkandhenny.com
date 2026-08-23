@@ -35,7 +35,14 @@ export interface CentreMaze {
   hash: string;
 }
 
-export type CentrePhase = "lobby" | "arming" | "countdown" | "racing" | "finishing" | "finished";
+export type CentrePhase =
+  | "lobby"
+  | "arming"
+  | "countdown"
+  | "racing"
+  | "finishing"
+  | "finished"
+  | "closed";
 
 export interface CentrePlayerSummary {
   id: string;
@@ -50,6 +57,7 @@ export interface CentrePlayerSummary {
   place: number | null;
   wallHits: number;
   resets: number;
+  withdrawn: boolean;
 }
 
 export interface CentreCourseSnapshot {
@@ -66,6 +74,7 @@ export interface CentreSnapshot
   extends MultiplayerRevision, MultiplayerSequence, MultiplayerReadiness {
   digest?: string;
   roomId: string;
+  managed?: boolean;
   phase: CentrePhase;
   serverNow: number;
   expiresAt: number;
@@ -117,7 +126,8 @@ export type CentreAction =
   | { type: "race.progress"; courseHash: string; route: CentreRoute }
   | { type: "race.retire"; courseHash: string; route: CentreRoute }
   | { type: "game.replay" }
-  | { type: "game.lobby" };
+  | { type: "game.lobby" }
+  | { type: "player.leave" };
 
 export type CentreActionResult =
   | MultiplayerSuccess<{ accepted: true; snapshot: CentreSnapshot }>

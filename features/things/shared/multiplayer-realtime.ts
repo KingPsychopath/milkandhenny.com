@@ -7,8 +7,14 @@ export const MULTIPLAYER_REALTIME_LIMITS = {
   maxConnectionsPerProcess: 5_000,
   maxConnectionsPerRoom: 100,
   maxReconnectDelayMs: 15_000,
+  /** Wake reads remain authoritative, but never run closer together than this. */
+  minimumReconciliationGapMs: 750,
   minimumWakeIntervalMs: 250,
+  /** A socket that never sends an application ping is stale after this window. */
+  preAuthHelloTimeoutMs: 10_000,
   rateWindowMs: 10_000,
+  socketIdleTimeoutMs: 40_000,
+  socketIdleSweepIntervalMs: 15_000,
 } as const;
 
 export const MULTIPLAYER_SOCKET_CLOSE = {

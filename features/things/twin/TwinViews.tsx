@@ -6,6 +6,7 @@ import { useNativeShareAvailability } from "@/hooks/useNativeShareAvailability";
 import { useQrCode } from "@/hooks/useQrCode";
 import { shareOrCopy } from "@/lib/client/share";
 import { PlayerReadyControl } from "../shared/PlayerReadyControl";
+import { GameActionDialog } from "../shared/GameActionDialog";
 import {
   TWIN_MAX_HAND,
   TWIN_MIN_HAND,
@@ -21,19 +22,22 @@ export function TwinHeader({
   roomId,
   connection,
   right,
+  onLeave,
 }: {
   roomId: string;
   connection?: string;
   right?: string;
+  onLeave?: () => Promise<boolean>;
 }) {
   return (
     <header className="twin-header">
       <Link to="/things/twin" className="twin-header-back">
-        ← leave
+        ← back
       </Link>
       <span className="twin-header-meta">
         {right ?? `${roomId}${connection ? ` · ${connection}` : ""}`}
       </span>
+      {onLeave ? <TwinLeaveButton onLeave={onLeave} /> : null}
     </header>
   );
 }
@@ -61,6 +65,7 @@ export function TwinLobby({
   onColour,
   sound,
   onSound,
+  onLeave,
 }: {
   snapshot: TwinSnapshot;
   playerId: string;
@@ -75,6 +80,7 @@ export function TwinLobby({
   onColour: () => void;
   sound: boolean;
   onSound: () => void;
+  onLeave: () => Promise<boolean>;
 }) {
   const [shareMessage, setShareMessage] = useState<string | null>(null);
   const token =
@@ -88,7 +94,7 @@ export function TwinLobby({
   const { dataUrl: qr, failed: qrFailed } = useQrCode(invite || null, 280);
   const nativeShare = useNativeShareAvailability({ coarsePointerOnly: true });
   const me = snapshot.players.find(({ id }) => id === playerId);
-  const readyCount = snapshot.players.filter(({ ready }) => ready).length;
+  const readyCount = snapshot.players.filter(({ ready, withdrawn }) => ready && !withdrawn).length;
 
   const share = async () => {
     const result = await shareOrCopy(
@@ -108,7 +114,7 @@ export function TwinLobby({
 
   return (
     <div className="things-game things-game--night twin">
-      <TwinHeader roomId={snapshot.roomId} connection={connection} />
+      <TwinHeader roomId={snapshot.roomId} connection={connection} onLeave={onLeave} />
       <main id="main" className="twin-lobby">
         <p className="twin-eyebrow">room ready</p>
         <h1 className="twin-title">Two cards. One symbol.</h1>
@@ -117,21 +123,25 @@ export function TwinLobby({
           your hand.
         </p>
 
-        {qr ? (
-          <img src={qr} alt="QR code to join this twin room" className="twin-qr" />
-        ) : qrFailed ? (
-          <p className="twin-note">QR unavailable — share the link or room code.</p>
-        ) : null}
+        {!snapshot.managed ? (
+          <>
+            {qr ? (
+              <img src={qr} alt="QR code to join this twin room" className="twin-qr" />
+            ) : qrFailed ? (
+              <p className="twin-note">QR unavailable — share the link or room code.</p>
+            ) : null}
 
-        <p className="twin-eyebrow twin-eyebrow--tight">room code</p>
-        <p className="twin-code">{snapshot.roomId}</p>
-        <button
-          type="button"
-          onClick={() => void share()}
-          className="twin-button twin-button--quiet"
-        >
-          {nativeShare ? "share invite" : "copy invite link"}
-        </button>
+            <p className="twin-eyebrow twin-eyebrow--tight">room code</p>
+            <p className="twin-code">{snapshot.roomId}</p>
+            <button
+              type="button"
+              onClick={() => void share()}
+              className="twin-button twin-button--quiet"
+            >
+              {nativeShare ? "share invite" : "copy invite link"}
+            </button>
+          </>
+        ) : null}
         <p aria-live="polite" className="twin-message">
           {shareMessage ?? message}
         </p>
@@ -140,16 +150,17 @@ export function TwinLobby({
           {snapshot.players.map((player) => (
             <li key={player.id} className={player.ready ? "" : "twin-roster-waiting"}>
               {player.name}
-              {player.host ? " · host" : ""}
-              {player.ready ? "" : " · not ready"}
+              {player.withdrawn ? " · left" : player.host ? " · host" : ""}
+              {!player.withdrawn && !player.ready ? " · not ready" : ""}
             </li>
           ))}
         </ul>
         <p aria-live="polite" className="twin-note">
-          {readyCount} of {snapshot.players.length} ready · up to {twinMaxPlayers()} can play
+          {readyCount} of {snapshot.players.filter(({ withdrawn }) => !withdrawn).length} ready · up
+          to {twinMaxPlayers()} can play
         </p>
 
-        {snapshot.canControl ? (
+        {snapshot.canControl && !snapshot.managed ? (
           <label className="twin-field">
             <span>cards each</span>
             <AppSelect
@@ -198,6 +209,43 @@ export function TwinLobby({
         )}
       </main>
     </div>
+  );
+}
+
+function TwinLeaveButton({ onLeave }: { onLeave: () => Promise<boolean> }) {
+  const [open, setOpen] = useState(false);
+  const [pending, setPending] = useState(false);
+  return (
+    <>
+      <button
+        type="button"
+        className="twin-button twin-button--quiet"
+        onClick={() => setOpen(true)}
+        aria-haspopup="dialog"
+      >
+        leave room
+      </button>
+      {open ? (
+        <GameActionDialog
+          tone="dark"
+          eyebrow="leave room"
+          title="Leave this room?"
+          description="You will give up your seat. If you are the host, the oldest connected player will take over."
+          cancelLabel="stay"
+          confirmLabel="leave room"
+          pending={pending}
+          pendingLabel="leaving…"
+          onCancel={() => setOpen(false)}
+          onConfirm={() => {
+            setPending(true);
+            void onLeave().then((left) => {
+              setPending(false);
+              if (left) setOpen(false);
+            });
+          }}
+        />
+      ) : null}
+    </>
   );
 }
 
@@ -258,7 +306,7 @@ export function TwinStandings({
           <li key={player.id} data-you={player.id === playerId ? "true" : "false"}>
             <span className="twin-standings-name">
               {player.name}
-              {player.connected ? "" : " · away"}
+              {player.withdrawn ? " · left" : player.connected ? "" : " · away"}
             </span>
             <span className="twin-standings-chain">
               {player.chain > 1 ? `×${player.chain}` : ""}

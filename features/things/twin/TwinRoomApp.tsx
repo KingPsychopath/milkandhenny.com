@@ -1,4 +1,4 @@
-import { Link } from "@tanstack/react-router";
+import { Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 import { useWebHaptics } from "web-haptics/react";
 import { useWakeLock } from "@/hooks/useWakeLock";
@@ -22,8 +22,10 @@ import type { TwinHeartbeatTiming } from "./twin-rules";
 import { useTwinPalette } from "./useTwinPalette";
 import { useTwinRoom } from "./useTwinRoom";
 import type { TwinAction, TwinPlayerCredentials } from "./types";
+import { releaseGamePoolMembership } from "../pool/pool-session.client";
 
 export function TwinRoomApp({ roomId }: { roomId: string }) {
+  const navigate = useNavigate();
   const [credentials, setCredentials] = useState<TwinPlayerCredentials | null>(null);
   const [loaded, setLoaded] = useState(false);
 
@@ -38,7 +40,19 @@ export function TwinRoomApp({ roomId }: { roomId: string }) {
 
   if (!loaded) return <div className="things-game things-game--night twin" aria-busy="true" />;
   if (!credentials) return <JoinTwinRoom roomId={roomId} onJoined={setCredentials} />;
-  return <TwinRoom roomId={roomId} credentials={credentials} />;
+  return (
+    <TwinRoom
+      roomId={roomId}
+      credentials={credentials}
+      onLeft={() => {
+        localStorage.removeItem(twinBrowserKeys.playerSession(roomId));
+        void releaseGamePoolMembership("twin", roomId).then((entrance) => {
+          if (entrance) window.location.assign(entrance);
+          else void navigate({ to: "/things/twin" });
+        });
+      }}
+    />
+  );
 }
 
 /**
@@ -52,10 +66,12 @@ export function TwinRoom({
   roomId,
   credentials,
   heartbeatTiming,
+  onLeft,
 }: {
   roomId: string;
   credentials: TwinPlayerCredentials;
   heartbeatTiming?: TwinHeartbeatTiming;
+  onLeft?: () => void;
 }) {
   const live = useTwinRoom({
     roomId,
@@ -166,12 +182,27 @@ export function TwinRoom({
         setNudgedIds(null);
       }
       live.notify();
+      return result;
     } catch {
       if (!quiet) live.setMessage("That did not reach the room. Try once more.");
+      return null;
     }
   };
 
-  if (live.ended || !snapshot)
+  const leaveRoom = async () => {
+    const result = await send({ type: "player.leave" }, true);
+    if (result?.ok && result.accepted) {
+      onLeft?.();
+      return true;
+    }
+    if (result && !result.ok && result.errorCode === "room_unavailable") {
+      onLeft?.();
+      return true;
+    }
+    return false;
+  };
+
+  if (live.ended || !snapshot || snapshot.phase === "closed")
     return (
       <div className="things-game things-game--night twin">
         <main id="main" className="twin-gone">
@@ -206,6 +237,7 @@ export function TwinRoom({
             primeTwinAudio();
             void send({ type: "game.start" });
           }}
+          onLeave={leaveRoom}
           onHandSize={(handSize) => void send({ type: "game.configure", handSize })}
           colour={palette.colour}
           onColour={palette.toggle}
@@ -269,12 +301,13 @@ export function TwinRoom({
           setRestarting(true);
           void send({ type: "game.lobby" }).finally(() => setRestarting(false));
         }}
+        onLeave={leaveRoom}
       />
     );
 
   return (
     <div className="things-game things-game--night twin">
-      <TwinHeader roomId={roomId} connection={live.connectionState} />
+      <TwinHeader roomId={roomId} connection={live.connectionState} onLeave={leaveRoom} />
       <TwinBoard
         snapshot={snapshot}
         clockOffset={live.clockOffset}

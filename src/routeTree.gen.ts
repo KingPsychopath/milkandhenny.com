@@ -34,6 +34,7 @@ import { Route as DropTokenRouteImport } from './routes/drop.$token'
 import { Route as EventsIndexRouteImport } from './routes/events/index'
 import { Route as EventsSlugRouteImport } from './routes/events/$slug'
 import { Route as PicsIndexRouteImport } from './routes/pics/index'
+import { Route as PlayTokenRouteImport } from './routes/play.$token'
 import { Route as ScanIndexRouteImport } from './routes/scan.index'
 import { Route as ScanTokenRouteImport } from './routes/scan.$token'
 import { Route as TIdRouteImport } from './routes/t/$id'
@@ -55,6 +56,7 @@ import { Route as ApiAdminAlbumsRouteRouteImport } from './routes/api/admin/albu
 import { Route as ApiAdminContentAuditRouteRouteImport } from './routes/api/admin/content-audit/route'
 import { Route as ApiAdminContentSummaryRouteRouteImport } from './routes/api/admin/content-summary/route'
 import { Route as ApiAdminEventsRouteRouteImport } from './routes/api/admin/events/route'
+import { Route as ApiAdminGamePoolsRouteRouteImport } from './routes/api/admin/game-pools/route'
 import { Route as ApiAdminPitchesRouteRouteImport } from './routes/api/admin/pitches/route'
 import { Route as ApiAdminReportsRouteRouteImport } from './routes/api/admin/reports/route'
 import { Route as ApiAdminStepUpRouteRouteImport } from './routes/api/admin/step-up/route'
@@ -97,6 +99,7 @@ import { Route as ThingsTwinRoomIdRouteImport } from './routes/things.twin_.$roo
 import { Route as ThingsTwinDevRouteImport } from './routes/things.twin_.dev'
 import { Route as ApiAdminAlbumsSlugRouteRouteImport } from './routes/api/admin/albums/$slug/route'
 import { Route as ApiAdminEventsSlugRouteRouteImport } from './routes/api/admin/events/$slug/route'
+import { Route as ApiAdminGamePoolsIdRouteRouteImport } from './routes/api/admin/game-pools/$id/route'
 import { Route as ApiAdminTokensRevokeRouteRouteImport } from './routes/api/admin/tokens/revoke/route'
 import { Route as ApiAdminTokensSessionsRouteRouteImport } from './routes/api/admin/tokens/sessions/route'
 import { Route as ApiAdminTransfersIdRouteRouteImport } from './routes/api/admin/transfers/$id/route'
@@ -265,6 +268,11 @@ const PicsIndexRoute = PicsIndexRouteImport.update({
   path: '/pics/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const PlayTokenRoute = PlayTokenRouteImport.update({
+  id: '/play/$token',
+  path: '/play/$token',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ScanIndexRoute = ScanIndexRouteImport.update({
   id: '/scan/',
   path: '/scan/',
@@ -370,6 +378,11 @@ const ApiAdminContentSummaryRouteRoute =
 const ApiAdminEventsRouteRoute = ApiAdminEventsRouteRouteImport.update({
   id: '/api/admin/events',
   path: '/api/admin/events',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiAdminGamePoolsRouteRoute = ApiAdminGamePoolsRouteRouteImport.update({
+  id: '/api/admin/game-pools',
+  path: '/api/admin/game-pools',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiAdminPitchesRouteRoute = ApiAdminPitchesRouteRouteImport.update({
@@ -589,6 +602,12 @@ const ApiAdminEventsSlugRouteRoute = ApiAdminEventsSlugRouteRouteImport.update({
   path: '/$slug',
   getParentRoute: () => ApiAdminEventsRouteRoute,
 } as any)
+const ApiAdminGamePoolsIdRouteRoute =
+  ApiAdminGamePoolsIdRouteRouteImport.update({
+    id: '/$id',
+    path: '/$id',
+    getParentRoute: () => ApiAdminGamePoolsRouteRoute,
+  } as any)
 const ApiAdminTokensRevokeRouteRoute =
   ApiAdminTokensRevokeRouteRouteImport.update({
     id: '/api/admin/tokens/revoke',
@@ -861,6 +880,7 @@ export interface FileRoutesByFullPath {
   '/admin/editor': typeof AdminEditorRoute
   '/drop/$token': typeof DropTokenRoute
   '/events/$slug': typeof EventsSlugRoute
+  '/play/$token': typeof PlayTokenRoute
   '/scan/$token': typeof ScanTokenRoute
   '/t/$id': typeof TIdRoute
   '/things/centre': typeof ThingsCentreRoute
@@ -885,6 +905,7 @@ export interface FileRoutesByFullPath {
   '/api/admin/content-audit': typeof ApiAdminContentAuditRouteRoute
   '/api/admin/content-summary': typeof ApiAdminContentSummaryRouteRoute
   '/api/admin/events': typeof ApiAdminEventsRouteRouteWithChildren
+  '/api/admin/game-pools': typeof ApiAdminGamePoolsRouteRouteWithChildren
   '/api/admin/pitches': typeof ApiAdminPitchesRouteRoute
   '/api/admin/reports': typeof ApiAdminReportsRouteRoute
   '/api/admin/step-up': typeof ApiAdminStepUpRouteRoute
@@ -927,6 +948,7 @@ export interface FileRoutesByFullPath {
   '/pics/$album/': typeof PicsAlbumIndexRoute
   '/api/admin/albums/$slug': typeof ApiAdminAlbumsSlugRouteRouteWithChildren
   '/api/admin/events/$slug': typeof ApiAdminEventsSlugRouteRouteWithChildren
+  '/api/admin/game-pools/$id': typeof ApiAdminGamePoolsIdRouteRoute
   '/api/admin/tokens/revoke': typeof ApiAdminTokensRevokeRouteRoute
   '/api/admin/tokens/sessions': typeof ApiAdminTokensSessionsRouteRouteWithChildren
   '/api/admin/transfers/$id': typeof ApiAdminTransfersIdRouteRoute
@@ -993,6 +1015,7 @@ export interface FileRoutesByTo {
   '/admin/editor': typeof AdminEditorRoute
   '/drop/$token': typeof DropTokenRoute
   '/events/$slug': typeof EventsSlugRoute
+  '/play/$token': typeof PlayTokenRoute
   '/scan/$token': typeof ScanTokenRoute
   '/t/$id': typeof TIdRoute
   '/things/centre': typeof ThingsCentreRoute
@@ -1017,6 +1040,7 @@ export interface FileRoutesByTo {
   '/api/admin/content-audit': typeof ApiAdminContentAuditRouteRoute
   '/api/admin/content-summary': typeof ApiAdminContentSummaryRouteRoute
   '/api/admin/events': typeof ApiAdminEventsRouteRouteWithChildren
+  '/api/admin/game-pools': typeof ApiAdminGamePoolsRouteRouteWithChildren
   '/api/admin/pitches': typeof ApiAdminPitchesRouteRoute
   '/api/admin/reports': typeof ApiAdminReportsRouteRoute
   '/api/admin/step-up': typeof ApiAdminStepUpRouteRoute
@@ -1059,6 +1083,7 @@ export interface FileRoutesByTo {
   '/pics/$album': typeof PicsAlbumIndexRoute
   '/api/admin/albums/$slug': typeof ApiAdminAlbumsSlugRouteRouteWithChildren
   '/api/admin/events/$slug': typeof ApiAdminEventsSlugRouteRouteWithChildren
+  '/api/admin/game-pools/$id': typeof ApiAdminGamePoolsIdRouteRoute
   '/api/admin/tokens/revoke': typeof ApiAdminTokensRevokeRouteRoute
   '/api/admin/tokens/sessions': typeof ApiAdminTokensSessionsRouteRouteWithChildren
   '/api/admin/transfers/$id': typeof ApiAdminTransfersIdRouteRoute
@@ -1126,6 +1151,7 @@ export interface FileRoutesById {
   '/admin/editor': typeof AdminEditorRoute
   '/drop/$token': typeof DropTokenRoute
   '/events/$slug': typeof EventsSlugRoute
+  '/play/$token': typeof PlayTokenRoute
   '/scan/$token': typeof ScanTokenRoute
   '/t/$id': typeof TIdRoute
   '/things/centre': typeof ThingsCentreRoute
@@ -1150,6 +1176,7 @@ export interface FileRoutesById {
   '/api/admin/content-audit': typeof ApiAdminContentAuditRouteRoute
   '/api/admin/content-summary': typeof ApiAdminContentSummaryRouteRoute
   '/api/admin/events': typeof ApiAdminEventsRouteRouteWithChildren
+  '/api/admin/game-pools': typeof ApiAdminGamePoolsRouteRouteWithChildren
   '/api/admin/pitches': typeof ApiAdminPitchesRouteRoute
   '/api/admin/reports': typeof ApiAdminReportsRouteRoute
   '/api/admin/step-up': typeof ApiAdminStepUpRouteRoute
@@ -1192,6 +1219,7 @@ export interface FileRoutesById {
   '/pics/$album/': typeof PicsAlbumIndexRoute
   '/api/admin/albums/$slug': typeof ApiAdminAlbumsSlugRouteRouteWithChildren
   '/api/admin/events/$slug': typeof ApiAdminEventsSlugRouteRouteWithChildren
+  '/api/admin/game-pools/$id': typeof ApiAdminGamePoolsIdRouteRoute
   '/api/admin/tokens/revoke': typeof ApiAdminTokensRevokeRouteRoute
   '/api/admin/tokens/sessions': typeof ApiAdminTokensSessionsRouteRouteWithChildren
   '/api/admin/transfers/$id': typeof ApiAdminTransfersIdRouteRoute
@@ -1260,6 +1288,7 @@ export interface FileRouteTypes {
     | '/admin/editor'
     | '/drop/$token'
     | '/events/$slug'
+    | '/play/$token'
     | '/scan/$token'
     | '/t/$id'
     | '/things/centre'
@@ -1284,6 +1313,7 @@ export interface FileRouteTypes {
     | '/api/admin/content-audit'
     | '/api/admin/content-summary'
     | '/api/admin/events'
+    | '/api/admin/game-pools'
     | '/api/admin/pitches'
     | '/api/admin/reports'
     | '/api/admin/step-up'
@@ -1326,6 +1356,7 @@ export interface FileRouteTypes {
     | '/pics/$album/'
     | '/api/admin/albums/$slug'
     | '/api/admin/events/$slug'
+    | '/api/admin/game-pools/$id'
     | '/api/admin/tokens/revoke'
     | '/api/admin/tokens/sessions'
     | '/api/admin/transfers/$id'
@@ -1392,6 +1423,7 @@ export interface FileRouteTypes {
     | '/admin/editor'
     | '/drop/$token'
     | '/events/$slug'
+    | '/play/$token'
     | '/scan/$token'
     | '/t/$id'
     | '/things/centre'
@@ -1416,6 +1448,7 @@ export interface FileRouteTypes {
     | '/api/admin/content-audit'
     | '/api/admin/content-summary'
     | '/api/admin/events'
+    | '/api/admin/game-pools'
     | '/api/admin/pitches'
     | '/api/admin/reports'
     | '/api/admin/step-up'
@@ -1458,6 +1491,7 @@ export interface FileRouteTypes {
     | '/pics/$album'
     | '/api/admin/albums/$slug'
     | '/api/admin/events/$slug'
+    | '/api/admin/game-pools/$id'
     | '/api/admin/tokens/revoke'
     | '/api/admin/tokens/sessions'
     | '/api/admin/transfers/$id'
@@ -1524,6 +1558,7 @@ export interface FileRouteTypes {
     | '/admin/editor'
     | '/drop/$token'
     | '/events/$slug'
+    | '/play/$token'
     | '/scan/$token'
     | '/t/$id'
     | '/things/centre'
@@ -1548,6 +1583,7 @@ export interface FileRouteTypes {
     | '/api/admin/content-audit'
     | '/api/admin/content-summary'
     | '/api/admin/events'
+    | '/api/admin/game-pools'
     | '/api/admin/pitches'
     | '/api/admin/reports'
     | '/api/admin/step-up'
@@ -1590,6 +1626,7 @@ export interface FileRouteTypes {
     | '/pics/$album/'
     | '/api/admin/albums/$slug'
     | '/api/admin/events/$slug'
+    | '/api/admin/game-pools/$id'
     | '/api/admin/tokens/revoke'
     | '/api/admin/tokens/sessions'
     | '/api/admin/transfers/$id'
@@ -1657,6 +1694,7 @@ export interface RootRouteChildren {
   AdminEditorRoute: typeof AdminEditorRoute
   DropTokenRoute: typeof DropTokenRoute
   EventsSlugRoute: typeof EventsSlugRoute
+  PlayTokenRoute: typeof PlayTokenRoute
   ScanTokenRoute: typeof ScanTokenRoute
   TIdRoute: typeof TIdRoute
   TicketIdRoute: typeof TicketIdRoute
@@ -1671,6 +1709,7 @@ export interface RootRouteChildren {
   ApiAdminContentAuditRouteRoute: typeof ApiAdminContentAuditRouteRoute
   ApiAdminContentSummaryRouteRoute: typeof ApiAdminContentSummaryRouteRoute
   ApiAdminEventsRouteRoute: typeof ApiAdminEventsRouteRouteWithChildren
+  ApiAdminGamePoolsRouteRoute: typeof ApiAdminGamePoolsRouteRouteWithChildren
   ApiAdminPitchesRouteRoute: typeof ApiAdminPitchesRouteRoute
   ApiAdminReportsRouteRoute: typeof ApiAdminReportsRouteRoute
   ApiAdminStepUpRouteRoute: typeof ApiAdminStepUpRouteRoute
@@ -1884,6 +1923,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PicsIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/play/$token': {
+      id: '/play/$token'
+      path: '/play/$token'
+      fullPath: '/play/$token'
+      preLoaderRoute: typeof PlayTokenRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/scan/': {
       id: '/scan/'
       path: '/scan'
@@ -2029,6 +2075,13 @@ declare module '@tanstack/react-router' {
       path: '/api/admin/events'
       fullPath: '/api/admin/events'
       preLoaderRoute: typeof ApiAdminEventsRouteRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/admin/game-pools': {
+      id: '/api/admin/game-pools'
+      path: '/api/admin/game-pools'
+      fullPath: '/api/admin/game-pools'
+      preLoaderRoute: typeof ApiAdminGamePoolsRouteRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/admin/pitches': {
@@ -2324,6 +2377,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/api/admin/events/$slug'
       preLoaderRoute: typeof ApiAdminEventsSlugRouteRouteImport
       parentRoute: typeof ApiAdminEventsRouteRoute
+    }
+    '/api/admin/game-pools/$id': {
+      id: '/api/admin/game-pools/$id'
+      path: '/$id'
+      fullPath: '/api/admin/game-pools/$id'
+      preLoaderRoute: typeof ApiAdminGamePoolsIdRouteRouteImport
+      parentRoute: typeof ApiAdminGamePoolsRouteRoute
     }
     '/api/admin/tokens/revoke': {
       id: '/api/admin/tokens/revoke'
@@ -2819,6 +2879,20 @@ const ApiAdminEventsRouteRouteChildren: ApiAdminEventsRouteRouteChildren = {
 const ApiAdminEventsRouteRouteWithChildren =
   ApiAdminEventsRouteRoute._addFileChildren(ApiAdminEventsRouteRouteChildren)
 
+interface ApiAdminGamePoolsRouteRouteChildren {
+  ApiAdminGamePoolsIdRouteRoute: typeof ApiAdminGamePoolsIdRouteRoute
+}
+
+const ApiAdminGamePoolsRouteRouteChildren: ApiAdminGamePoolsRouteRouteChildren =
+  {
+    ApiAdminGamePoolsIdRouteRoute: ApiAdminGamePoolsIdRouteRoute,
+  }
+
+const ApiAdminGamePoolsRouteRouteWithChildren =
+  ApiAdminGamePoolsRouteRoute._addFileChildren(
+    ApiAdminGamePoolsRouteRouteChildren,
+  )
+
 interface ApiAdminTransfersRouteRouteChildren {
   ApiAdminTransfersIdRouteRoute: typeof ApiAdminTransfersIdRouteRoute
   ApiAdminTransfersCleanupRouteRoute: typeof ApiAdminTransfersCleanupRouteRoute
@@ -2921,6 +2995,7 @@ const rootRouteChildren: RootRouteChildren = {
   AdminEditorRoute: AdminEditorRoute,
   DropTokenRoute: DropTokenRoute,
   EventsSlugRoute: EventsSlugRoute,
+  PlayTokenRoute: PlayTokenRoute,
   ScanTokenRoute: ScanTokenRoute,
   TIdRoute: TIdRoute,
   TicketIdRoute: TicketIdRoute,
@@ -2935,6 +3010,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiAdminContentAuditRouteRoute: ApiAdminContentAuditRouteRoute,
   ApiAdminContentSummaryRouteRoute: ApiAdminContentSummaryRouteRoute,
   ApiAdminEventsRouteRoute: ApiAdminEventsRouteRouteWithChildren,
+  ApiAdminGamePoolsRouteRoute: ApiAdminGamePoolsRouteRouteWithChildren,
   ApiAdminPitchesRouteRoute: ApiAdminPitchesRouteRoute,
   ApiAdminReportsRouteRoute: ApiAdminReportsRouteRoute,
   ApiAdminStepUpRouteRoute: ApiAdminStepUpRouteRoute,

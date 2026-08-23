@@ -122,10 +122,14 @@ interface PlayerState {
   guiltPending?: boolean;
   word?: string | null;
   clueDone?: boolean;
+  /** Set when the player leaves or is removed; the record remains for death/history integrity. */
+  leftAt?: number;
 }
 
 interface LiarsRoomState {
   roomId: string;
+  /** The game-night pool owns admission and lobby settings for this room. */
+  managed?: boolean;
   mode: LiarsMode;
   roomMode: LiarsRoomMode;
   phase: LiarsPhase;
@@ -333,6 +337,25 @@ async function writeJoinReceipt(
 const living = (room: LiarsRoomState) => room.players.filter(({ alive }) => alive);
 const connected = (player: PlayerState, now: number) =>
   now - player.lastSeenAt <= LIARS_CONNECTED_WINDOW_MS;
+
+function transferHost(room: LiarsRoomState, leavingId: string, now: number) {
+  const eligible = room.players
+    .filter(({ id, alive, leftAt }) => id !== leavingId && alive && leftAt === undefined)
+    .sort((a, b) => a.joinedAt - b.joinedAt || a.id.localeCompare(b.id));
+  const next = eligible.find((candidate) => connected(candidate, now)) ?? eligible[0] ?? null;
+  room.hostPlayerId = next?.id ?? null;
+  room.hostDisconnectedSince = next && !connected(next, now) ? now : null;
+  if (room.narratorPlayerId === leavingId) room.narratorPlayerId = next?.id ?? null;
+}
+
+function transferNarrator(room: LiarsRoomState, leavingId: string, now: number) {
+  if (room.narratorPlayerId !== leavingId) return;
+  const eligible = room.players
+    .filter(({ id, alive, leftAt }) => id !== leavingId && alive && leftAt === undefined)
+    .sort((a, b) => a.joinedAt - b.joinedAt || a.id.localeCompare(b.id));
+  room.narratorPlayerId =
+    eligible.find((candidate) => connected(candidate, now))?.id ?? eligible[0]?.id ?? null;
+}
 
 function narrate(
   room: LiarsRoomState,
@@ -1005,6 +1028,7 @@ function summaryOf(
     connected: connected(player, now),
     ready: multiplayerPlayerReady(player),
     host: room.hostPlayerId === player.id,
+    ...(player.leftAt === undefined ? {} : { left: true }),
     ...(maySeeRole(room, viewer, player) && player.role ? { role: player.role } : {}),
     deathRound: player.deathRound,
     deathCause: player.deathCause,
@@ -1083,6 +1107,7 @@ function snapshot(room: LiarsRoomState, viewerId?: string, now = Date.now()): Li
 
   return {
     roomId: room.roomId,
+    managed: room.managed === true,
     mode: room.mode,
     roomMode: room.roomMode,
     phase: room.phase,
@@ -1229,6 +1254,7 @@ export async function createLiarsRoom(input: {
   roomMode: LiarsRoomMode;
   toggles?: Partial<LiarsToggles>;
   timings?: Partial<LiarsTimings>;
+  managed?: boolean;
 }): Promise<LiarsRoomCredentials> {
   const hostToken = token();
   const joinToken = token();
@@ -1239,6 +1265,7 @@ export async function createLiarsRoom(input: {
   const toggles = { ...LIARS_DEFAULT_TOGGLES, ...input.toggles };
   const room: LiarsRoomState = {
     roomId,
+    managed: input.managed,
     mode: input.mode,
     roomMode: input.roomMode,
     phase: "lobby",
@@ -1302,7 +1329,10 @@ export async function joinLiarsRoom(input: {
   hostToken?: string;
 }): Promise<LiarsJoinResult> {
   const result = await withRoom(input.roomId, async (room, keys) => {
-    if (input.joinToken !== undefined && !safeEqual(input.joinToken, room.joinHash))
+    if (
+      (room.managed && input.joinToken === undefined) ||
+      (input.joinToken !== undefined && !safeEqual(input.joinToken, room.joinHash))
+    )
       return { errorCode: "invite_expired", error: "Invite expired" } as const;
     if (room.phase !== "lobby")
       return { errorCode: "game_started", error: "This game has already started" } as const;
@@ -1393,7 +1423,7 @@ export async function joinLiarsRoom(input: {
 
 function authenticate(room: LiarsRoomState, credential: string, playerId?: string) {
   const player = room.players.find(({ id }) => id === playerId);
-  if (player) return safeEqual(credential, player.tokenHash);
+  if (player) return player.leftAt === undefined && safeEqual(credential, player.tokenHash);
   return safeEqual(credential, room.hostHash);
 }
 
@@ -1523,6 +1553,8 @@ export async function applyLiarsHostAction(input: {
 
     const action = input.action;
     if (action.type === "game.configure") {
+      if (room.managed)
+        return reject(view(), "action_unavailable", "The game-night settings are fixed");
       if (room.phase !== "lobby")
         return reject(view(), "action_unavailable", "The game has already started");
       if (action.roomMode) {
@@ -1608,11 +1640,19 @@ export async function applyLiarsHostAction(input: {
       } else if (target.alive) {
         // Someone actually leaving, not dropping. Removing a player can end the game outright.
         kill(room, target, "left");
+        target.leftAt = now;
+        target.tokenHash = hash(token());
         note(room, "day", narrate(room, "left", { victim: target.name }));
         checkWinner(room, now);
+      } else {
+        target.leftAt = now;
+        target.tokenHash = hash(token());
       }
+      if (room.hostPlayerId === action.playerId) transferHost(room, action.playerId, now);
+      else transferNarrator(room, action.playerId, now);
       changed(room);
     } else if (action.type === "game.replay" || action.type === "game.lobby") {
+      room.players = room.players.filter(({ leftAt }) => leftAt === undefined);
       for (const player of room.players) {
         player.previousRole = player.role ?? undefined;
         player.alive = true;
@@ -1668,6 +1708,25 @@ export async function applyLiarsPlayerAction(input: {
       room.processedActions = rememberMultiplayerAction(room.processedActions, action.actionId);
       return accept(snapshot(room, player.id, now));
     };
+
+    if (action.type === "room.leave") {
+      if (room.phase === "lobby") {
+        room.players = room.players.filter(({ id }) => id !== player.id);
+        room.lineup = liarsDefaultLineup(room.mode, Math.max(1, room.players.length));
+      } else {
+        if (player.alive) {
+          kill(room, player, "left");
+          note(room, "day", narrate(room, "left", { victim: player.name }));
+          checkWinner(room, now);
+        }
+        player.leftAt = now;
+        player.tokenHash = hash(token());
+      }
+      if (room.hostPlayerId === player.id) transferHost(room, player.id, now);
+      else transferNarrator(room, player.id, now);
+      changed(room);
+      return remembered();
+    }
 
     if (action.type === "readiness.set") {
       if (room.phase !== "lobby")

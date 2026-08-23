@@ -90,7 +90,8 @@ export const applyDrawCountryActionFn = createServerFn({ method: "POST" })
       | { type: "round.next" }
       | { type: "game.replay" }
       | { type: "game.lobby" }
-      | { type: "drawing.submit"; roundId: string; drawing: CountryDrawing };
+      | { type: "drawing.submit"; roundId: string; drawing: CountryDrawing }
+      | { type: "player.leave" };
     if (rawAction.type === "game.start")
       action = {
         type: rawAction.type,
@@ -112,6 +113,7 @@ export const applyDrawCountryActionFn = createServerFn({ method: "POST" })
         roundId: text(rawAction.roundId, 80),
         drawing: parseCountryDrawing(rawAction.drawing),
       };
+    else if (rawAction.type === "player.leave") action = { type: rawAction.type };
     else throw new Error("Invalid action");
     return {
       roomId: multiplayerRoomId(data.roomId),
