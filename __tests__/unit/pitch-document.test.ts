@@ -55,6 +55,78 @@ describe("pitch documents", () => {
     });
   });
 
+  it("upgrades schema-one audio cues without mutating the stored document", () => {
+    const legacy = {
+      schemaVersion: 1,
+      slides: [
+        {
+          id: "slide_legacy_1",
+          name: "Legacy slide",
+          version: 1,
+          updatedAt: 100,
+          durationMs: 15_000,
+          elements: [],
+          assetIds: {},
+          audioCues: [
+            {
+              id: "audio_enter_1",
+              assetId: "pa_1234567890123456789012",
+              trigger: "enter",
+              delayMs: 2_000,
+              sourceDurationMs: 10_000,
+              startAtMs: 1_000,
+              playForMs: 4_000,
+              volume: 0.8,
+              end: "slide-exit",
+            },
+            {
+              id: "audio_exit_1",
+              assetId: "pa_1234567890123456789013",
+              trigger: "exit",
+              delayMs: 0,
+              sourceDurationMs: 8_000,
+              startAtMs: 0,
+              playForMs: 3_000,
+              volume: 1,
+              end: "clip-end",
+            },
+          ],
+        },
+      ],
+    };
+
+    const parsed = parsePitchDocument(legacy, 6);
+    expect(parsed.ok).toBe(true);
+    if (!parsed.ok) return;
+    expect(parsed.document.schemaVersion).toBe(2);
+    expect(parsed.document.slides[0].mediaClips).toMatchObject([
+      {
+        id: "audio_enter_1",
+        kind: "audio",
+        timelineStartMs: 2_000,
+        sourceStartMs: 1_000,
+        durationMs: 4_000,
+        loop: false,
+      },
+      {
+        id: "audio_exit_1",
+        kind: "audio",
+        timelineStartMs: 12_000,
+        durationMs: 3_000,
+        loop: false,
+      },
+    ]);
+    expect(legacy.schemaVersion).toBe(1);
+    expect(legacy.slides[0].audioCues).toHaveLength(2);
+  });
+
+  it("rejects documents from a future schema", () => {
+    expect(parsePitchDocument({ ...documentWith([]), schemaVersion: 3 }, 6)).toEqual({
+      ok: false,
+      error: "This deck was made by an unsupported studio version",
+    });
+  });
+
   it("consolidates independent objects from stale devices", () => {
     const server = documentWith([element("server_object", 1, 10)]);
     const incoming = documentWith([element("phone_object", 1, 20)]);

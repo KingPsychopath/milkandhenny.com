@@ -202,6 +202,23 @@ GSAP, ScrollTrigger and Three.js are dynamically imported inside `/pitch-night`.
 low-power and WebGL-failure paths retain the complete story and calls to action without the 3D
 scene.
 
+## Document schema lifecycle
+
+Every document enters through one gateway that upgrades a supported older schema and then validates
+the current canonical shape. This applies to drafts, editions, backups, command results, browser
+recovery and `.mahdeck` imports. Database migrations compact stored documents to the current schema,
+but readers do not depend on migration timing for correctness.
+
+A schema release uses expand, migrate and contract steps. First deploy a reader that accepts the old
+and new schemas. Then enable the new writer and migrate every document store. Readiness verifies the
+stored version inventory before traffic moves. Remove the older reader only in a later release after
+the inventory is clean and the rollback window has ended. Never edit an applied migration.
+
+Public lists distinguish an empty result from a read failure. One invalid edition is logged and
+excluded without hiding valid pitches. A degraded result identifies the rejected count. An
+unavailable refresh keeps the browser's last successful wall instead of replacing it with an empty
+list.
+
 ## Delivery phases
 
 ### Phase 1 — author and publish

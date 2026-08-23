@@ -29,7 +29,7 @@ import type {
   PitchVersionReason,
   PublicPitchDeck,
 } from "./types";
-import { parsePitchDocument } from "./validation";
+import { parsePitchDocument, pitchDocumentSchemaVersion } from "./validation";
 
 interface PitchDeckRow extends QueryResultRow {
   id: string;
@@ -90,6 +90,17 @@ export interface StoredPitchDeck {
   archivedAt?: string;
   trashedAt?: string;
   purgeAfter?: string;
+}
+
+export interface StoredPublicPitchDeck {
+  id: string;
+  title: string;
+  ownerName: string;
+  publishedDocument: PitchDocument;
+  publishedVersion: number;
+  currentEditionNumber: number;
+  thumbnailAssetId?: string;
+  publishedAt: string;
 }
 
 export type PitchDeckBackup = PitchVersionHistoryItem;
@@ -804,7 +815,7 @@ export async function listUnreferencedPitchAssets(limit = 100): Promise<PitchAss
 export async function listPublicPitchDecks(
   search?: string,
   limit = 60,
-): Promise<PublicPitchDeck[]> {
+): Promise<{ decks: PublicPitchDeck[]; rejectedCount: number }> {
   const term = search?.trim() ? `%${search.trim()}%` : null;
   const rows = await query<
     QueryResultRow & {
@@ -833,32 +844,50 @@ export async function listPublicPitchDecks(
       limit $2`,
     [term, Math.min(100, Math.max(1, limit))],
   );
-  return rows.map((row) => ({
-    id: row.id,
-    title: row.title,
-    ownerName: row.owner_name,
-    publishedAt: iso(row.published_at),
-    updatedAt: iso(row.published_at),
-    slideCount: parseStoredDocument(row.document).slides.filter((slide) => !slide.deletedAt).length,
-    thumbnailUrl: row.thumbnail_asset_id ?? undefined,
-  }));
+  const decks: PublicPitchDeck[] = [];
+  let rejectedCount = 0;
+  for (const row of rows) {
+    const parsed = parsePitchDocument(row.document, getPitchMaxSlides());
+    if (!parsed.ok) {
+      rejectedCount += 1;
+      log.error("pitches.document", "Published pitch document could not be read", {
+        deckId: row.id,
+        location: "pitch_editions.document",
+        schemaVersion: pitchDocumentSchemaVersion(row.document),
+        reason: parsed.error,
+      });
+      continue;
+    }
+    decks.push({
+      id: row.id,
+      title: row.title,
+      ownerName: row.owner_name,
+      publishedAt: iso(row.published_at),
+      updatedAt: iso(row.published_at),
+      slideCount: parsed.document.slides.filter((slide) => !slide.deletedAt).length,
+      thumbnailUrl: row.thumbnail_asset_id ?? undefined,
+    });
+  }
+  return { decks, rejectedCount };
 }
 
-export async function readPublicPitchDeck(deckId: string): Promise<StoredPitchDeck | null> {
+export async function readPublicPitchDeck(deckId: string): Promise<StoredPublicPitchDeck | null> {
   const row = await queryOne<PitchDeckRow>(
     `select * from pitch_decks
       where id = $1 and lifecycle = 'active' and published_at is not null`,
     [deckId],
   );
   if (!row?.current_edition_number) return null;
-  const edition = await readPitchEdition(deckId, integer(row.current_edition_number));
+  const currentEditionNumber = integer(row.current_edition_number);
+  const edition = await readPitchEdition(deckId, currentEditionNumber);
   if (!edition) return null;
   return {
-    ...toStoredDeck(row),
+    id: row.id,
     title: edition.title,
     ownerName: edition.ownerName,
     publishedDocument: edition.document,
     publishedVersion: edition.draftVersion,
+    currentEditionNumber,
     thumbnailAssetId: edition.thumbnailAssetId,
     publishedAt: edition.publishedAt,
   };

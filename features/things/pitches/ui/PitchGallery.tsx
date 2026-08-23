@@ -4,22 +4,20 @@ import { useEffect, useState } from "react";
 import { AppImage } from "@/components/AppImage";
 import { listPitchCredentials } from "../browser-store.client";
 import { listPublishedPitchesFn } from "../pitches.functions";
-import type { PitchOperationalStatus, PitchOwnerCredential, PublicPitchDeck } from "../types";
+import type { PitchOperationalStatus, PitchOwnerCredential, PitchWallLoad } from "../types";
 import { PitchDemoEntry } from "./PitchDemoEntry";
 import { PitchRecovery } from "./PitchRecovery";
 
 export function PitchGallery({
-  initialPitches,
-  initialLoadError,
+  initialWall,
   operationalStatus,
 }: {
-  initialPitches: PublicPitchDeck[];
-  initialLoadError?: string;
+  initialWall: PitchWallLoad;
   operationalStatus: PitchOperationalStatus;
 }) {
   const [query, setQuery] = useState("");
-  const [pitches, setPitches] = useState(initialPitches);
-  const [loadError, setLoadError] = useState(initialLoadError ?? "");
+  const [pitches, setPitches] = useState(initialWall.pitches);
+  const [loadError, setLoadError] = useState(initialWall.message ?? "");
   const [refreshVersion, setRefreshVersion] = useState(0);
   const [mine, setMine] = useState<PitchOwnerCredential[]>([]);
 
@@ -35,8 +33,8 @@ export function PitchGallery({
     const timer = window.setTimeout(() => {
       void listPublishedPitchesFn({ data: { search: query } })
         .then((result) => {
-          setPitches(result.pitches);
-          setLoadError(result.loadError ?? "");
+          if (result.wall.status !== "unavailable") setPitches(result.wall.pitches);
+          setLoadError(result.wall.message ?? "");
         })
         .catch(() =>
           setLoadError("We could not refresh the wall. Your published pitches are still safe."),
@@ -150,7 +148,9 @@ export function PitchGallery({
               try again
             </button>
           </div>
-        ) : pitches.length > 0 ? (
+        ) : null}
+
+        {pitches.length > 0 ? (
           <div className="mt-8 columns-1 gap-6 sm:columns-2 lg:columns-3">
             {pitches.map((pitch) => (
               <Link
@@ -192,11 +192,11 @@ export function PitchGallery({
               </Link>
             ))}
           </div>
-        ) : (
+        ) : !loadError ? (
           <p className="py-20 text-center font-serif text-2xl theme-muted">
             {query ? "No pitches match that search." : "The first pitch gets the whole wall."}
           </p>
-        )}
+        ) : null}
 
         {operationalStatus.canWrite ? (
           <div className="mx-auto mt-12 max-w-xl">

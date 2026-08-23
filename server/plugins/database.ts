@@ -34,7 +34,7 @@ export default definePlugin(async (nitroApp) => {
           alreadyApplied: result.alreadyApplied,
         });
       }
-      markDatabaseReady();
+      markDatabaseReady(result.pitchDocuments);
       startEmailOutboxWorker();
     } catch (error) {
       markDatabaseFailed(error);

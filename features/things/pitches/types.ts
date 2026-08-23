@@ -167,6 +167,15 @@ export interface PublicPitchDeck {
   thumbnailUrl?: string;
 }
 
+export type PitchWallStatus = "ok" | "degraded" | "unavailable";
+
+export interface PitchWallLoad {
+  status: PitchWallStatus;
+  pitches: PublicPitchDeck[];
+  rejectedCount: number;
+  message?: string;
+}
+
 export interface PublicPitchDeckDetail extends PublicPitchDeck {
   document: PitchDocument;
   assets: PitchAsset[];

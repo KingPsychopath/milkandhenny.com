@@ -413,7 +413,7 @@ async function resolvePitchShowcase(description: string | undefined) {
   if (!description?.includes(`](${PITCH_SHOWCASE_MARKDOWN_HREF})`)) return undefined;
 
   try {
-    return await listPublishedPitches();
+    return (await listPublishedPitches()).pitches;
   } catch (error) {
     log.warn("events.pitch_showcase", "Could not load published pitches", {
       error: error instanceof Error ? error.message : String(error),

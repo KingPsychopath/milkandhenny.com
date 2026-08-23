@@ -8,7 +8,12 @@ import { pitchEditorConfig, type PitchAssetUploadInput } from "./pitches.server"
 import { getPitchOperationalStatus } from "./operational.server";
 import { runPitchesResult } from "./pitches-runtime.server";
 import { PitchesService } from "./pitches-service.server";
-import type { PitchCommandKind, PitchCommandOperation, PitchDocument } from "./types";
+import type {
+  PitchCommandKind,
+  PitchCommandOperation,
+  PitchDocument,
+  PitchWallLoad,
+} from "./types";
 import {
   isPitchAssetId,
   isPitchAssetKind,
@@ -27,6 +32,10 @@ function invalid(error = "Some details were missing or invalid. Check them and t
   return { ok: false as const, status: 400, error };
 }
 
+function unavailableWall(message: string): PitchWallLoad {
+  return { status: "unavailable", pitches: [], rejectedCount: 0, message };
+}
+
 async function runOperation<T>(
   effect: Effect.Effect<OperationResult<T>, unknown, PitchesService>,
 ): Promise<OperationResult<T>> {
@@ -43,7 +52,11 @@ export const listPublishedPitchesFn = createServerFn({ method: "GET" })
   .handler(async ({ data }) => {
     const operationalStatus = await getPitchOperationalStatus();
     if (!operationalStatus.canRead) {
-      return { pitches: [], loadError: undefined, operationalStatus, ...pitchEditorConfig() };
+      return {
+        wall: unavailableWall(operationalStatus.message),
+        operationalStatus,
+        ...pitchEditorConfig(),
+      };
     }
     const result = await runPitchesResult(
       Effect.gen(function* () {
@@ -51,11 +64,23 @@ export const listPublishedPitchesFn = createServerFn({ method: "GET" })
         return yield* pitches.listPublished(data?.search?.slice(0, 100));
       }),
     );
+    const wall: PitchWallLoad = result.ok
+      ? result.value.rejectedCount > 0
+        ? {
+            status: "degraded",
+            pitches: result.value.pitches,
+            rejectedCount: result.value.rejectedCount,
+            message:
+              result.value.pitches.length > 0
+                ? "Some published pitches need repair. The other pitches are still available."
+                : "Published pitches exist, but this studio version could not read them.",
+          }
+        : { status: "ok", pitches: result.value.pitches, rejectedCount: 0 }
+      : unavailableWall(
+          "We could not load the wall. Your published pitches are still safe. Try again.",
+        );
     return {
-      pitches: result.ok ? result.value : [],
-      loadError: result.ok
-        ? undefined
-        : "We could not load the wall. Your published pitches are still safe. Try again.",
+      wall,
       operationalStatus,
       ...pitchEditorConfig(),
     };
@@ -69,20 +94,28 @@ export const readPublishedPitchFn = createServerFn({ method: "GET" })
   .validator((data: { deckId: string; editionNumber?: number }) => data)
   .handler(async ({ data }) => {
     const operationalStatus = await getPitchOperationalStatus();
-    if (!operationalStatus.canRead) return { pitch: null, operationalStatus };
+    if (!operationalStatus.canRead) {
+      return { pitch: null, loadError: operationalStatus.message, operationalStatus };
+    }
     if (
       !isPitchDeckId(data.deckId) ||
       (data.editionNumber !== undefined &&
         (!Number.isInteger(data.editionNumber) || data.editionNumber < 1))
     )
-      return { pitch: null, operationalStatus };
+      return { pitch: null, loadError: undefined, operationalStatus };
     const result = await runPitchesResult(
       Effect.gen(function* () {
         const pitches = yield* PitchesService;
         return yield* pitches.readPublished(data.deckId, data.editionNumber);
       }),
     );
-    return { pitch: result.ok ? result.value : null, operationalStatus };
+    return {
+      pitch: result.ok ? result.value : null,
+      loadError: result.ok
+        ? undefined
+        : "We could not open this published pitch. It is still safe. Try again.",
+      operationalStatus,
+    };
   });
 
 type CreateInput = {

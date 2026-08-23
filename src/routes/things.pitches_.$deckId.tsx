@@ -19,7 +19,7 @@ export const Route = createFileRoute("/things/pitches_/$deckId")({
       data: { deckId: params.deckId, editionNumber: deps.edition },
     });
     if (!result.operationalStatus.canRead) return result;
-    if (!result.pitch) throw notFound();
+    if (!result.pitch && !result.loadError) throw notFound();
     return result;
   },
   component: PublishedPitchRoute,
@@ -38,9 +38,21 @@ export const Route = createFileRoute("/things/pitches_/$deckId")({
 
 function PublishedPitchRoute() {
   const data = Route.useLoaderData();
-  return data.pitch ? (
-    <PitchViewer pitch={data.pitch} />
-  ) : (
-    <PitchOperationalNotice status={data.operationalStatus} />
+  if (data.pitch) return <PitchViewer pitch={data.pitch} />;
+  if (!data.operationalStatus.canRead) {
+    return <PitchOperationalNotice status={data.operationalStatus} />;
+  }
+  return (
+    <main id="main" className="mx-auto min-h-screen max-w-2xl px-6 py-20">
+      <div
+        className="border-y border-[var(--things-amber)] bg-[var(--selection-bg)] px-5 py-5 text-center"
+        role="alert"
+      >
+        <h1 className="font-serif text-3xl text-[var(--selection-fg)]">
+          The pitch could not open.
+        </h1>
+        <p className="mt-3 font-serif text-lg text-[var(--selection-fg)]">{data.loadError}</p>
+      </div>
+    </main>
   );
 }

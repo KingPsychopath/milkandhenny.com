@@ -116,7 +116,9 @@ export const Route = createFileRoute("/sitemap.xml")({
         const publicEvents = await listEvents({ limit: 500 }).catch(() => []);
         const pitchStatus = await getPitchOperationalStatus();
         const publicPitches = pitchStatus.canRead
-          ? await listPublicPitchDecks(undefined, 100).catch(() => [])
+          ? await listPublicPitchDecks(undefined, 100)
+              .then((result) => result.decks)
+              .catch(() => [])
           : [];
         const albums = getAllAlbums();
         const includeMediaImages = hasMediaPublicUrl();

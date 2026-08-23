@@ -1,5 +1,14 @@
+export interface PitchDocumentSchemaInventory {
+  currentVersion: number;
+  total: number;
+  current: number;
+  unsupported: number;
+  versions: Record<string, number>;
+}
+
 type DatabaseBootState =
-  | { status: "pending" | "migrating" | "ready" }
+  | { status: "pending" | "migrating" }
+  | { status: "ready"; pitchDocuments?: PitchDocumentSchemaInventory }
   | { status: "failed"; reason: string };
 
 const STATE_KEY = "__milkandhennyDatabaseBootState";
@@ -16,8 +25,8 @@ export function markDatabaseMigrationsStarted(): void {
   setState({ status: "migrating" });
 }
 
-export function markDatabaseReady(): void {
-  setState({ status: "ready" });
+export function markDatabaseReady(pitchDocuments?: PitchDocumentSchemaInventory): void {
+  setState(pitchDocuments ? { status: "ready", pitchDocuments } : { status: "ready" });
 }
 
 export function markDatabaseFailed(error: unknown): void {

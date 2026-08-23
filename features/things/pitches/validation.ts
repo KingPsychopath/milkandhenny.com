@@ -52,6 +52,102 @@ function record(value: unknown): Record<string, unknown> | null {
     : null;
 }
 
+export function pitchDocumentSchemaVersion(value: unknown): number | null {
+  const source = record(value);
+  return typeof source?.schemaVersion === "number" && Number.isInteger(source.schemaVersion)
+    ? source.schemaVersion
+    : null;
+}
+
+function upgradeAudioCue(value: unknown, slideDurationMs: number): Record<string, unknown> | null {
+  const cue = record(value);
+  if (!cue) return null;
+  const trigger = cue.trigger === "enter" || cue.trigger === "exit" ? cue.trigger : null;
+  const sourceDurationMs = finiteInteger(cue.sourceDurationMs, 1);
+  const sourceStartMs = finiteInteger(cue.startAtMs, 0);
+  const requestedDurationMs = finiteInteger(cue.playForMs, 1);
+  const delayMs = finiteInteger(cue.delayMs, 0);
+  const volume = typeof cue.volume === "number" && Number.isFinite(cue.volume) ? cue.volume : null;
+  const end = cue.end === "slide-exit" || cue.end === "clip-end" ? cue.end : null;
+  if (
+    !trigger ||
+    sourceDurationMs === null ||
+    sourceDurationMs > PITCH_SLIDE_DURATION_RANGE_MS.max ||
+    sourceStartMs === null ||
+    sourceStartMs >= sourceDurationMs ||
+    requestedDurationMs === null ||
+    requestedDurationMs > sourceDurationMs - sourceStartMs ||
+    delayMs === null ||
+    delayMs > PITCH_SLIDE_DURATION_RANGE_MS.max ||
+    (trigger === "enter" && delayMs > slideDurationMs) ||
+    volume === null ||
+    volume < 0 ||
+    volume > 1 ||
+    !end ||
+    (trigger === "exit" && end !== "clip-end")
+  ) {
+    return null;
+  }
+  const sourceAvailableMs = sourceDurationMs - sourceStartMs;
+  const requestedAvailableMs = Math.min(requestedDurationMs, sourceAvailableMs, slideDurationMs);
+  const timelineStartMs =
+    trigger === "exit"
+      ? Math.max(0, slideDurationMs - requestedAvailableMs)
+      : Math.min(delayMs, slideDurationMs);
+  const durationMs = Math.min(requestedAvailableMs, slideDurationMs - timelineStartMs);
+  if (durationMs < 1) return null;
+  return {
+    id: cue.id,
+    assetId: cue.assetId,
+    kind: "audio",
+    timelineStartMs,
+    sourceDurationMs,
+    sourceStartMs,
+    durationMs,
+    volume,
+    muted: false,
+    loop: false,
+    locked: false,
+  };
+}
+
+function upgradePitchDocumentV1(source: Record<string, unknown>): Record<string, unknown> | null {
+  if (!Array.isArray(source.slides)) return null;
+  const slides = source.slides.map((value) => {
+    const slide = record(value);
+    if (!slide) return null;
+    const durationMs =
+      slide.durationMs === undefined
+        ? PITCH_SLIDE_DEFAULT_DURATION_MS
+        : finiteInteger(slide.durationMs, PITCH_SLIDE_DURATION_RANGE_MS.min);
+    if (
+      durationMs === null ||
+      durationMs > PITCH_SLIDE_DURATION_RANGE_MS.max ||
+      (slide.audioCues !== undefined && !Array.isArray(slide.audioCues))
+    ) {
+      return null;
+    }
+    const audioCues = slide.audioCues ?? [];
+    const mediaClips = audioCues.map((cue) => upgradeAudioCue(cue, durationMs));
+    if (mediaClips.some((cue) => cue === null)) return null;
+    return {
+      ...slide,
+      mediaClips,
+      audioCues: undefined,
+    };
+  });
+  if (slides.some((slide) => slide === null)) return null;
+  return { ...source, schemaVersion: PITCH_DOCUMENT_SCHEMA_VERSION, slides };
+}
+
+export function upgradePitchDocument(value: unknown): unknown | null {
+  const source = record(value);
+  const version = pitchDocumentSchemaVersion(source);
+  if (version === PITCH_DOCUMENT_SCHEMA_VERSION) return source;
+  if (version === 1) return upgradePitchDocumentV1(source ?? {});
+  return null;
+}
+
 function finiteInteger(value: unknown, minimum: number): number | null {
   return typeof value === "number" && Number.isInteger(value) && value >= minimum ? value : null;
 }
@@ -407,7 +503,7 @@ export function parsePitchDocument(
     return { ok: false, error: "This deck is too large to sync" };
   }
 
-  const source = record(value);
+  const source = record(upgradePitchDocument(value));
   if (source?.schemaVersion !== PITCH_DOCUMENT_SCHEMA_VERSION || !Array.isArray(source.slides)) {
     return { ok: false, error: "This deck was made by an unsupported studio version" };
   }

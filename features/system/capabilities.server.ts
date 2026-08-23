@@ -36,6 +36,7 @@ function getConfiguredCapabilities(): Capability[] {
   const paymentsCapability = describePaymentsCapability();
   const databaseConfigured = isDatabaseConfigured();
   const databaseBoot = getDatabaseBootState();
+  const pitchDocuments = databaseBoot.status === "ready" ? databaseBoot.pitchDocuments : undefined;
   const mediaMode = getMediaProcessorMode();
   const mediaRole = getMediaRole();
   const pitchEnvironment = getPitchEnvironmentMode();
@@ -101,14 +102,21 @@ function getConfiguredCapabilities(): Capability[] {
     {
       id: "application-database",
       label: "events, tickets and pitches",
-      status: databaseConfigured && databaseBoot.status === "ready" ? "available" : "unavailable",
+      status:
+        databaseConfigured &&
+        databaseBoot.status === "ready" &&
+        (pitchDocuments?.unsupported ?? 0) === 0
+          ? "available"
+          : "unavailable",
       required: mediaRole === "web",
       detail: !databaseConfigured
         ? "DATABASE_URL is not set; events, ticketing and pitches cannot run."
         : databaseBoot.status === "failed"
           ? `Database migrations failed (${databaseBoot.reason}).`
           : databaseBoot.status === "ready"
-            ? "Events, tickets, pitches and redemptions are configured."
+            ? pitchDocuments
+              ? `Events, tickets, pitches and redemptions are configured. Pitch documents: ${pitchDocuments.current}/${pitchDocuments.total} use schema ${pitchDocuments.currentVersion}.`
+              : "Events, tickets, pitches and redemptions are configured."
             : "Database migrations have not completed.",
     },
     {

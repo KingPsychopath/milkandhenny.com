@@ -195,16 +195,19 @@ export async function publishPitch(input: {
   return { ok: true, value: await ownerView(published.value) };
 }
 
-export async function listPublishedPitches(search?: string): Promise<PublicPitchDeck[]> {
-  const decks = await listPublicPitchDecks(search);
-  return Promise.all(
-    decks.map(async (deck) => {
+export async function listPublishedPitches(
+  search?: string,
+): Promise<{ pitches: PublicPitchDeck[]; rejectedCount: number }> {
+  const result = await listPublicPitchDecks(search);
+  const pitches = await Promise.all(
+    result.decks.map(async (deck) => {
       const thumbnail = deck.thumbnailUrl
         ? await signedPitchAsset(deck.id, deck.thumbnailUrl)
         : null;
       return { ...deck, thumbnailUrl: thumbnail?.url };
     }),
   );
+  return { pitches, rejectedCount: result.rejectedCount };
 }
 
 export async function readPublishedPitch(

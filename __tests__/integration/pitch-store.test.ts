@@ -7,6 +7,7 @@ import {
   insertPitchAsset,
   listPitchBackupsForOwner,
   listPitchEditions,
+  listPublicPitchDecks,
   markPitchDeckDeletingForAdmin,
   readPitchBackupForOwner,
   readPitchEdition,
@@ -25,6 +26,7 @@ import {
   type PitchCommandOperation,
 } from "@/features/things/pitches/types";
 import { query } from "@/lib/platform/postgres.server";
+import { readPitchDocumentSchemaInventory, runMigrations } from "@/lib/platform/migrations.server";
 import { applySchema, closeDatabase, describeWithDatabase } from "../helpers/postgres";
 
 function element(id: string, updated: number): ExcalidrawElement {
@@ -67,6 +69,32 @@ function operations(id: string, sequence: number): PitchCommandOperation[] {
       occurredAt: "2026-08-23T12:00:00.000Z",
     },
   ];
+}
+
+async function createPublishedPitch(suffix: string) {
+  const ownerToken = createPitchOwnerToken();
+  const created = await createPitchDeck({
+    createRequestId: `create_wall_${suffix}`,
+    ownerName: "Alice",
+    ownerEmail: "alice@example.com",
+    ownerToken,
+    title: `Wall pitch ${suffix}`,
+    document: documentWith([]),
+  });
+  if (!created.ok) throw new Error(created.error);
+  const saved = await syncPitchDeck({
+    deckId: created.value.deck.id,
+    ownerToken,
+    baseVersion: 1,
+    mutationId: `mutation_wall_${suffix}`,
+    operations: operations(`mutation_wall_${suffix}`, 1),
+    title: `Wall pitch ${suffix}`,
+    document: documentWith([element(`wall_object_${suffix}`, 10)]),
+  });
+  if (!saved.ok) throw new Error(saved.error);
+  const published = await publishPitchDeck({ deckId: created.value.deck.id, ownerToken });
+  if (!published.ok) throw new Error(published.error);
+  return created.value.deck.id;
 }
 
 describeWithDatabase("pitch storage (postgres)", () => {
@@ -210,6 +238,73 @@ describeWithDatabase("pitch storage (postgres)", () => {
     expect(firstEdition?.document.slides[0].elements.map(({ id }) => id)).toEqual([
       "second_object",
       "first_object",
+    ]);
+  });
+
+  it("keeps valid wall pitches visible when one published document is invalid", async () => {
+    const validDeckId = await createPublishedPitch("valid");
+    const invalidDeckId = await createPublishedPitch("invalid");
+    await query(
+      `update pitch_editions
+          set document = jsonb_set(document, '{schemaVersion}', '3'::jsonb, true)
+        where deck_id = $1`,
+      [invalidDeckId],
+    );
+
+    const wall = await listPublicPitchDecks();
+    expect(wall.rejectedCount).toBe(1);
+    expect(wall.decks.map((deck) => deck.id)).toContain(validDeckId);
+    expect(wall.decks.map((deck) => deck.id)).not.toContain(invalidDeckId);
+  });
+
+  it("repairs schema-one editions and verifies the stored schema inventory", async () => {
+    const deckId = await createPublishedPitch("migration");
+    const legacyDocument = {
+      schemaVersion: 1,
+      slides: [
+        {
+          id: "slide_legacy_migration",
+          name: "Legacy slide",
+          version: 1,
+          updatedAt: 100,
+          durationMs: 15_000,
+          elements: [],
+          assetIds: {},
+          audioCues: [
+            {
+              id: "audio_legacy_migration",
+              assetId: "pa_1234567890123456789012",
+              trigger: "enter",
+              delayMs: 1_000,
+              sourceDurationMs: 5_000,
+              startAtMs: 0,
+              playForMs: 3_000,
+              volume: 0.8,
+              end: "slide-exit",
+            },
+          ],
+        },
+      ],
+    };
+    await query(`update pitch_editions set document = $2::jsonb where deck_id = $1`, [
+      deckId,
+      JSON.stringify(legacyDocument),
+    ]);
+    await query(`delete from schema_migrations where id = '0026_pitch_document_schema_contract'`);
+
+    const migration = await runMigrations();
+    expect(migration.applied).toContain("0026_pitch_document_schema_contract");
+    const inventory = await readPitchDocumentSchemaInventory();
+    expect(inventory.unsupported).toBe(0);
+    expect(inventory.current).toBe(inventory.total);
+    const edition = await readPitchEdition(deckId, 1);
+    expect(edition?.document.slides[0].mediaClips).toMatchObject([
+      {
+        id: "audio_legacy_migration",
+        kind: "audio",
+        timelineStartMs: 1_000,
+        durationMs: 3_000,
+      },
     ]);
   });
 

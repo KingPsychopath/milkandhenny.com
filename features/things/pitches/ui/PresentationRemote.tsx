@@ -54,7 +54,9 @@ export function PresentationRemote({ roomId }: { roomId: string }) {
     let cancelled = false;
     const timer = window.setTimeout(() => {
       void listPublishedPitchesFn({ data: { search: query } }).then((result) => {
-        if (!cancelled) setPitches(result.pitches);
+        if (cancelled) return;
+        if (result.wall.status !== "unavailable") setPitches(result.wall.pitches);
+        setMessage(result.wall.message ?? "");
       });
     }, 220);
     return () => {

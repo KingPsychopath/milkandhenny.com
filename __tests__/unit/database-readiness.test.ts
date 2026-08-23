@@ -23,6 +23,20 @@ describe("database boot readiness", () => {
     expect(getDatabaseBootState()).toEqual({ status: "ready" });
   });
 
+  it("keeps the verified pitch schema inventory with readiness", () => {
+    markDatabaseReady({
+      currentVersion: 2,
+      total: 7,
+      current: 7,
+      unsupported: 0,
+      versions: { "2": 7 },
+    });
+    expect(getDatabaseBootState()).toMatchObject({
+      status: "ready",
+      pitchDocuments: { total: 7, unsupported: 0 },
+    });
+  });
+
   it("keeps migration failures safe and unhealthy", () => {
     markDatabaseFailed(new TypeError("postgres://secret@host/schema details"));
     expect(getDatabaseBootState()).toEqual({ status: "failed", reason: "TypeError" });

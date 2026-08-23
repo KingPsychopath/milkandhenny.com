@@ -1,5 +1,8 @@
+import type { QueryResultRow } from "pg";
+
+import type { PitchDocumentSchemaInventory } from "./database-readiness.server";
 import { log } from "./logger.server";
-import { getPool, transaction } from "./postgres.server";
+import { getPool, query, transaction } from "./postgres.server";
 
 /**
  * Migrations.
@@ -909,9 +912,158 @@ const MIGRATIONS: Migration[] = [
         add column if not exists hero_image_height integer check (hero_image_height > 0);
     `,
   },
+  {
+    id: "0026_pitch_document_schema_contract",
+    sql: `
+      create function pitch_repair_document_audio_cues(input_document jsonb)
+      returns jsonb
+      language plpgsql
+      immutable
+      as $migration$
+      declare
+        slide jsonb;
+        cue jsonb;
+        upgraded_slides jsonb := '[]'::jsonb;
+        upgraded_clips jsonb;
+        slide_duration integer;
+        source_duration integer;
+        source_start integer;
+        requested_duration integer;
+        available_duration integer;
+        timeline_start integer;
+        clip_duration integer;
+      begin
+        if input_document is null then return null; end if;
+        for slide in select value from jsonb_array_elements(input_document->'slides') loop
+          upgraded_clips := coalesce(slide->'mediaClips', '[]'::jsonb);
+          if jsonb_typeof(slide->'audioCues') = 'array'
+             and jsonb_array_length(upgraded_clips) = 0 then
+            slide_duration := coalesce((slide->>'durationMs')::integer, 15000);
+            for cue in select value from jsonb_array_elements(slide->'audioCues') loop
+              source_duration := (cue->>'sourceDurationMs')::integer;
+              source_start := (cue->>'startAtMs')::integer;
+              requested_duration := (cue->>'playForMs')::integer;
+              available_duration := least(
+                requested_duration,
+                source_duration - source_start,
+                slide_duration
+              );
+              if cue->>'trigger' = 'exit' then
+                timeline_start := greatest(0, slide_duration - available_duration);
+              else
+                timeline_start := least((cue->>'delayMs')::integer, slide_duration);
+              end if;
+              clip_duration := least(available_duration, slide_duration - timeline_start);
+              if clip_duration > 0 then
+                upgraded_clips := upgraded_clips || jsonb_build_array(jsonb_build_object(
+                  'id', cue->>'id',
+                  'assetId', cue->>'assetId',
+                  'kind', 'audio',
+                  'timelineStartMs', timeline_start,
+                  'sourceDurationMs', source_duration,
+                  'sourceStartMs', source_start,
+                  'durationMs', clip_duration,
+                  'volume', cue->'volume',
+                  'muted', false,
+                  'loop', false,
+                  'locked', false
+                ));
+              end if;
+            end loop;
+          end if;
+          slide := jsonb_set(slide - 'audioCues', '{mediaClips}', upgraded_clips, true);
+          upgraded_slides := upgraded_slides || jsonb_build_array(slide);
+        end loop;
+        return jsonb_set(
+          jsonb_set(input_document, '{schemaVersion}', '2'::jsonb, true),
+          '{slides}',
+          upgraded_slides,
+          true
+        );
+      end;
+      $migration$;
+
+      update pitch_decks
+        set draft_document = pitch_repair_document_audio_cues(draft_document),
+            published_document = case
+              when published_document is null then null
+              else pitch_repair_document_audio_cues(published_document)
+            end;
+      update pitch_deck_backups
+        set document = pitch_repair_document_audio_cues(document);
+      update pitch_editions
+        set document = pitch_repair_document_audio_cues(document);
+      update pitch_commands
+        set result_document = pitch_repair_document_audio_cues(result_document);
+
+      drop function pitch_repair_document_audio_cues(jsonb);
+
+      do $migration$
+      declare
+        unsupported bigint;
+      begin
+        select count(*) into unsupported
+          from (
+            select draft_document as document from pitch_decks
+            union all
+            select published_document from pitch_decks where published_document is not null
+            union all
+            select document from pitch_deck_backups
+            union all
+            select document from pitch_editions
+            union all
+            select result_document from pitch_commands
+          ) stored_documents
+         where document->>'schemaVersion' is distinct from '2';
+
+        if unsupported > 0 then
+          raise exception 'Unsupported pitch document schemas remain after migration: %', unsupported;
+        end if;
+      end;
+      $migration$;
+    `,
+  },
 ];
 
-export type MigrationResult = { applied: string[]; alreadyApplied: number };
+interface PitchDocumentSchemaRow extends QueryResultRow {
+  version: string;
+  count: string | number;
+}
+
+export async function readPitchDocumentSchemaInventory(): Promise<PitchDocumentSchemaInventory> {
+  const rows = await query<PitchDocumentSchemaRow>(`
+    select coalesce(document->>'schemaVersion', 'missing') as version, count(*) as count
+      from (
+        select draft_document as document from pitch_decks
+        union all
+        select published_document from pitch_decks where published_document is not null
+        union all
+        select document from pitch_deck_backups
+        union all
+        select document from pitch_editions
+        union all
+        select result_document from pitch_commands
+      ) stored_documents
+     group by coalesce(document->>'schemaVersion', 'missing')
+     order by version
+  `);
+  const versions = Object.fromEntries(rows.map((row) => [row.version, Number(row.count)]));
+  const total = Object.values(versions).reduce((sum, count) => sum + count, 0);
+  const current = versions["2"] ?? 0;
+  return {
+    currentVersion: 2,
+    total,
+    current,
+    unsupported: total - current,
+    versions,
+  };
+}
+
+export type MigrationResult = {
+  applied: string[];
+  alreadyApplied: number;
+  pitchDocuments?: PitchDocumentSchemaInventory;
+};
 
 /**
  * Apply any migrations this database has not seen.
@@ -955,7 +1107,13 @@ export async function runMigrations(): Promise<MigrationResult> {
     });
   }
 
-  return { applied, alreadyApplied };
+  const pitchDocuments = await readPitchDocumentSchemaInventory();
+  if (pitchDocuments.unsupported > 0) {
+    throw new Error(
+      `Unsupported pitch document schemas remain: ${JSON.stringify(pitchDocuments.versions)}`,
+    );
+  }
+  return { applied, alreadyApplied, pitchDocuments };
 }
 
 /** Test helper — the migration list, so tests can build a schema. */
