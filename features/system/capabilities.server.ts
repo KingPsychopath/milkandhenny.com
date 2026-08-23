@@ -216,12 +216,20 @@ async function probeSystemCapabilities(): Promise<
 
   if (getDirectRedisConfig()) {
     try {
-      const response = await (
-        getCommandRedis() as unknown as {
-          config: (command: "GET", key: string) => Promise<unknown>;
-        }
-      ).config("GET", "maxmemory-policy");
-      const policy = Array.isArray(response) ? response.at(-1) : null;
+      const redis = getCommandRedis() as unknown as {
+        config: (command: "GET", key: string) => Promise<unknown>;
+        info: (section: "memory") => Promise<string>;
+      };
+      const response = await redis.config("GET", "maxmemory-policy");
+      let policy = Array.isArray(response) ? response.at(-1) : null;
+      if (typeof policy !== "string") {
+        const memory = await redis.info("memory");
+        policy = memory
+          .split("\n")
+          .find((line) => line.startsWith("maxmemory_policy:"))
+          ?.slice("maxmemory_policy:".length)
+          .trim();
+      }
       capabilities.push({
         id: "redis-eviction",
         label: "active room eviction",
