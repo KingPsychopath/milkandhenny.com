@@ -21,6 +21,7 @@ import {
   GameLaunchMeta,
 } from "../shared/GameLaunch";
 import { RoomJoinControl } from "../shared/RoomJoinControl";
+import { useRememberedPlayerName } from "../shared/useRememberedPlayerName";
 
 export function PartySetupApp({ decks }: { decks: PartyDeckSummary[] }) {
   const navigate = useNavigate();
@@ -36,7 +37,7 @@ export function PartySetupApp({ decks }: { decks: PartyDeckSummary[] }) {
   const setRoundTotal = (value: number | ((current: number) => number)) =>
     set("roundTotal", typeof value === "function" ? value(preferences.roundTotal) : value);
   const [deviceRole, setDeviceRole] = useState<"play" | "screen">("play");
-  const [playerName, setPlayerName] = useState("");
+  const { name: playerName, setName: setPlayerName, remember } = useRememberedPlayerName(24);
   const [creating, setCreating] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [joinCode, setJoinCode] = useState("");
@@ -102,6 +103,7 @@ export function PartySetupApp({ decks }: { decks: PartyDeckSummary[] }) {
           },
         });
         if (!joined.ok) throw new Error(joined.error);
+        remember(playerName);
         const credentials = { ...joined, presenterToken: room.presenterToken };
         sessionStorage.setItem(partyBrowserKeys.invite(room.roomId), room.joinToken);
         writeExpiringLocalValue(

@@ -10,6 +10,7 @@ import {
 import { RoomJoinControl } from "../shared/RoomJoinControl";
 import { writeExpiringLocalValue } from "../shared/game-storage.client";
 import { useGamePreferences } from "../shared/useGamePreferences";
+import { useRememberedPlayerName } from "../shared/useRememberedPlayerName";
 import { centreBrowserKeys } from "./centre-keys";
 import { recentSoloCentreReplays, type SoloCentreReplay } from "./centre-replays.client";
 import { createCentreRoomFn } from "./centre-room.functions";
@@ -45,7 +46,7 @@ export function CentreApp() {
   const difficulty = preferences.difficulty as CentreDifficulty;
   const [solo, setSolo] = useState<SoloChoice | null>(null);
   const [recent, setRecent] = useState<SoloCentreReplay[]>([]);
-  const [name, setName] = useState("");
+  const { name, setName, remember } = useRememberedPlayerName(32);
   const [joinCode, setJoinCode] = useState("");
   const [panel, setPanel] = useState<"friends" | "join" | "options" | null>(null);
   const [creating, setCreating] = useState(false);
@@ -81,6 +82,7 @@ export function CentreApp() {
           delayedRivals: preferences.delayedRivals,
         },
       });
+      remember(name);
       sessionStorage.setItem(centreBrowserKeys.invite(room.roomId), room.joinToken);
       const credentials: CentrePlayerCredentials = {
         roomId: room.roomId,

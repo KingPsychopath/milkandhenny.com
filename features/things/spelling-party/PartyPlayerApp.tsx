@@ -38,6 +38,7 @@ import { useQrCode } from "@/hooks/useQrCode";
 import { consumeLocationFragment } from "@/lib/client/url-fragment";
 import { buildPartyPlayerInviteUrl, parsePartyPlayerFragment } from "./party-invite";
 import { PlayerReadyControl } from "../shared/PlayerReadyControl";
+import { useRememberedPlayerName } from "../shared/useRememberedPlayerName";
 
 function joinToken(roomId: string) {
   const key = partyBrowserKeys.invite(roomId);
@@ -68,8 +69,9 @@ export function PartyPlayerApp({ roomId }: { roomId: string }) {
   const [invite, setInvite] = useState("");
   const [credentials, setCredentials] = useState<PartyPlayerCredentials | null>(null);
   const [sessionReadyForRoom, setSessionReadyForRoom] = useState<string | null>(null);
-  const [name, setName] = useState("");
+  const { loaded: nameLoaded, name, setName, remember } = useRememberedPlayerName(24);
   const [joining, setJoining] = useState(false);
+  const [editingName, setEditingName] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const joinId = useRef<string | null>(null);
   if (joinId.current === null) joinId.current = crypto.randomUUID();
@@ -79,7 +81,7 @@ export function PartyPlayerApp({ roomId }: { roomId: string }) {
     setCredentials(readPlayer(roomId));
     setSessionReadyForRoom(roomId);
   }, [roomId]);
-  const handleJoin = async () => {
+  const handleJoin = useCallback(async () => {
     if (!name.trim() || joining) return;
     setJoining(true);
     setMessage(null);
@@ -90,14 +92,23 @@ export function PartyPlayerApp({ roomId }: { roomId: string }) {
       if (!result.ok) {
         setMessage(result.error);
         setJoining(false);
+        setEditingName(true);
         return;
       }
       writeExpiringLocalValue(playerKey(roomId), result, result.expiresAt);
+      remember(name);
       setCredentials(result);
     } catch {
       setMessage("Could not join. Check your connection and try again.");
       setJoining(false);
+      setEditingName(true);
     }
+  }, [invite, joining, name, remember, roomId]);
+
+  const changeName = () => {
+    if (joining) return;
+    setEditingName(true);
+    setMessage(null);
   };
   if (credentials) return <PartyPlayerGame credentials={credentials} />;
   if (sessionReadyForRoom !== roomId)
@@ -107,41 +118,66 @@ export function PartyPlayerApp({ roomId }: { roomId: string }) {
       id="main"
       className="things-game things-game--night flex items-center justify-center px-6 text-white"
     >
-      <form
-        onSubmit={(event) => {
-          event.preventDefault();
-          void handleJoin();
-        }}
-        className="w-full max-w-sm text-center"
-      >
-        <p className="font-mono text-micro uppercase tracking-[0.2em] text-white/45">
-          room {roomId}
-        </p>
-        <h1 className="mt-3 font-serif text-5xl font-semibold">What should we call you?</h1>
-        <label htmlFor="party-name" className="sr-only">
-          Your display name
-        </label>
-        <input
-          id="party-name"
-          value={name}
-          onChange={(event) => setName(event.target.value)}
-          maxLength={24}
-          autoComplete="name"
-          enterKeyHint="go"
-          placeholder="Your name"
-          className="mt-7 min-h-14 w-full rounded-full border border-white/20 bg-white/[0.06] px-5 text-center font-serif text-xl placeholder:text-white/30"
-        />
-        <button
-          type="submit"
-          disabled={!name.trim() || joining}
-          className="mt-4 min-h-14 w-full rounded-full bg-[var(--things-amber)] px-6 font-mono text-sm font-bold text-black disabled:opacity-35"
+      {nameLoaded && name && !editingName ? (
+        <div className="w-full max-w-sm text-center">
+          <p className="font-mono text-micro uppercase tracking-[0.2em] text-white/45">
+            room {roomId}
+          </p>
+          <h1 className="mt-3 font-serif text-5xl font-semibold">Joining as {name}</h1>
+          <button
+            type="button"
+            onClick={() => void handleJoin()}
+            disabled={joining}
+            className="mt-7 min-h-14 w-full rounded-full bg-[var(--things-amber)] px-6 font-mono text-sm font-bold text-black disabled:opacity-40"
+          >
+            {joining ? "joining…" : `join as ${name}`}
+          </button>
+          <button
+            type="button"
+            onClick={changeName}
+            disabled={joining}
+            className="mt-3 min-h-11 font-mono text-xs underline underline-offset-4 disabled:opacity-40"
+          >
+            change name
+          </button>
+        </div>
+      ) : (
+        <form
+          onSubmit={(event) => {
+            event.preventDefault();
+            void handleJoin();
+          }}
+          className="w-full max-w-sm text-center"
         >
-          {joining ? "joining…" : "join the room"}
-        </button>
-        <p aria-live="polite" className="mt-4 min-h-5 font-mono text-xs text-amber-200">
-          {message}
-        </p>
-      </form>
+          <p className="font-mono text-micro uppercase tracking-[0.2em] text-white/45">
+            room {roomId}
+          </p>
+          <h1 className="mt-3 font-serif text-5xl font-semibold">What should we call you?</h1>
+          <label htmlFor="party-name" className="sr-only">
+            Your display name
+          </label>
+          <input
+            id="party-name"
+            value={name}
+            onChange={(event) => setName(event.target.value)}
+            maxLength={24}
+            autoComplete="name"
+            enterKeyHint="go"
+            placeholder="Your name"
+            className="mt-7 min-h-14 w-full rounded-full border border-white/20 bg-white/[0.06] px-5 text-center font-serif text-xl placeholder:text-white/30"
+          />
+          <button
+            type="submit"
+            disabled={!name.trim() || joining}
+            className="mt-4 min-h-14 w-full rounded-full bg-[var(--things-amber)] px-6 font-mono text-sm font-bold text-black disabled:opacity-35"
+          >
+            {joining ? "joining…" : "join the room"}
+          </button>
+          <p aria-live="polite" className="mt-4 min-h-5 font-mono text-xs text-amber-200">
+            {message}
+          </p>
+        </form>
+      )}
     </main>
   );
 }

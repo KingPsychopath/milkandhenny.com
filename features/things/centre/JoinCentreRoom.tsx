@@ -1,6 +1,7 @@
 import { Link } from "@tanstack/react-router";
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { writeExpiringLocalValue } from "../shared/game-storage.client";
+import { useRememberedPlayerName } from "../shared/useRememberedPlayerName";
 import { centreBrowserKeys } from "./centre-keys";
 import { joinCentreRoomFn } from "./centre-room.functions";
 import { captureCentreInvite } from "./invite.client";
@@ -13,11 +14,12 @@ export function JoinCentreRoom({
   roomId: string;
   onJoined: (credentials: CentrePlayerCredentials) => void;
 }) {
-  const [name, setName] = useState("");
+  const { loaded, name, setName, remember } = useRememberedPlayerName(32);
   const [joining, setJoining] = useState(false);
+  const [editingName, setEditingName] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
 
-  const join = async () => {
+  const join = useCallback(async () => {
     if (!name.trim() || joining) return;
     setJoining(true);
     setMessage(null);
@@ -28,6 +30,7 @@ export function JoinCentreRoom({
       if (!result.ok) {
         setMessage(result.error);
         setJoining(false);
+        setEditingName(true);
         return;
       }
       const credentials: CentrePlayerCredentials = {
@@ -37,6 +40,7 @@ export function JoinCentreRoom({
         expiresAt: result.expiresAt,
         snapshot: result.snapshot,
       };
+      remember(name);
       writeExpiringLocalValue(
         centreBrowserKeys.playerSession(roomId),
         credentials,
@@ -46,7 +50,14 @@ export function JoinCentreRoom({
     } catch {
       setMessage("Could not join. Check your connection and try again.");
       setJoining(false);
+      setEditingName(true);
     }
+  }, [joining, name, onJoined, remember, roomId]);
+
+  const changeName = () => {
+    if (joining) return;
+    setEditingName(true);
+    setMessage(null);
   };
 
   return (
@@ -58,40 +69,63 @@ export function JoinCentreRoom({
       <main id="main" className="centre-join">
         <p className="centre-eyebrow">shared race</p>
         <h1 className="centre-title">Ready to find the centre?</h1>
-        <form
-          onSubmit={(event) => {
-            event.preventDefault();
-            void join();
-          }}
-        >
-          <label className="centre-field">
-            <span>your name</span>
-            <input
-              value={name}
-              maxLength={32}
-              required
-              autoFocus
-              autoComplete="name"
-              enterKeyHint="go"
-              onChange={(event) => {
-                setName(event.target.value);
-                setMessage(null);
-              }}
-            />
-          </label>
-          <button
-            type="submit"
-            disabled={!name.trim() || joining}
-            className="centre-button centre-button--go"
+        {loaded && name && !editingName ? (
+          <div className="mt-8">
+            <p className="font-mono text-xs text-black/55">joining as</p>
+            <p className="mt-2 font-serif text-3xl">{name}</p>
+            <button
+              type="button"
+              onClick={() => void join()}
+              disabled={joining}
+              className="mt-6 min-h-12 w-full rounded-full bg-black px-6 font-mono text-xs font-semibold uppercase tracking-[0.14em] text-white disabled:opacity-40"
+            >
+              {joining ? "joining…" : `join as ${name}`}
+            </button>
+            <button
+              type="button"
+              onClick={changeName}
+              disabled={joining}
+              className="mt-3 min-h-11 font-mono text-xs underline underline-offset-4 disabled:opacity-40"
+            >
+              change name
+            </button>
+          </div>
+        ) : (
+          <form
+            onSubmit={(event) => {
+              event.preventDefault();
+              void join();
+            }}
           >
-            {joining ? "joining…" : "join race"}
-          </button>
-          {message ? (
-            <p role="alert" className="centre-message">
-              {message}
-            </p>
-          ) : null}
-        </form>
+            <label className="centre-field">
+              <span>your name</span>
+              <input
+                value={name}
+                maxLength={32}
+                required
+                autoFocus
+                autoComplete="name"
+                enterKeyHint="go"
+                onChange={(event) => {
+                  setName(event.target.value);
+                  setMessage(null);
+                }}
+              />
+            </label>
+            <button
+              type="submit"
+              disabled={!name.trim() || joining}
+              className="centre-button centre-button--go"
+            >
+              {joining ? "joining…" : "join race"}
+            </button>
+            {message ? (
+              <p role="alert" className="centre-message">
+                {message}
+              </p>
+            ) : null}
+          </form>
+        )}
       </main>
     </div>
   );

@@ -2,6 +2,7 @@ import { AppSelect } from "@/components/AppSelect";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { useGamePreferences } from "../shared/useGamePreferences";
+import { useRememberedPlayerName } from "../shared/useRememberedPlayerName";
 import { useWebHaptics } from "web-haptics/react";
 import { writeExpiringLocalValue } from "../shared/game-storage.client";
 import { createDrawCountryRoomFn } from "./draw-country-room.functions";
@@ -65,7 +66,7 @@ export function DrawCountryApp({ initialCountry }: { initialCountry: CountryOutl
   const [country, setCountry] = useState(initialCountry);
   const [countryLoadFailed, setCountryLoadFailed] = useState(false);
   const [soloMode, setSoloMode] = useState<SoloDrawCountryMode | null>(null);
-  const [name, setName] = useState("");
+  const { name, setName, remember } = useRememberedPlayerName(32);
   const { preferences, set } = useGamePreferences("draw-country", {
     roundTotal: 5,
     drawSeconds: 30,
@@ -128,6 +129,7 @@ export function DrawCountryApp({ initialCountry }: { initialCountry: CountryOutl
           recentCountryIds: recentCountryIds(),
         },
       });
+      remember(name);
       sessionStorage.setItem(drawCountryBrowserKeys.invite(room.roomId), room.joinToken);
       writeExpiringLocalValue(
         drawCountryBrowserKeys.playerSession(room.roomId),

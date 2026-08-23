@@ -11,6 +11,7 @@ import {
 import { RoomJoinControl } from "../shared/RoomJoinControl";
 import { writeExpiringLocalValue } from "../shared/game-storage.client";
 import { useGamePreferences } from "../shared/useGamePreferences";
+import { useRememberedPlayerName } from "../shared/useRememberedPlayerName";
 import { TWIN_MAX_HAND, TWIN_MIN_HAND, TWIN_DEFAULT_HAND } from "./twin-deck";
 import { twinBrowserKeys } from "./twin-keys";
 import { createTwinRoomFn } from "./twin-room.functions";
@@ -23,7 +24,7 @@ export function TwinApp() {
   const haptics = useWebHaptics();
   const online = useNetworkAvailability();
   const [board, setBoard] = useState<"duel" | "solo" | null>(null);
-  const [name, setName] = useState("");
+  const { name, setName, remember } = useRememberedPlayerName(32);
   const { preferences, set } = useGamePreferences("twin", { handSize: TWIN_DEFAULT_HAND });
   const [joinCode, setJoinCode] = useState("");
   const [creating, setCreating] = useState(false);
@@ -49,6 +50,7 @@ export function TwinApp() {
       const room = await createTwinRoomFn({
         data: { hostName: name.trim(), handSize: preferences.handSize },
       });
+      remember(name);
       sessionStorage.setItem(twinBrowserKeys.invite(room.roomId), room.joinToken);
       writeExpiringLocalValue(
         twinBrowserKeys.playerSession(room.roomId),
