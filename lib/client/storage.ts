@@ -24,13 +24,14 @@ export function setStored(name: StorageKeyName, value: string): boolean {
   }
 }
 
-/** Remove a value. No-op on server. */
-export function removeStored(name: StorageKeyName): void {
-  if (typeof window === "undefined") return;
+/** Remove a value. Returns false when browser storage is unavailable. */
+export function removeStored(name: StorageKeyName): boolean {
+  if (typeof window === "undefined") return false;
   try {
     localStorage.removeItem(getStorageKey(name));
+    return true;
   } catch {
-    // Treat unavailable storage as already empty.
+    return false;
   }
 }
 

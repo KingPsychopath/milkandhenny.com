@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { getStorageKey } from "@/lib/shared/storage-keys";
-import { getStored, setStored } from "./storage";
+import { getStored, removeStored, setStored } from "./storage";
 
 /**
  * Shared, editable defaults for fields about the person using this browser.
@@ -61,6 +61,13 @@ export function rememberBrowserProfile(fields: Partial<BrowserProfile>): Browser
   return next;
 }
 
+/** Removes only the shared profile. Feature preferences, saved work, and sessions stay intact. */
+export function forgetBrowserProfile(): boolean {
+  const removed = removeStored("browserProfile");
+  if (removed) window.dispatchEvent(new Event(PROFILE_CHANGE_EVENT));
+  return removed;
+}
+
 export function useBrowserProfile() {
   const [profile, setProfile] = useState<BrowserProfile>(EMPTY_PROFILE);
   const [loaded, setLoaded] = useState(false);
@@ -86,7 +93,13 @@ export function useBrowserProfile() {
     setProfile(next);
   }, []);
 
-  return { loaded, profile, remember };
+  const forget = useCallback(() => {
+    const removed = forgetBrowserProfile();
+    if (removed) setProfile(EMPTY_PROFILE);
+    return removed;
+  }, []);
+
+  return { loaded, profile, remember, forget };
 }
 
 /** Editable form defaults which do not overwrite a field after the person starts typing. */

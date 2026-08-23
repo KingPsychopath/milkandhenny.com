@@ -1,5 +1,6 @@
 import { Link, createFileRoute } from "@tanstack/react-router";
 
+import { BrowserProfileControl } from "@/components/BrowserProfileControl";
 import { CONTACT_EMAIL, SITE_BRAND } from "@/lib/shared/config";
 import { buildSeoHead } from "@/lib/shared/seo";
 
@@ -27,7 +28,7 @@ function PrivacyPage() {
 
       <main id="main" className="max-w-2xl mx-auto px-6 pb-20">
         <p className="font-mono text-micro theme-muted tracking-widest uppercase">
-          Last updated 14 August 2026
+          Last updated 24 August 2026
         </p>
         <h1 className="mt-3 font-serif text-4xl leading-tight">Privacy</h1>
         <div className="mt-10 space-y-10 font-serif text-lg leading-relaxed">
@@ -79,6 +80,7 @@ function PrivacyPage() {
               information. Some rights depend on the reason we hold the data and the law that
               applies. You can also object or complain to your local data protection authority.
             </p>
+            <BrowserProfileControl />
           </section>
 
           <section>

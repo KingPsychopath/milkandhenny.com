@@ -91,6 +91,8 @@ Notes:
   and write, and introduced only when a real form needs them
 - **Scope**: feature state, payment details, credentials, room tokens, and private links never belong
   in this profile
+- **Removal**: `/privacy` can remove the shared profile without clearing unrelated saved work,
+  preferences, or sessions
 
 ---
 
