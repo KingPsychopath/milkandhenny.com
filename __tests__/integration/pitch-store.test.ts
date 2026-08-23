@@ -6,6 +6,7 @@ import {
   createPitchOwnerToken,
   insertPitchAsset,
   listPitchBackupsForOwner,
+  readPitchBackupForOwner,
   markPitchAssetReady,
   publishPitchDeck,
   readOwnedPitchDeck,
@@ -216,6 +217,15 @@ describeWithDatabase("pitch storage (postgres)", () => {
     const contentfulVersion = history.value.find((item) => item.version === 2);
     expect(contentfulVersion).toMatchObject({ reason: "safety", contentCount: 1 });
     if (!contentfulVersion) return;
+
+    const preview = await readPitchBackupForOwner(
+      created.value.deck.id,
+      ownerToken,
+      contentfulVersion.id,
+    );
+    expect(preview.ok && preview.value.document.slides[0].elements.map(({ id }) => id)).toEqual([
+      "kept_object",
+    ]);
 
     const restored = await restorePitchBackupForOwner(
       created.value.deck.id,

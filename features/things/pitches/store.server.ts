@@ -10,6 +10,7 @@ import {
   getPitchMaxSlides,
   PITCH_BACKUP_INTERVAL_MS,
   PITCH_BACKUP_KEEP_COUNT,
+  PITCH_PUBLISHED_BACKUP_KEEP_COUNT,
   PITCH_MUTATION_RETENTION_DAYS,
 } from "./config.server";
 import { mergePitchDocuments } from "./merge";
@@ -21,6 +22,7 @@ import type {
   PitchDeckLifecycle,
   PitchDocument,
   PitchVersionHistoryItem,
+  PitchVersionPreview,
   PitchVersionReason,
   PublicPitchDeck,
 } from "./types";
@@ -345,14 +347,41 @@ async function maybeBackup(client: PoolClient, row: PitchDeckRow, reason: PitchV
     [row.id, integer(row.draft_version), reason, JSON.stringify(row.draft_document)],
   );
   await client.query(
+    `update pitch_deck_backups
+        set reason = $3::text
+      where deck_id = $1 and version = $2
+        and case reason
+              when 'publish' then 5
+              when 'restore' then 4
+              when 'conflict' then 3
+              when 'safety' then 2
+              else 1
+            end
+            < case $3::text
+                when 'publish' then 5
+                when 'restore' then 4
+                when 'conflict' then 3
+                when 'safety' then 2
+                else 1
+              end`,
+    [row.id, integer(row.draft_version), reason],
+  );
+  await client.query(
     `delete from pitch_deck_backups
       where id in (
-        select id from pitch_deck_backups
-          where deck_id = $1
-          order by created_at desc, id desc
-          offset $2
+        select id from (
+          select id, reason,
+                 row_number() over (
+                   partition by (reason = 'publish')
+                   order by created_at desc, id desc
+                 ) as retained_rank
+            from pitch_deck_backups
+           where deck_id = $1
+        ) retained
+        where (reason = 'publish' and retained_rank > $3)
+           or (reason <> 'publish' and retained_rank > $2)
       )`,
-    [row.id, PITCH_BACKUP_KEEP_COUNT],
+    [row.id, PITCH_BACKUP_KEEP_COUNT, PITCH_PUBLISHED_BACKUP_KEEP_COUNT],
   );
 }
 
@@ -842,8 +871,8 @@ export async function listPitchBackupsForAdmin(deckId: string): Promise<PitchDec
       from pitch_deck_backups
       where deck_id = $1
       order by created_at desc, id desc
-      limit 20`,
-    [deckId],
+      limit $2`,
+    [deckId, PITCH_BACKUP_KEEP_COUNT + PITCH_PUBLISHED_BACKUP_KEEP_COUNT],
   );
   return rows.map(toPitchVersionHistoryItem);
 }
@@ -861,10 +890,34 @@ export async function listPitchBackupsForOwner(
         from pitch_deck_backups
         where deck_id = $1
         order by created_at desc, id desc
-        limit 20`,
-      [deckId],
+        limit $2`,
+      [deckId, PITCH_BACKUP_KEEP_COUNT + PITCH_PUBLISHED_BACKUP_KEEP_COUNT],
     );
     return { ok: true, value: rows.rows.map(toPitchVersionHistoryItem) };
+  });
+}
+
+export async function readPitchBackupForOwner(
+  deckId: string,
+  ownerToken: string,
+  backupId: string,
+): Promise<PitchStoreResult<PitchVersionPreview>> {
+  return transaction(async (client) => {
+    if (!(await clientOwnsDeck(client, deckId, ownerToken))) {
+      return { ok: false, status: 404, error: "Pitch not found" };
+    }
+    const backup = await client.query<PitchBackupRow>(
+      `select id, version, reason, document, created_at
+         from pitch_deck_backups
+        where id = $1 and deck_id = $2`,
+      [backupId, deckId],
+    );
+    const row = backup.rows[0];
+    if (!row) return { ok: false, status: 404, error: "Pitch version not found" };
+    return {
+      ok: true,
+      value: { item: toPitchVersionHistoryItem(row), document: parseStoredDocument(row.document) },
+    };
   });
 }
 

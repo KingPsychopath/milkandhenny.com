@@ -12,6 +12,7 @@ export class PitchesService extends Context.Service<
     readonly create: typeof create;
     readonly readOwned: typeof readOwned;
     readonly listHistory: typeof listHistory;
+    readonly readVersion: typeof readVersion;
     readonly restoreVersion: typeof restoreVersion;
     readonly sync: typeof sync;
     readonly publish: typeof publish;
@@ -42,6 +43,7 @@ export class PitchesService extends Context.Service<
     create,
     readOwned,
     listHistory,
+    readVersion,
     restoreVersion,
     sync,
     publish,
@@ -79,6 +81,10 @@ function readOwned(...input: Parameters<typeof engine.readOwnedPitch>) {
 
 function listHistory(...input: Parameters<typeof engine.listPitchHistory>) {
   return pitchesOperation("list_history", () => engine.listPitchHistory(...input));
+}
+
+function readVersion(...input: Parameters<typeof engine.readPitchVersion>) {
+  return pitchesOperation("read_version", () => engine.readPitchVersion(...input));
 }
 
 function restoreVersion(...input: Parameters<typeof engine.restorePitchVersion>) {

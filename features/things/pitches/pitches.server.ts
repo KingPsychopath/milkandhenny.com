@@ -28,6 +28,7 @@ import {
   markPitchDeckDeletingForAdmin,
   markExpiredPitchDecksDeleting,
   publishPitchDeck,
+  readPitchBackupForOwner,
   prunePitchMutations,
   readOwnedPitchDeck,
   readPitchDeckForAdmin,
@@ -122,6 +123,10 @@ export async function readOwnedPitch(
 
 export async function listPitchHistory(deckId: string, ownerToken: string) {
   return listPitchBackupsForOwner(deckId, ownerToken);
+}
+
+export async function readPitchVersion(deckId: string, ownerToken: string, backupId: string) {
+  return readPitchBackupForOwner(deckId, ownerToken, backupId);
 }
 
 export async function restorePitchVersion(
