@@ -8,7 +8,8 @@ import { createLiarsRoom, joinLiarsRoom } from "../liars/liars-room.server";
 import { createSameBrainRoom, joinSameBrainRoom } from "../same-brain/same-brain-room.server";
 import { createTwinRoom, joinTwinRoom } from "../twin/twin-room.server";
 import { GAME_POOL_DEFAULTS } from "./presets";
-import type { GamePoolAssignment, GamePoolGame, GamePoolPreset } from "./types";
+import type { GameSettingsDocument } from "../shared/game-settings";
+import type { GamePoolAssignment, GamePoolGame } from "./types";
 
 interface CreatedPoolRoom {
   assignment: GamePoolAssignment;
@@ -34,19 +35,20 @@ export function gamePoolCapacity(game: GamePoolGame) {
 }
 
 export async function createPoolRoomAndJoin(input: {
-  preset: GamePoolPreset;
+  gameSettings: GameSettingsDocument;
   name: string;
   joinId: string;
 }): Promise<CreatedPoolRoom> {
-  const { preset, name, joinId } = input;
-  if (preset.game === "same-brain") {
+  const { gameSettings, name, joinId } = input;
+  const settings = gameSettings.settings;
+  if (settings.game === "same-brain") {
     const room = await createSameBrainRoom({
       managed: true,
-      rounds: preset.rounds,
-      scoring: preset.scoring,
+      rounds: settings.rounds,
+      scoring: settings.scoring,
       toggles: {
-        sayItAloud: preset.sayItAloud,
-        eliminateOddOne: preset.eliminateOddOne,
+        sayItAloud: settings.sayItAloud,
+        eliminateOddOne: settings.eliminateOddOne,
       },
     });
     const joined = await joinSameBrainRoom({
@@ -57,17 +59,17 @@ export async function createPoolRoomAndJoin(input: {
       joinId,
     });
     if (!joined.ok) return failure(joined);
-    return { assignment: { game: preset.game, ...joined }, joinToken: room.joinToken };
+    return { assignment: { game: settings.game, ...joined }, joinToken: room.joinToken };
   }
-  if (preset.game === "liars") {
+  if (settings.game === "liars") {
     const room = await createLiarsRoom({
       managed: true,
-      mode: preset.mode,
-      roomMode: preset.roomMode,
+      mode: settings.mode,
+      roomMode: settings.roomMode,
       toggles: {
-        firstGame: preset.firstGame,
-        blindImposters: preset.blindImposters,
-        wordBoard: preset.wordBoard,
+        firstGame: settings.firstGame,
+        blindImposters: settings.blindImposters,
+        wordBoard: settings.wordBoard,
       },
     });
     const joined = await joinLiarsRoom({
@@ -78,29 +80,33 @@ export async function createPoolRoomAndJoin(input: {
       joinId,
     });
     if (!joined.ok) return failure(joined);
-    return { assignment: { game: preset.game, ...joined }, joinToken: room.joinToken };
+    return { assignment: { game: settings.game, ...joined }, joinToken: room.joinToken };
   }
-  if (preset.game === "centre") {
+  if (settings.game === "centre") {
     const room = await createCentreRoom({
       managed: true,
       hostName: name,
-      difficulty: preset.difficulty as CentreDifficulty,
-      delayedRivals: preset.delayedRivals,
+      difficulty: settings.difficulty as CentreDifficulty,
+      delayedRivals: settings.delayedRivals,
     });
-    return { assignment: { game: preset.game, ...room }, joinToken: room.joinToken };
+    return { assignment: { game: settings.game, ...room }, joinToken: room.joinToken };
   }
-  if (preset.game === "twin") {
-    const room = await createTwinRoom({ managed: true, hostName: name, handSize: preset.handSize });
-    return { assignment: { game: preset.game, ...room }, joinToken: room.joinToken };
+  if (settings.game === "twin") {
+    const room = await createTwinRoom({
+      managed: true,
+      hostName: name,
+      handSize: settings.handSize,
+    });
+    return { assignment: { game: settings.game, ...room }, joinToken: room.joinToken };
   }
   const room = await createDrawCountryRoom({
     managed: true,
     hostName: name,
-    drawSeconds: preset.drawSeconds,
-    roundTotal: preset.roundTotal,
+    drawSeconds: settings.drawSeconds,
+    roundTotal: settings.roundTotal,
     recentCountryIds: [],
   });
-  return { assignment: { game: preset.game, ...room }, joinToken: room.joinToken };
+  return { assignment: { game: settings.game, ...room }, joinToken: room.joinToken };
 }
 
 export async function joinPoolRoom(input: {

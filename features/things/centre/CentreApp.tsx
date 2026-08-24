@@ -10,10 +10,13 @@ import {
 import { RoomJoinControl } from "../shared/RoomJoinControl";
 import { writeExpiringLocalValue } from "../shared/game-storage.client";
 import { useGamePreferences } from "../shared/useGamePreferences";
+import { GameSettingsTransfer } from "../shared/GameSettingsTransfer";
+import { gameSettingsDocument } from "../shared/game-settings";
 import { useRememberedPlayerName } from "../shared/useRememberedPlayerName";
 import { centreBrowserKeys } from "./centre-keys";
 import { recentSoloCentreReplays, type SoloCentreReplay } from "./centre-replays.client";
 import { createCentreRoomFn } from "./centre-room.functions";
+import { CENTRE_GAME_SETTINGS } from "./settings";
 import { primeCentreAudio } from "./centre-sound.client";
 import { SoloCentreGame } from "./SoloCentreGame";
 import type { CentreDifficulty, CentrePlayerCredentials } from "./types";
@@ -41,9 +44,9 @@ type SoloChoice = { seed: number; difficulty: CentreDifficulty; ghost?: SoloCent
 export function CentreApp({ defaultPool }: { defaultPool?: GamePoolDefaultLaunchTarget | null }) {
   const navigate = useNavigate();
   const haptics = useWebHaptics();
-  const { preferences, set } = useGamePreferences("centre", {
-    difficulty: 3,
-    delayedRivals: false,
+  const { preferences, set, replace } = useGamePreferences("centre", {
+    difficulty: CENTRE_GAME_SETTINGS.difficulty,
+    delayedRivals: CENTRE_GAME_SETTINGS.delayedRivals,
   });
   const difficulty = preferences.difficulty as CentreDifficulty;
   const [solo, setSolo] = useState<SoloChoice | null>(null);
@@ -266,6 +269,14 @@ export function CentreApp({ defaultPool }: { defaultPool?: GamePoolDefaultLaunch
                 onChange={(event) => set("difficulty", Number(event.target.value))}
               />
             </label>
+            <GameSettingsTransfer
+              document={gameSettingsDocument("centre", {
+                game: "centre",
+                difficulty,
+                delayedRivals: preferences.delayedRivals,
+              })}
+              onApply={replace}
+            />
           </section>
         ) : null}
         {message && panel !== "join" ? (

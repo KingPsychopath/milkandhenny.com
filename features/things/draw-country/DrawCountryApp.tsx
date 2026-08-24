@@ -2,10 +2,13 @@ import { AppSelect } from "@/components/AppSelect";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { useGamePreferences } from "../shared/useGamePreferences";
+import { GameSettingsTransfer } from "../shared/GameSettingsTransfer";
+import { gameSettingsDocument } from "../shared/game-settings";
 import { useRememberedPlayerName } from "../shared/useRememberedPlayerName";
 import { useWebHaptics } from "web-haptics/react";
 import { writeExpiringLocalValue } from "../shared/game-storage.client";
 import { createDrawCountryRoomFn } from "./draw-country-room.functions";
+import { DRAW_COUNTRY_GAME_SETTINGS } from "./settings";
 import { drawCountryBrowserKeys } from "./draw-country-keys";
 import { recentCountryIds } from "./rotation-history.client";
 import { SoloDrawCountry, type SoloDrawCountryMode } from "./SoloDrawCountry";
@@ -75,9 +78,9 @@ export function DrawCountryApp({
   const [countryLoadFailed, setCountryLoadFailed] = useState(false);
   const [soloMode, setSoloMode] = useState<SoloDrawCountryMode | null>(null);
   const { name, setName, remember } = useRememberedPlayerName(32);
-  const { preferences, set } = useGamePreferences("draw-country", {
-    roundTotal: 5,
-    drawSeconds: 30,
+  const { preferences, set, replace } = useGamePreferences("draw-country", {
+    roundTotal: DRAW_COUNTRY_GAME_SETTINGS.roundTotal,
+    drawSeconds: DRAW_COUNTRY_GAME_SETTINGS.drawSeconds,
   });
   const roundTotal = preferences.roundTotal;
   const drawSeconds = preferences.drawSeconds;
@@ -260,6 +263,16 @@ export function DrawCountryApp({
                 setRoundTotal={setRoundTotal}
                 setDrawSeconds={setDrawSeconds}
               />
+              <div className="sm:col-span-2">
+                <GameSettingsTransfer
+                  document={gameSettingsDocument("draw-country", {
+                    game: "draw-country",
+                    roundTotal,
+                    drawSeconds,
+                  })}
+                  onApply={replace}
+                />
+              </div>
               <button
                 type="button"
                 onClick={() => {

@@ -94,6 +94,63 @@ describeWithDatabase("game-pool public defaults (postgres)", () => {
     expect([first.id, second.id]).toContain(defaults[0]?.id);
   });
 
+  it("updates the active run for future rooms without changing existing rooms", async () => {
+    const entrance = await createGamePoolEntrance({
+      game: "twin",
+      label: "Mutable Twin",
+      actionId: "mutable-twin-entrance",
+    });
+    const opened = await openGamePoolRun(entrance.id, {
+      actionId: "mutable-twin-run",
+      durationMinutes: 60,
+    });
+    if (!opened?.run) throw new Error("Could not open the mutable test pool");
+    await query(
+      `insert into game_pool_rooms (run_id, room_id, player_count, capacity)
+       values ($1, 'TWIN234', 3, 12)`,
+      [opened.run.id],
+    );
+
+    const updated = await updateGamePoolEntrance(entrance.id, {
+      gameSettings: {
+        format: "milk-and-henny/game-settings",
+        schemaVersion: 1,
+        game: "twin",
+        settings: { game: "twin", handSize: 9 },
+      },
+      targetSize: 8,
+      allowRoomChoice: false,
+      allowNewRooms: false,
+    });
+    const runs = await query<{
+      preset: { handSize: number };
+      target_size: number;
+      allow_room_choice: boolean;
+      allow_new_rooms: boolean;
+    }>(
+      "select preset, target_size, allow_room_choice, allow_new_rooms from game_pool_runs where id = $1",
+      [opened.run.id],
+    );
+    const rooms = await query<{ player_count: number; capacity: number }>(
+      "select player_count, capacity from game_pool_rooms where run_id = $1 and room_id = 'TWIN234'",
+      [opened.run.id],
+    );
+
+    expect(updated?.run?.gameSettings.settings).toEqual({ game: "twin", handSize: 9 });
+    expect(updated?.run).toMatchObject({
+      targetSize: 8,
+      allowRoomChoice: false,
+      allowNewRooms: false,
+    });
+    expect(runs[0]).toMatchObject({
+      preset: { game: "twin", handSize: 9 },
+      target_size: 8,
+      allow_room_choice: false,
+      allow_new_rooms: false,
+    });
+    expect(rooms[0]).toEqual({ player_count: 3, capacity: 12 });
+  });
+
   it("exposes stable per-run sprite identities without exposing assignment ids", async () => {
     const entrance = await createGamePoolEntrance({
       game: "liars",

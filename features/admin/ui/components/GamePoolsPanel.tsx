@@ -3,18 +3,32 @@ import { AppImage } from "@/components/AppImage";
 import { useQrCode } from "@/hooks/useQrCode";
 import { GAME_POOL_DEFAULTS } from "@/features/things/pool/presets";
 import {
-  recommendedGamePoolPresetBundle,
-  type GamePoolPresetBundle,
+  recommendedGamePoolSettingsBundle,
+  type GamePoolSettingsBundle,
 } from "@/features/things/pool/preset-bundle";
+import { gameSettingsDocument, type GameSettings } from "@/features/things/shared/game-settings";
 import type {
   GamePoolEntrance,
   GamePoolGame,
   GamePoolNameVisibility,
-  GamePoolPreset,
 } from "@/features/things/pool/types";
 import { GamePoolSettingsTransfer } from "./GamePoolSettingsTransfer";
 
 type AuthFetch = (url: string, options?: RequestInit) => Promise<Response>;
+
+function editableEntrance(entrance: GamePoolEntrance): GamePoolEntrance {
+  return entrance.run
+    ? {
+        ...entrance,
+        gameSettings: entrance.run.gameSettings,
+        targetSize: entrance.run.targetSize,
+        autoJoin: entrance.run.autoJoin,
+        allowRoomChoice: entrance.run.allowRoomChoice,
+        allowNewRooms: entrance.run.allowNewRooms,
+        nameVisibility: entrance.run.nameVisibility,
+      }
+    : entrance;
+}
 
 function EntranceQr({ entrance }: { entrance: GamePoolEntrance }) {
   const [origin, setOrigin] = useState("");
@@ -60,12 +74,12 @@ function EntranceQr({ entrance }: { entrance: GamePoolEntrance }) {
   );
 }
 
-function PresetFields({
-  preset,
+function GameSettingsFields({
+  settings,
   onChange,
 }: {
-  preset: GamePoolPreset;
-  onChange: (preset: GamePoolPreset) => void;
+  settings: GameSettings;
+  onChange: (settings: GameSettings) => void;
 }) {
   const numberField = (
     label: string,
@@ -86,17 +100,19 @@ function PresetFields({
       />
     </label>
   );
-  if (preset.game === "same-brain")
+  if (settings.game === "same-brain")
     return (
       <div className="grid gap-4 sm:grid-cols-2">
-        {numberField("rounds", preset.rounds, 3, 20, (rounds) => onChange({ ...preset, rounds }))}
+        {numberField("rounds", settings.rounds, 3, 20, (rounds) =>
+          onChange({ ...settings, rounds }),
+        )}
         <label className="font-mono text-xs theme-muted">
           scoring
           <select
-            value={preset.scoring}
+            value={settings.scoring}
             onChange={(event) =>
               onChange({
-                ...preset,
+                ...settings,
                 scoring: event.target.value === "exact" ? "exact" : "embedding",
               })
             }
@@ -108,26 +124,26 @@ function PresetFields({
         </label>
         <PoolCheck
           label="say answers aloud"
-          checked={preset.sayItAloud}
-          onChange={(sayItAloud) => onChange({ ...preset, sayItAloud })}
+          checked={settings.sayItAloud}
+          onChange={(sayItAloud) => onChange({ ...settings, sayItAloud })}
         />
         <PoolCheck
           label="eliminate the odd one"
-          checked={preset.eliminateOddOne}
-          onChange={(eliminateOddOne) => onChange({ ...preset, eliminateOddOne })}
+          checked={settings.eliminateOddOne}
+          onChange={(eliminateOddOne) => onChange({ ...settings, eliminateOddOne })}
         />
       </div>
     );
-  if (preset.game === "liars")
+  if (settings.game === "liars")
     return (
       <div className="grid gap-4 sm:grid-cols-2">
         <label className="font-mono text-xs theme-muted">
           mode
           <select
-            value={preset.mode}
+            value={settings.mode}
             onChange={(event) =>
               onChange({
-                ...preset,
+                ...settings,
                 mode: event.target.value === "imposter" ? "imposter" : "mafia",
               })
             }
@@ -139,49 +155,52 @@ function PresetFields({
         </label>
         <PoolCheck
           label="first-game rules"
-          checked={preset.firstGame}
-          onChange={(firstGame) => onChange({ ...preset, firstGame })}
+          checked={settings.firstGame}
+          onChange={(firstGame) => onChange({ ...settings, firstGame })}
         />
         <PoolCheck
           label="blind imposters"
-          checked={preset.blindImposters}
-          onChange={(blindImposters) => onChange({ ...preset, blindImposters })}
+          checked={settings.blindImposters}
+          onChange={(blindImposters) => onChange({ ...settings, blindImposters })}
         />
         <PoolCheck
           label="shared word board"
-          checked={preset.wordBoard}
-          onChange={(wordBoard) => onChange({ ...preset, wordBoard })}
+          checked={settings.wordBoard}
+          onChange={(wordBoard) => onChange({ ...settings, wordBoard })}
         />
       </div>
     );
-  if (preset.game === "centre")
+  if (settings.game === "centre")
     return (
       <div className="grid gap-4 sm:grid-cols-2">
-        {numberField("difficulty", preset.difficulty, 1, 5, (value) =>
-          onChange({ ...preset, difficulty: Math.max(1, Math.min(5, value)) as 1 | 2 | 3 | 4 | 5 }),
+        {numberField("difficulty", settings.difficulty, 1, 5, (value) =>
+          onChange({
+            ...settings,
+            difficulty: Math.max(1, Math.min(5, value)) as 1 | 2 | 3 | 4 | 5,
+          }),
         )}
         <PoolCheck
           label="delayed rival dots"
-          checked={preset.delayedRivals}
-          onChange={(delayedRivals) => onChange({ ...preset, delayedRivals })}
+          checked={settings.delayedRivals}
+          onChange={(delayedRivals) => onChange({ ...settings, delayedRivals })}
         />
       </div>
     );
-  if (preset.game === "twin")
+  if (settings.game === "twin")
     return (
       <div>
-        {numberField("starting hand", preset.handSize, 3, 20, (handSize) =>
-          onChange({ ...preset, handSize }),
+        {numberField("starting hand", settings.handSize, 3, 20, (handSize) =>
+          onChange({ ...settings, handSize }),
         )}
       </div>
     );
   return (
     <div className="grid gap-4 sm:grid-cols-2">
-      {numberField("seconds to draw", preset.drawSeconds, 15, 90, (drawSeconds) =>
-        onChange({ ...preset, drawSeconds }),
+      {numberField("seconds to draw", settings.drawSeconds, 15, 90, (drawSeconds) =>
+        onChange({ ...settings, drawSeconds }),
       )}
-      {numberField("rounds", preset.roundTotal, 1, 12, (roundTotal) =>
-        onChange({ ...preset, roundTotal }),
+      {numberField("rounds", settings.roundTotal, 1, 12, (roundTotal) =>
+        onChange({ ...settings, roundTotal }),
       )}
     </div>
   );
@@ -237,7 +256,9 @@ export function GamePoolsPanel({
       if (!response.ok) throw new Error(data.error || "Failed to load game entrances");
       const next = data.entrances ?? [];
       setEntrances(next);
-      setDrafts(Object.fromEntries(next.map((entrance) => [entrance.id, entrance])));
+      setDrafts(
+        Object.fromEntries(next.map((entrance) => [entrance.id, editableEntrance(entrance)])),
+      );
     } catch (error) {
       onError(error instanceof Error ? error.message : "Failed to load game entrances");
     } finally {
@@ -248,7 +269,7 @@ export function GamePoolsPanel({
     void refresh();
   }, [refresh]);
 
-  const createEntrance = async (bundle: GamePoolPresetBundle, actionScope: string) => {
+  const createEntrance = async (bundle: GamePoolSettingsBundle, actionScope: string) => {
     setLoading(true);
     onError("");
     try {
@@ -261,7 +282,7 @@ export function GamePoolsPanel({
         body: JSON.stringify({
           game: bundle.game,
           label: bundle.label,
-          preset: bundle.preset,
+          gameSettings: bundle.gameSettings,
           targetSize: bundle.targetSize,
           autoJoin: bundle.admission.autoJoin,
           allowRoomChoice: bundle.admission.allowRoomChoice,
@@ -285,14 +306,14 @@ export function GamePoolsPanel({
 
   const create = () =>
     createEntrance(
-      recommendedGamePoolPresetBundle(game, label.trim() || GAME_POOL_DEFAULTS[game].label),
+      recommendedGamePoolSettingsBundle(game, label.trim() || GAME_POOL_DEFAULTS[game].label),
       "manual",
     );
 
-  const createFromBundle = (bundle: GamePoolPresetBundle) =>
+  const createFromBundle = (bundle: GamePoolSettingsBundle) =>
     createEntrance(bundle, `bundle:${bundle.game}:${bundle.label}`);
 
-  const applyBundle = (id: string, bundle: GamePoolPresetBundle) => {
+  const applyBundle = (id: string, bundle: GamePoolSettingsBundle) => {
     setDrafts((current) => {
       const draft = current[id];
       if (!draft || draft.game !== bundle.game) return current;
@@ -306,7 +327,7 @@ export function GamePoolsPanel({
           allowRoomChoice: bundle.admission.allowRoomChoice,
           allowNewRooms: bundle.admission.allowNewRooms,
           nameVisibility: bundle.admission.nameVisibility,
-          preset: bundle.preset,
+          gameSettings: bundle.gameSettings,
         },
       };
     });
@@ -359,7 +380,7 @@ export function GamePoolsPanel({
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           label: draft.label,
-          preset: draft.preset,
+          gameSettings: draft.gameSettings,
           targetSize: draft.targetSize,
           autoJoin: draft.autoJoin,
           allowRoomChoice: draft.allowRoomChoice,
@@ -369,7 +390,7 @@ export function GamePoolsPanel({
       });
       const data = (await response.json().catch(() => ({}))) as { error?: string };
       if (!response.ok) throw new Error(data.error || "Failed to save game entrance");
-      onStatus("Game entrance saved. Active rooms keep their current preset.");
+      onStatus("Settings saved. Existing rooms keep their settings; the next room uses these.");
       await refresh();
     } catch (error) {
       onError(error instanceof Error ? error.message : "Failed to save game entrance");
@@ -586,6 +607,11 @@ export function GamePoolsPanel({
                         )}
                       </div>
                     ) : null}
+                    <p className="font-mono text-xs leading-relaxed theme-muted">
+                      {run
+                        ? "These are tonight’s locked settings. Saving changes the next room and future joins; rooms that already exist keep their game settings."
+                        : "These defaults are copied into the next activation when you open it."}
+                    </p>
                     <div className="grid gap-4 sm:grid-cols-2">
                       <label className="font-mono text-xs theme-muted">
                         label
@@ -679,12 +705,15 @@ export function GamePoolsPanel({
                         />
                       </div>
                     </div>
-                    <PresetFields
-                      preset={draft.preset}
-                      onChange={(preset) =>
+                    <GameSettingsFields
+                      settings={draft.gameSettings.settings}
+                      onChange={(settings) =>
                         setDrafts((current) => ({
                           ...current,
-                          [entrance.id]: { ...draft, preset },
+                          [entrance.id]: {
+                            ...draft,
+                            gameSettings: gameSettingsDocument(entrance.game, settings),
+                          },
                         }))
                       }
                     />
@@ -694,7 +723,7 @@ export function GamePoolsPanel({
                       onClick={() => void save(entrance.id)}
                       className="min-h-11 rounded-full border theme-border px-5 font-mono text-xs"
                     >
-                      save defaults
+                      {run ? "save for the next room" : "save defaults"}
                     </button>
                     <GamePoolSettingsTransfer
                       entrance={entrance}

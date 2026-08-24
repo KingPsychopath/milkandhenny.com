@@ -11,6 +11,8 @@ import { RoomJoinControl } from "../shared/RoomJoinControl";
 import { readExpiringLocalValue, writeExpiringLocalValue } from "../shared/game-storage.client";
 import { gameNamespace } from "../shared/multiplayer-keys";
 import { useGamePreferences } from "../shared/useGamePreferences";
+import { GameSettingsTransfer } from "../shared/GameSettingsTransfer";
+import { gameSettingsDocument } from "../shared/game-settings";
 import { liarsBrowserKeys } from "./liars-keys";
 import {
   LIARS_MODE_COPY,
@@ -20,6 +22,7 @@ import {
   liarsImposterRange,
 } from "./liars-rules";
 import { createLiarsRoomFn } from "./liars-room.functions";
+import { LIARS_GAME_SETTINGS } from "./settings";
 import { liarsPlayerPath } from "./liars-invite";
 import { LineupBoard } from "./LiarsViews";
 import {
@@ -80,14 +83,14 @@ export function LiarsSetupApp({
 }) {
   const navigate = useNavigate();
   // Remembered on this device, so a group's setup is one tap next time rather than eight.
-  const { preferences, set } = useGamePreferences("liars", {
-    mode: "mafia",
-    roomMode: "same-room",
+  const { preferences, set, replace } = useGamePreferences("liars", {
+    mode: LIARS_GAME_SETTINGS.mode,
+    roomMode: LIARS_GAME_SETTINGS.roomMode,
     players: 9,
     imposters: 1,
-    wordBoard: true,
-    firstGame: false,
-    blindImposters: false,
+    wordBoard: LIARS_GAME_SETTINGS.wordBoard,
+    firstGame: LIARS_GAME_SETTINGS.firstGame,
+    blindImposters: LIARS_GAME_SETTINGS.blindImposters,
   });
   const mode = preferences.mode === "imposter" ? "imposter" : ("mafia" as LiarsMode);
   const roomMode = preferences.roomMode === "remote" ? "remote" : ("same-room" as LiarsRoomMode);
@@ -425,6 +428,17 @@ export function LiarsSetupApp({
                 ) : null}
 
                 <TorchToggle enabled={torch} onChange={setTorch} />
+                <GameSettingsTransfer
+                  document={gameSettingsDocument("liars", {
+                    game: "liars",
+                    mode,
+                    roomMode,
+                    firstGame,
+                    blindImposters,
+                    wordBoard,
+                  })}
+                  onApply={replace}
+                />
               </div>
             ) : null}
 

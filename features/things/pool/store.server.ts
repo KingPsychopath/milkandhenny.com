@@ -4,15 +4,14 @@ import { query, queryOne, transaction } from "@/lib/platform/postgres.server";
 import {
   GAME_POOL_ADMISSION_DEFAULTS,
   GAME_POOL_DEFAULTS,
-  gamePoolPreset,
   isGamePoolGame,
+  poolGameSettings,
 } from "./presets";
 import type {
   GamePoolEntrance,
   GamePoolDefaultLaunch,
   GamePoolGame,
   GamePoolNameVisibility,
-  GamePoolPreset,
   GamePoolRun,
 } from "./types";
 import { recordGamePoolAllocationContention } from "./operations.server";
@@ -98,7 +97,7 @@ function runFromRow(row: EntranceRow, game: GamePoolGame): GamePoolRun | null {
     id: row.run_id,
     entranceId: row.id,
     status,
-    preset: gamePoolPreset(row.run_preset, game),
+    gameSettings: poolGameSettings(row.run_preset, game),
     targetSize: row.run_target_size ?? row.target_size,
     autoJoin: row.run_auto_join ?? row.auto_join,
     allowRoomChoice: row.run_allow_room_choice ?? row.allow_room_choice,
@@ -118,7 +117,7 @@ function entranceFromRow(row: EntranceRow): GamePoolEntrance {
     label: row.label,
     game: row.game,
     isDefault: row.is_default,
-    preset: gamePoolPreset(row.preset, row.game),
+    gameSettings: poolGameSettings(row.preset, row.game),
     targetSize: row.target_size,
     autoJoin: row.auto_join,
     allowRoomChoice: row.allow_room_choice,
@@ -178,7 +177,7 @@ async function bootstrapRecommendedGamePool(game: GamePoolGame) {
         publicToken(),
         defaults.label,
         game,
-        JSON.stringify(defaults.preset),
+        JSON.stringify(defaults.gameSettings.settings),
         defaults.targetSize,
         GAME_POOL_ADMISSION_DEFAULTS.autoJoin,
         GAME_POOL_ADMISSION_DEFAULTS.allowRoomChoice,
@@ -195,7 +194,7 @@ async function bootstrapRecommendedGamePool(game: GamePoolGame) {
       [
         runId,
         entranceId,
-        JSON.stringify(defaults.preset),
+        JSON.stringify(defaults.gameSettings.settings),
         defaults.targetSize,
         GAME_POOL_ADMISSION_DEFAULTS.autoJoin,
         GAME_POOL_ADMISSION_DEFAULTS.allowRoomChoice,
@@ -242,7 +241,7 @@ export async function createGamePoolEntrance(input: {
   game: GamePoolGame;
   label?: string;
   isDefault?: boolean;
-  preset?: unknown;
+  gameSettings?: unknown;
   targetSize?: number;
   autoJoin?: boolean;
   allowRoomChoice?: boolean;
@@ -298,7 +297,7 @@ export async function createGamePoolEntrance(input: {
         input.label?.trim().slice(0, 80) || defaults.label,
         input.game,
         isDefault,
-        JSON.stringify(gamePoolPreset(input.preset, input.game)),
+        JSON.stringify(poolGameSettings(input.gameSettings, input.game).settings),
         targetSize,
         input.autoJoin ?? GAME_POOL_ADMISSION_DEFAULTS.autoJoin,
         input.allowRoomChoice ?? GAME_POOL_ADMISSION_DEFAULTS.allowRoomChoice,
@@ -326,7 +325,7 @@ export async function updateGamePoolEntrance(
   input: {
     label?: string;
     isDefault?: boolean;
-    preset?: unknown;
+    gameSettings?: unknown;
     targetSize?: number;
     autoJoin?: boolean;
     allowRoomChoice?: boolean;
@@ -342,11 +341,15 @@ export async function updateGamePoolEntrance(
     throw new Error("Close the current game night before you change its player link");
   const capacity = GAME_POOL_DEFAULTS[current.game].capacity;
   const label = input.label?.trim().slice(0, 80) || current.label;
-  const preset = gamePoolPreset(input.preset ?? current.preset, current.game);
+  const gameSettings = poolGameSettings(input.gameSettings ?? current.gameSettings, current.game);
   const targetSize = Math.max(
     2,
     Math.min(capacity, Math.floor(input.targetSize ?? current.targetSize)),
   );
+  const autoJoin = input.autoJoin ?? current.autoJoin;
+  const allowRoomChoice = input.allowRoomChoice ?? current.allowRoomChoice;
+  const allowNewRooms = input.allowNewRooms ?? current.allowNewRooms;
+  const nameVisibility = input.nameVisibility ?? current.nameVisibility;
   await transaction(async (client) => {
     await client.query("select pg_advisory_xact_lock(hashtext($1))", [
       `game-pool-default:${current.game}`,
@@ -360,6 +363,17 @@ export async function updateGamePoolEntrance(
     ]);
     const row = locked.rows[0];
     if (!row) return;
+    const activeRun = await client.query<{ id: string }>(
+      `select id from game_pool_runs
+       where entrance_id = $1 and status in ('open', 'paused')
+       order by opened_at desc limit 1`,
+      [id],
+    );
+    const activeRunId = activeRun.rows[0]?.id;
+    if (activeRunId)
+      await client.query("select pg_advisory_xact_lock(hashtext($1))", [
+        `game-pool:${activeRunId}`,
+      ]);
     const willRetire = input.retire === true || (input.retire !== false && row.retired_at !== null);
     const isDefault = willRetire ? false : (input.isDefault ?? row.is_default);
     if (isDefault)
@@ -391,17 +405,38 @@ export async function updateGamePoolEntrance(
         id,
         label,
         isDefault,
-        JSON.stringify(preset),
+        JSON.stringify(gameSettings.settings),
         targetSize,
-        input.autoJoin ?? current.autoJoin,
-        input.allowRoomChoice ?? current.allowRoomChoice,
-        input.allowNewRooms ?? current.allowNewRooms,
-        input.nameVisibility ?? current.nameVisibility,
+        autoJoin,
+        allowRoomChoice,
+        allowNewRooms,
+        nameVisibility,
         input.rotateToken === true,
         publicToken(),
         input.retire ?? null,
       ],
     );
+    if (activeRunId)
+      await client.query(
+        `update game_pool_runs set
+          preset = $2::jsonb,
+          target_size = $3,
+          auto_join = $4,
+          allow_room_choice = $5,
+          allow_new_rooms = $6,
+          name_visibility = $7,
+          updated_at = now()
+        where id = $1 and status in ('open', 'paused')`,
+        [
+          activeRunId,
+          JSON.stringify(gameSettings.settings),
+          targetSize,
+          autoJoin,
+          allowRoomChoice,
+          allowNewRooms,
+          nameVisibility,
+        ],
+      );
   });
   return getGamePoolEntrance(id);
 }
@@ -415,7 +450,8 @@ export async function openGamePoolRun(
   const rawOperatorToken = operatorToken(entranceId, openingActionId);
   await transaction(async (client) => {
     const entrance = await client.query<{
-      preset: GamePoolPreset;
+      game: GamePoolGame;
+      preset: unknown;
       target_size: number;
       auto_join: boolean;
       allow_room_choice: boolean;
@@ -449,7 +485,7 @@ export async function openGamePoolRun(
       [
         runId,
         entranceId,
-        JSON.stringify(row.preset),
+        JSON.stringify(poolGameSettings(row.preset, row.game).settings),
         row.target_size,
         row.auto_join,
         row.allow_room_choice,

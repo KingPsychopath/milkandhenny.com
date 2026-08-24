@@ -26,6 +26,7 @@ import type {
 } from "./types";
 import { findGamePoolRunForClient } from "./membership.server";
 import { recordGamePoolAllocation } from "./operations.server";
+import { poolGameSettings } from "./presets";
 
 interface ActiveAssignmentRow {
   id: string;
@@ -207,9 +208,12 @@ export async function assignGamePoolRoom(input: {
         status: string;
         closes_at: Date | null;
         allow_new_rooms: boolean;
-      }>("select status, closes_at, allow_new_rooms from game_pool_runs where id = $1 for update", [
-        run.id,
-      ]);
+        preset: unknown;
+        target_size: number;
+      }>(
+        "select status, closes_at, allow_new_rooms, preset, target_size from game_pool_runs where id = $1 for update",
+        [run.id],
+      );
       const current = lockedRun.rows[0];
       if (
         !current ||
@@ -249,13 +253,13 @@ export async function assignGamePoolRoom(input: {
           ({ room_id, player_count }) =>
             room_id === requestedRoomId &&
             room_id !== excludedRoomId &&
-            player_count < run.targetSize,
+            player_count < current.target_size,
         );
         if (candidates.length === 0) throw new Error("That room is no longer available.");
       } else if (input.choice === "auto") {
         candidates = rooms.rows.filter(
           ({ room_id, player_count }) =>
-            room_id !== excludedRoomId && player_count < run.targetSize,
+            room_id !== excludedRoomId && player_count < current.target_size,
         );
       }
 
@@ -311,7 +315,11 @@ export async function assignGamePoolRoom(input: {
       if (input.choice === "new" && !current.allow_new_rooms)
         throw new Error("Starting another room is not available.");
       if (input.choice === "auto" || input.choice === "new") {
-        const created = await createPoolRoomAndJoin({ preset: run.preset, name, joinId: clientId });
+        const created = await createPoolRoomAndJoin({
+          gameSettings: poolGameSettings(current.preset, entrance.game),
+          name,
+          joinId: clientId,
+        });
         const capacity = gamePoolCapacity(entrance.game);
         await client.query(
           `insert into game_pool_rooms (run_id, room_id, player_count, capacity)

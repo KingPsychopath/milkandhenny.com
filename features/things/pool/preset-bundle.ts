@@ -1,24 +1,23 @@
 import {
+  gameSettingsDocument,
+  parseGameSettingsDocument,
+  type GameSettingsDocument,
+} from "../shared/game-settings";
+import {
   GAME_POOL_ADMISSION_DEFAULTS,
   GAME_POOL_ALLOCATION_STRATEGY,
   GAME_POOL_DEFAULTS,
-  gamePoolPreset,
   isGamePoolGame,
 } from "./presets";
-import type {
-  GamePoolEntrance,
-  GamePoolGame,
-  GamePoolNameVisibility,
-  GamePoolPreset,
-} from "./types";
+import type { GamePoolEntrance, GamePoolGame, GamePoolNameVisibility } from "./types";
 
-export const GAME_POOL_PRESET_BUNDLE_FORMAT = "milk-and-henny/game-pool-settings";
-export const GAME_POOL_PRESET_BUNDLE_VERSION = 1;
-export const GAME_POOL_PRESET_BUNDLE_MAX_BYTES = 64 * 1024;
+export const GAME_POOL_SETTINGS_BUNDLE_FORMAT = "milk-and-henny/game-pool-settings";
+export const GAME_POOL_SETTINGS_BUNDLE_VERSION = 1;
+export const GAME_POOL_SETTINGS_BUNDLE_MAX_BYTES = 64 * 1024;
 
-export interface GamePoolPresetBundle {
-  format: typeof GAME_POOL_PRESET_BUNDLE_FORMAT;
-  schemaVersion: typeof GAME_POOL_PRESET_BUNDLE_VERSION;
+export interface GamePoolSettingsBundle {
+  format: typeof GAME_POOL_SETTINGS_BUNDLE_FORMAT;
+  schemaVersion: typeof GAME_POOL_SETTINGS_BUNDLE_VERSION;
   game: GamePoolGame;
   label: string;
   targetSize: number;
@@ -31,7 +30,8 @@ export interface GamePoolPresetBundle {
     allowNewRooms: boolean;
     nameVisibility: GamePoolNameVisibility;
   };
-  preset: GamePoolPreset;
+  /** The same portable document accepted by the standalone game. */
+  gameSettings: GameSettingsDocument;
 }
 
 type PortableEntrance = Pick<
@@ -43,7 +43,7 @@ type PortableEntrance = Pick<
   | "allowRoomChoice"
   | "allowNewRooms"
   | "nameVisibility"
-  | "preset"
+  | "gameSettings"
 >;
 
 function object(value: unknown, message: string): Record<string, unknown> {
@@ -57,36 +57,27 @@ function requiredBoolean(record: Record<string, unknown>, key: string) {
   return value;
 }
 
-function validatePreset(value: unknown, game: GamePoolGame) {
-  const record = object(value, "The game preset is missing.");
-  if (record.game !== game) throw new Error("The preset does not match the selected game.");
-  const normalized = gamePoolPreset(record, game);
-  for (const [key, expected] of Object.entries(normalized))
-    if (record[key] !== expected) throw new Error(`The preset setting “${key}” is not valid.`);
-  return normalized;
-}
-
-export function recommendedGamePoolPresetBundle(
+export function recommendedGamePoolSettingsBundle(
   game: GamePoolGame,
   label = GAME_POOL_DEFAULTS[game].label,
-): GamePoolPresetBundle {
+): GamePoolSettingsBundle {
   const defaults = GAME_POOL_DEFAULTS[game];
   return {
-    format: GAME_POOL_PRESET_BUNDLE_FORMAT,
-    schemaVersion: GAME_POOL_PRESET_BUNDLE_VERSION,
+    format: GAME_POOL_SETTINGS_BUNDLE_FORMAT,
+    schemaVersion: GAME_POOL_SETTINGS_BUNDLE_VERSION,
     game,
     label,
     targetSize: defaults.targetSize,
     allocation: { strategy: GAME_POOL_ALLOCATION_STRATEGY },
     admission: { ...GAME_POOL_ADMISSION_DEFAULTS },
-    preset: { ...defaults.preset },
+    gameSettings: gameSettingsDocument(game, defaults.gameSettings.settings),
   };
 }
 
-export function gamePoolPresetBundle(entrance: PortableEntrance): GamePoolPresetBundle {
+export function gamePoolSettingsBundle(entrance: PortableEntrance): GamePoolSettingsBundle {
   return {
-    format: GAME_POOL_PRESET_BUNDLE_FORMAT,
-    schemaVersion: GAME_POOL_PRESET_BUNDLE_VERSION,
+    format: GAME_POOL_SETTINGS_BUNDLE_FORMAT,
+    schemaVersion: GAME_POOL_SETTINGS_BUNDLE_VERSION,
     game: entrance.game,
     label: entrance.label,
     targetSize: entrance.targetSize,
@@ -97,14 +88,14 @@ export function gamePoolPresetBundle(entrance: PortableEntrance): GamePoolPreset
       allowNewRooms: entrance.allowNewRooms,
       nameVisibility: entrance.nameVisibility,
     },
-    preset: entrance.preset,
+    gameSettings: parseGameSettingsDocument(entrance.gameSettings),
   };
 }
 
-export function parseGamePoolPresetBundle(input: unknown): GamePoolPresetBundle {
+export function parseGamePoolSettingsBundle(input: unknown): GamePoolSettingsBundle {
   let value = input;
   if (typeof input === "string") {
-    if (new TextEncoder().encode(input).byteLength > GAME_POOL_PRESET_BUNDLE_MAX_BYTES)
+    if (new TextEncoder().encode(input).byteLength > GAME_POOL_SETTINGS_BUNDLE_MAX_BYTES)
       throw new Error("The settings file is too large.");
     try {
       value = JSON.parse(input);
@@ -113,9 +104,9 @@ export function parseGamePoolPresetBundle(input: unknown): GamePoolPresetBundle 
     }
   }
   const record = object(value, "The settings bundle is not valid.");
-  if (record.format !== GAME_POOL_PRESET_BUNDLE_FORMAT)
+  if (record.format !== GAME_POOL_SETTINGS_BUNDLE_FORMAT)
     throw new Error("This is not a game-pool settings bundle.");
-  if (record.schemaVersion !== GAME_POOL_PRESET_BUNDLE_VERSION)
+  if (record.schemaVersion !== GAME_POOL_SETTINGS_BUNDLE_VERSION)
     throw new Error("This settings version is not supported.");
   if (!isGamePoolGame(record.game)) throw new Error("This bundle uses an unsupported game.");
   const game = record.game;
@@ -142,9 +133,11 @@ export function parseGamePoolPresetBundle(input: unknown): GamePoolPresetBundle 
     nameVisibility !== "counts"
   )
     throw new Error("Choose first names, initials, or counts for the room list.");
+  const gameSettings = parseGameSettingsDocument(record.gameSettings);
+  if (gameSettings.game !== game) throw new Error("The game settings do not match this pool.");
   return {
-    format: GAME_POOL_PRESET_BUNDLE_FORMAT,
-    schemaVersion: GAME_POOL_PRESET_BUNDLE_VERSION,
+    format: GAME_POOL_SETTINGS_BUNDLE_FORMAT,
+    schemaVersion: GAME_POOL_SETTINGS_BUNDLE_VERSION,
     game,
     label,
     targetSize,
@@ -155,15 +148,15 @@ export function parseGamePoolPresetBundle(input: unknown): GamePoolPresetBundle 
       allowNewRooms: requiredBoolean(admission, "allowNewRooms"),
       nameVisibility,
     },
-    preset: validatePreset(record.preset, game),
+    gameSettings,
   };
 }
 
-export function serializeGamePoolPresetBundle(bundle: GamePoolPresetBundle) {
-  return `${JSON.stringify(parseGamePoolPresetBundle(bundle), null, 2)}\n`;
+export function serializeGamePoolSettingsBundle(bundle: GamePoolSettingsBundle) {
+  return `${JSON.stringify(parseGamePoolSettingsBundle(bundle), null, 2)}\n`;
 }
 
-export function gamePoolPresetBundleFilename(bundle: GamePoolPresetBundle) {
+export function gamePoolSettingsBundleFilename(bundle: GamePoolSettingsBundle) {
   const label = bundle.label
     .normalize("NFKD")
     .replace(/[^a-z0-9]+/gi, "-")

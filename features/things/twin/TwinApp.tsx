@@ -11,8 +11,11 @@ import {
 import { RoomJoinControl } from "../shared/RoomJoinControl";
 import { writeExpiringLocalValue } from "../shared/game-storage.client";
 import { useGamePreferences } from "../shared/useGamePreferences";
+import { GameSettingsTransfer } from "../shared/GameSettingsTransfer";
+import { gameSettingsDocument } from "../shared/game-settings";
 import { useRememberedPlayerName } from "../shared/useRememberedPlayerName";
-import { TWIN_MAX_HAND, TWIN_MIN_HAND, TWIN_DEFAULT_HAND } from "./twin-deck";
+import { TWIN_MAX_HAND, TWIN_MIN_HAND } from "./twin-deck";
+import { TWIN_GAME_SETTINGS } from "./settings";
 import { twinBrowserKeys } from "./twin-keys";
 import { createTwinRoomFn } from "./twin-room.functions";
 import { primeTwinAudio } from "./twin-sound.client";
@@ -27,7 +30,9 @@ export function TwinApp({ defaultPool }: { defaultPool?: GamePoolDefaultLaunchTa
   const online = useNetworkAvailability();
   const [board, setBoard] = useState<"duel" | "solo" | null>(null);
   const { name, setName, remember } = useRememberedPlayerName(32);
-  const { preferences, set } = useGamePreferences("twin", { handSize: TWIN_DEFAULT_HAND });
+  const { preferences, set, replace } = useGamePreferences("twin", {
+    handSize: TWIN_GAME_SETTINGS.handSize,
+  });
   const [joinCode, setJoinCode] = useState("");
   const [creating, setCreating] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -224,6 +229,13 @@ export function TwinApp({ defaultPool }: { defaultPool?: GamePoolDefaultLaunchTa
                 The deck grows with the table — more people means more symbols on every card.
               </p>
             ) : null}
+            <GameSettingsTransfer
+              document={gameSettingsDocument("twin", {
+                game: "twin",
+                handSize: preferences.handSize,
+              })}
+              onApply={replace}
+            />
             {message ? (
               <p role="status" className="twin-message">
                 {message}

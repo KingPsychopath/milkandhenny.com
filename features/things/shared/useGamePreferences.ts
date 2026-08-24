@@ -109,6 +109,15 @@ export function useGamePreferences<T extends Preferences>(game: string, defaults
     }
   }, [key]);
 
+  const replace = useCallback(
+    (value: unknown) => {
+      const next = coerce(value, defaultsRef.current);
+      setPreferences(next);
+      persist(next);
+    },
+    [persist],
+  );
+
   useEffect(
     () => () => {
       if (writeTimer.current !== null) window.clearTimeout(writeTimer.current);
@@ -116,5 +125,5 @@ export function useGamePreferences<T extends Preferences>(game: string, defaults
     [],
   );
 
-  return { preferences, loaded, set, reset };
+  return { preferences, loaded, set, replace, reset };
 }

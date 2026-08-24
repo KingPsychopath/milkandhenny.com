@@ -49,7 +49,7 @@ export function createGamePoolForAdmin(value: unknown) {
     game: input.game,
     label: typeof input.label === "string" ? input.label : GAME_POOL_DEFAULTS[input.game].label,
     isDefault: optionalBoolean(input.isDefault),
-    preset: input.preset,
+    gameSettings: input.gameSettings,
     targetSize: optionalInteger(input.targetSize),
     autoJoin: optionalBoolean(input.autoJoin),
     allowRoomChoice: optionalBoolean(input.allowRoomChoice),
@@ -59,12 +59,12 @@ export function createGamePoolForAdmin(value: unknown) {
   });
 }
 
-export function updateGamePoolForAdmin(id: string, value: unknown) {
+export async function updateGamePoolForAdmin(id: string, value: unknown) {
   const input = record(value);
-  return updateGamePoolEntrance(id, {
+  const entrance = await updateGamePoolEntrance(id, {
     label: typeof input.label === "string" ? input.label : undefined,
     isDefault: optionalBoolean(input.isDefault),
-    preset: input.preset,
+    gameSettings: input.gameSettings,
     targetSize: optionalInteger(input.targetSize),
     autoJoin: optionalBoolean(input.autoJoin),
     allowRoomChoice: optionalBoolean(input.allowRoomChoice),
@@ -73,6 +73,9 @@ export function updateGamePoolForAdmin(id: string, value: unknown) {
     rotateToken: input.rotateToken === true,
     retire: typeof input.retire === "boolean" ? input.retire : undefined,
   });
+  if (entrance?.run)
+    await publishMultiplayerRoomWake("game-pool", entrance.run.id).catch(() => undefined);
+  return entrance;
 }
 
 export async function controlGamePoolForAdmin(id: string, value: unknown) {

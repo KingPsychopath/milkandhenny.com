@@ -36,12 +36,17 @@ vi.mock("@/features/things/pool/store.server", () => ({
     token: "play_test-token-with-enough-characters",
     label: "same brain",
     game: "same-brain",
-    preset: {
+    gameSettings: {
+      format: "milk-and-henny/game-settings",
+      schemaVersion: 1,
       game: "same-brain",
-      rounds: 8,
-      scoring: "embedding",
-      sayItAloud: true,
-      eliminateOddOne: false,
+      settings: {
+        game: "same-brain",
+        rounds: 8,
+        scoring: "embedding",
+        sayItAloud: true,
+        eliminateOddOne: false,
+      },
     },
     targetSize: 8,
     autoJoin: true,
@@ -55,12 +60,17 @@ vi.mock("@/features/things/pool/store.server", () => ({
       id: "gpr_test",
       entranceId: "gpe_test",
       status: "open",
-      preset: {
+      gameSettings: {
+        format: "milk-and-henny/game-settings",
+        schemaVersion: 1,
         game: "same-brain",
-        rounds: 8,
-        scoring: "embedding",
-        sayItAloud: true,
-        eliminateOddOne: false,
+        settings: {
+          game: "same-brain",
+          rounds: 8,
+          scoring: "embedding",
+          sayItAloud: true,
+          eliminateOddOne: false,
+        },
       },
       targetSize: 8,
       autoJoin: true,
@@ -93,7 +103,23 @@ describe("game-pool room invites", () => {
     fakes.redis.set.mockResolvedValue("OK");
     fakes.clientQuery.mockImplementation(async (sql: string) => {
       if (sql.includes("select status, closes_at"))
-        return { rows: [{ status: "open", closes_at: null, allow_new_rooms: true }] };
+        return {
+          rows: [
+            {
+              status: "open",
+              closes_at: null,
+              allow_new_rooms: true,
+              target_size: 8,
+              preset: {
+                game: "same-brain",
+                rounds: 8,
+                scoring: "embedding",
+                sayItAloud: true,
+                eliminateOddOne: false,
+              },
+            },
+          ],
+        };
       if (sql.includes("select * from game_pool_rooms"))
         return {
           rows: [

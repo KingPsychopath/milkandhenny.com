@@ -1,49 +1,13 @@
-export const GAME_POOL_GAMES = ["same-brain", "liars", "centre", "twin", "draw-country"] as const;
+import {
+  GAME_SETTINGS_GAMES,
+  type GameSettingsDocument,
+  type GameSettingsGame,
+} from "../shared/game-settings";
 
-export type GamePoolGame = (typeof GAME_POOL_GAMES)[number];
+export const GAME_POOL_GAMES = GAME_SETTINGS_GAMES;
+export type GamePoolGame = GameSettingsGame;
 export type GamePoolNameVisibility = "first-names" | "initials" | "counts";
 export type GamePoolRunStatus = "open" | "paused" | "closed";
-
-export interface SameBrainPoolPreset {
-  game: "same-brain";
-  rounds: number;
-  scoring: "embedding" | "exact";
-  sayItAloud: boolean;
-  eliminateOddOne: boolean;
-}
-
-export interface LiarsPoolPreset {
-  game: "liars";
-  mode: "mafia" | "imposter";
-  roomMode: "same-room" | "remote";
-  firstGame: boolean;
-  blindImposters: boolean;
-  wordBoard: boolean;
-}
-
-export interface CentrePoolPreset {
-  game: "centre";
-  difficulty: 1 | 2 | 3 | 4 | 5;
-  delayedRivals: boolean;
-}
-
-export interface TwinPoolPreset {
-  game: "twin";
-  handSize: number;
-}
-
-export interface DrawCountryPoolPreset {
-  game: "draw-country";
-  drawSeconds: number;
-  roundTotal: number;
-}
-
-export type GamePoolPreset =
-  | SameBrainPoolPreset
-  | LiarsPoolPreset
-  | CentrePoolPreset
-  | TwinPoolPreset
-  | DrawCountryPoolPreset;
 
 export interface GamePoolEntrance {
   id: string;
@@ -51,7 +15,7 @@ export interface GamePoolEntrance {
   label: string;
   game: GamePoolGame;
   isDefault: boolean;
-  preset: GamePoolPreset;
+  gameSettings: GameSettingsDocument;
   targetSize: number;
   autoJoin: boolean;
   allowRoomChoice: boolean;
@@ -78,7 +42,7 @@ export interface GamePoolRun {
   id: string;
   entranceId: string;
   status: GamePoolRunStatus;
-  preset: GamePoolPreset;
+  gameSettings: GameSettingsDocument;
   targetSize: number;
   autoJoin: boolean;
   allowRoomChoice: boolean;

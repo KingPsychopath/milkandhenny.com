@@ -1,59 +1,70 @@
 import { describe, expect, it } from "vitest";
-import { GAME_POOL_DEFAULTS, gamePoolPreset } from "@/features/things/pool/presets";
+import { GAME_POOL_DEFAULTS, poolGameSettings } from "@/features/things/pool/presets";
 import {
-  gamePoolPresetBundle,
-  parseGamePoolPresetBundle,
-  recommendedGamePoolPresetBundle,
-  serializeGamePoolPresetBundle,
+  gamePoolSettingsBundle,
+  parseGamePoolSettingsBundle,
+  recommendedGamePoolSettingsBundle,
+  serializeGamePoolSettingsBundle,
 } from "@/features/things/pool/preset-bundle";
+import {
+  parseEmbeddedGameSettingsDocument,
+  parseGameSettingsDocument,
+  serializeGameSettingsDocument,
+} from "@/features/things/shared/game-settings";
 import type { GamePoolEntrance } from "@/features/things/pool/types";
 
 describe("game-pool presets", () => {
   it("uses the low-friction public-room defaults", () => {
     expect(GAME_POOL_DEFAULTS["same-brain"]).toMatchObject({
       targetSize: 8,
-      preset: { rounds: 8, scoring: "embedding" },
+      gameSettings: { settings: { rounds: 8, scoring: "embedding" } },
     });
     expect(GAME_POOL_DEFAULTS.liars).toMatchObject({
       targetSize: 9,
-      preset: { mode: "mafia", roomMode: "same-room", firstGame: false },
+      gameSettings: {
+        settings: { mode: "mafia", roomMode: "same-room", firstGame: false },
+      },
     });
     expect(GAME_POOL_DEFAULTS.centre).toMatchObject({
       targetSize: 6,
-      preset: { difficulty: 3, delayedRivals: false },
+      gameSettings: { settings: { difficulty: 3, delayedRivals: false } },
     });
     expect(GAME_POOL_DEFAULTS.twin).toMatchObject({
       targetSize: 6,
-      preset: { handSize: 6 },
+      gameSettings: { settings: { handSize: 6 } },
     });
     expect(GAME_POOL_DEFAULTS["draw-country"]).toMatchObject({
       targetSize: 8,
-      preset: { drawSeconds: 30, roundTotal: 5 },
+      gameSettings: { settings: { drawSeconds: 30, roundTotal: 5 } },
     });
   });
 
-  it("uses a safe default when the game discriminator does not match", () => {
-    expect(gamePoolPreset({ game: "liars", rounds: 20 }, "same-brain")).toEqual(
-      GAME_POOL_DEFAULTS["same-brain"].preset,
+  it("rejects settings whose game discriminator does not match", () => {
+    expect(() => poolGameSettings({ game: "liars", rounds: 20 }, "same-brain")).toThrow(
+      "not Same Brain",
     );
   });
 
-  it("bounds numeric settings before they become room rules", () => {
-    expect(gamePoolPreset({ game: "centre", difficulty: 99 }, "centre")).toMatchObject({
-      difficulty: 5,
-    });
-    expect(gamePoolPreset({ game: "twin", handSize: -2 }, "twin")).toMatchObject({
-      handSize: 3,
-    });
-    expect(
-      gamePoolPreset({ game: "draw-country", drawSeconds: 5, roundTotal: 30 }, "draw-country"),
-    ).toMatchObject({ drawSeconds: 15, roundTotal: 12 });
+  it("rejects invalid native settings instead of silently changing shared JSON", () => {
+    const document = GAME_POOL_DEFAULTS.centre.gameSettings;
+    expect(() =>
+      parseGameSettingsDocument({
+        ...document,
+        settings: { game: "centre", difficulty: 99, delayedRivals: false },
+      }),
+    ).toThrow("between 1 and 5");
   });
 
   it("round-trips every recommended portable settings bundle", () => {
     for (const game of Object.keys(GAME_POOL_DEFAULTS)) {
-      const bundle = recommendedGamePoolPresetBundle(game as keyof typeof GAME_POOL_DEFAULTS);
-      expect(parseGamePoolPresetBundle(serializeGamePoolPresetBundle(bundle))).toEqual(bundle);
+      const bundle = recommendedGamePoolSettingsBundle(game as keyof typeof GAME_POOL_DEFAULTS);
+      expect(parseGamePoolSettingsBundle(serializeGamePoolSettingsBundle(bundle))).toEqual(bundle);
+      expect(parseGameSettingsDocument(serializeGameSettingsDocument(bundle.gameSettings))).toEqual(
+        bundle.gameSettings,
+      );
+      expect(parseEmbeddedGameSettingsDocument(serializeGamePoolSettingsBundle(bundle))).toEqual(
+        bundle.gameSettings,
+      );
       expect(bundle.admission).toEqual({
         autoJoin: true,
         allowRoomChoice: true,
@@ -70,7 +81,7 @@ describe("game-pool presets", () => {
       label: "Quick Centre",
       game: "centre",
       isDefault: false,
-      preset: GAME_POOL_DEFAULTS.centre.preset,
+      gameSettings: GAME_POOL_DEFAULTS.centre.gameSettings,
       targetSize: 6,
       autoJoin: true,
       allowRoomChoice: true,
@@ -81,21 +92,21 @@ describe("game-pool presets", () => {
       retiredAt: null,
       run: null,
     } satisfies GamePoolEntrance;
-    const value = serializeGamePoolPresetBundle(gamePoolPresetBundle(entrance));
+    const value = serializeGamePoolSettingsBundle(gamePoolSettingsBundle(entrance));
     expect(value).not.toContain("secret-id");
     expect(value).not.toContain("secret-player-token");
   });
 
   it("rejects unknown versions and mismatched game presets", () => {
-    const bundle = recommendedGamePoolPresetBundle("centre");
-    expect(() => parseGamePoolPresetBundle({ ...bundle, schemaVersion: 2 })).toThrow(
+    const bundle = recommendedGamePoolSettingsBundle("centre");
+    expect(() => parseGamePoolSettingsBundle({ ...bundle, schemaVersion: 2 })).toThrow(
       "version is not supported",
     );
     expect(() =>
-      parseGamePoolPresetBundle({
+      parseGamePoolSettingsBundle({
         ...bundle,
-        preset: GAME_POOL_DEFAULTS.liars.preset,
+        gameSettings: GAME_POOL_DEFAULTS.liars.gameSettings,
       }),
-    ).toThrow("does not match");
+    ).toThrow("do not match");
   });
 });

@@ -11,10 +11,13 @@ import { RoomJoinControl } from "../shared/RoomJoinControl";
 import { readExpiringLocalValue, writeExpiringLocalValue } from "../shared/game-storage.client";
 import { gameNamespace } from "../shared/multiplayer-keys";
 import { useGamePreferences } from "../shared/useGamePreferences";
+import { GameSettingsTransfer } from "../shared/GameSettingsTransfer";
+import { gameSettingsDocument } from "../shared/game-settings";
 import { sameBrainBrowserKeys } from "./same-brain-keys";
 import { createSameBrainRoomFn } from "./same-brain-room.functions";
 import { sameBrainPlayerPath } from "./same-brain-invite";
 import { SAME_BRAIN_PLAYER_LIMITS, SAME_BRAIN_ROUND_LIMITS } from "./same-brain-rules";
+import { SAME_BRAIN_GAME_SETTINGS } from "./settings";
 import { SoloSameBrain } from "./SoloSameBrain";
 import type { SameBrainScoring } from "./types";
 import { GamePoolDefaultLaunch } from "../pool/GamePoolDefaultLaunch";
@@ -66,11 +69,11 @@ export function SameBrainSetupApp({
 }) {
   const navigate = useNavigate();
   // Remembered on this device, so a group's setup is one tap next time rather than five.
-  const { preferences, set } = useGamePreferences("same-brain", {
-    rounds: 8,
-    scoring: "embedding",
-    sayItAloud: true,
-    eliminateOddOne: false,
+  const { preferences, set, replace } = useGamePreferences("same-brain", {
+    rounds: SAME_BRAIN_GAME_SETTINGS.rounds,
+    scoring: SAME_BRAIN_GAME_SETTINGS.scoring,
+    sayItAloud: SAME_BRAIN_GAME_SETTINGS.sayItAloud,
+    eliminateOddOne: SAME_BRAIN_GAME_SETTINGS.eliminateOddOne,
   });
   const scoring: SameBrainScoring = preferences.scoring === "exact" ? "exact" : "embedding";
   const rounds = Math.min(
@@ -251,6 +254,16 @@ export function SameBrainSetupApp({
                 <p className="mt-4 font-mono text-xs text-white/30">
                   All of these can still be changed in the lobby before anybody answers.
                 </p>
+                <GameSettingsTransfer
+                  document={gameSettingsDocument("same-brain", {
+                    game: "same-brain",
+                    rounds,
+                    scoring,
+                    sayItAloud: preferences.sayItAloud,
+                    eliminateOddOne: preferences.eliminateOddOne,
+                  })}
+                  onApply={replace}
+                />
               </div>
             ) : null}
 

@@ -1,13 +1,14 @@
 import { useId, useRef, useState } from "react";
 import {
-  GAME_POOL_PRESET_BUNDLE_MAX_BYTES,
-  gamePoolPresetBundle,
-  gamePoolPresetBundleFilename,
-  parseGamePoolPresetBundle,
-  recommendedGamePoolPresetBundle,
-  serializeGamePoolPresetBundle,
-  type GamePoolPresetBundle,
+  GAME_POOL_SETTINGS_BUNDLE_MAX_BYTES,
+  gamePoolSettingsBundle,
+  gamePoolSettingsBundleFilename,
+  parseGamePoolSettingsBundle,
+  recommendedGamePoolSettingsBundle,
+  serializeGamePoolSettingsBundle,
+  type GamePoolSettingsBundle,
 } from "@/features/things/pool/preset-bundle";
+import { parseGameSettingsDocument } from "@/features/things/shared/game-settings";
 import type { GamePoolEntrance } from "@/features/things/pool/types";
 
 export function GamePoolSettingsTransfer({
@@ -22,8 +23,8 @@ export function GamePoolSettingsTransfer({
   entrance: GamePoolEntrance;
   draft: GamePoolEntrance;
   disabled: boolean;
-  onApply: (bundle: GamePoolPresetBundle) => void;
-  onCreate: (bundle: GamePoolPresetBundle) => Promise<void>;
+  onApply: (bundle: GamePoolSettingsBundle) => void;
+  onCreate: (bundle: GamePoolSettingsBundle) => Promise<void>;
   onError: (message: string) => void;
   onStatus: (message: string) => void;
 }) {
@@ -31,10 +32,10 @@ export function GamePoolSettingsTransfer({
   const fileInput = useRef<HTMLInputElement>(null);
   const [open, setOpen] = useState(false);
   const [text, setText] = useState("");
-  const [parsed, setParsed] = useState<GamePoolPresetBundle | null>(null);
+  const [parsed, setParsed] = useState<GamePoolSettingsBundle | null>(null);
   const [parseError, setParseError] = useState<string | null>(null);
 
-  const currentBundle = () => parseGamePoolPresetBundle(gamePoolPresetBundle(draft));
+  const currentBundle = () => parseGamePoolSettingsBundle(gamePoolSettingsBundle(draft));
   const receive = (value: string) => {
     setText(value);
     if (!value.trim()) {
@@ -43,7 +44,14 @@ export function GamePoolSettingsTransfer({
       return;
     }
     try {
-      setParsed(parseGamePoolPresetBundle(value));
+      try {
+        setParsed(parseGamePoolSettingsBundle(value));
+      } catch {
+        const gameSettings = parseGameSettingsDocument(value);
+        if (gameSettings.game !== entrance.game)
+          throw new Error(`These settings are for ${gameSettings.game}, not ${entrance.game}.`);
+        setParsed({ ...currentBundle(), gameSettings });
+      }
       setParseError(null);
     } catch (error) {
       setParsed(null);
@@ -54,7 +62,7 @@ export function GamePoolSettingsTransfer({
   const copy = async () => {
     let value: string;
     try {
-      value = serializeGamePoolPresetBundle(currentBundle());
+      value = serializeGamePoolSettingsBundle(currentBundle());
     } catch (error) {
       onError(error instanceof Error ? error.message : "The settings could not be exported.");
       return;
@@ -83,11 +91,11 @@ export function GamePoolSettingsTransfer({
     try {
       const bundle = currentBundle();
       const url = URL.createObjectURL(
-        new Blob([serializeGamePoolPresetBundle(bundle)], { type: "application/json" }),
+        new Blob([serializeGamePoolSettingsBundle(bundle)], { type: "application/json" }),
       );
       const anchor = document.createElement("a");
       anchor.href = url;
-      anchor.download = gamePoolPresetBundleFilename(bundle);
+      anchor.download = gamePoolSettingsBundleFilename(bundle);
       document.body.append(anchor);
       anchor.click();
       anchor.remove();
@@ -101,7 +109,7 @@ export function GamePoolSettingsTransfer({
   const loadFile = async (file: File | undefined) => {
     if (!file) return;
     setOpen(true);
-    if (file.size > GAME_POOL_PRESET_BUNDLE_MAX_BYTES) {
+    if (file.size > GAME_POOL_SETTINGS_BUNDLE_MAX_BYTES) {
       receive("");
       setParseError("The settings file is too large.");
       return;
@@ -115,7 +123,7 @@ export function GamePoolSettingsTransfer({
   };
 
   const reset = () => {
-    onApply(recommendedGamePoolPresetBundle(entrance.game, draft.label));
+    onApply(recommendedGamePoolSettingsBundle(entrance.game, draft.label));
     onStatus("Recommended settings loaded into the form. Save when ready.");
   };
 
@@ -206,7 +214,7 @@ export function GamePoolSettingsTransfer({
             id={textareaId}
             value={text}
             rows={12}
-            maxLength={GAME_POOL_PRESET_BUNDLE_MAX_BYTES}
+            maxLength={GAME_POOL_SETTINGS_BUNDLE_MAX_BYTES}
             spellCheck={false}
             aria-invalid={Boolean(parseError) || undefined}
             aria-describedby={parseError ? `${textareaId}-error` : undefined}

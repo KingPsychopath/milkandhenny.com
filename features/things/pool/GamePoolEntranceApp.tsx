@@ -179,7 +179,7 @@ export function GamePoolEntranceApp({
           allowRoomChoice={view.run.allowRoomChoice}
           busy={busy}
           destinationRoomId={destinationRoomId}
-          game={view.entrance?.game ?? view.run.preset.game}
+          game={view.entrance?.game ?? view.run.gameSettings.game}
           joining={busy}
           live={socket.state === "connected"}
           onChooseRoom={(roomId) => void assign({ roomId })}
