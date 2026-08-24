@@ -36,6 +36,7 @@ function TicketRoute() {
       managerTicketId={data.managerTicketId}
       checkpointNames={data.checkpointNames}
       album={data.album}
+      score={data.score}
     />
   );
 }

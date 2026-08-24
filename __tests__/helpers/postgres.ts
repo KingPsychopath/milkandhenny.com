@@ -55,6 +55,27 @@ export async function applySchema(): Promise<void> {
   }
 
   await query(`
+    drop table if exists score_prize_finalizations cascade;
+    drop table if exists score_media_links cascade;
+    drop table if exists score_notifications cascade;
+    drop table if exists score_audit_events cascade;
+    drop table if exists score_staff_devices cascade;
+    drop table if exists score_staff_assignments cascade;
+    drop table if exists score_discovery_claims cascade;
+    drop table if exists score_discoveries cascade;
+    drop table if exists score_game_receipts cascade;
+    drop table if exists score_postings cascade;
+    drop table if exists score_transactions cascade;
+    drop table if exists score_projections cascade;
+    drop table if exists score_pools cascade;
+    drop table if exists score_team_memberships cascade;
+    drop table if exists score_teams cascade;
+    drop table if exists score_activities cascade;
+    drop table if exists event_scoring_settings cascade;
+    drop table if exists event_participant_merges cascade;
+    drop table if exists event_participants cascade;
+    drop table if exists event_person_identifiers cascade;
+    drop table if exists event_people cascade;
     drop table if exists game_pool_moderation_events cascade;
     drop table if exists game_pool_assignments cascade;
     drop table if exists game_pool_rooms cascade;

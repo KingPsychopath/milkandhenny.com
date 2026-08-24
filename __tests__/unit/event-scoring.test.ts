@@ -1,0 +1,119 @@
+import { describe, expect, it } from "vitest";
+
+import {
+  canAcceptScore,
+  consumePoolReservation,
+  convertRulePoints,
+  discoveryClaimPoints,
+  hasUnresolvedTie,
+  identityEvidenceStrength,
+  normalizeDiscoveryCode,
+  poolAvailable,
+  rankScores,
+  reconcileCommands,
+  reservePoolPoints,
+  type ScorePool,
+} from "@/features/event-scoring/types";
+import {
+  nextRetryDelayMs,
+  reconcileSnapshot,
+  shouldRetryScoreResponse,
+} from "@/features/event-scoring/client-sync";
+import { discoveryCredential } from "@/features/event-scoring/discoveries.server";
+
+describe("event scoring rules", () => {
+  it("keeps scoring off until an explicit live state", () => {
+    expect(canAcceptScore({ state: "off" }, "normal")).toBe(false);
+    expect(canAcceptScore({ state: "ready" }, "normal")).toBe(false);
+    expect(canAcceptScore({ state: "live" }, "normal")).toBe(true);
+    expect(canAcceptScore({ state: "frozen" }, "held-result")).toBe(true);
+    expect(canAcceptScore({ state: "closed" }, "normal")).toBe(false);
+  });
+
+  it("converts rule revisions without changing previous rule results", () => {
+    const rule = {
+      mode: "raw-normalized" as const,
+      pointsPerUnit: 2,
+      maximumPoints: 10,
+      repeat: "once" as const,
+      requiresCheckIn: false,
+    };
+    expect(convertRulePoints(rule, { rawScore: 4 })).toBe(8);
+    expect(convertRulePoints({ ...rule, maximumPoints: 5 }, { rawScore: 4 })).toBe(5);
+  });
+
+  it("assigns standard competition ranks while keeping deterministic order", () => {
+    const ranked = rankScores([
+      { participantId: "b", balance: 10, revision: 1, publicAlias: "bravo" },
+      { participantId: "a", balance: 10, revision: 1, publicAlias: "alpha" },
+      { participantId: "c", balance: 4, revision: 1, publicAlias: "charlie" },
+    ]);
+    expect(ranked.map((row) => [row.publicAlias, row.rank])).toEqual([
+      ["alpha", 1],
+      ["bravo", 1],
+      ["charlie", 3],
+    ]);
+    expect(hasUnresolvedTie(ranked, 1)).toBe(true);
+  });
+
+  it("does not overspend a point pool", () => {
+    const pool: ScorePool = { id: "pool", issued: 10, reserved: 0, spent: 2, held: 1 };
+    expect(poolAvailable(pool)).toBe(7);
+    const reserved = reservePoolPoints(pool, 7);
+    expect(reserved && poolAvailable(reserved)).toBe(0);
+    expect(reservePoolPoints(pool, 8)).toBeNull();
+    expect(consumePoolReservation(reserved!, 7)?.spent).toBe(9);
+  });
+
+  it("normalizes human discovery codes without collapsing characters", () => {
+    expect(normalizeDiscoveryCode("  three   words ")).toBe("THREE WORDS");
+    expect(normalizeDiscoveryCode("Ａ-7")).toBe("A-7");
+    expect(
+      discoveryClaimPoints(
+        {
+          pointMode: "diminishing",
+          tiers: [10, 5],
+          requiresCheckIn: false,
+          remainderAward: "discard",
+        },
+        2,
+        false,
+      ),
+    ).toBe(5);
+  });
+
+  it("keeps printed discovery credentials stable per replacement revision", () => {
+    const first = discoveryCredential({ discoveryId: "disc_1", method: "qr", revision: 1 });
+    expect(first).toBe(discoveryCredential({ discoveryId: "disc_1", method: "qr", revision: 1 }));
+    expect(first).not.toBe(
+      discoveryCredential({ discoveryId: "disc_1", method: "qr", revision: 2 }),
+    );
+    expect(first.startsWith("clue_")).toBe(true);
+  });
+
+  it("keeps weak identity signals out of automatic resolution", () => {
+    expect(identityEvidenceStrength("name")).toBe("weak");
+    expect(identityEvidenceStrength("verified-email")).toBe("strong");
+  });
+
+  it("reconciles by command id and never replaces a newer snapshot with an older one", () => {
+    const commands = [{ id: "a", state: "pending" as const, localSequence: 1 }];
+    expect(reconcileCommands(commands, new Map([["a", "accepted" as const]]))[0]?.state).toBe(
+      "accepted",
+    );
+    const current = {
+      eventSlug: "party",
+      participantId: "p",
+      balance: 9,
+      revision: 2,
+      synchronizedAt: "later",
+    };
+    expect(
+      reconcileSnapshot(current, { ...current, balance: 1, revision: 1, synchronizedAt: "older" })
+        .balance,
+    ).toBe(9);
+    expect(shouldRetryScoreResponse(400, 0)).toBe(false);
+    expect(shouldRetryScoreResponse(503, 0)).toBe(true);
+    expect(nextRetryDelayMs(2, 0)).toBe(1500);
+  });
+});

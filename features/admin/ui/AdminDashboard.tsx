@@ -8,6 +8,7 @@ import { SITE_BRAND } from "@/lib/shared/config";
 import { TokenSessionsPanel } from "./components/TokenSessionsPanel";
 import { ReportsPanel } from "./components/ReportsPanel";
 import { EventsPanel } from "./components/EventsPanel";
+import { EventScoringPanel } from "./components/EventScoringPanel";
 import { PitchesPanel } from "./components/PitchesPanel";
 import { GamePoolsPanel } from "./components/GamePoolsPanel";
 import { UploadAccessPanel } from "./components/UploadAccessPanel";
@@ -1089,6 +1090,13 @@ export function AdminDashboard({
             </p>
           </div>
           <EventsPanel
+            authFetch={authFetch}
+            onError={setErrorMessage}
+            onStatus={setStatusMessage}
+            ensureStepUpToken={ensureStepUpTokenResult}
+            withStepUpHeaders={withStepUpHeaders}
+          />
+          <EventScoringPanel
             authFetch={authFetch}
             onError={setErrorMessage}
             onStatus={setStatusMessage}

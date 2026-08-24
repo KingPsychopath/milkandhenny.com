@@ -19,6 +19,7 @@ import {
  */
 
 type EventRow = {
+  event_id: string;
   slug: string;
   title: string;
   tagline: string | null;
@@ -74,7 +75,7 @@ type TicketTypeRow = {
 };
 
 const EVENT_COLUMNS = `
-  slug, title, tagline, status, starts_at, ends_at, doors_at, last_entry_at, timezone,
+  event_id, slug, title, tagline, status, starts_at, ends_at, doors_at, last_entry_at, timezone,
   area, venue_name, address, door_code, three_word_hint, map_url, step_free_access,
   transport_note, description, lineup, dress_code, age_limit, house_rules, hero_image,
   hero_image_width, hero_image_height, hero_height, og_image, marketing_path, capacity,
@@ -107,6 +108,7 @@ function toTicketType(row: TicketTypeRow): TicketType {
 
 function toEvent(row: EventRow, ticketTypes: TicketType[]): EventRecord {
   return {
+    eventId: row.event_id,
     slug: row.slug,
     title: row.title,
     tagline: optional(row.tagline),
@@ -341,6 +343,30 @@ export async function deleteEvent(slug: string): Promise<void> {
   if (!isValidEventSlug(slug)) return;
   await query(`delete from events where slug = $1`, [slug]);
   log.info("events.delete", "Event deleted", { slug });
+}
+
+/** Move a route slug while preserving the immutable event row and all child links. */
+export async function renameEventSlug(oldSlug: string, newSlug: string): Promise<void> {
+  if (!isValidEventSlug(oldSlug) || !isValidEventSlug(newSlug)) {
+    throw new Error("Invalid event slug");
+  }
+  if (oldSlug === newSlug) return;
+  await transaction(async (client) => {
+    const existing = await client.query<{ event_id: string }>(
+      `select event_id from events where slug = $1 for update`,
+      [oldSlug],
+    );
+    if (existing.rows.length === 0) throw new Error("Event not found");
+    const clash = await client.query<{ event_id: string }>(
+      `select event_id from events where slug = $1`,
+      [newSlug],
+    );
+    if (clash.rows.length > 0) throw new Error("Event slug already exists");
+    await client.query(`update events set slug = $2, updated_at = now() where slug = $1`, [
+      oldSlug,
+      newSlug,
+    ]);
+  });
 }
 
 export async function eventHasTickets(slug: string): Promise<boolean> {

@@ -1024,7 +1024,7 @@ const MIGRATIONS: Migration[] = [
     `,
   },
   {
-    id: "0025_site_settings",
+    id: "0025_site_settings_v2",
     sql: `
       create table if not exists site_settings (
         singleton          boolean primary key default true check (singleton = true),
@@ -1364,6 +1364,528 @@ const MIGRATIONS: Migration[] = [
     sql: `
       alter table communication_contact_consent_events
         add column if not exists privacy_version text;
+    `,
+  },
+  {
+    id: "0034_event_scoring",
+    sql: `
+      -- Event scoring is deliberately relational. The ledger is immutable;
+      -- projections, pools and public aliases are rebuildable views of it.
+      create table if not exists event_people (
+        id              text primary key,
+        canonical_name  text,
+        created_at      timestamptz not null default now(),
+        updated_at      timestamptz not null default now()
+      );
+
+      create table if not exists event_person_identifiers (
+        id              text primary key,
+        person_id       text not null references event_people (id) on delete cascade,
+        kind            text not null check (kind in ('email', 'account', 'passkey')),
+        value_hash      text not null check (char_length(value_hash) = 64),
+        verified_at     timestamptz,
+        historical_until timestamptz,
+        created_at      timestamptz not null default now(),
+        unique (kind, value_hash)
+      );
+
+      create table if not exists event_participants (
+        id              text primary key,
+        event_slug      text not null references events (slug) on delete restrict,
+        person_id       text references event_people (id) on delete set null,
+        ticket_id       text unique references tickets (id) on delete restrict,
+        public_alias    text not null check (char_length(public_alias) between 1 and 80),
+        display_name    text,
+        status          text not null default 'active'
+                        check (status in ('active', 'refunded', 'void', 'disqualified', 'merged')),
+        checked_in_at   timestamptz,
+        created_at      timestamptz not null default now(),
+        updated_at      timestamptz not null default now()
+      );
+
+      create index if not exists event_participants_event_idx
+        on event_participants (event_slug, status, id);
+      create index if not exists event_participants_person_idx
+        on event_participants (person_id, event_slug);
+
+      create table if not exists event_scoring_settings (
+        event_slug                 text primary key references events (slug) on delete cascade,
+        state                      text not null default 'off'
+                                   check (state in ('off', 'ready', 'live', 'frozen', 'closed')),
+        leaderboard_visibility     text not null default 'hidden'
+                                   check (leaderboard_visibility in ('hidden', 'preview', 'public-live', 'public-final')),
+        scheduled_start            timestamptz,
+        scheduled_end              timestamptz,
+        allow_precheckin_online_points boolean not null default false,
+        public_names               text not null default 'generated'
+                                   check (public_names in ('generated', 'choice', 'canonical')),
+        public_ranking_policy      text not null default 'exclude-refunded'
+                                   check (public_ranking_policy in ('include', 'exclude-refunded', 'exclude-disqualified')),
+        photo_consent_policy       text not null default 'ask'
+                                   check (photo_consent_policy in ('ask', 'required', 'not-required')),
+        revision                   bigint not null default 1 check (revision >= 1),
+        updated_at                 timestamptz not null default now()
+      );
+
+      create table if not exists score_teams (
+        id              text primary key,
+        event_slug      text not null references events (slug) on delete restrict,
+        name            text not null check (char_length(name) between 1 and 120),
+        status          text not null default 'active'
+                        check (status in ('active', 'archived')),
+        created_at      timestamptz not null default now()
+      );
+
+      create table if not exists score_team_memberships (
+        id              text primary key,
+        event_slug      text not null references events (slug) on delete restrict,
+        team_id         text not null references score_teams (id) on delete restrict,
+        participant_id  text not null references event_participants (id) on delete restrict,
+        starts_at       timestamptz not null default now(),
+        ends_at         timestamptz,
+        created_at      timestamptz not null default now(),
+        check (ends_at is null or ends_at > starts_at)
+      );
+
+      create index if not exists score_team_memberships_lookup_idx
+        on score_team_memberships (event_slug, participant_id, starts_at desc);
+
+      create table if not exists score_activities (
+        id              text primary key,
+        event_slug      text not null references events (slug) on delete restrict,
+        name            text not null check (char_length(name) between 1 and 160),
+        template        text not null check (template in (
+          'winner', 'placement', 'participation', 'completion', 'team-result',
+          'audience-vote', 'scan-to-award', 'free-form', 'check-in', 'discovery'
+        )),
+        status          text not null default 'draft'
+                        check (status in ('draft', 'scheduled', 'live', 'paused', 'exhausted', 'ended', 'cancelled')),
+        rule            jsonb not null,
+        rule_revision   integer not null default 1 check (rule_revision >= 1),
+        starts_at       timestamptz,
+        ends_at         timestamptz,
+        created_by      text,
+        created_at      timestamptz not null default now(),
+        updated_at      timestamptz not null default now()
+      );
+
+      create index if not exists score_activities_event_idx
+        on score_activities (event_slug, status, starts_at, id);
+
+      create table if not exists score_pools (
+        id              text primary key,
+        event_slug      text not null references events (slug) on delete restrict,
+        activity_id     text references score_activities (id) on delete restrict,
+        owner_type      text not null check (owner_type in ('event', 'staff', 'station', 'activity')),
+        owner_id        text,
+        issued_points   integer not null default 0 check (issued_points >= 0),
+        reserved_points integer not null default 0 check (reserved_points >= 0),
+        spent_points    integer not null default 0 check (spent_points >= 0),
+        held_points     integer not null default 0 check (held_points >= 0),
+        created_at      timestamptz not null default now(),
+        updated_at      timestamptz not null default now(),
+        check (issued_points >= reserved_points + spent_points + held_points)
+      );
+
+      create unique index if not exists score_pools_activity_idx
+        on score_pools (activity_id) where activity_id is not null;
+      create index if not exists score_pools_owner_idx
+        on score_pools (event_slug, owner_type, owner_id);
+
+      create table if not exists score_transactions (
+        id              text primary key,
+        event_slug      text not null references events (slug) on delete restrict,
+        activity_id     text references score_activities (id) on delete restrict,
+        source_type     text not null check (source_type in ('manual', 'game', 'discovery', 'check-in', 'transfer', 'reversal', 'correction')),
+        source_id       text not null,
+        idempotency_key text not null,
+        status          text not null check (status in ('accepted', 'held', 'rejected', 'reversed')),
+        reason_code     text not null,
+        note            text,
+        rule_revision   integer,
+        actor_type      text not null check (actor_type in ('system', 'admin', 'staff', 'attendee')),
+        actor_id        text,
+        station_id      text,
+        device_id       text,
+        original_transaction_id text references score_transactions (id) on delete restrict,
+        metadata        jsonb not null default '{}'::jsonb,
+        created_at      timestamptz not null default now(),
+        unique (event_slug, idempotency_key)
+      );
+
+      create unique index if not exists score_transactions_source_idx
+        on score_transactions (event_slug, source_type, source_id)
+        where source_type in ('game', 'discovery', 'check-in');
+      create unique index if not exists score_reversals_original_idx
+        on score_transactions (original_transaction_id)
+        where source_type = 'reversal' and original_transaction_id is not null;
+      create index if not exists score_transactions_event_idx
+        on score_transactions (event_slug, created_at desc, id);
+      create index if not exists score_transactions_activity_idx
+        on score_transactions (activity_id, created_at desc);
+
+      create table if not exists score_postings (
+        id              text primary key,
+        transaction_id  text not null references score_transactions (id) on delete restrict,
+        event_slug      text not null references events (slug) on delete restrict,
+        participant_id  text not null references event_participants (id) on delete restrict,
+        team_id         text references score_teams (id) on delete restrict,
+        points          integer not null check (points <> 0),
+        created_at      timestamptz not null default now()
+      );
+
+      create index if not exists score_postings_participant_idx
+        on score_postings (participant_id, created_at, id);
+      create index if not exists score_postings_event_idx
+        on score_postings (event_slug, created_at, id);
+
+      create table if not exists score_projections (
+        participant_id  text primary key references event_participants (id) on delete restrict,
+        event_slug      text not null references events (slug) on delete restrict,
+        balance         integer not null default 0,
+        revision        bigint not null default 0 check (revision >= 0),
+        last_transaction_at timestamptz,
+        updated_at      timestamptz not null default now()
+      );
+
+      create index if not exists score_projections_event_idx
+        on score_projections (event_slug, balance desc, participant_id);
+
+      create table if not exists score_game_receipts (
+        id              text primary key,
+        event_slug      text not null references events (slug) on delete restrict,
+        activity_id     text not null references score_activities (id) on delete restrict,
+        game_kind       text not null,
+        game_instance_id text not null,
+        round_id        text,
+        status          text not null default 'pending'
+                        check (status in ('pending', 'processed', 'held', 'rejected', 'cancelled', 'corrected')),
+        participants    jsonb not null,
+        result          jsonb not null,
+        source_key      text not null,
+        current_transaction_id text references score_transactions (id) on delete restrict,
+        corrected_by    text,
+        created_at      timestamptz not null default now(),
+        processed_at    timestamptz,
+        unique (event_slug, source_key)
+      );
+
+      create table if not exists score_discoveries (
+        id              text primary key,
+        event_slug      text not null references events (slug) on delete restrict,
+        activity_id     text not null references score_activities (id) on delete restrict,
+        name            text not null check (char_length(name) between 1 and 160),
+        method          text not null check (method in ('qr', 'code', 'word', 'phrase', 'collected-clues')),
+        status          text not null default 'draft'
+                        check (status in ('draft', 'scheduled', 'live', 'paused', 'exhausted', 'ended', 'cancelled')),
+        token_hash      text unique,
+        code_hash       text unique,
+        rule            jsonb not null,
+        replacement_revision integer not null default 1,
+        created_at      timestamptz not null default now(),
+        updated_at      timestamptz not null default now()
+      );
+
+      create table if not exists score_discovery_claims (
+        id              text primary key,
+        discovery_id    text not null references score_discoveries (id) on delete restrict,
+        event_slug      text not null references events (slug) on delete restrict,
+        participant_id  text not null references event_participants (id) on delete restrict,
+        command_id      text not null,
+        state           text not null check (state in ('accepted', 'held', 'rejected')),
+        points          integer not null default 0 check (points >= 0),
+        clue_key        text,
+        created_at      timestamptz not null default now(),
+        unique (discovery_id, participant_id, clue_key)
+      );
+
+      create table if not exists score_staff_assignments (
+        id              text primary key,
+        event_slug      text not null references events (slug) on delete restrict,
+        label           text not null check (char_length(label) between 1 and 120),
+        assignment_type text not null check (assignment_type in ('personal', 'station')),
+        token_hash      text not null unique,
+        permissions     jsonb not null default '{}'::jsonb,
+        scope           jsonb not null default '{}'::jsonb,
+        status          text not null default 'active'
+                        check (status in ('active', 'paused', 'revoked', 'expired')),
+        person_id       text references event_people (id) on delete set null,
+        expires_at      timestamptz,
+        created_at      timestamptz not null default now(),
+        revoked_at      timestamptz
+      );
+
+      create table if not exists score_staff_devices (
+        assignment_id   text not null references score_staff_assignments (id) on delete cascade,
+        device_id       text not null,
+        last_seen_at    timestamptz not null default now(),
+        revoked_at      timestamptz,
+        primary key (assignment_id, device_id)
+      );
+
+      create table if not exists score_audit_events (
+        id              bigint generated always as identity primary key,
+        event_slug      text not null references events (slug) on delete restrict,
+        action          text not null,
+        actor_type      text not null,
+        actor_id        text,
+        assignment_id   text,
+        station_id      text,
+        device_id       text,
+        entity_type     text not null,
+        entity_id       text not null,
+        metadata        jsonb not null default '{}'::jsonb,
+        created_at      timestamptz not null default now()
+      );
+
+      create index if not exists score_audit_event_lookup_idx
+        on score_audit_events (event_slug, created_at desc, entity_type, entity_id);
+
+      create table if not exists score_notifications (
+        id              text primary key,
+        event_slug      text not null references events (slug) on delete restrict,
+        participant_id  text not null references event_participants (id) on delete restrict,
+        transaction_id  text not null references score_transactions (id) on delete restrict,
+        kind            text not null check (kind in ('positive', 'negative', 'held', 'reversal')),
+        points          integer not null,
+        delivered_at    timestamptz,
+        created_at      timestamptz not null default now(),
+        unique (participant_id, transaction_id)
+      );
+
+      create table if not exists score_media_links (
+        id              text primary key,
+        event_slug      text not null references events (slug) on delete restrict,
+        activity_id     text references score_activities (id) on delete restrict,
+        transaction_id  text references score_transactions (id) on delete restrict,
+        participant_id  text references event_participants (id) on delete restrict,
+        staff_actor_id  text,
+        storage_ref     text not null,
+        visibility      text not null check (visibility in ('event-album', 'admin-evidence', 'discard')),
+        consent_state   text not null check (consent_state in ('not-requested', 'requested', 'obtained', 'declined')),
+        expires_at      timestamptz,
+        deleted_at      timestamptz,
+        created_at      timestamptz not null default now()
+      );
+
+      create table if not exists score_prize_finalizations (
+        event_slug      text primary key references events (slug) on delete restrict,
+        status          text not null check (status in ('provisional', 'final')),
+        finalized_by    text not null,
+        reason          text,
+        resolved_ties   boolean not null default false,
+        created_at      timestamptz not null default now(),
+        updated_at      timestamptz not null default now()
+      );
+
+      -- Ticket issuance creates a participant placeholder in the same
+      -- database transaction. It never creates attendee identity or a cookie.
+      create or replace function event_scoring_ticket_participant() returns trigger
+      language plpgsql as $$
+      begin
+        insert into event_participants (id, event_slug, ticket_id, public_alias, display_name)
+        values (
+          'ep_' || substr(md5(new.id || clock_timestamp()::text), 1, 24),
+          new.event_slug,
+          new.id,
+          'guest-' || substr(md5(new.id), 1, 8),
+          new.holder_name
+        )
+        on conflict (ticket_id) do nothing;
+        return new;
+      end;
+      $$;
+
+      drop trigger if exists tickets_create_event_participant on tickets;
+      create trigger tickets_create_event_participant
+        after insert on tickets
+        for each row execute function event_scoring_ticket_participant();
+
+      insert into event_participants (id, event_slug, ticket_id, public_alias, display_name)
+      select
+        'ep_' || substr(md5(t.id || ':backfill'), 1, 24),
+        t.event_slug,
+        t.id,
+        'guest-' || substr(md5(t.id), 1, 8),
+        t.holder_name
+      from tickets t
+      where not exists (select 1 from event_participants p where p.ticket_id = t.id);
+    `,
+  },
+  {
+    id: "0035_event_identity_history",
+    sql: `
+      -- Slugs are route labels. event_id is the immutable identity used by
+      -- new identity and scoring workflows; the existing event-owned tables
+      -- retain their route FKs until their next focused schema revision.
+      alter table events add column if not exists event_id text;
+      update events
+         set event_id = 'evt_' || substr(md5(slug || ':identity'), 1, 24)
+       where event_id is null;
+      alter table events
+        alter column event_id set default ('evt_' || substr(md5(random()::text || clock_timestamp()::text), 1, 24)),
+        alter column event_id set not null;
+      create unique index if not exists events_event_id_idx on events (event_id);
+
+      create table if not exists event_participant_merges (
+        id                    text primary key,
+        event_slug            text not null references events (slug) on delete restrict,
+        source_participant_id text not null references event_participants (id) on delete restrict,
+        target_participant_id text not null references event_participants (id) on delete restrict,
+        actor_id              text not null,
+        evidence              jsonb not null,
+        reason                text not null,
+        created_at            timestamptz not null default now(),
+        reversed_at           timestamptz,
+        reversed_by           text,
+        reversal_reason       text,
+        check (source_participant_id <> target_participant_id)
+      );
+
+      create index if not exists event_participant_merges_source_idx
+        on event_participant_merges (source_participant_id, created_at desc);
+
+      create unique index if not exists score_discovery_claims_once_idx
+        on score_discovery_claims (discovery_id, participant_id)
+        where clue_key is null;
+
+      alter table score_discovery_claims
+        add column if not exists transaction_id text references score_transactions (id) on delete restrict;
+
+      -- All event-owned route FKs participate in one atomic slug move. This
+      -- keeps the public slug mutable without making it a durable identity.
+      alter table ticket_types drop constraint if exists ticket_types_event_slug_fkey;
+      alter table ticket_types add constraint ticket_types_event_slug_fkey
+        foreign key (event_slug) references events(slug) on update cascade on delete cascade;
+      alter table tickets drop constraint if exists tickets_event_slug_ticket_type_id_fkey;
+      alter table tickets add constraint tickets_event_slug_ticket_type_id_fkey
+        foreign key (event_slug, ticket_type_id) references ticket_types(event_slug, id) on update cascade on delete restrict;
+      alter table checkout_sessions drop constraint if exists checkout_sessions_event_slug_fkey;
+      alter table checkout_sessions add constraint checkout_sessions_event_slug_fkey
+        foreign key (event_slug) references events(slug) on update cascade on delete cascade;
+      alter table checkpoints drop constraint if exists checkpoints_event_slug_fkey;
+      alter table checkpoints add constraint checkpoints_event_slug_fkey
+        foreign key (event_slug) references events(slug) on update cascade on delete cascade;
+      alter table checkpoint_usage drop constraint if exists checkpoint_usage_event_slug_checkpoint_id_fkey;
+      alter table checkpoint_usage add constraint checkpoint_usage_event_slug_checkpoint_id_fkey
+        foreign key (event_slug, checkpoint_id) references checkpoints(event_slug, id) on update cascade on delete cascade;
+      alter table scanner_links drop constraint if exists scanner_links_event_slug_checkpoint_id_fkey;
+      alter table scanner_links add constraint scanner_links_event_slug_checkpoint_id_fkey
+        foreign key (event_slug, checkpoint_id) references checkpoints(event_slug, id) on update cascade on delete cascade;
+      alter table scanner_links drop constraint if exists scanner_links_event_slug_fkey;
+      alter table scanner_links add constraint scanner_links_event_slug_fkey
+        foreign key (event_slug) references events(slug) on update cascade on delete cascade;
+      alter table guest_requests drop constraint if exists guest_requests_event_slug_fkey;
+      alter table guest_requests add constraint guest_requests_event_slug_fkey
+        foreign key (event_slug) references events(slug) on update cascade on delete cascade;
+      alter table event_drops drop constraint if exists event_drops_event_slug_fkey;
+      alter table event_drops add constraint event_drops_event_slug_fkey
+        foreign key (event_slug) references events(slug) on update cascade on delete cascade;
+      alter table communication_messages drop constraint if exists communication_messages_event_slug_fkey;
+      alter table communication_messages add constraint communication_messages_event_slug_fkey
+        foreign key (event_slug) references events(slug) on update cascade on delete set null;
+      alter table communication_plans drop constraint if exists communication_plans_event_slug_fkey;
+      alter table communication_plans add constraint communication_plans_event_slug_fkey
+        foreign key (event_slug) references events(slug) on update cascade on delete cascade;
+      alter table surveys drop constraint if exists surveys_event_slug_fkey;
+      alter table surveys add constraint surveys_event_slug_fkey
+        foreign key (event_slug) references events(slug) on update cascade on delete set null;
+      alter table event_participants drop constraint if exists event_participants_event_slug_fkey;
+      alter table event_participants add constraint event_participants_event_slug_fkey
+        foreign key (event_slug) references events(slug) on update cascade on delete restrict;
+      alter table event_scoring_settings drop constraint if exists event_scoring_settings_event_slug_fkey;
+      alter table event_scoring_settings add constraint event_scoring_settings_event_slug_fkey
+        foreign key (event_slug) references events(slug) on update cascade on delete cascade;
+      alter table score_teams drop constraint if exists score_teams_event_slug_fkey;
+      alter table score_teams add constraint score_teams_event_slug_fkey
+        foreign key (event_slug) references events(slug) on update cascade on delete restrict;
+      alter table score_team_memberships drop constraint if exists score_team_memberships_event_slug_fkey;
+      alter table score_team_memberships add constraint score_team_memberships_event_slug_fkey
+        foreign key (event_slug) references events(slug) on update cascade on delete restrict;
+      alter table score_activities drop constraint if exists score_activities_event_slug_fkey;
+      alter table score_activities add constraint score_activities_event_slug_fkey
+        foreign key (event_slug) references events(slug) on update cascade on delete restrict;
+      alter table score_pools drop constraint if exists score_pools_event_slug_fkey;
+      alter table score_pools add constraint score_pools_event_slug_fkey
+        foreign key (event_slug) references events(slug) on update cascade on delete restrict;
+      alter table score_transactions drop constraint if exists score_transactions_event_slug_fkey;
+      alter table score_transactions add constraint score_transactions_event_slug_fkey
+        foreign key (event_slug) references events(slug) on update cascade on delete restrict;
+      alter table score_postings drop constraint if exists score_postings_event_slug_fkey;
+      alter table score_postings add constraint score_postings_event_slug_fkey
+        foreign key (event_slug) references events(slug) on update cascade on delete restrict;
+      alter table score_projections drop constraint if exists score_projections_event_slug_fkey;
+      alter table score_projections add constraint score_projections_event_slug_fkey
+        foreign key (event_slug) references events(slug) on update cascade on delete restrict;
+      alter table score_game_receipts drop constraint if exists score_game_receipts_event_slug_fkey;
+      alter table score_game_receipts add constraint score_game_receipts_event_slug_fkey
+        foreign key (event_slug) references events(slug) on update cascade on delete restrict;
+      alter table score_discoveries drop constraint if exists score_discoveries_event_slug_fkey;
+      alter table score_discoveries add constraint score_discoveries_event_slug_fkey
+        foreign key (event_slug) references events(slug) on update cascade on delete restrict;
+      alter table score_discovery_claims drop constraint if exists score_discovery_claims_event_slug_fkey;
+      alter table score_discovery_claims add constraint score_discovery_claims_event_slug_fkey
+        foreign key (event_slug) references events(slug) on update cascade on delete restrict;
+      alter table score_staff_assignments drop constraint if exists score_staff_assignments_event_slug_fkey;
+      alter table score_staff_assignments add constraint score_staff_assignments_event_slug_fkey
+        foreign key (event_slug) references events(slug) on update cascade on delete restrict;
+      alter table score_audit_events drop constraint if exists score_audit_events_event_slug_fkey;
+      alter table score_audit_events add constraint score_audit_events_event_slug_fkey
+        foreign key (event_slug) references events(slug) on update cascade on delete restrict;
+      alter table score_notifications drop constraint if exists score_notifications_event_slug_fkey;
+      alter table score_notifications add constraint score_notifications_event_slug_fkey
+        foreign key (event_slug) references events(slug) on update cascade on delete restrict;
+      alter table score_media_links drop constraint if exists score_media_links_event_slug_fkey;
+      alter table score_media_links add constraint score_media_links_event_slug_fkey
+        foreign key (event_slug) references events(slug) on update cascade on delete restrict;
+      alter table score_prize_finalizations drop constraint if exists score_prize_finalizations_event_slug_fkey;
+      alter table score_prize_finalizations add constraint score_prize_finalizations_event_slug_fkey
+        foreign key (event_slug) references events(slug) on update cascade on delete restrict;
+      alter table event_participant_merges drop constraint if exists event_participant_merges_event_slug_fkey;
+      alter table event_participant_merges add constraint event_participant_merges_event_slug_fkey
+        foreign key (event_slug) references events(slug) on update cascade on delete restrict;
+    `,
+  },
+  {
+    id: "0036_event_scoring_integrity",
+    sql: `
+      create unique index if not exists score_discovery_claims_command_idx
+        on score_discovery_claims (discovery_id, command_id);
+
+      create or replace function prevent_score_ledger_mutation() returns trigger
+      language plpgsql as $$
+      begin
+        if tg_table_name = 'score_transactions' then
+          if tg_op = 'UPDATE'
+             and old.status = 'held'
+             and new.status = 'accepted'
+             and (to_jsonb(old) - 'status') = (to_jsonb(new) - 'status') then
+            return new;
+          end if;
+        end if;
+        raise exception 'score ledger rows are immutable';
+      end;
+      $$;
+
+      drop trigger if exists score_transactions_immutable on score_transactions;
+      create trigger score_transactions_immutable
+        before update or delete on score_transactions
+        for each row execute function prevent_score_ledger_mutation();
+
+      drop trigger if exists score_postings_immutable on score_postings;
+      create trigger score_postings_immutable
+        before update or delete on score_postings
+        for each row execute function prevent_score_ledger_mutation();
+    `,
+  },
+  {
+    id: "0037_event_scoring_settlement",
+    sql: `
+      alter table score_game_receipts
+        add column if not exists current_transaction_id text references score_transactions (id) on delete restrict;
+      create unique index if not exists score_reversals_original_idx
+        on score_transactions (original_transaction_id)
+        where source_type = 'reversal' and original_transaction_id is not null;
     `,
   },
 ];

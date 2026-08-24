@@ -30,6 +30,8 @@ import {
 import { rememberTicketHolder } from "./holder-cookie.server";
 import { readManagedTicketOrders, rememberManagedTicketOrder } from "./order-cookie.server";
 import { resolveTicketOrderAccess } from "./order-access";
+import { openAttendeeTicket } from "@/features/event-scoring/session.server";
+import { personalScore } from "@/features/event-scoring/scoring.server";
 import { listCheckpoints } from "./checkpoints.server";
 import { resolveScannerLink } from "./scanner-links.server";
 import { isValidScannerToken } from "./checkpoint-types";
@@ -181,6 +183,7 @@ export type TicketPageResult =
       checkpointNames: string[];
       /** The shared album — the reason to come back to this page afterwards. */
       album: EventAlbumView;
+      score?: { points: number; rank: number };
     };
 
 export const getTicketPageFn = createServerFn({ method: "GET" })
@@ -219,6 +222,16 @@ export const getTicketPageFn = createServerFn({ method: "GET" })
       getEventAlbumView(event.slug),
       listCheckpoints(event.slug),
     ]);
+    try {
+      await openAttendeeTicket({ ticketId: ticket.id, eventSlug: event.slug, mode: "view-only" });
+    } catch {
+      // Admission tickets must remain readable when the optional scoring session store is down.
+    }
+    const scoreResult = await personalScore({
+      eventSlug: event.slug,
+      ticketId: ticket.id,
+      includeHistory: false,
+    });
 
     return {
       found: true,
@@ -249,6 +262,9 @@ export const getTicketPageFn = createServerFn({ method: "GET" })
       managerTicketId: access.managerTicketId,
       checkpointNames: checkpoints.map((checkpoint) => checkpoint.name),
       album,
+      score: scoreResult.ok
+        ? { points: scoreResult.value.participant.balance, rank: scoreResult.value.rank }
+        : undefined,
     };
   });
 

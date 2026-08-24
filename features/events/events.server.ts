@@ -7,7 +7,7 @@ import {
   PITCH_SHOWCASE_MARKDOWN_HREF,
   type PublicPitchDeck,
 } from "@/features/things/pitches/types";
-import { deleteEvent, getEvent, listEvents, putEvent } from "./store.server";
+import { deleteEvent, getEvent, listEvents, putEvent, renameEventSlug } from "./store.server";
 import {
   isEventHeroHeight,
   isEventStatus,
@@ -328,7 +328,10 @@ export async function createEvent(input: EventInput): Promise<EventOpResult<Even
 
   await putEvent(normalised.value);
   log.info("events.create", "Event created", { slug: normalised.value.slug });
-  return { ok: true, value: normalised.value };
+  const created = await getEvent(normalised.value.slug);
+  return created
+    ? { ok: true, value: created }
+    : { ok: false, status: 500, error: "Event could not be read after creation" };
 }
 
 export async function updateEvent(
@@ -341,7 +344,8 @@ export async function updateEvent(
   const normalised = normaliseEventInput(input, existing);
   if (!normalised.ok) return normalised;
 
-  // A slug change is a move: write the new record, then drop the old key.
+  // A slug change updates the route label in one transaction. The immutable
+  // event_id remains attached to every scoring and identity record.
   if (normalised.value.slug !== existing.slug) {
     const clash = await getEvent(normalised.value.slug);
     if (clash) {
@@ -351,17 +355,23 @@ export async function updateEvent(
         error: `An event with slug "${normalised.value.slug}" exists`,
       };
     }
+    await renameEventSlug(existing.slug, normalised.value.slug);
     await putEvent(normalised.value);
-    await deleteEvent(existing.slug);
     log.info("events.update", "Event slug changed", {
       from: existing.slug,
       to: normalised.value.slug,
     });
-    return { ok: true, value: normalised.value };
+    const updated = await getEvent(normalised.value.slug);
+    return updated
+      ? { ok: true, value: updated }
+      : { ok: false, status: 500, error: "Event could not be read after rename" };
   }
 
   await putEvent(normalised.value);
-  return { ok: true, value: normalised.value };
+  const updated = await getEvent(normalised.value.slug);
+  return updated
+    ? { ok: true, value: updated }
+    : { ok: false, status: 500, error: "Event could not be read after update" };
 }
 
 export async function removeEvent(slug: string): Promise<EventOpResult<void>> {

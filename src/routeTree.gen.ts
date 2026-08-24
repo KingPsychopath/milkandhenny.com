@@ -89,6 +89,7 @@ import { Route as ApiStripeWebhookRouteRouteImport } from './routes/api/stripe/w
 import { Route as ApiTransfersIdRouteRouteImport } from './routes/api/transfers/$id/route'
 import { Route as ApiUploadVerifyPinRouteRouteImport } from './routes/api/upload/verify-pin/route'
 import { Route as ApiWordsSlugRouteRouteImport } from './routes/api/words/$slug/route'
+import { Route as EventsSlugScoreRouteImport } from './routes/events/$slug/score'
 import { Route as EventsSlugBoughtRouteImport } from './routes/events/$slug_.bought'
 import { Route as PicsAlbumIndexRouteImport } from './routes/pics/$album/index'
 import { Route as PicsAlbumPhotoRouteImport } from './routes/pics/$album/$photo'
@@ -129,8 +130,11 @@ import { Route as ApiBestDressedCodesRevokeAllRouteRouteImport } from './routes/
 import { Route as ApiBestDressedVotingOpenRouteRouteImport } from './routes/api/best-dressed/voting/open/route'
 import { Route as ApiEmailEventsCloudflareRouteRouteImport } from './routes/api/email/events/cloudflare/route'
 import { Route as ApiEventsSlugIcsRouteRouteImport } from './routes/api/events/$slug/ics/route'
+import { Route as ApiEventsSlugScoreRouteRouteImport } from './routes/api/events/$slug/score/route'
 import { Route as ApiMarketingUnsubscribeTokenRouteRouteImport } from './routes/api/marketing/unsubscribe/$token/route'
 import { Route as ApiTicketsIdIcsRouteRouteImport } from './routes/api/tickets/$id/ics/route'
+import { Route as ApiTicketsIdScoreRouteRouteImport } from './routes/api/tickets/$id/score/route'
+import { Route as ApiTicketsIdSessionRouteRouteImport } from './routes/api/tickets/$id/session/route'
 import { Route as ApiTransfersIdEventsRouteRouteImport } from './routes/api/transfers/$id/events/route'
 import { Route as ApiUploadTransferFinalizeRouteRouteImport } from './routes/api/upload/transfer/finalize/route'
 import { Route as ApiUploadTransferPresignRouteRouteImport } from './routes/api/upload/transfer/presign/route'
@@ -139,6 +143,7 @@ import { Route as ApiUploadWordsPresignRouteRouteImport } from './routes/api/upl
 import { Route as ApiUploadWordsTargetsRouteRouteImport } from './routes/api/upload/words/targets/route'
 import { Route as ApiWordsSlugSharesRouteRouteImport } from './routes/api/words/$slug/shares/route'
 import { Route as ApiWordsShareVerifyRouteRouteImport } from './routes/api/words/share/verify/route'
+import { Route as EventsSlugDiscoveriesDiscoveryIdRouteImport } from './routes/events/$slug/discoveries/$discoveryId'
 import { Route as ThingsLiarsRoomIdPresentRouteImport } from './routes/things.liars_.$roomId_.present'
 import { Route as ThingsPitchesDeckIdEditRouteImport } from './routes/things.pitches_.$deckId_.edit'
 import { Route as ThingsPitchesPresentRoomIdRouteImport } from './routes/things.pitches_.present_.$roomId'
@@ -152,8 +157,11 @@ import { Route as ApiAdminEventsSlugDropRouteRouteImport } from './routes/api/ad
 import { Route as ApiAdminEventsSlugEmailRouteRouteImport } from './routes/api/admin/events/$slug/email/route'
 import { Route as ApiAdminEventsSlugGuestRequestsRouteRouteImport } from './routes/api/admin/events/$slug/guest-requests/route'
 import { Route as ApiAdminEventsSlugScannerLinksRouteRouteImport } from './routes/api/admin/events/$slug/scanner-links/route'
+import { Route as ApiAdminEventsSlugScoringRouteRouteImport } from './routes/api/admin/events/$slug/scoring/route'
 import { Route as ApiAdminEventsSlugTicketsRouteRouteImport } from './routes/api/admin/events/$slug/tickets/route'
 import { Route as ApiAdminTokensSessionsJtiRouteRouteImport } from './routes/api/admin/tokens/sessions/$jti/route'
+import { Route as ApiEventsSlugDiscoveriesDiscoveryIdRouteRouteImport } from './routes/api/events/$slug/discoveries/$discoveryId/route'
+import { Route as ApiTicketsIdScoreNotificationsRouteRouteImport } from './routes/api/tickets/$id/score/notifications/route'
 import { Route as ApiTransfersIdFilesFileIdRouteRouteImport } from './routes/api/transfers/$id/files/$fileId/route'
 import { Route as ApiUploadTransferAppendFinalizeRouteRouteImport } from './routes/api/upload/transfer/append/finalize/route'
 import { Route as ApiUploadTransferAppendPresignRouteRouteImport } from './routes/api/upload/transfer/append/presign/route'
@@ -163,6 +171,7 @@ import { Route as ApiAdminAlbumsSlugPhotosPhotoIdRouteRouteImport } from './rout
 import { Route as ApiAdminAlbumsSlugUploadFinalizeRouteRouteImport } from './routes/api/admin/albums/$slug/upload/finalize/route'
 import { Route as ApiAdminAlbumsSlugUploadPresignRouteRouteImport } from './routes/api/admin/albums/$slug/upload/presign/route'
 import { Route as ApiAlbumsSlugPhotosPhotoIdOriginalRouteRouteImport } from './routes/api/albums/$slug/photos/$photoId/original/route'
+import { Route as ApiEventsSlugDiscoveriesDiscoveryIdClaimRouteRouteImport } from './routes/api/events/$slug/discoveries/$discoveryId/claim/route'
 import { Route as ApiTransfersIdMediaFileIdVariantRouteRouteImport } from './routes/api/transfers/$id/media/$fileId/$variant/route'
 import { Route as ApiAdminAlbumsSlugPhotosPhotoIdMediaRouteRouteImport } from './routes/api/admin/albums/$slug/photos/$photoId/media/route'
 
@@ -581,6 +590,11 @@ const ApiWordsSlugRouteRoute = ApiWordsSlugRouteRouteImport.update({
   path: '/$slug',
   getParentRoute: () => ApiWordsRouteRoute,
 } as any)
+const EventsSlugScoreRoute = EventsSlugScoreRouteImport.update({
+  id: '/score',
+  path: '/score',
+  getParentRoute: () => EventsSlugRoute,
+} as any)
 const EventsSlugBoughtRoute = EventsSlugBoughtRouteImport.update({
   id: '/events/$slug_/bought',
   path: '/events/$slug/bought',
@@ -798,6 +812,11 @@ const ApiEventsSlugIcsRouteRoute = ApiEventsSlugIcsRouteRouteImport.update({
   path: '/api/events/$slug/ics',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiEventsSlugScoreRouteRoute = ApiEventsSlugScoreRouteRouteImport.update({
+  id: '/api/events/$slug/score',
+  path: '/api/events/$slug/score',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiMarketingUnsubscribeTokenRouteRoute =
   ApiMarketingUnsubscribeTokenRouteRouteImport.update({
     id: '/api/marketing/unsubscribe/$token',
@@ -809,6 +828,17 @@ const ApiTicketsIdIcsRouteRoute = ApiTicketsIdIcsRouteRouteImport.update({
   path: '/api/tickets/$id/ics',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiTicketsIdScoreRouteRoute = ApiTicketsIdScoreRouteRouteImport.update({
+  id: '/api/tickets/$id/score',
+  path: '/api/tickets/$id/score',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiTicketsIdSessionRouteRoute =
+  ApiTicketsIdSessionRouteRouteImport.update({
+    id: '/api/tickets/$id/session',
+    path: '/api/tickets/$id/session',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ApiTransfersIdEventsRouteRoute =
   ApiTransfersIdEventsRouteRouteImport.update({
     id: '/events',
@@ -855,6 +885,12 @@ const ApiWordsShareVerifyRouteRoute =
     id: '/share/verify',
     path: '/share/verify',
     getParentRoute: () => ApiWordsRouteRoute,
+  } as any)
+const EventsSlugDiscoveriesDiscoveryIdRoute =
+  EventsSlugDiscoveriesDiscoveryIdRouteImport.update({
+    id: '/discoveries/$discoveryId',
+    path: '/discoveries/$discoveryId',
+    getParentRoute: () => EventsSlugRoute,
   } as any)
 const ThingsLiarsRoomIdPresentRoute =
   ThingsLiarsRoomIdPresentRouteImport.update({
@@ -933,6 +969,12 @@ const ApiAdminEventsSlugScannerLinksRouteRoute =
     path: '/scanner-links',
     getParentRoute: () => ApiAdminEventsSlugRouteRoute,
   } as any)
+const ApiAdminEventsSlugScoringRouteRoute =
+  ApiAdminEventsSlugScoringRouteRouteImport.update({
+    id: '/scoring',
+    path: '/scoring',
+    getParentRoute: () => ApiAdminEventsSlugRouteRoute,
+  } as any)
 const ApiAdminEventsSlugTicketsRouteRoute =
   ApiAdminEventsSlugTicketsRouteRouteImport.update({
     id: '/tickets',
@@ -944,6 +986,18 @@ const ApiAdminTokensSessionsJtiRouteRoute =
     id: '/$jti',
     path: '/$jti',
     getParentRoute: () => ApiAdminTokensSessionsRouteRoute,
+  } as any)
+const ApiEventsSlugDiscoveriesDiscoveryIdRouteRoute =
+  ApiEventsSlugDiscoveriesDiscoveryIdRouteRouteImport.update({
+    id: '/api/events/$slug/discoveries/$discoveryId',
+    path: '/api/events/$slug/discoveries/$discoveryId',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ApiTicketsIdScoreNotificationsRouteRoute =
+  ApiTicketsIdScoreNotificationsRouteRouteImport.update({
+    id: '/notifications',
+    path: '/notifications',
+    getParentRoute: () => ApiTicketsIdScoreRouteRoute,
   } as any)
 const ApiTransfersIdFilesFileIdRouteRoute =
   ApiTransfersIdFilesFileIdRouteRouteImport.update({
@@ -999,6 +1053,12 @@ const ApiAlbumsSlugPhotosPhotoIdOriginalRouteRoute =
     path: '/api/albums/$slug/photos/$photoId/original',
     getParentRoute: () => rootRouteImport,
   } as any)
+const ApiEventsSlugDiscoveriesDiscoveryIdClaimRouteRoute =
+  ApiEventsSlugDiscoveriesDiscoveryIdClaimRouteRouteImport.update({
+    id: '/claim',
+    path: '/claim',
+    getParentRoute: () => ApiEventsSlugDiscoveriesDiscoveryIdRouteRoute,
+  } as any)
 const ApiTransfersIdMediaFileIdVariantRouteRoute =
   ApiTransfersIdMediaFileIdVariantRouteRouteImport.update({
     id: '/media/$fileId/$variant',
@@ -1036,7 +1096,7 @@ export interface FileRoutesByFullPath {
   '/admin/cli-auth': typeof AdminCliAuthRoute
   '/admin/editor': typeof AdminEditorRoute
   '/drop/$token': typeof DropTokenRoute
-  '/events/$slug': typeof EventsSlugRoute
+  '/events/$slug': typeof EventsSlugRouteWithChildren
   '/organize/$token': typeof OrganizeTokenRoute
   '/play/$token': typeof PlayTokenRoute
   '/scan/$token': typeof ScanTokenRoute
@@ -1093,6 +1153,7 @@ export interface FileRoutesByFullPath {
   '/api/transfers/$id': typeof ApiTransfersIdRouteRouteWithChildren
   '/api/upload/verify-pin': typeof ApiUploadVerifyPinRouteRoute
   '/api/words/$slug': typeof ApiWordsSlugRouteRouteWithChildren
+  '/events/$slug/score': typeof EventsSlugScoreRoute
   '/events/$slug/bought': typeof EventsSlugBoughtRoute
   '/pics/$album/$photo': typeof PicsAlbumPhotoRoute
   '/things/centre/$roomId': typeof ThingsCentreRoomIdRoute
@@ -1133,8 +1194,11 @@ export interface FileRoutesByFullPath {
   '/api/best-dressed/voting/open': typeof ApiBestDressedVotingOpenRouteRoute
   '/api/email/events/cloudflare': typeof ApiEmailEventsCloudflareRouteRoute
   '/api/events/$slug/ics': typeof ApiEventsSlugIcsRouteRoute
+  '/api/events/$slug/score': typeof ApiEventsSlugScoreRouteRoute
   '/api/marketing/unsubscribe/$token': typeof ApiMarketingUnsubscribeTokenRouteRoute
   '/api/tickets/$id/ics': typeof ApiTicketsIdIcsRouteRoute
+  '/api/tickets/$id/score': typeof ApiTicketsIdScoreRouteRouteWithChildren
+  '/api/tickets/$id/session': typeof ApiTicketsIdSessionRouteRoute
   '/api/transfers/$id/events': typeof ApiTransfersIdEventsRouteRoute
   '/api/upload/transfer/finalize': typeof ApiUploadTransferFinalizeRouteRoute
   '/api/upload/transfer/presign': typeof ApiUploadTransferPresignRouteRoute
@@ -1143,6 +1207,7 @@ export interface FileRoutesByFullPath {
   '/api/upload/words/targets': typeof ApiUploadWordsTargetsRouteRoute
   '/api/words/$slug/shares': typeof ApiWordsSlugSharesRouteRouteWithChildren
   '/api/words/share/verify': typeof ApiWordsShareVerifyRouteRoute
+  '/events/$slug/discoveries/$discoveryId': typeof EventsSlugDiscoveriesDiscoveryIdRoute
   '/things/liars/$roomId/present': typeof ThingsLiarsRoomIdPresentRoute
   '/things/pitches/$deckId/edit': typeof ThingsPitchesDeckIdEditRoute
   '/things/pitches/present/$roomId': typeof ThingsPitchesPresentRoomIdRoute
@@ -1156,8 +1221,11 @@ export interface FileRoutesByFullPath {
   '/api/admin/events/$slug/email': typeof ApiAdminEventsSlugEmailRouteRoute
   '/api/admin/events/$slug/guest-requests': typeof ApiAdminEventsSlugGuestRequestsRouteRoute
   '/api/admin/events/$slug/scanner-links': typeof ApiAdminEventsSlugScannerLinksRouteRoute
+  '/api/admin/events/$slug/scoring': typeof ApiAdminEventsSlugScoringRouteRoute
   '/api/admin/events/$slug/tickets': typeof ApiAdminEventsSlugTicketsRouteRoute
   '/api/admin/tokens/sessions/$jti': typeof ApiAdminTokensSessionsJtiRouteRoute
+  '/api/events/$slug/discoveries/$discoveryId': typeof ApiEventsSlugDiscoveriesDiscoveryIdRouteRouteWithChildren
+  '/api/tickets/$id/score/notifications': typeof ApiTicketsIdScoreNotificationsRouteRoute
   '/api/transfers/$id/files/$fileId': typeof ApiTransfersIdFilesFileIdRouteRoute
   '/api/upload/transfer/append/finalize': typeof ApiUploadTransferAppendFinalizeRouteRoute
   '/api/upload/transfer/append/presign': typeof ApiUploadTransferAppendPresignRouteRoute
@@ -1167,6 +1235,7 @@ export interface FileRoutesByFullPath {
   '/api/admin/albums/$slug/upload/finalize': typeof ApiAdminAlbumsSlugUploadFinalizeRouteRoute
   '/api/admin/albums/$slug/upload/presign': typeof ApiAdminAlbumsSlugUploadPresignRouteRoute
   '/api/albums/$slug/photos/$photoId/original': typeof ApiAlbumsSlugPhotosPhotoIdOriginalRouteRoute
+  '/api/events/$slug/discoveries/$discoveryId/claim': typeof ApiEventsSlugDiscoveriesDiscoveryIdClaimRouteRoute
   '/api/transfers/$id/media/$fileId/$variant': typeof ApiTransfersIdMediaFileIdVariantRouteRoute
   '/api/admin/albums/$slug/photos/$photoId/media': typeof ApiAdminAlbumsSlugPhotosPhotoIdMediaRouteRoute
 }
@@ -1194,7 +1263,7 @@ export interface FileRoutesByTo {
   '/admin/cli-auth': typeof AdminCliAuthRoute
   '/admin/editor': typeof AdminEditorRoute
   '/drop/$token': typeof DropTokenRoute
-  '/events/$slug': typeof EventsSlugRoute
+  '/events/$slug': typeof EventsSlugRouteWithChildren
   '/organize/$token': typeof OrganizeTokenRoute
   '/play/$token': typeof PlayTokenRoute
   '/scan/$token': typeof ScanTokenRoute
@@ -1251,6 +1320,7 @@ export interface FileRoutesByTo {
   '/api/transfers/$id': typeof ApiTransfersIdRouteRouteWithChildren
   '/api/upload/verify-pin': typeof ApiUploadVerifyPinRouteRoute
   '/api/words/$slug': typeof ApiWordsSlugRouteRouteWithChildren
+  '/events/$slug/score': typeof EventsSlugScoreRoute
   '/events/$slug/bought': typeof EventsSlugBoughtRoute
   '/pics/$album/$photo': typeof PicsAlbumPhotoRoute
   '/things/centre/$roomId': typeof ThingsCentreRoomIdRoute
@@ -1291,8 +1361,11 @@ export interface FileRoutesByTo {
   '/api/best-dressed/voting/open': typeof ApiBestDressedVotingOpenRouteRoute
   '/api/email/events/cloudflare': typeof ApiEmailEventsCloudflareRouteRoute
   '/api/events/$slug/ics': typeof ApiEventsSlugIcsRouteRoute
+  '/api/events/$slug/score': typeof ApiEventsSlugScoreRouteRoute
   '/api/marketing/unsubscribe/$token': typeof ApiMarketingUnsubscribeTokenRouteRoute
   '/api/tickets/$id/ics': typeof ApiTicketsIdIcsRouteRoute
+  '/api/tickets/$id/score': typeof ApiTicketsIdScoreRouteRouteWithChildren
+  '/api/tickets/$id/session': typeof ApiTicketsIdSessionRouteRoute
   '/api/transfers/$id/events': typeof ApiTransfersIdEventsRouteRoute
   '/api/upload/transfer/finalize': typeof ApiUploadTransferFinalizeRouteRoute
   '/api/upload/transfer/presign': typeof ApiUploadTransferPresignRouteRoute
@@ -1301,6 +1374,7 @@ export interface FileRoutesByTo {
   '/api/upload/words/targets': typeof ApiUploadWordsTargetsRouteRoute
   '/api/words/$slug/shares': typeof ApiWordsSlugSharesRouteRouteWithChildren
   '/api/words/share/verify': typeof ApiWordsShareVerifyRouteRoute
+  '/events/$slug/discoveries/$discoveryId': typeof EventsSlugDiscoveriesDiscoveryIdRoute
   '/things/liars/$roomId/present': typeof ThingsLiarsRoomIdPresentRoute
   '/things/pitches/$deckId/edit': typeof ThingsPitchesDeckIdEditRoute
   '/things/pitches/present/$roomId': typeof ThingsPitchesPresentRoomIdRoute
@@ -1314,8 +1388,11 @@ export interface FileRoutesByTo {
   '/api/admin/events/$slug/email': typeof ApiAdminEventsSlugEmailRouteRoute
   '/api/admin/events/$slug/guest-requests': typeof ApiAdminEventsSlugGuestRequestsRouteRoute
   '/api/admin/events/$slug/scanner-links': typeof ApiAdminEventsSlugScannerLinksRouteRoute
+  '/api/admin/events/$slug/scoring': typeof ApiAdminEventsSlugScoringRouteRoute
   '/api/admin/events/$slug/tickets': typeof ApiAdminEventsSlugTicketsRouteRoute
   '/api/admin/tokens/sessions/$jti': typeof ApiAdminTokensSessionsJtiRouteRoute
+  '/api/events/$slug/discoveries/$discoveryId': typeof ApiEventsSlugDiscoveriesDiscoveryIdRouteRouteWithChildren
+  '/api/tickets/$id/score/notifications': typeof ApiTicketsIdScoreNotificationsRouteRoute
   '/api/transfers/$id/files/$fileId': typeof ApiTransfersIdFilesFileIdRouteRoute
   '/api/upload/transfer/append/finalize': typeof ApiUploadTransferAppendFinalizeRouteRoute
   '/api/upload/transfer/append/presign': typeof ApiUploadTransferAppendPresignRouteRoute
@@ -1325,6 +1402,7 @@ export interface FileRoutesByTo {
   '/api/admin/albums/$slug/upload/finalize': typeof ApiAdminAlbumsSlugUploadFinalizeRouteRoute
   '/api/admin/albums/$slug/upload/presign': typeof ApiAdminAlbumsSlugUploadPresignRouteRoute
   '/api/albums/$slug/photos/$photoId/original': typeof ApiAlbumsSlugPhotosPhotoIdOriginalRouteRoute
+  '/api/events/$slug/discoveries/$discoveryId/claim': typeof ApiEventsSlugDiscoveriesDiscoveryIdClaimRouteRoute
   '/api/transfers/$id/media/$fileId/$variant': typeof ApiTransfersIdMediaFileIdVariantRouteRoute
   '/api/admin/albums/$slug/photos/$photoId/media': typeof ApiAdminAlbumsSlugPhotosPhotoIdMediaRouteRoute
 }
@@ -1353,7 +1431,7 @@ export interface FileRoutesById {
   '/admin/cli-auth': typeof AdminCliAuthRoute
   '/admin/editor': typeof AdminEditorRoute
   '/drop/$token': typeof DropTokenRoute
-  '/events/$slug': typeof EventsSlugRoute
+  '/events/$slug': typeof EventsSlugRouteWithChildren
   '/organize/$token': typeof OrganizeTokenRoute
   '/play/$token': typeof PlayTokenRoute
   '/scan/$token': typeof ScanTokenRoute
@@ -1410,6 +1488,7 @@ export interface FileRoutesById {
   '/api/transfers/$id': typeof ApiTransfersIdRouteRouteWithChildren
   '/api/upload/verify-pin': typeof ApiUploadVerifyPinRouteRoute
   '/api/words/$slug': typeof ApiWordsSlugRouteRouteWithChildren
+  '/events/$slug/score': typeof EventsSlugScoreRoute
   '/events/$slug_/bought': typeof EventsSlugBoughtRoute
   '/pics/$album/$photo': typeof PicsAlbumPhotoRoute
   '/things/centre_/$roomId': typeof ThingsCentreRoomIdRoute
@@ -1450,8 +1529,11 @@ export interface FileRoutesById {
   '/api/best-dressed/voting/open': typeof ApiBestDressedVotingOpenRouteRoute
   '/api/email/events/cloudflare': typeof ApiEmailEventsCloudflareRouteRoute
   '/api/events/$slug/ics': typeof ApiEventsSlugIcsRouteRoute
+  '/api/events/$slug/score': typeof ApiEventsSlugScoreRouteRoute
   '/api/marketing/unsubscribe/$token': typeof ApiMarketingUnsubscribeTokenRouteRoute
   '/api/tickets/$id/ics': typeof ApiTicketsIdIcsRouteRoute
+  '/api/tickets/$id/score': typeof ApiTicketsIdScoreRouteRouteWithChildren
+  '/api/tickets/$id/session': typeof ApiTicketsIdSessionRouteRoute
   '/api/transfers/$id/events': typeof ApiTransfersIdEventsRouteRoute
   '/api/upload/transfer/finalize': typeof ApiUploadTransferFinalizeRouteRoute
   '/api/upload/transfer/presign': typeof ApiUploadTransferPresignRouteRoute
@@ -1460,6 +1542,7 @@ export interface FileRoutesById {
   '/api/upload/words/targets': typeof ApiUploadWordsTargetsRouteRoute
   '/api/words/$slug/shares': typeof ApiWordsSlugSharesRouteRouteWithChildren
   '/api/words/share/verify': typeof ApiWordsShareVerifyRouteRoute
+  '/events/$slug/discoveries/$discoveryId': typeof EventsSlugDiscoveriesDiscoveryIdRoute
   '/things/liars_/$roomId_/present': typeof ThingsLiarsRoomIdPresentRoute
   '/things/pitches_/$deckId_/edit': typeof ThingsPitchesDeckIdEditRoute
   '/things/pitches_/present_/$roomId': typeof ThingsPitchesPresentRoomIdRoute
@@ -1473,8 +1556,11 @@ export interface FileRoutesById {
   '/api/admin/events/$slug/email': typeof ApiAdminEventsSlugEmailRouteRoute
   '/api/admin/events/$slug/guest-requests': typeof ApiAdminEventsSlugGuestRequestsRouteRoute
   '/api/admin/events/$slug/scanner-links': typeof ApiAdminEventsSlugScannerLinksRouteRoute
+  '/api/admin/events/$slug/scoring': typeof ApiAdminEventsSlugScoringRouteRoute
   '/api/admin/events/$slug/tickets': typeof ApiAdminEventsSlugTicketsRouteRoute
   '/api/admin/tokens/sessions/$jti': typeof ApiAdminTokensSessionsJtiRouteRoute
+  '/api/events/$slug/discoveries/$discoveryId': typeof ApiEventsSlugDiscoveriesDiscoveryIdRouteRouteWithChildren
+  '/api/tickets/$id/score/notifications': typeof ApiTicketsIdScoreNotificationsRouteRoute
   '/api/transfers/$id/files/$fileId': typeof ApiTransfersIdFilesFileIdRouteRoute
   '/api/upload/transfer/append/finalize': typeof ApiUploadTransferAppendFinalizeRouteRoute
   '/api/upload/transfer/append/presign': typeof ApiUploadTransferAppendPresignRouteRoute
@@ -1484,6 +1570,7 @@ export interface FileRoutesById {
   '/api/admin/albums/$slug/upload/finalize': typeof ApiAdminAlbumsSlugUploadFinalizeRouteRoute
   '/api/admin/albums/$slug/upload/presign': typeof ApiAdminAlbumsSlugUploadPresignRouteRoute
   '/api/albums/$slug/photos/$photoId/original': typeof ApiAlbumsSlugPhotosPhotoIdOriginalRouteRoute
+  '/api/events/$slug/discoveries/$discoveryId/claim': typeof ApiEventsSlugDiscoveriesDiscoveryIdClaimRouteRoute
   '/api/transfers/$id/media/$fileId/$variant': typeof ApiTransfersIdMediaFileIdVariantRouteRoute
   '/api/admin/albums/$slug/photos/$photoId/media': typeof ApiAdminAlbumsSlugPhotosPhotoIdMediaRouteRoute
 }
@@ -1570,6 +1657,7 @@ export interface FileRouteTypes {
     | '/api/transfers/$id'
     | '/api/upload/verify-pin'
     | '/api/words/$slug'
+    | '/events/$slug/score'
     | '/events/$slug/bought'
     | '/pics/$album/$photo'
     | '/things/centre/$roomId'
@@ -1610,8 +1698,11 @@ export interface FileRouteTypes {
     | '/api/best-dressed/voting/open'
     | '/api/email/events/cloudflare'
     | '/api/events/$slug/ics'
+    | '/api/events/$slug/score'
     | '/api/marketing/unsubscribe/$token'
     | '/api/tickets/$id/ics'
+    | '/api/tickets/$id/score'
+    | '/api/tickets/$id/session'
     | '/api/transfers/$id/events'
     | '/api/upload/transfer/finalize'
     | '/api/upload/transfer/presign'
@@ -1620,6 +1711,7 @@ export interface FileRouteTypes {
     | '/api/upload/words/targets'
     | '/api/words/$slug/shares'
     | '/api/words/share/verify'
+    | '/events/$slug/discoveries/$discoveryId'
     | '/things/liars/$roomId/present'
     | '/things/pitches/$deckId/edit'
     | '/things/pitches/present/$roomId'
@@ -1633,8 +1725,11 @@ export interface FileRouteTypes {
     | '/api/admin/events/$slug/email'
     | '/api/admin/events/$slug/guest-requests'
     | '/api/admin/events/$slug/scanner-links'
+    | '/api/admin/events/$slug/scoring'
     | '/api/admin/events/$slug/tickets'
     | '/api/admin/tokens/sessions/$jti'
+    | '/api/events/$slug/discoveries/$discoveryId'
+    | '/api/tickets/$id/score/notifications'
     | '/api/transfers/$id/files/$fileId'
     | '/api/upload/transfer/append/finalize'
     | '/api/upload/transfer/append/presign'
@@ -1644,6 +1739,7 @@ export interface FileRouteTypes {
     | '/api/admin/albums/$slug/upload/finalize'
     | '/api/admin/albums/$slug/upload/presign'
     | '/api/albums/$slug/photos/$photoId/original'
+    | '/api/events/$slug/discoveries/$discoveryId/claim'
     | '/api/transfers/$id/media/$fileId/$variant'
     | '/api/admin/albums/$slug/photos/$photoId/media'
   fileRoutesByTo: FileRoutesByTo
@@ -1728,6 +1824,7 @@ export interface FileRouteTypes {
     | '/api/transfers/$id'
     | '/api/upload/verify-pin'
     | '/api/words/$slug'
+    | '/events/$slug/score'
     | '/events/$slug/bought'
     | '/pics/$album/$photo'
     | '/things/centre/$roomId'
@@ -1768,8 +1865,11 @@ export interface FileRouteTypes {
     | '/api/best-dressed/voting/open'
     | '/api/email/events/cloudflare'
     | '/api/events/$slug/ics'
+    | '/api/events/$slug/score'
     | '/api/marketing/unsubscribe/$token'
     | '/api/tickets/$id/ics'
+    | '/api/tickets/$id/score'
+    | '/api/tickets/$id/session'
     | '/api/transfers/$id/events'
     | '/api/upload/transfer/finalize'
     | '/api/upload/transfer/presign'
@@ -1778,6 +1878,7 @@ export interface FileRouteTypes {
     | '/api/upload/words/targets'
     | '/api/words/$slug/shares'
     | '/api/words/share/verify'
+    | '/events/$slug/discoveries/$discoveryId'
     | '/things/liars/$roomId/present'
     | '/things/pitches/$deckId/edit'
     | '/things/pitches/present/$roomId'
@@ -1791,8 +1892,11 @@ export interface FileRouteTypes {
     | '/api/admin/events/$slug/email'
     | '/api/admin/events/$slug/guest-requests'
     | '/api/admin/events/$slug/scanner-links'
+    | '/api/admin/events/$slug/scoring'
     | '/api/admin/events/$slug/tickets'
     | '/api/admin/tokens/sessions/$jti'
+    | '/api/events/$slug/discoveries/$discoveryId'
+    | '/api/tickets/$id/score/notifications'
     | '/api/transfers/$id/files/$fileId'
     | '/api/upload/transfer/append/finalize'
     | '/api/upload/transfer/append/presign'
@@ -1802,6 +1906,7 @@ export interface FileRouteTypes {
     | '/api/admin/albums/$slug/upload/finalize'
     | '/api/admin/albums/$slug/upload/presign'
     | '/api/albums/$slug/photos/$photoId/original'
+    | '/api/events/$slug/discoveries/$discoveryId/claim'
     | '/api/transfers/$id/media/$fileId/$variant'
     | '/api/admin/albums/$slug/photos/$photoId/media'
   id:
@@ -1886,6 +1991,7 @@ export interface FileRouteTypes {
     | '/api/transfers/$id'
     | '/api/upload/verify-pin'
     | '/api/words/$slug'
+    | '/events/$slug/score'
     | '/events/$slug_/bought'
     | '/pics/$album/$photo'
     | '/things/centre_/$roomId'
@@ -1926,8 +2032,11 @@ export interface FileRouteTypes {
     | '/api/best-dressed/voting/open'
     | '/api/email/events/cloudflare'
     | '/api/events/$slug/ics'
+    | '/api/events/$slug/score'
     | '/api/marketing/unsubscribe/$token'
     | '/api/tickets/$id/ics'
+    | '/api/tickets/$id/score'
+    | '/api/tickets/$id/session'
     | '/api/transfers/$id/events'
     | '/api/upload/transfer/finalize'
     | '/api/upload/transfer/presign'
@@ -1936,6 +2045,7 @@ export interface FileRouteTypes {
     | '/api/upload/words/targets'
     | '/api/words/$slug/shares'
     | '/api/words/share/verify'
+    | '/events/$slug/discoveries/$discoveryId'
     | '/things/liars_/$roomId_/present'
     | '/things/pitches_/$deckId_/edit'
     | '/things/pitches_/present_/$roomId'
@@ -1949,8 +2059,11 @@ export interface FileRouteTypes {
     | '/api/admin/events/$slug/email'
     | '/api/admin/events/$slug/guest-requests'
     | '/api/admin/events/$slug/scanner-links'
+    | '/api/admin/events/$slug/scoring'
     | '/api/admin/events/$slug/tickets'
     | '/api/admin/tokens/sessions/$jti'
+    | '/api/events/$slug/discoveries/$discoveryId'
+    | '/api/tickets/$id/score/notifications'
     | '/api/transfers/$id/files/$fileId'
     | '/api/upload/transfer/append/finalize'
     | '/api/upload/transfer/append/presign'
@@ -1960,6 +2073,7 @@ export interface FileRouteTypes {
     | '/api/admin/albums/$slug/upload/finalize'
     | '/api/admin/albums/$slug/upload/presign'
     | '/api/albums/$slug/photos/$photoId/original'
+    | '/api/events/$slug/discoveries/$discoveryId/claim'
     | '/api/transfers/$id/media/$fileId/$variant'
     | '/api/admin/albums/$slug/photos/$photoId/media'
   fileRoutesById: FileRoutesById
@@ -1988,7 +2102,7 @@ export interface RootRouteChildren {
   AdminCliAuthRoute: typeof AdminCliAuthRoute
   AdminEditorRoute: typeof AdminEditorRoute
   DropTokenRoute: typeof DropTokenRoute
-  EventsSlugRoute: typeof EventsSlugRoute
+  EventsSlugRoute: typeof EventsSlugRouteWithChildren
   OrganizeTokenRoute: typeof OrganizeTokenRoute
   PlayTokenRoute: typeof PlayTokenRoute
   ScanTokenRoute: typeof ScanTokenRoute
@@ -2043,13 +2157,17 @@ export interface RootRouteChildren {
   ApiAdminTokensSessionsRouteRoute: typeof ApiAdminTokensSessionsRouteRouteWithChildren
   ApiEmailEventsCloudflareRouteRoute: typeof ApiEmailEventsCloudflareRouteRoute
   ApiEventsSlugIcsRouteRoute: typeof ApiEventsSlugIcsRouteRoute
+  ApiEventsSlugScoreRouteRoute: typeof ApiEventsSlugScoreRouteRoute
   ApiMarketingUnsubscribeTokenRouteRoute: typeof ApiMarketingUnsubscribeTokenRouteRoute
   ApiTicketsIdIcsRouteRoute: typeof ApiTicketsIdIcsRouteRoute
+  ApiTicketsIdScoreRouteRoute: typeof ApiTicketsIdScoreRouteRouteWithChildren
+  ApiTicketsIdSessionRouteRoute: typeof ApiTicketsIdSessionRouteRoute
   ApiUploadTransferFinalizeRouteRoute: typeof ApiUploadTransferFinalizeRouteRoute
   ApiUploadTransferPresignRouteRoute: typeof ApiUploadTransferPresignRouteRoute
   ApiUploadWordsFinalizeRouteRoute: typeof ApiUploadWordsFinalizeRouteRoute
   ApiUploadWordsPresignRouteRoute: typeof ApiUploadWordsPresignRouteRoute
   ApiUploadWordsTargetsRouteRoute: typeof ApiUploadWordsTargetsRouteRoute
+  ApiEventsSlugDiscoveriesDiscoveryIdRouteRoute: typeof ApiEventsSlugDiscoveriesDiscoveryIdRouteRouteWithChildren
   ApiUploadTransferAppendFinalizeRouteRoute: typeof ApiUploadTransferAppendFinalizeRouteRoute
   ApiUploadTransferAppendPresignRouteRoute: typeof ApiUploadTransferAppendPresignRouteRoute
   ApiAlbumsSlugPhotosPhotoIdOriginalRouteRoute: typeof ApiAlbumsSlugPhotosPhotoIdOriginalRouteRoute
@@ -2617,6 +2735,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiWordsSlugRouteRouteImport
       parentRoute: typeof ApiWordsRouteRoute
     }
+    '/events/$slug/score': {
+      id: '/events/$slug/score'
+      path: '/score'
+      fullPath: '/events/$slug/score'
+      preLoaderRoute: typeof EventsSlugScoreRouteImport
+      parentRoute: typeof EventsSlugRoute
+    }
     '/events/$slug_/bought': {
       id: '/events/$slug_/bought'
       path: '/events/$slug/bought'
@@ -2897,6 +3022,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiEventsSlugIcsRouteRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/events/$slug/score': {
+      id: '/api/events/$slug/score'
+      path: '/api/events/$slug/score'
+      fullPath: '/api/events/$slug/score'
+      preLoaderRoute: typeof ApiEventsSlugScoreRouteRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/marketing/unsubscribe/$token': {
       id: '/api/marketing/unsubscribe/$token'
       path: '/api/marketing/unsubscribe/$token'
@@ -2909,6 +3041,20 @@ declare module '@tanstack/react-router' {
       path: '/api/tickets/$id/ics'
       fullPath: '/api/tickets/$id/ics'
       preLoaderRoute: typeof ApiTicketsIdIcsRouteRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/tickets/$id/score': {
+      id: '/api/tickets/$id/score'
+      path: '/api/tickets/$id/score'
+      fullPath: '/api/tickets/$id/score'
+      preLoaderRoute: typeof ApiTicketsIdScoreRouteRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/tickets/$id/session': {
+      id: '/api/tickets/$id/session'
+      path: '/api/tickets/$id/session'
+      fullPath: '/api/tickets/$id/session'
+      preLoaderRoute: typeof ApiTicketsIdSessionRouteRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/transfers/$id/events': {
@@ -2966,6 +3112,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/api/words/share/verify'
       preLoaderRoute: typeof ApiWordsShareVerifyRouteRouteImport
       parentRoute: typeof ApiWordsRouteRoute
+    }
+    '/events/$slug/discoveries/$discoveryId': {
+      id: '/events/$slug/discoveries/$discoveryId'
+      path: '/discoveries/$discoveryId'
+      fullPath: '/events/$slug/discoveries/$discoveryId'
+      preLoaderRoute: typeof EventsSlugDiscoveriesDiscoveryIdRouteImport
+      parentRoute: typeof EventsSlugRoute
     }
     '/things/liars_/$roomId_/present': {
       id: '/things/liars_/$roomId_/present'
@@ -3058,6 +3211,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiAdminEventsSlugScannerLinksRouteRouteImport
       parentRoute: typeof ApiAdminEventsSlugRouteRoute
     }
+    '/api/admin/events/$slug/scoring': {
+      id: '/api/admin/events/$slug/scoring'
+      path: '/scoring'
+      fullPath: '/api/admin/events/$slug/scoring'
+      preLoaderRoute: typeof ApiAdminEventsSlugScoringRouteRouteImport
+      parentRoute: typeof ApiAdminEventsSlugRouteRoute
+    }
     '/api/admin/events/$slug/tickets': {
       id: '/api/admin/events/$slug/tickets'
       path: '/tickets'
@@ -3071,6 +3231,20 @@ declare module '@tanstack/react-router' {
       fullPath: '/api/admin/tokens/sessions/$jti'
       preLoaderRoute: typeof ApiAdminTokensSessionsJtiRouteRouteImport
       parentRoute: typeof ApiAdminTokensSessionsRouteRoute
+    }
+    '/api/events/$slug/discoveries/$discoveryId': {
+      id: '/api/events/$slug/discoveries/$discoveryId'
+      path: '/api/events/$slug/discoveries/$discoveryId'
+      fullPath: '/api/events/$slug/discoveries/$discoveryId'
+      preLoaderRoute: typeof ApiEventsSlugDiscoveriesDiscoveryIdRouteRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/tickets/$id/score/notifications': {
+      id: '/api/tickets/$id/score/notifications'
+      path: '/notifications'
+      fullPath: '/api/tickets/$id/score/notifications'
+      preLoaderRoute: typeof ApiTicketsIdScoreNotificationsRouteRouteImport
+      parentRoute: typeof ApiTicketsIdScoreRouteRoute
     }
     '/api/transfers/$id/files/$fileId': {
       id: '/api/transfers/$id/files/$fileId'
@@ -3134,6 +3308,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/api/albums/$slug/photos/$photoId/original'
       preLoaderRoute: typeof ApiAlbumsSlugPhotosPhotoIdOriginalRouteRouteImport
       parentRoute: typeof rootRouteImport
+    }
+    '/api/events/$slug/discoveries/$discoveryId/claim': {
+      id: '/api/events/$slug/discoveries/$discoveryId/claim'
+      path: '/claim'
+      fullPath: '/api/events/$slug/discoveries/$discoveryId/claim'
+      preLoaderRoute: typeof ApiEventsSlugDiscoveriesDiscoveryIdClaimRouteRouteImport
+      parentRoute: typeof ApiEventsSlugDiscoveriesDiscoveryIdRouteRoute
     }
     '/api/transfers/$id/media/$fileId/$variant': {
       id: '/api/transfers/$id/media/$fileId/$variant'
@@ -3283,6 +3464,20 @@ const ApiWordsRouteRouteWithChildren = ApiWordsRouteRoute._addFileChildren(
   ApiWordsRouteRouteChildren,
 )
 
+interface EventsSlugRouteChildren {
+  EventsSlugScoreRoute: typeof EventsSlugScoreRoute
+  EventsSlugDiscoveriesDiscoveryIdRoute: typeof EventsSlugDiscoveriesDiscoveryIdRoute
+}
+
+const EventsSlugRouteChildren: EventsSlugRouteChildren = {
+  EventsSlugScoreRoute: EventsSlugScoreRoute,
+  EventsSlugDiscoveriesDiscoveryIdRoute: EventsSlugDiscoveriesDiscoveryIdRoute,
+}
+
+const EventsSlugRouteWithChildren = EventsSlugRoute._addFileChildren(
+  EventsSlugRouteChildren,
+)
+
 interface ApiAdminAlbumsSlugPhotosPhotoIdRouteRouteChildren {
   ApiAdminAlbumsSlugPhotosPhotoIdMediaRouteRoute: typeof ApiAdminAlbumsSlugPhotosPhotoIdMediaRouteRoute
 }
@@ -3369,6 +3564,7 @@ interface ApiAdminEventsSlugRouteRouteChildren {
   ApiAdminEventsSlugEmailRouteRoute: typeof ApiAdminEventsSlugEmailRouteRoute
   ApiAdminEventsSlugGuestRequestsRouteRoute: typeof ApiAdminEventsSlugGuestRequestsRouteRoute
   ApiAdminEventsSlugScannerLinksRouteRoute: typeof ApiAdminEventsSlugScannerLinksRouteRoute
+  ApiAdminEventsSlugScoringRouteRoute: typeof ApiAdminEventsSlugScoringRouteRoute
   ApiAdminEventsSlugTicketsRouteRoute: typeof ApiAdminEventsSlugTicketsRouteRoute
 }
 
@@ -3382,6 +3578,7 @@ const ApiAdminEventsSlugRouteRouteChildren: ApiAdminEventsSlugRouteRouteChildren
       ApiAdminEventsSlugGuestRequestsRouteRoute,
     ApiAdminEventsSlugScannerLinksRouteRoute:
       ApiAdminEventsSlugScannerLinksRouteRoute,
+    ApiAdminEventsSlugScoringRouteRoute: ApiAdminEventsSlugScoringRouteRoute,
     ApiAdminEventsSlugTicketsRouteRoute: ApiAdminEventsSlugTicketsRouteRoute,
   }
 
@@ -3505,6 +3702,36 @@ const ApiAdminTokensSessionsRouteRouteWithChildren =
     ApiAdminTokensSessionsRouteRouteChildren,
   )
 
+interface ApiTicketsIdScoreRouteRouteChildren {
+  ApiTicketsIdScoreNotificationsRouteRoute: typeof ApiTicketsIdScoreNotificationsRouteRoute
+}
+
+const ApiTicketsIdScoreRouteRouteChildren: ApiTicketsIdScoreRouteRouteChildren =
+  {
+    ApiTicketsIdScoreNotificationsRouteRoute:
+      ApiTicketsIdScoreNotificationsRouteRoute,
+  }
+
+const ApiTicketsIdScoreRouteRouteWithChildren =
+  ApiTicketsIdScoreRouteRoute._addFileChildren(
+    ApiTicketsIdScoreRouteRouteChildren,
+  )
+
+interface ApiEventsSlugDiscoveriesDiscoveryIdRouteRouteChildren {
+  ApiEventsSlugDiscoveriesDiscoveryIdClaimRouteRoute: typeof ApiEventsSlugDiscoveriesDiscoveryIdClaimRouteRoute
+}
+
+const ApiEventsSlugDiscoveriesDiscoveryIdRouteRouteChildren: ApiEventsSlugDiscoveriesDiscoveryIdRouteRouteChildren =
+  {
+    ApiEventsSlugDiscoveriesDiscoveryIdClaimRouteRoute:
+      ApiEventsSlugDiscoveriesDiscoveryIdClaimRouteRoute,
+  }
+
+const ApiEventsSlugDiscoveriesDiscoveryIdRouteRouteWithChildren =
+  ApiEventsSlugDiscoveriesDiscoveryIdRouteRoute._addFileChildren(
+    ApiEventsSlugDiscoveriesDiscoveryIdRouteRouteChildren,
+  )
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   BestDressedRoute: BestDressedRoute,
@@ -3529,7 +3756,7 @@ const rootRouteChildren: RootRouteChildren = {
   AdminCliAuthRoute: AdminCliAuthRoute,
   AdminEditorRoute: AdminEditorRoute,
   DropTokenRoute: DropTokenRoute,
-  EventsSlugRoute: EventsSlugRoute,
+  EventsSlugRoute: EventsSlugRouteWithChildren,
   OrganizeTokenRoute: OrganizeTokenRoute,
   PlayTokenRoute: PlayTokenRoute,
   ScanTokenRoute: ScanTokenRoute,
@@ -3588,14 +3815,19 @@ const rootRouteChildren: RootRouteChildren = {
     ApiAdminTokensSessionsRouteRouteWithChildren,
   ApiEmailEventsCloudflareRouteRoute: ApiEmailEventsCloudflareRouteRoute,
   ApiEventsSlugIcsRouteRoute: ApiEventsSlugIcsRouteRoute,
+  ApiEventsSlugScoreRouteRoute: ApiEventsSlugScoreRouteRoute,
   ApiMarketingUnsubscribeTokenRouteRoute:
     ApiMarketingUnsubscribeTokenRouteRoute,
   ApiTicketsIdIcsRouteRoute: ApiTicketsIdIcsRouteRoute,
+  ApiTicketsIdScoreRouteRoute: ApiTicketsIdScoreRouteRouteWithChildren,
+  ApiTicketsIdSessionRouteRoute: ApiTicketsIdSessionRouteRoute,
   ApiUploadTransferFinalizeRouteRoute: ApiUploadTransferFinalizeRouteRoute,
   ApiUploadTransferPresignRouteRoute: ApiUploadTransferPresignRouteRoute,
   ApiUploadWordsFinalizeRouteRoute: ApiUploadWordsFinalizeRouteRoute,
   ApiUploadWordsPresignRouteRoute: ApiUploadWordsPresignRouteRoute,
   ApiUploadWordsTargetsRouteRoute: ApiUploadWordsTargetsRouteRoute,
+  ApiEventsSlugDiscoveriesDiscoveryIdRouteRoute:
+    ApiEventsSlugDiscoveriesDiscoveryIdRouteRouteWithChildren,
   ApiUploadTransferAppendFinalizeRouteRoute:
     ApiUploadTransferAppendFinalizeRouteRoute,
   ApiUploadTransferAppendPresignRouteRoute:

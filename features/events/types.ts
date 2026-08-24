@@ -66,6 +66,8 @@ export function heroImageHeightClass(height: EventHeroHeight | undefined): strin
 }
 
 export type EventRecord = {
+  /** Immutable database identity. Slug is a mutable route label. */
+  eventId?: string;
   slug: string;
   title: string;
   tagline?: string;

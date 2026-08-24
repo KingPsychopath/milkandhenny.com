@@ -310,15 +310,26 @@ export async function claimRedemption(
 ): Promise<RedeemRow> {
   if (!isValidTicketId(id)) return { claimed: false, ticket: null };
 
-  const claimed = await query<TicketRow>(
-    `update tickets
-        set redeemed_at = now(),
-            redeemed_by = $2,
-            redeemed_offline = $3
-      where id = $1 and redeemed_at is null and status = 'valid'
-      returning *`,
-    [id, redeemedBy ?? null, offline ? true : null],
-  );
+  const claimed = await transaction(async (client) => {
+    const result = await client.query<TicketRow>(
+      `update tickets
+          set redeemed_at = now(),
+              redeemed_by = $2,
+              redeemed_offline = $3
+        where id = $1 and redeemed_at is null and status = 'valid'
+        returning *`,
+      [id, redeemedBy ?? null, offline ? true : null],
+    );
+    if (result.rows[0]) {
+      await client.query(
+        `update event_participants
+            set checked_in_at = coalesce(checked_in_at, now()), updated_at = now()
+          where ticket_id = $1 and status = 'active'`,
+        [id],
+      );
+    }
+    return result.rows;
+  });
 
   if (claimed[0]) return { claimed: true, ticket: toTicket(claimed[0]) };
 
@@ -376,17 +387,27 @@ export async function markTicketStatus(
   refundRef?: string,
 ): Promise<TicketRecord | null> {
   if (!isValidTicketId(id)) return null;
-  const rows = await query<TicketRow>(
-    `update tickets
-        set status = $2,
-            refunded_at = case when $2 = 'refunded' then now() else refunded_at end,
-            refund_ref = coalesce($3, refund_ref)
-      where id = $1
-      returning *`,
-    [id, status, refundRef ?? null],
-  );
-  if (rows[0]) log.info("tickets.status", "Ticket status changed", { id, status });
-  return rows[0] ? toTicket(rows[0]) : null;
+  const ticket = await transaction(async (client) => {
+    const rows = await client.query<TicketRow>(
+      `update tickets
+          set status = $2,
+              refunded_at = case when $2 = 'refunded' then now() else refunded_at end,
+              refund_ref = coalesce($3, refund_ref)
+        where id = $1
+        returning *`,
+      [id, status, refundRef ?? null],
+    );
+    const updated = rows.rows[0];
+    if (!updated) return null;
+    await client.query(
+      `update event_participants set status = $2, updated_at = now()
+        where ticket_id = $1`,
+      [id, status === "refunded" ? "refunded" : "void"],
+    );
+    return toTicket(updated);
+  });
+  if (ticket) log.info("tickets.status", "Ticket status changed", { id, status });
+  return ticket;
 }
 
 /** Refund every ticket in an order — used by the Stripe refund webhook. */
@@ -434,6 +455,11 @@ export async function markOrderRefunded(
         returning *`,
       [toRefund.map((row) => row.id), refundRef],
     );
+    await client.query(
+      `update event_participants set status = 'refunded', updated_at = now()
+        where ticket_id = any($1::text[])`,
+      [toRefund.map((row) => row.id)],
+    );
     return rows.map(toTicket);
   });
 }
@@ -443,26 +469,40 @@ export async function markOrderRefundPending(
   paymentRef: string,
   refundRef: string,
 ): Promise<TicketRecord[]> {
-  const rows = await query<TicketRow>(
-    `update tickets
-        set status = 'void', refund_ref = $2
-      where payment_ref = $1 and status = 'valid'
-      returning *`,
-    [paymentRef, refundRef],
-  );
-  return rows.map(toTicket);
+  return transaction(async (client) => {
+    const rows = await client.query<TicketRow>(
+      `update tickets
+          set status = 'void', refund_ref = $2
+        where payment_ref = $1 and status = 'valid'
+        returning *`,
+      [paymentRef, refundRef],
+    );
+    await client.query(
+      `update event_participants set status = 'void', updated_at = now()
+        where ticket_id = any($1::text[])`,
+      [rows.rows.map((row) => row.id)],
+    );
+    return rows.rows.map(toTicket);
+  });
 }
 
 /** Keep failed-refund tickets invalid until staff repays the buyer another way. */
 export async function markRefundFailed(refundRef: string): Promise<TicketRecord[]> {
-  const rows = await query<TicketRow>(
-    `update tickets
-        set status = 'void', refunded_at = null
-      where refund_ref = $1 and status = 'refunded'
-      returning *`,
-    [refundRef],
-  );
-  return rows.map(toTicket);
+  return transaction(async (client) => {
+    const rows = await client.query<TicketRow>(
+      `update tickets
+          set status = 'void', refunded_at = null
+        where refund_ref = $1 and status = 'refunded'
+        returning *`,
+      [refundRef],
+    );
+    await client.query(
+      `update event_participants set status = 'void', updated_at = now()
+        where ticket_id = any($1::text[])`,
+      [rows.rows.map((row) => row.id)],
+    );
+    return rows.rows.map(toTicket);
+  });
 }
 
 /**
@@ -477,14 +517,21 @@ export async function markOrderDisputed(
   paymentRef: string,
   disputeRef: string,
 ): Promise<TicketRecord[]> {
-  const rows = await query<TicketRow>(
-    `update tickets
-        set status = 'void', refund_ref = $2
-      where payment_ref = $1 and status = 'valid'
-      returning *`,
-    [paymentRef, disputeRef],
-  );
-  return rows.map(toTicket);
+  return transaction(async (client) => {
+    const rows = await client.query<TicketRow>(
+      `update tickets
+          set status = 'void', refund_ref = $2
+        where payment_ref = $1 and status = 'valid'
+        returning *`,
+      [paymentRef, disputeRef],
+    );
+    await client.query(
+      `update event_participants set status = 'void', updated_at = now()
+        where ticket_id = any($1::text[])`,
+      [rows.rows.map((row) => row.id)],
+    );
+    return rows.rows.map(toTicket);
+  });
 }
 
 /**
@@ -497,15 +544,22 @@ export async function restoreDisputedTickets(
   paymentRef: string,
   disputeRef: string,
 ): Promise<TicketRecord[]> {
-  const rows = await query<TicketRow>(
-    `update tickets
-        set status = 'valid', refund_ref = null
-      where payment_ref = $1 and status = 'void'
-        and refund_ref = $2 and refunded_at is null
-      returning *`,
-    [paymentRef, disputeRef],
-  );
-  return rows.map(toTicket);
+  return transaction(async (client) => {
+    const rows = await client.query<TicketRow>(
+      `update tickets
+          set status = 'valid', refund_ref = null
+        where payment_ref = $1 and status = 'void'
+          and refund_ref = $2 and refunded_at is null
+        returning *`,
+      [paymentRef, disputeRef],
+    );
+    await client.query(
+      `update event_participants set status = 'active', updated_at = now()
+        where ticket_id = any($1::text[])`,
+      [rows.rows.map((row) => row.id)],
+    );
+    return rows.rows.map(toTicket);
+  });
 }
 
 /** Valid, unredeemed-or-redeemed ticket ids for the offline door manifest. */

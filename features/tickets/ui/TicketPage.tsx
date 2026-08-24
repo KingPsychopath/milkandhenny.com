@@ -39,6 +39,7 @@ export function TicketPage({
   managerTicketId,
   checkpointNames,
   album,
+  score,
 }: {
   ticket: TicketPageTicket;
   event: TicketHolderEvent;
@@ -50,6 +51,7 @@ export function TicketPage({
   managerTicketId?: string;
   checkpointNames: string[];
   album: EventAlbumView;
+  score?: { points: number; rank: number };
 }) {
   const { dataUrl: qr, failed } = useQrCode(qrPayload, 512);
   const redeemed = Boolean(ticket.redeemedAt);
@@ -334,6 +336,30 @@ export function TicketPage({
             />
           )}
         </div>
+
+        {score && (
+          <section
+            aria-labelledby="ticket-score-heading"
+            className="mt-8 border-y theme-border py-4"
+          >
+            <div className="flex items-baseline justify-between gap-4">
+              <h2
+                id="ticket-score-heading"
+                className="font-mono text-micro theme-muted tracking-widest uppercase"
+              >
+                event score
+              </h2>
+              <a
+                href={`/api/events/${encodeURIComponent(event.slug)}/score`}
+                className="font-mono text-micro underline hover:opacity-70 transition-opacity"
+              >
+                leaderboard
+              </a>
+            </div>
+            <p className="mt-2 font-serif text-2xl text-foreground">{score.points} points</p>
+            <p className="mt-1 font-mono text-micro theme-subtle">rank {score.rank}</p>
+          </section>
+        )}
 
         {/* A way to reach a human, on the page they will actually have open.
             Step-free access, a name that needs changing, a QR the door cannot
