@@ -10,6 +10,10 @@ import {
   type CommunicationMedia,
 } from "./email.server";
 import { prepareCommunicationLinkMap } from "./email-links.server";
+import {
+  optOutByToken as optOutMarketingByToken,
+  setMarketingPreference as setMarketingConsentPreference,
+} from "./marketing-consent.server";
 
 export type CommunicationContact = {
   emailHash: string;
@@ -19,6 +23,10 @@ export type CommunicationContact = {
   marketingOptedIn: boolean;
   optedInAt: string | null;
   optedOutAt: string | null;
+  marketingConsentSource: string | null;
+  marketingConsentDecision: "granted" | "withdrawn" | null;
+  marketingConsentAt: string | null;
+  marketingConsentVersion: string | null;
   unsubscribeToken: string;
 };
 
@@ -175,6 +183,15 @@ function contactFromRow(row: Record<string, unknown>): CommunicationContact {
     marketingOptedIn: row.marketing_opted_in === true,
     optedInAt: iso(row.opted_in_at as Date | null),
     optedOutAt: iso(row.opted_out_at as Date | null),
+    marketingConsentSource:
+      typeof row.marketing_consent_source === "string" ? row.marketing_consent_source : null,
+    marketingConsentDecision:
+      row.marketing_consent_decision === "granted" || row.marketing_consent_decision === "withdrawn"
+        ? row.marketing_consent_decision
+        : null,
+    marketingConsentAt: iso(row.marketing_consent_at as Date | null),
+    marketingConsentVersion:
+      typeof row.marketing_consent_version === "string" ? row.marketing_consent_version : null,
     unsubscribeToken: String(row.unsubscribe_token),
   };
 }
@@ -183,38 +200,30 @@ export async function listCommunicationContacts(): Promise<CommunicationContact[
   await syncContacts();
   const rows = await query<
     Record<string, unknown>
-  >(`select email_hash, email, display_name, sources, marketing_opted_in,
-            opted_in_at, opted_out_at, unsubscribe_token
-       from communication_contacts
+  >(`select c.email_hash, c.email, c.display_name, c.sources, c.marketing_opted_in,
+            c.opted_in_at, c.opted_out_at, c.unsubscribe_token,
+            consent.source as marketing_consent_source,
+            consent.decision as marketing_consent_decision,
+            consent.occurred_at as marketing_consent_at,
+            consent.consent_version as marketing_consent_version
+       from communication_contacts c
+       left join lateral (
+         select source, decision, occurred_at, consent_version
+           from communication_contact_consent_events
+          where email_hash = c.email_hash
+          order by occurred_at desc, created_at desc
+          limit 1
+       ) consent on true
       order by lower(coalesce(display_name, email)), email_hash`);
   return rows.map(contactFromRow);
 }
 
 export async function setMarketingPreference(emailHash: string, optedIn: boolean): Promise<void> {
-  if (!/^[a-f0-9]{64}$/.test(emailHash)) throw new Error("Invalid contact");
-  const result = await query(
-    `update communication_contacts
-        set marketing_opted_in = $2,
-            opted_in_at = case when $2 then now() else opted_in_at end,
-            opted_out_at = case when $2 then null else now() end,
-            updated_at = now()
-      where email_hash = $1
-      returning email_hash`,
-    [emailHash, optedIn],
-  );
-  if (result.length !== 1) throw new Error("Contact not found");
+  await setMarketingConsentPreference(emailHash, optedIn);
 }
 
 export async function optOutByToken(token: string): Promise<boolean> {
-  if (!/^[0-9a-f-]{36}$/.test(token)) return false;
-  const result = await query(
-    `update communication_contacts
-        set marketing_opted_in = false, opted_out_at = now(), updated_at = now()
-      where unsubscribe_token = $1
-      returning email_hash`,
-    [token],
-  );
-  return result.length === 1;
+  return optOutMarketingByToken(token);
 }
 
 async function resolveRecipients(input: {

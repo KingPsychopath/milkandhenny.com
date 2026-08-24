@@ -3,6 +3,10 @@ import { randomBytes } from "node:crypto";
 import { log } from "@/lib/platform/logger.server";
 import { query, queryOne, transaction } from "@/lib/platform/postgres.server";
 import {
+  recordMarketingConsent,
+  TICKET_MARKETING_CONSENT_VERSION,
+} from "@/features/communications/marketing-consent.server";
+import {
   createCheckoutSession,
   isPaymentsConfigured,
   listPaymentRefunds,
@@ -44,6 +48,7 @@ export type StartCheckoutInput = {
   quantity: number;
   origin: string;
   acceptedTerms: boolean;
+  marketingOptIn: boolean;
   checkoutRequestId?: string;
 };
 
@@ -158,8 +163,10 @@ export async function startCheckout(input: StartCheckoutInput): Promise<StartChe
   await query(
     `insert into checkout_sessions (
        id, event_slug, ticket_type_id, quantity, holder_name, email, email_hash,
-       amount_minor, currency, reference, status, terms_accepted_at, terms_snapshot
-     ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'pending',now(),$11::jsonb)
+       amount_minor, currency, reference, status, terms_accepted_at, terms_snapshot,
+       marketing_opted_in, marketing_opted_in_at
+     ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'pending',now(),$11::jsonb,$12,
+               case when $12 then now() else null end)
      on conflict (id) do nothing`,
     [
       session.id,
@@ -177,6 +184,7 @@ export async function startCheckout(input: StartCheckoutInput): Promise<StartChe
         refundPolicy: event.refundPolicy ?? null,
         transferable: event.transferable,
       }),
+      input.marketingOptIn === true,
     ],
   );
 
@@ -193,7 +201,40 @@ type CheckoutRow = {
   amount_minor: number;
   currency: string;
   reference: string | null;
+  marketing_opted_in: boolean;
+  marketing_opted_in_at: Date | null;
 };
+
+async function recordPaidMarketingConsent(input: {
+  enabled: boolean;
+  email: string;
+  displayName: string;
+  sourceRef: string;
+  occurredAt: Date | null;
+  eventSlug: string;
+}): Promise<void> {
+  if (!input.enabled) return;
+  try {
+    await recordMarketingConsent({
+      email: input.email,
+      displayName: input.displayName,
+      source: "ticket_purchase",
+      sourceRef: input.sourceRef,
+      consentVersion: TICKET_MARKETING_CONSENT_VERSION,
+      occurredAt: input.occurredAt ?? new Date(),
+    });
+  } catch (error) {
+    // Payment and ticket fulfilment must remain recoverable if the optional
+    // marketing contact write is temporarily unavailable. A later webhook
+    // retry can fill the same idempotent consent record.
+    log.error(
+      "marketing.consent",
+      "Paid ticket consent could not be saved",
+      { eventSlug: input.eventSlug },
+      error,
+    );
+  }
+}
 
 export type FulfilResult =
   | { outcome: "issued"; tickets: TicketRecord[] }
@@ -367,21 +408,37 @@ export async function fulfilCheckout(sessionId: string, origin: string): Promise
             or (status = 'fulfilling' and processing_started_at < now() - interval '2 minutes')
           )
         returning id, event_slug, ticket_type_id, quantity, holder_name, email,
-                  amount_minor, currency, reference`,
+                  amount_minor, currency, reference, marketing_opted_in,
+                  marketing_opted_in_at`,
       [sessionId],
     );
     return rows[0] ?? null;
   });
 
   if (!claimed) {
-    const existing = await queryOne<{ status: string }>(
-      `select status from checkout_sessions where id = $1`,
+    const existing = await queryOne<{
+      status: string;
+      marketing_opted_in: boolean;
+      marketing_opted_in_at: Date | null;
+      holder_name: string;
+      email: string;
+    }>(
+      `select status, marketing_opted_in, marketing_opted_in_at, holder_name, email
+         from checkout_sessions where id = $1`,
       [sessionId],
     );
     if (!existing) return { outcome: "unknown-session" };
     if (existing.status === "fulfilled") {
       const tickets = await listTicketsForCheckout(sessionId);
       if (tickets.length > 0) {
+        await recordPaidMarketingConsent({
+          enabled: existing.marketing_opted_in,
+          email: existing.email,
+          displayName: existing.holder_name,
+          sourceRef: tickets[0].orderId,
+          occurredAt: existing.marketing_opted_in_at,
+          eventSlug: tickets[0].eventSlug,
+        });
         const event = await getEvent(tickets[0].eventSlug);
         if (event)
           await sendTicketEmail({
@@ -509,6 +566,14 @@ export async function fulfilCheckout(sessionId: string, origin: string): Promise
         where id = $1`,
       [sessionId, orderId],
     );
+    await recordPaidMarketingConsent({
+      enabled: claimed.marketing_opted_in,
+      email: claimed.email,
+      displayName: claimed.holder_name,
+      sourceRef: orderId,
+      occurredAt: claimed.marketing_opted_in_at,
+      eventSlug: claimed.event_slug,
+    });
     const event = await getEvent(claimed.event_slug);
     if (event)
       await sendTicketEmail({
@@ -599,6 +664,14 @@ export async function fulfilCheckout(sessionId: string, origin: string): Promise
       where id = $1`,
     [sessionId, issued.value.orderId],
   );
+  await recordPaidMarketingConsent({
+    enabled: claimed.marketing_opted_in,
+    email: claimed.email,
+    displayName: claimed.holder_name,
+    sourceRef: issued.value.orderId,
+    occurredAt: claimed.marketing_opted_in_at,
+    eventSlug: claimed.event_slug,
+  });
 
   // Delivery failure must not fail fulfilment — the tickets exist and the
   // resend flow can recover them.

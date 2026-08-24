@@ -1334,6 +1334,31 @@ const MIGRATIONS: Migration[] = [
         on communication_links (expires_at);
     `,
   },
+  {
+    id: "0032_marketing_consent",
+    sql: `
+      alter table checkout_sessions
+        add column if not exists marketing_opted_in boolean not null default false,
+        add column if not exists marketing_opted_in_at timestamptz;
+
+      create table if not exists communication_contact_consent_events (
+        id               uuid primary key,
+        email_hash       text not null references communication_contacts (email_hash) on delete cascade,
+        decision         text not null check (decision in ('granted', 'withdrawn')),
+        source           text not null check (source in ('subscribe', 'ticket_purchase', 'admin', 'unsubscribe')),
+        source_ref       text check (source_ref is null or char_length(source_ref) <= 240),
+        consent_version  text not null check (char_length(consent_version) between 1 and 80),
+        occurred_at      timestamptz not null default now(),
+        created_at       timestamptz not null default now()
+      );
+
+      create index if not exists communication_consent_events_contact_idx
+        on communication_contact_consent_events (email_hash, occurred_at desc);
+      create unique index if not exists communication_consent_events_source_ref_idx
+        on communication_contact_consent_events (source, source_ref, decision)
+        where source_ref is not null;
+    `,
+  },
 ];
 
 interface PitchDocumentSchemaRow extends QueryResultRow {

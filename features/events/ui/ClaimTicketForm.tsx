@@ -79,12 +79,14 @@ export function ClaimTicketForm({
 }) {
   const nameId = useId();
   const emailId = useId();
+  const marketingOptInId = useId();
   const errorId = useId();
 
   const [open, setOpen] = useState(false);
   const { name, email, setName, setEmail, remember } = useBrowserProfileForm();
   const [quantity, setQuantity] = useState(1);
   const [acceptedTerms, setAcceptedTerms] = useState(false);
+  const [marketingOptIn, setMarketingOptIn] = useState(false);
   const checkoutRequestId = useRef<string | null>(null);
   const [state, setState] = useState<ClaimState>({ status: "idle" });
 
@@ -122,6 +124,7 @@ export function ClaimTicketForm({
             email,
             quantity: selectedQuantity,
             acceptedTerms,
+            marketingOptIn,
             checkoutRequestId: checkoutRequestId.current,
           },
         });
@@ -143,6 +146,7 @@ export function ClaimTicketForm({
           holderName: name,
           email,
           quantity: selectedQuantity,
+          marketingOptIn,
         },
       });
 
@@ -275,6 +279,23 @@ export function ClaimTicketForm({
               />
             </div>
           )}
+
+          <label
+            htmlFor={marketingOptInId}
+            className="flex items-start gap-3 rounded-lg border theme-border px-3 py-3"
+          >
+            <input
+              id={marketingOptInId}
+              type="checkbox"
+              checked={marketingOptIn}
+              onChange={(event) => setMarketingOptIn(event.target.checked)}
+              className="mt-0.5 size-4 accent-[var(--prose-hashtag)]"
+            />
+            <span className="font-mono text-micro theme-muted leading-relaxed">
+              Send me occasional Milk &amp; Henny news and event updates by email. Optional.
+              Unsubscribe anytime.
+            </span>
+          </label>
 
           {state.status === "error" && (
             <p

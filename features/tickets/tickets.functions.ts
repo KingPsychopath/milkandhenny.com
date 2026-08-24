@@ -3,6 +3,11 @@ import { createServerFn } from "@tanstack/react-start";
 import { getRequest, getRequestIP } from "@tanstack/react-start/server";
 
 import { getBaseUrlForRequest } from "@/lib/shared/config";
+import { log } from "@/lib/platform/logger.server";
+import {
+  recordMarketingConsent,
+  TICKET_MARKETING_CONSENT_VERSION,
+} from "@/features/communications/marketing-consent.server";
 import { EventsService } from "@/features/events/events-service.server";
 import { runEventsResult } from "@/features/events/events-runtime.server";
 import {
@@ -47,6 +52,7 @@ export type ClaimTicketInput = {
   holderName: string;
   email: string;
   quantity: number;
+  marketingOptIn: boolean;
 };
 
 export type ClaimTicketResult =
@@ -109,6 +115,30 @@ export const claimFreeTicketsFn = createServerFn({ method: "POST" })
       return { ok: false, status: issued.value.status, error: issued.value.error };
 
     const { tickets } = issued.value.value;
+
+    if (data.marketingOptIn === true) {
+      try {
+        await recordMarketingConsent({
+          email: data.email,
+          displayName: data.holderName,
+          source: "ticket_purchase",
+          sourceRef: tickets[0]?.orderId ?? null,
+          consentVersion: TICKET_MARKETING_CONSENT_VERSION,
+        });
+      } catch (error) {
+        // The ticket already exists. Keep delivery usable if the optional
+        // contact write is temporarily unavailable; the admin list can repair
+        // the preference from the recorded purchase.
+        log.error(
+          "marketing.consent",
+          "Free ticket consent could not be saved",
+          {
+            eventSlug: data.eventSlug,
+          },
+          error,
+        );
+      }
+    }
 
     // Delivery failure must not fail issuance — the tickets exist and the
     // resend flow can recover them.
@@ -377,6 +407,7 @@ export const startCheckoutFn = createServerFn({ method: "POST" })
       email: string;
       quantity: number;
       acceptedTerms: boolean;
+      marketingOptIn: boolean;
       checkoutRequestId?: string;
     }) => data,
   )

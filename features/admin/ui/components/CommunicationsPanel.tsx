@@ -13,6 +13,10 @@ type Contact = {
   displayName: string | null;
   sources: string[];
   marketingOptedIn: boolean;
+  marketingConsentSource: string | null;
+  marketingConsentDecision: "granted" | "withdrawn" | null;
+  marketingConsentAt: string | null;
+  marketingConsentVersion: string | null;
 };
 type EventOption = { slug: string; title: string; startsAt: string };
 type Message = {
@@ -175,6 +179,27 @@ function dateLabel(value: string | null): string {
         timeStyle: "short",
         timeZone: "Europe/London",
       });
+}
+
+function consentSourceLabel(source: string | null): string {
+  switch (source) {
+    case "ticket_purchase":
+      return "ticket purchase";
+    case "subscribe":
+      return "subscribe page";
+    case "unsubscribe":
+      return "unsubscribe link";
+    case "admin":
+      return "admin action";
+    default:
+      return "unknown source";
+  }
+}
+
+function consentLabel(contact: Contact): string {
+  if (!contact.marketingConsentAt) return "no marketing choice recorded";
+  const decision = contact.marketingConsentDecision === "granted" ? "opted in" : "opted out";
+  return `${decision} · ${consentSourceLabel(contact.marketingConsentSource)} · ${dateLabel(contact.marketingConsentAt)}`;
 }
 
 function engagementLabel(delivery: DeliveryCounts, links: LinkMetric[]): string {
@@ -1969,6 +1994,7 @@ function PeopleView({
               <p className="mt-1 font-mono text-micro theme-faint">
                 {contact.sources.join(" · ") || "source unknown"}
               </p>
+              <p className="mt-1 font-mono text-micro theme-faint">{consentLabel(contact)}</p>
             </div>
             <button
               type="button"

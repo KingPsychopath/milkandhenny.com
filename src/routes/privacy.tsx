@@ -53,6 +53,19 @@ function PrivacyPage() {
           </section>
 
           <section>
+            <h2 className="font-mono text-sm font-bold tracking-tight">Optional marketing</h2>
+            <p className="mt-3 theme-muted">
+              Marketing email is separate from the service. If you choose the optional news and
+              event updates box, or join the mailing list, we use your email and optional name for
+              occasional Milk &amp; Henny updates. We record the choice, time, source, and wording
+              version so we can honour it. Ticket, access, payment, and other service messages can
+              still be sent without this choice. We do not infer marketing consent from buying a
+              ticket, uploading, pitching, reporting a problem, answering a survey, or using the
+              site. Every marketing email includes an unsubscribe link.
+            </p>
+          </section>
+
+          <section>
             <h2 className="font-mono text-sm font-bold tracking-tight">Payments and providers</h2>
             <p className="mt-3 theme-muted">
               Stripe processes payment card details. We do not store full card details. We use
