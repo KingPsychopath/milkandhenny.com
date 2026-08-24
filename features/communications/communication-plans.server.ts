@@ -399,6 +399,90 @@ export async function sendCommunicationStageNow(stageId: string, request?: Reque
   return expandDueCommunicationStages(request);
 }
 
+function validTestEmail(value: string): string {
+  const email = value.trim().toLowerCase();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 254) {
+    throw new Error("Enter a valid test email address");
+  }
+  return email;
+}
+
+async function stageDetails(stageId: string, request?: Request): Promise<{
+  plan: CommunicationPlan;
+  stage: CommunicationPlanStage;
+  event: NonNullable<Awaited<ReturnType<typeof getEvent>>>;
+  origin: string;
+  surveyUrl?: string;
+}> {
+  const rows = await query<{ plan_id: string; event_slug: string }>(
+    `select s.plan_id, p.event_slug
+       from communication_plan_stages s
+       join communication_plans p on p.id = s.plan_id
+      where s.id = $1`,
+    [stageId],
+  );
+  const row = rows[0];
+  if (!row) throw new Error("Stage not found");
+  const plan = (await listCommunicationPlans(row.event_slug)).find((candidate) => candidate.id === row.plan_id);
+  const stage = plan?.stages.find((candidate) => candidate.id === stageId);
+  const event = await getEvent(row.event_slug);
+  if (!plan || !stage || !event) throw new Error("Stage not found");
+  const surveyRow = stage.surveyId ? await query<{ slug: string }>(`select slug from surveys where id = $1`, [stage.surveyId]) : [];
+  const origin = request ? getBaseUrlForRequest(request) : BASE_URL;
+  return {
+    plan,
+    stage,
+    event,
+    origin,
+    surveyUrl: surveyRow[0] ? buildAppUrl(origin, `/surveys/${surveyRow[0].slug}`) : undefined,
+  };
+}
+
+export async function previewCommunicationStageEmail(stageId: string, request?: Request) {
+  const details = await stageDetails(stageId, request);
+  return renderCommunicationMessage({
+    kind: details.stage.kind,
+    subject: details.stage.subject,
+    body: details.stage.body,
+    media: details.stage.media,
+    origin: details.origin,
+    meta: details.event.title,
+    context: { event: details.event, surveyUrl: details.surveyUrl, recipientName: "Test recipient" },
+    recipientName: "Test recipient",
+  });
+}
+
+export async function sendCommunicationPlanTest(planId: string, testEmailInput: string, request?: Request): Promise<number> {
+  const testEmail = validTestEmail(testEmailInput);
+  const plan = (await listCommunicationPlans()).find((candidate) => candidate.id === planId);
+  if (!plan) throw new Error("Event plan not found");
+  const event = await getEvent(plan.eventSlug);
+  if (!event) throw new Error("Event not found");
+  const origin = request ? getBaseUrlForRequest(request) : BASE_URL;
+  let queued = 0;
+  for (const stage of plan.stages) {
+    const surveyRow = stage.surveyId ? await query<{ slug: string }>(`select slug from surveys where id = $1`, [stage.surveyId]) : [];
+    const surveyUrl = surveyRow[0] ? buildAppUrl(origin, `/surveys/${surveyRow[0].slug}`) : undefined;
+    const rendered = renderCommunicationMessage({
+      kind: stage.kind,
+      subject: `[TEST] ${stage.subject}`,
+      body: stage.body,
+      media: stage.media,
+      origin,
+      meta: event.title,
+      context: { event, surveyUrl, recipientName: "Test recipient" },
+      recipientName: "Test recipient",
+    });
+    const result = await enqueueEmail(
+      { channel: "communications", to: testEmail, subject: rendered.subject, text: rendered.text, html: rendered.html },
+      { idempotencyKey: `communication-test:${plan.id}:${stage.id}:${randomUUID()}`, communicationId: plan.id },
+    );
+    if (!result.ok) throw new Error(result.error);
+    queued += 1;
+  }
+  return queued;
+}
+
 type StageRecipient = { email: string; displayName: string | null; emailHash: string; issuedAt: string };
 
 function localDayKey(value: string, timeZone: string): string {

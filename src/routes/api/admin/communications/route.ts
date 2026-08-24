@@ -18,6 +18,8 @@ import {
   scheduleCommunicationPlan,
   sendCommunicationStageNow,
   previewCommunicationStage,
+  previewCommunicationStageEmail,
+  sendCommunicationPlanTest,
   updateCommunicationPlanStage,
 } from "@/features/communications/communication-plans.server";
 import { listSurveys } from "@/features/surveys/surveys.server";
@@ -102,6 +104,16 @@ async function handlePOST(request: Request) {
     if (body.action === "preview-stage") {
       if (typeof body.stageId !== "string" || !body.stageId) return Response.json({ error: "Choose a stage" }, { status: 400 });
       return Response.json(await previewCommunicationStage(body.stageId));
+    }
+    if (body.action === "preview-stage-email") {
+      if (typeof body.stageId !== "string" || !body.stageId) return Response.json({ error: "Choose a stage" }, { status: 400 });
+      return Response.json({ rendered: await previewCommunicationStageEmail(body.stageId, request) });
+    }
+    if (body.action === "send-test-plan") {
+      if (typeof body.planId !== "string" || !body.planId || typeof body.testEmail !== "string") {
+        return Response.json({ error: "Choose an event plan and test email address" }, { status: 400 });
+      }
+      return Response.json({ queued: await sendCommunicationPlanTest(body.planId, body.testEmail, request) });
     }
     if (body.action === "send-stage-now") {
       if (typeof body.stageId !== "string" || !body.stageId) return Response.json({ error: "Choose a stage" }, { status: 400 });
