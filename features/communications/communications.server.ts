@@ -27,6 +27,7 @@ export type CommunicationContact = {
   marketingConsentDecision: "granted" | "withdrawn" | null;
   marketingConsentAt: string | null;
   marketingConsentVersion: string | null;
+  marketingConsentPrivacyVersion: string | null;
   unsubscribeToken: string;
 };
 
@@ -192,6 +193,10 @@ function contactFromRow(row: Record<string, unknown>): CommunicationContact {
     marketingConsentAt: iso(row.marketing_consent_at as Date | null),
     marketingConsentVersion:
       typeof row.marketing_consent_version === "string" ? row.marketing_consent_version : null,
+    marketingConsentPrivacyVersion:
+      typeof row.marketing_consent_privacy_version === "string"
+        ? row.marketing_consent_privacy_version
+        : null,
     unsubscribeToken: String(row.unsubscribe_token),
   };
 }
@@ -205,10 +210,11 @@ export async function listCommunicationContacts(): Promise<CommunicationContact[
             consent.source as marketing_consent_source,
             consent.decision as marketing_consent_decision,
             consent.occurred_at as marketing_consent_at,
-            consent.consent_version as marketing_consent_version
+            consent.consent_version as marketing_consent_version,
+            consent.privacy_version as marketing_consent_privacy_version
        from communication_contacts c
        left join lateral (
-         select source, decision, occurred_at, consent_version
+         select source, decision, occurred_at, consent_version, privacy_version
            from communication_contact_consent_events
           where email_hash = c.email_hash
           order by occurred_at desc, created_at desc

@@ -4,10 +4,11 @@ import { getRequest, getRequestIP } from "@tanstack/react-start/server";
 
 import { getBaseUrlForRequest } from "@/lib/shared/config";
 import { log } from "@/lib/platform/logger.server";
+import { recordMarketingConsent } from "@/features/communications/marketing-consent.server";
 import {
-  recordMarketingConsent,
+  MARKETING_PRIVACY_NOTICE_VERSION,
   TICKET_MARKETING_CONSENT_VERSION,
-} from "@/features/communications/marketing-consent.server";
+} from "@/features/communications/marketing-consent";
 import { EventsService } from "@/features/events/events-service.server";
 import { runEventsResult } from "@/features/events/events-runtime.server";
 import {
@@ -124,6 +125,7 @@ export const claimFreeTicketsFn = createServerFn({ method: "POST" })
           source: "ticket_purchase",
           sourceRef: tickets[0]?.orderId ?? null,
           consentVersion: TICKET_MARKETING_CONSENT_VERSION,
+          privacyVersion: MARKETING_PRIVACY_NOTICE_VERSION,
         });
       } catch (error) {
         // The ticket already exists. Keep delivery usable if the optional

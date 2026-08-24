@@ -2,9 +2,8 @@ import { createHash, randomUUID } from "node:crypto";
 import type { PoolClient } from "pg";
 
 import { transaction } from "@/lib/platform/postgres.server";
+import { MARKETING_CONSENT_VERSION, MARKETING_PRIVACY_NOTICE_VERSION } from "./marketing-consent";
 
-export const MARKETING_CONSENT_VERSION = "marketing-email-v1";
-export const TICKET_MARKETING_CONSENT_VERSION = "ticket-marketing-v1";
 const ADMIN_MARKETING_CONSENT_VERSION = "admin-action-v1";
 
 type ConsentSource = "subscribe" | "ticket_purchase" | "admin" | "unsubscribe";
@@ -30,13 +29,14 @@ async function insertConsentEvent(
     source: ConsentSource;
     sourceRef?: string | null;
     consentVersion: string;
+    privacyVersion: string;
     occurredAt: Date;
   },
 ): Promise<void> {
   await client.query(
     `insert into communication_contact_consent_events
-       (id, email_hash, decision, source, source_ref, consent_version, occurred_at)
-     values ($1,$2,$3,$4,$5,$6,$7)
+       (id, email_hash, decision, source, source_ref, consent_version, privacy_version, occurred_at)
+     values ($1,$2,$3,$4,$5,$6,$7,$8)
      on conflict do nothing`,
     [
       randomUUID(),
@@ -45,6 +45,7 @@ async function insertConsentEvent(
       input.source,
       input.sourceRef ?? null,
       input.consentVersion,
+      input.privacyVersion,
       input.occurredAt,
     ],
   );
@@ -56,6 +57,7 @@ export async function recordMarketingConsent(input: {
   source: "subscribe" | "ticket_purchase";
   sourceRef?: string | null;
   consentVersion: string;
+  privacyVersion: string;
   occurredAt?: Date;
 }): Promise<void> {
   const email = normaliseEmail(input.email);
@@ -110,6 +112,7 @@ export async function recordMarketingConsent(input: {
       source: input.source,
       sourceRef: input.sourceRef,
       consentVersion: input.consentVersion,
+      privacyVersion: input.privacyVersion,
       occurredAt,
     });
   });
@@ -137,6 +140,7 @@ export async function setMarketingPreference(emailHash: string, optedIn: boolean
       decision: optedIn ? "granted" : "withdrawn",
       source: "admin",
       consentVersion: ADMIN_MARKETING_CONSENT_VERSION,
+      privacyVersion: MARKETING_PRIVACY_NOTICE_VERSION,
       occurredAt,
     });
   });
@@ -163,6 +167,7 @@ export async function optOutByToken(token: string): Promise<boolean> {
       source: "unsubscribe",
       sourceRef: token,
       consentVersion: MARKETING_CONSENT_VERSION,
+      privacyVersion: MARKETING_PRIVACY_NOTICE_VERSION,
       occurredAt,
     });
     return true;

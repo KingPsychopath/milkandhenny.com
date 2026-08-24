@@ -1,8 +1,9 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { recordMarketingConsent } from "@/features/communications/marketing-consent.server";
 import {
   MARKETING_CONSENT_VERSION,
-  recordMarketingConsent,
-} from "@/features/communications/marketing-consent.server";
+  MARKETING_PRIVACY_NOTICE_VERSION,
+} from "@/features/communications/marketing-consent";
 
 async function handlePOST(request: Request) {
   try {
@@ -17,6 +18,7 @@ async function handlePOST(request: Request) {
       displayName: name,
       source: "subscribe",
       consentVersion: MARKETING_CONSENT_VERSION,
+      privacyVersion: MARKETING_PRIVACY_NOTICE_VERSION,
     });
     return Response.json({ ok: true });
   } catch {

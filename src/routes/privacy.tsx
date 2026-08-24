@@ -1,6 +1,7 @@
 import { Link, createFileRoute } from "@tanstack/react-router";
 
 import { BrowserProfileControl } from "@/components/BrowserProfileControl";
+import { MARKETING_PRIVACY_NOTICE_LAST_UPDATED } from "@/features/communications/marketing-consent";
 import { CONTACT_EMAIL, SITE_BRAND } from "@/lib/shared/config";
 import { buildSeoHead } from "@/lib/shared/seo";
 
@@ -28,7 +29,7 @@ function PrivacyPage() {
 
       <main id="main" className="max-w-2xl mx-auto px-6 pb-20">
         <p className="font-mono text-micro theme-muted tracking-widest uppercase">
-          Last updated 24 August 2026
+          Last updated {MARKETING_PRIVACY_NOTICE_LAST_UPDATED}
         </p>
         <h1 className="mt-3 font-serif text-4xl leading-tight">Privacy</h1>
         <div className="mt-10 space-y-10 font-serif text-lg leading-relaxed">

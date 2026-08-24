@@ -4,6 +4,7 @@ import { useId, useRef, useState } from "react";
 import { Link } from "@tanstack/react-router";
 
 import { AppSelect } from "@/components/AppSelect";
+import { TICKET_MARKETING_CONSENT_LABEL } from "@/features/communications/marketing-consent";
 import {
   getCheckoutMinimumMinor,
   minimumCheckoutQuantity,
@@ -80,6 +81,7 @@ export function ClaimTicketForm({
   const nameId = useId();
   const emailId = useId();
   const marketingOptInId = useId();
+  const marketingSupportId = useId();
   const errorId = useId();
 
   const [open, setOpen] = useState(false);
@@ -280,22 +282,31 @@ export function ClaimTicketForm({
             </div>
           )}
 
-          <label
-            htmlFor={marketingOptInId}
-            className="flex items-start gap-3 rounded-lg border theme-border px-3 py-3"
-          >
-            <input
-              id={marketingOptInId}
-              type="checkbox"
-              checked={marketingOptIn}
-              onChange={(event) => setMarketingOptIn(event.target.checked)}
-              className="mt-0.5 size-4 accent-[var(--prose-hashtag)]"
-            />
-            <span className="font-mono text-micro theme-muted leading-relaxed">
-              Send me occasional Milk &amp; Henny news and event updates by email. Optional.
-              Unsubscribe anytime.
-            </span>
-          </label>
+          <div className="rounded-lg border theme-border px-3 py-3">
+            <div className="flex items-start gap-3">
+              <input
+                id={marketingOptInId}
+                type="checkbox"
+                checked={marketingOptIn}
+                onChange={(event) => setMarketingOptIn(event.target.checked)}
+                aria-describedby={marketingSupportId}
+                className="mt-0.5 size-4 shrink-0 accent-[var(--prose-hashtag)]"
+              />
+              <label
+                htmlFor={marketingOptInId}
+                className="font-mono text-micro theme-muted leading-relaxed"
+              >
+                {TICKET_MARKETING_CONSENT_LABEL}
+              </label>
+            </div>
+            <p id={marketingSupportId} className="mt-2 pl-7 font-mono text-micro theme-faint">
+              Optional. See the{" "}
+              <Link to="/privacy" className="underline underline-offset-2 hover:text-foreground">
+                privacy notice
+              </Link>
+              . Unsubscribe anytime.
+            </p>
+          </div>
 
           {state.status === "error" && (
             <p

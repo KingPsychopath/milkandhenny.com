@@ -17,6 +17,7 @@ type Contact = {
   marketingConsentDecision: "granted" | "withdrawn" | null;
   marketingConsentAt: string | null;
   marketingConsentVersion: string | null;
+  marketingConsentPrivacyVersion: string | null;
 };
 type EventOption = { slug: string; title: string; startsAt: string };
 type Message = {
@@ -199,7 +200,10 @@ function consentSourceLabel(source: string | null): string {
 function consentLabel(contact: Contact): string {
   if (!contact.marketingConsentAt) return "no marketing choice recorded";
   const decision = contact.marketingConsentDecision === "granted" ? "opted in" : "opted out";
-  return `${decision} · ${consentSourceLabel(contact.marketingConsentSource)} · ${dateLabel(contact.marketingConsentAt)}`;
+  const copyVersion = contact.marketingConsentVersion
+    ? ` · ${contact.marketingConsentVersion}`
+    : "";
+  return `${decision} · ${consentSourceLabel(contact.marketingConsentSource)} · ${dateLabel(contact.marketingConsentAt)}${copyVersion}`;
 }
 
 function engagementLabel(delivery: DeliveryCounts, links: LinkMetric[]): string {

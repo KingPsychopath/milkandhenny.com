@@ -1359,6 +1359,13 @@ const MIGRATIONS: Migration[] = [
         where source_ref is not null;
     `,
   },
+  {
+    id: "0033_marketing_consent_policy_version",
+    sql: `
+      alter table communication_contact_consent_events
+        add column if not exists privacy_version text;
+    `,
+  },
 ];
 
 interface PitchDocumentSchemaRow extends QueryResultRow {

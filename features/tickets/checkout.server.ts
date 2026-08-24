@@ -2,10 +2,11 @@ import { randomBytes } from "node:crypto";
 
 import { log } from "@/lib/platform/logger.server";
 import { query, queryOne, transaction } from "@/lib/platform/postgres.server";
+import { recordMarketingConsent } from "@/features/communications/marketing-consent.server";
 import {
-  recordMarketingConsent,
+  MARKETING_PRIVACY_NOTICE_VERSION,
   TICKET_MARKETING_CONSENT_VERSION,
-} from "@/features/communications/marketing-consent.server";
+} from "@/features/communications/marketing-consent";
 import {
   createCheckoutSession,
   isPaymentsConfigured,
@@ -221,6 +222,7 @@ async function recordPaidMarketingConsent(input: {
       source: "ticket_purchase",
       sourceRef: input.sourceRef,
       consentVersion: TICKET_MARKETING_CONSENT_VERSION,
+      privacyVersion: MARKETING_PRIVACY_NOTICE_VERSION,
       occurredAt: input.occurredAt ?? new Date(),
     });
   } catch (error) {
