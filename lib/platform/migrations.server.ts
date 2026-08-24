@@ -1078,6 +1078,77 @@ const MIGRATIONS: Migration[] = [
         on pitch_reminder_state (last_sent_at, deck_id);
     `,
   },
+  {
+    id: "0028_communications",
+    sql: `
+      alter table email_outbox
+        add column if not exists communication_id uuid,
+        add column if not exists cancelled_at timestamptz;
+
+      alter table email_outbox drop constraint if exists email_outbox_channel_check;
+      alter table email_outbox
+        add constraint email_outbox_channel_check
+        check (channel in ('tickets', 'studio', 'communications'));
+
+      alter table email_outbox drop constraint if exists email_outbox_status_check;
+      alter table email_outbox
+        add constraint email_outbox_status_check
+        check (status in ('pending', 'processing', 'accepted', 'failed', 'cancelled'));
+
+      alter table email_outbox drop constraint if exists email_outbox_message_state;
+      alter table email_outbox
+        add constraint email_outbox_message_state
+        check (
+          (status in ('pending', 'processing') and message is not null)
+          or (status in ('accepted', 'failed', 'cancelled') and message is null)
+        );
+
+      create index if not exists email_outbox_communication_idx
+        on email_outbox (communication_id, status, next_attempt_at)
+        where communication_id is not null;
+
+      create table if not exists communication_contacts (
+        email_hash          text primary key check (char_length(email_hash) = 64),
+        email               text not null,
+        display_name        text,
+        sources             text[] not null default '{}',
+        marketing_opted_in boolean not null default false,
+        opted_in_at         timestamptz,
+        opted_out_at        timestamptz,
+        unsubscribe_token   uuid not null unique,
+        created_at          timestamptz not null default now(),
+        updated_at          timestamptz not null default now()
+      );
+
+      create index if not exists communication_contacts_marketing_idx
+        on communication_contacts (marketing_opted_in, updated_at desc);
+
+      create table if not exists communication_messages (
+        id                      uuid primary key,
+        kind                    text not null check (kind in ('newsletter', 'event_update', 'pitch_nudge')),
+        audience                text not null check (audience in ('marketing_opted_in', 'event_attendees', 'pitch_owners', 'selected')),
+        event_slug              text references events (slug) on delete set null,
+        subject                 text not null check (char_length(subject) between 1 and 150),
+        body                    text not null check (char_length(body) between 1 and 8000),
+        media                   jsonb not null default '[]'::jsonb,
+        selected_contact_hashes text[] not null default '{}',
+        scheduled_at            timestamptz,
+        status                  text not null default 'draft' check (status in ('draft', 'scheduled', 'queued', 'cancelled', 'failed')),
+        recipient_count         integer not null default 0 check (recipient_count >= 0),
+        queued_count            integer not null default 0 check (queued_count >= 0),
+        last_error              text,
+        created_at              timestamptz not null default now(),
+        updated_at              timestamptz not null default now(),
+        queued_at               timestamptz,
+        check (status = 'draft' or scheduled_at is not null)
+      );
+
+      create index if not exists communication_messages_schedule_idx
+        on communication_messages (status, scheduled_at);
+      create index if not exists communication_messages_event_idx
+        on communication_messages (event_slug, created_at desc);
+    `,
+  },
 ];
 
 interface PitchDocumentSchemaRow extends QueryResultRow {

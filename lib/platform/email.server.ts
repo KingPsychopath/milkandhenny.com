@@ -12,7 +12,7 @@ import { log } from "./logger.server";
  * someone's entry to an event.
  */
 
-export type EmailChannel = "tickets" | "studio";
+export type EmailChannel = "tickets" | "studio" | "communications";
 
 export type EmailConfig = {
   apiKey: string;
@@ -54,6 +54,10 @@ const CHANNEL_SENDERS: Record<EmailChannel, { environmentVariable: string; name:
     environmentVariable: "EMAIL_STUDIO_FROM",
     name: "milk & henny studio",
   },
+  communications: {
+    environmentVariable: "EMAIL_STUDIO_FROM",
+    name: "milk & henny",
+  },
 };
 
 function getEmailConfig(channel: EmailChannel): EmailConfig | null {
@@ -93,6 +97,7 @@ export function describeEmailCapability(): {
     senders: {
       tickets: tickets?.sender.address ?? null,
       studio: studio?.sender.address ?? null,
+      communications: studio?.sender.address ?? null,
     },
     replyTo: tickets?.replyTo ?? studio?.replyTo ?? process.env.EMAIL_REPLY_TO?.trim() ?? null,
   };
@@ -244,7 +249,12 @@ export async function deliverEmailNow(
 /** Queue a message durably; the outbox owns delivery and retries. */
 export async function sendEmail(
   message: EmailMessage,
-  options: { idempotencyKey: string; deliverNow?: boolean },
+  options: {
+    idempotencyKey: string;
+    deliverNow?: boolean;
+    notBefore?: Date;
+    communicationId?: string;
+  },
 ): Promise<SendEmailResult> {
   const { enqueueEmail } = await import("./email-outbox.server");
   return enqueueEmail(message, {

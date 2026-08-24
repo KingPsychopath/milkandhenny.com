@@ -14,6 +14,8 @@ import { BestDressedPanel } from "./components/BestDressedPanel";
 import { AlbumManagerPanel } from "./components/AlbumManagerPanel";
 import { AdminOverviewPanel } from "./components/AdminOverviewPanel";
 import { SystemHealthPanel } from "./components/SystemHealthPanel";
+import { CommunicationsPanel } from "./components/CommunicationsPanel";
+import { UploadAccessPanel } from "./components/UploadAccessPanel";
 import { AdminSectionNav, type AdminSection } from "./components/AdminSectionNav";
 import { useAdminAuth } from "@/features/auth/useAdminAuth";
 import { useActionDialog } from "@/hooks/useActionDialog";
@@ -1029,6 +1031,23 @@ export function AdminDashboard({
         </section>
       ) : null}
 
+      {view === "communications" ? (
+        <section aria-labelledby="communications-view-heading" className="space-y-10">
+          <div className="border-b theme-border pb-6">
+            <p className="font-mono text-micro font-bold uppercase tracking-widest theme-muted">
+              people and outreach
+            </p>
+            <h2 id="communications-view-heading" className="mt-2 font-serif text-3xl font-semibold tracking-tight">
+              Communications
+            </h2>
+            <p className="mt-2 font-mono text-xs leading-relaxed theme-muted">
+              Prepare newsletters and useful updates, choose the right people, and schedule them through the durable email outbox.
+            </p>
+          </div>
+          <CommunicationsPanel authFetch={authFetch} onError={setErrorMessage} onStatus={setStatusMessage} />
+        </section>
+      ) : null}
+
       {view === "games" ? (
         <section aria-labelledby="games-view-heading" className="space-y-10">
           <div className="border-b theme-border pb-6">
@@ -1062,6 +1081,13 @@ export function AdminDashboard({
               loading={loading}
               onRefresh={() => void refreshDashboard()}
               onViewChange={onViewChange}
+            />
+
+            <UploadAccessPanel
+              authFetch={authFetch}
+              ensureStepUpToken={ensureStepUpToken}
+              onError={setErrorMessage}
+              onStatus={setStatusMessage}
             />
 
             <ReportsPanel

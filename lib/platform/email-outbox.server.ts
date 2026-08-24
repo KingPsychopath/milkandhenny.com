@@ -24,11 +24,15 @@ interface OutboxRow {
 export interface QueueEmailOptions {
   idempotencyKey: string;
   deliverNow?: boolean;
+  notBefore?: Date;
+  communicationId?: string;
 }
 
 export interface QueuedEmail {
   message: EmailMessage;
   idempotencyKey: string;
+  notBefore?: Date;
+  communicationId?: string;
 }
 
 function hash(value: string): string {
@@ -51,7 +55,9 @@ function parseMessage(value: unknown): EmailMessage | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   const item = value as Record<string, unknown>;
   if (
-    (item.channel !== "tickets" && item.channel !== "studio") ||
+    (item.channel !== "tickets" &&
+      item.channel !== "studio" &&
+      item.channel !== "communications") ||
     typeof item.to !== "string" ||
     typeof item.subject !== "string" ||
     typeof item.text !== "string" ||
@@ -84,6 +90,7 @@ async function insertEmail(
   client: PoolClient,
   message: EmailMessage,
   idempotencyKey: string,
+  options: Pick<QueuedEmail, "notBefore" | "communicationId"> = {},
 ): Promise<{ id: string; status: string }> {
   const recipientHash = hash(message.to.trim().toLowerCase());
   const suppression = await client.query(
@@ -97,12 +104,20 @@ async function insertEmail(
   const id = randomUUID();
   const result = await client.query<{ id: string; status: string }>(
     `insert into email_outbox (
-       id, idempotency_key, channel, recipient_hash, message
-     ) values ($1,$2,$3,$4,$5::jsonb)
+       id, idempotency_key, channel, recipient_hash, message, next_attempt_at, communication_id
+     ) values ($1,$2,$3,$4,$5::jsonb,coalesce($6, now()),$7)
      on conflict (idempotency_key) do update
        set idempotency_key = excluded.idempotency_key
      returning id, status`,
-    [id, idempotencyKey, message.channel, recipientHash, JSON.stringify(message)],
+    [
+      id,
+      idempotencyKey,
+      message.channel,
+      recipientHash,
+      JSON.stringify(message),
+      options.notBefore ?? null,
+      options.communicationId ?? null,
+    ],
   );
   const row = result.rows[0];
   if (!row) throw new Error("Email outbox did not return the queued message");
@@ -125,7 +140,7 @@ export async function enqueueEmail(
   }
   try {
     const queued = await transaction((client) =>
-      insertEmail(client, message, options.idempotencyKey),
+      insertEmail(client, message, options.idempotencyKey, options),
     );
     if (options.deliverNow !== false && queued.status !== "accepted") {
       triggerEmailOutboxDrain();
@@ -149,7 +164,7 @@ export async function enqueueEmails(messages: readonly QueuedEmail[]): Promise<n
     let queued = 0;
     for (const item of messages) {
       try {
-        const result = await insertEmail(client, item.message, item.idempotencyKey);
+        const result = await insertEmail(client, item.message, item.idempotencyKey, item);
         if (result.status === "pending") queued += 1;
       } catch (error) {
         if (!(error instanceof SuppressedRecipientError)) throw error;
@@ -170,10 +185,11 @@ async function claimBatch(): Promise<OutboxRow[]> {
       `with claimable as (
          select id
            from email_outbox
-          where (
+         where (
                   status = 'pending'
                   or (status = 'processing' and locked_until < now())
                 )
+            and cancelled_at is null
             and next_attempt_at <= now()
           order by next_attempt_at, created_at
           for update skip locked

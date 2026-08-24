@@ -15,6 +15,11 @@ export const ADMIN_SECTIONS = [
     description: "Events, tickets, scanners, and pitches",
   },
   {
+    id: "communications",
+    label: "communications",
+    description: "Drafts, scheduled messages, media, and permissions",
+  },
+  {
     id: "games",
     label: "games",
     description: "Game-night entrances, room pools, and default settings",
