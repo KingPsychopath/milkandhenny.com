@@ -32,6 +32,7 @@ import { readManagedTicketOrders, rememberManagedTicketOrder } from "./order-coo
 import { resolveTicketOrderAccess } from "./order-access";
 import { openAttendeeTicket } from "@/features/event-scoring/session.server";
 import { personalScore } from "@/features/event-scoring/scoring.server";
+import { findSettings } from "@/features/event-scoring/store.server";
 import { listCheckpoints } from "./checkpoints.server";
 import { resolveScannerLink } from "./scanner-links.server";
 import { isValidScannerToken } from "./checkpoint-types";
@@ -222,16 +223,22 @@ export const getTicketPageFn = createServerFn({ method: "GET" })
       getEventAlbumView(event.slug),
       listCheckpoints(event.slug),
     ]);
-    try {
-      await openAttendeeTicket({ ticketId: ticket.id, eventSlug: event.slug, mode: "view-only" });
-    } catch {
-      // Admission tickets must remain readable when the optional scoring session store is down.
+    const scoringSettings = await findSettings(event.slug);
+    const scoreResult =
+      scoringSettings && scoringSettings.state !== "off"
+        ? await personalScore({
+            eventSlug: event.slug,
+            ticketId: ticket.id,
+            includeHistory: false,
+          })
+        : null;
+    if (scoreResult) {
+      try {
+        await openAttendeeTicket({ ticketId: ticket.id, eventSlug: event.slug, mode: "view-only" });
+      } catch {
+        // Admission tickets must remain readable when the optional scoring session store is down.
+      }
     }
-    const scoreResult = await personalScore({
-      eventSlug: event.slug,
-      ticketId: ticket.id,
-      includeHistory: false,
-    });
 
     return {
       found: true,
@@ -262,7 +269,7 @@ export const getTicketPageFn = createServerFn({ method: "GET" })
       managerTicketId: access.managerTicketId,
       checkpointNames: checkpoints.map((checkpoint) => checkpoint.name),
       album,
-      score: scoreResult.ok
+      score: scoreResult?.ok
         ? { points: scoreResult.value.participant.balance, rank: scoreResult.value.rank }
         : undefined,
     };

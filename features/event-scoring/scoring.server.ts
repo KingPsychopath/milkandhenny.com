@@ -23,6 +23,7 @@ import {
 } from "./types";
 import {
   createActivity,
+  findSettings,
   getActivity,
   getOrCreateSettings,
   getParticipant,
@@ -380,6 +381,10 @@ export async function personalScore(input: {
     }>;
   }>
 > {
+  const settings = await findSettings(input.eventSlug);
+  if (!settings || settings.state === "off") {
+    return { ok: false, status: 404, error: "Scoring is not enabled" };
+  }
   const participant = await participantForTicket(input.ticketId);
   if (!participant || participant.eventSlug !== input.eventSlug)
     return { ok: false, status: 404, error: "Ticket participant not found" };

@@ -6,6 +6,7 @@ import {
   createActivity,
   createPool,
   createTeam,
+  findSettings,
   getOrCreateSettings,
   participantForTicket,
   recordScore,
@@ -61,6 +62,20 @@ describeWithDatabase("event scoring postgres", () => {
     const refunded = await markTicketStatus("01ARZ3NDEKTSV4RR", "refunded", "re_test");
     expect(refunded?.status).toBe("refunded");
     expect((await participantForTicket("01ARZ3NDEKTSV4RR"))?.status).toBe("refunded");
+  });
+
+  it("keeps disabled scoring as a read-only no-op", async () => {
+    expect(await findSettings("scoring-night")).toBeNull();
+    expect(
+      (
+        await query<{ count: string }>(
+          `select count(*)::text as count from event_scoring_settings where event_slug = 'scoring-night'`,
+        )
+      )[0]?.count,
+    ).toBe("0");
+
+    await getOrCreateSettings("scoring-night");
+    expect((await findSettings("scoring-night"))?.state).toBe("off");
   });
 
   it("accepts a concurrent duplicate award once and rebuilds the same projection", async () => {

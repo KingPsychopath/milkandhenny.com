@@ -249,6 +249,14 @@ export function hashStaffToken(token: string): string {
   return hash(token);
 }
 
+export async function findSettings(eventSlug: string): Promise<ScoringSettings | null> {
+  const row = await queryOne<ScoringSettingsRow>(
+    `select * from event_scoring_settings where event_slug = $1`,
+    [eventSlug],
+  );
+  return row ? toSettings(row) : null;
+}
+
 export async function getOrCreateSettings(eventSlug: string): Promise<ScoringSettings> {
   await query(
     `insert into event_scoring_settings (event_slug) values ($1) on conflict (event_slug) do nothing`,
