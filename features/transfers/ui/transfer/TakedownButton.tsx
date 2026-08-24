@@ -27,7 +27,7 @@ export function TakedownButton({ transferId, deleteToken }: TakedownButtonProps)
         body: JSON.stringify({ token: deleteToken }),
       });
 
-      const data = await res.json().catch(() => ({}));
+      const data = (await res.json().catch(() => ({}))) as { error?: string };
 
       if (!res.ok) {
         const message =

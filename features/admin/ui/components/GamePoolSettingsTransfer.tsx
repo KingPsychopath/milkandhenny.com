@@ -96,7 +96,7 @@ export function GamePoolSettingsTransfer({
       const anchor = document.createElement("a");
       anchor.href = url;
       anchor.download = gamePoolSettingsBundleFilename(bundle);
-      document.body.append(anchor);
+      document.body.appendChild(anchor);
       anchor.click();
       anchor.remove();
       window.setTimeout(() => URL.revokeObjectURL(url), 0);

@@ -69,7 +69,7 @@ export function TokenSessionsPanel(props: {
         method: "DELETE",
         headers: { "x-admin-step-up": step },
       });
-      const data = await res.json().catch(() => ({}));
+      const data = (await res.json().catch(() => ({}))) as { error?: string };
       if (!res.ok) {
         throw new Error((data.error as string) || "Failed to revoke session");
       }

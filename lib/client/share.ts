@@ -17,7 +17,7 @@ export async function copyText(value: string) {
     textarea.readOnly = true;
     textarea.style.position = "fixed";
     textarea.style.opacity = "0";
-    document.body.append(textarea);
+    document.body.appendChild(textarea);
     textarea.select();
     try {
       return document.execCommand("copy");

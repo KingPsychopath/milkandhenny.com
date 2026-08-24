@@ -311,7 +311,7 @@ function downloadTextFile(filename: string, contents: string, contentType: strin
   const anchor = document.createElement("a");
   anchor.href = url;
   anchor.download = filename;
-  document.body.append(anchor);
+  document.body.appendChild(anchor);
   anchor.click();
   anchor.remove();
   URL.revokeObjectURL(url);

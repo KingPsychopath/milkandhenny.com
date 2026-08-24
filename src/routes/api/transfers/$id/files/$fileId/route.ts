@@ -18,8 +18,8 @@ async function handleDELETE(request: Request, context: RouteContext) {
 
   let token: string | null = null;
   try {
-    const body = await request.json();
-    token = body?.token ?? null;
+    const body = (await request.json()) as { token?: unknown };
+    token = typeof body.token === "string" ? body.token : null;
   } catch {
     return Response.json({ error: "Request body must include { token: string }" }, { status: 400 });
   }

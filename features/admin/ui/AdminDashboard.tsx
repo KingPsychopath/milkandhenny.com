@@ -10,6 +10,7 @@ import { ReportsPanel } from "./components/ReportsPanel";
 import { EventsPanel } from "./components/EventsPanel";
 import { PitchesPanel } from "./components/PitchesPanel";
 import { GamePoolsPanel } from "./components/GamePoolsPanel";
+import { UploadAccessPanel } from "./components/UploadAccessPanel";
 import { BestDressedPanel } from "./components/BestDressedPanel";
 import { AlbumManagerPanel } from "./components/AlbumManagerPanel";
 import { AdminOverviewPanel } from "./components/AdminOverviewPanel";
@@ -194,6 +195,66 @@ type DebugResponse = SystemCapabilities & {
   };
 };
 
+type TransferListResponse = {
+  error?: string;
+  transfers?: TransferSummary[];
+  media?: TransferMediaAdminStats;
+};
+
+type MediaActionResponse = {
+  error?: string;
+  workerDisabled?: boolean;
+  queueLength?: number;
+  processedJobs?: number;
+  succeeded?: number;
+  failed?: number;
+  requeued?: boolean;
+  processingStatus?: string;
+};
+
+type TransferDetailResponse = {
+  error?: string;
+  transfer?: AdminTransferDetail;
+};
+
+type SharedWordsResponse = {
+  error?: string;
+  items?: SharedWordSummary[];
+};
+
+type SharedWordsActionResponse = {
+  error?: string;
+  revoked?: number;
+  removedExpired?: number;
+  removedRevoked?: number;
+  staleIndexRemoved?: number;
+  deletedLinks?: number;
+  scannedSlugs?: number;
+};
+
+type WordMediaCleanupResponse = {
+  error?: string;
+  deletedFolders?: number;
+  deletedObjects?: number;
+  deletedBytes?: number;
+  deletedIncomingObjects?: number;
+  deletedIncomingBytes?: number;
+};
+
+type TransferCleanupResponse = {
+  error?: string;
+  deletedObjects?: number;
+  scannedPrefixes?: number;
+  expiredIndexEntries?: number;
+  deletedTransfers?: number;
+  deletedFiles?: number;
+};
+
+type SessionRevokeResponse = {
+  error?: string;
+  revoked?: Array<{ role?: string; tokenVersion?: number }>;
+};
+
 type AuditView = "all" | "broken-refs" | "invalid-albums";
 
 function formatDate(date: string | null): string {
@@ -359,7 +420,7 @@ export function AdminDashboard({
     setErrorMessage("");
     try {
       const res = await authFetch("/api/admin/transfers");
-      const data = await res.json().catch(() => ({}));
+      const data = (await res.json().catch(() => ({}))) as TransferListResponse;
       if (!res.ok) {
         throw new Error((data.error as string) || "Failed to load transfers");
       }
@@ -378,7 +439,7 @@ export function AdminDashboard({
     setErrorMessage("");
     try {
       const res = await authFetch("/api/admin/word-shares");
-      const data = await res.json().catch(() => ({}));
+      const data = (await res.json().catch(() => ({}))) as SharedWordsResponse;
       if (!res.ok) {
         throw new Error((data.error as string) || "Failed to load shared pages");
       }
@@ -396,7 +457,9 @@ export function AdminDashboard({
     setErrorMessage("");
     try {
       const res = await authFetch("/api/admin/word-media/orphans?limit=100");
-      const data = await res.json().catch(() => ({}));
+      const data = (await res.json().catch(() => ({}))) as WordMediaOrphanSummary & {
+        error?: string;
+      };
       if (!res.ok) {
         throw new Error((data.error as string) || "Failed to load orphan media stats");
       }
@@ -499,7 +562,7 @@ export function AdminDashboard({
         method: "DELETE",
         headers: withStepUpHeaders(stepToken),
       });
-      const data = await res.json().catch(() => ({}));
+      const data = (await res.json().catch(() => ({}))) as { error?: string };
       if (!res.ok) {
         throw new Error((data.error as string) || "Failed to delete transfer");
       }
@@ -528,7 +591,7 @@ export function AdminDashboard({
         headers: withStepUpHeaders(stepToken, { "Content-Type": "application/json" }),
         body: JSON.stringify({ mode: "drain", limit: 25 }),
       });
-      const data = await res.json().catch(() => ({}));
+      const data = (await res.json().catch(() => ({}))) as MediaActionResponse;
       if (!res.ok) {
         throw new Error((data.error as string) || "Failed to inspect transfer media queue");
       }
@@ -562,7 +625,7 @@ export function AdminDashboard({
         headers: withStepUpHeaders(stepToken, { "Content-Type": "application/json" }),
         body: JSON.stringify({ mode: "backfill", transferId }),
       });
-      const data = await res.json().catch(() => ({}));
+      const data = (await res.json().catch(() => ({}))) as MediaActionResponse;
       if (!res.ok) {
         throw new Error((data.error as string) || "Failed to backfill transfer media");
       }
@@ -591,7 +654,7 @@ export function AdminDashboard({
         headers: withStepUpHeaders(stepToken, { "Content-Type": "application/json" }),
         body: JSON.stringify({ mode: "retry", transferId, mediaId, filename, force: true }),
       });
-      const data = await res.json().catch(() => ({}));
+      const data = (await res.json().catch(() => ({}))) as MediaActionResponse;
       if (!res.ok) {
         throw new Error((data.error as string) || "Failed to retry transfer file");
       }
@@ -615,7 +678,7 @@ export function AdminDashboard({
     setErrorMessage("");
     try {
       const res = await authFetch(`/api/admin/transfers/${encodeURIComponent(id)}`);
-      const data = await res.json().catch(() => ({}));
+      const data = (await res.json().catch(() => ({}))) as TransferDetailResponse;
       if (!res.ok) {
         throw new Error((data.error as string) || "Failed to load transfer");
       }
@@ -651,7 +714,7 @@ export function AdminDashboard({
         headers: withStepUpHeaders(stepToken, { "Content-Type": "application/json" }),
         body: JSON.stringify({ slug }),
       });
-      const data = await res.json().catch(() => ({}));
+      const data = (await res.json().catch(() => ({}))) as SharedWordsActionResponse;
       if (!res.ok) {
         throw new Error((data.error as string) || "Failed to revoke shared links");
       }
@@ -689,7 +752,7 @@ export function AdminDashboard({
         headers: withStepUpHeaders(stepToken, { "Content-Type": "application/json" }),
         body: JSON.stringify({ mode: "cleanup" }),
       });
-      const data = await res.json().catch(() => ({}));
+      const data = (await res.json().catch(() => ({}))) as SharedWordsActionResponse;
       if (!res.ok) {
         throw new Error((data.error as string) || "Failed to purge stale share links");
       }
@@ -728,7 +791,7 @@ export function AdminDashboard({
         headers: withStepUpHeaders(stepToken, { "Content-Type": "application/json" }),
         body: JSON.stringify({ mode: "reset" }),
       });
-      const data = await res.json().catch(() => ({}));
+      const data = (await res.json().catch(() => ({}))) as SharedWordsActionResponse;
       if (!res.ok) {
         throw new Error((data.error as string) || "Failed to nuke share links");
       }
@@ -767,7 +830,7 @@ export function AdminDashboard({
         method: "POST",
         headers: withStepUpHeaders(stepToken, { "Content-Type": "application/json" }),
       });
-      const data = await res.json().catch(() => ({}));
+      const data = (await res.json().catch(() => ({}))) as WordMediaCleanupResponse;
       if (!res.ok) {
         throw new Error((data.error as string) || "Failed to purge stale media");
       }
@@ -811,7 +874,7 @@ export function AdminDashboard({
         headers: withStepUpHeaders(stepToken, { "Content-Type": "application/json" }),
         body: JSON.stringify({ mode }),
       });
-      const data = await res.json().catch(() => ({}));
+      const data = (await res.json().catch(() => ({}))) as TransferCleanupResponse;
       if (!res.ok) {
         throw new Error((data.error as string) || "Failed to run cleanup");
       }
@@ -855,7 +918,7 @@ export function AdminDashboard({
         method: "POST",
         headers: withStepUpHeaders(stepToken),
       });
-      const data = await res.json().catch(() => ({}));
+      const data = (await res.json().catch(() => ({}))) as TransferCleanupResponse;
       if (!res.ok) {
         throw new Error((data.error as string) || "Failed to nuke transfers");
       }
@@ -910,7 +973,7 @@ export function AdminDashboard({
         headers: withStepUpHeaders(stepToken, { "Content-Type": "application/json" }),
         body: JSON.stringify({ role }),
       });
-      const data = await res.json().catch(() => ({}));
+      const data = (await res.json().catch(() => ({}))) as SessionRevokeResponse;
       if (!res.ok) {
         throw new Error((data.error as string) || "Failed to revoke sessions");
       }
@@ -1303,6 +1366,13 @@ export function AdminDashboard({
 
         {view === "transfers" ? (
           <>
+            <UploadAccessPanel
+              authFetch={authFetch}
+              ensureStepUpToken={ensureStepUpToken}
+              onError={setErrorMessage}
+              onStatus={setStatusMessage}
+            />
+
             <div
               id="transfer-manager"
               ref={transfersSectionRef}

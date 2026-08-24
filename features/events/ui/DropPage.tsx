@@ -120,7 +120,7 @@ export function DropPage({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ token, files: prepared.map((entry) => entry.payload) }),
       });
-      const presignData: {
+      const presignData = (await presignResponse.json().catch(() => ({}))) as {
         urls?: {
           name: string;
           contentType: string;
@@ -128,7 +128,7 @@ export function DropPage({
           archivedOriginalUrl?: string;
         }[];
         error?: string;
-      } = await presignResponse.json().catch(() => ({}));
+      };
       if (!presignResponse.ok || !presignData.urls) {
         throw new Error(presignData.error ?? "Couldn't start the upload");
       }
@@ -171,11 +171,11 @@ export function DropPage({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ token, files: uploaded }),
       });
-      const finalizeData: {
+      const finalizeData = (await finalizeResponse.json().catch(() => ({}))) as {
         shareUrl?: string;
         transfer?: { fileCount: number };
         error?: string;
-      } = await finalizeResponse.json().catch(() => ({}));
+      };
       if (!finalizeResponse.ok) {
         throw new Error(finalizeData.error ?? "Upload finished but saving failed — try again");
       }

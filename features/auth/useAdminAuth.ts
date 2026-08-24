@@ -63,15 +63,22 @@ export function useAdminAuth() {
       body: JSON.stringify({ password }),
     });
 
-    const data = await res.json().catch(() => ({}));
-    const token = typeof data.token === "string" ? (data.token as string) : "";
+    const data = (await res.json().catch(() => ({}))) as {
+      token?: unknown;
+      error?: unknown;
+      expiresInSeconds?: unknown;
+    };
+    const token = typeof data.token === "string" ? data.token : "";
     if (!res.ok || !token) {
-      return { ok: false, error: (data.error as string) || "Step-up verification failed" };
+      return {
+        ok: false,
+        error: typeof data.error === "string" ? data.error : "Step-up verification failed",
+      };
     }
 
     const expiresInSeconds =
       typeof data.expiresInSeconds === "number" && data.expiresInSeconds > 0
-        ? (data.expiresInSeconds as number)
+        ? data.expiresInSeconds
         : 300;
 
     stepUpTokenRef.current = token;

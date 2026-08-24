@@ -99,7 +99,9 @@ describe("transfer file delete route", () => {
     });
 
     expect(response.status).toBe(200);
-    const payload = await response.json();
+    const payload = (await response.json()) as {
+      transfer?: { groups?: unknown };
+    };
     expect(payload).toMatchObject({
       success: true,
       deletedTransfer: false,
