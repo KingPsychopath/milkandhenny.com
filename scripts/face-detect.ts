@@ -5,7 +5,7 @@
  *   "onnx"  — UltraFace 320 neural network via ONNX Runtime (~1.2 MB model, true face detection)
  *   "sharp" — Sharp's attention-based saliency (skin tones + luminance + saturation, zero extra deps)
  *
- * Both return the same { x, y } percentage output. Easily swappable — album-ops
+ * Both return the same { x, y } percentage output. Durable media workflows
  * doesn't care which strategy produced the coordinates.
  *
  * To add a new strategy: implement FocalDetector, add it to STRATEGIES, done.

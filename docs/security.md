@@ -184,13 +184,13 @@ Postmortems:
 
 - Guestlist KV read spike (local dev): `docs/postmortem-guestlist-kv-read-spike.md`
 
-### R2 credentials leaked (`R2_ACCESS_KEY` / `R2_SECRET_KEY`)
+### R2 credentials leaked
 
-These are the highest-impact credentials — they grant read/write/delete access to your entire R2 bucket.
+Each credential pair grants read, write, and delete access to one R2 bucket. Treat a private-bucket credential leak as a possible disclosure of protected media.
 
 1. **Cloudflare Dashboard → R2 → Manage R2 API Tokens**
 2. **Revoke** the compromised token immediately
-3. **Create a new token** with the same permissions (Object Read & Write on your bucket)
+3. **Create a new token** with Object Read & Write for only the affected bucket
 4. Copy the new Access Key ID and Secret Access Key
 5. **Update `.env.local`** with the new values
 6. **Update the production host's secret variables**
@@ -230,13 +230,14 @@ These are the highest-impact credentials — they grant read/write/delete access
 
 ### Quick-reference: where each secret lives
 
-| Secret/config                             | Local development | Production host | Source of truth   |
-| ----------------------------------------- | :---------------: | :-------------: | ----------------- |
-| `R2_ACCESS_KEY` / `R2_SECRET_KEY`         |        Yes        |       Yes       | Cloudflare R2     |
-| `REDIS_REST_URL` / `REDIS_REST_TOKEN`     |        Yes        |       Yes       | Redis provider    |
-| `ADMIN_PASSWORD` / `UPLOAD_PIN`           |        Yes        |       Yes       | Secret manager    |
-| `CRON_SECRET`                             |     Optional      |       Yes       | Secret manager    |
-| `VITE_MEDIA_PUBLIC_URL` / `VITE_BASE_URL` |        Yes        |   Build-time    | Deployment config |
+| Secret/config                                     | Local development | Production host | Source of truth   |
+| ------------------------------------------------- | :---------------: | :-------------: | ----------------- |
+| `R2_PUBLIC_ACCESS_KEY` / `R2_PUBLIC_SECRET_KEY`   |        Yes        |       Yes       | Cloudflare R2     |
+| `R2_PRIVATE_ACCESS_KEY` / `R2_PRIVATE_SECRET_KEY` |        Yes        |       Yes       | Cloudflare R2     |
+| `REDIS_REST_URL` / `REDIS_REST_TOKEN`             |        Yes        |       Yes       | Redis provider    |
+| `ADMIN_PASSWORD` / `UPLOAD_PIN`                   |        Yes        |       Yes       | Secret manager    |
+| `CRON_SECRET`                                     |     Optional      |       Yes       | Secret manager    |
+| `VITE_MEDIA_PUBLIC_URL` / `VITE_BASE_URL`         |        Yes        |   Build-time    | Deployment config |
 
 ### General incident checklist
 

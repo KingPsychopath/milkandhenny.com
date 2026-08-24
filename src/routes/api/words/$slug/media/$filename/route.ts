@@ -3,6 +3,7 @@ import { canReadWordInServerContext } from "@/features/words/reader.server";
 import { getWordMeta } from "@/features/words/store.server";
 import { deleteObject, headObject, presignGetUrl } from "@/lib/platform/r2.server";
 import { wordImageVariantKey } from "@/features/words/image";
+import { PRIVATE_MEDIA_CACHE_CONTROL } from "@/lib/shared/media-cache";
 
 const SAFE_SLUG = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const SAFE_FILENAME = /^[a-z0-9-]+\.[a-z0-9]{1,8}$/i;
@@ -48,7 +49,11 @@ async function handleGET(request: Request, slug: string, filename: string) {
     await deleteObject(key, { scope: "public" });
   }
 
-  const location = await presignGetUrl(key, { scope: "private", expiresIn: 30 });
+  const location = await presignGetUrl(key, {
+    scope: "private",
+    expiresIn: 30,
+    responseCacheControl: PRIVATE_MEDIA_CACHE_CONTROL,
+  });
   return new Response(null, {
     status: 302,
     headers: {

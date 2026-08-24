@@ -1,6 +1,3 @@
-import fs from "fs";
-import path from "path";
-
 import {
   deleteObject,
   downloadBuffer,
@@ -9,12 +6,11 @@ import {
   listObjects,
   uploadBuffer,
 } from "@/lib/platform/r2.server";
-import { MUTABLE_PUBLIC_MEDIA_CACHE_CONTROL } from "@/lib/shared/media-cache";
+import { PRIVATE_MEDIA_CACHE_CONTROL } from "@/lib/shared/media-cache";
 import type { Album, Photo } from "./albums";
 import { isValidFocalPreset } from "./focal";
 
 const ALBUM_MANIFEST_PREFIX = "albums/_manifests/";
-const LOCAL_ALBUMS_DIR = path.join(process.cwd(), "content/albums");
 const SAFE_ALBUM_SLUG = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const SAFE_PHOTO_ID = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 
@@ -106,46 +102,25 @@ function parseAlbumManifest(raw: string, expectedSlug?: string): Album | null {
   }
 }
 
-function readLocalAlbum(slug: string): Album | null {
-  if (!isSafeAlbumSlug(slug)) return null;
-  const file = path.join(LOCAL_ALBUMS_DIR, `${slug}.json`);
-  if (!fs.existsSync(file)) return null;
-  return parseAlbumManifest(fs.readFileSync(file, "utf-8"), slug);
-}
-
-function listLocalAlbums(): Album[] {
-  if (!fs.existsSync(LOCAL_ALBUMS_DIR)) return [];
-  return fs
-    .readdirSync(LOCAL_ALBUMS_DIR)
-    .filter((file) => file.endsWith(".json"))
-    .map((file) => readLocalAlbum(file.slice(0, -5)))
-    .filter((album): album is Album => album !== null);
-}
-
-function allowLocalFallback(): boolean {
-  return process.env.NODE_ENV !== "production";
-}
-
 async function readAlbumManifest(slug: string): Promise<Album | null> {
   if (!isSafeAlbumSlug(slug)) return null;
-  if (!isConfigured()) return allowLocalFallback() ? readLocalAlbum(slug) : null;
+  if (!isConfigured()) return null;
   const key = albumManifestKey(slug);
-  if (!(await headObject(key)).exists) return allowLocalFallback() ? readLocalAlbum(slug) : null;
-  const raw = await downloadBuffer(key);
+  if (!(await headObject(key, { scope: "private" })).exists) return null;
+  const raw = await downloadBuffer(key, { scope: "private" });
   return parseAlbumManifest(raw.toString("utf-8"), slug);
 }
 
 async function listAlbumManifests(): Promise<Album[]> {
-  if (!isConfigured()) return allowLocalFallback() ? listLocalAlbums() : [];
+  if (!isConfigured()) return [];
 
-  const objects = await listObjects(ALBUM_MANIFEST_PREFIX);
-  if (objects.length === 0 && allowLocalFallback()) return listLocalAlbums();
+  const objects = await listObjects(ALBUM_MANIFEST_PREFIX, { scope: "private" });
   const albums = await Promise.all(
     objects
       .filter((object) => object.key.endsWith(".json"))
       .map(async (object) => {
-        const slug = path.basename(object.key, ".json");
-        const raw = await downloadBuffer(object.key);
+        const slug = object.key.slice(ALBUM_MANIFEST_PREFIX.length, -5);
+        const raw = await downloadBuffer(object.key, { scope: "private" });
         return parseAlbumManifest(raw.toString("utf-8"), slug);
       }),
   );
@@ -154,27 +129,20 @@ async function listAlbumManifests(): Promise<Album[]> {
 
 async function writeAlbumManifest(album: Album): Promise<Album> {
   if (!isConfigured()) {
-    throw new Error("Public object storage is not configured");
+    throw new Error("Object storage is not configured");
   }
   const updated: Album = { ...album, updatedAt: new Date().toISOString() };
   await uploadBuffer(
     albumManifestKey(album.slug),
     Buffer.from(`${JSON.stringify(updated, null, 2)}\n`, "utf-8"),
     "application/json; charset=utf-8",
-    { cacheControl: MUTABLE_PUBLIC_MEDIA_CACHE_CONTROL },
+    { cacheControl: PRIVATE_MEDIA_CACHE_CONTROL, scope: "private" },
   );
   return updated;
 }
 
 async function deleteAlbumManifest(slug: string): Promise<void> {
-  await deleteObject(albumManifestKey(slug));
-}
-
-async function seedAlbumManifestsFromLocal(): Promise<{ written: number }> {
-  if (!isConfigured()) throw new Error("Public object storage is not configured");
-  const albums = listLocalAlbums();
-  await Promise.all(albums.map((album) => writeAlbumManifest(album)));
-  return { written: albums.length };
+  await deleteObject(albumManifestKey(slug), { scope: "private" });
 }
 
 export {
@@ -185,6 +153,5 @@ export {
   listAlbumManifests,
   parseAlbumManifest,
   readAlbumManifest,
-  seedAlbumManifestsFromLocal,
   writeAlbumManifest,
 };

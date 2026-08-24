@@ -99,7 +99,7 @@ function PicsPage() {
                   >
                     <div
                       className="absolute inset-0 gallery-placeholder overflow-hidden"
-                      style={imagePlaceholderStyle(cover.placeholder)}
+                      style={imagePlaceholderStyle(cover.placeholder, "color")}
                     >
                       <AppImage
                         src={coverImage.src}

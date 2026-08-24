@@ -71,7 +71,7 @@ function requireRedis(): void {
 function requireR2(): void {
   if (!isTransferStorageConfigured()) {
     throw new Error(
-      "Private R2 storage not configured. Set R2_ACCOUNT_ID, R2_ACCESS_KEY, R2_SECRET_KEY, R2_PUBLIC_BUCKET, and R2_PRIVATE_BUCKET in .env.local.",
+      "Private R2 storage is not configured. Set both bucket names and their scoped credentials in .env.local.",
     );
   }
 }

@@ -31,11 +31,12 @@ interface ResponsiveImageData extends ResponsiveImageMetadata {
 
 function imagePlaceholderStyle(
   placeholder: ImagePlaceholder | undefined,
+  mode: "blur" | "color" = "blur",
 ): CSSProperties | undefined {
   if (!placeholder) return undefined;
   return {
     backgroundColor: placeholder.color,
-    ...(placeholder.blurDataUrl
+    ...(mode === "blur" && placeholder.blurDataUrl
       ? {
           backgroundImage: `url(${placeholder.blurDataUrl})`,
           backgroundPosition: "center",

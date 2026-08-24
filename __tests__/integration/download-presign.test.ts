@@ -16,6 +16,12 @@ describe("download presign", () => {
       isTransferStorageConfigured: () => true,
       presignGetUrl,
     }));
+    vi.doMock("@/features/media/albums.server", () => ({
+      getAlbumBySlug: vi.fn().mockResolvedValue({
+        slug: "rekki",
+        photos: [{ id: "DSC08357" }],
+      }),
+    }));
 
     const { GET } = await import("@/src/routes/api/download/presign/route");
     const response = await GET(
@@ -30,7 +36,9 @@ describe("download presign", () => {
       responseContentDisposition:
         "attachment; filename=\"DSC08357.jpg\"; filename*=UTF-8''DSC08357.jpg",
       responseContentType: "application/octet-stream",
+      responseCacheControl: "private, no-store",
       expiresIn: 3600,
+      scope: "private",
     });
   });
 
@@ -81,7 +89,9 @@ describe("download presign", () => {
         responseContentDisposition:
           "attachment; filename=\"IMG_1234.HEIC\"; filename*=UTF-8''IMG_1234.HEIC",
         responseContentType: "application/octet-stream",
+        responseCacheControl: "private, no-store",
         expiresIn: 3600,
+        scope: "private",
       },
     );
   });

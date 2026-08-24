@@ -2,7 +2,6 @@ import { AppImage } from "@/components/AppImage";
 import type { Album, Photo } from "@/features/media/albums";
 import { FOCAL_PRESETS, focalPresetToObjectPosition } from "@/features/media/focal";
 import { imagePlaceholderStyle } from "@/features/media/image";
-import { getAlbumImageData } from "@/features/media/storage";
 
 interface PhotoDraft {
   title: string;
@@ -179,7 +178,7 @@ export function AlbumPhotoGrid({
 
       <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {photos.map((photo, index) => {
-          const image = getAlbumImageData(album.slug, photo);
+          const imageUrl = `/api/admin/albums/${encodeURIComponent(album.slug)}/photos/${encodeURIComponent(photo.id)}/media`;
           const selected = selectedIds.has(photo.id);
           const isCover = album.cover === photo.id;
           return (
@@ -204,12 +203,10 @@ export function AlbumPhotoGrid({
             >
               <div
                 className="relative aspect-[4/3] overflow-hidden rounded-sm"
-                style={imagePlaceholderStyle(photo.placeholder)}
+                style={imagePlaceholderStyle(photo.placeholder, "color")}
               >
                 <AppImage
-                  src={image.src}
-                  srcSet={image.srcSet}
-                  sources={image.sources}
+                  src={imageUrl}
                   sizes="(min-width: 1024px) 25vw, (min-width: 640px) 50vw, 100vw"
                   alt={photo.alt ?? ""}
                   width={photo.width}
@@ -276,7 +273,7 @@ export function AlbumPhotoGrid({
                 </button>
                 <button
                   type="button"
-                  onClick={() => onCopy(image.src, "image URL")}
+                  onClick={() => onCopy(imageUrl, "admin preview URL")}
                   className="min-h-11 rounded border theme-border font-mono text-xs"
                 >
                   copy URL
@@ -284,7 +281,10 @@ export function AlbumPhotoGrid({
                 <button
                   type="button"
                   onClick={() =>
-                    onCopy(`![${photo.alt ?? photo.title ?? photo.id}](${image.src})`, "markdown")
+                    onCopy(
+                      `![${photo.alt ?? photo.title ?? photo.id}](/pics/${album.slug}/${photo.id})`,
+                      "markdown",
+                    )
                   }
                   className="min-h-11 rounded border theme-border font-mono text-xs"
                 >

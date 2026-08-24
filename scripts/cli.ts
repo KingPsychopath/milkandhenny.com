@@ -12,33 +12,9 @@ import fs from "fs";
 import path from "path";
 import readline from "readline";
 import matter from "gray-matter";
-import {
-  listAlbums,
-  getAlbum,
-  createAlbum,
-  getAlbumUploadCheckpointFilename,
-  updateAlbumMeta,
-  deleteAlbum,
-  addPhotos,
-  deletePhoto,
-  setCover,
-  setPhotoFocal,
-  resetPhotoFocal,
-  getPhotoKeys,
-  backfillOgVariants,
-  backfillResponsiveVariants,
-} from "./album-ops";
-import { validateAllAlbums } from "@/features/media/albums.server";
-import {
-  deleteAlbumManifest,
-  seedAlbumManifestsFromLocal,
-  writeAlbumManifest,
-} from "@/features/media/album-repository.server";
+import { runAlbumsCli } from "./albums-cli";
 import { BASE_URL } from "@/lib/shared/config";
 import { buildTransferUrl } from "@/features/transfers/routes";
-import { FOCAL_PRESETS, resolveFocalPreset, FOCAL_SHORTHAND } from "@/features/media/focal";
-import { compareStrategies, DETECTION_STRATEGIES, type DetectionStrategy } from "./face-detect";
-import { ROTATION_OVERRIDES, type RotationOverride } from "../features/media/processing.server";
 import { listObjects, deleteObject, getBucketInfo } from "./r2-client";
 import {
   createTransfer,
@@ -109,15 +85,6 @@ const cyan = (s: string) => `\x1b[36m${s}\x1b[0m`;
 
 import { formatBytes } from "../lib/shared/format";
 
-function formatDate(dateStr: string): string {
-  const d = new Date(dateStr + "T00:00:00");
-  return d.toLocaleDateString("en-GB", {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-  });
-}
-
 function log(msg: string) {
   console.log(`  ${msg}`);
 }
@@ -130,25 +97,6 @@ function heading(title: string) {
 
 function progress(msg: string) {
   log(`${dim("›")} ${msg}`);
-}
-
-/**
- * Focal display for photo lists. Shows manual override or auto-detected face.
- * Returns "" if no focal info at all (center default).
- */
-function formatFocalDisplay(
-  photo: { focalPoint?: string; autoFocal?: { x: number; y: number } },
-  style: "tag" | "detail",
-): string {
-  if (photo.focalPoint && photo.focalPoint !== "center") {
-    const label = `focal: ${photo.focalPoint}`;
-    return style === "tag" ? dim(` ${label}`) : ` · ${label}`;
-  }
-  if (photo.autoFocal) {
-    const label = `face: ${photo.autoFocal.x}%,${photo.autoFocal.y}%`;
-    return style === "tag" ? dim(` ${label}`) : ` · ${label}`;
-  }
-  return "";
 }
 
 /* ─── Validation ─── */
@@ -188,41 +136,6 @@ function getMediaTargetFromArgs(opts: { slug?: string; assetId?: string }): Word
     throw new Error("Asset ID must be lowercase letters, numbers, hyphens only.");
   }
   return { scope: "asset", assetId };
-}
-
-/** Validate date format: YYYY-MM-DD */
-function isValidDate(date: string): boolean {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return false;
-  const [yearRaw, monthRaw, dayRaw] = date.split("-");
-  const year = Number(yearRaw);
-  const month = Number(monthRaw);
-  const day = Number(dayRaw);
-  const parsed = new Date(Date.UTC(year, month - 1, day));
-  return (
-    !Number.isNaN(parsed.getTime()) &&
-    parsed.getUTCFullYear() === year &&
-    parsed.getUTCMonth() === month - 1 &&
-    parsed.getUTCDate() === day
-  );
-}
-
-/** Validate directory exists and contains images */
-function validateDir(dir: string): { valid: boolean; error?: string; count?: number } {
-  const absDir = path.resolve(dir.replace(/^~/, process.env.HOME ?? "~"));
-  if (!fs.existsSync(absDir)) {
-    return { valid: false, error: `Directory not found: ${absDir}` };
-  }
-  if (!fs.statSync(absDir).isDirectory()) {
-    return { valid: false, error: `Not a directory: ${absDir}` };
-  }
-  const images = fs.readdirSync(absDir).filter((f) => /\.(jpe?g|png|webp)$/i.test(f));
-  if (images.length === 0) {
-    return {
-      valid: false,
-      error: `No images found in ${absDir}. Supported: .jpg, .jpeg, .png, .webp`,
-    };
-  }
-  return { valid: true, count: images.length };
 }
 
 /** Validate directory for transfers and words media — accepts ALL non-hidden files */
@@ -375,47 +288,6 @@ async function choose(
   return num;
 }
 
-/** Select an album from the list. Returns slug or null. */
-async function selectAlbum(): Promise<string | null> {
-  const albums = listAlbums();
-  if (albums.length === 0) {
-    console.log();
-    log(dim("No albums found. Upload one first with Albums → Upload."));
-    return null;
-  }
-
-  const choice = await choose(
-    "Select album",
-    albums.map((a) => ({
-      label: a.title,
-      detail: `${a.slug} · ${formatDate(a.date)} · ${a.photoCount} photos`,
-    })),
-  );
-
-  if (choice <= 0) return null;
-  return albums[choice - 1].slug;
-}
-
-/** Select a photo from an album. Returns photo ID or null. */
-async function selectPhoto(slug: string): Promise<string | null> {
-  const album = getAlbum(slug);
-  if (!album || album.photos.length === 0) {
-    log(dim("No photos in this album."));
-    return null;
-  }
-
-  const choice = await choose(
-    `Photos in: ${album.title}`,
-    album.photos.map((p) => ({
-      label: `${p.id}${p.id === album.cover ? yellow(" ★ cover") : ""}`,
-      detail: `${p.width} × ${p.height}${formatFocalDisplay(p, "detail")}`,
-    })),
-  );
-
-  if (choice <= 0) return null;
-  return album.photos[choice - 1].id;
-}
-
 /** Pause until enter is pressed */
 async function pause() {
   await ask("", { hint: "press enter to continue" });
@@ -424,389 +296,6 @@ async function pause() {
 /* ─── Command handlers ─── */
 /* These return void and never call process.exit — safe for interactive mode.
  * Errors are thrown, caught by the caller. */
-
-async function cmdAlbumsList() {
-  const albums = listAlbums();
-
-  if (albums.length === 0) {
-    heading("Albums");
-    log(dim("No albums yet."));
-    console.log();
-    return;
-  }
-
-  heading(`Albums (${albums.length})`);
-  const maxSlug = Math.max(...albums.map((a) => a.slug.length));
-
-  for (const a of albums) {
-    log(
-      `${cyan(a.slug.padEnd(maxSlug + 2))} ${a.title.padEnd(35)} ${dim(formatDate(a.date))}  ${dim(`${a.photoCount} photos`)}`,
-    );
-  }
-  console.log();
-}
-
-async function cmdAlbumsShow(slug: string) {
-  const album = getAlbum(slug);
-  if (!album) throw new Error(`Album "${slug}" not found.`);
-
-  heading(album.title);
-  log(`${dim("Slug:")}         ${album.slug}`);
-  log(`${dim("Date:")}         ${formatDate(album.date)}`);
-  if (album.description) {
-    log(`${dim("Description:")}  ${album.description}`);
-  }
-  log(`${dim("Cover:")}        ${album.cover}`);
-  log(`${dim("Photos:")}       ${album.photos.length}`);
-  console.log();
-
-  const maxId = Math.max(...album.photos.map((p) => p.id.length));
-
-  for (const p of album.photos) {
-    const coverTag = p.id === album.cover ? yellow(" ★") : "";
-    log(
-      `  ${p.id.padEnd(maxId + 2)} ${dim(`${p.width} × ${p.height}`)}${coverTag}${formatFocalDisplay(p, "tag")}`,
-    );
-  }
-  console.log();
-}
-
-async function cmdAlbumsUpload(opts: {
-  dir: string;
-  slug: string;
-  title: string;
-  date: string;
-  description?: string;
-  rotation?: RotationOverride;
-}) {
-  heading(`Uploading: ${opts.title}`);
-  log(
-    dim(
-      "Resume-safe: if interrupted, rerun the same albums upload command in the same folder to continue.",
-    ),
-  );
-  log(
-    dim(
-      `Checkpoint file: ${getAlbumUploadCheckpointFilename(opts.slug)} (auto-created, auto-removed on success)`,
-    ),
-  );
-  console.log();
-
-  let jsonPath: string;
-  let results: Awaited<ReturnType<typeof createAlbum>>["results"];
-  try {
-    const result = await createAlbum(opts, (msg) => progress(msg));
-    jsonPath = result.jsonPath;
-    results = result.results;
-    await writeAlbumManifest({ slug: opts.slug, ...result.album, status: "published" });
-  } catch (error) {
-    console.log();
-    log(yellow("Album upload interrupted. Rerun the same albums upload command to auto-resume."));
-    throw error;
-  }
-
-  console.log();
-  log(green(`✓ ${results.length} photos uploaded`));
-  log(green(`✓ JSON written to ${jsonPath}`));
-
-  const totalResponsive = results.reduce((s, r) => s + r.responsiveSize, 0);
-  const totalOrig = results.reduce((s, r) => s + r.originalSize, 0);
-
-  console.log();
-  log(dim("Size breakdown:"));
-  log(`  Responsive:  ${formatBytes(totalResponsive)}`);
-  log(`  Originals:   ${formatBytes(totalOrig)}`);
-  log(`  ${bold("Total:")}       ${formatBytes(totalResponsive + totalOrig)}`);
-  console.log();
-  log(dim("Next: commit the JSON and deploy."));
-  console.log();
-}
-
-async function cmdAlbumsUpdate(
-  slug: string,
-  updates: { title?: string; date?: string; description?: string; cover?: string },
-) {
-  const updated = updateAlbumMeta(slug, updates);
-  if (!updated) throw new Error(`Album "${slug}" not found.`);
-  await writeAlbumManifest({ slug, ...updated, status: "published" });
-
-  heading("Updated");
-  log(`${dim("Title:")}       ${updated.title}`);
-  log(`${dim("Date:")}        ${formatDate(updated.date)}`);
-  if (updated.description) {
-    log(`${dim("Description:")} ${updated.description}`);
-  }
-  log(`${dim("Cover:")}       ${updated.cover}`);
-  console.log();
-  log(green("✓ Album metadata updated."));
-  log(dim("Next: commit the JSON and deploy."));
-  console.log();
-}
-
-async function cmdAlbumsBackfillOg(
-  skipConfirm = false,
-  force = false,
-  strategy?: DetectionStrategy,
-) {
-  heading("Backfill OG images");
-  log(dim("Downloads originals from R2, generates 1200×630 JPGs for social sharing."));
-  log(dim(force ? "Regenerating all (--force)." : "Skips photos that already have og/ variant."));
-  log(dim(`Detection: ${strategy ?? "onnx (default)"}. Auto-detects faces for focal crop.`));
-  console.log();
-
-  const albums = listAlbums();
-  if (albums.length === 0) {
-    log(dim("No albums found."));
-    console.log();
-    return;
-  }
-
-  const totalPhotos = albums.reduce((sum, a) => sum + a.photoCount, 0);
-  log(`${dim("Albums:")} ${albums.length}`);
-  log(`${dim("Photos:")} ${totalPhotos}`);
-  console.log();
-
-  if (!skipConfirm) {
-    const ok = await confirm(force ? "Regenerate all OG images?" : "Proceed with backfill?");
-    if (!ok) {
-      log(dim("Cancelled."));
-      console.log();
-      return;
-    }
-  }
-
-  const result = await backfillOgVariants((msg) => progress(msg), { force, strategy });
-  await seedAlbumManifestsFromLocal();
-
-  console.log();
-  log(green(`✓ Processed: ${result.processed}`));
-  if (result.skipped > 0) log(dim(`  Skipped (already exists): ${result.skipped}`));
-  if (result.failed > 0) log(red(`  Failed: ${result.failed}`));
-  log(dim("Next: run `pnpm build` — OG image generation will be faster."));
-  console.log();
-}
-
-async function cmdAlbumsBackfillImages(skipConfirm = false, force = false) {
-  heading("Backfill responsive album images");
-  log(dim("Generates AVIF and WebP source sets, dimensions, blur data, and dominant colours."));
-  console.log();
-  if (
-    !skipConfirm &&
-    !(await confirm("Process all album photos and replace old display variants?"))
-  ) {
-    log(dim("Cancelled."));
-    return;
-  }
-  const result = await backfillResponsiveVariants((msg) => progress(msg), { force });
-  await seedAlbumManifestsFromLocal();
-  console.log();
-  log(green(`✓ Processed: ${result.processed}`));
-  if (result.skipped) log(dim(`  Skipped: ${result.skipped}`));
-  if (result.removedLegacy) log(dim(`  Removed old display objects: ${result.removedLegacy}`));
-  if (result.failed) log(red(`  Failed: ${result.failed}`));
-}
-
-async function cmdAlbumsDelete(slug: string) {
-  const album = getAlbum(slug);
-  if (!album) throw new Error(`Album "${slug}" not found.`);
-
-  heading(`Delete: ${album.title}`);
-  log(`${dim("Photos:")} ${album.photos.length}`);
-  log(`${dim("R2 files:")} ~${album.photos.length * 4} (thumb + full + original + og per photo)`);
-  console.log();
-
-  const ok = await confirm(`${red("Permanently")} delete album "${slug}" and all its R2 files?`);
-  if (!ok) {
-    log(dim("Cancelled."));
-    console.log();
-    return;
-  }
-
-  const result = await deleteAlbum(slug, (msg) => progress(msg));
-  await deleteAlbumManifest(slug);
-
-  console.log();
-  log(green(`✓ Deleted ${result.deletedFiles} files from R2`));
-  log(green(`✓ JSON file ${result.jsonDeleted ? "deleted" : "not found"}`));
-  log(dim("Next: commit the change and deploy."));
-  console.log();
-}
-
-async function cmdAlbumsValidate() {
-  heading("Validate album manifests");
-  const results = await validateAllAlbums();
-  if (results.length === 0) {
-    log(green("✓ All albums valid."));
-    console.log();
-    return;
-  }
-  for (const { slug, errors } of results) {
-    log(red(`${slug}:`));
-    for (const err of errors) {
-      log(`  ${dim("—")} ${err}`);
-    }
-    console.log();
-  }
-  log(red(`✗ ${results.length} album(s) have validation errors.`));
-  log(dim("Fix the reported metadata in the gallery control room or local import manifest."));
-  console.log();
-  process.exit(1);
-}
-
-async function cmdAlbumsSyncManifests() {
-  heading("Sync album manifests to object storage");
-  const result = await seedAlbumManifestsFromLocal();
-  log(green(`✓ Synced ${result.written} album manifest${result.written === 1 ? "" : "s"}.`));
-  console.log();
-}
-
-async function cmdPhotosList(slug: string) {
-  const album = getAlbum(slug);
-  if (!album) throw new Error(`Album "${slug}" not found.`);
-
-  heading(`${album.title} — Photos (${album.photos.length})`);
-
-  if (album.photos.length === 0) {
-    log(dim("No photos in this album."));
-    console.log();
-    return;
-  }
-
-  const maxId = Math.max(...album.photos.map((p) => p.id.length));
-
-  for (const p of album.photos) {
-    const coverTag = p.id === album.cover ? yellow(" ★ cover") : "";
-    const keys = getPhotoKeys(slug, p);
-    log(
-      `${cyan(p.id.padEnd(maxId + 2))} ${dim(`${p.width} × ${p.height}`)}${coverTag}${formatFocalDisplay(p, "tag")}`,
-    );
-    for (const k of keys) {
-      log(`  ${dim(k)}`);
-    }
-  }
-  console.log();
-}
-
-async function cmdPhotosAdd(slug: string, dir: string, rotation?: RotationOverride) {
-  heading(`Adding photos to: ${slug}`);
-  if (rotation) progress(`Rotation override: ${rotation}`);
-
-  const { added, album } = await addPhotos(slug, dir, (msg) => progress(msg), rotation);
-  await writeAlbumManifest({ slug, ...album, status: "published" });
-
-  console.log();
-  if (added.length === 0) {
-    log(yellow("No new photos to add (all already in album)."));
-  } else {
-    log(green(`✓ ${added.length} photos added. Album now has ${album.photos.length} photos.`));
-    log(dim("Next: commit the JSON and deploy."));
-  }
-  console.log();
-}
-
-async function cmdPhotosDelete(slug: string, photoId: string) {
-  const album = getAlbum(slug);
-  if (!album) throw new Error(`Album "${slug}" not found.`);
-
-  const photo = album.photos.find((p) => p.id === photoId);
-  if (!photo) {
-    const available = album.photos.map((p) => p.id).join(", ");
-    throw new Error(`Photo "${photoId}" not found in album "${slug}". Available: ${available}`);
-  }
-
-  heading(`Delete photo: ${photoId}`);
-  log(`${dim("Album:")} ${album.title}`);
-  log(`${dim("Size:")}  ${photo.width} × ${photo.height}`);
-  if (album.cover === photoId) {
-    log(yellow("⚠ This photo is the current cover. A new cover will be set automatically."));
-  }
-  console.log();
-
-  const ok = await confirm(`Delete "${photoId}" from R2 and album JSON?`);
-  if (!ok) {
-    log(dim("Cancelled."));
-    console.log();
-    return;
-  }
-
-  const result = await deletePhoto(slug, photoId, (msg) => progress(msg));
-  await writeAlbumManifest({ slug, ...result.album, status: "published" });
-
-  console.log();
-  log(green(`✓ Deleted ${photoId} (${result.deletedKeys.length} files from R2)`));
-  log(green(`✓ Album now has ${result.album.photos.length} photos`));
-  log(dim("Next: commit the JSON and deploy."));
-  console.log();
-}
-
-async function cmdPhotosSetCover(slug: string, photoId: string) {
-  const album = setCover(slug, photoId);
-  await writeAlbumManifest({ slug, ...album, status: "published" });
-  log(green(`✓ Cover set to "${photoId}" for album "${slug}".`));
-  log(dim(`Album: ${album.title}`));
-  log(dim("Next: commit the JSON and deploy."));
-  console.log();
-}
-
-async function cmdPhotosSetFocal(
-  slug: string,
-  photoId: string,
-  preset: import("@/features/media/focal").FocalPreset,
-) {
-  heading(`Set focal point: ${photoId}`);
-  const album = await setPhotoFocal(slug, photoId, preset, (msg) => progress(msg));
-  await writeAlbumManifest({ slug, ...album, status: "published" });
-  console.log();
-  log(green(`✓ Focal set to "${preset}" — OG image regenerated.`));
-  log(dim(`Album: ${album.title}`));
-  log(dim("Applies to: OG images, album embed thumbnails."));
-  log(dim("Next: commit the JSON and deploy."));
-  console.log();
-}
-
-async function cmdPhotosCompareFocal(slug: string, photoId: string) {
-  heading(`Compare detection strategies: ${photoId}`);
-  const album = getAlbum(slug);
-  if (!album) throw new Error(`Album "${slug}" not found`);
-  if (!album.photos.some((p) => p.id === photoId)) {
-    throw new Error(`Photo "${photoId}" not found in album "${slug}"`);
-  }
-
-  progress("Downloading original from R2...");
-  const { downloadBuffer } = await import("./r2-client");
-  const raw = await downloadBuffer(`albums/${slug}/original/${photoId}.jpg`);
-
-  progress("Running all strategies...");
-  const results = await compareStrategies(raw);
-
-  console.log();
-  for (const [name, result] of Object.entries(results)) {
-    if (result) {
-      log(`  ${cyan(name.padEnd(8))} → focal (${result.x}%, ${result.y}%)`);
-    } else {
-      log(`  ${cyan(name.padEnd(8))} → ${dim("no detection")}`);
-    }
-  }
-  console.log();
-  log(dim("Use --strategy <name> with reset-focal to apply a specific one."));
-  console.log();
-}
-
-async function cmdPhotosResetFocal(slug: string, photoId?: string, strategy?: DetectionStrategy) {
-  heading(photoId ? `Reset focal: ${photoId}` : `Reset focal: all photos in ${slug}`);
-  if (strategy) progress(`Using ${strategy} detection strategy`);
-  const album = await resetPhotoFocal(slug, photoId, (msg) => progress(msg), strategy);
-  await writeAlbumManifest({ slug, ...album, status: "published" });
-  console.log();
-  log(
-    green(
-      `✓ Focal reset — ${photoId ? "1 photo" : `${album.photos.length} photos`} re-detected and OG images regenerated.`,
-    ),
-  );
-  log(dim("Manual overrides cleared. Auto-detected face positions applied."));
-  log(dim("Next: commit the JSON and deploy."));
-  console.log();
-}
 
 async function cmdBucketLs(prefix = "") {
   heading(prefix ? `Bucket: ${prefix}` : "Bucket (root)");
@@ -863,7 +352,7 @@ async function cmdBucketRm(key: string) {
   console.log();
 
   const ok = await confirm(
-    `Delete "${key}" from R2? ${dim("(⚠ This does NOT update album JSON — use 'photos delete' for that)")}`,
+    `Delete "${key}" from R2? ${dim("(⚠ This does not update durable records. Prefer the feature command.)")}`,
   );
   if (!ok) {
     log(dim("Cancelled."));
@@ -2955,43 +2444,17 @@ function showHelp() {
     events ticket remove ${dim("<slug> <ticket-id>")}       Remove a ticket type (use --yes)
     ${dim("Mutations ask for confirmation unless --yes or --dry-run is supplied.")}
 
-  ${bold("Albums")}
-    albums list                              List all albums
-    albums show ${dim("<slug>")}                       Show album details
-    albums upload                            Upload new album
-      --dir ${dim("<path>")}      ${dim("Folder with photos (e.g. ~/Desktop/party-photos)")}
-      --slug ${dim("<slug>")}     ${dim("URL-safe name (e.g. jan-2026, summer-vibes)")}
-      --title ${dim("<title>")}   ${dim('Display title (e.g. "Milk & Henny — January 2026")')}
-      --date ${dim("<date>")}     ${dim("Date as YYYY-MM-DD (e.g. 2026-01-16)")}
-      --description ${dim("<desc>")}  ${dim("Optional description")}
-      --rotation ${dim("<portrait|landscape>")}  ${dim("Force orientation (default: trust EXIF)")}
-    albums update ${dim("<slug>")} [options]            Update album metadata
-      --title, --date, --description, --cover
-    albums delete ${dim("<slug>")}                     Delete entire album + R2 files
-    albums backfill-og ${dim("[--yes] [--force]")}     Backfill OG images for existing albums
-      --yes            ${dim("Skip confirmation prompt")}
-      --force          ${dim("Regenerate all (even existing og/) — use after changing focal points")}
-      ${dim("Downloads originals from R2, generates 1200×630 JPGs, uploads to og/)")}
-    albums backfill-images ${dim("[--yes] [--force]")} Backfill AVIF/WebP and placeholders
-    albums sync-manifests                     Seed durable manifests from content/albums
-    albums validate                           Validate durable album manifests
-      ${dim("Exits 1 if any album has invalid data. Use in CI.)")}
-
-  ${bold("Photos")}
-    photos list ${dim("<album>")}                      List photos with R2 keys
-    photos add ${dim("<album>")} --dir ${dim("<path>")} ${dim("[--rotation portrait|landscape]")}
-      ${dim("Add new photos. --rotation forces orientation for all photos.")}
-    photos delete ${dim("<album> <photoId>")}          Remove a photo from album + R2
-    photos set-cover ${dim("<album> <photoId>")}       Set album cover photo
-    photos set-focal ${dim("<album> <photoId>")} --preset ${dim("<name>")}  Set crop focal point (manual)
-      ${dim("Presets: c, t, b, l, r, tl, tr, bl, br, mt, mb, ml, mr")}
-      ${dim("mt/mb/ml/mr = mid top/bottom/left/right (between edge and center)")}
-      ${dim("Overrides auto-detected face position. Regenerates OG image.")}
-    photos reset-focal ${dim("<album>")} ${dim("[photoId]")} ${dim("[--strategy onnx|sharp]")}
-      ${dim("Clears manual override, re-detects faces, regenerates OG images.")}
-      ${dim("Omit photoId to reset all photos in the album.")}
-    photos compare-focal ${dim("<album> <photoId>")}    Compare detection strategies
-      ${dim("Runs all strategies on a photo and shows the results side by side.")}
+  ${bold("Albums and photos")} ${dim("(private source storage; explicit publication)")}
+    albums list
+    albums create --slug ${dim("<slug>")} --title ${dim("<title>")} --date ${dim("<YYYY-MM-DD>")}
+    albums update ${dim("<slug>")} ${dim("[--title ...] [--date ...] [--description ...] [--status draft|published]")}
+    albums upload ${dim("<slug>")} --dir ${dim("<path>")}
+    albums delete ${dim("<slug>")} --yes
+    photos add ${dim("<album>")} --dir ${dim("<path>")}
+    photos delete ${dim("<album> <photo-id>")} --yes
+    photos set-cover ${dim("<album> <photo-id>")}
+    photos update ${dim("<album> <photo-id>")} ${dim("[--title ...] [--alt ...] [--caption ...] [--focal ...]")}
+    photos reorder ${dim("<album>")} --ids ${dim("<id,id,id>")}
 
   ${bold("Transfers")} ${dim("(private, self-destructing file shares)")}
     transfers list                           List active transfers + time left
@@ -3060,7 +2523,8 @@ function showHelp() {
 
   ${bold("Examples")}
     ${dim("$")} pnpm cli
-    ${dim("$")} pnpm cli albums upload --dir ~/Desktop/party --slug jan-2026 --title "January 2026" --date 2026-01-16
+    ${dim("$")} pnpm cli albums create --slug jan-2026 --title "January 2026" --date 2026-01-16
+    ${dim("$")} pnpm cli albums upload jan-2026 --dir ~/Desktop/party
     ${dim("$")} pnpm cli transfers upload --dir ~/Desktop/send-photos --title "Photos for John" --expires 7d
     ${dim("   ")} ${dim("(Rerun the same transfers upload command to resume after a network interruption)")}
     ${dim("$")} pnpm cli transfers append velvet-moon-candle --dir ~/Desktop/more-photos
@@ -3074,7 +2538,6 @@ function showHelp() {
     ${dim("$")} pnpm cli media upload --asset brand-kit --dir ~/Desktop/brand-assets
     ${dim("$")} pnpm cli media list --slug my-first-birthday
     ${dim("$")} pnpm cli media orphans --limit 200
-    ${dim("$")} pnpm cli photos delete jan-2026 DSC00003
     ${dim("$")} pnpm cli bucket ls words/media/my-first-birthday/
 `);
 }
@@ -3089,372 +2552,6 @@ async function safely(fn: () => Promise<void>): Promise<void> {
     console.log();
     log(red(`Error: ${(err as Error).message}`));
     console.log();
-  }
-}
-
-/** Interactive prompt for uploading a new album with full validation */
-async function promptUpload(): Promise<void> {
-  console.log();
-  log(bold("Upload new album"));
-  log(dim("This will process images from a folder on your Mac, upload them to R2,"));
-  log(dim("and create the album JSON in content/albums/."));
-  console.log();
-
-  /* Source directory */
-  let dir = "";
-  while (true) {
-    dir = await ask("Source directory", {
-      hint: "e.g. ~/Desktop/party-photos",
-    });
-    if (!dir) return;
-
-    const check = validateDir(dir);
-    if (check.valid) {
-      log(green(`  Found ${check.count} images`));
-      break;
-    }
-    log(red(`  ${check.error}`));
-  }
-
-  /* Slug */
-  let slug = "";
-  while (true) {
-    slug = await ask("Album slug", {
-      hint: "URL-safe name, e.g. jan-2026 or summer-vibes",
-    });
-    if (!slug) return;
-
-    if (!isValidSlug(slug)) {
-      log(red("  Slug must be lowercase letters, numbers, and hyphens only."));
-      log(dim("  Examples: jan-2026, summer-vibes, milk-and-henny-feb"));
-      continue;
-    }
-
-    /* Check if album already exists */
-    if (getAlbum(slug)) {
-      log(
-        yellow(
-          `  Album "${slug}" already exists. Use a different slug, or add photos with Photos → Add.`,
-        ),
-      );
-      continue;
-    }
-
-    break;
-  }
-
-  /* Title */
-  const title = await ask("Album title", {
-    hint: 'e.g. "Milk & Henny — January 2026"',
-  });
-  if (!title) return;
-
-  /* Date */
-  let date = "";
-  while (true) {
-    date = await ask("Date", { hint: "YYYY-MM-DD, e.g. 2026-01-16" });
-    if (!date) return;
-
-    if (!isValidDate(date)) {
-      log(red("  Invalid date. Use YYYY-MM-DD format."));
-      continue;
-    }
-    break;
-  }
-
-  /* Description (optional) */
-  const description = await ask("Description", { hint: "optional, press enter to skip" });
-
-  /* Optional rotation override */
-  const rotChoice = await choose("Rotation override (optional)", [
-    { label: "None", detail: "trust EXIF orientation (default)" },
-    { label: "Portrait", detail: "force all photos to portrait" },
-    { label: "Landscape", detail: "force all photos to landscape" },
-  ]);
-  const rotation: RotationOverride | undefined =
-    rotChoice === 2 ? "portrait" : rotChoice === 3 ? "landscape" : undefined;
-
-  /* Confirm */
-  console.log();
-  log(dim("─── Summary ───"));
-  log(`${dim("Directory:")}   ${dir}`);
-  log(`${dim("Slug:")}        ${slug}`);
-  log(`${dim("Title:")}       ${title}`);
-  log(`${dim("Date:")}        ${date}`);
-  if (description) log(`${dim("Description:")} ${description}`);
-  if (rotation) log(`${dim("Rotation:")}    ${rotation}`);
-  console.log();
-
-  const ok = await confirm("Upload this album?");
-  if (!ok) {
-    log(dim("Cancelled."));
-    return;
-  }
-
-  await cmdAlbumsUpload({
-    dir: dir.replace(/^~/, process.env.HOME ?? "~"),
-    slug,
-    title,
-    date,
-    description: description || undefined,
-    rotation,
-  });
-}
-
-/** Interactive prompt for updating album metadata */
-async function promptUpdate(): Promise<void> {
-  const slug = await selectAlbum();
-  if (!slug) return;
-
-  const album = getAlbum(slug);
-  if (!album) return;
-
-  console.log();
-  log(dim("Leave blank to keep current value."));
-  console.log();
-
-  const title = await ask("Title", { defaultVal: album.title });
-  const date = await ask("Date", {
-    defaultVal: album.date,
-    hint: "YYYY-MM-DD",
-  });
-  const description = await ask("Description", {
-    defaultVal: album.description ?? "",
-    hint: "leave empty to clear",
-  });
-
-  /* Cover — show current and offer to change via photo picker */
-  let newCover: string | undefined;
-  const changeCover = await confirm(`Current cover: ${bold(album.cover)}. Change it?`);
-  if (changeCover) {
-    console.log();
-    const picked = await selectPhoto(slug);
-    if (picked && picked !== album.cover) {
-      newCover = picked;
-    } else if (picked === album.cover) {
-      log(dim("Same as current cover — no change."));
-    }
-  }
-
-  /* Only send changes */
-  const updates: Record<string, string | undefined> = {};
-  if (title !== album.title) updates.title = title;
-  if (date !== album.date) {
-    if (!isValidDate(date)) {
-      log(red("Invalid date format. No changes made."));
-      return;
-    }
-    updates.date = date;
-  }
-  if (description !== (album.description ?? "")) updates.description = description;
-  if (newCover) updates.cover = newCover;
-
-  if (Object.keys(updates).length === 0) {
-    log(dim("No changes."));
-    return;
-  }
-
-  await cmdAlbumsUpdate(slug, updates);
-}
-
-/** Interactive prompt for adding photos to an existing album */
-async function promptAddPhotos(): Promise<void> {
-  const slug = await selectAlbum();
-  if (!slug) return;
-
-  console.log();
-  let dir = "";
-  while (true) {
-    dir = await ask("Directory with new photos", {
-      hint: "e.g. ~/Desktop/more-photos",
-    });
-    if (!dir) return;
-
-    const check = validateDir(dir);
-    if (check.valid) {
-      log(green(`  Found ${check.count} images`));
-      break;
-    }
-    log(red(`  ${check.error}`));
-  }
-
-  const rotChoice = await choose("Rotation override (optional)", [
-    { label: "None", detail: "trust EXIF orientation (default)" },
-    { label: "Portrait", detail: "force all photos to portrait" },
-    { label: "Landscape", detail: "force all photos to landscape" },
-  ]);
-  const rotation: RotationOverride | undefined =
-    rotChoice === 2 ? "portrait" : rotChoice === 3 ? "landscape" : undefined;
-
-  await cmdPhotosAdd(slug, dir.replace(/^~/, process.env.HOME ?? "~"), rotation);
-}
-
-async function interactiveAlbums() {
-  while (true) {
-    const choice = await choose("Albums", [
-      { label: "List albums", detail: "see all albums at a glance" },
-      { label: "Show album details", detail: "photos, metadata, cover" },
-      { label: "Upload new album", detail: "process images and upload to R2" },
-      { label: "Update album metadata", detail: "change title, date, description" },
-      { label: "Delete album", detail: "remove from R2 and JSON" },
-      { label: "Backfill OG images", detail: "generate og/ variants for existing albums" },
-      { label: "Validate album manifests", detail: "check image metadata and focal ranges" },
-    ]);
-
-    switch (choice) {
-      case 0:
-        return;
-      case 1:
-        await safely(cmdAlbumsList);
-        await pause();
-        break;
-      case 2: {
-        const slug = await selectAlbum();
-        if (slug) {
-          await safely(() => cmdAlbumsShow(slug));
-          await pause();
-        }
-        break;
-      }
-      case 3:
-        await safely(promptUpload);
-        await pause();
-        break;
-      case 4:
-        await safely(promptUpdate);
-        await pause();
-        break;
-      case 5: {
-        const slug = await selectAlbum();
-        if (slug) {
-          await safely(() => cmdAlbumsDelete(slug));
-          await pause();
-        }
-        break;
-      }
-      case 6: {
-        const strategy = await selectStrategy();
-        await safely(() => cmdAlbumsBackfillOg(false, true, strategy));
-        await pause();
-        break;
-      }
-      case 7:
-        await safely(cmdAlbumsValidate);
-        await pause();
-        break;
-    }
-  }
-}
-
-/** Prompt for detection strategy (onnx or sharp) */
-async function selectStrategy(): Promise<DetectionStrategy> {
-  const choice = await choose("Detection strategy", [
-    { label: "onnx", detail: "UltraFace neural network — true face detection (default)" },
-    { label: "sharp", detail: "Sharp attention saliency — skin tones + luminance, no model" },
-  ]);
-  return choice <= 0 ? "onnx" : (["onnx", "sharp"] as const)[choice - 1];
-}
-
-async function interactivePhotos() {
-  while (true) {
-    const choice = await choose("Photos", [
-      { label: "List photos in album", detail: "IDs, dimensions, R2 keys" },
-      { label: "Add photos to album", detail: "upload from a folder" },
-      { label: "Delete a photo", detail: "remove from R2 and JSON" },
-      { label: "Set cover photo", detail: "change album thumbnail" },
-      { label: "Set focal point", detail: "manual crop position for OG + embeds" },
-      { label: "Reset focal point", detail: "clear manual, re-detect faces, regen OG" },
-      { label: "Compare strategies", detail: "run onnx + sharp on a photo side by side" },
-    ]);
-
-    switch (choice) {
-      case 0:
-        return;
-      case 1: {
-        const slug = await selectAlbum();
-        if (slug) {
-          await safely(() => cmdPhotosList(slug));
-          await pause();
-        }
-        break;
-      }
-      case 2:
-        await safely(promptAddPhotos);
-        await pause();
-        break;
-      case 3: {
-        const slug = await selectAlbum();
-        if (!slug) break;
-        const photoId = await selectPhoto(slug);
-        if (!photoId) break;
-        await safely(() => cmdPhotosDelete(slug, photoId));
-        await pause();
-        break;
-      }
-      case 4: {
-        const slug = await selectAlbum();
-        if (!slug) break;
-        const photoId = await selectPhoto(slug);
-        if (!photoId) break;
-        await safely(() => cmdPhotosSetCover(slug, photoId));
-        await pause();
-        break;
-      }
-      case 5: {
-        const slug = await selectAlbum();
-        if (!slug) break;
-        const photoId = await selectPhoto(slug);
-        if (!photoId) break;
-
-        const presetChoice = await choose("Focal point (where to center the crop)", [
-          { label: "Center", detail: "default, good for most landscape shots" },
-          { label: "Top", detail: "face at top edge" },
-          { label: "Bottom", detail: "subject at bottom edge" },
-          { label: "Left", detail: "subject at left edge" },
-          { label: "Right", detail: "subject at right edge" },
-          { label: "Top left", detail: "subject in top-left corner" },
-          { label: "Top right", detail: "subject in top-right corner" },
-          { label: "Bottom left", detail: "subject in bottom-left corner" },
-          { label: "Bottom right", detail: "subject in bottom-right corner" },
-          { label: "Mid top", detail: "between top and center — upper third" },
-          { label: "Mid bottom", detail: "between bottom and center — lower third" },
-          { label: "Mid left", detail: "between left and center — left third" },
-          { label: "Mid right", detail: "between right and center — right third" },
-        ]);
-        if (presetChoice <= 0) break;
-
-        const preset = FOCAL_PRESETS[presetChoice - 1];
-        await safely(() => cmdPhotosSetFocal(slug, photoId, preset));
-        await pause();
-        break;
-      }
-      case 6: {
-        const slug = await selectAlbum();
-        if (!slug) break;
-        const resetScope = await choose("Reset scope", [
-          { label: "All photos in album", detail: "re-detect + regen OG for every photo" },
-          { label: "Single photo", detail: "pick one photo to reset" },
-        ]);
-        if (resetScope <= 0) break;
-
-        const photoId = resetScope === 2 ? ((await selectPhoto(slug)) ?? undefined) : undefined;
-        if (resetScope === 2 && !photoId) break;
-
-        const strategy = await selectStrategy();
-        await safely(() => cmdPhotosResetFocal(slug, photoId, strategy));
-        await pause();
-        break;
-      }
-      case 7: {
-        const slug = await selectAlbum();
-        if (!slug) break;
-        const photoId = await selectPhoto(slug);
-        if (!photoId) break;
-        await safely(() => cmdPhotosCompareFocal(slug, photoId));
-        await pause();
-        break;
-      }
-    }
   }
 }
 
@@ -4529,8 +3626,6 @@ async function interactive() {
 
   while (true) {
     const choice = await choose("What would you like to do?", [
-      { label: "Albums", detail: "list, upload, update, delete albums" },
-      { label: "Photos", detail: "list, add, delete, set cover photo" },
       { label: "Transfers", detail: "private, self-destructing file shares" },
       { label: "Words Media", detail: "upload/list/delete per-word media + shared assets" },
       { label: "Words", detail: "content, visibility, and signed links" },
@@ -4545,24 +3640,18 @@ async function interactive() {
         console.log();
         return;
       case 1:
-        await interactiveAlbums();
-        break;
-      case 2:
-        await interactivePhotos();
-        break;
-      case 3:
         await interactiveTransfers();
         break;
-      case 4:
+      case 2:
         await interactiveWordsMedia();
         break;
-      case 5:
+      case 3:
         await interactiveWords();
         break;
-      case 6:
+      case 4:
         await interactiveBucket();
         break;
-      case 7:
+      case 5:
         await interactiveAuth();
         break;
     }
@@ -4791,158 +3880,8 @@ async function direct() {
               throw new Error(`Unknown: events ${subcommand ?? ""}. Run 'pnpm cli help'.`);
           }
         case "albums":
-          switch (subcommand) {
-            case "list":
-              return cmdAlbumsList();
-            case "show": {
-              const slug = args[2];
-              if (!slug) throw new Error("Usage: pnpm cli albums show <slug>");
-              return cmdAlbumsShow(slug);
-            }
-            case "upload": {
-              const dir = getArg("dir");
-              const slug = getArg("slug");
-              const title = getArg("title");
-              const date = getArg("date");
-              const description = getArg("description");
-              const rotationArg = getArg("rotation") as RotationOverride | undefined;
-              if (!dir || !slug || !title || !date) {
-                throw new Error(
-                  "Usage: pnpm cli albums upload --dir <path> --slug <slug> --title <title> --date <YYYY-MM-DD> [--description <desc>] [--rotation portrait|landscape]",
-                );
-              }
-              if (rotationArg && !ROTATION_OVERRIDES.includes(rotationArg)) {
-                throw new Error(`Invalid rotation. Use: ${ROTATION_OVERRIDES.join(", ")}`);
-              }
-              if (!isValidSlug(slug))
-                throw new Error("Slug must be lowercase letters, numbers, hyphens only.");
-              if (!isValidDate(date)) throw new Error("Date must be YYYY-MM-DD format.");
-              return cmdAlbumsUpload({
-                dir,
-                slug,
-                title,
-                date,
-                description,
-                rotation: rotationArg,
-              });
-            }
-            case "update": {
-              const slug = args[2];
-              if (!slug)
-                throw new Error(
-                  "Usage: pnpm cli albums update <slug> [--title ...] [--date ...] ...",
-                );
-              const title = getArg("title");
-              const date = getArg("date");
-              const description = getArg("description");
-              const cover = getArg("cover");
-              if (!title && !date && !description && !cover) {
-                throw new Error(
-                  "Nothing to update. Pass --title, --date, --description, or --cover.",
-                );
-              }
-              if (date && !isValidDate(date)) throw new Error("Date must be YYYY-MM-DD format.");
-              return cmdAlbumsUpdate(slug, { title, date, description, cover });
-            }
-            case "delete": {
-              const slug = args[2];
-              if (!slug) throw new Error("Usage: pnpm cli albums delete <slug>");
-              return cmdAlbumsDelete(slug);
-            }
-            case "backfill-og": {
-              const hasYes = args.includes("--yes");
-              const hasForce = args.includes("--force");
-              const strategyArg = getArg("strategy") as DetectionStrategy | undefined;
-              if (strategyArg && !DETECTION_STRATEGIES.includes(strategyArg)) {
-                throw new Error(`Invalid strategy. Use: ${DETECTION_STRATEGIES.join(", ")}`);
-              }
-              return cmdAlbumsBackfillOg(hasYes, hasForce, strategyArg);
-            }
-            case "backfill-images":
-              return cmdAlbumsBackfillImages(args.includes("--yes"), args.includes("--force"));
-            case "validate":
-              return cmdAlbumsValidate();
-            case "sync-manifests":
-              return cmdAlbumsSyncManifests();
-            default:
-              throw new Error(`Unknown: albums ${subcommand ?? ""}. Run 'pnpm cli help'.`);
-          }
-
         case "photos":
-          switch (subcommand) {
-            case "list": {
-              const slug = args[2];
-              if (!slug) throw new Error("Usage: pnpm cli photos list <album-slug>");
-              return cmdPhotosList(slug);
-            }
-            case "add": {
-              const slug = args[2];
-              const dir = getArg("dir");
-              const rotationArg = getArg("rotation") as RotationOverride | undefined;
-              if (!slug || !dir)
-                throw new Error(
-                  "Usage: pnpm cli photos add <album-slug> --dir <path> [--rotation portrait|landscape]",
-                );
-              if (rotationArg && !ROTATION_OVERRIDES.includes(rotationArg)) {
-                throw new Error(`Invalid rotation. Use: ${ROTATION_OVERRIDES.join(", ")}`);
-              }
-              return cmdPhotosAdd(slug, dir, rotationArg);
-            }
-            case "delete": {
-              const slug = args[2];
-              const photoId = args[3];
-              if (!slug || !photoId)
-                throw new Error("Usage: pnpm cli photos delete <album-slug> <photo-id>");
-              return cmdPhotosDelete(slug, photoId);
-            }
-            case "set-cover": {
-              const slug = args[2];
-              const photoId = args[3];
-              if (!slug || !photoId)
-                throw new Error("Usage: pnpm cli photos set-cover <album-slug> <photo-id>");
-              return cmdPhotosSetCover(slug, photoId);
-            }
-            case "set-focal": {
-              const slug = args[2];
-              const photoId = args[3];
-              const presetArg = getArg("preset");
-              if (!slug || !photoId || !presetArg) {
-                throw new Error(
-                  "Usage: pnpm cli photos set-focal <album-slug> <photo-id> --preset <c|t|b|l|r|tl|tr|bl|br|mt|mb|ml|mr>",
-                );
-              }
-              const preset = resolveFocalPreset(presetArg);
-              if (!preset) {
-                throw new Error(
-                  `Invalid preset. Use: ${Object.keys(FOCAL_SHORTHAND).join(", ")} or full names`,
-                );
-              }
-              return cmdPhotosSetFocal(slug, photoId, preset);
-            }
-            case "reset-focal": {
-              const slug = args[2];
-              if (!slug)
-                throw new Error(
-                  "Usage: pnpm cli photos reset-focal <album-slug> [photo-id] [--strategy onnx|sharp]",
-                );
-              const photoId = args[3]; // optional
-              const strategyArg = getArg("strategy") as DetectionStrategy | undefined;
-              if (strategyArg && !DETECTION_STRATEGIES.includes(strategyArg)) {
-                throw new Error(`Invalid strategy. Use: ${DETECTION_STRATEGIES.join(", ")}`);
-              }
-              return cmdPhotosResetFocal(slug, photoId, strategyArg);
-            }
-            case "compare-focal": {
-              const slug = args[2];
-              const photoId = args[3];
-              if (!slug || !photoId)
-                throw new Error("Usage: pnpm cli photos compare-focal <album-slug> <photo-id>");
-              return cmdPhotosCompareFocal(slug, photoId);
-            }
-            default:
-              throw new Error(`Unknown: photos ${subcommand ?? ""}. Run 'pnpm cli help'.`);
-          }
-
+          return runAlbumsCli(command, args);
         case "transfers":
           switch (subcommand) {
             case "list":

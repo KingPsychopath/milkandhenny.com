@@ -8,6 +8,7 @@ import {
 import { getTransfer } from "@/features/transfers/store.server";
 import { isTransferStorageConfigured, presignGetUrl } from "@/lib/platform/r2.server";
 import { apiErrorFromRequest } from "@/lib/platform/api-error";
+import { PRIVATE_MEDIA_CACHE_CONTROL } from "@/lib/shared/media-cache";
 
 type RouteContext = {
   params: Promise<{ id: string; fileId: string; variant: string }>;
@@ -34,23 +35,28 @@ async function handleMedia(request: Request, context: RouteContext) {
   }
 
   const download = new URL(request.url).searchParams.get("download") === "1";
+  const canRenderInline = /^(image|audio|video)\//.test(target.contentType);
 
   try {
     const url = await presignGetUrl(target.key, {
       expiresIn: getTransferMediaUrlTtlSeconds(variant),
-      responseContentDisposition: download
-        ? buildAttachmentContentDisposition(target.filename)
-        : undefined,
+      responseContentDisposition:
+        download || !canRenderInline
+          ? buildAttachmentContentDisposition(target.filename)
+          : undefined,
       responseContentType: target.contentType,
+      responseCacheControl: PRIVATE_MEDIA_CACHE_CONTROL,
+      scope: "private",
     });
 
     return new Response(null, {
       status: 307,
       headers: {
         Location: url,
-        "Cache-Control": "private, no-store",
+        "Cache-Control": PRIVATE_MEDIA_CACHE_CONTROL,
         "Referrer-Policy": "no-referrer",
         "X-Robots-Tag": "noindex, nofollow",
+        "X-Content-Type-Options": "nosniff",
       },
     });
   } catch (error) {

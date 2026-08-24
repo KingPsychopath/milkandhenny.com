@@ -113,7 +113,9 @@ but remove the message body and recipient address.
 
 ## Media
 
-R2 is currently the S3-compatible object store. `R2_PUBLIC_BUCKET` contains albums and editorial media and is delivered through `VITE_MEDIA_PUBLIC_URL`. `R2_PRIVATE_BUCKET` contains transfers, has no public domain or `r2.dev` access, and is read only through short-lived URLs issued after the application validates the transfer capability ID. Browser uploads use presigned URLs, so large file bodies bypass the web service.
+R2 is currently the S3-compatible object store. `R2_PRIVATE_BUCKET` is the durable source of truth for album manifests, draft derivatives, originals, private words, pitch assets, and transfers. `R2_PUBLIC_BUCKET` contains only published album display derivatives, published social cards, and public editorial media delivered through `VITE_MEDIA_PUBLIC_URL`. The private bucket has no custom domain or `r2.dev` access. Protected reads use short-lived URLs after the application checks access. Browser uploads use presigned URLs, so large file bodies bypass the web service. Independent, single-bucket credentials prevent public-media code from reading private objects and private-media code from writing the public origin by mistake.
+
+Album manifests are JSON objects in private R2. They are a storage format, not repository content. The admin panel and CLI call the same durable workflows. Upload finalisation keeps an album in draft. Publishing copies only AVIF, WebP, and social-card derivatives to the public bucket; unpublishing removes those public objects. Originals remain private and downloads are authorised against the published manifest.
 
 Storage implementation details remain behind `lib/platform/r2.server.ts`; the application host does not need to be Cloudflare.
 

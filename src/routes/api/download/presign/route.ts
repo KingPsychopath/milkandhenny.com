@@ -8,6 +8,8 @@ import {
 } from "@/features/downloads/presign";
 import { transferContainsStorageKey } from "@/features/transfers/media-access";
 import { getTransfer } from "@/features/transfers/store.server";
+import { getAlbumBySlug } from "@/features/media/albums.server";
+import { PRIVATE_MEDIA_CACHE_CONTROL } from "@/lib/shared/media-cache";
 
 const DOWNLOAD_URL_TTL_SECONDS = 3600;
 const DOWNLOAD_RESPONSE_CONTENT_TYPE = "application/octet-stream";
@@ -47,6 +49,15 @@ async function handleGET(request: Request) {
     }
   }
 
+  if (key.startsWith("albums/")) {
+    const [, slug, , file] = key.split("/");
+    const photoId = file?.replace(/\.jpe?g$/i, "") ?? "";
+    const album = slug ? await getAlbumBySlug(slug) : null;
+    if (!album?.photos.some((photo) => photo.id === photoId)) {
+      return Response.json({ error: "Album photo not found." }, { status: 404 });
+    }
+  }
+
   const filename = deriveDownloadFilename(key, requestedFilename);
   if (!filename) {
     return Response.json({ error: "Invalid download filename." }, { status: 400 });
@@ -56,7 +67,9 @@ async function handleGET(request: Request) {
     const url = await presignGetUrl(key, {
       responseContentDisposition: buildAttachmentContentDisposition(filename),
       responseContentType: DOWNLOAD_RESPONSE_CONTENT_TYPE,
+      responseCacheControl: PRIVATE_MEDIA_CACHE_CONTROL,
       expiresIn: DOWNLOAD_URL_TTL_SECONDS,
+      scope: "private",
     });
 
     return Response.json({ url });

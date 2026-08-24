@@ -147,7 +147,9 @@ import { Route as ApiWordsSlugSharesIdRouteRouteImport } from './routes/api/word
 import { Route as ApiAdminAlbumsSlugPhotosPhotoIdRouteRouteImport } from './routes/api/admin/albums/$slug/photos/$photoId/route'
 import { Route as ApiAdminAlbumsSlugUploadFinalizeRouteRouteImport } from './routes/api/admin/albums/$slug/upload/finalize/route'
 import { Route as ApiAdminAlbumsSlugUploadPresignRouteRouteImport } from './routes/api/admin/albums/$slug/upload/presign/route'
+import { Route as ApiAlbumsSlugPhotosPhotoIdOriginalRouteRouteImport } from './routes/api/albums/$slug/photos/$photoId/original/route'
 import { Route as ApiTransfersIdMediaFileIdVariantRouteRouteImport } from './routes/api/transfers/$id/media/$fileId/$variant/route'
+import { Route as ApiAdminAlbumsSlugPhotosPhotoIdMediaRouteRouteImport } from './routes/api/admin/albums/$slug/photos/$photoId/media/route'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -891,11 +893,23 @@ const ApiAdminAlbumsSlugUploadPresignRouteRoute =
     path: '/upload/presign',
     getParentRoute: () => ApiAdminAlbumsSlugRouteRoute,
   } as any)
+const ApiAlbumsSlugPhotosPhotoIdOriginalRouteRoute =
+  ApiAlbumsSlugPhotosPhotoIdOriginalRouteRouteImport.update({
+    id: '/api/albums/$slug/photos/$photoId/original',
+    path: '/api/albums/$slug/photos/$photoId/original',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ApiTransfersIdMediaFileIdVariantRouteRoute =
   ApiTransfersIdMediaFileIdVariantRouteRouteImport.update({
     id: '/media/$fileId/$variant',
     path: '/media/$fileId/$variant',
     getParentRoute: () => ApiTransfersIdRouteRoute,
+  } as any)
+const ApiAdminAlbumsSlugPhotosPhotoIdMediaRouteRoute =
+  ApiAdminAlbumsSlugPhotosPhotoIdMediaRouteRouteImport.update({
+    id: '/media',
+    path: '/media',
+    getParentRoute: () => ApiAdminAlbumsSlugPhotosPhotoIdRouteRoute,
   } as any)
 
 export interface FileRoutesByFullPath {
@@ -1034,10 +1048,12 @@ export interface FileRoutesByFullPath {
   '/api/upload/transfer/append/presign': typeof ApiUploadTransferAppendPresignRouteRoute
   '/api/words/$slug/media/$filename': typeof ApiWordsSlugMediaFilenameRouteRoute
   '/api/words/$slug/shares/$id': typeof ApiWordsSlugSharesIdRouteRoute
-  '/api/admin/albums/$slug/photos/$photoId': typeof ApiAdminAlbumsSlugPhotosPhotoIdRouteRoute
+  '/api/admin/albums/$slug/photos/$photoId': typeof ApiAdminAlbumsSlugPhotosPhotoIdRouteRouteWithChildren
   '/api/admin/albums/$slug/upload/finalize': typeof ApiAdminAlbumsSlugUploadFinalizeRouteRoute
   '/api/admin/albums/$slug/upload/presign': typeof ApiAdminAlbumsSlugUploadPresignRouteRoute
+  '/api/albums/$slug/photos/$photoId/original': typeof ApiAlbumsSlugPhotosPhotoIdOriginalRouteRoute
   '/api/transfers/$id/media/$fileId/$variant': typeof ApiTransfersIdMediaFileIdVariantRouteRoute
+  '/api/admin/albums/$slug/photos/$photoId/media': typeof ApiAdminAlbumsSlugPhotosPhotoIdMediaRouteRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -1175,10 +1191,12 @@ export interface FileRoutesByTo {
   '/api/upload/transfer/append/presign': typeof ApiUploadTransferAppendPresignRouteRoute
   '/api/words/$slug/media/$filename': typeof ApiWordsSlugMediaFilenameRouteRoute
   '/api/words/$slug/shares/$id': typeof ApiWordsSlugSharesIdRouteRoute
-  '/api/admin/albums/$slug/photos/$photoId': typeof ApiAdminAlbumsSlugPhotosPhotoIdRouteRoute
+  '/api/admin/albums/$slug/photos/$photoId': typeof ApiAdminAlbumsSlugPhotosPhotoIdRouteRouteWithChildren
   '/api/admin/albums/$slug/upload/finalize': typeof ApiAdminAlbumsSlugUploadFinalizeRouteRoute
   '/api/admin/albums/$slug/upload/presign': typeof ApiAdminAlbumsSlugUploadPresignRouteRoute
+  '/api/albums/$slug/photos/$photoId/original': typeof ApiAlbumsSlugPhotosPhotoIdOriginalRouteRoute
   '/api/transfers/$id/media/$fileId/$variant': typeof ApiTransfersIdMediaFileIdVariantRouteRoute
+  '/api/admin/albums/$slug/photos/$photoId/media': typeof ApiAdminAlbumsSlugPhotosPhotoIdMediaRouteRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -1317,10 +1335,12 @@ export interface FileRoutesById {
   '/api/upload/transfer/append/presign': typeof ApiUploadTransferAppendPresignRouteRoute
   '/api/words/$slug/media/$filename': typeof ApiWordsSlugMediaFilenameRouteRoute
   '/api/words/$slug/shares/$id': typeof ApiWordsSlugSharesIdRouteRoute
-  '/api/admin/albums/$slug/photos/$photoId': typeof ApiAdminAlbumsSlugPhotosPhotoIdRouteRoute
+  '/api/admin/albums/$slug/photos/$photoId': typeof ApiAdminAlbumsSlugPhotosPhotoIdRouteRouteWithChildren
   '/api/admin/albums/$slug/upload/finalize': typeof ApiAdminAlbumsSlugUploadFinalizeRouteRoute
   '/api/admin/albums/$slug/upload/presign': typeof ApiAdminAlbumsSlugUploadPresignRouteRoute
+  '/api/albums/$slug/photos/$photoId/original': typeof ApiAlbumsSlugPhotosPhotoIdOriginalRouteRoute
   '/api/transfers/$id/media/$fileId/$variant': typeof ApiTransfersIdMediaFileIdVariantRouteRoute
+  '/api/admin/albums/$slug/photos/$photoId/media': typeof ApiAdminAlbumsSlugPhotosPhotoIdMediaRouteRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -1463,7 +1483,9 @@ export interface FileRouteTypes {
     | '/api/admin/albums/$slug/photos/$photoId'
     | '/api/admin/albums/$slug/upload/finalize'
     | '/api/admin/albums/$slug/upload/presign'
+    | '/api/albums/$slug/photos/$photoId/original'
     | '/api/transfers/$id/media/$fileId/$variant'
+    | '/api/admin/albums/$slug/photos/$photoId/media'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -1604,7 +1626,9 @@ export interface FileRouteTypes {
     | '/api/admin/albums/$slug/photos/$photoId'
     | '/api/admin/albums/$slug/upload/finalize'
     | '/api/admin/albums/$slug/upload/presign'
+    | '/api/albums/$slug/photos/$photoId/original'
     | '/api/transfers/$id/media/$fileId/$variant'
+    | '/api/admin/albums/$slug/photos/$photoId/media'
   id:
     | '__root__'
     | '/'
@@ -1745,7 +1769,9 @@ export interface FileRouteTypes {
     | '/api/admin/albums/$slug/photos/$photoId'
     | '/api/admin/albums/$slug/upload/finalize'
     | '/api/admin/albums/$slug/upload/presign'
+    | '/api/albums/$slug/photos/$photoId/original'
     | '/api/transfers/$id/media/$fileId/$variant'
+    | '/api/admin/albums/$slug/photos/$photoId/media'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -1823,6 +1849,7 @@ export interface RootRouteChildren {
   ApiUploadWordsTargetsRouteRoute: typeof ApiUploadWordsTargetsRouteRoute
   ApiUploadTransferAppendFinalizeRouteRoute: typeof ApiUploadTransferAppendFinalizeRouteRoute
   ApiUploadTransferAppendPresignRouteRoute: typeof ApiUploadTransferAppendPresignRouteRoute
+  ApiAlbumsSlugPhotosPhotoIdOriginalRouteRoute: typeof ApiAlbumsSlugPhotosPhotoIdOriginalRouteRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -2793,12 +2820,26 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiAdminAlbumsSlugUploadPresignRouteRouteImport
       parentRoute: typeof ApiAdminAlbumsSlugRouteRoute
     }
+    '/api/albums/$slug/photos/$photoId/original': {
+      id: '/api/albums/$slug/photos/$photoId/original'
+      path: '/api/albums/$slug/photos/$photoId/original'
+      fullPath: '/api/albums/$slug/photos/$photoId/original'
+      preLoaderRoute: typeof ApiAlbumsSlugPhotosPhotoIdOriginalRouteRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/transfers/$id/media/$fileId/$variant': {
       id: '/api/transfers/$id/media/$fileId/$variant'
       path: '/media/$fileId/$variant'
       fullPath: '/api/transfers/$id/media/$fileId/$variant'
       preLoaderRoute: typeof ApiTransfersIdMediaFileIdVariantRouteRouteImport
       parentRoute: typeof ApiTransfersIdRouteRoute
+    }
+    '/api/admin/albums/$slug/photos/$photoId/media': {
+      id: '/api/admin/albums/$slug/photos/$photoId/media'
+      path: '/media'
+      fullPath: '/api/admin/albums/$slug/photos/$photoId/media'
+      preLoaderRoute: typeof ApiAdminAlbumsSlugPhotosPhotoIdMediaRouteRouteImport
+      parentRoute: typeof ApiAdminAlbumsSlugPhotosPhotoIdRouteRoute
     }
   }
 }
@@ -2934,14 +2975,29 @@ const ApiWordsRouteRouteWithChildren = ApiWordsRouteRoute._addFileChildren(
   ApiWordsRouteRouteChildren,
 )
 
+interface ApiAdminAlbumsSlugPhotosPhotoIdRouteRouteChildren {
+  ApiAdminAlbumsSlugPhotosPhotoIdMediaRouteRoute: typeof ApiAdminAlbumsSlugPhotosPhotoIdMediaRouteRoute
+}
+
+const ApiAdminAlbumsSlugPhotosPhotoIdRouteRouteChildren: ApiAdminAlbumsSlugPhotosPhotoIdRouteRouteChildren =
+  {
+    ApiAdminAlbumsSlugPhotosPhotoIdMediaRouteRoute:
+      ApiAdminAlbumsSlugPhotosPhotoIdMediaRouteRoute,
+  }
+
+const ApiAdminAlbumsSlugPhotosPhotoIdRouteRouteWithChildren =
+  ApiAdminAlbumsSlugPhotosPhotoIdRouteRoute._addFileChildren(
+    ApiAdminAlbumsSlugPhotosPhotoIdRouteRouteChildren,
+  )
+
 interface ApiAdminAlbumsSlugPhotosRouteRouteChildren {
-  ApiAdminAlbumsSlugPhotosPhotoIdRouteRoute: typeof ApiAdminAlbumsSlugPhotosPhotoIdRouteRoute
+  ApiAdminAlbumsSlugPhotosPhotoIdRouteRoute: typeof ApiAdminAlbumsSlugPhotosPhotoIdRouteRouteWithChildren
 }
 
 const ApiAdminAlbumsSlugPhotosRouteRouteChildren: ApiAdminAlbumsSlugPhotosRouteRouteChildren =
   {
     ApiAdminAlbumsSlugPhotosPhotoIdRouteRoute:
-      ApiAdminAlbumsSlugPhotosPhotoIdRouteRoute,
+      ApiAdminAlbumsSlugPhotosPhotoIdRouteRouteWithChildren,
   }
 
 const ApiAdminAlbumsSlugPhotosRouteRouteWithChildren =
@@ -3195,6 +3251,8 @@ const rootRouteChildren: RootRouteChildren = {
     ApiUploadTransferAppendFinalizeRouteRoute,
   ApiUploadTransferAppendPresignRouteRoute:
     ApiUploadTransferAppendPresignRouteRoute,
+  ApiAlbumsSlugPhotosPhotoIdOriginalRouteRoute:
+    ApiAlbumsSlugPhotosPhotoIdOriginalRouteRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

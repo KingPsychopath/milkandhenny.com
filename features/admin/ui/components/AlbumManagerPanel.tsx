@@ -490,7 +490,7 @@ export function AlbumManagerPanel({
       replaceAlbum(finalizeData.album);
       setUploadProgress(100);
       setStatus(
-        `Added ${finalizeData.added?.length ?? files.length} photo${files.length === 1 ? "" : "s"}.`,
+        `Added ${finalizeData.added?.length ?? files.length} photo${files.length === 1 ? "" : "s"}. Review the draft, then publish it.`,
       );
       onChanged?.();
     } catch (caught) {

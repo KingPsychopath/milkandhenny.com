@@ -126,7 +126,7 @@ function AlbumEmbedCompact({ album }: { album: EmbeddedAlbum }) {
           <div
             key={photo.id}
             className="album-embed-thumb"
-            style={imagePlaceholderStyle(photo.placeholder)}
+            style={imagePlaceholderStyle(photo.placeholder, "color")}
           >
             <FillThumb
               slug={album.slug}
@@ -179,7 +179,7 @@ function AlbumEmbedMasonry({ album }: { album: EmbeddedAlbum }) {
             <div
               key={photo.id}
               className="album-embed-masonry-tile"
-              style={imagePlaceholderStyle(photo.placeholder)}
+              style={imagePlaceholderStyle(photo.placeholder, "color")}
             >
               <MasonryThumb slug={album.slug} photo={photo} objectPosition={objectPosition} />
               {showOverlay && isLast && (

@@ -14,6 +14,7 @@ import {
   PITCH_THUMBNAIL_MAX_BYTES,
   PITCH_VIDEO_MAX_BYTES,
 } from "./types";
+import { PRIVATE_MEDIA_CACHE_CONTROL } from "@/lib/shared/media-cache";
 import {
   createPitchAssetId,
   deletePitchAssetRecord,
@@ -81,6 +82,7 @@ async function withSignedUrl(row: PitchAssetRow): Promise<PitchAsset> {
     scope: "private",
     responseContentType: row.mime_type,
     responseContentDisposition: "inline",
+    responseCacheControl: PRIVATE_MEDIA_CACHE_CONTROL,
   });
   return { ...toPitchAsset(row), url };
 }

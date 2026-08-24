@@ -95,7 +95,10 @@ describe("words raw upload handling", () => {
       "words/media/launch-notes/hero.webp",
       Buffer.from("webp"),
       "image/webp",
-      { cacheControl: "public, max-age=3600, stale-while-revalidate=86400", scope: "public" },
+      {
+        cacheControl: "public, max-age=3600, stale-while-revalidate=86400",
+        scope: "public",
+      },
     );
     expect(deleteObject).toHaveBeenCalledWith("words/media/launch-notes/incoming/tmp-hero.jpg", {
       scope: "public",
@@ -236,7 +239,11 @@ describe("words raw upload handling", () => {
       "words/media/launch-notes/capture.dng",
       Buffer.from("raw"),
       "image/x-adobe-dng",
-      { cacheControl: "public, max-age=3600, stale-while-revalidate=86400", scope: "public" },
+      {
+        cacheControl: "public, max-age=3600, stale-while-revalidate=86400",
+        contentDisposition: "attachment; filename=\"capture.dng\"; filename*=UTF-8''capture.dng",
+        scope: "public",
+      },
     );
     expect(deleteObject).toHaveBeenCalledWith("words/media/launch-notes/incoming/tmp-capture.dng", {
       scope: "public",

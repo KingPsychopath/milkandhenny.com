@@ -56,7 +56,7 @@ export const PhotoCard = memo(function PhotoCard({
         className="block relative overflow-hidden rounded-sm"
         style={{
           paddingBottom: `${aspectRatio * 100}%`,
-          ...imagePlaceholderStyle(photo.placeholder),
+          ...imagePlaceholderStyle(photo.placeholder, "color"),
         }}
         onClick={handleSelect}
       >

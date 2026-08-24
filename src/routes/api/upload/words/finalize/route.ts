@@ -34,6 +34,7 @@ import {
   PRIVATE_MEDIA_CACHE_CONTROL,
   VERSIONED_PUBLIC_MEDIA_CACHE_CONTROL,
 } from "@/lib/shared/media-cache";
+import { buildAttachmentContentDisposition } from "@/features/downloads/presign";
 export const maxDuration = 15;
 const FINALIZE_CONCURRENCY = 2;
 
@@ -234,6 +235,7 @@ async function handlePOST(request: Request) {
               storageScope === "public"
                 ? MUTABLE_PUBLIC_MEDIA_CACHE_CONTROL
                 : PRIVATE_MEDIA_CACHE_CONTROL,
+            contentDisposition: buildAttachmentContentDisposition(fallbackFilename),
           });
 
           try {
@@ -262,6 +264,7 @@ async function handlePOST(request: Request) {
             storageScope === "public"
               ? MUTABLE_PUBLIC_MEDIA_CACHE_CONTROL
               : PRIVATE_MEDIA_CACHE_CONTROL,
+          contentDisposition: buildAttachmentContentDisposition(file.filename),
         },
         { scope: storageScope },
       );

@@ -10,6 +10,7 @@ import {
 } from "@/lib/platform/r2.server";
 import {
   MUTABLE_PUBLIC_MEDIA_CACHE_CONTROL,
+  PRIVATE_MEDIA_CACHE_CONTROL,
   VERSIONED_PUBLIC_MEDIA_CACHE_CONTROL,
 } from "@/lib/shared/media-cache";
 import {
@@ -24,7 +25,7 @@ import { focalPresetToPercent, isValidFocalPreset } from "./focal";
 import {
   isProcessableImage,
   mapConcurrent,
-  processImageVariants,
+  processAlbumSource,
   processResponsiveImage,
   processToOg,
   type OgOverlay,
@@ -101,6 +102,69 @@ function toAdminAlbum(album: Album): AdminAlbum {
   return { ...album, photoCount: album.photos.length };
 }
 
+function privatePhotoKeys(slug: string, photo: Photo): string[] {
+  return [...publicPhotoKeys(slug, photo), `albums/${slug}/original/${photo.id}.jpg`];
+}
+
+function publicPhotoKeys(slug: string, photo: Photo): string[] {
+  return [
+    ...photo.widths.flatMap((width) =>
+      (["avif", "webp"] as const).map(
+        (format) => `albums/${slug}/images/${photo.id}/${width}.${format}`,
+      ),
+    ),
+    `albums/${slug}/og/${photo.id}.jpg`,
+  ];
+}
+
+function publicObjectMetadata(key: string): { contentType: string; cacheControl: string } {
+  if (key.endsWith(".avif")) {
+    return { contentType: "image/avif", cacheControl: VERSIONED_PUBLIC_MEDIA_CACHE_CONTROL };
+  }
+  if (key.endsWith(".webp")) {
+    return { contentType: "image/webp", cacheControl: VERSIONED_PUBLIC_MEDIA_CACHE_CONTROL };
+  }
+  return { contentType: "image/jpeg", cacheControl: MUTABLE_PUBLIC_MEDIA_CACHE_CONTROL };
+}
+
+async function publishAlbumAssets(album: Album): Promise<void> {
+  const keys = album.photos.flatMap((photo) => publicPhotoKeys(album.slug, photo));
+  await mapConcurrent(keys, 4, async (key) => {
+    const body = await downloadBuffer(key, { scope: "private" });
+    const metadata = publicObjectMetadata(key);
+    await uploadBuffer(key, body, metadata.contentType, {
+      scope: "public",
+      cacheControl: metadata.cacheControl,
+    });
+  });
+}
+
+async function unpublishAlbumAssets(album: Album): Promise<void> {
+  await deleteObjects(
+    album.photos.flatMap((photo) => publicPhotoKeys(album.slug, photo)),
+    {
+      scope: "public",
+    },
+  );
+}
+
+async function regenerateAlbumOg(album: Album): Promise<void> {
+  await mapConcurrent(album.photos, 2, async (photo) => {
+    const raw = await downloadBuffer(`albums/${album.slug}/original/${photo.id}.jpg`, {
+      scope: "private",
+    });
+    const focal = photo.focalPoint
+      ? focalPresetToPercent(photo.focalPoint)
+      : (photo.autoFocal ?? { x: 50, y: 50 });
+    const key = `albums/${album.slug}/og/${photo.id}.jpg`;
+    const og = await processToOg(raw, focal, { title: album.title, photoId: photo.id });
+    await uploadBuffer(key, og.buffer, og.contentType, {
+      scope: "private",
+      cacheControl: PRIVATE_MEDIA_CACHE_CONTROL,
+    });
+  });
+}
+
 async function listAdminAlbums(): Promise<AdminAlbum[]> {
   const albums = await listAlbumManifests();
   return albums
@@ -146,14 +210,23 @@ async function updateAlbumMetadata(slug: string, input: AlbumMetadataInput): Pro
     throw new Error("Add a photo and choose a cover before publishing");
   }
 
-  const updated = await writeAlbumManifest({
+  const next: Album = {
     ...album,
     title,
     date,
     description:
       input.description === undefined ? album.description : cleanText(input.description, 1000),
     status,
-  });
+  };
+  const wasPublished = album.status !== "draft";
+  const willPublish = status !== "draft";
+  const titleChanged = title !== album.title;
+
+  if (titleChanged) await regenerateAlbumOg(next);
+  if (willPublish && (titleChanged || !wasPublished)) await publishAlbumAssets(next);
+
+  const updated = await writeAlbumManifest(next);
+  if (wasPublished && !willPublish) await unpublishAlbumAssets(updated);
   return toAdminAlbum(updated);
 }
 
@@ -199,29 +272,26 @@ async function updateAlbumPhoto(
       photo.focalPoint = input.focalPoint;
     } else throw new Error("Invalid focal point");
 
-    const raw = await downloadBuffer(`albums/${slug}/original/${photo.id}.jpg`);
+    const raw = await downloadBuffer(`albums/${slug}/original/${photo.id}.jpg`, {
+      scope: "private",
+    });
     const focal = photo.focalPoint
       ? focalPresetToPercent(photo.focalPoint)
       : (photo.autoFocal ?? { x: 50, y: 50 });
     const og = await processToOg(raw, focal, { title: album.title, photoId: photo.id });
     await uploadBuffer(`albums/${slug}/og/${photo.id}.jpg`, og.buffer, og.contentType, {
-      cacheControl: MUTABLE_PUBLIC_MEDIA_CACHE_CONTROL,
+      scope: "private",
+      cacheControl: PRIVATE_MEDIA_CACHE_CONTROL,
     });
+    if (album.status !== "draft") {
+      await uploadBuffer(`albums/${slug}/og/${photo.id}.jpg`, og.buffer, og.contentType, {
+        scope: "public",
+        cacheControl: MUTABLE_PUBLIC_MEDIA_CACHE_CONTROL,
+      });
+    }
   }
 
   return toAdminAlbum(await writeAlbumManifest(album));
-}
-
-function photoObjectKeys(slug: string, photo: Photo): string[] {
-  return [
-    ...photo.widths.flatMap((width) =>
-      (["avif", "webp"] as const).map(
-        (format) => `albums/${slug}/images/${photo.id}/${width}.${format}`,
-      ),
-    ),
-    `albums/${slug}/original/${photo.id}.jpg`,
-    `albums/${slug}/og/${photo.id}.jpg`,
-  ];
 }
 
 async function deleteAlbumPhotos(
@@ -233,12 +303,17 @@ async function deleteAlbumPhotos(
   const ids = new Set(photoIds);
   const deleting = album.photos.filter((photo) => ids.has(photo.id));
   if (!deleting.length) throw new Error("No matching photos found");
-  const keys = deleting.flatMap((photo) => photoObjectKeys(slug, photo));
+  const privateKeys = deleting.flatMap((photo) => privatePhotoKeys(slug, photo));
+  const publicKeys = deleting.flatMap((photo) => publicPhotoKeys(slug, photo));
   album.photos = album.photos.filter((photo) => !ids.has(photo.id));
   if (ids.has(album.cover)) album.cover = album.photos[0]?.id ?? "";
   if (!album.photos.length) album.status = "draft";
   const updated = await writeAlbumManifest(album);
-  const deletedKeys = await deleteObjects(keys);
+  const [deletedPrivate, deletedPublic] = await Promise.all([
+    deleteObjects(privateKeys, { scope: "private" }),
+    deleteObjects(publicKeys, { scope: "public" }),
+  ]);
+  const deletedKeys = deletedPrivate + deletedPublic;
   return { album: toAdminAlbum(updated), deletedKeys };
 }
 
@@ -250,7 +325,7 @@ async function deleteAlbumPhoto(
   if (!album) throw new Error("Album not found");
   const photo = album.photos.find((item) => item.id === photoId);
   if (!photo) throw new Error("Photo not found in album");
-  const keys = photoObjectKeys(slug, photo);
+  const keys = [...privatePhotoKeys(slug, photo), ...publicPhotoKeys(slug, photo)];
   const result = await deleteAlbumPhotos(slug, [photoId]);
   return { album: result.album, deletedKeys: keys };
 }
@@ -260,11 +335,22 @@ async function deleteAlbum(
 ): Promise<{ deletedFiles: number; deletedManifest: boolean }> {
   if (!isSafeAlbumSlug(slug)) throw new Error("Invalid album slug");
   const album = await readAlbumManifest(slug);
-  const objects = await listObjects(`albums/${slug}/`);
+  const [privateObjects, publicObjects] = await Promise.all([
+    listObjects(`albums/${slug}/`, { scope: "private" }),
+    listObjects(`albums/${slug}/`, { scope: "public" }),
+  ]);
   if (album) await deleteAlbumManifest(slug);
-  const deletedFiles = objects.length
-    ? await deleteObjects(objects.map((object) => object.key))
-    : 0;
+  const [deletedPrivate, deletedPublic] = await Promise.all([
+    deleteObjects(
+      privateObjects.map((object) => object.key),
+      { scope: "private" },
+    ),
+    deleteObjects(
+      publicObjects.map((object) => object.key),
+      { scope: "public" },
+    ),
+  ]);
+  const deletedFiles = deletedPrivate + deletedPublic;
   return { deletedFiles, deletedManifest: album !== null };
 }
 
@@ -296,7 +382,7 @@ async function prepareAlbumUploads(
           .extname(file.name)
           .toLowerCase()
           .replace(/[^.a-z0-9]/g, "") || ".jpg";
-      const uploadKey = `albums/${slug}/incoming/${randomUUID()}${extension}`;
+      const uploadKey = `incoming/albums/${slug}/${randomUUID()}${extension}`;
       const contentType = file.type.startsWith("image/") ? file.type : "application/octet-stream";
       return {
         original: file.name,
@@ -304,7 +390,8 @@ async function prepareAlbumUploads(
         uploadKey,
         contentType,
         url: await presignPutUrl(uploadKey, contentType, 15 * 60, {
-          cacheControl: "private, no-store",
+          scope: "private",
+          cacheControl: PRIVATE_MEDIA_CACHE_CONTROL,
         }),
       };
     }),
@@ -315,7 +402,7 @@ async function processAlbumUpload(
   album: Album,
   file: Pick<PreparedAlbumUpload, "original" | "photoId" | "uploadKey">,
 ): Promise<Photo> {
-  if (!file.uploadKey.startsWith(`albums/${album.slug}/incoming/`)) {
+  if (!file.uploadKey.startsWith(`incoming/albums/${album.slug}/`)) {
     throw new Error("Invalid album upload key");
   }
   if (!isSafePhotoId(file.photoId)) throw new Error("Invalid photo id");
@@ -323,7 +410,7 @@ async function processAlbumUpload(
   const extension = path.extname(file.original).toLowerCase() || ".jpg";
   const overlay: OgOverlay = { title: album.title, photoId: file.photoId };
   const [processed, responsive] = await Promise.all([
-    processImageVariants(raw, extension, undefined, overlay),
+    processAlbumSource(raw, extension, undefined, overlay),
     processResponsiveImage(raw, extension),
   ]);
   const prefix = `albums/${album.slug}`;
@@ -335,7 +422,7 @@ async function processAlbumUpload(
           `${prefix}/images/${file.photoId}/${variant.width}.${format}`,
           output.buffer,
           output.contentType,
-          { cacheControl: VERSIONED_PUBLIC_MEDIA_CACHE_CONTROL },
+          { scope: "private", cacheControl: PRIVATE_MEDIA_CACHE_CONTROL },
         );
       }),
     ),
@@ -343,14 +430,15 @@ async function processAlbumUpload(
       `${prefix}/original/${file.photoId}.jpg`,
       processed.original.buffer,
       processed.original.contentType,
-      { cacheControl: VERSIONED_PUBLIC_MEDIA_CACHE_CONTROL },
+      { scope: "private", cacheControl: PRIVATE_MEDIA_CACHE_CONTROL },
     ),
     uploadBuffer(
       `${prefix}/og/${file.photoId}.jpg`,
       processed.og.buffer,
       processed.og.contentType,
       {
-        cacheControl: MUTABLE_PUBLIC_MEDIA_CACHE_CONTROL,
+        scope: "private",
+        cacheControl: PRIVATE_MEDIA_CACHE_CONTROL,
       },
     ),
   ]);
@@ -384,7 +472,7 @@ async function finalizeAlbumUploads(
       typeof file.uploadKey !== "string" ||
       !isProcessableImage(file.original) ||
       !isSafePhotoId(file.photoId) ||
-      !file.uploadKey.startsWith(`albums/${slug}/incoming/`)
+      !file.uploadKey.startsWith(`incoming/albums/${slug}/`)
     ) {
       throw new Error("Invalid uploaded image");
     }
@@ -402,13 +490,18 @@ async function finalizeAlbumUploads(
     if (added.some((photo) => latestIds.has(photo.id))) {
       throw new Error("A photo with the same ID was added during processing");
     }
+    const wasPublished = latest.status !== "draft";
     latest.photos.push(...added);
     if (!latest.cover && added[0]) latest.cover = added[0].id;
-    latest.status = "published";
+    latest.status = "draft";
     const updated = await writeAlbumManifest(latest);
+    if (wasPublished) await unpublishAlbumAssets(updated);
     return { album: toAdminAlbum(updated), added };
   } finally {
-    await deleteObjects(files.map((file) => file.uploadKey)).catch(() => 0);
+    await deleteObjects(
+      files.map((file) => file.uploadKey),
+      { scope: "private" },
+    ).catch(() => 0);
   }
 }
 

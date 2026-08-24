@@ -72,7 +72,7 @@ function getAlbumImageData(album: string, photo: Photo): ResponsiveImageData {
 
 /** Get the original (download) URL for an album photo */
 function getOriginalUrl(album: string, photoId: string): string {
-  return getImageUrl(`albums/${album}/original/${photoId}.jpg`);
+  return `/api/albums/${encodeStoragePathSegment(album)}/photos/${encodeStoragePathSegment(photoId)}/original`;
 }
 
 function getOriginalStorageKey(album: string, photoId: string): string {

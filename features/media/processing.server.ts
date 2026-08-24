@@ -9,7 +9,7 @@
  * - Extension patterns for all supported media
  * - Concurrency helper
  *
- * Used by album-ops, transfer-ops, words-media-ops, and API upload routes.
+ * Used by durable media workflows, transfer tools, word-media tools, and upload routes.
  */
 
 import { execFile } from "child_process";
@@ -121,7 +121,7 @@ const FULL_WIDTH = 1600;
 const OG_WIDTH = 1200;
 const OG_HEIGHT = 630;
 
-/** Percentage-based focal point for OG crop. Passed in by callers (album-ops resolves presets + auto-detect). */
+/** Percentage-based focal point for social-card crops. */
 type FocalPercent = { x: number; y: number };
 
 /** Image extensions Sharp can process in the default server/runtime stack */
@@ -572,6 +572,12 @@ type ProcessedImage = {
   blur: string;
 };
 
+type ProcessedAlbumSource = {
+  original: ImageVariant;
+  og: ImageVariant;
+  takenAt: string | null;
+};
+
 type ProcessedGif = {
   /** Static first-frame WebP thumbnail */
   thumb: ImageVariant;
@@ -828,6 +834,34 @@ async function processImageVariants(
     takenAt,
     ...(livePhotoContentId ? { livePhotoContentId } : {}),
     blur,
+  };
+}
+
+/** Build only the private download original and social card used by albums. */
+async function processAlbumSource(
+  raw: Buffer,
+  sourceExt: string,
+  focalPercent?: FocalPercent,
+  ogOverlay?: OgOverlay,
+): Promise<ProcessedAlbumSource> {
+  const ext = sourceExt.toLowerCase();
+  const { buffer: processingSource, takenAt } = await resolveImageProcessingSource(raw, ext);
+  const { buffer: rotated } = await autoRotate(processingSource);
+  const [originalBuffer, og] = await Promise.all([
+    ext === ".jpg" || ext === ".jpeg"
+      ? Promise.resolve(rotated)
+      : sharp(rotated).jpeg({ quality: 95 }).toBuffer(),
+    (async () => {
+      let pipeline = await cropToOg(rotated, focalPercent);
+      if (ogOverlay) pipeline = pipeline.composite([{ input: buildOgOverlaySvg(ogOverlay) }]);
+      return pipeline.jpeg({ quality: 70, mozjpeg: true }).toBuffer();
+    })(),
+  ]);
+
+  return {
+    original: { buffer: originalBuffer, contentType: "image/jpeg", ext: ".jpg" },
+    og: { buffer: og, contentType: "image/jpeg", ext: ".jpg" },
+    takenAt,
   };
 }
 
@@ -1150,6 +1184,7 @@ export {
   extractExifDate,
   generateBlurDataUri,
   processImageVariants,
+  processAlbumSource,
   processResponsiveImage,
   processToOg,
   processGifThumb,
@@ -1167,6 +1202,7 @@ export {
 export type {
   ImageVariant,
   ProcessedImage,
+  ProcessedAlbumSource,
   ProcessedResponsiveImage,
   ResponsiveImageVariant,
   ProcessedGif,
