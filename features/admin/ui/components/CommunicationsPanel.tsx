@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 import { AppSelect, type AppSelectOption } from "@/components/AppSelect";
 import { useActionDialog } from "@/hooks/useActionDialog";
+import { COMMUNICATION_TABS, type CommunicationsTab } from "./AdminSectionNav";
 import {
   CommunicationMessageEditor,
   type CommunicationMediaDraft,
@@ -285,6 +286,21 @@ function deliveryStatusLabel(row: StageDelivery): string {
   return row.deliveryStatus;
 }
 
+function stageDeliveryStateLabel(stage: Stage): string {
+  switch (stage.deliveryState) {
+    case "queued":
+      return "queued for sending";
+    case "accepted":
+      return "accepted · awaiting delivery confirmation";
+    case "delivered":
+      return "delivered";
+    case "complete with issues":
+      return "complete · needs attention";
+    default:
+      return stage.deliveryState;
+  }
+}
+
 function linkMetricsLabel(links: LinkMetric[]): string {
   return links
     .filter((link) => link.uniqueRecipients > 0)
@@ -398,10 +414,18 @@ export function CommunicationsPanel({
   authFetch,
   onError,
   onStatus,
+  communicationTab,
+  communicationEvent,
+  onCommunicationTabChange,
+  onCommunicationEventChange,
 }: {
   authFetch: AuthFetch;
   onError: (message: string) => void;
   onStatus: (message: string) => void;
+  communicationTab: CommunicationsTab;
+  communicationEvent?: string;
+  onCommunicationTabChange: (tab: CommunicationsTab) => void;
+  onCommunicationEventChange: (eventSlug: string) => void;
 }) {
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -410,12 +434,12 @@ export function CommunicationsPanel({
   const [templates, setTemplates] = useState<Template[]>([]);
   const [surveys, setSurveys] = useState<Survey[]>([]);
   const [email, setEmail] = useState<EmailCapability>({ provider: null, mailpitUrl: null });
-  const [tab, setTab] = useState<"event-plan" | "compose" | "templates" | "feedback" | "people">(
-    "event-plan",
-  );
+  const [localTab, setLocalTab] = useState<CommunicationsTab>(communicationTab);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
-  const [selectedEvent, setSelectedEvent] = useState("after-school-club-2026-09-01");
+  const [localSelectedEvent, setLocalSelectedEvent] = useState(
+    communicationEvent || "after-school-club-2026-09-01",
+  );
   const [editingStage, setEditingStage] = useState<string | null>(null);
   const [stageDraft, setStageDraft] = useState<StageDraft>({
     subject: "",
@@ -474,6 +498,19 @@ export function CommunicationsPanel({
   const [selectedSurvey, setSelectedSurvey] = useState<string | null>(null);
   const [responses, setResponses] = useState<SurveyResponse[]>([]);
   const { confirm, dialog } = useActionDialog();
+  const tab = communicationTab || localTab;
+  const selectedEvent = communicationEvent || localSelectedEvent;
+  const setTab = (nextTab: CommunicationsTab) => {
+    setLocalTab(nextTab);
+    onCommunicationTabChange(nextTab);
+  };
+  const setSelectedEvent = useCallback(
+    (nextEvent: string) => {
+      setLocalSelectedEvent(nextEvent);
+      onCommunicationEventChange(nextEvent);
+    },
+    [onCommunicationEventChange],
+  );
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -497,13 +534,12 @@ export function CommunicationsPanel({
       setTemplates(data.templates || []);
       setSurveys(data.surveys || []);
       setEmail(data.email || { provider: null, mailpitUrl: null });
-      if (!selectedEvent && data.events?.[0]) setSelectedEvent(data.events[0].slug);
     } catch (error) {
       onError(error instanceof Error ? error.message : "Could not load communications");
     } finally {
       setLoading(false);
     }
-  }, [authFetch, onError, selectedEvent]);
+  }, [authFetch, onError]);
   useEffect(() => {
     void load();
   }, [load]);
@@ -1018,7 +1054,7 @@ export function CommunicationsPanel({
         aria-label="Communications tools"
         className="flex flex-wrap gap-x-5 gap-y-3 border-b theme-border pb-3 font-mono text-xs"
       >
-        {(["event-plan", "compose", "templates", "feedback", "people"] as const).map((item) => (
+        {COMMUNICATION_TABS.map((item) => (
           <button
             key={item}
             type="button"
@@ -1310,8 +1346,11 @@ function EventPlanView(props: {
                       {stage.sendAt ? dateLabel(stage.sendAt) : "needs a send time"} ·{" "}
                       {stageNeedsManualSendDecision(stage)
                         ? "overdue — waiting for your decision"
-                        : stage.deliveryState}{" "}
-                      · {stage.recipientCount || "recipient count at fan-out"}
+                        : stageDeliveryStateLabel(stage)}{" "}
+                      ·{" "}
+                      {stage.recipientCount
+                        ? `${stage.recipientCount} recipients`
+                        : "recipient count at fan-out"}
                     </p>
                     {stageNeedsManualSendDecision(stage) ? (
                       <p className="mt-2 font-mono text-micro theme-faint">

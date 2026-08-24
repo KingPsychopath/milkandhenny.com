@@ -45,6 +45,20 @@ const PRIMARY_ADMIN_SECTIONS = ADMIN_SECTIONS.filter((section) => section.id !==
 
 export type AdminSection = (typeof ADMIN_SECTIONS)[number]["id"];
 
+export const COMMUNICATION_TABS = [
+  "event-plan",
+  "compose",
+  "templates",
+  "feedback",
+  "people",
+] as const;
+
+export type CommunicationsTab = (typeof COMMUNICATION_TABS)[number];
+
+export function isCommunicationsTab(value: unknown): value is CommunicationsTab {
+  return COMMUNICATION_TABS.some((tab) => tab === value);
+}
+
 export function isAdminSection(value: unknown): value is AdminSection {
   return ADMIN_SECTIONS.some((section) => section.id === value);
 }

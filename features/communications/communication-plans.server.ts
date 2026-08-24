@@ -267,6 +267,7 @@ export async function listCommunicationPlans(eventSlug?: string): Promise<Commun
 export async function listCommunicationStageDeliveries(
   stageId: string,
 ): Promise<CommunicationStageDelivery[]> {
+  await listCommunicationContacts();
   const rows = await query<{
     email_hash: string;
     email: string;

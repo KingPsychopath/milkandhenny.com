@@ -16,7 +16,11 @@ import { AlbumManagerPanel } from "./components/AlbumManagerPanel";
 import { AdminOverviewPanel } from "./components/AdminOverviewPanel";
 import { SystemHealthPanel } from "./components/SystemHealthPanel";
 import { CommunicationsPanel } from "./components/CommunicationsPanel";
-import { AdminSectionNav, type AdminSection } from "./components/AdminSectionNav";
+import {
+  AdminSectionNav,
+  type AdminSection,
+  type CommunicationsTab,
+} from "./components/AdminSectionNav";
 import { useAdminAuth } from "@/features/auth/useAdminAuth";
 import { useActionDialog } from "@/hooks/useActionDialog";
 import { buildTransferUrl } from "@/features/transfers/routes";
@@ -303,10 +307,18 @@ function transferMatchesHealthFilter(
 
 export function AdminDashboard({
   view,
+  communicationTab,
+  communicationEvent,
   onViewChange,
+  onCommunicationTabChange,
+  onCommunicationEventChange,
 }: {
   view: AdminSection;
+  communicationTab: CommunicationsTab;
+  communicationEvent?: string;
   onViewChange: (section: AdminSection) => void;
+  onCommunicationTabChange: (tab: CommunicationsTab) => void;
+  onCommunicationEventChange: (eventSlug: string) => void;
 }) {
   const { confirm: confirmAction, dialog: actionDialog } = useActionDialog();
   const [loading, setLoading] = useState(false);
@@ -1114,6 +1126,10 @@ export function AdminDashboard({
             authFetch={authFetch}
             onError={setErrorMessage}
             onStatus={setStatusMessage}
+            communicationTab={communicationTab}
+            communicationEvent={communicationEvent}
+            onCommunicationTabChange={onCommunicationTabChange}
+            onCommunicationEventChange={onCommunicationEventChange}
           />
         </section>
       ) : null}

@@ -133,12 +133,12 @@ function validMedia(value: unknown): CommunicationMedia[] {
 
 async function syncContacts(): Promise<void> {
   const candidates = await query<Candidate>(`
-    select lower(email) as email, max(holder_name) as display_name, 'event' as source
+    select lower(email) as email, nullif(trim(max(holder_name)), '') as display_name, 'event' as source
       from tickets
      where email is not null and trim(email) <> ''
      group by lower(email)
     union all
-    select lower(owner_email) as email, max(owner_name) as display_name, 'pitch' as source
+    select lower(owner_email) as email, nullif(trim(max(owner_name)), '') as display_name, 'pitch' as source
       from pitch_decks
      where owner_email is not null and trim(owner_email) <> ''
      group by lower(owner_email)
@@ -147,6 +147,7 @@ async function syncContacts(): Promise<void> {
   for (const candidate of candidates) {
     const email = candidate.email.trim().toLowerCase();
     if (!email) continue;
+    candidate.displayName = candidate.displayName?.trim() || null;
     const key = hashEmail(email);
     const existing = merged.get(key);
     if (existing) {
@@ -169,7 +170,10 @@ async function syncContacts(): Promise<void> {
        values ($1,$2,$3,$4,$5)
        on conflict (email_hash) do update
          set email = excluded.email,
-             display_name = coalesce(communication_contacts.display_name, excluded.display_name),
+             display_name = coalesce(
+               nullif(trim(communication_contacts.display_name), ''),
+               nullif(trim(excluded.display_name), '')
+             ),
              sources = excluded.sources,
              updated_at = now()`,
       [emailHash, candidate.email, candidate.displayName, [...candidate.sources], randomUUID()],

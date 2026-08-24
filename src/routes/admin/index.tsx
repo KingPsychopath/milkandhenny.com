@@ -3,7 +3,12 @@ import { createServerFn } from "@tanstack/react-start";
 import { getRequest } from "@tanstack/react-start/server";
 import { SITE_NAME } from "@/lib/shared/config";
 import { AdminDashboard } from "@/features/admin/ui/AdminDashboard";
-import { isAdminSection, type AdminSection } from "@/features/admin/ui/components/AdminSectionNav";
+import {
+  isAdminSection,
+  isCommunicationsTab,
+  type AdminSection,
+  type CommunicationsTab,
+} from "@/features/admin/ui/components/AdminSectionNav";
 import { authenticateRequest, isLocalDevelopment } from "@/features/auth/auth.server";
 import { signInAdmin, signInAdminDevelopment } from "@/features/auth/auth.functions";
 import { buildSeoHead } from "@/lib/shared/seo";
@@ -14,8 +19,20 @@ const getAdminAccess = createServerFn({ method: "GET" }).handler(async () => ({
 }));
 
 export const Route = createFileRoute("/admin/")({
-  validateSearch: (search: Record<string, unknown>): { view: AdminSection } => ({
+  validateSearch: (
+    search: Record<string, unknown>,
+  ): {
+    view: AdminSection;
+    communicationTab?: CommunicationsTab;
+    communicationEvent?: string;
+  } => ({
     view: isAdminSection(search.view) ? search.view : "overview",
+    ...(isCommunicationsTab(search.communicationTab)
+      ? { communicationTab: search.communicationTab }
+      : {}),
+    ...(typeof search.communicationEvent === "string" && search.communicationEvent.trim()
+      ? { communicationEvent: search.communicationEvent }
+      : {}),
   }),
   component: AdminPage,
   loader: () => getAdminAccess(),
@@ -31,7 +48,7 @@ export const Route = createFileRoute("/admin/")({
 
 function AdminPage() {
   const { auth, localDevBypassAvailable } = Route.useLoaderData();
-  const { view } = Route.useSearch();
+  const { view, communicationTab, communicationEvent } = Route.useSearch();
   const navigate = Route.useNavigate();
   const isAuthed = auth.ok;
 
@@ -91,8 +108,30 @@ function AdminPage() {
     <main id="main" className="min-h-dvh">
       <AdminDashboard
         view={view}
+        communicationTab={communicationTab ?? "event-plan"}
+        communicationEvent={communicationEvent}
         onViewChange={(nextView) =>
-          void navigate({ search: { view: nextView }, replace: true, resetScroll: true })
+          void navigate({ search: { view: nextView }, resetScroll: true })
+        }
+        onCommunicationTabChange={(nextTab) =>
+          void navigate({
+            search: (current) => ({
+              ...current,
+              view: "communications",
+              communicationTab: nextTab,
+            }),
+            resetScroll: true,
+          })
+        }
+        onCommunicationEventChange={(nextEvent) =>
+          void navigate({
+            search: (current) => ({
+              ...current,
+              view: "communications",
+              communicationEvent: nextEvent,
+            }),
+            resetScroll: true,
+          })
         }
       />
     </main>
