@@ -38,6 +38,7 @@ function formatDate(dateStr: string) {
     day: "numeric",
     month: "short",
     year: "numeric",
+    timeZone: "UTC",
   });
 }
 
@@ -108,9 +109,10 @@ function PicsPage() {
                         alt=""
                         width={cover.width}
                         height={cover.height}
+                        reveal
                         priority={albumIndex === 0}
                         sizes="(min-width: 640px) 50vw, 100vw"
-                        className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.02]"
+                        className="app-image-hover-scale h-full w-full object-cover group-hover:scale-[1.02]"
                         style={coverPos ? { objectPosition: coverPos } : undefined}
                       />
                     </div>

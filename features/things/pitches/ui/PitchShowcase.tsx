@@ -65,7 +65,7 @@ export function PitchShowcase({
                     height={pitch.thumbnail.height}
                     reveal
                     sizes="(min-width: 672px) 304px, calc((100vw - 4rem) / 2)"
-                    className="h-full w-full object-contain transition-transform duration-500 group-hover:scale-[1.02]"
+                    className="app-image-hover-scale h-full w-full object-contain group-hover:scale-[1.02]"
                   />
                 ) : (
                   <div className="flex h-full items-center justify-center px-4 text-center">

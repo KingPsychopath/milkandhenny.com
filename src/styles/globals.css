@@ -394,6 +394,12 @@
     opacity: 0;
   }
 
+  .app-image-reveal.app-image-hover-scale {
+    transition:
+      opacity 480ms cubic-bezier(0.22, 1, 0.36, 1),
+      transform 500ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
   @media (prefers-reduced-motion: reduce) {
     .app-image-reveal {
       opacity: 1;
@@ -1474,8 +1480,10 @@
     border-radius: 0;
     max-width: none;
   }
-  .album-embed-thumb-img {
-    transition: filter 0.25s ease;
+  .app-image-reveal.album-embed-thumb-img {
+    transition:
+      opacity 480ms cubic-bezier(0.22, 1, 0.36, 1),
+      filter 250ms ease;
   }
   .album-embed:hover .album-embed-thumb img {
     /* Hover "tint": use filter so it overrides inline styles */
@@ -1527,8 +1535,10 @@
     max-width: none;
     position: static;
   }
-  .album-embed-masonry-img {
-    transition: filter 0.25s ease;
+  .app-image-reveal.album-embed-masonry-img {
+    transition:
+      opacity 480ms cubic-bezier(0.22, 1, 0.36, 1),
+      filter 250ms ease;
   }
   .album-embed-masonry-grid:hover .album-embed-masonry-tile img {
     filter: brightness(0.92) saturate(0.95);

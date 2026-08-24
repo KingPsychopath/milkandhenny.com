@@ -175,7 +175,7 @@ export function PitchGallery({
                       height={pitch.thumbnail.height}
                       reveal
                       sizes="(min-width: 1024px) 30vw, (min-width: 640px) 45vw, calc(100vw - 3rem)"
-                      className="h-full w-full object-contain transition-transform duration-500 group-hover:scale-[1.02]"
+                      className="app-image-hover-scale h-full w-full object-contain group-hover:scale-[1.02]"
                     />
                   ) : (
                     <div className="flex h-full flex-col items-center justify-center gap-5 px-6 text-center">
