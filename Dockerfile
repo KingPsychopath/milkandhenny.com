@@ -55,7 +55,6 @@ ENV PORT=3000
 WORKDIR /app
 
 COPY --from=build --chown=node:node /app/.output ./.output
-COPY --from=build --chown=node:node /app/content ./content
 # same brain reads these from ./models at runtime; absent, it scores on exact matches.
 COPY --from=model --chown=node:node /app/models ./models
 COPY --chown=node:node ops ./ops
