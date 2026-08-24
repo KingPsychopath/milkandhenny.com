@@ -704,7 +704,7 @@ function CentreLobby({
                   : "QR unavailable. Share the link or room code."}
               </p>
             ) : null}
-            <p className="centre-eyebrow">{snapshot.managed ? "game-night room" : "room code"}</p>
+            <p className="centre-eyebrow">{snapshot.managed ? "invite link" : "room code"}</p>
             <p className="centre-code">{snapshot.roomId}</p>
             <button type="button" className="centre-button" onClick={() => void share()}>
               {nativeShare ? "share invite" : "copy invite link"}

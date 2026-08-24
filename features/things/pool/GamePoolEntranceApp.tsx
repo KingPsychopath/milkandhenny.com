@@ -283,11 +283,13 @@ export function GamePoolEntranceApp({
             </p>
           ) : null}
           <p className="mt-4 font-mono text-micro leading-relaxed theme-faint">
-            {requestedRoomAvailable
-              ? "This is a shared game-night room. Everyone who joins plays together."
-              : activeRoom
-                ? "Choosing another room releases your current seat first."
-                : "We remember your name on this device so you can return to your room."}
+            {joiningRequestedRoom
+              ? "This invite takes you to one specific room."
+              : requestedRoomAvailable
+                ? "This is a shared room. Everyone who joins plays together."
+                : activeRoom
+                  ? "Choosing another room releases your current seat first."
+                  : "We remember your name on this device so you can return to your room."}
           </p>
         </form>
       ) : (
