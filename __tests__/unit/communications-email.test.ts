@@ -63,4 +63,48 @@ describe("communication email rendering", () => {
     expect(rendered.text).toContain("Doors open: 19:00");
     expect(rendered.text).not.toContain("Starts:");
   });
+
+  it("parses content formatting, tokens, safe links, and media", () => {
+    const rendered = renderCommunicationMessage({
+      kind: "newsletter",
+      subject: "{{event.title}} · {{event.date}}",
+      body: "## Hello **{{recipient.name}}**\n\n- First point\n- [Visit the contact page]({{links.contact}})\n\nA literal <tag> stays escaped.\n\n[Unsafe link](javascript:alert(1))",
+      media: [
+        {
+          kind: "video",
+          url: "https://milkandhenny.com/media/walking.mp4",
+          posterUrl: "https://milkandhenny.com/media/walking-poster.jpg",
+          alt: "A walking guide",
+        },
+        {
+          kind: "image",
+          url: "//evil.example/image.jpg",
+          alt: "Unsafe image",
+        },
+      ],
+      origin: "https://milkandhenny.com",
+      context: { event, recipientName: "Owen" },
+    });
+
+    expect(rendered.subject).toContain("After School Club — First Bell");
+    expect(rendered.subject).toContain("Tuesday, 1 September 2026");
+    expect(rendered.html).toContain("<h2");
+    expect(rendered.html).toContain("<strong>Owen</strong>");
+    expect(rendered.html).toContain("<ul");
+    expect(rendered.html).toContain("Visit the contact page");
+    expect(rendered.html).toContain('href="https://milkandhenny.com/contact"');
+    expect(rendered.html).toContain("&lt;tag&gt;");
+    expect(rendered.html).toContain("Unsafe link");
+    expect(rendered.html).not.toContain("Unsafe link)");
+    expect(rendered.html).not.toContain("javascript:alert");
+    expect(rendered.html).not.toContain("//evil.example/image.jpg");
+    expect(rendered.html).toContain("walking-poster.jpg");
+    expect(rendered.html).toContain("walking.mp4");
+    expect(rendered.text).toContain("First point");
+    expect(rendered.text).toContain("Visit the contact page (https://milkandhenny.com/contact)");
+    expect(rendered.text).toContain("Unsafe link");
+    expect(rendered.text).not.toContain("Unsafe link)");
+    expect(rendered.text).not.toContain("javascript:alert");
+    expect(rendered.text).not.toContain("**");
+  });
 });

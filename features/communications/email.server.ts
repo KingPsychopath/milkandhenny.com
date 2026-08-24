@@ -18,13 +18,21 @@ export type CommunicationMedia = {
 
 function safeUrl(value: string): string | null {
   const trimmed = value.trim();
-  if (trimmed.startsWith("/")) return trimmed;
+  if (trimmed.startsWith("/") && !trimmed.startsWith("//")) return trimmed;
   try {
     const url = new URL(trimmed);
     return url.protocol === "http:" || url.protocol === "https:" ? trimmed : null;
   } catch {
     return null;
   }
+}
+
+function safeLinkUrl(value: string): string | null {
+  const trimmed = value.trim();
+  if (trimmed.startsWith("mailto:")) {
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed.slice("mailto:".length)) ? trimmed : null;
+  }
+  return safeUrl(trimmed);
 }
 
 export type CommunicationEmailContext = {
@@ -103,13 +111,51 @@ function addressWithoutVenue(event: EventRecord): string {
     .join(", ");
 }
 
+function replaceMarkdownLinks(
+  value: string,
+  replace: (label: string, url: string) => string,
+): string {
+  let output = "";
+  let cursor = 0;
+  while (cursor < value.length) {
+    const open = value.indexOf("[", cursor);
+    if (open < 0) {
+      output += value.slice(cursor);
+      break;
+    }
+    const labelEnd = value.indexOf("](", open + 1);
+    if (labelEnd < 0) {
+      output += value.slice(cursor);
+      break;
+    }
+    let depth = 1;
+    let end = labelEnd + 2;
+    for (; end < value.length; end += 1) {
+      if (value[end] === "(") depth += 1;
+      if (value[end] === ")") {
+        depth -= 1;
+        if (depth === 0) break;
+      }
+    }
+    if (depth !== 0) {
+      output += value.slice(cursor);
+      break;
+    }
+    output += value.slice(cursor, open);
+    output += replace(value.slice(open + 1, labelEnd), value.slice(labelEnd + 2, end));
+    cursor = end + 1;
+  }
+  return output;
+}
+
 function inlineHtml(value: string): string {
   const escaped = escapeEmailHtml(value);
-  const withLinks = escaped.replace(
-    /\[([^\]]+)\]\((\/[^)]+|https?:\/\/[^)]+|mailto:[^)]+)\)/g,
-    (_, label: string, url: string) =>
-      `<a href="${escapeEmailHtml(url)}" style="color:#a16207;text-decoration:underline;text-underline-offset:3px">${label}</a>`,
-  );
+  const withLinks = replaceMarkdownLinks(escaped, (label, url) => {
+    const safe = safeLinkUrl(url);
+    return safe
+      ? `<a href="${escapeEmailHtml(safe)}" style="color:#a16207;text-decoration:underline;text-underline-offset:3px">${label}</a>`
+      : label;
+  });
   return withLinks.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
 }
 
@@ -161,10 +207,10 @@ function richBodyHtml(value: string): string {
 }
 
 function plainTextBody(value: string): string {
-  return value
-    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_, label: string, url: string) =>
-      url.startsWith("mailto:") ? label : `${label} (${url})`,
-    )
+  return replaceMarkdownLinks(value, (label, url) => {
+    const safe = safeLinkUrl(url);
+    return safe && !safe.startsWith("mailto:") ? `${label} (${safe})` : label;
+  })
     .replace(/\*\*([^*]+)\*\*/g, "$1")
     .replace(/^##\s+/gm, "")
     .replace(/^- /gm, "• ")
