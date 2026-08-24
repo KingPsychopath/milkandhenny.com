@@ -161,7 +161,10 @@ export function PitchGallery({
                 search={{ edition: undefined }}
                 className="group mb-6 block break-inside-avoid border-b theme-border pb-5"
               >
-                <div className="relative aspect-square overflow-hidden bg-surface p-4">
+                <div
+                  className="relative aspect-square overflow-hidden bg-surface p-4"
+                  style={imagePlaceholderStyle(pitch.thumbnail?.placeholder)}
+                >
                   {pitch.thumbnail ? (
                     <AppImage
                       src={pitch.thumbnail.src}
@@ -170,8 +173,8 @@ export function PitchGallery({
                       alt=""
                       width={pitch.thumbnail.width}
                       height={pitch.thumbnail.height}
+                      reveal
                       sizes="(min-width: 1024px) 30vw, (min-width: 640px) 45vw, calc(100vw - 3rem)"
-                      style={imagePlaceholderStyle(pitch.thumbnail.placeholder)}
                       className="h-full w-full object-contain transition-transform duration-500 group-hover:scale-[1.02]"
                     />
                   ) : (

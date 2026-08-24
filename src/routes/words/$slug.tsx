@@ -235,6 +235,7 @@ function WordSlugPage() {
                 alt={meta.title}
                 width={heroImageData?.width}
                 height={heroImageData?.height}
+                reveal
                 className="w-full rounded-md border theme-border"
                 sizes="(min-width: 672px) 624px, calc(100vw - 3rem)"
                 priority

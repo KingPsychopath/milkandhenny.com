@@ -552,6 +552,7 @@ function SingleVisualContent({
         alt={file.filename}
         width={file.width}
         height={file.height}
+        reveal
         sizes="calc(100vw - 2rem)"
         className={`max-w-full ${maxHeightClass} object-contain`}
         onError={onError}
@@ -2358,6 +2359,7 @@ const VisualCard = memo(function VisualCard({
             alt={file.filename}
             width={file.width}
             height={file.height}
+            reveal
             sizes="(min-width: 768px) 33vw, 50vw"
             onError={handleVisualError}
             className="absolute inset-0 h-full w-full object-cover"

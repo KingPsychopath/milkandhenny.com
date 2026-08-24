@@ -72,6 +72,7 @@ function eventDescriptionComponents(images: Record<string, ResponsiveImageData>)
           alt={alt ?? ""}
           width={image?.width}
           height={image?.height}
+          reveal
           sizes="(min-width: 672px) 624px, calc(100vw - 3rem)"
           style={imagePlaceholderStyle(image?.placeholder)}
         />

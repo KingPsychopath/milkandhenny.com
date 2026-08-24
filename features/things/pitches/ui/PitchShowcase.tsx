@@ -51,7 +51,10 @@ export function PitchShowcase({
               search={{ edition: undefined }}
               className="group block min-w-0 border-b theme-border pb-3 hover:opacity-70"
             >
-              <div className="aspect-video overflow-hidden bg-surface">
+              <div
+                className="aspect-video overflow-hidden bg-surface"
+                style={imagePlaceholderStyle(pitch.thumbnail?.placeholder)}
+              >
                 {pitch.thumbnail ? (
                   <AppImage
                     src={pitch.thumbnail.src}
@@ -60,8 +63,8 @@ export function PitchShowcase({
                     alt=""
                     width={pitch.thumbnail.width}
                     height={pitch.thumbnail.height}
+                    reveal
                     sizes="(min-width: 672px) 304px, calc((100vw - 4rem) / 2)"
-                    style={imagePlaceholderStyle(pitch.thumbnail.placeholder)}
                     className="h-full w-full object-contain transition-transform duration-500 group-hover:scale-[1.02]"
                   />
                 ) : (

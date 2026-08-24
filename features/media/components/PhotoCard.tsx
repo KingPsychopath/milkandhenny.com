@@ -67,6 +67,7 @@ export const PhotoCard = memo(function PhotoCard({
           alt={alt}
           width={photo.width}
           height={photo.height}
+          reveal
           priority={priority}
           sizes="(min-width: 768px) 33vw, 50vw"
           className="absolute inset-0 h-full w-full object-cover"

@@ -188,6 +188,7 @@ export function PhotoViewer({
             alt={alt}
             width={image.width}
             height={image.height}
+            reveal
             priority
             sizes="(min-width: 768px) 80vw, calc(100vw - 2rem)"
             className="h-full w-full rounded-sm object-contain"

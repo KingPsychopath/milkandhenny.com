@@ -133,18 +133,23 @@ export function EventDetailPage({
         ) : null}
 
         {event.heroImage && (
-          <AppImage
-            src={heroImage?.src ?? event.heroImage}
-            srcSet={heroImage?.srcSet}
-            sources={heroImage?.sources}
-            alt=""
-            width={heroImage?.width ?? event.heroImageWidth}
-            height={heroImage?.height ?? event.heroImageHeight}
-            sizes="(min-width: 672px) 624px, calc(100vw - 3rem)"
+          <div
+            className="mb-8 overflow-hidden rounded-lg bg-surface"
             style={imagePlaceholderStyle(heroImage?.placeholder)}
-            className={`mb-8 h-auto w-full rounded-lg bg-surface ${heroImageHeightClass(event.heroHeight)}`}
-            priority
-          />
+          >
+            <AppImage
+              src={heroImage?.src ?? event.heroImage}
+              srcSet={heroImage?.srcSet}
+              sources={heroImage?.sources}
+              alt=""
+              width={heroImage?.width ?? event.heroImageWidth}
+              height={heroImage?.height ?? event.heroImageHeight}
+              reveal
+              sizes="(min-width: 672px) 624px, calc(100vw - 3rem)"
+              className={`h-auto w-full ${heroImageHeightClass(event.heroHeight)}`}
+              priority
+            />
+          </div>
         )}
 
         <h1 className="font-serif text-3xl sm:text-4xl text-foreground leading-tight">
