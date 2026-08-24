@@ -139,12 +139,14 @@ export function ReportIssueButton<Type extends ReportType>({
   label = "something feel off? let us know",
   error,
   className = "",
+  detailsPlacement = "popover",
 }: {
   type: Type;
   payload: ReportInputByType[Type];
   label?: string;
   error?: unknown;
   className?: string;
+  detailsPlacement?: "popover" | "inline";
 }) {
   const [status, setStatus] = useState<"idle" | "sending" | "sent" | "duplicate" | "error">("idle");
   const [errorMessage, setErrorMessage] = useState("");
@@ -259,10 +261,18 @@ export function ReportIssueButton<Type extends ReportType>({
 
   return (
     <div
-      className={`mt-2 flex min-h-11 flex-wrap items-center gap-x-3 gap-y-1 font-mono text-micro theme-muted ${className}`}
+      className={`${
+        detailsPlacement === "inline"
+          ? "mt-2 flex min-h-11 w-full flex-col items-center gap-y-1"
+          : "mt-2 flex min-h-11 flex-wrap items-center gap-x-3 gap-y-1"
+      } font-mono text-micro theme-muted ${className}`}
     >
       {status === "sent" || status === "duplicate" ? (
-        <div className="flex min-h-11 basis-full flex-wrap items-center gap-x-3 gap-y-1 sm:basis-auto">
+        <div
+          className={`flex min-h-11 flex-wrap items-center gap-x-3 gap-y-1 ${
+            detailsPlacement === "inline" ? "justify-center" : "basis-full sm:basis-auto"
+          }`}
+        >
           <span aria-live="polite" className="inline-flex min-h-11 items-center">
             {status === "sent" ? "report submitted" : "report already submitted"}
           </span>
@@ -293,14 +303,18 @@ export function ReportIssueButton<Type extends ReportType>({
           {status === "sending" ? "saving context…" : label}
         </button>
       )}
-      <span aria-live="polite">
-        {status === "error"
-          ? `${errorMessage}${requestId ? ` · reference ${requestId}` : ""}`
-          : reportId
-            ? `reference ${diagnosticId}`
-            : ""}
-      </span>
-      <DiagnosticDetails diagnostics={diagnostics} responseError={responseError} />
+      {status === "error" || reportId ? (
+        <span aria-live="polite">
+          {status === "error"
+            ? `${errorMessage}${requestId ? ` · reference ${requestId}` : ""}`
+            : `reference ${diagnosticId}`}
+        </span>
+      ) : null}
+      <DiagnosticDetails
+        diagnostics={diagnostics}
+        responseError={responseError}
+        placement={detailsPlacement}
+      />
       {detailOpen ? (
         <ReportDetailDialog
           value={detailText}

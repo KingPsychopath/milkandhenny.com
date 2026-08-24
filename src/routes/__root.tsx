@@ -183,30 +183,38 @@ function RootError({ error }: ErrorComponentProps) {
 
   return (
     <RootDocument hideSiteReporter>
-      <main id="main" className="min-h-screen bg-background flex items-center justify-center p-6">
-        <div className="text-center max-w-md space-y-8">
+      <main
+        id="main"
+        className="flex min-h-screen items-center justify-center bg-background px-6 py-12"
+      >
+        <div className="w-full max-w-md space-y-8 text-center">
           <h1 className="font-mono text-7xl font-bold text-foreground opacity-10 leading-none">
             oops
           </h1>
-          <p className="font-serif text-xl text-foreground">something broke</p>
-          <button
-            type="button"
-            onClick={() => void router.invalidate()}
-            className="font-mono text-sm theme-muted hover:text-foreground transition-colors"
-          >
-            ↻ try again
-          </button>
-          <ReportIssueButton
-            type="client_error"
-            payload={{
-              surface: "root_error",
-              operation: "route_render",
-              errorCode: error instanceof Error ? error.name : "route_error",
-            }}
-            error={error}
-            label="something still wrong? let us know"
-            className="justify-center"
-          />
+          <div className="space-y-4">
+            <p role="alert" className="font-serif text-xl text-foreground">
+              something broke
+            </p>
+            <button
+              type="button"
+              onClick={() => void router.invalidate()}
+              className="inline-flex min-h-11 items-center px-3 font-mono text-sm theme-muted hover:text-foreground transition-colors"
+            >
+              ↻ try again
+            </button>
+            <ReportIssueButton
+              type="client_error"
+              payload={{
+                surface: "root_error",
+                operation: "route_render",
+                errorCode: error instanceof Error ? error.name : "route_error",
+              }}
+              error={error}
+              label="something still wrong? let us know"
+              detailsPlacement="inline"
+              className="justify-center"
+            />
+          </div>
         </div>
       </main>
     </RootDocument>

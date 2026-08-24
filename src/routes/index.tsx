@@ -73,7 +73,7 @@ function Home() {
         <p className="mt-2 theme-faint font-serif italic text-sm">
           a <span className="highlight-selection">social commentary</span> on social commentary
         </p>
-        <nav className="mt-6 flex items-center justify-center gap-6 font-mono text-xs tracking-wide">
+        <nav className="mt-6 flex flex-wrap items-center justify-center gap-x-5 gap-y-2 font-mono text-xs tracking-wide">
           <Link to="/pics" className="theme-muted hover:text-foreground transition-colors">
             [pics]
           </Link>
@@ -129,18 +129,15 @@ function Home() {
       </main>
 
       <footer className="border-t theme-border">
-        <div className="relative max-w-2xl mx-auto px-6 py-8 space-y-4">
+        <div className="relative mx-auto max-w-2xl px-6 py-8">
           <HomepageFooterVisitor />
-          <div className="flex items-center justify-between font-mono text-micro theme-muted tracking-wide">
-            <span>
+          <div className="flex flex-col gap-4 font-mono text-micro tracking-wide theme-muted sm:flex-row sm:items-center sm:justify-between">
+            <span className="shrink-0">
               © {new Date().getFullYear()} {SITE_BRAND}
             </span>
-            <div className="flex items-center gap-4">
-              <a href="/feed.xml" className="hover:text-foreground transition-colors">
-                rss
-              </a>
-              <Link to="/words" className="hover:text-foreground transition-colors">
-                words
+            <nav aria-label="Footer" className="flex flex-wrap items-center gap-x-4 gap-y-2">
+              <Link to="/subscribe" className="hover:text-foreground transition-colors">
+                stay close
               </Link>
               <Link to="/health" className="hover:text-foreground transition-colors">
                 health
@@ -154,9 +151,12 @@ function Home() {
               <a href={footerPartyPath} className="hover:text-foreground transition-colors">
                 the party ↗
               </a>
-            </div>
+            </nav>
           </div>
-          <div className="flex items-center justify-center gap-5 font-mono text-micro theme-faint tracking-wide">
+          <nav
+            aria-label="Social links"
+            className="mt-6 flex flex-wrap items-center justify-center gap-x-5 gap-y-2 font-mono text-micro tracking-wide theme-faint"
+          >
             <a
               href="https://twitter.com/milkandh3nny"
               target="_blank"
@@ -165,7 +165,7 @@ function Home() {
             >
               twitter
             </a>
-            <span>·</span>
+            <span aria-hidden="true">·</span>
             <a
               href="https://instagram.com/milkandhenny"
               target="_blank"
@@ -174,7 +174,7 @@ function Home() {
             >
               instagram
             </a>
-            <span>·</span>
+            <span aria-hidden="true">·</span>
             <a
               href="https://tiktok.com/@milkandhenny"
               target="_blank"
@@ -183,7 +183,7 @@ function Home() {
             >
               tiktok
             </a>
-          </div>
+          </nav>
         </div>
       </footer>
     </div>
