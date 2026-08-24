@@ -22,6 +22,7 @@ import { SoloSameBrain } from "./SoloSameBrain";
 import type { SameBrainScoring } from "./types";
 import { GamePoolDefaultLaunch } from "../pool/GamePoolDefaultLaunch";
 import type { GamePoolDefaultLaunch as GamePoolDefaultLaunchTarget } from "../pool/types";
+import { useGameScreenHistory } from "../shared/useGameScreenHistory";
 
 /**
  * Any same brain game this device is still holding credentials for.
@@ -87,6 +88,12 @@ export function SameBrainSetupApp({
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const liveRooms = useLiveSameBrainSessions();
+
+  useGameScreenHistory({
+    active: solo,
+    screen: "solo",
+    onBack: () => setSolo(false),
+  });
 
   if (solo) return <SoloSameBrain onExit={() => setSolo(false)} />;
 

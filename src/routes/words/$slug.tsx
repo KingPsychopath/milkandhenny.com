@@ -112,16 +112,16 @@ function WordSlugPage() {
     return (
       <div className="flex min-h-dvh flex-col bg-background">
         <header className="max-w-2xl mx-auto px-6 pt-10 pb-6">
-          <div className="flex items-center justify-between font-mono text-sm">
+          <div className="flex items-center justify-between gap-8 font-mono text-sm">
             <Link
               to="/words"
-              className="theme-muted hover:text-foreground transition-colors tracking-tight"
+              className="shrink-0 theme-muted hover:text-foreground transition-colors tracking-tight"
             >
               ← words
             </Link>
             <Link
               to="/"
-              className="font-bold text-foreground tracking-tighter hover:opacity-70 transition-opacity"
+              className="shrink-0 font-bold text-foreground tracking-tighter hover:opacity-70 transition-opacity"
             >
               {SITE_BRAND}
             </Link>
@@ -178,16 +178,16 @@ function WordSlugPage() {
       {headings.length > 0 && <JumpRail items={headings} ariaLabel="Jump to heading" />}
 
       <header className="max-w-2xl mx-auto px-6 pt-10 pb-6">
-        <div className="flex items-center justify-between font-mono text-sm">
+        <div className="flex items-center justify-between gap-8 font-mono text-sm">
           <Link
             to="/words"
-            className="theme-muted hover:text-foreground transition-colors tracking-tight"
+            className="shrink-0 theme-muted hover:text-foreground transition-colors tracking-tight"
           >
             ← words
           </Link>
           <Link
             to="/"
-            className="font-bold text-foreground tracking-tighter hover:opacity-70 transition-opacity"
+            className="shrink-0 font-bold text-foreground tracking-tighter hover:opacity-70 transition-opacity"
           >
             {SITE_BRAND}
           </Link>

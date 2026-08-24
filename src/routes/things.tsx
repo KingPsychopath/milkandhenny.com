@@ -99,39 +99,41 @@ function ThingsRoute() {
         <p className="mt-5 max-w-lg font-serif text-lg leading-relaxed theme-muted">
           Things are made to be used. Small tools, games and experiments.
         </p>
-        <ThingsConcierge />
-        <div className="mt-10">
-          <div className="relative">
-            <label htmlFor="things-search" className="sr-only">
-              Search things
-            </label>
-            <input
-              id="things-search"
-              type="search"
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder="what do you feel like playing?"
-              autoComplete="off"
-              className="w-full bg-transparent py-3 pr-12 font-mono text-sm theme-muted outline-none border-b theme-border placeholder:theme-faint focus:border-[var(--foreground)]"
-            />
+        <div className="mt-10 grid items-end gap-6 md:grid-cols-[minmax(0,1fr)_9rem]">
+          <div className="min-w-0">
+            <div className="relative">
+              <label htmlFor="things-search" className="sr-only">
+                Search things
+              </label>
+              <input
+                id="things-search"
+                type="search"
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                placeholder="what do you feel like playing?"
+                autoComplete="off"
+                className="w-full bg-transparent py-3 pr-12 font-mono text-sm theme-muted outline-none border-b theme-border placeholder:theme-faint focus:border-[var(--foreground)]"
+              />
+              {query ? (
+                <button
+                  type="button"
+                  onClick={() => setQuery("")}
+                  aria-label="Clear search"
+                  className="absolute inset-y-0 right-0 flex min-h-11 w-11 items-center justify-center font-mono text-lg theme-faint hover:text-foreground"
+                >
+                  ×
+                </button>
+              ) : null}
+            </div>
             {query ? (
-              <button
-                type="button"
-                onClick={() => setQuery("")}
-                aria-label="Clear search"
-                className="absolute inset-y-0 right-0 flex min-h-11 w-11 items-center justify-center font-mono text-lg theme-faint hover:text-foreground"
-              >
-                ×
-              </button>
+              <p className="mt-1.5 font-mono text-micro theme-faint" aria-live="polite">
+                {filteredThings.length === 0
+                  ? "no matches"
+                  : `${filteredThings.length} thing${filteredThings.length === 1 ? "" : "s"}`}
+              </p>
             ) : null}
           </div>
-          {query ? (
-            <p className="mt-1.5 font-mono text-micro theme-faint" aria-live="polite">
-              {filteredThings.length === 0
-                ? "no matches"
-                : `${filteredThings.length} thing${filteredThings.length === 1 ? "" : "s"}`}
-            </p>
-          ) : null}
+          <ThingsConcierge />
         </div>
       </header>
 

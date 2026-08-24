@@ -24,6 +24,7 @@ import { useNetworkAvailability } from "../shared/useNetworkAvailability";
 import { nextSoloCountry } from "./rotation.client";
 import { GamePoolDefaultLaunch } from "../pool/GamePoolDefaultLaunch";
 import type { GamePoolDefaultLaunch as GamePoolDefaultLaunchTarget } from "../pool/types";
+import { useGameScreenHistory } from "../shared/useGameScreenHistory";
 
 function RoundSettings({
   roundTotal,
@@ -90,6 +91,12 @@ export function DrawCountryApp({
   const [creating, setCreating] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [panel, setPanel] = useState<"solo" | "friends" | "join" | null>(null);
+
+  useGameScreenHistory({
+    active: soloMode !== null,
+    screen: "solo",
+    onBack: () => setSoloMode(null),
+  });
 
   useEffect(() => {
     if (country) return;

@@ -28,6 +28,7 @@ import { shareOrCopy } from "@/lib/client/share";
 import { useUpdateReloadSafety } from "@/features/offline/update-safety.client";
 import { useWakeLock } from "@/hooks/useWakeLock";
 import { useGamePreferences } from "../shared/useGamePreferences";
+import { useGameScreenHistory } from "../shared/useGameScreenHistory";
 
 type Phase = "setup" | "builder" | "countdown" | "playing" | "results";
 type Decision = "correct" | "pass";
@@ -178,6 +179,12 @@ function HeadsUpExperience({
     restoredRound.current = false;
     setPhase("setup");
   }, [clearDecisionTimeout, clearOrientationLock, roundStorageKey]);
+
+  useGameScreenHistory({
+    active: phase !== "setup",
+    screen: "round",
+    onBack: endRound,
+  });
 
   const undoDecision = useCallback(() => {
     if (phase !== "playing" || results.length === 0) return;

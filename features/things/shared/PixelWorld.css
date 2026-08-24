@@ -170,9 +170,8 @@
 }
 
 .things-concierge {
-  position: absolute;
-  right: 1.5rem;
-  bottom: 0.5rem;
+  position: static;
+  margin-left: auto;
   width: 9rem;
   opacity: 0.72;
   transition: opacity 180ms ease;

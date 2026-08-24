@@ -37,6 +37,7 @@ import { useUpdateReloadSafety } from "@/features/offline/update-safety.client";
 import { useWakeLock } from "@/hooks/useWakeLock";
 import { useGamePreferences } from "../shared/useGamePreferences";
 import { useFocusTrap } from "@/hooks/useFocusTrap";
+import { useGameScreenHistory } from "../shared/useGameScreenHistory";
 
 type Phase = "setup" | "builder" | "countdown" | "playing" | "results";
 const ROUND_STORAGE_KEY = "spelling-bee:active-round:v1";
@@ -607,6 +608,12 @@ function SpellingBeeExperience({ remoteSession }: { remoteSession?: RemotePlayer
     },
     [clearOrientationLock, clearTransition, roundStorageKey, stopAssistant],
   );
+
+  useGameScreenHistory({
+    active: phase !== "setup",
+    screen: "round",
+    onBack: () => endRound(false),
+  });
 
   useEffect(() => {
     if (phase !== "countdown") return;
