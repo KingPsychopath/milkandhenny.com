@@ -18,6 +18,7 @@ export function renderBrandedEmail(input: {
   action?: { label: string; url: string };
   note?: string;
   footerLink?: { label: string; url: string };
+  afterFooterHtml?: string;
 }): string {
   const origin = input.origin.replace(/\/$/, "");
   const action = input.action
@@ -46,6 +47,7 @@ export function renderBrandedEmail(input: {
                 milk &amp; henny · <a href="mailto:${CONTACT_EMAIL}" style="color:#78716c">${CONTACT_EMAIL}</a>
                 ${input.footerLink ? ` · <a href="${escapeEmailHtml(input.footerLink.url)}" style="color:#78716c">${escapeEmailHtml(input.footerLink.label)}</a>` : ""}
               </div>
+              ${input.afterFooterHtml ?? ""}
             </td>
           </tr>
         </table>

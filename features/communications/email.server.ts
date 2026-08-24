@@ -321,8 +321,8 @@ export function renderCommunicationMessage(input: {
   const contentHtml = [
     greeting ? `<p style="margin:0 0 14px;line-height:1.6">${escapeEmailHtml(greeting)}</p>` : "",
     paragraphs,
-    mediaHtml(input.media ?? [], input.trackingLinks),
   ].join("");
+  const media = mediaHtml(input.media ?? [], input.trackingLinks);
   const label =
     input.kind === "newsletter"
       ? "news from milk & henny"
@@ -343,6 +343,7 @@ export function renderCommunicationMessage(input: {
     meta: input.kind === "event_service" || input.kind === "feedback" ? undefined : input.meta,
     contentHtml,
     footerLink,
+    afterFooterHtml: media,
   });
   return {
     subject,

@@ -388,13 +388,12 @@ export async function createStarterPlan(eventSlug: string): Promise<Communicatio
     : eventStartLocal(event, 4);
   const thankYouAt = localDateAt(event, 1, 10);
   const surveyReminderAt = localDateAt(event, 4, 10);
-  const eventMediaBase = `${BASE_URL}/media/events/after-school-club-2026-09-01`;
   const emailMascotBase = `${BASE_URL}/media/email/mascots`;
-  const mediaVersion = "?v=2";
-  const arrivalGif = `${eventMediaBase}/arrival.gif${mediaVersion}`;
+  const mediaVersion = "?v=4";
   const preparationMascot = `${emailMascotBase}/plant-watering/walking-across.gif${mediaVersion}`;
-  const dayOfMascot = `${emailMascotBase}/day-of.png${mediaVersion}`;
-  const feedbackMascot = `${emailMascotBase}/feedback.png${mediaVersion}`;
+  const gettingThereMascot = `${emailMascotBase}/walking-to-studio.gif${mediaVersion}`;
+  const dayOfMascot = `${emailMascotBase}/today.png${mediaVersion}`;
+  const feedbackMascot = `${emailMascotBase}/feedback-card.png${mediaVersion}`;
   const stages = [
     {
       stageKey: "prepare",
@@ -402,7 +401,7 @@ export async function createStarterPlan(eventSlug: string): Promise<Communicatio
       position: 0,
       kind: "event_service" as const,
       subject: `A little ${event.title} preparation`,
-      body: "You’re coming to **{{event.title}}** next Tuesday.\n\nNothing is required. If you would like to make something just for fun:\n\n## Optional ideas\n\n- [Practise your spelling]({{links.spellingGame}}) with the Milk & Henny spelling game.\n- [Create a short pitch]({{links.pitch}}) about an idea, opinion, product, or theory.\n\nYour spelling practice is just for fun. If you make a pitch, there is no expectation that you present it — it can simply be a silly or interesting idea you make for yourself.\n\nSee you soon,\nMilk & Henny",
+      body: "You’re coming to **{{event.title}}** next Tuesday.\n\nNothing is required. If you would like to make something just for fun:\n\n## Optional ideas\n\n- [Practise your spelling]({{links.spellingGame}}) with the Milk & Henny spelling game.\n- [Create a short pitch]({{links.pitch}}) about an idea, opinion, product, or theory.\n\nYour spelling practice is just for fun. If you make a pitch, there is no expectation that you present it — it can simply be a silly or interesting idea you make for yourself.\n\nSee you soon,",
       media: [
         {
           kind: "gif",
@@ -424,8 +423,8 @@ export async function createStarterPlan(eventSlug: string): Promise<Communicatio
       media: [
         {
           kind: "gif",
-          url: arrivalGif,
-          alt: "A small pixel character walks along a line towards a flag",
+          url: gettingThereMascot,
+          alt: "A small pixel character walks towards a studio flag",
         },
       ],
       sendAt: practicalAt,
@@ -443,7 +442,7 @@ export async function createStarterPlan(eventSlug: string): Promise<Communicatio
         {
           kind: "image",
           url: dayOfMascot,
-          alt: "A small pixel character waits beside a little studio door",
+          alt: "A small pixel character arrives at a studio door",
         },
       ],
       sendAt: dayOfAt,
@@ -461,7 +460,7 @@ export async function createStarterPlan(eventSlug: string): Promise<Communicatio
         {
           kind: "image",
           url: feedbackMascot,
-          alt: "A small pixel character holds a feedback card",
+          alt: "A small pixel character holds a little feedback card",
         },
       ],
       sendAt: thankYouAt,
