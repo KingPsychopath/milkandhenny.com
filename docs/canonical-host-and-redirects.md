@@ -48,13 +48,15 @@ This can happen when calling one host that redirects to another.
 
 ## How it affects this repo
 
-The CLI auth commands now resolve canonical host first, then run requests on that final origin:
+The CLI auth commands now resolve the canonical host first, then run requests
+and credential-store lookups on that final origin:
 
 - `pnpm cli auth sessions`
 - `pnpm cli auth revoke`
 - `pnpm cli auth diagnose`
 
-This avoids redirect-induced auth-header loss and keeps in-process token cache behavior consistent across `www` and non-`www` input.
+This avoids redirect-induced auth-header loss and keeps the per-origin stored
+token consistent across `www` and non-`www` input.
 
 ---
 

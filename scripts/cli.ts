@@ -48,13 +48,21 @@ import {
   REVOKE_ROLES,
   type RevokeRole,
   createStepUpToken,
+  decodeAdminTokenClaims,
   issueAdminToken,
   listTokenSessions,
   normalizeBaseUrl,
+  revokeTokenSession,
   resolveCanonicalBaseUrl,
   runAdminAuthDiagnostics,
   revokeRoleSessions,
 } from "./auth-ops";
+import {
+  deleteCliAdminToken,
+  cliCredentialStoreLabel,
+  readCliAdminToken,
+  writeCliAdminToken,
+} from "./cli-keychain";
 import { requestAdminApi, type AdminHttpMethod } from "./admin-control";
 import {
   cleanupWordShares,
@@ -243,6 +251,32 @@ async function ask(
       rl.close();
       const val = answer.trim() || opts?.defaultVal || "";
       resolve(val);
+    });
+  });
+}
+
+/** Ask for a secret without echoing it to the terminal. */
+async function askSecret(question: string): Promise<string> {
+  if (!process.stdin.isTTY || !process.stdout.isTTY) {
+    throw new Error("A private password prompt requires an interactive terminal.");
+  }
+
+  const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout,
+    terminal: true,
+  });
+  const privateRl = rl as readline.Interface & {
+    _writeToOutput?: (value: string) => void;
+  };
+  privateRl._writeToOutput = () => undefined;
+
+  process.stdout.write(`  ${cyan("›")} ${question} `);
+  return new Promise((resolve) => {
+    rl.question("", (answer) => {
+      rl.close();
+      process.stdout.write("\n");
+      resolve(answer.trim());
     });
   });
 }
@@ -814,6 +848,26 @@ function clearCachedAdminToken(baseUrl: string): void {
   cliAdminTokenCache.delete(baseUrl);
 }
 
+async function getStoredAdminToken(baseUrl: string): Promise<string | null> {
+  const token = await readCliAdminToken(baseUrl);
+  if (!token) return null;
+  const expSec = decodeJwtExp(token);
+  const now = Math.floor(Date.now() / 1000);
+  if (!expSec || expSec - now <= CLI_ADMIN_TOKEN_REFRESH_SKEW_SECONDS) {
+    await deleteCliAdminToken(baseUrl);
+    return null;
+  }
+  cacheAdminToken(baseUrl, token);
+  return token;
+}
+
+async function promptForAdminPassword(reason?: string): Promise<string> {
+  if (reason) progress(reason);
+  const password = await askSecret("Admin password");
+  if (!password) throw new Error("Admin password is required.");
+  return password;
+}
+
 function shouldRetryWithFreshAdminToken(error: unknown): boolean {
   const message = error instanceof Error ? error.message.toLowerCase() : "";
   if (!message) return false;
@@ -842,18 +896,26 @@ async function resolveAdminTokenForCli(opts: {
     clearCachedAdminToken(opts.baseUrl);
   }
 
-  const password = opts.adminPassword?.trim();
-  if (!password) {
-    throw new Error(
-      "No cached admin session. Provide --admin-password (recommended) or --admin-token.",
-    );
+  const passwordArg = opts.adminPassword?.trim() || undefined;
+  if (!opts.forceRefresh && !passwordArg) {
+    const stored = await getStoredAdminToken(opts.baseUrl);
+    if (stored) return stored;
   }
+
+  const password =
+    passwordArg ??
+    (await promptForAdminPassword(
+      opts.forceRefresh
+        ? "Stored admin session expired or was revoked. Sign in again."
+        : "No stored admin session. Sign in to continue.",
+    ));
 
   progress("Signing in as admin...");
   const token = await issueAdminToken({
     baseUrl: opts.baseUrl,
     adminPassword: password,
   });
+  if (!passwordArg) await writeCliAdminToken(opts.baseUrl, token);
   cacheAdminToken(opts.baseUrl, token);
   return token;
 }
@@ -871,7 +933,7 @@ async function withResolvedAdminToken<T>(
   try {
     return await task(initialToken);
   } catch (error) {
-    if (opts.adminToken || !opts.adminPassword || !shouldRetryWithFreshAdminToken(error)) {
+    if (opts.adminToken || !shouldRetryWithFreshAdminToken(error)) {
       throw error;
     }
 
@@ -920,23 +982,23 @@ async function resolvedAdminRequest(options: {
 }): Promise<unknown> {
   const requestedBaseUrl = normalizeBaseUrl(options.baseUrl || adminBaseUrl());
   const baseUrl = await resolveCanonicalBaseUrl(requestedBaseUrl);
-  const adminPassword = getArg("admin-password");
+  const adminPasswordArg = getArg("admin-password")?.trim() || undefined;
   const adminToken = getArg("admin-token");
   let stepUpToken = getArg("step-up-token");
 
   if (hasFlag("step-up")) {
-    if (!adminPassword) {
-      throw new Error("--step-up requires --admin-password to create a fresh step-up token.");
-    }
-    const token = await resolveAdminTokenForCli({
-      baseUrl,
-      adminToken,
-      adminPassword,
-    });
+    const storedToken =
+      adminToken || adminPasswordArg ? null : await getStoredAdminToken(baseUrl);
+    const adminPassword =
+      adminPasswordArg ?? (await promptForAdminPassword("Re-authenticate for this action."));
+    const token =
+      adminToken ||
+      storedToken ||
+      (await resolveAdminTokenForCli({ baseUrl, adminPassword }));
     stepUpToken = (await createStepUpToken({ baseUrl, adminToken: token, adminPassword })).token;
   }
 
-  return withResolvedAdminToken({ baseUrl, adminToken, adminPassword }, (token) =>
+  return withResolvedAdminToken({ baseUrl, adminToken, adminPassword: adminPasswordArg }, (token) =>
     requestAdminApi({
       baseUrl,
       adminToken: token,
@@ -1237,13 +1299,9 @@ async function cmdAuthDiagnose(opts: {
 }) {
   const requestedBaseUrl = normalizeBaseUrl(opts.baseUrl || BASE_URL || "http://localhost:3000");
   const baseUrl = await resolveCanonicalBaseUrl(requestedBaseUrl);
-  const cachedToken = getCachedAdminToken(baseUrl) ?? undefined;
-  const resolvedToken = opts.adminToken?.trim() || cachedToken;
-  if (!opts.adminPassword && !resolvedToken) {
-    throw new Error(
-      "No cached admin session. Provide --admin-password (recommended) or --admin-token.",
-    );
-  }
+  const resolvedToken =
+    opts.adminToken?.trim() ||
+    (opts.adminPassword ? undefined : await resolveAdminTokenForCli({ baseUrl }));
 
   heading("Auth diagnostics");
   log(`${dim("Base URL:")} ${baseUrl}`);
@@ -1327,11 +1385,54 @@ async function cmdAuthDiagnose(opts: {
   console.log();
 }
 
+async function cmdAuthLogin(opts: { baseUrl?: string }) {
+  const requestedBaseUrl = normalizeBaseUrl(opts.baseUrl || BASE_URL || "http://localhost:3000");
+  const baseUrl = await resolveCanonicalBaseUrl(requestedBaseUrl);
+
+  heading("Sign in to the CLI");
+  log(`${dim("Base URL:")} ${baseUrl}`);
+  if (baseUrl !== requestedBaseUrl) {
+    log(`${dim("Input URL:")} ${requestedBaseUrl}`);
+    log(dim("Using canonical host so the stored token matches future API calls."));
+  }
+  console.log();
+
+  const password = await askSecret("Admin password");
+  if (!password) throw new Error("Admin password is required.");
+  progress("Signing in as admin...");
+  const token = await issueAdminToken({ baseUrl, adminPassword: password });
+  await writeCliAdminToken(baseUrl, token);
+  cacheAdminToken(baseUrl, token);
+
+  const claims = decodeAdminTokenClaims(token);
+  console.log();
+  log(green("✓ Signed in."));
+  log(dim(`The JWT was stored in ${cliCredentialStoreLabel()}. The password was not stored.`));
+  if (claims?.exp) log(dim(`Expires: ${formatUnixSecondsForCli(claims.exp)}`));
+  console.log();
+}
+
+async function cmdAuthLogout(opts: { baseUrl?: string }) {
+  const requestedBaseUrl = normalizeBaseUrl(opts.baseUrl || BASE_URL || "http://localhost:3000");
+  const canonicalBaseUrl = await resolveCanonicalBaseUrl(requestedBaseUrl);
+  const baseUrls = [...new Set([requestedBaseUrl, canonicalBaseUrl])];
+  let removed = false;
+
+  for (const baseUrl of baseUrls) {
+    removed = (await deleteCliAdminToken(baseUrl)) || removed;
+    clearCachedAdminToken(baseUrl);
+  }
+
+  console.log();
+  log(removed ? green("✓ Signed out. Local CLI token removed.") : dim("No local CLI token found."));
+  console.log();
+}
+
 async function cmdAuthRevoke(opts: {
   baseUrl?: string;
-  role: RevokeRole;
+  role?: RevokeRole;
   adminToken?: string;
-  adminPassword: string;
+  adminPassword?: string;
 }) {
   const requestedBaseUrl = normalizeBaseUrl(opts.baseUrl || BASE_URL || "http://localhost:3000");
   const baseUrl = await resolveCanonicalBaseUrl(requestedBaseUrl);
@@ -1343,17 +1444,57 @@ async function cmdAuthRevoke(opts: {
     log(`${dim("Input URL:")} ${requestedBaseUrl}`);
     log(dim("Using canonical host to avoid auth-header loss on redirects."));
   }
-  log(`${dim("Scope:")}    ${role}`);
+  log(`${dim("Scope:")}    ${role ?? "current CLI session"}`);
   console.log();
 
+  if (!role) {
+    const storedToken = opts.adminToken ? null : await getStoredAdminToken(baseUrl);
+    const providedPassword = opts.adminPassword?.trim() || undefined;
+    const password =
+      providedPassword ??
+      (await promptForAdminPassword("Re-authenticate to revoke this session."));
+    const token =
+      storedToken ??
+      (await resolveAdminTokenForCli({
+        baseUrl,
+        adminToken: opts.adminToken,
+        adminPassword: password,
+      }));
+    const claims = decodeAdminTokenClaims(token);
+    if (!claims?.jti) throw new Error("Admin session has no valid session id.");
+
+    progress("Requesting step-up token...");
+    const stepUpData = await createStepUpToken({
+      baseUrl,
+      adminToken: token,
+      adminPassword: password,
+    });
+    progress("Revoking the current session...");
+    await revokeTokenSession({
+      baseUrl,
+      adminToken: token,
+      stepUpToken: stepUpData.token,
+      jti: claims.jti,
+    });
+    if (storedToken) await deleteCliAdminToken(baseUrl);
+    clearCachedAdminToken(baseUrl);
+    console.log();
+    log(green(`✓ Session revoked remotely and removed from ${cliCredentialStoreLabel()}.`));
+    console.log();
+    return;
+  }
+
+  const adminPassword =
+    opts.adminPassword?.trim() ||
+    (await promptForAdminPassword("Re-authenticate to revoke sessions."));
   const revokeData = await withResolvedAdminToken(
-    { baseUrl, adminToken: opts.adminToken, adminPassword: opts.adminPassword },
+    { baseUrl, adminToken: opts.adminToken, adminPassword },
     async (adminToken) => {
       progress("Requesting step-up token...");
       const stepUpData = await createStepUpToken({
         baseUrl,
         adminToken,
-        adminPassword: opts.adminPassword,
+        adminPassword,
       });
 
       progress("Revoking sessions...");
@@ -1379,7 +1520,8 @@ async function cmdAuthRevoke(opts: {
   }
   if (role === "admin" || role === "all") {
     clearCachedAdminToken(baseUrl);
-    log(dim("Cleared cached admin session for this base URL."));
+    await deleteCliAdminToken(baseUrl);
+    log(dim("Cleared the local admin session for this base URL."));
   }
   console.log();
 }
@@ -2514,10 +2656,16 @@ function showHelp() {
     bucket info                              Show bucket usage & free tier %
 
   ${bold("Auth")} ${dim("(session security)")}
+    auth login ${dim("[--base-url http://localhost:3000]")}
+      ${dim("Prompt privately and store the short-lived admin JWT in the OS credential store.")}
+    auth logout ${dim("[--base-url http://localhost:3000]")}
+      ${dim("Remove the local CLI JWT. This does not revoke the remote session.")}
+    auth revoke ${dim("[--base-url http://localhost:3000]")}
+      ${dim("Step up privately, revoke the current CLI session remotely, and remove it locally.")}
+    auth revoke --role ${dim("<admin|upload|all>")} ${dim("[--admin-password <password>] [--admin-token <jwt>]")}
+      ${dim("Explicitly revoke every session for a role.")}
     auth diagnose ${dim("[--admin-password <password> | --admin-token <jwt>] [--base-url http://localhost:3000]")}
       ${dim("Runs verify + protected-route probes and prints precise auth failure points.")}
-    auth revoke --admin-password ${dim("<password>")} ${dim("[--admin-token <jwt>] [--role admin|staff|upload|all] [--base-url http://localhost:3000]")}
-      ${dim("Revokes token sessions by role. If token is omitted, CLI signs in with password first.")}
     auth sessions ${dim("[--admin-password <password> | --admin-token <jwt>] [--base-url http://localhost:3000]")}
       ${dim("Lists active token sessions (Redis-backed) with status + expiry.")}
 
@@ -4265,15 +4413,18 @@ async function direct() {
 
         case "auth":
           switch (subcommand) {
+            case "login": {
+              const baseUrl = getArg("base-url");
+              return cmdAuthLogin({ baseUrl: baseUrl ?? undefined });
+            }
+            case "logout": {
+              const baseUrl = getArg("base-url");
+              return cmdAuthLogout({ baseUrl: baseUrl ?? undefined });
+            }
             case "diagnose": {
               const adminToken = getArg("admin-token");
               const adminPassword = getArg("admin-password");
               const baseUrl = getArg("base-url");
-              if (!adminToken && !adminPassword) {
-                throw new Error(
-                  "Usage: pnpm cli auth diagnose [--admin-password <password> | --admin-token <jwt>] [--base-url http://localhost:3000]",
-                );
-              }
               return cmdAuthDiagnose({
                 adminToken: adminToken ?? undefined,
                 adminPassword: adminPassword ?? undefined,
@@ -4283,20 +4434,15 @@ async function direct() {
             case "revoke": {
               const adminToken = getArg("admin-token");
               const adminPassword = getArg("admin-password");
-              const roleArg = (getArg("role") ?? "admin") as RevokeRole;
+              const roleValue = getArg("role");
               const baseUrl = getArg("base-url");
-              if (!adminPassword) {
-                throw new Error(
-                  "Usage: pnpm cli auth revoke --admin-password <password> [--admin-token <jwt>] [--role admin|staff|upload|all] [--base-url http://localhost:3000]",
-                );
-              }
-              if (!REVOKE_ROLES.includes(roleArg)) {
+              if (roleValue && !REVOKE_ROLES.includes(roleValue as RevokeRole)) {
                 throw new Error(`Invalid role. Use: ${REVOKE_ROLES.join(", ")}`);
               }
               return cmdAuthRevoke({
                 adminToken,
-                adminPassword,
-                role: roleArg,
+                adminPassword: adminPassword ?? undefined,
+                role: roleValue as RevokeRole | undefined,
                 baseUrl: baseUrl ?? undefined,
               });
             }
@@ -4304,11 +4450,6 @@ async function direct() {
               const adminToken = getArg("admin-token");
               const adminPassword = getArg("admin-password");
               const baseUrl = getArg("base-url");
-              if (!adminToken && !adminPassword) {
-                throw new Error(
-                  "Usage: pnpm cli auth sessions [--admin-password <password> | --admin-token <jwt>] [--base-url http://localhost:3000]",
-                );
-              }
               return cmdAuthListSessions({
                 adminToken: adminToken ?? undefined,
                 adminPassword: adminPassword ?? undefined,

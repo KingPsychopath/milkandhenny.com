@@ -6,15 +6,25 @@ rules in the application instead of bypassing them with direct SQL.
 
 ## Authentication
 
-Use a deployed base URL and either an existing admin JWT or the admin password.
-The CLI caches a JWT in memory for the current process only.
+Use a deployed base URL. Sign in once and let the CLI store the short-lived JWT
+in the operating system's protected credential store:
 
 ```sh
-pnpm cli auth diagnose --base-url https://milkandhenny.com --admin-password '…'
+pnpm cli auth login --base-url https://milkandhenny.com
+pnpm cli events list --base-url https://milkandhenny.com
+pnpm cli auth logout --base-url https://milkandhenny.com
 ```
 
-Avoid putting a real password in shell history when possible. An existing JWT
-can be supplied through a shell variable instead:
+`auth login` prompts privately. It stores only the JWT, not the password. macOS
+uses Keychain, Linux uses Secret Service, and Windows uses user-scoped DPAPI
+storage. When the JWT expires or is revoked, the next command prompts again and
+updates the stored value. `auth revoke` requires step-up re-authentication,
+revokes the exact current CLI session remotely, and removes the local token. Use
+`auth revoke --role admin` or `--role all` for role-wide invalidation.
+
+For one-off or non-interactive commands, avoid putting a real password in shell
+history. An existing JWT can be supplied through a protected environment
+variable:
 
 ```sh
 pnpm cli admin request GET /api/admin/events \
@@ -90,8 +100,8 @@ still rejected by the database, as it should be.
 - Mutations show a confirmation prompt by default.
 - `--dry-run` prints the exact method, path, and body without sending it.
 - `--yes` skips the prompt for scripts and agent workflows.
-- `--step-up` obtains a fresh step-up token with `--admin-password` for
-  money-adjacent or destructive routes.
+- `--step-up` obtains a fresh step-up token with a private password prompt (or
+  `--admin-password`) for money-adjacent or destructive routes.
 
 For an email, use the event email route with `preview: true` first. Send only
 after reviewing the rendered message and recipient count.

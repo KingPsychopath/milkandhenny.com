@@ -68,23 +68,48 @@ These endpoints are intended for operational control and incident response.
 | Revoke one session      | `DELETE /api/admin/tokens/sessions/{jti}` | Requires `x-admin-step-up` header                                                                                                 |
 | Revoke many sessions    | `POST /api/admin/tokens/revoke`           | Body `{ role: "admin" \| "upload" \| "all" }` + requires `x-admin-step-up`                                                        |
 
-### CLI auth reliability note (learning)
+### CLI authentication
 
 If your production domain redirects between hostnames (example: `milkandhenny.com` -> `www.milkandhenny.com`), Bearer auth can fail after redirect because some clients/proxies drop the `Authorization` header on redirected requests.
 
-Current CLI behavior:
+All auth-sensitive CLI requests resolve the canonical host first, then use that
+origin. This prevents a redirect from dropping the `Authorization` header.
 
-- `pnpm cli auth sessions`
-- `pnpm cli auth revoke`
-- `pnpm cli auth diagnose`
+Recommended daily workflow:
 
-resolves the canonical host first, then performs auth requests on that origin.
+```bash
+pnpm cli auth login --base-url https://milkandhenny.com
+pnpm cli events list --base-url https://milkandhenny.com
+pnpm cli auth logout --base-url https://milkandhenny.com
+```
 
-Session-cache behavior:
+`auth login` prompts for the admin password without echoing it and stores only
+the short-lived admin JWT in the operating system's protected credential store.
+The password is never stored. macOS uses Keychain, Linux uses Secret Service,
+and Windows uses user-scoped DPAPI storage. Other CLI commands load that JWT
+automatically. When it is close to expiry or the server rejects it as revoked,
+the CLI prompts privately and replaces the stored value. `auth logout` removes
+the local value but does not revoke the remote session.
 
-- CLI caches admin JWTs in memory for the active CLI process (per base URL).
-- This reduces repeated password prompts during one interactive session.
-- The cache is not persisted to disk, so separate direct CLI runs usually require password re-entry (or `--admin-token`).
+Linux requires the `secret-tool` command from the system's Secret Service
+package. Windows uses the user's PowerShell DPAPI scope. Headless machines and
+CI should use `--admin-token` from a protected environment variable instead.
+
+`auth revoke` performs the destructive flow for the current CLI session: it
+prompts for step-up re-authentication, revokes that exact `jti` through the API,
+and then removes the local credential. Use `auth revoke --role admin` or
+`--role all` for role-wide invalidation.
+
+The CLI still accepts explicit credentials for one-off or non-interactive use:
+
+```bash
+pnpm cli events list \
+  --base-url https://milkandhenny.com \
+  --admin-token "$MILK_HENNY_ADMIN_TOKEN"
+```
+
+`--admin-password` remains available, but can expose the password in shell
+history. Prefer `auth login` or a protected environment variable.
 
 Why auth commands are API-backed (not direct KV/R2 writes):
 
