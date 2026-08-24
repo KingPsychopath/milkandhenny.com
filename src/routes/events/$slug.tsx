@@ -70,6 +70,8 @@ function EventDetailRoute() {
         event={event}
         availability={availability}
         pitchShowcase={data.pitchShowcase}
+        heroImage={data.heroImage}
+        descriptionImages={data.descriptionImages}
         checkoutCancelled={checkout === "cancelled"}
       />
     </>

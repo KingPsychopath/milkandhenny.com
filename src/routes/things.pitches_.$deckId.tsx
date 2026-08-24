@@ -25,12 +25,12 @@ export const Route = createFileRoute("/things/pitches_/$deckId")({
   component: PublishedPitchRoute,
   head: ({ loaderData, params }) => {
     const title = loaderData?.pitch?.title ?? "Pitch";
-    const thumbnail = loaderData?.pitch?.thumbnailUrl;
+    const thumbnail = loaderData?.pitch?.thumbnail;
     return buildSeoHead({
       title: `${title} — ${SITE_NAME}`,
       description: `A sealed six-slide pitch by ${loaderData?.pitch?.ownerName ?? "a Milk & Henny maker"}.`,
       path: `/things/pitches/${params.deckId}`,
-      image: thumbnail || OG_IMAGES.pitchStudio,
+      image: thumbnail?.src || OG_IMAGES.pitchStudio,
       imageAlt: `${title} — a sealed pitch from Milk & Henny`,
     });
   },

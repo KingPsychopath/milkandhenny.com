@@ -2,6 +2,7 @@ import { Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 
 import { AppImage } from "@/components/AppImage";
+import { imagePlaceholderStyle } from "@/features/media/image";
 import { listPitchCredentials } from "../browser-store.client";
 import { listPublishedPitchesFn } from "../pitches.functions";
 import type { PitchOperationalStatus, PitchOwnerCredential, PitchWallLoad } from "../types";
@@ -161,12 +162,16 @@ export function PitchGallery({
                 className="group mb-6 block break-inside-avoid border-b theme-border pb-5"
               >
                 <div className="relative aspect-square overflow-hidden bg-surface p-4">
-                  {pitch.thumbnailUrl ? (
+                  {pitch.thumbnail ? (
                     <AppImage
-                      src={pitch.thumbnailUrl}
+                      src={pitch.thumbnail.src}
+                      srcSet={pitch.thumbnail.srcSet}
+                      sources={pitch.thumbnail.sources}
                       alt=""
-                      width={960}
-                      height={540}
+                      width={pitch.thumbnail.width}
+                      height={pitch.thumbnail.height}
+                      sizes="(min-width: 1024px) 30vw, (min-width: 640px) 45vw, calc(100vw - 3rem)"
+                      style={imagePlaceholderStyle(pitch.thumbnail.placeholder)}
                       className="h-full w-full object-contain transition-transform duration-500 group-hover:scale-[1.02]"
                     />
                   ) : (

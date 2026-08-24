@@ -3,6 +3,9 @@ import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 
 import { PitchShowcase } from "@/features/things/pitches/ui/PitchShowcase";
+import { AppImage } from "@/components/AppImage";
+import { imagePlaceholderStyle, type ResponsiveImageData } from "@/features/media/image";
+import { resolveImageSrc } from "@/features/media/storage";
 import {
   PITCH_SHOWCASE_MARKDOWN_HREF,
   type PublicPitchDeck,
@@ -42,32 +45,54 @@ function pitchShowcaseTitle(node: MarkdownNode | undefined): string | undefined 
   return title || undefined;
 }
 
-const EVENT_DESCRIPTION_COMPONENTS: Components = {
-  p: ({ children, node, ...props }) => {
-    const pitchShowcase = useContext(PitchShowcaseContext);
-    if (pitchShowcase && isPitchShowcaseParagraph(node as MarkdownNode | undefined)) {
+function eventDescriptionComponents(images: Record<string, ResponsiveImageData>): Components {
+  return {
+    p: ({ children, node, ...props }) => {
+      const pitchShowcase = useContext(PitchShowcaseContext);
+      if (pitchShowcase && isPitchShowcaseParagraph(node as MarkdownNode | undefined)) {
+        return (
+          <PitchShowcase
+            pitches={pitchShowcase}
+            title={pitchShowcaseTitle(node as MarkdownNode | undefined)}
+          />
+        );
+      }
+      return <p {...props}>{children}</p>;
+    },
+    img: ({ src, alt }) => {
+      if (!src || typeof src !== "string") return null;
+      const image = images[src];
+      const resolved = image?.src ?? resolveImageSrc(src);
+      if (!resolved) return null;
       return (
-        <PitchShowcase
-          pitches={pitchShowcase}
-          title={pitchShowcaseTitle(node as MarkdownNode | undefined)}
+        <AppImage
+          src={resolved}
+          srcSet={image?.srcSet}
+          sources={image?.sources}
+          alt={alt ?? ""}
+          width={image?.width}
+          height={image?.height}
+          sizes="(min-width: 672px) 624px, calc(100vw - 3rem)"
+          style={imagePlaceholderStyle(image?.placeholder)}
         />
       );
-    }
-    return <p {...props}>{children}</p>;
-  },
-};
+    },
+  };
+}
 
 export function EventDescription({
   content,
   pitchShowcase,
+  images = {},
 }: {
   content: string;
   pitchShowcase?: PublicPitchDeck[];
+  images?: Record<string, ResponsiveImageData>;
 }) {
   return (
     <PitchShowcaseContext.Provider value={pitchShowcase}>
       <section className="event-description mt-12 prose-blog">
-        <ReactMarkdown remarkPlugins={[remarkGfm]} components={EVENT_DESCRIPTION_COMPONENTS}>
+        <ReactMarkdown remarkPlugins={[remarkGfm]} components={eventDescriptionComponents(images)}>
           {content}
         </ReactMarkdown>
       </section>

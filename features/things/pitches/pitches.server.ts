@@ -7,8 +7,8 @@ import {
   createPitchAssetUpload,
   deleteAllPitchAssets,
   finalisePitchAsset,
-  signedPitchAsset,
   signedPitchAssets,
+  signedPitchThumbnail,
 } from "./assets.server";
 import { getPitchMaxSlides } from "./config.server";
 import {
@@ -201,10 +201,11 @@ export async function listPublishedPitches(
   const result = await listPublicPitchDecks(search);
   const pitches = await Promise.all(
     result.decks.map(async (deck) => {
-      const thumbnail = deck.thumbnailUrl
-        ? await signedPitchAsset(deck.id, deck.thumbnailUrl)
+      const thumbnail = deck.thumbnailAssetId
+        ? await signedPitchThumbnail(deck.id, deck.thumbnailAssetId)
         : null;
-      return { ...deck, thumbnailUrl: thumbnail?.url };
+      const { thumbnailAssetId: _thumbnailAssetId, ...publicDeck } = deck;
+      return { ...publicDeck, thumbnail: thumbnail ?? undefined };
     }),
   );
   return { pitches, rejectedCount: result.rejectedCount };
@@ -228,12 +229,11 @@ export async function readPublishedPitch(
       ...slide.mediaClips.map((clip) => clip.assetId),
     ]),
   );
-  if (thumbnailAssetId) referenced.add(thumbnailAssetId);
   const assets = await signedPitchAssets(deck.id, {
     assetIds: referenced,
   });
   const thumbnail = thumbnailAssetId
-    ? assets.find((asset) => asset.id === thumbnailAssetId)
+    ? ((await signedPitchThumbnail(deck.id, thumbnailAssetId)) ?? undefined)
     : undefined;
   return {
     id: deck.id,
@@ -242,7 +242,7 @@ export async function readPublishedPitch(
     publishedAt,
     updatedAt: publishedAt,
     slideCount: document.slides.filter((slide) => !slide.deletedAt).length,
-    thumbnailUrl: thumbnail?.url,
+    thumbnail,
     document,
     assets,
     editionNumber: edition?.editionNumber ?? deck.currentEditionNumber ?? 1,

@@ -1828,14 +1828,14 @@ export function PitchEditor({
             exportBackground: true,
             frameRendering: { enabled: true, clip: true, name: false, outline: false },
           },
-          mimeType: "image/png",
-          maxWidthOrHeight: 1_200,
+          mimeType: "image/webp",
+          maxWidthOrHeight: 960,
           exportPadding: 0,
         });
         thumbnailAssetId = (
           await uploadBlob(thumbnail, {
             kind: "thumbnail",
-            fileName: `${safeName(title)}-cover.png`,
+            fileName: `${safeName(title)}-cover.webp`,
           })
         ).id;
       }

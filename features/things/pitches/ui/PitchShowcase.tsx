@@ -1,6 +1,7 @@
 import { Link } from "@tanstack/react-router";
 
 import { AppImage } from "@/components/AppImage";
+import { imagePlaceholderStyle } from "@/features/media/image";
 import type { PublicPitchDeck } from "../types";
 
 const PREVIEW_LIMIT = 4;
@@ -51,12 +52,16 @@ export function PitchShowcase({
               className="group block min-w-0 border-b theme-border pb-3 hover:opacity-70"
             >
               <div className="aspect-video overflow-hidden bg-surface">
-                {pitch.thumbnailUrl ? (
+                {pitch.thumbnail ? (
                   <AppImage
-                    src={pitch.thumbnailUrl}
+                    src={pitch.thumbnail.src}
+                    srcSet={pitch.thumbnail.srcSet}
+                    sources={pitch.thumbnail.sources}
                     alt=""
-                    width={960}
-                    height={540}
+                    width={pitch.thumbnail.width}
+                    height={pitch.thumbnail.height}
+                    sizes="(min-width: 672px) 304px, calc((100vw - 4rem) / 2)"
+                    style={imagePlaceholderStyle(pitch.thumbnail.placeholder)}
                     className="h-full w-full object-contain transition-transform duration-500 group-hover:scale-[1.02]"
                   />
                 ) : (

@@ -1,11 +1,14 @@
 import path from "node:path";
+import sharp from "sharp";
 
 import {
   deleteObject,
   deleteObjects,
+  downloadBuffer,
   headObject,
   presignGetUrl,
   presignPutUrl,
+  uploadBuffer,
 } from "@/lib/platform/r2.server";
 import {
   PITCH_AUDIO_MAX_BYTES,
@@ -33,6 +36,127 @@ import {
   toPitchAsset,
 } from "./store.server";
 import type { PitchAsset, PitchAssetKind } from "./types";
+import type { ResponsiveImageData, ResponsiveImageFormat } from "@/features/media/image";
+import { getImageUrl } from "@/features/media/storage";
+
+const PITCH_THUMBNAIL_WIDTHS = [480, 960] as const;
+const PUBLIC_IMAGE_CACHE_CONTROL = "public, max-age=31536000, immutable";
+
+type PitchThumbnailMetadata = Pick<
+  ResponsiveImageData,
+  "height" | "placeholder" | "version" | "width" | "widths"
+>;
+
+function pitchThumbnailKey(
+  deckId: string,
+  assetId: string,
+  width: number,
+  format: ResponsiveImageFormat,
+): string {
+  return `pitches/${deckId}/thumbnails/${assetId}/${width}.${format}`;
+}
+
+function pitchThumbnailMetadataKey(deckId: string, assetId: string): string {
+  return `pitches/${deckId}/thumbnails/${assetId}/metadata.json`;
+}
+
+function rgbHex(rgb: { r: number; g: number; b: number }): string {
+  return `#${[rgb.r, rgb.g, rgb.b]
+    .map((channel) => Math.round(channel).toString(16).padStart(2, "0"))
+    .join("")}`;
+}
+
+async function createPitchThumbnailVariants(row: PitchAssetRow): Promise<PitchThumbnailMetadata> {
+  const source = await downloadBuffer(row.object_key, { scope: "private" });
+  const image = sharp(source, { failOn: "error" }).rotate();
+  const stats = await image.stats();
+  const color = rgbHex(stats.dominant);
+  const placeholder = await image
+    .clone()
+    .resize(24, 14, { fit: "cover" })
+    .blur(1)
+    .webp({ quality: 35 })
+    .toBuffer();
+  const metadata: PitchThumbnailMetadata = {
+    width: 960,
+    height: 540,
+    widths: [...PITCH_THUMBNAIL_WIDTHS],
+    version: row.id,
+    placeholder: { color, blurDataUrl: `data:image/webp;base64,${placeholder.toString("base64")}` },
+  };
+  const uploads = PITCH_THUMBNAIL_WIDTHS.flatMap((width) => {
+    const resized = image.clone().resize(width, Math.round((width * 9) / 16), {
+      fit: "contain",
+      background: color,
+      withoutEnlargement: true,
+    });
+    return [
+      resized
+        .clone()
+        .avif({ quality: 55, effort: 5 })
+        .toBuffer()
+        .then((buffer) =>
+          uploadBuffer(
+            pitchThumbnailKey(row.deck_id, row.id, width, "avif"),
+            buffer,
+            "image/avif",
+            {
+              scope: "public",
+              cacheControl: PUBLIC_IMAGE_CACHE_CONTROL,
+            },
+          ),
+        ),
+      resized
+        .webp({ quality: 78, effort: 5 })
+        .toBuffer()
+        .then((buffer) =>
+          uploadBuffer(
+            pitchThumbnailKey(row.deck_id, row.id, width, "webp"),
+            buffer,
+            "image/webp",
+            {
+              scope: "public",
+              cacheControl: PUBLIC_IMAGE_CACHE_CONTROL,
+            },
+          ),
+        ),
+    ];
+  });
+  await Promise.all([
+    ...uploads,
+    uploadBuffer(
+      pitchThumbnailMetadataKey(row.deck_id, row.id),
+      Buffer.from(JSON.stringify(metadata)),
+      "application/json",
+      { scope: "public", cacheControl: PUBLIC_IMAGE_CACHE_CONTROL },
+    ),
+  ]);
+  return metadata;
+}
+
+export async function signedPitchThumbnail(
+  deckId: string,
+  assetId: string,
+): Promise<ResponsiveImageData | null> {
+  const row = await getReadyPitchAsset(deckId, assetId);
+  if (!row || row.kind !== "thumbnail") return null;
+  const metadataKey = pitchThumbnailMetadataKey(deckId, assetId);
+  const metadata = (await headObject(metadataKey, { scope: "public" })).exists
+    ? (JSON.parse(
+        (await downloadBuffer(metadataKey, { scope: "public" })).toString("utf8"),
+      ) as PitchThumbnailMetadata)
+    : await createPitchThumbnailVariants(row);
+  const srcSetFor = (format: ResponsiveImageFormat) =>
+    metadata.widths
+      .map((width) => `${getImageUrl(pitchThumbnailKey(deckId, assetId, width, format))} ${width}w`)
+      .join(", ");
+  return {
+    ...metadata,
+    src: getImageUrl(pitchThumbnailKey(deckId, assetId, 960, "webp")),
+    srcSet: srcSetFor("webp"),
+    sources: [{ type: "image/avif", srcSet: srcSetFor("avif") }],
+  };
+}
 
 const MIME_BY_KIND: Record<PitchAssetKind, ReadonlySet<string>> = {
   image: new Set(["image/png", "image/jpeg", "image/webp", "image/gif"]),
@@ -254,8 +378,19 @@ export async function deleteAllPitchAssets(deckId: string): Promise<number> {
   const rows = await listPitchAssets(deckId);
   // Pending reservations may already have bytes in R2 even when
   // finalisation never completed.
-  return deleteObjects(
+  const privateDeleted = await deleteObjects(
     rows.map((row) => row.object_key),
     { scope: "private" },
   );
+  const thumbnailKeys = rows
+    .filter((row) => row.kind === "thumbnail")
+    .flatMap((row) => [
+      ...PITCH_THUMBNAIL_WIDTHS.flatMap((width) => [
+        pitchThumbnailKey(deckId, row.id, width, "avif"),
+        pitchThumbnailKey(deckId, row.id, width, "webp"),
+      ]),
+      pitchThumbnailMetadataKey(deckId, row.id),
+    ]);
+  const publicDeleted = await deleteObjects(thumbnailKeys, { scope: "public" });
+  return privateDeleted + publicDeleted;
 }

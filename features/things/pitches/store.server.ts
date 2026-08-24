@@ -103,6 +103,10 @@ export interface StoredPublicPitchDeck {
   publishedAt: string;
 }
 
+interface StoredPublicPitchSummary extends Omit<PublicPitchDeck, "thumbnail"> {
+  thumbnailAssetId?: string;
+}
+
 export type PitchDeckBackup = PitchVersionHistoryItem;
 
 interface PitchBackupRow extends QueryResultRow {
@@ -815,7 +819,7 @@ export async function listUnreferencedPitchAssets(limit = 100): Promise<PitchAss
 export async function listPublicPitchDecks(
   search?: string,
   limit = 60,
-): Promise<{ decks: PublicPitchDeck[]; rejectedCount: number }> {
+): Promise<{ decks: StoredPublicPitchSummary[]; rejectedCount: number }> {
   const term = search?.trim() ? `%${search.trim()}%` : null;
   const rows = await query<
     QueryResultRow & {
@@ -844,7 +848,7 @@ export async function listPublicPitchDecks(
       limit $2`,
     [term, Math.min(100, Math.max(1, limit))],
   );
-  const decks: PublicPitchDeck[] = [];
+  const decks: StoredPublicPitchSummary[] = [];
   let rejectedCount = 0;
   for (const row of rows) {
     const parsed = parsePitchDocument(row.document, getPitchMaxSlides());
@@ -865,7 +869,7 @@ export async function listPublicPitchDecks(
       publishedAt: iso(row.published_at),
       updatedAt: iso(row.published_at),
       slideCount: parsed.document.slides.filter((slide) => !slide.deletedAt).length,
-      thumbnailUrl: row.thumbnail_asset_id ?? undefined,
+      thumbnailAssetId: row.thumbnail_asset_id ?? undefined,
     });
   }
   return { decks, rejectedCount };

@@ -1,4 +1,5 @@
 import type { ExcalidrawElement } from "@excalidraw/excalidraw/element/types";
+import type { ResponsiveImageData } from "@/features/media/image";
 
 export const PITCH_DOCUMENT_SCHEMA_VERSION = 2 as const;
 export const PITCH_DEFAULT_MAX_SLIDES = 6;
@@ -214,7 +215,7 @@ export interface PublicPitchDeck {
   publishedAt: string;
   updatedAt: string;
   slideCount: number;
-  thumbnailUrl?: string;
+  thumbnail?: ResponsiveImageData;
 }
 
 export type PitchWallStatus = "ok" | "degraded" | "unavailable";

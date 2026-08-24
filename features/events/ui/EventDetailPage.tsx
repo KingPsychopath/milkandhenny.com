@@ -14,6 +14,7 @@ import {
   type ViewableEvent,
 } from "../types";
 import { AppImage } from "@/components/AppImage";
+import { imagePlaceholderStyle, type ResponsiveImageData } from "@/features/media/image";
 import type { TicketTypeAvailability } from "../events.server";
 import { AddressLink } from "./AddressLink";
 import { ThreeWordHint } from "./ThreeWordHint";
@@ -84,11 +85,15 @@ export function EventDetailPage({
   event,
   availability,
   pitchShowcase,
+  heroImage,
+  descriptionImages,
   checkoutCancelled = false,
 }: {
   event: ViewableEvent;
   availability: TicketTypeAvailability[];
   pitchShowcase?: PublicPitchDeck[];
+  heroImage?: ResponsiveImageData;
+  descriptionImages?: Record<string, ResponsiveImageData>;
   /** Set when Stripe sent them back without taking payment. */
   checkoutCancelled?: boolean;
 }) {
@@ -129,10 +134,14 @@ export function EventDetailPage({
 
         {event.heroImage && (
           <AppImage
-            src={event.heroImage}
+            src={heroImage?.src ?? event.heroImage}
+            srcSet={heroImage?.srcSet}
+            sources={heroImage?.sources}
             alt=""
-            width={event.heroImageWidth}
-            height={event.heroImageHeight}
+            width={heroImage?.width ?? event.heroImageWidth}
+            height={heroImage?.height ?? event.heroImageHeight}
+            sizes="(min-width: 672px) 624px, calc(100vw - 3rem)"
+            style={imagePlaceholderStyle(heroImage?.placeholder)}
             className={`mb-8 h-auto w-full rounded-lg bg-surface ${heroImageHeightClass(event.heroHeight)}`}
             priority
           />
@@ -246,7 +255,11 @@ export function EventDetailPage({
         )}
 
         {event.description && (
-          <EventDescription content={event.description} pitchShowcase={pitchShowcase} />
+          <EventDescription
+            content={event.description}
+            pitchShowcase={pitchShowcase}
+            images={descriptionImages}
+          />
         )}
 
         {(event.dressCode ||
