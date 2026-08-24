@@ -6,6 +6,7 @@ import { playFeedback } from "@/lib/client/feedback";
 import { SITE_NAME } from "@/lib/shared/config";
 import { getStored, setStored, removeStored } from "@/lib/client/storage";
 import { useHasMounted } from "@/hooks/useHasMounted";
+import { useVisibilityReconciler } from "@/hooks/useVisibilityReconciler";
 import {
   getBestDressedLeaderboardFn,
   getBestDressedSnapshotFn,
@@ -28,6 +29,8 @@ type BestDressedSnapshot = {
 type BestDressedClientProps = {
   initialSnapshot: BestDressedSnapshot;
 };
+
+const LEADERBOARD_REFRESH_INTERVAL_MS = 30_000;
 
 export function BestDressedClient({ initialSnapshot }: BestDressedClientProps) {
   const hasMounted = useHasMounted();
@@ -96,33 +99,17 @@ export function BestDressedClient({ initialSnapshot }: BestDressedClientProps) {
     }
   }, [currentSession, hasVoted, initialSnapshot.votedFor]);
 
-  // Poll for leaderboard updates only when user has voted and tab is visible (saves KV)
-  useEffect(() => {
-    if (!hasVoted) return;
-
-    const POLL_MS = 30_000; // 30s — leaderboard rarely changes mid-party
-
-    const fetchLeaderboard = async () => {
-      if (typeof document !== "undefined" && document.hidden) return;
+  useVisibilityReconciler({
+    enabled: Boolean(hasVoted),
+    intervalMs: LEADERBOARD_REFRESH_INTERVAL_MS,
+    identity: hasVoted ? `best-dressed:${currentSession}` : null,
+    reconcile: async (isCurrent) => {
       const data = await getBestDressedLeaderboardFn();
+      if (!isCurrent()) return;
       setLeaderboard(data.leaderboard || []);
       setTotalVotes(data.totalVotes || 0);
-    };
-
-    const interval = window.setInterval(() => {
-      void fetchLeaderboard();
-    }, POLL_MS);
-    // Sync when tab becomes visible
-    const onVisibilityChange = () => {
-      if (!document.hidden) fetchLeaderboard();
-    };
-    document.addEventListener("visibilitychange", onVisibilityChange);
-
-    return () => {
-      clearInterval(interval);
-      document.removeEventListener("visibilitychange", onVisibilityChange);
-    };
-  }, [hasVoted]);
+    },
+  });
 
   useEffect(() => {
     const query = searchQuery.trim();

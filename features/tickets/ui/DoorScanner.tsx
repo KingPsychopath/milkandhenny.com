@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { CameraFeed } from "./CameraFeed";
 import { getDoorDataFn, redeemTicketFn } from "../tickets.functions";
+import { useVisibilityReconciler } from "@/hooks/useVisibilityReconciler";
 import {
   guestRequestCancelFn,
   guestRequestDecideFn,
@@ -39,9 +40,8 @@ import {
  * Everything is sized to be read at arm's length in bad light by someone
  * holding a phone in one hand.
  *
- * Polling follows the rules from the guest-list KV postmortem: the callback
- * is ref-stable so a re-render cannot restart the effect, and there is a hard
- * floor between fetches regardless of what any future refactor asks for.
+ * Refreshing follows the rules from the guest-list KV postmortem: it pauses in
+ * hidden tabs, coalesces reconnects, and keeps a hard floor between fetches.
  */
 
 const MIN_REFRESH_GAP_MS = 15_000;
@@ -359,32 +359,32 @@ export function DoorScanner({
   }, []);
 
   /** Refresh the manifest and counts. Rate-floored so it can never run hot. */
-  const refresh = useCallback(async () => {
-    const now = Date.now();
-    if (now - lastRefreshRef.current < MIN_REFRESH_GAP_MS) return;
-    lastRefreshRef.current = now;
+  const refresh = useCallback(
+    async (isCurrent: () => boolean = () => true) => {
+      const now = Date.now();
+      if (now - lastRefreshRef.current < MIN_REFRESH_GAP_MS) return;
+      lastRefreshRef.current = now;
 
-    try {
-      const data = await getDoorDataFn({ data: { eventSlug, scannerToken } });
-      if (!data.authorised) return;
-      setOffline((state) => applyManifest(state, data.manifestHashes));
-      setTickets(data.tickets);
-      setSummary(data.summary);
-    } catch {
-      // A failed refresh is survivable: the cached manifest still works.
-    }
-  }, [eventSlug, scannerToken]);
+      try {
+        const data = await getDoorDataFn({ data: { eventSlug, scannerToken } });
+        if (!isCurrent() || !data.authorised) return;
+        setOffline((state) => applyManifest(state, data.manifestHashes));
+        setTickets(data.tickets);
+        setSummary(data.summary);
+      } catch {
+        // A failed refresh is survivable: the cached manifest still works.
+      }
+    },
+    [eventSlug, scannerToken],
+  );
 
-  // Ref-stable interval — a re-render must never restart this effect.
-  const refreshRef = useRef(refresh);
-  useEffect(() => {
-    refreshRef.current = refresh;
-  }, [refresh]);
-
-  useEffect(() => {
-    const timer = setInterval(() => void refreshRef.current(), REFRESH_INTERVAL_MS);
-    return () => clearInterval(timer);
-  }, []);
+  useVisibilityReconciler({
+    enabled: true,
+    intervalMs: REFRESH_INTERVAL_MS,
+    identity: `door:${eventSlug}:${scannerToken}`,
+    minimumGapMs: MIN_REFRESH_GAP_MS,
+    reconcile: refresh,
+  });
 
   /** Replay anything admitted while offline, once the signal returns. */
   const syncQueue = useCallback(async () => {
@@ -413,9 +413,9 @@ export function DoorScanner({
     if (synced.length > 0) {
       setOffline((state) => clearSynced(state, synced));
       lastRefreshRef.current = 0;
-      void refreshRef.current();
+      void refresh();
     }
-  }, [eventSlug, scannerToken]);
+  }, [eventSlug, refresh, scannerToken]);
 
   useEffect(() => {
     if (online) void syncQueue();
@@ -776,7 +776,7 @@ export function DoorScanner({
             onRequestsChanged={setGuestRequests}
             onGuestAdded={() => {
               lastRefreshRef.current = 0;
-              void refreshRef.current();
+              void refresh();
             }}
           />
         )}

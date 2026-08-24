@@ -11,6 +11,9 @@ export default defineConfig({
     globals: true,
     environment: "node",
     globalSetup: ["./vitest.globalSetup.ts"],
+    // Database suites share one local Postgres and hold an advisory lock for the file. Parallel
+    // workers can still reach the database through different pools and deadlock on table locks.
+    fileParallelism: false,
     // Database suites queue behind a shared advisory lock (see
     // __tests__/helpers/postgres.ts); the waiting file must not time out.
     hookTimeout: 120_000,

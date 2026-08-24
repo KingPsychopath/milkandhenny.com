@@ -50,18 +50,26 @@ export function useLiveRoomSnapshot<Snapshot extends LiveRoomSnapshotBase>(
   const failuresRef = useRef(0);
   const readRef = useRef(input.read);
   const boundariesRef = useRef(input.boundariesOf);
+  const initialSnapshotRef = useRef(input.initialSnapshot);
+  const roomKeyRef = useRef(input.roomKey);
   useEffect(() => {
     readRef.current = input.read;
     boundariesRef.current = input.boundariesOf;
+    initialSnapshotRef.current = input.initialSnapshot;
   });
 
   // A fresh room or viewer starts with a clean failure count, otherwise a previous room's blips
   // would count towards ending this one.
   useEffect(() => {
+    const roomChanged = roomKeyRef.current !== input.roomKey;
+    roomKeyRef.current = input.roomKey;
     failuresRef.current = 0;
-    // And never carry one room's digest into another, or the first read of the new room could be
-    // answered "unchanged" against a snapshot the viewer does not have.
+    sequenceRef.current = roomChanged ? 0 : (initialSnapshotRef.current?.sequence ?? 0);
     digestRef.current = null;
+    setClockOffset(0);
+    setMessage(null);
+    setEnded(false);
+    if (roomChanged) setSnapshot(null);
   }, [input.roomKey]);
 
   const reconcile = useCallback(async (isCurrent: () => boolean) => {

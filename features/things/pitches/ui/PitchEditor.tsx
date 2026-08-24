@@ -13,6 +13,7 @@ import { useUpdateReloadSafety } from "@/features/offline/update-safety.client";
 import { useActionDialog } from "@/hooks/useActionDialog";
 import { useEscapeKey } from "@/hooks/useEscapeKey";
 import { useOutsideClick } from "@/hooks/useOutsideClick";
+import { useVisibilityReconciler } from "@/hooks/useVisibilityReconciler";
 import {
   readLocalPitchDraft,
   pitchDeviceId,
@@ -84,6 +85,7 @@ import { fromPitchStageScene, pitchStageExport, toPitchStageScene } from "./pitc
 
 const PITCH_STUDIO_TOUR_KEY = "milkandhenny:pitch-studio-tour:v1";
 const PITCH_RAIL_KEY = "milkandhenny:pitch-studio-rail:v1";
+const OPERATIONAL_STATUS_REFRESH_INTERVAL_MS = 30_000;
 let pitchStudioTourSeenThisSession = false;
 
 const TOUR_STEPS: readonly GuidedTourStep[] = [
@@ -497,27 +499,19 @@ export function PitchEditor({
     setSelectedMediaClipId(undefined);
   }, [activeSlideId]);
 
-  useEffect(() => {
-    if (isDemo) return;
-    let cancelled = false;
-    const refresh = () => {
-      void readPitchOperationalStatusFn()
-        .then((status) => {
-          if (!cancelled) setOperational(status);
-        })
-        .catch(() => undefined);
-    };
-    const timer = window.setInterval(refresh, 30_000);
-    const visible = () => {
-      if (document.visibilityState === "visible") refresh();
-    };
-    document.addEventListener("visibilitychange", visible);
-    return () => {
-      cancelled = true;
-      window.clearInterval(timer);
-      document.removeEventListener("visibilitychange", visible);
-    };
-  }, [isDemo]);
+  useVisibilityReconciler({
+    enabled: !isDemo,
+    intervalMs: OPERATIONAL_STATUS_REFRESH_INTERVAL_MS,
+    identity: isDemo ? null : `pitch-operational:${deckId}`,
+    reconcile: async (isCurrent) => {
+      try {
+        const status = await readPitchOperationalStatusFn();
+        if (isCurrent()) setOperational(status);
+      } catch {
+        // The last known capability state remains useful during a short outage.
+      }
+    },
+  });
 
   const reloadSafe = isDemo
     ? revision === 0

@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
+import { AppSelect, type AppSelectOption } from "@/components/AppSelect";
 
 type AuthFetch = (url: string, options?: RequestInit) => Promise<Response>;
 type Kind = "newsletter" | "event_update" | "pitch_nudge" | "event_service" | "feedback";
@@ -125,6 +126,28 @@ const KIND_LABELS: Record<Kind, string> = {
   feedback: "feedback",
 };
 
+const KIND_OPTIONS: readonly AppSelectOption[] = Object.entries(KIND_LABELS).map(
+  ([value, label]) => ({ value, label }),
+);
+const MEDIA_OPTIONS: readonly AppSelectOption[] = [
+  { value: "image", label: "image" },
+  { value: "gif", label: "GIF" },
+  { value: "video", label: "video" },
+];
+const SURVEY_STATUS_OPTIONS: readonly AppSelectOption[] = [
+  { value: "draft", label: "draft" },
+  { value: "open", label: "open" },
+  { value: "closed", label: "closed" },
+];
+const QUESTION_TYPE_OPTIONS: readonly AppSelectOption[] = [
+  { value: "rating", label: "1–5 rating" },
+  { value: "long_text", label: "long answer" },
+  { value: "yes_no", label: "yes / no" },
+  { value: "single_choice", label: "one choice" },
+  { value: "multi_choice", label: "several choices" },
+  { value: "email", label: "email" },
+];
+
 function dateLabel(value: string | null): string {
   if (!value) return "not scheduled";
   const date = new Date(value);
@@ -143,6 +166,16 @@ function shortDate(value: string | null): string {
   return Number.isNaN(date.getTime())
     ? "—"
     : date.toLocaleDateString("en-GB", { day: "numeric", month: "short" });
+}
+
+function eventOptions(events: readonly EventOption[], emptyLabel?: string): AppSelectOption[] {
+  return [
+    ...(emptyLabel ? [{ value: "", label: emptyLabel }] : []),
+    ...events.map((event) => ({
+      value: event.slug,
+      label: `${event.title} · ${shortDate(event.startsAt)}`,
+    })),
+  ];
 }
 
 function Field({
@@ -948,17 +981,14 @@ function EventPlanView(props: {
         </div>
         <label className="block min-w-[17rem]">
           <span className="font-mono text-micro theme-muted">event</span>
-          <select
+          <AppSelect
             value={selectedEvent}
-            onChange={(event) => setSelectedEvent(event.target.value)}
-            className="mt-2 min-h-11 w-full rounded border theme-border bg-transparent px-3 font-mono text-sm"
-          >
-            {events.map((event) => (
-              <option key={event.slug} value={event.slug}>
-                {event.title} · {shortDate(event.startsAt)}
-              </option>
-            ))}
-          </select>
+            onValueChange={setSelectedEvent}
+            options={eventOptions(events)}
+            ariaLabel="event"
+            variant="field"
+            className="mt-2"
+          />
         </label>
       </div>
       {!activePlan ? (
@@ -1131,20 +1161,19 @@ function EventPlanView(props: {
                       <div className="grid gap-4 sm:grid-cols-3">
                         <label className="block">
                           <span className="font-mono text-micro theme-muted">media type</span>
-                          <select
+                          <AppSelect
                             value={stageDraft.mediaKind}
-                            onChange={(event) =>
+                            onValueChange={(value) =>
                               setStageDraft((draft) => ({
                                 ...draft,
-                                mediaKind: event.target.value as MediaKind,
+                                mediaKind: value as MediaKind,
                               }))
                             }
-                            className="mt-2 min-h-11 w-full rounded border theme-border bg-transparent px-3 font-mono text-sm"
-                          >
-                            <option value="image">image</option>
-                            <option value="gif">GIF</option>
-                            <option value="video">video</option>
-                          </select>
+                            options={MEDIA_OPTIONS}
+                            ariaLabel="media type"
+                            variant="field"
+                            className="mt-2"
+                          />
                         </label>
                         <Field
                           label="alt text"
@@ -1271,48 +1300,38 @@ function ComposeView(props: {
       <div className="grid gap-4 sm:grid-cols-2">
         <label className="block">
           <span className="font-mono text-micro theme-muted">message type</span>
-          <select
+          <AppSelect
             value={kind}
-            onChange={(event) => setKind(event.target.value as Kind)}
-            className="mt-2 min-h-11 w-full rounded border theme-border bg-transparent px-3 font-mono text-sm"
-          >
-            {Object.entries(KIND_LABELS).map(([value, label]) => (
-              <option key={value} value={value}>
-                {label}
-              </option>
-            ))}
-          </select>
+            onValueChange={(value) => setKind(value as Kind)}
+            options={KIND_OPTIONS}
+            ariaLabel="message type"
+            variant="field"
+            className="mt-2"
+          />
         </label>
         <label className="block">
           <span className="font-mono text-micro theme-muted">audience</span>
-          <select
+          <AppSelect
             value={audience}
-            onChange={(event) => setAudience(event.target.value as Audience)}
-            className="mt-2 min-h-11 w-full rounded border theme-border bg-transparent px-3 font-mono text-sm"
-          >
-            {audienceOptions.map(([value, label]) => (
-              <option key={value} value={value}>
-                {label}
-              </option>
-            ))}
-          </select>
+            onValueChange={(value) => setAudience(value as Audience)}
+            options={audienceOptions.map(([value, label]) => ({ value, label }))}
+            ariaLabel="audience"
+            variant="field"
+            className="mt-2"
+          />
         </label>
       </div>
       {["event_update", "event_service", "feedback"].includes(kind) ? (
         <label className="block">
           <span className="font-mono text-micro theme-muted">event</span>
-          <select
+          <AppSelect
             value={composeEvent}
-            onChange={(event) => setComposeEvent(event.target.value)}
-            className="mt-2 min-h-11 w-full rounded border theme-border bg-transparent px-3 font-mono text-sm"
-          >
-            <option value="">choose an event</option>
-            {events.map((event) => (
-              <option key={event.slug} value={event.slug}>
-                {event.title} · {shortDate(event.startsAt)}
-              </option>
-            ))}
-          </select>
+            onValueChange={setComposeEvent}
+            options={eventOptions(events, "choose an event")}
+            ariaLabel="event"
+            variant="field"
+            className="mt-2"
+          />
         </label>
       ) : null}
       {audience === "selected" ? (
@@ -1355,15 +1374,16 @@ function ComposeView(props: {
         <div className="grid gap-4 sm:grid-cols-[8rem_1fr]">
           <label className="block">
             <span className="font-mono text-micro theme-muted">media type</span>
-            <select
+            <AppSelect
               value={mediaKind}
-              onChange={(event) => setMediaKind(event.target.value as MediaKind)}
-              className="mt-2 min-h-11 w-full rounded border theme-border bg-transparent px-3 font-mono text-sm"
-            >
-              <option value="image">image</option>
-              <option value="gif">GIF</option>
-              <option value="video">video link</option>
-            </select>
+              onValueChange={(value) => setMediaKind(value as MediaKind)}
+              options={MEDIA_OPTIONS.map((option) =>
+                option.value === "video" ? { ...option, label: "video link" } : option,
+              )}
+              ariaLabel="media type"
+              variant="field"
+              className="mt-2"
+            />
           </label>
           <Field
             label="media URL"
@@ -1537,17 +1557,14 @@ function TemplatesView(props: {
           />
           <label className="block">
             <span className="font-mono text-micro theme-muted">type</span>
-            <select
+            <AppSelect
               value={draft.kind}
-              onChange={(event) => set("kind", event.target.value)}
-              className="mt-2 min-h-11 w-full rounded border theme-border bg-transparent px-3 font-mono text-sm"
-            >
-              {Object.entries(KIND_LABELS).map(([value, label]) => (
-                <option key={value} value={value}>
-                  {label}
-                </option>
-              ))}
-            </select>
+              onValueChange={(value) => set("kind", value)}
+              options={KIND_OPTIONS}
+              ariaLabel="type"
+              variant="field"
+              className="mt-2"
+            />
           </label>
           <Field
             label="subject"
@@ -1692,37 +1709,30 @@ function FeedbackView(props: {
             />
             <label className="block">
               <span className="font-mono text-micro theme-muted">event (optional)</span>
-              <select
+              <AppSelect
                 value={draft.eventSlug}
-                onChange={(event) =>
-                  setDraft((current) => ({ ...current, eventSlug: event.target.value }))
-                }
-                className="mt-2 min-h-11 w-full rounded border theme-border bg-transparent px-3 font-mono text-sm"
-              >
-                <option value="">standalone survey</option>
-                {events.map((event) => (
-                  <option key={event.slug} value={event.slug}>
-                    {event.title}
-                  </option>
-                ))}
-              </select>
+                onValueChange={(value) => setDraft((current) => ({ ...current, eventSlug: value }))}
+                options={eventOptions(events, "standalone survey")}
+                ariaLabel="event (optional)"
+                variant="field"
+                className="mt-2"
+              />
             </label>
             <label className="block">
               <span className="font-mono text-micro theme-muted">status</span>
-              <select
+              <AppSelect
                 value={draft.status}
-                onChange={(event) =>
+                onValueChange={(value) =>
                   setDraft((current) => ({
                     ...current,
-                    status: event.target.value as Survey["status"],
+                    status: value as Survey["status"],
                   }))
                 }
-                className="mt-2 min-h-11 w-full rounded border theme-border bg-transparent px-3 font-mono text-sm"
-              >
-                <option value="draft">draft</option>
-                <option value="open">open</option>
-                <option value="closed">closed</option>
-              </select>
+                options={SURVEY_STATUS_OPTIONS}
+                ariaLabel="status"
+                variant="field"
+                className="mt-2"
+              />
             </label>
             <div className="space-y-4 border-t theme-border-faint pt-5">
               <div className="flex items-center justify-between">
@@ -1772,22 +1782,18 @@ function FeedbackView(props: {
                   />
                   <label className="block">
                     <span className="font-mono text-micro theme-muted">answer shape</span>
-                    <select
+                    <AppSelect
                       value={question.type}
-                      onChange={(event) =>
+                      onValueChange={(value) =>
                         updateQuestion(index, {
-                          type: event.target.value as SurveyQuestion["type"],
+                          type: value as SurveyQuestion["type"],
                         })
                       }
-                      className="mt-2 min-h-11 w-full rounded border theme-border bg-transparent px-3 font-mono text-sm"
-                    >
-                      <option value="rating">1–5 rating</option>
-                      <option value="long_text">long answer</option>
-                      <option value="yes_no">yes / no</option>
-                      <option value="single_choice">one choice</option>
-                      <option value="multi_choice">several choices</option>
-                      <option value="email">email</option>
-                    </select>
+                      options={QUESTION_TYPE_OPTIONS}
+                      ariaLabel="answer shape"
+                      variant="field"
+                      className="mt-2"
+                    />
                   </label>
                   {["single_choice", "multi_choice"].includes(question.type) ? (
                     <Field

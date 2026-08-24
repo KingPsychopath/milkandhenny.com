@@ -6,6 +6,7 @@ import { Link } from "@tanstack/react-router";
 import { AppImage } from "@/components/AppImage";
 import { SITE_BRAND } from "@/lib/shared/config";
 import { useQrCode } from "@/hooks/useQrCode";
+import { useVisibilityReconciler } from "@/hooks/useVisibilityReconciler";
 import { eventIcsPath, ticketIcsPath } from "@/features/events/routes";
 import { AddressLink } from "@/features/events/ui/AddressLink";
 import { ThreeWordHint } from "@/features/events/ui/ThreeWordHint";
@@ -333,11 +334,14 @@ function useCheckoutOutcome(sessionId: string, initial: CheckoutOutcomeResult) {
     }
   }, [sessionId]);
 
-  useEffect(() => {
-    if (poll !== "waiting") return;
-    const timer = setInterval(() => void check(), POLL_INTERVAL_MS);
-    return () => clearInterval(timer);
-  }, [poll, check]);
+  useVisibilityReconciler({
+    enabled: poll === "waiting",
+    intervalMs: POLL_INTERVAL_MS,
+    identity: poll === "waiting" ? `checkout:${sessionId}` : null,
+    reconcile: async () => {
+      await check();
+    },
+  });
 
   const retry = useCallback(() => {
     startedAt.current = Date.now();
