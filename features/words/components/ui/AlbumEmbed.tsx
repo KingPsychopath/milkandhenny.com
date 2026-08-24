@@ -54,6 +54,7 @@ const FillThumb = memo(function FillThumb({
       alt=""
       width={photo.width}
       height={photo.height}
+      reveal
       sizes="(min-width: 672px) 156px, 25vw"
       className="album-embed-thumb-img"
       style={{
@@ -90,6 +91,7 @@ const MasonryThumb = memo(function MasonryThumb({
       alt=""
       width={photo.width}
       height={photo.height}
+      reveal
       sizes="(min-width: 672px) 306px, 50vw"
       className="album-embed-masonry-img"
       style={{

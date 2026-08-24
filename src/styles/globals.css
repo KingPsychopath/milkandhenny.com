@@ -386,6 +386,21 @@
 }
 
 @layer components {
+  .app-image-reveal {
+    transition: opacity 480ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  .app-image-reveal[data-reveal-pending="true"] {
+    opacity: 0;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .app-image-reveal {
+      opacity: 1;
+      transition: none;
+    }
+  }
+
   .guided-tour-shell {
     animation: guided-tour-shell-in 260ms ease-out both;
   }
@@ -1460,13 +1475,7 @@
     max-width: none;
   }
   .album-embed-thumb-img {
-    opacity: 0;
-    transition:
-      opacity 0.3s ease,
-      filter 0.25s ease;
-  }
-  .album-embed-thumb-img--loaded {
-    opacity: 1;
+    transition: filter 0.25s ease;
   }
   .album-embed:hover .album-embed-thumb img {
     /* Hover "tint": use filter so it overrides inline styles */
@@ -1519,13 +1528,7 @@
     position: static;
   }
   .album-embed-masonry-img {
-    opacity: 0;
-    transition:
-      opacity 0.3s ease,
-      filter 0.25s ease;
-  }
-  .album-embed-masonry-img--loaded {
-    opacity: 1;
+    transition: filter 0.25s ease;
   }
   .album-embed-masonry-grid:hover .album-embed-masonry-tile img {
     filter: brightness(0.92) saturate(0.95);
