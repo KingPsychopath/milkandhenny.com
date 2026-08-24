@@ -323,6 +323,8 @@ export async function createStarterPlan(eventSlug: string): Promise<Communicatio
   const surveyReminderAt = localDateAt(event, 4, 10);
   const gif = `${BASE_URL}/media/after-school-club-walking.gif`;
   const poster = `${BASE_URL}/media/after-school-club-walking-poster.jpg`;
+  const arrivalGif = `${BASE_URL}/media/after-school-club-arrival.gif`;
+  const arrivalPoster = `${BASE_URL}/media/after-school-club-arrival-poster.png`;
   const stages = [
     {
       stageKey: "prepare",
@@ -349,6 +351,12 @@ export async function createStarterPlan(eventSlug: string): Promise<Communicatio
           url: gif,
           alt: "A short walking guide arriving at Common Sense Studios",
           posterUrl: poster,
+        },
+        {
+          kind: "gif",
+          url: arrivalGif,
+          alt: "A little illustrated character arrives at the studio and waves",
+          posterUrl: arrivalPoster,
         },
       ],
       sendAt: practicalAt,
