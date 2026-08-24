@@ -6,7 +6,7 @@ rules in the application instead of bypassing them with direct SQL.
 
 ## Authentication
 
-Use a deployed base URL. Sign in once and let the CLI store the short-lived JWT
+Use a deployed base URL. Sign in once in the browser and let the CLI store the short-lived JWT
 in the operating system's protected credential store:
 
 ```sh
@@ -15,10 +15,10 @@ pnpm cli events list --base-url https://milkandhenny.com
 pnpm cli auth logout --base-url https://milkandhenny.com
 ```
 
-`auth login` prompts privately. It stores only the JWT, not the password. macOS
-uses Keychain, Linux uses Secret Service, and Windows uses user-scoped DPAPI
-storage. When the JWT expires or is revoked, the next command prompts again and
-updates the stored value. `auth revoke` requires step-up re-authentication,
+`auth login` opens the browser for a one-time approval. It stores only the JWT,
+not the password. macOS uses Keychain, Linux uses Secret Service, and Windows
+uses user-scoped DPAPI storage. When the JWT expires or is revoked, the next
+command starts browser approval again and updates the stored value. `auth revoke` requires step-up re-authentication,
 revokes the exact current CLI session remotely, and removes the local token. Use
 `auth revoke --role admin` or `--role all` for role-wide invalidation.
 

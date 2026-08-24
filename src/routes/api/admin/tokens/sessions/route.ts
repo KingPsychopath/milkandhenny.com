@@ -11,6 +11,7 @@ type SessionRecord = {
   tv: number;
   ip: string | undefined;
   ua: string | undefined;
+  source: "browser" | "cli" | "unknown";
   status: "active" | "expired" | "revoked" | "invalidated";
 };
 
@@ -70,6 +71,7 @@ async function handleGET(request: Request) {
         tv: number;
         ip?: string;
         ua?: string;
+        source?: "browser" | "cli" | "unknown";
       } | null;
       if (!session) return null;
 
@@ -88,6 +90,7 @@ async function handleGET(request: Request) {
         tv: session.tv,
         ip: session.ip,
         ua: session.ua,
+        source: session.source ?? (session.ua?.includes("milkandhenny-cli") ? "cli" : "browser"),
         status,
       } satisfies SessionRecord;
     });

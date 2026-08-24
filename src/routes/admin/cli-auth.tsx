@@ -1,0 +1,136 @@
+import { createFileRoute } from "@tanstack/react-router";
+import { SITE_NAME } from "@/lib/shared/config";
+import { buildSeoHead } from "@/lib/shared/seo";
+import {
+  approveCliAuth,
+  denyCliAuth,
+  getCliAuthPage,
+  signInAdminForCli,
+} from "@/features/auth/cli-auth.functions";
+
+export const Route = createFileRoute("/admin/cli-auth")({
+  validateSearch: (search: Record<string, unknown>) => ({
+    request: typeof search.request === "string" ? search.request : "",
+    auth: typeof search.auth === "string" ? search.auth : undefined,
+  }),
+  loaderDeps: ({ search }) => ({ requestId: search.request }),
+  loader: ({ deps }) => getCliAuthPage({ data: { requestId: deps.requestId } }),
+  component: CliAuthPage,
+  head: () =>
+    buildSeoHead({
+      title: `CLI sign-in — ${SITE_NAME}`,
+      description: "Approve a Milk & Henny command-line session.",
+      path: "/admin/cli-auth",
+      robots: "noindex, nofollow",
+      referrer: "no-referrer",
+    }),
+});
+
+function CliAuthPage() {
+  const search = Route.useSearch();
+  const page = Route.useLoaderData();
+
+  if (!page.valid) {
+    return (
+      <main id="main" className="min-h-dvh flex items-center justify-center px-6">
+        <div className="w-full max-w-sm text-center space-y-3">
+          <h1 className="font-mono font-bold tracking-tighter text-lg">{SITE_NAME}</h1>
+          <p className="font-mono text-sm theme-muted">
+            This CLI sign-in link is invalid or expired.
+          </p>
+          <p className="font-mono text-xs theme-muted">
+            Return to your terminal and start sign-in again.
+          </p>
+        </div>
+      </main>
+    );
+  }
+
+  const message =
+    search.auth === "failed"
+      ? "That password was not accepted."
+      : search.auth === "required"
+        ? "Sign in before approving the CLI session."
+        : search.auth === "expired"
+          ? "This CLI sign-in request has expired."
+          : null;
+
+  if (!page.authenticated) {
+    return (
+      <main id="main" className="min-h-dvh flex items-center justify-center px-6">
+        <div className="w-full max-w-sm text-center">
+          <h1 className="font-mono font-bold tracking-tighter text-lg">{SITE_NAME}</h1>
+          <p className="font-mono text-sm theme-muted mt-1 mb-10">approve CLI sign-in</p>
+          <p className="font-mono text-xs leading-relaxed theme-muted mb-6">
+            The terminal is asking for a short-lived admin session. Your password stays in this
+            browser and is never sent to the CLI.
+          </p>
+
+          <form action={signInAdminForCli.url} method="post" encType="multipart/form-data">
+            <input type="hidden" name="request" value={search.request} />
+            <label htmlFor="cli-admin-password" className="sr-only">
+              admin password
+            </label>
+            <input
+              id="cli-admin-password"
+              name="password"
+              type="password"
+              placeholder="admin password"
+              autoFocus
+              required
+              aria-invalid={message ? "true" : undefined}
+              className="w-full bg-transparent border-b border-[var(--stone-200)] focus:border-[var(--foreground)] outline-none font-mono text-sm text-center py-2 tracking-wider transition-colors placeholder:text-[var(--stone-400)]"
+            />
+            <button
+              type="submit"
+              className="mt-6 min-h-12 w-full rounded-md bg-[var(--foreground)] px-4 py-2.5 font-mono text-sm lowercase tracking-wide text-[var(--background)] hover:opacity-90 transition-opacity"
+            >
+              continue
+            </button>
+          </form>
+          {message ? (
+            <p className="mt-4 font-mono text-xs text-[var(--prose-hashtag)]">{message}</p>
+          ) : null}
+        </div>
+      </main>
+    );
+  }
+
+  return (
+    <main id="main" className="min-h-dvh flex items-center justify-center px-6">
+      <div className="w-full max-w-sm">
+        <h1 className="font-mono font-bold tracking-tighter text-lg">{SITE_NAME}</h1>
+        <p className="font-mono text-sm theme-muted mt-1 mb-8">approve CLI sign-in</p>
+        <div className="border-t theme-border pt-5 space-y-3">
+          <p className="font-mono text-sm">{page.client} is requesting access.</p>
+          <p className="font-mono text-xs leading-relaxed theme-muted">
+            This creates one admin JWT for the terminal. It expires in one hour and can be revoked
+            from the admin session list.
+          </p>
+          <p className="font-mono text-xs theme-muted">
+            Request expires at {new Date(page.expiresAt * 1000).toLocaleTimeString()}.
+          </p>
+        </div>
+
+        <form action={approveCliAuth.url} method="post">
+          <input type="hidden" name="request" value={search.request} />
+          <button
+            type="submit"
+            className="mt-8 min-h-12 w-full rounded-md bg-[var(--foreground)] px-4 py-2.5 font-mono text-sm lowercase tracking-wide text-[var(--background)] hover:opacity-90 transition-opacity"
+          >
+            approve terminal
+          </button>
+        </form>
+        <form action={denyCliAuth.url} method="post">
+          <input type="hidden" name="request" value={search.request} />
+          <button
+            type="submit"
+            className="mt-3 min-h-12 w-full rounded-md border border-[var(--stone-300)] px-4 py-2.5 font-mono text-sm lowercase tracking-wide hover:opacity-70 transition-opacity"
+          >
+            cancel
+          </button>
+        </form>
+      </div>
+    </main>
+  );
+}

@@ -161,6 +161,13 @@ export function TokenSessionsPanel(props: {
                         </span>
                       </p>
                       <p className="font-mono text-xs theme-muted truncate">
+                        {s.source === "cli"
+                          ? "CLI · terminal session"
+                          : s.source === "browser"
+                            ? "browser session"
+                            : "older session"}
+                      </p>
+                      <p className="font-mono text-xs theme-muted truncate">
                         issued {issuedAgo === null ? "—" : `${formatRemaining(issuedAgo)} ago`} ·
                         expires in {expiresIn === null ? "—" : formatRemaining(expiresIn)}
                       </p>
@@ -178,6 +185,10 @@ export function TokenSessionsPanel(props: {
                   </p>
                   <p className="font-mono text-xs theme-muted">
                     ip: <span className="text-[var(--foreground)]">{s.ip || "—"}</span>
+                  </p>
+                  <p className="font-mono text-xs theme-muted">
+                    source:{" "}
+                    <span className="text-[var(--foreground)]">{s.source ?? "unknown"}</span>
                   </p>
                   <p className="font-mono text-xs theme-muted break-words">
                     user-agent: <span className="text-[var(--foreground)]">{s.ua || "—"}</span>

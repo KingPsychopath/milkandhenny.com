@@ -10,6 +10,7 @@ export type TokenSession = {
   tv: number;
   ip?: string;
   ua?: string;
+  source?: "browser" | "cli" | "unknown";
   status: "active" | "expired" | "revoked" | "invalidated";
 };
 
@@ -79,6 +80,7 @@ export function useTokenSessions(params: { isAuthed: boolean; authFetch: AuthFet
         s.role.toLowerCase().includes(q) ||
         (s.ip ?? "").toLowerCase().includes(q) ||
         (s.ua ?? "").toLowerCase().includes(q) ||
+        (s.source ?? "unknown").toLowerCase().includes(q) ||
         s.status.toLowerCase().includes(q)
       );
     });

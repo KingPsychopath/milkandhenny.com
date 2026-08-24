@@ -9,6 +9,7 @@ export type TokenSession = {
   tv: number;
   ip?: string;
   ua?: string;
+  source?: "browser" | "cli";
   status: "active" | "expired" | "revoked" | "invalidated";
 };
 
@@ -35,6 +36,20 @@ export type RevokeResponse =
   | { error?: string };
 
 export type AdminVerifyResponse = { ok: true; token: string } | { error?: string };
+
+export type CliAuthorizationRequestResponse =
+  | { ok: true; requestId: string; browserUrl: string }
+  | { error?: string };
+
+export type CliAuthorizationExchangeResponse = { ok: true; token: string } | { error?: string };
+
+export type AdminTokenClaims = {
+  role?: string;
+  iat?: number;
+  exp?: number;
+  tv?: number;
+  jti?: string;
+};
 
 export interface AdminAuthDiagnosticProbe {
   name: string;
@@ -81,7 +96,7 @@ export async function resolveCanonicalBaseUrl(baseUrl: string): Promise<string> 
   }
 }
 
-function decodeJwtClaims(token: string): AdminAuthDiagnostics["tokenClaims"] | undefined {
+export function decodeAdminTokenClaims(token: string): AdminTokenClaims | undefined {
   const parts = token.split(".");
   if (parts.length !== 3) return undefined;
   try {
@@ -198,7 +213,7 @@ export async function runAdminAuthDiagnostics(params: {
 
   if (!adminToken) return diagnostics;
 
-  diagnostics.tokenClaims = decodeJwtClaims(adminToken);
+  diagnostics.tokenClaims = decodeAdminTokenClaims(adminToken);
 
   diagnostics.probes.push(
     await runProbe({
@@ -255,6 +270,59 @@ export async function issueAdminToken(params: {
   return data.token;
 }
 
+export async function requestCliAuthorization(params: {
+  baseUrl: string;
+  redirectUri: string;
+  codeChallenge: string;
+  state: string;
+  userAgent: string;
+}): Promise<{ requestId: string; browserUrl: string }> {
+  const res = await fetch(`${params.baseUrl}/api/admin/cli-auth/request`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Origin: new URL(params.baseUrl).origin,
+      "User-Agent": params.userAgent,
+    },
+    body: JSON.stringify({
+      redirectUri: params.redirectUri,
+      codeChallenge: params.codeChallenge,
+      state: params.state,
+    }),
+  });
+  const data = (await res.json().catch(() => ({}))) as CliAuthorizationRequestResponse;
+  if (!res.ok || !("ok" in data) || data.ok !== true) {
+    throw new Error(
+      ("error" in data ? data.error : undefined) ||
+        `CLI authorization request failed (${res.status})`,
+    );
+  }
+  return { requestId: data.requestId, browserUrl: data.browserUrl };
+}
+
+export async function exchangeCliAuthorizationCode(params: {
+  baseUrl: string;
+  code: string;
+  codeVerifier: string;
+}): Promise<string> {
+  const res = await fetch(`${params.baseUrl}/api/admin/cli-auth/exchange`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Origin: new URL(params.baseUrl).origin,
+    },
+    body: JSON.stringify({ code: params.code, codeVerifier: params.codeVerifier }),
+  });
+  const data = (await res.json().catch(() => ({}))) as CliAuthorizationExchangeResponse;
+  if (!res.ok || !("ok" in data) || data.ok !== true || typeof data.token !== "string") {
+    throw new Error(
+      ("error" in data ? data.error : undefined) ||
+        `CLI authorization exchange failed (${res.status})`,
+    );
+  }
+  return data.token;
+}
+
 export async function listTokenSessions(params: { baseUrl: string; adminToken: string }) {
   const res = await fetch(`${params.baseUrl}/api/admin/tokens/sessions`, {
     method: "GET",
@@ -263,6 +331,31 @@ export async function listTokenSessions(params: { baseUrl: string; adminToken: s
   const data = (await res.json().catch(() => ({}))) as TokenSessionsListResponse;
   if (!res.ok || !("success" in data)) {
     throw new Error((data as { error?: string }).error || `List failed (${res.status})`);
+  }
+  return data;
+}
+
+export async function revokeTokenSession(params: {
+  baseUrl: string;
+  adminToken: string;
+  stepUpToken: string;
+  jti: string;
+}) {
+  const res = await fetch(
+    `${params.baseUrl}/api/admin/tokens/sessions/${encodeURIComponent(params.jti)}`,
+    {
+      method: "DELETE",
+      headers: {
+        Authorization: `Bearer ${params.adminToken}`,
+        "x-admin-step-up": params.stepUpToken,
+      },
+    },
+  );
+  const data = (await res.json().catch(() => ({}))) as
+    | { success: true; jti: string; ttlSeconds: number }
+    | { error?: string };
+  if (!res.ok || !("success" in data) || data.success !== true) {
+    throw new Error((data as { error?: string }).error || `Session revoke failed (${res.status})`);
   }
   return data;
 }

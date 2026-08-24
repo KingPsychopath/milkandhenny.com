@@ -11,6 +11,9 @@
 import fs from "fs";
 import path from "path";
 import readline from "readline";
+import { createHash, randomBytes } from "node:crypto";
+import { createServer } from "node:http";
+import { spawn } from "node:child_process";
 import matter from "gray-matter";
 import { runAlbumsCli } from "./albums-cli";
 import { BASE_URL } from "@/lib/shared/config";
@@ -49,9 +52,11 @@ import {
   type RevokeRole,
   createStepUpToken,
   decodeAdminTokenClaims,
+  exchangeCliAuthorizationCode,
   issueAdminToken,
   listTokenSessions,
   normalizeBaseUrl,
+  requestCliAuthorization,
   revokeTokenSession,
   resolveCanonicalBaseUrl,
   runAdminAuthDiagnostics,
@@ -805,6 +810,150 @@ async function cmdTransfersNuke(skipConfirm = false) {
 
 /* ─── Auth command handlers ─── */
 
+const CLI_AUTH_TIMEOUT_MS = 5 * 60 * 1000;
+
+type CliBrowserCallback = { code: string; state: string } | { error: string; state?: string };
+
+type CliCallbackListener = {
+  redirectUri: string;
+  waitForCallback: () => Promise<CliBrowserCallback>;
+  close: () => Promise<void>;
+};
+
+async function startCliCallbackListener(expectedState: string): Promise<CliCallbackListener> {
+  let resolveCallback!: (value: CliBrowserCallback) => void;
+  let settled = false;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const callback = new Promise<CliBrowserCallback>((resolve) => {
+    resolveCallback = resolve;
+  });
+
+  const server = createServer((request, response) => {
+    let url: URL;
+    try {
+      url = new URL(request.url ?? "/", "http://127.0.0.1");
+    } catch {
+      response.writeHead(400, { "Content-Type": "text/plain; charset=utf-8" });
+      response.end("Invalid callback request.");
+      return;
+    }
+
+    if (url.pathname !== "/callback") {
+      response.writeHead(404, { "Content-Type": "text/plain; charset=utf-8" });
+      response.end("Not found.");
+      return;
+    }
+
+    const state = url.searchParams.get("state") ?? "";
+    if (state !== expectedState) {
+      response.writeHead(400, { "Content-Type": "text/plain; charset=utf-8" });
+      response.end("This callback does not belong to the waiting CLI login.");
+      return;
+    }
+
+    const code = url.searchParams.get("code");
+    const error = url.searchParams.get("error");
+    if (!code && !error) {
+      response.writeHead(400, { "Content-Type": "text/plain; charset=utf-8" });
+      response.end("The authorization response was incomplete.");
+      return;
+    }
+
+    response.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
+    response.end(
+      "<!doctype html><title>Milk & Henny CLI</title><p>Approval received. You can return to the terminal.</p>",
+    );
+    if (settled) return;
+    settled = true;
+    if (timer) clearTimeout(timer);
+    resolveCallback(code ? { code, state } : { error: error ?? "access_denied", state });
+  });
+
+  await new Promise<void>((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", () => {
+      server.removeListener("error", reject);
+      resolve();
+    });
+  });
+
+  const address = server.address();
+  if (!address || typeof address === "string") {
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+    throw new Error("Unable to start the local CLI callback listener.");
+  }
+
+  timer = setTimeout(() => {
+    if (settled) return;
+    settled = true;
+    resolveCallback({ error: "CLI sign-in timed out" });
+  }, CLI_AUTH_TIMEOUT_MS);
+
+  return {
+    redirectUri: `http://127.0.0.1:${address.port}/callback`,
+    waitForCallback: () => callback,
+    close: async () => {
+      if (timer) clearTimeout(timer);
+      if (!server.listening) return;
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    },
+  };
+}
+
+async function openCliBrowser(url: string): Promise<boolean> {
+  const command =
+    process.platform === "darwin" ? "open" : process.platform === "win32" ? "cmd.exe" : "xdg-open";
+  const commandArgs = process.platform === "win32" ? ["/c", "start", "", url] : [url];
+  try {
+    const child = spawn(command, commandArgs, { stdio: "ignore", detached: true });
+    return await new Promise<boolean>((resolve) => {
+      child.once("error", () => resolve(false));
+      child.once("close", (code) => resolve(code === 0));
+      child.unref();
+    });
+  } catch {
+    return false;
+  }
+}
+
+async function loginWithBrowser(baseUrl: string): Promise<string> {
+  const verifier = randomBytes(32).toString("base64url");
+  const challenge = createHash("sha256").update(verifier).digest("base64url");
+  const state = randomBytes(32).toString("base64url");
+  const listener = await startCliCallbackListener(state);
+  const userAgent = `milkandhenny-cli/0.1.0 (${process.platform}; ${process.arch})`;
+
+  try {
+    const authorization = await requestCliAuthorization({
+      baseUrl,
+      redirectUri: listener.redirectUri,
+      codeChallenge: challenge,
+      state,
+      userAgent,
+    });
+
+    progress("Opening your browser for admin approval...");
+    const opened = await openCliBrowser(authorization.browserUrl);
+    if (!opened) {
+      log(yellow("Could not open a browser automatically."));
+    }
+    log(dim(`Approve this sign-in at: ${authorization.browserUrl}`));
+
+    const result = await listener.waitForCallback();
+    if ("error" in result) throw new Error(result.error);
+    if (result.state !== state) throw new Error("CLI sign-in state did not match.");
+
+    progress("Exchanging the one-time approval code...");
+    return await exchangeCliAuthorizationCode({
+      baseUrl,
+      code: result.code,
+      codeVerifier: verifier,
+    });
+  } finally {
+    await listener.close();
+  }
+}
+
 type CliAdminTokenCacheEntry = {
   token: string;
   expSec: number;
@@ -902,19 +1051,9 @@ async function resolveAdminTokenForCli(opts: {
     if (stored) return stored;
   }
 
-  const password =
-    passwordArg ??
-    (await promptForAdminPassword(
-      opts.forceRefresh
-        ? "Stored admin session expired or was revoked. Sign in again."
-        : "No stored admin session. Sign in to continue.",
-    ));
-
-  progress("Signing in as admin...");
-  const token = await issueAdminToken({
-    baseUrl: opts.baseUrl,
-    adminPassword: password,
-  });
+  const token = passwordArg
+    ? await issueAdminToken({ baseUrl: opts.baseUrl, adminPassword: passwordArg })
+    : await loginWithBrowser(opts.baseUrl);
   if (!passwordArg) await writeCliAdminToken(opts.baseUrl, token);
   cacheAdminToken(opts.baseUrl, token);
   return token;
@@ -987,14 +1126,11 @@ async function resolvedAdminRequest(options: {
   let stepUpToken = getArg("step-up-token");
 
   if (hasFlag("step-up")) {
-    const storedToken =
-      adminToken || adminPasswordArg ? null : await getStoredAdminToken(baseUrl);
+    const storedToken = adminToken || adminPasswordArg ? null : await getStoredAdminToken(baseUrl);
     const adminPassword =
       adminPasswordArg ?? (await promptForAdminPassword("Re-authenticate for this action."));
     const token =
-      adminToken ||
-      storedToken ||
-      (await resolveAdminTokenForCli({ baseUrl, adminPassword }));
+      adminToken || storedToken || (await resolveAdminTokenForCli({ baseUrl, adminPassword }));
     stepUpToken = (await createStepUpToken({ baseUrl, adminToken: token, adminPassword })).token;
   }
 
@@ -1385,7 +1521,7 @@ async function cmdAuthDiagnose(opts: {
   console.log();
 }
 
-async function cmdAuthLogin(opts: { baseUrl?: string }) {
+async function cmdAuthLogin(opts: { baseUrl?: string; adminPassword?: string }) {
   const requestedBaseUrl = normalizeBaseUrl(opts.baseUrl || BASE_URL || "http://localhost:3000");
   const baseUrl = await resolveCanonicalBaseUrl(requestedBaseUrl);
 
@@ -1397,10 +1533,9 @@ async function cmdAuthLogin(opts: { baseUrl?: string }) {
   }
   console.log();
 
-  const password = await askSecret("Admin password");
-  if (!password) throw new Error("Admin password is required.");
-  progress("Signing in as admin...");
-  const token = await issueAdminToken({ baseUrl, adminPassword: password });
+  const token = opts.adminPassword?.trim()
+    ? await issueAdminToken({ baseUrl, adminPassword: opts.adminPassword.trim() })
+    : await loginWithBrowser(baseUrl);
   await writeCliAdminToken(baseUrl, token);
   cacheAdminToken(baseUrl, token);
 
@@ -1451,8 +1586,7 @@ async function cmdAuthRevoke(opts: {
     const storedToken = opts.adminToken ? null : await getStoredAdminToken(baseUrl);
     const providedPassword = opts.adminPassword?.trim() || undefined;
     const password =
-      providedPassword ??
-      (await promptForAdminPassword("Re-authenticate to revoke this session."));
+      providedPassword ?? (await promptForAdminPassword("Re-authenticate to revoke this session."));
     const token =
       storedToken ??
       (await resolveAdminTokenForCli({
@@ -2656,8 +2790,9 @@ function showHelp() {
     bucket info                              Show bucket usage & free tier %
 
   ${bold("Auth")} ${dim("(session security)")}
-    auth login ${dim("[--base-url http://localhost:3000]")}
-      ${dim("Prompt privately and store the short-lived admin JWT in the OS credential store.")}
+    auth login ${dim("[--base-url http://localhost:3000]")} ${dim("(opens browser)")}
+      ${dim("Use --admin-password only for headless or one-off login.")}
+      ${dim("Approve in the browser and store the short-lived admin JWT in the OS credential store.")}
     auth logout ${dim("[--base-url http://localhost:3000]")}
       ${dim("Remove the local CLI JWT. This does not revoke the remote session.")}
     auth revoke ${dim("[--base-url http://localhost:3000]")}
@@ -4415,7 +4550,8 @@ async function direct() {
           switch (subcommand) {
             case "login": {
               const baseUrl = getArg("base-url");
-              return cmdAuthLogin({ baseUrl: baseUrl ?? undefined });
+              const adminPassword = getArg("admin-password");
+              return cmdAuthLogin({ baseUrl: baseUrl ?? undefined, adminPassword });
             }
             case "logout": {
               const baseUrl = getArg("base-url");

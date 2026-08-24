@@ -232,6 +232,53 @@ async function signToken(role: TokenRole): Promise<string | null> {
   return `${message}.${sigB64}`;
 }
 
+type TokenSessionSource = "browser" | "cli";
+
+async function registerTokenSession(
+  token: string,
+  metadata: { ip: string; ua: string; source: TokenSessionSource },
+  dedupeKey?: string,
+): Promise<boolean> {
+  const redis = getRedis();
+  if (!redis) return process.env.NODE_ENV !== "production";
+
+  try {
+    const issuedAt = Math.floor(Date.now() / 1000);
+    const parts = token.split(".");
+    if (parts.length !== 3) return false;
+    const payload = JSON.parse(base64UrlDecode(parts[1]).toString()) as TokenPayload;
+    const ttlSeconds = Math.max(1, payload.exp - issuedAt);
+    await redis.set(`auth:session:${payload.jti}`, {
+      role: payload.role,
+      iat: payload.iat,
+      exp: payload.exp,
+      tv: payload.tv,
+      ip: metadata.ip,
+      ua: metadata.ua,
+      source: metadata.source,
+    });
+    await redis.expire(`auth:session:${payload.jti}`, ttlSeconds + 60);
+    await redis.sadd("auth:sessions:index", payload.jti);
+    await redis.expire("auth:sessions:index", 60 * 60 * 24 * 60);
+    if (dedupeKey) {
+      await redis.set(dedupeKey, token);
+      await redis.expire(dedupeKey, LOGIN_DEDUPE_WINDOW_SECONDS);
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export async function issueAdminTokenForCli(metadata: {
+  ip: string;
+  ua: string;
+}): Promise<string | null> {
+  const token = await signToken("admin");
+  if (!token) return null;
+  return (await registerTokenSession(token, { ...metadata, source: "cli" })) ? token : null;
+}
+
 type TokenPayload = { role: TokenRole; exp: number; iat: number; jti: string; tv: number };
 type StepUpPayload = {
   kind: "admin-step-up";

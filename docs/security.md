@@ -83,17 +83,25 @@ pnpm cli events list --base-url https://milkandhenny.com
 pnpm cli auth logout --base-url https://milkandhenny.com
 ```
 
-`auth login` prompts for the admin password without echoing it and stores only
-the short-lived admin JWT in the operating system's protected credential store.
-The password is never stored. macOS uses Keychain, Linux uses Secret Service,
-and Windows uses user-scoped DPAPI storage. Other CLI commands load that JWT
-automatically. When it is close to expiry or the server rejects it as revoked,
-the CLI prompts privately and replaces the stored value. `auth logout` removes
-the local value but does not revoke the remote session.
+`auth login` opens the browser and starts a five-minute, PKCE-protected approval
+request. The browser asks for the admin password and approves the terminal. The
+password stays in the browser; the CLI receives only a one-time code and then a
+short-lived admin JWT. The JWT is stored in the operating system's protected
+credential store. macOS uses Keychain, Linux uses Secret Service, and Windows
+uses user-scoped DPAPI storage. Other CLI commands load that JWT automatically.
+When it is close to expiry or the server rejects it as revoked, the CLI starts
+the browser approval flow again. `auth logout` removes the local value but does
+not revoke the remote session.
+
+The browser is needed only during `auth login` or re-authentication. Normal CLI
+commands call the backend API directly with the stored Bearer JWT. The browser
+approval page is served by the configured base URL; the final code is returned
+only to the CLI's temporary `127.0.0.1` callback.
 
 Linux requires the `secret-tool` command from the system's Secret Service
 package. Windows uses the user's PowerShell DPAPI scope. Headless machines and
-CI should use `--admin-token` from a protected environment variable instead.
+CI should use `--admin-token` from a protected environment variable instead, or
+use `auth login --admin-password` when a private prompt is not possible.
 
 `auth revoke` performs the destructive flow for the current CLI session: it
 prompts for step-up re-authentication, revokes that exact `jti` through the API,
@@ -116,6 +124,11 @@ Why auth commands are API-backed (not direct KV/R2 writes):
 - R2 is not the source of truth for auth sessions/revocation.
 - Direct KV writes from CLI would bypass app-level auth semantics (step-up requirement, token-version invalidation rules, and session policy checks).
 - Keeping auth commands on app endpoints preserves one source of truth for session behavior and avoids CLI/server drift.
+
+CLI sessions are stored in the same Redis-backed session index as browser
+sessions. The admin panel labels them `CLI · terminal session`; browser logins
+are labelled `browser session`. Both are one-hour admin JWTs and can be revoked
+individually or by role.
 
 Operational check:
 
