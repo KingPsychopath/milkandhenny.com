@@ -242,7 +242,10 @@ export async function issueAdminToken(params: {
 }): Promise<string> {
   const res = await fetch(`${params.baseUrl}/api/admin/verify`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      Origin: new URL(params.baseUrl).origin,
+    },
     body: JSON.stringify({ password: params.adminPassword }),
   });
   const data = (await res.json().catch(() => ({}))) as AdminVerifyResponse;
