@@ -1800,10 +1800,10 @@ export function PitchEditor({
     }
     const isRepublish = Boolean(deckRef.current?.publishedAt);
     const confirmed = await confirmAction({
-      title: isRepublish ? "Publish a new edition?" : "Publish and seal this edition?",
+      title: isRepublish ? "Publish a completely new edition?" : "Publish and seal this edition?",
       description: isRepublish
-        ? "This will make the current working copy public as a new fixed edition. Earlier sealed editions stay unchanged, and you can keep editing this private working copy afterwards."
-        : "This will make the current working copy public as a fixed edition. You can keep editing the private working copy afterwards, but this sealed edition cannot be changed.",
+        ? "This will make the current working copy public as a new fixed edition. The previous sealed edition will stay unchanged. You can keep editing this private working copy afterwards, but published editions cannot be edited or unsealed."
+        : "This will make the current working copy public as a fixed edition. You can keep editing the private working copy afterwards, but this published edition cannot be edited or unsealed.",
       eyebrow: "check before publishing",
       confirmLabel: isRepublish ? "publish new edition" : "publish and seal",
       cancelLabel: "keep editing",
@@ -2248,7 +2248,7 @@ export function PitchEditor({
             : hasUnsecuredMedia
               ? "securing images…"
               : deck?.publishedAt
-                ? "republish edition"
+                ? "publish new edition"
                 : "publish + seal"}
         </button>
       </header>
