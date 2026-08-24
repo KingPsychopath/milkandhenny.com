@@ -17,6 +17,9 @@ export function getRouter() {
     scrollRestorationBehavior: "instant",
     defaultPreload: "intent",
     defaultPreloadStaleTime: 30_000,
+    // Keep recently visited pages usable during back-and-forth navigation while
+    // leaving server mutations and explicit invalidation responsible for freshness.
+    defaultStaleTime: 10_000,
   });
 }
 

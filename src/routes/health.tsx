@@ -14,6 +14,13 @@ const STATUS_MARK: Record<CapabilityStatus, string> = {
   disabled: "–",
 };
 
+function formatHealthTimestamp(timestamp: string): string {
+  const date = new Date(timestamp);
+  return Number.isNaN(date.getTime())
+    ? timestamp
+    : date.toISOString().replace("T", " ").replace(/\.\d{3}Z$/, " UTC");
+}
+
 export const Route = createFileRoute("/health")({
   component: HealthPage,
   loader: () => getCapabilities(),
@@ -89,7 +96,7 @@ function HealthPage() {
           <div>
             <dt className="uppercase tracking-wider theme-faint">checked</dt>
             <dd className="mt-1">
-              <time dateTime={health.timestamp}>{new Date(health.timestamp).toLocaleString()}</time>
+              <time dateTime={health.timestamp}>{formatHealthTimestamp(health.timestamp)}</time>
             </dd>
           </div>
         </dl>

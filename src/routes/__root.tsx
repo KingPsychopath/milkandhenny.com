@@ -12,6 +12,7 @@ import type { ReactNode } from "react";
 import { Suspense, lazy, useEffect } from "react";
 import { BackToTop } from "@/components/BackToTop";
 import { LampToggle } from "@/components/LampToggle";
+import { NavigationProgress } from "@/components/NavigationProgress";
 import { OfflinePlatform } from "@/components/OfflinePlatform";
 import { ScannerReturnPrompt } from "@/components/ScannerReturnPrompt";
 import { BASE_URL, SITE_BRAND, SITE_NAME } from "@/lib/shared/config";
@@ -79,6 +80,7 @@ function RootDocument({ children }: Readonly<{ children: ReactNode }>) {
         </a>
         <LampToggle />
         <BackToTop />
+        <NavigationProgress />
         <OfflinePlatform />
         <ScannerReturnPrompt />
         {children}
