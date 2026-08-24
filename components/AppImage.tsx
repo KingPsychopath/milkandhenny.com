@@ -45,7 +45,7 @@ function markRevealPending(node: HTMLImageElement) {
   clearRevealTimers(node);
   node.dataset.revealPending = "true";
 
-  const shell = node.closest<HTMLElement>("[data-media-placeholder]") ?? undefined;
+  const shell = node.closest<HTMLElement>(".media-image-placeholder") ?? undefined;
   const start = window.setTimeout(() => {
     if (!node.isConnected || node.dataset.revealPending !== "true") return;
 
