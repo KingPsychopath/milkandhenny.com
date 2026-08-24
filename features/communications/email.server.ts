@@ -162,7 +162,9 @@ function richBodyHtml(value: string): string {
 
 function plainTextBody(value: string): string {
   return value
-    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, "$1 ($2)")
+    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_, label: string, url: string) =>
+      url.startsWith("mailto:") ? label : `${label} (${url})`,
+    )
     .replace(/\*\*([^*]+)\*\*/g, "$1")
     .replace(/^##\s+/gm, "")
     .replace(/^- /gm, "• ")
