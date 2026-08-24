@@ -6,7 +6,12 @@ import { BASE_URL, getBaseUrlForRequest } from "@/lib/shared/config";
 import { buildAppUrl } from "@/lib/shared/app-url";
 import { getEvent } from "@/features/events/store.server";
 import { listTicketsForEvent } from "@/features/tickets/store.server";
-import { renderCommunicationMessage, type CommunicationEmailContext, type CommunicationKind, type CommunicationMedia } from "./email.server";
+import {
+  renderCommunicationMessage,
+  type CommunicationEmailContext,
+  type CommunicationKind,
+  type CommunicationMedia,
+} from "./email.server";
 import { listCommunicationContacts } from "./communications.server";
 
 export type CommunicationPlanStage = {
@@ -63,10 +68,14 @@ function validMedia(value: unknown): CommunicationMedia[] {
   return value
     .filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === "object")
     .map((item) => ({
-      kind: (item.kind === "gif" || item.kind === "video" ? item.kind : "image") as CommunicationMedia["kind"],
+      kind: (item.kind === "gif" || item.kind === "video"
+        ? item.kind
+        : "image") as CommunicationMedia["kind"],
       url: typeof item.url === "string" ? item.url.trim() : "",
       alt: typeof item.alt === "string" ? item.alt.trim().slice(0, 200) : "",
-      ...(typeof item.posterUrl === "string" && item.posterUrl.trim() ? { posterUrl: item.posterUrl.trim() } : {}),
+      ...(typeof item.posterUrl === "string" && item.posterUrl.trim()
+        ? { posterUrl: item.posterUrl.trim() }
+        : {}),
     }))
     .filter((item) => item.url)
     .slice(0, 3);
@@ -127,16 +136,16 @@ async function rowsForPlans(where = "", values: unknown[] = []): Promise<Communi
     eventTitle: String(row.event_title),
     name: String(row.name),
     status: String(row.status),
-    stages: Array.isArray(row.stages) ? row.stages.map((stage) => fromStage(stage as Record<string, unknown>)) : [],
+    stages: Array.isArray(row.stages)
+      ? row.stages.map((stage) => fromStage(stage as Record<string, unknown>))
+      : [],
     createdAt: new Date(row.created_at as Date).toISOString(),
     updatedAt: new Date(row.updated_at as Date).toISOString(),
   }));
 }
 
 export async function listCommunicationPlans(eventSlug?: string): Promise<CommunicationPlan[]> {
-  return eventSlug
-    ? rowsForPlans("where p.event_slug = $1", [eventSlug])
-    : rowsForPlans();
+  return eventSlug ? rowsForPlans("where p.event_slug = $1", [eventSlug]) : rowsForPlans();
 }
 
 export async function listCommunicationTemplates(): Promise<CommunicationTemplate[]> {
@@ -173,7 +182,11 @@ export async function saveCommunicationTemplate(input: {
   const body = input.body.trim().slice(0, 8000);
   if (!name || !subject || !body) throw new Error("Add a template name, subject, and message");
   const id = input.id || randomUUID();
-  if (input.isDefault) await query(`update communication_templates set is_default = false, updated_at = now() where kind = $1`, [input.kind]);
+  if (input.isDefault)
+    await query(
+      `update communication_templates set is_default = false, updated_at = now() where kind = $1`,
+      [input.kind],
+    );
   await query(
     `insert into communication_templates (id, name, kind, subject, body, media, is_default)
      values ($1,$2,$3,$4,$5,$6::jsonb,$7)
@@ -183,21 +196,37 @@ export async function saveCommunicationTemplate(input: {
        archived_at = null, updated_at = now()`,
     [id, name, input.kind, subject, body, JSON.stringify(validMedia(input.media)), input.isDefault],
   );
-  const rows = await query<Record<string, unknown>>(`select id, name, kind, subject, body, media, is_default, archived_at, updated_at from communication_templates where id = $1`, [id]);
+  const rows = await query<Record<string, unknown>>(
+    `select id, name, kind, subject, body, media, is_default, archived_at, updated_at from communication_templates where id = $1`,
+    [id],
+  );
   const row = rows[0];
   if (!row) throw new Error("Template was not saved");
   return {
-    id: String(row.id), name: String(row.name), kind: row.kind as CommunicationKind,
-    subject: String(row.subject), body: String(row.body), media: validMedia(row.media),
-    isDefault: row.is_default === true, archivedAt: iso(row.archived_at as Date | null), updatedAt: new Date(row.updated_at as Date).toISOString(),
+    id: String(row.id),
+    name: String(row.name),
+    kind: row.kind as CommunicationKind,
+    subject: String(row.subject),
+    body: String(row.body),
+    media: validMedia(row.media),
+    isDefault: row.is_default === true,
+    archivedAt: iso(row.archived_at as Date | null),
+    updatedAt: new Date(row.updated_at as Date).toISOString(),
   };
 }
 
 export async function archiveCommunicationTemplate(id: string): Promise<void> {
-  await query(`update communication_templates set archived_at = now(), is_default = false, updated_at = now() where id = $1`, [id]);
+  await query(
+    `update communication_templates set archived_at = now(), is_default = false, updated_at = now() where id = $1`,
+    [id],
+  );
 }
 
-function localDateAt(event: { startsAt: string; timezone: string }, daysFromStart: number, hour: number): Date {
+function localDateAt(
+  event: { startsAt: string; timezone: string },
+  daysFromStart: number,
+  hour: number,
+): Date {
   const parts = new Intl.DateTimeFormat("en-GB", {
     timeZone: event.timezone,
     year: "numeric",
@@ -205,11 +234,18 @@ function localDateAt(event: { startsAt: string; timezone: string }, daysFromStar
     day: "2-digit",
   }).formatToParts(new Date(event.startsAt));
   const get = (type: string) => Number(parts.find((part) => part.type === type)?.value);
-  const candidate = new Date(Date.UTC(get("year"), get("month") - 1, get("day") + daysFromStart, hour, 0));
-  const offsetParts = new Intl.DateTimeFormat("en-GB", { timeZone: event.timezone, timeZoneName: "longOffset" }).formatToParts(candidate);
+  const candidate = new Date(
+    Date.UTC(get("year"), get("month") - 1, get("day") + daysFromStart, hour, 0),
+  );
+  const offsetParts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: event.timezone,
+    timeZoneName: "longOffset",
+  }).formatToParts(candidate);
   const offset = offsetParts.find((part) => part.type === "timeZoneName")?.value ?? "GMT";
   const match = /GMT([+-])(\d{2}):?(\d{2})?/.exec(offset);
-  const offsetMinutes = match ? (Number(match[2]) * 60 + Number(match[3] ?? 0)) * (match[1] === "-" ? -1 : 1) : 0;
+  const offsetMinutes = match
+    ? (Number(match[2]) * 60 + Number(match[3] ?? 0)) * (match[1] === "-" ? -1 : 1)
+    : 0;
   return new Date(candidate.getTime() - offsetMinutes * 60_000);
 }
 
@@ -222,8 +258,13 @@ function hoursUntilEvent(event: { startsAt: string }, from: Date): number {
 }
 
 async function ensureSurvey(eventSlug: string, eventTitle: string): Promise<string> {
-  const slug = eventSlug === "after-school-club-2026-09-01" ? "after-school-club-feedback" : `${eventSlug}-feedback`.slice(0, 80);
-  const existing = await query<{ id: string }>(`select id from surveys where slug = $1 limit 1`, [slug]);
+  const slug =
+    eventSlug === "after-school-club-2026-09-01"
+      ? "after-school-club-feedback"
+      : `${eventSlug}-feedback`.slice(0, 80);
+  const existing = await query<{ id: string }>(`select id from surveys where slug = $1 limit 1`, [
+    slug,
+  ]);
   if (existing[0]) return existing[0].id;
   const id = randomUUID();
   await query(
@@ -236,9 +277,26 @@ async function ensureSurvey(eventSlug: string, eventTitle: string): Promise<stri
       `Tell us about ${eventTitle}`,
       "A few honest answers help us make the next one better. There are no wrong answers.",
       JSON.stringify([
-        { id: "overall", type: "rating", label: "How was the overall feeling?", hint: "1 is not for you; 5 is more please.", required: true },
-        { id: "worked", type: "long_text", label: "What worked?", hint: "A moment, a detail, a person, a game — anything.", required: true },
-        { id: "change", type: "long_text", label: "What should we change next time?", required: false },
+        {
+          id: "overall",
+          type: "rating",
+          label: "How was the overall feeling?",
+          hint: "1 is not for you; 5 is more please.",
+          required: true,
+        },
+        {
+          id: "worked",
+          type: "long_text",
+          label: "What worked?",
+          hint: "A moment, a detail, a person, a game — anything.",
+          required: true,
+        },
+        {
+          id: "change",
+          type: "long_text",
+          label: "What should we change next time?",
+          required: false,
+        },
         { id: "return", type: "yes_no", label: "Would you come again?", required: true },
       ]),
     ],
@@ -254,9 +312,13 @@ export async function createStarterPlan(eventSlug: string): Promise<Communicatio
   const surveyId = await ensureSurvey(eventSlug, event.title);
   const planId = randomUUID();
   const isCurrentAfterSchool = eventSlug === "after-school-club-2026-09-01";
-  const prepAt = isCurrentAfterSchool ? new Date("2026-08-24T09:00:00.000Z") : localDateAt(event, -7, 10);
+  const prepAt = isCurrentAfterSchool
+    ? new Date("2026-08-24T09:00:00.000Z")
+    : localDateAt(event, -7, 10);
   const practicalAt = localDateAt(event, -2, 10);
-  const dayOfAt = event.doorsAt ? eventStartLocal({ startsAt: event.doorsAt, timezone: event.timezone }, 4) : eventStartLocal(event, 4);
+  const dayOfAt = event.doorsAt
+    ? eventStartLocal({ startsAt: event.doorsAt, timezone: event.timezone }, 4)
+    : eventStartLocal(event, 4);
   const thankYouAt = localDateAt(event, 1, 10);
   const surveyReminderAt = localDateAt(event, 4, 10);
   const gif = `${BASE_URL}/media/after-school-club-walking.gif`;
@@ -268,7 +330,7 @@ export async function createStarterPlan(eventSlug: string): Promise<Communicatio
       position: 0,
       kind: "event_service" as const,
       subject: `A little ${event.title} preparation`,
-      body: "You’re coming to **{{event.title}}** next Tuesday.\n\nNo preparation is required, but if you fancy it, you can:\n\n- [Practise your spelling]({{links.spellingGame}}) with the Milk & Henny spelling game.\n- [Create a short pitch]({{links.pitch}}) about an idea, opinion, product, or theory.\n\nYou do not have to present it. It can simply be something silly or interesting that you make for yourself.\n\nSee you soon,\nMilk & Henny",
+      body: "You’re coming to **{{event.title}}** next Tuesday.\n\nNo preparation is required, but if you fancy it, you can:\n\n## If you fancy it\n\n- [Practise your spelling]({{links.spellingGame}}) with the Milk & Henny spelling game.\n- [Create a short pitch]({{links.pitch}}) about an idea, opinion, product, or theory.\n\nYou do not have to present it. It can simply be something silly or interesting that you make for yourself.\n\nSee you soon,\nMilk & Henny",
       media: [],
       sendAt: prepAt,
       lateJoinHours: hoursUntilEvent(event, prepAt),
@@ -280,8 +342,15 @@ export async function createStarterPlan(eventSlug: string): Promise<Communicatio
       position: 1,
       kind: "event_service" as const,
       subject: `Getting to ${event.title}`,
-      body: "Here is the practical bit for **{{event.title}}**.\n\n**{{event.venue}}**\n{{event.address}}\n\nFrom Woolwich Dockyard Station — 12-minute walk\nFrom Charlton Station — 20-minute walk\nFrom Woolwich Arsenal — 26-minute walk\n\nWhen you reach the roundabout near McDonald’s, follow the signs for Thames Side Studios. You will be there in minutes.\n\nFree parking is available. Follow the milk & henny signs when you arrive.\n\nDoors: **{{event.doors}}**\nStarts: **{{event.time}}**\n\n[Watch the video version]({{links.walkingVideo}}).\n\nIf you get stuck, email [hello@milkandhenny.com]({{links.email}}).",
-      media: [{ kind: "gif", url: gif, alt: "A short walking guide arriving at Common Sense Studios", posterUrl: poster }],
+      body: "Here is the practical bit for **{{event.title}}**.\n\n## Where\n\n**{{event.venue}}**\n{{event.address}}\n\n## Walk from\n\n- Woolwich Dockyard Station — 12-minute walk\n- Charlton Station — 20-minute walk\n- Woolwich Arsenal — 26-minute walk\n\nWhen you reach the roundabout near McDonald’s, follow the signs for Thames Side Studios. You will be there in minutes.\n\n## By car\n\nFree parking is available. Follow the milk & henny signs when you arrive.\n\n## Timing\n\n{{event.timing}}\n\n[Watch the walking video]({{links.walkingVideo}}).\n\nIf you get stuck, email [hello@milkandhenny.com]({{links.email}}).",
+      media: [
+        {
+          kind: "gif",
+          url: gif,
+          alt: "A short walking guide arriving at Common Sense Studios",
+          posterUrl: poster,
+        },
+      ],
       sendAt: practicalAt,
       lateJoinHours: hoursUntilEvent(event, practicalAt),
       surveyId: null,
@@ -292,7 +361,7 @@ export async function createStarterPlan(eventSlug: string): Promise<Communicatio
       position: 2,
       kind: "event_service" as const,
       subject: `Today: ${event.title}`,
-      body: "Today’s the day.\n\n**{{event.title}}**\n{{event.venue}}\n{{event.address}}\n\nDoors: **{{event.doors}}**\nStarts: **{{event.time}}**\n\nFree parking is available. Follow the milk & henny signs. Keep your ticket email handy. A screenshot is fine.\n\nSee you soon.",
+      body: "Today’s the day.\n\n## Where\n\n**{{event.venue}}**\n{{event.address}}\n\n## Timing\n\n{{event.timing}}\n\nFree parking is available. Follow the milk & henny signs. Keep your ticket email handy; a screenshot is fine.\n\nSee you soon.",
       media: [],
       sendAt: dayOfAt,
       lateJoinHours: hoursUntilEvent(event, dayOfAt),
@@ -324,20 +393,45 @@ export async function createStarterPlan(eventSlug: string): Promise<Communicatio
     },
   ];
 
-  await query(`insert into communication_plans (id, event_slug, name) values ($1,$2,$3)`, [planId, eventSlug, `${event.title} · event plan`]);
+  await query(`insert into communication_plans (id, event_slug, name) values ($1,$2,$3)`, [
+    planId,
+    eventSlug,
+    `${event.title} · event plan`,
+  ]);
   for (const stage of stages) {
     const templateId = randomUUID();
     await query(
       `insert into communication_templates (id, name, kind, subject, body, media, is_default)
        values ($1,$2,$3,$4,$5,$6::jsonb,false)`,
-      [templateId, `${event.title} · ${stage.label}`, stage.kind, stage.subject, stage.body, JSON.stringify(stage.media)],
+      [
+        templateId,
+        `${event.title} · ${stage.label}`,
+        stage.kind,
+        stage.subject,
+        stage.body,
+        JSON.stringify(stage.media),
+      ],
     );
     await query(
       `insert into communication_plan_stages
          (id, plan_id, stage_key, label, position, kind, audience, subject, body, media,
           template_id, survey_id, send_at, late_join_hours)
        values ($1,$2,$3,$4,$5,$6,'event_attendees',$7,$8,$9::jsonb,$10,$11,$12,$13)`,
-      [randomUUID(), planId, stage.stageKey, stage.label, stage.position, stage.kind, stage.subject, stage.body, JSON.stringify(stage.media), templateId, stage.surveyId, stage.sendAt, stage.lateJoinHours],
+      [
+        randomUUID(),
+        planId,
+        stage.stageKey,
+        stage.label,
+        stage.position,
+        stage.kind,
+        stage.subject,
+        stage.body,
+        JSON.stringify(stage.media),
+        templateId,
+        stage.surveyId,
+        stage.sendAt,
+        stage.lateJoinHours,
+      ],
     );
   }
   const created = await listCommunicationPlans(eventSlug);
@@ -355,15 +449,27 @@ export async function updateCommunicationPlanStage(input: {
   const subject = input.subject.trim();
   const body = input.body.trim();
   const sendAt = input.sendAt ? new Date(input.sendAt) : null;
-  if (!subject || !body || (input.sendAt && (!sendAt || Number.isNaN(sendAt.getTime())))) throw new Error("Add a subject, message, and valid send time");
-  await query(
+  if (!subject || !body || (input.sendAt && (!sendAt || Number.isNaN(sendAt.getTime()))))
+    throw new Error("Add a subject, message, and valid send time");
+  const media = JSON.stringify(validMedia(input.media));
+  const updated = await query<{ template_id: string | null }>(
     `update communication_plan_stages
         set subject = $2, body = $3, media = $4::jsonb, send_at = $5,
             status = case when status in ('draft', 'scheduled') then 'draft' else status end,
             updated_at = now()
-      where id = $1`,
-    [input.id, subject, body, JSON.stringify(validMedia(input.media)), sendAt],
+      where id = $1
+      returning template_id`,
+    [input.id, subject, body, media, sendAt],
   );
+  const templateId = updated[0]?.template_id;
+  if (templateId) {
+    await query(
+      `update communication_templates
+          set subject = $2, body = $3, media = $4::jsonb, updated_at = now()
+        where id = $1`,
+      [templateId, subject, body, media],
+    );
+  }
 }
 
 export async function scheduleCommunicationPlan(planId: string): Promise<void> {
@@ -380,11 +486,20 @@ export async function scheduleCommunicationPlan(planId: string): Promise<void> {
 }
 
 export async function pauseCommunicationPlan(planId: string): Promise<void> {
-  await query(`update communication_plans set status = 'paused', updated_at = now() where id = $1 and status = 'scheduled'`, [planId]);
-  await query(`update communication_plan_stages set status = 'paused', updated_at = now() where plan_id = $1 and status = 'scheduled'`, [planId]);
+  await query(
+    `update communication_plans set status = 'paused', updated_at = now() where id = $1 and status = 'scheduled'`,
+    [planId],
+  );
+  await query(
+    `update communication_plan_stages set status = 'paused', updated_at = now() where plan_id = $1 and status = 'scheduled'`,
+    [planId],
+  );
 }
 
-export async function sendCommunicationStageNow(stageId: string, request?: Request): Promise<number> {
+export async function sendCommunicationStageNow(
+  stageId: string,
+  request?: Request,
+): Promise<number> {
   const rows = await query<{ plan_id: string; event_slug: string }>(
     `select s.plan_id, p.event_slug
        from communication_plan_stages s
@@ -394,8 +509,14 @@ export async function sendCommunicationStageNow(stageId: string, request?: Reque
   );
   const stage = rows[0];
   if (!stage) throw new Error("Stage not found");
-  await query(`update communication_plans set status = 'scheduled', updated_at = now() where id = $1 and status in ('draft', 'paused')`, [stage.plan_id]);
-  await query(`update communication_plan_stages set send_at = now(), status = 'scheduled', updated_at = now() where id = $1 and status in ('draft', 'scheduled', 'paused')`, [stageId]);
+  await query(
+    `update communication_plans set status = 'scheduled', updated_at = now() where id = $1 and status in ('draft', 'paused')`,
+    [stage.plan_id],
+  );
+  await query(
+    `update communication_plan_stages set send_at = now(), status = 'scheduled', updated_at = now() where id = $1 and status in ('draft', 'scheduled', 'paused')`,
+    [stageId],
+  );
   return expandDueCommunicationStages(request);
 }
 
@@ -407,7 +528,10 @@ function validTestEmail(value: string): string {
   return email;
 }
 
-async function stageDetails(stageId: string, request?: Request): Promise<{
+async function stageDetails(
+  stageId: string,
+  request?: Request,
+): Promise<{
   plan: CommunicationPlan;
   stage: CommunicationPlanStage;
   event: NonNullable<Awaited<ReturnType<typeof getEvent>>>;
@@ -423,11 +547,15 @@ async function stageDetails(stageId: string, request?: Request): Promise<{
   );
   const row = rows[0];
   if (!row) throw new Error("Stage not found");
-  const plan = (await listCommunicationPlans(row.event_slug)).find((candidate) => candidate.id === row.plan_id);
+  const plan = (await listCommunicationPlans(row.event_slug)).find(
+    (candidate) => candidate.id === row.plan_id,
+  );
   const stage = plan?.stages.find((candidate) => candidate.id === stageId);
   const event = await getEvent(row.event_slug);
   if (!plan || !stage || !event) throw new Error("Stage not found");
-  const surveyRow = stage.surveyId ? await query<{ slug: string }>(`select slug from surveys where id = $1`, [stage.surveyId]) : [];
+  const surveyRow = stage.surveyId
+    ? await query<{ slug: string }>(`select slug from surveys where id = $1`, [stage.surveyId])
+    : [];
   const origin = request ? getBaseUrlForRequest(request) : BASE_URL;
   return {
     plan,
@@ -447,12 +575,20 @@ export async function previewCommunicationStageEmail(stageId: string, request?: 
     media: details.stage.media,
     origin: details.origin,
     meta: details.event.title,
-    context: { event: details.event, surveyUrl: details.surveyUrl, recipientName: "Test recipient" },
+    context: {
+      event: details.event,
+      surveyUrl: details.surveyUrl,
+      recipientName: "Test recipient",
+    },
     recipientName: "Test recipient",
   });
 }
 
-export async function sendCommunicationPlanTest(planId: string, testEmailInput: string, request?: Request): Promise<number> {
+export async function sendCommunicationPlanTest(
+  planId: string,
+  testEmailInput: string,
+  request?: Request,
+): Promise<number> {
   const testEmail = validTestEmail(testEmailInput);
   const plan = (await listCommunicationPlans()).find((candidate) => candidate.id === planId);
   if (!plan) throw new Error("Event plan not found");
@@ -461,8 +597,12 @@ export async function sendCommunicationPlanTest(planId: string, testEmailInput: 
   const origin = request ? getBaseUrlForRequest(request) : BASE_URL;
   let queued = 0;
   for (const stage of plan.stages) {
-    const surveyRow = stage.surveyId ? await query<{ slug: string }>(`select slug from surveys where id = $1`, [stage.surveyId]) : [];
-    const surveyUrl = surveyRow[0] ? buildAppUrl(origin, `/surveys/${surveyRow[0].slug}`) : undefined;
+    const surveyRow = stage.surveyId
+      ? await query<{ slug: string }>(`select slug from surveys where id = $1`, [stage.surveyId])
+      : [];
+    const surveyUrl = surveyRow[0]
+      ? buildAppUrl(origin, `/surveys/${surveyRow[0].slug}`)
+      : undefined;
     const rendered = renderCommunicationMessage({
       kind: stage.kind,
       subject: `[TEST] ${stage.subject}`,
@@ -474,8 +614,17 @@ export async function sendCommunicationPlanTest(planId: string, testEmailInput: 
       recipientName: "Test recipient",
     });
     const result = await enqueueEmail(
-      { channel: "communications", to: testEmail, subject: rendered.subject, text: rendered.text, html: rendered.html },
-      { idempotencyKey: `communication-test:${plan.id}:${stage.id}:${randomUUID()}`, communicationId: plan.id },
+      {
+        channel: "communications",
+        to: testEmail,
+        subject: rendered.subject,
+        text: rendered.text,
+        html: rendered.html,
+      },
+      {
+        idempotencyKey: `communication-test:${plan.id}:${stage.id}:${randomUUID()}`,
+        communicationId: plan.id,
+      },
     );
     if (!result.ok) throw new Error(result.error);
     queued += 1;
@@ -483,7 +632,12 @@ export async function sendCommunicationPlanTest(planId: string, testEmailInput: 
   return queued;
 }
 
-type StageRecipient = { email: string; displayName: string | null; emailHash: string; issuedAt: string };
+type StageRecipient = {
+  email: string;
+  displayName: string | null;
+  emailHash: string;
+  issuedAt: string;
+};
 
 function localDayKey(value: string, timeZone: string): string {
   return new Intl.DateTimeFormat("en-GB", {
@@ -494,16 +648,25 @@ function localDayKey(value: string, timeZone: string): string {
   }).format(new Date(value));
 }
 
-function isEventDay(recipient: StageRecipient, event: { startsAt: string; timezone: string }): boolean {
-  return localDayKey(recipient.issuedAt, event.timezone) === localDayKey(event.startsAt, event.timezone);
+function isEventDay(
+  recipient: StageRecipient,
+  event: { startsAt: string; timezone: string },
+): boolean {
+  return (
+    localDayKey(recipient.issuedAt, event.timezone) === localDayKey(event.startsAt, event.timezone)
+  );
 }
 
 function boughtWithin48Hours(recipient: StageRecipient, event: { startsAt: string }): boolean {
-  const hoursUntilStart = (new Date(event.startsAt).getTime() - new Date(recipient.issuedAt).getTime()) / 3_600_000;
+  const hoursUntilStart =
+    (new Date(event.startsAt).getTime() - new Date(recipient.issuedAt).getTime()) / 3_600_000;
   return hoursUntilStart >= 0 && hoursUntilStart <= 48;
 }
 
-async function recipientsForStage(stage: CommunicationPlanStage, eventSlug: string): Promise<StageRecipient[]> {
+async function recipientsForStage(
+  stage: CommunicationPlanStage,
+  eventSlug: string,
+): Promise<StageRecipient[]> {
   if (stage.audience !== "event_attendees") return [];
   const tickets = await listTicketsForEvent(eventSlug);
   const recipients = new Map<string, StageRecipient>();
@@ -513,7 +676,12 @@ async function recipientsForStage(stage: CommunicationPlanStage, eventSlug: stri
     const emailHash = hashEmail(email);
     const existing = recipients.get(emailHash);
     if (!existing) {
-      recipients.set(emailHash, { email, emailHash, displayName: ticket.holderName || null, issuedAt: ticket.issuedAt });
+      recipients.set(emailHash, {
+        email,
+        emailHash,
+        displayName: ticket.holderName || null,
+        issuedAt: ticket.issuedAt,
+      });
     } else if (new Date(ticket.issuedAt).getTime() < new Date(existing.issuedAt).getTime()) {
       existing.issuedAt = ticket.issuedAt;
     }
@@ -536,12 +704,19 @@ async function shouldSkipStageForRecipient(
   event: { startsAt: string; timezone: string },
 ): Promise<boolean> {
   if (stage.stageKey === "getting-there" && isEventDay(recipient, event)) return true;
-  if (stage.stageKey !== "today" || isEventDay(recipient, event) || !boughtWithin48Hours(recipient, event)) return false;
+  if (
+    stage.stageKey !== "today" ||
+    isEventDay(recipient, event) ||
+    !boughtWithin48Hours(recipient, event)
+  )
+    return false;
   const practicalStage = plan.stages.find((candidate) => candidate.stageKey === "getting-there");
   return practicalStage ? hasStageDelivery(practicalStage.id, recipient.emailHash) : false;
 }
 
-export async function previewCommunicationStage(stageId: string): Promise<{ recipientCount: number; recipients: Array<{ name: string | null; email: string }> }> {
+export async function previewCommunicationStage(
+  stageId: string,
+): Promise<{ recipientCount: number; recipients: Array<{ name: string | null; email: string }> }> {
   const rows = await query<{ plan_id: string; event_slug: string }>(
     `select s.plan_id, p.event_slug
        from communication_plan_stages s
@@ -556,10 +731,18 @@ export async function previewCommunicationStage(stageId: string): Promise<{ reci
   const selected = plan?.stages.find((candidate) => candidate.id === stageId);
   if (!selected) throw new Error("Stage not found");
   const recipients = await recipientsForStage(selected, stage.event_slug);
-  return { recipientCount: recipients.length, recipients: recipients.map((recipient) => ({ name: recipient.displayName, email: recipient.email })) };
+  return {
+    recipientCount: recipients.length,
+    recipients: recipients.map((recipient) => ({
+      name: recipient.displayName,
+      email: recipient.email,
+    })),
+  };
 }
 
-async function claimDueStages(): Promise<Array<{ stageId: string; planId: string; eventSlug: string }>> {
+async function claimDueStages(): Promise<
+  Array<{ stageId: string; planId: string; eventSlug: string }>
+> {
   return transaction(async (client) => {
     await client.query(
       `update communication_plan_stages
@@ -587,7 +770,11 @@ async function claimDueStages(): Promise<Array<{ stageId: string; planId: string
         where s.id = due.id and p.id = s.plan_id
        returning s.id as stage_id, s.plan_id, p.event_slug`,
     );
-    return result.rows.map((row) => ({ stageId: row.stage_id, planId: row.plan_id, eventSlug: row.event_slug }));
+    return result.rows.map((row) => ({
+      stageId: row.stage_id,
+      planId: row.plan_id,
+      eventSlug: row.event_slug,
+    }));
   });
 }
 
@@ -602,9 +789,13 @@ export async function expandDueCommunicationStages(request?: Request): Promise<n
     const event = await getEvent(item.eventSlug);
     if (!plan || !stage || !event) continue;
     const recipients = await recipientsForStage(stage, item.eventSlug);
-    const surveyRow = stage.surveyId ? await query<{ slug: string }>(`select slug from surveys where id = $1`, [stage.surveyId]) : [];
+    const surveyRow = stage.surveyId
+      ? await query<{ slug: string }>(`select slug from surveys where id = $1`, [stage.surveyId])
+      : [];
     const origin = request ? getBaseUrlForRequest(request) : BASE_URL;
-    const surveyUrl = surveyRow[0] ? buildAppUrl(origin, `/surveys/${surveyRow[0].slug}`) : undefined;
+    const surveyUrl = surveyRow[0]
+      ? buildAppUrl(origin, `/surveys/${surveyRow[0].slug}`)
+      : undefined;
     let recipientCount = 0;
     let stageQueued = 0;
     for (const recipient of recipients) {
@@ -628,7 +819,11 @@ export async function expandDueCommunicationStages(request?: Request): Promise<n
       );
       if (!inserted[0]) continue;
       recipientCount += 1;
-      const context: CommunicationEmailContext = { event, surveyUrl, recipientName: recipient.displayName ?? undefined };
+      const context: CommunicationEmailContext = {
+        event,
+        surveyUrl,
+        recipientName: recipient.displayName ?? undefined,
+      };
       const rendered = renderCommunicationMessage({
         kind: stage.kind,
         subject: stage.subject,
@@ -640,15 +835,30 @@ export async function expandDueCommunicationStages(request?: Request): Promise<n
         context,
       });
       const result = await enqueueEmail(
-        { channel: "communications", to: recipient.email, subject: rendered.subject, text: rendered.text, html: rendered.html },
-        { idempotencyKey: `communication-stage:${stage.id}:${recipient.emailHash}`, communicationId: stage.id },
+        {
+          channel: "communications",
+          to: recipient.email,
+          subject: rendered.subject,
+          text: rendered.text,
+          html: rendered.html,
+        },
+        {
+          idempotencyKey: `communication-stage:${stage.id}:${recipient.emailHash}`,
+          communicationId: stage.id,
+        },
       );
       if (result.ok) {
         queued += 1;
         stageQueued += 1;
-        await query(`update communication_stage_deliveries set status = 'queued', updated_at = now() where stage_id = $1 and email_hash = $2`, [stage.id, recipient.emailHash]);
+        await query(
+          `update communication_stage_deliveries set status = 'queued', updated_at = now() where stage_id = $1 and email_hash = $2`,
+          [stage.id, recipient.emailHash],
+        );
       } else {
-        await query(`update communication_stage_deliveries set status = 'failed', updated_at = now() where stage_id = $1 and email_hash = $2`, [stage.id, recipient.emailHash]);
+        await query(
+          `update communication_stage_deliveries set status = 'failed', updated_at = now() where stage_id = $1 and email_hash = $2`,
+          [stage.id, recipient.emailHash],
+        );
       }
     }
     await query(
