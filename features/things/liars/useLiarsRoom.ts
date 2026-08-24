@@ -1,6 +1,7 @@
 import { useCallback } from "react";
 import { useLiveRoomSnapshot } from "../shared/useLiveRoomSnapshot";
 import { useMultiplayerWakeSocket } from "../shared/useMultiplayerWakeSocket";
+import { MULTIPLAYER_REALTIME_LIMITS } from "../shared/multiplayer-realtime";
 import { readLiarsSnapshotFn } from "./liars-room.functions";
 import type { LiarsSnapshot } from "./types";
 
@@ -34,7 +35,7 @@ export function useLiarsRoom(input: {
 
   const room = useLiveRoomSnapshot<LiarsSnapshot>({
     enabled,
-    intervalMs: 6_000,
+    intervalMs: MULTIPLAYER_REALTIME_LIMITS.safetyReconciliationIntervalMs,
     roomKey: enabled ? `${input.roomId}:${input.playerId ?? "host"}:${input.playerToken}` : null,
     initialSnapshot: input.initialSnapshot,
     read,

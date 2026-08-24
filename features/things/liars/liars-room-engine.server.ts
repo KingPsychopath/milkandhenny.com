@@ -10,11 +10,16 @@ import {
   multiplayerActionSeen,
   multiplayerCredentialsMatch,
   multiplayerRoomExpiresAt,
+  multiplayerRoomStateChanged,
   multiplayerSnapshotDigest,
   rememberMultiplayerAction,
   remainingMultiplayerRoomTtlSeconds,
   withMultiplayerRoomLock,
 } from "../shared/room-primitives.server";
+import {
+  MULTIPLAYER_PRESENCE_TOUCH_INTERVAL_MS,
+  touchMultiplayerPresence,
+} from "../shared/room-presence";
 import type { MultiplayerLockAttempt } from "../shared/room-primitives.server";
 import { multiplayerFailure } from "../shared/multiplayer";
 import {
@@ -283,8 +288,9 @@ async function withRoom<T>(
   if (!redis) {
     const loaded = await loadRoom(id);
     if (!loaded) return null;
+    const before = JSON.stringify(loaded.room);
     const result = await use(loaded.room, loaded.keys);
-    await saveRoom(loaded.room, loaded.keys);
+    if (multiplayerRoomStateChanged(before, loaded.room)) await saveRoom(loaded.room, loaded.keys);
     return result;
   }
   const initial = await loadRoom(id);
@@ -295,8 +301,9 @@ async function withRoom<T>(
     async () => {
       const room = await redis.get<LiarsRoomState>(initial.keys.state);
       if (!room || room.expiresAt <= Date.now()) return null;
+      const before = JSON.stringify(room);
       const result = await use(room, initial.keys);
-      await saveRoom(room, initial.keys);
+      if (multiplayerRoomStateChanged(before, room)) await saveRoom(room, initial.keys);
       return result;
     },
   );
@@ -1427,11 +1434,12 @@ function authenticate(room: LiarsRoomState, credential: string, playerId?: strin
   return safeEqual(credential, room.hostHash);
 }
 
-function touch(room: LiarsRoomState, playerId: string | undefined, now: number) {
+function touch(room: LiarsRoomState, playerId: string | undefined, now: number, force = false) {
   const idleFor = Math.max(0, now - (room.lastActiveAt || now));
-  room.lastActiveAt = now;
   const player = room.players.find(({ id }) => id === playerId);
-  if (player) player.lastSeenAt = now;
+  if (player) touchMultiplayerPresence(player, now, force);
+  if (force || !player || now - room.lastActiveAt >= MULTIPLAYER_PRESENCE_TOUCH_INTERVAL_MS)
+    room.lastActiveAt = now;
   const host = room.players.find(({ id }) => id === room.hostPlayerId);
   room.hostDisconnectedSince =
     host && !connected(host, now) ? (room.hostDisconnectedSince ?? now) : null;
@@ -1546,7 +1554,7 @@ export async function applyLiarsHostAction(input: {
         ? actor.id === room.hostPlayerId
         : false;
     if (!byToken && !byPlayer) return failure("room_unavailable", "Room unavailable");
-    const idleFor = touch(room, actor?.id, now);
+    const idleFor = touch(room, actor?.id, now, true);
     advance(room, now, idleFor);
     const view = () => snapshot(room, input.playerId, now);
     if (multiplayerActionSeen(room.processedActions, input.action.actionId)) return accept(view());
@@ -1703,7 +1711,7 @@ export async function applyLiarsPlayerAction(input: {
     if (!player || !safeEqual(input.playerToken, player.tokenHash))
       return failure("room_unavailable", "Room unavailable");
     const now = Date.now();
-    const idleFor = touch(room, player.id, now);
+    const idleFor = touch(room, player.id, now, true);
     advance(room, now, idleFor);
     const view = () => snapshot(room, player.id, now);
     if (multiplayerActionSeen(room.processedActions, input.action.actionId)) return accept(view());

@@ -124,6 +124,30 @@ function validClientId(value: string) {
   return id;
 }
 
+async function leaveExistingAssignment(
+  client: { query: <T>(text: string, values?: unknown[]) => Promise<{ rows: T[] }> },
+  runId: string,
+  clientId: string,
+) {
+  const assignments = await client.query<{ room_id: string }>(
+    `update game_pool_assignments set status = 'left', ended_at = now(), display_name = 'left'
+     where run_id = $1 and client_id = $2 and status = 'active'
+     returning room_id`,
+    [runId, clientId],
+  );
+  const roomId = assignments.rows[0]?.room_id;
+  if (roomId)
+    await client.query(
+      `update game_pool_rooms set
+         player_count = greatest(0, player_count - 1),
+         status = case when player_count <= 1 then 'closed' else status end,
+         updated_at = now()
+       where run_id = $1 and room_id = $2`,
+      [runId, roomId],
+    );
+  return roomId ?? null;
+}
+
 async function readReceipt(runId: string, clientId: string) {
   const redis = getRedis();
   const receipt = redis
@@ -189,6 +213,7 @@ export async function assignGamePoolRoom(input: {
   clientId: string;
   name: string;
   choice: "auto" | "new" | { roomId: string };
+  moveExisting: boolean;
 }) {
   const startedAt = performance.now();
   let failed = true;
@@ -200,7 +225,7 @@ export async function assignGamePoolRoom(input: {
     if (!run) throw new Error("This game is not open.");
     const clientId = validClientId(input.clientId);
     const name = validName(input.name);
-    const receipt = await readReceipt(run.id, clientId);
+    const receipt = input.moveExisting ? null : await readReceipt(run.id, clientId);
     if (receipt) return receipt.assignment;
 
     const assignment = await withGamePoolAllocation(run.id, async (client) => {
@@ -227,11 +252,12 @@ export async function assignGamePoolRoom(input: {
        where run_id = $1 and client_id = $2 and status = 'active'`,
         [run.id, clientId],
       );
-      if (existing.rows[0]) {
+      if (existing.rows[0] && !input.moveExisting) {
         const retryReceipt = await readReceipt(run.id, clientId);
         if (retryReceipt) return retryReceipt.assignment;
-        throw new Error("Your previous room is still active. Open it from your game page.");
+        throw new Error("You are already in a room. Choose another room to move.");
       }
+      const existingRoomId = existing.rows[0]?.room_id ?? null;
 
       const removed = await client.query<{ room_id: string }>(
         `select room_id from game_pool_assignments
@@ -239,7 +265,17 @@ export async function assignGamePoolRoom(input: {
        order by ended_at desc nulls last limit 1`,
         [run.id, clientId],
       );
-      const excludedRoomId = removed.rows[0]?.room_id ?? null;
+      const requestedSameAsExisting =
+        typeof input.choice === "object" && input.choice.roomId === existingRoomId;
+      const excludedRoomId = requestedSameAsExisting
+        ? (removed.rows[0]?.room_id ?? null)
+        : (existingRoomId ?? removed.rows[0]?.room_id ?? null);
+      let existingReleased = false;
+      const releaseExisting = async () => {
+        if (!input.moveExisting || existingReleased) return;
+        await leaveExistingAssignment(client, run.id, clientId);
+        existingReleased = true;
+      };
 
       const rooms = await client.query<GamePoolRoomRow>(
         `select * from game_pool_rooms where run_id = $1 and status = 'open'
@@ -272,6 +308,7 @@ export async function assignGamePoolRoom(input: {
             clientId,
             name,
           });
+          await releaseExisting();
           await client.query(
             "update game_pool_rooms set player_count = player_count + 1, updated_at = now() where run_id = $1 and room_id = $2",
             [run.id, room.room_id],
@@ -320,6 +357,7 @@ export async function assignGamePoolRoom(input: {
           name,
           joinId: clientId,
         });
+        await releaseExisting();
         const capacity = gamePoolCapacity(entrance.game);
         await client.query(
           `insert into game_pool_rooms (run_id, room_id, player_count, capacity)
@@ -365,22 +403,7 @@ export async function releaseGamePoolAssignment(input: { token: string; clientId
     entrance?.run?.id ?? (await findGamePoolRunForClient({ token: input.token, clientId }));
   if (!runId) return { ok: true as const };
   await withGamePoolAllocation(runId, async (client) => {
-    const assignments = await client.query<{ room_id: string }>(
-      `update game_pool_assignments set status = 'left', ended_at = now(), display_name = 'left'
-       where run_id = $1 and client_id = $2 and status = 'active'
-       returning room_id`,
-      [runId, clientId],
-    );
-    const roomId = assignments.rows[0]?.room_id;
-    if (roomId)
-      await client.query(
-        `update game_pool_rooms set
-           player_count = greatest(0, player_count - 1),
-           status = case when player_count <= 1 then 'closed' else status end,
-           updated_at = now()
-         where run_id = $1 and room_id = $2`,
-        [runId, roomId],
-      );
+    await leaveExistingAssignment(client, runId, clientId);
   });
   const redis = getRedis();
   if (redis) await redis.del(gamePoolAssignmentReceiptKey(runId, clientId));

@@ -1,6 +1,7 @@
 import { useCallback } from "react";
 import { useLiveRoomSnapshot } from "../shared/useLiveRoomSnapshot";
 import { useMultiplayerWakeSocket } from "../shared/useMultiplayerWakeSocket";
+import { MULTIPLAYER_REALTIME_LIMITS } from "../shared/multiplayer-realtime";
 import { readTwinSnapshotFn } from "./twin-room.functions";
 import type { TwinSnapshot } from "./types";
 
@@ -32,7 +33,7 @@ export function useTwinRoom(input: {
   const room = useLiveRoomSnapshot<TwinSnapshot>({
     // Heats are seconds long, so the safety poll sits closer than the other games'. The wake socket
     // still carries almost every update; this only has to catch a dropped one before a heat ends.
-    intervalMs: 5_000,
+    intervalMs: MULTIPLAYER_REALTIME_LIMITS.safetyReconciliationIntervalMs,
     roomKey: `${input.roomId}:${input.playerId}:${input.playerToken}`,
     initialSnapshot: input.initialSnapshot,
     read,

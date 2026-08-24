@@ -12,7 +12,9 @@ import {
   releaseGamePoolMembership,
 } from "./pool-session.client";
 import type { GamePoolPublicView } from "./types";
+import { MULTIPLAYER_REALTIME_LIMITS } from "../shared/multiplayer-realtime";
 import { useMultiplayerWakeSocket } from "../shared/useMultiplayerWakeSocket";
+import { useRoomReconciler } from "../shared/useRoomReconciler";
 
 function showRoomFoundJourney() {
   if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return Promise.resolve();
@@ -72,69 +74,107 @@ export function GamePoolEntranceApp({
       // The current view remains useful during a short network failure.
     }
   }, [token]);
-  refreshRef.current = refresh;
+
+  const refreshRoom = useRoomReconciler({
+    enabled: Boolean(view.run),
+    intervalMs: MULTIPLAYER_REALTIME_LIMITS.safetyReconciliationIntervalMs,
+    roomKey: view.run ? `${token}:${view.run.id}` : null,
+    reconcile: async () => refresh(),
+  });
 
   const socket = useMultiplayerWakeSocket({
     path: "/api/things/game-pool-ws",
     hello: view.run ? { token, runId: view.run.id } : null,
-    onWake: () => void refreshRef.current(),
-    onTerminal: () => void refreshRef.current(),
+    onWake: () => void refreshRoom(),
+    onTerminal: () => void refreshRoom(),
   });
 
   useEffect(() => {
-    const interval = window.setInterval(() => void refreshRef.current(), 5_000);
-    const resume = () => {
-      if (!document.hidden) void refreshRef.current();
-    };
-    document.addEventListener("visibilitychange", resume);
-    return () => {
-      window.clearInterval(interval);
-      document.removeEventListener("visibilitychange", resume);
-    };
-  }, []);
+    autoJoinChecked.current = false;
+    setTargetRejected(false);
+  }, [requestedRoomId, token]);
 
   const assign = useCallback(
     async (choice: "auto" | "new" | { roomId: string }) => {
-      if (busy) return;
+      if (busy || actionInFlight.current) return;
+      const activeRoomId = activeMembership?.roomId ?? null;
+      if (
+        activeMembership &&
+        game &&
+        shouldReturnToExistingGamePoolRoom({
+          activeRoomId,
+          requestedRoomId,
+          targetRejected,
+          choice,
+        })
+      ) {
+        setBusy(true);
+        actionInFlight.current = true;
+        window.location.assign(gamePoolPlayerPath(game, activeMembership.roomId));
+        return;
+      }
       const name = playerName.trim();
       if (!name) {
         setMessage("Add your name first.");
         document.getElementById(nameId)?.focus();
         return;
       }
+      actionInFlight.current = true;
       setBusy(true);
       setDestinationRoomId(null);
       setMessage(null);
       const clientId = gamePoolClientId();
       try {
-        if (
-          activeMembership &&
-          activeMembership.roomId !== (typeof choice === "object" ? choice.roomId : null)
-        ) {
-          if (!game) throw new Error("This game is not open.");
-          await releaseGamePoolMembership(game, activeMembership.roomId);
-        }
         const assignment = await assignGamePoolRoomFn({
-          data: { token, clientId, name, choice },
+          data: {
+            token,
+            clientId,
+            name,
+            choice,
+            moveExisting: shouldReplaceExistingGamePoolRoom({
+              activeRoomId,
+              requestedRoomId,
+              targetRejected,
+              choice,
+            }),
+          },
         });
         remember(name);
         adoptGamePoolAssignment(assignment, { token, clientId });
+        if (activeRoomId && activeRoomId !== assignment.roomId && game)
+          forgetGamePoolRoomMembership(game, activeRoomId);
         setDestinationRoomId(assignment.roomId);
         await showRoomFoundJourney();
-        window.location.assign(gamePoolPlayerPath(assignment));
+        window.location.assign(gamePoolPlayerPath(assignment.game, assignment.roomId));
       } catch (error) {
         const errorMessage =
           error instanceof Error ? error.message : "Could not find a room. Try again.";
         if (typeof choice === "object" && errorMessage === "That room is no longer available.") {
           setTargetRejected(true);
           setMessage("That room just filled or started. Join the next available room.");
-        } else setMessage(errorMessage);
+        } else if (errorMessage === "You are already in a room. Choose another room to move.")
+          setMessage(
+            "You are already in a room. Choose another room below, or start another room.",
+          );
+        else setMessage(errorMessage);
         setDestinationRoomId(null);
+        actionInFlight.current = false;
         setBusy(false);
         await refresh();
       }
     },
-    [activeMembership, busy, game, nameId, playerName, refresh, remember, token],
+    [
+      activeMembership,
+      busy,
+      game,
+      nameId,
+      playerName,
+      refresh,
+      remember,
+      requestedRoomId,
+      targetRejected,
+      token,
+    ],
   );
 
   useEffect(() => {
@@ -146,7 +186,7 @@ export function GamePoolEntranceApp({
       view.run.status !== "open" ||
       view.message ||
       !playerName.trim() ||
-      activeRoomId
+      (activeRoomId && !requestedRoomId && !targetRejected)
     )
       return;
     void assign(requestedChoice);
@@ -156,7 +196,9 @@ export function GamePoolEntranceApp({
     nameLoaded,
     playerName,
     requestedChoice,
+    requestedRoomId,
     suppressAutoJoin,
+    targetRejected,
     view.message,
     view.run,
   ]);
@@ -180,22 +222,56 @@ export function GamePoolEntranceApp({
     );
 
   const accepting = view.run?.status === "open" && !view.message;
+  const returningToActiveRoom = Boolean(activeMembership && !requestedRoomId && !targetRejected);
+  const joiningNextRoom = Boolean(targetRejected);
+  const joiningRequestedRoom = Boolean(requestedRoomId && !targetRejected);
   return (
     <main id="main" className="mx-auto min-h-dvh w-full max-w-2xl px-6 py-12 sm:py-20">
       <header>
         <h1 className="font-serif text-5xl font-semibold tracking-tight">
-          {activeRoom ? "choose another room" : (view.entrance?.label ?? "join a game")}
+          {returningToActiveRoom
+            ? "welcome back"
+            : joiningNextRoom
+              ? "That room just filled. Choose the next available room below."
+              : joiningRequestedRoom
+                ? "join the invited room"
+                : activeRoom
+                  ? "choose another room"
+                  : (view.entrance?.label ?? "join a game")}
         </h1>
         <p className="mt-4 max-w-lg font-serif text-lg leading-relaxed theme-subtle">
-          {activeRoom
-            ? `You are still in ${activeRoom.label}. Choose another room to leave it and move.`
-            : requestedRoomAvailable && requestedRoom
+          {returningToActiveRoom
+            ? `You are already in ${activeRoom?.label ?? "your room"}. Continue to go back, or choose another room below.`
+            : joiningRequestedRoom && requestedRoomAvailable && requestedRoom
               ? `This invite is for ${requestedRoom.label}. Add your name and go straight in.`
-              : requestedRoomId
-                ? "That room is no longer available. We can place you in the next room."
-                : "Add your name. We will place you in a room that is ready for another player."}
+              : joiningRequestedRoom
+                ? "This invite is for one specific room. Add your name and go straight in."
+                : activeRoom
+                  ? `You are still in ${activeRoom.label}. Choose another room to leave it and move.`
+                  : requestedRoomId
+                    ? "That room is no longer available. We can place you in the next room."
+                    : "Add your name. We will place you in a room that is ready for another player."}
         </p>
       </header>
+
+      {activeMembership && game ? (
+        <section className="mt-8 border-y theme-border py-6" aria-labelledby="return-to-room-title">
+          <p className="font-mono text-micro theme-muted tracking-widest uppercase">your room</p>
+          <h2 id="return-to-room-title" className="mt-2 font-serif text-2xl font-semibold">
+            Return to your game
+          </h2>
+          <p className="mt-3 max-w-lg font-mono text-sm leading-relaxed theme-muted">
+            You are already playing in {activeRoom?.label ?? "a room"}. You do not need to enter
+            your name again.
+          </p>
+          <a
+            href={gamePoolPlayerPath(game, activeMembership.roomId)}
+            className="mt-5 inline-flex min-h-12 items-center rounded-full bg-[var(--foreground)] px-6 font-mono text-sm font-semibold text-[var(--background)] transition-opacity hover:opacity-85"
+          >
+            return to my room
+          </a>
+        </section>
+      ) : null}
 
       {accepting && view.run ? (
         <GamePoolLobbyScene
@@ -223,13 +299,19 @@ export function GamePoolEntranceApp({
           }}
         >
           <h2 id="join-title" className="font-serif text-2xl font-semibold">
-            {requestedRoomAvailable && requestedRoom
+            {joiningRequestedRoom && requestedRoomAvailable && requestedRoom
               ? `Join ${requestedRoom.label}`
-              : requestedRoomId
-                ? "Join the next room"
-                : activeRoom
-                  ? "Choose another room"
-                  : "Enter the lobby"}
+              : joiningRequestedRoom
+                ? "Join the invited room"
+                : requestedRoomId
+                  ? "Join the next room"
+                  : joiningNextRoom
+                    ? "Join the next room"
+                    : returningToActiveRoom
+                      ? "Return to your room"
+                      : activeRoom
+                        ? "Choose another room"
+                        : "Enter the lobby"}
           </h2>
           <label htmlFor={nameId} className="mt-6 block font-mono text-xs theme-muted">
             your name
@@ -250,18 +332,24 @@ export function GamePoolEntranceApp({
           />
           <button
             type="submit"
-            disabled={busy || !nameLoaded}
+            disabled={busy || (!returningToActiveRoom && !nameLoaded)}
             className="mt-8 min-h-14 w-full rounded-full bg-[var(--foreground)] px-6 font-mono text-sm font-semibold text-[var(--background)] transition-opacity hover:opacity-85 disabled:opacity-50"
           >
             {busy
               ? "finding a room…"
-              : requestedRoomAvailable && requestedRoom
+              : joiningRequestedRoom && requestedRoomAvailable && requestedRoom
                 ? `join ${requestedRoom.label}`
-                : requestedRoomId
-                  ? "join next available room"
-                  : activeRoom
-                    ? "leave current room and find another"
-                    : "find me a room"}
+                : joiningRequestedRoom
+                  ? "join invited room"
+                  : requestedRoomId
+                    ? "join next available room"
+                    : joiningNextRoom
+                      ? "join next available room"
+                      : returningToActiveRoom
+                        ? "return to my room"
+                        : activeRoom
+                          ? "leave current room and find another"
+                          : "find me a room"}
           </button>
           {view.run?.allowNewRooms ? (
             <button
@@ -282,15 +370,19 @@ export function GamePoolEntranceApp({
               {message}
             </p>
           ) : null}
-          <p className="mt-4 font-mono text-micro leading-relaxed theme-faint">
-            {joiningRequestedRoom
-              ? "This invite takes you to one specific room."
-              : requestedRoomAvailable
-                ? "This is a shared room. Everyone who joins plays together."
-                : activeRoom
-                  ? "Choosing another room releases your current seat first."
-                  : "We remember your name on this device so you can return to your room."}
-          </p>
+          {joiningRequestedRoom ? (
+            <p className="mt-4 font-mono text-micro leading-relaxed theme-faint">
+              This invite takes you to one specific room.
+            </p>
+          ) : requestedRoomAvailable ? (
+            <p className="mt-4 font-mono text-micro leading-relaxed theme-faint">
+              This is a shared room. Everyone who joins plays together.
+            </p>
+          ) : activeRoom ? (
+            <p className="mt-4 font-mono text-micro leading-relaxed theme-faint">
+              Choosing another room releases your current seat first.
+            </p>
+          ) : null}
         </form>
       ) : (
         <section className="mt-10 border-t theme-border pt-8" aria-live="polite">

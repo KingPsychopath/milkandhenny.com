@@ -9,6 +9,8 @@ export const MULTIPLAYER_REALTIME_LIMITS = {
   maxReconnectDelayMs: 15_000,
   /** Wake reads remain authoritative, but never run closer together than this. */
   minimumReconciliationGapMs: 750,
+  /** Safety reads catch a missed wake without turning an open tab into a request loop. */
+  safetyReconciliationIntervalMs: 10_000,
   minimumWakeIntervalMs: 250,
   /** A socket that never sends an application ping is stale after this window. */
   preAuthHelloTimeoutMs: 10_000,

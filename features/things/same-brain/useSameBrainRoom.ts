@@ -1,6 +1,7 @@
 import { useCallback } from "react";
 import { useLiveRoomSnapshot } from "../shared/useLiveRoomSnapshot";
 import { useMultiplayerWakeSocket } from "../shared/useMultiplayerWakeSocket";
+import { MULTIPLAYER_REALTIME_LIMITS } from "../shared/multiplayer-realtime";
 import { readSameBrainSnapshotFn } from "./same-brain-room.functions";
 import type { SameBrainSnapshot } from "./types";
 
@@ -31,7 +32,7 @@ export function useSameBrainRoom(input: {
   );
 
   const room = useLiveRoomSnapshot<SameBrainSnapshot>({
-    intervalMs: 5_000,
+    intervalMs: MULTIPLAYER_REALTIME_LIMITS.safetyReconciliationIntervalMs,
     roomKey: `${input.roomId}:${input.playerId}:${input.playerToken}`,
     initialSnapshot: input.initialSnapshot,
     read,

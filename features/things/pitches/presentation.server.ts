@@ -10,6 +10,7 @@ import {
   remainingMultiplayerRoomTtlSeconds,
   withMultiplayerRoomLock,
 } from "@/features/things/shared/room-primitives.server";
+import { publishMultiplayerRoomWake } from "@/features/things/shared/multiplayer-runtime.server";
 import { readPublicPitchDeck } from "./store.server";
 import type {
   PitchControllerCredentials,
@@ -129,7 +130,7 @@ export async function joinPresentation(
   roomId: string,
   name: string,
 ): Promise<PresentationResult<PitchControllerCredentials>> {
-  return mutate(roomId, async (state) => {
+  const result = await mutate(roomId, async (state) => {
     if (state.controllers.length >= 12) {
       return { ok: false, status: 409, error: "This presentation already has enough remotes" };
     }
@@ -155,6 +156,9 @@ export async function joinPresentation(
       },
     };
   });
+  if (result.ok)
+    await publishMultiplayerRoomWake("pitch-presentation", roomId).catch(() => undefined);
+  return result;
 }
 
 export async function readPresentation(
@@ -182,13 +186,37 @@ export async function readPresentation(
   };
 }
 
+export async function authorizePresentationSocket(input: {
+  roomId: string;
+  role: "host" | "controller";
+  hostToken?: string;
+  controllerId?: string;
+  controllerToken?: string;
+}) {
+  const result =
+    input.role === "host" && input.hostToken
+      ? await readPresentation(input.roomId, { hostToken: input.hostToken })
+      : input.role === "controller" && input.controllerId && input.controllerToken
+        ? await readPresentation(input.roomId, {
+            controllerId: input.controllerId,
+            controllerToken: input.controllerToken,
+          })
+        : null;
+  if (!result?.ok) return null;
+  return {
+    roomId: input.roomId,
+    role: input.role,
+    ...(input.role === "controller" && input.controllerId ? { playerId: input.controllerId } : {}),
+  };
+}
+
 export async function approvePresentationController(input: {
   roomId: string;
   hostToken: string;
   controllerId: string;
   approved: boolean;
 }): Promise<PresentationResult<PitchPresentationSnapshot>> {
-  return mutate(input.roomId, async (state) => {
+  const result = await mutate(input.roomId, async (state) => {
     if (!multiplayerCredentialsMatch(input.hostToken, state.hostHash)) {
       return { ok: false, status: 404, error: "Presentation not found" };
     }
@@ -198,6 +226,9 @@ export async function approvePresentationController(input: {
     state.revision += 1;
     return { ok: true, value: snapshot(state) };
   });
+  if (result.ok)
+    await publishMultiplayerRoomWake("pitch-presentation", input.roomId).catch(() => undefined);
+  return result;
 }
 
 export async function controlPresentation(input: {
@@ -210,7 +241,7 @@ export async function controlPresentation(input: {
     | { type: "go"; direction: -1 | 1 }
     | { type: "slide"; index: number };
 }): Promise<PresentationResult<PitchPresentationSnapshot>> {
-  return mutate(input.roomId, async (state) => {
+  const result = await mutate(input.roomId, async (state) => {
     const isHost = multiplayerCredentialsMatch(input.credential, state.hostHash);
     const controller = input.controllerId
       ? state.controllers.find((item) => item.id === input.controllerId)
@@ -249,4 +280,7 @@ export async function controlPresentation(input: {
     state.revision += 1;
     return { ok: true, value: snapshot(state) };
   });
+  if (result.ok)
+    await publishMultiplayerRoomWake("pitch-presentation", input.roomId).catch(() => undefined);
+  return result;
 }

@@ -6,10 +6,11 @@ import { authenticateRequest } from "@/features/auth/auth.server";
 import { runPitchesResult } from "./pitches-runtime.server";
 import { PitchesService } from "./pitches-service.server";
 import { isPitchDeckId } from "./validation";
-
-const ROOM_PATTERN = /^[A-Z2-9]{4,10}$/;
-const TOKEN_PATTERN = /^[A-Za-z0-9_-]{16,160}$/;
-const ACTION_PATTERN = /^[A-Za-z0-9_-]{8,120}$/;
+import {
+  PRESENTATION_ACTION_PATTERN,
+  PRESENTATION_ROOM_PATTERN,
+  PRESENTATION_TOKEN_PATTERN,
+} from "./presentation-validation";
 
 type PresentationOperation<T> =
   | { ok: true; value: T }
@@ -43,7 +44,11 @@ export const createPresentationRoomFn = createServerFn({ method: "POST" })
 export const joinPresentationFn = createServerFn({ method: "POST" })
   .validator((data: { roomId: string; name: string }) => data)
   .handler(({ data }) => {
-    if (!ROOM_PATTERN.test(data.roomId) || !data.name.trim() || data.name.length > 80) {
+    if (
+      !PRESENTATION_ROOM_PATTERN.test(data.roomId) ||
+      !data.name.trim() ||
+      data.name.length > 80
+    ) {
       return Promise.resolve({
         ok: false as const,
         status: 400,
@@ -66,10 +71,16 @@ type ReadInput =
 export const readPresentationFn = createServerFn({ method: "POST" })
   .validator((data: ReadInput) => data)
   .handler(({ data }) => {
-    if (!ROOM_PATTERN.test(data.roomId)) {
+    if (!PRESENTATION_ROOM_PATTERN.test(data.roomId)) {
       return Promise.resolve({ ok: false as const, status: 404, error: "Presentation not found" });
     }
-    if (data.hostToken && TOKEN_PATTERN.test(data.hostToken)) {
+    if (data.hostToken !== undefined) {
+      if (!PRESENTATION_TOKEN_PATTERN.test(data.hostToken))
+        return Promise.resolve({
+          ok: false as const,
+          status: 404,
+          error: "Presentation not found",
+        });
       return runPresentationOperation(
         Effect.gen(function* () {
           const pitches = yield* PitchesService;
@@ -79,12 +90,18 @@ export const readPresentationFn = createServerFn({ method: "POST" })
         }),
       );
     }
-    if (
-      data.controllerId &&
-      data.controllerToken &&
-      TOKEN_PATTERN.test(data.controllerId) &&
-      TOKEN_PATTERN.test(data.controllerToken)
-    ) {
+    if (data.controllerId !== undefined || data.controllerToken !== undefined) {
+      if (
+        !data.controllerId ||
+        !data.controllerToken ||
+        !PRESENTATION_TOKEN_PATTERN.test(data.controllerId) ||
+        !PRESENTATION_TOKEN_PATTERN.test(data.controllerToken)
+      )
+        return Promise.resolve({
+          ok: false as const,
+          status: 404,
+          error: "Presentation not found",
+        });
       return runPresentationOperation(
         Effect.gen(function* () {
           const pitches = yield* PitchesService;
@@ -109,9 +126,9 @@ export const approvePresentationControllerFn = createServerFn({ method: "POST" }
   )
   .handler(({ data }) => {
     if (
-      !ROOM_PATTERN.test(data.roomId) ||
-      !TOKEN_PATTERN.test(data.hostToken) ||
-      !TOKEN_PATTERN.test(data.controllerId)
+      !PRESENTATION_ROOM_PATTERN.test(data.roomId) ||
+      !PRESENTATION_TOKEN_PATTERN.test(data.hostToken) ||
+      !PRESENTATION_TOKEN_PATTERN.test(data.controllerId)
     ) {
       return Promise.resolve({
         ok: false as const,
@@ -148,10 +165,10 @@ export const controlPresentationFn = createServerFn({ method: "POST" })
       (data.action.type === "slide" &&
         Number.isInteger(data.action.index) &&
         data.action.index >= 0);
-    return ROOM_PATTERN.test(data.roomId) &&
-      TOKEN_PATTERN.test(data.credential) &&
-      ACTION_PATTERN.test(data.actionId) &&
-      (!data.controllerId || TOKEN_PATTERN.test(data.controllerId)) &&
+    return PRESENTATION_ROOM_PATTERN.test(data.roomId) &&
+      PRESENTATION_TOKEN_PATTERN.test(data.credential) &&
+      PRESENTATION_ACTION_PATTERN.test(data.actionId) &&
+      (!data.controllerId || PRESENTATION_TOKEN_PATTERN.test(data.controllerId)) &&
       validAction
       ? runPresentationOperation(
           Effect.gen(function* () {

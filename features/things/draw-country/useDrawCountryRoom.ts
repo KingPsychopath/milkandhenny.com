@@ -1,6 +1,7 @@
 import { useCallback } from "react";
 import { useLiveRoomSnapshot } from "../shared/useLiveRoomSnapshot";
 import { useMultiplayerWakeSocket } from "../shared/useMultiplayerWakeSocket";
+import { MULTIPLAYER_REALTIME_LIMITS } from "../shared/multiplayer-realtime";
 import { readDrawCountrySnapshotFn } from "./draw-country-room.functions";
 import type { DrawCountrySnapshot } from "./types";
 
@@ -30,7 +31,7 @@ export function useDrawCountryRoom(input: {
   );
 
   const room = useLiveRoomSnapshot<DrawCountrySnapshot>({
-    intervalMs: 8_000,
+    intervalMs: MULTIPLAYER_REALTIME_LIMITS.safetyReconciliationIntervalMs,
     roomKey: `${input.roomId}:${input.playerId}:${input.playerToken}`,
     initialSnapshot: input.initialSnapshot,
     read,

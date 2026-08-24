@@ -8,6 +8,7 @@ export const MULTIPLAYER_GAME_REGISTRY = {
   twin: { channelVersion: "v1" },
   centre: { channelVersion: "v1" },
   "game-pool": { channelVersion: "v1" },
+  "pitch-presentation": { channelVersion: "v1" },
 } as const;
 
 export const MULTIPLAYER_GAMES = Object.freeze(

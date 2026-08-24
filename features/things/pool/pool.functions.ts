@@ -56,6 +56,7 @@ export const assignGamePoolRoomFn = createServerFn({ method: "POST" })
       clientId: clientId(data.clientId),
       name: multiplayerText(data.name, 32, "Invalid name"),
       choice,
+      moveExisting: data.moveExisting === true,
     };
   })
   .handler(({ data }) => assignGamePoolRoom(data));

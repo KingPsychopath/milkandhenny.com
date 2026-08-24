@@ -1,5 +1,7 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 
+import { MULTIPLAYER_REALTIME_LIMITS } from "../shared/multiplayer-realtime";
+import { useRoomReconciler } from "../shared/useRoomReconciler";
 import type { GamePoolOperatorView } from "./types";
 import { controlGamePoolAsOperatorFn, getGamePoolOperatorViewFn } from "./operator.functions";
 
@@ -16,10 +18,12 @@ export function GamePoolOperatorApp({
     setView(await getGamePoolOperatorViewFn({ data: { token } }));
   }, [token]);
 
-  useEffect(() => {
-    const timer = window.setInterval(() => void refresh(), 5_000);
-    return () => window.clearInterval(timer);
-  }, [refresh]);
+  useRoomReconciler({
+    enabled: view.found,
+    intervalMs: MULTIPLAYER_REALTIME_LIMITS.safetyReconciliationIntervalMs,
+    roomKey: view.runId ? `${token}:${view.runId}` : null,
+    reconcile: async () => refresh(),
+  });
 
   const control = async (action: "pause" | "resume" | "close" | "close-room", roomId?: string) => {
     try {

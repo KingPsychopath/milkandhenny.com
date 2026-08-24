@@ -30,9 +30,25 @@ export const gamePoolMembershipKey = (game: GamePoolGame, roomId: string) =>
 export const gamePoolActiveMembershipKey = (game: GamePoolGame) =>
   gameBrowserKey("game-pool", 1, game, "active-membership");
 
-export function readActiveGamePoolMembership(game: GamePoolGame) {
+export function readActiveGamePoolMembership(game: GamePoolGame, token?: string) {
   if (typeof window === "undefined") return null;
-  return readExpiringLocalValue<ActiveGamePoolMembership>(gamePoolActiveMembershipKey(game));
+  const active = readExpiringLocalValue<ActiveGamePoolMembership>(
+    gamePoolActiveMembershipKey(game),
+  );
+  if (active && (!token || active.token === token)) return active;
+
+  // The room record is enough to recover after an interrupted write of the active marker.
+  const roomPrefix = gameBrowserKey("game-pool", 1, game, "room");
+  const roomSuffix = ":membership";
+  for (let index = 0; index < localStorage.length; index += 1) {
+    const key = localStorage.key(index);
+    if (!key?.startsWith(`${roomPrefix}:`) || !key.endsWith(roomSuffix)) continue;
+    const roomId = key.slice(roomPrefix.length + 1, -roomSuffix.length);
+    const membership = readExpiringLocalValue<GamePoolMembership>(key);
+    if (membership && roomId && (!token || membership.token === token))
+      return { ...membership, roomId };
+  }
+  return null;
 }
 
 export function gamePoolRoomInvitePath(token: string, roomId: string) {
@@ -126,8 +142,9 @@ export function adoptGamePoolAssignment(
   );
 }
 
-export function gamePoolPlayerPath(assignment: GamePoolAssignment) {
-  return `/things/${assignment.game}/${assignment.roomId}`;
+export function forgetGamePoolRoomMembership(game: GamePoolGame, roomId: string) {
+  if (typeof window === "undefined") return;
+  localStorage.removeItem(gamePoolMembershipKey(game, roomId));
 }
 
 export function useGamePoolRoomBackNavigation({

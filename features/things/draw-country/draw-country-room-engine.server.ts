@@ -7,11 +7,13 @@ import {
   multiplayerCredentialsMatch,
   multiplayerActionSeen,
   multiplayerRoomExpiresAt,
+  multiplayerRoomStateChanged,
   multiplayerSnapshotDigest,
   remainingMultiplayerRoomTtlSeconds,
   rememberMultiplayerAction,
   withMultiplayerRoomLock,
 } from "../shared/room-primitives.server";
+import { touchMultiplayerPresence } from "../shared/room-presence";
 import { multiplayerFailure } from "../shared/multiplayer";
 import {
   multiplayerPlayerReady,
@@ -136,8 +138,9 @@ async function withRoom<T>(roomId: string, use: (room: RoomState) => T | Promise
   if (!redis) {
     const room = await loadRoom(roomId);
     if (!room) return null;
+    const before = JSON.stringify(room);
     const result = await use(room);
-    await saveRoom(room);
+    if (multiplayerRoomStateChanged(before, room)) await saveRoom(room);
     return result;
   }
   const initial = await loadRoom(roomId);
@@ -146,8 +149,9 @@ async function withRoom<T>(roomId: string, use: (room: RoomState) => T | Promise
   return withMultiplayerRoomLock(redis, { roomId, lockKey: keys.lock }, async () => {
     const room = await redis.get<RoomState>(keys.state);
     if (!room || room.expiresAt <= Date.now()) return null;
+    const before = JSON.stringify(room);
     const result = await use(room);
-    await saveRoom(room);
+    if (multiplayerRoomStateChanged(before, room)) await saveRoom(room);
     return result;
   });
 }
@@ -425,7 +429,7 @@ export async function readDrawCountrySnapshot(input: {
   const result = await withRoom(input.roomId, (room) => {
     const player = validPlayer(room, input.playerId, input.playerToken);
     if (!player) return null;
-    player.lastSeenAt = Date.now();
+    touchMultiplayerPresence(player);
     advance(room);
     const view = snapshot(room, player.id);
     view.digest = multiplayerSnapshotDigest(view);

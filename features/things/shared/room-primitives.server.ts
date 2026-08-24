@@ -50,6 +50,11 @@ export function remainingMultiplayerRoomTtlSeconds(expiresAt: number, now = Date
   return Math.max(1, Math.ceil((expiresAt - now) / 1_000));
 }
 
+/** Snapshot reads may acquire a lock to advance a timed room, but unchanged state needs no write. */
+export function multiplayerRoomStateChanged(before: string, room: unknown) {
+  return before !== JSON.stringify(room);
+}
+
 /** Long enough to outlast the slowest room mutation (scoring a full lobby of drawings). */
 const ROOM_LOCK_TTL_MS = 5_000;
 const ROOM_LOCK_ATTEMPTS = 12;

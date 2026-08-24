@@ -1,5 +1,8 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+import { MULTIPLAYER_REALTIME_LIMITS } from "../../shared/multiplayer-realtime";
+import { useMultiplayerWakeSocket } from "../../shared/useMultiplayerWakeSocket";
+import { useRoomReconciler } from "../../shared/useRoomReconciler";
 import { readPresentationFn } from "../presentation.functions";
 import type { PitchPresentationSnapshot } from "../types";
 
@@ -8,56 +11,80 @@ type Credentials =
   | { controllerId: string; controllerToken: string }
   | undefined;
 
-const POLL_MS = 800;
-const MINIMUM_FETCH_GAP_MS = 650;
-
+/** Socket wakes drive presentation reads; the safety read catches a missed wake or a cold tab. */
 export function usePresentationPoll(roomId: string, credentials: Credentials) {
   const [snapshot, setSnapshot] = useState<PitchPresentationSnapshot>();
   const [message, setMessage] = useState("");
-  const stopped = useRef(false);
-  const inFlight = useRef(false);
-  const lastFetchAt = useRef(0);
+  const [stopped, setStopped] = useState(false);
+  const stoppedRef = useRef(false);
 
-  const refresh = useCallback(async () => {
-    const now = Date.now();
-    if (stopped.current || inFlight.current || now - lastFetchAt.current < MINIMUM_FETCH_GAP_MS) {
-      return;
-    }
-    inFlight.current = true;
-    lastFetchAt.current = now;
-    try {
-      const result = await readPresentationFn({
-        data: credentials ? { roomId, ...credentials } : { roomId },
-      });
-      if (!result.ok) {
-        setMessage(result.error);
-        if (result.status >= 400 && result.status < 500) stopped.current = true;
-        return;
-      }
-      setSnapshot(result.value);
-      setMessage("");
-    } catch {
-      setMessage("Reconnecting…");
-    } finally {
-      inFlight.current = false;
-    }
-  }, [credentials, roomId]);
+  const credentialKey = useMemo(() => {
+    if (!credentials) return "public";
+    return "hostToken" in credentials
+      ? `host:${credentials.hostToken}`
+      : `controller:${credentials.controllerId}:${credentials.controllerToken}`;
+  }, [credentials]);
+  const roomKey = `${roomId}:${credentialKey}`;
 
   useEffect(() => {
-    stopped.current = false;
-    void refresh();
-    const interval = window.setInterval(() => {
-      if (document.visibilityState === "visible") void refresh();
-    }, POLL_MS);
-    const visible = () => {
-      if (document.visibilityState === "visible") void refresh();
-    };
-    document.addEventListener("visibilitychange", visible);
-    return () => {
-      window.clearInterval(interval);
-      document.removeEventListener("visibilitychange", visible);
-    };
-  }, [refresh]);
+    stoppedRef.current = false;
+    setStopped(false);
+  }, [roomKey]);
 
-  return { snapshot, setSnapshot, message, refresh };
+  const reconcile = useCallback(
+    async (isCurrent: () => boolean) => {
+      if (stoppedRef.current) return;
+      try {
+        const result = await readPresentationFn({
+          data: credentials ? { roomId, ...credentials } : { roomId },
+        });
+        if (!isCurrent()) return;
+        if (!result.ok) {
+          setMessage(result.error);
+          if (result.status >= 400 && result.status < 500) {
+            stoppedRef.current = true;
+            setStopped(true);
+          }
+          return;
+        }
+        setSnapshot(result.value);
+        setMessage("");
+      } catch {
+        if (isCurrent()) setMessage("Reconnecting…");
+      }
+    },
+    [credentials, roomId],
+  );
+
+  const refresh = useRoomReconciler({
+    enabled: !stopped,
+    intervalMs: MULTIPLAYER_REALTIME_LIMITS.safetyReconciliationIntervalMs,
+    roomKey,
+    reconcile,
+  });
+
+  const hello = useMemo(() => {
+    if (!credentials) return null;
+    return "hostToken" in credentials
+      ? { roomId, role: "host", hostToken: credentials.hostToken }
+      : {
+          roomId,
+          role: "controller",
+          controllerId: credentials.controllerId,
+          controllerToken: credentials.controllerToken,
+        };
+  }, [credentials, roomId]);
+
+  const socket = useMultiplayerWakeSocket({
+    path: "/api/things/pitch-presentation-ws",
+    hello,
+    onWake: () => void refresh(),
+    onTerminal: () => {
+      stoppedRef.current = true;
+      setStopped(true);
+      setMessage("This presentation session has ended.");
+    },
+  });
+
+  return { snapshot, setSnapshot, message, refresh, connectionState: socket.state };
 }

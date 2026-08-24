@@ -1,5 +1,6 @@
 import { useCallback } from "react";
 import { useLiveRoomSnapshot } from "../shared/useLiveRoomSnapshot";
+import { MULTIPLAYER_REALTIME_LIMITS } from "../shared/multiplayer-realtime";
 import { readPartySnapshotFn } from "./party-room.functions";
 import type { PartyRole, PartySnapshot } from "./types";
 import { usePartySocket } from "./usePartySocket";
@@ -35,7 +36,7 @@ export function usePartyLiveSnapshot(input: {
 
   const room = useLiveRoomSnapshot<PartySnapshot>({
     enabled: Boolean(input.credential),
-    intervalMs: 10_000,
+    intervalMs: MULTIPLAYER_REALTIME_LIMITS.safetyReconciliationIntervalMs,
     roomKey: input.credential
       ? `${input.roomId}:${input.role}:${input.credential}:${input.playerId ?? ""}`
       : null,

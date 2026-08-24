@@ -10,11 +10,13 @@ import {
   multiplayerActionSeen,
   multiplayerCredentialsMatch,
   multiplayerRoomExpiresAt,
+  multiplayerRoomStateChanged,
   multiplayerSnapshotDigest,
   rememberMultiplayerAction,
   remainingMultiplayerRoomTtlSeconds,
   withMultiplayerRoomLock,
 } from "../shared/room-primitives.server";
+import { touchMultiplayerPresence } from "../shared/room-presence";
 import type { MultiplayerLockAttempt } from "../shared/room-primitives.server";
 import { multiplayerFailure } from "../shared/multiplayer";
 import {
@@ -240,8 +242,9 @@ async function withRoom<T>(
   if (!redis) {
     const loaded = await loadRoom(id);
     if (!loaded) return null;
+    const before = JSON.stringify(loaded.room);
     const result = await use(loaded.room, loaded.keys);
-    await saveRoom(loaded.room, loaded.keys);
+    if (multiplayerRoomStateChanged(before, loaded.room)) await saveRoom(loaded.room, loaded.keys);
     return result;
   }
   const initial = await loadRoom(id);
@@ -252,8 +255,9 @@ async function withRoom<T>(
     async () => {
       const room = await redis.get<PartyRoomState>(initial.keys.state);
       if (!room || room.expiresAt <= Date.now()) return null;
+      const before = JSON.stringify(room);
       const result = await use(room, initial.keys);
-      await saveRoom(room, initial.keys);
+      if (multiplayerRoomStateChanged(before, room)) await saveRoom(room, initial.keys);
       return result;
     },
   );
@@ -702,7 +706,7 @@ export async function readPartySnapshot(input: {
       return { ...multiplayerFailure("room_unavailable", "Room unavailable"), snapshot: null };
     if (input.role === "player") {
       const player = room.players.find(({ id }) => id === input.playerId);
-      if (player) player.lastSeenAt = Date.now();
+      if (player) touchMultiplayerPresence(player);
     }
     advance(room);
     const hostPlayer =

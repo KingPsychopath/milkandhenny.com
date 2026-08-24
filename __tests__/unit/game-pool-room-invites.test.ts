@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const fakes = vi.hoisted(() => ({
   clientQuery: vi.fn(),
+  createPoolRoomAndJoin: vi.fn(),
   joinPoolRoom: vi.fn(),
   postgresQuery: vi.fn(),
   publishWake: vi.fn(),
@@ -19,7 +20,7 @@ vi.mock("@/features/things/shared/multiplayer-runtime.server", () => ({
 }));
 vi.mock("@/features/things/pool/game-adapters.server", () => ({
   GamePoolJoinError: class GamePoolJoinError extends Error {},
-  createPoolRoomAndJoin: vi.fn(),
+  createPoolRoomAndJoin: fakes.createPoolRoomAndJoin,
   gamePoolCapacity: vi.fn(() => 12),
   joinPoolRoom: fakes.joinPoolRoom,
 }));
@@ -156,6 +157,7 @@ describe("game-pool room invites", () => {
         clientId: "client_test_1234",
         name: "Ada",
         choice: { roomId: "ABCDEFG" },
+        moveExisting: false,
       }),
     ).resolves.toMatchObject({ game: "same-brain", roomId: "ABCDEFG" });
 
@@ -165,6 +167,70 @@ describe("game-pool room invites", () => {
         joinToken: "room-join-token",
         name: "Ada",
       }),
+    );
+  });
+
+  it("replaces an active assignment only when the caller explicitly moves", async () => {
+    const calls: string[] = [];
+    fakes.clientQuery.mockImplementation(async (sql: string) => {
+      calls.push(sql);
+      if (sql.includes("select status, closes_at"))
+        return {
+          rows: [
+            {
+              status: "open",
+              closes_at: null,
+              allow_new_rooms: true,
+              target_size: 8,
+              preset: {
+                game: "same-brain",
+                rounds: 8,
+                scoring: "embedding",
+                sayItAloud: true,
+                eliminateOddOne: false,
+              },
+            },
+          ],
+        };
+      if (sql.includes("status = 'active'")) return { rows: [{ room_id: "OLD123" }] };
+      if (sql.includes("status = 'removed'")) return { rows: [] };
+      if (sql.includes("select * from game_pool_rooms"))
+        return {
+          rows: [
+            {
+              run_id: "gpr_test",
+              room_id: "NEW123",
+              status: "open",
+              player_count: 2,
+              capacity: 12,
+              created_at: new Date("2026-08-23T00:00:00.000Z"),
+              updated_at: new Date("2026-08-23T00:00:00.000Z"),
+            },
+          ],
+        };
+      return { rows: [], rowCount: 1 };
+    });
+    fakes.joinPoolRoom.mockResolvedValue({
+      game: "same-brain",
+      roomId: "NEW123",
+      expiresAt: Date.now() + 60_000,
+      playerId: "new_player",
+      playerToken: "new_player_token",
+    });
+
+    await expect(
+      assignGamePoolRoom({
+        token: "play_test-token-with-enough-characters",
+        clientId: "client_test_1234",
+        name: "Ada",
+        choice: { roomId: "NEW123" },
+        moveExisting: true,
+      }),
+    ).resolves.toMatchObject({ roomId: "NEW123" });
+
+    expect(calls.findIndex((sql) => sql.includes("set status = 'left'"))).toBeGreaterThan(-1);
+    expect(fakes.joinPoolRoom).toHaveBeenCalledWith(
+      expect.objectContaining({ roomId: "NEW123", name: "Ada" }),
     );
   });
 });
