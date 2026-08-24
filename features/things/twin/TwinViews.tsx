@@ -8,6 +8,7 @@ import { useQrCode } from "@/hooks/useQrCode";
 import { shareOrCopy } from "@/lib/client/share";
 import { PlayerReadyControl } from "../shared/PlayerReadyControl";
 import { GameActionDialog } from "../shared/GameActionDialog";
+import { MultiplayerLobbyPanel } from "../shared/PixelWorld";
 import { gamePoolRoomInviteUrl } from "../pool/pool-session.client";
 import {
   TWIN_MAX_HAND,
@@ -102,7 +103,6 @@ export function TwinLobby({
   const { dataUrl: qr, failed: qrFailed } = useQrCode(invite || null, 280);
   const nativeShare = useNativeShareAvailability({ coarsePointerOnly: true });
   const me = snapshot.players.find(({ id }) => id === playerId);
-  const readyCount = snapshot.players.filter(({ ready, withdrawn }) => ready && !withdrawn).length;
 
   const share = async () => {
     const result = await shareOrCopy(
@@ -132,6 +132,23 @@ export function TwinLobby({
           Every card here shares exactly one symbol with every other. Find yours, put it down, empty
           your hand.
         </p>
+
+        <MultiplayerLobbyPanel
+          canPassLead={snapshot.canControl && snapshot.players.length > 1}
+          currentPlayerId={playerId}
+          game="twin"
+          onPassLead={onPassLead}
+          onRename={onRename}
+          roomId={snapshot.roomId}
+          tone="night"
+          players={snapshot.players.map((player) => ({
+            id: player.id,
+            name: player.name,
+            ready: player.ready,
+            lead: player.host,
+            left: player.withdrawn,
+          }))}
+        />
 
         {invite ? (
           <>
@@ -168,30 +185,8 @@ export function TwinLobby({
           {shareMessage ?? message}
         </p>
 
-        <ul className="twin-roster" aria-label="Players in the room">
-          {snapshot.players.map((player) => (
-            <li key={player.id} className={player.ready ? "" : "twin-roster-waiting"}>
-              {player.name}
-              {player.withdrawn ? " · left" : player.host ? " · host" : ""}
-              {!player.withdrawn && !player.ready ? " · not ready" : ""}
-              {snapshot.canControl && !player.host && !player.withdrawn ? (
-                <button
-                  type="button"
-                  onClick={() => onPassLead(player.id)}
-                  className="twin-button twin-button--quiet"
-                >
-                  make lead
-                </button>
-              ) : null}
-            </li>
-          ))}
-        </ul>
-        <button type="button" onClick={onRename} className="twin-button twin-button--quiet">
-          change my name
-        </button>
         <p aria-live="polite" className="twin-note">
-          {readyCount} of {snapshot.players.filter(({ withdrawn }) => !withdrawn).length} ready · up
-          to {twinMaxPlayers()} can play
+          up to {twinMaxPlayers()} can play
         </p>
 
         {snapshot.canControl && !snapshot.managed ? (

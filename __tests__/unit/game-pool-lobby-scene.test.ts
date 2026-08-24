@@ -17,7 +17,7 @@ function room(roomId: string, input: Partial<GamePoolRoomSummary> = {}): GamePoo
 }
 
 describe("game-pool lobby scene", () => {
-  it("keeps open rooms visible before rooms that are already playing", () => {
+  it("keeps every room and groups open rooms before playing rooms into floors", () => {
     const scene = buildGamePoolLobbyScene([
       room("playing-1", { status: "started", playerCount: 4 }),
       room("waiting-1", { playerCount: 2 }),
@@ -29,9 +29,14 @@ describe("game-pool lobby scene", () => {
     expect(scene.rooms.map(({ roomId }) => roomId)).toEqual([
       "waiting-1",
       "waiting-2",
+      "waiting-3",
       "playing-1",
+      "playing-2",
     ]);
-    expect(scene.hiddenRoomCount).toBe(2);
+    expect(scene.floors.map((floor) => floor.map(({ roomId }) => roomId))).toEqual([
+      ["waiting-1", "waiting-2", "waiting-3"],
+      ["playing-1", "playing-2"],
+    ]);
     expect(scene.waitingPlayerCount).toBe(6);
     expect(scene.waitingRoomCount).toBe(3);
     expect(scene.playingRoomCount).toBe(2);
@@ -88,6 +93,6 @@ describe("game-pool lobby scene", () => {
       "invited",
     );
 
-    expect(scene.rooms.map(({ roomId }) => roomId)).toEqual(["invited", "first", "playing"]);
+    expect(scene.floors[0]?.map(({ roomId }) => roomId)).toEqual(["invited", "first", "second"]);
   });
 });

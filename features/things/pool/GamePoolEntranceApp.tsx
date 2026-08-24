@@ -176,9 +176,13 @@ export function GamePoolEntranceApp({
       {accepting && view.run ? (
         <GamePoolLobbyScene
           allowNewRooms={view.run.allowNewRooms}
+          allowRoomChoice={view.run.allowRoomChoice}
+          busy={busy}
           destinationRoomId={destinationRoomId}
+          game={view.entrance?.game ?? view.run.preset.game}
           joining={busy}
           live={socket.state === "connected"}
+          onChooseRoom={(roomId) => void assign({ roomId })}
           requestedRoomId={requestedRoomId}
           rooms={rooms}
           targetSize={view.run.targetSize}

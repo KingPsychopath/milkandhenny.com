@@ -4,21 +4,27 @@
   padding-top: 1.5rem;
 }
 
-.game-pool-lobby-heading {
+.game-pool-lobby-heading,
+.game-pool-lobby-live,
+.game-pool-hotel-navigation,
+.game-pool-hotel-room-heading,
+.game-pool-hotel-room-state {
   display: flex;
+  align-items: center;
+}
+
+.game-pool-lobby-heading {
   align-items: flex-start;
   justify-content: space-between;
   gap: 1rem;
 }
 
 .game-pool-lobby-live {
-  display: inline-flex;
   min-height: 1.5rem;
-  align-items: center;
   gap: 0.35rem;
+  color: var(--stone-500);
   font-family: var(--font-mono);
   font-size: 0.625rem;
-  color: var(--stone-500);
 }
 
 .game-pool-lobby-live > span {
@@ -29,794 +35,245 @@
   box-shadow: 0 0 0 0.2rem color-mix(in oklab, var(--prose-hashtag) 13%, transparent);
 }
 
-.game-pool-lobby-stage {
-  position: relative;
-  isolation: isolate;
+.game-pool-hotel {
   overflow: hidden;
-  width: 100%;
-  aspect-ratio: 16 / 9;
   margin-top: 0.75rem;
   border: 1px solid var(--stone-200);
-  background: linear-gradient(
-    to bottom,
-    color-mix(in oklab, var(--stone-100) 82%, var(--background)) 0 57%,
-    var(--stone-300) 57% 58%,
-    color-mix(in oklab, var(--stone-200) 66%, var(--background)) 58% 100%
-  );
-  box-shadow: inset 0 0 0 0.25rem color-mix(in oklab, var(--background) 72%, transparent);
+  background: color-mix(in oklab, var(--stone-100) 72%, var(--background));
 }
 
-.game-pool-lobby-stage::before {
-  position: absolute;
-  z-index: -1;
-  right: -8%;
-  bottom: -16%;
-  left: -8%;
-  height: 58%;
-  background-image:
-    linear-gradient(
-      30deg,
-      transparent 48.5%,
-      color-mix(in oklab, var(--stone-400) 32%, transparent) 49% 51%,
-      transparent 51.5%
-    ),
-    linear-gradient(
-      -30deg,
-      transparent 48.5%,
-      color-mix(in oklab, var(--stone-400) 32%, transparent) 49% 51%,
-      transparent 51.5%
-    );
-  background-size: 3rem 1.7rem;
-  content: "";
-  transform: perspective(12rem) rotateX(48deg) scale(1.25);
-  transform-origin: bottom;
+.game-pool-hotel-sign {
+  display: flex;
+  min-height: 2.5rem;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  border-bottom: 1px solid var(--stone-200);
+  padding: 0.65rem 0.8rem;
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
 }
 
-.game-pool-lobby-wall-lines {
-  position: absolute;
-  inset: 0 0 42%;
-  z-index: -1;
-  background-image:
-    linear-gradient(
-      to right,
-      transparent 0 49.7%,
-      color-mix(in oklab, var(--stone-300) 36%, transparent) 50%,
-      transparent 50.3%
-    ),
-    linear-gradient(
-      to bottom,
-      transparent 0 49.4%,
-      color-mix(in oklab, var(--stone-300) 36%, transparent) 50%,
-      transparent 50.6%
-    );
-  background-size: 3.5rem 2.1rem;
-  opacity: 0.45;
-}
-
-.game-pool-lobby-hotel-sign {
-  position: absolute;
-  top: 7%;
-  left: 5%;
-  display: grid;
-  width: 13%;
-  min-width: 3.6rem;
-  border: 1px solid var(--stone-400);
-  background: color-mix(in oklab, var(--background) 88%, var(--stone-100));
-  padding: 0.28rem 0.3rem;
-  box-shadow: 0.2rem 0.2rem 0 var(--stone-300);
+.game-pool-hotel-sign small {
   color: var(--stone-500);
-  font-family: var(--font-mono);
-  font-size: clamp(0.35rem, 1.2vw, 0.55rem);
-  line-height: 1.1;
-  text-align: center;
-  text-transform: uppercase;
-  letter-spacing: 0.12em;
-}
-
-.game-pool-lobby-hotel-sign strong {
-  color: var(--foreground);
-  font-weight: 600;
-}
-
-.game-pool-lobby-entrance {
-  position: absolute;
-  top: 31%;
-  left: 4.5%;
-  width: 14%;
-  height: 43%;
-  border: 1px solid var(--stone-400);
-  border-bottom: 0;
-  background: color-mix(in oklab, var(--stone-100) 84%, var(--background));
-  box-shadow: 0.22rem 0.22rem 0 color-mix(in oklab, var(--stone-400) 54%, transparent);
-}
-
-.game-pool-lobby-entrance-awning {
-  position: absolute;
-  top: -0.45rem;
-  right: -0.2rem;
-  left: -0.2rem;
-  height: 0.5rem;
-  border: 1px solid var(--stone-400);
-  background: repeating-linear-gradient(
-    90deg,
-    var(--prose-hashtag) 0 0.45rem,
-    var(--selection-bg) 0.45rem 0.9rem
-  );
-}
-
-.game-pool-lobby-entrance-door {
-  position: absolute;
-  right: 17%;
-  bottom: 0;
-  left: 17%;
-  height: 78%;
-  border: 1px solid var(--stone-500);
-  border-bottom: 0;
-  background:
-    linear-gradient(90deg, transparent 47%, var(--stone-500) 48% 52%, transparent 53%),
-    color-mix(in oklab, var(--stone-300) 62%, var(--background));
-}
-
-.game-pool-lobby-entrance-door::before,
-.game-pool-lobby-entrance-door::after {
-  position: absolute;
-  top: 45%;
-  width: 0.22rem;
-  height: 0.22rem;
-  background: var(--prose-hashtag);
-  content: "";
-}
-
-.game-pool-lobby-entrance-door::before {
-  left: 36%;
-}
-
-.game-pool-lobby-entrance-door::after {
-  right: 36%;
-}
-
-.game-pool-lobby-entrance small {
-  position: absolute;
-  right: 0;
-  bottom: -1rem;
-  left: 0;
-  font-family: var(--font-mono);
-  font-size: clamp(0.35rem, 1vw, 0.5rem);
-  text-align: center;
-  text-transform: uppercase;
-  letter-spacing: 0.12em;
-}
-
-.game-pool-lobby-desk {
-  position: absolute;
-  z-index: 8;
-  bottom: 12%;
-  left: 20%;
-  width: 12%;
-  height: 15%;
-}
-
-.game-pool-lobby-desk-top {
-  position: absolute;
-  top: 0;
-  right: -7%;
-  left: -7%;
-  height: 24%;
-  border: 1px solid var(--stone-500);
-  background: var(--stone-300);
-}
-
-.game-pool-lobby-desk-front {
-  position: absolute;
-  inset: 22% 0 0;
-  border: 1px solid var(--stone-500);
-  background: color-mix(in oklab, var(--stone-300) 72%, var(--background));
-  padding-top: 0.15rem;
-  color: var(--stone-500);
-  font-family: var(--font-mono);
-  font-size: clamp(0.3rem, 0.85vw, 0.45rem);
-  text-align: center;
-  text-transform: uppercase;
+  font-size: 0.5rem;
   letter-spacing: 0.08em;
 }
 
-.game-pool-lobby-desk-lamp {
+.game-pool-hotel-floors {
+  display: flex;
+  overflow-x: auto;
+  scroll-behavior: smooth;
+  scroll-snap-type: x mandatory;
+  scrollbar-width: none;
+  overscroll-behavior-x: contain;
+}
+
+.game-pool-hotel-floors::-webkit-scrollbar {
+  display: none;
+}
+
+.game-pool-hotel-floor {
+  position: relative;
+  flex: 0 0 100%;
+  min-width: 0;
+  padding: 2.6rem 0.7rem 1rem;
+  scroll-snap-align: start;
+  scroll-snap-stop: always;
+}
+
+.game-pool-hotel-corridor {
   position: absolute;
-  z-index: 2;
-  top: -39%;
-  left: 17%;
-  width: 0.3rem;
-  height: 0.8rem;
-  border-left: 1px solid var(--stone-500);
+  inset: 0 0 auto;
+  height: 2rem;
+  border-bottom: 1px solid var(--stone-200);
+  background-image: repeating-linear-gradient(
+    90deg,
+    transparent 0 1.2rem,
+    color-mix(in oklab, var(--stone-300) 40%, transparent) 1.2rem 1.25rem
+  );
 }
 
-.game-pool-lobby-desk-lamp::after {
+.game-pool-hotel-corridor span {
   position: absolute;
-  top: -0.2rem;
-  left: -0.18rem;
-  width: 0.55rem;
-  height: 0.35rem;
-  background: var(--prose-hashtag);
-  box-shadow: 0 0 0.6rem color-mix(in oklab, var(--prose-hashtag) 36%, transparent);
-  content: "";
+  top: 0.55rem;
+  left: 0.75rem;
+  background: var(--background);
+  padding-inline: 0.25rem;
+  color: var(--stone-500);
+  font-family: var(--font-mono);
+  font-size: 0.5rem;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
 }
 
-.game-pool-lobby-room {
-  --game-pool-arrival-x: -10rem;
-  position: absolute;
-  z-index: 3;
-  top: 18%;
-  width: 19%;
-  height: 53%;
-  border: 1px solid var(--stone-400);
-  background: color-mix(in oklab, var(--stone-100) 82%, var(--background));
-  box-shadow: 0.24rem 0.24rem 0 color-mix(in oklab, var(--stone-400) 48%, transparent);
+.game-pool-hotel-rooms {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.65rem;
 }
 
-.game-pool-lobby-room-0 {
-  --game-pool-arrival-x: -12rem;
-  left: 35%;
+.game-pool-hotel-room {
+  min-width: 0;
+  border: 1px solid var(--stone-300);
+  background: var(--background);
+  padding: 0.45rem;
+  color: var(--foreground);
+  text-align: left;
+  box-shadow: 0.18rem 0.18rem 0 color-mix(in oklab, var(--stone-300) 54%, transparent);
 }
 
-.game-pool-lobby-room-1 {
-  --game-pool-arrival-x: -19rem;
-  left: 57%;
+.game-pool-hotel-room-button {
+  appearance: none;
+  width: 100%;
+  cursor: pointer;
+  transition:
+    opacity 150ms ease,
+    translate 150ms ease;
 }
 
-.game-pool-lobby-room-2 {
-  --game-pool-arrival-x: -26rem;
-  left: 79%;
+.game-pool-hotel-room-button:hover {
+  opacity: 0.78;
 }
 
-.game-pool-lobby-room-highlighted {
+.game-pool-hotel-room-button:active {
+  translate: 0 1px;
+}
+
+.game-pool-hotel-room-button:disabled {
+  cursor: wait;
+  opacity: 0.55;
+}
+
+.game-pool-hotel-room-highlighted {
   outline: 2px solid var(--prose-hashtag);
   outline-offset: 2px;
 }
 
-.game-pool-lobby-room-sign {
-  position: absolute;
-  z-index: 5;
-  top: -1.25rem;
-  right: 6%;
-  left: 6%;
-  display: flex;
-  min-height: 1rem;
-  align-items: center;
+.game-pool-hotel-room-next {
+  border-style: dashed;
+  box-shadow: none;
+  opacity: 0.68;
+}
+
+.game-pool-hotel-room-heading {
+  min-height: 1.4rem;
   justify-content: space-between;
-  gap: 0.2rem;
-  border: 1px solid var(--stone-400);
-  background: var(--background);
-  padding: 0.15rem 0.25rem;
+  gap: 0.35rem;
+  padding: 0 0.1rem 0.35rem;
   font-family: var(--font-mono);
-  font-size: clamp(0.32rem, 0.95vw, 0.5rem);
-  line-height: 1;
+  font-size: clamp(0.45rem, 1.4vw, 0.625rem);
 }
 
-.game-pool-lobby-room-window {
-  position: absolute;
-  top: 8%;
-  right: 8%;
-  left: 8%;
-  height: 24%;
+.game-pool-hotel-room-heading span:first-child {
   overflow: hidden;
-  border: 1px solid var(--stone-400);
-  background: color-mix(in oklab, var(--selection-bg) 46%, var(--stone-100));
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.game-pool-lobby-window-light {
-  position: absolute;
-  top: -30%;
-  left: 24%;
-  width: 22%;
-  height: 170%;
-  background: color-mix(in oklab, var(--background) 54%, transparent);
-  transform: rotate(24deg);
+.game-pool-hotel-room-scene {
+  border-color: var(--stone-300);
 }
 
-.game-pool-lobby-room-floor {
-  position: absolute;
-  right: 4%;
-  bottom: 5%;
-  left: 4%;
-  height: 55%;
-  border-top: 1px solid var(--stone-300);
-  background: color-mix(in oklab, var(--stone-200) 45%, transparent);
-}
-
-.game-pool-lobby-table {
-  position: absolute;
-  top: 36%;
-  right: 22%;
-  left: 22%;
-  height: 24%;
-  border: 1px solid var(--stone-500);
-  background: var(--stone-300);
-  box-shadow: 0 0.22rem 0 color-mix(in oklab, var(--stone-500) 44%, transparent);
-}
-
-.game-pool-lobby-chair {
-  position: absolute;
-  width: 0.55rem;
-  height: 0.55rem;
-  border: 1px solid var(--stone-500);
-  background: var(--stone-200);
-}
-
-.game-pool-lobby-chair-0 {
-  top: 18%;
-  left: 13%;
-}
-
-.game-pool-lobby-chair-1 {
-  top: 12%;
-  left: 43%;
-}
-
-.game-pool-lobby-chair-2 {
-  top: 18%;
-  right: 13%;
-}
-
-.game-pool-lobby-chair-3 {
-  bottom: 6%;
-  left: 13%;
-}
-
-.game-pool-lobby-chair-4 {
-  bottom: 0;
-  left: 43%;
-}
-
-.game-pool-lobby-chair-5 {
-  right: 13%;
-  bottom: 6%;
-}
-
-.game-pool-lobby-room-door {
-  position: absolute;
-  z-index: 7;
-  right: 7%;
-  bottom: 0;
-  width: 28%;
-  height: 34%;
-  border: 1px solid var(--stone-500);
-  border-bottom: 0;
-  background: color-mix(in oklab, var(--stone-300) 74%, var(--background));
-}
-
-.game-pool-lobby-room-door span {
-  position: absolute;
-  right: 0;
-  bottom: -0.85rem;
-  left: 0;
+.game-pool-hotel-room-people {
+  display: block;
+  overflow: hidden;
+  padding-top: 0.35rem;
   color: var(--stone-500);
   font-family: var(--font-mono);
-  font-size: clamp(0.28rem, 0.75vw, 0.4rem);
+  font-size: clamp(0.42rem, 1.2vw, 0.55rem);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.game-pool-hotel-room-state {
+  min-height: 1.4rem;
+  justify-content: center;
+  padding-top: 0.35rem;
+  color: var(--stone-500);
+  font-family: var(--font-mono);
+  font-size: clamp(0.42rem, 1.2vw, 0.55rem);
   text-align: center;
 }
 
-.game-pool-lobby-room-playing .game-pool-lobby-room-door {
-  width: 86%;
-  height: 68%;
-  background: repeating-linear-gradient(
-    to bottom,
-    color-mix(in oklab, var(--stone-400) 74%, var(--background)) 0 0.3rem,
-    color-mix(in oklab, var(--stone-500) 68%, var(--background)) 0.3rem 0.36rem
-  );
+.game-pool-hotel-navigation {
+  min-height: 2.8rem;
+  justify-content: space-between;
+  gap: 1rem;
+  border-top: 1px solid var(--stone-200);
+  padding-inline: 0.7rem;
 }
 
-.game-pool-lobby-room-playing .game-pool-lobby-room-floor {
-  opacity: 0.46;
-}
-
-.game-pool-lobby-room-placeholder {
-  border-style: dashed;
-  box-shadow: none;
-  opacity: 0.58;
-}
-
-.game-pool-lobby-room-placeholder .game-pool-lobby-room-floor,
-.game-pool-lobby-room-placeholder .game-pool-lobby-room-window {
-  opacity: 0.42;
-}
-
-.game-pool-lobby-more {
-  position: absolute;
-  z-index: 12;
-  right: 3%;
-  bottom: 3%;
+.game-pool-hotel-navigation > button {
   display: grid;
-  min-width: 1.15rem;
-  min-height: 1.15rem;
+  width: 2.75rem;
+  min-height: 2.75rem;
   place-items: center;
-  border: 1px solid var(--stone-400);
-  background: var(--background);
-  font-family: var(--font-mono);
-  font-size: 0.45rem;
-}
-
-.game-pool-lobby-room-overflow {
-  position: absolute;
-  right: 1.4%;
-  bottom: 3%;
   color: var(--stone-500);
   font-family: var(--font-mono);
-  font-size: clamp(0.35rem, 0.9vw, 0.5rem);
 }
 
-.game-pool-pixel-person {
-  --game-pool-pixel-shirt: var(--stone-500);
-  --game-pool-pixel-hair: var(--foreground);
-  --game-pool-pixel-skin: color-mix(in oklab, var(--selection-bg) 70%, var(--stone-300));
+.game-pool-hotel-navigation > button:disabled {
+  opacity: 0.25;
+}
+
+.game-pool-hotel-dots {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+}
+
+.game-pool-hotel-dots button {
+  width: 1.1rem;
+  min-height: 2.75rem;
+  position: relative;
+}
+
+.game-pool-hotel-dots button::after {
   position: absolute;
-  z-index: 10;
-  display: block;
-  width: 0.9rem;
-  height: 1.45rem;
-  image-rendering: pixelated;
-}
-
-.game-pool-pixel-tone-0 {
-  --game-pool-pixel-shirt: var(--prose-hashtag);
-  --game-pool-pixel-hair: var(--foreground);
-}
-
-.game-pool-pixel-tone-1 {
-  --game-pool-pixel-shirt: var(--stone-400);
-  --game-pool-pixel-hair: var(--stone-500);
-}
-
-.game-pool-pixel-tone-2 {
-  --game-pool-pixel-shirt: var(--foreground);
-  --game-pool-pixel-hair: var(--prose-hashtag);
-}
-
-.game-pool-pixel-tone-3 {
-  --game-pool-pixel-shirt: var(--stone-300);
-  --game-pool-pixel-hair: var(--foreground);
-}
-
-.game-pool-pixel-tone-4 {
-  --game-pool-pixel-shirt: var(--stone-500);
-  --game-pool-pixel-hair: var(--stone-300);
-}
-
-.game-pool-pixel-tone-5 {
-  --game-pool-pixel-shirt: color-mix(in oklab, var(--prose-hashtag) 62%, var(--stone-400));
-  --game-pool-pixel-hair: var(--stone-500);
-}
-
-.game-pool-pixel-shadow {
-  position: absolute;
-  right: 0.05rem;
-  bottom: -0.08rem;
-  left: 0.05rem;
-  height: 0.2rem;
-  background: color-mix(in oklab, var(--foreground) 18%, transparent);
-  border-radius: 50%;
-}
-
-.game-pool-pixel-hair {
-  position: absolute;
-  z-index: 3;
-  top: 0;
-  left: 0.16rem;
-  width: 0.62rem;
-  height: 0.3rem;
-  background: var(--game-pool-pixel-hair);
-}
-
-.game-pool-pixel-head {
-  position: absolute;
-  z-index: 2;
-  top: 0.14rem;
-  left: 0.22rem;
-  width: 0.5rem;
-  height: 0.46rem;
-  background: var(--game-pool-pixel-skin);
-  box-shadow:
-    -0.06rem 0.08rem 0 var(--game-pool-pixel-skin),
-    0.06rem 0.08rem 0 var(--game-pool-pixel-skin);
-}
-
-.game-pool-pixel-head::after {
-  position: absolute;
-  top: 0.16rem;
-  right: 0.08rem;
-  width: 0.08rem;
-  height: 0.08rem;
-  background: var(--foreground);
-  box-shadow: -0.24rem 0 0 var(--foreground);
-  content: "";
-}
-
-.game-pool-pixel-body {
-  position: absolute;
-  z-index: 3;
-  top: 0.62rem;
-  left: 0.15rem;
-  width: 0.64rem;
-  height: 0.52rem;
-  background: var(--game-pool-pixel-shirt);
-}
-
-.game-pool-pixel-arm {
-  position: absolute;
-  z-index: 2;
-  top: 0.68rem;
-  width: 0.14rem;
-  height: 0.48rem;
-  background: var(--game-pool-pixel-skin);
-}
-
-.game-pool-pixel-arm-left {
-  left: 0.03rem;
-}
-
-.game-pool-pixel-arm-right {
-  right: 0.03rem;
-}
-
-.game-pool-pixel-leg {
-  position: absolute;
-  z-index: 2;
-  top: 1.12rem;
-  width: 0.22rem;
-  height: 0.28rem;
-  background: var(--foreground);
-}
-
-.game-pool-pixel-leg-left {
-  left: 0.18rem;
-}
-
-.game-pool-pixel-leg-right {
-  right: 0.18rem;
-}
-
-.game-pool-pixel-label {
-  position: absolute;
-  top: 1.5rem;
+  top: 50%;
   left: 50%;
-  max-width: 2.8rem;
-  overflow: hidden;
-  padding: 0.02rem 0.12rem;
-  background: color-mix(in oklab, var(--background) 88%, transparent);
-  color: var(--foreground);
-  font-family: var(--font-mono);
-  font-size: clamp(0.28rem, 0.72vw, 0.38rem);
-  line-height: 1.15;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  transform: translateX(-50%);
+  width: 0.32rem;
+  height: 0.32rem;
+  border: 1px solid var(--stone-500);
+  border-radius: 999px;
+  content: "";
+  translate: -50% -50%;
 }
 
-.game-pool-lobby-host {
-  z-index: 9;
-  top: 69%;
-  left: 24.6%;
-  transform: scale(0.96);
-  transform-origin: bottom;
-  animation: game-pool-lobby-host 2.4s steps(2, end) infinite;
+.game-pool-hotel-dots button[aria-current="true"]::after {
+  background: var(--prose-hashtag);
+  border-color: var(--prose-hashtag);
 }
 
-.game-pool-lobby-occupant {
-  transform: scale(0.9);
-  transform-origin: bottom;
-  animation:
-    game-pool-lobby-arrive 0.72s steps(7, end) both,
-    game-pool-lobby-idle 1.8s 0.72s steps(2, end) infinite;
-}
-
-.game-pool-lobby-seat-0 {
-  top: 8%;
-  left: 10%;
-}
-
-.game-pool-lobby-seat-1 {
-  top: 2%;
-  left: 40%;
-}
-
-.game-pool-lobby-seat-2 {
-  top: 8%;
-  right: 9%;
-}
-
-.game-pool-lobby-seat-3 {
-  bottom: 0;
-  left: 10%;
-}
-
-.game-pool-lobby-seat-4 {
-  bottom: -5%;
-  left: 40%;
-}
-
-.game-pool-lobby-seat-5 {
-  right: 9%;
-  bottom: 0;
-}
-
-.game-pool-lobby-you {
-  z-index: 20;
-  animation-duration: 1.05s;
-  animation-timing-function: steps(9, end);
-  animation-fill-mode: both;
-}
-
-.game-pool-lobby-you .game-pool-pixel-label {
-  border: 1px solid var(--prose-hashtag);
-}
-
-.game-pool-lobby-you-matching {
-  animation-name: game-pool-lobby-match;
-  animation-direction: alternate;
-  animation-iteration-count: infinite;
-}
-
-.game-pool-lobby-you-room-0 {
-  animation-name: game-pool-lobby-to-room-0;
-}
-
-.game-pool-lobby-you-room-1 {
-  animation-name: game-pool-lobby-to-room-1;
-}
-
-.game-pool-lobby-you-room-2 {
-  animation-name: game-pool-lobby-to-room-2;
-}
-
-@keyframes game-pool-lobby-arrive {
-  from {
-    opacity: 0;
-    transform: translate(var(--game-pool-arrival-x), 3.5rem) scale(0.9);
-  }
-  25% {
-    opacity: 1;
-  }
-  to {
-    opacity: 1;
-    transform: translate(0, 0) scale(0.9);
-  }
-}
-
-@keyframes game-pool-lobby-idle {
-  0%,
-  100% {
-    translate: 0 0;
-  }
-  50% {
-    translate: 0 -0.08rem;
-  }
-}
-
-@keyframes game-pool-lobby-host {
-  0%,
-  100% {
-    translate: 0 0;
-  }
-  50% {
-    translate: 0.08rem 0;
-  }
-}
-
-@keyframes game-pool-lobby-match {
-  from {
-    top: 76%;
-    left: 9%;
-  }
-  to {
-    top: 70%;
-    left: 25%;
-  }
-}
-
-@keyframes game-pool-lobby-to-room-0 {
-  0% {
-    top: 76%;
-    left: 9%;
-  }
-  45% {
-    top: 70%;
-    left: 25%;
-  }
-  100% {
-    top: 57%;
-    left: 40%;
-  }
-}
-
-@keyframes game-pool-lobby-to-room-1 {
-  0% {
-    top: 76%;
-    left: 9%;
-  }
-  38% {
-    top: 70%;
-    left: 25%;
-  }
-  100% {
-    top: 57%;
-    left: 62%;
-  }
-}
-
-@keyframes game-pool-lobby-to-room-2 {
-  0% {
-    top: 76%;
-    left: 9%;
-  }
-  32% {
-    top: 70%;
-    left: 25%;
-  }
-  100% {
-    top: 57%;
-    left: 84%;
-  }
-}
-
-@media (max-width: 30rem) {
-  .game-pool-lobby-stage {
-    aspect-ratio: 1.38;
+@media (max-width: 34rem) {
+  .game-pool-hotel-floor {
+    padding-inline: 0.55rem;
   }
 
-  .game-pool-lobby-room {
-    top: 22%;
-    height: 49%;
+  .game-pool-hotel-rooms {
+    gap: 0.35rem;
   }
 
-  .game-pool-lobby-hotel-sign {
-    top: 6%;
+  .game-pool-hotel-room {
+    padding: 0.3rem;
+    box-shadow: 0.1rem 0.1rem 0 color-mix(in oklab, var(--stone-300) 54%, transparent);
   }
 
-  .game-pool-lobby-entrance {
-    top: 35%;
-    height: 38%;
-  }
-
-  .game-pool-lobby-room-window {
-    height: 18%;
-  }
-
-  .game-pool-lobby-room-floor {
-    height: 61%;
-  }
-
-  .game-pool-lobby-desk {
-    bottom: 15%;
-  }
-
-  .game-pool-lobby-host {
-    top: 72%;
+  .game-pool-hotel-sign small {
+    display: none;
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .game-pool-lobby-host,
-  .game-pool-lobby-occupant,
-  .game-pool-lobby-you {
-    animation: none;
+  .game-pool-hotel-floors {
+    scroll-behavior: auto;
   }
 
-  .game-pool-lobby-you-matching {
-    top: 70%;
-    left: 25%;
-  }
-
-  .game-pool-lobby-you-room-0 {
-    top: 57%;
-    left: 40%;
-  }
-
-  .game-pool-lobby-you-room-1 {
-    top: 57%;
-    left: 62%;
-  }
-
-  .game-pool-lobby-you-room-2 {
-    top: 57%;
-    left: 84%;
+  .game-pool-hotel-room-button {
+    transition: none;
   }
 }

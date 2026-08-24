@@ -1,0 +1,177 @@
+.pixel-world {
+  --pixel-world-background: var(--background);
+  --pixel-world-foreground: var(--foreground);
+  --pixel-world-stone-100: var(--stone-100);
+  --pixel-world-stone-200: var(--stone-200);
+  --pixel-world-stone-300: var(--stone-300);
+  --pixel-world-stone-400: var(--stone-400);
+  --pixel-world-stone-500: var(--stone-500);
+  --pixel-world-amber: var(--prose-hashtag);
+  --pixel-world-selection: var(--selection-bg);
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  border: 1px solid color-mix(in oklab, var(--stone-400) 58%, transparent);
+  background: var(--stone-100);
+  image-rendering: pixelated;
+}
+
+.pixel-world--night {
+  --pixel-world-background: var(--stone-950, var(--foreground));
+  --pixel-world-foreground: var(--stone-100);
+  --pixel-world-stone-100: var(--stone-900, var(--stone-500));
+  --pixel-world-stone-200: var(--stone-800, var(--stone-500));
+  --pixel-world-stone-300: var(--stone-700, var(--stone-400));
+  --pixel-world-stone-400: var(--stone-500);
+  --pixel-world-stone-500: var(--stone-300);
+  --pixel-world-selection: var(--stone-400);
+}
+
+.pixel-room-lobby {
+  margin-top: 2rem;
+  border-block: 1px solid color-mix(in oklab, currentColor 16%, transparent);
+  padding-block: 1rem 1.25rem;
+}
+
+.multiplayer-lobby-panel-heading,
+.multiplayer-lobby-rename,
+.multiplayer-lobby-roster {
+  font-family: var(--font-mono);
+}
+
+.multiplayer-lobby-panel-heading {
+  margin: 1.25rem 0 0;
+  font-size: 0.625rem;
+  font-weight: 400;
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  opacity: 0.58;
+}
+
+.multiplayer-lobby-roster {
+  display: grid;
+  gap: 0;
+  margin: 0.65rem 0 0;
+  padding: 0;
+  border-top: 1px solid color-mix(in oklab, currentColor 14%, transparent);
+  list-style: none;
+}
+
+.multiplayer-lobby-roster li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  min-height: 2.75rem;
+  align-items: center;
+  gap: 0.65rem;
+  border-bottom: 1px solid color-mix(in oklab, currentColor 14%, transparent);
+  font-size: 0.75rem;
+}
+
+.multiplayer-lobby-roster li > span:first-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.multiplayer-lobby-roster li > span:nth-child(2) {
+  opacity: 0.52;
+}
+
+.multiplayer-lobby-roster button,
+.multiplayer-lobby-rename {
+  min-height: 2.75rem;
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+}
+
+.multiplayer-lobby-roster button {
+  padding-inline: 0.35rem;
+  font-size: 0.625rem;
+  opacity: 0.72;
+}
+
+.multiplayer-lobby-rename {
+  margin-top: 0.4rem;
+  font-size: 0.6875rem;
+  opacity: 0.62;
+}
+
+.pixel-room-lobby-heading {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 0.75rem;
+}
+
+.pixel-room-lobby-title,
+.pixel-room-lobby-status,
+.pixel-room-lobby-key {
+  margin: 0;
+  font-family: var(--font-mono);
+}
+
+.pixel-room-lobby-title {
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+
+.pixel-room-lobby-status,
+.pixel-room-lobby-key {
+  font-size: 0.625rem;
+  opacity: 0.55;
+}
+
+.pixel-room-lobby-status {
+  margin-top: 0.25rem;
+}
+
+.pixel-room-lobby-key {
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pixel-world {
+    scroll-behavior: auto;
+  }
+}
+
+.things-concierge {
+  position: absolute;
+  right: 1.5rem;
+  bottom: 1.25rem;
+  width: 9rem;
+  opacity: 0.72;
+  transition: opacity 180ms ease;
+}
+
+.things-concierge:hover,
+.things-concierge:focus-within {
+  opacity: 1;
+}
+
+.things-concierge-scene {
+  border-style: dashed;
+}
+
+.things-concierge p {
+  margin: 0.35rem 0 0;
+  color: var(--stone-500);
+  font-family: var(--font-mono);
+  font-size: 0.5rem;
+  text-align: right;
+}
+
+@media (max-width: 48rem) {
+  .things-concierge {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .things-concierge {
+    opacity: 0.55;
+    transition: none;
+  }
+}

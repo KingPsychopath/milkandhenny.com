@@ -7,6 +7,7 @@ import { useQrCode } from "@/hooks/useQrCode";
 import { shareOrCopy } from "@/lib/client/share";
 import { PlayerReadyControl } from "../shared/PlayerReadyControl";
 import { GameActionDialog } from "../shared/GameActionDialog";
+import { MultiplayerLobbyPanel } from "../shared/PixelWorld";
 import { gamePoolRoomInviteUrl } from "../pool/pool-session.client";
 import { CountryRevealAnalysis } from "./CountryReveal";
 import { DrawCountryResultReport } from "./DrawCountryResultReport";
@@ -80,7 +81,6 @@ export function RoomLobby({
   const { dataUrl: qr, failed: qrFailed } = useQrCode(invite || null, 280);
   const nativeShare = useNativeShareAvailability({ coarsePointerOnly: true });
   const currentPlayer = snapshot.players.find(({ id }) => id === playerId);
-  const readyCount = snapshot.players.filter(({ ready }) => ready !== false).length;
   const share = async () => {
     const result = await shareOrCopy(
       { title: "Draw the Country", text: `Join room ${snapshot.roomId}.`, url: invite },
@@ -113,6 +113,21 @@ export function RoomLobby({
         <p className="mt-2 font-mono text-micro text-black/40">
           {snapshot.roundTotal} rounds · {snapshot.drawSeconds} seconds each · 100 points per round
         </p>
+        <MultiplayerLobbyPanel
+          canPassLead={snapshot.canControl && snapshot.players.length > 1}
+          currentPlayerId={playerId}
+          game="draw-country"
+          onPassLead={onPassLead}
+          onRename={onRename}
+          roomId={snapshot.roomId}
+          players={snapshot.players.map((player) => ({
+            id: player.id,
+            name: player.name,
+            ready: player.ready,
+            lead: player.id === snapshot.hostPlayerId,
+            left: player.withdrawn,
+          }))}
+        />
         {invite ? (
           <>
             {qr ? (
@@ -146,35 +161,6 @@ export function RoomLobby({
         ) : null}
         <p aria-live="polite" className="mt-2 min-h-5 font-mono text-xs text-amber-800">
           {shareMessage ?? message}
-        </p>
-        <ul className="mt-5 flex flex-wrap justify-center gap-2" aria-label="Players in the room">
-          {snapshot.players.map((player) => (
-            <li
-              key={player.id}
-              className="rounded-full border border-black/15 bg-white/30 px-4 py-2 font-mono text-sm"
-            >
-              {player.name} · {player.ready !== false ? "ready" : "not ready"}
-              {snapshot.canControl && player.id !== snapshot.hostPlayerId ? (
-                <button
-                  type="button"
-                  onClick={() => onPassLead(player.id)}
-                  className="ml-2 underline"
-                >
-                  make lead
-                </button>
-              ) : null}
-            </li>
-          ))}
-        </ul>
-        <button
-          type="button"
-          onClick={onRename}
-          className="mt-3 min-h-11 font-mono text-xs underline"
-        >
-          change my name
-        </button>
-        <p aria-live="polite" className="mt-3 font-mono text-xs text-black/45">
-          {readyCount} of {snapshot.players.length} ready
         </p>
         <PlayerReadyControl
           ready={currentPlayer?.ready ?? true}

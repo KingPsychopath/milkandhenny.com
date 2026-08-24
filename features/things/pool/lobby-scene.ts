@@ -1,7 +1,7 @@
 import type { GamePoolPublicOccupant, GamePoolRoomSummary } from "./types";
 
-export const GAME_POOL_LOBBY_ROOM_LIMIT = 3;
 export const GAME_POOL_LOBBY_OCCUPANT_LIMIT = 6;
+export const GAME_POOL_ROOMS_PER_FLOOR = 3;
 
 export interface GamePoolLobbyActor {
   id: string;
@@ -22,7 +22,7 @@ export interface GamePoolLobbyRoom {
 
 export interface GamePoolLobbyScene {
   rooms: GamePoolLobbyRoom[];
-  hiddenRoomCount: number;
+  floors: GamePoolLobbyRoom[][];
   waitingPlayerCount: number;
   waitingRoomCount: number;
   playingRoomCount: number;
@@ -53,32 +53,32 @@ export function buildGamePoolLobbyScene(
   };
   const openRooms = rooms.filter(({ status }) => status === "open").sort(byCreation);
   const playingRooms = rooms.filter(({ status }) => status === "started").sort(byCreation);
-  const visibleOpenLimit =
-    playingRooms.length > 0 ? GAME_POOL_LOBBY_ROOM_LIMIT - 1 : GAME_POOL_LOBBY_ROOM_LIMIT;
-  const visibleRooms = [
-    ...openRooms.slice(0, visibleOpenLimit),
-    ...playingRooms,
-    ...openRooms.slice(visibleOpenLimit),
-  ].slice(0, GAME_POOL_LOBBY_ROOM_LIMIT);
+  const orderedRooms = [...openRooms, ...playingRooms];
+  const sceneRooms = orderedRooms.map((room) => {
+    const occupants = visibleOccupants(room);
+    return {
+      roomId: room.roomId,
+      label: room.label,
+      status: room.status,
+      playerCount: room.playerCount,
+      capacity: room.capacity,
+      actors: occupants.slice(0, GAME_POOL_LOBBY_OCCUPANT_LIMIT).map((occupant, seat) => ({
+        id: occupant.id,
+        label: occupant.label,
+        seat,
+        tone: stableTone(occupant.id),
+      })),
+      hiddenCount: Math.max(0, room.playerCount - GAME_POOL_LOBBY_OCCUPANT_LIMIT),
+    };
+  });
+  const floors = Array.from(
+    { length: Math.ceil(sceneRooms.length / GAME_POOL_ROOMS_PER_FLOOR) },
+    (_, index) =>
+      sceneRooms.slice(index * GAME_POOL_ROOMS_PER_FLOOR, (index + 1) * GAME_POOL_ROOMS_PER_FLOOR),
+  );
   return {
-    rooms: visibleRooms.map((room) => {
-      const occupants = visibleOccupants(room);
-      return {
-        roomId: room.roomId,
-        label: room.label,
-        status: room.status,
-        playerCount: room.playerCount,
-        capacity: room.capacity,
-        actors: occupants.slice(0, GAME_POOL_LOBBY_OCCUPANT_LIMIT).map((occupant, seat) => ({
-          id: occupant.id,
-          label: occupant.label,
-          seat,
-          tone: stableTone(occupant.id),
-        })),
-        hiddenCount: Math.max(0, room.playerCount - GAME_POOL_LOBBY_OCCUPANT_LIMIT),
-      };
-    }),
-    hiddenRoomCount: Math.max(0, rooms.length - GAME_POOL_LOBBY_ROOM_LIMIT),
+    rooms: sceneRooms,
+    floors,
     waitingPlayerCount: rooms
       .filter(({ status }) => status === "open")
       .reduce((total, room) => total + room.playerCount, 0),

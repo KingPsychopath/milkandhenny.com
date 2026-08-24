@@ -33,6 +33,7 @@ import type {
 } from "./types";
 import { useCentreRoom } from "./useCentreRoom";
 import { gamePoolRoomInviteUrl, releaseGamePoolMembership } from "../pool/pool-session.client";
+import { MultiplayerLobbyPanel } from "../shared/PixelWorld";
 
 const DIFFICULTY_LABELS = ["calm", "easy", "medium", "hard", "brutal"] as const;
 
@@ -660,6 +661,22 @@ function CentreLobby({
         <p className="centre-lede">
           Tap your start when you’re set. Once the countdown begins, the race is locked.
         </p>
+        <MultiplayerLobbyPanel
+          canPassLead={snapshot.canControl && snapshot.players.length > 1}
+          currentPlayerId={playerId}
+          game="centre"
+          onPassLead={onPassLead}
+          onRename={onRename}
+          roomId={snapshot.roomId}
+          tone="night"
+          players={snapshot.players.map((player) => ({
+            id: player.id,
+            name: player.name,
+            ready: player.ready,
+            lead: player.id === snapshot.hostPlayerId,
+            left: player.withdrawn,
+          }))}
+        />
         {invite ? (
           <>
             {qr ? (
@@ -687,25 +704,6 @@ function CentreLobby({
         <p aria-live="polite" className="centre-message">
           {message}
         </p>
-        <ul className="centre-roster">
-          {snapshot.players.map((player) => (
-            <li key={player.id}>
-              <span>
-                {player.name}
-                {player.id === snapshot.hostPlayerId ? " · host" : ""}
-              </span>
-              <small>{player.ready ? "ready" : "not ready"}</small>
-              {snapshot.canControl && player.id !== snapshot.hostPlayerId && !player.withdrawn ? (
-                <button type="button" onClick={() => onPassLead(player.id)}>
-                  make lead
-                </button>
-              ) : null}
-            </li>
-          ))}
-        </ul>
-        <button type="button" className="centre-button" onClick={onRename}>
-          change my name
-        </button>
         {snapshot.canControl && !snapshot.managed ? (
           <>
             <label className="centre-difficulty">

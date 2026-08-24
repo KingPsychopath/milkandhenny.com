@@ -6,6 +6,7 @@ import type { OfflineThingSlug } from "@/features/things/offline";
 import { useThingOfflineState } from "@/features/offline/client";
 import type { Thing } from "@/features/things/catalog";
 import { OG_IMAGES, buildSeoHead } from "@/lib/shared/seo";
+import { ThingsConcierge } from "@/features/things/shared/ThingsConcierge";
 
 function ThingMark({ mark }: { mark: Thing["mark"] }) {
   if (mark.kind === "symbol") return mark.value;
@@ -71,7 +72,7 @@ function ThingsRoute() {
 
   return (
     <div className="min-h-screen bg-background">
-      <header className="max-w-2xl mx-auto px-6 pt-16 pb-10">
+      <header className="relative max-w-2xl mx-auto px-6 pt-16 pb-10">
         <nav aria-label="Breadcrumb" className="font-mono text-xs theme-muted">
           <Link to="/" className="hover:text-foreground transition-colors">
             {SITE_BRAND}
@@ -88,6 +89,7 @@ function ThingsRoute() {
         <p className="mt-5 max-w-lg font-serif text-lg leading-relaxed theme-muted">
           Things are made to be used. Small tools, games and experiments.
         </p>
+        <ThingsConcierge />
       </header>
 
       <main id="main" className="max-w-2xl mx-auto px-6 pb-24">

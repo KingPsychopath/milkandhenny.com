@@ -37,6 +37,7 @@ import { useSameBrainRoom } from "./useSameBrainRoom";
 import type { SameBrainPlayerCredentials, SameBrainScoring, SameBrainSnapshot } from "./types";
 import { PlayerReadyControl } from "../shared/PlayerReadyControl";
 import { gamePoolRoomInviteUrl, releaseGamePoolMembership } from "../pool/pool-session.client";
+import { MultiplayerLobbyPanel } from "../shared/PixelWorld";
 
 let actionCounter = 0;
 const nextActionId = () => `sb-${Date.now().toString(36)}-${(actionCounter += 1)}`;
@@ -340,46 +341,31 @@ function LobbyPhase({
         </div>
       ) : null}
 
-      <div className="mt-8">
-        <Eyebrow>who is here · {snapshot.players.length}</Eyebrow>
-      </div>
-      <Scoreboard snapshot={snapshot} />
-      <button
-        type="button"
-        onClick={() => {
+      <MultiplayerLobbyPanel
+        canPassLead={isHost && snapshot.players.length > 1}
+        currentPlayerId={snapshot.you?.id ?? null}
+        game="same-brain"
+        onPassLead={(playerId) => void sendHost({ type: "host.pass", playerId })}
+        onRename={() => {
           const current = snapshot.players.find(({ id }) => id === snapshot.you?.id)?.name ?? "";
           const name = window.prompt("Name in this room", current)?.trim();
           if (name && name !== current) void send({ type: "player.rename", name });
         }}
-        className="mt-3 min-h-11 font-mono text-xs text-white/55 underline"
-      >
-        change my name
-      </button>
+        roomId={snapshot.roomId}
+        tone="night"
+        players={snapshot.players.map((player) => ({
+          id: player.id,
+          name: player.name,
+          ready: player.ready,
+          lead: player.host,
+          left: player.left,
+        }))}
+      />
 
-      {isHost && snapshot.players.length > 1 ? (
-        <label className="mt-4 block font-mono text-xs text-white/60">
-          pass room lead
-          <select
-            defaultValue=""
-            onChange={(event) => {
-              if (event.target.value)
-                void sendHost({ type: "host.pass", playerId: event.target.value });
-            }}
-            className="mt-2 min-h-11 w-full border border-white/20 bg-transparent px-3 text-white"
-          >
-            <option value="" className="text-black">
-              choose a player
-            </option>
-            {snapshot.players
-              .filter(({ host, left }) => !host && !left)
-              .map((player) => (
-                <option key={player.id} value={player.id} className="text-black">
-                  {player.name}
-                </option>
-              ))}
-          </select>
-        </label>
-      ) : null}
+      <div className="mt-8">
+        <Eyebrow>scoreboard</Eyebrow>
+      </div>
+      <Scoreboard snapshot={snapshot} />
 
       {isHost ? (
         <section className="mt-8 border-t border-white/15 pt-5">
