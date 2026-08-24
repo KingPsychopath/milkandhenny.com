@@ -2,6 +2,13 @@
 
 import { clientsClaim } from "workbox-core";
 import { registerRoute } from "workbox-routing";
+import {
+  containsResourceUrls,
+  isCurrentOfflineCacheMetadata,
+  isOfflineCacheMetadata,
+  offlineCacheKey,
+  type OfflineCacheMetadata,
+} from "@/features/offline/cache-metadata";
 import type { OfflineWorkerRequest, OfflineWorkerResponse } from "@/features/offline/protocol";
 import {
   THING_OFFLINE,
@@ -27,6 +34,7 @@ self.addEventListener("activate", (event) => {
         const abandonedStaging = name.startsWith(`${CACHE_PREFIX}:`) && name.endsWith(":staging");
         if (oldOptionalAi || abandonedStaging) await caches.delete(name);
       }
+      await removeIncompleteThingCaches();
     })(),
   );
 });
@@ -39,12 +47,9 @@ function cachePrefix(slug: OfflineThingSlug) {
   return `${CACHE_PREFIX}:${slug}:`;
 }
 
-function currentCacheName(slug: OfflineThingSlug) {
-  return `${cachePrefix(slug)}${safeBuildId()}`;
-}
-
-function stagingCacheName(slug: OfflineThingSlug) {
-  return `${currentCacheName(slug)}:staging`;
+function candidateCacheName(slug: OfflineThingSlug) {
+  const nonce = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+  return `${offlineCacheKey(slug, THING_OFFLINE[slug].offlineVersion)}:${safeBuildId()}:${nonce}`;
 }
 
 function metadataUrl(slug: OfflineThingSlug) {
@@ -89,65 +94,105 @@ function normaliseResourceUrl(value: string, slug: OfflineThingSlug) {
   }
 }
 
-async function thingCacheNames(slug?: OfflineThingSlug) {
-  const prefix = slug ? cachePrefix(slug) : `${CACHE_PREFIX}:`;
-  const names = (await caches.keys()).filter(
-    (name) => name.startsWith(prefix) && !name.endsWith(":staging"),
-  );
-  return names.toReversed();
+function offlineThingSlugs() {
+  return Object.keys(THING_OFFLINE).filter(isOfflineThingSlug);
 }
 
-async function matchThingCaches(request: Request, slug?: OfflineThingSlug) {
-  for (const name of await thingCacheNames(slug)) {
-    const response = await (await caches.open(name)).match(request);
-    if (response) return response;
-  }
-  return null;
+async function thingCacheNames(slug: OfflineThingSlug) {
+  const prefix = cachePrefix(slug);
+  return (await caches.keys()).filter((name) => name.startsWith(prefix));
 }
 
-interface OfflineMetadata {
-  buildId: string;
-  catalogueVersion: number;
-  resourceUrls: string[];
-  storageVersion: number;
-}
-
-async function readMetadata(slug: OfflineThingSlug): Promise<OfflineMetadata | null> {
-  const cache = await caches.open(currentCacheName(slug));
+async function readMetadata(
+  slug: OfflineThingSlug,
+  cacheName: string,
+): Promise<OfflineCacheMetadata | null> {
+  const cache = await caches.open(cacheName);
   const response = await cache.match(metadataUrl(slug));
   if (!response) return null;
   try {
     const value: unknown = await response.json();
-    if (!value || typeof value !== "object") return null;
-    const metadata = value as Partial<OfflineMetadata>;
-    if (
-      metadata.buildId !== BUILD_ID ||
-      metadata.catalogueVersion !== THING_OFFLINE[slug].catalogueVersion ||
-      metadata.storageVersion !== THING_OFFLINE[slug].storageVersion ||
-      !Array.isArray(metadata.resourceUrls) ||
-      !metadata.resourceUrls.every((url) => typeof url === "string")
-    ) {
-      return null;
-    }
-    return {
-      buildId: metadata.buildId,
-      catalogueVersion: metadata.catalogueVersion,
-      resourceUrls: metadata.resourceUrls,
-      storageVersion: metadata.storageVersion,
-    };
+    return isOfflineCacheMetadata(value) ? value : null;
   } catch {
     return null;
   }
 }
 
-async function isReady(slug: OfflineThingSlug) {
-  const metadata = await readMetadata(slug);
-  if (!metadata) return false;
-  const cache = await caches.open(currentCacheName(slug));
+async function cacheContainsResources(cacheName: string, metadata: OfflineCacheMetadata) {
+  const cache = await caches.open(cacheName);
   for (const url of metadata.resourceUrls) {
     if (!(await cache.match(url))) return false;
   }
   return true;
+}
+
+interface ReadyThingCache {
+  name: string;
+  slug: OfflineThingSlug;
+  metadata: OfflineCacheMetadata;
+}
+
+async function thingCachesWithMetadata(slug?: OfflineThingSlug): Promise<ReadyThingCache[]> {
+  const slugs = slug ? [slug] : offlineThingSlugs();
+  const entries: ReadyThingCache[] = [];
+  for (const currentSlug of slugs) {
+    for (const name of await thingCacheNames(currentSlug)) {
+      const metadata = await readMetadata(currentSlug, name);
+      if (!metadata) continue;
+      entries.push({ name, slug: currentSlug, metadata });
+    }
+  }
+  return entries.toSorted((left, right) => {
+    const currentRelease =
+      Number(isCurrentOfflineCacheMetadata(right.metadata, THING_OFFLINE[right.slug])) -
+      Number(isCurrentOfflineCacheMetadata(left.metadata, THING_OFFLINE[left.slug]));
+    return currentRelease || right.metadata.preparedAt - left.metadata.preparedAt;
+  });
+}
+
+async function matchThingCaches(request: Request, slug?: OfflineThingSlug) {
+  for (const entry of await thingCachesWithMetadata(slug)) {
+    const response = await (await caches.open(entry.name)).match(request);
+    if (response) return response;
+  }
+  return null;
+}
+
+async function readyThingCaches(slug?: OfflineThingSlug): Promise<ReadyThingCache[]> {
+  const entries: ReadyThingCache[] = [];
+  for (const entry of await thingCachesWithMetadata(slug)) {
+    if (await cacheContainsResources(entry.name, entry.metadata)) entries.push(entry);
+  }
+  return entries;
+}
+
+function resourceUrlsForThing(values: readonly string[], slug: OfflineThingSlug) {
+  const resourceUrls = new Set<string>();
+  for (const value of values) {
+    const url = normaliseResourceUrl(value, slug);
+    if (url) resourceUrls.add(url);
+  }
+  return [...resourceUrls];
+}
+
+async function isReady(slug: OfflineThingSlug, expectedResourceUrls?: readonly string[]) {
+  const expected = expectedResourceUrls
+    ? resourceUrlsForThing(expectedResourceUrls, slug)
+    : undefined;
+  for (const entry of await readyThingCaches(slug)) {
+    if (!isCurrentOfflineCacheMetadata(entry.metadata, THING_OFFLINE[slug])) continue;
+    if (expected && !containsResourceUrls(entry.metadata.resourceUrls, expected)) continue;
+    return true;
+  }
+  return false;
+}
+
+async function removeIncompleteThingCaches() {
+  for (const slug of offlineThingSlugs()) {
+    for (const name of await thingCacheNames(slug)) {
+      if (!(await readMetadata(slug, name))) await caches.delete(name);
+    }
+  }
 }
 
 async function cacheResource(cache: Cache, url: string, slug: OfflineThingSlug) {
@@ -174,49 +219,43 @@ async function performThingPreparation(
   pageResources: string[],
   refresh = false,
 ) {
-  if (!refresh && (await isReady(slug))) return true;
-
   const thing = THING_OFFLINE[slug];
-  const resourceUrls = new Set<string>();
-  for (const value of [thing.entryPath, ...thing.requiredAssets, ...pageResources.slice(0, 200)]) {
-    const url = normaliseResourceUrl(value, slug);
-    if (url) resourceUrls.add(url);
-  }
+  const resourceUrls = resourceUrlsForThing(
+    [thing.entryPath, ...thing.requiredAssets, ...pageResources.slice(0, 200)],
+    slug,
+  );
+  if (!refresh && (await isReady(slug, resourceUrls))) return true;
 
-  const stagingName = stagingCacheName(slug);
-  const finalName = currentCacheName(slug);
+  const candidateName = candidateCacheName(slug);
   try {
-    await caches.delete(stagingName);
-    const staging = await caches.open(stagingName);
-    await Promise.all([...resourceUrls].map((url) => cacheResource(staging, url, slug)));
+    const candidate = await caches.open(candidateName);
+    await Promise.all(resourceUrls.map((url) => cacheResource(candidate, url, slug)));
 
-    await caches.delete(finalName);
-    const finalCache = await caches.open(finalName);
-    for (const request of await staging.keys()) {
-      const response = await staging.match(request);
-      if (!response) throw new Error("Offline staging cache became incomplete");
-      await finalCache.put(request, response);
-    }
-
-    const metadata: OfflineMetadata = {
-      buildId: BUILD_ID,
-      catalogueVersion: thing.catalogueVersion,
-      resourceUrls: [...resourceUrls],
+    const metadata: OfflineCacheMetadata = {
+      offlineVersion: thing.offlineVersion,
+      resourceUrls,
       storageVersion: thing.storageVersion,
+      preparedAt: Date.now(),
     };
-    await finalCache.put(
+    await candidate.put(
       metadataUrl(slug),
       Response.json(metadata, { headers: { "Cache-Control": "no-store" } }),
     );
-    await caches.delete(stagingName);
+    if (!(await cacheContainsResources(candidateName, metadata))) {
+      throw new Error("Offline cache became incomplete");
+    }
 
     for (const name of await thingCacheNames(slug)) {
-      if (name !== finalName) await caches.delete(name);
+      if (name === candidateName) continue;
+      try {
+        await caches.delete(name);
+      } catch {
+        // A stale cache is harmless if the new cache is already complete.
+      }
     }
-    return isReady(slug);
+    return true;
   } catch {
-    await caches.delete(stagingName);
-    if (!(await isReady(slug))) await caches.delete(finalName);
+    await caches.delete(candidateName);
     return false;
   }
 }
@@ -248,13 +287,15 @@ function parseWorkerRequest(value: unknown): OfflineWorkerRequest | null {
   }
   if (typeof message.buildId !== "string") return null;
   if (message.type === "CHECK_THING_OFFLINE") {
-    return { type: message.type, slug: message.slug, buildId: message.buildId };
+    if (message.resourceUrls !== undefined && !isStringArray(message.resourceUrls)) return null;
+    return {
+      type: message.type,
+      slug: message.slug,
+      buildId: message.buildId,
+      resourceUrls: message.resourceUrls,
+    };
   }
-  if (
-    message.type === "PREPARE_THING_OFFLINE" &&
-    Array.isArray(message.resourceUrls) &&
-    message.resourceUrls.every((url) => typeof url === "string")
-  ) {
+  if (message.type === "PREPARE_THING_OFFLINE" && isStringArray(message.resourceUrls)) {
     return {
       type: message.type,
       slug: message.slug,
@@ -264,6 +305,10 @@ function parseWorkerRequest(value: unknown): OfflineWorkerRequest | null {
     };
   }
   return null;
+}
+
+function isStringArray(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every((item) => typeof item === "string");
 }
 
 self.addEventListener("message", (event) => {
@@ -289,7 +334,7 @@ self.addEventListener("message", (event) => {
           error: "A newer site version is waiting to activate",
         };
       } else if (message.type === "CHECK_THING_OFFLINE") {
-        const ready = await isReady(message.slug);
+        const ready = await isReady(message.slug, message.resourceUrls);
         response = {
           ok: ready,
           state: preparations.has(message.slug) ? "preparing" : ready ? "ready" : "not-ready",

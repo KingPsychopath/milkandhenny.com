@@ -235,11 +235,12 @@ function collectCurrentPageResources() {
   return [...urls];
 }
 
-export async function refreshOfflineState(slug: OfflineThingSlug) {
+export async function refreshOfflineState(slug: OfflineThingSlug, resourceUrls?: string[]) {
   const response = await sendWorkerMessage({
     type: "CHECK_THING_OFFLINE",
     slug,
     buildId: BUILD_ID,
+    resourceUrls,
   });
   publish(slug, response?.state ?? "unavailable");
 }
@@ -254,14 +255,15 @@ export function prepareThingOffline(
   }
 
   const pending = (async () => {
-    await refreshOfflineState(slug);
+    const resourceUrls = collectCurrentPageResources();
+    await refreshOfflineState(slug, resourceUrls);
     if (states.get(slug) === "ready" && !options?.refresh) return;
     publish(slug, "preparing");
     const response = await sendWorkerMessage({
       type: "PREPARE_THING_OFFLINE",
       slug,
       buildId: BUILD_ID,
-      resourceUrls: collectCurrentPageResources(),
+      resourceUrls,
       refresh: options?.refresh,
     });
     publish(slug, response?.state ?? "failed");

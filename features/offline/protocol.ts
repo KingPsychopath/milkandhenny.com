@@ -7,6 +7,7 @@ export type OfflineWorkerRequest =
       type: "CHECK_THING_OFFLINE";
       slug: OfflineThingSlug;
       buildId: string;
+      resourceUrls?: string[];
     }
   | {
       type: "PREPARE_THING_OFFLINE";

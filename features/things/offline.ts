@@ -16,46 +16,47 @@ const SHARED_OFFLINE_ASSETS = [
   "/icon-512.png",
 ] as const;
 
+/** Bump a game's offlineVersion when its offline code, bundled content, or resource contract changes. */
 export const THING_OFFLINE = {
   centre: {
     entryPath: "/things/centre",
     manifestPath: "/manifest.json",
-    catalogueVersion: 1,
+    offlineVersion: 1,
     storageVersion: 1,
     requiredAssets: [...SHARED_OFFLINE_ASSETS, "/manifest.json"],
   },
   pitches: {
     entryPath: "/things/pitches",
     manifestPath: "/manifest.json",
-    catalogueVersion: 1,
+    offlineVersion: 1,
     storageVersion: 1,
     requiredAssets: [...SHARED_OFFLINE_ASSETS, "/manifest.json"],
   },
   "heads-up": {
     entryPath: "/things/heads-up",
     manifestPath: "/manifest-forehead.webmanifest",
-    catalogueVersion: 1,
+    offlineVersion: 1,
     storageVersion: 1,
     requiredAssets: [...SHARED_OFFLINE_ASSETS, "/manifest-forehead.webmanifest"],
   },
   "spelling-bee": {
     entryPath: "/things/spelling-bee",
     manifestPath: "/manifest.json",
-    catalogueVersion: 1,
+    offlineVersion: 1,
     storageVersion: 1,
     requiredAssets: [...SHARED_OFFLINE_ASSETS, "/manifest.json"],
   },
   icebreaker: {
     entryPath: "/things/icebreaker",
     manifestPath: "/manifest.json",
-    catalogueVersion: 1,
+    offlineVersion: 1,
     storageVersion: 1,
     requiredAssets: [...SHARED_OFFLINE_ASSETS, "/manifest.json"],
   },
   "draw-country": {
     entryPath: "/things/draw-country",
     manifestPath: "/manifest.json",
-    catalogueVersion: 1,
+    offlineVersion: 1,
     storageVersion: 1,
     requiredAssets: [
       ...SHARED_OFFLINE_ASSETS,
@@ -67,7 +68,7 @@ export const THING_OFFLINE = {
   twin: {
     entryPath: "/things/twin",
     manifestPath: "/manifest.json",
-    catalogueVersion: 1,
+    offlineVersion: 1,
     storageVersion: 1,
     requiredAssets: [...SHARED_OFFLINE_ASSETS, "/manifest.json"],
   },
