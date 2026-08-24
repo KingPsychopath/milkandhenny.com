@@ -154,6 +154,7 @@ export function renderCommunicationMessage(input: {
 }) {
   const origin = input.origin ?? BASE_URL;
   const context = { ...input.context, recipientName: input.recipientName ?? input.context?.recipientName };
+  const subject = replaceTokens(input.subject, context, origin);
   const body = replaceTokens(input.body, context, origin);
   const greeting = input.recipientName ? `Hi ${input.recipientName},` : "";
   const paragraphs = richBodyHtml(body);
@@ -178,13 +179,13 @@ export function renderCommunicationMessage(input: {
   const rendered = renderBrandedEmail({
     origin,
     label,
-    title: input.subject,
+    title: subject,
     meta: input.meta,
     contentHtml,
     footerLink,
   });
   return {
-    subject: input.subject,
+    subject,
     text: [
       input.recipientName ? `Hi ${input.recipientName},` : "",
       body.trim(),
