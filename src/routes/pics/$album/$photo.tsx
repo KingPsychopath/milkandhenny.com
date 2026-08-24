@@ -1,5 +1,6 @@
 import { Link, createFileRoute, notFound } from "@tanstack/react-router";
 import { createServerFn } from "@tanstack/react-start";
+import { SiteFooter, SiteFooterBar } from "@/components/SiteFooter";
 import { getAlbumBySlug } from "@/features/media/albums.server";
 import {
   getAlbumImageData,
@@ -61,7 +62,7 @@ function PhotoPage() {
   const alt = photo.alt ?? `Photo ${photoIndex + 1} of ${album.photos.length} from ${album.title}`;
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="flex min-h-dvh flex-col bg-background">
       <header className="max-w-4xl mx-auto px-6 pt-6 pb-4">
         <Breadcrumbs
           items={[
@@ -92,7 +93,7 @@ function PhotoPage() {
         </div>
       </header>
 
-      <main id="main">
+      <main id="main" className="flex-1">
         <section className="max-w-5xl mx-auto px-4 pb-8" aria-label="Photo">
           <PhotoViewer
             image={image}
@@ -125,20 +126,24 @@ function PhotoPage() {
         </section>
       </main>
 
-      <footer className="theme-border border-t">
-        <div className="max-w-4xl mx-auto px-6 py-6 flex items-center justify-between font-mono text-micro theme-muted tracking-wide">
-          <Link
-            to="/pics/$album"
-            params={{ album: albumSlug }}
-            className="hover:text-foreground transition-colors"
-          >
-            ← back to album
-          </Link>
-          <span>
-            © {new Date().getFullYear()} {SITE_BRAND}
-          </span>
-        </div>
-      </footer>
+      <SiteFooter maxWidth="4xl">
+        <SiteFooterBar
+          leading={
+            <Link
+              to="/pics/$album"
+              params={{ album: albumSlug }}
+              className="hover:text-foreground transition-colors"
+            >
+              ← back to album
+            </Link>
+          }
+          trailing={
+            <span className="whitespace-nowrap">
+              © {new Date().getFullYear()} {SITE_BRAND}
+            </span>
+          }
+        />
+      </SiteFooter>
     </div>
   );
 }

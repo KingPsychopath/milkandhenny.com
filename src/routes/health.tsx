@@ -1,5 +1,6 @@
 import { Link, createFileRoute } from "@tanstack/react-router";
 import { createServerFn } from "@tanstack/react-start";
+import { SiteFooter, SiteFooterBar } from "@/components/SiteFooter";
 import { getSystemCapabilities } from "@/features/system/capabilities.server";
 import type { CapabilityStatus } from "@/features/system/capabilities";
 import { SITE_BRAND } from "@/lib/shared/config";
@@ -18,7 +19,10 @@ function formatHealthTimestamp(timestamp: string): string {
   const date = new Date(timestamp);
   return Number.isNaN(date.getTime())
     ? timestamp
-    : date.toISOString().replace("T", " ").replace(/\.\d{3}Z$/, " UTC");
+    : date
+        .toISOString()
+        .replace("T", " ")
+        .replace(/\.\d{3}Z$/, " UTC");
 }
 
 export const Route = createFileRoute("/health")({
@@ -37,7 +41,7 @@ function HealthPage() {
   const health = Route.useLoaderData();
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="flex min-h-dvh flex-col bg-background">
       <header className="max-w-2xl mx-auto px-6 pt-16 pb-10">
         <Link
           to="/"
@@ -54,7 +58,7 @@ function HealthPage() {
         </div>
       </header>
 
-      <main id="main" className="max-w-2xl mx-auto px-6 pb-24">
+      <main id="main" className="max-w-2xl mx-auto flex-1 px-6 pb-24">
         <p className="font-serif text-base leading-relaxed theme-muted mb-10 max-w-xl">
           A configuration-level view of the services the application needs. Optional functions can
           be disabled without affecting the core site.
@@ -101,6 +105,31 @@ function HealthPage() {
           </div>
         </dl>
       </main>
+      <SiteFooter>
+        <SiteFooterBar
+          leading={
+            <span className="whitespace-nowrap">
+              © {new Date().getFullYear()} {SITE_BRAND}
+            </span>
+          }
+          trailing={
+            <nav
+              aria-label="Footer"
+              className="flex flex-wrap items-center justify-center gap-x-4 gap-y-2 md:justify-end"
+            >
+              <Link to="/privacy" className="hover:text-foreground transition-colors">
+                privacy
+              </Link>
+              <Link to="/contact" className="hover:text-foreground transition-colors">
+                contact
+              </Link>
+              <Link to="/" className="hover:text-foreground transition-colors">
+                ← home
+              </Link>
+            </nav>
+          }
+        />
+      </SiteFooter>
     </div>
   );
 }

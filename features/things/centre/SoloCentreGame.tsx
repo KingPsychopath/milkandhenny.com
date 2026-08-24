@@ -4,6 +4,7 @@ import { gameBrowserKey } from "../shared/multiplayer-keys";
 import { useGameSound } from "../shared/useGameSound";
 import { GameActionDialog } from "../shared/GameActionDialog";
 import { CentreReplay } from "./CentreReplay";
+import { CentreReportButton } from "./CentreReportButton";
 import { centreEntrancePoint, generateCentreMaze } from "./centre-generator";
 import { saveSoloCentreReplay, type SoloCentreReplay } from "./centre-replays.client";
 import { playCentreSound, primeCentreAudio } from "./centre-sound.client";
@@ -161,6 +162,7 @@ export function SoloCentreGame({
               .map((player, index) => ({ ...player, place: index + 1 }))}
             title="Every turn, played back."
           />
+          <CentreReportButton phase="finished" />
         </main>
       </div>
     );
@@ -244,6 +246,7 @@ export function SoloCentreGame({
               {sound.effects ? "sound on" : "sound off"}
             </button>
           </div>
+          <CentreReportButton phase={phase} />
         </main>
       </div>
       {confirmingGiveUp ? (

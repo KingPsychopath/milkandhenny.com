@@ -86,28 +86,7 @@ function RootComponent() {
   );
 }
 
-function SiteIssueReporter() {
-  const pathname = useRouterState({ select: (state) => state.location.pathname });
-  const hasLocalReporter =
-    pathname.startsWith("/upload") ||
-    (pathname.startsWith("/things/") && !pathname.startsWith("/things/centre"));
-  if (hasLocalReporter) return null;
-  return (
-    <div className="pointer-events-none fixed bottom-[max(0.75rem,env(safe-area-inset-bottom))] right-3 z-40 max-w-[calc(100vw-1.5rem)]">
-      <ReportIssueButton
-        type="site_feedback"
-        payload={{ surface: pathname || "site" }}
-        label="something feel off?"
-        className="pointer-events-auto mt-0 max-w-full rounded-full border theme-border bg-background/90 px-3 shadow-sm backdrop-blur"
-      />
-    </div>
-  );
-}
-
-function RootDocument({
-  children,
-  hideSiteReporter = false,
-}: Readonly<{ children: ReactNode; hideSiteReporter?: boolean }>) {
+function RootDocument({ children }: Readonly<{ children: ReactNode }>) {
   return (
     <html lang="en" suppressHydrationWarning>
       <head>
@@ -128,7 +107,6 @@ function RootDocument({
         <NavigationProgress />
         <OfflinePlatform />
         <ScannerReturnPrompt />
-        {hideSiteReporter ? null : <SiteIssueReporter />}
         {children}
         <Scripts />
       </body>
@@ -182,7 +160,7 @@ function RootError({ error }: ErrorComponentProps) {
   }, [error]);
 
   return (
-    <RootDocument hideSiteReporter>
+    <RootDocument>
       <main
         id="main"
         className="flex min-h-screen items-center justify-center bg-background px-6 py-12"

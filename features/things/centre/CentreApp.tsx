@@ -1,11 +1,7 @@
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { useWebHaptics } from "web-haptics/react";
-import {
-  GameLaunch,
-  GameLaunchButton,
-  GameLaunchChoices,
-} from "../shared/GameLaunch";
+import { GameLaunch, GameLaunchButton, GameLaunchChoices } from "../shared/GameLaunch";
 import { RoomJoinControl } from "../shared/RoomJoinControl";
 import { writeExpiringLocalValue } from "../shared/game-storage.client";
 import { useGamePreferences } from "../shared/useGamePreferences";
@@ -21,6 +17,7 @@ import { SoloCentreGame } from "./SoloCentreGame";
 import type { CentreDifficulty, CentrePlayerCredentials } from "./types";
 import { GamePoolDefaultLaunch } from "../pool/GamePoolDefaultLaunch";
 import type { GamePoolDefaultLaunch as GamePoolDefaultLaunchTarget } from "../pool/types";
+import { CentreReportButton } from "./CentreReportButton";
 
 const DIFFICULTY_LABELS = ["calm", "easy", "medium", "hard", "brutal"] as const;
 
@@ -278,6 +275,7 @@ export function CentreApp({ defaultPool }: { defaultPool?: GamePoolDefaultLaunch
             {message}
           </p>
         ) : null}
+        <CentreReportButton phase="launch" />
       </main>
     </div>
   );

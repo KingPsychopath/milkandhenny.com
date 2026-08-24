@@ -289,7 +289,7 @@ export function ReportIssueButton<Type extends ReportType>({
               }}
               className="min-h-11 underline decoration-dotted underline-offset-4 transition-opacity hover:opacity-70"
             >
-              add a detail
+              tap again to add a detail
             </button>
           ) : null}
         </div>
@@ -310,11 +310,13 @@ export function ReportIssueButton<Type extends ReportType>({
             : `reference ${diagnosticId}`}
         </span>
       ) : null}
-      <DiagnosticDetails
-        diagnostics={diagnostics}
-        responseError={responseError}
-        placement={detailsPlacement}
-      />
+      {error !== undefined || status === "error" || responseError ? (
+        <DiagnosticDetails
+          diagnostics={diagnostics}
+          responseError={responseError}
+          placement={detailsPlacement}
+        />
+      ) : null}
       {detailOpen ? (
         <ReportDetailDialog
           value={detailText}

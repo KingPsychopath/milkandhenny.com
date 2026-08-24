@@ -1,6 +1,7 @@
 import { Link } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 
+import { SiteFooter, SiteFooterBar } from "@/components/SiteFooter";
 import { SITE_BRAND } from "@/lib/shared/config";
 import { formatEventDate, formatEventTime, formatMoney, type PublicEvent } from "../types";
 import type { EventsIndexData } from "../events.server";
@@ -119,7 +120,7 @@ export function EventsIndexPage({ upcoming, past }: EventsIndexData) {
   const resultCount = filteredUpcoming.length + filteredPast.length;
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="flex min-h-dvh flex-col bg-background">
       <header className="max-w-2xl mx-auto px-6 pt-20 pb-10 text-center">
         <Link to="/" className="inline-block">
           <h1 className="font-mono text-3xl sm:text-4xl font-bold text-foreground tracking-tighter leading-none">
@@ -136,7 +137,7 @@ export function EventsIndexPage({ upcoming, past }: EventsIndexData) {
         <div className="border-t theme-border-strong" />
       </div>
 
-      <main id="main" className="max-w-2xl mx-auto px-6 pt-4 pb-24">
+      <main id="main" className="max-w-2xl mx-auto flex-1 px-6 pt-4 pb-24">
         <div className="relative mb-8">
           <label htmlFor="events-search" className="sr-only">
             Search events
@@ -198,13 +199,18 @@ export function EventsIndexPage({ upcoming, past }: EventsIndexData) {
         )}
       </main>
 
-      <footer className="border-t theme-border">
-        <div className="max-w-2xl mx-auto px-6 py-8">
-          <div className="flex items-center justify-between font-mono text-micro theme-muted tracking-wide">
-            <span>
+      <SiteFooter>
+        <SiteFooterBar
+          leading={
+            <span className="whitespace-nowrap">
               © {new Date().getFullYear()} {SITE_BRAND}
             </span>
-            <div className="flex items-center gap-4">
+          }
+          trailing={
+            <nav
+              aria-label="Footer"
+              className="flex flex-wrap items-center justify-center gap-x-4 gap-y-2 md:justify-end"
+            >
               <Link to="/privacy" className="hover:text-foreground transition-colors">
                 privacy
               </Link>
@@ -214,10 +220,10 @@ export function EventsIndexPage({ upcoming, past }: EventsIndexData) {
               <Link to="/" className="hover:text-foreground transition-colors">
                 ← home
               </Link>
-            </div>
-          </div>
-        </div>
-      </footer>
+            </nav>
+          }
+        />
+      </SiteFooter>
     </div>
   );
 }

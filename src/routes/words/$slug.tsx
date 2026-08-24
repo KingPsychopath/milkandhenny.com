@@ -5,6 +5,7 @@ import { WordSplitRedirectClient } from "@/features/words/components/ui/WordSpli
 import { getWordRenderData } from "@/features/words/components/ui/wordRenderData.server";
 import { formatWordDate, highlightWordTitle } from "@/features/words/components/ui/wordPageShared";
 import { Breadcrumbs } from "@/components/Breadcrumbs";
+import { SiteFooter, SiteFooterBar } from "@/components/SiteFooter";
 import { JumpRail } from "@/components/JumpRail";
 import { ReadingProgress } from "@/components/ReadingProgress";
 import { Share } from "@/components/Share";
@@ -98,7 +99,7 @@ function WordSlugPage() {
   const slug = meta.slug;
   if (data.kind === "private") {
     return (
-      <div className="min-h-screen bg-background">
+      <div className="flex min-h-dvh flex-col bg-background">
         <header className="max-w-2xl mx-auto px-6 pt-10 pb-6">
           <div className="flex items-center justify-between font-mono text-sm">
             <Link
@@ -120,7 +121,7 @@ function WordSlugPage() {
           <div className="border-t theme-border" />
         </div>
 
-        <main id="main">
+        <main id="main" className="flex-1">
           <article className="max-w-2xl mx-auto px-6 pt-12 pb-24">
             <Breadcrumbs
               items={[
@@ -132,6 +133,20 @@ function WordSlugPage() {
             <WordSplitRedirectClient slug={slug} />
           </article>
         </main>
+        <SiteFooter>
+          <SiteFooterBar
+            leading={
+              <Link to="/words" className="hover:text-foreground transition-colors">
+                ← words
+              </Link>
+            }
+            trailing={
+              <span className="whitespace-nowrap">
+                © {new Date().getFullYear()} {SITE_BRAND}
+              </span>
+            }
+          />
+        </SiteFooter>
       </div>
     );
   }
@@ -156,7 +171,7 @@ function WordSlugPage() {
   };
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="flex min-h-dvh flex-col bg-background">
       {/* react-doctor-disable-next-line dangerous-html-sink -- JSON-LD is serialized with inline-script escaping */}
       <script
         type="application/ld+json"
@@ -186,7 +201,7 @@ function WordSlugPage() {
         <div className="border-t theme-border" />
       </div>
 
-      <main id="main">
+      <main id="main" className="flex-1">
         <article className="max-w-2xl mx-auto px-6 pt-12 pb-24">
           <Breadcrumbs
             items={[
@@ -249,6 +264,20 @@ function WordSlugPage() {
           <WordBody content={note.markdown} wordSlug={slug} albums={albums} images={images} />
         </article>
       </main>
+      <SiteFooter>
+        <SiteFooterBar
+          leading={
+            <Link to="/words" className="hover:text-foreground transition-colors">
+              ← words
+            </Link>
+          }
+          trailing={
+            <span className="whitespace-nowrap">
+              © {new Date().getFullYear()} {SITE_BRAND}
+            </span>
+          }
+        />
+      </SiteFooter>
     </div>
   );
 }

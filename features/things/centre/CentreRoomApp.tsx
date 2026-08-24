@@ -39,6 +39,7 @@ import {
   useGamePoolRoomBackNavigation,
 } from "../pool/pool-session.client";
 import { MultiplayerLobbyPanel } from "../shared/PixelWorld";
+import { CentreReportButton } from "./CentreReportButton";
 
 const DIFFICULTY_LABELS = ["calm", "easy", "medium", "hard", "brutal"] as const;
 
@@ -352,6 +353,7 @@ export function CentreRoom({
           <Link to="/things/centre" className="centre-button centre-button--go">
             back to centre
           </Link>
+          <CentreReportButton phase="closed" roomId={roomId} />
         </main>
       </div>
     );
@@ -451,6 +453,7 @@ export function CentreRoom({
           ) : (
             <p className="centre-note">waiting for the host</p>
           )}
+          <CentreReportButton phase="lobby" roomId={snapshot.roomId} />
         </main>
       </div>
     );
@@ -595,6 +598,7 @@ export function CentreRoom({
           <p role="status" className="centre-message">
             {live.message}
           </p>
+          <CentreReportButton phase={snapshot.phase} roomId={roomId} />
         </main>
       </div>
       {removePlayerIds ? (

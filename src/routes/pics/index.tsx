@@ -1,5 +1,6 @@
 import { Link, createFileRoute } from "@tanstack/react-router";
 import { createServerFn } from "@tanstack/react-start";
+import { SiteFooter, SiteFooterBar } from "@/components/SiteFooter";
 import type { Album } from "@/features/media/albums";
 import { getAllAlbums } from "@/features/media/albums.server";
 import { getAlbumImageData } from "@/features/media/storage";
@@ -46,7 +47,7 @@ function PicsPage() {
   const albums = Route.useLoaderData();
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="flex min-h-dvh flex-col bg-background">
       <header className="max-w-4xl mx-auto px-6 pt-10 pb-6">
         <div className="flex items-center justify-between font-mono text-sm">
           <Link
@@ -68,7 +69,7 @@ function PicsPage() {
         <div className="border-t theme-border" />
       </div>
 
-      <main id="main">
+      <main id="main" className="flex-1">
         <section className="max-w-4xl mx-auto px-6 pt-12 pb-8" aria-label="Page header">
           <Breadcrumbs items={[{ label: "home", href: "/" }, { label: "pics" }]} />
           <h1 className="font-serif text-3xl sm:text-4xl text-foreground tracking-tight mt-2">
@@ -137,16 +138,20 @@ function PicsPage() {
         </section>
       </main>
 
-      <footer className="border-t theme-border">
-        <div className="max-w-4xl mx-auto px-6 py-8 flex items-center justify-between font-mono text-micro theme-muted tracking-wide">
-          <Link to="/" className="hover:text-foreground transition-colors">
-            ← home
-          </Link>
-          <span>
-            © {new Date().getFullYear()} {SITE_BRAND}
-          </span>
-        </div>
-      </footer>
+      <SiteFooter maxWidth="4xl">
+        <SiteFooterBar
+          leading={
+            <Link to="/" className="hover:text-foreground transition-colors">
+              ← home
+            </Link>
+          }
+          trailing={
+            <span className="whitespace-nowrap">
+              © {new Date().getFullYear()} {SITE_BRAND}
+            </span>
+          }
+        />
+      </SiteFooter>
     </div>
   );
 }

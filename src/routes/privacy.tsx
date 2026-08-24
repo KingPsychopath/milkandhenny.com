@@ -1,6 +1,7 @@
 import { Link, createFileRoute } from "@tanstack/react-router";
 
 import { BrowserProfileControl } from "@/components/BrowserProfileControl";
+import { SiteFooter, SiteFooterBar } from "@/components/SiteFooter";
 import { MARKETING_PRIVACY_NOTICE_LAST_UPDATED } from "@/features/communications/marketing-consent";
 import { CONTACT_EMAIL, SITE_BRAND } from "@/lib/shared/config";
 import { buildSeoHead } from "@/lib/shared/seo";
@@ -17,7 +18,7 @@ export const Route = createFileRoute("/privacy")({
 
 function PrivacyPage() {
   return (
-    <div className="min-h-screen bg-background text-foreground">
+    <div className="flex min-h-dvh flex-col bg-background text-foreground">
       <header className="max-w-2xl mx-auto px-6 pt-12 pb-8">
         <Link
           to="/"
@@ -27,7 +28,7 @@ function PrivacyPage() {
         </Link>
       </header>
 
-      <main id="main" className="max-w-2xl mx-auto px-6 pb-20">
+      <main id="main" className="max-w-2xl mx-auto flex-1 px-6 pb-20">
         <p className="font-mono text-micro theme-muted tracking-widest uppercase">
           Last updated {MARKETING_PRIVACY_NOTICE_LAST_UPDATED}
         </p>
@@ -123,6 +124,31 @@ function PrivacyPage() {
           </section>
         </div>
       </main>
+      <SiteFooter>
+        <SiteFooterBar
+          leading={
+            <span className="whitespace-nowrap">
+              © {new Date().getFullYear()} {SITE_BRAND}
+            </span>
+          }
+          trailing={
+            <nav
+              aria-label="Footer"
+              className="flex flex-wrap items-center justify-center gap-x-4 gap-y-2 md:justify-end"
+            >
+              <Link to="/contact" className="hover:text-foreground transition-colors">
+                contact
+              </Link>
+              <Link to="/subscribe" className="hover:text-foreground transition-colors">
+                stay close
+              </Link>
+              <Link to="/" className="hover:text-foreground transition-colors">
+                ← home
+              </Link>
+            </nav>
+          }
+        />
+      </SiteFooter>
     </div>
   );
 }

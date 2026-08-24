@@ -1,12 +1,12 @@
 import { Link, createFileRoute } from "@tanstack/react-router";
 import { createServerFn } from "@tanstack/react-start";
+import { SiteFooter, SiteFooterBar } from "@/components/SiteFooter";
 import { SITE_BRAND, SITE_NAME } from "@/lib/shared/config";
 import { OG_IMAGES, buildSeoHead } from "@/lib/shared/seo";
 import { PostListItem } from "@/features/words/components/PostListItem";
 import { isWordsEnabled } from "@/features/words/reader.server";
 import { listWords } from "@/features/words/store.server";
 import { getFooterPartyPath } from "@/features/site/site-settings.server";
-import { HomepageFooterVisitor } from "@/features/things/shared/PixelMoments";
 
 const RECENT_LIMIT = 5;
 
@@ -59,7 +59,7 @@ function Home() {
   const { posts, hasMore, footerPartyPath } = Route.useLoaderData();
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="flex min-h-dvh flex-col bg-background">
       {/* Masthead — site banner */}
       <header className="max-w-2xl mx-auto px-6 pt-20 pb-16 text-center">
         <Link to="/" className="inline-block">
@@ -102,7 +102,7 @@ function Home() {
       </div>
 
       {/* Recent — primary content */}
-      <main id="main" className="max-w-2xl mx-auto px-6 pt-4 pb-24">
+      <main id="main" className="max-w-2xl mx-auto flex-1 px-6 pt-4 pb-24">
         <p className="font-mono text-micro theme-muted tracking-widest uppercase py-4">Recent</p>
 
         {posts.length === 0 ? (
@@ -128,14 +128,18 @@ function Home() {
         )}
       </main>
 
-      <footer className="border-t theme-border">
-        <div className="relative mx-auto max-w-2xl px-6 py-8">
-          <HomepageFooterVisitor />
-          <div className="flex flex-col gap-4 font-mono text-micro tracking-wide theme-muted sm:flex-row sm:items-center sm:justify-between">
-            <span className="shrink-0">
+      <SiteFooter>
+        <SiteFooterBar
+          leading={
+            <span className="whitespace-nowrap">
               © {new Date().getFullYear()} {SITE_BRAND}
             </span>
-            <nav aria-label="Footer" className="flex flex-wrap items-center gap-x-4 gap-y-2">
+          }
+          trailing={
+            <nav
+              aria-label="Footer"
+              className="flex flex-wrap items-center justify-center gap-x-4 gap-y-2 md:justify-end"
+            >
               <Link to="/subscribe" className="hover:text-foreground transition-colors">
                 stay close
               </Link>
@@ -152,40 +156,40 @@ function Home() {
                 the party ↗
               </a>
             </nav>
-          </div>
-          <nav
-            aria-label="Social links"
-            className="mt-6 flex flex-wrap items-center justify-center gap-x-5 gap-y-2 font-mono text-micro tracking-wide theme-faint"
+          }
+        />
+        <nav
+          aria-label="Social links"
+          className="mt-6 flex flex-wrap items-center justify-center gap-x-5 gap-y-2 font-mono text-micro tracking-wide theme-faint"
+        >
+          <a
+            href="https://twitter.com/milkandh3nny"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="hover:text-foreground transition-colors"
           >
-            <a
-              href="https://twitter.com/milkandh3nny"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="hover:text-foreground transition-colors"
-            >
-              twitter
-            </a>
-            <span aria-hidden="true">·</span>
-            <a
-              href="https://instagram.com/milkandhenny"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="hover:text-foreground transition-colors"
-            >
-              instagram
-            </a>
-            <span aria-hidden="true">·</span>
-            <a
-              href="https://tiktok.com/@milkandhenny"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="hover:text-foreground transition-colors"
-            >
-              tiktok
-            </a>
-          </nav>
-        </div>
-      </footer>
+            twitter
+          </a>
+          <span aria-hidden="true">·</span>
+          <a
+            href="https://instagram.com/milkandhenny"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="hover:text-foreground transition-colors"
+          >
+            instagram
+          </a>
+          <span aria-hidden="true">·</span>
+          <a
+            href="https://tiktok.com/@milkandhenny"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="hover:text-foreground transition-colors"
+          >
+            tiktok
+          </a>
+        </nav>
+      </SiteFooter>
     </div>
   );
 }

@@ -1,5 +1,6 @@
 import { Link, createFileRoute } from "@tanstack/react-router";
 import { createServerFn } from "@tanstack/react-start";
+import { SiteFooter, SiteFooterBar } from "@/components/SiteFooter";
 import { getTransfer, validateDeleteToken } from "@/features/transfers/store.server";
 import { toPublicTransfer } from "@/features/transfers/public";
 import { SITE_NAME, SITE_BRAND } from "@/lib/shared/config";
@@ -140,7 +141,7 @@ function TransferPage() {
   }
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="flex min-h-dvh flex-col bg-background">
       <header className="max-w-4xl mx-auto px-6 pt-10 pb-6">
         <div className="flex items-center justify-between font-mono text-sm">
           <span className="theme-muted tracking-tight">shared via</span>
@@ -157,7 +158,7 @@ function TransferPage() {
         <div className="border-t theme-border" />
       </div>
 
-      <main id="main">
+      <main id="main" className="flex-1">
         <section className="max-w-4xl mx-auto px-6 pt-12 pb-8" aria-label="Transfer info">
           <div className="flex items-center gap-3 font-mono text-xs theme-muted tracking-wide">
             <time>{formatDate(transfer.createdAt)}</time>
@@ -192,14 +193,18 @@ function TransferPage() {
         )}
       </main>
 
-      <footer className="border-t theme-border">
-        <div className="max-w-4xl mx-auto px-6 py-8 flex items-center justify-between font-mono text-micro theme-muted tracking-wide">
-          <span>temporary transfer · self-destructs {formatDate(transfer.expiresAt)}</span>
-          <Link to="/" className="hover:text-foreground transition-colors">
-            {SITE_BRAND}
-          </Link>
-        </div>
-      </footer>
+      <SiteFooter maxWidth="4xl">
+        <SiteFooterBar
+          leading={
+            <span>temporary transfer · self-destructs {formatDate(transfer.expiresAt)}</span>
+          }
+          trailing={
+            <Link to="/" className="hover:text-foreground transition-colors">
+              {SITE_BRAND}
+            </Link>
+          }
+        />
+      </SiteFooter>
     </div>
   );
 }
