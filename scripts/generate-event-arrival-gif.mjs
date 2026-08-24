@@ -1,20 +1,25 @@
 import { execFile } from "node:child_process";
-import { mkdir, mkdtemp, rm, stat } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, stat, writeFile } from "node:fs/promises";
+import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { dirname, join } from "node:path";
 import sharp from "sharp";
 
 const run = promisify(execFile);
 
-const WIDTH = 240;
-const HEIGHT = 135;
-const FRAME_COUNT = 42;
-const FINAL_HOLD_FRAMES = 5;
+const WIDTH = 480;
+const HEIGHT = 132;
+const CHARACTER_SIZE = 96;
+const SURFACE_Y = 113;
+const WALK_FRAMES = 24;
+const HOLD_FRAMES = 8;
+const FRAME_COUNT = WALK_FRAMES + HOLD_FRAMES;
 const EVENT_MEDIA_DIR = new URL(
   "../public/media/events/after-school-club-2026-09-01/",
   import.meta.url,
 );
 const EMAIL_MASCOT_DIR = new URL("../public/media/email/mascots/", import.meta.url);
+const CHARACTER_SOURCE = new URL("../assets/email/mascots/pixel-kid.png", import.meta.url);
 const OUTPUT_GIF = new URL("arrival.gif", EVENT_MEDIA_DIR);
 const OUTPUT_POSTER = new URL("arrival-poster.png", EVENT_MEDIA_DIR);
 const STATIC_VARIANTS = ["ticket-confirmation", "preparation", "day-of", "feedback"].map(
@@ -25,19 +30,12 @@ const STATIC_VARIANTS = ["ticket-confirmation", "preparation", "day-of", "feedba
 );
 
 const colour = {
-  paper: "#fafaf9",
-  stone100: "#f5f5f4",
   stone200: "#e7e5e4",
   stone300: "#d6d3d1",
-  stone400: "#a8a29e",
   stone500: "#78716c",
-  ink: "#1c1917",
+  ink: "#292524",
   amber: "#b45309",
   cream: "#fef3c7",
-  skin: "#6f3f2f",
-  skinDark: "#4a281f",
-  shirt: "#7c3f22",
-  bag: "#596b61",
 };
 
 function clamp(value, minimum = 0, maximum = 1) {
@@ -49,295 +47,193 @@ function ease(value) {
   return progress * progress * (3 - 2 * progress);
 }
 
-function mix(from, to, progress) {
-  return from + (to - from) * ease(progress);
+function rect(x, y, width, height, fill, opacity) {
+  const opacityAttribute = opacity === undefined ? "" : ` opacity="${opacity}"`;
+  return `<rect x="${Math.round(x)}" y="${Math.round(y)}" width="${width}" height="${height}" fill="${fill}"${opacityAttribute}/>`;
 }
 
-function rect(x, y, width, height, fill, extra = "") {
-  return `<rect x="${x}" y="${y}" width="${width}" height="${height}" fill="${fill}" ${extra}/>`;
-}
-
-function line(x1, y1, x2, y2, stroke, width = 1, extra = "") {
-  return `<path d="M${x1} ${y1}L${x2} ${y2}" fill="none" stroke="${stroke}" stroke-width="${width}" stroke-linecap="square" ${extra}/>`;
-}
-
-function drawBackground() {
+function surfaceSvg({ characterX, icon, destination = false, sparkle = false }) {
   const pieces = [
-    rect(0, 0, WIDTH, 91, colour.stone100),
-    rect(0, 91, WIDTH, 44, colour.stone200),
-    rect(0, 89, WIDTH, 3, colour.stone300),
-    rect(12, 27, 45, 62, colour.paper),
-    rect(15, 34, 15, 19, colour.stone200),
-    rect(34, 34, 17, 19, colour.stone200),
-    rect(12, 27, 45, 3, colour.stone400),
-    rect(20, 62, 3, 27, colour.stone300),
-    rect(46, 62, 3, 27, colour.stone300),
-    rect(7, 82, 12, 7, colour.stone300),
-    rect(22, 82, 12, 7, colour.stone300),
-    rect(38, 82, 12, 7, colour.stone300),
-    rect(62, 53, 3, 36, colour.stone300),
-    rect(69, 49, 3, 40, colour.stone300),
-    rect(76, 57, 3, 32, colour.stone300),
-    rect(211, 19, 2, 34, colour.stone300),
-    rect(218, 25, 2, 28, colour.stone300),
-    rect(224, 14, 2, 39, colour.stone300),
-    `<circle cx="191" cy="25" r="11" fill="${colour.cream}"/>`,
-    `<circle cx="191" cy="25" r="6" fill="${colour.amber}" opacity=".22"/>`,
-    line(0, 91, WIDTH, 91, colour.stone500),
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${WIDTH}" height="${HEIGHT}" shape-rendering="crispEdges">`,
+    rect(48, 112, 384, 2, colour.stone300),
+    rect(48, 114, 384, 1, colour.stone200),
+    rect(characterX - 18, 109, 36, 3, colour.amber),
   ];
 
-  for (let x = 0; x < WIDTH; x += 24) {
-    pieces.push(line(x, 102, x + 12, 102, colour.stone400));
-    pieces.push(line(x + 7, 118, x + 21, 118, colour.stone400));
+  if (destination) {
+    pieces.push(
+      rect(414, 76, 3, 37, colour.stone500),
+      rect(417, 76, 18, 8, colour.amber),
+      rect(417, 84, 12, 2, colour.cream),
+    );
   }
+
+  if (sparkle) {
+    pieces.push(
+      rect(characterX + 40, 72, 3, 10, colour.amber),
+      rect(characterX + 36, 76, 11, 3, colour.amber),
+      rect(characterX + 54, 92, 2, 6, colour.stone500),
+      rect(characterX + 52, 94, 6, 2, colour.stone500),
+    );
+  }
+
+  if (icon === "ticket-confirmation") {
+    pieces.push(
+      rect(315, 74, 48, 27, colour.amber),
+      rect(319, 78, 40, 19, colour.cream),
+      rect(326, 83, 10, 10, colour.amber),
+      rect(330, 85, 2, 6, colour.cream),
+      rect(328, 87, 6, 2, colour.cream),
+      rect(345, 84, 3, 3, colour.stone500),
+      rect(352, 84, 3, 3, colour.stone500),
+      rect(345, 90, 10, 2, colour.stone500),
+    );
+  }
+
+  if (icon === "preparation") {
+    pieces.push(
+      rect(318, 76, 16, 16, colour.amber),
+      rect(322, 80, 8, 8, colour.cream),
+      rect(342, 76, 16, 16, colour.amber),
+      rect(346, 80, 8, 8, colour.cream),
+      rect(324, 82, 4, 4, colour.ink),
+      rect(348, 82, 4, 4, colour.ink),
+      rect(324, 88, 4, 2, colour.ink),
+      rect(348, 88, 4, 2, colour.ink),
+    );
+  }
+
+  if (icon === "day-of") {
+    pieces.push(
+      rect(332, 72, 4, 28, colour.stone500),
+      rect(336, 74, 28, 24, colour.amber),
+      rect(340, 78, 20, 16, colour.cream),
+      rect(348, 82, 4, 12, colour.ink),
+      rect(356, 88, 4, 4, colour.amber),
+      rect(326, 76, 2, 8, colour.amber),
+      rect(322, 79, 10, 2, colour.amber),
+    );
+  }
+
+  if (icon === "feedback") {
+    pieces.push(
+      rect(312, 75, 52, 27, colour.stone500),
+      rect(316, 79, 44, 19, colour.cream),
+      rect(322, 84, 6, 6, colour.amber),
+      rect(334, 84, 6, 6, colour.amber),
+      rect(346, 84, 6, 6, colour.amber),
+      rect(322, 94, 20, 2, colour.stone500),
+    );
+  }
+
+  pieces.push("</svg>");
   return pieces.join("");
 }
 
-function drawVenue() {
-  return [
-    rect(181, 42, 48, 49, colour.stone500),
-    rect(185, 46, 40, 45, colour.paper),
-    rect(193, 58, 24, 33, colour.ink),
-    rect(196, 61, 18, 30, colour.stone500),
-    rect(199, 65, 12, 26, colour.ink),
-    rect(181, 35, 48, 8, colour.amber),
-    rect(185, 31, 40, 4, colour.cream),
-    rect(190, 22, 30, 9, colour.paper),
-    rect(190, 22, 30, 1, colour.stone500),
-    rect(190, 30, 30, 1, colour.stone500),
-    `<text x="205" y="27.4" text-anchor="middle" fill="${colour.ink}" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="4.4" letter-spacing=".25">STUDIO</text>`,
-    rect(176, 91, 58, 3, colour.stone400),
-    rect(199, 80, 3, 3, colour.cream),
-  ].join("");
+async function renderFrame(character, options) {
+  const overlay = Buffer.from(surfaceSvg(options));
+  const left = Math.round(options.characterX - CHARACTER_SIZE / 2);
+  const top = Math.round(SURFACE_Y - CHARACTER_SIZE + (options.bob ?? 0));
+  return sharp({
+    create: {
+      width: WIDTH,
+      height: HEIGHT,
+      channels: 4,
+      background: { r: 0, g: 0, b: 0, alpha: 0 },
+    },
+  })
+    .composite([
+      { input: overlay, left: 0, top: 0 },
+      { input: character, left, top },
+    ])
+    .png({ palette: true, colours: 64, dither: 0 })
+    .toBuffer();
 }
 
-function drawMarker(x, height, accent) {
-  const top = 91 - height;
-  return [
-    rect(x, top + 4, 10, height - 4, colour.stone500),
-    `<rect x="${x - 2}" y="${top}" width="14" height="8" rx="4" fill="${accent}"/>`,
-    rect(x + 3, top + 8, 4, height - 12, colour.stone300),
-    rect(x + 4, top + 10, 2, height - 16, colour.stone100),
-  ].join("");
+function arrivalOptions(frame) {
+  const walkingProgress = clamp(frame / (WALK_FRAMES - 1));
+  const characterX = 56 + Math.round(336 * ease(walkingProgress));
+  return {
+    characterX,
+    destination: true,
+    sparkle: frame >= WALK_FRAMES - 4,
+    bob: frame % 4 < 2 ? 0 : -1,
+  };
 }
 
-function drawCharacter({ x, footY, walking, jumping, waving, frame }) {
-  const step = walking ? (Math.floor(frame / 2) % 2 === 0 ? 1 : -1) : 0;
-  const wave = waving ? Math.sin(frame / 2.2) * 5 : 0;
-  const parts = [
-    `<ellipse cx="${x}" cy="${footY + 2}" rx="9" ry="2" fill="${colour.stone500}" opacity=".28"/>`,
-    `<g transform="translate(${x} ${footY})">`,
-    `<path d="M-8 -21L-13 -12L-8 -10Z" fill="${colour.bag}"/>`,
-    `<path d="M-7 -21L-2 -24L3 -19L0 -11L-7 -13Z" fill="${colour.bag}"/>`,
-    `<path d="M${-5 + step} -10L${-7 - step} -1L${-2 - step} -1L${1 + step} -9Z" fill="${colour.ink}"/>`,
-    `<path d="M${4 - step} -10L${2 + step} -1L${7 + step} -1L${9 - step} -9Z" fill="${colour.ink}"/>`,
-    `<path d="M${-8 - step} -1L${-2 - step} -1L${-1 - step} 1L${-8 - step} 1Z" fill="${colour.ink}"/>`,
-    `<path d="M${2 + step} -1L${8 + step} -1L${10 + step} 1L${3 + step} 1Z" fill="${colour.ink}"/>`,
-    `<rect x="-7" y="-27" width="13" height="16" rx="3" fill="${colour.shirt}"/>`,
-    `<rect x="-4" y="-25" width="7" height="4" rx="1" fill="${colour.amber}" opacity=".8"/>`,
-    `<path d="M-7 -23L-12 -17L-9 -15L-4 -20Z" fill="${colour.skin}"/>`,
-    `<path d="M5 -23L${8 + wave} -17L${11 + wave} -19L8 -26Z" fill="${colour.skin}"/>`,
-    `<circle cx="0" cy="-34" r="8" fill="${colour.skin}"/>`,
-    `<path d="M-8 -34C-8 -43 7 -45 9 -35L5 -37L3 -41L0 -38L-3 -42L-6 -38Z" fill="${colour.skinDark}"/>`,
-    `<rect x="-5" y="-33" width="2" height="2" fill="${colour.ink}"/>`,
-    `<rect x="3" y="-33" width="2" height="2" fill="${colour.ink}"/>`,
-    `<path d="M-2 -29L3 -29" fill="none" stroke="${colour.skinDark}" stroke-width="1" stroke-linecap="square"/>`,
-    `<rect x="-6" y="-43" width="12" height="3" rx="1" fill="${colour.amber}"/>`,
-    `<rect x="2" y="-44" width="6" height="2" fill="${colour.amber}"/>`,
-    `</g>`,
-  ];
-
-  if (jumping) {
-    const airborne = [
-      `<path d="M${x - 8} ${footY - 9}L${x - 14} ${footY - 5}L${x - 10} ${footY - 2}" fill="none" stroke="${colour.ink}" stroke-width="3" stroke-linecap="square"/>`,
-      `<path d="M${x + 4} ${footY - 9}L${x + 10} ${footY - 4}L${x + 14} ${footY - 7}" fill="none" stroke="${colour.ink}" stroke-width="3" stroke-linecap="square"/>`,
-    ];
-    parts.splice(2, 6, ...airborne);
-  }
-  if (waving) {
-    parts.push(line(x + 8, footY - 17, x + 12 + wave, footY - 28, colour.skin, 3));
-    parts.push(line(x + 12 + wave, footY - 28, x + 15 + wave, footY - 32, colour.skin, 2));
-  }
-  return parts.join("");
+async function renderPng(buffer, output) {
+  await writeFile(output, buffer);
 }
 
-function drawMascotCard(kind, x, footY) {
-  const cardX = x + 8;
-  const cardY = footY - 28;
-  const pieces = [
-    `<g>`,
-    `<rect x="${cardX}" y="${cardY}" width="40" height="26" rx="2" fill="${colour.paper}" stroke="${colour.stone500}" stroke-width="1"/>`,
-    `<rect x="${cardX + 1}" y="${cardY + 1}" width="38" height="5" fill="${colour.amber}"/>`,
-    `<circle cx="${cardX + 4}" cy="${cardY + 13}" r="2" fill="${colour.skin}"/>`,
-  ];
+await mkdir(dirname(fileURLToPath(OUTPUT_GIF)), { recursive: true });
+await mkdir(fileURLToPath(EMAIL_MASCOT_DIR), { recursive: true });
 
-  if (kind === "ticket-confirmation") {
-    pieces.push(
-      `<text x="${cardX + 8}" y="${cardY + 11}" fill="${colour.ink}" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="4.3" letter-spacing=".15">YOU'RE IN</text>`,
-      `<path d="M${cardX + 9} ${cardY + 17}h20M${cardX + 9} ${cardY + 21}h13" stroke="${colour.stone400}" stroke-width="1"/>`,
-      `<path d="M${cardX + 32} ${cardY + 17}l2 2 4-5" fill="none" stroke="${colour.amber}" stroke-width="1.5" stroke-linecap="square"/>`,
-    );
-  } else if (kind === "preparation") {
-    pieces.push(
-      `<text x="${cardX + 8}" y="${cardY + 11}" fill="${colour.ink}" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="4.1" letter-spacing=".1">MAKE A PITCH</text>`,
-      `<rect x="${cardX + 9}" y="${cardY + 15}" width="7" height="7" fill="${colour.cream}" stroke="${colour.amber}" stroke-width="1"/>`,
-      `<text x="${cardX + 12.5}" y="${cardY + 20.2}" text-anchor="middle" fill="${colour.ink}" font-family="Georgia, serif" font-size="5">A</text>`,
-      `<rect x="${cardX + 19}" y="${cardY + 15}" width="7" height="7" fill="${colour.cream}" stroke="${colour.amber}" stroke-width="1"/>`,
-      `<text x="${cardX + 22.5}" y="${cardY + 20.2}" text-anchor="middle" fill="${colour.ink}" font-family="Georgia, serif" font-size="5">?</text>`,
-    );
-  } else {
-    pieces.push(
-      `<text x="${cardX + 8}" y="${cardY + 11}" fill="${colour.ink}" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="4.1" letter-spacing=".1">TELL US</text>`,
-      `<path d="M${cardX + 10} ${cardY + 19}l2 2 4-5M${cardX + 19} ${cardY + 19}l2 2 4-5M${cardX + 28} ${cardY + 19}l2 2 4-5" fill="none" stroke="${colour.amber}" stroke-width="1.5" stroke-linecap="square"/>`,
-    );
-  }
-
-  pieces.push(`</g>`);
-  return pieces.join("");
-}
-
-function drawSparkles(x, y, progress) {
-  const opacity = Math.sin(progress * Math.PI);
-  return [
-    `<path d="M${x - 12} ${y - 8}v6M${x - 15} ${y - 5}h6" stroke="${colour.amber}" stroke-width="1" opacity="${opacity}"/>`,
-    `<path d="M${x + 14} ${y + 2}v7M${x + 11} ${y + 5}h6" stroke="${colour.stone500}" stroke-width="1" opacity="${opacity}"/>`,
-  ].join("");
-}
-
-function frameSvg(frame) {
-  const progress = clamp(frame / (FRAME_COUNT - 1));
-  let x = 18;
-  let footY = 96;
-  let walking = true;
-  let jumping = false;
-  let waving = false;
-  let sparks = "";
-
-  if (progress < 0.18) {
-    x = mix(18, 54, progress / 0.18);
-  } else if (progress < 0.34) {
-    x = mix(54, 72, (progress - 0.18) / 0.16);
-    walking = false;
-  } else if (progress < 0.53) {
-    const jumpProgress = (progress - 0.34) / 0.19;
-    x = mix(72, 105, jumpProgress);
-    footY = 96 - Math.sin(jumpProgress * Math.PI) * 25;
-    walking = false;
-    jumping = true;
-    sparks = drawSparkles(x, footY, jumpProgress);
-  } else if (progress < 0.68) {
-    x = mix(105, 134, (progress - 0.53) / 0.15);
-  } else if (progress < 0.85) {
-    const jumpProgress = (progress - 0.68) / 0.17;
-    x = mix(134, 169, jumpProgress);
-    footY = 96 - Math.sin(jumpProgress * Math.PI) * 23;
-    walking = false;
-    jumping = true;
-    sparks = drawSparkles(x, footY, jumpProgress);
-  } else if (progress < 0.92) {
-    x = mix(169, 198, (progress - 0.85) / 0.07);
-  } else {
-    x = 201;
-    walking = false;
-    waving = true;
-  }
-
-  const scene = [
-    `<svg xmlns="http://www.w3.org/2000/svg" width="${WIDTH}" height="${HEIGHT}" viewBox="0 0 ${WIDTH} ${HEIGHT}">`,
-    `<title>A little illustrated arrival at the studio</title>`,
-    drawBackground(),
-    drawVenue(),
-    drawMarker(76, 18, colour.amber),
-    drawMarker(138, 22, colour.cream),
-    sparks,
-    drawCharacter({ x, footY, walking, jumping, waving, frame }),
-    `</svg>`,
-  ];
-  return scene.join("");
-}
-
-function staticVariantSvg(kind) {
-  const isDayOf = kind === "day-of";
-  const x = isDayOf ? 171 : 106;
-  const character = drawCharacter({
-    x,
-    footY: 96,
-    walking: false,
-    jumping: false,
-    waving: isDayOf,
-    frame: FRAME_COUNT - 1,
-  });
-  const card = isDayOf ? "" : drawMascotCard(kind, x, 96);
-  const title =
-    kind === "ticket-confirmation"
-      ? "A little character celebrates a ticket"
-      : kind === "preparation"
-        ? "A little character gets ready"
-        : kind === "day-of"
-          ? "A little character waits at the studio"
-          : "A little character holds a feedback card";
-
-  return [
-    `<svg xmlns="http://www.w3.org/2000/svg" width="480" height="270" viewBox="0 0 ${WIDTH} ${HEIGHT}">`,
-    `<title>${title}</title>`,
-    drawBackground(),
-    drawVenue(),
-    drawMarker(76, 18, colour.amber),
-    drawMarker(138, 22, colour.cream),
-    character,
-    card,
-    `</svg>`,
-  ].join("");
-}
-
-async function renderPng(svg, output) {
-  await sharp(Buffer.from(svg)).png({ compressionLevel: 9 }).toFile(output);
-}
-
-await mkdir(dirname(OUTPUT_GIF.pathname), { recursive: true });
-await mkdir(EMAIL_MASCOT_DIR.pathname, { recursive: true });
-const temporaryDirectory = await mkdtemp(join(process.env.TMPDIR ?? "/tmp", "milk-henny-arrival-"));
+const character = await sharp(fileURLToPath(CHARACTER_SOURCE)).png().toBuffer();
+const temporaryDirectory = await mkdtemp(
+  join(process.env.TMPDIR ?? "/tmp", "milk-henny-pixel-email-"),
+);
 
 try {
   const framePaths = [];
   for (let frame = 0; frame < FRAME_COUNT; frame += 1) {
     const path = join(temporaryDirectory, `frame-${String(frame).padStart(3, "0")}.png`);
-    await renderPng(frameSvg(frame), path);
+    await renderPng(
+      await renderFrame(character, arrivalOptions(Math.min(frame, WALK_FRAMES - 1))),
+      path,
+    );
     framePaths.push(path);
   }
 
-  const finalFrame = join(temporaryDirectory, "frame-final.png");
-  await renderPng(frameSvg(FRAME_COUNT - 1), finalFrame);
-  for (let hold = 0; hold < FINAL_HOLD_FRAMES; hold += 1) framePaths.push(finalFrame);
+  const poster = await renderFrame(character, {
+    ...arrivalOptions(WALK_FRAMES - 1),
+    sparkle: true,
+    bob: 0,
+  });
+  await renderPng(poster, fileURLToPath(OUTPUT_POSTER));
 
-  await renderPng(frameSvg(FRAME_COUNT - 1), OUTPUT_POSTER.pathname);
+  const staticPositions = {
+    "ticket-confirmation": 158,
+    preparation: 202,
+    "day-of": 208,
+    feedback: 188,
+  };
   for (const variant of STATIC_VARIANTS) {
-    await renderPng(staticVariantSvg(variant.kind), variant.output.pathname);
+    const buffer = await renderFrame(character, {
+      characterX: staticPositions[variant.kind],
+      icon: variant.kind,
+      bob: 0,
+    });
+    await renderPng(buffer, fileURLToPath(variant.output));
   }
+
   await run("magick", [
     "-delay",
-    "12",
+    "10",
+    "-dispose",
+    "Background",
     ...framePaths,
     "-loop",
     "0",
     "-layers",
     "Optimize",
-    OUTPUT_GIF.pathname,
+    fileURLToPath(OUTPUT_GIF),
   ]);
 
-  const gif = await stat(OUTPUT_GIF.pathname);
-  const poster = await stat(OUTPUT_POSTER.pathname);
+  const gif = await stat(fileURLToPath(OUTPUT_GIF));
+  const posterStat = await stat(fileURLToPath(OUTPUT_POSTER));
   const variants = await Promise.all(
     STATIC_VARIANTS.map(async (variant) => ({
-      path: variant.output.pathname,
-      bytes: (await stat(variant.output.pathname)).size,
+      path: fileURLToPath(variant.output),
+      bytes: (await stat(fileURLToPath(variant.output))).size,
     })),
   );
   console.log(
     JSON.stringify({
-      gif: { path: OUTPUT_GIF.pathname, bytes: gif.size, frames: framePaths.length },
-      poster: { path: OUTPUT_POSTER.pathname, bytes: poster.size },
+      gif: { path: fileURLToPath(OUTPUT_GIF), bytes: gif.size, frames: framePaths.length },
+      poster: { path: fileURLToPath(OUTPUT_POSTER), bytes: posterStat.size },
       variants,
+      alpha: true,
+      pixelSize: "96px character on a 480px transparent email surface",
     }),
   );
 } finally {

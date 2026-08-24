@@ -390,11 +390,8 @@ export async function createStarterPlan(eventSlug: string): Promise<Communicatio
   const surveyReminderAt = localDateAt(event, 4, 10);
   const eventMediaBase = `${BASE_URL}/media/events/after-school-club-2026-09-01`;
   const emailMascotBase = `${BASE_URL}/media/email/mascots`;
-  const mediaVersion = "?v=1";
-  const gif = `${eventMediaBase}/walking.gif${mediaVersion}`;
-  const poster = `${eventMediaBase}/walking-poster.jpg${mediaVersion}`;
+  const mediaVersion = "?v=2";
   const arrivalGif = `${eventMediaBase}/arrival.gif${mediaVersion}`;
-  const arrivalPoster = `${eventMediaBase}/arrival-poster.png${mediaVersion}`;
   const preparationMascot = `${emailMascotBase}/preparation.png${mediaVersion}`;
   const dayOfMascot = `${emailMascotBase}/day-of.png${mediaVersion}`;
   const feedbackMascot = `${emailMascotBase}/feedback.png${mediaVersion}`;
@@ -410,7 +407,7 @@ export async function createStarterPlan(eventSlug: string): Promise<Communicatio
         {
           kind: "image",
           url: preparationMascot,
-          alt: "A little illustrated character gets ready with letters and a pitch card",
+          alt: "A small pixel character practises with two letter tiles",
         },
       ],
       sendAt: prepAt,
@@ -427,15 +424,8 @@ export async function createStarterPlan(eventSlug: string): Promise<Communicatio
       media: [
         {
           kind: "gif",
-          url: gif,
-          alt: "A short walking guide arriving at Common Sense Studios",
-          posterUrl: poster,
-        },
-        {
-          kind: "gif",
           url: arrivalGif,
-          alt: "A little illustrated character arrives at the studio and waves",
-          posterUrl: arrivalPoster,
+          alt: "A small pixel character walks along a line towards a flag",
         },
       ],
       sendAt: practicalAt,
@@ -453,7 +443,7 @@ export async function createStarterPlan(eventSlug: string): Promise<Communicatio
         {
           kind: "image",
           url: dayOfMascot,
-          alt: "A little illustrated character waits by the studio entrance",
+          alt: "A small pixel character waits beside a little studio door",
         },
       ],
       sendAt: dayOfAt,
@@ -471,7 +461,7 @@ export async function createStarterPlan(eventSlug: string): Promise<Communicatio
         {
           kind: "image",
           url: feedbackMascot,
-          alt: "A little illustrated character holds a feedback card",
+          alt: "A small pixel character holds a feedback card",
         },
       ],
       sendAt: thankYouAt,

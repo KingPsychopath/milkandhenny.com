@@ -210,7 +210,7 @@ function buildHtml(
     : "address and your ticket";
   const ticketMascotUrl = escapeHtml(
     buildAppUrl(origin, "/media/email/mascots/ticket-confirmation.png", {
-      search: { v: "1" },
+      search: { v: "2" },
     }),
   );
   const contentHtml = `${detail.length > 0 ? `<p style="margin:0 0 20px">${detail.join("<br>")}</p>` : ""}
@@ -231,7 +231,7 @@ function buildHtml(
       ${escapeHtml(event.terms ?? "Tickets are for this named, dated event. Entry is subject to the event details and house rules.")}<br><br>
       ${escapeHtml(event.refundPolicy ?? "Self-serve refunds are available before doors open while nobody on the order has checked in. After that, contact us so the door record can be reviewed.")}
     </div>
-    <p style="margin:24px 0 0"><img src="${ticketMascotUrl}" width="480" height="270" alt="A little illustrated character celebrates your ticket" style="display:block;width:100%;height:auto;border:0"></p>`;
+    <p style="margin:24px 0 0"><img src="${ticketMascotUrl}" width="480" height="132" alt="A little pixel character celebrates your ticket" style="display:block;width:100%;height:auto;border:0"></p>`;
   return renderBrandedEmail({
     origin,
     label: tickets.length === 1 ? "your ticket" : `your ${tickets.length} tickets`,
