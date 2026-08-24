@@ -3,7 +3,7 @@
 import { clientsClaim } from "workbox-core";
 import { registerRoute } from "workbox-routing";
 import {
-  containsResourceUrls,
+  getOfflineReadiness,
   isCurrentOfflineCacheMetadata,
   isOfflineCacheMetadata,
   offlineCacheKey,
@@ -179,12 +179,26 @@ async function isReady(slug: OfflineThingSlug, expectedResourceUrls?: readonly s
   const expected = expectedResourceUrls
     ? resourceUrlsForThing(expectedResourceUrls, slug)
     : undefined;
-  for (const entry of await readyThingCaches(slug)) {
-    if (!isCurrentOfflineCacheMetadata(entry.metadata, THING_OFFLINE[slug])) continue;
-    if (expected && !containsResourceUrls(entry.metadata.resourceUrls, expected)) continue;
-    return true;
-  }
-  return false;
+  const entries = await readyThingCaches(slug);
+  return (
+    getOfflineReadiness(
+      entries.map((entry) => entry.metadata),
+      THING_OFFLINE[slug],
+      expected,
+    ) === "ready"
+  );
+}
+
+async function offlineReadiness(slug: OfflineThingSlug, expectedResourceUrls?: readonly string[]) {
+  const expected = expectedResourceUrls
+    ? resourceUrlsForThing(expectedResourceUrls, slug)
+    : undefined;
+  const entries = await readyThingCaches(slug);
+  return getOfflineReadiness(
+    entries.map((entry) => entry.metadata),
+    THING_OFFLINE[slug],
+    expected,
+  );
 }
 
 async function removeIncompleteThingCaches() {
@@ -334,10 +348,10 @@ self.addEventListener("message", (event) => {
           error: "A newer site version is waiting to activate",
         };
       } else if (message.type === "CHECK_THING_OFFLINE") {
-        const ready = await isReady(message.slug, message.resourceUrls);
+        const readiness = await offlineReadiness(message.slug, message.resourceUrls);
         response = {
-          ok: ready,
-          state: preparations.has(message.slug) ? "preparing" : ready ? "ready" : "not-ready",
+          ok: readiness === "ready",
+          state: preparations.has(message.slug) ? "preparing" : readiness,
           buildId: BUILD_ID,
         };
       } else {

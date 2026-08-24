@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   containsResourceUrls,
+  getOfflineReadiness,
   isCurrentOfflineCacheMetadata,
   isOfflineCacheMetadata,
   offlineCacheKey,
@@ -15,6 +16,18 @@ const metadata: OfflineCacheMetadata = {
   storageVersion: 1,
   preparedAt: 100,
 };
+
+const readinessThing = { offlineVersion: 2, storageVersion: 1 };
+
+function readinessMetadata(overrides: Partial<OfflineCacheMetadata> = {}): OfflineCacheMetadata {
+  return {
+    offlineVersion: readinessThing.offlineVersion,
+    resourceUrls: ["/things/twin", "/assets/twin.js"],
+    storageVersion: readinessThing.storageVersion,
+    preparedAt: 1,
+    ...overrides,
+  };
+}
 
 describe("offline cache metadata", () => {
   it("keeps an unchanged game valid after an unrelated site build", () => {
@@ -44,5 +57,30 @@ describe("offline cache metadata", () => {
   it("separates each game and offline release in cache storage", () => {
     expect(offlineCacheKey("twin", 1)).not.toBe(offlineCacheKey("heads-up", 1));
     expect(offlineCacheKey("twin", 1)).not.toBe(offlineCacheKey("twin", 2));
+  });
+});
+
+describe("offline cache readiness", () => {
+  it("reports an empty cache as not ready", () => {
+    expect(getOfflineReadiness([], readinessThing)).toBe("not-ready");
+  });
+
+  it("reports an installed older release as an available update", () => {
+    expect(getOfflineReadiness([readinessMetadata({ offlineVersion: 1 })], readinessThing)).toBe(
+      "update-available",
+    );
+  });
+
+  it("reports the current complete release as ready", () => {
+    expect(getOfflineReadiness([readinessMetadata()], readinessThing)).toBe("ready");
+  });
+
+  it("reports missing current resources as an available update", () => {
+    expect(
+      getOfflineReadiness([readinessMetadata({ resourceUrls: ["/things/twin"] })], readinessThing, [
+        "/things/twin",
+        "/assets/twin.js",
+      ]),
+    ).toBe("update-available");
   });
 });

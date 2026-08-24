@@ -4,7 +4,12 @@ import { SITE_BRAND, SITE_NAME } from "@/lib/shared/config";
 import { THINGS } from "@/features/things/catalog";
 import { isOfflineThingSlug } from "@/features/things/offline";
 import type { OfflineThingSlug } from "@/features/things/offline";
-import { useThingOfflineState } from "@/features/offline/client";
+import {
+  activateSiteUpdate,
+  updateThingOffline,
+  useSiteUpdateState,
+  useThingOfflineState,
+} from "@/features/offline/client";
 import type { Thing } from "@/features/things/catalog";
 import { OG_IMAGES, buildSeoHead } from "@/lib/shared/seo";
 import { ThingsConcierge } from "@/features/things/shared/ThingsConcierge";
@@ -68,6 +73,7 @@ export const Route = createFileRoute("/things")({
 function ThingsRoute() {
   const matchRoute = useMatchRoute();
   const isIndex = matchRoute({ to: "/things", fuzzy: false });
+  const siteUpdateState = useSiteUpdateState();
   const [query, setQuery] = useState("");
   const filteredThings = useMemo(() => {
     const tokens = query.toLowerCase().split(/\s+/).filter(Boolean);
@@ -135,6 +141,31 @@ function ThingsRoute() {
           </div>
           <ThingsConcierge />
         </div>
+        {siteUpdateState === "ready" ||
+        siteUpdateState === "activating" ||
+        siteUpdateState === "failed" ? (
+          <div
+            className="mt-6 flex min-h-11 items-center justify-between gap-4 border-y theme-border py-2 font-mono text-micro uppercase tracking-[0.12em] theme-muted"
+            aria-live="polite"
+          >
+            <span>
+              {siteUpdateState === "ready"
+                ? "new version available"
+                : siteUpdateState === "activating"
+                  ? "refreshing…"
+                  : "could not refresh"}
+            </span>
+            {siteUpdateState === "ready" || siteUpdateState === "failed" ? (
+              <button
+                type="button"
+                onClick={() => void activateSiteUpdate()}
+                className="min-h-11 shrink-0 px-2 underline decoration-dotted underline-offset-4 hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2"
+              >
+                {siteUpdateState === "failed" ? "try again" : "refresh"}
+              </button>
+            ) : null}
+          </div>
+        ) : null}
       </header>
 
       <main id="main" className="max-w-2xl mx-auto px-6 pb-24">
@@ -152,10 +183,10 @@ function ThingsRoute() {
         ) : (
           <ul className="border-t theme-border-strong">
             {filteredThings.map((thing, index) => (
-              <li key={thing.slug}>
+              <li key={thing.slug} className="border-b theme-border">
                 <Link
                   to={thing.href}
-                  className="group grid grid-cols-[3rem_1fr_auto] gap-4 items-start py-7 border-b theme-border min-h-44 focus-visible:outline-offset-4"
+                  className="group grid grid-cols-[3rem_1fr_auto] gap-4 items-start py-7 min-h-44 focus-visible:outline-offset-4"
                 >
                   <span
                     aria-hidden="true"
@@ -173,7 +204,6 @@ function ThingsRoute() {
                     <span className="block mt-2 max-w-md text-sm leading-relaxed theme-muted">
                       {thing.description}
                     </span>
-                    <ThingOfflineStatus thing={thing} />
                   </span>
                   <span
                     aria-hidden="true"
@@ -182,6 +212,7 @@ function ThingsRoute() {
                     →
                   </span>
                 </Link>
+                <ThingOfflineStatus thing={thing} />
               </li>
             ))}
           </ul>
@@ -194,34 +225,50 @@ function ThingsRoute() {
 function ThingOfflineStatus({ thing }: { thing: Thing }) {
   // Online-only things carry no offline bundle, so there is no state to subscribe to.
   if (!thing.offline || !isOfflineThingSlug(thing.slug)) return null;
-  return <OfflineThingStatus slug={thing.slug} />;
+  return <OfflineThingStatus name={thing.name} slug={thing.slug} />;
 }
 
-function OfflineThingStatus({ slug }: { slug: OfflineThingSlug }) {
+function OfflineThingStatus({ name, slug }: { name: string; slug: OfflineThingSlug }) {
   const state = useThingOfflineState(slug);
   const mode = slug === "spelling-bee" ? "say it aloud · " : "";
   const label =
     state === "ready"
       ? `${mode}offline ready`
-      : state === "preparing"
-        ? `${mode}preparing offline…`
-        : `${mode}works offline`;
+      : state === "update-available"
+        ? `${mode}offline update available`
+        : state === "preparing"
+          ? `${mode}updating offline…`
+          : state === "failed"
+            ? `${mode}offline update failed`
+            : `${mode}works offline`;
   const dotClass =
     state === "ready"
       ? "text-emerald-600 dark:text-emerald-300"
-      : state === "preparing"
+      : state === "preparing" || state === "update-available" || state === "failed"
         ? "text-amber-600 dark:text-amber-300"
         : "theme-faint";
+  const canUpdate = state === "update-available" || state === "failed";
 
   return (
-    <span
-      className="mt-4 inline-flex min-h-6 items-center gap-2 font-mono text-micro uppercase tracking-[0.12em] theme-muted"
-      aria-live="polite"
-    >
-      <span aria-hidden="true" className={`text-[0.65rem] ${dotClass}`}>
-        {state === "ready" ? "●" : state === "preparing" ? "◌" : "○"}
-      </span>
-      {label}
-    </span>
+    <div className="grid grid-cols-[3rem_1fr_auto] gap-4">
+      <div className="col-start-2 col-span-2 -mt-2 flex min-h-11 flex-wrap items-center justify-between gap-3 pb-5 font-mono text-micro uppercase tracking-[0.12em] theme-muted">
+        <span className="inline-flex min-w-0 items-center gap-2" aria-live="polite">
+          <span aria-hidden="true" className={`text-[0.65rem] ${dotClass}`}>
+            {state === "ready" ? "●" : state === "preparing" ? "◌" : "○"}
+          </span>
+          {label}
+        </span>
+        {canUpdate ? (
+          <button
+            type="button"
+            onClick={() => void updateThingOffline(slug)}
+            className="min-h-11 shrink-0 px-2 underline decoration-dotted underline-offset-4 hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2"
+            aria-label={`${state === "failed" ? "Try again" : "Update"} ${name} for offline use`}
+          >
+            {state === "failed" ? "try again" : "update"}
+          </button>
+        ) : null}
+      </div>
+    </div>
   );
 }

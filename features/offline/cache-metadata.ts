@@ -7,6 +7,8 @@ export interface OfflineCacheMetadata {
   preparedAt: number;
 }
 
+export type OfflineReadiness = "not-ready" | "update-available" | "ready";
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
@@ -43,6 +45,21 @@ export function containsResourceUrls(
 ) {
   const available = new Set(availableUrls);
   return requiredUrls.every((url) => available.has(url));
+}
+
+export function getOfflineReadiness(
+  caches: readonly OfflineCacheMetadata[],
+  thing: { offlineVersion: number; storageVersion: number },
+  requiredResourceUrls?: readonly string[],
+): OfflineReadiness {
+  const hasCurrentCache = caches.some(
+    (metadata) =>
+      isCurrentOfflineCacheMetadata(metadata, thing) &&
+      (requiredResourceUrls === undefined ||
+        containsResourceUrls(metadata.resourceUrls, requiredResourceUrls)),
+  );
+  if (hasCurrentCache) return "ready";
+  return caches.length > 0 ? "update-available" : "not-ready";
 }
 
 export function offlineCacheKey(slug: OfflineThingSlug, offlineVersion: number) {

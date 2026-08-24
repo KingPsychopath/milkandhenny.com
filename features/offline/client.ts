@@ -1,7 +1,7 @@
 import { useEffect, useSyncExternalStore } from "react";
 import type { OfflineState, OfflineWorkerRequest, OfflineWorkerResponse } from "./protocol";
 import { requestPersistentStorage } from "./storage";
-import type { OfflineThingSlug } from "@/features/things/offline";
+import { THING_OFFLINE, type OfflineThingSlug } from "@/features/things/offline";
 
 const BUILD_ID = __BUILD_ID__;
 const states = new Map<OfflineThingSlug, OfflineState>();
@@ -218,9 +218,9 @@ async function sendWorkerMessage(
 
 function collectCurrentPageResources() {
   const urls = new Set<string>();
-  const add = (value: string) => {
+  const add = (value: string, baseUrl = location.href) => {
     try {
-      const url = new URL(value, location.href);
+      const url = new URL(value, baseUrl);
       if (url.origin === location.origin) urls.add(url.href);
     } catch {
       // Ignore malformed browser resource entries.
@@ -232,6 +232,43 @@ function collectCurrentPageResources() {
     add(element.src);
   for (const element of document.querySelectorAll<HTMLLinkElement>("link[href]")) add(element.href);
   for (const entry of performance.getEntriesByType("resource")) add(entry.name);
+  return [...urls];
+}
+
+async function collectOfflineEntryResources(slug: OfflineThingSlug) {
+  const entryPath = THING_OFFLINE[slug].entryPath;
+  const entryUrl = new URL(entryPath, location.origin);
+  const response = await fetch(entryUrl, {
+    cache: "no-store",
+    credentials: "same-origin",
+  });
+  if (!response.ok) throw new Error("Unable to load the latest offline game entry");
+
+  const document = new DOMParser().parseFromString(await response.text(), "text/html");
+  const urls = new Set<string>();
+  const add = (value: string) => {
+    try {
+      const url = new URL(value, entryUrl);
+      if (url.origin === location.origin) {
+        url.hash = "";
+        urls.add(url.href);
+      }
+    } catch {
+      // Ignore malformed or external document resources.
+    }
+  };
+
+  add(entryPath);
+  for (const element of document.querySelectorAll<HTMLElement>(
+    "script[src], link[href], img[src], audio[src], video[src], source[src], track[src]",
+  )) {
+    const attribute = element.getAttribute("src") ?? element.getAttribute("href");
+    if (attribute) add(attribute);
+  }
+  for (const element of document.querySelectorAll<HTMLVideoElement>("video[poster]")) {
+    const poster = element.getAttribute("poster");
+    if (poster) add(poster);
+  }
   return [...urls];
 }
 
@@ -247,7 +284,7 @@ export async function refreshOfflineState(slug: OfflineThingSlug, resourceUrls?:
 
 export function prepareThingOffline(
   slug: OfflineThingSlug,
-  options?: { refresh?: boolean },
+  options?: { refresh?: boolean; resourceUrls?: string[] },
 ): Promise<void> {
   const existing = preparation.get(slug);
   if (existing) {
@@ -255,7 +292,7 @@ export function prepareThingOffline(
   }
 
   const pending = (async () => {
-    const resourceUrls = collectCurrentPageResources();
+    const resourceUrls = options?.resourceUrls ?? collectCurrentPageResources();
     await refreshOfflineState(slug, resourceUrls);
     if (states.get(slug) === "ready" && !options?.refresh) return;
     publish(slug, "preparing");
@@ -272,6 +309,15 @@ export function prepareThingOffline(
 
   preparation.set(slug, pending);
   return pending;
+}
+
+export async function updateThingOffline(slug: OfflineThingSlug) {
+  try {
+    const resourceUrls = await collectOfflineEntryResources(slug);
+    await prepareThingOffline(slug, { refresh: true, resourceUrls });
+  } catch {
+    publish(slug, "failed");
+  }
 }
 
 export function useThingOfflineState(slug: OfflineThingSlug) {

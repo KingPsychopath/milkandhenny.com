@@ -1,6 +1,12 @@
 import type { OfflineThingSlug } from "@/features/things/offline";
 
-export type OfflineState = "unavailable" | "not-ready" | "preparing" | "ready" | "failed";
+export type OfflineState =
+  | "unavailable"
+  | "not-ready"
+  | "update-available"
+  | "preparing"
+  | "ready"
+  | "failed";
 
 export type OfflineWorkerRequest =
   | {
