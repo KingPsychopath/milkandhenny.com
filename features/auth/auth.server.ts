@@ -15,7 +15,11 @@ import { createHash, createHmac, randomBytes, randomUUID, timingSafeEqual } from
 import { isIP } from "node:net";
 import { getCookie } from "@/lib/http/cookies";
 import { getRedis } from "@/lib/platform/redis.server";
-import { getAuthCookieName } from "./cookies";
+import {
+  getAuthCookieName,
+  LOCAL_DEV_ADMIN_COOKIE,
+  LOCAL_DEV_ADMIN_COOKIE_MAX_AGE_SECONDS,
+} from "./cookies";
 
 /* ─── Types ─── */
 
@@ -65,6 +69,47 @@ const WEAK_SECRET_VALUES = new Set([
   "123456",
   "qwerty",
 ]);
+
+function isLocalDevelopment(): boolean {
+  return process.env.NODE_ENV === "development";
+}
+
+// This value only exists in a local development server process. A random value
+// keeps the convenience cookie scoped to the process that issued it.
+const LOCAL_DEV_ADMIN_COOKIE_VALUE = isLocalDevelopment()
+  ? randomBytes(32).toString("hex")
+  : null;
+
+function getLocalDevAdminCookieValue(): string | null {
+  return LOCAL_DEV_ADMIN_COOKIE_VALUE;
+}
+
+function isLocalDevAdminRequest(request: Request): boolean {
+  const value = getCookie(request, LOCAL_DEV_ADMIN_COOKIE);
+  const expected = getLocalDevAdminCookieValue();
+  return Boolean(value && expected && safeCompare(value, expected));
+}
+
+function getLocalDevAdminPayload(): TokenPayload {
+  const now = Math.floor(Date.now() / 1000);
+  return {
+    role: "admin",
+    iat: now,
+    exp: now + LOCAL_DEV_ADMIN_COOKIE_MAX_AGE_SECONDS,
+    jti: "local-dev-admin",
+    tv: 1,
+  };
+}
+
+function getLocalDevAdminAuth(request: Request): {
+  token: string;
+  payload: TokenPayload;
+} | null {
+  if (!isLocalDevelopment() || !isLocalDevAdminRequest(request)) return null;
+  const token = getLocalDevAdminCookieValue();
+  if (!token) return null;
+  return { token, payload: getLocalDevAdminPayload() };
+}
 
 function tokenVersionKey(role: RevocableRole): string {
   return `auth:token-version:${role}`;
@@ -449,6 +494,10 @@ async function requireAuth(request: Request, role: AuthRole): Promise<Response |
     return null;
   }
 
+  if (role === "admin" || role === "upload") {
+    if (getLocalDevAdminAuth(request)) return null;
+  }
+
   const acceptedRoles = role === "upload" ? (["admin", "upload"] as const) : ([role] as const);
 
   const token = extractAuthTokenForAcceptedRoles(request, acceptedRoles);
@@ -475,6 +524,11 @@ async function requireAuthWithPayload(
   if (role === "cron") {
     const error = await requireAuth(request, "cron");
     return { error, payload: null };
+  }
+
+  if (role === "admin" || role === "upload") {
+    const localAuth = getLocalDevAdminAuth(request);
+    if (localAuth) return { error: null, payload: localAuth.payload };
   }
 
   const acceptedRoles = role === "upload" ? (["admin", "upload"] as const) : ([role] as const);
@@ -550,6 +604,8 @@ function verifyStepUpToken(token: string, parentJti: string): boolean {
 async function requireAdminStepUp(request: Request): Promise<Response | null> {
   const { error, payload } = await requireAuthWithPayload(request, "admin");
   if (error || !payload) return error;
+
+  if (getLocalDevAdminAuth(request)) return null;
 
   const stepUpToken = request.headers.get("x-admin-step-up")?.trim() ?? "";
   if (!stepUpToken) {
@@ -803,6 +859,8 @@ export {
   getClientIp,
   isValidTokenJti,
   authenticateRequest,
+  getLocalDevAdminCookieValue,
+  isLocalDevelopment,
 };
 export type { AuthRole, RevocableRole };
 
@@ -831,6 +889,13 @@ async function authenticateRequest(
       return { ok: false, status: 401, error: "Unauthorized" };
     }
     return { ok: true, role: "cron", token: candidate, payload: null };
+  }
+
+  if (role === "admin" || role === "upload") {
+    const localAuth = getLocalDevAdminAuth(request);
+    if (localAuth) {
+      return { ok: true, role: "admin", token: localAuth.token, payload: localAuth.payload };
+    }
   }
 
   const acceptedRoles = role === "upload" ? (["admin", "upload"] as const) : ([role] as const);

@@ -41,6 +41,10 @@ export function useAdminAuth() {
       return { ok: true, token: stepUpTokenRef.current };
     }
 
+    if (import.meta.env.DEV) {
+      return { ok: true, token: "local-dev-step-up" };
+    }
+
     const password = await promptStepUp({
       eyebrow: "security check",
       title: "Confirm it’s you",

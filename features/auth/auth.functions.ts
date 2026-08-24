@@ -1,8 +1,17 @@
 import { redirect } from "@tanstack/react-router";
 import { createServerFn } from "@tanstack/react-start";
 import { getRequest, setCookie } from "@tanstack/react-start/server";
-import { handleVerifyRequest } from "./auth.server";
-import { getAuthCookieMaxAgeSeconds, getAuthCookieName } from "./cookies";
+import {
+  getLocalDevAdminCookieValue,
+  handleVerifyRequest,
+  isLocalDevelopment,
+} from "./auth.server";
+import {
+  getAuthCookieMaxAgeSeconds,
+  getAuthCookieName,
+  LOCAL_DEV_ADMIN_COOKIE,
+  LOCAL_DEV_ADMIN_COOKIE_MAX_AGE_SECONDS,
+} from "./cookies";
 import type { AuthCookieRole } from "./cookies";
 
 interface Credentials {
@@ -57,6 +66,20 @@ export const signInAdmin = createServerFn({ method: "POST" })
     throw redirect({ href: ok ? "/admin" : "/admin?auth=failed" });
   });
 
+export const signInAdminDevelopment = createServerFn({ method: "POST" }).handler(async () => {
+  const value = isLocalDevelopment() ? getLocalDevAdminCookieValue() : null;
+  if (!value) throw redirect({ href: "/admin?auth=dev-unavailable" });
+
+  setCookie(LOCAL_DEV_ADMIN_COOKIE, value, {
+    httpOnly: true,
+    sameSite: "lax",
+    secure: false,
+    path: "/",
+    maxAge: LOCAL_DEV_ADMIN_COOKIE_MAX_AGE_SECONDS,
+  });
+  throw redirect({ href: "/admin" });
+});
+
 export const signInUpload = createServerFn({ method: "POST" })
   .validator(readCredential("pin"))
   .handler(async ({ data }) => {
@@ -74,6 +97,15 @@ export const signOut = createServerFn({ method: "POST" })
       path: "/",
       maxAge: 0,
     });
+    if (data.role === "admin") {
+      setCookie(LOCAL_DEV_ADMIN_COOKIE, "", {
+        httpOnly: true,
+        sameSite: "lax",
+        secure: process.env.NODE_ENV === "production",
+        path: "/",
+        maxAge: 0,
+      });
+    }
     const nextPath =
       data.nextPath?.startsWith("/") && !data.nextPath.startsWith("//") ? data.nextPath : "/";
     throw redirect({ href: nextPath });

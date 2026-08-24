@@ -54,7 +54,8 @@ Replaced `/guestlist`, which was removed along with the standalone guest list.
 
 - **Auth**: JWT in **httpOnly cookie** (`mah-auth-admin`)
 - **Step-up**: still uses `POST /api/admin/step-up` and includes `x-admin-step-up`
-- **Why**: server can gate the page and reduce client auth plumbing; destructive actions still require step-up
+- **Local development**: the login page has a development-only button that creates a process-scoped httpOnly admin session (`mah-auth-admin-dev`). It is available only when `NODE_ENV=development`; protected admin actions also skip step-up in that mode.
+- **Why**: server can gate the page and reduce client auth plumbing; production destructive actions still require step-up
 
 ### Best dressed (`/best-dressed`)
 
