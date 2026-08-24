@@ -67,6 +67,7 @@ function completeActivation() {
 function activateWaitingWorker(
   worker: ServiceWorker,
   registration?: ServiceWorkerRegistration | null,
+  options?: { reloadOnTimeout?: boolean },
 ) {
   if (reloadForUpdate && waitingWorker === worker) return true;
   if (worker.state === "activated") {
@@ -88,6 +89,12 @@ function activateWaitingWorker(
     // arrived. If it did take over, reload; a missed event is not a failed update.
     if (worker.state === "activated" || registration?.active === worker) {
       completeActivation();
+      return;
+    }
+    if (options?.reloadOnTimeout) {
+      // Some browsers keep the old page in control even after skipWaiting succeeds. A
+      // user-requested reload releases that client and lets the waiting worker activate.
+      reloadForSiteUpdate();
       return;
     }
     reloadForUpdate = false;
@@ -188,7 +195,7 @@ export async function activateSiteUpdate() {
     publishSiteUpdate("failed");
     return false;
   }
-  return activateWaitingWorker(worker, registration);
+  return activateWaitingWorker(worker, registration, { reloadOnTimeout: true });
 }
 
 async function sendWorkerMessage(
