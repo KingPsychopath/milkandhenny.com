@@ -1266,6 +1266,15 @@ const MIGRATIONS: Migration[] = [
         on survey_responses (survey_id, submitted_at desc);
     `,
   },
+  {
+    id: "0030_game_pool_assignment_leases",
+    sql: `
+      alter table game_pool_assignments
+        add column if not exists last_seen_at timestamptz not null default now();
+      create index if not exists game_pool_assignments_lease_idx
+        on game_pool_assignments (status, last_seen_at);
+    `,
+  },
 ];
 
 interface PitchDocumentSchemaRow extends QueryResultRow {

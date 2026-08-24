@@ -58,18 +58,20 @@ export async function cleanupGamePools() {
        set status = 'closed', closed_at = coalesce(closed_at, now()), updated_at = now()
        where status in ('open', 'paused') and closes_at is not null and closes_at <= now()`,
     );
-    const staleAssignments = await client.query(
+    const staleAssignments = await client.query<{ run_id: string; room_id: string }>(
       `update game_pool_assignments assignment
-       set status = 'session_ended', ended_at = coalesce(ended_at, now())
+       set status = 'session_ended', ended_at = coalesce(ended_at, now()), display_name = 'session_ended'
        where assignment.status = 'active'
-         and assignment.created_at < now() - interval '2 hours'
-         and not exists (
-           select 1 from game_pool_runs run
-           where run.id = assignment.run_id
-             and run.status in ('open', 'paused')
-             and (run.closes_at is null or run.closes_at > now())
-         )`,
+         and assignment.last_seen_at < now() - interval '90 seconds'
+       returning run_id, room_id`,
     );
+    for (const assignment of staleAssignments.rows)
+      await client.query(
+        `update game_pool_rooms
+         set player_count = greatest(0, player_count - 1), updated_at = now()
+         where run_id = $1 and room_id = $2`,
+        [assignment.run_id, assignment.room_id],
+      );
     const closedRooms = await client.query(
       `update game_pool_rooms room
        set status = 'closed', player_count = 0, updated_at = now()

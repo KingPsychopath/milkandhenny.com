@@ -5,7 +5,11 @@ import {
 } from "../shared/multiplayer-runtime.server";
 import { TwinRoomService } from "./twin-room-service.server";
 import type * as engine from "./twin-room-engine.server";
-import { markGamePoolPlayerLeft, markGamePoolPlayersRemoved } from "../pool/membership.server";
+import {
+  markGamePoolPlayerLeft,
+  markGamePoolPlayerSeen,
+  markGamePoolPlayersRemoved,
+} from "../pool/membership.server";
 
 export function createTwinRoom(input: Parameters<typeof engine.createTwinRoom>[0]) {
   return runMultiplayerEffect(TwinRoomService.use((service) => service.createRoom(input)));
@@ -21,7 +25,15 @@ export function joinTwinRoom(input: Parameters<typeof engine.joinTwinRoom>[0]) {
 }
 
 export function readTwinSnapshot(input: Parameters<typeof engine.readTwinSnapshot>[0]) {
-  return runMultiplayerEffect(TwinRoomService.use((service) => service.readSnapshot(input)));
+  return runMultiplayerEffect(TwinRoomService.use((service) => service.readSnapshot(input))).then(
+    async (result) => {
+      if (result.ok)
+        await markGamePoolPlayerSeen({ roomId: input.roomId, playerId: input.playerId }).catch(
+          () => undefined,
+        );
+      return result;
+    },
+  );
 }
 
 export function readTwinLog(input: Parameters<typeof engine.readTwinLog>[0]) {

@@ -5,7 +5,11 @@ import {
 } from "../shared/multiplayer-runtime.server";
 import { DrawCountryRoomService } from "./draw-country-room-service.server";
 import type * as engine from "./draw-country-room-engine.server";
-import { markGamePoolPlayerLeft, markGamePoolPlayersRemoved } from "../pool/membership.server";
+import {
+  markGamePoolPlayerLeft,
+  markGamePoolPlayerSeen,
+  markGamePoolPlayersRemoved,
+} from "../pool/membership.server";
 
 export function createDrawCountryRoom(input: Parameters<typeof engine.createDrawCountryRoom>[0]) {
   return runMultiplayerEffect(DrawCountryRoomService.use((service) => service.createRoom(input)));
@@ -23,7 +27,15 @@ export function joinDrawCountryRoom(input: Parameters<typeof engine.joinDrawCoun
 export function readDrawCountrySnapshot(
   input: Parameters<typeof engine.readDrawCountrySnapshot>[0],
 ) {
-  return runMultiplayerEffect(DrawCountryRoomService.use((service) => service.readSnapshot(input)));
+  return runMultiplayerEffect(
+    DrawCountryRoomService.use((service) => service.readSnapshot(input)),
+  ).then(async (result) => {
+    if (result.ok)
+      await markGamePoolPlayerSeen({ roomId: input.roomId, playerId: input.playerId }).catch(
+        () => undefined,
+      );
+    return result;
+  });
 }
 
 export function applyDrawCountryAction(input: Parameters<typeof engine.applyDrawCountryAction>[0]) {

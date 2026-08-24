@@ -5,7 +5,11 @@ import {
 } from "../shared/multiplayer-runtime.server";
 import { CentreRoomService } from "./centre-room-service.server";
 import type * as engine from "./centre-room-engine.server";
-import { markGamePoolPlayerLeft, markGamePoolPlayersRemoved } from "../pool/membership.server";
+import {
+  markGamePoolPlayerLeft,
+  markGamePoolPlayerSeen,
+  markGamePoolPlayersRemoved,
+} from "../pool/membership.server";
 
 export function createCentreRoom(input: Parameters<typeof engine.createCentreRoom>[0]) {
   return runMultiplayerEffect(CentreRoomService.use((service) => service.createRoom(input)));
@@ -19,7 +23,15 @@ export function joinCentreRoom(input: Parameters<typeof engine.joinCentreRoom>[0
   );
 }
 export function readCentreSnapshot(input: Parameters<typeof engine.readCentreSnapshot>[0]) {
-  return runMultiplayerEffect(CentreRoomService.use((service) => service.readSnapshot(input)));
+  return runMultiplayerEffect(CentreRoomService.use((service) => service.readSnapshot(input))).then(
+    async (result) => {
+      if (result.ok)
+        await markGamePoolPlayerSeen({ roomId: input.roomId, playerId: input.playerId }).catch(
+          () => undefined,
+        );
+      return result;
+    },
+  );
 }
 export function readCentreReplay(input: Parameters<typeof engine.readCentreReplay>[0]) {
   return runMultiplayerEffect(CentreRoomService.use((service) => service.readReplay(input)));

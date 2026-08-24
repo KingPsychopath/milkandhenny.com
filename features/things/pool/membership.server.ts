@@ -36,6 +36,17 @@ export async function markGamePoolPlayerLeft(input: { roomId: string; playerId: 
   return { released: operation.length };
 }
 
+/** Keep a pool assignment alive while its room client is still polling. */
+export async function markGamePoolPlayerSeen(input: { roomId: string; playerId: string }) {
+  await query(
+    `update game_pool_assignments
+     set last_seen_at = now()
+     where room_id = $1 and player_id = $2 and status = 'active'
+       and last_seen_at < now() - interval '30 seconds'`,
+    [input.roomId, input.playerId],
+  );
+}
+
 export async function markGamePoolPlayersRemoved(input: {
   roomId: string;
   playerIds: string[];

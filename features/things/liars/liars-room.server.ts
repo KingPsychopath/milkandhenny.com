@@ -6,7 +6,11 @@ import {
 import { LiarsRoomService } from "./liars-room-service.server";
 
 import type * as engine from "./liars-room-engine.server";
-import { markGamePoolPlayerLeft, markGamePoolPlayersRemoved } from "../pool/membership.server";
+import {
+  markGamePoolPlayerLeft,
+  markGamePoolPlayerSeen,
+  markGamePoolPlayersRemoved,
+} from "../pool/membership.server";
 
 export function authorizeLiarsSocket(input: Parameters<typeof engine.authorizeLiarsSocket>[0]) {
   return runMultiplayerEffect(LiarsRoomService.use((service) => service.authorizeSocket(input)));
@@ -26,7 +30,15 @@ export function joinLiarsRoom(input: Parameters<typeof engine.joinLiarsRoom>[0])
 }
 
 export function readLiarsSnapshot(input: Parameters<typeof engine.readLiarsSnapshot>[0]) {
-  return runMultiplayerEffect(LiarsRoomService.use((service) => service.readSnapshot(input)));
+  return runMultiplayerEffect(LiarsRoomService.use((service) => service.readSnapshot(input))).then(
+    async (result) => {
+      if (result.ok && input.playerId)
+        await markGamePoolPlayerSeen({ roomId: input.roomId, playerId: input.playerId }).catch(
+          () => undefined,
+        );
+      return result;
+    },
+  );
 }
 
 export function applyLiarsHostAction(input: Parameters<typeof engine.applyLiarsHostAction>[0]) {

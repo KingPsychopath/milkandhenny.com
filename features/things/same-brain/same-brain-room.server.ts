@@ -6,7 +6,11 @@ import {
 import { SameBrainRoomService } from "./same-brain-room-service.server";
 
 import type * as engine from "./same-brain-room-engine.server";
-import { markGamePoolPlayerLeft, markGamePoolPlayersRemoved } from "../pool/membership.server";
+import {
+  markGamePoolPlayerLeft,
+  markGamePoolPlayerSeen,
+  markGamePoolPlayersRemoved,
+} from "../pool/membership.server";
 
 export function authorizeSameBrainSocket(
   input: Parameters<typeof engine.authorizeSameBrainSocket>[0],
@@ -30,7 +34,15 @@ export function joinSameBrainRoom(input: Parameters<typeof engine.joinSameBrainR
 }
 
 export function readSameBrainSnapshot(input: Parameters<typeof engine.readSameBrainSnapshot>[0]) {
-  return runMultiplayerEffect(SameBrainRoomService.use((service) => service.readSnapshot(input)));
+  return runMultiplayerEffect(
+    SameBrainRoomService.use((service) => service.readSnapshot(input)),
+  ).then(async (result) => {
+    if (result.ok && input.playerId)
+      await markGamePoolPlayerSeen({ roomId: input.roomId, playerId: input.playerId }).catch(
+        () => undefined,
+      );
+    return result;
+  });
 }
 
 export function applySameBrainHostAction(
