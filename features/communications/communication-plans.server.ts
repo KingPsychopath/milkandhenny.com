@@ -361,7 +361,7 @@ export async function createStarterPlan(eventSlug: string): Promise<Communicatio
       position: 2,
       kind: "event_service" as const,
       subject: `Today: ${event.title}`,
-      body: "Today’s the day.\n\n## Where\n\n**{{event.venue}}**\n{{event.address}}\n\n## Timing\n\n{{event.timing}}\n\nFree parking is available. Follow the milk & henny signs once you enter the gate on the **left** when you arrive. There is a car park on the very first right from the gate that is right next to the venue. Keep your ticket email handy; a screenshot is fine.\n\nSee you soon.",
+      body: "Today’s the day.\n\n## Where\n\n**{{event.venue}}**\n{{event.address}}\n\n## Timing\n\n{{event.timing}}\n\nFree parking is available. Follow the milk & henny signs once you enter the gate on the **left** when you arrive. There is a car park on the very first right from the gate that is right next to the venue.\n\nKeep your ticket email handy; a screenshot is fine.\n\nSee you soon.",
       media: [],
       sendAt: dayOfAt,
       lateJoinHours: hoursUntilEvent(event, dayOfAt),
