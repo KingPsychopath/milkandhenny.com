@@ -104,6 +104,7 @@ export function CentreRoom({
   const [nudgedIds, setNudgedIds] = useState<string[] | null>(null);
   const [resetNonce, setResetNonce] = useState(0);
   const [pending, setPending] = useState(false);
+  const [confirmingGiveUp, setConfirmingGiveUp] = useState(false);
   const [shareMessage, setShareMessage] = useState<string | null>(null);
   const { prompt, dialog } = useActionDialog();
   const previousCount = useRef<number | null>(null);
@@ -210,13 +211,14 @@ export function CentreRoom({
       snapshotPhase !== "finished" ||
       !courseHash ||
       me?.elapsedMs !== null ||
+      me?.retired ||
       route.segments.length === 0 ||
       retiredCourseHash.current === courseHash
     )
       return;
     retiredCourseHash.current = courseHash;
     void send({ type: "race.retire", courseHash, route }, true);
-  }, [courseHash, me?.elapsedMs, route, send, snapshotPhase]);
+  }, [courseHash, me?.elapsedMs, me?.retired, route, send, snapshotPhase]);
 
   const everyoneReady = snapshot?.players.every(({ ready }) => ready) ?? true;
   useEffect(() => {
@@ -463,7 +465,7 @@ export function CentreRoom({
     return <div className="things-game things-game--night centre" aria-busy="true" />;
 
   const localStartsAt = course?.startsAt ? course.startsAt - live.clockOffset : null;
-  const ownFinished = me.elapsedMs !== null;
+  const ownDone = me.elapsedMs !== null || me.retired;
   const rivalPoints = snapshot.delayedRivals
     ? Object.entries(live.presence).flatMap(([playerId, point]) => {
         const player = snapshot.players.find(({ id }) => id === playerId);
@@ -484,7 +486,7 @@ export function CentreRoom({
         <main id="main" className="centre-race">
           <div className="centre-race-copy">
             <p className="centre-eyebrow">
-              {ownFinished
+              {ownDone
                 ? "your race is done"
                 : `${snapshot.players.filter(({ armed, withdrawn }) => armed && !withdrawn).length} of ${snapshot.players.filter(({ withdrawn }) => !withdrawn).length} on the line`}
             </p>
@@ -493,14 +495,18 @@ export function CentreRoom({
                 ? "Tap your entrance."
                 : snapshot.phase === "countdown"
                   ? "Get set."
-                  : ownFinished
-                    ? "Finished."
+                  : ownDone
+                    ? me.retired
+                      ? "Gave up."
+                      : "Finished."
                     : `${(elapsed / 1_000).toFixed(1)}s`}
             </h1>
-            {ownFinished ? (
+            {ownDone ? (
               <div className="centre-own-finish" role="status">
-                <strong>{(me.elapsedMs! / 1_000).toFixed(2)}s</strong>
-                <span>your time · watch the others</span>
+                <strong>{me.retired ? "DNF" : `${(me.elapsedMs! / 1_000).toFixed(2)}s`}</strong>
+                <span>
+                  {me.retired ? "you gave up · watch the others" : "your time · watch the others"}
+                </span>
               </div>
             ) : null}
             {snapshot.phase === "finishing" && finishRemaining !== null ? (
@@ -517,13 +523,15 @@ export function CentreRoom({
                 <small>
                   {player.elapsedMs !== null
                     ? `${player.id === credentials.playerId ? "done · " : ""}${(player.elapsedMs / 1_000).toFixed(2)}s`
-                    : player.withdrawn
-                      ? "left the race"
-                      : player.armed
-                        ? "ready"
-                        : snapshot.phase === "arming"
-                          ? "tapping in"
-                          : "racing"}
+                    : player.retired
+                      ? "gave up"
+                      : player.withdrawn
+                        ? "left the race"
+                        : player.armed
+                          ? "ready"
+                          : snapshot.phase === "arming"
+                            ? "tapping in"
+                            : "racing"}
                 </small>
               </li>
             ))}
@@ -531,7 +539,7 @@ export function CentreRoom({
           <MazeBoard
             maze={maze}
             entranceIndex={me.entranceIndex}
-            phase={ownFinished ? "finished" : snapshot.phase}
+            phase={ownDone ? "finished" : snapshot.phase}
             startsAt={localStartsAt}
             route={route}
             playerColour={me.colour}
@@ -584,7 +592,7 @@ export function CentreRoom({
           <div className="centre-race-controls">
             <button
               type="button"
-              disabled={snapshot.phase !== "racing" || ownFinished}
+              disabled={snapshot.phase !== "racing" || ownDone}
               onClick={() => {
                 const point = { ...centreEntrancePoint(maze, me.entranceIndex!), t: elapsed };
                 setResetNonce((nonce) => nonce + 1);
@@ -592,6 +600,13 @@ export function CentreRoom({
               }}
             >
               restart route
+            </button>
+            <button
+              type="button"
+              disabled={(snapshot.phase !== "racing" && snapshot.phase !== "finishing") || ownDone}
+              onClick={() => setConfirmingGiveUp(true)}
+            >
+              give up
             </button>
             <button type="button" aria-pressed={sound.effects} onClick={() => sound.cycle()}>
               {sound.effects ? "sound on" : "sound off"}
@@ -620,6 +635,30 @@ export function CentreRoom({
           onConfirm={() => {
             setPending(true);
             void send({ type: "game.start", removePlayerIds }).finally(() => setPending(false));
+          }}
+        />
+      ) : null}
+      {confirmingGiveUp ? (
+        <GameActionDialog
+          tone="dark"
+          eyebrow="give up"
+          title="Leave this race?"
+          description="Your route will be marked as DNF. You can watch the other players finish."
+          cancelLabel="keep tracing"
+          confirmLabel="give up"
+          pending={pending}
+          pendingLabel="giving up…"
+          onCancel={() => setConfirmingGiveUp(false)}
+          onConfirm={() => {
+            const point = { ...centreEntrancePoint(maze, me.entranceIndex!), t: elapsed };
+            const giveUpRoute =
+              route.segments.length > 0 ? route : { segments: [[point]], wallHits: 0 };
+            setPending(true);
+            void send({ type: "race.retire", courseHash: course!.hash, route: giveUpRoute })
+              .then((result) => {
+                if (result?.ok && result.accepted) setConfirmingGiveUp(false);
+              })
+              .finally(() => setPending(false));
           }}
         />
       ) : null}

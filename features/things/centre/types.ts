@@ -58,6 +58,7 @@ export interface CentrePlayerSummary {
   place: number | null;
   wallHits: number;
   resets: number;
+  retired: boolean;
   withdrawn: boolean;
 }
 

@@ -21,7 +21,7 @@ import {
   requestMultiplayerReadiness,
   setMultiplayerPlayerReady,
 } from "../shared/multiplayer-readiness";
-import { generateCentreMaze } from "./centre-generator";
+import { centreEntrancePoint, generateCentreMaze } from "./centre-generator";
 import { centreRoomRedisKeys } from "./centre-keys";
 import { validateCentreRoute, validateCentreRouteProgress } from "./centre-trace";
 import type {
@@ -61,6 +61,7 @@ interface PlayerState {
   elapsedMs: number | null;
   wallHits: number;
   resets: number;
+  retired: boolean;
   withdrawn?: boolean;
 }
 
@@ -237,6 +238,7 @@ function snapshot(room: RoomState, playerId: string): CentreSnapshot {
       place: places.get(candidate.id) ?? null,
       wallHits: candidate.wallHits,
       resets: candidate.resets,
+      retired: candidate.retired === true,
       withdrawn: candidate.withdrawn === true,
     })),
     playerId,
@@ -261,6 +263,7 @@ function startCourse(room: RoomState, now = Date.now()) {
     player.elapsedMs = null;
     player.wallHits = 0;
     player.resets = 0;
+    player.retired = false;
   }
   room.course = {
     seed,
@@ -282,7 +285,9 @@ function advance(room: RoomState, now = Date.now()) {
     changed(room);
   }
   if (room.phase === "finishing" && room.course?.firstFinishAt && room.course.endsAt) {
-    const allFinished = activePlayers(room).every(({ elapsedMs }) => elapsedMs !== null);
+    const allFinished = activePlayers(room).every(
+      ({ elapsedMs, retired }) => elapsedMs !== null || retired,
+    );
     if (
       now >= room.course.endsAt ||
       (allFinished && now >= room.course.firstFinishAt + PHOTO_FINISH_MS)
@@ -348,6 +353,7 @@ export async function createCentreRoom(input: {
         elapsedMs: null,
         wallHits: 0,
         resets: 0,
+        retired: false,
       },
     ],
     course: null,
@@ -399,6 +405,7 @@ export async function joinCentreRoom(input: {
       elapsedMs: null,
       wallHits: 0,
       resets: 0,
+      retired: false,
     };
     room.players.push(player);
     changed(room);
@@ -521,7 +528,8 @@ export async function applyCentreAction(input: {
       if (
         (room.phase !== "racing" && room.phase !== "finishing") ||
         !room.course?.startsAt ||
-        player.entranceIndex === null
+        player.entranceIndex === null ||
+        player.retired
       )
         return rejection(
           room,
@@ -574,10 +582,14 @@ export async function applyCentreAction(input: {
       const allowed =
         action.type === "race.progress"
           ? room.phase === "racing" || room.phase === "finishing" || room.phase === "finished"
-          : room.phase === "finishing" || room.phase === "finished";
+          : room.phase === "racing" || room.phase === "finishing" || room.phase === "finished";
       if (!allowed || !room.course?.startsAt || player.entranceIndex === null)
         return rejection(room, player.id, "The race is not accepting routes", "action_unavailable");
-      if (player.elapsedMs !== null || (await loadReplay(room, player.id))?.finished)
+      if (
+        player.elapsedMs !== null ||
+        player.retired ||
+        (await loadReplay(room, player.id))?.finished
+      )
         return accept(player.id);
       const maze = generateCentreMaze({
         seed: room.course.seed,
@@ -585,6 +597,29 @@ export async function applyCentreAction(input: {
         playerCount: room.course.playerCount,
       });
       const validation = validateCentreRouteProgress(maze, player.entranceIndex, action.route);
+      if (action.type === "race.retire") {
+        const replayRoute =
+          action.courseHash === room.course.hash && validation.valid
+            ? action.route
+            : { segments: [[centreEntrancePoint(maze, player.entranceIndex)]], wallHits: 0 };
+        player.retired = true;
+        player.wallHits = replayRoute.wallHits;
+        player.resets = replayRoute.segments.length - 1;
+        await saveReplay(room, {
+          playerId: player.id,
+          name: player.name,
+          colour: player.colour,
+          entranceIndex: player.entranceIndex,
+          elapsedMs: validation.valid ? validation.elapsedMs : 0,
+          place: room.players.length,
+          finished: false,
+          route: replayRoute,
+        });
+        if (activePlayers(room).every(({ elapsedMs, retired }) => elapsedMs !== null || retired))
+          room.phase = "finished";
+        changed(room);
+        return accept(player.id);
+      }
       if (action.courseHash !== room.course.hash || !validation.valid)
         return rejection(room, player.id, "That route could not be verified", "invalid_route");
       await saveReplay(room, {
@@ -664,6 +699,7 @@ export async function applyCentreAction(input: {
           candidate.elapsedMs = null;
           candidate.wallHits = 0;
           candidate.resets = 0;
+          candidate.retired = false;
         }
         changed(room);
       }

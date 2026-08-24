@@ -59,7 +59,7 @@ function wallPaths(maze: CentreMaze) {
     const end = (sector + 1) * sectorAngle;
     if (!entrances.has(sector)) paths.push(arc(1, start, end));
     else {
-      const gap = sectorAngle * 0.32;
+      const gap = sectorAngle * 0.42;
       const middle = start + sectorAngle / 2;
       paths.push(arc(1, start, middle - gap));
       paths.push(arc(1, middle + gap, end));
@@ -143,9 +143,12 @@ export function MazeBoard({
 
   useEffect(() => {
     if (resetNonce === 0) return;
+    if (pointerRef.current !== null && svgRef.current?.hasPointerCapture(pointerRef.current))
+      svgRef.current.releasePointerCapture(pointerRef.current);
     pointerRef.current = null;
     heldRef.current = false;
     collisionRef.current = false;
+    finishRef.current = false;
   }, [resetNonce]);
 
   useEffect(() => {
@@ -178,6 +181,7 @@ export function MazeBoard({
       onArmChange?.(true);
       return;
     }
+    event.preventDefault();
     event.currentTarget.setPointerCapture(event.pointerId);
     event.currentTarget.parentElement?.focus();
     pointerRef.current = event.pointerId;
@@ -363,7 +367,7 @@ export function MazeBoard({
         <circle
           cx={svgNumber(visibleEntrance.x)}
           cy={svgNumber(visibleEntrance.y)}
-          r="0.08"
+          r="0.055"
           className={`centre-start centre-colour-${playerColour}`}
         />
         {hidden ? (

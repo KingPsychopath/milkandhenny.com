@@ -4,7 +4,7 @@ import { log } from "@/lib/platform/logger.server";
 import { BASE_URL } from "@/lib/shared/config";
 import {
   isMultiplayerClientControlMessage,
-  isMultiplayerServerMessage,
+  isMultiplayerRealtimeMessage,
   MULTIPLAYER_REALTIME_LIMITS,
   MULTIPLAYER_SOCKET_CLOSE,
 } from "./multiplayer-realtime";
@@ -103,7 +103,7 @@ export function createMultiplayerWakeHandler<Session extends MultiplayerWakeSess
           } catch {
             return;
           }
-          if (!isMultiplayerServerMessage(parsed)) return;
+          if (!isMultiplayerRealtimeMessage(parsed)) return;
           for (const connection of connections.values()) {
             if (channelFor(connection.session) !== channel) continue;
             if (parsed.type === "terminal") {

@@ -51,6 +51,9 @@ export function useCentreRoom(input: {
       snapshot.course?.endsAt,
     ],
   });
+  useEffect(() => {
+    if (room.snapshot?.phase === "lobby" || room.snapshot?.phase === "arming") setPresence({});
+  }, [room.snapshot?.gameNumber, room.snapshot?.phase]);
   const socket = useMultiplayerWakeSocket({
     path: "/api/things/centre-ws",
     hello: room.ended

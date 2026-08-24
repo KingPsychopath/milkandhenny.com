@@ -41,6 +41,10 @@ export type MultiplayerServerMessage =
       role?: string;
     };
 
+export type MultiplayerRealtimeMessage =
+  | MultiplayerServerMessage
+  | ({ type: "presence" } & Record<string, unknown>);
+
 export function isMultiplayerClientControlMessage(
   value: unknown,
 ): value is MultiplayerClientControlMessage {
@@ -53,6 +57,17 @@ export function isMultiplayerServerMessage(value: unknown): value is Multiplayer
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
   const type = Reflect.get(value, "type");
   return type === "pong" || type === "ready" || type === "wake" || type === "terminal";
+}
+
+/** Includes feature-owned cosmetic messages carried by the realtime backplane. */
+export function isMultiplayerRealtimeMessage(value: unknown): value is MultiplayerRealtimeMessage {
+  if (isMultiplayerServerMessage(value)) return true;
+  return Boolean(
+    value &&
+    typeof value === "object" &&
+    !Array.isArray(value) &&
+    Reflect.get(value, "type") === "presence",
+  );
 }
 
 export function isTerminalMultiplayerSocketClose(code: number) {

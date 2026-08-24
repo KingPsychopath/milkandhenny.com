@@ -1,6 +1,7 @@
 import type { CentreDifficulty, CentreMaze } from "./types";
 
 export const CENTRE_CELL = "centre";
+const CENTRE_ENTRANCE_RADIUS = 0.94;
 
 interface DifficultyPlan {
   rings: number;
@@ -273,7 +274,11 @@ export function centreMazeCellAt(maze: CentreMaze, point: { x: number; y: number
 export function centreEntrancePoint(maze: CentreMaze, entranceIndex: number) {
   const sector = maze.entranceSectors[entranceIndex] ?? maze.entranceSectors[0] ?? 0;
   const angle = ((sector + 0.5) / maze.sectors) * Math.PI * 2;
-  return { x: Math.cos(angle) * 0.985, y: Math.sin(angle) * 0.985, t: 0 };
+  return {
+    x: Math.cos(angle) * CENTRE_ENTRANCE_RADIUS,
+    y: Math.sin(angle) * CENTRE_ENTRANCE_RADIUS,
+    t: 0,
+  };
 }
 
 export function centreViewRotation(maze: CentreMaze, entranceIndex: number) {
