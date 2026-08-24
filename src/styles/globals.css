@@ -392,6 +392,7 @@
 
   .app-image-reveal[data-reveal-pending="true"] {
     opacity: 0;
+    transition: none !important;
   }
 
   .app-image-reveal.app-image-hover-scale {
