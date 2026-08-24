@@ -407,6 +407,7 @@
     position: relative;
     display: block;
     isolation: isolate;
+    background-color: var(--stone-100);
   }
 
   .media-image-placeholder::after {
