@@ -36,6 +36,15 @@ function isAdminReportGroup(value: unknown): value is AdminReportGroup {
     typeof report.halfLifeDays === "number" &&
     typeof report.firstReportedAt === "string" &&
     typeof report.latestReportedAt === "string" &&
+    Array.isArray(report.userDetails) &&
+    report.userDetails.every(
+      (detail) =>
+        !!detail &&
+        typeof detail === "object" &&
+        typeof detail.reportId === "string" &&
+        typeof detail.addedAt === "string" &&
+        typeof detail.text === "string",
+    ) &&
     Array.isArray(report.recentReports) &&
     !!report.latestContext &&
     typeof report.latestContext === "object" &&
@@ -172,9 +181,12 @@ export function ReportsPanel({
   const copyContext = async (
     reportId: string,
     context: AdminReportGroup["latestContext"],
+    userDetails: AdminReportGroup["userDetails"],
     reports: AdminReportGroup["recentReports"],
   ) => {
-    const copied = await copyText(JSON.stringify({ latest: context, reports }, null, 2));
+    const copied = await copyText(
+      JSON.stringify({ latest: context, userDetails, reports }, null, 2),
+    );
     if (copied) {
       setCopiedReportId(reportId);
       onStatus("Diagnostic context copied.");
@@ -262,6 +274,24 @@ export function ReportsPanel({
                 ))}
               </dl>
 
+              {report.userDetails.length ? (
+                <div className="mt-3 border-t theme-border pt-3">
+                  <p className="font-mono text-micro uppercase tracking-[0.12em] theme-muted">
+                    user details
+                  </p>
+                  <div className="mt-1 space-y-2">
+                    {report.userDetails.map((detail) => (
+                      <p
+                        key={detail.reportId}
+                        className="whitespace-pre-wrap break-words font-mono text-xs"
+                      >
+                        {detail.text}
+                      </p>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+
               <div className="mt-3 flex flex-wrap items-center gap-2 border-t theme-border pt-3">
                 <input
                   value={notes[report.id] ?? ""}
@@ -302,7 +332,9 @@ export function ReportsPanel({
                   <button
                     type="button"
                     className="min-h-11 px-2 font-mono text-xs theme-muted underline-offset-4 hover:underline"
-                    onClick={() => void copyContext(report.id, context, report.recentReports)}
+                    onClick={() =>
+                      void copyContext(report.id, context, report.userDetails, report.recentReports)
+                    }
                   >
                     {copiedReportId === report.id ? "copied" : "copy context"}
                   </button>
@@ -311,6 +343,7 @@ export function ReportsPanel({
                   {JSON.stringify(
                     {
                       latest: context,
+                      userDetails: report.userDetails,
                       reports: report.recentReports,
                     },
                     null,

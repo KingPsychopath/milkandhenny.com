@@ -42,4 +42,44 @@ describe("user report storage", () => {
     expect(context.drawing.aligned).toBeUndefined();
     expect(context.result.score).toEqual(expect.any(Number));
   });
+
+  it("should append one optional user detail and make retries idempotent", async () => {
+    const { appendUserReportNote, listAdminReportGroups, submitUserReport } =
+      await import("@/features/reports/report-store.server");
+    const request = new Request("https://milkandhenny.com/api/reports", {
+      method: "POST",
+      headers: { "user-agent": "report-follow-up-test", "idempotency-key": "follow-up-test-1" },
+    });
+
+    const submitted = await submitUserReport(
+      {
+        type: "site_feedback",
+        payload: { surface: "report-follow-up-test" },
+      },
+      request,
+    );
+
+    expect(submitted.reportId).toEqual(expect.any(String));
+    expect(submitted.followUpToken).toEqual(expect.any(String));
+
+    const followUp = {
+      reportId: submitted.reportId,
+      followUpToken: submitted.followUpToken,
+      userNote: "The page stopped after I tapped save.",
+    };
+    await expect(appendUserReportNote(followUp)).resolves.toEqual({
+      updated: true,
+      duplicate: false,
+    });
+    await expect(appendUserReportNote(followUp)).resolves.toEqual({
+      updated: false,
+      duplicate: true,
+    });
+
+    const groups = await listAdminReportGroups();
+    expect(groups[0]?.latestContext).toMatchObject({ userNote: followUp.userNote });
+    expect(groups[0]?.userDetails).toEqual([
+      { reportId: submitted.reportId, addedAt: expect.any(String), text: followUp.userNote },
+    ]);
+  });
 });

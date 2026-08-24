@@ -50,6 +50,7 @@ export interface DrawCountryResultIssueContext {
     aligned?: CountryDrawing;
   };
   diagnostics: DiagnosticContext;
+  userNote?: string;
   note?: string;
 }
 
@@ -59,6 +60,7 @@ export interface ClientErrorContext {
   operation?: string;
   errorCode?: string;
   diagnostics: DiagnosticContext;
+  userNote?: string;
   note?: string;
 }
 
@@ -66,6 +68,7 @@ export interface SiteFeedbackContext {
   schemaVersion: 1;
   surface: string;
   diagnostics: DiagnosticContext;
+  userNote?: string;
   note?: string;
 }
 
@@ -79,6 +82,7 @@ export interface ThingsRoomIssueContext {
   revision?: number;
   issue?: string;
   diagnostics: DiagnosticContext;
+  userNote?: string;
   note?: string;
 }
 
@@ -93,6 +97,7 @@ export interface PitchIssueContext {
   status?: string;
   retryable?: boolean;
   diagnostics: DiagnosticContext;
+  userNote?: string;
   note?: string;
 }
 
@@ -107,6 +112,7 @@ export interface UploadIssueContext {
   errorCode?: string;
   retryable?: boolean;
   diagnostics: DiagnosticContext;
+  userNote?: string;
   note?: string;
 }
 
@@ -178,7 +184,6 @@ export type UserReportEnvelope = {
     type: Type;
     payload: ReportInputByType[Type];
     diagnostics?: ReportDiagnosticsInput;
-    note?: string;
   };
 }[ReportType];
 
@@ -199,6 +204,7 @@ export type UserReportRecord = {
     subjectKey: string;
     createdAt: string;
     updatedAt: string;
+    userNoteAddedAt?: string;
     status: ReportStatus;
     severity: ReportSeverity;
     source: ReportSource;
@@ -220,6 +226,11 @@ export type AdminReportGroup = {
   halfLifeDays: number;
   firstReportedAt: string;
   latestReportedAt: string;
+  userDetails: Array<{
+    reportId: string;
+    addedAt: string;
+    text: string;
+  }>;
   latestContext: ReportContextByType[ReportType];
   recentReports: Array<{
     id: string;

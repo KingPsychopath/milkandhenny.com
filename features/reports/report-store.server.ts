@@ -1,4 +1,4 @@
-import { createHash, randomUUID } from "node:crypto";
+import { createHash, createHmac, randomUUID, timingSafeEqual } from "node:crypto";
 
 import { countryById } from "@/features/things/draw-country/countries";
 import { parseCountryDrawing } from "@/features/things/draw-country/drawing-constraints";
@@ -29,12 +29,16 @@ const REPORT_KEY_PREFIX = "diagnostic-report:v1:";
 const REPORT_RATE_LIMIT_PREFIX = "diagnostic-report:rate:v1:";
 const REPORT_DUPLICATE_PREFIX = "diagnostic-report:duplicate:v1:";
 const REPORT_IDEMPOTENCY_PREFIX = "diagnostic-report:idempotency:v1:";
+const REPORT_FOLLOW_UP_LOCK_PREFIX = "diagnostic-report:follow-up-lock:v1:";
 const RATE_LIMIT_WINDOW_SECONDS = 60 * 60;
 const IDEMPOTENCY_WINDOW_SECONDS = 24 * 60 * 60;
+const FOLLOW_UP_LOCK_SECONDS = 30;
 const RATE_LIMIT_MAX = 8;
 const MAX_ADMIN_REPORTS = 500;
 const MAX_TRAIL_ITEMS = 12;
 const MAX_REPORT_NOTE_LENGTH = 1_000;
+const MIN_USER_NOTE_LENGTH = 3;
+const MAX_USER_DETAILS_PER_GROUP = 8;
 const MAX_REPORT_RETENTION_SECONDS =
   Math.max(
     ...Object.values(REPORT_POLICIES).map(
@@ -58,8 +62,28 @@ export class ReportRateLimitError extends Error {
   }
 }
 
+export class ReportFollowUpError extends Error {}
+
 function reportKey(id: string) {
   return `${REPORT_KEY_PREFIX}${id}`;
+}
+
+function reportFollowUpToken(reportId: string) {
+  const secret = process.env.AUTH_SECRET?.trim();
+  if (!secret && process.env.NODE_ENV === "production")
+    throw new Error("Report follow-up secret unavailable");
+  return createHmac("sha256", secret ?? "local-report-follow-up-secret")
+    .update(`report-follow-up:v1:${reportId}`)
+    .digest("base64url");
+}
+
+function tokensMatch(expected: string, received: string) {
+  const expectedBuffer = Buffer.from(expected);
+  const receivedBuffer = Buffer.from(received);
+  return (
+    expectedBuffer.length === receivedBuffer.length &&
+    timingSafeEqual(expectedBuffer, receivedBuffer)
+  );
 }
 
 function isReportType(value: unknown): value is ReportType {
@@ -287,11 +311,7 @@ function countryScore(evaluation: ReturnType<typeof scoreCountryDrawing>): Count
   };
 }
 
-function buildDrawCountryReport(
-  payload: unknown,
-  diagnostics: DiagnosticContext,
-  note: string | undefined,
-): UserReportDraft {
+function buildDrawCountryReport(payload: unknown, diagnostics: DiagnosticContext): UserReportDraft {
   const data = inputRecord(payload);
   const countryId = requiredText(data, "countryId", 80);
   const country = countryById(countryId);
@@ -323,7 +343,6 @@ function buildDrawCountryReport(
     result: countryScore(evaluation),
     drawing: { raw: drawing },
     diagnostics,
-    ...(note ? { note } : {}),
   };
   return {
     type: "draw_country_result_issue",
@@ -334,11 +353,7 @@ function buildDrawCountryReport(
   };
 }
 
-function buildClientErrorReport(
-  payload: unknown,
-  diagnostics: DiagnosticContext,
-  note: string | undefined,
-): UserReportDraft {
+function buildClientErrorReport(payload: unknown, diagnostics: DiagnosticContext): UserReportDraft {
   const data = inputRecord(payload);
   const surface = requiredText(data, "surface");
   const operation = optionalText(data, "operation");
@@ -349,7 +364,6 @@ function buildClientErrorReport(
     ...(operation ? { operation } : {}),
     ...(errorCode ? { errorCode } : {}),
     diagnostics,
-    ...(note ? { note } : {}),
   };
   return {
     type: "client_error",
@@ -363,7 +377,6 @@ function buildClientErrorReport(
 function buildSiteFeedbackReport(
   payload: unknown,
   diagnostics: DiagnosticContext,
-  note: string | undefined,
 ): UserReportDraft {
   const data = inputRecord(payload);
   const surface = requiredText(data, "surface");
@@ -371,7 +384,6 @@ function buildSiteFeedbackReport(
     schemaVersion: 1,
     surface,
     diagnostics,
-    ...(note ? { note } : {}),
   };
   return {
     type: "site_feedback",
@@ -382,11 +394,7 @@ function buildSiteFeedbackReport(
   };
 }
 
-function buildThingsRoomReport(
-  payload: unknown,
-  diagnostics: DiagnosticContext,
-  note: string | undefined,
-): UserReportDraft {
+function buildThingsRoomReport(payload: unknown, diagnostics: DiagnosticContext): UserReportDraft {
   const data = inputRecord(payload);
   const game = requiredText(data, "game");
   const roomId = optionalText(data, "roomId", 80);
@@ -405,7 +413,6 @@ function buildThingsRoomReport(
     ...(revision !== undefined ? { revision } : {}),
     ...(issue ? { issue } : {}),
     diagnostics,
-    ...(note ? { note } : {}),
   };
   return {
     type: "things_room_issue",
@@ -416,11 +423,7 @@ function buildThingsRoomReport(
   };
 }
 
-function buildPitchReport(
-  payload: unknown,
-  diagnostics: DiagnosticContext,
-  note: string | undefined,
-): UserReportDraft {
+function buildPitchReport(payload: unknown, diagnostics: DiagnosticContext): UserReportDraft {
   const data = inputRecord(payload);
   const surface = requiredText(data, "surface");
   const deckId = optionalText(data, "deckId", 100);
@@ -441,7 +444,6 @@ function buildPitchReport(
     ...(status ? { status } : {}),
     ...(retryable !== undefined ? { retryable } : {}),
     diagnostics,
-    ...(note ? { note } : {}),
   };
   return {
     type: "pitch_issue",
@@ -452,11 +454,7 @@ function buildPitchReport(
   };
 }
 
-function buildUploadReport(
-  payload: unknown,
-  diagnostics: DiagnosticContext,
-  note: string | undefined,
-): UserReportDraft {
+function buildUploadReport(payload: unknown, diagnostics: DiagnosticContext): UserReportDraft {
   const data = inputRecord(payload);
   const surface = requiredText(data, "surface");
   const phase = optionalText(data, "phase", 100);
@@ -477,7 +475,6 @@ function buildUploadReport(
     ...(errorCode ? { errorCode } : {}),
     ...(retryable !== undefined ? { retryable } : {}),
     diagnostics,
-    ...(note ? { note } : {}),
   };
   return {
     type: "upload_issue",
@@ -492,20 +489,19 @@ function buildReport(value: unknown, request: Request): UserReportDraft {
   const data = inputRecord(value);
   if (!isReportType(data.type)) throw new ReportValidationError("Unknown report type");
   const diagnostics = buildDiagnostics(data.diagnostics, request);
-  const note = noteValue(data.note);
   switch (data.type) {
     case "client_error":
-      return buildClientErrorReport(data.payload, diagnostics, note);
+      return buildClientErrorReport(data.payload, diagnostics);
     case "site_feedback":
-      return buildSiteFeedbackReport(data.payload, diagnostics, note);
+      return buildSiteFeedbackReport(data.payload, diagnostics);
     case "draw_country_result_issue":
-      return buildDrawCountryReport(data.payload, diagnostics, note);
+      return buildDrawCountryReport(data.payload, diagnostics);
     case "things_room_issue":
-      return buildThingsRoomReport(data.payload, diagnostics, note);
+      return buildThingsRoomReport(data.payload, diagnostics);
     case "pitch_issue":
-      return buildPitchReport(data.payload, diagnostics, note);
+      return buildPitchReport(data.payload, diagnostics);
     case "upload_issue":
-      return buildUploadReport(data.payload, diagnostics, note);
+      return buildUploadReport(data.payload, diagnostics);
   }
 }
 
@@ -548,13 +544,21 @@ function idempotencyHeader(request: Request) {
   return `generated_${randomUUID().replaceAll("-", "")}`;
 }
 
-async function enforceSubmissionLimits(report: UserReportDraft, request: Request) {
+async function enforceSubmissionLimits(
+  report: UserReportDraft,
+  request: Request,
+): Promise<{ duplicateKey: string | null; reportId?: string }> {
   const fingerprint = requestFingerprint(request);
   const duplicateWindowSeconds = REPORT_POLICIES[report.type].duplicateWindowHours * 60 * 60;
   const duplicateKey = `${REPORT_DUPLICATE_PREFIX}${fingerprint}:${report.type}:${report.subjectKey}`;
   const rateKey = `${REPORT_RATE_LIMIT_PREFIX}${fingerprint}`;
   const duplicate = await reserve(duplicateKey, duplicateWindowSeconds);
-  if (!duplicate.reserved) return null;
+  if (!duplicate.reserved) {
+    return {
+      duplicateKey: null,
+      ...(duplicate.value && duplicate.value !== "pending" ? { reportId: duplicate.value } : {}),
+    };
+  }
 
   const redis = getRedis();
   if (redis) {
@@ -580,7 +584,7 @@ async function enforceSubmissionLimits(report: UserReportDraft, request: Request
       throw new ReportRateLimitError(Math.max(1, Math.ceil((rate.resetAtMs - now) / 1_000)));
     }
   }
-  return duplicateKey;
+  return { duplicateKey };
 }
 
 async function saveReport(report: UserReportRecord, idempotencyKey: string, duplicateKey: string) {
@@ -653,18 +657,25 @@ export async function submitUserReport(value: unknown, request: Request) {
       ...(idempotency.value && idempotency.value !== "pending"
         ? { reportId: idempotency.value }
         : {}),
+      ...(idempotency.value && idempotency.value !== "pending"
+        ? { followUpToken: reportFollowUpToken(idempotency.value) }
+        : {}),
       diagnosticId: report.context.diagnostics.diagnosticId,
     };
   }
 
   let duplicateKey: string | null = null;
   try {
-    duplicateKey = await enforceSubmissionLimits(report, request);
+    const limits = await enforceSubmissionLimits(report, request);
+    duplicateKey = limits.duplicateKey;
     if (!duplicateKey) {
       await releaseReservation(idempotencyRedisKey);
       return {
         accepted: false as const,
         duplicate: true as const,
+        ...(limits.reportId
+          ? { reportId: limits.reportId, followUpToken: reportFollowUpToken(limits.reportId) }
+          : {}),
         diagnosticId: report.context.diagnostics.diagnosticId,
       };
     }
@@ -676,11 +687,13 @@ export async function submitUserReport(value: unknown, request: Request) {
       updatedAt: now,
       status: "new" as const,
     } satisfies UserReportRecord;
+    const followUpToken = reportFollowUpToken(record.id);
     await saveReport(record, idempotencyKey, duplicateKey);
     return {
       accepted: true as const,
       duplicate: false as const,
       reportId: record.id,
+      followUpToken,
       diagnosticId: record.context.diagnostics.diagnosticId,
     };
   } catch (error) {
@@ -740,6 +753,102 @@ async function listReportRecords() {
   return reports;
 }
 
+async function persistReportRecord(report: UserReportRecord) {
+  const redis = getRedis();
+  if (redis) {
+    await redis.set(reportKey(report.id), JSON.stringify(report), {
+      ex: reportTtlSeconds(report),
+    });
+    return;
+  }
+  if (process.env.NODE_ENV === "production") throw new Error("Report storage unavailable");
+  pruneMemoryReports();
+  memoryReports.set(report.id, report);
+}
+
+function addUserNoteToReport(
+  report: UserReportRecord,
+  userNote: string,
+  updatedAt: string,
+): UserReportRecord {
+  switch (report.type) {
+    case "client_error":
+      return {
+        ...report,
+        updatedAt,
+        userNoteAddedAt: updatedAt,
+        context: { ...report.context, userNote },
+      };
+    case "site_feedback":
+      return {
+        ...report,
+        updatedAt,
+        userNoteAddedAt: updatedAt,
+        context: { ...report.context, userNote },
+      };
+    case "draw_country_result_issue":
+      return {
+        ...report,
+        updatedAt,
+        userNoteAddedAt: updatedAt,
+        context: { ...report.context, userNote },
+      };
+    case "things_room_issue":
+      return {
+        ...report,
+        updatedAt,
+        userNoteAddedAt: updatedAt,
+        context: { ...report.context, userNote },
+      };
+    case "pitch_issue":
+      return {
+        ...report,
+        updatedAt,
+        userNoteAddedAt: updatedAt,
+        context: { ...report.context, userNote },
+      };
+    case "upload_issue":
+      return {
+        ...report,
+        updatedAt,
+        userNoteAddedAt: updatedAt,
+        context: { ...report.context, userNote },
+      };
+  }
+}
+
+export async function appendUserReportNote(value: unknown) {
+  const data = inputRecord(value);
+  const reportId = requiredText(data, "reportId", 100);
+  const followUpToken = requiredText(data, "followUpToken", 200);
+  const userNote = noteValue(data.userNote);
+  if (!userNote || userNote.length < MIN_USER_NOTE_LENGTH)
+    throw new ReportValidationError("Add a little more detail");
+  if (!tokensMatch(reportFollowUpToken(reportId), followUpToken))
+    throw new ReportFollowUpError("Report unavailable");
+
+  const lockKey = `${REPORT_FOLLOW_UP_LOCK_PREFIX}${reportId}`;
+  const lock = await reserve(lockKey, FOLLOW_UP_LOCK_SECONDS);
+  if (!lock.reserved) throw new ReportFollowUpError("Report unavailable");
+  try {
+    const report = (await listReportRecords()).find((candidate) => candidate.id === reportId);
+    if (!report || !tokensMatch(reportFollowUpToken(report.id), followUpToken))
+      throw new ReportFollowUpError("Report unavailable");
+
+    if (report.context.userNote) {
+      if (report.context.userNote === userNote)
+        return { updated: false as const, duplicate: true as const };
+      throw new ReportFollowUpError("A detail has already been added");
+    }
+
+    const updated = addUserNoteToReport(report, userNote, new Date().toISOString());
+    await persistReportRecord(updated);
+    return { updated: true as const, duplicate: false as const };
+  } finally {
+    await releaseReservation(lockKey).catch(() => undefined);
+  }
+}
+
 function groupId(report: Pick<UserReportRecord, "type" | "subjectKey">) {
   return `${report.type}:${report.subjectKey}`;
 }
@@ -747,6 +856,18 @@ function groupId(report: Pick<UserReportRecord, "type" | "subjectKey">) {
 function highestSeverity(first: ReportSeverity, second: ReportSeverity): ReportSeverity {
   const rank = { low: 0, medium: 1, high: 2 } as const;
   return rank[second] > rank[first] ? second : first;
+}
+
+function userDetailForReport(report: UserReportRecord) {
+  return report.context.userNote
+    ? [
+        {
+          reportId: report.id,
+          addedAt: report.userNoteAddedAt ?? report.createdAt,
+          text: report.context.userNote,
+        },
+      ]
+    : [];
 }
 
 export async function listAdminReportGroups(
@@ -777,6 +898,7 @@ export async function listAdminReportGroups(
         halfLifeDays: REPORT_POLICIES[report.type].halfLifeDays,
         firstReportedAt: report.createdAt,
         latestReportedAt: report.createdAt,
+        userDetails: userDetailForReport(report),
         latestContext: report.context,
         recentReports: [
           {
@@ -797,6 +919,7 @@ export async function listAdminReportGroups(
     existing.activeCount += activeStatus(report.status) ? 1 : 0;
     existing.priority += weight;
     existing.severity = highestSeverity(existing.severity, report.severity);
+    existing.userDetails.push(...userDetailForReport(report));
     existing.recentReports.push({
       id: report.id,
       createdAt: report.createdAt,
@@ -817,6 +940,9 @@ export async function listAdminReportGroups(
     .map((group) => ({
       ...group,
       priority: Math.round(group.priority * 1_000) / 1_000,
+      userDetails: group.userDetails
+        .toSorted((first, second) => second.addedAt.localeCompare(first.addedAt))
+        .slice(0, MAX_USER_DETAILS_PER_GROUP),
       recentReports: group.recentReports
         .toSorted((first, second) => second.createdAt.localeCompare(first.createdAt))
         .slice(0, 8),
