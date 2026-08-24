@@ -3,6 +3,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { enqueueEmails } from "@/lib/platform/email-outbox.server";
 import { query } from "@/lib/platform/postgres.server";
 import { getBaseUrlForRequest } from "@/lib/shared/config";
+import { getEvent } from "@/features/events/store.server";
 import {
   renderCommunicationMessage,
   type CommunicationKind,
@@ -256,7 +257,9 @@ export async function saveCommunication(input: {
   const body = input.body.trim();
   if (!subject || subject.length > 150) throw new Error("Give the message a subject");
   if (!body || body.length > 8000) throw new Error("Write the message first");
-  if (input.kind === "event_update" && !input.eventSlug) throw new Error("Choose an event for an event update");
+  if (["event_update", "event_service", "feedback"].includes(input.kind) && !input.eventSlug) {
+    throw new Error("Choose an event for this message");
+  }
   if (input.kind === "newsletter" && !["marketing_opted_in", "selected"].includes(input.audience)) {
     throw new Error("Newsletters can only use opted-in contacts");
   }
@@ -288,13 +291,15 @@ export async function saveCommunication(input: {
 
   if (!isDraft) {
     const origin = getBaseUrlForRequest(input.request);
+    const event = input.eventSlug ? ((await getEvent(input.eventSlug)) ?? undefined) : undefined;
     await enqueueEmails(recipients.map((recipient) => {
       const unsubscribeUrl = input.kind === "newsletter"
         ? new URL(`/api/marketing/unsubscribe/${recipient.unsubscribeToken}`, origin).toString()
         : undefined;
       const rendered = renderCommunicationMessage({
         kind: input.kind, subject, body, media, recipientName: recipient.displayName ?? undefined,
-        unsubscribeUrl, origin, meta: input.eventSlug ?? undefined,
+        unsubscribeUrl, origin, meta: event?.title ?? input.eventSlug ?? undefined,
+        context: { event, recipientName: recipient.displayName ?? undefined },
       });
       return {
         idempotencyKey: `communications:${id}:${recipient.emailHash}`,

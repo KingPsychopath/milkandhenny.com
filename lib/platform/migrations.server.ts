@@ -1149,6 +1149,123 @@ const MIGRATIONS: Migration[] = [
         on communication_messages (event_slug, created_at desc);
     `,
   },
+  {
+    id: "0029_communication_plans_and_surveys",
+    sql: `
+      alter table communication_messages
+        drop constraint if exists communication_messages_kind_check;
+      alter table communication_messages
+        add constraint communication_messages_kind_check
+        check (kind in ('newsletter', 'event_update', 'pitch_nudge', 'event_service', 'feedback'));
+
+      create table if not exists communication_templates (
+        id                  uuid primary key,
+        name                text not null check (char_length(name) between 1 and 120),
+        kind                text not null check (kind in ('newsletter', 'event_update', 'pitch_nudge', 'event_service', 'feedback')),
+        subject             text not null check (char_length(subject) between 1 and 150),
+        body                text not null check (char_length(body) between 1 and 8000),
+        media               jsonb not null default '[]'::jsonb,
+        is_default          boolean not null default false,
+        archived_at         timestamptz,
+        created_at          timestamptz not null default now(),
+        updated_at          timestamptz not null default now()
+      );
+
+      create index if not exists communication_templates_kind_idx
+        on communication_templates (kind, archived_at, updated_at desc);
+
+      create table if not exists communication_plans (
+        id                  uuid primary key,
+        event_slug          text not null references events (slug) on delete cascade,
+        name                text not null check (char_length(name) between 1 and 160),
+        status              text not null default 'draft'
+                            check (status in ('draft', 'scheduled', 'paused', 'completed', 'cancelled')),
+        created_at          timestamptz not null default now(),
+        updated_at          timestamptz not null default now()
+      );
+
+      create index if not exists communication_plans_event_idx
+        on communication_plans (event_slug, status, updated_at desc);
+
+      create table if not exists communication_plan_stages (
+        id                  uuid primary key,
+        plan_id             uuid not null references communication_plans (id) on delete cascade,
+        stage_key           text not null check (stage_key ~ '^[a-z0-9][a-z0-9_-]{1,60}$'),
+        label               text not null check (char_length(label) between 1 and 120),
+        position            integer not null check (position >= 0),
+        kind                text not null check (kind in ('event_update', 'pitch_nudge', 'event_service', 'feedback')),
+        audience            text not null default 'event_attendees'
+                            check (audience in ('event_attendees', 'marketing_opted_in', 'selected')),
+        subject             text not null check (char_length(subject) between 1 and 150),
+        body                text not null check (char_length(body) between 1 and 8000),
+        media               jsonb not null default '[]'::jsonb,
+        template_id         uuid references communication_templates (id) on delete set null,
+        survey_id           uuid,
+        send_at             timestamptz,
+        late_join_hours     integer not null default 0 check (late_join_hours between 0 and 720),
+        status              text not null default 'draft'
+                            check (status in ('draft', 'scheduled', 'fanout', 'queued', 'complete', 'paused', 'cancelled', 'failed')),
+        recipient_count     integer not null default 0 check (recipient_count >= 0),
+        queued_count        integer not null default 0 check (queued_count >= 0),
+        last_error          text,
+        queued_at           timestamptz,
+        created_at          timestamptz not null default now(),
+        updated_at          timestamptz not null default now(),
+        unique (plan_id, stage_key)
+      );
+
+      create index if not exists communication_plan_stages_due_idx
+        on communication_plan_stages (status, send_at, position);
+
+      create table if not exists communication_stage_deliveries (
+        stage_id            uuid not null references communication_plan_stages (id) on delete cascade,
+        email_hash          text not null references communication_contacts (email_hash) on delete cascade,
+        email               text not null,
+        status              text not null default 'queued'
+                            check (status in ('queued', 'accepted', 'failed', 'skipped')),
+        outbox_id            uuid,
+        created_at           timestamptz not null default now(),
+        updated_at           timestamptz not null default now(),
+        primary key (stage_id, email_hash)
+      );
+
+      create table if not exists surveys (
+        id                  uuid primary key,
+        slug                text not null unique check (slug ~ '^[a-z0-9][a-z0-9-]{1,80}$'),
+        event_slug          text references events (slug) on delete set null,
+        title               text not null check (char_length(title) between 1 and 160),
+        intro               text not null default '' check (char_length(intro) <= 2000),
+        questions           jsonb not null default '[]'::jsonb,
+        status              text not null default 'draft'
+                            check (status in ('draft', 'open', 'closed', 'archived')),
+        response_count      integer not null default 0 check (response_count >= 0),
+        created_at          timestamptz not null default now(),
+        updated_at          timestamptz not null default now()
+      );
+
+      create index if not exists surveys_event_idx
+        on surveys (event_slug, status, updated_at desc);
+
+      create table if not exists survey_responses (
+        id                  uuid primary key,
+        survey_id           uuid not null references surveys (id) on delete cascade,
+        respondent_email    text,
+        email_hash          text,
+        respondent_name     text,
+        answers             jsonb not null default '{}'::jsonb,
+        submitted_at        timestamptz not null default now(),
+        check (respondent_email is null or char_length(respondent_email) <= 254),
+        check (respondent_name is null or char_length(respondent_name) <= 160)
+      );
+
+      create unique index if not exists survey_responses_email_idx
+        on survey_responses (survey_id, email_hash)
+        where email_hash is not null;
+
+      create index if not exists survey_responses_survey_idx
+        on survey_responses (survey_id, submitted_at desc);
+    `,
+  },
 ];
 
 interface PitchDocumentSchemaRow extends QueryResultRow {

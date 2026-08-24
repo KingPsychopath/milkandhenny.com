@@ -10,6 +10,7 @@ import { buildTicketQrPayload } from "./qr.server";
 import type { TicketRecord } from "./types";
 import { BASE_URL } from "@/lib/shared/config";
 import { escapeEmailHtml as escapeHtml, renderBrandedEmail } from "@/lib/shared/email-design";
+import { renderCommunicationMessage } from "@/features/communications/email.server";
 
 /**
  * Ticket delivery email.
@@ -304,28 +305,14 @@ export function renderEventMessage(input: {
   origin?: string;
 }): RenderedEmail {
   const { event, subject, body, origin = BASE_URL } = input;
-  const when = formatEventDateTime(event.startsAt, event.timezone);
-
-  const text = [body.trim(), "", `${event.title} · ${when}`, "", "— milk & henny"].join("\n");
-
-  const paragraphs = body
-    .trim()
-    .split(/\n{2,}/)
-    .map(
-      (paragraph) =>
-        `<p style="margin:0 0 14px;line-height:1.6">${escapeHtml(paragraph).replace(/\n/g, "<br>")}</p>`,
-    )
-    .join("");
-
-  const html = renderBrandedEmail({
+  return renderCommunicationMessage({
+    kind: "event_update",
+    subject,
+    body,
     origin,
-    label: "event update",
-    title: subject,
-    meta: `${event.title} · ${when}`,
-    contentHtml: paragraphs,
+    meta: event.title,
+    context: { event },
   });
-
-  return { subject, text, html };
 }
 
 function refundAmount(tickets: TicketRecord[]): string | null {

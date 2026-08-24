@@ -39,6 +39,7 @@ import { Route as PlayTokenRouteImport } from './routes/play.$token'
 import { Route as ScanIndexRouteImport } from './routes/scan.index'
 import { Route as ScanTokenRouteImport } from './routes/scan.$token'
 import { Route as TIdRouteImport } from './routes/t/$id'
+import { Route as SurveysSlugRouteImport } from './routes/surveys.$slug'
 import { Route as ThingsCentreRouteImport } from './routes/things.centre'
 import { Route as ThingsDrawCountryRouteImport } from './routes/things.draw-country'
 import { Route as ThingsHeadsUpRouteImport } from './routes/things.heads-up'
@@ -55,6 +56,7 @@ import { Route as WordsIndexRouteImport } from './routes/words/index'
 import { Route as WordsSlugRouteImport } from './routes/words/$slug'
 import { Route as ApiAdminAlbumsRouteRouteImport } from './routes/api/admin/albums/route'
 import { Route as ApiAdminContentAuditRouteRouteImport } from './routes/api/admin/content-audit/route'
+import { Route as ApiAdminCommunicationsRouteRouteImport } from './routes/api/admin/communications/route'
 import { Route as ApiAdminContentSummaryRouteRouteImport } from './routes/api/admin/content-summary/route'
 import { Route as ApiAdminEventsRouteRouteImport } from './routes/api/admin/events/route'
 import { Route as ApiAdminGamePoolsRouteRouteImport } from './routes/api/admin/game-pools/route'
@@ -62,6 +64,7 @@ import { Route as ApiAdminPitchesRouteRouteImport } from './routes/api/admin/pit
 import { Route as ApiAdminReportsRouteRouteImport } from './routes/api/admin/reports/route'
 import { Route as ApiAdminStepUpRouteRouteImport } from './routes/api/admin/step-up/route'
 import { Route as ApiAdminTransfersRouteRouteImport } from './routes/api/admin/transfers/route'
+import { Route as ApiAdminSurveysRouteRouteImport } from './routes/api/admin/surveys/route'
 import { Route as ApiAdminVerifyRouteRouteImport } from './routes/api/admin/verify/route'
 import { Route as ApiAdminWordMediaRouteRouteImport } from './routes/api/admin/word-media/route'
 import { Route as ApiAdminWordSharesRouteRouteImport } from './routes/api/admin/word-shares/route'
@@ -104,8 +107,10 @@ import { Route as ApiAdminAlbumsSlugRouteRouteImport } from './routes/api/admin/
 import { Route as ApiAdminEventsSlugRouteRouteImport } from './routes/api/admin/events/$slug/route'
 import { Route as ApiAdminGamePoolsIdRouteRouteImport } from './routes/api/admin/game-pools/$id/route'
 import { Route as ApiAdminTokensRevokeRouteRouteImport } from './routes/api/admin/tokens/revoke/route'
+import { Route as ApiAdminCommunicationsIdRouteRouteImport } from './routes/api/admin/communications/$id/route'
 import { Route as ApiAdminTokensSessionsRouteRouteImport } from './routes/api/admin/tokens/sessions/route'
 import { Route as ApiAdminTransfersIdRouteRouteImport } from './routes/api/admin/transfers/$id/route'
+import { Route as ApiAdminSurveysIdRouteRouteImport } from './routes/api/admin/surveys/$id/route'
 import { Route as ApiAdminTransfersCleanupRouteRouteImport } from './routes/api/admin/transfers/cleanup/route'
 import { Route as ApiAdminTransfersNukeRouteRouteImport } from './routes/api/admin/transfers/nuke/route'
 import { Route as ApiAdminTransfersProcessMediaRouteRouteImport } from './routes/api/admin/transfers/process-media/route'
@@ -306,6 +311,11 @@ const ThingsCentreRoute = ThingsCentreRouteImport.update({
   id: '/centre',
   path: '/centre',
   getParentRoute: () => ThingsRoute,
+const SurveysSlugRoute = SurveysSlugRouteImport.update({
+  id: '/surveys/$slug',
+  path: '/surveys/$slug',
+  getParentRoute: () => rootRouteImport,
+} as any)
 } as any)
 const ThingsDrawCountryRoute = ThingsDrawCountryRouteImport.update({
   id: '/draw-country',
@@ -386,6 +396,12 @@ const ApiAdminContentAuditRouteRoute =
 const ApiAdminContentSummaryRouteRoute =
   ApiAdminContentSummaryRouteRouteImport.update({
     id: '/api/admin/content-summary',
+const ApiAdminCommunicationsRouteRoute =
+  ApiAdminCommunicationsRouteRouteImport.update({
+    id: '/api/admin/communications',
+    path: '/api/admin/communications',
+    getParentRoute: () => rootRouteImport,
+  } as any)
     path: '/api/admin/content-summary',
     getParentRoute: () => rootRouteImport,
   } as any)
@@ -423,6 +439,11 @@ const ApiAdminVerifyRouteRoute = ApiAdminVerifyRouteRouteImport.update({
   id: '/api/admin/verify',
   path: '/api/admin/verify',
   getParentRoute: () => rootRouteImport,
+const ApiAdminSurveysRouteRoute = ApiAdminSurveysRouteRouteImport.update({
+  id: '/api/admin/surveys',
+  path: '/api/admin/surveys',
+  getParentRoute: () => rootRouteImport,
+} as any)
 } as any)
 const ApiAdminWordMediaRouteRoute = ApiAdminWordMediaRouteRouteImport.update({
   id: '/api/admin/word-media',
@@ -644,6 +665,12 @@ const ApiAdminTokensSessionsRouteRoute =
   ApiAdminTokensSessionsRouteRouteImport.update({
     id: '/api/admin/tokens/sessions',
     path: '/api/admin/tokens/sessions',
+const ApiAdminCommunicationsIdRouteRoute =
+  ApiAdminCommunicationsIdRouteRouteImport.update({
+    id: '/$id',
+    path: '/$id',
+    getParentRoute: () => ApiAdminCommunicationsRouteRoute,
+  } as any)
     getParentRoute: () => rootRouteImport,
   } as any)
 const ApiAdminTransfersIdRouteRoute =
@@ -655,6 +682,11 @@ const ApiAdminTransfersIdRouteRoute =
 const ApiAdminTransfersCleanupRouteRoute =
   ApiAdminTransfersCleanupRouteRouteImport.update({
     id: '/cleanup',
+const ApiAdminSurveysIdRouteRoute = ApiAdminSurveysIdRouteRouteImport.update({
+  id: '/$id',
+  path: '/$id',
+  getParentRoute: () => ApiAdminSurveysRouteRoute,
+} as any)
     path: '/cleanup',
     getParentRoute: () => ApiAdminTransfersRouteRoute,
   } as any)
@@ -973,6 +1005,7 @@ export interface FileRoutesByFullPath {
   '/api/admin/reports': typeof ApiAdminReportsRouteRoute
   '/api/admin/step-up': typeof ApiAdminStepUpRouteRoute
   '/api/admin/transfers': typeof ApiAdminTransfersRouteRouteWithChildren
+  '/surveys/$slug': typeof SurveysSlugRoute
   '/api/admin/verify': typeof ApiAdminVerifyRouteRoute
   '/api/admin/word-media': typeof ApiAdminWordMediaRouteRouteWithChildren
   '/api/admin/word-shares': typeof ApiAdminWordSharesRouteRouteWithChildren
@@ -993,6 +1026,7 @@ export interface FileRoutesByFullPath {
   '/api/words/$slug': typeof ApiWordsSlugRouteRouteWithChildren
   '/events/$slug/bought': typeof EventsSlugBoughtRoute
   '/pics/$album/$photo': typeof PicsAlbumPhotoRoute
+  '/api/admin/communications': typeof ApiAdminCommunicationsRouteRouteWithChildren
   '/things/centre/$roomId': typeof ThingsCentreRoomIdRoute
   '/things/centre/dev': typeof ThingsCentreDevRoute
   '/things/draw-country/$roomId': typeof ThingsDrawCountryRoomIdRoute
@@ -1000,6 +1034,7 @@ export interface FileRoutesByFullPath {
   '/things/liars/$roomId': typeof ThingsLiarsRoomIdRoute
   '/things/liars/dev': typeof ThingsLiarsDevRoute
   '/things/liars/phone': typeof ThingsLiarsPhoneRoute
+  '/api/admin/surveys': typeof ApiAdminSurveysRouteRouteWithChildren
   '/things/pitches/$deckId': typeof ThingsPitchesDeckIdRoute
   '/things/pitches/demo': typeof ThingsPitchesDemoRoute
   '/things/pitches/new': typeof ThingsPitchesNewRoute
@@ -1042,8 +1077,10 @@ export interface FileRoutesByFullPath {
   '/things/pitches/remote/$roomId': typeof ThingsPitchesRemoteRoomIdRoute
   '/things/spelling-party/$roomId/present': typeof ThingsSpellingPartyRoomIdPresentRoute
   '/api/admin/albums/$slug/cover': typeof ApiAdminAlbumsSlugCoverRouteRoute
+  '/api/admin/communications/$id': typeof ApiAdminCommunicationsIdRouteRoute
   '/api/admin/albums/$slug/order': typeof ApiAdminAlbumsSlugOrderRouteRoute
   '/api/admin/albums/$slug/photos': typeof ApiAdminAlbumsSlugPhotosRouteRouteWithChildren
+  '/api/admin/surveys/$id': typeof ApiAdminSurveysIdRouteRoute
   '/api/admin/events/$slug/checkpoints': typeof ApiAdminEventsSlugCheckpointsRouteRoute
   '/api/admin/events/$slug/drop': typeof ApiAdminEventsSlugDropRouteRoute
   '/api/admin/events/$slug/email': typeof ApiAdminEventsSlugEmailRouteRoute
@@ -1121,6 +1158,7 @@ export interface FileRoutesByTo {
   '/api/admin/word-media': typeof ApiAdminWordMediaRouteRouteWithChildren
   '/api/admin/word-shares': typeof ApiAdminWordSharesRouteRouteWithChildren
   '/api/cron/cleanup-game-pools': typeof ApiCronCleanupGamePoolsRouteRoute
+  '/surveys/$slug': typeof SurveysSlugRoute
   '/api/cron/cleanup-pitches': typeof ApiCronCleanupPitchesRouteRoute
   '/api/cron/cleanup-transfers': typeof ApiCronCleanupTransfersRouteRoute
   '/api/cron/cleanup-word-media-orphans': typeof ApiCronCleanupWordMediaOrphansRouteRoute
@@ -1141,6 +1179,7 @@ export interface FileRoutesByTo {
   '/things/centre/dev': typeof ThingsCentreDevRoute
   '/things/draw-country/$roomId': typeof ThingsDrawCountryRoomIdRoute
   '/things/judge/$roomId': typeof ThingsJudgeRoomIdRoute
+  '/api/admin/communications': typeof ApiAdminCommunicationsRouteRouteWithChildren
   '/things/liars/$roomId': typeof ThingsLiarsRoomIdRoute
   '/things/liars/dev': typeof ThingsLiarsDevRoute
   '/things/liars/phone': typeof ThingsLiarsPhoneRoute
@@ -1148,6 +1187,7 @@ export interface FileRoutesByTo {
   '/things/pitches/demo': typeof ThingsPitchesDemoRoute
   '/things/pitches/new': typeof ThingsPitchesNewRoute
   '/things/pitches/present': typeof ThingsPitchesPresentRoute
+  '/api/admin/surveys': typeof ApiAdminSurveysRouteRouteWithChildren
   '/things/play/$roomId': typeof ThingsPlayRoomIdRoute
   '/things/same-brain/$roomId': typeof ThingsSameBrainRoomIdRoute
   '/things/same-brain/dev': typeof ThingsSameBrainDevRoute
@@ -1190,8 +1230,10 @@ export interface FileRoutesByTo {
   '/api/admin/albums/$slug/photos': typeof ApiAdminAlbumsSlugPhotosRouteRouteWithChildren
   '/api/admin/events/$slug/checkpoints': typeof ApiAdminEventsSlugCheckpointsRouteRoute
   '/api/admin/events/$slug/drop': typeof ApiAdminEventsSlugDropRouteRoute
+  '/api/admin/communications/$id': typeof ApiAdminCommunicationsIdRouteRoute
   '/api/admin/events/$slug/email': typeof ApiAdminEventsSlugEmailRouteRoute
   '/api/admin/events/$slug/guest-requests': typeof ApiAdminEventsSlugGuestRequestsRouteRoute
+  '/api/admin/surveys/$id': typeof ApiAdminSurveysIdRouteRoute
   '/api/admin/events/$slug/scanner-links': typeof ApiAdminEventsSlugScannerLinksRouteRoute
   '/api/admin/events/$slug/tickets': typeof ApiAdminEventsSlugTicketsRouteRoute
   '/api/admin/tokens/sessions/$jti': typeof ApiAdminTokensSessionsJtiRouteRoute
@@ -1270,6 +1312,7 @@ export interface FileRoutesById {
   '/api/cron/cleanup-transfers': typeof ApiCronCleanupTransfersRouteRoute
   '/api/cron/cleanup-word-media-orphans': typeof ApiCronCleanupWordMediaOrphansRouteRoute
   '/api/cron/cleanup-word-shares': typeof ApiCronCleanupWordSharesRouteRoute
+  '/surveys/$slug': typeof SurveysSlugRoute
   '/api/cron/deliver-email': typeof ApiCronDeliverEmailRouteRoute
   '/api/cron/process-transfer-media': typeof ApiCronProcessTransferMediaRouteRoute
   '/api/cron/send-pitch-reminders': typeof ApiCronSendPitchRemindersRouteRoute
@@ -1290,6 +1333,7 @@ export interface FileRoutesById {
   '/things/liars_/dev': typeof ThingsLiarsDevRoute
   '/things/liars_/phone': typeof ThingsLiarsPhoneRoute
   '/things/pitches_/$deckId': typeof ThingsPitchesDeckIdRoute
+  '/api/admin/communications': typeof ApiAdminCommunicationsRouteRouteWithChildren
   '/things/pitches_/demo': typeof ThingsPitchesDemoRoute
   '/things/pitches_/new': typeof ThingsPitchesNewRoute
   '/things/pitches_/present': typeof ThingsPitchesPresentRoute
@@ -1297,6 +1341,7 @@ export interface FileRoutesById {
   '/things/same-brain_/$roomId': typeof ThingsSameBrainRoomIdRoute
   '/things/same-brain_/dev': typeof ThingsSameBrainDevRoute
   '/things/spelling-party_/$roomId': typeof ThingsSpellingPartyRoomIdRoute
+  '/api/admin/surveys': typeof ApiAdminSurveysRouteRouteWithChildren
   '/things/twin_/$roomId': typeof ThingsTwinRoomIdRoute
   '/things/twin_/dev': typeof ThingsTwinDevRoute
   '/pics/$album/': typeof PicsAlbumIndexRoute
@@ -1339,8 +1384,10 @@ export interface FileRoutesById {
   '/api/admin/events/$slug/guest-requests': typeof ApiAdminEventsSlugGuestRequestsRouteRoute
   '/api/admin/events/$slug/scanner-links': typeof ApiAdminEventsSlugScannerLinksRouteRoute
   '/api/admin/events/$slug/tickets': typeof ApiAdminEventsSlugTicketsRouteRoute
+  '/api/admin/communications/$id': typeof ApiAdminCommunicationsIdRouteRoute
   '/api/admin/tokens/sessions/$jti': typeof ApiAdminTokensSessionsJtiRouteRoute
   '/api/transfers/$id/files/$fileId': typeof ApiTransfersIdFilesFileIdRouteRoute
+  '/api/admin/surveys/$id': typeof ApiAdminSurveysIdRouteRoute
   '/api/upload/transfer/append/finalize': typeof ApiUploadTransferAppendFinalizeRouteRoute
   '/api/upload/transfer/append/presign': typeof ApiUploadTransferAppendPresignRouteRoute
   '/api/words/$slug/media/$filename': typeof ApiWordsSlugMediaFilenameRouteRoute
@@ -1420,6 +1467,7 @@ export interface FileRouteTypes {
     | '/api/cron/process-transfer-media'
     | '/api/cron/send-pitch-reminders'
     | '/api/download/presign'
+    | '/surveys/$slug'
     | '/api/drop/finalize'
     | '/api/drop/presign'
     | '/api/stripe/webhook'
@@ -1440,6 +1488,7 @@ export interface FileRouteTypes {
     | '/things/pitches/new'
     | '/things/pitches/present'
     | '/things/play/$roomId'
+    | '/api/admin/communications'
     | '/things/same-brain/$roomId'
     | '/things/same-brain/dev'
     | '/things/spelling-party/$roomId'
@@ -1447,6 +1496,7 @@ export interface FileRouteTypes {
     | '/things/twin/dev'
     | '/pics/$album/'
     | '/api/admin/albums/$slug'
+    | '/api/admin/surveys'
     | '/api/admin/events/$slug'
     | '/api/admin/game-pools/$id'
     | '/api/admin/tokens/revoke'
@@ -1489,8 +1539,10 @@ export interface FileRouteTypes {
     | '/api/transfers/$id/files/$fileId'
     | '/api/upload/transfer/append/finalize'
     | '/api/upload/transfer/append/presign'
+    | '/api/admin/communications/$id'
     | '/api/words/$slug/media/$filename'
     | '/api/words/$slug/shares/$id'
+    | '/api/admin/surveys/$id'
     | '/api/admin/albums/$slug/photos/$photoId'
     | '/api/admin/albums/$slug/upload/finalize'
     | '/api/admin/albums/$slug/upload/presign'
@@ -1568,6 +1620,7 @@ export interface FileRouteTypes {
     | '/api/drop/presign'
     | '/api/stripe/webhook'
     | '/api/transfers/$id'
+    | '/surveys/$slug'
     | '/api/upload/verify-pin'
     | '/api/words/$slug'
     | '/events/$slug/bought'
@@ -1588,6 +1641,7 @@ export interface FileRouteTypes {
     | '/things/same-brain/dev'
     | '/things/spelling-party/$roomId'
     | '/things/twin/$roomId'
+    | '/api/admin/communications'
     | '/things/twin/dev'
     | '/pics/$album'
     | '/api/admin/albums/$slug'
@@ -1595,6 +1649,7 @@ export interface FileRouteTypes {
     | '/api/admin/game-pools/$id'
     | '/api/admin/tokens/revoke'
     | '/api/admin/tokens/sessions'
+    | '/api/admin/surveys'
     | '/api/admin/transfers/$id'
     | '/api/admin/transfers/cleanup'
     | '/api/admin/transfers/nuke'
@@ -1637,8 +1692,10 @@ export interface FileRouteTypes {
     | '/api/words/$slug/shares/$id'
     | '/api/admin/albums/$slug/photos/$photoId'
     | '/api/admin/albums/$slug/upload/finalize'
+    | '/api/admin/communications/$id'
     | '/api/admin/albums/$slug/upload/presign'
     | '/api/albums/$slug/photos/$photoId/original'
+    | '/api/admin/surveys/$id'
     | '/api/transfers/$id/media/$fileId/$variant'
     | '/api/admin/albums/$slug/photos/$photoId/media'
   id:
@@ -1716,6 +1773,7 @@ export interface FileRouteTypes {
     | '/api/words/$slug'
     | '/events/$slug_/bought'
     | '/pics/$album/$photo'
+    | '/surveys/$slug'
     | '/things/centre_/$roomId'
     | '/things/centre_/dev'
     | '/things/draw-country_/$roomId'
@@ -1736,6 +1794,7 @@ export interface FileRouteTypes {
     | '/pics/$album/'
     | '/api/admin/albums/$slug'
     | '/api/admin/events/$slug'
+    | '/api/admin/communications'
     | '/api/admin/game-pools/$id'
     | '/api/admin/tokens/revoke'
     | '/api/admin/tokens/sessions'
@@ -1743,6 +1802,7 @@ export interface FileRouteTypes {
     | '/api/admin/transfers/cleanup'
     | '/api/admin/transfers/nuke'
     | '/api/admin/transfers/process-media'
+    | '/api/admin/surveys'
     | '/api/admin/word-media/orphans'
     | '/api/admin/word-shares/cleanup'
     | '/api/best-dressed/codes/mint-batch'
@@ -1785,8 +1845,10 @@ export interface FileRouteTypes {
     | '/api/albums/$slug/photos/$photoId/original'
     | '/api/transfers/$id/media/$fileId/$variant'
     | '/api/admin/albums/$slug/photos/$photoId/media'
+    | '/api/admin/communications/$id'
   fileRoutesById: FileRoutesById
 }
+    | '/api/admin/surveys/$id'
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   BestDressedRoute: typeof BestDressedRoute
@@ -1865,6 +1927,7 @@ export interface RootRouteChildren {
   ApiUploadTransferAppendPresignRouteRoute: typeof ApiUploadTransferAppendPresignRouteRoute
   ApiAlbumsSlugPhotosPhotoIdOriginalRouteRoute: typeof ApiAlbumsSlugPhotosPhotoIdOriginalRouteRoute
 }
+  SurveysSlugRoute: typeof SurveysSlugRoute
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
@@ -1875,6 +1938,7 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+  ApiAdminCommunicationsRouteRoute: typeof ApiAdminCommunicationsRouteRouteWithChildren
     '/best-dressed': {
       id: '/best-dressed'
       path: '/best-dressed'
@@ -1882,6 +1946,7 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof BestDressedRouteImport
       parentRoute: typeof rootRouteImport
     }
+  ApiAdminSurveysRouteRoute: typeof ApiAdminSurveysRouteRouteWithChildren
     '/contact': {
       id: '/contact'
       path: '/contact'
@@ -2133,6 +2198,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/things/spelling-bee'
       preLoaderRoute: typeof ThingsSpellingBeeRouteImport
       parentRoute: typeof ThingsRoute
+    '/surveys/$slug': {
+      id: '/surveys/$slug'
+      path: '/surveys/$slug'
+      fullPath: '/surveys/$slug'
+      preLoaderRoute: typeof SurveysSlugRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     }
     '/things/spelling-party': {
       id: '/things/spelling-party'
@@ -2245,6 +2317,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/api/admin/verify'
       preLoaderRoute: typeof ApiAdminVerifyRouteRouteImport
       parentRoute: typeof rootRouteImport
+    '/api/admin/communications': {
+      id: '/api/admin/communications'
+      path: '/api/admin/communications'
+      fullPath: '/api/admin/communications'
+      preLoaderRoute: typeof ApiAdminCommunicationsRouteRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     }
     '/api/admin/word-media': {
       id: '/api/admin/word-media'
@@ -2294,6 +2373,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/api/cron/cleanup-word-shares'
       preLoaderRoute: typeof ApiCronCleanupWordSharesRouteRouteImport
       parentRoute: typeof rootRouteImport
+    '/api/admin/surveys': {
+      id: '/api/admin/surveys'
+      path: '/api/admin/surveys'
+      fullPath: '/api/admin/surveys'
+      preLoaderRoute: typeof ApiAdminSurveysRouteRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     }
     '/api/cron/deliver-email': {
       id: '/api/cron/deliver-email'
@@ -2588,6 +2674,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/api/best-dressed/codes/mint-batch'
       preLoaderRoute: typeof ApiBestDressedCodesMintBatchRouteRouteImport
       parentRoute: typeof ApiBestDressedRouteRoute
+    '/api/admin/communications/$id': {
+      id: '/api/admin/communications/$id'
+      path: '/$id'
+      fullPath: '/api/admin/communications/$id'
+      preLoaderRoute: typeof ApiAdminCommunicationsIdRouteRouteImport
+      parentRoute: typeof ApiAdminCommunicationsRouteRoute
+    }
     }
     '/api/best-dressed/codes/revoke-all': {
       id: '/api/best-dressed/codes/revoke-all'
@@ -2602,6 +2695,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/api/best-dressed/voting/open'
       preLoaderRoute: typeof ApiBestDressedVotingOpenRouteRouteImport
       parentRoute: typeof ApiBestDressedRouteRoute
+    '/api/admin/surveys/$id': {
+      id: '/api/admin/surveys/$id'
+      path: '/$id'
+      fullPath: '/api/admin/surveys/$id'
+      preLoaderRoute: typeof ApiAdminSurveysIdRouteRouteImport
+      parentRoute: typeof ApiAdminSurveysRouteRoute
+    }
     }
     '/api/email/events/cloudflare': {
       id: '/api/email/events/cloudflare'
@@ -3145,6 +3245,20 @@ const ApiAdminWordMediaRouteRouteChildren: ApiAdminWordMediaRouteRouteChildren =
   }
 
 const ApiAdminWordMediaRouteRouteWithChildren =
+interface ApiAdminCommunicationsRouteRouteChildren {
+  ApiAdminCommunicationsIdRouteRoute: typeof ApiAdminCommunicationsIdRouteRoute
+}
+
+const ApiAdminCommunicationsRouteRouteChildren: ApiAdminCommunicationsRouteRouteChildren =
+  {
+    ApiAdminCommunicationsIdRouteRoute: ApiAdminCommunicationsIdRouteRoute,
+  }
+
+const ApiAdminCommunicationsRouteRouteWithChildren =
+  ApiAdminCommunicationsRouteRoute._addFileChildren(
+    ApiAdminCommunicationsRouteRouteChildren,
+  )
+
   ApiAdminWordMediaRouteRoute._addFileChildren(
     ApiAdminWordMediaRouteRouteChildren,
   )
@@ -3197,6 +3311,17 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   BestDressedRoute: BestDressedRoute,
   ContactRoute: ContactRoute,
+interface ApiAdminSurveysRouteRouteChildren {
+  ApiAdminSurveysIdRouteRoute: typeof ApiAdminSurveysIdRouteRoute
+}
+
+const ApiAdminSurveysRouteRouteChildren: ApiAdminSurveysRouteRouteChildren = {
+  ApiAdminSurveysIdRouteRoute: ApiAdminSurveysIdRouteRoute,
+}
+
+const ApiAdminSurveysRouteRouteWithChildren =
+  ApiAdminSurveysRouteRoute._addFileChildren(ApiAdminSurveysRouteRouteChildren)
+
   ExamRoute: ExamRoute,
   FeedDotxmlRoute: FeedDotxmlRoute,
   FontTestRoute: FontTestRoute,
@@ -3289,3 +3414,7 @@ declare module '@tanstack/react-start' {
     config: Awaited<ReturnType<typeof startInstance.getOptions>>
   }
 }
+  SurveysSlugRoute: SurveysSlugRoute,
+  ApiAdminCommunicationsRouteRoute:
+    ApiAdminCommunicationsRouteRouteWithChildren,
+  ApiAdminSurveysRouteRoute: ApiAdminSurveysRouteRouteWithChildren,
