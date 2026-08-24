@@ -64,6 +64,11 @@ function eventDescriptionComponents(images: Record<string, ResponsiveImageData>)
       const image = images[src];
       const resolved = image?.src ?? resolveImageSrc(src);
       if (!resolved) return null;
+      const handleError = (event: React.SyntheticEvent<HTMLImageElement>) => {
+        const wrapper = event.currentTarget.closest(".event-markdown-image");
+        if (wrapper) (wrapper as HTMLElement).style.display = "none";
+        else event.currentTarget.style.display = "none";
+      };
       return (
         <span
           className="media-image-placeholder event-markdown-image"
@@ -78,6 +83,7 @@ function eventDescriptionComponents(images: Record<string, ResponsiveImageData>)
             height={image?.height}
             reveal
             sizes="(min-width: 672px) 624px, calc(100vw - 3rem)"
+            onError={handleError}
           />
         </span>
       );
