@@ -183,11 +183,14 @@ async function resolveRecipients(input: {
     hashes = tickets.map((ticket) => hashEmail(ticket.email));
   } else if (input.audience === "pitch_owners") {
     const pitches = await query<{ email: string }>(
-      `select distinct lower(owner_email) as email
-         from pitch_decks
-        where lifecycle = 'active' and published_at is null`,
+      `select distinct d.owner_email_hash as email
+         from pitch_decks d
+         join communication_contacts c on c.email_hash = d.owner_email_hash
+        where d.lifecycle = 'active'
+          and d.published_at is null
+          and c.marketing_opted_in = true`,
     );
-    hashes = pitches.map((pitch) => hashEmail(pitch.email));
+    hashes = pitches.map((pitch) => pitch.email);
   }
   if (hashes.length === 0) return [];
   const rows = await query<Record<string, unknown>>(
@@ -198,7 +201,7 @@ async function resolveRecipients(input: {
     [hashes],
   );
   const contacts = rows.map(contactFromRow);
-  return input.audience === "selected" && input.kind === "newsletter"
+  return input.audience === "selected" && (input.kind === "newsletter" || input.kind === "pitch_nudge")
     ? contacts.filter((contact) => contact.marketingOptedIn)
     : contacts;
 }
