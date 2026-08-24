@@ -908,7 +908,7 @@ function renderCliCallbackPage(approved: boolean): string {
   const title = approved ? "You’re signed in." : "Sign-in was not completed.";
   const eyebrow = approved ? "access granted" : "nothing changed";
   const detail = approved
-    ? "The terminal is finishing the connection now. You can leave this window open or close it."
+    ? "Approval received. Return to your terminal."
     : "The terminal did not receive an approval. Return to it and start again when you are ready.";
   return `<!doctype html>
 <html lang="en">
@@ -925,7 +925,6 @@ function renderCliCallbackPage(approved: boolean): string {
         --muted: oklch(0.522 0.022 55.4);
         --border: oklch(0.856 0.01 70.7);
         --amber: oklch(0.55 0.18 47.6);
-        --amber-soft: oklch(0.965 0.058 95.28);
       }
       @media (prefers-color-scheme: dark) {
         :root {
@@ -934,7 +933,6 @@ function renderCliCallbackPage(approved: boolean): string {
           --muted: oklch(0.696 0.019 70.7);
           --border: oklch(0.298 0.018 55.4);
           --amber: oklch(0.82 0.16 79);
-          --amber-soft: oklch(0.298 0.018 55.4);
         }
       }
       * { box-sizing: border-box; }
@@ -949,20 +947,15 @@ function renderCliCallbackPage(approved: boolean): string {
         font-family: "Geist Mono", "SFMono-Regular", "SF Mono", ui-monospace, monospace;
         -webkit-font-smoothing: antialiased;
       }
-      main { width: min(100%, 42rem); }
+      main { width: min(100%, 34rem); }
       .masthead {
-        display: flex;
-        align-items: baseline;
-        justify-content: space-between;
-        gap: 1rem;
         padding-bottom: 1.25rem;
         border-bottom: 1px solid var(--border);
         font-size: 0.75rem;
         letter-spacing: -0.02em;
       }
       .brand { font-weight: 700; letter-spacing: -0.06em; }
-      .context { color: var(--muted); }
-      .content { padding: clamp(3.5rem, 12vh, 7rem) 0 3rem; }
+      .content { padding: clamp(3rem, 10vh, 5rem) 0 0; }
       .status {
         display: flex;
         align-items: center;
@@ -974,21 +967,12 @@ function renderCliCallbackPage(approved: boolean): string {
         line-height: 1;
         text-transform: uppercase;
       }
-      .status-mark {
-        display: grid;
-        width: 1.75rem;
-        height: 1.75rem;
-        place-items: center;
-        border: 1px solid currentColor;
-        background: var(--amber-soft);
-        font-size: 0.9rem;
-        line-height: 1;
-      }
+      .status-rule { width: 1.5rem; height: 2px; background: currentColor; }
       h1 {
-        max-width: 12ch;
-        margin: 1.5rem 0 1.25rem;
+        max-width: 11ch;
+        margin: 1.35rem 0 1rem;
         font-family: Georgia, "Times New Roman", serif;
-        font-size: clamp(2.75rem, 8vw, 5.5rem);
+        font-size: clamp(2.5rem, 7vw, 4.25rem);
         font-weight: 500;
         letter-spacing: -0.065em;
         line-height: 0.98;
@@ -1001,40 +985,21 @@ function renderCliCallbackPage(approved: boolean): string {
         font-size: clamp(1.05rem, 2vw, 1.25rem);
         line-height: 1.55;
       }
-      .handoff {
-        display: grid;
-        gap: 0.6rem;
-        margin-top: 3rem;
-        padding-top: 1.25rem;
-        border-top: 1px solid var(--border);
-      }
-      .handoff-label { font-size: 0.7rem; color: var(--muted); text-transform: lowercase; }
-      .handoff-value { font-size: 0.9rem; font-weight: 700; }
-      footer { color: var(--muted); font-size: 0.7rem; }
-      @media (max-width: 28rem) {
-        .masthead { align-items: flex-start; flex-direction: column; gap: 0.4rem; }
-      }
     </style>
   </head>
   <body>
     <main>
       <header class="masthead">
         <span class="brand">milk &amp; henny</span>
-        <span class="context">local cli hand-off</span>
       </header>
       <section class="content" aria-labelledby="title">
         <div class="status">
-          <span class="status-mark" aria-hidden="true">${approved ? "✓" : "·"}</span>
+          <span class="status-rule" aria-hidden="true"></span>
           <span>${eyebrow}</span>
         </div>
         <h1 id="title">${title}</h1>
         <p class="detail">${detail}</p>
-        <div class="handoff">
-          <span class="handoff-label">next</span>
-          <span class="handoff-value">return to your terminal</span>
-        </div>
       </section>
-      <footer>milkandhenny.com · this local page can be closed</footer>
     </main>
   </body>
 </html>`;
