@@ -11,6 +11,9 @@ const ROOM_GAMES = {
   "spelling-party": "spelling party",
   remote: "remote game",
 } as const;
+const DISMISSED_ROOMS_KEY = "things:active-room-notice:v1:dismissed";
+const NOTICE_REFRESH_MS = 60_000;
+const MAX_VISIBLE_ROOMS = 2;
 
 type ActiveRoom = {
   game: keyof typeof ROOM_GAMES;
@@ -18,6 +21,26 @@ type ActiveRoom = {
   path: string;
   roomId: string;
 };
+
+function readDismissedRooms() {
+  if (typeof window === "undefined") return [];
+  try {
+    const stored: unknown = JSON.parse(sessionStorage.getItem(DISMISSED_ROOMS_KEY) ?? "null");
+    return Array.isArray(stored) && stored.every((path): path is string => typeof path === "string")
+      ? stored
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeDismissedRooms(paths: string[]) {
+  try {
+    sessionStorage.setItem(DISMISSED_ROOMS_KEY, JSON.stringify(paths));
+  } catch {
+    // Storage is optional. The notice can still be dismissed for this render.
+  }
+}
 
 function readActiveRooms() {
   const rooms: ActiveRoom[] = [];
@@ -76,20 +99,36 @@ function readActiveRooms() {
 export function ActiveRoomNotice() {
   const pathname = useRouterState({ select: (state) => state.location.pathname });
   const [rooms, setRooms] = useState<ActiveRoom[]>([]);
-  const [dismissed, setDismissed] = useState(false);
+  const [dismissedRooms, setDismissedRooms] = useState<string[]>(readDismissedRooms);
+  const [expanded, setExpanded] = useState(false);
 
   useEffect(() => {
-    setRooms(readActiveRooms());
-    setDismissed(false);
     const refresh = () => setRooms(readActiveRooms());
+    refresh();
+    setDismissedRooms(readDismissedRooms());
+    setExpanded(false);
     window.addEventListener("storage", refresh);
-    return () => window.removeEventListener("storage", refresh);
+    const interval = window.setInterval(refresh, NOTICE_REFRESH_MS);
+    return () => {
+      window.removeEventListener("storage", refresh);
+      window.clearInterval(interval);
+    };
   }, [pathname]);
 
   const available = rooms.filter(
-    (room) => pathname !== room.path && !pathname.startsWith(`${room.path}/`),
+    (room) =>
+      !dismissedRooms.includes(room.path) &&
+      pathname !== room.path &&
+      !pathname.startsWith(`${room.path}/`),
   );
-  if (dismissed || available.length === 0) return null;
+  const visible = expanded ? available : available.slice(0, MAX_VISIBLE_ROOMS);
+  if (available.length === 0) return null;
+
+  const dismiss = () => {
+    const next = [...new Set([...dismissedRooms, ...available.map(({ path }) => path)])];
+    setDismissedRooms(next);
+    writeDismissedRooms(next);
+  };
 
   return (
     <aside
@@ -108,7 +147,7 @@ export function ActiveRoomNotice() {
         </div>
         <button
           type="button"
-          onClick={() => setDismissed(true)}
+          onClick={dismiss}
           aria-label="Dismiss active room notice"
           className="flex size-11 shrink-0 items-center justify-center font-mono text-lg theme-muted hover:text-foreground"
         >
@@ -116,7 +155,7 @@ export function ActiveRoomNotice() {
         </button>
       </div>
       <ul className="mt-3 border-t theme-border">
-        {available.map((room) => (
+        {visible.map((room) => (
           <li key={`${room.game}:${room.roomId}`} className="border-b theme-border last:border-b-0">
             <a
               href={room.path}
@@ -130,6 +169,16 @@ export function ActiveRoomNotice() {
           </li>
         ))}
       </ul>
+      {available.length > MAX_VISIBLE_ROOMS ? (
+        <button
+          type="button"
+          aria-expanded={expanded}
+          onClick={() => setExpanded((current) => !current)}
+          className="mt-3 font-mono text-xs theme-muted hover:text-foreground"
+        >
+          {expanded ? "show fewer rooms" : `show ${available.length - MAX_VISIBLE_ROOMS} more`}
+        </button>
+      ) : null}
     </aside>
   );
 }
