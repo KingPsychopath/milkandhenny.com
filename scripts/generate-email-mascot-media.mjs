@@ -34,11 +34,11 @@ const WALKING_SEQUENCE = [
   ["walk-passing-c.png", 492],
 ];
 const ACTION_SEQUENCE = [
-  ["action-arrive.png", 45, null],
-  ["action-pour-a.png", 60, "pour-a"],
-  ["action-pour-b.png", 75, "pour-b"],
-  ["action-grow-a.png", 90, null],
-  ["action-grow-b.png", 260, null],
+  ["action-arrive.png", 45],
+  ["action-pour-a.png", 60],
+  ["action-pour-b.png", 75],
+  ["action-grow-a.png", 90],
+  ["action-grow-b.png", 260],
 ];
 
 const palette = {
@@ -93,10 +93,10 @@ function pushPixelText(pieces, value, x, y, scale, fill) {
   }
 }
 
-function bottleTreeSvg() {
+function bottleTreeSvg(offsetX = 0) {
   const pieces = [
     `<svg xmlns="http://www.w3.org/2000/svg" width="${WIDTH}" height="${HEIGHT}" shape-rendering="crispEdges">`,
-    `<g transform="translate(0 5)">`,
+    `<g transform="translate(${offsetX} 5)">`,
     `<rect x="548" y="231" width="64" height="4" fill="${palette.stone300}"/>`,
     `<rect x="578" y="146" width="5" height="40" fill="${palette.stone500}"/>`,
     `<rect x="568" y="154" width="15" height="5" fill="${palette.stone500}"/>`,
@@ -122,34 +122,6 @@ function bottleTreeSvg() {
   return Buffer.from(pieces.join(""));
 }
 
-function milkJugSvg(phase) {
-  const tilt = phase === "pour-b" ? 18 : 10;
-  const pieces = [
-    `<svg xmlns="http://www.w3.org/2000/svg" width="${WIDTH}" height="${HEIGHT}" shape-rendering="crispEdges">`,
-    `<g transform="rotate(${tilt} 550 198)">`,
-    `<path d="M527 190h6v-7h6v-6h12v6h6v7h6v22h-36z" fill="${palette.ink}"/>`,
-    `<path d="M532 192h5v-6h6v-4h6v4h6v6h5v16h-28z" fill="${palette.cream}"/>`,
-    `<rect x="542" y="172" width="12" height="6" fill="${palette.ink}"/>`,
-    `<rect x="544" y="173" width="8" height="3" fill="${palette.stone500}"/>`,
-    `<path d="M557 190h8v4h5v12h-5v4h-8v-5h7v-10h-7z" fill="${palette.ink}"/>`,
-    `<path d="M559 194h5v8h-5z" fill="${palette.cream}"/>`,
-    `<rect x="536" y="195" width="22" height="9" fill="${palette.amberLight}"/>`,
-  ];
-  pushPixelText(pieces, "MILK", 538, 196, 1, palette.cream);
-  pieces.push(`</g>`);
-  if (phase === "pour-a" || phase === "pour-b") {
-    pieces.push(
-      `<rect x="563" y="202" width="3" height="5" fill="${palette.cream}"/>`,
-      `<rect x="567" y="208" width="3" height="5" fill="${palette.cream}"/>`,
-      phase === "pour-b"
-        ? `<rect x="571" y="214" width="3" height="4" fill="${palette.cream}"/>`
-        : "",
-    );
-  }
-  pieces.push("</svg>");
-  return Buffer.from(pieces.join(""));
-}
-
 function reactionSvg() {
   return Buffer.from(
     `<svg xmlns="http://www.w3.org/2000/svg" width="${WIDTH}" height="${HEIGHT}" shape-rendering="crispEdges">
@@ -160,6 +132,21 @@ function reactionSvg() {
       <rect x="540" y="157" width="6" height="4" fill="${palette.amberLight}"/>
     </svg>`,
   );
+}
+
+function pourStreamSvg(phase) {
+  const pieces = [
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${WIDTH}" height="${HEIGHT}" shape-rendering="crispEdges">`,
+    `<rect x="544" y="202" width="4" height="4" fill="${palette.cream}"/>`,
+    `<rect x="548" y="206" width="4" height="4" fill="${palette.cream}"/>`,
+    `<rect x="552" y="210" width="4" height="4" fill="${palette.cream}"/>`,
+    `<rect x="556" y="214" width="4" height="4" fill="${palette.cream}"/>`,
+  ];
+  if (phase === "b") {
+    pieces.push(`<rect x="560" y="220" width="4" height="4" fill="${palette.cream}"/>`);
+  }
+  pieces.push("</svg>");
+  return Buffer.from(pieces.join(""));
 }
 
 async function cleanActionSource(source) {
@@ -175,13 +162,20 @@ async function cleanActionSource(source) {
       const green = data[index + 1];
       const blue = data[index + 2];
       const alpha = data[index + 3];
-      const greenLeaf = green > red * 1.25 && green > blue * 1.25 && green > 50;
-      const plantCutoff = source === "action-grow-a.png" ? 548 : 550;
+      const greenLeaf = green >= red * 0.85 && green > blue * 1.2 && green > 40;
+      const jugCap = x >= 539 && x <= 555 && y >= 190 && y <= 204;
+      const plantCutoff =
+        source === "action-grow-a.png" ? 548 : source === "action-arrive.png" ? 555 : 550;
       const removeProp =
         alpha > 0 &&
         (sourceKind === "plant"
-          ? (x >= plantCutoff && y >= 140) || (x >= 535 && greenLeaf)
-          : x >= 545 && y >= 180);
+          ? (x >= plantCutoff && y >= 140) ||
+            (x >= 535 && greenLeaf) ||
+            (source === "action-arrive.png" && x >= 552 && y >= 204)
+          : greenLeaf ||
+            (x >= 544 && y >= 204) ||
+            (x >= 548 && y >= 185 && !jugCap) ||
+            (x >= 556 && y >= 170));
       if (removeProp) data[index + 3] = 0;
     }
   }
@@ -267,13 +261,21 @@ async function composeFrame({ sprite, left, overlay, bottle, output }) {
   await transparentCanvas().composite(layers).png().toFile(output);
 }
 
-async function composeActionFrame({ source, milkJug, output }) {
+async function composeActionFrame({ source, output }) {
   const sourceBuffer = await cleanActionSource(source);
+  const pour = source.includes("pour");
+  const bottleOffset = source === "action-arrive.png" ? 10 : 0;
   const layers = [
-    { input: bottleTreeSvg(), left: 0, top: 0 },
+    { input: bottleTreeSvg(bottleOffset), left: 0, top: 0 },
     { input: sourceBuffer, left: 0, top: 0 },
   ];
-  if (milkJug) layers.push({ input: milkJugSvg(milkJug), left: 0, top: 0 });
+  if (pour) {
+    layers.push({
+      input: pourStreamSvg(source.endsWith("pour-b.png") ? "b" : "a"),
+      left: 0,
+      top: 0,
+    });
+  }
   if (source === "action-grow-b.png") layers.push({ input: reactionSvg(), left: 0, top: 0 });
   await transparentCanvas().composite(layers).png().toFile(output);
 }
@@ -281,7 +283,7 @@ async function composeActionFrame({ source, milkJug, output }) {
 async function buildGif(frames, delays, output) {
   const args = ["-background", "none", "-dispose", "Background"];
   frames.forEach((frame, index) => args.push("-delay", String(delays[index]), frame));
-  args.push("-loop", String(GIF_LOOP_VALUE), "-layers", "Optimize", output);
+  args.push("-loop", String(GIF_LOOP_VALUE), output);
   await run("magick", args);
 }
 
@@ -298,9 +300,9 @@ try {
     plantDelays.push(26);
   }
 
-  for (const [source, delay, milkJug] of ACTION_SEQUENCE) {
+  for (const [source, delay] of ACTION_SEQUENCE) {
     const output = `${temporaryDirectory}/plant-${String(plantFrames.length).padStart(2, "0")}.png`;
-    await composeActionFrame({ source, milkJug, output });
+    await composeActionFrame({ source, output });
     plantFrames.push(output);
     plantDelays.push(delay);
   }
