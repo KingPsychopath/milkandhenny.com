@@ -139,10 +139,7 @@ function CliAuthPage() {
           </p>
         </div>
 
-        <form
-          method="post"
-          onSubmit={handleApprove}
-        >
+        <form method="post" onSubmit={handleApprove}>
           <input type="hidden" name="request" value={search.request} />
           <button
             type="submit"

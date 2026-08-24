@@ -72,19 +72,16 @@ async function readMacOS(baseUrl: string): Promise<string | null> {
 }
 
 async function writeMacOS(baseUrl: string, token: string): Promise<void> {
-  const result = await runCommand(
-    "/usr/bin/security",
-    [
-      "add-generic-password",
-      "-U",
-      "-a",
-      credentialAccount(baseUrl),
-      "-s",
-      STORE_SERVICE,
-      "-w",
-      token,
-    ],
-  );
+  const result = await runCommand("/usr/bin/security", [
+    "add-generic-password",
+    "-U",
+    "-a",
+    credentialAccount(baseUrl),
+    "-s",
+    STORE_SERVICE,
+    "-w",
+    token,
+  ]);
   if (result.code !== 0) throw commandError("write", result);
 }
 
