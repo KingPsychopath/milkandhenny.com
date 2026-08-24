@@ -409,11 +409,6 @@
     isolation: isolate;
   }
 
-  .media-image-placeholder > * {
-    position: relative;
-    z-index: 1;
-  }
-
   .media-image-placeholder::after {
     position: absolute;
     inset: 0;
