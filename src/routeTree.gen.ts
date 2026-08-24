@@ -72,6 +72,7 @@ import { Route as ApiCronCleanupWordMediaOrphansRouteRouteImport } from './route
 import { Route as ApiCronCleanupWordSharesRouteRouteImport } from './routes/api/cron/cleanup-word-shares/route'
 import { Route as ApiCronDeliverEmailRouteRouteImport } from './routes/api/cron/deliver-email/route'
 import { Route as ApiCronProcessTransferMediaRouteRouteImport } from './routes/api/cron/process-transfer-media/route'
+import { Route as ApiCronSendPitchRemindersRouteRouteImport } from './routes/api/cron/send-pitch-reminders/route'
 import { Route as ApiDownloadPresignRouteRouteImport } from './routes/api/download/presign/route'
 import { Route as ApiDropFinalizeRouteRouteImport } from './routes/api/drop/finalize/route'
 import { Route as ApiDropPresignRouteRouteImport } from './routes/api/drop/presign/route'
@@ -473,6 +474,12 @@ const ApiCronProcessTransferMediaRouteRoute =
   ApiCronProcessTransferMediaRouteRouteImport.update({
     id: '/api/cron/process-transfer-media',
     path: '/api/cron/process-transfer-media',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ApiCronSendPitchRemindersRouteRoute =
+  ApiCronSendPitchRemindersRouteRouteImport.update({
+    id: '/api/cron/send-pitch-reminders',
+    path: '/api/cron/send-pitch-reminders',
     getParentRoute: () => rootRouteImport,
   } as any)
 const ApiDownloadPresignRouteRoute = ApiDownloadPresignRouteRouteImport.update({
@@ -976,6 +983,7 @@ export interface FileRoutesByFullPath {
   '/api/cron/cleanup-word-shares': typeof ApiCronCleanupWordSharesRouteRoute
   '/api/cron/deliver-email': typeof ApiCronDeliverEmailRouteRoute
   '/api/cron/process-transfer-media': typeof ApiCronProcessTransferMediaRouteRoute
+  '/api/cron/send-pitch-reminders': typeof ApiCronSendPitchRemindersRouteRoute
   '/api/download/presign': typeof ApiDownloadPresignRouteRoute
   '/api/drop/finalize': typeof ApiDropFinalizeRouteRoute
   '/api/drop/presign': typeof ApiDropPresignRouteRoute
@@ -1119,6 +1127,7 @@ export interface FileRoutesByTo {
   '/api/cron/cleanup-word-shares': typeof ApiCronCleanupWordSharesRouteRoute
   '/api/cron/deliver-email': typeof ApiCronDeliverEmailRouteRoute
   '/api/cron/process-transfer-media': typeof ApiCronProcessTransferMediaRouteRoute
+  '/api/cron/send-pitch-reminders': typeof ApiCronSendPitchRemindersRouteRoute
   '/api/download/presign': typeof ApiDownloadPresignRouteRoute
   '/api/drop/finalize': typeof ApiDropFinalizeRouteRoute
   '/api/drop/presign': typeof ApiDropPresignRouteRoute
@@ -1263,6 +1272,7 @@ export interface FileRoutesById {
   '/api/cron/cleanup-word-shares': typeof ApiCronCleanupWordSharesRouteRoute
   '/api/cron/deliver-email': typeof ApiCronDeliverEmailRouteRoute
   '/api/cron/process-transfer-media': typeof ApiCronProcessTransferMediaRouteRoute
+  '/api/cron/send-pitch-reminders': typeof ApiCronSendPitchRemindersRouteRoute
   '/api/download/presign': typeof ApiDownloadPresignRouteRoute
   '/api/drop/finalize': typeof ApiDropFinalizeRouteRoute
   '/api/drop/presign': typeof ApiDropPresignRouteRoute
@@ -1408,6 +1418,7 @@ export interface FileRouteTypes {
     | '/api/cron/cleanup-word-shares'
     | '/api/cron/deliver-email'
     | '/api/cron/process-transfer-media'
+    | '/api/cron/send-pitch-reminders'
     | '/api/download/presign'
     | '/api/drop/finalize'
     | '/api/drop/presign'
@@ -1551,6 +1562,7 @@ export interface FileRouteTypes {
     | '/api/cron/cleanup-word-shares'
     | '/api/cron/deliver-email'
     | '/api/cron/process-transfer-media'
+    | '/api/cron/send-pitch-reminders'
     | '/api/download/presign'
     | '/api/drop/finalize'
     | '/api/drop/presign'
@@ -1694,6 +1706,7 @@ export interface FileRouteTypes {
     | '/api/cron/cleanup-word-shares'
     | '/api/cron/deliver-email'
     | '/api/cron/process-transfer-media'
+    | '/api/cron/send-pitch-reminders'
     | '/api/download/presign'
     | '/api/drop/finalize'
     | '/api/drop/presign'
@@ -1828,6 +1841,7 @@ export interface RootRouteChildren {
   ApiCronCleanupWordSharesRouteRoute: typeof ApiCronCleanupWordSharesRouteRoute
   ApiCronDeliverEmailRouteRoute: typeof ApiCronDeliverEmailRouteRoute
   ApiCronProcessTransferMediaRouteRoute: typeof ApiCronProcessTransferMediaRouteRoute
+  ApiCronSendPitchRemindersRouteRoute: typeof ApiCronSendPitchRemindersRouteRoute
   ApiDownloadPresignRouteRoute: typeof ApiDownloadPresignRouteRoute
   ApiDropFinalizeRouteRoute: typeof ApiDropFinalizeRouteRoute
   ApiDropPresignRouteRoute: typeof ApiDropPresignRouteRoute
@@ -2293,6 +2307,13 @@ declare module '@tanstack/react-router' {
       path: '/api/cron/process-transfer-media'
       fullPath: '/api/cron/process-transfer-media'
       preLoaderRoute: typeof ApiCronProcessTransferMediaRouteRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/cron/send-pitch-reminders': {
+      id: '/api/cron/send-pitch-reminders'
+      path: '/api/cron/send-pitch-reminders'
+      fullPath: '/api/cron/send-pitch-reminders'
+      preLoaderRoute: typeof ApiCronSendPitchRemindersRouteRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/download/presign': {
@@ -3227,6 +3248,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiCronCleanupWordSharesRouteRoute: ApiCronCleanupWordSharesRouteRoute,
   ApiCronDeliverEmailRouteRoute: ApiCronDeliverEmailRouteRoute,
   ApiCronProcessTransferMediaRouteRoute: ApiCronProcessTransferMediaRouteRoute,
+  ApiCronSendPitchRemindersRouteRoute: ApiCronSendPitchRemindersRouteRoute,
   ApiDownloadPresignRouteRoute: ApiDownloadPresignRouteRoute,
   ApiDropFinalizeRouteRoute: ApiDropFinalizeRouteRoute,
   ApiDropPresignRouteRoute: ApiDropPresignRouteRoute,

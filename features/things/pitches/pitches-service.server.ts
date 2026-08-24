@@ -3,6 +3,7 @@ import { Context, Layer } from "effect";
 import * as assets from "./assets.server";
 import * as engine from "./pitches.server";
 import * as presentation from "./presentation.server";
+import * as reminders from "./reminders.server";
 import * as store from "./store.server";
 import { pitchesOperation } from "./pitches-operation.server";
 
@@ -33,6 +34,10 @@ export class PitchesService extends Context.Service<
     readonly resendAdmin: typeof resendAdmin;
     readonly deleteAdmin: typeof deleteAdmin;
     readonly restoreTrashAdmin: typeof restoreTrashAdmin;
+    readonly reminderAdmin: typeof reminderAdmin;
+    readonly updateReminderSettings: typeof updateReminderSettings;
+    readonly sendReminderWave: typeof sendReminderWave;
+    readonly runAutomaticReminders: typeof runAutomaticReminders;
     readonly createPresentation: typeof createPresentation;
     readonly joinPresentation: typeof joinPresentation;
     readonly readPresentation: typeof readPresentation;
@@ -65,6 +70,10 @@ export class PitchesService extends Context.Service<
     resendAdmin,
     deleteAdmin,
     restoreTrashAdmin,
+    reminderAdmin,
+    updateReminderSettings,
+    sendReminderWave,
+    runAutomaticReminders,
     createPresentation,
     joinPresentation,
     readPresentation,
@@ -220,6 +229,37 @@ function restoreTrashAdmin(...input: Parameters<typeof engine.restorePitchFromTr
     "admin_restore_trash",
     () => engine.restorePitchFromTrashForAdmin(...input),
     { access: "write" },
+  );
+}
+
+function reminderAdmin() {
+  return pitchesOperation("admin_reminder_read", () => reminders.readPitchReminderAdmin(), {
+    access: "admin",
+  });
+}
+
+function updateReminderSettings(
+  input: Parameters<typeof reminders.updatePitchReminderSettings>[0],
+) {
+  return pitchesOperation(
+    "admin_reminder_settings",
+    () => reminders.updatePitchReminderSettings(input),
+    { access: "admin" },
+  );
+}
+
+function sendReminderWave(input: Parameters<typeof reminders.sendPitchReminderWave>[0]) {
+  return pitchesOperation("admin_reminder_send", () => reminders.sendPitchReminderWave(input), {
+    access: "write",
+    timeoutMs: false,
+  });
+}
+
+function runAutomaticReminders(input: Parameters<typeof reminders.runAutomaticPitchReminders>[0]) {
+  return pitchesOperation(
+    "automatic_reminder_send",
+    () => reminders.runAutomaticPitchReminders(input),
+    { access: "maintenance", timeoutMs: false },
   );
 }
 

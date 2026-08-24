@@ -1045,6 +1045,39 @@ const MIGRATIONS: Migration[] = [
         on conflict (singleton) do nothing;
     `,
   },
+  {
+    id: "0027_pitch_reminders",
+    sql: `
+      create table if not exists pitch_reminder_settings (
+        singleton             boolean primary key default true check (singleton = true),
+        enabled               boolean not null default false,
+        inactivity_days       integer not null default 10
+                              check (inactivity_days between 1 and 90),
+        gap_days              integer not null default 14
+                              check (gap_days between 1 and 90),
+        max_automatic         integer not null default 3
+                              check (max_automatic between 1 and 5),
+        last_run_at           timestamptz,
+        updated_at            timestamptz not null default now()
+      );
+
+      insert into pitch_reminder_settings (singleton)
+        values (true)
+        on conflict (singleton) do nothing;
+
+      create table if not exists pitch_reminder_state (
+        deck_id               text primary key references pitch_decks (id) on delete cascade,
+        automatic_count       integer not null default 0 check (automatic_count >= 0),
+        last_sent_at          timestamptz,
+        last_template         text check (last_template in ('resume', 'finish', 'final')),
+        paused_at             timestamptz,
+        updated_at            timestamptz not null default now()
+      );
+
+      create index if not exists pitch_reminder_state_sent_idx
+        on pitch_reminder_state (last_sent_at, deck_id);
+    `,
+  },
 ];
 
 interface PitchDocumentSchemaRow extends QueryResultRow {

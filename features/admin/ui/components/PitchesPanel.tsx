@@ -13,6 +13,7 @@ import type {
 import { isPitchOperationalMode } from "@/features/things/pitches/types";
 import { loadPitchFiles } from "@/features/things/pitches/ui/files.client";
 import { PitchSlideThumbnail } from "@/features/things/pitches/ui/PitchSlideThumbnail";
+import { PitchRemindersPanel } from "./PitchRemindersPanel";
 
 type AuthFetch = (url: string, options?: RequestInit) => Promise<Response>;
 
@@ -367,6 +368,10 @@ export function PitchesPanel({
             {busy === "operational-mode" ? "applying…" : "apply mode"}
           </button>
         </div>
+      </div>
+
+      <div className="mt-6">
+        <PitchRemindersPanel authFetch={authFetch} onError={onError} onStatus={onStatus} />
       </div>
 
       <div className="mt-6 flex flex-wrap gap-3">

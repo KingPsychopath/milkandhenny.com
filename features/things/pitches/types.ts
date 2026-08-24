@@ -23,6 +23,56 @@ export const PITCH_SHOWCASE_MARKDOWN_HREF = "/things/pitches#showcase" as const;
 export const PITCH_OPERATIONAL_MODES = ["enabled", "read-only", "off"] as const;
 export type PitchOperationalMode = (typeof PITCH_OPERATIONAL_MODES)[number];
 
+export const PITCH_REMINDER_TEMPLATES = ["resume", "finish", "final"] as const;
+export type PitchReminderTemplate = (typeof PITCH_REMINDER_TEMPLATES)[number];
+
+export interface PitchReminderSettings {
+  enabled: boolean;
+  inactivityDays: number;
+  gapDays: number;
+  maxAutomatic: number;
+  lastRunAt: string | null;
+  updatedAt: string;
+}
+
+export interface PitchReminderCandidate {
+  id: string;
+  title: string;
+  ownerName: string;
+  ownerEmail: string;
+  slideCount: number;
+  updatedAt: string;
+  automaticCount: number;
+  lastSentAt: string | null;
+  nextEligibleAt: string;
+  automaticEligible: boolean;
+}
+
+export interface PitchReminderHistoryItem {
+  id: string;
+  title: string;
+  ownerEmail: string;
+  action: "queued" | "failed";
+  actor: string;
+  template?: PitchReminderTemplate;
+  createdAt: string;
+}
+
+export interface PitchReminderAdminSnapshot {
+  settings: PitchReminderSettings;
+  candidates: PitchReminderCandidate[];
+  eligibleCount: number;
+  nextEligibleAt: string | null;
+  recent: PitchReminderHistoryItem[];
+}
+
+export interface PitchReminderWaveResult {
+  queuedEmails: number;
+  sentDecks: number;
+  failedDecks: number;
+  automatic: boolean;
+}
+
 export interface PitchOperationalStatus {
   environmentMode: PitchOperationalMode;
   adminMode: PitchOperationalMode;

@@ -14,6 +14,7 @@ import {
   parsePitchOwnerName,
   parsePitchTitle,
 } from "@/features/things/pitches/validation";
+import { PITCH_REMINDER_TEMPLATES } from "@/features/things/pitches/types";
 import { apiErrorFromRequest } from "@/lib/platform/api-error";
 import { getBaseUrlForRequest } from "@/lib/shared/config";
 
@@ -27,6 +28,17 @@ async function handleGET(request: Request) {
   try {
     const url = new URL(request.url);
     const deckId = url.searchParams.get("deckId");
+    if (url.searchParams.get("view") === "reminders") {
+      const result = await runPitchesResult(
+        Effect.gen(function* () {
+          const pitches = yield* PitchesService;
+          return yield* pitches.reminderAdmin();
+        }),
+      );
+      return result.ok
+        ? Response.json({ reminders: result.value })
+        : Response.json({ error: result.error }, { status: result.status });
+    }
     if (!deckId) {
       const [result, operationalStatus] = await Promise.all([
         runPitchesResult(
@@ -69,6 +81,62 @@ async function handlePATCH(request: Request) {
         return Response.json({ error: "Choose enabled, read-only, or off" }, { status: 400 });
       }
       return Response.json({ operationalStatus: await setPitchAdminMode(body.mode) });
+    }
+    if (body.action === "update-reminder-settings") {
+      const enabled = body.enabled;
+      const inactivityDays = body.inactivityDays;
+      const gapDays = body.gapDays;
+      const maxAutomatic = body.maxAutomatic;
+      if (
+        typeof enabled !== "boolean" ||
+        typeof inactivityDays !== "number" ||
+        typeof gapDays !== "number" ||
+        typeof maxAutomatic !== "number"
+      ) {
+        return Response.json({ error: "Choose valid reminder settings" }, { status: 400 });
+      }
+      const result = await runPitchesResult(
+        Effect.gen(function* () {
+          const pitches = yield* PitchesService;
+          return yield* pitches.updateReminderSettings({
+            enabled,
+            inactivityDays,
+            gapDays,
+            maxAutomatic,
+          });
+        }),
+      );
+      return result.ok
+        ? Response.json({ reminders: result.value })
+        : Response.json({ error: result.error }, { status: result.status });
+    }
+    if (body.action === "send-reminder-wave") {
+      const deckIds = Array.isArray(body.deckIds)
+        ? body.deckIds.filter((value): value is string => typeof value === "string")
+        : [];
+      if (
+        deckIds.length === 0 ||
+        typeof body.template !== "string" ||
+        !PITCH_REMINDER_TEMPLATES.includes(
+          body.template as (typeof PITCH_REMINDER_TEMPLATES)[number],
+        )
+      ) {
+        return Response.json({ error: "Choose at least one pitch and a message" }, { status: 400 });
+      }
+      const result = await runPitchesResult(
+        Effect.gen(function* () {
+          const pitches = yield* PitchesService;
+          return yield* pitches.sendReminderWave({
+            deckIds,
+            template: body.template as (typeof PITCH_REMINDER_TEMPLATES)[number],
+            origin: getBaseUrlForRequest(request),
+            actor: "admin",
+          });
+        }),
+      );
+      return result.ok
+        ? Response.json({ result: result.value })
+        : Response.json({ error: result.error }, { status: result.status });
     }
     if (typeof body.deckId !== "string" || !isPitchDeckId(body.deckId)) {
       return Response.json({ error: "Choose a pitch and try again" }, { status: 400 });

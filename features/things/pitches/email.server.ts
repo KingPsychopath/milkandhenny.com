@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 
 import { sendEmail, type SendEmailResult } from "@/lib/platform/email.server";
 import { escapeEmailHtml, renderBrandedEmail } from "@/lib/shared/email-design";
+import type { PitchReminderTemplate } from "./types";
 
 function editUrl(origin: string, deckId: string, token: string): string {
   return `${origin}/things/pitches/${encodeURIComponent(deckId)}/edit#key=${encodeURIComponent(token)}`;
@@ -127,5 +128,82 @@ export async function sendPitchRecoveryEmail(input: {
       }),
     },
     { idempotencyKey: `pitches:recovery:${recoveryKey}` },
+  );
+}
+
+const REMINDER_COPY: Record<
+  PitchReminderTemplate,
+  { subject: string; label: string; title: string; text: string }
+> = {
+  resume: {
+    subject: "Your pitch is waiting",
+    label: "a gentle nudge",
+    title: "Your pitch is waiting for you.",
+    text: "You already have something taking shape. Pick it back up when you have a moment.",
+  },
+  finish: {
+    subject: "Keep shaping your pitch",
+    label: "keep going",
+    title: "Your pitch is taking shape.",
+    text: "If you plan to bring it to Pitch Night, now is a good time to finish it.",
+  },
+  final: {
+    subject: "A last nudge for your pitch",
+    label: "one last nudge",
+    title: "Still planning to present your pitch?",
+    text: "This is the last automatic reminder. Open it if you would like to finish or publish it.",
+  },
+};
+
+export async function sendPitchReminderEmail(input: {
+  email: string;
+  origin: string;
+  ownerName: string;
+  template: PitchReminderTemplate;
+  decks: Array<{ id: string; title: string; slideCount: number; token: string }>;
+  idempotencyKey: string;
+}): Promise<SendEmailResult> {
+  const copy = REMINDER_COPY[input.template];
+  const links = input.decks.map((deck) => ({
+    title: deck.title,
+    slideCount: deck.slideCount,
+    url: editUrl(input.origin, deck.id, deck.token),
+  }));
+  const pitchList = links.flatMap((link) => [
+    `“${link.title}” — ${link.slideCount} ${link.slideCount === 1 ? "slide" : "slides"} so far`,
+    link.url,
+    "",
+  ]);
+  const text = [
+    `Hello ${input.ownerName},`,
+    "",
+    copy.text,
+    "",
+    ...pitchList,
+    "",
+    "These private links are for you. Keep them private.",
+  ].join("\n");
+  const htmlLinks = links
+    .map(
+      (link) =>
+        `<li style="margin:0 0 18px"><strong>${escapeEmailHtml(link.title)}</strong><br><span>${link.slideCount} ${link.slideCount === 1 ? "slide" : "slides"} so far</span><br><a href="${escapeEmailHtml(link.url)}" style="color:#b45309;overflow-wrap:anywhere">open your pitch</a></li>`,
+    )
+    .join("");
+
+  return sendEmail(
+    {
+      channel: "studio",
+      to: input.email,
+      subject: copy.subject,
+      text,
+      html: renderBrandedEmail({
+        origin: input.origin,
+        label: copy.label,
+        title: `${copy.title} ${input.ownerName}.`,
+        contentHtml: `<p style="margin:0 0 20px">${escapeEmailHtml(copy.text)}</p><ul style="margin:0;padding-left:20px">${htmlLinks}</ul>`,
+        note: "These private links are for you. Keep them private.",
+      }),
+    },
+    { idempotencyKey: input.idempotencyKey },
   );
 }

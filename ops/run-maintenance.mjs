@@ -5,6 +5,7 @@ if (!baseUrl) throw new Error("APP_BASE_URL or VITE_BASE_URL is required");
 if (!secret) throw new Error("CRON_SECRET is required");
 
 const jobs = [
+  { path: "/api/cron/send-pitch-reminders" },
   { path: "/api/cron/deliver-email", method: "POST" },
   { path: "/api/cron/cleanup-transfers" },
   { path: "/api/cron/cleanup-pitches" },
