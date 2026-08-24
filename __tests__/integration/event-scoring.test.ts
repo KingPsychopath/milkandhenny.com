@@ -19,6 +19,10 @@ import {
   processHeldGameResult,
   recordOfficialGameResult,
 } from "@/features/event-scoring/games.server";
+import {
+  mergeParticipants,
+  reverseParticipantMerge,
+} from "@/features/event-scoring/scoring.server";
 import { applySchema, closeDatabase, describeWithDatabase, truncateAll } from "../helpers/postgres";
 
 describeWithDatabase("event scoring postgres", () => {
@@ -76,6 +80,79 @@ describeWithDatabase("event scoring postgres", () => {
 
     await getOrCreateSettings("scoring-night");
     expect((await findSettings("scoring-night"))?.state).toBe("off");
+  });
+
+  it("merges and splits projections without rewriting ledger postings", async () => {
+    await query(
+      `insert into tickets (id, event_slug, ticket_type_id, holder_name, order_id)
+       values ('01ARZ3NDEKTSV4RS', 'scoring-night', 'standard', 'Second Guest', 'ord_second')`,
+    );
+    const source = await participantForTicket("01ARZ3NDEKTSV4RR");
+    const target = await participantForTicket("01ARZ3NDEKTSV4RS");
+    expect(source && target).toBeTruthy();
+    await getOrCreateSettings("scoring-night");
+    await query(
+      `update event_scoring_settings set state = 'live' where event_slug = 'scoring-night'`,
+    );
+    const activity = await createActivity({
+      eventSlug: "scoring-night",
+      name: "Identity merge",
+      template: "free-form",
+      status: "live",
+      rule: { mode: "fixed", fixedPoints: 1, repeat: "repeat", requiresCheckIn: false },
+    });
+    for (const [participantId, points] of [
+      [source!.id, 3],
+      [target!.id, 5],
+    ] as const) {
+      const result = await recordScore({
+        eventSlug: "scoring-night",
+        activityId: activity.id,
+        sourceType: "manual",
+        sourceId: `identity-${participantId}`,
+        idempotencyKey: `identity-${participantId}`,
+        reasonCode: "other",
+        actorType: "admin",
+        note: "Identity projection test",
+        postings: [{ participantId, points }],
+      });
+      expect(result.ok).toBe(true);
+    }
+
+    const merged = await mergeParticipants({
+      eventSlug: "scoring-night",
+      sourceParticipantId: source!.id,
+      targetParticipantId: target!.id,
+      actorId: "admin-1",
+      reason: "Verified duplicate",
+      evidence: ["verified-email"],
+    });
+    expect(merged.ok).toBe(true);
+    expect((await participantForTicket("01ARZ3NDEKTSV4RS"))?.balance).toBe(8);
+    expect((await participantForTicket("01ARZ3NDEKTSV4RR"))?.status).toBe("merged");
+    await rebuildEventProjections("scoring-night");
+    expect((await participantForTicket("01ARZ3NDEKTSV4RS"))?.balance).toBe(8);
+    expect(
+      (await query<{ count: string }>(`select count(*)::text as count from score_postings`))[0]
+        ?.count,
+    ).toBe("2");
+
+    const merge = await query<{ id: string }>(
+      `select id from event_participant_merges where source_participant_id = $1`,
+      [source!.id],
+    );
+    const split = await reverseParticipantMerge({
+      mergeId: merge[0]!.id,
+      actorId: "admin-1",
+      reason: "Merge was mistaken",
+    });
+    expect(split.ok).toBe(true);
+    expect((await participantForTicket("01ARZ3NDEKTSV4RR"))?.balance).toBe(3);
+    expect((await participantForTicket("01ARZ3NDEKTSV4RS"))?.balance).toBe(5);
+    expect(
+      (await query<{ count: string }>(`select count(*)::text as count from score_postings`))[0]
+        ?.count,
+    ).toBe("2");
   });
 
   it("accepts a concurrent duplicate award once and rebuilds the same projection", async () => {

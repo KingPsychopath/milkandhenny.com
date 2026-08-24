@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
+import type { PoolClient } from "pg";
 
-import { query, queryOne, transaction } from "@/lib/platform/postgres.server";
+import { query, transaction } from "@/lib/platform/postgres.server";
 import { getEvent } from "@/features/events/store.server";
 import {
   activityCanAccept,
@@ -466,53 +467,62 @@ export async function mergeParticipants(input: {
     return { ok: false, status: 400, error: "A merge needs evidence and a reason" };
   if (input.sourceParticipantId === input.targetParticipantId)
     return { ok: false, status: 400, error: "Choose two different participants" };
-  try {
-    await transaction(async (client) => {
-      const rows = await client.query<{ id: string; event_slug: string; person_id: string | null }>(
-        `select id, event_slug, person_id from event_participants
-          where id = any($1::text[]) for update`,
-        [[input.sourceParticipantId, input.targetParticipantId]],
-      );
-      if (rows.rows.length !== 2 || rows.rows.some((row) => row.event_slug !== input.eventSlug))
-        throw new Error("Participants not found");
-      await client.query(
-        `insert into event_participant_merges
+  return transaction(async (client) => {
+    await lockScoringProjection(client, input.eventSlug);
+    const rows = await client.query<{
+      id: string;
+      event_slug: string;
+      person_id: string | null;
+      status: string;
+    }>(
+      `select id, event_slug, person_id, status from event_participants
+          where id = any($1::text[])
+          order by id
+          for update`,
+      [[input.sourceParticipantId, input.targetParticipantId]],
+    );
+    if (rows.rows.length !== 2 || rows.rows.some((row) => row.event_slug !== input.eventSlug)) {
+      return { ok: false, status: 404, error: "Participants not found" };
+    }
+    if (rows.rows.some((row) => row.status !== "active")) {
+      return { ok: false, status: 409, error: "Only active participants can be merged" };
+    }
+    await client.query(
+      `insert into event_participant_merges
           (id, event_slug, source_participant_id, target_participant_id, actor_id, evidence, reason)
          values ($1,$2,$3,$4,$5,$6::jsonb,$7)`,
-        [
-          id("merge"),
-          input.eventSlug,
-          input.sourceParticipantId,
-          input.targetParticipantId,
-          input.actorId,
-          JSON.stringify(input.evidence),
-          input.reason,
-        ],
-      );
-      await client.query(
-        `update event_participants set status = 'merged', updated_at = now() where id = $1`,
-        [input.sourceParticipantId],
-      );
-      await client.query(
-        `insert into score_audit_events
+      [
+        id("merge"),
+        input.eventSlug,
+        input.sourceParticipantId,
+        input.targetParticipantId,
+        input.actorId,
+        JSON.stringify(input.evidence),
+        input.reason,
+      ],
+    );
+    await client.query(
+      `update event_participants set status = 'merged', updated_at = now() where id = $1`,
+      [input.sourceParticipantId],
+    );
+    await rebuildMergedProjections(client, input.eventSlug);
+    await client.query(
+      `insert into score_audit_events
           (event_slug, action, actor_type, actor_id, entity_type, entity_id, metadata)
          values ($1,'identity.participants.merged','admin',$2,'participant',$3,$4::jsonb)`,
-        [
-          input.eventSlug,
-          input.actorId,
-          input.sourceParticipantId,
-          JSON.stringify({
-            target: input.targetParticipantId,
-            evidence: input.evidence,
-            reason: input.reason,
-          }),
-        ],
-      );
-    });
+      [
+        input.eventSlug,
+        input.actorId,
+        input.sourceParticipantId,
+        JSON.stringify({
+          target: input.targetParticipantId,
+          evidence: input.evidence,
+          reason: input.reason,
+        }),
+      ],
+    );
     return { ok: true, value: undefined };
-  } catch {
-    return { ok: false, status: 404, error: "Participants not found" };
-  }
+  });
 }
 
 export async function reverseParticipantMerge(input: {
@@ -521,29 +531,100 @@ export async function reverseParticipantMerge(input: {
   reason: string;
 }): Promise<ScoringOperationResult<void>> {
   if (!input.reason.trim()) return { ok: false, status: 400, error: "A split needs a reason" };
-  const row = await queryOne<{ event_slug: string; source_participant_id: string }>(
-    `update event_participant_merges
+  return transaction(async (client) => {
+    const selected = await client.query<{ event_slug: string }>(
+      `select event_slug from event_participant_merges where id = $1`,
+      [input.mergeId],
+    );
+    const eventSlug = selected.rows[0]?.event_slug;
+    if (!eventSlug) return { ok: false, status: 404, error: "Merge not found" };
+    await lockScoringProjection(client, eventSlug);
+    const updated = await client.query<{ event_slug: string; source_participant_id: string }>(
+      `update event_participant_merges
         set reversed_at = now(), reversed_by = $2, reversal_reason = $3
       where id = $1 and reversed_at is null
       returning event_slug, source_participant_id`,
-    [input.mergeId, input.actorId, input.reason],
-  );
-  if (!row) return { ok: false, status: 404, error: "Merge not found or already reversed" };
-  await query(`update event_participants set status = 'active', updated_at = now() where id = $1`, [
-    row.source_participant_id,
-  ]);
-  await query(
-    `insert into score_audit_events
+      [input.mergeId, input.actorId, input.reason],
+    );
+    const row = updated.rows[0];
+    if (!row) return { ok: false, status: 404, error: "Merge already reversed" };
+    await client.query(
+      `update event_participants set status = 'active', updated_at = now() where id = $1`,
+      [row.source_participant_id],
+    );
+    await rebuildMergedProjections(client, row.event_slug);
+    await client.query(
+      `insert into score_audit_events
       (event_slug, action, actor_type, actor_id, entity_type, entity_id, metadata)
      values ($1,'identity.participants.split','admin',$2,'participant',$3,$4::jsonb)`,
-    [
-      row.event_slug,
-      input.actorId,
-      row.source_participant_id,
-      JSON.stringify({ mergeId: input.mergeId, reason: input.reason }),
-    ],
+      [
+        row.event_slug,
+        input.actorId,
+        row.source_participant_id,
+        JSON.stringify({ mergeId: input.mergeId, reason: input.reason }),
+      ],
+    );
+    return { ok: true, value: undefined };
+  });
+}
+
+async function lockScoringProjection(client: PoolClient, eventSlug: string): Promise<void> {
+  await client.query(
+    `insert into event_scoring_settings (event_slug) values ($1) on conflict (event_slug) do nothing`,
+    [eventSlug],
   );
-  return { ok: true, value: undefined };
+  await client.query(
+    `select event_slug from event_scoring_settings where event_slug = $1 for update`,
+    [eventSlug],
+  );
+}
+
+async function rebuildMergedProjections(client: PoolClient, eventSlug: string): Promise<void> {
+  await client.query(
+    `with recursive participant_targets as (
+       select id as source_id, id as target_id, array[id] as path
+         from event_participants
+        where event_slug = $1
+       union all
+       select targets.source_id, merges.target_participant_id, targets.path || merges.target_participant_id
+         from participant_targets targets
+         join event_participant_merges merges
+           on merges.source_participant_id = targets.target_id
+          and merges.reversed_at is null
+        where not merges.target_participant_id = any(targets.path)
+     ), resolved_targets as (
+       select distinct on (source_id) source_id, target_id
+         from participant_targets
+        order by source_id, cardinality(path) desc
+     ), accepted_balances as (
+       select resolved.target_id as participant_id,
+              coalesce(sum(postings.points), 0)::integer as balance,
+              max(transactions.created_at) as last_transaction_at
+         from score_postings postings
+         join score_transactions transactions on transactions.id = postings.transaction_id
+         join resolved_targets resolved on resolved.source_id = postings.participant_id
+        where postings.event_slug = $1 and transactions.status = 'accepted'
+        group by resolved.target_id
+     )
+     insert into score_projections
+       (participant_id, event_slug, balance, revision, last_transaction_at, updated_at)
+     select participants.id,
+            participants.event_slug,
+            coalesce(balances.balance, 0),
+            settings.revision,
+            balances.last_transaction_at,
+            now()
+       from event_participants participants
+       join event_scoring_settings settings on settings.event_slug = participants.event_slug
+       left join accepted_balances balances on balances.participant_id = participants.id
+      where participants.event_slug = $1
+     on conflict (participant_id) do update set
+       balance = excluded.balance,
+       revision = greatest(score_projections.revision + 1, excluded.revision),
+       last_transaction_at = excluded.last_transaction_at,
+       updated_at = excluded.updated_at`,
+    [eventSlug],
+  );
 }
 
 export function canFinalizeLeaderboard(

@@ -871,11 +871,32 @@ export async function rebuildEventProjections(eventSlug: string): Promise<{
       balance: string;
       postings: string;
     }>(
-      `select participant_id, sum(points)::text as balance, count(*)::text as postings
-         from score_postings p
-         join score_transactions t on t.id = p.transaction_id
-        where p.event_slug = $1 and t.status = 'accepted'
-        group by participant_id`,
+      `with recursive participant_targets as (
+         select id as source_id, id as target_id, array[id] as path
+           from event_participants
+          where event_slug = $1
+         union all
+         select targets.source_id,
+                merges.target_participant_id,
+                targets.path || merges.target_participant_id
+           from participant_targets targets
+           join event_participant_merges merges
+             on merges.source_participant_id = targets.target_id
+            and merges.reversed_at is null
+          where not merges.target_participant_id = any(targets.path)
+       ), resolved_targets as (
+         select distinct on (source_id) source_id, target_id
+           from participant_targets
+          order by source_id, cardinality(path) desc
+       )
+       select resolved.target_id as participant_id,
+              sum(postings.points)::text as balance,
+              count(*)::text as postings
+         from score_postings postings
+         join score_transactions transactions on transactions.id = postings.transaction_id
+         join resolved_targets resolved on resolved.source_id = postings.participant_id
+        where postings.event_slug = $1 and transactions.status = 'accepted'
+        group by resolved.target_id`,
       [eventSlug],
     );
     const balances: Record<string, number> = {};

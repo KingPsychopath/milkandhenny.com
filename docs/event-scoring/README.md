@@ -194,10 +194,10 @@ Confirm each decision before the affected implementation begins.
 - [ ] Names, unverified email, browser, device, IP address, order, and nickname are weak signals.
 - [ ] Weak signals never cause an automatic merge.
 - [ ] Admins can review possible duplicate people and participants.
-- [ ] A merge records actor, evidence, reason, time, and original participants.
-- [ ] A merge changes projections without rewriting original postings.
-- [ ] A mistaken merge can be reversed.
-- [ ] A split restores the correct source attribution.
+- [x] A merge records actor, evidence, reason, time, and original participants.
+- [x] A merge changes projections without rewriting original postings.
+- [x] A mistaken merge can be reversed.
+- [x] A split restores the correct source attribution.
 - [ ] Simultaneous claims from different devices do not silently transfer ownership.
 - [ ] A verified owner can later inspect and revoke device access.
 - [ ] Staff can resolve a lost-ticket case without seeing more personal data than required.
