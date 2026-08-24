@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
+import { AppSelect } from "@/components/AppSelect";
 import { LIARS_MODE_COPY, LIARS_PLAYER_LIMITS } from "./liars-rules";
 import {
   createLiarsRoomFn,
@@ -282,10 +283,10 @@ export function LiarsDevHarness() {
           <>
             <label className="flex items-center gap-2">
               mode
-              <select
+              <AppSelect
                 value={mode}
-                onChange={(event) => {
-                  const next = event.target.value as LiarsMode;
+                onValueChange={(value) => {
+                  const next = value as LiarsMode;
                   setMode(next);
                   setCount((current) =>
                     Math.min(
@@ -294,11 +295,14 @@ export function LiarsDevHarness() {
                     ),
                   );
                 }}
-                className="border border-white/20 bg-transparent px-1 py-0.5"
-              >
-                <option value="mafia">mafia</option>
-                <option value="imposter">imposter</option>
-              </select>
+                options={[
+                  { value: "mafia", label: "mafia" },
+                  { value: "imposter", label: "imposter" },
+                ]}
+                tone="night"
+                variant="pill"
+                ariaLabel="Mode"
+              />
             </label>
             <label className="flex items-center gap-2">
               players

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { AppImage } from "@/components/AppImage";
+import { AppSelect } from "@/components/AppSelect";
 import { useQrCode } from "@/hooks/useQrCode";
 import { GAME_POOL_DEFAULTS } from "@/features/things/pool/presets";
 import {
@@ -108,19 +109,23 @@ function GameSettingsFields({
         )}
         <label className="font-mono text-xs theme-muted">
           scoring
-          <select
+          <AppSelect
             value={settings.scoring}
-            onChange={(event) =>
+            onValueChange={(value) =>
               onChange({
                 ...settings,
-                scoring: event.target.value === "exact" ? "exact" : "embedding",
+                scoring: value === "exact" ? "exact" : "embedding",
               })
             }
-            className="mt-1 min-h-11 w-full border-b theme-border bg-transparent text-[var(--foreground)]"
-          >
-            <option value="embedding">meaning</option>
-            <option value="exact">exact words</option>
-          </select>
+            options={[
+              { value: "embedding", label: "meaning" },
+              { value: "exact", label: "exact words" },
+            ]}
+            tone="theme"
+            variant="field"
+            ariaLabel="Scoring"
+            className="mt-2"
+          />
         </label>
         <PoolCheck
           label="say answers aloud"
@@ -139,19 +144,23 @@ function GameSettingsFields({
       <div className="grid gap-4 sm:grid-cols-2">
         <label className="font-mono text-xs theme-muted">
           mode
-          <select
+          <AppSelect
             value={settings.mode}
-            onChange={(event) =>
+            onValueChange={(value) =>
               onChange({
                 ...settings,
-                mode: event.target.value === "imposter" ? "imposter" : "mafia",
+                mode: value === "imposter" ? "imposter" : "mafia",
               })
             }
-            className="mt-1 min-h-11 w-full border-b theme-border bg-transparent text-[var(--foreground)]"
-          >
-            <option value="mafia">mafia</option>
-            <option value="imposter">imposter</option>
-          </select>
+            options={[
+              { value: "mafia", label: "mafia" },
+              { value: "imposter", label: "imposter" },
+            ]}
+            tone="theme"
+            variant="field"
+            ariaLabel="Mode"
+            className="mt-2"
+          />
         </label>
         <PoolCheck
           label="first-game rules"
@@ -448,17 +457,18 @@ export function GamePoolsPanel({
       <div className="grid gap-4 border-b theme-border py-6 sm:grid-cols-[1fr_1fr_auto]">
         <label className="font-mono text-xs theme-muted">
           game
-          <select
+          <AppSelect
             value={game}
-            onChange={(event) => setGame(event.target.value as GamePoolGame)}
-            className="mt-1 min-h-11 w-full border-b theme-border bg-transparent text-[var(--foreground)]"
-          >
-            {Object.entries(GAME_POOL_DEFAULTS).map(([value, defaults]) => (
-              <option key={value} value={value}>
-                {defaults.label}
-              </option>
-            ))}
-          </select>
+            onValueChange={(value) => setGame(value as GamePoolGame)}
+            options={Object.entries(GAME_POOL_DEFAULTS).map(([value, defaults]) => ({
+              value,
+              label: defaults.label,
+            }))}
+            tone="theme"
+            variant="field"
+            ariaLabel="Game"
+            className="mt-2"
+          />
         </label>
         <label className="font-mono text-xs theme-muted">
           label
@@ -644,23 +654,27 @@ export function GamePoolsPanel({
                       </label>
                       <label className="font-mono text-xs theme-muted">
                         names in room list
-                        <select
+                        <AppSelect
                           value={draft.nameVisibility}
-                          onChange={(event) =>
+                          onValueChange={(value) =>
                             setDrafts((current) => ({
                               ...current,
                               [entrance.id]: {
                                 ...draft,
-                                nameVisibility: event.target.value as GamePoolNameVisibility,
+                                nameVisibility: value as GamePoolNameVisibility,
                               },
                             }))
                           }
-                          className="mt-1 min-h-11 w-full border-b theme-border bg-transparent text-[var(--foreground)]"
-                        >
-                          <option value="first-names">first names</option>
-                          <option value="initials">initials</option>
-                          <option value="counts">counts only</option>
-                        </select>
+                          options={[
+                            { value: "first-names", label: "first names" },
+                            { value: "initials", label: "initials" },
+                            { value: "counts", label: "counts only" },
+                          ]}
+                          tone="theme"
+                          variant="field"
+                          ariaLabel="Names in room list"
+                          className="mt-2"
+                        />
                       </label>
                       <div>
                         <label className="flex min-h-11 items-center gap-3 font-mono text-xs theme-muted">

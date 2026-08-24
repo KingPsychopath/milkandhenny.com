@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 
+import { AppSelect } from "@/components/AppSelect";
 import {
   PITCH_REMINDER_TEMPLATES,
   type PitchReminderAdminSnapshot,
@@ -231,57 +232,54 @@ export function PitchRemindersPanel({
         </label>
         <label className="font-mono text-micro theme-muted">
           wait after inactivity
-          <select
+          <AppSelect
             value={settingsDraft.inactivityDays}
-            onChange={(event) =>
+            onValueChange={(value) =>
               setSettingsDraft((current) => ({
                 ...current,
-                inactivityDays: Number(event.target.value),
+                inactivityDays: Number(value),
               }))
             }
-            className="mt-2 min-h-11 w-full border theme-border bg-background px-3 text-xs text-foreground"
-          >
-            {[7, 10, 14, 21, 30].map((days) => (
-              <option key={days} value={days}>
-                {days} days
-              </option>
-            ))}
-          </select>
+            options={[7, 10, 14, 21, 30].map((days) => ({ value: days, label: `${days} days` }))}
+            tone="theme"
+            variant="field"
+            ariaLabel="Wait after inactivity"
+            className="mt-2"
+          />
         </label>
         <label className="font-mono text-micro theme-muted">
           gap between nudges
-          <select
+          <AppSelect
             value={settingsDraft.gapDays}
-            onChange={(event) =>
-              setSettingsDraft((current) => ({ ...current, gapDays: Number(event.target.value) }))
+            onValueChange={(value) =>
+              setSettingsDraft((current) => ({ ...current, gapDays: Number(value) }))
             }
-            className="mt-2 min-h-11 w-full border theme-border bg-background px-3 text-xs text-foreground"
-          >
-            {[14, 21, 30, 45].map((days) => (
-              <option key={days} value={days}>
-                {days} days
-              </option>
-            ))}
-          </select>
+            options={[14, 21, 30, 45].map((days) => ({ value: days, label: `${days} days` }))}
+            tone="theme"
+            variant="field"
+            ariaLabel="Gap between nudges"
+            className="mt-2"
+          />
         </label>
         <label className="font-mono text-micro theme-muted">
           automatic limit per pitch
-          <select
+          <AppSelect
             value={settingsDraft.maxAutomatic}
-            onChange={(event) =>
+            onValueChange={(value) =>
               setSettingsDraft((current) => ({
                 ...current,
-                maxAutomatic: Number(event.target.value),
+                maxAutomatic: Number(value),
               }))
             }
-            className="mt-2 min-h-11 w-full border theme-border bg-background px-3 text-xs text-foreground"
-          >
-            {[1, 2, 3, 4, 5].map((count) => (
-              <option key={count} value={count}>
-                {count} {count === 1 ? "nudge" : "nudges"}
-              </option>
-            ))}
-          </select>
+            options={[1, 2, 3, 4, 5].map((count) => ({
+              value: count,
+              label: `${count} ${count === 1 ? "nudge" : "nudges"}`,
+            }))}
+            tone="theme"
+            variant="field"
+            ariaLabel="Automatic limit per pitch"
+            className="mt-2"
+          />
         </label>
       </div>
       <div className="mt-4 flex justify-end">
@@ -308,17 +306,18 @@ export function PitchRemindersPanel({
           <div className="flex flex-wrap items-end gap-2">
             <label className="font-mono text-micro theme-muted">
               message
-              <select
+              <AppSelect
                 value={template}
-                onChange={(event) => setTemplate(event.target.value as PitchReminderTemplate)}
-                className="mt-2 min-h-11 border theme-border bg-background px-3 text-xs text-foreground"
-              >
-                {PITCH_REMINDER_TEMPLATES.map((value) => (
-                  <option key={value} value={value}>
-                    {TEMPLATE_LABELS[value]}
-                  </option>
-                ))}
-              </select>
+                onValueChange={(value) => setTemplate(value as PitchReminderTemplate)}
+                options={PITCH_REMINDER_TEMPLATES.map((value) => ({
+                  value,
+                  label: TEMPLATE_LABELS[value],
+                }))}
+                tone="theme"
+                variant="field"
+                ariaLabel="Reminder message"
+                className="mt-2 min-w-44"
+              />
             </label>
             <button
               type="button"

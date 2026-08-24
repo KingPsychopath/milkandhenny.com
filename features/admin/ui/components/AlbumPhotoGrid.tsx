@@ -1,4 +1,5 @@
 import { AppImage } from "@/components/AppImage";
+import { AppSelect } from "@/components/AppSelect";
 import type { Album, Photo } from "@/features/media/albums";
 import { FOCAL_PRESETS, focalPresetToObjectPosition } from "@/features/media/focal";
 import { imagePlaceholderStyle } from "@/features/media/image";
@@ -69,19 +70,19 @@ function PhotoDetailsEditor({
         </label>
         <label className="space-y-1 font-mono text-micro theme-subtle">
           focal point
-          <select
+          <AppSelect
             name={`photo-focal-point-${photoId}`}
             value={draft.focalPoint}
-            onChange={(event) => onChange({ ...draft, focalPoint: event.target.value })}
-            className={fieldClass}
-          >
-            <option value="">automatic / centre</option>
-            {FOCAL_PRESETS.map((preset) => (
-              <option key={preset} value={preset}>
-                {preset}
-              </option>
-            ))}
-          </select>
+            onValueChange={(value) => onChange({ ...draft, focalPoint: value })}
+            options={[
+              { value: "", label: "automatic / centre" },
+              ...FOCAL_PRESETS.map((preset) => ({ value: preset, label: preset })),
+            ]}
+            tone="theme"
+            variant="field"
+            ariaLabel="Focal point"
+            className="mt-1"
+          />
         </label>
       </div>
       <label className="block space-y-1 font-mono text-micro theme-subtle">

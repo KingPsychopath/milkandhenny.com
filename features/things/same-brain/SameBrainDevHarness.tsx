@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
+import { AppSelect } from "@/components/AppSelect";
 import {
   createSameBrainRoomFn,
   exportSameBrainRoomFn,
@@ -267,14 +268,17 @@ export function SameBrainDevHarness() {
             </label>
             <label className="flex items-center gap-2">
               scoring
-              <select
+              <AppSelect
                 value={scoring}
-                onChange={(event) => setScoring(event.target.value as SameBrainScoring)}
-                className="border border-white/20 bg-transparent px-1 py-0.5"
-              >
-                <option value="embedding">embedding</option>
-                <option value="exact">exact</option>
-              </select>
+                onValueChange={(value) => setScoring(value as SameBrainScoring)}
+                options={[
+                  { value: "embedding", label: "embedding" },
+                  { value: "exact", label: "exact" },
+                ]}
+                tone="night"
+                variant="pill"
+                ariaLabel="Scoring"
+              />
             </label>
             <label className="flex items-center gap-2">
               <input
