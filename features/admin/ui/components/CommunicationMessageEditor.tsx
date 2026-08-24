@@ -19,15 +19,61 @@ type CommunicationMessageEditorProps = {
   onBodyChange: (value: string) => void;
   media: CommunicationMediaDraft;
   onMediaChange: (value: CommunicationMediaDraft) => void;
+  previewValues?: Readonly<Record<string, string>>;
   rows?: number;
   hint?: string;
 };
+
+export type CommunicationPreviewValues = Readonly<Record<string, string>>;
 
 const MEDIA_OPTIONS: readonly AppSelectOption[] = [
   { value: "image", label: "image" },
   { value: "gif", label: "GIF" },
   { value: "video", label: "video link" },
 ];
+
+const TOKEN_OPTIONS: readonly AppSelectOption[] = [
+  { value: "", label: "insert fill-in…" },
+  { value: "{{recipient.name}}", label: "recipient name" },
+  { value: "{{event.title}}", label: "event title" },
+  { value: "{{event.date}}", label: "event date" },
+  { value: "{{event.time}}", label: "event start time" },
+  { value: "{{event.doors}}", label: "doors time" },
+  { value: "{{event.timing}}", label: "event timing" },
+  { value: "{{event.venue}}", label: "venue" },
+  { value: "{{event.address}}", label: "address" },
+  { value: "{{event.map}}", label: "map link" },
+  { value: "{{links.spellingGame}}", label: "spelling game link" },
+  { value: "{{links.pitch}}", label: "pitch link" },
+  { value: "{{links.walkingVideo}}", label: "walking video link" },
+  { value: "{{links.contact}}", label: "contact page link" },
+  { value: "{{links.email}}", label: "contact email link" },
+  { value: "{{survey.url}}", label: "survey link" },
+];
+
+const DEFAULT_PREVIEW_VALUES: CommunicationPreviewValues = {
+  "recipient.name": "Test recipient",
+  "event.title": "After School Club — First Bell",
+  "event.date": "Tuesday, 1 September 2026",
+  "event.time": "19:30",
+  "event.doors": "19:00",
+  "event.timing": "Doors open: 19:00 · Starts: 19:30",
+  "event.venue": "Common Sense Studios",
+  "event.address": "Unit 10, Cable Depot Workshops, Warspite Road, London SE18 5NX",
+  "event.map": "https://milkandhenny.com/contact",
+  "links.spellingGame": "https://milkandhenny.com/things/spelling-bee",
+  "links.pitch": "https://milkandhenny.com/things/pitches/new",
+  "links.walkingVideo":
+    "https://milkandhenny.com/media/events/after-school-club-2026-09-01/walking.mp4",
+  "links.contact": "https://milkandhenny.com/contact",
+  "links.email": "mailto:hello@milkandhenny.com",
+  "survey.url": "https://milkandhenny.com/surveys/preview",
+};
+
+function previewBody(value: string, values?: CommunicationPreviewValues): string {
+  const resolved = { ...DEFAULT_PREVIEW_VALUES, ...values };
+  return value.replace(/\{\{([A-Za-z.]+)\}\}/g, (token, key: string) => resolved[key] ?? token);
+}
 
 function detectedMediaKind(value: string): CommunicationMediaKind | null {
   const clean = value.split(/[?#]/, 1)[0].toLowerCase();
@@ -76,6 +122,7 @@ export function CommunicationMessageEditor({
   onBodyChange,
   media,
   onMediaChange,
+  previewValues,
   rows = 12,
   hint = "Use headings, **bold**, lists, links, and event tokens such as {{event.title}}.",
 }: CommunicationMessageEditorProps) {
@@ -128,6 +175,20 @@ export function CommunicationMessageEditor({
     });
   };
 
+  const insertToken = (token: string) => {
+    if (!token) return;
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    const next = `${body.slice(0, start)}${token}${body.slice(end)}`;
+    onBodyChange(next);
+    requestAnimationFrame(() => {
+      textarea.focus();
+      textarea.setSelectionRange(start + token.length, start + token.length);
+    });
+  };
+
   const acceptMediaUrl = (value: string) => {
     const url = value.trim();
     if (!url) return;
@@ -163,6 +224,14 @@ export function CommunicationMessageEditor({
             <EditorButton onClick={() => prefixLines("## ")}>heading</EditorButton>
             <EditorButton onClick={() => prefixLines("- ")}>list</EditorButton>
             <EditorButton onClick={insertLink}>link</EditorButton>
+            <AppSelect
+              value=""
+              onValueChange={insertToken}
+              options={TOKEN_OPTIONS}
+              ariaLabel="insert fill-in"
+              title="Insert an event value or page link"
+              className="min-w-44"
+            />
           </div>
           <textarea
             ref={textareaRef}
@@ -177,9 +246,15 @@ export function CommunicationMessageEditor({
         <div className="min-h-64 rounded border theme-border p-5">
           <div className="prose-blog font-serif">
             <ReactMarkdown remarkPlugins={[remarkGfm]}>
-              {body || "Your message preview will appear here."}
+              {previewBody(body, previewValues) || "Your message preview will appear here."}
             </ReactMarkdown>
           </div>
+          {body.match(/\{\{[A-Za-z.]+\}\}/) ? (
+            <p className="mt-4 border-t theme-border-faint pt-3 font-mono text-micro leading-relaxed theme-faint">
+              Fill-ins use the selected event when one is available. Otherwise this preview uses
+              sample event details; the sent email uses the real values.
+            </p>
+          ) : null}
           {media.url ? (
             <figure className="mt-5 border-t theme-border-faint pt-5">
               {media.kind === "video" ? (

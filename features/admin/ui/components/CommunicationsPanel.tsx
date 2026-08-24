@@ -5,6 +5,7 @@ import { AppSelect, type AppSelectOption } from "@/components/AppSelect";
 import {
   CommunicationMessageEditor,
   type CommunicationMediaDraft,
+  type CommunicationPreviewValues,
 } from "./CommunicationMessageEditor";
 
 type AuthFetch = (url: string, options?: RequestInit) => Promise<Response>;
@@ -279,6 +280,22 @@ function eventOptions(events: readonly EventOption[], emptyLabel?: string): AppS
       label: `${event.title} · ${shortDate(event.startsAt)}`,
     })),
   ];
+}
+
+function previewValuesForEvent(
+  event: EventOption | undefined,
+  fallbackTitle?: string,
+): CommunicationPreviewValues {
+  const date = event?.startsAt
+    ? new Intl.DateTimeFormat("en-GB", {
+        dateStyle: "full",
+        timeZone: "Europe/London",
+      }).format(new Date(event.startsAt))
+    : undefined;
+  return {
+    "event.title": event?.title ?? fallbackTitle ?? "your event",
+    ...(date ? { "event.date": date } : {}),
+  };
 }
 
 function Field({
@@ -997,6 +1014,7 @@ export function CommunicationsPanel({
           previewHtml={previewHtml}
           busy={busy}
           messages={messages}
+          previewValues={previewValuesForEvent(events.find((event) => event.slug === composeEvent))}
         />
       ) : null}
       {tab === "templates" ? (
@@ -1330,6 +1348,10 @@ function EventPlanView(props: {
                           posterUrl: media.posterUrl,
                         }))
                       }
+                      previewValues={previewValuesForEvent(
+                        events.find((event) => event.slug === selectedEvent),
+                        activePlan?.eventTitle,
+                      )}
                       hint="Use the writing tools for Markdown. Event tokens such as {{event.venue}} and {{survey.url}} are filled when the email is sent."
                     />
                     <Field
@@ -1396,6 +1418,7 @@ function ComposeView(props: {
   previewHtml: string;
   busy: boolean;
   messages: Message[];
+  previewValues: CommunicationPreviewValues;
 }) {
   const {
     events,
@@ -1430,6 +1453,7 @@ function ComposeView(props: {
     previewHtml,
     busy,
     messages,
+    previewValues,
   } = props;
   const toggle = (hash: string) =>
     setSelected((current) => {
@@ -1529,6 +1553,7 @@ function ComposeView(props: {
             setMediaAlt(media.alt);
             setPosterUrl(media.posterUrl);
           }}
+          previewValues={previewValues}
           hint="Use the writing tools for Markdown. Event tokens such as {{event.title}} are filled when the email is sent."
         />
         <div className="flex flex-wrap items-end gap-3">

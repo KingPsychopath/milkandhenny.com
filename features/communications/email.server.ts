@@ -210,11 +210,13 @@ function inlineHtml(value: string, trackingLinks?: ReadonlyMap<string, string>):
       ? `<a href="${escapeEmailHtml(tracked ?? safe)}" style="color:#a16207;text-decoration:underline;text-underline-offset:3px">${label}</a>`
       : label;
   });
-  return withLinks.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
+  return withLinks
+    .replace(/\*\*([^*\n]+)\*\*/g, "<strong>$1</strong>")
+    .replace(/(?<!\w)_([^_\n]+)_(?!\w)/g, "<em>$1</em>");
 }
 
 function richBodyHtml(value: string, trackingLinks?: ReadonlyMap<string, string>): string {
-  const lines = value.trim().split("\n");
+  const lines = value.replaceAll("\r\n", "\n").replaceAll("\r", "\n").trim().split("\n");
   const blocks: string[] = [];
   let paragraph: string[] = [];
   let list: string[] = [];
@@ -240,16 +242,18 @@ function richBodyHtml(value: string, trackingLinks?: ReadonlyMap<string, string>
       flushList();
       continue;
     }
-    if (line.startsWith("- ")) {
+    const listItem = /^(?:[-*+]\s+)(.*)$/.exec(line);
+    if (listItem) {
       flushParagraph();
-      list.push(line.slice(2).trim());
+      list.push(listItem[1].trim());
       continue;
     }
-    if (line.startsWith("## ")) {
+    const heading = /^#{1,6}\s+(.+)$/.exec(line);
+    if (heading) {
       flushParagraph();
       flushList();
       blocks.push(
-        `<h2 style="margin:24px 0 10px;font:600 20px/1.25 Georgia,serif">${inlineHtml(line.slice(3).trim())}</h2>`,
+        `<h2 style="margin:24px 0 10px;font:600 20px/1.25 Georgia,serif">${inlineHtml(heading[1].trim())}</h2>`,
       );
       continue;
     }
