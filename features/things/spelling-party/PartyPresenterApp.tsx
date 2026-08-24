@@ -25,6 +25,7 @@ import { useQrCode } from "@/hooks/useQrCode";
 import { useNativeShareAvailability } from "@/hooks/useNativeShareAvailability";
 import { consumeLocationFragment } from "@/lib/client/url-fragment";
 import { buildPartyPlayerInviteUrl, parsePartyPresenterFragment } from "./party-invite";
+import { ThingsRoomHeader } from "../shared/RoomHeader";
 
 function roomTokens(roomId: string) {
   const sessionKey = partyBrowserKeys.presenterSession(roomId);
@@ -297,23 +298,24 @@ export function PartyPresenterApp({ roomId }: { roomId: string }) {
   const round = snapshot.round;
   return (
     <div className="things-game things-game--night text-white">
-      <header className="flex items-center justify-between gap-4 p-5 font-mono text-xs text-white/55">
-        <button
-          type="button"
-          onClick={() => void handleEnd()}
-          disabled={closing}
-          className="min-h-11 disabled:opacity-40"
-        >
-          {closing ? "ending…" : "end game"}
-        </button>
-        <span aria-live="polite">
-          {live.connectionState === "connected"
-            ? "● live"
-            : live.connectionState === "offline"
-              ? "playing offline · reconnecting"
-              : "reconnecting"}
-        </span>
-      </header>
+      <ThingsRoomHeader
+        tone="night"
+        back={<span className="things-room-header-utility">type together</span>}
+        roomId={roomId}
+        connection={live.connectionState}
+        right={
+          <>
+            <button
+              type="button"
+              onClick={() => void handleEnd()}
+              disabled={closing}
+              className="things-room-header-cta disabled:opacity-40"
+            >
+              {closing ? "ending…" : "end game"}
+            </button>
+          </>
+        }
+      />
       <main id="main" className="mx-auto flex w-full max-w-2xl flex-1 flex-col px-5 pb-10">
         {snapshot.phase === "lobby" ? (
           <section
@@ -323,9 +325,12 @@ export function PartyPresenterApp({ roomId }: { roomId: string }) {
             <p className="font-mono text-micro uppercase tracking-[0.2em] text-white/45">
               {snapshot.deckName}
             </p>
-            <h1 id="party-room-title" className="mt-3 font-serif text-6xl font-semibold">
-              Join the room.
+            <h1 id="party-room-title" className="font-serif text-4xl font-semibold sm:text-5xl">
+              Get everyone on a phone.
             </h1>
+            <p className="mt-3 max-w-sm font-serif text-lg text-white/55">
+              Scan the code or use the player link. Start the round when everyone has joined.
+            </p>
             {qr ? (
               <AppImage
                 src={qr}

@@ -1,3 +1,4 @@
+import { Link } from "@tanstack/react-router";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useWebHaptics } from "web-haptics/react";
 import { useWakeLock } from "@/hooks/useWakeLock";
@@ -56,6 +57,7 @@ import type { LiarsPlayerCredentials, LiarsSnapshot } from "./types";
 import type { LiarsNote } from "./useLiarsNotes";
 import { PlayerReadyControl } from "../shared/PlayerReadyControl";
 import { MultiplayerLobbyPanel } from "../shared/PixelWorld";
+import { ThingsRoomHeader } from "../shared/RoomHeader";
 
 let actionCounter = 0;
 const nextActionId = () => `${Date.now().toString(36)}-${(actionCounter += 1)}`;
@@ -203,29 +205,37 @@ export function LiarsRoom({ credentials }: { credentials: LiarsPlayerCredentials
     <GameShell tone="night">
       <LiarsOverlayLayer overlay={overlay} />
       <div className={`flex min-h-0 flex-1 flex-col text-white ${dead ? "opacity-60" : ""}`}>
-        <header className="mx-auto flex w-full max-w-lg items-center justify-between gap-3 px-5 pt-4 font-mono text-xs text-white/45">
-          <button
-            type="button"
-            onClick={() => setConfirmingLeave(true)}
-            className="inline-flex min-h-11 items-center hover:text-white/80"
-          >
-            ← liars
-          </button>
-          {/* The lobby already shows the code at four times this size; twice is noise. */}
-          <span>
-            {snapshot.phase === "lobby"
+        <ThingsRoomHeader
+          tone="night"
+          back={<Link to="/things/liars">← liars</Link>}
+          roomId={snapshot.roomId}
+          connection={room.connectionState}
+          detail={
+            snapshot.phase === "lobby"
               ? LIARS_MODE_COPY[snapshot.mode].name
-              : `${snapshot.livingCount} alive · ${snapshot.players.length - snapshot.livingCount} gone`}
-          </span>
-          <button
-            type="button"
-            onClick={sound.cycle}
-            className="min-h-11 hover:text-white/80"
-            title={sound.description}
-          >
-            {sound.label}
-          </button>
-        </header>
+              : `${snapshot.livingCount} alive · ${snapshot.players.length - snapshot.livingCount} gone`
+          }
+          right={
+            <>
+              <button
+                type="button"
+                onClick={sound.cycle}
+                className="things-room-header-utility"
+                title={sound.description}
+              >
+                {sound.label}
+              </button>
+              <button
+                type="button"
+                onClick={() => setConfirmingLeave(true)}
+                className="things-room-header-cta"
+                aria-haspopup="dialog"
+              >
+                leave room
+              </button>
+            </>
+          }
+        />
 
         {dead ? (
           <p
@@ -286,9 +296,6 @@ export function LiarsRoom({ credentials }: { credentials: LiarsPlayerCredentials
               >
                 big screen
               </a>
-            ) : null}
-            {room.connectionState !== "connected" ? (
-              <span className="font-mono text-xs text-white/30">{room.connectionState}</span>
             ) : null}
           </div>
           {confirmingLeave ? (
@@ -373,8 +380,10 @@ function LobbyPhase({ snapshot, isHost, send, sendHost }: PhaseProps) {
           );
   return (
     <>
-      <Eyebrow>{LIARS_MODE_COPY[snapshot.mode].name} · lobby</Eyebrow>
-      <Headline>Bring everyone in</Headline>
+      <Headline>Set the roles, then start.</Headline>
+      <p className="mt-4 font-serif text-lg leading-relaxed text-white/65">
+        Share the code, agree the roles, then tap ready. The host starts once the table is set.
+      </p>
 
       {inviteUrl ? (
         <div className="mt-8">

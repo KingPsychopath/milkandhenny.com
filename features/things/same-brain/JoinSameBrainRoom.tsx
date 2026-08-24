@@ -6,6 +6,7 @@ import { SAME_BRAIN_MAX_NAME_LENGTH } from "./same-brain-rules";
 import { joinSameBrainRoomFn } from "./same-brain-room.functions";
 import { captureSameBrainInvite } from "./invite.client";
 import type { SameBrainPlayerCredentials } from "./types";
+import { ThingsRoomHeader } from "../shared/RoomHeader";
 
 export function JoinSameBrainRoom({
   roomId,
@@ -62,12 +63,11 @@ export function JoinSameBrainRoom({
   return (
     <GameShell tone="night">
       <div className="flex min-h-0 flex-1 flex-col text-white">
-        <header className="mx-auto flex w-full max-w-lg items-center justify-between px-5 pt-4 font-mono text-xs text-white/45">
-          <Link to="/things/same-brain" className="inline-flex min-h-11 items-center">
-            ← same brain
-          </Link>
-          <span className="tracking-[0.16em]">{roomId}</span>
-        </header>
+        <ThingsRoomHeader
+          tone="night"
+          back={<Link to="/things/same-brain">← same brain</Link>}
+          roomId={roomId}
+        />
         <main
           id="main"
           className="mx-auto flex w-full max-w-lg flex-1 flex-col justify-center px-5 pb-20"

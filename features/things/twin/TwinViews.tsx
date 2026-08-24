@@ -9,6 +9,8 @@ import { shareOrCopy } from "@/lib/client/share";
 import { PlayerReadyControl } from "../shared/PlayerReadyControl";
 import { GameActionDialog } from "../shared/GameActionDialog";
 import { MultiplayerLobbyPanel } from "../shared/PixelWorld";
+import { ThingsRoomHeader } from "../shared/RoomHeader";
+import type { MultiplayerConnectionState } from "../shared/multiplayer";
 import { gamePoolRoomInviteUrl } from "../pool/pool-session.client";
 import {
   TWIN_MAX_HAND,
@@ -28,23 +30,23 @@ export function TwinHeader({
   onLeave,
 }: {
   roomId: string;
-  connection?: string;
+  connection?: MultiplayerConnectionState;
   right?: string;
   onLeave?: () => Promise<boolean>;
 }) {
   return (
-    <header className="twin-header">
-      {onLeave ? (
-        <TwinLeaveButton onLeave={onLeave} label="← twin" />
-      ) : (
+    <ThingsRoomHeader
+      tone="night"
+      back={
         <Link to="/things/twin" className="twin-header-back">
           ← twin
         </Link>
-      )}
-      <span className="twin-header-meta">
-        {right ?? `${roomId}${connection ? ` · ${connection}` : ""}`}
-      </span>
-    </header>
+      }
+      roomId={roomId}
+      connection={connection}
+      detail={right}
+      right={onLeave ? <TwinLeaveButton onLeave={onLeave} /> : <span aria-hidden="true" />}
+    />
   );
 }
 
@@ -77,7 +79,7 @@ export function TwinLobby({
 }: {
   snapshot: TwinSnapshot;
   playerId: string;
-  connection: string;
+  connection: MultiplayerConnectionState;
   message: string | null;
   onReadyChange: (ready: boolean) => void;
   onStart: () => void;
@@ -129,11 +131,10 @@ export function TwinLobby({
     <div className="things-game things-game--night twin">
       <TwinHeader roomId={snapshot.roomId} connection={connection} onLeave={onLeave} />
       <main id="main" className="twin-lobby">
-        <p className="twin-eyebrow">room ready</p>
-        <h1 className="twin-title">Two cards. One symbol.</h1>
+        <h1 className="twin-title">Find the shared symbol.</h1>
         <p className="twin-lede">
-          Every card here shares exactly one symbol with every other. Find yours, put it down, empty
-          your hand.
+          Share the code, choose how many cards each player starts with, then tap ready. The host
+          deals when everyone is in.
         </p>
 
         <MultiplayerLobbyPanel
@@ -244,24 +245,18 @@ export function TwinLobby({
   );
 }
 
-function TwinLeaveButton({
-  onLeave,
-  label = "leave room",
-}: {
-  onLeave: () => Promise<boolean>;
-  label?: string;
-}) {
+function TwinLeaveButton({ onLeave }: { onLeave: () => Promise<boolean> }) {
   const [open, setOpen] = useState(false);
   const [pending, setPending] = useState(false);
   return (
     <>
       <button
         type="button"
-        className="twin-button twin-button--quiet"
+        className="things-room-header-cta"
         onClick={() => setOpen(true)}
         aria-haspopup="dialog"
       >
-        {label}
+        leave room
       </button>
       {open ? (
         <GameActionDialog

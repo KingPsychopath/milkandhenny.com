@@ -36,6 +36,7 @@ import { buildSameBrainPlayerInviteUrl } from "./same-brain-invite";
 import { useSameBrainRoom } from "./useSameBrainRoom";
 import type { SameBrainPlayerCredentials, SameBrainScoring, SameBrainSnapshot } from "./types";
 import { PlayerReadyControl } from "../shared/PlayerReadyControl";
+import { ThingsRoomHeader } from "../shared/RoomHeader";
 import {
   gamePoolRoomInviteUrl,
   releaseGamePoolMembership,
@@ -222,24 +223,27 @@ export function SameBrainRoom({ credentials }: { credentials: SameBrainPlayerCre
   return (
     <GameShell tone="night">
       <div className="flex min-h-svh flex-col text-white">
-        <header className="mx-auto flex w-full max-w-lg items-center gap-3 px-5 pt-4 font-mono text-micro uppercase tracking-[0.16em] text-white/35">
-          <button
-            type="button"
-            onClick={() => setConfirmingLeave(true)}
-            className="min-h-11 shrink-0 hover:text-white/80"
-          >
-            ← same brain
-          </button>
-          <span>{snapshot.roomId}</span>
-          {snapshot.phase !== "lobby" && snapshot.phase !== "ending" ? (
-            <span>
-              round {snapshot.round} of {snapshot.rounds}
-            </span>
-          ) : null}
-          <span className="ml-auto">
-            {room.connectionState === "connected" ? "" : room.connectionState}
-          </span>
-        </header>
+        <ThingsRoomHeader
+          tone="night"
+          back={<Link to="/things/same-brain">← same brain</Link>}
+          roomId={snapshot.roomId}
+          connection={room.connectionState}
+          detail={
+            snapshot.phase !== "lobby" && snapshot.phase !== "ending"
+              ? `round ${snapshot.round} of ${snapshot.rounds}`
+              : undefined
+          }
+          right={
+            <button
+              type="button"
+              onClick={() => setConfirmingLeave(true)}
+              className="things-room-header-cta"
+              aria-haspopup="dialog"
+            >
+              leave room
+            </button>
+          }
+        />
 
         <main id="main" className="mx-auto w-full max-w-lg flex-1 px-5 pb-24 pt-6">
           {snapshot.phase === "lobby" ? (
@@ -336,12 +340,10 @@ function LobbyPhase({
 
   return (
     <>
-      <Eyebrow>same brain</Eyebrow>
-      <Headline>Everyone answers. Whoever agrees, scores.</Headline>
+      <Headline>Find the answer you share.</Headline>
       <p className="mt-4 font-mono text-xs leading-relaxed text-white/50">
-        A question goes to every phone. Type one answer. The biggest group that said the same thing
-        takes the points — and if all of you say it, it is worth half, so the obvious answer is the
-        cheap one.
+        Share the code, tap ready, then type one answer to each prompt. Matching answers score;
+        obvious answers are worth less.
       </p>
 
       {inviteUrl ? (

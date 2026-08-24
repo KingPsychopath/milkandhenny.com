@@ -14,7 +14,8 @@ import {
   writeExpiringLocalValue,
 } from "../shared/game-storage.client";
 import { gameBrowserKey } from "../shared/multiplayer-keys";
-import type { MultiplayerActionInput } from "../shared/multiplayer";
+import type { MultiplayerActionInput, MultiplayerConnectionState } from "../shared/multiplayer";
+import { RoomConnectionIndicator } from "../shared/RoomHeader";
 import { useGameSound } from "../shared/useGameSound";
 import { buildCentrePlayerInviteUrl } from "./centre-invite";
 import { centreBrowserKeys } from "./centre-keys";
@@ -475,7 +476,8 @@ export function CentreRoom({
         <header className="centre-header">
           <Link to="/things/centre">← centre</Link>
           <span>
-            {roomId} · {live.connectionState}
+            {roomId}
+            <RoomConnectionIndicator state={live.connectionState} />
           </span>
           <CentreLeaveButton onLeave={leaveRoom} tone="dark" />
         </header>
@@ -645,7 +647,7 @@ function CentreLobby({
   playerId: string;
   nudged: boolean;
   invite: string;
-  connection: string;
+  connection: MultiplayerConnectionState;
   message: string | null;
   onShareMessage: (message: string | null) => void;
   onReady: (ready: boolean) => void;
@@ -681,15 +683,17 @@ function CentreLobby({
       <header className="centre-header">
         <Link to="/things/centre">← centre</Link>
         <span>
-          {snapshot.roomId} · {connection}
+          {snapshot.roomId}
+          <RoomConnectionIndicator state={connection} />
         </span>
         <CentreLeaveButton onLeave={onLeave} tone="dark" />
       </header>
       <main id="main" className="centre-lobby">
-        <p className="centre-eyebrow">room ready</p>
-        <h1 className="centre-title">Everyone gets an entrance.</h1>
+        <h1 className="centre-title centre-title--lobby">Ready to race?</h1>
         <p className="centre-lede">
-          Tap your start when you’re set. Once the countdown begins, the race is locked.
+          {snapshot.canControl
+            ? "Share the code or link, choose a difficulty, then start when everyone has joined and tapped ready."
+            : "Share the code or link with your friends, then tap ready. The host will start the race when everyone is in."}
         </p>
         <MultiplayerLobbyPanel
           canPassLead={snapshot.canControl && snapshot.players.length > 1}

@@ -6,6 +6,7 @@ import { joinDrawCountryRoomFn } from "./draw-country-room.functions";
 import { drawCountryBrowserKeys } from "./draw-country-keys";
 import { captureDrawCountryInvite } from "./invite.client";
 import type { DrawCountryPlayerCredentials } from "./types";
+import { ThingsRoomHeader } from "../shared/RoomHeader";
 
 export function JoinDrawCountryRoom({
   roomId,
@@ -62,12 +63,11 @@ export function JoinDrawCountryRoom({
 
   return (
     <div className="things-game things-game--cream text-black">
-      <header className="mx-auto flex w-full max-w-lg items-center justify-between px-5 pt-4 font-mono text-xs text-black/50">
-        <Link to="/things/draw-country" className="inline-flex min-h-11 items-center">
-          ← game
-        </Link>
-        <span className="tracking-[0.16em]">{roomId}</span>
-      </header>
+      <ThingsRoomHeader
+        tone="cream"
+        back={<Link to="/things/draw-country">← game</Link>}
+        roomId={roomId}
+      />
       <main
         id="main"
         className="mx-auto flex w-full max-w-lg flex-1 flex-col justify-center px-5 pb-20"

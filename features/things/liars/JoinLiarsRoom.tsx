@@ -6,6 +6,7 @@ import { LIARS_MAX_NAME_LENGTH } from "./liars-rules";
 import { joinLiarsRoomFn } from "./liars-room.functions";
 import { captureLiarsInvite } from "./invite.client";
 import type { LiarsPlayerCredentials } from "./types";
+import { ThingsRoomHeader } from "../shared/RoomHeader";
 
 export function JoinLiarsRoom({
   roomId,
@@ -62,12 +63,11 @@ export function JoinLiarsRoom({
   return (
     <GameShell tone="night">
       <div className="flex min-h-0 flex-1 flex-col text-white">
-        <header className="mx-auto flex w-full max-w-lg items-center justify-between px-5 pt-4 font-mono text-xs text-white/45">
-          <Link to="/things/liars" className="inline-flex min-h-11 items-center">
-            ← liars
-          </Link>
-          <span className="tracking-[0.16em]">{roomId}</span>
-        </header>
+        <ThingsRoomHeader
+          tone="night"
+          back={<Link to="/things/liars">← liars</Link>}
+          roomId={roomId}
+        />
         <main
           id="main"
           className="mx-auto flex w-full max-w-lg flex-1 flex-col justify-center px-5 pb-20"

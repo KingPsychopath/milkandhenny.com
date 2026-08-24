@@ -1961,10 +1961,6 @@
       padding-bottom: max(0.5rem, env(safe-area-inset-bottom));
     }
 
-    .party-player-header {
-      padding-block: 0.5rem;
-    }
-
     .party-player-main[data-phase="answer"] {
       display: grid;
       max-width: none;
@@ -2215,14 +2211,25 @@
     text-align: center;
   }
 
+  .twin-lobby .twin-title {
+    max-width: 28rem;
+    margin-top: 0;
+    font-size: clamp(2.15rem, 6vw, 2.8rem);
+  }
+
+  .twin-lobby .twin-lede {
+    max-width: 28rem;
+    margin-top: 1rem;
+  }
+
   .twin-gone,
   .twin-join {
     justify-content: center;
   }
 
   .twin-qr {
-    margin-top: 1.5rem;
-    width: 11rem;
+    margin-top: 1.25rem;
+    width: 10rem;
     border-radius: 1.5rem;
     background: var(--things-cream);
     padding: 0.75rem;
@@ -3380,7 +3387,11 @@
   }
 
   .centre-header > span {
+    display: inline-flex;
     min-width: 0;
+    align-items: center;
+    justify-content: center;
+    gap: 0.45rem;
     overflow: hidden;
     text-align: center;
     text-overflow: ellipsis;
@@ -3406,7 +3417,7 @@
   .centre-lobby,
   .centre-join,
   .centre-finished {
-    padding-top: 3rem;
+    padding-top: 2rem;
   }
 
   .centre-eyebrow {
@@ -3434,6 +3445,11 @@
 
   .centre-title--small {
     font-size: clamp(2.2rem, 7vw, 4.2rem);
+  }
+
+  .centre-title--lobby {
+    max-width: 24rem;
+    font-size: clamp(2rem, 6vw, 3.25rem);
   }
 
   .centre-lede {
@@ -3584,8 +3600,8 @@
   }
 
   .centre-qr {
-    width: min(15rem, 70vw);
-    margin: 2rem auto 0;
+    width: min(14rem, 64vw);
+    margin: 1.5rem auto 0;
     border-radius: 1rem;
     background: var(--things-cream);
     padding: 0.6rem;

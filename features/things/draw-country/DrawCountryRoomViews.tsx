@@ -9,6 +9,7 @@ import { shareOrCopy } from "@/lib/client/share";
 import { PlayerReadyControl } from "../shared/PlayerReadyControl";
 import { GameActionDialog } from "../shared/GameActionDialog";
 import { MultiplayerLobbyPanel } from "../shared/PixelWorld";
+import { ThingsRoomHeader } from "../shared/RoomHeader";
 import { gamePoolRoomInviteUrl } from "../pool/pool-session.client";
 import { CountryRevealAnalysis } from "./CountryReveal";
 import { DrawCountryResultReport } from "./DrawCountryResultReport";
@@ -16,7 +17,10 @@ import { buildDrawCountryPlayerInviteUrl } from "./draw-country-invite";
 import { drawCountryBrowserKeys } from "./draw-country-keys";
 import { resultReaction } from "./result-copy";
 import { scoreCountryDrawing } from "./scoring";
+import type { MultiplayerConnectionState } from "../shared/multiplayer";
 import type { CountryDrawing, CountryOutline, DrawCountrySnapshot } from "./types";
+
+type RoomConnection = MultiplayerConnectionState | "finished";
 
 export function RoomHeader({
   roomId,
@@ -25,7 +29,7 @@ export function RoomHeader({
   showReport = true,
 }: {
   roomId: string;
-  connection: string;
+  connection: RoomConnection;
   onLeave?: () => Promise<boolean>;
   showReport?: boolean;
 }) {
@@ -34,25 +38,29 @@ export function RoomHeader({
       ? connection
       : undefined;
   return (
-    <header className="mx-auto flex w-full max-w-4xl items-center justify-between px-5 pt-3 font-mono text-xs text-black/45">
-      <Link to="/things/draw-country" className="inline-flex min-h-11 items-center">
-        ← back
-      </Link>
-      <div className="flex min-w-0 items-center gap-2">
-        <span className="min-w-0 truncate text-right">
-          {roomId} · {connection}
-        </span>
-        {showReport ? (
-          <ReportIssueButton
-            type="things_room_issue"
-            payload={{ game: "draw-country", roomId, connectionState: reportConnectionState }}
-            label="something feel off?"
-            className="mt-0"
-          />
-        ) : null}
-      </div>
-      {onLeave ? <DrawCountryLeaveButton onLeave={onLeave} /> : null}
-    </header>
+    <ThingsRoomHeader
+      tone="cream"
+      back={
+        <Link to="/things/draw-country" className="inline-flex min-h-11 items-center">
+          ← back
+        </Link>
+      }
+      roomId={roomId}
+      connection={reportConnectionState}
+      right={
+        <>
+          {showReport ? (
+            <ReportIssueButton
+              type="things_room_issue"
+              payload={{ game: "draw-country", roomId, connectionState: reportConnectionState }}
+              label="report"
+              className="mt-0"
+            />
+          ) : null}
+          {onLeave ? <DrawCountryLeaveButton onLeave={onLeave} /> : null}
+        </>
+      }
+    />
   );
 }
 
@@ -70,7 +78,7 @@ export function RoomLobby({
 }: {
   snapshot: DrawCountrySnapshot;
   playerId: string;
-  connection: string;
+  connection: MultiplayerConnectionState;
   message: string | null;
   onReadyChange: (ready: boolean) => void;
   onStart: () => void;
@@ -122,10 +130,10 @@ export function RoomLobby({
         id="main"
         className="mx-auto flex w-full max-w-xl flex-1 flex-col items-center px-5 pb-12 pt-8 text-center"
       >
-        <p className="font-mono text-micro uppercase tracking-[0.18em] text-black/40">room ready</p>
-        <h1 className="mt-3 font-serif text-5xl font-semibold">Bring everyone in.</h1>
+        <h1 className="font-serif text-4xl font-semibold sm:text-5xl">Ready to draw?</h1>
         <p className="mt-3 max-w-md font-serif text-lg text-black/55">
-          Everyone draws the same {snapshot.roundTotal} countries. Closest border wins each round.
+          Share the code, then tap ready. When everyone is in, the host starts the round: draw each
+          country from memory, then see how close you were to its real border.
         </p>
         <p className="mt-2 font-mono text-micro text-black/40">
           {snapshot.roundTotal} rounds · {snapshot.drawSeconds} seconds each · 100 points per round
@@ -217,7 +225,7 @@ export function RoomReveal({
   playerId: string;
   drawing: CountryDrawing;
   country: CountryOutline | null;
-  connection: string;
+  connection: MultiplayerConnectionState;
   onNext: () => void;
   onLeave: () => Promise<boolean>;
 }) {
@@ -414,7 +422,7 @@ function DrawCountryLeaveButton({ onLeave }: { onLeave: () => Promise<boolean> }
     <>
       <button
         type="button"
-        className="min-h-11 rounded-full border border-black/20 px-4 font-mono text-xs"
+        className="things-room-header-cta"
         onClick={() => setOpen(true)}
         aria-haspopup="dialog"
       >

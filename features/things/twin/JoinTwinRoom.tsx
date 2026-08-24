@@ -6,6 +6,7 @@ import { captureTwinInvite } from "./invite.client";
 import { twinBrowserKeys } from "./twin-keys";
 import { joinTwinRoomFn } from "./twin-room.functions";
 import type { TwinPlayerCredentials } from "./types";
+import { ThingsRoomHeader } from "../shared/RoomHeader";
 
 export function JoinTwinRoom({
   roomId,
@@ -58,12 +59,7 @@ export function JoinTwinRoom({
 
   return (
     <div className="things-game things-game--night twin">
-      <header className="twin-header">
-        <Link to="/things/twin" className="twin-header-back">
-          ← game
-        </Link>
-        <span className="twin-header-meta">{roomId}</span>
-      </header>
+      <ThingsRoomHeader tone="night" back={<Link to="/things/twin">← game</Link>} roomId={roomId} />
       <main id="main" className="twin-join">
         <h1 className="twin-title">Sharp eyes?</h1>
         {loaded && name && !editingName ? (

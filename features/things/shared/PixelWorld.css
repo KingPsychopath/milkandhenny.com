@@ -28,9 +28,9 @@
 }
 
 .pixel-room-lobby {
-  margin-top: 2rem;
+  margin-top: 1.5rem;
   border-block: 1px solid color-mix(in oklab, currentColor 16%, transparent);
-  padding-block: 1rem 1.25rem;
+  padding-block: 0.75rem 1rem;
 }
 
 .multiplayer-lobby-panel-heading,

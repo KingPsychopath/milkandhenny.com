@@ -41,6 +41,7 @@ import { consumeLocationFragment } from "@/lib/client/url-fragment";
 import { buildPartyPlayerInviteUrl, parsePartyPlayerFragment } from "./party-invite";
 import { PlayerReadyControl } from "../shared/PlayerReadyControl";
 import { useRememberedPlayerName } from "../shared/useRememberedPlayerName";
+import { ThingsRoomHeader } from "../shared/RoomHeader";
 
 function joinToken(roomId: string) {
   const key = partyBrowserKeys.invite(roomId);
@@ -441,17 +442,13 @@ function PartyPlayerGame({ credentials }: { credentials: PartyPlayerCredentials 
 
   const canType = snapshot?.phase === "answer" && !player?.locked;
   const connectionLabel =
-    live.connectionState === "connected"
-      ? isHost
-        ? "● hosting & playing"
-        : "● live"
-      : live.connectionState === "offline"
-        ? canType
-          ? "playing offline · draft saved"
-          : "playing offline"
-        : canType
-          ? "reconnecting · draft saved"
-          : "reconnecting";
+    live.connectionState === "offline"
+      ? canType
+        ? "offline · draft saved"
+        : "offline"
+      : canType
+        ? "reconnecting · draft saved"
+        : "reconnecting";
   const addLetter = useCallback(
     (letter: string) => {
       if (!canType) return;
@@ -730,23 +727,35 @@ function PartyPlayerGame({ credentials }: { credentials: PartyPlayerCredentials 
   const ownReveal = round?.answers?.find(({ playerId }) => playerId === credentials.playerId);
   return (
     <div className="things-game things-game--night text-white">
-      <header className="party-player-header flex items-center justify-between gap-4 p-5 font-mono text-xs text-white/55">
-        <button type="button" onClick={() => setEndConfirmationOpen(true)} className="min-h-11">
-          {isHost ? "end party" : "leave game"}
-        </button>
-        <span className="flex items-center gap-4">
-          <button
-            type="button"
-            onClick={toggleSound}
-            aria-pressed={!muted}
-            className="min-h-11"
-            title="Sound on this device only"
-          >
-            {muted ? "♪ off" : "♪ on"}
-          </button>
-          <span aria-live="polite">{connectionLabel}</span>
-        </span>
-      </header>
+      <ThingsRoomHeader
+        tone="night"
+        back={<span className="things-room-header-utility">type together</span>}
+        roomId={credentials.roomId}
+        connection={live.connectionState}
+        connectionLabel={connectionLabel}
+        detail={isHost ? "hosting" : undefined}
+        right={
+          <>
+            <button
+              type="button"
+              onClick={toggleSound}
+              aria-pressed={!muted}
+              className="things-room-header-utility"
+              title="Sound on this device only"
+            >
+              {muted ? "♪ off" : "♪ on"}
+            </button>
+            <button
+              type="button"
+              onClick={() => setEndConfirmationOpen(true)}
+              className="things-room-header-cta"
+              aria-haspopup="dialog"
+            >
+              {isHost ? "end party" : "leave game"}
+            </button>
+          </>
+        }
+      />
       {snapshot.phase === "lobby" ? (
         <button
           type="button"
@@ -1090,14 +1099,12 @@ function HostPlayerLobby({
       className="flex flex-1 flex-col items-center justify-center py-6"
       aria-labelledby="host-lobby-title"
     >
-      <p className="font-mono text-micro uppercase tracking-[0.2em] text-amber-200">
-        you’re hosting & playing
-      </p>
-      <h1 id="host-lobby-title" className="mt-3 font-serif text-5xl font-semibold">
-        Invite your players.
+      <h1 id="host-lobby-title" className="font-serif text-4xl font-semibold sm:text-5xl">
+        Get everyone on a phone.
       </h1>
       <p className="mt-3 max-w-sm font-serif text-lg text-white/55">
-        They can scan this code. You’ll compete from this phone and control when each word starts.
+        Share the code or player link. When everyone has joined and tapped ready, start the first
+        word.
       </p>
       {qr ? (
         <AppImage
