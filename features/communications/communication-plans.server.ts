@@ -217,6 +217,10 @@ function eventStartLocal(event: { startsAt: string; timezone: string }, hoursBef
   return new Date(new Date(event.startsAt).getTime() - hoursBefore * 60 * 60_000);
 }
 
+function hoursUntilEvent(event: { startsAt: string }, from: Date): number {
+  return Math.max(1, Math.ceil((new Date(event.startsAt).getTime() - from.getTime()) / 3_600_000));
+}
+
 async function ensureSurvey(eventSlug: string, eventTitle: string): Promise<string> {
   const slug = eventSlug === "after-school-club-2026-09-01" ? "after-school-club-feedback" : `${eventSlug}-feedback`.slice(0, 80);
   const existing = await query<{ id: string }>(`select id from surveys where slug = $1 limit 1`, [slug]);
@@ -267,7 +271,7 @@ export async function createStarterPlan(eventSlug: string): Promise<Communicatio
       body: "You’re coming to **{{event.title}}** next Tuesday.\n\nNo preparation is required, but if you fancy it, you can:\n\n- [Practise your spelling]({{links.spellingGame}}) with the Milk & Henny spelling game.\n- [Create a short pitch]({{links.pitch}}) about an idea, opinion, product, or theory.\n\nYou do not have to present it. It can simply be something silly or interesting that you make for yourself.\n\nSee you soon,\nMilk & Henny",
       media: [],
       sendAt: prepAt,
-      lateJoinHours: 192,
+      lateJoinHours: hoursUntilEvent(event, prepAt),
       surveyId: null,
     },
     {
@@ -279,7 +283,7 @@ export async function createStarterPlan(eventSlug: string): Promise<Communicatio
       body: "Here is the practical bit for **{{event.title}}**.\n\n**{{event.venue}}**\n{{event.address}}\n\nFrom Woolwich Dockyard Station — 12-minute walk\nFrom Charlton Station — 20-minute walk\nFrom Woolwich Arsenal — 26-minute walk\n\nWhen you reach the roundabout near McDonald’s, follow the signs for Thames Side Studios. You will be there in minutes.\n\nFree parking is available. Follow the milk & henny signs when you arrive.\n\nDoors: **{{event.doors}}**\nStarts: **{{event.time}}**\n\n[Watch the video version]({{links.walkingVideo}}).\n\nIf you get stuck, email [hello@milkandhenny.com]({{links.email}}).",
       media: [{ kind: "gif", url: gif, alt: "A short walking guide arriving at Common Sense Studios", posterUrl: poster }],
       sendAt: practicalAt,
-      lateJoinHours: 72,
+      lateJoinHours: hoursUntilEvent(event, practicalAt),
       surveyId: null,
     },
     {
@@ -291,7 +295,7 @@ export async function createStarterPlan(eventSlug: string): Promise<Communicatio
       body: "Today’s the day.\n\n**{{event.title}}**\n{{event.venue}}\n{{event.address}}\n\nDoors: **{{event.doors}}**\nStarts: **{{event.time}}**\n\nFree parking is available. Follow the milk & henny signs. Keep your ticket email handy. A screenshot is fine.\n\nSee you soon.",
       media: [],
       sendAt: dayOfAt,
-      lateJoinHours: 24,
+      lateJoinHours: hoursUntilEvent(event, dayOfAt),
       surveyId: null,
     },
     {
@@ -433,7 +437,7 @@ async function claimDueStages(): Promise<Array<{ stageId: string; planId: string
     await client.query(
       `update communication_plan_stages
           set status = 'complete', last_error = 'send window passed', updated_at = now()
-        where status = 'scheduled'
+        where status in ('scheduled', 'queued')
           and send_at < now()
           and send_at + (late_join_hours * interval '1 hour') < now()`,
     );
@@ -443,7 +447,7 @@ async function claimDueStages(): Promise<Array<{ stageId: string; planId: string
            from communication_plan_stages s
            join communication_plans p on p.id = s.plan_id
           where p.status = 'scheduled'
-            and s.status = 'scheduled'
+            and s.status in ('scheduled', 'queued')
             and s.send_at <= now()
             and s.send_at + (s.late_join_hours * interval '1 hour') >= now()
           order by s.send_at, s.position
@@ -511,7 +515,11 @@ export async function expandDueCommunicationStages(request?: Request): Promise<n
     }
     await query(
       `update communication_plan_stages
-          set status = 'queued', recipient_count = $2, queued_count = $3, queued_at = now(), updated_at = now()
+          set status = 'queued',
+              recipient_count = recipient_count + $2,
+              queued_count = queued_count + $3,
+              queued_at = coalesce(queued_at, now()),
+              updated_at = now()
         where id = $1`,
       [stage.id, recipientCount, stageQueued],
     );
