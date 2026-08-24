@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useState } from "react";
+import { type FormEvent, useState } from "react";
 import { SITE_NAME } from "@/lib/shared/config";
 import { buildSeoHead } from "@/lib/shared/seo";
 import {
@@ -31,6 +31,26 @@ function CliAuthPage() {
   const search = Route.useSearch();
   const page = Route.useLoaderData();
   const [pendingAction, setPendingAction] = useState<"sign-in" | "approve" | "deny" | null>(null);
+
+  async function handleApprove(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setPendingAction("approve");
+    try {
+      const result = await approveCliAuth({ data: { requestId: search.request } });
+      if (result.ok) {
+        window.location.assign(result.redirectUri);
+        return;
+      }
+      window.location.assign(
+        `/admin/cli-auth?request=${encodeURIComponent(search.request)}&auth=${result.reason}`,
+      );
+    } catch {
+      setPendingAction(null);
+      window.location.assign(
+        `/admin/cli-auth?request=${encodeURIComponent(search.request)}&auth=expired`,
+      );
+    }
+  }
 
   if (!page.valid) {
     return (
@@ -120,9 +140,8 @@ function CliAuthPage() {
         </div>
 
         <form
-          action={approveCliAuth.url}
           method="post"
-          onSubmit={() => setPendingAction("approve")}
+          onSubmit={handleApprove}
         >
           <input type="hidden" name="request" value={search.request} />
           <button

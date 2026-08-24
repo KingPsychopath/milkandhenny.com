@@ -45,20 +45,14 @@ export const signInAdminForCli = createServerFn({ method: "POST" })
   });
 
 export const approveCliAuth = createServerFn({ method: "POST" })
-  .validator(requestIdFromForm)
+  .validator((data: { requestId: string }) => data)
   .handler(async ({ data }) => {
     const auth = await authenticateRequest(getRequest(), "admin");
-    if (!auth.ok) {
-      throw redirect({
-        href: `/admin/cli-auth?request=${encodeURIComponent(data.requestId)}&auth=required`,
-      });
-    }
+    if (!auth.ok) return { ok: false as const, reason: "required" as const };
     const result = await approveCliAuthorization(data.requestId);
-    throw redirect({
-      href:
-        result?.redirectUri ??
-        `/admin/cli-auth?request=${encodeURIComponent(data.requestId)}&auth=expired`,
-    });
+    return result
+      ? { ok: true as const, redirectUri: result.redirectUri }
+      : { ok: false as const, reason: "expired" as const };
   });
 
 export const denyCliAuth = createServerFn({ method: "POST" })

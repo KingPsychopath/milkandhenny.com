@@ -11,11 +11,13 @@ import { getOfflineThingByPath, type OfflineThingSlug } from "@/features/things/
 
 export function OfflinePlatform() {
   const pathname = useRouterState({ select: (state) => state.location.pathname });
+  const isCliAuth = pathname === "/admin/cli-auth";
   const updateState = useSiteUpdateState();
   const safeToReload = useIsUpdateReloadSafe();
   const [dismissed, setDismissed] = useState(false);
 
   useEffect(() => {
+    if (isCliAuth) return;
     void registerOfflinePlatform();
     const match = getOfflineThingByPath(pathname);
     if (match) {
@@ -24,7 +26,7 @@ export function OfflinePlatform() {
         refresh: slug === "pitches" && pathname !== match[1].entryPath,
       });
     }
-  }, [pathname]);
+  }, [isCliAuth, pathname]);
 
   useEffect(() => {
     if (updateState === "ready" || updateState === "activating" || updateState === "failed") {
@@ -36,7 +38,7 @@ export function OfflinePlatform() {
     return () => window.clearTimeout(timeout);
   }, [updateState]);
 
-  if (updateState === "idle" || dismissed) return null;
+  if (isCliAuth || updateState === "idle" || dismissed) return null;
 
   const activating = updateState === "activating";
   const updated = updateState === "updated";
