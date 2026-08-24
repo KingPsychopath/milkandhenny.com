@@ -11,6 +11,7 @@ import { EventsPanel } from "./components/EventsPanel";
 import { PitchesPanel } from "./components/PitchesPanel";
 import { GamePoolsPanel } from "./components/GamePoolsPanel";
 import { BestDressedPanel } from "./components/BestDressedPanel";
+import { AlbumManagerPanel } from "./components/AlbumManagerPanel";
 import { AdminOverviewPanel } from "./components/AdminOverviewPanel";
 import { SystemHealthPanel } from "./components/SystemHealthPanel";
 import { AdminSectionNav, type AdminSection } from "./components/AdminSectionNav";
@@ -118,16 +119,6 @@ type WordMediaOrphanSummary = {
   orphanObjects: number;
   orphanBytes: number;
   orphans: WordMediaOrphanFolder[];
-};
-
-type AdminAlbum = {
-  slug: string;
-  title: string;
-  date: string;
-  description?: string;
-  cover: string;
-  photoCount: number;
-  photos: string[];
 };
 
 type AlbumValidationIssue = {
@@ -264,13 +255,6 @@ export function AdminDashboard({
   const [auditLoading, setAuditLoading] = useState(false);
   const [auditView, setAuditView] = useState<AuditView>("all");
   const [showAllBrokenRefs, setShowAllBrokenRefs] = useState(false);
-  const [albums, setAlbums] = useState<AdminAlbum[]>([]);
-  const [albumsLoading, setAlbumsLoading] = useState(false);
-  const [albumQuery, setAlbumQuery] = useState("");
-  const [showAllAlbums, setShowAllAlbums] = useState(false);
-  const [expandedAlbumSlug, setExpandedAlbumSlug] = useState<string | null>(null);
-  const [showAllPhotosByAlbum, setShowAllPhotosByAlbum] = useState<Record<string, boolean>>({});
-  const [albumActionLoading, setAlbumActionLoading] = useState<string | null>(null);
   const [transfers, setTransfers] = useState<TransferSummary[]>([]);
   const [transfersLoading, setTransfersLoading] = useState(false);
   const [transferMediaStats, setTransferMediaStats] = useState<TransferMediaAdminStats | null>(
@@ -368,28 +352,6 @@ export function AdminDashboard({
   useEffect(() => {
     if (view === "overview" || view === "system") void refreshDashboard();
   }, [refreshDashboard, view]);
-
-  const loadAlbums = useCallback(async () => {
-    setAlbumsLoading(true);
-    setErrorMessage("");
-    try {
-      const res = await authFetch("/api/admin/albums");
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        throw new Error((data.error as string) || "Failed to load albums");
-      }
-      setAlbums((data.albums as AdminAlbum[]) ?? []);
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : "Failed to load albums";
-      setErrorMessage(msg);
-    } finally {
-      setAlbumsLoading(false);
-    }
-  }, [authFetch]);
-
-  useEffect(() => {
-    if (view === "content") void loadAlbums();
-  }, [loadAlbums, view]);
 
   const loadTransfers = useCallback(async () => {
     setTransfersLoading(true);
@@ -510,103 +472,6 @@ export function AdminDashboard({
       }, 1800);
     } catch {
       setErrorMessage("Clipboard write failed");
-    }
-  };
-
-  const handleDeleteAlbum = async (slug: string, title: string) => {
-    if (
-      !(await confirmAction({
-        eyebrow: "album manager",
-        title: `Delete “${title}”?`,
-        description: "This removes the album manifest and every album file from storage.",
-        confirmLabel: "delete album",
-        intent: "danger",
-      }))
-    ) {
-      return;
-    }
-    setAlbumActionLoading(`album:${slug}`);
-    setErrorMessage("");
-    setStatusMessage("");
-    try {
-      const stepToken = await ensureStepUpToken();
-      if (!stepToken) return;
-      const res = await authFetch(`/api/admin/albums/${encodeURIComponent(slug)}`, {
-        method: "DELETE",
-        headers: withStepUpHeaders(stepToken),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        throw new Error((data.error as string) || "Failed to delete album");
-      }
-      setStatusMessage(`Deleted album "${title}".`);
-      if (expandedAlbumSlug === slug) setExpandedAlbumSlug(null);
-      await Promise.all([loadAlbums(), refreshDashboard()]);
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : "Failed to delete album";
-      setErrorMessage(msg);
-    } finally {
-      setAlbumActionLoading(null);
-    }
-  };
-
-  const handleDeletePhoto = async (slug: string, photoId: string) => {
-    if (
-      !(await confirmAction({
-        eyebrow: "album manager",
-        title: `Delete “${photoId}”?`,
-        description: `This removes every stored variant from “${slug}” and updates its manifest.`,
-        confirmLabel: "delete photo",
-        intent: "danger",
-      }))
-    ) {
-      return;
-    }
-    setAlbumActionLoading(`photo:${slug}:${photoId}`);
-    setErrorMessage("");
-    setStatusMessage("");
-    try {
-      const stepToken = await ensureStepUpToken();
-      if (!stepToken) return;
-      const res = await authFetch(
-        `/api/admin/albums/${encodeURIComponent(slug)}/photos/${encodeURIComponent(photoId)}`,
-        { method: "DELETE", headers: withStepUpHeaders(stepToken) },
-      );
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        throw new Error((data.error as string) || "Failed to delete photo");
-      }
-      setStatusMessage(`Deleted photo "${photoId}" from "${slug}".`);
-      await Promise.all([loadAlbums(), refreshDashboard()]);
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : "Failed to delete photo";
-      setErrorMessage(msg);
-    } finally {
-      setAlbumActionLoading(null);
-    }
-  };
-
-  const handleSetCover = async (slug: string, photoId: string) => {
-    setAlbumActionLoading(`cover:${slug}:${photoId}`);
-    setErrorMessage("");
-    setStatusMessage("");
-    try {
-      const res = await authFetch(`/api/admin/albums/${encodeURIComponent(slug)}/cover`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ photoId }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        throw new Error((data.error as string) || "Failed to set cover");
-      }
-      setStatusMessage(`Set "${photoId}" as cover for "${slug}".`);
-      await Promise.all([loadAlbums(), refreshDashboard()]);
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : "Failed to set cover";
-      setErrorMessage(msg);
-    } finally {
-      setAlbumActionLoading(null);
     }
   };
 
@@ -1073,15 +938,6 @@ export function AdminDashboard({
     }
   };
 
-  const filteredAlbums = useMemo(() => {
-    const q = albumQuery.trim().toLowerCase();
-    if (!q) return albums;
-    return albums.filter(
-      (album) => album.slug.toLowerCase().includes(q) || album.title.toLowerCase().includes(q),
-    );
-  }, [albums, albumQuery]);
-  const visibleAlbums = showAllAlbums ? filteredAlbums : filteredAlbums.slice(0, 12);
-
   const filteredTransfers = useMemo(() => {
     const q = transferQuery.trim().toLowerCase();
     return transfers.filter((transfer) => {
@@ -1410,160 +1266,12 @@ export function AdminDashboard({
               ) : null}
             </div>
 
-            <div id="album-manager" className="border-t theme-border pt-6 space-y-3 scroll-mt-6">
-              <div className="flex items-center justify-between">
-                <p className="font-mono text-xs theme-muted">album manager</p>
-                <button
-                  type="button"
-                  disabled={albumsLoading}
-                  onClick={() => void loadAlbums()}
-                  className="font-mono text-xs theme-muted hover:text-[var(--foreground)] transition-colors disabled:opacity-50"
-                  title="Refreshes the album list used for delete/drill-down actions."
-                >
-                  {albumsLoading ? "refreshing..." : "refresh albums"}
-                </button>
-              </div>
-              <details className="border theme-border rounded-md p-3">
-                <summary className="cursor-pointer select-none list-none font-mono text-xs theme-muted">
-                  about album edits (persistence)
-                </summary>
-                <div className="mt-2 space-y-2">
-                  <p className="font-mono text-xs theme-muted">
-                    These actions edit `content/albums/*.json` on the server runtime. Container
-                    filesystems are normally ephemeral, so edits may be blocked or disappear after a
-                    redeploy. Commit the JSON changes to git before treating them as durable.
-                  </p>
-                  <p className="font-mono text-xs theme-muted">
-                    For durable changes, prefer the CLI (`pnpm cli`) + a git commit.
-                  </p>
-                </div>
-              </details>
-              <input
-                type="text"
-                value={albumQuery}
-                onChange={(e) => {
-                  setAlbumQuery(e.target.value);
-                  setShowAllAlbums(false);
-                }}
-                placeholder="filter albums by title or slug"
-                className="w-full bg-transparent border-b border-[var(--stone-200)] focus:border-[var(--foreground)] outline-none font-mono text-xs py-2 transition-colors placeholder:text-[var(--stone-400)]"
-              />
-              {filteredAlbums.length === 0 && !albumsLoading ? (
-                <p className="font-mono text-xs theme-muted">No albums found.</p>
-              ) : null}
-              <div className="space-y-2">
-                {visibleAlbums.map((album) => (
-                  <div key={album.slug} className="border theme-border rounded-md p-3">
-                    <div className="flex items-center justify-between gap-3">
-                      <div className="min-w-0">
-                        <p className="font-mono text-sm truncate">{album.title}</p>
-                        <p className="font-mono text-xs theme-muted truncate">
-                          {album.slug} · {album.photoCount} photos · cover: {album.cover}
-                        </p>
-                      </div>
-                      <div className="flex items-center gap-2 shrink-0">
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setExpandedAlbumSlug((curr) =>
-                              curr === album.slug ? null : album.slug,
-                            )
-                          }
-                          className="font-mono text-xs theme-muted hover:text-[var(--foreground)] transition-colors"
-                        >
-                          {expandedAlbumSlug === album.slug ? "hide photos" : "manage photos"}
-                        </button>
-                        <button
-                          type="button"
-                          disabled={albumActionLoading === `album:${album.slug}`}
-                          onClick={() => void handleDeleteAlbum(album.slug, album.title)}
-                          className="font-mono text-xs text-[var(--prose-hashtag)] hover:opacity-80 transition-opacity disabled:opacity-50"
-                          title="Deletes this entire album and all associated files."
-                        >
-                          {albumActionLoading === `album:${album.slug}`
-                            ? "deleting..."
-                            : "delete album"}
-                        </button>
-                      </div>
-                    </div>
-                    {expandedAlbumSlug === album.slug ? (
-                      <div className="mt-3 pt-3 border-t theme-border max-h-56 overflow-auto">
-                        <ul className="space-y-2">
-                          {(showAllPhotosByAlbum[album.slug]
-                            ? album.photos
-                            : album.photos.slice(0, 40)
-                          ).map((photoId) => (
-                            <li
-                              key={`${album.slug}-${photoId}`}
-                              className="flex items-center justify-between gap-3"
-                            >
-                              <span className="font-mono text-xs truncate">
-                                {photoId}
-                                {album.cover === photoId ? " · cover" : ""}
-                              </span>
-                              <div className="flex items-center gap-2 shrink-0">
-                                <button
-                                  type="button"
-                                  disabled={
-                                    album.cover === photoId ||
-                                    albumActionLoading === `cover:${album.slug}:${photoId}`
-                                  }
-                                  onClick={() => void handleSetCover(album.slug, photoId)}
-                                  className="font-mono text-xs theme-muted hover:text-[var(--foreground)] transition-colors disabled:opacity-50"
-                                  title="Set this photo as the album cover in the manifest."
-                                >
-                                  {albumActionLoading === `cover:${album.slug}:${photoId}`
-                                    ? "setting..."
-                                    : "set cover"}
-                                </button>
-                                <button
-                                  type="button"
-                                  disabled={albumActionLoading === `photo:${album.slug}:${photoId}`}
-                                  onClick={() => void handleDeletePhoto(album.slug, photoId)}
-                                  className="font-mono text-xs text-[var(--prose-hashtag)] hover:opacity-80 transition-opacity disabled:opacity-50"
-                                  title="Deletes this photo's thumb/full/original/og files and updates the album manifest."
-                                >
-                                  {albumActionLoading === `photo:${album.slug}:${photoId}`
-                                    ? "deleting..."
-                                    : "delete photo"}
-                                </button>
-                              </div>
-                            </li>
-                          ))}
-                        </ul>
-                        {album.photos.length > 40 ? (
-                          <button
-                            type="button"
-                            onClick={() =>
-                              setShowAllPhotosByAlbum((prev) => ({
-                                ...prev,
-                                [album.slug]: !prev[album.slug],
-                              }))
-                            }
-                            className="mt-2 font-mono text-xs theme-muted hover:text-[var(--foreground)] transition-colors"
-                          >
-                            {showAllPhotosByAlbum[album.slug]
-                              ? "show fewer photos"
-                              : `show all photos (${album.photos.length})`}
-                          </button>
-                        ) : null}
-                      </div>
-                    ) : null}
-                  </div>
-                ))}
-              </div>
-              {filteredAlbums.length > 12 ? (
-                <button
-                  type="button"
-                  onClick={() => setShowAllAlbums((v) => !v)}
-                  className="font-mono text-xs theme-muted hover:text-[var(--foreground)] transition-colors"
-                >
-                  {showAllAlbums
-                    ? "show fewer albums"
-                    : `show all albums (${filteredAlbums.length})`}
-                </button>
-              ) : null}
-            </div>
+            <AlbumManagerPanel
+              authFetch={authFetch}
+              ensureStepUpToken={ensureStepUpTokenResult}
+              withStepUpHeaders={withStepUpHeaders}
+              onChanged={() => void refreshDashboard()}
+            />
           </>
         ) : null}
 

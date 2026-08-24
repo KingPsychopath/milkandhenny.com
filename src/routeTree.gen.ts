@@ -130,6 +130,8 @@ import { Route as ThingsPitchesPresentRoomIdRouteImport } from './routes/things.
 import { Route as ThingsPitchesRemoteRoomIdRouteImport } from './routes/things.pitches_.remote_.$roomId'
 import { Route as ThingsSpellingPartyRoomIdPresentRouteImport } from './routes/things.spelling-party_.$roomId_.present'
 import { Route as ApiAdminAlbumsSlugCoverRouteRouteImport } from './routes/api/admin/albums/$slug/cover/route'
+import { Route as ApiAdminAlbumsSlugOrderRouteRouteImport } from './routes/api/admin/albums/$slug/order/route'
+import { Route as ApiAdminAlbumsSlugPhotosRouteRouteImport } from './routes/api/admin/albums/$slug/photos/route'
 import { Route as ApiAdminEventsSlugCheckpointsRouteRouteImport } from './routes/api/admin/events/$slug/checkpoints/route'
 import { Route as ApiAdminEventsSlugDropRouteRouteImport } from './routes/api/admin/events/$slug/drop/route'
 import { Route as ApiAdminEventsSlugEmailRouteRouteImport } from './routes/api/admin/events/$slug/email/route'
@@ -143,6 +145,8 @@ import { Route as ApiUploadTransferAppendPresignRouteRouteImport } from './route
 import { Route as ApiWordsSlugMediaFilenameRouteRouteImport } from './routes/api/words/$slug/media/$filename/route'
 import { Route as ApiWordsSlugSharesIdRouteRouteImport } from './routes/api/words/$slug/shares/$id/route'
 import { Route as ApiAdminAlbumsSlugPhotosPhotoIdRouteRouteImport } from './routes/api/admin/albums/$slug/photos/$photoId/route'
+import { Route as ApiAdminAlbumsSlugUploadFinalizeRouteRouteImport } from './routes/api/admin/albums/$slug/upload/finalize/route'
+import { Route as ApiAdminAlbumsSlugUploadPresignRouteRouteImport } from './routes/api/admin/albums/$slug/upload/presign/route'
 import { Route as ApiTransfersIdMediaFileIdVariantRouteRouteImport } from './routes/api/transfers/$id/media/$fileId/$variant/route'
 
 const IndexRoute = IndexRouteImport.update({
@@ -785,6 +789,18 @@ const ApiAdminAlbumsSlugCoverRouteRoute =
     path: '/cover',
     getParentRoute: () => ApiAdminAlbumsSlugRouteRoute,
   } as any)
+const ApiAdminAlbumsSlugOrderRouteRoute =
+  ApiAdminAlbumsSlugOrderRouteRouteImport.update({
+    id: '/order',
+    path: '/order',
+    getParentRoute: () => ApiAdminAlbumsSlugRouteRoute,
+  } as any)
+const ApiAdminAlbumsSlugPhotosRouteRoute =
+  ApiAdminAlbumsSlugPhotosRouteRouteImport.update({
+    id: '/photos',
+    path: '/photos',
+    getParentRoute: () => ApiAdminAlbumsSlugRouteRoute,
+  } as any)
 const ApiAdminEventsSlugCheckpointsRouteRoute =
   ApiAdminEventsSlugCheckpointsRouteRouteImport.update({
     id: '/checkpoints',
@@ -859,8 +875,20 @@ const ApiWordsSlugSharesIdRouteRoute =
   } as any)
 const ApiAdminAlbumsSlugPhotosPhotoIdRouteRoute =
   ApiAdminAlbumsSlugPhotosPhotoIdRouteRouteImport.update({
-    id: '/photos/$photoId',
-    path: '/photos/$photoId',
+    id: '/$photoId',
+    path: '/$photoId',
+    getParentRoute: () => ApiAdminAlbumsSlugPhotosRouteRoute,
+  } as any)
+const ApiAdminAlbumsSlugUploadFinalizeRouteRoute =
+  ApiAdminAlbumsSlugUploadFinalizeRouteRouteImport.update({
+    id: '/upload/finalize',
+    path: '/upload/finalize',
+    getParentRoute: () => ApiAdminAlbumsSlugRouteRoute,
+  } as any)
+const ApiAdminAlbumsSlugUploadPresignRouteRoute =
+  ApiAdminAlbumsSlugUploadPresignRouteRouteImport.update({
+    id: '/upload/presign',
+    path: '/upload/presign',
     getParentRoute: () => ApiAdminAlbumsSlugRouteRoute,
   } as any)
 const ApiTransfersIdMediaFileIdVariantRouteRoute =
@@ -992,6 +1020,8 @@ export interface FileRoutesByFullPath {
   '/things/pitches/remote/$roomId': typeof ThingsPitchesRemoteRoomIdRoute
   '/things/spelling-party/$roomId/present': typeof ThingsSpellingPartyRoomIdPresentRoute
   '/api/admin/albums/$slug/cover': typeof ApiAdminAlbumsSlugCoverRouteRoute
+  '/api/admin/albums/$slug/order': typeof ApiAdminAlbumsSlugOrderRouteRoute
+  '/api/admin/albums/$slug/photos': typeof ApiAdminAlbumsSlugPhotosRouteRouteWithChildren
   '/api/admin/events/$slug/checkpoints': typeof ApiAdminEventsSlugCheckpointsRouteRoute
   '/api/admin/events/$slug/drop': typeof ApiAdminEventsSlugDropRouteRoute
   '/api/admin/events/$slug/email': typeof ApiAdminEventsSlugEmailRouteRoute
@@ -1005,6 +1035,8 @@ export interface FileRoutesByFullPath {
   '/api/words/$slug/media/$filename': typeof ApiWordsSlugMediaFilenameRouteRoute
   '/api/words/$slug/shares/$id': typeof ApiWordsSlugSharesIdRouteRoute
   '/api/admin/albums/$slug/photos/$photoId': typeof ApiAdminAlbumsSlugPhotosPhotoIdRouteRoute
+  '/api/admin/albums/$slug/upload/finalize': typeof ApiAdminAlbumsSlugUploadFinalizeRouteRoute
+  '/api/admin/albums/$slug/upload/presign': typeof ApiAdminAlbumsSlugUploadPresignRouteRoute
   '/api/transfers/$id/media/$fileId/$variant': typeof ApiTransfersIdMediaFileIdVariantRouteRoute
 }
 export interface FileRoutesByTo {
@@ -1129,6 +1161,8 @@ export interface FileRoutesByTo {
   '/things/pitches/remote/$roomId': typeof ThingsPitchesRemoteRoomIdRoute
   '/things/spelling-party/$roomId/present': typeof ThingsSpellingPartyRoomIdPresentRoute
   '/api/admin/albums/$slug/cover': typeof ApiAdminAlbumsSlugCoverRouteRoute
+  '/api/admin/albums/$slug/order': typeof ApiAdminAlbumsSlugOrderRouteRoute
+  '/api/admin/albums/$slug/photos': typeof ApiAdminAlbumsSlugPhotosRouteRouteWithChildren
   '/api/admin/events/$slug/checkpoints': typeof ApiAdminEventsSlugCheckpointsRouteRoute
   '/api/admin/events/$slug/drop': typeof ApiAdminEventsSlugDropRouteRoute
   '/api/admin/events/$slug/email': typeof ApiAdminEventsSlugEmailRouteRoute
@@ -1142,6 +1176,8 @@ export interface FileRoutesByTo {
   '/api/words/$slug/media/$filename': typeof ApiWordsSlugMediaFilenameRouteRoute
   '/api/words/$slug/shares/$id': typeof ApiWordsSlugSharesIdRouteRoute
   '/api/admin/albums/$slug/photos/$photoId': typeof ApiAdminAlbumsSlugPhotosPhotoIdRouteRoute
+  '/api/admin/albums/$slug/upload/finalize': typeof ApiAdminAlbumsSlugUploadFinalizeRouteRoute
+  '/api/admin/albums/$slug/upload/presign': typeof ApiAdminAlbumsSlugUploadPresignRouteRoute
   '/api/transfers/$id/media/$fileId/$variant': typeof ApiTransfersIdMediaFileIdVariantRouteRoute
 }
 export interface FileRoutesById {
@@ -1267,6 +1303,8 @@ export interface FileRoutesById {
   '/things/pitches_/remote_/$roomId': typeof ThingsPitchesRemoteRoomIdRoute
   '/things/spelling-party_/$roomId_/present': typeof ThingsSpellingPartyRoomIdPresentRoute
   '/api/admin/albums/$slug/cover': typeof ApiAdminAlbumsSlugCoverRouteRoute
+  '/api/admin/albums/$slug/order': typeof ApiAdminAlbumsSlugOrderRouteRoute
+  '/api/admin/albums/$slug/photos': typeof ApiAdminAlbumsSlugPhotosRouteRouteWithChildren
   '/api/admin/events/$slug/checkpoints': typeof ApiAdminEventsSlugCheckpointsRouteRoute
   '/api/admin/events/$slug/drop': typeof ApiAdminEventsSlugDropRouteRoute
   '/api/admin/events/$slug/email': typeof ApiAdminEventsSlugEmailRouteRoute
@@ -1280,6 +1318,8 @@ export interface FileRoutesById {
   '/api/words/$slug/media/$filename': typeof ApiWordsSlugMediaFilenameRouteRoute
   '/api/words/$slug/shares/$id': typeof ApiWordsSlugSharesIdRouteRoute
   '/api/admin/albums/$slug/photos/$photoId': typeof ApiAdminAlbumsSlugPhotosPhotoIdRouteRoute
+  '/api/admin/albums/$slug/upload/finalize': typeof ApiAdminAlbumsSlugUploadFinalizeRouteRoute
+  '/api/admin/albums/$slug/upload/presign': typeof ApiAdminAlbumsSlugUploadPresignRouteRoute
   '/api/transfers/$id/media/$fileId/$variant': typeof ApiTransfersIdMediaFileIdVariantRouteRoute
 }
 export interface FileRouteTypes {
@@ -1406,6 +1446,8 @@ export interface FileRouteTypes {
     | '/things/pitches/remote/$roomId'
     | '/things/spelling-party/$roomId/present'
     | '/api/admin/albums/$slug/cover'
+    | '/api/admin/albums/$slug/order'
+    | '/api/admin/albums/$slug/photos'
     | '/api/admin/events/$slug/checkpoints'
     | '/api/admin/events/$slug/drop'
     | '/api/admin/events/$slug/email'
@@ -1419,6 +1461,8 @@ export interface FileRouteTypes {
     | '/api/words/$slug/media/$filename'
     | '/api/words/$slug/shares/$id'
     | '/api/admin/albums/$slug/photos/$photoId'
+    | '/api/admin/albums/$slug/upload/finalize'
+    | '/api/admin/albums/$slug/upload/presign'
     | '/api/transfers/$id/media/$fileId/$variant'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -1543,6 +1587,8 @@ export interface FileRouteTypes {
     | '/things/pitches/remote/$roomId'
     | '/things/spelling-party/$roomId/present'
     | '/api/admin/albums/$slug/cover'
+    | '/api/admin/albums/$slug/order'
+    | '/api/admin/albums/$slug/photos'
     | '/api/admin/events/$slug/checkpoints'
     | '/api/admin/events/$slug/drop'
     | '/api/admin/events/$slug/email'
@@ -1556,6 +1602,8 @@ export interface FileRouteTypes {
     | '/api/words/$slug/media/$filename'
     | '/api/words/$slug/shares/$id'
     | '/api/admin/albums/$slug/photos/$photoId'
+    | '/api/admin/albums/$slug/upload/finalize'
+    | '/api/admin/albums/$slug/upload/presign'
     | '/api/transfers/$id/media/$fileId/$variant'
   id:
     | '__root__'
@@ -1680,6 +1728,8 @@ export interface FileRouteTypes {
     | '/things/pitches_/remote_/$roomId'
     | '/things/spelling-party_/$roomId_/present'
     | '/api/admin/albums/$slug/cover'
+    | '/api/admin/albums/$slug/order'
+    | '/api/admin/albums/$slug/photos'
     | '/api/admin/events/$slug/checkpoints'
     | '/api/admin/events/$slug/drop'
     | '/api/admin/events/$slug/email'
@@ -1693,6 +1743,8 @@ export interface FileRouteTypes {
     | '/api/words/$slug/media/$filename'
     | '/api/words/$slug/shares/$id'
     | '/api/admin/albums/$slug/photos/$photoId'
+    | '/api/admin/albums/$slug/upload/finalize'
+    | '/api/admin/albums/$slug/upload/presign'
     | '/api/transfers/$id/media/$fileId/$variant'
   fileRoutesById: FileRoutesById
 }
@@ -2622,6 +2674,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiAdminAlbumsSlugCoverRouteRouteImport
       parentRoute: typeof ApiAdminAlbumsSlugRouteRoute
     }
+    '/api/admin/albums/$slug/order': {
+      id: '/api/admin/albums/$slug/order'
+      path: '/order'
+      fullPath: '/api/admin/albums/$slug/order'
+      preLoaderRoute: typeof ApiAdminAlbumsSlugOrderRouteRouteImport
+      parentRoute: typeof ApiAdminAlbumsSlugRouteRoute
+    }
+    '/api/admin/albums/$slug/photos': {
+      id: '/api/admin/albums/$slug/photos'
+      path: '/photos'
+      fullPath: '/api/admin/albums/$slug/photos'
+      preLoaderRoute: typeof ApiAdminAlbumsSlugPhotosRouteRouteImport
+      parentRoute: typeof ApiAdminAlbumsSlugRouteRoute
+    }
     '/api/admin/events/$slug/checkpoints': {
       id: '/api/admin/events/$slug/checkpoints'
       path: '/checkpoints'
@@ -2708,9 +2774,23 @@ declare module '@tanstack/react-router' {
     }
     '/api/admin/albums/$slug/photos/$photoId': {
       id: '/api/admin/albums/$slug/photos/$photoId'
-      path: '/photos/$photoId'
+      path: '/$photoId'
       fullPath: '/api/admin/albums/$slug/photos/$photoId'
       preLoaderRoute: typeof ApiAdminAlbumsSlugPhotosPhotoIdRouteRouteImport
+      parentRoute: typeof ApiAdminAlbumsSlugPhotosRouteRoute
+    }
+    '/api/admin/albums/$slug/upload/finalize': {
+      id: '/api/admin/albums/$slug/upload/finalize'
+      path: '/upload/finalize'
+      fullPath: '/api/admin/albums/$slug/upload/finalize'
+      preLoaderRoute: typeof ApiAdminAlbumsSlugUploadFinalizeRouteRouteImport
+      parentRoute: typeof ApiAdminAlbumsSlugRouteRoute
+    }
+    '/api/admin/albums/$slug/upload/presign': {
+      id: '/api/admin/albums/$slug/upload/presign'
+      path: '/upload/presign'
+      fullPath: '/api/admin/albums/$slug/upload/presign'
+      preLoaderRoute: typeof ApiAdminAlbumsSlugUploadPresignRouteRouteImport
       parentRoute: typeof ApiAdminAlbumsSlugRouteRoute
     }
     '/api/transfers/$id/media/$fileId/$variant': {
@@ -2854,16 +2934,39 @@ const ApiWordsRouteRouteWithChildren = ApiWordsRouteRoute._addFileChildren(
   ApiWordsRouteRouteChildren,
 )
 
+interface ApiAdminAlbumsSlugPhotosRouteRouteChildren {
+  ApiAdminAlbumsSlugPhotosPhotoIdRouteRoute: typeof ApiAdminAlbumsSlugPhotosPhotoIdRouteRoute
+}
+
+const ApiAdminAlbumsSlugPhotosRouteRouteChildren: ApiAdminAlbumsSlugPhotosRouteRouteChildren =
+  {
+    ApiAdminAlbumsSlugPhotosPhotoIdRouteRoute:
+      ApiAdminAlbumsSlugPhotosPhotoIdRouteRoute,
+  }
+
+const ApiAdminAlbumsSlugPhotosRouteRouteWithChildren =
+  ApiAdminAlbumsSlugPhotosRouteRoute._addFileChildren(
+    ApiAdminAlbumsSlugPhotosRouteRouteChildren,
+  )
+
 interface ApiAdminAlbumsSlugRouteRouteChildren {
   ApiAdminAlbumsSlugCoverRouteRoute: typeof ApiAdminAlbumsSlugCoverRouteRoute
-  ApiAdminAlbumsSlugPhotosPhotoIdRouteRoute: typeof ApiAdminAlbumsSlugPhotosPhotoIdRouteRoute
+  ApiAdminAlbumsSlugOrderRouteRoute: typeof ApiAdminAlbumsSlugOrderRouteRoute
+  ApiAdminAlbumsSlugPhotosRouteRoute: typeof ApiAdminAlbumsSlugPhotosRouteRouteWithChildren
+  ApiAdminAlbumsSlugUploadFinalizeRouteRoute: typeof ApiAdminAlbumsSlugUploadFinalizeRouteRoute
+  ApiAdminAlbumsSlugUploadPresignRouteRoute: typeof ApiAdminAlbumsSlugUploadPresignRouteRoute
 }
 
 const ApiAdminAlbumsSlugRouteRouteChildren: ApiAdminAlbumsSlugRouteRouteChildren =
   {
     ApiAdminAlbumsSlugCoverRouteRoute: ApiAdminAlbumsSlugCoverRouteRoute,
-    ApiAdminAlbumsSlugPhotosPhotoIdRouteRoute:
-      ApiAdminAlbumsSlugPhotosPhotoIdRouteRoute,
+    ApiAdminAlbumsSlugOrderRouteRoute: ApiAdminAlbumsSlugOrderRouteRoute,
+    ApiAdminAlbumsSlugPhotosRouteRoute:
+      ApiAdminAlbumsSlugPhotosRouteRouteWithChildren,
+    ApiAdminAlbumsSlugUploadFinalizeRouteRoute:
+      ApiAdminAlbumsSlugUploadFinalizeRouteRoute,
+    ApiAdminAlbumsSlugUploadPresignRouteRoute:
+      ApiAdminAlbumsSlugUploadPresignRouteRoute,
   }
 
 const ApiAdminAlbumsSlugRouteRouteWithChildren =

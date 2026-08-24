@@ -1,53 +1,25 @@
-import fs from "fs";
-import path from "path";
-
-const ALBUMS_DIR = path.join(process.cwd(), "content/albums");
-const SAFE_ALBUM_SLUG = /^[a-z0-9-]+$/;
-
 import { isValidFocalPreset } from "./focal";
 import type { Album } from "./albums";
+import { isSafeAlbumSlug, listAlbumManifests, readAlbumManifest } from "./album-repository.server";
 
 /** Read a single album by slug */
-function getAlbumBySlug(slug: string): Album | null {
-  if (!SAFE_ALBUM_SLUG.test(slug)) return null;
-  const filePath = path.join(ALBUMS_DIR, `${slug}.json`);
-  if (!fs.existsSync(filePath)) return null;
-
-  let data: Omit<Album, "slug">;
-  try {
-    const raw = fs.readFileSync(filePath, "utf-8");
-    data = JSON.parse(raw) as Omit<Album, "slug">;
-  } catch {
-    return null;
-  }
-
-  return { slug, ...data };
+async function getAlbumBySlug(slug: string): Promise<Album | null> {
+  if (!isSafeAlbumSlug(slug)) return null;
+  const album = await readAlbumManifest(slug);
+  return album && album.status !== "draft" && album.photos.length > 0 ? album : null;
 }
 
 /** Get all albums sorted by date (newest first) */
-function getAllAlbums(): Album[] {
-  if (!fs.existsSync(ALBUMS_DIR)) return [];
-
-  const files = fs.readdirSync(ALBUMS_DIR).filter((f) => f.endsWith(".json"));
-
-  const albums = files
-    .map((file) => {
-      const slug = file.replace(/\.json$/, "");
-      return getAlbumBySlug(slug);
-    })
-    .filter((a): a is Album => a !== null);
-
+async function getAllAlbums(): Promise<Album[]> {
+  const albums = (await listAlbumManifests()).filter(
+    (album) => album.status !== "draft" && album.photos.length > 0,
+  );
   return albums.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 }
 
 /** Get all album slugs for static generation */
-function getAllAlbumSlugs(): string[] {
-  if (!fs.existsSync(ALBUMS_DIR)) return [];
-
-  return fs
-    .readdirSync(ALBUMS_DIR)
-    .filter((f) => f.endsWith(".json"))
-    .map((f) => f.replace(/\.json$/, ""));
+async function getAllAlbumSlugs(): Promise<string[]> {
+  return (await getAllAlbums()).map((album) => album.slug);
 }
 
 /** Validation: focal presets and autoFocal ranges. Returns list of error messages. */
@@ -123,19 +95,14 @@ function validateAlbum(album: Album): string[] {
 }
 
 /** Run validation on all albums. Returns per-slug errors for CI. */
-function validateAllAlbums(): { slug: string; errors: string[] }[] {
-  const slugs = getAllAlbumSlugs();
+async function validateAllAlbums(): Promise<{ slug: string; errors: string[] }[]> {
+  const albums = await getAllAlbums();
   const results: { slug: string; errors: string[] }[] = [];
 
-  for (const slug of slugs) {
-    const album = getAlbumBySlug(slug);
-    if (!album) {
-      results.push({ slug, errors: ["Failed to load album"] });
-      continue;
-    }
+  for (const album of albums) {
     const errors = validateAlbum(album);
     if (errors.length > 0) {
-      results.push({ slug, errors });
+      results.push({ slug: album.slug, errors });
     }
   }
 

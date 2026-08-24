@@ -522,7 +522,7 @@ export function AlbumGallery({ albumSlug, albumTitle, photos }: AlbumGalleryProp
             key={photo.id}
             albumSlug={albumSlug}
             photo={photo}
-            alt={`Photo ${index + 1} from ${albumTitle}`}
+            alt={photo.alt ?? `Photo ${index + 1} from ${albumTitle}`}
             priority={index === 0}
             selectable={selectable}
             selected={selected.has(photo.id)}

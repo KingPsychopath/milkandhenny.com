@@ -9,8 +9,8 @@ import { Breadcrumbs } from "@/components/Breadcrumbs";
 
 const getAlbum = createServerFn({ method: "GET" })
   .validator((data: { album: string }) => data)
-  .handler(({ data }) => {
-    const album = getAlbumBySlug(data.album);
+  .handler(async ({ data }) => {
+    const album = await getAlbumBySlug(data.album);
     if (!album) throw notFound();
     return album;
   });

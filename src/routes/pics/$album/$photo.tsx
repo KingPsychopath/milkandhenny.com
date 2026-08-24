@@ -16,8 +16,8 @@ import { BrandedImage } from "@/features/media/components/BrandedImage";
 
 const getPhoto = createServerFn({ method: "GET" })
   .validator((data: { album: string; photo: string }) => data)
-  .handler(({ data }) => {
-    const album = getAlbumBySlug(data.album);
+  .handler(async ({ data }) => {
+    const album = await getAlbumBySlug(data.album);
     if (!album) throw notFound();
     const photoIndex = album.photos.findIndex((photo) => photo.id === data.photo);
     if (photoIndex === -1) throw notFound();
@@ -58,7 +58,7 @@ function PhotoPage() {
   const nextPhoto = photoIndex < album.photos.length - 1 ? album.photos[photoIndex + 1] : null;
   const image = getAlbumImageData(albumSlug, photo);
   const nextImage = nextPhoto ? getAlbumImageData(albumSlug, nextPhoto) : undefined;
-  const alt = `Photo ${photoIndex + 1} of ${album.photos.length} from ${album.title}`;
+  const alt = photo.alt ?? `Photo ${photoIndex + 1} of ${album.photos.length} from ${album.title}`;
 
   return (
     <div className="min-h-screen bg-background">
@@ -114,6 +114,14 @@ function PhotoPage() {
               />
             }
           />
+          {photo.title || photo.caption ? (
+            <div className="mx-auto mt-5 max-w-2xl border-t theme-border pt-4">
+              {photo.title ? <h1 className="font-serif text-xl">{photo.title}</h1> : null}
+              {photo.caption ? (
+                <p className="mt-2 font-serif leading-relaxed theme-subtle">{photo.caption}</p>
+              ) : null}
+            </div>
+          ) : null}
         </section>
       </main>
 

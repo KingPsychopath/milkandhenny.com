@@ -30,8 +30,8 @@ async function handleGET(request: Request) {
         hasImage: !!note.image,
       }))
       .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-    const albums = getAllAlbums();
-    const invalidAlbums = validateAllAlbums();
+    const albums = await getAllAlbums();
+    const invalidAlbums = await validateAllAlbums();
 
     const featuredPosts = posts.filter((post) => post.featured).length;
     const postsWithImages = posts.filter((post) => post.hasImage).length;

@@ -120,7 +120,7 @@ export const Route = createFileRoute("/sitemap.xml")({
               .then((result) => result.decks)
               .catch(() => [])
           : [];
-        const albums = getAllAlbums();
+        const albums = await getAllAlbums().catch(() => []);
         const includeMediaImages = hasMediaPublicUrl();
 
         const latestWordsUpdate = latestDate(publicWords.map((word) => word.updatedAt));

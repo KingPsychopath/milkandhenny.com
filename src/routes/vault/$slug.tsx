@@ -34,7 +34,9 @@ const getPrivateWord = createServerFn({ method: "GET" })
 
     const published = meta.publishedAt ?? meta.updatedAt;
     const readingTime = note ? note.meta.readingTime : 0;
-    const renderData = note ? getWordRenderData(slug, note.meta.updatedAt, note.markdown) : null;
+    const renderData = note
+      ? await getWordRenderData(slug, note.meta.updatedAt, note.markdown)
+      : null;
     const headings = renderData?.headings ?? [];
     const albums = renderData?.albums ?? {};
     const imageRefs = note

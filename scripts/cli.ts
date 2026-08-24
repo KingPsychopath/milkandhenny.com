@@ -29,6 +29,11 @@ import {
   backfillResponsiveVariants,
 } from "./album-ops";
 import { validateAllAlbums } from "@/features/media/albums.server";
+import {
+  deleteAlbumManifest,
+  seedAlbumManifestsFromLocal,
+  writeAlbumManifest,
+} from "@/features/media/album-repository.server";
 import { BASE_URL } from "@/lib/shared/config";
 import { buildTransferUrl } from "@/features/transfers/routes";
 import { FOCAL_PRESETS, resolveFocalPreset, FOCAL_SHORTHAND } from "@/features/media/focal";
@@ -493,6 +498,7 @@ async function cmdAlbumsUpload(opts: {
     const result = await createAlbum(opts, (msg) => progress(msg));
     jsonPath = result.jsonPath;
     results = result.results;
+    await writeAlbumManifest({ slug: opts.slug, ...result.album, status: "published" });
   } catch (error) {
     console.log();
     log(yellow("Album upload interrupted. Rerun the same albums upload command to auto-resume."));
@@ -522,6 +528,7 @@ async function cmdAlbumsUpdate(
 ) {
   const updated = updateAlbumMeta(slug, updates);
   if (!updated) throw new Error(`Album "${slug}" not found.`);
+  await writeAlbumManifest({ slug, ...updated, status: "published" });
 
   heading("Updated");
   log(`${dim("Title:")}       ${updated.title}`);
@@ -569,6 +576,7 @@ async function cmdAlbumsBackfillOg(
   }
 
   const result = await backfillOgVariants((msg) => progress(msg), { force, strategy });
+  await seedAlbumManifestsFromLocal();
 
   console.log();
   log(green(`✓ Processed: ${result.processed}`));
@@ -590,6 +598,7 @@ async function cmdAlbumsBackfillImages(skipConfirm = false, force = false) {
     return;
   }
   const result = await backfillResponsiveVariants((msg) => progress(msg), { force });
+  await seedAlbumManifestsFromLocal();
   console.log();
   log(green(`✓ Processed: ${result.processed}`));
   if (result.skipped) log(dim(`  Skipped: ${result.skipped}`));
@@ -614,6 +623,7 @@ async function cmdAlbumsDelete(slug: string) {
   }
 
   const result = await deleteAlbum(slug, (msg) => progress(msg));
+  await deleteAlbumManifest(slug);
 
   console.log();
   log(green(`✓ Deleted ${result.deletedFiles} files from R2`));
@@ -623,8 +633,8 @@ async function cmdAlbumsDelete(slug: string) {
 }
 
 async function cmdAlbumsValidate() {
-  heading("Validate album JSON");
-  const results = validateAllAlbums();
+  heading("Validate album manifests");
+  const results = await validateAllAlbums();
   if (results.length === 0) {
     log(green("✓ All albums valid."));
     console.log();
@@ -638,13 +648,16 @@ async function cmdAlbumsValidate() {
     console.log();
   }
   log(red(`✗ ${results.length} album(s) have validation errors.`));
-  log(
-    dim(
-      "Fix focalPoint (use a valid preset) or autoFocal (x, y in 0–100) in content/albums/*.json",
-    ),
-  );
+  log(dim("Fix the reported metadata in the gallery control room or local import manifest."));
   console.log();
   process.exit(1);
+}
+
+async function cmdAlbumsSyncManifests() {
+  heading("Sync album manifests to object storage");
+  const result = await seedAlbumManifestsFromLocal();
+  log(green(`✓ Synced ${result.written} album manifest${result.written === 1 ? "" : "s"}.`));
+  console.log();
 }
 
 async function cmdPhotosList(slug: string) {
@@ -679,6 +692,7 @@ async function cmdPhotosAdd(slug: string, dir: string, rotation?: RotationOverri
   if (rotation) progress(`Rotation override: ${rotation}`);
 
   const { added, album } = await addPhotos(slug, dir, (msg) => progress(msg), rotation);
+  await writeAlbumManifest({ slug, ...album, status: "published" });
 
   console.log();
   if (added.length === 0) {
@@ -716,6 +730,7 @@ async function cmdPhotosDelete(slug: string, photoId: string) {
   }
 
   const result = await deletePhoto(slug, photoId, (msg) => progress(msg));
+  await writeAlbumManifest({ slug, ...result.album, status: "published" });
 
   console.log();
   log(green(`✓ Deleted ${photoId} (${result.deletedKeys.length} files from R2)`));
@@ -726,6 +741,7 @@ async function cmdPhotosDelete(slug: string, photoId: string) {
 
 async function cmdPhotosSetCover(slug: string, photoId: string) {
   const album = setCover(slug, photoId);
+  await writeAlbumManifest({ slug, ...album, status: "published" });
   log(green(`✓ Cover set to "${photoId}" for album "${slug}".`));
   log(dim(`Album: ${album.title}`));
   log(dim("Next: commit the JSON and deploy."));
@@ -739,6 +755,7 @@ async function cmdPhotosSetFocal(
 ) {
   heading(`Set focal point: ${photoId}`);
   const album = await setPhotoFocal(slug, photoId, preset, (msg) => progress(msg));
+  await writeAlbumManifest({ slug, ...album, status: "published" });
   console.log();
   log(green(`✓ Focal set to "${preset}" — OG image regenerated.`));
   log(dim(`Album: ${album.title}`));
@@ -779,6 +796,7 @@ async function cmdPhotosResetFocal(slug: string, photoId?: string, strategy?: De
   heading(photoId ? `Reset focal: ${photoId}` : `Reset focal: all photos in ${slug}`);
   if (strategy) progress(`Using ${strategy} detection strategy`);
   const album = await resetPhotoFocal(slug, photoId, (msg) => progress(msg), strategy);
+  await writeAlbumManifest({ slug, ...album, status: "published" });
   console.log();
   log(
     green(
@@ -2955,7 +2973,8 @@ function showHelp() {
       --force          ${dim("Regenerate all (even existing og/) — use after changing focal points")}
       ${dim("Downloads originals from R2, generates 1200×630 JPGs, uploads to og/)")}
     albums backfill-images ${dim("[--yes] [--force]")} Backfill AVIF/WebP and placeholders
-    albums validate                           Validate album JSON (focal presets, autoFocal 0–100)
+    albums sync-manifests                     Seed durable manifests from content/albums
+    albums validate                           Validate durable album manifests
       ${dim("Exits 1 if any album has invalid data. Use in CI.)")}
 
   ${bold("Photos")}
@@ -3279,7 +3298,7 @@ async function interactiveAlbums() {
       { label: "Update album metadata", detail: "change title, date, description" },
       { label: "Delete album", detail: "remove from R2 and JSON" },
       { label: "Backfill OG images", detail: "generate og/ variants for existing albums" },
-      { label: "Validate album JSON", detail: "check focal presets and autoFocal ranges" },
+      { label: "Validate album manifests", detail: "check image metadata and focal ranges" },
     ]);
 
     switch (choice) {
@@ -4843,6 +4862,8 @@ async function direct() {
               return cmdAlbumsBackfillImages(args.includes("--yes"), args.includes("--force"));
             case "validate":
               return cmdAlbumsValidate();
+            case "sync-manifests":
+              return cmdAlbumsSyncManifests();
             default:
               throw new Error(`Unknown: albums ${subcommand ?? ""}. Run 'pnpm cli help'.`);
           }

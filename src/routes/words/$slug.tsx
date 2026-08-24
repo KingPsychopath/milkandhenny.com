@@ -34,7 +34,7 @@ const getWordPage = createServerFn({ method: "GET" })
     if (!note) throw notFound();
 
     const published = meta.publishedAt ?? meta.updatedAt;
-    const { headings, albums } = getWordRenderData(slug, note.meta.updatedAt, note.markdown);
+    const { headings, albums } = await getWordRenderData(slug, note.meta.updatedAt, note.markdown);
     const imageRefs = [
       ...extractMarkdownImageRefs(note.markdown),
       ...(meta.image ? [meta.image] : []),

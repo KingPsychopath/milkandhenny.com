@@ -89,7 +89,7 @@ async function handleGET(request: Request) {
 }
 
 async function computeContentAudit(): Promise<Record<string, unknown>> {
-  const albumValidation = validateAllAlbums();
+  const albumValidation = await validateAllAlbums();
   const wordSlugs = isWordsEnabled()
     ? (await listWords({ includeNonPublic: true, type: "blog", limit: 2000 })).words.map(
         (n) => n.slug,

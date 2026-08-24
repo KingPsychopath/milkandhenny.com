@@ -3,6 +3,9 @@ import type { ResponsiveImageMetadata } from "./image";
 
 export interface Photo extends ResponsiveImageMetadata {
   id: string;
+  title?: string;
+  alt?: string;
+  caption?: string;
   size?: number;
   takenAt?: string;
   focalPoint?: FocalPreset;
@@ -16,6 +19,8 @@ export interface Album {
   description?: string;
   cover: string;
   photos: Photo[];
+  status?: "draft" | "published";
+  updatedAt?: string;
 }
 
 export type { FocalPreset } from "./focal";

@@ -28,7 +28,7 @@ async function handlePATCH(request: Request, context: RouteContext) {
   }
 
   try {
-    const album = setAlbumCover(slug, body.photoId.trim());
+    const album = await setAlbumCover(slug, body.photoId.trim());
     return Response.json({ success: true, album });
   } catch (error) {
     const msg = error instanceof Error ? error.message : "Failed to set album cover";

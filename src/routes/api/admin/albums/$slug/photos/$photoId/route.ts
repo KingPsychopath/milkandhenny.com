@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { requireAdminStepUp, requireAuth } from "@/features/auth/auth.server";
-import { deleteAlbumPhoto, isSafeAlbumSlug } from "@/features/media/admin-albums";
+import { deleteAlbumPhoto, isSafeAlbumSlug, updateAlbumPhoto } from "@/features/media/admin-albums";
 import { apiErrorFromRequest } from "@/lib/platform/api-error";
 
 type RouteContext = {
@@ -46,10 +46,41 @@ async function handleDELETE(request: Request, context: RouteContext) {
   }
 }
 
+async function handlePATCH(request: Request, context: RouteContext) {
+  const authErr = await requireAuth(request, "admin");
+  if (authErr) return authErr;
+  const { slug, photoId } = await context.params;
+  if (!isSafeAlbumSlug(slug))
+    return Response.json({ error: "Invalid album slug" }, { status: 400 });
+  try {
+    const body = (await request.json()) as Record<string, unknown>;
+    const album = await updateAlbumPhoto(slug, decodeURIComponent(photoId), body);
+    return Response.json({ success: true, album });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Failed to update photo";
+    if (message === "Album not found" || message === "Photo not found in album") {
+      return Response.json({ error: message }, { status: 404 });
+    }
+    if (message === "Invalid focal point")
+      return Response.json({ error: message }, { status: 400 });
+    return apiErrorFromRequest(
+      request,
+      "admin.albums.photo.update",
+      "Failed to update photo",
+      error,
+      {
+        slug,
+        photoId,
+      },
+    );
+  }
+}
+
 export const Route = createFileRoute("/api/admin/albums/$slug/photos/$photoId")({
   server: {
     handlers: {
       DELETE: ({ request, params }) => handleDELETE(request, { params: Promise.resolve(params) }),
+      PATCH: ({ request, params }) => handlePATCH(request, { params: Promise.resolve(params) }),
     },
   },
 });
