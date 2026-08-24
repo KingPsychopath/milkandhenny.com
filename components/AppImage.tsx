@@ -89,6 +89,7 @@ const AppImage = forwardRef<HTMLImageElement, AppImageProps>(function AppImage(
     srcSet,
     className,
     onLoad,
+    onError,
     ...props
   },
   ref,
@@ -115,6 +116,13 @@ const AppImage = forwardRef<HTMLImageElement, AppImageProps>(function AppImage(
           revealImage(event.currentTarget);
         }
         onLoad?.(event);
+      }}
+      onError={(event) => {
+        if (reveal) {
+          delete event.currentTarget.dataset.revealPending;
+          clearRevealTimers(event.currentTarget);
+        }
+        onError?.(event);
       }}
     />
   );
