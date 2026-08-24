@@ -389,7 +389,7 @@ export async function createStarterPlan(eventSlug: string): Promise<Communicatio
   const thankYouAt = localDateAt(event, 1, 10);
   const surveyReminderAt = localDateAt(event, 4, 10);
   const emailMascotBase = `${BASE_URL}/media/email/mascots`;
-  const mediaVersion = "?v=4";
+  const mediaVersion = "?v=5";
   const preparationMascot = `${emailMascotBase}/plant-watering/walking-across.gif${mediaVersion}`;
   const gettingThereMascot = `${emailMascotBase}/walking-to-studio.gif${mediaVersion}`;
   const dayOfMascot = `${emailMascotBase}/today.png${mediaVersion}`;
@@ -406,7 +406,7 @@ export async function createStarterPlan(eventSlug: string): Promise<Communicatio
         {
           kind: "gif",
           url: preparationMascot,
-          alt: "A small pixel character walks over and pours milk into a little amber bottle-tree",
+          alt: "A small pixel character pours milk into a little amber bottle-tree",
         },
       ],
       sendAt: prepAt,
@@ -424,7 +424,7 @@ export async function createStarterPlan(eventSlug: string): Promise<Communicatio
         {
           kind: "gif",
           url: gettingThereMascot,
-          alt: "A small pixel character walks towards a studio flag",
+          alt: "A small pixel character walks towards a studio wayfinding sign",
         },
       ],
       sendAt: practicalAt,
@@ -442,7 +442,7 @@ export async function createStarterPlan(eventSlug: string): Promise<Communicatio
         {
           kind: "image",
           url: dayOfMascot,
-          alt: "A small pixel character arrives at a studio door",
+          alt: "A small pixel character arrives at a small studio entrance",
         },
       ],
       sendAt: dayOfAt,
@@ -460,7 +460,7 @@ export async function createStarterPlan(eventSlug: string): Promise<Communicatio
         {
           kind: "image",
           url: feedbackMascot,
-          alt: "A small pixel character holds a little feedback card",
+          alt: "A small pixel character holds a feedback clipboard and pencil",
         },
       ],
       sendAt: thankYouAt,
