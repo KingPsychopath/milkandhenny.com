@@ -72,6 +72,7 @@ type Stage = {
   status: string;
   recipientCount: number;
   queuedCount: number;
+  lastError: string | null;
   surveyId: string | null;
   delivery: DeliveryCounts;
   linkClicks: LinkMetric[];
@@ -180,6 +181,33 @@ function dateLabel(value: string | null): string {
         timeStyle: "short",
         timeZone: "Europe/London",
       });
+}
+
+function stageHasReachedSendTime(stage: Stage): boolean {
+  if (!stage.sendAt) return false;
+  const sendAt = Date.parse(stage.sendAt);
+  return !Number.isNaN(sendAt) && sendAt <= Date.now();
+}
+
+function stageExpiredWithoutSending(stage: Stage): boolean {
+  return (
+    stage.status === "complete" &&
+    stage.queuedCount === 0 &&
+    stage.lastError === "send window passed"
+  );
+}
+
+function stageNeedsManualSendDecision(stage: Stage): boolean {
+  return (
+    stageExpiredWithoutSending(stage) ||
+    (stageHasReachedSendTime(stage) && (stage.status === "draft" || stage.status === "paused"))
+  );
+}
+
+function canSendStageNow(stage: Stage): boolean {
+  return (
+    stageExpiredWithoutSending(stage) || ["draft", "scheduled", "paused"].includes(stage.status)
+  );
 }
 
 function consentSourceLabel(source: string | null): string {
@@ -479,7 +507,7 @@ export function CommunicationsPanel({
     if (
       action === "schedule-plan" &&
       !window.confirm(
-        "Schedule every stage in this plan? Each stage will fan out at its scheduled time.",
+        "Schedule the future stages in this plan? Past stages stay unsent until you choose send now or set a new time.",
       )
     )
       return;
@@ -528,7 +556,7 @@ export function CommunicationsPanel({
             ]
           : [],
       });
-      onStatus("Stage saved as a draft.");
+      onStatus("Stage saved.");
       setEditingStage(null);
       await load();
     } catch (error) {
@@ -579,13 +607,20 @@ export function CommunicationsPanel({
     }
   };
   const sendStageNow = async (stage: Stage) => {
-    if (!window.confirm(`Send “${stage.subject}” to the current valid ticket holders now?`)) return;
+    if (
+      !window.confirm(
+        `Send “${stage.subject}” to the current valid ticket holders now? This sends only this stage.`,
+      )
+    )
+      return;
     setBusy(true);
     try {
       const data = (await post({ action: "send-stage-now", stageId: stage.id })) as {
         queued?: number;
       };
-      onStatus(`${data.queued || 0} messages queued.`);
+      onStatus(
+        `${data.queued || 0} messages from “${stage.label}” queued. No other stage was sent.`,
+      );
       await load();
     } catch (error) {
       onError(error instanceof Error ? error.message : "Could not send stage");
@@ -1136,8 +1171,16 @@ function EventPlanView(props: {
                     <h4 className="mt-2 font-serif text-2xl">{stage.subject}</h4>
                     <p className="mt-2 font-mono text-xs theme-muted">
                       {stage.sendAt ? dateLabel(stage.sendAt) : "needs a send time"} ·{" "}
-                      {stage.status} · {stage.recipientCount || "recipient count at fan-out"}
+                      {stageNeedsManualSendDecision(stage)
+                        ? "overdue — waiting for your decision"
+                        : stage.status}{" "}
+                      · {stage.recipientCount || "recipient count at fan-out"}
                     </p>
+                    {stageNeedsManualSendDecision(stage) ? (
+                      <p className="mt-2 font-mono text-micro theme-faint">
+                        This did not send automatically. Send it now, or edit the time first.
+                      </p>
+                    ) : null}
                     <p className="mt-2 font-mono text-micro theme-faint">
                       {engagementLabel(stage.delivery, stage.linkClicks)}
                       {linkMetricsLabel(stage.linkClicks)
@@ -1150,10 +1193,16 @@ function EventPlanView(props: {
                     <Button onClick={() => previewStageEmail(stage)} disabled={busy}>
                       preview email
                     </Button>
-                    <Button onClick={() => openStage(stage)}>edit</Button>
-                    {stage.status !== "queued" && stage.status !== "complete" ? (
-                      <Button onClick={() => sendStageNow(stage)} disabled={busy}>
-                        send now
+                    <Button onClick={() => openStage(stage)}>
+                      {stageNeedsManualSendDecision(stage) ? "set a new time" : "edit"}
+                    </Button>
+                    {canSendStageNow(stage) ? (
+                      <Button
+                        primary={stageNeedsManualSendDecision(stage)}
+                        onClick={() => sendStageNow(stage)}
+                        disabled={busy}
+                      >
+                        {stageHasReachedSendTime(stage) ? "send now" : "send early"}
                       </Button>
                     ) : null}
                   </div>

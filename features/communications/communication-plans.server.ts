@@ -34,6 +34,7 @@ export type CommunicationPlanStage = {
   status: string;
   recipientCount: number;
   queuedCount: number;
+  lastError: string | null;
   surveyId: string | null;
   delivery: CommunicationDeliveryCounts;
   linkClicks: CommunicationLinkMetric[];
@@ -137,6 +138,7 @@ function fromStage(row: Record<string, unknown>): CommunicationPlanStage {
     status: String(row.status),
     recipientCount: Number(row.recipient_count) || 0,
     queuedCount: Number(row.queued_count) || 0,
+    lastError: typeof row.last_error === "string" ? row.last_error : null,
     surveyId: typeof row.survey_id === "string" ? row.survey_id : null,
     delivery: deliveryCounts(row.delivery),
     linkClicks: linkMetrics(row.link_clicks),
@@ -162,6 +164,7 @@ async function rowsForPlans(where = "", values: unknown[] = []): Promise<Communi
               'status', s.status,
               'recipient_count', s.recipient_count,
               'queued_count', s.queued_count,
+              'last_error', s.last_error,
               'survey_id', s.survey_id,
               'delivery', jsonb_build_object(
                 'queued', (select count(*) from communication_stage_deliveries d where d.stage_id = s.id and d.status = 'queued'),
@@ -541,12 +544,17 @@ export async function updateCommunicationPlanStage(input: {
     throw new Error("Add a subject, message, and valid send time");
   const media = JSON.stringify(validMedia(input.media));
   const updated = await query<{ template_id: string | null }>(
-    `update communication_plan_stages
+    `update communication_plan_stages s
         set subject = $2, body = $3, media = $4::jsonb, send_at = $5,
-            status = case when status in ('draft', 'scheduled') then 'draft' else status end,
+            status = case
+              when s.status not in ('draft', 'scheduled', 'paused') then s.status
+              when p.status = 'scheduled' and $5 > now() then 'scheduled'
+              else 'draft'
+            end,
             updated_at = now()
-      where id = $1
-      returning template_id`,
+      from communication_plans p
+      where s.id = $1 and p.id = s.plan_id
+      returning s.template_id`,
     [input.id, subject, body, media, sendAt],
   );
   const templateId = updated[0]?.template_id;
@@ -568,7 +576,7 @@ export async function scheduleCommunicationPlan(planId: string): Promise<void> {
   await query(
     `update communication_plan_stages
         set status = 'scheduled', updated_at = now()
-      where plan_id = $1 and status = 'draft' and send_at is not null`,
+      where plan_id = $1 and status = 'draft' and send_at > now()`,
     [planId],
   );
 }
@@ -588,24 +596,8 @@ export async function sendCommunicationStageNow(
   stageId: string,
   request?: Request,
 ): Promise<number> {
-  const rows = await query<{ plan_id: string; event_slug: string }>(
-    `select s.plan_id, p.event_slug
-       from communication_plan_stages s
-       join communication_plans p on p.id = s.plan_id
-      where s.id = $1`,
-    [stageId],
-  );
-  const stage = rows[0];
-  if (!stage) throw new Error("Stage not found");
-  await query(
-    `update communication_plans set status = 'scheduled', updated_at = now() where id = $1 and status in ('draft', 'paused')`,
-    [stage.plan_id],
-  );
-  await query(
-    `update communication_plan_stages set send_at = now(), status = 'scheduled', updated_at = now() where id = $1 and status in ('draft', 'scheduled', 'paused')`,
-    [stageId],
-  );
-  return expandDueCommunicationStages(request);
+  const stage = await claimStageForImmediateSend(stageId);
+  return fanOutClaimedStages([stage], request);
 }
 
 function validTestEmail(value: string): string {
@@ -837,9 +829,53 @@ export async function previewCommunicationStage(
   };
 }
 
-async function claimDueStages(): Promise<
-  Array<{ stageId: string; planId: string; eventSlug: string }>
-> {
+type ClaimedCommunicationStage = { stageId: string; planId: string; eventSlug: string };
+
+async function claimStageForImmediateSend(stageId: string): Promise<ClaimedCommunicationStage> {
+  return transaction(async (client) => {
+    const selected = await client.query<{
+      plan_id: string;
+      event_slug: string;
+      plan_status: string;
+      stage_status: string;
+      queued_count: number;
+      last_error: string | null;
+    }>(
+      `select s.plan_id, p.event_slug, p.status as plan_status, s.status as stage_status,
+              s.queued_count, s.last_error
+         from communication_plan_stages s
+         join communication_plans p on p.id = s.plan_id
+        where s.id = $1
+        for update of s, p`,
+      [stageId],
+    );
+    const stage = selected.rows[0];
+    if (!stage) throw new Error("Stage not found");
+    const expiredWithoutSending =
+      stage.stage_status === "complete" &&
+      stage.queued_count === 0 &&
+      stage.last_error === "send window passed";
+    if (!["draft", "scheduled", "paused"].includes(stage.stage_status) && !expiredWithoutSending) {
+      throw new Error("This stage has already been sent or is being sent");
+    }
+    if (!["draft", "scheduled", "paused"].includes(stage.plan_status)) {
+      throw new Error("This plan can no longer send stages");
+    }
+    await client.query(
+      `update communication_plans set status = 'scheduled', updated_at = now() where id = $1`,
+      [stage.plan_id],
+    );
+    await client.query(
+      `update communication_plan_stages
+          set send_at = now(), status = 'fanout', last_error = null, updated_at = now()
+        where id = $1`,
+      [stageId],
+    );
+    return { stageId, planId: stage.plan_id, eventSlug: stage.event_slug };
+  });
+}
+
+async function claimDueStages(): Promise<ClaimedCommunicationStage[]> {
   return transaction(async (client) => {
     await client.query(
       `update communication_plan_stages
@@ -875,8 +911,10 @@ async function claimDueStages(): Promise<
   });
 }
 
-export async function expandDueCommunicationStages(request?: Request): Promise<number> {
-  const due = await claimDueStages();
+async function fanOutClaimedStages(
+  due: ClaimedCommunicationStage[],
+  request?: Request,
+): Promise<number> {
   let queued = 0;
   await listCommunicationContacts();
   for (const item of due) {
@@ -980,4 +1018,8 @@ export async function expandDueCommunicationStages(request?: Request): Promise<n
     );
   }
   return queued;
+}
+
+export async function expandDueCommunicationStages(request?: Request): Promise<number> {
+  return fanOutClaimedStages(await claimDueStages(), request);
 }
