@@ -6,11 +6,16 @@ import { gamePoolPixelWorldGame } from "./lobby-scene";
 import { assignGamePoolRoomFn, getGamePoolPublicViewFn } from "./pool.functions";
 import {
   adoptGamePoolAssignment,
+  forgetGamePoolRoomMembership,
   gamePoolClientId,
-  gamePoolPlayerPath,
   readActiveGamePoolMembership,
-  releaseGamePoolMembership,
 } from "./pool-session.client";
+import {
+  gamePoolPlayerPath,
+  requestedGamePoolChoice,
+  shouldReplaceExistingGamePoolRoom,
+  shouldReturnToExistingGamePoolRoom,
+} from "./pool-lobby-policy";
 import type { GamePoolPublicView } from "./types";
 import { MULTIPLAYER_REALTIME_LIMITS } from "../shared/multiplayer-realtime";
 import { useMultiplayerWakeSocket } from "../shared/useMultiplayerWakeSocket";
@@ -42,11 +47,11 @@ export function GamePoolEntranceApp({
   const [targetRejected, setTargetRejected] = useState(false);
   const { loaded: nameLoaded, name: playerName, remember, setName } = useRememberedPlayerName(32);
   const autoJoinChecked = useRef(false);
-  const refreshRef = useRef<() => Promise<void>>(async () => undefined);
+  const actionInFlight = useRef(false);
   const rooms = view.rooms ?? [];
   const openRooms = rooms.filter(({ status }) => status === "open");
   const game = view.run?.gameSettings.game;
-  const activeMembership = game ? readActiveGamePoolMembership(game) : null;
+  const activeMembership = game ? readActiveGamePoolMembership(game, token) : null;
   const activeRoomId = activeMembership?.roomId ?? null;
   const activeRoom = activeRoomId ? rooms.find(({ roomId }) => roomId === activeRoomId) : null;
   const requestedRoom = requestedRoomId
@@ -58,11 +63,8 @@ export function GamePoolEntranceApp({
     requestedRoom.playerCount < requestedRoom.capacity,
   );
   const requestedChoice = useMemo(
-    () =>
-      requestedRoomId && requestedRoomAvailable && !targetRejected
-        ? ({ roomId: requestedRoomId } as const)
-        : ("auto" as const),
-    [requestedRoomAvailable, requestedRoomId, targetRejected],
+    () => requestedGamePoolChoice(requestedRoomId, targetRejected),
+    [requestedRoomId, targetRejected],
   );
 
   const refresh = useCallback(async () => {
