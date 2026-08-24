@@ -5,7 +5,6 @@ import {
   GameLaunch,
   GameLaunchButton,
   GameLaunchChoices,
-  GameLaunchMeta,
 } from "../shared/GameLaunch";
 import { RoomJoinControl } from "../shared/RoomJoinControl";
 import { writeExpiringLocalValue } from "../shared/game-storage.client";
@@ -129,7 +128,7 @@ export function CentreApp({ defaultPool }: { defaultPool?: GamePoolDefaultLaunch
           tone="theme"
           eyebrow="trace race · 1–8 people"
           title="First to the middle wins."
-          description="Ready at the start. The maze appears at GO. Find the route before everyone else."
+          description="Find the way to the centre before everyone else. Be fast."
         >
           <div className={`grid gap-3 ${defaultPool ? "sm:grid-cols-2" : ""}`}>
             <GameLaunchButton
@@ -148,11 +147,6 @@ export function CentreApp({ defaultPool }: { defaultPool?: GamePoolDefaultLaunch
               </GamePoolDefaultLaunch>
             ) : null}
           </div>
-          <GameLaunchMeta tone="theme">
-            {defaultPool
-              ? "solo now · or join multiplayer with shared settings"
-              : "ready · 3 · 2 · 1 · trace to the centre"}
-          </GameLaunchMeta>
           <GameLaunchChoices tone="theme">
             <button
               type="button"

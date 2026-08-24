@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useWebHaptics } from "web-haptics/react";
 import { gameBrowserKey } from "../shared/multiplayer-keys";
 import { useGameSound } from "../shared/useGameSound";
+import { GameActionDialog } from "../shared/GameActionDialog";
 import { CentreReplay } from "./CentreReplay";
 import { centreEntrancePoint, generateCentreMaze } from "./centre-generator";
 import { saveSoloCentreReplay, type SoloCentreReplay } from "./centre-replays.client";
@@ -50,6 +51,7 @@ export function SoloCentreGame({
   const [saved, setSaved] = useState<SoloCentreReplay | null>(null);
   const [ghostVisible, setGhostVisible] = useState(Boolean(ghost));
   const [resetNonce, setResetNonce] = useState(0);
+  const [confirmingGiveUp, setConfirmingGiveUp] = useState(false);
   const previousCount = useRef<number | null>(null);
 
   useEffect(() => {
@@ -169,76 +171,94 @@ export function SoloCentreGame({
       : [];
 
   return (
-    <div className="things-game things-game--night centre">
-      <header className="centre-header">
-        <button type="button" onClick={onExit}>
-          ← leave
-        </button>
-        <span>
-          {phase === "racing" ? `${(elapsed / 1_000).toFixed(1)}s` : `difficulty ${difficulty}`}
-        </span>
-      </header>
-      <main id="main" className="centre-race">
-        <div className="centre-race-copy">
-          <p className="centre-eyebrow">outside to centre</p>
-          <h1 className="centre-race-title">
-            {phase === "arming" ? "Find your line." : phase === "countdown" ? "Get set." : "GO"}
-          </h1>
-        </div>
-        <MazeBoard
-          maze={maze}
-          entranceIndex={0}
-          phase={phase}
-          startsAt={startsAt}
-          route={route}
-          routeLayers={ghostLayers}
-          resetNonce={resetNonce}
-          onRouteChange={setRoute}
-          onArmChange={arm}
-          onCollision={() => {
-            void haptics.trigger("nudge");
-            playCentreSound("wall", sound.effects);
-          }}
-          onFinish={finish}
-        />
-        <p id="centre-instructions" className="centre-note centre-note--centre">
-          Tap the start when you’re ready. At GO, drag towards the centre. Lift when you need to,
-          then continue from your route head.
-        </p>
-        <div className="centre-race-controls">
-          {ghost ? (
+    <>
+      <div className="things-game things-game--night centre">
+        <header className="centre-header">
+          <button type="button" onClick={onExit}>
+            ← leave
+          </button>
+          <span>
+            {phase === "racing" ? `${(elapsed / 1_000).toFixed(1)}s` : `difficulty ${difficulty}`}
+          </span>
+        </header>
+        <main id="main" className="centre-race">
+          <div className="centre-race-copy">
+            <p className="centre-eyebrow">outside to centre</p>
+            <h1 className="centre-race-title">
+              {phase === "arming" ? "Find your line." : phase === "countdown" ? "Get set." : "GO"}
+            </h1>
+          </div>
+          <MazeBoard
+            maze={maze}
+            entranceIndex={0}
+            phase={phase}
+            startsAt={startsAt}
+            route={route}
+            routeLayers={ghostLayers}
+            resetNonce={resetNonce}
+            onRouteChange={setRoute}
+            onArmChange={arm}
+            onCollision={() => {
+              void haptics.trigger("nudge");
+              playCentreSound("wall", sound.effects);
+            }}
+            onFinish={finish}
+          />
+          <p id="centre-instructions" className="centre-note centre-note--centre">
+            Tap the start when you’re ready. At GO, drag towards the centre. Lift when you need to,
+            then continue from your route head.
+          </p>
+          <div className="centre-race-controls">
+            {ghost ? (
+              <button
+                type="button"
+                aria-pressed={ghostVisible}
+                onClick={() => setGhostVisible((value) => !value)}
+              >
+                {ghostVisible ? "ghost on" : "ghost off"}
+              </button>
+            ) : null}
             <button
               type="button"
-              aria-pressed={ghostVisible}
-              onClick={() => setGhostVisible((value) => !value)}
+              onClick={() => {
+                const point = { ...centreEntrancePoint(maze, 0), t: Math.max(0, elapsed) };
+                setResetNonce((nonce) => nonce + 1);
+                setRoute((current) => ({ ...current, segments: [...current.segments, [point]] }));
+                void haptics.trigger("medium");
+              }}
+              disabled={phase !== "racing"}
             >
-              {ghostVisible ? "ghost on" : "ghost off"}
+              restart route
             </button>
-          ) : null}
-          <button
-            type="button"
-            onClick={() => {
-              const point = { ...centreEntrancePoint(maze, 0), t: Math.max(0, elapsed) };
-              setResetNonce((nonce) => nonce + 1);
-              setRoute((current) => ({ ...current, segments: [...current.segments, [point]] }));
-              void haptics.trigger("medium");
-            }}
-            disabled={phase !== "racing"}
-          >
-            restart route
-          </button>
-          <button
-            type="button"
-            aria-pressed={sound.effects}
-            onClick={() => {
-              primeCentreAudio();
-              sound.cycle();
-            }}
-          >
-            {sound.effects ? "sound on" : "sound off"}
-          </button>
-        </div>
-      </main>
-    </div>
+            <button type="button" onClick={() => setConfirmingGiveUp(true)}>
+              give up
+            </button>
+            <button
+              type="button"
+              aria-pressed={sound.effects}
+              onClick={() => {
+                primeCentreAudio();
+                sound.cycle();
+              }}
+            >
+              {sound.effects ? "sound on" : "sound off"}
+            </button>
+          </div>
+        </main>
+      </div>
+      {confirmingGiveUp ? (
+        <GameActionDialog
+          tone="dark"
+          eyebrow="give up"
+          title="Leave this maze?"
+          description="Your route will be discarded and you will return to Centre."
+          cancelLabel="keep tracing"
+          confirmLabel="give up"
+          pending={false}
+          onCancel={() => setConfirmingGiveUp(false)}
+          onConfirm={onExit}
+        />
+      ) : null}
+    </>
   );
 }

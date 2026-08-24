@@ -14,6 +14,7 @@ import { isPitchOperationalMode } from "@/features/things/pitches/types";
 import { loadPitchFiles } from "@/features/things/pitches/ui/files.client";
 import { PitchSlideThumbnail } from "@/features/things/pitches/ui/PitchSlideThumbnail";
 import { PitchRemindersPanel } from "./PitchRemindersPanel";
+import { AppSelect } from "@/components/AppSelect";
 
 type AuthFetch = (url: string, options?: RequestInit) => Promise<Response>;
 
@@ -335,19 +336,22 @@ export function PitchesPanel({
             >
               studio operating mode
             </label>
-            <select
+            <AppSelect
               id="pitch-operational-mode"
               value={modeDraft}
-              onChange={(event) => {
-                if (isPitchOperationalMode(event.target.value)) setModeDraft(event.target.value);
+              onValueChange={(value) => {
+                if (isPitchOperationalMode(value)) setModeDraft(value);
               }}
               disabled={!operationalStatus || busy === "operational-mode"}
-              className="mt-2 min-h-11 w-full border theme-border-strong bg-background px-3 font-mono text-sm text-foreground md:max-w-xs"
-            >
-              <option value="enabled">enabled · all features</option>
-              <option value="read-only">read-only · no server saves</option>
-              <option value="off">off · stop public and live access</option>
-            </select>
+              ariaLabel="Studio operating mode"
+              variant="field"
+              className="mt-3 md:max-w-xs"
+              options={[
+                { value: "enabled", label: "enabled · all features" },
+                { value: "read-only", label: "read-only · no server saves" },
+                { value: "off", label: "off · stop public and live access" },
+              ]}
+            />
             <p className="mt-2 max-w-2xl font-mono text-micro leading-relaxed theme-muted">
               {operationalStatus?.message ?? "Loading the current mode…"}
               {operationalStatus && operationalStatus.environmentMode !== "enabled"
