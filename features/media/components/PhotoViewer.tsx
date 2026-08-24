@@ -173,7 +173,7 @@ export function PhotoViewer({
             This keeps the border pixel-aligned with the image under both
             the width constraint and the height constraint. */}
         <div
-          className="relative mx-auto rounded-sm overflow-hidden"
+          className="media-image-placeholder relative mx-auto rounded-sm overflow-hidden"
           style={{
             aspectRatio: `${image.width} / ${image.height}`,
             maxHeight: "80vh",

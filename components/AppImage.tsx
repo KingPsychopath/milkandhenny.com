@@ -24,6 +24,43 @@ function setForwardedRef(ref: ForwardedRef<HTMLImageElement>, node: HTMLImageEle
   else if (ref) ref.current = node;
 }
 
+type RevealTimers = {
+  start: number;
+  clear?: number;
+  shell?: HTMLElement;
+};
+
+const revealTimers = new WeakMap<HTMLImageElement, RevealTimers>();
+
+function clearRevealTimers(node: HTMLImageElement) {
+  const timers = revealTimers.get(node);
+  if (!timers) return;
+  window.clearTimeout(timers.start);
+  if (timers.clear !== undefined) window.clearTimeout(timers.clear);
+  if (timers.shell) delete timers.shell.dataset.revealSweep;
+  revealTimers.delete(node);
+}
+
+function markRevealPending(node: HTMLImageElement) {
+  clearRevealTimers(node);
+  node.dataset.revealPending = "true";
+
+  const shell = node.closest<HTMLElement>("[data-media-placeholder]") ?? undefined;
+  const start = window.setTimeout(() => {
+    if (!node.isConnected || node.dataset.revealPending !== "true") return;
+
+    if (shell) {
+      shell.dataset.revealSweep = "true";
+      const clear = window.setTimeout(() => {
+        delete shell.dataset.revealSweep;
+      }, 1_200);
+      revealTimers.set(node, { start, clear, shell });
+    }
+  }, 600);
+
+  revealTimers.set(node, { start, shell });
+}
+
 function revealImage(node: HTMLImageElement) {
   void node
     .decode()
@@ -32,6 +69,7 @@ function revealImage(node: HTMLImageElement) {
       requestAnimationFrame(() => {
         requestAnimationFrame(() => {
           if (node.isConnected) delete node.dataset.revealPending;
+          clearRevealTimers(node);
         });
       });
     });
@@ -57,7 +95,7 @@ const AppImage = forwardRef<HTMLImageElement, AppImageProps>(function AppImage(
 ) {
   const imageRef = (node: HTMLImageElement | null) => {
     setForwardedRef(ref, node);
-    if (reveal && node && !node.complete) node.dataset.revealPending = "true";
+    if (reveal && node && !node.complete) markRevealPending(node);
   };
 
   const image = (

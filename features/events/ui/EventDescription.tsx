@@ -65,17 +65,21 @@ function eventDescriptionComponents(images: Record<string, ResponsiveImageData>)
       const resolved = image?.src ?? resolveImageSrc(src);
       if (!resolved) return null;
       return (
-        <AppImage
-          src={resolved}
-          srcSet={image?.srcSet}
-          sources={image?.sources}
-          alt={alt ?? ""}
-          width={image?.width}
-          height={image?.height}
-          reveal
-          sizes="(min-width: 672px) 624px, calc(100vw - 3rem)"
+        <span
+          className="media-image-placeholder event-markdown-image"
           style={imagePlaceholderStyle(image?.placeholder)}
-        />
+        >
+          <AppImage
+            src={resolved}
+            srcSet={image?.srcSet}
+            sources={image?.sources}
+            alt={alt ?? ""}
+            width={image?.width}
+            height={image?.height}
+            reveal
+            sizes="(min-width: 672px) 624px, calc(100vw - 3rem)"
+          />
+        </span>
       );
     },
   };

@@ -32,10 +32,11 @@ function ImagePreview({ current }: { current: MediaPreviewItem }) {
   }
 
   return (
-    <div>
+    <div className="media-image-placeholder">
       <AppImage
         src={current.url}
         alt={current.filename}
+        reveal
         className="max-h-[78vh] max-w-full rounded-sm object-contain"
         onError={() => setPreviewError(true)}
       />

@@ -541,7 +541,7 @@ function SingleVisualContent({
         : getTransferPrimaryUrl(transferId, file.id);
 
   return (
-    <div onClick={(e) => e.stopPropagation()}>
+    <div className="media-image-placeholder" onClick={(e) => e.stopPropagation()}>
       <AppImage
         src={imgSrc}
         srcSet={
@@ -2343,49 +2343,49 @@ const VisualCard = memo(function VisualCard({
           />
         </div>
 
-        <div className="absolute inset-0 gallery-placeholder" />
-
-        {hasThumbnail && !errored ? (
-          <AppImage
-            src={thumbUrl}
-            srcSet={
-              thumbUrl === primaryThumbUrl &&
-              file.kind === "image" &&
-              hasProcessedImageVariants(file) &&
-              file.width
-                ? getTransferImageSrcSet(transferId, file.id, file.width)
-                : undefined
-            }
-            alt={file.filename}
-            width={file.width}
-            height={file.height}
-            reveal
-            sizes="(min-width: 768px) 33vw, 50vw"
-            onError={handleVisualError}
-            className="absolute inset-0 h-full w-full object-cover"
-          />
-        ) : errored ? (
-          <BrokenImageFallback filename={file.filename} />
-        ) : (
-          <div className="absolute inset-0 flex flex-col items-center justify-center gap-2">
-            <svg
-              width="32"
-              height="32"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.5"
-              className="theme-muted"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <polygon points="5 3 19 12 5 21 5 3" />
-            </svg>
-            <span className="font-mono text-nano theme-muted tracking-wide truncate max-w-[90%] px-2">
-              {file.filename}
-            </span>
-          </div>
-        )}
+        <div className="media-image-placeholder absolute inset-0 gallery-placeholder">
+          {hasThumbnail && !errored ? (
+            <AppImage
+              src={thumbUrl}
+              srcSet={
+                thumbUrl === primaryThumbUrl &&
+                file.kind === "image" &&
+                hasProcessedImageVariants(file) &&
+                file.width
+                  ? getTransferImageSrcSet(transferId, file.id, file.width)
+                  : undefined
+              }
+              alt={file.filename}
+              width={file.width}
+              height={file.height}
+              reveal
+              sizes="(min-width: 768px) 33vw, 50vw"
+              onError={handleVisualError}
+              className="absolute inset-0 h-full w-full object-cover"
+            />
+          ) : errored ? (
+            <BrokenImageFallback filename={file.filename} />
+          ) : (
+            <div className="absolute inset-0 flex flex-col items-center justify-center gap-2">
+              <svg
+                width="32"
+                height="32"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                className="theme-muted"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <polygon points="5 3 19 12 5 21 5 3" />
+              </svg>
+              <span className="font-mono text-nano theme-muted tracking-wide truncate max-w-[90%] px-2">
+                {file.filename}
+              </span>
+            </div>
+          )}
+        </div>
 
         {/* Video play overlay */}
         {(file.kind === "video" || item.type === "live_photo") && hasThumbnail && (

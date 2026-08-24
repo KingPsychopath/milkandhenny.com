@@ -53,7 +53,7 @@ export const PhotoCard = memo(function PhotoCard({
       <Link
         to="/pics/$album/$photo"
         params={{ album: albumSlug, photo: photo.id }}
-        className="block relative overflow-hidden rounded-sm"
+        className="media-image-placeholder block relative overflow-hidden rounded-sm"
         style={{
           paddingBottom: `${aspectRatio * 100}%`,
           ...imagePlaceholderStyle(photo.placeholder),

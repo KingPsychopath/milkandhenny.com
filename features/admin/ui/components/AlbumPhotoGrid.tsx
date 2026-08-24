@@ -203,8 +203,8 @@ export function AlbumPhotoGrid({
               className={`group relative overflow-hidden rounded-md border p-3 ${selected ? "theme-border-strong" : "theme-border"}`}
             >
               <div
-                className="relative aspect-[3/2] overflow-hidden rounded-sm"
-                style={imagePlaceholderStyle(photo.placeholder, "color")}
+                className="media-image-placeholder relative aspect-[3/2] overflow-hidden rounded-sm"
+                style={imagePlaceholderStyle(photo.placeholder)}
               >
                 <AppImage
                   src={imageUrl}
@@ -212,6 +212,7 @@ export function AlbumPhotoGrid({
                   alt={photo.alt ?? ""}
                   width={photo.width}
                   height={photo.height}
+                  reveal
                   className="h-full w-full object-cover"
                   style={{ objectPosition: focalPosition(photo) }}
                 />

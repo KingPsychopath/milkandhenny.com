@@ -99,7 +99,7 @@ function PicsPage() {
                     className="group block relative overflow-hidden rounded-sm aspect-[4/3]"
                   >
                     <div
-                      className="absolute inset-0 gallery-placeholder overflow-hidden"
+                      className="media-image-placeholder absolute inset-0 gallery-placeholder overflow-hidden"
                       style={imagePlaceholderStyle(cover.placeholder)}
                     >
                       <AppImage

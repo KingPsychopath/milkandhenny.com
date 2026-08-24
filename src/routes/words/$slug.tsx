@@ -227,7 +227,10 @@ function WordSlugPage() {
           </header>
 
           {heroImage ? (
-            <figure className="mb-10" style={imagePlaceholderStyle(heroImageData?.placeholder)}>
+            <figure
+              className="media-image-placeholder mb-10"
+              style={imagePlaceholderStyle(heroImageData?.placeholder)}
+            >
               <AppImage
                 src={heroImage}
                 srcSet={heroImageData?.srcSet}

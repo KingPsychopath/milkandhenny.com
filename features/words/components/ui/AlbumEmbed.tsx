@@ -127,8 +127,8 @@ function AlbumEmbedCompact({ album }: { album: EmbeddedAlbum }) {
         {photos.map((photo, i) => (
           <div
             key={photo.id}
-            className="album-embed-thumb"
-            style={imagePlaceholderStyle(photo.placeholder, "color")}
+            className="media-image-placeholder album-embed-thumb"
+            style={imagePlaceholderStyle(photo.placeholder)}
           >
             <FillThumb
               slug={album.slug}
@@ -180,8 +180,8 @@ function AlbumEmbedMasonry({ album }: { album: EmbeddedAlbum }) {
           return (
             <div
               key={photo.id}
-              className="album-embed-masonry-tile"
-              style={imagePlaceholderStyle(photo.placeholder, "color")}
+              className="media-image-placeholder album-embed-masonry-tile"
+              style={imagePlaceholderStyle(photo.placeholder)}
             >
               <MasonryThumb slug={album.slug} photo={photo} objectPosition={objectPosition} />
               {showOverlay && isLast && (

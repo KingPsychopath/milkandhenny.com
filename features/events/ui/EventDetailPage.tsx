@@ -134,7 +134,7 @@ export function EventDetailPage({
 
         {event.heroImage && (
           <div
-            className="mb-8 overflow-hidden rounded-lg bg-surface"
+            className="media-image-placeholder mb-8 overflow-hidden rounded-lg bg-surface"
             style={imagePlaceholderStyle(heroImage?.placeholder)}
           >
             <AppImage

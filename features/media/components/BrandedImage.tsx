@@ -240,7 +240,7 @@ export function BrandedImage({
             {previewUrl && (
               <>
                 <div
-                  className={`relative rounded-sm overflow-hidden shadow-2xl ${
+                  className={`media-image-placeholder relative rounded-sm overflow-hidden shadow-2xl ${
                     activeFormat === "portrait"
                       ? "max-h-[75vh] aspect-[9/16]"
                       : "max-w-[90vw] sm:max-w-2xl aspect-[1.91/1]"
@@ -251,6 +251,7 @@ export function BrandedImage({
                     alt="Milk & Henny branded frame preview"
                     width={activeFormat === "portrait" ? 1080 : 1200}
                     height={activeFormat === "portrait" ? 1920 : 630}
+                    reveal
                     className="h-full w-full object-contain"
                   />
                 </div>

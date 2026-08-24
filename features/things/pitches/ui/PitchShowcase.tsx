@@ -52,7 +52,7 @@ export function PitchShowcase({
               className="group block min-w-0 border-b theme-border pb-3 hover:opacity-70"
             >
               <div
-                className="aspect-video overflow-hidden bg-surface"
+                className="media-image-placeholder aspect-video overflow-hidden bg-surface"
                 style={imagePlaceholderStyle(pitch.thumbnail?.placeholder)}
               >
                 {pitch.thumbnail ? (
