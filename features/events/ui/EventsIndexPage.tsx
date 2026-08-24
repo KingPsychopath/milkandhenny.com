@@ -175,7 +175,7 @@ export function EventsIndexPage({ upcoming, past }: EventsIndexData) {
           <p className="py-12 theme-muted font-mono text-sm text-center">
             {query
               ? "nothing here matches. try a different search."
-              : "nothing announced yet. something&apos;s always cooking."}
+              : "nothing announced yet. something's always cooking."}
           </p>
         ) : (
           <div>
