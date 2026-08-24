@@ -7,6 +7,7 @@ import { LiarsRoomService } from "../liars/liars-room-service.server";
 import { SameBrainRoomService } from "../same-brain/same-brain-room-service.server";
 import { TwinRoomService } from "../twin/twin-room-service.server";
 import { CentreRoomService } from "../centre/centre-room-service.server";
+import { HotAndColdRoomService } from "../hot-and-cold/hot-and-cold-room-service.server";
 import { MultiplayerTelemetry } from "./multiplayer-telemetry.server";
 import { MultiplayerRealtimeBackplane } from "./multiplayer-realtime-backplane.server";
 import { gameRealtimeChannel } from "./multiplayer-keys";
@@ -21,6 +22,7 @@ const multiplayerLayer = Layer.mergeAll(
   SameBrainRoomService.layer.pipe(Layer.provide(MultiplayerTelemetry.layer)),
   TwinRoomService.layer,
   CentreRoomService.layer,
+  HotAndColdRoomService.layer,
   MultiplayerRealtimeBackplane.layer.pipe(Layer.provide(MultiplayerTelemetry.layer)),
 );
 
@@ -80,7 +82,8 @@ type MultiplayerServices =
   | LiarsRoomService
   | SameBrainRoomService
   | TwinRoomService
-  | CentreRoomService;
+  | CentreRoomService
+  | HotAndColdRoomService;
 
 function currentMultiplayerRuntime() {
   return runtimeHolder[RUNTIME_KEY] as ManagedRuntime.ManagedRuntime<MultiplayerServices, never>;

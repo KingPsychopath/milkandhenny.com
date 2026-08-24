@@ -130,9 +130,18 @@ export type GamePoolAssignment =
       playerId: string;
       playerToken: string;
       snapshot: DrawCountrySnapshot;
+    }
+  | {
+      game: "hot-and-cold";
+      roomId: string;
+      expiresAt: number;
+      playerId: string;
+      playerToken: string;
+      snapshot: HotAndColdSnapshot;
     };
 import type { CentreSnapshot } from "../centre/types";
 import type { DrawCountrySnapshot } from "../draw-country/types";
+import type { HotAndColdSnapshot } from "../hot-and-cold/types";
 import type { LiarsSnapshot } from "../liars/types";
 import type { SameBrainSnapshot } from "../same-brain/types";
 import type { TwinSnapshot } from "../twin/types";

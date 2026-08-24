@@ -14,6 +14,11 @@ import {
   type LiarsGameSettings,
 } from "../liars/settings";
 import {
+  HOT_AND_COLD_GAME_SETTINGS,
+  parseHotAndColdGameSettings,
+  type HotAndColdGameSettings,
+} from "../hot-and-cold/settings";
+import {
   SAME_BRAIN_GAME_SETTINGS,
   parseSameBrainGameSettings,
   type SameBrainGameSettings,
@@ -26,6 +31,7 @@ export const GAME_SETTINGS_GAMES = [
   "centre",
   "twin",
   "draw-country",
+  "hot-and-cold",
 ] as const;
 export type GameSettingsGame = (typeof GAME_SETTINGS_GAMES)[number];
 export type GameSettings =
@@ -33,7 +39,8 @@ export type GameSettings =
   | LiarsGameSettings
   | CentreGameSettings
   | TwinGameSettings
-  | DrawCountryGameSettings;
+  | DrawCountryGameSettings
+  | HotAndColdGameSettings;
 
 export const GAME_SETTINGS_FORMAT = "milk-and-henny/game-settings";
 export const GAME_SETTINGS_SCHEMA_VERSION = 1;
@@ -54,6 +61,7 @@ export function defaultGameSettings(game: GameSettingsGame): GameSettings {
   if (game === "liars") return { ...LIARS_GAME_SETTINGS };
   if (game === "centre") return { ...CENTRE_GAME_SETTINGS };
   if (game === "twin") return { ...TWIN_GAME_SETTINGS };
+  if (game === "hot-and-cold") return { ...HOT_AND_COLD_GAME_SETTINGS };
   return { ...DRAW_COUNTRY_GAME_SETTINGS };
 }
 
@@ -62,6 +70,7 @@ export function parseGameSettings(value: unknown, game: GameSettingsGame): GameS
   if (game === "liars") return parseLiarsGameSettings(value);
   if (game === "centre") return parseCentreGameSettings(value);
   if (game === "twin") return parseTwinGameSettings(value);
+  if (game === "hot-and-cold") return parseHotAndColdGameSettings(value);
   return parseDrawCountryGameSettings(value);
 }
 

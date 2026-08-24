@@ -45,6 +45,7 @@ function visibleOccupants(room: GamePoolRoomSummary): GamePoolPublicOccupant[] {
 }
 
 export function gamePoolPixelWorldGame(document: GameSettingsDocument): PixelWorldGame {
+  if (document.game === "hot-and-cold") return "same-brain";
   if (document.game !== "liars") return document.game;
   const mode = (document.settings as { mode?: unknown }).mode;
   return mode === "imposter" ? "imposter" : "mafia";

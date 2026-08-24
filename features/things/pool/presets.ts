@@ -48,6 +48,12 @@ export const GAME_POOL_DEFAULTS: Record<
     capacity: 16,
     gameSettings: gameSettingsDocument("draw-country"),
   },
+  "hot-and-cold": {
+    label: "hot and cold",
+    targetSize: 6,
+    capacity: 8,
+    gameSettings: gameSettingsDocument("hot-and-cold"),
+  },
 };
 
 export function isGamePoolGame(value: unknown): value is GamePoolGame {

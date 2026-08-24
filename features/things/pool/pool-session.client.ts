@@ -6,6 +6,8 @@ import { drawCountryBrowserKeys } from "../draw-country/draw-country-keys";
 import type { DrawCountryPlayerCredentials } from "../draw-country/types";
 import { liarsBrowserKeys } from "../liars/liars-keys";
 import type { LiarsPlayerCredentials } from "../liars/types";
+import { hotAndColdBrowserKeys } from "../hot-and-cold/hot-and-cold-keys";
+import type { HotAndColdCredentials } from "../hot-and-cold/types";
 import { sameBrainBrowserKeys } from "../same-brain/same-brain-keys";
 import type { SameBrainPlayerCredentials } from "../same-brain/types";
 import { readExpiringLocalValue, writeExpiringLocalValue } from "../shared/game-storage.client";
@@ -119,6 +121,13 @@ export function adoptGamePoolAssignment(
     const credentials: TwinPlayerCredentials = assignment;
     writeExpiringLocalValue(
       twinBrowserKeys.playerSession(assignment.roomId),
+      credentials,
+      assignment.expiresAt,
+    );
+  } else if (assignment.game === "hot-and-cold") {
+    const credentials: HotAndColdCredentials = assignment;
+    writeExpiringLocalValue(
+      hotAndColdBrowserKeys.playerSession(assignment.roomId),
       credentials,
       assignment.expiresAt,
     );

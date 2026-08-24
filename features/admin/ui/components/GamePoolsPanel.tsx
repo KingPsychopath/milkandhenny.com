@@ -204,6 +204,32 @@ function GameSettingsFields({
         )}
       </div>
     );
+  if (settings.game === "hot-and-cold")
+    return (
+      <div className="grid gap-4 sm:grid-cols-3">
+        {numberField("rounds", settings.rounds, 1, 7, (rounds) =>
+          onChange({ ...settings, rounds }),
+        )}
+        {numberField("guesses each", settings.guessesPerPlayer, 2, 10, (guessesPerPlayer) =>
+          onChange({ ...settings, guessesPerPlayer }),
+        )}
+        <label className="font-mono text-xs theme-muted">
+          seconds per turn
+          <AppSelect
+            value={settings.turnSeconds}
+            onValueChange={(value) => onChange({ ...settings, turnSeconds: Number(value) })}
+            options={[0, 10, 15, 20, 30].map((value) => ({
+              value,
+              label: value === 0 ? "no timer" : `${value} seconds`,
+            }))}
+            tone="theme"
+            variant="field"
+            ariaLabel="Seconds per turn"
+            className="mt-2"
+          />
+        </label>
+      </div>
+    );
   return (
     <div className="grid gap-4 sm:grid-cols-2">
       {numberField("seconds to draw", settings.drawSeconds, 15, 90, (drawSeconds) =>

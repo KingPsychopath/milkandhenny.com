@@ -10,7 +10,8 @@ export interface Thing {
     | "liars"
     | "same-brain"
     | "twin"
-    | "centre";
+    | "centre"
+    | "hot-and-cold";
   name: string;
   description: string;
   eyebrow: string;
@@ -23,13 +24,24 @@ export interface Thing {
     | "/things/liars"
     | "/things/same-brain"
     | "/things/twin"
-    | "/things/centre";
+    | "/things/centre"
+    | "/things/hot-and-cold";
   status: "ready";
   mark: { kind: "symbol"; value: string } | { kind: "icon"; value: "brain" | "maze" | "pair" };
   offline: (typeof THING_OFFLINE)[keyof typeof THING_OFFLINE] | null;
 }
 
 export const THINGS = [
+  {
+    slug: "hot-and-cold",
+    name: "hot and cold",
+    description: "Guess the hidden word. Lower numbers take you closer to the heat.",
+    eyebrow: "word hunt · 1–8 people",
+    href: "/things/hot-and-cold",
+    status: "ready",
+    mark: { kind: "symbol", value: "♨" },
+    offline: null,
+  },
   {
     slug: "centre",
     name: "centre",

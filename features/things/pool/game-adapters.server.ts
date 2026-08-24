@@ -5,6 +5,7 @@ import {
   joinDrawCountryRoom,
 } from "../draw-country/draw-country-room.server";
 import { createLiarsRoom, joinLiarsRoom } from "../liars/liars-room.server";
+import { createHotAndColdRoom, joinHotAndColdRoom } from "../hot-and-cold/hot-and-cold-room.server";
 import { createSameBrainRoom, joinSameBrainRoom } from "../same-brain/same-brain-room.server";
 import { createTwinRoom, joinTwinRoom } from "../twin/twin-room.server";
 import { GAME_POOL_DEFAULTS } from "./presets";
@@ -99,6 +100,16 @@ export async function createPoolRoomAndJoin(input: {
     });
     return { assignment: { game: settings.game, ...room }, joinToken: room.joinToken };
   }
+  if (settings.game === "hot-and-cold") {
+    const room = await createHotAndColdRoom({
+      managed: true,
+      hostName: name,
+      rounds: settings.rounds,
+      guessesPerPlayer: settings.guessesPerPlayer,
+      turnSeconds: settings.turnSeconds,
+    });
+    return { assignment: { game: settings.game, ...room }, joinToken: room.joinToken };
+  }
   const room = await createDrawCountryRoom({
     managed: true,
     hostName: name,
@@ -134,6 +145,11 @@ export async function joinPoolRoom(input: {
   }
   if (game === "twin") {
     const joined = await joinTwinRoom({ roomId, joinToken, name });
+    if (!joined.ok) return failure(joined);
+    return { game, ...joined };
+  }
+  if (game === "hot-and-cold") {
+    const joined = await joinHotAndColdRoom({ roomId, joinToken, name });
     if (!joined.ok) return failure(joined);
     return { game, ...joined };
   }
