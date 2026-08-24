@@ -51,14 +51,26 @@ Times are stored UTC and rendered in the venue timezone. Everything under **Wher
 ### Storage
 
 ```text
-event:$id              one key per event
-events:index           sorted set, by startsAt
-ticket:$id             one key per ticket, never TTL'd
-event:$id:tickets      index
-event:$id:redeemed     redemption set
+Postgres
+  events                event records and capacity
+  ticket_types          ticket inventory and sales rules
+  tickets               issued tickets and redemptions
+  checkout_sessions     Stripe idempotency and payment state
+
+Redis
+  authentication, rate limits, room state, wake fan-out, and short-lived indexes
 ```
 
-One key per ticket is not optional. The old guestlist put every guest in a single `guest:list` key and that shape is what produced [the KV read spike](./postmortem-guestlist-kv-read-spike.md). Door scanning is far more read-heavy than that page ever was.
+Postgres is authoritative for events, ticket types, tickets, redemptions, and
+checkout state. Capacity and single admission are enforced by database
+transactions and constraints. Redis remains the source for short-lived
+sessions, rate limits, multiplayer state, and wake delivery; one key per record
+remains the rule for Redis data that is still mutable and independently read.
+
+The old guestlist put every guest in a single `guest:list` key and that shape
+produced [the KV read spike](./postmortem-guestlist-kv-read-spike.md). Door
+scanning is far more read-heavy than that page ever was, so the retired
+collection shape must not return.
 
 ---
 

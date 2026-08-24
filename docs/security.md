@@ -17,7 +17,7 @@ Words do **not** use a global reader env PIN: PIN is configured per share link a
 
 Verify endpoints issue short-lived JWTs (role-based TTLs). The app stores role JWTs in **httpOnly cookies** by default (not raw credentials), so:
 
-- Server Components / Server Actions can authenticate
+- server-rendered routes and server functions can authenticate
 - client code cannot read the JWT (XSS hardening)
 
 Notes:
@@ -119,10 +119,10 @@ pnpm cli events list \
 `--admin-password` remains available, but can expose the password in shell
 history. Prefer `auth login` or a protected environment variable.
 
-Why auth commands are API-backed (not direct KV/R2 writes):
+Why auth commands are API-backed (not direct Redis/R2 writes):
 
 - R2 is not the source of truth for auth sessions/revocation.
-- Direct KV writes from CLI would bypass app-level auth semantics (step-up requirement, token-version invalidation rules, and session policy checks).
+- Direct Redis writes from CLI would bypass app-level auth semantics (step-up requirement, token-version invalidation rules, and session policy checks).
 - Keeping auth commands on app endpoints preserves one source of truth for session behavior and avoids CLI/server drift.
 
 CLI sessions are stored in the same Redis-backed session index as browser
@@ -292,5 +292,5 @@ Each credential pair grants read, write, and delete access to one R2 bucket. Tre
 - **No secrets in code.** Every credential is an env var — rotation is config-only.
 - **No secrets in the client bundle.** `VITE_*` vars contain only public URLs and client configuration, never secrets.
 - **Token-based auth.** Short-lived JWTs (role-based TTLs), stored in httpOnly cookies by default, never raw credentials.
-- **Layered storage.** R2 and KV credentials are independent — leaking one doesn't compromise the other.
+- **Layered storage.** R2 and Redis credentials are independent — leaking one doesn’t compromise the other.
 - **CDN buffer.** Cached content continues serving even during a rotation window.

@@ -33,11 +33,26 @@ The host supplies a port and environment variables. Railway, Docker Compose, Kub
 
 Routes do not own business truth. Workers may execute feature workflows but must not redefine eligibility or state transitions.
 
+## Browser navigation and state
+
+The URL owns durable, addressable resources. React state owns live interaction.
+An in-place mode gets a browser-history entry only when Back should undo or
+leave that mode. Local games use this rule for setup-to-round transitions:
+`useGameScreenHistory` adds a temporary screen marker, while timers, scores,
+drawings, and motion state remain in the game and tab-scoped recovery model.
+Back returns to setup before a second Back leaves the tool. It does not make
+the live round a shareable deep link.
+
+Public content uses route paths, breadcrumbs, and contextual journey rails.
+Things, games, the pitch studio, admin, health, and transactional surfaces own
+their own product controls instead of receiving a forced global footer. The
+full decision table and URL rules live in [navigation.md](./navigation.md).
+
 ## Effect subsystems
 
 Effect v4 is used at service boundaries, not as a general programming style. Three subsystems use it today: multiplayer (`features/things/shared`), events/ticketing (`features/events`, `features/tickets`), and the Pitch Night studio (`features/things/pitches`).
 
-The shared shape is the same in both:
+The same boundary pattern is used by all three:
 
 ```text
 TanStack / Nitro boundary

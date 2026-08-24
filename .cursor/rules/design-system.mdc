@@ -1,6 +1,6 @@
 ---
 description: Milk & Henny editorial typewriter design system
-globs: ["app/**/*.tsx", "components/**/*.tsx", "**/*.css"]
+globs: ["src/**/*.tsx", "features/**/*.tsx", "components/**/*.tsx", "**/*.css"]
 alwaysApply: false
 ---
 

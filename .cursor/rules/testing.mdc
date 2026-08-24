@@ -15,7 +15,7 @@ alwaysApply: false
    - Scope: Pure functions, hooks, `features/*`.
    - Rule: Fast execution. No browser/DB. 100% logic coverage.
 2. **Integration:**
-   - Scope: Component trees, Server Actions, API routes.
+   - Scope: Cross-module workflows, TanStack server functions, and Nitro API routes.
    - Rule: Test the user contract (input/output). Do not mock sub-components.
 
 ## Tooling & Execution

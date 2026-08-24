@@ -4,7 +4,7 @@ This doc explains when we use:
 
 - **httpOnly cookies** (server-readable auth)
 - **`localStorage`** (client-only UX state)
-- **`sessionStorage`** (avoid; client-only and easy to lose/debug)
+- **`sessionStorage`** (short-lived, tab-scoped recovery only)
 
 It also documents why the old model (client storage + `useEffect` fetch + API routes for everything) was slower and riskier in this codebase.
 
@@ -16,7 +16,7 @@ It also documents why the old model (client storage + `useEffect` fetch + API ro
 
 1. **Who needs to read the value?**
 
-- **Server needs it** (Server Components, Server Actions, Route Handlers) -> use **cookies**
+- **Server needs it** (server-rendered routes, TanStack server functions, Nitro handlers) -> use **cookies**
 - **Only the browser needs it** -> use **localStorage** (or React state)
 
 2. **Should JavaScript be allowed to read it?**
@@ -30,7 +30,9 @@ It also documents why the old model (client storage + `useEffect` fetch + API ro
 - `mah-auth-upload` (JWT) - upload access (optional; see upload note)
 - `mah-bd-voter` (opaque id) - best-dressed per-device vote identity
 
-Cookies are sent automatically by the browser on same-site requests, which makes them the only practical way to do server-authenticated App Router pages without pushing everything into `"use client"`.
+Cookies are sent automatically by the browser on same-site requests, which lets
+TanStack Start render and protect server-backed routes without moving the whole
+page into a client-only shell.
 
 ---
 
@@ -80,6 +82,18 @@ Notes:
 - **Client storage**: theme preference in `localStorage` (non-sensitive)
 - **Why**: this is a pure client preference and we want instant paint without network calls
 
+### Live game state and navigation
+
+- **Client storage**: React state for the active round; `sessionStorage` only
+  for bounded, tab-scoped recovery where a feature explicitly supports it.
+- **Navigation**: the route identifies the tool. A local setup-to-round change
+  may add one temporary browser-history marker so Back returns to setup. The
+  marker is not the game state and does not make a round shareable.
+- **Why**: timers, scores, drawings, motion, permissions, and device state are
+  not safe or useful to serialise into a URL. A room URL is different: it
+  identifies a server-backed multiplayer session, while the room protocol
+  remains authoritative.
+
 ### Browser profile (site-wide)
 
 - **Client storage**: a name and email address in `localStorage["mah-browser-profile-v1"]`
@@ -111,15 +125,17 @@ Do not use the browser profile in admin, scanner, or operator forms that describ
 ### The old pattern
 
 - Store JWT in `localStorage`/`sessionStorage`
-- Make pages `"use client"`
-- Fetch initial data in `useEffect` from `/api/*`
-- Do mutations via `/api/*` from client code
+- Make server-backed pages client-only
+- Fetch initial data in `useEffect` from API routes
+- Do every mutation from client code
 
 ### Problems it creates (mental model)
 
 1. **The server is blind**
 
-Server Components / Server Actions cannot see browser storage. That forces the app into a client-first architecture even for pages that should be server-rendered.
+Server-rendered routes and server functions cannot see browser storage. That
+forces the app into a client-first architecture even for pages that should be
+server-rendered.
 
 2. **You can’t “render authenticated HTML”**
 
@@ -134,9 +150,10 @@ This repo already hit that exact failure mode:
 
 - see `docs/postmortem-guestlist-kv-read-spike.md`
 
-4. **Harder to use App Router primitives**
+4. **Harder to use server-rendering primitives**
 
-Server rendering, `loading.tsx`, caching/revalidation, and Server Actions become less useful when auth is only client-side.
+Server rendering, route loaders, caching/revalidation, and server functions
+become less useful when auth is only client-side.
 
 5. **Security footgun**
 
@@ -147,6 +164,8 @@ httpOnly cookies reduce that risk by making the token inaccessible to client JS.
 
 ## Decision rules (quick)
 
-- If you need the server to decide anything (gate a page, fetch initial data, run a Server Action) -> **cookie**
+- If you need the server to decide anything (gate a page, fetch initial data, run a server function) -> **cookie**
 - If it’s a client-only preference or hint -> **localStorage**
-- Avoid `sessionStorage` unless you have a very specific reason (debuggability and “tab lost state” issues)
+- Avoid `sessionStorage` for durable data, auth, or source-of-truth state. It is
+  appropriate for a bounded tab-scoped recovery value when losing the tab is an
+  acceptable outcome and the feature documents the behaviour.

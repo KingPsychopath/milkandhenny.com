@@ -66,6 +66,18 @@ Add a browser test when a failure would be hard to see from server tests alone:
 - a multi-step interaction where browser state matters;
 - an offline or retry behaviour that must be observed by a user.
 
+For navigation changes, verify the product rule rather than only the URL text:
+
+- a shareable route opens and refreshes at the same meaningful resource;
+- Back and Forward move through a live in-place mode in the expected order;
+- a local game's first Back returns to setup and the next Back leaves the tool;
+- an explicit end/exit action does not leave a stale history entry;
+- narrow and wide headers, breadcrumbs, rails, and footers do not overlap.
+
+Keep this coverage focused. A browser test is justified for a high-value state
+transition; a pure visual spacing change can use manual visual review at the
+required breakpoints. See [navigation.md](./navigation.md) for the contract.
+
 Do not add a browser test for every component or route. Manual visual review is
 better for layout and typography changes.
 

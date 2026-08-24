@@ -29,7 +29,7 @@ alwaysApply: false
 
 ## Security
 - Never hardcode secrets, API keys, or tokens. Use `process.env`.
-- Prefix client-safe env vars with `NEXT_PUBLIC_` only when intentionally exposed.
+- Prefix client-safe env vars with `VITE_` only when intentionally exposed.
 - Never log sensitive data (tokens, passwords, session IDs).
 - Destructive operations (delete user, purge data) require confirmation flags in CLI and explicit UI confirmation on web.
 

@@ -19,7 +19,7 @@ This document explains the decisions behind the visual system so changes stay co
 
 ## Color System (Warm Stone, Apple-Like Restraint)
 
-The palette is defined as CSS variables in `app/globals.css` and switched via `[data-theme="dark"]`.
+The palette is defined as CSS variables in `src/styles/globals.css` and switched via `[data-theme="dark"]`.
 
 Principles:
 
@@ -30,7 +30,7 @@ Principles:
 - **Single accent**: amber is used sparingly to signal meaning (featured/emphasis/affordance), not decoration.
 - **Avoid "system blue" energy**: links/interactive states should feel quiet; prefer underline/opacity over color swaps.
 
-### Palette (source of truth: `app/globals.css`)
+### Palette (source of truth: `src/styles/globals.css`)
 
 Swatches are rendered with inline HTML for quick visual scanning. Some Markdown renderers sanitize inline styles; if you don't see swatches, treat the hex codes as the source of truth.
 
@@ -51,7 +51,7 @@ Swatches are rendered with inline HTML for quick visual scanning. Some Markdown 
 
 Practical usage notes:
 
-- If you need a new color, add a token in `app/globals.css` (light + dark) rather than introducing a one-off hex.
+- If you need a new color, add a token in `src/styles/globals.css` (light + dark) rather than introducing a one-off hex.
 - For interactive states, prefer underline/opacity/weight changes before adding new hues.
 
 Related utilities:
@@ -143,6 +143,20 @@ We prefer "confidence through restraint":
 - **Embeds** (like album cards) should not rely on inline styles for hover behavior.
   Keep hover effects in CSS so the cascade is predictable.
 
+### Navigation is contextual
+
+The site is a sequence of rooms, not a dashboard with the same navigation on
+every page. The home page presents the main destinations. Deep public pages
+may add breadcrumbs and a contextual journey rail, while Things, live games,
+the studio, admin, health, and transactional surfaces keep their own controls.
+
+Keep a contextual back link and the brand separate with a real responsive gap;
+the brand is already the quiet route home. Do not add a second global home
+control beside it just to fill the header. A full footer is for public
+editorial, legal, contact, and subscription surfaces, not a compulsory element
+of every product screen. See [navigation.md](./navigation.md) for the browser
+history and URL-state rule.
+
 ---
 
 ## Accessibility (Baseline Rules)
@@ -169,7 +183,7 @@ Motion exists to clarify, not decorate:
 We intentionally keep styling in three buckets:
 
 1. **Tailwind utilities in components** (default).
-2. **Global CSS for tokens + prose + a small set of site-wide primitives** (`app/globals.css`).
+2. **Global CSS for tokens + prose + a small set of site-wide primitives** (`src/styles/globals.css`).
 3. **Rare bespoke CSS classes** for hard-to-express rules (markdown prose, embeds, keyframe-driven animations).
 
 Tailwind v4 layering is used to keep ordering deterministic:
