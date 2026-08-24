@@ -96,6 +96,7 @@ function pushPixelText(pieces, value, x, y, scale, fill) {
 function bottleTreeSvg() {
   const pieces = [
     `<svg xmlns="http://www.w3.org/2000/svg" width="${WIDTH}" height="${HEIGHT}" shape-rendering="crispEdges">`,
+    `<g transform="translate(0 5)">`,
     `<rect x="548" y="231" width="64" height="4" fill="${palette.stone300}"/>`,
     `<rect x="578" y="146" width="5" height="40" fill="${palette.stone500}"/>`,
     `<rect x="568" y="154" width="15" height="5" fill="${palette.stone500}"/>`,
@@ -113,7 +114,11 @@ function bottleTreeSvg() {
     `<rect x="567" y="208" width="24" height="12" fill="${palette.cream}"/>`,
   ];
   pushPixelText(pieces, "H", 575, 211, 2, palette.amberDark);
-  pieces.push(`<rect x="566" y="207" width="3" height="17" fill="${palette.amber}"/>`, "</svg>");
+  pieces.push(
+    `<rect x="566" y="207" width="3" height="17" fill="${palette.amber}"/>`,
+    `</g>`,
+    "</svg>",
+  );
   return Buffer.from(pieces.join(""));
 }
 
@@ -143,6 +148,41 @@ function milkJugSvg(phase) {
   }
   pieces.push("</svg>");
   return Buffer.from(pieces.join(""));
+}
+
+function reactionSvg() {
+  return Buffer.from(
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${WIDTH}" height="${HEIGHT}" shape-rendering="crispEdges">
+      <rect x="548" y="153" width="4" height="12" fill="${palette.amberLight}"/>
+      <rect x="556" y="146" width="5" height="11" fill="${palette.amberLight}" transform="rotate(28 558 151)"/>
+      <rect x="566" y="168" width="13" height="4" fill="${palette.amberLight}" transform="rotate(18 572 170)"/>
+    </svg>`,
+  );
+}
+
+async function cleanActionSource(source) {
+  const sourceKind = source.includes("pour") ? "pour" : "plant";
+  const { data, info } = await sharp(`${SOURCE_DIR}/${source}`)
+    .ensureAlpha()
+    .raw()
+    .toBuffer({ resolveWithObject: true });
+  for (let y = 0; y < info.height; y += 1) {
+    for (let x = 0; x < info.width; x += 1) {
+      const index = (y * info.width + x) * info.channels;
+      const red = data[index];
+      const green = data[index + 1];
+      const blue = data[index + 2];
+      const alpha = data[index + 3];
+      const greenLeaf = green > red * 1.25 && green > blue * 1.25 && green > 50;
+      const removeProp =
+        alpha > 0 &&
+        (sourceKind === "plant"
+          ? (x >= 550 && y >= 140) || (x >= 535 && greenLeaf)
+          : x >= 550 && y >= 178);
+      if (removeProp) data[index + 3] = 0;
+    }
+  }
+  return sharp(data, { raw: info }).png().toBuffer();
 }
 
 function overlaySvg(kind) {
@@ -225,9 +265,14 @@ async function composeFrame({ sprite, left, overlay, bottle, output }) {
 }
 
 async function composeActionFrame({ source, milkJug, output }) {
-  const layers = [{ input: bottleTreeSvg(), left: 0, top: 0 }];
+  const sourceBuffer = await cleanActionSource(source);
+  const layers = [
+    { input: bottleTreeSvg(), left: 0, top: 0 },
+    { input: sourceBuffer, left: 0, top: 0 },
+  ];
   if (milkJug) layers.push({ input: milkJugSvg(milkJug), left: 0, top: 0 });
-  await sharp(`${SOURCE_DIR}/${source}`).composite(layers).png().toFile(output);
+  if (source === "action-grow-b.png") layers.push({ input: reactionSvg(), left: 0, top: 0 });
+  await transparentCanvas().composite(layers).png().toFile(output);
 }
 
 async function buildGif(frames, delays, output) {

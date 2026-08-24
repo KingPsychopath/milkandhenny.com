@@ -389,7 +389,7 @@ export async function createStarterPlan(eventSlug: string): Promise<Communicatio
   const thankYouAt = localDateAt(event, 1, 10);
   const surveyReminderAt = localDateAt(event, 4, 10);
   const emailMascotBase = `${BASE_URL}/media/email/mascots`;
-  const mediaVersion = "?v=5";
+  const mediaVersion = "?v=6";
   const preparationMascot = `${emailMascotBase}/plant-watering/walking-across.gif${mediaVersion}`;
   const gettingThereMascot = `${emailMascotBase}/walking-to-studio.gif${mediaVersion}`;
   const dayOfMascot = `${emailMascotBase}/today.png${mediaVersion}`;
