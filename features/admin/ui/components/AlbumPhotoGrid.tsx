@@ -146,10 +146,10 @@ export function AlbumPhotoGrid({
 }: AlbumPhotoGridProps) {
   let draggedId = "";
   return (
-    <section aria-labelledby="album-photo-heading" className="space-y-3">
-      <div className="flex flex-wrap items-center justify-between gap-2 border-t theme-border pt-4">
+    <section aria-labelledby="album-photo-heading" className="space-y-5">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-t theme-border pt-6">
         <div>
-          <h3 id="album-photo-heading" className="font-mono text-xs theme-subtle">
+          <h3 id="album-photo-heading" className="font-mono text-sm font-bold">
             photos · {photos.length}
           </h3>
           <p className="mt-1 font-mono text-micro theme-subtle">
@@ -176,7 +176,7 @@ export function AlbumPhotoGrid({
         </div>
       </div>
 
-      <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+      <ul className="grid grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-3">
         {photos.map((photo, index) => {
           const imageUrl = `/api/admin/albums/${encodeURIComponent(album.slug)}/photos/${encodeURIComponent(photo.id)}/media`;
           const selected = selectedIds.has(photo.id);
@@ -199,15 +199,15 @@ export function AlbumPhotoGrid({
                 const source = event.dataTransfer.getData("text/plain") || draggedId;
                 if (source && source !== photo.id) onDropBefore(source, photo.id);
               }}
-              className={`group relative overflow-hidden rounded-md border p-2 ${selected ? "theme-border-strong" : "theme-border"}`}
+              className={`group relative overflow-hidden rounded-md border p-3 ${selected ? "theme-border-strong" : "theme-border"}`}
             >
               <div
-                className="relative aspect-[4/3] overflow-hidden rounded-sm"
+                className="relative aspect-[3/2] overflow-hidden rounded-sm"
                 style={imagePlaceholderStyle(photo.placeholder, "color")}
               >
                 <AppImage
                   src={imageUrl}
-                  sizes="(min-width: 1024px) 25vw, (min-width: 640px) 50vw, 100vw"
+                  sizes="(min-width: 1280px) 28vw, (min-width: 640px) 42vw, 100vw"
                   alt={photo.alt ?? ""}
                   width={photo.width}
                   height={photo.height}

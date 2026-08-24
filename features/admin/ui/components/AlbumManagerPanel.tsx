@@ -615,8 +615,14 @@ export function AlbumManagerPanel({
         </div>
       ) : null}
 
-      <div className="grid gap-4 lg:grid-cols-[minmax(220px,0.8fr)_minmax(0,2fr)]">
-        <div className="space-y-3">
+      <div className="grid gap-8 lg:grid-cols-[minmax(240px,280px)_minmax(0,1fr)] lg:items-start">
+        <aside className="space-y-3 lg:sticky lg:top-6">
+          <div>
+            <p className="font-mono text-xs font-bold">albums</p>
+            <p className="mt-1 font-mono text-micro theme-subtle">
+              Select an album to manage its story and photos.
+            </p>
+          </div>
           <label className="block font-mono text-micro theme-subtle">
             find album
             <input
@@ -627,7 +633,7 @@ export function AlbumManagerPanel({
               placeholder="title or slug"
             />
           </label>
-          <div className="max-h-96 space-y-1 overflow-auto pr-1">
+          <div className="max-h-[32rem] space-y-1 overflow-auto pr-1">
             {visibleAlbums.map((album) => (
               <button
                 key={album.slug}
@@ -645,11 +651,11 @@ export function AlbumManagerPanel({
               <p className="py-4 font-mono text-xs theme-subtle">No albums found.</p>
             ) : null}
           </div>
-        </div>
+        </aside>
 
         {selectedAlbum ? (
-          <div className="min-w-0 space-y-5">
-            <div className="rounded-md border theme-border p-4 space-y-3">
+          <div className="min-w-0 space-y-8">
+            <div className="rounded-md border theme-border p-5 space-y-4">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div>
                   <p className="font-mono text-micro theme-subtle">/pics/{selectedAlbum.slug}</p>
@@ -747,7 +753,7 @@ export function AlbumManagerPanel({
                 event.preventDefault();
                 void handleFiles(event.dataTransfer.files);
               }}
-              className="rounded-md border border-dashed theme-border p-6 text-center"
+              className="rounded-md border border-dashed theme-border px-6 py-10 text-center"
             >
               <p className="font-serif text-lg">drop photos here</p>
               <p className="mt-1 font-mono text-xs theme-subtle">
@@ -787,7 +793,7 @@ export function AlbumManagerPanel({
               ) : null}
             </div>
 
-            <div className="flex flex-wrap items-end gap-3">
+            <div className="flex flex-wrap items-end gap-3 border-t theme-border pt-6">
               <label className="min-w-56 flex-1 font-mono text-micro theme-subtle">
                 find photo
                 <input

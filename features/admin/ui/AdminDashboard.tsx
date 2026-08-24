@@ -967,7 +967,7 @@ export function AdminDashboard({
     : (wordMediaOrphans?.orphans ?? []).slice(0, 12);
 
   return (
-    <div className="max-w-2xl mx-auto px-6 pt-16 pb-24">
+    <div className="mx-auto max-w-7xl px-6 pt-12 pb-24 lg:px-8">
       <header className="mb-10">
         <p className="font-mono text-micro font-bold uppercase tracking-widest theme-muted">
           private workspace
@@ -1053,7 +1053,7 @@ export function AdminDashboard({
         </section>
       ) : null}
 
-      <section className="space-y-6">
+      <section className="space-y-10">
         {view === "overview" ? (
           <>
             <AdminOverviewPanel
