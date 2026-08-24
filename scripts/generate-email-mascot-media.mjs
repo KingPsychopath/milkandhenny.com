@@ -153,9 +153,11 @@ function milkJugSvg(phase) {
 function reactionSvg() {
   return Buffer.from(
     `<svg xmlns="http://www.w3.org/2000/svg" width="${WIDTH}" height="${HEIGHT}" shape-rendering="crispEdges">
-      <rect x="548" y="153" width="4" height="12" fill="${palette.amberLight}"/>
-      <rect x="556" y="146" width="5" height="11" fill="${palette.amberLight}" transform="rotate(28 558 151)"/>
-      <rect x="566" y="168" width="13" height="4" fill="${palette.amberLight}" transform="rotate(18 572 170)"/>
+      <rect x="535" y="128" width="4" height="15" fill="${palette.amberLight}"/>
+      <rect x="530" y="133" width="14" height="5" fill="${palette.amberLight}"/>
+      <rect x="548" y="145" width="5" height="5" fill="${palette.amberLight}"/>
+      <rect x="553" y="150" width="5" height="5" fill="${palette.amberLight}"/>
+      <rect x="540" y="157" width="6" height="4" fill="${palette.amberLight}"/>
     </svg>`,
   );
 }
@@ -174,11 +176,12 @@ async function cleanActionSource(source) {
       const blue = data[index + 2];
       const alpha = data[index + 3];
       const greenLeaf = green > red * 1.25 && green > blue * 1.25 && green > 50;
+      const plantCutoff = source === "action-grow-a.png" ? 548 : 550;
       const removeProp =
         alpha > 0 &&
         (sourceKind === "plant"
-          ? (x >= 550 && y >= 140) || (x >= 535 && greenLeaf)
-          : x >= 550 && y >= 178);
+          ? (x >= plantCutoff && y >= 140) || (x >= 535 && greenLeaf)
+          : x >= 545 && y >= 180);
       if (removeProp) data[index + 3] = 0;
     }
   }
@@ -276,7 +279,7 @@ async function composeActionFrame({ source, milkJug, output }) {
 }
 
 async function buildGif(frames, delays, output) {
-  const args = ["-dispose", "Background"];
+  const args = ["-background", "none", "-dispose", "Background"];
   frames.forEach((frame, index) => args.push("-delay", String(delays[index]), frame));
   args.push("-loop", String(GIF_LOOP_VALUE), "-layers", "Optimize", output);
   await run("magick", args);
