@@ -243,7 +243,7 @@ export function CommunicationsPanel({
     recipients: Array<{ name: string | null; email: string }>;
   } | null>(null);
   const [stagePreview, setStagePreview] = useState<{ stageId: string; html: string } | null>(null);
-  const [testEmail, setTestEmail] = useState("me@owenabel.com");
+  const [testEmail, setTestEmail] = useState("try@owenabel.com");
   const [kind, setKind] = useState<Kind>("newsletter");
   const [audience, setAudience] = useState<Audience>("marketing_opted_in");
   const [composeEvent, setComposeEvent] = useState("");
